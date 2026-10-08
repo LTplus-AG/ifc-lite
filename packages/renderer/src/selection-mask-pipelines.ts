@@ -24,8 +24,8 @@ import { drawInstanceRuns, uploadInstancedRteDeltas, type InstanceRun } from './
 import type { WorldPoint } from './relative-to-eye.js';
 import type { InstancedTemplateGPU } from './scene-instance-types.js';
 import { mainShaderSource } from './shaders/main.wgsl.js';
+import { PIPELINE_CONSTANTS } from './constants.js';
 import {
-  SELECTION_MASK_DEPTH_GROUP,
   SELECTION_MASK_HOVER_GROUP,
   selectionMaskFragmentSource,
 } from './shaders/selection-mask.wgsl.js';
@@ -57,6 +57,7 @@ export function createMaskPipelines(
   layout: GPUPipelineLayout,
   vertex: GPUVertexState,
   fragmentModule: GPUShaderModule,
+  sampleCount: number,
 ): MaskPipelines {
   const make = (kind: MaskKind) => {
     const out = MASK_OUTPUTS[kind];
@@ -66,6 +67,10 @@ export function createMaskPipelines(
       vertex,
       fragment: { module: fragmentModule, entryPoint: out.entryPoint, targets: [{ format: out.format, blend: ADDITIVE_BLEND }] },
       primitive: { topology: 'triangle-list', cullMode: 'none' },
+      ...(kind === 'selectedAll' ? {} : {
+        depthStencil: { format: PIPELINE_CONSTANTS.DEPTH_FORMAT, depthWriteEnabled: false, depthCompare: 'greater-equal' as const },
+        multisample: { count: sampleCount },
+      }),
     });
   };
   return { selectedVisible: make('selectedVisible'), hoverVisible: make('hoverVisible'), selectedAll: make('selectedAll') };
@@ -120,7 +125,7 @@ export class InstancedSelectionMask {
   /** This frame's drawable runs per template, from `prepare`. */
   private runs = new Map<InstancedMaskTemplate, readonly InstanceRun[]>();
 
-  constructor(device: GPUDevice, meshBindGroupLayout: GPUBindGroupLayout, depthLayout: GPUBindGroupLayout, multisampled: boolean) {
+  constructor(device: GPUDevice, meshBindGroupLayout: GPUBindGroupLayout, sampleCount: number) {
     this.device = device;
     this.meshBindGroupLayout = meshBindGroupLayout;
     const hoverLayout = device.createBindGroupLayout({
@@ -129,7 +134,6 @@ export class InstancedSelectionMask {
     });
     const groups: GPUBindGroupLayout[] = [];
     groups[0] = meshBindGroupLayout;
-    groups[SELECTION_MASK_DEPTH_GROUP] = depthLayout;
     groups[SELECTION_MASK_HOVER_GROUP] = hoverLayout;
     const layout = device.createPipelineLayout({ label: 'selection-mask-instanced-layout', bindGroupLayouts: groups });
     const vertex: GPUVertexState = {
@@ -139,9 +143,9 @@ export class InstancedSelectionMask {
     };
     const fragmentModule = device.createShaderModule({
       label: 'selection-mask-instanced-fs',
-      code: selectionMaskFragmentSource(multisampled, true),
+      code: selectionMaskFragmentSource(true),
     });
-    this.pipelines = createMaskPipelines(device, 'selection-mask-instanced', layout, vertex, fragmentModule);
+    this.pipelines = createMaskPipelines(device, 'selection-mask-instanced', layout, vertex, fragmentModule, sampleCount);
 
     this.hoverBuffer = device.createBuffer({
       label: 'selection-mask-instanced-hover',
@@ -181,11 +185,10 @@ export class InstancedSelectionMask {
   }
 
   /** Draw `templates` into the open mask pass, one instanced draw per in-envelope run. */
-  draw(pass: GPURenderPassEncoder, kind: MaskKind, depthGroup: GPUBindGroup, templates: readonly InstancedMaskTemplate[]): void {
+  draw(pass: GPURenderPassEncoder, kind: MaskKind, templates: readonly InstancedMaskTemplate[]): void {
     if (templates.length === 0 || !this.meshUniform) return;
     pass.setPipeline(this.pipelines[kind]);
     pass.setBindGroup(0, this.meshUniform.bindGroup);
-    pass.setBindGroup(SELECTION_MASK_DEPTH_GROUP, depthGroup);
     pass.setBindGroup(SELECTION_MASK_HOVER_GROUP, this.hoverBindGroup);
     for (const t of templates) {
       pass.setVertexBuffer(0, t.vertexBuffer);

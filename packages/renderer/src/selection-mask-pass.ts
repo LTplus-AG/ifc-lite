@@ -4,12 +4,12 @@
 
 /**
  * Selection/hover mask pass (#5390): draws the selected and hovered
- * meshes into two small single-sample targets the edge
+ * meshes into two resolved targets the edge
  * pass then outlines (`edge-pass.ts`'s `fs_outline`, DRY with the geometry
  * edge detection, #5385):
  *
  *  - `maskVisible` (rg8unorm): R = selected, G = hovered, both VISIBLE only
- *    (occluded fragments discarded — see `shaders/selection-mask.wgsl.ts`).
+ *    (occluded samples rejected by the shared scene depth attachment).
  *  - `maskAll` (r8unorm): R = selected, drawn regardless of occlusion, so
  *    the outline composite can tell "hidden behind something" (in `all`,
  *    not in `visible`) from "not selected at all".
@@ -26,7 +26,7 @@
 
 import type { WebGPUDevice } from './device.js';
 import { mainShaderSource } from './shaders/main.wgsl.js';
-import { SELECTION_MASK_DEPTH_GROUP, selectionMaskFragmentSource } from './shaders/selection-mask.wgsl.js';
+import { selectionMaskFragmentSource } from './shaders/selection-mask.wgsl.js';
 import {
   createMaskPipelines,
   InstancedSelectionMask,
@@ -69,7 +69,7 @@ export interface SelectionMaskFrame {
   encoder: GPUCommandEncoder;
   width: number;
   height: number;
-  /** Depth-only view of the scene depth attachment (may be multisampled). */
+  /** Full view of the scene depth/stencil attachment (may be multisampled). */
   depthView: GPUTextureView;
   /** Drawn into `maskAll` (selected-all) and `maskVisible.r` (selected-visible). */
   selected: readonly SelectableMesh[];
@@ -91,6 +91,8 @@ interface MaskTargets {
   all: GPUTexture;
   visibleView: GPUTextureView;
   allView: GPUTextureView;
+  multisampledVisible: GPUTexture | null;
+  multisampledVisibleView: GPUTextureView | null;
   /** Returned by `encode`; one object per allocation so consumers can cache by identity. */
   views: SelectionMaskViews;
 }
@@ -98,14 +100,11 @@ interface MaskTargets {
 export class SelectionMaskPass {
   private readonly device: GPUDevice;
   private readonly meshBindGroupLayout: GPUBindGroupLayout;
-  private readonly depthLayout: GPUBindGroupLayout;
-  private readonly multisampled: boolean;
+  private readonly sampleCount: number;
   private readonly pipelines: MaskPipelines;
   /** Built on the first frame with an instanced selection or hover. */
   private instanced: InstancedSelectionMask | null = null;
   private targets: MaskTargets | null = null;
-  private cachedDepthView: GPUTextureView | null = null;
-  private cachedDepthBindGroup: GPUBindGroup | null = null;
   /** One owned uniform buffer + bind group per hovered piece, grown on demand. */
   private hoverUniforms: { buffer: GPUBuffer; bindGroup: GPUBindGroup }[] = [];
   private destroyed = false;
@@ -114,26 +113,16 @@ export class SelectionMaskPass {
     this.device = device.getDevice();
     this.meshBindGroupLayout = meshBindGroupLayout;
 
-    this.depthLayout = this.device.createBindGroupLayout({
-      label: 'selection-mask-depth-bgl',
-      entries: [{
-        binding: 0,
-        visibility: GPUShaderStage.FRAGMENT,
-        texture: { sampleType: 'depth', viewDimension: '2d', multisampled: sampleCount > 1 },
-      }],
-    });
-    const layout = this.device.createPipelineLayout({
-      bindGroupLayouts: [this.meshBindGroupLayout, this.depthLayout],
-    });
+    this.sampleCount = sampleCount;
+    const layout = this.device.createPipelineLayout({ bindGroupLayouts: [this.meshBindGroupLayout] });
 
-    this.multisampled = sampleCount > 1;
     const vertexModule = this.device.createShaderModule({ label: 'selection-mask-vs', code: mainShaderSource });
     const fragmentModule = this.device.createShaderModule({
       label: 'selection-mask-fs',
-      code: selectionMaskFragmentSource(this.multisampled),
+      code: selectionMaskFragmentSource(),
     });
     const vertex: GPUVertexState = { module: vertexModule, entryPoint: 'vs_main', buffers: MESH_VERTEX_BUFFERS };
-    this.pipelines = createMaskPipelines(this.device, 'selection-mask', layout, vertex, fragmentModule);
+    this.pipelines = createMaskPipelines(this.device, 'selection-mask', layout, vertex, fragmentModule, sampleCount);
   }
 
   /** Nothing to draw this frame: caller skips the pass and the outline composite entirely. */
@@ -143,7 +132,6 @@ export class SelectionMaskPass {
 
   encode(frame: SelectionMaskFrame): SelectionMaskViews {
     const targets = this.ensureTargets(frame.width, frame.height);
-    const depthGroup = this.ensureDepthBindGroup(frame.depthView);
 
     const instancedFrame = frame.instanced && !isInstancedMaskEmpty(frame.instanced) ? frame.instanced : null;
     const instanced = instancedFrame ? this.ensureInstanced() : null;
@@ -156,11 +144,16 @@ export class SelectionMaskPass {
     const draw = (view: GPUTextureView, kind: MaskKind, meshes: readonly SelectableMesh[]) => {
       const loadOp: GPULoadOp = cleared.has(view) ? 'load' : 'clear';
       cleared.add(view);
+      const visible = kind !== 'selectedAll';
       const pass = frame.encoder.beginRenderPass({
-        colorAttachments: [{ view, loadOp, storeOp: 'store', clearValue: { r: 0, g: 0, b: 0, a: 0 } }],
+        colorAttachments: [{
+          view: visible ? targets.multisampledVisibleView ?? view : view,
+          ...(visible && targets.multisampledVisibleView ? { resolveTarget: view } : {}),
+          loadOp, storeOp: 'store', clearValue: { r: 0, g: 0, b: 0, a: 0 },
+        }],
+        ...(visible ? { depthStencilAttachment: { view: frame.depthView, depthReadOnly: true, stencilReadOnly: true } } : {}),
       });
       pass.setPipeline(this.pipelines[kind]);
-      pass.setBindGroup(SELECTION_MASK_DEPTH_GROUP, depthGroup);
       for (const mesh of meshes) {
         pass.setBindGroup(0, mesh.bindGroup);
         pass.setVertexBuffer(0, mesh.vertexBuffer);
@@ -168,7 +161,7 @@ export class SelectionMaskPass {
         pass.drawIndexed(mesh.indexCount, 1, 0, 0, 0);
       }
       if (instanced && instancedFrame) {
-        instanced.draw(pass, kind, depthGroup, kind === 'hoverVisible' ? instancedFrame.hovered : instancedFrame.selected);
+        instanced.draw(pass, kind, kind === 'hoverVisible' ? instancedFrame.hovered : instancedFrame.selected);
       }
       pass.end();
     };
@@ -185,7 +178,7 @@ export class SelectionMaskPass {
   }
 
   private ensureInstanced(): InstancedSelectionMask {
-    this.instanced ??= new InstancedSelectionMask(this.device, this.meshBindGroupLayout, this.depthLayout, this.multisampled);
+    this.instanced ??= new InstancedSelectionMask(this.device, this.meshBindGroupLayout, this.sampleCount);
     return this.instanced;
   }
 
@@ -215,33 +208,26 @@ export class SelectionMaskPass {
     const current = this.targets;
     if (current && current.width === width && current.height === height) return current;
     this.releaseTargets();
-    const make = (label: string, format: GPUTextureFormat) => this.device.createTexture({
+    const make = (label: string, format: GPUTextureFormat, sampleCount = 1) => this.device.createTexture({
       label,
       size: { width, height },
-      format,
+      format, sampleCount,
       usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
     });
     const visible = make('selection-mask-visible', MASK_VISIBLE_FORMAT);
     const all = make('selection-mask-all', MASK_ALL_FORMAT);
+    const multisampledVisible = this.sampleCount > 1 ? make('selection-mask-visible-msaa', MASK_VISIBLE_FORMAT, this.sampleCount) : null;
+    const multisampledVisibleView = multisampledVisible?.createView() ?? null;
     const visibleView = visible.createView();
     const allView = all.createView();
-    this.targets = { width, height, visible, all, visibleView, allView, views: { visibleView, allView } };
+    this.targets = { width, height, visible, all, visibleView, allView, multisampledVisible, multisampledVisibleView, views: { visibleView, allView } };
     return this.targets;
-  }
-
-  private ensureDepthBindGroup(depthView: GPUTextureView): GPUBindGroup {
-    if (this.cachedDepthView === depthView && this.cachedDepthBindGroup) return this.cachedDepthBindGroup;
-    this.cachedDepthBindGroup = this.device.createBindGroup({
-      layout: this.depthLayout,
-      entries: [{ binding: 0, resource: depthView }],
-    });
-    this.cachedDepthView = depthView;
-    return this.cachedDepthBindGroup;
   }
 
   private releaseTargets(): void {
     this.targets?.visible.destroy();
     this.targets?.all.destroy();
+    this.targets?.multisampledVisible?.destroy();
     this.targets = null;
   }
 
@@ -250,8 +236,6 @@ export class SelectionMaskPass {
     if (this.destroyed) return;
     this.destroyed = true;
     this.releaseTargets();
-    this.cachedDepthBindGroup = null;
-    this.cachedDepthView = null;
     for (const entry of this.hoverUniforms) entry.buffer.destroy();
     this.hoverUniforms = [];
     this.instanced?.destroy();

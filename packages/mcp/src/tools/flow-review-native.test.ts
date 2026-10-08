@@ -21,13 +21,17 @@ const directory = await mkdtemp(join(tmpdir(), 'ifc-mcp-review-'));
 afterAll(() => rm(directory, { recursive: true, force: true }));
 afterEach(() => { vi.unstubAllEnvs(); vi.unstubAllGlobals(); });
 let requests = 0;
+let sentFormats: unknown[] = [];
 beforeEach(() => {
   requests = 0;
+  sentFormats = [];
   vi.stubEnv('IFC_LITE_AI_MODEL', 'fixture'); vi.stubEnv('IFC_LITE_AI_API_KEY', 'fixture-private-token');
   vi.stubEnv('IFC_LITE_AI_BASE_URL', 'https://fixture.invalid/v1');
+  vi.stubEnv('IFC_LITE_AI_STRUCTURED_OUTPUT', 'true');
   vi.stubGlobal('fetch', async (_url: unknown, init: RequestInit) => {
     requests++;
-    const body = JSON.parse(String(init.body)) as { messages: { content: string }[] };
+    const body = JSON.parse(String(init.body)) as { messages: { content: string }[]; response_format?: unknown };
+    sentFormats.push(body.response_format);
     const prompt = body.messages.at(-1)!.content;
     const rows = /<data>\n([\s\S]*)\n<\/data>/.exec(prompt)![1].split('\n').map(line => JSON.parse(line) as { key: string });
     return new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify({ items: rows.map(row => ({ key: row.key, label: 'structure', evidence: ['Name'] })) }) }, finish_reason: 'stop' }], usage: { prompt_tokens: 20, completion_tokens: 10 } }), { headers: { 'Content-Type': 'application/json' } });
@@ -60,10 +64,13 @@ async function pause(fixture: Awaited<ReturnType<typeof setup>>) {
 it('returns a durable pending artifact; an explicit digest-approved second call applies native properties once without another request', async () => {
   const fixture = await setup(); const pending = await pause(fixture);
   expect(requests).toBe(1); expect(pending.budget).toMatchObject({ requests: 1, outputTokens: 10 });
+  expect(sentFormats).toMatchObject([{ type: 'json_schema', json_schema: { name: 'flow_classification', strict: true,
+    schema: { type: 'object', required: ['items'], additionalProperties: false } } }]);
   expect(fixture.model.backend.getMutationView()?.getEffectiveChanges() ?? []).toEqual([]);
   const stored = (await new FileCheckpointStore(fixture.path).load()).checkpoint;
   expect(stored.state).toBe('prepared');
-  expect(stored.budget).toMatchObject({ usageReceipts: [expect.objectContaining({ model: 'fixture', route: 'mcp', outcome: 'completed', usageReported: true, outputTokens: 10 })] }); expect(stored.outputs.draft).toEqual(pending.artifacts.draft);
+  expect(stored.budget).toMatchObject({ usageReceipts: [expect.objectContaining({ model: 'fixture', route: 'mcp', outcome: 'completed', usageReported: true,
+    outputFormat: 'json-schema', outputTokens: 10 })] }); expect(stored.outputs.draft).toEqual(pending.artifacts.draft);
   expect(await readFile(fixture.path, 'utf8')).not.toContain('fixture-private-token');
   const input = { flow: fixture.flow, checkpoint_path: fixture.path, approved_digest: pending.proposal_digest };
   vi.stubEnv('IFC_LITE_AI_MODEL', ''); vi.stubEnv('IFC_LITE_AI_API_KEY', '');

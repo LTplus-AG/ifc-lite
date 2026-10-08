@@ -40,6 +40,10 @@ export const activityTrayEn = {
   'activityTray.job.flow': 'Flow run',
   'activityTray.job.ai': 'Assistant request',
   'activityTray.job.export': 'Export',
+  'activityTray.job.zoneGeometry': 'Export zone geometry',
+  'activityTray.job.zoneTable': 'Export zone quantities',
+  'activityTray.zone.geometryPartial': 'Published {whole} whole and {cut} cut elements; {refused} refused and {missing} without geometry.',
+  'activityTray.zone.tablePartial': { one: 'Published the table with {count} unmeasured quantity row; its reason remains in the table.', other: 'Published the table with {count} unmeasured quantity rows; their reasons remain in the table.' },
   'activityTray.job.validationBcf': 'Export validation report as BCF',
   'activityTray.job.publication': 'BCF publication',
 

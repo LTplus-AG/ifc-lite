@@ -28,7 +28,7 @@ import {
 } from '@ifc-lite/flow/checkpoint';
 import { redactDeep } from '@ifc-lite/flow-nodes';
 import { fatal, printJson } from '../output.js';
-import { FileCheckpointStore } from './flow-checkpoint.js';
+import { FileCheckpointStore } from '@ifc-lite/flow/checkpoint-file';
 
 /** Exit code of a run that stopped at a review checkpoint: not a failure, not done. */
 export const PAUSED_FOR_REVIEW = 3;

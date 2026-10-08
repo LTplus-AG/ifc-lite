@@ -32,7 +32,8 @@ export async function seedDeclaredZoneWall(t: TestContext) {
   try {
     api.setComputeGeometryHashes(0.001);
     const pre = api.buildPrePassOnce(bytes);
-    const jobs = Array.from(pre.jobs).flatMap((value, index) => index % 3 === 0 && value === id ? Array.from(pre.jobs.slice(index, index + 3)) : []);
+    const nativeJobs: Uint32Array = pre.jobs;
+    const jobs = Array.from(nativeJobs).flatMap((value, index) => index % 3 === 0 && value === id ? Array.from(nativeJobs.slice(index, index + 3)) : []);
     assert.equal(jobs.length, 3, 'the real native prepass has exactly one authored wall job');
     const collection = api.processGeometryBatch(bytes, new Uint32Array(jobs), pre.unitScale,
       pre.rtcOffset[0], pre.rtcOffset[1], pre.rtcOffset[2], pre.needsShift,

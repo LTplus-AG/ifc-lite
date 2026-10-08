@@ -9,6 +9,8 @@
  * not listed, so the list leads with what moved).
  */
 
+import { useEffect, useRef } from 'react';
+import { useReconciliationFocus } from '@/lib/panels/evidence-focus';
 import { useTranslation } from '@/i18n';
 import type { Incompatibility, ReconcileOutcome, ReconcileState } from '@/lib/compare/run-reconcile-types';
 
@@ -17,6 +19,14 @@ const LISTED_FINDINGS = 40;
 
 export function ReconcileOutcomeView({ outcome }: { outcome: ReconcileOutcome }) {
   const { t } = useTranslation();
+  const focus = useReconciliationFocus(s => s.record);
+  const focused = outcome.ok && focus?.baseRunId === outcome.baseRunId && focus.headRunId === outcome.headRunId
+    ? outcome.findings.find(row => row.identity === focus.identity) : undefined;
+  const focusedRow = useRef<HTMLLIElement>(null);
+  useEffect(() => {
+    if (!focused) return;
+    focusedRow.current?.focus(); focusedRow.current?.scrollIntoView?.({ block: 'nearest' });
+  }, [focused]);
   // A run-level refusal names the picked run by its role, not by an internal id.
   const detail = (item: Incompatibility) => item.sides
     ? item.sides.map(side => t(side === 'base' ? 'compareAnalysis.reconcile.baseRun' : 'compareAnalysis.reconcile.headRun')).join(', ')
@@ -33,7 +43,8 @@ export function ReconcileOutcomeView({ outcome }: { outcome: ReconcileOutcome })
       </div>
     );
   }
-  const listed = outcome.findings.filter(f => f.state !== 'persisting');
+  const ordinary = outcome.findings.filter(f => f.state !== 'persisting');
+  const listed = focused ? [focused, ...ordinary.filter(row => row !== focused)] : ordinary;
   const shown = listed.slice(0, LISTED_FINDINGS);
   return (
     <div className="space-y-1.5">
@@ -56,6 +67,8 @@ export function ReconcileOutcomeView({ outcome }: { outcome: ReconcileOutcome })
         <ul className="space-y-0.5">
           {shown.map(finding => (
             <li key={`${finding.state}:${finding.identity}:${finding.baseOccurrence ?? finding.headOccurrence}`}
+              ref={finding === focused ? focusedRow : undefined} tabIndex={finding === focused ? -1 : undefined}
+              aria-current={finding === focused ? true : undefined}
               className="rounded border border-border/60 px-2 py-1">
               <span className="font-medium">{t(`compareAnalysis.state.${finding.state}`)}</span>
               <span className="break-words"> · {finding.label}</span>

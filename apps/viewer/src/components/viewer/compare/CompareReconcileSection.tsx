@@ -12,7 +12,7 @@
  * is withdrawn once a model edit postdates one of its runs.
  */
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { IconButton } from '@/components/ui/icon-button';
@@ -25,6 +25,7 @@ import { captureClashRun, captureValidationRun, currentReconciliationOf } from '
 import { savedReconciliationOf } from '@/lib/compare/compare-reconcile-state';
 import type { CapturedRun, RunKind } from '@/lib/compare/run-reconcile-types';
 import { ReconcileOutcomeView } from './ReconcileOutcomeView';
+import { useReconciliationFocus } from '@/lib/panels/evidence-focus';
 
 function RunSelect({ label, runs, value, onChange, describe }: {
   label: string; runs: CapturedRun[]; value: string; onChange: (id: string) => void; describe: (run: CapturedRun) => string;
@@ -48,8 +49,16 @@ export function CompareReconcileSection({ result }: { result: CompareResult }) {
   const hasValidation = useViewerStore(s => !!s.idsValidationReport);
   const stored = useViewerStore(s => s.compareReconciliation);
   const stale = useViewerStore(s => currentReconciliationOf(s)?.stale ?? false);
+  const focus = useReconciliationFocus(s => s.record);
   const [kind, setKind] = useState<RunKind>('clash');
   const [picked, setPicked] = useState<{ base?: string; head?: string }>({});
+
+  useEffect(() => {
+    const outcome = stored?.comparison === result ? stored.outcome : null;
+    if (!focus || !outcome?.ok || outcome.baseRunId !== focus.baseRunId || outcome.headRunId !== focus.headRunId
+      || !outcome.findings.some(row => row.identity === focus.identity)) return;
+    setKind(outcome.kind); setPicked({ base: focus.baseRunId, head: focus.headRunId });
+  }, [focus, stored, result]);
 
   const runs = useMemo(() => captures.filter(run => run.kind === kind), [captures, kind]);
   // Newest first: the head defaults to the latest capture, the base to the one before it (or the same run).

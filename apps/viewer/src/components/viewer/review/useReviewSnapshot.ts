@@ -19,7 +19,7 @@ export function useReviewSnapshot(): { snapshot: ReviewSnapshot; refresh: () => 
   const [tick, setTick] = useState(0);
   useEffect(() => subscribeRevisionBaseline(() => setTick(value => value + 1)), []);
   const native = useViewerStore(useShallow(s => [s.clashResult, s.clashRawResult, s.idsValidationReport, s.compareResult,
-    s.savedComparisons, s.bcfProject, s.models, s.mutationVersion, s.geometryContentVersion, s.modelPlacement]));
+    s.savedComparisons, s.compareReconciliation, s.compareRunCaptures, s.bcfProject, s.models, s.mutationVersion, s.geometryContentVersion, s.modelPlacement]));
   const semantic = useSemanticSession(useShallow(s => [s.document, s.findings, s.report, s.revisions, s.retrievedAt]));
   // The dependency list is the identity of what the sources read; the snapshot itself is derived data.
   // eslint-disable-next-line react-hooks/exhaustive-deps

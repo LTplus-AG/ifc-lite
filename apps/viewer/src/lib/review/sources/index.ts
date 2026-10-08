@@ -20,6 +20,7 @@ import type { FindingSource } from '../types';
 import { bcfFindings } from './bcf';
 import { clashFindings } from './clash';
 import { comparisonFindings } from './comparison';
+import { reconciliationFindings } from './reconciliation';
 import { linkedFindings } from './linked';
 import { validationFindings } from './validation';
 
@@ -46,8 +47,10 @@ export const FINDING_SOURCES: readonly FindingSource[] = [
     const state = useViewerStore.getState();
     const result = state.compareResult;
     const edited = result?.mutationVersion !== undefined && result.mutationVersion !== state.mutationVersion;
-    return comparisonFindings({ current: result ? { result, stale: edited || stale(result) } : null,
+    const compared = comparisonFindings({ current: result ? { result, stale: edited || stale(result) } : null,
       saved: state.savedComparisons }, models);
+    const reconciled = reconciliationFindings(state, models);
+    return { runs: [...compared.runs, ...reconciled.runs], findings: [...compared.findings, ...reconciled.findings] };
   } },
   { kind: 'bcf', collect() { return bcfFindings(useViewerStore.getState().bcfProject); } },
   { kind: 'linked', collect(models) {

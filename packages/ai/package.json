@@ -16,6 +16,11 @@
       "types": "./dist/artifacts.d.ts",
       "import": "./dist/artifacts.js",
       "default": "./dist/artifacts.js"
+    },
+    "./chat-completions": {
+      "types": "./dist/chat-completions.d.ts",
+      "import": "./dist/chat-completions.js",
+      "default": "./dist/chat-completions.js"
     }
   },
   "scripts": {

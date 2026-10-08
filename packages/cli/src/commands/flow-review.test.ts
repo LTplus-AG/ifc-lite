@@ -23,14 +23,15 @@ import { fileURLToPath } from 'node:url';
 import { TRACKING_SIDECAR_VERSION, FLOW_VERSION, NodeRegistry, runFlow, type FlowDocument } from '@ifc-lite/flow';
 import { createCheckpoint } from '@ifc-lite/flow/checkpoint';
 import { flowCommand } from './flow.js';
-import { FileCheckpointStore } from './flow-checkpoint.js';
+import { FileCheckpointStore } from '@ifc-lite/flow/checkpoint-file';
 import { createHeadlessContext } from '../loader.js';
 import { createRootBudget } from '@ifc-lite/ai';
 import { createStandardRegistry, headlessFeatures } from '@ifc-lite/flow-nodes';
 import { aiNodes } from '@ifc-lite/flow-nodes/ai';
-import { createCliAiService, flowAiConfig } from './flow-ai.js';
+import { createCliAiService } from './flow-ai.js';
+import { flowAiConfig } from '@ifc-lite/ai/chat-completions';
 import { createCliFlowSession } from './flow-host.js';
-import { sourceDigestOf } from './flow-checkpoint.js';
+import { sourceDigestOf } from '@ifc-lite/flow/checkpoint-file';
 import { parseCapabilities } from '@ifc-lite/extensions';
 
 const here = dirname(fileURLToPath(import.meta.url));

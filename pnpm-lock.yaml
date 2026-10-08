@@ -1546,6 +1546,9 @@ importers:
 
   packages/mcp:
     dependencies:
+      '@ifc-lite/ai':
+        specifier: workspace:^
+        version: link:../ai
       '@ifc-lite/bcf':
         specifier: workspace:^
         version: link:../bcf

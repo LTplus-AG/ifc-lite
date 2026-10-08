@@ -332,7 +332,18 @@ writes before and after the pause are separate undo steps.
 In a real host the transitions go through `updateCheckpoint` with a durable
 store; the CLI's `flow run --checkpoint` / `flow review` / `flow resume`
 (see the [CLI guide](cli.md)) and the viewer's Flow
-panel do exactly that. MCP currently reports AI nodes unavailable.
+panel do exactly that. MCP uses the same opt-in provider environment as the CLI.
+`run_flow` requires a new allowed `checkpoint_path` for review-capable graphs
+and returns a `pending` artifact with its exact approval digest. A separate
+`resume_flow` call supplies that `approved_digest`, the same graph and Player
+inputs, and the returned `model_id`. It rechecks current mutate scope, graph,
+all accessible native effective model exports and the original root budget
+before claiming once. Completed nodes replay without a provider request;
+downstream AI still needs host configuration. A further review requires a new
+`next_checkpoint_path` before continuation. Checkpoints never overwrite existing
+files; secret-bearing restored outputs are refused. The shared
+`@ifc-lite/flow/checkpoint-file` entry provides the CLI/MCP disk CAS store.
+MCP tracking remains per run, as on the existing native host.
 Pass the effective node registry when creating a checkpoint and computing its
 claim digest so a changed review policy refuses the resume. Graph identities, names and node labels also bind the digest,
 because they determine default write tracking keys. Cached proposals still pause
@@ -911,3 +922,10 @@ that lock and retrying; an old lock alone does not establish that a writer stopp
 Checkpoint compatibility uses the executed graph, including resolved secret parameters;
 the checkpoint stores its digest, not those credentials. Changing the execution parameters
 requires a new run and review.
+
+`propose_flow` lets a read-only MCP caller run a native read/AI-only graph to
+a pending artifact. It rejects declared or node-defined effects and permits
+only `model.read` and `network.ai`. The current read scope and model allowlist
+still apply; the separate `resume_flow` requires current mutate authorization.
+MCP responses and checkpoint budgets include provider usage receipts without
+prompts, replies or credentials; receipt history survives subsequent pauses.

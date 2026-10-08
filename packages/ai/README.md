@@ -64,3 +64,8 @@ and Flow `ai.propose`. Parsing validates the native data contract; hosts must
 resolve targets and recheck current values, permissions and reviewer selection
 before applying any changes. Importing the request core alone does not load
 the artifact validator. See the [Flow guide](../../docs/guide/flow.md).
+
+`@ifc-lite/ai/chat-completions` exposes the shared opt-in `flowAiConfig` and
+`chatCompletionsTransport` consumed by CLI and MCP Flow hosts. Both hosts route
+every call through `runModelRequest` with one persistable root pool; credentials
+remain host configuration. The request-core and artifact entries stay separate.

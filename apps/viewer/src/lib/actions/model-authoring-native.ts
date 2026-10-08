@@ -12,6 +12,8 @@
  * and `bim.store`'s modelling methods for joins, types and materials.
  */
 
+import { addStairToStore, addRailingToStore } from '@ifc-lite/create';
+import { stairParamsInMetres, railingParamsInMetres } from './model-authoring-stair-railing-fields';
 import { profileInMetres } from './model-authoring-shape-params';
 import { StoreEditor } from '@ifc-lite/mutations';
 import type { IfcDataStore } from '@ifc-lite/parser';
@@ -163,6 +165,12 @@ export function dryRunAuthoring(
 export function draftAuthoringOperation(batch: ModelAuthoringBatch, dataStore: IfcDataStore, modelId: string, draft: StoreEditor, row: DryRunRow, refs: Map<string, number>): void {
   const { op, resolved } = row;
   switch (op.op) {
+    case 'stair.create': case 'railing.create': {
+      ensureStoreyPlacement(dataStore, draft, resolved.storey!);
+      const anchor=resolveSpatialAnchor(dataStore,resolved.storey!,draft.getMutationView());
+      const made=op.op==='stair.create'?addStairToStore(draft,anchor,stairParamsInMetres(op.params,batch.units)).stairId:addRailingToStore(draft,anchor,railingParamsInMetres(op.params,batch.units)).railingId;
+      refs.set(op.ref,made);return;
+    }
     case 'element.resize': {
       const outcome = draftElementSize(dataStore, draft, draftMethods(dataStore, modelId, draft), modelId, resolved.target!, sizeInMetres(op.size, batch.units));
       if (!outcome.ok) throw new Error(outcome.reason);

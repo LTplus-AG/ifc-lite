@@ -170,6 +170,7 @@ function resolve(ctx: Context, row: AuthoringRow): void {
       }
       return;
     }
+    case 'stair.create': case 'railing.create':
     case 'element.create': {
       const storey = locate(ctx, op.storey);
       join(row, storey.modelId);

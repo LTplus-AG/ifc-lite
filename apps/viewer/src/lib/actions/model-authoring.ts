@@ -20,7 +20,8 @@
 
 import { parseShapeParams, parseProfileSectionParams, AUTHORING_OUTLINE_WORK_LIMIT, type ShapeParams } from './model-authoring-shape-params';
 import { parseSizeParams, type ExpectedSize } from './model-authoring-size-params';
-import type { ProfileSection } from '@ifc-lite/create';
+import { parseStairRailingParams } from './model-authoring-stair-railing-fields';
+import type { RailingInStoreParams, StairInStoreParams, ProfileSection } from '@ifc-lite/create';
 import type { ElementSizePatch } from '@/store/slices/mutation-element-size';
 import { parseCopyFields, type CopyFields, type ArrayFields } from './model-authoring-copy-fields';
 import { parseGlobalIdTarget, parseLength, parsePoint, parseRef, parseText, record, type LengthRange } from './model-authoring-fields';
@@ -45,6 +46,8 @@ export interface AxisParams { start: Point3; end: Point3; thickness?: number; wi
 export interface BoxParams { position: Point3; width: number; depth: number; thickness?: number; height?: number }
 
 export type AuthoringOp =
+  | { op: 'stair.create'; ref: string; storey: StoreyTarget; params: StairInStoreParams }
+  | { op: 'railing.create'; ref: string; storey: StoreyTarget; params: RailingInStoreParams }
   | { op: 'element.create'; ref: string; ifcClass: AuthoringClass; storey: StoreyTarget; name: string; params: AxisParams | BoxParams | ShapeParams }
   | ({ op: 'element.copy'; target: ElementTarget; ref: string } & CopyFields)
   | ({ op: 'element.array'; target: ElementTarget; refs: string[] } & ArrayFields)
@@ -62,7 +65,7 @@ export type AuthoringOp =
   | { op: 'hosted.create'; ref?: string; kind: HostedKind; host: ElementTarget; name?: string; offset: number; sill: number; width: number; height: number };
 
 export type AuthoringOpName = AuthoringOp['op'];
-export const AUTHORING_OPS: readonly AuthoringOpName[] = ['element.create', 'element.delete', 'element.resize', 'element.profile', 'element.move', 'element.rotate', 'element.copy', 'element.array',
+export const AUTHORING_OPS: readonly AuthoringOpName[] = ['stair.create', 'railing.create', 'element.create', 'element.delete', 'element.resize', 'element.profile', 'element.move', 'element.rotate', 'element.copy', 'element.array',
   'type.assign', 'material.assign', 'walls.join', 'hosted.create'];
 
 export interface ModelAuthoringBatch {
@@ -166,6 +169,8 @@ function operation(value: unknown, index: number, units: AuthoringUnits, refs: M
     return op;
   };
   switch (value.op) {
+    case 'stair.create': return defineRef({ op: value.op, ref: parseRef(value.ref, at), storey: parseGlobalIdTarget(value.storey, `${at} storey`), params: parseStairRailingParams(value.params, 'stair', units, at) });
+    case 'railing.create': return defineRef({ op: value.op, ref: parseRef(value.ref, at), storey: parseGlobalIdTarget(value.storey, `${at} storey`), params: parseStairRailingParams(value.params, 'railing', units, at) });
     case 'element.resize': {
       const expected = parseSizeParams(value.expected, units, `${at} expected`, true);
       const size = parseSizeParams(value.size, units, `${at} size`, false);

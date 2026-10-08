@@ -43,6 +43,7 @@ export function authoringRowSummary(row: AuthoringRow, batch: ModelAuthoringBatc
   const none = t('modelChanges.absent');
   const fromMetres = (v: number) => (units === 'mm' ? v * 1000 : v);
   switch (op.op) {
+    case 'stair.create': case 'railing.create': return {subject:`${op.op==='stair.create'?'IfcStair':'IfcRailing'} ${op.params.Name??''}`,before:t('modelAuthoring.notYet'),after:t('modelAuthoring.createdOn',{storey:before.storeyName??op.storey.globalId,dims:JSON.stringify(op.params)}),previewNote:t('modelAuthoring.editPreviewUnavailable')};
     case 'element.resize': case 'element.profile': {
       const notes = [row.previewUnavailable ? t('modelAuthoring.editPreviewUnavailable') : '',
         row.previewOuterBodyOnly ? t('modelAuthoring.outerBodyPreview') : '',

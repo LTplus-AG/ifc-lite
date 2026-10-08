@@ -11,6 +11,7 @@ import { editedModelBytes } from '@/lib/export/edited-model-bytes';
 import { createStoreAdapter } from '@/sdk/adapters/store-adapter';
 import { GROUND_STOREY, SAMPLE_MODEL, danglingReferences, parseIfc, seedAuthoringSample } from '@/test/authoring-sample-fixture';
 import { parseModelAuthoringBatch } from './model-authoring';
+import { commitModelAuthoring } from './model-authoring-commit';
 import { previewModelAuthoring } from './model-authoring-preview';
 const original=useViewerStore.getState();
 afterEach(()=>useViewerStore.setState(original));
@@ -26,6 +27,10 @@ for(const kind of ['stair','railing'] as const)test(`#7273 reviewed ${kind} crea
  const gid=s().mutationViews.get(SAMPLE_MODEL)!.getNewEntity(made.expressId)!.attributes[0];assert.equal(typeof gid,'string');
  const parsed=await exported(),id=parsed.entities.getExpressIdByGlobalId(String(gid));assert.ok(id>0);assert.equal(parsed.entities.getTypeName(id),kind==='stair'?'IfcStair':'IfcRailing');
  if(kind==='stair'){const dims=readStairDimensions(parsed,id);assert.ok(dims);assert.equal(dims.NumberOfRisers,4);assert.ok(Math.abs(dims.Width-1)<1e-9);assert.ok(Math.abs(dims.WaistThickness!-.1)<1e-9);}
- assert.doesNotThrow(()=>proposal({op:`${kind}.create`,ref:'reviewed',storey:{globalId:GROUND_STOREY},params:kind==='stair'?stair:railing}),'Assistant must admit the independently exported native family');
+ const operation={op:`${kind}.create`,ref:'reviewed',storey:{globalId:GROUND_STOREY},params:kind==='stair'?{...stair,Name:'Reviewed stair'}:{...railing,Name:'Reviewed railing'}};
+ assert.doesNotThrow(()=>proposal(operation),'Assistant must admit the independently exported native family');
+ const before=s().mutationViews.get(SAMPLE_MODEL)!.getMutations();const preview=previewModelAuthoring(s(),proposal(operation));assert.equal(preview.rows[0].status,'ready',preview.rows[0].issue);assert.deepEqual(s().mutationViews.get(SAMPLE_MODEL)!.getMutations(),before,'Preview leaves real native journal unchanged');
+ const committed=commitModelAuthoring(useViewerStore,preview,new Set([0]),'native stair/railing witness');assert.ok(committed.ok,committed.ok?'':committed.detail??committed.reason);
+ const after=await exported(),reviewedId=after.entities.getExpressIdByGlobalId(committed.receipt.applied[0].globalId);assert.ok(reviewedId>0);assert.equal(after.entities.getName(reviewedId),kind==='stair'?'Reviewed stair':'Reviewed railing');assert.equal(after.entities.getTypeName(reviewedId),kind==='stair'?'IfcStair':'IfcRailing');assert.ok(after.entities.getExpressIdByGlobalId(String(gid))>0,'Prior native product remains unchanged');
 });
 test('#7273 ordinary native creation remains an unpublished review control',async()=>{await seedAuthoringSample();const before=s().mutationViews.get(SAMPLE_MODEL)!.getMutations();const preview=previewModelAuthoring(s(),proposal({op:'element.create',ref:'control',ifcClass:'IfcWall',name:'Control',storey:{globalId:GROUND_STOREY},params:{start:[0,10,0],end:[8,10,0],height:3,thickness:.2}}));assert.equal(preview.rows[0].status,'ready');assert.deepEqual(s().mutationViews.get(SAMPLE_MODEL)!.getMutations(),before);});

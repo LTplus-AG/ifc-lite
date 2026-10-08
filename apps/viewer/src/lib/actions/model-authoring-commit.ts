@@ -30,6 +30,8 @@ import { previewModelAuthoring, type AuthoringRow, type ModelAuthoringPreview } 
 import { undoBatch, type AppliedChange, type CommitOutcome, type ModelChangeReceipt } from './model-change-commit';
 import { commitElementSize } from '@/lib/element-size-commit';
 import { setElementProfile } from '@/store/slices/mutation-element-profile';
+import { addStairIn, addRailingIn } from '@/store/slices/mutation-stair-railing';
+import { stairParamsInMetres, railingParamsInMetres } from './model-authoring-stair-railing-fields';
 import { sizeInMetres } from './model-authoring-size-params';
 import { profileInMetres } from './model-authoring-shape-params';
 
@@ -70,6 +72,13 @@ function writeRow(tx: AuthoringTransaction, batch: ModelAuthoringBatch, row: Aut
   const base = { index: row.index, op: op.op, modelId };
   const targetGid = 'target' in op && !('ref' in op.target) ? op.target.globalId : undefined;
   switch (op.op) {
+    case 'stair.create': case 'railing.create': {
+      const globalId=op.params.GlobalId??generateIfcGuid();
+      const out=op.op==='stair.create'?addStairIn(tx.api,modelId,resolved.storey!,{...stairParamsInMetres(op.params,batch.units),GlobalId:globalId},{batchId:tx.batchId}):addRailingIn(tx.api,modelId,resolved.storey!,{...railingParamsInMetres(op.params,batch.units),GlobalId:globalId},{batchId:tx.batchId});
+      if('error' in out)throw new Error(out.error);
+      ids.set(op.ref,out.expressId);refs.set(op.ref,globalId);written.created.push(out.expressId,...(out.flightId===undefined?[]:[out.flightId]));written.remesh.push(out.flightId??out.expressId);
+      return [{...base,globalId,field:op.op==='stair.create'?'IfcStair':'IfcRailing',before:null,after:op.params.Name??null}];
+    }
     case 'element.resize': case 'element.profile': {
       const outcome = op.op === 'element.resize'
         ? commitElementSize(tx.api, modelId, resolved.target!, sizeInMetres(op.size, batch.units))

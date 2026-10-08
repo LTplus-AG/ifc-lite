@@ -59,7 +59,7 @@ test(`#7265 hosted ${stale} refuses stale approval with stable exported native b
     if (stale === 'view-revision') f.view.setProperty(f.id, 'UnrelatedEdit', 'Witness', true);
     else {
       assert.ok(f.dataStore.source);
-      const replacement = await parseIfc(f.dataStore.source.slice());
+      const replacement = await parseIfc(f.dataStore.source.materialize());
       useViewerStore.setState({ models: new Map([...state.models, [SAMPLE_MODEL, { ...state.models.get(SAMPLE_MODEL)!, ifcDataStore: replacement }]]) });
     }
   }

@@ -13,6 +13,7 @@
  */
 
 import { uniqueSplitGuid, writeNativeSplit } from './model-authoring-split';
+import { writeHostedEdit } from './model-authoring-hosted-edit';
 import { profileInMetres } from './model-authoring-shape-params';
 import { StoreEditor } from '@ifc-lite/mutations';
 import type { IfcDataStore } from '@ifc-lite/parser';
@@ -182,6 +183,9 @@ export function draftAuthoringOperation(batch: ModelAuthoringBatch, dataStore: I
   switch (op.op) {
     case 'type.detach':
       writeNativeTypeDetach(op, dataStore, draft, resolved);
+      return;
+    case 'hosted.edit':
+      writeHostedEdit(batch, dataStore, draft, resolved.target!, op.expected, op.edit, op.target.globalId);
       return;
     case 'element.split':
       resolved.splitEffects = writeNativeSplit(batch, op, dataStore, draft, resolved.target!, splitScopes);

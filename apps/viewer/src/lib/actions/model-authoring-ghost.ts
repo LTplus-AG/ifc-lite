@@ -31,6 +31,7 @@ import { authoredElementOf, type ElementId } from './model-authoring-native';
 import { toMetres, type AuthoringOp, type ModelAuthoringBatch } from './model-authoring';
 import type { AuthoringRow, ModelAuthoringPreview } from './model-authoring-preview';
 import { authoringReader } from './model-authoring-read';
+import { authoringHostedEditGhost } from './model-authoring-hosted-edit-ghost';
 import { authoringSplitMarker } from './model-authoring-split-ghost';
 import { authoringSizeGhost } from './model-authoring-size-ghost';
 
@@ -147,6 +148,7 @@ export function authoringGhosts(state: ViewerState, preview: ModelAuthoringPrevi
       if (ghost.mesh) meshes.push(ghost.mesh);
       continue;
     }
+    if (row.op.op === 'hosted.edit') { const mesh = authoringHostedEditGhost(state, preview.batch, row, id, preview.rows); if (mesh) meshes.push(mesh); continue; }
     if (row.op.op === 'element.split') { const mesh = authoringSplitMarker(state, preview.batch, row, id); if (mesh) meshes.push(mesh); continue; }
     switch (row.op.op) {
       case 'element.create': { const mesh = createGhost(state, preview.batch, row, id); if (mesh) meshes.push(mesh); break; }

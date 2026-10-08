@@ -41,7 +41,7 @@
     "touchedOxlint": 0
   },
   "runtimeBoundary": "Actual broader runtime observation b335... differs from 8b742... restored by plain root typecheck cached wasm build. Both exact hashes are retained. Broader/Bonsai controls are tied to b335 observed binary, not relabeled as 8b. Rusttree, JS/d.ts and fixture unchanged.",
-  "currentRuntimeAdditionalControl": "Not rerun: actual broader/Bonsai proof belongs to observed b335 binary. The post-typecheck8b runtime is separately observed and is not claimed as the runtime used for these controls.",
+  "currentRuntimeAdditionalControl": "See current-runtime-check/: separate Bonsai-only functional1/1pass on clean6e115; requested8b admission refused because loose Turbo restored b335. Earlier78-control b335 receipt unchanged.",
   "archives": {
     "root-turbo-inverse.log": {
       "archive": "root-turbo-inverse.log.gz",

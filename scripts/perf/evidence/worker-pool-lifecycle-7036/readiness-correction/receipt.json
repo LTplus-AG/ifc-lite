@@ -1,0 +1,49 @@
+{
+  "qualifiedSourceHead": "14f67f71597f1287d66ff908ff0318a3d674f1b5",
+  "priorStandaloneHead": "3506f85617db519612324a175153589dcb05e5bb",
+  "sources": {
+    "scripts/browser-ab-report.test.mjs": "22af6f3f3549957db83dfbe6d922e2e82f142f39bd2a7784af049ca9463e64cd",
+    "scripts/perf/browser-ab-report.mjs": "62ff7760b356796adcb21c9ca35078211a1b13f36cd9d29feb6ebab75bc2d1dd",
+    "scripts/perf/worker-pool-lifecycle-invariants.mjs": "60f893959c3b3ae8530559dcd4c5ea4784830aea5ed4850de58cac11cd8dd2ed",
+    "scripts/perf/worker-pool-lifecycle-invariants.test.mjs": "2f0a59a57262efda83511890522720692c17a038dd150efb2abd9a11a7c40ed6",
+    "tests/benchmark/metadata-render-readiness.ts": "d5c9b3425029ff828c531e4ac0a10a69e661d0b951c9ee31653c90e293fb3460"
+  },
+  "endpointControls": {
+    "pass": 62,
+    "fail": 0,
+    "skip": 0
+  },
+  "sharedPolicyInverse": {
+    "selectedTests": 2,
+    "fail": 2,
+    "effect": "Lifecycle zero readiness incorrectly accepted; cold reporter returned0 instead of1"
+  },
+  "sharedPolicyRestored": {
+    "selectedTests": 2,
+    "pass": 2,
+    "fail": 0,
+    "byteEqual": true
+  },
+  "typecheck": {
+    "terminalExitCode": 0,
+    "packageFiles": 3725,
+    "packages": 62,
+    "permanentScriptEntries": 3
+  },
+  "endpoint": "Actual metadata/cache-store, geometry.streamComplete, scene.finalize and allocated canvas; later root.finish excluded",
+  "clock": "Lifecycle reported readiness elapsed since actual trace.start on page performance clock; required completion bounds derive from trace, not supplied milestone metrics. Browser cold reporter preserves its existing rounded milestone policy. Future lifecycle producer is not carried/qualified in this PR.",
+  "historicalLogsExcluded": [
+    "canonical-restored (50 controls included unjustified root-finish bound)",
+    "final-controls (62 controls included unjustified root-finish bound)",
+    "red (failed atzero refusal before later root-finish assertion; initial root-bound expectation is not admitted)"
+  ],
+  "nativePerformance": "UNRUN",
+  "lightGates": {
+    "testWiring": 0,
+    "moduleSize": 0,
+    "sourceTextAssertions": 0,
+    "whitespace": 0,
+    "MPL": 0,
+    "oxlint": 0
+  }
+}

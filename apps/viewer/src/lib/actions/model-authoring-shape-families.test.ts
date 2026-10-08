@@ -5,6 +5,8 @@
 import '@/test/setup-dom.js';
 import assert from 'node:assert/strict';
 import { afterEach, test } from 'node:test';
+import { RelationshipType } from '@ifc-lite/data';
+import { fixtureModels } from '@/test/store-fixture';
 import { MutablePropertyView } from '@ifc-lite/mutations';
 import type { ProfileSection } from '@ifc-lite/create';
 import { useViewerStore } from '@/store';
@@ -63,6 +65,10 @@ for (const units of ['m', 'mm']) test(`#7215 all seven native creation families 
   for (const [i, applied] of committed.receipt.applied.entries()) {
     const id = reparsed.entities.getExpressIdByGlobalId(applied.globalId);
     assert.ok(id > 0, `created identity ${i} survives independent export`);
+    assert.equal(reparsed.entities.getTypeName(id), applied.field);
+    const storey = reparsed.entities.getExpressIdByGlobalId(GROUND_STOREY);
+    if (applied.field === 'IfcSpace') assert.ok(reparsed.relationships.getRelated(storey, RelationshipType.Aggregates, 'forward').includes(id), 'native space aggregation belongs to the requested storey');
+    else assert.equal(reparsed.spatialHierarchy?.elementToStorey.get(id), storey, 'native created shape is contained in the requested storey');
     if (expected[i]) assert.deepEqual(readElementProfile(readState, SAMPLE_MODEL, id), expected[i], `native exported section ${i} matches dimensions/type`);
   }
   assert.deepEqual(undoModelChanges(useViewerStore, committed.receipt), { ok: true });
@@ -74,7 +80,37 @@ test('#7215 excessive/invalid native shape proposals refuse atomically with a re
   const { view } = await seedAuthoringSample();
   const polygon = (OuterCurve: unknown) => create('IfcSlab', { Profile: 'polygon', OuterCurve, thickness: .2 });
   assert.throws(() => batch([polygon(Array.from({ length: AUTHORING_VERTEX_LIMIT + 1 }, (_, i) => [i, 0]))]), /3–256 vertices.*no vertices are silently discarded/);
+  const large = Array.from({ length: AUTHORING_VERTEX_LIMIT }, (_, i) => [Math.cos(i * 2 * Math.PI / AUTHORING_VERTEX_LIMIT), Math.sin(i * 2 * Math.PI / AUTHORING_VERTEX_LIMIT)]);
+  assert.throws(() => batch(Array.from({ length: 5 }, (_, i) => ({ ...polygon(large), ref: `bounded-${i}` }))), /polygon preview work exceeds 262144.*split this proposal/);
+  assert.throws(() => batch([create('IfcBeam', { start: [0, 0, 0], end: [4, 0, 0], Profile: { Type: 'Circle', Radius: .2, InventedDimension: .1 } })]), /unsupported native Profile dimension InventedDimension/);
   assert.throws(() => batch([create('IfcBeam', { start: [0, 0, 0], end: [4, 0, 0], Profile: { Type: 'CircleHollow', Radius: .1, WallThickness: .2 } })]), /WallThickness must be less than Radius/);
   assert.throws(() => batch([polygon([[0, 0], [1, Number.POSITIVE_INFINITY], [0, 1]])]), /must be a number/);
   assert.equal(view.getNewEntities().length, 0, 'invalid shape dry-run leaves no published native writes');
+});
+
+
+test('#7215 profiled creation refs and export remain model-local at one and N models', async () => {
+  const { dataStore: first, view: firstView } = await seedAuthoringSample();
+  assert.equal(useViewerStore.getState().models.size, 1);
+  const second = await parseIfc(first.source.materialize());
+  const firstModel = useViewerStore.getState().models.get(SAMPLE_MODEL)!;
+  const secondView = new MutablePropertyView(second.properties, 'second');
+  useViewerStore.setState({ ...fixtureModels(firstModel, { ...firstModel, id: 'second', idOffset: 1_000_000, ifcDataStore: second }),
+    mutationViews: new Map([[SAMPLE_MODEL, firstView], ['second', secondView]]) });
+  const shape = { ...create('IfcBeam', { start: [0, 0, 3], end: [4, 0, 3], Profile: { Type: 'Circle', Radius: .2 } }, 'second-shape'), storey: { globalId: GROUND_STOREY, modelId: 'second' } };
+  const proposed = batch([shape, { op: 'material.assign', target: { ref: 'second-shape' }, material: { name: 'stone_sand-lime' } }]);
+  const preview = previewModelAuthoring(useViewerStore.getState(), proposed);
+  assert.deepEqual(preview.rows.map((row) => [row.status, row.modelId]), [['ready', 'second'], ['ready', 'second']]);
+  assert.deepEqual(preview.rows[1].dependsOn, [0]);
+  assert.equal(firstView.getNewEntities().length + secondView.getNewEntities().length, 0, 'federated draft does not publish edits');
+  const outcome = commitModelAuthoring(useViewerStore, preview, new Set([0, 1]), 'federated native shape');
+  assert.ok(outcome.ok);
+  const globalId = outcome.receipt.applied[0].globalId;
+  const a = await parseIfc(editedModelBytes(first, firstView)), b = await parseIfc(editedModelBytes(second, secondView));
+  assert.equal(a.entities.getExpressIdByGlobalId(globalId), -1, 'same source identities in model A receive no authored shape');
+  const id = b.entities.getExpressIdByGlobalId(globalId);
+  assert.ok(id > 0);
+  assert.ok(b.relationships.getRelated(id, RelationshipType.AssociatesMaterial, 'inverse').length > 0, 'actual in-batch reference assignment survives native export in model B');
+  assert.deepEqual(undoModelChanges(useViewerStore, outcome.receipt), { ok: true });
+  assert.equal((await parseIfc(editedModelBytes(second, secondView))).entities.getExpressIdByGlobalId(globalId), -1);
 });

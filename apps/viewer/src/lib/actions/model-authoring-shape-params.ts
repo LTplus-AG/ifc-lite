@@ -41,6 +41,7 @@ function section(value: unknown, units: AuthoringUnits, at: string): ProfileSect
 /** Null means the existing rectangular contract applies. No polygon validation fork. */
 export function parseShapeParams(p: Record<string, unknown>, ifcClass: string, units: AuthoringUnits, at: string): ShapeParams | null {
   if (p.Profile === undefined && p.OuterCurve === undefined) return null;
+  if (p.Profile === 'rectangle' && p.OuterCurve === undefined && ['IfcSlab', 'IfcRoof', 'IfcPlate', 'IfcSpace'].includes(ifcClass)) return null;
   if (p.Profile === 'polygon') {
     if (!['IfcSlab', 'IfcRoof', 'IfcPlate', 'IfcSpace'].includes(ifcClass)) throw new Error(`${at}: ${ifcClass} has no native polygon footprint`);
     if (p.width !== undefined || p.depth !== undefined) throw new Error(`${at}: polygon footprints cannot also specify rectangular width/depth`);
@@ -54,6 +55,7 @@ export function parseShapeParams(p: Record<string, unknown>, ifcClass: string, u
       ? { Profile: 'polygon', OuterCurve, position, height: parseLength(p.height, units, { min: .1, max: 200 }, `${at} height`) }
       : { Profile: 'polygon', OuterCurve, position, thickness: parseLength(p.thickness, units, { min: .01, max: 5 }, `${at} thickness`) };
   }
+  if (p.OuterCurve !== undefined) throw new Error(`${at}: OuterCurve requires the native polygon Profile discriminator`);
   if (!['IfcBeam', 'IfcColumn', 'IfcMember'].includes(ifcClass)) throw new Error(`${at}: ${ifcClass} has no native parameterised section`);
   if (p.width !== undefined || p.depth !== undefined || (ifcClass !== 'IfcColumn' && p.height !== undefined)) throw new Error(`${at}: Profile cannot also specify rectangular section dimensions`);
   const Profile = section(p.Profile, units, at);

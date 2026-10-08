@@ -25,8 +25,8 @@ export function resolveGlobalId(state: Pick<ViewerState, 'models' | 'mutationVie
     const view = state.mutationViews.get(modelId);
     const store = model.ifcDataStore;
     const parsed = store?.entities?.getExpressIdByGlobalId(target.globalId);
-    if (store && parsed !== undefined && parsed > 0 && !view?.isDeleted(parsed)) {
-      if (liveEntityConforms(store, parsed, 'IfcRoot', view)) { hits.push({ modelId, expressId: parsed }); continue; }
+    if (store && parsed !== undefined && parsed > 0) {
+      if (!view?.isDeleted(parsed) && liveEntityConforms(store, parsed, 'IfcRoot', view)) { hits.push({ modelId, expressId: parsed }); continue; }
       // A source index can mistake non-root attribute zero (e.g. material Name)
       // for GlobalId. Recover the actual root through the canonical inventory.
       for (const { expressId } of iterateEffectiveEntityIds(store, view)) {

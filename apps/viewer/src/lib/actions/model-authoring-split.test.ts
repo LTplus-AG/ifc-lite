@@ -21,6 +21,7 @@ import { readElementProfile } from '@/store/slices/mutation-element-profile';
 import { getModelLengthUnitScale } from '@/lib/length-unit-scale';
 import { GROUND_STOREY, SAMPLE_MODEL, danglingReferences, parseIfc, seedAuthoringSample } from '@/test/authoring-sample-fixture';
 import { authoringSplitMarker } from './model-authoring-split-ghost';
+import { resolveGlobalId } from './resolve-global-id';
 import { uniqueSplitGuid } from './model-authoring-split';
 import { readSplitSnapshot } from './model-authoring-split-state';
 import { previewModelAuthoring } from './model-authoring-preview';
@@ -296,7 +297,7 @@ for (const transport of ['live', 'saved'] as const) test(`#7251 native ${transpo
 });
 
 
-for (const saved of [false, true]) test(`#7251 ${saved ? 'saved' : 'live'} non-root material Name is not a colliding product GlobalId`, async () => {
+for (const [saved, deleted] of [[false, false], [true, false], [true, true]] as const) test(`#7251 ${saved ? 'saved' : 'live'} ${deleted ? 'deleted ' : ''}non-root material Name is not a colliding product GlobalId`, async () => {
   const { dataStore, id, proposal } = await wallProposal();
   const op = proposal.operations[0]; assert.ok(op.op === 'element.split');
   const edit = modelEditTarget(s(), SAMPLE_MODEL)!;
@@ -307,7 +308,10 @@ for (const saved of [false, true]) test(`#7251 ${saved ? 'saved' : 'live'} non-r
     'actual exported material Name is not an IFC root identity');
   const store = saved ? exported : dataStore;
   const view = saved ? new MutablePropertyView(exported.properties, SAMPLE_MODEL) : edit.view;
-  assert.equal(uniqueSplitGuid(store, new StoreEditor(store, view), op.target.globalId), true,
+  const editor = new StoreEditor(store, view);
+  if (deleted) assert.equal(editor.removeEntity(material.expressId), true);
+  const beforeGraph = await parseIfc(editedModelBytes(store, view));
+  assert.equal(uniqueSplitGuid(store, editor, op.target.globalId), true,
     'one genuine root stays unique even when a non-root first attribute is the same string');
   if (saved) useViewerStore.setState({ models: new Map([[SAMPLE_MODEL, { ...s().models.get(SAMPLE_MODEL)!, ifcDataStore: store }]]),
     mutationViews: new Map([[SAMPLE_MODEL, view]]), storeEditors: new Map() });
@@ -316,7 +320,7 @@ for (const saved of [false, true]) test(`#7251 ${saved ? 'saved' : 'live'} non-r
   const outcome = commitModelAuthoring(useViewerStore, preview, new Set([0]), 'non-root identity control');
   assert.ok(outcome.ok, outcome.ok ? '' : outcome.detail ?? outcome.reason);
   const after = await parseIfc(editedModelBytes(store, view));
-  assert.equal(after.getEntity(material.expressId)?.attributes[0], op.target.globalId, 'native split leaves the material Name intact');
+  assert.equal(after.getEntity(material.expressId)?.attributes[0], deleted ? undefined : op.target.globalId, 'native split preserves material identity or its native deletion');
   assert.equal(after.getEntity(id)?.attributes[0], op.target.globalId,
     'the reviewed native writer edits the actual root, never the indexed material');
   useViewerStore.getState().undo(SAMPLE_MODEL);
@@ -325,5 +329,9 @@ for (const saved of [false, true]) test(`#7251 ${saved ? 'saved' : 'live'} non-r
     const entity = source.getEntity(expressId);
     return [expressId, entity ? { type: entity.type, attributes: entity.attributes } : null] as const;
   }));
-  assert.deepEqual(records(undone), records(exported), 'one native Undo restores the actual entity graph independent of STEP record ordering');
+  assert.deepEqual(records(undone), records(beforeGraph), 'one native Undo restores the actual entity graph independent of STEP record ordering');
+  assert.equal(s().removeEntity(SAMPLE_MODEL, id), true, 'canonical native removal deletes the genuine target root');
+  const removed = await parseIfc(editedModelBytes(store, view));
+  assert.equal(removed.getEntity(id), null, 'independent export confirms the real root is removed');
+  assert.equal(resolveGlobalId(s(), op.target), 'missing', 'root recovery never resurrects a deleted genuine root');
 });

@@ -18,6 +18,8 @@ import { generateIfcGuid } from '@ifc-lite/encoding';
 import type { ViewerState } from '@/store';
 import { copyElements } from '@/lib/commands/modeling/copy-elements';
 import { authoringCopyTransforms, copyRefs } from './model-authoring-copy';
+import { writeHostedEdit } from './model-authoring-hosted-edit';
+import { hostedFillRefusal } from '@/store/slices/mutation-hosted-fill';
 import { authoringSourcesAreCurrent } from './model-authoring-sources';
 import { runTransaction } from '@/lib/commands/modeling/transaction';
 import type { AuthoringTransaction, CommitResult, ModelingCommand } from '@/lib/commands/modeling/types';
@@ -72,6 +74,15 @@ function writeRow(tx: AuthoringTransaction, batch: ModelAuthoringBatch, row: Aut
   const base = { index: row.index, op: op.op, modelId };
   const targetGid = 'target' in op && !('ref' in op.target) ? op.target.globalId : undefined;
   switch (op.op) {
+    case 'hosted.edit': {
+      const refusal = hostedFillRefusal(tx.api.getState(), modelId);
+      if (refusal) throw new Error(refusal);
+      const source = tx.api.getState().models.get(modelId)?.ifcDataStore;
+      if (!source) throw new Error('The native hosted source is unavailable');
+      const read = recordModellingEdit(tx.api, modelId, (_methods, draft) => writeHostedEdit(batch, source, draft, resolved.target!, op.expected, op.edit, op.target.globalId), tx.batchId);
+      written.remesh.push(read.hostId, read.openingId, ...(read.fillingId === null ? [] : [read.fillingId]));
+      return [{ ...base, globalId: op.target.globalId, field: 'Hosted occurrence', before: JSON.stringify(before.hosted), after: JSON.stringify(op.edit) }];
+    }
     case 'element.trimExtend': {
       const result = recordModellingEdit(tx.api, modelId, (_methods, editor) =>
         writeAuthoringReach(batch, tx.store.models.get(modelId)!.ifcDataStore!, editor, resolved.target!, op, resolved.reachBoundary, ids), tx.batchId);

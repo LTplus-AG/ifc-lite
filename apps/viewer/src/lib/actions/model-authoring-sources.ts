@@ -10,16 +10,16 @@ import type { ModelAuthoringPreview } from './model-authoring-preview';
 interface Source { modelId: string; store: IfcDataStore | undefined; source: IfcDataStore['source'] | undefined; hash: string | undefined; view: MutablePropertyView | undefined; revision: number | undefined }
 const sources = new WeakMap<ModelAuthoringPreview, Source[]>();
 
-/** Copy/Split/Trim/Extend approval belongs to these loaded sources, never to a later reload with matching names/ids. */
+/** Copy, split, Trim/Extend and hosted edit approval belong to these loaded sources, never to a later reload with matching names/ids. */
 export function captureAuthoringSources(state: ViewerState, preview: ModelAuthoringPreview): void {
-  if (!preview.batch.operations.some(op => op.op === 'element.copy' || op.op === 'element.array' || op.op === 'element.trimExtend' || op.op === 'element.split')) return;
+  if (!preview.batch.operations.some(op => op.op === 'element.copy' || op.op === 'element.array' || op.op === 'hosted.edit' || op.op === 'element.trimExtend' || op.op === 'element.split')) return;
   sources.set(preview, [...state.models].map(([modelId, model]) => ({
     modelId, store: model.ifcDataStore ?? undefined, source: model.ifcDataStore?.source,
     hash: model.sourceContentHash, view: state.mutationViews.get(modelId), revision: state.mutationViews.get(modelId)?.getMutationRevision(),
   })));
 }
 export function authoringSourcesAreCurrent(state: ViewerState, preview: ModelAuthoringPreview): boolean {
-  if (!preview.batch.operations.some(op => op.op === 'element.copy' || op.op === 'element.array' || op.op === 'element.trimExtend' || op.op === 'element.split')) return true;
+  if (!preview.batch.operations.some(op => op.op === 'element.copy' || op.op === 'element.array' || op.op === 'hosted.edit' || op.op === 'element.trimExtend' || op.op === 'element.split')) return true;
   const captured = sources.get(preview);
   return !!captured && captured.length === state.models.size && captured.every(source => {
     const model = state.models.get(source.modelId);

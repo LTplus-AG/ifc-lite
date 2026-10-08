@@ -18,6 +18,8 @@
  * counter-clockwise seen from above. Nothing here writes.
  */
 
+import { parseExpectedHostedEdit, parseHostedEdit, type ExpectedHostedEdit } from './model-authoring-hosted-edit';
+import type { HostedElementEdit } from '@ifc-lite/create';
 import { parseShapeParams, parseProfileSectionParams, AUTHORING_OUTLINE_WORK_LIMIT, type ShapeParams } from './model-authoring-shape-params';
 import { parseReachFields, type ReachFields } from './model-authoring-reach-fields';
 import { parseSplitSnapshot, parseSplitCut, type SplitCut } from './model-authoring-split-params';
@@ -52,6 +54,7 @@ export type AuthoringOp =
   | { op: 'element.split'; target: ExistingElement; expected: SplitSnapshot; cut: SplitCut }
   | ({ op: 'element.copy'; target: ElementTarget; ref: string } & CopyFields)
   | ({ op: 'element.array'; target: ElementTarget; refs: string[] } & ArrayFields)
+  | { op: 'hosted.edit'; target: ExistingElement; expected: ExpectedHostedEdit; edit: HostedElementEdit }
   | ({ op: 'element.trimExtend'; target: ExistingElement } & ReachFields)
   | { op: 'element.delete'; target: ExistingElement }
   | { op: 'element.resize'; target: ExistingElement; expected: ExpectedSize; size: ElementSizePatch }
@@ -68,7 +71,7 @@ export type AuthoringOp =
 
 export type AuthoringOpName = AuthoringOp['op'];
 export const AUTHORING_OPS: readonly AuthoringOpName[] = ['element.create', 'element.delete', 'element.split', 'element.resize', 'element.profile', 'element.trimExtend', 'element.move', 'element.rotate', 'element.copy', 'element.array',
-  'type.assign', 'material.assign', 'walls.join', 'hosted.create'];
+  'type.assign', 'material.assign', 'walls.join', 'hosted.create', 'hosted.edit'];
 
 export interface ModelAuthoringBatch {
   version: 1;
@@ -171,6 +174,12 @@ function operation(value: unknown, index: number, units: AuthoringUnits, refs: M
     return op;
   };
   switch (value.op) {
+    case 'hosted.edit': {
+      if (Object.keys(value).some(key => !['op', 'target', 'expected', 'edit'].includes(key))) throw new Error(`${at}: unsupported hosted edit field`);
+      const target = existing(value.target, at);
+      if (!['IfcDoor', 'IfcWindow', 'IfcOpeningElement', 'IfcOpeningStandardCase'].includes(target.ifcClass)) throw new Error(`${at}: hosted.edit requires a native door, window or opening occurrence`);
+      return { op: value.op, target, expected: parseExpectedHostedEdit(value.expected, units, `${at} expected`), edit: parseHostedEdit(value.edit, units, `${at} edit`) };
+    }
     case 'element.trimExtend':
       return { op: value.op, target: existing(value.target, at), ...parseReachFields(value, units, at, (v, name) => element(v, name, refs)) };
     case 'element.split': {

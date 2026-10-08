@@ -65,6 +65,39 @@
         "channel": "single",
         "selectionSize": 1,
         "modelCount": 1,
+        "classifications": {
+          "requested": 1,
+          "scanned": 1,
+          "classified": 0,
+          "unclassified": 1,
+          "unknown": 0,
+          "status": "complete",
+          "scanLimit": 50000,
+          "unknownReasons": {
+            "unscanned": 0,
+            "unavailable": 0,
+            "missingTargets": 0
+          },
+          "referenceRows": 0,
+          "unverifiedReferenceRows": 0,
+          "referencesWithoutSystem": 0,
+          "referencesWithoutCode": 0,
+          "models": [
+            {
+              "requested": 1,
+              "scanned": 1,
+              "classified": 0,
+              "unclassified": 1,
+              "unknown": 0,
+              "modelId": "arch",
+              "name": "arch"
+            }
+          ],
+          "omittedModelGroups": 0,
+          "labels": [],
+          "omittedLabelGroups": 0,
+          "labelGroupMeaning": "Exact native system/code text grouped separately per model/schema, not unique IFC identities. elements counts requested refs carrying each label once; referenceRows retains native repeated entries. Null labels are unknown. Complete status describes membership coverage, not complete system/code attributes. Omitted groups remain outside the displayed distribution."
+        },
         "byModel": [
           {
             "modelId": "arch",

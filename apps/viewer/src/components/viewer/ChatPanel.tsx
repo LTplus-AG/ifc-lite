@@ -460,6 +460,15 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
 
     const task = options?.task ?? beginScriptTask();
     const abortController = new AbortController();
+    task.cancel = () => {
+      abortController.abort();
+      const state = useViewerStore.getState();
+      if (state.chatAbortController === abortController) {
+        state.setChatAbortController(null);
+        state.setChatStatus('idle');
+        state.updateLastAssistantMessage('');
+      }
+    };
     setChatAbortController(abortController);
     const ownsTask = () => ownsScriptTask(task);
     const ownsRequest = () => ownsTask() && !abortController.signal.aborted;
@@ -661,7 +670,10 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
       signal: abortController.signal, maxOutputTokens: OUTPUT_TOKEN_RESERVE, budget: task.budget,
       timeoutMs: 120_000, onChunk: handleChunk,
       onUsageInfo: info => { if (ownsRequest()) setChatUsage(info); },
-    }).finally(() => abortController.signal.removeEventListener('abort', cancelEdits));
+    }).finally(() => {
+      abortController.signal.removeEventListener('abort', cancelEdits);
+      task.cancel = undefined;
+    });
     if (!ownsTask()) return;
     task.truncated = outcome.kind === 'truncated';
     if (outcome.kind === 'completed' && ownsRequest()) {

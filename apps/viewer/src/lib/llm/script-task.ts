@@ -7,7 +7,7 @@ import { useViewerStore } from '@/store';
 import { createRootBudget } from './root-budget';
 import type { RootBudget } from '@ifc-lite/ai';
 
-export interface ScriptTask { budget: RootBudget; truncated: boolean }
+export interface ScriptTask { budget: RootBudget; truncated: boolean; cancel?: () => void }
 let current: ScriptTask | null = null;
 
 export function beginScriptTask(): ScriptTask {
@@ -21,5 +21,11 @@ export function ownsScriptTask(task: ScriptTask): boolean { return current === t
 // ends the task, so a delayed script execution cannot start a repair in a new chat.
 useViewerStore.subscribe((state, previous) => {
   if ((previous.chatMessages.length > 0 && state.chatMessages.length === 0)
-    || state.chatStorageUserId !== previous.chatStorageUserId) current = null;
+    || state.chatStorageUserId !== previous.chatStorageUserId) {
+    const task = current;
+    // Abort while it still owns its edit transaction; its listener rolls back
+    // before revocation prevents later completion/repair from publishing.
+    task?.cancel?.();
+    if (current === task) current = null;
+  }
 });

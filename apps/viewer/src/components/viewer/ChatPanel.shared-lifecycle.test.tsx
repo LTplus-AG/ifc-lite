@@ -119,3 +119,33 @@ test('#7093 native preflight automatic repair shares the exhausted Continue task
   assert.equal(useViewerStore.getState().chatMessages.at(-1)?.content, 'New task ready');
   assert.equal(posts, maxRequests + 1);
 });
+
+for (const boundary of ['account', 'clear'] as const) test(`#7093 ${boundary} revokes a streaming task only after its native partial edit rolls back`, async t => {
+  let posts = 0;
+  const edits = `\`\`\`ifc-script-edits\n${JSON.stringify({ scriptEdits: [{ opId: '7093-account-partial', type: 'append', baseRevision: 0, text: code }] })}\n\`\`\``;
+  globalThis.fetch = (async (_input, init) => {
+    if (init?.method !== 'POST') return new Response('{}');
+    posts++;
+    return new Response(new ReadableStream<Uint8Array>({ start(controller) {
+      controller.enqueue(new TextEncoder().encode(data([{ choices: [{ delta: { content: edits }, finish_reason: null }] }])));
+    } }), { headers: { 'Content-Type': 'text/event-stream' } });
+  }) as typeof fetch;
+  const native = await mountNative(t); if (!native) return;
+  send(native.ui);
+  await waitFor(() => useViewerStore.getState().scriptEditorContent === code, 'real account-bound streaming native edit');
+  assert.equal(useViewerStore.getState().scriptLastResult, null);
+  act(() => {
+    if (boundary === 'account') useViewerStore.setState({ chatStorageUserId: 'other-user-7093' });
+    else useViewerStore.getState().clearChatMessages();
+  });
+  assert.equal(useViewerStore.getState().scriptEditorContent, '', 'partial edit cannot outlive the conversation/account boundary');
+  assert.equal(useViewerStore.getState().chatStatus, 'idle');
+  assert.equal(useViewerStore.getState().chatStreamingContent, '');
+  const transcript = useViewerStore.getState().chatMessages.map(message => message.id);
+  await waitFor(() => useRequestReceipts.getState().receipts.length === 1, 'revoked request settles with native cancellation receipt');
+  assert.equal(useRequestReceipts.getState().receipts[0].outcome, 'cancelled');
+  assert.equal(posts, 1);
+  assert.deepEqual(useViewerStore.getState().chatMessages.map(message => message.id), transcript, 'revoked completion cannot write into the new conversation');
+  assert.equal(useViewerStore.getState().scriptLastResult, null);
+  assert.equal(useViewerStore.getState().chatToolReady, null);
+});

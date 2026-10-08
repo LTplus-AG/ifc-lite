@@ -44,6 +44,10 @@ export const activityTrayEn = {
   'activityTray.job.flow': 'Flow run',
   'activityTray.job.ai': 'Assistant request',
   'activityTray.job.export': 'Export',
+  'activityTray.job.csvEntities': 'Export model entities CSV',
+  'activityTray.job.csvProperties': 'Export model properties CSV',
+  'activityTray.job.csvQuantities': 'Export model quantities CSV',
+  'activityTray.job.csvSpatial': 'Export model spatial hierarchy CSV',
   'activityTray.job.validationBcf': 'Export validation report as BCF',
   'activityTray.job.publication': 'BCF publication',
 

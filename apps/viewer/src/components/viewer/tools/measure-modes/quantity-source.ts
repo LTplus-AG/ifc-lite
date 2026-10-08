@@ -65,7 +65,7 @@ export function quantitySetsFor(
   store: IfcDataStore,
   expressId: number,
   typeCache: Map<number, ReturnType<typeof extractQuantitiesOnDemand>>,
-) {
+): ReturnType<typeof extractQuantitiesOnDemand> {
   const typeQsets = () => {
     if (!store.relationships) return [];
     const typeIds = store.relationships.getRelated(expressId, RelationshipType.DefinesByType, 'inverse');

@@ -36,7 +36,7 @@ export const MODEL_AUTHORING_OUTPUT_GUIDANCE =
   + 'linear requires cursor:[x,y], distance? (spacing, or total span with fit:true), fit?; polar takes angleDeg (default360, full turns omit coincident copy). '
   + 'At most200 new copy roots per batch; native host/assembly dependents travel with each root. Copy an existing source before editing it in the same batch. '
   + 'Copy refs support later copies, type/material assignments, and hosted/join targets when their source is a wall. '
-  + 'type.detach {target (existing occurrence), expected:{GlobalId,Name} of its current type}; this removes only its type relationship, with no predicted geometry preview. '
+  + 'type.detach {target (existing occurrence), expected:{GlobalId,Name} from nativeType.expected of its current type}; this removes only its type relationship, with no predicted geometry preview. '
   + 'type.assign {target, expected: current type name or null, type:{globalId,name} or {create:{ifcClass,name}}}; '
   + 'material.assign {target, expected, material:{name, create}}; walls.join {walls:[a,b]}; '
   + 'hosted.create {kind: door|window|opening, host (a wall), offset (along the wall from its start to the centre), sill, width, height}. '

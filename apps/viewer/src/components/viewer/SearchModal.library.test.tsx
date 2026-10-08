@@ -13,7 +13,7 @@ import { ExtensionHostService } from '@/services/extensions/host';
 import { ExtensionHostContext } from '@/sdk/ExtensionHostProvider';
 import { NativeLibrarySearch } from './libraries/NativeLibrarySearch';
 import { setValidationSourceChoice, useValidationSourceChoice } from '@/lib/validation/validation-source-choice';
-import { cleanup, click, mouseDown, render, type, waitFor } from '@/test/render.js';
+import { cleanup, activate, click, render, type, waitFor } from '@/test/render.js';
 import { useViewerStore } from '@/store';
 import { loadSavedScripts } from '@/lib/scripts/persistence';
 import { loadSavedFlows } from '@/lib/flow/persistence';
@@ -37,7 +37,7 @@ test('#7235 shared library search is reachable with native saved scripts and Flo
     'shared library search must remain reachable without a loaded model');
 });
 
-test('#7235 mounted library search spans native persisted scripts/Flows and opens the exact script without execution', async () => {
+test('#7235 keyboard library search spans native persisted scripts/Flows and opens the exact script without execution', async () => {
   useViewerStore.setState({ models: new Map(), savedScripts: [], savedFlows: [], searchModalOpen: true, scriptEditorDirty: false });
   const script = useViewerStore.getState().createScript('Coordination script', 'bim.query.all("IfcWall")');
   const flow = useViewerStore.getState().createFlow('Coordination workflow');
@@ -45,7 +45,7 @@ test('#7235 mounted library search spans native persisted scripts/Flows and open
   assert.ok(loadSavedFlows().some(entry => entry.doc.id === flow));
   render(<SearchModal />);
   const tab = [...document.querySelectorAll<HTMLButtonElement>('[role="tab"]')].find(item => item.textContent === 'Libraries');
-  assert.ok(tab); mouseDown(tab);
+  assert.ok(tab); activate(tab);
   await waitFor(() => Boolean(document.querySelector('input[aria-label="Search saved artifact names and types"]')), 'native Libraries tab');
   type(document.querySelector('input[aria-label="Search saved artifact names and types"]') as HTMLInputElement, 'Coordination');
   const rows = document.querySelector('ul[aria-label="Saved artifacts"]');
@@ -53,7 +53,7 @@ test('#7235 mounted library search spans native persisted scripts/Flows and open
   assert.match(rows.textContent ?? '', /Coordination script/);
   assert.match(rows.textContent ?? '', /Coordination workflow/);
   const open = [...rows.querySelectorAll('button')].find(button => button.textContent === 'Coordination script');
-  assert.ok(open); click(open);
+  assert.ok(open); activate(open);
   await waitFor(() => !useViewerStore.getState().searchModalOpen, 'native artifact opened');
   assert.equal(useViewerStore.getState().activeScriptId, script);
   assert.equal(useViewerStore.getState().scriptEditorContent, 'bim.query.all("IfcWall")');

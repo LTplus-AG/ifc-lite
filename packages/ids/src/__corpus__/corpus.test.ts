@@ -174,6 +174,20 @@ describe('buildingSMART IDS conformance corpus', () => {
         expect(report.specificationResults.map((r) => r.status)).toEqual([c.expectation]);
       });
     }
+
+    // A pass-/fail- IDS is conforming by definition, so the audit must not
+    // report an error on any of them (IDS-008b). Eighteen did: user-defined
+    // predefined types, the IFC2X3 occurrence/type mapping table, and a
+    // classification on a material. Warnings stay allowed.
+    it('every conforming IDS audits without errors', async () => {
+      const flagged: string[] = [];
+      for (const c of CASES.filter((x) => x.expectation !== 'invalid')) {
+        const report = await auditIDSDocument(readFileSync(c.idsPath, 'utf8'));
+        const errors = report.issues.filter((issue) => issue.severity === 'error');
+        if (errors.length > 0) flagged.push(`${c.id}: ${errors.map((e) => e.code).join(', ')}`);
+      }
+      expect(flagged).toEqual([]);
+    }, 120_000);
   });
 
 /**

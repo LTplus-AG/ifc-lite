@@ -41,6 +41,7 @@ import type {
 import type { IDSAuditIssue, IDSAuditOptions } from '../types.js';
 import { assertGuardedRegexPattern, UnsafeRegexPatternError } from '@ifc-lite/regex-guard';
 import { checkDataTypeMatch, checkRestrictionBase } from './datatype-check.js';
+import { rowForAlias } from '../../facets/ifc2x3-type-mapping.js';
 
 export async function runIfcSchemaAudit(
   doc: IDSDocument,
@@ -179,6 +180,13 @@ async function auditFacet(
   }
 }
 
+/** IFC4 `IfcResourceObjectSelect` members, plus `IfcPropertyDefinition` (the other half of `IfcDefinitionSelect`). */
+const CLASSIFIABLE_RESOURCES = [
+  'IfcPropertyDefinition', 'IfcActorRole', 'IfcAppliedValue', 'IfcApproval', 'IfcConstraint', 'IfcContextDependentUnit',
+  'IfcConversionBasedUnit', 'IfcExternalInformation', 'IfcMaterialDefinition', 'IfcPhysicalQuantity', 'IfcProfileDef',
+  'IfcPropertyAbstraction', 'IfcTimeSeries',
+];
+
 /**
  * Classification facets bind via `IfcRelAssociatesClassification`,
  * which only accepts subtypes of `IfcObjectDefinition` (IFC4+) or
@@ -198,7 +206,15 @@ async function auditClassificationFacet(
   if (!entityName) return;
   // IFC4 / IFC4X3 use IfcObjectDefinition; IFC2X3 uses IfcRoot.
   const expected = version === 'IFC2X3' ? 'IfcRoot' : 'IfcObjectDefinition';
-  const ok = await isEntitySubtypeOf(version, entityName, expected);
+  // IFC4+ also classifies resources (e.g. an IfcMaterial) through
+  // IfcExternalReferenceRelationship, whose RelatedResourceObjects is
+  // IfcResourceObjectSelect (corpus: classification/pass-non_rooted_
+  // resources_that_have_external_classification_references_should_also_pass).
+  const roots = version === 'IFC2X3' ? [expected] : [expected, ...CLASSIFIABLE_RESOURCES];
+  let ok = false;
+  for (const root of roots) {
+    if (await isEntitySubtypeOf(version, entityName, root)) { ok = true; break; }
+  }
   if (!ok) {
     issues.push({
       severity: 'error',
@@ -251,7 +267,11 @@ async function auditEntityFacet(
   const name = facet.name.value;
   if (!name) return;
 
-  const entity = await findEntity(version, name);
+  // IFC2X3 has no IfcAirTerminal & co.: the IDS occurrence/type mapping
+  // table lets a facet name the IFC4 class, matched through its IFC2X3
+  // type object, whose predefined types are then the ones that apply.
+  const mapped = version === 'IFC2X3' ? rowForAlias(name.toUpperCase()) : undefined;
+  const entity = await findEntity(version, mapped ? mapped.typeEntity : name);
   if (!entity) {
     issues.push({
       severity: 'error',
@@ -281,8 +301,13 @@ function checkPredefinedType(
   path: string,
   issues: IDSAuditIssue[]
 ): void {
+  // A USERDEFINED-capable enum accepts any value: IDS matches it against
+  // ObjectType / ElementType / ProcessType when PredefinedType is
+  // USERDEFINED (corpus: entity/pass-a_predefined_type_may_specify_a_user_
+  // defined_*_type, pass-restrictions_can_be_specified_for_the_predefined_type_*).
+  const userDefined = entity.predefinedTypes.includes('USERDEFINED');
   const valid = (v: string): boolean =>
-    entity.predefinedTypes.includes(v.toUpperCase());
+    userDefined || entity.predefinedTypes.includes(v.toUpperCase());
   switch (c.type) {
     case 'simpleValue': {
       const v = c.value;
@@ -334,6 +359,7 @@ function checkPredefinedType(
         });
         break;
       }
+      if (userDefined) break;
       // If the pattern compiles, test each known predefined type to be
       // sure at least one matches. Otherwise warn (pattern syntax check
       // already produces W_REGEX_UNVERIFIED).

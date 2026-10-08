@@ -41,6 +41,8 @@ export interface ModelRequest {
   messages: StreamMessage[];
   system?: string;
   outputSchema?: JsonResponseSchema;
+  /** Declared by the producer that owns the finalized prompt. */
+  promptVersion?: string;
   /** Requested output ceiling; clamped to the route ceiling and the root budget. */
   maxOutputTokens: number;
   /** Shared by every request made for the same task. */
@@ -79,6 +81,7 @@ export function runModelRequest(request: ModelRequest): Promise<RequestOutcome> 
     messages: request.messages,
     system: request.system,
     outputSchema: request.outputSchema,
+    promptVersion: request.promptVersion,
     maxOutputTokens: request.maxOutputTokens,
     routeCeiling: modelCapabilities(route.model).maxOutputTokens,
     budget: request.budget,

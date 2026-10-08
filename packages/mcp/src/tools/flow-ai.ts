@@ -18,6 +18,6 @@ export function mcpFlowAi(budget: RootBudget, receipts: unknown[], onStart: () =
   if (!config) return undefined;
   const transport = chatCompletionsTransport(config);
   return { model: config.model, request: call => runModelRequest({ model: config.model, route: 'mcp', transport, budget,
-    routeCeiling: 8192, timeoutMs: 120_000, messages: [call.prompt], system: call.system,
+    routeCeiling: 8192, timeoutMs: 120_000, messages: [call.prompt], system: call.system, promptVersion: call.promptVersion,
     maxOutputTokens: call.maxOutputTokens, signal: call.signal, outputSchema: call.outputSchema }, { onStart, onReceipt: (receipt: UsageReceipt) => { receipts.push(receipt); } }) };
 }

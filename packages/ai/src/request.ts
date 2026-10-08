@@ -15,7 +15,8 @@
  */
 
 import { reserveRequest, settleRequest, type RootBudget } from './budget.js';
-import type { UsageReceipt } from './receipt.js';
+import type { RequestProvenance, UsageReceipt } from './receipt.js';
+import { logicalInputDigest, textDigest } from './request-digest.js';
 import type { TokenUsage } from './usage.js';
 import type { JsonResponseSchema, OutputFormat } from './response-schema.js';
 
@@ -56,6 +57,8 @@ export interface ModelRequest<Message, Route extends string = string> {
   readonly messages: readonly Message[];
   readonly system?: string;
   readonly outputSchema?: JsonResponseSchema;
+  /** A bounded producer-owned prompt version. Generic hosts may leave it unknown. */
+  readonly promptVersion?: string;
   /** Requested output ceiling; clamped to `routeCeiling` and the root budget. */
   readonly maxOutputTokens: number;
   /** The hard output ceiling the route enforces. */
@@ -106,6 +109,11 @@ export interface RequestHooks<Route extends string> {
 }
 
 const TRUNCATION_REASONS = new Set(['length', 'max_tokens']);
+const FINISH_REASONS = new Set<RequestProvenance['finishReason']>(['stop', 'length', 'max_tokens', 'end_turn', 'stop_sequence', 'tool_calls', 'function_call', 'content_filter', 'refusal', 'pause_turn']);
+function safeFinishReason(reason: string | null): RequestProvenance['finishReason'] {
+  for (const known of FINISH_REASONS) if (reason === known) return known;
+  return 'unknown';
+}
 
 let receiptSequence = 0;
 
@@ -125,9 +133,11 @@ export async function runModelRequest<Message, Route extends string>(
   let startedAt = Date.now();
   let id = `req-${startedAt}-${++receiptSequence}`;
   let outputFormat: OutputFormat | undefined;
+  let provenance: RequestProvenance | undefined;
   const receiptFor = (outcome: UsageReceipt['outcome'], usage: TokenUsage | null): UsageReceipt<Route> => ({
     id, model: request.model, route: request.route, startedAt, finishedAt: Date.now(), outcome,
     ...(request.outputSchema && outputFormat ? { outputFormat } : {}),
+    ...(provenance ? { provenance } : {}),
     ...(usage ? { usageReported: true as const, ...usage } : { usageReported: false as const }),
   });
   // A caller that cancels before dispatch gets a typed outcome without a request, and no receipt is logged.
@@ -135,18 +145,28 @@ export async function runModelRequest<Message, Route extends string>(
   const grant = reserveRequest(budget, Math.min(request.maxOutputTokens, request.routeCeiling));
   if (!grant) return { kind: 'refused', reason: 'budget-exhausted' };
 
+  // Match setTimeout's effective Node/browser range, including invalid/overflow delays.
+  const timeoutMs = Number.isFinite(request.timeoutMs) && request.timeoutMs >= 1 && request.timeoutMs <= 2_147_483_647 ? Math.trunc(request.timeoutMs) : 1;
+
   startedAt = Date.now();
   id = `req-${startedAt}-${receiptSequence}`;
   const controller = new AbortController();
   let timedOut = false;
   const abortFromCaller = () => controller.abort(signal?.reason);
   signal?.addEventListener('abort', abortFromCaller, { once: true });
-  const deadline = setTimeout(() => { timedOut = true; controller.abort(new Error('request-timeout')); }, request.timeoutMs);
+  const deadline = setTimeout(() => { timedOut = true; controller.abort(new Error('request-timeout')); }, timeoutMs);
 
   const seen: Seen = { streamed: false, finishReason: null, text: null, failure: null, usage: null };
   try {
     hooks.onStart?.({ id, model: request.model, route: request.route, startedAt, cancel: () => controller.abort() });
-    if (!controller.signal.aborted) await request.transport({
+    if (!controller.signal.aborted) {
+      const inputDigest = logicalInputDigest({ version: 'ifc-lite.ai.logical-input.v1', system: request.system, messages: request.messages, outputSchema: request.outputSchema });
+      provenance = {
+        contractVersion: 'ifc-lite.ai.request.v1', grantedOutputTokens: grant.maxOutputTokens, timeoutMs, finishReason: 'unknown',
+        ...(request.promptVersion && /^[A-Za-z0-9][A-Za-z0-9._-]{0,199}$/.test(request.promptVersion) ? { promptVersion: request.promptVersion } : {}),
+        ...(inputDigest ? { inputDigest: { algorithm: 'sha256', referent: 'logical-input.v1', value: inputDigest } } : { inputDigestUnavailable: 'non-json-input' }),
+      };
+      await request.transport({
       model: request.model,
       messages: request.messages,
       system: request.system,
@@ -159,7 +179,8 @@ export async function runModelRequest<Message, Route extends string>(
       onComplete: text => { seen.text = text; },
       onError: error => { seen.failure ??= error; },
       onTokenUsage: reported => { seen.usage = reported; },
-    });
+      });
+    }
   } catch (error) {
     seen.failure ??= error instanceof Error ? error : new Error(String(error));
   } finally {
@@ -168,8 +189,12 @@ export async function runModelRequest<Message, Route extends string>(
   }
 
   const { usage, failure, text, finishReason } = seen;
+  if (provenance) provenance.finishReason = safeFinishReason(finishReason);
   settleRequest(budget, grant, usage ? usage.outputTokens : seen.streamed ? null : 0);
   const finish = (outcome: UsageReceipt['outcome']): UsageReceipt<Route> => {
+    if (provenance && text !== null && (outcome === 'completed' || outcome === 'truncated')) {
+      provenance.outputTextDigest = { algorithm: 'sha256', referent: 'output-text.utf8.v1', value: textDigest(text) };
+    }
     const receipt = receiptFor(outcome, usage);
     hooks.onReceipt?.(receipt);
     return receipt;

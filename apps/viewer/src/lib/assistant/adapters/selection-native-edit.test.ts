@@ -9,6 +9,7 @@ import { afterEach, test } from 'node:test';
 import { useViewerStore } from '@/store';
 import { SAMPLE_MODEL, seedAuthoringSample, parseIfc } from '@/test/authoring-sample-fixture';
 import { captureEvidence } from '../evidence';
+import { selectionAdapter } from './selection';
 import { cancelAssistant, replaceEvidence, useAssistant } from '../conversation';
 import { sendAssistant } from '../request';
 import { captureSelectionGrounding } from '@/lib/actions/selection-grounding';
@@ -196,8 +197,10 @@ test('#7264 attachment work and detail bounds count unresolved IDs without expan
   assert.equal(capture.unresolved, 100);
   assert.equal(capture.truncated, true);
   assert.equal(capture.elements.length, 0);
-  s().setSelectedEntity({ modelId: SAMPLE_MODEL, expressId: 262 });
-  assert.ok(captureEvidence('selection', 1).includedRows <= 1);
+  await targets();
+  const limited = selectionAdapter.capture(s(), 1);
+  assert.equal(limited.totalRows, 2);
+  assert.equal(limited.rows.length, 1);
 });
 
 test('#7264 source-free geometry without a recorded length unit cannot certify SI values', async () => {

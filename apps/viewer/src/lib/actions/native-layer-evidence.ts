@@ -5,7 +5,6 @@ import { liveEntityConforms, readRelatedLists } from '@ifc-lite/create';
 import { effectiveMetadataRecord, materialAssignmentsAvailable } from '@ifc-lite/parser';
 import { isValidIfcGuid } from '@ifc-lite/encoding';
 import { entityName, layerSetOf, occurrencesOf, typeOf } from '@/lib/commands/modeling/authored-kinds';
-import { resolveEntityRefGlobalIdFromState } from '@/store/resolveEntityRef';
 import type { ModelEditTarget } from '@/store/slices/mutation-modelling-records';
 import { nativeLengthUnitAvailable, type NativeReadState } from './model-authoring-read-target';
 import { uniqueSplitGuid } from './model-authoring-split';
@@ -85,9 +84,9 @@ export function nativeLayerEvidence(state: NativeReadState, target: ModelEditTar
     if (typePopulation?.truncated) typeScopeStatus = 'truncated';
     if (peers.length > NATIVE_LAYER_PEER_LIMIT) { typeScopeStatus = 'truncated'; peerRefs = null; }
     else for (const id of peers) {
-      const globalId = resolveEntityRefGlobalIdFromState({ models: state.models, ifcDataStore: null,
-        mutationViews: new Map([[target.modelId, target.view]]) }, { modelId: target.modelId, expressId: id });
       const record = effectiveMetadataRecord(target.dataStore, id, target.view), name = entityName(target, id);
+      const nativeGuid = record?.attributes[0];
+      const globalId = typeof nativeGuid === 'string' ? nativeGuid : null;
       if (!globalId || !isValidIfcGuid(globalId) || !uniqueSplitGuid(target.dataStore, target.editor, globalId) || !record || name.length > 200) { typeScopeStatus = 'unavailable'; peerRefs = null; break; }
       peerRefs!.push({ globalId, modelId: target.modelId, ifcClass: record.type, name });
     }

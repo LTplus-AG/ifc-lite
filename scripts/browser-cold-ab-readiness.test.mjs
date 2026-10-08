@@ -47,7 +47,10 @@ test('#7032: the executable cold A/B requires renderer finalization through the 
       assert.equal(samples.length, 2, 'both interleaved sides must exercise readiness');
       for (const sample of samples) {
         assert.equal(sample.ok, finalize === 'complete', JSON.stringify(sample));
-        if (finalize === 'complete') assert.ok(sample.metadataRenderReadyMs >= 0);
+        if (finalize === 'complete') {
+          assert.ok(sample.metadataRenderReadyMs >= 0);
+          assert.equal(sample.gpuAdapter.architecture, 'test-transport', 'adapter probe must run after upload');
+        }
         else assert.match(sample.error, /Timed out awaiting.*renderer finalize/);
       }
     }

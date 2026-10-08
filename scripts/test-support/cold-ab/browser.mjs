@@ -13,7 +13,10 @@ function page() {
   Object.defineProperty(globalThis, 'crossOriginIsolated', { value: true, configurable: true });
   Object.defineProperty(globalThis, 'navigator', {
     configurable: true,
-    value: { gpu: { requestAdapter: async () => ({ info: { architecture: 'test-transport' } }) } },
+    value: { gpu: { requestAdapter: async () => {
+      assert.equal(globalThis.__COLD_AB_UPLOADED, true, 'adapter diagnostics must follow the load clock (#7032)');
+      return { info: { architecture: 'test-transport' } };
+    } } },
   });
   return {
     on: (event, handler) => { if (event === 'console') handlers.push(handler); },
@@ -21,6 +24,7 @@ function page() {
     goto: async () => {
       delete globalThis.__IFC_LITE_PERF_TRACE;
       delete globalThis.__IFC_LITE_LOAD_TRACE__;
+      globalThis.__COLD_AB_UPLOADED = false;
       for (const [fn, arg] of init) fn(arg);
       assert.equal(globalThis.__IFC_LITE_PERF_TRACE, 1, 'CLI must enable tracing before viewer boot (#7032)');
     },
@@ -31,6 +35,7 @@ function page() {
     screenshot: async ({ path }) => { writeFileSync(path, 'test transport'); },
     locator: () => ({ first: () => ({ setInputFiles: async () => {
       await new Promise(resolve => setTimeout(resolve, 5));
+      globalThis.__COLD_AB_UPLOADED = true;
       const names = ['parser.complete', 'geometry.streamComplete'];
       if (process.env.COLD_AB_FINALIZE !== 'missing') names.push('scene.finalize');
       const snapshot = {

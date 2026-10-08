@@ -218,18 +218,6 @@ for (let iter = 1; iter <= ITERS; iter++) {
             sharedArrayBufferAvailable: typeof SharedArrayBuffer !== 'undefined',
           }));
           record = { ...record, ...isolation };
-          // A software adapter (SwiftShader: the only WebGPU headless Chromium has in
-          // WSL/CI) initialises the renderer slowly enough to measure a different
-          // load than a real GPU does. Say so once, and archive it with the sample.
-          const adapter = await page!.evaluate(async () => {
-            const a = await navigator.gpu?.requestAdapter();
-            return a ? { architecture: a.info?.architecture ?? '', fallback: Boolean(a.isFallbackAdapter ?? a.info?.isFallbackAdapter) } : null;
-          }).catch(() => null);
-          record.gpuAdapter = adapter;
-          if (!warnedSoftwareAdapter && (!adapter || adapter.fallback || adapter.architecture === 'swiftshader')) {
-            warnedSoftwareAdapter = true;
-            console.warn(`browser-cold-ab: WARNING ${adapter ? `software WebGPU adapter (${adapter.architecture || 'fallback'})` : 'no WebGPU adapter'}; timings are not real-GPU numbers. For a real GPU from WSL use a Windows Chrome launcher (see scripts/perf/frame-gpu-chrome.ts).`);
-          }
           if (!isolation.crossOriginIsolated || !isolation.sharedArrayBufferAvailable) {
             throw new Error('Viewer is not cross-origin isolated; worker-pool sample invalid');
           }
@@ -238,6 +226,23 @@ for (let iter = 1; iter <= ITERS; iter++) {
           throw new Error('load did not reach streamCompleteMs / produced 0 meshes');
         }
         record = { ...record, ok: true, ...metrics };
+        // Adapter diagnostics run AFTER readiness so a slow request cannot give
+        // renderer initialization a head start before the load clock (#7032).
+        // A software adapter (SwiftShader: the only WebGPU headless Chromium has in
+        // WSL/CI) initialises the renderer slowly enough to measure a different
+        // load than a real GPU does. Say so once, and archive it with the sample.
+        const adapter = await raceWithTimeout(page.evaluate(async () => {
+          const a = await navigator.gpu?.requestAdapter();
+          return a ? { architecture: a.info?.architecture ?? '', fallback: Boolean(a.isFallbackAdapter ?? a.info?.isFallbackAdapter) } : null;
+        }), CLOSE_TIMEOUT_MS, 'gpu adapter diagnostics').catch((error) => {
+          console.warn('browser-cold-ab: adapter diagnostics failed', error);
+          return null;
+        });
+        record.gpuAdapter = adapter;
+        if (!warnedSoftwareAdapter && (!adapter || adapter.fallback || adapter.architecture === 'swiftshader')) {
+          warnedSoftwareAdapter = true;
+          console.warn(`browser-cold-ab: WARNING ${adapter ? `software WebGPU adapter (${adapter.architecture || 'fallback'})` : 'no WebGPU adapter'}; timings are not real-GPU numbers. For a real GPU from WSL use a Windows Chrome launcher (see scripts/perf/frame-gpu-chrome.ts).`);
+        }
         // Separate visual artifact, captured after the observed timing boundary.
         await page.screenshot({ path: join(RESULTS_DIR,
           `${label}-${browserFixtureKey(fixture.name)}-r${iter}.png`) });

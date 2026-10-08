@@ -31,9 +31,10 @@ export const traceGeometryWorkerMessage = createWorkerTraceHost({
 /**
  * Post a pre-pass event. The host terminates the pre-pass worker as soon as it
  * receives the final `complete` event, before this worker's handler returns,
- * so the counters it moved (#6957) are flushed ahead of that one message.
+ * so the completed scan span and counters are flushed ahead of that message
+ * (#6993). Merely draining finished spans loses the still-running handler.
  */
 export function postPrepassEvent(event: unknown): void {
-  if ((event as { type?: unknown } | null)?.type === 'complete') traceGeometryWorkerMessage.flush();
+  if ((event as { type?: unknown } | null)?.type === 'complete') traceGeometryWorkerMessage.flush('prepass.scan');
   (self as unknown as Worker).postMessage({ type: 'prepass-stream', event });
 }

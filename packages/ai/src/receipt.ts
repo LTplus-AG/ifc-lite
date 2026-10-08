@@ -9,6 +9,7 @@
  */
 
 import type { TokenUsage } from './usage.js';
+import type { OutputFormat } from './response-schema.js';
 
 export type RequestOutcomeKind = 'completed' | 'truncated' | 'cancelled' | 'timeout' | 'error';
 
@@ -21,6 +22,8 @@ interface ReceiptBase<Route extends string> {
   startedAt: number;
   finishedAt: number;
   outcome: RequestOutcomeKind;
+  /** Present for typed requests: the protocol sent, never a live-quality verdict. */
+  outputFormat?: OutputFormat;
 }
 
 /** Counts appear only when the provider reported them; there is no estimate. */

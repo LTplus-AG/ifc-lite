@@ -5,7 +5,7 @@ import { readFile } from 'node:fs/promises';
 import type { TestContext } from 'node:test';
 import assert from 'node:assert/strict';
 import { IfcAPI } from '@ifc-lite/wasm';
-import { IfcParser, extractProjectUnits, extractQuantitiesOnDemand } from '@ifc-lite/parser';
+import { IfcParser, extractProjectUnits, extractQuantitiesOnDemand, type IfcDataStore } from '@ifc-lite/parser';
 import type { GeometryResult, MeshData } from '@ifc-lite/geometry';
 import type { Renderer } from '@ifc-lite/renderer';
 import { Scene } from '../../../../packages/renderer/src/scene';
@@ -17,7 +17,17 @@ import { recomputeZoneAssignmentsNow } from '@/hooks/useZoneAssignmentSync';
 import { computeZoneApportionmentForElement } from '@/hooks/useZoneApportionment';
 import type { ZoneSet } from '@/lib/zones';
 
-export async function seedDeclaredZoneWall(t: TestContext) {
+interface DeclaredZoneFixture {
+  store: IfcDataStore;
+  id: number;
+  zoneSet: ZoneSet;
+  apportionment: NonNullable<ReturnType<typeof computeZoneApportionmentForElement>['apportionment']>;
+  quantities: ReturnType<typeof extractQuantitiesOnDemand>;
+  projectUnits: ReturnType<typeof extractProjectUnits>;
+}
+
+// #7220: keep the native fixture declaration portable without naming parser-private quantity types.
+export async function seedDeclaredZoneWall(t: TestContext): Promise<DeclaredZoneFixture | null> {
   if (!ensureWasm(t)) return null;
   let bytes: Uint8Array;
   try { bytes = new Uint8Array(await readFile(new URL('../../../../tests/models/ara3d/AC20-FZK-Haus.ifc', import.meta.url))); }

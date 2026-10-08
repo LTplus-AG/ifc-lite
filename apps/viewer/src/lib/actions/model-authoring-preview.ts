@@ -244,12 +244,7 @@ function resolve(ctx: Context, row: AuthoringRow): void {
         if (error instanceof LayerRefusal) throw new Refusal(error.status, error.message);
         throw error;
       }
-      if (op.scope === 'element' && row.resolved.layers.kind === 'wall') {
-        const ghost = authoringSizeGhost(ctx.state, ctx.batch, row, row.modelId!, row.expressId);
-        row.previewUnavailable = ghost.unavailable;
-        row.previewOmitted = ghost.omitted;
-        row.previewOuterBodyOnly = ghost.outerBodyOnly;
-      } else row.previewUnavailable = true;
+      row.previewUnavailable = true;
       return;
     }
     case 'type.detach': {
@@ -348,7 +343,8 @@ export function previewModelAuthoring(state: ViewerState, batch: ModelAuthoringB
     }
   }
   nativeDryRun(ctx, batch);
-  for (const row of ctx.rows) if (row.status === 'ready' && row.modelId && (row.op.op === 'element.resize' || row.op.op === 'element.profile')) {
+  for (const row of ctx.rows) if (row.status === 'ready' && row.modelId && (row.op.op === 'element.resize' || row.op.op === 'element.profile'
+    || row.op.op === 'material.layers' && row.op.scope === 'element' && row.resolved.layers?.kind === 'wall')) {
     const ghost = authoringSizeGhost(state, batch, row, row.modelId, 0);
     row.previewUnavailable = ghost.unavailable;
     row.previewOmitted = ghost.omitted;

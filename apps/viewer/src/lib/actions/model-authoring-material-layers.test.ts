@@ -5,6 +5,7 @@ import '@/test/setup-dom.js';
 import 'fake-indexeddb/auto';
 import assert from 'node:assert/strict';
 import { afterEach, test } from 'node:test';
+import { getAttributeNamesForSchema } from '@ifc-lite/parser';
 import { MutablePropertyView } from '@ifc-lite/mutations';
 import { useViewerStore } from '@/store';
 import { applyMaterialLayers } from '@/components/viewer/model-inspector/inspector-edits';
@@ -17,7 +18,7 @@ import { previewModelAuthoring } from './model-authoring-preview';
 import { commitModelAuthoring } from './model-authoring-commit';
 import { readOnlyModelEditTarget } from './model-authoring-read-target';
 import { readAuthoringSizeFromTarget } from './model-authoring-size';
-import type { NativeLayerEvidence } from './native-layer-evidence';
+import type { NativeLayerEvidence, NativeLayerExpected } from './native-layer-evidence';
 import { captureSelectionGrounding } from './selection-grounding';
 import { attachmentsForSend } from '@/components/viewer/assistant/ComposerAttachments';
 import { captureEvidence } from '@/lib/assistant/evidence';
@@ -233,4 +234,178 @@ test('#7275 native type-layer expectation remains explicit beneath an occurrence
   assert.deepEqual(full.typeLayers, { assignments: [{ expressId: native!.layerSetId, ifcClass: 'IfcMaterialLayerSet' }],
     layerSetId: native!.layerSetId, MaterialLayers: [{ LayerThickness: .4,
       Material: { modelId: SAMPLE_MODEL, expressId: native!.layers[0].materialId, Name: 'Type material beneath override' } }] });
+});
+
+
+function layerBatch(expected: NativeLayerExpected, globalId: string, scope: 'element' | 'type', units: 'm' | 'mm' = 'm') {
+  const factor = units === 'mm' ? 1000 : 1;
+  const convert = (layers: NativeLayerExpected['MaterialLayers']) => layers.map(layer => ({ ...layer, LayerThickness: layer.LayerThickness * factor }));
+  return parseModelAuthoringBatch(JSON.stringify({ version: 1, kind: 'model.authoring', title: 'Explicit native scope', units, frame: 'storey-local',
+    operations: [{ op: 'material.layers', target: { globalId, modelId: SAMPLE_MODEL, ifcClass: 'IfcWall', name: WALL_NAME }, scope,
+      expected: { ...expected, MaterialLayers: convert(expected.MaterialLayers),
+        typeLayers: expected.typeLayers ? { ...expected.typeLayers, MaterialLayers: convert(expected.typeLayers.MaterialLayers) } : null,
+        wall: expected.wall && expected.wall.kind === 'wall' ? { kind: 'wall', height: expected.wall.height * factor, thickness: expected.wall.thickness * factor } : null },
+      MaterialLayers: [{ LayerThickness: .7 * factor, Material: { create: { Name: 'Explicit type layers' } } }] }] }));
+}
+
+for (const units of ['m', 'mm'] as const) {
+  test(`#7275 reviewed native type layers in ${units} preserve occurrence overrides, peer representations and root identities`, async () => {
+    const { dataStore, view, target, globalId } = await inspectorControl();
+    const typeId = dataStore.entities.getExpressIdByGlobalId(FRONT_WALL_TYPE);
+    recordModellingEdit(useViewerStore, SAMPLE_MODEL, methods => methods.assignType(SAMPLE_MODEL, typeId, [target]));
+    assert.ok(applyMaterialLayers(SAMPLE_MODEL, { kind: 'wall', target: 'type', elementId: target, typeId,
+      layers: [{ thickness: .4, material: { name: 'Previous explicit type layers' } }] }) !== null);
+    const state = useViewerStore.getState(), expected = transportedLayerEvidence(state, target).expected;
+    assert.ok(expected?.peers && expected.typeLayers);
+    assert.ok(expected.peers.length >= 2, 'real native type has both source and authored peers');
+    const before = await parseIfc(editedModelBytes(dataStore, view));
+    const peerIds = expected.peers.map(peer => before.entities.getExpressIdByGlobalId(peer.globalId));
+    const lease = view.prepareAtomic(() => undefined);
+    const preview = previewModelAuthoring(state, layerBatch(expected, globalId, 'type', units));
+    assert.equal(preview.rows[0].status, 'ready', preview.rows[0].issue);
+    assert.equal(preview.rows[0].previewUnavailable, true);
+    assert.doesNotThrow(lease.validate, 'type-layer preflight never changes the live draft identity or allocator');
+    const result = commitModelAuthoring(useViewerStore, preview, new Set([0]), 'test');
+    assert.ok(result.ok, result.ok ? '' : result.detail ?? result.reason);
+    const after = await parseIfc(editedModelBytes(dataStore, view)), afterView = new MutablePropertyView(after.properties ?? null, SAMPLE_MODEL);
+    assert.deepEqual(layerSetOf({ dataStore: after, view: afterView }, target)?.layers.map(layer => layer.thickness), [.25, .05], 'own occurrence usage survives type scope');
+    const native = layerSetOf({ dataStore: after, view: afterView }, typeId);
+    assert.equal(native?.layers[0].thickness, .7);
+    assert.equal(after.entities.getName(native!.layers[0].materialId!), 'Explicit type layers', 'canonical non-root source Name survives independent export/reparse');
+    for (const id of peerIds) assert.deepEqual(after.getEntity(id)?.attributes, before.getEntity(id)?.attributes, 'native type assignment never rewrites occurrence roots or their representations');
+    assert.equal(after.entities.getGlobalId(typeId), FRONT_WALL_TYPE);
+    useViewerStore.getState().undo(SAMPLE_MODEL);
+    const undone = await parseIfc(editedModelBytes(dataStore, view));
+    assert.equal(layerSetOf({ dataStore: undone, view: new MutablePropertyView(undone.properties ?? null, SAMPLE_MODEL) }, typeId)?.layers[0].thickness, .4);
+    useViewerStore.getState().redo(SAMPLE_MODEL);
+    const redone = await parseIfc(editedModelBytes(dataStore, view));
+    assert.equal(layerSetOf({ dataStore: redone, view: new MutablePropertyView(redone.properties ?? null, SAMPLE_MODEL) }, typeId)?.layers[0].thickness, .7);
+  });
+}
+
+test('#7275 native material rename conflicts with old expected fields and skip-history edits invalidate an approved source', async () => {
+  const { dataStore, view, target, globalId, layers } = await inspectorControl();
+  const expected = transportedLayerEvidence(useViewerStore.getState(), target).expected;
+  assert.ok(expected);
+  const batch = layerBatch(expected, globalId, 'element');
+  const preview = previewModelAuthoring(useViewerStore.getState(), batch);
+  assert.equal(preview.rows[0].status, 'ready', preview.rows[0].issue);
+  const mutationVersion = useViewerStore.getState().mutationVersion;
+  view.setAttribute(layers.layers[0].materialId!, 'Name', 'Changed native material');
+  assert.equal(useViewerStore.getState().mutationVersion, mutationVersion, 'actual direct native edit bypasses the viewer mutation counter');
+  const before = editedModelBytes(dataStore, view);
+  assert.deepEqual(commitModelAuthoring(useViewerStore, preview, new Set([0]), 'test'), { ok: false, reason: 'stale' });
+  assert.equal(previewModelAuthoring(useViewerStore.getState(), batch).rows[0].status, 'conflict', 'new preflight rejects stale transported material names');
+  assert.deepEqual(editedModelBytes(dataStore, view), before, 'both refusals preserve the current native model');
+});
+
+test('#7275 a source replacement with matching root fields still invalidates old layer approval', async () => {
+  const { dataStore, view, target, globalId } = await inspectorControl();
+  const state = useViewerStore.getState(), expected = transportedLayerEvidence(state, target).expected;
+  assert.ok(expected);
+  const preview = previewModelAuthoring(state, layerBatch(expected, globalId, 'element'));
+  assert.equal(preview.rows[0].status, 'ready', preview.rows[0].issue);
+  const replacement = await parseIfc(editedModelBytes(dataStore, view));
+  const models = new Map(state.models), model = models.get(SAMPLE_MODEL)!;
+  models.set(SAMPLE_MODEL, { ...model, ifcDataStore: replacement });
+  useViewerStore.setState({ models });
+  assert.deepEqual(commitModelAuthoring(useViewerStore, preview, new Set([0]), 'test'), { ok: false, reason: 'stale' });
+});
+
+
+for (const ifcClass of ['IfcSlab', 'IfcRoof', 'IfcPlate'] as const) {
+  test(`#7275 native ${ifcClass} AXIS3 layers retain body and source-owned imported material identity`, async () => {
+    const { dataStore, view } = await seedAuthoringSample();
+    const create = parseModelAuthoringBatch(JSON.stringify({ version: 1, kind: 'model.authoring', title: 'Native layered panel', units: 'm', frame: 'storey-local',
+      operations: [{ op: 'element.create', ref: 'panel', ifcClass, storey: { globalId: GROUND_STOREY }, name: 'Native layered panel',
+        params: { position: [10, 10, 0], width: 4, depth: 3, thickness: .2 } }] }));
+    const made = commitModelAuthoring(useViewerStore, previewModelAuthoring(useViewerStore.getState(), create), new Set([0]), 'test');
+    assert.ok(made.ok, made.ok ? '' : made.detail ?? made.reason);
+    const globalId = made.receipt.applied[0].globalId, before = await parseIfc(editedModelBytes(dataStore, view));
+    const target = before.entities.getExpressIdByGlobalId(globalId);
+    assert.equal(dataStore.entities.getName(62), 'concrete_reinforced_in-situ', 'real SketchUp IfcMaterial uses canonical non-root Name, not a GlobalId');
+    const expected = transportedLayerEvidence(useViewerStore.getState(), target).expected;
+    assert.ok(expected);
+    const batch = parseModelAuthoringBatch(JSON.stringify({ version: 1, kind: 'model.authoring', title: 'Native panel layers', units: 'mm', frame: 'storey-local',
+      operations: [{ op: 'material.layers', scope: 'element', target: { globalId, modelId: SAMPLE_MODEL, ifcClass, name: 'Native layered panel' }, expected,
+        MaterialLayers: [{ LayerThickness: 350, Material: { modelId: SAMPLE_MODEL, expressId: 62, Name: 'concrete_reinforced_in-situ' } }] }] }));
+    const preview = previewModelAuthoring(useViewerStore.getState(), batch);
+    assert.equal(preview.rows[0].status, 'ready', preview.rows[0].issue);
+    assert.equal(preview.rows[0].previewUnavailable, true, 'native panel layer assignment has no changed-body geometry prediction');
+    assert.ok(commitModelAuthoring(useViewerStore, preview, new Set([0]), 'test').ok);
+    const after = await parseIfc(editedModelBytes(dataStore, view));
+    const layers = layerSetOf({ dataStore: after, view: new MutablePropertyView(after.properties ?? null, SAMPLE_MODEL) }, target);
+    assert.deepEqual(layers?.layers, [{ materialId: 62, thickness: .35 }]);
+    assert.deepEqual(after.getEntity(target)?.attributes, before.getEntity(target)?.attributes, 'the native layer assignment preserves the occurrence representation and dimensions');
+    assert.equal(after.entities.getName(62), 'concrete_reinforced_in-situ');
+  });
+}
+
+test('#7275 native federation refuses ambiguous roots and foreign material owners, then edits only the pinned source', async () => {
+  const { dataStore, view, target, globalId } = await inspectorControl();
+  const exported = await parseIfc(editedModelBytes(dataStore, view)), model = useViewerStore.getState().models.get(SAMPLE_MODEL)!;
+  useViewerStore.getState().addModel({ ...model, id: 'other', name: 'Native source with the same roots', idOffset: 2_000_000, ifcDataStore: exported });
+  const other = new MutablePropertyView(exported.properties ?? null, 'other');
+  useViewerStore.getState().registerMutationView('other', other);
+  const expected = transportedLayerEvidence(useViewerStore.getState(), target).expected;
+  assert.ok(expected);
+  const batch = layerBatch(expected, globalId, 'element');
+  const unpinned = parseModelAuthoringBatch(JSON.stringify({ ...batch, operations: batch.operations.map(op => ({ ...op,
+    target: { globalId, ifcClass: 'IfcWall', name: WALL_NAME } })) }));
+  assert.equal(previewModelAuthoring(useViewerStore.getState(), unpinned).rows[0].status, 'ambiguous-target');
+  const foreign = parseModelAuthoringBatch(JSON.stringify({ ...batch, operations: batch.operations.map(op => ({ ...op,
+    MaterialLayers: [{ LayerThickness: .5, Material: { modelId: 'other', expressId: 62, Name: 'concrete_reinforced_in-situ' } }] })) }));
+  assert.equal(previewModelAuthoring(useViewerStore.getState(), foreign).rows[0].status, 'conflict');
+  const otherBefore = editedModelBytes(exported, other), preview = previewModelAuthoring(useViewerStore.getState(), batch);
+  assert.equal(preview.rows[0].status, 'ready', preview.rows[0].issue);
+  const result = commitModelAuthoring(useViewerStore, preview, new Set([0]), 'test');
+  assert.ok(result.ok, result.ok ? '' : result.detail ?? result.reason);
+  assert.equal(result.receipt.applied[0].modelId, SAMPLE_MODEL);
+  const after = await parseIfc(editedModelBytes(dataStore, view));
+  assert.equal(layerSetOf({ dataStore: after, view: new MutablePropertyView(after.properties ?? null, SAMPLE_MODEL) }, target)?.layers[0].thickness, .7);
+  assert.deepEqual(editedModelBytes(exported, other), otherBefore, 'the independently owned federated source and overlay remain unchanged');
+});
+
+test('#7275 strict native layer contract refuses aliases, invented material GlobalIds, incomplete populations and STEP-token names', async () => {
+  const { target, globalId } = await inspectorControl(), expected = transportedLayerEvidence(useViewerStore.getState(), target).expected;
+  assert.ok(expected);
+  const batch = layerBatch(expected, globalId, 'element');
+  const op = batch.operations[0];
+  const bad = [
+    { ...op, thickness: .3 },
+    { ...op, MaterialLayers: [{ Thickness: .3, Material: null }] },
+    { ...op, MaterialLayers: [{ LayerThickness: .3, Material: { globalId: '0AAAAAAAAAAAAAAAAAAAAA', Name: 'Invented material GUID' } }] },
+    { ...op, expected: { ...expected, assignments: undefined } },
+    { ...op, MaterialLayers: Array.from({ length: 33 }, () => ({ LayerThickness: .01, Material: null })) },
+    ...['$', '*', '#62'].map(Name => ({ ...op, MaterialLayers: [{ LayerThickness: .3, Material: { create: { Name } } }] })),
+    { ...op, MaterialLayers: [{ LayerThickness: 0, Material: null }] },
+    { ...op, MaterialLayers: [{ LayerThickness: -1, Material: null }] },
+  ];
+  for (const operation of bad) assert.throws(() => parseModelAuthoringBatch(JSON.stringify({ ...batch, operations: [operation] })));
+  const untyped = parseModelAuthoringBatch(JSON.stringify({ ...batch, operations: [{ ...op, scope: 'type' }] }));
+  assert.equal(previewModelAuthoring(useViewerStore.getState(), untyped).rows[0].status, 'unsupported', 'native type scope cannot infer or create an absent type');
+  useViewerStore.setState({ editEnabled: false });
+  assert.equal(previewModelAuthoring(useViewerStore.getState(), batch).rows[0].status, 'denied');
+});
+
+
+test('#7275 reviewed layers retain native unreadable hosted-cut refusal without leaking staged material records', async () => {
+  const { dataStore, view, target, globalId } = await inspectorControl();
+  const opened = useViewerStore.getState().addHostedFill(SAMPLE_MODEL, target,
+    { kind: 'door', params: { Name: 'Native hosted-cut prerequisite', Offset: 1.5, Sill: 0, Width: 1, Height: 2 } });
+  assert.ok('openingId' in opened);
+  const position = getAttributeNamesForSchema('IfcOpeningElement', dataStore.schemaVersion).indexOf('Representation');
+  assert.ok(position >= 0);
+  view.setPositionalAttribute(opened.openingId, position, null);
+  const exported = await parseIfc(editedModelBytes(dataStore, view));
+  assert.equal(exported.getEntity(opened.openingId)?.attributes[position], null, 'real native edit/export makes the related hosted cut unreadable');
+  const expected = transportedLayerEvidence(useViewerStore.getState(), target).expected;
+  assert.ok(expected);
+  const lease = view.prepareAtomic(() => undefined), count = view.getNewEntities().length;
+  const preview = previewModelAuthoring(useViewerStore.getState(), layerBatch(expected, globalId, 'element'));
+  assert.equal(preview.rows[0].status, 'invalid');
+  assert.match(preview.rows[0].issue ?? '', /opening.*can.t be read/i);
+  assert.doesNotThrow(lease.validate, 'native hosted-cut refusal publishes no layer construction or body writes');
+  assert.equal(view.getNewEntities().length, count);
+  assert.deepEqual(commitModelAuthoring(useViewerStore, preview, new Set([0]), 'test'), { ok: false, reason: 'nothing-approved' });
 });

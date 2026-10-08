@@ -130,7 +130,7 @@ fn depth_edges(cutter: &Mesh, depth: Vector3<f64>) -> Vec<(Cell, Cell)> {
 /// opening that shares no corner with its host. Where two host vertices snap
 /// to one position, the first in the host's order supplies the coordinates;
 /// the kernel's snap makes them the same vertex either way.
-pub(super) fn reconcile_with_host_vertices(
+pub(in crate::router::voids) fn reconcile_with_host_vertices(
     mut cutter: Mesh,
     host: &Mesh,
     depth: Vector3<f64>,

@@ -3574,11 +3574,12 @@ screen is not a browser speedup or a measurement of indirect style decoding.
 A correctness fix in two places, not a lever. In the kernel, the subtract weld
 no longer moves an opening-cutter vertex off a host face it is exactly on and
 onto a separate host face lying within the same band. In the void router,
-before a cutter is extended through its host, a cutter vertex one snap-grid
-step from a host vertex is given that host vertex's coordinates. The guard
+before analytic prism extraction or exact-kernel cutter extension, a cutter
+vertex one snap-grid step from a host vertex is given that host vertex's
+coordinates through the same helper. The guard
 adds one scratch list per cutter vertex and, only when the nearest in-band
 face coincides with one of those, a walk over the host faces joined to it.
-The reconcile adds, per cutter extension, one pass over the host's vertices
+The reconcile adds, per cutter preparation, one pass over the host's vertices
 with a bounding-box reject in front of a hash of the few that survive it.
 
 Interleaved native A/B, `perf_probe --iters 1 --json --fingerprint` as fresh
@@ -3586,23 +3587,21 @@ processes, seven rounds in the balanced order `ab-order.mjs` produced. Each
 side was built by `build-at-ref.sh` in its own fresh worktree and its own
 target directory: base `upstream/main` at `385b61baa`, branch the commit that
 carries both rules. Same pinned toolchain and `profiling` profile on both
-sides, Apple M4 Pro. The machine was NOT idle (1-minute load 5.6 to 6.5 during
-the rounds), so read the ranges, not the medians.
+sides, Apple M4 Pro. The machine was not idle during the rounds, so those timings do not qualify
+the end-to-end cost.
 
-Base/branch, median (min-max) milliseconds:
+The original native rounds on the busy machine, including further S_Office
+rounds with reversed median ordering, do not establish a stable timing effect
+or its cause. Detailed raw timing observations remain in PR #7024 rather than
+being duplicated here. The analytic-path correction was added afterward and
+has not yet received an end-to-end browser worker-pool verdict.
 
-| Fixture | Parse | Geometry | Pipeline total |
-|---|---:|---:|---:|
-| AC20-FZK-Haus | 5 (5-11) / 5 (5-14) | 7 (6-11) / 7 (7-12) | 13 (12-22) / 13 (12-27) |
-| ISSUE_129 | 16 (15-16) / 16 (15-16) | 745 (709-758) / 729 (707-746) | 761 (725-774) / 745 (723-762) |
-| S_Office | 39 (39-40) / 40 (39-40) | 589 (554-621) / 620 (567-647) | 628 (594-661) / 660 (606-688) |
-| ISSUE_053 (Holter) | 283 (273-289) / 278 (272-300) | 451 (435-529) / 459 (412-543) | 737 (710-819) / 738 (712-828) |
-| MiniBIM-3.1-DO_01_VORM | 12 (12-12) / 12 (12-13) | 299 (283-333) / 218 (205-230) | 311 (295-346) / 230 (217-242) |
-
-S_Office was the one fixture whose branch median sat above the base's, inside
-overlapping ranges. Fifteen further interleaved rounds of it read 652
-(604-827) / 618 (583-1182) for geometry, the other way round, so that was the
-machine and not the change.
+The router regression now checks closure at the kernel snap-grid precision in
+both vertex frames. Its former 1 mm edge keys hid seams in analytic prism
+cases, even when the exact-kernel reconciliation closed the same inputs. Both
+paths now use that reconciliation. The correction passes all synthetic cases
+and leaves the full real-fixture census identical to this PR's prior golden;
+no further bless was needed.
 
 Output. The first four fixtures kept their mesh, vertex and triangle counts
 and their ordered mesh FNV-1a64 on every run of both sides (`c4d504b83ff698ea`,
@@ -3621,12 +3620,11 @@ per-element local frames forced on (`IFC_LITE_LOCAL_FRAME=1`) found 121
 identical and the same nine slabs. These comparisons cover positions, normals,
 indices and origins per mesh, not text metadata, materials, UVs or instancing.
 
-Verdict: no timing move outside the base's own range on the four fixtures
-whose output is unchanged, including the heavy CSG model. This is the observed
-native cost of a correctness fix, not a speedup claim and not a browser
-worker-pool result. The MiniBIM geometry ranges do not overlap (base slower),
-but that comparison is not like-for-like: slabs that came back torn now come
-back closed, and which downstream work stopped running was not traced.
+Verdict: correctness improves, but a timing verdict remains unqualified. The
+original native observations had overlapping ranges on fixtures with unchanged
+output. MiniBIM's output changes, and which downstream work stopped running was
+not traced. The final shared analytic/exact correction still needs an idle,
+interleaved browser worker-pool comparison against its base.
 
 Two lessons, both about the instrument.
 

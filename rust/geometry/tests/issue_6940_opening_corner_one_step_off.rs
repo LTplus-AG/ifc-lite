@@ -27,23 +27,14 @@
 //! `rust/geometry/src/router/voids/synthesis/host_vertices.rs`; its
 //! clause-by-clause tests sit beside it.
 //!
-//! # What this does NOT cover
+//! # Dispatch and frame coverage
 //!
-//! The slab is meshed with a per-element local frame only. With world
-//! coordinates the analytic prism cut (`router/voids/prism_cut.rs`) takes
-//! some of these openings before the exact kernel sees them, and it has its
-//! own instance of this tear, which the reconcile does not reach: 5 of the
-//! same 28 cases come back with 6 open edges there, with the fix and without
-//! it, and none with `IFC_LITE_PRISM_CUT=0`. That is a separate defect in a
-//! path this fix does not touch, and a test that asserted the world frame
-//! would be red for a reason unrelated to what it is named for. The world
-//! frame's kernel path is covered by the router test beside the rule, which
-//! enters below the analytic paths.
-//!
-//! In the local frame the prism cut still takes four of the cases (those of
-//! the first corner). It cuts the opening as written and closes the slab, so
-//! what it removes is the 15 micrometre sliver the test itself authored;
-//! hence the volume bound below is that sliver and not zero.
+//! Every case runs with world vertices and with a per-element local frame.
+//! Analytic prism preparation and exact-kernel cutter extension use the same
+//! opening/host corner reconciliation. Closure is measured on the kernel grid,
+//! so a one-step seam cannot disappear under a coarser test snap. Before the
+//! analytic path shared the reconciliation, corner 0 moved (1, 0) returned six
+//! unmatched edges even in the local frame; 1 mm edge keys hid that seam.
 
 use ifc_lite_core::EntityDecoder;
 use ifc_lite_geometry::kernel::mesh_volume::mesh_volume;
@@ -119,12 +110,12 @@ fn slab_ifc(corner: usize, dx: f64, dy: f64) -> String {
     )
 }
 
-/// Edges not used exactly once in each direction, on a 1 mm position snap,
+/// Edges not used exactly once in each direction, on the kernel position grid,
 /// collapsed triangles skipped: 0 iff the mesh closes consistently wound.
 fn open_edges(m: &Mesh) -> usize {
     let q = |i: u32| {
         let p = &m.positions[i as usize * 3..i as usize * 3 + 3];
-        [0, 1, 2].map(|k| (p[k] as f64 * 1.0e3).round() as i64)
+        [0, 1, 2].map(|k| (p[k] as f64 / G).round() as i64)
     };
     let mut uses: HashMap<([i64; 3], [i64; 3]), (u32, u32)> = HashMap::new();
     for t in m.indices.chunks_exact(3) {
@@ -145,12 +136,11 @@ fn open_edges(m: &Mesh) -> usize {
     uses.values().filter(|&&(f, r)| f != 1 || r != 1).count()
 }
 
-/// The slab as the router meshes it, uncut and cut, each element stored
-/// relative to its own origin (the module docs say why not world coordinates).
-fn slab(content: &str) -> (Mesh, Mesh) {
+/// The slab as the router meshes it, uncut and cut, in either vertex frame.
+fn slab(content: &str, local_frame: bool) -> (Mesh, Mesh) {
     let mut decoder = EntityDecoder::new(content);
     let entity = decoder.decode_by_id(SLAB).expect("the slab decodes");
-    let router = GeometryRouter::with_scale_and_local_frame(1.0, true);
+    let router = GeometryRouter::with_scale_and_local_frame(1.0, local_frame);
     let voids: FxHashMap<u32, Vec<u32>> = [(SLAB, vec![OPENING])].into_iter().collect();
     let uncut = router
         .process_element(&entity, &mut decoder)
@@ -177,22 +167,25 @@ fn issue_6940_an_opening_one_grid_step_off_its_hole_leaves_the_slab_closed() {
         [1.0, 1.0],
         [-1.0, -1.0],
     ];
-    for corner in 0..4 {
-        for [dx, dy] in std::iter::once([0.0, 0.0]).chain(offsets) {
-            let what = format!("corner {corner} moved ({dx}, {dy}) steps");
-            let (uncut, cut) = slab(&slab_ifc(corner, dx, dy));
-            assert_eq!(open_edges(&uncut), 0, "{what}: the slab arrives closed");
-            assert_eq!(
-                open_edges(&cut),
-                0,
-                "{what}: the slab came back torn ({} triangles)",
-                cut.triangle_count()
-            );
-            let moved = (mesh_volume(&cut) - mesh_volume(&uncut)).abs();
-            assert!(
-                moved <= AUTHORED_SLIVER,
-                "{what}: the opening fills a hole, yet the volume moved by {moved} m^3"
-            );
+    for local_frame in [false, true] {
+        for corner in 0..4 {
+            for [dx, dy] in std::iter::once([0.0, 0.0]).chain(offsets) {
+                let what =
+                    format!("local_frame={local_frame}, corner {corner} moved ({dx}, {dy}) steps");
+                let (uncut, cut) = slab(&slab_ifc(corner, dx, dy), local_frame);
+                assert_eq!(open_edges(&uncut), 0, "{what}: the slab arrives closed");
+                assert_eq!(
+                    open_edges(&cut),
+                    0,
+                    "{what}: the slab came back torn ({} triangles)",
+                    cut.triangle_count()
+                );
+                let moved = (mesh_volume(&cut) - mesh_volume(&uncut)).abs();
+                assert!(
+                    moved <= AUTHORED_SLIVER,
+                    "{what}: the opening fills a hole, yet the volume moved by {moved} m^3"
+                );
+            }
         }
     }
 }

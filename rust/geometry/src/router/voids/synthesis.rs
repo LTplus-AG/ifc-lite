@@ -6,7 +6,7 @@
 
 mod exit_cap;
 mod exit_cap_far_field;
-mod host_vertices;
+pub(super) mod host_vertices;
 mod membrane;
 
 use super::super::processing::SourceHygiene;

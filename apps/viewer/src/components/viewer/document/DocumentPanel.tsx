@@ -18,6 +18,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { toast } from '@/components/ui/toast';
 import { useTranslation } from '@/i18n';
 import { localeCount } from '@/i18n/intlFormat';
+import { beginActivity, finishActivity } from '@/lib/activity/activity-journal';
 import { trackExportCompleted } from '@/lib/analytics';
 import { useViewerStore } from '@/store';
 import { downloadBlob, sanitizeFilename } from '@/lib/export/download';
@@ -142,6 +143,7 @@ export function DocumentPanel({ pdfSeams }: DocumentPanelProps) {
   const exportPdf = useCallback(async () => {
     if (!document) return;
     setBusy(true);
+    const job = beginActivity({ kind: 'export', title: 'activityTray.job.export', panel: 'document', subject: document.name });
     try {
       const seams = pdfSeams ? await pdfSeams() : undefined;
       const result = await exportPreparedDocument({
@@ -166,11 +168,13 @@ export function DocumentPanel({ pdfSeams }: DocumentPanelProps) {
         result.tableFailures.length > 0 ? t('document.panel.problemTables', localeCount(locale, result.tableFailures.length)) : '',
         (result.chartFailures?.length ?? 0) > 0 ? t('document.panel.problemCharts', localeCount(locale, result.chartFailures?.length ?? 0)) : '',
       ].filter(Boolean);
+      finishActivity(job, problems.length ? 'partial' : 'completed', problems.length ? { detail: problems.join(', ') } : {});
       const pages = localeCount(locale, result.pages);
       toast.success(problems.length > 0
         ? t('document.panel.exportSuccessWithProblems', { ...pages, problems: problems.join(', ') })
         : t('document.panel.exportSuccess', pages));
     } catch (err) {
+      finishActivity(job, 'failed', { detail: err instanceof Error ? err.message : String(err) });
       console.error('[Documents] export failed', err);
       toast.error(err instanceof Error ? t('document.panel.exportFailedWithMessage', { message: err.message }) : t('document.panel.exportFailedGeneric'));
     } finally {

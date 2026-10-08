@@ -35,6 +35,9 @@ export class XmlLines {
   readonly lines: string[] = [];
   private depth = 0;
 
+  /** `unit` is the indentation of one nesting level. */
+  constructor(private readonly unit = '  ') {}
+
   open(tag: string, attrs: Record<string, string | undefined> = {}): void {
     this.lines.push(`${this.indent()}<${tag}${renderAttrs(tag, attrs)}>`);
     this.depth++;
@@ -54,7 +57,7 @@ export class XmlLines {
   }
 
   private indent(): string {
-    return '  '.repeat(this.depth);
+    return this.unit.repeat(this.depth);
   }
 }
 

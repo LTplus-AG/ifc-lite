@@ -6576,6 +6576,7 @@
     "IDSValidationSummary: interface",
     "IFCDataAccessor: interface",
     "IFCVersion: type",
+    "IdsXmlFormat: interface",
     "MaterialInfo: interface",
     "ParentInfo: interface",
     "PartOfRelation: type",

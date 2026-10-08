@@ -98,7 +98,7 @@ export { parseIDS, IDSParseError } from './parser/xml-parser.js';
 
 // The one IDS 1.0 writer (ADR-005): `@ifc-lite/rules`' `ruleSetToIds` and the
 // viewer's reviewed IDS drafts serialise through it.
-export { writeIdsXml } from './writer/index.js';
+export { writeIdsXml, type IdsXmlFormat } from './writer/index.js';
 
 // ============================================================================
 // Material bridge

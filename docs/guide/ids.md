@@ -298,7 +298,22 @@ import { parseIDS, writeIdsXml } from '@ifc-lite/ids';
 
 declare const idsXml: string;
 const rewritten = writeIdsXml(parseIDS(idsXml));
+// Canonical layout: tab indents, CRLF, applicability facets in ids.xsd order.
+const canonical = writeIdsXml(parseIDS(idsXml), { canonical: true, indent: '\t', newline: '\r\n' });
 ```
+
+The optional second argument (`IdsXmlFormat`) changes layout and order only,
+never meaning: `indent` (spaces, 0 to 8, or `'\t'`; default 2 spaces),
+`newline` (`'\n'` or `'\r\n'`) and `canonical`. Canonical output writes
+applicability facets in the `ids.xsd` sequence (entity, partOf,
+classification, attribute, property, material) and `ifcVersion` tokens in
+schema order without duplicates, so two documents with the same checks write
+the same bytes; requirements keep their authored order. Writing is
+idempotent: `writeIdsXml(parseIDS(xml), fmt)` returns `xml` for any `xml` it
+wrote with the same `fmt`. `IFC4X3` is written as the IDS 1.0 token
+`IFC4X3_ADD2`, which reads back as `IFC4X3`; a `partOf` relation of voids or
+fills alone is refused, since IDS 1.0 only has the combined
+`IFCRELVOIDSELEMENT IFCRELFILLSELEMENT`.
 
 ## Viewer Integration
 

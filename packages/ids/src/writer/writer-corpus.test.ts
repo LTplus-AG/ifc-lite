@@ -103,8 +103,13 @@ describe('writeIdsXml round-trips the buildingSMART IDS corpus (#6915)', () => {
     }] };
     const xml = writeIdsXml(doc);
     const reread = parseIDS(xml);
-    // The XSD's relation token is upper case; the parser echoes it as `rawRelation` beside the normalised name.
-    expect(reread.specifications[0].applicability.facets[1]).toMatchObject(doc.specifications[0].applicability.facets[1]);
+    // The XSD's relation token is upper case; the parser recognises it, so no `rawRelation` echo is left behind.
+    expect(reread.specifications[0].applicability.facets[1]).toEqual(doc.specifications[0].applicability.facets[1]);
+    expect(reread.specifications[0].applicability.facets[1]).not.toHaveProperty('rawRelation');
+    const voidsAlone = { ...doc, specifications: [{ ...doc.specifications[0], applicability: { facets: [
+      { type: 'partOf' as const, relation: 'IfcRelVoidsElement' as const, entity: { type: 'entity' as const, name: { type: 'simpleValue' as const, value: 'IFCWALL' } } },
+    ] } }] };
+    expect(() => writeIdsXml(voidsAlone)).toThrow(/IfcRelVoidsElement on its own is not supported/);
     expect(reread.specifications[0].requirements[0].instructions).toBe('Record the rating from the fire strategy.');
     expect(reread.specifications[0].requirements[0].facet).toEqual(doc.specifications[0].requirements[0].facet);
     const audit = await auditIDSDocument(xml);

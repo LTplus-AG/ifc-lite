@@ -40,3 +40,14 @@ for(const edit of ['named','positional'] as const)test(`#7275 complete native pe
  useViewerStore.getState().undo(SAMPLE_MODEL);const restored=await parseIfc(editedModelBytes(dataStore,view));assert.equal(restored.getEntity(peer)?.attributes[0],currentGuid);assert.deepEqual(layerSetOf({dataStore:restored,view:null},typeId)?.layers.map(layer=>layer.thickness)??null,prior);
 
 });
+
+test('#7275 native type assignment refuses a non-root material peer and rolls back its staged creation',async()=>{
+ const {dataStore,view}=await seedAuthoringSample(),typeId=dataStore.entities.getExpressIdByGlobalId(FRONT_WALL_TYPE);
+ const made=useViewerStore.getState().addWall(SAMPLE_MODEL,dataStore.entities.getExpressIdByGlobalId(GROUND_STOREY),{Start:[20,20,0],End:[24,20,0],Height:3,Thickness:.2,Name:'Peer read target'});assert.ok('expressId' in made);
+ const guid=view.getNewEntity(made.expressId)?.attributes[0];assert.equal(typeof guid,'string');
+ const held=view.prepareAtomic(()=>null),records=view.getMutations(),history=useViewerStore.getState().undoStacks;
+ assert.throws(()=>recordModellingEdit(useViewerStore,SAMPLE_MODEL,methods=>{const materialId=methods.addMaterial(SAMPLE_MODEL,{Name:String(guid)}).expressId;methods.assignType(SAMPLE_MODEL,typeId,[made.expressId,materialId]);}),/IFCMATERIAL.*not an IfcObject/);
+ assert.deepEqual(view.getMutations(),records);assert.equal(useViewerStore.getState().undoStacks,history);assert.doesNotThrow(held.validate);
+ const saved=await parseIfc(editedModelBytes(dataStore,view));assert.equal(saved.getEntity(made.expressId)?.attributes[0],guid);
+ assert.ok(!readRelatedLists(saved,'IfcRelDefinesByType').filter(row=>row.relatingId===typeId).some(row=>row.relatedIds.includes(made.expressId)),'rejected native transaction publishes no malformed relationship');
+});

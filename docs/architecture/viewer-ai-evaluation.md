@@ -4,7 +4,7 @@ Tooling for P21 and U01 ([#6928](https://github.com/LTplus-AG/ifc-lite/issues/69
 
 ## Corpus manifest
 
-`tests/ai-eval/manifest.json` (schema `manifest.schema.json`) is the versioned corpus: privacy policy, ten acceptance journeys, five scenes, fixtures and tasks.
+`tests/ai-eval/manifest.json` (schema `manifest.schema.json`) is the versioned corpus: privacy policy, ten acceptance journeys, ten scenes, fixtures and tasks.
 
 | Scene | Real model and native evidence |
 |---|---|
@@ -13,14 +13,19 @@ Tooling for P21 and U01 ([#6928](https://github.com/LTplus-AG/ifc-lite/issues/69
 | `validation-fzk-haus` | ArchiCAD AC20-FZK-Haus (`pnpm fixtures`) against the same IDS; skipped with a stated note when not fetched |
 | `authoring-sample` | The sample in Edit mode with its native load report |
 | `flow-empty` | A new Flow graph validated against the standard registry |
+| `flow-ai-paused` | Native wall classification with a bounded fixed response, review checkpoint and paused downstream application |
+| `review-rev-b` | Both native clash and IDS analyses loaded; one current validation Review card pinned without a human decision |
+| `lists-sample` | Native four-wall list; source Length values and absent Height cells |
+| `selection-sample` | Source roof slab #425 with native attributes, property sets and quantity units |
+| `document-reimported` | Native file import assigns fresh document/block identities and retains unresolved template bindings |
 
-Every fixture records origin, SHA-256, size, schema, source tool, licence status and privacy review. `node scripts/ai-eval/check-ai-eval-manifest.mjs` recomputes each committed fingerprint, cross-checks catalogued fixtures against `tests/models/manifest.json`, pins native results to the model bytes they came from, scans for e-mail addresses, credential-like tokens and STEP author/organisation fields, ties every recording to a task and scene, and validates label sheets and study records. Gaps are printed as notes: unfetched fixtures, journeys without tasks (five of ten have none yet), licences recorded as `unrecorded` for the two SketchUp samples and the ara3d house, and **all privacy reviews pending**. The automated scan is not a privacy review.
+Every fixture records origin, SHA-256, size, schema, source tool, licence status and privacy review. `node scripts/ai-eval/check-ai-eval-manifest.mjs` recomputes each committed fingerprint, cross-checks catalogued fixtures against `tests/models/manifest.json`, pins native results to the model bytes they came from, scans for e-mail addresses, credential-like tokens and STEP author/organisation fields, ties every recording to a task and scene, requires an evaluation task and release recording for every charter journey, and validates label sheets and study records. The gate prints unfetched fixtures and **all privacy reviews pending** as notes. The manifest separately records licences as `unrecorded` for the two SketchUp samples and the ara3d house. The automated scan is not a privacy review.
 
 ## Recorded-response CI harness
 
-`tests/ai-eval/recordings/*.json` holds 22 provider responses stored as SSE `data:` events: 13 release recordings and 9 negative ones, over the proxy, Anthropic and OpenAI routes. They are authored offline, say so in `provenance`, and test **IFClite behaviour on a fixed answer, never model quality**.
+`tests/ai-eval/recordings/*.json` holds 27 provider responses stored as SSE `data:` events: 18 release recordings and 9 negative ones, over the proxy, Anthropic and OpenAI routes. They are authored offline, say so in `provenance`, and test **IFClite behaviour on a fixed answer, never model quality**.
 
-- The viewer suite (`apps/viewer/src/lib/assistant/ai-eval-replay.test.ts`) seeds each recording's real-model scene, serves the events to the real Assistant path (`sendAssistant`, request service, SSE client, route resolution) through a `fetch` stub, and asserts the request routing, the output ceiling, frozen evidence in the request, outcome (completed, truncated, error), usage receipt, typed-proposal classification and the native review: clash partition counts, model-change and authoring previews, Flow patch counts, report-draft citation checks. Frozen evidence must equal what the scene captures today; after an adapter or model change run `pnpm --dir apps/viewer ai-eval refresh --recordings tests/ai-eval/recordings` and review the diff.
+- The viewer suite (`apps/viewer/src/lib/assistant/ai-eval-replay.test.ts`) seeds each recording's real-model scene, serves the events to the real Assistant path (`sendAssistant`, request service, SSE client, route resolution) through a `fetch` stub, and asserts the request routing, the output ceiling, frozen evidence in the request, outcome (completed, truncated, error), usage receipt, typed-proposal classification and the native review: clash partition counts, model-change and authoring previews, Flow patch counts, report-draft citation checks. Additional scenes exercise a native classification checkpoint before writes, a current validation card in a two-analysis Review snapshot, a four-wall list with absent Height quantities, a source-identified roof selection and document file reimport with independent owned identities. The pinned Review card does not represent every finding; the document scene does not establish backup recovery. Frozen evidence must equal what the scene captures today; after an adapter or model change run `pnpm --dir apps/viewer ai-eval refresh --recordings tests/ai-eval/recordings` and review the diff.
 - `node scripts/ai-eval/check-ai-eval-invariants.mjs` runs the deterministic release invariants over the same files with no viewer: release recordings must have zero violations, negative recordings must produce exactly the violations they name, and every invariant must be proven to fire by at least one negative recording.
 
 | Invariant | Checks | Cannot see |
@@ -70,5 +75,7 @@ Facilitators write one `tests/ai-eval/study/sessions/<id>.json` per participant,
 - Independent claim and grouping labels and a privacy and licence review of every corpus fixture.
 - A live evaluation run against a configured provider, reviewed, with promoted recordings.
 - The twelve-task study with coordinator, author and occasional participants, and ratifying the thresholds from the pilot.
-- Evaluation tasks for the five journeys that have none, and a viewport screenshot for the authoring and Flow tasks.
+- Independent viewport acceptance for authoring and Flow; the committed native render/pick recording demonstrates ordinary rendering only.
 - The full-program acceptance that closes P21 and U01.
+
+The [native viewport capture](../../tests/ai-eval/native/viewport-2026-10-08/provenance.json) retains three screenshots and a recorded TOP-view roof pick from the shared T3 browser on a qualified production build. The committed SketchUp sample visibly renders; GPU picking identifies the same source slab (`#425`, GlobalId `12UVOn4wvAJPMUExKdZLb8`) used by the selection scene. Adapter, model and asset fingerprints are recorded. This is ordinary rendering evidence; forced device-loss recovery, fixture approvals and independent human acceptance remain pending.

@@ -1,0 +1,130 @@
+{
+  "$schema": "../recording.schema.json",
+  "version": 1,
+  "id": "review-next-action-release",
+  "task": "review-next-action",
+  "scene": "review-rev-b",
+  "corpus": "release",
+  "prompt": "Explain the pinned coordination card, its native findings and review limits",
+  "route": {
+    "kind": "proxy",
+    "model": "openai/gpt-4o-mini"
+  },
+  "provenance": {
+    "kind": "authored",
+    "recordedAt": "2026-10-08",
+    "note": "Authored offline response replayed against native fixture evidence; no live-provider or human-quality claim."
+  },
+  "response": {
+    "status": 200,
+    "events": [
+      {
+        "choices": [
+          {
+            "delta": {
+              "content": "The captured current review card reports a failed IDS requirement: Building element proxies declare an ObjectType [E1]. Inspect the cited element and supply the appropriate ObjectType through the native review workflow. The card has no recorded human decision [E1]. This observation covers this validation card; it does not establish that every clash or validation finding has been resolved."
+            }
+          }
+        ]
+      },
+      {
+        "choices": [
+          {
+            "delta": {},
+            "finish_reason": "stop"
+          }
+        ],
+        "usage": {
+          "prompt_tokens": 100,
+          "completion_tokens": 100,
+          "total_tokens": 200
+        }
+      }
+    ],
+    "done": true
+  },
+  "evidence": {
+    "source": "review",
+    "models": [
+      {
+        "id": "building-architecture-rev-b.ifc",
+        "name": "building-architecture-rev-b.ifc",
+        "fingerprint": "0dfb7152db0a845747d2f35ee5ba9ba3772744072cb23040353c469c2a05f366"
+      }
+    ],
+    "totalModels": 1,
+    "modelMetadataTruncated": false,
+    "sourceAvailability": "available",
+    "reportProvenance": "unknown",
+    "totalRows": 1,
+    "includedRows": 1,
+    "sampled": false,
+    "projectionTruncated": false,
+    "evidence": {
+      "summary": {
+        "kind": "coordination-card",
+        "identity": "validated",
+        "state": "current",
+        "sources": [
+          "validation"
+        ],
+        "topics": [],
+        "relatedCards": 0,
+        "findingCount": 1,
+        "elements": [
+          {
+            "GlobalId": "0bo7_K6az7AA$4RxkSNVNM",
+            "model": "building-architecture-rev-b.ifc",
+            "ifcType": "IfcBuildingElementProxy",
+            "name": "Group#19",
+            "identity": "resolved"
+          }
+        ],
+        "humanDecision": null,
+        "limitations": "One coordination card from the review workspace. Findings were grouped only because they name exactly the same validated elements; nativeStatus is the source analysis status, verbatim. run.temporal=historical is saved earlier evidence and does not describe the live model. lifecycle no-longer-observed is a resolution candidate for a person to confirm, never a resolution; not-evaluated means no complete compatible run looked again. humanDecision is the reviewer's own status and comment; do not restate it as an engine result, and never propose changing native statuses or BCF topic status."
+      },
+      "rows": [
+        {
+          "citation": "E1",
+          "data": {
+            "kind": "reviewFinding",
+            "modelId": "building-architecture-rev-b.ifc",
+            "globalId": "0bo7_K6az7AA$4RxkSNVNM",
+            "status": "failed",
+            "source": "validation",
+            "run": {
+              "label": "Building Architecture IDS",
+              "temporal": "current",
+              "capturedAt": "2026-10-05T00:00:00.000Z",
+              "complete": true,
+              "incomplete": []
+            },
+            "lifecycle": "observed",
+            "title": "Building element proxies declare an ObjectType",
+            "detail": [
+              "Attribute \"\"ObjectType\"\" must exist · Attribute \"ObjectType\" is missing · expected attribute \"ObjectType\" to exist"
+            ],
+            "disciplineCandidates": [],
+            "storeys": [
+              "00 groundfloor"
+            ],
+            "elements": [
+              {
+                "GlobalId": "0bo7_K6az7AA$4RxkSNVNM",
+                "model": "building-architecture-rev-b.ifc"
+              }
+            ]
+          }
+        }
+      ]
+    }
+  },
+  "expect": {
+    "outcome": "completed",
+    "violations": [],
+    "proposal": null,
+    "review": {
+      "kind": "report"
+    }
+  }
+}

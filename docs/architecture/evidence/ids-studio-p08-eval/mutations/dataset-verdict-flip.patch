@@ -1,0 +1,13 @@
+diff --git a/scripts/ai-eval/ids/e2-dataset.mjs b/scripts/ai-eval/ids/e2-dataset.mjs
+index 50190c23d..4b96ab47b 100644
+--- a/scripts/ai-eval/ids/e2-dataset.mjs
++++ b/scripts/ai-eval/ids/e2-dataset.mjs
+@@ -113,7 +113,7 @@ export function e2DatasetErrors(cases, root = REPO_ROOT) {
+     if (record.corpusIds !== source.ids) errors.push(`${at}: corpusIds should be ${source.ids}`);
+     if (record.corpusIfc !== source.ifc) errors.push(`${at}: corpusIfc should be ${source.ifc}`);
+     if (!existsSync(join(root, source.ifc))) errors.push(`${at}: paired IFC ${source.ifc} is missing`);
+-    if (false && record.expected !== source.expected) errors.push(`${at}: expected should be ${source.expected} (from the file prefix)`);
++    if (record.expected !== source.expected) errors.push(`${at}: expected should be ${source.expected} (from the file prefix)`);
+     const versions = corpusIfcVersions(root, source.ids);
+     if (!Array.isArray(record.ifcVersion) || record.ifcVersion.join(' ') !== versions.join(' ')) {
+       errors.push(`${at}: ifcVersion should be ${JSON.stringify(versions)}`);

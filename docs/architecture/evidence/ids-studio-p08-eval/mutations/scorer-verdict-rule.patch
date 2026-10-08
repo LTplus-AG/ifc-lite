@@ -1,0 +1,13 @@
+diff --git a/scripts/ai-eval/ids/e2-scorer.mjs b/scripts/ai-eval/ids/e2-scorer.mjs
+index 99d5d81e8..ffeb6eb61 100644
+--- a/scripts/ai-eval/ids/e2-scorer.mjs
++++ b/scripts/ai-eval/ids/e2-scorer.mjs
+@@ -98,7 +98,7 @@ export async function createE2Scorer(options = {}) {
+       passed: result.passedCount,
+       failed: result.failedCount,
+     }));
+-    const verdict = specifications.some(spec => spec.status === 'failed') ? 'fail' : 'pass';
++    const verdict = specifications.some(spec => spec.status === 'fail') ? 'fail' : 'pass';
+     return { ...base, verdict, agreement: verdict === e2Case.expected, error: null, specifications };
+   }
+ 

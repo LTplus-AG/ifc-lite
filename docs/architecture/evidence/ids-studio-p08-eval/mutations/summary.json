@@ -1,0 +1,100 @@
+{
+  "dataset-duplicate-id": {
+    "verdict": "OBSERVED",
+    "exitCode": 0,
+    "reason": "reverting production turned an assertion RED in scripts/ai-eval/ids/e2-dataset.test.mjs; that file has a green, attributable baseline.",
+    "base": "c8ace0dda71b28873101ed3646b21325f1c53947",
+    "head": "208cd431a2488b2a61b40bacdf556c332102ebf0",
+    "production": [
+      "scripts/ai-eval/ids/e2-dataset.mjs"
+    ],
+    "tests": [
+      "scripts/ai-eval/ids/e2-dataset.test.mjs"
+    ],
+    "restoration": "verified"
+  },
+  "dataset-verdict-flip": {
+    "verdict": "OBSERVED",
+    "exitCode": 0,
+    "reason": "reverting production turned an assertion RED in scripts/ai-eval/ids/e2-dataset.test.mjs; that file has a green, attributable baseline.",
+    "base": "c8ace0dda71b28873101ed3646b21325f1c53947",
+    "head": "208cd431a2488b2a61b40bacdf556c332102ebf0",
+    "production": [
+      "scripts/ai-eval/ids/e2-dataset.mjs"
+    ],
+    "tests": [
+      "scripts/ai-eval/ids/e2-dataset.test.mjs"
+    ],
+    "restoration": "verified"
+  },
+  "e4-noop-edit": {
+    "verdict": "OBSERVED",
+    "exitCode": 0,
+    "reason": "reverting production turned an assertion RED in scripts/ai-eval/ids/e4-e5-datasets.test.mjs; that file has a green, attributable baseline.",
+    "base": "c8ace0dda71b28873101ed3646b21325f1c53947",
+    "head": "208cd431a2488b2a61b40bacdf556c332102ebf0",
+    "production": [
+      "scripts/ai-eval/ids/e4-e5-datasets.mjs"
+    ],
+    "tests": [
+      "scripts/ai-eval/ids/e4-e5-datasets.test.mjs"
+    ],
+    "restoration": "verified"
+  },
+  "e5-behaviour": {
+    "verdict": "OBSERVED",
+    "exitCode": 0,
+    "reason": "reverting production turned an assertion RED in scripts/ai-eval/ids/e4-e5-datasets.test.mjs; that file has a green, attributable baseline.",
+    "base": "c8ace0dda71b28873101ed3646b21325f1c53947",
+    "head": "208cd431a2488b2a61b40bacdf556c332102ebf0",
+    "production": [
+      "scripts/ai-eval/ids/e4-e5-datasets.mjs"
+    ],
+    "tests": [
+      "scripts/ai-eval/ids/e4-e5-datasets.test.mjs"
+    ],
+    "restoration": "verified"
+  },
+  "e5-invented-name": {
+    "verdict": "OBSERVED",
+    "exitCode": 0,
+    "reason": "reverting production turned an assertion RED in scripts/ai-eval/ids/e4-e5-datasets.test.mjs; that file has a green, attributable baseline.",
+    "base": "c8ace0dda71b28873101ed3646b21325f1c53947",
+    "head": "208cd431a2488b2a61b40bacdf556c332102ebf0",
+    "production": [
+      "scripts/ai-eval/ids/e4-e5-datasets.mjs"
+    ],
+    "tests": [
+      "scripts/ai-eval/ids/e4-e5-datasets.test.mjs"
+    ],
+    "restoration": "verified"
+  },
+  "scorer-empty-run": {
+    "verdict": "OBSERVED",
+    "exitCode": 0,
+    "reason": "reverting production turned an assertion RED in scripts/ai-eval/ids/e2-scorer.test.mjs; that file has a green, attributable baseline.",
+    "base": "c8ace0dda71b28873101ed3646b21325f1c53947",
+    "head": "208cd431a2488b2a61b40bacdf556c332102ebf0",
+    "production": [
+      "scripts/ai-eval/ids/e2-scorer.mjs"
+    ],
+    "tests": [
+      "scripts/ai-eval/ids/e2-scorer.test.mjs"
+    ],
+    "restoration": "verified"
+  },
+  "scorer-verdict-rule": {
+    "verdict": "OBSERVED",
+    "exitCode": 0,
+    "reason": "reverting production turned an assertion RED in scripts/ai-eval/ids/e2-scorer.test.mjs; that file has a green, attributable baseline.",
+    "base": "c8ace0dda71b28873101ed3646b21325f1c53947",
+    "head": "208cd431a2488b2a61b40bacdf556c332102ebf0",
+    "production": [
+      "scripts/ai-eval/ids/e2-scorer.mjs"
+    ],
+    "tests": [
+      "scripts/ai-eval/ids/e2-scorer.test.mjs"
+    ],
+    "restoration": "verified"
+  }
+}

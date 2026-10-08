@@ -33,3 +33,31 @@ export {
 export type { FacetFieldName } from './document/fields.js';
 export { fromIdsDocument, createStudioDocument, type FromIdsOptions } from './document/from-ids.js';
 export { locateNode, verifyNodeIndex } from './document/node-index.js';
+
+// Operation vocabulary v1 (IDS-017, IDS-018)
+export {
+  OPS_VERSION,
+  type Op,
+  type StudioOp,
+  type PrimitiveOp,
+  type CompoundOp,
+  type OpKind,
+  type OpOfKind,
+  type Scalar,
+  type XsdBase,
+  type ConstraintDraft,
+  type RawConstraint,
+  type ValueInput,
+  type FacetDraft,
+  type ConstraintIds,
+  type InfoField,
+  type SpecCardinality,
+  type SpecTextField,
+  type SpecPatch,
+  type FacetPatch,
+  type RequirementSnapshot,
+  type OpTemplate,
+  type TemplateOp,
+} from './ops/types.js';
+export { OP_KINDS, validateOp, getOpJsonSchema, type OpValidation } from './ops/schema.js';
+export type { SchemaError } from './ops/json-schema-lite.js';

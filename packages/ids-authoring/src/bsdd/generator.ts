@@ -38,7 +38,11 @@ export interface DictionaryIdsOptions {
   inheritProperties?: boolean;
   /** `required`: only properties bSDD marks required. Default `all`. */
   propertyScope?: 'required' | 'all';
-  /** Cardinality of each generated specification. Default `required`. */
+  /**
+   * Cardinality of each generated specification. Default `optional`: the
+   * requirements apply to the classified elements a model has, without
+   * demanding that every class occurs (lint IDSL-CARD-004 flags the latter).
+   */
   cardinality?: SpecCardinality;
   /** Where the classification facet goes. Default `applicability`. */
   classificationSection?: Section;
@@ -140,7 +144,7 @@ export function planDictionaryIds(input: DictionaryIdsInput): DictionaryIdsPlan 
             specId,
             name,
             ifcVersions: versions,
-            cardinality: options.cardinality ?? 'required',
+            cardinality: options.cardinality ?? 'optional',
             ...(g.classes.length === 1 ? { identifier: first.code } : {}),
             ...(g.classes.length === 1 && classes.get(first.uri)?.definition ? { description: classes.get(first.uri)?.definition } : {}),
           },

@@ -122,7 +122,9 @@ describe('preview and apply', () => {
     const preview = previewDictionaryIds(doc, p, lint);
     expect(preview.gate).toEqual({ ok: true, issues: [] });
     expect([preview.specCount, preview.applicabilityFacets, preview.requirements]).toEqual([5, 10, 18]);
-    expect(preview.lint.error).toBe(0);
+    expect(preview.lint).toMatchObject({ error: 0, warning: 0, byCode: { 'IDSL-ENT-003': 5 } }); // info: IfcWall also has IfcWallStandardCase, …
+    expect(preview.result?.ids.specifications.every((s) => s.minOccurs === 0)).toBe(true); // optional by default
+    expect(previewDictionaryIds(doc, plan({ cardinality: 'required' }), lint).lint.byCode['IDSL-CARD-004']).toBe(5);
     expect(doc.ids.specifications).toEqual([]); // the dry run left the document alone
     const state = commit(createStudioState(doc), p.ops, { source: { by: 'import', format: 'bsdd', ref: DEMO } }).state;
     expect(state.doc).toEqual(preview.result);

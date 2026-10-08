@@ -23,6 +23,12 @@ export interface MaterialReadView extends EffectiveEntityOverlay {
 export type MaterialRecordReader = (id: number) => EffectiveEntityRecord | null;
 const records = new WeakMap<IfcDataStore, WeakMap<MaterialReadView, { revision: number; rows: Map<number, EffectiveEntityRecord | null> }>>();
 
+/** STEP write markers are different from already-parsed literal source strings. */
+function writtenMarker(value: unknown): unknown {
+  if (typeof value !== 'string') return value;
+  return value.trim() === '$' ? null : value.trim() === '*' ? '*' : value;
+}
+
 /** Source-empty accessors may retain closures over bytes the transport did not supply. */
 export function materialRecordReader(store: IfcDataStore, view?: MaterialReadView | null): MaterialRecordReader {
   const extractor = new EntityExtractor(store.source);
@@ -44,10 +50,10 @@ export function materialRecordReader(store: IfcDataStore, view?: MaterialReadVie
       ? store.getEntity(id) : ref ? extractor.extractEntity(ref) : null;
     const base = created ?? source;
     if (!base?.attributes) return null;
-    const row = resolveEffectiveEntityRecord({ type: base.type, attributes: base.attributes }, {
+    const row = resolveEffectiveEntityRecord({ type: base.type, attributes: created ? base.attributes.map(writtenMarker) : base.attributes }, {
       retype: view?.getTypeMutations?.().get(id)?.newType,
-      named: view?.getAttributeMutationsForEntity?.(id).map(edit => [edit.name, edit.value === '$' || edit.value === '*' ? null : edit.value] as const) ?? [],
-      positional: view?.getPositionalMutationsForEntity?.(id) ?? [],
+      named: view?.getAttributeMutationsForEntity?.(id).map(edit => [edit.name, edit.value === '$' ? null : edit.value] as const) ?? [],
+      positional: [...(view?.getPositionalMutationsForEntity?.(id) ?? [])].map(([index, value]) => [index, writtenMarker(value)] as const),
     }, store.schemaVersion);
     row.attributes = row.attributes.map(value => Array.isArray(value) ? value.map(member => parsedWriteValue(member as IfcAttributeValue)) : parsedWriteValue(value as IfcAttributeValue));
     memo?.rows.set(id, row);

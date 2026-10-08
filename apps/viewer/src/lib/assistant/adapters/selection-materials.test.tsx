@@ -313,17 +313,20 @@ test('#7119 missing wire assignment graph leaves material totals unknown', async
 test('#7119 source material named edits, explicit empty text and positional precedence match STEP export', async () => {
   const store = await sample(); seedModel('names', 0, store, 52);
   const view = getOrCreateMutationView(useViewerStore, 'names'); assert.ok(view);
-  for (const name of ['', '$', 'Edited concrete']) {
+  for (const name of ['', '$', '*', 'Edited concrete']) {
     view.setAttribute(62, 'Name', name);
     const saved = await exportAndReparse('names', store);
     const native = extractAllMaterialsOnDemand(saved, 52)[0]; assert.ok(native);
     assert.equal(native.name, name === '$' ? undefined : name);
     assert.equal(rows()[0].materials[0].Name, native.name ?? null);
   }
-  view.setPositionalAttribute(62, 0, 'Positional concrete');
-  const saved = await exportAndReparse('names', store);
-  assert.equal(extractAllMaterialsOnDemand(saved, 52)[0].name, 'Positional concrete');
-  assert.equal(rows()[0].materials[0].Name, 'Positional concrete');
+  for (const name of ['', '$', '*', 'Positional concrete']) {
+    view.setPositionalAttribute(62, 0, name);
+    const saved = await exportAndReparse('names', store);
+    const native = extractAllMaterialsOnDemand(saved, 52)[0]; assert.ok(native);
+    assert.equal(native.name, name === '$' ? undefined : name);
+    assert.equal(rows()[0].materials[0].Name, native.name ?? null);
+  }
 });
 
 test('#7119 source type membership reassignment replaces inherited material evidence after export', async () => {
@@ -361,4 +364,20 @@ test('#7119 source-empty material field edits cannot reuse stale forwarded sourc
   assert.equal(rows()[0].materialCount, 1, 'the retained graph still proves one assignment');
   assert.deepEqual(rows()[0].materials, [{ type: null, verification: 'unverified' }],
     'edited fields cannot be reconstructed through the retained source closure');
+});
+
+
+// #7119 parsed quoted source text must not be confused with an authored STEP marker.
+test('#7119 literal source dollar text survives while authored material marker fields match export', async () => {
+  const source = (await sampleText()).replace("'concrete_reinforced_in-situ'", () => "'$'");
+  const store = await parseStep(source); seedModel('literal', 0, store, 52);
+  assert.equal(extractAllMaterialsOnDemand(store, 52)[0].name, '$');
+  assert.equal(rows()[0].materials[0].Name, '$');
+  const view = getOrCreateMutationView(useViewerStore, 'literal'); assert.ok(view); view.setExpressIdWatermark(100_000);
+  const material = view.createEntity('IfcMaterial', ['$', '*', null]);
+  view.createEntity('IfcRelAssociatesMaterial', ['0MaterialMarker0000001', null, null, null, ['#52'], `#${material.expressId}`]);
+  const saved = await exportAndReparse('literal', store);
+  assert.equal(extractAllMaterialsOnDemand(saved, 52)[1].name, undefined);
+  assert.equal(rows()[0].materials[1].Name, null);
+  assert.equal(rows()[0].materials[0].Name, '$');
 });

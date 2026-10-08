@@ -10,10 +10,13 @@ import type { DeviationDistances, Renderer } from '@ifc-lite/renderer';
 import { cleanup, click, render, type, waitFor } from '@/test/render.js';
 import { setGlobalRendererRef } from '@/hooks/useBCF';
 import { useViewerStore } from '@/store';
+import { activityCanceller, useActivityJournal } from '@/lib/activity/activity-journal';
+import { ActivityTrayList } from './activity/ActivityTrayList';
 import { DeviationPanel } from './DeviationPanel.js';
 
 afterEach(() => {
   cleanup();
+  useActivityJournal.setState({ jobs: [] });
   setGlobalRendererRef({ current: null });
   useViewerStore.getState().setPointCloudDeviationComputed(false);
   useViewerStore.getState().setPointCloudColorMode('rgb');
@@ -409,4 +412,33 @@ it('DeviationPanel #6833 a summary stored without its tolerance count (closed mi
   await waitFor(() => stub.readbacks.length === 2, 'readback started on mount');
   await act(async () => { stub.readbacks[1](ladder(1000, 0.04)); });
   await waitFor(() => useViewerStore.getState().pointCloudDeviationStatistics?.withinTolerance != null, 'tolerance count completed');
+});
+
+// #7121: analytical alternating-sign distances feed the real sliced tolerance
+// pass and CSV builder. Only GPU readback is supplied by the renderer boundary.
+it('Deviation CSV Activity Cancel drops publication and cannot cancel a later export (#7121)', async () => {
+  useActivityJournal.setState({ jobs: [] });
+  const stub = stubRenderer();
+  const container = render(<><DeviationPanel triangleCount={1} /><ActivityTrayList /></>);
+  await computeWith(container, stub, ladder(1000, 0.04));
+  let oldCancel: (() => void) | null = null;
+  const downloads = await captureDownloads(async () => {
+    click(button(container, 'Export CSV')!);
+    const first = useActivityJournal.getState().jobs.at(-1)!;
+    oldCancel = activityCanceller(first.id);
+    assert.ok(oldCancel);
+    const trayCancel = container.querySelector<HTMLButtonElement>('button[aria-label="Cancel Export"]');
+    assert.ok(trayCancel);
+    click(trayCancel);
+    await waitFor(() => useActivityJournal.getState().jobs.at(-1)?.outcome === 'cancelled', 'CSV cancellation settled');
+    assert.equal(activityCanceller(first.id), null);
+    click(button(container, 'Export CSV')!);
+    oldCancel();
+    assert.equal(container.querySelector('[data-testid="deviation-export-notice"]')?.textContent ?? '', '', 'old cancellation cannot change retry feedback');
+    await waitFor(() => useActivityJournal.getState().jobs.at(-1)?.outcome === 'completed', 'next native CSV completed');
+    assert.equal(activityCanceller(useActivityJournal.getState().jobs.at(-1)!.id), null);
+  });
+  assert.equal(downloads.length, 1, 'cancelled export offers no file, retry publishes exactly once');
+  assert.match(downloads[0].text, /WithinTolerancePoints/);
+  assert.deepEqual(useActivityJournal.getState().jobs.map(job => job.outcome), ['cancelled', 'completed']);
 });

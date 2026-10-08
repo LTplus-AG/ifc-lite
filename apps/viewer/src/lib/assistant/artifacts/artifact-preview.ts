@@ -41,10 +41,11 @@ export async function previewFilterGroups(name: string, groups: FilterProposal['
 }
 
 /** Run `proposal` through its native engine against `state`. Throws the engine's own refusal. */
-export async function previewArtifact(answer: ArtifactProposal, state: ViewerState, signal?: AbortSignal): Promise<ArtifactPreview> {
+export async function previewArtifact(answer: ArtifactProposal, state: ViewerState, signal?: AbortSignal, pinnedScope?: CapturedEntityScope): Promise<ArtifactPreview> {
   // Model names become fingerprints first, so no engine ever sees a name it would silently match nothing with.
   const proposal = resolveModelNames(answer, state.models);
-  const captured = proposal.kind !== 'chart.proposal' && proposal.scope && proposal.scope !== 'all' ? captureArtifactScope(proposal.scope, state) : undefined;
+  const captured = proposal.kind !== 'chart.proposal' && proposal.scope && proposal.scope !== 'all'
+    ? pinnedScope ?? captureArtifactScope(proposal.scope, state) : undefined;
   await groundClassificationSelectors(proposal, state, signal);
   switch (proposal.kind) {
     case 'filter.proposal': return previewFilterGroups(proposal.name, proposal.groups, state, signal, captured);

@@ -8,6 +8,14 @@ import { useTranslation } from '@/i18n';
 import { captureArtifactScope } from '@/lib/captured-artifact-scope';
 import { useViewerStore } from '@/store';
 
+export function CapturedScopeSummary({ scope }: { scope: CapturedEntityScope }) {
+  const { t } = useTranslation();
+  return <p>{t(scope.mode === 'selected' ? 'capturedArtifacts.selectedCaption' : 'capturedArtifacts.visibleCaption', {
+    count: scope.sources.reduce((count, source) => count + source.members.length, 0),
+    files: t('capturedArtifacts.files', { count: scope.sources.length }),
+  })}</p>;
+}
+
 /** Membership changes only on an explicit capture or clear action (#7186). */
 export function CapturedScopeControl({ scope, onChange }: {
   scope?: CapturedEntityScope;
@@ -23,9 +31,7 @@ export function CapturedScopeControl({ scope, onChange }: {
   };
   return <fieldset className="space-y-2 rounded border border-border p-2 text-xs">
     <legend className="px-1 font-medium">{t('capturedArtifacts.population')}</legend>
-    <p>{scope ? t(scope.mode === 'selected' ? 'capturedArtifacts.selectedCaption' : 'capturedArtifacts.visibleCaption', {
-      count: scope.sources.reduce((count, source) => count + source.members.length, 0), files: t('capturedArtifacts.files', { count: scope.sources.length }),
-    }) : t('capturedArtifacts.all')}</p>
+    {scope ? <CapturedScopeSummary scope={scope} /> : <p>{t('capturedArtifacts.all')}</p>}
     <div className="flex flex-wrap gap-1">
       <Button type="button" size="sm" variant="outline" onClick={() => capture('selected')}>{t('capturedArtifacts.captureSelected')}</Button>
       <Button type="button" size="sm" variant="outline" onClick={() => capture('visible')}>{t('capturedArtifacts.captureVisible')}</Button>

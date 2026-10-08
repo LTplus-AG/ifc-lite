@@ -57,6 +57,15 @@ export type PreviewArtifact =
   | { kind: 'lens.proposal'; lens: Lens }
   | { kind: 'chart.proposal'; spec: ChartSpec; scope: ChartScope };
 
+export function artifactCapturedScope(artifact: PreviewArtifact): import('@ifc-lite/rules').CapturedEntityScope | undefined {
+  switch (artifact.kind) {
+    case 'filter.proposal': return artifact.capturedScope;
+    case 'list.proposal': return artifact.definition.capturedScope;
+    case 'lens.proposal': return artifact.lens.capturedScope;
+    case 'chart.proposal': return undefined;
+  }
+}
+
 /** `scope`: a chart's `chartScopeKey`, what a visible or basket chart counts beyond the models; `null` otherwise. */
 export interface PreviewRevision { models: object; mutationVersion: number; scope: string | object | null;
   analysis?: { source: AnalysisChartSource; inputs: readonly unknown[]; fingerprint: string }; }

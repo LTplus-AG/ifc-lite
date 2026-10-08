@@ -13,7 +13,9 @@
 
 import { useShallow } from 'zustand/react/shallow';
 import { analysisChartInputs, isAnalysisChartSource } from '@/lib/assistant/artifacts/analysis-chart';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import type { CapturedEntityScope } from '@ifc-lite/rules';
+import { captureArtifactScope } from '@/lib/captured-artifact-scope';
 import { CheckCircle2, ClipboardCheck, ExternalLink, Save } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useTranslation, type TranslationKey } from '@/i18n';
@@ -65,6 +67,7 @@ function ArtifactReview({ initial, onAsk }: { initial: ArtifactProposal; onAsk: 
   const mutationViews = useViewerStore((s) => s.mutationViews);
   const mutationVersion = useViewerStore((s) => s.mutationVersion);
   const [proposal, setProposal] = useState(initial);
+  const pinnedScope = useRef<CapturedEntityScope | undefined>(undefined);
   const analysis = proposal.kind === 'chart.proposal' && isAnalysisChartSource(proposal.chart.source);
   const sourceInputs = useViewerStore(useShallow((s) => proposal.kind === 'chart.proposal' && isAnalysisChartSource(proposal.chart.source)
     ? analysisChartInputs(proposal.chart.source, s) : []));
@@ -101,7 +104,14 @@ function ArtifactReview({ initial, onAsk }: { initial: ArtifactProposal; onAsk: 
     const controller = new AbortController();
     setRunning(true);
     setError(null);
-    previewArtifact(proposal, useViewerStore.getState(), controller.signal)
+    const run = async () => {
+      const state = useViewerStore.getState();
+      if (proposal.kind !== 'chart.proposal' && proposal.scope && proposal.scope !== 'all' && !pinnedScope.current) {
+        pinnedScope.current = captureArtifactScope(proposal.scope, state);
+      }
+      return previewArtifact(proposal, state, controller.signal, pinnedScope.current);
+    };
+    run()
       .then((next) => { if (!controller.signal.aborted) setPreview(next); })
       .catch((reason: unknown) => {
         if (controller.signal.aborted) return;

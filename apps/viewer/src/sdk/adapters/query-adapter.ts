@@ -136,7 +136,7 @@ export function createQueryAdapter(store: StoreApi): QueryBackendMethods {
     const state = store.getState();
     const model = getModelForRef(state, ref.modelId);
     if (!model?.ifcDataStore) return [];
-    return extractClassificationsOnDemand(model.ifcDataStore, ref.expressId);
+    return extractClassificationsOnDemand(model.ifcDataStore, ref.expressId, getMutationViewForModel(store, ref.modelId) ?? undefined);
   }
 
   function getMaterials(ref: EntityRef): MaterialData | null {

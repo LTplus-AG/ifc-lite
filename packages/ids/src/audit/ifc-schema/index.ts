@@ -41,7 +41,7 @@ import type {
 import type { IDSAuditIssue, IDSAuditOptions } from '../types.js';
 import { assertGuardedRegexPattern, UnsafeRegexPatternError } from '@ifc-lite/regex-guard';
 import { checkDataTypeMatch, checkRestrictionBase, checkSimpleValueLexical } from './datatype-check.js';
-import { rowForAlias } from '../../facets/ifc2x3-type-mapping.js';
+import { rowForAlias, rowsForOccurrence } from '../../facets/ifc2x3-type-mapping.js';
 import { auditAttributeValueType } from './attribute-value.js';
 import { auditEntityNameCase, auditEntityRequirement } from './entity-requirement.js';
 
@@ -289,15 +289,44 @@ async function auditEntityFacet(
     });
     return;
   }
-  if (facet.predefinedType && entity.predefinedTypes.length > 0) {
-    checkPredefinedType(
-      facet.predefinedType,
-      entity,
-      version,
-      `${path}.predefinedType`,
-      issues
-    );
+  await auditPredefinedType(facet, entity, version, `${path}.predefinedType`, issues);
+}
+
+/**
+ * A predefinedType constraint needs a PredefinedType somewhere IDS looks
+ * for one (IDS-008): on the entity, or on its type object (IFC2X3 IfcWall
+ * has none, IfcWallType does). IFC2X3's IfcInventory has neither (only
+ * `InventoryType`), so a predefinedType on it can never match (corpus:
+ * partof/invalid-a_group_predefined_type_must_match_exactly_1_2, listing
+ * IFC2X3 and IFC4). Generic IFC2X3 occurrences typed through the IDS
+ * mapping table (IfcFlowTerminal, …) are left alone.
+ */
+async function auditPredefinedType(
+  facet: IDSEntityFacet,
+  entity: IfcEntityInfo,
+  version: IfcSchemaVersion,
+  path: string,
+  issues: IDSAuditIssue[]
+): Promise<void> {
+  if (!facet.predefinedType) return;
+  if (entity.predefinedTypes.length > 0) {
+    checkPredefinedType(facet.predefinedType, entity, version, path, issues);
+    return;
   }
+  const typeObject = await findEntity(version, `${entity.name}Type`);
+  if (typeObject && typeObject.predefinedTypes.length > 0) {
+    checkPredefinedType(facet.predefinedType, typeObject, version, path, issues);
+    return;
+  }
+  if (typeObject || rowsForOccurrence(entity.name.toUpperCase()).length > 0) return;
+  issues.push({
+    severity: 'error',
+    code: 'E_IFC_PREDEF_TYPE_INVALID',
+    message: `${entity.name} has no PredefinedType in ${version}, so a predefinedType constraint on it can never match`,
+    path,
+    facetType: 'entity',
+    detail: { entity: entity.name, version },
+  });
 }
 
 function checkPredefinedType(
@@ -801,6 +830,7 @@ async function auditPartOfFacet(
         },
       });
     }
+    await auditPredefinedType(facet.entity, entity, version, `${path}.entity.predefinedType`, issues);
   }
   // The applicability entity (the "thing we're filtering on") must be a
   // subtype of the relation's `member` constraint, e.g. an

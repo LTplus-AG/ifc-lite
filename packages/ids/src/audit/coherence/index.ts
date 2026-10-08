@@ -74,6 +74,20 @@ function auditSpec(
     });
   }
 
+  // A prohibited specification (maxOccurs="0") says "no element may be
+  // applicable"; requirements on elements that must not exist are
+  // meaningless, and the IDS corpus treats them as invalid (IDS-008;
+  // ids/invalid-prohibited_specifications_invalid_if_requirements_are_specified).
+  if (max === 0 && spec.requirements.length > 0) {
+    issues.push({
+      severity: 'error',
+      code: 'E_CARDINALITY_INVALID',
+      message: `a prohibited specification (maxOccurs="0") cannot have requirements; it has ${spec.requirements.length}`,
+      path: `${path}.requirements`,
+      detail: { requirements: spec.requirements.length },
+    });
+  }
+
   // Upstream IDS-Audit-tool flags `cardinality` on `<applicability>` —
   // it's meaningless there. (Report 202)
   if (spec.applicability.cardinality) {

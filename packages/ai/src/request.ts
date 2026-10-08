@@ -154,6 +154,7 @@ export async function runModelRequest<Message, Route extends string>(
   let timedOut = false;
   const abortFromCaller = () => controller.abort(signal?.reason);
   signal?.addEventListener('abort', abortFromCaller, { once: true });
+  const deadlineAt = performance.now() + timeoutMs;
   const deadline = setTimeout(() => { timedOut = true; controller.abort(new Error('request-timeout')); }, timeoutMs);
 
   const seen: Seen = { streamed: false, finishReason: null, text: null, failure: null, usage: null };
@@ -161,25 +162,28 @@ export async function runModelRequest<Message, Route extends string>(
     hooks.onStart?.({ id, model: request.model, route: request.route, startedAt, cancel: () => controller.abort() });
     if (!controller.signal.aborted) {
       const inputDigest = logicalInputDigest({ version: 'ifc-lite.ai.logical-input.v1', system: request.system, messages: request.messages, outputSchema: request.outputSchema });
-      provenance = {
-        contractVersion: 'ifc-lite.ai.request.v1', grantedOutputTokens: grant.maxOutputTokens, timeoutMs, finishReason: 'unknown',
-        ...(typeof request.promptVersion === 'string' && /^[A-Za-z0-9][A-Za-z0-9._-]{0,199}$/.test(request.promptVersion) ? { promptVersion: request.promptVersion } : {}),
-        ...('value' in inputDigest ? { inputDigest: { algorithm: 'sha256', referent: 'logical-input.v1', value: inputDigest.value } } : { inputDigestUnavailable: inputDigest.unavailable }),
-      };
-      await request.transport({
-      model: request.model,
-      messages: request.messages,
-      system: request.system,
-      outputSchema: request.outputSchema,
-      onOutputFormat: format => { outputFormat = format; },
-      maxOutputTokens: grant.maxOutputTokens,
-      signal: controller.signal,
-      onChunk: text => { seen.streamed = true; request.onChunk?.(text); },
-      onFinishReason: reason => { seen.finishReason = reason; },
-      onComplete: text => { seen.text = text; },
-      onError: error => { seen.failure ??= error; },
-      onTokenUsage: reported => { seen.usage = reported; },
-      });
+      if (performance.now() >= deadlineAt) { timedOut = true; controller.abort(new Error('request-timeout')); }
+      if (!controller.signal.aborted) {
+        provenance = {
+          contractVersion: 'ifc-lite.ai.request.v1', grantedOutputTokens: grant.maxOutputTokens, timeoutMs, finishReason: 'unknown',
+          ...(typeof request.promptVersion === 'string' && /^[A-Za-z0-9][A-Za-z0-9._-]{0,199}$/.test(request.promptVersion) ? { promptVersion: request.promptVersion } : {}),
+          ...('value' in inputDigest ? { inputDigest: { algorithm: 'sha256', referent: 'logical-input.v1', value: inputDigest.value } } : { inputDigestUnavailable: inputDigest.unavailable }),
+        };
+        await request.transport({
+          model: request.model,
+          messages: request.messages,
+          system: request.system,
+          outputSchema: request.outputSchema,
+          onOutputFormat: format => { outputFormat = format; },
+          maxOutputTokens: grant.maxOutputTokens,
+          signal: controller.signal,
+          onChunk: text => { seen.streamed = true; request.onChunk?.(text); },
+          onFinishReason: reason => { seen.finishReason = reason; },
+          onComplete: text => { seen.text = text; },
+          onError: error => { seen.failure ??= error; },
+          onTokenUsage: reported => { seen.usage = reported; },
+        });
+      }
     }
   } catch (error) {
     seen.failure ??= error instanceof Error ? error : new Error(String(error));

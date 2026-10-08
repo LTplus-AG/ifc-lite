@@ -212,3 +212,32 @@ it('retains a full digest across the established viewer context and image size c
   expect(result.receipt).toMatchObject({ provenance: { inputDigest: { value: sha(logical) } } });
   expect(result.receipt.provenance).not.toHaveProperty('inputDigestUnavailable');
 });
+
+it('does not dispatch after the actual parent deadline elapsed during native logical hashing', async () => {
+  let phaseStarted = 0, handoffElapsed = 0, dispatched = false;
+  const budget = createRootBudget({ maxRequests: 1, maxOutputTokens: 100 });
+  const result = await runModelRequest({ model: 'native-test', route: 'test', messages: ['A'.repeat(1_200_000)],
+    budget, maxOutputTokens: 100, routeCeiling: 80, timeoutMs: 1,
+    transport: async call => {
+      dispatched = true; handoffElapsed = performance.now() - phaseStarted;
+      call.onChunk(output); call.onComplete(output);
+    } }, { onStart: () => { phaseStarted = performance.now(); } });
+  const elapsed = performance.now() - phaseStarted;
+  expect(elapsed).toBeGreaterThanOrEqual(1); // Measured native preparation exceeded the real timer, no fake clock.
+  expect({ kind: result.kind, dispatched, handoffElapsed }).toMatchObject({ kind: 'timeout', dispatched: false });
+  if (result.kind !== 'timeout') throw new Error('Expected native pre-handoff timeout');
+  expect(result.receipt).not.toHaveProperty('provenance');
+  expect(budget.outputTokens).toBe(0);
+});
+
+it('leaves accessor-induced caller cancellation to the actual native transport instead of metadata', async () => {
+  const controller = new AbortController(); let dispatched = false;
+  const message = { role: 'user', get content() { controller.abort(); return 'caller cancelled during preparation'; } };
+  const result = await runModelRequest({ model: 'native-test', route: 'test', messages: [message], signal: controller.signal,
+    budget: createRootBudget({ maxRequests: 1, maxOutputTokens: 100 }), maxOutputTokens: 100, routeCeiling: 80, timeoutMs: 100,
+    transport: async call => { dispatched = true; void call.messages[0].content; call.onChunk(output); call.onComplete(output); } });
+  expect(result.kind).toBe('cancelled');
+  expect(dispatched).toBe(true);
+  if (result.kind !== 'cancelled') throw new Error('Expected native caller cancellation');
+  expect(result.receipt).toMatchObject({ provenance: { inputDigestUnavailable: 'non-json-input', grantedOutputTokens: 80 } });
+});

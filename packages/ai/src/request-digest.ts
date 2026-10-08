@@ -12,14 +12,14 @@ export const textDigest = (text: string): string => bytesToHex(sha256(encoder.en
  * Generic hosts may supply non-JSON messages. Those remain explicitly unknown;
  * never hash String(value), a credential-bearing host config, or a guessed wire body.
  */
-export function logicalInputDigest(value: unknown): { value: string } | { unavailable: 'non-json-input' | 'digest-limit' } {
+function digestDataProperties(value: unknown): { value: string } | { unavailable: 'non-json-input' | 'digest-limit' } {
   type Task = { value: unknown } | { token: string } | { leave: object };
   const pending: Task[] = [{ value }];
   const active = new Set<object>();
   const tokens: string[] = [];
   // Digest-only limits exceed the viewer's 90k context + 1.2M image contract.
   const maxChars = 4_000_000, maxValues = 100_000;
-  let chars = 0, values = 0;
+  let chars = 0, values = 0, fields = 0;
   const token = (text: string) => { chars += text.length; if (chars > maxChars) return false; tokens.push(text); return true; };
   const limited = () => ({ unavailable: 'digest-limit' as const });
   while (pending.length) {
@@ -36,27 +36,44 @@ export function logicalInputDigest(value: unknown): { value: string } | { unavai
     if (typeof current !== 'object' || !current || active.has(current)) return { unavailable: 'non-json-input' };
     const array = Array.isArray(current);
     if (!array && Object.getPrototypeOf(current) !== Object.prototype && Object.getPrototypeOf(current) !== null) return { unavailable: 'non-json-input' };
+    const descriptors = Object.getOwnPropertyDescriptors(current);
+    const ownKeys = Object.keys(descriptors); fields += ownKeys.length;
+    if (fields + values > maxValues) return limited();
+    if (ownKeys.some(key => !('value' in descriptors[key])) || typeof descriptors.toJSON?.value === 'function') return { unavailable: 'non-json-input' };
     active.add(current);
     pending.push({ leave: current }, { token: array ? ']' : '}' });
     if (array) {
-      if (current.length > maxValues - values) return limited();
-      for (let i = current.length - 1; i >= 0; i--) {
-        pending.push({ value: current[i] === undefined ? null : current[i] });
+      if (descriptors.length.value > maxValues - values) return limited();
+      for (let i = descriptors.length.value - 1; i >= 0; i--) {
+        const item = descriptors[String(i)]?.value;
+        pending.push({ value: item === undefined ? null : item });
         if (i) pending.push({ token: ',' });
       }
     } else {
-      const record = current as Record<string, unknown>;
-      const ownKeys = Object.keys(record);
-      if (ownKeys.length > maxValues - values) return limited();
-      const keys = ownKeys.filter(key => record[key] !== undefined).sort();
+      const keys = ownKeys.filter(key => descriptors[key].enumerable && descriptors[key].value !== undefined).sort();
       if (keys.some(key => key.length > maxChars)) return limited();
       for (let i = keys.length - 1; i >= 0; i--) {
         const key = keys[i];
-        pending.push({ value: record[key] }, { token: ':' }, { token: JSON.stringify(key) });
+        pending.push({ value: descriptors[key].value }, { token: ':' }, { token: JSON.stringify(key) });
         if (i) pending.push({ token: ',' });
       }
     }
     pending.push({ token: array ? '[' : '{' });
   }
   return { value: textDigest(tokens.join('')) };
+}
+
+/** Metadata cannot invoke accessors or make an opaque host input fail its native transport. */
+export function logicalInputDigest(value: unknown): { value: string } | { unavailable: 'non-json-input' | 'digest-limit' } {
+  try {
+    const result = digestDataProperties(value);
+    if ('unavailable' in result) return result;
+    // Native clone rejection detects proxies that can expose a different value than their descriptors.
+    // Probe only after bounded accessor-free traversal; never expand an unbounded input first.
+    structuredClone(value);
+    return result;
+  } catch {
+    console.warn('AI logical-input digest unavailable: unsupported non-data input');
+    return { unavailable: 'non-json-input' };
+  }
 }

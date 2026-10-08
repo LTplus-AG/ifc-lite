@@ -16,6 +16,7 @@ import { previewModelAuthoring } from './model-authoring-preview';
 import { commitModelAuthoring } from './model-authoring-commit';
 import { readOnlyModelEditTarget } from './model-authoring-read-target';
 import { readAuthoringSizeFromTarget } from './model-authoring-size';
+import { nativeLayerEvidence, type NativeLayerEvidence } from './native-layer-evidence';
 import { captureSelectionGrounding } from './selection-grounding';
 import { attachmentsForSend } from '@/components/viewer/assistant/ComposerAttachments';
 import { captureEvidence } from '@/lib/assistant/evidence';
@@ -105,6 +106,70 @@ for (const attached of [false, true]) {
     };
     assert.equal(await sendAssistant('Review current native layers', 'openai/gpt-free', '/api/chat',
       selection ? attachmentsForSend({ selection, screenshot: null }) : undefined), true);
-    assert.match(body, /nativeLayers/, 'the real provider input must include complete native layer expectations rather than only material names');
+    const wire: { system: string | Array<{ text: string }>; messages: Array<{ role: string; content: string }> } = JSON.parse(body);
+    let evidence: NativeLayerEvidence;
+    if (attached) {
+      const text = wire.messages.findLast(message => message.role === 'user')?.content;
+      assert.ok(text);
+      const elements: Array<{ nativeLayers: NativeLayerEvidence }> = JSON.parse(text.split('\n').at(-1)!);
+      evidence = elements[0].nativeLayers;
+    } else {
+      const system = typeof wire.system === 'string' ? wire.system : wire.system.map(block => block.text).join('');
+      const frozen = system.split('Frozen native evidence:\n')[1]?.split('\n')[0];
+      assert.ok(frozen);
+      const captured: { evidence: { rows: Array<{ data: { nativeLayers: NativeLayerEvidence } }> } } = JSON.parse(frozen);
+      evidence = captured.evidence.rows[0].data.nativeLayers;
+    }
+    assert.equal(evidence.status, 'available');
+    assert.equal(evidence.units, 'm');
+    assert.equal(evidence.layerCount, 2);
+    assert.deepEqual(evidence.expected?.MaterialLayers.map(layer => [layer.LayerThickness, layer.Material?.Name]),
+      [[.25, 'Explicit masonry'], [.05, 'Explicit finish']], 'actual provider JSON carries independently exported native values');
+    assert.equal(evidence.expected?.wall?.kind, 'wall');
   });
 }
+
+
+test('#7275 canonical layer snapshot follows named current thickness proven by native STEP', async () => {
+  const { dataStore, view, target, layers } = await inspectorControl();
+  const set = view.getNewEntity(layers.layerSetId);
+  assert.ok(set && Array.isArray(set.attributes[0]));
+  const first = Number(String(set.attributes[0][0]).replace(/^#/, ''));
+  assert.ok(first > 0);
+  view.setAttribute(first, 'LayerThickness', '200');
+  const parsed = await parseIfc(editedModelBytes(dataStore, view));
+  const exported = layerSetOf({ dataStore: parsed, view: new MutablePropertyView(parsed.properties ?? null, SAMPLE_MODEL) }, target);
+  assert.equal(exported?.layers[0].thickness, .2, 'actual named native edit exports as 200 mm');
+  const state = useViewerStore.getState();
+  const evidence = nativeLayerEvidence(state, readOnlyModelEditTarget(state, SAMPLE_MODEL), target);
+  assert.equal(evidence.expected?.MaterialLayers[0].LayerThickness, .2, 'provider expectation must match the same effective native record');
+});
+
+
+test('#7275 complete native layer counts survive the detail bound and capture stays read-only', async () => {
+  const { view, target } = await inspectorControl();
+  assert.ok(applyMaterialLayers(SAMPLE_MODEL, { kind: 'wall', target: 'element', elementId: target, typeId: null,
+    layers: Array.from({ length: 33 }, () => ({ thickness: .01, material: null })) }) !== null);
+  const lease = view.prepareAtomic(() => undefined);
+  const state = useViewerStore.getState();
+  const evidence = nativeLayerEvidence(state, readOnlyModelEditTarget(state, SAMPLE_MODEL), target);
+  assert.equal(evidence.status, 'truncated');
+  assert.equal(evidence.layerCount, 33);
+  assert.equal(evidence.assignmentCount, 1);
+  assert.equal(evidence.expected, null, 'an incomplete expected population must never authorize a write');
+  captureSelectionGrounding(state);
+  assert.doesNotThrow(lease.validate, 'no live journal, allocator watermark or identity is changed by evidence reads');
+});
+
+test('#7275 unknown source-free unit provenance does not invent an available layer expectation', async () => {
+  const { dataStore, target } = await inspectorControl();
+  const state = useViewerStore.getState();
+  const model = state.models.get(SAMPLE_MODEL)!;
+  const unavailable = { ...state, models: new Map([[SAMPLE_MODEL, { ...model,
+    ifcDataStore: { ...dataStore, source: new Uint8Array(0), lengthUnitScale: undefined } }]]) };
+  const evidence = nativeLayerEvidence(unavailable, readOnlyModelEditTarget(unavailable, SAMPLE_MODEL), target);
+  assert.equal(evidence.status, 'unavailable');
+  assert.equal(evidence.layerCount, null);
+  assert.equal(evidence.assignmentCount, null);
+  assert.equal(evidence.expected, null);
+});

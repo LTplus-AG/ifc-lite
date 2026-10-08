@@ -109,9 +109,9 @@ export {
   type MeshData as IfcxMeshData,
   type PointCloudExtraction,
 } from '@ifc-lite/ifcx';
-
 // New extractors with 100% schema coverage
 export { extractMaterials, getMaterialForElement, getMaterialNameForElement, type MaterialsData, type Material, type MaterialLayer, type MaterialLayerSet } from './material-extractor.js';
+export { materialAssignmentsAvailable } from './material-overlay.js';
 export { extractGeoreferencing, computeTransformMatrix, transformToWorld, transformToLocal, getCoordinateSystemDescription, computeAngleToGridNorth, type GeoreferenceInfo, type MapConversion, type ProjectedCRS } from './georef-extractor.js';
 export { extractClassifications, getClassificationsForElement, getClassificationCodeForElement, getClassificationPath, groupElementsByClassification, type ClassificationsData, type Classification, type ClassificationReference } from './classification-extractor.js';
 
@@ -398,5 +398,3 @@ export async function parseAuto(
 
   throw new Error('Unknown file format. Expected IFC (STEP) or IFCX (JSON).');
 }
-
-export { materialAssignmentsAvailable } from './material-overlay.js';

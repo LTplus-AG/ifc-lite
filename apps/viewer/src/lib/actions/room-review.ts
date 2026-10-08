@@ -83,17 +83,21 @@ function sources(state: ViewerState) {
   return [...state.models].map(([id, model]) => ({ id, store: model.ifcDataStore, source: model.ifcDataStore?.source,
     hash: model.sourceContentHash, view: state.mutationViews.get(id), revision: state.mutationViews.get(id)?.getMutationRevision() }));
 }
-function sourcesCurrent(captured: ReturnType<typeof sources>, state: ViewerState): boolean {
+function sourceIdentitiesCurrent(captured: ReturnType<typeof sources>, state: ViewerState): boolean {
   return captured.length === state.models.size && captured.every(row => {
     const model = state.models.get(row.id);
-    return !!model && model.ifcDataStore === row.store && model.ifcDataStore?.source === row.source && model.sourceContentHash === row.hash
-      && state.mutationViews.get(row.id) === row.view && state.mutationViews.get(row.id)?.getMutationRevision() === row.revision;
+    return !!model && model.ifcDataStore === row.store && model.ifcDataStore?.source === row.source && model.sourceContentHash === row.hash;
   });
+}
+function sourcesCurrent(captured: ReturnType<typeof sources>, state: ViewerState): boolean {
+  return sourceIdentitiesCurrent(captured, state) && captured.every(row => state.mutationViews.get(row.id) === row.view
+    && state.mutationViews.get(row.id)?.getMutationRevision() === row.revision);
 }
 
 /** Explicit preparation only: current native meshes/candidates plus a detached canonical writer preview. */
 export async function prepareRoomReview(proposal: RoomProposal, signal: AbortSignal): Promise<RoomReview> {
   const state = useViewerStore.getState();
+  const inputSources = sources(state);
   const storeyId = target(state, proposal.modelId, proposal.storey, 'IfcBuildingStorey');
   const command = proposal.command.action === 'update'
     ? { ...proposal.command, expressIds: (proposal.rooms ?? []).map(root => target(state, proposal.modelId, root, 'IfcSpace')) }
@@ -102,6 +106,7 @@ export async function prepareRoomReview(proposal: RoomProposal, signal: AbortSig
   try {
     signal.throwIfAborted();
     const current = useViewerStore.getState();
+    if (!sourceIdentitiesCurrent(inputSources, current)) throw new Error('The loaded source identity changed during native Room preparation; prepare again');
     if (target(current, proposal.modelId, proposal.storey, 'IfcBuildingStorey') !== storeyId) throw new Error('The storey changed while Room geometry was preparing');
     const rooms = roomPopulation(current, proposal.modelId, storeyId);
     if (command.action === 'update' && command.expressIds.some(id => !rooms.some(room => room.expressId === id))) throw new Error('A selected room no longer belongs to this storey');
@@ -129,12 +134,6 @@ export async function prepareRoomReview(proposal: RoomProposal, signal: AbortSig
     };
     return { proposal, snapshot, prepared, validate, commit: () => { validate(); return prepared.commit(); }, dispose: prepared.dispose };
   } catch (error) { prepared.dispose(); throw error; }
-}
-
-/** Known complete snapshots only; private native approval ownership never goes into a provider payload. */
-export function roomGroundingText(review: RoomReview): string {
-  review.validate();
-  return `Explicitly attached complete native Room snapshot (SI metres; no edit executed):\n${JSON.stringify(review.snapshot)}`;
 }
 
 /** Explicit attachment owns only immutable evidence, never a plate or a commit capability. */

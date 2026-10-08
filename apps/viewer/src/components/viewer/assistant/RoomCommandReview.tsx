@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { useTranslation } from '@/i18n';
 import { useViewerStore } from '@/store';
 import { RoomNativePreview } from './RoomNativePreview';
-import { prepareRoomReview, roomGroundingText, type RoomReview } from '@/lib/actions/room-review';
+import { prepareRoomReview, type RoomReview } from '@/lib/actions/room-review';
 import type { RoomProposal } from '@/lib/actions/room-command-proposal';
 import type { RoomCommandResult } from '@ifc-lite/sdk';
 import { commitReviewedRoom } from '@/lib/actions/room-receipt';
@@ -93,7 +93,7 @@ export function RoomCommandReview({ proposal, origin, onAttach }: { proposal: Ro
       {!applied && <label className="flex items-center gap-2"><input type="checkbox" checked={approved} onChange={event => setApproved(event.target.checked)} />{t('roomReview.approveAction')}</label>}
       {!applied && <Button size="sm" disabled={!approved || stale} onClick={apply}>{t('roomReview.apply')}</Button>}
       {onAttach && !applied && !stale && <Button size="sm" variant="outline" onClick={() => {
-        try { roomGroundingText(review); onAttach(review); }
+        try { review.validate(); onAttach(review); }
         catch (error) { console.warn('[Assistant] Room attachment refused', error); setProblem(error instanceof Error ? error.message : String(error)); }
       }}>{t('roomReview.attach')}</Button>}
     </>}

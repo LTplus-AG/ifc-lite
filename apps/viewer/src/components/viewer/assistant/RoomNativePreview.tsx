@@ -31,9 +31,15 @@ export function RoomNativePreview({ review }: { review: RoomReview }) {
   const height = Math.max(1, Math.max(...points.map(p => p[1])) - minY);
   const margin = Math.max(width, height) * .04;
   const command = proposal.command;
+  const operation = command.action === 'edit' ? command.operation : null;
+  const point = (value: readonly number[]) => value.join(', ');
+  const operationDescription = operation?.kind === 'drag'
+    ? t('roomReview.drag', { from: point(operation.from), to: point(operation.to) })
+    : operation?.kind === 'split' ? t('roomReview.split', { from: point(operation.a), to: point(operation.b) })
+    : operation?.kind === 'remove' ? t('roomReview.remove', { at: point(operation.at) })
+    : operation ? t('roomReview.prune') : null;
   return <div className="space-y-2">
-    {command.action === 'edit' && <p>{t('roomReview.operation', { kind: command.operation.kind, tolerance: command.tolerance ?? .01 })}
-      {' '}<span className="font-mono">{JSON.stringify(command.operation)}</span></p>}
+    {command.action === 'edit' && <p>{operationDescription} {' '}{t('roomReview.tolerance', { tolerance: command.tolerance ?? .01 })}</p>}
     {/* Native vector contours need SVG image semantics; an HTML img cannot contain these polygons. */}
     {/* eslint-disable-next-line jsx-a11y/prefer-tag-over-role */}
     {points.length > 0 && <svg role="img" aria-label={t('roomReview.plan')} className="w-full h-40 border border-border rounded"

@@ -35,6 +35,11 @@ function point(value: unknown, factor: number, at: string): [number, number] {
   if (!Array.isArray(value) || value.length !== 2) throw new Error(`${at} requires two explicit storey-local coordinates`);
   return [finite(value[0], at, -10000 / factor, 10000 / factor) * factor, finite(value[1], at, -10000 / factor, 10000 / factor) * factor];
 }
+/** IFC text remains exact: whitespace and an empty value are native data, not aliases. */
+function nativeText(value: unknown, at: string, max: number): string {
+  if (typeof value !== 'string' || value.length > max || Array.from(value).some(character => character.charCodeAt(0) < 32 || character.charCodeAt(0) === 127)) throw new Error(`${at} requires bounded plain IFC text`);
+  return value;
+}
 function rootTarget(value: unknown, at: string): RoomRootTarget {
   if (!isRecord(value)) throw new Error(`${at} requires its current GlobalId and Name`);
   onlyKeys(value, ['GlobalId', 'Name'], at);
@@ -83,9 +88,9 @@ export function parseRoomProposal(content: string): RoomProposal {
     minArea: finite(c.minArea, 'minArea (m²)', 0, 1000000), boundary: c.boundary,
     height: finite(c.height, 'height', .1 / factor, 200 / factor) * factor,
     z: finite(c.z, 'z', -10000 / factor, 10000 / factor) * factor,
-    namePattern: requiredText(c, 'namePattern', 'command', 200),
+    namePattern: nativeText(c.namePattern, 'command.namePattern', 200),
     ...(c.PredefinedType !== undefined ? { PredefinedType: requiredText(c, 'PredefinedType', 'command', 80) } : {}),
-    ...(c.ObjectType !== undefined ? { ObjectType: requiredText(c, 'ObjectType', 'command', 240) } : {}),
+    ...(c.ObjectType !== undefined ? { ObjectType: nativeText(c.ObjectType, 'command.ObjectType', 240) } : {}),
   };
   let command: RoomProposal['command'];
   let rooms: RoomRootTarget[] | undefined;

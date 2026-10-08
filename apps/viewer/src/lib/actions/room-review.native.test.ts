@@ -6,17 +6,20 @@ import '@/test/setup-dom.js';
 import 'fake-indexeddb/auto';
 import assert from 'node:assert/strict';
 import { afterEach, it } from 'node:test';
-import { IfcParser } from '@ifc-lite/parser';
+import { asSourceBytes, IfcParser } from '@ifc-lite/parser';
+import { getCompleteEntityIndex } from '../../../../../packages/export/src/entity-iteration.js';
 import { StepExporter } from '@ifc-lite/export';
 import { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
 import { roomChainInStore } from '../../../../../packages/create/src/in-store/room-store.js';
 import { ensureRoomWasm } from '@/test/room-walls-fixture';
 import { seedReviewedRoom, roomProposal, roomEnvelope } from '@/test/reviewed-room-fixture';
-import { MODEL, nativeSdkMeshes, settle } from '@/test/native-sdk-model';
+import { MODEL, nativeSdkMeshes, seedNativeSdkModel, settle } from '@/test/native-sdk-model';
 import { setRemeshClientFactory } from '@/lib/remesh/remesh-service';
 import { clearModelLayouts } from '@/lib/rooms/room-layout';
 import { useViewerStore } from '@/store';
 import { buildStoreyWorkplane } from '@/lib/commands/modeling/workplane';
+import { fixtureModel } from '@/test/store-fixture';
+import { generateIfcGuid } from '@ifc-lite/encoding';
 import { parseRoomProposal } from './room-command-proposal';
 import { prepareRoomReview } from './room-review';
 import { commitReviewedRoom } from './room-receipt';
@@ -150,7 +153,7 @@ for (const reason of ['skip-history', 'source replacement', 'Undo head', 'cancel
       assert.equal(view.getMutationCount(), journal);
     } else if (reason === 'source replacement') {
       const s = useViewerStore.getState(), model = s.models.get(MODEL)!;
-      useViewerStore.setState({ models: new Map(s.models).set(MODEL, { ...model, ifcDataStore: { ...model.ifcDataStore!, source: model.ifcDataStore!.source.slice() } }) });
+      useViewerStore.setState({ models: new Map(s.models).set(MODEL, { ...model, ifcDataStore: { ...model.ifcDataStore!, source: asSourceBytes(model.ifcDataStore!.source.slice(0, model.ifcDataStore!.source.byteLength).slice()) } }) });
     } else if (reason === 'Undo head') useViewerStore.getState().undo(MODEL);
     else controller.abort();
     const before = structuredClone(view.getEffectiveChanges());
@@ -172,7 +175,11 @@ it('previews and records a session-only native cut with truthful no-IFC receipt 
     assert.equal(receipt.batches.length, 1);
     assert.equal((await adapter.roomCommand!(MODEL, 42, { action: 'query' })).candidates.length, 2);
     const after = new StepExporter(useViewerStore.getState().models.get(MODEL)!.ifcDataStore!, view).export({ schema: 'IFC4', applyMutations: true }).content;
-    assert.deepEqual(after, before, 'the exact existing IFC export layout is unchanged by a session-only operation');
+    const records = async (bytes: Uint8Array) => {
+      const parsed = await new IfcParser().parseColumnar(bytes.slice().buffer as ArrayBuffer, { disableWorkerScan: true });
+      return [...getCompleteEntityIndex(parsed)].map(([id]) => ({ id, type: parsed.getEntity(id)?.type, attributes: parsed.getEntity(id)?.attributes }));
+    };
+    assert.deepEqual(await records(after), await records(before), 'every actual exported IFC record is unchanged; export header timestamps are independent');
     assert.deepEqual(undoModelChanges(useViewerStore, receipt), { ok: true });
     assert.equal((await adapter.roomCommand!(MODEL, 42, { action: 'query' })).candidates.length, 1);
   } finally { review.dispose(); }
@@ -197,4 +204,130 @@ it('cuts and merges materialized rooms through the native larger-piece identity 
     assert.deepEqual(undoModelChanges(useViewerStore, receipt), { ok: true });
     assert.deepEqual(view.getEffectiveChanges(), before);
   } finally { merge.dispose(); }
+});
+
+it('uses the native drag and prune writers and retains real Room identity/Undo (#7286)', async t => {
+  if (!ensureRoomWasm(t)) return;
+  const { adapter, view } = await seedReviewedRoom();
+  adapter.addWall(MODEL, 42, { Start: [22,20,0], End: [22,21.5,0], Thickness: .2, Height: 3 });
+  await settle();
+  const auto = await prepare();
+  let source: number;
+  try { source = auto.commit().created[0].expressId; } finally { auto.dispose(); }
+  const before = structuredClone(view.getEffectiveChanges());
+  const prune = await prepare({ action: 'edit', operation: { kind: 'prune' }, tolerance: .01 });
+  try {
+    assert.equal(prune.prepared.result.updated[0].expressId, source);
+    const old = roomChainInStore(prune.prepared.preview.store, useViewerStore.getState().storeEditors.get(MODEL)!, source);
+    const next = roomChainInStore(prune.prepared.preview.store, prune.prepared.preview.editor, source);
+    assert.ok(old.ok && next.ok);
+    assert.ok(next.chain.footprint.length < old.chain.footprint.length, 'native prune removes the actual dangling-wall notch');
+    const { receipt } = commitReviewedRoom(prune, 'native-prune');
+    assert.deepEqual(undoModelChanges(useViewerStore, receipt), { ok: true });
+    assert.deepEqual(view.getEffectiveChanges(), before);
+  } finally { prune.dispose(); }
+  const drag = await prepare({ action: 'edit', operation: { kind: 'drag', from: [24,20], to: [25,20] }, tolerance: .01 });
+  try {
+    assert.equal(drag.prepared.result.updated[0].expressId, source);
+    const next = roomChainInStore(drag.prepared.preview.store, drag.prepared.preview.editor, source);
+    assert.ok(next.ok && next.chain.footprint.some(([x]) => x > 24.5));
+    const { receipt } = commitReviewedRoom(drag, 'native-drag');
+    assert.deepEqual(undoModelChanges(useViewerStore, receipt), { ok: true });
+    assert.deepEqual(view.getEffectiveChanges(), before);
+  } finally { drag.dispose(); }
+});
+
+it('keeps an explicitly chosen model authoritative among two real source copies with matching Root GUIDs (#7286)', async t => {
+  if (!ensureRoomWasm(t)) return;
+  const { store, view } = await seedReviewedRoom();
+  const bytes = store.source.slice(0, store.source.byteLength).slice();
+  const peerStore = await new IfcParser().parseColumnar(bytes.buffer as ArrayBuffer, { disableWorkerScan: true });
+  const peerView = new MutablePropertyView(peerStore.properties ?? null, 'peer');
+  const state = useViewerStore.getState();
+  useViewerStore.setState({ models: new Map(state.models).set('peer', { ...fixtureModel('peer', { idOffset: 1000000 }), ifcDataStore: peerStore }),
+    mutationViews: new Map(state.mutationViews).set('peer', peerView) });
+  assert.equal(peerStore.entities.getGlobalId(42), store.entities.getGlobalId(42));
+  const before = structuredClone(peerView.getEffectiveChanges());
+  const review = await prepare();
+  try {
+    assert.equal(review.snapshot.modelId, MODEL);
+    assert.ok(review.prepared.result.created.every(ref => ref.modelId === MODEL));
+    review.commit();
+    assert.ok(view.getNewEntities().some(entity => entity.type === 'IfcSpace'));
+    assert.deepEqual(peerView.getEffectiveChanges(), before, 'the other parsed source copy remains unchanged');
+  } finally { review.dispose(); }
+});
+
+it('uses effective storey Root GUIDs, ignores non-root Name collisions and refuses a same-model duplicate (#7286)', async t => {
+  if (!ensureRoomWasm(t)) return;
+  const { store, view } = await seedReviewedRoom();
+  const current = generateIfcGuid();
+  view.setAttribute(42, 'GlobalId', current);
+  const editor = new StoreEditor(store, view);
+  editor.addEntity('IfcMaterial', [current]);
+  const proposal = roomProposal();
+  assert.equal(proposal.storey.GlobalId, current);
+  const good = await prepareRoomReview(proposal, new AbortController().signal);
+  good.dispose();
+  editor.addEntity('IfcBuildingStorey', [current, null, proposal.storey.Name, null, null, null, null, null, '.ELEMENT.', 0]);
+  const before = structuredClone(view.getEffectiveChanges());
+  await assert.rejects(prepareRoomReview(proposal, new AbortController().signal), /ambiguous/);
+  assert.deepEqual(view.getEffectiveChanges(), before);
+});
+
+it('retains explicit native IFC Name and ObjectType whitespace in actual STEP export (#7286)', async t => {
+  if (!ensureRoomWasm(t)) return;
+  const { store, view } = await seedReviewedRoom();
+  const review = await prepare({ action: 'auto', namePattern: '  Native {n}  ', ObjectType: '  Typed room  ' });
+  try {
+    const id = review.commit().created[0].expressId;
+    const source = new StepExporter(store, view).export({ schema: 'IFC4', applyMutations: true }).content;
+    const parsed = await new IfcParser().parseColumnar(source.slice().buffer as ArrayBuffer, { disableWorkerScan: true });
+    assert.equal(parsed.entities.getName(id), '  Native 2  ');
+    const record = parsed.getEntity(id);
+    assert.ok(record);
+    assert.equal(record.attributes[4], '  Typed room  ');
+  } finally { review.dispose(); }
+});
+
+it('keeps SI Room contours through millimetre source units and a rotated translated storey (#7286)', async t => {
+  if (!ensureRoomWasm(t)) return;
+  const original = await seedNativeSdkModel();
+  const editor = new StoreEditor(original.store, original.view);
+  const unitId = [...getCompleteEntityIndex(original.store)].find(([id]) => {
+    const entity = original.store.getEntity(id);
+    return entity?.type.toUpperCase() === 'IFCSIUNIT' && String(entity.attributes[1]).includes('LENGTHUNIT');
+  })?.[0];
+  assert.ok(unitId, 'actual Bonsai declares the native length unit');
+  editor.setPositionalAttribute(unitId, 2, '.MILLI.');
+  const point = editor.addEntity('IfcCartesianPoint', [[50000,30000,0]]);
+  const axis = editor.addEntity('IfcDirection', [[0,1,0]]);
+  const placement = editor.addEntity('IfcAxis2Placement3D', [`#${point.expressId}`, null, `#${axis.expressId}`]);
+  const local = editor.addEntity('IfcLocalPlacement', [null, `#${placement.expressId}`]);
+  editor.setPositionalAttribute(42, 5, `#${local.expressId}`);
+  const source = new StepExporter(original.store, original.view).export({ schema: 'IFC4', applyMutations: true }).content;
+  setRemeshClientFactory(null); clearModelLayouts(MODEL);
+  const { store, view } = await seedReviewedRoom(undefined, source);
+  const unit = store.getEntity(unitId);
+  assert.ok(unit && String(unit.attributes[2]).includes('MILLI'), 'STEP reparse proves declared millimetres');
+  const plane = buildStoreyWorkplane(useViewerStore.getState(), MODEL, 42, 0);
+  assert.ok(!('refused' in plane));
+  const origin = plane.localToRender([0,0,0]), along = plane.localToRender([1,0,0]);
+  assert.ok(Math.abs(origin[0]-50) < .0001 && Math.abs(origin[2]+30) < .0001);
+  assert.ok(Math.abs(along[0]-origin[0]) < .0001 && Math.abs(along[2]-origin[2]+1) < .0001);
+  const review = await prepare({ action: 'pick', point: [22000,21000], weld: 50, height: 3000, z: 0 }, { units: 'mm' });
+  try {
+    assert.equal(review.snapshot.settings.height, 3);
+    const id = review.commit().created[0].expressId;
+    const exported = new StepExporter(store, view).export({ schema: 'IFC4', applyMutations: true }).content;
+    const parsed = await new IfcParser().parseColumnar(exported.slice().buffer as ArrayBuffer, { disableWorkerScan: true });
+    const chain = roomChainInStore(parsed, new StoreEditor(parsed, new MutablePropertyView(parsed.properties ?? null, MODEL)), id);
+    assert.ok(chain.ok);
+    assert.equal(chain.chain.thickness, 3);
+    assert.ok(chain.chain.footprint.every(([x,y]) => x >= 19.8 && x <= 24.2 && y >= 19.8 && y <= 23.2));
+    await settle();
+    const xs = nativeSdkMeshes().filter(mesh => mesh.expressId === id).flatMap(mesh => [...mesh.positions].filter((_,i) => i%3 === 0).map(x => x+(mesh.origin?.[0] ?? 0)));
+    const expected = chain.chain.footprint.map(([x,y]) => plane.localToRender([x,y,0])[0]);
+    assert.ok(xs.length && Math.abs(Math.min(...xs)-Math.min(...expected)) < .0001 && Math.abs(Math.max(...xs)-Math.max(...expected)) < .0001);
+  } finally { review.dispose(); }
 });

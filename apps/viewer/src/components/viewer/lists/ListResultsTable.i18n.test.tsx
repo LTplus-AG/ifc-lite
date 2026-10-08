@@ -297,6 +297,8 @@ describe('ListResultsTable / ListGroupingBar / ColumnHeaderMenu localization (#4
     assert.ok(headerButtons.includes('Name'), 'the grouping column stays sortable');
     assert.ok(headerButtons.some((label) => label?.startsWith('Net Volume')), 'the sum column stays sortable');
     assert.ok(container.textContent?.includes('Count'), 'the pivot count header stays visible');
-    assert.ok(container.textContent?.includes('No matching rows'), 'the empty message remains visible');
+    // #7166: native matched members exist, but the visibility filter hides them.
+    assert.ok(container.querySelector('[data-result-state="filtered"]'), 'the shared filtered state remains visible');
+    assert.ok(container.textContent?.includes('Matching rows are hidden by the current filters'), 'the filtered message remains visible');
   });
 });

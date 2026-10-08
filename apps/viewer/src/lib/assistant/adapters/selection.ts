@@ -101,6 +101,11 @@ function elementRow(s: ViewerState, ref: EntityRef, source: ModelSource, rich: b
   const data = effectiveElementData(ref.expressId, source.query, source.view);
   const attributes = Object.fromEntries([...data.attributes].slice(0, rich ? 32 : 12).map(([name, value]) => [name, bounded(value)]));
   const inherited = effectiveTypeProperties(source.store, ref.expressId, source.view);
+  const typeAttributes = inherited ? source.view?.getAttributeMutationsForEntity(inherited.typeId) ?? [] : [];
+  const typeGlobalId = inherited ? typeAttributes.find(attr => attr.name === 'GlobalId')?.value
+    ?? source.store?.entities.getGlobalId(inherited.typeId) : null;
+  const typeName = inherited ? typeAttributes.find(attr => attr.name === 'Name')?.value
+    ?? source.store?.entities.getName(inherited.typeId) : null;
   const psets = data.psets.slice(0, setLimit).map(pset => ({
     name: pset.name, propertyCount: pset.properties.length,
     properties: Object.fromEntries(pset.properties.slice(0, valueLimit)
@@ -127,9 +132,8 @@ function elementRow(s: ViewerState, ref: EntityRef, source: ModelSource, rich: b
     attributes, psets, psetCount: data.psets.length, quantities, qsetCount: data.qsets.length,
     inheritedType: inherited ? {
       modelId: ref.modelId, modelName: source.name,
-      GlobalId: source.view?.getAttributeMutationsForEntity(inherited.typeId).find(attr => attr.name === 'GlobalId')?.value
-        ?? source.store?.entities.getGlobalId(inherited.typeId) ?? null,
-      Name: bounded(inherited.typeName), expressId: inherited.typeId,
+      GlobalId: typeof typeGlobalId === 'string' && typeGlobalId ? typeGlobalId : null,
+      Name: bounded(typeName), expressId: inherited.typeId,
       status: source.view?.hasChanges(inherited.typeId) ? 'edited' : 'as-loaded',
       psetCount: inherited.psets.length,
       psets: inherited.psets.slice(0, setLimit).map(pset => ({

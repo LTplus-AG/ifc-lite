@@ -239,6 +239,7 @@ test('#7179 native relationship evidence preserves graph-proved missing target I
   assert.equal(exported.getEntity(999999), null);
   assert.ok(extractRelationshipsOnDemand(exported, 43).relations?.some(edge => edge.relationshipId === 97 && edge.entity.id === 999999));
   const row = rows()[0];
+  assert.ok(Array.isArray(row.relationships), 'known incident relationships must be included');
   const unresolved = row.relationships.find(edge => edge.relationshipId === 97 && edge.entity.expressId === 999999);
   assert.ok(unresolved, 'known incident relationship must retain its unresolved target ID');
   assert.equal(unresolved.verification, 'unverified'); assert.equal(unresolved.entity.Name, null); assert.equal(unresolved.entity.type, null);

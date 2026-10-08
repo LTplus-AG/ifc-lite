@@ -17,20 +17,25 @@
  */
 
 import { IfcQuery } from '@ifc-lite/query';
-import { extractProjectUnits, materialAssignmentsAvailable, ProjectUnits, type IfcDataStore } from '@ifc-lite/parser';
+import { extractClassificationsOnDemand, extractProjectUnits, materialAssignmentsAvailable, ProjectUnits, type IfcDataStore } from '@ifc-lite/parser';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
-import type { ViewerState } from '@/store';
+import { useViewerStore, type ViewerState } from '@/store';
+import { createQueryAdapter } from '@/sdk/adapters/query-adapter';
+import { relationshipsForSelection } from '@/components/viewer/properties/merge-relationship-data';
+import { relationshipPopulationUnavailable } from '@/components/viewer/properties/effective-relationship-availability';
 import type { EntityRef } from '@/store/types';
 import { stringToEntityRef } from '@/store/entity-ref';
 import { resolveEntityRef, resolveEntityRefGlobalIdFromState } from '@/store/resolveEntityRef';
 import { resolveQuantityDisplay } from '@/lib/units/display';
 import { effectiveElementData } from '@/components/viewer/properties/effectiveElementData';
+import { classificationPopulationUnavailable } from '@/components/viewer/properties/effective-classification-systems';
 import { effectiveMaterials, effectiveMaterialProperties } from '@/components/viewer/properties/effectiveMaterials';
 import { materialEvidence } from './selection-materials';
 import { documentEvidence } from './selection-documents';
 import { structuralEvidence } from './selection-structural';
 import { effectiveStructuralData } from '@/components/viewer/properties/effectiveStructuralData';
 import { effectiveDocuments } from '@/components/viewer/properties/effectiveDocuments';
+import { classificationEvidence } from './selection-classifications';
 import { effectiveTypeProperties } from '@/components/viewer/properties/effectiveTypeProperties';
 import { effectiveSelectedClass } from '@/components/viewer/properties/effectiveSelectedClass';
 import { propertyDisplayValue } from '@/components/viewer/properties/propertyDisplayValue';
@@ -103,10 +108,17 @@ function bounded(value: unknown): string | number | boolean | null {
 
 function elementRow(s: ViewerState, ref: EntityRef, source: ModelSource, rich: boolean) {
   const setLimit = rich ? 16 : 6;
+  const relationshipLookupExpressId = source.view?.resolveBaseEntityId(ref.expressId) ?? ref.expressId;
+  const nativeRelationships = source.store ? relationshipsForSelection(
+    createQueryAdapter({ getState: () => s, subscribe: useViewerStore.subscribe }).relationships,
+    ref, relationshipLookupExpressId).relations ?? [] : [];
+  const relationshipsUnavailable = relationshipPopulationUnavailable(source.store, source.view);
   const valueLimit = rich ? 32 : 12;
   const data = effectiveElementData(ref.expressId, source.query, source.view);
   const structuralData = source.store ? effectiveStructuralData(source.store, source.view) : null;
   const { rows: documents, membershipUnavailable: documentsUnavailable } = effectiveDocuments(source.store, ref.expressId, source.view);
+  const classifications = source.store ? extractClassificationsOnDemand(source.store, ref.expressId, source.view) : [];
+  const classificationsUnavailable = classificationPopulationUnavailable(source.store, source.view);
   const materials = effectiveMaterials(source.store, ref.expressId, source.view);
   const materialAssignmentsVerified = Boolean(source.store && materialAssignmentsAvailable(source.store, ref.expressId, source.view));
   const materialPropertiesVerified = materialAssignmentsVerified && Boolean(source.store?.source?.length) && !materials.some(material => material.unresolved);
@@ -148,6 +160,21 @@ function elementRow(s: ViewerState, ref: EntityRef, source: ModelSource, rich: b
     documentStatus: !source.store ? 'unavailable' : documentsUnavailable ? 'unavailable-source-membership' : 'available',
     documentCount: !source.store || documentsUnavailable ? null : documents.length,
     documents: documents.slice(0, setLimit).map(document => documentEvidence(document, source.store?.schemaVersion)),
+    relationshipLookupExpressId,
+    relationshipStatus: !source.store ? 'unavailable' : !relationshipsUnavailable ? 'available'
+      : !source.store.relationships ? 'unavailable-membership' : 'unavailable-source-membership',
+    relationshipCount: source.store && !relationshipsUnavailable ? nativeRelationships.length : null,
+    relationships: nativeRelationships.slice(0, setLimit).map(edge => ({
+      relationshipId: edge.relationshipId, relationshipType: edge.relationshipType, direction: edge.direction,
+      verification: relationshipsUnavailable || !edge.entity.type || edge.entity.type === 'Unknown' ? 'unverified' : 'resolved',
+      entity: { modelId: ref.modelId, expressId: edge.entity.id, Name: bounded(edge.entity.name), type: bounded(edge.entity.type === 'Unknown' ? null : edge.entity.type) },
+    })),
+    classificationStatus: !source.store ? 'unavailable' : !classificationsUnavailable ? 'available'
+      : !source.store.onDemandClassificationMap && !source.store.relationships
+        ? 'unavailable-membership' : 'unavailable-source-membership',
+    classificationCount: source.store && !classificationsUnavailable ? classifications.length : null,
+    classifications: classifications.slice(0, setLimit)
+      .map(info => classificationEvidence(info, source.store?.schemaVersion, setLimit)),
     materialsStatus: !source.store ? 'unavailable' : materialAssignmentsVerified ? 'available' : 'unavailable-membership',
     materialCount: materialAssignmentsVerified ? materials.length : null,
     materials: materials.slice(0, setLimit).map(material => materialEvidence(material, valueLimit)),
@@ -210,13 +237,8 @@ export const selectionAdapter: EvidenceAdapter = {
         kind: 'selection', channel, selectionSize: refs.length, modelCount: byModel.size,
         byModel: [...byModel].map(([modelId, count]) => ({ modelId, name: sourceFor(modelId).name, count })),
         byClass: [...byClass].map(([type, count]) => ({ type, count })).sort((a, b) => b.count - a.count),
-        perElementBounds: rich ? { sets: 16, valuesPerSet: 32, attributes: 32, documents: 16 } : { sets: 6, valuesPerSet: 12, attributes: 12, documents: 6 },
+        perElementBounds: rich ? { sets: 16, valuesPerSet: 32, attributes: 32, classifications: 16, classificationPath: 16, relationships: 16, documents: 16 }
+          : { sets: 6, valuesPerSet: 12, attributes: 12, classifications: 6, classificationPath: 6, relationships: 6, documents: 6 },
         units: 'Quantity values carry {value, unit} in the Properties panel display unit (project unit, or the display-unit override below); a null unit is undeclared. Property values are the panel display strings, with the unit inline when the measure declares one.',
         displayUnitOverrides: s.unitDisplayOverrides,
-        limitations: 'Selection is sampled; byClass/byModel cover all refs. Shared native readers include session edits; element status covers own edits, association freshness is snapshot-wide. Samples use perElementBounds with full known counts. inheritedType carries model/type GlobalId; occurrence properties override type values. Materials use occurrence-before-type assignment precedence, LayerThickness in metres and panel units for generic properties. Source-free fields/properties are unverified; missing or edited opaque memberships make totals null. IFC2X3 scalar-only material properties are outside the native generic-set reader. Documents include native metadata and source-origin markers. Structural rows match the native member card; counts cover resolved native records, units are declared source units only, and load/evidence traversal bounds are explicit. Source-free original structural fields/totals stay unknown; authored fields remain readable. Classifications and relationships await separate consumers.',
-      },
-      rows: sample.map(ref => elementRow(s, ref, sourceFor(ref.modelId), rich)),
-      totalRows: refs.length, availability: 'available',
-    };
-  },
-};
+        limitations: 'Selection is sampled; byClass/byModel cover all refs. Native readers include edits; own-element status, snapshot-wide association freshness. Samples use perElementBounds with full known counts. inheritedType carries model/type GlobalId; occurrence properties override type values. Materials use occurrence-before-type precedence, LayerThickness metres and panel units for generic properties; IFC2X3 scalar-only material properties are outside the generic-set reader. Unverified fields/properties are unknown; unreadable current memberships make totals null. Source-free classification/document/relationship markers describe original source, not current assignments. Paths have bounded ancestors and null unverified totals; classification codes are schema-exact, missing systems unknown. Relationships count exact native edges; aliases identify inherited lookup IDs. Documents use native bounded metadata. Structural rows match the native member card; counts cover resolved native records, units are declared source units only, load/evidence bounds are explicit. Source-free original structural fields/totals are unknown; authored fields remain readable. Empty samples do not prove absence.',

@@ -66,6 +66,7 @@ import { isMaterialDefinitionType } from '@/utils/materialDefinitionTypes';
 import { attributesFromOverlayEntity } from './properties/overlayAttributes';
 import { createQueryAdapter } from '@/sdk/adapters/query-adapter';
 import { groupMembersForRef, relationshipsForSelection } from './properties/merge-relationship-data';
+import { relationshipPopulationUnavailable } from './properties/effective-relationship-availability';
 import { effectiveSelectedClass } from './properties/effectiveSelectedClass';
 import { effectiveStructuralData } from './properties/effectiveStructuralData';
 import { selectedOverlayEntity } from './properties/selectedOverlayEntity';
@@ -650,7 +651,7 @@ export function PropertiesPanel() {
     const rels = relationshipsForSelection(overlayAwareQuery.relationships, selectedEntity, lookupExpressId);
     const totalCount = rels.voids.length + rels.fills.length + rels.groups.length
       + rels.connections.length + (rels.relations?.length ?? 0);
-    return totalCount > 0 ? rels : null;
+    return totalCount > 0 || relationshipPopulationUnavailable(dataStore as IfcDataStore, mutationViews.get(selectedEntity.modelId === 'legacy' ? '__legacy__' : selectedEntity.modelId)) ? rels : null;
   }, [selectedEntity, lookupExpressId, model, ifcDataStore, mutationVersion, overlayAwareQuery]);
 
   // Select a related entity by express id (e.g. click an IfcZone in the
@@ -1663,6 +1664,7 @@ export function PropertiesPanel() {
                     <div className="border-t border-zinc-200 dark:border-zinc-800 pt-2 mt-2" />
                     <RelationshipsCard
                       relationships={renderedEntityRelationships}
+                      populationUnavailable={relationshipPopulationUnavailable(activeDataStore as IfcDataStore | null, selectedEntity ? mutationViews.get(selectedEntity.modelId === 'legacy' ? '__legacy__' : selectedEntity.modelId) : null)}
                       onSelectEntity={handleSelectRelatedEntity}
                       onIsolateGroupMembers={handleIsolateGroupMembers}
                     />

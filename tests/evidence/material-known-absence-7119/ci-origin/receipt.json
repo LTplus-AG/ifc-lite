@@ -1,0 +1,31 @@
+{
+  "capturedUTC": "2026-10-08T12:37:08.420900+00:00",
+  "head": "58559bf8f05852796c06e71018cbc6c877b5900e",
+  "run": 37771903163,
+  "failedJobs": {
+    "Node": 113301132252,
+    "ViewerShard1": 113301132435,
+    "ViewerShard5": 113301132495
+  },
+  "failures": [
+    "parser classification fixture lacks required store.getEntity (5 assertions throw)",
+    "viewer raw/server blank missing air-gap material semantic control actualnames Material#86 plus empty vs expected one",
+    "chart type-owned quantity overlay loses explicit0.01cm unitSiScale, values15/41 preserved; actual2unitassertionsfail"
+  ],
+  "logs": {
+    "6584-585-node-failure": {
+      "rawSHA256": "8387c391dceb1031f12feb0597502a3c5d1ba90165949f3a52876bd31114e906",
+      "archiveSHA256": "83b168fce9417b94edb5400156697cac625b6a19c59cff6574bd3f63d77e7196"
+    },
+    "6584-585-viewer-shard1-failure": {
+      "rawSHA256": "4c58aff78da21d42b63af2ed0f082b7656ba15cf6e6a2fa9da4120122663501c",
+      "archiveSHA256": "6826ff6b030497f089094dfa0ed844ee20784796f1a5b4c4d0d2b1984efec1e6"
+    },
+    "6584-585-viewer-shard5-failure": {
+      "rawSHA256": "8eb75b60c91996fa8fe0347dd1fe245f34543ea9ea4a6af23221327626405ab2",
+      "archiveSHA256": "908d29078a1a6ce8fcb8972832dfdbe36eba7b9e45427b975c11fd10c0d1f943"
+    }
+  },
+  "scope": "Current exact-head CI failures; no owner-cache source causation assumed; focused rootcause investigation active; merge refused",
+  "aggregate": "37771903163 terminalcompleted/failure actualalljobs, notretryflake"
+}

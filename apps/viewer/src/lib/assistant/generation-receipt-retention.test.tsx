@@ -241,3 +241,35 @@ test('#7242 actual typed direct transport protocol survives portable receipt dec
   assert.equal(JSON.stringify(decoded.messages.at(-1)?.receipt).includes('PRIVATE'), false);
   assert.equal('outputSchema' in outcome.receipt, false);
 });
+
+test('#7242 independent review: conflict restore retains draft receipt on failed read and adopts exact committed receipt on confirmed restore', async () => {
+  const committedReceipt = await answer(), committed = prepareReportDraft('Committed generation').source;
+  const first = nativeLibrary(), second = nativeLibrary();
+  await first.initialize(); assert.equal(await first.put(committed.id, committed), true); await second.initialize();
+  const newerReceipt = await answer(), newer = { ...prepareReportDraft('New generation').source, id: committed.id };
+  assert.notEqual(newerReceipt.id, committedReceipt.id);
+  assert.equal(await first.put(committed.id, newer), true);
+  const draft = { ...committed, name: 'Held local draft' };
+  assert.equal(await second.put(committed.id, draft), false);
+  assert.equal(second.status().items[committed.id], 'conflict');
+  assert.deepEqual(second.entries()[0].messages.at(-1)?.receipt, committedReceipt);
+  const native = IDBDatabase.prototype.transaction;
+  const blocked = mock.method(IDBDatabase.prototype, 'transaction', function(this: IDBDatabase,
+    stores: string | string[], mode?: IDBTransactionMode, options?: IDBTransactionOptions) {
+    if (stores === 'items' && mode === 'readonly') throw new DOMException('Read blocked', 'SecurityError');
+    return native.call(this, stores, mode, options);
+  });
+  try {
+    assert.equal(await second.restore(), false);
+    assert.equal(second.entries()[0].name, draft.name);
+    assert.deepEqual(second.entries()[0].messages.at(-1)?.receipt, committedReceipt);
+    assert.equal(second.status().items[committed.id], 'conflict');
+  } finally { blocked.mock.restore(); }
+  assert.equal(await second.restore(), true);
+  assert.equal(second.entries()[0].name, newer.name);
+  assert.deepEqual(second.entries()[0].messages.at(-1)?.receipt, newerReceipt);
+  assert.deepEqual(Object.keys(second.status().items), []);
+  const saved = assistantContent.decode((await readContentRows('assistant'))[0].payload); assert.ok(saved);
+  assert.deepEqual(saved.messages.at(-1)?.receipt, newerReceipt);
+  assert.equal(useRequestReceipts.getState().receipts.length, 2, 'restore does not duplicate session receipts');
+});

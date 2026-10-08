@@ -288,7 +288,7 @@ export function loadSavedFilters(validate?: (preset: unknown) => unknown): Saved
  * second read.
  */
 export function saveFilter(name: string, groups: readonly FilterGroup[], capturedScope?: CapturedEntityScope): SavedFilterMutation {
-  if (capturedScope && !isCapturedEntityScope(capturedScope)) throw new Error('The captured filter population is malformed. Capture its elements again.');
+  if (capturedScope !== undefined && !isCapturedEntityScope(capturedScope)) throw new Error('The captured filter population is malformed. Capture its elements again.');
   const trimmed = name.trim();
   // Rejected name: nothing was asked of storage, so nothing is unpersisted.
   if (!trimmed || trimmed.length > MAX_NAME_LEN) return { presets: loadSavedFilters(), persisted: true };

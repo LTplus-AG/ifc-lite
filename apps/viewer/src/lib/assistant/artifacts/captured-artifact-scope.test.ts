@@ -8,7 +8,7 @@ import { evaluateFilterGroupsFederated } from '@ifc-lite/rules';
 import { useViewerStore } from '@/store';
 import { entityRefToString } from '@/store/entity-ref';
 import { evaluatorModelsFromState } from '@/lib/model-tags/evaluator-models';
-import { ARCH, seedArtifactModels } from '@/test/artifact-models-fixture';
+import { ARCH, WALL, seedArtifactModels } from '@/test/artifact-models-fixture';
 import { parseArtifactProposal, type ArtifactKind } from './proposal-kinds';
 import { previewArtifact } from './artifact-preview';
 import { placementSourceIdentity } from '@/lib/model-placement/source-identity';
@@ -44,6 +44,6 @@ for (const entry of cases) {
     const proposal = parseArtifactProposal(JSON.stringify({ version: 1, title: 'One selected wall', kind: entry.kind, scope: 'selected', ...entry.body }), entry.kind);
     const preview = await previewArtifact(proposal, useViewerStore.getState());
     assert.equal(preview.matched, 1, 'native engine evaluates only the captured selected member');
-    assert.deepEqual(preview.population.map(row => [row.modelId, row.count]), [[ARCH, 1]], 'the other loaded model cannot fall back to an unscoped population');
+    assert.deepEqual(preview.population.map(row => [row.modelId, row.count]), [[ARCH, 1], [WALL, 0]], 'native population evidence keeps an explicit empty count for the other loaded model');
   });
 }

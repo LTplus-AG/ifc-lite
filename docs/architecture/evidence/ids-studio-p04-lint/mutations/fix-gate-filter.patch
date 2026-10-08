@@ -1,0 +1,13 @@
+diff --git a/packages/ids-authoring/src/lint/rules/util.ts b/packages/ids-authoring/src/lint/rules/util.ts
+index 1bc3faa3d..5f875e20b 100644
+--- a/packages/ids-authoring/src/lint/rules/util.ts
++++ b/packages/ids-authoring/src/lint/rules/util.ts
+@@ -20,7 +20,7 @@ export function tables(ctx: LintContext, version: IFCVersion): VersionTables {
+ 
+ /** Keep only fixes that pass the grounding gate on `doc`. */
+ export function gated(doc: StudioDocument, ctx: LintContext, fixes: readonly (QuickFix | undefined)[]): QuickFix[] | undefined {
+-  const ok = fixes.filter((f): f is QuickFix => !!f && f.ops.length > 0);
++  const ok = fixes.filter((f): f is QuickFix => !!f && f.ops.length > 0 && checkOps(f.ops, doc, ctx.gate).ok);
+   return ok.length ? ok : undefined;
+ }
+ 

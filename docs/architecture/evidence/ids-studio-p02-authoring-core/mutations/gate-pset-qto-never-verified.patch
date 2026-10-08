@@ -1,0 +1,13 @@
+diff --git a/packages/ids-authoring/src/gate/grounding-pset.ts b/packages/ids-authoring/src/gate/grounding-pset.ts
+index 04833a273..41ea5fe7a 100644
+--- a/packages/ids-authoring/src/gate/grounding-pset.ts
++++ b/packages/ids-authoring/src/gate/grounding-pset.ts
+@@ -61,7 +61,7 @@ function checkPropertySet(scope: FieldScope, facet: IDSPropertyFacet): Grounding
+   out.push(
+     ...perVersion(scope.versions, scope.ctx, (t) =>
+       reserved
+-        .filter((n) => !t.psets.has(n) && !n.startsWith('Qto_'))
++        .filter((n) => !t.psets.has(n) && !(n.startsWith('Qto_') && !t.hasQuantitySets))
+         .map((n) => ({
+           code: 'GATE-PSET-001' as const,
+           message: `"${n}" uses a reserved prefix but is not a standard ${n.startsWith('Qto_') ? 'quantity' : 'property'} set`,

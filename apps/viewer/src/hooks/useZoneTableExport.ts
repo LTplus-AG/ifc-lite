@@ -17,6 +17,8 @@
  */
 
 import { useCallback } from 'react';
+import { captureTranslation } from '@/i18n/registry';
+import { beginActivity, finishActivity } from '@/lib/activity/activity-journal';
 import { columnsToParquet, isParquet } from '@ifc-lite/export';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { useViewerStore } from '@/store';
@@ -97,31 +99,41 @@ export async function exportZoneTable(
   const empty = { rows: 0, elements: 0, unmeasured: 0, bytes: 0, filename: '' };
   if (rows.length === 0) return { ...empty, blocked: 'no-members' };
 
-  const bytes = format === 'csv'
-    ? new TextEncoder().encode(toCsv(rows))
-    : await columnsToParquet(toColumns(rows), new Set(ZONE_TABLE_FLOAT_COLUMNS), ZONE_TABLE_UINT_COLUMNS);
-  // `columnsToParquet` degrades to Arrow IPC when its wasm writer cannot load.
-  // Those bytes are still useful, but a `.parquet` file that is not Parquet
-  // opens in nothing, and the reader is told it is corrupt rather than that it
-  // is a different format. So the EXTENSION follows the bytes.
-  const extension = format === 'csv' ? 'csv' : (isParquet(bytes) ? 'parquet' : 'arrow');
-  const filename = `${sanitizeFilename(`${zoneSet.name}-zone-quantities`)}.${extension}`;
-  const mime = extension === 'csv'
-    ? 'text/csv'
-    : extension === 'parquet' ? 'application/vnd.apache.parquet' : 'application/vnd.apache.arrow.stream';
-  emit(bytes, filename, mime);
+  const t = captureTranslation();
+  const job = beginActivity({ kind: 'export', title: 'activityTray.job.zoneTable', panel: 'zones', subject: zoneSet.name });
+  try {
+    const bytes = format === 'csv'
+      ? new TextEncoder().encode(toCsv(rows))
+      : await columnsToParquet(toColumns(rows), new Set(ZONE_TABLE_FLOAT_COLUMNS), ZONE_TABLE_UINT_COLUMNS);
+    // `columnsToParquet` degrades to Arrow IPC when its wasm writer cannot load.
+    // Those bytes are still useful, but a `.parquet` file that is not Parquet
+    // opens in nothing, and the reader is told it is corrupt rather than that it
+    // is a different format. So the EXTENSION follows the bytes.
+    const extension = format === 'csv' ? 'csv' : (isParquet(bytes) ? 'parquet' : 'arrow');
+    const filename = `${sanitizeFilename(`${zoneSet.name}-zone-quantities`)}.${extension}`;
+    const mime = extension === 'csv'
+      ? 'text/csv'
+      : extension === 'parquet' ? 'application/vnd.apache.parquet' : 'application/vnd.apache.arrow.stream';
+    emit(bytes, filename, mime);
 
-  return {
-    rows: rows.length,
-    // By resolved identity rather than by GlobalId: `describeElement` leaves
-    // the id EMPTY when neither resolver answers, and every such element would
-    // otherwise share one bucket and be reported as one.
-    elements: new Set(rows.map((row) => `${row.Model}#${row.ExpressId}`)).size,
-    unmeasured: rows.filter((row) => row.VolumeM3 === null).length,
-    bytes: bytes.byteLength,
-    filename,
-    blocked: null,
-  };
+    const unmeasured = rows.filter((row) => row.VolumeM3 === null).length;
+    finishActivity(job, unmeasured > 0 ? 'partial' : 'completed', unmeasured > 0
+      ? { detail: t('activityTray.zone.tablePartial', { count: unmeasured }) } : {});
+    return {
+      rows: rows.length,
+      // By resolved identity rather than by GlobalId: `describeElement` leaves
+      // the id EMPTY when neither resolver answers, and every such element would
+      // otherwise share one bucket and be reported as one.
+      elements: new Set(rows.map((row) => `${row.Model}#${row.ExpressId}`)).size,
+      unmeasured,
+      bytes: bytes.byteLength,
+      filename,
+      blocked: null,
+    };
+  } catch (error) {
+    finishActivity(job, 'failed', { detail: error instanceof Error ? error.message : String(error) });
+    throw error;
+  }
 }
 
 export function useZoneTableExport() {

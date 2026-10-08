@@ -144,3 +144,17 @@ test('#7131 source-empty classification reads do not recover missing source thro
   assert.deepEqual(addClassificationAssociation('m', 52, { system: 'Entirely authored 7131', identification: 'AUTHORED-7131' }), { ok: true });
   assert.deepEqual(extractClassificationsOnDemand(transport, 52, view).map(ref => [ref.system, ref.identification, ref.unresolved]), [['Entirely authored 7131', 'AUTHORED-7131', undefined]], 'a complete authored system/reference/association needs no source bytes');
 });
+
+test('#7131 a live reference cycle agrees with exported IFC and cannot establish explicit system absence', async () => {
+  const { store, view } = await authoredAssociation();
+  const reference = [...view.getNewEntitiesOfType('IFCCLASSIFICATIONREFERENCE')][0];
+  view.setPositionalAttribute(reference.expressId, 3, `#${reference.expressId}`);
+  const out = new StepExporter(store, view).export({ schema: 'IFC4', visibleOnly: false, hiddenEntityIds: new Set<number>() });
+  const text = typeof out.content === 'string' ? out.content : new TextDecoder().decode(out.content);
+  const reparsed = await new IfcParser().parseColumnar(new TextEncoder().encode(text).buffer, { disableWorkerScan: true });
+  const expected = extractClassificationsOnDemand(reparsed, 262);
+  assert.equal(expected[0]?.unresolved, true, 'the independently decoded IFC has a broken classification chain');
+  assert.deepEqual(extractClassificationsOnDemand(store, 262, view), expected);
+  const hits = await evaluateFilterGroupsFederated(evaluatorModelsFromState(useViewerStore.getState()), [{ combinator: 'AND', rules: [{ kind: 'classification', system: 'CCI Construction', op: 'isNotSet', value: '' }] }], { limit: Infinity });
+  assert.equal(hits.some(hit => hit.expressId === 262), false, 'unknown live system membership cannot prove native absence');
+});

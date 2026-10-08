@@ -6,7 +6,7 @@
  * #5876: "Add Classification" / "Add Material" wrote look-alike property sets
  * ("Classification [Uniclass]") that no reader or downstream tool recognises.
  * They must create real IFC entities: exported, read back by the parser's own
- * classification / material readers, shown by the panel's overlay readers,
+ * classification / material readers, shown by the panel's effective readers,
  * undone as one step, and schema-correct for IFC2X3 and IFC4.
  *
  * Real viewer store over real parsed models; the export is re-parsed and read

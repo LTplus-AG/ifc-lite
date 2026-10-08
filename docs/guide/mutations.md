@@ -948,7 +948,7 @@ and `edit` (with a `drag`, `split`, `remove` or `prune` layout operation).
 `deleted` and `skipped` references and form one logical Undo batch. Supplied
 footprint placement remains available through `addSpace`.
 
-Settings use metres: `weld`, `minArea`, `height`, `z` and optional edit
+Settings use metres: `weld`, `height`, `z` and optional edit
 `tolerance`; `boundary` is `inner`, `center` or `outer`. `namePattern`,
 `PredefinedType` and `ObjectType` control created room metadata. The runtime
 requires the WASM geometry package. The command refuses if its model changes
@@ -960,6 +960,23 @@ Native Room layout edits also enter ordinary Undo/Redo history when no IFC rooms
 For append-only authoring, `view.getMutationCount()` captures the current journal cursor and `view.getMutations(cursor)` reads its appended suffix. This bounds recording overhead by the current call; atomic graph preparation remains a separate cost. Viewer ordinary creation publishes its collaboration graph before adding local Undo history and restores its prepared overlay if publication refuses.
 
 Native Room SDK preparation raises `RoomCommandConflictError` when another Room command owns preparation or the model changes before commit. Callers may retry against current state. Abort signals retain their cancellation reason; no Room commit is published after cancellation.
+
+Hosts that use `createRoomCommandBackend` can call its asynchronous
+`prepareRoomCommand(modelId, storeyExpressId, command)` before asking for
+approval. The returned `PreparedRoomCommand` exposes a detached native
+`preview` model and the planned `result`; preparation changes no live IFC
+graph or Undo history. `validate()` checks the captured model, overlay,
+history and retained layout. `commit()` applies the whole captured action
+synchronously through the host recorder, once. Auto approves every captured
+untaken face; this interface does not offer per-room subset approval.
+Always call `dispose()` in a `finally` block or when abandoning a review so
+an uncommitted duplicate native plate is freed. A newer preparation on the
+same backend/model supersedes an older approval. Native queries may refresh
+geometry and the retained cache, but do not write IFC graph changes.
+
+`minArea` uses square metres. Layout-only edits before any IfcSpace exists
+remain session Undo state; exporting IFC does not serialize that retained
+layout unless an operation has materialized rooms in the graph.
 
 ### Detecting concurrent overlay edits
 

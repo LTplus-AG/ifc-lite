@@ -414,7 +414,7 @@ function evaluateOneEntity(
     return matCache;
   };
   const classFor = (): readonly ClassificationInfo[] => {
-    if (!classCache) classCache = extractClassificationsOnDemand(ctx.store, expressId);
+    if (!classCache) classCache = extractClassificationsOnDemand(ctx.store, expressId, ctx.mutationView);
     return classCache;
   };
   const attrsFor = (): AttrRows => {

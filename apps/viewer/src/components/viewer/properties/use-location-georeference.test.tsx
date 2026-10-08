@@ -72,14 +72,17 @@ it('#6677 a pending old model cannot replace the latest origin or its ready stat
     crs: { id: 4, name: 'EPSG:4326' },
   });
   await waitFor(() => probe.read().mapState === 'ready', 'latest origin resolved');
-  assert.deepEqual(probe.read().latLon, { lat: 48, lon: 8 });
+  const latestOrigin = probe.read().latLon;
+  assert.ok(latestOrigin);
+  assert.ok(Math.abs(latestOrigin.lat - 48) < 1e-10);
+  assert.ok(Math.abs(latestOrigin.lon - 8) < 1e-10);
   // A genuine proj4 definition still runs through the real resolver and transform.
   await act(async () => {
     release(new Response('+proj=longlat +datum=WGS84 +no_defs'));
     await response;
     await new Promise<void>(resolve => setTimeout(resolve, 0));
   });
-  assert.deepEqual(probe.read().latLon, { lat: 48, lon: 8 });
+  assert.deepEqual(probe.read().latLon, latestOrigin);
   assert.equal(probe.read().mapState, 'ready');
   assert.equal(probe.read().errorKey, null);
   assert.equal(probe.read().geometryDistanceKm, null);

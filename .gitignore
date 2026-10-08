@@ -162,3 +162,6 @@ scripts/perf/browser-corpus.local.json
 # Autodesk SDK worker build outputs (proprietary SDK/native dependencies).
 apps/autodesk-exchange-worker/bin/
 apps/autodesk-exchange-worker/obj/
+
+# Unreviewed live AI evaluation runs (scripts/ai-eval/run-live-eval.mjs); only reviewed recordings are promoted.
+tests/ai-eval/results/

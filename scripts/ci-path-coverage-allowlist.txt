@@ -28,6 +28,8 @@ scripts/release-version-changed.test.mjs README.md # synthetic .changeset filena
 scripts/check-workflow-report-paths.mjs .github/* # `.github` is a conservative prefix fragment; the real audit input `.github/workflows/**` is carried by frontend
 scripts/check-workflow-report-paths.test.mjs .github/* # same prefix fragment, produced by the synthetic-tree harness
 scripts/lib/module-size-ratchet.test.mjs tests/* # `tests` fragment from a fixture path; the ratchet walks packages/ and apps/
+scripts/ai-eval/check-ai-eval-manifest.mjs tests/* # `tests` fragment of join(root, 'tests', 'ai-eval' | 'models', ...); the real inputs are tests/ai-eval/** and tests/models/manifest.json, both in the node-tests filter
+scripts/ai-eval/check-ai-eval-invariants.mjs tests/* # same fragment; the real input is tests/ai-eval/** (recordings and manifest)
 scripts/fixtures/fetch-fixtures.test.mjs tests/* # `tests` fragment; the fetcher targets tests/models from its manifest
 scripts/docs/generate-docs-sections.mjs tests/benchmark/* # `tests` prefix fragment; the one input under tests/benchmark is baseline.json, now in the docs filter and pinned by REQUIRED_COVERAGE
 scripts/docs/generate-docs-sections.mjs tests/extensions # `tests` prefix fragment; sdk-canary.yml carries tests/extensions/canaries/** in its own paths

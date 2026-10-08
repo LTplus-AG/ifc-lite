@@ -19,7 +19,7 @@ import { changeOperations } from '@/lib/changes/change-operations';
 import { revertChangeOperation, type RevertRefusal } from '@/lib/changes/revert-change-operation';
 import { inverseMutationTargets } from '@/store/slices/mutation-inverse-registry';
 import { modelEditTarget } from '@/store/slices/mutation-modelling-records';
-import type { ChangeScalar, ModelChange } from './model-change';
+import type { ChangeScalar, ModelChange } from '@ifc-lite/ai/artifacts';
 import type { AuthoringOpName } from './model-authoring';
 import { previewModelChanges, type ModelChangePreview, type PreviewRow } from './model-change-preview';
 import type { ReceiptValidation } from './validation-verdicts';

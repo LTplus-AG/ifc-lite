@@ -9,7 +9,7 @@ import { readFileSync } from 'node:fs';
 import { act } from 'react';
 import { IfcParser } from '@ifc-lite/parser';
 import type { GeometryResult } from '@ifc-lite/geometry';
-import { advance, cleanup, mouseDown, render } from '@/test/render.js';
+import { advance, cleanup, mouseDown, render, waitFor } from '@/test/render.js';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture.js';
 import { useViewerStore } from '@/store';
 import { usePlacementGeorefContext } from '@/lib/geo/placement-georef-runtime';
@@ -89,6 +89,8 @@ for (const count of [0, 1, 2]) {
       const tab = panel.querySelector('[role="tab"][data-state="inactive"]');
       assert.ok(tab, 'Georeference tab is available');
       mouseDown(tab, { button: 0 });
+      await waitFor(() => /Drag the plane and height handle/.test(panel.textContent ?? ''),
+        'projected georeference controls resolve with Map off');
       assert.match(panel.textContent ?? '', /Drag the plane and height handle/, 'georeference controls shown with Map off');
       assert.doesNotMatch(panel.textContent ?? '', /No georeferenced model/i);
       assert.equal(readout.textContent, JSON.stringify({

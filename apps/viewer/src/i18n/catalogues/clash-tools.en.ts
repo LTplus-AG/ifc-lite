@@ -82,6 +82,7 @@ export const clashToolsEn = {
 
   // ClashRevisionCompareDialog.tsx
   'clashTools.revisionCompare.triggerTooltip': 'Compare clash runs across revisions',
+  'clashTools.revisionCompare.originalFinding': 'Original saved baseline finding',
   'clashTools.revisionCompare.dialogTitle': 'Compare clash runs',
   'clashTools.revisionCompare.dialogDescription':
     'Save the current result as a baseline, then compare it against a later run — new, persisting, and no-longer-detected clashes.',

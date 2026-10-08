@@ -88,3 +88,9 @@ Node libraries over the ifc-lite SDK live in `@ifc-lite/flow-nodes`.
 ## License
 
 MPL-2.0
+
+The Node-only `@ifc-lite/flow/checkpoint-file` entry exports `FileCheckpointStore`
+and `sourceDigestOf`, shared by CLI and MCP review continuations. Disk updates
+use an exclusive lock, revision CAS and atomic rename; locks are never reclaimed
+by age. Browser consumers continue to use the portable checkpoint entry and
+their native IndexedDB store.

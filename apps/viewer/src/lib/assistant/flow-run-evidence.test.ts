@@ -27,7 +27,7 @@ const doc: FlowDocument = {
 const report = (nodeId: string, extra: Partial<NodeReport> = {}): NodeReport =>
   ({ nodeId, status: 'ok', durationMs: 1, lanes: 1, laneErrors: 0, missing: {}, warnings: [], ...extra });
 const run = (reports: NodeReport[], log: RunLogEntry[] = [], ok = true): RunResult =>
-  ({ ok, writes: 0, outputs: new Map(), graphOutputs: [], reports, log });
+  ({ ok, writes: 0, outputs: new Map(), graphOutputs: [], reports, log, review: [] });
 const state = (flowLastRun: RunResult | null, flowLastError: string | null = null) => ({
   flowDoc: doc, flowLastRun, flowLastError, flowLastRunWindow: null, flowRunWarnings: [], flowArtifacts: [],
 });

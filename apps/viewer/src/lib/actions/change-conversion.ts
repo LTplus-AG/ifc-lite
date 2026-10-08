@@ -15,7 +15,7 @@
  * guidance to narrow it, rather than producing an unreviewable stack.
  */
 
-import { changeKey, MODEL_CHANGE_LIMIT, type ModelChange, type ModelChangeBatch } from './model-change';
+import { changeKey, MODEL_CHANGE_LIMIT, type ModelChange, type ModelChangeBatch } from '@ifc-lite/ai/artifacts';
 
 export const MODEL_CHANGE_PART_LIMIT = 20;
 /** Largest change set a converter turns into reviewed parts. */

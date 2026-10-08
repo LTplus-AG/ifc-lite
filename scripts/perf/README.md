@@ -88,6 +88,21 @@ call sites and `useViewerStore` subscriptions on the viewport, properties,
 hierarchy and streaming paths statically (minified component names make a
 runtime fiber census unattributable, and mounted counts move with UI state).
 
+## Prepass terminal trace publication (#6993)
+
+The host terminates the prepass worker on its completion event. Draining only
+finished spans at that point preserved counters but lost the active scan
+span, whose handler had not returned. The worker now completes that named
+span before publishing completion, using the shared trace host. Behavioral
+controls observe the scan and counters before the terminal event, preserve
+unrelated in-flight spans, and reject duplicate publication on handler return.
+Verdict: diagnostic correctness, with no model-load speed claim. The disabled
+trace returns before scanning active spans, and geometry production is
+unchanged. Lesson: flush-before-termination must close the work represented
+by the terminal event; a drain alone cannot preserve an open span. Other M2b
+transfer, interaction, deterministic-upload and device-loss obligations remain
+open.
+
 ## Worker warm-up candidate held (#7036)
 
 The resumed [cold-load captures](evidence/worker-warmup-7036/README.md) show

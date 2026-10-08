@@ -17,7 +17,8 @@ import {
   Calendar,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { AnalysisEmptyState } from '../analysis/AnalysisEmptyState';
+import { ResultView, ResultSource, ResultCoverage } from '../result/ResultView';
+import { ResultState } from '../result/ResultState';
 import { AnalysisResultList } from '../analysis/AnalysisResultList';
 import { tourAnchor, TOUR_ANCHORS } from '@/lib/tours/anchors';
 import { Input } from '@/components/ui/input';
@@ -38,6 +39,7 @@ import { StatusBadge, PriorityBadge, formatDate, TOPIC_STATUSES } from './bcfHel
 // ============================================================================
 
 export interface BCFTopicListProps {
+  projectName?: string;
   topics: BCFTopic[];
   onSelectTopic: (topicId: string) => void;
   onCreateTopic: () => void;
@@ -52,6 +54,7 @@ export interface BCFTopicListProps {
 // ============================================================================
 
 export function BCFTopicList({
+  projectName,
   topics,
   onSelectTopic,
   onCreateTopic,
@@ -64,6 +67,7 @@ export function BCFTopicList({
   const emailInputId = useId();
   const [editingEmail, setEditingEmail] = useState(false);
   const [emailInput, setEmailInput] = useState(author);
+  const focusEmail = useCallback((input: HTMLInputElement | null) => { input?.focus(); }, []);
   const isDefaultEmail = author === 'user@example.com';
 
   const handleSaveEmail = useCallback(() => {
@@ -89,8 +93,14 @@ export function BCFTopicList({
   }, [filteredTopics]);
 
   return (
-    <div className="flex flex-col h-full">
-      {/* Filter */}
+    <ResultView
+      source={t('bcf.resultChrome.region')}
+      className="h-full"
+      header={<ResultSource source={t('bcf.resultChrome.source', { name: projectName || t('bcf.resultChrome.unnamed') })}
+        models={[]} population={t('bcf.resultChrome.population', { count: topics.length })} />}
+      coverage={<ResultCoverage status="uncertain" counts={t('bcf.resultChrome.shown', { count: sortedTopics.length })}
+        incomplete={[t('bcf.resultChrome.coverageUnknown')]} />}
+      filters={(
       <div className="flex items-center gap-2 px-3 py-2 border-b border-border">
         <Filter className="h-4 w-4 text-muted-foreground" />
         <Select value={statusFilter} onValueChange={onStatusFilterChange}>
@@ -110,8 +120,8 @@ export function BCFTopicList({
           <Plus className="h-4 w-4" />
         </Button>
       </div>
-
-      {/* Topic List */}
+      )}
+      rows={(
       <AnalysisResultList
         className="flex-1 min-h-0"
         rowClassName="border-b border-border"
@@ -166,10 +176,10 @@ export function BCFTopicList({
       >
         {sortedTopics.length === 0 && (
           <div className="flex flex-col items-center justify-center py-8 px-4 text-muted-foreground text-sm">
-            <AnalysisEmptyState
-              icon={<MessageSquare className="size-8" />}
-              title={t('bcf.topicList.noTopics')}
-              action={<Button variant="link" size="sm" onClick={onCreateTopic}>{t('bcf.topicList.createFirstTopic')}</Button>}
+            <ResultState
+              kind={topics.length > 0 ? 'filtered' : 'no-population'}
+              title={t(topics.length > 0 ? 'bcf.resultChrome.filtered' : 'bcf.topicList.noTopics')}
+              action={topics.length === 0 ? <Button variant="link" size="sm" onClick={onCreateTopic}>{t('bcf.topicList.createFirstTopic')}</Button> : undefined}
             />
 
             {/* Email setup nudge */}
@@ -188,7 +198,7 @@ export function BCFTopicList({
                         if (e.key === 'Enter') handleSaveEmail();
                         if (e.key === 'Escape') setEditingEmail(false);
                       }}
-                      autoFocus
+                      ref={focusEmail}
                     />
                     <div className="flex gap-2 justify-end">
                       <Button
@@ -244,6 +254,7 @@ export function BCFTopicList({
           </div>
         )}
       </AnalysisResultList>
-    </div>
+      )}
+    />
   );
 }

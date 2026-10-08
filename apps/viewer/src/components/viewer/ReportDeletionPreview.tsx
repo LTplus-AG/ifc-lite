@@ -53,7 +53,8 @@ export function ReportDeletionPreview({ source, report, onCancel, onDeleted, sto
       const now = useViewerStore.getState();
       const targetNow = source.kind === 'compare' ? now.savedComparisons.find(row => row.id === source.id) : now.savedClashReports.find(row => row.id === source.id);
       const currentAction = source.kind === 'compare' ? now.deleteSavedComparison : now.deleteSavedClashReport;
-      const owned = staged ? targetNow === undefined : targetNow === captured.current && active.current === owner && owner.alive;
+      const owned = active.current === owner && owner.alive
+        && (staged ? targetNow === undefined : targetNow === captured.current);
       if (!owned || currentAction !== removeAction || reportChartDependencies(now, source).signature !== acknowledged.signature) {
         guardRejected = true; return false;
       }

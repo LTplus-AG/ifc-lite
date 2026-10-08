@@ -150,6 +150,13 @@
               "profileStatus": "unavailable",
               "Profile": null
             },
+            "nativeType": {
+              "status": "typed",
+              "expected": {
+                "GlobalId": "3n9C2OuJjE89DiYlOaoccO",
+                "Name": "house - roof - slab right"
+              }
+            },
             "structuralStatus": "available",
             "structural": null,
             "documentStatus": "available",

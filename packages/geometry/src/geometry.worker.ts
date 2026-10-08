@@ -37,6 +37,7 @@ import {
 import { takeWasmPanicStash } from './wasm-panic-forward.js';
 import { traceGeometryWorkerMessage, meterTypedArrayArgs, countCopy, postPrepassEvent } from './worker-trace.js'; // #6956 spans, #6957 counters
 import type { GeometryWorkerResetMessage } from './worker-pool-reset.js';
+import { readWorkerWasmHeap } from './worker-heap.js';
 import { isColumnLengthRefusal } from './wasm-column-refusal.js';
 
 export interface GeometryWorkerInitMessage {
@@ -1315,15 +1316,7 @@ async function processSliceStreaming(session: ProcessingSession, jobsFlat: Uint3
 
 function emitSessionEnd(session: ProcessingSession): void {
   flushPending(session); // safety net for tail meshes
-  let wasmHeapBytes = 0;
-  try {
-    const wasmMemory = api?.getMemory() as { buffer?: ArrayBuffer } | undefined;
-    wasmHeapBytes = wasmMemory?.buffer?.byteLength ?? 0;
-  } catch (err) {
-    // Memory accounting only — the session still ends normally, it just reports
-    // a zero heap. Once per session end, so one line per worker per load.
-    console.warn('[Worker] wasm heap accounting unavailable; reporting 0 bytes:', err);
-  }
+  const wasmHeapBytes = readWorkerWasmHeap(api);
   (self as unknown as Worker).postMessage(
     { type: 'memory', meshBytes: session.cumulativeMeshBytes, wasmHeapBytes } as GeometryWorkerMemoryMessage,
   );
@@ -1381,9 +1374,10 @@ async function handleMessage(e: MessageEvent<GeometryWorkerRequest>): Promise<vo
   try {
     if (e.data.type === 'pool-reset') {
       // FIFO dispatch admits this only after the pre-pass callback and stream-end unwind.
-      const memory = api?.getMemory() as { buffer?: ArrayBuffer } | undefined;
-      const wasmHeapBytes = memory?.buffer?.byteLength ?? 0;
-      try { api?.clearPrePassCache(); } finally { api?.free(); api = null; clearLoadState(); }
+      const wasmHeapBytes = readWorkerWasmHeap(api);
+      try { api?.clearPrePassCache(); } finally {
+        try { api?.free(); } finally { api = null; clearLoadState(); }
+      }
       mergeLayersFlag = false; mergeLayersApplied = false; instancingEnabled = true;
       geometryHashTolerance = null; geometryHashApplied = false;
       tessellationQuality = null; tessellationQualityApplied = false;
@@ -1616,7 +1610,7 @@ async function handleMessage(e: MessageEvent<GeometryWorkerRequest>): Promise<vo
       } else {
         await ensureInit();
       }
-      (self as unknown as Worker).postMessage({ type: 'ready', wasmHeapBytes: (api?.getMemory() as { buffer?: ArrayBuffer } | undefined)?.buffer?.byteLength ?? 0 });
+      (self as unknown as Worker).postMessage({ type: 'ready', wasmHeapBytes: readWorkerWasmHeap(api) });
       return;
     }
 

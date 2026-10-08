@@ -17,7 +17,7 @@ export type PoolWorkerRole = 'geometry' | 'prepass';
 export interface GeometryWorkerPoolLimits {
   /** Idle workers kept at most (geometry and pre-pass roles share the pool). */
   maxIdle: number;
-  /** Booked bytes of the idle workers kept at most. */
+  /** Measured idle bookings plus initializing-worker reservations kept at most. */
   idleBytesCeiling: number;
   /** Terminate every idle worker after this long without a lease. */
   idleReleaseMs: number;
@@ -29,7 +29,7 @@ export interface GeometryWorkerPoolLimits {
 
 const MB = 1024 * 1024;
 
-/** What a freshly instantiated engine holds: ~9 MB of initial wasm memory plus worker overhead. */
+/** Initial reservation: the pinned engine starts below 9 MiB; worker overhead is estimated at 7 MiB. */
 export const FRESH_WORKER_HEAP_BYTES = 16 * MB;
 
 export const DEFAULT_POOL_LIMITS: GeometryWorkerPoolLimits = {
@@ -113,7 +113,7 @@ export class GeometryWorkerPool {
     let worker: Worker;
     if (entry) {
       worker = entry.worker;
-      worker.onerror = null;
+      worker.onmessage = null; worker.onerror = null;
       this.counts.leasedWarm++;
       perfCount(entry.used ? 'worker.reused' : 'worker.prewarmed');
     } else if (boot) {
@@ -209,7 +209,9 @@ export class GeometryWorkerPool {
       || heap > this.limits.maxWorkerHeapBytes || this.idle.length + this.warming.size >= this.limits.maxIdle) return false;
     const bytes = heap + (FRESH_WORKER_HEAP_BYTES - 9 * MB);
     if (this.idleBytes() + bytes + this.warming.size * FRESH_WORKER_HEAP_BYTES > this.limits.idleBytesCeiling) return false;
-    worker.onmessage = null;
+    worker.onmessage = ({ data }: MessageEvent<{ type?: string }>) => {
+      if (data.type === 'error') this.remove(worker, 'idle-error');
+    };
     worker.onerror = () => this.remove(worker, 'idle-error');
     this.idle.push({ worker, key, bytes, used });
     if (this.idleTimer === null) this.armIdleTimer();

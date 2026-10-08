@@ -11,6 +11,17 @@ import { startViewerDevServer } from './viewer-dev-server.js';
 const root = new URL('../../', import.meta.url);
 const fixtures = ['ara3d/AC20-FZK-Haus.ifc', 'various/01_Snowdon_Towers_Sample_Structural(1).ifc'];
 const paths = fixtures.map(path => fileURLToPath(new URL(`tests/models/${path}`, root)));
+const sourcePaths = [
+  'packages/geometry/src/geometry-worker-pool.ts', 'packages/geometry/src/worker-pool-reset.ts',
+  'packages/geometry/src/worker-heap.ts', 'packages/geometry/src/geometry.worker.ts',
+  'packages/geometry/src/geometry-parallel.ts', 'packages/geometry/src/geometry-worker-init.ts',
+  'packages/geometry/src/warm-pool.ts', 'packages/geometry/src/wasm-shared-module.ts',
+  'packages/parser/src/worker-parser.ts', 'packages/parser/src/parser.worker.ts',
+  'packages/parser/src/parser-worker-engine-module.ts', 'packages/load-trace/src/worker.ts',
+  'packages/load-trace/src/counters.ts', 'apps/viewer/src/lib/wasm-prewarm.ts',
+  'tests/e2e/worker-pool-reuse-7036.wasm.ts', 'tests/e2e/worker-pool-reuse-7036.e2e.spec.ts',
+];
+
 
 test('#7036 real WASM restores source, settings and federation IDs across reset worker epochs', async ({ page }, info) => {
   test.skip(paths.some(path => !existsSync(path)), 'Authoring-tool fixtures absent — run pnpm fixtures');
@@ -25,7 +36,10 @@ test('#7036 real WASM restores source, settings and federation IDs across reset 
       return module.runPoolReuseWitness(sourceUrls);
     }, { moduleUrl: `/@fs/${fileURLToPath(new URL('./worker-pool-reuse-7036.wasm.ts', import.meta.url))}`,
       sourceUrls: paths.map(path => `/@fs/${path}`) as [string, string] });
-    await info.attach('real-wasm-worker-pool-epochs', { body: JSON.stringify({ fixtureHashes: hashes, wasmSha256: createHash('sha256').update(readFileSync(new URL('packages/wasm/pkg/ifc-lite_bg.wasm', root))).digest('hex'), report }, null, 2), contentType: 'application/json' });
+    await info.attach('real-wasm-worker-pool-epochs', { body: JSON.stringify({ fixtureHashes: hashes,
+      sourceSha256: Object.fromEntries(sourcePaths.map(path => [path, createHash('sha256').update(readFileSync(new URL(path, root))).digest('hex')])),
+      browser: await page.evaluate(() => ({ userAgent: navigator.userAgent, hardwareConcurrency: navigator.hardwareConcurrency, crossOriginIsolated })),
+      wasmSha256: createHash('sha256').update(readFileSync(new URL('packages/wasm/pkg/ifc-lite_bg.wasm', root))).digest('hex'), report }, null, 2), contentType: 'application/json' });
     expect(report.outputs.first.meshes).toBeGreaterThan(0);
     expect(report.outputs.repeat).toEqual(report.outputs.first);
     expect(report.spawnedAfterRepeat).toBe(report.spawnedBeforeRepeat);

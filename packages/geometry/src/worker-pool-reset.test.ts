@@ -223,3 +223,16 @@ it('#7036 delayed boot reservations remain inside admission byte and count limit
   expect(pool.stats().idleBytes + pool.stats().warmingReservedBytes).toBeLessThanOrEqual(32 * MB);
   pool.drain('witness-end');
 });
+
+it('#7036 an idle worker protocol error retires the instance before another lease', () => {
+  const transport = new ResetTransport();
+  const pool = new GeometryWorkerPool({ spawn: () => transport as unknown as Worker });
+  pool.prewarm(1, '', () => {});
+  transport.onmessage?.call(transport as unknown as Worker,
+    { data: { type: 'ready', wasmHeapBytes: 9 * MB } } as MessageEvent);
+  expect(pool.stats().idle).toBe(1);
+  transport.onmessage?.call(transport as unknown as Worker,
+    { data: { type: 'error', message: 'queued initialization setting failed' } } as MessageEvent);
+  expect(pool.stats().idle).toBe(0);
+  expect(transport.terminated).toBe(true);
+});

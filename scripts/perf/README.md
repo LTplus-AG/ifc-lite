@@ -126,7 +126,7 @@ callback unwinds and frees the model API, source, indexes and pre-pass cache.
 Measured initial and reset heaps gate idle admission; failure, abandonment,
 unknown/grown heaps, hidden documents and memory pressure terminate workers.
 The parser receives the shared compiled module asynchronously so index handoff
-does not wait for compilation. Actual authoring-tool correctness controls are
+does not wait for compilation. The [actual authoring-tool correctness controls](evidence/worker-pool-reuse-7036/README.md) are
 separate from the still-pending real-GPU A/B and resident-memory acceptance.
 No performance win or rollout is admitted from booked memory or unit controls.
 Lesson: posting engine init is not worker readiness. An idle counter before its

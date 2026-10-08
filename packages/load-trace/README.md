@@ -113,7 +113,10 @@ perfTally('render.mergeGeometry', vertices, 'vertices');              // render.
 - In a worker, `createWorkerTraceHost` switches the worker's registry on with
   tracing and posts its increments after every handler; `host.flush()` posts
   them early when the main thread is about to terminate the worker. Pass the
-  completed span name when its handler has not yet returned.
+  completed span name when its handler has not yet returned. A pooled worker
+  calls `host.reset()` after its completed handler unwinds, before admitting
+  another load. Reset disables counters and clears the previous recorder and
+  first-message state; the next trace-enable message begins a new epoch.
 - `startFrameMonitor` observes `long-animation-frame` and `longtask`
   (feature-detected). `snapshot().mainThread` sums each type over the load
   window and attributes LoAF blocking time to the innermost main-thread span

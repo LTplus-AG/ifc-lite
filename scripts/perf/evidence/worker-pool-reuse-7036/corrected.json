@@ -1,0 +1,103 @@
+{
+  "fixtureHashes": [
+    "d42ab0dee01173106c16cd823b4614efe188fa15dd65195d95b9879bec59acc5",
+    "fab102eb5f9152bc7053d7e4920a8b75d0d34683c834078f0735c88308eb00a4"
+  ],
+  "sourceSha256": {
+    "packages/geometry/src/geometry-worker-pool.ts": "2b0884a9e5f8d5d4be321596481619095d068877f34890f6cd346ab11c402489",
+    "packages/geometry/src/worker-pool-reset.ts": "acc891ab891d24a41c9309822767dbffca08dc3cd9262267089561b8fa658477",
+    "packages/geometry/src/worker-heap.ts": "e1c78d2da0d54d0412b3794b1560cdaac62e95c528f745ac9e78280300f8bff4",
+    "packages/geometry/src/geometry.worker.ts": "9ed4a9aba040173145a1e3565a86cf7dd963e459803a415dffd36dbd7a902174",
+    "packages/geometry/src/geometry-parallel.ts": "772735a52015a4bff147cc961a8b502d8c0e898c746063152864533c762bb831",
+    "packages/geometry/src/geometry-worker-init.ts": "34f7e96b8b3ca4bcd82b56d236e673a2b5759faa1dace4f58a85f24a1176d556",
+    "packages/geometry/src/warm-pool.ts": "ee881622d2cdfa71623db7bbac57757f8c82cbb708eb463e29c0ddf09b9a772f",
+    "packages/geometry/src/wasm-shared-module.ts": "a7732a11fe9dc650d4559857bc13153e38338da50e364cc7044091094c612893",
+    "packages/parser/src/worker-parser.ts": "a1b74cb8e0fb373508b93ad4057de2a763f12c5e10ed7aa9ffc7af3899a4c82d",
+    "packages/parser/src/parser.worker.ts": "29a4bd8f95047884067aa41bda33775da5335e1b93706140c7ad33c9c9745131",
+    "packages/parser/src/parser-worker-engine-module.ts": "a40289473c0dcf8ea56eb22fac0850c458a1294f941fdae338c37d7d7ccbe5ad",
+    "packages/load-trace/src/worker.ts": "f1b29dc6c71c4377d014b5c469c499113146d473e1be7a53b2eee9877b6cf911",
+    "packages/load-trace/src/counters.ts": "5267754a0d315ba2776702edd1c2aa66f3e80d534c0344cedce03bb7a15813cb",
+    "apps/viewer/src/lib/wasm-prewarm.ts": "6471e342e437f3ef98bca0dee52f105d6463a96566850553fe09aa85da13b2f5",
+    "tests/e2e/worker-pool-reuse-7036.wasm.ts": "30f3a9db497e0a576b5715e256f43f24c0d9b1355c16d5c833bb0266c5bd3b83",
+    "tests/e2e/worker-pool-reuse-7036.e2e.spec.ts": "b47e56c1e03b1a5aa1eb84fe764a9e7c60a1965d07fb3e06749ccc54d3cb08ea"
+  },
+  "browser": {
+    "userAgent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/153.0.0.0 Safari/537.36",
+    "hardwareConcurrency": 24,
+    "crossOriginIsolated": true
+  },
+  "wasmSha256": "6318355d8a78d819d91717802a54e69500cf7c642559c75ff331e5c6159aaaff",
+  "report": {
+    "outputs": {
+      "first": {
+        "digest": "16fcedb5",
+        "meshes": 317,
+        "triangles": 33356,
+        "geometryHashes": 0,
+        "coordinates": "{\"originShift\":{\"x\":0,\"y\":0,\"z\":0},\"originalBounds\":{\"min\":{\"x\":-3,\"y\":-1,\"z\":-13},\"max\":{\"x\":15,\"y\":6.3176915645599365,\"z\":5}},\"shiftedBounds\":{\"min\":{\"x\":-3,\"y\":-1,\"z\":-13},\"max\":{\"x\":15,\"y\":6.3176915645599365,\"z\":5}},\"hasLargeCoordinates\":false,\"boundsRecoveryFallbackCount\":0,\"wasmRtcFrame\":{\"x\":0,\"y\":0,\"z\":0,\"needsShift\":false},\"lengthUnitScale\":1}",
+        "idsCount": 119,
+        "idsSha256": "23e463ab63458f19cd3692c1d391ae0e598701321d3e537becb2bc30af2b0e10"
+      },
+      "repeat": {
+        "digest": "16fcedb5",
+        "meshes": 317,
+        "triangles": 33356,
+        "geometryHashes": 0,
+        "coordinates": "{\"originShift\":{\"x\":0,\"y\":0,\"z\":0},\"originalBounds\":{\"min\":{\"x\":-3,\"y\":-1,\"z\":-13},\"max\":{\"x\":15,\"y\":6.3176915645599365,\"z\":5}},\"shiftedBounds\":{\"min\":{\"x\":-3,\"y\":-1,\"z\":-13},\"max\":{\"x\":15,\"y\":6.3176915645599365,\"z\":5}},\"hasLargeCoordinates\":false,\"boundsRecoveryFallbackCount\":0,\"wasmRtcFrame\":{\"x\":0,\"y\":0,\"z\":0,\"needsShift\":false},\"lengthUnitScale\":1}",
+        "idsCount": 119,
+        "idsSha256": "23e463ab63458f19cd3692c1d391ae0e598701321d3e537becb2bc30af2b0e10"
+      },
+      "federated": {
+        "digest": "49af97bd",
+        "meshes": 17380,
+        "triangles": 477826,
+        "geometryHashes": 17380,
+        "coordinates": "{\"originShift\":{\"x\":0,\"y\":0,\"z\":0},\"originalBounds\":{\"min\":{\"x\":-34.59479904174805,\"y\":-13.411200284957886,\"z\":-14.554200053215027},\"max\":{\"x\":22.116559982299805,\"y\":21.590006103515844,\"z\":46.49700450897217}},\"shiftedBounds\":{\"min\":{\"x\":-34.59479904174805,\"y\":-13.411200284957886,\"z\":-14.554200053215027},\"max\":{\"x\":22.116559982299805,\"y\":21.590006103515844,\"z\":46.49700450897217}},\"hasLargeCoordinates\":false,\"boundsRecoveryFallbackCount\":0,\"wasmRtcFrame\":{\"x\":0,\"y\":0,\"z\":0,\"needsShift\":false},\"lengthUnitScale\":0.3048}",
+        "idsCount": 1516,
+        "idsSha256": "8e23ceeaab815f89457e315a83ffb567331cffac79a6e2fc71645bcab4a9d90b"
+      },
+      "federatedFresh": {
+        "digest": "49af97bd",
+        "meshes": 17380,
+        "triangles": 477826,
+        "geometryHashes": 17380,
+        "coordinates": "{\"originShift\":{\"x\":0,\"y\":0,\"z\":0},\"originalBounds\":{\"min\":{\"x\":-34.59479904174805,\"y\":-13.411200284957886,\"z\":-14.554200053215027},\"max\":{\"x\":22.116559982299805,\"y\":21.590006103515844,\"z\":46.49700450897217}},\"shiftedBounds\":{\"min\":{\"x\":-34.59479904174805,\"y\":-13.411200284957886,\"z\":-14.554200053215027},\"max\":{\"x\":22.116559982299805,\"y\":21.590006103515844,\"z\":46.49700450897217}},\"hasLargeCoordinates\":false,\"boundsRecoveryFallbackCount\":0,\"wasmRtcFrame\":{\"x\":0,\"y\":0,\"z\":0,\"needsShift\":false},\"lengthUnitScale\":0.3048}",
+        "idsCount": 1516,
+        "idsSha256": "8e23ceeaab815f89457e315a83ffb567331cffac79a6e2fc71645bcab4a9d90b"
+      },
+      "restored": {
+        "digest": "16fcedb5",
+        "meshes": 317,
+        "triangles": 33356,
+        "geometryHashes": 0,
+        "coordinates": "{\"originShift\":{\"x\":0,\"y\":0,\"z\":0},\"originalBounds\":{\"min\":{\"x\":-3,\"y\":-1,\"z\":-13},\"max\":{\"x\":15,\"y\":6.3176915645599365,\"z\":5}},\"shiftedBounds\":{\"min\":{\"x\":-3,\"y\":-1,\"z\":-13},\"max\":{\"x\":15,\"y\":6.3176915645599365,\"z\":5}},\"hasLargeCoordinates\":false,\"boundsRecoveryFallbackCount\":0,\"wasmRtcFrame\":{\"x\":0,\"y\":0,\"z\":0,\"needsShift\":false},\"lengthUnitScale\":1}",
+        "idsCount": 119,
+        "idsSha256": "23e463ab63458f19cd3692c1d391ae0e598701321d3e537becb2bc30af2b0e10"
+      },
+      "restoredFresh": {
+        "digest": "16fcedb5",
+        "meshes": 317,
+        "triangles": 33356,
+        "geometryHashes": 0,
+        "coordinates": "{\"originShift\":{\"x\":0,\"y\":0,\"z\":0},\"originalBounds\":{\"min\":{\"x\":-3,\"y\":-1,\"z\":-13},\"max\":{\"x\":15,\"y\":6.3176915645599365,\"z\":5}},\"shiftedBounds\":{\"min\":{\"x\":-3,\"y\":-1,\"z\":-13},\"max\":{\"x\":15,\"y\":6.3176915645599365,\"z\":5}},\"hasLargeCoordinates\":false,\"boundsRecoveryFallbackCount\":0,\"wasmRtcFrame\":{\"x\":0,\"y\":0,\"z\":0,\"needsShift\":false},\"lengthUnitScale\":1}",
+        "idsCount": 119,
+        "idsSha256": "23e463ab63458f19cd3692c1d391ae0e598701321d3e537becb2bc30af2b0e10"
+      }
+    },
+    "spawnedBeforeRepeat": 2,
+    "spawnedAfterRepeat": 2,
+    "initialWorkerHeapBytes": [
+      9371648,
+      9371648
+    ],
+    "bootWorkerCreations": 2,
+    "bootAdmittedWorkers": 2,
+    "bootWarmingWorkers": 0,
+    "parserHandoffDigest": "7c7aea26",
+    "parserScanDigest": "7c7aea26",
+    "finalIdleBytes": 112721920,
+    "federationIdsDistinct": true
+  },
+  "scope": "Actual CPU/WASM lifecycle oracle; not rendered viewer federation, real-GPU timing, or resident-memory acceptance",
+  "rawReceiptSha256": "b38f7d008b1284c4ef2b5183a7f7edb0862f287cea7a4fd134a9cc30f0747d78"
+}

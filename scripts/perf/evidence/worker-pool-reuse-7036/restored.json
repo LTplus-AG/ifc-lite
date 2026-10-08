@@ -1,0 +1,10 @@
+{
+  "scope": "Actual CPU/WASM lifecycle oracle; not rendered viewer federation, real-GPU timing, or resident-memory acceptance",
+  "comparedWith": "corrected.json",
+  "rawReceiptSha256": "511d0ebcdc6eab925c6892206e8cf3683ca4a8eccfaf098ef41dc8f89cd13556",
+  "fixtureHashesIdentical": true,
+  "wasmSha256Identical": true,
+  "changedSourceSha256": {},
+  "changedReportFields": {},
+  "unchangedOutputReports": true
+}

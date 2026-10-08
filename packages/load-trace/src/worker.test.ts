@@ -7,7 +7,6 @@ import {
   createLoadTracer,
   createPerfCounters,
   createWorkerTraceHost,
-  createPerfCounters,
   enableWorkerTrace,
   isTraceSpansMessage,
   type TraceSpansMessage,

@@ -12,13 +12,18 @@
  * and `bim.store`'s modelling methods for joins, types and materials.
  */
 
+import { profileInMetres } from './model-authoring-shape-params';
 import { StoreEditor } from '@ifc-lite/mutations';
 import type { IfcDataStore } from '@ifc-lite/parser';
-import { addHostedElementInStore, addOrdinaryElementInStore, resolveSpatialAnchor, type OrdinaryInStoreElement } from '@ifc-lite/create';
+import { copyBatchInStore, addHostedElementInStore, addOrdinaryElementInStore, resolveSpatialAnchor, type OrdinaryInStoreElement } from '@ifc-lite/create';
 import { createModellingStoreBackend, resolveLiveOwnerHistoryId } from '@ifc-lite/sdk';
 import { ensureStoreyPlacement } from '@/store/slices/storeyPlacement';
 import type { HostedFillSpec } from '@/store/slices/mutation-hosted-fill';
 import type { ModellingMethods } from '@/store/slices/mutation-modelling-records';
+import { draftElementSize } from '@/lib/element-size-commit';
+import { writeElementProfile } from '@/store/slices/mutation-element-profile';
+import { sizeInMetres } from './model-authoring-size-params';
+import { authoringCopyTransforms, copyRefs } from './model-authoring-copy';
 import { pointToMetres, toMetres, type AuthoringOp, type AxisParams, type BoxParams, type ModelAuthoringBatch } from './model-authoring';
 
 /** An element an operation acts on: one of the model's, or one an earlier operation of the batch creates. */
@@ -49,6 +54,19 @@ export function authoredElementOf(batch: ModelAuthoringBatch, op: Create, global
   const m = (v: number) => toMetres(batch, v);
   const identity = { Name: op.name, ...(globalId ? { GlobalId: globalId } : {}) };
   const kind = KIND[op.ifcClass];
+  const shape = op.params;
+  if ('Profile' in shape) {
+    if (shape.Profile === 'polygon' && 'OuterCurve' in shape) {
+      const footprint = { ...identity, Profile: 'polygon' as const, OuterCurve: shape.OuterCurve.map(([x, y]): [number, number] => [m(x), m(y)]), Position: pointToMetres(batch, shape.position) };
+      if (kind === 'space') return { kind, params: { ...footprint, Height: m(shape.height!) } };
+      if (kind === 'slab' || kind === 'roof' || kind === 'plate') return { kind, params: { ...footprint, Thickness: m(shape.thickness!) } };
+    } else if (typeof shape.Profile === 'object') {
+      const Profile = profileInMetres(shape.Profile, batch.units);
+      if (kind === 'column' && 'position' in shape) return { kind, params: { ...identity, Profile, Position: pointToMetres(batch, shape.position), Height: m(shape.height!) } };
+      if ((kind === 'beam' || kind === 'member') && 'start' in shape) return { kind, params: { ...identity, Profile, Start: pointToMetres(batch, shape.start), End: pointToMetres(batch, shape.end) } };
+    }
+    throw new Error('The native shape does not match its element class');
+  }
   if (kind === 'wall' || kind === 'beam' || kind === 'member') {
     const p = op.params as AxisParams;
     const axis = { ...identity, Start: pointToMetres(batch, p.start), End: pointToMetres(batch, p.end), Height: m(p.height) };
@@ -133,7 +151,7 @@ export function dryRunAuthoring(
     const refs = new Map<string, number>();
     for (const row of rows) {
       try {
-        editor.runAtomic((draft) => draftWrite(batch, dataStore, modelId, draft, row, refs));
+        editor.runAtomic((draft) => draftAuthoringOperation(batch, dataStore, modelId, draft, row, refs));
       } catch (error) {
         refusals.set(row.index, error instanceof Error ? error.message : String(error));
       }
@@ -142,9 +160,20 @@ export function dryRunAuthoring(
   return refusals;
 }
 
-function draftWrite(batch: ModelAuthoringBatch, dataStore: IfcDataStore, modelId: string, draft: StoreEditor, row: DryRunRow, refs: Map<string, number>): void {
+export function draftAuthoringOperation(batch: ModelAuthoringBatch, dataStore: IfcDataStore, modelId: string, draft: StoreEditor, row: DryRunRow, refs: Map<string, number>): void {
   const { op, resolved } = row;
   switch (op.op) {
+    case 'element.resize': {
+      const outcome = draftElementSize(dataStore, draft, draftMethods(dataStore, modelId, draft), modelId, resolved.target!, sizeInMetres(op.size, batch.units));
+      if (!outcome.ok) throw new Error(outcome.reason);
+      return;
+    }
+    case 'element.profile': {
+      const outcome = writeElementProfile({ modelId, dataStore, view: draft.getMutationView(), editor: draft }, resolved.target!, profileInMetres(op.Profile, batch.units),
+        (updates) => { for (const update of updates) draft.setPositionalAttribute(update.entityId, update.index, update.value); });
+      if (!outcome.ok) throw new Error(outcome.reason);
+      return;
+    }
     case 'element.create': {
       const storey = resolved.storey!;
       const id = addOrdinaryElementInStore(draft, (d) => {
@@ -157,6 +186,11 @@ function draftWrite(batch: ModelAuthoringBatch, dataStore: IfcDataStore, modelId
     case 'hosted.create': {
       const created = addHostedElementInStore(dataStore, draft, idOf(resolved.host!, refs), hostedSpecOf(batch, op));
       if (op.ref) refs.set(op.ref, created.expressId);
+      return;
+    }
+    case 'element.copy': case 'element.array': {
+      const copies = copyBatchInStore(dataStore, draft, [idOf(resolved.subject!, refs)], authoringCopyTransforms(batch, op, resolved.storey));
+      for (const [i, copy] of copies.entries()) refs.set(copyRefs(op)[i], copy.copyId);
       return;
     }
     case 'element.delete':

@@ -48,6 +48,7 @@ function Row({ row, batch, checked, onToggle }: { row: AuthoringRow; batch: Mode
       <p className="break-words"><span className="font-medium">{operation}</span> <span className="text-muted-foreground">{summary.subject}</span></p>
       <p className="break-words"><span className="line-through text-muted-foreground">{summary.before}</span>
         {' → '}<span className="font-medium">{summary.after}</span></p>
+      {summary.previewNote && <p className="text-muted-foreground break-words">{summary.previewNote}</p>}
       {row.issue && <p className={row.status === 'denied' || row.status === 'blocked' ? 'text-muted-foreground break-words' : 'text-amber-700 dark:text-amber-400 break-words'}>{row.issue}</p>}
     </div>
     <div className="flex flex-col items-end gap-1">
@@ -127,6 +128,8 @@ export function ModelAuthoringReview({ batch, origin }: { batch: ModelAuthoringB
         </Button>
       </div>}
       {showGhosts && <p className="text-muted-foreground">{t('modelAuthoring.previewHint')}</p>}
+      {!receipt && batch.operations.some(op => op.op === 'element.copy' || op.op === 'element.array') &&
+        <p className="text-muted-foreground">{t('modelAuthoring.copyPreviewHint')}</p>}
       {receipt && <ReceiptSummary receipt={receipt} />}
       {error && <p role="alert" className="rounded border border-destructive/40 bg-destructive/10 p-2 text-destructive">{error}</p>}
     </div>

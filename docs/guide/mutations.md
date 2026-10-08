@@ -2,6 +2,12 @@
 
 IFClite supports editing IFC properties in-place with full change tracking, undo/redo, and export. The `@ifc-lite/mutations` package provides the mutation infrastructure, while the viewer integrates it with a property editor UI.
 
+Authored `NewEntity` records carry native `creationId` provenance matching the
+original `CREATE_ENTITY` mutation UUID. It is not an IFC attribute. Preserve
+the original record's token through clone, undo and recovery; a tokenless body
+at a reused express ID cannot establish the identity of a captured entity from
+old journal entries or matching fields.
+
 ## How It Works
 
 Mutations are tracked through a **MutablePropertyView** that wraps the original read-only property table. When you edit a property:
@@ -85,6 +91,8 @@ view.clear();
 Single-quantity edits record `oldQuantityType` and `oldUnit` alongside the old value, so Undo restores the previous quantity class and unit and Redo uses the recorded new metadata. `oldUnit: null` records a previously absent unit. Passing `null` as the unit to `setQuantity` explicitly clears a source unit; omitting it retains the existing source inheritance behavior. Quantity overlays and history use `unitRemoved: true` to distinguish an explicitly removed unit from an older overlay that inherits its source unit. Hosts can replay single-quantity edits through `replayQuantityMutation(view, mutation, 'undo' | 'redo', skipHistory)`; forward `view.applyMutations` uses the same metadata rules. Older history entries did not capture prior metadata: Undo restores their old value while retaining the currently effective class and unit, because a historical type change cannot be reconstructed. Write-only replay targets can omit the optional quantity reader; legacy forward records without a recorded type keep the existing Count fallback. Generated quantity export resolves supported unit names through the same existing unit resolver as properties; unresolved units remain `$`.
 
 Whole-set edits (`createPropertySet`, `deletePropertySet`, `createQuantitySet`, `deleteQuantitySet`, `deleteQuantity`) record the set's overlay rows before and after the edit on the returned mutation's `setOverlay`. A host with its own undo history reverts or re-applies one of them with `view.restoreSetOverlay(mutation.setOverlay.before)` / `(...after)`, which is what the viewer does.
+
+`view.getQuantityMutation(entityId, qsetName, quantityName)` reads the current quantity override, including `unitRemoved`, without relying on the append-only journal. It also reflects edits made with `skipHistory` and current Undo/Redo state. A reader preserving a source quantity’s explicit unit must withhold that unit once this override explicitly removes it.
 
 ### Enumerating the live entity set
 

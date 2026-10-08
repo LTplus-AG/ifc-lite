@@ -407,6 +407,9 @@ jobs:
               # (scripts/README-vercel-cost.md).
               - 'rust-major-offset.json'
               - 'tests/models/manifest.json'
+              # The path-coverage regression harness mirrors tracked evidence,
+              # and conservative gate inputs include the committed archive tree.
+              - 'tests/evidence/**'
               # The AI evaluation gates (scripts/ai-eval) read the corpus,
               # recordings, label sheets and study records: an edit to any of
               # them must run the gates that validate them.
@@ -727,8 +730,9 @@ jobs:
       # them as silent skips instead of the real assertions the oracle needs
       # to revert against.
       # #6267: a changed Playwright spec can be the witness, measured in a real
-      # browser. Only then are fixtures provisioned; the oracle itself decides
-      # whether the browser runs at all (not when a cheaper test observes).
+      # browser. Manifest fixtures are provisioned for every oracle runner;
+      # the optional browser encoder is installed only for these specs. The
+      # oracle decides whether a browser runs (not when a cheaper test observes).
       - name: Detect changed Playwright specs
         id: browser
         run: |
@@ -2739,11 +2743,10 @@ jobs:
   perf-ratchet:
     name: Perf ratchet ceilings
     needs: [changes, build, native-instructions]
-    # `always()` because `native-instructions` is skipped on frontend-only
-    # changes, which would otherwise skip this job too. A FAILED measurement
-    # job skips the gate here and goes red in the aggregate instead.
+    # An explicit status predicate permits skipped native measurements and retires
+    # cancelled runs (#7247). Failed measurements remain red in the aggregate.
     if: >-
-      always() && needs.build.result == 'success'
+      !cancelled() && needs.build.result == 'success'
       && (needs.native-instructions.result == 'success' || needs.native-instructions.result == 'skipped')
       && (needs.changes.outputs.rust == 'true' || needs.changes.outputs.frontend == 'true' || needs.changes.outputs.perf_ratchet == 'true')
     runs-on: ubuntu-latest
@@ -2818,7 +2821,8 @@ jobs:
   test:
     name: Build + WASM + Rust + Node
     needs: [changes, build, revert-oracle, typecheck, lint, node-tests, provenance-tests, viewer-tests, viewer-e2e, rust-tests, rust-full, rust-semver, geometry-census, csg-accept-gates, plato-check, docs-checks, docs-site, agents-md, license-headers, native-instructions, perf-ratchet]
-    if: always()
+    # Preserve failed/skipped dependency judgement, but retire cancelled workflows (#7247).
+    if: ${{ !cancelled() }}
     # Free runner — the gate just inspects upstream job results.
     runs-on: ${{ (vars.SELF_HOSTED_CI == 'true' && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.draft == false && !contains(github.event.pull_request.labels.*.name, 'ci:hosted')))) && fromJSON('["self-hosted","linux","x64","ifclite"]') || 'ubuntu-latest' }}
     timeout-minutes: 5

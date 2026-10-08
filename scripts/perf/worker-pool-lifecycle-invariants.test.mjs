@@ -14,6 +14,15 @@ test('#7036 new epoch cannot reuse an ended old root or skip actual finalize',()
  const failed=trace();failed.spans[0].attrs={error:true};assert.throws(()=>requireEpoch(failed,'prior'),/Failed/);
  assert.equal(requireEpoch(trace(),'prior').loadId,'next');
 });
+for(const [label,span] of [['parser.failed',{name:'parser.failed',start:0,end:null}],['error attribute',{name:'parser.work',start:0,end:null,attrs:{error:true}}]]){
+ test(`#7036 unfinished ${label} cannot be filtered into a successful epoch (#7180)`,()=>{
+  const failed=trace();failed.spans.push(span);assert.throws(()=>requireEpoch(failed,'prior'),/Failed load span/);
+ });
+}
+test('#7036 unfinished non-error work does not erase completed readiness (#7180)',()=>{
+ const pending=trace();pending.spans.push({name:'parser.work',start:0,end:null});
+ assert.equal(requireEpoch(pending,'prior').loadId,'next');
+});
 test('#7036 ownership excludes foreign profile roots, stale PID descendants and handles arbitrary input order',()=>{
  const processes=[{pid:3,parent:2,started:3},{pid:9,parent:8,started:10},{pid:2,parent:1,started:2},{pid:8,parent:0,started:1},{pid:1,parent:0,started:1},{pid:10,parent:2,started:1}];
  assert.deepEqual(ownedTree(processes,1,1).map(x=>x.pid),[1,2,3]);
@@ -139,3 +148,12 @@ test('#7180 readiness cannot be zero or predate actual metadata, geometry and fi
  const root=structuredClone(valid);root.epochs[0].trace.end=30;assert.equal(requireSample(root).ok,true);
  const cached=structuredClone(valid);cached.workload={name:'cache',mode:'cache',loads:['fzk','fzk']};const next=structuredClone(cached.epochs[0]);next.previousId=null;next.trace.loadId='cache-next';next.trace.attrs.loadPath='cache';next.trace.spans[0].name='cache.storeReady';next.trace.spans[0].end=30;next.pageGeneration=1;next.reloadCompleted=true;next.pageTimeOrigin=2000;next.trace.timeOrigin=2000;cached.epochs.push(next);assert.throws(()=>requireSample(cached),/readiness/);
 });
+
+// #7180: each arm can match its own plan while the pair compares unlike workloads.
+for(const [label,change] of [['mode',workload=>workload.mode='immediate'],['option',workload=>workload.idleMs=100]]) {
+ test(`#7036 same-name A/B pairs refuse a distinct planned ${label}`,()=>{
+  const a=row(),b={...row(),index:1,side:'B'};change(b.workload);
+  const schedule=[a,b].map(sample=>({index:sample.index,side:sample.side,pair:sample.pair,contrast:sample.contrast,workload:structuredClone(sample.workload),source:sample.source,query:sample.query}));
+  assert.throws(()=>pairedReport([a,b],schedule),/Paired workload options differ/);
+ });
+}

@@ -1,0 +1,7 @@
+{
+  "qualificationSHA": "41c6464e7a598429589ec8eea67f2d217fc106db481b68578107853acbcca8a8",
+  "rawGzipPairsVerified": 31,
+  "scope": "Beforebindingcleanup qualification only; finalsource typecheck/lint stillpending",
+  "actualRuntime": "22pass -> oldprojection20pass2Missingexpectedrejection -> restored22pass",
+  "rootTypecheckedTestFiles": 3739
+}

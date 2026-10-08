@@ -26,7 +26,8 @@ interface Material {
   MaterialConstituents?: Array<{ Name: string; Fraction: number; Material: { Name: string } }>;
   MaterialProfiles?: Array<{ Name: string; Material: { Name: string } }>;
 }
-interface Row { modelId: string; materialCount: number | null; materialsStatus: string; materials: Material[];
+interface Row { modelId: string; classificationStatus: string; classificationCount: number | null; classifications: unknown[];
+  relationshipStatus: string; relationshipCount: number | null; relationships: Array<{ relationshipId: number; relationshipType: string; entity: { expressId: number } }>; materialCount: number | null; materialsStatus: string; materials: Material[];
   materialPropertiesStatus: string; materialPropertyGroupCount: number | null;
   materialProperties: Array<{ modelId: string; expressId: number; psetCount: number | null;
     psets: Array<{ name: string; propertyCount: number | null; properties: Record<string, string> }> }> }
@@ -110,7 +111,7 @@ test('#7119 source-free verified materials remain known and missing wire rows re
   assert.equal(rows()[0].materialPropertiesStatus, 'unverified-without-source');
   assert.equal(rows()[0].materialPropertyGroupCount, null, 'unknown material property totals cannot read as zero findings');
   assert.deepEqual(rows()[0].materialProperties, []);
-  assert.match(JSON.parse(captureEvidence('selection').payload).evidence.summary.limitations, /absent values are unknown/);
+  assert.match(JSON.parse(captureEvidence('selection').payload).evidence.summary.limitations, /Unverified material-property counts stay null; empty rows do not prove absence/);
 });
 
 test('#7119 material collection shapes preserve native members and bound list fan-out', async () => {
@@ -211,11 +212,48 @@ test('#7119 session-created material property groups agree with the mounted nati
 });
 
 test('#7119 all selection caveats reach the snapshot without projection truncation', async () => {
-  seedModel('arch', 0, await sample(), 52);
+  const store = await sample();
+  seedModel('arch', 0, store, 52);
   const snapshot = captureEvidence('selection');
   const summary = JSON.parse(snapshot.payload).evidence.summary;
-  assert.match(summary.limitations, /Classifications and relationships are excluded/);
-  assert.match(summary.limitations, /selection is sampled/);
+  // #7222: independently decoded SketchUp records are the completeness oracle;
+  // the adapter's relationship producer must not supply its own expected count.
+  const witnesses = [
+    [51, 'IFCRELDEFINESBYTYPE', 50],
+    [58, 'IFCRELDEFINESBYPROPERTIES', 57],
+    [61, 'IFCRELASSOCIATESMATERIAL', 62],
+    [67, 'IFCRELDEFINESBYPROPERTIES', 66],
+    [68, 'IFCRELCONTAINEDINSPATIALSTRUCTURE', 43],
+  ] as const;
+  for (const [relationshipId, relationshipType, targetId] of witnesses) {
+    const record = store.getEntity(relationshipId);
+    assert.ok(record, `real fixture relationship #${relationshipId} must decode`);
+    assert.equal(record.type.toUpperCase(), relationshipType);
+    assert.ok(Array.isArray(record.attributes[4]) && record.attributes[4].includes(52),
+      'RelatedObjects/RelatedElements independently includes the selected slab');
+    assert.equal(record.attributes[5], targetId, 'actual native Relating endpoint');
+    assert.ok(store.getEntity(targetId), 'each independent endpoint exists');
+  }
+  const row = rows()[0];
+  assert.equal(row.classificationStatus, 'available');
+  assert.deepEqual(store.entityIndex.byType.get('IFCRELASSOCIATESCLASSIFICATION'), [36],
+    'the real fixture has exactly its building classification association');
+  const classificationRecord = store.getEntity(36); assert.ok(classificationRecord);
+  assert.deepEqual(classificationRecord.attributes[4], [30], 'classification applies to building #30, not slab #52 or its type #50');
+  assert.equal(classificationRecord.attributes[5], 35);
+  const nativeClassificationCount = 0;
+  assert.equal(row.classificationCount, nativeClassificationCount);
+  assert.equal(row.classifications.length, Math.min(nativeClassificationCount, summary.perElementBounds.classifications));
+  assert.equal(row.relationshipStatus, 'available');
+  assert.equal(row.relationshipCount, witnesses.length);
+  assert.equal(row.relationships.length, Math.min(witnesses.length, summary.perElementBounds.relationships));
+  assert.deepEqual(row.relationships.map(edge => ({
+    relationshipId: edge.relationshipId, relationshipType: edge.relationshipType.toUpperCase(),
+    targetId: edge.entity.expressId,
+  })).sort((a, b) => a.relationshipId - b.relationshipId),
+  witnesses.map(([relationshipId, relationshipType, targetId]) => ({ relationshipId, relationshipType, targetId })));
+  assert.match(summary.limitations, /Sections use perElementBounds and full known counts/);
+  assert.match(summary.limitations, /Selection is sampled/);
   assert.equal(snapshot.projectionTruncated, false);
 });
 

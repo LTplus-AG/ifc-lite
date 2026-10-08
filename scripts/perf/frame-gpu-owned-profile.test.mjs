@@ -37,3 +37,35 @@ for (const mode of ['valid','null-command','missing-command','missing-creation',
     assert.equal(result.status,0,result.stderr);const receipt=JSON.parse(result.stdout.trim());assert.equal(receipt.accepted,mode==='valid',JSON.stringify(receipt));if(mode==='valid')assert.equal(receipt.count,1);
   });
 }
+
+// #7180: execute the shared PowerShell cleanup policy, independently of the
+// POSIX launcher adapter. Provider sequences model stated observation invariants.
+for(const mode of ['empty','child-only','delayed-root','retained-witness','reused-pid']) {
+ test(`#7036 actual Windows cleanup requires positive root observation (${mode})`,{skip},()=>{
+  const script=`$ErrorActionPreference='Stop';\n${source}\n
+$script:reads=0;$script:stops=@();$script:stopped=$false
+$root=[pscustomobject]@{ProcessId=100;CreationDate=[datetime]::UtcNow;CommandLine='chrome.exe --user-data-dir=C:\\owned'}
+$replacement=[pscustomobject]@{ProcessId=100;CreationDate=$root.CreationDate.AddSeconds(1);CommandLine=$root.CommandLine}
+function Get-CimInstance {
+ $script:reads++
+ if('${mode}' -eq 'empty' -or '${mode}' -eq 'retained-witness' -or $script:stopped){return @()}
+ if('${mode}' -eq 'child-only'){return @([pscustomobject]@{ProcessId=101;CreationDate=$root.CreationDate;CommandLine=($root.CommandLine+' --type=renderer')})}
+ if('${mode}' -eq 'delayed-root' -and $script:reads -le 2){return @()}
+ if('${mode}' -eq 'reused-pid' -and $script:reads -ge 3){return @($replacement)}
+ return @($root)
+}
+function Stop-Process {param([int]$Id,[switch]$Force,[string]$ErrorAction);$script:stops+= $Id;$script:stopped=$true}
+try {
+ if('${mode}' -eq 'retained-witness'){Invoke-OwnedChromeCleanup -Profile 'C:\\owned' -DeadlineMs 1500 -ObservedRootPid 100 -ObservedRootCreated $root.CreationDate.Ticks.ToString()}
+ else {Invoke-OwnedChromeCleanup -Profile 'C:\\owned' -DeadlineMs 1500}
+ @{accepted=$true;reads=$script:reads;stops=@($script:stops)}|ConvertTo-Json -Compress
+}catch {@{accepted=$false;error=$_.Exception.Message;reads=$script:reads;stops=@($script:stops)}|ConvertTo-Json -Compress}`;
+  const result=spawnSync('powershell.exe',['-NoProfile','-NonInteractive','-EncodedCommand',Buffer.from(script,'utf16le').toString('base64')],{encoding:'utf8',timeout:10000});
+  assert.equal(result.status,0,result.stderr);const receipt=JSON.parse(result.stdout.trim());
+  assert.equal(receipt.accepted,mode==='delayed-root'||mode==='retained-witness',JSON.stringify(receipt));
+  assert.deepEqual(receipt.stops,mode==='delayed-root'?[100]:[],'Only the unchanged observed root can be terminated');
+  if(mode==='empty'||mode==='child-only')assert.match(receipt.error,/never observed/);
+  if(mode==='reused-pid')assert.match(receipt.error,/termination unproved/);
+  if(mode==='delayed-root')assert.ok(receipt.reads>=3);
+ });
+}

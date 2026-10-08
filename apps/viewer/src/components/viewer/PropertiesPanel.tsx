@@ -25,7 +25,7 @@ import { toGlobalIdFromModels } from '@/store/globalId';
 import { useIfc } from '@/hooks/useIfc';
 import { getOrCreateMutationView } from '@/sdk/adapters/mutation-view';
 import { IfcQuery } from '@ifc-lite/query';
-import { extractClassificationsOnDemand, extractTypeQuantitiesOnDemand, extractTypeEntityOwnProperties, extractDocumentsOnDemand, extractGeoreferencingOnDemand, extractLengthUnitScale, extractProjectUnits, ProjectUnits, extractStructuralOnDemand, taskProductExpressIds, taskProductGlobalIds, type IfcDataStore, type MaterialPsetGroup } from '@ifc-lite/parser';
+import { extractClassificationsOnDemand, extractTypeQuantitiesOnDemand, extractTypeEntityOwnProperties, extractGeoreferencingOnDemand, extractLengthUnitScale, extractProjectUnits, ProjectUnits, taskProductExpressIds, taskProductGlobalIds, type IfcDataStore, type MaterialPsetGroup } from '@ifc-lite/parser';
 import { RelationshipType, isSpatialStructureTypeName, isStoreyLikeSpatialTypeName } from '@ifc-lite/data';
 import type { EntityRef, FederatedModel } from '@/store/types';
 import { ZoneVolumeBreakdown } from './ZoneVolumeBreakdown';
@@ -52,6 +52,7 @@ import { ScheduleCard } from './properties/ScheduleCard';
 import { StructuralCard } from './properties/StructuralCard';
 import { TaskEditCard } from './properties/TaskEditCard';
 import { DocumentCard } from './properties/DocumentCard';
+import { effectiveDocuments } from './properties/effectiveDocuments';
 import { RelationshipsCard } from './properties/RelationshipsCard';
 import { SpatialLocationBadge } from './properties/SpatialLocationBadge';
 import { AssemblyBadge } from './properties/AssemblyBadge';
@@ -65,8 +66,9 @@ import { isMaterialDefinitionType } from '@/utils/materialDefinitionTypes';
 import { attributesFromOverlayEntity } from './properties/overlayAttributes';
 import { createQueryAdapter } from '@/sdk/adapters/query-adapter';
 import { groupMembersForRef, relationshipsForSelection } from './properties/merge-relationship-data';
+import { relationshipPopulationUnavailable } from './properties/effective-relationship-availability';
 import { effectiveSelectedClass } from './properties/effectiveSelectedClass';
-import { effectiveStructuralView } from './properties/effectiveStructuralView';
+import { effectiveStructuralData } from './properties/effectiveStructuralData';
 import { selectedOverlayEntity } from './properties/selectedOverlayEntity';
 import { mergePropertySetLists, type DisplayPropertySet } from './properties/mergePropertySetLists';
 import { filterMaterialPropertyGroups, filterPropertySets, filterQuantitySets, matchesPropertySearch, searchTabForHits } from './properties/propertySearch';
@@ -636,12 +638,10 @@ export function PropertiesPanel() {
   }, [selectedEntity, lookupExpressId, model, ifcDataStore, mutationViews, mutationVersion]);
 
   // Extract documents for the selected entity from the IFC data store
-  const documents = useMemo(() => {
-    if (!selectedEntity || lookupExpressId === null) return [];
-    const dataStore = model?.ifcDataStore ?? ifcDataStore;
-    if (!dataStore) return [];
-    return extractDocumentsOnDemand(dataStore as IfcDataStore, lookupExpressId);
-  }, [selectedEntity, lookupExpressId, model, ifcDataStore]);
+  const documentData = useMemo(() => effectiveDocuments(model?.ifcDataStore ?? ifcDataStore, selectedEntity?.expressId,
+    mutationViews.get(selectedEntity?.modelId === 'legacy' ? '__legacy__' : selectedEntity?.modelId ?? '')),
+  [selectedEntity, model, ifcDataStore, mutationViews, mutationVersion]);
+  const documents = documentData.rows;
 
   // Extract structural relationships (openings, fills, groups, connections)
   const entityRelationships = useMemo(() => {
@@ -651,7 +651,7 @@ export function PropertiesPanel() {
     const rels = relationshipsForSelection(overlayAwareQuery.relationships, selectedEntity, lookupExpressId);
     const totalCount = rels.voids.length + rels.fills.length + rels.groups.length
       + rels.connections.length + (rels.relations?.length ?? 0);
-    return totalCount > 0 ? rels : null;
+    return totalCount > 0 || relationshipPopulationUnavailable(dataStore as IfcDataStore, mutationViews.get(selectedEntity.modelId === 'legacy' ? '__legacy__' : selectedEntity.modelId)) ? rels : null;
   }, [selectedEntity, lookupExpressId, model, ifcDataStore, mutationVersion, overlayAwareQuery]);
 
   // Select a related entity by express id (e.g. click an IfcZone in the
@@ -791,8 +791,7 @@ export function PropertiesPanel() {
     if (!dataStore) return null;
     const id = selectedEntity?.modelId === 'legacy' ? '__legacy__' : (model?.id ?? selectedEntity?.modelId);
     const mutationView = id ? mutationViews.get(id) : undefined;
-    const effectiveView = effectiveStructuralView(mutationView);
-    const out = extractStructuralOnDemand(dataStore as IfcDataStore, effectiveView);
+    const out = effectiveStructuralData(dataStore as IfcDataStore, mutationView);
     return out.hasStructural ? out : null;
   }, [model, ifcDataStore, selectedEntity?.modelId, mutationViews, mutationVersion]);
   /** True when the selection is itself a structural member the extraction
@@ -1533,7 +1532,7 @@ export function PropertiesPanel() {
             )}
             {foundOccurrence.length === 0 && foundInherited.length === 0 && foundMaterialProperties.length === 0
               && (findQuery ? !hasAssociationHits : (renderedClassifications.length === 0 && renderedMaterialInfos.length === 0
-                && renderedMaterialProperties.length === 0 && renderedDocuments.length === 0
+                && renderedMaterialProperties.length === 0 && renderedDocuments.length === 0 && !documentData.membershipUnavailable
                 && !renderedEntityRelationships && !hasScheduleForSelection && !hasStructuralForSelection)) ? (
               findQuery ? null : <p className="text-sm text-zinc-500 dark:text-zinc-500 text-center py-8 font-mono">{t('properties.panel.noPropertySets')}</p>
             ) : (
@@ -1648,11 +1647,12 @@ export function PropertiesPanel() {
                 )}
 
                 {/* Documents */}
-                {visibleDocumentCount > 0 && (
+                {(visibleDocumentCount > 0 || (!findQuery && documentData.membershipUnavailable)) && (
                   <>
                     {(visiblePsetCount > 0 || visibleClassificationCount > 0 || visibleMaterialCount > 0 || foundMaterialProperties.length > 0) && (
                       <div className="border-t border-zinc-200 dark:border-zinc-800 pt-2 mt-2" />
                     )}
+                    {!findQuery && documentData.membershipUnavailable && <output className="block text-xs text-amber-700 dark:text-amber-300">{t('properties.document.membershipUnavailable')}</output>}
                     {findQuery ? foundAssociations.documents.map((card, i) => <AssociationAttributeSearchCard key={`doc-${i}`} card={card} query={findQuery} />)
                       : renderedDocuments.map((doc, i) => <DocumentCard key={`doc-${i}`} document={doc} sectionId={associationDisclosureId('document', doc, renderedDocuments, i)} />)}
                   </>
@@ -1664,6 +1664,7 @@ export function PropertiesPanel() {
                     <div className="border-t border-zinc-200 dark:border-zinc-800 pt-2 mt-2" />
                     <RelationshipsCard
                       relationships={renderedEntityRelationships}
+                      populationUnavailable={relationshipPopulationUnavailable(activeDataStore as IfcDataStore | null, selectedEntity ? mutationViews.get(selectedEntity.modelId === 'legacy' ? '__legacy__' : selectedEntity.modelId) : null)}
                       onSelectEntity={handleSelectRelatedEntity}
                       onIsolateGroupMembers={handleIsolateGroupMembers}
                     />
@@ -1694,6 +1695,7 @@ export function PropertiesPanel() {
                     <div className="border-t border-zinc-200 dark:border-zinc-800 pt-2 mt-2" />
                     <StructuralCard
                       structuralData={structuralData}
+                      sourceUnavailable={!activeDataStore?.source?.length}
                       selectedExpressId={selectedEntity.expressId}
                       selectedGlobalId={selectedEntityGlobalId}
                     />

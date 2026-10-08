@@ -83,25 +83,25 @@ function profileProcessesScript(profileWin: string): string {
   return `${readFileSync(new URL('./frame-gpu-owned-profile.ps1', import.meta.url), 'utf8')}
 $profile='${literal}'; function Owned([switch]$BrowserRoot,[switch]$RequireCompleteObservation) { @(Get-OwnedChromeProcesses -Profile $profile -BrowserRoot:$BrowserRoot -RequireCompleteObservation:$RequireCompleteObservation) };`;
 }
-function verifyEndpointOwner(profileWin: string, port: number, deadline: number): void {
+interface RootWitness { pid: number; created: string }
+function verifyEndpointOwner(profileWin: string, port: number, deadline: number): RootWitness {
   const script = `$ErrorActionPreference='Stop'; ${profileProcessesScript(profileWin)}
-    $owners=@(Owned -BrowserRoot);
+    $owners=@(Owned -BrowserRoot -RequireCompleteObservation);
     if($owners.Count -ne 1 -or -not ([IfcChromeArgs]::Split($owners[0].CommandLine) -contains '--remote-debugging-port=${port}')) { throw 'Owned browser endpoint process missing' }
     $listeners=@(Get-NetTCPConnection -LocalPort ${port} -State Listen -ErrorAction Stop);
-    if($listeners.Count -eq 0 -or @($listeners | Where-Object {$_.OwningProcess -ne $owners[0].ProcessId}).Count -ne 0) { throw 'CDP endpoint is not owned by allocated profile' }`;
-  run('powershell.exe', ['-NoProfile', '-NonInteractive', '-EncodedCommand', Buffer.from(script, 'utf16le').toString('base64')], deadline);
+    if($listeners.Count -eq 0 -or @($listeners | Where-Object {$_.OwningProcess -ne $owners[0].ProcessId}).Count -ne 0) { throw 'CDP endpoint is not owned by allocated profile' }
+    @{pid=$owners[0].ProcessId;created=$owners[0].CreationDate.Ticks.ToString()} | ConvertTo-Json -Compress`;
+  const witness: unknown = JSON.parse(run('powershell.exe', ['-NoProfile', '-NonInteractive', '-EncodedCommand', Buffer.from(script, 'utf16le').toString('base64')], deadline));
+  if (!witness || typeof witness !== 'object') throw Error('Missing observed browser root identity');
+  const pid: unknown = Reflect.get(witness, 'pid'), created: unknown = Reflect.get(witness, 'created');
+  if (typeof pid !== 'number' || !Number.isSafeInteger(pid) || pid <= 0 || typeof created !== 'string' || !/^[1-9][0-9]*$/.test(created)) throw Error('Invalid observed browser root identity');
+  return { pid, created };
 }
 
-async function disposeProfile(profileWin: string, profileWsl: string, deadline: number): Promise<string | null> {
+async function disposeProfile(profileWin: string, profileWsl: string, deadline: number, witness: RootWitness | null): Promise<string | null> {
   try {
     const script = `$ErrorActionPreference='Stop'; ${profileProcessesScript(profileWin)}
-      foreach($owned in (Owned -RequireCompleteObservation)) {
-        $current=@(Owned -RequireCompleteObservation | Where-Object {$_.ProcessId -eq $owned.ProcessId -and $_.CreationDate -eq $owned.CreationDate});
-        if($current.Count -eq 1) { try { Stop-Process -Id $owned.ProcessId -Force -ErrorAction Stop } catch { if((Owned -RequireCompleteObservation | Where-Object {$_.ProcessId -eq $owned.ProcessId -and $_.CreationDate -eq $owned.CreationDate})) { throw } } }
-      }
-      $clock=[Diagnostics.Stopwatch]::StartNew();
-      while((Owned -RequireCompleteObservation).Count -gt 0 -and $clock.ElapsedMilliseconds -lt ${Math.max(1, deadline - 1000)}) { Start-Sleep -Milliseconds 100 }
-      if((Owned -RequireCompleteObservation).Count -ne 0) { throw 'Owned profile process termination unproved' }`;
+      Invoke-OwnedChromeCleanup -Profile $profile -DeadlineMs ${deadline} -ObservedRootPid ${witness?.pid ?? 0} -ObservedRootCreated '${witness?.created ?? ''}'`;
     run('powershell.exe', ['-NoProfile', '-NonInteractive', '-EncodedCommand', Buffer.from(script, 'utf16le').toString('base64')], deadline);
     // A separate owned deletion process gives filesystem cleanup a real deadline.
     removeProfile(profileWsl, deadline);
@@ -133,6 +133,7 @@ async function launchOnce(exe: string, policy: Limits): Promise<WindowsChrome> {
   const profileWsl = join(run('wslpath', ['-u', tempWin], policy.commandMs), `ifclite-frame-rig-${randomBytes(6).toString('hex')}`);
   mkdirSync(profileWsl, { recursive: true });
   let profileWin: string | null = null, spawned = false;
+  let rootWitness: RootWitness | null = null;
   try {
     policy.signal?.throwIfAborted();
     profileWin = run('wslpath', ['-w', profileWsl], policy.commandMs);
@@ -146,11 +147,18 @@ async function launchOnce(exe: string, policy: Limits): Promise<WindowsChrome> {
       '--disable-features=BatterySaverModeAvailable,HighEfficiencyModeAvailable', 'about:blank',
     ], { detached: true, stdio: 'ignore' });
     let spawnError: Error | null = null;
-    child.once('error', error => { spawnError = error; });
+    let spawnSucceeded = false;
+    child.once('spawn', () => { spawnSucceeded = true; });
+    child.once('error', error => {
+      spawnError = error;
+      // Only a failed OS spawn with neither a spawn event nor a PID proves
+      // there was no child. Errors after spawn retain owned cleanup (#7180).
+      if (!spawnSucceeded && child.pid === undefined) spawned = false;
+    });
     child.unref(); spawned = true;
     const ownedWin = profileWin;
     const chrome: WindowsChrome = { cdpUrl: `http://127.0.0.1:${port}`, profileWin, startupFailures: [],
-      dispose: () => disposeProfile(ownedWin, profileWsl, policy.cleanupMs) };
+      dispose: () => disposeProfile(ownedWin, profileWsl, policy.cleanupMs, rootWitness) };
     let lastError: unknown = null;
     const until = Date.now() + policy.startupMs;
     while (Date.now() < until) {
@@ -160,7 +168,7 @@ async function launchOnce(exe: string, policy: Limits): Promise<WindowsChrome> {
         const signals = [AbortSignal.timeout(Math.min(policy.requestMs, Math.max(1, until - Date.now())))];
         if (policy.signal) signals.push(policy.signal);
         const response = await fetch(`${chrome.cdpUrl}/json/version`, { signal: AbortSignal.any(signals) });
-        if (response.ok) { verifyEndpointOwner(ownedWin, port, policy.commandMs); policy.signal?.throwIfAborted(); return chrome; }
+        if (response.ok) { rootWitness = verifyEndpointOwner(ownedWin, port, policy.commandMs); policy.signal?.throwIfAborted(); return chrome; }
         lastError = `HTTP ${response.status}`;
       } catch (error) { lastError = error; }
       await sleep(Math.min(policy.pollMs, Math.max(1, until - Date.now())));
@@ -168,7 +176,7 @@ async function launchOnce(exe: string, policy: Limits): Promise<WindowsChrome> {
     throw new Error(`Windows Chrome did not open its owned endpoint: ${String(lastError)}`);
   } catch (error) {
     let cleanupError: string | null = null;
-    if (spawned && profileWin) cleanupError = await disposeProfile(profileWin, profileWsl, policy.cleanupMs);
+    if (spawned && profileWin) cleanupError = await disposeProfile(profileWin, profileWsl, policy.cleanupMs, rootWitness);
     else {
       try { removeProfile(profileWsl, policy.cleanupMs); }
       catch (cleanup) { cleanupError = `Allocated profile removal failed: ${String(cleanup)}`; }

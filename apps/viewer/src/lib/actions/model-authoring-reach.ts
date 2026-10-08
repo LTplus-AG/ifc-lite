@@ -3,10 +3,12 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { readWallJoinTarget, trimExtendElementInStore, type ElementTrimExtendParams } from '@ifc-lite/create';
-import { StoreEditor, type MutablePropertyView } from '@ifc-lite/mutations';
+import type { StoreEditor, MutablePropertyView } from '@ifc-lite/mutations';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { getModelLengthUnitScale } from '@/lib/length-unit-scale';
 import { resolveLinearElementChain } from '@/lib/linear-element-edit';
+import { readOnlyModelEditTarget, nativeLengthUnitAvailable } from './model-authoring-read-target';
+import type { ModelEditTarget } from '@/store/slices/mutation-modelling-records';
 import type { ViewerState } from '@/store';
 import { nativeReachPin, sameReachPin } from './model-authoring-reach-fields';
 import { toMetres, type AuthoringOp, type ModelAuthoringBatch } from './model-authoring';
@@ -29,11 +31,12 @@ export function nativeAuthoringReach(store: IfcDataStore, view: MutablePropertyV
 
 /** Available to the actual selected-element evidence producer, not only tests. */
 export function authoringReachEvidence(state: ViewerState, modelId: string, id: number) {
-  const store = state.models.get(modelId)?.ifcDataStore, view = state.mutationViews.get(modelId);
-  if (!store || !view) return null;
-  const editor = state.storeEditors.get(modelId);
-  if (editor) return nativeAuthoringReach(store, view, editor, id);
-  return view.prepareAtomic(draft => nativeAuthoringReach(store, draft, new StoreEditor(store, draft), id)).result;
+  return authoringReachEvidenceFromTarget(readOnlyModelEditTarget(state, modelId), id);
+}
+
+export function authoringReachEvidenceFromTarget(target: ModelEditTarget | null, id: number) {
+  return target && nativeLengthUnitAvailable(target)
+    ? nativeAuthoringReach(target.dataStore, target.view, target.editor, id) : null;
 }
 
 export function verifyReachExpected(store: IfcDataStore, view: MutablePropertyView, editor: StoreEditor, id: number, op: ReachOp): void {

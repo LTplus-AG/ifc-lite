@@ -71,3 +71,30 @@ export { apply, OpApplyError, type ApplyResult } from './reducer/apply.js';
 export { checkOps } from './gate/check.js';
 export { createGateContext, type GateContext, type VersionTables } from './gate/context.js';
 export type { GateCode, GateCandidate, GateIssue, GateResult } from './gate/types.js';
+
+// History, transactions, persistence boundary (IDS-024)
+export {
+  createStudioState,
+  commit,
+  undo,
+  redo,
+  canUndo,
+  canRedo,
+  beginTransaction,
+  DEFAULT_HISTORY_LIMIT,
+  type StudioState,
+  type History,
+  type HistoryEntry,
+  type HistorySource,
+  type CommitInfo,
+  type Transaction,
+} from './history/history.js';
+export {
+  toPersisted,
+  fromPersisted,
+  createMemoryPersistenceAdapter,
+  PERSISTED_FORMAT,
+  type PersistenceAdapter,
+  type PersistedStudioState,
+  type PersistedSummary,
+} from './history/persistence.js';

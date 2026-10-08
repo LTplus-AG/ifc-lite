@@ -130,12 +130,12 @@ function elementRow(s: ViewerState, ref: EntityRef, source: ModelSource, rich: b
     materialCount: materials.length,
     materials: materials.slice(0, setLimit).map(material => materialEvidence(material, valueLimit)),
     materialPropertiesStatus: source.store?.source?.length ? 'available' : 'unverified-without-source',
-    materialPropertyGroupCount: materialProperties.length,
+    materialPropertyGroupCount: source.store?.source?.length ? materialProperties.length : null,
     materialProperties: materialProperties.slice(0, setLimit).map(group => ({
       modelId: ref.modelId, expressId: group.materialId, displayName: bounded(group.materialName),
-      psetCount: group.psets.length,
+      psetCount: source.store?.source?.length ? group.psets.length : null,
       psets: group.psets.slice(0, setLimit).map(pset => ({
-        name: pset.name, propertyCount: pset.properties.length,
+        name: pset.name, propertyCount: source.store?.source?.length ? pset.properties.length : null,
         properties: Object.fromEntries(pset.properties.slice(0, valueLimit)
           .map(prop => [prop.name, bounded(propertyDisplayValue(prop, source.units, s.unitDisplayOverrides).full)])),
       })),

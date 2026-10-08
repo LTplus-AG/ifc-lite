@@ -27,9 +27,9 @@ interface Material {
   MaterialProfiles?: Array<{ Name: string; Material: { Name: string } }>;
 }
 interface Row { modelId: string; materialCount: number; materials: Material[];
-  materialPropertiesStatus: string; materialPropertyGroupCount: number;
-  materialProperties: Array<{ modelId: string; expressId: number; psetCount: number;
-    psets: Array<{ name: string; propertyCount: number; properties: Record<string, string> }> }> }
+  materialPropertiesStatus: string; materialPropertyGroupCount: number | null;
+  materialProperties: Array<{ modelId: string; expressId: number; psetCount: number | null;
+    psets: Array<{ name: string; propertyCount: number | null; properties: Record<string, string> }> }> }
 const rows = (): Row[] => JSON.parse(captureEvidence('selection').payload).evidence.rows.map((row: { data: Row }) => row.data);
 
 // #7119: SketchUp's source #61 assigns #62 to slab #52. Evidence uses this
@@ -101,6 +101,7 @@ test('#7119 source-free verified materials remain known and missing wire rows re
   assert.equal(rows()[0].materialCount, 1);
   assert.deepEqual(rows()[0].materials, [{ type: null, verification: 'unverified' }]);
   assert.equal(rows()[0].materialPropertiesStatus, 'unverified-without-source');
+  assert.equal(rows()[0].materialPropertyGroupCount, null, 'unknown material property totals cannot read as zero findings');
   assert.deepEqual(rows()[0].materialProperties, []);
   assert.match(JSON.parse(captureEvidence('selection').payload).evidence.summary.limitations, /absent values are unknown/);
 });

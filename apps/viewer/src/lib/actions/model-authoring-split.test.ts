@@ -131,7 +131,7 @@ test('#7251 refuses stale actual source transport and revision without publishin
   const preview = previewModelAuthoring(s(), proposal); assert.equal(preview.rows[0].status, 'ready');
   const model = s().models.get(SAMPLE_MODEL)!;
   assert.ok(dataStore.source);
-  const replacement = await parseIfc(dataStore.source.slice());
+  const replacement = await parseIfc(dataStore.source.materialize());
   assert.ok(replacement.source); assert.notEqual(replacement.source, dataStore.source);
   useViewerStore.setState({ models: new Map([[SAMPLE_MODEL, { ...model, ifcDataStore: { ...dataStore, source: replacement.source } }]]) });
   const view = s().mutationViews.get(SAMPLE_MODEL)!, count = view.getMutationCount();

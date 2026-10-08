@@ -1,0 +1,59 @@
+Failed to load resource: the server responded with a status of 404 (Not Found)
+[Vercel Web Analytics] Failed to load script from /_vercel/insights/script.js. Be sure to enable Web Analytics for your project and deploy again. See https://vercel.com/docs/analytics/quickstart for more information.
+[useIfc] File: AC20-FZK-Haus.ifc, size: 2.41MB, read in 22ms
+[useIfc] loadFile "AC20-FZK-Haus.ifc" session=1 mergeLayers=false geomMode=fast tier=medium cacheKey=ifc-2526511-b4b6b144fd02d2ea-v23-g5-sc
+[stream] shared wasm module compiled once — workers initSync (no per-worker recompile)
+[stream] processParallel start, fileSizeMB=2.4 workerCount=4 (override=4, bound=cores)
+[useIfc] Data model parsing start for AC20-FZK-Haus.ifc: 282ms (worker)
+[stream] worker[0] WASM ready @ 14ms
+[stream] worker[1] WASM ready @ 18ms
+[stream] worker[2] WASM ready @ 21ms
+[stream] worker[3] WASM ready @ 22ms
+[stream] meta @ 60ms unitScale=1 rtc=[0,0,0]
+[stream] entity-index (prepass) @ 70ms (44249 entries)
+[stream] styles @ 80ms (182 styled, 9 void hosts), draining 0 queued chunks
+[stream] prepass-columns @ 83ms (5 repmaps, 18 inst-types, 78 layer-elems)
+[stream] first jobs chunk @ 85ms (125 jobs, affinity=on)
+[stream] chunk #1 @ 85ms (+125 jobs, total 125)
+[stream] chunk #2 @ 86ms (+18 jobs, total 143)
+[stream] prepass complete @ 88ms totalJobs=143 chunks=2
+[IFC-LITE] Opening classifier: rect=8 diag=0 non_rect=0 (total=8)
+[IFC-LITE] Opening pipeline: 0 CSG failures. 2 hosts with openings.
+  IfcWallStandardCase: hosts=2 openings=8 (rect=8 diag=0 non_rect=0)
+[IFC-LITE] Opening classifier: rect=4 diag=0 non_rect=0 (total=4)
+[IFC-LITE] Opening pipeline: 0 CSG failures. 1 hosts with openings.
+  IfcWallStandardCase: hosts=1 openings=4 (rect=4 diag=0 non_rect=0)
+[IFC-LITE] Opening classifier: rect=4 diag=0 non_rect=0 (total=4)
+[IFC-LITE] Opening pipeline: 0 CSG failures. 1 hosts with openings.
+  IfcWallStandardCase: hosts=1 openings=4 (rect=4 diag=0 non_rect=0)
+[stream] worker[0] first batch @ 209ms (42 meshes)
+[useIfc] First appendGeometryBatch for AC20-FZK-Haus.ifc: 501ms
+[stream] worker[2] first batch @ 258ms (68 meshes)
+[stream] worker[1] first batch @ 268ms (102 meshes)
+[IFC-LITE] Opening classifier: rect=13 diag=0 non_rect=2 (total=15)
+[IFC-LITE] Opening pipeline: 0 CSG failures. 5 hosts with openings.
+  IfcSlab: hosts=1 openings=1 (rect=1 diag=0 non_rect=0)
+  IfcWallStandardCase: hosts=4 openings=14 (rect=12 diag=0 non_rect=2)
+[IFC-LITE] rect_fast: fired=1 (cut 1 openings) | deferred: host_not_box=0 not_through=0 off_face=0 near_edge=0
+[stream] worker[3] first batch @ 311ms (31 meshes)
+[mem-summary] peakJs=57.5MB peakWasm=54.1MB geom=1.7MB source=2.4MB transport=0.0MB overlap=365ms total=633ms
+[useIfc] Spatial tree ready for AC20-FZK-Haus.ifc at 744ms
+[useIfc] Data model parsing complete for AC20-FZK-Haus.ifc: 815ms
+[useIfc] First visible geometry for AC20-FZK-Haus.ifc: 4323ms
+[useIfc] Geometry streaming complete: 8 batches, 317 meshes
+[useIfc] Stream complete for AC20-FZK-Haus.ifc: 644ms
+[useIfc] finalizing: session=1 meshes=275 dataStore=true
+[ifc-lite] AC20-FZK-Haus.ifc (2.4MB) → 275 meshes, 57k verts in 4.4s
+[ifc-lite] render stats: unavailable (no completed frame)
+[Viewport] spatial chunk bucketing on (cellSize=32m)
+[Viewport] GPU residency budget on (2048MB)
+[Viewport] host residency budget on (3072MB)
+[Viewport] LOD1 on (below 48px projected)
+[GeomSync] new file currentLength=203 lastLength=0 releaseAfterFinalize=false
+[GeomSync] stream transition complete geometryLength=203 queued=false batches=15
+[GeomStream] Streaming ended — starting finalize
+[GeomSync] finalize start geometryLength=203 releaseAfterFinalize=false
+[GeomStream] computeBounds: 2ms
+[GeomStream] finalizeStreamingAsync complete: 0ms → 15 consolidated batches, 0.0M triangles
+[GeomSync] finalize complete elapsed=1ms batches=15 queued=false
+[Viewport] quantized vertices on (12B lattice)

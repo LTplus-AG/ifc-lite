@@ -66,6 +66,16 @@ export function FlowCreateReview() {
         <p className="font-medium break-words">{t('flowAssistant.createName', { name: doc.name })}</p>
         {doc.description && <p className="text-muted-foreground break-words">{doc.description}</p>}
         <p>{t('flowAssistant.createSize', { nodes: doc.nodes.length, edges: doc.edges.length })}</p>
+        {doc.inputs.length > 0 && <details open><summary>{t('flowAssistant.createInputs')}</summary>
+          <ul className="list-disc pl-5">{doc.inputs.map(input => <li key={`${input.nodeId}.${input.param}`} className="break-words">
+            {input.label} · {input.nodeId}.{input.param} · {input.kind}
+            {input.options && ` · ${input.options.join(', ')}`}
+            {input.fileSlots?.map(slot => <span key={slot.id} className="block font-mono text-2xs">
+              {slot.label} · {slot.accept || '*'} · {t(slot.required ? 'flowAssistant.inputRequired' : 'flowAssistant.inputOptional')}
+              {' · '}{t(slot.multiple ? 'flowAssistant.inputMultiple' : 'flowAssistant.inputSingle')}
+            </span>)}
+          </li>)}</ul>
+        </details>}
         <p>{t('flowAssistant.createCapabilities', { capabilities: review.proposal.capabilities.join(', ') || t('assistant.none') })}</p>
         {review.proposal.writers.length > 0 && <p>{t('flowAssistant.createWriters', { nodes: review.proposal.writers.join(', ') })}</p>}
         {review.proposal.unavailable.length > 0 && <p role="alert" className="rounded border border-amber-500/40 bg-amber-500/10 p-2 break-words">

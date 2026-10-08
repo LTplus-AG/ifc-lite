@@ -158,3 +158,14 @@ export {
 } from './headless/write.js';
 export { nodePath } from './headless/node-path.js';
 export { diffIds, type IdsDiff, type IdsDiffEntry, type IdsDiffChange } from './headless/diff.js';
+export { applyOpsGated, type GatedApplyResult } from './headless/apply-gated.js';
+export {
+  searchSchema,
+  describeEntity,
+  describePset,
+  type SchemaKind,
+  type SchemaHit,
+  type SchemaSearchOptions,
+  type EntityDescription,
+  type PsetDescription,
+} from './headless/schema-lookup.js';

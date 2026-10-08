@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { spawnSync } from 'node:child_process';
-import { resolve } from 'node:path';
+import { isMainEntry } from './lib/is-main-entry.mjs';
 
 const countTests = (output) => output.split(/\r?\n/).filter((line) => line.trim().endsWith(': test')).length;
 
@@ -44,7 +44,7 @@ export function main(argv = process.argv.slice(2), root = process.cwd()) {
   });
 }
 
-if (process.argv[1] && resolve(process.argv[1]) === resolve(import.meta.filename)) {
+if (isMainEntry(import.meta.url)) {
   try {
     main();
   } catch (error) {

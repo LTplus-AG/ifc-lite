@@ -6,6 +6,12 @@ import type { TranslationValue } from '../types';
 
 /** Assistant filter, list, lens and chart proposals (viewer AI P13): `components/viewer/assistant/Artifact*.tsx`. */
 export const assistantArtifactsEn = {
+  'assistantArtifacts.analysisRows': { one: '{count} recorded row', other: '{count} recorded rows' },
+  'assistantArtifacts.analysisSource': 'Source: {source}. Counts describe recorded analysis rows, not unexamined elements or missing analyses.',
+  'assistantArtifacts.analysisPopulation': 'Recorded rows linked to each model; one row may belong to multiple models',
+  'assistantArtifacts.analysisUnlinked': { one: '{count} row has no link to a loaded element.', other: '{count} rows have no link to a loaded element.' },
+  'assistantArtifacts.analysisUnbucketed': { one: '{count} row has no chart dimension value and is not charted.', other: '{count} rows have no chart dimension value and are not charted.' },
+  'assistantArtifacts.rows': 'Rows',
   'assistantArtifacts.proposal.filter': 'Filter proposal',
   'assistantArtifacts.proposal.list': 'List proposal',
   'assistantArtifacts.proposal.lens': 'Lens proposal',
@@ -13,7 +19,7 @@ export const assistantArtifactsEn = {
   'assistantArtifacts.summary.filter': { one: '{count} filter rule', other: '{count} filter rules' },
   'assistantArtifacts.summary.list': { one: '{count} list column', other: '{count} list columns' },
   'assistantArtifacts.summary.lens': { one: '{count} colouring rule', other: '{count} colouring rules' },
-  'assistantArtifacts.summary.chart': { one: '{count} chart of model elements', other: '{count} charts of model elements' },
+  'assistantArtifacts.summary.chart': { one: '{count} chart', other: '{count} charts' },
   'assistantArtifacts.suggestList': 'Build a list of walls with their area and fire rating',
   'assistantArtifacts.suggestChart': 'Chart element counts by IFC class',
   'assistantArtifacts.title': 'Review against the loaded models',

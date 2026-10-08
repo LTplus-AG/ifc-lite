@@ -9,6 +9,7 @@ import { dirname, join, resolve } from 'node:path';
 import { test } from 'node:test';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
+import { skipUnlessFilesExist } from './lib/host-preconditions.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const EVIDENCE_TOOL = join(ROOT, 'tools/texture-authoring/pdf-fidelity-evidence.mjs');
@@ -35,7 +36,12 @@ function pythonHasOracleDependencies() {
   return probe.status === 0;
 }
 
-test('PDF fidelity evidence binds the effective source version to closed-dash topology (#4583)', () => {
+// The evidence tool imports the wasm runtime (`packages/wasm/pkg/ifc-lite.js`),
+// which is gitignored and exists only after `pnpm build:wasm` (or CI's restored
+// build output). Without it the tool dies at import, before it measures anything.
+const WASM_SKIP = skipUnlessFilesExist(ROOT, ['packages/wasm/pkg/ifc-lite.js'], 'pnpm build:wasm');
+
+test('PDF fidelity evidence binds the effective source version to closed-dash topology (#4583)', { skip: WASM_SKIP }, () => {
   const dir = mkdtempSync(join(tmpdir(), 'pdf-fidelity-version-'));
   try {
     const cases = [

@@ -16,7 +16,10 @@ import { useTranslation } from '@/i18n/useTranslation';
 import { useViewerStore } from '@/store';
 import { chartCardAggregation, chartCardDataset, chartCardSlice, chartClashRule, chartFilterSelector } from '@/lib/charts/card-aggregation';
 import { countRows } from '@/lib/charts/row-noun';
-import { comparisonChartMessage, isSavedComparisonChart, resolveComparisonChartSource } from '@/lib/charts/comparison-source';
+import { isRecordedChart, resolveChartSource } from '@/lib/charts/chart-source';
+import { chartSourceMessage, chartSourceUnavailable } from '@/lib/charts/chart-source-message';
+import { withoutBuckets } from '@/lib/charts/unavailable-aggregation';
+import { useChartSourceContext } from './useChartSourceContext';
 import { readChartTheme, useEChart, type ChartRenderer, type ChartSize, type ChartSelectEvent } from './useEChart';
 import { GRID_DRAG_HANDLE_CLASS } from './DashboardGrid';
 import { chartBucketIdentity, chartSelectionIsLive, sameChartBucketIdentity, type Chart3DLink } from './useChart3DLink';
@@ -87,9 +90,9 @@ export function ChartCard({ spec, dataset, filterState, link, renderer, onEdit, 
   const chartSliceSource = useViewerStore((s) => s.chartSliceSource);
   const chartSliceBuckets = useViewerStore((s) => s.chartSliceBuckets);
   const theme = useViewerStore((s) => s.theme);
-  const savedComparisons = useViewerStore((s) => s.savedComparisons);
-  const source = useMemo(() => resolveComparisonChartSource(spec, dataset, savedComparisons), [spec, dataset, savedComparisons]);
-  const recorded = isSavedComparisonChart(spec);
+  const savedContent = useChartSourceContext();
+  const source = useMemo(() => resolveChartSource(spec, dataset, savedContent), [spec, dataset, savedContent]);
+  const recorded = isRecordedChart(spec);
   // Colours are kept by label across re-aggregations; the previous palette lives here.
   const paletteRef = useRef<PaletteAssignment | undefined>(undefined);
 
@@ -97,14 +100,17 @@ export function ChartCard({ spec, dataset, filterState, link, renderer, onEdit, 
   // assistant's charts evidence also calls (#6833), so both read one engine.
   const filterSelector = chartFilterSelector(spec);
   const clashRule = chartClashRule(spec);
-  const clashRuleLabel = useViewerStore((s) => (clashRule ? s.clashResult?.rulesRun.find((r) => r.id === clashRule)?.name : undefined));
+  // A saved report names its own rules; the current result's rules belong to a different run.
+  const liveRuleLabel = useViewerStore((s) => (clashRule ? s.clashResult?.rulesRun.find((r) => r.id === clashRule)?.name : undefined));
+  const clashRuleLabel = source.saved !== 'clashReport' ? liveRuleLabel
+    : source.status === 'saved' ? source.report.run.rules.find((r) => r.id === clashRule)?.name : undefined;
   const filteredDataset = useMemo<ChartDataset>(() => chartCardDataset(spec, source.dataset, filterState), [spec, source.dataset, filterState]);
 
   const aggregation = useMemo<Aggregation | null>(() => {
     const result = chartCardAggregation(spec, filteredDataset, chartCardSlice(spec, recorded, chartSlice, chartSliceSource), paletteRef.current);
     if (result) paletteRef.current = result.palette;
-    return result;
-  }, [spec, filteredDataset, chartSlice, chartSliceSource, recorded]);
+    return result && source.status === 'missing' ? withoutBuckets(result) : result;
+  }, [spec, filteredDataset, chartSlice, chartSliceSource, recorded, source.status]);
 
   useEffect(() => { onAggregation?.(spec, aggregation); }, [onAggregation, spec, aggregation]);
 
@@ -122,10 +128,12 @@ export function ChartCard({ spec, dataset, filterState, link, renderer, onEdit, 
 
   const option = useCallback(({ width, height }: ChartSize) => {
     if (!aggregation) return null;
+    // An empty option clears the host: a missing source draws nothing, not the chart that was on screen.
+    if (source.status === 'missing') return {};
     // `theme` in the deps re-reads the stylesheet tokens on a light/dark switch.
     void theme;
     return buildEChartsOption({ aggregation, theme: readChartTheme(), selected: selection.full, width: width || undefined, height: height || undefined });
-  }, [aggregation, selection.full, theme]);
+  }, [aggregation, selection.full, theme, source.status]);
 
   const onSelect = useCallback((event: ChartSelectEvent) => {
     if (!aggregation || recorded) return;
@@ -154,16 +162,21 @@ export function ChartCard({ spec, dataset, filterState, link, renderer, onEdit, 
     link.frameItems(aggregation, items);
   }, [aggregation, selection.full, link, recorded]);
 
-  const sourceMessage = comparisonChartMessage(source, t);
+  const sourceMessage = chartSourceMessage(source, t);
+  const savedReport = source.saved === 'clashReport' && source.status === 'saved';
   const summary = subtitleFor(spec, aggregation, filterSelector, filterState, clashRuleLabel || clashRule);
-  const subtitle = source.status === 'missing' ? t('chartComparison.unavailable') : sourceMessage && aggregation && aggregation.categories.length > 0 ? `${summary} · ${sourceMessage}` : summary;
+  // A saved clash report leads with its own statement (what limits it, then which report it
+  // is), so a narrow card cannot truncate the warning away behind the bucket count.
+  const subtitle = source.status === 'missing' ? chartSourceUnavailable(source, t)
+    : savedReport ? `${sourceMessage} · ${summary}`
+    : sourceMessage && aggregation && aggregation.categories.length > 0 ? `${summary} · ${sourceMessage}` : summary;
 
   return (
     <div className="flex h-full flex-col min-h-0 rounded-md border border-border bg-card" data-chart-id={spec.id}>
       <div className="flex items-center gap-1 px-2 py-1 border-b border-border/60 text-xs">
         <div className={`min-w-0 flex-1 cursor-grab active:cursor-grabbing select-none ${GRID_DRAG_HANDLE_CLASS}`} title={t('chartCard.dragToMoveTitle')}>
           <div className="font-medium truncate" title={spec.title}>{spec.title}</div>
-          <div className="text-2xs text-muted-foreground truncate" data-chart-subtitle>{subtitle}</div>
+          <div className="text-2xs text-muted-foreground truncate" data-chart-subtitle title={savedReport ? subtitle : undefined}>{subtitle}</div>
         </div>
         <Button variant="ghost" size="sm" className="h-6 w-6 p-0" disabled={recorded} title={t('chartCard.frameTitle')} onClick={frame} aria-label={t('chartCard.frameAriaLabel', { title: spec.title })}>
           <Crosshair className="h-3.5 w-3.5" />
@@ -189,6 +202,9 @@ export function ChartCard({ spec, dataset, filterState, link, renderer, onEdit, 
                   ? t('chartCard.noSourceFilterMatches')
                   : EMPTY_HINTS[spec.source]
                 : t('chartCard.nothingToBucket'))}
+            {source.saved === 'clashReport' && source.status === 'missing' && (
+              <Button variant="outline" size="sm" className="ml-2 h-6 shrink-0 px-2 text-xs" onClick={onEdit}>{t('clashChart.chooseSource')}</Button>
+            )}
           </div>
         )}
       </div>

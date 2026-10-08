@@ -10,15 +10,17 @@
  */
 
 import assert from 'node:assert/strict';
-import { test } from 'node:test';
-import { indexModel } from './edits.mjs';
-import { mergedHeadFanInWrong, unnamedNodesNormalised } from './guards.mjs';
-import * as scoreClaims from './score-claims.mjs';
-import { scoreSplits } from './score-claims.mjs';
-import { scorePair } from './score.mjs';
-import { parseStepFile } from './step-file.mjs';
-import { representationMapDigest } from './successor-edits.mjs';
-import { mergeDropsAPieceMutant } from './matchers.mjs';
+import { load, test } from './build-output-guard.mjs';
+
+// Dynamic, because the subjects need built `@ifc-lite/*` packages (see build-output-guard.mjs).
+const { indexModel } = await load('./edits.mjs');
+const { mergedHeadFanInWrong, unnamedNodesNormalised } = await load('./guards.mjs');
+const scoreClaims = await load('./score-claims.mjs');
+const { scoreSplits } = scoreClaims;
+const { scorePair } = await load('./score.mjs');
+const { parseStepFile } = await load('./step-file.mjs');
+const { representationMapDigest } = await load('./successor-edits.mjs');
+const { mergeDropsAPieceMutant } = await load('./matchers.mjs');
 
 // `scoreMerges` is a NEW export (issue #4989): checked INSIDE a `test()`, not
 // at module top level — a top-level `assert` that throws crashes the whole

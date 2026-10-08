@@ -7,7 +7,7 @@ import type { BCFTopic } from '@ifc-lite/bcf';
 import { renderChartSvg, type Aggregation } from '@ifc-lite/charts';
 import { REPORT_THEME } from '@/lib/export/report/generate-report-pdf';
 import { chartSourceMessageLines } from '@/lib/export/report/render-source-message';
-import { isSavedComparisonChart } from '@/lib/charts/comparison-source';
+import { isRecordedChart } from '@/lib/charts/chart-source';
 import type { ComposeDocumentInput, DocumentPage, DrawnItem } from '@/lib/document/compose';
 import { TABLE_ROW_HEIGHT } from '@/lib/document/compose-table';
 import { TEXT_STYLES } from '@/lib/document/compose-text';
@@ -116,7 +116,7 @@ function Item({ item, block, origin, props, lineBreak, children }: { item: Drawn
     case 'chart': return <ComposedChart aggregation={props.aggregations.get(item.blockId)} item={item}
       fontSize={block.kind === 'chart' ? block.fontSize : undefined}
       message={props.chartMessages.get(item.blockId) ?? t('document.preview.chartEmpty')}
-      savedComparison={block.kind === 'chart' && isSavedComparisonChart(block.chart)}
+      savedComparison={block.kind === 'chart' && isRecordedChart(block.chart)}
       style={style} scale={scale} measure={measure} />;
     case 'snapshot': return <span style={style} className="flex items-center justify-center border border-dashed border-neutral-300 text-xs text-neutral-500">{t('document.print.snapshot')}</span>;
     case 'ring': {

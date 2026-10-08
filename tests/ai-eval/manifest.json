@@ -1,7 +1,7 @@
 {
   "$schema": "./manifest.schema.json",
   "version": 1,
-  "updated": "2026-10-05",
+  "updated": "2026-10-08",
   "privacy": {
     "policy": "Only public sample models and repository fixtures are admitted. No client, project or personal data; no credentials in any manifest, recording, receipt or result. Reviewer ids are pseudonymous. Live results stay in the gitignored tests/ai-eval/results folder until a person reviews and promotes a recording.",
     "automatedScan": "check-ai-eval-manifest.mjs recomputes every committed fixture's SHA-256 and size, and refuses e-mail addresses, credential-like tokens and non-empty STEP author/organisation fields in it.",
@@ -29,7 +29,49 @@
     { "id": "authoring-sample", "source": "loadReport", "fixtures": ["sample-architecture"],
       "description": "Committed SketchUp sample in Edit mode; native load report as evidence; authoring and changes preview natively." },
     { "id": "flow-empty", "source": "flow", "fixtures": [],
-      "description": "A new empty Flow graph; patches are validated against the standard node registry." }
+      "description": "A new empty Flow graph; patches are validated against the standard node registry." },
+    {
+      "id": "flow-ai-paused",
+      "source": "flowRun",
+      "fixtures": [
+        "sample-architecture"
+      ],
+      "description": "A real wall table feeds a bounded offline classification run; one proposal awaits review and model writes remain paused."
+    },
+    {
+      "id": "review-rev-b",
+      "source": "review",
+      "fixtures": [
+        "sample-architecture-rev-b",
+        "native-clash-rev-b",
+        "sample-ids"
+      ],
+      "description": "Native clearance and IDS runs feed the Review registry on the same rev-B model; one resolvable validation card is pinned."
+    },
+    {
+      "id": "lists-sample",
+      "source": "lists",
+      "fixtures": [
+        "sample-architecture"
+      ],
+      "description": "Native federated Lists execution on the SketchUp sample, with exact wall names and source Length values and absent Height values that remain null."
+    },
+    {
+      "id": "selection-sample",
+      "source": "selection",
+      "fixtures": [
+        "sample-architecture"
+      ],
+      "description": "Committed roof slab #425 selected by its native entity reference; the properties reader retains source units and declared property and quantity sets."
+    },
+    {
+      "id": "document-reimported",
+      "source": "document",
+      "fixtures": [
+        "sample-architecture"
+      ],
+      "description": "A native document file is reimported with fresh owned identities while retaining authored blocks and live IFC project bindings."
+    }
   ],
   "fixtures": [
     {
@@ -135,6 +177,111 @@
       "inputScope": "An empty graph; the patch is validated against the standard registry and never executed by the Assistant.",
       "expectedOutput": "flow.patch", "invariants": ["proposal-kind-allowed", "no-effect-claims", "budget-respected"],
       "labels": [], "reviewers": { "status": "pending", "reviewers": [] }
+    },
+    {
+      "id": "flow-ai-review",
+      "journey": "flow-ai-execution",
+      "scene": "flow-ai-paused",
+      "prompt": "Explain this paused AI Flow and what has not run yet",
+      "inputScope": "A real wall table feeds a bounded offline classification run; one proposal awaits review and model writes remain paused. Frozen diagnostic timing and owned ids make replay repeatable; no live-provider quality claim.",
+      "expectedOutput": "prose",
+      "invariants": [
+        "citations-valid",
+        "count-claims-match-facts",
+        "no-effect-claims",
+        "budget-respected"
+      ],
+      "labels": [
+        "claims"
+      ],
+      "reviewers": {
+        "status": "pending",
+        "reviewers": []
+      }
+    },
+    {
+      "id": "review-next-action",
+      "journey": "cross-analysis-review",
+      "scene": "review-rev-b",
+      "prompt": "Explain the pinned coordination card, its native findings and review limits",
+      "inputScope": "Native clearance and IDS runs feed the Review registry on the same rev-B model; one resolvable validation card is pinned. Frozen diagnostic timing and owned ids make replay repeatable; no live-provider quality claim.",
+      "expectedOutput": "prose",
+      "invariants": [
+        "citations-valid",
+        "count-claims-match-facts",
+        "no-effect-claims",
+        "budget-respected"
+      ],
+      "labels": [
+        "claims"
+      ],
+      "reviewers": {
+        "status": "pending",
+        "reviewers": []
+      }
+    },
+    {
+      "id": "list-quantity-gaps",
+      "journey": "universal-analysis-reporting",
+      "scene": "lists-sample",
+      "prompt": "Summarize this wall list and explain which quantities are missing without treating them as zero",
+      "inputScope": "Native federated Lists execution on the SketchUp sample, with exact wall names and source Length values and absent Height values that remain null. Frozen diagnostic timing and owned ids make replay repeatable; no live-provider quality claim.",
+      "expectedOutput": "prose",
+      "invariants": [
+        "citations-valid",
+        "count-claims-match-facts",
+        "no-effect-claims",
+        "budget-respected"
+      ],
+      "labels": [
+        "claims"
+      ],
+      "reviewers": {
+        "status": "pending",
+        "reviewers": []
+      }
+    },
+    {
+      "id": "selected-roof-properties",
+      "journey": "everyday-exploration",
+      "scene": "selection-sample",
+      "prompt": "Explain the selected roof slab using its actual attributes, properties and declared units",
+      "inputScope": "Committed roof slab #425 selected by its native entity reference; the properties reader retains source units and declared property and quantity sets. Frozen diagnostic timing and owned ids make replay repeatable; no live-provider quality claim.",
+      "expectedOutput": "prose",
+      "invariants": [
+        "citations-valid",
+        "count-claims-match-facts",
+        "no-effect-claims",
+        "budget-respected"
+      ],
+      "labels": [
+        "claims"
+      ],
+      "reviewers": {
+        "status": "pending",
+        "reviewers": []
+      }
+    },
+    {
+      "id": "reimported-document",
+      "journey": "reuse-and-recovery",
+      "scene": "document-reimported",
+      "prompt": "Explain this reimported coordination cover and which content is still a live binding",
+      "inputScope": "A native document file is reimported with fresh owned identities while retaining authored blocks and live IFC project bindings. Frozen diagnostic timing and owned ids make replay repeatable; no live-provider quality claim.",
+      "expectedOutput": "prose",
+      "invariants": [
+        "citations-valid",
+        "count-claims-match-facts",
+        "no-effect-claims",
+        "budget-respected"
+      ],
+      "labels": [
+        "claims"
+      ],
+      "reviewers": {
+        "status": "pending",
+        "reviewers": []
+      }
     }
   ]
 }

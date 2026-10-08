@@ -1,0 +1,129 @@
+{
+  "$schema": "../recording.schema.json",
+  "version": 1,
+  "id": "reimported-document-release",
+  "task": "reimported-document",
+  "scene": "document-reimported",
+  "corpus": "release",
+  "prompt": "Explain this reimported coordination cover and which content is still a live binding",
+  "route": {
+    "kind": "proxy",
+    "model": "openai/gpt-4o-mini"
+  },
+  "provenance": {
+    "kind": "authored",
+    "recordedAt": "2026-10-08",
+    "note": "Authored offline response replayed against native fixture evidence; no live-provider or human-quality claim."
+  },
+  "response": {
+    "status": 200,
+    "events": [
+      {
+        "choices": [
+          {
+            "delta": {
+              "content": "The reimported document has two text blocks [E1][E2]. Its title block still contains the live template binding {IfcProject.Name} [E1]; the snapshot lists that binding without resolving the printed project name. The body block is empty [E2]. This fixture exercises file reimport with fresh document identities; it does not establish browser backup recovery."
+            }
+          }
+        ]
+      },
+      {
+        "choices": [
+          {
+            "delta": {},
+            "finish_reason": "stop"
+          }
+        ],
+        "usage": {
+          "prompt_tokens": 100,
+          "completion_tokens": 100,
+          "total_tokens": 200
+        }
+      }
+    ],
+    "done": true
+  },
+  "evidence": {
+    "source": "document",
+    "models": [
+      {
+        "id": "arch",
+        "name": "arch"
+      }
+    ],
+    "totalModels": 1,
+    "modelMetadataTruncated": false,
+    "sourceAvailability": "available",
+    "reportProvenance": "unknown",
+    "totalRows": 2,
+    "includedRows": 2,
+    "sampled": false,
+    "projectionTruncated": false,
+    "evidence": {
+      "summary": {
+        "kind": "document",
+        "documentId": "document-00000000-0000-4000-8000-000000000004",
+        "name": "Recovered coordination cover",
+        "version": 12,
+        "page": {
+          "size": "A4",
+          "orientation": "portrait"
+        },
+        "pageHeading": null,
+        "pageFooter": null,
+        "blockCount": 2,
+        "blockCounts": {
+          "text": 2
+        },
+        "units": {
+          "heightPt": "pt",
+          "encodedLength": "characters"
+        },
+        "documentsInLibrary": 1,
+        "limitations": "Text is the authored template: {path} bindings are listed but not resolved against the model, so the printed values are not included. Images and logos are metadata only (no pixels); charts give their definition, not their computed buckets; tables give their source, not their rows; validation and checklist blocks give the counts frozen when they were added. Text excerpts are bounded."
+      },
+      "rows": [
+        {
+          "citation": "E1",
+          "data": {
+            "kind": "block",
+            "blockId": "block-00000000-0000-4000-8000-000000000005",
+            "blockKind": "text",
+            "position": 1,
+            "title": null,
+            "style": "title",
+            "textLength": 17,
+            "textExcerpt": "{IfcProject.Name}",
+            "bindingCount": 1,
+            "bindings": [
+              "IfcProject.Name"
+            ]
+          }
+        },
+        {
+          "citation": "E2",
+          "data": {
+            "kind": "block",
+            "blockId": "block-00000000-0000-4000-8000-000000000006",
+            "blockKind": "text",
+            "position": 2,
+            "title": null,
+            "style": "body",
+            "textLength": 0,
+            "textExcerpt": "",
+            "bindingCount": 0,
+            "bindings": []
+          }
+        }
+      ]
+    }
+  },
+  "expect": {
+    "outcome": "completed",
+    "violations": [],
+    "proposal": null,
+    "review": {
+      "kind": "report"
+    }
+  }
+}

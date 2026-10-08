@@ -93,11 +93,15 @@ it('#7162 overlapping native CSV writes keep independent background rows without
     await nativeInit.call(this);
     await new Promise<void>(resolve => { releases.push(resolve); });
   });
-  const first = run.start('entities'); const firstJob = latest();
-  const second = run.start('quantities'); const secondJob = latest();
+  const pending: Promise<void>[] = [];
   try {
-    assert.notEqual(firstJob.id, secondJob.id);
+    const first = run.start('entities'); pending.push(first);
+    await waitFor(() => releases.length === 1, 'first initialized actual Rust processor');
+    const firstJob = latest();
+    const second = run.start('quantities'); pending.push(second);
     await waitFor(() => releases.length === 2, 'two initialized actual Rust processors');
+    const secondJob = latest();
+    assert.notEqual(firstJob.id, secondJob.id);
     cleanup();
     await act(async () => { releases[0](); await first; });
     assert.equal(useActivityJournal.getState().jobs.find(job => job.id === firstJob.id)?.outcome, 'completed');
@@ -109,7 +113,7 @@ it('#7162 overlapping native CSV writes keep independent background rows without
     assert.ok((await run.blobs[0].text()).includes('Reviewed CSV wall'));
     assert.match(await run.blobs[1].text(), /qsetName,quantityName,value/);
   } finally {
-    releases.forEach(release => release()); await Promise.all([first, second]);
+    releases.forEach(release => release()); await Promise.all(pending);
   }
 });
 it('#7162 native no-model preflight creates no export job or file', async () => {

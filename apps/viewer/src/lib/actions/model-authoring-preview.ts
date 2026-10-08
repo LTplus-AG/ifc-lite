@@ -112,7 +112,7 @@ function existing(ctx: Context, target: ExistingElement, row: AuthoringRow): num
   const { modelId, expressId } = locate(ctx, target);
   join(row, modelId);
   const r = reader(ctx, modelId);
-  if ((row.op.op === 'element.split' || row.op.op === 'type.detach') && !uniqueSplitGuid(r.dataStore, r.editor, target.globalId)) throw new Refusal('ambiguous-target', 'The native target GlobalId is not unique in its owning model');
+  if ((row.op.op === 'element.split' || row.op.op === 'type.detach' || row.op.op === 'material.layers') && !uniqueSplitGuid(r.dataStore, r.editor, target.globalId)) throw new Refusal('ambiguous-target', 'The native target GlobalId is not unique in its owning model');
   const ifcClass = className(r, expressId);
   const name = nameOf(r, expressId);
   row.before.ifcClass = ifcClass;
@@ -366,7 +366,7 @@ function nativeDryRun(ctx: Context, batch: ModelAuthoringBatch): void {
   for (const row of ctx.rows) if (row.status === 'ready' && row.modelId) byModel.set(row.modelId, [...(byModel.get(row.modelId) ?? []), row]);
   for (const [modelId, rows] of byModel) {
     const r = reader(ctx, modelId);
-    const refusals = dryRunAuthoring(batch, r.dataStore, r.view, modelId, rows.map(({ index, op, resolved }) => ({ index, op, resolved })), { globalIdScopes: [...ctx.state.models].map(([id, model]) => ({ dataStore: model.ifcDataStore, view: ctx.state.mutationViews.get(id) })) });
+    const refusals = dryRunAuthoring(batch, r.dataStore, r.view, modelId, rows.map(({ index, op, resolved }) => ({ index, op, resolved })), { globalIdScopes: [...ctx.state.models].map(([id, model]) => ({ dataStore: model.ifcDataStore, view: ctx.state.mutationViews.get(id) })) }, ctx.state);
     for (const row of rows) {
       const refusal = refusals.get(row.index);
       if (refusal === undefined) continue;

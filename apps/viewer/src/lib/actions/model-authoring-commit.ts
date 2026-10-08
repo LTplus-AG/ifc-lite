@@ -124,7 +124,7 @@ function writeRow(tx: AuthoringTransaction, batch: ModelAuthoringBatch, row: Aut
       const dataStore = tx.store.models.get(modelId)?.ifcDataStore;
       if (!dataStore) throw new Error('The native model source is unavailable');
       const changed = recordModellingEdit(tx.api, modelId, (methods, draft) => writeReviewedLayers(
-        { modelId, dataStore, view: draft.getMutationView(), editor: draft }, draft, methods, resolved.layers!), tx.batchId);
+        { modelId, dataStore, view: draft.getMutationView(), editor: draft }, draft, methods, resolved.layers!, op, batch.units, tx.store), tx.batchId);
       written.remesh.push(...changed);
       return [{ ...base, globalId: op.target.globalId, field: 'MaterialLayers', before: JSON.stringify(op.expected),
         after: JSON.stringify({ scope: op.scope, MaterialLayers: op.MaterialLayers }) }];

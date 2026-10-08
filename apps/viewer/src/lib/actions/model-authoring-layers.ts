@@ -6,11 +6,13 @@ import { entityName, typeOf } from '@/lib/commands/modeling/authored-kinds';
 import { writeMaterialLayersInDraft, type ApplyLayersSpec } from '@/lib/authoring/material-layers';
 import type { ModelEditTarget, ModellingMethods } from '@/store/slices/mutation-modelling-records';
 import type { StoreEditor } from '@ifc-lite/mutations';
-import type { ViewerState } from '@/store';
+import type { NativeReadState } from './model-authoring-read-target';
 import { nativeLayerEvidence, type NativeLayerExpected } from './native-layer-evidence';
 import { layerExpectedInMetres } from './model-authoring-layer-params';
 import { sameNativeDimensions } from './model-authoring-size';
 import type { AuthoringOp, AuthoringUnits } from './model-authoring';
+import { uniqueSplitGuid } from './model-authoring-split';
+import { readAttributes } from '@/lib/placement-edit';
 
 type Operation = Extract<AuthoringOp, { op: 'material.layers' }>;
 export class LayerRefusal extends Error {
@@ -34,7 +36,7 @@ function sameExpected(a: NativeLayerExpected, b: NativeLayerExpected): boolean {
 }
 
 /** Compare complete transported facts before using the native inspector's constructor (#7275). */
-export function resolveReviewedLayers(state: ViewerState, target: ModelEditTarget, expressId: number,
+export function resolveReviewedLayers(state: NativeReadState, target: ModelEditTarget, expressId: number,
   op: Operation, units: AuthoringUnits): ApplyLayersSpec {
   const evidence = nativeLayerEvidence(state, target, expressId);
   if (evidence.status !== 'available' || !evidence.expected || !evidence.kind) throw new LayerRefusal('unsupported', 'Complete current native material-layer evidence is unavailable; inspect and recapture the element');
@@ -42,6 +44,9 @@ export function resolveReviewedLayers(state: ViewerState, target: ModelEditTarge
   if (op.scope === 'type' && (evidence.typeScopeStatus !== 'available' || evidence.expected.typeStatus !== 'typed'
     || evidence.expected.peers === null || evidence.expected.typeLayers === null)) throw new LayerRefusal('unsupported', 'Type scope requires a known current type and the complete current peer population');
   const typeId = typeOf(target, expressId);
+  if (op.scope === 'type' && (!op.expected.type || !uniqueSplitGuid(target.dataStore, target.editor, op.expected.type.GlobalId))) {
+    throw new LayerRefusal('conflict', 'The expected native type identity is not unique in its source');
+  }
   const layers = op.MaterialLayers.map(layer => {
     const material = layer.Material;
     if (material && !('create' in material) && (material.modelId !== target.modelId
@@ -56,6 +61,23 @@ export function resolveReviewedLayers(state: ViewerState, target: ModelEditTarge
 }
 
 export function writeReviewedLayers(target: ModelEditTarget, draft: StoreEditor, methods: ModellingMethods,
-  spec: ApplyLayersSpec): readonly number[] {
-  return writeMaterialLayersInDraft(target, draft, methods, spec).remesh;
+  spec: ApplyLayersSpec, op: Operation, units: AuthoringUnits, state: NativeReadState): readonly number[] {
+  const occurrence = spec.elementId;
+  if (occurrence === undefined || !uniqueSplitGuid(target.dataStore, draft, op.target.globalId)
+    || readAttributes(target.dataStore, target.view, draft, occurrence)?.[0] !== op.target.globalId
+    || entityName(target, occurrence) !== op.target.name) throw new Error('The native layer target identity changed or is ambiguous');
+  if (op.scope === 'type') {
+    const typeId = typeOf(target, occurrence);
+    if (typeId === null || typeId !== spec.typeId || !op.expected.type
+      || !uniqueSplitGuid(target.dataStore, draft, op.expected.type.GlobalId)
+      || readAttributes(target.dataStore, target.view, draft, typeId)?.[0] !== op.expected.type.GlobalId
+      || entityName(target, typeId) !== op.expected.type.Name) throw new Error('The native layer type binding changed or is ambiguous');
+  }
+  for (const layer of op.MaterialLayers) {
+    const material = layer.Material;
+    if (material && !('create' in material) && (!liveEntityConforms(target.dataStore, material.expressId, 'IfcMaterial', target.view)
+      || entityName(target, material.expressId) !== material.Name)) throw new Error('The native layer material changed before writing');
+  }
+  const current = resolveReviewedLayers(state, target, occurrence, op, units);
+  return writeMaterialLayersInDraft(target, draft, methods, current).remesh;
 }

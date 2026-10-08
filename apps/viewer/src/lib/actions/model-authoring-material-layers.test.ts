@@ -461,3 +461,23 @@ for (const scope of ['element', 'type'] as const) {
     assert.doesNotThrow(lease.validate);
   });
 }
+
+
+test('#7275 native intermediate layer effects cannot reuse an earlier expected layer population', async () => {
+  const { dataStore, view, target, globalId } = await inspectorControl();
+  const expected = transportedLayerEvidence(useViewerStore.getState(), target).expected;
+  assert.ok(expected);
+  const first = layerBatch(expected, globalId, 'element');
+  const batch = parseModelAuthoringBatch(JSON.stringify({ ...first, operations: [first.operations[0], first.operations[0]] }));
+  const before = view.getMutationCount(), lease = view.prepareAtomic(() => undefined);
+  const preview = previewModelAuthoring(useViewerStore.getState(), batch);
+  assert.equal(preview.rows[0].status, 'ready');
+  assert.notEqual(preview.rows[1].status, 'ready', 'second native write must compare its full expectation against the post-first-row draft');
+  assert.equal(view.getMutationCount(), before);
+  assert.doesNotThrow(lease.validate);
+  const result = commitModelAuthoring(useViewerStore, preview, new Set([0, 1]), 'test');
+  assert.ok(result.ok, result.ok ? '' : result.detail ?? result.reason);
+  assert.equal(result.receipt.applied.length, 1);
+  const parsed = await parseIfc(editedModelBytes(dataStore, view));
+  assert.equal(layerSetOf({ dataStore: parsed, view: new MutablePropertyView(parsed.properties ?? null, SAMPLE_MODEL) }, target)?.layers[0].thickness, .7);
+});

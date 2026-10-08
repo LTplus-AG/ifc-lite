@@ -6,7 +6,7 @@ import type { IfcDataStore } from '@ifc-lite/parser';
 
 /** A pinned population, independent of later selection and visibility (#7186).
  * Source identity is the host's full-content identity, never a sampled hash.
- * Authored members additionally name their original CREATE_ENTITY journal id. */
+ * Authored members additionally name the creation identity retained by their current record. */
 export interface CapturedEntityScope {
   version: 1;
   mode: 'selected' | 'visible';

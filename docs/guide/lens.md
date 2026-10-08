@@ -36,7 +36,7 @@ The `provider` is a `LensDataProvider`, an adapter interface over your parsed mo
 
 A saved `Lens.capturedScope` pins exact selected or visible members at capture time. It applies to manual rules, their unassigned context, and automatic color buckets; later selection and visibility changes do not change the captured population. For automatic color, pass the same metadata as the optional third argument to `evaluateAutoColorLens(spec, provider, capturedScope)`. A provider serving a captured lens must implement `resolveCapturedScope(scope)` and return its validated native global IDs. A provider without that capability refuses the run.
 
-The shared Rules `resolveCapturedEntityScope` validates the full source identity and every member before evaluation. Missing or ambiguous files, replaced source bytes, deleted members, and reused authored IDs refuse rather than becoming an unscoped lens. Authored members also need their original `CREATE_ENTITY` journal identity; reconstructing a view without that identity requires a new capture. Normal authored edits and delete undo retain membership.
+The shared Rules `resolveCapturedEntityScope` validates the full source identity and every member before evaluation. Missing or ambiguous files, replaced source bytes, deleted members, and reused authored IDs refuse rather than becoming an unscoped lens. Authored members also need their original authored record creation identity; reconstructing a view without that identity requires a new capture. Normal authored edits and delete undo retain membership.
 
 ## Built-in Lenses
 

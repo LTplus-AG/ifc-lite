@@ -279,7 +279,7 @@ const straddlers = await evaluateFilterGroupsFederated(
 
 `ListDefinition.capturedScope` is a durable selected or visible population captured once. It intersects the list's existing type or explicit snapshot source criteria; clearing or changing the current selection does not widen it. Unlike `expressIdsByModel`, its members are tied to a source fingerprint and the host's full-content source identity, so runtime model IDs may change after reload.
 
-Resolve the complete scope with Rules `resolveCapturedEntityScope` before evaluating any model. A `ListDataProvider` can supply `resolveCapturedScope(scope, modelId)`, or a host can pass that model's already validated `ReadonlySet<number>` as the fourth `executeList` argument. Unsupported providers refuse a scoped definition. Missing, ambiguous, or replaced sources and missing members refuse instead of silently dropping the scope. Authored members require the original creation journal identity; recovery that does not retain it requires a fresh capture.
+Resolve the complete scope with Rules `resolveCapturedEntityScope` before evaluating any model. A `ListDataProvider` can supply `resolveCapturedScope(scope, modelId)`, or a host can pass that model's already validated `ReadonlySet<number>` as the fourth `executeList` argument. Unsupported providers refuse a scoped definition. Missing, ambiguous, or replaced sources and missing members refuse instead of silently dropping the scope. Authored members require the original authored record creation identity; recovery that does not retain it requires a fresh capture.
 
 | Export | Description |
 |--------|-------------|

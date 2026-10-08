@@ -190,7 +190,7 @@ test('#7131 named unset markers and explicit empty classification strings preser
     const text = typeof out.content === 'string' ? out.content : new TextDecoder().decode(out.content);
     const reparsed = await new IfcParser().parseColumnar(new TextEncoder().encode(text).buffer, { disableWorkerScan: true });
     const expected = extractClassificationsOnDemand(reparsed, 262);
-    assert.equal(expected[0]?.system, value === '' ? '' : undefined, 'declared IFC strings retain explicit empty text, while STEP markers are absent');
+    assert.equal(expected[0]?.system, value === '$' ? undefined : value, 'the native reader preserves explicit empty strings and derived markers, while unset data is absent');
     assert.deepEqual(extractClassificationsOnDemand(store, 262, view), expected);
   }
 });

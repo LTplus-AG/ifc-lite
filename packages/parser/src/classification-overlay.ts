@@ -18,9 +18,9 @@ export interface ClassificationReadView extends EffectiveEntityOverlay {
 }
 
 const records = new WeakMap<IfcDataStore, WeakMap<ClassificationReadView, { revision: number; rows: Map<number, EffectiveEntityRecord | null> }>>();
-// Native edited/created STEP markers denote absent/derived values. Do not
-// normalize source strings: a quoted '$' in the original file is literal text.
-const editValue = (value: unknown): unknown => value === '$' || value === '*' ? null : value;
+// Native edited/created '$' denotes absent data. The canonical source reader
+// retains '*', and a quoted '$' in the original file remains literal text.
+const editValue = (value: unknown): unknown => value === '$' ? null : value;
 
 export function classificationRecord(store: IfcDataStore, expressId: number, view?: ClassificationReadView): EffectiveEntityRecord | null {
   if (view?.isDeleted(expressId)) return null;

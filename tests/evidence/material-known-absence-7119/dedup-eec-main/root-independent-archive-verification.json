@@ -1,0 +1,30 @@
+{
+  "capturedUTC": "2026-10-08T13:45:07.156403+00:00",
+  "sourceHead": "6e15e64faed1bad97aba12e60e907324cfa1d701",
+  "frozenMain": "eec7de970a21a12ef4d09eaed382f45f7210772a",
+  "qualificationSHA256": "4bc06b95b7e7f24829ebe89e1740296f4a53fa3d91192cd9572d100eb8dd5ab6",
+  "tenRawGzipArchivesVerified": [
+    "light-0.log.gz",
+    "root-turbo-selection-materials.log.gz",
+    "light-7.log.gz",
+    "light-4.log.gz",
+    "plain-root-full-typecheck.log.gz",
+    "light-2.log.gz",
+    "light-3.log.gz",
+    "light-5.log.gz",
+    "light-1.log.gz",
+    "light-6.log.gz"
+  ],
+  "committedSourcePinsVerified": {
+    "packages/parser/src/material-definitions.ts": "2cd9d9526b3cad0ba895905b91ed3ff39449d6c5c0c968b9e5f20ec7b5c90487",
+    "packages/parser/test/on-demand-classification-material.test.ts": "a227a19286a54587ebc07588488f2ebb1770898265ebcd5f77b80edaf2ef1a0a",
+    "apps/viewer/src/lib/assistant/adapters/selection-materials.test.tsx": "d49b0983d1a40fffb2a248b283a9d6ff4b9fd1a66a6f125af2e07cfc88cb420c"
+  },
+  "onlyNonEvidenceDelta": [
+    "apps/viewer/src/lib/assistant/adapters/selection-materials.test.tsx"
+  ],
+  "canonicalMainProductionAndParserVerified": true,
+  "duplicateChangesetAbsent": true,
+  "scope": "Test fidelity correction only: retain real IFC/material/null/empty/bounds assertions; update obsolete rendered caveats; verify existing native section availability, full counts and bounds. No product behavior added.",
+  "pending": "Publish finaltest-onlybody/head thenfresh4requiredchecks/rawindependentreview; broader7119issueclosure requirescompleteacceptance"
+}

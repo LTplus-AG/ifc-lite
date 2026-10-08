@@ -1,6 +1,8 @@
-Known absent material-list names (#7119)
-=========================================
+Material selection evidence qualification (#7119)
+================================================
 
-A parsed IFC `$` material name is known absent and uses the existing fallback display name. It does not make a material-list assignment unreadable. Literal blank names remain authored; dangling members remain unresolved.
+The current PR changes only the existing selection-material test fidelity. The canonical null-name production fix shipped in #7213, and the real parser fixture repair shipped in #7209. Their duplicate local production, parser-test and changeset changes were removed on normal main integration.
 
-`qualification.json` pins source, raw compressed logs, the genuine old-production regression, canonical main fixture reuse, rendered selection caveat corrections, and the full root typecheck. Historical runs retain their original source scopes. Runtime transitions are recorded separately; this is functional evidence with no browser or performance claim. Fresh PR-head CI and review remain required.
+[Current clean integration qualification](dedup-eec-main/qualification.json) pins source `6e15e64fae`, the actual 21 affected tests, the full root typecheck of 3,734 files across 62 packages, light gates and separate runtime transitions. Fresh published-head CI and raw review remain required.
+
+The original parent-folder qualification.json and logs remain immutable historical, superseded proof of the independently reproduced material defect. Those original 20/97/56/21/3732 runs and 2954 review are not relabeled as qualification of the current integration. No browser or performance claim.

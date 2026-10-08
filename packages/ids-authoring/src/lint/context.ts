@@ -4,6 +4,7 @@
 
 /** Building a lint context: the schema tables shared with the grounding gate. */
 
+import { getAttributes, type IfcAttributeInfo, type IfcSchemaVersion } from '@ifc-lite/data';
 import type { CustomPsetDecl } from '../document/types.js';
 import { createGateContext, type GateContext } from '../gate/context.js';
 import type { LintContext } from './types.js';
@@ -15,5 +16,16 @@ import type { LintContext } from './types.js';
 export async function createLintContext(
   options: { gate?: GateContext; custom?: readonly CustomPsetDecl[] } = {},
 ): Promise<LintContext> {
-  return { gate: options.gate ?? (await createGateContext({ custom: options.custom })) };
+  const gate = options.gate ?? (await createGateContext({ custom: options.custom }));
+  return { gate, attributes: await loadAttributes() };
+}
+
+const VERSIONS: readonly IfcSchemaVersion[] = ['IFC2X3', 'IFC4', 'IFC4X3', 'IFC4X3_ADD2'];
+
+let shared: Promise<LintContext['attributes']> | undefined;
+
+function loadAttributes(): Promise<LintContext['attributes']> {
+  const byName = async (v: IfcSchemaVersion) => new Map((await getAttributes(v)).map((a: IfcAttributeInfo) => [a.name.toLowerCase(), a]));
+  shared ??= Promise.all(VERSIONS.map(byName)).then(([IFC2X3, IFC4, IFC4X3, IFC4X3_ADD2]) => ({ IFC2X3, IFC4, IFC4X3, IFC4X3_ADD2 }));
+  return shared;
 }

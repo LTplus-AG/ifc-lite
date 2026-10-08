@@ -5,5 +5,18 @@
 /** The static lint catalogue, in documentation order. */
 
 import type { LintRule } from '../types.js';
+import { ENT_001, ENT_002, ENT_003, ENT_004, ENT_005 } from './entity.js';
+import { ATT_001, ATT_002, PDT_001, PDT_002, PDT_003 } from './pdt-att.js';
 
-export const LINT_RULES: readonly LintRule[] = [];
+export const LINT_RULES: readonly LintRule[] = [
+  ENT_001,
+  ENT_002,
+  ENT_003,
+  ENT_004,
+  ENT_005,
+  PDT_001,
+  PDT_002,
+  PDT_003,
+  ATT_001,
+  ATT_002,
+];

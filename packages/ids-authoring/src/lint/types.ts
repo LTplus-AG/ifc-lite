@@ -15,6 +15,7 @@
  * applied automatically.
  */
 
+import type { IfcAttributeInfo, IfcSchemaVersion } from '@ifc-lite/data';
 import type { IDSFacet, IDSRequirement, IDSSpecification, IFCVersion } from '@ifc-lite/ids';
 import type { FacetFieldName } from '../document/fields.js';
 import type { Section, SpecNodes, StudioDocument, Suppression } from '../document/types.js';
@@ -111,6 +112,8 @@ export interface Finding {
 export interface LintContext {
   /** Schema tables (shared with the grounding gate). */
   readonly gate: GateContext;
+  /** Attribute metadata per IFC version, keyed by lower-case attribute name. */
+  readonly attributes: Readonly<Record<IfcSchemaVersion, ReadonlyMap<string, IfcAttributeInfo>>>;
 }
 
 export interface RuleInput {

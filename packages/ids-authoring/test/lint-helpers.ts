@@ -81,3 +81,36 @@ export async function expectFixesWork(ctx: LintContext, doc: StudioDocument, d: 
     expect(audit.issues.filter((i) => i.severity === 'error').length, `${d.code} fix "${fix.label}" must not add audit errors`).toBeLessThanOrEqual(beforeErrors);
   }
 }
+
+export interface RuleFixtures {
+  code: string;
+  /** Documents the rule must flag (each at least once). */
+  positive: (string | StudioDocument)[];
+  /** Documents the rule must not flag. */
+  negative: (string | StudioDocument)[];
+  /** Expected number of fixes on the first positive fixture's first finding, when it matters. */
+  fixes?: number;
+}
+
+/**
+ * Shared fixture contract for every catalogue rule: at least two positive
+ * and two negative fixtures, positives flagged, negatives clean, every
+ * offered fix gated, effective and audit-neutral.
+ */
+export async function runRuleFixtures(ctx: LintContext, f: RuleFixtures): Promise<void> {
+  expect(f.positive.length, `${f.code} needs >= 2 positive fixtures`).toBeGreaterThanOrEqual(2);
+  expect(f.negative.length, `${f.code} needs >= 2 negative fixtures`).toBeGreaterThanOrEqual(2);
+  for (const [i, xml] of f.positive.entries()) {
+    const { doc, diagnostics } = lintCode(ctx, f.code, xml);
+    expect(diagnostics.length, `${f.code} positive #${i} must be flagged`).toBeGreaterThan(0);
+    for (const d of diagnostics) {
+      expect(d.code).toBe(f.code);
+      await expectFixesWork(ctx, doc, d);
+    }
+    if (i === 0 && f.fixes !== undefined) expect(diagnostics[0].fixes?.length ?? 0, `${f.code} fix count`).toBe(f.fixes);
+  }
+  for (const [i, xml] of f.negative.entries()) {
+    const { diagnostics } = lintCode(ctx, f.code, xml);
+    expect(diagnostics.map((d) => d.message), `${f.code} negative #${i} must be clean`).toEqual([]);
+  }
+}

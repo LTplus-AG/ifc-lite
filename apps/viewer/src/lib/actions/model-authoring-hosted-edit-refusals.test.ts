@@ -24,7 +24,7 @@ const created = (value: { expressId: number } | { error: string }) => {
 };
 async function exportedEntities(store: Awaited<ReturnType<typeof parseIfc>>, view: MutablePropertyView) {
   const parsed = await parseIfc(editedModelBytes(store, view));
-  return [...parsed.entityIndex.byId.keys()].map(expressId => {
+  return [...parsed.entityIndex.byId.keys()].sort((a, b) => a - b).map(expressId => {
     const entity = parsed.getEntity(expressId); assert.ok(entity);
     return { expressId, type: entity.type, attributes: entity.attributes };
   });
@@ -87,14 +87,14 @@ test('#7265 explicit model ownership edits one of two native models sharing the 
   const operation = f.batch({ Offset: 5 }).operations[0]; assert.equal(operation.op, 'hosted.edit');
   assert.ok(operation.op === 'hosted.edit');
   assert.equal(f.saved.entities.getGlobalId(f.id), operation.target.globalId);
-  const peerBytes = editedModelBytes(f.saved, peerView), preview = previewModelAuthoring(useViewerStore.getState(), f.batch({ Offset: 5 }));
+  const peerBytes = editedModelBytes(f.saved, peerView), peerEntities = await exportedEntities(f.saved, peerView), preview = previewModelAuthoring(useViewerStore.getState(), f.batch({ Offset: 5 }));
   assert.equal(preview.rows[0].status, 'ready', preview.rows[0].issue ?? 'native hosted row status');
   assert.equal(preview.rows[0].modelId, SAMPLE_MODEL);
   const result = commitModelAuthoring(useViewerStore, preview, new Set([0]), 'federated hosted edit');
   assert.ok(result.ok, result.ok ? '' : result.detail ?? result.reason);
   const after = await parseIfc(editedModelBytes(f.dataStore, f.view));
   assert.equal(readHostedFill(after, f.id)?.offset, 5);
-  assert.deepEqual(editedModelBytes(f.saved, peerView), peerBytes, 'same-GUID peer receives no writes');
+  assert.deepEqual(await exportedEntities(f.saved, peerView), peerEntities, 'same-GUID peer retains every native exported entity and value');
   assert.deepEqual(readHostedFill(await parseIfc(peerBytes), f.id), f.binding);
 });
 

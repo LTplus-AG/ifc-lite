@@ -35,6 +35,15 @@ for (const [source, dimension] of cases) {
     assert.equal(result.rowSource, source);
     assert.deepEqual(result.buckets.map(bucket => [bucket.label, bucket.count, bucket.value]), direct.categories.map(bucket => [bucket.label, bucket.count, bucket.value]));
     assert.equal(result.unassigned, direct.unbucketed);
+    if (source === 'clash') assert.equal(result.population[0].count, result.matched, 'two clash sides in one model count as one finding row');
+    if (source === 'compare') {
+      const comparison = state.compareResult!;
+      assert.equal(result.population.length, 2, 'both actual IFC revisions are represented');
+      assert.equal(result.population.find(model => model.modelId === comparison.headModelId)?.count,
+        comparison.diff.entries.filter(entry => !!entry.head).length, 'head-side changes belong to the head revision');
+      assert.equal(result.population.find(model => model.modelId === comparison.baseModelId)?.count,
+        comparison.diff.entries.filter(entry => !entry.head && !!entry.base).length, 'deletions belong to the base revision');
+    }
     const svg = renderChartSvg({ aggregation: direct, width: 600, height: 360, showTitle: true });
     assert.match(svg, /<svg[ >]/, 'the saved native spec renders with the real chart engine');
     assert.doesNotMatch(svg, /NaN|Infinity/);

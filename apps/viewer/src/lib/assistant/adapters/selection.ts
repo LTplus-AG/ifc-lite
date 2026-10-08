@@ -32,6 +32,10 @@ import { effectiveElementData } from '@/components/viewer/properties/effectiveEl
 import { classificationPopulationUnavailable } from '@/components/viewer/properties/effective-classification-systems';
 import { effectiveMaterials, effectiveMaterialProperties } from '@/components/viewer/properties/effectiveMaterials';
 import { materialEvidence } from './selection-materials';
+import { documentEvidence } from './selection-documents';
+import { structuralEvidence } from './selection-structural';
+import { effectiveStructuralData } from '@/components/viewer/properties/effectiveStructuralData';
+import { effectiveDocuments } from '@/components/viewer/properties/effectiveDocuments';
 import { classificationEvidence } from './selection-classifications';
 import { selectedZoneVolumeBreakdowns, zoneQuantitySources } from './zone-volume-bases';
 import { effectiveTypeProperties } from '@/components/viewer/properties/effectiveTypeProperties';
@@ -114,6 +118,8 @@ function elementRow(s: ViewerState, ref: EntityRef, source: ModelSource, rich: b
   const relationshipsUnavailable = relationshipPopulationUnavailable(source.store, source.view);
   const valueLimit = rich ? 32 : 12;
   const data = effectiveElementData(ref.expressId, source.query, source.view);
+  const structuralData = source.store ? effectiveStructuralData(source.store, source.view) : null;
+  const { rows: documents, membershipUnavailable: documentsUnavailable } = effectiveDocuments(source.store, ref.expressId, source.view);
   const classifications = source.store ? extractClassificationsOnDemand(source.store, ref.expressId, source.view) : [];
   const classificationsUnavailable = classificationPopulationUnavailable(source.store, source.view);
   const materials = effectiveMaterials(source.store, ref.expressId, source.view);
@@ -155,93 +161,9 @@ function elementRow(s: ViewerState, ref: EntityRef, source: ModelSource, rich: b
     zoneVolumeBreakdowns: { quantityStatus: zoneQuantities.status,
       ...selectedZoneVolumeBreakdowns(s, toGlobalIdForRef(s.models, ref),
         zoneQuantities.quantities, zoneQuantities.scale, setLimit, valueLimit) },
-    relationshipLookupExpressId,
-    relationshipStatus: !source.store ? 'unavailable' : !relationshipsUnavailable ? 'available'
-      : !source.store.relationships ? 'unavailable-membership' : 'unavailable-source-membership',
-    relationshipCount: source.store && !relationshipsUnavailable ? nativeRelationships.length : null,
-    relationships: nativeRelationships.slice(0, setLimit).map(edge => ({
-      relationshipId: edge.relationshipId, relationshipType: edge.relationshipType, direction: edge.direction,
-      verification: relationshipsUnavailable || !edge.entity.type || edge.entity.type === 'Unknown' ? 'unverified' : 'resolved',
-      entity: { modelId: ref.modelId, expressId: edge.entity.id, Name: bounded(edge.entity.name), type: bounded(edge.entity.type === 'Unknown' ? null : edge.entity.type) },
-    })),
-    classificationStatus: !source.store ? 'unavailable' : !classificationsUnavailable ? 'available'
-      : !source.store.onDemandClassificationMap && !source.store.relationships
-        ? 'unavailable-membership' : 'unavailable-source-membership',
-    classificationCount: source.store && !classificationsUnavailable ? classifications.length : null,
-    classifications: classifications.slice(0, setLimit)
-      .map(info => classificationEvidence(info, source.store?.schemaVersion, setLimit)),
-    materialsStatus: !source.store ? 'unavailable' : materialAssignmentsVerified ? 'available' : 'unavailable-membership',
-    materialCount: materialAssignmentsVerified ? materials.length : null,
-    materials: materials.slice(0, setLimit).map(material => materialEvidence(material, valueLimit)),
-    materialPropertiesStatus: !source.store?.source?.length ? 'unverified-without-source'
-      : materialPropertiesVerified ? 'available' : 'unverified-material-associations',
-    materialPropertyGroupCount: materialPropertiesVerified ? materialProperties.length : null,
-    materialProperties: materialProperties.slice(0, setLimit).map(group => ({
-      modelId: ref.modelId, expressId: group.materialId, displayName: bounded(group.materialName),
-      psetCount: materialPropertiesVerified ? group.psets.length : null,
-      psets: group.psets.slice(0, setLimit).map(pset => ({
-        name: pset.name, propertyCount: materialPropertiesVerified ? pset.properties.length : null,
-        properties: Object.fromEntries(pset.properties.slice(0, valueLimit)
-          .map(prop => [prop.name, bounded(propertyDisplayValue(prop, source.units, s.unitDisplayOverrides).full)])),
-      })),
-    })),
-    inheritedType: inherited ? {
-      modelId: ref.modelId, modelName: source.name,
-      GlobalId: typeof typeGlobalId === 'string' && typeGlobalId && typeGlobalId !== '$' ? typeGlobalId : null,
-      Name: bounded(typeName === '$' ? '' : typeName), expressId: inherited.typeId,
-      status: source.view?.hasChanges(inherited.typeId) ? 'edited' : 'as-loaded',
-      psetCount: inherited.psets.length,
-      psets: inherited.psets.slice(0, setLimit).map(pset => ({
-        name: pset.name, propertyCount: pset.properties.length,
-        properties: Object.fromEntries(pset.properties.slice(0, valueLimit)
-          .map(prop => [prop.name, bounded(propertyDisplayValue(prop, source.units, s.unitDisplayOverrides).full)])),
-      })),
-    } : null,
-  });
-}
-
-export const selectionAdapter: EvidenceAdapter = {
-  id: 'selection', group: 'model', panelIds: ['properties', 'hierarchy'],
-  titleKey: 'assistantSources.selection.title', descriptionKey: 'assistantSources.selection.description',
-  rowMeaningKey: 'assistantSources.selection.rows', unavailableKey: 'assistantSources.selection.unavailable',
-  suggestionKeys: ['assistantSources.selection.suggestExplain', 'assistantSources.selection.suggestCompare'],
-  readiness: s => {
-    const size = selectionSize(s);
-    return size > 0 ? { status: { labelKey: 'assistantSources.selection.ready', params: { count: size } }, ready: true }
-      : { status: { labelKey: 'assistantSources.selection.none' }, ready: false };
-  },
-  // Every selection action replaces one of these; edits are covered by the context stamp.
-  identity: s => [s.selectedEntities, s.selectedEntitiesSet, s.selectedEntityIds, s.selectedEntity, s.selectedEntityId,
-    s.zoneSets, s.zoneAssignments, s.zoneApportionment],
-  capture: (s, limit) => {
-    const selection = selectionRefs(s);
-    if (!selection || selection.refs.length === 0) return unavailableCapture();
-    const { refs, channel } = selection;
-    const sourceFor = sources(s);
-    const quantitySource = zoneQuantitySources(s);
-    const byModel = new Map<string, number>();
-    const byClass = new Map<string, number>();
-    for (const ref of refs) {
-      byModel.set(ref.modelId, (byModel.get(ref.modelId) ?? 0) + 1);
-      const source = sourceFor(ref.modelId);
-      const type = effectiveSelectedClass(source.store, source.view, ref.expressId) ?? 'Unknown';
-      byClass.set(type, (byClass.get(type) ?? 0) + 1);
-    }
-    const sample = refs.slice(0, limit);
-    const rich = sample.length <= 10;
-    return {
-      summary: {
-        kind: 'selection', channel, selectionSize: refs.length, modelCount: byModel.size,
-        byModel: [...byModel].map(([modelId, count]) => ({ modelId, name: sourceFor(modelId).name, count })),
-        byClass: [...byClass].map(([type, count]) => ({ type, count })).sort((a, b) => b.count - a.count),
-        perElementBounds: rich ? { sets: 16, valuesPerSet: 32, attributes: 32, classifications: 16, classificationPath: 16, relationships: 16, zoneSets: 16, sharesPerVolumeBasis: 32 }
-          : { sets: 6, valuesPerSet: 12, attributes: 12, classifications: 6, classificationPath: 6, relationships: 6, zoneSets: 6, sharesPerVolumeBasis: 12 },
-        units: 'Quantity values carry {value, unit} in the Properties panel display unit (project unit, or the display-unit override below); a null unit is undeclared. Property values are the panel display strings, with the unit inline when the measure declares one.',
-        displayUnitOverrides: s.unitDisplayOverrides,
-        limitations: 'Includes edits; own-element status and native associated definitions use snapshot freshness. Sections use perElementBounds and full known counts. inheritedType has model/type GlobalId provenance; occurrence properties override same-named type values. Materials use occurrence-before-type precedence, LayerThickness metres, and panel display units for generic properties. Unverified fields are unknown. Missing membership inputs or unreadable live source edits make totals null/unavailable; source-free classification markers may describe the original source, not current membership. Unverified paths have unknown totals and bounded known ancestors. IFC2X3 uses ItemReference; other schemas use Identification. Missing systems stay unknown. Unverified material-property counts stay null; empty rows do not prove absence. Typed IFC2X3 scalar material-property subtypes are outside the generic-set reader. Relationships count exact native edges; alias rows identify their inherited lookup ID. Source-free edited graph rows are unverified source-origin evidence. Selection is sampled; byClass/byModel cover every selected element.',
-      },
-      rows: sample.map(ref => elementRow(s, ref, sourceFor(ref.modelId), rich, quantitySource)),
-      totalRows: refs.length, availability: 'available',
-    };
-  },
-};
+    structuralStatus: !source.store ? 'unavailable' : source.store.source?.length ? 'available' : 'unavailable-source',
+    structural: structuralEvidence(structuralData, ref.expressId, typeof data.attributes.get('GlobalId') === 'string'
+      ? String(data.attributes.get('GlobalId')) : undefined, setLimit, valueLimit, source.units, source.store?.schemaVersion, Boolean(source.store?.source?.length)),
+    documentStatus: !source.store ? 'unavailable' : documentsUnavailable ? 'unavailable-source-membership' : 'available',
+    documentCount: !source.store || documentsUnavailable ? null : documents.length,
+    documents: documents.slice(0, setLimit).map(document => documentEvidence(document, source.store?.schemaVersion)),

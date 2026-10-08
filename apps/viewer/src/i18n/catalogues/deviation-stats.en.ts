@@ -13,6 +13,17 @@
 import type { TranslationValue } from '../types';
 
 export const deviationStatsEn = {
+  'deviationStats.resultSource': 'BIM ↔ scan deviation',
+  'deviationStats.readbackPopulation': { one: '{countDisplay} scan point read back', other: '{countDisplay} scan points read back' },
+  'deviationStats.validPopulation': '{countDisplay} / {total} readback points measured',
+  'deviationStats.sourceUnknown': 'The scan source of this readback was not recorded.',
+  'deviationStats.assetSourceUnknown': { one: 'The model for {count} scan asset could not be resolved.', other: 'The models for {count} scan assets could not be resolved.' },
+  'deviationStats.assetIdentityUnknown': { one: 'The IFC identity of {count} scan asset could not be resolved.', other: 'The IFC identities of {count} scan assets could not be resolved.' },
+  'deviationStats.unmeasuredPoints': { one: '{count} readback point has no finite measured distance.', other: '{count} readback points have no finite measured distance.' },
+  'deviationStats.noMeasuredPoints': 'No finite measured distances are available from this readback',
+  'deviationStats.sourceAssets': 'Readback scan sources',
+  'deviationStats.unknownAsset': 'Unresolved scan asset',
+  'deviationStats.assetGlobalId': 'GlobalId',
   'deviationStats.sectionLabel': 'Deviation statistics',
   'deviationStats.reading': 'Computing statistics…',
   'deviationStats.valueMm': '{value} mm',

@@ -14,11 +14,12 @@
 
 import { StoreEditor } from '@ifc-lite/mutations';
 import type { IfcDataStore } from '@ifc-lite/parser';
-import { addHostedElementInStore, addOrdinaryElementInStore, resolveSpatialAnchor, type OrdinaryInStoreElement } from '@ifc-lite/create';
+import { copyBatchInStore, addHostedElementInStore, addOrdinaryElementInStore, resolveSpatialAnchor, type OrdinaryInStoreElement } from '@ifc-lite/create';
 import { createModellingStoreBackend, resolveLiveOwnerHistoryId } from '@ifc-lite/sdk';
 import { ensureStoreyPlacement } from '@/store/slices/storeyPlacement';
 import type { HostedFillSpec } from '@/store/slices/mutation-hosted-fill';
 import type { ModellingMethods } from '@/store/slices/mutation-modelling-records';
+import { authoringCopyTransforms, copyRefs } from './model-authoring-copy';
 import { pointToMetres, toMetres, type AuthoringOp, type AxisParams, type BoxParams, type ModelAuthoringBatch } from './model-authoring';
 
 /** An element an operation acts on: one of the model's, or one an earlier operation of the batch creates. */
@@ -157,6 +158,11 @@ function draftWrite(batch: ModelAuthoringBatch, dataStore: IfcDataStore, modelId
     case 'hosted.create': {
       const created = addHostedElementInStore(dataStore, draft, idOf(resolved.host!, refs), hostedSpecOf(batch, op));
       if (op.ref) refs.set(op.ref, created.expressId);
+      return;
+    }
+    case 'element.copy': case 'element.array': {
+      const copies = copyBatchInStore(dataStore, draft, [idOf(resolved.subject!, refs)], authoringCopyTransforms(batch, op, resolved.storey));
+      for (const [i, copy] of copies.entries()) refs.set(copyRefs(op)[i], copy.copyId);
       return;
     }
     case 'element.delete':

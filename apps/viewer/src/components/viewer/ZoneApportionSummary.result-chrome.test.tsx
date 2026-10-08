@@ -14,17 +14,19 @@ import { fixtureModel } from '@/test/store-fixture';
 import { cleanup, click, render } from '@/test/render';
 import { useViewerStore, type FederatedModel } from '@/store';
 import { setGlobalRendererRef } from '@/hooks/useBCF';
-import { computeZoneApportionmentForElement, computeZoneApportionmentNow } from '@/hooks/useZoneApportionment';
+import { computeZoneApportionmentForElement, computeZoneApportionmentNow, straddlerIdsFor } from '@/hooks/useZoneApportionment';
+import { recomputeZoneAssignmentsNow } from '@/hooks/useZoneAssignmentSync';
 import { zoneSetRevision, type ZoneSet } from '@/lib/zones';
 import { ZoneApportionSummary } from './ZoneApportionSummary';
 import { ZonesPanel } from './ZonesPanel';
 
 // #7204: real committed Bonsai IFC, canonical WASM mesh/proved volume and CPU Scene.
-// Only the browser GPU host's scene-access boundary is controlled; no rendered or assignment-classifier claim.
+// Only the browser GPU host's scene-access boundary is controlled; no rendered result is claimed.
 function installScene(meshes: readonly MeshData[]) {
   const scene = new Scene();
   for (const mesh of meshes) scene.addMeshData(mesh);
   setGlobalRendererRef({ current: { getScene: () => scene } as unknown as Renderer });
+  return scene;
 }
 afterEach(() => { cleanup(); setGlobalRendererRef({ current: null }); useViewerStore.getState().clearAllModels(); });
 
@@ -44,11 +46,21 @@ async function seed(federated: boolean | number = false) {
   for (const [name, model] of models) model.geometryResult = { ...f.geometry,
     meshes: meshes.filter(mesh => useViewerStore.getState().resolveGlobalIdFromModels(mesh.expressId)?.modelId === name) };
   const ids = names.map(name => useViewerStore.getState().toGlobalId(name, f.wall.expressId));
-  useViewerStore.setState({ models: new Map(models), zoneAssignments: new Map(ids.map(id => [id, { [f.zoneSet.id]: {
-    zoneId: 'whole', zoneName: 'Whole building', straddles: true, touchedZoneIds: ['whole'],
-  } }])) });
-  installScene(meshes);
-  return { ...f, names, ids, meshes, guid: f.store.entities.getGlobalId(f.wall.expressId) };
+  useViewerStore.setState({ models: new Map(models), zoneAssignments: new Map() });
+  const scene = installScene(meshes);
+  const bounds = scene.getEntityBoundingBox(ids[0]); assert.ok(bounds);
+  const cut = bounds.min.x + (bounds.max.x - bounds.min.x) * 0.1;
+  const centerY = (bounds.min.y + bounds.max.y) / 2, centerZ = (bounds.min.z + bounds.max.z) / 2;
+  const zoneSet: ZoneSet = { ...f.zoneSet, zones: [
+    { id: 'left', name: 'Left cut', center: [(bounds.min.x + cut) / 2, centerY, centerZ],
+      size: [cut - bounds.min.x, bounds.max.y - bounds.min.y + 1, bounds.max.z - bounds.min.z], rotationY: 0 },
+    { id: 'right', name: 'Right cut', center: [(cut + bounds.max.x) / 2, centerY, centerZ],
+      size: [bounds.max.x - cut, bounds.max.y - bounds.min.y + 1, bounds.max.z - bounds.min.z], rotationY: 0 },
+  ] };
+  useViewerStore.setState({ zoneSets: [zoneSet] });
+  recomputeZoneAssignmentsNow();
+  assert.deepEqual(straddlerIdsFor(zoneSet.id).sort((a, b) => a - b), [...ids].sort((a, b) => a - b), 'real native AABB classifier identifies exactly the authored boundary-crossing wall in each model');
+  return { ...f, zoneSet, names, ids, meshes, guid: f.store.entities.getGlobalId(f.wall.expressId) };
 }
 function region(ui: HTMLElement) {
   const value = ui.querySelector('section[aria-label="Volume splits · Native Bonsai sections results"]');
@@ -64,6 +76,7 @@ test('#7204 whole-pass native split button publishes captured source, actual cou
   const button = [...ui.querySelectorAll('button')].find(item => item.textContent?.includes('Split volumes (1 boundary-crossing element)'));
   assert.ok(button); click(button);
   const entry = stored(f.zoneSet); const result = entry.byElement.get(f.ids[0]); assert.ok(result);
+  assert.equal(result.shares.length, 2, 'the native classified wall crosses both actual cut zones');
   assert.ok(Math.abs(result.wholeVolumeM3 - (f.wall.geometryVolume ?? NaN)) < 1e-5, 'independent native mesher proof agrees with clipper whole volume');
   assert.ok(Math.abs(result.shares.reduce((n, share) => n + share.volumeM3, result.outsideVolumeM3) - result.wholeVolumeM3) < 1e-5, 'native shares plus outside conserve the proved authored wall');
   const view = region(ui);
@@ -209,12 +222,13 @@ test('#7204 actual legacy single-model native split uses its retained source and
 
 test('#7204 unrun and an explicitly evaluated empty native pass remain distinct', async t => {
   if (!ensureWasm(t)) return;
-  const f = await seed(); useViewerStore.setState({ zoneAssignments: new Map() });
-  const ui = render(<ZoneApportionSummary zoneSet={f.zoneSet} />);
+  const f = await seed(); const emptySet: ZoneSet = { ...f.zoneSet, zones: [] };
+  useViewerStore.setState({ zoneSets: [emptySet] }); recomputeZoneAssignmentsNow();
+  const ui = render(<ZoneApportionSummary zoneSet={emptySet} />);
   assert.match(region(ui).textContent ?? '', /No split result computed/);
   assert.equal(Boolean(region(ui).querySelector('[data-result-state="no-population"]')), false);
   const button = region(ui).querySelector('button'); assert.ok(button); assert.equal(button.disabled, true);
-  await act(async () => { computeZoneApportionmentNow(f.zoneSet); });
+  await act(async () => { computeZoneApportionmentNow(emptySet); });
   assert.ok(region(ui).querySelector('[data-result-state="no-population"]'), 'native computed population was explicitly empty');
   assert.match(region(ui).textContent ?? '', /0 proved splits \/ 0 cached entity outcomes/);
 });

@@ -98,6 +98,69 @@ test('OpenAI Responses: usage comes from response.completed', async () => {
   assert.deepEqual([outcome.receipt.inputTokens, outcome.receipt.outputTokens], [77, 9]);
 });
 
+const typedSchema = { name: 'flow_summary', schema: { type: 'object', properties: { sections: { type: 'array', items: { type: 'string' } } },
+  required: ['sections'], additionalProperties: false } };
+
+test('#7132 OpenAI chat sends a strict schema and records the request format', async () => {
+  const sent = serve(data([{ choices: [{ delta: { content: '{"sections":[]}' }, finish_reason: 'stop' }] }]));
+  const outcome = await runModelRequest(request({ route: { kind: 'openai', model: 'gpt-6.1-sol', apiKey: 'sk-test' }, outputSchema: typedSchema }));
+  assert.deepEqual(sent[0]?.body.response_format, { type: 'json_schema', json_schema: { ...typedSchema, strict: true } });
+  assert.ok(outcome.kind === 'completed');
+  assert.equal(outcome.receipt.outputFormat, 'json-schema');
+});
+
+test('#7132 OpenAI Responses uses text.format rather than the chat-only response_format', async () => {
+  const sent = serve(data([{ type: 'response.output_text.delta', delta: '{"sections":[]}' },
+    { type: 'response.completed', response: { status: 'completed' } }]));
+  const outcome = await runModelRequest(request({ route: { kind: 'openai', model: 'gpt-5.3-codex', apiKey: 'sk-test' }, outputSchema: typedSchema }));
+  assert.deepEqual(sent[0]?.body.text, { format: { type: 'json_schema', ...typedSchema, strict: true } });
+  assert.equal(sent[0]?.body.response_format, undefined);
+  assert.ok(outcome.kind === 'completed');
+  assert.equal(outcome.receipt.outputFormat, 'json-schema');
+});
+
+test('#7132 unsupported hosted routes remain parser-only and reject no schema by silently resending', async () => {
+  const sent = serve(data([{ choices: [{ delta: { content: '{"sections":[]}' }, finish_reason: 'stop' }] }]));
+  const outcome = await runModelRequest(request({ outputSchema: typedSchema }));
+  assert.ok(outcome.kind === 'completed');
+  assert.equal(outcome.receipt.outputFormat, 'text');
+  assert.equal(sent.length, 1);
+  assert.equal(sent[0]?.body.response_format, undefined);
+  assert.equal(sent[0]?.body.outputSchema, undefined);
+});
+
+test('#7132 rejected direct schemas fail the same request without a text fallback', async () => {
+  const sent = serve(JSON.stringify({ error: { message: 'Unsupported schema' } }), { status: 400 });
+  const budget = createRootBudget({ maxRequests: 2, maxOutputTokens: 8192 });
+  const outcome = await runModelRequest(request({ route: { kind: 'openai', model: 'gpt-6.1-sol', apiKey: 'sk-test' }, outputSchema: typedSchema, budget }));
+  assert.equal(outcome.kind, 'error');
+  assert.equal(sent.length, 1);
+  assert.equal(budget.requests, 1);
+  assert.ok(outcome.kind === 'error');
+  assert.equal(outcome.receipt.outputFormat, 'json-schema');
+});
+
+test('#7132 Anthropic sends output_config.format through the actual SDK stream', async () => {
+  const events = [
+    { type: 'message_start', message: { id: 'msg_schema', type: 'message', role: 'assistant', model: 'claude-opus-5-5', content: [],
+      stop_reason: null, stop_sequence: null, usage: { input_tokens: 12, output_tokens: 1 } } },
+    { type: 'content_block_start', index: 0, content_block: { type: 'text', text: '' } },
+    { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: '{"sections":[]}' } },
+    { type: 'content_block_stop', index: 0 },
+    { type: 'message_delta', delta: { stop_reason: 'end_turn', stop_sequence: null }, usage: { output_tokens: 4 } },
+    { type: 'message_stop' },
+  ];
+  const sent = serve(events.map(event => `event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`).join(''));
+  const outcome = await runModelRequest(request({ route: { kind: 'anthropic', model: 'claude-opus-5-5',
+    credentials: { apiKey: 'sk-ant-test', workspaceId: '' } }, outputSchema: typedSchema }));
+  assert.deepEqual(sent[0]?.body.output_config, { format: { type: 'json_schema', schema: typedSchema.schema } });
+  assert.equal(sent.length, 1);
+  assert.ok(outcome.kind === 'completed');
+  assert.equal(outcome.receipt.outputFormat, 'json-schema');
+  assert.ok(outcome.receipt.usageReported);
+  assert.equal(outcome.receipt.outputTokens, 4);
+});
+
 test('Anthropic: message_start + message_delta usage, with cache reads counted as input', async () => {
   const events = [
     { type: 'message_start', message: { id: 'msg_1', type: 'message', role: 'assistant', model: 'claude-opus-5-5', content: [], stop_reason: null, stop_sequence: null,
@@ -185,7 +248,7 @@ test('root budget clamps the last request to the remaining output and charges un
 test('capabilities come from the registry and route ceilings, with no placeholder window for proxy models', () => {
   assert.deepEqual(modelCapabilities('claude-opus-5-5'), {
     id: 'claude-opus-5-5', route: 'anthropic', tier: 'byok', contextWindow: 1_000_000, maxOutputTokens: 32_000,
-    structuredOutput: false, usageReporting: 'provider',
+    structuredOutput: true, usageReporting: 'provider',
   });
   const unknown = modelCapabilities('vendor/unlisted');
   assert.equal(unknown.route, 'proxy');

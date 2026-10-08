@@ -18,6 +18,7 @@
  * counter-clockwise seen from above. Nothing here writes.
  */
 
+import { parseShapeParams, AUTHORING_OUTLINE_WORK_LIMIT, type ShapeParams } from './model-authoring-shape-params';
 import { parseCopyFields, type CopyFields, type ArrayFields } from './model-authoring-copy-fields';
 import { parseGlobalIdTarget, parseLength, parsePoint, parseRef, parseText, record, type LengthRange } from './model-authoring-fields';
 
@@ -106,9 +107,6 @@ function element(value: unknown, at: string, refs: ReadonlyMap<string, Authoring
 
 /** A wall by its expected class, or a wall an earlier `element.create` builds. */
 function isWall(target: ElementTarget, refs: ReadonlyMap<string, AuthoringOp>): boolean {
-  if (!isNewElement(target)) return target.ifcClass.startsWith('IfcWall');
-  const creator = refs.get(target.ref);
-  return creator?.op === 'element.create' && creator.ifcClass === 'IfcWall';
   const visited = new Set<string>();
   while (isNewElement(target)) {
     if (visited.has(target.ref)) return false;

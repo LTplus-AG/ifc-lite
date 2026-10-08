@@ -4,6 +4,7 @@
 
 import '@/test/setup-dom.js';
 import assert from 'node:assert/strict';
+import { act } from 'react';
 import test, { afterEach, before } from 'node:test';
 import { readFile } from 'node:fs/promises';
 import { IfcParser } from '@ifc-lite/parser';
@@ -165,7 +166,12 @@ test('switching sides cancels a live native SSE reader and clears partial valida
   const pending = sendAssistant('Explain native wall failures', 'openai/gpt-free', '/api/chat');
   for (let i = 0; i < 100 && !useAssistant.getState().output; i++) await new Promise(resolve => setImmediate(resolve));
   assert.equal(useAssistant.getState().output, 'Partial native findings', 'the real response reader must have consumed a chunk');
-  const ui = render(<ValidationPanel />);
+  let ui: HTMLElement | undefined;
+  await act(async () => {
+    ui = render(<ValidationPanel />);
+    await new Promise(resolve => setImmediate(resolve));
+  });
+  assert.ok(ui);
   const manualTab = [...ui.querySelectorAll<HTMLElement>('[role="tab"]')].find(tab => tab.textContent === 'Manual validation');
   assert.ok(manualTab, 'the native panel must expose its Manual validation tab');
   mouseDown(manualTab);

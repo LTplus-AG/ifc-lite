@@ -62,12 +62,6 @@ export function parseEnvelope(answer: string, kind: ArtifactKind, bodyKeys: read
   catch (error) { throw new Error(`The proposal is not one complete JSON object (${error instanceof Error ? error.message : String(error)})`); }
   if (!record(value) || value.kind !== kind) throw new Error(`Not a ${kind}`);
   if (value.version !== 1) throw new Error(`A ${kind} must declare "version": 1`);
-  // Each native proposal parser must explicitly accept and validate its scope.
-  // Refuse scope on any envelope without that capability instead of dropping it.
-  if (value.scope !== undefined && !bodyKeys.includes('scope')) {
-    throw new Error(`A ${kind} runs over every loaded model, or the models a "model" rule names; "visible" and "selected" are not part of it. `
-      + 'Ask for a chart in the visible or basket scope instead, or select the result from the Filter tab.');
-  }
   onlyKeys(value, ['version', 'kind', 'title', 'rationale', ...bodyKeys], `The ${kind}`);
   const title = requiredText(value.title, 'The title');
   if (value.rationale !== undefined && !text(value.rationale, RATIONALE_LIMIT)) throw new Error('The rationale must be text');

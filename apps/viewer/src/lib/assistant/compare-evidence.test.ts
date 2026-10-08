@@ -18,7 +18,7 @@ import assert from 'node:assert/strict';
 import { useViewerStore } from '@/store';
 import { fixtureModels } from '@/test/store-fixture';
 import { analysisStampOf, captureAnalysisStamp, stampAnalysisReport } from '@/hooks/useAnalysisStaleness';
-import { savedReconciliationOf } from '@/lib/compare/compare-analysis-state';
+import { savedReconciliationOf } from '@/lib/compare/compare-reconcile-state';
 import type { CapturedRun } from '@/lib/compare/run-reconcile-types';
 import { PINS, revisionPair, runClash, type RevisionPair } from '@/lib/compare/revision-pair.test-support';
 import { captureEvidence } from './evidence';

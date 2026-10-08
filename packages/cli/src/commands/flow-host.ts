@@ -14,6 +14,7 @@
 
 import type { Capability } from '@ifc-lite/extensions';
 import type { FlowHost } from '@ifc-lite/flow-nodes';
+import type { FlowAiService } from '@ifc-lite/flow-nodes/ai';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { createBimContext, type BimContext } from '@ifc-lite/sdk';
 import { HeadlessBackend } from '../headless-backend.js';
@@ -31,10 +32,12 @@ export interface CliFlowSession {
   active(): HeadlessModel;
 }
 
-export function createCliFlowSession(initial: HeadlessModel, networkGrants: readonly Capability[]): CliFlowSession {
+export function createCliFlowSession(initial: HeadlessModel, networkGrants: readonly Capability[], ai?: FlowAiService): CliFlowSession {
   let active = initial;
   const host: FlowHost = {
     get bim() { return active.bim; },
+    // Present only when the environment names a provider (`flow-ai.ts`).
+    ...(ai ? { ai } : {}),
     // `networkGrants` is always the graph's own declared capabilities: a
     // trusted local run is still not trusted to reach a host the graph never
     // declared (see `FlowHost.networkGrants`).

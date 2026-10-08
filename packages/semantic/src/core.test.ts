@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { describe, it, expect } from 'vitest';
-import { assertReadOnlyQuery, relatedResourceQuery, relatedIdentityQuery } from './query.js';
+import { assertReadOnlyQuery, inspectReadOnlyQuery, relatedResourceQuery, relatedIdentityQuery } from './query.js';
 import { LIMITS } from './types.js';
 import { parseResults, recordsFromResults } from './results.js';
 import { recordsFromGraph } from './graph.js';
@@ -46,6 +46,14 @@ describe('semantic core charter #6643', () => {
     expect(assertReadOnlyQuery('SELECT * FROM <https://example.org/graph> WHERE {?s ?p ?o}', ['https://example.org/graph'])).toBe('select');
     expect(assertReadOnlyQuery('SELECT * WHERE { ?s ?p "SERVICE" } # INSERT DATA')).toBe('select');
     expect(() => assertReadOnlyQuery('SELECT * WHERE {')).toThrow();
+  });
+  it('inspects the outer projection and LIMIT with the same read-only refusals', () => {
+    expect(inspectReadOnlyQuery('PREFIX p: <https://e/> SELECT ?a (COUNT(?b) AS ?n) WHERE { ?a p:x ?b { SELECT ?b WHERE { ?b ?q ?r } LIMIT 9 } } GROUP BY ?a LIMIT 10'))
+      .toEqual({ form: 'select', variables: ['a', 'n'], limit: 10 });
+    expect(inspectReadOnlyQuery('SELECT * WHERE { ?s ?p ?o }')).toEqual({ form: 'select', variables: '*' });
+    expect(inspectReadOnlyQuery('CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o } LIMIT 5')).toEqual({ form: 'construct', variables: [], limit: 5 });
+    expect(() => inspectReadOnlyQuery('DELETE WHERE { ?s ?p ?o }')).toThrow();
+    expect(() => inspectReadOnlyQuery('SELECT * WHERE { SERVICE <https://example.org> { ?s ?p ?o } } LIMIT 1')).toThrow('SERVICE');
   });
   it('builds related queries as bounded validated VALUES instead of executable string fragments', () => {
     expect(assertReadOnlyQuery(relatedResourceQuery(['https://example.org/item']))).toBe('select');

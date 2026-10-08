@@ -13,7 +13,7 @@ import { configureMutationView } from '@/utils/configureMutationView';
 import { useViewerStore } from '@/store';
 import { editedModelBytes } from '@/lib/export/edited-model-bytes';
 import { installSampleModel, parseIfcBytes, SAMPLE_WALLS } from '@/test/sample-corrections-fixture';
-import { parseModelChangeBatch } from './model-change';
+import { parseModelChangeBatch } from '@ifc-lite/ai/artifacts';
 import { previewModelChanges } from './model-change-preview';
 import { commitModelChanges } from './model-change-commit';
 import { tableRowsOf, tableToModelChanges } from './table-changes';

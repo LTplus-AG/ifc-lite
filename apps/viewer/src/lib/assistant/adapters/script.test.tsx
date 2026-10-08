@@ -53,6 +53,8 @@ test('#6833 a real script run is stamped when published, offered from the Script
       </ExtensionHostContext.Provider>
     </BimReactContext.Provider>,
   );
+  // #7065: the routed Script panel suspends while its lazy chunk loads.
+  await waitFor(() => [...root.querySelectorAll('button')].some(button => button.textContent?.trim() === 'Run'), 'Script panel lazy chunk mounted');
   const run = [...root.querySelectorAll('button')].find(button => button.textContent?.trim() === 'Run');
   assert.ok(run, 'Script panel mounted');
   await act(async () => { click(run); });

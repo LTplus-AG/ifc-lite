@@ -69,7 +69,7 @@ export function EvidenceView({ evidence, state }: {
     {evidence.projectionTruncated && <p className="text-muted-foreground">{t('assistant.evidenceTruncated')}</p>}
     <time className="block text-2xs text-muted-foreground" dateTime={evidence.capturedAt}>{evidence.capturedAt}</time>
     {metadata ? <details>
-      <summary className="cursor-pointer">{t('assistant.evidenceModels', { included: metadata.models.length, total: metadata.total })}</summary>
+      <summary className="cursor-pointer py-1">{t('assistant.evidenceModels', { included: metadata.models.length, total: metadata.total })}</summary>
       <p className="text-muted-foreground">{t('assistant.evidenceModelScope')}</p>
       {metadata.omitted && <p className="text-muted-foreground">{t('assistant.evidenceModelsOmitted')}</p>}
       <ul className="space-y-1 max-h-40 overflow-auto">
@@ -79,7 +79,7 @@ export function EvidenceView({ evidence, state }: {
         </li>)}
       </ul>
     </details> : <p className="text-muted-foreground">{t('assistant.evidenceModelsUnknown')}</p>}
-    <details><summary className="cursor-pointer">{t('assistant.evidence')}</summary>
+    <details><summary className="cursor-pointer py-1">{t('assistant.evidence')}</summary>
       <pre className="whitespace-pre-wrap break-words max-h-64 overflow-auto">{evidence.payload}</pre>
     </details>
   </section>;

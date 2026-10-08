@@ -77,6 +77,19 @@ describe('#5167 describe_flow / run_flow', () => {
     expect(ctx.registry.list()).toHaveLength(0);
   });
 
+  it('reports a missing AI model service before model resolution (#6923)', async () => {
+    if (!describeFlow || !runFlow) throw new Error('flow tools not registered');
+    const ctx: ToolContext = { registry: new InMemoryModelRegistry(), scope: fullScope(), progress: NOOP_PROGRESS,
+      log: SILENT_LOGGER, signal: new AbortController().signal, config: DEFAULT_CONFIG };
+    const flow = { flowVersion: 2, id: 'ai', name: 'AI', capabilities: ['model.read', 'network.ai'], inputs: [], outputs: [],
+      nodes: [{ id: 'walls', type: 'model.select' }, { id: 'table', type: 'table.fromEntities' }, { id: 'sum', type: 'ai.summarize' }],
+      edges: [{ from: ['walls', 'entities'], to: ['table', 'entities'] }, { from: ['table', 'table'], to: ['sum', 'table'] }] };
+    const description = structured(await describeFlow.handler({ flow }, ctx));
+    expect(description.availability).toEqual(expect.arrayContaining([expect.objectContaining({ nodeId: 'sum', status: 'unavailable' })]));
+    await expect(runFlow.handler({ flow }, ctx)).rejects.toMatchObject({ code: 'UNSUPPORTED_OPERATION', message: expect.stringContaining('backend feature "ai"') });
+    expect(ctx.registry.list()).toHaveLength(0);
+  });
+
   it('describe_flow returns the declared inputs and outputs with types, from an inline document', async () => {
     if (!describeFlow) throw new Error('describe_flow not registered');
     const text = await readFile(AUDIT_FLOW, 'utf-8');

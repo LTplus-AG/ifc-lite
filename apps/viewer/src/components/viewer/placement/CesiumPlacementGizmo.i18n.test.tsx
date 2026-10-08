@@ -13,7 +13,7 @@
  * forced this file to stub it globally so mounting settled synchronously.
  * It now computes its projection directly in the render body (woken by the
  * scene kernel's shared `SceneProjector` via `useProjectorTick`, following
- * #5510), so a single synchronous `render()` already reflects the final
+ * #5510), so after the CRS resolves, `render()` reflects the final
  * projected geometry and no rAF stub is needed.
  */
 import '@/test/setup-dom.js';
@@ -21,7 +21,7 @@ import { describe, it, afterEach, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
 import type { MapConversion, ProjectedCRS } from '@ifc-lite/parser';
-import { cleanup, render } from '@/test/render.js';
+import { cleanup, render, waitFor } from '@/test/render.js';
 import { registerLocale, setLocale, type Catalogue } from '@/i18n';
 import { resolve } from '@/i18n/registry';
 import { en } from '@/i18n/en';
@@ -120,7 +120,7 @@ afterEach(() => {
 });
 
 describe('CesiumPlacementGizmo localization (#4918, #5505)', () => {
-  it('translates the drag-gizmo tooltip titles and handle aria-labels', () => {
+  it('translates the drag-gizmo tooltip titles and handle aria-labels', async () => {
     const canvas = {
       width: 100, height: 100, clientWidth: 100, clientHeight: 100,
       getBoundingClientRect: () => ({ left: 0, top: 0, width: 100, height: 100 }),
@@ -145,6 +145,7 @@ describe('CesiumPlacementGizmo localization (#4918, #5505)', () => {
         lengthUnitScale={1}
       />,
     );
+    await waitFor(() => Boolean(container.querySelector('[aria-label="Drag OrthogonalHeight"]')), 'projected editing resolves');
     const englishDom = readableStrings(container);
     const afterDom = domAfterPseudo(container);
     assertAllTranslate(

@@ -3,28 +3,30 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import type { MeshData } from '@ifc-lite/geometry';
+import { cpuMeshAliases } from './geometry-cpu-aliases';
 import { retainReleasedMeshProvenance } from './released-mesh-provenance';
 
 const EMPTY_POSITIONS = new Float32Array(0);
 const EMPTY_NORMALS = new Float32Array(0);
 const EMPTY_INDICES = new Uint32Array(0);
-// Array identity survives canonical append. Weak keys retain neither a source
-// array nor the CPU buffers that release intentionally discards (#6537).
-const revisions = new WeakMap<readonly MeshData[], number>();
-
-/** CPU-only invalidation; GPU geometry content version stays unchanged. */
-export function cpuMeshReleaseVersion(meshes: readonly MeshData[] | undefined): number {
-  return meshes ? revisions.get(meshes) ?? 0 : 0;
-}
-
-/** The canonical bounded-memory release, including batched release + append. */
+/** Canonical CPU-only release; preserve independent fields on derived copies. */
 export function releaseCpuMeshBuffers(meshes: MeshData[]): void {
   for (const mesh of meshes) {
-    retainReleasedMeshProvenance(mesh);
-    mesh.positions = EMPTY_POSITIONS;
-    mesh.normals = EMPTY_NORMALS;
-    mesh.indices = EMPTY_INDICES;
-    delete mesh.appearanceSource;
+    const { positions, normals, indices, appearanceSource } = mesh;
+    for (const alias of cpuMeshAliases(mesh)) {
+      const positionsShared = alias.positions === positions;
+      const normalsShared = alias.normals === normals;
+      const indicesShared = alias.indices === indices;
+      const appearanceShared = appearanceSource !== undefined && alias.appearanceSource === appearanceSource;
+      if (!positionsShared && !normalsShared && !indicesShared && !appearanceShared) continue;
+      retainReleasedMeshProvenance(alias, {
+        ...(positionsShared ? { positions: EMPTY_POSITIONS } : {}),
+        ...(indicesShared ? { indices: EMPTY_INDICES } : {}),
+      });
+      if (positionsShared) alias.positions = EMPTY_POSITIONS;
+      if (normalsShared) alias.normals = EMPTY_NORMALS;
+      if (indicesShared) alias.indices = EMPTY_INDICES;
+      if (appearanceShared) delete alias.appearanceSource;
+    }
   }
-  revisions.set(meshes, cpuMeshReleaseVersion(meshes) + 1);
 }

@@ -1,12 +1,54 @@
 # Mesh owner cache and renderer packing evidence (#6537)
 
-The source-matched public-model loads were driven through the actual T3 shared
+The historical source-matched public-model loads were driven through the actual T3 shared
 browser and the canonical viewer file input. No scheduler, loader or producer
 was replaced. Source, build, runtime and fixture hashes are retained with every
 sample or provenance record. The unchanged WASM runtime is newer than the Rust
 sources in both final builds.
 
-## Verdict and limits
+## Current-main reconciliation (#6584)
+
+The historical records below remain tied to their original frozen sources; they
+do not qualify the current candidate. Main #7021 already stamps a single model's
+own array in place, so that shipped identity and per-append optimization is kept.
+The old general owner-cache implementation is superseded here.
+
+Actual root Turbo mounted controls on main `e0053d137a` reproduced seven CPU
+release failures while all six existing single-model controls passed. Restoring
+the old revision mechanism fixed immediate/batched release cases, but failed
+retained copies after an earlier recolour and canonical copy ownership controls;
+it also failed the in-place edit and append-cost controls that main now requires.
+
+The current fix registers only CPU-sharing shallow copies through
+`carryReleasedMesh` and empties reference-identical fields through the canonical
+release action. Weak keys, weak members, pruning and weak finalizer holdings
+avoid retaining discarded copies. Independent updated fields survive. Retained
+counts recover only for exact zero-byte field references assigned by release;
+legitimately empty replacement fields never inherit old counts. CPU release
+preserves the renderer's geometry content version and global append prefix.
+
+All 84 relevant root Turbo controls pass, including repeated batched release,
+release with replacement/clear, earlier recolours, shared versus independent
+fields, provenance/counts and a real isolated GC witness. The GC witness collects
+three generations of discarded copies while retaining the source, then collects
+released position/normal/index arrays while retaining a copy. This establishes
+collectability and reference removal, not an OS peak-memory or throughput number.
+Plain full root typecheck covers all 3708 test files across 62 packages.
+Four additional red-before controls demonstrate the replacement-count, colour
+reset, appearance-source and placed-copy defects before the shared helper fixes.
+
+The existing canonical loader harness also loads the unmodified real Bonsai
+`hello-wall.ifc` as primary and peer through `useIfcLoader.loadFile`, using the
+actual WASM engine. Both produce eight meshes with identical geometry hashes;
+the actual viewport filter retains five visible primary meshes. Releasing the
+active source after recolour empties retained original/viewport copies and
+preserves scalar counts, IDs, content version and the peer's byte hash. This is
+an engine/store/mounted-hook proof in Node, not a GPU frame or browser timing.
+[Exact qualified sources, runtime/fixture hashes and raw logs](current-main-release/qualified-source.json)
+include the failed visible-count harness assumption and earlier counterexamples.
+No current end-to-end speedup is claimed.
+
+## Historical verdict and limits
 
 The direct renderer packing candidate remains unshipped: these measurements do
 not demonstrate an end-to-end benefit. The owner-cache candidate removes

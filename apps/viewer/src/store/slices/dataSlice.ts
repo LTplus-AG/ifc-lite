@@ -330,7 +330,7 @@ export const createDataSlice: StateCreator<DataSlice & DataCrossSliceState, [], 
 
     const restoredMeshes = state.geometryResult.meshes.map(mesh => {
       const original = backup.get(mesh.expressId);
-      return original ? { ...mesh, color: original } : mesh;
+      return original ? carryReleasedMesh(mesh, { ...mesh, color: original }) : mesh;
     });
 
     return {

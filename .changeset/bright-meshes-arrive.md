@@ -1,7 +1,5 @@
 ---
-"@ifc-lite/viewer": major
+"@ifc-lite/viewer": patch
 ---
 
-Reuse the canonical incremental mesh-owner cache for single-model streams, preserving immutable replacements, content updates, point-cloud owners and federation transitions. Refresh cached wrappers when the store releases CPU geometry, without requesting a GPU reupload of empty buffers. End-to-end speed improvement remains unqualified.
-
-Breaking change: the viewer model-placement module no longer exports the unused `geometryWithModelIndex` helper. Mesh ownership now passes through `useFederatedGeometry` for one model and federations.
+Release CPU geometry from retained federated viewport copies through the canonical mesh release path, including earlier immutable recolours and batched streaming appends. Preserve independent copy buffers, retained geometry counts and provenance, and the existing single-model streaming array identity.

@@ -16,6 +16,8 @@
 import '@/test/setup-dom.js';
 import { afterEach, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 import { act, useMemo } from 'react';
 import type { MeshData } from '@ifc-lite/geometry';
 import { perfCounters } from '@ifc-lite/load-trace';
@@ -26,6 +28,8 @@ import { fixtureModel } from '@/test/store-fixture.js';
 import { cleanup, render } from '@/test/render.js';
 import { useFederatedGeometry } from './useFederatedGeometry.js';
 import { useFilteredGeometry } from './useFilteredGeometry.js';
+import { useAppearanceSourceGeometry } from './useAppearanceSourceGeometry.js';
+import { placedMesh } from '@/lib/model-placement/placed-geometry.js';
 
 const coordinateInfo = {
   originShift: { x: 0, y: 0, z: 0 },
@@ -73,6 +77,11 @@ function append(id: string, meshes: MeshData[]): void {
 }
 
 const ids = (list: readonly MeshData[]) => list.map((m) => m.expressId);
+
+it('CPU copy bookkeeping allows discarded wrappers and released arrays to be collected (#6584)', () => {
+  execFileSync(process.execPath, ['--expose-gc', '--import', 'tsx', '--import', './src/test/vite-module-hooks.mjs',
+    fileURLToPath(new URL('../../test/geometry-cpu-aliases-gc.ts', import.meta.url))], { timeout: 15_000 });
+});
 
 it('streams a single model into the viewport in order, with its model index (#7021)', () => {
   startLoad('m');
@@ -254,16 +263,20 @@ it('canonical release empties shared copy fields and preserves independent updat
   const independent = carryReleasedMesh(source, { ...source, positions: fresh.positions, normals: fresh.normals,
     indices: fresh.indices, appearanceSource: { kind: 'canonical-item', indices: fresh.indices, sourceIndices: fresh.indices } });
   const partial = carryReleasedMesh(source, { ...source });
-  const updatedPositions = new Float32Array(source.positions);
+  const updatedPositions = new Float32Array(18); updatedPositions.set(source.positions);
   partial.positions = updatedPositions;
   const updatedAppearance = { kind: 'canonical-item' as const, indices: new Uint32Array(source.indices), sourceIndices: new Uint32Array(source.indices) };
   partial.appearanceSource = updatedAppearance;
   act(() => { useViewerStore.setState({ boundedGeometryMode: true }); useViewerStore.getState().releaseGeometryMemory(); });
   assert.equal(shared.positions.length, 0); assert.equal(shared.normals.length, 0); assert.equal(shared.indices.length, 0);
   assert.equal(shared.appearanceSource, undefined);
-  assert.equal(partial.positions, updatedPositions); assert.equal(partial.positions.length, 9);
+  assert.equal(partial.positions, updatedPositions); assert.equal(partial.positions.length, 18);
   assert.equal(partial.normals.length, 0); assert.equal(partial.indices.length, 0);
   assert.equal(partial.appearanceSource, updatedAppearance, 'a replaced appearance buffer is independently owned');
+  assert.equal(hasMeshGeometryProvenance(partial), true);
+  assert.deepEqual(meshGeometryCounts(partial), { triangles: 1, vertices: 6 }, 'released indices retain triangle counts while independent positions provide live vertex counts');
+  act(() => useViewerStore.getState().releaseGeometryMemory());
+  assert.deepEqual(meshGeometryCounts(partial), { triangles: 1, vertices: 6 }, 'repeated release cannot overwrite a retained field count with zero');
   assert.equal(independent.positions, fresh.positions); assert.equal(independent.normals, fresh.normals);
   assert.equal(independent.indices, fresh.indices); assert.equal(independent.indices.length, 3);
   assert.equal(independent.appearanceSource!.sourceIndices, fresh.indices);
@@ -271,4 +284,65 @@ it('canonical release empties shared copy fields and preserves independent updat
     assert.equal(hasMeshGeometryProvenance(released), true);
     assert.deepEqual(meshGeometryCounts(released), { triangles: 1, vertices: 3 });
   }
+});
+
+
+it('replacement geometry does not inherit counts for legitimately empty fields (#6584)', () => {
+  startLoad('a'); render(<Probe />);
+  append('a', [mesh()]);
+  const source = useViewerStore.getState().models.get('a')!.geometryResult!.meshes[0];
+  act(() => { useViewerStore.setState({ boundedGeometryMode: true }); useViewerStore.getState().releaseGeometryMemory(); });
+  assert.deepEqual(meshGeometryCounts(source), { triangles: 1, vertices: 3 });
+  const verticesOnly = carryReleasedMesh(source, { ...source, positions: new Float32Array(18), indices: new Uint32Array(0) });
+  assert.deepEqual(meshGeometryCounts(verticesOnly), { triangles: 0, vertices: 6 });
+  const indicesOnly = carryReleasedMesh(source, { ...source, positions: new Float32Array(0), indices: new Uint32Array([0, 1, 2, 2, 3, 0]) });
+  assert.deepEqual(meshGeometryCounts(indicesOnly), { triangles: 2, vertices: 0 });
+  const emptyReplacement = carryReleasedMesh(source, { ...source, positions: new Float32Array(0), indices: new Uint32Array(0) });
+  assert.deepEqual(meshGeometryCounts(emptyReplacement), { triangles: 0, vertices: 0 });
+});
+
+
+it('colour reset preserves release ownership of retained viewport copies (#6584)', () => {
+  startLoad('a'); render(<Probe />); append('a', [mesh()]);
+  startLoad('b'); append('b', [mesh()]);
+  act(() => useViewerStore.getState().setActiveModel('a'));
+  const retained = seen!.merged.find(mesh => mesh.modelIndex === seen!.indices.get('a'))!;
+  act(() => useViewerStore.getState().updateMeshColors(new Map([[retained.expressId, [0, 1, 0, 1]]]), { override: true }));
+  act(() => useViewerStore.getState().resetMeshColors());
+  act(() => { useViewerStore.setState({ boundedGeometryMode: true }); useViewerStore.getState().releaseGeometryMemory(); });
+  assert.equal(retained.positions.length, 0);
+  assert.equal(retained.indices.length, 0);
+  assert.deepEqual(meshGeometryCounts(retained), { triangles: 1, vertices: 3 });
+});
+
+it('appearance-source wrappers follow the canonical active-model CPU release (#6584)', () => {
+  startLoad('a'); append('a', [mesh()]);
+  startLoad('b'); append('b', [mesh()]);
+  let appearances: MeshData[] = [];
+  function AppearanceProbe() {
+    const state = useViewerStore();
+    const indices = useMemo(() => modelIndices(state.models), [state.models]);
+    appearances = useAppearanceSourceGeometry(state.models, indices, state.geometryContentVersion);
+    return null;
+  }
+  render(<AppearanceProbe />);
+  const bIndex = modelIndices(useViewerStore.getState().models).get('b');
+  const retained = appearances.find(mesh => mesh.modelIndex === bIndex)!;
+  assert.equal(retained.positions.length, 9);
+  act(() => { useViewerStore.getState().setActiveModel('b'); useViewerStore.setState({ boundedGeometryMode: true }); useViewerStore.getState().releaseGeometryMemory(); });
+  assert.equal(retained.positions.length, 0);
+  assert.equal(retained.indices.length, 0);
+});
+
+it('placed shallow copies retain placement while canonical release removes shared CPU bytes (#6584)', () => {
+  startLoad('a'); render(<Probe />); append('a', [mesh()]);
+  const source = useViewerStore.getState().models.get('a')!.geometryResult!.meshes[0];
+  const placed = placedMesh(source, [2, 3, 4]);
+  assert.deepEqual(placed.origin, [2, 4, -3]);
+  assert.equal(placed.positions, source.positions);
+  act(() => { useViewerStore.setState({ boundedGeometryMode: true }); useViewerStore.getState().releaseGeometryMemory(); });
+  assert.equal(placed.positions.length, 0); assert.equal(placed.indices.length, 0);
+  assert.deepEqual(placed.origin, [2, 4, -3]);
+  assert.equal(hasMeshGeometryProvenance(placed), true);
+  assert.deepEqual(meshGeometryCounts(placed), { triangles: 1, vertices: 3 });
 });

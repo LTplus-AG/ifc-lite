@@ -113,6 +113,8 @@ function readPopulation(target: ModelEditTarget, expressId: number,
     if (!record || !record.attributes.length) return unavailable;
     assignments.push({ expressId: row.relatingId, ifcClass: record.type });
   }
+  // The review contract describes one native definition; never choose among distinct associations.
+  if (new Set(assignments.map(row => row.expressId)).size > 1) return unavailable;
   const set = layerSetOf(target, expressId);
   if (!set && assignments.some(row => ['IfcMaterialLayerSet', 'IfcMaterialLayerSetUsage'].includes(row.ifcClass))) return unavailable;
   const layerCount = set?.layers.length ?? 0;

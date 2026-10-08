@@ -5,7 +5,8 @@ import '@/test/setup-dom.js';
 import 'fake-indexeddb/auto';
 import assert from 'node:assert/strict';
 import { afterEach, test } from 'node:test';
-import { extractMaterialsOnDemand, getAttributeNamesForSchema } from '@ifc-lite/parser';
+import { generateIfcGuid } from '@ifc-lite/encoding';
+import { extractAllMaterialsOnDemand, extractMaterialsOnDemand, getAttributeNamesForSchema } from '@ifc-lite/parser';
 import { MutablePropertyView } from '@ifc-lite/mutations';
 import { useViewerStore } from '@/store';
 import { applyMaterialLayers } from '@/components/viewer/model-inspector/inspector-edits';
@@ -502,4 +503,28 @@ test('#7275 a non-root material Name matching the target RootGUID remains a vali
   assert.equal(parsed.entities.getName(current.layers[0].materialId), globalId);
   assert.equal(parsed.entities.getGlobalId(current.layers[0].materialId), '');
   assert.equal(parsed.entities.getGlobalId(target), globalId);
+});
+
+
+test('#7275 multiple distinct native layer definitions retain assignment count and refuse a guessed single population', async () => {
+  const { dataStore, view, target } = await inspectorControl();
+  const other = recordModellingEdit(useViewerStore, SAMPLE_MODEL, methods => methods.addMaterialLayerSet(SAMPLE_MODEL,
+    { MaterialLayers: [{ LayerThickness: .4, Material: 62 }] }));
+  const relation = view.getNewEntities().find(entity => entity.type.toUpperCase() === 'IFCRELASSOCIATESMATERIAL'
+    && Array.isArray(entity.attributes[4]) && entity.attributes[4].includes(`#${target}`));
+  assert.ok(relation);
+  const editor = useViewerStore.getState().storeEditors.get(SAMPLE_MODEL);
+  assert.ok(editor);
+  const attributes = [...relation.attributes];
+  attributes[0] = generateIfcGuid();
+  attributes[5] = `#${other.expressId}`;
+  editor.addEntity('IfcRelAssociatesMaterial', attributes);
+  const parsed = await parseIfc(editedModelBytes(dataStore, view));
+  const materials = extractAllMaterialsOnDemand(parsed, target);
+  assert.equal(materials.length, 2, 'independent exported native graph retains both occurrence definitions');
+  const evidence = transportedLayerEvidence(useViewerStore.getState(), target);
+  assert.equal(evidence.assignmentCount, 2);
+  assert.equal(evidence.status, 'unavailable', 'one layerSetId cannot honestly represent two different native sets');
+  assert.equal(evidence.layerCount, null);
+  assert.equal(evidence.expected, null);
 });

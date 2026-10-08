@@ -188,3 +188,22 @@ test('native unproved straddler refusal survives as Partial beside published rea
   assert.ok(result.ok);assert.equal(result.summary.refused,1);assert.equal(job().outcome,'partial');
   assert.match(job().detail??'',/1 refused and 0 without geometry/);assert.ok(artifact);emittedGlb(artifact);
 });
+
+test('loaded geometry refused for absent volume proof does not claim geometry is unloaded (#7142)',async t=>{
+  if(!ensureWasm(t))return;
+  const f=await seedZoneExport();
+  const unproved={...f.geometry,meshes:f.meshes.map(mesh=>({...mesh,geometryVolume:undefined}))};
+  const models=new Map(useViewerStore.getState().models),model=models.get('bonsai');assert.ok(model);
+  models.set('bonsai',{...model,geometryResult:unproved});
+  useViewerStore.setState({models,geometryResult:unproved,zoneAssignments:new Map([[f.wall.expressId,{
+    [f.zoneSet.id]:{zoneId:'whole',zoneName:'Whole building',straddles:true,touchedZoneIds:['whole']},
+  }]])});
+  let emitted=0;
+  const result=await exportZoneGeometry(f.zoneSet,0,{split:splitMeshByZones,
+    meshPieces:id=>unproved.meshes.filter(mesh=>mesh.expressId===id),emit:()=>{emitted++;}});
+  assert.deepEqual(result,{ok:false,reason:'no-geometry'});assert.equal(emitted,0);
+  assert.equal(job().outcome,'failed');assert.equal(activityCanceller(job().id),null);
+  const ui=render(<ActivityTrayList />);
+  assert.equal(Boolean(ui.textContent?.includes('no loaded geometry')),false);
+  assert.match(ui.textContent??'',/refused/);
+});

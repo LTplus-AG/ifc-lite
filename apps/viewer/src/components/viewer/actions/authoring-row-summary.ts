@@ -45,6 +45,12 @@ export function authoringRowSummary(row: AuthoringRow, batch: ModelAuthoringBatc
   switch (op.op) {
     case 'hosted.edit':
       return { subject: `${op.target.ifcClass} "${op.target.name}"`, before: `${fields({ Offset: op.expected.offset, Sill: op.expected.sill, ...(op.expected.size ?? {}) })} ${units}`, after: `${fields(op.edit)} ${units}`, previewNote: row.previewUnavailable ? t('modelAuthoring.editPreviewUnavailable') : t('modelAuthoring.hostedEditBoundsPreview') };
+    case 'element.trimExtend':
+      return { subject: `${op.target.ifcClass} "${op.target.name}"`, before: JSON.stringify(before.reach ?? op.expected.snapshot),
+        after: row.resolved.reachPlan ? t('modelAuthoring.trimExtendResult', { mode: row.resolved.reachPlan.op, end: row.resolved.reachPlan.end, length: num(fromMetres(row.resolved.reachPlan.length)), units, joined: row.resolved.reachPlan.joined ? t('modelAuthoring.joined') : '' }) : none,
+        previewNote: [row.resolved.reachPlan && row.resolved.reachPlan.walls.length > 1 ? t('modelAuthoring.reachNeighborPreview') : '', row.previewUnavailable ? t('modelAuthoring.editPreviewUnavailable') : '',
+          row.previewOuterBodyOnly ? t('modelAuthoring.outerBodyPreview') : '',
+          row.previewOmitted?.length ? t('modelAuthoring.filletPreview', { fields: row.previewOmitted.join(', ') }) : ''].filter(Boolean).join(' · ') || undefined };
     case 'element.split': {
       const cut = op.cut.kind === 'slab' ? `${point(op.cut.a)} → ${point(op.cut.b)} ${units}` : `${num(op.cut.distance)} ${units}`;
       const effects = row.resolved.splitEffects;
@@ -87,6 +93,9 @@ export function authoringRowSummary(row: AuthoringRow, batch: ModelAuthoringBatc
     case 'element.rotate':
       return { subject: `${op.target.ifcClass} "${op.target.name}"`, before: before.angleDeg === undefined ? none : `${num(before.angleDeg)}°`,
         after: before.angleDeg === undefined ? t('modelAuthoring.turnedBy', { angle: num(op.angleDeg) }) : `${num(before.angleDeg + op.angleDeg)}°` };
+    case 'type.detach':
+      return { subject: ref(op.target, t), before: before.type ?? none, after: none,
+        previewNote: t('modelAuthoring.editPreviewUnavailable') };
     case 'type.assign':
       return { subject: ref(op.target, t), before: before.type ?? none,
         after: 'create' in op.type ? t('modelAuthoring.newType', { name: op.type.create.name, ifcClass: op.type.create.ifcClass }) : op.type.name };

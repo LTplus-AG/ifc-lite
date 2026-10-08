@@ -21,6 +21,7 @@
 import { parseExpectedHostedEdit, parseHostedEdit, type ExpectedHostedEdit } from './model-authoring-hosted-edit';
 import type { HostedElementEdit } from '@ifc-lite/create';
 import { parseShapeParams, parseProfileSectionParams, AUTHORING_OUTLINE_WORK_LIMIT, type ShapeParams } from './model-authoring-shape-params';
+import { parseReachFields, type ReachFields } from './model-authoring-reach-fields';
 import { parseSplitSnapshot, parseSplitCut, type SplitCut } from './model-authoring-split-params';
 import type { SplitSnapshot } from './model-authoring-split-state';
 import { parseSizeParams, type ExpectedSize } from './model-authoring-size-params';
@@ -54,6 +55,7 @@ export type AuthoringOp =
   | ({ op: 'element.copy'; target: ElementTarget; ref: string } & CopyFields)
   | ({ op: 'element.array'; target: ElementTarget; refs: string[] } & ArrayFields)
   | { op: 'hosted.edit'; target: ExistingElement; expected: ExpectedHostedEdit; edit: HostedElementEdit }
+  | ({ op: 'element.trimExtend'; target: ExistingElement } & ReachFields)
   | { op: 'element.delete'; target: ExistingElement }
   | { op: 'element.resize'; target: ExistingElement; expected: ExpectedSize; size: ElementSizePatch }
   | { op: 'element.profile'; target: ExistingElement; expected: ProfileSection; Profile: ProfileSection }
@@ -61,6 +63,7 @@ export type AuthoringOp =
   | { op: 'element.move'; target: ExistingElement; delta: [number, number]; from?: [number, number] }
   /** Turn about the element's own placement origin; `fromDeg` optionally pins today's angle. */
   | { op: 'element.rotate'; target: ExistingElement; angleDeg: number; fromDeg?: number }
+  | { op: 'type.detach'; target: ExistingElement; expected: { GlobalId: string; Name: string } }
   | { op: 'type.assign'; target: ElementTarget; expected?: string | null; type: { globalId: string; name: string } | { create: { ifcClass: string; name: string } } }
   | { op: 'material.assign'; target: ElementTarget; expected?: string | null; material: { name: string; create: boolean } }
   | { op: 'walls.join'; walls: [ElementTarget, ElementTarget] }
@@ -68,8 +71,8 @@ export type AuthoringOp =
   | { op: 'hosted.create'; ref?: string; kind: HostedKind; host: ElementTarget; name?: string; offset: number; sill: number; width: number; height: number };
 
 export type AuthoringOpName = AuthoringOp['op'];
-export const AUTHORING_OPS: readonly AuthoringOpName[] = ['element.create', 'element.delete', 'element.split', 'element.resize', 'element.profile', 'element.move', 'element.rotate', 'element.copy', 'element.array',
-  'type.assign', 'material.assign', 'walls.join', 'hosted.create', 'hosted.edit'];
+export const AUTHORING_OPS: readonly AuthoringOpName[] = ['element.create', 'element.delete', 'element.split', 'element.resize', 'element.profile', 'element.trimExtend', 'element.move', 'element.rotate', 'element.copy', 'element.array',
+  'type.assign', 'type.detach', 'material.assign', 'walls.join', 'hosted.create', 'hosted.edit'];
 
 export interface ModelAuthoringBatch {
   version: 1;
@@ -178,6 +181,8 @@ function operation(value: unknown, index: number, units: AuthoringUnits, refs: M
       if (!['IfcDoor', 'IfcWindow', 'IfcOpeningElement', 'IfcOpeningStandardCase'].includes(target.ifcClass)) throw new Error(`${at}: hosted.edit requires a native door, window or opening occurrence`);
       return { op: value.op, target, expected: parseExpectedHostedEdit(value.expected, units, `${at} expected`), edit: parseHostedEdit(value.edit, units, `${at} edit`) };
     }
+    case 'element.trimExtend':
+      return { op: value.op, target: existing(value.target, at), ...parseReachFields(value, units, at, (v, name) => element(v, name, refs)) };
     case 'element.split': {
       if (Object.keys(value).some(key => !['op', 'target', 'expected', 'cut'].includes(key))) throw new Error(`${at}: unsupported split field`);
       const expected = parseSplitSnapshot(value.expected, `${at} expected`), cut = parseSplitCut(value.cut, units, `${at} cut`);
@@ -235,6 +240,12 @@ function operation(value: unknown, index: number, units: AuthoringUnits, refs: M
       if (typeof angle !== 'number' || !Number.isFinite(angle) || angle === 0 || Math.abs(angle) > 360) throw new Error(`${at}: angleDeg must be a non-zero number of degrees within ±360`);
       if (value.fromDeg !== undefined && (typeof value.fromDeg !== 'number' || !Number.isFinite(value.fromDeg))) throw new Error(`${at}: fromDeg must be a number`);
       return { op: 'element.rotate', target: existing(value.target, at), angleDeg: angle, ...(typeof value.fromDeg === 'number' ? { fromDeg: value.fromDeg } : {}) };
+    }
+    case 'type.detach': {
+      const expected = record(value.expected) ? value.expected : null;
+      if (!expected || typeof expected.Name !== 'string' || expected.Name.length > 200) throw new Error(`${at}: expected must name the current type {GlobalId, Name}`);
+      const GlobalId = parseGlobalIdTarget({ globalId: expected.GlobalId }, `${at} expected type`).globalId;
+      return { op: 'type.detach', target: existing(value.target, at), expected: { GlobalId, Name: expected.Name } };
     }
     case 'type.assign': {
       const target = element(value.target, at, refs);

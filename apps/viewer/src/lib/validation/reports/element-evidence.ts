@@ -14,6 +14,7 @@ const TOTAL_BYTE_LIMIT = 1_048_576;
 const TEXT_LIMIT = 1_024;
 const EVIDENCE_FIELDS = new Set(['version', 'rows', 'observed', 'omitted', 'gaps']);
 const ROW_FIELDS = new Set(['id', 'specificationId', 'GlobalId', 'modelName', 'modelFingerprint', 'ifcType', 'Name', 'title', 'nativeStatus', 'detail']);
+const evaluatedElements = new WeakMap<ValidationReport, SavedValidationElements>();
 
 export interface SavedValidationElement {
   /** Identity within this immutable capture, independent of ephemeral express/model ids. */
@@ -63,7 +64,9 @@ export function validateSavedValidationElements(value: unknown, at: string, erro
 }
 
 /** Capture native entity failures, retaining explicit unknown identities and cap disclosures. */
-export function captureValidationElements(report: ValidationReport, scopes?: readonly ReportModelScope[]): SavedValidationElements {
+export function captureValidationElements(report: ValidationReport, scopes?: readonly ReportModelScope[], globalIdOf?: (modelId: string, expressId: number) => string | undefined): SavedValidationElements {
+  const captured = evaluatedElements.get(report);
+  if (captured) return structuredClone(captured);
   const names = new Map(report.modelInfo.map((model, index) => [model.modelId, scopes?.[index]]));
   const rows: SavedValidationElement[] = [];
   const gaps = new Set<string>();
@@ -97,7 +100,7 @@ export function captureValidationElements(report: ValidationReport, scopes?: rea
         if (line) detail.push(line);
       }
       const row: SavedValidationElement = { id: `failure-${ordinal}`, specificationId: spec.specification.id,
-        GlobalId: entity.globalId || null, modelName, ...(scope?.fingerprint ? { modelFingerprint: scope.fingerprint } : {}),
+        GlobalId: entity.globalId || globalIdOf?.(entity.modelId, entity.expressId) || null, modelName, ...(scope?.fingerprint ? { modelFingerprint: scope.fingerprint } : {}),
         ifcType: entity.entityType, ...(entity.entityName !== undefined ? { Name: entity.entityName } : {}),
         title: spec.specification.name, nativeStatus: spec.specification.severity === 'warning' ? 'warning' : 'failed', detail };
       if (!row.GlobalId || !modelName) gaps.add('Some saved rows lack durable element or model identity');
@@ -109,4 +112,9 @@ export function captureValidationElements(report: ValidationReport, scopes?: rea
     if (failures !== spec.failedCount) gaps.add('Native failure counts and retained entity rows differ');
   }
   return { version: 1, rows, observed, omitted, gaps: [...gaps] };
+}
+
+/** Resolve missing identities once against the evaluated stores, never a later scene. */
+export function rememberValidationElements(report: ValidationReport, scopes: readonly ReportModelScope[], globalIdOf: (modelId: string, expressId: number) => string | undefined): void {
+  if (!evaluatedElements.has(report)) evaluatedElements.set(report, captureValidationElements(report, scopes, globalIdOf));
 }

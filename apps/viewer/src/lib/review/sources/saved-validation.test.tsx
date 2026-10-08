@@ -19,7 +19,9 @@ import { blankDocument } from '@/lib/document/presets';
 import { parseDocumentFile } from '@/lib/document/persistence';
 import * as evidenceFocus from '@/lib/panels/evidence-focus';
 import { render, cleanup, click, advance, waitFor } from '@/test/render';
-import { captureReviewSnapshot } from '../collect';
+import { captureReviewSnapshot, reviewModel } from '../collect';
+import { validationFindings } from './validation';
+import { idsReportBlockFromReport } from '@/lib/document/ids-report';
 import { useReviewSnapshot } from '@/components/viewer/review/useReviewSnapshot';
 import { openOriginal } from '../open';
 import { pinReviewCard } from '../assistant';
@@ -75,6 +77,31 @@ test('#7091 older count-only snapshots remain valid and cannot invent historical
   assert.equal(await useViewerStore.getState().saveValidationReportEntry(saved), saved.id);
   assert.deepEqual(savedFindings(), []);
   assert.ok(captureReviewSnapshot().runs.some(run => run.incomplete.some(gap => gap.detail?.includes('older count-only'))));
+});
+
+test('#7091 missing native GlobalIds resolve only against the original evaluated model and survive scene removal', async t => {
+  const source = await checked(t); if (!source) return;
+  const report = structuredClone(source.report);
+  for (const spec of report.specificationResults) for (const entity of spec.entityResults) delete entity.globalId;
+  const models = useViewerStore.getState().models;
+  const live = validationFindings({ report, stale: false }, [reviewModel('B', source.pair.head.name, source.pair.head.ifcDataStore)]);
+  assert.equal(live.findings.length, source.failures.length);
+  assert.ok(live.findings.every(finding => finding.elements.length === 1));
+  const snapshot = validationReportSnapshot(report, models, 'resolved-native-evidence');
+  assert.deepEqual(snapshot.elementEvidence?.rows.map(row => row.GlobalId), live.findings.map(finding => finding.elements[0].globalId));
+  const saved = newSavedReport(snapshot);
+  assert.equal(await useViewerStore.getState().saveValidationReportEntry(saved), saved.id);
+  act(() => useViewerStore.setState({ models: new Map() }));
+  assert.deepEqual(idsReportBlockFromReport(report, 'later-document').elementEvidence, snapshot.elementEvidence);
+  assert.deepEqual(validationReportSnapshot(report, new Map(), 'later-save').elementEvidence, snapshot.elementEvidence);
+  const [persisted] = await loadValidationReports(); assert.equal(persisted.snapshot.kind, 'ids-report');
+  if (persisted.snapshot.kind !== 'ids-report') assert.fail();
+  assert.deepEqual(persisted.snapshot.elementEvidence, snapshot.elementEvidence);
+  const unresolved = structuredClone(report);
+  for (const spec of unresolved.specificationResults) for (const entity of spec.entityResults) entity.modelId = 'unloaded-source';
+  const unknown = validationReportSnapshot(unresolved, models, 'unknown-model');
+  assert.ok(unknown.elementEvidence?.rows.length);
+  assert.ok(unknown.elementEvidence.rows.every(row => row.GlobalId === null && row.modelName === null), 'never borrow matching express ids from another model');
 });
 
 test('#7091 exact historical original reopens a collapsed native history without installing old scene ids', async t => {

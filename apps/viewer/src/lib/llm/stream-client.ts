@@ -87,7 +87,7 @@ const STREAM_REQUEST_TIMEOUT_MS = 45_000;
  */
 export async function streamChat(options: StreamOptions): Promise<void> {
   const { proxyUrl, model, messages, system, signal, onChunk, onComplete, onError, onUsageInfo, onFinishReason, onTokenUsage } = options;
-  const isDev = Boolean((import.meta as unknown as { env?: Record<string, unknown> }).env?.DEV);
+  const isDev = Boolean(import.meta.env.DEV);
 
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',

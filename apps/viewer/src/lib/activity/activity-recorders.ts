@@ -41,7 +41,6 @@ export function isCataloguedKey(key: string): key is TranslationKey {
 }
 
 interface Watch<B> {
-  identity?: () => unknown;
   running: (state: ViewerState) => boolean;
   start: (state: ViewerState) => { job: Parameters<typeof beginActivity>[0]; baseline: B };
   tick?: (state: ViewerState) => Pick<ActivityJob, 'phase' | 'progress' | 'subject'> & { cancel?: (() => void) | null };
@@ -50,17 +49,12 @@ interface Watch<B> {
 }
 
 function watch<B>(store: ViewerStoreLike, spec: Watch<B>): () => void {
-  let current: { id: string; baseline: B; identity: unknown } | null = null;
+  let current: { id: string; baseline: B } | null = null;
   const observe = (state: ViewerState) => {
     const running = spec.running(state);
-    const identity = spec.identity?.();
-    if (running && current && current.identity !== identity) {
-      finishActivity(current.id, 'cancelled');
-      current = null;
-    }
     if (running && !current) {
       const { job, baseline } = spec.start(state);
-      current = { id: beginActivity(job), baseline, identity };
+      current = { id: beginActivity(job), baseline };
     }
     if (running && current && spec.tick) updateActivity(current.id, spec.tick(state));
     if (!running && current) {
@@ -75,7 +69,6 @@ function watch<B>(store: ViewerStoreLike, spec: Watch<B>): () => void {
 
 function watchClash(store: ViewerStoreLike): () => void {
   return watch(store, {
-    identity: activeClashRunSession,
     running: (s) => s.clashRunning,
     start: (s) => ({ job: { kind: 'check', title: 'activityTray.job.clash', panel: 'clash',
       subject: [...s.models.values()].map(model => model.name).join(', ') || undefined,

@@ -370,4 +370,16 @@ describe('owned native clash activity cancellation (#7110)', () => {
     assert.equal(activityCanceller(job.id), null);
     assert.equal(activeClashRunSession(), null);
   });
+
+  it('clearing native results records one cancelled job without a replacement phantom row (#7110)', async () => {
+    await seed();
+    let pending: Promise<void> | undefined;
+    act(() => { pending = api!.runDuplicates(); });
+    act(() => api!.clearAll());
+    await act(async () => { await pending; });
+    assert.deepEqual(useActivityJournal.getState().jobs.map(job => job.outcome), ['cancelled']);
+    assert.equal(activeClashRunSession(), null);
+    assert.equal(useViewerStore.getState().clashResult, null);
+  });
+
 });

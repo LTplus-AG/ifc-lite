@@ -281,6 +281,11 @@ it('#7166 native regrouping of an unrecorded result cannot create executed-sourc
   assert.equal(regrouped.groups?.[0].label, run.guid);
   assert.equal(regrouped.rows[0].values[0], run.guid);
   assert.equal(listRunDefinition(regrouped), null, 'grouping cannot reconstruct what produced these rows');
+  const schedule = run.ui.querySelector('button[aria-label="Switch to schedule (pivot) table view"]');
+  assert.ok(schedule, 'native grouping is actually displayed and exposes its schedule control without execution provenance');
+  click(schedule);
+  assert.ok(run.ui.querySelector('button[aria-label="Switch to nested tree view"]'), 'native unrecorded rows switch to their real schedule');
+  assert.equal(run.ui.querySelector('[title="Count aggregate — the default sort order"]')?.textContent, 'Count', 'native schedule renders its population column');
   const stillUnknown = run.ui.querySelector('section[aria-label="Unrecorded list source results"]'); assert.ok(stillUnknown);
   assert.match(stillUnknown.textContent ?? '', /Outcome unknown/);
   assert.doesNotMatch(stillUnknown.textContent ?? '', /Captured architecture.ifc/);

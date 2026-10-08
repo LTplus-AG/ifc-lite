@@ -10,12 +10,15 @@
  * or after one failed, so it can disagree with the rows on screen.
  */
 
-import type { ListDefinition, ListResult } from '@ifc-lite/lists';
+import type { ListDefinition, ListGrouping, ListResult } from '@ifc-lite/lists';
 import { resolveListModelTagScope, scopeModelPairs, type ListModelTagState } from './model-tag-scope';
 import type { ModelProviderPair } from './run-list';
 import { analysisStampOf, stampAnalysisReport, type AnalysisStamp } from '@/hooks/useAnalysisStaleness';
 
 const runDefinitions = new WeakMap<ListResult, ListDefinition>();
+// Presentation can change over retained rows without reconstructing their execution source.
+const resultGroupings = new WeakMap<ListResult, ListGrouping | undefined>();
+export function listResultGrouping(result: ListResult): ListGrouping | undefined { return resultGroupings.get(result); }
 export interface ListRunModels {
   models: readonly { id: string; name: string }[];
   omittedModels: readonly string[];
@@ -53,6 +56,7 @@ export function listRunModels(result: ListResult): ListRunModels | null { return
 /** Record a freshly executed result: the run-start stamp and the executed definition. */
 export function recordListRun(result: ListResult, definition: ListDefinition, stamp: AnalysisStamp, models?: ListRunModels): ListResult {
   runDefinitions.set(result, definition);
+  resultGroupings.set(result, definition.grouping);
   if (models) runModels.set(result, { emptyPopulation: models.emptyPopulation, unavailableSnapshotModels: models.unavailableSnapshotModels,
     models: models.models.map(model => ({ ...model })), omittedModels: [...models.omittedModels] });
   return stampAnalysisReport(result, stamp);
@@ -63,6 +67,7 @@ export function recordListRun(result: ListResult, definition: ListDefinition, st
  * keeps the original run's stamp: its rows are no fresher than that run.
  */
 export function carryListRun(from: ListResult, to: ListResult, definition: ListDefinition): ListResult {
+  resultGroupings.set(to, definition.grouping);
   // Regrouping can carry an executed source, but cannot reconstruct an unrecorded one.
   if (runDefinitions.has(from)) runDefinitions.set(to, definition);
   const models = runModels.get(from);

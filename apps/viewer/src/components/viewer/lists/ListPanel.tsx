@@ -23,7 +23,7 @@ import {
 } from '@/lib/lists';
 import type { ListDefinition, ListGrouping } from '@/lib/lists';
 import { runListFederated } from '@/lib/lists/run-list';
-import { captureListRunModels, carryListRun, listRunDefinition, recordListRun } from '@/lib/lists/run-provenance';
+import { captureListRunModels, carryListRun, listResultGrouping, listRunDefinition, recordListRun } from '@/lib/lists/run-provenance';
 import { beginActivity, finishActivity } from '@/lib/activity/activity-journal';
 import { captureAnalysisStamp } from '@/hooks/useAnalysisStaleness';
 import { AssistantAction } from '@/components/viewer/assistant/AssistantAction';
@@ -288,7 +288,7 @@ export function ListPanel() {
         <ListResultsTable
           result={listResult}
           listName={listRunDefinition(listResult)?.name}
-          grouping={listRunDefinition(listResult)?.grouping}
+          grouping={listResultGrouping(listResult)}
           onGroupingChange={handleGroupingFromTable}
           modelUnits={modelUnits}
         />

@@ -1,0 +1,12 @@
+diff --git a/packages/ids-authoring/src/lint/suppress.ts b/packages/ids-authoring/src/lint/suppress.ts
+index 1d0e29c62..6910a7e33 100644
+--- a/packages/ids-authoring/src/lint/suppress.ts
++++ b/packages/ids-authoring/src/lint/suppress.ts
+@@ -28,6 +28,7 @@ export function ancestry(doc: StudioDocument, nodeId: Uuid): Uuid[] {
+ }
+ 
+ export function suppressionMatches(s: Suppression, code: string): boolean {
++  if (s.reason.trim() === '') return false;
+   if (s.rule === code) return true;
+   return s.rule.endsWith('*') && code.startsWith(s.rule.slice(0, -1));
+ }

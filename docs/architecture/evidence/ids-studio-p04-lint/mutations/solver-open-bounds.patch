@@ -1,0 +1,13 @@
+diff --git a/packages/ids-authoring/src/lint/solver/solver.ts b/packages/ids-authoring/src/lint/solver/solver.ts
+index 99ba1bfe8..ef5d50304 100644
+--- a/packages/ids-authoring/src/lint/solver/solver.ts
++++ b/packages/ids-authoring/src/lint/solver/solver.ts
+@@ -82,7 +82,7 @@ function intervalsOverlap(a: Interval, b: Interval): boolean {
+   if (lo > hi) return false;
+   const loEx = (a.lo === lo && a.loEx) || (b.lo === lo && b.loEx);
+   const hiEx = (a.hi === hi && a.hiEx) || (b.hi === hi && b.hiEx);
+-  return true;
++  return !loEx && !hiEx;
+ }
+ 
+ function intervalWithin(a: Interval, b: Interval): boolean {

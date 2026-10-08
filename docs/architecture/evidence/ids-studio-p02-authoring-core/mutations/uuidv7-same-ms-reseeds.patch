@@ -1,0 +1,13 @@
+diff --git a/packages/ids-authoring/src/uuid.ts b/packages/ids-authoring/src/uuid.ts
+index 12158bc05..b06696f47 100644
+--- a/packages/ids-authoring/src/uuid.ts
++++ b/packages/ids-authoring/src/uuid.ts
+@@ -51,7 +51,7 @@ export function uuidv7(source: UuidV7Source = {}): Uuid {
+   let ms = Math.floor((source.now ?? Date.now)());
+   const bytes = new Uint8Array(16);
+   random(bytes);
+-  if (ms < lastMs) {
++  if (ms <= lastMs) {
+     ms = lastMs;
+     lastCounter += 1;
+     if (lastCounter > 0xfff) {

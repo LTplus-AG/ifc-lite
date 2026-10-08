@@ -8,6 +8,7 @@ import { useTranslation } from '@/i18n';
 import { useViewerStore } from '@/store';
 import { Button } from '@/components/ui/button';
 import { usePanelControls } from '@/hooks/usePanelControls';
+import { openAssistant, useAssistantPlacement } from '@/lib/assistant/placement';
 import { preflightOpenFlow, type FlowPreflightResult } from '@/lib/assistant/flow-preflight';
 
 /** Native preflight of the open graph; Run stays the Flow panel's explicit action. */
@@ -42,8 +43,10 @@ export function FlowPreflight() {
         <p>{t('flowAssistant.preflightFailed')}</p>
         <ul className="list-disc pl-4">{result.problems.map((problem, index) => <li key={index} className="break-words">{t(problem.labelKey, problem.params)}</li>)}</ul>
         {result.editDenial === 'edit-mode' && <Button size="sm" variant="outline" className="h-7" disabled={checking} onClick={() => {
-          // Edit mode enters the Model workspace; keep this review in view to show the new check.
-          useViewerStore.getState().setEditEnabled(true); panels.openInHome('assistant'); void check();
+          // Preserve the Assistant host: moving a split review into the primary slot remounts its local result.
+          useViewerStore.getState().setEditEnabled(true);
+          openAssistant(useAssistantPlacement.getState().returnTarget);
+          void check();
         }}>{t('modelChanges.turnOnEditMode')}</Button>}
       </div>)}
     {error && <p role="alert" className="text-destructive">{error}</p>}

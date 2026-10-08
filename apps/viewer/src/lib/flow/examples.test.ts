@@ -24,11 +24,14 @@ import { readFileSync, readdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { checkAvailability, parseFlowDocument, topologicalOrder, validateFlowWiring, type FlowDocument } from '@ifc-lite/flow';
-import { hasCapability, parseCapabilities, parseCapability } from '@ifc-lite/extensions';
+import { parseCapabilities } from '@ifc-lite/extensions';
 import { AUTOMATION_FEATURES, BROWSER_FEATURES, createStandardRegistry } from '@ifc-lite/flow-nodes';
+import { aiNodes, AI_FEATURE } from '@ifc-lite/flow-nodes/ai';
 import { flowExamples } from './examples.js';
+import { nodeCapabilityGranted } from './preflight.js';
 
-const registry = createStandardRegistry();
+// The viewer registers the AI nodes with the Flow panel (`ensureFlowAiNodes`).
+const registry = createStandardRegistry().registerAll(aiNodes);
 const dir = join(dirname(fileURLToPath(import.meta.url)), 'examples');
 const files = readdirSync(dir).filter((f) => f.endsWith('.flow.json')).sort();
 const examples: Array<{ file: string; doc: FlowDocument }> = files.map((file) => ({ file, doc: parseFlowDocument(readFileSync(join(dir, file), 'utf-8')) }));
@@ -64,8 +67,8 @@ describe('flow examples', () => {
         assert.ok(doc.outputs.length > 0, 'a run with nothing to show is not explorable');
       });
 
-      it('every node runs or no-ops in a browser with the viewer session services', () => {
-        for (const a of checkAvailability(doc, registry, { ...BROWSER_FEATURES, backend: new Set([...BROWSER_FEATURES.backend, ...AUTOMATION_FEATURES]) })) {
+      it('every node runs or no-ops in a browser with the viewer session services and a chosen AI model', () => {
+        for (const a of checkAvailability(doc, registry, { ...BROWSER_FEATURES, backend: new Set([...BROWSER_FEATURES.backend, ...AUTOMATION_FEATURES, AI_FEATURE]) })) {
           assert.ok(a.status === 'ok' || a.status === 'noop', `${a.nodeId}: ${a.status} — ${a.reasons.join('; ')}`);
         }
       });
@@ -76,15 +79,7 @@ describe('flow examples', () => {
         if (!parsed.ok) return;
         for (const node of doc.nodes) {
           for (const raw of registry.get(node.type)?.capabilities ?? []) {
-            // The node's declaration can be a wildcard (`model.mutate:*`)
-            // while the grant names the pset it actually writes, so a
-            // mutate node is satisfied by any grant in the same scope.
-            const wanted = parseCapability(raw);
-            assert.ok(wanted.ok, raw);
-            if (!wanted.ok) continue;
-            const covered: boolean = raw.endsWith(':*')
-              ? parsed.value.some((g) => g.scope === wanted.value.scope && g.action === wanted.value.action)
-              : hasCapability(parsed.value, wanted.value);
+            const covered = nodeCapabilityGranted(parsed.value, raw);
             assert.ok(covered, `${node.id} (${node.type}) needs ${raw}, which "${doc.capabilities.join(' ')}" does not grant`);
           }
         }

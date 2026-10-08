@@ -10,6 +10,16 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
       "default": "./dist/index.js"
+    },
+    "./checkpoint": {
+      "types": "./dist/checkpoint.d.ts",
+      "import": "./dist/checkpoint.js",
+      "default": "./dist/checkpoint.js"
+    },
+    "./checkpoint-file": {
+      "types": "./dist/checkpoint-file.d.ts",
+      "import": "./dist/checkpoint-file.js",
+      "default": "./dist/checkpoint-file.js"
     }
   },
   "scripts": {

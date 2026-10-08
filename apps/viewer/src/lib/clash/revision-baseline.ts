@@ -144,6 +144,20 @@ function stripUnusedCoverage(result: ClashResult): ClashResult {
   };
 }
 
+const baselineListeners = new Set<() => void>();
+function notifyBaselineChange(): void {
+  for (const listener of baselineListeners) {
+    try { listener(); } catch (error) { console.warn('[clash] baseline change listener failed', error); }
+  }
+}
+/** Native saves, clears and writes from another tab invalidate baseline-derived evidence. */
+export function subscribeRevisionBaseline(listener: () => void): () => void {
+  baselineListeners.add(listener);
+  const onStorage = (event: StorageEvent) => { if (event.key === BASELINE_KEY || event.key === null) listener(); };
+  if (typeof window !== 'undefined') window.addEventListener('storage', onStorage);
+  return () => { baselineListeners.delete(listener); if (typeof window !== 'undefined') window.removeEventListener('storage', onStorage); };
+}
+
 /** Save (or clear, with `null`) the baseline. */
 export function saveRevisionBaseline(baseline: ClashRevisionBaseline | null): SaveResult {
   const storage = optionalLocalStorage();
@@ -151,13 +165,16 @@ export function saveRevisionBaseline(baseline: ClashRevisionBaseline | null): Sa
   try {
     if (baseline === null) {
       storage.removeItem(BASELINE_KEY);
+      notifyBaselineChange();
       return { ok: true };
     }
     const stored: ClashRevisionBaseline = { ...baseline, result: stripUnusedCoverage(baseline.result) };
     const payload = JSON.stringify({ schemaVersion: SCHEMA_VERSION, baseline: stored });
     storage.setItem(BASELINE_KEY, payload);
+    notifyBaselineChange();
     return { ok: true };
-  } catch {
+  } catch (error) {
+    console.warn('[clash] failed to save revision baseline', error);
     return { ok: false, reason: 'quota', message: 'Browser storage is full; the baseline was not saved.' };
   }
 }

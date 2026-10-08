@@ -48,6 +48,8 @@ export function startWorkflowRun(): WorkflowRun {
   return active;
 }
 export function cancelWorkflowRun(): void { active?.cancel(); }
+/** The running workflow's abort signal (aborted by every Stop/Cancel and by supersession), or null. */
+export function activeWorkflowSignal(): AbortSignal | null { return active?.controller.signal ?? null; }
 export function isNativeWorkflowBusy(): boolean { return active !== null; }
 export function assertWorkflowOwner(owner?: string): void {
   if (active && active.id !== owner) throw new Error('A workflow is running; wait or cancel it first');

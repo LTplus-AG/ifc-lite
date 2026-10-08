@@ -35,6 +35,8 @@ export async function runIdsCheck(options: RunIdsCheckOptions) {
   const { document, modelId, dataStore, mutationView, locale, signal } = options;
   throwIfCheckAborted(signal);
   const reportModels = new Map([...options.models].map(([id, model]) => [id, { ...model }]));
+  const evaluatedModel = reportModels.get(modelId);
+  if (evaluatedModel) reportModels.set(modelId, { ...evaluatedModel, ifcDataStore: dataStore });
   const schemaVersion = dataStore.schemaVersion || 'IFC4';
   const onProgress = (progress: ValidationProgress) => {
     if (!signal?.aborted) options.onProgress?.(progress);

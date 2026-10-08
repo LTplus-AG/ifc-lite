@@ -363,14 +363,14 @@ test('#7186 native Document captured List replays through file, durable storage 
 
 test('#7186 mounted review captures original selected population before asynchronous schema discovery', async () => {
   const originalWall = await selectWall();
+  const walls = await evaluateFilterGroupsFederated(evaluatorModelsFromState(useViewerStore.getState()), groups, { limit: Infinity });
+  const replacement = walls.find(row => row.modelId === WALL)!;
+  assert.ok(replacement);
   const entry = cases.find(row => row.label === 'filter')!;
   act(() => useAssistant.setState({ status: 'idle', error: null, messages: [{ role: 'assistant', model: 'recorded',
     content: JSON.stringify({ version: 1, title: 'Original selected walls', kind: entry.kind, scope: 'selected', ...entry.body }) }] }));
   const ui = render(<ArtifactProposalReview onAsk={null} />);
   assert.match(ui.textContent ?? '', /Checking the names against the loaded models/, 'actual native schema discovery is still pending');
-  const walls = await evaluateFilterGroupsFederated(evaluatorModelsFromState(useViewerStore.getState()), groups, { limit: Infinity });
-  const replacement = walls.find(row => row.modelId === WALL)!;
-  assert.ok(replacement);
   selectRef({ modelId: WALL, expressId: replacement.expressId });
   const save = () => [...ui.querySelectorAll('button')].find(row => row.textContent?.trim() === 'Save to Filters');
   await waitFor(() => !!save() && !save()?.disabled, 'native review completes after initial schema discovery');

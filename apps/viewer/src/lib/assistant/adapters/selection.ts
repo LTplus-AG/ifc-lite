@@ -17,7 +17,7 @@
  */
 
 import { IfcQuery } from '@ifc-lite/query';
-import { extractClassificationsOnDemand, extractProjectUnits, materialAssignmentsAvailable, ProjectUnits, type IfcDataStore } from '@ifc-lite/parser';
+import { extractClassificationsOnDemand, extractProjectUnits, materialAssignmentsAvailable, ProjectUnits, type ClassificationInfo, type IfcDataStore } from '@ifc-lite/parser';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
 import { useViewerStore, type ViewerState } from '@/store';
 import { createQueryAdapter } from '@/sdk/adapters/query-adapter';
@@ -32,6 +32,7 @@ import { classificationPopulationUnavailable } from '@/components/viewer/propert
 import { effectiveMaterials, effectiveMaterialProperties } from '@/components/viewer/properties/effectiveMaterials';
 import { materialEvidence } from './selection-materials';
 import { classificationEvidence } from './selection-classifications';
+import { selectedClassificationPopulation } from './selection-classification-population';
 import { effectiveTypeProperties } from '@/components/viewer/properties/effectiveTypeProperties';
 import { effectiveSelectedClass } from '@/components/viewer/properties/effectiveSelectedClass';
 import { propertyDisplayValue } from '@/components/viewer/properties/propertyDisplayValue';
@@ -75,7 +76,7 @@ function selectionRefs(s: ViewerState): { channel: Channel; refs: EntityRef[] } 
 
 const isLegacy = (modelId: string) => modelId === 'legacy' || modelId === '__legacy__';
 
-interface ModelSource { store: IfcDataStore | null; view: MutablePropertyView | undefined; query: IfcQuery | null; units: ProjectUnits; name: string }
+interface ModelSource { store: IfcDataStore | null; view: MutablePropertyView | undefined; query: IfcQuery | null; units: ProjectUnits; name: string; classificationsUnavailable: boolean; classifications: (id: number) => ClassificationInfo[] }
 
 function sources(s: ViewerState) {
   const cache = new Map<string, ModelSource>();
@@ -84,11 +85,19 @@ function sources(s: ViewerState) {
     if (cached) return cached;
     const model = isLegacy(modelId) ? undefined : s.models.get(modelId);
     const store = (model?.ifcDataStore ?? (isLegacy(modelId) ? s.ifcDataStore : null)) as IfcDataStore | null;
+    const view = s.mutationViews.get(isLegacy(modelId) ? '__legacy__' : modelId);
+    const classes = new Map<number, ClassificationInfo[]>();
     const source = {
-      store, view: s.mutationViews.get(isLegacy(modelId) ? '__legacy__' : modelId) ?? undefined,
+      store, view,
       query: store ? new IfcQuery(store) : null,
       units: store?.source?.length && store.entityIndex ? extractProjectUnits(store.source, store.entityIndex) : ProjectUnits.empty(),
       name: model?.name ?? modelId,
+      classificationsUnavailable: classificationPopulationUnavailable(store, view),
+      classifications: (id: number): ClassificationInfo[] => {
+        let rows = classes.get(id);
+        if (!rows) { rows = store ? extractClassificationsOnDemand(store, id, view) : []; classes.set(id, rows); }
+        return rows;
+      },
     };
     cache.set(modelId, source);
     return source;
@@ -111,8 +120,8 @@ function elementRow(s: ViewerState, ref: EntityRef, source: ModelSource, rich: b
   const relationshipsUnavailable = relationshipPopulationUnavailable(source.store, source.view);
   const valueLimit = rich ? 32 : 12;
   const data = effectiveElementData(ref.expressId, source.query, source.view);
-  const classifications = source.store ? extractClassificationsOnDemand(source.store, ref.expressId, source.view) : [];
-  const classificationsUnavailable = classificationPopulationUnavailable(source.store, source.view);
+  const classifications = source.classifications(ref.expressId);
+  const classificationsUnavailable = source.classificationsUnavailable;
   const materials = effectiveMaterials(source.store, ref.expressId, source.view);
   const materialAssignmentsVerified = Boolean(source.store && materialAssignmentsAvailable(source.store, ref.expressId, source.view));
   const materialPropertiesVerified = materialAssignmentsVerified && Boolean(source.store?.source?.length) && !materials.some(material => material.unresolved);
@@ -223,13 +232,14 @@ export const selectionAdapter: EvidenceAdapter = {
     return {
       summary: {
         kind: 'selection', channel, selectionSize: refs.length, modelCount: byModel.size,
+        classifications: selectedClassificationPopulation(refs, sourceFor),
         byModel: [...byModel].map(([modelId, count]) => ({ modelId, name: sourceFor(modelId).name, count })),
         byClass: [...byClass].map(([type, count]) => ({ type, count })).sort((a, b) => b.count - a.count),
         perElementBounds: rich ? { sets: 16, valuesPerSet: 32, attributes: 32, classifications: 16, classificationPath: 16, relationships: 16 }
           : { sets: 6, valuesPerSet: 12, attributes: 12, classifications: 6, classificationPath: 6, relationships: 6 },
         units: 'Quantity values carry {value, unit} in the Properties panel display unit (project unit, or the display-unit override below); a null unit is undeclared. Property values are the panel display strings, with the unit inline when the measure declares one.',
         displayUnitOverrides: s.unitDisplayOverrides,
-        limitations: 'Includes edits; own-element status and native associated definitions use snapshot freshness. Sections use perElementBounds and full known counts. inheritedType has model/type GlobalId provenance; occurrence properties override same-named type values. Materials use occurrence-before-type precedence, LayerThickness metres, and panel display units for generic properties. Unverified fields are unknown. Missing membership inputs or unreadable live source edits make totals null/unavailable; source-free classification markers may describe the original source, not current membership. Unverified paths have unknown totals and bounded known ancestors. IFC2X3 uses ItemReference; other schemas use Identification. Missing systems stay unknown. Unverified material-property counts stay null; empty rows do not prove absence. Typed IFC2X3 scalar material-property subtypes are outside the generic-set reader. Relationships count exact native edges; alias rows identify their inherited lookup ID. Source-free edited graph rows are unverified source-origin evidence. Selection is sampled; byClass/byModel cover every selected element.',
+        limitations: 'Includes edits; own-element status and native associated definitions use snapshot freshness. Sections use perElementBounds and full known counts. inheritedType has model/type GlobalId provenance; occurrence properties override same-named type values. Materials use occurrence-before-type precedence, LayerThickness metres, and panel display units for generic properties. Unverified fields are unknown. Missing membership inputs or unreadable live source edits make totals null/unavailable; source-free classification markers may describe the original source, not current membership. Unverified paths have unknown totals and bounded known ancestors. IFC2X3 uses ItemReference; other schemas use Identification. Missing systems stay unknown. Unverified material-property counts stay null; empty rows do not prove absence. Typed IFC2X3 scalar material-property subtypes are outside the generic-set reader. Relationships count exact native edges; alias rows identify their inherited lookup ID. Source-free edited graph rows are unverified source-origin evidence. Selection rows are sampled; byClass/byModel cover every selected element. classifications is a separate requested-population membership partition with explicit unknown/unscanned coverage and bounded per-model system/code label distributions, never unique classification identities inferred from text.',
       },
       rows: sample.map(ref => elementRow(s, ref, sourceFor(ref.modelId), rich)),
       totalRows: refs.length, availability: 'available',

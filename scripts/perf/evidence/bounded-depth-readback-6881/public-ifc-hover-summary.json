@@ -1,0 +1,91 @@
+{
+  "status": "held",
+  "attemptedPairs": 5,
+  "completePairs": 4,
+  "fixture": "AC20-FZK-Haus.ifc",
+  "geometryHash": "f88bafa4",
+  "hashScope": "FNV1a ordered mesh position/normal/index bytes only; other metadata not byte-hashed",
+  "models": [
+    {
+      "meshes": 275,
+      "triangles": 32852,
+      "vertices": 56698
+    }
+  ],
+  "provenance": "native T3 GPU browser; same tab fresh document, cold IndexedDB reset each successful load; input dispatch traverses production pointermove handler",
+  "quietScope": "Other agents acknowledged no expensive work during captures; no OS CPU pre/post admission collected, so host idle beyond coordination is not proven",
+  "pairs": [
+    {
+      "pair": 0,
+      "IDsAndModelsEqual": true,
+      "maxWorldDeltaMetres": 0.0,
+      "hitMedianMs": {
+        "base": 6.5799999833106995,
+        "candidate": 5.680000007152557
+      },
+      "mapSizes": {
+        "base": [
+          256,
+          1975296
+        ],
+        "candidate": [
+          256
+        ]
+      }
+    },
+    {
+      "pair": 1,
+      "IDsAndModelsEqual": true,
+      "maxWorldDeltaMetres": 0.0,
+      "hitMedianMs": {
+        "base": 6.107500001788139,
+        "candidate": 6.412500008940697
+      },
+      "mapSizes": {
+        "base": [
+          256,
+          1975296
+        ],
+        "candidate": [
+          256
+        ]
+      }
+    },
+    {
+      "pair": 2,
+      "IDsAndModelsEqual": true,
+      "maxWorldDeltaMetres": 0.0,
+      "hitMedianMs": {
+        "base": 5.9625000059604645,
+        "candidate": 5.742500007152557
+      },
+      "mapSizes": {
+        "base": [
+          256,
+          1975296
+        ],
+        "candidate": [
+          256
+        ]
+      }
+    },
+    {
+      "pair": 3,
+      "IDsAndModelsEqual": true,
+      "maxWorldDeltaMetres": 0.0006475526034415089,
+      "hitMedianMs": {
+        "base": 5.894999995827675,
+        "candidate": 5.935000002384186
+      },
+      "mapSizes": {
+        "base": [
+          256,
+          1975296
+        ],
+        "candidate": [
+          256
+        ]
+      }
+    }
+  ]
+}

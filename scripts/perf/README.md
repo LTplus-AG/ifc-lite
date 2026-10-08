@@ -94,8 +94,7 @@ The [same-submission GPU oracles](evidence/bounded-depth-readback-6881/README.md
 qualify single-texel extraction against a full-depth copy on hardware, including
 concurrent maps and target replacement. Production family, ID/item/model and georeferenced world-coordinate controls
 match the original renderer, and device destruction retires pending picks. The candidate shares ID/depth staging and keeps per-pick inputs immutable.
-Full public-model viewer hover A/B remains unqualified;
-no speedup or shipping verdict is accepted. Lesson: a bounded readback and exact
+Four complete interleaved cold public-model viewer pairs retain unchanged geometry and hit provenance, reduced mapped bytes, and mixed interaction timings. One pair has unresolved world-coordinate differences without camera/frame receipts; a fifth attempt lost the native browser. Real federated viewer qualification is outstanding. No speedup or shipping verdict is accepted. Lesson: a bounded readback and exact
 GPU sample establish neither complete picking parity nor interaction throughput.
 
 ## Worker warm-up candidate held (#7036)

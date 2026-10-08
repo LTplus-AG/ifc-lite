@@ -62,7 +62,7 @@ Complete real public IFC/federated viewer interactions. Run baseline/candidate h
 in interleaved fresh sessions after complete loads, with actual output identity,
 allocation evidence, and an otherwise-idle host. Keep all samples, including
 failures. Assess end-to-end interaction timings; an extraction microbenchmark
-cannot stand in for them. This evidence contains no timing measurements.
+cannot stand in for them. The retained public-model timings below are inconclusive and do not complete acceptance.
 
 ## Renderer-family controls and witness correction
 
@@ -93,5 +93,40 @@ only in the manual harness. No runtime full-depth fallback exists.
 One initial development-route attempt produced swapchain/device mismatch errors;
 the original production build cleared those errors. A subsequent full viewer
 build for the corrected witness was killed with exit 137 under shared-host
-memory pressure. Neither attempt is accepted timing evidence. Full public-model
-hover A/B still requires a fully built, frozen viewer on an idle host.
+memory pressure. Neither attempt is accepted timing evidence. Both corrected-harness root viewer builds subsequently completed successfully. Their frozen distributions and fixture hashes are recorded in `viewer-build-receipt.json`.
+
+## Public IFC hover A/B, still held
+
+`public-ifc-hover-ab.json.gz` retains four complete alternating-order pairs and
+the fifth pair's failed browser attempt. `public-ifc-hover-expressions.json`
+contains the exact evaluated setup, readiness and pointer-handler probes. Each
+complete session used a fresh document, cleared IndexedDB, uploaded the same
+public FZK fixture through its file input, and waited for parser completion,
+geometry completion, scene finalization and an allocated viewport. No adapter
+request preceded the upload. Native DPR was 1.5. Each of nine predeclared pointer
+positions passed through the actual tooltip hover handler at 300 ms spacing.
+
+All eight complete sessions produced the same 275 meshes, 56,698 vertices and
+32,852 triangles and ordered position/normal/index FNV-1a `f88bafa4`. All 72
+positions agree on hit IDs and model provenance, including 24 misses. Three pairs
+agreed exactly on worldXYZ; the fourth baseline session's six hits differed by
+up to 0.000647553 metres. No camera matrix or rendered-frame identity was captured
+for those sessions, so the cause remains unknown and this is NOT accepted
+coordinate equivalence. A new paired run must retain a common settled camera,
+viewport and same-frame depth/matrix receipts. The same-submission functional
+oracle above continues to pass independently.
+
+Every baseline hover mapped 256 ID bytes plus 1,975,296 depth bytes; every candidate
+hover mapped only 256 shared staging bytes. Device buffer allocation instrumentation
+was shadowed by the load tracer, so mapped sizes are measured here while total
+268-byte allocation is the separately tested invariant. Input-to-hit-store median
+latencies are retained in `public-ifc-hover-summary.json`; their signs are mixed.
+There is no demonstrated hover speedup. Other agents stopped expensive work, but
+OS CPU admission snapshots were not collected, so coordination alone does not
+prove complete host idleness. No throughput verdict is accepted.
+
+The fifth readiness call lost T3 automation. Status/open briefly recovered the
+same tab, then evaluate timed out after 15 seconds and open explicitly reported
+that no automation host was available and instructed against retrying. The failure
+is retained; no replacement software GPU measurement was made. Real federated
+viewer hover and a second public model remain unqualified. Keep the PR in draft.

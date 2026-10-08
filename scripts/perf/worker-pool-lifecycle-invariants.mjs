@@ -19,11 +19,11 @@ export function requireEpoch(snapshot, previousId) {
   const ended=[];
   for(const span of snapshot.spans){
     finiteNonnegative(span.start,'span.start');
+    if(span.name === 'parser.failed' || span.attrs?.error === true)throw Error('Failed load span');
     if(span.end===null)continue;
     if(finiteNonnegative(span.end,'span.end')<span.start)throw Error('Span end precedes start');
     ended.push(span);
   }
-  if (ended.some(s => s.name === 'parser.failed' || s.attrs?.error === true)) throw Error('Failed load span');
   for (const name of [metadataCompletionSpan(snapshot.attrs?.loadPath),'geometry.streamComplete','scene.finalize']) {
     if (!ended.some(s => s.name === name)) throw Error(`Missing finished ${name}`);
   }

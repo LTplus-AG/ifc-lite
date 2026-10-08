@@ -163,7 +163,7 @@ export async function runModelRequest<Message, Route extends string>(
       const inputDigest = logicalInputDigest({ version: 'ifc-lite.ai.logical-input.v1', system: request.system, messages: request.messages, outputSchema: request.outputSchema });
       provenance = {
         contractVersion: 'ifc-lite.ai.request.v1', grantedOutputTokens: grant.maxOutputTokens, timeoutMs, finishReason: 'unknown',
-        ...(request.promptVersion && /^[A-Za-z0-9][A-Za-z0-9._-]{0,199}$/.test(request.promptVersion) ? { promptVersion: request.promptVersion } : {}),
+        ...(typeof request.promptVersion === 'string' && /^[A-Za-z0-9][A-Za-z0-9._-]{0,199}$/.test(request.promptVersion) ? { promptVersion: request.promptVersion } : {}),
         ...(inputDigest ? { inputDigest: { algorithm: 'sha256', referent: 'logical-input.v1', value: inputDigest } } : { inputDigestUnavailable: 'non-json-input' }),
       };
       await request.transport({

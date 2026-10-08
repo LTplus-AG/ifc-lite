@@ -173,3 +173,16 @@ it('digests finalized logical input after native onStart observers and omits pro
     else expect(result.receipt).toMatchObject({ provenance: { inputDigest: { value: sha(JSON.stringify({ messages: [{ content: 'finalized observer value', role: 'user' }], version: 'ifc-lite.ai.logical-input.v1' })) } } });
   }
 });
+
+it('never records undeclared non-string or endpoint-shaped prompt versions from a generic JS host', async () => {
+  for (const version of [42, 'https://private-endpoint.invalid', 'api-key=PRIVATE_KEY']) {
+    const request = { model: 'generic-host', route: 'test', messages,
+      budget: createRootBudget({ maxRequests: 1, maxOutputTokens: 100 }), maxOutputTokens: 100, routeCeiling: 80, timeoutMs: 100,
+      transport: async (call: TransportCall<(typeof messages)[number]>) => { call.onChunk(output); call.onComplete(output); } };
+    Reflect.set(request, 'promptVersion', version);
+    const result = await runModelRequest(request);
+    if (result.kind !== 'completed') throw new Error('Expected generic host completion');
+    expect(result.receipt.provenance).toBeDefined();
+    expect(result.receipt.provenance).not.toHaveProperty('promptVersion');
+  }
+});

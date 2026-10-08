@@ -11,6 +11,15 @@ import type { TranslationValue } from '../types';
  * error banner. Covers `apps/viewer/src/components/viewer/lists/**`.
  */
 export const listsEn = {
+  'lists.resultChrome.loadedModel': 'Loaded model',
+  'lists.resultChrome.sourceUnavailable': 'Unrecorded list source',
+  'lists.resultChrome.provenanceUnavailable': 'The executed list or model scope was not recorded for this result.',
+  'lists.resultChrome.modelUnavailable': 'No IFC table data was available for {name}; that model was not evaluated.',
+  'lists.resultChrome.matched': { one: '{count} matched entity', other: '{count} matched entities' },
+  'lists.resultChrome.visible': { one: '{count} visible row', other: '{count} visible rows' },
+  'lists.resultChrome.filtered': { one: '{count} matched row is hidden by visibility or search filters.', other: '{count} matched rows are hidden by visibility or search filters.' },
+  'lists.resultChrome.noPopulation': 'The list’s explicit scope contains no entities',
+  'lists.resultChrome.noVisibleRows': 'Matching rows are hidden by the current filters',
   // ColumnHeaderMenu
   'lists.columnMenu.optionsAriaLabel': 'Column options',
   'lists.columnMenu.sortAscending': 'Sort ascending',

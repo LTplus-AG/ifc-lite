@@ -7,6 +7,10 @@ import assert from 'node:assert/strict';
 import { act } from 'react';
 import type { MeshData } from '@ifc-lite/geometry';
 import type { Renderer } from '@ifc-lite/renderer';
+import { MutablePropertyView } from '@ifc-lite/mutations';
+import { IfcParser } from '@ifc-lite/parser';
+import { configureMutationView } from '@/utils/configureMutationView';
+import { editedModelBytes } from '@/lib/export/edited-model-bytes';
 import { Scene } from '../../../../../packages/renderer/src/scene';
 import { ensureWasm } from '@/test/scan-slab-fixture';
 import { seedZoneExport } from '@/test/zone-export-fixture';
@@ -33,7 +37,7 @@ afterEach(() => { cleanup(); setGlobalRendererRef({ current: null }); useViewerS
 async function seed(federated: boolean | number = false) {
   const f = await seedZoneExport();
   useViewerStore.getState().clearAllModels();
-  const maxExpressId = Math.max(...f.store.entities.expressId);
+  const maxExpressId = Math.max(...f.store.entityIndex.byId.keys());
   const count = typeof federated === 'number' ? federated : federated ? 2 : 1;
   const names = Array.from({ length: count }, (_, index) => index === 0 ? 'Bonsai A.ifc' : index === 1 ? 'Bonsai B.ifc' : `Bonsai ${index + 1}.ifc`);
   const offsets = names.map(name => useViewerStore.getState().registerModelOffset(name, maxExpressId));
@@ -245,4 +249,36 @@ test('#7204 unrun and an explicitly evaluated empty native pass remain distinct'
   await act(async () => { computeZoneApportionmentNow(emptySet); });
   assert.ok(region(ui).querySelector('[data-result-state="no-population"]'), 'native computed population was explicitly empty');
   assert.match(region(ui).textContent ?? '', /0 proved splits \/ 0 cached entity outcomes/);
+});
+
+
+test('#7204 fresh native split captures current edited Name, class and GlobalId proven by independent IFC reparse',async t=>{
+  if(!ensureWasm(t))return;
+  const f=await seed(),modelId=f.names[0],id=f.wall.expressId,view=new MutablePropertyView(f.store.properties,modelId);
+  configureMutationView(view,f.store);useViewerStore.setState({mutationViews:new Map([[modelId,view]]),editEnabled:true,session:null});
+  const state=useViewerStore.getState(),guid=(f.guid[0]==='0'?'1':'0')+f.guid.slice(1);
+  assert.ok(state.setAttribute(modelId,id,'Name','Current native split wall'));
+  assert.ok(state.setAttribute(modelId,id,'GlobalId',guid));
+  assert.ok(state.setEntityType(modelId,id,'IfcWall'));
+  const bytes=editedModelBytes(f.store,view),parsed=await new IfcParser().parseColumnar(bytes.buffer as ArrayBuffer,{disableWorkerScan:true}),persisted=parsed.entities.getExpressIdByGlobalId(guid);
+  assert.ok(persisted>0);assert.equal(parsed.entities.getName(persisted),'Current native split wall');assert.equal(parsed.entities.getTypeName(persisted),'IfcWall');
+  const entry=computeZoneApportionmentNow(f.zoneSet);assert.equal(entry.byElement.size,1,'unchanged actual native body still clips');
+  const ui=render(<ZoneApportionSummary zoneSet={f.zoneSet}/>),evidence=region(ui).querySelector('ul[aria-label="Cached split source entities"]');assert.ok(evidence);
+  assert.ok(region(ui).querySelector('[data-status="complete"]'),'current native revisions are captured after the edit');
+  assert.match(evidence.textContent??'',new RegExp(parsed.entities.getGlobalId(persisted)));
+  assert.match(evidence.textContent??'',new RegExp(parsed.entities.getName(persisted)));
+  assert.match(evidence.textContent??'',new RegExp(parsed.entities.getTypeName(persisted)));
+});
+
+test('#7204 native newly authored refused geometry still carries its actual exported identity',async t=>{
+  if(!ensureWasm(t))return;
+  const f=await seed(),modelId=f.names[0],view=new MutablePropertyView(f.store.properties,modelId);
+  configureMutationView(view,f.store);useViewerStore.setState({mutationViews:new Map([[modelId,view]]),editEnabled:true,session:null});
+  const storey=[...f.store.entities.expressId].find(id=>f.store.entities.getTypeName(id)==='IfcBuildingStorey');assert.ok(storey);
+  const made=useViewerStore.getState().addWall(modelId,storey,{Start:[0,5,0],End:[8,5,0],Height:3,Thickness:.2,Name:'Authored cached source'});assert.ok('expressId' in made);
+  const bytes=editedModelBytes(f.store,view),parsed=await new IfcParser().parseColumnar(bytes.buffer as ArrayBuffer,{disableWorkerScan:true}),guid=parsed.entities.getGlobalId(made.expressId);assert.ok(guid);
+  const globalId=useViewerStore.getState().toGlobalId(modelId,made.expressId),outcome=computeZoneApportionmentForElement(f.zoneSet,globalId);
+  assert.equal(outcome.apportionment,null);assert.equal(outcome.refusal,'no-geometry','the newly authored body has not been loaded into the real CPU scene');
+  const ui=render(<ZoneApportionSummary zoneSet={f.zoneSet}/>),evidence=region(ui).querySelector('ul[aria-label="Cached split source entities"]');assert.ok(evidence);
+  assert.match(evidence.textContent??'',new RegExp(guid));assert.match(evidence.textContent??'',new RegExp(parsed.entities.getName(made.expressId)));assert.match(evidence.textContent??'',new RegExp(parsed.entities.getTypeName(made.expressId)));
 });

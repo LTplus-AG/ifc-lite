@@ -2,6 +2,9 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { entityName } from '@/lib/commands/modeling/authored-kinds';
+import { effectiveSelectedClass } from '@/components/viewer/properties/effectiveSelectedClass';
+import { resolveEntityRefGlobalIdFromState } from '@/store/resolveEntityRef';
 import { useViewerStore } from '@/store';
 import { captureAnalysisStamp, type AnalysisStamp } from '@/hooks/useAnalysisStaleness';
 import type { ZoneSet } from './types';
@@ -39,12 +42,17 @@ export function captureZoneResultInputs(zoneSet: ZoneSet, ids: readonly number[]
     const model = ref ? state.models.get(ref.modelId) : undefined;
     // The native single-model fallback uses expressId === globalId, with no federation arithmetic.
     const legacy = state.models.size === 0 && state.ifcDataStore !== null;
-    const entities = (legacy ? state.ifcDataStore : model?.ifcDataStore)?.entities;
+    const store = legacy ? state.ifcDataStore : model?.ifcDataStore;
     const localId = legacy ? id : ref?.expressId;
+    const modelId = legacy ? 'legacy' : ref?.modelId;
+    const sourceRef = localId !== undefined && modelId !== undefined
+      ? { modelId, expressId: localId } : null;
+    const view = sourceRef ? state.mutationViews.get(sourceRef.modelId) : undefined;
+    const current = sourceRef && !view?.isDeleted(sourceRef.expressId);
     return [id, { modelId: model?.id ?? null, modelName: model?.name ?? null, legacy,
-      GlobalId: localId === undefined ? null : entities?.getGlobalId(localId) || null,
-      Name: localId === undefined ? null : entities?.getName(localId) || null,
-      IfcClass: localId === undefined ? null : entities?.getTypeName(localId) || null, stamp }];
+      GlobalId: current ? resolveEntityRefGlobalIdFromState(state, sourceRef) : null,
+      Name: current && store ? entityName({ dataStore: store, view }, sourceRef.expressId) || null : null,
+      IfcClass: sourceRef ? effectiveSelectedClass(store, view, sourceRef.expressId) : null, stamp }];
   })) };
 }
 

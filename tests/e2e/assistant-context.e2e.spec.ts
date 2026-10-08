@@ -123,10 +123,15 @@ test('native clash evidence reaches the assistant without executing model output
     if (!store.getState().createFlow('AI coordination workflow')) throw new Error('Native Flow creation refused');
     store.getState().openPanelInHome('flow');
   });
-  // #7076: Flow is lazy-mounted; the still-visible Clash header must never receive this click.
+  // #7076: use the native full dock for the detailed review; the split has little room above Flow.
+  await assistant.getByRole('button', { name: 'Where the Assistant opens', exact: true }).click();
+  await page.getByRole('menuitemradio', { name: 'In the side dock', exact: true }).click();
+  // Flow is lazy-mounted; the still-visible Clash header must never receive this click.
   const flowPanel = page.getByRole('tabpanel', { name: 'Flow', exact: true });
   await expect(flowPanel).toBeVisible();
   await flowPanel.getByRole('button', { name: 'Discuss with AI', exact: true }).click();
+  await page.getByRole('button', { name: 'Close Flow', exact: true }).click();
+  await expect(flowPanel).toHaveCount(0);
   await assistant.getByText('Evidence details', { exact: true }).click();
   await assistant.getByText('Inspect evidence sent to the model', { exact: true }).click();
   await expect(assistant.locator('pre')).toContainText('"source":"flow"');

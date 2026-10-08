@@ -62,6 +62,15 @@ test('flags a guard split over several lines and the argv.at(1) spelling', () =>
   assert.equal(scan("if (process.argv.at(1) === fileURLToPath(import.meta.url)) main();").length, 1);
 });
 
+test('flags a guard a formatter has broken into one token per line (#7025 review)', () => {
+  const broken = "if (process.argv[1] && resolve(\n  process.argv[1]\n)\n===\nfileURLToPath(import.meta.url)) main();";
+  assert.equal(scan(broken).length, 1);
+  const wide = "const isMain =\n  process.argv[1] !== undefined\n  && pathToFileURL(\n    process.argv[1],\n  ).href\n  ===\n  import.meta.url;";
+  assert.equal(scan(wide).length, 1);
+  // The statement ends at its terminator: a location comparison in the NEXT statement is unrelated.
+  assert.deepEqual(scan("const a = process.argv[1];\n\n\nif (import.meta.url === other) {}"), []);
+});
+
 test('a multi-line guard that routes through isMainEntry or realpath is accepted', () => {
   assert.deepEqual(scan("if (\n  process.argv[1] &&\n  isMainEntry(import.meta.url) === true\n) main();"), []);
   assert.deepEqual(scan("const a = process.argv[1];\nif (realpathSync(a) === realpathSync(fileURLToPath(import.meta.url))) main();"), []);

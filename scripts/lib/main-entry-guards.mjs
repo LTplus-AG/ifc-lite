@@ -24,6 +24,10 @@
 
 const ARGV = /\bargv(?:\[1\]|\.at\(1\))/;
 const COMPARE = /[!=]==?/;
+/** Most lines a single guard statement may span before the scan stops looking. */
+const STATEMENT_LINES = 12;
+/** A line that closes a statement or a block header (`;`, `{`, `}`), or is blank. */
+const endsStatement = (t) => t.trim() === '' || /[;{}]\s*(?:\/\/.*)?$/.test(t.trim());
 const SELF_LOCATION = /import\.meta\b|\bfileURLToPath\b|\bpathToFileURL\b/;
 
 /**
@@ -38,16 +42,23 @@ export function findHandRolledMainGuards(files, read) {
     if (file === 'scripts/lib/is-main-entry.mjs' || /\.test\.[cm]?[jt]sx?$/.test(file)) continue;
     const lines = read(file).split('\n');
     const isComment = (t) => /^\s*(?:\/\/|\*|\/\*)/.test(t);
+    let reportedUntil = -1;
     lines.forEach((text, i) => {
-      if (isComment(text) || !ARGV.test(text)) return;
-      // A guard split over several lines (`process.argv[1] ===` / `fileURLToPath(...)`)
-      // is one statement: judge the argv line together with its neighbours.
+      if (i <= reportedUntil || isComment(text) || !ARGV.test(text)) return;
+      // A guard split over several lines (`process.argv[1] ===` / `fileURLToPath(...)`,
+      // or a formatter's one-token-per-line spelling) is one statement: judge the
+      // whole statement the argv line belongs to, found by its terminators.
+      let lo = i;
+      while (lo > 0 && i - lo < STATEMENT_LINES && !endsStatement(lines[lo - 1])) lo--;
+      let hi = i;
+      while (hi < lines.length - 1 && hi - i < STATEMENT_LINES && !endsStatement(lines[hi])) hi++;
       const window = lines
-        .slice(Math.max(0, i - 2), i + 3)
+        .slice(lo, hi + 1)
         .filter((t) => !isComment(t))
         .join(' ');
       if (COMPARE.test(window) && SELF_LOCATION.test(window) && !/isMainEntry|realpath/.test(window)) {
         out.push({ file, line: i + 1, text: text.trim() });
+        reportedUntil = hi;
       }
     });
   }

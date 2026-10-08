@@ -16,6 +16,7 @@ import type { Table } from '@ifc-lite/flow';
 import { SCALAR_ITEM, TABLE_ITEM } from './ports.js';
 import type { FlowNodeDef } from './host.js';
 import { AI_CAPABILITY, AI_FEATURE, aiService, dataBlock, positiveInt, requestJson, rowKeys, sentColumns } from './ai-service.js';
+import { summarySchema } from './ai-response-schemas.js';
 
 const text = (v: unknown, max: number) => (typeof v === 'string' ? v.trim().slice(0, max) : '');
 
@@ -47,7 +48,8 @@ export const aiSummarizeNode: FlowNodeDef = {
       'Reply {"sections":[{"heading":"...","text":"...","citations":["<row key>"]}]}.',
       'Every statement must rest on the cited rows; state only what the rows show.',
     ].join('\n');
-    const reply = await requestJson(ctx, service, task, dataBlock(table, keys, sent, columns), positiveInt(p.maxOutputTokens, 'maxOutputTokens', 32_000));
+    const reply = await requestJson(ctx, service, task, dataBlock(table, keys, sent, columns), positiveInt(p.maxOutputTokens, 'maxOutputTokens', 32_000),
+      summarySchema([...known]));
     const budgetStopped = reply.kind === 'budget';
     if (budgetStopped) ctx.log('warn', 'the AI budget ran out; all evidence rows remain not sent');
     if (reply.kind === 'failed') throw new Error(reply.message);

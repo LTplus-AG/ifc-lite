@@ -90,7 +90,7 @@ function saveLenses(lenses: Lens[]): SaveResult {
       // (rules: []) imported via the JSON round-trip would be dropped on reload.
       return l.name !== original.name ||
         JSON.stringify(l.rules) !== JSON.stringify(original.rules) ||
-        JSON.stringify(l.autoColor) !== JSON.stringify(original.autoColor);
+        JSON.stringify(l.autoColor) !== JSON.stringify(original.autoColor) || JSON.stringify(l.capturedScope) !== JSON.stringify(original.capturedScope);
     });
     toStore = [...custom, ...builtinOverrides];
   } catch {
@@ -301,9 +301,10 @@ export const createLensSlice: StateCreator<LensSlice, [], [], LensSlice> = (set,
     // and would re-add itself under its reserved id on a later import.
     return get().savedLenses
       .filter(l => l.id !== AUTO_COLOR_FROM_LIST_ID)
-      .map(({ id, name, rules, autoColor }) => {
+      .map(({ id, name, rules, autoColor, capturedScope }) => {
         const out: Lens = { id, name, rules };
         if (autoColor) out.autoColor = autoColor;
+        if (capturedScope) out.capturedScope = structuredClone(capturedScope);
         return out;
       });
   },

@@ -284,4 +284,18 @@ The graph retains the evidence source, user prompts, chosen action types and gen
 
 **Project preferences** stores terminology, severity wording, expected property sets, naming guidance and report audience against the exact set of loaded-model fingerprints. Another revision or federation uses a different scope; switching scopes clears unsaved preference edits before saving in the new project. Preferences are advisory guidance in subsequent Assistant requests; they do not change native check verdicts. Credential-like text is refused.
 
+Captured Lens and List JSON exports and browser storage use a versioned envelope.
+Older viewers cannot read that envelope, so they skip the saved Lens or refuse the
+List import instead of evaluating it over a wider population. Open these captures
+in a viewer that supports captured scope. Ordinary unscoped exports keep their
+existing format. This covers the native Lens and List routes; it does not add
+these artifacts to whole-library backup.
+
+A Document can embed a captured List and re-run that exact population. Native
+Document version 13 preserves this behavior through file import, durable storage,
+and the existing Document backup route; older viewers refuse the newer document
+version. Documents saved in versions 1 through 12 remain readable in the newer
+viewer. This does not add standalone Filters, Lists, or Lenses to library backup.
+Flavor Lens snapshots use the same guarded Lens envelope as native Lens JSON.
+
 Selected relationship evidence records exact IFC relationship IDs, EXPRESS types, direction and model-local endpoints. Derived groups, openings and connections are not counted again as extra edges. The evidence samples at most 16 edges per element for small selections, or 6 for larger selections, and records the full known edge count. Duplicate selections identify their inherited lookup Express ID and merge direct edges once. Missing source membership has an unknown total; source-free edited graph rows are unverified evidence from the original model. The native Properties panel shows the same availability warning. Such original edges do not authorize current spatial authoring.

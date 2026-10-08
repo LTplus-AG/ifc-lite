@@ -209,6 +209,12 @@ Browse account projects and choose **Forma Data Management files** or **Data Exc
 
 The hosted service includes a Rust Forma proposal importer and a Windows Autodesk SDK Data Exchange exporter. Enable them with absolute executable paths in the service configuration. The details panel offers file/proposal version selection; whole-exchange IFC export supports the current version only. Generated resources remain disabled when their native importer is not configured. Configuration, deployment limits, current capabilities and the live-account verification checklist are in [Autodesk source setup](https://github.com/LTplus-AG/ifc-lite/blob/main/packages/source-autodesk/README.md) and [the session service guide](https://github.com/LTplus-AG/ifc-lite/blob/main/apps/autodesk-service/README.md).
 
+## Deviation result sources and coverage
+
+The BIM ↔ scan deviation result identifies the scan assets represented by its held distance readback. Its population counts scan points, with finite measured points shown separately from unmeasured and compute-limit-clipped points. The native summary, tolerance band, colour range, histogram and CSV retain their existing behavior. Source evidence lists captured scan GlobalIds and classes; loaded IFC models are not presented as scan sources.
+
+Incomplete point measurements or unavailable scan identity show Partial. A summary without recorded source provenance shows Outcome unknown. Missing readback statistics show Running while they are derived. No finite measured distances produce a partial readback state, rather than claiming no findings or an absent scan population. Captured source identity remains attached through native tolerance recounts and panel remounts.
+
 ## Layout migration and saved-artifact links
 
 When an older saved layout is upgraded, **Review your updated layout** lists renamed, added and unavailable panels. **Show changes** keeps that list scrollable so **Keep layout** and **Reset layout** remain reachable. Keep acknowledges the migrated layout; Reset uses the workspace's normal reset. Both retain unavailable extension placements, their anchors and hidden state, and the original stored layout in a local rollback backup. Importing a legacy layout also backs up the current layout before replacing it. If that backup cannot be written, the original stored layout is not overwritten. These controls are available on desktop and mobile.

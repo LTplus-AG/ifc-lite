@@ -3,11 +3,12 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import type { MutablePropertyView } from '@ifc-lite/mutations';
-import { getAttributeNames, normalizeIfcTypeName, type StructuralExtractionView } from '@ifc-lite/parser';
+import { effectiveMetadataRecord, type IfcDataStore, type StructuralExtractionView } from '@ifc-lite/parser';
 
 /** Adapt the viewer's editable overlay to the parser's structural read model. */
 export function effectiveStructuralView(
   mutationView: MutablePropertyView | null | undefined,
+  store: IfcDataStore,
 ): StructuralExtractionView | undefined {
   if (!mutationView) return undefined;
   return {
@@ -17,21 +18,10 @@ export function effectiveStructuralView(
     getNewEntity: (expressId) => mutationView.getNewEntity(expressId),
     getTypeMutations: () => mutationView.getTypeMutations(),
     getTombstones: () => mutationView.getTombstones(),
-    readEntity: (expressId, effectiveType, source) => {
-      const fresh = mutationView.getNewEntity(expressId);
-      const attrs = source?.attrs.slice() ?? [...(fresh?.attributes ?? [])];
-      for (const [index, value] of mutationView.getPositionalMutationsForEntity(expressId) ?? []) attrs[index] = value;
-      const type = normalizeIfcTypeName(effectiveType);
-      for (const mutation of mutationView.getAttributeMutationsForEntity(expressId)) {
-        const index = getAttributeNames(type).indexOf(mutation.name);
-        if (index >= 0) attrs[index] = mutation.value;
-      }
-      return {
-        expressId,
-        type,
-        attrs,
-        globalId: typeof attrs[0] === 'string' ? attrs[0] : source?.globalId ?? '',
-      };
+    readEntity: (expressId) => {
+      const record = effectiveMetadataRecord(store, expressId, mutationView);
+      return record ? { expressId, type: record.type, attrs: record.attributes,
+        globalId: typeof record.attributes[0] === 'string' ? record.attributes[0] : '' } : undefined;
     },
   };
 }

@@ -1,0 +1,407 @@
+{
+  "status": "QUALIFIED_LOCAL_UNPUBLISHED",
+  "sourceHead": "065e386acfeb9b35c6685b805b48a186b6693933",
+  "frozenMain": "2003002f79e6a60ea25be2ec45ebe362ab3c1c8a",
+  "integration": "canonical7233evidence route plus existingbenchmark route; no broadtests-domain experiment shipped",
+  "sourcePins": {
+    ".github/workflows/test.yml": "4f9a2d25ecae07af482c86b80e95d7002b8aff03b6ad11d16787fb83eba256ad",
+    "package.json": "6a0d6a988b088f2f27da041835b54c8703c5f83105cd284f565039f5d193248b",
+    "scripts/browser-ab-report.test.mjs": "22af6f3f3549957db83dfbe6d922e2e82f142f39bd2a7784af049ca9463e64cd",
+    "scripts/browser-metadata-readiness.test.mjs": "c8a409d5b00f1b91087b4843a4d334e87a5b443e2b7421a6b7e36addb7d3da0c",
+    "scripts/check-ci-path-coverage.test.mjs": "6b764583857900a679269259bed7d5e016e9e55bd0c9841144875c0fcaa6dfcf",
+    "scripts/ci-path-coverage-allowlist.txt": "0ddc797d66d130bb87a8d7c00cd227f546b4274e22334a7f0462e8bff9c3b559",
+    "scripts/perf/browser-ab-report.mjs": "62ff7760b356796adcb21c9ca35078211a1b13f36cd9d29feb6ebab75bc2d1dd",
+    "scripts/perf/frame-gpu-chrome-lifecycle.test.mjs": "31f54ab8ddc537760676083bc408cce10b87461a1cb8ec41c7616d7fae8fd799",
+    "scripts/perf/frame-gpu-chrome.ts": "0af0660713e3ad39ee1ccd1c3d1d353240986d3ee8e381e168292b196cff8ddf",
+    "scripts/perf/frame-gpu-owned-profile.ps1": "c99c404ee7768b78da00aeb73d1471da46de0dd2503967c1457c7c0f215de7a3",
+    "scripts/perf/frame-gpu-owned-profile.test.mjs": "41eb0be49af9b943b9bdac5e46a27968ba9632b170161d6119d3bc4936895cb5",
+    "scripts/perf/tsconfig.frames.json": "1f8c02a50980c27ca30c8bfc66ab5829573d9d0cdf7f720c4dee60aee3235ea8",
+    "scripts/perf/worker-pool-lifecycle-invariants.mjs": "60f893959c3b3ae8530559dcd4c5ea4784830aea5ed4850de58cac11cd8dd2ed",
+    "scripts/perf/worker-pool-lifecycle-invariants.test.mjs": "2f0a59a57262efda83511890522720692c17a038dd150efb2abd9a11a7c40ed6",
+    "scripts/perf/worker-pool-lifecycle-schedule.fixture.json": "0c77eb9cef81d0f49a1d29c2cacb1d6a3660bb4b92e38fcc8b7df848c7228cf2",
+    "scripts/viewer-benchmark-span-metrics.test.mjs": "11705bca5d904839b866b1cb5df7d3ea19e6ea8fb889f2a7cfa42f276cd7d529",
+    "tests/benchmark/load-trace-metrics.ts": "ef52b9a9f5f387ce3d9a650faed1dfd060953147bd8945f77195c56b9f055316",
+    "tests/benchmark/metadata-render-readiness.ts": "d5c9b3425029ff828c531e4ac0a10a69e661d0b951c9ee31653c90e293fb3460",
+    "tests/benchmark/viewer-benchmark-page.ts": "d32e6e728aa179cb3f8bfc158c9b222a4a4306071931b7f997478ab1d4b1ff8b",
+    "scripts/unused-locals-baseline.json": "c96f606052c4b9afcfa69e544a947edd967691326fded3c2bf64dd364494c758",
+    "apps/viewer/src/lib/assistant/adapters/selection-materials.test.tsx": "a1ee9973c36da9ddc1eb99243a67f01c52705fd1d1ebab5000a030387ae5d493",
+    "apps/viewer/src/utils/serverDataModel.test.ts": "321b59f527e29651031df1563e2b094abcf7f3955f0a8527a73fa02cbf181c16",
+    "apps/viewer/src/utils/serverMaterialNullPresence.test.ts": "15a9a8debe17a4f1dc1c5c18c8c90122d3062c95590dcaacaff58cdb3e9bc7c7",
+    "apps/viewer/src/lib/charts/element-fields.test.ts": "941fcd214281ccef9b29a8b408a687087480a5325b8637826dd0431bc1cb6665",
+    "apps/viewer/src/lib/charts/element-field-unit-overlay.test.ts": "64cf939895fada34de2c135ba4b309c0bb7068c715173b3200e0ec865e953b38",
+    "packages/parser/src/material-definitions.ts": "2cd9d9526b3cad0ba895905b91ed3ff39449d6c5c0c968b9e5f20ec7b5c90487",
+    "apps/viewer/src/lib/charts/element-field-reader.ts": "4fcdf0a377e48b87ebd6f923ccd970ce1376e8bbe5cb108ab537207f1f75d784",
+    "apps/viewer/src/lib/charts/element-field-families.ts": "5eb5766c2b860ffb33aed203a41d34070ff6346f1c861f4739cdf1facbc8fd06",
+    "scripts/check-ci-path-coverage.mjs": "ccc78615feb9109476380f852e3348dc178799991bf2f7fa85abe7b11fc29d7a",
+    "scripts/lib/ci-path-coverage.mjs": "a03068e94a018603c405d528802972baf3ce44e7211ac933c6969fe63fea1d03"
+  },
+  "stages": [
+    {
+      "stage": "prerequisite-controls",
+      "command": [
+        "node",
+        "--test",
+        "--test-concurrency=1",
+        "scripts/browser-ab-report.test.mjs",
+        "scripts/browser-metadata-readiness.test.mjs",
+        "scripts/viewer-benchmark-span-metrics.test.mjs",
+        "scripts/perf/frame-gpu-chrome-lifecycle.test.mjs",
+        "scripts/perf/frame-gpu-owned-profile.test.mjs",
+        "scripts/perf/worker-pool-lifecycle-invariants.test.mjs"
+      ],
+      "exitCode": 0,
+      "runtimeBefore": {
+        "packages/wasm/pkg/ifc-lite_bg.wasm": "b335d9e2742a0f35db846b3a95f7b30152585ef2dd6e7abdc2328dae557dc1d0",
+        "packages/wasm/pkg/ifc-lite.js": "0a281479eb65141ae75aeef987d331d44439741a0cae855f122e53e800311a39",
+        "packages/wasm/pkg/ifc-lite.d.ts": "54c9d0a52eb515e517d76726fefe5f6a63e553a81c1b10331a597965d14620f6"
+      },
+      "runtimeAfter": {
+        "packages/wasm/pkg/ifc-lite_bg.wasm": "b335d9e2742a0f35db846b3a95f7b30152585ef2dd6e7abdc2328dae557dc1d0",
+        "packages/wasm/pkg/ifc-lite.js": "0a281479eb65141ae75aeef987d331d44439741a0cae855f122e53e800311a39",
+        "packages/wasm/pkg/ifc-lite.d.ts": "54c9d0a52eb515e517d76726fefe5f6a63e553a81c1b10331a597965d14620f6"
+      }
+    },
+    {
+      "stage": "coverage-suite",
+      "command": [
+        "node",
+        "--test",
+        "--test-concurrency=1",
+        "scripts/check-ci-path-coverage.test.mjs"
+      ],
+      "exitCode": 0,
+      "runtimeBefore": {
+        "packages/wasm/pkg/ifc-lite_bg.wasm": "b335d9e2742a0f35db846b3a95f7b30152585ef2dd6e7abdc2328dae557dc1d0",
+        "packages/wasm/pkg/ifc-lite.js": "0a281479eb65141ae75aeef987d331d44439741a0cae855f122e53e800311a39",
+        "packages/wasm/pkg/ifc-lite.d.ts": "54c9d0a52eb515e517d76726fefe5f6a63e553a81c1b10331a597965d14620f6"
+      },
+      "runtimeAfter": {
+        "packages/wasm/pkg/ifc-lite_bg.wasm": "b335d9e2742a0f35db846b3a95f7b30152585ef2dd6e7abdc2328dae557dc1d0",
+        "packages/wasm/pkg/ifc-lite.js": "0a281479eb65141ae75aeef987d331d44439741a0cae855f122e53e800311a39",
+        "packages/wasm/pkg/ifc-lite.d.ts": "54c9d0a52eb515e517d76726fefe5f6a63e553a81c1b10331a597965d14620f6"
+      }
+    },
+    {
+      "stage": "coverage-gate",
+      "command": [
+        "node",
+        "scripts/check-ci-path-coverage.mjs"
+      ],
+      "exitCode": 0,
+      "runtimeBefore": {
+        "packages/wasm/pkg/ifc-lite_bg.wasm": "b335d9e2742a0f35db846b3a95f7b30152585ef2dd6e7abdc2328dae557dc1d0",
+        "packages/wasm/pkg/ifc-lite.js": "0a281479eb65141ae75aeef987d331d44439741a0cae855f122e53e800311a39",
+        "packages/wasm/pkg/ifc-lite.d.ts": "54c9d0a52eb515e517d76726fefe5f6a63e553a81c1b10331a597965d14620f6"
+      },
+      "runtimeAfter": {
+        "packages/wasm/pkg/ifc-lite_bg.wasm": "b335d9e2742a0f35db846b3a95f7b30152585ef2dd6e7abdc2328dae557dc1d0",
+        "packages/wasm/pkg/ifc-lite.js": "0a281479eb65141ae75aeef987d331d44439741a0cae855f122e53e800311a39",
+        "packages/wasm/pkg/ifc-lite.d.ts": "54c9d0a52eb515e517d76726fefe5f6a63e553a81c1b10331a597965d14620f6"
+      }
+    },
+    {
+      "stage": "affected-viewer-controls",
+      "command": [
+        "pnpm",
+        "test",
+        "--filter=@ifc-lite/viewer",
+        "--env-mode=loose",
+        "--concurrency=1"
+      ],
+      "exitCode": 0,
+      "runtimeBefore": {
+        "packages/wasm/pkg/ifc-lite_bg.wasm": "b335d9e2742a0f35db846b3a95f7b30152585ef2dd6e7abdc2328dae557dc1d0",
+        "packages/wasm/pkg/ifc-lite.js": "0a281479eb65141ae75aeef987d331d44439741a0cae855f122e53e800311a39",
+        "packages/wasm/pkg/ifc-lite.d.ts": "54c9d0a52eb515e517d76726fefe5f6a63e553a81c1b10331a597965d14620f6"
+      },
+      "runtimeAfter": {
+        "packages/wasm/pkg/ifc-lite_bg.wasm": "b335d9e2742a0f35db846b3a95f7b30152585ef2dd6e7abdc2328dae557dc1d0",
+        "packages/wasm/pkg/ifc-lite.js": "0a281479eb65141ae75aeef987d331d44439741a0cae855f122e53e800311a39",
+        "packages/wasm/pkg/ifc-lite.d.ts": "54c9d0a52eb515e517d76726fefe5f6a63e553a81c1b10331a597965d14620f6"
+      }
+    },
+    {
+      "stage": "full-root-typecheck",
+      "command": [
+        "pnpm",
+        "typecheck"
+      ],
+      "exitCode": 0,
+      "runtimeBefore": {
+        "packages/wasm/pkg/ifc-lite_bg.wasm": "b335d9e2742a0f35db846b3a95f7b30152585ef2dd6e7abdc2328dae557dc1d0",
+        "packages/wasm/pkg/ifc-lite.js": "0a281479eb65141ae75aeef987d331d44439741a0cae855f122e53e800311a39",
+        "packages/wasm/pkg/ifc-lite.d.ts": "54c9d0a52eb515e517d76726fefe5f6a63e553a81c1b10331a597965d14620f6"
+      },
+      "runtimeAfter": {
+        "packages/wasm/pkg/ifc-lite_bg.wasm": "8b74229bbd4a991cbf1f32a8d52add195c5fdd333921f998b1c18eb713185143",
+        "packages/wasm/pkg/ifc-lite.js": "0a281479eb65141ae75aeef987d331d44439741a0cae855f122e53e800311a39",
+        "packages/wasm/pkg/ifc-lite.d.ts": "54c9d0a52eb515e517d76726fefe5f6a63e553a81c1b10331a597965d14620f6"
+      }
+    },
+    {
+      "stage": "raw",
+      "command": [
+        "node",
+        "scripts/check-raw-entity-enumeration.mjs"
+      ],
+      "exitCode": 0,
+      "runtimeBefore": {
+        "packages/wasm/pkg/ifc-lite_bg.wasm": "8b74229bbd4a991cbf1f32a8d52add195c5fdd333921f998b1c18eb713185143",
+        "packages/wasm/pkg/ifc-lite.js": "0a281479eb65141ae75aeef987d331d44439741a0cae855f122e53e800311a39",
+        "packages/wasm/pkg/ifc-lite.d.ts": "54c9d0a52eb515e517d76726fefe5f6a63e553a81c1b10331a597965d14620f6"
+      },
+      "runtimeAfter": {
+        "packages/wasm/pkg/ifc-lite_bg.wasm": "8b74229bbd4a991cbf1f32a8d52add195c5fdd333921f998b1c18eb713185143",
+        "packages/wasm/pkg/ifc-lite.js": "0a281479eb65141ae75aeef987d331d44439741a0cae855f122e53e800311a39",
+        "packages/wasm/pkg/ifc-lite.d.ts": "54c9d0a52eb515e517d76726fefe5f6a63e553a81c1b10331a597965d14620f6"
+      }
+    },
+    {
+      "stage": "source-text",
+      "command": [
+        "node",
+        "scripts/check-source-text-assertions.mjs"
+      ],
+      "exitCode": 0,
+      "runtimeBefore": {
+        "packages/wasm/pkg/ifc-lite_bg.wasm": "8b74229bbd4a991cbf1f32a8d52add195c5fdd333921f998b1c18eb713185143",
+        "packages/wasm/pkg/ifc-lite.js": "0a281479eb65141ae75aeef987d331d44439741a0cae855f122e53e800311a39",
+        "packages/wasm/pkg/ifc-lite.d.ts": "54c9d0a52eb515e517d76726fefe5f6a63e553a81c1b10331a597965d14620f6"
+      },
+      "runtimeAfter": {
+        "packages/wasm/pkg/ifc-lite_bg.wasm": "8b74229bbd4a991cbf1f32a8d52add195c5fdd333921f998b1c18eb713185143",
+        "packages/wasm/pkg/ifc-lite.js": "0a281479eb65141ae75aeef987d331d44439741a0cae855f122e53e800311a39",
+        "packages/wasm/pkg/ifc-lite.d.ts": "54c9d0a52eb515e517d76726fefe5f6a63e553a81c1b10331a597965d14620f6"
+      }
+    },
+    {
+      "stage": "wiring",
+      "command": [
+        "node",
+        "scripts/check-test-wiring.mjs"
+      ],
+      "exitCode": 0,
+      "runtimeBefore": {
+        "packages/wasm/pkg/ifc-lite_bg.wasm": "8b74229bbd4a991cbf1f32a8d52add195c5fdd333921f998b1c18eb713185143",
+        "packages/wasm/pkg/ifc-lite.js": "0a281479eb65141ae75aeef987d331d44439741a0cae855f122e53e800311a39",
+        "packages/wasm/pkg/ifc-lite.d.ts": "54c9d0a52eb515e517d76726fefe5f6a63e553a81c1b10331a597965d14620f6"
+      },
+      "runtimeAfter": {
+        "packages/wasm/pkg/ifc-lite_bg.wasm": "8b74229bbd4a991cbf1f32a8d52add195c5fdd333921f998b1c18eb713185143",
+        "packages/wasm/pkg/ifc-lite.js": "0a281479eb65141ae75aeef987d331d44439741a0cae855f122e53e800311a39",
+        "packages/wasm/pkg/ifc-lite.d.ts": "54c9d0a52eb515e517d76726fefe5f6a63e553a81c1b10331a597965d14620f6"
+      }
+    },
+    {
+      "stage": "module",
+      "command": [
+        "node",
+        "scripts/check-module-size.mjs"
+      ],
+      "exitCode": 0,
+      "runtimeBefore": {
+        "packages/wasm/pkg/ifc-lite_bg.wasm": "8b74229bbd4a991cbf1f32a8d52add195c5fdd333921f998b1c18eb713185143",
+        "packages/wasm/pkg/ifc-lite.js": "0a281479eb65141ae75aeef987d331d44439741a0cae855f122e53e800311a39",
+        "packages/wasm/pkg/ifc-lite.d.ts": "54c9d0a52eb515e517d76726fefe5f6a63e553a81c1b10331a597965d14620f6"
+      },
+      "runtimeAfter": {
+        "packages/wasm/pkg/ifc-lite_bg.wasm": "8b74229bbd4a991cbf1f32a8d52add195c5fdd333921f998b1c18eb713185143",
+        "packages/wasm/pkg/ifc-lite.js": "0a281479eb65141ae75aeef987d331d44439741a0cae855f122e53e800311a39",
+        "packages/wasm/pkg/ifc-lite.d.ts": "54c9d0a52eb515e517d76726fefe5f6a63e553a81c1b10331a597965d14620f6"
+      }
+    },
+    {
+      "stage": "MPL",
+      "command": [
+        "node",
+        "scripts/add-license-headers.mjs",
+        "--check"
+      ],
+      "exitCode": 0,
+      "runtimeBefore": {
+        "packages/wasm/pkg/ifc-lite_bg.wasm": "8b74229bbd4a991cbf1f32a8d52add195c5fdd333921f998b1c18eb713185143",
+        "packages/wasm/pkg/ifc-lite.js": "0a281479eb65141ae75aeef987d331d44439741a0cae855f122e53e800311a39",
+        "packages/wasm/pkg/ifc-lite.d.ts": "54c9d0a52eb515e517d76726fefe5f6a63e553a81c1b10331a597965d14620f6"
+      },
+      "runtimeAfter": {
+        "packages/wasm/pkg/ifc-lite_bg.wasm": "8b74229bbd4a991cbf1f32a8d52add195c5fdd333921f998b1c18eb713185143",
+        "packages/wasm/pkg/ifc-lite.js": "0a281479eb65141ae75aeef987d331d44439741a0cae855f122e53e800311a39",
+        "packages/wasm/pkg/ifc-lite.d.ts": "54c9d0a52eb515e517d76726fefe5f6a63e553a81c1b10331a597965d14620f6"
+      }
+    },
+    {
+      "stage": "diff",
+      "command": [
+        "git",
+        "diff",
+        "--check"
+      ],
+      "exitCode": 0,
+      "runtimeBefore": {
+        "packages/wasm/pkg/ifc-lite_bg.wasm": "8b74229bbd4a991cbf1f32a8d52add195c5fdd333921f998b1c18eb713185143",
+        "packages/wasm/pkg/ifc-lite.js": "0a281479eb65141ae75aeef987d331d44439741a0cae855f122e53e800311a39",
+        "packages/wasm/pkg/ifc-lite.d.ts": "54c9d0a52eb515e517d76726fefe5f6a63e553a81c1b10331a597965d14620f6"
+      },
+      "runtimeAfter": {
+        "packages/wasm/pkg/ifc-lite_bg.wasm": "8b74229bbd4a991cbf1f32a8d52add195c5fdd333921f998b1c18eb713185143",
+        "packages/wasm/pkg/ifc-lite.js": "0a281479eb65141ae75aeef987d331d44439741a0cae855f122e53e800311a39",
+        "packages/wasm/pkg/ifc-lite.d.ts": "54c9d0a52eb515e517d76726fefe5f6a63e553a81c1b10331a597965d14620f6"
+      }
+    }
+  ],
+  "results": {
+    "prerequisites": {
+      "pass": 63,
+      "fail": 0,
+      "skip": 0
+    },
+    "coverageSuite": {
+      "pass": 42,
+      "fail": 0,
+      "skip": 0
+    },
+    "coverageGate": {
+      "gates": 147,
+      "jobs": 58,
+      "inputs": 606,
+      "reasonedExemptions": 49
+    },
+    "viewerAffected": {
+      "pass": 74,
+      "fail": 0,
+      "skip": 0,
+      "fixtureSha256": {
+        "tests/models/ara3d/AC20-FZK-Haus.ifc": "d42ab0dee01173106c16cd823b4614efe188fa15dd65195d95b9879bec59acc5",
+        "apps/viewer/public/samples/building-architecture.ifc": "3ff9b10bd00c7b96dded51e7ca5a6b69efbea38b049adcdd05fcd247de7e70d5"
+      }
+    },
+    "fullRootTypecheck": {
+      "testFiles": 3739,
+      "packages": 62,
+      "viewerFiles": 2066,
+      "exitCode": 0
+    },
+    "lightGateCount": 6
+  },
+  "actualViewerRuntime": {
+    "rows": 20,
+    "pidCount": 10,
+    "observedWasm": [
+      "b335d9e2742a0f35db846b3a95f7b30152585ef2dd6e7abdc2328dae557dc1d0"
+    ],
+    "scope": "Start/exit paired observations from actual selected test processes; pre/post controls and typecheck phases distinct"
+  },
+  "archives": [
+    {
+      "rawPath": "MPL.log",
+      "rawSha256": "195450cad21900ac944ffeb5577e851d1dfb113dc7a2ef9a00bab50709ba545c",
+      "rawBytes": 171,
+      "gzipPath": "MPL.log.gz",
+      "gzipSha256": "d72d877da0e9452e8c9dab7e080d89a235e45b896de3b7dd473618407ffdc627",
+      "gzipBytes": 156
+    },
+    {
+      "rawPath": "affected-viewer-controls.log",
+      "rawSha256": "fb784dfef452aac7e2bafd2c6e6bc9a5d9f0aa702703b9ae3ebb944b9e783858",
+      "rawBytes": 108810,
+      "gzipPath": "affected-viewer-controls.log.gz",
+      "gzipSha256": "e346b4e6c890442564245406acc3182058c5f51d5167b0233792977487f11434",
+      "gzipBytes": 22699
+    },
+    {
+      "rawPath": "coverage-gate.log",
+      "rawSha256": "51d37f116c762d3c80e3ee80ea557614aeb0257fe1a61a230295a49d09ef2d54",
+      "rawBytes": 155,
+      "gzipPath": "coverage-gate.log.gz",
+      "gzipSha256": "5167b0baba8c98876f6edda593e5f4430eaeb5310376b0ed29cecfed96c56c32",
+      "gzipBytes": 150
+    },
+    {
+      "rawPath": "coverage-suite.log",
+      "rawSha256": "90ac0fdedcd2580db48c1654819401183cf6716afa688bfb434b6c91e8723762",
+      "rawBytes": 3659,
+      "gzipPath": "coverage-suite.log.gz",
+      "gzipSha256": "52601ada848618a422a3fe15761e06302bf0f6e537e30b2c7f25fec5f7871899",
+      "gzipBytes": 1650
+    },
+    {
+      "rawPath": "diff.log",
+      "rawSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "rawBytes": 0,
+      "gzipPath": "diff.log.gz",
+      "gzipSha256": "9ceffb7310338057cfe71a4ae1e2c98d2c485d81cdef906532a801f457a38d64",
+      "gzipBytes": 20
+    },
+    {
+      "rawPath": "full-root-typecheck.log",
+      "rawSha256": "2436c242a4facda6061662177fda3ec218f7664a3d7ab6c80a74b32573f840ac",
+      "rawBytes": 49149,
+      "gzipPath": "full-root-typecheck.log.gz",
+      "gzipSha256": "f16d30dd3eb23c50c52231bb123b4f910813f7da26530b82f8bfdd13254421ce",
+      "gzipBytes": 7543
+    },
+    {
+      "rawPath": "module.log",
+      "rawSha256": "55b0a470a0e5661398794e17340e2b34f145a7fdef5a64f76da4047aed5628b0",
+      "rawBytes": 13060,
+      "gzipPath": "module.log.gz",
+      "gzipSha256": "e0773afbfefc3feb1ca5c3198177aa1c014776808133088a383404f90cea4a8d",
+      "gzipBytes": 2178
+    },
+    {
+      "rawPath": "prerequisite-controls.log",
+      "rawSha256": "0cda04029f0ccdeef681df9f0067853e11a2b0adcc5f9a831a93112115d0328a",
+      "rawBytes": 7320,
+      "gzipPath": "prerequisite-controls.log.gz",
+      "gzipSha256": "c03637d0688fa6ba11a49f60761d3241da32dd71f7e2f28b331ccdac7a10fd1b",
+      "gzipBytes": 2733
+    },
+    {
+      "rawPath": "raw.log",
+      "rawSha256": "2a2cd94d089ef447478158c848fe18f438d1eb3e35c3828dcdf31796395ea697",
+      "rawBytes": 46755,
+      "gzipPath": "raw.log.gz",
+      "gzipSha256": "ffa9d33aef85ea2fc9a4a0d57cbcfcbaa986c574498098f0c4fd0b16e625828e",
+      "gzipBytes": 10250
+    },
+    {
+      "rawPath": "series-result.json",
+      "rawSha256": "32182b89ff0e9a8f128cf448d33a92cb1ed694994a052f8c8a9921a871a6cf97",
+      "rawBytes": 94954,
+      "gzipPath": "series-result.json.gz",
+      "gzipSha256": "147942bc4407004ac6b9e48312d88fe7cf5d8ad7f5e96398dac60114ed77cc5c",
+      "gzipBytes": 3743
+    },
+    {
+      "rawPath": "source-text.log",
+      "rawSha256": "e3bda36dd6b08291debf85ba9308a1570c36edb2278328dbd49254688614f1b6",
+      "rawBytes": 30991,
+      "gzipPath": "source-text.log.gz",
+      "gzipSha256": "4236a6df1f20a45c89d2f290d94509d65c1d6d0629818eb21bd3daab1cff7fd5",
+      "gzipBytes": 3000
+    },
+    {
+      "rawPath": "viewer-runtime.jsonl",
+      "rawSha256": "238b5cb92e4cca878b49662e7d26e420be696f60563b0575c84d649ce6f62b97",
+      "rawBytes": 10074,
+      "gzipPath": "viewer-runtime.jsonl.gz",
+      "gzipSha256": "291c453f45899d7785afef1233debccacc9060725afba6b8a955aa7c6b70748c",
+      "gzipBytes": 701
+    },
+    {
+      "rawPath": "wiring.log",
+      "rawSha256": "0a95b0d39fbd8f2530cdd60f06bd456b489429fbbee4dd09a0be0935076acc2d",
+      "rawBytes": 859,
+      "gzipPath": "wiring.log.gz",
+      "gzipSha256": "cdc420c2708d40c104140c5dc287165120a8d3612be0c7ebc8483ca5773133ed",
+      "gzipBytes": 394
+    }
+  ],
+  "broaderExperiment": "Preservedunpublished supersededarchive at7180-tests-domain-trigger-qualification-archive-20261008; source3files restored69f beforecanonicalmerge. Experiment44results never relabeled current42proof.",
+  "claimBoundary": "Bounded standalone prerequisite harness only, no production/runtime/performance/native acceptance or issue closure claim. Historical evidence remains source-scoped.",
+  "pending": [
+    "parent exactsource/archiveintegrityverification",
+    "evidencecommit/bodyupdate/normalpush authorization",
+    "fresh exacthead allrequiredchecks/rawreview beforemerge"
+  ]
+}

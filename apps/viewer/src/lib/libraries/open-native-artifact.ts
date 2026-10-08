@@ -6,19 +6,23 @@ import type { ExtensionHostService } from '@/services/extensions/host';
 import { nativeLibraryCatalogue, type LibraryArtifact, type ProfileLibrary } from './native-catalogue';
 import { sameReportEvidence } from '../flow/report-provenance';
 import { loadIdsContent } from '@/hooks/ids/loadIdsContent';
-import { setValidationSourceChoice } from '../validation/validation-source-choice';
+import { setValidationSourceChoice, useValidationSourceChoice } from '../validation/validation-source-choice';
+import { beginDefinitionImport } from '../validation/definition-import-owner';
 import { useLibraryFocus } from './library-focus';
 import { useSavedComparisonFocus } from '../panels/evidence-focus';
 
 export type LibraryOpenOutcome = 'opened' | 'missing' | 'changed' | 'busy' | 'unsaved' | 'unavailable';
 /** Resolve afresh at the action boundary; opening never runs/applies the saved artifact (#7235). */
-export async function openNativeLibraryArtifact(target: LibraryArtifact, host: ExtensionHostService | null): Promise<LibraryOpenOutcome> {
+export async function openNativeLibraryArtifact(target: LibraryArtifact, host: ExtensionHostService | null,
+  wanted: () => boolean = () => true): Promise<LibraryOpenOutcome> {
+  if (!wanted()) return 'changed';
   let profiles: ProfileLibrary = { phase: 'unavailable', entries: [] };
   if (target.kind === 'profile') {
     if (!host) return 'unavailable';
     try { profiles = { phase: 'ready', entries: await host.flavors.list(), owner: host }; }
     catch (error) { console.warn('[Libraries] Native profile library could not be read', error); return 'unavailable'; }
   }
+  if (!wanted()) return 'changed';
   const state = useViewerStore.getState();
   const live = nativeLibraryCatalogue(state, profiles).flatMap(group => group.rows)
     .find(row => row.kind === target.kind && row.id === target.id);
@@ -48,10 +52,20 @@ export async function openNativeLibraryArtifact(target: LibraryArtifact, host: E
       if (state.idsLoading) return 'busy';
       const definition = state.validationDefinitions.entries.find(entry => entry.id === target.id);
       if (!definition) return 'missing';
-      if (definition.kind === 'ids') await loadIdsContent(useViewerStore, definition.xml, definition.id);
-      else state.selectValidationDefinition(definition.id);
+      if (definition.kind === 'ids') {
+        const owner = beginDefinitionImport(useViewerStore, 'ids');
+        setValidationSourceChoice('ids');
+        const choice = useValidationSourceChoice.getState();
+        const loading = loadIdsContent(useViewerStore, definition.xml, definition.id, owner);
+        const document = useViewerStore.getState().idsDocument;
+        await loading;
+        const current = useViewerStore.getState();
+        const saved = current.validationDefinitions.entries.find(entry => entry.id === target.id);
+        if (!wanted() || !owner.wanted() || useValidationSourceChoice.getState() !== choice
+          || current.idsDocument !== document || saved?.kind !== 'ids' || saved.xml !== definition.xml) return 'changed';
+      } else state.selectValidationDefinition(definition.id);
       if (useViewerStore.getState().validationDefinitions.active[definition.kind] !== target.id) return 'unavailable';
-      setValidationSourceChoice(definition.kind);
+      if (definition.kind !== 'ids') setValidationSourceChoice(definition.kind);
       break;
     }
     case 'topic': state.setActiveTopic(target.id); break;

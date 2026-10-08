@@ -54,7 +54,7 @@ export function nativeLibraryCatalogue(state: ViewerState, profiles: ProfileLibr
       rows: [...(state.bcfProject?.topics.values() ?? [])].map(entry => ({ ...row('topic', 'topics', entry.guid, entry.title, 'bcf', entry), owner: state.bcfProject ?? undefined })) },
     { family: 'documents', phase: status(state.documentsStorage),
       rows: state.documents.map(entry => row('document', 'documents', entry.id, entry.name, 'document', entry)) },
-    { family: 'flows', phase: state.flowStorageError ? 'unavailable' : 'ready', warning: state.flowStorageError ?? undefined,
+    { family: 'flows', phase: state.flowStorageError ? 'unavailable' : 'session', warning: state.flowStorageError ?? undefined,
       rows: state.savedFlows.map(entry => row('flow', 'flows', entry.doc.id, entry.doc.name, 'flow', entry)) },
     // These native startup readers expose session entries, not a durable-read
     // status. Never turn their fallback [] into a claim that storage is empty.

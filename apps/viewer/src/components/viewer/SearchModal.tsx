@@ -188,7 +188,7 @@ export function SearchModal() {
             <SearchModalFilter />
           </TabsContent>
           <TabsContent value="libraries" className="flex-1 min-h-0 mt-0 flex">
-            <Suspense fallback={<p role="status">{t('searchModal.library.phase.loading', { count: 0 })}</p>}>
+            <Suspense fallback={<output className="block">{t('searchModal.library.phase.loading', { count: 0 })}</output>}>
               <NativeLibrarySearch onOpened={close} />
             </Suspense>
           </TabsContent>

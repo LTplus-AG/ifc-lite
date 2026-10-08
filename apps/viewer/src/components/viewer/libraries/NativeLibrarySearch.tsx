@@ -1,7 +1,7 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useViewerStore } from '@/store';
 import { useTranslation } from '@/i18n';
 import { useOptionalExtensionHost } from '@/sdk/ExtensionHostProvider';
@@ -18,6 +18,10 @@ export function NativeLibrarySearch({ onOpened }: { onOpened: () => void }) {
   const { confirmDialog } = useDialogs();
   const state = useViewerStore();
   const host = useOptionalExtensionHost();
+  const currentHost = useRef(host);
+  currentHost.current = host;
+  const opening = useRef<object | null>(null);
+  useEffect(() => () => { opening.current = null; }, []);
   const [profiles, setProfiles] = useState<ProfileLibrary>({ phase: host ? 'loading' : 'unavailable', entries: [] });
   const [query, setQuery] = useState('');
   const [family, setFamily] = useState<LibraryFamily | ''>('');
@@ -51,20 +55,27 @@ export function NativeLibrarySearch({ onOpened }: { onOpened: () => void }) {
   const matches = searchNativeLibraries(groups, query, family || undefined);
   const shown = matches.slice(0, 100);
   const open = async (row: LibraryArtifact) => {
-    if (busy) return;
-    // Confirm the explicit editor handoff where a native editor can hold a
-    // local draft. No catalogue copy or automatic save replaces that draft.
-    if (['check', 'lens', 'list'].includes(row.kind)
-      && !await confirmDialog({ description: t('searchModal.library.confirmOpen', { name: row.name }) })) return;
+    if (opening.current) return;
+    const request = {};
+    opening.current = request;
+    const wanted = () => opening.current === request && currentHost.current === host;
     setBusy(true); setOutcome(null);
     try {
-      const result = await openNativeLibraryArtifact(row, host);
+      // The confirmation and asynchronous native read share one current
+      // mounted owner; a replaced host or closed search cannot navigate later.
+      if (['check', 'lens', 'list'].includes(row.kind)
+        && !await confirmDialog({ description: t('searchModal.library.confirmOpen', { name: row.name }) })) return;
+      if (!wanted()) return;
+      const result = await openNativeLibraryArtifact(row, host, wanted);
+      if (!wanted()) return;
       if (result === 'opened') onOpened();
       else setOutcome(result);
     } catch (error) {
       console.warn('[Libraries] Opening the native artifact failed', error);
-      setOutcome('unavailable');
-    } finally { setBusy(false); }
+      if (wanted()) setOutcome('unavailable');
+    } finally {
+      if (opening.current === request) { opening.current = null; setBusy(false); }
+    }
   };
   return <section aria-label={t('searchModal.library.title')} className="flex min-h-0 flex-1 flex-col">
     <div className="space-y-2 border-b p-3">
@@ -88,7 +99,7 @@ export function NativeLibrarySearch({ onOpened }: { onOpened: () => void }) {
       </ul>
       {outcome && <p role="alert" className="text-xs">{t(`searchModal.library.open.${outcome}`)}</p>}
     </div>
-    <p role="status" className="px-3 py-2 text-xs">{t('searchModal.library.results', { shown: shown.length, total: matches.length })}</p>
+    <output className="block px-3 py-2 text-xs">{t('searchModal.library.results', { shown: shown.length, total: matches.length })}</output>
     <ul aria-label={t('searchModal.library.resultsLabel')} className="min-h-0 overflow-auto px-3 pb-3">
       {shown.map(row => <li key={`${row.kind}:${row.id}`} className="flex items-center gap-2 border-b py-1">
         <span className="shrink-0 text-2xs text-muted-foreground">{t(`searchModal.library.family.${row.family}`)}</span>

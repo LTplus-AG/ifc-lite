@@ -9,8 +9,8 @@ import { render, click, cleanup } from '@/test/render';
 import { ModelAuthoringReview } from '@/components/viewer/actions/ModelAuthoringReview';
 import { modelChangeLibrary } from './receipts';
 import { afterEach, test } from 'node:test';
-import { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
-import { addOpeningToStore, resolveHostAnchor, splitElementsInStore } from '@ifc-lite/create';
+import { MutablePropertyView, StoreEditor, iterateEffectiveEntityIds } from '@ifc-lite/mutations';
+import { addOpeningToStore, resolveHostAnchor, splitElementsInStore, liveEntityConforms } from '@ifc-lite/create';
 import { extractPropertiesOnDemand, extractRelationshipsOnDemand } from '@ifc-lite/parser';
 import { useViewerStore } from '@/store';
 import { modelEditTarget } from '@/store/slices/mutation-modelling-records';
@@ -21,6 +21,7 @@ import { readElementProfile } from '@/store/slices/mutation-element-profile';
 import { getModelLengthUnitScale } from '@/lib/length-unit-scale';
 import { GROUND_STOREY, SAMPLE_MODEL, danglingReferences, parseIfc, seedAuthoringSample } from '@/test/authoring-sample-fixture';
 import { authoringSplitMarker } from './model-authoring-split-ghost';
+import { uniqueSplitGuid } from './model-authoring-split';
 import { readSplitSnapshot } from './model-authoring-split-state';
 import { previewModelAuthoring } from './model-authoring-preview';
 import { commitModelAuthoring } from './model-authoring-commit';
@@ -292,4 +293,37 @@ for (const transport of ['live', 'saved'] as const) test(`#7251 native ${transpo
   assert.deepEqual(extractPropertiesOnDemand(undone, id).map(({ name, properties }) => ({ name, properties })), originalProperties.map(({ name, properties }) => ({ name, properties })));
   if (transport === 'saved') assert.deepEqual(extractPropertiesOnDemand(undone, id), originalProperties);
   assert.ok(extractRelationshipsOnDemand(undone, id).voids.some(row => row.id === opening.openingId));
+});
+
+
+for (const saved of [false, true]) test(`#7251 ${saved ? 'saved' : 'live'} non-root material Name is not a colliding product GlobalId`, async () => {
+  const { dataStore, id, proposal } = await wallProposal();
+  const op = proposal.operations[0]; assert.ok(op.op === 'element.split');
+  const edit = modelEditTarget(s(), SAMPLE_MODEL)!;
+  const material = edit.editor.addEntity('IfcMaterial', [op.target.globalId, null, null]);
+  const exported = await parseIfc(editedModelBytes(dataStore, edit.view));
+  assert.equal(exported.getEntity(material.expressId)?.attributes[0], op.target.globalId);
+  assert.equal(liveEntityConforms(exported, material.expressId, 'IfcRoot'), false,
+    'actual exported material Name is not an IFC root identity');
+  const store = saved ? exported : dataStore;
+  const view = saved ? new MutablePropertyView(exported.properties, SAMPLE_MODEL) : edit.view;
+  assert.equal(uniqueSplitGuid(store, new StoreEditor(store, view), op.target.globalId), true,
+    'one genuine root stays unique even when a non-root first attribute is the same string');
+  if (saved) useViewerStore.setState({ models: new Map([[SAMPLE_MODEL, { ...s().models.get(SAMPLE_MODEL)!, ifcDataStore: store }]]),
+    mutationViews: new Map([[SAMPLE_MODEL, view]]), storeEditors: new Map() });
+  const preview = previewModelAuthoring(s(), proposal);
+  assert.equal(preview.rows[0].status, 'ready', preview.rows[0].issue ?? 'the actual reviewed native split remains available');
+  const outcome = commitModelAuthoring(useViewerStore, preview, new Set([0]), 'non-root identity control');
+  assert.ok(outcome.ok, outcome.ok ? '' : outcome.detail ?? outcome.reason);
+  const after = await parseIfc(editedModelBytes(store, view));
+  assert.equal(after.getEntity(material.expressId)?.attributes[0], op.target.globalId, 'native split leaves the material Name intact');
+  assert.equal(after.getEntity(id)?.attributes[0], op.target.globalId,
+    'the reviewed native writer edits the actual root, never the indexed material');
+  useViewerStore.getState().undo(SAMPLE_MODEL);
+  const undone = await parseIfc(editedModelBytes(store, view));
+  const records = (source: typeof exported) => new Map([...iterateEffectiveEntityIds(source, null)].map(({ expressId }) => {
+    const entity = source.getEntity(expressId);
+    return [expressId, entity ? { type: entity.type, attributes: entity.attributes } : null] as const;
+  }));
+  assert.deepEqual(records(undone), records(exported), 'one native Undo restores the actual entity graph independent of STEP record ordering');
 });

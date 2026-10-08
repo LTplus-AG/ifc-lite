@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { iterateEffectiveEntityIds, type StoreEditor } from '@ifc-lite/mutations';
-import { splitElementsInStore } from '@ifc-lite/create';
+import { splitElementsInStore, liveEntityConforms } from '@ifc-lite/create';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { readAttributes } from '@/lib/placement-edit';
 import type { AuthoringOp, ModelAuthoringBatch } from './model-authoring';
@@ -20,7 +20,8 @@ export function uniqueSplitGuid(store: IfcDataStore, editor: StoreEditor, guid: 
   for (const { expressId } of iterateEffectiveEntityIds(store, view)) {
     const native = changed.has(expressId) || view.getNewEntity(expressId)
       ? readAttributes(store, view, editor, expressId)?.[0] : store.entities.getGlobalId(expressId);
-    if (native === guid && ++hits > 1) return false;
+    // Only IfcRoot owns GlobalId: non-root attribute zero can be a Name.
+    if (native === guid && liveEntityConforms(store, expressId, 'IfcRoot', view) && ++hits > 1) return false;
   }
   return hits === 1;
 }

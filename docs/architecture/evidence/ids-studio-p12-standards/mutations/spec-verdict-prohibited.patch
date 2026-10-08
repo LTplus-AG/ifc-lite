@@ -1,0 +1,13 @@
+diff --git b/scripts/ids-conformance/lib/adapters/thatopen-components.mjs a/scripts/ids-conformance/lib/adapters/thatopen-components.mjs
+index ba94e5b72..4590124bd 100644
+--- b/scripts/ids-conformance/lib/adapters/thatopen-components.mjs
++++ a/scripts/ids-conformance/lib/adapters/thatopen-components.mjs
+@@ -43,7 +43,7 @@ export function applicabilityOccurs(idsXml) {
+  */
+ export function specVerdict(applicable, failed, occurs) {
+   // maxOccurs="0" (prohibited) is the `applicable > maxOccurs` case.
+-  if (applicable < occurs.minOccurs) return 'fail';
++  if (applicable < occurs.minOccurs || applicable > occurs.maxOccurs) return 'fail';
+   return failed > 0 ? 'fail' : 'pass';
+ }
+ 

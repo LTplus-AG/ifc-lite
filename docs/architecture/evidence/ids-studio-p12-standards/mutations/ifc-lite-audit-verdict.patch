@@ -1,0 +1,13 @@
+diff --git b/scripts/ids-conformance/lib/adapters/ifc-lite.mjs a/scripts/ids-conformance/lib/adapters/ifc-lite.mjs
+index b3386687b..c476b351a 100644
+--- b/scripts/ids-conformance/lib/adapters/ifc-lite.mjs
++++ a/scripts/ids-conformance/lib/adapters/ifc-lite.mjs
+@@ -68,7 +68,7 @@ export async function createIfcLiteAdapter(options = {}) {
+     },
+     async audit({ idsPath }) {
+       const report = await ids.auditIDSDocument(readFileSync(idsPath, 'utf8'), { preview });
+-      return report.issues.some((issue) => issue.severity === 'info') ? 'invalid' : 'valid';
++      return report.issues.some((issue) => issue.severity === 'error') ? 'invalid' : 'valid';
+     },
+   };
+ }

@@ -1,0 +1,13 @@
+diff --git b/scripts/ids-conformance/lib/adapters/command.mjs a/scripts/ids-conformance/lib/adapters/command.mjs
+index 78c132773..7db1b5893 100644
+--- b/scripts/ids-conformance/lib/adapters/command.mjs
++++ a/scripts/ids-conformance/lib/adapters/command.mjs
+@@ -62,7 +62,7 @@ export function parseVerdict(stdout, allowed) {
+     throw new Error(`engine output is not JSON: ${line.slice(0, 120)}`);
+   }
+   if (parsed?.verdict === 'unsupported') throw new UnsupportedCase(String(parsed.reason ?? 'unsupported by engine'));
+-  if (parsed?.verdict === undefined) throw new Error(`engine verdict ${JSON.stringify(parsed?.verdict)} is not one of ${allowed.join(', ')}`);
++  if (!allowed.includes(parsed?.verdict)) throw new Error(`engine verdict ${JSON.stringify(parsed?.verdict)} is not one of ${allowed.join(', ')}`);
+   return parsed.verdict;
+ }
+ 

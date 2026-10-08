@@ -1,0 +1,13 @@
+diff --git b/scripts/ids-conformance/lib/corpus.mjs a/scripts/ids-conformance/lib/corpus.mjs
+index 88da5c726..c0f0e70e5 100644
+--- b/scripts/ids-conformance/lib/corpus.mjs
++++ a/scripts/ids-conformance/lib/corpus.mjs
+@@ -49,7 +49,7 @@ export function discoverCorpus(root) {
+       const base = name.slice(0, -4);
+       const prefix = base.split('-')[0];
+       if (!PREFIXES.includes(/** @type {Expected} */ (prefix))) {
+-        continue;
++        throw new Error(`unrecognised corpus prefix: ${group}/${name}`);
+       }
+       cases.push({
+         id: `${group}/${base}`,

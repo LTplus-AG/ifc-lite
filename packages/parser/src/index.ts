@@ -398,3 +398,5 @@ export async function parseAuto(
 
   throw new Error('Unknown file format. Expected IFC (STEP) or IFCX (JSON).');
 }
+
+export { materialAssignmentsAvailable } from './material-overlay.js';

@@ -17,6 +17,7 @@ import { definedModelTagIdsOf, evaluatorModelsFromState } from '@/lib/model-tags
 import type { ArtifactProposal } from './proposal-kinds';
 import type { FilterProposal } from './filter-proposal';
 import { resolveModelNames } from './model-scope';
+import { groundClassificationSelectors } from './classification-grounding';
 import { previewList } from './preview-list';
 import { previewLens } from './preview-lens';
 import { previewChart } from './preview-chart';
@@ -41,6 +42,7 @@ export async function previewFilterGroups(name: string, groups: FilterProposal['
 export async function previewArtifact(answer: ArtifactProposal, state: ViewerState, signal?: AbortSignal): Promise<ArtifactPreview> {
   // Model names become fingerprints first, so no engine ever sees a name it would silently match nothing with.
   const proposal = resolveModelNames(answer, state.models);
+  await groundClassificationSelectors(proposal, state, signal);
   switch (proposal.kind) {
     case 'filter.proposal': return previewFilterGroups(proposal.name, proposal.groups, state, signal);
     case 'list.proposal': return previewList(proposal, state, signal);

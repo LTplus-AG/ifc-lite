@@ -1,0 +1,53 @@
+[
+  {
+    "stage": "pair-both-controls-inverse",
+    "args": [
+      "node",
+      "--test",
+      "--test-name-pattern=same-name A/B pairs",
+      "scripts/perf/worker-pool-lifecycle-invariants.test.mjs"
+    ],
+    "exit": 1,
+    "started": 1791478701.3052008,
+    "ended": 1791478701.3900661,
+    "sha": "e3eaccbdff3d329fbf23abdb26f566b8be18c866a966f8b9fb8c089e8e6c871b"
+  },
+  {
+    "stage": "pair-restored",
+    "args": [
+      "node",
+      "--test",
+      "scripts/perf/worker-pool-lifecycle-invariants.test.mjs"
+    ],
+    "exit": 0,
+    "started": 1791478701.390377,
+    "ended": 1791478701.4830487,
+    "sha": "a16c7003485fc0558082fa4cd83bdec8c0ad49696ec5658d743c9b70a23bd3a7"
+  },
+  {
+    "stage": "actual-ps-restored",
+    "args": [
+      "node",
+      "--test",
+      "--test-concurrency=1",
+      "scripts/perf/frame-gpu-owned-profile.test.mjs"
+    ],
+    "exit": 0,
+    "started": 1791478701.4832494,
+    "ended": 1791478708.0609758,
+    "sha": "68c5bf08f4d43631851478e63117ae1f0beef5e27a274873fbd80e1a023617cf"
+  },
+  {
+    "stage": "posix-owned-launcher-restored",
+    "args": [
+      "node",
+      "--test",
+      "--test-concurrency=1",
+      "scripts/perf/frame-gpu-chrome-lifecycle.test.mjs"
+    ],
+    "exit": 0,
+    "started": 1791478708.0612411,
+    "ended": 1791478733.99679,
+    "sha": "27b3020f462be24349938b0dba9a5d2d1a7fcc185d2113a3ad907e4efd35810c"
+  }
+]

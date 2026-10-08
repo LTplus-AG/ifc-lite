@@ -1,0 +1,19 @@
+{
+  "sourceHead": "cbd71eb04bbf991582d8017886d3c8b7b74f0364",
+  "pins": {
+    "scripts/perf/frame-gpu-chrome.ts": "180ecf61b61db8f96e273ee19b6b515dd66adafacfdd409214bb90281ae57a8f",
+    "scripts/perf/frame-gpu-chrome-lifecycle.test.mjs": "a04582c9c1f9d56bfb75b79d64da0b0c9df82ae6985ad2207dc1f6e191f97034",
+    "scripts/perf/frame-gpu-owned-profile.ps1": "119ff951d0972e3413759ed62a6a2ee936c81c86a5e6e5852f40a775407fefcd",
+    "scripts/perf/frame-gpu-owned-profile.test.mjs": "735a34165a430442fd99a5f5bc39de0b184e7dd365fc7f9f1ce7fe9cf7da0832",
+    "scripts/perf/worker-pool-lifecycle-invariants.mjs": "99b9a9e55156c7af5570b0f22977e3b914b1814a2f38d6173ecae65179692994",
+    "scripts/perf/worker-pool-lifecycle-invariants.test.mjs": "809dba499eb6c7b2482cb3fd3fa6bb6f055dbb70a4274beedf4020e6486fb97a"
+  },
+  "phase": "six source files prepared; all new controls UNRUN",
+  "deadlinePolicy": "production defaults/global limits unchanged; initial positive-root wait consumes same cleanup budget",
+  "inversePlan": [
+    "remove only cross-arm sameWorkload guard; both per-row schedule-consistent mode/option negatives must fail",
+    "remove only shared helper initial positive-observation loop; actual PowerShell empty/child-only controls must fail; exact restore"
+  ],
+  "providerScope": "POSIX adapter interprets cleanup command request; actual PowerShell production-helper invariants separately qualify root observation/creation fence. No Chrome/GPU/native performance.",
+  "receiptAddendum": "Deterministic pre-owner fixture blocks acknowledgement on release file; negative never releases before finally kill, positive cleanup provider records entry then releases. Both emit actual allocation/ack/cleanup/retirement and bounded finally proof. Prior timed snapshot preserved. Owner publication now atomic and last after closed acknowledgement journals; pair mode/option are two separate controls so both inverse assertions execute."
+}

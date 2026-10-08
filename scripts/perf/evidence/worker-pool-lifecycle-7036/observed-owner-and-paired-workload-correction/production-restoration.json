@@ -1,0 +1,10 @@
+{
+  "scripts/perf/worker-pool-lifecycle-invariants.mjs": {
+    "sha": "99b9a9e55156c7af5570b0f22977e3b914b1814a2f38d6173ecae65179692994",
+    "restored": true
+  },
+  "scripts/perf/frame-gpu-owned-profile.ps1": {
+    "sha": "119ff951d0972e3413759ed62a6a2ee936c81c86a5e6e5852f40a775407fefcd",
+    "restored": true
+  }
+}

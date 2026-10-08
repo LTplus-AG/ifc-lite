@@ -1,0 +1,95 @@
+{
+  "scope": "Focused/inverse logs byteverified; fullprogramme/rootchecks stillpending",
+  "stages": [
+    {
+      "stage": "pair-guard-inverse",
+      "exit": 1,
+      "tail": [
+        "      at Test.start (node:internal/test_runner/test:1262:17)",
+        "      at startSubtestAfterBootstrap (node:internal/test_runner/harness:387:17) {",
+        "    generatedMessage: false,",
+        "    code: 'ERR_ASSERTION',",
+        "    actual: undefined,",
+        "    expected: /Paired workload options differ/,",
+        "    operator: 'throws',",
+        "    diff: 'simple'",
+        "  }"
+      ]
+    },
+    {
+      "stage": "actual-ps-root-guard-inverse",
+      "exit": 1,
+      "tail": [
+        "      at Test.run (node:internal/test_runner/test:1467:12)",
+        "      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {",
+        "    generatedMessage: false,",
+        "    code: 'ERR_ASSERTION',",
+        "    actual: true,",
+        "    expected: false,",
+        "    operator: 'strictEqual',",
+        "    diff: 'simple'",
+        "  }"
+      ]
+    },
+    {
+      "stage": "pair-both-controls-inverse",
+      "exit": 1,
+      "tail": [
+        "      at Test.run (node:internal/test_runner/test:1467:12)",
+        "      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3) {",
+        "    generatedMessage: false,",
+        "    code: 'ERR_ASSERTION',",
+        "    actual: undefined,",
+        "    expected: /Paired workload options differ/,",
+        "    operator: 'throws',",
+        "    diff: 'simple'",
+        "  }"
+      ]
+    },
+    {
+      "stage": "pair-restored",
+      "exit": 0,
+      "tail": [
+        "\u2714 #7036 same-name A/B pairs refuse a distinct planned option (0.078906ms)",
+        "\u2139 tests 19",
+        "\u2139 suites 0",
+        "\u2139 pass 19",
+        "\u2139 fail 0",
+        "\u2139 cancelled 0",
+        "\u2139 skipped 0",
+        "\u2139 todo 0",
+        "\u2139 duration_ms 70.026597"
+      ]
+    },
+    {
+      "stage": "actual-ps-restored",
+      "exit": 0,
+      "tail": [
+        "\u2714 #7036 actual Windows cleanup requires positive root observation (reused-pid) (475.618927ms)",
+        "\u2139 tests 12",
+        "\u2139 suites 0",
+        "\u2139 pass 12",
+        "\u2139 fail 0",
+        "\u2139 cancelled 0",
+        "\u2139 skipped 0",
+        "\u2139 todo 0",
+        "\u2139 duration_ms 6555.90004"
+      ]
+    },
+    {
+      "stage": "posix-owned-launcher-restored",
+      "exit": 0,
+      "tail": [
+        "\u2714 #7036 abort before provider ownership waits for observed root retirement (1622.219501ms)",
+        "\u2139 tests 7",
+        "\u2139 suites 0",
+        "\u2139 pass 7",
+        "\u2139 fail 0",
+        "\u2139 cancelled 0",
+        "\u2139 skipped 0",
+        "\u2139 todo 0",
+        "\u2139 duration_ms 25911.78195"
+      ]
+    }
+  ]
+}

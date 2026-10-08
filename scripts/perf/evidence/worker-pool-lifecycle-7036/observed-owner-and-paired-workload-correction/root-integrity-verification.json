@@ -1,0 +1,14 @@
+{
+  "time": "2026-10-08T17:03:00.673208+00:00",
+  "verifiedArchiveFiles": 23,
+  "rawGzipPairs": 15,
+  "liveSourcePins": 30,
+  "stagesZero": 9,
+  "executedControls": 74,
+  "typecheckedTestFiles": 3739,
+  "typecheckedPackages": 62,
+  "rootCommand": "pnpm typecheck",
+  "runtimeExecutedTestCountNot3739": true,
+  "runtimeBeforeAfterExact": true,
+  "scope": "CPU prerequisite/actualPS provider + POSIX child controls; no nativeChrome/perf/fulloutput acceptance"
+}

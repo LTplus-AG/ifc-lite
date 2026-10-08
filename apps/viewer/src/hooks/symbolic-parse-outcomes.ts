@@ -117,11 +117,13 @@ export function observeSymbolicBinding(context: SymbolicBindingContext & { key: 
   if (rtc.mode === 'pending') return;
   const source = roomSource?.source ?? store.source;
   const ownerStore = roomSource?.dataStore ?? store;
+  // @raw-entity-enumeration-ok identity of the existing source hierarchy only; no membership query or enumeration, and mutation binding is tracked separately
+  const elementToStorey = store.spatialHierarchy?.elementToStorey;
   OBSERVATIONS.set(store, {
     key: context.key, source: producerIdentity(source),
     roomSource: producerIdentity(roomSource), ownerStore: producerIdentity(ownerStore),
     owners: hasSymbolicOwners(ownerStore, source),
-    elementToStorey: producerIdentity(store.spatialHierarchy?.elementToStorey),
+    elementToStorey: producerIdentity(elementToStorey),
     storeyElevations: producerIdentity(store.spatialHierarchy?.storeyElevations),
     mutationView: producerIdentity(context.mutationView), mutationVersion: context.mutationVersion,
     rtcKey: rtc.key, primitive: elevationRebase.primitive, storeyTable: elevationRebase.storeyTable,
@@ -140,10 +142,12 @@ export function readObservedSymbolicParse(
   if (!observed) return { phase: 'unobserved' };
   const source = roomSource?.source ?? store.source;
   const ownerStore = roomSource?.dataStore ?? store;
+  // @raw-entity-enumeration-ok passive reference comparison against the producer snapshot; live mutation bindings are checked below without enumerating source membership
+  const elementToStorey = store.spatialHierarchy?.elementToStorey;
   if (!sameIdentity(observed.source, source) || !sameIdentity(observed.roomSource, roomSource)
     || !sameIdentity(observed.ownerStore, ownerStore)
     || observed.owners !== hasSymbolicOwners(ownerStore, source)
-    || !sameIdentity(observed.elementToStorey, store.spatialHierarchy?.elementToStorey)
+    || !sameIdentity(observed.elementToStorey, elementToStorey)
     || !sameIdentity(observed.storeyElevations, store.spatialHierarchy?.storeyElevations)
     || !sameIdentity(observed.mutationView, context.mutationView) || observed.mutationVersion !== context.mutationVersion
     || observed.rtcKey !== rtc.key

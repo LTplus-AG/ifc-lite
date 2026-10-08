@@ -48,6 +48,10 @@ beforeEach(() => {
     workers.push(worker);
     return worker as unknown as Worker;
   });
+  // #6537: an empty session must refuse certification, including when the
+  // production observer is absent. Fail an invariant rather than throwing on
+  // a missing API before the revert oracle can observe an assertion.
+  assert.equal(useViewerStore.getState().readSymbolicParseOutcomes?.().reason, 'no-model');
 });
 afterEach(() => {
   __setOverlayWorkerFactoryForTest(previousFactory);

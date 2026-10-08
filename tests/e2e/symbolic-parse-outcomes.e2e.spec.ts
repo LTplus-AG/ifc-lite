@@ -20,6 +20,15 @@ test('authored IFC symbolic completion stays passive across canonical federation
   test.skip(!existsSync(fixture), 'AC20-FZK-Haus.ifc missing; run pnpm fixtures');
   test.setTimeout(600_000);
   await page.goto('/');
+  // Wait for the existing loader UI, independently of the observer being tested.
+  await expect(page.locator('#file-input-open')).toBeAttached();
+  const emptySessionReason = await page.evaluate(() => {
+    const store = (globalThis as unknown as {
+      __ifc_lite_viewer_store__?: ObservedStore;
+    }).__ifc_lite_viewer_store__;
+    return store?.getState().readSymbolicParseOutcomes?.().reason;
+  });
+  expect(emptySessionReason, 'an empty session cannot certify symbolic completion (#6537)').toBe('no-model');
   for (const expectedModels of [1, 2]) {
     await page.locator(expectedModels === 1 ? '#file-input-open' : '#file-input-add').setInputFiles(fixture);
     await expect.poll(() => page.evaluate(() => {

@@ -9,6 +9,7 @@
  * local; only the digest (at most `DIGEST_LIMIT` characters) is sent.
  */
 
+import { ANALYSIS_COLUMN_GUIDANCE } from './analysis-chart';
 import type { ViewerState } from '@/store';
 import { modelSchemaIndex, type ModelSchemaIndex } from './model-schema';
 
@@ -22,6 +23,12 @@ export const ARTIFACT_OUTPUT_GUIDANCE =
   + 'or "lens":{"name":"…","autoColor":{"source":"ifcType|material|classification|attribute|property|quantity","psetName":"…","propertyName":"…"}}; '
   + '{"version":1,"kind":"chart.proposal","title":"…","scope":"all|visible|basket","chart":{"type":"bar|pie|treemap|stackedBar|histogram|elementCount",'
   + '"dimension":"IfcType|Storey|Model|Name" or "elementField":F,"measure":{"agg":"count|sum"},"measureField":F (sum only),"filter":{"groups":[G]},"topN":10}}. '
+  + 'For analysis charts use scope all and an explicit chart.source clash|bcf|schedule|ids|compare. '
+  + 'Name native dataset dimension/stackBy columns; count with {"agg":"count"}, sum with {"agg":"sum","column":"<numeric dataset column>"}. '
+  + 'Analysis charts support bar/pie/treemap/stackedBar/histogram/timeline/elementCount; timeline requires a date dimension. '
+  + 'They do not accept IFC elementField/measureField, source filters, visible or basket scope. '
+  + `Native analysis columns (use these exact names): ${ANALYSIS_COLUMN_GUIDANCE}. `
+  + 'Count recorded findings/topics/tasks/results/changes, never claim an unexamined population was checked. '
   + 'G = {"combinator":"AND|OR","rules":[R]}; groups OR together. R: {"kind":"ifcType","op":"in|notIn","values":["IfcWall"]} (subclasses included); '
   + '{"kind":"property","setName":"Pset_WallCommon","propertyName":"FireRating","op":"eq|ne|contains|startsWith|gt|lt|isSet|isNotSet","value":"EI60"} (a number value compares in SI: m, m², m³); '
   + '{"kind":"quantity","setName":"Qto_WallBaseQuantities","quantityName":"NetSideArea","op":"gt|gte|lt|lte|eq|ne","value":10} (numbers in SI: m, m², m³); '

@@ -146,12 +146,15 @@ export function writeSse(res: ServerResponse, message: unknown): void {
 }
 
 /** Reads the request body; `holder.inFlight` is raised while the upload runs, so it is never left raised. */
-export async function readBody(req: IncomingMessage, max: number, holder?: { inFlight: number }): Promise<string> {
+export async function readBody(req: IncomingMessage, max: number, holder?: { inFlight: number; lastSeen: number }): Promise<string> {
   if (holder) holder.inFlight++;
   try {
     return await readBodyChunks(req, max);
   } finally {
-    if (holder) holder.inFlight--;
+    if (holder) {
+      holder.inFlight--;
+      holder.lastSeen = Date.now();
+    }
   }
 }
 

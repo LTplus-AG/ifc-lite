@@ -73,7 +73,6 @@ interface Session {
   server: MCPServer;
   scope: AuthScope;
   sseClients: Set<ServerResponse>;
-  createdAt: number;
   /** Wall-clock ms of the last authorised request, SSE open or close, or request completion. */
   lastSeen: number;
   /** Requests being handled right now: a session mid-call is never idle. */
@@ -285,7 +284,7 @@ export class HttpTransport {
         }));
         return;
       }
-      session = { id: newId, server, scope, sseClients: new Set(), createdAt: Date.now(), lastSeen: Date.now(), inFlight: 0 };
+      session = { id: newId, server, scope, sseClients: new Set(), lastSeen: Date.now(), inFlight: 0 };
       session.server.attach(this.makeSinkFor(session));
       this.sessions.set(newId, session);
       res.setHeader('Mcp-Session-Id', newId);
@@ -372,7 +371,9 @@ export class HttpTransport {
       send: (message: JsonRpcMessage) => {
         // Fan out notifications + responses to every active SSE client.
         for (const sse of session.sseClients) {
-          try { writeSse(sse, message); } catch { /* SSE client gone — cleaned up on close */ }
+          try { writeSse(sse, message); } catch (err) {
+            console.error('[ifc-lite-mcp http] event stream write failed', err);
+          }
         }
       },
     };

@@ -22,7 +22,7 @@ export function profileInMetres(profile: ProfileSection, units: AuthoringUnits):
   return Object.fromEntries(Object.entries(profile).map(([key, value]) => [key, key === 'Type' ? value : units === 'mm' ? Number(value) / 1000 : value])) as unknown as ProfileSection;
 }
 
-function section(value: unknown, units: AuthoringUnits, at: string): ProfileSection {
+export function parseProfileSectionParams(value: unknown, units: AuthoringUnits, at: string): ProfileSection {
   if (!record(value) || !PROFILE_KINDS.includes(value.Type as ProfileSectionType)) throw new Error(`${at}: Profile must state an existing native Type (${PROFILE_KINDS.join(', ')})`);
   const type = value.Type as ProfileSectionType;
   const required = PROFILE_FIELDS[type].map((field) => field.name);
@@ -58,7 +58,7 @@ export function parseShapeParams(p: Record<string, unknown>, ifcClass: string, u
   if (p.OuterCurve !== undefined) throw new Error(`${at}: OuterCurve requires the native polygon Profile discriminator`);
   if (!['IfcBeam', 'IfcColumn', 'IfcMember'].includes(ifcClass)) throw new Error(`${at}: ${ifcClass} has no native parameterised section`);
   if (p.width !== undefined || p.depth !== undefined || (ifcClass !== 'IfcColumn' && p.height !== undefined)) throw new Error(`${at}: Profile cannot also specify rectangular section dimensions`);
-  const Profile = section(p.Profile, units, at);
+  const Profile = parseProfileSectionParams(p.Profile, units, at);
   if (ifcClass === 'IfcColumn') return { Profile, position: parsePoint(p.position, units, coordinate, `${at} position`), height: parseLength(p.height, units, { min: .1, max: 200 }, `${at} height`) };
   const start = parsePoint(p.start, units, coordinate, `${at} start`), end = parsePoint(p.end, units, coordinate, `${at} end`);
   const factor = units === 'mm' ? .001 : 1;

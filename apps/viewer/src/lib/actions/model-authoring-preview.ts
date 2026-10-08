@@ -28,6 +28,7 @@ import {
 import { captureAuthoringSources } from './model-authoring-sources';
 import { resolveGlobalId } from './resolve-global-id';
 import { readElementProfile } from '@/store/slices/mutation-element-profile';
+import { verifyReachExpected, reachBefore } from './model-authoring-reach';
 import { readAuthoringSize, sameNativeDimensions } from './model-authoring-size';
 import { sizeInMetres, type ExpectedSize } from './model-authoring-size-params';
 import { profileInMetres } from './model-authoring-shape-params';
@@ -48,6 +49,7 @@ export interface AuthoringBefore {
   hosted?: ExpectedHostedEdit;
   split?: SplitSnapshot;
   size?: ExpectedSize;
+  reach?: Record<string, unknown>;
   Profile?: ProfileSection;
   ifcClass?: string;
   name?: string;
@@ -115,7 +117,7 @@ function existing(ctx: Context, target: ExistingElement, row: AuthoringRow): num
   const { modelId, expressId } = locate(ctx, target);
   join(row, modelId);
   const r = reader(ctx, modelId);
-  if (row.op.op === 'element.split' && !uniqueSplitGuid(r.dataStore, r.editor, target.globalId)) throw new Refusal('ambiguous-target', 'The native split target GlobalId is not unique in its owning model');
+  if ((row.op.op === 'element.split' || row.op.op === 'element.trimExtend') && !uniqueSplitGuid(r.dataStore, r.editor, target.globalId)) throw new Refusal('ambiguous-target', 'The native target GlobalId is not unique in its owning model');
   const ifcClass = className(r, expressId);
   const name = nameOf(r, expressId);
   row.before.ifcClass = ifcClass;
@@ -168,6 +170,15 @@ function resolve(ctx: Context, row: AuthoringRow): void {
       try { row.before.hosted = readExpectedHostedEdit(r.dataStore, r.editor, row.expressId, ctx.batch.units); }
       catch (error) { throw new Refusal('invalid', error instanceof Error ? error.message : String(error)); }
       if (!sameHostedEdit(row.before.hosted, op.expected)) throw new Refusal('conflict', 'The current native hosted binding, position or dimensions differ from the expected state');
+      break;
+    }
+    case 'element.trimExtend': {
+      row.resolved.target = row.expressId = existing(ctx, op.target, row);
+      const r = reader(ctx, row.modelId!);
+      try { verifyReachExpected(r.dataStore, r.view, r.editor, row.expressId, op); }
+      catch (error) { throw new Refusal('conflict', error instanceof Error ? error.message : String(error)); }
+      row.before.reach = reachBefore(ctx.state, row.modelId!, row.expressId) ?? undefined;
+      if ('wall' in op.boundary) row.resolved.reachBoundary = element(ctx, op.boundary.wall, row);
       return;
     }
     case 'element.split': {
@@ -334,7 +345,16 @@ export function previewModelAuthoring(state: ViewerState, batch: ModelAuthoringB
     }
   }
   nativeDryRun(ctx, batch);
-  for (const row of ctx.rows) if (row.status === 'ready' && row.modelId && (row.op.op === 'element.resize' || row.op.op === 'element.profile')) {
+  for (const row of ctx.rows) if (row.status === 'ready' && row.modelId && (row.op.op === 'element.resize' || row.op.op === 'element.profile' || row.op.op === 'element.trimExtend')) {
+    const boundary = row.op.op === 'element.trimExtend' ? row.resolved.reachBoundary : undefined;
+    // The whole native batch validates this boundary; the independent body draft
+    // cannot reproduce a preceding edit of the same existing wall (#7262).
+    if (boundary && 'id' in boundary && ctx.rows.some(previous => previous.index < row.index
+      && previous.status === 'ready' && previous.modelId === row.modelId && previous.expressId === boundary.id
+      && previous.op.op !== 'element.copy' && previous.op.op !== 'element.array')) {
+      row.previewUnavailable = true;
+      continue;
+    }
     const ghost = authoringSizeGhost(state, batch, row, row.modelId, 0);
     row.previewUnavailable = ghost.unavailable;
     row.previewOmitted = ghost.omitted;

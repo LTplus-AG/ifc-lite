@@ -24,6 +24,7 @@ import type { HostedFillSpec } from '@/store/slices/mutation-hosted-fill';
 import type { ModellingMethods } from '@/store/slices/mutation-modelling-records';
 import { draftElementSize } from '@/lib/element-size-commit';
 import { writeElementProfile } from '@/store/slices/mutation-element-profile';
+import { writeAuthoringReach } from './model-authoring-reach';
 import { sizeInMetres } from './model-authoring-size-params';
 import { authoringCopyTransforms, copyRefs } from './model-authoring-copy';
 import { pointToMetres, toMetres, type AuthoringOp, type AxisParams, type BoxParams, type ModelAuthoringBatch } from './model-authoring';
@@ -34,6 +35,8 @@ export type ElementId = { id: number } | { ref: string };
 /** What preview resolved for an operation; the commit re-resolves and must find the same. */
 export interface ResolvedOp {
   target?: number;
+  reachBoundary?: ElementId;
+  reachPlan?: import('@ifc-lite/create').ElementTrimExtendResult;
   splitEffects?: ReturnType<typeof import('@ifc-lite/create').splitElementsInStore>[number];
   /** The element a type or material is assigned to. */
   subject?: ElementId;
@@ -169,6 +172,9 @@ export function draftAuthoringOperation(batch: ModelAuthoringBatch, dataStore: I
   switch (op.op) {
     case 'hosted.edit':
       writeHostedEdit(batch, dataStore, draft, resolved.target!, op.expected, op.edit, op.target.globalId);
+      break;
+    case 'element.trimExtend':
+      resolved.reachPlan = writeAuthoringReach(batch, dataStore, draft, resolved.target!, op, resolved.reachBoundary, refs);
       return;
     case 'element.split':
       resolved.splitEffects = writeNativeSplit(batch, op, dataStore, draft, resolved.target!, splitScopes);

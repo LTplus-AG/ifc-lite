@@ -52,6 +52,7 @@ import {
 import { parseSubmission } from './submission.mjs';
 import { regenerateTruth, scoreSubmission, resolveScoringSalt } from './score.mjs';
 import { saltFingerprint, redactSalt } from '../lib/salt.mjs';
+import { isMainEntry } from '../../../scripts/lib/is-main-entry.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 export const BASELINE_NAMES = ['always-clean', 'heuristic-text', 'oracle-kernel'];
@@ -342,7 +343,7 @@ async function main() {
   process.stdout.write(`${JSON.stringify(leaderboard, null, 2)}\n`);
 }
 
-const isMain = process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1];
+const isMain = isMainEntry(import.meta.url);
 if (isMain) {
   main().catch((err) => {
     // Same rule as score.mjs: this CLI runs with the live reporting salt in its

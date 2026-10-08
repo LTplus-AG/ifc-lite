@@ -24,7 +24,6 @@
  */
 
 import { writeFile } from 'node:fs/promises';
-import { fileURLToPath } from 'node:url';
 import { IfcCreator } from '../../packages/create/dist/index.js';
 import { deterministicCreateParams } from './lib/deterministic-create.mjs';
 import { Rng } from './lib/rng.mjs';
@@ -35,6 +34,7 @@ import {
 import * as frame from './families/frame.mjs';
 import * as office from './families/office.mjs';
 import { getFlag, numberFlag, seedFlag } from './lib/flags.mjs';
+import { isMainEntry } from '../../scripts/lib/is-main-entry.mjs';
 
 export const FAMILIES = { frame, office };
 export const FAMILY_NAMES = Object.keys(FAMILIES);
@@ -197,7 +197,7 @@ async function main() {
   }
 }
 
-const isMain = process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1];
+const isMain = isMainEntry(import.meta.url);
 if (isMain) {
   main().catch((err) => {
     const text = err?.name === 'SaltFormatError' ? `error: ${err.message}` : (err.stack ?? err.message);

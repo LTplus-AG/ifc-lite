@@ -10,7 +10,8 @@ import { Session } from 'node:inspector';
 import { createRequire } from 'node:module';
 import { dirname, join, resolve } from 'node:path';
 import { performance } from 'node:perf_hooks';
-import { fileURLToPath, pathToFileURL } from 'node:url';
+import { pathToFileURL } from 'node:url';
+import { isMainEntry } from '../lib/is-main-entry.mjs';
 
 /** Self-time attribution only; inclusive stack totals double-count samples. */
 export function profileSummary(profile) {
@@ -141,7 +142,7 @@ export async function diagnose(modelPath, { cwd = process.cwd(), profile = false
   };
 }
 
-if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+if (isMainEntry(import.meta.url)) {
   const args = process.argv.slice(2);
   const profile = args.includes('--profile');
   const positional = args.filter(arg => arg !== '--profile');

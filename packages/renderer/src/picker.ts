@@ -19,6 +19,7 @@ import {
   writePickUniforms,
 } from './picker-rte-uniforms.js';
 import { isReadbackAbort, releaseReadbacks } from './picker-readbacks.js';
+import { PickDepthSample } from './picker-depth-sample.js';
 import { relativeToEyeWgsl } from './shaders/relative-to-eye.wgsl.js';
 import { drawInstanceRuns, uploadInstancedRteDeltas } from './instanced-rte.js';
 import { INSTANCED_RTE_DELTA_SLOT, INSTANCED_VERTEX_BUFFERS } from './instanced-vertex-layout.js';
@@ -40,6 +41,7 @@ export class Picker {
   private instancedPickBindGroup: GPUBindGroup | null = null;
   private instancedUniformBuffer: GPUBuffer;
   private depthTexture: GPUTexture;
+  private depthSample: PickDepthSample;
   private colorTexture: GPUTexture;
   private uniformBuffer: GPUBuffer;
   private expressIdBuffer: GPUBuffer;
@@ -59,6 +61,7 @@ export class Picker {
   constructor(device: WebGPUDevice, width: number = 1, height: number = 1) {
     this.webgpuDevice = device;
     this.device = device.getDevice();
+    this.depthSample = new PickDepthSample(this.device);
 
     // Create textures for picking
     this.colorTexture = this.device.createTexture({
@@ -70,10 +73,7 @@ export class Picker {
     this.depthTexture = this.device.createTexture({
       size: { width, height },
       format: 'depth32float',
-      // COPY_SRC so we can read the depth texel at the click position
-      // back to the CPU and unproject to recover the world-space hit
-      // point for hover tooltips / measurements.
-      usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.COPY_SRC,
+      usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
     });
 
     // One dynamically-offset uniform slot per flat mesh. The buffer carries
@@ -376,52 +376,26 @@ export class Picker {
       { width: 1, height: 1 },
     );
 
-    // Depth readback for click-to-world unprojection. WebGPU forbids
-    // partial copies from depth/stencil-format textures — the copy must
-    // cover the entire subresource. So we copy the whole depth image
-    // and index into the buffer client-side after mapping. depth32float
-    // = 4 bytes per texel; bytesPerRow must still be a multiple of 256.
-    const depthBytesPerRow = Math.ceil((width * 4) / 256) * 256;
-    const depthBuffer = this.device.createBuffer({
-      size: depthBytesPerRow * height,
-      usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
-    });
-    encoder.copyTextureToBuffer(
-      {
-        texture: this.depthTexture,
-        origin: { x: 0, y: 0, z: 0 },
-        aspect: 'depth-only',
-      },
-      { buffer: depthBuffer, bytesPerRow: depthBytesPerRow, rowsPerImage: height },
-      { width, height },
-    );
-
-    this.device.queue.submit([encoder.finish()]);
-    // GPUMapMode.READ = 1 (WebGPU spec)
+    // The compute sample and ID copy share the render submission and staging
+    // buffer. Each pick owns its coordinates and output until mapping finishes.
+    let depthResources: readonly GPUBuffer[] = [];
+    let sample: number;
+    let depth: number;
     try {
-      await Promise.all([readBuffer.mapAsync(1), depthBuffer.mapAsync(1)]);
+      depthResources = this.depthSample.encode(
+        encoder, this.depthTexture, sampleX, sampleY, readBuffer, 4,
+      );
+      this.device.queue.submit([encoder.finish()]);
+      await readBuffer.mapAsync(GPUMapMode.READ);
+      const bytes = readBuffer.getMappedRange();
+      sample = new Uint32Array(bytes, 0, 1)[0];
+      depth = new Float32Array(bytes, 4, 1)[0];
     } catch (err) {
-      // Free BOTH readbacks on every failure path, not just the aborted one.
-      // `Promise.all` rejects the moment one map fails, so the other may have
-      // succeeded and still be holding its mapped GPU allocation — rethrowing
-      // without this leaks it for the life of the device.
-      releaseReadbacks(readBuffer, depthBuffer);
-      // The device died between submit and readback — see isReadbackAbort.
       if (!isReadbackAbort(err)) throw err;
       return null;
+    } finally {
+      releaseReadbacks(readBuffer, ...depthResources);
     }
-    const sample = new Uint32Array(readBuffer.getMappedRange())[0];
-    const depthBytes = new Uint8Array(depthBuffer.getMappedRange());
-    const depthOffset = sampleY * depthBytesPerRow + sampleX * 4;
-    const depth = new Float32Array(
-      depthBytes.buffer,
-      depthBytes.byteOffset + depthOffset,
-      1,
-    )[0];
-    readBuffer.unmap();
-    depthBuffer.unmap();
-    readBuffer.destroy();
-    depthBuffer.destroy();
 
     const decoded = decodePickSample(sample);
     if (decoded.kind === 'none') return null;
@@ -581,10 +555,7 @@ export class Picker {
       this.depthTexture = this.device.createTexture({
         size: { width, height },
         format: 'depth32float',
-        // COPY_SRC so single-pixel pick can read depth back for the
-        // hover-XYZ unprojection. Rect pick doesn't sample depth but
-        // costs nothing to keep the flag set.
-        usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.COPY_SRC,
+        usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
       });
     }
     // WebGPU texture views can't be reused after submit, so build fresh ones.

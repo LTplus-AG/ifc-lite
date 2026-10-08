@@ -88,6 +88,17 @@ call sites and `useViewerStore` subscriptions on the viewport, properties,
 hierarchy and streaming paths statically (minified component names make a
 runtime fiber census unattributable, and mounted counts move with UI state).
 
+## GPU point-pick depth candidate held (#6881)
+
+The [same-submission GPU oracles](evidence/bounded-depth-readback-6881/README.md)
+qualify single-texel extraction against a full-depth copy on hardware, including
+concurrent maps and target replacement. Flat-mesh production ID/item/model and
+georeferenced world coordinates match, and device destruction retires pending
+picks. The candidate shares ID/depth staging and keeps per-pick inputs immutable.
+Full public-model viewer hover A/B and all geometry families remain unqualified;
+no speedup or shipping verdict is accepted. Lesson: a bounded readback and exact
+GPU sample establish neither complete picking parity nor interaction throughput.
+
 ## Worker warm-up candidate held (#7036)
 
 The resumed [cold-load captures](evidence/worker-warmup-7036/README.md) show

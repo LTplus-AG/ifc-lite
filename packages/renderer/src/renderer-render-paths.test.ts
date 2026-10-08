@@ -37,6 +37,7 @@ async function requireColorTable() {
     MAP_READ: 1, MAP_WRITE: 2, COPY_SRC: 4, COPY_DST: 8, INDEX: 16,
     VERTEX: 32, UNIFORM: 64, STORAGE: 128, INDIRECT: 256, QUERY_RESOLVE: 512,
 };
+(globalThis as Record<string, unknown>).GPUMapMode = { READ: 1, WRITE: 2 };
 (globalThis as Record<string, unknown>).GPUTextureUsage = {
     COPY_SRC: 1, COPY_DST: 2, TEXTURE_BINDING: 4, STORAGE_BINDING: 8, RENDER_ATTACHMENT: 16,
 };
@@ -200,6 +201,7 @@ function makeHarness(): Harness {
                     return pass;
                 };
             }
+            if (prop === 'beginComputePass') return () => pass;
             if (prop === 'finish') return () => ({});
             return () => undefined;
         },
@@ -248,6 +250,7 @@ function makeHarness(): Harness {
                 // Picker builds real pipelines in its constructor and binds
                 // through the auto layout, so both arms must return objects.
                 case 'createShaderModule': return () => ({});
+                case 'createComputePipeline':
                 case 'createRenderPipeline': return () => ({ getBindGroupLayout: () => ({}) });
                 // Destroying a device also completes every map still pending
                 // against it — with an AbortError, exactly as Chromium does.
@@ -881,7 +884,7 @@ describe('drawables outside the RTE eye envelope (#6128)', () => {
         h.renderer['pickingManager'].setPicker(picker);
 
         assert.strictEqual(await h.renderer.pick(10, 10), null);
-        assert.strictEqual(h.stats.mapAsync, 2, 'the pick pass ran to its readback');
+        assert.strictEqual(h.stats.mapAsync, 1, 'the pick pass ran to its combined readback (#6881)');
         assert.deepStrictEqual(await h.renderer.pickRect(0, 0, 8, 8), new Set());
     });
 
@@ -932,7 +935,7 @@ describe('pick path survives a dead GPU device (#1901)', () => {
         // Resolves null because the stub reads back a zeroed sample (no hit);
         // the readback COUNT is what proves the pass ran, not the value.
         assert.strictEqual(await h.renderer.pick(10, 10), null);
-        assert.strictEqual(h.stats.mapAsync, 2, 'pick() maps the colour + depth readbacks');
+        assert.strictEqual(h.stats.mapAsync, 1, 'pick() maps the combined ID/depth readback (#6881)');
 
         h.stats.mapAsync = 0;
         assert.deepStrictEqual(await h.renderer.pickRect(0, 0, 8, 8), new Set());
@@ -1076,11 +1079,27 @@ describe('pick path survives the device dying mid-readback (#1901)', () => {
         // microtask turns to reach mapAsync than we spun, destroy() lands
         // before submit and both settle via the ENTRY guard, never exercising
         // the overlapping-in-flight release this case exists to cover.
-        // Two picks x (colour + depth) = 4 parked readbacks.
-        assert.strictEqual(h.pendingMaps(), 4, 'both picks must be parked on their readbacks');
+        // #6881: each pick maps one staging buffer containing both ID and depth.
+        assert.strictEqual(h.pendingMaps(), 2, 'both picks must be parked on their readbacks');
         h.renderer.destroy();
         const settled = await Promise.allSettled([first, second]);
         assert.deepStrictEqual(settled.map((s) => s.status), ['fulfilled', 'fulfilled']);
+    });
+
+    it('point-pick transient allocation stays bounded across viewport sizes (#6881)', async () => {
+        for (const [width, height] of [[64, 64], [1292, 1047]]) {
+            const h = makeHarness();
+            const picker = installPicker(h);
+            const before = h.stats.createdBuffers.length;
+            const { inflight } = await park(h, () => picker.pick(0, 0, width, height, [], new Float32Array(16)));
+            const owned = h.stats.createdBuffers.slice(before);
+            assert.ok(owned.reduce((bytes, buffer) => bytes + buffer.size, 0) <= 268,
+                'point picking must not allocate a viewport-sized depth readback');
+            h.settlePendingMaps();
+            await inflight;
+            assert.ok(owned.every(buffer => buffer.destroyed === 1), 'all per-pick resources are released once');
+            picker.destroy();
+        }
     });
 
     it('a REAL readback fault still propagates — the catch is not a blanket swallow', async () => {
@@ -1111,7 +1130,7 @@ describe('pick path survives the device dying mid-readback (#1901)', () => {
         await assert.rejects(inflight, /already mapped/);
 
         const readbacks = h.stats.createdBuffers.slice(before);
-        assert.strictEqual(readbacks.length, 2, 'pick() allocates the colour + depth readbacks');
+        assert.strictEqual(readbacks.length, 3, 'pick() owns staging, coordinates and depth output (#6881)');
         for (const buf of readbacks) {
             assert.ok(buf.destroyed > 0, 'a readback buffer survived the rethrow — leaked');
         }
@@ -1151,8 +1170,8 @@ describe('Picker.pick maps a real readback onto the picked item (#2985)', () => 
         for (let i = 0; i < 5; i++) await Promise.resolve();
         assert.ok(h.pendingMaps() > 0, 'the pick must be parked on its readbacks');
 
-        // The colour readback is the pick's only 256-byte buffer (the depth one
-        // is a full image); `pick` reads texel 0 of it as a u32.
+        // The combined ID/depth readback is the pick's only 256-byte buffer;
+        // `pick` reads texel 0 of it as a u32 (#6881).
         const colour = h.stats.createdBuffers.slice(before).filter((b) => b.size === 256);
         assert.strictEqual(colour.length, 1, 'expected exactly one colour readback');
         new Uint32Array(colour[0].getMappedRange())[0] = 1; // mesh 0, written as index + 1

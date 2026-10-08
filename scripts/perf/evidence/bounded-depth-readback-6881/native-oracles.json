@@ -1,0 +1,209 @@
+{
+  "depth": {
+    "errors": [],
+    "info": {
+      "architecture": "blackwell",
+      "description": "",
+      "device": "",
+      "vendor": "nvidia"
+    },
+    "results": [
+      {
+        "actual": 1039731052,
+        "boundedBytes": 20,
+        "fullBytes": 1024,
+        "h": 4,
+        "oracle": 1039731052,
+        "w": 4,
+        "x": 0,
+        "y": 0
+      },
+      {
+        "actual": 1048616266,
+        "boundedBytes": 20,
+        "fullBytes": 1024,
+        "h": 4,
+        "oracle": 1048616266,
+        "w": 4,
+        "x": 3,
+        "y": 3
+      },
+      {
+        "actual": 1045757428,
+        "boundedBytes": 20,
+        "fullBytes": 1024,
+        "h": 4,
+        "oracle": 1045757428,
+        "w": 4,
+        "x": 2,
+        "y": 2
+      },
+      {
+        "actual": 1044844748,
+        "boundedBytes": 20,
+        "fullBytes": 1024,
+        "h": 4,
+        "oracle": 1044844748,
+        "w": 4,
+        "x": 1,
+        "y": 2
+      },
+      {
+        "actual": 1039731052,
+        "boundedBytes": 20,
+        "fullBytes": 9728,
+        "h": 19,
+        "oracle": 1039731052,
+        "w": 67,
+        "x": 0,
+        "y": 0
+      },
+      {
+        "actual": 1061192468,
+        "boundedBytes": 20,
+        "fullBytes": 9728,
+        "h": 19,
+        "oracle": 1061192468,
+        "w": 67,
+        "x": 66,
+        "y": 18
+      },
+      {
+        "actual": 1062615175,
+        "boundedBytes": 20,
+        "fullBytes": 9728,
+        "h": 19,
+        "oracle": 1062615175,
+        "w": 67,
+        "x": 33,
+        "y": 9
+      },
+      {
+        "actual": 1059286576,
+        "boundedBytes": 20,
+        "fullBytes": 9728,
+        "h": 19,
+        "oracle": 1059286576,
+        "w": 67,
+        "x": 1,
+        "y": 17
+      },
+      {
+        "actual": 1039731052,
+        "boundedBytes": 20,
+        "fullBytes": 5628672,
+        "h": 1047,
+        "oracle": 1039731052,
+        "w": 1292,
+        "x": 0,
+        "y": 0
+      },
+      {
+        "actual": 1059326874,
+        "boundedBytes": 20,
+        "fullBytes": 5628672,
+        "h": 1047,
+        "oracle": 1059326874,
+        "w": 1292,
+        "x": 1291,
+        "y": 1046
+      },
+      {
+        "actual": 1053206528,
+        "boundedBytes": 20,
+        "fullBytes": 5628672,
+        "h": 1047,
+        "oracle": 1053206528,
+        "w": 1292,
+        "x": 646,
+        "y": 523
+      },
+      {
+        "actual": 1059769805,
+        "boundedBytes": 20,
+        "fullBytes": 5628672,
+        "h": 1047,
+        "oracle": 1059769805,
+        "w": 1292,
+        "x": 1,
+        "y": 1045
+      }
+    ]
+  },
+  "deviceLoss": {
+    "results": [
+      null,
+      null
+    ]
+  },
+  "picker": {
+    "actual": [
+      {
+        "expressId": 123,
+        "geometryItemId": 456,
+        "modelIndex": 7,
+        "worldXYZ": {
+          "x": 5000000.012944173,
+          "y": -0.012944173357132972,
+          "z": -4.470348446972139e-8
+        }
+      },
+      {
+        "expressId": 123,
+        "geometryItemId": 456,
+        "modelIndex": 7,
+        "worldXYZ": {
+          "x": 4999999.184517078,
+          "y": 0.8154829214993772,
+          "z": -4.470348446972139e-8
+        }
+      },
+      {
+        "expressId": 123,
+        "geometryItemId": 456,
+        "modelIndex": 7,
+        "worldXYZ": {
+          "x": 4999999.183937489,
+          "y": 0.8160625113511891,
+          "z": -4.470348446972139e-8
+        }
+      },
+      {
+        "expressId": 123,
+        "geometryItemId": 456,
+        "modelIndex": 7,
+        "worldXYZ": {
+          "x": 5000000.816062511,
+          "y": -0.8160625113511891,
+          "z": -4.470348446972139e-8
+        }
+      },
+      null
+    ],
+    "errors": [],
+    "expected": [
+      {
+        "x": 5000000.012944173,
+        "y": -0.012944173357132972,
+        "z": -4.470348446972139e-8
+      },
+      {
+        "x": 4999999.184517078,
+        "y": 0.8154829214993772,
+        "z": -4.470348446972139e-8
+      },
+      {
+        "x": 4999999.183937489,
+        "y": 0.8160625113511891,
+        "z": -4.470348446972139e-8
+      },
+      {
+        "x": 5000000.816062511,
+        "y": -0.8160625113511891,
+        "z": -4.470348446972139e-8
+      },
+      null
+    ]
+  },
+  "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) T3Code(Alpha)/0.0.45 Chrome/152.0.7977.130 Electron/44.4.2 Safari/537.36"
+}

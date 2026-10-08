@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Undo2 } from 'lucide-react';
 import type { Clash } from '@ifc-lite/clash';
 import { useTranslation } from '@/i18n';
@@ -12,6 +12,7 @@ import { cn } from '@/lib/utils';
 import { useClashGroupLibrary } from '@/lib/clash/group-workspace';
 import { clashGroupApplicationLibrary, useClashGroupApplications, type ClashGroupApplication } from '@/lib/clash/group-applications';
 import { undoClashGroupApplication } from '@/lib/clash/group-apply';
+import { useClashApplicationFocus } from '@/lib/panels/evidence-focus';
 import { applicationContinuity } from '@/lib/clash/group-continuity';
 
 const LIST_LIMIT = 20;
@@ -61,8 +62,14 @@ export function ClashGroupApplicationCard({ receipt }: { receipt: ClashGroupAppl
       setError(outcome.ok ? null : t(`clashApply.undoRefused.${outcome.reason}`));
     } finally { setBusy(false); }
   };
+  const focus = useClashApplicationFocus(s => s.record);
+  const focused = focus?.applicationId === live.id;
+  const original = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (focused) { original.current?.focus(); original.current?.scrollIntoView?.({ block: 'nearest' }); }
+  }, [focused, focus]);
   const undone = live.status === 'undone';
-  return <div aria-live="polite" className={cn('rounded border p-2 space-y-1.5', undone ? 'border-border bg-muted/40' : 'border-emerald-500/40 bg-emerald-500/10')}>
+  return <div ref={original} tabIndex={focused ? -1 : undefined} aria-current={focused ? true : undefined} aria-live="polite" className={cn('rounded border p-2 space-y-1.5', undone ? 'border-border bg-muted/40' : 'border-emerald-500/40 bg-emerald-500/10')}>
     <p className="font-medium">{undone
       ? t(live.created ? 'clashApply.receiptUndoneCreated' : 'clashApply.receiptUndone', { workspace: live.workspaceName })
       : t('clashApply.receiptApplied', { groups: live.addedGroupIds.length, findings, workspace: live.workspaceName })}</p>
@@ -80,11 +87,12 @@ export function ClashGroupApplications() {
   const { t } = useTranslation();
   const activeId = useClashGroupLibrary(state => state.activeId);
   const entries = useClashGroupApplications(state => state.entries);
+  const focus = useClashApplicationFocus(s => s.record);
   useEffect(() => { void clashGroupApplicationLibrary.initialize(); }, []);
-  const receipts = useMemo(() => entries.filter(entry => entry.workspaceId === activeId && entry.status === 'applied')
-    .sort((a, b) => b.createdAt.localeCompare(a.createdAt)), [entries, activeId]);
+  const receipts = useMemo(() => entries.filter(entry => entry.id === focus?.applicationId || (entry.workspaceId === activeId && entry.status === 'applied'))
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt)), [entries, activeId, focus]);
   if (!receipts.length) return null;
-  return <details className="px-2 py-1">
+  return <details open={focus && receipts.some(receipt => receipt.id === focus.applicationId) ? true : undefined} className="px-2 py-1">
     <summary className="cursor-pointer font-medium">{t('clashApply.applicationsTitle', { count: receipts.length })}</summary>
     <div className="mt-1 max-h-64 space-y-2 overflow-y-auto">{receipts.map(receipt => <ClashGroupApplicationCard key={receipt.id} receipt={receipt} />)}</div>
   </details>;

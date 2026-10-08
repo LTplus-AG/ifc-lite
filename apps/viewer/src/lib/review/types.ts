@@ -65,6 +65,7 @@ export interface FindingElement {
 export type FindingEvidence =
   | { kind: 'clash'; clashId: string; occurrenceKey: string; reviewKey: string }
   | { kind: 'clash-baseline'; reviewKey: string }
+  | { kind: 'clash-group-application'; applicationId: string; groupId: string }
   | { kind: 'validation'; specificationId: string; modelId: string; expressId: number }
   | { kind: 'run-reconciliation'; baseRunId: string; headRunId: string; identity: string }
   | { kind: 'comparison'; key: string }
@@ -80,7 +81,7 @@ export type FindingEvidence =
  *   re-examined it (a resolution *candidate*, never a resolution).
  * `not-evaluated`: historical only, and no complete compatible current run
  *   could have seen it.
- * `record`: a coordination record (BCF topic) whose native status is authoritative.
+ * `record`: a coordination record (BCF topic or grouping receipt) whose native status is authoritative.
  */
 export type FindingLifecycle = 'observed' | 'new' | 'persistent' | 'no-longer-observed' | 'not-evaluated' | 'record';
 

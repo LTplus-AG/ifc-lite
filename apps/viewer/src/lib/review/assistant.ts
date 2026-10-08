@@ -10,6 +10,8 @@
  * identity, so pinning another card makes earlier evidence stale.
  */
 
+import { useClashGroupApplications } from '../clash/group-applications';
+import { useClashGroupLibrary } from '../clash/group-workspace';
 import { subscribeRevisionBaseline } from '../clash/revision-baseline';
 import { useViewerStore } from '@/store';
 import { useSemanticSession } from '../semantic/session';
@@ -40,6 +42,8 @@ const clearSourcePin = () => {
   if (useReviewAssistantCard.getState().card) useReviewAssistantCard.setState({ card: null, project: null });
 };
 subscribeRevisionBaseline(clearSourcePin);
+useClashGroupApplications.subscribe((next, previous) => { if (next.entries !== previous.entries) clearSourcePin(); });
+useClashGroupLibrary.subscribe((next, previous) => { if (next.entries !== previous.entries) clearSourcePin(); });
 useViewerStore.subscribe((next, previous) => {
   if (next.clashResult !== previous.clashResult || next.clashRawResult !== previous.clashRawResult
     || next.idsValidationReport !== previous.idsValidationReport || next.compareResult !== previous.compareResult

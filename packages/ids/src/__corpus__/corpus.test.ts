@@ -207,12 +207,6 @@ describe('buildingSMART IDS conformance corpus', () => {
  * which is why they are audited here rather than validated.
  */
 const AUDIT_UNDETECTED = new Set([
-  'attribute/invalid-booleans_must_be_specified_as_lowercase_strings_2_3',
-  'attribute/invalid-integers_cannot_be_expressed_as_floating_point_numbers_2_2',
-  'attribute/invalid-only_specifically_formatted_numbers_are_allowed_1_4',
-  'attribute/invalid-only_specifically_formatted_numbers_are_allowed_2_4',
-  'attribute/invalid-specifying_a_float_when_the_value_is_an_integer_is_invalid',
-  'attribute/invalid-value_checks_always_fail_for_lists',
   'entity/invalid-an_entity_not_matching_the_specified_class_should_fail',
   'entity/invalid-entities_can_be_specified_as_a_xsd_regex_pattern_1_2',
   'entity/invalid-entities_can_be_specified_as_an_enumeration_3_3',
@@ -220,8 +214,6 @@ const AUDIT_UNDETECTED = new Set([
   'entity/invalid-subclasses_are_not_considered_as_matching',
   'ids/invalid-prohibited_specifications_invalid_if_requirements_are_specified',
   'partof/invalid-a_group_predefined_type_must_match_exactly_1_2',
-  'restriction/invalid-patterns_always_fail_on_any_number',
-  'restriction/invalid-patterns_only_work_on_strings_and_nothing_else',
 ]);
 
 /**
@@ -232,7 +224,7 @@ const AUDIT_UNDETECTED = new Set([
  * This one moves if detection regresses OR if the allowlist grows, and both
  * should be a deliberate, visible diff.
  */
-const AUDIT_DETECTS = 12;
+const AUDIT_DETECTS = 20;
 
   describe('invalid-: is the IDS DOCUMENT itself non-conforming', () => {
     it('every allowlisted case is a real corpus file', () => {

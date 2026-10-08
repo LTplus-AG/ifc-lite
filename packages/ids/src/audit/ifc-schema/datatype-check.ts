@@ -77,7 +77,8 @@ export function checkRestrictionBase(
   backingType: string,
   dataType: string,
   path: string,
-  issues: IDSAuditIssue[]
+  issues: IDSAuditIssue[],
+  facetType: 'property' | 'attribute' = 'property'
 ): void {
   // Only restrictions can mismatch — simpleValue is always treated as
   // string-compatible by the IDS XSD.
@@ -115,7 +116,7 @@ export function checkRestrictionBase(
       code: 'E_RESTRICTION_BASE_MISMATCH',
       message: `xs:restriction base (${inferred}) is not compatible with dataType "${dataType}" (backing ${backingType})`,
       path,
-      facetType: 'property',
+      facetType,
       detail: { inferred, expected: backingType, dataType },
     });
   }

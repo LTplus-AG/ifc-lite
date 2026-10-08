@@ -42,6 +42,7 @@ import type { IDSAuditIssue, IDSAuditOptions } from '../types.js';
 import { assertGuardedRegexPattern, UnsafeRegexPatternError } from '@ifc-lite/regex-guard';
 import { checkDataTypeMatch, checkRestrictionBase, checkSimpleValueLexical } from './datatype-check.js';
 import { rowForAlias } from '../../facets/ifc2x3-type-mapping.js';
+import { auditAttributeValueType } from './attribute-value.js';
 
 export async function runIfcSchemaAudit(
   doc: IDSDocument,
@@ -667,14 +668,15 @@ async function auditAttributeFacet(
 ): Promise<void> {
   if (!applicabilityEntity) return; // Can't cross-check without an entity.
   if (applicabilityEntity.name.type !== 'simpleValue') return;
-  if (facet.name.type !== 'simpleValue') return;
-
   const entityName = applicabilityEntity.name.value;
-  const attrName = facet.name.value;
-  if (!entityName || !attrName) return;
-
+  if (!entityName) return;
   const chain = await getInheritanceChain(version, entityName);
   if (chain.length === 0) return; // Unknown entity already flagged.
+  auditAttributeValueType(facet, version, chain, path, issues);
+
+  if (facet.name.type !== 'simpleValue') return;
+  const attrName = facet.name.value;
+  if (!attrName) return;
 
   if (!chainHasAttribute(chain, attrName)) {
     issues.push({

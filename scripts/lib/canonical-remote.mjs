@@ -42,13 +42,13 @@
 import { spawnSync } from 'node:child_process';
 
 /**
- * `LTplus-AG/ifc-lite` must be the WHOLE path: directly after the host
+ * `LTplus-AG/ifc-lite` must be the WHOLE path: directly after github.com
  * (`scheme://[user@]host/` or scp-style `[user@]host:`), so a fork whose path
  * merely contains it (`someone/LTplus-AG/ifc-lite`) and a look-alike owner
  * (`Evil-LTplus-AG/ifc-lite`) do not match; an optional `.git` and trailing
  * slash may follow. GitHub paths are case-insensitive.
  */
-const CANONICAL_FETCH_LINE = /^(\S+)\s+(?:[a-z][a-z0-9+.-]*:\/\/[^/\s]+\/|[^/\s]+:)LTplus-AG\/ifc-lite(?:\.git)?\/?\s+\(fetch\)$/i;
+const CANONICAL_FETCH_LINE = /^(\S+)\s+(?:[a-z][a-z0-9+.-]*:\/\/(?:[^/\s@]+@)?github\.com(?::[0-9]+)?\/|(?:[^/\s@:]+@)?github\.com:)LTplus-AG\/ifc-lite(?:\.git)?\/?\s+\(fetch\)$/i;
 
 /**
  * The remote in `git remote -v` output whose FETCH URL is the canonical

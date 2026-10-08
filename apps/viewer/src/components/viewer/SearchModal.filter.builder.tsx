@@ -16,6 +16,7 @@
  * rendered output and pass unmodified (the lift invariant).
  */
 
+import { CapturedScopeControl } from './result/CapturedScopeControl';
 import { useCallback, useState } from 'react';
 import { Plus, Trash2, X, Bookmark, Save } from 'lucide-react';
 import { useShallow } from 'zustand/react/shallow';
@@ -190,6 +191,7 @@ export function SearchModalFilterBuilder() {
   return (
     <div className="flex flex-col">
       <SearchModalFilterSelector />
+      <CapturedScopeControl scope={filter.capturedScope} onChange={capturedScope => setSearchFilter({ ...filter, capturedScope })} />
       <div className="flex flex-col gap-3 p-4">
         {/* ── Toolbar: Limit · promote-query · Presets · Save · Reset ── */}
         <div className="flex flex-wrap items-center gap-2 text-xs">

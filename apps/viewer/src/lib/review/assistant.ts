@@ -42,8 +42,8 @@ const clearSourcePin = () => {
   if (useReviewAssistantCard.getState().card) useReviewAssistantCard.setState({ card: null, project: null });
 };
 subscribeRevisionBaseline(clearSourcePin);
-useClashGroupApplications.subscribe((next, previous) => { if (next.entries !== previous.entries) clearSourcePin(); });
-useClashGroupLibrary.subscribe((next, previous) => { if (next.entries !== previous.entries) clearSourcePin(); });
+useClashGroupApplications.subscribe((next, previous) => { if (next.entries !== previous.entries || next.status.phase !== previous.status.phase) clearSourcePin(); });
+useClashGroupLibrary.subscribe((next, previous) => { if (next.entries !== previous.entries || next.status.phase !== previous.status.phase) clearSourcePin(); });
 useViewerStore.subscribe((next, previous) => {
   if (next.clashResult !== previous.clashResult || next.clashRawResult !== previous.clashRawResult
     || next.idsValidationReport !== previous.idsValidationReport || next.compareResult !== previous.compareResult

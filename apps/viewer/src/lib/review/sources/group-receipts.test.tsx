@@ -10,8 +10,8 @@ import { useViewerStore } from '@/store';
 import { revisionPair, runClash } from '@/lib/compare/revision-pair.test-support';
 import { applyClashGroupPlan, newWorkspaceBase, planClashGroupApply, undoClashGroupApplication } from '@/lib/clash/group-apply';
 import { manualClashOccurrenceKey } from '@/lib/clash/manual-groups';
-import { useClashGroupApplications } from '@/lib/clash/group-applications';
-import { useClashGroupLibrary } from '@/lib/clash/group-workspace';
+import { clashGroupApplicationLibrary, useClashGroupApplications } from '@/lib/clash/group-applications';
+import { clashGroupLibrary, useClashGroupLibrary } from '@/lib/clash/group-workspace';
 import { readContentRows } from '@/lib/storage/content-database';
 import { useReviewSnapshot } from '@/components/viewer/review/useReviewSnapshot';
 import { ClashGroupApplications } from '@/components/viewer/assistant/ClashGroupApplicationCard';
@@ -21,7 +21,7 @@ import { buildCards } from '../cards';
 import { pinReviewCard } from '../assistant';
 import { useReviewAssistantCard } from '../assistant-state';
 import { openOriginal } from '../open';
-import { groupReceiptFindings } from './group-receipts';
+import { captureAnalysisStamp, stampAnalysisReport } from '@/hooks/useAnalysisStaleness';
 import { render, cleanup, waitFor, advance } from '@/test/render';
 
 const initial = useViewerStore.getState();
@@ -83,9 +83,13 @@ test('#7089 duplicate native occurrences do not acquire group element identity',
 
 test('#7089 stale current runs keep receipt provenance without current element claims', async t => {
   const source = await applied(t); if (!source) return;
-  const result = groupReceiptFindings([source.receipt], useClashGroupLibrary.getState().entries, { result: source.result, stale: true }, liveReviewModels());
-  assert.equal(result.findings[0].nativeStatus, 'applied'); assert.deepEqual(result.findings[0].elements, []);
-  assert.ok(result.runs[0].incomplete.some(gap => gap.code === 'stale'));
+  stampAnalysisReport(source.result, captureAnalysisStamp());
+  useViewerStore.setState(state => ({ mutationVersion: state.mutationVersion + 1 }));
+  const [finding] = projected(); assert.ok(finding);
+  assert.equal(finding.nativeStatus, 'applied'); assert.deepEqual(finding.elements, []);
+  assert.ok(finding.run.incomplete.some(gap => gap.code === 'stale'));
+  assert.ok(finding.detail.includes('Native continuity unavailable'));
+  assert.equal(finding.detail.some(line => line.startsWith('native continuity:') || line.startsWith('missing groups ')), false);
 });
 
 function ReceiptCount() {
@@ -142,10 +146,10 @@ test('#7089 unavailable detection keeps saved grouping provenance without invent
 
 test('#7089 unknown saved population is disclosed and never treated as zero new findings', async t => {
   const source = await applied(t); if (!source) return;
-  const receipt = { ...source.receipt, population: null };
-  const result = groupReceiptFindings([receipt], useClashGroupLibrary.getState().entries, { result: source.result, stale: false }, liveReviewModels());
-  assert.ok(result.findings[0].detail.includes('missing groups 0; new findings unknown'));
-  assert.equal(result.findings[0].lifecycle, 'record'); assert.equal(result.runs[0].complete, false);
+  useClashGroupApplications.setState(state => ({ entries: state.entries.map(receipt => ({ ...receipt, population: null })) }));
+  const [finding] = projected(); assert.ok(finding);
+  assert.ok(finding.detail.includes('missing groups 0; new findings unknown'));
+  assert.equal(finding.lifecycle, 'record'); assert.equal(finding.run.complete, false);
 });
 
 
@@ -209,4 +213,32 @@ test('#7089 an orphaned original receipt stays separate from another workspace a
   const original = ui.querySelector('[data-original-clash-application]'); assert.ok(original);
   assert.ok(original.textContent?.includes(source.receipt.workspaceName));
   assert.equal(document.activeElement, original.querySelector('[aria-current="true"]'));
+});
+
+
+test('#7089 pending native hydration is an explicit gap and cannot orphan an existing saved workspace', async t => {
+  const source = await applied(t); if (!source) return;
+  const [finding] = projected(); assert.ok(finding);
+  const card = captureReviewSnapshot().cards.find(card => card.findings.includes(finding) || card.findings.some(row => row.id === finding.id)); assert.ok(card);
+  pinReviewCard(card, null);
+  // Model the cold-session read boundary while retaining real committed native content.
+  useClashGroupLibrary.setState(state => ({ entries: [], status: { ...state.status, phase: 'loading' } }));
+  useClashGroupApplications.setState(state => ({ entries: [], status: { ...state.status, phase: 'loading' } }));
+  assert.equal(useReviewAssistantCard.getState().card, null);
+  assert.equal(openOriginal(finding, () => assert.fail('pending libraries cannot open an original')), false);
+  function Hydration() {
+    const { snapshot } = useReviewSnapshot();
+    return <output>{snapshot.runs.flatMap(run => run.incomplete.map(gap => gap.detail)).join(';')}|{snapshot.findings.filter(row => row.evidence.kind === 'clash-group-application').length}</output>;
+  }
+  const ui = render(<Hydration />);
+  assert.ok(ui.textContent?.includes('applications loading; workspaces loading'));
+  await act(async () => {
+    assert.ok(await clashGroupApplicationLibrary.refresh());
+    assert.ok(await clashGroupLibrary.refresh());
+  }); await advance(0);
+  assert.equal(ui.textContent?.includes('Saved grouping libraries:'), false);
+  assert.ok(ui.textContent?.endsWith('|1'));
+  assert.equal(openOriginal(projected()[0], () => {}), true);
+  assert.equal(useClashGroupLibrary.getState().activeId, source.receipt.workspaceId);
+  assert.equal(evidenceFocus.useClashApplicationFocus.getState().record?.orphaned, false);
 });

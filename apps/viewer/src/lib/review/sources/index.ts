@@ -41,8 +41,13 @@ export const FINDING_SOURCES: readonly FindingSource[] = [
       current: result ? { result, stale: stale(state.clashRawResult ?? result) } : null,
       baseline: loadRevisionBaseline(),
     }, models);
-    const receipts = groupReceiptFindings(useClashGroupApplications.getState().entries, useClashGroupLibrary.getState().entries,
+    const applications = useClashGroupApplications.getState(), workspaces = useClashGroupLibrary.getState();
+    const receipts = groupReceiptFindings(applications.entries, workspaces.status.phase === 'ready' ? workspaces.entries : [],
       result ? { result, stale: stale(state.clashRawResult ?? result) } : null, models);
+    const loading = [applications, workspaces].filter(library => library.status.phase !== 'ready');
+    if (loading.length) receipts.runs.push({ id: 'clash-group-libraries', source: 'clash', temporal: 'historical',
+      label: 'Saved grouping evidence', capturedAt: null, complete: false, models: [],
+      incomplete: [{ code: 'partial-source', detail: `Saved grouping libraries: applications ${applications.status.phase}; workspaces ${workspaces.status.phase}` }] });
     return { runs: [...findings.runs, ...receipts.runs], findings: [...findings.findings, ...receipts.findings] };
   } },
   { kind: 'validation', collect(models) {

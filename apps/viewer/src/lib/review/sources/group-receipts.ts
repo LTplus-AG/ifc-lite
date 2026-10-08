@@ -26,7 +26,7 @@ export function groupReceiptFindings(receipts: readonly ClashGroupApplication[],
   const result: FindingSourceResult = { runs: [], findings: [] };
   for (const receipt of receipts) {
     const workspace = workspaceById.get(receipt.workspaceId);
-    const continuity = receipt.status === 'applied' && workspace && current
+    const continuity = receipt.status === 'applied' && workspace && current && !current.stale
       ? applicationContinuity(receipt, workspace.groups, clashes) : null;
     // The immutable receipt partition supplies original membership, including removed or undone groups.
     const savedGroups = receipt.after.groups.filter(group => receipt.addedGroupIds.includes(group.id));

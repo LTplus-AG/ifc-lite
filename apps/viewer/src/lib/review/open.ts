@@ -46,7 +46,10 @@ export function openOriginal(finding: ReviewFinding, openPanel: (panel: Workspac
     useOriginalClashBaseline.setState({ finding: { clash: matches[0], takenAt: baseline.takenAt, modelNames: baseline.modelNames } });
   }
   if (evidence.kind === 'clash-group-application') {
-    const receipt = useClashGroupApplications.getState().entries.find(entry => entry.id === evidence.applicationId);
+    const applications = useClashGroupApplications.getState(), workspaces = useClashGroupLibrary.getState();
+    // A pending or failed durable read cannot prove that the original workspace is absent.
+    if (applications.status.phase !== 'ready' || workspaces.status.phase !== 'ready') return false;
+    const receipt = applications.entries.find(entry => entry.id === evidence.applicationId);
     if (!receipt || receipt.createdAt !== finding.run.capturedAt || !receipt.addedGroupIds.includes(evidence.groupId)
       || receipt.after.groups.filter(group => group.id === evidence.groupId).length !== 1) return false;
     const orphaned = !useClashGroupLibrary.getState().entries.some(workspace => workspace.id === receipt.workspaceId);

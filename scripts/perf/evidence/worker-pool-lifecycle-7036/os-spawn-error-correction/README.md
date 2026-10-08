@@ -1,0 +1,7 @@
+# Actual OS spawn-error cleanup (#7180, prerequisites for #7036)
+
+An asynchronous ENOENT/EACCES spawn error used to enter positive-root cleanup despite no process being created, retain its allocated profile, and stop explicit diagnostic attempts. Only an error before a successful spawn event and without a PID now classifies the allocation as never having had a child. Live or possibly live children keep canonical observation/refusal. Primary and cleanup errors remain recorded.
+
+Final actual CPU lifecycle controls pass 9/9, zero skipped, including missing and non-executable files, real owned children, and delayed ownership/refusal. Removing only the no-child classification gives two genuine cleanup/attempt assertion failures; exact restoration passes the prior 9-control phase. Root typecheck passes with 3,739 audited test files/62 packages and the permanent frames programme. Later private .mjs changes do not alter that TS programme. All six final gates pass, with zero touched-lint warnings.
+
+The archive preserves two source-text detector false positives (the local variable rename hypothesis did not fix them), and an 8-pass/1-fail real partial-journal fixture read. The fixture now publishes both structured journals atomically; it does not ignore malformed records or relax deadlines. `qualification.json` distinguishes all source phases and the first-focused raw-file reuse limitation. No Windows Chrome, native GPU or performance acceptance is claimed.

@@ -47,6 +47,10 @@ this browser and applies to every loaded model.
 Right-button fly remains available in every preset when camera controls are
 enabled. Shift + left drag pans in every preset and tool.
 
+## Zone volume results
+
+Each zone-set volume report states its cached processed entity outcomes and the native proved-split and refusal counts. Whole-set runs and incremental per-element cache updates have distinct coverage; cached counts describe the evaluated boundary-crossing entities. Missing geometry, unproved solids and volumes invalidated by federation alignment retain separate reasons. Captured model names and IFC `GlobalId` evidence stay with older rows through later updates and panel remounts; unknown cache history shows **Outcome unknown**, and older native revisions show **Stale**. Evidence samples show their displayed and total counts. The native split, authoring, writeback and export controls remain available in their existing locations.
+
 ## Alignment sections
 
 Open **Section → Alignment**, select the model and its `IfcAlignment`, then

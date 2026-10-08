@@ -12,13 +12,20 @@
  * and `bim.store`'s modelling methods for joins, types and materials.
  */
 
+import { uniqueSplitGuid, writeNativeSplit } from './model-authoring-split';
+import { writeHostedEdit } from './model-authoring-hosted-edit';
+import { profileInMetres } from './model-authoring-shape-params';
 import { StoreEditor } from '@ifc-lite/mutations';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { copyBatchInStore, addHostedElementInStore, addOrdinaryElementInStore, resolveSpatialAnchor, type OrdinaryInStoreElement } from '@ifc-lite/create';
 import { createModellingStoreBackend, resolveLiveOwnerHistoryId } from '@ifc-lite/sdk';
 import { ensureStoreyPlacement } from '@/store/slices/storeyPlacement';
 import type { HostedFillSpec } from '@/store/slices/mutation-hosted-fill';
-import type { ModellingMethods } from '@/store/slices/mutation-modelling-records';
+import { detachFromType, type ModellingMethods } from '@/store/slices/mutation-modelling-records';
+import { entityName, typeOf } from '@/lib/commands/modeling/authored-kinds';
+import { draftElementSize } from '@/lib/element-size-commit';
+import { writeElementProfile } from '@/store/slices/mutation-element-profile';
+import { sizeInMetres } from './model-authoring-size-params';
 import { authoringCopyTransforms, copyRefs } from './model-authoring-copy';
 import { pointToMetres, toMetres, type AuthoringOp, type AxisParams, type BoxParams, type ModelAuthoringBatch } from './model-authoring';
 
@@ -28,6 +35,7 @@ export type ElementId = { id: number } | { ref: string };
 /** What preview resolved for an operation; the commit re-resolves and must find the same. */
 export interface ResolvedOp {
   target?: number;
+  splitEffects?: ReturnType<typeof import('@ifc-lite/create').splitElementsInStore>[number];
   /** The element a type or material is assigned to. */
   subject?: ElementId;
   storey?: number;
@@ -50,6 +58,19 @@ export function authoredElementOf(batch: ModelAuthoringBatch, op: Create, global
   const m = (v: number) => toMetres(batch, v);
   const identity = { Name: op.name, ...(globalId ? { GlobalId: globalId } : {}) };
   const kind = KIND[op.ifcClass];
+  const shape = op.params;
+  if ('Profile' in shape) {
+    if (shape.Profile === 'polygon' && 'OuterCurve' in shape) {
+      const footprint = { ...identity, Profile: 'polygon' as const, OuterCurve: shape.OuterCurve.map(([x, y]): [number, number] => [m(x), m(y)]), Position: pointToMetres(batch, shape.position) };
+      if (kind === 'space') return { kind, params: { ...footprint, Height: m(shape.height!) } };
+      if (kind === 'slab' || kind === 'roof' || kind === 'plate') return { kind, params: { ...footprint, Thickness: m(shape.thickness!) } };
+    } else if (typeof shape.Profile === 'object') {
+      const Profile = profileInMetres(shape.Profile, batch.units);
+      if (kind === 'column' && 'position' in shape) return { kind, params: { ...identity, Profile, Position: pointToMetres(batch, shape.position), Height: m(shape.height!) } };
+      if ((kind === 'beam' || kind === 'member') && 'start' in shape) return { kind, params: { ...identity, Profile, Start: pointToMetres(batch, shape.start), End: pointToMetres(batch, shape.end) } };
+    }
+    throw new Error('The native shape does not match its element class');
+  }
   if (kind === 'wall' || kind === 'beam' || kind === 'member') {
     const p = op.params as AxisParams;
     const axis = { ...identity, Start: pointToMetres(batch, p.start), End: pointToMetres(batch, p.end), Height: m(p.height) };
@@ -126,6 +147,7 @@ export function dryRunAuthoring(
   view: import('@ifc-lite/mutations').MutablePropertyView,
   modelId: string,
   rows: readonly DryRunRow[],
+  splitScopes?: Parameters<typeof import('@ifc-lite/create').splitElementsInStore>[3],
 ): Map<number, string> {
   const refusals = new Map<number, string>();
   if (rows.length === 0) return refusals;
@@ -134,7 +156,7 @@ export function dryRunAuthoring(
     const refs = new Map<string, number>();
     for (const row of rows) {
       try {
-        editor.runAtomic((draft) => draftWrite(batch, dataStore, modelId, draft, row, refs));
+        editor.runAtomic((draft) => draftAuthoringOperation(batch, dataStore, modelId, draft, row, refs, splitScopes));
       } catch (error) {
         refusals.set(row.index, error instanceof Error ? error.message : String(error));
       }
@@ -143,9 +165,42 @@ export function dryRunAuthoring(
   return refusals;
 }
 
-function draftWrite(batch: ModelAuthoringBatch, dataStore: IfcDataStore, modelId: string, draft: StoreEditor, row: DryRunRow, refs: Map<string, number>): void {
+/** Recheck the actual intermediate native binding before either dry-run or commit writes it. */
+export function writeNativeTypeDetach(op: Extract<AuthoringOp, { op: 'type.detach' }>, dataStore: IfcDataStore, draft: StoreEditor, resolved: ResolvedOp): void {
+  if (!uniqueSplitGuid(dataStore, draft, op.target.globalId) || !uniqueSplitGuid(dataStore, draft, op.expected.GlobalId)) {
+    throw new Error('The native occurrence or expected type GlobalId is not unique');
+  }
+  const target = { dataStore, view: draft.getMutationView() };
+  const current = typeOf(target, resolved.target!);
+  if (current === null || current !== resolved.typeId || entityName(target, current) !== op.expected.Name) {
+    throw new Error('The current native type differs from the expected binding');
+  }
+  detachFromType(draft, dataStore, [resolved.target!]);
+}
+
+export function draftAuthoringOperation(batch: ModelAuthoringBatch, dataStore: IfcDataStore, modelId: string, draft: StoreEditor, row: DryRunRow, refs: Map<string, number>, splitScopes?: Parameters<typeof import('@ifc-lite/create').splitElementsInStore>[3]): void {
   const { op, resolved } = row;
   switch (op.op) {
+    case 'type.detach':
+      writeNativeTypeDetach(op, dataStore, draft, resolved);
+      return;
+    case 'hosted.edit':
+      writeHostedEdit(batch, dataStore, draft, resolved.target!, op.expected, op.edit, op.target.globalId);
+      return;
+    case 'element.split':
+      resolved.splitEffects = writeNativeSplit(batch, op, dataStore, draft, resolved.target!, splitScopes);
+      return;
+    case 'element.resize': {
+      const outcome = draftElementSize(dataStore, draft, draftMethods(dataStore, modelId, draft), modelId, resolved.target!, sizeInMetres(op.size, batch.units));
+      if (!outcome.ok) throw new Error(outcome.reason);
+      return;
+    }
+    case 'element.profile': {
+      const outcome = writeElementProfile({ modelId, dataStore, view: draft.getMutationView(), editor: draft }, resolved.target!, profileInMetres(op.Profile, batch.units),
+        (updates) => { for (const update of updates) draft.setPositionalAttribute(update.entityId, update.index, update.value); });
+      if (!outcome.ok) throw new Error(outcome.reason);
+      return;
+    }
     case 'element.create': {
       const storey = resolved.storey!;
       const id = addOrdinaryElementInStore(draft, (d) => {

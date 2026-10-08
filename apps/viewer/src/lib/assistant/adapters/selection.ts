@@ -40,6 +40,10 @@ import { effectiveTypeProperties } from '@/components/viewer/properties/effectiv
 import { effectiveSelectedClass } from '@/components/viewer/properties/effectiveSelectedClass';
 import { propertyDisplayValue } from '@/components/viewer/properties/propertyDisplayValue';
 import { evidenceRow, unavailableCapture, type EvidenceAdapter } from './types';
+import { nativeReadTargets } from '@/lib/actions/model-authoring-read-target';
+import { nativeEditEvidence, nativeRootName } from '@/lib/actions/native-edit-evidence';
+import { nativeTypeEvidence } from '@/lib/actions/native-type-evidence';
+import type { ModelEditTarget } from '@/store/slices/mutation-modelling-records';
 
 type Channel = 'storeys' | 'multi' | 'renderer-ids' | 'single';
 const VALUE_CHARS = 240;
@@ -106,7 +110,7 @@ function bounded(value: unknown): string | number | boolean | null {
   return text.length > VALUE_CHARS ? `${text.slice(0, VALUE_CHARS)}…` : text;
 }
 
-function elementRow(s: ViewerState, ref: EntityRef, source: ModelSource, rich: boolean) {
+function elementRow(s: ViewerState, ref: EntityRef, source: ModelSource, rich: boolean, nativeTarget: ModelEditTarget | null) {
   const setLimit = rich ? 16 : 6;
   const relationshipLookupExpressId = source.view?.resolveBaseEntityId(ref.expressId) ?? ref.expressId;
   const nativeRelationships = source.store ? relationshipsForSelection(
@@ -144,7 +148,7 @@ function elementRow(s: ViewerState, ref: EntityRef, source: ModelSource, rich: b
       return [q.name, { value: display.converted ?? q.value, unit: display.unit ?? null }];
     })),
   }));
-  const name = data.attributes.get('Name');
+  const name = source.store ? nativeRootName({ dataStore: source.store, view: source.view }, ref.expressId) : data.attributes.get('Name');
   return evidenceRow({
     kind: 'selected-element', modelId: ref.modelId,
     globalId: resolveEntityRefGlobalIdFromState(s, ref), expressId: ref.expressId,
@@ -154,6 +158,8 @@ function elementRow(s: ViewerState, ref: EntityRef, source: ModelSource, rich: b
     type: effectiveSelectedClass(source.store, source.view, ref.expressId),
     name: typeof name === 'string' && name.length > 0 ? bounded(name) : null,
     attributes, psets, psetCount: data.psets.length, quantities, qsetCount: data.qsets.length,
+    nativeEdit: nativeEditEvidence(nativeTarget, ref.expressId),
+    nativeType: nativeTypeEvidence(s, nativeTarget, ref.expressId),
     structuralStatus: !source.store ? 'unavailable' : source.store.source?.length ? 'available' : 'unavailable-source',
     structural: structuralEvidence(structuralData, ref.expressId, typeof data.attributes.get('GlobalId') === 'string'
       ? String(data.attributes.get('GlobalId')) : undefined, setLimit, valueLimit, source.units, source.store?.schemaVersion, Boolean(source.store?.source?.length)),
@@ -222,6 +228,7 @@ export const selectionAdapter: EvidenceAdapter = {
     if (!selection || selection.refs.length === 0) return unavailableCapture();
     const { refs, channel } = selection;
     const sourceFor = sources(s);
+    const nativeTarget = nativeReadTargets(s);
     const byModel = new Map<string, number>();
     const byClass = new Map<string, number>();
     for (const ref of refs) {
@@ -244,7 +251,7 @@ export const selectionAdapter: EvidenceAdapter = {
         limitations: 'Includes native edits; status covers own edits. Definitions/associations use snapshot freshness. Sections use perElementBounds and full known counts. inheritedType has model/type provenance; occurrence properties override same-named type values. Materials prefer occurrence over type; LayerThickness is metres; properties use panel units. IFC2X3 scalar material-property subtypes are outside the generic-set reader. Unverified fields remain unknown; missing membership inputs/unreadable source edits make totals null/unavailable. Source-free classification/document markers describe original source, not current assignments. Paths have bounded known ancestors; unverified path totals are null. Classification codes use schema-exact ItemReference/Identification; missing systems stay unknown. Relationships count exact native edges; aliases carry inherited lookup IDs. Edited source-free graph edges are unverified source-origin evidence. Unverified material-property counts stay null; empty rows do not prove absence. Documents have native model/target IDs and separate bounds. Empty samples do not prove absence. Selection is sampled; byClass/byModel cover every selected element.',
         structuralLimitations: 'Structural rows match the native member card; counts cover resolved native records and units are declared source units only. Load/evidence bounds are explicit. Missing/duplicate native GUID targets are omitted with unknown resolved totals. Source-free original fields/totals are unknown; authored fields remain readable.',
       },
-      rows: sample.map(ref => elementRow(s, ref, sourceFor(ref.modelId), rich)),
+      rows: sample.map(ref => elementRow(s, ref, sourceFor(ref.modelId), rich, nativeTarget(ref.modelId))),
       totalRows: refs.length, availability: 'available',
     };
   },

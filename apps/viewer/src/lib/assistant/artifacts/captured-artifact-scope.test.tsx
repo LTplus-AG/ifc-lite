@@ -209,5 +209,8 @@ for (const mode of ['selected', 'visible'] as const) for (const entry of cases) 
     const rerun = await previewArtifact(proposal, useViewerStore.getState(), undefined, pinned);
     assert.deepEqual(rerun.population.map(row => [row.modelId, row.count]), [[ARCH, 1], [WALL, 0]], 'a native review rerun keeps the original capture despite a changed selection');
     assert.equal(await replaySaved(preview.artifact), 1, 'native persistence or Lens JSON export/import retains the captured engine population');
+    act(() => useViewerStore.getState().removeModel(ARCH));
+    await assert.rejects(previewArtifact(proposal, useViewerStore.getState(), undefined, pinned), /Captured scope source is missing, replaced, or ambiguous/,
+      'unloading the captured file must refuse instead of evaluating the remaining loaded file');
   });
 }

@@ -1,0 +1,12 @@
+{
+  "frozenMain": "61bda95f21e16ce37ddced25ad0432943736a068",
+  "canonicalFixtureHelperByteIdentical": true,
+  "normalizationRemovedOnlyTwo7119TestsAndImport": true,
+  "mainFixtureRepair": "#7209/#7208",
+  "selectionProvenance": [
+    "6f7db8b62a #7183 canonical classifications",
+    "f43d101f55 #7185 native relationships"
+  ],
+  "selectionCorrection": "obsolete caveat assertions updated with actual real-SketchUp native section counts and bounds; all prior material assertions retained",
+  "materialProductionSha256": "1a462d754a3d7117cfb19fed3b2a1feeef07f9a8ad9d863422cba23775d3d510"
+}

@@ -136,6 +136,7 @@ test('a malformed check proposal is a refused card with its reason, never a revi
   assert.equal(ui.querySelector('section[aria-label="Review IDS draft"]'), null);
 });
 
+// #7115: use the real adapter capture, including its composite report/side identity.
 test('a report outline from validation evidence previews live table rows and saves a new document', async () => {
   await seedAuthoringSample({ editEnabled: false });
   const { parseIDS } = await import('@ifc-lite/ids');

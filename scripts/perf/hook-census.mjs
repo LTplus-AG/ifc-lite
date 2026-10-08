@@ -31,6 +31,7 @@ import { existsSync, readFileSync, statSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import ts from 'typescript';
+import { isMainEntry } from '../lib/is-main-entry.mjs';
 
 const REPO = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 export const VIEWER_SRC = join(REPO, 'apps/viewer/src');
@@ -124,7 +125,7 @@ export function hookCensus(srcRoot = VIEWER_SRC, paths = PATHS, top = 10) {
   return Object.fromEntries(Object.entries(paths).map(([name, entry]) => [name, censusFrom(join(srcRoot, entry), srcRoot, top)]));
 }
 
-if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+if (isMainEntry(import.meta.url)) {
   const args = process.argv.slice(2);
   const topArg = args.indexOf('--top');
   // `--top 0` is valid (totals only); only a missing/garbled value is an error.

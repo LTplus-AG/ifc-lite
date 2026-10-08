@@ -29,6 +29,15 @@ npx @ifc-lite/mcp ./model.ifc --open
 
 ## Embedded loaded-model authoring
 
+For embedded HTTP servers, `HttpTransport` accepts `maxSessions` (default
+1000, including pending factory builds) and `sessionIdleMs` (default 30
+minutes). At capacity it admits a new session only if a slot is free or an
+idle session can be reclaimed without unpublished drafts, active requests,
+or open event streams. Otherwise initialization returns `503
+session-capacity`; an unknown session returns `404 unknown-session` and must
+initialize again. See the [embedding guide](https://github.com/LTplus-AG/ifc-lite/blob/main/docs/guide/mcp.md#programmatic-embedding)
+for the idle-window and response contract.
+
 `loadIfcModel` returns a model whose `bim.store` supports the existing
 `addElementType`, `assignType`, `addMaterial`, `addMaterialLayerSet`,
 `addMaterialLayerSetUsage` and `assignMaterial` SDK methods. They delegate to

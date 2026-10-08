@@ -14,6 +14,7 @@ export const CONTENT_POLICIES = {
   modelChanges: { immutableEvidence: false },
   clashGroupApplications: { immutableEvidence: false },
   reviewWorkspaces: { immutableEvidence: false },
+  clashReports: { immutableEvidence: true },
   semanticReviews: { immutableEvidence: false },
   assistantRecipes: { immutableEvidence: false },
   assistantPreferences: { immutableEvidence: false },

@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { okResult, paginate, fmtCount } from './util.js';
 import { materialFallbackName } from '../material-naming.js';
 
@@ -48,6 +48,27 @@ describe('tool utilities', () => {
     expect(fmtCount(3, 'door')).toBe('3 doors');
     expect(fmtCount(2, 'wall', 'walls')).toBe('2 walls');
     expect(fmtCount(2500, 'wall')).toBe('2,500 walls');
+  });
+
+  describe('on a host whose default locale is not en-US', () => {
+    // Tool text is read by agents and pinned by tests; it must not change with
+    // the LANG of whichever machine runs the server. Node derives the default
+    // locale from the environment (sv-SE groups thousands with a no-break
+    // space), so simulate that host by defaulting the locale argument.
+    afterEach(() => vi.restoreAllMocks());
+
+    it('formats counts the same as on an en-US host', () => {
+      const original = Number.prototype.toLocaleString;
+      vi.spyOn(Number.prototype, 'toLocaleString').mockImplementation(function (
+        this: number,
+        locales?: Intl.LocalesArgument,
+        options?: Intl.NumberFormatOptions,
+      ) {
+        return original.call(this, locales ?? 'sv-SE', options);
+      });
+      expect((2500).toLocaleString()).not.toBe('2,500'); // the simulation bites
+      expect(fmtCount(2500, 'wall')).toBe('2,500 walls');
+    });
   });
 
   it('okResult builds structured shape', () => {

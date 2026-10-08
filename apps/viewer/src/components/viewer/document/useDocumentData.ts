@@ -22,6 +22,7 @@ import { chartElementFields } from '@/lib/charts/chart-fields';
 import type { TableState } from '@/lib/document/resolve-table';
 import { useChartDatasets } from '../charts/useChartDatasets';
 import { useChartSourceFilters } from '../charts/useChartSourceFilters';
+import { useChartSourceContext } from '../charts/useChartSourceContext';
 import { useDocumentTables } from './useDocumentTables';
 
 export interface DocumentData {
@@ -44,7 +45,7 @@ const ALL_SCOPE = { kind: 'all' as const };
 export function useDocumentData(document: DocumentSpec | null): DocumentData {
   const { revision } = useTranslation();
   const labels = useMemo(() => captureTranslation(), [revision]);
-  const savedComparisons = useViewerStore((s) => s.savedComparisons);
+  const savedContent = useChartSourceContext();
   const models = useViewerStore((s) => s.models);
   const activeModelId = useViewerStore((s) => s.activeModelId);
   const mutationViews = useViewerStore((s) => s.mutationViews);
@@ -65,8 +66,8 @@ export function useDocumentData(document: DocumentSpec | null): DocumentData {
   }, [models, activeModelId, mutationViews, mutationVersion]);
 
   const { aggregations, chartMessages, chartErrors } = useMemo(() => {
-    return prepareDocumentCharts(document, datasets, sourceFilters, savedComparisons);
-  }, [document, datasets, sourceFilters, savedComparisons, revision]);
+    return prepareDocumentCharts(document, datasets, sourceFilters, savedContent);
+  }, [document, datasets, sourceFilters, savedContent, revision]);
 
   const topics = useMemo(() => bcfProject?.topics ?? new Map<string, BCFTopic>(), [bcfProject]);
   const tables = useDocumentTables(document);

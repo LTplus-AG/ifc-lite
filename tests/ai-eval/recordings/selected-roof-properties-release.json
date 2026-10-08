@@ -85,7 +85,7 @@
         },
         "units": "Quantity values carry {value, unit} in the Properties panel display unit (project unit, or the display-unit override below); a null unit is undeclared. Property values are the panel display strings, with the unit inline when the measure declares one.",
         "displayUnitOverrides": {},
-        "limitations": "Values include unsaved edits made this session (status \"edited\"). Property and quantity sets are bounded per element (see perElementBounds; propertyCount/quantityCount/psetCount/qsetCount are the full counts). Type-inherited property sets, materials, classifications and relationships are not included. Only the first elements of a large selection are read; byClass/byModel cover the whole selection."
+        "limitations": "Values include unsaved edits made this session (status \"edited\"). Property and quantity sets are bounded per element (see perElementBounds; propertyCount/quantityCount/psetCount/qsetCount are the full counts). Type-inherited property sets are a separate inheritedType definition with model and type GlobalId provenance; occurrence properties override same-named type properties for that occurrence. Each section uses the same bounds. Materials, classifications and relationships are not included. Only the first elements of a large selection are read; byClass/byModel cover the whole selection."
       },
       "rows": [
         {
@@ -137,7 +137,17 @@
                 }
               }
             ],
-            "qsetCount": 1
+            "qsetCount": 1,
+            "inheritedType": {
+              "modelId": "arch",
+              "modelName": "arch",
+              "GlobalId": "3n9C2OuJjE89DiYlOaoccO",
+              "Name": "house - roof - slab right",
+              "expressId": 423,
+              "status": "as-loaded",
+              "psetCount": 0,
+              "psets": []
+            }
           }
         }
       ]

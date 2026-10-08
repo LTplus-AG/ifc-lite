@@ -55,6 +55,20 @@ export async function writeOutput(content: string | Uint8Array, outPath?: string
 }
 
 /**
+ * A number for human-readable CLI text, grouped the en-US way (`2,500`) on
+ * every host.
+ *
+ * `toLocaleString()` with no argument follows the host's `LC_ALL` / `LANG`, so
+ * `ifc-lite info` printed `2 500` on a Swedish machine and `2.500` on a German
+ * one (#7027). The CLI's text is English and gets pasted into issues and
+ * diffed, so its numbers are en-US wherever it runs. `--json` output does not
+ * come through here: it carries plain numbers.
+ */
+export function formatCount(n: number): string {
+  return n.toLocaleString('en-US');
+}
+
+/**
  * Format data as a simple ASCII table.
  */
 export function formatTable(headers: string[], rows: string[][]): string {

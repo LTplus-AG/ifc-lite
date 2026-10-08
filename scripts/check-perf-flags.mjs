@@ -21,6 +21,7 @@ import { readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { checkRegistry, findPerfGlobalReads } from './lib/perf-flag-lint.mjs';
+import { isMainEntry } from './lib/is-main-entry.mjs';
 
 const ROOT = resolve(fileURLToPath(new URL('..', import.meta.url)));
 export const REGISTRY_PATH = 'apps/viewer/src/lib/perf/flags.ts';
@@ -91,4 +92,4 @@ function main() {
   console.log(`check-perf-flags: OK (registry valid; ${files.length} production files free of direct __IFC_LITE_* reads)`);
 }
 
-if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) main();
+if (isMainEntry(import.meta.url)) main();

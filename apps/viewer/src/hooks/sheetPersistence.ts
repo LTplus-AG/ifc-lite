@@ -100,7 +100,7 @@ export function createSheetPersistence() {
   });
 
   return {
-    settleHash(modelId: string, hash: string | null, source: File | undefined) {
+    settleHash(modelId: string, hash: string | null, source: File | undefined, fallback?: DrawingSheet) {
       const current = sheets.get(modelId);
       const pending = source ? pendingReplacements.get(source) : undefined;
       const entry = current?.source === source ? current : pending?.get(modelId);
@@ -110,13 +110,23 @@ export function createSheetPersistence() {
       const state = useViewerStore.getState();
       if (hash && entry.dirty) saveSheet(hash, entry.sheet);
       else if (hash) {
-        entry.sheet = loadSheet(hash);
+        entry.sheet = fallback ?? loadSheet(hash);
         if (state.activeModelId === modelId && state.models.get(modelId)?.sourceFile === source) apply(entry, false);
       }
       if (current === entry && !state.models.has(modelId)) sheets.delete(modelId);
     },
+    /** Whether `source`'s session holds an edit that only a resolved key can save (#7035). */
+    hasUnsavedEdit(modelId: string, source: File): boolean {
+      const current = sheets.get(modelId);
+      const entry = current?.source === source ? current : pendingReplacements.get(source)?.get(modelId);
+      return !!entry?.dirty && entry.hash === undefined;
+    },
     dispose: unsubscribe,
   };
+}
+
+export function hasUnsavedSheetEdit(modelId: string, source: File): boolean {
+  return persistence?.hasUnsavedEdit(modelId, source) ?? false;
 }
 
 let persistence: ReturnType<typeof createSheetPersistence> | undefined;
@@ -124,6 +134,6 @@ export function ensureSheetPersistence(): void {
   persistence ??= createSheetPersistence();
 }
 
-export function settleSheetHash(modelId: string, hash: string | null, source: File | undefined): void {
-  persistence?.settleHash(modelId, hash, source);
+export function settleSheetHash(modelId: string, hash: string | null, source: File | undefined, fallback?: DrawingSheet): void {
+  persistence?.settleHash(modelId, hash, source, fallback);
 }

@@ -10,7 +10,9 @@ import {
 } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import { dirname, join, relative, resolve, sep } from 'node:path';
-import { pathToFileURL } from 'node:url';
+
+
+import { isMainEntry } from '../lib/is-main-entry.mjs';
 
 const exec = promisify(execFile);
 const runTimeoutMs = 10 * 60 * 1000;
@@ -117,11 +119,14 @@ async function treeRows(root) {
   return rows;
 }
 
-async function copyProjectTools(repo) {
+export async function copyProjectTools(repo, destination = outRoot) {
+  await mkdir(join(destination, 'lib'), { recursive: true });
+  await copyFile(join(repo, 'scripts', 'lib', 'is-main-entry.mjs'), join(destination, 'lib', 'is-main-entry.mjs'));
   for (const name of ['build-csg-work-bundle.mjs', 'csg-work-diagnostic.mjs', 'run-csg-work-bundle.mjs']) {
     const source = join(repo, 'scripts', 'perf', name);
     if (!(await exists(source))) throw new Error(`required bundle script missing: ${source}`);
-    await copyFile(source, join(outRoot, name));
+    const contents = (await readFile(source, 'utf8')).replace("from '../lib/is-main-entry.mjs'", "from './lib/is-main-entry.mjs'");
+    await writeFile(join(destination, name), contents);
   }
 }
 async function prepareSource(repo, spec, source) {
@@ -296,6 +301,6 @@ async function main() {
   await writeFile(join(outRoot, 'manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`);
   console.log(JSON.stringify({ status: 'BUNDLE_READY', files: manifest.files.length, projects: Object.keys(projects) }));
 }
-if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
+if (isMainEntry(import.meta.url)) {
   main().catch((error) => { console.error(error.stack ?? String(error)); process.exitCode = 1; });
 }

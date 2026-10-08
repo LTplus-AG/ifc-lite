@@ -58,6 +58,7 @@ import {
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { useExportDialogOpenGuard } from '@/hooks/useExportDialogOpenGuard';
 import { useTranslation } from '@/i18n';
+import { beginActivity, discardActivity, finishActivity } from '@/lib/activity/activity-journal';
 
 /** What one export run produced, rendered as the result `<Alert>`. */
 export interface ExportDialogShellResult {
@@ -179,19 +180,28 @@ export function ExportDialogShell({
   const handleExport = useCallback(async () => {
     setResult(null);
     setIsExporting(true);
+    // The activity tray records every export this shell runs (#6925).
+    const job = beginActivity({ kind: 'export', title: 'activityTray.job.export', subject: title });
+    let recorded = false;
     try {
       const outcome = await onExport();
-      if (outcome === null) return;
+      recorded = true;
+      // `null`: the host reports the outcome itself (a hand-off), so the tray does not guess one.
+      if (outcome === null) { discardActivity(job); return; }
+      finishActivity(job, outcome.success ? 'completed' : 'failed', outcome.success ? {} : { detail: outcome.message });
       if (closeOnSuccess && outcome.success) {
         setResult(null);
         setOpen(false);
       } else {
         setResult(outcome);
       }
+    } catch (error) {
+      if (!recorded) finishActivity(job, 'failed', { detail: error instanceof Error ? error.message : String(error) });
+      throw error;
     } finally {
       setIsExporting(false);
     }
-  }, [onExport, closeOnSuccess, setOpen]);
+  }, [onExport, closeOnSuccess, setOpen, title]);
 
   const content = typeof children === 'function' ? children({ isOpen: open, isExporting }) : children;
   const leading = typeof footerLeading === 'function'

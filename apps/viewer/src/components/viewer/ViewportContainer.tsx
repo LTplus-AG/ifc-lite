@@ -68,8 +68,9 @@ import { Upload, AlertTriangle, ChevronDown, ExternalLink, Plus } from 'lucide-r
 import { createBlankIfcFile } from '@/utils/createBlankIfc';
 import { launchModelCommand } from '@/lib/commands/modeling/keys-workspace';
 import type { PointCloudAsset } from '@ifc-lite/geometry';
-import { type IfcDataStore, type MapConversion } from '@ifc-lite/parser';
+import { type IfcDataStore } from '@ifc-lite/parser';
 import { getEffectiveGeoreference } from '@/lib/geo/effective-georef';
+import { usePlacementProjectionKind } from '@/lib/geo/use-placement-projection-kind';
 
 /**
  * The primary container for the 3D viewport, managing IFC model loading,
@@ -177,28 +178,7 @@ export function ViewportContainer() {
 
   // Keep the placement panel context available regardless of map/solar toggles.
   // The Cesium overlay and solar study also consume this effective georeference.
-  const georef = useMemo(() => {
-    const applyPlacementDraft = <T extends { mapConversion?: MapConversion }>(
-      modelId: string,
-      effective: T,
-    ): T & { baseMapConversion?: T['mapConversion'] } => {
-      const preview = cesiumPlacementDraftModelId === modelId ? cesiumPlacementDraft : null;
-      if (!preview || !effective.mapConversion) {
-        return {
-          ...effective,
-          baseMapConversion: effective.mapConversion,
-        };
-      }
-      return {
-        ...effective,
-        baseMapConversion: effective.mapConversion,
-        mapConversion: {
-          ...effective.mapConversion,
-          ...preview,
-        },
-      };
-    };
-
+  const sourceGeoref = useMemo(() => {
     // Check federated models, preferring the user-pinned anchor when present.
     // Matches findReferenceGeorefModel() in useIfcFederation so the Cesium bridge
     // and the parse-time alignment agree on which model drives the world frame.
@@ -207,8 +187,8 @@ export function ViewportContainer() {
     // "pinned anchor, else first model with a usable map-conversion georef"
     // selection for the basepoint overlay and the measure-tool XYZ readout. This
     // memo stays bespoke on purpose: it iterates in the store's insertion order
-    // (not loadedAt), and layers the placement-draft
-    // preview + storey elevations that only the Cesium bridge consumes.
+    // (not loadedAt), and includes the storey elevations that the Cesium
+    // bridge consumes. Draft preview is layered after CRS classification.
     const orderedModels = (() => {
       if (!anchorModelIdOverride) return Array.from(storeModels);
       const entries = Array.from(storeModels);
@@ -230,9 +210,9 @@ export function ViewportContainer() {
         && effective.mapConversion
         && effective.source !== 'siteLocation'
       ) {
-        const previewed = applyPlacementDraft(modelId, effective);
         return {
-          ...previewed,
+          ...effective,
+          mapConversion: effective.mapConversion,
           sourceModelId: modelId,
           storeyElevations: ds.spatialHierarchy?.storeyElevations,
         };
@@ -251,9 +231,9 @@ export function ViewportContainer() {
         && effective.mapConversion
         && effective.source !== 'siteLocation'
       ) {
-        const previewed = applyPlacementDraft('__legacy__', effective);
         return {
-          ...previewed,
+          ...effective,
+          mapConversion: effective.mapConversion,
           sourceModelId: '__legacy__',
           storeyElevations: ifcDataStore.spatialHierarchy?.storeyElevations,
         };
@@ -270,10 +250,18 @@ export function ViewportContainer() {
     // depending on `mergedGeometryResult` re-runs this on every streamed
     // geometry batch, re-triggering the property-set georef scan each time.
     mergedGeometryResult?.coordinateInfo,
-    cesiumPlacementDraft,
-    cesiumPlacementDraftModelId,
     anchorModelIdOverride,
   ]);
+  const projectionKind = usePlacementProjectionKind(sourceGeoref?.projectedCRS);
+  const georef = useMemo(() => {
+    if (!sourceGeoref) return null;
+    // Pending classification must expose the authored anchor, while retaining
+    // a valid projected draft for its eventual preview (#7060).
+    const preview = projectionKind === 'projected'
+      && cesiumPlacementDraftModelId === sourceGeoref.sourceModelId ? cesiumPlacementDraft : null;
+    return { ...sourceGeoref, baseMapConversion: sourceGeoref.mapConversion,
+      mapConversion: preview ? { ...sourceGeoref.mapConversion, ...preview } : sourceGeoref.mapConversion };
+  }, [sourceGeoref, projectionKind, cesiumPlacementDraft, cesiumPlacementDraftModelId]);
 
   // Feed the solar study's sun position into the WebGPU lighting environment
   // (viewer-space sun direction + panel readout when Cesium is off).
@@ -600,12 +588,10 @@ export function ViewportContainer() {
       window.location.reload();
     }
   }, [loadFile]);
-
-
   // Check if any models are loaded (even if hidden) - used to show empty 3D vs starting UI
   const hasLoadedModels = storeModels.size > 0 || (geometryResult?.meshes && geometryResult.meshes.length > 0);
 
-  const { hasTypeGeometry, filteredGeometry, geometryVersion } = useFilteredGeometry(
+  const { hasTypeGeometry, filteredGeometry, geometryVersion, geometryReplacementVersion } = useFilteredGeometry(
     mergedGeometryResult, geometryContentVersion, typeVisibility, typeViewMode);
 
   // Publish to the store so the toolbar can hide the Model/Types switch when
@@ -844,6 +830,7 @@ export function ViewportContainer() {
       <Viewport
         geometry={filteredGeometry}
         geometryVersion={geometryVersion}
+        geometryReplacementVersion={geometryReplacementVersion}
         geometryContentVersion={geometryContentVersion}
         pointClouds={mergedPointClouds}
         coordinateInfo={mergedGeometryResult?.coordinateInfo}

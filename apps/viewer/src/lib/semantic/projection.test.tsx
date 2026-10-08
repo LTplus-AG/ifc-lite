@@ -13,7 +13,7 @@ import { fixtureModel, fixtureModels } from '@/test/store-fixture';
 import { createMutateAdapter } from '@/sdk/adapters/mutate-adapter';
 import { createQueryAdapter } from '@/sdk/adapters/query-adapter';
 import { createExportAdapter } from '@/sdk/adapters/export-adapter';
-import { previewProjection, applyProjection } from './projection';
+import { previewProjection, applyProjection, applyProjections } from './projection';
 import { useSemanticSession } from './session';
 
 const original = useViewerStore.getState();
@@ -126,4 +126,15 @@ test('charter #6643: long semantic identity provenance retains the full URI as I
   const saved = new EntityNode(reopened, id).properties().find(pset => pset.name === 'Pset_SemanticProjection')
     ?.properties.find(property => property.name === 'Source');
   assert.equal(saved?.value, source); assert.equal(saved?.dataType, 'IFCTEXT');
+});
+
+
+test('#7000 conflicting installation records cannot overwrite one target in a reviewed batch', async () => {
+  const { input, revisions, wall } = await fixture();
+  const first = previewProjection({ ...input, mappingId: 'wall-thermal-transmittance', unit: 'mW/(m2.K)' });
+  const second = previewProjection({ ...input, resource: { ...input.resource, id: input.resource.id + '-other' },
+    product: { ...input.product, thermalTransmittance: 600 }, mappingId: 'wall-thermal-transmittance', unit: 'mW/(m2.K)' });
+  assert.throws(() => applyProjections([first, second], revisions), /same IFC property/);
+  assert.equal(value(wall, 'Pset_WallCommon', 'ThermalTransmittance'), undefined);
+  assert.equal(value(wall, 'Pset_SemanticProjection', 'InstallationId'), undefined);
 });

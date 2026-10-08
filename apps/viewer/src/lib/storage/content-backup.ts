@@ -10,6 +10,9 @@ import type { ModelChangeReceipt } from '../actions/model-change-commit.js';
 import type { ClashGroupApplication } from '../clash/group-applications.js';
 import type { ReviewWorkspace } from '../review/workspace.js';
 import type { SavedClashReport } from '../clash/saved-report-schema.js';
+import type { StoredSemanticReview } from '../semantic/assist/library.js';
+import type { AssistantRecipe } from '../assistant/reuse/recipe.js';
+import type { AssistantPreferences } from '../assistant/reuse/preferences.js';
 import type { SavedValidationReport } from '../validation/reports/history.js';
 import type { SavedComparison } from '../compare/savedComparisonSchema.js';
 import type { DocumentSpec } from '../document/types.js';
@@ -42,6 +45,11 @@ export interface ContentLibraries {
   reviewWorkspaces?: ReviewWorkspace[];
   /** Optional for backups written before saved clash reports existed. */
   clashReports?: SavedClashReport[];
+  /** Optional for backups written before reviewed semantic mappings/requirements existed. */
+  semanticReviews?: StoredSemanticReview[];
+  /** Optional for backups written before saved assistant recipes and project preferences existed. */
+  assistantRecipes?: AssistantRecipe[];
+  assistantPreferences?: AssistantPreferences[];
 }
 export interface ContentBackup {
   version: 1;
@@ -76,6 +84,9 @@ export function createContentBackup(libraries: ContentLibraries, status?: Record
     ...(copied.clashGroupApplications ? { clashGroupApplications: partition('clashGroupApplications', copied.clashGroupApplications, CONTENT_DEFINITIONS.clashGroupApplications.decode) } : {}),
     ...(copied.reviewWorkspaces ? { reviewWorkspaces: partition('reviewWorkspaces', copied.reviewWorkspaces, CONTENT_DEFINITIONS.reviewWorkspaces.decode) } : {}),
     ...(copied.clashReports ? { clashReports: partition('clashReports', copied.clashReports, CONTENT_DEFINITIONS.clashReports.decode) } : {}),
+    ...(copied.semanticReviews ? { semanticReviews: partition('semanticReviews', copied.semanticReviews, CONTENT_DEFINITIONS.semanticReviews.decode) } : {}),
+    ...(copied.assistantRecipes ? { assistantRecipes: partition('assistantRecipes', copied.assistantRecipes, CONTENT_DEFINITIONS.assistantRecipes.decode) } : {}),
+    ...(copied.assistantPreferences ? { assistantPreferences: partition('assistantPreferences', copied.assistantPreferences, CONTENT_DEFINITIONS.assistantPreferences.decode) } : {}),
   }, drafts: mergeContentDrafts(parseContentDrafts(preservedDrafts), pendingContentDrafts(), drafts) };
 }
 
@@ -111,6 +122,9 @@ export function parseContentBackup(text: string): ContentBackup {
     ...(libraries.clashGroupApplications !== undefined ? { clashGroupApplications: parse('clashGroupApplications', CONTENT_DEFINITIONS.clashGroupApplications.decode) } : {}),
     ...(libraries.reviewWorkspaces !== undefined ? { reviewWorkspaces: parse('reviewWorkspaces', CONTENT_DEFINITIONS.reviewWorkspaces.decode) } : {}),
     ...(libraries.clashReports !== undefined ? { clashReports: parse('clashReports', CONTENT_DEFINITIONS.clashReports.decode) } : {}),
+    ...(libraries.semanticReviews !== undefined ? { semanticReviews: parse('semanticReviews', CONTENT_DEFINITIONS.semanticReviews.decode) } : {}),
+    ...(libraries.assistantRecipes !== undefined ? { assistantRecipes: parse('assistantRecipes', CONTENT_DEFINITIONS.assistantRecipes.decode) } : {}),
+    ...(libraries.assistantPreferences !== undefined ? { assistantPreferences: parse('assistantPreferences', CONTENT_DEFINITIONS.assistantPreferences.decode) } : {}),
   }, drafts: parseContentDrafts(backup.drafts) };
 }
 
@@ -164,7 +178,11 @@ export async function importContentBackup(backup: ContentBackup, readVisible?: (
       ...(parsed.libraries.modelChanges ? { modelChanges: [] } : {}),
       ...(parsed.libraries.clashGroupApplications ? { clashGroupApplications: [] } : {}),
       ...(parsed.libraries.reviewWorkspaces ? { reviewWorkspaces: [] } : {}),
-      ...(parsed.libraries.clashReports ? { clashReports: [] } : {}) };
+      ...(parsed.libraries.clashReports ? { clashReports: [] } : {}),
+
+      ...(parsed.libraries.semanticReviews ? { semanticReviews: [] } : {}),
+      ...(parsed.libraries.assistantRecipes ? { assistantRecipes: [] } : {}),
+      ...(parsed.libraries.assistantPreferences ? { assistantPreferences: [] } : {}) };
     for (const row of planned) {
       // Keep newer edits to an already-staged identity. Reimport is not an undo.
       const current = visible?.[row.kind]?.find(entry => entry.id === row.id);
@@ -177,6 +195,9 @@ export async function importContentBackup(backup: ContentBackup, readVisible?: (
       if (row.kind === 'clashGroupApplications') { const entry = CONTENT_DEFINITIONS.clashGroupApplications.decode(row.payload); if (entry) (entries.clashGroupApplications ??= []).push(entry); }
       if (row.kind === 'reviewWorkspaces') { const entry = CONTENT_DEFINITIONS.reviewWorkspaces.decode(row.payload); if (entry) (entries.reviewWorkspaces ??= []).push(entry); }
       if (row.kind === 'clashReports') { const entry = CONTENT_DEFINITIONS.clashReports.decode(row.payload); if (entry) (entries.clashReports ??= []).push(entry); }
+      if (row.kind === 'semanticReviews') { const entry = CONTENT_DEFINITIONS.semanticReviews.decode(row.payload); if (entry) (entries.semanticReviews ??= []).push(entry); }
+      if (row.kind === 'assistantRecipes') { const entry = CONTENT_DEFINITIONS.assistantRecipes.decode(row.payload); if (entry) (entries.assistantRecipes ??= []).push(entry); }
+      if (row.kind === 'assistantPreferences') { const entry = CONTENT_DEFINITIONS.assistantPreferences.decode(row.payload); if (entry) (entries.assistantPreferences ??= []).push(entry); }
       if (row.kind === 'document') { const entry = CONTENT_DEFINITIONS.document.decode(row.payload); if (entry) entries.document.push(entry); }
       if (row.kind === 'comparison') { const entry = CONTENT_DEFINITIONS.comparison.decode(row.payload); if (entry) entries.comparison.push(entry); }
       if (row.kind === 'validation') { const entry = CONTENT_DEFINITIONS.validation.decode(row.payload); if (entry) entries.validation.push(entry); }

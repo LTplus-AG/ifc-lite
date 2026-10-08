@@ -13,7 +13,7 @@
 import type { CsvRow } from '@ifc-lite/mutations';
 import type { ViewerState } from '@/store';
 import { toConversion, type ChangeConversion, type ConversionIssue } from './change-conversion';
-import type { ModelChange } from './model-change';
+import type { ModelChange } from '@ifc-lite/ai/artifacts';
 import { currentValue, modelReader, sameValue, UNSUPPORTED_VALUE, type ModelReader } from './model-change-values';
 import { existingQuantity, propertyCell, quantityCell, type CellOutcome } from './table-cells';
 import { resolveTableIdentity } from './table-identity';

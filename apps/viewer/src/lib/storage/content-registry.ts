@@ -10,6 +10,9 @@ import { modelChangeContent } from '../actions/receipts.js';
 import { clashGroupApplicationContent } from '../clash/group-applications.js';
 import { reviewWorkspacesContent } from '../review/workspace.js';
 import { clashReportsContent } from '../clash/saved-report-persistence.js';
+import { semanticReviewContent } from '../semantic/assist/library.js';
+import { assistantRecipesContent } from '../assistant/reuse/recipe-library.js';
+import { assistantPreferencesContent } from '../assistant/reuse/preferences.js';
 import { comparisonContent } from '../compare/savedComparisonPersistence.js';
 import { documentContent } from '../document/persistence.js';
 import { validationContent } from '../validation/reports/persistence.js';
@@ -29,6 +32,9 @@ export const CONTENT_DEFINITIONS = {
   clashGroupApplications: clashGroupApplicationContent,
   reviewWorkspaces: reviewWorkspacesContent,
   clashReports: clashReportsContent,
+  semanticReviews: semanticReviewContent,
+  assistantRecipes: assistantRecipesContent,
+  assistantPreferences: assistantPreferencesContent,
 } satisfies Record<ContentKind, Pick<ContentDefinition<{ id: string }>, 'kind' | 'legacyKey' | 'decode'>>;
 
 export function contentKindForLegacyKey(key: string): ContentKind | undefined {

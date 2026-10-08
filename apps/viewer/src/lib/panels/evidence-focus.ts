@@ -1,0 +1,13 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+import { create } from 'zustand';
+
+/** Native panels consume exact record requests from external entry points. */
+export const useSavedComparisonFocus = create<{ record: { comparisonId: string; key: string } | null }>(() => ({ record: null }));
+export const useSemanticRecordFocus = create<{ record: { resourceId: string } | null }>(() => ({ record: null }));
+
+export const useReconciliationFocus = create<{ record: { baseRunId: string; headRunId: string; identity: string } | null }>(() => ({ record: null }));
+
+export interface ClashApplicationFocusRequest { applicationId: string; workspaceId: string; contextWorkspaceId: string; orphaned: boolean }
+export const useClashApplicationFocus = create<{ record: ClashApplicationFocusRequest | null }>(() => ({ record: null }));

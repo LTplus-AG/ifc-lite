@@ -146,7 +146,7 @@ function report(i: number): NodeReport {
 
 function seededRun(count: number): RunResult {
   const reports = Array.from({ length: count }, (_, i) => report(i));
-  return { ok: false, writes: 0, outputs: new Map(), reports,
+  return { ok: false, writes: 0, outputs: new Map(), reports, review: [],
     graphOutputs: [{ label: 'Count', nodeId: 'n1', port: 'out', data: { kind: 'list', items: Array.from({ length: 40 }, (_, i) => i) } }],
     log: [{ nodeId: 'n0', laneKey: null, level: 'error', message: 'x'.repeat(5000) }] };
 }

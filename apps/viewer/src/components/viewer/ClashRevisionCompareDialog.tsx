@@ -24,7 +24,7 @@
  * folded into `resolved` — see `compareClashRevisions`'s module doc.
  */
 
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { GitCompare, Save } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { IconButton } from '@/components/ui/icon-button';
@@ -32,6 +32,7 @@ import {
   Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger,
 } from '@/components/ui/dialog';
 import { toast } from '@/components/ui/toast';
+import { useOriginalClashBaseline } from '@/lib/clash/original-baseline';
 import { useViewerStore } from '@/store';
 import { useTranslation } from '@/i18n';
 import type { TranslatableMessage } from '@/i18n/types';
@@ -40,6 +41,7 @@ import {
   captureModelNames,
   loadRevisionBaseline,
   saveRevisionBaseline,
+  subscribeRevisionBaseline,
   type ClashRevisionBaseline,
 } from '@/lib/clash/revision-baseline';
 
@@ -119,11 +121,20 @@ function Bucket({ title, clashes, tone }: BucketProps) {
 
 export function ClashRevisionCompareDialog() {
   const { t } = useTranslation();
+  const original = useOriginalClashBaseline(state => state.finding);
+  const [open, setOpen] = useState(false);
+  useEffect(() => { if (original) setOpen(true); }, [original]);
   const clashResult = useViewerStore((s) => s.clashResult);
   const models = useViewerStore((s) => s.models);
 
   const [baseline, setBaseline] = useState<ClashRevisionBaseline | null>(() => loadRevisionBaseline());
   const [comparison, setComparison] = useState<ClashRevisionComparison | null>(null);
+  useEffect(() => subscribeRevisionBaseline(() => {
+    useOriginalClashBaseline.setState({ finding: null });
+    setBaseline(loadRevisionBaseline());
+    setComparison(null);
+  }), []);
+
 
   const saveBaseline = useCallback(() => {
     if (!clashResult) return;
@@ -134,6 +145,7 @@ export function ClashRevisionCompareDialog() {
     };
     const outcome = saveRevisionBaseline(next);
     if (outcome.ok) {
+      useOriginalClashBaseline.setState({ finding: null });
       setBaseline(next);
       setComparison(null);
       toast.success(t('clashTools.revisionCompare.baselineSavedToast', { count: clashResult.clashes.length }));
@@ -156,7 +168,10 @@ export function ClashRevisionCompareDialog() {
   const warnings = useMemo(() => warningLines(comparison), [comparison]);
 
   return (
-    <Dialog onOpenChange={(open) => { if (!open) setComparison(null); }}>
+    <Dialog open={open} onOpenChange={(next) => {
+      setOpen(next);
+      if (!next) { setComparison(null); useOriginalClashBaseline.setState({ finding: null }); }
+    }}>
       <DialogTrigger asChild>
         <IconButton label={t('clashTools.revisionCompare.triggerTooltip')} className="h-7 w-7">
           <GitCompare className="h-4 w-4" />
@@ -209,6 +224,13 @@ export function ClashRevisionCompareDialog() {
             {t('clashTools.revisionCompare.compareButton')}
           </Button>
 
+          {original && <section aria-label={t('clashTools.revisionCompare.originalFinding')} className="rounded-md border border-border p-2.5 text-xs" data-original-baseline>
+            <h3 className="font-semibold">{t('clashTools.revisionCompare.originalFinding')}</h3>
+            <p>{t('clashTools.revisionCompare.baselineSavedAt', { when: formatWhen(original.takenAt) })}</p>
+            <p>{clashLabel(original.clash)}</p>
+            <p>{original.modelNames[original.clash.a.model] ?? original.clash.a.model}: {original.clash.a.key} × {original.modelNames[original.clash.b.model] ?? original.clash.b.model}: {original.clash.b.key}</p>
+            <p>{original.clash.status} · {original.clash.severity} · {original.clash.distance}</p>
+          </section>}
           {comparison && (
             <div className="space-y-3 rounded-md border border-border p-2.5">
               {comparison.unretested.length > 0 && (

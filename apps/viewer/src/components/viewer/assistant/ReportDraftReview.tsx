@@ -53,7 +53,7 @@ export function ReportDraftReview() {
   };
   const requestDraft = () => {
     setError(null);
-    void sendAssistant(t('aiReports.requestPrompt', { instruction: reportLanguageInstruction(language) }), store.chatActiveModel, ASSISTANT_PROXY_URL);
+    void sendAssistant(t('aiReports.requestPrompt', { instruction: reportLanguageInstruction(language) }), store.chatActiveModel, ASSISTANT_PROXY_URL, {}, { generationLanguage: language });
   };
   // Stays mounted while a requested draft streams, so the open review keeps its place.
   if (!eligible && !draft && !assistant.snapshot) return null;
@@ -90,12 +90,12 @@ export function ReportDraftReview() {
           {t('aiReports.languageMismatch', { declared: draft.declaredLanguage ?? '', chosen: draft.language })}</output>}
         {draft.prose.trim() && <blockquote className="whitespace-pre-wrap break-words border-l-2 border-border pl-2">{draft.prose}</blockquote>}
         <ReportClaimList key={draft.document.id} claims={draft.claims} disabled={busy || saved || !current} onEdit={(id, text) => revise(id, { text })} onRemove={id => revise(id, 'remove')} />
-        <details><summary className="cursor-pointer text-muted-foreground hover:text-foreground">{t('assistant.evidenceDetails')}</summary>
+        <details><summary className="cursor-pointer py-1 text-muted-foreground hover:text-foreground">{t('assistant.evidenceDetails')}</summary>
           <div className="mt-2"><EvidenceView evidence={draft.source.evidence} state="historical" /></div>
         </details>
-        <details><summary className="cursor-pointer text-muted-foreground hover:text-foreground">{t('assistant.reportContents')}</summary><pre className="mt-1 max-h-48 overflow-auto whitespace-pre-wrap break-words font-mono text-2xs">{draft.documentJson}</pre></details>
+        <details><summary className="cursor-pointer py-1 text-muted-foreground hover:text-foreground">{t('assistant.reportContents')}</summary><pre className="mt-1 max-h-48 overflow-auto whitespace-pre-wrap break-words font-mono text-2xs">{draft.documentJson}</pre></details>
         {!current && !saved && <p role="alert" className="rounded border border-amber-500/40 bg-amber-500/10 p-2">{t('assistant.reportStale')}</p>}
-        <label className="flex items-start gap-2"><input type="checkbox" checked={approved} disabled={!current || busy || saved}
+        <label className="flex min-h-6 items-center gap-2"><input type="checkbox" className="h-4 w-4 shrink-0" checked={approved} disabled={!current || busy || saved}
           onChange={event => setApproved(event.target.checked)} />{t('assistant.reportApproved')}</label>
         <div className="flex flex-wrap gap-1">
           <Button size="sm" className="h-7" disabled={!approved || !current || busy || saved || blocked} onClick={() => void save()}>{t('assistant.saveReport')}</Button>

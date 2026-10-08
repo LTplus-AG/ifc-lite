@@ -15,7 +15,7 @@ import type { HbjsonStats } from './hbjson-stats.js';
 import * as energyExport from './energy-export-bridge.js';
 import type { GeometryDiagnostics } from './diagnostics.js';
 import type { ExtrusionDefinitions, SweptDiskDescriptions } from './analytic-descriptions.js';
-import { prepareSharedWasmInit } from './wasm-shared-module.js';
+import { initMainThreadEngine } from './main-engine-init.js';
 import {
   isWasmRuntimeTrap,
   notifyWasmRuntimeUnrecoverable,
@@ -167,16 +167,15 @@ export class IfcLiteBridge {
         const wasmPath: string = requireFromHere.resolve('@ifc-lite/wasm/ifc-lite_bg.wasm');
         wasmInitArg = (await nodeFs.readFile(wasmPath)) as BufferSource;
       }
-      // A bundled fetch starts only when cold public init reads its options.
-      // Acquisition remains inside the existing delayed transport retry.
-      // Raw package resolution and Node's supplied bytes retain their paths.
-      await initWasmWithRetry(
-        async () => {
-          const options = wasmInitArg ? { module_or_path: wasmInitArg } : await prepareSharedWasmInit();
-          await init(options);
-        },
-        { label: 'ifc-lite-bridge' },
-      );
+      // Raw package resolution and Node's supplied bytes retain their paths; the
+      // browser path joins the realm's one main-thread init (#7036), which a host
+      // may already have started when the load was requested.
+      if (wasmInitArg) {
+        const bytes = wasmInitArg;
+        await initWasmWithRetry(async () => { await init({ module_or_path: bytes }); }, { label: 'ifc-lite-bridge' });
+      } else {
+        await initMainThreadEngine();
+      }
 
       // The WASM bundle has no in-WASM thread pool; rayon `par_iter()`
       // (e.g. FacetedBrep preprocessing) runs sequentially on the main

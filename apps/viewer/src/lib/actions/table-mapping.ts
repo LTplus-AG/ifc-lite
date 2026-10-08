@@ -11,7 +11,7 @@
  * description only: rows become a `model.changes` batch after review.
  */
 
-import { EDITABLE_ATTRIBUTES, type EditableAttribute } from './model-change';
+import { EDITABLE_ATTRIBUTES, type EditableAttribute } from '@ifc-lite/ai/artifacts';
 
 export const IDENTITY_KEYS = ['GlobalId', 'Tag', 'Name'] as const;
 export type IdentityKey = typeof IDENTITY_KEYS[number];

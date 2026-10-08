@@ -3,18 +3,13 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * Classification and material associations created in this session (#5876).
- *
- * The parser's on-demand readers (`extractClassificationsOnDemand`,
- * `extractAllMaterialsOnDemand`) read the source file only, so an
- * `IfcRelAssociatesClassification` / `IfcRelAssociatesMaterial` written into
- * the mutation overlay would never reach the Properties panel. These readers
- * resolve the overlay's own rels, and the entities they point at, into the
- * same `ClassificationInfo` / `MaterialInfo` shapes the panel already renders.
+ * Material associations created in this session (#5876). The Properties panel
+ * supplements source material reads with these current overlay associations.
+ * Classification reads now use the canonical effective parser reader (#7131).
  */
 
 import type { IfcAttributeValue, MutablePropertyView } from '@ifc-lite/mutations';
-import type { ClassificationInfo, IfcDataStore, MaterialInfo } from '@ifc-lite/parser';
+import type { IfcDataStore, MaterialInfo } from '@ifc-lite/parser';
 
 /** `RelatedObjects` / `Relating*` sit at 4 / 5 on every IfcRelAssociates*. */
 const RELATED_OBJECTS = 4;
@@ -66,23 +61,6 @@ function overlayTargets(view: MutablePropertyView, relType: string, entityIds: r
     if (target !== null && attrs) targets.push({ id: target, attrs });
   }
   return targets;
-}
-
-/** Classifications the session associated with any of `entityIds`, as the panel renders them. */
-export function overlayClassifications(view: MutablePropertyView | null | undefined, entityIds: readonly number[], schema: string | undefined, store?: IfcDataStore): ClassificationInfo[] {
-  if (!view) return [];
-  return overlayTargets(view, 'IFCRELASSOCIATESCLASSIFICATION', entityIds, store).map((reference) => {
-    const source = refId(reference.attrs[3]);
-    const classification = source === null ? null : effectiveAttributes(view, source, store);
-    return {
-      system: text(classification?.[3]),
-      // IFC2X3 names the code ItemReference; IFC4+ Identification. Same slot.
-      identification: text(reference.attrs[1]),
-      name: text(reference.attrs[2]),
-      location: text(reference.attrs[0]),
-      description: isIfc2x3(schema) ? undefined : text(reference.attrs[4]),
-    };
-  });
 }
 
 /** Materials the session associated with any of `entityIds`, as the panel renders them. */

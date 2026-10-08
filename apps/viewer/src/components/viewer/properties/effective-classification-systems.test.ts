@@ -38,7 +38,7 @@ it('#5249 lists effective classification systems after source edits and overlay 
   view.deleteEntity(forgotten.expressId);
 
   assert.deepEqual(effectiveClassificationSystems(store, view), {
-    names: ['DIN 276', 'OmniClass 2018'], unresolved: false,
+    names: ['DIN 276', 'OmniClass positional'], unresolved: false, // #7131: native STEP export applies positional edits after named edits.
   });
   assert.equal(view.isDeleted(created.expressId), false);
 });

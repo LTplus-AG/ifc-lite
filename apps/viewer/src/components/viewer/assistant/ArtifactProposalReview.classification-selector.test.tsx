@@ -7,10 +7,12 @@ import { afterEach, test } from 'node:test';
 import { act } from 'react';
 import { render, click, cleanup, waitFor } from '@/test/render';
 import { useViewerStore } from '@/store';
-import { useAssistant, cancelAssistant } from '@/lib/assistant/conversation';
+import { useAssistant, cancelAssistant, replaceEvidence } from '@/lib/assistant/conversation';
 import { loadSavedFilters } from '@/lib/search/saved-filters';
 import { installClassificationModels, namedClassificationModel, selectorAnswer } from '@/test/classification-selector-fixture';
 import { ArtifactProposalReview } from './ArtifactProposalReview';
+import { AssistantPanel } from './AssistantPanel';
+import { captureEvidence } from '@/lib/assistant/evidence';
 import type { ArtifactProposal } from '@/lib/assistant/artifacts/proposal-kinds';
 
 const initial = useViewerStore.getState();
@@ -65,4 +67,17 @@ test('#7130 model replacement withdraws mounted classification preview and stale
   await waitFor(() => /Classification system Uniclass 2015.*not in the loaded models/.test(ui.textContent ?? ''), 'the new federation cannot reuse the old classification catalog');
   assert.equal(useViewerStore.getState().dashboards.length, 0);
   assert.equal(saveButton(ui)?.disabled ?? true, true);
+});
+
+test('#7130 a classification list column carrying an unsupported system is a refused card, without native Save', async () => {
+  installClassificationModels(await namedClassificationModel());
+  const response = JSON.stringify({ version: 1, kind: 'list.proposal', title: 'Classification column', list: {
+    name: 'Classification column', entityTypes: ['IfcWall'], columns: [{ id: 'classification', source: 'classification', psetName: 'InventedSystem7130' }],
+  } });
+  replaceEvidence(captureEvidence('loadReport'));
+  act(() => useAssistant.setState({ status: 'idle', error: null, messages: [{ role: 'assistant', model: 'recorded', content: response }] }));
+  const ui = render(<AssistantPanel />);
+  await waitFor(() => /classification column takes no psetName/.test(ui.textContent ?? ''), 'unsupported native column selector is visibly refused at parse');
+  assert.equal(saveButton(ui), undefined);
+  assert.equal(useViewerStore.getState().listDefinitions.length, 0);
 });

@@ -118,3 +118,15 @@ test('#7130 native classification edits refuse unsupported populations; native u
   useViewerStore.getState().undo(id);
   assert.equal((await previewArtifact(proposal, useViewerStore.getState())).matched, preview.matched, 'undo removing the live attribute overlay restores native source results despite append-only history');
 });
+
+test('#7130 classification list columns cannot claim a system that native columns do not support', async () => {
+  installClassificationModels(await namedClassificationModel());
+  const payload = (psetName?: string) => JSON.stringify({ version: 1, kind: 'list.proposal', title: 'Classification column', list: {
+    name: 'Classification column', entityTypes: ['IfcWall'], columns: [{ id: 'classification', source: 'classification', ...(psetName !== undefined ? { psetName } : {}) }],
+  } });
+  for (const system of ['InventedSystem7130', 'Uniclass 2015', '']) {
+    assert.throws(() => parseArtifactProposal(payload(system), 'list.proposal'), /classification column takes no psetName/, 'even a known system is outside the native column contract');
+  }
+  const preview = await previewArtifact(parseArtifactProposal(payload(), 'list.proposal'), useViewerStore.getState());
+  assert.equal(preview.matched, 4, 'an intentional any-system classification column retains all native wall rows');
+});

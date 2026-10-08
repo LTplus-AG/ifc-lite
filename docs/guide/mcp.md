@@ -102,7 +102,7 @@ Tools are grouped by capability. Everything below is registered in the default t
 | Geometry | `geometry_bbox`, `geometry_volume`, `geometry_area`, `geometry_get` *(planned)*, `raycast` *(planned)* |
 | Clash | `clash_check`, `clash_matrix` |
 | Validation | `ids_validate`, `ids_explain`, `model_audit`, `gherkin_check` *(planned)* |
-| IDS authoring | `ids_audit`, `ids_lint`, `ids_read`, `ids_apply_ops`, `ids_write`, `ids_schema_search`, `ids_schema_entity`, `ids_schema_pset` |
+| IDS authoring | `ids_audit`, `ids_lint`, `ids_read`, `ids_apply_ops`, `ids_write`, `ids_schema_search`, `ids_schema_entity`, `ids_schema_pset`, `ids_diff`, `ids_preview` *(planned)*, `ids_infer` *(planned)*, `ids_coverage` *(planned)*, `ids_test` *(planned)* |
 | Mutation | `entity_set_property`, `entity_delete_property`, `entity_set_attribute`, `entity_create`, `entity_delete`, `mutation_batch`, `mutation_undo`, `mutation_diff`, `model_save` |
 | Hosted modelling | `place_opening`, `place_door`, `place_window` |
 | Physical edits | `edit_hosted_element`, `edit_element_geometry`, `copy_elements`, `duplicate_element`, `array_elements` |
@@ -147,6 +147,13 @@ back to `ids_apply_ops`. Finish with `ids_write`. `ids_write` reads its own
 XML back, audits it and refuses a document with audit errors, so Studio JSON
 edited by hand cannot get past the gate that way. It also returns the
 `studio.json` sidecar that keeps the node ids next to the XML.
+
+`ids_diff` compares two IDS revisions (`before_xml` / `before_path`,
+`after_xml` / `after_path`). It returns added, removed and changed entries,
+each with its XML path and one plain-language line. `ids_preview`,
+`ids_infer` and `ids_coverage` evaluate an IDS against a loaded model, and
+`ids_test` runs `.idsz` test suites. These four are declared with their
+final inputs but answer `UNSUPPORTED_OPERATION` until their engines ship.
 
 `join_walls` takes `a_express_id`, `b_express_id`, optional `model_id` and optional `options` (`Name`, `priority: 'a' | 'b'`, `tolerance` in metres and `priorities: { a?: number[]; b?: number[] }`). It uses `bim.store.joinWalls` and the canonical Model workspace core. Both walls must be straight and in the same placement frame. Unreadable hosted cuts, or an opening stranded by either joined end face, refuse atomically. One `mutation_undo` restores the complete earlier wall graph and any replaced relationship. The IFC export contains the join; headless geometry queries continue to read parsed geometry.
 

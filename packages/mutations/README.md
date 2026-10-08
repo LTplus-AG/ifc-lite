@@ -2,6 +2,8 @@
 
 Property editing and mutation tracking for IFClite. Edit IFC properties, quantities, and attributes in-place via an overlay pattern — original data stays read-only, changes export back to STEP. Supports undo / redo, change-set sharing, bulk updates, and CSV import.
 
+`MutablePropertyView.getQuantityMutation(entityId, qsetName, quantityName)` reads the current quantity override, including `unitRemoved`. It returns `undefined` when no override exists. Use this live state when retaining a source unit: an explicit removal must stay removed, including after an edit which omits its unit. The append-only mutation journal is unsuitable for current-state reads after Undo or `skipHistory` writes.
+
 ## Installation
 
 ```bash
@@ -179,6 +181,12 @@ was never created on the receiving view).
 To carry a created entity across, call `restoreNewEntity()` with its
 `NewEntity` payload (read via `getNewEntity`/`getNewEntities` on the source
 view) **before** calling `importMutations`:
+
+Native `createEntity()` records carry `creationId`, matching their original
+`CREATE_ENTITY` mutation UUID. This is provenance metadata, not an IFC
+attribute. Preserve the original token when cloning an original record for
+undo or recovery. A tokenless replacement body cannot borrow an old journal
+entry as identity, even if its express ID and fields match.
 
 ```typescript
 const json = view.exportMutations();

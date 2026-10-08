@@ -23,6 +23,7 @@ import {
   type IfcDataStore,
 } from '@ifc-lite/parser';
 import { iterateEffectiveEntityIds, type MutablePropertyView } from '@ifc-lite/mutations';
+import { hasClassificationEdits } from '@/components/viewer/properties/effective-classification-systems';
 import {
   propertyCandidates, materialMatchCandidates, ownPropertySetsFor, quantitySetsFor,
   attributesFor, mutatedAttributeValue,
@@ -309,8 +310,11 @@ export function discoverFilterValues(
     if (pt && pt !== 'USERDEFINED' && pt !== 'NOTDEFINED') predefinedTypes.add(pt);
   }
 
-  for (const id of cappedKeys(store.onDemandClassificationMap, store, view, VALUE_SAMPLE_CAP)) {
-    for (const ref of extractClassificationsOnDemand(store, id)) {
+  // Source map keys omit recipients newly classified by an edited/created
+  // association. Use the same bounded effective sample for those live edits.
+  const classificationDomain = hasClassificationEdits(store, view) ? undefined : store.onDemandClassificationMap;
+  for (const id of cappedKeys(classificationDomain, store, view, VALUE_SAMPLE_CAP)) {
+    for (const ref of extractClassificationsOnDemand(store, id, view ?? undefined)) {
       if (ref.system) systems.add(ref.system);
       if (ref.identification) classifications.add(ref.identification);
       if (ref.name) classifications.add(ref.name);

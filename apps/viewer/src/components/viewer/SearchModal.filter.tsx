@@ -37,8 +37,7 @@ import { cn } from '@/lib/utils';
 import { evaluateFilterGroupsFederated } from '@ifc-lite/rules';
 import { totalRuleCount } from '@ifc-lite/rules';
 import { definedModelTagIdsOf, evaluatorModelsFromState } from '@/lib/model-tags/evaluator-models';
-import { runTier0Scan, type ScanModel } from '@/lib/search/tier0-scan';
-import { queryTier1Indexes, type Tier1Index } from '@/lib/search/tier1-index';
+import { filterCandidates } from '@/lib/search/filter-candidates';
 import { downloadResult } from '@/lib/search/result-export';
 import {
   collectFilterResultGlobalIds,
@@ -54,7 +53,6 @@ import { RuleSummary } from './SearchModal.filter.ruleSummary';
 
 /** Rows per virtualizer page — tuned for the result table row height. */
 const RESULT_ROW_HEIGHT = 28;
-const TEXT_HIT_LIMIT = 50_000;
 const FILTER_CHUNK_SIZE = 20_000;
 const DEFAULT_LIMIT = 5_000;
 
@@ -147,42 +145,7 @@ export function SearchModalFilter() {
       // Tag sets are read here, once — the run's membership is a snapshot (#4215).
       const modelArgs = evaluatorModelsFromState(useViewerStore.getState()).filter((m) => m.store);
 
-      // Fold the inline search query in as a Tier-1/Tier-0 candidate
-      // set when present. Empty query → no narrowing (full scan with
-      // index prefilter applied inside the evaluator).
-      const trimmedQuery = searchQuery.trim();
-      let candidatesByModel: Map<string, Iterable<number>> | undefined;
-      if (trimmedQuery.length > 0) {
-        const t0Models: ScanModel[] = [];
-        const t1Indexes: Tier1Index[] = [];
-        for (const m of modelArgs) {
-          const rec = searchIndexes.get(m.id);
-          if (rec?.status === 'ready' && rec.index) {
-            t1Indexes.push(rec.index);
-          } else {
-            t0Models.push({ id: m.id, ifcDataStore: m.store });
-          }
-        }
-        const t1Hits = t1Indexes.length > 0
-          ? queryTier1Indexes(t1Indexes, trimmedQuery, { limit: TEXT_HIT_LIMIT })
-          : [];
-        const t0Hits = t0Models.length > 0
-          ? runTier0Scan(t0Models, trimmedQuery, { limit: TEXT_HIT_LIMIT })
-          : [];
-        const grouped = new Map<string, Set<number>>();
-        for (const hit of t1Hits.concat(t0Hits)) {
-          let bucket = grouped.get(hit.modelId);
-          if (!bucket) { bucket = new Set(); grouped.set(hit.modelId, bucket); }
-          bucket.add(hit.expressId);
-        }
-        candidatesByModel = new Map();
-        for (const [id, set] of grouped) candidatesByModel.set(id, set);
-        for (const m of modelArgs) {
-          // Models with no text hits get an empty candidate so structured
-          // rules can't slip through under intersection semantics.
-          if (!candidatesByModel.has(m.id)) candidatesByModel.set(m.id, []);
-        }
-      }
+      const candidatesByModel = filterCandidates(modelArgs, searchIndexes, searchQuery, searchFilter.capturedScope);
 
       const limit = searchFilter.limit > 0 ? searchFilter.limit : DEFAULT_LIMIT;
       const matched = await evaluateFilterGroupsFederated(

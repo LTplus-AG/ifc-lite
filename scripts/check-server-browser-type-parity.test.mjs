@@ -425,6 +425,28 @@ test('MATERIALS: RED when a case is removed from the TS resolver', () => {
   assert.match(out, /Rust server .* handles `IFCMATERIALLIST` but the TS parser .* does not/);
 });
 
+// #7194: iterative usage dispatch must remain measurable by the real gate.
+for (const type of ['IFCMATERIALLAYERSETUSAGE', 'IFCMATERIALPROFILESETUSAGE']) {
+  test(`MATERIALS #7194: RED when iterative ${type} dispatch is removed`, () => {
+    const ts = replaceOnce(real.TS_MATERIALS, `typeUpper === '${type}'`, `typeUpper === '__REMOVED__'`);
+    const { status, out } = runOn({ TS_MATERIALS: ts });
+    assert.equal(status, 1, out);
+    assert.match(out, new RegExp(`Rust server .* handles \`${type}\` but the TS parser .* does not`));
+  });
+}
+
+test('MATERIALS #7194: predicates and cases count, comments, text and unrelated comparisons do not', () => {
+  const code = `
+    if (typeUpper === 'IFCMATERIALLAYERSETUSAGE' || typeUpper === "IFCMATERIALPROFILESETUSAGE") return [];
+    switch (typeUpper) { case 'IFCMATERIAL': return []; }
+    // typeUpper === 'IFCMATERIALCOMMENT'
+    const text = "typeUpper === 'IFCMATERIALTEXT'";
+    if (name === 'IFCMATERIALNAME') return [];
+    switch (name) { case 'IFCMATERIALDECOY': return []; }
+  `;
+  assert.deepEqual([...tsMaterialTypes(code)].sort(), ['IFCMATERIAL', 'IFCMATERIALLAYERSETUSAGE', 'IFCMATERIALPROFILESETUSAGE']);
+});
+
 // -- vacuity guard ------------------------------------------------------
 
 test('vacuity guard: RED when the generated Rust relationship table is starved', { skip: NEEDS_PARSER_DIST }, () => {

@@ -1,0 +1,1 @@
+{"exitCode": 1, "command": ["pnpm", "test", "--filter=@ifc-lite/parser", "--env-mode=loose", "--concurrency=1", "--", "on-demand-classification-material.test.ts"], "oldProductionSHA256": "19b00750459c88ef209945cdecd062562471272354f6becb933ac23e225cbae5"}

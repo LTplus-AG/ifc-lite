@@ -12,12 +12,13 @@
 
 import { IfcTypeEnum, IfcTypeEnumFromString } from '@ifc-lite/data';
 import { ENTITY_ATTRIBUTES, type ColumnDefinition, type ListDefinition, type ListGrouping } from '@ifc-lite/lists';
-import { onlyKeys, parseEnvelope, record, requiredText, text, type ArtifactEnvelope } from './artifact-json';
+import { onlyKeys, parseEnvelope, parseNativeArtifactScope, record, requiredText, text, type ArtifactEnvelope } from './artifact-json';
 import { canonicalClasses, knownClassRefusal, parseProposalGroups } from './artifact-rules';
 
 export type ListDraft = Pick<ListDefinition, 'name' | 'description' | 'entityTypes' | 'groups' | 'columns' | 'sortBy' | 'grouping'>;
 
 export interface ListProposal extends ArtifactEnvelope {
+  scope?: import('./artifact-json').NativeArtifactScope;
   kind: 'list.proposal';
   /** The classes as proposed, before subclass expansion; for review text. */
   classes: string[];
@@ -74,7 +75,7 @@ function parseGrouping(value: unknown, ids: ReadonlySet<string>): ListGrouping |
 }
 
 export function parseListProposal(answer: string): ListProposal {
-  const { value, envelope } = parseEnvelope(answer, 'list.proposal', ['list']);
+  const { value, envelope } = parseEnvelope(answer, 'list.proposal', ['list', 'scope']);
   if (!record(value.list)) throw new Error('A list.proposal needs a "list" object');
   const list = value.list;
   onlyKeys(list, ['name', 'description', 'entityTypes', 'groups', 'columns', 'sortBy', 'grouping'], 'The list');
@@ -100,7 +101,7 @@ export function parseListProposal(answer: string): ListProposal {
     sortBy = { columnId: list.sortBy.columnId as string, direction: list.sortBy.direction };
   }
   const grouping = parseGrouping(list.grouping, ids);
-  return { ...envelope, kind: 'list.proposal', classes: classes as string[], list: {
+  return { ...envelope, scope: parseNativeArtifactScope(value.scope), kind: 'list.proposal', classes: classes as string[], list: {
     name, ...(typeof list.description === 'string' ? { description: list.description } : {}), entityTypes,
     groups: parseProposalGroups(list.groups, 'The list', { allowEmpty: true }), columns,
     ...(sortBy ? { sortBy } : {}), ...(grouping ? { grouping } : {}),

@@ -14,6 +14,7 @@
  */
 
 import { join } from 'node:path';
+import { createRequire } from 'node:module';
 import { loadHierarchySchemaModule } from './hierarchy-schema-loader.mjs';
 
 // The DEFAULT for `tsRelationshipTypes`' `repoRoot` option — callers (the
@@ -27,6 +28,9 @@ import { loadHierarchySchemaModule } from './hierarchy-schema-loader.mjs';
 // copy under a temp dir — deriving from `import.meta.url` there would point
 // at the temp dir, which has no `packages/parser/dist/` at all).
 const REPO_ROOT = process.cwd();
+// Mutation harnesses copy this module outside the workspace; resolve the
+// compiler from the invoking checkout, as with its built parser schema.
+const ts = createRequire(join(REPO_ROOT, 'package.json'))('typescript');
 
 /** Strips `/* … *‍/` and `//` comments — symmetric on both languages, same
  * naive strip `check-clash-degenerate-reason-parity.mjs` uses. Neither
@@ -340,13 +344,22 @@ export function rustMaterialTypes(src) {
   return found;
 }
 
-/** The TS side names the same variants twice (a resolver and a display-label
- * helper further down the file) — a Set naturally dedupes, so scanning the
- * whole file for `case '...'` is equivalent to scanning either function
- * alone and does not double-count. */
+/** Material dispatch uses both switch cases and iterative typeUpper equality
+ * branches (#7194). Parse syntax so comments and text cannot create support. */
 export function tsMaterialTypes(src) {
-  const code = stripComments(src);
   const found = new Set();
-  for (const m of code.matchAll(/case '(IFCMATERIAL[A-Z]*)'/g)) found.add(m[1]);
+  const source = ts.createSourceFile('material-resolver.ts', src, ts.ScriptTarget.Latest, true);
+  const add = node => {
+    if (ts.isStringLiteral(node) && /^IFCMATERIAL[A-Z]*$/.test(node.text)) found.add(node.text);
+  };
+  const visit = node => {
+    if (ts.isCaseClause(node) && ts.isSwitchStatement(node.parent.parent)
+        && ts.isIdentifier(node.parent.parent.expression)
+        && node.parent.parent.expression.text === 'typeUpper') add(node.expression);
+    if (ts.isBinaryExpression(node) && node.operatorToken.kind === ts.SyntaxKind.EqualsEqualsEqualsToken
+        && ts.isIdentifier(node.left) && node.left.text === 'typeUpper') add(node.right);
+    ts.forEachChild(node, visit);
+  };
+  visit(source);
   return found;
 }

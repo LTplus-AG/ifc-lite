@@ -14,7 +14,7 @@ import type { StateCreator } from 'zustand';
 import type { Lens, LensRule, AutoColorSpec, AutoColorLegendEntry, DiscoveredLensData } from '@ifc-lite/lens';
 import { BUILTIN_LENSES } from '@ifc-lite/lens';
 import { duplicateLensConfig, reserveUniqueId } from '@/components/viewer/lens-editor-utils';
-import { mergeImportedGroupLenses, migrateSavedLens } from '@/lib/lens/migrate-saved-lens';
+import { encodeSavedLens, mergeImportedGroupLenses, migrateSavedLens } from '@/lib/lens/migrate-saved-lens';
 import { saveJson, type SaveResult } from '@/lib/storage/save-result';
 import { defineSliceTeardown, notApplicable } from '../teardown.js';
 export type { Lens, LensRule, AutoColorSpec, AutoColorLegendEntry, DiscoveredLensData };
@@ -90,7 +90,7 @@ function saveLenses(lenses: Lens[]): SaveResult {
       // (rules: []) imported via the JSON round-trip would be dropped on reload.
       return l.name !== original.name ||
         JSON.stringify(l.rules) !== JSON.stringify(original.rules) ||
-        JSON.stringify(l.autoColor) !== JSON.stringify(original.autoColor);
+        JSON.stringify(l.autoColor) !== JSON.stringify(original.autoColor) || JSON.stringify(l.capturedScope) !== JSON.stringify(original.capturedScope);
     });
     toStore = [...custom, ...builtinOverrides];
   } catch {
@@ -98,7 +98,7 @@ function saveLenses(lenses: Lens[]): SaveResult {
     // lens fails here rather than in saveJson. Same class of failure.
     return { ok: false, reason: 'serialize', message: `Could not save ${SAVE_SUBJECT}.` };
   }
-  return saveJson(STORAGE_KEY, toStore, SAVE_SUBJECT);
+  return saveJson(STORAGE_KEY, toStore.map(encodeSavedLens), SAVE_SUBJECT);
 }
 
 /** Build initial lens list: builtins (with overrides applied) + custom */
@@ -301,9 +301,10 @@ export const createLensSlice: StateCreator<LensSlice, [], [], LensSlice> = (set,
     // and would re-add itself under its reserved id on a later import.
     return get().savedLenses
       .filter(l => l.id !== AUTO_COLOR_FROM_LIST_ID)
-      .map(({ id, name, rules, autoColor }) => {
+      .map(({ id, name, rules, autoColor, capturedScope }) => {
         const out: Lens = { id, name, rules };
         if (autoColor) out.autoColor = autoColor;
+        if (capturedScope) out.capturedScope = structuredClone(capturedScope);
         return out;
       });
   },

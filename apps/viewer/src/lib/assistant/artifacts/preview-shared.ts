@@ -52,10 +52,19 @@ export interface ArtifactPreview {
 }
 
 export type PreviewArtifact =
-  | { kind: 'filter.proposal'; name: string; groups: FilterGroup[] }
+  | { kind: 'filter.proposal'; name: string; groups: FilterGroup[]; capturedScope?: import('@ifc-lite/rules').CapturedEntityScope }
   | { kind: 'list.proposal'; definition: ListDefinition }
   | { kind: 'lens.proposal'; lens: Lens }
   | { kind: 'chart.proposal'; spec: ChartSpec; scope: ChartScope };
+
+export function artifactCapturedScope(artifact: PreviewArtifact): import('@ifc-lite/rules').CapturedEntityScope | undefined {
+  switch (artifact.kind) {
+    case 'filter.proposal': return artifact.capturedScope;
+    case 'list.proposal': return artifact.definition.capturedScope;
+    case 'lens.proposal': return artifact.lens.capturedScope;
+    case 'chart.proposal': return undefined;
+  }
+}
 
 /** `scope`: a chart's `chartScopeKey`, what a visible or basket chart counts beyond the models; `null` otherwise. */
 export interface PreviewRevision { models: object; mutationVersion: number; scope: string | object | null;
@@ -94,4 +103,3 @@ export function populationOf(rows: Iterable<{ modelId: string }>, state: Pick<Vi
   for (const [modelId, count] of counts) if (!state.models.has(modelId)) out.push({ modelId, name: modelId, count });
   return out;
 }
-

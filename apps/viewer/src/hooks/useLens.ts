@@ -176,7 +176,7 @@ export function useLens(): void {
     };
 
     if (activeLens.autoColor) {
-      applyResult(evaluateAutoColorLens(activeLens.autoColor, provider));
+      applyResult(evaluateAutoColorLens(activeLens.autoColor, provider, activeLens.capturedScope));
       return;
     }
 

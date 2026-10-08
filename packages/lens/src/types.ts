@@ -28,7 +28,11 @@
  * Consumers implement this to bridge their data source (IfcDataStore,
  * server API, IndexedDB, etc.) to the lens engine.
  */
+import type { CapturedEntityScope } from '@ifc-lite/rules';
+
 export interface LensDataProvider {
+  /** Resolve pinned membership to native global ids; required for a scoped lens. */
+  resolveCapturedScope?(scope: CapturedEntityScope): ReadonlySet<number>;
   /** Total entity count (used for pre-allocation hints) */
   getEntityCount(): number;
 
@@ -209,6 +213,8 @@ export interface Lens {
   builtin?: boolean;
   /** Auto-color mode: color entities by distinct values from a data column */
   autoColor?: AutoColorSpec;
+  /** A captured population independent of later selection and visibility. */
+  capturedScope?: CapturedEntityScope;
 }
 
 // ============================================================================

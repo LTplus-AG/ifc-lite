@@ -244,6 +244,11 @@ and the gate.
   rate-limited answer stops the run. Pass the index to
   `createLintContext({ bsdd })` / `createGateContext({ bsdd })` for
   IDSL-BSDD-001…003 and GATE-BSDD-001.
+- **Offline.** `createCachedBsddSource(source, { store })` caches searches,
+  classes, dictionaries and URI records (fresh for 24 h). When bSDD cannot
+  be reached it serves what it has, however old, and throws
+  `BsddUnavailableError` for the rest. `createIndexedDbBsddStore()` is the
+  browser store; `loadUriIndex(store)` restores the last URI-health results.
 
 ```ts
 import {

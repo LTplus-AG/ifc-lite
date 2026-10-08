@@ -240,3 +240,18 @@ export {
   type UriHealthOptions,
   type UriHealthReport,
 } from './bsdd/uri-health.js';
+
+// bSDD offline cache (IDS-074)
+export {
+  BSDD_CACHE_VERSION,
+  createCachedBsddSource,
+  createMemoryBsddStore,
+  isTransportFailure,
+  loadUriIndex,
+  type BsddCacheEntry,
+  type BsddCacheKind,
+  type BsddCacheStore,
+  type CachedBsddSource,
+  type CachedBsddSourceOptions,
+} from './bsdd/cache.js';
+export { createIndexedDbBsddStore, BSDD_IDB_NAME, type IndexedDbBsddStoreOptions } from './bsdd/idb-store.js';

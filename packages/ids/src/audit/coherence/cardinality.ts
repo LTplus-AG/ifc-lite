@@ -148,7 +148,9 @@ function isEmptyConstraint(c: IDSConstraint): boolean {
         c.maxExclusive === undefined &&
         c.length === undefined &&
         c.minLength === undefined &&
-        c.maxLength === undefined
+        c.maxLength === undefined &&
+        c.totalDigits === undefined &&
+        c.fractionDigits === undefined
       );
   }
 }

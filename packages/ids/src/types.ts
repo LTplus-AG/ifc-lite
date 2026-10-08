@@ -600,7 +600,7 @@ export interface ValidationProgress {
 // ============================================================================
 
 /** Supported locales for translation */
-export type SupportedLocale = 'en' | 'de' | 'fr';
+export type SupportedLocale = 'en' | 'de' | 'fr' | 'it';
 
 /** Translation service interface */
 export interface TranslationService {

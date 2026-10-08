@@ -12,6 +12,7 @@
 import type { IfcPropertyInfo } from '@ifc-lite/data';
 import type { IDSConstraint } from '../../types.js';
 import type { IDSAuditIssue } from '../types.js';
+import { isValidLexicalForXsType } from '../coherence/index.js';
 
 export function checkDataTypeMatch(
   prop: IfcPropertyInfo,
@@ -76,7 +77,8 @@ export function checkRestrictionBase(
   backingType: string,
   dataType: string,
   path: string,
-  issues: IDSAuditIssue[]
+  issues: IDSAuditIssue[],
+  facetType: 'property' | 'attribute' = 'property'
 ): void {
   // Only restrictions can mismatch — simpleValue is always treated as
   // string-compatible by the IDS XSD.
@@ -114,10 +116,37 @@ export function checkRestrictionBase(
       code: 'E_RESTRICTION_BASE_MISMATCH',
       message: `xs:restriction base (${inferred}) is not compatible with dataType "${dataType}" (backing ${backingType})`,
       path,
-      facetType: 'property',
+      facetType,
       detail: { inferred, expected: backingType, dataType },
     });
   }
+}
+
+/**
+ * A `<simpleValue>` compared against a typed value must be a literal of
+ * that type's backing XSD type (upstream Report 305 family; IDS-005):
+ * `FALSE` is no `xs:boolean` (booleans are lowercase), `42.0` and `42.`
+ * are no `xs:integer`, `42,3` is no `xs:double`. Such a value can never
+ * equal a real one, so the requirement could only ever fail.
+ */
+export function checkSimpleValueLexical(
+  c: IDSConstraint,
+  backingType: string,
+  dataType: string,
+  path: string,
+  facetType: 'property' | 'attribute',
+  issues: IDSAuditIssue[]
+): void {
+  if (c.type !== 'simpleValue' || c.value === '') return;
+  if (isValidLexicalForXsType(c.value, backingType)) return;
+  issues.push({
+    severity: 'error',
+    code: 'E_RESTRICTION_VALUE_MISMATCH',
+    message: `value "${c.value}" is not a valid ${backingType} literal, so it can never equal a ${dataType} value`,
+    path,
+    facetType,
+    detail: { value: c.value, base: backingType, dataType },
+  });
 }
 
 /**

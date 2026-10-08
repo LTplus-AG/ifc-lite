@@ -16,6 +16,7 @@ import type {
   IDSDocument,
   IDSValidationReport,
   ValidationProgress,
+  SupportedLocale,
 } from '@ifc-lite/ids';
 import type { IfcSourceTransfer } from '@ifc-lite/parser';
 
@@ -54,7 +55,7 @@ export interface RunInWorkerArgs {
   document: IDSDocument;
   schemaVersion: string;
   modelId: string;
-  locale: 'en' | 'de' | 'fr';
+  locale: SupportedLocale;
   includePassingEntities: boolean;
   /**
    * The model's pending property edits as plain, clonable data (#3946).

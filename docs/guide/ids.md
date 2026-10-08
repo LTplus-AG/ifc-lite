@@ -121,7 +121,7 @@ Validation reports can be generated in multiple languages:
 import { createTranslationService } from '@ifc-lite/ids';
 
 const t = createTranslationService('de'); // German
-// Or: 'en' (English, default), 'fr' (French)
+// Or: 'en' (English, default), 'fr' (French), 'it' (Italian)
 
 // Pass it to validateIDS to translate the report:
 const report = await validateIDS(idsDocument, accessor, modelInfo, { translator: t });
@@ -139,6 +139,23 @@ const auditReport = await auditIDSDocument(idsXml);
 ```
 
 Use `auditIDSStructure(idsDocument)` to audit an already-parsed document.
+
+Against the vendored buildingSMART IDS corpus, the audit reports an error on
+all 27 `invalid-` cases and on none of the 307 pass and fail cases. Among
+other things it checks:
+
+- values against their type: a property value against its `dataType`, an
+  attribute value against the attribute's type on the applicability entity
+  (`FALSE`, `42.0` for an integer and `42,3` are all rejected), and a
+  restriction's base against either;
+- entity names: upper case (`IFCWALL`, not `IfcWall`), and an entity
+  requirement that no applicable class can satisfy (entity facets match the
+  exact class, not subclasses);
+- predefined types: any value is accepted when the enum has `USERDEFINED`
+  (it is matched against `ObjectType`), IFC2X3 occurrences use their type
+  object's enum, and an entity with no PredefinedType rejects one;
+- every facet of a conjunctive restriction (`and`), not only the first;
+- a prohibited specification (`maxOccurs="0"`) with requirements.
 
 ## What `.rules.json` rule sets cover that IDS 1.0 cannot
 
@@ -268,25 +285,52 @@ In the viewer, the Data validation panel's Information validation side has
 **Export as IDS** next to **Save**. Both show what was converted and every
 refused rule or specification with its reasons.
 
-`writeIdsXml` is the IDS 1.0 writer behind both the export and the viewer's
-assistant-drafted IDS. It writes entity, attribute, property (with `dataType`),
-classification, material and partOf facets, requirement cardinality and
-`instructions`, and simple, pattern, enumeration and numeric-bound values.
-Length and digit restrictions, and conjunctive restriction facets, are refused
-with an error instead of being written as a weaker check. Line breaks and tabs
-in attributes such as `instructions` are written as character references, so
-they read back unchanged; a control character XML cannot carry is refused with
-the element or attribute it is in. Every pass/fail case
-of the vendored buildingSMART IDS corpus that it writes reads back with the
-same specifications and verdicts.
+The export writes its IDS through `writeIdsXml` from `@ifc-lite/ids` (see
+[Writing IDS documents](#writing-ids-documents)).
+
+## Writing IDS documents
+
+`writeIdsXml` (in `@ifc-lite/ids`) is the IDS 1.0 writer behind the rule-set
+export and the viewer's assistant-drafted IDS. It writes the `info` block,
+entity, attribute, property (with `dataType`), classification, material and
+partOf facets, requirement cardinality and `instructions`, and every
+constraint the parser produces: simple values, patterns, enumerations,
+numeric bounds, length and digit restrictions (`xs:length`, `xs:minLength`,
+`xs:maxLength`, `xs:totalDigits`, `xs:fractionDigits`) and conjunctive
+restrictions (a pattern, an enumeration and bounds in one `xs:restriction`).
+Bounds on `xs:decimal` and the integer bases are written without an exponent.
+
+What has no valid IDS 1.0 form is refused with an error naming it, never
+written as a weaker check: unparseable bounds, two patterns or two
+enumerations in one conjunction (XSD would OR them), conjunctive facets with
+different bases, and a bounds restriction without any facet. Line breaks and
+tabs in attributes such as `instructions` are written as character
+references, so they read back unchanged; a control character XML cannot carry
+is refused with the element or attribute it is in. Every pass/fail case of the
+vendored buildingSMART IDS corpus reads back with the same specifications and
+verdicts.
 
 ```typescript
-import { parseIDS } from '@ifc-lite/ids';
-import { writeIdsXml } from '@ifc-lite/rules';
+import { parseIDS, writeIdsXml } from '@ifc-lite/ids';
 
 declare const idsXml: string;
 const rewritten = writeIdsXml(parseIDS(idsXml));
+// Canonical layout: tab indents, CRLF, applicability facets in ids.xsd order.
+const canonical = writeIdsXml(parseIDS(idsXml), { canonical: true, indent: '\t', newline: '\r\n' });
 ```
+
+The optional second argument (`IdsXmlFormat`) changes layout and order only,
+never meaning: `indent` (spaces, 0 to 8, or `'\t'`; default 2 spaces),
+`newline` (`'\n'` or `'\r\n'`) and `canonical`. Canonical output writes
+applicability facets in the `ids.xsd` sequence (entity, partOf,
+classification, attribute, property, material) and `ifcVersion` tokens in
+schema order without duplicates, so two documents with the same checks write
+the same bytes; requirements keep their authored order. Writing is
+idempotent: `writeIdsXml(parseIDS(xml), fmt)` returns `xml` for any `xml` it
+wrote with the same `fmt`. `IFC4X3` is written as the IDS 1.0 token
+`IFC4X3_ADD2`, which reads back as `IFC4X3`; a `partOf` relation of voids or
+fills alone is refused, since IDS 1.0 only has the combined
+`IFCRELVOIDSELEMENT IFCRELFILLSELEMENT`.
 
 ## Viewer Integration
 

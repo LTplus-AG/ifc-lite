@@ -74,6 +74,20 @@ function auditSpec(
     });
   }
 
+  // A prohibited specification (maxOccurs="0") says "no element may be
+  // applicable"; requirements on elements that must not exist are
+  // meaningless, and the IDS corpus treats them as invalid (IDS-008;
+  // ids/invalid-prohibited_specifications_invalid_if_requirements_are_specified).
+  if (max === 0 && spec.requirements.length > 0) {
+    issues.push({
+      severity: 'error',
+      code: 'E_CARDINALITY_INVALID',
+      message: `a prohibited specification (maxOccurs="0") cannot have requirements; it has ${spec.requirements.length}`,
+      path: `${path}.requirements`,
+      detail: { requirements: spec.requirements.length },
+    });
+  }
+
   // Upstream IDS-Audit-tool flags `cardinality` on `<applicability>` —
   // it's meaningless there. (Report 202)
   if (spec.applicability.cardinality) {
@@ -198,6 +212,12 @@ function check(
       // which we already do in the XSD audit.
       break;
   }
+  // XSD facets in one restriction are conjunctive (IDS-010): a malformed
+  // regex or an inverted bound in a sibling family is as fatal as in the
+  // primary one, so each sibling gets the same checks.
+  if (c.type !== 'simpleValue') {
+    c.and?.forEach((sibling, i) => check(sibling, `${path}.and[${i}]`, issues, facetType));
+  }
 }
 
 function checkBounds(
@@ -272,12 +292,14 @@ function checkBounds(
     c.maxExclusive === undefined &&
     c.length === undefined &&
     c.minLength === undefined &&
-    c.maxLength === undefined;
+    c.maxLength === undefined &&
+    c.totalDigits === undefined &&
+    c.fractionDigits === undefined;
   if (empty) {
     issues.push({
       severity: 'error',
       code: 'E_RESTRICTION_EMPTY',
-      message: 'xs:restriction has no min/max bounds or length facets',
+      message: 'xs:restriction has no min/max bounds, length or digit facets',
       path,
       facetType,
     });

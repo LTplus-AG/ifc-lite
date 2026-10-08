@@ -46,9 +46,8 @@ export interface IDSPatternConstraint {
    * overwhelmingly common single-family restriction. Matching
    * (`matchConstraint`) and the two description paths
    * (`formatConstraint`, `TranslationService.describeConstraint`)
-   * account for it. The IDS-document auditors under `audit/` still
-   * inspect only the primary family, so a malformed regex or an
-   * inverted bound in a sibling is not linted.
+   * account for it, and so do the IDS-document auditors under `audit/`
+   * (coherence and predefined-type checks visit every sibling, IDS-010).
    */
   and?: readonly IDSConstraint[];
 }
@@ -74,9 +73,8 @@ export interface IDSEnumerationConstraint {
    * overwhelmingly common single-family restriction. Matching
    * (`matchConstraint`) and the two description paths
    * (`formatConstraint`, `TranslationService.describeConstraint`)
-   * account for it. The IDS-document auditors under `audit/` still
-   * inspect only the primary family, so a malformed regex or an
-   * inverted bound in a sibling is not linted.
+   * account for it, and so do the IDS-document auditors under `audit/`
+   * (coherence and predefined-type checks visit every sibling, IDS-010).
    */
   and?: readonly IDSConstraint[];
 }
@@ -118,9 +116,8 @@ export interface IDSBoundsConstraint {
    * overwhelmingly common single-family restriction. Matching
    * (`matchConstraint`) and the two description paths
    * (`formatConstraint`, `TranslationService.describeConstraint`)
-   * account for it. The IDS-document auditors under `audit/` still
-   * inspect only the primary family, so a malformed regex or an
-   * inverted bound in a sibling is not linted.
+   * account for it, and so do the IDS-document auditors under `audit/`
+   * (coherence and predefined-type checks visit every sibling, IDS-010).
    */
   and?: readonly IDSConstraint[];
   /**

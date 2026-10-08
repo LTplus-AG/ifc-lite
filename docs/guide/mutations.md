@@ -86,6 +86,8 @@ Single-quantity edits record `oldQuantityType` and `oldUnit` alongside the old v
 
 Whole-set edits (`createPropertySet`, `deletePropertySet`, `createQuantitySet`, `deleteQuantitySet`, `deleteQuantity`) record the set's overlay rows before and after the edit on the returned mutation's `setOverlay`. A host with its own undo history reverts or re-applies one of them with `view.restoreSetOverlay(mutation.setOverlay.before)` / `(...after)`, which is what the viewer does.
 
+`view.getQuantityMutation(entityId, qsetName, quantityName)` reads the current quantity override, including `unitRemoved`, without relying on the append-only journal. It also reflects edits made with `skipHistory` and current Undo/Redo state. A reader preserving a source quantity’s explicit unit must withhold that unit once this override explicitly removes it.
+
 ### Enumerating the live entity set
 
 The parsed store's type index describes the file as loaded. After a session

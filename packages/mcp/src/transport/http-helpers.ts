@@ -81,6 +81,21 @@ export interface SessionCapacityOptions {
   sessionIdleMs?: number;
 }
 
+/**
+ * Refuse limits that would silently disable the policy: with `NaN` every
+ * comparison is false, so `maxSessions: NaN` never caps and `sessionIdleMs: NaN`
+ * lets a session be reclaimed at once.
+ */
+export function assertSessionLimits(opts: SessionCapacityOptions): void {
+  const { maxSessions, sessionIdleMs } = opts;
+  if (maxSessions !== undefined && !(Number.isInteger(maxSessions) && maxSessions >= 1)) {
+    throw new RangeError(`maxSessions must be an integer >= 1, got ${String(maxSessions)}`);
+  }
+  if (sessionIdleMs !== undefined && !(Number.isFinite(sessionIdleMs) && sessionIdleMs >= 0)) {
+    throw new RangeError(`sessionIdleMs must be a finite number >= 0, got ${String(sessionIdleMs)}`);
+  }
+}
+
 export const DEFAULT_MAX_SESSIONS = 1000;
 export const DEFAULT_SESSION_IDLE_MS = 30 * 60_000;
 
@@ -145,13 +160,16 @@ export function writeSse(res: ServerResponse, message: unknown): void {
   res.write(`data: ${JSON.stringify(message)}\n\n`);
 }
 
-/** Reads the request body; `holder.inFlight` is raised while the upload runs, so it is never left raised. */
-export async function readBody(req: IncomingMessage, max: number, holder?: { inFlight: number }): Promise<string> {
+/** Reads the request body; `holder` counts as busy while the upload runs and active when it ends, however it ends. */
+export async function readBody(req: IncomingMessage, max: number, holder?: { inFlight: number; lastSeen: number }): Promise<string> {
   if (holder) holder.inFlight++;
   try {
     return await readBodyChunks(req, max);
   } finally {
-    if (holder) holder.inFlight--;
+    if (holder) {
+      holder.inFlight--;
+      holder.lastSeen = Date.now();
+    }
   }
 }
 

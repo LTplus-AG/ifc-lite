@@ -522,8 +522,31 @@ describe('HttpTransport session cap (#6943)', () => {
       gone.abort();
       await gone.done;
       await sleep(150);
+      // The upload ended, so the window restarts from here as for any settled request.
+      await expectCapacityRefusal(await initialize(port));
       advance(IDLE);
       expect((await initialize(port)).status).toBe(200);
+    });
+
+    it('a body the server cannot parse still counts as the owner being active', async () => {
+      const port = await start({ maxSessions: 1, sessionIdleMs: IDLE });
+      const sid = await initSession(port, 'alice-token');
+      advance(100 * IDLE);
+      const res = await request(port, 'alice-token', { method: 'POST', sessionId: sid, body: '{not json' });
+      expect(res.status).toBe(400);
+      await expectCapacityRefusal(await initialize(port));
+      advance(IDLE);
+      expect((await initialize(port)).status).toBe(200);
+    });
+
+    it('rejects limits that would silently disable the policy', () => {
+      for (const maxSessions of [Number.NaN, 0, -1, 1.5, Number.POSITIVE_INFINITY]) {
+        expect(() => capped({ maxSessions })).toThrow(RangeError);
+      }
+      for (const sessionIdleMs of [Number.NaN, -1, Number.POSITIVE_INFINITY]) {
+        expect(() => capped({ sessionIdleMs })).toThrow(RangeError);
+      }
+      expect(() => capped({ maxSessions: 1, sessionIdleMs: 0 })).not.toThrow();
     });
 
     it('a session with an open GET SSE stream is not reclaimed however stale; the idle window starts when the stream closes', async () => {
@@ -639,12 +662,19 @@ describe('HttpTransport session cap (#6943)', () => {
       expect((await request(port, 'alice-token', { method: 'POST', body: PING(3) })).status).toBe(400);
       expect((await request(port, 'alice-token', { method: 'GET', headers: { Accept: 'text/event-stream' } })).status).toBe(400);
 
+      // An initialize that names the gone session is answered the same way: it must carry no id.
+      const stale = await request(port, 'alice-token', { method: 'POST', sessionId: gone, body: INITIALIZE });
+      expect(stale.status).toBe(404);
+      expect((await stale.json() as { error: string }).error).toBe('unknown-session');
+
       // The slot is held by an active session, so reconnecting is refused, not granted at its expense.
       await expectCapacityRefusal(await initialize(port));
       expect((await request(port, 'mallory-token', { method: 'POST', sessionId: taker, body: PING(4) })).status).toBe(200);
 
       // Once a slot is free, a fresh initialize succeeds with a new session id.
       expect((await request(port, 'mallory-token', { method: 'DELETE', sessionId: taker })).status).toBe(204);
+      // Even with a free slot an initialize naming the gone id creates nothing.
+      expect((await request(port, 'alice-token', { method: 'POST', sessionId: gone, body: INITIALIZE })).status).toBe(404);
       const again = await initSession(port, 'alice-token');
       expect(again).not.toBe(gone);
       expect(await ping(port, again)).toBe(200);

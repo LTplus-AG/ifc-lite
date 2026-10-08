@@ -29,7 +29,7 @@ import { JsonRpcErrorCode } from '../protocol/index.js';
 import { MCPServer, OutgoingMessageSink } from '../server.js';
 import { AuthScope } from '../auth/scope.js';
 import { draftCount } from '../tools/layer-store.js';
-import { parseHostHeader, pickReclaimable, readBody, sameScope, sendSessionCapacity, sendUnknownSession, writeSse, setCors, DEFAULT_MAX_SESSIONS, DEFAULT_SESSION_IDLE_MS, type SessionCapacityOptions } from './http-helpers.js';
+import { assertSessionLimits, parseHostHeader, pickReclaimable, readBody, sameScope, sendSessionCapacity, sendUnknownSession, writeSse, setCors, DEFAULT_MAX_SESSIONS, DEFAULT_SESSION_IDLE_MS, type SessionCapacityOptions } from './http-helpers.js';
 
 export interface HttpAuthenticator {
   /**
@@ -99,6 +99,7 @@ export class HttpTransport {
   private enforceHostCheck: boolean;
 
   constructor(opts: HttpTransportOptions) {
+    assertSessionLimits(opts);
     this.opts = opts;
     this.allowedOrigins = new Set(opts.allowedOrigins ?? []);
     // A wildcard bind has no single hostname to allowlist — real clients send
@@ -252,13 +253,13 @@ export class HttpTransport {
       // principal's session from ever looking idle.
       session.lastSeen = Date.now();
     } else {
+      // A session id we do not hold (DELETEd, reclaimed at the cap, never
+      // issued) is the spec's 404, the cue to initialize again WITHOUT an id;
+      // that holds for `initialize` too, so no id-carrying request creates one.
+      if (sessionId) return sendUnknownSession(res);
       // Per spec, `initialize` is the only request allowed without a session;
       // the response carries the new Mcp-Session-Id.
-      const isInitialize = (message as { method?: string }).method === 'initialize';
-      if (!isInitialize) {
-        // A session id we do not hold (DELETEd, reclaimed at the cap, never
-        // issued) is the spec's 404, the cue to initialize again; none is a 400.
-        if (sessionId) return sendUnknownSession(res);
+      if ((message as { method?: string }).method !== 'initialize') {
         res.statusCode = 400;
         res.end('Mcp-Session-Id required');
         return;

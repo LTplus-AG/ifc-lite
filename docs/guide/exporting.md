@@ -428,6 +428,10 @@ asked for a subset the entire model.
 With `includeQuantities`, each entity additionally carries `ifc:hasQuantitySets`
 (`ifc:IfcElementQuantity` nodes with typed `ifc:IfcQuantity...` entries).
 
+Document PDF exports appear in the status-bar Activity tray while the native
+writer runs. Their rows record completion, missing-content warnings or failure.
+The PDF writer has no native abort contract, so its row offers no Cancel action.
+
 ## CSV Export
 
 Export tabular data for spreadsheet applications:

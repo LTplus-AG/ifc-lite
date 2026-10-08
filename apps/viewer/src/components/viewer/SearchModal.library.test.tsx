@@ -25,18 +25,6 @@ import { useLibraryFocus } from '@/lib/libraries/library-focus';
 const initial = useViewerStore.getState();
 afterEach(() => { mock.restoreAll(); setValidationSourceChoice(null); cleanup(); localStorage.clear(); useLibraryFocus.setState({ target: null }); useViewerStore.setState(initial, true); });
 
-test('#7235 shared library search is reachable with native saved scripts and Flows and no loaded IFC', () => {
-  useViewerStore.setState({ models: new Map(), savedScripts: [], savedFlows: [], searchModalOpen: true });
-  const state = useViewerStore.getState();
-  const script = state.createScript('Coordination script', 'bim.query.all("IfcWall")');
-  const flow = state.createFlow('Coordination workflow');
-  assert.ok(loadSavedScripts().some(entry => entry.id === script), 'native script persistence completed');
-  assert.ok(loadSavedFlows().some(entry => entry.doc.id === flow), 'native Flow persistence completed');
-  render(<SearchModal />);
-  assert.ok([...document.querySelectorAll('[role="tab"]')].some(tab => tab.textContent === 'Libraries'),
-    'shared library search must remain reachable without a loaded model');
-});
-
 test('#7235 keyboard library search spans native persisted scripts/Flows and opens the exact script without execution', async () => {
   useViewerStore.setState({ models: new Map(), savedScripts: [], savedFlows: [], searchModalOpen: true, scriptEditorDirty: false });
   const script = useViewerStore.getState().createScript('Coordination script', 'bim.query.all("IfcWall")');

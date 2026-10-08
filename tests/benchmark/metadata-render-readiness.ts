@@ -10,6 +10,8 @@
 export interface LoadTraceProbe {
   /** The load's root span ended (`trace.finish`, the app's own end of load). */
   ended: boolean;
+  /** Actual loader route; cached metadata is restored instead of reparsed. */
+  loadPath?: string;
   /** Finished spans among `READINESS_SPANS`. */
   done: string[];
   /** Finished spans among `READINESS_SPANS` that carry `error: true`. */
@@ -21,7 +23,11 @@ export interface LoadTraceProbe {
  * `parser.failed`), geometry (`geometry.streamComplete`) and the renderer's
  * post-stream rebuild (`scene.finalize`, recorded by the scene itself).
  */
-export const READINESS_SPANS = ['parser.complete', 'parser.failed', 'geometry.streamComplete', 'scene.finalize'] as const;
+export const READINESS_SPANS = ['parser.complete', 'parser.failed', 'cache.storeReady', 'geometry.streamComplete', 'scene.finalize'] as const;
+
+export function metadataCompletionSpan(loadPath: string | undefined): 'parser.complete' | 'cache.storeReady' {
+  return loadPath === 'cache' ? 'cache.storeReady' : 'parser.complete';
+}
 
 /**
  * TODO(remove-by: first release after 2026-10-06, i.e. one after #6977, with
@@ -65,13 +71,15 @@ export async function waitForMetadataRenderReadiness(options: {
     const legacy = legacyReadiness(logs);
     const done = new Set(probe?.done ?? []);
     const failed = new Set(probe?.failed ?? []);
-    if (done.has('parser.failed') || (!probe && legacy.metadataFailed)) {
+    const metadataSpan = metadataCompletionSpan(probe?.loadPath);
+    if (done.has('parser.failed') || failed.has(metadataSpan) || (!probe && legacy.metadataFailed)) {
       throw new Error('Metadata failed before metadata/render readiness');
     }
+    if (failed.has('geometry.streamComplete')) throw new Error('Geometry failed before metadata/render readiness');
     if (failed.has('scene.finalize') || logs.some(log => RENDERER_INIT_FAILED.test(log))) {
       throw new Error('Renderer failed before metadata/render readiness');
     }
-    const metadata = probe ? done.has('parser.complete') : legacy.metadata;
+    const metadata = probe ? done.has(metadataSpan) : legacy.metadata;
     const geometry = probe ? done.has('geometry.streamComplete') : legacy.geometry;
     const renderer = done.has('scene.finalize') || legacy.renderer;
     if (metadata && geometry && renderer && await options.canvasReady()) return options.now();

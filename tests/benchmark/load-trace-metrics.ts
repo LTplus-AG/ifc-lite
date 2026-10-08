@@ -2,6 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { metadataCompletionSpan } from './metadata-render-readiness.js';
+
 /**
  * Benchmark metrics read from the viewer's load-trace span tree (#6956)
  * instead of console regexes. The span names are the ones
@@ -89,7 +91,6 @@ const MILESTONES: ReadonlyArray<[string, SpanMetricKey]> = [
   ['geometry.streamComplete', 'streamCompleteMs'],
   ['parser.start', 'metadataStartMs'],
   ['parser.spatialReady', 'spatialReadyMs'],
-  ['parser.complete', 'metadataCompleteMs'],
   ['parser.failed', 'metadataFailedMs'],
 ];
 
@@ -124,6 +125,8 @@ export function metricsFromLoadTrace(snapshot: LoadTraceSnapshotJson | null): Sp
     const span = first(snapshot, name);
     if (span) out[key] = Math.round(span.end! - snapshot.start);
   }
+  const metadata = first(snapshot, metadataCompletionSpan(typeof snapshot.attrs.loadPath === 'string' ? snapshot.attrs.loadPath : undefined));
+  if (metadata) out.metadataCompleteMs = Math.round(metadata.end! - snapshot.start);
   // `[stream] worker[i] first batch @ Xms` counts from the pool start, not the load start.
   const pool = snapshot.spans.find((s) => s.name === 'geometry.pool'); // start is all we need; may still be open
   const firstBatch = first(snapshot, 'geometry.firstBatch');

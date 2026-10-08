@@ -492,7 +492,7 @@ export class ViewerBenchmarkPage {
       return await this.page.evaluate(
         ({ key, names }: { key: string; names: readonly string[] }) => {
           type Span = { name: string; end: number | null; attrs?: Record<string, unknown> };
-          const api = (globalThis as unknown as Record<string, { latest?: () => { end: number | null; spans: Span[] } | null } | undefined>)[key];
+          const api = (globalThis as unknown as Record<string, { latest?: () => { end: number | null; spans: Span[]; attrs?: { loadPath?: unknown } } | null } | undefined>)[key];
           const snapshot = api?.latest?.() ?? null;
           if (!snapshot) return null;
           const done: string[] = [];
@@ -502,7 +502,7 @@ export class ViewerBenchmarkPage {
             done.push(span.name);
             if (span.attrs?.error === true) failed.push(span.name);
           }
-          return { ended: snapshot.end !== null, done, failed };
+          return { ended: snapshot.end !== null, done, failed, loadPath: typeof snapshot.attrs?.loadPath === 'string' ? snapshot.attrs.loadPath : undefined };
         },
         { key: LOAD_TRACE_GLOBAL, names: READINESS_SPANS },
       );

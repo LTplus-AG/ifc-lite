@@ -10,6 +10,7 @@ import assert from 'node:assert/strict';
 import { tsImport } from 'tsx/esm/api';
 
 const { ViewerBenchmarkPage } = await tsImport('../tests/benchmark/viewer-benchmark-page.ts', import.meta.url);
+const { metricsFromLoadTrace } = await tsImport('../tests/benchmark/load-trace-metrics.ts', import.meta.url);
 
 // Console lines as the current viewer prints them for one FZK-sized load.
 const LOGS = [
@@ -150,4 +151,32 @@ test('#6979 an ended load root completes the load', async () => {
   const { metrics } = await measure(SNAPSHOT);
   assert.equal(metrics.canvasHasContent, true);
   assert.equal(typeof metrics.renderCompleteMs, 'number');
+});
+
+// #7036 real cache route emits cache.storeReady, not parser.complete.
+test('#7036 metadata timing maps the actual cached store milestone only for cache route', () => {
+  const cached={loadId:'cached',start:100,end:160,attrs:{loadPath:'cache'},spans:[{name:'cache.storeReady',thread:'main',start:140,end:140,milestone:true}]};
+  assert.equal(metricsFromLoadTrace(cached).metadataCompleteMs,40);
+  assert.equal(metricsFromLoadTrace({...cached,attrs:{loadPath:'wasm'}}).metadataCompleteMs,undefined);
+});
+
+test('#7036 cached readiness runs actual page trace reducer without any parser completion mark', async () => {
+  const snapshot = {
+    ...SNAPSHOT,
+    attrs: { loadPath: 'cache' },
+    spans: [
+      ...SNAPSHOT.spans.filter(span => !span.name.startsWith('parser.') && span.name !== 'geometry.pool' && span.name !== 'geometry.firstBatch'),
+      { name: 'cache.storeReady', thread: 'main', start: 1200, end: 1200, milestone: true },
+      { name: 'scene.finalize', thread: 'main', start: 1300, end: 1380 },
+    ],
+  };
+  const page = fakePage(snapshot);
+  const bench = new ViewerBenchmarkPage(page);
+  await bench.setup();
+  await bench.loadFile('cached.ifc', false);
+  await bench.waitForCompletion(1000, true);
+  assert.equal(bench.getMetrics().metadataCompleteMs, 200);
+  assert.equal(bench.getMetrics().streamCompleteMs, 301);
+  assert.equal(bench.getMetrics().canvasHasContent, true);
+  assert.equal(bench.getMetrics().firstBatchWaitMs, null, 'cached route creates no worker geometry pool');
 });

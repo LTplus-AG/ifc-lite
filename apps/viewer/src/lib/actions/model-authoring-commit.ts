@@ -16,6 +16,9 @@
 import type { StoreApi } from 'zustand';
 import { generateIfcGuid } from '@ifc-lite/encoding';
 import type { ViewerState } from '@/store';
+import { copyElements } from '@/lib/commands/modeling/copy-elements';
+import { authoringCopyTransforms, copyRefs } from './model-authoring-copy';
+import { authoringSourcesAreCurrent } from './model-authoring-sources';
 import { runTransaction } from '@/lib/commands/modeling/transaction';
 import type { AuthoringTransaction, CommitResult, ModelingCommand } from '@/lib/commands/modeling/types';
 import { buildStoreyWorkplane, isWorkplane } from '@/lib/commands/modeling/workplane';
@@ -57,7 +60,7 @@ function createElement(s: ViewerState, modelId: string, storey: number, element:
 }
 
 /** Write one row; throws so the transaction rolls the model back. */
-function writeRow(tx: AuthoringTransaction, batch: ModelAuthoringBatch, row: AuthoringRow, refs: Map<string, string | number>, ids: Map<string, number>, written: Written): AppliedChange {
+function writeRow(tx: AuthoringTransaction, batch: ModelAuthoringBatch, row: AuthoringRow, refs: Map<string, string | number>, ids: Map<string, number>, written: Written): AppliedChange[] {
   const modelId = row.modelId!;
   const { op, resolved, before } = row;
   const base = { index: row.index, op: op.op, modelId };
@@ -68,7 +71,7 @@ function writeRow(tx: AuthoringTransaction, batch: ModelAuthoringBatch, row: Aut
       const id = createElement(tx.store, modelId, resolved.storey!, authoredElementOf(batch, op, globalId));
       ids.set(op.ref, id); refs.set(op.ref, globalId);
       written.created.push(id); written.remesh.push(id);
-      return { ...base, globalId, field: op.ifcClass, before: null, after: op.name };
+      return [{ ...base, globalId, field: op.ifcClass, before: null, after: op.name }];
     }
     case 'hosted.create': {
       const globalId = generateIfcGuid();
@@ -77,12 +80,26 @@ function writeRow(tx: AuthoringTransaction, batch: ModelAuthoringBatch, row: Aut
       if ('error' in out) throw new Error(out.error);
       if (op.ref) { ids.set(op.ref, out.expressId); refs.set(op.ref, globalId); }
       written.created.push(out.expressId); written.remesh.push(out.expressId, out.openingId, out.hostId);
-      return { ...base, globalId, field: op.kind === 'opening' ? 'IfcOpeningElement' : op.kind === 'door' ? 'IfcDoor' : 'IfcWindow', before: null, after: op.name ?? op.kind };
+      return [{ ...base, globalId, field: op.kind === 'opening' ? 'IfcOpeningElement' : op.kind === 'door' ? 'IfcDoor' : 'IfcWindow', before: null, after: op.name ?? op.kind }];
+    }
+    case 'element.copy': case 'element.array': {
+      const outcome = copyElements(tx.api, modelId, [idOf(resolved.subject!, ids)], authoringCopyTransforms(batch, op, resolved.storey), { batchId: tx.batchId });
+      written.created.push(...outcome.copiedFrom.keys());
+      written.remesh.push(...outcome.meshed);
+      const r = tx.store.mutationViews.get(modelId);
+      return outcome.copies.map((id, i) => {
+        const entity = r?.getNewEntity(id);
+        const globalId = entity?.attributes[0];
+        if (!entity || typeof globalId !== 'string') throw new Error('A native copy has no GlobalId');
+        const ref = copyRefs(op)[i];
+        ids.set(ref, id); refs.set(ref, globalId);
+        return { ...base, globalId, field: entity.type, before: null, after: typeof entity.attributes[2] === 'string' ? entity.attributes[2] : null };
+      });
     }
     case 'element.delete':
       if (!tx.store.removeEntity(modelId, resolved.target!)) throw new Error(`${op.target.globalId} could not be removed`);
       written.deleted.push(resolved.target!);
-      return { ...base, globalId: op.target.globalId, field: before.ifcClass ?? op.target.ifcClass, before: before.name ?? null, after: null };
+      return [{ ...base, globalId: op.target.globalId, field: before.ifcClass ?? op.target.ifcClass, before: before.name ?? null, after: null }];
     case 'element.move': case 'element.rotate': {
       const root = planSelectionTransform(tx.store, modelId, [resolved.target!])?.roots.find((r) => r.expressId === resolved.target);
       const plane = root ? buildStoreyWorkplane(tx.store, modelId, root.storeyId, 0) : null;
@@ -94,16 +111,16 @@ function writeRow(tx: AuthoringTransaction, batch: ModelAuthoringBatch, row: Aut
       written.remesh.push(...result.remesh); written.moved = true;
       if (op.op === 'element.rotate') {
         const from = before.angleDeg ?? 0;
-        return { ...base, globalId: op.target.globalId, field: 'Angle', before: `${from.toFixed(1)}°`, after: `${(from + op.angleDeg).toFixed(1)}°` };
+        return [{ ...base, globalId: op.target.globalId, field: 'Angle', before: `${from.toFixed(1)}°`, after: `${(from + op.angleDeg).toFixed(1)}°` }];
       }
       const origin = before.origin ?? root.origin;
-      return { ...base, globalId: op.target.globalId, field: 'Placement', before: fmt(batch, origin),
-        after: fmt(batch, [origin[0] + m(op.delta[0]), origin[1] + m(op.delta[1])]) };
+      return [{ ...base, globalId: op.target.globalId, field: 'Placement', before: fmt(batch, origin),
+        after: fmt(batch, [origin[0] + m(op.delta[0]), origin[1] + m(op.delta[1])]) }];
     }
     default: {
       const changed = recordModellingEdit(tx.api, modelId, (methods) => writeRelation(methods, modelId, op, resolved, ids), tx.batchId);
       written.remesh.push(...changed);
-      return relationReceipt(base, op, row, refs, targetGid);
+      return [relationReceipt(base, op, row, refs, targetGid)];
     }
   }
 }
@@ -127,6 +144,7 @@ export function commitModelAuthoring(
   origin: string,
 ): CommitOutcome {
   // Re-run the preflight: approval covers what was shown, nothing that moved since.
+  if (!authoringSourcesAreCurrent(store.getState(), preview)) return { ok: false, reason: 'stale' };
   const fresh = previewModelAuthoring(store.getState(), preview.batch);
   if (fresh.digest !== preview.digest || store.getState().mutationVersion !== preview.mutationVersion) return { ok: false, reason: 'stale' };
   const chosen = writableRows(fresh, approved);
@@ -145,7 +163,7 @@ export function commitModelAuthoring(
         const written: Written = { created: [], deleted: [], remesh: [], moved: false };
         const refs = new Map<string, string | number>();
         const ids = new Map<string, number>();
-        for (const row of rows) done.push(writeRow(tx, preview.batch, row, refs, ids, written));
+        for (const row of rows) done.push(...writeRow(tx, preview.batch, row, refs, ids, written));
         const remesh = [...new Set(written.remesh)].filter((id) => !written.deleted.includes(id));
         return { created: written.created, deleted: written.deleted, remesh,
           ...(written.created.length === 0 && written.moved ? { remeshCause: 'hostsChanged' as const } : {}) };

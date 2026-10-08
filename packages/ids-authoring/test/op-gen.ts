@@ -111,7 +111,7 @@ export function randomOp(rng: Rng, doc: StudioDocument, newId: () => string): St
   const all = facets(doc);
   const spec = specs.length ? pick(rng, specs) : undefined;
   const f = all.length ? pick(rng, all) : undefined;
-  switch (int(rng, 38)) {
+  switch (int(rng, 41)) {
     case 0:
       return { kind: 'doc.setInfo', opId, payload: { field: pick(rng, ['title', 'author', 'purpose'] as InfoField[]), value: pick(rng, WORDS) } };
     case 21:
@@ -244,6 +244,28 @@ export function randomOp(rng: Rng, doc: StudioDocument, newId: () => string): St
       if (r < 0.7) return { kind: 'meta.comment.resolve', opId, payload: { threadId: thread.id, resolved: !thread.resolved } };
       if (r < 0.85 && thread.comments.length > 1) return { kind: 'meta.comment.removeReply', opId, payload: { threadId: thread.id } };
       return { kind: 'meta.comment.removeThread', opId, payload: { threadId: thread.id } };
+    }
+    case 38: {
+      if (!spec) return undefined;
+      const req = spec.requirements.length ? pick(rng, spec.requirements).id : undefined;
+      const fixture = rng() < 0.5 || !req
+        ? { kind: 'file' as const, path: `fixtures/${pick(rng, WORDS)}.ifc` }
+        : { kind: 'synthetic' as const, recipe: { generator: 'ids-testgen/1' as const, ifcVersion: pick(rng, VERSIONS), variant: { kind: 'fail' as const, requirementId: req } } };
+      const failOn = fixture.kind === 'synthetic' && req ? [req] : undefined;
+      return {
+        kind: 'meta.test.add',
+        opId,
+        payload: { specId: spec.id, testCase: { id: newId(), name: pick(rng, WORDS), fixture, expect: failOn ? 'fail' : 'pass', ...(failOn ? { expectFailureOn: failOn } : {}) } },
+      };
+    }
+    case 39:
+    case 40: {
+      const cases = Object.values(doc.meta.tests).flatMap((t) => t.cases);
+      if (!cases.length) return undefined;
+      const c = pick(rng, cases);
+      if (rng() < 0.4) return { kind: 'meta.test.remove', opId, payload: { testId: c.id } };
+      const expect = pick(rng, ['pass', 'fail', 'notApplicable'] as const);
+      return { kind: 'meta.test.setExpectation', opId, payload: { testId: c.id, expect, expectFailureOn: expect === 'fail' && rng() < 0.5 ? [c.id] : null } };
     }
     case 20:
       return { kind: 'meta.custom.declarePset', opId, payload: { decl: { name: pick(rng, ['Acme_A', 'Acme_B', 'Acme_C']), properties: rng() < 0.5 ? [{ name: 'Code' }] : undefined } } };

@@ -162,6 +162,13 @@ const PAYLOADS: Record<OpKind, JsonSchema> = {
   'meta.comment.resolve': obj({ threadId: uuid, resolved: { type: 'boolean' } }, ['threadId', 'resolved']),
   'meta.comment.removeThread': obj({ threadId: uuid }, ['threadId']),
   'meta.comment.restoreThread': obj({ nodeId: uuid, index, thread: ref('CommentThread') }, ['nodeId', 'index', 'thread']),
+  'meta.test.add': obj({ specId: uuid, testCase: ref('TestCase'), index }, ['specId', 'testCase']),
+  'meta.test.remove': obj({ testId: uuid }, ['testId']),
+  'meta.test.restore': obj({ specId: uuid, index, testCase: ref('TestCase') }, ['specId', 'index', 'testCase']),
+  'meta.test.setExpectation': obj(
+    { testId: uuid, expect: ref('TestExpectation'), expectFailureOn: { anyOf: [{ type: 'array', items: uuid }, { type: 'null' }] } },
+    ['testId', 'expect', 'expectFailureOn'],
+  ),
   'bulk.renameProperty': obj(
     { fromPset: nonEmpty, fromName: nonEmpty, toPset: nonEmpty, toName: nonEmpty, scope },
     ['fromPset', 'fromName', 'toPset', 'toName'],

@@ -243,6 +243,46 @@ export const VALUE_DEFS: Record<string, JsonSchema> = {
     },
     ['id', 'resolved', 'comments'],
   ),
+  TestExpectation: { enum: ['pass', 'fail', 'notApplicable'] },
+  TestCase: obj(
+    {
+      id: { $ref: '#/$defs/Uuid' },
+      name: { type: 'string', minLength: 1 },
+      fixture: {
+        oneOf: [
+          obj(
+            {
+              kind: { const: 'synthetic' },
+              recipe: obj(
+                {
+                  generator: { const: 'ids-testgen/1' },
+                  ifcVersion: { $ref: '#/$defs/IfcVersion' },
+                  variant: {
+                    oneOf: [
+                      obj({ kind: { const: 'pass' } }, ['kind']),
+                      obj({ kind: { const: 'fail' }, requirementId: { $ref: '#/$defs/Uuid' } }, ['kind', 'requirementId']),
+                      obj({ kind: { const: 'notApplicable' } }, ['kind']),
+                    ],
+                  },
+                },
+                ['generator', 'ifcVersion', 'variant'],
+              ),
+            },
+            ['kind', 'recipe'],
+          ),
+          obj({ kind: { const: 'snapshot' }, ifcRef: { type: 'string', minLength: 1 }, entityRefs: { type: 'array', items: { type: 'string' } } }, [
+            'kind',
+            'ifcRef',
+            'entityRefs',
+          ]),
+          obj({ kind: { const: 'file' }, path: { type: 'string', minLength: 1 } }, ['kind', 'path']),
+        ],
+      },
+      expect: { $ref: '#/$defs/TestExpectation' },
+      expectFailureOn: { type: 'array', items: { $ref: '#/$defs/Uuid' } },
+    },
+    ['id', 'name', 'fixture', 'expect'],
+  ),
   CustomPsetDecl: obj(
     {
       name: { type: 'string', minLength: 1 },

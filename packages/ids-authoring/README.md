@@ -89,6 +89,7 @@ against it.
 | Value | `value.set`, `value.addEnumValue`, `value.removeEnumValue` |
 | Sidecar | `meta.custom.declarePset`, `meta.custom.removePset`, `meta.custom.declareUserDefinedType`, `meta.custom.removeUserDefinedType` |
 | Comments | `meta.comment.add`, `meta.comment.reply`, `meta.comment.resolve`, `meta.comment.removeThread`, plus the inverses `meta.comment.removeReply` and `meta.comment.restoreThread` (sidecar only) |
+| Test suites | `meta.test.add`, `meta.test.remove`, `meta.test.setExpectation`, plus the inverse `meta.test.restore` (sidecar only) |
 | Compound | `bulk.renameProperty`, `bulk.retargetEntity`, `bulk.applyTemplate` (each expands to primitive ops and undoes in one step) |
 | Fidelity | `spec.restore`, `spec.patch`, `facet.restore`, `facet.patch` (emitted as exact inverses; they carry raw IDS content and node ids) |
 
@@ -290,6 +291,31 @@ verifyRevisionLog(log); // { ok: true, problems: [] }; any edit of a stored reco
   content on top of it must be a `draft`.
 - `revisionTimeline(log)` is the view model for a revision list (labels,
   sign-offs, plain-language changes against the parent, verification).
+
+## Test suites
+
+IDS test suites are "unit tests for information requirements": each
+specification can carry cases (`meta.tests[specId]`), each an IFC fixture
+and the verdict the specification must give on it (`pass`, `fail`, or
+`notApplicable`; a `fail` case may name exactly the requirements that
+fail). Fixtures are `synthetic` (a recipe for `@ifc-lite/ids-testgen`),
+`snapshot` (a subset pinned from a real model) or `file`.
+
+```ts
+import { junitXml, outcomeFromSpecResult, runTestSuites, testSuitesView, type CaseEvaluator, type StudioDocument } from '@ifc-lite/ids-authoring';
+
+declare const doc: StudioDocument;
+declare const evaluate: CaseEvaluator; // e.g. from @ifc-lite/ids-testgen, or a viewer worker
+const report = await runTestSuites(doc, evaluate);
+// report.summary: { total, passed, failed, error, skipped }
+const xml = junitXml(report); // for CI
+const panel = testSuitesView(doc, report); // rows per specification, with verdicts
+void outcomeFromSpecResult; // maps a validateIDS specification result onto an outcome
+```
+
+The runner does the bookkeeping; the host's `evaluate` turns a fixture
+into a validator verdict. Test suites change only through `meta.test.*`
+ops and outlive the specification they belong to (undo brings them back).
 
 ## Comments
 

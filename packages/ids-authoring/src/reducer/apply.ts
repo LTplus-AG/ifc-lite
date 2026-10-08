@@ -29,6 +29,7 @@ import {
   applyCommentRestoreThread,
 } from './comment-ops.js';
 import { OpApplyError } from './edit.js';
+import { applyTestAdd, applyTestRemove, applyTestRestore, applyTestSetExpectation } from './test-ops.js';
 import {
   applyFacetAdd,
   applyFacetMove,
@@ -137,6 +138,14 @@ export function applyPrimitive(doc: StudioDocument, op: PrimitiveOp): StepResult
       return applyCommentRemoveThread(doc, op);
     case 'meta.comment.restoreThread':
       return applyCommentRestoreThread(doc, op);
+    case 'meta.test.add':
+      return applyTestAdd(doc, op);
+    case 'meta.test.remove':
+      return applyTestRemove(doc, op);
+    case 'meta.test.restore':
+      return applyTestRestore(doc, op);
+    case 'meta.test.setExpectation':
+      return applyTestSetExpectation(doc, op);
   }
 }
 

@@ -128,6 +128,9 @@ export * from './merge/index.js';
 // Revisions, sign-off and hash chain (IDS-107)
 export * from './revision/index.js';
 
+// IDS test suites: model, runner, JUnit, view model (IDS-110)
+export * from './testing/index.js';
+
 // Comment threads in the sidecar (IDS-108)
 export {
   commentThreads,

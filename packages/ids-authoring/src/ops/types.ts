@@ -26,6 +26,7 @@ import type {
 } from '@ifc-lite/ids';
 import type { FacetFieldName } from '../document/fields.js';
 import type { CommentThread, CustomPsetDecl, FacetNodes, Section, SpecNodes, UserDefinedTypeDecl } from '../document/types.js';
+import type { TestCase, TestExpectation } from '../testing/types.js';
 import type { Uuid } from '../uuid.js';
 
 export const OPS_VERSION = 1;
@@ -238,6 +239,16 @@ export type MetaCommentRemoveReplyOp = Op<'meta.comment.removeReply', { threadId
 export type MetaCommentResolveOp = Op<'meta.comment.resolve', { threadId: Uuid; resolved: boolean }>;
 export type MetaCommentRemoveThreadOp = Op<'meta.comment.removeThread', { threadId: Uuid }>;
 /** Put a thread back (inverse of removeThread; the node may be gone, threads outlive nodes). */
+/** Add a test case to a specification's suite. */
+export type MetaTestAddOp = Op<'meta.test.add', { specId: Uuid; testCase: TestCase; index?: number }>;
+export type MetaTestRemoveOp = Op<'meta.test.remove', { testId: Uuid }>;
+/** Put a test case back (inverse of remove; the specification may be gone, suites outlive it). */
+export type MetaTestRestoreOp = Op<'meta.test.restore', { specId: Uuid; index: number; testCase: TestCase }>;
+/** Change what a test case expects; `expectFailureOn: null` clears it. */
+export type MetaTestSetExpectationOp = Op<
+  'meta.test.setExpectation',
+  { testId: Uuid; expect: TestExpectation; expectFailureOn: Uuid[] | null }
+>;
 export type MetaCommentRestoreThreadOp = Op<'meta.comment.restoreThread', { nodeId: Uuid; index: number; thread: CommentThread }>;
 
 // ---------------------------------------------------------------------------
@@ -302,7 +313,11 @@ export type PrimitiveOp =
   | MetaCommentRemoveReplyOp
   | MetaCommentResolveOp
   | MetaCommentRemoveThreadOp
-  | MetaCommentRestoreThreadOp;
+  | MetaCommentRestoreThreadOp
+  | MetaTestAddOp
+  | MetaTestRemoveOp
+  | MetaTestRestoreOp
+  | MetaTestSetExpectationOp;
 
 export type CompoundOp = BulkRenamePropertyOp | BulkRetargetEntityOp | BulkApplyTemplateOp;
 

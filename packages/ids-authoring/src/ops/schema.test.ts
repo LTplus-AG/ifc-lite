@@ -64,6 +64,14 @@ const EXAMPLES: Record<OpKind, StudioOp['payload']> = {
   'meta.comment.resolve': { threadId: F, resolved: true },
   'meta.comment.removeThread': { threadId: F },
   'meta.comment.restoreThread': { nodeId: S, index: 0, thread: { id: F, resolved: false, comments: [{ author: 'Ana', at: '2026-10-08', text: 'x' }] } },
+  'meta.test.add': {
+    specId: S,
+    testCase: { id: F, name: 'Doors without fire rating fail', fixture: { kind: 'synthetic', recipe: { generator: 'ids-testgen/1', ifcVersion: 'IFC4', variant: { kind: 'fail', requirementId: O } } }, expect: 'fail', expectFailureOn: [O] },
+    index: 0,
+  },
+  'meta.test.remove': { testId: F },
+  'meta.test.restore': { specId: S, index: 0, testCase: { id: F, name: 'x', fixture: { kind: 'file', path: 'fixtures/x.ifc' }, expect: 'pass' } },
+  'meta.test.setExpectation': { testId: F, expect: 'pass', expectFailureOn: null },
   'bulk.renameProperty': { fromPset: 'Pset_WallCommon', fromName: 'Fire', toPset: 'Pset_WallCommon', toName: 'FireRating' },
   'bulk.retargetEntity': { from: 'IfcWallStandardCase', to: 'IfcWall', scope: [S] },
   'bulk.applyTemplate': {

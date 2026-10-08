@@ -207,13 +207,15 @@ Supported operations:
 - place a door, window or opening in a wall;
 - join two walls;
 - trim or extend native walls, beams and members to an explicit line or wall boundary;
-- assign an existing or new type;
+- assign an existing or new type, or detach an occurrence from its current type;
 - assign an existing or new material;
 - copy an element, optionally to another storey, with an explicit offset and turn;
 - make a linear or polar array of an element;
 - move an element horizontally;
 - turn an element about its own origin;
 - delete a single element.
+
+Type detachment requires the current type’s exact `GlobalId` and `Name`. Both occurrence and type identities must be unique within their owning model. The native writer rechecks the binding on the intermediate batch state; an earlier assignment cannot authorize detaching a different type. Rich selection evidence and explicit selection attachments include this binding as `nativeType.expected`, including unsaved type creation and renaming; untyped and unavailable bindings are explicit. It removes that occurrence from its type relationship, preserving the type object and its other occurrences; an empty relationship is removed. The review shows the type change and explicitly marks the resulting geometry preview unavailable. Apply uses the same native writer as the Model inspector, with one grouped Undo/Redo.
 
 Copy proposals use `element.copy` with a `target`, a unique new `ref` and `offset: [dx,dy,dz]` in the declared unit. A turn needs `angleDeg` and an explicit `pivot: [x,y]`. Optional `storey: {globalId, modelId?}` selects a target storey in the same model; optional `from: [x,y]` pins the current source placement within 1 mm. Arrays use `element.array`, `target`, `mode`, `count` including the original, and `refs` naming every new root. Linear arrays take `anchor` and `cursor`, optional `distance` for spacing, and `fit: true` to distribute across a total span. Polar arrays take an `anchor` and optional `angleDeg` (360 by default); full turns avoid a coincident final copy. Each operation copies one root; multiple roots use multiple reviewed operations in the same native transaction. Native hosted openings, fillings and assembly parts travel with their root. At most 200 copy roots are proposed across a batch.
 

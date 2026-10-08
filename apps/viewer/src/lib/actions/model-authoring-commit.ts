@@ -28,7 +28,7 @@ import { commitElementTransform, planSelectionTransform } from '@/lib/element-tr
 import { writeNativeSplit } from './model-authoring-split';
 import { recordModellingEdit, recordModellingCommit } from '@/store/slices/mutation-modelling-records';
 import { toMetres, type AuthoringOp, type ModelAuthoringBatch } from './model-authoring';
-import { authoredElementOf, hostedSpecOf, idOf, writeRelation } from './model-authoring-native';
+import { authoredElementOf, hostedSpecOf, idOf, writeRelation, writeNativeTypeDetach } from './model-authoring-native';
 import { previewModelAuthoring, type AuthoringRow, type ModelAuthoringPreview } from './model-authoring-preview';
 import { undoBatch, type AppliedChange, type CommitOutcome, type ModelChangeReceipt } from './model-change-commit';
 import { commitElementSize } from '@/lib/element-size-commit';
@@ -159,6 +159,13 @@ function writeRow(tx: AuthoringTransaction, batch: ModelAuthoringBatch, row: Aut
         ids.set(ref, id); refs.set(ref, globalId);
         return { ...base, globalId, field: entity.type, before: null, after: typeof entity.attributes[2] === 'string' ? entity.attributes[2] : null };
       });
+    }
+    case 'type.detach': {
+      const dataStore = tx.store.models.get(modelId)?.ifcDataStore;
+      if (!dataStore) throw new Error('The native model source is unavailable');
+      recordModellingEdit(tx.api, modelId, (_methods, draft) => writeNativeTypeDetach(op, dataStore, draft, resolved), tx.batchId);
+      written.remesh.push(resolved.target!);
+      return [{ ...base, globalId: op.target.globalId, field: 'Type', before: before.type ?? null, after: null }];
     }
     case 'element.delete':
       if (!tx.store.removeEntity(modelId, resolved.target!)) throw new Error(`${op.target.globalId} could not be removed`);

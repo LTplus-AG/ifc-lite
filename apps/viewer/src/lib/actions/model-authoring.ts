@@ -72,6 +72,7 @@ export type AuthoringOp =
   | { op: 'element.move'; target: ExistingElement; delta: [number, number]; from?: [number, number] }
   /** Turn about the element's own placement origin; `fromDeg` optionally pins today's angle. */
   | { op: 'element.rotate'; target: ExistingElement; angleDeg: number; fromDeg?: number }
+  | { op: 'type.detach'; target: ExistingElement; expected: { GlobalId: string; Name: string } }
   | { op: 'type.assign'; target: ElementTarget; expected?: string | null; type: { globalId: string; name: string } | { create: { ifcClass: string; name: string } } }
   | { op: 'material.assign'; target: ElementTarget; expected?: string | null; material: { name: string; create: boolean } }
   | { op: 'walls.join'; walls: [ElementTarget, ElementTarget] }
@@ -80,7 +81,7 @@ export type AuthoringOp =
 
 export type AuthoringOpName = AuthoringOp['op'];
 export const AUTHORING_OPS: readonly AuthoringOpName[] = ['stair.resize', 'stair.delete', 'railing.delete', 'stair.replace', 'railing.replace', 'stair.create', 'railing.create', 'element.create', 'element.delete', 'element.split', 'element.resize', 'element.profile', 'element.trimExtend', 'element.move', 'element.rotate', 'element.copy', 'element.array',
-  'type.assign', 'material.assign', 'walls.join', 'hosted.create', 'hosted.edit'];
+  'type.assign', 'type.detach', 'material.assign', 'walls.join', 'hosted.create', 'hosted.edit'];
 
 export interface ModelAuthoringBatch {
   version: 1;
@@ -254,6 +255,12 @@ function operation(value: unknown, index: number, units: AuthoringUnits, refs: M
       if (typeof angle !== 'number' || !Number.isFinite(angle) || angle === 0 || Math.abs(angle) > 360) throw new Error(`${at}: angleDeg must be a non-zero number of degrees within ±360`);
       if (value.fromDeg !== undefined && (typeof value.fromDeg !== 'number' || !Number.isFinite(value.fromDeg))) throw new Error(`${at}: fromDeg must be a number`);
       return { op: 'element.rotate', target: existing(value.target, at), angleDeg: angle, ...(typeof value.fromDeg === 'number' ? { fromDeg: value.fromDeg } : {}) };
+    }
+    case 'type.detach': {
+      const expected = record(value.expected) ? value.expected : null;
+      if (!expected || typeof expected.Name !== 'string' || expected.Name.length > 200) throw new Error(`${at}: expected must name the current type {GlobalId, Name}`);
+      const GlobalId = parseGlobalIdTarget({ globalId: expected.GlobalId }, `${at} expected type`).globalId;
+      return { op: 'type.detach', target: existing(value.target, at), expected: { GlobalId, Name: expected.Name } };
     }
     case 'type.assign': {
       const target = element(value.target, at, refs);

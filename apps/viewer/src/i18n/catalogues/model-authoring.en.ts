@@ -8,6 +8,9 @@ import type { TranslationValue } from '../types';
 export const modelAuthoringEn = {
   'modelAuthoring.reachNeighborPreview': 'The preview shows the target body; adjoining wall updates are not drawn. Applying uses the native joined-wall writer.',
   'modelAuthoring.trimExtendResult': '{mode} {end} · length {length} {units} {joined}',
+  'modelAuthoring.splitResult': 'Split at {cut}; the {side} piece keeps the existing identity and one new piece is created',
+  'modelAuthoring.splitPreview': 'Preview shows the cut marker, not the resulting solids. Native profiles, openings and structural engineering intent are not represented by the marker.',
+  'modelAuthoring.splitOpenings': 'Hosted opening assignments: left {toLeft}, right {toRight}, unreadable or skipped {skipped}.',
   'modelAuthoring.commandLabel': 'Apply reviewed authoring',
   'modelAuthoring.title': 'Review model authoring',
   'modelAuthoring.rows': 'Proposed operations',
@@ -23,6 +26,7 @@ export const modelAuthoringEn = {
   'modelAuthoring.sourceStorey': 'the source storey',
   'modelAuthoring.copyPreviewHint': 'Copy ghosts use currently available source meshes, including hosted fillings and assembly parts; at most the first 64 placements per array are shown. Draft creations and sources without loaded meshes have no copy ghost. Hosted cut ghosts on copied draft walls are also unavailable. The full approved count is written.',
   'modelAuthoring.op.element.delete': 'Delete',
+  'modelAuthoring.op.element.split': 'Split',
   'modelAuthoring.op.element.resize': 'Resize',
   'modelAuthoring.op.element.profile': 'Change profile',
   'modelAuthoring.op.element.move': 'Move',

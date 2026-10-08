@@ -1,0 +1,17 @@
+{
+  "head": "08a891e40492b3bff2ed150a551a42751a204f54",
+  "sourcePins": [
+    {
+      "path": "scripts/perf/worker-pool-lifecycle-invariants.mjs",
+      "currentSHA": "39fe7e8a1bb1f8c1ba276bf679f4ad79163cbe70237661238780106da6aece05",
+      "originalSHA": "99b9a9e55156c7af5570b0f22977e3b914b1814a2f38d6173ecae65179692994"
+    },
+    {
+      "path": "scripts/perf/worker-pool-lifecycle-invariants.test.mjs",
+      "currentSHA": "75e5d13cb936f789afdd98deb50cb7d03a91c3ecc09365d7d9292e0eb7c77da9",
+      "originalSHA": "809dba499eb6c7b2482cb3fd3fa6bb6f055dbb70a4274beedf4020e6486fb97a"
+    }
+  ],
+  "status": "source-only UNRUN",
+  "plan": "Install exact original production helper with new tests, run three selected unfinished controls: expect 1 ordinary-open pass and 2 failure-marker assertion failures. Byte-exact candidate restore, full invariant controls, appropriate prerequisite suite/root typecheck/light gates only after parent CPU admission. No production deadlines, loader, native or payload-scope expansion."
+}

@@ -182,6 +182,12 @@ To carry a created entity across, call `restoreNewEntity()` with its
 `NewEntity` payload (read via `getNewEntity`/`getNewEntities` on the source
 view) **before** calling `importMutations`:
 
+Native `createEntity()` records carry `creationId`, matching their original
+`CREATE_ENTITY` mutation UUID. This is provenance metadata, not an IFC
+attribute. Preserve the original token when cloning an original record for
+undo or recovery. A tokenless replacement body cannot borrow an old journal
+entry as identity, even if its express ID and fields match.
+
 ```typescript
 const json = view.exportMutations();
 

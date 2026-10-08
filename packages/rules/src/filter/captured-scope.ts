@@ -74,18 +74,11 @@ export function resolveCapturedEntityScope(
     if (matches.length !== 1) throw new Error('Captured scope source is missing, replaced, or ambiguous. Load its original source or capture again.');
     const model = matches[0];
     if (!model.store) throw new Error('Captured scope source data is unavailable. Nothing was run.');
-    const creations = new Map<number, string>();
-    // One journal pass per source, never one history scan per member.
-    if (source.members.some(member => member.creationId !== undefined)) {
-      for (const mutation of model.mutationView?.getMutations() ?? []) {
-        if (mutation.type === 'CREATE_ENTITY') creations.set(mutation.entityId, mutation.id);
-      }
-    }
     for (const member of source.members) {
       const created = model.mutationView?.getNewEntity(member.expressId);
       const exists = member.creationId === undefined
         ? !created && storeHasSourceEntity(model.store, member.expressId)
-        : !!created && creations.get(member.expressId) === member.creationId;
+        : !!created && created.creationId === member.creationId;
       if (!exists || model.mutationView?.isDeleted(member.expressId)) {
         throw new Error(`Captured scope member #${member.expressId} is missing or its authored identity changed. Nothing was run.`);
       }

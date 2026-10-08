@@ -164,8 +164,22 @@ export async function parseSymbolicFlat(
   mode: SymbolicFilterMode = 'overlay',
   frame?: RtcFrame,
 ): Promise<FlatSymbolic> {
+  return (await parseSymbolicFlatWithOutcome(source, debug, mode, frame)).flat;
+}
+
+/** Viewer-private completion seam (#6537): compatibility consumers still get
+ * empty on failure; the canonical cache can distinguish it from successful empty.
+ * The shared dispatch owns logging, timeout, worker disposal, and never-reject policy. */
+export async function parseSymbolicFlatWithOutcome(
+  source: IfcSourceTransfer,
+  debug = false,
+  mode: SymbolicFilterMode = 'overlay',
+  frame?: RtcFrame,
+): Promise<{ kind: 'success' | 'failure'; flat: FlatSymbolic }> {
   const response = await dispatch('symbolic', source, debug, mode, frame);
-  return response && 'flat' in response ? response.flat : createEmptyFlatSymbolic();
+  return response && 'flat' in response
+    ? { kind: 'success', flat: response.flat }
+    : { kind: 'failure', flat: createEmptyFlatSymbolic() };
 }
 
 /**

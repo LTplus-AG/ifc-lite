@@ -148,3 +148,26 @@ test('#7179 native authored relationship fan-out retains full known count and bo
   const sampledGroup = row.relationships.find(edge => edge.entity.expressId === group.expressId);
   assert.ok(sampledGroup); assert.equal(sampledGroup.entity.Name, `${'x'.repeat(240)}…`);
 });
+
+// #7179 the panel combines a native duplicate's base and direct relationships;
+// one record targeting both is one selected edge, not two derived-array rows.
+test('#7179 duplicate alias merges native base and direct relationship edges once', async () => {
+  const store = await sample(); seedModel('duplicate', 0, store, 89);
+  const view = getOrCreateMutationView(useViewerStore, 'duplicate'); assert.ok(view); view.setExpressIdWatermark(100_000);
+  const source = store.getEntity(89); assert.ok(source);
+  const attributes = source.attributes.slice(); attributes[0] = '0000000000000000000001'; attributes[2] = 'Native duplicate';
+  const duplicate = view.createEntity('IfcSpace', attributes); view.setEntityAlias(duplicate.expressId, 89);
+  view.setPositionalAttribute(81, 4, ['#89', '#203', `#${duplicate.expressId}`]);
+  const exported = await exportAndReparse('duplicate', store);
+  assert.deepEqual(exported.getEntity(81)?.attributes[4], [89, 203, duplicate.expressId]);
+  assert.equal(exported.entityIndex.byId.get(duplicate.expressId)?.type, 'IFCSPACE');
+  const ref = { modelId: 'duplicate', expressId: duplicate.expressId };
+  const combined = relationshipsForSelection(createQueryAdapter(useViewerStore).relationships, ref, view.resolveBaseEntityId(duplicate.expressId));
+  assert.equal(combined.relations?.filter(edge => edge.relationshipId === 81 && edge.entity.id === 80).length, 1);
+  assert.ok(combined.relations?.some(edge => edge.relationshipId === 97 && edge.entity.id === 43));
+  useViewerStore.setState({ selectedEntity: ref, selectedEntityId: duplicate.expressId, selectedEntitiesSet: new Set([entityRefToString(ref)]) });
+  const row = rows()[0];
+  assert.equal(row.relationshipCount, combined.relations?.length);
+  assert.equal(row.relationships.filter(edge => edge.relationshipId === 81 && edge.entity.expressId === 80).length, 1);
+  assert.ok(row.relationships.some(edge => edge.relationshipId === 97 && edge.entity.expressId === 43));
+});

@@ -48,6 +48,7 @@ export const activityTrayEn = {
   'activityTray.job.csvProperties': 'Export model properties CSV',
   'activityTray.job.csvQuantities': 'Export model quantities CSV',
   'activityTray.job.csvSpatial': 'Export model spatial hierarchy CSV',
+  'activityTray.job.bcfArchive': 'Export BCF archive',
   'activityTray.job.validationBcf': 'Export validation report as BCF',
   'activityTray.job.publication': 'BCF publication',
 

@@ -51,7 +51,16 @@ const buffers = [new WeakRef(source.positions), new WeakRef(source.normals), new
 // allocation membership cannot retain the original backing allocations.
 source.positions = source.positions.slice();
 source.normals = source.normals.slice();
-releaseCpuMeshBuffers([source]);
+// Repeated immutable carries must flatten ownership, not form strong history
+// chains, and still release original allocations after the source replacement.
+let recoloured = source;
+const priorRecolours: WeakRef<MeshData>[] = [];
+for (let generation = 0; generation < 1_000; generation++) {
+  if (generation > 0) priorRecolours.push(new WeakRef(recoloured));
+  recoloured = carryReleasedMesh(recoloured, { ...recoloured, color: [0, 1, 0, 1] });
+}
+await requireCollected(priorRecolours);
+releaseCpuMeshBuffers([recoloured]);
 await requireCollected(buffers);
 assert.equal(source.positions.length, 0);
 assert.equal(retained.positions.length, 0, 'the retained copy itself stays alive');

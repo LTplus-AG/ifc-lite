@@ -55,6 +55,31 @@ it('canonical pre-alignment restore releases prior registered allocations and pr
   assert.equal(hasMeshGeometryProvenance(retained), true);
 });
 
+it('canonical recolour after frame restore carries prior source ownership without clearing independent copied fields (#6584)', () => {
+  const source = seed();
+  const geometry = useViewerStore.getState().geometryResult!;
+  const snapshot = capturePreAlignment(geometry);
+  const retained = placedMesh(source, [1, 0, 0]);
+  const partial = carryReleasedMesh(source, { ...source });
+  const independentPositions = source.positions.slice();
+  partial.positions = independentPositions;
+  const partialRecoloured = carryReleasedMesh(partial, { ...partial, color: [0, 0, 1, 1] });
+  restorePreAlignment(geometry, snapshot);
+  useViewerStore.getState().updateMeshColors(new Map([[source.expressId, [0, 1, 0, 1]]]));
+  const recoloured = useViewerStore.getState().geometryResult!.meshes[0];
+  assert.notEqual(recoloured, source, 'actual immutable recolour changes the release target');
+  useViewerStore.getState().releaseGeometryMemory();
+  assert.equal(retained.positions.byteLength, 0, 'recoloured release target must own prior source positions');
+  assert.equal(retained.normals.byteLength, 0, 'recoloured release target must own prior source normals');
+  for (const independent of [partial, partialRecoloured]) {
+    assert.equal(independent.positions, independentPositions, 'copy history must not pollute original source ownership');
+    assert.equal(independent.normals.byteLength, 0);
+    assert.equal(independent.indices.byteLength, 0);
+    assert.deepEqual(meshGeometryCounts(independent), { triangles: 2, vertices: 4 });
+  }
+  assert.deepEqual(meshGeometryCounts(retained), { triangles: 2, vertices: 4 });
+});
+
 it('canonical stream fragments release appearance-only aliases while retaining their independent topology (#6584)', () => {
   const source = seed();
   // Real split outputs passed through the canonical registered-copy seam.

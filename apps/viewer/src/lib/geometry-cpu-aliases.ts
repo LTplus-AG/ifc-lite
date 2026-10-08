@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import type { MeshData } from '@ifc-lite/geometry';
-import { meshCpuBuffers, rememberCpuMeshBuffers } from './geometry-cpu-buffers';
+import { meshCpuBuffers, rememberCpuMeshBuffers, inheritCpuMeshBuffers } from './geometry-cpu-buffers';
 
 type Aliases = Set<WeakRef<MeshData>>;
 const copies = new WeakMap<MeshData, { aliases: Aliases; reference: WeakRef<MeshData> }>();
@@ -43,6 +43,9 @@ export function registerCpuMeshCopy(source: MeshData, copy: MeshData): void {
   if (!sharesBuffers) return;
   rememberCpuMeshBuffers(source, sourceBuffers);
   rememberCpuMeshBuffers(copy, copyBuffers);
+  if (copyBuffers.size === sourceBuffers.size && [...copyBuffers].every(buffer => sourceBuffers.has(buffer))) {
+    inheritCpuMeshBuffers(source, copy);
+  }
   const aliases = copies.get(source)?.aliases ?? new Set<WeakRef<MeshData>>();
   prune(aliases);
   remember(source, aliases);

@@ -95,6 +95,13 @@ export interface NodeDef<H = unknown, P = Readonly<Record<string, unknown>>> {
    * that only sometimes reaches out calls `ctx.markVolatile()` instead.
    */
   readonly volatile?: boolean;
+  /**
+   * The node's outputs are a proposal: a run stops downstream of it (status
+   * `review`, dependants `paused`) until the caller resumes with the
+   * reviewed outputs (`RunOptions.resume`). Nothing downstream of an
+   * unreviewed proposal ever runs.
+   */
+  readonly review?: 'required';
   /** Headless behaviour when a required backend feature is absent: `noop` runs as no-op. */
   readonly headless?: 'run' | 'noop';
   /** Host prerequisites the availability check tests for. */

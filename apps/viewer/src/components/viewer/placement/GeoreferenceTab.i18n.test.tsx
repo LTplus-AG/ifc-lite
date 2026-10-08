@@ -19,7 +19,7 @@ import { describe, it, afterEach, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
 import type { MapConversion, ProjectedCRS } from '@ifc-lite/parser';
-import { cleanup, render } from '@/test/render.js';
+import { cleanup, render, waitFor } from '@/test/render.js';
 import { registerLocale, setLocale, type Catalogue } from '@/i18n';
 import { resolve } from '@/i18n/registry';
 import { en } from '@/i18n/en';
@@ -122,10 +122,11 @@ afterEach(() => {
 });
 
 describe('GeoreferenceTab localization (#4918, #5505)', () => {
-  it('translates the delta readouts', () => {
+  it('translates the delta readouts', async () => {
     const container = render(
       <GeoreferenceTab modelId="m0" mapConversion={mapConversion} baseMapConversion={mapConversion} projectedCRS={projectedCRS} lengthUnitScale={1} />,
     );
+    await waitFor(() => Boolean(container.querySelector('[aria-label="Nudge east"]')), 'projected editing resolves');
     const englishDom = readableStrings(container);
     const afterDom = domAfterPseudo(container);
     assertAllTranslate(
@@ -148,10 +149,11 @@ describe('GeoreferenceTab localization (#4918, #5505)', () => {
     }
   });
 
-  it('translates the nudge, height, and rotate control clusters, and the apply/reset actions', () => {
+  it('translates the nudge, height, and rotate control clusters, and the apply/reset actions', async () => {
     const container = render(
       <GeoreferenceTab modelId="m0" mapConversion={mapConversion} baseMapConversion={mapConversion} projectedCRS={projectedCRS} lengthUnitScale={1} />,
     );
+    await waitFor(() => Boolean(container.querySelector('[aria-label="Nudge east"]')), 'projected editing resolves');
     const englishDom = readableStrings(container);
     const afterDom = domAfterPseudo(container);
     assertAllTranslate(

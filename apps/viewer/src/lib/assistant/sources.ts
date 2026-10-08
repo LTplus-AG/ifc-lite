@@ -12,7 +12,7 @@ export const ASSISTANT_SOURCES = [
   // Checks
   'clash', 'duplicates', 'validation', 'manualChecklist', 'lens', 'bcf',
   // Coordination
-  'compare', 'changes', 'changeSets', 'zones', 'placement', 'schedule', 'semantic', 'layerDiff',
+  'compare', 'changes', 'changeSets', 'zones', 'placement', 'schedule', 'semantic', 'layerDiff', 'review',
   // Quantities
   'lists', 'charts', 'cost', 'measurements', 'drawingMeasurements', 'deviation',
   // Model

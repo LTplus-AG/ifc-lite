@@ -73,15 +73,15 @@ function FlowPatchReview() {
             disabled={!isFlowProposalCurrent(review.proposal)} onChange={event => useFlowReview.setState({ trackingAcknowledged: event.target.checked })} />{t('flowAssistant.trackingAcknowledge')}</label>
         </>}
         {!isFlowProposalCurrent(review.proposal) && <p role="alert" className="rounded border border-amber-500/40 bg-amber-500/10 p-2">{t('assistant.flowProposalStale')}</p>}
-        <details><summary className="cursor-pointer">{t('assistant.flowBefore')}</summary><pre className="max-h-48 overflow-auto whitespace-pre-wrap break-words font-mono text-2xs">{review.proposal.beforeJson}</pre></details>
-        <details><summary className="cursor-pointer">{t('assistant.flowAfter')}</summary><pre className="max-h-48 overflow-auto whitespace-pre-wrap break-words font-mono text-2xs">{review.proposal.afterJson}</pre></details>
-        <details><summary className="cursor-pointer">{t('assistant.evidenceDetails')}</summary>
+        <details><summary className="cursor-pointer py-1">{t('assistant.flowBefore')}</summary><pre className="max-h-48 overflow-auto whitespace-pre-wrap break-words font-mono text-2xs">{review.proposal.beforeJson}</pre></details>
+        <details><summary className="cursor-pointer py-1">{t('assistant.flowAfter')}</summary><pre className="max-h-48 overflow-auto whitespace-pre-wrap break-words font-mono text-2xs">{review.proposal.afterJson}</pre></details>
+        <details><summary className="cursor-pointer py-1">{t('assistant.evidenceDetails')}</summary>
           <div className="mt-2 space-y-1">
             <EvidenceView evidence={review.proposal.evidence} state={isFlowProposalCurrent(review.proposal) ? 'captured' : 'stale'} />
             <p className="font-mono text-2xs text-muted-foreground break-all">{review.proposal.digest}</p>
           </div>
         </details>
-        <label className="flex items-start gap-2"><input type="checkbox" checked={review.approved}
+        <label className="flex min-h-6 items-center gap-2"><input type="checkbox" className="h-4 w-4 shrink-0" checked={review.approved}
           disabled={!isFlowProposalCurrent(review.proposal)} onChange={event => useFlowReview.setState({ approved: event.target.checked })} />{t('assistant.flowApproved')}</label>
         <Button size="sm" className="h-7" disabled={!review.approved || !isFlowProposalCurrent(review.proposal)
           || (review.proposal.tracking.length > 0 && !review.trackingAcknowledged)} onClick={() => run(() => {

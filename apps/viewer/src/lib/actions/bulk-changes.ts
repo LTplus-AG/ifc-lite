@@ -15,7 +15,7 @@ import type { BulkAction } from '@ifc-lite/mutations';
 import { getAttributeNamesAcrossSchemas } from '@ifc-lite/parser';
 import type { ViewerState } from '@/store';
 import { toConversion, type ChangeConversion, type ConversionIssue } from './change-conversion';
-import { EDITABLE_ATTRIBUTES, type EditableAttribute, type ModelChange } from './model-change';
+import { EDITABLE_ATTRIBUTES, type EditableAttribute, type ModelChange } from '@ifc-lite/ai/artifacts';
 import { currentValue, modelReader, sameValue, UNSUPPORTED_VALUE, type ModelReader } from './model-change-values';
 import { existingProperty } from './table-cells';
 

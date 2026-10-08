@@ -45,7 +45,7 @@ export interface FlowRunPin {
  * `failed`: the native run reported `ok: false`, or started and threw before a result existed;
  * `lane-errors`: the run finished `ok` but some lanes threw, so their outputs are missing.
  */
-export type FlowRunVerdict = 'not-run' | 'refused' | 'failed' | 'lane-errors' | 'warnings' | 'passed';
+export type FlowRunVerdict = 'not-run' | 'refused' | 'failed' | 'lane-errors' | 'warnings' | 'review-required' | 'passed';
 
 export interface FlowNodeDiagnostic {
   readonly nodeId: string;
@@ -112,6 +112,7 @@ export function flowRunVerdict(run: RunResult | null, error: string | null, wind
   if (!run) return error !== null ? (window ? 'failed' : 'refused') : 'not-run';
   if (!run.ok) return 'failed';
   if (run.reports.some(report => report.laneErrors > 0)) return 'lane-errors';
+  if (run.review.length || run.reports.some(report => report.status === 'review' || report.status === 'paused')) return 'review-required';
   return run.reports.some(report => report.warnings.length > 0) || run.log.some(entry => entry.level === 'warn') ? 'warnings' : 'passed';
 }
 

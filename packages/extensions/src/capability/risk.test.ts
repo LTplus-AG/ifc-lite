@@ -59,6 +59,12 @@ describe('computeRisk', () => {
     expect(computeRisk(p('network.fetch:*')).tier).toBe('red');
   });
 
+  it('red: network.ai sends graph data to a model provider (#6923)', () => {
+    const risk = computeRisk(p('network.ai'));
+    expect(risk.tier).toBe('red');
+    expect(risk.reasonCode).toBe('catalogue');
+  });
+
   it('red: unknown capability', () => {
     const r = computeRisk({
       raw: 'unknown.action',

@@ -100,11 +100,11 @@
    501 apps/viewer/src/components/viewer/tools/measure-modes/radius.ts
    818 apps/viewer/src/components/viewer/tools/MeasurementVisuals.tsx
    677 apps/viewer/src/components/viewer/tools/MeasureQuantities.tsx
-   926 apps/viewer/src/components/viewer/useGeometryStreaming.ts
+   918 apps/viewer/src/components/viewer/useGeometryStreaming.ts
    893 apps/viewer/src/components/viewer/useMouseControls.ts
    461 apps/viewer/src/components/viewer/ViewerLayout.tsx
-  1641 apps/viewer/src/components/viewer/Viewport.tsx
-  1089 apps/viewer/src/components/viewer/ViewportContainer.tsx
+  1630 apps/viewer/src/components/viewer/Viewport.tsx
+   884 apps/viewer/src/components/viewer/ViewportContainer.tsx
    500 apps/viewer/src/components/viewer/ZonesPanel.tsx
    847 apps/viewer/src/hooks/ids/idsExportService.ts
    598 apps/viewer/src/hooks/ingest/federationAlign.ts
@@ -112,7 +112,7 @@
    461 apps/viewer/src/hooks/useAnnotation2D.ts
    764 apps/viewer/src/hooks/useBCF.ts
   1334 apps/viewer/src/hooks/useClash.ts
-  1353 apps/viewer/src/hooks/useDrawingExport.ts
+  1290 apps/viewer/src/hooks/useDrawingExport.ts
   1041 apps/viewer/src/hooks/useDrawingGeneration.ts
    586 apps/viewer/src/hooks/useIfcCache.ts
    667 apps/viewer/src/hooks/useIfcFederation.ts
@@ -216,7 +216,7 @@
    526 packages/export/src/schema-converter.ts
    437 packages/extensions/src/testing/runner.ts
    638 packages/geometry/src/coordinate-handler.ts
-  1667 packages/geometry/src/geometry-parallel.ts
+  1547 packages/geometry/src/geometry-parallel.ts
   1780 packages/geometry/src/geometry.worker.ts
    918 packages/geometry/src/ifc-lite-bridge.ts
   1536 packages/geometry/src/index.ts

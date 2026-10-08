@@ -14,7 +14,7 @@
  * it separate means converting a component to translated strings never
  * has to touch the (already large) viewer store.
  */
-import { en, type TranslationKey } from './en';
+import { englishCatalogue as english, en, type TranslationKey } from './en';
 import { formatLocaleNumber } from './intlFormat';
 import type { PluralTranslation, TranslationParameters, TranslationValue } from './types';
 
@@ -38,6 +38,12 @@ export function registerLocale(locale: Locale, catalogue: Catalogue): void {
   }
   catalogues.set(locale, catalogue);
   if (locale === activeLocale) notifyLocaleChanged();
+}
+
+/** Add strings to the English catalogue when a lazy panel chunk loads. The keys are typed in `en.ts`; this supplies their text. */
+export function registerEnglish(extra: Catalogue): void {
+  Object.assign(english, extra);
+  notifyLocaleChanged();
 }
 
 /** Switch the active locale. Falls back to 'en' if the locale was never registered. */
@@ -104,7 +110,9 @@ function interpolate(template: string, params: TranslationParameters): string {
 
 function resolveFromCatalogue(key: TranslationKey, params: TranslationParameters, locale: Locale, catalogue: Catalogue | undefined): string {
   const value = catalogue?.[key];
-  const resolved = value !== undefined ? value : en[key];
+  const resolved = value !== undefined ? value : english[key];
+  // A lazy English catalogue that has not loaded yet shows the key rather than throwing.
+  if (resolved === undefined) return key;
   const template = typeof resolved === 'string' ? resolved : pluralForm(resolved, params, value !== undefined ? locale : 'en');
   return interpolate(template, params);
 }
@@ -130,7 +138,11 @@ export function captureTranslation(): typeof resolve & { readonly formatNumber: 
  * partial locale. Use when the caller has already determined that a compound
  * message must fall back as one English unit rather than key-by-key. */
 export function resolveEnglish(key: TranslationKey, params: TranslationParameters = {}): string {
-  const value = en[key];
+  const value = english[key];
+  if (value === undefined) return key;
   const template = typeof value === 'string' ? value : pluralForm(value, params, 'en');
   return interpolate(template, params);
 }
+
+/** English message after its optional catalogue registers. */
+export function englishMessage(key: TranslationKey): TranslationValue | undefined { return english[key]; }

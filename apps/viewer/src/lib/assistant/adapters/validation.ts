@@ -21,7 +21,8 @@ export const validationAdapter: EvidenceAdapter = {
   readiness: s => s.idsValidationReport
     ? { status: { labelKey: 'assistant.pickSpecifications', params: { count: s.idsValidationReport.specificationResults.length } }, ready: true }
     : { status: { labelKey: 'assistant.pickNoReport' }, ready: false },
-  identity: s => s.idsValidationReport,
+  subscribe: listener => useValidationSourceChoice.subscribe(listener),
+  identity: s => [s.idsValidationReport, useValidationSourceChoice.getState().choice],
   reportStamp: s => analysisStampOf(s.idsValidationReport),
   capture: (s, limit) => {
     const report = s.idsValidationReport;

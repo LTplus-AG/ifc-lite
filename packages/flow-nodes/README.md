@@ -75,3 +75,10 @@ not rerun a comparison against the loaded models.
 ## License
 
 MPL-2.0
+
+The separate `@ifc-lite/flow-nodes/ai` entry includes `ai.propose`: a bounded,
+review-required draft over selected finding columns and explicit native
+field/value constraints. Its portable `model.changes` output cites captured
+rows and expected values, and performs no writes. Current-state validation and
+mutation approval remain native host responsibilities. See the
+[AI node and checkpoint contract](../../docs/guide/flow.md#ai-nodes-and-review-checkpoints).

@@ -19,18 +19,12 @@
  */
 
 import { parseShapeParams, parseProfileSectionParams, AUTHORING_OUTLINE_WORK_LIMIT, type ShapeParams } from './model-authoring-shape-params';
-<<<<<<< HEAD
 import { parseSplitSnapshot, parseSplitCut, type SplitCut } from './model-authoring-split-params';
 import type { SplitSnapshot } from './model-authoring-split-state';
 import { parseSizeParams, type ExpectedSize } from './model-authoring-size-params';
 import type { ProfileSection } from '@ifc-lite/create';
 import type { ElementSizePatch } from '@/store/slices/mutation-element-size';
-=======
-import { parseSizeParams, type ExpectedSize } from './model-authoring-size-params';
-import type { ProfileSection } from '@ifc-lite/create';
-import type { ElementSizePatch } from '@/store/slices/mutation-element-size';
 import { parseCopyFields, type CopyFields, type ArrayFields } from './model-authoring-copy-fields';
->>>>>>> 2a687c1ee0e9ca7e91e2f6af68dc9311af22e626
 import { parseGlobalIdTarget, parseLength, parsePoint, parseRef, parseText, record, type LengthRange } from './model-authoring-fields';
 
 export const AUTHORING_CLASSES = ['IfcWall', 'IfcSlab', 'IfcRoof', 'IfcPlate', 'IfcColumn', 'IfcBeam', 'IfcMember', 'IfcSpace'] as const;
@@ -54,12 +48,9 @@ export interface BoxParams { position: Point3; width: number; depth: number; thi
 
 export type AuthoringOp =
   | { op: 'element.create'; ref: string; ifcClass: AuthoringClass; storey: StoreyTarget; name: string; params: AxisParams | BoxParams | ShapeParams }
-<<<<<<< HEAD
   | { op: 'element.split'; target: ExistingElement; expected: SplitSnapshot; cut: SplitCut }
-=======
   | ({ op: 'element.copy'; target: ElementTarget; ref: string } & CopyFields)
   | ({ op: 'element.array'; target: ElementTarget; refs: string[] } & ArrayFields)
->>>>>>> 2a687c1ee0e9ca7e91e2f6af68dc9311af22e626
   | { op: 'element.delete'; target: ExistingElement }
   | { op: 'element.resize'; target: ExistingElement; expected: ExpectedSize; size: ElementSizePatch }
   | { op: 'element.profile'; target: ExistingElement; expected: ProfileSection; Profile: ProfileSection }
@@ -74,11 +65,7 @@ export type AuthoringOp =
   | { op: 'hosted.create'; ref?: string; kind: HostedKind; host: ElementTarget; name?: string; offset: number; sill: number; width: number; height: number };
 
 export type AuthoringOpName = AuthoringOp['op'];
-<<<<<<< HEAD
-export const AUTHORING_OPS: readonly AuthoringOpName[] = ['element.create', 'element.delete', 'element.split', 'element.resize', 'element.profile', 'element.move', 'element.rotate',
-=======
-export const AUTHORING_OPS: readonly AuthoringOpName[] = ['element.create', 'element.delete', 'element.resize', 'element.profile', 'element.move', 'element.rotate', 'element.copy', 'element.array',
->>>>>>> 2a687c1ee0e9ca7e91e2f6af68dc9311af22e626
+export const AUTHORING_OPS: readonly AuthoringOpName[] = ['element.create', 'element.delete', 'element.split', 'element.resize', 'element.profile', 'element.move', 'element.rotate', 'element.copy', 'element.array',
   'type.assign', 'material.assign', 'walls.join', 'hosted.create'];
 
 export interface ModelAuthoringBatch {
@@ -127,11 +114,6 @@ function element(value: unknown, at: string, refs: ReadonlyMap<string, Authoring
 
 /** A wall by its expected class, or a wall an earlier `element.create` builds. */
 function isWall(target: ElementTarget, refs: ReadonlyMap<string, AuthoringOp>): boolean {
-<<<<<<< HEAD
-  if (!isNewElement(target)) return target.ifcClass.startsWith('IfcWall');
-  const creator = refs.get(target.ref);
-  return creator?.op === 'element.create' && creator.ifcClass === 'IfcWall';
-=======
   const visited = new Set<string>();
   while (isNewElement(target)) {
     if (visited.has(target.ref)) return false;
@@ -142,7 +124,6 @@ function isWall(target: ElementTarget, refs: ReadonlyMap<string, AuthoringOp>): 
     target = creator.target;
   }
   return target.ifcClass.startsWith('IfcWall');
->>>>>>> 2a687c1ee0e9ca7e91e2f6af68dc9311af22e626
 }
 
 function createParams(value: Record<string, unknown>, ifcClass: AuthoringClass, units: AuthoringUnits, at: string): AxisParams | BoxParams | ShapeParams {
@@ -188,15 +169,12 @@ function operation(value: unknown, index: number, units: AuthoringUnits, refs: M
     return op;
   };
   switch (value.op) {
-<<<<<<< HEAD
     case 'element.split': {
       if (Object.keys(value).some(key => !['op', 'target', 'expected', 'cut'].includes(key))) throw new Error(`${at}: unsupported split field`);
       const expected = parseSplitSnapshot(value.expected, `${at} expected`), cut = parseSplitCut(value.cut, units, `${at} cut`);
       if (expected.kind !== cut.kind) throw new Error(`${at}: the native snapshot kind and cut kind must agree`);
       return { op: value.op, target: existing(value.target, at), expected, cut };
     }
-=======
->>>>>>> 2a687c1ee0e9ca7e91e2f6af68dc9311af22e626
     case 'element.resize': {
       const expected = parseSizeParams(value.expected, units, `${at} expected`, true);
       const size = parseSizeParams(value.size, units, `${at} size`, false);
@@ -303,19 +281,14 @@ export function parseModelAuthoringBatch(answer: string): ModelAuthoringBatch {
   const refs = new Map<string, AuthoringOp>();
   const units = value.units;
   const operations = value.operations.map((op, index) => operation(op, index, units, refs));
-<<<<<<< HEAD
   const splitTargets = operations.filter((op): op is Extract<AuthoringOp, { op: 'element.split' }> => op.op === 'element.split').map(op => `${op.target.modelId ?? ''}:${op.target.globalId}`);
   if (new Set(splitTargets).size !== splitTargets.length) throw new Error('Split targets must be unique; no targets are silently discarded');
   const splitWork = operations.reduce((sum, op) => sum + (op.op === 'element.split' && op.expected.kind === 'slab' ? op.expected.chain.footprint.length ** 2 : 0), 0);
   if (splitWork > AUTHORING_OUTLINE_WORK_LIMIT) throw new Error(`Split preview work exceeds ${AUTHORING_OUTLINE_WORK_LIMIT} vertex-pair units; use a smaller explicit selection`);
   const outlineWork = operations.reduce((sum, op) => sum + (op.op === 'element.create' && 'OuterCurve' in op.params ? op.params.OuterCurve.length ** 2 : 0), 0);
   if (outlineWork > AUTHORING_OUTLINE_WORK_LIMIT) throw new Error(`The polygon preview work exceeds ${AUTHORING_OUTLINE_WORK_LIMIT} vertex-pair units; split this proposal into smaller batches`);
-=======
-  const outlineWork = operations.reduce((sum, op) => sum + (op.op === 'element.create' && 'OuterCurve' in op.params ? op.params.OuterCurve.length ** 2 : 0), 0);
-  if (outlineWork > AUTHORING_OUTLINE_WORK_LIMIT) throw new Error(`The polygon preview work exceeds ${AUTHORING_OUTLINE_WORK_LIMIT} vertex-pair units; split this proposal into smaller batches`);
   const copies = operations.reduce((total, op) => total + (op.op === 'element.array' ? op.count - 1 : op.op === 'element.copy' ? 1 : 0), 0);
   if (copies > MODEL_AUTHORING_LIMIT) throw new Error(`An authoring batch may create at most ${MODEL_AUTHORING_LIMIT} copy roots`);
->>>>>>> 2a687c1ee0e9ca7e91e2f6af68dc9311af22e626
   return { version: 1, kind: 'model.authoring', title, ...(typeof value.rationale === 'string' ? { rationale: value.rationale } : {}),
     units, frame: 'storey-local', operations };
 }

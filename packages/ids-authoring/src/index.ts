@@ -59,6 +59,9 @@ export {
   type RequirementSnapshot,
   type OpTemplate,
   type TemplateOp,
+  type BsddClassSnapshot,
+  type BsddEntityRef,
+  type BsddNewSpec,
 } from './ops/types.js';
 export { OP_KINDS, validateOp, getOpJsonSchema, type OpValidation } from './ops/schema.js';
 export type { SchemaError } from './ops/json-schema-lite.js';
@@ -177,3 +180,13 @@ export {
   type BsddSearchState,
   type BsddSearchTimers,
 } from './bsdd/picker.js';
+
+// bSDD class → classification / entity facets (IDS-070)
+export {
+  bsddInsertOp,
+  entityChoices,
+  snapshotBsddClass,
+  splitRelatedEntity,
+  type BsddInsertMode,
+  type BsddInsertRequest,
+} from './bsdd/insert.js';

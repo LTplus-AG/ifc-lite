@@ -98,6 +98,7 @@ const PAYLOADS: Record<OpKind, JsonSchema> = {
     ['facetId', 'field', 'value'],
   ),
   'facet.setRelation': obj({ facetId: uuid, relation: ref('PartOfRelation') }, ['facetId', 'relation']),
+  'facet.setUri': obj({ facetId: uuid, uri: { type: ['string', 'null'], minLength: 1 } }, ['facetId', 'uri']),
   'facet.restore': obj(
     {
       specId: uuid,
@@ -122,6 +123,7 @@ const PAYLOADS: Record<OpKind, JsonSchema> = {
         instructions: nullableStr,
         relation: ref('PartOfRelation'),
         rawRelation: nullableStr,
+        uri: nullableStr,
       }),
     },
     ['facetId', 'set'],
@@ -159,12 +161,34 @@ const PAYLOADS: Record<OpKind, JsonSchema> = {
     { template: ref('OpTemplate'), params: { type: 'object', additionalProperties: str } },
     ['template', 'params'],
   ),
+  'bulk.fromBsddClass': obj(
+    {
+      classes: { type: 'array', items: ref('BsddClassSnapshot'), minItems: 1 },
+      target: {
+        oneOf: [
+          obj({ specId: uuid }, ['specId']),
+          obj(
+            {
+              newSpec: obj(
+                { specId: uuid, name: nonEmpty, ifcVersions: versions, index, description: str, identifier: str, cardinality: ref('Optionality') },
+                ['specId', 'name', 'ifcVersions'],
+              ),
+            },
+            ['newSpec'],
+          ),
+        ],
+      },
+      classification: obj({ section: ref('Section'), uri: { type: 'boolean' } }, ['section']),
+      entity: obj({ section: ref('Section'), entities: { type: 'array', items: nonEmpty, minItems: 1 } }, ['section']),
+    },
+    ['classes', 'target'],
+  ),
 };
 
 /** Every op kind of vocabulary v1, in schema order. */
 export const OP_KINDS = Object.keys(PAYLOADS) as OpKind[];
 
-const COMPOUND = new Set<string>(['bulk.renameProperty', 'bulk.retargetEntity', 'bulk.applyTemplate']);
+const COMPOUND = new Set<string>(['bulk.renameProperty', 'bulk.retargetEntity', 'bulk.applyTemplate', 'bulk.fromBsddClass']);
 
 function opDefName(kind: string): string {
   return `Op_${kind.replace(/\./g, '_')}`;
@@ -202,6 +226,17 @@ function buildDefs(): Record<string, JsonSchema> {
       ops: { type: 'array', items: ref('TemplateOp'), minItems: 1 },
     },
     ['id', 'params', 'ops'],
+  );
+  defs.BsddClassSnapshot = obj(
+    {
+      uri: nonEmpty,
+      code: nonEmpty,
+      name: str,
+      dictionaryUri: nonEmpty,
+      dictionaryName: nonEmpty,
+      relatedIfcEntities: { type: 'array', items: obj({ entity: nonEmpty, predefinedType: nonEmpty }, ['entity']) },
+    },
+    ['uri', 'code', 'name', 'dictionaryUri', 'dictionaryName'],
   );
   defs.StudioOp = { oneOf: OP_KINDS.map((k) => ref(opDefName(k))) };
   return defs;

@@ -87,9 +87,9 @@ export type ValueInput = ConstraintDraft | RawConstraint;
 export type FacetDraft =
   | { type: 'entity'; name: ValueInput; predefinedType?: ValueInput }
   | { type: 'attribute'; name: ValueInput; value?: ValueInput }
-  | { type: 'property'; propertySet: ValueInput; baseName: ValueInput; dataType?: ValueInput; value?: ValueInput }
-  | { type: 'classification'; system?: ValueInput; value?: ValueInput }
-  | { type: 'material'; value?: ValueInput }
+  | { type: 'property'; propertySet: ValueInput; baseName: ValueInput; dataType?: ValueInput; value?: ValueInput; uri?: string }
+  | { type: 'classification'; system?: ValueInput; value?: ValueInput; uri?: string }
+  | { type: 'material'; value?: ValueInput; uri?: string }
   | { type: 'partOf'; relation: PartOfRelation; entity?: { name: ValueInput; predefinedType?: ValueInput } };
 
 export type ConstraintIds = Partial<Record<FacetFieldName, Uuid>>;
@@ -150,6 +150,8 @@ export interface FacetPatch {
   instructions?: string | null;
   relation?: PartOfRelation;
   rawRelation?: string | null;
+  /** `@uri` of a property, classification or material requirement. */
+  uri?: string | null;
 }
 
 /** Requirement fields carried by `facet.restore` (absent for applicability). */
@@ -182,6 +184,8 @@ export type FacetSetFieldOp = Op<
   { facetId: Uuid; field: FacetFieldName; value: ValueInput | null; constraintId?: Uuid }
 >;
 export type FacetSetRelationOp = Op<'facet.setRelation', { facetId: Uuid; relation: PartOfRelation }>;
+/** Set (or with `null` remove) the `@uri` of a property, classification or material requirement. */
+export type FacetSetUriOp = Op<'facet.setUri', { facetId: Uuid; uri: string | null }>;
 export type FacetRestoreOp = Op<
   'facet.restore',
   {
@@ -246,6 +250,54 @@ export interface OpTemplate {
 
 export type BulkApplyTemplateOp = Op<'bulk.applyTemplate', { template: OpTemplate; params: Record<string, string> }>;
 
+/** An IFC entity a bSDD class relates to, split from bSDD's `IfcWallSOLIDWALL` form. */
+export interface BsddEntityRef {
+  entity: string;
+  predefinedType?: string;
+}
+
+/**
+ * The part of a bSDD class an insert needs, carried in the op so the reducer
+ * stays pure and the op log replays offline (like `bulk.applyTemplate`
+ * carries its template). Built by `snapshotBsddClass`.
+ */
+export interface BsddClassSnapshot {
+  uri: string;
+  code: string;
+  name: string;
+  dictionaryUri: string;
+  /** The dictionary name as bSDD publishes it: the classification `system`. */
+  dictionaryName: string;
+  relatedIfcEntities?: BsddEntityRef[];
+}
+
+export interface BsddNewSpec {
+  specId: Uuid;
+  name: string;
+  ifcVersions: IFCVersion[];
+  index?: number;
+  description?: string;
+  identifier?: string;
+  cardinality?: SpecCardinality;
+}
+
+/**
+ * Insert one or more classes of ONE dictionary into a specification (an
+ * existing one, or a new one the op creates). Several classes give one
+ * classification facet with an enumeration of their codes.
+ */
+export type BulkFromBsddClassOp = Op<
+  'bulk.fromBsddClass',
+  {
+    classes: BsddClassSnapshot[];
+    target: { specId: Uuid } | { newSpec: BsddNewSpec };
+    /** Add a classification facet (`system` = dictionary name, `value` = class code; `uri` in requirements for one class). */
+    classification?: { section: Section; uri?: boolean };
+    /** Add an entity facet from the related IFC entities (all of them, or the `entities` chosen). */
+    entity?: { section: Section; entities?: string[] };
+  }
+>;
+
 // ---------------------------------------------------------------------------
 // Unions
 // ---------------------------------------------------------------------------
@@ -267,6 +319,7 @@ export type PrimitiveOp =
   | FacetReplaceOp
   | FacetSetFieldOp
   | FacetSetRelationOp
+  | FacetSetUriOp
   | FacetRestoreOp
   | FacetPatchOp
   | RequirementSetOptionalityOp
@@ -279,7 +332,7 @@ export type PrimitiveOp =
   | MetaDeclareUserDefinedTypeOp
   | MetaRemoveUserDefinedTypeOp;
 
-export type CompoundOp = BulkRenamePropertyOp | BulkRetargetEntityOp | BulkApplyTemplateOp;
+export type CompoundOp = BulkRenamePropertyOp | BulkRetargetEntityOp | BulkApplyTemplateOp | BulkFromBsddClassOp;
 
 export type StudioOp = PrimitiveOp | CompoundOp;
 export type OpKind = StudioOp['kind'];

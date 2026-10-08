@@ -68,6 +68,9 @@ export function checkOpPayload(op: PrimitiveOp): StructuralProblem[] {
   }
 }
 
+// An absolute URI without whitespace (xs:anyURI as IDS tools use it: a scheme, then the rest).
+const ABSOLUTE_URI = /^[A-Za-z][A-Za-z0-9+.-]*:\S+$/;
+
 /** Facet-level structural rules on the facet as it is AFTER the op. */
 export function checkFacetStructure(facet: IDSFacet, requirement: IDSRequirement | undefined): StructuralProblem[] {
   const out: StructuralProblem[] = [];
@@ -79,6 +82,13 @@ export function checkFacetStructure(facet: IDSFacet, requirement: IDSRequirement
   }
   if (facet.type === 'entity' && requirement && requirement.optionality !== 'required') {
     out.push({ code: 'GATE-STR-008', message: 'an entity requirement has no cardinality in IDS 1.0; it can only be required', at: '.payload' });
+  }
+  const uri = 'uri' in facet ? facet.uri : undefined;
+  if (uri !== undefined && !requirement) {
+    out.push({ code: 'GATE-STR-009', message: 'IDS 1.0 allows a uri only on requirement facets, not in the applicability', at: '.payload' });
+  }
+  if (uri !== undefined && !ABSOLUTE_URI.test(uri)) {
+    out.push({ code: 'GATE-VAL-009', message: `uri "${uri}" is not an absolute URI`, at: '.payload' });
   }
   return out;
 }
@@ -154,6 +164,7 @@ export function structureTargets(op: PrimitiveOp): Uuid[] {
     case 'facet.setField':
     case 'value.set':
     case 'facet.patch':
+    case 'facet.setUri':
     case 'requirement.setOptionality':
       return [op.payload.facetId];
     case 'facet.restore':

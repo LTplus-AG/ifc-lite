@@ -37,6 +37,7 @@ export type GateCode =
   | 'GATE-STR-006'
   | 'GATE-STR-007'
   | 'GATE-STR-008'
+  | 'GATE-STR-009'
   // Value well-formedness
   | 'GATE-VAL-001'
   | 'GATE-VAL-002'
@@ -45,7 +46,10 @@ export type GateCode =
   | 'GATE-VAL-005'
   | 'GATE-VAL-006'
   | 'GATE-VAL-007'
-  | 'GATE-VAL-008';
+  | 'GATE-VAL-008'
+  | 'GATE-VAL-009'
+  // bSDD references (resolved through the bSDD cache)
+  | 'GATE-BSDD-001';
 
 /** A ranked "did you mean" suggestion. */
 export interface GateCandidate {

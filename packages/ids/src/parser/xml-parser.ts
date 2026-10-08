@@ -32,6 +32,7 @@ import {
   getChildElements,
   getChildElementNS,
   getChildText,
+  uriOf,
 } from './dom.js';
 import { parseRestriction } from './parse-restriction.js';
 
@@ -370,9 +371,7 @@ function parseAttributeFacet(el: Element): IDSAttributeFacet {
   };
 }
 
-/**
- * Parse property facet
- */
+/** Parse property facet */
 function parsePropertyFacet(el: Element): IDSPropertyFacet {
   const propertySetEl = getChildElement(el, 'propertySet');
   const baseNameEl = getChildElement(el, 'baseName');
@@ -403,12 +402,11 @@ function parsePropertyFacet(el: Element): IDSPropertyFacet {
     baseName: parseConstraintElement(baseNameEl),
     dataType,
     value: valueEl ? parseConstraintElement(valueEl) : undefined,
+    ...uriOf(el),
   };
 }
 
-/**
- * Parse classification facet
- */
+/** Parse classification facet */
 function parseClassificationFacet(el: Element): IDSClassificationFacet {
   const systemEl = getChildElement(el, 'system');
   const valueEl = getChildElement(el, 'value');
@@ -417,18 +415,18 @@ function parseClassificationFacet(el: Element): IDSClassificationFacet {
     type: 'classification',
     system: systemEl ? parseConstraintElement(systemEl) : undefined,
     value: valueEl ? parseConstraintElement(valueEl) : undefined,
+    ...uriOf(el),
   };
 }
 
-/**
- * Parse material facet
- */
+/** Parse material facet */
 function parseMaterialFacet(el: Element): IDSMaterialFacet {
   const valueEl = getChildElement(el, 'value');
 
   return {
     type: 'material',
     value: valueEl ? parseConstraintElement(valueEl) : undefined,
+    ...uriOf(el),
   };
 }
 

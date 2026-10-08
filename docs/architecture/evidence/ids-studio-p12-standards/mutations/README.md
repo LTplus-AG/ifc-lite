@@ -15,7 +15,9 @@ oracle advises, each behavioural decision below was checked with a surgical
 Each patch is written mutant→fixed (the orientation of `git diff base...head`)
 and the oracle reverse-applies it. Base: `origin/claude/ids-studio-p01-engine`.
 Every run ended `OBSERVED` (exit 0) with restoration verified; heads and full
-records are in `summary.json`.
+records are in `summary.json`. `run-unknown-argument` and
+`command-verdict-allowed` were re-run at `4deb06279`, after the ADR-014
+removal of the third-party adapter changed `run.mjs` and `adapters.test.mjs`.
 
 | Patch | Module | Mutation | Test that went red |
 |---|---|---|---|

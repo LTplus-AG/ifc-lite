@@ -18,6 +18,8 @@
  * consumers can bridge any data source.
  */
 
+import type { CapturedEntityScope } from '@ifc-lite/rules';
+
 // ============================================================================
 // Data Provider Interface
 // ============================================================================
@@ -28,8 +30,6 @@
  * Consumers implement this to bridge their data source (IfcDataStore,
  * server API, IndexedDB, etc.) to the lens engine.
  */
-import type { CapturedEntityScope } from '@ifc-lite/rules';
-
 export interface LensDataProvider {
   /** Resolve pinned membership to native global ids; required for a scoped lens. */
   resolveCapturedScope?(scope: CapturedEntityScope): ReadonlySet<number>;

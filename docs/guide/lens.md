@@ -34,6 +34,10 @@ result.executionTime; // ms
 
 The `provider` is a `LensDataProvider`, an adapter interface over your parsed model data (entity types, property values, materials, and so on), so the package is renderer- and parser-agnostic.
 
+A saved `Lens.capturedScope` pins exact selected or visible members at capture time. It applies to manual rules, their unassigned context, and automatic color buckets; later selection and visibility changes do not change the captured population. For automatic color, pass the same metadata as the optional third argument to `evaluateAutoColorLens(spec, provider, capturedScope)`. A provider serving a captured lens must implement `resolveCapturedScope(scope)` and return its validated native global IDs. A provider without that capability refuses the run.
+
+The shared Rules `resolveCapturedEntityScope` validates the full source identity and every member before evaluation. Missing or ambiguous files, replaced source bytes, deleted members, and reused authored IDs refuse rather than becoming an unscoped lens. Authored members also need their original `CREATE_ENTITY` journal identity; reconstructing a view without that identity requires a new capture. Normal authored edits and delete undo retain membership.
+
 ## Built-in Lenses
 
 `BUILTIN_LENSES` ships seven presets:
@@ -155,7 +159,7 @@ This is exactly how the viewer wires it: the Lens panel evaluates the active len
 | Export | Description |
 |--------|-------------|
 | `evaluateLens(lens, provider, matchedByRule)` | Apply rule actions to shared evaluator global-ID sets; returns `LensEvaluationResult` |
-| `evaluateAutoColorLens(spec, provider)` | Group-by-value colorization with legend |
+| `evaluateAutoColorLens(spec, provider, capturedScope?)` | Group-by-value colorization with legend and optional captured membership |
 | `discoverClasses(provider)` / `discoverDataSources(provider, categories)` | Populate editor UIs |
 | `BUILTIN_LENSES` | The seven built-in presets |
 | `hexToRgba` / `rgbaToHex` / `uniqueColor` / `isGhostColor` / `GHOST_COLOR` | Color helpers |

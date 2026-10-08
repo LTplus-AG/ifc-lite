@@ -462,6 +462,10 @@ const alsoExternalWalls = query
   .filter(e => e.type === 'IfcWall');
 ```
 
+## Captured populations
+
+For a pinned selected or visible Rules population, persist a `CapturedEntityScope` and resolve it with `resolveCapturedEntityScope(scope, models)`. Models supply their `filterIdentity`, full-content `sourceContentHash`, parsed store, and live mutation view. The resulting per-model candidate map includes explicit empty sets for all other loaded models; pass it as `candidateExpressIdsByModel` to the federated filter evaluator. Scope resolution refuses missing, ambiguous, replaced, or deleted members before a run. Source identity must cover every source byte, not a sampled hash or filename. Authored members additionally store their original `CREATE_ENTITY` mutation ID and refuse recovery that loses that provenance.
+
 ## Next Steps
 
 - [Selector Syntax](selector-syntax.md) - the IfcOpenShell one-line filter syntax, and what each construct maps to here

@@ -103,7 +103,7 @@ export async function streamAnthropicChat(
       // turns fall under it and pass through as plain string.
       system: buildCacheableSystem(system),
       messages: toAnthropicMessages(messages),
-    });
+    }, { maxRetries: 0 }); // A retry is another budgeted request, owned by the caller.
 
     // Wire up abort signal
     if (signal) {
@@ -191,6 +191,7 @@ async function streamOpenAiChatCompletions(
     apiKey,
     signal,
     onError,
+    options.useParentDeadline,
   );
   if (!response) return;
 
@@ -242,6 +243,7 @@ async function streamOpenAiResponses(
     apiKey,
     signal,
     onError,
+    options.useParentDeadline,
   );
   if (!response) return;
 
@@ -293,9 +295,10 @@ async function openAiFetch(
   apiKey: string,
   signal: AbortSignal | undefined,
   onError: (err: Error) => void,
+  useParentDeadline = false,
 ): Promise<{ response: Response | null; cleanup: () => void }> {
   const controller = new AbortController();
-  const timeoutId = setTimeout(
+  const timeoutId = useParentDeadline ? undefined : setTimeout(
     () => controller.abort(new Error('Chat request timed out. Please try again.')),
     STREAM_REQUEST_TIMEOUT_MS,
   );

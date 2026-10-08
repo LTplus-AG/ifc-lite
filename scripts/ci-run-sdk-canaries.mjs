@@ -4,6 +4,7 @@
 import { readdirSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
+import { isMainEntry } from './lib/is-main-entry.mjs';
 
 export function runSdkCanaries(root, run) {
   // Keep the repository-relative input in one literal so the CI path-coverage
@@ -36,7 +37,7 @@ export function main(root = process.cwd()) {
   });
 }
 
-if (process.argv[1] && resolve(process.argv[1]) === resolve(import.meta.filename)) {
+if (isMainEntry(import.meta.url)) {
   try {
     console.log(`All ${main()} SDK canary bundle(s) passed.`);
   } catch (error) {

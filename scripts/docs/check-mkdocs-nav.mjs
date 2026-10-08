@@ -26,6 +26,7 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { isMainEntry } from '../lib/is-main-entry.mjs';
 
 /** @param {string} text mkdocs.yml */
 export function navPages(text) {
@@ -99,7 +100,7 @@ export function omittedPages(root) {
   return docPages(join(root, 'docs')).filter((page) => !nav.has(page) && !isExcluded(page, patterns));
 }
 
-if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
+if (isMainEntry(import.meta.url)) {
   const rootIndex = process.argv.indexOf('--root');
   const root = rootIndex !== -1 ? process.argv[rootIndex + 1] : join(dirname(fileURLToPath(import.meta.url)), '..', '..');
   if (!existsSync(join(root, 'mkdocs.yml'))) {

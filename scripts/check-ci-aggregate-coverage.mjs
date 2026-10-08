@@ -46,8 +46,9 @@
  * success". This makes that observation enforceable.
  */
 import { readFileSync } from 'node:fs';
-import { fileURLToPath, pathToFileURL } from 'node:url';
+import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
+import { isMainEntry } from './lib/is-main-entry.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const WORKFLOW = join(ROOT, '.github/workflows/test.yml');
@@ -244,9 +245,10 @@ function main() {
   process.exit(1);
 }
 
-// `pathToFileURL`, not `file://${argv[1]}`: `import.meta.url` percent-encodes a
-// space, `#`, `?` or any non-ASCII byte in the path and `process.argv[1]` does
-// not, so the string compare is false and `main()` never runs. The CI step then
-// exits 0 having read nothing -- a gate that cannot find its subject passing
-// quietly, which is the thing this file refuses to do everywhere else.
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) main();
+// `isMainEntry`, not a string compare of `import.meta.url` with `argv[1]`:
+// `import.meta.url` percent-encodes a space, `#`, `?` or any non-ASCII byte in
+// the path and resolves symlinks, `process.argv[1]` does neither, so the compare
+// is false and `main()` never runs. The CI step then exits 0 having read
+// nothing -- a gate that cannot find its subject passing quietly, which is the
+// thing this file refuses to do everywhere else.
+if (isMainEntry(import.meta.url)) main();

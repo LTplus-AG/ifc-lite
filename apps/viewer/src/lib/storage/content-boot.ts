@@ -35,6 +35,7 @@ function contentHosts() {
     document: { initialize: state.initializeDocuments, refresh: state.refreshDocuments },
     validation: { initialize: state.initializeValidationReports, refresh: state.refreshValidationReports },
     comparison: { initialize: state.initializeSavedComparisons, refresh: state.refreshSavedComparisons },
+    clashReports: { initialize: state.initializeSavedClashReports, refresh: state.refreshSavedClashReports },
   } satisfies Record<ContentKind, { initialize: () => Promise<unknown>; refresh: () => Promise<unknown> }>;
 }
 

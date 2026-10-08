@@ -16,6 +16,7 @@ import { buildIdsDataset } from '../charts/datasets/ids';
 import { buildCompareDataset } from '../charts/datasets/compare';
 import { largestBucketIds } from '../charts/buckets';
 import { prepareDocumentCharts, type DocumentChartFilterState } from './prepare-charts';
+import { chartSourceContext } from '../charts/chart-source';
 import { prepareListTable } from './prepare-list-table';
 import { listFingerprint } from './list-fingerprint';
 import { resolveComparisonTableState } from './resolve-comparison-table';
@@ -56,7 +57,7 @@ export async function prepareDocument(document: DocumentSpec, state: ViewerState
       filters.set(key, { status: 'error', message: error instanceof Error ? error.message : String(error) });
     }
   }
-  const { aggregations, chartMessages, chartErrors } = prepareDocumentCharts(document, datasets, filters, state.savedComparisons);
+  const { aggregations, chartMessages, chartErrors } = prepareDocumentCharts(document, datasets, filters, chartSourceContext(state));
   const tables = new Map<string, TableState>();
   const providers = document.blocks.some((block) => block.kind === 'table' && block.source.kind === 'list')
     ? prepareListProviders(state, resolveRenderFrame(state.models, state.geometryResult)) : null;

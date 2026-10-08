@@ -3,8 +3,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { spawnSync } from 'node:child_process';
-import { resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { isMainEntry } from './lib/is-main-entry.mjs';
 
 const required = (env, name) => {
   const value = env[name]?.trim();
@@ -40,7 +39,7 @@ function realGh(args) {
   return run.stdout ?? '';
 }
 
-if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+if (isMainEntry(import.meta.url)) {
   const result = reportScheduledFailure(process.env, realGh);
   console.log(`${result.action}: ${result.title}`);
 }

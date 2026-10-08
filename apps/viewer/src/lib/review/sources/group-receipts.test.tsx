@@ -180,6 +180,9 @@ test('#7089 switching native workspaces ends the original receipt context withou
   assert.ok(ui.textContent?.includes('Other native workspace'));
   assert.equal(ui.textContent?.includes(source.receipt.workspaceName), false);
   assert.equal(ui.querySelector('[aria-current="true"]'), null, 'the earlier workspace focus does not own the new workspace');
+  act(() => useClashGroupLibrary.setState({ activeId: source.receipt.workspaceId })); await advance(0);
+  assert.ok(ui.textContent?.includes(source.receipt.workspaceName));
+  assert.equal(ui.querySelector('[aria-current="true"]'), null, 'returning to a workspace does not resurrect an ended focus request');
   act(() => { assert.equal(openOriginal(finding, () => {}), true); });
   await waitFor(() => ui.querySelector('[aria-current="true"]') !== null, 'original returns to its own saved workspace');
   assert.equal(useClashGroupLibrary.getState().activeId, source.receipt.workspaceId);

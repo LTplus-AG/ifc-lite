@@ -28,6 +28,13 @@ export const EVIDENCE_PANEL: Record<FindingEvidence['kind'], WorkspacePanelId> =
   bcf: 'bcf', linked: 'semantic', 'run-reconciliation': 'compare', 'clash-group-application': 'clash',
 };
 
+// Workspace changes end ownership even while the native receipt host is unmounted.
+useClashGroupLibrary.subscribe((next, previous) => {
+  if (next.activeId === previous.activeId) return;
+  const held = useClashApplicationFocus.getState().record;
+  if (held && held.activeWorkspaceId !== next.activeId) useClashApplicationFocus.setState({ record: null });
+});
+
 /** Whether the original can still be reached: a historical clash baseline has no row in the live clash list. */
 export function openOriginal(finding: ReviewFinding, openPanel: (panel: WorkspacePanelId) => void): boolean {
   const state = useViewerStore.getState();

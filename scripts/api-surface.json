@@ -6624,6 +6624,7 @@
     "validateIDS: function"
   ],
   "@ifc-lite/ids-authoring": [
+    "ApplyResult: interface",
     "CommentThread: interface",
     "CompoundOp: type",
     "ConstraintDraft: type",
@@ -6642,6 +6643,7 @@
     "OPS_VERSION: const",
     "OP_KINDS: const",
     "Op: interface",
+    "OpApplyError: class",
     "OpKind: type",
     "OpOfKind: type",
     "OpTemplate: interface",
@@ -6669,6 +6671,7 @@
     "UuidV7Source: interface",
     "ValueInput: type",
     "XsdBase: type",
+    "apply: function",
     "createStudioDocument: function",
     "deriveId: function",
     "facetFromDraft: function",

@@ -62,3 +62,6 @@ export {
 export { OP_KINDS, validateOp, getOpJsonSchema, type OpValidation } from './ops/schema.js';
 export type { SchemaError } from './ops/json-schema-lite.js';
 export { normaliseValue, facetFromDraft, DraftError } from './ops/draft.js';
+
+// Reducer (IDS-019)
+export { apply, OpApplyError, type ApplyResult } from './reducer/apply.js';

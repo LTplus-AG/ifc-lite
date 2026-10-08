@@ -12,6 +12,7 @@ import { sectionGhostOmissions } from '@/lib/profile-section/profile-outline';
 import type { TranslationKey, TranslationParameters } from '@/i18n';
 import type { AuthoringOp, ModelAuthoringBatch } from '@/lib/actions/model-authoring';
 import type { AuthoringRow } from '@/lib/actions/model-authoring-preview';
+import { classificationLabel } from '@/lib/actions/model-authoring-classification';
 
 type T = (key: TranslationKey, params?: TranslationParameters) => string;
 
@@ -43,6 +44,9 @@ export function authoringRowSummary(row: AuthoringRow, batch: ModelAuthoringBatc
   const none = t('modelChanges.absent');
   const fromMetres = (v: number) => (units === 'mm' ? v * 1000 : v);
   switch (op.op) {
+    case 'classification.add':
+      return { subject: ref(op.target, t), before: t('modelAuthoring.classificationExistingRetained'), after: classificationLabel(op),
+        previewNote: t('modelAuthoring.classificationMetadataPreview') };
     case 'element.resize': case 'element.profile': {
       const notes = [row.previewUnavailable ? t('modelAuthoring.editPreviewUnavailable') : '',
         row.previewOuterBodyOnly ? t('modelAuthoring.outerBodyPreview') : '',

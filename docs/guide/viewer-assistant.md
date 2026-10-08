@@ -198,11 +198,14 @@ Supported operations:
 - join two walls;
 - assign an existing or new type, or detach an occurrence from its current type;
 - assign an existing or new material;
+- add an explicitly supplied classification system and code to an existing element;
 - copy an element, optionally to another storey, with an explicit offset and turn;
 - make a linear or polar array of an element;
 - move an element horizontally;
 - turn an element about its own origin;
 - delete a single element.
+
+Classification additions use exact `Classification.Name` and `Reference.Identification` (`Reference.ItemReference` for IFC2X3), with an optional `Reference.Name`. The user supplies the system and code; the assistant does not infer them. Native Add reuses a system with that current Name or creates one, preserves existing classifications, and writes one grouped Undo/Redo step. The review states that this metadata change has no geometry preview. Unknown fields, STEP tokens, incompatible reference spellings, stale target identities and changed sources are refused before writing.
 
 Type detachment requires the current type’s exact `GlobalId` and `Name`. It removes that occurrence from its type relationship, preserving the type object and its other occurrences; an empty relationship is removed. The review shows the type change and explicitly marks the resulting geometry preview unavailable. Apply uses the same native writer as the Model inspector, with one grouped Undo/Redo.
 

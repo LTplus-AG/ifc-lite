@@ -23,6 +23,9 @@ import { detachFromType, type ModellingMethods } from '@/store/slices/mutation-m
 import { draftElementSize } from '@/lib/element-size-commit';
 import { writeElementProfile } from '@/store/slices/mutation-element-profile';
 import { sizeInMetres } from './model-authoring-size-params';
+import { addClassificationInDraft } from '@/lib/authoring/associations';
+import { classificationInput } from './model-authoring-classification';
+import { resolveEnglish } from '@/i18n/registry';
 import { authoringCopyTransforms, copyRefs } from './model-authoring-copy';
 import { pointToMetres, toMetres, type AuthoringOp, type AxisParams, type BoxParams, type ModelAuthoringBatch } from './model-authoring';
 
@@ -163,6 +166,11 @@ export function dryRunAuthoring(
 export function draftAuthoringOperation(batch: ModelAuthoringBatch, dataStore: IfcDataStore, modelId: string, draft: StoreEditor, row: DryRunRow, refs: Map<string, number>): void {
   const { op, resolved } = row;
   switch (op.op) {
+    case 'classification.add': {
+      const outcome = addClassificationInDraft(dataStore, draft, resolved.target!, classificationInput(op, dataStore.schemaVersion));
+      if (!outcome.ok) throw new Error(resolveEnglish(outcome.reasonKey));
+      return;
+    }
     case 'type.detach':
       detachFromType(draft, dataStore, [resolved.target!]);
       return;

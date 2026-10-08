@@ -39,6 +39,8 @@ export const MODEL_AUTHORING_OUTPUT_GUIDANCE =
   + 'type.detach {target (existing occurrence), expected:{GlobalId,Name} of its current type}; this removes only its type relationship, with no predicted geometry preview. '
   + 'type.assign {target, expected: current type name or null, type:{globalId,name} or {create:{ifcClass,name}}}; '
   + 'material.assign {target, expected, material:{name, create}}; walls.join {walls:[a,b]}; '
+  + 'classification.add {target (existing element), Classification:{Name:explicit system}, Reference:{Identification:explicit code, Name?:label}}; IFC2X3 requires ItemReference instead of Identification. '
+  + 'This adds metadata and retains existing classifications. Native Add reuses a system with the same current Name or creates one; there is no geometry preview. Never infer a classification system, code or engineering suitability; ask for missing explicit values. '
   + 'hosted.create {kind: door|window|opening, host (a wall), offset (along the wall from its start to the centre), sill, width, height}. '
   + 'Omit "expected" for elements created in the batch. Never invent dimensions, storeys or GlobalIds the user or evidence did not give; '
   + 'ask instead. Other operations (curtain walls, stairs, storey changes, splits) are not available. The user reviews and previews every operation before anything is applied.';

@@ -32,6 +32,7 @@ import { readAuthoringSize, sameNativeDimensions } from './model-authoring-size'
 import { sizeInMetres, type ExpectedSize } from './model-authoring-size-params';
 import { profileInMetres } from './model-authoring-shape-params';
 import type { ProfileSection } from '@ifc-lite/create';
+import { classificationInput } from './model-authoring-classification';
 import { authoringSizeGhost } from './model-authoring-size-ghost';
 
 /** P04's statuses plus `invalid` (a native builder or planner refused it) and `blocked` (it needs a row that is not ready). */
@@ -231,6 +232,19 @@ function resolve(ctx: Context, row: AuthoringRow): void {
       if (expected.expressId !== current || nameOf(r, current) !== op.expected.Name) throw new Refusal('conflict', 'The occurrence has a different current type');
       row.resolved.typeId = current;
       row.before.type = nameOf(r, current);
+      row.previewUnavailable = true;
+      return;
+    }
+    case 'classification.add': {
+      row.resolved.target = row.expressId = existing(ctx, op.target, row);
+      const r = reader(ctx, row.modelId!);
+      try { classificationInput(op, r.dataStore.schemaVersion); } catch (error) {
+        if (error instanceof Error) throw new Refusal('invalid', error.message);
+        throw error;
+      }
+      if (!conforms(r, row.expressId, r.dataStore.schemaVersion === 'IFC2X3' ? 'IfcRoot' : 'IfcDefinitionSelect')) {
+        throw new Refusal('invalid', 'This element cannot carry a classification in this IFC schema');
+      }
       row.previewUnavailable = true;
       return;
     }

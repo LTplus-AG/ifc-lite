@@ -24,6 +24,7 @@ import type { ProfileSection } from '@ifc-lite/create';
 import type { ElementSizePatch } from '@/store/slices/mutation-element-size';
 import { parseCopyFields, type CopyFields, type ArrayFields } from './model-authoring-copy-fields';
 import { parseGlobalIdTarget, parseLength, parsePoint, parseRef, parseText, record, type LengthRange } from './model-authoring-fields';
+import { parseClassificationAdd, type ClassificationAddFields } from './model-authoring-classification';
 
 export const AUTHORING_CLASSES = ['IfcWall', 'IfcSlab', 'IfcRoof', 'IfcPlate', 'IfcColumn', 'IfcBeam', 'IfcMember', 'IfcSpace'] as const;
 export type AuthoringClass = typeof AUTHORING_CLASSES[number];
@@ -45,6 +46,7 @@ export interface AxisParams { start: Point3; end: Point3; thickness?: number; wi
 export interface BoxParams { position: Point3; width: number; depth: number; thickness?: number; height?: number }
 
 export type AuthoringOp =
+  | ({ op: 'classification.add'; target: ExistingElement } & ClassificationAddFields)
   | { op: 'element.create'; ref: string; ifcClass: AuthoringClass; storey: StoreyTarget; name: string; params: AxisParams | BoxParams | ShapeParams }
   | ({ op: 'element.copy'; target: ElementTarget; ref: string } & CopyFields)
   | ({ op: 'element.array'; target: ElementTarget; refs: string[] } & ArrayFields)
@@ -63,7 +65,7 @@ export type AuthoringOp =
   | { op: 'hosted.create'; ref?: string; kind: HostedKind; host: ElementTarget; name?: string; offset: number; sill: number; width: number; height: number };
 
 export type AuthoringOpName = AuthoringOp['op'];
-export const AUTHORING_OPS: readonly AuthoringOpName[] = ['element.create', 'element.delete', 'element.resize', 'element.profile', 'element.move', 'element.rotate', 'element.copy', 'element.array',
+export const AUTHORING_OPS: readonly AuthoringOpName[] = ['element.create', 'element.delete', 'element.resize', 'element.profile', 'element.move', 'element.rotate', 'element.copy', 'element.array', 'classification.add',
   'type.assign', 'type.detach', 'material.assign', 'walls.join', 'hosted.create'];
 
 export interface ModelAuthoringBatch {
@@ -167,6 +169,8 @@ function operation(value: unknown, index: number, units: AuthoringUnits, refs: M
     return op;
   };
   switch (value.op) {
+    case 'classification.add':
+      return { op: 'classification.add', target: existing(value.target, at), ...parseClassificationAdd(value, at) };
     case 'element.resize': {
       const expected = parseSizeParams(value.expected, units, `${at} expected`, true);
       const size = parseSizeParams(value.size, units, `${at} size`, false);

@@ -16,6 +16,7 @@ import { resolveEntityRefGlobalIdFromState } from '@/store/resolveEntityRef';
 import { effectiveSelectedClass } from '@/components/viewer/properties/effectiveSelectedClass';
 import { readOnlyModelEditLease, type NativeReadLease } from './model-authoring-read-target';
 import { nativeEditEvidence, nativeRootName, type NativeEditEvidence } from './native-edit-evidence';
+import { nativeTypeEvidence, type NativeTypeEvidence } from './native-type-evidence';
 
 export interface SelectionElement {
   globalId: string;
@@ -24,6 +25,7 @@ export interface SelectionElement {
   type: string;
   name: string | null;
   nativeEdit: NativeEditEvidence;
+  nativeType: NativeTypeEvidence;
 }
 
 export interface SelectionGrounding {
@@ -93,6 +95,7 @@ export function captureSelectionGrounding(state: GroundingState, limit = SELECTI
       type: effectiveSelectedClass(store, state.mutationViews.get(ref.modelId), ref.expressId) ?? 'unknown',
       name: nativeRootName({ dataStore: store, view: state.mutationViews.get(ref.modelId) }, ref.expressId) || null,
       nativeEdit: nativeEditEvidence(nativeTarget(ref.modelId), ref.expressId),
+      nativeType: nativeTypeEvidence(state, nativeTarget(ref.modelId), ref.expressId),
     });
   }
   const grounding = { capturedAt: new Date().toISOString(), total, elements, unresolved,

@@ -28,11 +28,12 @@ import { commitElementTransform, planSelectionTransform } from '@/lib/element-tr
 import { writeNativeSplit } from './model-authoring-split';
 import { recordModellingEdit, recordModellingCommit } from '@/store/slices/mutation-modelling-records';
 import { toMetres, type AuthoringOp, type ModelAuthoringBatch } from './model-authoring';
-import { authoredElementOf, hostedSpecOf, idOf, writeRelation } from './model-authoring-native';
+import { authoredElementOf, hostedSpecOf, idOf, writeRelation, writeNativeTypeDetach } from './model-authoring-native';
 import { previewModelAuthoring, type AuthoringRow, type ModelAuthoringPreview } from './model-authoring-preview';
 import { undoBatch, type AppliedChange, type CommitOutcome, type ModelChangeReceipt } from './model-change-commit';
 import { commitElementSize } from '@/lib/element-size-commit';
 import { setElementProfile } from '@/store/slices/mutation-element-profile';
+import { writeAuthoringReach } from './model-authoring-reach';
 import { sizeInMetres } from './model-authoring-size-params';
 import { profileInMetres } from './model-authoring-shape-params';
 
@@ -82,6 +83,14 @@ function writeRow(tx: AuthoringTransaction, batch: ModelAuthoringBatch, row: Aut
       written.remesh.push(read.hostId, read.openingId, ...(read.fillingId === null ? [] : [read.fillingId]));
       return [{ ...base, globalId: op.target.globalId, field: 'Hosted occurrence', before: JSON.stringify(before.hosted), after: JSON.stringify(op.edit) }];
     }
+    case 'element.trimExtend': {
+      const result = recordModellingEdit(tx.api, modelId, (_methods, editor) =>
+        writeAuthoringReach(batch, tx.store.models.get(modelId)!.ifcDataStore!, editor, resolved.target!, op, resolved.reachBoundary, ids), tx.batchId);
+      written.remesh.push(...result.walls);
+      written.moved = true;
+      return [{ ...base, globalId: op.target.globalId, field: 'Trim/Extend', before: JSON.stringify(before.reach),
+        after: JSON.stringify({ mode: result.op, end: result.end, lengthMetres: result.length, joined: result.joined }) }];
+    }
     case 'element.split': {
       const scopes = [...tx.store.models].map(([id, model]) => ({ dataStore: model.ifcDataStore, view: tx.store.mutationViews.get(id) }));
       const result = recordModellingCommit(tx.api, modelId, (editor, store) => writeNativeSplit(batch, op, store, editor, resolved.target!, { globalIdScopes: scopes }), tx.batchId);
@@ -129,6 +138,13 @@ function writeRow(tx: AuthoringTransaction, batch: ModelAuthoringBatch, row: Aut
         ids.set(ref, id); refs.set(ref, globalId);
         return { ...base, globalId, field: entity.type, before: null, after: typeof entity.attributes[2] === 'string' ? entity.attributes[2] : null };
       });
+    }
+    case 'type.detach': {
+      const dataStore = tx.store.models.get(modelId)?.ifcDataStore;
+      if (!dataStore) throw new Error('The native model source is unavailable');
+      recordModellingEdit(tx.api, modelId, (_methods, draft) => writeNativeTypeDetach(op, dataStore, draft, resolved), tx.batchId);
+      written.remesh.push(resolved.target!);
+      return [{ ...base, globalId: op.target.globalId, field: 'Type', before: before.type ?? null, after: null }];
     }
     case 'element.delete':
       if (!tx.store.removeEntity(modelId, resolved.target!)) throw new Error(`${op.target.globalId} could not be removed`);

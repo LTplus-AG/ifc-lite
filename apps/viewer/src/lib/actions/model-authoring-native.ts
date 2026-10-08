@@ -12,8 +12,8 @@
  * and `bim.store`'s modelling methods for joins, types and materials.
  */
 
+import { uniqueSplitGuid, writeNativeSplit } from './model-authoring-split';
 import { writeHostedEdit } from './model-authoring-hosted-edit';
-import { writeNativeSplit } from './model-authoring-split';
 import { profileInMetres } from './model-authoring-shape-params';
 import { StoreEditor } from '@ifc-lite/mutations';
 import type { IfcDataStore } from '@ifc-lite/parser';
@@ -21,9 +21,11 @@ import { copyBatchInStore, addHostedElementInStore, addOrdinaryElementInStore, r
 import { createModellingStoreBackend, resolveLiveOwnerHistoryId } from '@ifc-lite/sdk';
 import { ensureStoreyPlacement } from '@/store/slices/storeyPlacement';
 import type { HostedFillSpec } from '@/store/slices/mutation-hosted-fill';
-import type { ModellingMethods } from '@/store/slices/mutation-modelling-records';
+import { detachFromType, type ModellingMethods } from '@/store/slices/mutation-modelling-records';
+import { entityName, typeOf } from '@/lib/commands/modeling/authored-kinds';
 import { draftElementSize } from '@/lib/element-size-commit';
 import { writeElementProfile } from '@/store/slices/mutation-element-profile';
+import { writeAuthoringReach } from './model-authoring-reach';
 import { sizeInMetres } from './model-authoring-size-params';
 import { authoringCopyTransforms, copyRefs } from './model-authoring-copy';
 import { pointToMetres, toMetres, type AuthoringOp, type AxisParams, type BoxParams, type ModelAuthoringBatch } from './model-authoring';
@@ -34,6 +36,8 @@ export type ElementId = { id: number } | { ref: string };
 /** What preview resolved for an operation; the commit re-resolves and must find the same. */
 export interface ResolvedOp {
   target?: number;
+  reachBoundary?: ElementId;
+  reachPlan?: ReturnType<typeof import('@ifc-lite/create').trimExtendElementInStore>;
   splitEffects?: ReturnType<typeof import('@ifc-lite/create').splitElementsInStore>[number];
   /** The element a type or material is assigned to. */
   subject?: ElementId;
@@ -164,11 +168,30 @@ export function dryRunAuthoring(
   return refusals;
 }
 
+/** Recheck the actual intermediate native binding before either dry-run or commit writes it. */
+export function writeNativeTypeDetach(op: Extract<AuthoringOp, { op: 'type.detach' }>, dataStore: IfcDataStore, draft: StoreEditor, resolved: ResolvedOp): void {
+  if (!uniqueSplitGuid(dataStore, draft, op.target.globalId) || !uniqueSplitGuid(dataStore, draft, op.expected.GlobalId)) {
+    throw new Error('The native occurrence or expected type GlobalId is not unique');
+  }
+  const target = { dataStore, view: draft.getMutationView() };
+  const current = typeOf(target, resolved.target!);
+  if (current === null || current !== resolved.typeId || entityName(target, current) !== op.expected.Name) {
+    throw new Error('The current native type differs from the expected binding');
+  }
+  detachFromType(draft, dataStore, [resolved.target!]);
+}
+
 export function draftAuthoringOperation(batch: ModelAuthoringBatch, dataStore: IfcDataStore, modelId: string, draft: StoreEditor, row: DryRunRow, refs: Map<string, number>, splitScopes?: Parameters<typeof import('@ifc-lite/create').splitElementsInStore>[3]): void {
   const { op, resolved } = row;
   switch (op.op) {
+    case 'type.detach':
+      writeNativeTypeDetach(op, dataStore, draft, resolved);
+      return;
     case 'hosted.edit':
       writeHostedEdit(batch, dataStore, draft, resolved.target!, op.expected, op.edit, op.target.globalId);
+      return;
+    case 'element.trimExtend':
+      resolved.reachPlan = writeAuthoringReach(batch, dataStore, draft, resolved.target!, op, resolved.reachBoundary, refs);
       return;
     case 'element.split':
       resolved.splitEffects = writeNativeSplit(batch, op, dataStore, draft, resolved.target!, splitScopes);

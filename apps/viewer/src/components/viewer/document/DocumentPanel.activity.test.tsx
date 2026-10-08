@@ -17,6 +17,7 @@ import { render, click, cleanup, waitFor } from '@/test/render';
 import { documentPreviewReady } from '@/test/document-preview';
 import { activityCanceller, useActivityJournal } from '@/lib/activity/activity-journal';
 import { browserReportSeams } from '@/lib/export/report/generate-report-pdf';
+import { browserImageSize } from '@/lib/document/generate-document-pdf';
 import { DOCUMENT_VERSION, type DocumentSpec } from '@/lib/document/types';
 import { DocumentPanel } from './DocumentPanel';
 const initial = useViewerStore.getState();
@@ -58,7 +59,7 @@ for (const mode of ['publication', 'download failure', 'partial coverage'] as co
   URL.revokeObjectURL = () => {};
   HTMLAnchorElement.prototype.click = function () {};
   try {
-    const ui = render(<DocumentPanel pdfSeams={async () => { await gate; return browserReportSeams(null); }} />);
+    const ui = render(<DocumentPanel pdfSeams={async () => { await gate; return { ...await browserReportSeams(null), imageSize: browserImageSize }; }} />);
     await documentPreviewReady();
     const exportButton = [...ui.querySelectorAll('button')].find(button => button.textContent?.trim() === 'Export PDF');
     assert.ok(exportButton); click(exportButton);

@@ -1,0 +1,23 @@
+{
+  "command": [
+    "pnpm",
+    "test",
+    "--filter=@ifc-lite/viewer",
+    "--env-mode=loose",
+    "--concurrency=1"
+  ],
+  "TEST_PATTERN": "serverDataModel|selection-materials",
+  "exitCode": 0,
+  "startedUnix": 1791464457.9604874,
+  "finishedUnix": 1791464583.2582335,
+  "runtimeBefore": {
+    "packages/wasm/pkg/ifc-lite_bg.wasm": "5606f31452779f749ed060b878ee77dbbf3dac7d8bf71b1f21a9a8865cf2ccd2",
+    "packages/wasm/pkg/ifc-lite.js": "0a281479eb65141ae75aeef987d331d44439741a0cae855f122e53e800311a39",
+    "packages/wasm/pkg/ifc-lite.d.ts": "54c9d0a52eb515e517d76726fefe5f6a63e553a81c1b10331a597965d14620f6"
+  },
+  "runtimeAfter": {
+    "packages/wasm/pkg/ifc-lite_bg.wasm": "b335d9e2742a0f35db846b3a95f7b30152585ef2dd6e7abdc2328dae557dc1d0",
+    "packages/wasm/pkg/ifc-lite.js": "0a281479eb65141ae75aeef987d331d44439741a0cae855f122e53e800311a39",
+    "packages/wasm/pkg/ifc-lite.d.ts": "54c9d0a52eb515e517d76726fefe5f6a63e553a81c1b10331a597965d14620f6"
+  }
+}

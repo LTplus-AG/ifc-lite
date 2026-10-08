@@ -12,6 +12,7 @@ import { flowStartupEn } from './catalogues/flow-startup.en';
 import { appearanceAssignmentListEn } from './catalogues/appearance-assignment-list.en';
 import { appearanceAssignmentMembersEn } from './catalogues/appearance-assignment-members.en';
 import { analysisPanelEn } from './catalogues/analysis-panel.en';
+import { capturedArtifactsEn } from './catalogues/captured-artifacts.en';
 import { resultViewEn } from './catalogues/result-view.en';
 import { activityTrayEn } from './catalogues/activity-tray.en';
 import type { reviewWorkspaceEn } from './catalogues/review-workspace.en';
@@ -151,6 +152,7 @@ export const en = {
   ...semanticIdentityEn,
   ...analysisPanelEn,
   ...resultViewEn,
+  ...capturedArtifactsEn,
   ...activityTrayEn,
   'reviewWorkspace.title': 'Review',
   ...panelNoModelEn,

@@ -10,6 +10,7 @@
 
 import type { PropertySet, Property, QuantitySet, Quantity } from '@ifc-lite/data';
 import { isWhollyNumeric, parsePropertyValue } from '@ifc-lite/encoding';
+import { resolveSourceSet } from './source-set.js';
 import { compileNameMatcher } from './name-pattern.js';
 import { getWorldCoordinateValue, extractGeometryColumnValue } from './geometry-column.js';
 import { withAggregateInheritance } from './condition-inherit.js';
@@ -35,12 +36,13 @@ export function executeList(
   definition: ListDefinition,
   provider: ListDataProvider,
   modelId = 'default',
+  capturedExpressIds?: ReadonlySet<number>,
 ): ListResult {
   if (definition.groups.some((group) => group.rules.length > 0))
     throw new Error('executeList requires Rules groups to be evaluated before provider-only execution');
   const startTime = performance.now();
 
-  const matchedIds = resolveSourceSet(definition, provider, modelId);
+  const matchedIds = resolveSourceSet(definition, provider, modelId, matchesAllConditions, capturedExpressIds);
 
   // Step 2: Extract column values for matched entities. `columnMeta` collects,
   // per quantity/property column, the QuantityType / measure dataType of the
@@ -231,48 +233,6 @@ export function toScheduleRows(groups: ListGroup[] | undefined, levelCount: numb
     // own `path` implies before assuming the outermost level.
     .filter((g) => (g.level ?? (g.path ? g.path.length - 1 : 0)) === leafLevel)
     .map((g) => ({ key: g.key, path: g.path ?? [g.label], count: g.count, sums: g.sums }));
-}
-
-// ============================================================================
-// Source Set Resolution
-// ============================================================================
-
-function resolveSourceSet(
-  definition: ListDefinition,
-  provider: ListDataProvider,
-  modelId: string,
-): number[] {
-  const { entityTypes, legacyConditions = [], expressIdsByModel } = definition;
-
-  let entityIds: number[];
-  if (expressIdsByModel) {
-    // Explicit snapshot scope (e.g. from a filter result) — target exactly
-    // the ids captured FOR THIS model. Keyed by model so a federated list
-    // never picks up a foreign model's element that happens to share a
-    // local express ID. Still intersect with this model for safety.
-    const snapshot = expressIdsByModel[modelId] ?? [];
-    entityIds = snapshot.filter((id) => provider.getEntityTypeName(id) !== '');
-  } else if (entityTypes.length === 0) {
-    // No class constraint — target every element in the model. Requires
-    // the provider to enumerate all ids; older providers without it
-    // resolve to an empty set rather than throwing.
-    entityIds = provider.getAllEntityIds?.() ?? [];
-  } else {
-    // Collect entity IDs by type - gather arrays first, then flatten once
-    const chunks: number[][] = [];
-    for (const type of entityTypes) {
-      const ids = provider.getEntitiesByType(type);
-      if (ids.length > 0) chunks.push(ids);
-    }
-    entityIds = chunks.length === 1 ? chunks[0] : chunks.flat();
-  }
-
-  // Apply conditions as filters
-  if (legacyConditions.length === 0) {
-    return entityIds;
-  }
-
-  return entityIds.filter(id => matchesAllConditions(id, legacyConditions, provider));
 }
 
 function matchesAllConditions(

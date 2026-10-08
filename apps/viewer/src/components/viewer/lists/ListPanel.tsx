@@ -23,7 +23,7 @@ import {
 } from '@/lib/lists';
 import type { ListDefinition, ListGrouping } from '@/lib/lists';
 import { runListFederated } from '@/lib/lists/run-list';
-import { carryListRun, recordListRun } from '@/lib/lists/run-provenance';
+import { captureListRunModels, carryListRun, listResultGrouping, listRunDefinition, recordListRun } from '@/lib/lists/run-provenance';
 import { beginActivity, finishActivity } from '@/lib/activity/activity-journal';
 import { captureAnalysisStamp } from '@/hooks/useAnalysisStaleness';
 import { AssistantAction } from '@/components/viewer/assistant/AssistantAction';
@@ -97,11 +97,12 @@ export function ListPanel() {
         const state = useViewerStore.getState();
         // Stamped at run start, so an edit landing mid-run leaves the result stale (#6833).
         const stamp = captureAnalysisStamp();
+        const runModels = captureListRunModels(definition, modelProviderPairs, state, t('lists.resultChrome.loadedModel'));
         const result = await runListFederated(definition, modelProviderPairs, state, {
           evaluatorModels: evaluatorModelsFromState(state), signal: controller.signal,
         });
         if (controller.signal.aborted) return;
-        setListResult(recordListRun(result, definition, stamp));
+        setListResult(recordListRun(result, definition, stamp, runModels));
         setView('results');
         outcome = 'completed';
       } catch (err) {
@@ -121,7 +122,7 @@ export function ListPanel() {
         }
       }
     })(); });
-  }, [hasData, modelProviderPairs, setActiveListId, setListResult, setListExecuting, setListError]);
+  }, [hasData, modelProviderPairs, setActiveListId, setListResult, setListExecuting, setListError, t]);
 
   const handleCreateNew = useCallback(() => {
     setEditingList(null);
@@ -286,8 +287,8 @@ export function ListPanel() {
       {view === 'results' && listResult && (
         <ListResultsTable
           result={listResult}
-          listName={editingList?.name}
-          grouping={editingList?.grouping}
+          listName={listRunDefinition(listResult)?.name}
+          grouping={listResultGrouping(listResult)}
           onGroupingChange={handleGroupingFromTable}
           modelUnits={modelUnits}
         />

@@ -279,7 +279,10 @@ describe('ListResultsTable / ListGroupingBar / ColumnHeaderMenu localization (#4
     const container = render(
       <ListResultsTable result={emptyResult} modelUnits={MODEL_UNITS} onGroupingChange={() => {}} />,
     );
-    assert.ok(container.textContent?.includes('No matching rows'));
+    // #7166: this standalone result has no recorded evaluated scope; absence is uncertain.
+    assert.ok(container.querySelector('[data-result-state="partial"]'));
+    assert.equal(Boolean(container.querySelector('[data-result-state="no-findings"]')), false);
+    assert.ok(container.textContent?.includes('incomplete or unrecorded evaluation'));
     const nameHeader = [...container.querySelectorAll('button')].find((button) => button.textContent?.trim() === 'Name');
     assert.ok(nameHeader, 'the Name column remains sortable');
     const menuTrigger = container.querySelector('button[aria-label="Column options"]');
@@ -297,6 +300,8 @@ describe('ListResultsTable / ListGroupingBar / ColumnHeaderMenu localization (#4
     assert.ok(headerButtons.includes('Name'), 'the grouping column stays sortable');
     assert.ok(headerButtons.some((label) => label?.startsWith('Net Volume')), 'the sum column stays sortable');
     assert.ok(container.textContent?.includes('Count'), 'the pivot count header stays visible');
-    assert.ok(container.textContent?.includes('No matching rows'), 'the empty message remains visible');
+    // #7166: native matched members exist, but the visibility filter hides them.
+    assert.ok(container.querySelector('[data-result-state="filtered"]'), 'the shared filtered state remains visible');
+    assert.ok(container.textContent?.includes('Matching rows are hidden by the current filters'), 'the filtered message remains visible');
   });
 });

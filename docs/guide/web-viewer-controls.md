@@ -187,6 +187,20 @@ reprojected into another CRS is also refused.
 Spaces carrying `ElevationWithFlooring` allow ceiling edits, but refuse floor
 moves until the building elevation frame can be resolved.
 
+## Selection quantity results
+
+Open **Measurements → Qty** to read quantities for the selected elements. The
+results header identifies the selected models and population. Authored IFC
+quantity rows, proved enclosed volumes and triangulated mesh areas keep their
+separate bases and display units; the source inspection remains in the evidence
+region.
+
+Coverage reports unavailable model data, unproved or alignment-invalidated
+volumes, missing or incomplete mesh areas and withheld derived mass. A usable
+mesh area remains visible when the model's quantity tables or volume proof are
+unavailable. Empty selection asks for elements; selected elements with no usable
+measurements report Partial. Finite zero-valued measurements remain results.
+
 ## Autodesk cloud sources
 
 Open **Cloud sources** from Coordinate mode and select **Autodesk Forma / Data Exchange**. The viewer administrator configures either a public APS application ID for static sign-in or a same-origin hosted session service. Hosted mode keeps Autodesk tokens on the server. Static mode keeps tokens in memory and requires sign-in after a reload. A cancelled sign-in cannot complete the pending transaction.

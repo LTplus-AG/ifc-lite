@@ -641,8 +641,8 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
   // ─── Streaming complete: finalize + bounds refit ─────────────────────
   useEffect(() => {
     const renderer = rendererRef.current;
-    if (!renderer || !isInitialized) return;
-
+    // A slow renderer init can outlast the stream: remember it was seen so its end still finalizes (#7032).
+    if (!renderer || !isInitialized) { if (isStreaming) prevIsStreamingRef.current = true; return; }
     if (prevIsStreamingRef.current && !isStreaming) {
       const scene = renderer.getScene();
       traceGeometrySync(

@@ -90,13 +90,16 @@ describe('runModelRequest', () => {
     expect(timeout.kind).toBe('timeout');
   });
 
-  it('cancels before dispatch without spending budget', async () => {
+  it('#7132 cancels before dispatch without spending budget or reporting an outgoing format', async () => {
     const { transport, calls } = scripted(reply('ok'));
     const budget = createRootBudget({ maxRequests: 1, maxOutputTokens: 100 });
     const controller = new AbortController();
     controller.abort();
-    const outcome = await runModelRequest(request(transport, { budget, signal: controller.signal }));
+    const outcome = await runModelRequest(request(transport, { budget, signal: controller.signal,
+      outputSchema: { name: 'cancelled', schema: { type: 'object', properties: {}, required: [], additionalProperties: false } },
+    }));
     expect(outcome.kind).toBe('cancelled');
+    expect(outcome.kind === 'cancelled' ? outcome.receipt.outputFormat : 'wrong-outcome').toBeUndefined();
     expect(calls).toHaveLength(0);
     expect(budget.requests).toBe(0);
   });

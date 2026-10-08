@@ -181,6 +181,8 @@ it('DeviationPanel #6872 drops an export whose readback is invalidated mid-run (
     await waitFor(() => (container.textContent ?? '').includes('Deviation results changed during export'), 'export reported stale');
   });
   assert.equal(downloads.length, 0, 'no CSV of an invalidated run');
+  assert.equal(useActivityJournal.getState().jobs.at(-1)?.outcome, 'cancelled', '#7121 native invalidation also settles the Activity row');
+  assert.equal(activityCanceller(useActivityJournal.getState().jobs.at(-1)!.id), null);
   assert.equal(container.querySelector('[data-testid="deviation-summary"]'), null);
   assert.equal(button(container, 'Export CSV'), undefined);
   assert.ok(!(container.querySelector('button') as HTMLButtonElement).disabled);

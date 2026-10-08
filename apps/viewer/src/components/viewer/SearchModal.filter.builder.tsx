@@ -101,7 +101,7 @@ export function SearchModalFilterBuilder() {
     (updater: (prev: FilterGroupEditorState) => FilterGroupEditorState) => {
       const state = useViewerStore.getState();
       const next = updater({ groups: state.searchFilter.groups, activeGroup: state.searchFilterActiveGroup });
-      setSearchFilter({ groups: next.groups, limit: state.searchFilter.limit });
+      setSearchFilter({ ...state.searchFilter, groups: next.groups });
       setActiveFilterGroup(next.activeGroup);
     },
     [setSearchFilter, setActiveFilterGroup],
@@ -191,7 +191,7 @@ export function SearchModalFilterBuilder() {
   return (
     <div className="flex flex-col">
       <SearchModalFilterSelector />
-      <CapturedScopeControl scope={filter.capturedScope} onChange={capturedScope => setSearchFilter({ ...filter, capturedScope })} />
+      <CapturedScopeControl scope={filter.capturedScope} onChange={capturedScope => setSearchFilter({ ...useViewerStore.getState().searchFilter, capturedScope })} />
       <div className="flex flex-col gap-3 p-4">
         {/* ── Toolbar: Limit · promote-query · Presets · Save · Reset ── */}
         <div className="flex flex-wrap items-center gap-2 text-xs">

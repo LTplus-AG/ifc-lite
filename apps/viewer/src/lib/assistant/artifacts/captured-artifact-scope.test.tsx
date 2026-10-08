@@ -7,7 +7,7 @@ import { afterEach, beforeEach, test } from 'node:test';
 import { evaluateFilterGroupsFederated } from '@ifc-lite/rules';
 import { evaluateAutoColorLens, evaluateLens } from '@ifc-lite/lens';
 import { useViewerStore } from '@/store';
-import { entityRefToString } from '@/store/entity-ref';
+import type { EntityRef } from '@/store/types';
 import { evaluatorModelsFromState } from '@/lib/model-tags/evaluator-models';
 import { ARCH, WALL, seedArtifactModels } from '@/test/artifact-models-fixture';
 import { parseArtifactProposal, type ArtifactKind } from './proposal-kinds';
@@ -24,9 +24,22 @@ import { evaluateLensGroups } from '@/lib/lens/evaluate-lens-groups';
 import { placementSourceIdentity } from '@/lib/model-placement/source-identity';
 import { toGlobalIdFromModels } from '@/store/globalId';
 import { getVisibleBasketEntityRefsFromStore } from '@/store/basketVisibleSet';
+import { act } from 'react';
+import { cleanup, click, render, type } from '@/test/render';
+import { LensEditor } from '@/components/viewer/LensEditor';
+import { AutoColorEditor } from '@/components/viewer/AutoColorEditor';
+import { ListBuilder } from '@/components/viewer/lists/ListBuilder';
+import { SearchModalFilterBuilder } from '@/components/viewer/SearchModal.filter.builder';
+import { filterCandidates } from '@/lib/search/filter-candidates';
 
 const original = useViewerStore.getState();
 const groups = [{ combinator: 'AND' as const, rules: [{ kind: 'ifcType' as const, op: 'in' as const, values: ['IfcWall', 'IfcWallStandardCase'] }] }];
+const cases: Array<{ kind: ArtifactKind; label: string; body: Record<string, unknown> }> = [
+  { kind: 'filter.proposal', label: 'filter', body: { name: 'Captured walls', groups } },
+  { kind: 'list.proposal', label: 'list', body: { list: { name: 'Captured wall names', entityTypes: ['IfcWall'], groups, columns: [{ id: 'name', source: 'attribute', propertyName: 'Name' }] } } },
+  { kind: 'lens.proposal', label: 'manual lens', body: { lens: { name: 'Captured manual wall colors', rules: [{ name: 'Walls', groups, action: 'colorize', color: '#223344' }] } } },
+  { kind: 'lens.proposal', label: 'auto-color lens', body: { lens: { name: 'Captured automatic colors', autoColor: { source: 'ifcType' } } } },
+];
 beforeEach(async () => {
   localStorage.clear();
   useViewerStore.setState(original, true);
@@ -40,7 +53,7 @@ beforeEach(async () => {
   }
   useViewerStore.setState({ models });
 });
-afterEach(() => { useViewerStore.setState(original, true); localStorage.clear(); });
+afterEach(() => { cleanup(); useViewerStore.setState(original, true); localStorage.clear(); });
 
 /** Replay native persisted definitions through their native engines, never a metadata-only readback. */
 async function replaySaved(artifact: PreviewArtifact): Promise<number> {
@@ -76,19 +89,95 @@ async function replaySaved(artifact: PreviewArtifact): Promise<number> {
     case 'chart.proposal': throw new Error('Charts use their independent native dashboard scope.');
   }
 }
-const cases: Array<{ kind: ArtifactKind; label: string; body: Record<string, unknown> }> = [
-  { kind: 'filter.proposal', label: 'filter', body: { name: 'Captured walls', groups } },
-  { kind: 'list.proposal', label: 'list', body: { list: { name: 'Captured wall names', entityTypes: ['IfcWall'], groups, columns: [{ id: 'name', source: 'attribute', propertyName: 'Name' }] } } },
-  { kind: 'lens.proposal', label: 'manual lens', body: { lens: { name: 'Captured manual wall colors', rules: [{ name: 'Walls', groups, action: 'colorize', color: '#223344' }] } } },
-  { kind: 'lens.proposal', label: 'auto-color lens', body: { lens: { name: 'Captured automatic colors', autoColor: { source: 'ifcType' } } } },
-];
+
+function button(ui: HTMLElement, label: string): HTMLButtonElement {
+  const found = [...ui.querySelectorAll('button')].find(row => row.textContent?.trim() === label);
+  assert.ok(found, `native editor exposes ${label}`);
+  return found;
+}
+
+function selectRef(ref: EntityRef): void {
+  act(() => {
+    const state = useViewerStore.getState();
+    state.clearEntitySelection();
+    state.setSelectedEntity(ref);
+    state.setSelectedEntityId(toGlobalIdFromModels(state.models, ref.modelId, ref.expressId));
+  });
+}
+
+async function selectWall() {
+  const rows = await evaluateFilterGroupsFederated(evaluatorModelsFromState(useViewerStore.getState()), groups, { limit: Infinity });
+  const wall = rows.find(row => row.modelId === ARCH);
+  assert.ok(wall); assert.ok(rows.length > 1);
+  selectRef({ modelId: ARCH, expressId: wall.expressId });
+  return wall;
+}
+
+test('#7186 native Filter group editing retains capture; clear and recapture change native population explicitly', async () => {
+  const wall = await selectWall();
+  useViewerStore.getState().setSearchFilter({ groups, limit: Infinity });
+  const ui = render(<SearchModalFilterBuilder />);
+  click(button(ui, 'Capture selected'));
+  assert.match(ui.textContent ?? '', /1 selected element captured from 1 file/);
+  click(button(ui, 'Add group'));
+  const run = async () => {
+    const state = useViewerStore.getState(), models = evaluatorModelsFromState(state);
+    return evaluateFilterGroupsFederated(models, state.searchFilter.groups, { limit: Infinity,
+      candidateExpressIdsByModel: filterCandidates(models, state.searchIndexes, '', state.searchFilter.capturedScope) });
+  };
+  assert.deepEqual((await run()).map(row => [row.modelId, row.expressId]), [[ARCH, wall.expressId]], 'an empty OR group cannot widen captured membership');
+  click(button(ui, 'Clear capture'));
+  assert.ok((await run()).length > 1, 'explicitly clearing capture restores the native unscoped criteria population');
+  click(button(ui, 'Capture selected'));
+  assert.equal((await run()).length, 1, 'explicit recapture restricts the current native criteria again');
+});
+
+for (const entry of cases.filter(row => row.kind !== 'filter.proposal')) test(`#7186 native ${entry.label} editor saves captured membership with an ordinary edited name`, async () => {
+  await selectWall();
+  const proposal = parseArtifactProposal(JSON.stringify({ version: 1, title: 'Pinned native editing', kind: entry.kind, scope: 'selected', ...entry.body }), entry.kind);
+  const preview = await previewArtifact(proposal, useViewerStore.getState());
+  const state = useViewerStore.getState();
+  const artifact = preview.artifact;
+  let ui: HTMLElement;
+  if (artifact.kind === 'list.proposal') {
+    const prepared = prepareListProviders(state, resolveRenderFrame(state.models, state.geometryResult));
+    ui = render(<ListBuilder providers={prepared.providers} stores={prepared.stores} modelIds={prepared.pairs.map(row => row.modelId)}
+      initial={artifact.definition} onSave={definition => state.addListDefinition(definition)} onCancel={() => cleanup()}
+      onExecute={() => { throw new Error('This acceptance path must Save, not Run.'); }} />);
+  } else {
+    assert.ok(artifact.kind === 'lens.proposal');
+    const onSave = (lens: typeof artifact.lens) => { assert.ok(state.createLens(lens).ok); };
+    ui = artifact.lens.autoColor
+      ? render(<AutoColorEditor initial={{ ...artifact.lens, autoColor: artifact.lens.autoColor }} onSave={onSave} onCancel={() => cleanup()}
+        discovered={null} onRequestDiscovery={() => { throw new Error('IFC type editing needs no property discovery.'); }} />)
+      : render(<LensEditor initial={artifact.lens} onSave={onSave} onCancel={() => cleanup()} />);
+  }
+  assert.match(ui.textContent ?? '', /1 selected element captured from 1 file/);
+  const input = ui.querySelector<HTMLInputElement>('input'); assert.ok(input); assert.equal(input.type, 'text');
+  type(input, `${entry.label} edited`);
+  act(() => useViewerStore.getState().clearEntitySelection());
+  click(button(ui, 'Save'));
+  const savedState = useViewerStore.getState();
+  if (artifact.kind === 'list.proposal') {
+    const saved = loadListDefinitions().find(row => row.id === artifact.definition.id); assert.ok(saved);
+    const { pairs } = prepareListProviders(savedState, resolveRenderFrame(savedState.models, savedState.geometryResult));
+    assert.equal((await runListFederated(saved, pairs, savedState, { evaluatorModels: evaluatorModelsFromState(savedState) })).rows.length, 1);
+  } else {
+    assert.ok(artifact.kind === 'lens.proposal');
+    const saved = savedState.savedLenses.find(row => row.id === artifact.lens.id); assert.ok(saved);
+    const provider = createLensDataProvider(savedState.models, savedState.ifcDataStore, savedState.mutationViews, id => savedState.resolveGlobalIdFromModels(id));
+    const result = saved.autoColor ? evaluateAutoColorLens(saved.autoColor, provider, saved.capturedScope)
+      : evaluateLens(saved, provider, await evaluateLensGroups(saved, evaluatorModelsFromState(savedState), savedState.models, new Set(savedState.modelTags.keys())));
+    assert.equal(result.colorMap.size, 1, 'the native editor Save preserves the original captured membership after selection clears');
+  }
+});
 for (const mode of ['selected', 'visible'] as const) for (const entry of cases) {
   test(`#7186 ${mode} ${entry.kind} ${entry.label} captures exactly one real federated member`, async () => {
     const state = useViewerStore.getState();
     const walls = await evaluateFilterGroupsFederated(evaluatorModelsFromState(state), groups, { limit: Infinity });
     const selected = walls.find(row => row.modelId === ARCH);
     assert.ok(selected); assert.ok(walls.length > 1, 'the actual native unscoped population is wider than this selected member');
-    useViewerStore.setState({ selectedEntities: [{ modelId: ARCH, expressId: selected.expressId }], selectedEntitiesSet: new Set([entityRefToString({ modelId: ARCH, expressId: selected.expressId })]), selectedEntity: { modelId: ARCH, expressId: selected.expressId } });
+    selectRef({ modelId: ARCH, expressId: selected.expressId });
     if (mode === 'visible') {
       // Visibility reads the renderer's resident EXPRESS IDs and IFC types,
       // not mesh coordinates. These empty mesh buffers exercise that protocol
@@ -115,7 +204,7 @@ for (const mode of ['selected', 'visible'] as const) for (const entry of cases) 
     assert.ok(pinned);
     const foreign = walls.find(row => row.modelId === WALL);
     assert.ok(foreign);
-    useViewerStore.getState().setSelectedEntity({ modelId: WALL, expressId: foreign.expressId });
+    selectRef({ modelId: WALL, expressId: foreign.expressId });
     if (mode === 'visible') useViewerStore.setState({ hiddenEntities: new Set([toGlobalIdFromModels(useViewerStore.getState().models, ARCH, selected.expressId)]) });
     const rerun = await previewArtifact(proposal, useViewerStore.getState(), undefined, pinned);
     assert.deepEqual(rerun.population.map(row => [row.modelId, row.count]), [[ARCH, 1], [WALL, 0]], 'a native review rerun keeps the original capture despite a changed selection');

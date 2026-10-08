@@ -23,7 +23,7 @@ import { useViewerStore } from '@/store';
 import { analysisStampOf, isAnalysisStale } from '@/hooks/useAnalysisStaleness';
 import { captureValidationRun } from '@/lib/compare/compare-analysis-state';
 import { reportRuleSetOf } from '@/lib/validation/report-rule-set';
-import { useActivityJournal } from '@/lib/activity/activity-journal';
+import { useActivityJournal, activityCanceller, cancelActivity } from '@/lib/activity/activity-journal';
 import { useInformationValidation } from './useInformationValidation';
 
 const initial = useViewerStore.getState();
@@ -78,4 +78,31 @@ it('#6952 two real native rule-set runs retain their distinct input names in the
   const jobs = useActivityJournal.getState().jobs;
   assert.deepEqual(jobs.map(job => [job.subject, job.outcome]).sort(), [['Delivery naming review', 'completed'], ['Wall naming', 'completed']]);
   assert.equal(useViewerStore.getState().idsValidationReport?.source.kind, 'rules');
+});
+
+
+it('#7110 tray cancellation of a real SketchUp information-rule run records Cancelled and releases native authority', async () => {
+  const bytes = readFileSync(new URL('../../../public/samples/building-architecture.ifc', import.meta.url));
+  const store = await new IfcParser().parseColumnar(new Uint8Array(bytes).buffer);
+  useViewerStore.setState({ ...fixtureModels({ ...fixtureModel('m'), name: 'building-architecture.ifc', ifcDataStore: store }), idsValidationReport: null });
+  assert.ok(useViewerStore.getState().addValidationDefinition({ kind: 'rules', file: ruleSet }));
+  render(<Owner />);
+  let cancelled = false;
+  let id: string | undefined;
+  const stop = useActivityJournal.subscribe(({ jobs }) => {
+    const job = jobs.at(-1);
+    if (cancelled || !job?.progress || job.progress.total <= 0) return;
+    cancelled = true;
+    id = job.id;
+    assert.ok(activityCanceller(job.id), 'the existing native information hook already supports tray Cancel');
+    cancelActivity(job.id);
+  });
+  try { await act(async () => { await owner.run(); }); }
+  finally { stop(); }
+  assert.equal(cancelled, true, 'the real rule engine must reach native progress');
+  assert.equal(useViewerStore.getState().idsValidationReport, null);
+  assert.deepEqual(useActivityJournal.getState().jobs.map(job => job.outcome), ['cancelled']);
+  assert.ok(id);
+  assert.equal(activityCanceller(id), null);
+  assert.equal(owner.running, false);
 });

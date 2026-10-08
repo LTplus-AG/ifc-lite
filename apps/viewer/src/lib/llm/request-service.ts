@@ -18,7 +18,7 @@ import {
 import type { StreamRoute } from './byok-guard.js';
 import { modelCapabilities } from './model-capabilities.js';
 import { recordReceipt, recordRequestStart } from './request-receipts.js';
-import { streamChat, type StreamMessage, type StreamOptions } from './stream-client.js';
+import { streamChat, type StreamMessage, type StreamOptions, type UsageInfo } from './stream-client.js';
 import { streamAnthropicChat, streamOpenAiChat } from './stream-direct.js';
 
 export type SendableRoute = Exclude<StreamRoute, { kind: 'missing-key' }>;
@@ -47,14 +47,16 @@ export interface ModelRequest {
   /** Overall deadline from send to last byte. */
   timeoutMs: number;
   onChunk?: (text: string) => void;
+  /** Hosted quota metadata, distinct from provider-reported token usage. */
+  onUsageInfo?: (usage: UsageInfo) => void;
 }
 
 export type RequestOutcome = SharedOutcome<SendableRoute['kind']>;
 
 /** The viewer's stream clients for one route, as a shared-core transport. */
-function viewerTransport(route: SendableRoute, proxyUrl: string): AiTransport<StreamMessage> {
+function viewerTransport(route: SendableRoute, proxyUrl: string, onUsageInfo?: (usage: UsageInfo) => void): AiTransport<StreamMessage> {
   return async (call) => {
-    const options: StreamOptions = { ...call, proxyUrl, messages: [...call.messages] };
+    const options: StreamOptions = { ...call, proxyUrl, messages: [...call.messages], onUsageInfo, allowProxyFallback: false, useParentDeadline: true };
     if (route.kind === 'proxy') await streamChat(options);
     else if (route.kind === 'anthropic') await streamAnthropicChat(route.credentials, options);
     else await streamOpenAiChat(route.apiKey, options);
@@ -66,7 +68,7 @@ export function runModelRequest(request: ModelRequest): Promise<RequestOutcome> 
   return runSharedRequest({
     model: route.model,
     route: route.kind,
-    transport: viewerTransport(route, request.proxyUrl),
+    transport: viewerTransport(route, request.proxyUrl, request.onUsageInfo),
     messages: request.messages,
     system: request.system,
     maxOutputTokens: request.maxOutputTokens,

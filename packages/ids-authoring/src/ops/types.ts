@@ -256,6 +256,27 @@ export interface BsddEntityRef {
   predefinedType?: string;
 }
 
+/** What the property mapping table (`bsdd/mapping.ts`) needs of a bSDD class property. */
+export interface BsddPropertySnapshot {
+  code: string;
+  name?: string;
+  uri?: string;
+  propertySet?: string;
+  dataType?: string;
+  propertyValueKind?: string;
+  dimension?: string;
+  units?: string[];
+  allowedValues?: { code: string; value?: string }[];
+  minInclusive?: number;
+  maxInclusive?: number;
+  minExclusive?: number;
+  maxExclusive?: number;
+  pattern?: string;
+  isRequired?: boolean;
+  /** EXPRESS data type of the standard property of that name in that standard set, when there is one. */
+  standardDataType?: string;
+}
+
 /**
  * The part of a bSDD class an insert needs, carried in the op so the reducer
  * stays pure and the op log replays offline (like `bulk.applyTemplate`
@@ -269,6 +290,8 @@ export interface BsddClassSnapshot {
   /** The dictionary name as bSDD publishes it: the classification `system`. */
   dictionaryName: string;
   relatedIfcEntities?: BsddEntityRef[];
+  /** The class's properties (with inherited ones when the caller resolved the hierarchy). */
+  properties?: BsddPropertySnapshot[];
 }
 
 export interface BsddNewSpec {
@@ -295,8 +318,21 @@ export type BulkFromBsddClassOp = Op<
     classification?: { section: Section; uri?: boolean };
     /** Add an entity facet from the related IFC entities (all of them, or the `entities` chosen). */
     entity?: { section: Section; entities?: string[] };
+    /** Add property requirements through the mapping table. */
+    properties?: BsddPropertySelection;
   }
 >;
+
+export interface BsddPropertySelection {
+  /** Property codes (or URIs) to add; each must be defined on every class of the op. */
+  select: string[];
+  /** `fromClass` (default): required when bSDD marks the property required, else optional. */
+  optionality?: 'fromClass' | 'required' | 'optional';
+  /** Property set for properties bSDD publishes without one (declared as a custom set). */
+  fallbackPropertySet?: string;
+  /** Write the property URI on the requirement (default true). */
+  uri?: boolean;
+}
 
 // ---------------------------------------------------------------------------
 // Unions

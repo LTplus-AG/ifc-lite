@@ -8,9 +8,12 @@
  * Pure: the op carries class snapshots, ids derive from the op id.
  */
 
+import { RESERVED_PSET_PREFIXES } from '@ifc-lite/data';
+import { BsddMappingError, mapBsddProperty, type BsddPropertyMapping } from '../bsdd/mapping.js';
 import { locateSpec } from '../document/node-index.js';
 import type { StudioDocument } from '../document/types.js';
-import type { BsddClassSnapshot, BulkFromBsddClassOp, ConstraintDraft, FacetDraft, PrimitiveOp } from '../ops/types.js';
+import type { CustomPsetDecl } from '../document/types.js';
+import type { BsddClassSnapshot, BsddPropertySnapshot, BulkFromBsddClassOp, ConstraintDraft, FacetDraft, PrimitiveOp } from '../ops/types.js';
 import { OpApplyError } from '../reducer/edit.js';
 import { deriveId, type Uuid } from '../uuid.js';
 
@@ -96,6 +99,52 @@ function target(doc: StudioDocument, op: BulkFromBsddClassOp, out: Out): Uuid {
   return s.specId;
 }
 
+function findProperty(cls: BsddClassSnapshot, key: string): BsddPropertySnapshot | undefined {
+  return cls.properties?.find((p) => p.code === key || p.uri === key);
+}
+
+/** The custom set declarations the mapped properties need (standard `Pset_`/`Qto_` sets are never declared). */
+function declarations(doc: StudioDocument, mapped: readonly BsddPropertyMapping[]): CustomPsetDecl[] {
+  const wanted = new Map<string, { name: string; dataType?: string }[]>();
+  for (const m of mapped) {
+    if (RESERVED_PSET_PREFIXES.some((prefix) => m.propertySet.startsWith(prefix))) continue;
+    const list = wanted.get(m.propertySet) ?? [];
+    list.push(m.dataType ? { name: m.baseName, dataType: m.dataType } : { name: m.baseName });
+    wanted.set(m.propertySet, list);
+  }
+  const out: CustomPsetDecl[] = [];
+  for (const [name, props] of wanted) {
+    const existing = doc.meta.custom.psets.find((d) => d.name === name);
+    if (existing && !existing.properties) continue; // an open declaration admits any property
+    const known = new Set(existing?.properties?.map((p) => p.name));
+    const added = props.filter((p) => !known.has(p.name));
+    if (existing && added.length === 0) continue;
+    out.push({ name, properties: [...(existing?.properties ?? []), ...added] });
+  }
+  return out;
+}
+
+/** Property requirements through the mapping table (IDS-071), after the set declarations they need. */
+function expandProperties(doc: StudioDocument, op: BulkFromBsddClassOp, specId: Uuid, out: Out): void {
+  const selection = op.payload.properties;
+  if (!selection) return;
+  const [first, ...rest] = op.payload.classes;
+  const mapped: BsddPropertyMapping[] = [];
+  for (const key of new Set(selection.select)) {
+    const prop = findProperty(first, key);
+    const missing = prop ? rest.find((c) => !findProperty(c, key)) : first;
+    if (!prop || missing) throw new OpApplyError('GATE-OP-002', `property ${key} is not defined on bSDD class ${missing?.code ?? first.code}`);
+    try {
+      mapped.push(mapBsddProperty(prop, selection));
+    } catch (err) {
+      if (err instanceof BsddMappingError) throw new OpApplyError('GATE-OP-002', err.message);
+      throw err;
+    }
+  }
+  for (const decl of declarations(doc, mapped)) out.ops.push({ kind: 'meta.custom.declarePset', opId: out.nextId(), payload: { decl } });
+  for (const m of mapped) out.addFacet(specId, `prop:${m.propertySet}:${m.baseName}`, 'requirements', m.facet, { optionality: m.optionality });
+}
+
 export function expandFromBsddClass(doc: StudioDocument, op: BulkFromBsddClassOp): PrimitiveOp[] {
   const { classes, classification, entity } = op.payload;
   const dictionaries = new Set(classes.map((c) => c.dictionaryUri));
@@ -108,5 +157,6 @@ export function expandFromBsddClass(doc: StudioDocument, op: BulkFromBsddClassOp
     const withUri = classification.section === 'requirements' && classification.uri !== false;
     out.addFacet(specId, 'classification', classification.section, classificationDraft(classes, withUri));
   }
+  expandProperties(doc, op, specId, out);
   return out.ops;
 }

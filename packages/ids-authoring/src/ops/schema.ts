@@ -180,6 +180,15 @@ const PAYLOADS: Record<OpKind, JsonSchema> = {
       },
       classification: obj({ section: ref('Section'), uri: { type: 'boolean' } }, ['section']),
       entity: obj({ section: ref('Section'), entities: { type: 'array', items: nonEmpty, minItems: 1 } }, ['section']),
+      properties: obj(
+        {
+          select: { type: 'array', items: nonEmpty, minItems: 1 },
+          optionality: { enum: ['fromClass', 'required', 'optional'] },
+          fallbackPropertySet: nonEmpty,
+          uri: { type: 'boolean' },
+        },
+        ['select'],
+      ),
     },
     ['classes', 'target'],
   ),
@@ -235,8 +244,31 @@ function buildDefs(): Record<string, JsonSchema> {
       dictionaryUri: nonEmpty,
       dictionaryName: nonEmpty,
       relatedIfcEntities: { type: 'array', items: obj({ entity: nonEmpty, predefinedType: nonEmpty }, ['entity']) },
+      properties: { type: 'array', items: ref('BsddPropertySnapshot') },
     },
     ['uri', 'code', 'name', 'dictionaryUri', 'dictionaryName'],
+  );
+  const num: JsonSchema = { type: 'number' };
+  defs.BsddPropertySnapshot = obj(
+    {
+      code: nonEmpty,
+      name: str,
+      uri: nonEmpty,
+      propertySet: nonEmpty,
+      dataType: nonEmpty,
+      propertyValueKind: nonEmpty,
+      dimension: nonEmpty,
+      units: { type: 'array', items: nonEmpty },
+      allowedValues: { type: 'array', items: obj({ code: nonEmpty, value: str }, ['code']) },
+      minInclusive: num,
+      maxInclusive: num,
+      minExclusive: num,
+      maxExclusive: num,
+      pattern: nonEmpty,
+      isRequired: { type: 'boolean' },
+      standardDataType: nonEmpty,
+    },
+    ['code'],
   );
   defs.StudioOp = { oneOf: OP_KINDS.map((k) => ref(opDefName(k))) };
   return defs;

@@ -13,9 +13,16 @@
 import type { IFCVersion } from '@ifc-lite/ids';
 import type { Section } from '../document/types.js';
 import type { GateContext } from '../gate/context.js';
-import type { BsddClassSnapshot, BsddEntityRef, BsddNewSpec, BulkFromBsddClassOp } from '../ops/types.js';
+import type {
+  BsddClassSnapshot,
+  BsddEntityRef,
+  BsddNewSpec,
+  BsddPropertySelection,
+  BsddPropertySnapshot,
+  BulkFromBsddClassOp,
+} from '../ops/types.js';
 import { uuidv7, type Uuid } from '../uuid.js';
-import type { BsddClass } from './types.js';
+import type { BsddClass, BsddClassProperty } from './types.js';
 
 const ALL_VERSIONS: readonly IFCVersion[] = ['IFC4X3_ADD2', 'IFC4', 'IFC2X3'];
 
@@ -43,10 +50,38 @@ export function splitRelatedEntity(name: string, gate?: GateContext, versions: r
   return { entity: name };
 }
 
-/** What `bulk.fromBsddClass` carries of a class. */
+/** EXPRESS data type of a standard property (`Pset_WallCommon.IsExternal` → `IFCBOOLEAN`), from the first version that has it. */
+export function standardDataType(pset: string, name: string, gate: GateContext, versions: readonly IFCVersion[] = ALL_VERSIONS): string | undefined {
+  for (const v of versions) {
+    const prop = gate.tables[v].psets.get(pset)?.properties.find((p) => p.name === name);
+    const type = prop?.dataType ?? (prop?.kind === 'enumeration' ? 'IfcLabel' : undefined);
+    if (type) return type.toUpperCase();
+  }
+  return undefined;
+}
+
+/** What the mapping table needs of a class property. */
+export function snapshotBsddProperty(p: BsddClassProperty, gate?: GateContext, versions?: readonly IFCVersion[]): BsddPropertySnapshot {
+  const out: BsddPropertySnapshot = { code: p.code };
+  if (p.name !== p.code) out.name = p.name;
+  for (const key of ['uri', 'propertySet', 'dataType', 'propertyValueKind', 'dimension', 'pattern'] as const) {
+    if (p[key]) out[key] = p[key];
+  }
+  for (const key of ['minInclusive', 'maxInclusive', 'minExclusive', 'maxExclusive'] as const) {
+    if (p[key] !== undefined) out[key] = p[key];
+  }
+  if (p.units?.length) out.units = [...p.units];
+  if (p.allowedValues?.length) out.allowedValues = p.allowedValues.map((v) => ({ code: v.code, value: v.value }));
+  if (p.isRequired !== undefined) out.isRequired = p.isRequired;
+  const std = gate && p.propertySet ? standardDataType(p.propertySet, p.code, gate, versions) : undefined;
+  if (std) out.standardDataType = std;
+  return out;
+}
+
+/** What `bulk.fromBsddClass` carries of a class. Pass `properties` to carry other (e.g. inherited) properties. */
 export function snapshotBsddClass(
   cls: BsddClass,
-  options: { dictionaryName: string; gate?: GateContext; versions?: readonly IFCVersion[] },
+  options: { dictionaryName: string; gate?: GateContext; versions?: readonly IFCVersion[]; properties?: readonly BsddClassProperty[] },
 ): BsddClassSnapshot {
   const refs: BsddEntityRef[] = [];
   for (const name of cls.relatedIfcEntityNames) {
@@ -60,6 +95,7 @@ export function snapshotBsddClass(
     dictionaryUri: cls.dictionaryUri,
     dictionaryName: options.dictionaryName,
     ...(refs.length ? { relatedIfcEntities: refs } : {}),
+    properties: (options.properties ?? cls.properties).map((p) => snapshotBsddProperty(p, options.gate, options.versions)),
   };
 }
 
@@ -70,7 +106,8 @@ export function entityChoices(snapshot: BsddClassSnapshot): string[] {
   return out;
 }
 
-export type BsddInsertMode = 'classification' | 'entity' | 'both';
+/** Which facets to insert; `none` adds only the selected properties. */
+export type BsddInsertMode = 'classification' | 'entity' | 'both' | 'none';
 
 export interface BsddInsertRequest {
   classes: BsddClassSnapshot[];
@@ -81,6 +118,8 @@ export interface BsddInsertRequest {
   section?: Section;
   /** Restrict the entity facet to these related entities. */
   entities?: string[];
+  /** Property requirements to add through the mapping table. */
+  properties?: BsddPropertySelection;
   opId?: Uuid;
 }
 
@@ -88,7 +127,8 @@ export interface BsddInsertRequest {
 export function bsddInsertOp(request: BsddInsertRequest): BulkFromBsddClassOp {
   const section = request.section ?? 'applicability';
   const payload: BulkFromBsddClassOp['payload'] = { classes: request.classes, target: request.target };
-  if (request.mode !== 'classification') payload.entity = { section, ...(request.entities?.length ? { entities: request.entities } : {}) };
-  if (request.mode !== 'entity') payload.classification = { section };
+  if (request.mode === 'entity' || request.mode === 'both') payload.entity = { section, ...(request.entities?.length ? { entities: request.entities } : {}) };
+  if (request.mode === 'classification' || request.mode === 'both') payload.classification = { section };
+  if (request.properties?.select.length) payload.properties = request.properties;
   return { kind: 'bulk.fromBsddClass', opId: request.opId ?? uuidv7(), payload };
 }

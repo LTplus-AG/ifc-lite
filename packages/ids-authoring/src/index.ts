@@ -62,6 +62,8 @@ export {
   type BsddClassSnapshot,
   type BsddEntityRef,
   type BsddNewSpec,
+  type BsddPropertySelection,
+  type BsddPropertySnapshot,
 } from './ops/types.js';
 export { OP_KINDS, validateOp, getOpJsonSchema, type OpValidation } from './ops/schema.js';
 export type { SchemaError } from './ops/json-schema-lite.js';
@@ -186,7 +188,23 @@ export {
   bsddInsertOp,
   entityChoices,
   snapshotBsddClass,
+  snapshotBsddProperty,
   splitRelatedEntity,
+  standardDataType,
   type BsddInsertMode,
   type BsddInsertRequest,
 } from './bsdd/insert.js';
+
+// bSDD property → requirement mapping table (IDS-071)
+export {
+  BSDD_DATA_TYPES,
+  DIMENSION_MEASURES,
+  UNIT_MEASURES,
+  BsddMappingError,
+  mapBsddDataType,
+  mapBsddProperty,
+  type BsddDataTypeRule,
+  type BsddMappingNote,
+  type BsddMappingNoteCode,
+  type BsddPropertyMapping,
+} from './bsdd/mapping.js';

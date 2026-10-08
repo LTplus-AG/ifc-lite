@@ -19,11 +19,15 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { IfcParser } from '@ifc-lite/parser';
 import assert from 'node:assert/strict';
-import { auditIDSDocument, matchConstraint, parseIDS, validateIDS, type IDSConstraint, type IDSDocument } from '@ifc-lite/ids';
-import { createDataAccessor } from '@ifc-lite/ids/bridge';
-import { writeIdsXml } from './ids-xml-writer.js';
+import type { IDSConstraint, IDSDocument } from '../types.js';
+import { parseIDS } from '../parser/xml-parser.js';
+import { validateIDS } from '../validation/validator.js';
+import { auditIDSDocument } from '../audit/index.js';
+import { matchConstraint } from '../constraints/index.js';
+import { createDataAccessor } from '../bridge/index.js';
+import { writeIdsXml } from './index.js';
 
-const CORPUS = join(dirname(fileURLToPath(import.meta.url)), '../../../ids/src/__corpus__/buildingsmart-ids');
+const CORPUS = join(dirname(fileURLToPath(import.meta.url)), '../__corpus__/buildingsmart-ids');
 
 function cases(): Array<{ id: string; ids: string; ifc: string }> {
   const out: Array<{ id: string; ids: string; ifc: string }> = [];

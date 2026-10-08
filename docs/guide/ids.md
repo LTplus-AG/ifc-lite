@@ -268,21 +268,33 @@ In the viewer, the Data validation panel's Information validation side has
 **Export as IDS** next to **Save**. Both show what was converted and every
 refused rule or specification with its reasons.
 
-`writeIdsXml` is the IDS 1.0 writer behind both the export and the viewer's
-assistant-drafted IDS. It writes entity, attribute, property (with `dataType`),
-classification, material and partOf facets, requirement cardinality and
-`instructions`, and simple, pattern, enumeration and numeric-bound values.
-Length and digit restrictions, and conjunctive restriction facets, are refused
-with an error instead of being written as a weaker check. Line breaks and tabs
-in attributes such as `instructions` are written as character references, so
-they read back unchanged; a control character XML cannot carry is refused with
-the element or attribute it is in. Every pass/fail case
-of the vendored buildingSMART IDS corpus that it writes reads back with the
-same specifications and verdicts.
+The export writes its IDS through `writeIdsXml` from `@ifc-lite/ids` (see
+[Writing IDS documents](#writing-ids-documents)).
+
+## Writing IDS documents
+
+`writeIdsXml` (in `@ifc-lite/ids`) is the IDS 1.0 writer behind the rule-set
+export and the viewer's assistant-drafted IDS. It writes the `info` block,
+entity, attribute, property (with `dataType`), classification, material and
+partOf facets, requirement cardinality and `instructions`, and every
+constraint the parser produces: simple values, patterns, enumerations,
+numeric bounds, length and digit restrictions (`xs:length`, `xs:minLength`,
+`xs:maxLength`, `xs:totalDigits`, `xs:fractionDigits`) and conjunctive
+restrictions (a pattern, an enumeration and bounds in one `xs:restriction`).
+Bounds on `xs:decimal` and the integer bases are written without an exponent.
+
+What has no valid IDS 1.0 form is refused with an error naming it, never
+written as a weaker check: unparseable bounds, two patterns or two
+enumerations in one conjunction (XSD would OR them), conjunctive facets with
+different bases, and a bounds restriction without any facet. Line breaks and
+tabs in attributes such as `instructions` are written as character
+references, so they read back unchanged; a control character XML cannot carry
+is refused with the element or attribute it is in. Every pass/fail case of the
+vendored buildingSMART IDS corpus reads back with the same specifications and
+verdicts.
 
 ```typescript
-import { parseIDS } from '@ifc-lite/ids';
-import { writeIdsXml } from '@ifc-lite/rules';
+import { parseIDS, writeIdsXml } from '@ifc-lite/ids';
 
 declare const idsXml: string;
 const rewritten = writeIdsXml(parseIDS(idsXml));

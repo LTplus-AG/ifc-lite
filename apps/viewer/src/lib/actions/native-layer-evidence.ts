@@ -8,6 +8,7 @@ import { entityName, layerSetOf, occurrencesOf, typeOf } from '@/lib/commands/mo
 import { resolveEntityRefGlobalIdFromState } from '@/store/resolveEntityRef';
 import type { ModelEditTarget } from '@/store/slices/mutation-modelling-records';
 import { nativeLengthUnitAvailable, type NativeReadState } from './model-authoring-read-target';
+import { uniqueSplitGuid } from './model-authoring-split';
 import { nativeTypeEvidence } from './native-type-evidence';
 import { readAuthoringSizeFromTarget } from './model-authoring-size';
 import type { ExpectedSize } from './model-authoring-size-params';
@@ -87,7 +88,7 @@ export function nativeLayerEvidence(state: NativeReadState, target: ModelEditTar
       const globalId = resolveEntityRefGlobalIdFromState({ models: state.models, ifcDataStore: null,
         mutationViews: new Map([[target.modelId, target.view]]) }, { modelId: target.modelId, expressId: id });
       const record = effectiveMetadataRecord(target.dataStore, id, target.view), name = entityName(target, id);
-      if (!globalId || !isValidIfcGuid(globalId) || !record || name.length > 200) { typeScopeStatus = 'unavailable'; peerRefs = null; break; }
+      if (!globalId || !isValidIfcGuid(globalId) || !uniqueSplitGuid(target.dataStore, target.editor, globalId) || !record || name.length > 200) { typeScopeStatus = 'unavailable'; peerRefs = null; break; }
       peerRefs!.push({ globalId, modelId: target.modelId, ifcClass: record.type, name });
     }
     return { units: 'm', status: 'available', kind, ...counts, typeScopeStatus, expected: {

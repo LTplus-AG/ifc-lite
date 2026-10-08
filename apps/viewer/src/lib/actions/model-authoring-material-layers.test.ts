@@ -6,7 +6,7 @@ import 'fake-indexeddb/auto';
 import assert from 'node:assert/strict';
 import { afterEach, test } from 'node:test';
 import { generateIfcGuid } from '@ifc-lite/encoding';
-import { extractAllMaterialsOnDemand, extractMaterialsOnDemand, getAttributeNamesForSchema } from '@ifc-lite/parser';
+import { EMPTY_SOURCE_BYTES, extractAllMaterialsOnDemand, extractMaterialsOnDemand, getAttributeNamesForSchema } from '@ifc-lite/parser';
 import { MutablePropertyView } from '@ifc-lite/mutations';
 import { useViewerStore } from '@/store';
 import { applyMaterialLayers } from '@/components/viewer/model-inspector/inspector-edits';
@@ -209,7 +209,7 @@ test('#7275 unknown source-free unit provenance does not invent an available lay
   const state = useViewerStore.getState();
   const model = state.models.get(SAMPLE_MODEL)!;
   const unavailable = { ...state, models: new Map([[SAMPLE_MODEL, { ...model,
-    ifcDataStore: { ...dataStore, source: new Uint8Array(0), lengthUnitScale: undefined } }]]) };
+    ifcDataStore: { ...dataStore, source: EMPTY_SOURCE_BYTES, lengthUnitScale: undefined } }]]) };
   const evidence = transportedLayerEvidence(unavailable, target);
   assert.equal(evidence.status, 'unavailable');
   assert.equal(evidence.layerCount, null);

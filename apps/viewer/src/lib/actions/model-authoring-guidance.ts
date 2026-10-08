@@ -9,6 +9,10 @@
  * non-flow conversation can propose either kind.
  */
 
+import { PROFILE_FIELDS, PROFILE_KINDS } from '@/lib/profile-section/profile-kinds';
+
+const sectionDimensions = PROFILE_KINDS.map((type) => `${type} {${PROFILE_FIELDS[type].map((field) => field.name).join(',')}}`).join('; ');
+
 export const MODEL_AUTHORING_OUTPUT_GUIDANCE =
   'When asked to create, copy, array, delete, move, turn, type, join or place elements, return only JSON {"version":1,"kind":"model.authoring",'
   + '"title":"Short title","rationale":"Why","units":"mm","frame":"storey-local","operations":[...]}. "units" is "m" or "mm" and applies to every length; '
@@ -17,6 +21,11 @@ export const MODEL_AUTHORING_OUTPUT_GUIDANCE =
   + 'element.create {ref, ifcClass: IfcWall|IfcSlab|IfcRoof|IfcPlate|IfcColumn|IfcBeam|IfcMember|IfcSpace, storey:{globalId}, name, params}: '
   + 'walls {start,end,thickness,height}, beams/members {start,end,width,height}, columns {position (base centre),width,depth,height}, '
   + 'slabs/roofs/plates {position (corner),width,depth,thickness}, spaces {position,width,depth,height}; '
+  + 'slabs/roofs/plates/spaces also accept {Profile:"polygon", OuterCurve:[[x,y],...], position:[x,y,z] (optional, default zero), thickness or height}; 3–256 vertices and a bounded total outline work budget. '
+  + 'beams/members may replace width/height with Profile; columns may replace width/depth with Profile. Profile is the native PascalCase {Type:Rectangle|I|L|T|U|C|Circle|RectangleHollow|CircleHollow, exact native dimension attributes}; every profile dimension uses the batch units. Do not combine Profile with rectangular section dimensions. '
+  + `Required Profile dimensions: ${sectionDimensions}. Optional native fillet-radius attributes may be supplied when supported by that section; they use the same units. `
+  + 'Positive fillet radii are written accurately but the preview uses the native sharp-corner approximation; review discloses this. '
+  + 'Native builder acceptance is not a polygon topology/engineering validity verdict; use simple valid footprints. '
   + 'element.delete {target}; element.move {target, delta:[dx,dy]}; element.rotate {target, angleDeg}; '
   + 'element.copy {target (existing or earlier ref), ref, offset:[dx,dy,dz], angleDeg? with pivot:[x,y], storey?:{globalId}, from?:[x,y]}; '
   + 'element.array {target, refs (one per new copy), mode:linear|polar, count (2..201 including original), anchor:[x,y], storey?, from?}; '

@@ -18,6 +18,7 @@
  * counter-clockwise seen from above. Nothing here writes.
  */
 
+import { parseShapeParams, AUTHORING_OUTLINE_WORK_LIMIT, type ShapeParams } from './model-authoring-shape-params';
 import { parseCopyFields, type CopyFields, type ArrayFields } from './model-authoring-copy-fields';
 import { parseGlobalIdTarget, parseLength, parsePoint, parseRef, parseText, record, type LengthRange } from './model-authoring-fields';
 
@@ -41,7 +42,7 @@ export interface AxisParams { start: Point3; end: Point3; thickness?: number; wi
 export interface BoxParams { position: Point3; width: number; depth: number; thickness?: number; height?: number }
 
 export type AuthoringOp =
-  | { op: 'element.create'; ref: string; ifcClass: AuthoringClass; storey: StoreyTarget; name: string; params: AxisParams | BoxParams }
+  | { op: 'element.create'; ref: string; ifcClass: AuthoringClass; storey: StoreyTarget; name: string; params: AxisParams | BoxParams | ShapeParams }
   | ({ op: 'element.copy'; target: ElementTarget; ref: string } & CopyFields)
   | ({ op: 'element.array'; target: ElementTarget; refs: string[] } & ArrayFields)
   | { op: 'element.delete'; target: ExistingElement }
@@ -117,9 +118,11 @@ function isWall(target: ElementTarget, refs: ReadonlyMap<string, AuthoringOp>): 
   return target.ifcClass.startsWith('IfcWall');
 }
 
-function createParams(value: Record<string, unknown>, ifcClass: AuthoringClass, units: AuthoringUnits, at: string): AxisParams | BoxParams {
+function createParams(value: Record<string, unknown>, ifcClass: AuthoringClass, units: AuthoringUnits, at: string): AxisParams | BoxParams | ShapeParams {
   const p = value.params;
   if (!record(p)) throw new Error(`${at} needs params`);
+  const shape = parseShapeParams(p, ifcClass, units, at);
+  if (shape) return shape;
   const length = (key: string, range: LengthRange) => parseLength(p[key], units, range, `${at} ${key}`);
   if (ifcClass === 'IfcWall' || ifcClass === 'IfcBeam' || ifcClass === 'IfcMember') {
     const start = parsePoint(p.start, units, R.coordinate, `${at} start`);
@@ -256,6 +259,8 @@ export function parseModelAuthoringBatch(answer: string): ModelAuthoringBatch {
   const refs = new Map<string, AuthoringOp>();
   const units = value.units;
   const operations = value.operations.map((op, index) => operation(op, index, units, refs));
+  const outlineWork = operations.reduce((sum, op) => sum + (op.op === 'element.create' && 'OuterCurve' in op.params ? op.params.OuterCurve.length ** 2 : 0), 0);
+  if (outlineWork > AUTHORING_OUTLINE_WORK_LIMIT) throw new Error(`The polygon preview work exceeds ${AUTHORING_OUTLINE_WORK_LIMIT} vertex-pair units; split this proposal into smaller batches`);
   const copies = operations.reduce((total, op) => total + (op.op === 'element.array' ? op.count - 1 : op.op === 'element.copy' ? 1 : 0), 0);
   if (copies > MODEL_AUTHORING_LIMIT) throw new Error(`An authoring batch may create at most ${MODEL_AUTHORING_LIMIT} copy roots`);
   return { version: 1, kind: 'model.authoring', title, ...(typeof value.rationale === 'string' ? { rationale: value.rationale } : {}),

@@ -61,6 +61,9 @@ export interface FrameProbeHandle {
   take(): FrameRecord[];
   /** Whether the page saw a WebGPU device being requested with 'timestamp-query'. */
   timestampQueryRequested(): boolean;
+  /** Start a new foreground admission interval after boot/settling (#6975). */
+  beginForegroundGuard(): void;
+  foreground(): { visibility: string; focused: boolean; interruptions: number };
 }
 
 export const FRAME_PROBE_GLOBAL = '__ifc_lite_frame_probe__';
@@ -77,6 +80,13 @@ export function installFrameProbe(config: FrameProbeConfig): void {
   const outside = { submits: 0, writeBytes: 0 };
   let workDoneQueue: { onSubmittedWorkDone(): Promise<void> } | null = null;
   let timestampQuery = false;
+  let foregroundInterruptions = 0;
+  let foregroundGuard = false;
+  const interrupted = () => { if (foregroundGuard) foregroundInterruptions++; };
+  window.addEventListener('blur', interrupted);
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState !== 'visible') interrupted();
+  });
 
   const bump = (field: keyof Counters, amount: number) => {
     if (inCallback && current) current[field] += amount;
@@ -157,6 +167,13 @@ export function installFrameProbe(config: FrameProbeConfig): void {
       return out;
     },
     timestampQueryRequested: () => timestampQuery,
+    beginForegroundGuard() {
+      foregroundInterruptions = document.visibilityState === 'visible' && document.hasFocus() ? 0 : 1;
+      foregroundGuard = true;
+    },
+    foreground: () => ({
+      visibility: document.visibilityState, focused: document.hasFocus(), interruptions: foregroundInterruptions,
+    }),
   };
   host.__ifc_lite_frame_probe__ = handle;
 }

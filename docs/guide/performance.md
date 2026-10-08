@@ -2,6 +2,22 @@
 
 IFClite is designed to be fast and lightweight. This page covers bundle size, parsing speed, rendering performance, and how the architecture keeps things efficient.
 
+## Inspect GPU pass timing
+
+The viewer's `?perf.gpuFrameTiming=1` flag enables timestamp queries on the
+actual renderer device. Its existing `__ifc_lite_render_stats__()` diagnostic
+includes `gpuTiming`: resolved per-pass samples, mode, dropped history, skipped
+frames, errors, and a resource epoch. Samples are bounded and asynchronous;
+frames arriving during readback are skipped. `unsupported` carries no fabricated
+GPU duration. Queue completion latency remains a separate measurement.
+
+SDK consumers can call `renderer.setGpuFrameTiming(true)` and
+`renderer.getGpuFrameTiming()`; see the renderer package README. Device loss
+clears previous samples and cancels pending readback before loss observers run.
+Recovery preserves the setting and advances the epoch. Turn timing off to free
+its query and readback resources. Instrumentation changes the workload, so use
+the same setting when comparing measurements.
+
 ## Bundle Size
 
 The whole client-side engine (parser, exact CSG geometry kernel, and all Rust exporters) ships as a single WASM module of roughly 7.9 MB, about 2.6 MB gzipped over the wire (measured on the published `@ifc-lite/wasm` tarball: `npm pack @ifc-lite/wasm` then `gzip -9 -c pkg/ifc-lite_bg.wasm | wc -c`). It is loaded once, lazily, and cached by the browser. Optional heavyweight features stay out of the bundle: DuckDB-WASM for SQL queries is only downloaded on the first `sql()` call, and only if you install it.

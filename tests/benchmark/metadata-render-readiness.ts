@@ -7,6 +7,32 @@
  * the page (`ViewerBenchmarkPage.probeLoadTrace`) so a poll returns a few
  * names instead of the whole span tree.
  */
+import type { Page } from '@playwright/test';
+
+/** Shared trace probe for full-viewer load and frame rigs (#6975). */
+export async function probeMetadataRenderTrace(page: Page): Promise<LoadTraceProbe | null> {
+  try {
+    return await page.evaluate(({ names }) => {
+      type Span = { name: string; end: number | null; attrs?: Record<string, unknown> };
+      const api = (globalThis as unknown as {
+        __IFC_LITE_LOAD_TRACE__?: { latest?: () => { end: number | null; spans: Span[] } | null };
+      }).__IFC_LITE_LOAD_TRACE__;
+      const snapshot = api?.latest?.() ?? null;
+      if (!snapshot) return null;
+      const done: string[] = [], failed: string[] = [];
+      for (const span of snapshot.spans) {
+        if (span.end === null || !names.includes(span.name)) continue;
+        done.push(span.name);
+        if (span.attrs?.error === true) failed.push(span.name);
+      }
+      return { ended: snapshot.end !== null, done, failed };
+    }, { names: [...READINESS_SPANS] as string[] });
+  } catch (error) {
+    console.warn('[Benchmark] could not probe the load trace', error);
+    return null;
+  }
+}
+
 export interface LoadTraceProbe {
   /** The load's root span ended (`trace.finish`, the app's own end of load). */
   ended: boolean;

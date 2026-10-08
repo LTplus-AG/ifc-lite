@@ -24,6 +24,7 @@
  * i.e. silhouette edges — by clamping `max(0, log(centre) - log(neighbour))`.
  */
 
+import { renderPassTimestampWrites } from './renderer-frame-timing.js';
 import { WebGPUDevice } from './device.js';
 
 export interface EdlPassOptions {
@@ -229,6 +230,7 @@ fn fs_main(@builtin(position) fragPos: vec4<f32>) -> @location(0) vec4<f32> {
     this.device.queue.writeBuffer(this.uniformBuffer, 0, this.uniformStaging);
 
     const pass = encoder.beginRenderPass({
+      timestampWrites: renderPassTimestampWrites(encoder, 'eye-dome-lighting'),
       colorAttachments: [{
         view: opts.targetView,
         loadOp: 'load',

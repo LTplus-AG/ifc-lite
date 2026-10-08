@@ -333,6 +333,7 @@ test('the canonical repository is recognised under another remote name in https,
     'ssh://git@github.com/LTplus-AG/ifc-lite',
     'https://x-access-token:abc@github.com/LTplus-AG/ifc-lite',
     'https://github.com/ltplus-ag/ifc-lite.git',
+    'ssh://git@ssh.github.com:443/LTplus-AG/ifc-lite.git',
   ]) {
     assert.equal(baseRefWith([['origin', FORK_URL], ['upstream', url]]), 'upstream/main', url);
   }
@@ -345,6 +346,11 @@ test('a fork, a sibling repository and a path that merely contains the name are 
     'https://github.com/Evil-LTplus-AG/ifc-lite.git',
     'https://github.com/some-fork/LTplus-AG/ifc-lite.git',
     'git@github.com:some-fork/LTplus-AG/ifc-lite.git',
+    // The same path on another host (a stale mirror) is not the canonical repository (#7031 review).
+    'https://gitlab.com/LTplus-AG/ifc-lite.git',
+    'git@gitlab.com:LTplus-AG/ifc-lite.git',
+    'https://github.com.example.net/LTplus-AG/ifc-lite.git',
+    'https://example.net/github.com/LTplus-AG/ifc-lite.git',
   ]) {
     assert.equal(baseRefWith([['origin', FORK_URL], ['upstream', url]]), 'origin/main', url);
   }

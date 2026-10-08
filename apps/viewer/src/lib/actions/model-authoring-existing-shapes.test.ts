@@ -55,7 +55,7 @@ test('#7229 reviewed wall dimensions admit the native occurrence-layer resize pr
   const before = await exportedState();
   const beforeStore = before.models.get(SAMPLE_MODEL)!.ifcDataStore!;
   const identity = beforeStore.entities.getGlobalId(wall);
-  assert.equal(layerSetOf({ dataStore: beforeStore }, wall)?.via, 'type');
+  assert.equal(layerSetOf({ dataStore: beforeStore, view: before.mutationViews.get(SAMPLE_MODEL)! }, wall)?.via, 'type');
   assert.equal(setElementDimensions(SAMPLE_MODEL, wall, { kind: 'wall', height: 4, thickness: .45 }), true);
   const after = await exportedState();
   const afterStore = after.models.get(SAMPLE_MODEL)!.ifcDataStore!;
@@ -63,10 +63,10 @@ test('#7229 reviewed wall dimensions admit the native occurrence-layer resize pr
   const wallSize = readWallMetres(modelEditTarget(after, SAMPLE_MODEL)!, wall);
   assert.equal(wallSize?.height, 4);
   assert.equal(wallSize?.thickness, .45);
-  const layers = layerSetOf({ dataStore: afterStore }, wall);
+  const layers = layerSetOf({ dataStore: afterStore, view: after.mutationViews.get(SAMPLE_MODEL)! }, wall);
   assert.equal(layers?.via, 'element');
   assert.deepEqual(layers?.layers.map((layer) => layer.thickness), [.1, .35]);
-  assert.deepEqual(layerSetOf({ dataStore: afterStore }, sibling)?.layers.map((layer) => layer.thickness), [.1, .1], 'the shared type and sibling retain their native layers');
+  assert.deepEqual(layerSetOf({ dataStore: afterStore, view: after.mutationViews.get(SAMPLE_MODEL)! }, sibling)?.layers.map((layer) => layer.thickness), [.1, .1], 'the shared type and sibling retain their native layers');
   const operation = { op: 'element.resize', target: { globalId: identity, ifcClass: 'IfcWall', name: 'Edited wall' },
     expected: { kind: 'wall', height: 4, thickness: .45 }, size: { kind: 'wall', height: 4.5, thickness: .5 } };
   assert.doesNotThrow(() => batch(operation),
@@ -80,12 +80,12 @@ test('#7229 reviewed wall dimensions admit the native occurrence-layer resize pr
   const resized = await exportedState(), resizedStore = resized.models.get(SAMPLE_MODEL)!.ifcDataStore!;
   assert.equal(readWallMetres(modelEditTarget(resized, SAMPLE_MODEL)!, wall)?.height, 4.5);
   assert.equal(readWallMetres(modelEditTarget(resized, SAMPLE_MODEL)!, wall)?.thickness, .5);
-  assert.deepEqual(layerSetOf({ dataStore: resizedStore }, wall)?.layers.map(layer => layer.thickness), [.1, .4]);
-  assert.deepEqual(layerSetOf({ dataStore: resizedStore }, sibling)?.layers.map(layer => layer.thickness), [.1, .1]);
+  assert.deepEqual(layerSetOf({ dataStore: resizedStore, view: resized.mutationViews.get(SAMPLE_MODEL)! }, wall)?.layers.map(layer => layer.thickness), [.1, .4]);
+  assert.deepEqual(layerSetOf({ dataStore: resizedStore, view: resized.mutationViews.get(SAMPLE_MODEL)! }, sibling)?.layers.map(layer => layer.thickness), [.1, .1]);
   assert.deepEqual(undoModelChanges(useViewerStore, outcome.receipt), { ok: true });
   const undone = await exportedState(), undoneStore = undone.models.get(SAMPLE_MODEL)!.ifcDataStore!;
   assert.equal(readWallMetres(modelEditTarget(undone, SAMPLE_MODEL)!, wall)?.height, 4);
-  assert.deepEqual(layerSetOf({ dataStore: undoneStore }, wall)?.layers.map(layer => layer.thickness), [.1, .35]);
+  assert.deepEqual(layerSetOf({ dataStore: undoneStore, view: undone.mutationViews.get(SAMPLE_MODEL)! }, wall)?.layers.map(layer => layer.thickness), [.1, .35]);
 });
 
 test('#7229 reviewed profile replacement admits the native exported hollow-section edit', async () => {
@@ -236,20 +236,20 @@ test('#7229 native slab thickness clones inherited layers and scales an otherwis
   assert.ok(applyMaterialLayers(SAMPLE_MODEL, { kind: 'slab', target: 'type', elementId: slab, typeId: type,
     layers: [{ thickness: .1, material: { name: 'Concrete' } }, { thickness: .1, material: { name: 'Finish' } }] }) !== null);
   const before = await exportedState(), beforeStore = before.models.get(SAMPLE_MODEL)!.ifcDataStore!;
-  assert.equal(layerSetOf({ dataStore: beforeStore }, slab)?.via, 'type');
+  assert.equal(layerSetOf({ dataStore: beforeStore, view: before.mutationViews.get(SAMPLE_MODEL)! }, slab)?.via, 'type');
   const proposal = batch({ op: 'element.resize', target: { globalId: beforeStore.entities.getGlobalId(slab), ifcClass: 'IfcSlab', name: beforeStore.entities.getName(slab) },
     expected: { kind: 'slab', thickness: .2 }, size: { kind: 'slab', thickness: .05 } });
   const preview = previewModelAuthoring(s(), proposal); assert.equal(preview.rows[0].status, 'ready');
   const outcome = commitModelAuthoring(useViewerStore, preview, new Set([0]), 'native slab layers'); assert.ok(outcome.ok, outcome.ok ? '' : outcome.detail ?? outcome.reason);
   const after = await exportedState(), afterStore = after.models.get(SAMPLE_MODEL)!.ifcDataStore!;
   assert.deepEqual(readAuthoringSize(after, SAMPLE_MODEL, slab, 'slab'), { kind: 'slab', thickness: .05 });
-  const layers = layerSetOf({ dataStore: afterStore }, slab); assert.equal(layers?.via, 'element');
+  const layers = layerSetOf({ dataStore: afterStore, view: after.mutationViews.get(SAMPLE_MODEL)! }, slab); assert.equal(layers?.via, 'element');
   assert.deepEqual(layers?.layers.map(layer => layer.thickness), [.025, .025], 'native STEP proves proportional scaling when reducing only the final layer would make it negative');
-  assert.deepEqual(layerSetOf({ dataStore: afterStore }, sibling)?.layers.map(layer => layer.thickness), [.1, .1]);
+  assert.deepEqual(layerSetOf({ dataStore: afterStore, view: after.mutationViews.get(SAMPLE_MODEL)! }, sibling)?.layers.map(layer => layer.thickness), [.1, .1]);
   assert.deepEqual(undoModelChanges(useViewerStore, outcome.receipt), { ok: true });
   const undone = await exportedState(), undoneStore = undone.models.get(SAMPLE_MODEL)!.ifcDataStore!;
   assert.deepEqual(readAuthoringSize(undone, SAMPLE_MODEL, slab, 'slab'), { kind: 'slab', thickness: .2 });
-  assert.equal(layerSetOf({ dataStore: undoneStore }, slab)?.via, 'type');
+  assert.equal(layerSetOf({ dataStore: undoneStore, view: undone.mutationViews.get(SAMPLE_MODEL)! }, slab)?.via, 'type');
 });
 
 test('#7229 explicit model ownership isolates existing profile edits when federated native GUIDs collide', async () => {

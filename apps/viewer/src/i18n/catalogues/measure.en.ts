@@ -160,10 +160,6 @@ export const measureEn = {
   },
   'measure.quantities.authoredHeading': 'Authored IFC Qto',
   'measure.quantities.computedHeading': 'Computed from mesh',
-  'measure.quantities.elementsCount': {
-    one: '{count} element',
-    other: '{count} elements',
-  },
   'measure.quantities.nothingFound':
     'No authored Qto, proved enclosed mesh volume, or triangulated mesh area is available for this selection.',
   'measure.quantities.volumeMeshLabel': 'Volume mesh',

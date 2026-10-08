@@ -51,6 +51,12 @@ export function beginAbortableRun(
   return { runEpoch, controller };
 }
 
+/** Explicit workspace Clear cancels whichever hook owns the current run. */
+export function clearClashRun(epoch: MutableRef<number>, active: MutableRef<AbortController | null>): void {
+  clashSession?.cancel();
+  invalidateAbortableRun(epoch, active);
+}
+
 export function cancelClashRun(
   epoch: MutableRef<number>,
   active: MutableRef<AbortController | null>,

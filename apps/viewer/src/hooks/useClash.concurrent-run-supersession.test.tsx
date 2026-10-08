@@ -403,4 +403,22 @@ describe('owned native clash activity cancellation (#7110)', () => {
     assert.equal(useViewerStore.getState().clashRunning, false);
   });
 
+
+  it('workspace Clear from another mounted panel cancels the actual owner and cannot resurrect results (#7110)', async () => {
+    await seed();
+    const otherPanel = api!;
+    let owner: ClashApi | undefined;
+    function Owner() { owner = useClash(); return null; }
+    render(<Owner />);
+    assert.ok(owner);
+    let pending: Promise<void> | undefined;
+    act(() => { pending = owner!.runDuplicates(); });
+    act(() => otherPanel.clearAll());
+    await act(async () => { await pending; });
+    assert.equal(useViewerStore.getState().clashRunning, false);
+    assert.equal(useViewerStore.getState().clashResult, null);
+    assert.deepEqual(useActivityJournal.getState().jobs.map(job => job.outcome), ['cancelled']);
+    assert.equal(activityCanceller(useActivityJournal.getState().jobs[0].id), null);
+  });
+
 });

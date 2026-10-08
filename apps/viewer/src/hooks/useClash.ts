@@ -12,7 +12,7 @@
 
 import { useCallback, useRef } from 'react';
 import { clashElementCache } from '@/lib/clash/element-cache';
-import { beginAbortableRun, cancelClashRun, invalidateAbortableRun, releaseAbortableRun } from './analysisRunCancellation';
+import { beginAbortableRun, cancelClashRun, clearClashRun, releaseAbortableRun } from './analysisRunCancellation';
 import { captureAnalysisStamp, stampAnalysisReport, type AnalysisStamp } from './useAnalysisStaleness';
 import { rememberPlacementSnapshot, jobPlacementIsCurrent } from '@/lib/model-placement/placement-snapshot';
 import { useViewerStore } from '@/store';
@@ -1245,7 +1245,7 @@ export function useClash() {
     // when the user clears must not be able to resurrect what they just
     // cleared once it lands — see `runEpochRef`'s doc above `elementsByRef`
     // (#2802).
-    invalidateAbortableRun(runEpochRef, runAbortRef);
+    clearClashRun(runEpochRef, runAbortRef);
     const state = useViewerStore.getState();
     state.clearEntitySelection();
     state.clearIsolation();

@@ -28,7 +28,10 @@ import { placementSourceIdentity } from '@/lib/model-placement/source-identity';
 import { toGlobalIdFromModels } from '@/store/globalId';
 import { getVisibleBasketEntityRefsFromStore } from '@/store/basketVisibleSet';
 import { act } from 'react';
-import { cleanup, click, render, type } from '@/test/render';
+import { cleanup, click, render, type, waitFor } from '@/test/render';
+import { useAssistant, cancelAssistant } from '@/lib/assistant/conversation';
+import { ArtifactProposalReview } from '@/components/viewer/assistant/ArtifactProposalReview';
+import { resolveCapturedEntityScope } from '@ifc-lite/rules';
 import { importLensFile } from '@/components/viewer/lens-import';
 import { LensEditor } from '@/components/viewer/LensEditor';
 import { AutoColorEditor } from '@/components/viewer/AutoColorEditor';
@@ -61,7 +64,7 @@ beforeEach(async () => {
   useViewerStore.setState(original, true);
   await loadActualSources();
 });
-afterEach(() => { cleanup(); useViewerStore.setState(original, true); localStorage.clear(); });
+afterEach(() => { cleanup(); cancelAssistant(); useAssistant.setState({ messages: [], snapshot: null, archived: null, status: 'idle', error: null }); useViewerStore.setState(original, true); localStorage.clear(); });
 
 /** Replay native persisted definitions through their native engines, never a metadata-only readback. */
 const savedIdentities = new WeakMap<PreviewArtifact, SavedArtifact>();
@@ -355,4 +358,28 @@ test('#7186 native Document captured List replays through file, durable storage 
     assert.equal(migrated.version, DOCUMENT_VERSION);
     assert.ok(await run(migrated) > 1, `native unscoped version${version} retains its broad criteria population`);
   }
+});
+
+
+test('#7186 mounted review captures original selected population before asynchronous schema discovery', async () => {
+  const originalWall = await selectWall();
+  const entry = cases.find(row => row.label === 'filter')!;
+  act(() => useAssistant.setState({ status: 'idle', error: null, messages: [{ role: 'assistant', model: 'recorded',
+    content: JSON.stringify({ version: 1, title: 'Original selected walls', kind: entry.kind, scope: 'selected', ...entry.body }) }] }));
+  const ui = render(<ArtifactProposalReview onAsk={null} />);
+  assert.match(ui.textContent ?? '', /Checking the names against the loaded models/, 'actual native schema discovery is still pending');
+  const walls = await evaluateFilterGroupsFederated(evaluatorModelsFromState(useViewerStore.getState()), groups, { limit: Infinity });
+  const replacement = walls.find(row => row.modelId === WALL)!;
+  assert.ok(replacement);
+  selectRef({ modelId: WALL, expressId: replacement.expressId });
+  const save = () => [...ui.querySelectorAll('button')].find(row => row.textContent?.trim() === 'Save to Filters');
+  await waitFor(() => !!save() && !save()?.disabled, 'native review completes after initial schema discovery');
+  click(save()!);
+  const saved = loadSavedFilters().find(row => row.name === 'Captured walls');
+  assert.ok(saved?.capturedScope);
+  const state = useViewerStore.getState(), models = evaluatorModelsFromState(state);
+  const result = await evaluateFilterGroupsFederated(models, saved.groups, {
+    limit: Infinity, candidateExpressIdsByModel: resolveCapturedEntityScope(saved.capturedScope, models),
+  });
+  assert.deepEqual(result.map(row => [row.modelId, row.expressId]), [[ARCH, originalWall.expressId]], 'native saved output uses the selection at review creation rather than a later schema-scan selection');
 });

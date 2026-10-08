@@ -159,3 +159,17 @@ See the [Parsing Guide](https://ifclite.dev/docs/guide/parsing/) and [API Refere
 ## License
 
 [MPL-2.0](../../LICENSE)
+
+`effectiveMetadataRecord(store, expressId, mutationView?)` is the shared native
+metadata read primitive used by classification, document and viewer structural
+consumers. It returns the current EXPRESS class/attributes, applies native edit
+markers and named/positional precedence, and invalidates cached source fields
+when the model's source transport changes. It never reads retained source-byte
+closures when the current store has no source bytes.
+
+Structural extraction retains its existing `StructuralExtractionView.readEntity`
+callback. Applied loads and supports now use that same current record callback;
+the native configuration walk keeps its depth, path-cycle and work bounds and
+reports dropped slots and truncation. Existing normalized structural DTO casing
+is unchanged. IFC2X3-only divergences remain the native reader's documented
+best-effort boundary.

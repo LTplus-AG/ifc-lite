@@ -35,6 +35,15 @@ export function authoringRowSummary(row: AuthoringRow, batch: ModelAuthoringBatc
     case 'element.create':
       return { subject: `${op.ifcClass} "${op.name}"`, before: t('modelAuthoring.notYet'),
         after: t('modelAuthoring.createdOn', { storey: before.storeyName ?? op.storey.globalId, dims: dims(op, units) }) };
+    case 'element.copy': case 'element.array': {
+      const count = op.op === 'element.copy' ? 1 : op.count - 1;
+      const placement = op.op === 'element.copy'
+        ? `${point(op.offset)} ${units}${op.angleDeg === undefined ? '' : ` · ${num(op.angleDeg)}° @ ${point(op.pivot!)} ${units}`}`
+        : op.mode === 'polar' ? `${num(op.angleDeg ?? 360)}° @ ${point(op.anchor)} ${units}`
+          : `${point(op.anchor)} → ${point(op.cursor!)} ${units} · ${t(op.fit ? 'modelAuthoring.arraySpan' : 'modelAuthoring.arraySpacing')}: ${op.distance === undefined ? t('modelAuthoring.cursorDistance') : `${num(op.distance)} ${units}`}`;
+      return { subject: ref(op.target, t), before: before.origin ? `${point(before.origin.map(fromMetres))} ${units}` : none,
+        after: t('modelAuthoring.copied', { count, placement, storey: before.storeyName ?? t('modelAuthoring.sourceStorey') }) };
+    }
     case 'element.delete':
       return { subject: `${op.target.ifcClass} "${op.target.name}"`, before: `${before.ifcClass ?? op.target.ifcClass} "${before.name ?? op.target.name}"`, after: t('modelChanges.removed') };
     case 'element.move': {

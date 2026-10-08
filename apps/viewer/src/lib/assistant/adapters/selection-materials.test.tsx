@@ -6,9 +6,9 @@ import '@/test/setup-dom.js';
 import test, { afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
-import { EMPTY_SOURCE_BYTES, extractAllMaterialsOnDemand } from '@ifc-lite/parser';
+import { EMPTY_SOURCE_BYTES, extractAllMaterialsOnDemand, extractMaterialPropertiesOnDemand } from '@ifc-lite/parser';
 import { advance, render, cleanup } from '@/test/render';
-import { parseStep, seedModel } from '@/test/properties-panel-harness';
+import { exportAndReparse, parseStep, seedModel } from '@/test/properties-panel-harness';
 import { renderPanelBody } from '@/lib/panels/renderPanelBody';
 import { getOrCreateMutationView } from '@/sdk/adapters/mutation-view';
 import { useViewerStore } from '@/store';
@@ -26,7 +26,7 @@ interface Material {
   MaterialConstituents?: Array<{ Name: string; Fraction: number; Material: { Name: string } }>;
   MaterialProfiles?: Array<{ Name: string; Material: { Name: string } }>;
 }
-interface Row { modelId: string; materialCount: number; materials: Material[];
+interface Row { modelId: string; materialCount: number | null; materialsStatus: string; materials: Material[];
   materialPropertiesStatus: string; materialPropertyGroupCount: number | null;
   materialProperties: Array<{ modelId: string; expressId: number; psetCount: number | null;
     psets: Array<{ name: string; propertyCount: number | null; properties: Record<string, string> }> }> }
@@ -65,7 +65,8 @@ test('#7119 real ArchiCAD layer usage preserves material name and metre thicknes
     if (error instanceof Error && 'code' in error && error.code === 'ENOENT') { t.skip('run pnpm fixtures to fetch AC20-FZK-Haus.ifc'); return; }
     throw error;
   }
-  seedModel('archicad', 0, await parseStep(bytes), 15042);
+  const store = await parseStep(bytes);
+  seedModel('archicad', 0, store, 15042);
   const material = rows()[0].materials[0];
   assert.equal(material.type, 'IfcMaterialLayerSet');
   assert.equal(material.LayerSetName, 'Leichtbeton 102890359 0.24');
@@ -80,11 +81,17 @@ test('#7119 real ArchiCAD layer usage preserves material name and metre thicknes
   assert.match(ui.textContent ?? '', /Pset_MaterialCommon/); cleanup();
   const before = captureEvidence('selection');
   const view = getOrCreateMutationView(useViewerStore, 'archicad'); assert.ok(view); view.setExpressIdWatermark(100_000);
-  const prop = view.createEntity('IfcPropertySingleValue', ['Thickness', null, ['IFCLENGTHMEASURE', 0.25], null]);
+  const prop = view.createEntity('IfcPropertySingleValue', ['Thickness', null, { typed: { type: 'IfcLengthMeasure', value: 0.25 } }, null]);
   const pset = view.createEntity('IfcMaterialProperties', ['Live dimensions', null, [prop.expressId], 15046]);
   useViewerStore.setState({ mutationVersion: useViewerStore.getState().mutationVersion + 1, unitDisplayOverrides: { LENGTHUNIT: 'mm' } });
   assert.equal(evidenceIsCurrent(before), false);
   assert.equal(rows()[0].materialProperties[0].psets.find(set => set.name === 'Live dimensions')?.properties.Thickness, '250 mm');
+  // Public write markers must read the same before and after STEP export.
+  const exported = await exportAndReparse('archicad', store);
+  const fileProperty = extractMaterialPropertiesOnDemand(exported, 15042)[0].psets
+    .find(set => set.name === 'Live dimensions')?.properties.find(property => property.name === 'Thickness');
+  assert.equal(fileProperty?.value, 0.25);
+  assert.equal(fileProperty?.dataType, 'IFCLENGTHMEASURE');
   view.deleteEntity(pset.expressId); view.deleteEntity(15060);
   useViewerStore.setState({ mutationVersion: useViewerStore.getState().mutationVersion + 1 });
   assert.equal(rows()[0].materialProperties[0].psetCount, 2);
@@ -144,7 +151,7 @@ test('#7119 overlay aliases and independent federation retain model-specific mat
   view.setEntityAlias(duplicate.expressId, 52);
   const material = view.createEntity('IfcMaterial', ['B ONLY', null, null]);
   view.createEntity('IfcRelAssociatesMaterial', ['new association', null, null, null, [duplicate.expressId], material.expressId]);
-  const property = view.createEntity('IfcPropertySingleValue', ['B marker', null, ['IFCLABEL', 'B PROPERTY ONLY'], null]);
+  const property = view.createEntity('IfcPropertySingleValue', ['B marker', null, { typed: { type: 'IfcLabel', value: 'B PROPERTY ONLY' } }, null]);
   view.createEntity('IfcMaterialProperties', ['B material set', null, [property.expressId], 62]);
   useViewerStore.setState({ selectedEntitiesSet: new Set([
     entityRefToString({ modelId: 'a', expressId: 52 }), entityRefToString({ modelId: 'b', expressId: duplicate.expressId })]) });
@@ -164,7 +171,7 @@ test('#7119 session associations invalidate frozen evidence and are bounded with
     const material = view.createEntity('IfcMaterial', [i === 0 ? 'x'.repeat(300) : `Session ${i}`, null, null]);
     view.createEntity('IfcRelAssociatesMaterial', [`association ${i}`, null, null, null, [52], material.expressId]);
     const properties = Array.from({ length: 40 }, (_, j) => view.createEntity('IfcPropertySingleValue',
-      [`Property ${j}`, null, ['IFCLABEL', j === 0 ? 'y'.repeat(300) : 'short'], null]).expressId);
+      [`Property ${j}`, null, { typed: { type: 'IfcLabel', value: j === 0 ? 'y'.repeat(300) : 'short' } }, null]).expressId);
     view.createEntity('IfcMaterialProperties', [`Material set ${i}`, null, properties, 62]);
   }
   useViewerStore.setState({ mutationVersion: useViewerStore.getState().mutationVersion + 1 });
@@ -176,4 +183,41 @@ test('#7119 session associations invalidate frozen evidence and are bounded with
   assert.equal(group.psetCount, 20); assert.equal(group.psets.length, 16);
   assert.equal(group.psets[0].propertyCount, 40); assert.equal(Object.keys(group.psets[0].properties).length, 32);
   assert.equal(group.psets[0].properties['Property 0'].length, 241);
+});
+
+
+test('#7119 session-created material property groups agree with the mounted native panel', async () => {
+  seedModel('arch', 0, await sample(), 52);
+  const view = getOrCreateMutationView(useViewerStore, 'arch'); assert.ok(view); view.setExpressIdWatermark(100_000);
+  const material = view.createEntity('IfcMaterial', ['Live material', null, null]);
+  view.createEntity('IfcRelAssociatesMaterial', ['association', null, null, null, [52], material.expressId]);
+  const property = view.createEntity('IfcPropertySingleValue', ['New density', null, { typed: { type: 'IfcMassDensityMeasure', value: 1200 } }, null]);
+  view.createEntity('IfcMaterialProperties', ['New material properties', null, [property.expressId], material.expressId]);
+  useViewerStore.setState({ mutationVersion: useViewerStore.getState().mutationVersion + 1 });
+  const group = rows()[0].materialProperties.find(group => group.expressId === material.expressId);
+  assert.ok(group, 'newly associated material must retain its property sets');
+  assert.equal(group.psets[0].properties['New density'], '1,200 kg/m³');
+  const ui = render(renderPanelBody('properties', () => undefined)); await advance(0);
+  assert.match(ui.textContent ?? '', /New material properties/);
+  assert.match(ui.textContent ?? '', /New density/);
+});
+
+test('#7119 all selection caveats reach the snapshot without projection truncation', async () => {
+  seedModel('arch', 0, await sample(), 52);
+  const snapshot = captureEvidence('selection');
+  const summary = JSON.parse(snapshot.payload).evidence.summary;
+  assert.match(summary.limitations, /Classifications and relationships are excluded/);
+  assert.match(summary.limitations, /selection is sampled/);
+  assert.equal(snapshot.projectionTruncated, false);
+});
+
+test('#7119 missing model store reports unknown assignment totals instead of zero', async () => {
+  seedModel('arch', 0, await sample(), 52);
+  const models = new Map(useViewerStore.getState().models);
+  const model = models.get('arch'); assert.ok(model);
+  models.set('arch', { ...model, ifcDataStore: null });
+  useViewerStore.setState({ models });
+  assert.equal(rows()[0].materialsStatus, 'unavailable');
+  assert.equal(rows()[0].materialCount, null);
+  assert.deepEqual(rows()[0].materials, []);
 });

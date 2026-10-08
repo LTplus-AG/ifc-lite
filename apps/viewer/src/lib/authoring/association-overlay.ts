@@ -14,7 +14,7 @@
  */
 
 import type { IfcAttributeValue, MutablePropertyView } from '@ifc-lite/mutations';
-import type { ClassificationInfo, IfcDataStore, MaterialInfo } from '@ifc-lite/parser';
+import { extractMaterialPropertiesForMaterialId, type ClassificationInfo, type IfcDataStore, type MaterialInfo } from '@ifc-lite/parser';
 
 /** `RelatedObjects` / `Relating*` sit at 4 / 5 on every IfcRelAssociates*. */
 const RELATED_OBJECTS = 4;
@@ -94,4 +94,15 @@ export function overlayMaterials(view: MutablePropertyView | null | undefined, e
     description: isIfc2x3(schema) ? undefined : text(material.attrs[1]),
     category: isIfc2x3(schema) ? undefined : text(material.attrs[2]),
   }));
+}
+
+
+/** Property groups for the same native session material targets (#7119). */
+export function overlayMaterialProperties(view: MutablePropertyView | null | undefined,
+  entityIds: readonly number[], store: IfcDataStore, revision: number) {
+  if (!view) return [];
+  return overlayTargets(view, 'IFCRELASSOCIATESMATERIAL', entityIds, store).flatMap(material =>
+    extractMaterialPropertiesForMaterialId(store, material.id, view, revision).map(group => ({
+      ...group, materialName: group.materialId === material.id ? text(material.attrs[0]) ?? group.materialName : group.materialName,
+    })));
 }

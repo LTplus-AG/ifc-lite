@@ -32,6 +32,7 @@ export const activityTrayEn = {
 
   'activityTray.job.load': 'Load model',
   'activityTray.job.sourceDownload': 'Download source files',
+  'activityTray.job.extensionExport': 'Extension export',
   'activityTray.sourceDownload.partialCancelled': { one: 'Cancelled after dispatching {count} file for loading. Dispatched files remain available.', other: 'Cancelled after dispatching {count} files for loading. Dispatched files remain available.' },
   'activityTray.sourceDownload.partialFailed': { one: 'Dispatched {count} file for loading; some downloads failed. Dispatched files remain available.', other: 'Dispatched {count} files for loading; some downloads failed. Dispatched files remain available.' },
   'activityTray.sourceDownload.failed': { one: '{count} download failed; no files were dispatched for loading.', other: '{count} downloads failed; no files were dispatched for loading.' },
@@ -44,6 +45,10 @@ export const activityTrayEn = {
   'activityTray.job.flow': 'Flow run',
   'activityTray.job.ai': 'Assistant request',
   'activityTray.job.export': 'Export',
+  'activityTray.job.zoneGeometry': 'Export zone geometry',
+  'activityTray.job.zoneTable': 'Export zone quantities',
+  'activityTray.zone.geometryPartial': 'Published {whole} whole and {cut} cut elements; {refused} refused and {missing} without geometry.',
+  'activityTray.zone.tablePartial': { one: 'Published the table with {count} unmeasured quantity row; its reason remains in the table.', other: 'Published the table with {count} unmeasured quantity rows; their reasons remain in the table.' },
   'activityTray.job.bcfArchive': 'Export BCF archive',
   'activityTray.job.validationBcf': 'Export validation report as BCF',
   'activityTray.job.publication': 'BCF publication',

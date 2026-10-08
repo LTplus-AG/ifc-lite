@@ -87,7 +87,7 @@ export function extractAllMaterialsOnDemand(
         const record = read(id);
         if (!store.source?.length) {
             const edits = view?.getEffectiveChanges?.().some(edit => {
-                if (!['UPDATE_ATTRIBUTE', 'UPDATE_POSITIONAL_ATTRIBUTE', 'UPDATE_ENTITY_TYPE', 'DELETE_ENTITY'].includes(edit.type)) return false;
+                if (!['attribute', 'type', 'entity-deleted'].includes(edit.kind)) return false;
                 const sourceType = store.entityIndex.byId.get(edit.entityId)?.type ?? store.deferredEntityIndex?.get(edit.entityId)?.type;
                 return edit.entityId === id || Boolean(sourceType?.toUpperCase().startsWith('IFCMATERIAL'));
             });

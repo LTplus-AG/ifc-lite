@@ -349,3 +349,16 @@ test('#7119 source-empty source-association edits retain only unverified origina
   assert.equal(row.materialsStatus, 'unavailable-membership');
   assert.deepEqual(row.materials, [{ type: null, verification: 'unverified' }]);
 });
+
+// #7119 effective changes use `kind`, not append-only mutation-history `type`.
+test('#7119 source-empty material field edits cannot reuse stale forwarded source fields', async () => {
+  const source = await sample(); const actual = extractAllMaterialsOnDemand(source, 52)[0]; assert.ok(actual);
+  seedModel('wire-fields', 0, { ...source, source: EMPTY_SOURCE_BYTES,
+    resolvedMaterials: new Map([[52, new Map([[62, actual]])]]) }, 52);
+  assert.equal(rows()[0].materials[0].Name, actual.name);
+  const view = getOrCreateMutationView(useViewerStore, 'wire-fields'); assert.ok(view);
+  view.setAttribute(62, 'Name', 'Edited unavailable source material');
+  assert.equal(rows()[0].materialCount, 1, 'the retained graph still proves one assignment');
+  assert.deepEqual(rows()[0].materials, [{ type: null, verification: 'unverified' }],
+    'edited fields cannot be reconstructed through the retained source closure');
+});

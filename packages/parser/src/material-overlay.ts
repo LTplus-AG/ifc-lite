@@ -17,7 +17,7 @@ export interface MaterialReadView extends EffectiveEntityOverlay {
   getPositionalMutationsForEntity?(id: number): ReadonlyMap<number, unknown> | null;
   getAttributeMutationsForEntity?(id: number): ReadonlyArray<{ name: string; value: string }>;
   getMutationRevision?(): number;
-  getEffectiveChanges?(): ReadonlyArray<{ entityId: number; type: string }>;
+  getEffectiveChanges?(): ReadonlyArray<{ entityId: number; kind: string }>;
   resolveBaseEntityId?(id: number): number;
 }
 export type MaterialRecordReader = (id: number) => EffectiveEntityRecord | null;

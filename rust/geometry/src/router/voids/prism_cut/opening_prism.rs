@@ -45,6 +45,26 @@ pub(super) fn prepare_prism(op: &OpeningType, host: &Mesh) -> Option<PrismFrame>
             let mut d = [0.0; 3];
             d[k] = 1.0;
             let (u, v) = basis_from_depth(d)?;
+            // Axis-aligned bounds are another representation of the same
+            // opening corners. Reconcile in the host frame before analytic
+            // dispatch too (#7024); retain the original f64 bounds when no
+            // corner qualifies. A changed box may no longer be rectangular,
+            // so detect its actual prism instead of rebuilding its AABB.
+            let local = GeometryRouter::make_box_mesh(
+                nalgebra::Point3::from(lo), nalgebra::Point3::from(hi),
+            );
+            let before = local.positions.clone();
+            let mut reconciled =
+                crate::router::voids::synthesis::host_vertices::reconcile_with_host_vertices(
+                    local, host, nalgebra::Vector3::from(d),
+                );
+            if reconciled.positions != before {
+                reconciled.origin = origin;
+                return prepare_prism(
+                    &OpeningType::NonRectangular(reconciled, *mn, *mx, Some(nalgebra::Vector3::from(d))),
+                    host,
+                );
+            }
             // Rectangle profile from the AABB corners projected to (u, v).
             let mut plo = [f64::INFINITY; 2];
             let mut phi = [f64::NEG_INFINITY; 2];
@@ -174,3 +194,7 @@ pub(super) fn prepare_prism(op: &OpeningType, host: &Mesh) -> Option<PrismFrame>
         }
     }
 }
+
+#[cfg(test)]
+#[path = "opening_prism_tests.rs"]
+mod tests;

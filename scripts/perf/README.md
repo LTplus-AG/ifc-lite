@@ -3641,7 +3641,11 @@ has not yet received an end-to-end browser worker-pool verdict.
 The router regression now checks closure at the kernel snap-grid precision in
 both vertex frames. Its former 1 mm edge keys hid seams in analytic prism
 cases, even when the exact-kernel reconciliation closed the same inputs. Both
-paths now use that reconciliation. The correction passes all synthetic cases
+paths now use that reconciliation, including axis-aligned bounds. Bounds that
+move are checked as an actual prism rather than replaced with a new AABB;
+unchanged bounds retain their original f64 precision. General public kernel
+subtraction keeps its pre-existing operand weld; only opening-specific entry
+points select the guard. The correction passes all synthetic cases
 and leaves the full real-fixture census identical to this PR's prior golden;
 no further bless was needed.
 

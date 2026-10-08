@@ -18,14 +18,11 @@
 //! Fixture-free: a slab with two holes extruded by the crate's own extruder and
 //! an extended box cutter. No model, no ids.
 //!
-//! Everything here goes through `kernel::mesh_bridge::subtract`, an entry point
-//! that predates the fix, so this file still compiles with the fix taken out
-//! and its assertion is what fails then. The companion test that needs the new
-//! `subtract_operand` entry point is in `issue_6940_operand_keeps_the_plain_weld.rs`
-//! for that reason: a file that stops compiling without the fix proves nothing
-//! by going red.
+//! The opening goes through the pre-existing `ClippingProcessor::subtract_mesh`
+//! entry point. General public kernel subtraction retains its operand weld;
+//! its compatibility regression is in `kernel/mesh_bridge_tests.rs`.
 
-use ifc_lite_geometry::kernel::mesh_bridge::subtract;
+use ifc_lite_geometry::ClippingProcessor;
 use ifc_lite_geometry::kernel::mesh_volume::mesh_volume;
 use ifc_lite_geometry::{extrude_profile, Mesh, Point2, Profile2D};
 use std::collections::HashMap;
@@ -130,7 +127,8 @@ fn issue_6940_a_cutter_filling_a_hole_leaves_the_slab_watertight_and_unchanged()
         let corners = [[1.0f32, 1.0], [2.0, 1.0], [2.0, 2.0], [1.0, 2.0]];
         for (z0, z1) in [(-0.1f32, 0.35f32), (-0.001, 0.251), (-0.25, 0.5)] {
             let cutter = box_cutter(corners, z0, z1);
-            let cut = subtract(&host, &cutter);
+            let cut = ClippingProcessor::new().subtract_mesh(&host, &cutter)
+                .into_mesh().expect("opening cut produces a mesh");
             assert_eq!(
                 open_edges(&cut),
                 0,

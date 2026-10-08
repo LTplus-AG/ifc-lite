@@ -149,10 +149,10 @@ pub(crate) fn orient_outward(mut tris: Vec<Tri>) -> Vec<Tri> {
     tris
 }
 
-/// `host − cutter` as a `Mesh`, the cutter welded as an OPENING cutter (see
-/// [`subtract_with_change`]).
+/// `host − cutter` as a `Mesh`, retaining the general operand weld.
+/// Opening-specific welding is selected internally by the void router.
 pub fn subtract(host: &Mesh, cutter: &Mesh) -> Mesh {
-    subtract_with_change(host, cutter, true).0
+    subtract_with_change(host, cutter, false).0
 }
 
 /// Like [`subtract`], but also returns the classifier's `changed` bit (#4692):

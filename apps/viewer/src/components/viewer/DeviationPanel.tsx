@@ -170,12 +170,14 @@ export function DeviationPanel({ triangleCount }: DeviationPanelProps) {
       if (report) {
         downloadFile(report.content, report.filename, 'text/csv;charset=utf-8');
         trackExportCompleted({ format: 'csv', surface: 'deviation_panel', row_count: report.rows });
+        finishActivity(job, 'completed');
       } else {
         // A COPC scan keeps only the nodes in view; with every node dropped
         // the run measured nothing, and an empty file would explain nothing.
-        setExportNotice(t('deviationPanel.exportNoPointsNotice'));
+        const notice = t('deviationPanel.exportNoPointsNotice');
+        setExportNotice(notice);
+        finishActivity(job, 'failed', { detail: notice });
       }
-      finishActivity(job, 'completed');
     } catch (err) {
       finishActivity(job, controller.signal.aborted ? 'cancelled' : 'failed',
         controller.signal.aborted ? {} : { detail: err instanceof Error ? err.message : String(err) });

@@ -367,6 +367,12 @@ it('DeviationPanel #6880 Export CSV with no measured points says why instead of 
     container.querySelector('[data-testid="deviation-export-notice"]')?.textContent,
     'No scan points are loaded in the current view. Frame the scan and recompute.',
   );
+  // #7121: without an artifact, the Activity row must not advertise success.
+  const emptyExport = useActivityJournal.getState().jobs.at(-1);
+  assert.ok(emptyExport);
+  assert.equal(emptyExport.outcome, 'failed');
+  assert.equal(emptyExport.detail, container.querySelector('[data-testid="deviation-export-notice"]')?.textContent);
+  assert.equal(activityCanceller(emptyExport.id), null);
   // A later run with points clears the notice.
   await computeWith(container, stub, ladder(10, 0.01));
   await waitFor(() => container.querySelector('[data-testid="deviation-export-notice"]')?.textContent === '', 'notice cleared');

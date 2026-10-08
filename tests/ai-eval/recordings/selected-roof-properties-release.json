@@ -85,7 +85,7 @@
         },
         "units": "Quantity values carry {value, unit} in the Properties panel display unit (project unit, or the display-unit override below); a null unit is undeclared. Property values are the panel display strings, with the unit inline when the measure declares one.",
         "displayUnitOverrides": {},
-        "limitations": "Values include unsaved edits made this session (status \"edited\"). Property and quantity sets are bounded per element (see perElementBounds; propertyCount/quantityCount/psetCount/qsetCount are the full counts). Type-inherited property sets, materials, classifications and relationships are not included. Only the first elements of a large selection are read; byClass/byModel cover the whole selection."
+        "limitations": "Values include unsaved edits made this session (status \"edited\"). Property and quantity sets are bounded per element (see perElementBounds; propertyCount/quantityCount/psetCount/qsetCount are the full counts). Material assignments use the native panel reader: occurrence assignments precede inherited type assignments, and session associations are included. Source-free unresolved associations carry verification \"unverified\"; absent values are unknown. Material assignments and members use the set/value bounds, with full counts; LayerThickness values are metres, matching the native reader. Generic material property sets use the panel reader and display units, with model/material provenance and bounded groups/sets/values. A source-free material property read is marked unverified-without-source; its empty rows do not establish absence. Typed IFC2X3 scalar material-property subtypes are outside the native generic-set reader. Type-inherited property sets, classifications and relationships are not included. Only the first elements of a large selection are read; byClass/byModel cover the whole selection."
       },
       "rows": [
         {
@@ -137,7 +137,20 @@
                 }
               }
             ],
-            "qsetCount": 1
+            "qsetCount": 1,
+            "materialCount": 1,
+            "materials": [
+              {
+                "type": "IfcMaterial",
+                "verification": "resolved",
+                "Name": "composite_element_roof",
+                "Description": null,
+                "Category": null
+              }
+            ],
+            "materialPropertiesStatus": "available",
+            "materialPropertyGroupCount": 0,
+            "materialProperties": []
           }
         }
       ]

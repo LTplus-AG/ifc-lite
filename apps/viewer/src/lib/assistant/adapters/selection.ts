@@ -25,6 +25,8 @@ import { stringToEntityRef } from '@/store/entity-ref';
 import { resolveEntityRef, resolveEntityRefGlobalIdFromState } from '@/store/resolveEntityRef';
 import { resolveQuantityDisplay } from '@/lib/units/display';
 import { effectiveElementData } from '@/components/viewer/properties/effectiveElementData';
+import { effectiveMaterials, effectiveMaterialProperties } from '@/components/viewer/properties/effectiveMaterials';
+import { materialEvidence } from './selection-materials';
 import { effectiveSelectedClass } from '@/components/viewer/properties/effectiveSelectedClass';
 import { propertyDisplayValue } from '@/components/viewer/properties/propertyDisplayValue';
 import { evidenceRow, unavailableCapture, type EvidenceAdapter } from './types';
@@ -98,6 +100,8 @@ function elementRow(s: ViewerState, ref: EntityRef, source: ModelSource, rich: b
   const setLimit = rich ? 16 : 6;
   const valueLimit = rich ? 32 : 12;
   const data = effectiveElementData(ref.expressId, source.query, source.view);
+  const materials = effectiveMaterials(source.store, ref.expressId, source.view);
+  const materialProperties = effectiveMaterialProperties(source.store, ref.expressId, source.view, s.mutationVersion);
   const attributes = Object.fromEntries([...data.attributes].slice(0, rich ? 32 : 12).map(([name, value]) => [name, bounded(value)]));
   const psets = data.psets.slice(0, setLimit).map(pset => ({
     name: pset.name, propertyCount: pset.properties.length,
@@ -123,6 +127,19 @@ function elementRow(s: ViewerState, ref: EntityRef, source: ModelSource, rich: b
     type: effectiveSelectedClass(source.store, source.view, ref.expressId),
     name: typeof name === 'string' && name.length > 0 ? bounded(name) : null,
     attributes, psets, psetCount: data.psets.length, quantities, qsetCount: data.qsets.length,
+    materialCount: materials.length,
+    materials: materials.slice(0, setLimit).map(material => materialEvidence(material, valueLimit)),
+    materialPropertiesStatus: source.store?.source?.length ? 'available' : 'unverified-without-source',
+    materialPropertyGroupCount: materialProperties.length,
+    materialProperties: materialProperties.slice(0, setLimit).map(group => ({
+      modelId: ref.modelId, expressId: group.materialId, displayName: bounded(group.materialName),
+      psetCount: group.psets.length,
+      psets: group.psets.slice(0, setLimit).map(pset => ({
+        name: pset.name, propertyCount: pset.properties.length,
+        properties: Object.fromEntries(pset.properties.slice(0, valueLimit)
+          .map(prop => [prop.name, bounded(propertyDisplayValue(prop, source.units, s.unitDisplayOverrides).full)])),
+      })),
+    })),
   });
 }
 
@@ -161,7 +178,7 @@ export const selectionAdapter: EvidenceAdapter = {
         perElementBounds: rich ? { sets: 16, valuesPerSet: 32, attributes: 32 } : { sets: 6, valuesPerSet: 12, attributes: 12 },
         units: 'Quantity values carry {value, unit} in the Properties panel display unit (project unit, or the display-unit override below); a null unit is undeclared. Property values are the panel display strings, with the unit inline when the measure declares one.',
         displayUnitOverrides: s.unitDisplayOverrides,
-        limitations: 'Values include unsaved edits made this session (status "edited"). Property and quantity sets are bounded per element (see perElementBounds; propertyCount/quantityCount/psetCount/qsetCount are the full counts). Type-inherited property sets, materials, classifications and relationships are not included. Only the first elements of a large selection are read; byClass/byModel cover the whole selection.',
+        limitations: 'Values include unsaved edits made this session (status "edited"). Property and quantity sets are bounded per element (see perElementBounds; propertyCount/quantityCount/psetCount/qsetCount are the full counts). Material assignments use the native panel reader: occurrence assignments precede inherited type assignments, and session associations are included. Source-free unresolved associations carry verification "unverified"; absent values are unknown. Material assignments and members use the set/value bounds, with full counts; LayerThickness values are metres, matching the native reader. Generic material property sets use the panel reader and display units, with model/material provenance and bounded groups/sets/values. A source-free material property read is marked unverified-without-source; its empty rows do not establish absence. Typed IFC2X3 scalar material-property subtypes are outside the native generic-set reader. Type-inherited property sets, classifications and relationships are not included. Only the first elements of a large selection are read; byClass/byModel cover the whole selection.',
       },
       rows: sample.map(ref => elementRow(s, ref, sourceFor(ref.modelId), rich)),
       totalRows: refs.length, availability: 'available',

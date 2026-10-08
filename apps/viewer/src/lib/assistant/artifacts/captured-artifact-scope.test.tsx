@@ -52,7 +52,8 @@ async function loadActualSources() {
   await seedArtifactModels({ federated: true });
   const models = new Map(useViewerStore.getState().models);
   for (const [id, model] of models) {
-    const bytes = model.ifcDataStore!.source.slice();
+    const source = model.ifcDataStore!.source;
+    const bytes = new Uint8Array(source.slice(0, source.byteLength));
     const sourceContentHash = await placementSourceIdentity(new Blob([bytes]), undefined, bytes);
     assert.ok(sourceContentHash, 'the actual native fixture obtains the same full-content identity as the loader');
     models.set(id, { ...model, sourceContentHash });

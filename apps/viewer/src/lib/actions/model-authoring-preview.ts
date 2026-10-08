@@ -27,12 +27,20 @@ import {
 } from './model-authoring-read';
 import { captureAuthoringSources } from './model-authoring-sources';
 import { resolveGlobalId } from './resolve-global-id';
+import { readElementProfile } from '@/store/slices/mutation-element-profile';
+import { readAuthoringSize, sameNativeDimensions } from './model-authoring-size';
+import { sizeInMetres, type ExpectedSize } from './model-authoring-size-params';
+import { profileInMetres } from './model-authoring-shape-params';
+import type { ProfileSection } from '@ifc-lite/create';
+import { authoringSizeGhost } from './model-authoring-size-ghost';
 
 /** P04's statuses plus `invalid` (a native builder or planner refused it) and `blocked` (it needs a row that is not ready). */
 export type AuthoringRowStatus = RowStatus | 'invalid' | 'blocked';
 
 /** What the element is now, for the before → after summary. */
 export interface AuthoringBefore {
+  size?: ExpectedSize;
+  Profile?: ProfileSection;
   ifcClass?: string;
   name?: string;
   storeyName?: string;
@@ -44,6 +52,9 @@ export interface AuthoringBefore {
 }
 
 export interface AuthoringRow {
+  previewUnavailable?: boolean;
+  previewOmitted?: string[];
+  previewOuterBodyOnly?: boolean;
   index: number;
   op: AuthoringOp;
   status: AuthoringRowStatus;
@@ -139,6 +150,26 @@ const near = (a: number, b: number, tolerance: number) => Math.abs(a - b) <= tol
 function resolve(ctx: Context, row: AuthoringRow): void {
   const { op } = row;
   switch (op.op) {
+    case 'element.resize': case 'element.profile': {
+      row.resolved.target = row.expressId = existing(ctx, op.target, row);
+      if (op.op === 'element.resize') {
+        const current = readAuthoringSize(ctx.state, row.modelId!, row.expressId, op.expected.kind);
+        if (!current) throw new Refusal('invalid', 'The native editor cannot read this target as the requested editable size kind');
+        row.before.size = current;
+        if (!sameNativeDimensions(current, sizeInMetres(op.expected, ctx.batch.units))) throw new Refusal('conflict', 'The current native dimensions differ from the expected dimensions');
+        const next = sizeInMetres(op.size, ctx.batch.units);
+        const currentValues = current as unknown as Record<string, unknown>;
+        if (Object.entries(next).filter(([, value]) => typeof value === 'number').every(([key, value]) =>
+          Math.abs(Number(currentValues[key]) - Number(value)) <= 1e-9)) throw new Refusal('unchanged', 'Already these dimensions');
+      } else {
+        const current = readElementProfile(ctx.state, row.modelId!, row.expressId);
+        if (!current) throw new Refusal('invalid', 'The native editor cannot read a supported centred extrusion section');
+        row.before.Profile = current;
+        if (!sameNativeDimensions(current, profileInMetres(op.expected, ctx.batch.units))) throw new Refusal('conflict', 'The current native section differs from the expected Profile');
+        if (sameNativeDimensions(current, profileInMetres(op.Profile, ctx.batch.units))) throw new Refusal('unchanged', 'Already this Profile');
+      }
+      return;
+    }
     case 'element.create': {
       const storey = locate(ctx, op.storey);
       join(row, storey.modelId);
@@ -275,6 +306,12 @@ export function previewModelAuthoring(state: ViewerState, batch: ModelAuthoringB
     }
   }
   nativeDryRun(ctx, batch);
+  for (const row of ctx.rows) if (row.status === 'ready' && row.modelId && (row.op.op === 'element.resize' || row.op.op === 'element.profile')) {
+    const ghost = authoringSizeGhost(state, batch, row, row.modelId, 0);
+    row.previewUnavailable = ghost.unavailable;
+    row.previewOmitted = ghost.omitted;
+    row.previewOuterBodyOnly = ghost.outerBodyOnly;
+  }
   const preview = { batch, rows: ctx.rows, mutationVersion: state.mutationVersion, digest: batchDigest(batch) };
   captureAuthoringSources(state, preview);
   return preview;

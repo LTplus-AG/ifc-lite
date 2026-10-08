@@ -29,7 +29,7 @@ import { emitProfileSection, toNativeLength, validateProfileSection, type Profil
 import type { ViewerState } from '../index.js';
 import { getModelLengthUnitScale } from '@/lib/length-unit-scale.js';
 import { resolveLinearElementChain } from '@/lib/linear-element-edit.js';
-import { modelEditTarget } from './mutation-modelling-records.js';
+import { modelEditTarget, type ModelEditTarget } from './mutation-modelling-records.js';
 
 export type ElementProfileOutcome =
   | { readonly ok: true; readonly remesh: number[] }
@@ -64,6 +64,13 @@ const sameSection = (a: ProfileSection, b: ProfileSection): boolean => {
 export function setElementProfile(get: () => ViewerState, modelId: string, expressId: number, section: ProfileSection): ElementProfileOutcome {
   const target = modelEditTarget(get(), modelId);
   if (!target) return { ok: false, reason: `No model loaded for id "${modelId}"` };
+  return writeElementProfile(target, expressId, section, (updates) => get().setPositionalAttributesBatch(modelId, updates));
+}
+
+/** #7229: native section write shared by the live inspector and unpublished review draft. */
+export function writeElementProfile(target: ModelEditTarget, expressId: number, section: ProfileSection,
+  write: (updates: Array<{ entityId: number; index: number; value: number | string }>) => void,
+): ElementProfileOutcome {
   const scale = getModelLengthUnitScale(target.dataStore);
   const chain = resolveLinearElementChain(target.dataStore, target.view, target.editor, expressId, scale);
   if (!chain) return { ok: false, reason: NOT_EDITABLE };
@@ -77,7 +84,7 @@ export function setElementProfile(get: () => ViewerState, modelId: string, expre
   if (sameSection(current, section)) return { ok: true, remesh: [] };
 
   if (current.Type === 'Rectangle' && section.Type === 'Rectangle') {
-    get().setPositionalAttributesBatch(modelId, [
+    write([
       { entityId: chain.profileId, index: PROFILE_XDIM, value: toNativeLength(unit, section.XDim) },
       { entityId: chain.profileId, index: PROFILE_YDIM, value: toNativeLength(unit, section.YDim) },
     ]);
@@ -89,6 +96,6 @@ export function setElementProfile(get: () => ViewerState, modelId: string, expre
   } catch (error) {
     return { ok: false, reason: error instanceof Error ? error.message : String(error) };
   }
-  get().setPositionalAttributesBatch(modelId, [{ entityId: chain.extrudedSolidId, index: SOLID_SWEPT_AREA, value: `#${profileId}` }]);
+  write([{ entityId: chain.extrudedSolidId, index: SOLID_SWEPT_AREA, value: `#${profileId}` }]);
   return { ok: true, remesh: [expressId] };
 }

@@ -28,6 +28,10 @@ import { toMetres, type AuthoringOp, type ModelAuthoringBatch } from './model-au
 import { authoredElementOf, hostedSpecOf, idOf, writeRelation } from './model-authoring-native';
 import { previewModelAuthoring, type AuthoringRow, type ModelAuthoringPreview } from './model-authoring-preview';
 import { undoBatch, type AppliedChange, type CommitOutcome, type ModelChangeReceipt } from './model-change-commit';
+import { commitElementSize } from '@/lib/element-size-commit';
+import { setElementProfile } from '@/store/slices/mutation-element-profile';
+import { sizeInMetres } from './model-authoring-size-params';
+import { profileInMetres } from './model-authoring-shape-params';
 
 /** Rows that will be written: approved, ready, and every creation they use is written too. */
 export function writableRows(preview: ModelAuthoringPreview, approved: ReadonlySet<number>): AuthoringRow[] {
@@ -66,6 +70,16 @@ function writeRow(tx: AuthoringTransaction, batch: ModelAuthoringBatch, row: Aut
   const base = { index: row.index, op: op.op, modelId };
   const targetGid = 'target' in op && !('ref' in op.target) ? op.target.globalId : undefined;
   switch (op.op) {
+    case 'element.resize': case 'element.profile': {
+      const outcome = op.op === 'element.resize'
+        ? commitElementSize(tx.api, modelId, resolved.target!, sizeInMetres(op.size, batch.units))
+        : setElementProfile(() => tx.store, modelId, resolved.target!, profileInMetres(op.Profile, batch.units));
+      if (!outcome.ok) throw new Error(outcome.reason);
+      written.remesh.push(...outcome.remesh);
+      return [{ ...base, globalId: op.target.globalId, field: op.op === 'element.resize' ? 'Dimensions' : 'Profile',
+        before: JSON.stringify(op.expected),
+        after: JSON.stringify(op.op === 'element.resize' ? op.size : op.Profile) }];
+    }
     case 'element.create': {
       const globalId = generateIfcGuid();
       const id = createElement(tx.store, modelId, resolved.storey!, authoredElementOf(batch, op, globalId));

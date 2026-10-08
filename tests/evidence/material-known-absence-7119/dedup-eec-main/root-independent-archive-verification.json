@@ -2,7 +2,6 @@
   "capturedUTC": "2026-10-08T13:45:07.156403+00:00",
   "sourceHead": "6e15e64faed1bad97aba12e60e907324cfa1d701",
   "frozenMain": "eec7de970a21a12ef4d09eaed382f45f7210772a",
-  "qualificationSHA256": "4bc06b95b7e7f24829ebe89e1740296f4a53fa3d91192cd9572d100eb8dd5ab6",
   "tenRawGzipArchivesVerified": [
     "light-0.log.gz",
     "root-turbo-selection-materials.log.gz",
@@ -26,5 +25,6 @@
   "canonicalMainProductionAndParserVerified": true,
   "duplicateChangesetAbsent": true,
   "scope": "Test fidelity correction only: retain real IFC/material/null/empty/bounds assertions; update obsolete rendered caveats; verify existing native section availability, full counts and bounds. No product behavior added.",
-  "pending": "Publish finaltest-onlybody/head thenfresh4requiredchecks/rawindependentreview; broader7119issueclosure requirescompleteacceptance"
+  "pending": "Publish finaltest-onlybody/head thenfresh4requiredchecks/rawindependentreview; broader7119issueclosure requirescompleteacceptance",
+  "integrity": "One-way qualification-to-verification checksum. Source pins describe the historical qualifiedSourceHead; subsequent test-strengthening has separate native proof. Raw/gzip archives are unchanged."
 }

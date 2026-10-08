@@ -140,6 +140,23 @@ const auditReport = await auditIDSDocument(idsXml);
 
 Use `auditIDSStructure(idsDocument)` to audit an already-parsed document.
 
+Against the vendored buildingSMART IDS corpus, the audit reports an error on
+all 27 `invalid-` cases and on none of the 307 pass and fail cases. Among
+other things it checks:
+
+- values against their type: a property value against its `dataType`, an
+  attribute value against the attribute's type on the applicability entity
+  (`FALSE`, `42.0` for an integer and `42,3` are all rejected), and a
+  restriction's base against either;
+- entity names: upper case (`IFCWALL`, not `IfcWall`), and an entity
+  requirement that no applicable class can satisfy (entity facets match the
+  exact class, not subclasses);
+- predefined types: any value is accepted when the enum has `USERDEFINED`
+  (it is matched against `ObjectType`), IFC2X3 occurrences use their type
+  object's enum, and an entity with no PredefinedType rejects one;
+- every facet of a conjunctive restriction (`and`), not only the first;
+- a prohibited specification (`maxOccurs="0"`) with requirements.
+
 ## What `.rules.json` rule sets cover that IDS 1.0 cannot
 
 IDS 1.0 has documented limitations (buildingSMART's own user manual

@@ -48,7 +48,10 @@ async function setup() {
       <button onClick={batch.cancelDownload}>Native Cancel</button><output>{batch.downloading ? 'Downloading' : 'Idle'}</output><ActivityTrayList /></>;
   }
   const ui = render(<Harness />);
-  const start = () => click(ui.querySelector<HTMLButtonElement>('button')!);
+  const start = () => {
+    click(ui.querySelector<HTMLButtonElement>('button')!);
+    assert.ok(useActivityJournal.getState().jobs.at(-1), 'native source download enters Activity before network completion');
+  };
   const settle = async (index: number, status = 200) => {
     await act(async () => pending[index].resolve(new Response(status === 200 ? new Uint8Array(bytes) : 'Refused', { status })));
   };

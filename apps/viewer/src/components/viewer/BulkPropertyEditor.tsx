@@ -64,6 +64,7 @@ import { BulkActionConfig } from './bulk-property-editor-action-config';
 import { Field } from '@/components/ui/field';
 import { useBulkTargets } from './useBulkTargets';
 import type { BulkTargetSource } from './bulk-targets';
+import { startBulkOperationActivity } from './bulk-operation-activity';
 import { runBulkTargetBatches } from './bulk-target-run';
 import { useBulkPropertySuggestions } from './useBulkPropertySuggestions';
 import { bulkActionToModelChanges } from '@/lib/actions/bulk-changes';
@@ -83,7 +84,6 @@ export function BulkPropertyEditor({ trigger }: BulkPropertyEditorProps) {
   const { models } = useIfc();
   const getMutationView = useViewerStore((s) => s.getMutationView);
   const registerMutationView = useViewerStore((s) => s.registerMutationView);
-  // Subscribe to mutationViews directly to trigger re-render when views are registered
   const mutationViews = useViewerStore((s) => s.mutationViews);
   // The engine writes directly to a mutation view, so its live callback and
   // the Execute affordance both consult the same viewer permission policy.
@@ -291,9 +291,8 @@ export function BulkPropertyEditor({ trigger }: BulkPropertyEditorProps) {
     }
   }, [targetsReady, targetSource, liveMatchCount, queryIds, buildAction]);
 
-  // Execute bulk update — chunked so the UI stays responsive with a live progress bar
   const handleExecute = useCallback(async () => {
-    if (!targetsReady || liveMatchCount === 0 || !canEditInSession) return;
+    if (!targetsReady || liveMatchCount === 0 || !canEditInSession || executeAbortRef.current) return;
 
     const built = buildAction();
     // Refuse before touching a single entity — one bad value must not half-apply across the selection.
@@ -312,12 +311,11 @@ export function BulkPropertyEditor({ trigger }: BulkPropertyEditorProps) {
     executeCancelRef.current = false;
     const controller = new AbortController();
     executeAbortRef.current = controller;
+    const activity = startBulkOperationActivity(controller, executeAbortRef, executeCancelRef, t);
 
-    // Yield to paint the initial "Applying..." state
     await new Promise(r => setTimeout(r, 0));
 
     try {
-      // Step 1: select matching IDs
       const ids = targetSource === 'query'
         ? await resolveBulkQueryIds(useViewerStore.getState(), selectedModelId, queryGroups, controller.signal)
         : null;
@@ -332,16 +330,18 @@ export function BulkPropertyEditor({ trigger }: BulkPropertyEditorProps) {
         action,
         getEngine: (modelId) => targetSource === 'query' ? queryEngine : targetEngines.get(modelId),
         isCancelled: () => executeCancelRef.current,
-        onProgress: (done, count) => setExecuteProgress({ done, total: count }),
+        onProgress: (done, count) => { activity.progress(done, count); setExecuteProgress({ done, total: count }); },
         modelUnavailable: (modelId) => t('bulkPropertyEditor.modelUnavailable', { modelId }),
         entityError: (id, detail) => t('bulkPropertyEditor.entityError', {
           id, detail: detail ?? t('bulkPropertyEditor.unknownError'),
         }),
       });
+      activity.finish(result, failures);
       setExecuteResult(result);
       setRuntimeFailures(failures);
       if (result.success) setExecuteDirty(false);
     } catch (error) {
+      activity.fail(error);
       if (controller.signal.aborted) {
         setExecuteResult({ mutations: [], affectedEntityCount: 0, success: false });
         setRuntimeFailures([{ kind: 'cancelled', done: 0, total: 0 }]);

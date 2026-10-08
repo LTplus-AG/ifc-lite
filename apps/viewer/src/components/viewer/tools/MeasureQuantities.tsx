@@ -70,7 +70,7 @@ import { useTranslation } from '@/i18n/useTranslation';
 import type { TranslationKey } from '@/i18n/en';
 import { ProjectUnits } from '@ifc-lite/parser';
 import { resolveQuantityDisplay, formatConverted } from '@/lib/units/display';
-import type { QuantityBasis } from './measure-modes/quantities';
+import { MEASURABLE_QUANTITY_TYPES, type QuantityBasis } from './measure-modes/quantities';
 import type { WeightBasis } from './measure-modes/weight';
 import { SourceQuantityInspection } from './SourceQuantityInspection';
 import { QuantityResultView } from './QuantityResultView';

@@ -19,6 +19,7 @@ export interface AuthoringBefore {
   hosted?: ExpectedHostedEdit;
   split?: SplitSnapshot;
   size?: ExpectedSize;
+  reach?: Record<string, unknown>;
   Profile?: ProfileSection;
   ifcClass?: string;
   name?: string;

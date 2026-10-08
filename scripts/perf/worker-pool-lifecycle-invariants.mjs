@@ -28,14 +28,27 @@ export function requireEpoch(snapshot, previousId) {
   }
   return snapshot;
 }
+function processId(value,name,allowZero=false) {
+  if(!Number.isSafeInteger(value)||value<(allowZero?0:1))throw Error(`Missing/invalid ${name}`);
+  return value;
+}
+function creationStamp(value,name) {
+  if(typeof value==='number'&&Number.isSafeInteger(value)&&value>0)return BigInt(value);
+  if(typeof value==='string'&&/^\d{1,30}$/.test(value)&&BigInt(value)>0n)return BigInt(value);
+  throw Error(`Missing/invalid ${name}`);
+}
 export function ownedTree(processes, rootPid, rootStart, previouslyOwned=[]) {
-  const root=processes.find(p=>p.pid===rootPid && p.started===rootStart);
+  processId(rootPid,'rootPid');const rootStamp=creationStamp(rootStart,'rootStart');
+  if(!Array.isArray(processes))throw Error('Missing process identity records');
+  const seen=new Set();
+  for(const p of processes){processId(p.pid,'process.pid');processId(p.parent,'process.parent',true);creationStamp(p.started,'process.started');if(seen.has(p.pid))throw Error('Duplicate process PID record');seen.add(p.pid);}
+  const root=processes.find(p=>p.pid===rootPid && creationStamp(p.started,'process.started')===rootStamp);
   if (!root) throw Error('Owned browser root missing or PID reused');
   const selected=new Map([[root.pid,root]]);
-  for(const owned of previouslyOwned){const live=processes.find(p=>p.pid===owned.pid&&p.started===owned.started);if(live)selected.set(live.pid,live);}
+  for(const owned of previouslyOwned){processId(owned.pid,'prior process.pid');const priorStamp=creationStamp(owned.started,'prior process.started');const live=processes.find(p=>p.pid===owned.pid&&creationStamp(p.started,'process.started')===priorStamp);if(live)selected.set(live.pid,live);}
   let changed=true;
   while(changed){changed=false;for(const p of processes){
-    if (!selected.has(p.pid) && selected.has(p.parent) && p.started>=selected.get(p.parent).started){selected.set(p.pid,p);changed=true;}
+    if (!selected.has(p.pid) && selected.has(p.parent) && creationStamp(p.started,'process.started')>=creationStamp(selected.get(p.parent).started,'parent.started')){selected.set(p.pid,p);changed=true;}
   }}
   return [...selected.values()].sort((a,b)=>a.pid-b.pid);
 }
@@ -52,8 +65,8 @@ export function requireSample(row) {
     finiteNonnegative(reading.privateCommitBytes,'memory.privateCommitBytes');
     finiteNonnegative(reading.residentBytesSharedDoubleCount,'memory.residentBytesSharedDoubleCount');
     if(!Array.isArray(reading.processes)||!reading.processes.length)throw Error('Missing native ownership process records');
-    if(owner&&(owner.pid!==reading.rootPid||owner.start!==reading.rootStart))throw Error('Owned root identity changed');
-    owner={pid:reading.rootPid,start:reading.rootStart};
+    if(owner&&(owner.pid!==reading.rootPid||owner.start!==creationStamp(reading.rootStart,'rootStart')))throw Error('Owned root identity changed');
+    owner={pid:reading.rootPid,start:creationStamp(reading.rootStart,'rootStart')};
     const owned=ownedTree(reading.processes,reading.rootPid,reading.rootStart,previouslyOwned);
     if(owned.length!==reading.processes.length)throw Error('Foreign/stale process in owned memory report');
     let resident=0,commit=0,shared=0;for(const process of owned){resident+=finiteNonnegative(process.privateResidentBytes,'process.privateResidentBytes');commit+=finiteNonnegative(process.privateCommitBytes,'process.privateCommitBytes');shared+=finiteNonnegative(process.residentBytes,'process.residentBytes');finiteNonnegative(process.lifetimePeakResidentBytes,'process.lifetimePeakResidentBytes');}

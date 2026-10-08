@@ -536,7 +536,7 @@ export class ViewerBenchmarkPage {
   private applySpanMetrics(appReportedTotalMs: number | null) {
     // The span root is the app's own total; compare it only with the app's own
     // total line, never with the Playwright-observed wall clock fallback.
-    const regex: Partial<Record<string, number | null>> = { ...this.metrics, totalWallClockMs: appReportedTotalMs };
+    const regex = { ...this.metrics, totalWallClockMs: appReportedTotalMs };
     const span = metricsFromLoadTrace(this.loadTrace);
     this.spanRegexDisagreements = compareSpanAndRegexMetrics(span, regex);
     for (const key of SPAN_METRIC_KEYS) {

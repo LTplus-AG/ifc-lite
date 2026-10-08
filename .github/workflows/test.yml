@@ -341,6 +341,11 @@ jobs:
               - 'examples/**'
               - 'packages/**'
               - 'tests/e2e/**'
+              # Root no-emit perf tools programme also consumes benchmark helpers (#7036).
+              - 'tests/benchmark/viewer-benchmark.spec.ts'
+              - 'tests/benchmark/metadata-render-readiness.ts'
+              - 'tests/benchmark/viewer-benchmark-page.ts'
+              - 'tests/benchmark/load-trace-metrics.ts'
               - 'playwright.config.ts'
               # The relay handlers and their tests. `pnpm test:api` runs in this
               # job, so without these a PR touching ONLY the relay skips the one

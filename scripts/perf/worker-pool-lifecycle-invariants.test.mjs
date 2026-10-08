@@ -53,7 +53,7 @@ test('#7036 live owned orphan remains attributed after its intermediate parent e
 test('#7036 production report ownership validation refuses injected foreign processes and false total sums',()=>{
  const foreign=row();foreign.memory.rows[0].processes.push({pid:99,parent:88,started:2});assert.throws(()=>requireSample(foreign),/Foreign/);
  const sum=row();sum.memory.rows[0].privateResidentBytes=1;assert.throws(()=>requireSample(sum),/sum mismatch/);
- const root=row();delete root.memory.rows[0].rootStart;assert.throws(()=>requireSample(root),/missing/);
+ const root=row();delete root.memory.rows[0].rootStart;assert.throws(()=>requireSample(root),/Missing/);
 });
 
 test('#7036 lifecycle oracle shares actual cached metadata route and rejects misplaced cached marker on fresh load',()=>{
@@ -66,4 +66,12 @@ test('#7036 derived observation gaps include start/end edges and refuse a false 
  const tail=row();tail.memory.coverageEndElapsedMs=100000;assert.throws(()=>requireSample(tail),/gap/);
  const start=row();start.memory.rows[0].elapsedMs=5000;start.memory.coverageEndElapsedMs=5001;assert.throws(()=>requireSample(start),/gap/);
  const sum=row();sum.memory.rows[0].residentBytesSharedDoubleCount=1;assert.throws(()=>requireSample(sum),/sum mismatch/);
+});
+
+test('#7036 production report cannot match absent root and process identity fields',()=>{
+ const valid=row();assert.equal(requireSample(valid).ok,true);
+ const ids=row();delete ids.memory.rows[0].rootPid;delete ids.memory.rows[0].processes[0].pid;assert.throws(()=>requireSample(ids),/rootPid/);
+ const stamps=row();delete stamps.memory.rows[0].rootStart;delete stamps.memory.rows[0].processes[0].started;assert.throws(()=>requireSample(stamps),/rootStart/);
+ const unsafe=row();unsafe.memory.rows[0].rootStart=Number.MAX_SAFE_INTEGER+1;unsafe.memory.rows[0].processes[0].started=Number.MAX_SAFE_INTEGER+1;assert.throws(()=>requireSample(unsafe),/rootStart/);
+ const ticks=row();ticks.memory.rows[0].rootStart='639007040001234567';ticks.memory.rows[0].processes[0].started='639007040001234567';assert.equal(requireSample(ticks).ok,true);
 });

@@ -13,7 +13,9 @@ export function stairRailingGhost(state: ViewerState, batch: ModelAuthoringBatch
     const op = row.op;
     if (!['stair.create', 'railing.create', 'stair.replace', 'railing.replace'].includes(op.op) || !('storey' in op) || !('params' in op))
         return null;
-    const plane = buildStoreyWorkplane(state, row.modelId!, row.resolved.storey ?? null, 0);
+    if (row.modelId === null || row.resolved.storey === undefined)
+        return null;
+    const plane = buildStoreyWorkplane(state, row.modelId, row.resolved.storey, 0);
     if (!isWorkplane(plane))
         return null;
     if (op.op === 'stair.create' || op.op === 'stair.replace') {

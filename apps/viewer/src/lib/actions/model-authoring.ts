@@ -53,7 +53,8 @@ export interface BoxParams { position: Point3; width: number; depth: number; thi
 
 export type AuthoringOp =
   | { op: 'stair.resize'; target: ExistingElement; expected: StairDimensions; size: StairDimensionEdit }
-  | { op: 'stair.delete' | 'railing.delete'; target: ExistingElement }
+  | { op: 'stair.delete'; target: ExistingElement }
+  | { op: 'railing.delete'; target: ExistingElement }
   | { op: 'stair.replace'; target: ExistingElement; ref: string; storey: StoreyTarget; params: StairInStoreParams }
   | { op: 'railing.replace'; target: ExistingElement; ref: string; storey: StoreyTarget; params: RailingInStoreParams }
   | { op: 'stair.create'; ref: string; storey: StoreyTarget; params: StairInStoreParams }

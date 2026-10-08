@@ -7,8 +7,10 @@
  */
 
 import { trackExportCompleted } from '@/lib/analytics';
-import { migrateLegacyListDefinition, type ListDefinition } from '@ifc-lite/lists';
+import { type ListDefinition } from '@ifc-lite/lists';
 import { downloadFile, sanitizeFilename } from '../export/download.js';
+
+import { decodeSavedList, encodeSavedList } from './saved-list-codec.js';
 
 const STORAGE_KEY = 'ifc-lite-lists';
 
@@ -29,7 +31,7 @@ export function loadListDefinitions(): ListDefinition[] {
         return [];
       }
       try {
-        return [migrateLegacyListDefinition(definition)];
+        return [decodeSavedList(definition)];
       } catch (error) {
         console.warn('[Lists] Skipping a saved list that could not be migrated', error);
         return [];
@@ -43,14 +45,14 @@ export function loadListDefinitions(): ListDefinition[] {
 
 export function saveListDefinitions(definitions: ListDefinition[]): void {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(definitions));
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(definitions.map(encodeSavedList)));
   } catch {
     console.warn('[Lists] Failed to save list definitions to localStorage');
   }
 }
 
 export function exportListDefinition(definition: ListDefinition): void {
-  const json = JSON.stringify(definition, null, 2);
+  const json = JSON.stringify(encodeSavedList(definition), null, 2);
   const name = sanitizeFilename(definition.name, { fallback: 'list' });
   downloadFile(json, `${name}.list.json`, 'application/json');
   trackExportCompleted({ format: 'json', surface: 'list_results' });
@@ -67,7 +69,7 @@ export function importListDefinition(file: File): Promise<ListDefinition> {
           return;
         }
         // Imports get fresh timestamps and identity, after the saved shape is checked.
-        const migrated = migrateLegacyListDefinition({ ...raw, createdAt: Date.now(), updatedAt: Date.now() });
+        const migrated = decodeSavedList(raw, Date.now());
         resolve({ ...migrated, id: crypto.randomUUID() });
       } catch {
         reject(new Error('Failed to parse list definition file'));

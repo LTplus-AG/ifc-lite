@@ -39,9 +39,11 @@ and came back **UNOBSERVED**: the branch was redundant (`maxOccurs="0"` is the
 mutation retargeted at the bound check that does the work.
 
 Whole diff, no `--mutation` (`summary.json`, first entry): **OBSERVED**
-at head `a311d32f6`. Changes to existing modules (validator guard,
-partOf checker, writer, audit) turned assertions red; the new-module test files
-failed at load, which is why the surgical runs above exist.
+at head `a311d32f6`. With all production reverted, assertions went red in
+`proposed-cases.test.ts` (4 of 15) and `ids11-model.test.ts` (2 of 2), which
+exercise existing modules (parser, writer, validator); the other six test
+files failed at load because their new modules were deleted, which is why the
+surgical runs above exist.
 
 Not mutated, and why:
 

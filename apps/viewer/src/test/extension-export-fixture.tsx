@@ -49,7 +49,7 @@ export async function nativeExporterHost() {
 }
 export function mountExporters(host: NativeExporterHost | null) {
   let current: ReturnType<typeof useExtensionExporters> | null = null;
-  function Controls() { current = useExtensionExporters('toolbar'); return null; }
+  function Controls() { current = useExtensionExporters('ribbon'); return null; }
   const ui = render(<ExtensionHostContext.Provider value={host}><Controls /></ExtensionHostContext.Provider>);
   return { ui, get current() { assert.ok(current); return current; } };
 }

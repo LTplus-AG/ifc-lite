@@ -18,7 +18,8 @@ import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { IfcParser } from '@ifc-lite/parser';
-import { auditIDSDocument, parseIDS, validateIDS, type IDSDocument } from '@ifc-lite/ids';
+import assert from 'node:assert/strict';
+import { auditIDSDocument, matchConstraint, parseIDS, validateIDS, type IDSConstraint, type IDSDocument } from '@ifc-lite/ids';
 import { createDataAccessor } from '@ifc-lite/ids/bridge';
 import { writeIdsXml } from './ids-xml-writer.js';
 
@@ -105,8 +106,8 @@ describe('writeIdsXml round-trips the buildingSMART IDS corpus (#6915)', () => {
     const audit = await auditIDSDocument(xml);
     expect(audit.issues.filter((issue) => issue.severity === 'error')).toEqual([]);
     expect(() => writeIdsXml({ ...doc, specifications: [{ ...doc.specifications[0], requirements: [{ id: 'r', optionality: 'required',
-      facet: { type: 'attribute', name: { type: 'simpleValue', value: 'Name' }, value: { type: 'bounds', totalDigits: 4 } } }] }] }))
-      .toThrow(/digit bounds are not supported/);
+      facet: { type: 'attribute', name: { type: 'simpleValue', value: 'Name' }, value: { type: 'bounds', unparseableFacets: [{ facet: 'minInclusive', rawValue: '6,5' }] } } }] }] }))
+      .toThrow(/unparseable bound facets are not supported/);
   });
 
   // IDS-001: string-length restrictions are written on every facet that carries a value.
@@ -136,6 +137,47 @@ describe('writeIdsXml round-trips the buildingSMART IDS corpus (#6915)', () => {
     const bad = { ...doc, specifications: [{ ...doc.specifications[0], requirements: [{ id: 'r', optionality: 'required' as const,
       facet: { type: 'attribute' as const, name: name('Name'), value: { type: 'bounds' as const, maxLength: -1 } } }] }] };
     expect(() => writeIdsXml(bad)).toThrow(/xs:maxLength must be a non-negative integer/);
+  });
+
+  // IDS-002: digit counts and conjunctive (`and`) restrictions are written as one xs:restriction.
+  it('writes xs:totalDigits / xs:fractionDigits and conjunctive restrictions, and reads them back', async () => {
+    const name = (value: string) => ({ type: 'simpleValue', value }) as const;
+    const values: IDSConstraint[] = [
+      { type: 'bounds', base: 'xs:decimal', totalDigits: 5, fractionDigits: 2 },
+      { type: 'bounds', base: 'xs:decimal', minInclusive: 0.0000001, maxExclusive: 1e21, fractionDigits: 9 },
+      { type: 'pattern', base: 'xs:string', pattern: '[A-Z]{2}[0-9]+', and: [{ type: 'bounds', base: 'xs:string', minLength: 3, maxLength: 6 }] },
+      { type: 'enumeration', base: 'xs:string', values: ['EI60', 'EI90', 'EI120'], and: [{ type: 'bounds', base: 'xs:string', maxLength: 4 }] },
+      { type: 'pattern', base: 'xs:double', pattern: '[0-9.]+', and: [
+        { type: 'enumeration', base: 'xs:double', values: ['1.5', '2.5'] },
+        { type: 'bounds', base: 'xs:double', minInclusive: 1, maxInclusive: 2 },
+      ] },
+    ];
+    const doc: IDSDocument = { info: { title: 'Digits and conjunctions' }, specifications: [{
+      id: 's', name: 'Walls', ifcVersions: ['IFC4'], minOccurs: 1, maxOccurs: 'unbounded',
+      applicability: { facets: [{ type: 'entity', name: name('IFCWALL') }] },
+      requirements: values.map((value, i) => ({ id: `r${i}`, optionality: 'required', facet: { type: 'attribute', name: name('Name'), value } })),
+    }] };
+    const xml = writeIdsXml(doc);
+    // xs:decimal has no exponent in its lexical space: the bound is written in plain digits.
+    expect(xml).toContain('<xs:minInclusive value="0.0000001"/>');
+    expect(xml).toContain('<xs:maxExclusive value="1000000000000000000000"/>');
+    const reread = parseIDS(xml);
+    expect(reread.specifications[0].requirements.map((r) => r.facet)).toEqual(doc.specifications[0].requirements.map((r) => r.facet));
+    // The conjunction still means both: 'EI120' is an allowed value but longer than 4 characters.
+    const constraint = reread.specifications[0].requirements[3].facet;
+    assert.ok(constraint.type === 'attribute' && constraint.value);
+    expect(matchConstraint(constraint.value, 'EI90')).toBe(true);
+    expect(matchConstraint(constraint.value, 'EI120')).toBe(false);
+
+    const refusal = (value: IDSConstraint) => () => writeIdsXml({ ...doc, specifications: [{ ...doc.specifications[0], requirements: [{ id: 'r',
+      optionality: 'required', facet: { type: 'attribute', name: name('Name'), value } }] }] });
+    // XSD ORs sibling patterns, so two pattern families cannot share one restriction.
+    expect(refusal({ type: 'pattern', pattern: 'A.*', and: [{ type: 'pattern', pattern: '.*B' }] })).toThrow(/two pattern families/);
+    expect(refusal({ type: 'pattern', base: 'xs:string', pattern: 'A', and: [{ type: 'bounds', base: 'xs:double', minInclusive: 1 }] }))
+      .toThrow(/different bases/);
+    expect(refusal({ type: 'bounds', base: 'xs:double' })).toThrow(/bounds restrictions without any facet/);
+    expect(refusal({ type: 'bounds', fractionDigits: 1.5 })).toThrow(/xs:fractionDigits must be a non-negative integer/);
+    expect(refusal({ type: 'bounds', maxInclusive: Number.POSITIVE_INFINITY })).toThrow(/xs:maxInclusive must be a finite number/);
   });
 
   // #6915 review: attribute-value normalisation turns raw line breaks and tabs into spaces, and

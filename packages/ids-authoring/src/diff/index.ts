@@ -4,7 +4,7 @@
 
 export { diffDocuments } from './diff.js';
 export { diffToOps, type PatchOptions } from './patch.js';
-export { changelog, changelogMarkdown, facetLabel, type ChangelogLine, type ChangelogOptions } from './changelog.js';
+export { changelog, changelogMarkdown, describeChange, facetLabel, type ChangelogLine, type ChangelogOptions } from './changelog.js';
 export type {
   DiffEntry,
   DiffEntryKind,

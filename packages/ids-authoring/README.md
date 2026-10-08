@@ -235,6 +235,38 @@ const ops = diffToOps(before, diff); // primitive ops that turn `before` into `a
   `ids diff --md`). Sentences exist in English, German and French; facet
   and value wording comes from `@ifc-lite/ids`.
 
+## Three-way merge
+
+`mergeDocuments(base, ours, theirs)` merges two revisions of one Studio
+document at the op level. Each side's diff entries are change units with a
+key (a field of a node, a node's existence or place). Units only one side
+changed merge automatically; identical changes merge once. The rest are
+conflicts: `field` (both changed one field differently) or `deleteEdit`
+(one side removed a node, or replaced a facet, that the other changed).
+
+```ts
+import { conflictView, mergeDocuments, resolveConflict, type StudioDocument } from '@ifc-lite/ids-authoring';
+
+declare const base: StudioDocument;
+declare const ours: StudioDocument;
+declare const theirs: StudioDocument;
+let result = mergeDocuments(base, ours, theirs);
+const view = conflictView(result); // cards with "ours" / "theirs" sentences
+if (view.cards.length) {
+  const resolutions = resolveConflict(view.resolutions, view.cards[0].id, 'theirs');
+  result = mergeDocuments(base, ours, theirs, { resolutions });
+}
+// result.doc, result.ops (base → doc), result.clean
+```
+
+- An unresolved conflict keeps the base value.
+- Order is settled per list: the side that reordered wins; when both did,
+  theirs wins and `MERGE-ORDER-001` is reported.
+- Pass `{ gate }` to re-check the merged ops with the grounding gate
+  (`MERGE-GATE-001`), e.g. one side narrowed the IFC versions while the
+  other added an entity that only exists in the old ones.
+- `mergeOps(base, oursOps, theirsOps)` merges two op sequences.
+
 ## Sidecar, bundles, re-identification
 
 - `createSidecar(doc, xml)` and `attachSidecar(parsed, sidecar, { previous })`

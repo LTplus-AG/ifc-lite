@@ -121,6 +121,9 @@ export type { MatchStep, FacetMatchStep } from './match/cascade.js';
 // Semantic diff and plain-language changelog (IDS-104)
 export * from './diff/index.js';
 
+// Three-way merge and conflict view model (IDS-106)
+export * from './merge/index.js';
+
 // Plain-language rendering (IDS-027)
 export { describeFacet } from './render/describe.js';
 

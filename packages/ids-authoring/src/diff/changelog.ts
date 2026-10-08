@@ -130,6 +130,11 @@ function specNameOf(e: DiffEntry): string | undefined {
   return 'specName' in e ? e.specName : undefined;
 }
 
+/** One sentence for one diff entry. */
+export function describeChange(entry: DiffEntry, locale: SupportedLocale = 'en'): string {
+  return sentence(entry, catalogue(locale), locale);
+}
+
 /** One plain-language line per change, in diff order. */
 export function changelog(diff: DocumentDiff, options: ChangelogOptions = {}): ChangelogLine[] {
   const locale = options.locale ?? 'en';

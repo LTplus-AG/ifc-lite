@@ -35,16 +35,20 @@ const created = (value: { expressId: number } | { error: string }) => {
   return value.expressId;
 };
 
-for (const units of ['m', 'mm'] as const) for (const kind of ['wall', 'linear', 'slab'] as const) test(`#7251 reviewed ${units} ${kind} split admits independently exported native split effects`, async () => {
+for (const units of ['m', 'mm'] as const) for (const kind of ['wall', 'linear', 'column', 'member', 'slab'] as const) test(`#7251 reviewed ${units} ${kind} split admits independently exported native split effects`, async () => {
   const { dataStore } = await seedAuthoringSample();
   const storey = dataStore.entities.getExpressIdByGlobalId(GROUND_STOREY);
   const profile = { Type: 'RectangleHollow' as const, XDim: .2, YDim: .4, WallThickness: .02 };
   const id = kind === 'wall'
     ? created(s().addWall(SAMPLE_MODEL, storey, { Start: [0, 0, 0], End: [8, 0, 0], Thickness: .2, Height: 3, Name: 'Native split wall' }))
-    : kind === 'linear'
+    : kind === 'linear' || kind === 'column' || kind === 'member'
       ? created(s().addBeam(SAMPLE_MODEL, storey, { Start: [0, 8, 1], End: [8, 8, 3], Profile: profile, Name: 'Native rolled split beam' }))
       : created(s().addSlab(SAMPLE_MODEL, storey, { Profile: 'polygon', OuterCurve: [[0, 0], [8, 0], [8, 3], [4, 3], [4, 6], [0, 6]], Position: [0, 16, 0], Thickness: .2, Name: 'Native split slab' }));
-  if (kind === 'linear') {
+  if (kind === 'column' || kind === 'member') {
+    const edit = modelEditTarget(s(), SAMPLE_MODEL)!;
+    edit.editor.setEntityType(id, kind === 'column' ? 'IfcColumn' : 'IfcMember');
+  }
+  if (kind === 'linear' || kind === 'column' || kind === 'member') {
     const edit = modelEditTarget(s(), SAMPLE_MODEL)!;
     const placement = resolvePlacementChain(edit.dataStore, edit.view, edit.editor, id); assert.ok(placement);
     const direction = edit.editor.addEntity('IfcDirection', [[0, 1, 0]]).expressId;
@@ -53,10 +57,11 @@ for (const units of ['m', 'mm'] as const) for (const kind of ['wall', 'linear', 
   const authored = editedModelBytes(dataStore, s().mutationViews.get(SAMPLE_MODEL)!);
   assert.deepEqual(danglingReferences(new TextDecoder().decode(authored)), []);
   const source = await parseIfc(authored), view = new MutablePropertyView(source.properties, SAMPLE_MODEL), editor = new StoreEditor(source, view);
+  const splitKind = kind === 'column' || kind === 'member' ? 'linear' : kind;
   const scale = getModelLengthUnitScale(source), gate = resolveSplitTarget(source, view, editor, id, scale);
-  assert.ok(gate.ok && gate.kind === kind, 'the independently saved public-authored native source is splittable');
+  assert.ok(gate.ok && gate.kind === splitKind, 'the independently saved public-authored native source is splittable');
   const guid = source.entities.getGlobalId(id);
-  const cut = kind === 'slab' ? { kind, a: [2, 15] as [number, number], b: [2, 23] as [number, number] } : { kind, distance: 2 };
+  const cut = splitKind === 'slab' ? { kind: splitKind, a: [2, 15] as [number, number], b: [2, 23] as [number, number] } : { kind: splitKind, distance: 2 };
   const expected = readSplitSnapshot(source, editor, id, units);
   const reviewedCut = units === 'm' ? cut : cut.kind === 'slab' ? { kind: cut.kind, a: cut.a.map(v => v * 1000), b: cut.b.map(v => v * 1000) } : { kind: cut.kind, distance: cut.distance * 1000 };
   const [result] = splitElementsInStore(source, editor, [{ expressId: id, cut }]);
@@ -70,7 +75,7 @@ for (const units of ['m', 'mm'] as const) for (const kind of ['wall', 'linear', 
   if (kind === 'wall') {
     assert.ok(left.kind === 'wall' && right.kind === 'wall');
     assert.ok(Math.abs(left.chain.wallLength - 2) < 1e-9 && Math.abs(right.chain.wallLength - 6) < 1e-9);
-  } else if (kind === 'linear') {
+  } else if (splitKind === 'linear') {
     assert.ok(left.kind === 'linear' && right.kind === 'linear');
     assert.ok(Math.abs(left.chain.depth - 2) < 1e-9 && Math.abs(left.chain.depth + right.chain.depth - Math.hypot(8, 2)) < 1e-9);
     const state = { ...s(), models: new Map([[SAMPLE_MODEL, { ...s().models.get(SAMPLE_MODEL)!, ifcDataStore: after }]]), mutationViews: new Map([[SAMPLE_MODEL, empty]]), storeEditors: new Map() };
@@ -229,7 +234,7 @@ test('#7251 mounted review discloses cut marker limits and applies only the sele
   const boxes = [...ui.querySelectorAll<HTMLInputElement>('input[type="checkbox"]')]; assert.equal(boxes.length, 2);
   act(() => boxes[1].click());
   const apply = [...ui.querySelectorAll('button')].find(button => button.textContent === 'Apply 1 operation'); assert.ok(apply);
-  click(apply); assert.match(ui.textContent ?? '', /Applied 1 change/);
+  await act(async () => { click(apply); }); assert.match(ui.textContent ?? '', /Applied 1 change/);
   const parsed = await parseIfc(editedModelBytes(dataStore, view)), parsedView = new MutablePropertyView(parsed.properties, SAMPLE_MODEL), parsedEditor = new StoreEditor(parsed, parsedView);
   for (const [target, length] of [[id, 6], [otherId, 5]]) {
     const native = resolveSplitTarget(parsed, parsedView, parsedEditor, target, getModelLengthUnitScale(parsed));

@@ -23,7 +23,7 @@
  * height above the floor.
  */
 
-import { cloneVirtualMetadata } from './edit/metadata-clone-virtual.js';
+import { cloneEffectiveMetadata } from './edit/metadata-clone-effective.js';
 import { iterateEffectiveEntityIds, type IfcAttributeValue, type StoreEditor } from '@ifc-lite/mutations';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { generateIfcGuid, type RandomSource } from '@ifc-lite/encoding';
@@ -168,7 +168,7 @@ export function copyProductInStore(ctx: CopyContext, sourceId: number, transform
   // Openings, their doors and windows, and the parts of an assembly follow it.
   const acc: Dependents = { placements: new Map([[source.placementExpressId, copy.placementId]]), openingIds: [], fillingIds: [], partIds: [], copiedFrom: new Map([[copy.id, sourceId]]) };
   copyDependents(ctx, sourceId, copy.id, source, targetStoreyId, move, acc);
-  for (const [copiedId, originalId] of acc.copiedFrom) cloneVirtualMetadata(ctx.store, ctx.editor.getMutationView(), originalId, [copiedId]);
+  for (const [copiedId, originalId] of acc.copiedFrom) cloneEffectiveMetadata(ctx.editor.getMutationView(), ctx.editor, originalId, [copiedId]);
   return {
     copyId: copy.id, openingIds: acc.openingIds, fillingIds: acc.fillingIds, partIds: acc.partIds, storeyId: targetStoreyId,
     meshed: [copy.id, ...acc.partIds, ...acc.fillingIds], copiedFrom: acc.copiedFrom,

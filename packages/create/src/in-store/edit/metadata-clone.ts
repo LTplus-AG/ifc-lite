@@ -39,7 +39,7 @@ import type { IfcDataStore } from '@ifc-lite/parser';
 import { iterateEffectiveEntityIds, type IfcAttributeValue, type MutablePropertyView, type StoreEditor } from '@ifc-lite/mutations';
 import { readAttributes } from './placement-core.js';
 import { asRef, refList } from '../style-entity-reader.js';
-import { cloneVirtualMetadata } from './metadata-clone-virtual.js';
+import { cloneEffectiveMetadata } from './metadata-clone-effective.js';
 import { refToken } from '../copy-frame.js';
 
 /** Relationship entity types we touch (case follows STEP storage form). */
@@ -79,11 +79,15 @@ export function cloneElementMetadata(
   // guard below would catch it on the second pass, but on the
   // first pass both copies would land in the new list.
   const uniqueTargets = Array.from(new Set(targetExpressIds));
-  const deletedProperties = new Set<string>(), deletedQuantities = new Set<string>();
+  const notSharedProperties = new Set<string>(), notSharedQuantities = new Set<string>();
   if (view.hasChanges(sourceExpressId)) for (const change of view.getEffectiveChanges()) {
     if (change.entityId !== sourceExpressId || change.setName === undefined) continue;
-    if (change.kind === 'pset-deleted') deletedProperties.add(change.setName);
-    if (change.kind === 'qset-deleted') deletedQuantities.add(change.setName);
+    if (change.kind === 'pset-deleted') notSharedProperties.add(change.setName);
+    if (change.kind === 'qset-deleted') notSharedQuantities.add(change.setName);
+    // Edited source values are copied through the effective mutation view
+    // below, not by sharing their stale source definition.
+    if (change.kind === 'property') notSharedProperties.add(change.setName);
+    if (change.kind === 'quantity') notSharedQuantities.add(change.setName);
   }
   const propertyNames = new Map<number, Set<string>>(), quantityNames = new Map<number, Set<string>>();
   const namesFor = (id: number, quantity: boolean): Set<string> => {
@@ -91,8 +95,8 @@ export function cloneElementMetadata(
     let names = cache.get(id);
     if (!names) {
       const sets = quantity
-        ? view.getQuantitiesForEntity(id, base => dataStore.quantities.getForEntity(base))
-        : view.getForEntity(id, base => dataStore.properties.getForEntity(base));
+        ? view.getQuantitiesForEntity(id)
+        : view.getForEntity(id);
       names = new Set(sets.map(set => set.name));
       cache.set(id, names);
     }
@@ -117,7 +121,7 @@ export function cloneElementMetadata(
       // editing the source relationship. Sharing that raw membership would
       // restore the deleted set on the new piece.
       if (definitionName !== null && (definitionType === 'IFCELEMENTQUANTITY'
-        ? deletedQuantities : deletedProperties).has(definitionName)) continue;
+        ? notSharedQuantities : notSharedProperties).has(definitionName)) continue;
       // A builder may already have authored canonical metadata for this piece.
       // Retain that same-name set (especially its newly measured quantities),
       // and share only distinct imported sets. The source itself is untouched.
@@ -134,6 +138,6 @@ export function cloneElementMetadata(
       touched++;
     }
   }
-  cloneVirtualMetadata(dataStore, view, sourceExpressId, uniqueTargets);
+  cloneEffectiveMetadata(view, editor, sourceExpressId, uniqueTargets);
   return { relationshipsTouched: touched };
 }

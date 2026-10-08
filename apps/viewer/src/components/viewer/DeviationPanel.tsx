@@ -89,7 +89,7 @@ export function DeviationPanel({ triangleCount }: DeviationPanelProps) {
   // A placement change, model removal or device loss clears `computed`; drop
   // the copy too (4 B/point), and stop an export reading it.
   useEffect(() => {
-    if (!computed) setDistances(null);
+    if (!computed) { setDistances(null); setStats(null); }
   }, [computed]);
   useEffect(() => {
     const pending = exportRef.current;
@@ -309,7 +309,7 @@ export function DeviationPanel({ triangleCount }: DeviationPanelProps) {
       {error && (
         <span className="text-2xs text-destructive">{error}</span>
       )}
-      {stats && (
+      {computed && stats && (
         <div className="text-2xs text-muted-foreground">
           {t('deviationPanel.statsLine', {
             points: stats.points.toLocaleString(),

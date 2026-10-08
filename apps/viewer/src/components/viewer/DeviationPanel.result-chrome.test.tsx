@@ -177,3 +177,18 @@ it('#7197 native panel remount retains the stored summary source without claimin
   assert.equal(Boolean(region.querySelector('[data-testid="deviation-histogram"]')), false);
   assert.equal([...region.querySelectorAll('button')].some(button => button.textContent === 'Export CSV'), false);
 });
+
+it('#7197 native invalidation removes the prior run timing, population and source attribution', async () => {
+  const run = await setup([0.001, -0.002, 0.003, -0.004]);
+  assert.match(run.ui.textContent ?? '', /4 pts vs\. 1 tris in/);
+  assert.match(run.ui.textContent ?? '', /survey-0.las/);
+  await act(async () => {
+    // Normal RGB mode does not request a fresh automatic deviation pass on invalidation.
+    useViewerStore.getState().setPointCloudColorMode('rgb');
+    useViewerStore.getState().setPointCloudDeviationComputed(false);
+  });
+  assert.equal(useViewerStore.getState().pointCloudDeviationStatistics, null);
+  assert.doesNotMatch(run.ui.textContent ?? '', /4 pts vs\. 1 tris in/, 'native invalidation cannot retain the old timing/population claim');
+  assert.equal(run.ui.querySelector('section[aria-label="BIM ↔ scan deviation results"]'), null);
+  assert.doesNotMatch(run.ui.textContent ?? '', /survey-0.las/);
+});

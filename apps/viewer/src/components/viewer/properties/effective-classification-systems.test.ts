@@ -6,7 +6,7 @@ import assert from 'node:assert/strict';
 import { it } from 'node:test';
 import { EMPTY_SOURCE_BYTES, IfcParser } from '@ifc-lite/parser';
 import { MutablePropertyView } from '@ifc-lite/mutations';
-import { effectiveClassificationSystems } from './effective-classification-systems';
+import { classificationPopulationUnavailable, effectiveClassificationSystems } from './effective-classification-systems';
 
 const STEP = `ISO-10303-21;
 HEADER;
@@ -18,6 +18,20 @@ DATA;
 #11=IFCCLASSIFICATION('CSI','2018',$,'OmniClass',$,$,$);
 ENDSEC;
 END-ISO-10303-21;`;
+
+it('#7131 refuses a complete population when transported classification membership inputs are absent', async () => {
+  const bytes = new TextEncoder().encode(STEP);
+  const store = await new IfcParser().parseColumnar(bytes.buffer, { disableWorkerScan: true });
+  const view = new MutablePropertyView(store.properties ?? null, 'model');
+  const missingMembership = { ...store, source: EMPTY_SOURCE_BYTES };
+  // Simulate omitted transport fields without pretending undefined satisfies
+  // the normal parsed-store contract, which requires a relationship graph.
+  Reflect.deleteProperty(missingMembership, 'onDemandClassificationMap');
+  Reflect.deleteProperty(missingMembership, 'relationships');
+  assert.equal(classificationPopulationUnavailable(missingMembership, view), true);
+  assert.equal(classificationPopulationUnavailable(store, view), false);
+  assert.equal(classificationPopulationUnavailable({ ...store, source: EMPTY_SOURCE_BYTES }, view), false);
+});
 
 it('#5249 lists effective classification systems after source edits and overlay creation', async () => {
   const bytes = new TextEncoder().encode(STEP);
@@ -38,7 +52,7 @@ it('#5249 lists effective classification systems after source edits and overlay 
   view.deleteEntity(forgotten.expressId);
 
   assert.deepEqual(effectiveClassificationSystems(store, view), {
-    names: ['DIN 276', 'OmniClass 2018'], unresolved: false,
+    names: ['DIN 276', 'OmniClass positional'], unresolved: false, // #7131: native STEP export applies positional edits after named edits.
   });
   assert.equal(view.isDeleted(created.expressId), false);
 });

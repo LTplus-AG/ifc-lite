@@ -85,9 +85,8 @@ export async function buildModelSchemaIndex(state: SchemaState, options: { signa
     const view = state.mutationViews.get(modelId);
     const reader = createElementFieldReader(store, view);
     // A declared system with no assignments is valid for native absence queries.
-    // Native rule evaluation still reads the source; unsupported live classification
-    // edits are refused at preview until the common effective reader lands (#7131).
-    for (const name of effectiveClassificationSystems(store, null).names) {
+    // Discovery and native evaluation share the effective classification reader (#7131).
+    for (const name of effectiveClassificationSystems(store, view).names) {
       const key = fieldKey({ kind: 'classification', set: '', name });
       let entry = fields.get(key);
       if (!entry) { entry = { kind: 'classification', set: '', name, count: 0, byModel: new Map() }; fields.set(key, entry); }

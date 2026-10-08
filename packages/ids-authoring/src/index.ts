@@ -125,6 +125,7 @@ export { createLintContext } from './lint/context.js';
 export { createLinter, lintDocument, lintDocsUrl, type Linter, type LinterOptions } from './lint/engine.js';
 export { checkQuickFix } from './lint/fix.js';
 export { LINT_RULES } from './lint/rules/index.js';
+export { explainXsdPattern, type PatternExplanation } from './lint/rules/xsd-regex.js';
 export type {
   Diagnostic,
   DocumentRule,

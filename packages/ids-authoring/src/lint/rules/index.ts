@@ -7,6 +7,7 @@
 import type { LintRule } from '../types.js';
 import { ENT_001, ENT_002, ENT_003, ENT_004, ENT_005 } from './entity.js';
 import { ATT_001, ATT_002, PDT_001, PDT_002, PDT_003 } from './pdt-att.js';
+import { REGEX_001, REGEX_002, REGEX_003, REGEX_004 } from './regex.js';
 import { UNIT_001, VAL_008 } from './units.js';
 import { VAL_001, VAL_002, VAL_003, VAL_004, VAL_005, VAL_006 } from './values.js';
 import { PROP_001, PROP_002, PROP_003, PSET_001, PSET_002, PSET_003 } from './pset.js';
@@ -36,4 +37,8 @@ export const LINT_RULES: readonly LintRule[] = [
   VAL_006,
   VAL_008,
   UNIT_001,
+  REGEX_001,
+  REGEX_002,
+  REGEX_003,
+  REGEX_004,
 ];

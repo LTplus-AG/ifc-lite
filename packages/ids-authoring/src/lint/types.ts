@@ -104,6 +104,12 @@ export interface SpecView {
 /** What a finding carries before the engine stamps code, severity and docs. */
 export interface Finding {
   nodeId: Uuid;
+  /**
+   * Demote this finding below the rule's default severity (e.g. a construct
+   * the reference tools accept in practice). Ignored when the caller
+   * overrides the rule's severity.
+   */
+  severity?: LintSeverity;
   field?: FacetFieldName;
   message: string;
   fixes?: QuickFix[];

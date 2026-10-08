@@ -96,7 +96,7 @@ export function createLinter(ctx: LintContext, options: LinterOptions = {}): Lin
   const stamp = (rule: LintRule, f: Finding, specId: Uuid | undefined): Diagnostic => {
     const d: Diagnostic = {
       code: rule.code,
-      severity: severityOf(rule) as LintSeverity,
+      severity: options.severity?.[rule.code] ? (severityOf(rule) as LintSeverity) : (f.severity ?? rule.defaultSeverity),
       nodeId: f.nodeId,
       message: f.message,
       why: rule.rationale,

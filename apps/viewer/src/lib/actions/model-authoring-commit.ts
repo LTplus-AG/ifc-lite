@@ -23,7 +23,7 @@ import { runTransaction } from '@/lib/commands/modeling/transaction';
 import type { AuthoringTransaction, CommitResult, ModelingCommand } from '@/lib/commands/modeling/types';
 import { buildStoreyWorkplane, isWorkplane } from '@/lib/commands/modeling/workplane';
 import { commitElementTransform, planSelectionTransform } from '@/lib/element-transform/commit';
-import { writeNativeSplit, splitSourcesCurrent } from './model-authoring-split';
+import { writeNativeSplit } from './model-authoring-split';
 import { recordModellingEdit, recordModellingCommit } from '@/store/slices/mutation-modelling-records';
 import { toMetres, type AuthoringOp, type ModelAuthoringBatch } from './model-authoring';
 import { authoredElementOf, hostedSpecOf, idOf, writeRelation } from './model-authoring-native';
@@ -167,7 +167,7 @@ export function commitModelAuthoring(
   origin: string,
 ): CommitOutcome {
   // Re-run the preflight: approval covers what was shown, nothing that moved since.
-  if (!authoringSourcesAreCurrent(store.getState(), preview) || !splitSourcesCurrent(store.getState(), preview)) return { ok: false, reason: 'stale' };
+  if (!authoringSourcesAreCurrent(store.getState(), preview)) return { ok: false, reason: 'stale' };
   const fresh = previewModelAuthoring(store.getState(), preview.batch);
   if (fresh.digest !== preview.digest || store.getState().mutationVersion !== preview.mutationVersion) return { ok: false, reason: 'stale' };
   const chosen = writableRows(fresh, approved);

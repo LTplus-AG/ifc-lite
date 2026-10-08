@@ -35,18 +35,19 @@ const created = (value: { expressId: number } | { error: string }) => {
   return value.expressId;
 };
 
-for (const units of ['m', 'mm'] as const) for (const kind of ['wall', 'linear', 'column', 'member', 'slab'] as const) test(`#7251 reviewed ${units} ${kind} split admits independently exported native split effects`, async () => {
+for (const units of ['m', 'mm'] as const) for (const kind of ['wall', 'wallStandardCase', 'linear', 'column', 'member', 'slab', 'roof', 'plate', 'space'] as const) test(`#7251 reviewed ${units} ${kind} split admits independently exported native split effects`, async () => {
   const { dataStore } = await seedAuthoringSample();
   const storey = dataStore.entities.getExpressIdByGlobalId(GROUND_STOREY);
   const profile = { Type: 'RectangleHollow' as const, XDim: .2, YDim: .4, WallThickness: .02 };
-  const id = kind === 'wall'
+  const id = kind === 'wall' || kind === 'wallStandardCase'
     ? created(s().addWall(SAMPLE_MODEL, storey, { Start: [0, 0, 0], End: [8, 0, 0], Thickness: .2, Height: 3, Name: 'Native split wall' }))
     : kind === 'linear' || kind === 'column' || kind === 'member'
       ? created(s().addBeam(SAMPLE_MODEL, storey, { Start: [0, 8, 1], End: [8, 8, 3], Profile: profile, Name: 'Native rolled split beam' }))
       : created(s().addSlab(SAMPLE_MODEL, storey, { Profile: 'polygon', OuterCurve: [[0, 0], [8, 0], [8, 3], [4, 3], [4, 6], [0, 6]], Position: [0, 16, 0], Thickness: .2, Name: 'Native split slab' }));
-  if (kind === 'column' || kind === 'member') {
+  if (kind === 'column' || kind === 'member' || kind === 'wallStandardCase' || kind === 'roof' || kind === 'plate' || kind === 'space') {
     const edit = modelEditTarget(s(), SAMPLE_MODEL)!;
-    edit.editor.setEntityType(id, kind === 'column' ? 'IfcColumn' : 'IfcMember');
+    const classes = { column: 'IfcColumn', member: 'IfcMember', wallStandardCase: 'IfcWallStandardCase', roof: 'IfcRoof', plate: 'IfcPlate', space: 'IfcSpace' };
+    edit.editor.setEntityType(id, classes[kind]);
   }
   if (kind === 'linear' || kind === 'column' || kind === 'member') {
     const edit = modelEditTarget(s(), SAMPLE_MODEL)!;
@@ -57,7 +58,7 @@ for (const units of ['m', 'mm'] as const) for (const kind of ['wall', 'linear', 
   const authored = editedModelBytes(dataStore, s().mutationViews.get(SAMPLE_MODEL)!);
   assert.deepEqual(danglingReferences(new TextDecoder().decode(authored)), []);
   const source = await parseIfc(authored), view = new MutablePropertyView(source.properties, SAMPLE_MODEL), editor = new StoreEditor(source, view);
-  const splitKind = kind === 'column' || kind === 'member' ? 'linear' : kind;
+  const splitKind = kind === 'column' || kind === 'member' ? 'linear' : kind === 'wallStandardCase' ? 'wall' : kind === 'roof' || kind === 'plate' || kind === 'space' ? 'slab' : kind;
   const scale = getModelLengthUnitScale(source), gate = resolveSplitTarget(source, view, editor, id, scale);
   assert.ok(gate.ok && gate.kind === splitKind, 'the independently saved public-authored native source is splittable');
   const guid = source.entities.getGlobalId(id);
@@ -72,7 +73,7 @@ for (const units of ['m', 'mm'] as const) for (const kind of ['wall', 'linear', 
   assert.notEqual(after.entities.getGlobalId(result.addedId), guid, 'exactly one native new root has a derived identity');
   const left = resolveSplitTarget(after, empty, afterEditor, result.leftId, scale), right = resolveSplitTarget(after, empty, afterEditor, result.rightId, scale);
   assert.ok(left.ok && right.ok, 'both independent native exports remain readable supported split targets');
-  if (kind === 'wall') {
+  if (splitKind === 'wall') {
     assert.ok(left.kind === 'wall' && right.kind === 'wall');
     assert.ok(Math.abs(left.chain.wallLength - 2) < 1e-9 && Math.abs(right.chain.wallLength - 6) < 1e-9);
   } else if (splitKind === 'linear') {

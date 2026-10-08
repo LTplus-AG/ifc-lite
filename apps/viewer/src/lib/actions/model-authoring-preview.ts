@@ -33,7 +33,7 @@ import { sizeInMetres, type ExpectedSize } from './model-authoring-size-params';
 import { profileInMetres } from './model-authoring-shape-params';
 import type { ProfileSection } from '@ifc-lite/create';
 import { readSplitSnapshot, sameSplitSnapshot, type SplitSnapshot } from './model-authoring-split-state';
-import { uniqueSplitGuid, pinSplitSources } from './model-authoring-split';
+import { uniqueSplitGuid } from './model-authoring-split';
 import { authoringSplitMarker } from './model-authoring-split-ghost';
 import { authoringSizeGhost } from './model-authoring-size-ghost';
 
@@ -330,7 +330,7 @@ export function previewModelAuthoring(state: ViewerState, batch: ModelAuthoringB
   }
   const preview = { batch, rows: ctx.rows, mutationVersion: state.mutationVersion, digest: batchDigest(batch) };
   captureAuthoringSources(state, preview);
-  return pinSplitSources(state, preview);
+  return preview;
 }
 
 /** The builders decide what static checks cannot: dimensions, hosts, joins, schema support. */

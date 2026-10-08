@@ -5,7 +5,7 @@ import '@/test/setup-dom.js';
 import 'fake-indexeddb/auto';
 import assert from 'node:assert/strict';
 import { afterEach, test } from 'node:test';
-import { getAttributeNamesForSchema } from '@ifc-lite/parser';
+import { extractMaterialsOnDemand, getAttributeNamesForSchema } from '@ifc-lite/parser';
 import { MutablePropertyView } from '@ifc-lite/mutations';
 import { useViewerStore } from '@/store';
 import { applyMaterialLayers } from '@/components/viewer/model-inspector/inspector-edits';
@@ -409,3 +409,55 @@ test('#7275 reviewed layers retain native unreadable hosted-cut refusal without 
   assert.equal(view.getNewEntities().length, count);
   assert.deepEqual(commitModelAuthoring(useViewerStore, preview, new Set([0]), 'test'), { ok: false, reason: 'nothing-approved' });
 });
+
+
+test('#7275 native occurrence plain material masks inherited type layers in both canonical snapshot and evidence', async () => {
+  const { dataStore, view, target } = await inspectorControl();
+  const typeId = dataStore.entities.getExpressIdByGlobalId(FRONT_WALL_TYPE);
+  recordModellingEdit(useViewerStore, SAMPLE_MODEL, methods => methods.assignType(SAMPLE_MODEL, typeId, [target]));
+  assert.ok(applyMaterialLayers(SAMPLE_MODEL, { kind: 'wall', target: 'type', elementId: target, typeId,
+    layers: [{ thickness: .4, material: { name: 'Hidden type material' } }] }) !== null);
+  recordModellingEdit(useViewerStore, SAMPLE_MODEL, methods => methods.assignMaterial(SAMPLE_MODEL, 62, [target]));
+  const parsed = await parseIfc(editedModelBytes(dataStore, view));
+  const parsedView = new MutablePropertyView(parsed.properties ?? null, SAMPLE_MODEL);
+  assert.equal(extractMaterialsOnDemand(parsed, target, parsedView)?.type, 'Material', 'independent native export proves the occurrence plain material overrides type layers');
+  assert.equal(layerSetOf({ dataStore: parsed, view: parsedView }, typeId)?.layers[0].thickness, .4);
+  assert.equal(layerSetOf({ dataStore: parsed, view: parsedView }, target), null, 'canonical inspector must not invent inherited layers behind a plain occurrence override');
+  const evidence = transportedLayerEvidence(useViewerStore.getState(), target);
+  assert.equal(evidence.layerCount, 0);
+  assert.deepEqual(evidence.expected?.MaterialLayers, []);
+  assert.equal(evidence.expected?.typeLayers?.MaterialLayers[0].LayerThickness, .4);
+});
+
+
+for (const scope of ['element', 'type'] as const) {
+  test(`#7275 native ${scope} layer scope refuses same-model duplicate rooted identity`, async () => {
+    const { dataStore, view, target, globalId } = await inspectorControl();
+    const typeId = dataStore.entities.getExpressIdByGlobalId(FRONT_WALL_TYPE);
+    if (scope === 'type') {
+      recordModellingEdit(useViewerStore, SAMPLE_MODEL, methods => methods.assignType(SAMPLE_MODEL, typeId, [target]));
+      assert.ok(applyMaterialLayers(SAMPLE_MODEL, { kind: 'wall', target: 'type', elementId: target, typeId,
+        layers: [{ thickness: .4, material: { name: 'Actual type layers' } }] }) !== null);
+    }
+    const state = useViewerStore.getState();
+    const expected = transportedLayerEvidence(state, target).expected;
+    assert.ok(expected);
+    const batch = layerBatch(expected, globalId, scope);
+    const editor = state.storeEditors.get(SAMPLE_MODEL);
+    assert.ok(editor);
+    const owner = scope === 'element' ? target : typeId;
+    const original = view.getNewEntity(owner) ?? dataStore.getEntity(owner);
+    assert.ok(original);
+    const attributes = [...original.attributes];
+    const duplicate = editor.addEntity(scope === 'element' ? 'IfcWall' : 'IfcWallType', attributes);
+    const source = await parseIfc(editedModelBytes(dataStore, view));
+    assert.equal(source.entities.getGlobalId(duplicate.expressId), source.entities.getGlobalId(owner));
+    assert.notEqual(duplicate.expressId, owner);
+    assert.equal(source.entities.getName(duplicate.expressId), source.entities.getName(owner), 'same native Name cannot disambiguate identical RootGUIDs');
+    const count = view.getMutationCount(), lease = view.prepareAtomic(() => undefined);
+    const preview = previewModelAuthoring(useViewerStore.getState(), batch);
+    assert.notEqual(preview.rows[0].status, 'ready', 'a public native duplicate root cannot be chosen silently for layer effects');
+    assert.equal(view.getMutationCount(), count);
+    assert.doesNotThrow(lease.validate);
+  });
+}

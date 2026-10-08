@@ -201,8 +201,10 @@ function layerSetBehind(model: LiveModel, materialId: number | null): number | n
 
 /** The element's layer set: its own association first, then its type's. */
 export function layerSetOf(model: LiveModel, expressId: number): LiveLayerSet | null {
-  const own = layerSetBehind(model, relatingOf(model, 'IfcRelAssociatesMaterial', expressId));
-  const typeId = own === null ? typeOf(model, expressId) : null;
+  const ownMaterial = relatingOf(model, 'IfcRelAssociatesMaterial', expressId);
+  const own = layerSetBehind(model, ownMaterial);
+  // Any occurrence material association overrides the type, including a plain material.
+  const typeId = ownMaterial === null ? typeOf(model, expressId) : null;
   const inherited = typeId === null ? null : layerSetBehind(model, relatingOf(model, 'IfcRelAssociatesMaterial', typeId));
   const layerSetId = own ?? inherited;
   const layers = layerSetId === null ? null : readLayerSet(model, layerSetId);

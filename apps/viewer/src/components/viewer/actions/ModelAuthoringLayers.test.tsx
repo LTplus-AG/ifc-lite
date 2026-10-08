@@ -40,6 +40,7 @@ async function targets(count = 1) {
   const parsed = await parseIfc(editedModelBytes(dataStore, view));
   const selection = captureSelectionGrounding({ ...useViewerStore.getState(), selectedEntityIds: new Set(ids) });
   assert.equal(selection.elements.length, count);
+  for (const element of selection.elements) assert.ok(element.nativeLayers?.expected, '#7275 existing selection endpoint must supply complete native layer expectations');
   const batch = parseModelAuthoringBatch(JSON.stringify({ version: 1, kind: 'model.authoring', title: 'Native layer review', units: 'm', frame: 'storey-local',
     operations: selection.elements.map((element, i) => ({ op: 'material.layers', scope: 'element',
       target: { globalId: element.globalId, modelId: element.modelId, ifcClass: element.type, name: element.name ?? '' },

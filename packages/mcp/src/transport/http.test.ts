@@ -528,17 +528,6 @@ describe('HttpTransport session cap (#6943)', () => {
       expect((await initialize(port)).status).toBe(200);
     });
 
-    it('a body the server cannot parse still counts as the owner being active', async () => {
-      const port = await start({ maxSessions: 1, sessionIdleMs: IDLE });
-      const sid = await initSession(port, 'alice-token');
-      advance(100 * IDLE);
-      const res = await request(port, 'alice-token', { method: 'POST', sessionId: sid, body: '{not json' });
-      expect(res.status).toBe(400);
-      await expectCapacityRefusal(await initialize(port));
-      advance(IDLE);
-      expect((await initialize(port)).status).toBe(200);
-    });
-
     it('rejects limits that would silently disable the policy', () => {
       for (const maxSessions of [Number.NaN, 0, -1, 1.5, Number.POSITIVE_INFINITY]) {
         expect(() => capped({ maxSessions })).toThrow(RangeError);
@@ -596,6 +585,20 @@ describe('HttpTransport session cap (#6943)', () => {
   });
 
   describe('idle timing', () => {
+    it('an authorised upload that ends with a parse error restarts the idle window (#6943)', async () => {
+      const port = await start({ maxSessions: 1, sessionIdleMs: IDLE });
+      const sid = await initSession(port, 'alice-token');
+      advance(100 * IDLE);
+      const invalid = await request(port, 'alice-token', { method: 'POST', sessionId: sid, body: '{' });
+      expect(invalid.status).toBe(400);
+      await expectCapacityRefusal(await initialize(port));
+      advance(IDLE - 1);
+      await expectCapacityRefusal(await initialize(port));
+      advance(1);
+      expect((await initialize(port)).status).toBe(200);
+      expect(await ping(port, sid)).toBe(404);
+    });
+
     it('one millisecond under the window is not reclaimed; exactly at the window is', async () => {
       const port = await start({ maxSessions: 1, sessionIdleMs: IDLE });
       const sid = await initSession(port, 'alice-token');

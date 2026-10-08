@@ -14,7 +14,7 @@ import type { StateCreator } from 'zustand';
 import type { Lens, LensRule, AutoColorSpec, AutoColorLegendEntry, DiscoveredLensData } from '@ifc-lite/lens';
 import { BUILTIN_LENSES } from '@ifc-lite/lens';
 import { duplicateLensConfig, reserveUniqueId } from '@/components/viewer/lens-editor-utils';
-import { mergeImportedGroupLenses, migrateSavedLens } from '@/lib/lens/migrate-saved-lens';
+import { encodeSavedLens, mergeImportedGroupLenses, migrateSavedLens } from '@/lib/lens/migrate-saved-lens';
 import { saveJson, type SaveResult } from '@/lib/storage/save-result';
 import { defineSliceTeardown, notApplicable } from '../teardown.js';
 export type { Lens, LensRule, AutoColorSpec, AutoColorLegendEntry, DiscoveredLensData };
@@ -98,7 +98,7 @@ function saveLenses(lenses: Lens[]): SaveResult {
     // lens fails here rather than in saveJson. Same class of failure.
     return { ok: false, reason: 'serialize', message: `Could not save ${SAVE_SUBJECT}.` };
   }
-  return saveJson(STORAGE_KEY, toStore, SAVE_SUBJECT);
+  return saveJson(STORAGE_KEY, toStore.map(encodeSavedLens), SAVE_SUBJECT);
 }
 
 /** Build initial lens list: builtins (with overrides applied) + custom */

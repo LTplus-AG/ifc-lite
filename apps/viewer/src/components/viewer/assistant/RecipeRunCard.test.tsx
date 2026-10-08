@@ -98,8 +98,16 @@ test('#7055 a clash-group review step attaches native clash evidence before open
   const result = { clashes: [], summary: summarizeClashes([]), rulesRun: [], settings: { tolerance: 0.002, excludeVoidsAndHosts: true } };
   useViewerStore.setState({ clashResult: result, clashRawResult: result });
   useAssistant.setState({ snapshot: null, messages: [], status: 'idle', controller: null });
-  let requests = 0;
-  globalThis.fetch = async () => { requests += 1; throw new Error('Review navigation must not contact a provider'); };
+  let providerRequests = 0;
+  globalThis.fetch = async (input, init) => {
+    // #7055: mounting the real Assistant reads quota when CI configures a free model.
+    // Keep that external read deterministic; every generation request remains forbidden.
+    if (init?.method === 'GET' && String(input).endsWith('?usage=1')) {
+      return new Response(JSON.stringify({ usage: { type: 'requests', used: 0, limit: 50, pct: 0, resetAt: 1_700_000_000 } }));
+    }
+    providerRequests += 1;
+    throw new Error('Review navigation must not contact a provider');
+  };
   assert.equal(recipeRun.startRecipe({ ...recipe, steps: [{ kind: 'review', action: 'clash.groups' }] }, availability.readHostSnapshot(useViewerStore.getState())).ok, true);
   recipeRun.useRecipeRun.setState({ draftPrompt: 'Earlier recipe prompt still queued' });
   setAssistantDraft('My unsent review note');
@@ -112,7 +120,8 @@ test('#7055 a clash-group review step attaches native clash evidence before open
   await waitFor(() => assistantUi.querySelector('section[aria-label="Review clash groups"]') !== null, 'native clash review section inside Assistant');
   assert.equal(useAssistantDraft.getState().text, 'My unsent review note', 'review navigation preserves the user-editable composer');
   assert.equal(document.querySelector('[role="alertdialog"]'), null, 'review does not replay the queued ask prompt');
-  assert.equal(useAssistant.getState().controller, null); assert.equal(requests, 0);
+  assert.equal(useAssistant.getState().controller, null);
+  assert.equal(providerRequests, 0, 'review navigation never sends a model request');
 });
 
 test('#7055 a graph-patch review step attaches native Flow evidence without queuing a request', () => {

@@ -207,3 +207,5 @@ ReferenceError; it is not a model failure or a valid timing sample, and is
 excluded from this independent complete schedule. No CI baseline was changed.
 
 The source-frame replacement follow-up in [source-frame-replacement](source-frame-replacement/README.md) preserves a genuine dropped review finding and its actual canonical counterexample. Weak historical ownership corrects registered copies across source restoration without retaining old allocations; current raw controls and source/runtime hashes remain separate from earlier qualification.
+
+The [immutable history carry](immutable-history-carry/README.md) follow-up preserves the next genuine dropped finding: immutable recolour after source-frame restoration changed the release owner. Independent flat weak snapshots fix that sequence while preserving unrelated replacement fields. Its source/control receipts also preserve the WASM artifact identity change observed during subsequent typecheck.

@@ -1,0 +1,127 @@
+{
+  "qualifiedSourceCommit": "9c6ade92fa61b9696419e745e02f95e111ed8366",
+  "executionHead": "8785f72bf23cde156f8d818162afc17cf81df767",
+  "executionWorkingTree": "four candidate source/test files dirty at exact hashes, subsequently committed without byte changes",
+  "sourceSHA256": {
+    "apps/viewer/src/lib/geometry-cpu-buffers.ts": "179c366fafb47848eca16936cbffd74be29291f4a72ad2ee13902edf128c869a",
+    "apps/viewer/src/lib/geometry-cpu-aliases.ts": "e3324e93cc4f6a3246273b7071aaf819011d882febb4c5acea28db00061bb072",
+    "apps/viewer/src/lib/geometry-cpu-appearance.test.ts": "824a285002697958f299e1145a1432cefe0dcd374ba5961d3a748b73ec25d640",
+    "apps/viewer/src/test/geometry-cpu-aliases-gc.ts": "c5496cfe067ce31e592d771c3993bd60535f830fefa7646c63853fd01ce5d8bf"
+  },
+  "results": {
+    "oldProduction": {
+      "head": "8785f72bf23cde156f8d818162afc17cf81df767",
+      "exitCode": 1,
+      "pass": 5,
+      "fail": 1,
+      "skip": 0,
+      "actualAssertion": "recoloured release target must own prior source positions;48 !=0"
+    },
+    "correctedFocused": {
+      "exitCode": 0,
+      "pass": 6,
+      "fail": 0,
+      "skip": 0
+    },
+    "broader": {
+      "exitCode": 0,
+      "pass": 78,
+      "fail": 0,
+      "skip": 0,
+      "scope": "federated geometry/appearance/dataSlice/cache/placement; actualBonsai and strengthened realGC"
+    },
+    "plainFullRootTypecheck": {
+      "exitCode": 0,
+      "packageTestFiles": 3726,
+      "packages": 62
+    },
+    "moduleSize": 0,
+    "sourceTestGate": 0,
+    "testWiring": 0,
+    "touchedOxlint": 0
+  },
+  "runtimeBoundary": "Actual broader runtime observation b335... differs from 8b742... restored by plain root typecheck cached wasm build. Both exact hashes are retained. Broader/Bonsai controls are tied to b335 observed binary, not relabeled as 8b. Rusttree, JS/d.ts and fixture unchanged.",
+  "currentRuntimeAdditionalControl": "Not rerun: actual broader/Bonsai proof belongs to observed b335 binary. The post-typecheck8b runtime is separately observed and is not claimed as the runtime used for these controls.",
+  "archives": {
+    "root-turbo-inverse.log": {
+      "archive": "root-turbo-inverse.log.gz",
+      "rawSha256": "201ce4b91eeb52b7ba8c26ce60005384f559f366f232525fcd0c71484f2653d0",
+      "archiveSha256": "fa33693226e445a002b165b4cf652ced0ea2a316aad201c6577557615ba2cdbb"
+    },
+    "root-turbo-corrected.log": {
+      "archive": "root-turbo-corrected.log.gz",
+      "rawSha256": "d0ab37bcafa96ca341f86d06302d704072cf1cae2680df1f5161ab3a20729572",
+      "archiveSha256": "be0d9f1073f01fa2303205d900e64c95967a03ad467588a1fddfa41cbd41de20"
+    },
+    "root-turbo-broader.log": {
+      "archive": "root-turbo-broader.log.gz",
+      "rawSha256": "8a47c057738a66aa8a598bf29d8f5b402eebd25c0a43cb390d85c7271c444a57",
+      "archiveSha256": "84127ae1faa52b05f6691dfd89d695f9f34a43609473ed9ba5cb275c69ca9b2e"
+    },
+    "plain-root-typecheck.log": {
+      "archive": "plain-root-typecheck.log.gz",
+      "rawSha256": "411290ca8f5d03588b480c7f7e2bb6b44d1635a8d366de0cce4b29fb1f1de4b0",
+      "archiveSha256": "d54dfee33807d1e8a6c8b9d707fff6ac63763f8d2f4673f706b5bdeb6944c93b"
+    },
+    "module-size.log": {
+      "archive": "module-size.log.gz",
+      "rawSha256": "540bb0322d95b2d8909355df5ed26f40310512e284e2e74d47e9f24b5571e01a",
+      "archiveSha256": "6f8f8ef7a3ed217a1d9eb4e3d54b67134186c6201bf0c30d23fe00cbced9149b"
+    },
+    "source-test-gate.log": {
+      "archive": "source-test-gate.log.gz",
+      "rawSha256": "f7c335a7e07f58b60547b678a329308deacfc115807428314308a5f47e06a5c5",
+      "archiveSha256": "5ebc2c5ff4fed05fae581e34435b88dfe3fad154fe3ac87763d6c4fbd1709484"
+    },
+    "wiring.log": {
+      "archive": "wiring.log.gz",
+      "rawSha256": "98a10385e08b01728c5beafad6abc4108f0096cb636594ec566c3f51a2950c30",
+      "archiveSha256": "15b34a6b5c7ff51cbcf9fa5707542d2a6b2fc540ddc13e73db4170356830d853"
+    },
+    "touched-lint.log": {
+      "archive": "touched-lint.log.gz",
+      "rawSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "archiveSha256": "9ceffb7310338057cfe71a4ae1e2c98d2c485d81cdef906532a801f457a38d64"
+    },
+    "qualified-geometry-cpu-buffers.ts": {
+      "archive": "qualified-geometry-cpu-buffers.ts.gz",
+      "rawSha256": "179c366fafb47848eca16936cbffd74be29291f4a72ad2ee13902edf128c869a",
+      "archiveSha256": "88f2efd46fb2277072abd029ae50f84a06cc1bd04b2b350174776e12c9ca6698"
+    },
+    "qualified-geometry-cpu-aliases.ts": {
+      "archive": "qualified-geometry-cpu-aliases.ts.gz",
+      "rawSha256": "e3324e93cc4f6a3246273b7071aaf819011d882febb4c5acea28db00061bb072",
+      "archiveSha256": "352ca8a028f42b2fb4e9b174a63ca88f7bc998139b5ee54f35543e833dd08efb"
+    },
+    "qualified-geometry-cpu-appearance.test.ts": {
+      "archive": "qualified-geometry-cpu-appearance.test.ts.gz",
+      "rawSha256": "824a285002697958f299e1145a1432cefe0dcd374ba5961d3a748b73ec25d640",
+      "archiveSha256": "e8a4d12534846d64920e7c01a4981beeb4805be1f5301cf2e0a79ad083e67326"
+    },
+    "qualified-geometry-cpu-aliases-gc.ts": {
+      "archive": "qualified-geometry-cpu-aliases-gc.ts.gz",
+      "rawSha256": "c5496cfe067ce31e592d771c3993bd60535f830fefa7646c63853fd01ce5d8bf",
+      "archiveSha256": "8e7df615d437b76215254ad8a10ffac612a62e826cf83d0cd463c7e9dce95fb7"
+    },
+    "actual-raw-review.txt": {
+      "archive": "actual-raw-review.txt.gz",
+      "rawSha256": "00a4a928192bfe66f9dc7ea10d2783a519708d74b9396fafb6819eaaa20d04e6",
+      "archiveSha256": "5d33d56b918a9830cb3fe40944aa7874a69e4d1eb916e830c8cdd226694542a5"
+    }
+  },
+  "additionalFileSHA256": {
+    "actual-judge-verdict.json": "ea567870e922f56929ba39aa9e72b13bed16c93e17b4df55550c8a6a81c3c9a9",
+    "runtime-after-typecheck.json": "2e246d78e4f7f8a4c59a6c2b4fce6e5fc0c1af565e3d7a1b90f78baaa106f580",
+    "direct-canonical-counterexample.json": "ea1da0fac6fe4b91b01b747c5087b26cd569bc3042bfc4fd238dab516b9d7de5",
+    "runtime-before-typecheck.json": "570c3158503512773ea92fc093dc0cf5f9b44992d04ca7dbc5d6c1f51b68f8bc",
+    "root-independent-source-review.json": "c21f9d7b1a2c8be422ba6791de5fcf0dea77ad6ad34ea9e166789cd16a9b04d3",
+    "actual-dropped-finding.json": "18569734a2ea12b27c9f33c9d01778ee69d063c02dbbdcd8f36a9d2be373173b"
+  },
+  "limits": [
+    "No native browser/GPU performance or OS resident claim.",
+    "Only actual registered copy allocation ownership; no automatic Scene fragment registration.",
+    "No per-recolour parent history chain: flat independent weak snapshots, prune collected allocation references.",
+    "Prior root review receipt preserves then-pending typecheck flag; actual terminal log supplies subsequent3726coverage.",
+    "No push/merge; fresh exact-head CI remains required."
+  ]
+}

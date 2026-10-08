@@ -24,6 +24,8 @@ import { formatLocaleList } from '@/i18n/intlFormat';
 import { EXPRESS_PREDEFINED_TYPE_ATTRIBUTE, EXPRESS_THICKNESS_ATTRIBUTE } from './express-labels';
 import type {
   StructuralExtraction,
+  StructuralConnectionInfo,
+  StructuralActivityInfo,
   StructuralLoadInfo,
 } from '@ifc-lite/parser';
 import { selectedStructuralMember, structuralRelatedRows } from './selectedStructuralMember';

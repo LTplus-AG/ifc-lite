@@ -94,6 +94,7 @@ export const zonesPanelEn = {
   'zonesPanel.apportionSummary.cachedPopulation': { one: '{count} cached entity outcome', other: '{count} cached entity outcomes' },
   'zonesPanel.apportionSummary.coverage': '{apportioned} proved splits / {processed} cached entity outcomes',
   'zonesPanel.apportionSummary.notComputed': 'No split result computed for this zone geometry',
+  'zonesPanel.apportionSummary.staleEvidence': 'Cached split evidence is older than the current model state',
   'zonesPanel.apportionSummary.sourceUnknown': 'Cached source history is unavailable; current models do not establish its origin',
   'zonesPanel.apportionSummary.incremental': 'Per-element cache updates do not establish complete whole-set coverage',
   'zonesPanel.apportionSummary.identityUnknown': '{count} cached entity identities are unavailable',

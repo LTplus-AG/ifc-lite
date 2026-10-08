@@ -157,6 +157,20 @@ test('#7204 an unrecorded native cache stays unknown through a per-element updat
   assert.match(view.textContent ?? '', /2 proved splits \/ 2 cached entity outcomes/);
 });
 
+test('#7204 unknown older origins do not hide known-row geometry staleness', async t => {
+  if (!ensureWasm(t)) return;
+  const f = await seed(true); const actual = computeZoneApportionmentNow(f.zoneSet);
+  useViewerStore.setState({ zoneApportionment: new Map([[f.zoneSet.id, { ...actual }]]) });
+  computeZoneApportionmentForElement(f.zoneSet, f.ids[1]);
+  const ui = render(<ZoneApportionSummary zoneSet={f.zoneSet} />);
+  await act(async () => { useViewerStore.setState({ geometryContentVersion: useViewerStore.getState().geometryContentVersion + 1 }); });
+  const view = region(ui);
+  assert.ok(view.querySelector('[data-status="uncertain"]'), 'the retained unrecorded row still has unknown origin');
+  assert.match(view.textContent ?? '', /Cached source history is unavailable/);
+  assert.match(view.textContent ?? '', /Cached split evidence is older than the current model state/, 'known captured geometry staleness remains explicit beside unknown-origin coverage');
+  assert.match(view.textContent ?? '', /2 proved splits \/ 2 cached entity outcomes/);
+});
+
 test('#7204 native geometry without its IFC table preserves measurements and discloses unavailable identity', async t => {
   if (!ensureWasm(t)) return;
   const f = await seed(); useViewerStore.getState().updateModel(f.names[0], { ifcDataStore: null });

@@ -59,6 +59,7 @@ export function ZoneApportionSummary({ zoneSet }: { zoneSet: ZoneSet }) {
   const incomplete = [
     ...(!entry ? [t('zonesPanel.apportionSummary.notComputed')] : []),
     ...(entry && unknownSource ? [t('zonesPanel.apportionSummary.sourceUnknown')] : []),
+    ...(stale ? [t('zonesPanel.apportionSummary.staleEvidence')] : []),
     ...(source?.incremental ? [t('zonesPanel.apportionSummary.incremental')] : []),
     ...(missingIdentity ? [t('zonesPanel.apportionSummary.identityUnknown', { count: missingIdentity })] : []),
     ...(coverage.noGeometry ? [t('zonesPanel.apportionSummary.noGeometryClause', { count: coverage.noGeometry })] : []),

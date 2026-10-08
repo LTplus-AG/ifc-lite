@@ -55,6 +55,8 @@ export function cancelClashRun(
   epoch: MutableRef<number>,
   active: MutableRef<AbortController | null>,
 ): void {
+  // A passive/older mounted hook must not clear the current owner's UI.
+  if (clashSession && clashSession.controller !== active.current) return;
   invalidateAbortableRun(epoch, active);
   const state = useViewerStore.getState();
   state.setClashRunning(false);

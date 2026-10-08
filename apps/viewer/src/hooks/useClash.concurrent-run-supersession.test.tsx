@@ -382,4 +382,26 @@ describe('owned native clash activity cancellation (#7110)', () => {
     assert.equal(useViewerStore.getState().clashResult, null);
   });
 
+
+  it('an older mounted panel cannot cancel the newer hook owner or mislabel its native result (#7110)', async () => {
+    await seed();
+    const oldOwner = api!;
+    let other: ClashApi | undefined;
+    function OtherOwner() { other = useClash(); return null; }
+    render(<OtherOwner />);
+    assert.ok(other);
+    let first: Promise<void> | undefined;
+    let second: Promise<void> | undefined;
+    act(() => { first = oldOwner.runDuplicates(); second = other!.runDuplicates(); });
+    const current = activeClashRunSession();
+    assert.ok(current);
+    act(() => oldOwner.cancelRun());
+    assert.equal(useViewerStore.getState().clashRunning, true, "older panel cancellation cannot clear the current owner's running state");
+    assert.equal(current.controller.signal.aborted, false);
+    await act(async () => { await first; await second; });
+    assert.equal(useViewerStore.getState().clashResult?.rulesRun[0].id, 'duplicates');
+    assert.deepEqual(useActivityJournal.getState().jobs.map(job => job.outcome), ['cancelled', 'completed']);
+    assert.equal(activeClashRunSession(), null);
+  });
+
 });

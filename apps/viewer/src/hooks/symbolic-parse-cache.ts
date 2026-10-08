@@ -14,7 +14,6 @@
 import type { IfcDataStore, IfcSourceBytes } from '@ifc-lite/parser';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
 import { useViewerStore } from '@/store';
-import { hasEntityType } from './has-entity-type.js';
 import {
   buildParseResult,
   createEmptyParseResult,
@@ -22,7 +21,7 @@ import {
   type ElevationRebase,
   type ParseResult,
 } from '../lib/overlay-parse/symbolic-parse.js';
-import { getWholeSourceForWorker, parseSymbolicFlat } from '../lib/overlay-parse/index.js';
+import { getWholeSourceForWorker, parseSymbolicFlatWithOutcome } from '../lib/overlay-parse/index.js';
 import { createEmptyFlatSymbolic, type FlatSymbolic } from '../lib/overlay-parse/symbolic-flat.js';
 import { OVERLAY_OWNER_TYPE_NAMES } from '../lib/overlay-parse/overlay-channels.js';
 import {
@@ -36,6 +35,9 @@ import { resetSpatialBucketSnapshotsForTests, sourceFlatKey, spatialBucketSnapsh
 import { PARSE_CACHE, PARSE_INFLIGHT, cacheParseResult, cacheRoomParseResult } from './symbolic-parse-result-cache.js';
 import { clearSourceFlatCache, getSourceFlat } from './symbolic-source-flat-cache.js';
 import { elevationRebaseFor } from './symbolic-parse-cache-frame.js';
+import { sourceKey, hasSymbolicOwners } from './symbolic-parse-source-key.js';
+import { completeSymbolicParse, flatParseCompletion, markFlatParse, observeSymbolicBinding, readObservedSymbolicParse, symbolicCompletionEpoch } from './symbolic-parse-outcomes.js';
+import { installSymbolicParseOutcomeReader } from '../store/symbolic-parse-observer.js';
 
 export interface SymbolicParseStoreBinding {
   store: IfcDataStore;
@@ -46,62 +48,21 @@ function bindingOf(value: IfcDataStore | SymbolicParseStoreBinding): SymbolicPar
   return 'store' in value ? value : { store: value };
 }
 
-/** Stable cache key for one parsed source.
- *
- * Was a sampled hash (head/middle/tail, 96 bytes) chosen to avoid walking the
- * whole file. `IfcSourceBytes.contentKey` is a full-content hash computed once
- * and cached on the source, so this is now both cheaper per call and stronger:
- * the sampled form could alias two files sharing a size and those windows,
- * which showed up as a federated model's annotations silently not rendering
- * because the parse effect skipped it as already cached (#2183).
- */
-function sourceKey(
-  store: IfcDataStore,
-  rebase: ElevationRebase,
-  rtc: Exclude<OverlayRtcContext, { mode: 'pending' }>,
-  spatial: SpatialBucketSnapshot,
-): string | null {
-  const roomSource = roomSymbolicSource(store);
-  const contentKey = (roomSource?.source ?? store.source).contentKey ?? null;
-  if (!contentKey) return null;
-  const ownerSource = roomSource?.source ?? store.source;
-  const ownerStore = roomSource?.dataStore ?? store;
-  const hasOverlayOwners = ownerSource.byteLength > 0
-    ? hasEntityType(ownerStore, ...OVERLAY_OWNER_TYPE_NAMES)
-    : true;
-  // The flat worker output depends on source bytes, but ParseResult also
-  // contains buckets assembled from this store's current spatial lookups.
-  // Identical IFC bytes can be paired with different live hierarchies (for
-  // example after a server refresh), so those lookup values must participate
-  // in the result key as well.
-  // The cached `ParseResult` has the elevation rebase baked into it, and that
-  // rebase is NOT a function of the source bytes: it carries `originShift`,
-  // which federation and re-alignment set per model. Two models loaded from
-  // identical bytes at different placements share a `contentKey` and need
-  // different results, so the frame belongs in the key.
-  //
-  // The frame is a PARAMETER rather than read here, but that alone guarantees
-  // nothing: what keeps a key honest is `ensureParseFor` reading the frame ONCE
-  // and handing the same value to both the key and the parse. Read it twice
-  // around the await and you file a result under a key describing a frame it
-  // was not rebased for — see `useSymbolicAnnotations.frameRace.test.ts`.
-  return `${contentKey}|${rtc.key}|${rebase.primitive}|${rebase.storeyTable}|${spatial.key}|owners:${hasOverlayOwners}`;
-}
-
 async function parseFlatAnnotations(
   store: IfcDataStore,
   source: IfcSourceBytes,
   frame?: RtcFrame,
 ): Promise<FlatSymbolic> {
-  if (source.byteLength > 0 && !hasEntityType(store, ...OVERLAY_OWNER_TYPE_NAMES)) {
+  if (source.byteLength > 0 && !hasSymbolicOwners(store, source)) {
     if (debugEnabled()) console.log(`[annotations] skip: no ${OVERLAY_OWNER_TYPE_NAMES.join('/')} entities`);
-    return createEmptyFlatSymbolic();
+    return markFlatParse(createEmptyFlatSymbolic(), { kind: 'skip', reason: 'no-owner-types' });
   }
   if (source.byteLength === 0) {
     if (debugEnabled()) console.log('[annotations] skip: missing/empty source');
-    return createEmptyFlatSymbolic();
+    return markFlatParse(createEmptyFlatSymbolic(), { kind: 'skip', reason: 'empty-source' });
   }
-  return parseSymbolicFlat(getWholeSourceForWorker({ source }), debugEnabled(), 'overlay', frame);
+  const parsed = await parseSymbolicFlatWithOutcome(getWholeSourceForWorker({ source }), debugEnabled(), 'overlay', frame);
+  return markFlatParse(parsed.flat, { kind: parsed.kind });
 }
 
 /**
@@ -132,7 +93,7 @@ async function parseAnnotations(
   //
   if (!source || source.byteLength === 0) {
     if (debugEnabled()) console.log('[annotations] skip: missing/empty source');
-    return createEmptyParseResult();
+    return completeSymbolicParse(createEmptyParseResult(), { kind: 'skip', reason: 'empty-source' });
   }
 
   // The WASM walk runs in the overlay worker and is terminated afterwards;
@@ -143,13 +104,14 @@ async function parseAnnotations(
   // `getWholeSourceForWorker` is the single seam for handing a model's bytes
   // to a worker — see `lib/overlay-parse/source-handoff.ts`.
   let flat = sourceFlat ?? await parseFlatAnnotations(store, source, frame);
+  const completion = flatParseCompletion(flat);
   if (roomSource) flat = placeRoomSymbolic(flat, roomSource);
-  return buildParseResult(flat, {
+  return completeSymbolicParse(buildParseResult(flat, {
     elementToStorey: spatial.elementToStorey,
     storeyElevations: spatial.storeyElevations,
     elevationRebase,
     isOwnerDeleted: spatial.deletedOwners ? (id) => spatial.deletedOwners!.has(id) : undefined,
-  });
+  }), completion);
 }
 
 // The worker output is a function of source bytes and its producer RTC frame.
@@ -161,8 +123,8 @@ function sourceFlatFor(
 ): Promise<FlatSymbolic> {
   // Do not cache a negative type-index prefilter: the same source can be
   // paired with a refreshed index that now contains the overlay owner class.
-  if (store.source.byteLength > 0 && !hasEntityType(store, ...OVERLAY_OWNER_TYPE_NAMES)) {
-    return Promise.resolve(createEmptyFlatSymbolic());
+  if (store.source.byteLength > 0 && !hasSymbolicOwners(store)) {
+    return Promise.resolve(markFlatParse(createEmptyFlatSymbolic(), { kind: 'skip', reason: 'no-owner-types' }));
   }
   const key = sourceFlatKey(store, rtc);
   if (!key) return parseFlatAnnotations(store, store.source, rtc.frame);
@@ -221,7 +183,7 @@ function ensureRoomParse(
     } catch (error) {
       // eslint-disable-next-line no-console
       console.warn('[useSymbolicAnnotations] room parse failed:', error);
-      result = createEmptyParseResult();
+      result = completeSymbolicParse(createEmptyParseResult(), { kind: 'failure' });
     }
     let entries = ROOM_PARSE_CACHE.get(roomSource);
     if (!entries) {
@@ -268,6 +230,7 @@ export function ensureParseFor(stores: Array<IfcDataStore | SymbolicParseStoreBi
     const spatial = spatialBucketSnapshotFor(store, mutationVersion, mutationView);
     const key = sourceKey(store, elevationRebase, rtc, spatial);
     if (!key) continue;
+    observeSymbolicBinding({ store, mutationView, mutationVersion, roomSource, rtc, elevationRebase, key });
     if (roomSource) {
       const promise = ensureRoomParse(store, roomSource, key, elevationRebase, spatial);
       if (promise) started.push(promise);
@@ -292,7 +255,7 @@ export function ensureParseFor(stores: Array<IfcDataStore | SymbolicParseStoreBi
         // every `stores` dependency change).
         // eslint-disable-next-line no-console
         console.warn('[useSymbolicAnnotations] parse failed:', error);
-        cacheParseResult(key, createEmptyParseResult());
+        cacheParseResult(key, completeSymbolicParse(createEmptyParseResult(), { kind: 'failure' }));
         notifyCacheChange();
       } finally {
         PARSE_INFLIGHT.delete(key);
@@ -377,3 +340,21 @@ export function subscribeToParseCache(listener: () => void): () => void {
     CACHE_LISTENERS.delete(listener);
   };
 }
+
+// Passive viewer-private observer: no ensureParseFor, content hashing, or spatial walk.
+installSymbolicParseOutcomeReader({
+  epoch: symbolicCompletionEpoch,
+  read: (store, mutationView, mutationVersion) => {
+    const roomSource = roomSymbolicSource(store);
+    const rtc = roomSource
+      ? { mode: 'standalone' as const, key: 'standalone' as const, frame: undefined }
+      : overlayRtcContextFor(store);
+    return readObservedSymbolicParse(
+      { store, mutationView, mutationVersion, roomSource, rtc, elevationRebase: elevationRebaseFor(store) },
+      (key) => ({
+        result: roomSource ? ROOM_PARSE_CACHE.get(roomSource)?.get(key) : PARSE_CACHE.get(key),
+        inflight: roomSource ? (ROOM_PARSE_INFLIGHT.get(roomSource)?.has(key) ?? false) : PARSE_INFLIGHT.has(key),
+      }),
+    );
+  },
+});

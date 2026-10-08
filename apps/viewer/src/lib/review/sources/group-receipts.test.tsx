@@ -162,3 +162,26 @@ test('#7089 native durable membership reidentifies a uniquely matched finding af
   assert.ok(finding.elements.every(element => element.modelId === 'B-reloaded' && source.pair.head.ifcDataStore.entities.getExpressIdByGlobalId(element.globalId) > 0));
   assert.equal(finding.nativeStatus, 'applied'); assert.equal(finding.lifecycle, 'record');
 });
+
+
+test('#7089 switching native workspaces ends the original receipt context without mixing application counts', async t => {
+  const source = await applied(t); if (!source) return;
+  const [finding] = projected(); assert.ok(finding);
+  assert.equal(openOriginal(finding, () => {}), true);
+  const ui = render(<ClashGroupApplications />);
+  await waitFor(() => ui.querySelector('[aria-current="true"]') !== null, 'first workspace original');
+  assert.ok(ui.textContent?.includes(source.receipt.workspaceName));
+  const planned = planClashGroupApply([{ name: 'Other native group', members: source.result.clashes.slice(0, 2).map(manualClashOccurrenceKey) }],
+    newWorkspaceBase('Other native workspace'), source.result.clashes); assert.ok(planned.ok);
+  await act(async () => {
+    const applied = await applyClashGroupPlan(planned.plan, { confirmMoves: false, origin: '#7089 workspace boundary', source: 'full-run', partial: false });
+    assert.ok(applied.ok);
+  }); await advance(0);
+  assert.ok(ui.textContent?.includes('Other native workspace'));
+  assert.equal(ui.textContent?.includes(source.receipt.workspaceName), false);
+  assert.equal(ui.querySelector('[aria-current="true"]'), null, 'the earlier workspace focus does not own the new workspace');
+  act(() => { assert.equal(openOriginal(finding, () => {}), true); });
+  await waitFor(() => ui.querySelector('[aria-current="true"]') !== null, 'original returns to its own saved workspace');
+  assert.equal(useClashGroupLibrary.getState().activeId, source.receipt.workspaceId);
+  assert.equal(ui.textContent?.includes('Other native workspace'), false);
+});

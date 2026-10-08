@@ -11,6 +11,7 @@
 
 import { currentReconciliationOf } from '@/lib/compare/compare-analysis-state';
 import { clashReviewKey } from '@ifc-lite/clash';
+import { useClashGroupLibrary } from '../clash/group-workspace';
 import { useClashGroupApplications } from '../clash/group-applications';
 import { loadRevisionBaseline } from '../clash/revision-baseline';
 import { useOriginalClashBaseline } from '../clash/original-baseline';
@@ -41,7 +42,9 @@ export function openOriginal(finding: ReviewFinding, openPanel: (panel: Workspac
     const receipt = useClashGroupApplications.getState().entries.find(entry => entry.id === evidence.applicationId);
     if (!receipt || receipt.createdAt !== finding.run.capturedAt || !receipt.addedGroupIds.includes(evidence.groupId)
       || receipt.after.groups.filter(group => group.id === evidence.groupId).length !== 1) return false;
-    useClashApplicationFocus.setState({ record: { applicationId: evidence.applicationId } });
+    if (useClashGroupLibrary.getState().entries.some(workspace => workspace.id === receipt.workspaceId))
+      useClashGroupLibrary.setState({ activeId: receipt.workspaceId });
+    useClashApplicationFocus.setState({ record: { applicationId: evidence.applicationId, activeWorkspaceId: useClashGroupLibrary.getState().activeId } });
   } else if (evidence.kind === 'clash') {
     if (!state.clashResult?.clashes.some(clash => clash.id === evidence.clashId)) return false;
     state.setClashSelectedId(evidence.clashId);

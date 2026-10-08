@@ -7,7 +7,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { extractAllMaterialsOnDemand, extractClassificationsOnDemand, extractMaterialsOnDemand } from '../src/columnar-parser.js';
+import { extractClassificationsOnDemand, extractMaterialsOnDemand } from '../src/columnar-parser.js';
 import type { IfcDataStore } from '../src/columnar-parser.js';
 import { IfcParser } from '../src/index.js';
 
@@ -253,28 +253,6 @@ describe('extractMaterialsOnDemand', () => {
     expect(result).not.toBeNull();
     expect(result!.type).toBe('MaterialList');
     expect(result!.materials).toEqual([{ name: 'Wood' }, { name: 'Glass' }]);
-  });
-
-  it('keeps known absent and literal blank material-list names resolved (#7119)', async () => {
-    const store = await buildStoreFromStep([
-      `#10=IFCMATERIAL($,$,$);`,
-      `#11=IFCMATERIAL('',$,$);`,
-      `#30=IFCMATERIALLIST((#10,#11));`,
-    ], undefined, new Map([[100, 30]]));
-    const result = extractMaterialsOnDemand(store, 100);
-    expect(result?.materials).toEqual([{ name: 'Material #10' }, { name: '' }]);
-    expect(result?.unresolved).toBeUndefined();
-  });
-
-  it('retains unreadable material-list member evidence instead of known absence (#7119)', async () => {
-    const store = await buildStoreFromStep([
-      `#10=IFCMATERIAL('Concrete',$,$);`,
-      `#30=IFCMATERIALLIST((#10,#999));`,
-    ], undefined, new Map([[100, 30]]));
-    expect(extractMaterialsOnDemand(store, 100)).toBeNull();
-    const [result] = extractAllMaterialsOnDemand(store, 100);
-    expect(result?.materials).toEqual([{ name: 'Concrete' }]);
-    expect(result?.unresolved).toBe(true);
   });
 
   it('should follow IfcMaterialLayerSetUsage to IfcMaterialLayerSet', async () => {

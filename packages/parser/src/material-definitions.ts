@@ -210,8 +210,7 @@ export function resolveMaterial(
                 if (!matRef || matRef.type.toUpperCase() !== 'IFCMATERIAL') { unresolved = true; continue; }
                 const matEntity = matRef;
                 if (matEntity) {
-                    // Parsed '$' is a known absent name; only an unavailable or
-                    // malformed slot is unresolved. Literal '' remains authored.
+                    // STEP null is a fully read unset Name, not missing material data (#7211).
                     if (matEntity.attributes?.[0] !== null && typeof matEntity.attributes?.[0] !== 'string') unresolved = true;
                     const name = typeof matEntity.attributes?.[0] === 'string'
                         ? matEntity.attributes[0] : `Material #${matId}`;

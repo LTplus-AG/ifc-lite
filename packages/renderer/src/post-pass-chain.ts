@@ -48,6 +48,8 @@ export interface PostPassFrame {
   /** Depth-only view of the scene depth attachment. */
   depthView: GPUTextureView;
   objectIdView: GPUTextureView;
+  /** Full depth/stencil view for sample-matched visible masks. */
+  maskDepthView: GPUTextureView;
   /** Camera projection the frame was drawn with. */
   projection: Mat4;
   enhancement: ResolvedVisualEnhancement;
@@ -131,7 +133,7 @@ export class PostPassChain {
         encoder: frame.encoder,
         width: frame.width,
         height: frame.height,
-        depthView: frame.depthView,
+        depthView: frame.maskDepthView,
         selected: frame.selectionOutline.selected,
         hovered: frame.selectionOutline.hovered,
         instanced: frame.selectionOutline.instanced,

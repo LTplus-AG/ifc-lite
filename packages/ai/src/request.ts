@@ -17,6 +17,7 @@
 import { reserveRequest, settleRequest, type RootBudget } from './budget.js';
 import type { UsageReceipt } from './receipt.js';
 import type { TokenUsage } from './usage.js';
+import type { JsonResponseSchema, OutputFormat } from './response-schema.js';
 
 /**
  * What a transport is asked to do. Every piece of output goes through
@@ -28,6 +29,9 @@ export interface TransportCall<Message> {
   readonly model: string;
   readonly messages: readonly Message[];
   readonly system?: string;
+  readonly outputSchema?: JsonResponseSchema;
+  /** Transport reports the format it actually places on the outgoing request. */
+  onOutputFormat?(format: OutputFormat): void;
   /** Already clamped to the route ceiling and the root budget's remainder. */
   readonly maxOutputTokens: number;
   readonly signal: AbortSignal;
@@ -51,6 +55,7 @@ export interface ModelRequest<Message, Route extends string = string> {
   readonly transport: AiTransport<Message>;
   readonly messages: readonly Message[];
   readonly system?: string;
+  readonly outputSchema?: JsonResponseSchema;
   /** Requested output ceiling; clamped to `routeCeiling` and the root budget. */
   readonly maxOutputTokens: number;
   /** The hard output ceiling the route enforces. */
@@ -72,7 +77,9 @@ export type RequestOutcome<Route extends string = string> =
   | { kind: 'timeout'; receipt: UsageReceipt<Route> }
   | { kind: 'error'; code: 'empty-output' | 'request-failed'; message: string; receipt: UsageReceipt<Route> }
   /** Nothing was sent: the task's root budget has no request or output left. */
-  | { kind: 'refused'; reason: 'budget-exhausted' };
+  | { kind: 'refused'; reason: 'budget-exhausted' }
+  /** The host knows the response contract exceeds its provider's limits; nothing was sent. */
+  | { kind: 'refused'; reason: 'unsupported-schema'; message: string };
 
 /** A request the core has just handed to its transport. */
 export interface RequestStart<Route extends string = string> {
@@ -117,8 +124,10 @@ export async function runModelRequest<Message, Route extends string>(
   const { budget, signal } = request;
   let startedAt = Date.now();
   let id = `req-${startedAt}-${++receiptSequence}`;
+  let outputFormat: OutputFormat | undefined;
   const receiptFor = (outcome: UsageReceipt['outcome'], usage: TokenUsage | null): UsageReceipt<Route> => ({
     id, model: request.model, route: request.route, startedAt, finishedAt: Date.now(), outcome,
+    ...(request.outputSchema && outputFormat ? { outputFormat } : {}),
     ...(usage ? { usageReported: true as const, ...usage } : { usageReported: false as const }),
   });
   // A caller that cancels before dispatch gets a typed outcome without a request, and no receipt is logged.
@@ -141,6 +150,8 @@ export async function runModelRequest<Message, Route extends string>(
       model: request.model,
       messages: request.messages,
       system: request.system,
+      outputSchema: request.outputSchema,
+      onOutputFormat: format => { outputFormat = format; },
       maxOutputTokens: grant.maxOutputTokens,
       signal: controller.signal,
       onChunk: text => { seen.streamed = true; request.onChunk?.(text); },

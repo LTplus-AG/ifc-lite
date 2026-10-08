@@ -47,7 +47,17 @@ export function ReportDeletionPreview({ source, report, onCancel, onDeleted, sto
     }
     const owner = active.current;
     setBusy(true);
-    const ok = await removeAction(source.id);
+    let staged = false;
+    const beforeWrite = () => {
+      const now = useViewerStore.getState();
+      const targetNow = source.kind === 'compare' ? now.savedComparisons.find(row => row.id === source.id) : now.savedClashReports.find(row => row.id === source.id);
+      const currentAction = source.kind === 'compare' ? now.deleteSavedComparison : now.deleteSavedClashReport;
+      const owned = staged ? targetNow === undefined : targetNow === captured.current && active.current === owner && owner.alive;
+      if (!owned || currentAction !== removeAction || reportChartDependencies(now, source).signature !== acknowledged.signature) return false;
+      staged = true;
+      return true;
+    };
+    const ok = await removeAction(source.id, beforeWrite);
     if (!ok) storageFailed();
     if (active.current === owner && owner.alive) { setBusy(false); if (ok) onDeleted?.(); }
   };
@@ -59,7 +69,7 @@ export function ReportDeletionPreview({ source, report, onCancel, onDeleted, sto
     </li>)}</ul>}
     {preview.total > preview.entries.length && <p>{t('comparePanel.saved.dependencies.bounded', { count: preview.entries.length, total: preview.total })}</p>}
     {preview.documentPhase === 'loading' && <p>{t('comparePanel.saved.dependencies.loading')}</p>}
-    {(preview.documentPhase === 'unavailable' || preview.dashboardsUnavailable || preview.omittedDashboards > 0) && <p>{t('comparePanel.saved.dependencies.unavailable')}</p>}
+    {(preview.documentPhase === 'unavailable' || preview.documentsRecovered || preview.dashboardsUnavailable || preview.omittedDashboards > 0) && <p>{t('comparePanel.saved.dependencies.unavailable')}</p>}
     {sourceChanged && <p>{t('comparePanel.saved.dependencies.sourceChanged')}</p>}
     {changed && <p>{t('comparePanel.saved.dependencies.changed')}</p>}
     <div className="flex flex-wrap gap-2">

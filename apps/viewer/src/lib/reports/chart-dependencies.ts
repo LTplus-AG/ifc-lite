@@ -13,6 +13,7 @@ export interface ChartDependencyPreview {
   total: number;
   documentPhase: 'loading' | 'ready' | 'unavailable';
   dashboardsUnavailable: boolean;
+  documentsRecovered: boolean;
   omittedDashboards: number;
   signature: string;
 }
@@ -32,6 +33,6 @@ export function reportChartDependencies(state: ViewerState, source: ReportSource
     if (block.kind === 'chart' && pointsTo(block.chart, source)) all.push({ key: JSON.stringify(['document', document.id, block.id]), family: 'document', name: document.name, chart: block.chart.title });
   }
   all.sort((a, b) => a.key.localeCompare(b.key));
-  const coverage = { documentPhase: state.documentsStorage.phase, dashboardsUnavailable: persisted.unavailable, omittedDashboards: persisted.omitted };
+  const coverage = { documentPhase: state.documentsStorage.phase, documentsRecovered: state.documentsStorage.recovered, dashboardsUnavailable: persisted.unavailable, omittedDashboards: persisted.omitted };
   return { ...coverage, entries: all.slice(0, DEPENDENCY_DISPLAY_LIMIT), total: all.length, signature: JSON.stringify([all, coverage]) };
 }

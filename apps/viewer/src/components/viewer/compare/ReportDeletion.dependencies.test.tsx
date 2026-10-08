@@ -198,3 +198,55 @@ test('#7245 native dashboard Storage read refusal is unknown coverage instead of
     assert.equal(button(ui, 'Delete report')?.disabled, false);
   } finally { refused.mock.restore(); }
 });
+test('#7245 recovered Document originals disclose incomplete coverage beside their readable chart references', async () => {
+  const report = await realComparison();
+  const spec: ChartSpec = { id: 'recovered-chart', title: 'Recovered readable chart', source: 'compare', comparisonId: report.id, type: 'bar', dimension: 'State', measure: { agg: 'count' } };
+  const document = { ...blankDocument(), name: 'Recovered readable Document', blocks: [{ kind: 'chart' as const, id: 'recovered-block', chart: spec, snapshot: true }] };
+  localStorage.setItem('ifc-lite-documents', JSON.stringify([document, null]));
+  useViewerStore.setState(createDocumentSlice(useViewerStore.setState, useViewerStore.getState, useViewerStore));
+  const ui = previewFor(report);
+  await waitFor(() => useViewerStore.getState().documentsStorage.phase === 'ready', 'native migration retains the readable Document');
+  await settle();
+  assert.equal(useViewerStore.getState().documentsStorage.recovered, true);
+  assert.match(ui.textContent ?? '', /Recovered readable Document/);
+  assert.match(ui.textContent ?? '', /More chart references may exist/);
+});
+test('#7245 references changed after confirmation but before native queued commit revoke deletion', async () => {
+  const report = await realComparison(); await dependents('compare', report.id);
+  const ui = previewFor(report); await settle();
+  const dashboard = useViewerStore.getState().dashboards[0];
+  click(button(ui, 'Delete report')!);
+  // Native deletion has staged its tombstone, but the queued persistence promise has not committed.
+  act(() => useViewerStore.getState().upsertDashboard({ ...dashboard, charts: [...dashboard.charts,
+    { ...dashboard.charts[0], id: 'later-dependent-chart', title: 'New dependency after confirmation' }] }));
+  await waitFor(() => useViewerStore.getState().savedComparisonsStorage.items[report.id] !== 'saving', 'queued native deletion finishes or refuses');
+  const saved = (await readContentRows('comparison')).find(row => row.id === report.id); assert.ok(saved);
+  assert.equal(saved.deleted, false, 'old confirmation must not delete after its dependency set changed');
+  assert.ok(useViewerStore.getState().savedComparisons.some(row => row.id === report.id));
+});
+test('#7245 a refused quota tombstone rechecks changed dependencies on native Retry and restores its source', async () => {
+  const report = await realComparison(); await dependents('compare', report.id);
+  const ui = previewFor(report); await settle();
+  const refused = refuseContentWrites();
+  try {
+    click(button(ui, 'Delete report')!);
+    await waitFor(() => useViewerStore.getState().savedComparisonsStorage.items[report.id] === 'quota', 'native guarded deletion refuses quota');
+  } finally { refused.mock.restore(); }
+  const dashboard = useViewerStore.getState().dashboards[0];
+  act(() => useViewerStore.getState().upsertDashboard({ ...dashboard, name: 'Dependency revised before Retry' }));
+  assert.equal(await useViewerStore.getState().retrySaveComparisons(), false);
+  assert.equal((await readContentRows('comparison')).find(row => row.id === report.id)?.deleted, false);
+  assert.ok(useViewerStore.getState().savedComparisons.some(row => row.id === report.id), 'refused old deletion restores its readable source');
+});
+test('#7245 revoked queued deletion preserves a newer native same-ID rename draft', async () => {
+  const report = await realComparison(); const ui = previewFor(report); await settle();
+  click(button(ui, 'Delete report')!);
+  let renamed: Promise<boolean> = Promise.resolve(false);
+  act(() => { renamed = useViewerStore.getState().renameSavedComparison(report.id, 'Newer native rename draft'); });
+  await renamed;
+  assert.equal(useViewerStore.getState().savedComparisons.find(row => row.id === report.id)?.name, 'Newer native rename draft');
+  assert.equal((await readContentRows('comparison')).find(row => row.id === report.id)?.deleted, false);
+  assert.equal(await useViewerStore.getState().retrySaveComparisons(), true);
+  const durable = (await readContentRows('comparison')).find(row => row.id === report.id); assert.ok(durable && !durable.deleted);
+  assert.equal((durable.payload as { name: string }).name, 'Newer native rename draft');
+});

@@ -9,15 +9,11 @@
  * fully covered by synthetic-value tests. This file is deliberately as small
  * as it can be: it only creates the `GPUQuerySet`, writes `timestampWrites`
  * into pass descriptors, resolves the query set into a readback buffer, and
- * hands the raw nanosecond pairs to the pure aggregator. None of it runs in
- * this environment (`navigator.gpu` is absent here, so there is no test file
- * for this module — a mock `GPUDevice` would only prove the mock is
- * internally consistent, not that the real WebGPU calls are correct) and
- * none of it should be trusted without exercising it on a real
- * `'timestamp-query'`-capable adapter.
+ * hands raw nanosecond pairs to the aggregator. GPU calls require an actual
+ * timestamp-query-capable adapter for qualification (#6975).
  *
- * OPT-IN, NOT WIRED BY DEFAULT: nothing in this codebase constructs a
- * `GpuFrameTimingRecorder` today. A caller enables it explicitly:
+ * Opt-in: the renderer attaches one bounded recorder while its timing flag
+ * is enabled. Direct consumers can also record explicitly:
  *
  * ```ts
  * const recorder = GpuFrameTimingRecorder.create(device); // null if unsupported
@@ -123,11 +119,9 @@ export function pairTimestampsWithLabels(labels: readonly string[], timestamps: 
 /**
  * Records GPU timestamp queries for the passes of one frame and resolves
  * them into `PassTimingSample[]` (nanosecond pairs; see `frame-timing.ts`
- * for what happens to them next). One instance is good for one frame's
- * worth of passes up to `maxPasses`, then must be recreated (or reset via
- * `beginFrame()`) for the next — this keeps the query-set/readback-buffer
- * lifetime unambiguous rather than trying to make it silently reusable
- * across frames while a previous frame's readback might still be pending.
+ * for aggregation). One fixed query set and two buffers are reused only after
+ * the previous map settles. `beginFrame()` returns false while they are leased.
+ * Destroying cancels pending mapping; callers must handle readback rejection.
  */
 export class GpuFrameTimingRecorder {
   private readonly maxPasses: number;
@@ -137,6 +131,8 @@ export class GpuFrameTimingRecorder {
   private labels: string[] = [];
   private nextQueryIndex = 0;
   private resolved = false;
+  private reading = false;
+  private destroyed = false;
 
   private constructor(maxPasses: number, querySet: GPUQuerySet, resolveBuffer: GPUBuffer, readbackBuffer: GPUBuffer) {
     this.maxPasses = maxPasses;
@@ -152,20 +148,32 @@ export class GpuFrameTimingRecorder {
    * `frame-timing.ts`) or skip measurement, never throw.
    */
   static create(device: GPUDevice, maxPasses = 8): GpuFrameTimingRecorder | null {
+    if (!Number.isInteger(maxPasses) || maxPasses < 1 || maxPasses > 2048) {
+      throw new RangeError('maxPasses must be an integer from 1 to 2048');
+    }
     if (!hasTimestampQueryFeature(device.features)) return null;
 
     const querySet = device.createQuerySet({ type: 'timestamp', count: maxPasses * 2, label: 'frame-timing-queries' });
-    const resolveBuffer = device.createBuffer({
-      size: queryBufferSizeBytes(maxPasses),
-      usage: GPUBufferUsage.QUERY_RESOLVE | GPUBufferUsage.COPY_SRC,
-      label: 'frame-timing-resolve',
-    });
-    const readbackBuffer = device.createBuffer({
-      size: queryBufferSizeBytes(maxPasses),
-      usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
-      label: 'frame-timing-readback',
-    });
-    return new GpuFrameTimingRecorder(maxPasses, querySet, resolveBuffer, readbackBuffer);
+    let resolveBuffer: GPUBuffer | null = null;
+    let readbackBuffer: GPUBuffer | null = null;
+    try {
+      resolveBuffer = device.createBuffer({
+        size: queryBufferSizeBytes(maxPasses),
+        usage: GPUBufferUsage.QUERY_RESOLVE | GPUBufferUsage.COPY_SRC,
+        label: 'frame-timing-resolve',
+      });
+      readbackBuffer = device.createBuffer({
+        size: queryBufferSizeBytes(maxPasses),
+        usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
+        label: 'frame-timing-readback',
+      });
+      return new GpuFrameTimingRecorder(maxPasses, querySet, resolveBuffer, readbackBuffer);
+    } catch (error) {
+      readbackBuffer?.destroy();
+      resolveBuffer?.destroy();
+      querySet.destroy();
+      throw error;
+    }
   }
 
   /**
@@ -175,6 +183,7 @@ export class GpuFrameTimingRecorder {
    * that hits this should raise `maxPasses` at construction, not retry.
    */
   beginPass(label: string): GPURenderPassTimestampWrites | null {
+    if (this.destroyed || this.reading || this.resolved) return null;
     const allocation = allocatePassQueryIndices(this.nextQueryIndex, this.maxPasses);
     if (allocation === null) return null;
     this.nextQueryIndex = allocation.nextQueryIndex;
@@ -188,7 +197,7 @@ export class GpuFrameTimingRecorder {
 
   /** Resolves every query written this frame into the readback buffer. Call once, after every pass has been `.end()`-ed, before `queue.submit`. */
   endFrame(encoder: GPUCommandEncoder): void {
-    if (this.nextQueryIndex === 0) return; // no passes recorded — nothing to resolve
+    if (this.destroyed || this.reading || this.resolved || this.nextQueryIndex === 0) return;
     encoder.resolveQuerySet(this.querySet, 0, this.nextQueryIndex, this.resolveBuffer, 0);
     encoder.copyBufferToBuffer(this.resolveBuffer, 0, this.readbackBuffer, 0, this.nextQueryIndex * BYTES_PER_TIMESTAMP);
     this.resolved = true;
@@ -203,24 +212,35 @@ export class GpuFrameTimingRecorder {
    * touches the buffer.
    */
   async readback(): Promise<PassTimingSample[] | null> {
-    if (!this.resolved) return null;
-    await this.readbackBuffer.mapAsync(GPUMapMode.READ);
-    const raw = this.readbackBuffer.getMappedRange(0, this.nextQueryIndex * BYTES_PER_TIMESTAMP);
-    const timestamps = new BigInt64Array(raw.slice(0)); // copy out before unmap invalidates the ArrayBuffer
-    this.readbackBuffer.unmap();
-
-    return pairTimestampsWithLabels(this.labels, timestamps);
+    if (this.destroyed || this.reading || !this.resolved) return null;
+    this.reading = true;
+    const labels = [...this.labels];
+    const bytes = this.nextQueryIndex * BYTES_PER_TIMESTAMP;
+    try {
+      await this.readbackBuffer.mapAsync(GPUMapMode.READ, 0, bytes);
+      if (this.destroyed) return null;
+      const raw = this.readbackBuffer.getMappedRange(0, bytes);
+      return pairTimestampsWithLabels(labels, new BigInt64Array(raw.slice(0)));
+    } finally {
+      this.readbackBuffer.unmap();
+      this.reading = false;
+      this.resolved = false;
+    }
   }
 
-  /** Resets for the next frame's recording. Does not reallocate the query set or buffers — they are sized once at `create()` and reused. */
-  beginFrame(): void {
+  /** False while a prior frame owns the buffers; callers skip sampling that frame. */
+  beginFrame(): boolean {
+    if (this.destroyed || this.reading || this.resolved) return false;
     this.labels = [];
     this.nextQueryIndex = 0;
-    this.resolved = false;
+    return true;
   }
 
   /** Releases the GPU query set and buffers. Call when timing is turned off. */
   destroy(): void {
+    if (this.destroyed) return;
+    this.destroyed = true;
+    this.readbackBuffer.unmap();
     this.querySet.destroy();
     this.resolveBuffer.destroy();
     this.readbackBuffer.destroy();

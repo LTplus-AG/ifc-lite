@@ -99,12 +99,7 @@ export { isEntityVisible } from './entity-visibility.js';
 // through its own glTF pipeline rather than this one (#2591).
 export { DEFAULT_GHOST_ALPHA, OPAQUE_ALPHA_CUTOFF } from './overlay-routing.js';
 export { VisibilityEpochTracker } from './visibility-epoch.js';
-export type { FrameStats, ResidentGpuBytes } from './render-stats.js';
-// Frame/pass GPU timing (issue #2670 perf-verdict gate). Opt-in and NOT wired
-// into `Renderer` by default — a caller constructs `GpuFrameTimingRecorder`
-// itself and attaches its `timestampWrites` to the passes it wants measured;
-// see `frame-timing-gpu.ts`'s module doc for the usage pattern, and
-// `decideTimingMode` for choosing GPU queries vs. the CPU fallback vs. off.
+export type { FrameStats, ResidentGpuBytes } from './render-stats.js'; // GPU timing is opt-in (#6975).
 export { decideTimingMode, passDurationsMs, frameTotalMs, aggregateFrameTimings } from './frame-timing.js';
 export type { TimingMode, TimingModeRequest, PassTimingSample, FrameTimingReport } from './frame-timing.js';
 export { computeDurationStats, nsToMs, isNegativeDelta } from './frame-timing-stats.js';
@@ -136,6 +131,7 @@ export type {
 export type { GpuUploadOutcome } from './gpu-upload-guard.js';
 export type { DeviceRecoveryFailureReason, DeviceRecoveryOmission, DeviceRecoveryResult } from './device-recovery.js';
 import { modelPlacementBounds, sceneMeshBounds } from './model-placement-bounds.js';
+import { configureRendererGpuTiming, readRendererGpuTiming, releaseRendererGpuTiming, beginRendererGpuTiming, renderPassTimestampWrites, submitRendererGpuTiming } from './renderer-frame-timing.js';
 import { WebGPUDevice, type AdapterInfoSnapshot } from './device.js';
 import { RenderPipeline } from './pipeline.js';
 import { Camera } from './camera.js';
@@ -852,14 +848,14 @@ export class Renderer {
         if (this.deviceLost) { if (options.fromDevicePromise) this.deviceLossSequence++; return; }
         this.deviceLossSequence++;
         this.deviceLost = true; cancelRendererColorFrame(this);
+        releaseRendererGpuTiming(this);
         this.recovery.lostReferenceImages = this.referenceImages.hasImages();
         this.referenceImages.destroy();
         this.deviceLostGeneration = this.initGeneration;
         this.deviceLostInfo = info;
         console.warn('[Renderer] GPU device lost — halting rendering until re-init:', info.message);
-        // Readiness describes the GPU objects, and every one of them just died:
-        // `isReady()` reports it from here on, and anyone parked in
-        // `whenReady()` is failed rather than left to be resolved by the init
+        // Readiness describes dead GPU objects: `isReady()` reports the loss
+        // and `whenReady()` waiters fail rather than awaiting the init
         // this loss may have landed in the middle of. Done BEFORE the listeners
         // run, so a listener that recovers by calling `init()` synchronously
         // finds the waiters already settled and re-arms the wait for the next
@@ -1502,15 +1498,15 @@ export class Renderer {
         };
     }
 
+    setGpuFrameTiming(enabled: boolean): void { configureRendererGpuTiming(this, enabled); }
+    getGpuFrameTiming() { return readRendererGpuTiming(this); }
     /**
      * Statistics of the last COMPLETED render() call (draw calls issued,
      * batches drawn / frustum-culled / contribution-culled), or null before
      * the first frame. Pair with `getScene().getResidentGpuBytes()` for the
      * load-complete telemetry snapshot (issue #1682 observability).
      */
-    getFrameStats(): FrameStats | null {
-        return this._lastFrameStats;
-    }
+    getFrameStats(): FrameStats | null { return this._lastFrameStats; }
 
     /**
      * Vendor/architecture identity of the GPU adapter, snapshotted during
@@ -2005,6 +2001,7 @@ export class Renderer {
 
             // Now record draw commands
             const encoder = device.createCommandEncoder();
+            beginRendererGpuTiming(this, device, encoder);
 
             // Sun shadow-map pass (#2670, Phase 2). Off unless the caller opts
             // in; when off the hot path pays only this check and (once) an
@@ -2178,6 +2175,7 @@ export class Renderer {
             });
 
             const pass = encoder.beginRenderPass({
+                timestampWrites: renderPassTimestampWrites(encoder, 'main'),
                 colorAttachments,
                 depthStencilAttachment: {
                     view: this.pipeline.getDepthTextureView(),
@@ -3103,7 +3101,7 @@ export class Renderer {
             });
 
             colorReadback = colorCapture && encodeRendererColorFrameCapture(device, encoder, colorCapture);
-            device.queue.submit([encoder.finish()]);
+            submitRendererGpuTiming(this, device, encoder);
             if (colorReadback && colorCapture) {
                 settleRendererColorFrameCapture(this, colorCapture, colorReadback);
                 colorCapture = null; colorReadback = null;
@@ -3132,6 +3130,7 @@ export class Renderer {
                 this.drainErrorScope(device);
             }
         } catch (error) {
+            releaseRendererGpuTiming(this);
             discardRendererColorFrameReadback(colorReadback);
             // Balance the validation scope if we threw before popping it above —
             // an unpopped scope would capture every later frame's errors silently.
@@ -3643,6 +3642,7 @@ export class Renderer {
             this._loggedSectionBounds = false;
         }
 
+        releaseRendererGpuTiming(this);
         // Render pipelines (textures + uniform buffers)
         this.pipeline?.destroy();
         this.pipeline = null;

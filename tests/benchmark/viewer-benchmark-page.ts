@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { Page, ConsoleMessage } from '@playwright/test';
-import { READINESS_SPANS, waitForMetadataRenderReadiness, type LoadTraceProbe } from './metadata-render-readiness.js';
+import { probeMetadataRenderTrace, waitForMetadataRenderReadiness, type LoadTraceProbe } from './metadata-render-readiness.js';
 import {
   compareSpanAndRegexMetrics,
   countersFromLoadTrace,
@@ -488,28 +488,7 @@ export class ViewerBenchmarkPage {
    * exposes no trace yet (or at all: a viewer built before #6977).
    */
   private async probeLoadTrace(): Promise<LoadTraceProbe | null> {
-    try {
-      return await this.page.evaluate(
-        ({ key, names }: { key: string; names: readonly string[] }) => {
-          type Span = { name: string; end: number | null; attrs?: Record<string, unknown> };
-          const api = (globalThis as unknown as Record<string, { latest?: () => { end: number | null; spans: Span[] } | null } | undefined>)[key];
-          const snapshot = api?.latest?.() ?? null;
-          if (!snapshot) return null;
-          const done: string[] = [];
-          const failed: string[] = [];
-          for (const span of snapshot.spans) {
-            if (span.end === null || !names.includes(span.name)) continue;
-            done.push(span.name);
-            if (span.attrs?.error === true) failed.push(span.name);
-          }
-          return { ended: snapshot.end !== null, done, failed };
-        },
-        { key: LOAD_TRACE_GLOBAL, names: READINESS_SPANS },
-      );
-    } catch (err) {
-      console.warn('[Benchmark] could not probe the load trace', err);
-      return null;
-    }
+    return probeMetadataRenderTrace(this.page);
   }
 
   /** Pull the latest load's span tree out of the page (null when tracing is unavailable). */
@@ -536,7 +515,7 @@ export class ViewerBenchmarkPage {
   private applySpanMetrics(appReportedTotalMs: number | null) {
     // The span root is the app's own total; compare it only with the app's own
     // total line, never with the Playwright-observed wall clock fallback.
-    const regex: Partial<Record<string, number | null>> = { ...this.metrics, totalWallClockMs: appReportedTotalMs };
+    const regex = { ...this.metrics, totalWallClockMs: appReportedTotalMs };
     const span = metricsFromLoadTrace(this.loadTrace);
     this.spanRegexDisagreements = compareSpanAndRegexMetrics(span, regex);
     for (const key of SPAN_METRIC_KEYS) {

@@ -5,6 +5,7 @@
 import { describe, it, mock } from 'node:test';
 import assert from 'node:assert';
 import { Renderer } from './index.js';
+import { timingDevice } from './test/frame-timing-device.js';
 
 /**
  * Safari's SYNCHRONOUS device-loss signal (issue #2229).
@@ -83,6 +84,40 @@ interface Harness {
  *    at all until #2417, so a device dying there degraded quietly forever.
  */
 type ThrowSite = 'frame' | 'encode';
+
+it('#6975 canonical render loss cancels deferred timing before observers, and a replacement device cannot mix old samples', async () => {
+    const { renderer } = makeHarness();
+    assert.equal(renderer.getGpuFrameTiming?.()?.mode, 'disabled');
+    const { beginRendererGpuTiming, renderPassTimestampWrites, submitRendererGpuTiming } = await import('./renderer-frame-timing.js');
+    const first = timingDevice();
+    renderer.setGpuFrameTiming(true);
+    const encoder = first.encoder();
+    beginRendererGpuTiming(renderer, first.device, encoder);
+    renderPassTimestampWrites(encoder, 'old-main');
+    submitRendererGpuTiming(renderer, first.device, encoder);
+    let cancelledAtNotification = false;
+    renderer.onDeviceLost(() => {
+        cancelledAtNotification = first.buffers.every((buffer) => buffer.destroyed && !buffer.pending);
+    });
+    renderer.render(); // Safari's actual synchronous loss route, through render containment.
+    assert.equal(cancelledAtNotification, true);
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    assert.equal(renderer.getGpuFrameTiming().frames.length, 0);
+
+    // Exercise the resource seam with a replacement device independently of
+    // pipeline reconstruction, which requires the real-GPU recovery oracle.
+    const replacement = timingDevice();
+    const next = replacement.encoder();
+    beginRendererGpuTiming(renderer, replacement.device, next);
+    renderPassTimestampWrites(next, 'new-main');
+    submitRendererGpuTiming(renderer, replacement.device, next);
+    replacement.settle([5_000_000n, 8_000_000n]);
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    assert.equal(renderer.getGpuFrameTiming().sampled, 1);
+    assert.deepEqual(renderer.getGpuFrameTiming().frames.map((frame) => frame.passesMs), [{ 'new-main': 3 }]);
+    renderer.setGpuFrameTiming(false);
+    assert.ok(replacement.buffers.every((buffer) => buffer.destroyed));
+});
 
 /**
  * A renderer wired to a stub device whose canvas reports a CSS size that

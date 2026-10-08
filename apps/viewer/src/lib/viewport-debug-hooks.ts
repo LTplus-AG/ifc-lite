@@ -1,6 +1,7 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+import { readPerfFlag } from './perf/flags.js';
 import { appearanceSourceTriangle, MathUtils, type Renderer } from '@ifc-lite/renderer';
 import type { MeshData } from '@ifc-lite/geometry';
 import { getPointCloudScanSample } from '@/hooks/ingest/pointCloudScanCache';
@@ -104,7 +105,11 @@ export function installViewportDebugHooks(
   annotationLineVertexCount: () => number,
 ): void {
   const host = globalThis as Record<string, unknown>;
+  const timingFlag = readPerfFlag('gpuFrameTiming');
+  renderer.setGpuFrameTiming(timingFlag === true || timingFlag === 1 || timingFlag === '1');
   host.__ifc_lite_render_stats__ = () => ({
+    gpuTiming: renderer.getGpuFrameTiming(),
+    adapter: renderer.getAdapterInfo(),
     frame: renderer.getFrameStats(),
     gpu: renderer.getScene().getResidentGpuBytes(),
     cpuBytes: renderer.getScene().getResidentCpuBytes(),

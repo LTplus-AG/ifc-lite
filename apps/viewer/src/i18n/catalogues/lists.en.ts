@@ -78,7 +78,7 @@ export const listsEn = {
   'lists.panel.editList': 'Edit List',
   'lists.panel.newList': 'New List',
   'lists.panel.results': 'Results',
-  'lists.panel.resultsSummary': { one: '{countDisplay} row, {ms}ms', other: '{countDisplay} rows, {ms}ms' },
+  'lists.panel.resultsSummary': { one: '{countDisplay} matched entity, {ms}ms', other: '{countDisplay} matched entities, {ms}ms' },
   'lists.panel.editConfiguration': 'Edit Configuration',
   'lists.panel.backToLists': 'Back to Lists',
   'lists.panel.cancel': 'Cancel',

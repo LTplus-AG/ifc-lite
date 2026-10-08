@@ -255,6 +255,8 @@ it('#7166 unavailable matched rows remain distinct from live filtering over retu
   assert.equal(Boolean(region(run.ui).textContent?.includes('hidden by visibility or search filters')), false, 'unreturned matches were not hidden by a live filter');
   assert.match(region(run.ui).textContent ?? '', /Partial/);
   assert.match(region(run.ui).textContent ?? '', /not available to display/);
+  assert.equal(Boolean(run.ui.textContent?.includes(`${actual.totalCount} rows,`)), false, 'native matched total is not labelled as returned rows in either timed header');
+  assert.ok(region(run.ui).textContent?.includes(`${actual.totalCount} matched entities,`), 'timed shared summary names matched population');
   const input = run.ui.querySelector<HTMLInputElement>('input[aria-label="Filter list results"]'); assert.ok(input);
   type(input, 'no-returned-row-can-match-this-name');
   assert.match(region(run.ui).textContent ?? '', /1 matched row is hidden by visibility or search filters/);

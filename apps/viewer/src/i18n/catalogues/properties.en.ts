@@ -58,6 +58,7 @@ export const propertiesEn = {
 
   // RelationshipsCard
   'properties.relationships.heading': 'Relationships',
+  'properties.relationships.unavailableMembership': 'Current relationship membership is unavailable without the original IFC source. Listed source relationships may describe the original model; the total is unknown.',
   'properties.relationships.openings': 'Openings ({countDisplay})',
   'properties.relationships.fills': 'Fills ({countDisplay})',
   'properties.relationships.groupsAndZones': 'Groups & Zones ({countDisplay})',

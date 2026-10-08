@@ -1,0 +1,34 @@
+{
+  "baseline": {
+    "rows": 6,
+    "pids": 3,
+    "hashSets": {
+      "packages/wasm/pkg/ifc-lite_bg.wasm": [
+        "1548ae57020949abff44f96d2b9f23bc0864b2553c97db99abc14162e603e569"
+      ],
+      "packages/wasm/pkg/ifc-lite.js": [
+        "0a281479eb65141ae75aeef987d331d44439741a0cae855f122e53e800311a39"
+      ],
+      "packages/wasm/pkg/ifc-lite.d.ts": [
+        "54c9d0a52eb515e517d76726fefe5f6a63e553a81c1b10331a597965d14620f6"
+      ]
+    },
+    "runtimeBeforeAfterPerPIDEqual": true
+  },
+  "candidate": {
+    "rows": 6,
+    "pids": 3,
+    "hashSets": {
+      "packages/wasm/pkg/ifc-lite_bg.wasm": [
+        "1548ae57020949abff44f96d2b9f23bc0864b2553c97db99abc14162e603e569"
+      ],
+      "packages/wasm/pkg/ifc-lite.js": [
+        "0a281479eb65141ae75aeef987d331d44439741a0cae855f122e53e800311a39"
+      ],
+      "packages/wasm/pkg/ifc-lite.d.ts": [
+        "54c9d0a52eb515e517d76726fefe5f6a63e553a81c1b10331a597965d14620f6"
+      ]
+    },
+    "runtimeBeforeAfterPerPIDEqual": true
+  }
+}

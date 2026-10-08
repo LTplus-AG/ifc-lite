@@ -71,6 +71,38 @@ before(async () => {
 });
 
 describe('the picked point\'s lat/lon never lags behind the point', () => {
+  it('updates geographic angles that share the former metre-rounded cache key (#7060)', async () => {
+    const seen: Array<{ lat: number; lon: number } | null> = [];
+    const anchor: AnchorGeoreference = {
+      ...ANCHOR,
+      eff: { ...ANCHOR.eff,
+        mapConversion: { ...ANCHOR.eff.mapConversion, eastings: 5, northings: 52 },
+        projectedCRS: { id: 1, name: 'EPSG:4326', mapUnitScale: 0.001 },
+      },
+    };
+    await resolveProjection(anchor.eff.projectedCRS);
+    function Probe({ georef }: { georef: AnchorGeoreference }) {
+      seen.push(useProjectedLatLon({ x: 0, y: 0, z: 0 }, georef));
+      return null;
+    }
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+    mounted.push({ root, host });
+    act(() => root.render(<Probe georef={anchor} />));
+    await waitFor(() => Math.abs((seen.at(-1)?.lon ?? Infinity) - 5) < 1e-10,
+      'first angular position did not resolve');
+    const changed: AnchorGeoreference = {
+      ...anchor, eff: { ...anchor.eff,
+        mapConversion: { ...anchor.eff.mapConversion, eastings: 5.1 },
+      },
+    };
+    act(() => root.render(<Probe georef={changed} />));
+    await waitFor(() => Math.abs((seen.at(-1)?.lon ?? Infinity) - 5.1) < 1e-10,
+      'changed angular position retained the stale readout');
+    assert.ok(Math.abs((seen.at(-1)?.lat ?? Infinity) - 52) < 1e-10);
+  });
+
   it('clears the previous coordinates while the new ones are in flight', async () => {
     const seen: Array<{ lat: number; lon: number } | null> = [];
     function Probe({ point }: { point: { x: number; y: number; z: number } }) {

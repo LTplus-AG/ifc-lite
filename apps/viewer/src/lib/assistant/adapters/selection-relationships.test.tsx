@@ -171,3 +171,15 @@ test('#7179 duplicate alias merges native base and direct relationship edges onc
   assert.equal(row.relationships.filter(edge => edge.relationshipId === 81 && edge.entity.expressId === 80).length, 1);
   assert.ok(row.relationships.some(edge => edge.relationshipId === 97 && edge.entity.expressId === 43));
 });
+
+// #7179 an omitted graph on a source-free transport proves no total at all.
+test('#7179 source-free missing native relationship graph does not invent an empty population', async () => {
+  const store = await sample(); seedModel('missing', 0, store, 89);
+  assert.equal(native('missing', 89).relations?.length, 6);
+  store.source = EMPTY_SOURCE_BYTES;
+  const missing = { ...store }; Reflect.deleteProperty(missing, 'relationships');
+  seedModel('missing', 0, missing, 89);
+  const row = rows()[0];
+  assert.equal(row.relationshipStatus, 'unavailable-membership');
+  assert.equal(row.relationshipCount, null); assert.deepEqual(row.relationships, []);
+});

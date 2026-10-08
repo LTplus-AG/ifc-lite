@@ -116,6 +116,12 @@ interface ChartSpecCommon {
    * Dashboard/document files retain this ID; the matching saved history is
    * a local dependency and is not embedded into the chart specification. */
   comparisonId?: string;
+  /** Saved clash report in the viewer's saved-content library (#6947).
+   * Only valid for `clash`. Absent means the current clash result, which is
+   * what every chart saved before this field existed reads. Dashboard and
+   * document files keep this ID; the saved report is a local dependency and
+   * is not embedded into the chart specification. */
+  clashReportId?: string;
   /** IFC field used for grouping, materialized beside the built-in element columns. */
   elementField?: ElementFieldBinding;
   /** Numeric IFC field to sum independently of the grouping field. */

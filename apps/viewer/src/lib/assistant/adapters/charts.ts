@@ -6,7 +6,7 @@ import type { ChartDataset, ChartSource, DashboardSpec } from '@ifc-lite/charts'
 import type { ViewerState } from '@/store';
 import { chartElementFields } from '@/lib/charts/chart-fields';
 import { chartDatasetFromState } from '@/lib/charts/datasets/from-state';
-import { isSavedComparisonChart, resolveComparisonChartSource } from '@/lib/charts/comparison-source';
+import { chartSourceContext, isRecordedChart, resolveChartSource } from '@/lib/charts/chart-source';
 import { chartCardAggregation, chartCardDataset, chartCardSlice, chartClashRule, chartFilterSelector } from '@/lib/charts/card-aggregation';
 import { evidenceRow, unavailableCapture, type EvidenceAdapter } from './types';
 
@@ -20,7 +20,7 @@ function sourceInputs(s: ViewerState, source: ChartSource, scope: DashboardSpec[
   switch (source) {
     case 'elements': return [s.models, s.activeModelId, s.pinboardEntities, s.mutationViews, s.unitDisplayOverrides,
       ...(scope.kind === 'visible' ? [s.hiddenEntities, s.isolatedEntities, s.classFilter, s.lensHiddenIds, s.selectedStoreys, s.typeVisibility, s.chartVisibilityOwned] : [])];
-    case 'clash': return [s.clashResult, s.clashReviews, s.clashGroups, s.clashRunSeq, s.models];
+    case 'clash': return [s.clashResult, s.clashReviews, s.clashGroups, s.clashRunSeq, s.models, s.savedClashReports, s.mutationVersion];
     case 'bcf': return [s.bcfProject, s.models];
     case 'schedule': return [s.scheduleData, s.scheduleSourceModelId, s.playbackTime, s.animationEnabled, s.models];
     case 'ids': return [s.idsValidationReport, s.models, s.activeModelId];
@@ -29,9 +29,9 @@ function sourceInputs(s: ViewerState, source: ChartSource, scope: DashboardSpec[
 }
 
 const ready = (s: ViewerState, dashboard: DashboardSpec | null): boolean =>
-  !!dashboard && dashboard.charts.length > 0 && (s.models.size > 0 || dashboard.charts.some(isSavedComparisonChart));
+  !!dashboard && dashboard.charts.length > 0 && (s.models.size > 0 || dashboard.charts.some(isRecordedChart));
 
-type ChartStatus = 'aggregated' | 'filter-unresolved' | 'cannot-aggregate' | 'comparison-missing';
+type ChartStatus = 'aggregated' | 'filter-unresolved' | 'cannot-aggregate' | 'comparison-missing' | 'clash-report-missing';
 
 /** Every chart of the active dashboard, aggregated by the card's own pure functions (`card-aggregation`). */
 export const chartsAdapter: EvidenceAdapter = {
@@ -68,11 +68,12 @@ export const chartsAdapter: EvidenceAdapter = {
     const rows: unknown[] = [];
     let totalRows = 0;
     for (const chart of dashboard.charts) {
-      const recorded = isSavedComparisonChart(chart);
-      const source = resolveComparisonChartSource(chart, datasetFor(chart.source), s.savedComparisons);
+      const recorded = isRecordedChart(chart);
+      const source = resolveChartSource(chart, datasetFor(chart.source), chartSourceContext(s));
       const filterSelector = chartFilterSelector(chart);
       // Element filters resolve asynchronously in the panel; an unresolved filter is never shown as the unfiltered rows.
-      const outcome: ChartStatus = source.status === 'missing' ? 'comparison-missing' : filterSelector ? 'filter-unresolved' : 'aggregated';
+      const outcome: ChartStatus = source.status === 'missing' ? (source.saved === 'clashReport' ? 'clash-report-missing' : 'comparison-missing')
+        : filterSelector ? 'filter-unresolved' : 'aggregated';
       const aggregation = outcome === 'aggregated'
         ? chartCardAggregation(chart, chartCardDataset(chart, source.dataset, undefined), chartCardSlice(chart, recorded, s.chartSlice, s.chartSliceSource))
         : null;
@@ -83,7 +84,10 @@ export const chartsAdapter: EvidenceAdapter = {
         dimension: chart.dimension ?? null, stackBy: chart.stackBy ?? null,
         measure: { agg: chart.measure.agg, column: chart.measure.column ?? null }, unit,
         filter: filterSelector ?? null, clashRule: chartClashRule(chart) ?? null,
-        recordedComparison: recorded ? source.name ?? null : null,
+        recordedComparison: source.saved === 'comparison' ? source.name ?? null : null,
+        // A saved clash report is past evidence: its gaps and its relation to the loaded models travel with every citation.
+        savedClashReport: source.saved === 'clashReport' && source.status === 'saved' ? { name: source.report.name, savedAt: source.report.savedAt,
+          truncated: !!source.report.completeness.truncated, stale: source.report.completeness.stale, excluded: source.report.completeness.excluded, loadedModelRevision: source.revision } : null,
         sliced: !!aggregation && chartCardSlice(chart, recorded, s.chartSlice, s.chartSliceSource) !== null,
         datasetRows: source.dataset.rows.length,
         bucketCount: aggregation?.categories.length ?? 0, seriesCount: aggregation?.series.length ?? 0,

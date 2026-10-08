@@ -95,3 +95,18 @@ test('#6833 document evidence keeps the native block total over a sample and is 
   useViewerStore.setState({ activeDocumentId: 'missing' });
   assert.equal(payloadOf(captureEvidence('document')).sourceAvailability, 'unavailable', 'a dangling active id is not a document');
 });
+
+test('#6947 a document chart bound to saved content is described as bound, not as its live source', () => {
+  const bar = { type: 'bar', measure: { agg: 'count' } } as const;
+  const document = spec('doc-bound', [
+    { kind: 'chart', id: 'current', snapshot: false, chart: { ...bar, id: 'current', title: 'Current', source: 'clash', dimension: 'Rule' } },
+    { kind: 'chart', id: 'saved-run', snapshot: false, chart: { ...bar, id: 'saved-run', title: 'Saved run', source: 'clash', dimension: 'Rule', clashReportId: 'clash-report-1' } },
+    { kind: 'chart', id: 'saved-compare', snapshot: false, chart: { ...bar, id: 'saved-compare', title: 'Saved comparison', source: 'compare', dimension: 'State', comparisonId: 'comparison-1' } },
+  ]);
+  assert.deepEqual(validateDocumentSpec(document), []);
+  useViewerStore.setState({ documents: [document], activeDocumentId: document.id });
+  const rows = payloadOf(captureEvidence('document')).evidence.rows.map(row => row.data);
+  // `chartSource` alone reads "clash" for the first two: a conversation would describe a saved run as the current result.
+  assert.deepEqual(rows.map(row => [row.chartSource, row.savedSource]),
+    [['clash', null], ['clash', 'clashReport'], ['compare', 'comparison']]);
+});

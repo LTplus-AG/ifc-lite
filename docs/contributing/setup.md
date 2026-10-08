@@ -341,6 +341,34 @@ pnpm install
 pnpm -r build
 ```
 
+### A gate judges my branch against a stale `main`
+
+Several scripts compare your branch with `main` when you give them no base:
+`scripts/check-module-size.mjs`, `scripts/check-source-text-assertions.mjs`,
+`scripts/check-raw-entity-enumeration.mjs`, the base-freshness sweep
+(`scripts/lib/base-freshness-io.mjs`) and `scripts/perf/ab.sh`. They find
+`main` through the remote whose URL is `LTplus-AG/ifc-lite`, not through the
+remote's name, so a clone made from a fork needs no flags as long as the
+canonical repository is one of its remotes and has been fetched:
+
+```bash
+git remote add upstream https://github.com/LTplus-AG/ifc-lite.git
+git fetch upstream main
+```
+
+What each situation resolves to (`scripts/lib/canonical-remote.mjs`):
+
+| Situation | Base used |
+|---|---|
+| `origin` is `LTplus-AG/ifc-lite` (a direct clone, every CI checkout of it) | `origin/main` |
+| `origin` is a fork and another remote is `LTplus-AG/ifc-lite` | `<that remote>/main` |
+| You pass a base (`--base <ref>`) | exactly that ref; the remotes are not consulted |
+| No remote is `LTplus-AG/ifc-lite` (a fork's own CI, a mirror) | `origin/main` |
+| The canonical remote exists but its `main` was never fetched | each script's own behaviour for a missing base, naming the ref to fetch: `check-module-size` and `check-source-text-assertions` fall back to a local `main` and warn; `check-raw-entity-enumeration` fails; `ab.sh` falls back to `HEAD~1`; the base-freshness sweep falls back to `HEAD` and refuses unless that is the `main` GitHub reports |
+
+`scripts/perf/ab.sh <fixture> --print-base` prints the base it would build,
+without building anything.
+
 ### Push fails with "You need Push access to upload Git LFS objects"
 
 Verbatim output from a real push of a text-only commit to a contributor's fork.

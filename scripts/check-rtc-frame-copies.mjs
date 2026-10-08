@@ -15,6 +15,7 @@ import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { dirname, join, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { isMainEntry } from './lib/is-main-entry.mjs';
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 export const CANONICAL = 'packages/geometry/src/world-frame.ts';
@@ -245,4 +246,4 @@ function main() {
   console.log(`RTC frame copy gate passed (${scanned} viewer and package source files)`);
 }
 
-if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) main();
+if (isMainEntry(import.meta.url)) main();

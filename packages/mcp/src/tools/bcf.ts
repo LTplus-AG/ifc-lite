@@ -25,7 +25,7 @@ import {
   type BCFTopic,
 } from '@ifc-lite/bcf';
 import type { Tool } from './types.js';
-import { okResult } from './util.js';
+import { fmtInt, okResult } from './util.js';
 import { ToolErrorCode, ToolExecutionError } from '../errors.js';
 import { resolveSafePath } from '../safe-path.js';
 
@@ -213,7 +213,7 @@ const bcfExport: Tool = {
     const blob = (await writeBCF(project)) as unknown as Blob;
     const buffer = Buffer.from(await blob.arrayBuffer());
     await writeFile(filePath, buffer);
-    return okResult(`Wrote BCF (${buffer.length.toLocaleString()} bytes, ${project.topics.size} topic(s)) to ${filePath}.`, {
+    return okResult(`Wrote BCF (${fmtInt(buffer.length)} bytes, ${project.topics.size} topic(s)) to ${filePath}.`, {
       filePath,
       bytes: buffer.length,
       topicCount: project.topics.size,

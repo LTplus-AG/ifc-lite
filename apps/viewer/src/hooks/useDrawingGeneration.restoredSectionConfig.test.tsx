@@ -50,7 +50,7 @@ import {
   saveDrawing2DEntry,
   clearAllDrawing2DEntries,
 } from '@/store/slices/drawing2DSlice.persistence.js';
-import { computeFullSourceHashFromBlob } from '@/utils/sourceContentHash.js';
+import { placementSourceIdentity } from '@/lib/model-placement/source-identity';
 
 // ─── Fixture ─────────────────────────────────────────────────────────────
 
@@ -217,7 +217,7 @@ afterEach(async () => {
 describe('restore feeding generation — MUTATION TARGET: issue #4153 gap', () => {
   it('regenerates the section cut from the restored SectionConfig, not the slice default', async () => {
     const file = fileWithBytes(7, 'restored-cut.ifc');
-    const hash = (await computeFullSourceHashFromBlob(file))!;
+    const hash = (await placementSourceIdentity(file))!;
     const model = stubModel('model-a', file);
 
     const defaults = useViewerStore.getState().drawing2DDisplayOptions;

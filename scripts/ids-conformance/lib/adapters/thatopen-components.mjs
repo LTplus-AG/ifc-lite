@@ -42,7 +42,7 @@ export function applicabilityOccurs(idsXml) {
  * @returns {'pass' | 'fail'}
  */
 export function specVerdict(applicable, failed, occurs) {
-  if (occurs.maxOccurs === 0) return applicable > 0 ? 'fail' : 'pass';
+  // maxOccurs="0" (prohibited) is the `applicable > maxOccurs` case.
   if (applicable < occurs.minOccurs || applicable > occurs.maxOccurs) return 'fail';
   return failed > 0 ? 'fail' : 'pass';
 }

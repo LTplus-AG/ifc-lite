@@ -68,6 +68,7 @@ function legacyDrawingKey(file: File): Promise<string | null> {
       perfTally('hash.drawingLegacyKey', bytes.byteLength);
       return sha256Hex(bytes);
     }).catch((err) => {
+      legacyKeys.delete(file); // failed reads must be retried on activation
       console.warn('[drawing2D] could not hash the file to look for markup saved under a legacy key', err);
       return null;
     });
@@ -139,7 +140,9 @@ function removeLocal(storageKey: string, moved: string | null): boolean {
 async function legacyKeyToMove(store: LegacyStore, key: string, present: string[], ctx: LegacyMoveContext): Promise<string | null> {
   if (validChecks(store, present).includes(key)) return null;
   if (!await ctx.loaded()) return null;
-  return legacyDrawingKey(ctx.file);
+  const legacy = await legacyDrawingKey(ctx.file);
+  if (!legacy) throw new Error('the legacy drawing key could not be read');
+  return legacy;
 }
 
 // ── Markup and sheet (localStorage) ──────────────────────────────────
@@ -238,9 +241,11 @@ export async function migrateLegacyDxfEntry(key: string, present: string[], ctx:
   // tab on the previous viewer rewrote the entry meanwhile. This read also rejects
   // when the entry cannot be read, which leaves the identity unmarked for the
   // next load: `load` below answers `null` for a failed read and for an
-  // unreadable value alike, and only the second may be recorded as checked.
-  const seen = hasLegacy ? writeStamp(await dxf.request('readonly', (store) => store.get(legacy))) : '';
+  // unreadable value alike. Neither may be recorded as checked while a raw entry remains.
+  const rawLegacy = hasLegacy ? await dxf.request('readonly', (store) => store.get(legacy)) : undefined;
+  const seen = writeStamp(rawLegacy);
   const old = hasLegacy ? await dxf.load(legacy) : null;
+  if (rawLegacy !== undefined && rawLegacy !== null && !old) throw new Error('the legacy underlays could not be read');
   if (old) {
     const moved = old.dxfUnderlays;
     if (stillCurrent()) {

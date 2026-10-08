@@ -61,9 +61,6 @@ export { notifyDrawing2DSectionConfig, consumeRestoredSectionConfig } from './dr
  */
 const keyHost: DrawingKeyHost = { identifyLoadedPlacementSource, placementSourceIdentity, hasUnsavedSheetEdit, waitForPendingDxfUnderlaySave };
 
-/** A model id may be reused for replacement bytes; cached hashes belong to a source. */
-const sourceHashes = new WeakMap<File, string | null>();
-
 /**
  * Resolves the active model's content hash and restores that model's
  * persisted markup into the store. The hash is the load's placement identity
@@ -155,8 +152,8 @@ export function useDrawing2DPersistence(): void {
     // `drawnMeanwhile` unites a stored list with the live one. The fields were
     // cleared when this model became active, so what the live lists hold at
     // restore time was drawn while the key was resolving (#7035: that can
-    // last until the load ends when a legacy entry is being moved). Only the
-    // asynchronous path passes it; the cached path restores at once.
+    // last until the load ends when a legacy entry is being moved). The resolver
+    // runs on every activation so late legacy writes are included too.
     const applyHash = (hash: string | null, skipDxfRestore = false, drawnMeanwhile: UnionById = (stored) => stored, fallback?: PersistedDrawing2DEntry) => {
       if (!stillCurrent()) return;
       endRestore(activeModelId);
@@ -201,24 +198,14 @@ export function useDrawing2DPersistence(): void {
       settleSheetHash(activeModelId, hash, sourceFile, fallback);
       return settleDxfUnderlayHash(activeModelId, hash);
     };
-    const cacheHash = (hash: string | null, retry = false, legacyMarkupKey?: string) => {
+    const cacheHash = (hash: string | null, legacyMarkupKey?: string) => {
       if (useViewerStore.getState().models.get(activeModelId)?.sourceFile !== sourceFile) return false;
-      if (sourceFile && !retry) sourceHashes.set(sourceFile, hash);
       setCachedHash(activeModelId, hash, legacyMarkupKey);
       return true;
     };
-    const cached = sourceFile ? sourceHashes.get(sourceFile) : undefined;
-    if (cached !== undefined) {
-      cacheHash(cached);
-      applyHash(cached, settleHash(cached));
-      // Symmetric with the branches below — a no-op today (this model's
-      // listeners already fired on the earlier mount that cached its hash;
-      // see `hasPersistedMarkupEntryFor`'s doc) but keeps "hashCache settling
-      // fires decided listeners" true by construction, not just by that
-      // function re-deriving its answer from `hashCache`.
-      notifyDecided(activeModelId);
-      return;
-    }
+    // #7035: recheck legacy entries on every activation, including the same
+    // File. The loaded identity and successful legacy digest already cache
+    // their byte reads; another tab may have saved new legacy entries meanwhile.
 
     if (!sourceFile) {
       cacheHash(null);
@@ -230,7 +217,7 @@ export function useDrawing2DPersistence(): void {
     drawingKey()
       .then(async (key) => {
         const { key: hash, local } = await key.resolveDrawingPersistenceKey(activeModelId, sourceFile, keyHost);
-        if (!cacheHash(hash, local?.retry, local?.legacyMarkupKey)) { settleSheetHash(activeModelId, hash, sourceFile, local?.sheet); return; }
+        if (!cacheHash(hash, local?.legacyMarkupKey)) { settleSheetHash(activeModelId, hash, sourceFile, local?.sheet); return; }
         applyHash(hash, settleHash(hash, local?.sheet), key.unionById, local?.markup);
         notifyDecided(activeModelId);
       })

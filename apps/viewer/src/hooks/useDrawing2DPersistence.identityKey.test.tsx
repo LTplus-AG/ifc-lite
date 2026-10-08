@@ -229,20 +229,39 @@ describe('markup saved under the legacy key is moved to the identity key (#7035)
     saveDrawing2DEntry(legacyKeyOf(other), entryWith([measure('other-file')]));
     saveDrawing2DEntry(legacyKeyOf(mine), entryWith([measure('legacy-1')]));
     const before = legacyPasses();
-    await open(loadedModel('first', sourceFile(mine), mine));
+    const sameFile = sourceFile(mine);
+    await open(loadedModel('first', sameFile, mine));
     assert.deepEqual(liveMeasures(), ['legacy-1']);
     assert.equal(legacyPasses() - before, 1);
 
     // A tab that still runs the previous viewer saves under the legacy key again.
     saveDrawing2DEntry(legacyKeyOf(mine), entryWith([measure('drawn-in-old-viewer')]));
-    await open(loadedModel('second', sourceFile(mine), mine));
+    await open(loadedModel('second', sameFile, mine));
     assert.deepEqual(liveMeasures(), ['drawn-in-old-viewer', 'legacy-1'], 'the late entry is united with the migrated one');
     assert.equal(localStorage.getItem(keyFor(legacyKeyOf(mine))), null);
-    assert.equal(legacyPasses() - before, 2, 'a legacy key that was not there at the earlier check costs one more pass');
+    assert.equal(legacyPasses() - before, 1, 'the cached legacy digest handles a key that was not there at the earlier check costs one more pass');
 
-    await open(loadedModel('third', sourceFile(mine), mine));
-    assert.equal(legacyPasses() - before, 2, 'and after that the file is not hashed again');
+    await open(loadedModel('third', sameFile, mine));
+    assert.equal(legacyPasses() - before, 1, 'and after that the file is not hashed again');
     assert.deepEqual(storedMeasures(legacyKeyOf(other)), ['other-file']);
+  });
+
+  it('a failed legacy hash retries on reactivation of the same File (#7035 review)', async () => {
+    const bytes = bytesOf(24), file = sourceFile(bytes);
+    saveDrawing2DEntry(legacyKeyOf(bytes), entryWith([measure('legacy-after-retry')]));
+    const read = file.arrayBuffer.bind(file);
+    let attempts = 0;
+    Object.defineProperty(file, 'arrayBuffer', { configurable: true, value: () => {
+      attempts += 1;
+      return attempts === 1 ? Promise.reject(new Error('simulated transient read failure')) : read();
+    } });
+    await open(loadedModel('first-read-failure', file, bytes));
+    assert.deepEqual(liveMeasures(), []);
+    assert.ok(localStorage.getItem(keyFor(legacyKeyOf(bytes))));
+    await open(loadedModel('second-read-success', file, bytes));
+    assert.deepEqual(liveMeasures(), ['legacy-after-retry']);
+    assert.equal(attempts, 2);
+    assert.equal(localStorage.getItem(keyFor(legacyKeyOf(bytes))), null);
   });
 
   it('is not hashed for before the model has finished loading, and keeps what is drawn meanwhile', async () => {

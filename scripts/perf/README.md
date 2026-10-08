@@ -639,6 +639,7 @@ Entries saved under the old key are moved, not dropped. A bare 64-hex key can
 be told from an identity key by its shape, so a load pays for the old hash
 only when some old-shaped entry is stored, only after the model has finished
 loading, and once per file: an identity that has been checked is remembered.
+Activations recheck for newly written legacy entries without rereading a successfully hashed File. Failed byte or IndexedDB reads leave the move unchecked and retryable.
 That pass is counted as `hash.drawingLegacyKey`, apart from `hash.fullSource`.
 Each move writes under the identity key, reads it back and only then removes
 the old entry. When a quota failure prevents that write, restore still uses

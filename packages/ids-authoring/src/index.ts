@@ -98,3 +98,17 @@ export {
   type PersistedStudioState,
   type PersistedSummary,
 } from './history/persistence.js';
+
+// Sidecar and .idsz bundle (IDS-025)
+export {
+  createSidecar,
+  serializeSidecar,
+  parseSidecar,
+  attachSidecar,
+  fingerprintIds,
+  SIDECAR_FILENAME,
+  SIDECAR_FORMAT,
+  type StudioSidecar,
+  type AttachResult,
+} from './sidecar/sidecar.js';
+export { writeIdsz, readIdsz, type IdszContent } from './sidecar/idsz.js';

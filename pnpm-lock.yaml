@@ -1480,6 +1480,9 @@ importers:
       '@ifc-lite/regex-guard':
         specifier: workspace:*
         version: link:../regex-guard
+      fflate:
+        specifier: ^0.8.3
+        version: 0.8.3
     devDependencies:
       '@types/node':
         specifier: ^26.6.2

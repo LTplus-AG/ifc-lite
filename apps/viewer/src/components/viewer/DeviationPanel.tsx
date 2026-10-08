@@ -35,7 +35,8 @@ import { beginActivity, finishActivity } from '@/lib/activity/activity-journal';
 import { trackExportCompleted } from '@/lib/analytics';
 import { deviationAssetIdentities } from '@/lib/point-cloud/deviation-asset-identity';
 import { cn } from '@/lib/utils';
-import { DeviationHistogramBars, DeviationSummary } from './DeviationStatistics';
+import { DeviationHistogramBars } from './DeviationStatistics';
+import { DeviationResultChrome } from './DeviationResultChrome';
 import { useDeviationStatisticsDerivation } from './useDeviationStatisticsDerivation';
 
 /** The compute pass pegs |d| here; the statistics count points at the peg. */
@@ -320,19 +321,17 @@ export function DeviationPanel({ triangleCount }: DeviationPanelProps) {
 
       {/* Always mounted: some screen readers only announce changes inside a live region that already exists. */}
       <output data-testid="deviation-export-notice" className="text-2xs text-muted-foreground">{exportNotice}</output>
-      {computed && distances && statistics && (
-        <button type="button" onClick={handleExport}
-          disabled={running || exporting}
-          className="text-xs px-2 py-1 rounded border border-border text-left hover:bg-accent">
-          {exporting ? t('deviationPanel.exportingCsv') : t('deviationPanel.exportCsv')}
-        </button>
-      )}
-
       {computed && (
-        <>
-          {/* Range slider: half-width in mm. Range from 1 mm to 1 m
-              (logarithmic feel via the millimetre conversion). */}
-          <label className="flex items-center gap-2 mt-1">
+        <DeviationResultChrome statistics={statistics} distancesPresent={distances !== null}
+          tolerance={tolerance} onToleranceChange={setTolerance}
+          actions={distances && statistics && (
+            <button type="button" onClick={handleExport}
+              disabled={running || exporting}
+              className="text-xs px-2 py-1 rounded border border-border text-left hover:bg-accent">
+              {exporting ? t('deviationPanel.exportingCsv') : t('deviationPanel.exportCsv')}
+            </button>
+          )}
+          filters={<label className="flex items-center gap-2 mt-1">
             <span className="text-2xs text-muted-foreground w-12 shrink-0">
               {t('deviationPanel.sliderValueLabel', { value: (halfRange * 1000).toFixed(halfRange < 0.01 ? 1 : 0) })}
             </span>
@@ -347,8 +346,7 @@ export function DeviationPanel({ triangleCount }: DeviationPanelProps) {
               title={t('deviationPanel.rangeSliderTitle')}
               aria-label={t('deviationPanel.rangeSliderAriaLabel')}
             />
-          </label>
-
+          </label>}>
           {distances && <DeviationHistogramBars distances={distances} center={centerOffset} halfRange={halfRange} />}
 
           {/* Legend: blue → white → red gradient with labelled endpoints. */}
@@ -363,15 +361,6 @@ export function DeviationPanel({ triangleCount }: DeviationPanelProps) {
             <span>{t('deviationPanel.legendMaxLabel', { value: (halfRange * 1000).toFixed(0) })}</span>
           </div>
 
-          {(statistics || distances) && (
-            <DeviationSummary
-              statistics={statistics}
-              tolerance={tolerance}
-              onToleranceChange={setTolerance}
-              toleranceEditable={distances !== null}
-            />
-          )}
-
           {colorMode !== 'deviation' && (
             <button
               type="button"
@@ -381,7 +370,7 @@ export function DeviationPanel({ triangleCount }: DeviationPanelProps) {
               {t('deviationPanel.switchToDeviationButton')}
             </button>
           )}
-        </>
+        </DeviationResultChrome>
       )}
     </div>
   );

@@ -1,6 +1,6 @@
 ---
 "@ifc-lite/ai": minor
-"@ifc-lite/flow-nodes": patch
+"@ifc-lite/flow-nodes": minor
 "@ifc-lite/cli": patch
 "@ifc-lite/mcp": patch
 ---

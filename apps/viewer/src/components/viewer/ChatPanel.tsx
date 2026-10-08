@@ -35,7 +35,6 @@ import {
   createAttachmentId,
   imageFileToCompressedBase64,
   compressDataUrlImage,
-  stripContinuationOverlap,
   estimateTextTokens,
   estimateMessagesTokens,
   summarizeDroppedMessages,

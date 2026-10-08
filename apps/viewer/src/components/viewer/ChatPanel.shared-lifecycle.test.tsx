@@ -14,12 +14,14 @@ import { ExtensionHostContext } from '@/sdk/ExtensionHostProvider';
 import { render, cleanup, click } from '@/test/render';
 import { ASSISTANT_ROOT_BUDGET } from '@/lib/llm/root-budget';
 import { ChatPanel } from './ChatPanel';
-import { chromeHost, code, data, reply, chatFrames, serve, mountNative, send } from '@/test/script-chat-fixture';
+import { chromeHost, code, data, reply, chatFrames, serve, serveGated, mountNative, send } from '@/test/script-chat-fixture';
 
 test('#7093 truncated code never executes or installs; Continue retains its root across panel remount and exhaustion sends no extra HTTP', async t => {
-  const sent = serve(chatFrames(reply, 'length'));
+  const { sent, release } = serveGated(chatFrames(reply, 'length'));
   let native = await mountNative(t); if (!native) return;
   send(native.ui);
+  await waitFor(() => sent.length === 1 && useRequestReceipts.getState().inFlight.length === 1, 'truncated task exposes native running request before script bytes');
+  await act(async () => release());
   await waitFor(() => useRequestReceipts.getState().receipts.length === 1 && !['sending', 'streaming'].includes(useViewerStore.getState().chatStatus), 'typed truncation');
   assert.equal(useViewerStore.getState().scriptLastResult, null);
   assert.equal(useViewerStore.getState().scriptEditorContent, '');

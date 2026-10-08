@@ -66,13 +66,15 @@ export function serve(frames: string, status = 200) {
 /** Hold real transport bytes until its native in-flight activity has been observed. */
 export function serveGated(frames: string) {
   const sent: Array<{ url: string; body: Record<string, unknown> }> = [];
+  let released = false;
   let release: () => void = () => { throw new Error('native transport has not received its response headers'); };
   globalThis.fetch = (async (input, init) => {
     if (init?.method !== 'POST') return new Response('{}');
     sent.push({ url: String(input), body: JSON.parse(String(init.body)) });
     return new Response(new ReadableStream<Uint8Array>({ start(controller) {
       release = () => { controller.enqueue(new TextEncoder().encode(frames)); controller.close(); };
+      if (released) release();
     } }), { headers: { 'Content-Type': 'text/event-stream' } });
   }) as typeof fetch;
-  return { sent, release: () => release() };
+  return { sent, release: () => { release(); released = true; } };
 }

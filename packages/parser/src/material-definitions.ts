@@ -210,7 +210,9 @@ export function resolveMaterial(
                 if (!matRef || matRef.type.toUpperCase() !== 'IFCMATERIAL') { unresolved = true; continue; }
                 const matEntity = matRef;
                 if (matEntity) {
-                    if (typeof matEntity.attributes?.[0] !== 'string') unresolved = true;
+                    // Parsed '$' is a known absent name; only an unavailable or
+                    // malformed slot is unresolved. Literal '' remains authored.
+                    if (matEntity.attributes?.[0] !== null && typeof matEntity.attributes?.[0] !== 'string') unresolved = true;
                     const name = typeof matEntity.attributes?.[0] === 'string'
                         ? matEntity.attributes[0] : `Material #${matId}`;
                     const category = typeof matEntity.attributes?.[2] === 'string' ? matEntity.attributes[2] : undefined;

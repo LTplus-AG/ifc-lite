@@ -6,13 +6,15 @@ import '@/test/setup-dom.js';
 import test, { afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
-import { EMPTY_SOURCE_BYTES, extractAllMaterialsOnDemand, extractMaterialPropertiesOnDemand } from '@ifc-lite/parser';
+import { EMPTY_SOURCE_BYTES, extractAllMaterialsOnDemand, extractClassificationsOnDemand, extractMaterialPropertiesOnDemand } from '@ifc-lite/parser';
 import { advance, render, cleanup } from '@/test/render';
 import { exportAndReparse, parseStep, seedModel } from '@/test/properties-panel-harness';
 import { renderPanelBody } from '@/lib/panels/renderPanelBody';
 import { getOrCreateMutationView } from '@/sdk/adapters/mutation-view';
 import { useViewerStore } from '@/store';
 import { entityRefToString } from '@/store/entity-ref';
+import { createQueryAdapter } from '@/sdk/adapters/query-adapter';
+import { relationshipsForSelection } from '@/components/viewer/properties/merge-relationship-data';
 import { captureEvidence, evidenceIsCurrent } from '../evidence';
 
 const initial = useViewerStore.getState();
@@ -26,7 +28,8 @@ interface Material {
   MaterialConstituents?: Array<{ Name: string; Fraction: number; Material: { Name: string } }>;
   MaterialProfiles?: Array<{ Name: string; Material: { Name: string } }>;
 }
-interface Row { modelId: string; materialCount: number | null; materialsStatus: string; materials: Material[];
+interface Row { modelId: string; classificationStatus: string; classificationCount: number | null; classifications: unknown[];
+  relationshipStatus: string; relationshipCount: number | null; relationships: unknown[]; materialCount: number | null; materialsStatus: string; materials: Material[];
   materialPropertiesStatus: string; materialPropertyGroupCount: number | null;
   materialProperties: Array<{ modelId: string; expressId: number; psetCount: number | null;
     psets: Array<{ name: string; propertyCount: number | null; properties: Record<string, string> }> }> }
@@ -110,7 +113,7 @@ test('#7119 source-free verified materials remain known and missing wire rows re
   assert.equal(rows()[0].materialPropertiesStatus, 'unverified-without-source');
   assert.equal(rows()[0].materialPropertyGroupCount, null, 'unknown material property totals cannot read as zero findings');
   assert.deepEqual(rows()[0].materialProperties, []);
-  assert.match(JSON.parse(captureEvidence('selection').payload).evidence.summary.limitations, /absent values are unknown/);
+  assert.match(JSON.parse(captureEvidence('selection').payload).evidence.summary.limitations, /Unverified material-property counts stay null; empty rows do not prove absence/);
 });
 
 test('#7119 material collection shapes preserve native members and bound list fan-out', async () => {
@@ -211,11 +214,25 @@ test('#7119 session-created material property groups agree with the mounted nati
 });
 
 test('#7119 all selection caveats reach the snapshot without projection truncation', async () => {
-  seedModel('arch', 0, await sample(), 52);
+  const store = await sample();
+  seedModel('arch', 0, store, 52);
   const snapshot = captureEvidence('selection');
   const summary = JSON.parse(snapshot.payload).evidence.summary;
-  assert.match(summary.limitations, /Classifications and relationships are excluded/);
-  assert.match(summary.limitations, /selection is sampled/);
+  // #7183/#7185 now include these native sections; keep their availability,
+  // full known counts and bounded display consistent with the actual fixture.
+  const nativeRelationships = relationshipsForSelection(createQueryAdapter(useViewerStore).relationships,
+    { modelId: 'arch', expressId: 52 }, 52).relations ?? [];
+  assert.ok(nativeRelationships.length > 0, 'the real slab has native relationship edges');
+  const row = rows()[0];
+  assert.equal(row.classificationStatus, 'available');
+  const nativeClassificationCount = extractClassificationsOnDemand(store, 52).length;
+  assert.equal(row.classificationCount, nativeClassificationCount);
+  assert.equal(row.classifications.length, Math.min(nativeClassificationCount, summary.perElementBounds.classifications));
+  assert.equal(row.relationshipStatus, 'available');
+  assert.equal(row.relationshipCount, nativeRelationships.length);
+  assert.equal(row.relationships.length, Math.min(nativeRelationships.length, summary.perElementBounds.relationships));
+  assert.match(summary.limitations, /Sections use perElementBounds and full known counts/);
+  assert.match(summary.limitations, /Selection is sampled/);
   assert.equal(snapshot.projectionTruncated, false);
 });
 

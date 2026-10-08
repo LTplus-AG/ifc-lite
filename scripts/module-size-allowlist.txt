@@ -229,8 +229,7 @@
    773 packages/ids/src/validation/validator.ts
    468 packages/ifcx/src/federated-composition.ts
    704 packages/ifcx/src/index.ts
-   464 packages/lens/src/engine.ts
-   812 packages/lists/src/engine.ts
+   772 packages/lists/src/engine.ts
    479 packages/mcp/src/backend-query.ts
    544 packages/mcp/src/server.ts
    470 packages/mcp/src/tools/layer-review.ts

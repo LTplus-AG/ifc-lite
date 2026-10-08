@@ -776,3 +776,12 @@ worker transport preserves these fields when reconstructing a store.
 
 `computeTransformMatrix(MapConversion)` derives the canonical 4×4 matrix
 from the current conversion, including its optional axis scale factors.
+
+
+## Material occurrence precedence
+
+`extractAllMaterialsOnDemand(store, entityId, view)` returns every occurrence assignment, falling back to the entity's type only when the occurrence has none. The optional native mutation view applies current relationship retargeting, deletions, aliases, material edits and newly authored assignment shapes through the same effective readers used for STEP export.
+
+`extractMaterialPropertiesOnDemand(store, entityId, view, revision)` uses the same current assignments for generic material property groups. Named edits apply before positional edits, matching exported records. An unset layer `IsVentilated` remains undefined rather than becoming an explicit false value.
+
+`materialAssignmentsAvailable(store, entityId, view)` reports whether the supplied graph and current edits can prove the complete selected material membership. Source-empty transport without membership data, or with relevant edits to unavailable source relationship records, yields `false`; retained source markers and authored records do not establish a complete count. The Assistant reports null totals and unverified source markers in those cases.

@@ -103,3 +103,48 @@ test('#7179 source-free edited native relationship membership has an unknown tot
   assert.equal(row.relationshipCount, null);
   assert.ok(row.relationships.some(edge => edge.verification === 'unverified'));
 });
+
+// #7179 actual public authored assignment records must survive STEP export;
+// native edge direction belongs to the selected endpoint, not the group name.
+test('#7179 public authored relationship preserves native identity and both directions', async () => {
+  const store = await sample(); seedModel('authored', 0, store, 52);
+  const view = getOrCreateMutationView(useViewerStore, 'authored'); assert.ok(view); view.setExpressIdWatermark(100_000);
+  const group = view.createEntity('IfcGroup', ['0000000000000000000001', null, 'Authored group', null, null]);
+  const association = view.createEntity('IfcRelAssignsToGroup', ['0000000000000000000002', null, null, null, ['#52'], null, `#${group.expressId}`]);
+  const exported = await exportAndReparse('authored', store);
+  assert.deepEqual(exported.getEntity(association.expressId)?.attributes[4], [52]);
+  assert.equal(exported.getEntity(association.expressId)?.attributes[6], group.expressId);
+  assert.deepEqual(native('authored', 52).relations?.filter(edge => edge.relationshipId === association.expressId)
+    .map(edge => [edge.relationshipType, edge.direction, edge.entity.id]), [['IfcRelAssignsToGroup', 'inverse', group.expressId]]);
+  assert.deepEqual(native('authored', group.expressId).relations?.filter(edge => edge.relationshipId === association.expressId)
+    .map(edge => [edge.relationshipType, edge.direction, edge.entity.id]), [['IfcRelAssignsToGroup', 'forward', 52]]);
+  const beforeDeletion = rows()[0];
+  view.deleteEntity(association.expressId);
+  const removed = await exportAndReparse('authored', store);
+  assert.equal(removed.entityIndex.byId.has(association.expressId), false);
+  assert.ok(!native('authored', 52).relations?.some(edge => edge.relationshipId === association.expressId));
+  assert.ok(Array.isArray(beforeDeletion.relationships), 'authored assignment must appear in selected evidence');
+  const inverse = beforeDeletion.relationships.find(edge => edge.relationshipId === association.expressId);
+  assert.ok(inverse); assert.equal(inverse.direction, 'inverse'); assert.equal(inverse.relationshipType, 'IfcRelAssignsToGroup');
+  assert.equal(inverse.entity.expressId, group.expressId);
+  assert.ok(!rows()[0].relationships.some(edge => edge.relationshipId === association.expressId));
+});
+
+// #7179 fan-out is real exported IFC, rather than an invented evidence array.
+test('#7179 native authored relationship fan-out retains full known count and bounded rows', async () => {
+  const store = await sample(); seedModel('bounded', 0, store, 52);
+  const view = getOrCreateMutationView(useViewerStore, 'bounded'); assert.ok(view); view.setExpressIdWatermark(100_000);
+  const baseline = native('bounded', 52).relations?.length ?? 0;
+  const group = view.createEntity('IfcGroup', ['0000000000000000000001', null, 'x'.repeat(251), null, null]);
+  const ids: number[] = [];
+  for (let i = 0; i < 20; i++) {
+    ids.push(view.createEntity('IfcRelAssignsToGroup', [`1${String(i).padStart(21, '0')}`, null, null, null, ['#52'], null, `#${group.expressId}`]).expressId);
+  }
+  const exported = await exportAndReparse('bounded', store);
+  assert.equal(ids.filter(id => exported.entityIndex.byId.get(id)?.type === 'IFCRELASSIGNSTOGROUP').length, 20);
+  assert.equal(native('bounded', 52).relations?.length, baseline + 20);
+  const row = rows()[0]; assert.equal(row.relationshipCount, baseline + 20);
+  assert.equal(row.relationships.length, 16);
+  const sampledGroup = row.relationships.find(edge => edge.entity.expressId === group.expressId);
+  assert.ok(sampledGroup); assert.equal(sampledGroup.entity.Name, `${'x'.repeat(240)}…`);
+});

@@ -143,6 +143,13 @@
               }
             ],
             "qsetCount": 1,
+            "nativeEdit": {
+              "units": "m",
+              "dimensionsStatus": "unavailable",
+              "dimensions": null,
+              "profileStatus": "unavailable",
+              "Profile": null
+            },
             "structuralStatus": "available",
             "structural": null,
             "documentStatus": "available",

@@ -124,10 +124,10 @@ export async function runModelRequest<Message, Route extends string>(
   const { budget, signal } = request;
   let startedAt = Date.now();
   let id = `req-${startedAt}-${++receiptSequence}`;
-  let outputFormat: OutputFormat = 'text';
+  let outputFormat: OutputFormat | undefined;
   const receiptFor = (outcome: UsageReceipt['outcome'], usage: TokenUsage | null): UsageReceipt<Route> => ({
     id, model: request.model, route: request.route, startedAt, finishedAt: Date.now(), outcome,
-    ...(request.outputSchema ? { outputFormat } : {}),
+    ...(request.outputSchema && outputFormat ? { outputFormat } : {}),
     ...(usage ? { usageReported: true as const, ...usage } : { usageReported: false as const }),
   });
   // A caller that cancels before dispatch gets a typed outcome without a request, and no receipt is logged.

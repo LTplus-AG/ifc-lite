@@ -5,7 +5,7 @@ import '@/test/setup-dom.js';
 import assert from 'node:assert/strict';
 import { afterEach, test } from 'node:test';
 import { readFileSync } from 'node:fs';
-import { IfcParser, extractClassificationsOnDemand } from '@ifc-lite/parser';
+import { IfcParser, extractClassificationsOnDemand, extractClassificationSystemsOnDemand } from '@ifc-lite/parser';
 import { StepExporter } from '@ifc-lite/export';
 import { evaluateFilterGroupsFederated } from '@ifc-lite/rules';
 import { useViewerStore } from '@/store';
@@ -192,5 +192,21 @@ test('#7131 named unset markers and explicit empty classification strings preser
     const expected = extractClassificationsOnDemand(reparsed, 262);
     assert.equal(expected[0]?.system, value === '$' ? undefined : value, 'the native reader preserves explicit empty strings and derived markers, while unset data is absent');
     assert.deepEqual(extractClassificationsOnDemand(store, 262, view), expected);
+  }
+});
+
+test('#7131 whitespace marker edits follow each native named versus positional/created export path', async () => {
+  for (const mode of ['named', 'positional', 'created']) for (const value of [' $ ', ' * ']) {
+    const { store, view } = await authoredAssociation();
+    if (mode === 'named') view.setAttribute(34, 'Name', value);
+    else if (mode === 'positional') view.setPositionalAttribute(34, 3, value);
+    else view.createEntity('IFCCLASSIFICATION', [null, null, null, value, null, null, null]);
+    const out = new StepExporter(store, view).export({ schema: 'IFC4', visibleOnly: false, hiddenEntityIds: new Set<number>() });
+    const text = typeof out.content === 'string' ? out.content : new TextDecoder().decode(out.content);
+    const reparsed = await new IfcParser().parseColumnar(new TextEncoder().encode(text).buffer, { disableWorkerScan: true });
+    const expected = extractClassificationSystemsOnDemand(reparsed).names;
+    if (mode === 'named') assert.ok(expected.includes(value), 'declared STRING named edits preserve whitespace literally');
+    else assert.equal(expected.includes(value), false, 'native positional/created STEP markers trim their whitespace');
+    assert.deepEqual(extractClassificationSystemsOnDemand(store, view).names, expected, `${mode} ${JSON.stringify(value)} must match native export/reparse`);
   }
 });

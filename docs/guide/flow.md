@@ -222,6 +222,8 @@ on a headless host and pass their entities through, so a graph that
 colorizes failures runs unchanged in CI. `ifc-lite flow validate` and the
 editor show the same per-node report.
 
+In the viewer, the status bar’s **Activity** tray offers **Cancel** for a running Flow. Each row addresses its own native run. Cancellation stops downstream effects at the scheduler’s next checkpoint and records **Cancelled**. If a node needs time to finish its current work, the run keeps its execution lease while cancellation drains; another run can start after the lease releases. Terminal rows release their cancellation controls.
+
 ## AI nodes and review checkpoints
 
 `@ifc-lite/flow-nodes/ai` adds four nodes that call the host's AI model

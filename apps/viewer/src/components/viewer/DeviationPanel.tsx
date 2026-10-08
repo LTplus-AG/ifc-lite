@@ -31,6 +31,7 @@ import { countDeviationWithinTolerance, withToleranceShare } from '@/lib/point-c
 import { captureAnalysisStamp, type AnalysisStamp } from '@/hooks/useAnalysisStaleness';
 import { buildDeviationCsvReport } from '@/lib/analysis/export-csv';
 import { downloadFile } from '@/lib/export/download';
+import { beginActivity, finishActivity } from '@/lib/activity/activity-journal';
 import { trackExportCompleted } from '@/lib/analytics';
 import { deviationAssetIdentities } from '@/lib/point-cloud/deviation-asset-identity';
 import { cn } from '@/lib/utils';
@@ -134,6 +135,9 @@ export function DeviationPanel({ triangleCount }: DeviationPanelProps) {
     if (!computed || !distances || !statistics || running || exportRef.current) return;
     const controller = new AbortController();
     exportRef.current = { distances, controller };
+    let cancelledFromTray = false;
+    const job = beginActivity({ kind: 'export', title: 'activityTray.job.export', subject: 'CSV',
+      cancel: () => { if (exportRef.current?.controller === controller) { cancelledFromTray = true; controller.abort(); } } });
     setExporting(true);
     setError(null);
     setExportNotice(null);
@@ -142,6 +146,7 @@ export function DeviationPanel({ triangleCount }: DeviationPanelProps) {
     try {
       // The stored summaries; only the tolerance band is counted for the export.
       const within = await countDeviationWithinTolerance(distances, tolerance, { signal: controller.signal });
+      controller.signal.throwIfAborted();
       const summaries = statistics.assets.map((asset, i) => ({
         ...asset, statistics: withToleranceShare(asset.statistics, tolerance, within.assets[i] ?? 0) }));
       // The pooled row is a pass over every point, never a mean of the rows.
@@ -165,17 +170,23 @@ export function DeviationPanel({ triangleCount }: DeviationPanelProps) {
       if (report) {
         downloadFile(report.content, report.filename, 'text/csv;charset=utf-8');
         trackExportCompleted({ format: 'csv', surface: 'deviation_panel', row_count: report.rows });
+        finishActivity(job, 'completed');
       } else {
         // A COPC scan keeps only the nodes in view; with every node dropped
         // the run measured nothing, and an empty file would explain nothing.
-        setExportNotice(t('deviationPanel.exportNoPointsNotice'));
+        const notice = t('deviationPanel.exportNoPointsNotice');
+        setExportNotice(notice);
+        finishActivity(job, 'failed', { detail: notice });
       }
     } catch (err) {
+      finishActivity(job, controller.signal.aborted ? 'cancelled' : 'failed',
+        controller.signal.aborted ? {} : { detail: err instanceof Error ? err.message : String(err) });
+      if (cancelledFromTray) setExportNotice(t('deviationPanel.exportCancelledNotice'));
       setError(controller.signal.aborted
-        ? t('deviationPanel.resultsChangedError')
+        ? (cancelledFromTray ? null : t('deviationPanel.resultsChangedError'))
         : err instanceof Error ? err.message : String(err));
     } finally {
-      exportRef.current = null;
+      if (exportRef.current?.controller === controller) exportRef.current = null;
       setExporting(false);
     }
   }, [computed, distances, statistics, running, t, tolerance]);

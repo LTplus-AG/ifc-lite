@@ -51,6 +51,7 @@ describe('#7186 captured native membership', () => {
     view.setExpressIdWatermark(100000);
     const entity = view.createEntity('IfcWall', ['known-guid', null, 'Authored wall']);
     const creation = view.getMutations().find(mutation => mutation.type === 'CREATE_ENTITY')!;
+    expect(entity.creationId).toBe(creation.id);
     const scope = scopeFor(entity.expressId, creation.id);
     view.setAttribute(entity.expressId, 'Name', 'Edited wall');
     expect(resolveCapturedEntityScope(scope, [source('a', view)]).get('a')?.has(entity.expressId)).toBe(true);
@@ -60,13 +61,51 @@ describe('#7186 captured native membership', () => {
     view.restoreNewEntity(entity);
     expect(resolveCapturedEntityScope(scope, [source('a', view)]).get('a')?.has(entity.expressId)).toBe(true);
     const recovered = new MutablePropertyView(store.properties, 'a');
-    recovered.restoreNewEntity(structuredClone(entity));
+    recovered.restoreNewEntity({ expressId: entity.expressId, type: entity.type, attributes: structuredClone(entity.attributes) });
     recovered.applyMutations(history);
     expect(() => resolveCapturedEntityScope(scope, [source('a', recovered)])).toThrow(/identity/);
     const reused = new MutablePropertyView(store.properties, 'a');
     reused.setExpressIdWatermark(100000);
     expect(reused.createEntity(entity.type, entity.attributes).expressId).toBe(entity.expressId);
     expect(() => resolveCapturedEntityScope(scope, [source('a', reused)])).toThrow(/identity/);
+  });
+  it('#7186 refuses tokenless replacement despite retained original creation history, including identical fields', () => {
+    const view = new MutablePropertyView(store.properties, 'a');
+    view.setExpressIdWatermark(100000);
+    const original = view.createEntity('IfcWall', ['original-native-guid', null, 'Captured authored wall']);
+    const creation = view.getMutations().find(mutation => mutation.type === 'CREATE_ENTITY')!;
+    const scope = scopeFor(original.expressId, creation.id);
+    for (const attributes of [['replacement-native-guid', null, 'Another native wall'], original.attributes]) {
+      view.restoreNewEntity(original);
+      expect(resolveCapturedEntityScope(scope, [source('a', view)]).get('a')?.has(original.expressId)).toBe(true);
+      view.deleteEntity(original.expressId);
+      expect(() => resolveCapturedEntityScope(scope, [source('a', view)])).toThrow(/member/);
+      view.restoreNewEntity({ expressId: original.expressId, type: original.type, attributes: structuredClone(attributes) });
+      expect(view.getNewEntity(original.expressId)?.attributes).toEqual(attributes);
+      expect(view.getMutations().find(mutation => mutation.type === 'CREATE_ENTITY')?.id).toBe(creation.id);
+      expect(() => resolveCapturedEntityScope(scope, [source('a', view)])).toThrow(/identity/);
+    }
+    const recovered = new MutablePropertyView(store.properties, 'a');
+    recovered.restoreNewEntity(structuredClone(original));
+    recovered.applyMutations(view.getMutations());
+    expect(resolveCapturedEntityScope(scope, [source('a', recovered)]).get('a')?.has(original.expressId)).toBe(true);
+    recovered.restoreNewEntity({ ...structuredClone(original), attributes: ['same-authored-identity', null, 'Edited original fields'] });
+    expect(resolveCapturedEntityScope(scope, [source('a', recovered)]).get('a')?.has(original.expressId)).toBe(true);
+  });
+  it('#7186 keeps original provenance through native detached transaction commit and rollback', () => {
+    const view = new MutablePropertyView(store.properties, 'a');
+    view.setExpressIdWatermark(100000);
+    const entity = view.createEntity('IfcWall', ['atomic-authored-guid', null, 'Original wall']);
+    const creation = view.getMutations().find(mutation => mutation.type === 'CREATE_ENTITY')!;
+    const scope = scopeFor(entity.expressId, creation.id);
+    const prepared = view.prepareAtomic(draft => draft.setAttribute(entity.expressId, 'Name', 'Atomic wall edit', true));
+    prepared.commit();
+    expect(view.getNewEntity(entity.expressId)).not.toBe(entity);
+    expect(view.getNewEntity(entity.expressId)?.creationId).toBe(creation.id);
+    expect(resolveCapturedEntityScope(scope, [source('a', view)]).get('a')?.has(entity.expressId)).toBe(true);
+    prepared.rollback();
+    expect(view.getNewEntity(entity.expressId)?.creationId).toBe(creation.id);
+    expect(resolveCapturedEntityScope(scope, [source('a', view)]).get('a')?.has(entity.expressId)).toBe(true);
   });
   it('rejects duplicate identities, duplicate members, and oversized snapshots', () => {
     const scope = scopeFor(wallId);

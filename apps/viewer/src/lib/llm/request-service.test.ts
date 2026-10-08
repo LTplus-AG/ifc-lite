@@ -219,17 +219,33 @@ test('#7093 shared proxy request never adds an unbudgeted development fallback a
 });
 
 
-for (const headerDelay of [50_000, 150_000]) test(`#7093 shared deadline covers proxy headers arriving after ${headerDelay}ms`, async t => {
+for (const api of ['proxy', 'openai-chat', 'openai-responses', 'anthropic'] as const)
+for (const headerDelay of [50_000, 150_000]) test(`#7093 shared deadline covers ${api} headers arriving after ${headerDelay}ms`, async t => {
   t.mock.timers.enable({ apis: ['setTimeout'] });
   let posts = 0;
   let transportSignal: AbortSignal | null | undefined;
+  const route: SendableRoute = api === 'proxy' ? proxy : api === 'anthropic'
+    ? { kind: 'anthropic', model: 'claude-opus-5-5', credentials: { apiKey: 'sk-ant-test', workspaceId: '' } }
+    : { kind: 'openai', model: api === 'openai-chat' ? 'gpt-6-sol' : 'gpt-5.3-codex', apiKey: 'sk-test' };
+  const frames = api === 'openai-responses' ? data([
+    { type: 'response.output_text.delta', delta: 'Slow response' },
+    { type: 'response.completed', response: { status: 'completed', usage: { input_tokens: 1, output_tokens: 1 } } },
+  ]) : api === 'anthropic' ? [
+    { type: 'message_start', message: { id: 'msg_7093', type: 'message', role: 'assistant', model: 'claude-opus-5-5', content: [], stop_reason: null, stop_sequence: null, usage: { input_tokens: 1, output_tokens: 1 } } },
+    { type: 'content_block_start', index: 0, content_block: { type: 'text', text: '' } },
+    { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: 'Slow response' } },
+    { type: 'content_block_stop', index: 0 },
+    { type: 'message_delta', delta: { stop_reason: 'end_turn', stop_sequence: null }, usage: { output_tokens: 1 } },
+    { type: 'message_stop' },
+  ].map(event => `event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`).join('')
+    : data([{ choices: [{ delta: { content: 'Slow response' }, finish_reason: 'stop' }] }]);
   globalThis.fetch = async (_input, init) => {
     posts++;
     transportSignal = init?.signal;
     return new Promise<Response>((resolve, reject) => {
       const deliver = setTimeout(() => {
         transportSignal?.removeEventListener('abort', abort);
-        resolve(new Response(data([{ choices: [{ delta: { content: 'Slow response' }, finish_reason: 'stop' }] }]),
+        resolve(new Response(frames,
           { headers: { 'Content-Type': 'text/event-stream' } }));
       }, headerDelay);
       const abort = () => { clearTimeout(deliver); reject(transportSignal?.reason ?? new Error('Aborted')); };
@@ -237,7 +253,8 @@ for (const headerDelay of [50_000, 150_000]) test(`#7093 shared deadline covers 
     });
   };
   try {
-    const pending = runModelRequest(request({ timeoutMs: 120_000 }));
+    const pending = runModelRequest(request({ route, timeoutMs: 120_000 }));
+    for (let index = 0; index < 100; index++) await Promise.resolve();
     assert.equal(posts, 1);
     t.mock.timers.tick(45_000);
     for (let index = 0; index < 20; index++) await Promise.resolve();

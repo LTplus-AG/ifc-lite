@@ -109,7 +109,7 @@ export function createRoomCommandBackend(resolve: RoomCommandModelResolver, prov
     signal?.throwIfAborted();
     if (running.has(modelId)) throw new RoomCommandConflictError('Another Room command is preparing this model');
     if (!['auto', 'pick', 'footprint', 'query', 'update', 'edit'].includes(command.action)) throw new Error('Unsupported Room command action');
-    if (command.action === 'update' && (!Array.isArray(command.expressIds) || command.expressIds.length === 0 || command.expressIds.length > 10000 || !command.expressIds.every(id => Number.isSafeInteger(id) && id > 0) || new Set(command.expressIds).size !== command.expressIds.length)) throw new Error('Room update requires 1..10000 unique positive safe-integer rooms');
+    if (command.action === 'update' && (!Array.isArray(command.expressIds) || command.expressIds.length === 0 || command.expressIds.length > 10000 || !Array.from(command.expressIds).every(id => Number.isSafeInteger(id) && id > 0) || new Set(command.expressIds).size !== command.expressIds.length)) throw new Error('Room update requires 1..10000 unique positive safe-integer rooms');
     const op = capturedCommand(command);
     if (!Number.isSafeInteger(storeyId) || storeyId <= 0) throw new Error('Room requires a positive storey expressId');
     const weld = op.weld ?? .05, minArea = op.minArea ?? .3, boundary = op.boundary ?? 'inner';

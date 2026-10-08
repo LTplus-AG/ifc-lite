@@ -329,6 +329,19 @@ files and no edits the same proposal can still be approved; any edit, undo
 or model change in between refuses the resume and asks for a new run. Graph
 writes before and after the pause are separate undo steps.
 
+All four AI node families attach a JSON response schema derived from their
+native output shape and selected constraints. Direct OpenAI requests use
+the API's [structured output format](https://developers.openai.com/api/docs/guides/structured-outputs),
+and direct Anthropic requests use
+[`output_config.format`](https://platform.claude.com/docs/en/build-with-claude/structured-outputs).
+The hosted proxy remains parser-only because it advertises no upstream schema
+contract. A typed request's receipt records `outputFormat` as `json-schema` or
+`text`; it describes what was requested, not live model quality. Schema errors
+are not retried as unstructured text. Native citation, target, expected-value,
+allowed-value and source-span checks still run, and every proposal still pauses
+for review. Large citation inventories retain native membership validation
+without duplicating the entire inventory into a provider enum.
+
 In a real host the transitions go through `updateCheckpoint` with a durable
 store; the CLI's `flow run --checkpoint` / `flow review` / `flow resume`
 (see the [CLI guide](cli.md)) and the viewer's Flow

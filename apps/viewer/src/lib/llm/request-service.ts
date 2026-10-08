@@ -14,6 +14,7 @@
 
 import {
   runModelRequest as runSharedRequest, type AiTransport, type RequestOutcome as SharedOutcome, type RootBudget,
+  type JsonResponseSchema,
 } from '@ifc-lite/ai';
 import type { StreamRoute } from './byok-guard.js';
 import { modelCapabilities } from './model-capabilities.js';
@@ -38,6 +39,7 @@ export interface ModelRequest {
   proxyUrl: string;
   messages: StreamMessage[];
   system?: string;
+  outputSchema?: JsonResponseSchema;
   /** Requested output ceiling; clamped to the route ceiling and the root budget. */
   maxOutputTokens: number;
   /** Shared by every request made for the same task. */
@@ -71,6 +73,7 @@ export function runModelRequest(request: ModelRequest): Promise<RequestOutcome> 
     transport: viewerTransport(route, request.proxyUrl, request.onUsageInfo),
     messages: request.messages,
     system: request.system,
+    outputSchema: request.outputSchema,
     maxOutputTokens: request.maxOutputTokens,
     routeCeiling: modelCapabilities(route.model).maxOutputTokens,
     budget: request.budget,

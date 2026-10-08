@@ -150,6 +150,18 @@ const PAYLOADS: Record<OpKind, JsonSchema> = {
   'meta.custom.removePset': obj({ name: nonEmpty }, ['name']),
   'meta.custom.declareUserDefinedType': obj({ entity: nonEmpty, value: nonEmpty, index }, ['entity', 'value']),
   'meta.custom.removeUserDefinedType': obj({ entity: nonEmpty, value: nonEmpty }, ['entity', 'value']),
+  'meta.comment.add': obj({ nodeId: uuid, threadId: uuid, author: nonEmpty, at: nonEmpty, text: nonEmpty }, [
+    'nodeId',
+    'threadId',
+    'author',
+    'at',
+    'text',
+  ]),
+  'meta.comment.reply': obj({ threadId: uuid, author: nonEmpty, at: nonEmpty, text: nonEmpty }, ['threadId', 'author', 'at', 'text']),
+  'meta.comment.removeReply': obj({ threadId: uuid }, ['threadId']),
+  'meta.comment.resolve': obj({ threadId: uuid, resolved: { type: 'boolean' } }, ['threadId', 'resolved']),
+  'meta.comment.removeThread': obj({ threadId: uuid }, ['threadId']),
+  'meta.comment.restoreThread': obj({ nodeId: uuid, index, thread: ref('CommentThread') }, ['nodeId', 'index', 'thread']),
   'bulk.renameProperty': obj(
     { fromPset: nonEmpty, fromName: nonEmpty, toPset: nonEmpty, toName: nonEmpty, scope },
     ['fromPset', 'fromName', 'toPset', 'toName'],

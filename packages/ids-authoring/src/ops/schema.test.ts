@@ -58,6 +58,12 @@ const EXAMPLES: Record<OpKind, StudioOp['payload']> = {
   'meta.custom.removePset': { name: 'Acme_Wall' },
   'meta.custom.declareUserDefinedType': { entity: 'IfcSlab', value: 'SLABRADOR' },
   'meta.custom.removeUserDefinedType': { entity: 'IfcSlab', value: 'SLABRADOR' },
+  'meta.comment.add': { nodeId: S, threadId: F, author: 'Ana', at: '2026-10-08T09:00:00Z', text: 'Is EI60 enough here?' },
+  'meta.comment.reply': { threadId: F, author: 'Ben', at: '2026-10-08T10:00:00Z', text: '@Ana yes, per the fire concept' },
+  'meta.comment.removeReply': { threadId: F },
+  'meta.comment.resolve': { threadId: F, resolved: true },
+  'meta.comment.removeThread': { threadId: F },
+  'meta.comment.restoreThread': { nodeId: S, index: 0, thread: { id: F, resolved: false, comments: [{ author: 'Ana', at: '2026-10-08', text: 'x' }] } },
   'bulk.renameProperty': { fromPset: 'Pset_WallCommon', fromName: 'Fire', toPset: 'Pset_WallCommon', toName: 'FireRating' },
   'bulk.retargetEntity': { from: 'IfcWallStandardCase', to: 'IfcWall', scope: [S] },
   'bulk.applyTemplate': {

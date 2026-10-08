@@ -25,7 +25,7 @@ import type {
   RequirementOptionality,
 } from '@ifc-lite/ids';
 import type { FacetFieldName } from '../document/fields.js';
-import type { CustomPsetDecl, FacetNodes, Section, SpecNodes, UserDefinedTypeDecl } from '../document/types.js';
+import type { CommentThread, CustomPsetDecl, FacetNodes, Section, SpecNodes, UserDefinedTypeDecl } from '../document/types.js';
 import type { Uuid } from '../uuid.js';
 
 export const OPS_VERSION = 1;
@@ -221,6 +221,25 @@ export type MetaRemovePsetOp = Op<'meta.custom.removePset', { name: string }>;
 export type MetaDeclareUserDefinedTypeOp = Op<'meta.custom.declareUserDefinedType', UserDefinedTypeDecl & { index?: number }>;
 export type MetaRemoveUserDefinedTypeOp = Op<'meta.custom.removeUserDefinedType', UserDefinedTypeDecl>;
 
+/** One comment of a thread (sidecar only). */
+export interface CommentDraft {
+  author: string;
+  /** ISO timestamp. */
+  at: string;
+  text: string;
+}
+
+/** Open a thread on a live node. */
+export type MetaCommentAddOp = Op<'meta.comment.add', CommentDraft & { nodeId: Uuid; threadId: Uuid }>;
+/** Append a comment to a thread. */
+export type MetaCommentReplyOp = Op<'meta.comment.reply', CommentDraft & { threadId: Uuid }>;
+/** Remove the last comment of a thread that has more than one (inverse of reply). */
+export type MetaCommentRemoveReplyOp = Op<'meta.comment.removeReply', { threadId: Uuid }>;
+export type MetaCommentResolveOp = Op<'meta.comment.resolve', { threadId: Uuid; resolved: boolean }>;
+export type MetaCommentRemoveThreadOp = Op<'meta.comment.removeThread', { threadId: Uuid }>;
+/** Put a thread back (inverse of removeThread; the node may be gone, threads outlive nodes). */
+export type MetaCommentRestoreThreadOp = Op<'meta.comment.restoreThread', { nodeId: Uuid; index: number; thread: CommentThread }>;
+
 // ---------------------------------------------------------------------------
 // Compound ops (expand to primitives)
 // ---------------------------------------------------------------------------
@@ -277,7 +296,13 @@ export type PrimitiveOp =
   | MetaDeclarePsetOp
   | MetaRemovePsetOp
   | MetaDeclareUserDefinedTypeOp
-  | MetaRemoveUserDefinedTypeOp;
+  | MetaRemoveUserDefinedTypeOp
+  | MetaCommentAddOp
+  | MetaCommentReplyOp
+  | MetaCommentRemoveReplyOp
+  | MetaCommentResolveOp
+  | MetaCommentRemoveThreadOp
+  | MetaCommentRestoreThreadOp;
 
 export type CompoundOp = BulkRenamePropertyOp | BulkRetargetEntityOp | BulkApplyTemplateOp;
 

@@ -227,6 +227,22 @@ export const VALUE_DEFS: Record<string, JsonSchema> = {
   ...FACET_DRAFTS,
   FacetDraft: { oneOf: Object.keys(FACET_DRAFTS).map(ref) },
   ...IDS_CONTENT,
+  CommentThread: obj(
+    {
+      id: { $ref: '#/$defs/Uuid' },
+      resolved: { type: 'boolean' },
+      comments: {
+        type: 'array',
+        minItems: 1,
+        items: obj({ author: { type: 'string', minLength: 1 }, at: { type: 'string', minLength: 1 }, text: { type: 'string', minLength: 1 } }, [
+          'author',
+          'at',
+          'text',
+        ]),
+      },
+    },
+    ['id', 'resolved', 'comments'],
+  ),
   CustomPsetDecl: obj(
     {
       name: { type: 'string', minLength: 1 },

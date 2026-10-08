@@ -63,6 +63,7 @@ describe('mergeDocuments', () => {
         const r = mergeDocuments(base, o, t);
         expect(r.conflicts, `seq ${seq}`).toEqual([]);
         expect(shape(r.doc), `seq ${seq}`).toEqual(shape(x));
+        expect(r.doc.meta.comments, `seq ${seq} comments`).toEqual(x.meta.comments);
       }
     }
   }, 60_000);

@@ -59,6 +59,7 @@ export {
   type RequirementSnapshot,
   type OpTemplate,
   type TemplateOp,
+  type CommentDraft,
 } from './ops/types.js';
 export { OP_KINDS, validateOp, getOpJsonSchema, type OpValidation } from './ops/schema.js';
 export type { SchemaError } from './ops/json-schema-lite.js';
@@ -126,6 +127,16 @@ export * from './merge/index.js';
 
 // Revisions, sign-off and hash chain (IDS-107)
 export * from './revision/index.js';
+
+// Comment threads in the sidecar (IDS-108)
+export {
+  commentThreads,
+  extractMentions,
+  type CommentAnchor,
+  type CommentThreadView,
+  type CommentView,
+  type CommentsView,
+} from './comments/view.js';
 
 // Plain-language rendering (IDS-027)
 export { describeFacet } from './render/describe.js';

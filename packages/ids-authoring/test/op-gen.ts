@@ -111,7 +111,7 @@ export function randomOp(rng: Rng, doc: StudioDocument, newId: () => string): St
   const all = facets(doc);
   const spec = specs.length ? pick(rng, specs) : undefined;
   const f = all.length ? pick(rng, all) : undefined;
-  switch (int(rng, 34)) {
+  switch (int(rng, 38)) {
     case 0:
       return { kind: 'doc.setInfo', opId, payload: { field: pick(rng, ['title', 'author', 'purpose'] as InfoField[]), value: pick(rng, WORDS) } };
     case 21:
@@ -227,6 +227,23 @@ export function randomOp(rng: Rng, doc: StudioDocument, newId: () => string): St
     case 33: {
       const declared = doc.meta.custom.userDefinedTypes;
       return declared.length ? { kind: 'meta.custom.removeUserDefinedType', opId, payload: { ...pick(rng, declared) } } : undefined;
+    }
+    case 34: {
+      // Comments go on any live node, the document included.
+      const nodes = [doc.nodes.document, ...specs.map((s) => s.id), ...all.map((x) => x.facetId)];
+      return { kind: 'meta.comment.add', opId, payload: { nodeId: pick(rng, nodes), threadId: newId(), author: pick(rng, ['Ana', 'Ben']), at: '2026-10-08T09:00:00Z', text: pick(rng, WORDS) } };
+    }
+    case 35:
+    case 36:
+    case 37: {
+      const threads = Object.values(doc.meta.comments).flat();
+      if (!threads.length) return undefined;
+      const thread = pick(rng, threads);
+      const r = rng();
+      if (r < 0.4) return { kind: 'meta.comment.reply', opId, payload: { threadId: thread.id, author: 'Ben', at: '2026-10-08T10:00:00Z', text: pick(rng, WORDS) } };
+      if (r < 0.7) return { kind: 'meta.comment.resolve', opId, payload: { threadId: thread.id, resolved: !thread.resolved } };
+      if (r < 0.85 && thread.comments.length > 1) return { kind: 'meta.comment.removeReply', opId, payload: { threadId: thread.id } };
+      return { kind: 'meta.comment.removeThread', opId, payload: { threadId: thread.id } };
     }
     case 20:
       return { kind: 'meta.custom.declarePset', opId, payload: { decl: { name: pick(rng, ['Acme_A', 'Acme_B', 'Acme_C']), properties: rng() < 0.5 ? [{ name: 'Code' }] : undefined } } };

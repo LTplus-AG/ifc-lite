@@ -19,7 +19,8 @@
  * unresolved one keeps the base. Order is settled per list (`order.ts`).
  * The merged change set is turned into primitive ops with `diffToOps`, so
  * the result is reachable through ops, and those ops can be re-checked by
- * the grounding gate (`options.gate`).
+ * the grounding gate (`options.gate`). Comment threads merge additively
+ * (`comments.ts`).
  */
 
 import { diffDocuments } from '../diff/diff.js';
@@ -30,6 +31,7 @@ import { checkOps } from '../gate/check.js';
 import { canonical } from '../match/cascade.js';
 import type { StudioOp } from '../ops/types.js';
 import { apply } from '../reducer/apply.js';
+import { commentMergeOps } from './comments.js';
 import { contentKeyOf, isOrderKey, scopeOf } from './keys.js';
 import { mergeOrder } from './order.js';
 import type { MergeConflict, MergeDiagnostic, MergeOptions, MergeResult, MergeSide } from './types.js';
@@ -181,12 +183,16 @@ export function mergeDocuments(base: StudioDocument, ours: StudioDocument, their
     specs: [],
     order: mergeOrder(base, dOurs, dTheirs, chosen, diagnostics),
   };
-  const ops = diffToOps(base, merged, { seed: options.seed ?? `merge:${base.docId}` });
+  const seed = options.seed ?? `merge:${base.docId}`;
+  const contentOps = diffToOps(base, merged, { seed });
   if (options.gate) {
-    const gate = checkOps(ops, base, options.gate);
+    const gate = checkOps(contentOps, base, options.gate);
     for (const issue of gate.issues) diagnostics.push({ code: 'MERGE-GATE-001', message: issue.message, issue });
   }
-  const doc = apply(base, ops).doc;
+  const content = apply(base, contentOps).doc;
+  const commentOps = commentMergeOps(base, ours, theirs, content, seed);
+  const ops = [...contentOps, ...commentOps];
+  const doc = apply(content, commentOps).doc;
   const unresolved = conflicts.some((c) => !c.resolution);
   return { doc, ops, conflicts, diagnostics, clean: !unresolved && !diagnostics.some((d) => d.code === 'MERGE-GATE-001') };
 }

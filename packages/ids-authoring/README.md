@@ -88,6 +88,7 @@ against it.
 | Requirement | `requirement.setOptionality`, `requirement.set` |
 | Value | `value.set`, `value.addEnumValue`, `value.removeEnumValue` |
 | Sidecar | `meta.custom.declarePset`, `meta.custom.removePset`, `meta.custom.declareUserDefinedType`, `meta.custom.removeUserDefinedType` |
+| Comments | `meta.comment.add`, `meta.comment.reply`, `meta.comment.resolve`, `meta.comment.removeThread`, plus the inverses `meta.comment.removeReply` and `meta.comment.restoreThread` (sidecar only) |
 | Compound | `bulk.renameProperty`, `bulk.retargetEntity`, `bulk.applyTemplate` (each expands to primitive ops and undoes in one step) |
 | Fidelity | `spec.restore`, `spec.patch`, `facet.restore`, `facet.patch` (emitted as exact inverses; they carry raw IDS content and node ids) |
 
@@ -289,6 +290,16 @@ verifyRevisionLog(log); // { ok: true, problems: [] }; any edit of a stored reco
   content on top of it must be a `draft`.
 - `revisionTimeline(log)` is the view model for a revision list (labels,
   sign-offs, plain-language changes against the parent, verification).
+
+## Comments
+
+Comment threads live in the sidecar (`meta.comments[nodeId]`) and change
+only through `meta.comment.*` ops, so they undo like any other edit and
+never touch the IDS XML. A thread is opened on a live node but outlives
+it: removing a specification keeps its discussion, and undo re-anchors it.
+`commentThreads(doc)` is the view model (anchor, orphan flag, participants,
+`@name` mentions, unresolved badges per node). In a three-way merge,
+threads merge additively: new threads and replies from both sides are kept.
 
 ## Sidecar, bundles, re-identification
 

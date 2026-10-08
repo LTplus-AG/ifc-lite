@@ -42,7 +42,7 @@ import {
 import { LLM_PROXY_URL, runModelRequest } from '@/lib/llm/request-service';
 import type { UsageInfo } from '@/lib/llm/stream-client';
 import { beginScriptTask, currentScriptTask, ownsScriptTask, type ScriptTask } from '@/lib/llm/script-task';
-import { createScriptResponse } from '@/lib/llm/script-response';
+import { assembleScriptResponse, createScriptResponse } from '@/lib/llm/script-response';
 import { extractCodeBlocks } from '@/lib/llm/code-extractor';
 import { fetchUsageSnapshot } from '@/lib/llm/usage-quota';
 import { buildStreamMessagesForModel, filterAttachmentsForModel } from '@/lib/llm/message-capabilities';
@@ -676,6 +676,7 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
     });
     if (!ownsTask()) return;
     task.truncated = outcome.kind === 'truncated';
+    task.continuationText = outcome.kind === 'truncated' ? assembleScriptResponse(outcome.text, continuationBase) : undefined;
     if (outcome.kind === 'completed' && ownsRequest()) {
       setLastFinishReason(null);
       await handleComplete(outcome.text);
@@ -743,9 +744,8 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
     const state = useViewerStore.getState();
     const partial = state.chatStreamingContent.trim();
     const lastAssistant = [...state.chatMessages].reverse().find((m) => m.role === 'assistant');
-    const continuationBase = partial || lastAssistant?.content || '';
+    const continuationBase = currentScriptTask()?.continuationText || partial || lastAssistant?.content || '';
     if (!continuationBase) return;
-
     // Preserve the partial completion in history, then request continuation.
     if (partial) {
       finalizeAssistant(partial);
@@ -803,8 +803,8 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
   const handleClearClick = useCallback(() => {
     documentUploads.cancel();
     if (messages.length <= 2) {
-      resetScriptEditorForNewChat();
       clearMessages();
+      resetScriptEditorForNewChat();
       setChatToolReady(null);
       authoringHintShownRef.current = false;
       setInputText('');
@@ -816,8 +816,8 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
 
   const confirmClear = useCallback(() => {
     documentUploads.cancel();
-    resetScriptEditorForNewChat();
     clearMessages();
+    resetScriptEditorForNewChat();
     setChatToolReady(null);
     authoringHintShownRef.current = false;
     setInputText('');

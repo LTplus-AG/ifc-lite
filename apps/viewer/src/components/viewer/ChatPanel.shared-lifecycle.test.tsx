@@ -183,3 +183,33 @@ test('#7093 first response with no text and a length finish is an explicit error
   assert.equal(useViewerStore.getState().scriptEditorContent, '');
   assert.equal(useViewerStore.getState().scriptLastResult, null);
 });
+
+
+for (const confirmed of [false, true]) test(`#7093 native ${confirmed ? 'confirmed' : 'immediate'} Clear cannot restore the pre-turn editor after partial edits`, async t => {
+  const previousCode = '// Previous conversation script\n';
+  const edits = `\`\`\`ifc-script-edits\n${JSON.stringify({ scriptEdits: [{ opId: '7093-clear-ui', type: 'append', baseRevision: 0, text: code }] })}\n\`\`\``;
+  globalThis.fetch = async (_input, init) => init?.method === 'POST'
+    ? new Response(new ReadableStream<Uint8Array>({ start(controller) {
+      controller.enqueue(new TextEncoder().encode(data([{ choices: [{ delta: { content: edits }, finish_reason: null }] }])));
+    } }), { headers: { 'Content-Type': 'text/event-stream' } }) : new Response('{}');
+  const native = await mountNative(t); if (!native) return;
+  act(() => {
+    useViewerStore.setState({ scriptEditorContent: previousCode, scriptEditorRevision: 0 });
+    if (confirmed) {
+      for (const role of ['user', 'assistant'] as const) useViewerStore.getState().addChatMessage({ id: `7093-before-${role}`, role, content: 'Previous conversation', createdAt: Date.now() });
+    }
+  });
+  send(native.ui);
+  await waitFor(() => useViewerStore.getState().scriptEditorContent === previousCode + code, 'native partial edit holds a pre-turn snapshot');
+  const clear = native.ui.querySelector('button[aria-label="Clear"]'); assert.ok(clear); click(clear);
+  if (confirmed) {
+    const confirm = [...native.ui.querySelectorAll('button')].find(button => button.textContent === 'Clear');
+    assert.ok(confirm); click(confirm);
+  }
+  await waitFor(() => useRequestReceipts.getState().receipts.length === 1, 'native clear cancels shared request');
+  assert.equal(useRequestReceipts.getState().receipts[0].outcome, 'cancelled');
+  assert.equal(useViewerStore.getState().chatMessages.length, 0);
+  assert.equal(useViewerStore.getState().scriptEditorContent, '');
+  assert.equal(useViewerStore.getState().scriptAssistantTurnSnapshot, null);
+  assert.equal(useViewerStore.getState().scriptLastResult, null);
+});

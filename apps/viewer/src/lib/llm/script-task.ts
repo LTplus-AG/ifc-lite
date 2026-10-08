@@ -7,7 +7,7 @@ import { useViewerStore } from '@/store';
 import { createRootBudget } from './root-budget';
 import type { RootBudget } from '@ifc-lite/ai';
 
-export interface ScriptTask { budget: RootBudget; truncated: boolean; cancel?: () => void }
+export interface ScriptTask { budget: RootBudget; truncated: boolean; continuationText?: string; cancel?: () => void }
 let current: ScriptTask | null = null;
 
 export function beginScriptTask(): ScriptTask {

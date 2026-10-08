@@ -28,6 +28,10 @@ interface ScriptResponseOptions {
   ownsTask: () => boolean;
 }
 
+export function assembleScriptResponse(text: string, continuationBase?: string): string {
+  return continuationBase ? continuationBase + stripContinuationOverlap(continuationBase, text) : text;
+}
+
 export function createScriptResponse(options: ScriptResponseOptions) {
   const { responseBaseRevision, responseBaseContent, editParseOptions, responseIntent,
     continuationBase, clearPendingAttachmentsOnce, onFirstChunk, execute, triggerAutoRepair,
@@ -105,10 +109,11 @@ export function createScriptResponse(options: ScriptResponseOptions) {
         const normalizedText = continuationBase
           ? stripContinuationOverlap(continuationBase, fullText)
           : fullText;
+        const assembledText = assembleScriptResponse(fullText, continuationBase);
         const messageId = finalizeAssistant(normalizedText || fullText);
 
         if (!responseEditState.applyFailed) {
-          const parsed = extractScriptEditOps(fullText, editParseOptions);
+          const parsed = extractScriptEditOps(assembledText, editParseOptions);
           if (parsed.parseErrors.length > 0) {
             if (responseEditState.intent === 'repair') {
               rollbackAssistantTurnIfNeeded();
@@ -159,7 +164,7 @@ export function createScriptResponse(options: ScriptResponseOptions) {
         }
 
         if (!responseEditState.appliedAny && !responseEditState.applyFailed && canUsePlainCodeBlockFallback(responseEditState.intent)) {
-          const blocks = extractCodeBlocks(fullText);
+          const blocks = extractCodeBlocks(assembledText);
           if (blocks.length > 0) {
             const lastBlock = blocks[blocks.length - 1];
             const fallbackResult = useViewerStore.getState().replaceScriptContentFallback(lastBlock.code, {
@@ -208,7 +213,7 @@ export function createScriptResponse(options: ScriptResponseOptions) {
               })();
             }
           } else if (!responseEditState.applyFailed && responseEditState.intent !== 'repair') {
-            const blocks = extractCodeBlocks(fullText);
+            const blocks = extractCodeBlocks(assembledText);
             if (blocks.length > 0) {
               const lastBlock = blocks[blocks.length - 1];
               useViewerStore.getState().setCodeExecResult(
@@ -273,7 +278,7 @@ export function createScriptResponse(options: ScriptResponseOptions) {
         ) {
           // Authoring-classified turn — try the bundle path first; if
           // no bundle was emitted, fall back to the script CTA.
-          void handleAuthoringResponse(fullText).then((bundleFound) => {
+          void handleAuthoringResponse(assembledText).then((bundleFound) => {
             if (!ownsTask()) return;
             if (!bundleFound) offerScriptInstall();
           });

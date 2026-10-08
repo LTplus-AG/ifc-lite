@@ -1,0 +1,200 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+import '@/test/setup-dom.js';
+import 'fake-indexeddb/auto';
+import assert from 'node:assert/strict';
+import { afterEach, test } from 'node:test';
+import { IfcCreator, readStairDimensions } from '@ifc-lite/create';
+import { EMPTY_SOURCE_BYTES, EntityExtractor } from '@ifc-lite/parser';
+import { MutablePropertyView, iterateEffectiveEntityIds } from '@ifc-lite/mutations';
+import { fixtureModels } from '@/test/store-fixture';
+import { useAssistant,replaceEvidence,cancelAssistant } from '@/lib/assistant/conversation';
+import { sendAssistant } from '@/lib/assistant/request';
+import { captureEvidence } from '@/lib/assistant/evidence';
+import { useViewerStore } from '@/store';
+import { editedModelBytes } from '@/lib/export/edited-model-bytes';
+import { setRequestRemesh } from '@/lib/commands/modeling/transaction';
+import { authoringReader, materialNameOf } from './model-authoring-read';
+import { createStoreAdapter } from '@/sdk/adapters/store-adapter';
+import { GROUND_STOREY, SAMPLE_MODEL, danglingReferences, parseIfc, seedAuthoringSample } from '@/test/authoring-sample-fixture';
+import { parseModelAuthoringBatch } from './model-authoring';
+import { commitModelAuthoring } from './model-authoring-commit';
+import { previewModelAuthoring } from './model-authoring-preview';
+const original=useViewerStore.getState(),originalAssistant=useAssistant.getState(),originalFetch=globalThis.fetch;
+afterEach(()=>{cancelAssistant();useViewerStore.setState(original);useAssistant.setState(originalAssistant);globalThis.fetch=originalFetch;});
+const s=useViewerStore.getState;
+function proposal(operation:unknown,units:'m'|'mm'='m'){return parseModelAuthoringBatch(JSON.stringify({version:1,kind:'model.authoring',title:'Native stair/railing',units,frame:'storey-local',operations:[operation]}));}
+const stair={Position:[1,2,0] as [number,number,number],NumberOfRisers:4,RiserHeight:.2,TreadLength:.3,Width:1,WaistThickness:.1,Name:'Native stair'};
+const railing={Path:[[1,4,0],[3,4,.4],[3,6,.4]] as [number,number,number][],Height:1.1,PostSpacing:.8,Name:'Native railing'};
+async function exported(){const state=s(),store=state.models.get(SAMPLE_MODEL)!.ifcDataStore!;const bytes=editedModelBytes(store,state.mutationViews.get(SAMPLE_MODEL)!);assert.deepEqual(danglingReferences(new TextDecoder().decode(bytes)),[]);return parseIfc(bytes);}
+/** #7273: native no-write/refusal invariants concern the independently reparsed graph,
+ * not export-time header fields or STEP record ordering. */
+async function assertSameNativeGraph(actual: Uint8Array, expected: Uint8Array): Promise<void> {
+ const graph = async (bytes: Uint8Array) => {
+  const parsed = await parseIfc(bytes), extractor = new EntityExtractor(parsed.source);
+  return [...iterateEffectiveEntityIds(parsed)].map(({expressId}) => {
+   const ref = parsed.entityIndex.byId.get(expressId);assert.ok(ref, `Reparsed native record #${expressId} is indexed`);
+   const entity = extractor.extractEntity(ref);assert.ok(entity, `Native attributes of #${expressId} are readable`);
+   return entity;
+  }).sort((a,b)=>a.expressId-b.expressId);
+ };
+ assert.deepEqual(await graph(actual),await graph(expected),'Native EXPRESS record types, attributes and references remain unchanged');
+}
+for(const kind of ['stair','railing'] as const)test(`#7273 reviewed ${kind} creation admits independently exported native geometry`,async()=>{
+ const {dataStore}=await seedAuthoringSample();const api=createStoreAdapter(useViewerStore),storey=dataStore.entities.getExpressIdByGlobalId(GROUND_STOREY);
+ const add=kind==='stair'?api.addStair:api.addRailing;assert.ok(add);
+ const made=kind==='stair'?api.addStair!(SAMPLE_MODEL,storey,stair):api.addRailing!(SAMPLE_MODEL,storey,railing);
+ const gid=s().mutationViews.get(SAMPLE_MODEL)!.getNewEntity(made.expressId)!.attributes[0];assert.equal(typeof gid,'string');
+ const parsed=await exported(),id=parsed.entities.getExpressIdByGlobalId(String(gid));assert.ok(id>0);assert.equal(parsed.entities.getTypeName(id),kind==='stair'?'IfcStair':'IfcRailing');
+ if(kind==='stair'){const dims=readStairDimensions(parsed,id);assert.ok(dims);assert.equal(dims.NumberOfRisers,4);assert.ok(Math.abs(dims.Width-1)<1e-9);assert.ok(Math.abs(dims.WaistThickness!-.1)<1e-9);}
+ const operation={op:`${kind}.create`,ref:'reviewed',storey:{globalId:GROUND_STOREY},params:kind==='stair'?{...stair,Name:'Reviewed stair'}:{...railing,Name:'Reviewed railing'}};
+ assert.doesNotThrow(()=>proposal(operation),'Assistant must admit the independently exported native family');
+ const before=s().mutationViews.get(SAMPLE_MODEL)!.getMutations();const preview=previewModelAuthoring(s(),proposal(operation));assert.equal(preview.rows[0].status,'ready',preview.rows[0].issue);assert.deepEqual(s().mutationViews.get(SAMPLE_MODEL)!.getMutations(),before,'Preview leaves real native journal unchanged');
+ const committed=commitModelAuthoring(useViewerStore,preview,new Set([0]),'native stair/railing witness');assert.ok(committed.ok,committed.ok?'':committed.detail??committed.reason);
+ const after=await exported(),reviewedId=after.entities.getExpressIdByGlobalId(committed.receipt.applied[0].globalId);assert.ok(reviewedId>0);assert.equal(after.entities.getName(reviewedId),kind==='stair'?'Reviewed stair':'Reviewed railing');assert.equal(after.entities.getTypeName(reviewedId),kind==='stair'?'IfcStair':'IfcRailing');assert.ok(after.entities.getExpressIdByGlobalId(String(gid))>0,'Prior native product remains unchanged');
+});
+test('#7273 ordinary native creation remains an unpublished review control',async()=>{await seedAuthoringSample();const before=s().mutationViews.get(SAMPLE_MODEL)!.getMutations();const preview=previewModelAuthoring(s(),proposal({op:'element.create',ref:'control',ifcClass:'IfcWall',name:'Control',storey:{globalId:GROUND_STOREY},params:{start:[0,10,0],end:[8,10,0],height:3,thickness:.2}}));assert.equal(preview.rows[0].status,'ready');assert.deepEqual(s().mutationViews.get(SAMPLE_MODEL)!.getMutations(),before);});
+
+test('#7273 generic native railing removal exports no dangling references and preserves undo identity',async()=>{
+ await seedAuthoringSample();const api=createStoreAdapter(useViewerStore);assert.ok(api.addRailing);const source=s().models.get(SAMPLE_MODEL)!.ifcDataStore!,storey=source.entities.getExpressIdByGlobalId(GROUND_STOREY);
+ const made=api.addRailing(SAMPLE_MODEL,storey,railing),record=s().mutationViews.get(SAMPLE_MODEL)!.getNewEntity(made.expressId)!;assert.equal(typeof record.attributes[0],'string');const gid=String(record.attributes[0]);
+ assert.ok(s().removeEntity(SAMPLE_MODEL,made.expressId));const removed=await exported();assert.equal(removed.entities.getExpressIdByGlobalId(gid),-1);
+ s().undo(SAMPLE_MODEL);const restored=await exported();assert.ok(restored.entities.getExpressIdByGlobalId(gid)>0,'Native one-step removal undo restores original root identity');
+ const preview=previewModelAuthoring(s(),proposal({op:'railing.delete',target:{globalId:gid,ifcClass:'IfcRailing',name:'Native railing'}}));assert.equal(preview.rows[0].status,'ready',preview.rows[0].issue);
+ const result=commitModelAuthoring(useViewerStore,preview,new Set([0]),'reviewed native railing removal');assert.ok(result.ok,result.ok?'':result.detail??result.reason);assert.equal((await exported()).entities.getExpressIdByGlobalId(gid),-1);
+ const {undoModelChanges}=await import('./model-change-commit');assert.ok(undoModelChanges(useViewerStore,result.receipt).ok);assert.ok((await exported()).entities.getExpressIdByGlobalId(gid)>0);s().redo(SAMPLE_MODEL);assert.equal((await exported()).entities.getExpressIdByGlobalId(gid),-1,'Native redo removes exactly the original railing again');
+});
+
+test('#7273 reviewed stair dimension edit preserves assembly identity and native one-batch undo',async()=>{
+ await seedAuthoringSample();const api=createStoreAdapter(useViewerStore);assert.ok(api.addStair);const source=s().models.get(SAMPLE_MODEL)!.ifcDataStore!,storey=source.entities.getExpressIdByGlobalId(GROUND_STOREY),made=api.addStair(SAMPLE_MODEL,storey,stair);
+ const view=s().mutationViews.get(SAMPLE_MODEL)!,gid=String(view.getNewEntity(made.expressId)!.attributes[0]),expected=readStairDimensions(source,made.expressId,view);assert.ok(expected);
+ const preview=previewModelAuthoring(s(),proposal({op:'stair.resize',target:{modelId:SAMPLE_MODEL,globalId:gid,ifcClass:'IfcStair',name:'Native stair'},expected,size:{Width:1.5,RiserHeight:.25}}));assert.equal(preview.rows[0].status,'ready',preview.rows[0].issue);
+ const outcome=commitModelAuthoring(useViewerStore,preview,new Set([0]),'native stair edit');assert.ok(outcome.ok,outcome.ok?'':outcome.detail??outcome.reason);
+ const changed=await exported(),dims=readStairDimensions(changed,changed.entities.getExpressIdByGlobalId(gid));assert.ok(dims);assert.equal(dims.NumberOfRisers,4);assert.equal(dims.Width,1.5);assert.equal(dims.RiserHeight,.25);assert.equal(dims.stairId,expected.stairId);assert.equal(dims.flightId,expected.flightId);
+ const {undoModelChanges}=await import('./model-change-commit');const undo=undoModelChanges(useViewerStore,outcome.receipt);assert.ok(undo.ok);const restored=await exported();assert.equal(readStairDimensions(restored,restored.entities.getExpressIdByGlobalId(gid))?.Width,1);
+});
+test('#7273 reviewed stair removal deletes and undoes exactly the native root and flight',async()=>{
+ await seedAuthoringSample();const api=createStoreAdapter(useViewerStore);assert.ok(api.addStair);const source=s().models.get(SAMPLE_MODEL)!.ifcDataStore!,made=api.addStair(SAMPLE_MODEL,source.entities.getExpressIdByGlobalId(GROUND_STOREY),stair),view=s().mutationViews.get(SAMPLE_MODEL)!,current=readStairDimensions(source,made.expressId,view);assert.ok(current);
+ const rootGuid=String(view.getNewEntity(current.stairId)!.attributes[0]),flightGuid=String(view.getNewEntity(current.flightId)!.attributes[0]);
+ const preview=previewModelAuthoring(s(),proposal({op:'stair.delete',target:{globalId:rootGuid,modelId:SAMPLE_MODEL,ifcClass:'IfcStair',name:'Native stair'}}));assert.equal(preview.rows[0].status,'ready',preview.rows[0].issue);assert.ok(!view.isDeleted(current.stairId)&&!view.isDeleted(current.flightId));
+ const outcome=commitModelAuthoring(useViewerStore,preview,new Set([0]),'native stair removal');assert.ok(outcome.ok,outcome.ok?'':outcome.detail??outcome.reason);
+ const removed=await exported();assert.equal(removed.entities.getExpressIdByGlobalId(rootGuid),-1);assert.equal(removed.entities.getExpressIdByGlobalId(flightGuid),-1);
+ const {undoModelChanges}=await import('./model-change-commit');assert.ok(undoModelChanges(useViewerStore,outcome.receipt).ok);const restored=await exported();assert.ok(restored.entities.getExpressIdByGlobalId(rootGuid)>0);assert.ok(restored.entities.getExpressIdByGlobalId(flightGuid)>0);
+});
+for(const from of ['stair','railing'] as const)for(const into of ['stair','railing'] as const)test(`#7273 reviewed ${from} to ${into} replacement exports actual new identity and restores the original on undo`,async()=>{
+ await seedAuthoringSample();const api=createStoreAdapter(useViewerStore);assert.ok(api.addStair&&api.addRailing);const source=s().models.get(SAMPLE_MODEL)!.ifcDataStore!,storey=source.entities.getExpressIdByGlobalId(GROUND_STOREY),made=from==='stair'?api.addStair(SAMPLE_MODEL,storey,stair):api.addRailing(SAMPLE_MODEL,storey,railing),view=s().mutationViews.get(SAMPLE_MODEL)!,oldGuid=String(view.getNewEntity(made.expressId)!.attributes[0]);
+ const batch=proposal({op:`${into}.replace`,ref:'replacement',target:{modelId:SAMPLE_MODEL,globalId:oldGuid,ifcClass:from==='stair'?'IfcStair':'IfcRailing',name:from==='stair'?'Native stair':'Native railing'},storey:{modelId:SAMPLE_MODEL,globalId:GROUND_STOREY},params:into==='stair'?{...stair,Name:'Replacement stair'}:{...railing,Name:'Replacement railing'}}),preview=previewModelAuthoring(s(),batch);assert.equal(preview.rows[0].status,'ready',preview.rows[0].issue);
+ const outcome=commitModelAuthoring(useViewerStore,preview,new Set([0]),'native lifecycle replacement');assert.ok(outcome.ok,outcome.ok?'':outcome.detail??outcome.reason);const newGuid=outcome.receipt.applied[0].globalId;assert.notEqual(newGuid,oldGuid);
+ const changed=await exported(),id=changed.entities.getExpressIdByGlobalId(newGuid);assert.ok(id>0);assert.equal(changed.entities.getTypeName(id),into==='stair'?'IfcStair':'IfcRailing');assert.equal(changed.entities.getExpressIdByGlobalId(oldGuid),-1);
+ const {undoModelChanges}=await import('./model-change-commit');assert.ok(undoModelChanges(useViewerStore,outcome.receipt).ok);const restored=await exported();assert.ok(restored.entities.getExpressIdByGlobalId(oldGuid)>0);assert.equal(restored.entities.getExpressIdByGlobalId(newGuid),-1);
+});
+
+for(const Schema of ['IFC2X3','IFC4','IFC4X3'] as const)for(const units of ['m','mm'] as const)for(const kind of ['stair','railing'] as const)test(`#7273 native ${Schema} ${kind} reviewed ${units} emits schema-correct independent IFC`,async()=>{
+ await seedAuthoringSample();const creator=new IfcCreator({Schema,LengthUnit:units==='mm'?'MILLIMETRE':'METRE',Name:'Declared canonical schema invariant'}),storeyId=creator.addIfcBuildingStorey({Name:'Level',Elevation:units==='mm'?3000:3});
+ const parsed=await parseIfc(new TextEncoder().encode(creator.toIfc().content)),model={...s().models.get(SAMPLE_MODEL)!,ifcDataStore:parsed},view=new MutablePropertyView(parsed.properties,SAMPLE_MODEL);
+ useViewerStore.setState({...fixtureModels(model),mutationViews:new Map([[SAMPLE_MODEL,view]]),storeEditors:new Map(),undoStacks:new Map(),redoStacks:new Map()});
+ const factor=units==='mm'?1000:1,params=kind==='stair'?{...stair,Position:stair.Position.map(x=>x*factor),RiserHeight:stair.RiserHeight*factor,TreadLength:stair.TreadLength*factor,Width:stair.Width*factor,WaistThickness:stair.WaistThickness*factor}:{...railing,Path:railing.Path.map(p=>p.map(x=>x*factor)),Height:railing.Height*factor,PostSpacing:railing.PostSpacing*factor};
+ const preview=previewModelAuthoring(s(),proposal({op:`${kind}.create`,ref:'typed',storey:{modelId:SAMPLE_MODEL,globalId:parsed.entities.getGlobalId(storeyId)},params},units));assert.equal(preview.rows[0].status,'ready',preview.rows[0].issue);
+ const result=commitModelAuthoring(useViewerStore,preview,new Set([0]),'schema/unit invariant');assert.ok(result.ok,result.ok?'':result.detail??result.reason);const after=await exported(),id=after.entities.getExpressIdByGlobalId(result.receipt.applied[0].globalId);assert.ok(id>0);assert.equal(after.schemaVersion,Schema);
+ if(kind==='stair'){const read=readStairDimensions(after,id);assert.ok(read,'Canonical reader validates schema-specific flight fields and exact body');assert.ok(Math.abs(read.Width-1)<1e-9);assert.ok(Math.abs(read.RiserHeight-.2)<1e-9);assert.equal(read.NumberOfRisers,4);}else assert.equal(after.entities.getTypeName(id),'IfcRailing');
+});
+test('#7273 selected native stair snapshot and federated ownership stay exact across reviewed mm edit',async()=>{
+ const {dataStore:first,view:firstView}=await seedAuthoringSample(),second=await parseIfc(first.source.materialize()),firstModel=s().models.get(SAMPLE_MODEL)!,secondView=new MutablePropertyView(second.properties,'second');
+ useViewerStore.setState({...fixtureModels(firstModel,{...firstModel,id:'second',idOffset:1_000_000,ifcDataStore:second}),mutationViews:new Map([[SAMPLE_MODEL,firstView],['second',secondView]])});
+ const api=createStoreAdapter(useViewerStore);assert.ok(api.addStair);const made=api.addStair('second',second.entities.getExpressIdByGlobalId(GROUND_STOREY),stair),gid=String(secondView.getNewEntity(made.expressId)!.attributes[0]);
+ useViewerStore.setState({selectedEntity:{modelId:'second',expressId:made.expressId},selectedEntityId:null,selectedEntities:[],selectedEntitiesSet:new Set(),selectedEntityIds:new Set()});
+ const snapshot=captureEvidence('selection'),expected=JSON.parse(snapshot.payload).evidence.rows[0].data.nativeStairExpected;assert.ok(expected,'Selected native stair expected snapshot is available');assert.equal(expected.stairId,made.expressId);assert.equal(expected.Width,1,'Native expected dimensions remain metres despite file millimetres');
+ const before=editedModelBytes(first,firstView),preview=previewModelAuthoring(s(),proposal({op:'stair.resize',target:{modelId:'second',globalId:gid,ifcClass:'IfcStair',name:'Native stair'},expected,size:{Width:1500}},'mm'));assert.equal(preview.rows[0].modelId,'second');assert.equal(preview.rows[0].status,'ready',preview.rows[0].issue);
+ const result=commitModelAuthoring(useViewerStore,preview,new Set([0]),'federated native stair');assert.ok(result.ok,result.ok?'':result.detail??result.reason);await assertSameNativeGraph(editedModelBytes(first,firstView),before);
+ const changed=await parseIfc(editedModelBytes(second,secondView));assert.equal(readStairDimensions(changed,changed.entities.getExpressIdByGlobalId(gid))?.Width,1.5);
+});
+
+test('#7273 actual provider transport carries the selected native stair snapshot through review and committed IFC',async()=>{
+ await seedAuthoringSample();const api=createStoreAdapter(useViewerStore);assert.ok(api.addStair);const source=s().models.get(SAMPLE_MODEL)!.ifcDataStore!,made=api.addStair(SAMPLE_MODEL,source.entities.getExpressIdByGlobalId(GROUND_STOREY),stair);
+ useViewerStore.setState({selectedEntity:{modelId:SAMPLE_MODEL,expressId:made.expressId},selectedEntityId:null,selectedEntities:[],selectedEntitiesSet:new Set(),selectedEntityIds:new Set()});const snapshot=captureEvidence('selection');replaceEvidence(snapshot);
+ let calls=0;globalThis.fetch=async(_input,init)=>{calls++;const wire=JSON.parse(String(init?.body)),system=typeof wire.system==='string'?wire.system:wire.system.map((block:{text:string})=>block.text).join('\n');assert.ok(system.includes(snapshot.payload));assert.ok(system.includes('nativeStairExpected'));const row=JSON.parse(snapshot.payload).evidence.rows[0].data,answer=JSON.stringify({version:1,kind:'model.authoring',title:'Streamed native stair edit',units:'mm',frame:'storey-local',operations:[{op:'stair.resize',target:{globalId:row.globalId,modelId:row.modelId,ifcClass:row.type,name:row.name},expected:row.nativeStairExpected,size:{Width:1500}}]});return new Response(`data: ${JSON.stringify({choices:[{delta:{content:answer},finish_reason:'stop'}]})}\n\n`);};
+ assert.equal(await sendAssistant('Set the selected stair width to 1500 mm','openai/gpt-free','/api/chat'),true,useAssistant.getState().error??'');assert.equal(calls,1);const content=useAssistant.getState().messages.at(-1)?.content;assert.ok(content);const preview=previewModelAuthoring(s(),parseModelAuthoringBatch(content));assert.equal(preview.rows[0].status,'ready',preview.rows[0].issue);const outcome=commitModelAuthoring(useViewerStore,preview,new Set([0]),'controlled stair transport');assert.ok(outcome.ok,outcome.ok?'':outcome.detail??outcome.reason);const parsed=await exported();assert.equal(readStairDimensions(parsed,parsed.entities.getExpressIdByGlobalId(outcome.receipt.applied[0].globalId))?.Width,1.5);
+});
+
+test('#7273 reviewed railing removal refuses a live newly authored assembly without changing exported IFC or history',async()=>{
+ await seedAuthoringSample();const api=createStoreAdapter(useViewerStore);assert.ok(api.addRailing);const source=s().models.get(SAMPLE_MODEL)!.ifcDataStore!,storey=source.entities.getExpressIdByGlobalId(GROUND_STOREY),parent=api.addRailing(SAMPLE_MODEL,storey,railing),child=api.addRailing(SAMPLE_MODEL,storey,{...railing,Name:'Child railing'}),view=s().mutationViews.get(SAMPLE_MODEL)!;
+ api.addEntity(SAMPLE_MODEL,{type:'IfcRelAggregates',attributes:['2WjaBKbAD8ifc5wf$PwB_e',null,'Native authored assembly',null,`#${parent.expressId}`,[`#${child.expressId}`]]});
+ const gid=String(view.getNewEntity(parent.expressId)!.attributes[0]),before=editedModelBytes(source,view),history=s().undoStacks;
+ const preview=previewModelAuthoring(s(),proposal({op:'railing.delete',target:{modelId:SAMPLE_MODEL,globalId:gid,ifcClass:'IfcRailing',name:'Native railing'}}));
+ assert.equal(preview.rows[0].status,'unsupported','Current authored assembly must refuse deletion of its parent');assert.match(preview.rows[0].issue??'',/assembly|parts/i);await assertSameNativeGraph(editedModelBytes(source,view),before);assert.equal(s().undoStacks,history);assert.deepEqual(danglingReferences(new TextDecoder().decode(before)),[]);
+ const childGuid=String(view.getNewEntity(child.expressId)!.attributes[0]),childPreview=previewModelAuthoring(s(),proposal({op:'railing.delete',target:{modelId:SAMPLE_MODEL,globalId:childGuid,ifcClass:'IfcRailing',name:'Child railing'}}));assert.equal(childPreview.rows[0].status,'unsupported','An assembly child is not silently removed from its live parent');await assertSameNativeGraph(editedModelBytes(source,view),before);assert.equal(s().undoStacks,history);
+});
+
+for(const invalidation of ['expected','skip-history','reload'] as const)test(`#7273 ${invalidation} invalidation refuses reviewed stair edit without new native writes`,async()=>{
+ await seedAuthoringSample();const api=createStoreAdapter(useViewerStore);assert.ok(api.addStair);const source=s().models.get(SAMPLE_MODEL)!.ifcDataStore!,made=api.addStair(SAMPLE_MODEL,source.entities.getExpressIdByGlobalId(GROUND_STOREY),stair),view=s().mutationViews.get(SAMPLE_MODEL)!,gid=String(view.getNewEntity(made.expressId)!.attributes[0]),expected=readStairDimensions(source,made.expressId,view);assert.ok(expected);
+ const batch=proposal({op:'stair.resize',target:{modelId:SAMPLE_MODEL,globalId:gid,ifcClass:'IfcStair',name:'Native stair'},expected:invalidation==='expected'?{...expected,Width:2}:expected,size:{Width:1.5}}),preview=previewModelAuthoring(s(),batch);
+ if(invalidation==='expected'){assert.equal(preview.rows[0].status,'conflict');return;}
+ assert.equal(preview.rows[0].status,'ready',preview.rows[0].issue);
+ if(invalidation==='skip-history')view.setAttribute(made.expressId,'Description','Actual concurrent native edit',undefined,true);
+ else{const models=new Map(s().models),model=models.get(SAMPLE_MODEL)!;models.set(SAMPLE_MODEL,{...model,ifcDataStore:await parseIfc(source.source.materialize())});useViewerStore.setState({models});}
+ const before=editedModelBytes(source,view),history=s().undoStacks,result=commitModelAuthoring(useViewerStore,preview,new Set([0]),'stale native stair review');assert.equal(result.ok,false);await assertSameNativeGraph(editedModelBytes(source,view),before);assert.equal(s().undoStacks,history);
+});
+test('#7273 imported source stair stays readable and native edit preserves independently reparsed identity',async()=>{
+ await seedAuthoringSample();const api=createStoreAdapter(useViewerStore);assert.ok(api.addStair);const original=s().models.get(SAMPLE_MODEL)!,made=api.addStair(SAMPLE_MODEL,original.ifcDataStore!.entities.getExpressIdByGlobalId(GROUND_STOREY),stair),gid=String(s().mutationViews.get(SAMPLE_MODEL)!.getNewEntity(made.expressId)!.attributes[0]),source=await exported(),view=new MutablePropertyView(source.properties,SAMPLE_MODEL);
+ useViewerStore.setState({...fixtureModels({...original,ifcDataStore:source}),mutationViews:new Map([[SAMPLE_MODEL,view]]),storeEditors:new Map(),undoStacks:new Map(),redoStacks:new Map()});const id=source.entities.getExpressIdByGlobalId(gid),expected=readStairDimensions(source,id,view);assert.ok(expected);
+ const preview=previewModelAuthoring(s(),proposal({op:'stair.resize',target:{modelId:SAMPLE_MODEL,globalId:gid,ifcClass:'IfcStair',name:'Native stair'},expected,size:{TreadLength:.4}}));assert.equal(preview.rows[0].status,'ready',preview.rows[0].issue);const result=commitModelAuthoring(useViewerStore,preview,new Set([0]),'source stair edit');assert.ok(result.ok,result.ok?'':result.detail??result.reason);assert.equal(readStairDimensions(await exported(),id)?.TreadLength,.4);
+ const {undoModelChanges}=await import('./model-change-commit');assert.ok(undoModelChanges(useViewerStore,result.receipt).ok);assert.equal(readStairDimensions(await exported(),id)?.TreadLength,.3);s().redo(SAMPLE_MODEL);assert.equal(readStairDimensions(await exported(),id)?.TreadLength,.4);
+});
+
+for(const boundary of ['waist','multi-flight','foreign-assembly'] as const)test(`#7273 native ${boundary} refusal leaves the complete source graph and history unchanged`,async()=>{
+ await seedAuthoringSample();const api=createStoreAdapter(useViewerStore);assert.ok(api.addStair);const source=s().models.get(SAMPLE_MODEL)!.ifcDataStore!,storey=source.entities.getExpressIdByGlobalId(GROUND_STOREY),made=api.addStair(SAMPLE_MODEL,storey,stair),view=s().mutationViews.get(SAMPLE_MODEL)!,gid=String(view.getNewEntity(made.expressId)!.attributes[0]),expected=readStairDimensions(source,made.expressId,view);assert.ok(expected);
+ if(boundary==='multi-flight'){const relation=view.getNewEntities().find(record=>record.type.toUpperCase()==='IFCRELAGGREGATES'&&record.attributes[4]===`#${made.expressId}`);assert.ok(relation);s().storeEditors.get(SAMPLE_MODEL)!.setPositionalAttribute(relation.expressId,5,[`#${expected.flightId}`,`#${expected.flightId}`]);}
+ if(boundary==='foreign-assembly'){const other=api.addStair(SAMPLE_MODEL,storey,{...stair,Name:'Foreign assembly'});api.addEntity(SAMPLE_MODEL,{type:'IfcRelAggregates',attributes:['3WjaBKbAD8ifc5wf$PwB_e',null,null,null,`#${other.expressId}`,[`#${made.expressId}`]]});}
+ const before=editedModelBytes(source,view),history=s().undoStacks,operation=boundary==='foreign-assembly'?{op:'stair.delete',target:{modelId:SAMPLE_MODEL,globalId:gid,ifcClass:'IfcStair',name:'Native stair'}}:{op:'stair.resize',target:{modelId:SAMPLE_MODEL,globalId:gid,ifcClass:'IfcStair',name:'Native stair'},expected,size:boundary==='waist'?{WaistThickness:10}:{Width:1.5}},preview=previewModelAuthoring(s(),proposal(operation));assert.notEqual(preview.rows[0].status,'ready');assert.ok(preview.rows[0].issue);await assertSameNativeGraph(editedModelBytes(source,view),before);assert.equal(s().undoStacks,history);assert.deepEqual(danglingReferences(new TextDecoder().decode(before)),[]);
+});
+
+test('#7273 native creation preview preserves an untouched source view allocator and cached-editor map',async()=>{
+ await seedAuthoringSample();const source=s().models.get(SAMPLE_MODEL)!.ifcDataStore!,view=new MutablePropertyView(source.properties,SAMPLE_MODEL),editors=new Map();useViewerStore.setState({mutationViews:new Map([[SAMPLE_MODEL,view]]),storeEditors:editors});
+ const lease=view.prepareAtomic(()=>null),history=view.getMutations(),preview=previewModelAuthoring(s(),proposal({op:'stair.create',ref:'first-read',storey:{globalId:GROUND_STOREY},params:stair}));assert.equal(preview.rows[0].status,'ready',preview.rows[0].issue);assert.doesNotThrow(lease.validate,'Read-only preview must preserve the canonical allocator/overlay snapshot');assert.equal(s().storeEditors,editors);assert.deepEqual(view.getMutations(),history);
+});
+
+test('#7273 finite whole-batch native work bound refuses additive large step populations before preview allocation',()=>{
+ const value={version:1,kind:'model.authoring',title:'Bounded native population',frame:'storey-local',units:'m',operations:[{op:'stair.create',ref:'first',storey:{globalId:GROUND_STOREY},params:{...stair,NumberOfRisers:3000}},{op:'stair.create',ref:'second',storey:{globalId:GROUND_STOREY},params:{...stair,NumberOfRisers:3000}}]};assert.throws(()=>parseModelAuthoringBatch(JSON.stringify(value)),/5000.*smaller batches/);
+});
+
+test('#7273 earlier native family references respect excluded dependencies and one remesh/undo batch',async()=>{
+ await seedAuthoringSample();const value={version:1,kind:'model.authoring',title:'Native family dependencies',units:'m',frame:'storey-local',operations:[{op:'stair.create',ref:'stair',storey:{globalId:GROUND_STOREY},params:stair},{op:'railing.create',ref:'rail',storey:{globalId:GROUND_STOREY},params:railing},{op:'material.assign',target:{ref:'rail'},material:{name:'Native family finish',create:true}}]},preview=previewModelAuthoring(s(),parseModelAuthoringBatch(JSON.stringify(value)));assert.deepEqual(preview.rows.map(row=>row.status),['ready','ready','ready']);assert.deepEqual(preview.rows[2].dependsOn,[1]);
+ const before=s().mutationViews.get(SAMPLE_MODEL)!.getMutations(),excluded=commitModelAuthoring(useViewerStore,preview,new Set([2]),'excluded native dependency');assert.deepEqual(excluded,{ok:false,reason:'nothing-approved'});assert.deepEqual(s().mutationViews.get(SAMPLE_MODEL)!.getMutations(),before);
+ const requests:number[][]=[],restore=setRequestRemesh((_get,request)=>requests.push([...request.expressIds]));let result;try{result=commitModelAuthoring(useViewerStore,preview,new Set([0,1,2]),'native family batch');}finally{restore();}assert.ok(result.ok,result.ok?'':result.detail??result.reason);assert.equal(result.receipt.batches.length,1);assert.equal(requests.length,1);
+ const parsed=await exported(),stairId=parsed.entities.getExpressIdByGlobalId(result.receipt.applied[0].globalId),railId=parsed.entities.getExpressIdByGlobalId(result.receipt.applied[1].globalId),dims=readStairDimensions(parsed,stairId);assert.ok(dims);assert.ok(requests[0].includes(dims.flightId));assert.ok(requests[0].includes(railId));assert.equal(result.receipt.applied[2].globalId,result.receipt.applied[1].globalId);
+ const reader=authoringReader(s(),SAMPLE_MODEL);assert.ok(reader);assert.equal(materialNameOf(reader,railId),'Native family finish');const {undoModelChanges}=await import('./model-change-commit');assert.ok(undoModelChanges(useViewerStore,result.receipt).ok);const undone=await exported();assert.equal(undone.entities.getExpressIdByGlobalId(result.receipt.applied[0].globalId),-1);assert.equal(undone.entities.getExpressIdByGlobalId(result.receipt.applied[1].globalId),-1);s().redo(SAMPLE_MODEL);const redone=await exported();assert.ok(redone.entities.getExpressIdByGlobalId(result.receipt.applied[0].globalId)>0);assert.ok(redone.entities.getExpressIdByGlobalId(result.receipt.applied[1].globalId)>0);
+});
+for(const kind of ['stair','railing'] as const)test(`#7273 canonical ${kind} malformed GUID refusal leaves graph/history/allocator unchanged`,async()=>{
+ await seedAuthoringSample();const view=s().mutationViews.get(SAMPLE_MODEL)!,source=s().models.get(SAMPLE_MODEL)!.ifcDataStore!,before=editedModelBytes(source,view),history=s().undoStacks,lease=view.prepareAtomic(()=>null),preview=previewModelAuthoring(s(),proposal({op:`${kind}.create`,ref:'invalid',storey:{globalId:GROUND_STOREY},params:{...(kind==='stair'?stair:railing),GlobalId:'invalid-native-guid'}}));assert.notEqual(preview.rows[0].status,'ready');assert.match(preview.rows[0].issue??'',/GlobalId|GUID/i);await assertSameNativeGraph(editedModelBytes(source,view),before);assert.equal(s().undoStacks,history);assert.doesNotThrow(lease.validate);
+});
+
+test('#7273 late native stair style refusal discards emitted replacement body and preserves source/history/allocator',async()=>{
+ await seedAuthoringSample();const api=createStoreAdapter(useViewerStore);assert.ok(api.addStair);const source=s().models.get(SAMPLE_MODEL)!.ifcDataStore!,made=api.addStair(SAMPLE_MODEL,source.entities.getExpressIdByGlobalId(GROUND_STOREY),stair),view=s().mutationViews.get(SAMPLE_MODEL)!,solid=view.getNewEntities().find(record=>record.type.toUpperCase()==='IFCEXTRUDEDAREASOLID');assert.ok(solid);
+ api.addEntity(SAMPLE_MODEL,{type:'IfcStyledItem',attributes:[`#${solid.expressId}`,[],null]});const gid=String(view.getNewEntity(made.expressId)!.attributes[0]),expected=readStairDimensions(source,made.expressId,view);assert.ok(expected);const before=editedModelBytes(source,view),history=s().undoStacks,lease=view.prepareAtomic(()=>null),preview=previewModelAuthoring(s(),proposal({op:'stair.resize',target:{modelId:SAMPLE_MODEL,globalId:gid,ifcClass:'IfcStair',name:'Native stair'},expected,size:{Width:1.5}}));assert.notEqual(preview.rows[0].status,'ready');assert.match(preview.rows[0].issue??'',/style attachment/i);await assertSameNativeGraph(editedModelBytes(source,view),before);assert.equal(s().undoStacks,history);assert.doesNotThrow(lease.validate);
+});
+
+test('#7273 stair removal refuses a live native opening relationship without changing source/history',async()=>{
+ await seedAuthoringSample();const api=createStoreAdapter(useViewerStore);assert.ok(api.addStair);const source=s().models.get(SAMPLE_MODEL)!.ifcDataStore!,made=api.addStair(SAMPLE_MODEL,source.entities.getExpressIdByGlobalId(GROUND_STOREY),stair),view=s().mutationViews.get(SAMPLE_MODEL)!,wall=s().addWall(SAMPLE_MODEL,source.entities.getExpressIdByGlobalId(GROUND_STOREY),{Start:[0,10,0],End:[8,10,0],Height:3,Thickness:.2});assert.ok(!('error' in wall),'error' in wall?wall.error:'');const opening=s().addHostedFill(SAMPLE_MODEL,wall.expressId,{kind:'opening',params:{Offset:2,Width:1,Height:2}});assert.ok(!('error' in opening),'error' in opening?opening.error:'');
+ api.addEntity(SAMPLE_MODEL,{type:'IfcRelVoidsElement',attributes:['1WjaBKbAD8ifc5wf$PwB_e',null,null,null,`#${made.expressId}`,`#${opening.openingId}`]});const gid=String(view.getNewEntity(made.expressId)!.attributes[0]),before=editedModelBytes(source,view),history=s().undoStacks,lease=view.prepareAtomic(()=>null),preview=previewModelAuthoring(s(),proposal({op:'stair.delete',target:{modelId:SAMPLE_MODEL,globalId:gid,ifcClass:'IfcStair',name:'Native stair'}}));assert.notEqual(preview.rows[0].status,'ready');assert.match(preview.rows[0].issue??'',/opening|host/i);await assertSameNativeGraph(editedModelBytes(source,view),before);assert.equal(s().undoStacks,history);assert.doesNotThrow(lease.validate);
+});
+
+test('#7273 source-free native railing review refuses publication even when authored identity remains known',async()=>{
+ await seedAuthoringSample();const api=createStoreAdapter(useViewerStore);assert.ok(api.addRailing);const source=s().models.get(SAMPLE_MODEL)!.ifcDataStore!,made=api.addRailing(SAMPLE_MODEL,source.entities.getExpressIdByGlobalId(GROUND_STOREY),railing),view=s().mutationViews.get(SAMPLE_MODEL)!,gid=String(view.getNewEntity(made.expressId)!.attributes[0]),models=new Map(s().models),model=models.get(SAMPLE_MODEL)!;models.set(SAMPLE_MODEL,{...model,ifcDataStore:{...source,source:EMPTY_SOURCE_BYTES}});useViewerStore.setState({models});
+ const history=s().undoStacks,records=view.getMutations(),lease=view.prepareAtomic(()=>null),preview=previewModelAuthoring(s(),proposal({op:'railing.delete',target:{modelId:SAMPLE_MODEL,globalId:gid,ifcClass:'IfcRailing',name:'Native railing'}}));assert.equal(preview.rows[0].status,'unsupported','Native source-backed family boundary must remain explicit');assert.match(preview.rows[0].issue??'',/source|IFC2X3/i);assert.equal(s().undoStacks,history);assert.deepEqual(view.getMutations(),records);assert.doesNotThrow(lease.validate);
+});
+
+for(const field of ['product','flight','same-new'] as const)test(`#7273 reviewed explicit ${field} GUID collision refuses an ambiguous native product graph`,async()=>{
+ await seedAuthoringSample();const api=createStoreAdapter(useViewerStore);assert.ok(api.addStair);const source=s().models.get(SAMPLE_MODEL)!.ifcDataStore!,made=api.addStair(SAMPLE_MODEL,source.entities.getExpressIdByGlobalId(GROUND_STOREY),stair),view=s().mutationViews.get(SAMPLE_MODEL)!,guid=String(view.getNewEntity(made.expressId)!.attributes[0]),params=field==='product'?{...stair,GlobalId:guid}:field==='flight'?{...stair,FlightGlobalId:guid}:{...stair,GlobalId:'0WjaBKbAD8ifc5wf$PwB_e',FlightGlobalId:'0WjaBKbAD8ifc5wf$PwB_e'},before=editedModelBytes(source,view),history=s().undoStacks,lease=view.prepareAtomic(()=>null),preview=previewModelAuthoring(s(),proposal({op:'stair.create',ref:'collision',storey:{globalId:GROUND_STOREY},params}));assert.notEqual(preview.rows[0].status,'ready','One IFC Root GUID must never authorize two products');assert.match(preview.rows[0].issue??'',/GlobalId|GUID/i);await assertSameNativeGraph(editedModelBytes(source,view),before);assert.equal(s().undoStacks,history);assert.doesNotThrow(lease.validate);
+});
+test('#7273 native same-model duplicate target GUID cannot select one arbitrary stair for removal',async()=>{
+ await seedAuthoringSample();const api=createStoreAdapter(useViewerStore);assert.ok(api.addStair);const source=s().models.get(SAMPLE_MODEL)!.ifcDataStore!,storey=source.entities.getExpressIdByGlobalId(GROUND_STOREY),made=api.addStair(SAMPLE_MODEL,storey,stair),view=s().mutationViews.get(SAMPLE_MODEL)!,guid=String(view.getNewEntity(made.expressId)!.attributes[0]);api.addStair(SAMPLE_MODEL,storey,{...stair,GlobalId:guid});const parsed=await exported();assert.equal([...iterateEffectiveEntityIds(parsed,undefined,['IfcStair'])].filter(({expressId})=>parsed.entities.getGlobalId(expressId)===guid).length,2,'Native writers produce two real roots with the supplied identical GUID');
+ const before=editedModelBytes(source,view),history=s().undoStacks,preview=previewModelAuthoring(s(),proposal({op:'stair.delete',target:{modelId:SAMPLE_MODEL,globalId:guid,ifcClass:'IfcStair',name:'Native stair'}}));assert.notEqual(preview.rows[0].status,'ready','A malformed duplicate-root source must be an explicit refusal');await assertSameNativeGraph(editedModelBytes(source,view),before);assert.equal(s().undoStacks,history);
+});
+
+for (const into of ['stair','railing'] as const) test(`#7273 explicit original GlobalId replacement makes one new ${into} product and Undo restores the original native record`, async()=>{
+ await seedAuthoringSample();const api=createStoreAdapter(useViewerStore);assert.ok(api.addStair);const source=s().models.get(SAMPLE_MODEL)!.ifcDataStore!,made=api.addStair(SAMPLE_MODEL,source.entities.getExpressIdByGlobalId(GROUND_STOREY),stair),view=s().mutationViews.get(SAMPLE_MODEL)!,guid=String(view.getNewEntity(made.expressId)!.attributes[0]),native=readStairDimensions(source,made.expressId,view);assert.ok(native);const flightGuid=String(view.getNewEntity(native.flightId)!.attributes[0]);
+ const preview=previewModelAuthoring(s(),proposal({op:`${into}.replace`,ref:'retained',target:{modelId:SAMPLE_MODEL,globalId:guid,ifcClass:'IfcStair',name:'Native stair'},storey:{globalId:GROUND_STOREY},params:{...(into==='stair'?stair:railing),GlobalId:guid,...(into==='stair'?{FlightGlobalId:flightGuid}:{}),Name:'Explicit replacement record'}}));assert.equal(preview.rows[0].status,'ready',preview.rows[0].issue);
+ const outcome=commitModelAuthoring(useViewerStore,preview,new Set([0]),'explicit native identity policy');assert.ok(outcome.ok,outcome.ok?'':outcome.detail??outcome.reason);assert.equal(outcome.receipt.applied[0].globalId,guid);const changed=await exported(),id=changed.entities.getExpressIdByGlobalId(guid);assert.ok(id>0);assert.notEqual(id,made.expressId,'Replacement is a new product record even when native GlobalId is explicitly retained');assert.equal(changed.entities.getTypeName(id),into==='stair'?'IfcStair':'IfcRailing');assert.equal(changed.entities.getName(id),'Explicit replacement record');assert.equal([...iterateEffectiveEntityIds(changed,undefined)].filter(({expressId})=>changed.entities.getGlobalId(expressId)===guid).length,1);
+ const {undoModelChanges}=await import('./model-change-commit');assert.ok(undoModelChanges(useViewerStore,outcome.receipt).ok);const restored=await exported();assert.equal(restored.entities.getExpressIdByGlobalId(guid),made.expressId);assert.equal(restored.entities.getName(made.expressId),'Native stair');assert.equal(restored.entities.getExpressIdByGlobalId(flightGuid),native.flightId);
+});

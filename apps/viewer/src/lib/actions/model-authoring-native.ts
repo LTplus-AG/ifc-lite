@@ -13,6 +13,7 @@
  */
 
 import { writeHostedEdit } from './model-authoring-hosted-edit';
+import { writeStairLifecycle, writeStairCreation } from './model-authoring-stair-lifecycle';
 import { writeNativeSplit } from './model-authoring-split';
 import { profileInMetres } from './model-authoring-shape-params';
 import { StoreEditor } from '@ifc-lite/mutations';
@@ -176,6 +177,14 @@ export function draftAuthoringOperation(batch: ModelAuthoringBatch, dataStore: I
     case 'element.trimExtend':
       resolved.reachPlan = writeAuthoringReach(batch, dataStore, draft, resolved.target!, op, resolved.reachBoundary, refs);
       return;
+    case 'stair.resize': case 'stair.delete': case 'railing.delete': case 'stair.replace': case 'railing.replace': {
+      const result=writeStairLifecycle(dataStore,draft,batch,op,resolved.target!,resolved.storey);
+      if('ref' in op && result.root!==undefined)refs.set(op.ref,result.root);return;
+    }
+    case 'stair.create': case 'railing.create': {
+      const made = writeStairCreation(dataStore, draft, batch, op, resolved.storey!);
+      refs.set(op.ref, made.expressId);return;
+    }
     case 'element.split':
       resolved.splitEffects = writeNativeSplit(batch, op, dataStore, draft, resolved.target!, splitScopes);
       return;

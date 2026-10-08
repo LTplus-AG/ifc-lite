@@ -14,7 +14,9 @@
  *
  * Every length in a batch is in its declared `units` (`m` or `mm`), in the
  * storey-local frame (IFC Z-up, metres from the storey's placement after
- * conversion), the frame the in-store builders take. Angles are degrees,
+ * conversion), the frame the in-store builders take. Rotation angles are degrees;
+ * canonical stair Direction is radians and expected stair snapshots remain verbatim.
+ * Other angles are degrees,
  * counter-clockwise seen from above. Nothing here writes.
  */
 
@@ -25,7 +27,8 @@ import { parseReachFields, type ReachFields } from './model-authoring-reach-fiel
 import { parseSplitSnapshot, parseSplitCut, type SplitCut } from './model-authoring-split-params';
 import type { SplitSnapshot } from './model-authoring-split-state';
 import { parseSizeParams, type ExpectedSize } from './model-authoring-size-params';
-import type { ProfileSection } from '@ifc-lite/create';
+import { parseStairRailingParams, parseStairPatch, parseExpectedStair, railingPostWork, STAIR_RAILING_WORK_LIMIT } from './model-authoring-stair-railing-fields';
+import type { RailingInStoreParams, StairInStoreParams, StairDimensions, StairDimensionEdit, ProfileSection } from '@ifc-lite/create';
 import type { ElementSizePatch } from '@/store/slices/mutation-element-size';
 import { parseCopyFields, type CopyFields, type ArrayFields } from './model-authoring-copy-fields';
 import { parseGlobalIdTarget, parseLength, parsePoint, parseRef, parseText, record, type LengthRange } from './model-authoring-fields';
@@ -50,6 +53,12 @@ export interface AxisParams { start: Point3; end: Point3; thickness?: number; wi
 export interface BoxParams { position: Point3; width: number; depth: number; thickness?: number; height?: number }
 
 export type AuthoringOp =
+  | { op: 'stair.resize'; target: ExistingElement; expected: StairDimensions; size: StairDimensionEdit }
+  | { op: 'stair.delete' | 'railing.delete'; target: ExistingElement }
+  | { op: 'stair.replace'; target: ExistingElement; ref: string; storey: StoreyTarget; params: StairInStoreParams }
+  | { op: 'railing.replace'; target: ExistingElement; ref: string; storey: StoreyTarget; params: RailingInStoreParams }
+  | { op: 'stair.create'; ref: string; storey: StoreyTarget; params: StairInStoreParams }
+  | { op: 'railing.create'; ref: string; storey: StoreyTarget; params: RailingInStoreParams }
   | { op: 'element.create'; ref: string; ifcClass: AuthoringClass; storey: StoreyTarget; name: string; params: AxisParams | BoxParams | ShapeParams }
   | { op: 'element.split'; target: ExistingElement; expected: SplitSnapshot; cut: SplitCut }
   | ({ op: 'element.copy'; target: ElementTarget; ref: string } & CopyFields)
@@ -70,7 +79,7 @@ export type AuthoringOp =
   | { op: 'hosted.create'; ref?: string; kind: HostedKind; host: ElementTarget; name?: string; offset: number; sill: number; width: number; height: number };
 
 export type AuthoringOpName = AuthoringOp['op'];
-export const AUTHORING_OPS: readonly AuthoringOpName[] = ['element.create', 'element.delete', 'element.split', 'element.resize', 'element.profile', 'element.trimExtend', 'element.move', 'element.rotate', 'element.copy', 'element.array',
+export const AUTHORING_OPS: readonly AuthoringOpName[] = ['stair.resize', 'stair.delete', 'railing.delete', 'stair.replace', 'railing.replace', 'stair.create', 'railing.create', 'element.create', 'element.delete', 'element.split', 'element.resize', 'element.profile', 'element.trimExtend', 'element.move', 'element.rotate', 'element.copy', 'element.array',
   'type.assign', 'material.assign', 'walls.join', 'hosted.create', 'hosted.edit'];
 
 export interface ModelAuthoringBatch {
@@ -182,6 +191,12 @@ function operation(value: unknown, index: number, units: AuthoringUnits, refs: M
     }
     case 'element.trimExtend':
       return { op: value.op, target: existing(value.target, at), ...parseReachFields(value, units, at, (v, name) => element(v, name, refs)) };
+    case 'stair.resize': return {op:value.op,target:existing(value.target,at),expected:parseExpectedStair(value.expected,`${at} expected`),size:parseStairPatch(value.size,units,`${at} size`)};
+    case 'stair.delete': case 'railing.delete': return {op:value.op,target:existing(value.target,at)};
+    case 'stair.replace': return defineRef({op:value.op,target:existing(value.target,at),ref:parseRef(value.ref,at),storey:parseGlobalIdTarget(value.storey,`${at} storey`),params:parseStairRailingParams(value.params,'stair',units,at)});
+    case 'railing.replace': return defineRef({op:value.op,target:existing(value.target,at),ref:parseRef(value.ref,at),storey:parseGlobalIdTarget(value.storey,`${at} storey`),params:parseStairRailingParams(value.params,'railing',units,at)});
+    case 'stair.create': return defineRef({ op: value.op, ref: parseRef(value.ref, at), storey: parseGlobalIdTarget(value.storey, `${at} storey`), params: parseStairRailingParams(value.params, 'stair', units, at) });
+    case 'railing.create': return defineRef({ op: value.op, ref: parseRef(value.ref, at), storey: parseGlobalIdTarget(value.storey, `${at} storey`), params: parseStairRailingParams(value.params, 'railing', units, at) });
     case 'element.split': {
       if (Object.keys(value).some(key => !['op', 'target', 'expected', 'cut'].includes(key))) throw new Error(`${at}: unsupported split field`);
       const expected = parseSplitSnapshot(value.expected, `${at} expected`), cut = parseSplitCut(value.cut, units, `${at} cut`);
@@ -298,6 +313,10 @@ export function parseModelAuthoringBatch(answer: string): ModelAuthoringBatch {
   if (new Set(splitTargets).size !== splitTargets.length) throw new Error('Split targets must be unique; no targets are silently discarded');
   const splitWork = operations.reduce((sum, op) => sum + (op.op === 'element.split' && op.expected.kind === 'slab' ? op.expected.chain.footprint.length ** 2 : 0), 0);
   if (splitWork > AUTHORING_OUTLINE_WORK_LIMIT) throw new Error(`Split preview work exceeds ${AUTHORING_OUTLINE_WORK_LIMIT} vertex-pair units; use a smaller explicit selection`);
+  const stairRailingWork = operations.reduce((total, op) => total + (
+    op.op === 'stair.create' || op.op === 'stair.replace' ? op.params.NumberOfRisers
+      : op.op === 'railing.create' || op.op === 'railing.replace' ? railingPostWork(op.params.Path, op.params.PostSpacing) : 0), 0);
+  if (stairRailingWork > STAIR_RAILING_WORK_LIMIT) throw new Error(`The native stair-step/railing-post work exceeds ${STAIR_RAILING_WORK_LIMIT}; split this proposal into smaller batches`);
   const outlineWork = operations.reduce((sum, op) => sum + (op.op === 'element.create' && 'OuterCurve' in op.params ? op.params.OuterCurve.length ** 2 : 0), 0);
   if (outlineWork > AUTHORING_OUTLINE_WORK_LIMIT) throw new Error(`The polygon preview work exceeds ${AUTHORING_OUTLINE_WORK_LIMIT} vertex-pair units; split this proposal into smaller batches`);
   const copies = operations.reduce((total, op) => total + (op.op === 'element.array' ? op.count - 1 : op.op === 'element.copy' ? 1 : 0), 0);

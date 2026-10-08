@@ -92,8 +92,8 @@
  * exact #2531 hole the ceiling was built to close, reopened one level up.
  *
  * The fix compares the CURRENT allowlist against the allowlist at this
- * branch's merge base with origin/main (falling back to local main), the same
- * derivation scripts/check-module-size.mjs uses for its own scoping. A path in
+ * branch's merge base with the canonical main (origin/main by default, else
+ * local main), the same derivation scripts/check-module-size.mjs uses. A path in
  * the current set that the base set did not have is a NEW exemption, full
  * stop -- identity is the file's path in the allowlist, the same key every
  * other check in this file already uses to correlate a row with a file.
@@ -363,15 +363,15 @@ let identitySuffix = '';
 const base = resolveBase(ROOT);
 if (base.error !== undefined) {
   console.warn(
-    'check-source-text-assertions: WARNING -- could not resolve a merge base with ' +
-      "origin/main or main; the allowlist identity check is SKIPPED this run. A same-size " +
+    'check-source-text-assertions: WARNING -- could not resolve a merge base ' +
+      `(${base.error}); the allowlist identity check is SKIPPED this run. A same-size ` +
       'swap (one entry removed, a different one added) would not be caught. Fetch ' +
-      'origin/main and re-run for full coverage.'
+      'the canonical main and re-run for full coverage.'
   );
 } else {
   if (base.fellBack) {
     console.warn(
-      `check-source-text-assertions: WARNING -- no merge base with origin/main; fell back ` +
+      `check-source-text-assertions: WARNING -- no merge base with ${base.wanted}; fell back ` +
         `to local '${base.ref}' (${base.sha.slice(0, 9)}) for the allowlist identity check. If that ` +
         `ref is stale, a swapped-in violation could go undetected this run.`
     );

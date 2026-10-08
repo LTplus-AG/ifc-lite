@@ -27,6 +27,7 @@ import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { canonicalMainRefIn } from './lib/canonical-remote.mjs';
 import { scanRawEntityAccess, excessRawAccess, changedPathBaselines } from './lib/raw-entity-enumeration.mjs';
 
 const ROOT = resolve(fileURLToPath(new URL('..', import.meta.url)));
@@ -61,7 +62,7 @@ function main() {
     reviewedFiles.add(path);
   }
   const seenReviewed = new Set();
-  const base = git('merge-base', 'origin/main', 'HEAD');
+  const base = git('merge-base', canonicalMainRefIn(ROOT), 'HEAD');
   // A rename preserves the site's old budget. Read its old content through
   // the source path, but fingerprint it under the destination path.
   const changedFiles = changedPathBaselines(git('diff', '--name-status', '-M', base, '--', ...SCAN_ROOTS));

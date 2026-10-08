@@ -292,7 +292,7 @@ export function BulkPropertyEditor({ trigger }: BulkPropertyEditorProps) {
   }, [targetsReady, targetSource, liveMatchCount, queryIds, buildAction]);
 
   const handleExecute = useCallback(async () => {
-    if (!targetsReady || liveMatchCount === 0 || !canEditInSession) return;
+    if (!targetsReady || liveMatchCount === 0 || !canEditInSession || executeAbortRef.current) return;
 
     const built = buildAction();
     // Refuse before touching a single entity — one bad value must not half-apply across the selection.

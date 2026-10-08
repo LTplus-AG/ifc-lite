@@ -85,3 +85,16 @@ it('#7128 native bulk permission failure reports partial writes without claiming
   assert.equal(view.getAttributeMutationsForEntity(1209).length, 0);
   assert.equal(activityCanceller(row.id), null);
 });
+it('#7128 two native Apply events before paint keep one owned mutation run', async () => {
+  const { view } = await setup();
+  const apply = [...document.querySelectorAll('button')].find(node => node.textContent?.includes('Apply to'));
+  assert.ok(apply && !apply.disabled);
+  act(() => {
+    apply.dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
+    apply.dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
+  });
+  assert.equal(useActivityJournal.getState().jobs.length, 1, 'the native busy lease is acquired synchronously');
+  await waitFor(() => useActivityJournal.getState().jobs[0]?.outcome === 'completed', 'single native batch completes');
+  assert.equal(view.getAttributeMutationsForEntity(1209).find(m => m.name === 'Name')?.value, 'First applied name');
+  assert.equal(useViewerStore.getState().undoStacks.get('native')?.flat().length, 1200, 'one mutation run wrote each target once');
+});

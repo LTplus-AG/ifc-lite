@@ -1,0 +1,48 @@
+{
+  "worktree": "/tmp/ifc-7249-canonical-main565",
+  "ownSourceHead": "ba09b3500fdce2ae2c0129e0ab76f76d1a82d22f",
+  "frozenCanonicalMain": "565dc3f523c69bc24ba94c8e4f491049fc4c6fb0",
+  "mergeStatus": "ONE test conflict resolved and staged; merge not committed; UNRUN",
+  "sourcePins": [
+    {
+      "path": "apps/viewer/src/components/viewer/tools/Measure.i18n.test.tsx",
+      "sha256": "d38521da03c37cca7c5d1197357e6cf9b088656b283774baa7b8dff35d014176",
+      "canonicalMainSha256": "544903b9c19199781a92dba0a721e6011b12fbece590943deecf86be584412c6",
+      "equalsMain": false
+    },
+    {
+      "path": "apps/viewer/src/i18n/catalogues/measure.en.ts",
+      "sha256": "3e7ee7923fe1252fe658f9e2ef3bfdec3c1e3069587950cc8b6a0d1c17edb55e",
+      "canonicalMainSha256": "3e7ee7923fe1252fe658f9e2ef3bfdec3c1e3069587950cc8b6a0d1c17edb55e",
+      "equalsMain": true
+    },
+    {
+      "path": "apps/viewer/src/components/viewer/tools/QuantityResultView.tsx",
+      "sha256": "da0f9ec026bd385e3878552729d5eb76a3b87edab1475da1f4b074211a2186be",
+      "canonicalMainSha256": "da0f9ec026bd385e3878552729d5eb76a3b87edab1475da1f4b074211a2186be",
+      "equalsMain": true
+    },
+    {
+      "path": "apps/viewer/src/components/viewer/tools/measure-modes/quantities.ts",
+      "sha256": "6ce1de5c5509554cb530116b1c172d1eb992f8ca657d22524038e05fcd73f166",
+      "canonicalMainSha256": "6ce1de5c5509554cb530116b1c172d1eb992f8ca657d22524038e05fcd73f166",
+      "equalsMain": true
+    },
+    {
+      "path": "apps/viewer/src/test/scan-slab-fixture.ts",
+      "sha256": "7353da7c3177503f4ff282691dea00d9ea8d84de275bf5a3be275176f410256f",
+      "canonicalMainSha256": "7353da7c3177503f4ff282691dea00d9ea8d84de275bf5a3be275176f410256f",
+      "equalsMain": true
+    }
+  ],
+  "canonicalComponentCaseByteUnchanged": true,
+  "canonicalCatalogueAuditByteUnchanged": true,
+  "catalogueAuditNeverSkippedForMissingWasm": true,
+  "integrationOnlyWasmSkip": "ensureWasm(t) applies solely to real parsed IFC case",
+  "expectedUnrunMeasureCases": 19,
+  "canonicalMeasureCases": 18,
+  "remainingDelta": "one real parsed IFC4 mounted Measure integration; imports and model reset isolation; already committed historical evidence unchanged",
+  "historicalEvidence": "tests/evidence/measure-localization-7184 remains original 4b source qualification, not this main565 integration",
+  "execution": "No install/build/test/typecheck/browser or publication",
+  "testPlan": "Root Turbo loose targeted Measure.i18n case suite with actual runtime witness, missing-WASM accounting control if necessary, then full root typecheck/light gates only upon parent admission"
+}

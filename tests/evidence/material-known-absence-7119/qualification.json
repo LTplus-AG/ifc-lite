@@ -200,5 +200,10 @@
     "fresh exact-head CI and PR review",
     "parent merge assessment"
   ],
-  "performanceClaim": false
+  "performanceClaim": false,
+  "rootIndependentReview": {
+    "path": "root-independent-review.json",
+    "sha256": "176ed7817e433c7c50ed178587f4e32be3ed38b736525766ae0722c99c60698e",
+    "scope": "four final source pins, canonical helper provenance, final parser/fullroot/viewer21 and light receipts; fresh PR-head CI remains required"
+  }
 }

@@ -76,9 +76,9 @@ function writeRow(tx: AuthoringTransaction, batch: ModelAuthoringBatch, row: Aut
         : setElementProfile(() => tx.store, modelId, resolved.target!, profileInMetres(op.Profile, batch.units));
       if (!outcome.ok) throw new Error(outcome.reason);
       written.remesh.push(...outcome.remesh);
-      return { ...base, globalId: op.target.globalId, field: op.op === 'element.resize' ? 'Dimensions' : 'Profile',
+      return [{ ...base, globalId: op.target.globalId, field: op.op === 'element.resize' ? 'Dimensions' : 'Profile',
         before: JSON.stringify(op.expected),
-        after: JSON.stringify(op.op === 'element.resize' ? op.size : op.Profile) };
+        after: JSON.stringify(op.op === 'element.resize' ? op.size : op.Profile) }];
     }
     case 'element.create': {
       const globalId = generateIfcGuid();

@@ -92,10 +92,9 @@ runtime fiber census unattributable, and mounted counts move with UI state).
 
 The [same-submission GPU oracles](evidence/bounded-depth-readback-6881/README.md)
 qualify single-texel extraction against a full-depth copy on hardware, including
-concurrent maps and target replacement. Flat-mesh production ID/item/model and
-georeferenced world coordinates match, and device destruction retires pending
-picks. The candidate shares ID/depth staging and keeps per-pick inputs immutable.
-Full public-model viewer hover A/B and all geometry families remain unqualified;
+concurrent maps and target replacement. Production family, ID/item/model and georeferenced world-coordinate controls
+match the original renderer, and device destruction retires pending picks. The candidate shares ID/depth staging and keeps per-pick inputs immutable.
+Full public-model viewer hover A/B remains unqualified;
 no speedup or shipping verdict is accepted. Lesson: a bounded readback and exact
 GPU sample establish neither complete picking parity nor interaction throughput.
 

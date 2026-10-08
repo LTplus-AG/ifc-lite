@@ -58,9 +58,40 @@ transient allocation and cleanup at small and large viewports.
 
 ## Required before shipment
 
-Complete same-render production evidence for instanced geometry and points, plus
-real public IFC/federated viewer interactions. Run baseline/candidate hover A/B
+Complete real public IFC/federated viewer interactions. Run baseline/candidate hover A/B
 in interleaved fresh sessions after complete loads, with actual output identity,
 allocation evidence, and an otherwise-idle host. Keep all samples, including
 failures. Assess end-to-end interaction timings; an extraction microbenchmark
 cannot stand in for them. This evidence contains no timing measurements.
+
+## Renderer-family controls and witness correction
+
+The original production-route failure is retained in
+`production-witness-before-harness-fix.json.gz`. It sampled CSS coordinates as
+physical PNG coordinates at native DPR 1.5, and the canvas border changed the ray
+viewport relative to the snap projection. Correcting the screenshot conversion
+and removing that canvas border preserves the intended geometric/pixel tests.
+The E2E framebuffer-size assertion now accounts for the renderer's density cap.
+
+`renderer-base-density-controls.json.gz` runs the exact archived base renderer
+against the corrected witness. `renderer-density-controls.json.gz` runs the
+candidate. Both pass every named production family at controlled density inputs
+1, 1.5 and 2, with no GPU errors; the native browser density is explicitly 1.5.
+These are real hardware framebuffers at those densities, not three different
+physical displays. Source and bundle hashes are in `functional-build-receipt.json`.
+The small esbuild harness imports the actual production Renderer and existing
+witness; it does not create another rendering implementation.
+
+`renderer-same-render-oracles.json.gz` additionally appends a test-only full-depth
+copy to each candidate pick submission. All 27 samples are bit-identical. Each
+sample records its encoded ID and density; the existing witness separately checks
+flat/textured model and item provenance, instanced and point IDs, cropped/sectioned
+no-hit results, georeferenced/large-extent coordinates, snaps and measurements.
+The instrumentation changes texture COPY_SRC usage and observes mapped bytes
+only in the manual harness. No runtime full-depth fallback exists.
+
+One initial development-route attempt produced swapchain/device mismatch errors;
+the original production build cleared those errors. A subsequent full viewer
+build for the corrected witness was killed with exit 137 under shared-host
+memory pressure. Neither attempt is accepted timing evidence. Full public-model
+hover A/B still requires a fully built, frozen viewer on an idle host.

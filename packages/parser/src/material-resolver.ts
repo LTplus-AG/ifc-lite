@@ -88,6 +88,7 @@ export function extractAllMaterialsOnDemand(
         if (!store.source?.length) {
             const edits = view?.getEffectiveChanges?.().some(edit => {
                 if (!['attribute', 'type', 'entity-deleted'].includes(edit.kind)) return false;
+                // @raw-entity-enumeration-ok source-class point lookup invalidates forwarded material evidence after edits, deletion or retyping, including deferred material atoms
                 const sourceType = store.entityIndex.byId.get(edit.entityId)?.type ?? store.deferredEntityIndex?.get(edit.entityId)?.type;
                 return edit.entityId === id || Boolean(sourceType?.toUpperCase().startsWith('IFCMATERIAL'));
             });

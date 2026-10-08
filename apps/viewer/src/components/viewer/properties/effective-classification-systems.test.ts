@@ -5,7 +5,7 @@
 import assert from 'node:assert/strict';
 import { it } from 'node:test';
 import { readFile } from 'node:fs/promises';
-import { EMPTY_SOURCE_BYTES, IfcParser } from '@ifc-lite/parser';
+import { EMPTY_SOURCE_BYTES, extractClassificationsOnDemand, IfcParser } from '@ifc-lite/parser';
 import { MutablePropertyView } from '@ifc-lite/mutations';
 import { classificationPopulationUnavailable, effectiveClassificationSystems } from './effective-classification-systems';
 
@@ -113,7 +113,12 @@ it('#7131 refuses source-empty population after an indexed ArchiCAD relationship
   assert.equal(classificationPopulationUnavailable(store, view), false, 'source-bearing native reader remains available');
   const referenceView = new MutablePropertyView(store.properties ?? null, 'archicad-reference');
   assert.equal(store.entityIndex.byId.get(21169)?.type, 'IFCCLASSIFICATIONREFERENCE');
+  assert.equal(store.entities.getTypeName(21169), 'IfcClassificationReference', 'the actual source reference retains its canonical kind');
   referenceView.setAttribute(21169, 'Name', 'Known partial edit');
   assert.equal(classificationPopulationUnavailable(transported, referenceView), true, 'indexed source definitions use the same canonical kind lookup');
   assert.equal(classificationPopulationUnavailable(store, referenceView), false);
+  referenceView.setExpressIdWatermark(100_000);
+  referenceView.createEntity('IfcRelAssociatesClassification', ['0000000000000000000001', null, null, null, ['#20909'], '#21169']);
+  const known = extractClassificationsOnDemand(transported, 20909, referenceView);
+  assert.ok(known.some(row => row.name === 'Known partial edit' && row.unresolved === true), 'native source-empty reader retains known indexed reference fields without inventing resolution');
 });

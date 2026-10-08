@@ -25,6 +25,7 @@ import '@/i18n/catalogues/semantic-assist.register';
 import { markdownHtml } from '@/lib/assistant/markdown';
 import { capturedEvidence, rowFields } from '@/lib/assistant/captured-rows';
 import { ReceiptFooter } from './AssistantUsage';
+import { artifactPresetForSuggestion, type ArtifactPreset } from '@/lib/assistant/artifacts/artifact-preset';
 import { useTransientSurface } from './useTransientSurface';
 
 type Artifact = 'filter' | 'list' | 'lens' | 'chart';
@@ -213,7 +214,7 @@ export function AssistantConversation({ source, messages, pendingPrompt, output,
   streaming: boolean;
   error: string | null;
   canAsk: boolean;
-  onSuggest: (prompt: string) => void;
+  onSuggest: (prompt: string, preset?: ArtifactPreset) => void;
 }) {
   const { t } = useTranslation();
   const empty = !messages.length && !pendingPrompt;
@@ -225,7 +226,7 @@ export function AssistantConversation({ source, messages, pendingPrompt, output,
       <p className="font-semibold">{t('assistant.conversationTitle')}</p>
       <p className="text-muted-foreground">{t('assistant.conversationHint')}</p>
       {canAsk && <fieldset aria-label={t('assistant.suggestions')} className="flex flex-col items-start gap-1.5 pt-1">
-        {adapterFor(source).suggestionKeys.map(key => <button key={key} type="button" onClick={() => onSuggest(t(key))}
+        {adapterFor(source).suggestionKeys.map(key => <button key={key} type="button" onClick={() => onSuggest(t(key), artifactPresetForSuggestion(key))}
           className="max-w-full rounded-full border border-border px-2.5 py-1 text-left hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
           {t(key)}
         </button>)}

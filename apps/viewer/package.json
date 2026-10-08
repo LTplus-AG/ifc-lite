@@ -131,6 +131,7 @@
     "@types/three": "^0.186.0",
     "@vitejs/plugin-react": "^6.1.1",
     "@webgpu/types": "^0.1.74",
+    "ajv": "^8.17.1",
     "fake-indexeddb": "^6.2.5",
     "happy-dom": "^20.14.5",
     "jszip": "^3.10.2",

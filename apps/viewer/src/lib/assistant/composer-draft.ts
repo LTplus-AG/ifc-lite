@@ -10,9 +10,11 @@
  */
 
 import { create } from 'zustand';
+import type { ArtifactPreset } from './artifacts/artifact-preset';
 
-export const useAssistantDraft = create<{ text: string }>(() => ({ text: '' }));
+type PresetIntent = { preset: ArtifactPreset; evidenceId: string };
+export const useAssistantDraft = create<{ text: string; intent: PresetIntent | null }>(() => ({ text: '', intent: null }));
 
-export function setAssistantDraft(text: string): void {
-  useAssistantDraft.setState({ text });
+export function setAssistantDraft(text: string, intent: PresetIntent | null = null): void {
+  useAssistantDraft.setState({ text, intent });
 }

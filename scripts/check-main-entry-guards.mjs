@@ -15,14 +15,16 @@
 
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { findHandRolledMainGuards } from './lib/main-entry-guards.mjs';
 
-const files = execFileSync('git', ['ls-files', '-z'], { encoding: 'utf8', maxBuffer: 1 << 28 })
+const root = execFileSync('git', ['rev-parse', '--show-toplevel'], { encoding: 'utf8' }).trim();
+const files = execFileSync('git', ['ls-files', '-z'], { cwd: root, encoding: 'utf8', maxBuffer: 1 << 28 })
   .split('\0')
   .filter(Boolean);
 const hits = findHandRolledMainGuards(files, (f) => {
   try {
-    return readFileSync(f, 'utf8');
+    return readFileSync(join(root, f), 'utf8');
   } catch (err) {
     // A tracked path deleted in the working tree (mid-rebase) has no content.
     if (err && err.code === 'ENOENT') return '';

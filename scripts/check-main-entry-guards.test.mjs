@@ -11,6 +11,11 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
+import { cpSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { findHandRolledMainGuards } from './lib/main-entry-guards.mjs';
 
 const scan = (src, file = 'scripts/x.mjs') => findHandRolledMainGuards([file], () => src);
@@ -104,4 +109,26 @@ test('comparing argv[1] with something that is not the module location is not fl
 test('a comment mentioning the helper cannot exempt a broken guard (#7025 review)', () => {
   assert.equal(scan('if (process.argv[1] === fileURLToPath(import.meta.url)) main(); // TODO: use isMainEntry').length, 1);
   assert.equal(scan('if (process.argv[1] /* isMainEntry */ === fileURLToPath(import.meta.url)) main();').length, 1);
+});
+
+test('a realpath path cannot be directly compared with a module URL (#7025 review)', () => {
+  assert.equal(scan('if (realpathSync(process.argv[1]) === import.meta.url) main();').length, 1);
+});
+
+test('the command checks tracked paths outside its current directory (#7025 review)', (t) => {
+  const root = mkdtempSync(join(tmpdir(), 'main-guard-cwd-'));
+  t.after(() => rmSync(root, {recursive:true,force:true}));
+  const scripts = dirname(fileURLToPath(import.meta.url));
+  mkdirSync(join(root, 'scripts/lib'), {recursive:true});
+  mkdirSync(join(root, 'tools'), {recursive:true});
+  for (const file of ['check-main-entry-guards.mjs', 'lib/main-entry-guards.mjs', 'lib/overlay-palette.mjs']) {
+    cpSync(join(scripts,file),join(root,'scripts',file));
+  }
+  writeFileSync(join(root,'tools/broken.mjs'), 'if (process.argv[1] === fileURLToPath(import.meta.url)) main();');
+  for (const args of [['init','-q'],['add','.']]) {
+    assert.equal(spawnSync('git',args,{cwd:root}).status,0);
+  }
+  const run = spawnSync(process.execPath,['check-main-entry-guards.mjs'],{cwd:join(root,'scripts'),encoding:'utf8'});
+  assert.equal(run.status,1,run.stdout+run.stderr);
+  assert.match(run.stderr,/tools\/broken.mjs/);
 });

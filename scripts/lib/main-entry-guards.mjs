@@ -66,7 +66,7 @@ export function findHandRolledMainGuards(files, read) {
         .slice(lo, hi + 1)
         .filter((t) => !isComment(t))
         .join(' ');
-      if (COMPARE.test(window) && SELF_LOCATION.test(window) && !/isMainEntry/.test(window) && !REALPATH_ARGV.test(window)) {
+      if (COMPARE.test(window) && SELF_LOCATION.test(window) && !/isMainEntry/.test(window) && !(REALPATH_ARGV.test(window) && /fileURLToPath\(\s*import\.meta\.url\s*\)|import\.meta\.filename|pathToFileURL\(\s*realpath/.test(window))) {
         out.push({ file, line: i + 1, text: text.trim() });
         reportedUntil = hi;
       }

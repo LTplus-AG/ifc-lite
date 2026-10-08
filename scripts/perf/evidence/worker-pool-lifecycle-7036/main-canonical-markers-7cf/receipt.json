@@ -1,0 +1,56 @@
+{
+  "normalMergeHead": "c9f5b4683a8c2ce71e2f730380b8118d176a9003",
+  "frozenMain": "7cfad86f701f7912046b79f86e88e8cb12d8f4a8",
+  "priorHead": "a06109a211069a6cfc3b1d99d0e845412563e4f1",
+  "actualConflicts": [
+    "apps/viewer/src/components/viewer/properties/effective-classification-systems.ts",
+    "packages/parser/src/material-resolver.ts"
+  ],
+  "resolution": "Both exact main file bytes; main c696 to7cf adds only the reviewed comment lines",
+  "standaloneSourceCount": 17,
+  "standaloneSourcesUnchanged": true,
+  "fiveReadinessSourcesUnchanged": true,
+  "markerSHA256": {
+    "apps/viewer/src/components/viewer/properties/effective-classification-systems.ts": "02866420f2c54132c75db8ad74365488c85da21310e9df9ea5c5710262eef99e",
+    "packages/parser/src/material-resolver.ts": "b547f3039e489f9d2de7730894341dc36b0eeea17e65bd1090c2aa199f88b888"
+  },
+  "lightGates": {
+    "rawAccess": 0,
+    "moduleSize": 0,
+    "testWiring": 0,
+    "sourceTextAssertions": 0,
+    "MPL": 0,
+    "diffCheck": 0
+  },
+  "historicalQualification": {
+    "source": "7ca5c76875f9a50a19dda4e8eb6a331e1c80ebea",
+    "controls": 62,
+    "rootTestFiles": 3728,
+    "scopeUnchanged": true
+  },
+  "currentCombinedQualification": "Exact-head CI/review pending; no heavy repeat or native launch in this integration",
+  "runtime7161Carried": false,
+  "logs": [
+    {
+      "archive": "check-raw-entity-enumeration.mjs.log.gz",
+      "rawSHA256": "574d6d301d583ecfd53fe3d2f07771339db0b1b89b52fda9255d7f843d1d2cc9"
+    },
+    {
+      "archive": "check-module-size.mjs.log.gz",
+      "rawSHA256": "2257aa19eb888349c6345eff4803e5b366c57e9ac4ca977003f4d295b5112804"
+    },
+    {
+      "archive": "check-test-wiring.mjs.log.gz",
+      "rawSHA256": "0a95b0d39fbd8f2530cdd60f06bd456b489429fbbee4dd09a0be0935076acc2d"
+    },
+    {
+      "archive": "check-source-text-assertions.mjs.log.gz",
+      "rawSHA256": "bff6fef614ae8c4f1f733af5a4033deb1589bbd4d4292fa6d88f9741cb451be0"
+    },
+    {
+      "archive": "add-license-headers.mjs.log.gz",
+      "rawSHA256": "7c171e7e4285b28cda57f3ef004e5665205a158bc943abfa1eaba361d4c2aeb7"
+    }
+  ],
+  "push": false
+}

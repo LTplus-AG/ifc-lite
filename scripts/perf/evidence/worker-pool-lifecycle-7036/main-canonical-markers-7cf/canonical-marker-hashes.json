@@ -1,0 +1,13 @@
+{
+  "main": "7cfad86f701f7912046b79f86e88e8cb12d8f4a8",
+  "files": {
+    "apps/viewer/src/components/viewer/properties/effective-classification-systems.ts": "02866420f2c54132c75db8ad74365488c85da21310e9df9ea5c5710262eef99e",
+    "packages/parser/src/material-resolver.ts": "b547f3039e489f9d2de7730894341dc36b0eeea17e65bd1090c2aa199f88b888"
+  },
+  "standaloneSourceCount": 17,
+  "standaloneByteIdentical": true,
+  "conflicts": [
+    "apps/viewer/src/components/viewer/properties/effective-classification-systems.ts",
+    "packages/parser/src/material-resolver.ts"
+  ]
+}

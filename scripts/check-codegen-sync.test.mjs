@@ -24,6 +24,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import * as gate from './check-codegen-sync.mjs';
+import { skipUnlessCommand } from './lib/host-preconditions.mjs';
 
 const { diffDirs, listFilesRecursive, buildCodegen, runCodegenCli, runDataGenerator, runAllTargets } = gate;
 
@@ -149,7 +150,12 @@ describe('real codegen generator — determinism', { skip: !existsSync(join(ROOT
   });
 });
 
-describe('real repo — runAllTargets (#4202: IFC2X3 joins IFC4/IFC4X3)', { skip: !existsSync(join(ROOT, 'packages/codegen/schemas/IFC2X3_TC1.exp')) ? 'no IFC2X3 schema on disk' : false }, () => {
+// `runAllTargets` formats the canonical Rust artifacts with `rustfmt +stable`
+// before comparing bytes (see runCodegenCli), so without that component the run
+// throws instead of comparing. CI has it; a contributor machine may not.
+const RUSTFMT_SKIP = skipUnlessCommand('rustfmt', ['+stable', '--version'], 'rustup component add rustfmt --toolchain stable');
+
+describe('real repo — runAllTargets (#4202: IFC2X3 joins IFC4/IFC4X3)', { skip: !existsSync(join(ROOT, 'packages/codegen/schemas/IFC2X3_TC1.exp')) ? 'no IFC2X3 schema on disk' : RUSTFMT_SKIP }, () => {
   test('names every bundled Rust schema target and it passes against a clean checkout', () => {
     const results = runAllTargets(ROOT);
     const names = results.map((r) => r.name);

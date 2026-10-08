@@ -35,6 +35,7 @@ import { ModelBadge } from './ModelBadge';
 import { ClashExportActions } from '@/components/viewer/clash/ClashExportActions';
 import { ClashSettingsDialog } from '@/components/viewer/ClashSettingsDialog';
 import { ClashRevisionCompareDialog } from '@/components/viewer/ClashRevisionCompareDialog';
+import { ClashSavedReportsDialog } from '@/components/viewer/ClashSavedReportsDialog';
 import { ClashManualGroupDialog } from '@/components/viewer/ClashManualGroupDialog';
 import { useManualClashGroups } from '@/components/viewer/useManualClashGroups';
 import { ClashGroupingCheckbox, RemoveFromClashGroupButton } from '@/components/viewer/ClashManualGroupControls';
@@ -720,6 +721,7 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
           </IconButton>
           <ClashSettingsDialog />
           <ClashRevisionCompareDialog />
+          <ClashSavedReportsDialog />
         </>
       )}
       error={error}

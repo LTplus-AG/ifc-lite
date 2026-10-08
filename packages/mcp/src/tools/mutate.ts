@@ -32,7 +32,7 @@ import type { Mutation } from '@ifc-lite/mutations';
 import type { Tool } from './types.js';
 import { entityTargetSchema } from './entity-target-schema.js';
 import { entityCreate } from './entity-create.js';
-import { findByGlobalId, okResult, resolveModel } from './util.js';
+import { findByGlobalId, fmtInt, okResult, resolveModel } from './util.js';
 import type { HeadlessLikeBackend } from '../headless-backend.js';
 import { ToolErrorCode, ToolExecutionError } from '../errors.js';
 import { resolveSafePath } from '../safe-path.js';
@@ -342,7 +342,7 @@ const modelSave: Tool = {
     const content = m.bim.export.ifc(undefined, { schema: schema as 'IFC2X3' | 'IFC4' | 'IFC4X3' }); // no ref list: whole model (#4738)
     const text = typeof content === 'string' ? content : new TextDecoder().decode(content);
     await writeFile(filePath, text, 'utf-8');
-    return okResult(`Wrote ${text.length.toLocaleString()} bytes to ${filePath}.`, {
+    return okResult(`Wrote ${fmtInt(text.length)} bytes to ${filePath}.`, {
       filePath,
       bytes: text.length,
       schema,

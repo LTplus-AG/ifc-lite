@@ -29,7 +29,7 @@
 
 import { readFileSync, readdirSync } from 'node:fs';
 import { basename, dirname, join, resolve } from 'node:path';
-import { pathToFileURL } from 'node:url';
+import { isMainEntry } from '../lib/is-main-entry.mjs';
 
 /** Marker function -> the segment its dump closes, in pipeline order. */
 export const MARKERS = [
@@ -183,6 +183,6 @@ function main(argv) {
   }
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
+if (isMainEntry(import.meta.url)) {
   process.exitCode = main(process.argv.slice(2));
 }

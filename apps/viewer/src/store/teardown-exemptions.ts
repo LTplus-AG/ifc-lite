@@ -155,6 +155,13 @@ export const TEARDOWN_EXEMPTIONS: Readonly<Record<string, string>> = {
     'are historical metadata rather than live references. Browser-persisted history must ' +
     'survive model removal, federation clearing and session reset, like document templates.',
 
+  savedClashReportsSlice:
+    'Saved clash reports (#6947) are frozen run evidence: durable element keys, model names and ' +
+    'source identities, and the review and group each clash had when saved. They hold no renderer ' +
+    'ids and never drive selection or overlays, so the per-load model ids inside a report are join ' +
+    'keys within it rather than live references. Browser-persisted history must survive model ' +
+    'removal, federation clearing and session reset, like saved comparisons.',
+
   manualValidationSlice:
     'Manual validation (#6507) holds a persisted library of independent templates, their active projections (no model references) and ' +
     'answers keyed by a model\'s `sourceFingerprint`, the durable content identity, never a ' +

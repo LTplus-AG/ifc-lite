@@ -18,7 +18,10 @@
  * counter-clockwise seen from above. Nothing here writes.
  */
 
-import { parseShapeParams, AUTHORING_OUTLINE_WORK_LIMIT, type ShapeParams } from './model-authoring-shape-params';
+import { parseShapeParams, parseProfileSectionParams, AUTHORING_OUTLINE_WORK_LIMIT, type ShapeParams } from './model-authoring-shape-params';
+import { parseSizeParams, type ExpectedSize } from './model-authoring-size-params';
+import type { ProfileSection } from '@ifc-lite/create';
+import type { ElementSizePatch } from '@/store/slices/mutation-element-size';
 import { parseGlobalIdTarget, parseLength, parsePoint, parseRef, parseText, record, type LengthRange } from './model-authoring-fields';
 
 export const AUTHORING_CLASSES = ['IfcWall', 'IfcSlab', 'IfcRoof', 'IfcPlate', 'IfcColumn', 'IfcBeam', 'IfcMember', 'IfcSpace'] as const;
@@ -43,6 +46,8 @@ export interface BoxParams { position: Point3; width: number; depth: number; thi
 export type AuthoringOp =
   | { op: 'element.create'; ref: string; ifcClass: AuthoringClass; storey: StoreyTarget; name: string; params: AxisParams | BoxParams | ShapeParams }
   | { op: 'element.delete'; target: ExistingElement }
+  | { op: 'element.resize'; target: ExistingElement; expected: ExpectedSize; size: ElementSizePatch }
+  | { op: 'element.profile'; target: ExistingElement; expected: ProfileSection; Profile: ProfileSection }
   /** Horizontal move by a storey-local delta; `from` optionally pins today's placement origin [x, y] in the storey. */
   | { op: 'element.move'; target: ExistingElement; delta: [number, number]; from?: [number, number] }
   /** Turn about the element's own placement origin; `fromDeg` optionally pins today's angle. */
@@ -54,7 +59,7 @@ export type AuthoringOp =
   | { op: 'hosted.create'; ref?: string; kind: HostedKind; host: ElementTarget; name?: string; offset: number; sill: number; width: number; height: number };
 
 export type AuthoringOpName = AuthoringOp['op'];
-export const AUTHORING_OPS: readonly AuthoringOpName[] = ['element.create', 'element.delete', 'element.move', 'element.rotate',
+export const AUTHORING_OPS: readonly AuthoringOpName[] = ['element.create', 'element.delete', 'element.resize', 'element.profile', 'element.move', 'element.rotate',
   'type.assign', 'material.assign', 'walls.join', 'hosted.create'];
 
 export interface ModelAuthoringBatch {
@@ -151,6 +156,14 @@ function operation(value: unknown, index: number, units: AuthoringUnits, refs: M
     return op;
   };
   switch (value.op) {
+    case 'element.resize': {
+      const expected = parseSizeParams(value.expected, units, `${at} expected`, true);
+      const size = parseSizeParams(value.size, units, `${at} size`, false);
+      if (expected.kind !== size.kind) throw new Error(`${at}: expected and changed native size kinds must match`);
+      return { op: value.op, target: existing(value.target, at), expected, size };
+    }
+    case 'element.profile':
+      return { op: value.op, target: existing(value.target, at), expected: parseProfileSectionParams(value.expected, units, `${at} expected`), Profile: parseProfileSectionParams(value.Profile, units, `${at} Profile`) };
     case 'element.create': {
       if (!AUTHORING_CLASSES.includes(value.ifcClass as AuthoringClass)) {
         throw new Error(`${at}: ifcClass must be one of ${AUTHORING_CLASSES.join(', ')}; other classes are not authored by the viewer`);

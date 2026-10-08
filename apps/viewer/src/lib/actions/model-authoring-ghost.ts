@@ -30,6 +30,7 @@ import { authoredElementOf, type ElementId } from './model-authoring-native';
 import { toMetres, type AuthoringOp, type ModelAuthoringBatch } from './model-authoring';
 import type { AuthoringRow, ModelAuthoringPreview } from './model-authoring-preview';
 import { authoringReader } from './model-authoring-read';
+import { authoringSizeGhost } from './model-authoring-size-ghost';
 
 const DELETE_COLOR: [number, number, number, number] = [0.95, 0.25, 0.2, 0.45];
 /** Above the `command` channel's ids, so the two channels never remove each other's meshes. */
@@ -138,6 +139,11 @@ export function authoringGhosts(state: ViewerState, preview: ModelAuthoringPrevi
   for (const row of preview.rows) {
     if (row.status !== 'ready' || !row.modelId) continue;
     const id = commandGhostId(state, GHOST_INDEX + row.index);
+    if (row.op.op === 'element.resize' || row.op.op === 'element.profile') {
+      const ghost = authoringSizeGhost(state, preview.batch, row, row.modelId, id);
+      if (ghost.mesh) meshes.push(ghost.mesh);
+      continue;
+    }
     switch (row.op.op) {
       case 'element.create': { const mesh = createGhost(state, preview.batch, row, id); if (mesh) meshes.push(mesh); break; }
       case 'hosted.create': { const mesh = hostedGhost(state, preview.batch, preview, row, id); if (mesh) meshes.push(mesh); break; }

@@ -20,6 +20,7 @@ export interface RowSummary { subject: string; before: string; after: string; pr
 const num = (v: number) => String(Number(v.toFixed(3)));
 const point = (p: readonly number[]) => `(${p.map(num).join(', ')})`;
 const ref = (target: { ref: string } | { name: string }, t: T) => 'ref' in target ? t('modelAuthoring.newElement', { ref: target.ref }) : target.name || t('modelChanges.absent');
+const fields = (value: object, factor = 1) => Object.entries(value).map(([key, entry]) => `${key}=${typeof entry === 'number' ? String(Number((entry * factor).toPrecision(12))) : String(entry)}`).join(', ');
 
 function dims(op: Extract<AuthoringOp, { op: 'element.create' }>, units: string): string {
   const p = op.params;
@@ -42,6 +43,15 @@ export function authoringRowSummary(row: AuthoringRow, batch: ModelAuthoringBatc
   const none = t('modelChanges.absent');
   const fromMetres = (v: number) => (units === 'mm' ? v * 1000 : v);
   switch (op.op) {
+    case 'element.resize': case 'element.profile': {
+      const notes = [row.previewUnavailable ? t('modelAuthoring.editPreviewUnavailable') : '',
+        row.previewOuterBodyOnly ? t('modelAuthoring.outerBodyPreview') : '',
+        row.previewOmitted?.length ? t('modelAuthoring.filletPreview', { fields: row.previewOmitted.join(', ') }) : ''].filter(Boolean);
+      return { subject: `${op.target.ifcClass} "${op.target.name}"`,
+        before: `${fields(op.op === 'element.resize' ? before.size ?? {} : before.Profile ?? {}, units === 'mm' ? 1000 : 1)} ${units}`,
+        after: `${fields(op.op === 'element.resize' ? { ...op.expected, ...op.size } : op.Profile)} ${units}`,
+        ...(notes.length ? { previewNote: notes.join(' ') } : {}) };
+    }
     case 'element.create': {
       const omitted = 'Profile' in op.params && typeof op.params.Profile === 'object' ? sectionGhostOmissions(op.params.Profile) : [];
       return { ...(omitted.length ? { previewNote: t('modelAuthoring.filletPreview', { fields: omitted.join(', ') }) } : {}),

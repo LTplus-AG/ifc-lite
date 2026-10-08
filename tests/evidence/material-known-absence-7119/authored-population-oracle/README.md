@@ -9,3 +9,5 @@ Actual root Turbo controls: old test with one canonical relationship removed, 21
 The qualification manifest records 25 raw/gzip pairs. Only compressed logs/receipts are committed; decompression reconstructs the recorded raw bytes and SHA256. Runtime witnesses retain actual test-process start/exit hashes: test controls used b335…, while later typecheck produced 8b742…. These are separate observations, with no native or performance claim. Root independently verified source, fixture anchors, archive integrity and actual reporter counts.
 
 Refs #7119. This bounded oracle repair does not establish every issue acceptance condition or close the issue.
+
+This directory is retained as historical evidence only after #7226 merged an independently decoded fixture oracle and checksum repair. Its candidate test remains pinned to a42e73cd54; it is not the current test and these runs do not qualify the current source. The evidence-only retention copies no test or production delta from #7225. Current material test qualification is recorded on #7226.

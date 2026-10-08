@@ -12,6 +12,7 @@
  * and `bim.store`'s modelling methods for joins, types and materials.
  */
 
+import { writeHostedEdit } from './model-authoring-hosted-edit';
 import { writeNativeSplit } from './model-authoring-split';
 import { profileInMetres } from './model-authoring-shape-params';
 import { StoreEditor } from '@ifc-lite/mutations';
@@ -166,6 +167,9 @@ export function dryRunAuthoring(
 export function draftAuthoringOperation(batch: ModelAuthoringBatch, dataStore: IfcDataStore, modelId: string, draft: StoreEditor, row: DryRunRow, refs: Map<string, number>, splitScopes?: Parameters<typeof import('@ifc-lite/create').splitElementsInStore>[3]): void {
   const { op, resolved } = row;
   switch (op.op) {
+    case 'hosted.edit':
+      writeHostedEdit(batch, dataStore, draft, resolved.target!, op.expected, op.edit, op.target.globalId);
+      return;
     case 'element.split':
       resolved.splitEffects = writeNativeSplit(batch, op, dataStore, draft, resolved.target!, splitScopes);
       return;

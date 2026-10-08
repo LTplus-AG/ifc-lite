@@ -241,7 +241,7 @@ export function createListDataProvider(
     },
 
     getClassifications(entityId: number): ListClassificationRef[] {
-      return extractClassificationsOnDemand(store, entityId).map((c) => ({
+      return extractClassificationsOnDemand(store, entityId, view).map((c) => ({
         system: c.system,
         code: c.identification,
         name: c.name,

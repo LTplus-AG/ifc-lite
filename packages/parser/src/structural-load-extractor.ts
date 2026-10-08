@@ -17,7 +17,7 @@
 
 import type { EntityExtractor } from './entity-extractor.js';
 import type { IfcDataStore } from './columnar-parser.js';
-import { getAttributeNames, normalizeIfcTypeName } from './ifc-schema.js';
+import { getAttributeNames, getInheritanceChain, normalizeIfcTypeName } from './ifc-schema.js';
 import { asBoolean, asNumber, asRef, asString } from './structural-step-values.js';
 
 /** Attributes that every load/condition carries from its supertype, not a component. */
@@ -73,7 +73,7 @@ export type StructuralLoadDropReason =
   | 'cycle'
   /** The node budget for this top-level load was spent before this slot. */
   | 'budget'
-  /** The slot is not an entity reference at all (`$`, an inline value, …). */
+  /** The slot is not a structural-load reference (`$`, an inline value, or a different IFC class). */
   | 'invalid-reference'
   /** The referenced expressId is in no index — a dangling reference. */
   | 'unresolved'
@@ -229,6 +229,9 @@ function readLoad(
   if (!entity) return { dropped: source?.dropped ?? 'unresolved', truncated: false };
   budget.remaining--;
   const type = normalizeIfcTypeName(entity.type);
+  if (type !== 'IfcStructuralLoad' && !getInheritanceChain(type).includes('IfcStructuralLoad')) {
+    return { dropped: 'invalid-reference', truncated: false };
+  }
   const attrs = entity.attrs;
 
   if (type.toUpperCase() === 'IFCSTRUCTURALLOADCONFIGURATION') {
@@ -310,6 +313,7 @@ export function extractBoundaryCondition(
   const entity = readEntity ? readEntity(expressId) : sourceLoadRecord(extractor, store, expressId).record;
   if (!entity) return undefined;
   const type = normalizeIfcTypeName(entity.type);
+  if (type !== 'IfcBoundaryCondition' && !getInheritanceChain(type).includes('IfcBoundaryCondition')) return undefined;
   const attrs = entity.attrs;
   const components: Record<string, number | boolean> = {};
   const names = getAttributeNames(type);

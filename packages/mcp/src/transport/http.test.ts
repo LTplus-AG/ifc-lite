@@ -11,6 +11,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { request as httpRequest } from 'node:http';
 import * as Y from 'yjs';
 import { createMCPServer } from '../index.js';
 import type { AuthScope } from '../auth/scope.js';
@@ -482,6 +483,47 @@ describe('HttpTransport session cap (#6943)', () => {
       advance(1);
       expect((await initialize(port)).status).toBe(200);
       expect(await ping(port, sid)).toBe(404);
+    });
+
+    it('a session whose POST is still uploading its body is not reclaimed; an abandoned upload releases it', async () => {
+      const port = await start({ maxSessions: 1, sessionIdleMs: IDLE });
+      const sid = await initSession(port, 'alice-token');
+      advance(100 * IDLE);
+      const body = PING(3);
+      const upload = (): { send: (chunk: string) => void; end: () => void; abort: () => void; done: Promise<number> } => {
+        const req = httpRequest({
+          host: '127.0.0.1', port, method: 'POST',
+          headers: { Authorization: 'Bearer alice-token', 'Content-Type': 'application/json', 'Mcp-Session-Id': sid, 'Content-Length': String(body.length) },
+        });
+        const done = new Promise<number>((resolve) => {
+          req.on('response', (r) => { r.resume(); resolve(r.statusCode ?? 0); });
+          req.on('error', () => resolve(0));
+        });
+        // Headers reach the server with the first write; the rest of the body is held back.
+        return { send: (c) => { req.write(c); }, end: () => req.end(), abort: () => req.destroy(), done };
+      };
+      const u = upload();
+      cleanups.push(u.abort);
+      u.send(body.slice(0, 5));
+      await sleep(150);
+      // Headers are in, the body is not: the session is busy, however stale.
+      await expectCapacityRefusal(await initialize(port));
+      u.send(body.slice(5));
+      u.end();
+      expect(await u.done).toBe(200);
+      // Settled just now, so the window restarts from here, not from the headers.
+      await expectCapacityRefusal(await initialize(port));
+      advance(IDLE);
+      // A client that leaves mid-upload must not pin the session forever.
+      const gone = upload();
+      gone.send(body.slice(0, 5));
+      await sleep(150);
+      await expectCapacityRefusal(await initialize(port));
+      gone.abort();
+      await gone.done;
+      await sleep(150);
+      advance(IDLE);
+      expect((await initialize(port)).status).toBe(200);
     });
 
     it('a session with an open GET SSE stream is not reclaimed however stale; the idle window starts when the stream closes', async () => {

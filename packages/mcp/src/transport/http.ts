@@ -220,7 +220,11 @@ export class HttpTransport {
       return;
     }
 
-    const body = await readBody(req, this.opts.maxBodyBytes ?? 32 * 1024 * 1024);
+    // A POST still uploading its body counts as in flight for the session it
+    // names (same scope only), so an `initialize` at the cap cannot reclaim it
+    // between the headers and the last byte.
+    const named = sessionId ? this.sessions.get(sessionId) : undefined;
+    const body = await readBody(req, this.opts.maxBodyBytes ?? 32 * 1024 * 1024, named && sameScope(named.scope, scope) ? named : undefined);
     const message = parseMessage(body);
     if (!message) {
       res.statusCode = 400;

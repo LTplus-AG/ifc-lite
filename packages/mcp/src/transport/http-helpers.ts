@@ -145,7 +145,17 @@ export function writeSse(res: ServerResponse, message: unknown): void {
   res.write(`data: ${JSON.stringify(message)}\n\n`);
 }
 
-export async function readBody(req: IncomingMessage, max: number): Promise<string> {
+/** Reads the request body; `holder.inFlight` is raised while the upload runs, so it is never left raised. */
+export async function readBody(req: IncomingMessage, max: number, holder?: { inFlight: number }): Promise<string> {
+  if (holder) holder.inFlight++;
+  try {
+    return await readBodyChunks(req, max);
+  } finally {
+    if (holder) holder.inFlight--;
+  }
+}
+
+function readBodyChunks(req: IncomingMessage, max: number): Promise<string> {
   return new Promise((resolve, reject) => {
     let total = 0;
     const chunks: Buffer[] = [];

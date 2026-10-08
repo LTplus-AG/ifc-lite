@@ -18,7 +18,7 @@ production mask files restored from base e60ed32ee7299839cdce76e4a5c907ab0f1d426
 All 24 opaque occlusion cases incorrectly retain 576 selected and hover pixels.
 Both captures use the identical off-lattice source z=-2.0003 and executable
 witness. `native-witness.png` is the native browser capture of the final passing
-report. Source hashes identify the final production implementation and witness.
+report. The original source hashes are retained in `source-sha256-96.txt`.
 
 Run the committed browser regression from the repository root:
 
@@ -32,11 +32,30 @@ An inverse run on original mask code uses the helper's `sampledDepthView=true`
 argument to supply the original sampled-depth-only view; the corrected pass
 requires the full depth/stencil attachment view.
 
+## Review correction: 120-case depth-contract witness
+
+Review correctly identified that the original `transparent-selected` case drew
+only an opaque background behind the source; it did not draw the actual source
+through the non-depth-writing scene pipeline. The 96-case native captures above
+are preserved as observed and their transparency-selected claim is underqualified.
+Their visible-source and 1 mm opaque-occlusion controls remain valid.
+
+The corrected executable witness uploads the source with alpha 0.4 and actually
+draws it through the non-depth-writing scene pipeline after the opaque background.
+A companion `transparent-occluded` case draws that source behind an opaque
+occluder and requires zero selected/hover mask pixels. The matrix is now 120 cases.
+`swiftshader-restored-120.json` records the committed browser test passing all
+120 cases with zero GPU errors; the adapter explicitly reported Google SwiftShader.
+The native T3 automation host was unavailable for this revision, so this report
+is software-adapter evidence. `source-sha256-120.txt` identifies its source.
+
 ## Scope
 
 The transparency cases exercise the renderer's depth-write contract: a front
 transparent draw does not occlude a selected opaque source; a selected transparent
-source in front of an opaque source passes. They do not claim a full shaded viewer
+source in front of an opaque source passes. The scene oracle executes the real main vertex stages without a fragment stage;
+the masks execute their real production vertex/fragment stages. These depth-write
+contract witnesses do not claim a full shaded viewer
 or xray/ghost appearance acceptance. Entity ID 256 has zero geometry nudge and
 isolates mask visibility from the separate mesh-depth-nudge contract. The existing
 `ortho-depth-nudge.e2e.spec.ts` covers that contract's 30 mm controls; this witness

@@ -18,10 +18,10 @@ test('visible masks respect 1mm occluders at matching raster samples (#6729)', a
     }, moduleUrl);
     await info.attach('production-mask-depth-report', { body: JSON.stringify(report, null, 2), contentType: 'application/json' });
     expect(report.errors, 'real GPU validation and execution errors').toEqual([]);
-    expect(report.rows).toHaveLength(96);
+    expect(report.rows).toHaveLength(120);
     for (const row of report.rows) {
       const witness = JSON.stringify(row);
-      const expected = row.case === 'occluded-1mm' ? 0 : 576;
+      const expected = row.case === 'occluded-1mm' || row.case === 'transparent-occluded' ? 0 : 576;
       expect(row.selected, `selected visibility ${witness}`).toBe(expected);
       expect(row.hovered, `hover visibility ${witness}`).toBe(expected);
       expect(row.all, `deliberate occluded silhouette ${witness}`).toBe(576);

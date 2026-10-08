@@ -29,7 +29,7 @@ const identity = () => new Float32Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 
 type Family = 'flat' | 'quantized' | 'instanced';
 export interface MaskDepthRow {
   samples: number; family: Family; perspective: boolean; slope: number;
-  case: 'same-source' | 'occluded-1mm' | 'transparent-front' | 'transparent-selected';
+  case: 'same-source' | 'occluded-1mm' | 'transparent-front' | 'transparent-selected' | 'transparent-occluded';
   selected: number; hovered: number; all: number;
 }
 export interface MaskDepthReport {
@@ -64,7 +64,7 @@ export async function runMaskDepthWitness(sampledDepthView = false): Promise<Mas
           projection[10] = 0; projection[11] = -1; projection[14] = 1; projection[15] = 0;
         } else { projection[10] = 0.001; projection[14] = 0.5; }
         const uniforms = new Float32Array(96);
-        uniforms.set(projection); uniforms.set(identity(), 16); uniforms.set(projection, 60);
+        uniforms.set(projection); uniforms.set(identity(), 16); uniforms.set([0, 0, 0, 1], 32); uniforms.set(projection, 60);
         const positions = new Float32Array([-1, -1, -2.0003 - slope, 1, -1, -2.0003 + slope, -1, 1, -2.0003 - slope, 1, 1, -2.0003 + slope]);
         const normals = new Float32Array(12); for (let i = 2; i < 12; i += 3) normals[i] = 1;
         const mesh = { expressId: ID, positions, normals, indices: new Uint32Array([0, 1, 2, 2, 1, 3]), color: [0, 0, 0, 1] as [number, number, number, number] };
@@ -99,7 +99,18 @@ export async function runMaskDepthWitness(sampledDepthView = false): Promise<Mas
         const opaque = scenePipeline(true), transparent = scenePipeline(false);
         const mask = new SelectionMaskPass({ getDevice: () => device } as WebGPUDevice, meshLayout, samples);
         try {
-          for (const kind of ['same-source', 'occluded-1mm', 'transparent-front', 'transparent-selected'] as const) {
+          for (const kind of ['same-source', 'occluded-1mm', 'transparent-front', 'transparent-selected', 'transparent-occluded'] as const) {
+            const transparentSource = kind === 'transparent-selected' || kind === 'transparent-occluded';
+            const sourceUniforms = uniforms.slice();
+            sourceUniforms[35] = transparentSource ? 0.4 : 1;
+            const sourceBindGroup = device.createBindGroup({ layout: meshLayout, entries: [{ binding: 0,
+              resource: { buffer: buffer(sourceUniforms, GPUBufferUsage.UNIFORM) } }] });
+            const sourceIndividual = transparentSource ? uploadIndividualMesh(device,
+              { ...mesh, color: [0, 0, 0, 0.4] }, { sharedOrigin: null, quantized: family === 'quantized' }) : individual;
+            if (transparentSource) owned.push(sourceIndividual.vertexBuffer, sourceIndividual.indexBuffer);
+            const sourceRecord = record.slice();
+            sourceRecord[20] = transparentSource ? 0.4 : 1;
+            const sourceTemplate = { ...template, instanceBuffer: buffer(sourceRecord, GPUBufferUsage.VERTEX) };
             const depth = device.createTexture({ size: [SIZE, SIZE], format: 'depth24plus-stencil8', sampleCount: samples, usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING }); owned.push(depth);
             const encoder = device.createCommandEncoder();
             const scene = encoder.beginRenderPass({ colorAttachments: [], depthStencilAttachment: {
@@ -109,7 +120,7 @@ export async function runMaskDepthWitness(sampledDepthView = false): Promise<Mas
             scene.setPipeline(opaque); scene.setBindGroup(0, bindGroup); scene.setVertexBuffer(0, vertex); scene.setIndexBuffer(indices, 'uint32');
             if (family === 'instanced') { scene.setVertexBuffer(1, template.instanceBuffer); scene.setVertexBuffer(2, template.rteDeltas.buffer); }
             // Alter the model's world z, retaining all source rasterization inputs.
-            const offset = kind === 'occluded-1mm' ? 0.001 : kind === 'transparent-selected' ? -0.001 : 0;
+            const offset = kind === 'occluded-1mm' || kind === 'transparent-occluded' ? 0.001 : kind === 'transparent-selected' ? -0.001 : 0;
             const moved = uniforms.slice(); moved[30] = offset;
             if (family === 'instanced') {
               const movedRecord = record.slice();
@@ -126,22 +137,35 @@ export async function runMaskDepthWitness(sampledDepthView = false): Promise<Mas
               if (family === 'instanced') {
                 const frontRecord = record.slice();
                 frontRecord[14] = 0.001;
+                frontRecord[20] = 0.4;
                 scene.setVertexBuffer(1, buffer(frontRecord, GPUBufferUsage.VERTEX));
                 scene.setVertexBuffer(2, buffer(new Float32Array([0, 0, 0.001, 0, 0, 0, 0, 0]), GPUBufferUsage.VERTEX));
               }
               const front = moved.slice();
               front[30] = 0.001;
+              front[35] = 0.4;
               scene.setBindGroup(0, device.createBindGroup({ layout: meshLayout, entries: [{ binding: 0,
                 resource: { buffer: buffer(front, GPUBufferUsage.UNIFORM) } }] }));
+              scene.drawIndexed(6);
+            }
+            if (transparentSource) {
+              // Draw the actual alpha-0.4 source through the scene's non-writing
+              // depth pipeline, in front of or behind the opaque depth witness.
+              scene.setPipeline(transparent);
+              scene.setBindGroup(0, sourceBindGroup);
+              if (family === 'instanced') {
+                scene.setVertexBuffer(1, sourceTemplate.instanceBuffer);
+                scene.setVertexBuffer(2, sourceTemplate.rteDeltas.buffer);
+              }
               scene.drawIndexed(6);
             }
             scene.end();
             // Instanced uniforms are shared but GPU writes complete before submit;
             // distinct source/mask vertex state is prepared below using its own record.
             const views = mask.encode({ encoder, width: SIZE, height: SIZE, depthView: depth.createView({ aspect: sampledDepthView ? 'depth-only' : 'all' }),
-              selected: family === 'instanced' ? [] : [{ ...individual, bindGroup }],
-              hovered: family === 'instanced' ? [] : [{ ...individual, bindGroup }],
-              ...(family === 'instanced' ? { instanced: { uniforms, rteCamera: [0, 0, 0] as const, selected: [template], hovered: [template], hoveredId: ID } } : {}),
+              selected: family === 'instanced' ? [] : [{ ...sourceIndividual, bindGroup: sourceBindGroup }],
+              hovered: family === 'instanced' ? [] : [{ ...sourceIndividual, bindGroup: sourceBindGroup }],
+              ...(family === 'instanced' ? { instanced: { uniforms: sourceUniforms, rteCamera: [0, 0, 0] as const, selected: [sourceTemplate], hovered: [sourceTemplate], hoveredId: ID } } : {}),
             });
             const visible = await readMask(device, encoder, views.visibleView);
             const all = await readMask(device, device.createCommandEncoder(), views.allView);

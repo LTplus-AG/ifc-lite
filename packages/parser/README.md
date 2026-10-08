@@ -28,6 +28,12 @@ console.log(`Parsed ${store.entityCount} entities in ${(performance.now() - t0).
 shared scan selection, and on-demand extraction for properties, quantities,
 materials, classifications, documents, and attributes.
 
+`extractDocumentsOnDemand(store, expressId, mutationView?)` folds current native
+document and association edits with the same positional precedence as STEP export.
+Existing normalized document fields keep their casing. Optional target identity and
+`unresolved`/`sourceOrigin` distinguish unreadable metadata and immutable forwarded
+associations when source bytes are absent; such rows do not prove current membership.
+
 ```typescript
 const store = await parser.parseColumnar(buffer);
 

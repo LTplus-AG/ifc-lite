@@ -53,6 +53,8 @@ export const propertiesEn = {
 
   // DocumentCard
   'properties.document.heading': 'Document',
+  'properties.document.unresolved': 'Document metadata cannot be fully verified from the available source.',
+  'properties.document.membershipUnavailable': 'Current document membership is unknown without the original IFC source. Shown original associations are source evidence.',
 
   // RelationshipsCard
   'properties.relationships.heading': 'Relationships',

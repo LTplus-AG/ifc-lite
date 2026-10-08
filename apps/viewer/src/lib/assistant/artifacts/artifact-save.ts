@@ -13,7 +13,7 @@
  * Opening never applies anything to the scene by itself: a filter opens in the
  * search Filter tab and runs there (selection, isolation and export stay the
  * Filter tab's own buttons), a list opens in the list builder, a lens opens in
- * the Lens library, and a chart opens on its dashboard.
+ * the native lens editor, and a chart opens in its dashboard's native editor.
  */
 
 import { DASHBOARD_GRID_COLUMNS, type DashboardSpec } from '@ifc-lite/charts';
@@ -124,10 +124,12 @@ export function openSavedArtifact(saved: SavedArtifact, artifact: PreviewArtifac
       return;
     }
     case 'lens.proposal':
+      state.setPendingArtifactEditor({ kind: 'lens', id: saved.id });
       state.openPanelInHome('lens', 'context');
       return;
     case 'chart.proposal':
       state.setActiveDashboardId(saved.dashboardId);
+      state.setPendingArtifactEditor({ kind: 'chart', id: saved.id, dashboardId: saved.dashboardId });
       state.openPanelInHome('charts', 'context');
       return;
   }

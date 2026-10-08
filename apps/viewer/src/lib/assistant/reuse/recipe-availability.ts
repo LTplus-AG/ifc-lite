@@ -18,6 +18,7 @@
 import { loadBcfServerConfig } from '@/services/bcf-server-config';
 import { UNCONFIGURED_MODEL_ID } from '@/lib/llm/models';
 import type { ViewerState } from '@/store';
+import { sourceActionAvailability } from '../adapters/actions';
 import { ADAPTERS } from '../adapters/registry';
 import type { AssistantSource } from '../sources';
 import type { AssistantRecipe, RecipeStep } from './recipe';
@@ -44,7 +45,7 @@ export interface HostSnapshot {
 export function readHostSnapshot(state: ViewerState, bcfConfigured = loadBcfServerConfig() !== null): HostSnapshot {
   return {
     modelCount: state.models.size,
-    readySources: new Set(ADAPTERS.filter(adapter => adapter.readiness(state).ready).map(adapter => adapter.id)),
+    readySources: new Set(ADAPTERS.filter(adapter => sourceActionAvailability(adapter, state).discuss).map(adapter => adapter.id)),
     clashResult: !!state.clashResult,
     validationReport: !!state.idsValidationReport,
     compareResult: !!state.compareResult,

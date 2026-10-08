@@ -13,10 +13,13 @@ import { usePanelControls } from '@/hooks/usePanelControls';
 import { panelTitleKey, type WorkspacePanelId } from '@/lib/panels/registry';
 import type { AssistantSource } from '@/lib/assistant/sources';
 import { ADAPTER_GROUPS, ADAPTERS, UNSUPPORTED_PANELS } from '@/lib/assistant/adapters/registry';
-import type { AdapterReadiness } from '@/lib/assistant/adapters/types';
+import { sourceActionAvailability } from '@/lib/assistant/adapters/actions';
+import type { SourceActionAvailability, AdapterReadiness } from '@/lib/assistant/adapters/types';
+
+type SourceState = AdapterReadiness & { actions: SourceActionAvailability };
 
 /** Live native status per source: what the assistant would see if attached now. */
-function useReadiness(): ReadonlyMap<AssistantSource, AdapterReadiness> {
+function useReadiness(): ReadonlyMap<AssistantSource, SourceState> {
   // Sources whose native state lives outside the viewer store re-render the picker themselves;
   // the selector below re-reads every adapter on that render.
   const [, refresh] = useReducer((n: number) => n + 1, 0);
@@ -25,9 +28,12 @@ function useReadiness(): ReadonlyMap<AssistantSource, AdapterReadiness> {
     return () => { for (const off of detach) off(); };
   }, []);
   // One primitive signature keeps re-renders to actual status changes.
-  const signature = useViewerStore(s => JSON.stringify(ADAPTERS.map(adapter => adapter.readiness(s))));
+  const signature = useViewerStore(s => JSON.stringify(ADAPTERS.map(adapter => {
+    const readiness = adapter.readiness(s);
+    return { ...readiness, actions: sourceActionAvailability(adapter, s, readiness) };
+  })));
   return useMemo(() => {
-    const parsed = JSON.parse(signature) as AdapterReadiness[];
+    const parsed = JSON.parse(signature) as SourceState[];
     return new Map(ADAPTERS.map((adapter, index) => [adapter.id, parsed[index]]));
   }, [signature]);
 }
@@ -81,18 +87,20 @@ export function SourcePicker({ current, onAttach, onCancel }: {
               </div>
               <p className="text-muted-foreground">{t(adapter.descriptionKey)}</p>
               <div className="flex flex-wrap gap-1">
-                {state.ready && <Button size="sm" className="h-7" aria-label={t('assistant.pickDiscussLabel', { source: title })} onClick={() => onAttach(source)}>
+                {state.actions.discuss && <Button size="sm" className="h-7" aria-label={t('assistant.pickDiscussLabel', { source: title })} onClick={() => onAttach(source)}>
                   <MessageSquare className="h-3 w-3 mr-1" />{t('assistant.pickDiscuss')}
                 </Button>}
-                {source === 'clash' && (state.runnable || state.running) && <Button size="sm" className="h-7"
-                  disabled={!state.runnable} onClick={() => void runClash()}>
+                {adapter.actions.run.kind === 'native' && (!state.ready || state.running) && <Button size="sm" className="h-7"
+                  disabled={!state.actions.run.available} title={state.actions.run.reasonKey ? t(state.actions.run.reasonKey) : undefined} onClick={() => void runClash()}>
                   {!state.running ? <Play className="h-3 w-3 mr-1" /> : <Spinner size="xs" className="mr-1" />}{t('assistant.pickRunClash')}
                 </Button>}
                 <Button size="sm" variant="ghost" className="h-7" aria-label={t('assistant.pickOpenLabel', { source: title })}
-                  onClick={() => panels.openInHome(adapter.panelIds[0])}>
+                  disabled={!state.actions.open} onClick={() => panels.openInHome(adapter.actions.open.panel)}>
                   <ArrowUpRight className="h-3 w-3 mr-1" />{t('assistant.pickOpen')}
                 </Button>
               </div>
+              {adapter.actions.run.kind === 'native' && !state.ready && state.actions.run.reasonKey && !state.running
+                && <p className="text-muted-foreground">{t(state.actions.run.reasonKey)}</p>}
             </li>;
           })}
         </ul>

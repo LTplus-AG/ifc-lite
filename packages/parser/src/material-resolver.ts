@@ -88,6 +88,7 @@ export function extractAllMaterialsOnDemand(
         if (!store.source?.length) {
             const edits = view?.getEffectiveChanges?.().some(edit => {
                 if (!['attribute', 'type', 'entity-deleted'].includes(edit.kind)) return false;
+                // @raw-entity-enumeration-ok Immutable source kind identifies a current effective edit; material membership and values come from the effective reader.
                 const sourceType = store.entityIndex.byId.get(edit.entityId)?.type ?? store.deferredEntityIndex?.get(edit.entityId)?.type;
                 return edit.entityId === id || Boolean(sourceType?.toUpperCase().startsWith('IFCMATERIAL'));
             });

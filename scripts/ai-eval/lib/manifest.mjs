@@ -116,7 +116,13 @@ export function checkManifest(manifest, { root, recordings = [] }) {
   }
   const covered = new Set(manifest.tasks.map(task => task.journey));
   const uncovered = manifest.journeys.filter(journey => !covered.has(journey.id)).map(journey => journey.id);
-  if (uncovered.length) notes.push(`journeys without evaluation tasks yet: ${uncovered.join(', ')}`);
+  for (const id of uncovered) errors.push(`journey ${id}: no evaluation task is assigned to it`);
+  const recorded = new Set(recordings.filter(({ recording }) => recording.corpus === 'release').map(({ recording }) => recording.task));
+  for (const journey of manifest.journeys) {
+    if (covered.has(journey.id) && !manifest.tasks.some(task => task.journey === journey.id && recorded.has(task.id))) {
+      errors.push(`journey ${journey.id}: no release recording covers its evaluation tasks`);
+    }
+  }
   const pendingReview = manifest.fixtures.filter(fixture => fixture.privacy.human.status !== 'complete').length;
   if (pendingReview) notes.push(`${pendingReview} fixture(s) await human privacy review`);
   return { errors, notes };

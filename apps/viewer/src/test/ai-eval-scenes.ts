@@ -28,8 +28,9 @@ import { newFlowDocument } from '@/lib/flow/persistence';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture';
 import { SAMPLE_MODEL, parseIfc, seedAuthoringSample } from '@/test/authoring-sample-fixture';
 import type { IfcDataStore } from '@ifc-lite/parser';
+import { EXPANDED_SCENES, seedExpandedScene } from './ai-eval-expanded-scenes';
 
-export const AI_EVAL_SCENES = ['clash-rev-b', 'validation-sample', 'validation-fzk-haus', 'authoring-sample', 'flow-empty'] as const;
+export const AI_EVAL_SCENES = ['clash-rev-b', 'validation-sample', 'validation-fzk-haus', 'authoring-sample', 'flow-empty', ...EXPANDED_SCENES] as const;
 export type AiEvalScene = typeof AI_EVAL_SCENES[number];
 export const isAiEvalScene = (value: unknown): value is AiEvalScene =>
   typeof value === 'string' && AI_EVAL_SCENES.some(scene => scene === value);
@@ -85,6 +86,8 @@ async function validate(store: IfcDataStore, modelId: string): Promise<EvidenceS
 
 export async function seedScene(scene: AiEvalScene): Promise<SceneResult> {
   useViewerStore.setState(pristine, true);
+  const expanded = EXPANDED_SCENES.find(id => id === scene);
+  if (expanded) return { kind: 'ready', evidence: await seedExpandedScene(expanded, { clash: seedClashRevB, validate }) };
   if (scene === 'clash-rev-b') return { kind: 'ready', evidence: await seedClashRevB() };
   if (scene === 'validation-sample') {
     // The authoring seed: the same committed sample with Edit mode on, so corrections can be previewed.

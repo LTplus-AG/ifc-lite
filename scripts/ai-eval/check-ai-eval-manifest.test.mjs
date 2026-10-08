@@ -22,6 +22,18 @@ test('the committed manifest, recordings, labels and study records pass, with st
   assert.ok(notes.some(note => /stay open until people perform them/.test(note)));
 });
 
+test('#6928 deleting a journey task cannot silently reduce evaluation coverage', () => withRoot(root => {
+  const manifest = readJson(manifestPath(root));
+  manifest.tasks = manifest.tasks.filter(task => task.journey !== 'flow-ai-execution');
+  writeJson(manifestPath(root), manifest);
+  assert.ok(run(root).errors.includes('journey flow-ai-execution: no evaluation task is assigned to it'));
+}));
+
+test('#6928 a journey with tasks but no release replay is refused', () => withRoot(root => {
+  rmSync(join(root, 'tests', 'ai-eval', 'recordings', 'flow-ai-review-release.json'));
+  assert.ok(run(root).errors.includes('journey flow-ai-execution: no release recording covers its evaluation tasks'));
+}));
+
 test('a changed fixture byte is caught by the recomputed fingerprint', () => withRoot(root => {
   appendFileSync(sample(root), '\n');
   assert.ok(run(root).errors.some(error => /fixture sample-architecture: .*sha256/.test(error)));

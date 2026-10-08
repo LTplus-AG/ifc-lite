@@ -39,7 +39,7 @@
         "additionalProperties": false,
         "properties": {
           "id": { "$ref": "#/$defs/id" },
-          "source": { "enum": ["clash", "validation", "compare", "flow", "loadReport"] },
+          "source": { "enum": ["clash", "validation", "compare", "flow", "flowRun", "loadReport", "review", "lists", "selection", "document"] },
           "fixtures": { "type": "array", "items": { "$ref": "#/$defs/id" } },
           "description": { "type": "string", "minLength": 10 }
         }

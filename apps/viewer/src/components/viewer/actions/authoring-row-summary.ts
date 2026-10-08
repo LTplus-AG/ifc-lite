@@ -45,6 +45,14 @@ export function authoringRowSummary(row: AuthoringRow, batch: ModelAuthoringBatc
   switch (op.op) {
     case 'hosted.edit':
       return { subject: `${op.target.ifcClass} "${op.target.name}"`, before: `${fields({ Offset: op.expected.offset, Sill: op.expected.sill, ...(op.expected.size ?? {}) })} ${units}`, after: `${fields(op.edit)} ${units}`, previewNote: row.previewUnavailable ? t('modelAuthoring.editPreviewUnavailable') : t('modelAuthoring.hostedEditBoundsPreview') };
+    case 'element.split': {
+      const cut = op.cut.kind === 'slab' ? `${point(op.cut.a)} → ${point(op.cut.b)} ${units}` : `${num(op.cut.distance)} ${units}`;
+      const effects = row.resolved.splitEffects;
+      return { subject: `${op.target.ifcClass} "${op.target.name}"`,
+        before: op.expected.kind === 'slab' ? `${op.expected.chain.footprint.length} vertices · thickness=${num(op.expected.chain.thickness)} ${units}` : `${point(op.expected.chain.startCoordinates)} · ${op.expected.kind === 'wall' ? `length=${num(op.expected.chain.wallLength)}, height=${num(op.expected.chain.height)}, thickness=${num(op.expected.chain.thickness)}` : `length=${num(op.expected.chain.depth)}, ${fields(op.expected.chain.profile ?? { XDim: op.expected.chain.profileWidth, YDim: op.expected.chain.profileHeight })}`} ${units}`,
+        after: t('modelAuthoring.splitResult', { cut, side: effects?.leftId === row.expressId ? 'left' : 'right' }),
+        previewNote: `${row.previewUnavailable ? t('modelAuthoring.editPreviewUnavailable') : t('modelAuthoring.splitPreview')}${effects ? ` ${t('modelAuthoring.splitOpenings', effects.openings)}` : ''}` };
+    }
     case 'element.resize': case 'element.profile': {
       const notes = [row.previewUnavailable ? t('modelAuthoring.editPreviewUnavailable') : '',
         row.previewOuterBodyOnly ? t('modelAuthoring.outerBodyPreview') : '',

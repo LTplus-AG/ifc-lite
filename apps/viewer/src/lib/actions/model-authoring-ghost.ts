@@ -32,6 +32,7 @@ import { toMetres, type AuthoringOp, type ModelAuthoringBatch } from './model-au
 import type { AuthoringRow, ModelAuthoringPreview } from './model-authoring-preview';
 import { authoringReader } from './model-authoring-read';
 import { authoringHostedEditGhost } from './model-authoring-hosted-edit-ghost';
+import { authoringSplitMarker } from './model-authoring-split-ghost';
 import { authoringSizeGhost } from './model-authoring-size-ghost';
 
 const DELETE_COLOR: [number, number, number, number] = [0.95, 0.25, 0.2, 0.45];
@@ -148,6 +149,7 @@ export function authoringGhosts(state: ViewerState, preview: ModelAuthoringPrevi
       continue;
     }
     if (row.op.op === 'hosted.edit') { const mesh = authoringHostedEditGhost(state, preview.batch, row, id, preview.rows); if (mesh) meshes.push(mesh); continue; }
+    if (row.op.op === 'element.split') { const mesh = authoringSplitMarker(state, preview.batch, row, id); if (mesh) meshes.push(mesh); continue; }
     switch (row.op.op) {
       case 'element.create': { const mesh = createGhost(state, preview.batch, row, id); if (mesh) meshes.push(mesh); break; }
       case 'hosted.create': { const mesh = hostedGhost(state, preview.batch, preview, row, id); if (mesh) meshes.push(mesh); break; }

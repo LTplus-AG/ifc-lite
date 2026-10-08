@@ -13,6 +13,7 @@
  */
 
 import { writeHostedEdit } from './model-authoring-hosted-edit';
+import { writeNativeSplit } from './model-authoring-split';
 import { profileInMetres } from './model-authoring-shape-params';
 import { StoreEditor } from '@ifc-lite/mutations';
 import type { IfcDataStore } from '@ifc-lite/parser';
@@ -33,6 +34,7 @@ export type ElementId = { id: number } | { ref: string };
 /** What preview resolved for an operation; the commit re-resolves and must find the same. */
 export interface ResolvedOp {
   target?: number;
+  splitEffects?: ReturnType<typeof import('@ifc-lite/create').splitElementsInStore>[number];
   /** The element a type or material is assigned to. */
   subject?: ElementId;
   storey?: number;
@@ -144,6 +146,7 @@ export function dryRunAuthoring(
   view: import('@ifc-lite/mutations').MutablePropertyView,
   modelId: string,
   rows: readonly DryRunRow[],
+  splitScopes?: Parameters<typeof import('@ifc-lite/create').splitElementsInStore>[3],
 ): Map<number, string> {
   const refusals = new Map<number, string>();
   if (rows.length === 0) return refusals;
@@ -152,7 +155,7 @@ export function dryRunAuthoring(
     const refs = new Map<string, number>();
     for (const row of rows) {
       try {
-        editor.runAtomic((draft) => draftAuthoringOperation(batch, dataStore, modelId, draft, row, refs));
+        editor.runAtomic((draft) => draftAuthoringOperation(batch, dataStore, modelId, draft, row, refs, splitScopes));
       } catch (error) {
         refusals.set(row.index, error instanceof Error ? error.message : String(error));
       }
@@ -161,11 +164,14 @@ export function dryRunAuthoring(
   return refusals;
 }
 
-export function draftAuthoringOperation(batch: ModelAuthoringBatch, dataStore: IfcDataStore, modelId: string, draft: StoreEditor, row: DryRunRow, refs: Map<string, number>): void {
+export function draftAuthoringOperation(batch: ModelAuthoringBatch, dataStore: IfcDataStore, modelId: string, draft: StoreEditor, row: DryRunRow, refs: Map<string, number>, splitScopes?: Parameters<typeof import('@ifc-lite/create').splitElementsInStore>[3]): void {
   const { op, resolved } = row;
   switch (op.op) {
     case 'hosted.edit':
       writeHostedEdit(batch, dataStore, draft, resolved.target!, op.expected, op.edit);
+      break;
+    case 'element.split':
+      resolved.splitEffects = writeNativeSplit(batch, op, dataStore, draft, resolved.target!, splitScopes);
       return;
     case 'element.resize': {
       const outcome = draftElementSize(dataStore, draft, draftMethods(dataStore, modelId, draft), modelId, resolved.target!, sizeInMetres(op.size, batch.units));

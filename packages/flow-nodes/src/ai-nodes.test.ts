@@ -96,6 +96,10 @@ describe('ai.classify', () => {
     expect(coverage).toMatchObject({ model: 'stand-in', rows: 4, requests: 1, classified: 4, notSent: 0 });
     // Only the selected column left the host.
     expect(model.calls[0].prompt).not.toContain('PRIVATE-');
+    // #7132: the native node supplies its response contract to the host.
+    expect(model.calls[0].outputSchema).toMatchObject({ name: 'flow_classification', schema: {
+      properties: { items: { items: { properties: { evidence: { items: { enum: ['Type'] } } } } } },
+    } });
   });
 
   it('keeps nothing the model invented: unknown keys, labels outside the set, uncited or unsent evidence', async () => {
@@ -175,6 +179,10 @@ describe('ai.summarize', () => {
       { heading: 'Rumour', text: 'Something unsupported.', citations: '', outcome: 'uncited' },
     ]);
     expect(result.review).toEqual(['sum']);
+    // #7132: citations are bounded by the same captured native row keys.
+    expect(model.calls[0].outputSchema).toMatchObject({ name: 'flow_summary', schema: {
+      properties: { sections: { items: { properties: { citations: { items: { enum: ['g0', 'g1', 'g2', 'g3'] } } } } } },
+    } });
   });
 });
 
@@ -204,6 +212,12 @@ describe('ai.extract', () => {
       { passage: 0, span: 'fire rating of 30 minutes', element: 'D1', minutes: 999, outcome: 'supported' },
     ]);
     expect(out.coverage).toMatchObject({ passages: 2, sent: 2, records: 4, unsupported: 2 });
+    // #7132: passage identity and nullable candidate types reach the host.
+    expect(model.calls[0].outputSchema).toMatchObject({ name: 'flow_extraction', schema: {
+      properties: { records: { items: { properties: { passage: { enum: [0, 1] }, values: {
+        properties: { element: { type: ['string', 'null'] }, minutes: { type: ['number', 'null'] } },
+      } } } } },
+    } });
   });
 });
 

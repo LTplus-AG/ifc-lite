@@ -3082,7 +3082,6 @@ export class Renderer {
                 instancedTemplates: this.scene.getInstancedTemplates(),
                 instancedHovered: hoverId != null ? this.scene.getInstancedTemplatesOf(hoverId, hoverModel) : [],
             });
-
             // Created lazily like the sky/shadow passes; each pass inside is too.
             this.postPasses ??= new PostPassChain(this.device, this.pipeline.getSampleCount(), this.pipeline.getBindGroupLayout());
             this.postPasses.encode({
@@ -3092,6 +3091,7 @@ export class Renderer {
                 height: this.canvas.height,
                 // Depth-only: depth24plus-stencil8 cannot be sampled as texture_depth_* with aspect 'all'.
                 depthView: this.pipeline.getDepthOnlyTextureView(),
+                maskDepthView: this.pipeline.getDepthTextureView(),
                 objectIdView,
                 projection: this.camera.getProjMatrix(),
                 enhancement: visualEnhancement,

@@ -1,0 +1,4 @@
+98f87c15458560651319f6d14d5d53dd156060ace98735741d5b740054fcc21f  packages/renderer/src/selection-mask-pass.ts
+d8829fe3b472e14e62747f6fa36ea2eb43d7c14e2d02d600dfa0006a53b71db5  packages/renderer/src/selection-mask-pipelines.ts
+8b7d615fbce014d67cb4f0a47d03c7f5f4446c0655923eec18b73f2e4047ce47  packages/renderer/src/shaders/selection-mask.wgsl.ts
+3ed46264dfeb7d516ce57653c28e5cb5465b3503d15a46907532930285c24b62  tests/e2e/selection-mask-depth.gpu.ts

@@ -121,7 +121,7 @@ Validation reports can be generated in multiple languages:
 import { createTranslationService } from '@ifc-lite/ids';
 
 const t = createTranslationService('de'); // German
-// Or: 'en' (English, default), 'fr' (French)
+// Or: 'en' (English, default), 'fr' (French), 'it' (Italian)
 
 // Pass it to validateIDS to translate the report:
 const report = await validateIDS(idsDocument, accessor, modelInfo, { translator: t });

@@ -45,7 +45,7 @@ for (const spec of report.specificationResults) {
 
 ## Multi-language reports
 
-Reports translate automatically. Supported languages: English (`en`), German (`de`), French (`fr`).
+Reports translate automatically. Supported languages: English (`en`), German (`de`), French (`fr`), Italian (`it`).
 
 ```typescript
 import { parseIDS, validateIDS, createTranslationService } from '@ifc-lite/ids';

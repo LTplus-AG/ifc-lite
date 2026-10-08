@@ -9,7 +9,7 @@
  * - IDS XML parsing
  * - All facet types (Entity, Attribute, Property, Classification, Material, PartOf)
  * - All constraint types (Simple, Pattern, Enumeration, Bounds)
- * - Multi-language translation (EN, DE, FR)
+ * - Multi-language translation (EN, DE, FR, IT)
  * - Human-readable validation reports
  */
 

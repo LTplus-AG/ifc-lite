@@ -31,8 +31,9 @@ import { previewModelAuthoring, type AuthoringRow, type ModelAuthoringPreview } 
 import { undoBatch, type AppliedChange, type CommitOutcome, type ModelChangeReceipt } from './model-change-commit';
 import { commitElementSize } from '@/lib/element-size-commit';
 import { setElementProfile } from '@/store/slices/mutation-element-profile';
-import { addStairIn, addRailingIn } from '@/store/slices/mutation-stair-railing';
-import { stairParamsInMetres, railingParamsInMetres } from './model-authoring-stair-railing-fields';
+import { writeStairLifecycle, writeStairCreation } from './model-authoring-stair-lifecycle';
+import { completeEntityRemoval } from '@/store/slices/mutation-mesh-stash';
+import { completeStairRailingGeometry } from '@/store/slices/mutation-stair-railing';
 import { sizeInMetres } from './model-authoring-size-params';
 import { profileInMetres } from './model-authoring-shape-params';
 
@@ -73,10 +74,21 @@ function writeRow(tx: AuthoringTransaction, batch: ModelAuthoringBatch, row: Aut
   const base = { index: row.index, op: op.op, modelId };
   const targetGid = 'target' in op && !('ref' in op.target) ? op.target.globalId : undefined;
   switch (op.op) {
+    case 'stair.resize': case 'stair.delete': case 'railing.delete': case 'stair.replace': case 'railing.replace': {
+      const dataStore=tx.store.models.get(modelId)?.ifcDataStore;if(!dataStore)throw new Error('The native lifecycle source is unavailable');
+      const result=recordModellingEdit(tx.api,modelId,(_methods,editor)=>writeStairLifecycle(dataStore,editor,batch,op,resolved.target!,resolved.storey),tx.batchId);
+      for(const id of result.deleted)completeEntityRemoval(tx.api.getState,tx.api.setState,modelId,id,tx.api.getState().removedNewEntities.get(`${modelId}:${id}`));
+      written.created.push(...result.created);written.deleted.push(...result.deleted);written.remesh.push(...result.remesh);
+      if('ref' in op&&result.root!==undefined){const view=tx.api.getState().mutationViews.get(modelId),made=view?.getNewEntity(result.root),gid=made?.attributes[0];if(typeof gid!=='string')throw new Error('The native replacement has no GlobalId');ids.set(op.ref,result.root);refs.set(op.ref,gid);completeStairRailingGeometry(tx.api,modelId,resolved.storey!,{expressId:result.root,...(result.created.length>1?{flightId:result.created[1]}:{})},op.op==='stair.replace'?'IFCSTAIR':'IFCRAILING',tx.batchId,false);return [{...base,globalId:gid,field:op.op==='stair.replace'?'IfcStair':'IfcRailing',before:op.target.globalId,after:op.params.Name??null}];}
+      return [{...base,globalId:op.target.globalId,field:op.op==='stair.resize'?'Dimensions':op.target.ifcClass,before:op.op==='stair.resize'?JSON.stringify(op.expected):op.target.name,after:op.op==='stair.resize'?JSON.stringify(op.size):null}];
+    }
     case 'stair.create': case 'railing.create': {
-      const globalId=op.params.GlobalId??generateIfcGuid();
-      const out=op.op==='stair.create'?addStairIn(tx.api,modelId,resolved.storey!,{...stairParamsInMetres(op.params,batch.units),GlobalId:globalId},{batchId:tx.batchId}):addRailingIn(tx.api,modelId,resolved.storey!,{...railingParamsInMetres(op.params,batch.units),GlobalId:globalId},{batchId:tx.batchId});
-      if('error' in out)throw new Error(out.error);
+      const source = tx.store.models.get(modelId)?.ifcDataStore;
+      if (!source) throw new Error('The native creation source is unavailable');
+      const out = recordModellingEdit(tx.api, modelId, (_methods, editor) => writeStairCreation(source, editor, batch, op, resolved.storey!), tx.batchId);
+      const globalId = tx.api.getState().mutationViews.get(modelId)?.getNewEntity(out.expressId)?.attributes[0];
+      if (typeof globalId !== 'string') throw new Error('The native product has no GlobalId');
+      completeStairRailingGeometry(tx.api, modelId, resolved.storey!, out, op.op === 'stair.create' ? 'IFCSTAIR' : 'IFCRAILING', tx.batchId, false);
       ids.set(op.ref,out.expressId);refs.set(op.ref,globalId);written.created.push(out.expressId,...(out.flightId===undefined?[]:[out.flightId]));written.remesh.push(out.flightId??out.expressId);
       return [{...base,globalId,field:op.op==='stair.create'?'IfcStair':'IfcRailing',before:null,after:op.params.Name??null}];
     }

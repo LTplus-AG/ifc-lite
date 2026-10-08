@@ -11,8 +11,12 @@
  * anything moved since.
  */
 
+import { stairRailingGhost } from './model-authoring-stair-railing-ghost';
+import { nativeStairEvidence, sameStairSnapshot } from './model-authoring-stair-lifecycle';
+import { stairPatchInMetres } from './model-authoring-stair-railing-fields';
 import type { ViewerState } from '@/store';
 import { mutationDenial } from '@/store/mutation-permission';
+import { stairRailingRefusal } from '@/store/slices/mutation-stair-railing';
 import { materialsOf } from '@/lib/commands/modeling/authored-kinds';
 import { buildStoreyWorkplane, elementStoreyId, isWorkplane } from '@/lib/commands/modeling/workplane';
 import { planElementTransform, type TransformRoot } from '@/lib/element-transform/plan';
@@ -111,6 +115,7 @@ function existing(ctx: Context, target: ExistingElement, row: AuthoringRow): num
   const { modelId, expressId } = locate(ctx, target);
   join(row, modelId);
   const r = reader(ctx, modelId);
+  if ((row.op.op.startsWith('stair.') || row.op.op.startsWith('railing.')) && !uniqueSplitGuid(r.dataStore, r.editor, target.globalId)) throw new Refusal('ambiguous-target', 'The native stair or railing target GlobalId is not unique in its owning model');
   if (row.op.op === 'element.split' && !uniqueSplitGuid(r.dataStore, r.editor, target.globalId)) throw new Refusal('ambiguous-target', 'The native split target GlobalId is not unique in its owning model');
   const ifcClass = className(r, expressId);
   const name = nameOf(r, expressId);
@@ -183,10 +188,22 @@ function resolve(ctx: Context, row: AuthoringRow): void {
       }
       return;
     }
+    case 'stair.resize': case 'stair.delete': case 'railing.delete': case 'stair.replace': case 'railing.replace': {
+      row.resolved.target=row.expressId=existing(ctx,op.target,row);
+      const nativeRefusal=stairRailingRefusal(ctx.state,row.modelId!);if(nativeRefusal)throw new Refusal('unsupported',nativeRefusal);
+      const r=reader(ctx,row.modelId!);
+      if(!conforms(r,row.expressId,'IfcStair')&&!conforms(r,row.expressId,'IfcRailing')&&!(op.op==='stair.resize'&&conforms(r,row.expressId,'IfcStairFlight')))throw new Refusal('unsupported','This lifecycle target must be a native stair or railing');
+      if(op.op==='stair.resize'){const current=nativeStairEvidence(ctx.state,row.modelId!,row.expressId);if(!current)throw new Refusal('unsupported','The native editor cannot read a supported single stepped flight with known length units');if(!sameStairSnapshot(current,op.expected))throw new Refusal('conflict','The current native stair snapshot differs from expected');const patch=stairPatchInMetres(op.size,ctx.batch.units);if(Object.entries(patch).every(([key,value])=>Math.abs(current[key as keyof typeof patch]!-value)<=1e-9))throw new Refusal('unchanged','Already these stair dimensions');}
+      if(op.op==='railing.delete'){if(!conforms(r,row.expressId,'IfcRailing'))throw new Refusal('unsupported','Railing removal requires an IfcRailing');const refusal=deletionRefusal(r,row.expressId,'IfcRailing');if(refusal)throw new Refusal('unsupported',refusal);}
+      if(op.op==='stair.delete'&&!conforms(r,row.expressId,'IfcStair'))throw new Refusal('unsupported','Stair assembly removal requires an IfcStair root');
+      if('storey' in op){const storey=locate(ctx,op.storey);join(row,storey.modelId);if(!liveEntityConforms(r.dataStore,storey.expressId,'IfcBuildingStorey',r.view))throw new Refusal('conflict','Replacement target is not an IfcBuildingStorey');row.resolved.storey=storey.expressId;row.before.storeyName=nameOf(r,storey.expressId);}
+      row.previewUnavailable=true;return;
+    }
     case 'stair.create': case 'railing.create':
     case 'element.create': {
       const storey = locate(ctx, op.storey);
       join(row, storey.modelId);
+      if(op.op==='stair.create'||op.op==='railing.create'){const nativeRefusal=stairRailingRefusal(ctx.state,storey.modelId);if(nativeRefusal)throw new Refusal('unsupported',nativeRefusal);}
       const r = reader(ctx, storey.modelId);
       if (!liveEntityConforms(r.dataStore, storey.expressId, 'IfcBuildingStorey', r.view)) throw new Refusal('conflict', `${op.storey.globalId} is not an IfcBuildingStorey`);
       row.resolved.storey = storey.expressId;
@@ -329,6 +346,7 @@ export function previewModelAuthoring(state: ViewerState, batch: ModelAuthoringB
   for (const row of ctx.rows) if (row.status === 'ready' && row.op.op === 'element.split') {
     row.previewUnavailable = authoringSplitMarker(state, batch, row, 0) === null;
   }
+  for(const row of ctx.rows)if(row.status==='ready'&&['stair.create','railing.create','stair.replace','railing.replace'].includes(row.op.op))row.previewUnavailable=!stairRailingGhost(state,batch,row,0);
   const preview = { batch, rows: ctx.rows, mutationVersion: state.mutationVersion, digest: batchDigest(batch) };
   captureAuthoringSources(state, preview);
   return preview;

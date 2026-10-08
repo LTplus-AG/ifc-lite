@@ -12,8 +12,7 @@
  * and `bim.store`'s modelling methods for joins, types and materials.
  */
 
-import { addStairToStore, addRailingToStore } from '@ifc-lite/create';
-import { stairParamsInMetres, railingParamsInMetres } from './model-authoring-stair-railing-fields';
+import { writeStairLifecycle, writeStairCreation } from './model-authoring-stair-lifecycle';
 import { writeNativeSplit } from './model-authoring-split';
 import { profileInMetres } from './model-authoring-shape-params';
 import { StoreEditor } from '@ifc-lite/mutations';
@@ -168,11 +167,13 @@ export function dryRunAuthoring(
 export function draftAuthoringOperation(batch: ModelAuthoringBatch, dataStore: IfcDataStore, modelId: string, draft: StoreEditor, row: DryRunRow, refs: Map<string, number>, splitScopes?: Parameters<typeof import('@ifc-lite/create').splitElementsInStore>[3]): void {
   const { op, resolved } = row;
   switch (op.op) {
+    case 'stair.resize': case 'stair.delete': case 'railing.delete': case 'stair.replace': case 'railing.replace': {
+      const result=writeStairLifecycle(dataStore,draft,batch,op,resolved.target!,resolved.storey);
+      if('ref' in op && result.root!==undefined)refs.set(op.ref,result.root);return;
+    }
     case 'stair.create': case 'railing.create': {
-      ensureStoreyPlacement(dataStore, draft, resolved.storey!);
-      const anchor=resolveSpatialAnchor(dataStore,resolved.storey!,draft.getMutationView());
-      const made=op.op==='stair.create'?addStairToStore(draft,anchor,stairParamsInMetres(op.params,batch.units)).stairId:addRailingToStore(draft,anchor,railingParamsInMetres(op.params,batch.units)).railingId;
-      refs.set(op.ref,made);return;
+      const made = writeStairCreation(dataStore, draft, batch, op, resolved.storey!);
+      refs.set(op.ref, made.expressId);return;
     }
     case 'element.split':
       resolved.splitEffects = writeNativeSplit(batch, op, dataStore, draft, resolved.target!, splitScopes);

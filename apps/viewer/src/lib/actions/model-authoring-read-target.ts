@@ -20,6 +20,7 @@ export function readOnlyModelEditTarget(state: NativeReadState, modelId: string)
 /** Retain the canonical snapshot's validation for explicit attachment ownership. */
 export function readOnlyModelEditLease(state: NativeReadState, modelId: string): NativeReadLease | null {
   const dataStore = state.models.get(modelId)?.ifcDataStore;
+  // @raw-entity-enumeration-ok test source-index availability only; native overlay-aware readers resolve every element afterward.
   if (!dataStore?.entityIndex?.byId || !dataStore.entityIndex.byType) return null;
   const live = state.mutationViews.get(modelId);
   if (live) {

@@ -1,9 +1,0 @@
-{
-  "node-job.log.gz": {
-    "sha256": "9e917b5850c95664315e20dbe8cfcb83d710c6d67ca59ca537bcaff6b8cd553e",
-    "rawSHA256": "b9cfe34838ecfe08d68273b889feceda65ed9f1128d9f1cf5c749eb6c30d5f0e"
-  },
-  "receipt.json": {
-    "sha256": "1651479a1c4d47f4c6cf1d22bd349c95edf559c2d9c0edab16da55f8d5bdee32"
-  }
-}

@@ -1,7 +1,0 @@
-{
-  "sourcePinsVerified": 30,
-  "exactRawGzipPairs": 33,
-  "currentStagesZero": 9,
-  "qualificationSha256": "b29c6c9e35d04a61972690071b9a63c6326a1fa2c5ae12afc6cc8c00ced98f84",
-  "scope": "Final097e/c50/460 shared-fixture source qualification; historical phases retained with originalsourcepins. Native7036 acceptance excluded; current newhead still needs freshreview/CI after publication."
-}

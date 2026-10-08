@@ -1,0 +1,138 @@
+{
+  "rules": {
+    "IDSL-ENT-003": {
+      "verdict": "justified",
+      "reason": "Fact: the listed concrete subtypes exist in every IFC version of the spec and are not in the entity facet; IDS does not match subtypes (A-03). Info, no claim that the author is wrong."
+    },
+    "IDSL-SPEC-008": {
+      "verdict": "justified",
+      "reason": "Fact: the specification has neither description nor instructions (the buildingSMART test cases carry none)."
+    },
+    "IDSL-VAL-008": {
+      "verdict": "justified",
+      "reason": "Fact: exact real-number value on a floating-point data type; the tolerance cases show IDS applies a 1e-6 relative tolerance, which is what the rule explains."
+    },
+    "IDSL-PDT-003": {
+      "verdict": "justified",
+      "reason": "Fact: the value is outside the PredefinedType enumeration of an entity whose enumeration has USERDEFINED, so it only matches user-defined types; the rule reports it as info, consistent with the corpus accepting it."
+    }
+  },
+  "findings": {
+    "buildingsmart/classification/fail-a_prohibited_classification_reference_returns_the_opposite_of_a_required_facet.ids|IDSL-CARD-001|requirement 1 is prohibited with a value: \"must not have it\" or \"must not have this value\"?": {
+      "verdict": "justified",
+      "reason": "Prohibited facet with a value: the reading this test case fixes ('opposite of required') is the one IDS issues #206/#420 discuss as ambiguous across tools; warning is the catalogue's intent."
+    },
+    "buildingsmart/entity/fail-in_ifc2x3_there_must_be_an_airterminal_per_the_type_mapping_table_2_2.ids|IDSL-SPEC-007|the specification has no requirements; it only checks that applicable elements exist": {
+      "verdict": "justified",
+      "reason": "Fact: the specification has no requirements and is required, i.e. an existence check, which is exactly what this test case does."
+    },
+    "buildingsmart/entity/pass-a_matching_entity_should_pass.ids|IDSL-SPEC-001|requirement 1 is already guaranteed by applicability facet 1, so it can never fail": {
+      "verdict": "justified",
+      "reason": "True: the requirement entity constraint is implied by the applicability entity (test cases deliberately check matching only), so the requirement can never fail."
+    },
+    "buildingsmart/entity/pass-an_matching_entity_should_pass_regardless_of_predefined_type.ids|IDSL-SPEC-001|requirement 1 is already guaranteed by applicability facet 1, so it can never fail": {
+      "verdict": "justified",
+      "reason": "True: the requirement entity constraint is implied by the applicability entity (test cases deliberately check matching only), so the requirement can never fail."
+    },
+    "buildingsmart/entity/pass-entities_can_be_specified_as_a_xsd_regex_pattern_2_2.ids|IDSL-SPEC-001|requirement 1 is already guaranteed by applicability facet 1, so it can never fail": {
+      "verdict": "justified",
+      "reason": "True: the requirement entity constraint is implied by the applicability entity (test cases deliberately check matching only), so the requirement can never fail."
+    },
+    "buildingsmart/entity/pass-entities_can_be_specified_as_an_enumeration_1_3.ids|IDSL-SPEC-001|requirement 1 is already guaranteed by applicability facet 1, so it can never fail": {
+      "verdict": "justified",
+      "reason": "True: the requirement entity constraint is implied by the applicability entity (test cases deliberately check matching only), so the requirement can never fail."
+    },
+    "buildingsmart/entity/pass-entities_can_be_specified_as_an_enumeration_2_3.ids|IDSL-SPEC-001|requirement 1 is already guaranteed by applicability facet 1, so it can never fail": {
+      "verdict": "justified",
+      "reason": "True: the requirement entity constraint is implied by the applicability entity (test cases deliberately check matching only), so the requirement can never fail."
+    },
+    "buildingsmart/entity/pass-in_ifc2x3_there_must_be_an_airterminal_per_the_type_mapping_table_1_2.ids|IDSL-SPEC-007|the specification has no requirements; it only checks that applicable elements exist": {
+      "verdict": "justified",
+      "reason": "Fact: the specification has no requirements and is required, i.e. an existence check, which is exactly what this test case does."
+    },
+    "buildingsmart/partof/fail-the_containment_can_be_indirect_2_2.ids|IDSL-PART-001|requirement 1: IfcRelAggregates is unusual here; IfcRelContainedInSpatialStructure is the usual relation": {
+      "verdict": "justified",
+      "reason": "True: the relation is allowed but unusual for these entities (element aggregated into a spatial element, or spatial element contained); the test case exercises exactly this unusual structure. Info."
+    },
+    "buildingsmart/partof/pass-the_containment_can_be_indirect_1_2.ids|IDSL-PART-001|requirement 1: IfcRelAggregates is unusual here; IfcRelContainedInSpatialStructure is the usual relation": {
+      "verdict": "justified",
+      "reason": "True: the relation is allowed but unusual for these entities (element aggregated into a spatial element, or spatial element contained); the test case exercises exactly this unusual structure. Info."
+    },
+    "buildingsmart/property/fail-properties_can_be_associated_to_relevant_object_types.ids|IDSL-REGEX-003|pattern \"(-|[0-9]{2,3})\\/(-|[0-9]{2,3})\\/(-|[0-9]{2,3})\" uses \\/, not part of XSD regex": {
+      "verdict": "justified",
+      "reason": "True: (?:…) and \\/ are not XSD 1.0 regex; demoted to info because reference tools and these pass- cases accept them."
+    },
+    "buildingsmart/restriction/fail-regex_patterns_work_in_OR_3_3.ids|IDSL-REGEX-003|pattern \"(?:[a-z]{3}[0-9]{2})|(?:[A-Z]{3}[0-9]{2})\" uses (?:, not part of XSD regex": {
+      "verdict": "justified",
+      "reason": "True: (?:…) and \\/ are not XSD 1.0 regex; demoted to info because reference tools and these pass- cases accept them."
+    },
+    "buildingsmart/restriction/pass-regex_patterns_work_in_OR_1_3.ids|IDSL-REGEX-003|pattern \"(?:[A-Z]{2}[0-9]{2})|(?:[a-z]{2}[0-9]{2})\" uses (?:, not part of XSD regex": {
+      "verdict": "justified",
+      "reason": "True: (?:…) and \\/ are not XSD 1.0 regex; demoted to info because reference tools and these pass- cases accept them."
+    },
+    "buildingsmart/restriction/pass-regex_patterns_work_in_OR_2_3.ids|IDSL-REGEX-003|pattern \"(?:[a-z]{2}[0-9]{2})|(?:[A-Z]{2}[0-9]{2})\" uses (?:, not part of XSD regex": {
+      "verdict": "justified",
+      "reason": "True: (?:…) and \\/ are not XSD 1.0 regex; demoted to info because reference tools and these pass- cases accept them."
+    },
+    "internal/fire-safety-draft.ids|IDSL-ENT-001|IfcBuildingElement is abstract (IFC4) and matches no element; IDS does not match subtypes such as IfcFooting, IfcPile, IfcBeam and 28 more": {
+      "verdict": "justified",
+      "reason": "Seeded defect: IfcBuildingElement is abstract in IFC4."
+    },
+    "internal/fire-safety-draft.ids|IDSL-ENT-002|IfcBuildingElement does not exist in IFC4X3": {
+      "verdict": "justified",
+      "reason": "True: IfcBuildingElement is not in IFC4X3 (renamed IfcBuiltElement)."
+    },
+    "internal/fire-safety-draft.ids|IDSL-PSET-001|Pset_WallCommon is not applicable to IfcBuildingElement (IFC4)": {
+      "verdict": "justified",
+      "reason": "Seeded defect: Pset_WallCommon is applicable to IfcWall only, not to IfcBuildingElement."
+    },
+    "internal/fire-safety-draft.ids|IDSL-VAL-003|\"EI60, EI90\" looks like a list of 2 values but is matched as one string": {
+      "verdict": "justified",
+      "reason": "Seeded defect: list written as one simple value."
+    },
+    "internal/fire-safety-draft.ids|IDSL-VAL-005|\"TRUE\" is not a boolean literal IDS accepts (use \"true\" or \"false\")": {
+      "verdict": "justified",
+      "reason": "Seeded defect: upper-case boolean literal."
+    },
+    "internal/fire-safety-draft.ids|IDSL-REGEX-001|pattern \"^EI[0-9]+$\" contains ^ and $, which XSD treats as literal characters": {
+      "verdict": "justified",
+      "reason": "Seeded defect: anchors in an XSD pattern."
+    },
+    "internal/fire-safety-draft.ids|IDSL-UNIT-001|2100 as a length in SI units is implausible; probably mm (= 2.1)": {
+      "verdict": "justified",
+      "reason": "Seeded defect: door height in millimetres."
+    },
+    "internal/fire-safety-draft.ids|IDSL-DOC-001|author \"Fire engineer\" is not an e-mail address": {
+      "verdict": "justified",
+      "reason": "Seeded defect: author not an e-mail / date not xs:date."
+    },
+    "internal/fire-safety-draft.ids|IDSL-DOC-001|date \"08.10.2026\" is not an xs:date (YYYY-MM-DD)": {
+      "verdict": "justified",
+      "reason": "Seeded defect: author not an e-mail / date not xs:date."
+    },
+    "internal/handover-structure.ids|IDSL-PART-001|requirement 1: IfcRelContainedInSpatialStructure is unusual here; IfcRelAggregates is the usual relation": {
+      "verdict": "justified",
+      "reason": "True: the relation is allowed but unusual for these entities (element aggregated into a spatial element, or spatial element contained); the test case exercises exactly this unusual structure. Info."
+    },
+    "internal/handover-structure.ids|IDSL-PART-001|requirement 1: IfcRelAggregates is unusual here; IfcRelContainedInSpatialStructure is the usual relation": {
+      "verdict": "justified",
+      "reason": "True: the relation is allowed but unusual for these entities (element aggregated into a spatial element, or spatial element contained); the test case exercises exactly this unusual structure. Info."
+    },
+    "internal/handover-structure.ids|IDSL-VAL-004|\">= 45\" is matched as text, not as a numeric comparison": {
+      "verdict": "justified",
+      "reason": "Seeded defect: comparison written as a simple value."
+    },
+    "internal/handover-structure.ids|IDSL-SPEC-001|requirement 1 is already guaranteed by applicability facet 2, so it can never fail": {
+      "verdict": "justified",
+      "reason": "True: the requirement entity constraint is implied by the applicability entity (test cases deliberately check matching only), so the requirement can never fail."
+    },
+    "internal/handover-structure.ids|IDSL-CARD-003|the specification is prohibited, so its 1 requirement(s) are never checked": {
+      "verdict": "justified",
+      "reason": "Seeded defect: prohibited specification with a requirement."
+    },
+    "internal/handover-structure.ids|IDSL-SPEC-009|identifier \"HS-01\" is also used by \"Storeys are part of a building\"": {
+      "verdict": "justified",
+      "reason": "Seeded defect: identifier HS-01 used twice."
+    }
+  }
+}

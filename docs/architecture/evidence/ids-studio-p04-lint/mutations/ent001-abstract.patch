@@ -1,0 +1,13 @@
+diff --git a/packages/ids-authoring/src/lint/rules/entity.ts b/packages/ids-authoring/src/lint/rules/entity.ts
+index 944db9608..3597ad170 100644
+--- a/packages/ids-authoring/src/lint/rules/entity.ts
++++ b/packages/ids-authoring/src/lint/rules/entity.ts
+@@ -54,7 +54,7 @@ export const ENT_001: SpecRule = {
+     for (const site of entityNameSites(spec)) {
+       for (const name of literals(site.constraint)) {
+         const abstractIn = spec.versions.filter((v) => tables(ctx, v).entities.get(name.toUpperCase())?.abstract);
+-        if (abstractIn.length > 1) continue;
++        if (!abstractIn.length) continue;
+         const subtypes = concreteDescendants(ctx, spec.versions, name);
+         const canonical = canonicalEntity(ctx, spec.versions, name) ?? name;
+         const fix =

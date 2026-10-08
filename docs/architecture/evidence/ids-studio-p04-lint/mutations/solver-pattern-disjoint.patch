@@ -1,0 +1,13 @@
+diff --git a/packages/ids-authoring/src/lint/solver/solver.ts b/packages/ids-authoring/src/lint/solver/solver.ts
+index 37d0416a8..ef5d50304 100644
+--- a/packages/ids-authoring/src/lint/solver/solver.ts
++++ b/packages/ids-authoring/src/lint/solver/solver.ts
+@@ -119,7 +119,7 @@ export function overlaps(a: IDSConstraint, b: IDSConstraint, opts: SolveOptions
+   const ia = interval(a);
+   const ib = interval(b);
+   if (ia && ib) return intervalsOverlap(ia, ib) ? 'yes' : 'no';
+-  return witness(a, b, opts) !== undefined ? 'yes' : 'no';
++  return witness(a, b, opts) !== undefined ? 'yes' : 'unknown';
+ }
+ 
+ /** Does every value satisfying `a` also satisfy `b`? */

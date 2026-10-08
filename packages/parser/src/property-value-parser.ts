@@ -12,7 +12,7 @@
  * module-size budget.
  */
 
-import type { IfcEntity } from './types.js';
+import type { IfcAttributeValue, IfcEntity } from './types.js';
 import type { EntityExtractor } from './entity-extractor.js';
 import { PropertyValueType } from '@ifc-lite/data';
 import type { PropertyValue } from '@ifc-lite/data';
@@ -67,6 +67,17 @@ function sharedMemberType(members: unknown[]): string | undefined {
     return shared;
 }
 
+/** Public mutation write markers and parsed STEP values share one decoder
+ * (#7119). Only direct slots and their list members need normalization;
+ * walking arbitrary nested file graphs would add unbounded work here. */
+export function parsedWriteValue(value: IfcAttributeValue): IfcAttributeValue {
+    if (value && typeof value === 'object' && !Array.isArray(value)) {
+        if ('typed' in value) return [value.typed.type, value.typed.value];
+        if ('real' in value) return value.real;
+    }
+    return value;
+}
+
 /**
  * Parse a property entity's value based on its IFC type.
  * Handles all 6 IfcProperty subtypes:
@@ -78,7 +89,8 @@ function sharedMemberType(members: unknown[]): string | undefined {
  * - IfcPropertyReferenceValue: `#<id>` of the reference (slot 3); `parsePropertyValueWithComplex` reads the referenced Name instead
  */
 export function parsePropertyValue(propEntity: IfcEntity): ParsedIfcPropertyValue {
-    const attrs = propEntity.attributes || [];
+    const attrs = (propEntity.attributes || []).map(value =>
+        Array.isArray(value) ? value.map(parsedWriteValue) : parsedWriteValue(value));
     const typeUpper = propEntity.type.toUpperCase();
 
     switch (typeUpper) {

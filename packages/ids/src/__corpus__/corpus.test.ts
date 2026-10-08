@@ -207,11 +207,6 @@ describe('buildingSMART IDS conformance corpus', () => {
  * which is why they are audited here rather than validated.
  */
 const AUDIT_UNDETECTED = new Set([
-  'entity/invalid-an_entity_not_matching_the_specified_class_should_fail',
-  'entity/invalid-entities_can_be_specified_as_a_xsd_regex_pattern_1_2',
-  'entity/invalid-entities_can_be_specified_as_an_enumeration_3_3',
-  'entity/invalid-entities_must_be_specified_as_uppercase_strings',
-  'entity/invalid-subclasses_are_not_considered_as_matching',
   'ids/invalid-prohibited_specifications_invalid_if_requirements_are_specified',
   'partof/invalid-a_group_predefined_type_must_match_exactly_1_2',
 ]);
@@ -224,7 +219,7 @@ const AUDIT_UNDETECTED = new Set([
  * This one moves if detection regresses OR if the allowlist grows, and both
  * should be a deliberate, visible diff.
  */
-const AUDIT_DETECTS = 20;
+const AUDIT_DETECTS = 25;
 
   describe('invalid-: is the IDS DOCUMENT itself non-conforming', () => {
     it('every allowlisted case is a real corpus file', () => {

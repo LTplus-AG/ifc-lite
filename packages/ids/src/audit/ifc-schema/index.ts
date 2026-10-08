@@ -43,6 +43,7 @@ import { assertGuardedRegexPattern, UnsafeRegexPatternError } from '@ifc-lite/re
 import { checkDataTypeMatch, checkRestrictionBase, checkSimpleValueLexical } from './datatype-check.js';
 import { rowForAlias } from '../../facets/ifc2x3-type-mapping.js';
 import { auditAttributeValueType } from './attribute-value.js';
+import { auditEntityNameCase, auditEntityRequirement } from './entity-requirement.js';
 
 export async function runIfcSchemaAudit(
   doc: IDSDocument,
@@ -137,6 +138,9 @@ async function auditSpec(
       applicabilityEntity,
       issues
     );
+    if (req.facet.type === 'entity') {
+      await auditEntityRequirement(req.facet, applicabilityEntity, version, resolveEntityCandidates, `${basePath}.requirements[${ri}]`, issues);
+    }
   }
 }
 
@@ -260,6 +264,7 @@ async function auditEntityFacet(
   path: string,
   issues: IDSAuditIssue[]
 ): Promise<void> {
+  auditEntityNameCase(facet, path, issues);
   if (facet.name.type !== 'simpleValue') {
     // Pattern / enumeration / bounds: cross-check is impossible without
     // resolving every match, so we skip — a regex like `IFC.*` is valid.

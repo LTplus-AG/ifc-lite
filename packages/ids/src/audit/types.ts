@@ -62,7 +62,11 @@ export type IDSAuditCode =
   | 'E_CARDINALITY_INVALID'
   | 'W_CARDINALITY_PROHIBITED_APPLICABILITY'
   // IFC dataType
-  | 'E_IFC_DATATYPE_UNKNOWN';
+  | 'E_IFC_DATATYPE_UNKNOWN'
+  // Entity requirements (IDS-007): an entity name not in upper case, and a
+  // requirement entity no applicable entity can ever be
+  | 'E_IFC_ENTITY_CASE'
+  | 'E_IFC_ENTITY_IMPOSSIBLE';
 
 /** A single audit finding. */
 export interface IDSAuditIssue {

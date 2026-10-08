@@ -78,7 +78,8 @@ Saved sheet templates form a reusable library across models. Clearing the
 current sheet does not remove templates. Panel visibility and the sheet-enable
 toggle are not restored after a browser reload.
 
-The browser keeps the 20 most recently saved model setups; templates are not
+Clearing a model's sheet is remembered too, including when older drawing
+data is migrated. The browser keeps the 20 most recently saved model choices; templates are not
 part of that limit. This is local browser storage, not a backup or an IFC file
 edit. Clearing site data removes it. Large embedded logos can exhaust browser
 storage: a failed save logs a warning and retains the previous saved version.

@@ -12,6 +12,8 @@
 import { templatePaths } from '@/lib/document/bindings';
 import { reportBlockSourceKind, type DocumentBlock, type DocumentSpec, type TableSource } from '@/lib/document/types';
 import type { PageBand } from '@/lib/document/page-band';
+import { isSavedClashReportChart } from '@/lib/charts/clash-report-source';
+import { isSavedComparisonChart } from '@/lib/charts/comparison-source';
 import type { ViewerState } from '@/store';
 import { evidenceRow, take, unavailableCapture, type EvidenceAdapter } from './types';
 
@@ -51,6 +53,8 @@ function blockFields(block: DocumentBlock): Record<string, unknown> {
         align: block.align, caption: block.caption === undefined ? null : bounded(block.caption, 200) };
     case 'chart':
       return { chartTitle: block.chart.title, chartType: block.chart.type, chartSource: block.chart.source,
+        // Bound to saved content (#6947): the chart shows that recorded run, not the live source of the same name.
+        savedSource: isSavedClashReportChart(block.chart) ? 'clashReport' : isSavedComparisonChart(block.chart) ? 'comparison' : null,
         dimension: block.chart.dimension ?? null, measure: block.chart.measure, filtered: block.chart.filter !== undefined,
         snapshot: block.snapshot };
     case 'topic': return { topicGuid: block.guid, snapshot: block.snapshot };

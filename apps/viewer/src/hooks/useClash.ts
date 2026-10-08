@@ -12,7 +12,7 @@
 
 import { useCallback, useRef } from 'react';
 import { clashElementCache } from '@/lib/clash/element-cache';
-import { beginAbortableRun, cancelClashRun, invalidateAbortableRun } from './analysisRunCancellation';
+import { beginAbortableRun, cancelClashRun, clearClashRun, releaseAbortableRun } from './analysisRunCancellation';
 import { captureAnalysisStamp, stampAnalysisReport, type AnalysisStamp } from './useAnalysisStaleness';
 import { rememberPlacementSnapshot, jobPlacementIsCurrent } from '@/lib/model-placement/placement-snapshot';
 import { useViewerStore } from '@/store';
@@ -447,12 +447,12 @@ export function useClash() {
   }, [releaseClashVisibility]);
 
   const run = useCallback(
-    async (rules: ClashRule[], tagInputs: ClashModelTagInputs | null = null, request: ClashRunRequest | null = null): Promise<void> => {
+    async (rules: ClashRule[], tagInputs: ClashModelTagInputs | null = null, request: ClashRunRequest | null = null, prepared?: ReturnType<typeof beginAbortableRun>): Promise<void> => {
       // Captured before anything else so a call issued while this one is
       // already in flight (`runAll` again, a duplicate scan, a preset) makes
       // every write below — including this call's own error/finally, once
       // superseded — a no-op instead of clobbering the newer call (#2802).
-      const { runEpoch: myEpoch, controller: abortController } = beginAbortableRun(runEpochRef, runAbortRef);
+      const { runEpoch: myEpoch, controller: abortController } = prepared ?? beginAbortableRun(runEpochRef, runAbortRef);
       const stamp = captureAnalysisStamp(true);
       const state = useViewerStore.getState();
       discardSolidPresentation();
@@ -465,6 +465,7 @@ export function useClash() {
         // a hidden tab never delivers a frame, and the whole run sits after this
         // await, so an unbounded wait means the run simply never starts. (#2385)
         await nextFrameOrTimeout(PAINT_FRAME_WAIT_MS);
+        if (!stillWanted(myEpoch)) return;
         const { elements, exclusions, federationIdentity } = gatherElements();
         if (elements.length === 0) {
           if (stillWanted(myEpoch)) state.setClashError('No model geometry is loaded. Load an IFC model first.');
@@ -503,7 +504,7 @@ export function useClash() {
         state.setClashError(err instanceof Error ? err.message : String(err));
         posthog.captureException(err, { context: 'clash_detection', ...errorCaptureProps(err) });
       } finally {
-        if (runAbortRef.current === abortController) runAbortRef.current = null;
+        releaseAbortableRun(abortController, runAbortRef);
         // A superseded call must not report itself as no-longer-running: the
         // call that superseded it is the one actually in flight, and this
         // would flip `clashRunning` off underneath it (#2802).
@@ -533,7 +534,8 @@ export function useClash() {
       // (#2802's ordering, which only holds while every start bumps). The
       // running flag is set for the same window, so the panel says it is
       // working instead of looking idle for the length of the scan.
-      const myEpoch = invalidateAbortableRun(runEpochRef, runAbortRef);
+      const prepared = beginAbortableRun(runEpochRef, runAbortRef);
+      const myEpoch = prepared.runEpoch;
       state.setClashError(null);
       state.setClashRunning(true);
       let resolved: ClashRule[];
@@ -543,11 +545,12 @@ export function useClash() {
         // A refused filter reports itself here or nothing on screen changes.
         if (!stillWanted(myEpoch)) return;
         state.setClashError(err instanceof Error ? err.message : String(err));
+        releaseAbortableRun(prepared.controller, runAbortRef);
         state.setClashRunning(false);
         return;
       }
       if (!stillWanted(myEpoch)) return;
-      return run(resolved, tagInputs, request);
+      return run(resolved, tagInputs, request, prepared);
     },
     [run, mode, clearance, reportTouch, stillWanted],
   );
@@ -593,13 +596,8 @@ export function useClash() {
    * shape, so the panel, grouping and BCF export render it unchanged.
    */
   const runDuplicates = useCallback(async (): Promise<void> => {
-    // Same epoch capture as `run()`, and for the same reason: a duplicate
-    // scan started while an "All elements" run (or another scan) is still
-    // in flight — the two share one Run panel and neither disables the
-    // other's trigger while it's the other one running — must not have its
-    // OWN eventual completion, or the older call's, win by landing last
-    // (#2802).
-    const myEpoch = invalidateAbortableRun(runEpochRef, runAbortRef);
+    // Owned cancellation also bounds the frame wait before the synchronous scan (#2802).
+    const { runEpoch: myEpoch, controller: abortController } = beginAbortableRun(runEpochRef, runAbortRef);
     const stamp = captureAnalysisStamp(true);
     const state = useViewerStore.getState();
     discardSolidPresentation();
@@ -610,6 +608,7 @@ export function useClash() {
       // Paint the running state before the (synchronous) scan blocks the thread.
       // Bounded for the same reason as the clash run above (#2385).
       await nextFrameOrTimeout(PAINT_FRAME_WAIT_MS);
+      if (!stillWanted(myEpoch)) return;
       const { elements, exclusions, federationIdentity } = gatherElements();
       if (elements.length === 0) {
         if (stillWanted(myEpoch)) state.setClashError('No model geometry is loaded. Load an IFC model first.');
@@ -650,6 +649,7 @@ export function useClash() {
       state.setClashError(err instanceof Error ? err.message : String(err));
       posthog.captureException(err, { context: 'clash_duplicates', ...errorCaptureProps(err) });
     } finally {
+      releaseAbortableRun(abortController, runAbortRef);
       if (stillWanted(myEpoch)) {
         state.setClashRunning(false);
         state.setClashProgress(null);
@@ -1245,7 +1245,7 @@ export function useClash() {
     // when the user clears must not be able to resurrect what they just
     // cleared once it lands — see `runEpochRef`'s doc above `elementsByRef`
     // (#2802).
-    invalidateAbortableRun(runEpochRef, runAbortRef);
+    clearClashRun(runEpochRef, runAbortRef);
     const state = useViewerStore.getState();
     state.clearEntitySelection();
     state.clearIsolation();

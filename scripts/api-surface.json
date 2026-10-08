@@ -6711,6 +6711,7 @@
     "createStudioDocument: function",
     "createStudioState: function",
     "deriveId: function",
+    "describeFacet: function",
     "facetFromDraft: function",
     "fingerprintIds: function",
     "fromIdsDocument: function",

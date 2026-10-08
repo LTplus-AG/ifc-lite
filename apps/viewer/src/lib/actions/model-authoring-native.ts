@@ -20,6 +20,9 @@ import { createModellingStoreBackend, resolveLiveOwnerHistoryId } from '@ifc-lit
 import { ensureStoreyPlacement } from '@/store/slices/storeyPlacement';
 import type { HostedFillSpec } from '@/store/slices/mutation-hosted-fill';
 import type { ModellingMethods } from '@/store/slices/mutation-modelling-records';
+import { draftElementSize } from '@/lib/element-size-commit';
+import { writeElementProfile } from '@/store/slices/mutation-element-profile';
+import { sizeInMetres } from './model-authoring-size-params';
 import { authoringCopyTransforms, copyRefs } from './model-authoring-copy';
 import { pointToMetres, toMetres, type AuthoringOp, type AxisParams, type BoxParams, type ModelAuthoringBatch } from './model-authoring';
 
@@ -148,7 +151,7 @@ export function dryRunAuthoring(
     const refs = new Map<string, number>();
     for (const row of rows) {
       try {
-        editor.runAtomic((draft) => draftWrite(batch, dataStore, modelId, draft, row, refs));
+        editor.runAtomic((draft) => draftAuthoringOperation(batch, dataStore, modelId, draft, row, refs));
       } catch (error) {
         refusals.set(row.index, error instanceof Error ? error.message : String(error));
       }
@@ -157,9 +160,20 @@ export function dryRunAuthoring(
   return refusals;
 }
 
-function draftWrite(batch: ModelAuthoringBatch, dataStore: IfcDataStore, modelId: string, draft: StoreEditor, row: DryRunRow, refs: Map<string, number>): void {
+export function draftAuthoringOperation(batch: ModelAuthoringBatch, dataStore: IfcDataStore, modelId: string, draft: StoreEditor, row: DryRunRow, refs: Map<string, number>): void {
   const { op, resolved } = row;
   switch (op.op) {
+    case 'element.resize': {
+      const outcome = draftElementSize(dataStore, draft, draftMethods(dataStore, modelId, draft), modelId, resolved.target!, sizeInMetres(op.size, batch.units));
+      if (!outcome.ok) throw new Error(outcome.reason);
+      return;
+    }
+    case 'element.profile': {
+      const outcome = writeElementProfile({ modelId, dataStore, view: draft.getMutationView(), editor: draft }, resolved.target!, profileInMetres(op.Profile, batch.units),
+        (updates) => { for (const update of updates) draft.setPositionalAttribute(update.entityId, update.index, update.value); });
+      if (!outcome.ok) throw new Error(outcome.reason);
+      return;
+    }
     case 'element.create': {
       const storey = resolved.storey!;
       const id = addOrdinaryElementInStore(draft, (d) => {

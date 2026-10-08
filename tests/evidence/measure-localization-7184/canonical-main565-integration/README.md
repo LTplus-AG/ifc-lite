@@ -1,0 +1,3 @@
+Canonical main #7255 is consumed without duplicating its labels or catalogue repair. The remaining test parses a stated IFC4 fixture with two selected walls and one authored NetSideArea of 12 m², then mounts Measure, checks one contributor out of two/Partial, switches locale, and checks unavailable-model disclosure.
+
+This frozen main565 integration ran baseline18 and candidate19 runtime controls, zero skips; fullroot typecheck covered3751 test source files across62packages (viewer2078). Eight light gates passed. The actual per-test runtime hashes and reused prebuild artifact are recorded separately. No viewer-native or performance acceptance is claimed. Previous4b qualification remains historical and is not a current inverse.

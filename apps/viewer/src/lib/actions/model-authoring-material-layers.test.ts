@@ -481,3 +481,25 @@ test('#7275 native intermediate layer effects cannot reuse an earlier expected l
   const parsed = await parseIfc(editedModelBytes(dataStore, view));
   assert.equal(layerSetOf({ dataStore: parsed, view: new MutablePropertyView(parsed.properties ?? null, SAMPLE_MODEL) }, target)?.layers[0].thickness, .7);
 });
+
+
+test('#7275 a non-root material Name matching the target RootGUID remains a valid explicit material', async () => {
+  const { dataStore, view, target, globalId } = await inspectorControl();
+  recordModellingEdit(useViewerStore, SAMPLE_MODEL, methods => methods.addMaterial(SAMPLE_MODEL, { Name: globalId }));
+  const expected = transportedLayerEvidence(useViewerStore.getState(), target).expected;
+  assert.ok(expected);
+  const batch = layerBatch(expected, globalId, 'element');
+  const op = batch.operations[0];
+  assert.equal(op.op, 'material.layers');
+  assert.ok(op.op === 'material.layers');
+  op.MaterialLayers[0].Material = { create: { Name: globalId } };
+  const preview = previewModelAuthoring(useViewerStore.getState(), batch);
+  assert.equal(preview.rows[0].status, 'ready', preview.rows[0].issue);
+  assert.ok(commitModelAuthoring(useViewerStore, preview, new Set([0]), 'test').ok);
+  const parsed = await parseIfc(editedModelBytes(dataStore, view));
+  const current = layerSetOf({ dataStore: parsed, view: new MutablePropertyView(parsed.properties ?? null, SAMPLE_MODEL) }, target);
+  assert.ok(current?.layers[0].materialId);
+  assert.equal(parsed.entities.getName(current.layers[0].materialId), globalId);
+  assert.equal(parsed.entities.getGlobalId(current.layers[0].materialId), '');
+  assert.equal(parsed.entities.getGlobalId(target), globalId);
+});

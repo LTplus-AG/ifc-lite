@@ -43,6 +43,8 @@ export function authoringRowSummary(row: AuthoringRow, batch: ModelAuthoringBatc
   const none = t('modelChanges.absent');
   const fromMetres = (v: number) => (units === 'mm' ? v * 1000 : v);
   switch (op.op) {
+    case 'hosted.edit':
+      return { subject: `${op.target.ifcClass} "${op.target.name}"`, before: `${fields({ Offset: op.expected.offset, Sill: op.expected.sill, ...(op.expected.size ?? {}) })} ${units}`, after: `${fields(op.edit)} ${units}`, previewNote: row.previewUnavailable ? t('modelAuthoring.editPreviewUnavailable') : t('modelAuthoring.hostedEditBoundsPreview') };
     case 'element.resize': case 'element.profile': {
       const notes = [row.previewUnavailable ? t('modelAuthoring.editPreviewUnavailable') : '',
         row.previewOuterBodyOnly ? t('modelAuthoring.outerBodyPreview') : '',

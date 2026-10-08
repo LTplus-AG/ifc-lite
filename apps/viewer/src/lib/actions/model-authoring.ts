@@ -18,6 +18,8 @@
  * counter-clockwise seen from above. Nothing here writes.
  */
 
+import { parseExpectedHostedEdit, parseHostedEdit, type ExpectedHostedEdit } from './model-authoring-hosted-edit';
+import type { HostedElementEdit } from '@ifc-lite/create';
 import { parseShapeParams, parseProfileSectionParams, AUTHORING_OUTLINE_WORK_LIMIT, type ShapeParams } from './model-authoring-shape-params';
 import { parseSizeParams, type ExpectedSize } from './model-authoring-size-params';
 import type { ProfileSection } from '@ifc-lite/create';
@@ -48,6 +50,7 @@ export type AuthoringOp =
   | { op: 'element.create'; ref: string; ifcClass: AuthoringClass; storey: StoreyTarget; name: string; params: AxisParams | BoxParams | ShapeParams }
   | ({ op: 'element.copy'; target: ElementTarget; ref: string } & CopyFields)
   | ({ op: 'element.array'; target: ElementTarget; refs: string[] } & ArrayFields)
+  | { op: 'hosted.edit'; target: ExistingElement; expected: ExpectedHostedEdit; edit: HostedElementEdit }
   | { op: 'element.delete'; target: ExistingElement }
   | { op: 'element.resize'; target: ExistingElement; expected: ExpectedSize; size: ElementSizePatch }
   | { op: 'element.profile'; target: ExistingElement; expected: ProfileSection; Profile: ProfileSection }
@@ -63,7 +66,7 @@ export type AuthoringOp =
 
 export type AuthoringOpName = AuthoringOp['op'];
 export const AUTHORING_OPS: readonly AuthoringOpName[] = ['element.create', 'element.delete', 'element.resize', 'element.profile', 'element.move', 'element.rotate', 'element.copy', 'element.array',
-  'type.assign', 'material.assign', 'walls.join', 'hosted.create'];
+  'type.assign', 'material.assign', 'walls.join', 'hosted.create', 'hosted.edit'];
 
 export interface ModelAuthoringBatch {
   version: 1;
@@ -166,6 +169,12 @@ function operation(value: unknown, index: number, units: AuthoringUnits, refs: M
     return op;
   };
   switch (value.op) {
+    case 'hosted.edit': {
+      if (Object.keys(value).some(key => !['op', 'target', 'expected', 'edit'].includes(key))) throw new Error(`${at}: unsupported hosted edit field`);
+      const target = existing(value.target, at);
+      if (!['IfcDoor', 'IfcWindow', 'IfcOpeningElement', 'IfcOpeningStandardCase'].includes(target.ifcClass)) throw new Error(`${at}: hosted.edit requires a native door, window or opening occurrence`);
+      return { op: value.op, target, expected: parseExpectedHostedEdit(value.expected, units, `${at} expected`), edit: parseHostedEdit(value.edit, units, `${at} edit`) };
+    }
     case 'element.resize': {
       const expected = parseSizeParams(value.expected, units, `${at} expected`, true);
       const size = parseSizeParams(value.size, units, `${at} size`, false);

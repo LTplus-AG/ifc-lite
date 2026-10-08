@@ -2,7 +2,7 @@
 
 Single source of truth for progress. Update it in the campaign PR (`claude/stoic-cannon-6hceqo`) whenever a pitch PR changes state. Legend: ⬜ todo · 🟨 in progress · 🟦 in review (PR ready) · ✅ merged · ⏸ blocked.
 
-_Last updated: 2026-10-08 (session 1, P-02 PR opened)._
+_Last updated: 2026-10-08 (session 1, P-01 + P-02 PRs opened, P-04 started)._
 
 ## Pitches
 
@@ -10,10 +10,10 @@ Umbrella PR: #7143 (this tracker).
 
 | Pitch | Branch | PR | State | Notes |
 |---|---|---|---|---|
-| P-01 Engine completeness | `claude/ids-studio-p01-engine` | (opens when first code is pushed) | 🟨 | Implementation running (session 1) |
+| P-01 Engine completeness | `claude/ids-studio-p01-engine` | #7171 | 🟨 | Draft PR: writer complete (307/307 round-trip), audit 27/27 invalid detected, 0/307 false positives, `it` locale. IDS-009 blocked, IDS-013 deferred; see worklog/P-01.md |
 | P-02 Authoring core | `claude/ids-studio-p02-authoring-core` | #7168 | 🟨 | Draft PR: IDS-015–026 done, IDS-027 partial; 173 tests green. Remaining ops (split/merge, `bulk.from*`, setVersion) + GATE-BSDD-001 still to do; see worklog/P-02.md |
 | P-03 Studio UI v1 | `claude/ids-studio-p03-studio-ui` | #7145 | ⬜ | Draft PR open (charter + work log); not started |
-| P-04 Lint | `claude/ids-studio-p04-lint` | #7144 | ⬜ | Draft PR open (charter + work log); not started |
+| P-04 Lint | `claude/ids-studio-p04-lint` | #7144 | 🟨 | Based on P-02 branch (P-02 merged in); implementation running (session 1) |
 | P-05 Model loop | `claude/ids-studio-p05-model-loop` | #7146 | ⬜ | Draft PR open (charter + work log); not started |
 | P-06 bSDD | `claude/ids-studio-p06-bsdd` | #7147 | ⬜ | Draft PR open (charter + work log); not started |
 | P-07 Agent | `claude/ids-studio-p07-agent` | #7148 | ⬜ | Draft PR open (charter + work log); not started |
@@ -30,20 +30,20 @@ Umbrella PR: #7143 (this tracker).
 
 | ID | Title | State | PR / commit |
 |---|---|---|---|
-| IDS-001 | Writer: emit `length`/`minLength`/`maxLength` restrictions | ⬜ | |
-| IDS-002 | Writer: emit `totalDigits`/`fractionDigits` and conjunctive (`and[]`) restrictions | ⬜ | |
-| IDS-003 | Move `writeIdsXml` into `@ifc-lite/ids/writer`; `rules` imports it; delete old location | ⬜ | |
-| IDS-004 | Charter: classify the 21 `AUDIT_UNDETECTED` invalid cases into defect families | ⬜ | |
-| IDS-005 | Audit family 1 (XSD-structural) detection | ⬜ | |
-| IDS-006 | Audit family 2 (restriction base / dataType compatibility) | ⬜ | |
-| IDS-007 | Audit family 3 (cardinality / occurs placement) | ⬜ | |
-| IDS-008 | Audit family 4 (remaining) → `AUDIT_UNDETECTED` empty | ⬜ | |
-| IDS-009 | Qto tables for IFC2X3 and IFC4 in `@ifc-lite/data` generator | ⬜ | |
-| IDS-010 | Audit inspects conjunctive siblings (`and[]`), not only the primary family | ⬜ | |
-| IDS-011 | Italian (`it`) locale for IDS translations | ⬜ | |
-| IDS-012 | Canonical formatting options in writer (`fmt`) + golden files | ⬜ | |
-| IDS-013 | CI oracle job: official audit tool (NuGet CLI) on exported docs; diff verdicts | ⬜ | |
-| IDS-014 | Property-based round-trip test (random IDSDocument generator) | ⬜ | |
+| IDS-001 | Writer: emit `length`/`minLength`/`maxLength` restrictions| 🟨 | #7171 `9991293d8` |
+| IDS-002 | Writer: emit `totalDigits`/`fractionDigits` and conjunctive (`and[]`) restrictions| 🟨 | #7171 `71201c872` |
+| IDS-003 | Move `writeIdsXml` into `@ifc-lite/ids/writer`; `rules` imports it; delete old location| 🟨 | #7171 `c9dc9e196` |
+| IDS-004 | Charter: classify the 21 `AUDIT_UNDETECTED` invalid cases into defect families| 🟨 | #7171 `5eabe8140` |
+| IDS-005 | Audit family 1 (XSD-structural) detection| 🟨 | #7171 `107668d41` |
+| IDS-006 | Audit family 2 (restriction base / dataType compatibility)| 🟨 | #7171 `312c2cb82` |
+| IDS-007 | Audit family 3 (cardinality / occurs placement)| 🟨 | #7171 `e180ea178` |
+| IDS-008 | Audit family 4 (remaining) → `AUDIT_UNDETECTED` empty| 🟨 | #7171 `7587d14fd` |
+| IDS-009 | Qto tables for IFC2X3 and IFC4 in `@ifc-lite/data` generator| ⏸ | Blocked: upstream re-vendor adds IFC4 Qto but drops Pset rows (e.g. `Pset_DoorWindowShadingType`); no IFC2X3 Qto upstream. Needs review |
+| IDS-010 | Audit inspects conjunctive siblings (`and[]`), not only the primary family| 🟨 | #7171 `e76b3a98f` |
+| IDS-011 | Italian (`it`) locale for IDS translations| 🟨 | #7171 `7e9625cbc` |
+| IDS-012 | Canonical formatting options in writer (`fmt`) + golden files| 🟨 | #7171 `96f35879d` |
+| IDS-013 | CI oracle job: official audit tool (NuGet CLI) on exported docs; diff verdicts| ⬜ | Deferred; design note in worklog/P-01.md |
+| IDS-014 | Property-based round-trip test (random IDSDocument generator)| 🟨 | #7171 `8e7fd5469` |
 
 ### P-02 — Authoring core
 
@@ -214,6 +214,7 @@ Umbrella PR: #7143 (this tracker).
 
 | Date | Session | Summary |
 |---|---|---|
+| 2026-10-08 | 1 | P-01 pushed: draft PR #7171 (writer complete, audit 27/27, 0 false positives, `it`). **Merge-order note:** when #7171 merges, empty `AUDIT_FALSE_POSITIVES` in the P-08 E2 scorer (#7149) in the same step. P-04 started on top of P-02 |
 | 2026-10-08 | 1 | P-02 pushed: `@ifc-lite/ids-authoring` (IDS-015–026, IDS-027 partial), 173 tests; draft PR #7168. 11 spec deviations recorded in worklog/P-02.md and folded into 02-document-model-and-ops.md |
 | 2026-10-08 | 1 | P-08 datasets + scorer pushed (self-check 307/307); found 18 audit false positives on valid corpus IDS → handed to P-01 |
 | 2026-10-08 | 1 | Plan written; campaign docs, tracker and handover committed; pitch branches and draft PRs opened |

@@ -76,6 +76,7 @@ export const validationPanelEn = {
   'validationPanel.history.select': 'Select saved validation report',
   'validationPanel.history.name': 'Report name',
   'validationPanel.history.remove': 'Remove report',
+  'validationPanel.history.globalId': 'GlobalId: {value}',
   'validationPanel.history.elements': 'Saved failure evidence: showing {shown} of {saved} rows; {omitted} encountered rows omitted by capture limits.',
   'validationPanel.history.frozen': 'Saved evidence. Later runs do not change this report.',
   'validationPanel.history.models': 'Models: {models}',

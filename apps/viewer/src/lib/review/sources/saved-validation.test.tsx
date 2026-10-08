@@ -204,7 +204,10 @@ test('#7091 native warning severity survives saved evidence and historical Revie
   assert.ok(snapshot.elementEvidence?.rows.length);
   assert.ok(snapshot.elementEvidence.rows.every(row => row.nativeStatus === 'warning'));
   assert.ok(await useViewerStore.getState().saveValidationReportEntry(newSavedReport(snapshot)));
-  assert.ok(savedFindings().every(row => row.nativeStatus === 'warning' && row.lifecycle === 'not-evaluated'));
+  const findings = savedFindings();
+  assert.equal(findings.length, snapshot.elementEvidence.rows.length);
+  assert.ok(findings.length > 0, 'native warnings must appear in historical Review');
+  assert.ok(findings.every(row => row.nativeStatus === 'warning' && row.lifecycle === 'not-evaluated'));
 });
 
 
@@ -215,5 +218,9 @@ test('#7091 a real capped native IDS evaluation discloses unevaluated applicabil
   const snapshot = validationReportSnapshot(report, useViewerStore.getState().models, 'capped-native-ids');
   assert.ok(snapshot.elementEvidence?.gaps.some(gap => gap.includes('smaller than its applicable population')));
   assert.ok(await useViewerStore.getState().saveValidationReportEntry(newSavedReport(snapshot)));
-  assert.ok(savedFindings().every(row => row.lifecycle === 'not-evaluated' && !row.run.complete));
+  const findings = savedFindings();
+  assert.equal(findings.length, snapshot.elementEvidence?.rows.length);
+  assert.ok(findings.every(row => row.lifecycle === 'not-evaluated' && !row.run.complete));
+  assert.ok(captureReviewSnapshot().runs.some(run => run.temporal === 'historical'
+    && run.incomplete.some(gap => gap.detail?.includes('smaller than its applicable population'))));
 });

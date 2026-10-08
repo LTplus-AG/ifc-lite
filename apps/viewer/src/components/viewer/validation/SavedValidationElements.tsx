@@ -32,7 +32,7 @@ export function SavedValidationElements({ snapshot, rowId, request }: {
       className="rounded border border-border p-2 focus:outline focus:outline-2 focus:outline-primary">
       <p className="font-medium">{row.title} · {row.nativeStatus}</p>
       <p>{row.modelName} · {row.ifcType}{row.Name !== undefined ? ` · ${row.Name}` : ''}</p>
-      {row.GlobalId && <p>GlobalId: {row.GlobalId}</p>}
+      {row.GlobalId && <p>{t('validationPanel.history.globalId', { value: row.GlobalId })}</p>}
       {row.detail.map((line, index) => <p key={index}>{line}</p>)}
     </article>)}
   </div>;

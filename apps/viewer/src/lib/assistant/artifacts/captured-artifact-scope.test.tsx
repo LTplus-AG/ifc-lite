@@ -15,8 +15,8 @@ import { previewArtifact, previewFilterGroups } from './artifact-preview';
 import { artifactCapturedScope, type PreviewArtifact } from './preview-shared';
 import { saveArtifact, type SavedArtifact } from './artifact-save';
 import { loadSavedFilters } from '@/lib/search/saved-filters';
-import { encodeSavedLens } from '@/lib/lens/migrate-saved-lens';
-import { encodeSavedList } from '@/lib/lists/saved-list-codec';
+import { encodeSavedLens, migrateSavedLens } from '@/lib/lens/migrate-saved-lens';
+import { encodeSavedList, decodeSavedList } from '@/lib/lists/saved-list-codec';
 import { loadListDefinitions, importListDefinition } from '@/lib/lists/persistence';
 import { prepareListProviders } from '@/lib/lists/prepare-providers';
 import { runListFederated } from '@/lib/lists/run-list';
@@ -237,3 +237,30 @@ for (const mode of ['selected', 'visible'] as const) for (const entry of cases) 
       'unloading the captured file must refuse instead of evaluating the remaining loaded file');
   });
 }
+
+// #7186 A damaged versioned file must never become an unscoped native artifact.
+test('#7186 native scoped codecs refuse future and malformed captured envelopes', async () => {
+  const entry = cases.find(row => row.label === 'manual lens')!;
+  await selectWall();
+  const proposal = parseArtifactProposal(JSON.stringify({ version: 1, title: 'Codec control', kind: entry.kind, scope: 'selected', ...entry.body }), entry.kind);
+  const preview = await previewArtifact(proposal, useViewerStore.getState());
+  assert.equal(preview.artifact.kind, 'lens.proposal');
+  if (preview.artifact.kind !== 'lens.proposal') throw new Error('Unexpected artifact');
+  const lens = preview.artifact.lens;
+  assert.equal(migrateSavedLens(encodeSavedLens(lens))?.capturedScope?.sources[0].members.length, 1);
+  assert.equal(migrateSavedLens({ format: 'ifc-lite-captured-lens', version: 2, lens }), null);
+  assert.equal(migrateSavedLens({ format: 'ifc-lite-captured-lens', version: 1, lens: { ...lens, capturedScope: undefined } }), null);
+  const listEntry = cases.find(row => row.label === 'list')!;
+  const listProposal = parseArtifactProposal(JSON.stringify({ version: 1, title: 'Codec list', kind: listEntry.kind, scope: 'selected', ...listEntry.body }), listEntry.kind);
+  const listPreview = await previewArtifact(listProposal, useViewerStore.getState());
+  if (listPreview.artifact.kind !== 'list.proposal') throw new Error('Unexpected artifact');
+  const definition = listPreview.artifact.definition;
+  assert.equal(decodeSavedList(encodeSavedList(definition)).capturedScope?.sources[0].members.length, 1);
+  for (const envelope of [
+    { format: 'ifc-lite-captured-list', version: 2, definition },
+    { format: 'ifc-lite-captured-list', version: 1, definition: { ...definition, capturedScope: undefined } },
+  ]) {
+    assert.throws(() => decodeSavedList(envelope), /captured population cannot be read/);
+    await assert.rejects(importListDefinition(new File([JSON.stringify(envelope)], 'unreadable.list.json')));
+  }
+});

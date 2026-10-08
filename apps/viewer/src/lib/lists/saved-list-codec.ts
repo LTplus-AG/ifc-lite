@@ -11,7 +11,7 @@ export function encodeSavedList(definition: ListDefinition): unknown {
     : definition;
 }
 
-export function decodeSavedList(value: unknown): ListDefinition {
+export function decodeSavedList(value: unknown, importedAt?: number): ListDefinition {
   if (value !== null && typeof value === 'object' && !Array.isArray(value)
     && 'format' in value && value.format === 'ifc-lite-captured-list') {
     if (!('version' in value) || value.version !== 1 || !('definition' in value)
@@ -20,6 +20,9 @@ export function decodeSavedList(value: unknown): ListDefinition {
       throw new Error('Invalid captured list file; its captured population cannot be read.');
     }
     value = value.definition;
+  }
+  if (importedAt !== undefined && value !== null && typeof value === 'object' && !Array.isArray(value)) {
+    value = { ...value, createdAt: importedAt, updatedAt: importedAt };
   }
   return migrateLegacyListDefinition(value);
 }

@@ -69,8 +69,8 @@ export function importListDefinition(file: File): Promise<ListDefinition> {
           return;
         }
         // Imports get fresh timestamps and identity, after the saved shape is checked.
-        const migrated = decodeSavedList(raw);
-        resolve({ ...migrated, id: crypto.randomUUID(), createdAt: Date.now(), updatedAt: Date.now() });
+        const migrated = decodeSavedList(raw, Date.now());
+        resolve({ ...migrated, id: crypto.randomUUID() });
       } catch {
         reject(new Error('Failed to parse list definition file'));
       }

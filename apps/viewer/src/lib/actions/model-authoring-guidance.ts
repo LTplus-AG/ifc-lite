@@ -24,6 +24,7 @@ export const MODEL_AUTHORING_OUTPUT_GUIDANCE =
   + 'slabs/roofs/plates/spaces also accept {Profile:"polygon", OuterCurve:[[x,y],...], position:[x,y,z] (optional, default zero), thickness or height}; 3–256 vertices and a bounded total outline work budget. '
   + 'beams/members may replace width/height with Profile; columns may replace width/depth with Profile. Profile is the native PascalCase {Type:Rectangle|I|L|T|U|C|Circle|RectangleHollow|CircleHollow, exact native dimension attributes}; every profile dimension uses the batch units. Do not combine Profile with rectangular section dimensions. '
   + `Required Profile dimensions: ${sectionDimensions}. Optional native fillet-radius attributes may be supplied when supported by that section; they use the same units. `
+  + 'Positive fillet radii are written accurately but the preview uses the native sharp-corner approximation; review discloses this. '
   + 'Native builder acceptance is not a polygon topology/engineering validity verdict; use simple valid footprints. '
   + 'element.delete {target}; element.move {target, delta:[dx,dy]}; element.rotate {target, angleDeg}; '
   + 'type.assign {target, expected: current type name or null, type:{globalId,name} or {create:{ifcClass,name}}}; '

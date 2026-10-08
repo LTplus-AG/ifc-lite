@@ -24,6 +24,7 @@ test('#7215 mounted review discloses native polygon/profile dimensions and appli
   const batch = parseModelAuthoringBatch(JSON.stringify({ version: 1, kind: 'model.authoring', title: 'Native shape review', units: 'mm', frame: 'storey-local', operations: [
     { op: 'element.create', ref: 'floor', ifcClass: 'IfcSlab', storey: { globalId: GROUND_STOREY }, name: 'Review polygon',
       params: { Profile: 'polygon', OuterCurve: [[0, 0], [4000, 0], [4000, 2000], [2000, 2000], [2000, 4000], [0, 4000]], thickness: 200 } },
+    { op: 'element.create', ref: 'fillet', ifcClass: 'IfcColumn', storey: { globalId: GROUND_STOREY }, name: 'Review fillet', params: { position: [0, 0, 0], height: 3000, Profile: { Type: 'I', OverallWidth: 200, OverallDepth: 400, WebThickness: 10, FlangeThickness: 30, FilletRadius: 25 } } },
     { op: 'element.create', ref: 'pipe', ifcClass: 'IfcBeam', storey: { globalId: GROUND_STOREY }, name: 'Review pipe',
       params: { start: [0, 0, 3000], end: [4000, 0, 3000], Profile: { Type: 'CircleHollow', Radius: 200, WallThickness: 20 } } },
   ] }));
@@ -31,7 +32,8 @@ test('#7215 mounted review discloses native polygon/profile dimensions and appli
   assert.match(ui.textContent ?? '', /polygon · 6 vertices · \(0, 0, 0\) · 200 mm/);
   assert.match(ui.textContent ?? '', /CircleHollow · Radius=200, WallThickness=20 · \(0, 0, 3000\) → \(4000, 0, 3000\) mm/);
   const boxes = [...ui.querySelectorAll<HTMLInputElement>('input[type="checkbox"]')];
-  act(() => boxes[0].click());
+  assert.match(ui.textContent ?? '', /The preview shows sharp corners and omits FilletRadius. Applying writes the specified fillet radii/);
+  act(() => { boxes[0].click(); boxes[1].click(); });
   const button = [...ui.querySelectorAll('button')].find((item) => item.textContent?.startsWith('Apply'))!;
   assert.equal(button.textContent, 'Apply 1 operation');
   assert.equal(view.getNewEntities().length, 0, 'review/exclusion writes nothing');

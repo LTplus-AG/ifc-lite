@@ -5,7 +5,7 @@
 import '@/test/setup-dom.js';
 import assert from 'node:assert/strict';
 import { afterEach, it } from 'node:test';
-import { EntityExtractor, IfcParser } from '@ifc-lite/parser';
+import { asSourceBytes, EntityExtractor, IfcParser } from '@ifc-lite/parser';
 import { StepExporter } from '@ifc-lite/export';
 import { useViewerStore } from '@/store';
 import { ensureRoomWasm } from '@/test/room-walls-fixture';
@@ -25,6 +25,21 @@ async function seed() {
   return f;
 }
 const depth = () => useViewerStore.getState().undoStacks.get(MODEL)?.length ?? 0;
+
+it('refuses native prepared approval after a retained store replaces its source bytes (#7286)', async t => {
+  if (!ensureRoomWasm(t)) return;
+  const { store, view } = await seed();
+  const prepared = await prepareNativeRoomCommand(useViewerStore, MODEL, 42, command);
+  try {
+    const source = store.source;
+    store.source = asSourceBytes(source.slice(0, source.byteLength).slice());
+    assert.deepEqual(store.source.slice(0, store.source.byteLength), source.slice(0, source.byteLength));
+    const before = structuredClone(view.getEffectiveChanges()), undo = depth();
+    assert.throws(() => prepared.commit(), /model changed|source changed/i);
+    assert.deepEqual(view.getEffectiveChanges(), before);
+    assert.equal(depth(), undo);
+  } finally { prepared.dispose(); }
+});
 
 it('prepares actual native spaces without graph/history edits, then commits and exports one Undo group (#7286)', async t => {
   if (!ensureRoomWasm(t)) return;

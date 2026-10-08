@@ -120,11 +120,11 @@ export function createRoomCommandBackend(resolve: RoomCommandModelResolver, prov
     const sequence = (preparations.get(modelId) ?? 0) + 1;
     preparations.set(modelId, sequence);
     try {
-      const model = resolve(modelId), head = host.historyHead(modelId), revision = overlayRevision(model), epoch = generation;
+      const model = resolve(modelId), source = model.store.source, head = host.historyHead(modelId), revision = overlayRevision(model), epoch = generation;
       const currentModel = () => {
         signal?.throwIfAborted();
         const current = resolve(modelId);
-        if (epoch !== generation || preparations.get(modelId) !== sequence || current.store !== model.store || current.mutationView !== model.mutationView || host.historyHead(modelId) !== head || overlayRevision(current) !== revision) throw new RoomCommandConflictError('The model changed while native Room geometry was preparing; retry the command');
+        if (epoch !== generation || preparations.get(modelId) !== sequence || current.store !== model.store || current.store.source !== source || current.mutationView !== model.mutationView || host.historyHead(modelId) !== head || overlayRevision(current) !== revision) throw new RoomCommandConflictError('The model changed while native Room geometry was preparing; retry the command');
         return current;
       };
       const attached = modelStores.has(modelId), previousStore = modelStores.get(modelId)?.deref();

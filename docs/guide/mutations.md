@@ -969,7 +969,8 @@ the detached post-edit native faces, including a layout-only cut with no
 materialized IfcSpace. The existing `result.candidates` keeps its pre-edit
 candidate meaning; hosts show `layoutAfter` to review the approved new layout.
 Preparation changes no live IFC
-graph or Undo history. `validate()` checks the captured model, overlay,
+graph or Undo history. `validate()` checks the captured model and source-byte
+facade identity, overlay,
 history and retained layout. `commit()` applies the whole captured action
 synchronously through the host recorder, once. Auto approves every captured
 untaken face; this interface does not offer per-room subset approval.

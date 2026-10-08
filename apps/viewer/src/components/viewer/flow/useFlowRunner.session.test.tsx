@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import '@/test/setup-dom.js';
+import '@/test/content-fixture';
 import assert from 'node:assert/strict';
 import { afterEach, before, beforeEach, describe, it } from 'node:test';
 import { act } from 'react';
@@ -14,6 +15,8 @@ import { snapshotComparison } from '@/lib/compare/savedComparisons';
 import { comparisonModels, comparisonResult } from '@/test/saved-comparison-fixture';
 import { flowRegistry } from '@/lib/flow/runner';
 import { isNativeWorkflowBusy } from '@/lib/flow/run-session';
+import { activityCanceller, useActivityJournal } from '@/lib/activity/activity-journal';
+import { resetActivityRecordersForTest, startActivityRecorders } from '@/lib/activity/activity-recorders';
 import { useFlowRunner } from './useFlowRunner';
 
 function deferred() {
@@ -24,6 +27,7 @@ function deferred() {
 let entered = deferred(), settle = deferred();
 let nodeSignal: AbortSignal | undefined;
 let api: ReturnType<typeof useFlowRunner> | undefined;
+let stopRecorders: () => void = () => {};
 const initial = useViewerStore.getState();
 const DELAY = 'report.testWorkflowDelay6612';
 before(() => {
@@ -41,6 +45,7 @@ before(() => {
   });
 });
 function Probe() { api = useFlowRunner(); return null; }
+function currentNodeSignal(): AbortSignal | undefined { return nodeSignal; }
 function graph(): FlowDocument {
   return { flowVersion: 2, id: 'lifecycle', name: 'Historical workflow',
     capabilities: ['storage.write:savedComparisons', 'storage.write:documents', 'export.create:pdf'],
@@ -65,15 +70,52 @@ beforeEach(() => {
   useViewerStore.setState({ ...initial, models: new Map(), activeModelId: null, flowDoc: graph(), flowRunning: false,
     flowLastRun: null, flowLastError: null, flowArtifacts: [], savedComparisons: [], documents: [], undoStacks: new Map(),
   });
+  resetActivityRecordersForTest();
+  stopRecorders = startActivityRecorders(useViewerStore);
   render(<BimProvider><Probe /></BimProvider>);
 });
 afterEach(() => {
   settle.resolve();
   cleanup();
+  stopRecorders();
   useViewerStore.setState(initial);
 });
 
 describe('mounted workflow run ownership (#6612)', () => {
+  it('#7122 a retained Activity callback cannot cancel the next native historical workflow', async t => {
+    let pending!: Promise<void>;
+    t.after(async () => { settle.resolve(); await pending; });
+    await act(async () => { pending = api!.run(selections()); await entered.promise; });
+    const first = useActivityJournal.getState().jobs.find(job => job.kind === 'flow');
+    assert.ok(first);
+    const retainedCancel = activityCanceller(first.id);
+    assert.ok(retainedCancel);
+    act(() => retainedCancel());
+    assert.equal(nodeSignal?.aborted, true);
+    await act(async () => { settle.resolve(); await pending; });
+    assert.equal(activityCanceller(first.id), null, 'terminal journal releases its stored callback');
+    assert.equal(isNativeWorkflowBusy(), false, 'native cancelled work finished draining');
+
+    entered = deferred(); settle = deferred(); nodeSignal = undefined;
+    await act(async () => { pending = api!.run(selections()); await entered.promise; });
+    assert.ok(useViewerStore.getState().savedComparisons.length > 0, 'native history import executed');
+    act(() => retainedCancel());
+    assert.equal(currentNodeSignal()?.aborted, false, 'old callback cannot abort the new scheduler signal');
+    assert.equal(isNativeWorkflowBusy(), true);
+    const second = useActivityJournal.getState().jobs.find(job => job.kind === 'flow' && job.id !== first.id);
+    assert.ok(second);
+    const cancelCurrent = activityCanceller(second.id);
+    assert.ok(cancelCurrent);
+    act(() => cancelCurrent());
+    assert.equal(currentNodeSignal()?.aborted, true, 'current Activity row still aborts actual native work');
+    await act(async () => { settle.resolve(); await pending; });
+    assert.equal(isNativeWorkflowBusy(), false);
+    assert.equal(useViewerStore.getState().documents.length, 0, 'cancelled import must not activate dependent document/PDF effects');
+    assert.equal(useViewerStore.getState().flowArtifacts.length, 0);
+    assert.equal(activityCanceller(second.id), null);
+    assert.ok(useActivityJournal.getState().jobs.filter(job => job.kind === 'flow').every(job => job.outcome === 'cancelled'));
+  });
+
   it('can start historical evidence from an empty session and drains same-ID graph edit cancellation without publishing a PDF', async () => {
     assert.ok(api);
     assert.equal(api.canRun, true, 'historical workflows require no active IFC model');

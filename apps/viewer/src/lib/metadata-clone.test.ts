@@ -7,12 +7,14 @@ import assert from 'node:assert';
 import { MutablePropertyView } from '@ifc-lite/mutations';
 import { cloneElementMetadata } from './metadata-clone.js';
 
-import { StubStoreEditor, StubView, makeStubDataStore, type OverlayEntity } from './__test__/stubs.js';
+import { StubStoreEditor, makeStubDataStore, type OverlayEntity } from './__test__/stubs.js';
 
 function makeStore(byType: Map<string, number[]>) {
   return makeStubDataStore(byType) as unknown as Parameters<typeof cloneElementMetadata>[0];
 }
 
+// #7289: use the actual native mutation-view contract; a forged view missed
+// hasChanges and failed all six unchanged-source cloning cases.
 describe('metadata-clone', () => {
   it('uses live relationship membership after create, delete and retype (#5249)', () => {
     const view = new MutablePropertyView(null, 'm');
@@ -41,7 +43,7 @@ describe('metadata-clone', () => {
       attributes: ['guid', null, null, null, [100], 200],
     };
     const editor = new StubStoreEditor([rel]);
-    const view = new StubView() as unknown as Parameters<typeof cloneElementMetadata>[1];
+    const view = new MutablePropertyView(null, 'm');
     const store = makeStore(
       new Map([['IFCRELDEFINESBYPROPERTIES', [50]]]),
     );
@@ -65,7 +67,7 @@ describe('metadata-clone', () => {
       attributes: ['guid', null, null, null, ['#100', '#101'], '#999'],
     };
     const editor = new StubStoreEditor([rel]);
-    const view = new StubView() as unknown as Parameters<typeof cloneElementMetadata>[1];
+    const view = new MutablePropertyView(null, 'm');
     const store = makeStore(
       new Map([['IFCRELASSOCIATESCLASSIFICATION', [51]]]),
     );
@@ -86,7 +88,7 @@ describe('metadata-clone', () => {
       attributes: ['guid', null, null, null, [42, 43], 999],
     };
     const editor = new StubStoreEditor([rel]);
-    const view = new StubView() as unknown as Parameters<typeof cloneElementMetadata>[1];
+    const view = new MutablePropertyView(null, 'm');
     const store = makeStore(
       new Map([['IFCRELDEFINESBYPROPERTIES', [52]]]),
     );
@@ -109,7 +111,7 @@ describe('metadata-clone', () => {
       attributes: ['guid', null, null, null, [100, 101], 999],
     };
     const editor = new StubStoreEditor([rel]);
-    const view = new StubView() as unknown as Parameters<typeof cloneElementMetadata>[1];
+    const view = new MutablePropertyView(null, 'm');
     const store = makeStore(
       new Map([['IFCRELDEFINESBYPROPERTIES', [53]]]),
     );
@@ -127,7 +129,7 @@ describe('metadata-clone', () => {
 
   it('returns zero touches when the source has no relationships', () => {
     const editor = new StubStoreEditor([]);
-    const view = new StubView() as unknown as Parameters<typeof cloneElementMetadata>[1];
+    const view = new MutablePropertyView(null, 'm');
     const store = makeStore(new Map());
     const result = cloneElementMetadata(
       store,
@@ -151,7 +153,7 @@ describe('metadata-clone', () => {
       attributes: ['guid', null, null, null, [100], 888],
     };
     const editor = new StubStoreEditor([pset, type]);
-    const view = new StubView() as unknown as Parameters<typeof cloneElementMetadata>[1];
+    const view = new MutablePropertyView(null, 'm');
     const store = makeStore(
       new Map([
         ['IFCRELDEFINESBYPROPERTIES', [60]],
@@ -177,7 +179,7 @@ describe('metadata-clone', () => {
       attributes: ['guid', null, null, null, [100], 999],
     };
     const editor = new StubStoreEditor([rel]);
-    const view = new StubView() as unknown as Parameters<typeof cloneElementMetadata>[1];
+    const view = new MutablePropertyView(null, 'm');
     const store = makeStore(
       new Map([['IFCRELDEFINESBYPROPERTIES', [70]]]),
     );

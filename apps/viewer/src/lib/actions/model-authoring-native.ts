@@ -13,8 +13,8 @@
  */
 
 import { writeStairLifecycle, writeStairCreation } from './model-authoring-stair-lifecycle';
+import { uniqueSplitGuid, writeNativeSplit } from './model-authoring-split';
 import { writeHostedEdit } from './model-authoring-hosted-edit';
-import { writeNativeSplit } from './model-authoring-split';
 import { profileInMetres } from './model-authoring-shape-params';
 import { StoreEditor } from '@ifc-lite/mutations';
 import type { IfcDataStore } from '@ifc-lite/parser';
@@ -22,7 +22,8 @@ import { copyBatchInStore, addHostedElementInStore, addOrdinaryElementInStore, r
 import { createModellingStoreBackend, resolveLiveOwnerHistoryId } from '@ifc-lite/sdk';
 import { ensureStoreyPlacement } from '@/store/slices/storeyPlacement';
 import type { HostedFillSpec } from '@/store/slices/mutation-hosted-fill';
-import type { ModellingMethods } from '@/store/slices/mutation-modelling-records';
+import { detachFromType, type ModellingMethods } from '@/store/slices/mutation-modelling-records';
+import { entityName, typeOf } from '@/lib/commands/modeling/authored-kinds';
 import { draftElementSize } from '@/lib/element-size-commit';
 import { writeElementProfile } from '@/store/slices/mutation-element-profile';
 import { sizeInMetres } from './model-authoring-size-params';
@@ -165,6 +166,19 @@ export function dryRunAuthoring(
   return refusals;
 }
 
+/** Recheck the actual intermediate native binding before either dry-run or commit writes it. */
+export function writeNativeTypeDetach(op: Extract<AuthoringOp, { op: 'type.detach' }>, dataStore: IfcDataStore, draft: StoreEditor, resolved: ResolvedOp): void {
+  if (!uniqueSplitGuid(dataStore, draft, op.target.globalId) || !uniqueSplitGuid(dataStore, draft, op.expected.GlobalId)) {
+    throw new Error('The native occurrence or expected type GlobalId is not unique');
+  }
+  const target = { dataStore, view: draft.getMutationView() };
+  const current = typeOf(target, resolved.target!);
+  if (current === null || current !== resolved.typeId || entityName(target, current) !== op.expected.Name) {
+    throw new Error('The current native type differs from the expected binding');
+  }
+  detachFromType(draft, dataStore, [resolved.target!]);
+}
+
 export function draftAuthoringOperation(batch: ModelAuthoringBatch, dataStore: IfcDataStore, modelId: string, draft: StoreEditor, row: DryRunRow, refs: Map<string, number>, splitScopes?: Parameters<typeof import('@ifc-lite/create').splitElementsInStore>[3]): void {
   const { op, resolved } = row;
   switch (op.op) {
@@ -176,6 +190,9 @@ export function draftAuthoringOperation(batch: ModelAuthoringBatch, dataStore: I
       const made = writeStairCreation(dataStore, draft, batch, op, resolved.storey!);
       refs.set(op.ref, made.expressId);return;
     }
+    case 'type.detach':
+      writeNativeTypeDetach(op, dataStore, draft, resolved);
+      return;
     case 'hosted.edit':
       writeHostedEdit(batch, dataStore, draft, resolved.target!, op.expected, op.edit, op.target.globalId);
       return;

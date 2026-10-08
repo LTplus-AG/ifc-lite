@@ -103,7 +103,8 @@ export function AssistantPanel() {
     // clears them and counts the send, so a capture still running then is dropped (one that landed meanwhile
     // is cleared with the rest); a refused send keeps the attachments, and a late capture, for the retry.
     const draft = useAssistantDraft.getState();
-    const artifactPreset = draft.text === text && draft.intent?.evidenceId === state.snapshot?.id ? draft.intent.preset : undefined;
+    const intent = draft.intent;
+    const artifactPreset = draft.text === text && intent && intent.evidenceId === state.snapshot?.id ? intent.preset : undefined;
     void sendAssistant(text, model, ASSISTANT_PROXY_URL, attachmentsForSend(attachments), { artifactPreset }).then(success => {
       if (!success) return;
       if (useAssistantDraft.getState().text === text) setAssistantDraft('');

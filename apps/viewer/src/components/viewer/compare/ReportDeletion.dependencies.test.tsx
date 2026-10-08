@@ -9,7 +9,10 @@ import { readFile } from 'node:fs/promises';
 import { act } from 'react';
 import { IfcParser } from '@ifc-lite/parser';
 import { diffModels } from '@ifc-lite/diff';
-import type { ChartSpec } from '@ifc-lite/charts';
+import { aggregate, type ChartSpec } from '@ifc-lite/charts';
+import { CLASH_COLUMNS } from '@/lib/charts/datasets/clash';
+import { COMPARE_COLUMNS } from '@/lib/charts/datasets/compare';
+import { chartSourceContext, resolveChartSource } from '@/lib/charts/chart-source';
 import { buildEntityFingerprints } from '@/lib/compare/buildFingerprints';
 import { snapshotComparison } from '@/lib/compare/savedComparisons';
 import { blankDocument } from '@/lib/document/presets';
@@ -29,8 +32,10 @@ const button = (root: ParentNode, name: string) => [...root.querySelectorAll('bu
 beforeEach(async () => { localStorage.clear(); await clearContentDatabase(); useViewerStore.setState({ dashboards: [], documents: [] }); });
 afterEach(() => { cleanup(); useViewerStore.setState(original); localStorage.clear(); });
 async function dependents(source: 'compare' | 'clash', id: string) {
-  const spec: ChartSpec = { id: 'dependent-chart', title: 'External report chart', source, type: 'bar', dimension: 'State', measure: { agg: 'count' },
+  const spec: ChartSpec = { id: 'dependent-chart', title: 'External report chart', source, type: 'bar', dimension: source === 'compare' ? COMPARE_COLUMNS.state : CLASH_COLUMNS.rule, measure: { agg: 'count' },
     ...(source === 'compare' ? { comparisonId: id } : { clashReportId: id }) };
+  const bound = resolveChartSource(spec, { source, columns: [], rows: [], fingerprint: 'empty-live-control' }, chartSourceContext(useViewerStore.getState()));
+  assert.ok(aggregate(spec, bound.dataset).total > 0, 'the native saved-report chart must actually aggregate before it becomes a deletion dependency');
   useViewerStore.getState().upsertDashboard({ version: 2, id: 'dependent-dashboard', name: 'Affected dashboard', scope: { kind: 'all' }, charts: [spec], layout: [] });
   await useViewerStore.getState().initializeDocuments();
   const document = { ...blankDocument(), name: 'Affected document', blocks: [{ kind: 'chart' as const, id: 'dependent-block', snapshot: true, chart: { ...spec, title: 'Document report chart' } }] };

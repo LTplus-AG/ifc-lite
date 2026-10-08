@@ -6624,11 +6624,32 @@
     "validateIDS: function"
   ],
   "@ifc-lite/ids-authoring": [
+    "CommentThread: interface",
+    "CustomPsetDecl: interface",
+    "FacetFieldName: type",
+    "FacetNodes: interface",
+    "FromIdsOptions: interface",
+    "NodeIndex: interface",
+    "NodeKind: type",
+    "NodeLocation: type",
+    "Provenance: type",
+    "RevisionInfo: interface",
+    "STUDIO_SCHEMA_VERSION: const",
+    "Section: type",
+    "SourceSpan: interface",
+    "SpecNodes: interface",
+    "StudioDocument: interface",
+    "StudioMeta: interface",
+    "Suppression: interface",
     "Uuid: type",
     "UuidV7Source: interface",
+    "createStudioDocument: function",
     "deriveId: function",
+    "fromIdsDocument: function",
     "isUuid: function",
-    "uuidv7: function"
+    "locateNode: function",
+    "uuidv7: function",
+    "verifyNodeIndex: function"
   ],
   "@ifc-lite/ids/bridge": [
     "EntityMeasureScales: interface",

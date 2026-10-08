@@ -11,3 +11,25 @@
  */
 
 export { uuidv7, deriveId, isUuid, type Uuid, type UuidV7Source } from './uuid.js';
+
+// Document model (IDS-016)
+export {
+  STUDIO_SCHEMA_VERSION,
+  type StudioDocument,
+  type NodeIndex,
+  type SpecNodes,
+  type FacetNodes,
+  type NodeKind,
+  type NodeLocation,
+  type Section,
+  type StudioMeta,
+  type Provenance,
+  type SourceSpan,
+  type CommentThread,
+  type Suppression,
+  type CustomPsetDecl,
+  type RevisionInfo,
+} from './document/types.js';
+export type { FacetFieldName } from './document/fields.js';
+export { fromIdsDocument, createStudioDocument, type FromIdsOptions } from './document/from-ids.js';
+export { locateNode, verifyNodeIndex } from './document/node-index.js';

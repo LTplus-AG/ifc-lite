@@ -80,10 +80,9 @@ describe('writeIdsXml round-trips the buildingSMART IDS corpus (#6915)', () => {
     }
     expect(disagreements).toEqual([]);
     // Pinned so a writer that starts refusing more (or silently accepting less) is visible:
-    // only the six xs:length / xs:minLength / xs:maxLength cases have no XML here.
-    expect(written).toBe(301);
-    expect(refused).toHaveLength(6);
-    expect(refused.every((id) => /^restriction\/(pass|fail)-(max_and_min_)?length_checks/.test(id))).toBe(true);
+    // since IDS-001 the six xs:length / xs:minLength / xs:maxLength cases are written too.
+    expect(refused).toEqual([]);
+    expect(written).toBe(307);
   }, 120_000);
 
   it('dataType, partOf and requirement instructions survive and pass the native audit', async () => {
@@ -106,8 +105,37 @@ describe('writeIdsXml round-trips the buildingSMART IDS corpus (#6915)', () => {
     const audit = await auditIDSDocument(xml);
     expect(audit.issues.filter((issue) => issue.severity === 'error')).toEqual([]);
     expect(() => writeIdsXml({ ...doc, specifications: [{ ...doc.specifications[0], requirements: [{ id: 'r', optionality: 'required',
-      facet: { type: 'attribute', name: { type: 'simpleValue', value: 'Name' }, value: { type: 'bounds', maxLength: 4 } } }] }] }))
-      .toThrow(/length or digit bounds are not supported/);
+      facet: { type: 'attribute', name: { type: 'simpleValue', value: 'Name' }, value: { type: 'bounds', totalDigits: 4 } } }] }] }))
+      .toThrow(/digit bounds are not supported/);
+  });
+
+  // IDS-001: string-length restrictions are written on every facet that carries a value.
+  it('writes xs:length / xs:minLength / xs:maxLength on every value-carrying facet and reads them back', async () => {
+    const lengths = { type: 'bounds', base: 'xs:string', minLength: 2, maxLength: 8 } as const;
+    const exact = { type: 'bounds', base: 'xs:string', length: 4 } as const;
+    const name = (value: string) => ({ type: 'simpleValue', value }) as const;
+    const facets: IDSDocument['specifications'][number]['requirements'][number]['facet'][] = [
+      { type: 'attribute', name: name('Name'), value: lengths },
+      { type: 'property', propertySet: name('Pset_WallCommon'), baseName: name('Reference'), dataType: name('IFCIDENTIFIER'), value: exact },
+      { type: 'classification', system: name('Uniclass'), value: lengths },
+      { type: 'material', value: exact },
+    ];
+    const doc: IDSDocument = { info: { title: 'Lengths' }, specifications: [{
+      id: 's', name: 'Walls', ifcVersions: ['IFC4'], minOccurs: 1, maxOccurs: 'unbounded',
+      applicability: { facets: [{ type: 'entity', name: name('IFCWALL') }] },
+      requirements: facets.map((facet, i) => ({ id: `r${i}`, optionality: 'required', facet })),
+    }] };
+    const xml = writeIdsXml(doc);
+    expect(xml).toContain('<xs:minLength value="2"/>');
+    expect(xml).toContain('<xs:length value="4"/>');
+    const reread = parseIDS(xml);
+    expect(reread.specifications[0].requirements.map((r) => r.facet)).toEqual(facets);
+    const audit = await auditIDSDocument(xml);
+    expect(audit.issues.filter((issue) => issue.severity === 'error')).toEqual([]);
+    // A count that is not an xs:nonNegativeInteger is refused rather than written invalid.
+    const bad = { ...doc, specifications: [{ ...doc.specifications[0], requirements: [{ id: 'r', optionality: 'required' as const,
+      facet: { type: 'attribute' as const, name: name('Name'), value: { type: 'bounds' as const, maxLength: -1 } } }] }] };
+    expect(() => writeIdsXml(bad)).toThrow(/xs:maxLength must be a non-negative integer/);
   });
 
   // #6915 review: attribute-value normalisation turns raw line breaks and tabs into spaces, and

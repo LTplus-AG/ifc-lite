@@ -94,8 +94,16 @@ function unwritable(constraint: IDSConstraint): string | null {
   if (constraint.type !== 'simpleValue' && constraint.and?.length) return 'conjunctive restriction facets';
   if (constraint.type !== 'bounds') return null;
   if (constraint.unparseableFacets?.length) return 'unparseable bound facets';
-  const lengths = [constraint.length, constraint.minLength, constraint.maxLength, constraint.totalDigits, constraint.fractionDigits];
-  return lengths.some((value) => value !== undefined) ? 'length or digit bounds' : null;
+  const digits = [constraint.totalDigits, constraint.fractionDigits];
+  return digits.some((value) => value !== undefined) ? 'digit bounds' : null;
+}
+
+/** `xs:length`, `xs:minLength`, `xs:maxLength` and the digit counts are `xs:nonNegativeInteger`. */
+function countLexical(facet: string, value: number): string {
+  if (!Number.isSafeInteger(value) || value < 0) {
+    throw new Error(`writeIdsXml: ${facet} must be a non-negative integer, got ${value}`);
+  }
+  return String(value);
 }
 
 function writeConstraint(xml: XmlLines, tag: string, constraint: IDSConstraint): void {
@@ -117,7 +125,10 @@ function writeConstraint(xml: XmlLines, tag: string, constraint: IDSConstraint):
       xml.close('xs:restriction');
       break;
     case 'bounds': {
-      xml.open('xs:restriction', { base: constraint.base ?? 'xs:double' });
+      // Length facets constrain strings; without a base they must not default to `xs:double`.
+      const numeric = [constraint.minInclusive, constraint.minExclusive, constraint.maxInclusive, constraint.maxExclusive]
+        .some((value) => value !== undefined);
+      xml.open('xs:restriction', { base: constraint.base ?? (numeric ? 'xs:double' : 'xs:string') });
       const bounds: Array<[string, number | undefined]> = [
         ['xs:minInclusive', constraint.minInclusive],
         ['xs:minExclusive', constraint.minExclusive],
@@ -126,6 +137,14 @@ function writeConstraint(xml: XmlLines, tag: string, constraint: IDSConstraint):
       ];
       for (const [facet, value] of bounds) {
         if (value !== undefined) xml.empty(facet, { value: String(value) });
+      }
+      const lengths: Array<[string, number | undefined]> = [
+        ['xs:length', constraint.length],
+        ['xs:minLength', constraint.minLength],
+        ['xs:maxLength', constraint.maxLength],
+      ];
+      for (const [facet, value] of lengths) {
+        if (value !== undefined) xml.empty(facet, { value: countLexical(facet, value) });
       }
       xml.close('xs:restriction');
       break;

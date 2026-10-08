@@ -110,5 +110,9 @@ export {
   SIDECAR_FORMAT,
   type StudioSidecar,
   type AttachResult,
+  type AttachOptions,
 } from './sidecar/sidecar.js';
 export { writeIdsz, readIdsz, type IdszContent } from './sidecar/idsz.js';
+
+// Re-identification (IDS-026)
+export { reidentify, type ReidentifyReport, type ReidentifyOptions, type MatchStep } from './match/reidentify.js';

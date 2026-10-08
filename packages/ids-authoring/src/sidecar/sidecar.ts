@@ -10,14 +10,16 @@
  * The node index is positional (it mirrors the document shape), so the
  * sidecar records a fingerprint of the IDS content it was written for.
  * `attachSidecar` stamps the ids back only when the XML still has that
- * fingerprint; when the XML was edited elsewhere it falls back to
- * re-identification (`reidentify`), so comments and provenance survive.
+ * fingerprint; when the XML was edited elsewhere it re-identifies nodes
+ * against the previous document (`reidentify`), so comments and
+ * provenance survive.
  */
 
 import { parseIDS, type IDSDocument } from '@ifc-lite/ids';
 import { fromIdsDocument } from '../document/from-ids.js';
 import { verifyNodeIndex } from '../document/node-index.js';
 import { STUDIO_SCHEMA_VERSION, type NodeIndex, type StudioDocument, type StudioMeta } from '../document/types.js';
+import { reidentify, type ReidentifyReport } from '../match/reidentify.js';
 import { fnv1a64, uuidv7, type Uuid } from '../uuid.js';
 
 export const SIDECAR_FORMAT = 'ifc-lite.ids-studio.sidecar';
@@ -130,18 +132,37 @@ function stamp(ids: IDSDocument, sidecar: StudioSidecar): StudioDocument | undef
 
 export type AttachResult =
   | { doc: StudioDocument; binding: 'exact' }
+  | { doc: StudioDocument; binding: 'reidentified'; report: ReidentifyReport }
   | { doc: StudioDocument; binding: 'fresh' };
+
+export interface AttachOptions {
+  newId?: () => Uuid;
+  /**
+   * The document as it was when the sidecar was written (e.g. from the
+   * local library). When the XML changed elsewhere, its nodes are
+   * re-identified against this instead of getting fresh ids.
+   */
+  previous?: StudioDocument;
+}
 
 /**
  * Rebuild a Studio document from parsed IDS content and its sidecar. When
  * the content still has the sidecar's fingerprint the node ids are reused
- * exactly; otherwise the document gets fresh ids (keeping `docId` and
- * `meta`) and the caller is told so.
+ * exactly. Otherwise, given the `previous` document, nodes are
+ * re-identified (identifier → name + signature → similarity); without it
+ * the document gets fresh ids. `docId` and `meta` are kept either way and
+ * `binding` tells the caller which path was taken.
  */
-export function attachSidecar(ids: IDSDocument, sidecar: StudioSidecar, newId: () => Uuid = () => uuidv7()): AttachResult {
+export function attachSidecar(ids: IDSDocument, sidecar: StudioSidecar, options: AttachOptions = {}): AttachResult {
+  const newId = options.newId ?? (() => uuidv7());
   if (fingerprintIds(ids) === sidecar.idsFingerprint) {
     const doc = stamp(ids, sidecar);
     if (doc) return { doc, binding: 'exact' };
+  }
+  if (options.previous) {
+    const base: StudioDocument = { ...options.previous, docId: sidecar.docId, meta: sidecar.meta };
+    const { doc, report } = reidentify(base, ids, { newId });
+    return { doc, binding: 'reidentified', report };
   }
   return { doc: fromIdsDocument(ids, { docId: sidecar.docId, meta: sidecar.meta, newId }), binding: 'fresh' };
 }

@@ -6,6 +6,8 @@
  * runtime entity ids and live model/store references never travel with them. */
 import { isAutomationReportProvenance, sameReportEvidence, type AutomationReportProvenance } from '../../flow/report-provenance';
 import type { ValidationReport } from '@ifc-lite/ids';
+import type { IfcDataStore } from '@ifc-lite/parser';
+import { rememberValidationElements } from './element-evidence';
 import { idsReportBlockFromReport } from '../../document/ids-report.js';
 import { validateIdsReportBlock, type IdsReportBlock } from '../../document/ids-report-types.js';
 import { validateManualReportBlock, type ManualReportBlock } from '../../document/manual-report-types.js';
@@ -24,7 +26,7 @@ export function savedReportLabel(entry: SavedValidationReport): string {
   return [entry.name, entry.snapshot.reportModels?.map((model) => model.name).join(', '), entry.snapshot.generatedAt].filter(Boolean).join(' · ');
 }
 
-export type ReportScopeModel = { name: string; sourceFingerprint?: string | null };
+export type ReportScopeModel = { name: string; sourceFingerprint?: string | null; ifcDataStore?: IfcDataStore | null };
 
 /** The report's evaluated modelInfo is authoritative, including models with
  * no applicable entities; do not infer the scope from failed entity rows. */
@@ -34,6 +36,7 @@ export function validationReportSnapshot(report: ValidationReport, models: Reado
     return reportModelScope(model?.name, modelId, model?.sourceFingerprint);
   });
   rememberReportModelScope(report, reportModels);
+  rememberValidationElements(report, reportModels, (modelId, expressId) => models.get(modelId)?.ifcDataStore?.entities.getGlobalId(expressId));
   return idsReportBlockFromReport(report, id);
 }
 

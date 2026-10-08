@@ -26,6 +26,7 @@ import { comparisonFindings } from './comparison';
 import { reconciliationFindings } from './reconciliation';
 import { linkedFindings } from './linked';
 import { validationFindings } from './validation';
+import { savedValidationFindings } from './saved-validation';
 
 function stale(report: object): boolean {
   const state = useViewerStore.getState();
@@ -51,8 +52,13 @@ export const FINDING_SOURCES: readonly FindingSource[] = [
     return { runs: [...findings.runs, ...receipts.runs], findings: [...findings.findings, ...receipts.findings] };
   } },
   { kind: 'validation', collect(models) {
-    const report = useViewerStore.getState().idsValidationReport;
-    return validationFindings(report ? { report, stale: stale(report) } : null, models);
+    const state = useViewerStore.getState(), report = state.idsValidationReport;
+    const live = validationFindings(report ? { report, stale: stale(report) } : null, models);
+    const saved = savedValidationFindings(state.savedValidationReports);
+    if (state.validationReportsStorage.phase !== 'ready') saved.runs.push({ id: 'saved-validation:library', source: 'validation',
+      temporal: 'historical', label: 'Saved validation evidence', capturedAt: null, complete: false, models: [],
+      incomplete: [{ code: 'partial-source', detail: `Saved validation library ${state.validationReportsStorage.phase}` }] });
+    return { runs: [...live.runs, ...saved.runs], findings: [...live.findings, ...saved.findings] };
   } },
   { kind: 'comparison', collect(models) {
     const state = useViewerStore.getState();

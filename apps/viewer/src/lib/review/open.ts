@@ -16,7 +16,7 @@ import { useClashGroupApplications } from '../clash/group-applications';
 import { loadRevisionBaseline } from '../clash/revision-baseline';
 import { useOriginalClashBaseline } from '../clash/original-baseline';
 import { useSemanticSession } from '@/lib/semantic/session';
-import { useClashApplicationFocus, useReconciliationFocus, useSavedComparisonFocus, useSemanticRecordFocus } from '@/lib/panels/evidence-focus';
+import { useClashApplicationFocus, useReconciliationFocus, useSavedComparisonFocus, useSemanticRecordFocus, useSavedValidationFocus } from '@/lib/panels/evidence-focus';
 import { useViewerStore } from '@/store';
 import type { WorkspacePanelId } from '@/lib/panels/registry';
 import { selectChangedEntity } from '../changes/select-changed-entity';
@@ -25,7 +25,7 @@ import type { FindingEvidence, ReviewFinding } from './types';
 
 export const EVIDENCE_PANEL: Record<FindingEvidence['kind'], WorkspacePanelId> = {
   clash: 'clash', 'clash-baseline': 'clash', validation: 'validation', comparison: 'compare', 'saved-comparison': 'compare',
-  bcf: 'bcf', linked: 'semantic', 'run-reconciliation': 'compare', 'clash-group-application': 'clash',
+  bcf: 'bcf', linked: 'semantic', 'run-reconciliation': 'compare', 'clash-group-application': 'clash', 'saved-validation': 'validation',
 };
 
 // Workspace changes end ownership even while the native receipt host is unmounted.
@@ -35,10 +35,27 @@ useClashGroupLibrary.subscribe((next, previous) => {
   if (held && held.contextWorkspaceId !== next.activeId) useClashApplicationFocus.setState({ record: null });
 });
 
+// Deletion or replacement ends the native history request even while its host is unmounted.
+useViewerStore.subscribe((next, previous) => {
+  if (next.savedValidationReports === previous.savedValidationReports && next.validationReportsStorage.phase === previous.validationReportsStorage.phase) return;
+  const held = useSavedValidationFocus.getState().record;
+  if (!held) return;
+  const original = next.savedValidationReports.find(entry => entry.id === held.reportId && entry.snapshot.generatedAt === held.capturedAt
+    && entry.snapshot.kind === 'ids-report' && entry.snapshot.elementEvidence?.rows.some(row => row.id === held.rowId));
+  if (next.validationReportsStorage.phase !== 'ready' || !original) useSavedValidationFocus.setState({ record: null });
+});
+
 /** Whether the original can still be reached: a historical clash baseline has no row in the live clash list. */
 export function openOriginal(finding: ReviewFinding, openPanel: (panel: WorkspacePanelId) => void): boolean {
   const state = useViewerStore.getState();
   const { evidence } = finding;
+  if (evidence.kind === 'saved-validation') {
+    if (state.validationReportsStorage.phase !== 'ready') return false;
+    const saved = state.savedValidationReports.find(entry => entry.id === evidence.reportId);
+    if (!saved || saved.snapshot.kind !== 'ids-report' || saved.snapshot.generatedAt !== finding.run.capturedAt
+      || saved.snapshot.elementEvidence?.rows.filter(row => row.id === evidence.rowId).length !== 1) return false;
+    useSavedValidationFocus.setState({ record: { reportId: saved.id, rowId: evidence.rowId, capturedAt: saved.snapshot.generatedAt } });
+  }
   if (evidence.kind === 'clash-baseline') {
     const baseline = loadRevisionBaseline();
     const matches = baseline?.result.clashes.filter(clash => clashReviewKey(clash) === evidence.reviewKey) ?? [];

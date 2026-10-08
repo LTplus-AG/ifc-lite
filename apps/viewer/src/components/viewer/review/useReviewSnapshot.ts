@@ -19,13 +19,14 @@ import { captureReviewSnapshot, type ReviewSnapshot } from '@/lib/review/collect
 export function useReviewSnapshot(): { snapshot: ReviewSnapshot; refresh: () => void } {
   useEffect(() => {
     void useViewerStore.getState().initializeSavedComparisons();
+    void useViewerStore.getState().initializeValidationReports();
     void clashGroupApplicationLibrary.initialize();
     void clashGroupLibrary.initialize();
   }, []);
   const [tick, setTick] = useState(0);
   useEffect(() => subscribeRevisionBaseline(() => setTick(value => value + 1)), []);
   const native = useViewerStore(useShallow(s => [s.clashResult, s.clashRawResult, s.idsValidationReport, s.compareResult,
-    s.savedComparisons, s.compareReconciliation, s.compareRunCaptures, s.bcfProject, s.models, s.mutationVersion, s.geometryContentVersion, s.modelPlacement]));
+    s.savedComparisons, s.savedValidationReports, s.validationReportsStorage.phase, s.compareReconciliation, s.compareRunCaptures, s.bcfProject, s.models, s.mutationVersion, s.geometryContentVersion, s.modelPlacement]));
   const semantic = useSemanticSession(useShallow(s => [s.document, s.findings, s.report, s.revisions, s.retrievedAt]));
   const receipts = useClashGroupApplications(useShallow(s => [s.entries, s.status.phase]));
   const groupWorkspaces = useClashGroupLibrary(useShallow(s => [s.entries, s.status.phase]));

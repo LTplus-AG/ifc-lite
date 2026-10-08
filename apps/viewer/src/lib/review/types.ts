@@ -66,6 +66,7 @@ export type FindingEvidence =
   | { kind: 'clash'; clashId: string; occurrenceKey: string; reviewKey: string }
   | { kind: 'clash-baseline'; reviewKey: string }
   | { kind: 'clash-group-application'; applicationId: string; groupId: string }
+  | { kind: 'saved-validation'; reportId: string; rowId: string }
   | { kind: 'validation'; specificationId: string; modelId: string; expressId: number }
   | { kind: 'run-reconciliation'; baseRunId: string; headRunId: string; identity: string }
   | { kind: 'comparison'; key: string }

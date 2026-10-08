@@ -48,5 +48,9 @@ export async function runInformationCheck(options: RunInformationCheckOptions) {
   });
   throwIfCheckAborted(options.signal);
   recordReportRuleSet(report, content);
+  for (const model of models) {
+    const scope = reportModels.get(model.id);
+    if (scope) reportModels.set(model.id, { ...scope, ifcDataStore: model.store });
+  }
   return { report, snapshot: validationReportSnapshot(report, reportModels, options.snapshotId ?? 'run') };
 }

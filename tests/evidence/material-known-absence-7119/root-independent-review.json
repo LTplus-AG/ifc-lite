@@ -1,0 +1,155 @@
+{
+  "capturedUTC": "2026-10-08T13:12:59.369028+00:00",
+  "base": "61bda95f21e16ce37ddced25ad0432943736a068",
+  "sourcePinsVerified": {
+    "packages/parser/src/material-definitions.ts": "1a462d754a3d7117cfb19fed3b2a1feeef07f9a8ad9d863422cba23775d3d510",
+    "packages/parser/test/on-demand-classification-material.test.ts": "83123043c120ce23de6a9e4ab4622d384362294f17d9d629e6730b6f7f6db9ac",
+    "apps/viewer/src/lib/assistant/adapters/selection-materials.test.tsx": "d49b0983d1a40fffb2a248b283a9d6ff4b9fd1a66a6f125af2e07cfc88cb420c",
+    ".changeset/quiet-material-names.md": "8649798f31a12bcbcb8d334947235890d02acf6ec724c5a038d2ab7489f96e36"
+  },
+  "parentReview": "Canonical material-list resolver distinguishes parsed null known absence from unavailable/malformed slots; literal blank preserved; two real parser regression controls retain dangling evidence. Canonical main fixture helper unchanged. Viewer test-only updates assert canonical included classification/relationship availability/counts/bounds while preserving material evidence. No new product behavior in those sections.",
+  "scope": "Frozen dirty final source verification; independent archive verification still pending; no clean-head/CI/native/OS/perf acceptance claim",
+  "qualificationReceipts": {
+    "final-main61b-parser-terminal.json": {
+      "command": [
+        "pnpm",
+        "test",
+        "--filter=@ifc-lite/parser",
+        "--env-mode=loose",
+        "--concurrency=1",
+        "--",
+        "on-demand-classification-material.test.ts"
+      ],
+      "exitCode": 0,
+      "startedUnix": 1791464756.3005266,
+      "finishedUnix": 1791464762.9059622
+    },
+    "full-typecheck-terminal.json": {
+      "command": [
+        "pnpm",
+        "typecheck"
+      ],
+      "exitCode": 0,
+      "startedUnix": 1791464785.3010366,
+      "finishedUnix": 1791464984.7167072,
+      "sourceRuntimePinsBefore": {
+        "packages/parser/src/material-definitions.ts": "1a462d754a3d7117cfb19fed3b2a1feeef07f9a8ad9d863422cba23775d3d510",
+        "packages/parser/test/on-demand-classification-material.test.ts": "83123043c120ce23de6a9e4ab4622d384362294f17d9d629e6730b6f7f6db9ac",
+        "apps/viewer/src/lib/assistant/adapters/selection-materials.test.tsx": "d49b0983d1a40fffb2a248b283a9d6ff4b9fd1a66a6f125af2e07cfc88cb420c",
+        ".changeset/quiet-material-names.md": "8649798f31a12bcbcb8d334947235890d02acf6ec724c5a038d2ab7489f96e36",
+        "packages/wasm/pkg/ifc-lite_bg.wasm": "5606f31452779f749ed060b878ee77dbbf3dac7d8bf71b1f21a9a8865cf2ccd2",
+        "packages/wasm/pkg/ifc-lite.js": "0a281479eb65141ae75aeef987d331d44439741a0cae855f122e53e800311a39",
+        "packages/wasm/pkg/ifc-lite.d.ts": "54c9d0a52eb515e517d76726fefe5f6a63e553a81c1b10331a597965d14620f6"
+      },
+      "sourceRuntimePinsAfter": {
+        "packages/parser/src/material-definitions.ts": "1a462d754a3d7117cfb19fed3b2a1feeef07f9a8ad9d863422cba23775d3d510",
+        "packages/parser/test/on-demand-classification-material.test.ts": "83123043c120ce23de6a9e4ab4622d384362294f17d9d629e6730b6f7f6db9ac",
+        "apps/viewer/src/lib/assistant/adapters/selection-materials.test.tsx": "d49b0983d1a40fffb2a248b283a9d6ff4b9fd1a66a6f125af2e07cfc88cb420c",
+        ".changeset/quiet-material-names.md": "8649798f31a12bcbcb8d334947235890d02acf6ec724c5a038d2ab7489f96e36",
+        "packages/wasm/pkg/ifc-lite_bg.wasm": "8b74229bbd4a991cbf1f32a8d52add195c5fdd333921f998b1c18eb713185143",
+        "packages/wasm/pkg/ifc-lite.js": "0a281479eb65141ae75aeef987d331d44439741a0cae855f122e53e800311a39",
+        "packages/wasm/pkg/ifc-lite.d.ts": "54c9d0a52eb515e517d76726fefe5f6a63e553a81c1b10331a597965d14620f6"
+      }
+    },
+    "final-typed-selection-material-terminal.json": {
+      "command": [
+        "pnpm",
+        "test",
+        "--filter=@ifc-lite/viewer",
+        "--env-mode=loose",
+        "--concurrency=1"
+      ],
+      "TEST_PATTERN": "selection-materials",
+      "sourceSha256": "d49b0983d1a40fffb2a248b283a9d6ff4b9fd1a66a6f125af2e07cfc88cb420c",
+      "exitCode": 0,
+      "startedUnix": 1791464603.189098,
+      "finishedUnix": 1791464699.9659338
+    },
+    "final-light-gates.json": [
+      {
+        "command": [
+          "node",
+          "scripts/check-raw-entity-enumeration.mjs"
+        ],
+        "exitCode": 0,
+        "log": "final-light-0.log"
+      },
+      {
+        "command": [
+          "node",
+          "scripts/check-module-size.mjs"
+        ],
+        "exitCode": 0,
+        "log": "final-light-1.log"
+      },
+      {
+        "command": [
+          "node",
+          "scripts/check-test-wiring.mjs"
+        ],
+        "exitCode": 0,
+        "log": "final-light-2.log"
+      },
+      {
+        "command": [
+          "node",
+          "scripts/check-source-text-assertions.mjs"
+        ],
+        "exitCode": 0,
+        "log": "final-light-3.log"
+      },
+      {
+        "command": [
+          "node",
+          "scripts/check-changesets.mjs"
+        ],
+        "exitCode": 0,
+        "log": "final-light-4.log"
+      },
+      {
+        "command": [
+          "node",
+          "scripts/add-license-headers.mjs",
+          "--check"
+        ],
+        "exitCode": 0,
+        "log": "final-light-5.log"
+      },
+      {
+        "command": [
+          "pnpm",
+          "exec",
+          "oxlint",
+          "--config",
+          ".oxlintrc.json",
+          "packages/parser/src/material-definitions.ts",
+          "packages/parser/test/on-demand-classification-material.test.ts",
+          "apps/viewer/src/lib/assistant/adapters/selection-materials.test.tsx"
+        ],
+        "exitCode": 0,
+        "log": "final-light-6.log"
+      },
+      {
+        "command": [
+          "git",
+          "diff",
+          "--check"
+        ],
+        "exitCode": 0,
+        "log": "final-light-7.log"
+      }
+    ],
+    "final-canonical-fixture-and-selection-provenance.json": {
+      "frozenMain": "61bda95f21e16ce37ddced25ad0432943736a068",
+      "canonicalFixtureHelperByteIdentical": true,
+      "normalizationRemovedOnlyTwo7119TestsAndImport": true,
+      "mainFixtureRepair": "#7209/#7208",
+      "selectionProvenance": [
+        "6f7db8b62a #7183 canonical classifications",
+        "f43d101f55 #7185 native relationships"
+      ],
+      "selectionCorrection": "obsolete caveat assertions updated with actual real-SketchUp native section counts and bounds; all prior material assertions retained",
+      "materialProductionSha256": "1a462d754a3d7117cfb19fed3b2a1feeef07f9a8ad9d863422cba23775d3d510"
+    }
+  }
+}

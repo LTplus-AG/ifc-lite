@@ -14,6 +14,9 @@
  * reducer's `touched` set as an explicit hint. Document-scoped rules
  * (duplicates, overlaps, document info) run on every pass.
  *
+ * Findings of the bSDD rules depend on the URI index, so a change of its
+ * `revision` (URI health recorded new results) re-runs every spec.
+ *
  * Suppressions are applied after the cache, so adding one never forces a
  * re-run.
  */
@@ -48,6 +51,8 @@ interface CacheEntry {
   spec: IDSSpecification;
   nodes: SpecNodes;
   custom: StudioMeta['custom'];
+  /** Revision of the bSDD URI index the findings were computed against. */
+  bsddRevision: number | undefined;
   diagnostics: Diagnostic[];
 }
 
@@ -124,6 +129,7 @@ export function createLinter(ctx: LintContext, options: LinterOptions = {}): Lin
           prior.spec === view.spec &&
           prior.nodes === view.nodes &&
           prior.custom === doc.meta.custom &&
+          prior.bsddRevision === ctx.bsdd?.revision &&
           !specTouched(view.nodes, touched);
         let entry: CacheEntry;
         if (reusable) {
@@ -131,7 +137,7 @@ export function createLinter(ctx: LintContext, options: LinterOptions = {}): Lin
         } else {
           specsLinted++;
           const found = specRules.flatMap((r) => r.check(view, input).map((f) => stamp(r, f, view.specId)));
-          entry = { spec: view.spec, nodes: view.nodes, custom: doc.meta.custom, diagnostics: found };
+          entry = { spec: view.spec, nodes: view.nodes, custom: doc.meta.custom, bsddRevision: ctx.bsdd?.revision, diagnostics: found };
         }
         next.set(view.specId, entry);
         diagnostics.push(...entry.diagnostics);

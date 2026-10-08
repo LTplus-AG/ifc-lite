@@ -227,3 +227,16 @@ export {
   type DictionaryIdsPreview,
   type PlannedSpec,
 } from './bsdd/generator.js';
+
+// bSDD URI health (IDS-073); its lint rules are in LINT_RULES (IDSL-BSDD-001…003), the gate rule is GATE-BSDD-001
+export {
+  checkUriHealth,
+  collectDocUris,
+  createBsddUriIndex,
+  isBsddUri,
+  URI_HEALTH_TTL_MS,
+  type BsddUriIndex,
+  type DocUri,
+  type UriHealthOptions,
+  type UriHealthReport,
+} from './bsdd/uri-health.js';

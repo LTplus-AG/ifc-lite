@@ -31,6 +31,7 @@ const AREA_NAMES: Readonly<Record<string, string>> = {
   DOC: 'Document',
   VER: 'IFC versions',
   PART: 'partOf relations',
+  BSDD: 'bSDD references',
 };
 
 export function pageName(code: string): string {

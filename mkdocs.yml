@@ -223,6 +223,9 @@ nav:
       - "IDSL-DOC-001 Author is not an e-mail address, or date is not xs:date": guide/ids-lint/idsl-doc-001.md
       - "IDSL-VER-001 Name valid in only some IFC versions of the specification": guide/ids-lint/idsl-ver-001.md
       - "IDSL-PART-001 Unlikely partOf relation for these entities": guide/ids-lint/idsl-part-001.md
+      - "IDSL-BSDD-001 bSDD URI not found or inactive": guide/ids-lint/idsl-bsdd-001.md
+      - "IDSL-BSDD-002 Classification system differs from the bSDD dictionary name": guide/ids-lint/idsl-bsdd-002.md
+      - "IDSL-BSDD-003 Value outside the allowed values bSDD publishes": guide/ids-lint/idsl-bsdd-003.md
       # END GENERATED ids-lint-nav
     - 2D Drawings: guide/drawing-2d.md
     - Property Editing: guide/mutations.md

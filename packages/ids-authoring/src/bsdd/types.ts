@@ -140,6 +140,8 @@ export interface BsddUriRecord {
   replacedBy?: string[];
   /** Allowed value codes of a property (BSDD-003). */
   allowedValues?: string[];
+  /** Display labels of those values, where they differ from the codes (accepted by BSDD-003 too). */
+  allowedLabels?: string[];
   /** Epoch milliseconds of the check. */
   checkedAt: number;
 }

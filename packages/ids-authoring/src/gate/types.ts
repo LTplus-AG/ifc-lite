@@ -77,10 +77,15 @@ export interface GateIssue {
   value?: string;
   /** IFC versions of the spec in which the literal does not resolve. */
   versions?: IFCVersion[];
+  /**
+   * `warning`: reported but not blocking (e.g. a deprecated bSDD URI).
+   * Absent: the issue blocks the batch.
+   */
+  severity?: 'warning';
 }
 
 export interface GateResult {
-  /** True when every op passed and the batch may be applied. */
+  /** True when no blocking issue was found and the batch may be applied (warnings may remain). */
   ok: boolean;
   issues: GateIssue[];
 }

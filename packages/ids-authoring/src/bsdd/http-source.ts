@@ -136,7 +136,9 @@ export function createHttpBsddSource(options: HttpBsddSourceOptions = {}): BsddS
     if (!isRecord(raw)) return { uri, state: 'notFound', kind: 'property', checkedAt };
     const status = readStatus(raw.status);
     const dictUri = str(raw, 'dictionaryUri') ?? dictionaryUriOf(uri);
-    const values = readAllowedValues(raw)?.map((v) => v.code);
+    const allowed = readAllowedValues(raw) ?? [];
+    const values = allowed.map((v) => v.code);
+    const labels = allowed.filter((v) => v.value !== v.code).map((v) => v.value);
     const replacing = Array.isArray(raw.replacingObjectCodes) ? raw.replacingObjectCodes.filter((c): c is string => typeof c === 'string') : [];
     const name = dictUri ? await dictionaryName(dictUri) : undefined;
     return {
@@ -145,7 +147,8 @@ export function createHttpBsddSource(options: HttpBsddSourceOptions = {}): BsddS
       kind: 'property',
       ...(name ? { dictionaryName: name } : {}),
       ...(dictUri && replacing.length ? { replacedBy: replacing.map((c) => `${dictUri}/prop/${encodeURIComponent(c)}`) } : {}),
-      ...(values?.length ? { allowedValues: values } : {}),
+      ...(values.length ? { allowedValues: values } : {}),
+      ...(labels.length ? { allowedLabels: labels } : {}),
       checkedAt,
     };
   }
@@ -200,9 +203,17 @@ export function createHttpBsddSource(options: HttpBsddSourceOptions = {}): BsddS
         const prop = cls?.properties.find((p) => p.code === code);
         const checkedAt = now();
         if (!prop) return { uri, state: 'notFound', kind: 'property', checkedAt };
-        const values = prop.allowedValues?.map((v) => v.code);
+        const values = prop.allowedValues?.map((v) => v.code) ?? [];
+        const labels = prop.allowedValues?.filter((v) => v.value !== v.code).map((v) => v.value) ?? [];
         const status = prop.status ?? 'active';
-        return { uri, state: status === 'unknown' ? 'active' : status, kind: 'property', ...(values?.length ? { allowedValues: values } : {}), checkedAt };
+        return {
+          uri,
+          state: status === 'unknown' ? 'active' : status,
+          kind: 'property',
+          ...(values.length ? { allowedValues: values } : {}),
+          ...(labels.length ? { allowedLabels: labels } : {}),
+          checkedAt,
+        };
       }
       if (/\/class\//i.test(uri)) return resolveClass(uri);
       if (/\/prop\//i.test(uri)) return resolveProperty(uri);

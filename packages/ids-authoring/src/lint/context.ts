@@ -5,19 +5,22 @@
 /** Building a lint context: the schema tables shared with the grounding gate. */
 
 import { getAttributes, type IfcAttributeInfo, type IfcSchemaVersion } from '@ifc-lite/data';
+import type { BsddUriIndex } from '../bsdd/uri-health.js';
 import type { CustomPsetDecl } from '../document/types.js';
 import { createGateContext, type GateContext } from '../gate/context.js';
 import type { LintContext } from './types.js';
 
 /**
  * Load the schema tables (once per process) and build a lint context.
- * Pass an existing gate context to share its tables and custom library.
+ * Pass an existing gate context to share its tables and custom library,
+ * and a bSDD URI index (URI health) to enable the IDSL-BSDD rules.
  */
 export async function createLintContext(
-  options: { gate?: GateContext; custom?: readonly CustomPsetDecl[] } = {},
+  options: { gate?: GateContext; custom?: readonly CustomPsetDecl[]; bsdd?: BsddUriIndex } = {},
 ): Promise<LintContext> {
-  const gate = options.gate ?? (await createGateContext({ custom: options.custom }));
-  return { gate, attributes: await loadAttributes() };
+  const gate = options.gate ?? (await createGateContext({ custom: options.custom, bsdd: options.bsdd }));
+  const bsdd = options.bsdd ?? gate.bsdd;
+  return { gate, attributes: await loadAttributes(), ...(bsdd ? { bsdd } : {}) };
 }
 
 const VERSIONS: readonly IfcSchemaVersion[] = ['IFC2X3', 'IFC4', 'IFC4X3', 'IFC4X3_ADD2'];

@@ -1,0 +1,222 @@
+{
+  "qualificationSHA256": "c70b23e2b8234cae5c07e8feaa31047d2c44ec77c037ed253cae114ce908ce15",
+  "archivePairs": [
+    {
+      "originalPath": "/home/louistrue/.t3/artifacts/7180-08a-unfinished-failure-preflight-20261008/focused/candidate-full.log",
+      "archivePath": "focused/candidate-full.log.gz",
+      "originalBytes": 2476,
+      "originalSHA256": "14cb84961ec5425d90b1b0c875dde3692216e798e235ca5415db0f86855af19d",
+      "gzipBytes": 1118,
+      "gzipSHA256": "e235c6390526397093e7914016dbb5fa429a21ae0a6eaaf09712124fe4f00289"
+    },
+    {
+      "originalPath": "/home/louistrue/.t3/artifacts/7180-08a-unfinished-failure-preflight-20261008/focused/original-helper-inverse.log",
+      "archivePath": "focused/original-helper-inverse.log.gz",
+      "originalBytes": 2123,
+      "originalSHA256": "4b641b40c8a433f812b803d908fb10a39a1af77fe88c5c79240420e26bd8668e",
+      "gzipBytes": 662,
+      "gzipSHA256": "1a212075bfcc1fc080e364fa048ab804ad6c1c817a3d9adca1d245650472d7e3"
+    },
+    {
+      "originalPath": "/home/louistrue/.t3/artifacts/7180-08a-unfinished-failure-preflight-20261008/focused/restored-full.log",
+      "archivePath": "focused/restored-full.log.gz",
+      "originalBytes": 2476,
+      "originalSHA256": "04105782861dafcae32a05ee26a3f3d31b55d8f4f5adbe48d77f69c1fe8107a5",
+      "gzipBytes": 1115,
+      "gzipSHA256": "ae2682041be3432da167d0a8e0069431654eac96968aed7cc4b8ebc6fb570bd4"
+    },
+    {
+      "originalPath": "/home/louistrue/.t3/artifacts/7180-08a-unfinished-failure-preflight-20261008/qualification/prerequisite-controls.log",
+      "archivePath": "qualification/prerequisite-controls.log.gz",
+      "originalBytes": 10275,
+      "originalSHA256": "dffe99679948187120323cfc8ee6c00e1a00b4fee7b18a2fa8bc80a410dd4303",
+      "gzipBytes": 3587,
+      "gzipSHA256": "ff907d1adf08ada6d9a7c59848e69275edd34a2609b4b6fdb05752049db922c6"
+    },
+    {
+      "originalPath": "/home/louistrue/.t3/artifacts/7180-08a-unfinished-failure-preflight-20261008/diagnostic/positive-preowner.log",
+      "archivePath": "diagnostic/positive-preowner.log.gz",
+      "originalBytes": 1022,
+      "originalSHA256": "9bb651d504c897719e9038e6cb747585465350f1f77d55a3ec6030bf3ec9fbef",
+      "gzipBytes": 407,
+      "gzipSHA256": "3b27ce0d3670a7056c17c7e5fc02f0aae7edac802905c2c7c76580bf745aed4e"
+    },
+    {
+      "originalPath": "/home/louistrue/.t3/artifacts/7180-08a-unfinished-failure-preflight-20261008/final-qualification/CI-path-coverage.log",
+      "archivePath": "final-qualification/CI-path-coverage.log.gz",
+      "originalBytes": 155,
+      "originalSHA256": "51d37f116c762d3c80e3ee80ea557614aeb0257fe1a61a230295a49d09ef2d54",
+      "gzipBytes": 150,
+      "gzipSHA256": "5167b0baba8c98876f6edda593e5f4430eaeb5310376b0ed29cecfed96c56c32"
+    },
+    {
+      "originalPath": "/home/louistrue/.t3/artifacts/7180-08a-unfinished-failure-preflight-20261008/final-qualification/MPL.log",
+      "archivePath": "final-qualification/MPL.log.gz",
+      "originalBytes": 171,
+      "originalSHA256": "20140b823e042f728bf346f4e8050572c4989fd8edb2e1e5459136e39eb2df57",
+      "gzipBytes": 156,
+      "gzipSHA256": "aa9c3017da5500c57b425bba094575f564ce06febea08d28d500e5b8457f65cc"
+    },
+    {
+      "originalPath": "/home/louistrue/.t3/artifacts/7180-08a-unfinished-failure-preflight-20261008/final-qualification/diff.log",
+      "archivePath": "final-qualification/diff.log.gz",
+      "originalBytes": 0,
+      "originalSHA256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "gzipBytes": 20,
+      "gzipSHA256": "9ceffb7310338057cfe71a4ae1e2c98d2c485d81cdef906532a801f457a38d64"
+    },
+    {
+      "originalPath": "/home/louistrue/.t3/artifacts/7180-08a-unfinished-failure-preflight-20261008/final-qualification/full-root-typecheck.log",
+      "archivePath": "final-qualification/full-root-typecheck.log.gz",
+      "originalBytes": 49501,
+      "originalSHA256": "a731ab9035db14d6e77de914f59d8e88507198df200fa0776a3de5f4dc9a9c65",
+      "gzipBytes": 7530,
+      "gzipSHA256": "2e24e7ecb5f235e07e47db18a63ea15bff5e7f05271b154e9c431a9e1338dee9"
+    },
+    {
+      "originalPath": "/home/louistrue/.t3/artifacts/7180-08a-unfinished-failure-preflight-20261008/final-qualification/module.log",
+      "archivePath": "final-qualification/module.log.gz",
+      "originalBytes": 13060,
+      "originalSHA256": "44f114e64b50dfd6c481b23c117a1736870f5e3b23139a435348af8d1df3e298",
+      "gzipBytes": 2178,
+      "gzipSHA256": "be9dbd56eca971792818e797f0947a372c7dfca34594cad8a9f258c80924ec1c"
+    },
+    {
+      "originalPath": "/home/louistrue/.t3/artifacts/7180-08a-unfinished-failure-preflight-20261008/final-qualification/prerequisite-controls.log",
+      "archivePath": "final-qualification/prerequisite-controls.log.gz",
+      "originalBytes": 10291,
+      "originalSHA256": "96530e7ca72d34ee7e4127de8ae3ac83e2812118cb2848323463d65af7d47bd9",
+      "gzipBytes": 3348,
+      "gzipSHA256": "c9f4bb126b80539615c998f67bf80e3d516a9f61c4123adace5121b90fd29729"
+    },
+    {
+      "originalPath": "/home/louistrue/.t3/artifacts/7180-08a-unfinished-failure-preflight-20261008/final-qualification/raw.log",
+      "archivePath": "final-qualification/raw.log.gz",
+      "originalBytes": 46755,
+      "originalSHA256": "2a2cd94d089ef447478158c848fe18f438d1eb3e35c3828dcdf31796395ea697",
+      "gzipBytes": 10250,
+      "gzipSHA256": "ffa9d33aef85ea2fc9a4a0d57cbcfcbaa986c574498098f0c4fd0b16e625828e"
+    },
+    {
+      "originalPath": "/home/louistrue/.t3/artifacts/7180-08a-unfinished-failure-preflight-20261008/final-qualification/script-programme.log",
+      "archivePath": "final-qualification/script-programme.log.gz",
+      "originalBytes": 0,
+      "originalSHA256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "gzipBytes": 20,
+      "gzipSHA256": "9ceffb7310338057cfe71a4ae1e2c98d2c485d81cdef906532a801f457a38d64"
+    },
+    {
+      "originalPath": "/home/louistrue/.t3/artifacts/7180-08a-unfinished-failure-preflight-20261008/final-qualification/source-text.log",
+      "archivePath": "final-qualification/source-text.log.gz",
+      "originalBytes": 30991,
+      "originalSHA256": "e3bda36dd6b08291debf85ba9308a1570c36edb2278328dbd49254688614f1b6",
+      "gzipBytes": 3000,
+      "gzipSHA256": "4236a6df1f20a45c89d2f290d94509d65c1d6d0629818eb21bd3daab1cff7fd5"
+    },
+    {
+      "originalPath": "/home/louistrue/.t3/artifacts/7180-08a-unfinished-failure-preflight-20261008/final-qualification/wiring.log",
+      "archivePath": "final-qualification/wiring.log.gz",
+      "originalBytes": 859,
+      "originalSHA256": "0a95b0d39fbd8f2530cdd60f06bd456b489429fbbee4dd09a0be0935076acc2d",
+      "gzipBytes": 394,
+      "gzipSHA256": "cdc420c2708d40c104140c5dc287165120a8d3612be0c7ebc8483ca5773133ed"
+    }
+  ],
+  "files": [
+    {
+      "path": "preflight.json",
+      "bytes": 1022,
+      "sha256": "9ded8cd8c321e13cd86e14aa47b14be99e927c91f66ce7f5a4da3048a067b953"
+    },
+    {
+      "path": "focused-receipt.json",
+      "bytes": 2113,
+      "sha256": "69e768e4a519d6ffc7bf681b36cac2a3095ff5cafe208a9991f4336ba15b5146"
+    },
+    {
+      "path": "focused/preflight.json",
+      "bytes": 1008,
+      "sha256": "56cd00337a2eb080837d7d262cd86bb66828d53482e0a852b6c5313151b1a9da"
+    },
+    {
+      "path": "focused/candidate-full-result.json",
+      "bytes": 334,
+      "sha256": "49910f06f8df6fdbdac05039e513517bd1d474f3c3a726aa338dd27ecb74f940"
+    },
+    {
+      "path": "focused/original-helper-inverse-result.json",
+      "bytes": 459,
+      "sha256": "75077078c8209db8f8881e529dcc71e19a86424ffce9ac21b573c31d2f2a05c3"
+    },
+    {
+      "path": "focused/restored-full-result.json",
+      "bytes": 334,
+      "sha256": "eb22352b62b257ffda1a1bee15f7a25b3ab002dea6511fbf1f6bb64066e7e1d0"
+    },
+    {
+      "path": "focused/restoration.json",
+      "bytes": 195,
+      "sha256": "7c3426008448e58a61b4684f9067006b920515686dcff3c89f5b8e3a54785cfc"
+    },
+    {
+      "path": "qualification/excluded-failed-series-receipt.json",
+      "bytes": 9433,
+      "sha256": "ae09e32188455caaf6f5843c15591773d2bed77d419d1e304ea9b460e6d9c0d4"
+    },
+    {
+      "path": "diagnostic/result.json",
+      "bytes": 689,
+      "sha256": "001a7548ba997d8b3b93c11ef0175b145a210ca312f722aa04f7978c9489961d"
+    },
+    {
+      "path": "diagnostic/restoration.json",
+      "bytes": 109,
+      "sha256": "1f4607701916e7e1f2454f59967ca76480982bae060b15b0cce898a2e740523c"
+    },
+    {
+      "path": "final-qualification/qualification.json",
+      "bytes": 18969,
+      "sha256": "25a7d9cae19b93f0fb43d468ae750e4e462b76d9e16c856a155c78dc1f2bcd37"
+    },
+    {
+      "path": "original-08a-review/independent-review-receipt.json",
+      "bytes": 3023,
+      "sha256": "76c9e6c2c2e1cf355f152b94bb6f6f90601eecd6660f198f298e3ad82f0a6554"
+    },
+    {
+      "path": "original-08a-review/findings.json",
+      "bytes": 9630,
+      "sha256": "1126c5cd849801188bf0973973d70d0028e4b83646260f749b9c53ffc6e9613b"
+    },
+    {
+      "path": "original-08a-review/judged.json",
+      "bytes": 9687,
+      "sha256": "f53767b2d68aa81d2bccb23c065f12196ca67ba54399cd8f0f787ac01a979ada"
+    },
+    {
+      "path": "original-08a-review/raw-review.initial.txt",
+      "bytes": 2674,
+      "sha256": "509a3c31538713989f739a6920d06d6b5aaa0e53bad93fc17686fdbd8f10a39a"
+    },
+    {
+      "path": "original-08a-review/raw-review.txt",
+      "bytes": 2674,
+      "sha256": "509a3c31538713989f739a6920d06d6b5aaa0e53bad93fc17686fdbd8f10a39a"
+    },
+    {
+      "path": "original-08a-review/raw-review.txt.telemetry.jsonl",
+      "bytes": 1484,
+      "sha256": "ebbca002e9d9f2e6dd03dbbba5b5e207f7449344f9387d4ea8f8a380fe7da536"
+    },
+    {
+      "path": "original-08a-review/validate.log",
+      "bytes": 558,
+      "sha256": "483908508374e5d12dc4779715ab5cf45f841c8eafa5ad5b37bd5c2aed84dab6"
+    },
+    {
+      "path": "original-08a-review/validated-findings.json",
+      "bytes": 9497,
+      "sha256": "3d7044a26f584c8ae44d5d8f41d5115e3e22ae40ea8ca0e9c6674e29e2793a73"
+    }
+  ]
+}

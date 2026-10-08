@@ -21,13 +21,12 @@ export interface ClassificationInfo {
     description?: string;
     path?: string[];
     /**
-     * True when the relationship graph proves this entity/type carries a
-     * classification association, but the classification's own attributes
-     * (system, identification, name, path) could not be read because this
-     * store has no source bytes — a server-parsed store (issue #3948).
+     * True when an association is known but its system or attributes cannot
+     * be fully resolved: missing source bytes (#3948), a broken chain, or a
+     * cycle (#5290). Known leaf attributes can remain on a partial entry.
      * Distinguishes "classified but unresolved" from "genuinely unclassified"
      * (an empty result array), which are otherwise byte-identical to every
-     * caller. All other fields are left `undefined` on an unresolved entry.
+     * caller. A graph-only marker has no other fields.
      * With live edits on a source-empty store these markers retain immutable
      * source evidence; edited source membership needs the original bytes and
      * must not be counted as a known current population.

@@ -167,3 +167,19 @@ test('#7093 Anthropic failure is one shared budgeted HTTP attempt without hidden
   assert.equal(useRequestReceipts.getState().inFlight.length, 0);
   assert.equal(useViewerStore.getState().scriptLastResult, null);
 });
+
+
+test('#7093 first response with no text and a length finish is an explicit error with no inert Continue action', async t => {
+  const { sent, release } = serveGated(chatFrames('', 'length'));
+  const native = await mountNative(t); if (!native) return;
+  send(native.ui);
+  await waitFor(() => sent.length === 1 && useRequestReceipts.getState().inFlight.length === 1, 'empty response uses the shared request lifecycle');
+  await act(async () => release());
+  await waitFor(() => useRequestReceipts.getState().receipts.length === 1 && !['sending', 'streaming'].includes(useViewerStore.getState().chatStatus), 'empty response settles');
+  assert.equal(useRequestReceipts.getState().receipts[0].outcome, 'error');
+  assert.equal(useViewerStore.getState().chatError, 'empty-output');
+  assert.equal([...native.ui.querySelectorAll('button')].some(button => button.textContent === 'Continue'), false);
+  assert.equal(sent.length, 1);
+  assert.equal(useViewerStore.getState().scriptEditorContent, '');
+  assert.equal(useViewerStore.getState().scriptLastResult, null);
+});

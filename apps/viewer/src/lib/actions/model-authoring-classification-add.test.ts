@@ -9,7 +9,7 @@ import { MutablePropertyView } from '@ifc-lite/mutations';
 import { useViewerStore } from '@/store';
 import { addClassificationAssociation } from '@/lib/authoring/associations';
 import { editedModelBytes } from '@/lib/export/edited-model-bytes';
-import { BACK_WALL, BACK_WALL_NAME, SAMPLE_MODEL, parseIfc, seedAuthoringSample } from '@/test/authoring-sample-fixture';
+import { BACK_WALL, BACK_WALL_NAME, GROUND_STOREY, SAMPLE_MODEL, parseIfc, seedAuthoringSample } from '@/test/authoring-sample-fixture';
 import { parseModelAuthoringBatch, type ModelAuthoringBatch } from './model-authoring';
 import { previewModelAuthoring } from './model-authoring-preview';
 import { commitModelAuthoring } from './model-authoring-commit';
@@ -199,3 +199,33 @@ for (const ownerHistory of [true, false]) {
     assert.equal(exported.getEntity(relation.expressId)?.attributes[1], 5);
   });
 }
+
+test('#7271 classification resolves a freshly authored native wall identity outside the source index', async () => {
+  const { dataStore, view } = await seedAuthoringSample();
+  const creation = parseModelAuthoringBatch(JSON.stringify({ version: 1, kind: 'model.authoring', title: 'Fresh native wall',
+    units: 'm', frame: 'storey-local', operations: [{ op: 'element.create', ref: 'new-wall', ifcClass: 'IfcWall',
+      storey: { globalId: GROUND_STOREY }, name: 'Current authored wall',
+      params: { start: [10, 10, 0], end: [14, 10, 0], thickness: .2, height: 3 } }] }));
+  const created = commitModelAuthoring(useViewerStore, previewModelAuthoring(useViewerStore.getState(), creation), new Set([0]), 'test');
+  assert.ok(created.ok, created.ok ? '' : created.detail ?? created.reason);
+  const globalId = created.receipt.applied[0].globalId;
+  assert.equal(dataStore.entities.getExpressIdByGlobalId(globalId), -1);
+  const independent = await parseIfc(editedModelBytes(dataStore, view));
+  const target = independent.entities.getExpressIdByGlobalId(globalId);
+  assert.ok(target > 0);
+  assert.equal(independent.entities.getName(target), 'Current authored wall');
+  const add = parseModelAuthoringBatch(JSON.stringify({ ...reviewedAdd(), operations: [{ op: 'classification.add',
+    target: { globalId, modelId: SAMPLE_MODEL, ifcClass: 'IfcWall', name: 'Current authored wall' },
+    Classification: { Name: 'Explicit authored system' }, Reference: { Identification: 'NEW-001' } }] }));
+  const preview = previewModelAuthoring(useViewerStore.getState(), add);
+  assert.equal(preview.rows[0].status, 'ready', preview.rows[0].issue);
+  const result = commitModelAuthoring(useViewerStore, preview, new Set([0]), 'test');
+  assert.ok(result.ok, result.ok ? '' : result.detail ?? result.reason);
+  const exported = await parseIfc(editedModelBytes(dataStore, view));
+  assert.equal(exported.entities.getGlobalId(target), globalId);
+  assert.deepEqual(extractClassificationsOnDemand(exported, target).map(row => row.identification), ['NEW-001']);
+  useViewerStore.getState().undo(SAMPLE_MODEL);
+  const undone = await parseIfc(editedModelBytes(dataStore, view));
+  assert.equal(undone.entities.getGlobalId(target), globalId, 'Undo addition preserves the previously created native wall');
+  assert.deepEqual(extractClassificationsOnDemand(undone, target), []);
+});

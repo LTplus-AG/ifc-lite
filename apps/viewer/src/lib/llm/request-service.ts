@@ -17,11 +17,21 @@ import {
 } from '@ifc-lite/ai';
 import type { StreamRoute } from './byok-guard.js';
 import { modelCapabilities } from './model-capabilities.js';
-import { recordReceipt } from './request-receipts.js';
+import { recordReceipt, recordRequestStart } from './request-receipts.js';
 import { streamChat, type StreamMessage, type StreamOptions } from './stream-client.js';
 import { streamAnthropicChat, streamOpenAiChat } from './stream-direct.js';
 
 export type SendableRoute = Exclude<StreamRoute, { kind: 'missing-key' }>;
+
+/**
+ * Root budget helpers for hosts that pair them with `runModelRequest` (the
+ * Flow AI service). Re-exported here so on-demand modules reach them through
+ * this module rather than splitting the shared budget code into its own chunk.
+ */
+export { createRootBudget, restoreRootBudget } from '@ifc-lite/ai';
+
+/** The hosted LLM proxy every proxy-routed request uses. */
+export const LLM_PROXY_URL: string = import.meta.env.VITE_LLM_PROXY_URL || '/api/chat';
 
 export interface ModelRequest {
   route: SendableRoute;
@@ -65,5 +75,5 @@ export function runModelRequest(request: ModelRequest): Promise<RequestOutcome> 
     signal: request.signal,
     timeoutMs: request.timeoutMs,
     onChunk: request.onChunk,
-  }, { onReceipt: recordReceipt });
+  }, { onStart: recordRequestStart, onReceipt: recordReceipt });
 }

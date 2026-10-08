@@ -236,8 +236,10 @@ describe('IDS report output is unchanged by the information-validation kind (#63
     return fixture;
   }
 
-  it('snapshots an IDS report with the same fields as before, labelled ids', () => {
-    const block = idsReportBlockFromReport(idsFixture(), 'b');
+  it('preserves IDS summaries while adding historical element evidence (#7091)', () => {
+    const { elementEvidence, ...block } = idsReportBlockFromReport(idsFixture(), 'b');
+    assert.equal(elementEvidence?.rows.length, 2);
+    assert.ok(elementEvidence?.rows.every(row => row.GlobalId === null && row.modelName === null));
     assert.deepEqual(block, {
       kind: 'ids-report', id: 'b', sourceKind: 'ids', sourceName: 'Design IDS', generatedAt: '2026-01-15T10:00:00.000Z',
       summary: { checked: 5, passed: 3, failed: 2, passRate: 60 },

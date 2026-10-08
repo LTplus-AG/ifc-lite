@@ -85,7 +85,18 @@ function createDigest(proposal: Omit<FlowCreateProposal, 'digest'>): string {
 
 export function prepareFlowCreateProposal(input: string, evidence: EvidenceSnapshot): FlowCreateProposal {
   if (evidence.source !== 'flow') throw new Error('Flow create proposals need Flow evidence');
-  const doc = buildCreatedFlow(parseFlowCreate(input)), registry = flowRegistry();
+  return prepareCreatedFlow(input, evidence);
+}
+
+/** Reuses native graph validation for a workflow captured from any Assistant source. */
+export function prepareWorkflowFlowCreate(input: string, evidence: EvidenceSnapshot, description: string, name?: string): FlowCreateProposal {
+  return prepareCreatedFlow(input, evidence, description, name);
+}
+
+function prepareCreatedFlow(input: string, evidence: EvidenceSnapshot, description?: string, name?: string): FlowCreateProposal {
+  const parsed = parseFlowCreate(input);
+  const request = name === undefined ? parsed : { ...parsed, name };
+  const doc = buildCreatedFlow(description === undefined ? request : { ...request, description }), registry = flowRegistry();
   const proposal = { evidence, docJson: JSON.stringify(doc), capabilities: doc.capabilities,
     writers: doc.nodes.filter(node => registry.get(node.type)?.writes).map(node => `${node.id} (${node.type})`),
     tracking: trackingImpacts(null, doc),

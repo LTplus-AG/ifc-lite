@@ -13,10 +13,11 @@
  */
 
 import { useViewerStore } from '@/store';
+import { isFlowSource } from '@/lib/assistant/sources';
 import { normalizeClashGroupAnswer, prepareClashGroupPreview } from '@/lib/assistant/clash-group-proposal';
 import { prepareFlowProposal } from '@/lib/assistant/flow-proposal';
 import { prepareReportDraft } from '@/lib/assistant/report-draft';
-import { parseModelChangeBatch } from '@/lib/actions/model-change';
+import { parseModelChangeBatch } from '@ifc-lite/ai/artifacts';
 import { previewCounts, previewModelChanges } from '@/lib/actions/model-change-preview';
 import { parseModelAuthoringBatch } from '@/lib/actions/model-authoring';
 import { authoringCounts, previewModelAuthoring } from '@/lib/actions/model-authoring-preview';
@@ -65,7 +66,7 @@ export function reviewReplay(result: ReplayResult): NativeReview {
   } catch (error) {
     return { kind: 'refused', stage: 'preview', reason: message(error) };
   }
-  if (evidence.source === 'flow') return { kind: 'none', reason: 'Flow discussion answers have no report path' };
+  if (isFlowSource(evidence.source)) return { kind: 'none', reason: 'Flow discussion answers have no report path' };
   try {
     const draft = prepareReportDraft('Evaluation report');
     return { kind: 'report', citations: draft.citations, blocks: draft.document.blocks.length };

@@ -11,7 +11,8 @@
  * grid on first use of a covered CRS, parse with geotiff.js, register via
  * `proj4.nadgrid(key, adapter)`, then call `proj4.defs(...)` with a string
  * that references `+nadgrids={key}`. proj4js resolves the reference and
- * does the datum-shift via the loaded grid — sub-decimeter accuracy.
+ * does the datum shift via the loaded grid. Regional frame → WGS84
+ * remains an approximation; coordinate epochs are not represented here.
  *
  * Without the grid (network blocked, fetch failed, CRS not in our list),
  * proj4js falls back to the `+towgs84` baked into the bundled definition,
@@ -23,6 +24,8 @@
  */
 
 import proj4 from 'proj4';
+import { lookupEpsgByCode } from '@ifc-lite/data';
+import { DEPRECATED_SOURCE_DATUMS, GRIDS, type GridMetadata } from './precision-grid-data.js';
 
 export interface PrecisionGridSpec {
   /** Key proj4 references via `+nadgrids={key}` (typically the filename). */
@@ -31,16 +34,20 @@ export interface PrecisionGridSpec {
   filename: string;
   /** Full proj4 string with `+nadgrids` instead of `+towgs84` */
   proj4: string;
+  /** EPSG datum names compatible with the upstream grid source CRS. */
+  sourceDatums: readonly string[];
   /** Human-readable name for diagnostics */
   region: string;
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
-function gridSpec(filename: string, projection: string, region: string): PrecisionGridSpec {
+function gridSpec(grid: GridMetadata, projection: string, region: string): PrecisionGridSpec {
+  const { filename, sourceDatums } = grid;
   return {
     key: filename,
     filename,
+    sourceDatums,
     proj4: `${projection} +nadgrids=${filename} +units=m +no_defs +type=crs`,
     region,
   };
@@ -50,33 +57,6 @@ function gridSpec(filename: string, projection: string, region: string): Precisi
 function utm(zone: number, south: boolean, ellps: string): string {
   return `+proj=utm +zone=${zone}${south ? ' +south' : ''} +ellps=${ellps}`;
 }
-
-// ── Grid filenames (single source of truth) ────────────────────────────────
-
-const GRIDS = {
-  rdtrans2018: 'nl_nsgi_rdtrans2018.tif',       // Netherlands RD → ETRS89
-  ostn15:      'uk_os_OSTN15_NTv2_OSGBtoETRS.tif', // UK OSGB36 → ETRS89
-  bd72:        'be_ign_bd72lb72_etrs89lb08.tif',   // Belgium BD72 → ETRS89
-  beta2007:    'de_adv_BETA2007.tif',              // Germany DHDN → ETRS89
-  atGisGrid:   'at_bev_AT_GIS_GRID.tif',           // Austria MGI → ETRS89
-  ntfR93:      'fr_ign_ntf_r93.tif',               // France NTF → RGF93
-  chENyx06:    'ch_swisstopo_CHENyx06_ETRS.tif',   // Switzerland CH1903 → ETRS89
-  sjtsk03:     'sk_gku_JTSK03_to_JTSK.tif',        // Slovakia JTSK03 → JTSK
-  sped2etv2:   'es_ign_SPED2ETV2.tif',             // Spain ED50 → ETRS89
-  d73Etrs89:   'pt_dgt_D73_ETRS89_geo.tif',        // Portugal D73 → ETRS89
-  dlxEtrs89:   'pt_dgt_DLx_ETRS89_geo.tif',        // Portugal Lisbon → ETRS89
-  sad69:       'br_ibge_SAD69_003.tif',            // Brazil SAD69 → SIRGAS2000
-  sad96:       'br_ibge_SAD96_003.tif',            // Brazil SAD96 → SIRGAS2000
-  agd66:       'au_icsm_A66_National_13_09_01.tif',// Australia AGD66 → GDA94
-  agd84:       'au_icsm_National_84_02_07_01.tif', // Australia AGD84 → GDA94
-  gda94To2020: 'au_icsm_GDA94_GDA2020_conformal.tif', // Australia GDA94 → GDA2020
-  nzgd49:      'nz_linz_nzgd2kgrid0005.tif',       // NZ NZGD49 → NZGD2000
-  ntv2Can:     'ca_nrc_ntv2_0.tif',                // Canada NAD27 → NAD83
-  nadcon5Conus:'us_noaa_nadcon5_nad27_nad83_1986_conus.tif', // US NAD27 → NAD83 (continental)
-  nadcon5Alaska:'us_noaa_nadcon5_nad27_nad83_1986_alaska.tif', // US NAD27 → NAD83 (Alaska)
-  nadcon5Hawaii:'us_noaa_nadcon5_nad83_1986_nad83_1993_hawaii.tif', // US Hawaii datum chain
-  nadcon5Prvi: 'us_noaa_nadcon5_nad83_1986_nad83_1993_prvi.tif', // Puerto Rico / USVI
-} as const;
 
 // ── Coverage table ─────────────────────────────────────────────────────────
 
@@ -91,8 +71,9 @@ const GRIDS = {
  *
  * NOT included: ETRS89/WGS84/NAD83-aligned systems (Swiss LV95 2056, French
  * Lambert-93 2154, all WGS84 UTM zones, Web Mercator 3857, ETRS89 UTM
- * zones, etc.) — their bundled +towgs84 already gives sub-decimeter
- * accuracy and a grid would be redundant.
+ * zones, etc.) — these do not require a legacy-datum grid. ETRS89, NAD83 and other
+ * regional reference frames are approximated as WGS84 here; this is not an
+ * epoch-aware, sub-decimeter transformation to modern WGS84 realizations.
  */
 export const PRECISION_GRIDS: Record<string, PrecisionGridSpec> = {
   // ────────────────────────────────────────────────────────────────────────
@@ -177,30 +158,23 @@ export const PRECISION_GRIDS: Record<string, PrecisionGridSpec> = {
   // there is no single-grid S-JTSK → ETRS89 path proj4js can consume. We therefore
   // rely on the bundled `+towgs84` (~1 m), which is correct for these CRSs. (#1357)
 
-  // Slovakia — S-JTSK03 → S-JTSK (ÚGKK). Same projection as Czech.
-  '5513': gridSpec(
-    GRIDS.sjtsk03,
-    '+proj=krovak +axis=swu +lat_0=49.5 +lon_0=24.8333333333333 '
-    + '+alpha=30.2881397527778 +k=0.9999 +x_0=0 +y_0=0 +ellps=bessel',
-    'Slovakia (S-JTSK Krovak SW)',
-  ),
+  // S-JTSK (including EPSG:5513) is also excluded: JTSK03_to_JTSK
+  // starts in S-JTSK [JTSK03] and ends in S-JTSK, not ETRS89/WGS84.
+  // A horizontal raster alone is insufficient to make it a WGS84 shift. (#7052)
 
   // Spain — ED50 / UTM zones via SPED2ETV2 (IGN). +towgs84 off ~1–2 m.
   '23029': gridSpec(GRIDS.sped2etv2, utm(29, false, 'intl'), 'Spain (ED50 / UTM 29N)'),
   '23030': gridSpec(GRIDS.sped2etv2, utm(30, false, 'intl'), 'Spain (ED50 / UTM 30N)'),
   '23031': gridSpec(GRIDS.sped2etv2, utm(31, false, 'intl'), 'Spain (ED50 / UTM 31N)'),
 
-  // Portugal — Datum 73 / TM06 via DGT grid. +towgs84 off ~1–3 m.
+  // Portugal — Datum 73 / Modified Portuguese Grid via DGT grid. +towgs84 off ~1–3 m.
   '27493': gridSpec(
     GRIDS.d73Etrs89,
-    '+proj=tmerc +lat_0=39.6677777777778 +lon_0=-8.13190611111111 +k=1 +x_0=180.598 +y_0=-86.99 +ellps=intl',
+    '+proj=tmerc +lat_0=39.6666666666667 +lon_0=-8.13190611111111 +k=1 +x_0=180.598 +y_0=-86.99 +ellps=intl',
     'Portugal (Datum 73 / Modified Portuguese Grid)',
   ),
-  '3763': gridSpec(
-    GRIDS.dlxEtrs89,
-    '+proj=tmerc +lat_0=39.6682583333333 +lon_0=-8.13310833333333 +k=1 +x_0=0 +y_0=0 +ellps=GRS80',
-    'Portugal (ETRS89 / Portugal TM06)',
-  ),
+  // EPSG:3763 already uses ETRS89. The Lisbon → ETRS89 grid applies
+  // to Lisbon-based CRSs only and must never shift TM06 coordinates. (#7052)
 
   // ────────────────────────────────────────────────────────────────────────
   // NORTH AMERICA
@@ -208,6 +182,8 @@ export const PRECISION_GRIDS: Record<string, PrecisionGridSpec> = {
 
   // USA — NAD27 / UTM zones 10N–19N via NADCON5 CONUS (NOAA).
   // +towgs84 typically off by 5–50 m depending on region.
+  // This grid ends in NAD83 (1986), approximated as WGS84 like the other
+  // regional target frames above; it is not an epoch-aware NAD83 → WGS84 chain.
   '26710': gridSpec(GRIDS.nadcon5Conus, '+proj=utm +zone=10 +ellps=clrk66', 'USA (NAD27 / UTM 10N)'),
   '26711': gridSpec(GRIDS.nadcon5Conus, '+proj=utm +zone=11 +ellps=clrk66', 'USA (NAD27 / UTM 11N)'),
   '26712': gridSpec(GRIDS.nadcon5Conus, '+proj=utm +zone=12 +ellps=clrk66', 'USA (NAD27 / UTM 12N)'),
@@ -228,24 +204,10 @@ export const PRECISION_GRIDS: Record<string, PrecisionGridSpec> = {
   '26708': gridSpec(GRIDS.nadcon5Alaska, '+proj=utm +zone=8 +ellps=clrk66', 'USA (NAD27 / UTM 8N, Alaska)'),
   '26709': gridSpec(GRIDS.nadcon5Alaska, '+proj=utm +zone=9 +ellps=clrk66', 'USA (NAD27 / UTM 9N, Alaska)'),
 
-  // Canada NAD27 / UTM zones via NTv2_0 (NRC). +towgs84 off ~1–5 m.
-  '2007': gridSpec(GRIDS.ntv2Can, '+proj=utm +zone=7 +ellps=clrk66', 'Canada (NAD27 / UTM 7N, CSRS-style)'),
-  '32007': gridSpec(GRIDS.ntv2Can, '+proj=utm +zone=7 +ellps=clrk66', 'Canada (NAD27 / UTM 7N)'),
-  '32008': gridSpec(GRIDS.ntv2Can, '+proj=utm +zone=8 +ellps=clrk66', 'Canada (NAD27 / UTM 8N)'),
-  '32009': gridSpec(GRIDS.ntv2Can, '+proj=utm +zone=9 +ellps=clrk66', 'Canada (NAD27 / UTM 9N)'),
-  '32010': gridSpec(GRIDS.ntv2Can, '+proj=utm +zone=10 +ellps=clrk66', 'Canada (NAD27 / UTM 10N)'),
-  '32011': gridSpec(GRIDS.ntv2Can, '+proj=utm +zone=11 +ellps=clrk66', 'Canada (NAD27 / UTM 11N)'),
-  '32012': gridSpec(GRIDS.ntv2Can, '+proj=utm +zone=12 +ellps=clrk66', 'Canada (NAD27 / UTM 12N)'),
-  '32013': gridSpec(GRIDS.ntv2Can, '+proj=utm +zone=13 +ellps=clrk66', 'Canada (NAD27 / UTM 13N)'),
-  '32014': gridSpec(GRIDS.ntv2Can, '+proj=utm +zone=14 +ellps=clrk66', 'Canada (NAD27 / UTM 14N)'),
-  '32015': gridSpec(GRIDS.ntv2Can, '+proj=utm +zone=15 +ellps=clrk66', 'Canada (NAD27 / UTM 15N)'),
-  '32016': gridSpec(GRIDS.ntv2Can, '+proj=utm +zone=16 +ellps=clrk66', 'Canada (NAD27 / UTM 16N)'),
-  '32017': gridSpec(GRIDS.ntv2Can, '+proj=utm +zone=17 +ellps=clrk66', 'Canada (NAD27 / UTM 17N)'),
-  '32018': gridSpec(GRIDS.ntv2Can, '+proj=utm +zone=18 +ellps=clrk66', 'Canada (NAD27 / UTM 18N)'),
-  '32019': gridSpec(GRIDS.ntv2Can, '+proj=utm +zone=19 +ellps=clrk66', 'Canada (NAD27 / UTM 19N)'),
-  '32020': gridSpec(GRIDS.ntv2Can, '+proj=utm +zone=20 +ellps=clrk66', 'Canada (NAD27 / UTM 20N)'),
-  '32021': gridSpec(GRIDS.ntv2Can, '+proj=utm +zone=21 +ellps=clrk66', 'Canada (NAD27 / UTM 21N)'),
-  '32022': gridSpec(GRIDS.ntv2Can, '+proj=utm +zone=22 +ellps=clrk66', 'Canada (NAD27 / UTM 22N)'),
+  // Do not assign Canada's NTv2 grid to guessed EPSG codes: 2007 is
+  // St. Vincent 45, and 32007–32022 are US NAD27 State Plane CRSs (US feet),
+  // not Canadian UTM zones. Their bundled projections remain authoritative.
+  // NAD27 UTM zone codes are 267xx, shared across national borders. (#7052)
 
   // ────────────────────────────────────────────────────────────────────────
   // OCEANIA
@@ -333,6 +295,7 @@ function isTestEnvironment(): boolean {
 const loadedGrids = new Set<string>();
 const inflightGrids = new Map<string, Promise<boolean>>();
 const failedGrids = new Set<string>();
+const incompatibleCodes = new Set<string>();
 
 /**
  * Load a GeoTIFF datum-shift grid into proj4js. Idempotent: subsequent
@@ -437,6 +400,18 @@ export async function loadPrecisionGrid(spec: PrecisionGridSpec): Promise<boolea
 export async function resolvePrecisionDef(epsgCode: string): Promise<string | null> {
   const spec = PRECISION_GRIDS[epsgCode];
   if (!spec) return null;
+  const entry = await lookupEpsgByCode(epsgCode);
+  const sourceDatum = entry?.datum ?? DEPRECATED_SOURCE_DATUMS[epsgCode];
+  if (!sourceDatum || !spec.sourceDatums.includes(sourceDatum)) {
+    if (!incompatibleCodes.has(epsgCode)) {
+      console.warn(
+        `[precision-grid] EPSG:${epsgCode}: source datum ${sourceDatum ?? '(unknown)'} is incompatible with ${spec.filename}; keeping bundled definition`,
+      );
+    }
+    incompatibleCodes.add(epsgCode);
+    return null;
+  }
+  incompatibleCodes.delete(epsgCode);
   const loaded = await loadPrecisionGrid(spec);
   if (!loaded) return null;
   return spec.proj4;
@@ -449,7 +424,7 @@ export async function resolvePrecisionDef(epsgCode: string): Promise<string | nu
  */
 export function hasLoadedPrecisionGrid(epsgCode: string): boolean {
   const spec = PRECISION_GRIDS[epsgCode];
-  return spec ? loadedGrids.has(spec.key) : false;
+  return spec ? !incompatibleCodes.has(epsgCode) && loadedGrids.has(spec.key) : false;
 }
 
 /**
@@ -458,5 +433,5 @@ export function hasLoadedPrecisionGrid(epsgCode: string): boolean {
  */
 export function hasFailedPrecisionGrid(epsgCode: string): boolean {
   const spec = PRECISION_GRIDS[epsgCode];
-  return spec ? failedGrids.has(spec.key) : false;
+  return spec ? incompatibleCodes.has(epsgCode) || failedGrids.has(spec.key) : false;
 }

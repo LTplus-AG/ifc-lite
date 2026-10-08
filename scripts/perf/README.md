@@ -40,6 +40,23 @@ fan-out, memory bandwidth, GPU); a change in those still needs an end-to-end
 A/B (`ab.sh`, the browser rigs below), and a green ratchet is no evidence for it.
 
 
+## Workbench preset controls load on demand (#6926)
+
+The U03 preset controls initially exceeded the eager bundle allowance when
+combined with the U02 activity tray, although each branch fit separately.
+Loading the sidebar customizer only when opened reduced eager startup code,
+but did not by itself clear the combined allowance. The subsequent shared
+editor-state chunk separation on main restored headroom for the complete
+campaign snapshot without another ceiling increase or tolerance change.
+The real activity-bar regression opens the customizer, previews and applies
+the coordinator preset, then restores the original layout and keyboard focus.
+Reset also retires the saved preset through a small startup gateway instead
+of importing the optional preview and placement controls. The mounted
+regression reopens customization after Reset and confirms Restore is gone.
+This is a bundle-size verdict; it makes no model-load speed claim.
+Lesson: measure queued viewer features together, and keep optional editor
+surfaces behind their actual entry point.
+
 ## Structural counters and long frames per load (#6957)
 
 Under `?perfTrace=1` and in every benchmark run, each load's span tree also
@@ -70,6 +87,23 @@ the benchmark and users run. `node scripts/perf/hook-census.mjs` counts hook
 call sites and `useViewerStore` subscriptions on the viewport, properties,
 hierarchy and streaming paths statically (minified component names make a
 runtime fiber census unattributable, and mounted counts move with UI state).
+
+## Worker warm-up candidate held (#7036)
+
+The resumed [cold-load captures](evidence/worker-warmup-7036/README.md) show
+earlier worker readiness but mixed first-visible and total-load results. No
+end-to-end speedup is accepted. The candidate creates fresh workers beside the
+file read and still terminates them after each load; it does not satisfy the
+original persistent-reuse requirement. Geometry counts match, but an ordered
+geometry hash was not collected. Repeat/federation measurements during takeover
+overlapped validation builds and need an idle-machine repeat. Lesson: moving
+worker initialization earlier is an opportunity screen, not a performance
+verdict. Keep the measurement and memory constraints before changing the rollout.
+
+The experiment defaults off on both the viewer and worker paths. Repeated cache
+hits cannot extend an unused worker's expiry, and memory-pressure retries drain
+the pool without refilling it. These are lifecycle corrections, not an accepted
+performance win; the end-to-end verdict above remains held.
 
 ## Single-model appends cost O(new meshes) in the viewport (#7021)
 
@@ -1504,6 +1538,13 @@ Preserve failed loads alongside successful samples. Listen for renderer crashes
 as well as JavaScript errors, and stop memory sampling on every exit path.
 
 ### Shipped wins
+- **Review startup bundle (#7015):** load the Script panel on demand and keep
+  CodeMirror's shared state module in its own chunk. Assistant text-edit planning
+  still uses `ChangeSet`, while the editor UI stays outside the eager import
+  closure. The production bundle clears the unchanged size ceilings; this is a
+  byte-size verdict, not a measured load-time improvement. **Lesson:** inspect
+  the complete HTML preload closure, and isolate shared state before assuming a
+  dynamic panel import makes its dependencies lazy.
 - **Firefox spatial-publication stall (#3983):** Chrome-only cold-load timing
   missed an engine-dependent entity-cache eviction cost. Georeference discovery
   runs through the property-set index during React rendering. Restarting a Map
@@ -3565,3 +3606,17 @@ prototype removing unused nested value trees on this evidence or revisit the
 rejected general constructor. A different worker capture must first establish
 substantial unused materialization on the critical path. This native opportunity
 screen is not a browser speedup or a measurement of indirect style decoding.
+
+## Activity tray startup budget (#6952, U02)
+
+The maintainer approved the measured eager-JavaScript ceiling for U02 while
+keeping its existing tolerance. Job recording, the running badge and completion
+announcements must work before the detail tray opens; detail rows remain lazy.
+Deferring popup initialization and journal restoration increased eager bytes in
+the production bundle and was discarded. The verdict is a deliberately approved
+startup cost, not a speed improvement. Measure the complete eager chunk graph:
+extracting a module can increase shared imports even when its entry chunk shrinks.
+
+### Viewer preferences editor imports (P20, #6924)
+
+A hook used by the Assistant must live separately from the optional preferences editor: importing the hook from the editor makes its dynamic import ineffective. Keep the live project/model hook in a small module and load the form through its native lazy boundary. The combined production measurement showed no meaningful size improvement from the hook split. The remaining content-library registration and recipe run state still participate in startup; keep the split for the lazy editor boundary, without claiming a bundle reduction.

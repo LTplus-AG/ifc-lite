@@ -39,10 +39,16 @@ export function GeoreferenceTab(props: GeoreferenceTabProps) {
         <span className="text-2xs uppercase tracking-wider text-muted-foreground">
           {c.editMode ? t('placementPanel.georeference.editToggleOn') : t('placementPanel.georeference.editToggleOff')}
         </span>
-        <Switch checked={c.editMode} onCheckedChange={(checked) => (checked ? c.beginEditing() : c.handleClose())} aria-label={t('cesiumGeo.placement.headerTitle')} />
+        <Switch disabled={!c.canEdit} checked={c.editMode} onCheckedChange={(checked) => (checked ? c.beginEditing() : c.handleClose())} aria-label={t('cesiumGeo.placement.headerTitle')} />
       </div>
 
-      {!c.editMode && (
+      {!c.canEdit && (
+        <output className="text-2xs leading-snug text-muted-foreground">
+          {t('cesiumGeo.placement.requiresProjectedCrs')}
+        </output>
+      )}
+
+      {c.canEdit && !c.editMode && (
         <p className="text-2xs leading-snug text-muted-foreground">{t('placementPanel.georeference.startHint')}</p>
       )}
 

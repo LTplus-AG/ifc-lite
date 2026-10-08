@@ -23,9 +23,10 @@ function freeModelId(registry: ModelRegistry, base: string): string {
   return id;
 }
 
-export function createMcpFlowHost(initial: LoadedModel, registry: ModelRegistry, networkGrants: readonly Capability[]): FlowHost {
+export function createMcpFlowHost(initial: LoadedModel, registry: ModelRegistry, networkGrants: readonly Capability[], services: Pick<FlowHost, 'ai' | 'grants'> = {}): FlowHost {
   let active = initial;
   return {
+    ...services,
     get bim() { return active.bim; },
     networkGrants,
     get defaultModelId() { return active.id; },

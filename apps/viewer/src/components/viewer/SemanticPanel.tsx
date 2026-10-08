@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { useEffect, useMemo, useState } from 'react';
+import { useSemanticRecordFocus } from '@/lib/panels/evidence-focus';
 import { useTranslation } from '@/i18n';
 import { useViewerStore } from '@/store';
 import { mutationPermission, mutationDenialKey } from '@/store/mutation-permission';
@@ -13,6 +14,8 @@ import { SemanticIdentityControls } from './SemanticIdentityControls';
 import { SemanticProfileControls } from './SemanticProfileControls';
 import { SemanticResults } from './SemanticResults';
 import { SemanticValidationSummary } from './SemanticValidationSummary';
+import { SemanticAssistControls } from './SemanticAssistControls';
+import { recordEndpointGrant, revokeEndpointGrant } from '@/lib/semantic/assist/endpoint-grant';
 import { previewProjection, applyProjection, PROJECTION_MAPPINGS, type ProjectionPlan, type ConflictPolicy } from '@/lib/semantic/projection';
 import type { ValidationExecutor } from '@/lib/semantic/useSemanticPilot';
 import { PILOT_QUERY, pilotDocument } from '@/lib/semantic/demo';
@@ -22,10 +25,12 @@ import { liveEntities, selectResources } from '@/lib/semantic/viewer';
 import type { SemanticResource } from '@/lib/semantic/types';
 import { useSemanticSession } from '@/lib/semantic/session';
 import { provideSemanticEvidence } from '@/lib/assistant/adapters/semantic-access';
+import '@/i18n/catalogues/semantic-assist.register';
 import { AssistantAction } from './assistant/AssistantAction';
+import { assistProvider } from '@/lib/semantic/assist/evidence';
 
 // The eager evidence register reads this session only once this lazy chunk has loaded (#6833).
-provideSemanticEvidence({ session: useSemanticSession, liveEntities: () => liveEntities(),
+provideSemanticEvidence({ session: useSemanticSession, liveEntities: () => liveEntities(), projectionMappings: () => PROJECTION_MAPPINGS, assist: assistProvider,
   resolve: (resource, entities, revisions) => resolveResource(resource, entities, revisions) });
 
 const control = 'w-full rounded border border-border bg-background p-2 text-sm';
@@ -46,6 +51,7 @@ export function SemanticPanel({ validationExecutor }: { validationExecutor?: Val
   const [onlySelected, setOnlySelected] = useState(false);
   const [recordPage, setRecordPage] = useState(0);
   const [active, setActive] = useState('');
+  const requested = useSemanticRecordFocus(s => s.record);
   const [message, setMessage] = useState('');
   const [bearer, setBearer] = useState('');
   const [relayProvider, setRelayProvider] = useState('');
@@ -58,7 +64,13 @@ export function SemanticPanel({ validationExecutor }: { validationExecutor?: Val
     loopbackHttpOrigin: loopbackGrant === eligibleLoopbackOrigin ? loopbackGrant : undefined };
   // Authority is ephemeral and exact to this source. Abort before replacing it
   // so a response from a revoked endpoint cannot publish into the workspace.
-  function revokeSource() { pilot.cancel(); setLoopbackGrant(undefined); }
+  function revokeSource() { pilot.cancel(); setLoopbackGrant(undefined); revokeEndpointGrant(); }
+  // The assistant may reuse only the authority exercised here, for as long as this panel holds it.
+  function exercise() {
+    if (['json', 'sparql', 'construct'].includes(mode) && endpoint.trim() && host.trim()) recordEndpointGrant({ endpoint, host, loopbackHttpOrigin: sourceInput.loopbackHttpOrigin,
+      relayProvider: sourceInput.relayProvider, bearer: sourceInput.bearer });
+  }
+  useEffect(() => () => revokeEndpointGrant(), []);
   useEffect(() => { setPlan(undefined); setRecordPage(0); }, [pilot.document, pilot.profile, pilot.revisions, pilot.strategy, pilot.uriConfig, scope]);
   const models = useViewerStore(s => s.models);
   const mutationVersion = useViewerStore(s => s.mutationVersion);
@@ -67,6 +79,12 @@ export function SemanticPanel({ validationExecutor }: { validationExecutor?: Val
   const editDenial = useViewerStore(s => { const permission = mutationPermission(s); return permission.allowed ? null : permission.reason; });
   const entities = useMemo(() => liveEntities(), [models, mutationVersion]);
   const resources = pilot.document?.resources ?? [];
+  useEffect(() => {
+    const index = pilot.document?.resources.findIndex(resource => resource.id === requested?.resourceId) ?? -1;
+    if (index >= 0 && requested) {
+      setOnlySelected(false); setActive(requested.resourceId); setRecordPage(Math.floor(index / 50));
+    }
+  }, [requested, pilot.document]);
   const resolution = (resource: SemanticResource) => resolveResource(resource, entities, pilot.revisions, scope || undefined);
   const selection = createSelectionAdapter(useViewerStore).get();
   // Subscribe to both numeric selection channels used by viewport and hierarchy.
@@ -89,8 +107,8 @@ export function SemanticPanel({ validationExecutor }: { validationExecutor?: Val
       <AssistantAction />
     </div>
     <div className="flex flex-wrap gap-2">
-      <button className={button} disabled={pilot.busy} onClick={() => void pilot.demo(true)}>{t('semantic.demo')}</button>
-      <button className={button} disabled={pilot.busy} onClick={() => void pilot.demo(false)}>{t('semantic.recordsOnly')}</button>
+      <button className={button} disabled={pilot.busy} onClick={() => { revokeSource(); void pilot.demo(true); }}>{t('semantic.demo')}</button>
+      <button className={button} disabled={pilot.busy} onClick={() => { revokeSource(); void pilot.demo(false); }}>{t('semantic.recordsOnly')}</button>
     </div>
     <label className="block text-sm">{t('semantic.mode')}<select className={control} value={mode} onChange={e => { revokeSource(); setMode(e.target.value); }}>
       {(['local', 'turtle', 'nquads', 'jsonld', 'json', 'sparql', 'construct'] as const).map(value => <option key={value} value={value}>{t(`semantic.${value}`)}</option>)}
@@ -99,21 +117,22 @@ export function SemanticPanel({ validationExecutor }: { validationExecutor?: Val
       : <><label className="block text-sm">{t('semantic.endpoint')}<input className={control} type="url" value={endpoint} onChange={e => { revokeSource(); setEndpoint(e.target.value); }} /></label>
         <label className="block text-sm">{t('semantic.host')}<input className={control} value={host} onChange={e => { revokeSource(); setHost(e.target.value); }} /></label>
         {eligibleLoopbackOrigin && <><label className="flex gap-2 text-sm"><input type="checkbox" checked={loopbackGrant === eligibleLoopbackOrigin}
-          onChange={e => { pilot.cancel(); setLoopbackGrant(e.target.checked ? eligibleLoopbackOrigin : undefined); }} />{t('semantic.loopbackGrant', { origin: eligibleLoopbackOrigin })}</label>
+          onChange={e => { pilot.cancel(); revokeEndpointGrant(); setLoopbackGrant(e.target.checked ? eligibleLoopbackOrigin : undefined); }} />{t('semantic.loopbackGrant', { origin: eligibleLoopbackOrigin })}</label>
           <p className="text-sm text-muted-foreground">{t('semantic.loopbackHelp')}</p></>}
       </>}
     {(mode === 'sparql' || mode === 'construct') && <><label className="block text-sm">{t('semantic.query')}<textarea className={control} rows={7} value={query} onChange={e => setQuery(e.target.value)} /></label>
       <details><summary>{t('semantic.mapping')}</summary>{Object.entries(mapping).map(([key, value]) => <label key={key} className="block text-sm">{key}
         <input className={control} value={value} onChange={e => setMapping({ ...mapping, [key]: e.target.value })} /></label>)}</details></>}
-    <div className="flex gap-2"><button className={button} disabled={pilot.busy} onClick={() => void pilot.load(sourceInput)}>{t('semantic.run')}</button>
+    <div className="flex gap-2"><button className={button} disabled={pilot.busy} onClick={() => { void pilot.load(sourceInput, exercise); }}>{t('semantic.run')}</button>
       {pilot.busy && <button className={button} onClick={pilot.cancel}>{t('semantic.cancel')}</button>}</div>
     {['json', 'sparql', 'construct'].includes(mode) && <details><summary>{t('semantic.authentication')}</summary>
-      <label className="block text-sm">{t('semantic.bearer')}<input type="password" autoComplete="off" className={control} value={bearer} onChange={e => setBearer(e.target.value)} /></label>
+      <label className="block text-sm">{t('semantic.bearer')}<input type="password" autoComplete="off" className={control} value={bearer} onChange={e => { pilot.cancel(); revokeEndpointGrant(); setBearer(e.target.value); }} /></label>
       <label className="block text-sm">{t('semantic.relay')}<input className={control} value={relayProvider} onChange={e => { revokeSource(); setRelayProvider(e.target.value); }} /></label>
     </details>}
-    {['json', 'sparql', 'construct'].includes(mode) && <button className={button} disabled={pilot.busy || !host || !endpoint} onClick={() => void pilot.related(sourceInput)}>{t('semantic.querySelected')}</button>}
+    {['json', 'sparql', 'construct'].includes(mode) && <button className={button} disabled={pilot.busy || !host || !endpoint} onClick={() => { void pilot.related(sourceInput, exercise); }}>{t('semantic.querySelected')}</button>}
     <SemanticIdentityControls uriConfig={pilot.uriConfig} onUriConfig={pilot.setUriConfig} strategy={pilot.strategy} onStrategy={pilot.setStrategy} links={pilot.links} onLinks={pilot.setLinks} profile={pilot.profile} identityFields={pilot.identityFields} onIdentityFields={pilot.setIdentityFields} onError={pilot.setError} />
     <SemanticProfileControls profile={pilot.profile} onProfile={pilot.setProfile} onError={pilot.setError} />
+    <SemanticAssistControls onError={pilot.setError} />
     <details><summary>{t('semantic.workspace')}</summary>
       <button className={button} onClick={pilot.saveWorkspace}>{t('semantic.saveWorkspace')}</button>
       <button className={button} onClick={() => { revokeSource(); setBearer(''); setHost(''); pilot.restoreWorkspace(); }}>{t('semantic.restoreWorkspace')}</button>

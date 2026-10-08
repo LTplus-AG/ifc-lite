@@ -44,6 +44,7 @@ import { formatLocaleNumber } from '@/i18n/intlFormat';
 import { formatExtensionDate } from './localized-date';
 import { localizedFlavorName } from './localized-flavor-metadata';
 import { useActiveFlavor } from './use-active-flavor';
+import { UnavailablePlacements } from './UnavailablePlacements';
 interface ExtensionsPanelProps {
   onClose?: () => void;
 }
@@ -287,10 +288,7 @@ export function ExtensionsPanel({ onClose }: ExtensionsPanelProps) {
         className={`flex-1 min-h-0 overflow-y-auto overflow-x-hidden transition-colors ${
           dragOver ? 'bg-primary/5' : ''
         }`}
-        onDragOver={(e) => {
-          e.preventDefault();
-          setDragOver(true);
-        }}
+        onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
         onDragLeave={() => setDragOver(false)}
         onDrop={(e) => {
           e.preventDefault();
@@ -298,6 +296,7 @@ export function ExtensionsPanel({ onClose }: ExtensionsPanelProps) {
           void handleFiles(e.dataTransfer.files);
         }}
       >
+        <UnavailablePlacements />
         {installed.length === 0 ? (
           <div className="flex flex-col items-center gap-3 px-6 py-8">
             <div className="flex flex-col items-center gap-2 text-center">

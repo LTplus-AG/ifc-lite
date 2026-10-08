@@ -16,19 +16,29 @@ import { AssistantPanel } from './AssistantPanel';
 import { UNCONFIGURED_MODEL_ID } from '@/lib/llm/models';
 import { useAssistant, cancelAssistant, replaceEvidence } from '@/lib/assistant/conversation';
 import { captureEvidence } from '@/lib/assistant/evidence';
+import { setGenerationLanguagePreference, useGenerationLanguagePreference } from '@/lib/assistant/language';
+import { setAssistantDraft } from '@/lib/assistant/composer-draft';
+import { useAssistantPlacement } from '@/lib/assistant/placement';
 import { summarizeClashes, type Clash } from '@ifc-lite/clash';
 
 const initial = useViewerStore.getState();
+const initialGenerationLanguage = useGenerationLanguagePreference.getState().language;
+const initialPlacement = useAssistantPlacement.getState();
 afterEach(() => {
-  cleanup(); cancelAssistant(); setValidationSourceChoice(null); useViewerStore.setState(initial, true);
+  setGenerationLanguagePreference(initialGenerationLanguage);
+  cleanup(); setAssistantDraft(''); cancelAssistant(); setValidationSourceChoice(null); useViewerStore.setState(initial, true);
+  useAssistantPlacement.setState(initialPlacement, true);
   useAssistant.setState({ snapshot: null, archived: null, messages: [], error: null, status: 'idle' });
 });
 
 // #6813: real button wiring and rendered composer state, not source-string assertions.
 test('context action opens the registered assistant with frozen evidence and refresh clears the old conversation', () => {
+  useAssistantPlacement.setState({ placement: 'split' });
+  useViewerStore.setState({ sidebarActivePanel: 'clash' });
   const source = render(<AssistantSourceContext panel="clash"><AssistantAction /></AssistantSourceContext>);
   click(source.querySelector('button')!);
-  assert.equal(useViewerStore.getState().sidebarActivePanel, 'assistant');
+  assert.equal(useViewerStore.getState().sidebarActivePanel, 'clash', 'the source remains visible');
+  assert.equal(useViewerStore.getState().sidebarSecondaryPanel, 'assistant');
   const ui = render(<AssistantPanel />);
   assert.match(ui.textContent ?? '', /No native clash result was available at capture/);
   const textarea = ui.querySelector('textarea')!;
@@ -145,4 +155,81 @@ test('citations open the captured row and clash rows offer the native model focu
   assert.ok([...peek.querySelectorAll('button')].some(b => b.textContent === 'Show this clash in the model'), 'live clash rows can be focused');
   act(() => useViewerStore.setState({ mutationVersion: useViewerStore.getState().mutationVersion + 1 }));
   assert.equal([...ui.querySelectorAll('button')].some(b => b.textContent === 'Show this clash in the model'), false, 'stale evidence never drives the scene');
+});
+
+
+test('#6926 an unsent composer draft survives a host remount and stays editable', () => {
+  replaceEvidence(captureEvidence('clash'));
+  const first = render(<AssistantPanel />);
+  type(first.querySelector('textarea')!, 'Explain these collisions before publication');
+  cleanup();
+  const second = render(<AssistantPanel />);
+  const prompt = second.querySelector('textarea')!;
+  assert.equal(prompt.value, 'Explain these collisions before publication');
+  assert.equal(prompt.disabled, false);
+  type(prompt, 'Revised request');
+  assert.equal(prompt.value, 'Revised request');
+});
+
+
+test('#6926 answer language changes the conversation without replacing evidence or the editable draft', () => {
+  replaceEvidence(captureEvidence('clash'));
+  const evidence = useAssistant.getState().snapshot;
+  const ui = render(<AssistantPanel />);
+  type(ui.querySelector('textarea')!, 'Keep this question');
+  const language = ui.querySelector<HTMLSelectElement>('#assistant-generation-language');
+  assert.ok(language, 'the answer language control is mounted');
+  act(() => { language.value = 'de'; language.dispatchEvent(new window.Event('change', { bubbles: true })); });
+  assert.equal(useAssistant.getState().language.generation, 'de');
+  assert.equal(useAssistant.getState().snapshot, evidence);
+  assert.equal(ui.querySelector('textarea')!.value, 'Keep this question');
+  act(() => useAssistant.setState({ status: 'streaming' }));
+  assert.equal(language.disabled, true, 'an in-flight request keeps its captured language');
+  assert.equal(ui.querySelector('textarea')!.disabled, false, 'the next question stays editable');
+});
+
+
+test('#7053 language extensions survive portable conversation decoding and malformed tags are refused', async () => {
+  const { decodeConversation } = await import('@/lib/assistant/persistence');
+  const evidence = captureEvidence('clash');
+  const entry = { version: 1, id: 'language-record', name: 'Language record', savedAt: new Date().toISOString(), model: 'recorded-model',
+    evidence: { source: evidence.source, capturedAt: evidence.capturedAt, payload: evidence.payload,
+      totalRows: evidence.totalRows, includedRows: evidence.includedRows, projectionTruncated: evidence.projectionTruncated },
+    messages: [], language: { ui: 'en', generation: 'en' } };
+  for (const generation of ['en-u-ca-gregory', 'en-x-private', 'de-CH', 'zh-Hant-TW']) {
+    assert.equal(decodeConversation(JSON.parse(JSON.stringify({ ...entry, language: { ui: 'en', generation } })))?.language?.generation, generation);
+  }
+  for (const generation of ['en-x', 'en-u-a', 'not_a_language']) {
+    assert.equal(decodeConversation({ ...entry, language: { ui: 'en', generation } }), null);
+  }
+});
+
+test('#7053 a floating Assistant keeps Back to Clash when the native sidebar is collapsed', () => {
+  useViewerStore.setState({ sidebarActivePanel: 'clash', sidebarMode: 'expanded', rightPanelCollapsed: false,
+    isMobile: false, floatingPanels: [], poppedOutIds: [] });
+  useAssistantPlacement.setState({ placement: 'floating', returnTarget: 'clash' });
+  replaceEvidence(captureEvidence('clash'));
+  const ui = render(<AssistantPanel />);
+  act(() => useViewerStore.getState().setSidebarMode('collapsed'));
+  const back = [...ui.querySelectorAll('button')].find(button => /Back to Clash/.test(button.textContent ?? ''));
+  assert.ok(back, 'the hidden dock source remains reachable');
+  click(back);
+  assert.equal(useViewerStore.getState().sidebarMode, 'expanded');
+  assert.equal(useViewerStore.getState().sidebarActivePanel, 'clash');
+});
+
+test('#7053 legacy archived language follows UI locale despite a different new-conversation preference', async () => {
+  const { openConversation } = await import('@/lib/assistant/library');
+  const { decodeConversation } = await import('@/lib/assistant/persistence');
+  setGenerationLanguagePreference('de');
+  const now = new Date().toISOString();
+  const entry = decodeConversation({ version: 1, id: 'legacy-language', name: 'Legacy record', savedAt: now, model: 'recorded-model',
+    evidence: { source: 'clash', capturedAt: now, payload: JSON.stringify({ source: 'clash', capturedAt: now, totalRows: 0, includedRows: 0, projectionTruncated: false, rows: [] }),
+      totalRows: 0, includedRows: 0, projectionTruncated: false }, messages: [] });
+  assert.ok(entry);
+  openConversation(entry);
+  const ui = render(<AssistantPanel />);
+  assert.equal(ui.querySelector<HTMLSelectElement>('#assistant-generation-language')?.value, 'en');
+  assert.deepEqual(useAssistant.getState().language, { ui: 'en', generation: 'en' });
+  assert.equal(useGenerationLanguagePreference.getState().language, 'de', 'the new-conversation preference remains independent');
 });

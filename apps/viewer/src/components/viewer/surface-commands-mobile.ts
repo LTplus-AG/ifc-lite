@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /** Fixed mobile commands without a palette row. File inputs remain DOM-owned. */
-import { Eye, Moon, Plus, Search, Sun } from 'lucide-react';
+import { Activity, Eye, Moon, Plus, Search, Sun } from 'lucide-react';
 import { emitOpenCommandPalette } from '@/lib/tours/events';
 import { executeBasketIsolate } from '@/store/basket/basketCommands';
 import { useViewerStore } from '@/store';
@@ -34,6 +34,16 @@ export const MOBILE_SURFACE_COMMANDS = [
     keywords: 'isolate selected collection', category: 'Visibility', icon: Eye,
     surfaces: mobileAndRibbon, enabled: alwaysEnabled, shortcut: 'basket.isolate',
     run: () => { executeBasketIsolate(); },
+  },
+  {
+    // Phones have no status bar, so the activity tray opens from the overflow menu (#6925).
+    id: 'ui:activity', labelKey: 'activityTray.button',
+    keywords: 'activity jobs running exports publication', category: 'Tools', icon: Activity,
+    surfaces: mobileOnly, enabled: alwaysEnabled,
+    run: ({ openActivity }: SurfaceCommandContext) => {
+      if (!openActivity) throw new Error('Activity requires the mobile tray dialog');
+      openActivity();
+    },
   },
   {
     id: 'view:theme', labelKey: 'shellChrome.mobileToolbar.darkMode',

@@ -40,7 +40,7 @@ export function useSemanticPilot(execute: ValidationExecutor = validateInWorker)
     setDocument(validated.document); setGraph(validated.graph); session.setGraphFormat('application/n-quads'); setResults(bindings); setFindings(validated.findings); setDiagnostic(validated.diagnostic ?? ""); session.setReport(validated.diagnostic ? undefined : validated.report);
     return true;
   }
-  function load(input: SourceInput) {
+  function load(input: SourceInput, onRetrieved?: () => void) {
     return run(async signal => {
       let inputVersion = useSemanticSession.getState().dataVersion;
       const models = useViewerStore.getState().models; const guard = () => inputVersion === useSemanticSession.getState().dataVersion && models === useViewerStore.getState().models && useSemanticSession.getState().profile === profile;
@@ -61,6 +61,7 @@ export function useSemanticPilot(execute: ValidationExecutor = validateInWorker)
       const response = await createSemanticProvider().read({ ...input, kind }, signal);
       if (signal.aborted) return;
       if (!guard()) throw new Error('Loaded models changed during retrieval; load the records again');
+      onRetrieved?.();
       session.setRetrievedAt(response.retrievedAt);
       session.setQueries([{ id: 'current', endpoint: input.endpoint, kind, query: input.query, mapping: input.mapping, profileId: profile.id }]);
       if (response.kind === 'select') {
@@ -85,11 +86,11 @@ export function useSemanticPilot(execute: ValidationExecutor = validateInWorker)
       }
     });
   }
-  function related(input: SourceInput) {
+  function related(input: SourceInput, onRetrieved?: () => void) {
     try {
       const query = queryForSelection({ selection: createSelectionAdapter(useViewerStore).get(), entities: liveEntities(),
         revisions, profile, mapping: session.resultMapping ?? input.mapping, document, results, settings: session });
-      return load({ ...input, mode: 'sparql', query, mapping: { ...DEFAULT_MAPPING, id: 'subject' } });
+      return load({ ...input, mode: 'sparql', query, mapping: { ...DEFAULT_MAPPING, id: 'subject' } }, onRetrieved);
     } catch (failure) { setError(failure instanceof Error ? failure.message : String(failure)); return Promise.resolve(); }
   }
   function demo(withModels: boolean) {

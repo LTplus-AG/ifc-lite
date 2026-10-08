@@ -19,6 +19,17 @@ number formatting, or locale persistence. Locales registered in tests exercise
 fallback and live catalogue replacement; they are not languages shipped by
 the viewer.
 
+## Lazily loaded catalogues
+
+A feature that loads on demand can keep its English strings out of the
+page's first load: list the catalogue's key type and key prefix in
+`lazy-catalogues.ts`, and call `registerEnglish(catalogue)` at the
+top of the feature's own module, before it renders (the Flow review card's
+`flow-review.en.ts` is the first). Keys stay fully typed; a lazy key read
+before its catalogue registered renders as the key instead of throwing, and
+locale files may translate lazy keys like any other (the locale-file test
+registers every lazy catalogue before comparing placeholders).
+
 ## Adding a locale
 
 Add one file, `locales/<tag>.ts`, named by its BCP 47 tag (`de.ts`,

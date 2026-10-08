@@ -10,7 +10,7 @@ import { MutablePropertyView } from '@ifc-lite/mutations';
 import type { ViewerState } from '@/store';
 import { configureMutationView } from '@/utils/configureMutationView';
 import { effectiveListStringAttribute } from '@/lib/lists/effective-provider-entities';
-import type { ChangeScalar, ModelChange } from './model-change';
+import type { ChangeScalar, ModelChange } from '@ifc-lite/ai/artifacts';
 
 /** A value that cannot be compared or written by this layer (lists, references). */
 export const UNSUPPORTED_VALUE = Symbol('unsupported-value');

@@ -13,7 +13,7 @@ import { useCallback, useEffect, useRef } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { type FederatedModel, useViewerStore } from '@/store';
 import { getGeomWorkerOverride, resolveLoadTessellationTier, isMeshOnlyCacheEnabled } from '../store/constants.js';
-import { installModelLoadCanceller } from './modelLoadCanceller.js';
+import { createModelLoadActivity, installModelLoadCanceller } from './modelLoadCanceller.js';
 import type { ModelLoadOptions } from './modelLoadOptions.js';
 import { assertWorkflowOwner } from '@/lib/flow/run-session';
 import { buildModelLoadedGeometryProps, geometryProcessingStallPhase, reportSkippedHungElements, warnGeometryDiagnostics } from './modelLoadedGeometryProps.js';
@@ -45,6 +45,7 @@ import {
   DEFAULT_HUNG_JOB_TIMEOUT_MS,
 } from '@ifc-lite/geometry';
 import { resolveResourceRetryTier } from '../lib/resource-retry.js';
+import { prepareResourceRetry, warmEngineForLoad } from '../lib/engine-warmup.js';
 import { publishLoadTrace } from '../lib/perf/activeLoadTrace.js';
 import { acquireFileBuffer, type AcquiredBuffer } from '../utils/acquireFileBuffer.js';
 import { buildGeometryCacheKey } from './geometryCacheKey.js';
@@ -281,6 +282,7 @@ export function useIfcLoader() {
   ) => {
     assertWorkflowOwner(options?.workflowOwner);
     const draping = drapeIfGeoRaster(file, setLoading); if (draping) return draping; // #5942: imagery, never a model
+    if (!options?.isResourceRetry) warmEngineForLoad(file); // #7036: never refill during a memory-pressure retry
     const { resetViewerState, clearAllModels } = useViewerStore.getState();
     // A primary supersedes every outstanding hook owner via the shared canceller.
     // Federated additions capture this hook's session and remain independent.
@@ -294,13 +296,14 @@ export function useIfcLoader() {
     let abortGeometry: (() => void) | null = null; // set once the geometry pool starts
     let cancelOwnedStream: (() => void) | null = null;
     const metadataAbort = new AbortController();
+    const activity = createModelLoadActivity(file.name);
     let modelCompletion: ReturnType<typeof createModelLoadCompletion> | undefined;
     const releaseCanceller = installModelLoadCanceller(target.kind, () => {
       cancelled = true;
       if (target.kind === 'primary' && loadSessionRef.current === currentSession) loadSessionRef.current += 1;
       metadataAbort.abort();
       abortGeometry?.();
-    }, () => cancelOwnedStream); // #5849: federated cancellation preserves loaded models
+    }, () => cancelOwnedStream, activity); // #5849: federated cancellation preserves loaded models
 
     // Cold-storage residency (issue #1682 phase 3b): any new load invalidates
     // the previous entry-backed provider — a primary load replaces the model,
@@ -424,15 +427,7 @@ export function useIfcLoader() {
         is_retry: options?.isResourceRetry === true,
         resource_retry: retryTier,
       });
-      void import('@/components/ui/toast')
-        .then((m) => {
-          m.toast.info(
-            `"${file.name}" was too detailed for this device — retrying at lower detail…`,
-          );
-        })
-        // Best-effort notice; a failed chunk load must never turn into an
-        // unhandled rejection that masks the retry itself.
-        .catch(() => { /* no toast — the retry still proceeds */ });
+      prepareResourceRetry(file.name);
       setGeometryStreamingActive(false);
       // Awaited, not fire-and-forget: callers await loadFile to know the load
       // finished, so the original promise must stay pending until the
@@ -450,7 +445,7 @@ export function useIfcLoader() {
     // is fixed to THIS call so no call site below can omit or go stale.
     const retryThisLoad = () => { void loadFile(file, target, options); };
     const showLoadError = (message: string, code: string) =>
-      reportLoadError(setError, useViewerStore.getState().setLastLoadRetry, message, code, retryThisLoad);
+      reportLoadError(setError, useViewerStore.getState().setLastLoadRetry, activity.fail(message), code, retryThisLoad);
     const settleResumable = beginResumableLoad(file); // carried across a stale-deployment reload
     try {
       // Reset all viewer state before loading new file — PRIMARY ONLY. A
@@ -645,6 +640,7 @@ export function useIfcLoader() {
             ...buildModelLoadReportPatch(loadDiagnostics, format, patch),
           };
           useViewerStore.getState().addModel(federatedModel);
+          activity.published = true;
           // The registry also holds scans that arrived before any compatible
           // anchor. Once this model is visible to `findReferenceSpatialModel`,
           // recompute all scan matrices atomically against the live anchor.
@@ -694,6 +690,7 @@ export function useIfcLoader() {
           ...(patch?.spatialReference ? { spatialReference: patch.spatialReference } : {}),
           ...buildModelLoadReportPatch(loadDiagnostics, format, patch),
         });
+        activity.published = true;
         modelCompletion?.settleModel();
       };
       // Point clouds stream from Blob; only their head is needed for detection.
@@ -916,6 +913,8 @@ export function useIfcLoader() {
           // the status bar shows "Cancelled" instead of a scary error.
           const isAbort = err instanceof DOMException && err.name === 'AbortError';
           if (isAbort) {
+            activity.cancelled = true;
+            useViewerStore.getState().noteLoadCancelled();
             console.log(
               `[useIfc] pointcloud ingest cancelled (model=${modelId}, handle=${ingest.rendererHandle.id})`,
             );
@@ -2030,6 +2029,7 @@ export function useIfcLoader() {
                   // the same retryable load error used by every other path.
                   showLoadError(formatLoadError(err, file.name, 'geometry_processing'), 'geometry_processing');
                 } else {
+                  activity.error = formatLoadError(err, file.name, 'geometry_processing');
                   updateModel(modelId, {
                     loadState: 'error',
                     loadError: formatLoadError(err, file.name, 'geometry_processing'),
@@ -2066,6 +2066,7 @@ export function useIfcLoader() {
         updateModel(modelId, { loadState: 'error', loadError: geometryError });
         if (surfaceStaleDeployment(err)) noteStaleDeploymentLoadFailure(file); // resumed after the reload
         else showLoadError(geometryError, kind);
+        activity.error = geometryError;
         // Flat properties: posthog-js spreads this object onto the event, so a
         // wrapper key would bury `error_kind` in an unfilterable nested blob.
         posthog.captureException(err, {
@@ -2185,6 +2186,7 @@ export function useIfcLoader() {
       if (await tryResourceRetry(err, kind, 'ifc_model_load')) return;
 
       const friendly = formatLoadError(err, file.name, 'ifc_model_load');
+      activity.error = friendly;
       updateModel(modelId, {
         loadState: 'error',
         loadError: friendly,

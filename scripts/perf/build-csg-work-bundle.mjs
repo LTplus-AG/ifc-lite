@@ -9,21 +9,10 @@ import {
   access, copyFile, cp, lstat, mkdir, readFile, readdir, realpath, stat, writeFile,
 } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
-import { realpathSync } from 'node:fs';
 import { dirname, join, relative, resolve, sep } from 'node:path';
-import { fileURLToPath } from 'node:url';
 
-// This file is copied on its own into the work bundle (see `copyProjectTools` in
-// build-csg-work-bundle.mjs), where scripts/lib does not exist, so the entry-point
-// check is spelled here instead of imported. Same rule as scripts/lib/is-main-entry.mjs:
-// `argv[1]` is resolved through realpath, because `import.meta.url` already is.
-function isMainEntry(moduleUrl) {
-  try {
-    return realpathSync(process.argv[1]) === fileURLToPath(moduleUrl);
-  } catch {
-    return false;
-  }
-}
+
+import { isMainEntry } from '../lib/is-main-entry.mjs';
 
 const exec = promisify(execFile);
 const runTimeoutMs = 10 * 60 * 1000;
@@ -130,11 +119,14 @@ async function treeRows(root) {
   return rows;
 }
 
-async function copyProjectTools(repo) {
+export async function copyProjectTools(repo, destination = outRoot) {
+  await mkdir(join(destination, 'lib'), { recursive: true });
+  await copyFile(join(repo, 'scripts', 'lib', 'is-main-entry.mjs'), join(destination, 'lib', 'is-main-entry.mjs'));
   for (const name of ['build-csg-work-bundle.mjs', 'csg-work-diagnostic.mjs', 'run-csg-work-bundle.mjs']) {
     const source = join(repo, 'scripts', 'perf', name);
     if (!(await exists(source))) throw new Error(`required bundle script missing: ${source}`);
-    await copyFile(source, join(outRoot, name));
+    const contents = (await readFile(source, 'utf8')).replace("from '../lib/is-main-entry.mjs'", "from './lib/is-main-entry.mjs'");
+    await writeFile(join(destination, name), contents);
   }
 }
 async function prepareSource(repo, spec, source) {

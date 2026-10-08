@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import '@/test/setup-dom.js';
+import 'fake-indexeddb/auto';
 import assert from 'node:assert/strict';
 import { afterEach, beforeEach, test } from 'node:test';
 import { evaluateFilterGroupsFederated } from '@ifc-lite/rules';
@@ -28,6 +29,7 @@ import { toGlobalIdFromModels } from '@/store/globalId';
 import { getVisibleBasketEntityRefsFromStore } from '@/store/basketVisibleSet';
 import { act } from 'react';
 import { cleanup, click, render, type } from '@/test/render';
+import { importLensFile } from '@/components/viewer/lens-import';
 import { LensEditor } from '@/components/viewer/LensEditor';
 import { AutoColorEditor } from '@/components/viewer/AutoColorEditor';
 import { ListBuilder } from '@/components/viewer/lists/ListBuilder';
@@ -91,7 +93,7 @@ async function replaySaved(artifact: PreviewArtifact): Promise<number> {
       const exported = state.exportLenses().find(row => row.id === artifact.lens.id);
       assert.ok(exported);
       assert.ok(state.setSavedLenses([]).ok);
-      assert.ok(useViewerStore.getState().importLenses(JSON.parse(JSON.stringify([encodeSavedLens(exported)]))).ok);
+      assert.ok((await importLensFile(new File([JSON.stringify([encodeSavedLens(exported)])], 'captured.lenses.json'), rows => useViewerStore.getState().importLenses(rows))).ok);
       const importedState = useViewerStore.getState();
       const saved = importedState.savedLenses.find(row => row.id === exported.id);
       assert.ok(saved);
@@ -248,7 +250,12 @@ test('#7186 native scoped codecs refuse future and malformed captured envelopes'
   if (preview.artifact.kind !== 'lens.proposal') throw new Error('Unexpected artifact');
   const lens = preview.artifact.lens;
   assert.equal(migrateSavedLens(encodeSavedLens(lens))?.capturedScope?.sources[0].members.length, 1);
-  assert.equal(migrateSavedLens({ format: 'ifc-lite-captured-lens', version: 2, lens }), null);
+  const futureLens = { format: 'ifc-lite-captured-lens', version: 2, lens };
+  assert.equal(migrateSavedLens(futureLens), null);
+  const before = useViewerStore.getState().savedLenses;
+  const outcome = await importLensFile(new File([JSON.stringify([futureLens])], 'future.lenses.json'), rows => useViewerStore.getState().importLenses(rows));
+  assert.equal(outcome.ok, false);
+  assert.equal(useViewerStore.getState().savedLenses, before, 'refusal does not mutate the native saved library');
   assert.equal(migrateSavedLens({ format: 'ifc-lite-captured-lens', version: 1, lens: { ...lens, capturedScope: undefined } }), null);
   const listEntry = cases.find(row => row.label === 'list')!;
   const listProposal = parseArtifactProposal(JSON.stringify({ version: 1, title: 'Codec list', kind: listEntry.kind, scope: 'selected', ...listEntry.body }), listEntry.kind);
@@ -263,4 +270,49 @@ test('#7186 native scoped codecs refuse future and malformed captured envelopes'
     assert.throws(() => decodeSavedList(envelope), /captured population cannot be read/);
     await assert.rejects(importListDefinition(new File([JSON.stringify(envelope)], 'unreadable.list.json')));
   }
+});
+
+test('#7186 native Flavor file export/import preserves captured Lens output and reports unreadable versions', async () => {
+  const { ExtensionHostService } = await import('@/services/extensions/host');
+  const { IdbFlavorStorage } = await import('@/services/extensions/idb-flavor-storage');
+  const { createBimContext } = await import('@ifc-lite/sdk');
+  await new IdbFlavorStorage().clear();
+  const host = new ExtensionHostService({ sdk: createBimContext({ transport: {
+    send: () => Promise.reject(new Error('No SDK request belongs to native flavor population restore')),
+    subscribe: () => () => {}, close: () => {},
+  } }) });
+  try {
+    await selectWall();
+    const entry = cases.find(row => row.label === 'manual lens')!;
+    const proposal = parseArtifactProposal(JSON.stringify({ version: 1, title: 'Flavor captured wall', kind: entry.kind, scope: 'selected', ...entry.body }), entry.kind);
+    const preview = await previewArtifact(proposal, useViewerStore.getState());
+    if (preview.artifact.kind !== 'lens.proposal') throw new Error('Unexpected artifact');
+    const lens = preview.artifact.lens;
+    const stamp = new Date().toISOString();
+    const flavor = {
+      schemaVersion: 1 as const, id: 'local.captured-native', name: 'Captured native', description: '', createdAt: stamp, updatedAt: stamp,
+      extensions: [], lenses: [{ id: lens.id, name: lens.name, definition: encodeSavedLens(lens) as import('@ifc-lite/extensions').Flavor['lenses'][number]['definition'] }],
+      savedQueries: [], keybindings: [], layout: { state: {} }, settings: {},
+    };
+    await host.flavors.put(flavor);
+    const bytes = await host.flavors.exportFlavor(flavor.id);
+    assert.ok(bytes.length > 0);
+    const unpacked = await host.flavors.preview(bytes);
+    const imported = await host.flavors.importFlavor(unpacked, { strategy: 'save-as-new', newId: 'local.captured-imported' });
+    const outcome = await host.switchFlavor(imported.id);
+    assert.equal(outcome.unapplied.some(part => part.part === 'lenses'), false);
+    const state = useViewerStore.getState();
+    const saved = state.savedLenses.find(row => row.id === lens.id);
+    assert.ok(saved);
+    const provider = createLensDataProvider(state.models, state.ifcDataStore, state.mutationViews, id => state.resolveGlobalIdFromModels(id));
+    const matches = await evaluateLensGroups(saved, evaluatorModelsFromState(state), state.models, new Set(state.modelTags.keys()));
+    assert.equal(evaluateLens(saved, provider, matches).colorMap.size, 1, 'actual file roundtrip and flavor activation preserve native captured output');
+    const unreadable = { ...flavor, id: 'local.unreadable-capture', lenses: [{ id: lens.id, name: lens.name,
+      definition: { format: 'ifc-lite-captured-lens', version: 2, lens } as unknown as import('@ifc-lite/extensions').Flavor['lenses'][number]['definition'] }] };
+    await host.flavors.put(unreadable);
+    const prior = state.savedLenses;
+    const refused = await host.switchFlavor(unreadable.id);
+    assert.ok(refused.unapplied.some(part => part.part === 'lenses' && /population.*cannot be read/.test(part.message)));
+    assert.equal(useViewerStore.getState().savedLenses, prior, 'an unreadable population does not replace the native Lens library');
+  } finally { await host.dispose(); }
 });

@@ -51,7 +51,6 @@ import { useViewerStore, type FederatedModel } from '@/store';
 import { useClash } from './useClash.js';
 import { startActivityRecorders, resetActivityRecordersForTest } from '@/lib/activity/activity-recorders';
 import { useActivityJournal, activityCanceller, cancelActivity } from '@/lib/activity/activity-journal';
-import { activeClashRunSession } from './analysisRunCancellation';
 import { render, click, cleanup } from '@/test/render';
 import { ActivityTrayList } from '@/components/viewer/activity/ActivityTrayList';
 
@@ -295,7 +294,7 @@ describe('owned native clash activity cancellation (#7110)', () => {
       assert.equal(useViewerStore.getState().clashResult, previous);
       assert.deepEqual(useActivityJournal.getState().jobs.map(job => job.outcome), ['completed', 'cancelled']);
       assert.equal(useViewerStore.getState().clashError, null);
-      assert.equal(activeClashRunSession(), null);
+      assert.equal(useViewerStore.getState().clashRunning, false);
       assert.equal(activityCanceller(useActivityJournal.getState().jobs.at(-1)!.id), null);
     });
   }
@@ -309,15 +308,14 @@ describe('owned native clash activity cancellation (#7110)', () => {
       });
       const job = useActivityJournal.getState().jobs.at(-1)!;
       assert.equal(job.outcome, 'running');
-      const session = activeClashRunSession();
-      assert.ok(session);
+      assert.ok(activityCanceller(job.id));
       act(() => cancelActivity(job.id));
-      assert.equal(session.controller.signal.aborted, true);
+      assert.equal(useViewerStore.getState().clashRunning, false);
       await act(async () => { await pending; });
       assert.equal(useViewerStore.getState().clashResult, null);
       assert.equal(useActivityJournal.getState().jobs.at(-1)?.outcome, 'cancelled');
       assert.equal(activityCanceller(job.id), null);
-      assert.equal(activeClashRunSession(), null);
+      assert.equal(useViewerStore.getState().clashRunning, false);
     });
   }
 
@@ -326,7 +324,7 @@ describe('owned native clash activity cancellation (#7110)', () => {
     await act(async () => { await api!.runPreset(useViewerStore.getState().clashPresets[0].id); });
     assert.ok(useViewerStore.getState().clashResult);
     assert.deepEqual(useActivityJournal.getState().jobs.map(job => job.outcome), ['completed']);
-    assert.equal(activeClashRunSession(), null);
+    assert.equal(useViewerStore.getState().clashRunning, false);
   });
 
   it('a superseded row and retained callback cannot cancel the newer native job', async () => {
@@ -338,10 +336,11 @@ describe('owned native clash activity cancellation (#7110)', () => {
       const oldCancel = activityCanceller(oldJob.id);
       assert.ok(oldCancel);
       newer = api!.runDuplicates();
-      const current = activeClashRunSession();
-      assert.ok(current);
+      const current = useActivityJournal.getState().jobs.at(-1)!;
+      assert.notEqual(current.id, oldJob.id);
       oldCancel();
-      assert.equal(current.controller.signal.aborted, false, 'retained old authority cannot abort the new owner');
+      assert.equal(useViewerStore.getState().clashRunning, true, 'retained old authority cannot clear the new owner');
+      assert.ok(activityCanceller(current.id));
       assert.equal(activityCanceller(oldJob.id), null, 'a superseded row has no live registry entry');
       called = true;
     });
@@ -350,7 +349,7 @@ describe('owned native clash activity cancellation (#7110)', () => {
     assert.equal(called, true);
     assert.equal(useViewerStore.getState().clashResult?.rulesRun[0].id, 'duplicates');
     assert.deepEqual(useActivityJournal.getState().jobs.map(job => job.outcome), ['cancelled', 'completed']);
-    assert.equal(activeClashRunSession(), null);
+    assert.equal(useViewerStore.getState().clashRunning, false);
   });
 
   it('closing the owning panel leaves a native background run cancellable from its tray row', async () => {
@@ -368,7 +367,7 @@ describe('owned native clash activity cancellation (#7110)', () => {
     assert.equal(useViewerStore.getState().clashResult, null);
     assert.equal(useActivityJournal.getState().jobs.at(-1)?.outcome, 'cancelled');
     assert.equal(activityCanceller(job.id), null);
-    assert.equal(activeClashRunSession(), null);
+    assert.equal(useViewerStore.getState().clashRunning, false);
   });
 
   it('clearing native results records one cancelled job without a replacement phantom row (#7110)', async () => {
@@ -378,7 +377,7 @@ describe('owned native clash activity cancellation (#7110)', () => {
     act(() => api!.clearAll());
     await act(async () => { await pending; });
     assert.deepEqual(useActivityJournal.getState().jobs.map(job => job.outcome), ['cancelled']);
-    assert.equal(activeClashRunSession(), null);
+    assert.equal(useViewerStore.getState().clashRunning, false);
     assert.equal(useViewerStore.getState().clashResult, null);
   });
 
@@ -393,15 +392,15 @@ describe('owned native clash activity cancellation (#7110)', () => {
     let first: Promise<void> | undefined;
     let second: Promise<void> | undefined;
     act(() => { first = oldOwner.runDuplicates(); second = other!.runDuplicates(); });
-    const current = activeClashRunSession();
-    assert.ok(current);
+    const currentJob = useActivityJournal.getState().jobs.at(-1)!;
+    assert.ok(activityCanceller(currentJob.id));
     act(() => oldOwner.cancelRun());
     assert.equal(useViewerStore.getState().clashRunning, true, "older panel cancellation cannot clear the current owner's running state");
-    assert.equal(current.controller.signal.aborted, false);
+    assert.ok(activityCanceller(currentJob.id));
     await act(async () => { await first; await second; });
     assert.equal(useViewerStore.getState().clashResult?.rulesRun[0].id, 'duplicates');
     assert.deepEqual(useActivityJournal.getState().jobs.map(job => job.outcome), ['cancelled', 'completed']);
-    assert.equal(activeClashRunSession(), null);
+    assert.equal(useViewerStore.getState().clashRunning, false);
   });
 
 });

@@ -5,6 +5,8 @@ import '@/test/setup-dom.js';
 import { Blob, File } from 'node:buffer';
 import { it } from 'node:test';
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
+import { perfCounters } from '@ifc-lite/load-trace';
 import { computeSourceFingerprint } from '@ifc-lite/cache';
 import { placementSourceIdentity } from './source-identity';
 import { saveWorkspacePlacements, restoreWorkspacePlacements } from './persistence';
@@ -78,4 +80,49 @@ it('falls back to the Blob when the in-memory bytes are not the whole source (#6
   const source = new File([bytes], 'model.ifc');
   const expected = await placementSourceIdentity(new File([bytes], 'copy.ifc'));
   assert.equal(await placementSourceIdentity(source, () => false, bytes.subarray(0, 1000)), expected);
+});
+
+// #7022: the identity is the load's one full-source hash (placement, cache
+// write and warm revalidation all use it), so its value must not move and its
+// in-memory pass must not copy the source on the main thread.
+const MIB = 1024 * 1024;
+const sha256 = (bytes: Uint8Array | string) => createHash('sha256').update(bytes).digest('hex');
+function referenceIdentity(bytes: Uint8Array): string {
+  const parts = [`placement-sha256-1m-v1:${bytes.byteLength}`];
+  for (let start = 0; start < bytes.byteLength; start += MIB) parts.push(sha256(bytes.subarray(start, start + MIB)));
+  return `placement-sha256-1m-v1:${sha256(parts.join(':'))}`;
+}
+
+it('keeps the identity value for every reader: Blob, in-memory and shared bytes (#7022)', async () => {
+  const bytes = new Uint8Array(9 * MIB + 4321);
+  for (let i = 0; i < bytes.length; i++) bytes[i] = (i * 131 + (i >> 11)) & 0xff;
+  const expected = referenceIdentity(bytes);
+  assert.equal(await placementSourceIdentity(new File([bytes], 'blob.ifc')), expected);
+  assert.equal(await placementSourceIdentity(new File([bytes], 'memory.ifc'), () => false, bytes), expected);
+  const shared = new Uint8Array(new SharedArrayBuffer(bytes.byteLength));
+  shared.set(bytes);
+  assert.equal(await placementSourceIdentity(new File([bytes], 'shared.ifc'), () => false, shared), expected);
+});
+
+it('digests in-memory chunks in place and counts one full-source pass (#7022)', async () => {
+  const bytes = new Uint8Array(3 * MIB + 5000).fill(5);
+  const subtle = globalThis.crypto.subtle;
+  const realDigest = subtle.digest.bind(subtle);
+  const inputs: BufferSource[] = [];
+  Object.defineProperty(subtle, 'digest', { configurable: true, writable: true,
+    value: (algorithm: AlgorithmIdentifier, data: BufferSource) => { inputs.push(data); return realDigest(algorithm, data); } });
+  perfCounters.enable();
+  const before = perfCounters.read();
+  try {
+    assert.equal(await placementSourceIdentity(new File([bytes], 'model.ifc'), () => false, bytes), referenceIdentity(bytes));
+  } finally {
+    delete (subtle as { digest?: unknown }).digest;
+  }
+  const chunkInputs = inputs.filter((data) => data.byteLength >= 4096);
+  assert.equal(chunkInputs.length, 4);
+  assert.ok(chunkInputs.every((data) => ArrayBuffer.isView(data) && data.buffer === bytes.buffer),
+    'each chunk is a view of the bytes the loader holds, not a main-thread copy');
+  const after = perfCounters.read();
+  assert.equal((after['hash.fullSource.count'] ?? 0) - (before['hash.fullSource.count'] ?? 0), 1);
+  assert.equal((after['hash.fullSource.bytes'] ?? 0) - (before['hash.fullSource.bytes'] ?? 0), bytes.byteLength);
 });

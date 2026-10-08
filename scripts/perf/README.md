@@ -40,6 +40,23 @@ fan-out, memory bandwidth, GPU); a change in those still needs an end-to-end
 A/B (`ab.sh`, the browser rigs below), and a green ratchet is no evidence for it.
 
 
+## Workbench preset controls load on demand (#6926)
+
+The U03 preset controls initially exceeded the eager bundle allowance when
+combined with the U02 activity tray, although each branch fit separately.
+Loading the sidebar customizer only when opened reduced eager startup code,
+but did not by itself clear the combined allowance. The subsequent shared
+editor-state chunk separation on main restored headroom for the complete
+campaign snapshot without another ceiling increase or tolerance change.
+The real activity-bar regression opens the customizer, previews and applies
+the coordinator preset, then restores the original layout and keyboard focus.
+Reset also retires the saved preset through a small startup gateway instead
+of importing the optional preview and placement controls. The mounted
+regression reopens customization after Reset and confirms Restore is gone.
+This is a bundle-size verdict; it makes no model-load speed claim.
+Lesson: measure queued viewer features together, and keep optional editor
+surfaces behind their actual entry point.
+
 ## Structural counters and long frames per load (#6957)
 
 Under `?perfTrace=1` and in every benchmark run, each load's span tree also
@@ -70,6 +87,54 @@ the benchmark and users run. `node scripts/perf/hook-census.mjs` counts hook
 call sites and `useViewerStore` subscriptions on the viewport, properties,
 hierarchy and streaming paths statically (minified component names make a
 runtime fiber census unattributable, and mounted counts move with UI state).
+
+## Worker warm-up candidate held (#7036)
+
+The resumed [cold-load captures](evidence/worker-warmup-7036/README.md) show
+earlier worker readiness but mixed first-visible and total-load results. No
+end-to-end speedup is accepted. The candidate creates fresh workers beside the
+file read and still terminates them after each load; it does not satisfy the
+original persistent-reuse requirement. Geometry counts match, but an ordered
+geometry hash was not collected. Repeat/federation measurements during takeover
+overlapped validation builds and need an idle-machine repeat. Lesson: moving
+worker initialization earlier is an opportunity screen, not a performance
+verdict. Keep the measurement and memory constraints before changing the rollout.
+
+The experiment defaults off on both the viewer and worker paths. Repeated cache
+hits cannot extend an unused worker's expiry, and memory-pressure retries drain
+the pool without refilling it. These are lifecycle corrections, not an accepted
+performance win; the end-to-end verdict above remains held.
+
+## Single-model appends cost O(new meshes) in the viewport (#7021)
+
+**Shipped.** While one model streamed in, `geometryWithModelIndex` copied
+every accumulated mesh on each viewport render to stamp `modelIndex`. The
+copy gave the merged array a new identity, so the "incremental" type
+filter, the type/occurrence scans and `Viewport`'s appearance-source list
+started over each time, and that list copied every mesh a second time.
+Measured with `loadCounters` (4 pinned workers, viewer-benchmark-ci): on
+Holter each JS-side mesh was copied about 13 times, filtered 13 times and
+copied 13 more times for appearance sources per load. Fix: a single model
+renders its own mesh array, with `modelIndex` stamped in place by
+`stampModelIndex`. It remembers per array how far it has stamped, so the
+array keeps its identity and the existing incremental scans stay
+incremental. One model's appearance list is that same array, and the index
+allocator returns one shared map until an assignment changes. After the
+fix, `viewer.modelIndexStamp` and `viewer.filterScan` each equal the JS
+mesh count, and `viewer.modelIndexRespread` and `viewer.appearanceSource`
+are 0 on single-model loads. Mesh and draw counts are unchanged.
+`useFederatedGeometry.streaming.test.tsx` guards the per-append cost.
+
+**Kept, deliberately:** the store still clones `models` per append. About
+125 selectors read `s.models`, and its identity is how they hear about an
+append to a non-active model, so dropping the clone would freeze them. The
+clone itself is O(models). The cost was in what rescanned downstream.
+**Still open:** several models keep wrapper copies (O(new) per append) and
+build the appearance list in O(total) on every `models` change.
+`store.notifications` (about 680 subscribers per write) is untouched.
+**Lesson:** a cache keyed on array identity is only as incremental as its
+least stable upstream producer. Count the visits (`viewer.filterScan`)
+instead of trusting the "incremental" comment.
 
 ## Frame-time rigs (#6960)
 
@@ -533,6 +598,34 @@ budget is the default whenever geometry streams. Lesson: a time slice sized
 for one phase silently carries into the next. Timestamp phase boundaries
 (`Stream complete`, `Streaming ended`, `finalizeStreamingAsync complete`)
 before assuming the tail is finalize work.
+## One full-source hash per load, beside the critical path (#7022)
+
+The loader awaited the placement identity (SHA-256 in 1 MiB chunks) before the
+cache lookup, then hashed the same bytes again for the cache write or for a
+warm hit's background revalidation. The identity now starts once the bytes are
+in hand and is awaited only by finalize (so a complete model still carries it),
+the cache write (which stores it) and the revalidation (which compares against
+it). A cache entry holding a bare whole-file hash from an older viewer is a
+miss, purged and rewritten by the reparse. Each full-source pass now counts as
+`hash.fullSource` in the structural counters.
+
+Interleaved real-GPU pairs (Windows Chrome over CDP, five rounds, FZK, Snowdon,
+a 54 MB and a 327 MB model, cold and warm) gave identical mesh counts and
+identity values. The cache lookup now starts up to ~0.4 s earlier on the 327 MB
+model, but first geometry, first visible and load total stayed within the base
+spread on every fixture. The pass was never the gate: engine init (cold) and
+the IndexedDB read (warm) end at the same time either way. Verdict: structural
+win (one loader pass instead of two, none on the critical path), no end-to-end
+speed claim.
+
+Lesson: count passes before timing them. The counter showed a second pass per
+primary load that the issue never listed: the drawing-markup restore
+(`useDrawing2DPersistence`) re-reads the whole Blob and hashes it, because its
+localStorage key is a bare SHA-256. Sharing it needs a key migration, so it is
+the next lever, not part of this change. Freeing a span from the critical path
+only helps if nothing parallel ends at the same moment; check the next span's
+end, not just this one's start.
+
 ## Placement identity from memory (#6431)
 
 Before parsing, the loader awaited a full-content SHA-256 identity (1 MiB chunks)
@@ -1407,6 +1500,13 @@ Preserve failed loads alongside successful samples. Listen for renderer crashes
 as well as JavaScript errors, and stop memory sampling on every exit path.
 
 ### Shipped wins
+- **Review startup bundle (#7015):** load the Script panel on demand and keep
+  CodeMirror's shared state module in its own chunk. Assistant text-edit planning
+  still uses `ChangeSet`, while the editor UI stays outside the eager import
+  closure. The production bundle clears the unchanged size ceilings; this is a
+  byte-size verdict, not a measured load-time improvement. **Lesson:** inspect
+  the complete HTML preload closure, and isolate shared state before assuming a
+  dynamic panel import makes its dependencies lazy.
 - **Firefox spatial-publication stall (#3983):** Chrome-only cold-load timing
   missed an engine-dependent entity-cache eviction cost. Georeference discovery
   runs through the property-set index during React rendering. Restarting a Map
@@ -3547,3 +3647,17 @@ directory, finished in 0.10 s and the "branch" binary was byte-identical to
 the base's. An A/B run that way compares a commit with itself. Give each side
 its own target directory, and compare the two binaries' hashes before timing
 anything.
+
+## Activity tray startup budget (#6952, U02)
+
+The maintainer approved the measured eager-JavaScript ceiling for U02 while
+keeping its existing tolerance. Job recording, the running badge and completion
+announcements must work before the detail tray opens; detail rows remain lazy.
+Deferring popup initialization and journal restoration increased eager bytes in
+the production bundle and was discarded. The verdict is a deliberately approved
+startup cost, not a speed improvement. Measure the complete eager chunk graph:
+extracting a module can increase shared imports even when its entry chunk shrinks.
+
+### Viewer preferences editor imports (P20, #6924)
+
+A hook used by the Assistant must live separately from the optional preferences editor: importing the hook from the editor makes its dynamic import ineffective. Keep the live project/model hook in a small module and load the form through its native lazy boundary. The combined production measurement showed no meaningful size improvement from the hook split. The remaining content-library registration and recipe run state still participate in startup; keep the split for the lazy editor boundary, without claiming a bundle reduction.

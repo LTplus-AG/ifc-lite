@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ifclite.dev/schemas/ai-eval/study-session-v1.json",
+  "title": "IFClite U01 study session record (version 1): one participant, one task, one variant",
+  "type": "object",
+  "required": ["version", "id", "participant", "role", "variant", "task", "completed", "seconds", "discovery", "backtracks", "panelSwitches", "scopeErrors", "wrongTargetEffects", "accidentalEffects"],
+  "additionalProperties": false,
+  "properties": {
+    "$schema": { "type": "string" },
+    "version": { "const": 1 },
+    "id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]{2,80}$" },
+    "participant": { "type": "string", "pattern": "^p[0-9]{2,3}$", "description": "Pseudonymous participant number; the key to real identities is kept outside the repository." },
+    "role": { "type": "string" },
+    "variant": { "type": "string" },
+    "task": { "type": "string" },
+    "completed": { "type": "boolean" },
+    "seconds": { "type": "number", "minimum": 0 },
+    "discovery": { "enum": ["unaided", "hinted", "failed"] },
+    "backtracks": { "type": "integer", "minimum": 0 },
+    "panelSwitches": { "type": "integer", "minimum": 0 },
+    "scopeErrors": { "type": "integer", "minimum": 0 },
+    "wrongTargetEffects": { "type": "integer", "minimum": 0 },
+    "accidentalEffects": { "type": "integer", "minimum": 0 },
+    "obscuredSeconds": { "type": "number", "minimum": 0 },
+    "usedAssistant": { "type": "boolean" },
+    "notes": { "type": "string" }
+  }
+}

@@ -81,15 +81,17 @@ export function estimateCloneBytes(
 }
 
 export function accountWorkerMessages<W extends MessageEndpoint>(
-  worker: W, label: string, registry: PerfCounterRegistry = perfCounters,
+  worker: W, label: string | (() => string), registry: PerfCounterRegistry = perfCounters,
 ): W {
   if (!registry.enabled) return worker;
-  const prefix = `msg.${label}`;
+  // A pooled worker (#7036) changes role between loads, so it passes a getter.
+  const prefixOf = typeof label === 'function' ? () => `msg.${label()}` : () => `msg.${label}`;
   const nativePost = worker.postMessage.bind(worker);
   const counted: MessageEndpoint['postMessage'] = (message, transfer) => {
     if (!isTraceControl(message)) {
       const list = transferSet(transfer);
       const est = estimateCloneBytes(message, (b) => list.has(b));
+      const prefix = prefixOf();
       registry.add(`${prefix}.out.count`);
       registry.add(`${prefix}.out.cloneBytes`, est.cloneBytes);
       registry.add(`${prefix}.out.transferBytes`, est.transferBytes);
@@ -103,6 +105,7 @@ export function accountWorkerMessages<W extends MessageEndpoint>(
     // A received ArrayBuffer may have been transferred or cloned; this side
     // cannot tell, so every buffer lands in bufferBytes, the rest in cloneBytes.
     const est = estimateCloneBytes(data, () => true);
+    const prefix = prefixOf();
     registry.add(`${prefix}.in.count`);
     registry.add(`${prefix}.in.cloneBytes`, est.cloneBytes);
     registry.add(`${prefix}.in.bufferBytes`, est.transferBytes);

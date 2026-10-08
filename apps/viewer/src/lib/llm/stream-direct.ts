@@ -23,7 +23,7 @@ import {
 import { readSseStream, type StreamMessage, type StreamOptions } from './stream-client.js';
 import { getModelById, sendsSamplingParams } from './models.js';
 import { buildCacheableSystem, logCacheHit } from './prompt-cache.js';
-import { anthropicUsage, chatCompletionsUsage, responsesUsage } from './token-usage.js';
+import { anthropicUsage, chatCompletionsUsage, responsesUsage } from '@ifc-lite/ai';
 
 const STREAM_REQUEST_TIMEOUT_MS = 45_000;
 

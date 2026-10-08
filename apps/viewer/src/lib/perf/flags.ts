@@ -90,6 +90,15 @@ export const PERF_FLAGS = [
     bindings: { ...GEOMETRY_PERF_FLAG_BINDINGS.shardScan, benchmarkEnv: 'VIEWER_BENCHMARK_SHARD_SCAN' },
   },
   {
+    id: 'warmPool',
+    kind: 'ramp',
+    owner: '@louistrue',
+    removalCondition: 'Remove the candidate if recorded-build real-GPU A/B does not establish an end-to-end win; any rollout requires a reviewed verdict (#7036).',
+    introducedAt: '2026-10-07',
+    default: false,
+    bindings: { ...GEOMETRY_PERF_FLAG_BINDINGS.warmPool },
+  },
+  {
     id: 'contribCull',
     kind: 'kill-switch',
     owner: '@louistrue',

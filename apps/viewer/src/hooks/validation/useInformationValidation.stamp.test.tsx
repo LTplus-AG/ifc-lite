@@ -23,11 +23,12 @@ import { useViewerStore } from '@/store';
 import { analysisStampOf, isAnalysisStale } from '@/hooks/useAnalysisStaleness';
 import { captureValidationRun } from '@/lib/compare/compare-analysis-state';
 import { reportRuleSetOf } from '@/lib/validation/report-rule-set';
+import { useActivityJournal } from '@/lib/activity/activity-journal';
 import { useInformationValidation } from './useInformationValidation';
 
 const initial = useViewerStore.getState();
-beforeEach(() => { localStorage.clear(); useViewerStore.setState(initial); });
-afterEach(() => { cleanup(); useViewerStore.setState(initial); });
+beforeEach(() => { localStorage.clear(); useActivityJournal.setState({ jobs: [] }); useViewerStore.setState(initial); });
+afterEach(() => { cleanup(); useActivityJournal.setState({ jobs: [] }); useViewerStore.setState(initial); });
 
 const ruleSet: RuleSetFile = { version: 1, name: 'Wall naming', rules: [{
   id: 'wall-name', name: 'Walls are named',
@@ -63,4 +64,18 @@ it('#6921 a rule-set run publishes a report stamped with the model state it ran 
   const live = { mutationVersion: 3, geometryContentVersion: 2, modelPlacement: state.modelPlacement, models: state.models };
   assert.equal(isAnalysisStale(captured.stamp, live), false);
   assert.equal(isAnalysisStale(captured.stamp, { ...live, mutationVersion: 4 }), true, 'a later edit makes the run stale');
+});
+
+it('#6952 two real native rule-set runs retain their distinct input names in the tray', async () => {
+  const bytes = readFileSync(new URL('../../../public/samples/building-architecture.ifc', import.meta.url));
+  const store = await new IfcParser().parseColumnar(new Uint8Array(bytes).buffer);
+  useViewerStore.setState({ ...fixtureModels({ ...fixtureModel('m'), name: 'building-architecture.ifc', ifcDataStore: store }) });
+  assert.ok(useViewerStore.getState().addValidationDefinition({ kind: 'rules', file: ruleSet }));
+  render(<Owner />);
+  await act(async () => { await owner.run(); });
+  act(() => owner.setFile({ ...ruleSet, name: 'Delivery naming review' }));
+  await act(async () => { await owner.run(); });
+  const jobs = useActivityJournal.getState().jobs;
+  assert.deepEqual(jobs.map(job => [job.subject, job.outcome]).sort(), [['Delivery naming review', 'completed'], ['Wall naming', 'completed']]);
+  assert.equal(useViewerStore.getState().idsValidationReport?.source.kind, 'rules');
 });

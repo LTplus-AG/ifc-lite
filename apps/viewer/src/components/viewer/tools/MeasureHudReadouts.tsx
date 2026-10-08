@@ -61,12 +61,12 @@ export function MeasureGeoReadout() {
           <span className="text-2xs font-medium uppercase tracking-wider text-muted-foreground">
             {activeMeasurement ? t('measure.readout.live') : t('measure.readout.last')}
           </span>
-          <span className="font-mono tabular-nums">
+          {enh && <span className="font-mono tabular-nums">
             {t('measure.geo.easting')} {enh.e}
             <span className="ml-2">{t('measure.geo.northing')} {enh.n}</span>
             <span className="ml-2">{t('measure.geo.height')} {enh.h}</span>
             <span className="ml-1 text-muted-foreground">{t('measure.geo.unitMeters')}</span>
-          </span>
+          </span>}
         </div>
         <div className="mt-0.5 pl-5 text-2xs tabular-nums text-muted-foreground">
           {anchor.eff.projectedCRS.name}

@@ -57,7 +57,8 @@ test('stale empty source and older portable envelopes never acquire current scop
 // #6856: absence and an empty attached native report have different meanings.
 test('missing native sources offer the matching native workflow rather than zero findings', () => {
   useViewerStore.setState({ clashResult: null, idsValidationReport: null, compareResult: null, flowDoc: null, models: new Map() });
-  for (const source of ['clash', 'validation', 'compare', 'flow', 'loadReport'] as const) {
+  // Flow is not listed: with no graph open, describing a new graph is a captured native state (#6919).
+  for (const source of ['clash', 'validation', 'compare', 'loadReport'] as const) {
     const evidence = captureEvidence(source);
     const ui = render(<EvidenceView evidence={evidence} state="captured" />);
     assert.equal(JSON.parse(evidence.payload).sourceAvailability, 'unavailable');
@@ -66,6 +67,7 @@ test('missing native sources offer the matching native workflow rather than zero
     assert.doesNotMatch(ui.textContent ?? '', /Frozen evidence: 0 of 0/);
     cleanup();
   }
+  assert.equal(JSON.parse(captureEvidence('flow').payload).sourceAvailability, 'available');
 });
 
 test('a captured empty clash report keeps native settings and scope without a clean verdict', async () => {

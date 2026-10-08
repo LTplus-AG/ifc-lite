@@ -13,7 +13,7 @@
  * because it never sees arguments.
  */
 
-import { CapabilityDeniedError, hasCapability, parseCapability, type Capability } from '@ifc-lite/extensions';
+import type { Capability } from '@ifc-lite/extensions';
 import type { FetchTransport } from '@ifc-lite/sandbox';
 import type { NodeDef, NodeRunContext } from '@ifc-lite/flow';
 import type { BimContext, EntityData, EntityRef as SdkEntityRef } from '@ifc-lite/sdk';
@@ -22,6 +22,7 @@ import type { EntityTable } from '@ifc-lite/data';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
 import type { SessionAutomationHost } from './session-contracts.js';
 import type { BcfWriteGateway } from './bcf-write-gateway.js';
+import type { FlowAiService } from './ai-service.js';
 
 /** A string-interning lookup, the shape `csv-match.ts`'s match-context builder
  *  needs for `globalId`/`name` strategies (an entity table's `name`/`globalId`
@@ -48,6 +49,12 @@ export interface TableAccess {
 }
 
 export interface FlowHost {
+  /**
+   * The host's AI model service for `ai.*` nodes (`@ifc-lite/flow-nodes/ai`).
+   * The host owns the provider, credentials, the run's root budget and its
+   * receipts; a host that offers it lists the `ai` backend feature.
+   */
+  readonly ai?: FlowAiService;
   readonly automation?: SessionAutomationHost;
   readonly bim: BimContext;
   /**
@@ -57,7 +64,7 @@ export interface FlowHost {
    */
   readonly grants?: readonly Capability[];
   /**
-   * The graph's own declared `network.fetch:<host>` (and `secret.read:<NAME>`)
+   * The graph's own declared `network.ai`, `network.fetch:<host>` and `secret.read:<NAME>`
    * capabilities — ALWAYS populated by every caller (CLI, MCP, viewer),
    * independent of `grants`/the trust gate above. Real network access and
    * secret reads are the one place "trusted local caller" does not mean
@@ -97,15 +104,7 @@ export interface FlowHost {
 export type FlowNodeDef = NodeDef<FlowHost>;
 export type Ctx = NodeRunContext<FlowHost>;
 
-/** Throws `CapabilityDeniedError` unless the host's grants cover `raw`. */
-export function requireCapability(ctx: Ctx, raw: string): void {
-  if (!ctx.host.grants) return;
-  const parsed = parseCapability(raw);
-  if (!parsed.ok) throw new Error(`node requested a malformed capability "${raw}": ${parsed.errors.map((e) => e.message).join('; ')}`);
-  if (!hasCapability(ctx.host.grants, parsed.value)) {
-    throw new CapabilityDeniedError(`flow node (${raw})`, [raw], ctx.host.grants.map((g) => g.raw));
-  }
-}
+export { requireCapability } from './capability.js';
 
 /** Flow handle from an SDK entity: GlobalId is the identity, the address is a cache. */
 export function toRef(e: EntityData): EntityRef {
@@ -171,12 +170,4 @@ export function entityOf(ctx: Ctx, ref: EntityRef): EntityData {
   return data;
 }
 
-export const ENTITY_ITEM = { kind: 'entity', access: 'item' } as const;
-export const ENTITY_LIST = { kind: 'entity', access: 'list' } as const;
-export const ENTITY_GROUP = { kind: 'entity', access: 'group' } as const;
-export const SCALAR_ITEM = { kind: 'scalar', access: 'item' } as const;
-export const SCALAR_LIST = { kind: 'scalar', access: 'list' } as const;
-export const TABLE_ITEM = { kind: 'table', access: 'item' } as const;
-export const ANY_ITEM = { kind: 'any', access: 'item' } as const;
-export const ANY_LIST = { kind: 'any', access: 'list' } as const;
-export const ANY_GROUP = { kind: 'any', access: 'group' } as const;
+export { ENTITY_ITEM, ENTITY_LIST, ENTITY_GROUP, SCALAR_ITEM, SCALAR_LIST, TABLE_ITEM, ANY_ITEM, ANY_LIST, ANY_GROUP } from './ports.js';

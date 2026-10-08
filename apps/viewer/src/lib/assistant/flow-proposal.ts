@@ -153,6 +153,8 @@ export function applyFlowProposal(proposal: FlowProposal, reviewedDigest: string
   const state = useViewerStore.getState();
   if (reviewedDigest !== proposal.digest || proposalDigest(proposal) !== reviewedDigest) throw new Error('Reviewed proposal has changed');
   if (proposal.tracking.length && options.trackingAcknowledged !== true) throw new Error('Tracked element effects must be acknowledged before applying');
+  // Checked first so the reviewer is told why: another run rewrote the owned elements.
+  if (trackingStateDigest(proposal.target.id) !== proposal.trackingState) throw new Error('Tracked elements changed after review');
   if (!isFlowProposalCurrent(proposal)) throw new Error('Graph or evidence changed after review');
   const candidate = applyOperations(proposal.target, parseFlowPatch(proposal.patchJson));
   if (JSON.stringify(candidate) !== proposal.afterJson) throw new Error('Native preview no longer matches the reviewed changes');

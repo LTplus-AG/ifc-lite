@@ -139,3 +139,28 @@ describe('primary load cancel (#5849)', () => {
     assert.equal(after.activeLoadCanceller, null);
   });
 });
+
+// #6952: before either federated load has a stream, the status bar must
+// keep the earlier owner's cancellation action when the newer load ends.
+for (const endLatest of ['cancel', 'complete'] as const) {
+  it(`restores the pending federated canceller after the latest load ${endLatest}s`, () => {
+    assert.ok(installModelLoadCanceller);
+    startLoading();
+    let firstCancelled = 0;
+    const releaseFirst = installModelLoadCanceller('federated', () => { firstCancelled += 1; });
+    const first = store.getState().activeLoadCanceller;
+    let secondCancelled = 0;
+    const releaseSecond = installModelLoadCanceller('federated', () => { secondCancelled += 1; });
+    const second = store.getState().activeLoadCanceller;
+    assert.ok(first); assert.ok(second);
+    if (endLatest === 'cancel') second(); else releaseSecond();
+    assert.equal(secondCancelled, endLatest === 'cancel' ? 1 : 0);
+    assert.equal(store.getState().activeLoadCanceller, first, 'the remaining load keeps its native Cancel control');
+    assert.equal(store.getState().loading, true);
+    store.getState().activeLoadCanceller?.();
+    assert.equal(firstCancelled, 1, 'the restored control actually supersedes its own load');
+    assert.equal(store.getState().activeLoadCanceller, null);
+    assert.equal(store.getState().loading, false);
+    releaseFirst(); releaseSecond();
+  });
+}

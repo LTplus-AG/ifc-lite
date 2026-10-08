@@ -1,0 +1,41 @@
+{
+  "recordedAt": "2026-10-08T03:14:25.558520+00:00",
+  "sourceHead": "0c28538ffa964eccd870d7a39161f22205434c37",
+  "browser": "T3 collaborative Chromium preview",
+  "origin": "http://localhost:5192",
+  "viewport": {
+    "width": 1280,
+    "height": 800
+  },
+  "fixtureSha256": {
+    "apps/viewer/public/samples/building-architecture-rev-b.ifc": "0dfb7152db0a845747d2f35ee5ba9ba3772744072cb23040353c469c2a05f366",
+    "apps/viewer/public/samples/building-architecture.ids": "947159b9b1a709ebb178c00a3803dcdb74070608d8df4f99065e889d3c189652"
+  },
+  "screenshotSha256": {
+    "review-after-reload.png": "d5c81a48f2809acb527876c6196876a56a1900bbf1a9e740fd775022e5b133fd",
+    "exact-original.png": "7cdeee43dd4aeec4d887d14520fcaaaf00f29fc785a3ade66247c17f4aadc841"
+  },
+  "nativeSource": "Committed IDS imported through the native information-rule importer with its visible limitations, then evaluated by the native rules engine",
+  "nativeRun": {
+    "generatedAt": "2026-10-08T03:08:07.701Z",
+    "checked": 11,
+    "passed": 5,
+    "failed": 6,
+    "savedFailureRows": 6
+  },
+  "afterReload": {
+    "liveValidationReport": false,
+    "reviewUniqueElements": 6,
+    "reviewCurrentFindings": 0,
+    "reviewHistoricalFindings": 6,
+    "reviewCards": 6
+  },
+  "openOriginal": {
+    "focusedRow": "failure-2",
+    "GlobalId": "0OfZwWc8j9QP5uX8xPTxDH",
+    "historyDisclosureOpen": true,
+    "nativeRows": 6,
+    "overflowWrap": "break-word"
+  },
+  "scope": "Native model load, information-rule evaluation, explicit Save, reload, historical Review and exact native original navigation; no provider-quality or human-acceptance claim"
+}

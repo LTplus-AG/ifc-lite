@@ -20,7 +20,7 @@
 // lucide only, never `@/icons`: the store imports this module, so it sits in
 // the viewer-embed bundle too, which has no unplugin-icons resolver for the
 // `~icons/viewer/*` virtual modules (#6315 broke that build).
-import { BarChart3, Box, CalendarRange, ClipboardCheck, Cloud, Coins, Crosshair, DraftingCompass, FileText, FileWarning, GitBranch, GitCompareArrows, History, Info, Link2, Layers as LayersIcon, ListTree, MessageSquare, Move3d, Palette, PencilRuler, Presentation, Puzzle, Ruler, Scan, Sun, Table2, Terminal, type LucideIcon, Users, Workflow } from 'lucide-react';
+import { BarChart3, Box, CalendarRange, ClipboardCheck, Cloud, Coins, Crosshair, DraftingCompass, FileText, FileWarning, GitBranch, GitCompareArrows, History, Info, Link2, Layers as LayersIcon, ListChecks, ListTree, MessageSquare, Move3d, Palette, PencilRuler, Presentation, Puzzle, Ruler, Scan, Sun, Table2, Terminal, type LucideIcon, Users, Workflow } from 'lucide-react';
 import type { TranslationKey } from '@/i18n';
 
 /** Every panel reachable from the unified sidebar rail. `properties` is the
@@ -60,6 +60,7 @@ export type WorkspacePanelId =
   | 'model'
   | 'changeSets'
   | 'semantic'
+  | 'review'
   | 'assistant';
 
 /** Shared task grouping for the rail, ribbon panel browser, and palette commands (#5873). */
@@ -204,6 +205,7 @@ export const WORKSPACE_PANELS: readonly WorkspacePanelDef[] = [
   { id: 'changeSets', titleKey: 'changeSets.panel.title', Icon: GitBranch, group: 'author', region: 'side' },
   { id: 'assistant', titleKey: 'assistant.title', Icon: MessageSquare, group: 'coordinate', region: 'side', prefersWide: true },
   { id: 'semantic', titleKey: 'semantic.title', Icon: Link2, group: 'coordinate', region: 'side', prefersWide: true },
+  { id: 'review', titleKey: 'reviewWorkspace.title', Icon: ListChecks, group: 'coordinate', region: 'side', prefersWide: true },
 ];
 
 /** How a panel opened on an empty viewer offers a way to a model

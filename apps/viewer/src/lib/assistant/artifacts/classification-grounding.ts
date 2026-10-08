@@ -9,6 +9,7 @@ import type { ArtifactProposal } from './proposal-kinds';
 import { fieldSites } from './field-refs';
 import { resolveFields } from './field-candidates';
 import { modelSchemaIndex } from './model-schema';
+import { classificationPopulationUnavailable } from '@/components/viewer/properties/effective-classification-systems';
 
 function dependsOnClassification(proposal: ArtifactProposal): boolean {
   const has = (groups: readonly FilterGroup[]) => groups.some(group => group.rules.some(rule => rule.kind === 'classification'));
@@ -20,18 +21,10 @@ function dependsOnClassification(proposal: ArtifactProposal): boolean {
   }
 }
 
-const CLASSIFICATION_TYPES = new Set(['IFCCLASSIFICATION', 'IFCCLASSIFICATIONREFERENCE', 'IFCRELASSOCIATESCLASSIFICATION', 'IFCRELDEFINESBYTYPE']);
-
 /** Use current effective changes, never append-only history (undo leaves history). */
 function hasUnavailableClassificationEdits(state: ViewerState): boolean {
   for (const [id, model] of state.models) {
-    if (model.ifcDataStore?.source?.length) continue;
-    const view = state.mutationViews.get(id);
-    if (!view) continue;
-    for (const change of view.getEffectiveChanges()) {
-      const types = [model.ifcDataStore?.entities.getTypeName(change.entityId), view.getNewEntity(change.entityId)?.type, view.getEntityTypeMutation(change.entityId)?.newType];
-      if (types.some(type => type !== undefined && CLASSIFICATION_TYPES.has(type.toUpperCase()))) return true;
-    }
+    if (classificationPopulationUnavailable(model.ifcDataStore, state.mutationViews.get(id))) return true;
   }
   return false;
 }

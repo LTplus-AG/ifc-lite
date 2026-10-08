@@ -15,6 +15,7 @@ import { createListDataProvider } from '@/lib/lists/adapter';
 import { createLensDataProvider } from '@/lib/lens/adapter';
 import { createElementFieldReader } from '@/lib/charts/element-field-reader';
 import { getOrCreateMutationView } from '@/sdk/adapters/mutation-view';
+import { classificationPopulationUnavailable } from '@/components/viewer/properties/effective-classification-systems';
 import { addClassificationAssociation } from './associations';
 
 const pristine = useViewerStore.getState();
@@ -134,6 +135,8 @@ test('#7131 federated views sharing immutable source keep their classification p
 test('#7131 source-empty classification reads do not recover missing source through a retained accessor closure', async () => {
   const { store, view } = await authoredAssociation();
   const transport = { ...store, source: new Uint8Array() };
+  assert.equal(classificationPopulationUnavailable(store, view), false, 'the actual source-bearing authored membership is available');
+  assert.equal(classificationPopulationUnavailable(transport, view), true, 'population callers share an explicit source-empty live-edit limitation');
   const refs = extractClassificationsOnDemand(transport, 262, view);
   assert.equal(refs[0]?.identification, 'E-AAA-WALL', 'the complete authored reference remains readable');
   assert.equal(refs[0]?.system, undefined, 'the reused source system has no readable Name');

@@ -38,6 +38,7 @@ for (const count of [1, 2]) it(`#7128 native list Activity cancellation owns onl
   const { ui, run } = await setup(count);
   run();
   const first = useActivityJournal.getState().jobs[0];
+  assert.ok(first, 'native list run appears in Activity');
   const oldCancel = activityCanceller(first.id);
   assert.ok(oldCancel);
   const cancel = ui.querySelector<HTMLButtonElement>('button[aria-label="Cancel List execution"]');

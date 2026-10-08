@@ -60,7 +60,8 @@ for (const refused of [false, true]) it(`#7128 native document PDF ${refused ? '
     await documentPreviewReady();
     const exportButton = [...ui.querySelectorAll('button')].find(button => button.textContent?.trim() === 'Export PDF');
     assert.ok(exportButton); click(exportButton);
-    const row = useActivityJournal.getState().jobs.at(-1)!;
+    const row = useActivityJournal.getState().jobs.at(-1);
+    assert.ok(row, 'native PDF publication appears in Activity');
     assert.equal(row.outcome, 'running');
     assert.equal(activityCanceller(row.id), null, 'PDF writer has no native abort controller');
     await act(async () => release());

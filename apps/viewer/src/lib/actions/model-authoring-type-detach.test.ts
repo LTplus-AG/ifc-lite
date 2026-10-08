@@ -3,6 +3,8 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import '@/test/setup-dom.js';
 import assert from 'node:assert/strict';
+import { existsSync, readFileSync } from 'node:fs';
+import { IfcAPI, initSync } from '@ifc-lite/wasm';
 import { afterEach, test } from 'node:test';
 import { MutablePropertyView } from '@ifc-lite/mutations';
 import { readRelatedLists } from '@ifc-lite/create';
@@ -176,3 +178,42 @@ test('#7267 federation requires an explicit model for repeated IFC GlobalIds and
   assert.ok(after.relations.some(rel => rel.relatingId === typeId && rel.relatedIds.includes(peer)));
   assert.deepEqual(editedModelBytes(dataStore, other), otherBytes, 'the independently owned overlay remains unchanged');
 });
+
+
+const wasm = new URL('../../../../../packages/wasm/pkg/ifc-lite_bg.wasm', import.meta.url);
+test('#7267 actual WASM processes the independently exported detached occurrence and Undo restores its meshes',
+  { skip: !existsSync(wasm) && 'run pnpm build:wasm:fetch' }, async () => {
+    const { dataStore, view, target } = await sharedType();
+    initSync({ module: readFileSync(wasm) });
+    const geometry = (bytes: Uint8Array) => {
+      const api = new IfcAPI();
+      const meshes: Array<{ positions: number[]; indices: number[] }> = [];
+      try {
+        const pre = api.buildPrePassOnce(bytes);
+        const [x, y, z] = pre.rtcOffset ? Array.from(pre.rtcOffset as ArrayLike<number>) : [0, 0, 0];
+        const collection = api.processGeometryBatch(bytes, pre.jobs, pre.unitScale, x, y, z, pre.needsShift,
+          pre.voidKeys, pre.voidCounts, pre.voidValues, pre.styleIds, pre.styleColors);
+        try {
+          for (let i = 0; i < collection.length; i++) {
+            const mesh = collection.get(i);
+            if (!mesh) continue;
+            try { if (mesh.expressId === target) meshes.push({ positions: Array.from(mesh.positions), indices: Array.from(mesh.indices) }); }
+            finally { mesh.free(); }
+          }
+        } finally { collection.free(); }
+      } finally { api.clearPrePassCache(); api.free(); }
+      return meshes;
+    };
+    const before = geometry(editedModelBytes(dataStore, view));
+    assert.ok(before.length > 0 && before.every(mesh => mesh.indices.length > 0), 'real imported source has native geometry');
+    const preview = previewModelAuthoring(useViewerStore.getState(), reviewedDetach('m'));
+    assert.equal(preview.rows[0].status, 'ready', preview.rows[0].issue);
+    assert.ok(preview.rows[0].previewUnavailable, 'review explicitly withholds a resulting type-detach geometry preview');
+    const outcome = commitModelAuthoring(useViewerStore, preview, new Set([0]), 'native WASM detachment');
+    assert.ok(outcome.ok, outcome.ok ? '' : outcome.detail ?? outcome.reason);
+    const after = geometry(editedModelBytes(dataStore, view));
+    assert.ok(after.length > 0 && after.every(mesh => mesh.positions.every(Number.isFinite) && mesh.indices.length > 0),
+      'actual detached export still processes through the canonical native geometry pipeline');
+    useViewerStore.getState().undo(SAMPLE_MODEL);
+    assert.deepEqual(geometry(editedModelBytes(dataStore, view)), before, 'Undo restores actual target mesh output');
+  });

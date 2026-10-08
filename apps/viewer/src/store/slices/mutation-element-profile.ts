@@ -48,7 +48,11 @@ const NOT_EDITABLE = 'This element is not a straight extrusion of a centred sect
  */
 export function readElementProfile(state: ViewerState, modelId: string, expressId: number): ProfileSection | null {
   const target = modelEditTarget(state, modelId);
-  if (!target) return null;
+  return target ? readElementProfileFromTarget(target, expressId) : null;
+}
+
+/** Read the same section through a detached native evidence facade. */
+export function readElementProfileFromTarget(target: ModelEditTarget, expressId: number): ProfileSection | null {
   const chain = resolveLinearElementChain(target.dataStore, target.view, target.editor, expressId, getModelLengthUnitScale(target.dataStore));
   if (!chain) return null;
   return chain.profile ?? { Type: 'Rectangle', XDim: chain.profileWidth, YDim: chain.profileHeight };

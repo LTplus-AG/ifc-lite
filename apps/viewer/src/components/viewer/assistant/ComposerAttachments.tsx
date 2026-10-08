@@ -32,7 +32,7 @@ export const NO_ATTACHMENTS: ComposerAttachmentValue = { selection: null, screen
 /** What a send carries for `value`: nothing unless the user attached it. */
 export function attachmentsForSend(value: ComposerAttachmentValue): AssistantAttachments {
   return {
-    ...(value.selection ? { selection: selectionGroundingText(value.selection) } : {}),
+    ...(value.selection ? { selection: selectionGroundingText(value.selection), selectionSnapshot: value.selection } : {}),
     ...(value.screenshot ? { screenshot: value.screenshot } : {}),
   };
 }

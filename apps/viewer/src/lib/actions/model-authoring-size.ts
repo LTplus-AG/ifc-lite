@@ -3,19 +3,24 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import type { ViewerState } from '@/store';
-import { readElementSize } from '@/store/slices/mutation-element-size';
-import { modelEditTarget } from '@/store/slices/mutation-modelling-records';
+import { readElementSizeInStore } from '../../../../../packages/create/src/in-store/element-size-edit.js';
+import { modelEditTarget, type ModelEditTarget } from '@/store/slices/mutation-modelling-records';
 import { readWallMetres } from '@/store/slices/mutation-wall-resize';
 import type { ExpectedSize } from './model-authoring-size-params';
 
 /** Read only the existing native editable dimensions, in metres. */
 export function readAuthoringSize(state: ViewerState, modelId: string, expressId: number, kind: ExpectedSize['kind']): ExpectedSize | null {
+  const target = modelEditTarget(state, modelId);
+  return target ? readAuthoringSizeFromTarget(target, expressId, kind) : null;
+}
+
+/** Same canonical decoder for an existing or detached native target. */
+export function readAuthoringSizeFromTarget(target: ModelEditTarget, expressId: number, kind: ExpectedSize['kind']): ExpectedSize | null {
   if (kind === 'wall') {
-    const target = modelEditTarget(state, modelId);
-    const wall = target ? readWallMetres(target, expressId) : null;
+    const wall = readWallMetres(target, expressId);
     return wall ? { kind, height: wall.height, thickness: wall.thickness } : null;
   }
-  const size = readElementSize(state, modelId, expressId);
+  const size = readElementSizeInStore(target, expressId);
   return size?.kind === kind ? size : null;
 }
 

@@ -250,3 +250,10 @@ test('#7245 revoked queued deletion preserves a newer native same-ID rename draf
   const durable = (await readContentRows('comparison')).find(row => row.id === report.id); assert.ok(durable && !durable.deleted);
   assert.equal((durable.payload as { name: string }).name, 'Newer native rename draft');
 });
+test('#7245 native preview unmount revokes a queued confirmation before its actual storage write', async () => {
+  const report = await realComparison(); const ui = previewFor(report); await settle();
+  click(button(ui, 'Delete report')!); cleanup();
+  await waitFor(() => useViewerStore.getState().savedComparisonsStorage.items[report.id] !== 'saving', 'native queued deletion observes lost preview owner');
+  assert.equal((await readContentRows('comparison')).find(row => row.id === report.id)?.deleted, false);
+  assert.ok(useViewerStore.getState().savedComparisons.some(row => row.id === report.id));
+});

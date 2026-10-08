@@ -5,6 +5,7 @@
 import '@/test/setup-dom.js';
 import { before, afterEach, test, mock } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
 import { act } from 'react';
 import { IfcParser } from '@ifc-lite/parser';
 import { MutablePropertyView } from '@ifc-lite/mutations';
@@ -176,7 +177,9 @@ test('ion partial recovery names the invocation-resolved export despite model ch
 // its post-upload abort checkpoint, and Activity's mounted action are native.
 test('ion Activity Cancel drains native upload and an old callback cannot abort retry (#7121)', async () => {
   useActivityJournal.setState({ jobs: [] });
-  const model = { ...fixtureModel('tray.ifc'), ifcDataStore: await parseFixtureModel(), schemaVersion: 'IFC4' as const };
+  const authored = await readFile(new URL('../../../public/samples/building-architecture.ifc', import.meta.url));
+  const dataStore = await new IfcParser().parseColumnar(authored.slice().buffer as ArrayBuffer, { disableWorkerScan: true });
+  const model = { ...fixtureModel('tray.ifc'), ifcDataStore: dataStore, schemaVersion: 'IFC4' as const };
   useViewerStore.setState({ ...fixtureModels(model), mutationViews: new Map(), georefMutations: new Map(),
     scheduleData: null, scheduleIsEdited: false, scheduleSourceModelId: null });
   const sent: Array<{ signal: AbortSignal; bytes: Uint8Array; settle: () => void }> = [];
@@ -195,7 +198,9 @@ test('ion Activity Cancel drains native upload and an old callback cannot abort 
   click(button('Upload'));
   await waitFor(() => sent.length === 1, 'native upload entered S3 boundary');
   const parsed = await new IfcParser().parseColumnar(sent[0].bytes.slice().buffer as ArrayBuffer, { disableWorkerScan: true });
-  assert.equal(parsed.entities.getName(FIXTURE_WALL_A), 'Wall A', 'actual IFC serialization reaches transport');
+  const wall = dataStore.entityIndex.byType.get('IFCWALL')?.[0];
+  assert.ok(wall);
+  assert.equal(parsed.entities.getGlobalId(wall), dataStore.entities.getGlobalId(wall), 'authored wall identity survives serialization');
   const first = useActivityJournal.getState().jobs.at(-1)!;
   const oldCancel = activityCanceller(first.id);
   assert.ok(oldCancel);

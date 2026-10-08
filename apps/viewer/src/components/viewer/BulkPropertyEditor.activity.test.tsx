@@ -45,14 +45,14 @@ async function setup() {
 }
 it('#7128 native bulk Activity Cancel retains exactly one committed batch and old callback cannot cancel retry', async () => {
   const { view, input, apply } = await setup();
-  let oldCancel: (() => void) | null = null;
+  const retained: { cancel: (() => void) | null } = { cancel: null };
   let stopped = false;
   const off = useActivityJournal.subscribe(({ jobs }) => {
     const row = jobs.at(-1);
     if (stopped || row?.outcome !== 'running' || row.progress?.done !== 500) return;
     stopped = true;
-    oldCancel = activityCanceller(row.id);
-    assert.ok(oldCancel);
+    retained.cancel = activityCanceller(row.id);
+    assert.ok(retained.cancel);
     const cancel = document.querySelector<HTMLButtonElement>('button[aria-label="Cancel Bulk property update"]');
     assert.ok(cancel); click(cancel);
   });
@@ -66,7 +66,7 @@ it('#7128 native bulk Activity Cancel retains exactly one committed batch and ol
   assert.equal(useViewerStore.getState().undoStacks.get('native')?.flat().length, 500, 'committed writes remain undoable');
   type(input, 'Retry applied name'); await advance(250);
   apply();
-  assert.ok(oldCancel); act(() => oldCancel!());
+  assert.ok(retained.cancel); act(() => retained.cancel!());
   await waitFor(() => useActivityJournal.getState().jobs.at(-1)?.outcome === 'completed', 'retry completes');
   assert.equal(view.getAttributeMutationsForEntity(1209).find(m => m.name === 'Name')?.value, 'Retry applied name');
   assert.equal(activityCanceller(useActivityJournal.getState().jobs.at(-1)!.id), null);

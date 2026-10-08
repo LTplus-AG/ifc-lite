@@ -26,7 +26,7 @@ async function setup(count = 1) {
     ifcDataStore: store, maxExpressId: 1209 }));
   useViewerStore.setState({ ...fixtureModels(...models), listDefinitions: [definition], activeListId: null,
     listResult: null, listError: null, listExecuting: false, pendingListDraft: null,
-    modelTags: new Map(), modelTagAssignments: new Map(), zoneSets: [], zoneAssignments: {} });
+    modelTags: new Map(), modelTagAssignments: new Map(), zoneSets: [], zoneAssignments: new Map() });
   const ui = render(<><ListPanel /><ActivityTrayList /></>);
   const run = () => {
     const button = ui.querySelector<HTMLButtonElement>('button[aria-label="Run list Native wall inventory"]');

@@ -19,6 +19,8 @@ import { useTranslation } from '@/i18n';
 
 interface Toast {
   id: number;
+  /** Notifications sharing a lifecycle replace one another. */
+  key?: string;
   type: 'success' | 'error' | 'info';
   message: string;
   /** How many identical toasts were merged into this one. */
@@ -54,8 +56,8 @@ function clearTimer(id: number) {
  * `MAX_VISIBLE` the oldest toasts are evicted, transient ones before errors:
  * an error stays until dismissed, so newer successes must not push it off.
  */
-function addToast(type: Toast['type'], message: string, durationMs: number | null, action?: Toast['action']): number {
-  const existing = toasts.find((t) => t.type === type && t.message === message);
+function addToast(type: Toast['type'], message: string, durationMs: number | null, action?: Toast['action'], key?: string): number {
+  const existing = toasts.find((t) => key !== undefined ? t.key === key : t.key === undefined && t.type === type && t.message === message);
   const id = existing?.id ?? nextId++;
   const others = toasts.filter((t) => t.id !== id);
   const excess = Math.max(0, others.length - (MAX_VISIBLE - 1));
@@ -64,7 +66,7 @@ function addToast(type: Toast['type'], message: string, durationMs: number | nul
   const evicted = new Set(evictOrder.slice(0, excess).map((t) => t.id));
   for (const evictedId of evicted) clearTimer(evictedId);
   const kept = others.filter((t) => !evicted.has(t.id));
-  toasts = [...kept, { id, type, message, count: (existing?.count ?? 0) + 1, seq: nextSeq++, action }];
+  toasts = [...kept, { id, key, type, message, count: existing?.type === type && existing.message === message ? existing.count + 1 : 1, seq: nextSeq++, action }];
   clearTimer(id);
   if (durationMs !== null) timers.set(id, setTimeout(() => dismiss(id), durationMs));
   notify();
@@ -79,8 +81,8 @@ function dismiss(id: number) {
 
 /** Imperative toast API. Errors stay until the user dismisses them. */
 export const toast = {
-  success: (message: string, action?: Toast['action']): void => { addToast('success', message, action ? null : 3000, action); },
-  error: (message: string): void => { addToast('error', message, null); },
+  success: (message: string, action?: Toast['action'], key?: string): void => { addToast('success', message, action ? null : 3000, action, key); },
+  error: (message: string, key?: string): void => { addToast('error', message, null, undefined, key); },
   info: (message: string, action?: Toast['action']): void => { addToast('info', message, action ? null : 3000, action); },
   /**
    * An error about an in-progress tool gesture, which means nothing once the

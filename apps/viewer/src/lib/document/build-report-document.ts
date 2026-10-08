@@ -6,7 +6,8 @@ import { isSavedComparisonChart } from '../charts/comparison-source';
 import { savedReportBlock, type SavedValidationReport } from '../validation/reports/history';
 import { DOCUMENT_VERSION, migrateDocumentSpec, validateDocumentSpec, type DocumentSpec, type DocumentBlock, type IdsReportBlock } from './types';
 import { setBlockTitleFields } from './block-title';
-import { freshBlockId, freshDocumentId, freshListCopyId } from './persistence';
+import { copyDocumentBlock, freshBlockId, freshDocumentId } from './persistence';
+import { detachAiProvenance } from './ai-report-types';
 import { literalTemplateText } from './bindings';
 
 export type DocumentReportResult =
@@ -157,14 +158,13 @@ export function buildReportDocument(options: BuildReportDocumentOptions): Docume
       if (block.kind === 'ids-report' || (block.kind === 'table' && block.source.kind === 'comparison')) {
         throw new Error(`Report block ${block.id} requires a result mapping`);
       }
-      const copy = structuredClone(block);
-      copy.id = freshBlockId();
-      if (copy.kind === 'table' && copy.source.kind === 'list') copy.source.list.id = freshListCopyId();
-      if (copy.kind === 'chart') copy.chart.id = freshBlockId();
-      blocks.push(copy);
+      blocks.push(detachAiProvenance(copyDocumentBlock(block)));
     }
   }
-  return { ...structuredClone(template), id: freshDocumentId(), name: options.name ?? template.name, blocks };
+  // An AI report used as a template keeps its text, never its old evidence record (#6918).
+  const layout = structuredClone(template);
+  delete layout.aiReport;
+  return { ...layout, id: freshDocumentId(), name: options.name ?? template.name, blocks };
 }
 
 /** Convenience for library-backed automation callers; result IDs are library evidence IDs. */

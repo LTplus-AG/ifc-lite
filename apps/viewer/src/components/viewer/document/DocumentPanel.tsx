@@ -22,17 +22,20 @@ import { trackExportCompleted } from '@/lib/analytics';
 import { useViewerStore } from '@/store';
 import { downloadBlob, sanitizeFilename } from '@/lib/export/download';
 import { blankDocument, DOCUMENT_PRESETS } from '@/lib/document/presets';
-import { freshBlockId, freshListCopyId } from '@/lib/document/persistence';
+import { copyDocumentBlock, freshBlockId, freshListCopyId } from '@/lib/document/persistence';
 import { LIST_PRESETS } from '@/lib/lists';
 import { newChartSpec } from '@/lib/charts/presets';
 import { largestBucketIds } from '@/lib/charts/buckets';
 import { listCopyForDocument, TABLE_ROWS_DEFAULT, type DocumentBlock, type DocumentSpec } from '@/lib/document/types';
 import { type DocumentPdfSeams } from '@/lib/document/generate-document-pdf';
 import { exportPreparedDocument } from '@/lib/document/export-prepared-document';
+import { AssistantAction } from '../assistant/AssistantAction';
 import { BlockEditor } from './BlockEditor';
 import { DocumentMenu } from './DocumentMenu';
 import { DocumentPreview } from './DocumentPreview';
 import { PageHeadingEditor } from './PageHeadingEditor';
+import { AiReportRefresh } from './AiReportRefresh';
+import { detachAiProvenance } from '@/lib/document/ai-report-types';
 import { useDocumentData } from './useDocumentData';
 import { useReportSources } from './useReportSources';
 
@@ -91,6 +94,18 @@ export function DocumentPanel({ pdfSeams }: DocumentPanelProps) {
   const update = upsert;
   const setBlocks = useCallback((blocks: DocumentBlock[]) => { if (document) update({ ...document, blocks }); }, [document, update]);
 
+  const copyBlock = (id: string): void => {
+    const live = useViewerStore.getState();
+    const current = live.documents.find((entry) => entry.id === live.activeDocumentId);
+    const index = current?.blocks.findIndex((block) => block.id === id) ?? -1;
+    if (!current || index < 0) return;
+    // The duplicate is the reviewer's own text; refresh only regenerates the original (#6918).
+    const copy = detachAiProvenance(copyDocumentBlock(current.blocks[index]));
+    // Read current content so consecutive copies keep each other's staged durable writes.
+    void update({ ...current, blocks: [...current.blocks.slice(0, index + 1), copy, ...current.blocks.slice(index + 1)] });
+    setSelectedBlockId(copy.id);
+  };
+
   const addBlock = (kind: Exclude<DocumentBlock['kind'], 'ids-report' | 'manual-report'>): void => {
     if (!document) return;
     const id = freshBlockId();
@@ -131,6 +146,7 @@ export function DocumentPanel({ pdfSeams }: DocumentPanelProps) {
       const seams = pdfSeams ? await pdfSeams() : undefined;
       const result = await exportPreparedDocument({
         document,
+        labels: data.labels,
         bindings: data.bindings,
         aggregations: data.aggregations,
         chartMessages: data.chartMessages,
@@ -224,12 +240,14 @@ export function DocumentPanel({ pdfSeams }: DocumentPanelProps) {
         <Button variant="ghost" size="sm" className="h-6 px-2 text-xs" disabled={busy || tablesResolving || !document || document.blocks.length === 0} aria-busy={tablesResolving || undefined} onClick={() => void exportPdf()} title={t('document.panel.exportTitle')} data-document-export>
           <FileText className="mr-1 h-3.5 w-3.5" />{busy ? t('document.panel.exportBusy') : tablesResolving ? t('document.panel.exportPreparingTables') : t('document.panel.exportIdle')}
         </Button>
+        <AssistantAction />
       </div>
 
       {document && (
         <div className="flex min-h-0 flex-1">
           <div className="flex w-[420px] shrink-0 flex-col gap-2 overflow-y-auto overflow-x-hidden border-r border-border p-2" data-document-blocks>
             <PageHeadingEditor document={document} onChange={update} />
+            {document.aiReport && <AiReportRefresh key={document.id} document={document} onChange={update} />}
             {document.blocks.map((block, index) => (
               <div key={block.id} className={selectedBlockId === block.id ? 'rounded-md ring-1 ring-sky-500' : undefined} onFocusCapture={() => setSelectedBlockId(block.id)}>
                 <BlockEditor
@@ -248,6 +266,7 @@ export function DocumentPanel({ pdfSeams }: DocumentPanelProps) {
                     [blocks[index], blocks[target]] = [blocks[target], blocks[index]];
                     setBlocks(blocks);
                   }}
+                  onCopy={() => copyBlock(block.id)}
                   onRemove={() => setBlocks(document.blocks.filter((b) => b.id !== block.id))}
                 />
               </div>
@@ -255,7 +274,7 @@ export function DocumentPanel({ pdfSeams }: DocumentPanelProps) {
             {document.blocks.length === 0 && <div className="p-2 text-muted-foreground">{t('document.panel.emptyBlocks')}</div>}
           </div>
           <div className="min-w-0 flex-1 overflow-auto bg-muted/40">
-            <DocumentPreview document={document} bindings={data.bindings} aggregations={data.aggregations} chartMessages={data.chartMessages} topics={data.topics} tables={data.tables} selectedBlockId={selectedBlockId} onSelectBlock={setSelectedBlockId} />
+            <DocumentPreview document={document} labels={data.labels} bindings={data.bindings} aggregations={data.aggregations} chartMessages={data.chartMessages} topics={data.topics} tables={data.tables} selectedBlockId={selectedBlockId} onSelectBlock={setSelectedBlockId} />
           </div>
         </div>
       )}

@@ -44,7 +44,7 @@ import { createEmptyFlatSymbolic } from '@/lib/overlay-parse/symbolic-flat.js';
 import { __resetSymbolicAnnotationsCacheForTests } from './symbolic-parse-cache.js';
 import { loadDrawing2DEntry, saveDrawing2DEntry, clearAllDrawing2DEntries } from '@/store/slices/drawing2DSlice.persistence.js';
 import { getDefaultDrawing2DState } from '@/store/slices/drawing2DSlice.js';
-import { computeFullSourceHashFromBlob } from '@/utils/sourceContentHash.js';
+import { placementSourceIdentity } from '@/lib/model-placement/source-identity';
 
 const DEFAULTS = getDefaultDrawing2DState().drawing2DDisplayOptions;
 const TAGGED_ANNOTATION_ID = 50;
@@ -84,23 +84,25 @@ function fileWithBytes(seed: number, name: string): File {
 }
 
 /**
- * A `File` whose `arrayBuffer()` — the step `computeFullSourceHashFromBlob`
- * awaits before it can hash anything — does not resolve until `release()` is
+ * A `File` whose slice reads — the step the placement identity (#7035)
+ * awaits before it can hash anything — do not resolve until `release()` is
  * called. This is what lets a test hold #4159's hash computation at
  * `'pending'` on purpose, independent of how many ticks anything else takes,
  * so a scenario ("the IFC parse finishes before the hash resolves") that
  * would otherwise depend on incidental timing between a real SHA-256 digest
  * and a fake worker reply becomes deterministic instead. Deliberately does
  * NOT touch either hook under test — it only ever calls the SAME `File` API
- * (`arrayBuffer()`) `computeFullSourceHashFromBlob` already calls.
+ * (`slice().arrayBuffer()`) the identity pass already calls.
  */
 function fileWithHeldHash(seed: number, name: string): { file: File; release: () => void } {
   const bytes = new Uint8Array(256).map((_, i) => (i + seed) % 256);
   const file = new File([bytes], name, { type: 'application/octet-stream' });
   let resolveGate!: () => void;
   const gate = new Promise<void>((resolve) => { resolveGate = resolve; });
-  const realArrayBuffer = file.arrayBuffer.bind(file);
-  file.arrayBuffer = () => gate.then(realArrayBuffer);
+  const realSlice = file.slice.bind(file);
+  Object.defineProperty(file, 'slice', {
+    value: (start?: number, end?: number) => ({ arrayBuffer: () => gate.then(() => realSlice(start, end).arrayBuffer()) }),
+  });
   return { file, release: () => resolveGate() };
 }
 
@@ -198,7 +200,7 @@ afterEach(async () => {
 describe('localStorage (#4159) vs IFC-embedded (#4170) markup restore precedence', () => {
   it('does not resurrect stale IFC-embedded markup once localStorage has already resolved (even to an empty saved entry)', async () => {
     const file = fileWithBytes(7, 'both-sources.ifc');
-    const hash = (await computeFullSourceHashFromBlob(file))!;
+    const hash = (await placementSourceIdentity(file))!;
     const store = await parseFixture();
     const model: FederatedModel = {
       id: 'model-precedence',
@@ -233,9 +235,12 @@ describe('localStorage (#4159) vs IFC-embedded (#4170) markup restore precedence
     await mount();
     await act(async () => { useViewerStore.getState().setActiveModel('model-precedence'); });
 
-    // Let localStorage's restore resolve FIRST — its hash is a fast,
-    // in-memory computation over a 256-byte file, well within these ticks.
-    await flush();
+    // Let localStorage's restore resolve FIRST. The key is derived from a
+    // slice read and two digests (#7035), which no fixed number of ticks
+    // bounds, so wait for the decision itself: while it is still pending the
+    // assertions below would pass without the precedence ever being decided.
+    await settleUntil(() => hasPersistedMarkupEntryFor(model.id) !== 'pending');
+    const decidedBeforeParse = hasPersistedMarkupEntryFor(model.id);
     assert.deepEqual(
       useViewerStore.getState().measure2DResults,
       [],
@@ -246,6 +251,9 @@ describe('localStorage (#4159) vs IFC-embedded (#4170) markup restore precedence
     await act(async () => { release(); });
     await flush();
 
+    // Checked after the held parse is released, so a failure here cannot
+    // leave the fake worker's reply pending.
+    assert.equal(decidedBeforeParse, true, 'localStorage\'s decision was settled before the parse landed, and it found the saved entry');
     assert.deepEqual(
       useViewerStore.getState().measure2DResults,
       [],

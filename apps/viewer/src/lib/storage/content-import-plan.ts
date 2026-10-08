@@ -6,13 +6,15 @@ import type { ContentLibraries } from './content-backup.js';
 import { contentCreatedAt, type ContentRow } from './content-database.js';
 import { sameReportEvidence } from '../flow/report-provenance.js';
 import { newSavedReport } from '../validation/reports/history.js';
-import { documentContent, parseDocumentFile } from '../document/persistence.js';
-import { comparisonContent } from '../compare/savedComparisonPersistence.js';
-import { validationContent } from '../validation/reports/persistence.js';
+import { parseDocumentFile } from '../document/persistence.js';
+import { CONTENT_KINDS } from './content-kinds.js';
+import { CONTENT_DEFINITIONS } from './content-registry.js';
 import { rebindContentDocument } from './content-backup-references.js';
 import { computeFullSourceHash } from '../../utils/sourceContentHash.js';
 import type { DocumentSpec } from '../document/types.js';
+import type { ClashGroupApplication } from '../clash/group-applications.js';
 import { forgetImportIdentity, rememberImportIdentity } from './content-import-identity.js';
+import { quarantineImported } from '../bcf-publication/outbox-state.js';
 
 export interface PreparedContentImport { libraries: ContentLibraries; fingerprints: Map<object, string> }
 const pending = new Map<string, ContentRow>();
@@ -29,7 +31,7 @@ export function sameImportEvidence(left: unknown, right: unknown): boolean {
 /** Prepare identities before IDB; asynchronous hashing must never auto-commit a transaction. */
 export async function prepareContentImport(libraries: ContentLibraries): Promise<PreparedContentImport> {
   const fingerprints = new Map<object, string>();
-  await Promise.all((['validation', 'comparison', 'document'] as const).flatMap(kind => libraries[kind].map(async entry => {
+  await Promise.all(CONTENT_KINDS.flatMap(kind => (libraries[kind] ?? []).map(async entry => {
     const canonical = JSON.stringify(entry, (_key, value: unknown) => value && typeof value === 'object' && !Array.isArray(value)
       ? Object.fromEntries(Object.entries(value).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0)) : value);
     const hash = await computeFullSourceHash(new TextEncoder().encode(canonical));
@@ -40,10 +42,15 @@ export async function prepareContentImport(libraries: ContentLibraries): Promise
 }
 
 /** Both atomic writes and refused-import staging use these exact conflict/dedup rules. */
+function rebindApplication(entry: ClashGroupApplication, workspaceId: string): ClashGroupApplication {
+  if (workspaceId === entry.workspaceId) return entry;
+  return { ...entry, workspaceId, after: { ...entry.after, id: workspaceId }, before: entry.before && { ...entry.before, id: workspaceId } };
+}
+
 export function planContentImport(prepared: PreparedContentImport, existing: ContentRow[], visible?: ContentLibraries,
   trustedExisting = true): ContentRow[] {
   const known = new Map(existing.map(row => [key(row.kind, row.id), row]));
-  if (visible) for (const kind of ['validation', 'comparison', 'document'] as const) for (const entry of visible[kind]) {
+  if (visible) for (const kind of CONTENT_KINDS) for (const entry of visible[kind] ?? []) {
     if (!known.has(key(kind, entry.id))) known.set(key(kind, entry.id), { kind, id: entry.id, version: 1, revision: 0,
       createdAt: 0, modifiedAt: 0, deleted: false, payload: entry });
   }
@@ -60,7 +67,7 @@ export function planContentImport(prepared: PreparedContentImport, existing: Con
         && sameImportEvidence(saved.payload, previous.payload))) return saved.id;
       if (saved && (saved.deleted || saved.revision > 0)) payload = copy();
       else {
-        const decode = kind === 'document' ? documentContent.decode : kind === 'comparison' ? comparisonContent.decode : validationContent.decode;
+        const decode = CONTENT_DEFINITIONS[kind].decode;
         const currentDraft = saved && decode(JSON.parse(JSON.stringify(saved.payload)));
         payload = currentDraft ?? previous.payload as { id: string };
         if (rebindPending) payload = rebindPending(payload);
@@ -77,9 +84,12 @@ export function planContentImport(prepared: PreparedContentImport, existing: Con
     add('validation', entry, () => newSavedReport(entry.snapshot, entry.name, entry.automation))]));
   const comparison = new Map(libraries.comparison.map(entry => [entry.id,
     add('comparison', entry, () => ({ ...entry, id: crypto.randomUUID() }))]));
-  const oldReferences = (kind: 'comparison' | 'validation', selected: Map<string, string>): Map<string, string> => {
+  // A saved clash report keeps its evidence; a conflicting ID becomes a copy and the charts bound to it follow the copy.
+  const clashReports = new Map((libraries.clashReports ?? []).map(entry => [entry.id,
+    add('clashReports', entry, () => ({ ...entry, id: crypto.randomUUID() }))]));
+  const oldReferences = (kind: 'comparison' | 'validation' | 'clashReports', selected: Map<string, string>): Map<string, string> => {
     const references = new Map(selected);
-    for (const entry of libraries[kind]) {
+    for (const entry of libraries[kind] ?? []) {
       const fingerprint = prepared.fingerprints.get(entry), old = fingerprint ? pending.get(fingerprint) : undefined;
       const current = selected.get(entry.id);
       if (old && current) references.set(old.id, current);
@@ -87,10 +97,34 @@ export function planContentImport(prepared: PreparedContentImport, existing: Con
     return references;
   };
   const comparisonReferences = oldReferences('comparison', comparison), validationReferences = oldReferences('validation', validation);
+  const clashReportReferences = oldReferences('clashReports', clashReports);
   for (const entry of libraries.document) {
-    const rebound = rebindContentDocument(entry, comparison, validation);
+    const rebound = rebindContentDocument(entry, comparison, validation, clashReports);
     add('document', entry, () => parseDocumentFile(JSON.stringify(rebound)), rebound,
-      previous => rebindContentDocument(previous as DocumentSpec, comparisonReferences, validationReferences));
+      previous => rebindContentDocument(previous as DocumentSpec, comparisonReferences, validationReferences, clashReportReferences));
+  }
+  for (const entry of libraries.assistant ?? []) add('assistant', entry, () => ({ ...entry, id: crypto.randomUUID() }));
+  const workspaceIds = new Map((libraries.clashGroups ?? []).map(entry =>
+    [entry.id, add('clashGroups', entry, () => ({ ...entry, id: crypto.randomUUID() }))] as const));
+  for (const entry of libraries.bcfDrafts ?? []) add('bcfDrafts', entry, () => ({ ...entry, id: crypto.randomUUID() }));
+  for (const entry of libraries.modelChanges ?? []) add('modelChanges', entry, () => ({ ...entry, id: crypto.randomUUID() }));
+  // A receipt follows its workspace: when the import gives the workspace a new id, the receipt (and its undo) names the copy.
+  for (const entry of libraries.clashGroupApplications ?? []) {
+    const rebound = rebindApplication(entry, workspaceIds.get(entry.workspaceId) ?? entry.workspaceId);
+    add('clashGroupApplications', entry, () => ({ ...rebound, id: crypto.randomUUID() }), rebound);
+  }
+  for (const entry of libraries.reviewWorkspaces ?? []) add('reviewWorkspaces', entry, () => ({ ...entry, id: crypto.randomUUID() }));
+  for (const entry of libraries.semanticReviews ?? []) add('semanticReviews', entry, () => ({ ...entry, id: crypto.randomUUID() }));
+  for (const entry of libraries.assistantRecipes ?? []) add('assistantRecipes', entry, () => ({ ...entry, id: crypto.randomUUID() }));
+  // Preferences are identified by their project scope: an existing local entry wins and is never overwritten by an import.
+  for (const entry of libraries.assistantPreferences ?? []) {
+    const current = known.get(key('assistantPreferences', entry.id));
+    if (!current || current.deleted) add('assistantPreferences', entry, () => entry);
+  }
+  // An imported outbox never dispatches by itself: every unfinished effect is blocked until checked against the server.
+  for (const entry of libraries.bcfOutbox ?? []) {
+    const quarantined = quarantineImported(entry);
+    add('bcfOutbox', entry, () => ({ ...quarantined, id: crypto.randomUUID() }), quarantined);
   }
   return rows;
 }

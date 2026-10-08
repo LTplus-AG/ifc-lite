@@ -9,10 +9,10 @@
  * live in the preview. Image, chart and topic blocks pick their source.
  */
 import { BlockTitleEditor } from './BlockTitleEditor';
-import { isSavedComparisonChart } from '@/lib/charts/comparison-source';
+import { isRecordedChart } from '@/lib/charts/chart-source';
 import { SavedReportSource } from './SavedReportSource';
 import { useId, useLayoutEffect, useRef, useState, type KeyboardEvent } from 'react';
-import { ArrowDown, ArrowUp, X } from 'lucide-react';
+import { ArrowDown, ArrowUp, Copy, X } from 'lucide-react';
 import type { ChartSpec } from '@ifc-lite/charts';
 import type { BCFTopic } from '@ifc-lite/bcf';
 import type { ValidationReport } from '@ifc-lite/ids';
@@ -30,6 +30,7 @@ import { TableBlockEditor } from './TableBlockEditor';
 import { ManualReportBlockEditor, ManualReportPresentation } from './ManualReportBlockEditor';
 import { TextColorEditor } from './TextColorEditor';
 import { FieldPicker } from './FieldPicker';
+import { AiOriginBadge } from './AiOriginBadge';
 
 export interface BlockEditorProps {
   block: DocumentBlock;
@@ -43,6 +44,7 @@ export interface BlockEditorProps {
   idsValidationReport: ValidationReport | null;
   onChange: (block: DocumentBlock) => void;
   onMove: (delta: -1 | 1) => void;
+  onCopy: () => void;
   onRemove: () => void;
 }
 
@@ -203,7 +205,7 @@ function TextEditor({ block, bindings, onChange }: { block: TextBlock; bindings:
   );
 }
 
-export function BlockEditor({ block, index, count, bindings, topics, charts, idsValidationReport, onChange, onMove, onRemove }: BlockEditorProps) {
+export function BlockEditor({ block, index, count, bindings, topics, charts, idsValidationReport, onChange, onMove, onCopy, onRemove }: BlockEditorProps) {
   const { t } = useTranslation();
   const [busy, setBusy] = useState(false);
   const pickImage = async (file: File | undefined): Promise<void> => {
@@ -223,9 +225,11 @@ export function BlockEditor({ block, index, count, bindings, topics, charts, ids
       <div className="flex items-center gap-1">
         <span className="font-medium">{t(block.kind === 'ids-report' && reportBlockSourceKind(block) === 'rules' ? 'document.block.kindRulesReport' : KIND_LABEL_KEY[block.kind])}</span>
         <span className="text-muted-foreground">#{index + 1}</span>
+        {block.kind === 'text' && <AiOriginBadge block={block} />}
         <span className="flex-1" />
         <Button variant="ghost" size="sm" className="h-6 w-6 p-0" disabled={index === 0} onClick={() => onMove(-1)} aria-label={t('document.block.moveUpAriaLabel')}><ArrowUp className="h-3.5 w-3.5" /></Button>
         <Button variant="ghost" size="sm" className="h-6 w-6 p-0" disabled={index === count - 1} onClick={() => onMove(1)} aria-label={t('document.block.moveDownAriaLabel')}><ArrowDown className="h-3.5 w-3.5" /></Button>
+        <Button variant="ghost" size="sm" className="h-6 w-6 p-0" onClick={onCopy} aria-label={t('document.block.copyAriaLabel')} title={t('document.block.copyAriaLabel')}><Copy className="h-3.5 w-3.5" /></Button>
         <Button variant="ghost" size="sm" className="h-6 w-6 p-0" onClick={onRemove} aria-label={t('document.block.removeAriaLabel')}><X className="h-3.5 w-3.5" /></Button>
       </div>
 
@@ -279,7 +283,7 @@ export function BlockEditor({ block, index, count, bindings, topics, charts, ids
             </select>
           </label>
           <label className="inline-flex items-center gap-1 text-muted-foreground">
-            <input type="checkbox" checked={block.snapshot && !isSavedComparisonChart(block.chart)} disabled={isSavedComparisonChart(block.chart)} onChange={(e) => onChange({ ...block, snapshot: e.target.checked })} className="accent-[#7aa2f7]" /> {t('document.block.chartSnapshotLabel')}
+            <input type="checkbox" checked={block.snapshot && !isRecordedChart(block.chart)} disabled={isRecordedChart(block.chart)} onChange={(e) => onChange({ ...block, snapshot: e.target.checked })} className="accent-[#7aa2f7]" /> {t('document.block.chartSnapshotLabel')}
           </label>
           <label className="inline-flex items-center gap-1 text-muted-foreground">{t('document.block.heightPtLabel')}
             <ClampedNumberInput

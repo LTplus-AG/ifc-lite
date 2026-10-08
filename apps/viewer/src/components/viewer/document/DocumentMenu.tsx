@@ -13,7 +13,7 @@ import { Button } from '@/components/ui/button';
 import { useDialogs } from '@/components/ui/confirm-dialog';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { toast } from '@/components/ui/toast';
-import { DOCUMENT_FILE_SUFFIX, exportDocument, freshBlockId, freshDocumentId, importDocument } from '@/lib/document/persistence';
+import { DOCUMENT_FILE_SUFFIX, exportDocument, copyDocumentBlock, freshDocumentId, importDocument } from '@/lib/document/persistence';
 import { useTranslation } from '@/i18n';
 import type { DocumentSpec } from '@/lib/document/types';
 
@@ -36,7 +36,7 @@ export function DocumentMenu({ document, onUpsert, onDelete, onActivate }: Docum
   };
   const duplicate = async (): Promise<void> => {
     if (!document) return;
-    const copy: DocumentSpec = { ...document, id: freshDocumentId(), name: t('documentMenu.copySuffix', { name: document.name }), blocks: document.blocks.map((b) => ({ ...b, id: freshBlockId() })) };
+    const copy: DocumentSpec = { ...document, id: freshDocumentId(), name: t('documentMenu.copySuffix', { name: document.name }), blocks: document.blocks.map(copyDocumentBlock) };
     await onUpsert(copy);
     onActivate(copy.id);
   };

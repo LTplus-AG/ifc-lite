@@ -54,7 +54,7 @@ const blocksOfEveryHeadedKind = (style: object = STYLE, scale?: number): Resolve
     { kind: 'text', id: 'text', style: 'body', text: 'One short line', title: 'H:text', ...s },
     { kind: 'image', id: 'image', height: 100, align: 'center', aspect: 2, title: 'H:image', ...s },
     { kind: 'chart', id: 'chart', title: 'H:chart', subtitle: '3 buckets', hasData: true, snapshot: false, height: 200, ...s },
-    { kind: 'topic', id: 'topic', title: 'H:topic', authoredTitle: true, lines: ['Open'], snapshotAspect: 2, ...s },
+    { kind: 'topic', id: 'topic', title: 'H:topic', lines: ['Open'], snapshotAspect: 2, ...s },
     { kind: 'table', id: 'table', title: 'H:table', columns: [{ label: 'Name', numeric: false }], rows: rows(3), ...s },
     { ...IDS, title: 'H:ids', ...s },
     { ...MANUAL, title: 'H:manual', ...s },
@@ -197,7 +197,7 @@ describe('heading style in what the PDF draws (#6632)', () => {
       { ...IDS, title: 'H:ids', ...STYLE },
       { ...MANUAL, title: 'H:manual', ...STYLE },
     ]);
-    await generateDocumentPdf({ document, aggregations: new Map(), chartMessages: new Map(), topics: new Map(), tables: new Map([['rows', { status: 'ok' as const, kind: 'validation' as const, model: { columns: [{ label: 'Rule', numeric: false }], rows: rows(2), totalRows: 2 } }]]), bindings: { get: () => undefined } as never, snapshotIds: () => [] } as never, seams);
+    await generateDocumentPdf({ document, aggregations: new Map(), chartMessages: new Map(), topics: new Map(), tables: new Map([['rows', { status: 'ok' as const, kind: 'validation' as const, model: { columns: [{ label: 'Rule', numeric: false }], rows: rows(2), totalRows: 2 } }]]), bindings: { models: [], activeModelId: null, today: new Date(0) }, snapshotIds: () => [] }, seams);
     for (const kind of ['text', 'image', 'chart', 'table', 'rows', 'ids', 'manual']) {
       const op = ops.find((o) => o.text === `H:${kind}`);
       assert.ok(op, `${kind} heading reached the PDF`);
@@ -209,7 +209,7 @@ describe('heading style in what the PDF draws (#6632)', () => {
 });
 
 describe('heading style in the saved format (#6632)', () => {
-  const doc = (block: object): unknown => ({ version: DOCUMENT_VERSION, id: 'd', name: 'Doc', page: { size: 'A4', orientation: 'portrait' }, blocks: [{ kind: 'text', id: 't', style: 'body', text: 'x', ...block }] });
+  const doc = (block: object) => ({ version: DOCUMENT_VERSION, id: 'd', name: 'Doc', page: { size: 'A4', orientation: 'portrait' }, blocks: [{ kind: 'text', id: 't', style: 'body', text: 'x', ...block }] });
   it('accepts the bounds and refuses a size outside them or a colour that is not #RRGGBB, naming the field', () => {
     assert.deepEqual(validateDocumentSpec(doc({ titleFontSize: BLOCK_TITLE_SIZE_MIN })), []);
     assert.deepEqual(validateDocumentSpec(doc({ titleFontSize: BLOCK_TITLE_SIZE_MAX, titleTextColor: '#aabbcc', titleBackgroundColor: '#000000' })), []);
@@ -231,9 +231,8 @@ describe('heading style in the saved format (#6632)', () => {
     ]) assert.deepEqual(validateDocumentSpec(base(block)).map((e) => e.path), ['blocks[0].titleFontSize'], String(block.kind));
     assert.deepEqual(validateDocumentSpec(base({ kind: 'spacer', id: 'b', height: 5, ...bad })), [], 'a spacer has no heading to style');
   });
-  it('a document saved before heading styles loads as it was and composes unchanged; the version is not raised', () => {
-    assert.equal(DOCUMENT_VERSION, 11, 'additive presentation fields keep the format version (#6513, #6588 precedent)');
-    const imported = parseDocumentFile(JSON.stringify(doc({ title: 'Plain' })));
+  it('a version-11 document keeps its plain block heading when migrating the page-band format (#6610)', () => {
+    const imported = parseDocumentFile(JSON.stringify({ ...doc({ title: 'Plain' }), version: 11 }));
     assert.deepEqual({ ...imported.blocks[0], id: 't' }, { kind: 'text', id: 't', style: 'body', text: 'x', title: 'Plain' });
   });
   it('keeps a heading style through export and import for every headed kind', () => {

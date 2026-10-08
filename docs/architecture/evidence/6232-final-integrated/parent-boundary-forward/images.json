@@ -1,0 +1,26 @@
+[
+  {
+    "path": "physical-1-split.png",
+    "sha256": "a8a6592c5c78554684f24b5e07d181164f61bce757ddb1333974dff64d2b1ab3"
+  },
+  {
+    "path": "physical-1-size.png",
+    "sha256": "2569337b77134ee23e2c12f50be618b82e5af9c03c5d676059d0d7cfa5f902cc"
+  },
+  {
+    "path": "physical-1-duplicate.png",
+    "sha256": "1c32c8bc4f1d8741cd7733a5795f785e910080302a2c352c3fa8e572a744ed18"
+  },
+  {
+    "path": "physical-2-split.png",
+    "sha256": "54b1c64f216b62c5185a4dee0db5accbe1d1175b69b24a5ed89706d1e4dce12e"
+  },
+  {
+    "path": "physical-2-size.png",
+    "sha256": "10789e44465b3af4ba9f10b2ae3b89b044e1680671d0a078096e104f837ec66a"
+  },
+  {
+    "path": "physical-2-duplicate.png",
+    "sha256": "80dde790aa022105bd79223711a539db3d56ba0401b5b02e74f2d545747fb45b"
+  }
+]

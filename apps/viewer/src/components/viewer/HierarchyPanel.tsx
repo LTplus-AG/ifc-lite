@@ -424,9 +424,11 @@ export function HierarchyPanel() {
     return { isSelected, nodeHidden, modelVisible };
   }, [selectedEntityId, selectedEntityIds, hiddenEntities, getNodeElements, models]);
 
+  // Every branch carries the tour anchor: the welcome tour's "Browse the
+  // structure" step must find the panel while a model is absent or loading.
   if (!ifcDataStore && models.size === 0) {
     return (
-      <div className="h-full flex flex-col border-r-2 border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-black">
+      <div {...tourAnchor(TOUR_ANCHORS.hierarchyPanel)} className="h-full flex flex-col border-r-2 border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-black">
         <div className="p-3 border-b-2 border-zinc-200 dark:border-zinc-800 bg-white dark:bg-black">
           <h2 className="font-bold uppercase tracking-wider text-xs text-zinc-900 dark:text-zinc-100">{t('hierarchy.panel.title')}</h2>
         </div>
@@ -448,7 +450,7 @@ export function HierarchyPanel() {
       : singleModel.loadState === 'complete' ? 'No hierarchy available for this model.'
       : 'Building the hierarchy. You can explore the geometry while model details load.';
     return (
-      <div className="h-full flex flex-col border-r-2 border-zinc-200 dark:border-zinc-800 bg-white dark:bg-black">
+      <div {...tourAnchor(TOUR_ANCHORS.hierarchyPanel)} className="h-full flex flex-col border-r-2 border-zinc-200 dark:border-zinc-800 bg-white dark:bg-black">
         <div className="p-3 border-b-2 border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-black">
           <h2 className="font-bold uppercase tracking-wider text-xs text-zinc-900 dark:text-zinc-100">{t('hierarchy.panel.title')}</h2>
         </div>

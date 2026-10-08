@@ -23,6 +23,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
 import { gh as ghJson } from './gh.mjs';
 import { rowsChangedInPatch } from './base-freshness.mjs';
+import { canonicalMainRefIn } from './canonical-remote.mjs';
 
 // This module lives in scripts/lib/, so the repo root is two levels up rather
 // than one. Computed here rather than passed in: every git call in this file
@@ -72,9 +73,13 @@ export function resolveMainTip(repo) {
   // measures against main. HEAD is the fallback for the sweep's own checkout,
   // where `push: main` means HEAD IS main and a remote-tracking ref may not
   // have been created.
+  // The canonical remote's main (`origin` unless another remote points at
+  // LTplus-AG/ifc-lite), so a fork-origin clone does not measure against its
+  // stale fork main.
+  const mainRef = canonicalMainRefIn(REPO_ROOT);
   let tip;
   try {
-    tip = git(['rev-parse', 'refs/remotes/origin/main']).trim();
+    tip = git(['rev-parse', `refs/remotes/${mainRef}`]).trim();
   } catch {
     tip = git(['rev-parse', 'HEAD']).trim();
   }
@@ -88,7 +93,7 @@ export function resolveMainTip(repo) {
       `but ${repo}'s main is at ${remote.slice(0, 9)}. Every diff here comes from the local ` +
       'object database, so measuring against the wrong tree produces a verdict that is wrong ' +
       'with full confidence -- one PR read OK, OK and STALE from three different checkouts. ' +
-      'Run `git fetch origin main` and try again.'
+      `Run \`git fetch ${mainRef.split('/')[0]} main\` and try again.`
   );
   process.exit(2);
 }

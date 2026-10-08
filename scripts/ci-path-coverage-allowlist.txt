@@ -28,10 +28,13 @@ scripts/release-version-changed.test.mjs README.md # synthetic .changeset filena
 scripts/check-workflow-report-paths.mjs .github/* # `.github` is a conservative prefix fragment; the real audit input `.github/workflows/**` is carried by frontend
 scripts/check-workflow-report-paths.test.mjs .github/* # same prefix fragment, produced by the synthetic-tree harness
 scripts/lib/module-size-ratchet.test.mjs tests/* # `tests` fragment from a fixture path; the ratchet walks packages/ and apps/
+scripts/ai-eval/check-ai-eval-manifest.mjs tests/* # `tests` fragment of join(root, 'tests', 'ai-eval' | 'models', ...); the real inputs are tests/ai-eval/** and tests/models/manifest.json, both in the node-tests filter
+scripts/ai-eval/check-ai-eval-invariants.mjs tests/* # same fragment; the real input is tests/ai-eval/** (recordings and manifest)
 scripts/fixtures/fetch-fixtures.test.mjs tests/* # `tests` fragment; the fetcher targets tests/models from its manifest
 scripts/docs/generate-docs-sections.mjs tests/benchmark/* # `tests` prefix fragment; the one input under tests/benchmark is baseline.json, now in the docs filter and pinned by REQUIRED_COVERAGE
 scripts/docs/generate-docs-sections.mjs tests/extensions # `tests` prefix fragment; sdk-canary.yml carries tests/extensions/canaries/** in its own paths
 scripts/docs/generate-docs-sections.mjs tests/models # `tests` prefix fragment; the corpus input tests/models/manifest.json is in the rust, geometry and frontend filters
+scripts/docs/generate-docs-sections.mjs tests/perf-ratchets # `tests` prefix fragment; the generator reads no perf-ratchet ceiling file (#6959)
 scripts/docs/check-package-readmes.test.mjs docs/** # `docs` fragment; the gate reads packages/*/README.md
 scripts/docs/check-package-readmes.test.mjs README.md # root README fragment; the gate reads per-package READMEs
 scripts/check-swallowed-push.test.mjs README.md # fragment from the harness's fixture root, not an input
@@ -90,6 +93,12 @@ scripts/check-icon-button-adoption.test.mjs apps/landing/** # `apps` is a synthe
 scripts/fixtures/fetch-fixtures.mjs scripts/fixtures/* # the fetcher runs in rust-tests/geometry-census/benchmark, whose filters carry tests/models/manifest.json but not scripts/**
 scripts/fixtures/fetch-fixtures.mjs tests/models/README.md # the rust/geometry filters pin tests/models/manifest.json, the corpus input; the README is not one
 
+# #6516's historical bundle is deliberately manual, not an automatic PR gate.
+# Widening a PR path filter cannot activate its workflow_dispatch-only job; its
+# actual builds consume separately checked-out, pinned release snapshots. The
+# builder/launcher behavioral controls still run in the automatic Node test job.
+scripts/perf/build-csg-work-bundle.mjs ** # manual-only pinned-historical diagnostic utility; source/path fragments are not automatic PR inputs; remove this exemption if an automatic invocation is added (#6516)
+
 # ---------------------------------------------------------------------------
 # 4. THIS CHECK'S OWN REQUIRED_COVERAGE LITERALS. `check-ci-path-coverage.mjs`
 #    NAMES these files in order to assert about them; it does not read them.
@@ -111,4 +120,5 @@ scripts/check-ci-path-coverage.test.mjs docs/** # quoted in an assertion, not re
 scripts/check-ci-path-coverage.test.mjs tests/benchmark # quoted in an assertion, not read
 scripts/check-ci-path-coverage.test.mjs tests/extensions # quoted in an assertion, not read
 scripts/check-ci-path-coverage.test.mjs tests/models # quoted in an assertion, not read
+scripts/check-ci-path-coverage.test.mjs tests/perf-ratchets # `tests` prefix fragment expanded over the tree, not read (#6959)
 scripts/check-agents-md-size.test.mjs README.md # a temp-fixture FILENAME inside the harness (a repo built in a tmpdir to prove a non-AGENTS.md file is ignored), not a path in this repository.

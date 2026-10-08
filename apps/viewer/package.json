@@ -15,6 +15,7 @@
     "typecheck": "tsc --noEmit",
     "preview": "vite preview",
     "test": "tsx --import ./src/test/vite-module-hooks.mjs --test --test-timeout=120000 --test-concurrency=1 $(find src -type f \\( -name '*.test.ts' -o -name '*.test.tsx' \\) | sort | awk -v p=\"${TEST_PATTERN:-.}\" '$0 ~ p' | awk -v s=\"${TEST_SHARD:-0}\" -v n=\"${TEST_SHARDS:-1}\" '{h=0; for(i=1;i<=length($0);i++) h=(h*31+index(\" !\\\"#$%&()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[]^_abcdefghijklmnopqrstuvwxyz{|}~\", substr($0,i,1)))%1000003} h%n==s')",
+    "ai-eval": "tsx --import ./src/test/vite-module-hooks.mjs scripts/ai-eval.ts",
     "check:templates": "tsc -p src/lib/scripts/templates/tsconfig.json --noEmit"
   },
   "dependencies": {
@@ -28,6 +29,7 @@
     "@codemirror/state": "^6.7.6",
     "@codemirror/view": "^6.43.13",
     "@floating-ui/dom": "^1.8.0",
+    "@ifc-lite/ai": "workspace:^",
     "@ifc-lite/bcf": "workspace:^",
     "@ifc-lite/bcf-api": "workspace:^",
     "@ifc-lite/cache": "workspace:^",
@@ -48,6 +50,7 @@
     "@ifc-lite/ifcx": "workspace:^",
     "@ifc-lite/lens": "workspace:^",
     "@ifc-lite/lists": "workspace:^",
+    "@ifc-lite/load-trace": "workspace:^",
     "@ifc-lite/mcp": "workspace:^",
     "@ifc-lite/merge": "workspace:^",
     "@ifc-lite/mutations": "workspace:^",
@@ -114,7 +117,8 @@
     "tailwindcss": "^4.3.3",
     "three": "^0.186.1",
     "zustand": "^5.0.15",
-    "@ifc-lite/semantic": "workspace:*"
+    "@ifc-lite/semantic": "workspace:*",
+    "@ifc-lite/source-autodesk": "workspace:^"
   },
   "devDependencies": {
     "@happy-dom/global-registrator": "^20.14.5",
@@ -131,6 +135,7 @@
     "happy-dom": "^20.14.5",
     "jszip": "^3.10.2",
     "oxigraph": "^0.5.11",
+    "playwright-core": "1.63.0",
     "svgo": "^4.1.0",
     "tsx": "^4.23.15",
     "typescript": "^6.0.3",

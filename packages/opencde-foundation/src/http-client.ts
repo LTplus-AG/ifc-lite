@@ -36,9 +36,31 @@ export interface HttpRequestOptions {
   /** Set when the body is already the wire representation (e.g. binary upload). */
   rawBody?: BodyInit;
   headers?: Record<string, string>;
+  /**
+   * Cancels the request. A rejection after the request was handed to `fetch`
+   * does not tell the caller whether the server applied a write: treat it as
+   * an unknown outcome, never as "not sent".
+   */
+  signal?: AbortSignal;
+  /** Wall-clock limit in milliseconds; expiry aborts the request like `signal`. */
+  timeoutMs?: number;
   getAccessToken?: FoundationTokenProvider;
   errorLabel?: string;
   errorNamespace?: string;
+}
+
+/** Combine the caller's signal with an optional timeout into one fetch signal. */
+export function requestSignal(signal?: AbortSignal, timeoutMs?: number): AbortSignal | undefined {
+  const timeout = timeoutMs !== undefined && Number.isFinite(timeoutMs) && timeoutMs > 0
+    ? AbortSignal.timeout(timeoutMs) : undefined;
+  if (!signal || !timeout) return signal ?? timeout;
+  if (typeof AbortSignal.any === 'function') return AbortSignal.any([signal, timeout]);
+  const controller = new AbortController();
+  for (const source of [signal, timeout]) {
+    if (source.aborted) { controller.abort(source.reason); break; }
+    source.addEventListener('abort', () => controller.abort(source.reason), { once: true });
+  }
+  return controller.signal;
 }
 
 /**
@@ -61,10 +83,14 @@ export async function fetchAndValidate(
     headers['Content-Type'] = 'application/json';
     body = JSON.stringify(options.body);
   }
+  const signal = requestSignal(options.signal, options.timeoutMs);
+  // Refuse before dispatch, so an already-cancelled request is provably unsent.
+  signal?.throwIfAborted();
   const response = await fetchFn(url, {
     method: options.method ?? 'GET',
     headers,
     body,
+    ...(signal ? { signal } : {}),
   });
   if (!response.ok) {
     let parsed: unknown;

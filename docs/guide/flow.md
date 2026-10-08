@@ -155,7 +155,19 @@ currently matches nothing, because the CLI's columnar parser does not populate `
 
 ## Creating elements, and re-running
 
-`element.wall`, `element.column`, `element.beam` and `element.slab` build
+`element.stair` takes a storey and `Position` point input; `NumberOfRisers`,
+`RiserHeight`, `TreadLength`, `Width`, optional `Direction` and `WaistThickness`
+use the canonical stair builder. `element.railing` takes a storey and a `Path`
+polyline parameter, `Height`, and optional `RailDiameter`, `PostDiameter` and
+`PostSpacing`. Lengths are metres and positions are storey-local. Both specs
+connect to the existing `model.addElement`; hosts lacking the corresponding SDK
+capability refuse explicitly. Public MCP uses the existing `run_flow` tool,
+with one compound `mutation_undo` per creation. Each MCP call has fresh tracking;
+persistent create/keep/update/remove requires the CLI sidecar or an embedding
+that reuses its `TrackingStore`. There is no new creation RPC alias.
+
+`element.wall`, `element.column`, `element.beam`, `element.slab`,
+`element.stair` and `element.railing` build
 parametric specs (a value, not yet an element); `model.addElement` writes
 them. That node is **tracked**: it owns the elements it creates.
 
@@ -169,9 +181,17 @@ them. That node is **tracked**: it owns the elements it creates.
   **removed** — the orphan Dynamo leaves behind. A tracked node deleted
   from the graph (or given a new tracking key) has its whole set removed
   on the next run.
+- An **update** uses the optional atomic `bim.store.replaceElement` capability:
+  removal and canonical creation either both commit or leave the previous
+  product/flight, journal, allocator and tracked entry intact. Unsupported
+  hosts refuse before removal. This also applies when a tracked spec changes
+  kind. The public MCP tool still has fresh per-call tracking.
 - An **update** replaces the product; the representation items of the
   previous body stay in the exported file as unreferenced entities (the
-  store tombstones the product only). A stable GlobalId says the element
+  store tombstones the product only). Stairs remove their uniquely owned
+  `IfcStair`/`IfcStairFlight` pair instead: ownership ambiguity, foreign product
+  references or unreadable live records refuse the update before writing.
+  Shared representation/style/material leaves remain. A stable GlobalId says the element
   is the same one, not that the file's entity set is unchanged.
 - The tracked sets live in a sidecar, not in the graph: `ifc-lite flow
   run` writes `<graph>.tracking.json` beside the graph (`--tracking F`,
@@ -201,6 +221,133 @@ secret) and the host reports what it offers. Viewer nodes are **no-ops**
 on a headless host and pass their entities through, so a graph that
 colorizes failures runs unchanged in CI. `ifc-lite flow validate` and the
 editor show the same per-node report.
+
+## AI nodes and review checkpoints
+
+`@ifc-lite/flow-nodes/ai` adds four nodes that call the host's AI model
+service (`FlowHost.ai`); they never call a provider themselves:
+
+| Node | Input | Output |
+|---|---|---|
+| `ai.classify` | a table and versioned category definitions | one row per input row: allowed `label`, cited `evidence` columns, `outcome` (`classified`, `unknown`, `failed`, `not-sent`), plus `coverage` |
+| `ai.summarize` | a table of evidence rows, audience, language | narrative `sections` citing row keys; a section without a valid citation is kept as `uncited` |
+| `ai.propose` | selected findings, target/expected-value columns, native field bindings and allowed candidate values | portable `model.changes` artifact with cited row keys and bounded coverage; no mutation |
+| `ai.extract` | text passages and a field schema | typed `records`, each quoting its source span; a span not found verbatim in its passage, or a value of the wrong type, makes the record `unsupported` |
+
+Every AI node declares `network.ai` (graph data goes to the host's model
+provider), requires the `ai` backend feature, is volatile, and sends only
+the columns you list. Table nodes refuse an empty column selection before making
+a request. Model-facing row keys remain distinct even when a source row has no key
+or its literal key collides with a generated one. Requests come out of **one root budget per run**: every
+AI node, lane and batch draws from it, so list lacing cannot multiply the
+spend, and a budget stop keeps a partial result whose coverage counts the
+rows that were not sent. Unknown row keys, labels outside the allowed set,
+missing citations and quotes absent from the passage are dropped or marked.
+Rows omitted from a classification reply count as `failed`; an explicit
+`unknown` answer remains distinct in the per-row outcome and coverage counts.
+Hosts save the original root budget in `createCheckpoint({ ...input, budget })`.
+CLI and viewer resume refuse a missing or malformed budget receipt before claiming a
+checkpoint when downstream AI nodes remain; it never grants a fresh allowance.
+When a paused CLI run exports with `--out`, resume uses that exported IFC file,
+whose exact bytes are bound into the checkpoint even for a read-only run.
+These checks do not establish that a cited row or quote entails the generated
+claim. For `ai.extract`, `supported` means the quote occurs verbatim and field
+values have the declared types. A reply quoting “30 minutes” with a typed
+value of `999` still passes that structural check; the reviewer must compare
+all candidate values with the captured passage before approval.
+
+`ai.propose` currently allowlists only `model.changes`. Select `GlobalId` and
+all expected-value columns, then bind each allowed native operation through
+`fields` (`op`, `name`, optional `pset`/`qset`/`dataType`, `expectedColumn`,
+and `allowedValues`; deletes omit candidate values). A shared GlobalId requires
+an explicit selected model-id column. Unknown targets, uncited changes,
+changed expected values, unselected fields and candidates outside the allowed
+values refuse the entire draft. Clarification, truncation and exhausted budgets
+also produce no artifact. Coverage distinguishes findings sent from findings
+excluded by `maxRows`. The artifact uses the same parser as viewer corrections,
+exported separately through `@ifc-lite/ai/artifacts`; it remains a proposal.
+Approval of a checkpoint does not establish current permissions or values:
+application must still pass native mutation preflight and explicit review.
+
+**Review checkpoints.** A node that declares `review: 'required'` (every AI
+node does) produces a proposal; the run stops downstream of it (status
+`review`, dependants `paused`) and `RunResult.review` names it. Independent
+branches still run. To continue, the host saves a checkpoint, a reviewer
+approves the proposal by its digest, and the run is resumed with
+`RunOptions.resume`: every node that completed before the pause is restored
+(status `restored`) and never executed again, so a write before the pause is
+not repeated and the reviewed proposal is replayed without a model request.
+
+A checkpoint (`createCheckpoint` from `@ifc-lite/flow/checkpoint`, a separate entry so a host that only runs graphs does not load it) is plain JSON, so the viewer and the CLI
+read the same record. It holds the restored outputs, a digest of the graph
+and its Player inputs, a host digest of the sources the run read, the
+proposal digest and the AI budget state. Its lifecycle is `prepared` →
+`reviewed` (or `rejected`) → `applying` → `completed`, or
+`partially-committed` when a resume failed or its owner disappeared
+mid-resume; a partially committed checkpoint can never be resumed again.
+`claimCheckpoint` re-checks the graph and source digests and goes through a
+compare-and-swap store (`updateCheckpoint`), so two tabs or processes cannot
+consume the same approval. `resumeOutputs` refuses prepared, rejected, completed,
+partially committed and expired checkpoints; proposal inspection uses
+`checkpointProposal` and grants no permission to resume. The scheduler accepts only the unchanged, single-use map returned by `resumeOutputs` for an approved checkpoint with a live claim; raw paused outputs, edited maps and reused maps are refused before any node executes. A value that is not plain JSON (a viewer-only
+handle) makes the run uncheckpointable, named by node and port.
+
+```ts
+import { runFlow, type FlowDocument, type NodeRegistry } from '@ifc-lite/flow';
+import { approveCheckpoint, claimCheckpoint, createCheckpoint, finishCheckpoint, graphDigest, resumeOutputs, updateCheckpoint, type CheckpointStore } from '@ifc-lite/flow/checkpoint';
+import type { FlowHost } from '@ifc-lite/flow-nodes';
+
+async function reviewedRun(doc: FlowDocument, host: FlowHost, registry: NodeRegistry<FlowHost>, sourceDigest: string, store: CheckpointStore) {
+  const paused = await runFlow(doc, { host, registry });
+  if (paused.review.length === 0) return paused;
+  const checkpoint = createCheckpoint({ doc, registry, result: paused, sourceDigest });
+  // ...show the proposal (checkpointProposal) and collect the reviewer's approval...
+  const approved = approveCheckpoint(checkpoint, checkpoint.proposalDigest);
+  if (!await store.write(approved, null)) throw new Error('Checkpoint already exists');
+  let claimed = await updateCheckpoint(store, approved.id, current => claimCheckpoint(current,
+    { owner: 'me', graphDigest: graphDigest(doc, {}, registry), sourceDigest, leaseMs: 60_000 }));
+  const resumed = await runFlow(doc, { host, registry, resume: resumeOutputs(claimed) });
+  claimed = await updateCheckpoint(store, claimed.id, current => finishCheckpoint(current, 'me', { ok: resumed.ok }));
+  return resumed;
+}
+```
+
+Checkpoint creation checks Player inputs against the actual paused run;
+pass the same `inputs` used by `runFlow` when creating a checkpoint. A resume takes a
+detached copy of the approved values before any asynchronous downstream work.
+Every resume uses the original claim returned by a successful `updateCheckpoint`
+compare-and-swap. A persisted `applying` record is not an ownership receipt: another
+tab or process cannot resume it, and a lost owner is recovered as partially committed.
+
+**In the viewer**, AI nodes use the model chosen for the Assistant (the
+hosted proxy or your own key), and every request has a usage receipt. A run
+that pauses shows a review card under the canvas with every row of the
+proposal and its coverage; **Approve and resume** approves exactly that
+proposal and runs the rest of the graph from it, **Reject** ends it. The
+checkpoint is kept in the browser, so after a reload with the same model
+files and no edits the same proposal can still be approved; any edit, undo
+or model change in between refuses the resume and asks for a new run. Graph
+writes before and after the pause are separate undo steps.
+
+In a real host the transitions go through `updateCheckpoint` with a durable
+store; the CLI's `flow run --checkpoint` / `flow review` / `flow resume`
+(see the [CLI guide](cli.md)) and the viewer's Flow
+panel do exactly that. MCP uses the same opt-in provider environment as the CLI.
+`run_flow` requires a new allowed `checkpoint_path` for review-capable graphs
+and returns a `pending` artifact with its exact approval digest. A separate
+`resume_flow` call supplies that `approved_digest`, the same graph and Player
+inputs, and the returned `model_id`. It rechecks current mutate scope, graph,
+all accessible native effective model exports and the original root budget
+before claiming once. Completed nodes replay without a provider request;
+downstream AI still needs host configuration. A further review requires a new
+`next_checkpoint_path` before continuation. Checkpoints never overwrite existing
+files; secret-bearing restored outputs are refused. The shared
+`@ifc-lite/flow/checkpoint-file` entry provides the CLI/MCP disk CAS store.
+MCP tracking remains per run, as on the existing native host.
+Pass the effective node registry when creating a checkpoint and computing its
+claim digest so a changed review policy refuses the resume. Graph identities, names and node labels also bind the digest,
+because they determine default write tracking keys. Cached proposals still pause
+for review on every new run; only an approved checkpoint restores them for resume.
 
 ## Programmatic use
 
@@ -334,6 +481,16 @@ Each takes `baseUrl` (up to but excluding the version segment), `version`
 (default `2.1`), `projectId`, and `token`, sent as
 `Authorization: Bearer <token>`. Put the token in a secret rather than the
 graph. The nodes are never memoised, so every run asks the server again.
+
+A create is not idempotent: if the connection drops after the server
+committed a write, a rerun would create it a second time. The write nodes
+therefore never retry, and they report a lost connection as an *unknown
+outcome* ("check the project before running this node again") rather than a
+plain failure. In the viewer, `bcf.createTopic` and `bcf.addComment` also go
+through the BCF publication outbox (`FlowHost.bcfWrites`): the intent is
+recorded before the request leaves, and an identical write whose earlier
+attempt has an unknown outcome is refused without sending until it is checked
+under **BCF → Drafts & publication**. The token is never stored there.
 
 ```json
 {
@@ -751,3 +908,24 @@ or mutating it. Custom hosts can implement `SessionAutomationHost`; advertise
 only services actually supplied. Files, native report bodies and PDF blobs stay
 outside persistable graph values. PDF generation produces a session artifact;
 Download can be retried without rerunning checks while that artifact is valid.
+
+AI review checkpoints require an explicit `network.ai` grant, including trusted CLI runs. Selected source columns are sent inside each row’s `values` object; the outer `key` is the host-assigned review identity. A summary stopped by the shared budget remains a reviewable empty draft with all rows counted as not sent.
+
+CLI approval also binds the effective tracking sidecar and its canonical destination. Changing that sidecar, selecting another tracking file or disabling tracking refuses resume before consuming approval. The CLI refuses to save or display a checkpoint if any restored output contains a declared secret. It checks the next checkpoint destination before consuming approval, validates pause output requirements before flushing tracking, and completes the previous checkpoint only after saving a subsequent proposal. A persistence failure after a claim is recorded as partially committed.
+
+`ifc-lite flow review <checkpoint> --json` includes the exact proposal values by review node and output port, alongside their approval digest. Extraction replies without the required `records` array count as failed passages and emit a warning; they never count as a successful empty extraction.
+
+CLI checkpoint, next-checkpoint, output and tracking destinations must be distinct.
+Checkpoint file locks are never reclaimed automatically based on age. If a process
+crashes while holding a `.lock`, confirm that its writer has stopped before removing
+that lock and retrying; an old lock alone does not establish that a writer stopped.
+Checkpoint compatibility uses the executed graph, including resolved secret parameters;
+the checkpoint stores its digest, not those credentials. Changing the execution parameters
+requires a new run and review.
+
+`propose_flow` lets a read-only MCP caller run a native read/AI-only graph to
+a pending artifact. It rejects declared or node-defined effects and permits
+only `model.read` and `network.ai`. The current read scope and model allowlist
+still apply; the separate `resume_flow` requires current mutate authorization.
+MCP responses and checkpoint budgets include provider usage receipts without
+prompts, replies or credentials; receipt history survives subsequent pauses.

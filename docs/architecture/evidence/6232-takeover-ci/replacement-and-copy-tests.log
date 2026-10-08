@@ -1,0 +1,127 @@
+
+> ifc-lite@10.3.0 test /home/louistrue/.t3/worktrees/ifc-lite/t3code-55c746a5
+> turbo test --filter\=\@ifc-lite/create -- copy-batch.test.ts ordinary-element.test.ts
+
+
+   • turbo 2.11.4
+   • Packages in scope: @ifc-lite/create
+   • Running test in 1 package
+   • Remote caching disabled, using shared worktree cache
+
+@ifc-lite/timing-ladder:build: cache hit, replaying logs 1838f44fb3eef506
+@ifc-lite/timing-ladder:build: 
+@ifc-lite/timing-ladder:build: > @ifc-lite/timing-ladder@0.1.0 build /home/louistrue/.t3/worktrees/ifc-lite/t3code-55c746a5/packages/timing-ladder
+@ifc-lite/timing-ladder:build: > pnpm exec tsc
+@ifc-lite/timing-ladder:build: 
+@ifc-lite/wasm-lifecycle:build: cache hit, replaying logs 1ffbbd6d7c1a583d
+@ifc-lite/wasm-lifecycle:build: 
+@ifc-lite/wasm-lifecycle:build: > @ifc-lite/wasm-lifecycle@0.2.0 build /home/louistrue/.t3/worktrees/ifc-lite/t3code-55c746a5/packages/wasm-lifecycle
+@ifc-lite/wasm-lifecycle:build: > pnpm exec tsc
+@ifc-lite/wasm-lifecycle:build: 
+@ifc-lite/regex-guard:build: cache hit, replaying logs 906c2b6be7db3f3d
+@ifc-lite/regex-guard:build: 
+@ifc-lite/regex-guard:build: > @ifc-lite/regex-guard@0.3.0 build /home/louistrue/.t3/worktrees/ifc-lite/t3code-55c746a5/packages/regex-guard
+@ifc-lite/regex-guard:build: > pnpm exec tsc
+@ifc-lite/regex-guard:build: 
+@ifc-lite/pointcloud:build: cache hit, replaying logs 25d1fbcbc5cd5a62
+@ifc-lite/pointcloud:build: 
+@ifc-lite/pointcloud:build: > @ifc-lite/pointcloud@0.11.0 build /home/louistrue/.t3/worktrees/ifc-lite/t3code-55c746a5/packages/pointcloud
+@ifc-lite/pointcloud:build: > pnpm exec tsc && node -e "const f='dist/streaming/worker-client.js';require('fs').writeFileSync(f,require('fs').readFileSync(f,'utf8').replace(/decode-worker\.ts/g,'decode-worker.js'))" && node scripts/build-worker-bundle.mjs
+@ifc-lite/pointcloud:build: 
+@ifc-lite/pointcloud:build: [build-worker-bundle] bundling decode-worker.js as IIFE…
+@ifc-lite/pointcloud:build: [build-worker-bundle] bundled worker is 286.0 KB
+@ifc-lite/pointcloud:build: [build-worker-bundle] wrote /home/louistrue/.t3/worktrees/ifc-lite/t3code-55c746a5/packages/pointcloud/dist/streaming/inline-worker.js (296.4 KB total)
+@ifc-lite/encoding:build: cache hit, replaying logs 885e3513325849aa
+@ifc-lite/encoding:build: 
+@ifc-lite/encoding:build: > @ifc-lite/encoding@2.3.0 build /home/louistrue/.t3/worktrees/ifc-lite/t3code-55c746a5/packages/encoding
+@ifc-lite/encoding:build: > pnpm exec tsc
+@ifc-lite/encoding:build: 
+@ifc-lite/wasm:build: cache hit, replaying logs 8ba4102490d3e557
+@ifc-lite/wasm:build: 
+@ifc-lite/wasm:build: > @ifc-lite/wasm@10.3.0 build /home/louistrue/.t3/worktrees/ifc-lite/t3code-55c746a5/packages/wasm
+@ifc-lite/wasm:build: > node ../../scripts/run-build-wasm.mjs
+@ifc-lite/wasm:build: 
+@ifc-lite/wasm:build: 🦀 Building IFC-Lite WASM...
+@ifc-lite/wasm:build: 📦 Running wasm-pack...
+@ifc-lite/wasm:build: 🟢 Building single-thread bundle → ../../packages/wasm/pkg
+@ifc-lite/wasm:build: [INFO]: 🎯  Checking for the Wasm target...
+@ifc-lite/wasm:build: [INFO]: 🌀  Compiling to Wasm...
+@ifc-lite/wasm:build:     Finished `release` profile [optimized] target(s) in 0.14s
+@ifc-lite/wasm:build: [INFO]: ⬇️  Installing wasm-bindgen...
+@ifc-lite/wasm:build: [INFO]: License key is set in Cargo.toml but no LICENSE file(s) were found; Please add the LICENSE file(s) to your project directory
+@ifc-lite/wasm:build: [INFO]: ✨   Done in 2.75s
+@ifc-lite/wasm:build: [INFO]: 📦   Your wasm pkg is ready to publish at packages/wasm/pkg.
+@ifc-lite/wasm:build: ℹ️  wasm-opt disabled — using LLVM -O3 only
+@ifc-lite/wasm:build: 🧹 stripped internal __wasm_bindgen_func_elem_* indices from packages/wasm/pkg/ifc-lite.d.ts
+@ifc-lite/wasm:build: 
+@ifc-lite/wasm:build: 📊 Bundle size:
+@ifc-lite/wasm:build:    WASM: 9.1M
+@ifc-lite/wasm:build:    ⚠️  Over 1100 KB (single-thread) target (9288KB)
+@ifc-lite/wasm:build: 
+@ifc-lite/wasm:build: ✨ Build complete!
+@ifc-lite/data:build: cache hit, replaying logs 5a894e4fbf4ae416
+@ifc-lite/data:build: 
+@ifc-lite/data:build: > @ifc-lite/data@6.1.0 build /home/louistrue/.t3/worktrees/ifc-lite/t3code-55c746a5/packages/data
+@ifc-lite/data:build: > pnpm exec tsc
+@ifc-lite/data:build: 
+@ifc-lite/mutations:build: cache hit, replaying logs ca8763a22fe5e395
+@ifc-lite/mutations:build: 
+@ifc-lite/mutations:build: > @ifc-lite/mutations@3.1.0 build /home/louistrue/.t3/worktrees/ifc-lite/t3code-55c746a5/packages/mutations
+@ifc-lite/mutations:build: > pnpm exec tsc
+@ifc-lite/mutations:build: 
+@ifc-lite/geometry:build: cache hit, replaying logs 9fa2b8ab17203649
+@ifc-lite/geometry:build: 
+@ifc-lite/geometry:build: > @ifc-lite/geometry@7.7.0 build /home/louistrue/.t3/worktrees/ifc-lite/t3code-55c746a5/packages/geometry
+@ifc-lite/geometry:build: > pnpm exec tsc && node -e "const fs=require('fs');for(const f of ['dist/index.js','dist/geometry-parallel.js','dist/remesh/remesh-client.js']){if(!fs.existsSync(f))continue;fs.writeFileSync(f,fs.readFileSync(f,'utf8').replace(/geometry\.worker\.ts/g,'geometry.worker.js').replace(/remesh\.worker\.ts/g,'remesh.worker.js'))}"
+@ifc-lite/geometry:build: 
+@ifc-lite/ifcx:build: cache hit, replaying logs 73f96f995bde1a93
+@ifc-lite/ifcx:build: 
+@ifc-lite/ifcx:build: > @ifc-lite/ifcx@4.3.0 build /home/louistrue/.t3/worktrees/ifc-lite/t3code-55c746a5/packages/ifcx
+@ifc-lite/ifcx:build: > pnpm exec tsc && node ./scripts/verify-dist-hello-wall.mjs
+@ifc-lite/ifcx:build: 
+@ifc-lite/ifcx:build: verify-dist-hello-wall: skipping — missing 4 fixture(s): Hello_Wall_hello-wall.ifcx, Hello_Wall_advanced_3rd-window.ifcx, Point_Cloud_point-cloud.ifcx, Point_Cloud_S1-pointcloud.ifcx.
+@ifc-lite/ifcx:build: Run `pnpm fixtures` from the repo root to fetch them, then rebuild.
+@ifc-lite/codegen:build: cache hit, replaying logs 72490cbcb0425c73
+@ifc-lite/codegen:build: 
+@ifc-lite/codegen:build: > @ifc-lite/codegen@1.18.1 build /home/louistrue/.t3/worktrees/ifc-lite/t3code-55c746a5/packages/codegen
+@ifc-lite/codegen:build: > pnpm exec tsc && pnpm exec tsc -p tsconfig.generated.json
+@ifc-lite/codegen:build: 
+@ifc-lite/parser:build: cache hit, replaying logs f458c92d2cbc5dc2
+@ifc-lite/parser:build: 
+@ifc-lite/parser:build: > @ifc-lite/parser@9.2.0 build /home/louistrue/.t3/worktrees/ifc-lite/t3code-55c746a5/packages/parser
+@ifc-lite/parser:build: > pnpm exec tsc && node ./scripts/rewrite-worker-urls.mjs && node ./scripts/verify-dist-worker-urls.mjs
+@ifc-lite/parser:build: 
+@ifc-lite/parser:build: rewrite-worker-urls: scanned 133 emitted file(s), rewrote 1.
+@ifc-lite/parser:build:   worker-parser.js: ./parser.worker.ts -> ./parser.worker.js
+@ifc-lite/parser:build: verify-dist-worker-urls: 1 URL specifier(s) in 133 emitted file(s) all resolve.
+@ifc-lite/export:build: cache miss, executing 284f62e90a81aaef
+@ifc-lite/export:build: 
+@ifc-lite/export:build: > @ifc-lite/export@4.9.0 build /home/louistrue/.t3/worktrees/ifc-lite/t3code-55c746a5/packages/export
+@ifc-lite/export:build: > pnpm exec tsc
+@ifc-lite/export:build: 
+@ifc-lite/create:build: cache miss, executing b0840a17dbf906e4
+@ifc-lite/create:build: 
+@ifc-lite/create:build: > @ifc-lite/create@4.0.0 build /home/louistrue/.t3/worktrees/ifc-lite/t3code-55c746a5/packages/create
+@ifc-lite/create:build: > pnpm exec tsc
+@ifc-lite/create:build: 
+@ifc-lite/create:test: cache bypass, force executing e615f4d96faf83bd
+@ifc-lite/create:test: 
+@ifc-lite/create:test: > @ifc-lite/create@4.0.0 test /home/louistrue/.t3/worktrees/ifc-lite/t3code-55c746a5/packages/create
+@ifc-lite/create:test: > vitest run copy-batch.test.ts ordinary-element.test.ts
+@ifc-lite/create:test: 
+@ifc-lite/create:test: 
+@ifc-lite/create:test:  RUN  v4.1.11 /home/louistrue/.t3/worktrees/ifc-lite/t3code-55c746a5/packages/create
+@ifc-lite/create:test: 
+@ifc-lite/create:test:  ✓ src/in-store/copy-batch.test.ts (6 tests) 152ms
+@ifc-lite/create:test:  ✓ src/in-store/ordinary-element.test.ts (19 tests) 1051ms
+@ifc-lite/create:test: 
+@ifc-lite/create:test:  Test Files  2 passed (2)
+@ifc-lite/create:test:       Tests  25 passed (25)
+@ifc-lite/create:test:    Start at  08:43:41
+@ifc-lite/create:test:    Duration  6.89s (transform 9.38s, setup 0ms, import 11.18s, tests 1.20s, environment 0ms)
+@ifc-lite/create:test: 
+
+ Tasks:    15 successful, 15 total
+Cached:    12 cached, 15 total
+  Time:    12.02s 
+

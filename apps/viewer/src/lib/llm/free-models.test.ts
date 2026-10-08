@@ -154,7 +154,7 @@ test('sendsSamplingParams is true only for the models flagged for it', async () 
   assert.equal(sendsSamplingParams('claude-haiku-4-5-20251001'), true);
   // Everything current rejects them with a 400.
   assert.equal(sendsSamplingParams('claude-opus-5-5'), false);
-  assert.equal(sendsSamplingParams('gpt-6-sol'), false);
+  assert.equal(sendsSamplingParams('gpt-6.1-sol'), false);
   // Fails closed on an id that is not in the registry at all.
   assert.equal(sendsSamplingParams('vendor/not-a-real-model'), false);
 
@@ -188,11 +188,16 @@ test('a retired model id migrates instead of falling back to the default', async
 
   // A retired model migrates to its nearest surviving neighbour rather than
   // to the Opus 5.5 default, which would be a price jump nobody asked for.
-  assert.equal(coerceModelForEntitlement('claude-sonnet-4-6', true), 'claude-sonnet-5');
+  assert.equal(coerceModelForEntitlement('claude-sonnet-4-6', true), 'claude-sonnet-5-5');
+  // #7017: saved selections must follow updated models within their provider.
+  assert.equal(coerceModelForEntitlement('claude-sonnet-5', true), 'claude-sonnet-5-5');
+  assert.equal(getModelById('claude-sonnet-5')?.name, 'Claude Sonnet 5.5');
   // An OpenAI selection must not land on an Anthropic model, or the user is
   // asked for a key they never needed.
   assert.equal(getModelById(coerceModelForEntitlement('gpt-5.5', true))?.source, 'openai');
-  assert.equal(coerceModelForEntitlement('gpt-5.6-sol', true), 'gpt-6-sol');
+  assert.equal(coerceModelForEntitlement('gpt-5.6-sol', true), 'gpt-6.1-sol');
+  assert.equal(coerceModelForEntitlement('gpt-6-sol', true), 'gpt-6.1-sol');
+  assert.equal(getModelById('gpt-6-sol')?.name, 'GPT-6.1 Sol');
   assert.equal(coerceModelForEntitlement('gpt-5.6-luna', true), 'gpt-6-luna');
 
   // An id with no migration still falls back to the default.

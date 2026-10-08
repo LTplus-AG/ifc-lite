@@ -168,3 +168,25 @@ it('preflights all composed cloud matrices before moving any scene geometry (#42
   assert.equal(points.getPickNodes()[0].model?.[12], Math.fround(-1e38), 'GPU picking receives the visible placement matrix');
   points.clear();
 });
+
+it('hands CPU callers the exact float64 placement at map-grid origins (#6894)', () => {
+  // The scan-to-BIM detection frame is composed on the CPU. `getPointCloudTransform`
+  // is the float32 GPU copy: at LV95 / UTM magnitudes it rounds centimetres away.
+  const renderer = new Renderer({ width: 256, height: 256, getBoundingClientRect: () => ({ width: 256, height: 256 }) } as unknown as HTMLCanvasElement);
+  const points = new PointCloudRenderer(pointDevice(), 'rgba8unorm', 'depth32float', 1);
+  (renderer as unknown as { pointCloudRenderer: PointCloudRenderer }).pointCloudRenderer = points;
+  const handle = points.addAsset({ expressId: 1, modelIndex: 0, chunk: { pointCount: 1,
+    positions: new Float32Array([0, 0, 0]), bbox: { min: [0, 0, 0], max: [0, 0, 0] } } });
+  for (const origin of [[2_600_000.37, 410.21, -1_200_000.83], [500_000.37, 300.21, -5_300_000.83]]) {
+    points.setAssetTransform(handle, new Float64Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, origin[0], origin[1], origin[2], 1]));
+    points.setAssetTranslation(handle, [0.01, 0, 0]);
+    const placement = renderer.getPointCloudPlacement(handle)!;
+    assert.ok(placement instanceof Float64Array);
+    assert.deepEqual(Array.from(placement.slice(12, 15)), [origin[0] + 0.01, origin[1], origin[2]]);
+    const narrowed = renderer.getPointCloudTransform(handle)!;
+    assert.ok(Math.abs(narrowed[12] - (origin[0] + 0.01)) > 1e-3, 'the float32 copy cannot carry the 1 cm');
+    placement[12] = 0;
+    assert.equal(renderer.getPointCloudPlacement(handle)![12], origin[0] + 0.01, 'a copy: callers cannot move the scan');
+  }
+  points.clear();
+});

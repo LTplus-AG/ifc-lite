@@ -25,13 +25,12 @@
  */
 
 import { chromium, type Browser, type BrowserContext, type Page } from '@playwright/test';
-import { browserStaticPath } from './browser-cold-server-path.js';
+import { startStaticServer } from './browser-static-server.js';
 import { browserFixtureKey, validateBrowserFixtures } from './browser-cold-fixtures.js';
 import { prepareBrowserOutputs } from './browser-cold-outputs.js';
 import { closeBrowserWithTimeout, closeContextWithTimeout, raceWithTimeout } from './browser-cold-teardown.js';
-import { createServer } from 'node:http';
-import { createReadStream, existsSync, readFileSync, statSync, writeFileSync, appendFileSync } from 'node:fs';
-import { extname, isAbsolute, join, resolve } from 'node:path';
+import { existsSync, readFileSync, statSync, writeFileSync, appendFileSync } from 'node:fs';
+import { isAbsolute, join, resolve } from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
@@ -152,44 +151,8 @@ prepareBrowserOutputs(RESULTS_DIR, JSONL_OUT, REPORT_JSON);
 // avoids running two `vite preview` processes just to alternate which build
 // ViewerBenchmarkPage's hardcoded `http://localhost:PORT` navigates to.
 // ---------------------------------------------------------------------------
-const MIME: Record<string, string> = {
-  '.html': 'text/html; charset=utf-8',
-  '.js': 'text/javascript; charset=utf-8',
-  '.mjs': 'text/javascript; charset=utf-8',
-  '.css': 'text/css; charset=utf-8',
-  '.wasm': 'application/wasm',
-  '.json': 'application/json; charset=utf-8',
-  '.svg': 'image/svg+xml',
-  '.png': 'image/png',
-  '.ico': 'image/x-icon',
-  '.map': 'application/json; charset=utf-8',
-  '.woff2': 'font/woff2',
-};
 let currentRoot = DIST_BRANCH;
-const server = createServer((req, res) => {
-  const filePath = browserStaticPath(currentRoot, req.url ?? '/');
-  if (filePath === null) {
-    res.writeHead(403).end();
-    return;
-  }
-  if (!existsSync(filePath) || statSync(filePath).isDirectory()) {
-    res.writeHead(404).end();
-    return;
-  }
-  const type = MIME[extname(filePath)] ?? 'application/octet-stream';
-  // no-store: cross-round correctness matters far more than repeat-load speed
-  // here, and each round gets a brand-new browser profile anyway.
-  res.writeHead(200, {
-    'Content-Type': type, 'Cache-Control': 'no-store',
-    'Cross-Origin-Opener-Policy': 'same-origin',
-    'Cross-Origin-Embedder-Policy': 'credentialless',
-  });
-  createReadStream(filePath).pipe(res);
-});
-await new Promise<void>((resolvePort, reject) => {
-  server.once('error', reject);
-  server.listen(PORT, resolvePort);
-});
+const server = await startStaticServer({ port: PORT, root: () => currentRoot });
 console.log(`browser-cold-ab: serving on http://localhost:${PORT} (root swaps per side)`);
 
 // ---------------------------------------------------------------------------

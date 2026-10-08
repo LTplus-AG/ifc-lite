@@ -24,6 +24,7 @@
  */
 
 import { createContext, useContext, type HTMLAttributes, type ReactNode } from 'react';
+import { AssistantAction } from '../assistant/AssistantAction';
 import { Eraser, X } from 'lucide-react';
 import { IconButton } from '@/components/ui/icon-button';
 import { cn } from '@/lib/utils';
@@ -35,6 +36,7 @@ import { AnalysisRerunAction, type AnalysisRunSlot } from './AnalysisRunActions'
 import { StaleResultBanner } from './StaleResultBanner';
 
 const StaleContext = createContext(false);
+const ChromeContext = createContext<ReactNode>(null);
 
 interface AnalysisPanelProps {
   icon: ReactNode;
@@ -53,6 +55,8 @@ interface AnalysisPanelProps {
   embedded?: boolean;
   /** Render no header row at all. */
   headerHidden?: boolean;
+  /** The body renders shared chrome in its bounded scroll pane (#6690). */
+  chromeInBody?: boolean;
   error?: string | null;
   onDismissError?: () => void;
   progress?: AnalysisProgressState | null;
@@ -65,14 +69,14 @@ interface AnalysisPanelProps {
 }
 
 export function AnalysisPanel({
-  icon, title, badge, actions, run, onClearResults, onClose, embedded = false, headerHidden = false,
+  icon, title, badge, actions, run, onClearResults, onClose, embedded = false, headerHidden = false, chromeInBody = false,
   error = null, onDismissError, progress = null, staleFor = null, className, children,
 }: AnalysisPanelProps) {
   const { t } = useTranslation();
   const hasResult = run?.hasResult ?? false;
   const stale = useAnalysisStaleness(analysisStampOf(staleFor));
-  return (
-    <div className={cn('h-full flex flex-col bg-background text-foreground overflow-hidden min-w-0', className)}>
+  const chrome = (
+    <>
       {!headerHidden && (
         <div className="flex items-center gap-2 p-3 border-b border-border">
           {!embedded && (
@@ -90,6 +94,7 @@ export function AnalysisPanel({
               </IconButton>
             )}
             {actions}
+            {!embedded && <AssistantAction />}
             {onClose && !embedded && (
               <IconButton label={t('analysisPanel.close')} className="h-7 w-7" onClick={onClose}>
                 <X className="h-4 w-4" />
@@ -101,9 +106,21 @@ export function AnalysisPanel({
       {error && <AnalysisError message={error} onDismiss={onDismissError} />}
       {progress && <AnalysisProgress {...progress} />}
       {run && hasResult && stale && <StaleResultBanner disabled={run.running || run.busy} onRerun={run.onRerun} />}
-      <StaleContext.Provider value={hasResult && stale}>{children}</StaleContext.Provider>
+    </>
+  );
+  return (
+    <div className={cn('h-full flex flex-col bg-background text-foreground overflow-hidden min-w-0', className)}>
+      {!chromeInBody && chrome}
+      <ChromeContext.Provider value={chromeInBody ? chrome : null}>
+        <StaleContext.Provider value={hasResult && stale}>{children}</StaleContext.Provider>
+      </ChromeContext.Provider>
     </div>
   );
+}
+
+/** Shared header, status and actions inside a body's canonical scroll pane. */
+export function AnalysisPanelChrome() {
+  return useContext(ChromeContext);
 }
 
 /** Whether the result on screen is stale; for regions that dim themselves. */

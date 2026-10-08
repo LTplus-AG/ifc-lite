@@ -281,3 +281,33 @@ test('OpenAI 429 reports the provider cause instead of always claiming a rate li
     );
   }
 });
+
+// #6809: inspect the real SDK/fetch request for each provider protocol.
+test('BYOK protocols honor output budgets and reject invalid budgets without a request', async () => {
+  for (const protocol of ['anthropic', 'completions', 'responses'] as const) {
+    for (const requested of [undefined, 256, 50_000, 0, -1, 1.5, Number.NaN]) {
+      let payload: Record<string, unknown> | undefined;
+      let error: Error | undefined;
+      await withMockFetch(async (_url, init) => {
+        payload = JSON.parse(String(init?.body)) as Record<string, unknown>;
+        return protocol === 'anthropic' ? anthropicSse(HELLO_STREAM) : sseResponse([]);
+      }, async () => {
+        const options = {
+          model: protocol === 'anthropic' ? 'claude-opus-5-5' : protocol === 'responses' ? CODEX_MODEL_ID : 'gpt-4o',
+          messages: [{ role: 'user' as const, content: 'hi' }], maxOutputTokens: requested,
+          onChunk: () => {}, onComplete: () => {}, onError: (e: Error) => { error = e; },
+        };
+        if (protocol === 'anthropic') await streamAnthropicChat({ apiKey: 'sk-ant-test', workspaceId: '' }, options);
+        else await streamOpenAiChat('sk-test', options);
+      });
+      if (requested === undefined || requested === 256 || requested === 50_000) {
+        assert.equal(error, undefined);
+        const key = protocol === 'anthropic' ? 'max_tokens' : protocol === 'responses' ? 'max_output_tokens' : 'max_completion_tokens';
+        assert.equal(payload?.[key], requested === 256 ? 256 : protocol === 'anthropic' ? 32_000 : 8192);
+      } else {
+        assert.match(error?.message ?? '', /positive safe integer/);
+        assert.equal(payload, undefined);
+      }
+    }
+  }
+});

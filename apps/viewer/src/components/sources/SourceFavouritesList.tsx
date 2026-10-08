@@ -27,6 +27,7 @@ interface SourceFavouritesListProps {
    * their auth has settled. A provider absent from the map has not settled yet.
    */
   liveIdentities: ReadonlyMap<string, string | null>;
+  navigationDisabled?: boolean;
   onOpen: (favourite: SourceFavourite) => void;
   onChanged: () => void;
 }
@@ -81,6 +82,7 @@ export function SourceFavouritesList({
   liveIdentities,
   onOpen,
   onChanged,
+  navigationDisabled = false,
 }: SourceFavouritesListProps) {
   const { t, revision: localeRevision } = useTranslation();
   const rows = useMemo<FavouriteRow[]>(() => {
@@ -134,7 +136,7 @@ export function SourceFavouritesList({
             <button
               type="button"
               className="flex min-w-0 flex-1 items-center gap-2 rounded-sm px-1 py-1 text-left hover:bg-accent disabled:cursor-default disabled:opacity-60 disabled:hover:bg-transparent"
-              disabled={row.disabledReason !== null}
+              disabled={navigationDisabled || row.disabledReason !== null}
               title={row.disabledReason ?? undefined}
               onClick={() => onOpen(row.favourite)}
             >

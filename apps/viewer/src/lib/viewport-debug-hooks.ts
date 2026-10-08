@@ -108,11 +108,16 @@ export function installViewportDebugHooks(
     frame: renderer.getFrameStats(),
     gpu: renderer.getScene().getResidentGpuBytes(),
     cpuBytes: renderer.getScene().getResidentCpuBytes(),
+    // GPU-resident point-cloud points: what COPC LOD bounds by its budget (#6869).
+    pointCloudPoints: renderer.getPointCloudPointCount(),
   });
   // Renderer-owned color evidence for hardware E2E. The RGBA bytes are copied
   // before the production frame submits, so this avoids compositor retention
   // and exposes no scene/model data to the browser test.
   host.__ifc_lite_capture_color_frame__ = () => encodeColorFrame(renderer.captureColorFrame());
+  // The camera's world view-projection, the matrix every mesh draw packs as
+  // `uniforms.viewProj` (the depth nudge reads its projection from it, #6729).
+  host.__ifc_lite_view_projection__ = () => Array.from(renderer.getCamera().getViewProjMatrix().m);
   host.__ifc_lite_render_visibility__ = (): RenderVisibilitySnapshot => {
     const current = visibility();
     return { hiddenIds: [...current.hiddenIds], isolatedIds: current.isolatedIds ? [...current.isolatedIds] : null };
@@ -184,6 +189,7 @@ export function clearViewportDebugHooks(): void {
   setSourceSegmentScreenProbe(null);
   delete host.__ifc_lite_render_stats__;
   delete host.__ifc_lite_capture_color_frame__;
+  delete host.__ifc_lite_view_projection__;
   delete host.__ifc_lite_render_visibility__;
   delete host.__ifc_lite_annotation_line_vertices__;
   delete host.__ifc_lite_visibility_reasons__;

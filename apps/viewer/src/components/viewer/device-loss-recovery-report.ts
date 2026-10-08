@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { notifyDeviceHealth } from './device-loss-notification.js';
 import type { DeviceRecoveryResult } from '@ifc-lite/renderer';
 import { posthog } from '@/lib/analytics';
 import { useViewerStore } from '@/store';
@@ -42,6 +43,7 @@ export function reportDeviceRecovery(result: DeviceRecoveryResult, onRecovered: 
       ...(legacyGeometry ? { geometryResult: legacyGeometry } : {}),
       pointCloudAssetCount: 0,
       pointCloudDeviationComputed: false,
+      pointCloudDeviationStatistics: null,
     });
   }
   // A successful replacement owns a new loss lifecycle. Re-arm the report so
@@ -55,16 +57,12 @@ export function reportDeviceRecovery(result: DeviceRecoveryResult, onRecovered: 
   } catch (error) {
     console.warn('[Viewport] device-loss recovery telemetry failed:', error);
   }
-  void import('@/components/ui/toast').then((module) => {
-    if (result.ok) {
-      const detail = result.omissions.length > 0
-        ? ` Some transient layers were cleared: ${result.omissions.join(', ')}.`
-        : '';
-      module.toast.success(`The 3D view recovered.${detail}`);
-    } else {
-      module.toast.error('The 3D view could not recover automatically. Reload the page to restore rendering.');
-    }
-  }).catch((error) => {
-    console.warn('[Viewport] device-loss recovery toast unavailable:', error);
-  });
+  if (result.ok) {
+    const detail = result.omissions.length > 0
+      ? ` Some transient layers were cleared: ${result.omissions.join(', ')}.`
+      : '';
+    notifyDeviceHealth('success', `Graphics device restored; the 3D view is restarting.${detail}`);
+  } else {
+    notifyDeviceHealth('error', 'The 3D view could not recover automatically. Reload the page to restore rendering.');
+  }
 }

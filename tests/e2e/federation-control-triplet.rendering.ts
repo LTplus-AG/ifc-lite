@@ -21,7 +21,7 @@ type Point3 = readonly [number, number, number];
 type ControlPoint = { id: string; local: Point3 };
 type RenderPoint = (point: Point3) => { x: number; y: number; z: number };
 
-interface DecodedPng { width: number; height: number; rgba: Uint8Array }
+export interface DecodedPng { width: number; height: number; rgba: Uint8Array }
 interface PixelDifference { regionPixels: number; changedPixels: number }
 
 export interface RenderedModelEvidence {
@@ -40,7 +40,7 @@ export interface OrdinarySelection {
 }
 
 /** Decode Chrome's 8-bit non-interlaced RGB/RGBA screenshots without a dependency. */
-function decodePng(png: Uint8Array): DecodedPng {
+export function decodePng(png: Uint8Array): DecodedPng {
   const view = new DataView(png.buffer, png.byteOffset, png.byteLength);
   let offset = 8, width = 0, height = 0, channels = 0;
   const idat: Uint8Array[] = [];

@@ -81,7 +81,26 @@ export const clashToolsEn = {
   'clashTools.bcfExport.exportFailedToast': 'BCF export failed: {reason}',
 
   // ClashRevisionCompareDialog.tsx
+  // ClashSavedReportsDialog.tsx (#6947)
+  'clashTools.savedReports.triggerTooltip': 'Saved clash reports',
+  'clashTools.savedReports.dialogDescription':
+    'Save the current result under a name. A chart can then keep showing it whatever is checked next.',
+  'clashTools.savedReports.nameLabel': 'Report name',
+  'clashTools.savedReports.saveButton': 'Save current result',
+  'clashTools.savedReports.currentSummary': 'Current result: {clashes}.',
+  'clashTools.savedReports.currentLimits': 'It will be saved as: {limits}.',
+  'clashTools.savedReports.savedToast': 'Saved clash report “{name}”.',
+  'clashTools.savedReports.storageFailed': 'The clash report could not be saved in this browser.',
+  'clashTools.savedReports.empty': 'No saved clash reports yet.',
+  'clashTools.savedReports.entrySummary': '{clashes} · saved {when} · {models}',
+  'clashTools.savedReports.renameLabel': 'Name of “{name}”',
+  'clashTools.savedReports.renameButton': 'Rename',
+  'clashTools.savedReports.deleteButton': 'Delete',
+  'clashTools.savedReports.deleteWarning': 'Charts that read “{name}” will show it as unavailable.',
+  'clashTools.savedReports.confirmDeleteButton': 'Delete report',
+  'clashTools.savedReports.cancelDeleteButton': 'Keep',
   'clashTools.revisionCompare.triggerTooltip': 'Compare clash runs across revisions',
+  'clashTools.revisionCompare.originalFinding': 'Original saved baseline finding',
   'clashTools.revisionCompare.dialogTitle': 'Compare clash runs',
   'clashTools.revisionCompare.dialogDescription':
     'Save the current result as a baseline, then compare it against a later run — new, persisting, and no-longer-detected clashes.',

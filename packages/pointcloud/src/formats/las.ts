@@ -328,7 +328,7 @@ function rgbOffsetForFormat(format: number): number {
   }
 }
 
-function readU64LE(view: DataView, offset: number): number {
+export function readU64LE(view: DataView, offset: number): number {
   // No bigint round-trip: point counts > 2^53 are absurd in practice.
   const lo = view.getUint32(offset, true);
   const hi = view.getUint32(offset + 4, true);

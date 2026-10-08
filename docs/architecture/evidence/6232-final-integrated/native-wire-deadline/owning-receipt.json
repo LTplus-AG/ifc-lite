@@ -1,0 +1,111 @@
+{
+  "leaf": "3a6d9a38fe92b08b94dcf2cd4fe16614462f7776",
+  "parent": "d86e9e313feb75f48b92cc91195828428e17824e",
+  "scope": "One test file, 4 insertions / 1 deletion; only two native channel controls get finite 30_000ms test deadline. All assertions, 3_000ms per-request deadlines, production and global configuration unchanged.",
+  "runtime": {
+    "wasm": "de89ff1bf7178f644e6b6ad30159c765c28a4452483b687a58c2e17ae8be08e3",
+    "js": "4719403c55b6061b7ff3ba260ae45783c4db846cb70ccd70ac51d5b03d87373d"
+  },
+  "runs": [
+    {
+      "path": "/tmp/6232-room-wire-budget-final-old-guard.log",
+      "sha256": "d372785fbe9da244467eb47127ae6145a0a7047acec3946a4d23a19d70cb46b7",
+      "result": "Same final 30s fixture, exact old 2dd90 guard: 2 attributable assertion FAIL / 4 PASS"
+    },
+    {
+      "path": "/tmp/6232-room-wire-budget-full-sdk.log",
+      "sha256": "93544d972c50d5a2ec101ae7f035bd318273551f054e5a1ec75eb28b716a638a",
+      "result": "Restored fixed source: 328 PASS / 6 existing absent cost fixture SKIP"
+    },
+    {
+      "path": "/tmp/6232-room-wire-budget-cost-fixture.log",
+      "sha256": "93ae1d3e50abae5f7f05bf33f5946058f669a64103f9953ad35201e9dc13d42e",
+      "result": "Canonical manifest-pinned cost fixture fetched and verified; 2505 bytes"
+    },
+    {
+      "path": "/tmp/6232-room-wire-budget-full-sdk-with-fixture.log",
+      "sha256": "de8bda9d01224586842971946ad2f8e4976811724072556408e07de9a1d5590e",
+      "result": "Restored fixed source with canonical fixture: 334 PASS / 0 SKIP"
+    },
+    {
+      "path": "/tmp/6232-6758-d86-node-failure.log",
+      "sha256": "37a93be2d0939c53bd1cb06533ed4efdc22c7f0e383f847d78ce96bb7b6531d5",
+      "result": "Original owning CI: both native controls hit default 5000ms"
+    },
+    {
+      "path": "/tmp/6232-final-b432-node-failure.log",
+      "sha256": "53d29a69c70e3333e77c7551c284be0bb83b4ffce9b8972e273a8370d9552233",
+      "result": "Original final CI: same two native controls hit default 5000ms"
+    }
+  ],
+  "localForward": [
+    {
+      "pr": 6758,
+      "old": "d86e9e313feb75f48b92cc91195828428e17824e",
+      "head": "3a6d9a38fe92b08b94dcf2cd4fe16614462f7776",
+      "tree": "ccb2fa4f3bbefc53cd4849bf91fde32bec253d83",
+      "changedPaths": [
+        "packages/sdk/src/host-async-channel.test.ts"
+      ],
+      "testBlob": "de920c879aa1bd1a08d2358637adcf05070f8967",
+      "apiUnchanged": true,
+      "preparedMain": "f04a97289d3130a1d7dc9df056c8b9c5b6d25791",
+      "mainCompositionClean": true,
+      "mainCompositionTree": "ccb2fa4f3bbefc53cd4849bf91fde32bec253d83",
+      "mainCompositionEqualsHead": true,
+      "ownLayerBase": "f04a97289d3130a1d7dc9df056c8b9c5b6d25791",
+      "ownLayerBinaryPatchSha256": "0089f8f115b8719cd580080f79c656841ca25428ec59ef03a742ea242dd2af07"
+    },
+    {
+      "pr": 6759,
+      "old": "f05ff9018c7ba80ea2ef7f19e6df77df2aa8c9f7",
+      "head": "820dc0f2fe65cd0e6df2dd7d3d6c6329f2e80211",
+      "tree": "c3b677373569f86dbb1fc5395400c26e764b66f6",
+      "changedPaths": [
+        "packages/sdk/src/host-async-channel.test.ts"
+      ],
+      "testBlob": "de920c879aa1bd1a08d2358637adcf05070f8967",
+      "apiUnchanged": true,
+      "preparedMain": "f04a97289d3130a1d7dc9df056c8b9c5b6d25791",
+      "mainCompositionClean": true,
+      "mainCompositionTree": "c3b677373569f86dbb1fc5395400c26e764b66f6",
+      "mainCompositionEqualsHead": true,
+      "ownLayerBase": "3a6d9a38fe92b08b94dcf2cd4fe16614462f7776",
+      "ownLayerBinaryPatchSha256": "72a99f3781425346592c505214a5dea8565f438c7f205292985f1e3ea27214b2"
+    },
+    {
+      "pr": 6760,
+      "old": "3c81d9af70af1f625aa7c2787f64d1716dda5138",
+      "head": "7f17ebb0be32f7b585fee30145b137a343c1c41a",
+      "tree": "5b3209b4e5ce0c8e06557059cf86e8d89454ef7e",
+      "changedPaths": [
+        "packages/sdk/src/host-async-channel.test.ts"
+      ],
+      "testBlob": "de920c879aa1bd1a08d2358637adcf05070f8967",
+      "apiUnchanged": true,
+      "preparedMain": "f04a97289d3130a1d7dc9df056c8b9c5b6d25791",
+      "mainCompositionClean": true,
+      "mainCompositionTree": "5b3209b4e5ce0c8e06557059cf86e8d89454ef7e",
+      "mainCompositionEqualsHead": true,
+      "ownLayerBase": "820dc0f2fe65cd0e6df2dd7d3d6c6329f2e80211",
+      "ownLayerBinaryPatchSha256": "28b14f1622d7949afa37074cb2d54dda7890cfcb6e97917b2689173207759a3a"
+    },
+    {
+      "pr": 6761,
+      "old": "586e1bb8bf5dbfff94f7172a976ca5da57c0f279",
+      "head": "1bf6866f579db44614b9b6fa19ba12cb453e6a88",
+      "tree": "0659e978a1b8bd96c3df00606086cebcaa7cda50",
+      "changedPaths": [
+        "packages/sdk/src/host-async-channel.test.ts"
+      ],
+      "testBlob": "de920c879aa1bd1a08d2358637adcf05070f8967",
+      "apiUnchanged": true,
+      "preparedMain": "f04a97289d3130a1d7dc9df056c8b9c5b6d25791",
+      "mainCompositionClean": true,
+      "mainCompositionTree": "0659e978a1b8bd96c3df00606086cebcaa7cda50",
+      "mainCompositionEqualsHead": true,
+      "ownLayerBase": "7f17ebb0be32f7b585fee30145b137a343c1c41a",
+      "ownLayerBinaryPatchSha256": "29ddc9664ec2949f9cc39687dcf848d12dcee2c35904a7daefcf280b371c3f6f"
+    }
+  ]
+}

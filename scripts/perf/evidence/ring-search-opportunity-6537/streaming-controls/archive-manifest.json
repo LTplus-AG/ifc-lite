@@ -1,0 +1,173 @@
+{
+  "format": "lossless gzip, mtime zero",
+  "files": [
+    {
+      "originalName": "instrumented-build-receipt-v3.json",
+      "originalBytes": 169153,
+      "originalSha256": "824f3dbaca2dd662dd3ec1acc65cd3cb6123ce7bc09745afffcb69c3eb4446d2",
+      "archiveName": "instrumented-build-receipt-v3.json.gz",
+      "archiveBytes": 68944,
+      "archiveSha256": "3032dee60b4bf0805229e01871a1e9e89b68bafaefd439020363b820127c63e3"
+    },
+    {
+      "originalName": "ordinary-build-receipt-v3.json",
+      "originalBytes": 169382,
+      "originalSha256": "4f2bc6e81ae36769f52dfa82c9bdef07239bd941fc96562366ebf887c6489d26",
+      "archiveName": "ordinary-build-receipt-v3.json.gz",
+      "archiveBytes": 69042,
+      "archiveSha256": "941edab37ad2e39b73ade464244d42a2baa67d397ddbf78347a7f177000adbf7"
+    },
+    {
+      "originalName": "instrumented-comparison-v3.json",
+      "originalBytes": 1480,
+      "originalSha256": "c9e8fe40d1474156255ee8438ab87f636850026d3973b49c25c4740042cc7847",
+      "archiveName": "instrumented-comparison-v3.json.gz",
+      "archiveBytes": 644,
+      "archiveSha256": "afc937811d92a6ffb920ab5349676b6cd167fadd252703cc500823e09ec722c0"
+    },
+    {
+      "originalName": "ordinary-comparison-v3.json",
+      "originalBytes": 1464,
+      "originalSha256": "03641ac5fed06cd09cf94562e215dc16da96bedcc0ead43df537ffce0b0a3239",
+      "archiveName": "ordinary-comparison-v3.json.gz",
+      "archiveBytes": 638,
+      "archiveSha256": "1e2b29194e890bb8b0b39196c1092e7e5236f1569989fccf89683a5986711e2d"
+    },
+    {
+      "originalName": "run-suite.py",
+      "originalBytes": 2598,
+      "originalSha256": "e333b144681b0ce75197714c315bb82d847efda0954675b877dafca2fe2d49f7",
+      "archiveName": "run-suite.py.gz",
+      "archiveBytes": 1168,
+      "archiveSha256": "f5c841ccdd3ad8312281d89a8df6bc848c8cf0aebe4fa6904578f49b33e35b25"
+    },
+    {
+      "originalName": "6537-ring-adapter-stream-feature-tests-v3.json",
+      "originalBytes": 737,
+      "originalSha256": "17b8684e59d9f4c4f380dba919bd19d3dd3b0885a58d3abf2f40a9a5d35399c3",
+      "archiveName": "6537-ring-adapter-stream-feature-tests-v3.json.gz",
+      "archiveBytes": 443,
+      "archiveSha256": "b3c8f8780fba256568d898b5ccb64c21aaad1f1805c81f21ffea5d78749dbe58"
+    },
+    {
+      "originalName": "6537-ring-adapter-stream-feature-tests-v3.log",
+      "originalBytes": 942,
+      "originalSha256": "6ac19efa02c943e3975346559010e3c401ef2c0b0560e2911196542dbb01f068",
+      "archiveName": "6537-ring-adapter-stream-feature-tests-v3.log.gz",
+      "archiveBytes": 489,
+      "archiveSha256": "b657762457d919ca6d09efc02ff3e337db5b8a4f63a47939ee072944863d53c6"
+    },
+    {
+      "originalName": "6537-ring-adapter-stream-default-tests-v3.json",
+      "originalBytes": 694,
+      "originalSha256": "a8f7270169617fb57cf1bb3c7e043b112de794fc27a9680d20247310d9dddaaa",
+      "archiveName": "6537-ring-adapter-stream-default-tests-v3.json.gz",
+      "archiveBytes": 433,
+      "archiveSha256": "4601ff7ff8819e29032742a8e89947c78db7a52a8dddfd02d3e3a87c6ddfb2c5"
+    },
+    {
+      "originalName": "6537-ring-adapter-stream-default-tests-v3.log",
+      "originalBytes": 1099,
+      "originalSha256": "bf3e2b7afe8cb5ee24a38648123853a0b6d1410732add9151c091b8e9435558e",
+      "archiveName": "6537-ring-adapter-stream-default-tests-v3.log.gz",
+      "archiveBytes": 523,
+      "archiveSha256": "22a1c4b9d11207b34ed8e52c911f6c25e1425756a0c65ca3e829f4895087d3f7"
+    },
+    {
+      "originalName": "6537-ring-adapter-stream-feature-clippy-v3.json",
+      "originalBytes": 702,
+      "originalSha256": "d553392204ee20c184f42e27df716ed3063f9564998643c35d707acc397075a7",
+      "archiveName": "6537-ring-adapter-stream-feature-clippy-v3.json.gz",
+      "archiveBytes": 424,
+      "archiveSha256": "dbf7fc63a89a1a657147c6921c812523a9234dcbe258b806bd56e87589d7b8af"
+    },
+    {
+      "originalName": "6537-ring-adapter-stream-feature-clippy-v3.log",
+      "originalBytes": 1091,
+      "originalSha256": "c7f94638d6a610ec461ba80a4dafdf204e2e35292127ac2b13854fedf0dbe3b4",
+      "archiveName": "6537-ring-adapter-stream-feature-clippy-v3.log.gz",
+      "archiveBytes": 296,
+      "archiveSha256": "b22b6dd8463b0d637ad5b27e50f6ca5d2abbd4b8efe588c478a4884a6d44029b"
+    },
+    {
+      "originalName": "6537-ring-adapter-stream-default-clippy-v3.json",
+      "originalBytes": 638,
+      "originalSha256": "89371633e97df6aedbe2fc998add2fa22af833a8feadfbee7184fd510f083014",
+      "archiveName": "6537-ring-adapter-stream-default-clippy-v3.json.gz",
+      "archiveBytes": 396,
+      "archiveSha256": "9d5275d998591ef469a28a188cca1152d6d753d138e753693ba870b4c3d56cd2"
+    },
+    {
+      "originalName": "6537-ring-adapter-stream-default-clippy-v3.log",
+      "originalBytes": 1086,
+      "originalSha256": "413545f72883c9e680b185c9c61a85f9bc0ff86640d3c9ec497cae578f69ef69",
+      "archiveName": "6537-ring-adapter-stream-default-clippy-v3.log.gz",
+      "archiveBytes": 285,
+      "archiveSha256": "924b7083a7ca6a93f42fcbe0e2c31185a8c5a4395254276bf0c00a43c25cef64"
+    },
+    {
+      "originalName": "6537-ring-adapter-stream-feature-build-v3.json",
+      "originalBytes": 740,
+      "originalSha256": "7afde979e1d4f5ff7ecd338ed0c628bdf710bbf28339b40b7d244e9e1c2c35b8",
+      "archiveName": "6537-ring-adapter-stream-feature-build-v3.json.gz",
+      "archiveBytes": 437,
+      "archiveSha256": "f3c5312d4d8c5d1e90b8115e8ba43feebd846134cd2c6a9c4f6225256fb271c1"
+    },
+    {
+      "originalName": "6537-ring-adapter-stream-feature-build-v3.log",
+      "originalBytes": 450,
+      "originalSha256": "438ba260d64756f85db63090197ab3127b33c381da576dead057856401a76682",
+      "archiveName": "6537-ring-adapter-stream-feature-build-v3.log.gz",
+      "archiveBytes": 217,
+      "archiveSha256": "28d6582da4f4ad3b61868de36ac382479fff3fb7b50dd813557cc6e2212b6651"
+    },
+    {
+      "originalName": "6537-ring-adapter-stream-default-build-v3.json",
+      "originalBytes": 696,
+      "originalSha256": "f1528d21e69d799640535e67cea363423b24cdd1cd83fa112a967bb26e223076",
+      "archiveName": "6537-ring-adapter-stream-default-build-v3.json.gz",
+      "archiveBytes": 422,
+      "archiveSha256": "c6cdf3c3e0e7e396a7bd54d220dd3f3f7d5ef1fb96528e56c7b4914e23d4908b"
+    },
+    {
+      "originalName": "6537-ring-adapter-stream-default-build-v3.log",
+      "originalBytes": 294,
+      "originalSha256": "489ce4878f6ccdc2b7594c753a0e181fcbdbe28ea3fb9d4861e257e91fe62044",
+      "archiveName": "6537-ring-adapter-stream-default-build-v3.log.gz",
+      "archiveBytes": 181,
+      "archiveSha256": "224bb94af658961f98d95ed04bf66bd9140aa6906c4fdcb9d01c1203ac9888a1"
+    },
+    {
+      "originalName": "6537-ring-adapter-stream-feature-suite-v3.json",
+      "originalBytes": 654,
+      "originalSha256": "1588b22420346c566c94768bafe67f66aed7a98d5436a0997318575fc4a4f88f",
+      "archiveName": "6537-ring-adapter-stream-feature-suite-v3.json.gz",
+      "archiveBytes": 416,
+      "archiveSha256": "91048276e527f5c1520871c8a48f6197bbb2500df479e2b936068f9ae813fc28"
+    },
+    {
+      "originalName": "6537-ring-adapter-stream-feature-suite-v3.log",
+      "originalBytes": 1133,
+      "originalSha256": "04481a16615dbd3b158164bdc87202e7d71ed8bec770726012f2c2881910e79e",
+      "archiveName": "6537-ring-adapter-stream-feature-suite-v3.log.gz",
+      "archiveBytes": 519,
+      "archiveSha256": "67cbe399b3c0e45026a7882902adceb8e694fc4799580c669c37c964a9928f70"
+    },
+    {
+      "originalName": "6537-ring-adapter-stream-default-suite-v3.json",
+      "originalBytes": 650,
+      "originalSha256": "2e5606c29cf18ba76cd2768fc8d71c216d494fdaf403963d2d2f5dea0cf01bdc",
+      "archiveName": "6537-ring-adapter-stream-default-suite-v3.json.gz",
+      "archiveBytes": 414,
+      "archiveSha256": "603cd237cded72a8a27b628b665757dcae7cd335df4b38dfed298eb9f27b5ea6"
+    },
+    {
+      "originalName": "6537-ring-adapter-stream-default-suite-v3.log",
+      "originalBytes": 1117,
+      "originalSha256": "6b4b34b67db1143741a4b57ae9a1391dbcfe4487d791d456757d29de0cb8ab11",
+      "archiveName": "6537-ring-adapter-stream-default-suite-v3.log.gz",
+      "archiveBytes": 518,
+      "archiveSha256": "1766f3967fac5330c31a49b9047ddd3514232847cb0dc433bfe7d018ce251464"
+    }
+  ]
+}

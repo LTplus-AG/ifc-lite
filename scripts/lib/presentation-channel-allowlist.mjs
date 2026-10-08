@@ -51,6 +51,8 @@ export const POLICED_ACTIONS = [
  * are repo-relative, forward-slashed.
  */
 export const REQUIRES_ROUTING_MARKER = new Set([
+  // Assistant scene actions (#6907): hide routes its targets through resolvePresentationIds.
+  'apps/viewer/src/lib/actions/scene-apply.ts',
   'apps/viewer/src/components/viewer/LensPanel.tsx',
   'apps/viewer/src/components/viewer/PropertiesPanel.tsx',
   'apps/viewer/src/components/viewer/SearchModal.filter.tsx',
@@ -89,6 +91,13 @@ export const REQUIRES_ROUTING_MARKER = new Set([
  * `ROUTING_MARKERS` call, each with a reason a reviewer can check.
  */
 export const NO_MARKER_REQUIRED = new Map([
+  [
+    'apps/viewer/src/lib/actions/scene-restore.ts',
+    'Assistant scene-action restore (#6907): showEntities releases exactly the ids applySceneActions ' +
+    'recorded in application.hide.added, which were already expanded through resolvePresentationIds at ' +
+    'apply time. Expanding again here could reveal elements the apply never hid (an ownership ledger, ' +
+    'like the lens hide/show pair).',
+  ],
   [
     // The lens hidden-id sync moved here from LensPanel.tsx with #5877 (the
     // lens runtime now outlives its panel); the gap below moved with it.
@@ -174,7 +183,7 @@ export const NO_MARKER_REQUIRED = new Map([
     'mesh. Nothing here originates from an entity a user or a host script named.',
   ],
   [
-    'apps/viewer/src/store/slices/mutationSlice.ts',
+    'apps/viewer/src/store/slices/mutation-mesh-stash.ts',
     'Hides the mesh of the ONE entity a delete-entity mutation just removed, by the express id ' +
     'that was deleted. Expanding it to an aggregated subtree would hide parts the mutation did ' +
     'not delete, and the undo branch shows back the same single id, so the two halves must ' +
@@ -183,7 +192,7 @@ export const NO_MARKER_REQUIRED = new Map([
   [
     'apps/viewer/src/store/slices/collabSlice.ts',
     "The peer-delete handler: hides the single entity a collaborator's onEntityDelete event " +
-    'names. Same reasoning as mutationSlice above -- the parts of a deleted assembly were not ' +
+    'names. Same reasoning as deletion completion above -- the parts of a deleted assembly were not ' +
     'themselves deleted, so expanding would hide geometry that is still in the model.',
   ],
   [

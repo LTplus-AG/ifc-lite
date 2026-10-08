@@ -27,10 +27,10 @@
  * tracked set yet — out of scope here; a future MCP-side sidecar (keyed per
  * session or per model) would close that gap.
  *
- * Existing wall/column/slab/beam creation nodes use the shared ordinary SDK
+ * Wall/column/slab/beam/stair/railing creation nodes use the shared SDK
  * backend and create-package builders. Each creation is recorded as one
  * compound mutation for public mutation_undo, retaining earlier overlay work.
- * This does not add further ElementSpec kinds or persistent flow tracking.
+ * Stair/railing specs use their canonical builders; tracking remains per call.
  *
  * `run_flow` is the OTHER caller (besides `ifc-lite flow run`) allowed to
  * read `process.env` for a flow graph (#5167 phase 3.5), following the same
@@ -67,13 +67,16 @@ import { parseCapabilities } from '@ifc-lite/extensions';
 import {
   buildRedactionMap,
   createStandardRegistry,
-  headlessFeatures,
   interpolateSecrets,
   redactDeep,
   resolveSecretValues,
-  usableSecretNames,
   validateSecretReferences,
 } from '@ifc-lite/flow-nodes';
+// AI availability follows explicit host configuration; unconfigured hosts refuse before effects.
+import { mcpFlowFeatures } from './flow-ai.js';
+import { prepareMcpFlowReview, restoredMcpNodes } from './flow-review-host.js';
+import { flowAiConfig } from '@ifc-lite/ai/chat-completions';
+import { aiNodes } from '@ifc-lite/flow-nodes/ai';
 import { createMcpFlowHost } from './flow-host.js';
 import type { Tool } from './types.js';
 import { okResult, paginate, resolveModel } from './util.js';
@@ -133,7 +136,7 @@ const describeFlow: Tool = {
         diagnostics: parsed.problems,
       });
     }
-    const registry = createStandardRegistry();
+    const registry = createStandardRegistry().registerAll(aiNodes);
     const doc = parsed.doc;
     // Registry-aware: `validateFlowDocument` alone cannot see a declared
     // output naming a port no node has (#5167) — it never looks at a
@@ -141,7 +144,7 @@ const describeFlow: Tool = {
     // validating clean and producing nothing at run time.
     const diagnostics = validateFlowWiring(doc, registry);
     const io = describeFlowIO(doc, registry);
-    const availability = checkAvailability(doc, registry, headlessFeatures(usableSecretNames(process.env)));
+    const availability = checkAvailability(doc, registry, mcpFlowFeatures());
     const unavailable = availability.filter((node) => node.status === 'unknown' || node.status === 'unavailable');
     const ok = diagnostics.length === 0 && unavailable.length === 0;
     return okResult(
@@ -203,6 +206,7 @@ const runFlowTool: Tool = {
     type: 'object',
     properties: {
       ...flowInputSchema,
+      checkpoint_path: { type: 'string', description: 'New durable review checkpoint destination, required before a review-capable run; subject to allowedPaths.' },
       model_id: { type: 'string', description: 'Loaded model id; required when multiple models are loaded.' },
       inputs: {
         type: 'object',
@@ -212,7 +216,10 @@ const runFlowTool: Tool = {
     },
     additionalProperties: false,
   },
-  async handler(input, ctx) {
+  handler: (input, ctx) => executeFlow(input, ctx),
+};
+
+async function executeFlow(input: Record<string, unknown>, ctx: ToolContext, resuming = false, readOnly = false) {
     const value = await loadFlowValue(input, ctx);
     const parsed = parseGraphValue(value);
     if (!parsed.ok) {
@@ -222,7 +229,7 @@ const runFlowTool: Tool = {
         details: { diagnostics: parsed.problems },
       });
     }
-    const registry = createStandardRegistry();
+    const registry = createStandardRegistry().registerAll(aiNodes);
     const doc = parsed.doc;
     const wiring = validateFlowWiring(doc, registry);
     if (wiring.length > 0) {
@@ -231,6 +238,14 @@ const runFlowTool: Tool = {
         message: `Flow document has ${wiring.length} wiring problem(s); call describe_flow first.`,
         details: { diagnostics: wiring },
       });
+    }
+
+    if (readOnly) {
+      const allowed = new Set(['model.read', 'network.ai']);
+      if (doc.capabilities.some(capability => !allowed.has(capability)) || doc.nodes.some(node => {
+        const definition = registry.get(node.type);
+        return definition?.writes || definition?.capabilities?.some(capability => !allowed.has(capability));
+      })) throw new ToolExecutionError({ code: ToolErrorCode.PERMISSION_DENIED, message: 'propose_flow accepts only native read/AI nodes with model.read and network.ai; use authorized run_flow for effects' });
     }
 
     const rawInputs = (input.inputs as Record<string, unknown> | undefined) ?? {};
@@ -265,32 +280,39 @@ const runFlowTool: Tool = {
         message: `${secretErrors.length} secret reference problem(s): ${secretErrors.map((e) => e.message).join('; ')}`,
       });
     }
-    const unavailable = checkAvailability(doc, registry, headlessFeatures(usableSecretNames(process.env)))
-      .filter((node) => node.status === 'unknown' || node.status === 'unavailable');
+    const restored = await restoredMcpNodes(input, ctx, resuming);
+    const unavailable = checkAvailability(doc, registry, mcpFlowFeatures())
+      .filter((node) => !restored.has(node.nodeId) && (node.status === 'unknown' || node.status === 'unavailable'));
     if (unavailable.length) throw new ToolExecutionError({
       code: ToolErrorCode.UNSUPPORTED_OPERATION,
       message: `Flow cannot run on this host: ${unavailable.map((node) => `${node.nodeId}: ${node.reasons.join('; ')}`).join(' | ')}`,
       details: { availability: unavailable },
     });
 
-    const secretValues = resolveSecretValues(doc, process.env);
-    const redaction = buildRedactionMap(secretValues);
-    const runDoc = interpolateSecrets(doc, secretValues);
-
 
     const model = resolveModel(ctx, input.model_id as string | undefined);
+    const secretValues = new Map(resolveSecretValues(doc, process.env));
+    const aiConfig = flowAiConfig(process.env);
+    if (aiConfig) secretValues.set('IFC_LITE_AI_API_KEY', aiConfig.apiKey);
+    const redaction = buildRedactionMap(secretValues);
+    const runDoc = interpolateSecrets(doc, secretValues);
+    const review = await prepareMcpFlowReview(input, ctx, model, runDoc, registry, rawInputs, resuming, readOnly);
     // `networkGrants` is the graph's own declared capabilities (module doc);
     // `model.openFromSource` can switch the host to a model it opened.
-    const host = createMcpFlowHost(model, ctx.registry, capsResult.value);
-    const result = await runFlow(runDoc, {
+    const host = createMcpFlowHost(model, ctx.registry, capsResult.value, { ai: review.ai, grants: capsResult.value });
+    const resume = await review.claim();
+    let result: RunResult;
+    try { result = await runFlow(runDoc, {
       host,
+      resume,
       registry,
       inputs: rawInputs,
-      features: headlessFeatures(usableSecretNames(process.env)),
+      features: mcpFlowFeatures(),
       modelRevisions: { [model.id]: 0 },
       tracking: new MemoryTrackingStore(),
       signal: ctx.signal,
-    });
+    }); } catch (error) { await review.fail(); throw error; }
+    const pending = await review.settle(result, redaction, host.defaultModelId);
 
     const outputs = result.graphOutputs.map((o) => ({ label: o.label, key: `${o.nodeId}.${o.port}`, data: serializeFlowData(o.data) }));
     const statuses: Record<string, number> = {};
@@ -302,11 +324,13 @@ const runFlowTool: Tool = {
     // too, not just the literal param it was interpolated into.
     return okResult(
       result.ok
-        ? `Flow '${doc.name}' ran: ${outputs.length} output(s).`
+        ? pending ? `Flow '${doc.name}' paused for review; no downstream effects ran.` : `Flow '${doc.name}' ran: ${outputs.length} output(s).`
         : `Flow '${doc.name}' FAILED.`,
       redactDeep(
         {
           ok: result.ok,
+          usage_receipts: review.receipts,
+          ...(pending ? { pending } : {}),
           nodes: statuses,
           writes: result.writes,
           tracking: trackingSummary(result),
@@ -317,7 +341,24 @@ const runFlowTool: Tool = {
         redaction,
       ),
     );
-  },
+}
+
+const resumeFlowTool: Tool = {
+  ...runFlowTool,
+  name: 'resume_flow',
+  description: 'Consume one separately reviewed pending Flow artifact by exact proposal digest. Rechecks current sources, graph, permissions and original budget before restoring completed nodes and running downstream effects. Completed or lost-owner claims cannot run twice.',
+  inputSchema: { ...runFlowTool.inputSchema, required: ['checkpoint_path', 'approved_digest'], properties: {
+    ...runFlowTool.inputSchema.properties,
+    approved_digest: { type: 'string', description: 'The exact proposal_digest reviewed from the pending artifact.' },
+    next_checkpoint_path: { type: 'string', description: 'A distinct new destination when downstream nodes pause for review again.' },
+  } },
+  handler: (input, ctx) => executeFlow(input, ctx, true),
 };
 
-export const flowTools: Tool[] = [describeFlow, runFlowTool];
+const proposeFlowTool: Tool = {
+  ...runFlowTool, name: 'propose_flow', scope: 'read',
+  description: 'Run a native read/AI-only graph to a durable pending artifact. Model and external effect nodes are refused before requesting; applying requires a separate authorized resume_flow call.',
+  handler: (input, ctx) => executeFlow(input, ctx, false, true),
+};
+
+export const flowTools: Tool[] = [describeFlow, runFlowTool, proposeFlowTool, resumeFlowTool];

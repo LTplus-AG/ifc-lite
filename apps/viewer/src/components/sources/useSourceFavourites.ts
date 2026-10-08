@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { SourceContainer, SourceFile, SourceProject } from '@ifc-lite/plugin-api';
 import { toast } from '@/components/ui/toast';
 import { readSourceCatalogCacheOwner } from '@/lib/sources/persistence';
@@ -23,6 +23,7 @@ interface UseSourceFavouritesOptions {
   folders: readonly SourceContainer[];
   /** Lets the panel re-read storage after the browser changed a favourite. */
   onChanged?: () => void;
+  externalVersion?: number;
 }
 
 /**
@@ -37,8 +38,11 @@ export function useSourceFavourites({
   selectedFileArea,
   folders,
   onChanged,
+  externalVersion = 0,
 }: UseSourceFavouritesOptions) {
   const [items, setItems] = useState<SourceFavourite[]>(() => loadFavourites(providerId));
+
+  useEffect(() => { setItems(loadFavourites(providerId)); }, [providerId, externalVersion]);
 
   // The identity every key on this screen is scoped to. Read per render rather
   // than memoised: it is the same stamp a star press writes, and the stored
@@ -47,6 +51,16 @@ export function useSourceFavourites({
   const identityId = readSourceCatalogCacheOwner(providerId);
 
   const keys = useMemo(() => new Set(items.map((item) => favouriteKey(item))), [items]);
+
+  // Stored shortcuts must remain available before a deep/paged folder has
+  // been listed. Reuse upstream metadata when known; never invent a parent.
+  const favouriteFolders = useMemo<SourceContainer[]>(() => items
+    .filter((item) => item.kind === 'folder' && item.providerId === providerId
+      && item.identityId === identityId && item.projectId === selectedProject?.id
+      && item.fileAreaId === selectedFileArea?.id)
+    .map((item) => (item.containerId === selectedFileArea?.id ? selectedFileArea : folders.find((folder) => folder.id === item.containerId))
+      ?? { id: item.containerId, name: item.containerName }),
+  [items, providerId, identityId, selectedProject?.id, selectedFileArea, folders]);
 
   const apply = useCallback(
     (favourite: SourceFavourite) => {
@@ -154,7 +168,7 @@ export function useSourceFavourites({
   // Memoised: the browser's favourite-jump effect lists this object in its
   // dependencies, and a fresh literal every render would re-run it every render.
   return useMemo(
-    () => ({ isFolderFavourite, toggleFolderFavourite, isFileFavourite, toggleFileFavourite, rename }),
-    [isFileFavourite, isFolderFavourite, rename, toggleFileFavourite, toggleFolderFavourite],
+    () => ({ favouriteFolders, isFolderFavourite, toggleFolderFavourite, isFileFavourite, toggleFileFavourite, rename }),
+    [favouriteFolders, isFileFavourite, isFolderFavourite, rename, toggleFileFavourite, toggleFolderFavourite],
   );
 }

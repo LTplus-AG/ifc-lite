@@ -136,6 +136,11 @@ export function queryPointClouds(
   const toleranceAt = (t: number): number => pointCloudSnapToleranceAt(t, camera);
 
   let best: PointCloudRayResult | null = null;
+  // A streamed COPC asset contributes one source per resident node, all
+  // sharing its placement: rewrite the ray once per matrix, not per node.
+  let lastModel: Float32Array | Float64Array | undefined;
+  let lastLocal: ReturnType<typeof toLocalFrameRay> = null;
+  let haveLocal = false;
   for (const src of sources) {
     if (options?.hiddenIds?.has(src.expressId)) continue;
     if (
@@ -155,7 +160,12 @@ export function queryPointClouds(
     // with it, or the screen-space tolerance quietly changes meaning under
     // a non-metre CRS. `null` means "no transform needed", which is both
     // the unaligned fast path and the safe fallback for a singular matrix.
-    const local = toLocalFrameRay(ray.origin, ray.direction, src.model);
+    if (!haveLocal || src.model !== lastModel) {
+      lastLocal = toLocalFrameRay(ray.origin, ray.direction, src.model);
+      lastModel = src.model;
+      haveLocal = true;
+    }
+    const local = lastLocal;
     if (!local) {
       const hit = src.index.queryRay(ray.origin, ray.direction, bound, toleranceAt, src.classMask);
       if (hit && (!best || hit.distance < best.distance)) {

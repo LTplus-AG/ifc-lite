@@ -5,7 +5,8 @@
 export { GUID_PATTERN, LIMITS, assertIri } from './types.js';
 export type { RdfBinding, SparqlResults, SemanticRecord, SemanticDataset } from './types.js';
 export { parseResults, recordsFromResults } from './results.js';
-export { assertReadOnlyQuery, relatedResourceQuery, relatedIdentityQuery } from './query.js';
+export { assertReadOnlyQuery, inspectReadOnlyQuery, relatedResourceQuery, relatedIdentityQuery } from './query.js';
+export type { ReadOnlyQueryShape } from './query.js';
 export { createSemanticProvider, request } from './provider.js';
 export type { SemanticProvider, ProviderReadOptions, ProviderResult } from './provider.js';
 export { ResolverRegistry, IFC_GLOBAL_ID_STRATEGY, resolveResource, createResourceLinkStrategy, createProfileMappingStrategy } from './resolver.js';
@@ -16,3 +17,5 @@ export * from './profile-index.js';
 export { resourcesFromResults, DEFAULT_MAPPING } from './projection.js';
 export type { BindingMapping } from './projection.js';
 export { recordsFromGraph } from './graph.js';
+export { DEFAULT_RESOURCE_URI_CONFIG, assertResourceUriIdentityConfig, resourceUriForGlobalId, createResourceUriStrategy } from './uri-resolver.js';
+export type { ResourceUriIdentityConfig } from './uri-resolver.js';

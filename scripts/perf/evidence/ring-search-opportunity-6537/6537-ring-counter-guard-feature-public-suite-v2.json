@@ -1,0 +1,19 @@
+{
+  "startedUTC": "2026-10-03T11:04:14.265249+00:00",
+  "cwd": "/home/louistrue/wt/6516-ring-work-counters-session6503",
+  "command": [
+    "python3",
+    "/tmp/6232-takeover/6537-ring-work-public-diagnostic-v2-output-guard/run-instrumented-suite.py"
+  ],
+  "minimumStartKiB": 25165824,
+  "minimumLiveKiB": 8388608,
+  "maximumTreeRssKiB": 12582912,
+  "initialAvailableKiB": 41625884,
+  "scope": "Correctness-only run under host load; no timing/performance verdict.",
+  "peakTreeRssKiB": 2434680,
+  "minimumObservedAvailableKiB": 39956416,
+  "ownedProcessGroup": 10474,
+  "childExit": 0,
+  "exit": 0,
+  "endedUTC": "2026-10-03T11:04:23.820077+00:00"
+}

@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { loopbackHttpOrigin } from '@ifc-lite/sandbox/network';
 import { LIMITS, assertIri, isObject, type SemanticDataset } from './types.js';
 import { GUID_PATTERN, assertRevisionIdentifier, type ResourceIdentityLink } from './resolver.js';
 import { parseResults } from './results.js';
@@ -20,7 +21,7 @@ function string(value: unknown, name: string): string {
 }
 function safeEndpoint(value: unknown): string {
   const url = new URL(string(value, 'endpoint'));
-  if (url.protocol !== 'https:' || url.username || url.password || url.search || url.hash) throw new Error('Portable endpoints must be HTTPS without credentials, query parameters or fragments');
+  if ((url.protocol !== 'https:' && !loopbackHttpOrigin(string(value, 'endpoint'))) || url.username || url.password || url.search || url.hash) throw new Error('Portable endpoints must be HTTPS or literal HTTP loopback without credentials, query parameters or fragments');
   return url.href;
 }
 export function sanitizeSource(value: unknown): string {

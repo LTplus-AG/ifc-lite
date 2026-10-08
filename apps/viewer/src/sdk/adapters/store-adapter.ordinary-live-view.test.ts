@@ -136,7 +136,9 @@ for (const count of [1, 2]) {
       }
       const reparsed = await new IfcParser().parseColumnar(saved.slice().buffer as ArrayBuffer, { disableWorkerScan: true });
       for (const ref of [door, window, wall]) assert.equal(reparsed.spatialHierarchy?.elementToStorey.get(ref.expressId), STOREY);
-      assert.deepEqual((useViewerStore.getState().undoStacks.get(modelId) ?? []).map(item => item.attributeName), ['IFCDOOR', 'IFCWINDOW', 'IFCWALL']);
+      const history = useViewerStore.getState().undoStacks.get(modelId) ?? [];
+      for (const ref of [door, window, wall]) assert.ok(history.some(item => item.type === 'CREATE_ENTITY' && item.entityId === ref.expressId));
+      assert.equal(new Set(history.map(item => useViewerStore.getState().mutationBatchTags.get(item.id))).size, 3, 'three complete IFC graph Undo groups');
       if (count === 2) assert.deepEqual(exportModel(0), peerBefore, 'peer export remains unchanged');
       await settleRemesh();
     } finally { mesher.restore(); }

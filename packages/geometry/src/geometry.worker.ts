@@ -9,6 +9,8 @@ import { publishPrepassFingerprint, runPrepassWithFingerprint } from './prepass-
 import { canReuseWorkerSource, type BytePrepassApi, type SourcePrepassApi, type FinalizeStyleArgs } from './worker-prepass-source.js';
 import { applyStyleFinishes } from './style-finishes.js';
 import init, { initSync, IfcAPI } from '@ifc-lite/wasm';
+import * as wasmBindings from '@ifc-lite/wasm';
+import { createInCallHeartbeat, installInCallHeartbeat, postWorkerHeartbeat } from './in-call-heartbeat.js';
 import { initWasmWithRetry } from './wasm-init-retry.js';
 import { largeFilePrepassError } from './huge-file-error.js';
 import { isWasmRuntimeTrap } from './wasm-runtime-trap.js';
@@ -33,6 +35,7 @@ import {
   type BatchSizingConfig,
 } from './batch-sizing.js';
 import { takeWasmPanicStash } from './wasm-panic-forward.js';
+import { traceGeometryWorkerMessage, meterTypedArrayArgs, countCopy, postPrepassEvent } from './worker-trace.js'; // #6956 spans, #6957 counters
 import { isColumnLengthRefusal } from './wasm-column-refusal.js';
 
 export interface GeometryWorkerInitMessage {
@@ -497,7 +500,16 @@ let cachedWasmUrl: string | undefined = undefined;
 async function ensureInit(): Promise<IfcAPI> {
   if (api) return api;
   await initWasmWithRetry(() => init(cachedWasmUrl), { label: 'geometry.worker' });
-  api = new IfcAPI();
+  return installFreshApi();
+}
+
+/** Build a fresh IfcAPI on the instantiated engine and replay every cached setting onto it. */
+function installFreshApi(): IfcAPI {
+  installInCallHeartbeat(wasmBindings, inCallHeartbeat);
+  // A prewarmed worker (#7036) is sent `init` again by the load that leases it:
+  // free the previous handle rather than leak it in the wasm heap.
+  freeWasmInstanceQuietly(api);
+  api = meterTypedArrayArgs(new IfcAPI(), 'wasm'); // #6957: bytes copied into wasm (identity unless traced)
   mergeLayersApplied = false;
   applyMergeLayersToApi();
   geometryHashApplied = false;
@@ -731,7 +743,7 @@ function viewSharedBytes(sharedBuffer: SharedArrayBuffer): Uint8Array {
 /** Fallback path: copy SAB into a fresh ArrayBuffer-backed Uint8Array. */
 function materialiseSharedBytes(sharedBuffer: SharedArrayBuffer): Uint8Array {
   const local = new Uint8Array(sharedBuffer.byteLength);
-  local.set(new Uint8Array(sharedBuffer));
+  local.set(countCopy('source.materialise', new Uint8Array(sharedBuffer)));
   return local;
 }
 
@@ -813,12 +825,7 @@ let activeSession: ProcessingSession | null = null;
 let batchSizing: BatchSizingConfig = DEFAULT_BATCH_SIZING;
 let adaptiveBatchJobs = batchSizing.maxJobs;
 
-/** Liveness ping (no slice context) for recovery paths that recurse/re-init. */
-function postWorkerHeartbeat(): void {
-  (self as unknown as Worker).postMessage(
-    { type: 'progress', processedJobs: 0, totalJobs: 0 } as GeometryWorkerProgressMessage,
-  );
-}
+const inCallHeartbeat = createInCallHeartbeat(postWorkerHeartbeat);
 
 function startSession(input: {
   sharedBuffer: SharedArrayBuffer;
@@ -1287,7 +1294,7 @@ async function processSliceStreaming(session: ProcessingSession, jobsFlat: Uint3
       { type: 'progress', processedJobs: jobOffset, totalJobs, seq, callJobs: jobsThisBatch, diagnostics } as GeometryWorkerProgressMessage,
     );
     const callStart = performance.now();
-    await processBatch(session, jobsFlat.subarray(start, end));
+    await inCallHeartbeat.run(() => processBatch(session, jobsFlat.subarray(start, end)));
     flushPending(session);
     // Resize the next call from this one's measured throughput so the silent
     // window stays near TARGET_BATCH_MS regardless of CSG density (#1097).
@@ -1343,7 +1350,7 @@ function emitSessionEnd(session: ProcessingSession): void {
 let messageTail: Promise<void> = Promise.resolve();
 
 self.onmessage = (rawEvent: MessageEvent<GeometryWorkerRequest>) => {
-  messageTail = messageTail.then(() => handleMessage(rawEvent)).catch((err) => {
+  messageTail = messageTail.then(() => traceGeometryWorkerMessage(rawEvent.data, () => handleMessage(rawEvent))).catch((err) => {
     // #2527 follow-up: forward this realm's panic-location stash (if the
     // failure was a wasm trap) so the main thread can re-plant it on ITS
     // global for `attachWasmPanicLocation`. Read AFTER the throw, so a panic
@@ -1417,7 +1424,7 @@ async function handleMessage(e: MessageEvent<GeometryWorkerRequest>): Promise<vo
       const skipTypeGeometry = e.data.skipTypeGeometry === true;
       const onEvent = (event: unknown) => {
         publishPrepassFingerprint(sourceFingerprint, sharedBuffer.byteLength, event);
-        (self as unknown as Worker).postMessage({ type: 'prepass-stream', event });
+        postPrepassEvent(event);
       };
       const run = (
         bytes: Uint8Array,
@@ -1498,7 +1505,7 @@ async function handleMessage(e: MessageEvent<GeometryWorkerRequest>): Promise<vo
       // wasm-bindgen rejects the view.
       const onEvent = (event: unknown) => {
         publishPrepassFingerprint(sourceFingerprint, sharedBuffer.byteLength, event);
-        (self as unknown as Worker).postMessage({ type: 'prepass-stream', event });
+        postPrepassEvent(event);
       };
       const runPrepass = (bytes: Uint8Array) =>
         runPrepassWithFingerprint(ifcApi, [bytes, onEvent, chunkSize, disabledTypes, skipTypeGeometry], sourceFingerprint);
@@ -1581,21 +1588,7 @@ async function handleMessage(e: MessageEvent<GeometryWorkerRequest>): Promise<vo
         // `undefined` and threw `new WebAssembly.Module(undefined)`, which is
         // why the shared-module path was never actually taken.
         initSync({ module: e.data.wasmModule });
-        api = new IfcAPI();
-        mergeLayersApplied = false;
-        applyMergeLayersToApi();
-        geometryHashApplied = false;
-        applyComputeGeometryHashesToApi();
-        tessellationQualityApplied = false;
-        applyTessellationQualityToApi();
-        skipSmallCutsApplied = false;
-        applySkipSmallCutsToApi();
-        entityIndexApplied = false;
-        applyEntityIndexToApi();
-        prepassColumnsApplied = false;
-        applyPrepassColumnsToApi();
-        sourceBytesApplied = false;
-        applySourceBytesToApi();
+        installFreshApi();
       } else {
         await ensureInit();
       }

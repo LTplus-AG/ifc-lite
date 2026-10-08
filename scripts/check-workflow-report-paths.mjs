@@ -8,6 +8,7 @@ import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { basename, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseDocument } from 'yaml';
+import { isMainEntry } from './lib/is-main-entry.mjs';
 
 function filesBelow(root, accept) {
   if (!existsSync(root)) return [];
@@ -137,7 +138,9 @@ const REQUIRED_STEP_RUN = new Map([
 const REPORTER_NEEDS = new Map([
   ['determinism.yml', ['arm64-determinism', 'wasm32-mesh-determinism']],
   ['export-schema-conformance.yml', ['validate', 'terrain-imagery']],
+  ['field-verdict.yml', ['verdict']],
   ['ifcopenshell-parity.yml', ['full', 'cost-full']],
+  ['perf-ratchet-lower.yml', ['lower']],
   ['wide-arithmetic.yml', ['wide-arithmetic-tripwire']],
   ['xmatch-fixture.yml', ['content-matching-fixture']],
 ]);
@@ -312,4 +315,4 @@ export function main(argv = process.argv.slice(2)) {
   return 0;
 }
 
-if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) process.exitCode = main();
+if (isMainEntry(import.meta.url)) process.exitCode = main();

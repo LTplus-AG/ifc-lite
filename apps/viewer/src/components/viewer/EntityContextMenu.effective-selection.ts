@@ -3,14 +3,10 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { iterateEffectiveEntityIds, type MutablePropertyView } from '@ifc-lite/mutations';
-import { normalizeIfcTypeName, type IfcDataStore } from '@ifc-lite/parser';
+import { type IfcDataStore } from '@ifc-lite/parser';
 
-export function effectiveContextType(store: IfcDataStore, view: MutablePropertyView | null, expressId: number): string {
-  const type = view?.getEntityTypeMutation(expressId)?.newType
-    ?? view?.getNewEntity(expressId)?.type
-    ?? store.entities.getTypeName(expressId);
-  return type ? normalizeIfcTypeName(type) : '';
-}
+import { effectiveContextType } from '../../../../../packages/create/src/in-store/edit/effective-mutation-view.js';
+export { effectiveContextType };
 
 /** Source, retyped, and created ids of the clicked entity's current IFC class. */
 export function sameEffectiveTypeIds(store: IfcDataStore, view: MutablePropertyView | null, expressId: number): number[] {

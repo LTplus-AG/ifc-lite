@@ -18,6 +18,7 @@ import { DEFAULT_THEME } from '@ifc-lite/charts';
 import { IfcTypeEnum } from '@ifc-lite/data';
 import { useViewerStore } from '@/store/index.js';
 import { blur, click, cleanup, render, type, waitFor } from '@/test/render.js';
+import { documentPreviewReady } from '@/test/document-preview';
 import { EVENT_FILE_DOWNLOADED } from '@/lib/tours/events.js';
 import type { BindingContext } from '@/lib/document/bindings';
 import type { DocumentPdfSeams } from '@/lib/document/generate-document-pdf.js';
@@ -53,10 +54,11 @@ const spec = (): DocumentSpec => ({ version: DOCUMENT_VERSION, id: 'doc-6632', n
 
 async function settle(): Promise<void> {
   for (let i = 0; i < 6; i++) await act(async () => { await Promise.resolve(); });
+  await documentPreviewReady();
 }
 /** The element a preview block renders its heading in: the smallest element whose own text is exactly the heading. */
 function headingOf(ui: HTMLElement, blockId: string, text: string): HTMLElement {
-  const found = [...ui.querySelectorAll<HTMLElement>(`[data-preview-block="${blockId}"] *`)].find((el) => el.children.length === 0 && el.textContent === text);
+  const found = [...ui.querySelectorAll<HTMLElement>(`[data-preview-block="${blockId}"] *`)].find((el) => el.children.length === 0 && el.textContent?.trim() === text);
   assert.ok(found, `${blockId}: the preview renders the heading "${text}"`);
   return found;
 }
@@ -95,9 +97,9 @@ describe('shared block heading controls (#6632)', () => {
     for (const kind of KINDS) {
       const editor = ui.querySelector<HTMLElement>(`[data-block-kind="${kind}"]`);
       assert.ok(editor, `${kind} has an editor`);
-      const sizeInput = editor.querySelector<HTMLInputElement>('input[aria-label="Heading text size"]');
-      const inkInput = editor.querySelector<HTMLInputElement>('input[aria-label="Heading colour"]');
-      const fillInput = editor.querySelector<HTMLInputElement>('input[aria-label="Heading background"]');
+      const sizeInput = editor.querySelector<HTMLInputElement>('input[aria-label="Title text size"]');
+      const inkInput = editor.querySelector<HTMLInputElement>('input[aria-label="Title colour"]');
+      const fillInput = editor.querySelector<HTMLInputElement>('input[aria-label="Title background"]');
       assert.ok(sizeInput && inkInput && fillInput, `${kind} exposes heading size, colour and background`);
       const titleInput = editor.querySelector<HTMLInputElement>('input[aria-label="Block title"], input[aria-label="Table title"]');
       assert.ok(titleInput, `${kind} exposes the heading text`);
@@ -111,7 +113,13 @@ describe('shared block heading controls (#6632)', () => {
       const style = window.getComputedStyle(heading);
       assert.ok(Math.abs(Number.parseFloat(style.fontSize) - SIZE * (PREVIEW_WIDTH / A4_WIDTH)) < 1e-3, `${kind}: preview size ${style.fontSize} is the authored points at the sheet scale`);
       assert.equal(style.color, INK, `${kind}: preview ink`);
-      assert.equal(style.backgroundColor, FILL, `${kind}: preview background`);
+      // The shared composer draws the strip as its own backing rectangle.
+      const strip = Array.from(ui.querySelectorAll<HTMLElement>(`[data-preview-block="${block}"] [aria-hidden="true"]`))
+        .find(node => window.getComputedStyle(node).backgroundColor === FILL);
+      assert.ok(strip, `${kind}: preview background`);
+      const inside = (axis: 'left' | 'top') => parseFloat(heading.style[axis]) >= parseFloat(strip.style[axis]) - 0.01;
+      assert.ok(inside('left') && inside('top'), `${kind}: the strip backs the heading`);
+      assert.ok(parseFloat(strip.style.height) >= parseFloat(heading.style.fontSize), `${kind}: the strip contains its type`);
     }
 
     await waitFor(() => useViewerStore.getState().documentsStorage.items['doc-6632'] === 'saved', 'all heading edits must commit before reloading');
@@ -148,13 +156,13 @@ describe('shared block heading controls (#6632)', () => {
       assert.ok(editor);
       const input = (label: string) => { const el = editor.querySelector<HTMLInputElement>(`input[aria-label="${label}"]`); assert.ok(el, `${kind}: ${label}`); return el; };
       type(editor.querySelector<HTMLInputElement>('input[aria-label="Block title"], input[aria-label="Table title"]')!, `H:${kind}`);
-      commitSize(input('Heading text size'), String(SIZE));
-      type(input('Heading colour'), INK);
-      type(input('Heading background'), FILL);
+      commitSize(input('Title text size'), String(SIZE));
+      type(input('Title colour'), INK);
+      type(input('Title background'), FILL);
       await settle();
-      click(editor.querySelector('[aria-label="Reset heading colour"]')!);
-      click(editor.querySelector('[aria-label="Clear heading background"]')!);
-      commitSize(input('Heading text size'), '');
+      click(editor.querySelector('[aria-label="Reset title colour"]')!);
+      click(editor.querySelector('[aria-label="Clear title background"]')!);
+      commitSize(input('Title text size'), '');
       await settle();
     }
     await waitFor(() => useViewerStore.getState().documentsStorage.items['doc-6632'] === 'saved', 'all heading resets must commit before reloading');
@@ -170,7 +178,7 @@ describe('shared block heading controls (#6632)', () => {
     const ui = render(<DocumentPanel />);
     await settle();
     const editor = ui.querySelector<HTMLElement>('[data-block-kind="text"]');
-    const input = editor?.querySelector<HTMLInputElement>('input[aria-label="Heading text size"]');
+    const input = editor?.querySelector<HTMLInputElement>('input[aria-label="Title text size"]');
     assert.ok(editor && input);
     commitSize(input, '99');
     await settle();
@@ -181,7 +189,7 @@ describe('shared block heading controls (#6632)', () => {
     await waitFor(() => useViewerStore.getState().documentsStorage.items['doc-6632'] === 'saved', 'clamped heading size must commit before reloading');
     assert.equal(((await loadDocuments())[0].blocks[0] as { titleFontSize?: number }).titleFontSize, 6, 'below the minimum clamps to it');
     for (const kind of ['spacer', 'page-break']) {
-      assert.equal(ui.querySelector(`[data-block-kind="${kind}"] input[aria-label="Heading text size"]`), null, `${kind} has no heading to size`);
+      assert.equal(ui.querySelector(`[data-block-kind="${kind}"] input[aria-label="Title text size"]`), null, `${kind} has no heading to size`);
     }
   });
 });
@@ -197,7 +205,7 @@ describe('heading style survives replacing a report block source (#6632)', () =>
     specificationResults: [result('r1')],
   };
   const editor = (block: DocumentBlock, onChange: (b: DocumentBlock) => void) =>
-    render(<BlockEditor block={block} index={0} count={1} bindings={BINDINGS} topics={new Map()} charts={[]} idsValidationReport={live} onChange={onChange} onMove={noop} onRemove={noop} />);
+    render(<BlockEditor block={block} index={0} count={1} bindings={BINDINGS} topics={new Map()} charts={[]} idsValidationReport={live} onChange={onChange} onMove={noop} onCopy={noop} onRemove={noop} />);
 
   it('refreshing from the live report keeps the heading text, size, ink and background', () => {
     const changes: DocumentBlock[] = [];

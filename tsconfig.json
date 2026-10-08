@@ -37,6 +37,18 @@
       "@ifc-lite/wasm-lifecycle/*": [
         "packages/wasm-lifecycle/dist/*"
       ],
+      "@ifc-lite/ai": [
+        "packages/ai/dist/index.d.ts"
+      ],
+      "@ifc-lite/ai/*": [
+        "packages/ai/dist/*"
+      ],
+      "@ifc-lite/load-trace": [
+        "packages/load-trace/dist/index.d.ts"
+      ],
+      "@ifc-lite/load-trace/*": [
+        "packages/load-trace/dist/*"
+      ],
       "@ifc-lite/geometry": [
         "packages/geometry/dist/index.d.ts"
       ],
@@ -174,6 +186,9 @@
       ],
       "@ifc-lite/semantic/*": [
         "packages/semantic/dist/*"
+      ],
+      "@ifc-lite/source-autodesk": [
+        "packages/source-autodesk/dist/index.d.ts"
       ]
     }
   },

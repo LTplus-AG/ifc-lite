@@ -11,7 +11,7 @@
  * `room-layout.ts` duplicates / frees it explicitly.
  */
 
-import init from '@ifc-lite/wasm';
+import { ensureWasm, wasmLoaded } from '@/lib/wasm/ensure-wasm';
 
 /** One room (face) of a plate snapshot: its centreline outline. */
 export interface Room {
@@ -27,14 +27,7 @@ export interface Boundary {
   source: number | null;
 }
 
-let wasmReady: Promise<void> | null = null;
-let wasmLoaded = false;
-/** Initialise the wasm module once (idempotent). */
-export function ensureSpaceWasm(): Promise<void> {
-  if (!wasmReady) wasmReady = init().then(() => { wasmLoaded = true; });
-  return wasmReady;
-}
+/** Initialise the wasm module once (idempotent; the shared per-realm init). */
+export const ensureSpaceWasm: () => Promise<void> = ensureWasm;
 /** Whether `ensureSpaceWasm` has resolved, for a synchronous caller (a pointer move). */
-export function spaceWasmLoaded(): boolean {
-  return wasmLoaded;
-}
+export const spaceWasmLoaded: () => boolean = wasmLoaded;

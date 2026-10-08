@@ -160,6 +160,34 @@ describe('classifyLoadError', () => {
     );
   });
 
+  it('classifies Gecko\'s NotReadableError wording, which never names itself', () => {
+    // Field reports (Firefox) carry only this sentence once the name is lost on
+    // the analytics path; it used to classify `unknown` and show the raw text.
+    assert.equal(classifyLoadError(new Error('The I/O read operation failed.')), 'file_unreadable');
+    assert.equal(classifyLoadError('NotReadableError: The I/O read operation failed.'), 'file_unreadable');
+    // Anchored: a longer message that merely contains it keeps its own identity.
+    assert.equal(
+      classifyLoadError(new Error('Upload aborted: The I/O read operation failed while streaming chunk 4')),
+      'unknown',
+    );
+  });
+
+  it('tells a cloud-placeholder user how to make the file readable, not just to retry', () => {
+    // NotReadableError on Windows/macOS is most often an online-only OneDrive /
+    // Dropbox / iCloud placeholder: re-picking the same placeholder fails the
+    // same way, so the message has to name the fix.
+    for (const err of [
+      new Error('NotReadableError: The requested file could not be read, typically due to permission problems that have occurred after a reference to a file was acquired.'),
+      new Error('NotFoundError: A requested file or directory could not be found at the time an operation was processed.'),
+      new Error('The I/O read operation failed.'),
+    ]) {
+      const msg = formatLoadError(err, 'tower.ifc');
+      assert.match(msg, /available offline/i);
+      assert.match(msg, /local folder/i);
+      assert.match(msg, /open it again/i);
+    }
+  });
+
   it('classifies the file-moved NotFoundError as file_unreadable, not as unknown (#3731)', () => {
     // The SIBLING of NotReadableError, and the one the field reports actually
     // carry. Chromium throws NotReadableError when the file is still there but
@@ -714,7 +742,7 @@ describe('formatLoadError', () => {
       'tower.ifc',
     );
     assert.match(msg, /"tower\.ifc"/);
-    assert.match(msg, /select the file again/i);
+    assert.match(msg, /open it again/i);
     // Must NOT tell them to close tabs / shrink the model — nothing is too big.
     assert.doesNotMatch(msg, /memory|too large|smaller/i);
   });
@@ -725,7 +753,7 @@ describe('formatLoadError', () => {
       'tower.ifc',
     );
     assert.match(msg, /"tower\.ifc"/);
-    assert.match(msg, /select the file again/i);
+    assert.match(msg, /open it again/i);
     // The raw DOM sentence is what four field reports put in front of a user.
     assert.doesNotMatch(msg, /at the time an operation was processed/i);
   });

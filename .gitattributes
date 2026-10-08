@@ -27,3 +27,4 @@ docs/architecture/evidence/**/*.pdf binary
 # the real file bytes for the in-browser playground rather than pointers.
 apps/viewer/public/samples/**/*.ifc -filter -diff -merge text
 apps/viewer/public/samples/**/*.IFC -filter -diff -merge text
+*.laz binary

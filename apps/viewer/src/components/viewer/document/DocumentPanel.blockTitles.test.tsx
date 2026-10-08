@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import '@/test/setup-dom.js';
+import { documentPreviewReady } from '@/test/document-preview';
 import '@/test/content-fixture.js';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
@@ -40,7 +41,7 @@ const originalRules: RuleSetFile = { version: 1, name: 'Original information sou
 }] };
 const originalState = useViewerStore.getState();
 let spec: DocumentSpec;
-const settle = async () => { for (let i = 0; i < 6; i++) await act(async () => { await Promise.resolve(); }); };
+const settle = async () => { for (let i = 0; i < 6; i++) await act(async () => { await Promise.resolve(); }); await documentPreviewReady(); };
 
 beforeEach(async () => {
   localStorage.clear();
@@ -188,18 +189,21 @@ describe('Document content-block title overrides (#6547)', () => {
     const title = 'IFCWALL_COORDINATION_'.repeat(40);
     typeInput(input, title); await settle();
     const preview = ui.querySelector('[data-preview-block="topic-block"]'); assert.ok(preview);
-    const heading = [...preview.querySelectorAll('div')].find((element) => element.textContent === title);
-    assert.ok(heading); assert.equal(heading.getAttribute('title'), title, 'the contained heading remains fully available');
+    const heading = [...preview.querySelectorAll<HTMLElement>('span')].find((element) => element.style.fontWeight === '700');
+    assert.ok(heading); assert.ok(heading.textContent?.trimEnd().endsWith('…'), 'the canonical heading glyphs stay bounded beside the snapshot');
+    assert.equal(preview.getAttribute('title'), title, 'the complete authored heading remains available on its selectable block');
+    assert.equal(heading.getAttribute('title'), null, 'truncated glyphs do not mask the complete inherited authored tooltip');
     assert.equal(preview.querySelector('img')?.getAttribute('src'), snapshot, 'the real PNG snapshot remains visible');
     typeInput(input, ''); await settle();
-    const fallback = [...preview.querySelectorAll('div')].find((element) => element.textContent === topic.title);
+    const fallbackPreview = ui.querySelector('[data-preview-block="topic-block"]'); assert.ok(fallbackPreview);
+    const fallback = [...fallbackPreview.querySelectorAll('span')].find((element) => element.textContent?.trimEnd() === topic.title);
     assert.ok(fallback); assert.equal(fallback.getAttribute('title'), null, 'ordinary source heading retains its existing attributes');
     assert.equal(useViewerStore.getState().bcfProject?.topics.get('topic')?.title, topic.title, 'authoring never renames the source');
   });
 
   it('bounds a long authored topic heading to the text column beside its snapshot (#6547 review)', () => {
     const title = 'Authored coordination heading '.repeat(30);
-    const block = { kind: 'topic' as const, id: 'snapshot-topic', title, authoredTitle: true, lines: ['Snapshot context'], snapshotAspect: 4 / 3 };
+    const block = { kind: 'topic' as const, id: 'snapshot-topic', title, lines: ['Snapshot context'], snapshotAspect: 4 / 3 };
     const input = { name: 'Topic bounds', page: spec.page, generatedAt: '', measure: estimateTextWidth, blocks: [block] };
     const items = composeDocument(input).pages.flatMap((page) => page.items);
     const snapshot = items.find((item) => item.kind === 'topic-snapshot'); assert.ok(snapshot?.kind === 'topic-snapshot');
@@ -207,8 +211,6 @@ describe('Document content-block title overrides (#6547)', () => {
     assert.ok(heading.text.endsWith('…'));
     const headingEnd = heading.x + estimateTextWidth(heading.text, heading.size, heading.bold);
     assert.ok(headingEnd <= snapshot.x - BLOCK_GAP, `authored title endpoint ${headingEnd} stays before snapshot column ${snapshot.x - BLOCK_GAP}`);
-    const original = composeDocument({ ...input, blocks: [{ ...block, authoredTitle: undefined }] }).pages.flatMap((page) => page.items);
-    assert.ok(original.some((item) => item.kind === 'text' && item.text === title), 'ordinary source title retains its established rendering');
   });
 
 });

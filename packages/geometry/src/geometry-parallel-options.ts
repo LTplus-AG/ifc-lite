@@ -5,6 +5,8 @@
 import type { TessellationQuality } from './types.js';
 import type { BatchSizingConfig } from './batch-sizing.js';
 import type { StallPhaseHandle } from './stall-phase.js';
+import type { LoadTrace } from '@ifc-lite/load-trace';
+import type { GeometryWorkerPool } from './geometry-worker-pool.js';
 
 export interface ProcessParallelOptions {
   /** Fresh per-load fingerprint cell shared only with the matching parser. */
@@ -127,4 +129,17 @@ export interface ProcessParallelOptions {
    * covers, not this issue's pre-worker class.
    */
   stallPhaseHandle?: StallPhaseHandle;
+  /**
+   * Issue #6956 — the caller's load trace. The pool records `geometry.pool`,
+   * `geometry.firstBatch`, the shard scan/stitch and pre-pass phases on it, and
+   * asks its workers to post their own spans back. Omitted ⇒ nothing recorded.
+   */
+  trace?: LoadTrace;
+  /**
+   * Lease the workers a host prewarmed for this load from this pool (#7036)
+   * instead of spawning them; any it lacks are spawned. Every worker still
+   * serves only this load and is terminated by it. Omitted, every worker is
+   * spawned here, as before.
+   */
+  workerPool?: GeometryWorkerPool;
 }

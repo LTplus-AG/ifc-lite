@@ -1,0 +1,39 @@
+{
+  "files": [
+    {
+      "path": "README.md",
+      "bytes": 6879,
+      "sha256": "3af428e4a6e1e8c926bff509a42ff2b96d54e61d2c68ebab527c6113bd9266c6"
+    },
+    {
+      "path": "archive.py",
+      "bytes": 9371,
+      "sha256": "d549e2e38c914326d790cbd1027a9ea483f445b5086210719e2c4cea19bb09e3"
+    },
+    {
+      "path": "artifact-index.json",
+      "bytes": 919,
+      "sha256": "956bdee3a62c535985687c59c48327e813ac893b51c8f08109722d5b92c5f231"
+    },
+    {
+      "path": "member-manifest.json",
+      "bytes": 64206,
+      "sha256": "674b7c53953340ecd032e5919173a9019338773707dc8f5dd3554b97a0064416"
+    },
+    {
+      "path": "replay-audit.py",
+      "bytes": 1248,
+      "sha256": "83331998549b46a254916a3ded67af35e5b8a3747e286209833861d3bb7731cb"
+    },
+    {
+      "path": "retained-native.tar.gz",
+      "bytes": 12164169,
+      "sha256": "819cd29630d174dc1c8525a49bca0bc70d38e3bbbaea30ca30cd7afdd9af4fc3"
+    },
+    {
+      "path": "verification.json",
+      "bytes": 375,
+      "sha256": "809f8f772644bd5457f62e1101c42763a4f6faadd41932be5c658c3457069c60"
+    }
+  ]
+}

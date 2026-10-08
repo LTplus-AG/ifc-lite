@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * LAS / LAZ ingest path for the viewer.
+ * LAS / LAZ (and COPC, via `copc/copcLodStream.ts`) ingest path for the viewer.
  *
  * Streams a Blob through `@ifc-lite/pointcloud`'s decode worker and
  * pushes chunks directly into the renderer via the streaming API. The
@@ -17,7 +17,6 @@ import {
   accumulateClassificationCounts,
   classificationCountEntries,
   createClassificationCounts,
-  streamPointCloud,
   type DecodedPointChunk,
   type StreamPointCloudOptions,
   type StreamHandle,
@@ -38,6 +37,7 @@ import {
   removePointCloudScanCache, setPointCloudScanCacheOrigin,
 } from './pointCloudScanCache.js';
 import { swapZupChunkToYup } from './pointCloudFrame.js';
+import { streamPointCloudOrCopc } from './copc/copcLodStream.js';
 
 export type PointCloudFormat = 'las' | 'laz' | 'ply' | 'pcd' | 'e57' | 'pts' | 'xyz';
 
@@ -95,10 +95,10 @@ export interface PointCloudIngestOptions {
   fileSize: number;
   /** Renderer to push chunks into. Streaming starts immediately. */
   renderer: Renderer;
-  /** Express ID assigned to this asset (for picking + federation). */
+  /** Express ID assigned to this asset (for picking + federation). The
+   *  global id and model index are bound after registration (#6887,
+   *  `pointCloudIdentity.ts`), since neither exists while streaming starts. */
   expressId?: number;
-  /** Federation index (set when the model registry is multi-model). */
-  modelIndex?: number;
   /** Soft cap on points held on the GPU. Default: 25M. */
   maxPointsInMemory?: number;
   /** Hard cap on file size in bytes. Default: 4 GB. */
@@ -318,7 +318,6 @@ export function ingestPointCloud(opts: PointCloudIngestOptions): PointCloudInges
   const handle = opts.renderer.beginPointCloudStream({
     expressId,
     ifcType: 'IfcGeographicElement',
-    modelIndex: opts.modelIndex,
   });
   const onCountChange = opts.onAssetCountDelta ?? (() => {});
   onCountChange(+1);
@@ -386,7 +385,8 @@ export function ingestPointCloud(opts: PointCloudIngestOptions): PointCloudInges
   // permanently inflated.
   let stream: StreamHandle;
   try {
-    stream = streamPointCloud({
+    // A COPC file (detected by its VLR) streams view-dependent LOD nodes instead (#6869).
+    stream = streamPointCloudOrCopc({
       format: opts.format,
       blob: opts.blob,
       label: opts.fileName,
@@ -457,7 +457,7 @@ export function ingestPointCloud(opts: PointCloudIngestOptions): PointCloudInges
         removePointCloudScanCache(handle.id);
         onCountChange(-1);
       },
-    });
+    }, { renderer: opts.renderer, handle, onClassCounts: (counts) => opts.onClassCounts?.(handle.id, counts) });
   } catch (err) {
     opts.renderer.removePointCloudAsset(handle);
     opts.onClassCounts?.(handle.id, null);
@@ -473,15 +473,14 @@ export function ingestPointCloud(opts: PointCloudIngestOptions): PointCloudInges
     min: { x: 0, y: 0, z: 0 },
     max: { x: 0, y: 0, z: 0 },
   });
-  // Synthetic pointcloud descriptor. Federation (`useIfcFederation`)
-  // folds `idOffset` into every entry's `expressId` and then calls
-  // `relabelPointCloudAsset` on the renderer; without an entry here
-  // streamed assets keep their local synthetic id and pick collisions
-  // appear once a second model is added.
+  // Synthetic pointcloud descriptor. `finalizeModel` folds `idOffset` into
+  // every entry's `expressId`, and `bindPointCloudIdentity` then relabels the
+  // renderer asset with it (#6887); without an entry here streamed assets
+  // keep their local synthetic id and pick collisions appear once a second
+  // model is added.
   const pointClouds: PointCloudAsset[] = [{
     expressId,
     ifcType: 'IfcGeographicElement',
-    modelIndex: opts.modelIndex,
     chunk: {
       // Empty placeholder — actual point data is GPU-resident, never
       // re-uploaded from JS.

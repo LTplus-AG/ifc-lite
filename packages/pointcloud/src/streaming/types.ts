@@ -56,3 +56,18 @@ export interface StreamingPointSource {
 export interface DownsampleHint {
   stride: number;
 }
+
+/**
+ * Random-access byte source: the seam that lets one reader work over a local
+ * `File`/`Blob` (`BlobByteSource`) or a remote file through HTTP Range
+ * requests (`HttpRangeSource`) without ever holding the whole file (#6869).
+ */
+export interface RangeByteSource {
+  /** Total size in bytes. */
+  readonly size: number;
+  /**
+   * Bytes `[start, end)`, clamped to the source size. A caller that needs
+   * every byte it asked for must check the returned length.
+   */
+  read(start: number, end: number, signal?: AbortSignal): Promise<Uint8Array>;
+}

@@ -146,23 +146,35 @@ export function ensureSourceRoomEntities(
   const encoded = entries.map((entry) => initialRoomAttributes(
     dataStore, entry.type, entry.names, entry.values, resolvePath, budget,
   ));
-  const registered: number[] = [];
-  entries.forEach((entry) => {
-    store.getState().mirrorEntityCreate(
-      modelId, entry.expressId, entry.type, entry.roomKey, null, {}, entry.sourceExpressId,
-    );
-    if (pathForEntity(dataStore, entry.expressId) === candidates.get(entry.expressId)) {
-      registered.push(entry.expressId);
+  const publish = (): boolean => {
+    const registered: number[] = [];
+    try {
+      for (const entry of entries) {
+        store.getState().mirrorEntityCreate(modelId, entry.expressId, entry.type, entry.roomKey, null, {}, entry.sourceExpressId);
+        if (pathForEntity(dataStore, entry.expressId) !== candidates.get(entry.expressId)) {
+          throw new Error('A room entity shell was not registered');
+        }
+        registered.push(entry.expressId);
+      }
+      entries.forEach((entry, index) => {
+        for (const [name, value] of Object.entries(encoded[index])) {
+          store.getState().mirrorAttributeEdit(modelId, entry.expressId, name, value);
+        }
+      });
+      return true;
+    } catch (error) {
+      // Yjs transactions do not roll back on throw. Remove this call's new
+      // shells before the outer transaction notifies peers, then release paths.
+      const published = new Set([...registered, ...entries.filter(entry =>
+        pathForEntity(dataStore, entry.expressId) === candidates.get(entry.expressId)).map(entry => entry.expressId)]);
+      for (const expressId of [...published].reverse()) {
+        store.getState().mirrorEntityRemove(modelId, expressId);
+        unregisterEntityPath(dataStore, expressId);
+      }
+      console.error('[collab] room graph publication refused', error);
+      return false;
     }
-  });
-  if (registered.length !== entries.length) {
-    for (const expressId of registered) unregisterEntityPath(dataStore, expressId);
-    return false;
-  }
-  entries.forEach((entry, index) => {
-    for (const [name, value] of Object.entries(encoded[index])) {
-      store.getState().mirrorAttributeEdit(modelId, entry.expressId, name, value);
-    }
-  });
-  return true;
+  };
+  const session = store.getState().collabSession;
+  return session ? session.transact(publish) : publish();
 }

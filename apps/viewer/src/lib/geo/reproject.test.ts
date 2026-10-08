@@ -11,7 +11,6 @@ import {
   computeModelCenterInIfcMeters,
   effectiveMapConversionForGeometry,
   reprojectFromLatLon,
-  reprojectionInputKey,
   reprojectPointToLatLon,
   reprojectToLatLon,
   resolveProjection,
@@ -528,50 +527,6 @@ describe('reprojectPointToLatLon (#1657 measure geo lat/lon)', () => {
     const unknown: ProjectedCRS = { id: 1, name: 'TOTALLY_UNKNOWN_CRS' };
     const latLon = await reprojectPointToLatLon(500000, 5000000, unknown, 1);
     assert.strictEqual(latLon, null);
-  });
-});
-
-describe('reprojectionInputKey (effect dependency correctness)', () => {
-  const crs: ProjectedCRS = {
-    id: 1,
-    name: 'EPSG:32760',
-    mapUnit: 'MILLIMETRE',
-    mapUnitScale: 0.001,
-    mapZone: '60S',
-    description: 'WGS 84 / UTM zone 60S',
-    mapProjection: 'UTM',
-  };
-
-  it('quantises sub-millimetre E/N jitter to the same key', () => {
-    // mm CRS: eastings are millimetres, so nudges within the same millimetre
-    // bucket round identically (both 729013348.x -> 729013348).
-    const a = reprojectionInputKey(729013348.1, 9063992684.1, crs, 0.001);
-    const b = reprojectionInputKey(729013348.4, 9063992684.4, crs, 0.001);
-    assert.strictEqual(a, b, 'sub-mm changes must not change the key');
-  });
-
-  it('changes the key when E/N moves by more than a millimetre', () => {
-    const a = reprojectionInputKey(729013348.1, 9063992684.1, crs, 0.001);
-    const b = reprojectionInputKey(729013350.1, 9063992684.1, crs, 0.001);
-    assert.notStrictEqual(a, b, 'a >1 mm move must change the key');
-  });
-
-  it('folds every reprojection input (codex #1671 P2): a projection-metadata edit changes the key even when name + E/N are unchanged', () => {
-    const base = reprojectionInputKey(729013348.1, 9063992684.1, crs, 0.001);
-    // Each field resolveProjection / reprojectPointToLatLon reads must move the key.
-    const edits: Array<Partial<ProjectedCRS>> = [
-      { mapZone: '59S' },
-      { description: 'something else' },
-      { mapProjection: 'TM' },
-      { mapUnitScale: 1 },
-    ];
-    for (const edit of edits) {
-      const mutated = reprojectionInputKey(729013348.1, 9063992684.1, { ...crs, ...edit }, 0.001);
-      assert.notStrictEqual(mutated, base, `editing ${Object.keys(edit)[0]} must change the key`);
-    }
-    // lengthUnitScale is a non-CRS input the reprojection reads too.
-    const diffLength = reprojectionInputKey(729013348.1, 9063992684.1, crs, 0.01);
-    assert.notStrictEqual(diffLength, base, 'a lengthUnitScale change must change the key');
   });
 });
 

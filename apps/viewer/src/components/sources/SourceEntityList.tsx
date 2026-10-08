@@ -24,11 +24,13 @@ export function SourceEntityList<T extends { id: string; name: string }>({
   emptyLabel,
   onSelect,
 }: SourceEntityListProps<T>) {
+  const { t } = useTranslation();
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-8">
+      <output className="flex items-center justify-center gap-2 py-8 text-sm text-muted-foreground">
         <Spinner size="lg" className="text-muted-foreground" />
-      </div>
+        {t('sources.sourceEntityList.loading')}
+      </output>
     );
   }
 

@@ -18,6 +18,8 @@
  */
 import { blockTitle, blockTitleStyle } from './block-title.js';
 import { blockTitleItems } from './compose-block-title.js';
+import { resolveEnglish } from '@/i18n/registry';
+import { capturedDocumentNumber, type DocumentLabelFormatter } from './document-labels.js';
 import { reportRingCounts } from '../validation/report-summary.js';
 import type { RingDrawnItem } from './compose-manual-report.js';
 import { passRateBand } from '@ifc-lite/ids';
@@ -47,59 +49,62 @@ export type IdsReportLayoutBlock = IdsReportBlock;
 /** `n%` for a pass rate that is always an integer 0-100 (matches `SpecificationSummary.passRate`'s own rounding). */
 const pct = (n: number): string => `${n}%`;
 
+/** Counts share the captured UI locale; uncaptured PDF output stays raw. */
+const fmt = (t: DocumentLabelFormatter, n: number | null): string => n === null ? String(n) : capturedDocumentNumber(t, n) ?? String(n);
+
 /**
  * The block heading (#6372): the report's own kind, never "IDS" for an
- * information-validation run. PDF text is plain English, like every other
- * line the document composer prints (see `TABLE_PDF_LABELS`).
+ * information-validation run. Labels are formatted before measurement;
+ * existing callers without a formatter retain English.
  */
-function idsReportTitle(block: Pick<IdsReportBlock, 'sourceKind' | 'sourceName' | 'title'>): string {
-  return blockTitle(block, `${reportBlockSourceKind(block) === 'rules' ? 'Information validation report' : 'IDS report'}: ${block.sourceName}`);
+function idsReportTitle(block: Pick<IdsReportBlock, 'sourceKind' | 'sourceName' | 'title'>, t: DocumentLabelFormatter): string {
+  return blockTitle(block, t(reportBlockSourceKind(block) === 'rules' ? 'document.preview.rulesReportHeading' : 'document.preview.idsReportHeading', { name: block.sourceName }));
 }
 
-function summaryLine({ checked, passed, failed, passRate, warnings }: IdsReportBlock['summary']): string {
-  const warned = warnings === undefined ? '' : ` · Warnings ${warnings}`;
-  return `Checked ${checked} · Passed ${passed} · Failed ${failed}${warned} · ${pct(passRate)} passed`;
+function summaryLine({ checked, passed, failed, passRate, warnings }: IdsReportBlock['summary'], t: DocumentLabelFormatter): string {
+  const warned = warnings === undefined ? '' : ` · ${t('document.preview.idsReportWarnings')} ${fmt(t, warnings)}`;
+  return `${t('document.preview.idsReportChecked')} ${fmt(t, checked)} · ${t('document.preview.idsReportPassed')} ${fmt(t, passed)} · ${t('document.preview.idsReportFailed')} ${fmt(t, failed)}${warned} · ${t('document.print.passPercent', { percent: passRate })}`;
 }
 
-function checkCountsLine(check: IdsReportCheckSummary): string {
-  if (check.error !== undefined) return `Could not be evaluated: ${check.error}`;
-  if (check.severity === 'warning') return `Warning · Checked ${check.checked} · Passed ${check.passed} · Warnings ${check.failed} · ${pct(check.passRate)}`;
-  return `Checked ${check.checked} · Passed ${check.passed} · Failed ${check.failed} · ${pct(check.passRate)}`;
+function checkCountsLine(check: IdsReportCheckSummary, t: DocumentLabelFormatter): string {
+  if (check.error !== undefined) return t('document.preview.idsReportError', { error: check.error });
+  if (check.severity === 'warning') return `${t('document.preview.idsReportWarningTag')} · ${t('document.preview.idsReportChecked')} ${fmt(t, check.checked)} · ${t('document.preview.idsReportPassed')} ${fmt(t, check.passed)} · ${t('document.preview.idsReportWarnings')} ${fmt(t, check.failed)} · ${pct(check.passRate)}`;
+  return `${t('document.preview.idsReportChecked')} ${fmt(t, check.checked)} · ${t('document.preview.idsReportPassed')} ${fmt(t, check.passed)} · ${t('document.preview.idsReportFailed')} ${fmt(t, check.failed)} · ${pct(check.passRate)}`;
 }
 
-function cardinalityExpected({ min, max }: IdsReportCardinality): string {
-  if (min !== undefined && max !== undefined) return min === max ? `exactly ${min}` : `${min} to ${max}`;
-  if (min !== undefined) return `at least ${min}`;
-  return max !== undefined ? `at most ${max}` : '';
+function cardinalityExpected({ min, max }: IdsReportCardinality, t: DocumentLabelFormatter): string {
+  if (min !== undefined && max !== undefined) return min === max ? t('document.print.cardinalityExactly', { min: fmt(t, min) }) : t('document.print.cardinalityRange', { min: fmt(t, min), max: fmt(t, max) });
+  if (min !== undefined) return t('document.print.cardinalityAtLeast', { min: fmt(t, min) });
+  return max !== undefined ? t('document.print.cardinalityAtMost', { max: fmt(t, max) }) : '';
 }
 
 /** `compactName` and `bar` feed the compact layout (#6470); rows without a `bar` (cardinality, sets) print text only. */
 interface ChildRow { name: string; compactName?: string; description?: string; detail: string; bar?: { passed: number | null; checked: number; rate: number | null } }
 
 /** Everything printed indented under a check: IDS requirements, then a rule's cardinality and set rows (#6372). */
-function childRows(check: IdsReportCheckSummary): ChildRow[] {
+function childRows(check: IdsReportCheckSummary, t: DocumentLabelFormatter): ChildRow[] {
   const rows: ChildRow[] = check.rules.map((rule) => ({
     name: rule.shortDescription || rule.id,
     compactName: rule.name || rule.shortDescription || rule.id,
     bar: { passed: rule.passed, checked: rule.checked, rate: rule.passRate },
     description: rule.longDescription,
     detail: rule.passRate === null
-      ? `Checked ${rule.checked} · Passed/failed unavailable (partial report)`
-      : `Checked ${rule.checked} · Passed ${rule.passed} · Failed ${rule.failed} · ${pct(rule.passRate)}`,
+      ? t('document.print.partialCounts', { checked: fmt(t, rule.checked) })
+      : `${t('document.preview.idsReportChecked')} ${fmt(t, rule.checked)} · ${t('document.preview.idsReportPassed')} ${fmt(t, rule.passed)} · ${t('document.preview.idsReportFailed')} ${fmt(t, rule.failed)} · ${pct(rule.passRate)}`,
   }));
   const { cardinality } = check;
   if (cardinality) {
-    const expected = cardinalityExpected(cardinality);
-    rows.push({ name: 'Applicable elements', detail: `Found ${cardinality.actual}${expected ? ` · Expected ${expected}` : ''} · ${cardinality.passed ? 'Met' : 'Not met'}` });
+    const expected = cardinalityExpected(cardinality, t);
+    rows.push({ name: t('document.preview.idsReportCardinality'), detail: `${t('document.preview.idsReportCardinalityFound', { actual: fmt(t, cardinality.actual) })}${expected ? ` · ${t('document.print.expected', { value: expected })}` : ''} · ${t(cardinality.passed ? 'document.preview.idsReportCardinalityMet' : 'document.preview.idsReportCardinalityNotMet')}` });
   }
-  const failedWord = check.severity === 'warning' ? 'Warning' : 'Failed';
+  const failedWord = t(check.severity === 'warning' ? 'document.preview.idsReportWarningTag' : 'document.preview.idsReportFailed');
   for (const set of check.sets ?? []) {
     rows.push({
-      name: set.groupKey === undefined ? set.label : `${set.label} · ${set.groupKey || '(blank)'}`,
-      detail: `Actual ${set.actual} · Expected ${set.expected} · ${set.passed ? 'Passed' : failedWord}`,
+      name: set.groupKey === undefined ? set.label : `${set.label} · ${set.groupKey || t('document.preview.idsReportBlankGroup')}`,
+      detail: `${t('document.print.actual', { value: set.actual })} · ${t('document.print.expected', { value: set.expected })} · ${set.passed ? t('document.preview.idsReportPassed') : failedWord}`,
     });
   }
-  if (check.setsTruncated) rows.push({ name: 'More sets not shown', detail: 'The validation run capped its set results' });
+  if (check.setsTruncated) rows.push({ name: t('document.print.moreSets'), detail: t('document.print.setLimit') });
   return rows;
 }
 
@@ -122,7 +127,7 @@ function emitLines(cursor: LayoutCursor, x: number, lines: Line[]): void {
   }
 }
 
-export function layoutIdsReport(block: IdsReportLayoutBlock, cursor: LayoutCursor, contentW: number, blockGap: number, wrap: IdsReportWrap | undefined, pushRing: (item: RingDrawnItem) => void): void {
+export function layoutIdsReport(block: IdsReportLayoutBlock, cursor: LayoutCursor, contentW: number, blockGap: number, wrap: IdsReportWrap | undefined, pushRing: (item: RingDrawnItem) => void, t: DocumentLabelFormatter = resolveEnglish): void {
   const compact = block.variant === 'compact';
   const specificationsOnly = compact && block.specificationsOnly === true;
   const wrapLines = block.variant === 'long' && wrap !== undefined;
@@ -131,19 +136,20 @@ export function layoutIdsReport(block: IdsReportLayoutBlock, cursor: LayoutCurso
     (wrapLines ? wrap(text, width, size, bold) : [cursor.truncate(text, width, size, bold)]).map((line) => ({ text: line, size, bold, gray }));
   const classicHeight = (described: string | undefined): number => (described ? DESCRIBED_CHECK_ROW_HEIGHT : CHECK_ROW_HEIGHT);
 
-  const title = idsReportTitle(block);
+  const title = idsReportTitle(block, t);
   const first = block.checks[0];
-  const firstChild = first && !specificationsOnly ? childRows(first)[0] : undefined;
+  const firstChild = first && !specificationsOnly ? childRows(first, t)[0] : undefined;
   const firstRowHeight = compact ? COMPACT_ROW_HEIGHT : classicHeight(first?.longDescription);
   const firstChildHeight = firstChild ? (compact ? COMPACT_ROW_HEIGHT : classicHeight(firstChild.description)) : 0;
-  // Stamp rows (#6678): the run time and the evaluated models, both off the block; hidden means neither is drawn nor reserved.
+  // Hidden stamp rows reserve no height; recorded identity remains in the block (#6678).
   const stamp = reportStamp(block);
   const stampHeight = stamp ? DATE_HEIGHT : 0;
-  const scopeLines = wrappedReportProvenance(stamp?.models ? `Models: ${stamp.models}` : '', contentW, wrap ?? ((text) => [text]));
-  const keepAfter = firstRowHeight + firstChildHeight;
+  const scopeLines = wrappedReportProvenance(stamp?.models ? t('validationPanel.history.models', { models: stamp.models }) : '', contentW, wrap ?? ((text) => [text]));
+  const checksCount = t.formatNumber ? t('document.preview.idsReportChecksCount', { count: block.checks.length, countDisplay: fmt(t, block.checks.length) }) : undefined;
+  const keepAfter = firstRowHeight + firstChildHeight + (checksCount ? DATE_HEIGHT : 0);
   const ringSize = 44;
   const summaryWidth = block.benchmarks ? contentW - ringSize - 12 : contentW;
-  const summaryLines = block.benchmarks && wrap ? wrap(summaryLine(block.summary), summaryWidth, 9, false) : [cursor.truncate(summaryLine(block.summary), summaryWidth, 9, false)];
+  const summaryLines = block.benchmarks && wrap ? wrap(summaryLine(block.summary, t), summaryWidth, 9, false) : [cursor.truncate(summaryLine(block.summary, t), summaryWidth, 9, false)];
   const summaryHeight = block.benchmarks ? Math.max(ringSize + 6, summaryLines.length * 12 + 2) : SUMMARY_HEIGHT;
   const titleHeight = IDS_REPORT_TITLE_HEIGHT + blockTitleStyle(block).extra;
   const lead = titleHeight + summaryHeight + stampHeight + scopeLines.length * REPORT_PROVENANCE_LINE_HEIGHT + keepAfter;
@@ -158,10 +164,14 @@ export function layoutIdsReport(block: IdsReportLayoutBlock, cursor: LayoutCurso
   cursor.y += summaryHeight;
   if (stamp) {
     cursor.push({ kind: 'text', x: cursor.x, y: cursor.y + 10, size: 8, bold: false, gray: 130,
-      text: cursor.truncate(`Validation run: ${stamp.generatedAt}`, contentW, 8, false) });
+      text: cursor.truncate(t('document.preview.idsReportGeneratedAt', { timestamp: stamp.generatedAt }), contentW, 8, false) });
     cursor.y += stampHeight;
   }
-  layoutReportProvenance(scopeLines, cursor, keepAfter);
+  layoutReportProvenance(scopeLines, cursor, keepAfter, 'report-model-scope');
+  if (checksCount) {
+    cursor.push({ kind: 'text', x: cursor.x, y: cursor.y + 10, size: 8, bold: false, gray: 130, text: checksCount });
+    cursor.y += DATE_HEIGHT;
+  }
 
   /** Compact row: name on the left, then the bar and `passed/checked · n%` (or plain detail text when there is no bar). */
   const compactRow = (x: number, w: number, name: string, size: number, bold: boolean, gray: number, bar: ChildRow['bar'] | undefined, detail?: string): void => {
@@ -177,7 +187,7 @@ export function layoutIdsReport(block: IdsReportLayoutBlock, cursor: LayoutCurso
         cursor.push({ kind: 'rect', x: barX, y: cursor.y + 4, w: (barW * bar.rate) / 100, h: BAR_HEIGHT, color: BAND_COLOR[passRateBand(bar.rate)] });
       }
       // Large counts would run past the right margin: keep the percent (the part that matters) and drop the counts.
-      const counts = bar.rate === null ? 'n/a' : `${bar.passed ?? 0}/${bar.checked} · ${pct(bar.rate)}`;
+      const counts = bar.rate === null ? t('document.preview.idsReportCountsUnavailableShort') : `${fmt(t, bar.passed ?? 0)}/${fmt(t, bar.checked)} · ${pct(bar.rate)}`;
       const label = bar.rate !== null && cursor.truncate(counts, labelW, 8, false) !== counts ? pct(bar.rate) : counts;
       cursor.push({ kind: 'text', x: x + w - labelW, y: cursor.y + 10, size: 8, bold: false, gray: 60, text: label });
     } else if (detail) {
@@ -187,20 +197,20 @@ export function layoutIdsReport(block: IdsReportLayoutBlock, cursor: LayoutCurso
   };
 
   block.checks.forEach((check, index) => {
-    const children = childRows(check);
+    const children = childRows(check, t);
     if (compact) {
       // A specification starts a new group: air above it (not the first) so it does not read as one more requirement (#6550).
       if (index > 0) cursor.y += COMPACT_GROUP_GAP;
       // A check that could not be evaluated has no meaningful rate: print its error instead of a bar.
       const bar = check.error === undefined ? { passed: check.passed, checked: check.checked, rate: check.passRate } : undefined;
-      compactRow(cursor.x, contentW, `${check.severity === 'warning' ? '(Warning) ' : ''}${check.shortDescription || check.id}`, 9, true, 0, bar, check.error === undefined ? undefined : checkCountsLine(check));
+      compactRow(cursor.x, contentW, `${check.severity === 'warning' ? `(${t('document.preview.idsReportWarningTag')}) ` : ''}${check.shortDescription || check.id}`, 9, true, 0, bar, check.error === undefined ? undefined : checkCountsLine(check, t));
       if (!specificationsOnly) for (const row of children) compactRow(cursor.x + 10, contentW - 10, row.compactName ?? row.name, 8, false, 45, row.bar, row.detail);
       return;
     }
     const lines = fit(check.shortDescription || check.id, contentW, 9.5, true, 0);
     if (check.longDescription) lines.push(...fit(check.longDescription, contentW, 8, false, 130));
     // Counts occupy their own line so a long description cannot print over them.
-    lines.push(...fit(checkCountsLine(check), contentW, 8, false, 60));
+    lines.push(...fit(checkCountsLine(check, t), contentW, 8, false, 60));
     cursor.ensure(rowHeight(lines.length) + (children.length > 0 ? classicHeight(children[0].description) : 0));
     emitLines(cursor, cursor.x, lines);
 
@@ -215,7 +225,7 @@ export function layoutIdsReport(block: IdsReportLayoutBlock, cursor: LayoutCurso
   });
 
   if (block.checks.length === 0) {
-    cursor.push({ kind: 'text', x: cursor.x, y: cursor.y + 10, size: 9, bold: false, gray: 130, text: 'No checks in this report.' });
+    cursor.push({ kind: 'text', x: cursor.x, y: cursor.y + 10, size: 9, bold: false, gray: 130, text: t('document.preview.idsReportNoChecks') });
     cursor.y += CHECK_ROW_HEIGHT;
   }
 

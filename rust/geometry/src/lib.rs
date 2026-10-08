@@ -127,6 +127,9 @@ pub(crate) mod geom_hash;
 /// geometry pass (single-sourced so independently-evolving passes can't drift
 /// apart on the same tolerance).
 pub(crate) mod grid;
+/// Shared `[f64; 2]` plane primitives (area, point-in-polygon, exact segment
+/// intersection) used by `space_dcel`, `terrain_cdt` and `scan_outline`.
+pub(crate) mod geom2d;
 pub(crate) mod extrusion;
 pub(crate) mod instancing;
 /// Pure-Rust exact mesh-arrangement CSG kernel — the only CSG kernel, on
@@ -134,6 +137,9 @@ pub(crate) mod instancing;
 pub mod kernel;
 pub mod material_layer_index;
 pub mod mesh;
+/// Cooperative heartbeat from long geometry work to a host that must tell a
+/// slow call from a hung one (see the module docs).
+pub mod progress;
 pub(crate) mod mesh_orient;
 pub(crate) mod processors;
 pub(crate) mod profile;
@@ -164,6 +170,9 @@ mod scalar_adjoint;
 mod telemetry_transaction;
 pub use rect_fast::RectFastStats;
 pub(crate) mod router;
+/// Vector outlines traced from a slab of scan points (#6871). Reached through
+/// the root-level re-exports below.
+pub(crate) mod scan_outline;
 /// Per-element mesh simplification for the demesher (cavity removal, grid
 /// vertex-clustering decimation, bounding-box collapse).
 pub mod simplify;
@@ -177,6 +186,7 @@ pub mod test_support;
 pub mod space_dcel;
 pub(crate) mod transform;
 pub(crate) mod triangulation;
+mod union_find;
 pub(crate) mod void_index;
 /// World-frame test fixture corpus: far-from-origin placements whose offset
 /// axis differs from the axis under test, plus the normal-projected f32
@@ -199,6 +209,7 @@ pub use contour_bool2d::{
     boolean_2d, boolean_2d_fixed_grid, ContourFillRule, resolve_2d, sanitize as sanitize_contours, BooleanOp2D, ContourSet, Ring2D,
 };
 pub use clash_solid::{intersection_solid, DegenerateReason, IntersectionSolid};
+pub use union_find::UnionFind;
 pub use csg::{calculate_normals, ClippingProcessor, GroupCut, GroupReject, Plane, Triangle};
 pub use diagnostics::{BoolFailure, BoolFailureReason, BoolOp};
 pub use error::{Error, Result};
@@ -263,6 +274,10 @@ pub use router::{
 /// `ifc_lite_core::limits` so core's own bounds scan can use them too.
 pub use ifc_lite_core::limits::{coord_is_large, LARGE_COORD_THRESHOLD_METERS};
 pub use simplify::{simplify_mesh, SimplifyOptions, SimplifyStats};
+pub use scan_outline::{
+    trace_scan_outline, PlaneFrame, ScanOutline, ScanOutlineDiagnostics, ScanOutlineOptions, MAX_CELLS_LIMIT,
+    MAX_GAP_LIMIT, MAX_SNAP_DISTANCE_CELLS, MAX_VERTEX_MOVE_CELLS, MIN_CELL_SIZE_LIMIT,
+};
 pub use tessellation::{scale_segments, TessellationQuality};
 pub use transform::{
     parse_axis2_placement_3d, parse_axis2_placement_3d_from_id, parse_cartesian_point,

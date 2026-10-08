@@ -90,6 +90,8 @@ export class Camera {
     // instead: it is a viewport property, so the previous frame's is a far
     // better answer than any constant.
     if (!Number.isFinite(aspect) || aspect <= 0) return;
+    // A redundant viewport update must not invalidate a pending pick snapshot (#6882).
+    if (aspect === this.state.camera.aspect) return;
     this.state.camera.aspect = aspect;
     this.updateMatrices();
   }

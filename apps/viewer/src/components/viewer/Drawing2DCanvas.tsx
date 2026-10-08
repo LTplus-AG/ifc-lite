@@ -19,6 +19,7 @@ import type { PolygonArea2DResult, TextAnnotation2D, CloudAnnotation2D, Annotati
 import type { DxfUnderlayRenderData } from '@/hooks/useDxfUnderlay';
 import type { AnnotationFill2D, AnnotationText2D } from '@/hooks/useSymbolicAnnotations';
 import type { ScanBandPoint } from '@/hooks/scanSectionMath';
+import { drawScanSectionScreenSpace } from './drawing/scanSectionCanvas';
 import { type CachedSheetTransform } from '@/lib/drawing/sheet-geometry-key';
 import { resolveSheetTransform } from '@/lib/drawing/sheet-transform';
 import { useDrawingElementPropertiesLookup } from '@/hooks/useDrawingElementPropertiesLookup';
@@ -163,46 +164,6 @@ function drawIfcAnnotationsScreenSpace(
   }
 }
 
-/** Dot half-size in screen pixels — constant regardless of zoom, like the DXF underlay's text. */
-const SCAN_DOT_HALF_PX = 0.75;
-const SCAN_DOT_NEUTRAL_COLOR = '#8a8a8a';
-
-/**
- * Render the point-cloud scan overlay (issue #1805), in screen pixels.
- * `scanPoints` already live in the drawing's native 2D coordinate space —
- * `scanSectionMath.ts` projects them with the SAME `projectTo2D` /
- * `projectTo2DBasis` functions the section cutter uses for `cutPolygons` /
- * `lines` — so the caller supplies the plain drawing→screen transform, same
- * as `drawDxfUnderlaysScreenSpace`.
- *
- * Dots draw as tiny filled squares (`fillRect`), not circles: at up to the
- * 500k-point render cap, skipping `beginPath`/`arc`/`fill` per point matters
- * — `fillRect` is a single cheap call with no path tessellation, and at
- * ~1-1.5px a square reads the same as a disc anyway. `fillStyle` is still
- * set per point (colour varies point-to-point for RGB scans); the
- * perf-sensitive part being avoided is the path/arc machinery, not the
- * fillStyle assignment itself.
- */
-function drawScanSectionScreenSpace(
-  ctx: CanvasRenderingContext2D,
-  points: readonly ScanBandPoint[] | undefined,
-  modelToScreen: (x: number, y: number) => { x: number; y: number },
-  opacity: number,
-): void {
-  if (!points || points.length === 0 || opacity <= 0) return;
-  ctx.save();
-  ctx.globalAlpha = opacity;
-  const size = SCAN_DOT_HALF_PX * 2;
-  for (const p of points) {
-    const screen = modelToScreen(p.point.x, p.point.y);
-    ctx.fillStyle = p.color
-      ? `rgb(${Math.round(p.color[0] * 255)}, ${Math.round(p.color[1] * 255)}, ${Math.round(p.color[2] * 255)})`
-      : SCAN_DOT_NEUTRAL_COLOR;
-    ctx.fillRect(screen.x - SCAN_DOT_HALF_PX, screen.y - SCAN_DOT_HALF_PX, size, size);
-  }
-  ctx.restore();
-}
-
 const CANVAS_STYLE = { imageRendering: 'crisp-edges' as const };
 const EMPTY_MEASURE_RESULTS: Measure2DResultData[] = [];
 const EMPTY_UNIT_DISPLAY_OVERRIDES: Record<string, string> = {};
@@ -257,6 +218,8 @@ interface Drawing2DCanvasProps {
   // Point-cloud scan overlay, already in drawing space (issue #1805)
   scanPoints?: readonly ScanBandPoint[];
   scanOpacity?: number;
+  /** Traced scan outline rings in drawing space (#6871). */
+  scanOutline?: readonly (readonly Point2D[])[];
   // LENGTHUNIT display override for the on-canvas measure distance/perimeter
   // labels (#2199 slice not covered by #2538, which wired every OTHER
   // measure-tool readout — MeasurePanel.tsx, MeasurementVisuals.tsx — through
@@ -306,6 +269,7 @@ export function Drawing2DCanvas({
   dxfUnderlays,
   scanPoints,
   scanOpacity = 1,
+  scanOutline,
   unitDisplayOverrides = EMPTY_UNIT_DISPLAY_OVERRIDES,
   paperTheme = DEFAULT_PAPER_THEME,
 }: Drawing2DCanvasProps): React.ReactElement {
@@ -855,7 +819,7 @@ export function Drawing2DCanvas({
         // Point-cloud scan overlay (issue #1805) — drawn last, on top of the
         // cut geometry. `scanPoints` are already in the same drawing space
         // as `cutPolygons`/`lines`, so the same `modelToScreen` applies.
-        drawScanSectionScreenSpace(ctx, scanPoints, modelToScreen, scanOpacity);
+        drawScanSectionScreenSpace(ctx, scanPoints, modelToScreen, scanOpacity, scanOutline);
       };
 
       drawModelContent();
@@ -1266,6 +1230,7 @@ export function Drawing2DCanvas({
         scanPoints,
         (x, y) => ({ x: x * directScaleX + transform.x, y: y * directScaleY + transform.y }),
         scanOpacity,
+        scanOutline,
       );
     }
 
@@ -1721,7 +1686,7 @@ export function Drawing2DCanvas({
       }
     }
     markActiveDrawingCanvasRendered(canvas, snapshotSourceDrawing, textAnnotationEditing === null);
-  }, [referenceImages, drawing, snapshotSourceDrawing, transform, showHiddenLines, canvasSize, overrideEngine, overridesEnabled, getElementProperties, entityColorMap, useIfcMaterials, measureMode, measureStart, measureCurrent, measureResults, measureSnapPoint, sheetEnabled, activeSheet, sectionAxis, isPinned, annotation2DActiveTool, annotation2DCursorPos, polygonAreaPoints, polygonAreaResults, textAnnotations, textAnnotationEditing, cloudAnnotationPoints, cloudAnnotations, selectedAnnotation, ifcAnnotationLines, ifcAnnotationTexts, ifcAnnotationFills, dxfUnderlays, scanPoints, scanOpacity, unitDisplayOverrides, paperTheme]);
+  }, [referenceImages, drawing, snapshotSourceDrawing, transform, showHiddenLines, canvasSize, overrideEngine, overridesEnabled, getElementProperties, entityColorMap, useIfcMaterials, measureMode, measureStart, measureCurrent, measureResults, measureSnapPoint, sheetEnabled, activeSheet, sectionAxis, isPinned, annotation2DActiveTool, annotation2DCursorPos, polygonAreaPoints, polygonAreaResults, textAnnotations, textAnnotationEditing, cloudAnnotationPoints, cloudAnnotations, selectedAnnotation, ifcAnnotationLines, ifcAnnotationTexts, ifcAnnotationFills, dxfUnderlays, scanPoints, scanOpacity, scanOutline, unitDisplayOverrides, paperTheme]);
 
   return (
     <canvas

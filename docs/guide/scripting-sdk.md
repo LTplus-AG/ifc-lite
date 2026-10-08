@@ -240,3 +240,24 @@ text. Supplying an `.ifc` download filename automatically changes it to
 `.ifczip` with ZIP MIME type. Untextured exports retain their ordinary STEP
 content. This packaging belongs to the web viewer adapter; other SDK backends
 provide their own resource packaging.
+
+### Canonical structural profiles
+
+Sandbox `bim.store.addColumn`, `addBeam` and `addMember` accept the same
+parameterized `Profile` union as the typed SDK. A supplied `Profile` replaces
+the rectangular Width/Depth or Width/Height inputs; column Height and element
+placement remain required. Profile dimensions keep their IFC names and use
+metres. The shared builder validates the actual profile before committing.
+Ordinary creation through the viewer SDK records the complete authored graph,
+so one Undo removes auxiliary placement, profile and containment records too.
+
+### Align loaded elements
+
+`await bim.store.alignElements(modelId, reference, targets, mode)` aligns current
+native mesh edges or centres in one storey workplane. Modes are `left`, `centre`,
+`right`, `top`, `middle` and `bottom`. It derives bounds from fresh owning-model
+geometry and records one atomic Undo batch. A selected host governs its placement dependants, which move once, and
+joined neighbours follow. Stale geometry, unavailable native geometry, unsafe
+shared placements, incompatible hosted/joined shifts, or a reference that would
+move with a target refuse without partial IFC writes. Supply the owning model
+ID when federated; lengths are IFC storey-local metres.

@@ -6,9 +6,6 @@
 //! reproduces the serial scan loop's job/span collection from the shard
 //! class columns, so the pre-pass never byte-scans the file.
 
-/// The stitched index + class columns handed to the columns-discovery walk.
-pub(super) type IndexColumns<'a> = (&'a [u32], &'a [u32], &'a [u32], &'a [u8]);
-
 /// Everything the pre-pass scan loop discovers, filled from the shard class
 /// columns instead of a byte scan (stage 2 of the sharded pre-pass). The
 /// class byte was computed at shard-scan time from the SAME predicates the

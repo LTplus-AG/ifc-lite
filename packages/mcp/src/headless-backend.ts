@@ -81,6 +81,12 @@ export class HeadlessLikeBackend implements BimBackend {
   readonly checkEntityRef: EntityRefCheck;
   private mutationView: MutablePropertyView | null = null;
   private storeEditor: StoreEditor | null = null;
+  private readonly disposeRoomCommands: () => void;
+  private peerScopes: () => import('@ifc-lite/create').ElementSplitOptions['globalIdScopes'] = () => [];
+
+  setPeerScopes(provider: typeof this.peerScopes): void { this.peerScopes = provider; }
+
+  dispose(): void { this.disposeRoomCommands(); }
 
   constructor(store: IfcDataStore, modelName: string, modelId: string) {
     this.dataStore = store;
@@ -122,7 +128,9 @@ export class HeadlessLikeBackend implements BimBackend {
         options,
       ),
     };
-    this.store = createHeadlessStoreAdapter(store, modelId, () => this.getOrCreateStoreEditor(), id => this.assertKnownModelId(id));
+    const storeAdapter = createHeadlessStoreAdapter(store, modelId, () => this.getOrCreateStoreEditor(), id => this.assertKnownModelId(id), () => this.peerScopes());
+    this.store = storeAdapter;
+    this.disposeRoomCommands = storeAdapter.disposeRooms;
     this.spatial = { queryBounds() { return []; }, raycast() { return []; }, queryFrustum() { return []; } };
     this.export = this.createExportAdapter();
     this.lens = { presets() { return []; }, create() { return null; }, activate() {}, deactivate() {}, getActive() { return null; } };

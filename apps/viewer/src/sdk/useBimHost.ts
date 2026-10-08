@@ -36,11 +36,7 @@ export function useBimHost(): BimContext {
 
   // Create local backend and BimContext once — single shared backend
   const bim = useMemo(() => {
-    const storeApi = {
-      getState: useViewerStore.getState,
-      subscribe: useViewerStore.subscribe,
-    };
-    const backend = new LocalBackend(storeApi);
+    const backend = new LocalBackend(useViewerStore);
     backendRef.current = backend;
     return createBimContext({ backend });
   }, []);
@@ -53,8 +49,8 @@ export function useBimHost(): BimContext {
 
     try {
       host.listenBroadcast(BROADCAST_CHANNEL);
-    } catch {
-      // BroadcastChannel not available (e.g., in some test environments)
+    } catch (error) {
+      console.warn('[useBimHost] Could not start the BroadcastChannel host', error);
     }
 
     hostRef.current = host;

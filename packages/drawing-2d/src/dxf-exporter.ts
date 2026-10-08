@@ -54,6 +54,23 @@ export interface DXFExportOptions {
    * for a georeferenced export.
    */
   metadataComment?: string;
+  /**
+   * Extra polyline layers drawn on top of the drawing, each on its own DXF
+   * layer (e.g. the viewer's traced scan outline, #6871). Points are in
+   * drawing space and go through `coordinateTransform` like everything else.
+   */
+  polylineLayers?: DXFPolylineLayer[];
+}
+
+/** One named layer of polylines to embed. */
+export interface DXFPolylineLayer {
+  /** DXF layer name (R12: letters, digits, `-`, `_`, `$`). */
+  name: string;
+  /** CSS colour mapped to the nearest ACI colour by the writer. */
+  color: string;
+  polylines: readonly (readonly Point2D[])[];
+  /** Close every polyline back to its first point. Default true. */
+  closed?: boolean;
 }
 
 /** One DXF reference underlay to embed (mirrors `SVGUnderlayOptions`). */
@@ -85,6 +102,7 @@ export class DXFExporter {
       underlays = [],
       coordinateTransform = (p: Point2D) => p,
       metadataComment,
+      polylineLayers = [],
     } = options;
 
     const writer = new DxfWriter({ headerComment: metadataComment });
@@ -116,6 +134,13 @@ export class DXFExporter {
     for (const line of drawing.lines) {
       if (!showHiddenLines && line.visibility === 'hidden') continue;
       this.writeLine(writer, line, categoryLayers, map);
+    }
+
+    for (const extra of polylineLayers) {
+      const layer = writer.layer(extra.name, extra.color);
+      for (const polyline of extra.polylines) {
+        writer.addPolyline(polyline.map(map), layer, extra.closed ?? true);
+      }
     }
 
     return writer.toString();

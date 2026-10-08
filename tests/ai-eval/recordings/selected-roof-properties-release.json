@@ -1,0 +1,164 @@
+{
+  "$schema": "../recording.schema.json",
+  "version": 1,
+  "id": "selected-roof-properties-release",
+  "task": "selected-roof-properties",
+  "scene": "selection-sample",
+  "corpus": "release",
+  "prompt": "Explain the selected roof slab using its actual attributes, properties and declared units",
+  "route": {
+    "kind": "proxy",
+    "model": "openai/gpt-4o-mini"
+  },
+  "provenance": {
+    "kind": "authored",
+    "recordedAt": "2026-10-08",
+    "note": "Authored offline response replayed against native fixture evidence; no live-provider or human-quality claim."
+  },
+  "response": {
+    "status": 200,
+    "events": [
+      {
+        "choices": [
+          {
+            "delta": {
+              "content": "The selected entity is the IfcSlab named house - roof - slab right, with ObjectType roof [E1]. Its captured Pset_SlabCommon properties include IsExternal True and LoadBearing False [E1]. The supplied Qto_SlabBaseQuantities includes NetArea and Depth with native units [E1]. These are declared source values for the selected slab; they do not establish additional derived dimensions or compliance."
+            }
+          }
+        ]
+      },
+      {
+        "choices": [
+          {
+            "delta": {},
+            "finish_reason": "stop"
+          }
+        ],
+        "usage": {
+          "prompt_tokens": 100,
+          "completion_tokens": 100,
+          "total_tokens": 200
+        }
+      }
+    ],
+    "done": true
+  },
+  "evidence": {
+    "source": "selection",
+    "models": [
+      {
+        "id": "arch",
+        "name": "arch"
+      }
+    ],
+    "totalModels": 1,
+    "modelMetadataTruncated": false,
+    "sourceAvailability": "available",
+    "reportProvenance": "unknown",
+    "totalRows": 1,
+    "includedRows": 1,
+    "sampled": false,
+    "projectionTruncated": false,
+    "evidence": {
+      "summary": {
+        "kind": "selection",
+        "channel": "single",
+        "selectionSize": 1,
+        "modelCount": 1,
+        "byModel": [
+          {
+            "modelId": "arch",
+            "name": "arch",
+            "count": 1
+          }
+        ],
+        "byClass": [
+          {
+            "type": "IfcSlab",
+            "count": 1
+          }
+        ],
+        "perElementBounds": {
+          "sets": 16,
+          "valuesPerSet": 32,
+          "attributes": 32
+        },
+        "units": "Quantity values carry {value, unit} in the Properties panel display unit (project unit, or the display-unit override below); a null unit is undeclared. Property values are the panel display strings, with the unit inline when the measure declares one.",
+        "displayUnitOverrides": {},
+        "limitations": "Values include unsaved edits made this session (status \"edited\"). Property and quantity sets are bounded per element (see perElementBounds; propertyCount/quantityCount/psetCount/qsetCount are the full counts). Type-inherited property sets are a separate inheritedType definition with model and type GlobalId provenance; occurrence properties override same-named type properties for that occurrence. Each section uses the same bounds. Materials, classifications and relationships are not included. Only the first elements of a large selection are read; byClass/byModel cover the whole selection."
+      },
+      "rows": [
+        {
+          "citation": "E1",
+          "data": {
+            "kind": "selected-element",
+            "modelId": "arch",
+            "globalId": "12UVOn4wvAJPMUExKdZLb8",
+            "expressId": 425,
+            "status": "as-loaded",
+            "modelName": "arch",
+            "type": "IfcSlab",
+            "name": "house - roof - slab right",
+            "attributes": {
+              "Name": "house - roof - slab right",
+              "Description": "A roof slab that's got it all covered",
+              "ObjectType": "roof",
+              "Tag": "454425.1027891.979946.932084.902511"
+            },
+            "psets": [
+              {
+                "name": "Pset_SlabCommon",
+                "propertyCount": 3,
+                "properties": {
+                  "Status": "UNSET",
+                  "IsExternal": "True",
+                  "LoadBearing": "False"
+                }
+              }
+            ],
+            "psetCount": 1,
+            "quantities": [
+              {
+                "name": "Qto_SlabBaseQuantities",
+                "quantityCount": 3,
+                "quantities": {
+                  "NetVolume": {
+                    "value": 9.36350799647189,
+                    "unit": "m³"
+                  },
+                  "Depth": {
+                    "value": 300.0000000000386,
+                    "unit": "mm"
+                  },
+                  "NetArea": {
+                    "value": 31.211693321568944,
+                    "unit": "m²"
+                  }
+                }
+              }
+            ],
+            "qsetCount": 1,
+            "inheritedType": {
+              "modelId": "arch",
+              "modelName": "arch",
+              "GlobalId": "3n9C2OuJjE89DiYlOaoccO",
+              "Name": "house - roof - slab right",
+              "expressId": 423,
+              "status": "as-loaded",
+              "psetCount": 0,
+              "psets": []
+            }
+          }
+        }
+      ]
+    }
+  },
+  "expect": {
+    "outcome": "completed",
+    "violations": [],
+    "proposal": null,
+    "review": {
+      "kind": "report"
+    }
+  }
+}

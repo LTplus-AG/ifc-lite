@@ -29,6 +29,7 @@ import { ManualChecklistLibrary } from './ManualChecklistLibrary';
 import { ManualValidationEntry } from './ManualValidationEntry';
 import { ManualValidationGroup } from './ManualValidationGroup';
 import { ManualValidationLegend, ManualValidationRing } from './ManualValidationRing';
+import { ValidationResultsSplit } from './ValidationResultsSplit';
 
 export function ManualValidationTab({ manual }: { manual: UseManualValidationResult }) {
   const { t } = useTranslation();
@@ -70,8 +71,8 @@ export function ManualValidationTab({ manual }: { manual: UseManualValidationRes
 
   const overallName = t('manualValidation.overall');
 
-  return (
-    <div className="flex-1 min-h-0 flex flex-col">
+  // Growing library/editor controls belong to the scrollable summary (#6690).
+  const controls = (<>
       <ManualChecklistLibrary model={activeModel} active onNew={() => { manual.newChecklist(); setEditing(true); }} onSelected={setEditing} />
       <div className="flex items-center gap-1.5 border-b p-2">
         <Input
@@ -99,65 +100,82 @@ export function ManualValidationTab({ manual }: { manual: UseManualValidationRes
           <X className="h-3.5 w-3.5" />
         </IconButton>
       </div>
+  </>);
 
-      <div className="flex-1 min-h-0 overflow-auto p-3 flex flex-col gap-3">
-        {(models.length > 1 || (!!preferredFingerprint && !activeModel && models.length > 0)) && (
-          <label className="flex items-center gap-2 text-xs">
-            <span className="text-muted-foreground">{t('manualValidation.model.label')}</span>
-            <select
-              aria-label={t('manualValidation.model.label')}
-              className="h-7 flex-1 rounded-md border border-input bg-transparent px-2 text-xs"
-              value={activeModel?.id ?? ''}
-              onChange={(e) => setPickedModelId(e.target.value)}
-            >
-              {!activeModel && <option value="" disabled>{t('manualValidation.reuse.modelNotLoaded')}</option>}
-              {models.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
-            </select>
-          </label>
-        )}
-        {!editing && !activeModel && <p className="text-xs text-muted-foreground">{t(preferredFingerprint ? 'manualValidation.reuse.modelNotLoaded' : 'manualValidation.model.none')}</p>}
-        {!editing && activeModel && !fingerprint && <p className="text-xs text-muted-foreground">{t('manualValidation.model.noIdentity')}</p>}
-        {saveError && <p role="alert" className="text-xs text-red-600">{saveErrorMessage}</p>}
+  const overview = (
+    <div className="p-3 space-y-3">
+      {controls}
+      {(models.length > 1 || (!!preferredFingerprint && !activeModel && models.length > 0)) && (
+        <label className="flex items-center gap-2 text-xs">
+          <span className="text-muted-foreground">{t('manualValidation.model.label')}</span>
+          <select
+            aria-label={t('manualValidation.model.label')}
+            className="h-7 flex-1 rounded-md border border-input bg-transparent px-2 text-xs"
+            value={activeModel?.id ?? ''}
+            onChange={(e) => setPickedModelId(e.target.value)}
+          >
+            {!activeModel && <option value="" disabled>{t('manualValidation.reuse.modelNotLoaded')}</option>}
+            {models.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
+          </select>
+        </label>
+      )}
+      {!editing && !activeModel && <p className="text-xs text-muted-foreground">{t(preferredFingerprint ? 'manualValidation.reuse.modelNotLoaded' : 'manualValidation.model.none')}</p>}
+      {!editing && activeModel && !fingerprint && <p className="text-xs text-muted-foreground">{t('manualValidation.model.noIdentity')}</p>}
+      {saveError && <p role="alert" className="text-xs text-red-600">{saveErrorMessage}</p>}
 
-        <Button type="button" variant="outline" size="sm" className="h-7 w-fit text-xs" onClick={async () => {
-          const scope = activeModel ? reportModelScope(activeModel.name, activeModel.id, fingerprint) : null;
-          await useViewerStore.getState().saveValidationReport({
-            ...manualReportBlockFromChecklist({ checklist, answers, modelName: scope?.name, modelFingerprint: fingerprint }, 'run'),
-            reportModels: scope ? [scope] : [],
-          });
-        }}>{t('validationPanel.history.saveManual')}</Button>
+      <Button type="button" variant="outline" size="sm" className="h-7 w-fit text-xs" onClick={async () => {
+        const scope = activeModel ? reportModelScope(activeModel.name, activeModel.id, fingerprint) : null;
+        await useViewerStore.getState().saveValidationReport({
+          ...manualReportBlockFromChecklist({ checklist, answers, modelName: scope?.name, modelFingerprint: fingerprint }, 'run'),
+          reportModels: scope ? [scope] : [],
+        });
+      }}>{t('validationPanel.history.saveManual')}</Button>
 
-        {checklist.groups.length > 0 && (
-          <div className="flex items-center gap-4 rounded-md border border-border p-3" data-testid="manual-overall">
-            <ManualValidationRing counts={summary.overall} name={overallName} size={72} />
-            <div className="flex-1">
-              <div className="mb-1 text-xs font-semibold">{overallName}</div>
-              <ManualValidationLegend counts={summary.overall} />
-            </div>
+      {checklist.groups.length > 0 && (
+        <div className="flex items-center gap-4 rounded-md border border-border p-3" data-testid="manual-overall">
+          <ManualValidationRing counts={summary.overall} name={overallName} size={72} />
+          <div className="flex-1">
+            <div className="mb-1 text-xs font-semibold">{overallName}</div>
+            <ManualValidationLegend counts={summary.overall} />
           </div>
-        )}
-        {checklist.groups.length === 0 && <p className="text-xs text-muted-foreground">{t('manualValidation.empty')}</p>}
+        </div>
+      )}
+      {checklist.groups.length === 0 && <p className="text-xs text-muted-foreground">{t('manualValidation.empty')}</p>}
+    </div>
+  );
+  const checks = (
+    <div className="p-3 space-y-3">
+      {checklist.groups.map((group, index) => (
+        <ManualValidationGroup
+          key={group.id}
+          group={group}
+          counts={summary.groups.get(group.id) ?? EMPTY_MANUAL_COUNTS}
+          answers={answers}
+          editing={editing}
+          isFirst={index === 0}
+          isLast={index === checklist.groups.length - 1}
+          fingerprint={fingerprint}
+        />
+      ))}
 
-        {checklist.groups.map((group, index) => (
-          <ManualValidationGroup
-            key={group.id}
-            group={group}
-            counts={summary.groups.get(group.id) ?? EMPTY_MANUAL_COUNTS}
-            answers={answers}
-            editing={editing}
-            isFirst={index === 0}
-            isLast={index === checklist.groups.length - 1}
-            fingerprint={fingerprint}
-          />
-        ))}
+      {editing && (
+        <Button type="button" size="sm" variant="outline" className="h-8 w-fit gap-1.5" onClick={() => addGroup(t('manualValidation.group.defaultName'))}>
+          <Plus className="h-3.5 w-3.5" />
+          {t('manualValidation.group.add')}
+        </Button>
+      )}
+    </div>
+  );
 
-        {editing && (
-          <Button type="button" size="sm" variant="outline" className="h-8 w-fit gap-1.5" onClick={() => addGroup(t('manualValidation.group.defaultName'))}>
-            <Plus className="h-3.5 w-3.5" />
-            {t('manualValidation.group.add')}
-          </Button>
-        )}
-      </div>
+  return (
+    <div className="flex-1 min-h-0 flex flex-col">
+      {checklist.groups.length > 0 ? (
+        <ValidationResultsSplit summary={overview}>
+          <div className="flex-1 min-h-0 overflow-auto">{checks}</div>
+        </ValidationResultsSplit>
+      ) : (
+        <div className="flex-1 min-h-0 overflow-auto">{overview}{checks}</div>
+      )}
     </div>
   );
 }

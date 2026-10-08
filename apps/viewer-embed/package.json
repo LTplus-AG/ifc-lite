@@ -12,6 +12,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@ifc-lite/ai": "workspace:^",
     "@ifc-lite/bcf": "workspace:^",
     "@ifc-lite/bcf-api": "workspace:^",
     "@ifc-lite/cache": "workspace:^",
@@ -33,6 +34,7 @@
     "@ifc-lite/ifcx": "workspace:^",
     "@ifc-lite/lens": "workspace:^",
     "@ifc-lite/lists": "workspace:^",
+    "@ifc-lite/load-trace": "workspace:^",
     "@ifc-lite/mcp": "workspace:^",
     "@ifc-lite/merge": "workspace:^",
     "@ifc-lite/mutations": "workspace:^",
@@ -48,6 +50,7 @@
     "@ifc-lite/semantic": "workspace:^",
     "@ifc-lite/server-client": "workspace:^",
     "@ifc-lite/solar": "workspace:^",
+    "@ifc-lite/source-autodesk": "workspace:^",
     "@ifc-lite/source-dalux": "workspace:^",
     "@ifc-lite/source-dropbox": "workspace:^",
     "@ifc-lite/source-msgraph": "workspace:^",

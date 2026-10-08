@@ -26,6 +26,7 @@
  * neither replaces nor is replaced by an IDS or information run.
  */
 
+import { AssistantAction } from '../assistant/AssistantAction';
 import { SavedValidationReports } from './SavedValidationReports';
 import { DefinitionLibraryToolbar } from './DefinitionLibraryToolbar';
 import { X } from 'lucide-react';
@@ -121,11 +122,23 @@ export function ValidationPanel({ onClose }: ValidationPanelProps) {
     onClose();
   } : undefined;
 
+  // #6690: tabs, storage notices and expanded history must share a bounded
+  // scroll area; otherwise their combined height can leave no results pane.
+  const chrome = (
+    // Native keyboard scrolling requires this scroll region to receive focus.
+    // eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex
+    <section aria-label={t('validationPanel.title')} tabIndex={0}
+      className="min-h-0 max-h-[35%] shrink-0 overflow-auto focus-visible:outline-2 focus-visible:outline-primary">
+      <PanelHeader title={t('validationPanel.title')} onClose={handleClose} />
+      {effectiveSource !== null && <SourceToggle />}
+      <SavedValidationReports />
+    </section>
+  );
+
   if (effectiveSource === null) {
     return (
-      <div className="h-full flex flex-col bg-background">
-        <PanelHeader title={t('validationPanel.title')} onClose={handleClose} />
-        <SavedValidationReports />
+      <div className="h-full flex flex-col bg-background" data-validation-panel>
+        {chrome}
         <ValidationPanelEmpty
           onSelectIds={() => setActiveSource('ids')}
           onOpenRuleSetFile={handleOpenRuleSetFile}
@@ -150,25 +163,26 @@ export function ValidationPanel({ onClose }: ValidationPanelProps) {
   const hasResults = validationSource === 'rules' && results.report !== null && !info.editing && !info.running;
 
   return (
-    <Tabs value={effectiveSource} onValueChange={(value) => setActiveSource(value === 'ids' || value === 'manual' ? value : 'rules')} className="h-full flex flex-col bg-background">
-      <PanelHeader title={t('validationPanel.title')} onClose={handleClose} />
-      <SourceToggle />
-      <SavedValidationReports />
+    <Tabs value={effectiveSource} onValueChange={(value) => setActiveSource(value === 'ids' || value === 'manual' ? value : 'rules')} className="h-full flex flex-col bg-background" data-validation-panel>
+      {chrome}
       <TabsContent value="ids" className="mt-0 flex-1 min-h-0 flex flex-col">
         <IDSPanel embedded />
       </TabsContent>
       <TabsContent value="rules" className="mt-0 flex-1 min-h-0 flex flex-col">
-      <DefinitionLibraryToolbar kind="rules" onNew={handleNewRuleSet} onImportFile={handleOpenRuleSetFile} />
+      {!hasResults && <DefinitionLibraryToolbar kind="rules" onNew={handleNewRuleSet} onImportFile={handleOpenRuleSetFile} />}
       {info.running ? (
         <RunningState progress={info.progress} totalRules={info.file?.rules.length ?? 0} onCancel={info.cancel} />
       ) : hasResults ? (
         <div className="flex-1 min-h-0 flex flex-col">
-          <div className="p-2 border-b">
-            <Button type="button" variant="outline" size="sm" className="h-7 text-xs" onClick={() => info.setEditing(true)}>
-              {t('validationPanel.editRules')}
-            </Button>
-          </div>
           <IDSPanelResults
+            summaryControls={<>
+              <DefinitionLibraryToolbar kind="rules" onNew={handleNewRuleSet} onImportFile={handleOpenRuleSetFile} />
+              <div className="p-2 border-b">
+                <Button type="button" variant="outline" size="sm" className="h-7 text-xs" onClick={() => info.setEditing(true)}>
+                  {t('validationPanel.editRules')}
+                </Button>
+              </div>
+            </>}
             results={results}
             runValidation={async () => null}
             onEntityClick={(modelId, expressId) => results.focusEntity(modelId, expressId)}
@@ -201,11 +215,13 @@ function PanelHeader({ title, onClose }: { title: string; onClose?: () => void }
   return (
     <div className="flex items-center justify-between p-3 border-b">
       <span className="font-medium text-sm">{title}</span>
+      <div className="ml-auto flex items-center gap-1"><AssistantAction />
       {onClose && (
         <Button variant="ghost" size="sm" className="h-7 w-7 p-0" aria-label={title} onClick={onClose}>
           <X className="h-4 w-4" />
         </Button>
       )}
+      </div>
     </div>
   );
 }

@@ -253,6 +253,7 @@ pub fn produce_element_meshes(
     // Both scopes restore the enclosing element's counters on drop: a rayon
     // work-steal can run another element to completion inside this one.
     let _budget_scope = ifc_lite_geometry::kernel::budget::enter_element();
+    ifc_lite_geometry::progress::tick();
 
     // Open this element's degenerate-backstop scope; see the `degenerate` child
     // module.

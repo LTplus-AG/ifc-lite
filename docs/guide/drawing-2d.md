@@ -78,7 +78,8 @@ Saved sheet templates form a reusable library across models. Clearing the
 current sheet does not remove templates. Panel visibility and the sheet-enable
 toggle are not restored after a browser reload.
 
-The browser keeps the 20 most recently saved model setups; templates are not
+Clearing a model's sheet is remembered too, including when older drawing
+data is migrated. The browser keeps the 20 most recently saved model choices; templates are not
 part of that limit. This is local browser storage, not a backup or an IFC file
 edit. Clearing site data removes it. Large embedded logos can exhaust browser
 storage: a failed save logs a warning and retains the previous saved version.
@@ -149,6 +150,8 @@ const dxf = exportToDXF(drawing, {
   coordinateTransform: (p) => ({ x: p.x + 2600000, y: 2007 - p.y }),
   // R12 has no $INSUNITS; the unit (and CRS, if any) goes in a leading 999 comment.
   metadataComment: 'ifc-lite section export - units: metres, CRS: EPSG:2056',
+  // Optional: extra polylines on their own layers, mapped like everything else.
+  polylineLayers: [{ name: 'SCAN-OUTLINE', color: '#0d9488', polylines: [[{ x: 0, y: 0 }, { x: 4, y: 0 }, { x: 4, y: 3 }]] }],
 });
 // dxf is the full ASCII DXF document text
 ```
@@ -380,11 +383,17 @@ dialog explains why the scale cannot be changed there.
 | PDF without a sheet | Vector strokes | Mapped vectors | Raster images beneath geometry | Chosen drawing scale; page fits the drawing |
 | PDF with a sheet | Rasterized sheet | Included in the sheet image | Included in the sheet image | Active sheet scale and paper size |
 | Print | Drawing/sheet SVG sent to the browser | Mapped vectors | Embedded raster images | Check the browser's paper size and scaling |
-| DXF R12 | Vector | Mapped vectors on export layers | Omitted, with confirmation | Metres; Down plans can use model/map coordinates, vertical sections use local section coordinates |
+| DXF R12 | Vector, plus the scan outline on `SCAN-OUTLINE` when shown | Mapped vectors on export layers | Omitted, with confirmation | Metres; Down plans can use model/map coordinates, vertical sections use local section coordinates |
 
 Only visible, compatible references are included. DXF layer visibility and raster
 opacity follow the displayed drawing. Exporting a drawing does not embed workspace
 registration recipes into IFC; see [reference sharing and persistence](appearance.md#drawing-references-in-2d-and-3d).
+
+### Scan section outlines
+
+With a point cloud loaded, the **Scan** tab of the drawing inspector overlays the scan points within a band around the section plane. Turn on **Vector outline** to trace them into closed rings: the boundary of what the scan shows as solid at the cut. The rings are drawn as lines over the cut and written to the DXF export on their own `SCAN-OUTLINE` layer, through the same coordinate transform as the cut, so a georeferenced plan puts them at map coordinates too.
+
+**Bridge gaps up to** sets the widest gap the trace closes, about one wall thickness (5–50 cm, default 30 cm). It is what merges the two scanned faces of a wall into one solid band and closes scan shadows. Openings wider than it, such as doors, stay open. The trace uses every point in the band, not the decimated dots on screen. It runs in a worker, and only the latest plane or slider position is traced. The dots and the rings update together. The status line reports the ring count and the cell size. It also warns when the scan was too large for the cell budget and coarser cells were used. The engine is the wasm `traceScanOutline`; see [the WASM API](../api/wasm.md#scan-section-outlines).
 
 ### Troubleshooting section references
 
@@ -431,3 +440,4 @@ When using the Select / Pan tool (or after pressing Escape to exit a creation to
 | 3D overlay | On | Show section plane position in 3D view |
 | Scale | 1:100 | Drawing scale for dimensions |
 | Symbolic representations | Off | Use authored Plan/Annotation representations when available |
+| Scan → Vector outline | Off | Trace closed outlines from the scan points in the section band (see below) |

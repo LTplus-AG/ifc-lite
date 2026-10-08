@@ -62,13 +62,13 @@ test('selected swept-disk bar draws and clears its source centreline (#5778)', a
   await page.setViewportSize({ width: 1600, height: 1000 });
   await page.goto('/');
   await page.locator('#file-input-open').setInputFiles(sweptDiskFixture.path);
-  await page.waitForFunction(() => {
+  await gpu.raceLoss('the model load', () => page.waitForFunction(() => {
     const store = (globalThis as unknown as { __ifc_lite_viewer_store__?: BrowserStore }).__ifc_lite_viewer_store__;
     const state = store?.getState();
     const model = state?.models.values().next().value;
     return state?.models.size === 1 && state.geometryResult?.meshes?.length > 0
       && (model?.ifcDataStore?.entityCount ?? 0) > 0;
-  }, undefined, { timeout: 300_000 });
+  }, undefined, { timeout: 300_000 }));
 
   const sourceType = await page.evaluate((expressId) => {
     const state = (globalThis as unknown as { __ifc_lite_viewer_store__: BrowserStore }).__ifc_lite_viewer_store__.getState();
@@ -82,7 +82,7 @@ test('selected swept-disk bar draws and clears its source centreline (#5778)', a
     return model.ifcDataStore?.entities.getTypeName(expressId);
   }, sweptDiskFixture.expressId);
   expect(sourceType, 'the loaded IFC contains the authored reinforcing bar').toBe('IfcReinforcingBar');
-  await page.waitForFunction(() => Boolean((globalThis as unknown as { __ifc_lite_capture_color_frame__?: unknown }).__ifc_lite_capture_color_frame__));
+  await gpu.raceLoss('the colour-frame hook', () => page.waitForFunction(() => Boolean((globalThis as unknown as { __ifc_lite_capture_color_frame__?: unknown }).__ifc_lite_capture_color_frame__)));
   const capture = () => page.evaluate(() => (globalThis as unknown as {
     __ifc_lite_capture_color_frame__: () => Promise<string | null>;
   }).__ifc_lite_capture_color_frame__());
@@ -106,22 +106,22 @@ test('selected swept-disk bar draws and clears its source centreline (#5778)', a
     throw error;
   }
   if (!before) throw new Error('renderer produced no baseline color frame');
-  await expect.poll(async () => {
+  await gpu.raceLoss('the model-only frame settling', () => expect.poll(async () => {
     const next = await capture();
     if (!next) return Infinity;
     const changed = (await frameChange(page, before!, next, 10)).changed;
     before = next;
     return changed;
   }, { timeout: 120_000, message: 'the model-only color frame settles before comparing the overlay' })
-    .toBeLessThan(20);
+    .toBeLessThan(20));
 
   await page.evaluate(() => (globalThis as unknown as { __ifc_lite_viewer_store__: BrowserStore })
     .__ifc_lite_viewer_store__.getState().setCentrelineOverlayEnabled(true));
-  await expect.poll(async () => {
+  await gpu.raceLoss('the centreline overlay draw', () => expect.poll(async () => {
     const frame = await capture();
     return frame ? (await frameChange(page, before!, frame, 30)).changed : 0;
   }, { timeout: 120_000, message: 'enabling the directrix draws visible source pixels' })
-    .toBeGreaterThan(100);
+    .toBeGreaterThan(100));
   let visible: string | null = null;
   await expect.poll(async () => {
     visible = await capture();

@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="robots" content="noindex" />
+  <meta name="referrer" content="no-referrer" />
+  <title>Autodesk sign-in</title>
+  <style>body{font:16px system-ui;max-width:36rem;margin:15vh auto;padding:1.5rem;color-scheme:light dark}a{color:inherit}</style>
+</head>
+<body>
+  <h1>Autodesk sign-in</h1>
+  <p id="status">Returning to IFClite…</p>
+  <a href="/">Return to IFClite</a>
+  <script>
+    (function () {
+      'use strict';
+      var result = window.location.href;
+      var params = new URLSearchParams(window.location.search);
+      var pending = sessionStorage.getItem('ifc-lite:autodesk:authorization');
+      history.replaceState(null, '', location.pathname);
+      if (pending) {
+        try {
+          var transaction = JSON.parse(pending);
+          if (transaction.state !== params.get('state') || transaction.expiresAt < Date.now()) throw new Error('Expired sign-in');
+          sessionStorage.setItem('ifc-lite:autodesk:callback', result);
+          var destination = new URL(transaction.returnPath || '/', location.origin);
+          if (destination.origin !== location.origin) throw new Error('Invalid return location');
+          location.replace(destination.href);
+          return;
+        } catch (error) {
+          sessionStorage.removeItem('ifc-lite:autodesk:authorization');
+          document.getElementById('status').textContent = 'Sign-in expired. Return to IFClite and try again.';
+          return;
+        }
+      }
+      try {
+        var channel = new BroadcastChannel('ifc-lite:oauth-callback');
+        channel.postMessage({ type: 'ifc-lite:oauth-callback', state: params.get('state') || '', url: result });
+        channel.close();
+        document.getElementById('status').textContent = 'You can close this window and return to IFClite.';
+        window.close();
+      } catch (error) {
+        document.getElementById('status').textContent = 'Could not return the result. Return to IFClite and sign in again.';
+      }
+    })();
+  </script>
+</body>
+</html>

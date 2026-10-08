@@ -4,14 +4,14 @@
 use super::transfer_types::TransferFrame;
 use nalgebra::{Matrix3, Vector3};
 
-pub(super) type Point = [f64; 3];
-pub(super) fn sub(a: Point, b: Point) -> Point {
+pub(crate) type Point = [f64; 3];
+pub(crate) fn sub(a: Point, b: Point) -> Point {
     std::array::from_fn(|i| a[i] - b[i])
 }
-pub(super) fn dot(a: Point, b: Point) -> f64 {
+pub(crate) fn dot(a: Point, b: Point) -> f64 {
     a.iter().zip(b).map(|(a, b)| a * b).sum()
 }
-pub(super) fn cross(a: Point, b: Point) -> Point {
+pub(crate) fn cross(a: Point, b: Point) -> Point {
     [
         a[1] * b[2] - a[2] * b[1],
         a[2] * b[0] - a[0] * b[2],

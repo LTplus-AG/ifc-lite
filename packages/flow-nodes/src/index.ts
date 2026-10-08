@@ -27,6 +27,7 @@ export { isModelSelector, parseTagRules, parseCheckJobs, matchesFilename, AUTOMA
 export type { ModelSelector, SessionModel, SessionModels, FilenameTagRule, ResourceSource, CheckJob, DocumentMapping, SessionAutomationHost } from './session-contracts.js';
 
 export type { FlowHost, FlowNodeDef, TableAccess, StringLookup } from './host.js';
+export type { BcfWriteGateway, BcfWriteIntent } from './bcf-write-gateway.js';
 export { requireCapability, toRef, toSdkRef, resolveByGlobalId, rememberGlobalId, forgetGlobalId, invalidateGlobalIdIndex } from './host.js';
 export { columnTypeOf, VALUE_TYPE_BY_COLUMN_TYPE } from './table-nodes.js';
 export type { ElementSpec } from './element-nodes.js';

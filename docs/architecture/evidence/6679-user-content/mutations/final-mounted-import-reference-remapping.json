@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 2,
+  "invocationId": "73ed4e04-f64a-4d76-8c78-e6e0b94f4a76",
+  "base": "6abfd08a327d55ec0e95716a8150317d1fdcb110",
+  "head": "abf60eeeb3e4afbd6df8b15c428304abd138cf09",
+  "production": [
+    "apps/viewer/src/lib/storage/content-backup-references.ts"
+  ],
+  "tests": [
+    "apps/viewer/src/components/viewer/ContentStorageNotice.test.tsx"
+  ],
+  "baseline": {
+    "kind": "pass",
+    "passed": 8,
+    "total": 8
+  },
+  "reverted": {
+    "kind": "assertion-failure",
+    "passed": 7,
+    "failed": 1,
+    "total": 8,
+    "evidence": []
+  },
+  "verdict": "OBSERVED",
+  "exitCode": 0,
+  "restoration": "verified",
+  "fullReport": "Full official stdout and JSON are posted in the PR comment for this invocation."
+}

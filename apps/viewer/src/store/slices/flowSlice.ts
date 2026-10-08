@@ -37,6 +37,9 @@ export interface FlowRunWindow {
    * before" took in a manual edit made while the run was in flight (#5634).
    */
   readonly mutationIds: ReadonlySet<string>;
+  /** Earlier writing nodes and exact checkpoint ownership across reviewed segments. */
+  readonly writingNodes?: readonly { nodeId: string; trackingKey: string }[];
+  readonly checkpointId?: string;
 }
 
 export interface FlowSlice {
@@ -174,7 +177,7 @@ export const createFlowSlice: StateCreator<FlowSlice, [], [], FlowSlice> = (set,
   openContributedFlow: (doc) => set({ activeFlowId: null, flowDoc: doc, flowDirty: false, flowSelectedNodeId: null, flowLastRun: null, flowLastError: null, flowLastRunWindow: null, flowArtifacts: [], flowProgress: null, flowRunWarnings: [] }),
   closeFlow: () => set({ activeFlowId: null, flowDoc: null, flowDirty: false, flowSelectedNodeId: null, flowLastRun: null, flowLastError: null, flowLastRunWindow: null, flowArtifacts: [], flowProgress: null, flowRunWarnings: [] }),
 
-  setFlowDoc: (doc) => { cancelWorkflowRun(); set({ flowDoc: doc, flowDirty: true, flowLastRun: null, flowLastRunWindow: null, flowArtifacts: [], flowProgress: null, flowRunWarnings: [] }); },
+  setFlowDoc: (doc) => { cancelWorkflowRun(); set({ flowDoc: doc, flowDirty: true, flowLastRun: null, flowLastError: null, flowLastRunWindow: null, flowArtifacts: [], flowProgress: null, flowRunWarnings: [] }); },
   setFlowSelectedNodeId: (id) => set({ flowSelectedNodeId: id }),
   setFlowRunning: (running) => set({ flowRunning: running }),
   setFlowLastRun: (run, error = null, window = null) => set({ flowLastRun: run, flowLastError: error, flowLastRunWindow: window, flowRunning: false }),

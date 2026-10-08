@@ -38,16 +38,21 @@ export function addOrdinaryElementInStore(
 ): number {
   return editor.runAtomic(draft => {
     const resolved = typeof anchor === 'function' ? anchor(draft) : anchor;
-    switch (element.kind) {
-      case 'column': return addColumnToStore(draft, resolved, element.params).columnId;
-      case 'wall': return addWallToStore(draft, resolved, element.params).wallId;
-      case 'slab': return addSlabToStore(draft, resolved, element.params).slabId;
-      case 'beam': return addBeamToStore(draft, resolved, element.params).beamId;
-      case 'space': return addSpaceToStore(draft, resolved, element.params).spaceId;
-      case 'roof': return addRoofToStore(draft, resolved, element.params).roofId;
-      case 'plate': return addPlateToStore(draft, resolved, element.params).plateId;
-      case 'member': return addMemberToStore(draft, resolved, element.params).memberId;
-      default: throw new Error('addOrdinaryElementInStore: unsupported element kind');
-    }
+    return emitOrdinaryElement(draft, resolved, element);
   });
+}
+
+/** Package-private builder dispatch; callers own the enclosing atomic edit. */
+export function emitOrdinaryElement(draft: StoreEditor, resolved: SpatialAnchor, element: OrdinaryInStoreElement): number {
+  switch (element.kind) {
+    case 'column': return addColumnToStore(draft, resolved, element.params).columnId;
+    case 'wall': return addWallToStore(draft, resolved, element.params).wallId;
+    case 'slab': return addSlabToStore(draft, resolved, element.params).slabId;
+    case 'beam': return addBeamToStore(draft, resolved, element.params).beamId;
+    case 'space': return addSpaceToStore(draft, resolved, element.params).spaceId;
+    case 'roof': return addRoofToStore(draft, resolved, element.params).roofId;
+    case 'plate': return addPlateToStore(draft, resolved, element.params).plateId;
+    case 'member': return addMemberToStore(draft, resolved, element.params).memberId;
+    default: throw new Error('addOrdinaryElementInStore: unsupported element kind');
+  }
 }

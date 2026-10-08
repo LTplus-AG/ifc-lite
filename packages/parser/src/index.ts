@@ -118,7 +118,7 @@ export { extractClassifications, getClassificationsForElement, getClassification
 // 4D scheduling extractor: tasks, sequences, schedules, calendars and recurrence data.
 export {
   extractScheduleOnDemand,
-  parseIso8601Duration,
+  parseIso8601Duration, taskProductExpressIds, taskProductGlobalIds,
   type ScheduleExtraction,
   type ScheduleTaskInfo,
   type ScheduleTaskTimeInfo,

@@ -447,6 +447,105 @@ describe('scheduleSlice editing — assign / unassign products', () => {
   });
 });
 
+describe('scheduleSlice editing — IfcRelAssignsToProduct outputs (#6749)', () => {
+  const withOutputs = () => mkExtraction([
+    mkTask({
+      globalId: 'a',
+      productExpressIds: [1], productGlobalIds: ['1'],
+      outputProductExpressIds: [2, 3], outputProductGlobalIds: ['gid-2', 'gid-3'],
+    }),
+  ]);
+
+  it('unassign removes an output product, keeping the pair aligned', () => {
+    const store = bootScheduleStore();
+    store.getState().setScheduleData(withOutputs());
+    store.getState().unassignProductsFromTask('a', [2]);
+    const t = store.getState().scheduleData!.tasks[0];
+    assert.deepStrictEqual(t.outputProductExpressIds, [3]);
+    assert.deepStrictEqual(t.outputProductGlobalIds, ['gid-3']);
+    assert.deepStrictEqual(t.productExpressIds, [1]);
+  });
+
+  it('unassign drops a parsed input together with its IFC GlobalId', () => {
+    const store = bootScheduleStore();
+    store.getState().setScheduleData(withOutputs());
+    store.getState().unassignProductsFromTask('a', [1]);
+    const t = store.getState().scheduleData!.tasks[0];
+    assert.deepStrictEqual(t.productExpressIds, []);
+    assert.deepStrictEqual(t.productGlobalIds, []);
+  });
+
+  it('assign keeps input ids paired when the product is already an input', () => {
+    const store = bootScheduleStore();
+    store.getState().setScheduleData(mkExtraction([
+      mkTask({ globalId: 'a', productExpressIds: [1], productGlobalIds: ['gid-1'] }),
+    ]));
+    store.getState().assignProductsToTask('a', [1, 5]);
+    const t = store.getState().scheduleData!.tasks[0];
+    assert.deepStrictEqual(t.productExpressIds, [1, 5]);
+    assert.deepStrictEqual(t.productGlobalIds, ['gid-1', '5']);
+  });
+
+  it('assign does not restate an output as an input', () => {
+    const store = bootScheduleStore();
+    store.getState().setScheduleData(withOutputs());
+    store.getState().assignProductsToTask('a', [3, 4]);
+    const t = store.getState().scheduleData!.tasks[0];
+    assert.deepStrictEqual(t.productExpressIds, [1, 4]);
+    assert.deepStrictEqual(t.outputProductExpressIds, [2, 3]);
+  });
+
+  it('computeHiddenProductIds hides an output before its task starts', () => {
+    const data = mkExtraction([mkTask({
+      globalId: 'a',
+      outputProductExpressIds: [9], outputProductGlobalIds: ['gid-9'],
+      taskTime: { scheduleStart: '2024-05-10T08:00:00Z', scheduleFinish: '2024-05-20T17:00:00Z' },
+    })]);
+    assert.ok(computeHiddenProductIds(data, Date.parse('2024-05-01T00:00:00Z')).has(9));
+    assert.ok(!computeHiddenProductIds(data, Date.parse('2024-05-11T00:00:00Z')).has(9));
+  });
+});
+
+describe('scheduleSlice editing — early-only task windows (#6803)', () => {
+  it('editing only the finish keeps the early start as the planned start', () => {
+    const store = bootScheduleStore();
+    store.getState().setScheduleData(mkExtraction([mkTask({
+      globalId: 'a',
+      taskTime: { earlyStart: '2010-09-20T08:00:00', earlyFinish: '2010-09-20T16:00:00' },
+    })]));
+    store.getState().updateTaskTime('a', { scheduleFinish: '2010-09-21T16:00:00' });
+    const tt = store.getState().scheduleData!.tasks[0].taskTime!;
+    assert.equal(tt.scheduleStart, '2010-09-20T08:00:00');
+    assert.equal(tt.scheduleFinish, '2010-09-21T16:00:00');
+  });
+
+  const earlyTask = () => mkTask({
+    globalId: 'a',
+    taskTime: { earlyStart: '2010-09-20T08:00:00', earlyFinish: '2010-09-20T16:00:00' },
+  });
+
+  it('a task added after an early-only predecessor starts at its early finish', () => {
+    const store = bootScheduleStore();
+    store.getState().setScheduleData(mkExtraction([earlyTask()]));
+    const gid = store.getState().addTask({ afterGlobalId: 'a' });
+    const added = store.getState().scheduleData!.tasks.find(t => t.globalId === gid)!;
+    assert.equal(added.taskTime?.scheduleStart, '2010-09-20T16:00:00');
+  });
+
+  it('the milestone toggle collapses an early-only task onto its early start, and undo restores it', () => {
+    const store = bootScheduleStore();
+    store.getState().setScheduleData(mkExtraction([earlyTask()]));
+    store.getState().updateTask('a', { isMilestone: true });
+    const tt = store.getState().scheduleData!.tasks[0].taskTime!;
+    assert.equal(tt.scheduleStart, '2010-09-20T08:00:00');
+    assert.equal(tt.scheduleFinish, '2010-09-20T08:00:00');
+    assert.equal(tt.scheduleDuration, 'PT0S');
+    store.getState().undoScheduleEdit();
+    assert.deepStrictEqual(store.getState().scheduleData!.tasks[0].taskTime,
+      { earlyStart: '2010-09-20T08:00:00', earlyFinish: '2010-09-20T16:00:00' });
+  });
+});
+
 describe('scheduleSlice editing — deleteTask', () => {
   it('removes the task and cascades sequences referring to it', () => {
     const store = bootScheduleStore();

@@ -1,0 +1,57 @@
+{
+  "scope": "Original one-shot two-context actual GPU shared defect reproduction; not performance or historical spontaneous-miss attribution",
+  "baseline": "2323207641c8858426faa029ed024ff28ae6685e",
+  "candidate": "9ca489ffca91c1cd0b7c7bb69dc66f68c59b30dd",
+  "browser": "154.0.8037.93",
+  "files": [
+    {
+      "original": "A-actual.png",
+      "stored": "A-actual.png",
+      "bytes": 835425,
+      "sha256": "9d2f384bb7ec5bd516f732e4d8edadb160b59e1ffa1fe7563ad7e6b3c8840394",
+      "storedSHA256": "9d2f384bb7ec5bd516f732e4d8edadb160b59e1ffa1fe7563ad7e6b3c8840394"
+    },
+    {
+      "original": "B-actual.png",
+      "stored": "B-actual.png",
+      "bytes": 835512,
+      "sha256": "6f731fbe713e86b1ade8dba695ca730dd953f0c767a1f7a6ca94af5b5bfa5087",
+      "storedSHA256": "6f731fbe713e86b1ade8dba695ca730dd953f0c767a1f7a6ca94af5b5bfa5087"
+    },
+    {
+      "original": "admission-0-pick-epoch-post.json",
+      "stored": "admission-0-pick-epoch-post.json.gz",
+      "bytes": 5813,
+      "sha256": "b401970b584a1ab77d2e3b665a9697b2c36fbd44e343e7bab1706a4f3f3da39c",
+      "storedSHA256": "a806810412a8ad5e05485aec4e278fe4af9b2006332900603148fbe5b9ebeff5"
+    },
+    {
+      "original": "admission-0-pick-epoch-pre.json",
+      "stored": "admission-0-pick-epoch-pre.json.gz",
+      "bytes": 5811,
+      "sha256": "206ff63f3604d1f4db85b179266e0592eaa0ab1851cec6d5c29665ff29d2863c",
+      "storedSHA256": "5ded7a9224cf52ed50eaae8c08bdfbbeac6430437140142c04accf6fbae9b41b"
+    },
+    {
+      "original": "admission-1-pick-epoch-post.json",
+      "stored": "admission-1-pick-epoch-post.json.gz",
+      "bytes": 5811,
+      "sha256": "9827918557136ccb470f4c0256c84b4089637efd395c1047e6c22427bd60a365",
+      "storedSHA256": "459d72bf411dc288aa44175db600e1ac3e37bc3d3ed3e72f299313d85b708a60"
+    },
+    {
+      "original": "admission-1-pick-epoch-pre.json",
+      "stored": "admission-1-pick-epoch-pre.json.gz",
+      "bytes": 5796,
+      "sha256": "44acb0f1be07e1348656c5a5e8f1dce6d5f0ce296ab0f7398056d91fe91751d2",
+      "storedSHA256": "36e9940a15de63f69be8171a9c5744a62c642ea63e59cdece5bc1b92b9b86e36"
+    },
+    {
+      "original": "results.json",
+      "stored": "results.json.gz",
+      "bytes": 25540,
+      "sha256": "dbae4f5bb6e028eb973c4df7596256c249bc6c485e63e43478416ac5e22a5787",
+      "storedSHA256": "1a8a6d25a51b987437aaeec06fd1f959d51f399a8c18179fd247ad9373c36aa2"
+    }
+  ]
+}

@@ -1,0 +1,11 @@
+--- a/apps/viewer/src/lib/storage/content-import-plan.ts
++++ b/apps/viewer/src/lib/storage/content-import-plan.ts
+@@ -61,7 +61,7 @@
+       if (saved && (saved.deleted || saved.revision > 0)) payload = copy();
+       else {
+         const decode = kind === 'document' ? documentContent.decode : kind === 'comparison' ? comparisonContent.decode : validationContent.decode;
+-        const currentDraft = saved && (decode(previous.payload), saved.payload as { id: string });
++        const currentDraft = saved && decode(JSON.parse(JSON.stringify(saved.payload)));
+         payload = currentDraft ?? previous.payload as { id: string };
+         if (rebindPending) payload = rebindPending(payload);
+       }

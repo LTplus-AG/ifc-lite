@@ -25,26 +25,16 @@
  */
 
 import { useMemo } from 'react';
-import type { CostGraphData } from '@ifc-lite/sdk';
 import { useViewerStore } from '@/store';
-import { getAllModelEntries } from '@/sdk/adapters/model-compat';
+import { readCostModels, type CostModelEntry } from '@/lib/cost/cost-models';
 import { useCostBackend } from './useCostBackend';
 
-export interface CostModelEntry {
-  modelId: string;
-  modelName: string;
-  /** null = no cost graph could be read for this model (see module doc). */
-  graph: CostGraphData | null;
-  /** Set only when `graph` is null because reading failed with an error
-   *  (as opposed to simply having no loaded IFC source bytes yet). */
-  error?: string;
-}
+export type { CostModelEntry } from '@/lib/cost/cost-models';
 
 export function useCostModels(): CostModelEntry[] {
   const models = useViewerStore((s) => s.models);
   // The legacy single-model path keeps its store in `ifcDataStore` with an
-  // empty `models` Map; `getAllModelEntries` (the same compat layer the
-  // `bim.cost` adapter resolves ids through) surfaces it as one entry.
+  // empty `models` Map; `readCostModels` surfaces it as one entry.
   const legacyDataStore = useViewerStore((s) => s.ifcDataStore);
   // Loaded-model cost authoring mutates the existing MutablePropertyView; it
   // does not replace `models` or `ifcDataStore`. Observe the store's canonical
@@ -52,25 +42,5 @@ export function useCostModels(): CostModelEntry[] {
   const mutationVersion = useViewerStore((s) => s.mutationVersion);
   const backend = useCostBackend();
 
-  return useMemo(() => {
-    const entries: CostModelEntry[] = [];
-    for (const [, model] of getAllModelEntries({ models, ifcDataStore: legacyDataStore })) {
-      const hasSource = !!model.ifcDataStore?.source && model.ifcDataStore.source.byteLength > 0;
-      if (!hasSource) {
-        entries.push({ modelId: model.id, modelName: model.name, graph: null });
-        continue;
-      }
-      try {
-        entries.push({ modelId: model.id, modelName: model.name, graph: backend.data(model.id) });
-      } catch (err) {
-        entries.push({
-          modelId: model.id,
-          modelName: model.name,
-          graph: null,
-          error: err instanceof Error ? err.message : String(err),
-        });
-      }
-    }
-    return entries;
-  }, [models, legacyDataStore, backend, mutationVersion]);
+  return useMemo(() => readCostModels({ models, ifcDataStore: legacyDataStore }, backend), [models, legacyDataStore, backend, mutationVersion]);
 }

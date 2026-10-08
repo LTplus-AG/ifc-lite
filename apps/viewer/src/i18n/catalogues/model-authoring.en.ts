@@ -1,0 +1,44 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
+import type { TranslationValue } from '../types';
+
+/** Reviewed native authoring (viewer AI P15A): `components/viewer/actions/ModelAuthoringReview.tsx`, assistant proposals. */
+export const modelAuthoringEn = {
+  'modelAuthoring.commandLabel': 'Apply reviewed authoring',
+  'modelAuthoring.title': 'Review model authoring',
+  'modelAuthoring.rows': 'Proposed operations',
+  'modelAuthoring.frame': 'Lengths in {units}, storey-local (Z up); angles in degrees, counter-clockwise from above.',
+  'modelAuthoring.counts': '{ready} ready · {attention} need attention · {other} unchanged, blocked or unsupported',
+  'modelAuthoring.op.element.create': 'Create',
+  'modelAuthoring.op.element.delete': 'Delete',
+  'modelAuthoring.op.element.move': 'Move',
+  'modelAuthoring.op.element.rotate': 'Rotate',
+  'modelAuthoring.op.type.assign': 'Assign type',
+  'modelAuthoring.op.material.assign': 'Assign material',
+  'modelAuthoring.op.walls.join': 'Join walls',
+  'modelAuthoring.op.hosted.create': 'Place in wall',
+  'modelAuthoring.status.invalid': 'Refused by the model',
+  'modelAuthoring.status.blocked': 'Needs another row',
+  'modelAuthoring.approveRow': 'Apply {operation}: {subject}',
+  'modelAuthoring.newElement': 'new element "{ref}"',
+  'modelAuthoring.notYet': '(not in the model)',
+  'modelAuthoring.createdOn': 'on {storey}: {dims}',
+  'modelAuthoring.movedBy': 'moved by {delta}',
+  'modelAuthoring.turnedBy': 'turned by {angle}°',
+  'modelAuthoring.newType': 'new {ifcClass} "{name}"',
+  'modelAuthoring.newMaterial': 'new material "{name}"',
+  'modelAuthoring.unjoined': 'not joined',
+  'modelAuthoring.joined': 'joined at their meeting ends',
+  'modelAuthoring.hosted.door': 'door {size}, {offset} {units} along, sill {sill} {units}',
+  'modelAuthoring.hosted.window': 'window {size}, {offset} {units} along, sill {sill} {units}',
+  'modelAuthoring.hosted.opening': 'opening {size}, {offset} {units} along, sill {sill} {units}',
+  'modelAuthoring.previewShow': 'Preview in 3D',
+  'modelAuthoring.previewHide': 'Hide 3D preview',
+  'modelAuthoring.previewHint': 'Ghosts show new, moved, turned and deleted elements; nothing is written until you apply.',
+  'modelAuthoring.apply': { one: 'Apply {count} operation', other: 'Apply {count} operations' },
+  'assistant.proposalAuthoring': 'Model authoring proposal',
+  'assistant.proposalAuthoringSummary': { one: '{count} proposed operation', other: '{count} proposed operations' },
+  'assistant.suggestAuthoring': 'Prepare a model authoring proposal for review: ',
+} as const satisfies Record<string, TranslationValue>;

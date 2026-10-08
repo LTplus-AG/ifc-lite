@@ -254,3 +254,10 @@ export function clashRefModelIsCurrent(
   if (!current) return false;
   return identityToken(current) === identity.get(modelId);
 }
+
+/** The models a published result took elements from, or null when no identity
+ *  was recorded (a fixture, or a result published before identities existed). */
+export function gatheredModelIds(result: object | null | undefined): string[] | null {
+  const identity = result ? identities.get(result) : undefined;
+  return identity ? [...identity.keys()].sort() : null;
+}

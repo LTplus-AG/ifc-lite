@@ -15,7 +15,8 @@
  * of once per model load.
  */
 
-import init, { clashIntersectionSolid } from '@ifc-lite/wasm';
+import { clashIntersectionSolid } from '@ifc-lite/wasm';
+import { ensureWasm } from '@/lib/wasm/ensure-wasm';
 
 /**
  * Why the kernel could not resolve a solid — the full set of `degenerateReason`
@@ -59,13 +60,6 @@ export type ClashIntersectionSolidResult =
       /** For `below-kernel-resolution`: the depth the kernel would have needed, metres. `0` otherwise. */
       requiredM: number;
     };
-
-let wasmReady: Promise<void> | null = null;
-/** Initialise the wasm module once (idempotent — safe to call from every site that needs it). */
-function ensureWasm(): Promise<void> {
-  if (!wasmReady) wasmReady = init().then(() => undefined);
-  return wasmReady;
-}
 
 /**
  * Compute the intersection solid of one clashing pair. Both operand meshes

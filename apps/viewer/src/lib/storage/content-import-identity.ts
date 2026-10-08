@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import type { ContentKind } from './content-database.js';
+import type { ContentKind } from './content-kinds.js';
 
 /** New import identities carry provenance into the first native library write. */
 const identities = new Map<string, string>();

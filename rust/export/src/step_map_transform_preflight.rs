@@ -70,17 +70,7 @@ pub(super) fn project_units(project: u32, decoder: &mut EntityDecoder) -> Result
 }
 
 pub(super) fn model(records: &[Record<'_>], context: u32, decoder: &mut EntityDecoder) -> Result<(), String> {
-    let source_context = decoder.decode_by_id(context).map_err(|error| error.to_string())?;
-    if source_context.ifc_type != IfcType::IfcGeometricRepresentationContext || source_context.get_float(2) != Some(3.0) {
-        return Err(format!("SourceCRS #{context} is not a 3D representation context"));
-    }
-    let world = required(&source_context, 4, decoder)?;
-    axis(&world, decoder)?;
-    let location = required(&world, 0, decoder)?;
-    if components(&location, 0)?.iter().any(|value| *value != 0.0)
-        || !identity_direction(&world, 1, 2, decoder)? || !identity_direction(&world, 2, 0, decoder)? {
-        return Err(format!("context #{context} has a non-identity WorldCoordinateSystem"));
-    }
+    context_frame(context, decoder)?;
     let mut owners: HashMap<u32, u32> = HashMap::new();
     let mut body_shapes = HashSet::new();
     let mut used_representations = HashSet::new();
@@ -234,7 +224,7 @@ pub(super) fn placement(product: &DecodedEntity, decoder: &mut EntityDecoder) ->
     }
 }
 
-fn axis(frame: &DecodedEntity, decoder: &mut EntityDecoder) -> Result<(), String> {
+pub(super) fn axis(frame: &DecodedEntity, decoder: &mut EntityDecoder) -> Result<(), String> {
     if frame.ifc_type != IfcType::IfcAxis2Placement3D { return Err("only Axis2Placement3D frames are supported".into()); }
     let point = required(frame, 0, decoder)?;
     if point.ifc_type != IfcType::IfcCartesianPoint { return Err("placement Location is not a CartesianPoint".into()); }
@@ -278,6 +268,22 @@ pub(super) fn rigid_frame(frame: &Matrix4<f64>, id: u32) -> Result<(), String> {
     if !frame.iter().all(|value| value.is_finite()) || (rotation.transpose() * rotation - nalgebra::Matrix3::identity()).amax() > 1e-10
         || (rotation.determinant() - 1.0).abs() > 1e-10 {
         return Err(format!("product #{id} has a non-rigid or non-finite placement frame"));
+    }
+    Ok(())
+}
+
+/// Both normalization paths require the same engineering context frame.
+pub(super) fn context_frame(context: u32, decoder: &mut EntityDecoder) -> Result<(), String> {
+    let source_context = decoder.decode_by_id(context).map_err(|error| error.to_string())?;
+    if source_context.ifc_type != IfcType::IfcGeometricRepresentationContext || source_context.get_float(2) != Some(3.0) {
+        return Err(format!("SourceCRS #{context} is not a 3D representation context"));
+    }
+    let world = required(&source_context, 4, decoder)?;
+    axis(&world, decoder)?;
+    let location = required(&world, 0, decoder)?;
+    if components(&location, 0)?.iter().any(|value| *value != 0.0)
+        || !identity_direction(&world, 1, 2, decoder)? || !identity_direction(&world, 2, 0, decoder)? {
+        return Err(format!("context #{context} has a non-identity WorldCoordinateSystem"));
     }
     Ok(())
 }

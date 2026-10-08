@@ -1,0 +1,41 @@
+{
+  "base": "483ba54d9",
+  "sourceSha256": {
+    "packages/sdk/src/store-modelling-backend.ts": "a7e23a16b37cd7ddb38e11bec52b4cd128722ceb118a89d36ce1d2e848c7ae41",
+    "packages/mcp/src/headless-backend-modelling.ts": "4ec398a2139180afca685bccafd0d9d8e83e5f1975ee4d1cafa29d69f66d5bd7",
+    "apps/viewer/src/sdk/adapters/store-adapter-modelling.ts": "09a9ce4093f8ad9a87ee87d287aa528b9f284519621804cd9fb39185ae6d802b",
+    "packages/wasm/pkg/ifc-lite_bg.wasm": "524958d46c9824a116700732cc7c423a00f8fee0aa4954efc8198e24dfaeb56a",
+    "apps/viewer/public/samples/hello-wall.ifc": "0ab20f4ea355ea9aa4fade7264b97ee9f9929addfa3961b2437c4381bd674014"
+  },
+  "normal": {
+    "sdk": 3,
+    "mcp": 6,
+    "viewer": 2,
+    "skips": 0
+  },
+  "inverse": {
+    "sdkFailures": 1,
+    "mcpFailures": 1,
+    "viewerFailures": 2,
+    "creationControlsStillPass": 7,
+    "restoredByteForByte": true
+  },
+  "browser": {
+    "host": "WSL Google Chrome, headed, SwiftShader Vulkan",
+    "sample": "real Bonsai hello-wall.ifc",
+    "counts": [
+      1,
+      2
+    ],
+    "peerUnchangedAtEveryCapturedStage": true,
+    "publicRoute": "BroadcastTransport.send to actual BimHost",
+    "undo": "Control+z against active target model"
+  },
+  "receiptsSha256": {
+    "1-browser.json.gz": "a525499949e3001f0bd9e7be10c6147ee3ee54d54253e724fc408c19121595eb",
+    "1-failed.json.gz": "f4f012cb386ccbe41e14412883b992a7ecde5436dc37abc5d093afd7f80c531f",
+    "2-baseline.json.gz": "dc43bbcb375a55b11f887fe91fe9cee8d4611a47f52e02b14ad6248b75a2eca5",
+    "1-baseline.json.gz": "07465f4f524fb8566f4d3a340933b1c17015f9f848918b7e1679d5c54ca446ed",
+    "2-browser.json.gz": "01b2fdb208351656b51d33dc679a3416c8c8eebc9a4829eafbb65d126149394d"
+  }
+}

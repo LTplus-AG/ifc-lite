@@ -7,7 +7,8 @@ import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import { join, resolve } from 'node:path';
-import { pathToFileURL, fileURLToPath } from 'node:url';
+import { pathToFileURL } from 'node:url';
+import { isMainEntry } from '../lib/is-main-entry.mjs';
 
 const meshFields = [
   'expressId', 'ifcType', 'geometryClass', 'geometryItemId', 'materialId',
@@ -18,6 +19,27 @@ const meshFields = [
 ];
 const sha = value => createHash('sha256').update(value).digest('hex');
 const combined = hashes => sha([...hashes].sort().join('\n'));
+
+/** Aggregate #6537 job work: probe distances are maxima; other counters add. */
+export function aggregateOpeningCounters(totals, counters) {
+  let precisionLimited = false;
+  const combine = (a, b, maximum = false) => {
+    const result = maximum ? Math.max(a, b) : a + b;
+    if (!Number.isSafeInteger(b) || !Number.isSafeInteger(result)) precisionLimited = true;
+    return Math.min(Number.MAX_SAFE_INTEGER, result);
+  };
+  for (const [key, value] of Object.entries(counters)) {
+    if (Array.isArray(value)) {
+      totals[key] ??= value.map(() => 0);
+      value.forEach((n, i) => { totals[key][i] = combine(totals[key][i], n); });
+    } else {
+      const maximum = key === 'ringSimplifierMaxPrevProbeDistance'
+        || key === 'ringSimplifierMaxNextProbeDistance';
+      totals[key] = combine(totals[key] ?? 0, value, maximum);
+    }
+  }
+  return precisionLimited;
+}
 
 /** Read copies, free each temporary handle, retain the caller's collection. */
 export function fingerprintCollection(collection) {
@@ -115,11 +137,6 @@ export async function diagnoseOpeningWork(modelPath, { cwd = process.cwd() } = {
   let triangles = 0;
   let counterPrecisionLimited = false;
   let restore;
-  const addCount = (a, b) => {
-    const sum = a + b;
-    if (!Number.isSafeInteger(b) || !Number.isSafeInteger(sum)) counterPrecisionLimited = true;
-    return Math.min(Number.MAX_SAFE_INTEGER, sum);
-  };
   const retain = (rows, row) => {
     rows.push(row);
     rows.sort((a, b) => b.elapsedMs - a.elapsedMs || a.ordinal - b.ordinal);
@@ -133,12 +150,8 @@ export async function diagnoseOpeningWork(modelPath, { cwd = process.cwd() } = {
       jobs++;
       retain(hottest, row);
       if (row.counters.unionRetries || row.counters.stagedMixedAttempts) retain(work, row);
-      for (const [key, value] of Object.entries(row.counters)) {
-        if (Array.isArray(value)) {
-          totals[key] ??= value.map(() => 0);
-          value.forEach((n, i) => { totals[key][i] = addCount(totals[key][i], n); });
-        } else totals[key] = addCount(totals[key] ?? 0, value);
-      }
+      const limited = aggregateOpeningCounters(totals, row.counters);
+      counterPrecisionLimited ||= limited;
     }, output => { hashes.push(...output.hashes); triangles += output.triangles; });
     // Same loader, prepass, style finishes, tessellation, RTC and local-frame
     // choices as ordinary Node processStreaming. Flat collection path only;
@@ -164,7 +177,7 @@ export async function diagnoseOpeningWork(modelPath, { cwd = process.cwd() } = {
   };
 }
 
-if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+if (isMainEntry(import.meta.url)) {
   if (process.argv.length !== 3) throw new Error('Usage: node opening-work-diagnostic.mjs <model.ifc>');
   const methods = ['log', 'info', 'warn', 'error', 'debug'];
   const originals = Object.fromEntries(methods.map(key => [key, console[key]]));

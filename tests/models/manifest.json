@@ -10,8 +10,8 @@
     },
     {
       "path": "ara3d/AC20-FZK-Haus.ifc",
-      "sha256": "ea6f04eaf92fac4d7ad0038bc3d2dfea4c094dd3f516ecc33c50bf1835ca108d",
-      "size": 2526544
+      "sha256": "d42ab0dee01173106c16cd823b4614efe188fa15dd65195d95b9879bec59acc5",
+      "size": 2526511
     },
     {
       "path": "ara3d/advanced_model.ifc",
@@ -55,8 +55,8 @@
     },
     {
       "path": "ara3d/ISSUE_005_haus.ifc",
-      "sha256": "ea6f04eaf92fac4d7ad0038bc3d2dfea4c094dd3f516ecc33c50bf1835ca108d",
-      "size": 2526544
+      "sha256": "d42ab0dee01173106c16cd823b4614efe188fa15dd65195d95b9879bec59acc5",
+      "size": 2526511
     },
     {
       "path": "ara3d/ISSUE_021_Mini Project.ifc",
@@ -344,6 +344,11 @@
       "path": "cost/buildingsmart-cost-composition.ifc",
       "sha256": "31ad577a5bf502e3d35a70185e5ae1f44b0d60bfb772c7a08c03b56421c3786c",
       "size": 2505
+    },
+    {
+      "path": "georeferencer/MiniBIM-3.1-DO_01_VORM.ifc",
+      "sha256": "7d3ae097a2f1ca5e63f7698d12215cb58427cdb6a932e75e6bf1ca222bcf873b",
+      "size": 7459201
     },
     {
       "path": "ifc5/ACCA_Building_esempio_01_edificius.ifcx",

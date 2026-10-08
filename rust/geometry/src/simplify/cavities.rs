@@ -20,6 +20,7 @@
 
 use super::ray_parity::point_enclosed;
 use crate::mesh::Mesh;
+use crate::union_find::UnionFind;
 use rustc_hash::FxHashMap;
 
 /// Outer shells with more than this fraction of open (single-use) edges are
@@ -323,34 +324,5 @@ pub(crate) fn drop_enclosed_cavities(mesh: &mut Mesh, weld_eps: f32) -> CavitySt
     CavityStats {
         components_dropped,
         triangles_dropped,
-    }
-}
-
-/// Minimal union-find with path halving.
-struct UnionFind {
-    parent: Vec<u32>,
-}
-
-impl UnionFind {
-    fn new(n: usize) -> Self {
-        Self {
-            parent: (0..n as u32).collect(),
-        }
-    }
-
-    fn find(&mut self, mut x: u32) -> u32 {
-        while self.parent[x as usize] != x {
-            let grand = self.parent[self.parent[x as usize] as usize];
-            self.parent[x as usize] = grand;
-            x = grand;
-        }
-        x
-    }
-
-    fn union(&mut self, a: u32, b: u32) {
-        let (ra, rb) = (self.find(a), self.find(b));
-        if ra != rb {
-            self.parent[rb as usize] = ra;
-        }
     }
 }

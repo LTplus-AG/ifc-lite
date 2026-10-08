@@ -4,8 +4,9 @@
 
 import { usePlacementCoordinateInfo } from '@/hooks/usePlacementCoordinateInfo';
 import { useFederatedGeometry } from './useFederatedGeometry';
+import { useFilteredGeometry } from './useFilteredGeometry';
 import { modelIndices } from '@/lib/model-placement/model-indices';
-import { useMemo, useRef, useState, useCallback, useEffect, useSyncExternalStore } from 'react';
+import { lazy, Suspense, useMemo, useRef, useState, useCallback, useEffect, useSyncExternalStore } from 'react';
 import { createPortal } from 'react-dom';
 import { useLevelDisplayEffect } from '@/hooks/useLevelDisplayEffect';
 import { useAuthoredGridOverlay } from './useAuthoredGridOverlay';
@@ -15,6 +16,7 @@ import { useWindowFileDrop } from './useWindowFileDrop';
 import { ViewportOverlays } from './ViewportOverlays';
 import { WebGpuTroubleshootingDetails, webGpuBannerBlurb } from './WebGpuTroubleshooting';
 import { ViewportWelcomeCard } from './ViewportWelcomeCard';
+import { useReloadResume } from '@/hooks/useReloadResume';
 import { ViewportLoadErrorCard } from './ViewportLoadErrorCard';
 import { WelcomeFooterChips } from './WelcomeFooterChips';
 import { useTranslation } from '@/i18n';
@@ -65,21 +67,31 @@ import { reportFileOpenRejected } from '@/hooks/ingest/fileOpenRejected';
 import { Upload, AlertTriangle, ChevronDown, ExternalLink, Plus } from 'lucide-react';
 import { createBlankIfcFile } from '@/utils/createBlankIfc';
 import { launchModelCommand } from '@/lib/commands/modeling/keys-workspace';
-import type { MeshData, PointCloudAsset } from '@ifc-lite/geometry';
-import { type IfcDataStore, type MapConversion } from '@ifc-lite/parser';
+import type { PointCloudAsset } from '@ifc-lite/geometry';
+import { type IfcDataStore } from '@ifc-lite/parser';
 import { getEffectiveGeoreference } from '@/lib/geo/effective-georef';
-import { isMeshVisibleInViewMode, meshClassIsPlaced, meshIsNonOccurrence } from '@/lib/type-view-visibility';
+import { usePlacementProjectionKind } from '@/lib/geo/use-placement-projection-kind';
 
 /**
  * The primary container for the 3D viewport, managing IFC model loading,
  * geometry streaming, scene overlays, and interaction tools.
  */
+// Lazy: the scan-to-BIM overlay (#6894) and its mesh builder stay out of the entry chunk.
+const ScanDetectionOverlay = lazy(() => import('./useScanDetectionOverlay')
+  .then((m) => ({ default: m.ScanDetectionOverlay }))
+  .catch((error: unknown) => {
+    console.warn('[scan-to-bim] the detection overlay could not load', error);
+    return { default: () => null };
+  }));
+
 export function ViewportContainer() {
   // Drive Stacked / Solo / Exploded level display from the slice.
   // Mount-once hook — it self-gates on mode + gap + model changes.
   useLevelDisplayEffect();
   // Grids authored this session are lines the mesher does not draw (#6232 D3).
   useAuthoredGridOverlay();
+  // Scan-to-BIM detections under review (#6894): a lazy host, mounted only while a run exists.
+  const scanRunActive = useViewerStore((s) => s.scanDetectionRun !== null);
 
   const { loadFile, loading, clearAllModels, loadFilesSequentially, addModel } = useIfc();
   // Resolves a source provider's display title for toasts; null outside the
@@ -166,28 +178,7 @@ export function ViewportContainer() {
 
   // Keep the placement panel context available regardless of map/solar toggles.
   // The Cesium overlay and solar study also consume this effective georeference.
-  const georef = useMemo(() => {
-    const applyPlacementDraft = <T extends { mapConversion?: MapConversion }>(
-      modelId: string,
-      effective: T,
-    ): T & { baseMapConversion?: T['mapConversion'] } => {
-      const preview = cesiumPlacementDraftModelId === modelId ? cesiumPlacementDraft : null;
-      if (!preview || !effective.mapConversion) {
-        return {
-          ...effective,
-          baseMapConversion: effective.mapConversion,
-        };
-      }
-      return {
-        ...effective,
-        baseMapConversion: effective.mapConversion,
-        mapConversion: {
-          ...effective.mapConversion,
-          ...preview,
-        },
-      };
-    };
-
+  const sourceGeoref = useMemo(() => {
     // Check federated models, preferring the user-pinned anchor when present.
     // Matches findReferenceGeorefModel() in useIfcFederation so the Cesium bridge
     // and the parse-time alignment agree on which model drives the world frame.
@@ -196,8 +187,8 @@ export function ViewportContainer() {
     // "pinned anchor, else first model with a usable map-conversion georef"
     // selection for the basepoint overlay and the measure-tool XYZ readout. This
     // memo stays bespoke on purpose: it iterates in the store's insertion order
-    // (not loadedAt), and layers the placement-draft
-    // preview + storey elevations that only the Cesium bridge consumes.
+    // (not loadedAt), and includes the storey elevations that the Cesium
+    // bridge consumes. Draft preview is layered after CRS classification.
     const orderedModels = (() => {
       if (!anchorModelIdOverride) return Array.from(storeModels);
       const entries = Array.from(storeModels);
@@ -219,9 +210,9 @@ export function ViewportContainer() {
         && effective.mapConversion
         && effective.source !== 'siteLocation'
       ) {
-        const previewed = applyPlacementDraft(modelId, effective);
         return {
-          ...previewed,
+          ...effective,
+          mapConversion: effective.mapConversion,
           sourceModelId: modelId,
           storeyElevations: ds.spatialHierarchy?.storeyElevations,
         };
@@ -240,9 +231,9 @@ export function ViewportContainer() {
         && effective.mapConversion
         && effective.source !== 'siteLocation'
       ) {
-        const previewed = applyPlacementDraft('__legacy__', effective);
         return {
-          ...previewed,
+          ...effective,
+          mapConversion: effective.mapConversion,
           sourceModelId: '__legacy__',
           storeyElevations: ifcDataStore.spatialHierarchy?.storeyElevations,
         };
@@ -259,10 +250,18 @@ export function ViewportContainer() {
     // depending on `mergedGeometryResult` re-runs this on every streamed
     // geometry batch, re-triggering the property-set georef scan each time.
     mergedGeometryResult?.coordinateInfo,
-    cesiumPlacementDraft,
-    cesiumPlacementDraftModelId,
     anchorModelIdOverride,
   ]);
+  const projectionKind = usePlacementProjectionKind(sourceGeoref?.projectedCRS);
+  const georef = useMemo(() => {
+    if (!sourceGeoref) return null;
+    // Pending classification must expose the authored anchor, while retaining
+    // a valid projected draft for its eventual preview (#7060).
+    const preview = projectionKind === 'projected'
+      && cesiumPlacementDraftModelId === sourceGeoref.sourceModelId ? cesiumPlacementDraft : null;
+    return { ...sourceGeoref, baseMapConversion: sourceGeoref.mapConversion,
+      mapConversion: preview ? { ...sourceGeoref.mapConversion, ...preview } : sourceGeoref.mapConversion };
+  }, [sourceGeoref, projectionKind, cesiumPlacementDraft, cesiumPlacementDraftModelId]);
 
   // Feed the solar study's sun position into the WebGPU lighting environment
   // (viewer-space sun direction + panel readout when Cesium is off).
@@ -513,6 +512,9 @@ export function ViewportContainer() {
     prepareAndRoute(files, supported.map((o) => o.handle));
   }, [prepareAndRoute, isSupportedFile, guardWebGpu]);
 
+  // After a stale-deployment reload, reopen what was open (or ask for it).
+  useReloadResume(webgpu.supported && !webgpu.checking, routeLoad, () => { void handleOpenClick(); });
+
   const handleStartBlank = useCallback(async () => {
     if (!guardWebGpu(() => { void handleStartBlank(); })) return;
     const file = createBlankIfcFile();
@@ -586,185 +588,17 @@ export function ViewportContainer() {
       window.location.reload();
     }
   }, [loadFile]);
-
-
   // Check if any models are loaded (even if hidden) - used to show empty 3D vs starting UI
   const hasLoadedModels = storeModels.size > 0 || (geometryResult?.meshes && geometryResult.meshes.length > 0);
 
-  // Does the rendered geometry carry any type-library geometry? geometryClass
-  // 1 = orphan type, 2 = instanced type; class 0 = placed occurrence. The
-  // Model/Types switch is only meaningful — and "Types" only renders anything —
-  // when class 1/2 meshes exist, so we surface this to gate the toolbar control
-  // (#957 follow-up). Scanned incrementally (O(batch)) and short-circuited once
-  // any type mesh is seen, so the common occurrence-only model costs at most a
-  // single linear pass that stops early.
-  const typeGeoSourceRef = useRef<MeshData[] | null>(null);
-  const typeGeoScanLenRef = useRef(0);
-  const sawTypeGeometryRef = useRef(false);
-  const hasTypeGeometry = useMemo(() => {
-    const meshes = mergedGeometryResult?.meshes;
-    if (!meshes || meshes.length === 0) {
-      typeGeoSourceRef.current = meshes ?? null;
-      typeGeoScanLenRef.current = meshes?.length ?? 0;
-      sawTypeGeometryRef.current = false;
-      return false;
-    }
-    // New source array, or it shrank (new file / replace) → rescan from scratch.
-    if (typeGeoSourceRef.current !== meshes || meshes.length < typeGeoScanLenRef.current) {
-      typeGeoSourceRef.current = meshes;
-      typeGeoScanLenRef.current = 0;
-      sawTypeGeometryRef.current = false;
-    }
-    if (!sawTypeGeometryRef.current) {
-      for (let i = typeGeoScanLenRef.current; i < meshes.length; i++) {
-        if (meshIsNonOccurrence(meshes[i])) { sawTypeGeometryRef.current = true; break; }
-      }
-    }
-    typeGeoScanLenRef.current = meshes.length;
-    return sawTypeGeometryRef.current;
-    // geometryContentVersion bumps per streaming batch — picks up type geometry
-    // that arrives in a later batch even when the meshes array is mutated in place.
-  }, [mergedGeometryResult, geometryContentVersion]);
-
-  // Does the model carry any PLACED occurrence (class 0)? Used to decide whether
-  // orphan type-library geometry (class 1) is clutter to hide in Model view or
-  // the only geometry that must stay visible (pure type-library files). Same
-  // incremental-scan pattern as hasTypeGeometry. (#1353)
-  const occGeoSourceRef = useRef<MeshData[] | null>(null);
-  const occGeoScanLenRef = useRef(0);
-  const sawOccurrenceRef = useRef(false);
-  const hasOccurrenceGeometry = useMemo(() => {
-    const meshes = mergedGeometryResult?.meshes;
-    if (!meshes || meshes.length === 0) {
-      occGeoSourceRef.current = meshes ?? null;
-      occGeoScanLenRef.current = meshes?.length ?? 0;
-      sawOccurrenceRef.current = false;
-      return false;
-    }
-    if (occGeoSourceRef.current !== meshes || meshes.length < occGeoScanLenRef.current) {
-      occGeoSourceRef.current = meshes;
-      occGeoScanLenRef.current = 0;
-      sawOccurrenceRef.current = false;
-    }
-    if (!sawOccurrenceRef.current) {
-      for (let i = occGeoScanLenRef.current; i < meshes.length; i++) {
-        if (meshClassIsPlaced(meshes[i].geometryClass ?? 0)) { sawOccurrenceRef.current = true; break; }
-      }
-    }
-    occGeoScanLenRef.current = meshes.length;
-    return sawOccurrenceRef.current;
-  }, [mergedGeometryResult, geometryContentVersion]);
-
-  // Persisted view mode may be 'types' from a prior model; fall back to 'model'
-  // when the current geometry has no type library so "Types" never renders an
-  // empty scene (and the now-hidden switch can't be used to recover).
-  const effectiveViewMode = hasTypeGeometry ? typeViewMode : 'model';
+  const { hasTypeGeometry, filteredGeometry, geometryVersion, geometryReplacementVersion } = useFilteredGeometry(
+    mergedGeometryResult, geometryContentVersion, typeVisibility, typeViewMode);
 
   // Publish to the store so the toolbar can hide the Model/Types switch when
   // there is no type geometry to reveal.
   useEffect(() => {
     setHasTypeGeometry(hasTypeGeometry);
   }, [hasTypeGeometry, setHasTypeGeometry]);
-
-  // PERF: Incremental geometry filtering using refs.
-  // Instead of creating a new 200K+ element array every batch (~200ms),
-  // we push ONLY new meshes into a cached array — O(batch_size) not O(total).
-  // A version counter triggers downstream re-renders via the Viewport prop.
-  const filteredCacheRef = useRef<MeshData[]>([]);
-  const filteredSourceLenRef = useRef(0);
-  const filteredSourceRef = useRef<MeshData[] | null>(null);
-  const filteredTypeVisRef = useRef(typeVisibility);
-  const filteredTypeModeRef = useRef(effectiveViewMode);
-  const filteredHasOccRef = useRef(hasOccurrenceGeometry);
-  const filteredVersionRef = useRef(0);
-
-  const filteredGeometry = useMemo(() => {
-    if (!mergedGeometryResult?.meshes) {
-      filteredCacheRef.current = [];
-      filteredSourceLenRef.current = 0;
-      filteredSourceRef.current = null;
-      filteredVersionRef.current = 0;
-      return null;
-    }
-
-    const allMeshes = mergedGeometryResult.meshes;
-    const cache = filteredCacheRef.current;
-
-    // Full rebuild if: type visibility changed, view mode changed, source shrunk
-    // (new file), or empty cache
-    const prevVis = filteredTypeVisRef.current;
-    const typeVisChanged =
-      prevVis.spaces !== typeVisibility.spaces ||
-      prevVis.spatialZones !== typeVisibility.spatialZones ||
-      prevVis.openings !== typeVisibility.openings ||
-      prevVis.virtualElements !== typeVisibility.virtualElements ||
-      prevVis.site !== typeVisibility.site ||
-      prevVis.ifcAnnotations !== typeVisibility.ifcAnnotations ||
-      filteredTypeModeRef.current !== effectiveViewMode ||
-      // Occurrence-presence flipping (e.g. occurrences stream in after orphan
-      // types) changes whether class-1 orphans render in Model view (#1353).
-      filteredHasOccRef.current !== hasOccurrenceGeometry;
-    const sourceChanged = filteredSourceRef.current !== allMeshes;
-    if (typeVisChanged || sourceChanged || allMeshes.length < filteredSourceLenRef.current) {
-      cache.length = 0;
-      filteredSourceLenRef.current = 0;
-      filteredSourceRef.current = allMeshes;
-      filteredTypeVisRef.current = typeVisibility;
-      filteredTypeModeRef.current = effectiveViewMode;
-      filteredHasOccRef.current = hasOccurrenceGeometry;
-    }
-
-    const needsFilter = !typeVisibility.spaces || !typeVisibility.spatialZones || !typeVisibility.openings || !typeVisibility.virtualElements || !typeVisibility.site || !typeVisibility.ifcAnnotations;
-    const prevCacheLen = cache.length;
-
-    // Only process NEW meshes since last run — O(batch_size) not O(total)
-    for (let i = filteredSourceLenRef.current; i < allMeshes.length; i++) {
-      const mesh = allMeshes[i];
-      const ifcType = mesh.ifcType;
-
-      // Model/Types view switch (#957, #1353). geometryClass: 0 = occurrence,
-      // 1 = orphan type, 2 = instanced type-library shape, 3 = material-layer
-      // slice (treated like an occurrence — it's part of the real build-up).
-      // An orphan type (class 1) renders in Model view ONLY when the model has
-      // no placed occurrences (pure type-library file); otherwise it's unplaced
-      // library clutter and belongs in the Types view. See helper for the table.
-      const geometryClass = mesh.geometryClass ?? 0;
-      if (!isMeshVisibleInViewMode(geometryClass, effectiveViewMode, hasOccurrenceGeometry)) {
-        continue;
-      }
-
-      // Type-visibility gate — shared mapping in `typeVisibilityFilter.ts`
-      // keeps the viewport, Cesium, basket and GLB export in lockstep. The
-      // `site` toggle also hides `IfcGeographicElement` terrain (issue #1480);
-      // `ifcAnnotations` also hides annotation 3D solid geometry / "Model Text"
-      // breps on top of the 2D curve overlay (issues #1354, #1480).
-      if (needsFilter && !isTypeVisible(ifcType, typeVisibility)) continue;
-
-      // Mesh alpha flows through unchanged. The previous code re-multiplied
-      // IfcSpace / IfcOpeningElement alpha down to <= 0.3 here, which stomped
-      // lens / Pset colour rules even when the user explicitly chose alpha 1.0.
-      // Defaults still come from styling.rs / default-materials.ts; the
-      // renderer promotes overridden entities to the opaque pipeline, the
-      // only draws its colour table paints (#6076). See issue #677.
-      cache.push(mesh);
-    }
-
-    filteredSourceLenRef.current = allMeshes.length;
-
-    // Only bump version when cache content actually changed — avoids
-    // unnecessary downstream re-renders when memo runs with same data.
-    if (cache.length !== prevCacheLen || typeVisChanged || sourceChanged) {
-      filteredVersionRef.current++;
-    }
-
-    // Return the same array reference — downstream change detection uses
-    // geometryVersion (which increments each batch) instead of array identity.
-    return cache;
-  }, [mergedGeometryResult, typeVisibility, effectiveViewMode, hasOccurrenceGeometry]);
-
-  // Version counter that changes every batch — triggers useGeometryStreaming
-  // without requiring a new geometry array reference.
-  const geometryVersion = filteredVersionRef.current;
 
   // 3D-context (Cesium) geometry must honour the SAME type-visibility filter as
   // the WebGPU viewport, or openings/spaces hidden in 2D/3D reappear in the
@@ -952,6 +786,7 @@ export function ViewportContainer() {
       className="relative h-full w-full bg-zinc-50 dark:bg-black overflow-hidden"
       data-viewport
     >
+      {scanRunActive && <Suspense fallback={null}><ScanDetectionOverlay /></Suspense>}
       {/* Drop overlay for a loaded file - "Add Model"; `status-ok` (tokens, #5504) sets it apart from the plain overlay above. */}
       {isDragging && createPortal(
         <div className="pointer-events-none fixed inset-0 z-50 bg-status-ok/10 backdrop-blur-[2px] flex items-center justify-center">
@@ -995,6 +830,7 @@ export function ViewportContainer() {
       <Viewport
         geometry={filteredGeometry}
         geometryVersion={geometryVersion}
+        geometryReplacementVersion={geometryReplacementVersion}
         geometryContentVersion={geometryContentVersion}
         pointClouds={mergedPointClouds}
         coordinateInfo={mergedGeometryResult?.coordinateInfo}

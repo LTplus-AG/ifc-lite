@@ -118,6 +118,8 @@ export function DrawingInspector({ vm, layers, panelWidth }: DrawingInspectorPro
             hasPointCloud={layers.scanSectionLayer.hasPointCloud}
             totalInBand={layers.scanSectionLayer.totalInBand}
             renderedCount={layers.scanSectionLayer.renderedCount}
+            outline={layers.scanSectionLayer.outline}
+            outlineFailed={layers.scanSectionLayer.outlineFailed}
           />
         </TabsContent>
       </div>

@@ -22,6 +22,20 @@ import type {
 } from './types.js';
 import { dispatchToBackend } from './types.js';
 
+function errorResponse(id: string, cause: unknown): SdkResponse {
+  const error = cause instanceof Error ? cause : new Error(String(cause));
+  return { id, error: { message: error.message, stack: error.stack } };
+}
+
+/** A resolved backend result can still fail the structured-clone boundary. */
+function postResponse(target: { postMessage(message: SdkResponse): void }, response: SdkResponse): void {
+  try {
+    target.postMessage(response);
+  } catch (error) {
+    target.postMessage(errorResponse(response.id, error));
+  }
+}
+
 export class BimHost {
   private backend: BimBackend;
   private channels: BroadcastChannel[] = [];
@@ -37,13 +51,13 @@ export class BimHost {
     const channel = new BroadcastChannel(channelName);
     this.channels.push(channel);
 
-    channel.onmessage = (event: MessageEvent) => {
+    channel.onmessage = async (event: MessageEvent) => {
       const request = event.data as SdkRequest;
       if (!request || typeof request !== 'object' || !('id' in request) || !('namespace' in request)) {
         return;
       }
-      const response = this.dispatch(request);
-      channel.postMessage(response);
+      const response = await this.channelResponse(request);
+      if (this.channels.includes(channel)) postResponse(channel, response);
     };
 
     this.forwardEvents((sdkEvent) => {
@@ -55,13 +69,13 @@ export class BimHost {
   acceptPort(port: MessagePort): void {
     this.ports.push(port);
 
-    port.onmessage = (event: MessageEvent) => {
+    port.onmessage = async (event: MessageEvent) => {
       const request = event.data as SdkRequest;
       if (!request || typeof request !== 'object' || !('id' in request) || !('namespace' in request)) {
         return;
       }
-      const response = this.dispatch(request);
-      port.postMessage(response);
+      const response = await this.channelResponse(request);
+      if (this.ports.includes(port)) postResponse(port, response);
     };
 
     this.forwardEvents((sdkEvent) => {
@@ -75,11 +89,18 @@ export class BimHost {
       const result = dispatchToBackend(this.backend, request.namespace, request.method, request.args);
       return { id: request.id, result };
     } catch (err) {
-      const error = err instanceof Error ? err : new Error(String(err));
-      return {
-        id: request.id,
-        error: { message: error.message, stack: error.stack },
-      };
+      return errorResponse(request.id, err);
+    }
+  }
+
+  /** Wire responses contain resolved, cloneable values, never pending Promises. */
+  private async channelResponse(request: SdkRequest): Promise<SdkResponse> {
+    const response = this.dispatch(request);
+    if (response.error) return response;
+    try {
+      return { id: response.id, result: await response.result };
+    } catch (error) {
+      return errorResponse(request.id, error);
     }
   }
 

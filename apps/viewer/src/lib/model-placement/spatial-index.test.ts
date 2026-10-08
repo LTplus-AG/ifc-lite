@@ -299,3 +299,21 @@ it('does not leak an occurrence into another model\'s index when the two share a
     setGlobalRendererRef({ current: null } as RefObject<Renderer | null>);
   }
 });
+
+it('records the first placed build after a load as that load\'s bvh.build span, and only the first (#6979)', async () => {
+  const { createLoadTracer } = await import('@ifc-lite/load-trace');
+  const { publishLoadTrace } = await import('@/lib/perf/activeLoadTrace');
+  const tracer = createLoadTracer({ enabled: true, sink: null });
+  publishLoadTrace('bvh-traced', tracer.startLoad('bvh-traced'));
+  const mesh: MeshData = { expressId: 1, positions: new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0]),
+    indices: new Uint32Array([0, 1, 2]), normals: new Float32Array(9), color: [1, 1, 1, 1] };
+  const model = { ...fixtureModel('bvh-traced'), idOffset: 0, maxExpressId: 10,
+    geometryResult: { meshes: [mesh], totalTriangles: 1, totalVertices: 3,
+      coordinateInfo: { originShift: { x: 0, y: 0, z: 0 } } } } as unknown as FederatedModel;
+  useViewerStore.setState({ ...fixtureModels(model), modelPlacement: emptyPlacementState() });
+  assert.equal(await buildPlacedSpatialIndex(useViewerStore.getState(), 'bvh-traced'), true);
+  assert.equal(await buildPlacedSpatialIndex(useViewerStore.getState(), 'bvh-traced'), true);
+  const builds = tracer.latest()!.spans.filter((s) => s.name === 'bvh.build');
+  assert.equal(builds.length, 1, 'a rebuild after the load is not recorded on it');
+  assert.ok(builds[0].end !== null && builds[0].end >= builds[0].start, 'the span closes when the index publishes');
+});

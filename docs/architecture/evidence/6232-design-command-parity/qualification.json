@@ -1,0 +1,25 @@
+{
+  "base": "97159abbef6768b95560db0beed401f33bc71d38",
+  "sourceSha256": {
+    "packages/sdk/src/store-modelling-backend.ts": "cda0235b10cb725ace13295df9c63658cbc442fb18d024b684827d8277282072",
+    "packages/mcp/src/headless-backend-modelling.ts": "1bce461a9728268847c9b156be252b82c1c1b9582fccb41ca83267f9e1a9cfc8",
+    "apps/viewer/src/sdk/adapters/store-adapter-modelling.ts": "8969250c38887e35387c1c1414e4cd27d78f1933bcca596e132e3c5c18e6f66a",
+    "packages/wasm/pkg/ifc-lite_bg.wasm": "14428f5e2dd2bb3473220f783ebabf03ef282ba11116ece6bf8be9a76bf4ca5a",
+    "apps/viewer/public/samples/hello-wall.ifc": "0ab20f4ea355ea9aa4fade7264b97ee9f9929addfa3961b2437c4381bd674014"
+  },
+  "normal": {
+    "sdk": 2,
+    "mcp": 5,
+    "viewerDesign": 2,
+    "inheritedViewerControls": 4,
+    "skips": 0
+  },
+  "inverse": {
+    "sdkFailures": 2,
+    "mcpFailures": 4,
+    "viewerDesignFailures": 2,
+    "productionHandlersRemovedOnly": true,
+    "restoredByteForByte": true
+  },
+  "browser": "pending: T3 browser on Mac cannot reach Windows/WSL host"
+}

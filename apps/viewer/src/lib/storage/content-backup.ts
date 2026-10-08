@@ -2,11 +2,19 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import type { SavedConversation } from '../assistant/persistence.js';
+import type { ClashGroupWorkspace } from '../clash/group-workspace.js';
+import type { DraftBatch } from '../bcf-drafts/draft-types.js';
+import type { BcfPublication } from '../bcf-publication/outbox-types.js';
+import type { ModelChangeReceipt } from '../actions/model-change-commit.js';
+import type { ClashGroupApplication } from '../clash/group-applications.js';
+import type { ReviewWorkspace } from '../review/workspace.js';
+import type { SavedClashReport } from '../clash/saved-report-schema.js';
+import type { StoredSemanticReview } from '../semantic/assist/library.js';
+import type { AssistantRecipe } from '../assistant/reuse/recipe.js';
+import type { AssistantPreferences } from '../assistant/reuse/preferences.js';
 import type { SavedValidationReport } from '../validation/reports/history.js';
-import { validationContent } from '../validation/reports/persistence.js';
-import { comparisonContent } from '../compare/savedComparisonPersistence.js';
 import type { SavedComparison } from '../compare/savedComparisonSchema.js';
-import { documentContent } from '../document/persistence.js';
 import type { DocumentSpec } from '../document/types.js';
 import { contentTransaction, transactionDone, requestValue, type ContentRow, type MigrationRow, type RecoveryRow } from './content-database.js';
 import type { ContentCommitReceipt } from './content-library.js';
@@ -16,11 +24,32 @@ import { readLegacyOriginals } from './content-migration.js';
 import { forgetContentImports, pendingContentImports, planContentImport, prepareContentImport, rememberContentImports } from './content-import-plan.js';
 import { BACKUP_DRAFT_PREFIX, draftRecoveryRows, forgetContentDrafts, mergeContentDrafts, parseContentDrafts,
   pendingContentDrafts, stageContentDrafts, type ContentDraftEvidence } from './content-backup-drafts.js';
+import { CONTENT_KINDS, CONTENT_POLICIES } from './content-kinds.js';
+import { CONTENT_DEFINITIONS, contentKindForLegacyKey } from './content-registry.js';
 
 export interface ContentLibraries {
   validation: SavedValidationReport[];
   comparison: SavedComparison[];
   document: DocumentSpec[];
+  /** Optional for backups written before assistant conversations existed. */
+  assistant?: SavedConversation[];
+  clashGroups?: ClashGroupWorkspace[];
+  bcfDrafts?: DraftBatch[];
+  /** Imported outbox records always arrive blocked; see `quarantineImported`. */
+  bcfOutbox?: BcfPublication[];
+  /** Optional for backups written before reviewed model change receipts existed. */
+  modelChanges?: ModelChangeReceipt[];
+  /** Optional for backups written before AI clash group apply receipts existed. */
+  clashGroupApplications?: ClashGroupApplication[];
+  /** Optional for backups written before coordination review decisions existed. */
+  reviewWorkspaces?: ReviewWorkspace[];
+  /** Optional for backups written before saved clash reports existed. */
+  clashReports?: SavedClashReport[];
+  /** Optional for backups written before reviewed semantic mappings/requirements existed. */
+  semanticReviews?: StoredSemanticReview[];
+  /** Optional for backups written before saved assistant recipes and project preferences existed. */
+  assistantRecipes?: AssistantRecipe[];
+  assistantPreferences?: AssistantPreferences[];
 }
 export interface ContentBackup {
   version: 1;
@@ -44,9 +73,20 @@ export function createContentBackup(libraries: ContentLibraries, status?: Record
       return [];
     });
   return { version: 1, exportedAt: new Date().toISOString(), status, libraries: {
-    validation: partition('validation', copied.validation, validationContent.decode),
-    comparison: partition('comparison', copied.comparison, comparisonContent.decode),
-    document: partition('document', copied.document, documentContent.decode),
+    validation: partition('validation', copied.validation, CONTENT_DEFINITIONS.validation.decode),
+    comparison: partition('comparison', copied.comparison, CONTENT_DEFINITIONS.comparison.decode),
+    document: partition('document', copied.document, CONTENT_DEFINITIONS.document.decode),
+    ...(copied.assistant ? { assistant: partition('assistant', copied.assistant, CONTENT_DEFINITIONS.assistant.decode) } : {}),
+    ...(copied.clashGroups ? { clashGroups: partition('clashGroups', copied.clashGroups, CONTENT_DEFINITIONS.clashGroups.decode) } : {}),
+    ...(copied.bcfDrafts ? { bcfDrafts: partition('bcfDrafts', copied.bcfDrafts, CONTENT_DEFINITIONS.bcfDrafts.decode) } : {}),
+    ...(copied.bcfOutbox ? { bcfOutbox: partition('bcfOutbox', copied.bcfOutbox, CONTENT_DEFINITIONS.bcfOutbox.decode) } : {}),
+    ...(copied.modelChanges ? { modelChanges: partition('modelChanges', copied.modelChanges, CONTENT_DEFINITIONS.modelChanges.decode) } : {}),
+    ...(copied.clashGroupApplications ? { clashGroupApplications: partition('clashGroupApplications', copied.clashGroupApplications, CONTENT_DEFINITIONS.clashGroupApplications.decode) } : {}),
+    ...(copied.reviewWorkspaces ? { reviewWorkspaces: partition('reviewWorkspaces', copied.reviewWorkspaces, CONTENT_DEFINITIONS.reviewWorkspaces.decode) } : {}),
+    ...(copied.clashReports ? { clashReports: partition('clashReports', copied.clashReports, CONTENT_DEFINITIONS.clashReports.decode) } : {}),
+    ...(copied.semanticReviews ? { semanticReviews: partition('semanticReviews', copied.semanticReviews, CONTENT_DEFINITIONS.semanticReviews.decode) } : {}),
+    ...(copied.assistantRecipes ? { assistantRecipes: partition('assistantRecipes', copied.assistantRecipes, CONTENT_DEFINITIONS.assistantRecipes.decode) } : {}),
+    ...(copied.assistantPreferences ? { assistantPreferences: partition('assistantPreferences', copied.assistantPreferences, CONTENT_DEFINITIONS.assistantPreferences.decode) } : {}),
   }, drafts: mergeContentDrafts(parseContentDrafts(preservedDrafts), pendingContentDrafts(), drafts) };
 }
 
@@ -71,9 +111,20 @@ export function parseContentBackup(text: string): ContentBackup {
     return entries;
   };
   return { version: 1, exportedAt: typeof backup.exportedAt === 'string' ? backup.exportedAt : '', libraries: {
-    validation: parse('validation', validationContent.decode),
-    comparison: parse('comparison', comparisonContent.decode),
-    document: parse('document', documentContent.decode),
+    validation: parse('validation', CONTENT_DEFINITIONS.validation.decode),
+    comparison: parse('comparison', CONTENT_DEFINITIONS.comparison.decode),
+    document: parse('document', CONTENT_DEFINITIONS.document.decode),
+    ...(libraries.assistant !== undefined ? { assistant: parse('assistant', CONTENT_DEFINITIONS.assistant.decode) } : {}),
+    ...(libraries.clashGroups !== undefined ? { clashGroups: parse('clashGroups', CONTENT_DEFINITIONS.clashGroups.decode) } : {}),
+    ...(libraries.bcfDrafts !== undefined ? { bcfDrafts: parse('bcfDrafts', CONTENT_DEFINITIONS.bcfDrafts.decode) } : {}),
+    ...(libraries.bcfOutbox !== undefined ? { bcfOutbox: parse('bcfOutbox', CONTENT_DEFINITIONS.bcfOutbox.decode) } : {}),
+    ...(libraries.modelChanges !== undefined ? { modelChanges: parse('modelChanges', CONTENT_DEFINITIONS.modelChanges.decode) } : {}),
+    ...(libraries.clashGroupApplications !== undefined ? { clashGroupApplications: parse('clashGroupApplications', CONTENT_DEFINITIONS.clashGroupApplications.decode) } : {}),
+    ...(libraries.reviewWorkspaces !== undefined ? { reviewWorkspaces: parse('reviewWorkspaces', CONTENT_DEFINITIONS.reviewWorkspaces.decode) } : {}),
+    ...(libraries.clashReports !== undefined ? { clashReports: parse('clashReports', CONTENT_DEFINITIONS.clashReports.decode) } : {}),
+    ...(libraries.semanticReviews !== undefined ? { semanticReviews: parse('semanticReviews', CONTENT_DEFINITIONS.semanticReviews.decode) } : {}),
+    ...(libraries.assistantRecipes !== undefined ? { assistantRecipes: parse('assistantRecipes', CONTENT_DEFINITIONS.assistantRecipes.decode) } : {}),
+    ...(libraries.assistantPreferences !== undefined ? { assistantPreferences: parse('assistantPreferences', CONTENT_DEFINITIONS.assistantPreferences.decode) } : {}),
   }, drafts: parseContentDrafts(backup.drafts) };
 }
 
@@ -106,7 +157,7 @@ export async function importContentBackup(backup: ContentBackup, readVisible?: (
       const visible = readVisible?.();
       planned = planContentImport(prepared, read.result as ContentRow[], visible);
       receipts = planned.map(row => {
-        const staged = visible?.[row.kind].find(entry => entry.id === row.id);
+        const staged = visible?.[row.kind]?.find(entry => entry.id === row.id);
         return { ...row, ...(staged ? { stagedPayload: structuredClone(staged) } : {}) };
       });
       rememberContentImports(planned);
@@ -121,20 +172,41 @@ export async function importContentBackup(backup: ContentBackup, readVisible?: (
     const visible = readVisible?.();
     planned = planContentImport(prepared, existing, visible, trusted);
     rememberContentImports(planned);
-    const entries: ContentLibraries = { validation: [], comparison: [], document: [] };
+    const entries: ContentLibraries = { validation: [], comparison: [], document: [],
+      ...(parsed.libraries.assistant ? { assistant: [] } : {}), ...(parsed.libraries.clashGroups ? { clashGroups: [] } : {}),
+      ...(parsed.libraries.bcfDrafts ? { bcfDrafts: [] } : {}), ...(parsed.libraries.bcfOutbox ? { bcfOutbox: [] } : {}),
+      ...(parsed.libraries.modelChanges ? { modelChanges: [] } : {}),
+      ...(parsed.libraries.clashGroupApplications ? { clashGroupApplications: [] } : {}),
+      ...(parsed.libraries.reviewWorkspaces ? { reviewWorkspaces: [] } : {}),
+      ...(parsed.libraries.clashReports ? { clashReports: [] } : {}),
+
+      ...(parsed.libraries.semanticReviews ? { semanticReviews: [] } : {}),
+      ...(parsed.libraries.assistantRecipes ? { assistantRecipes: [] } : {}),
+      ...(parsed.libraries.assistantPreferences ? { assistantPreferences: [] } : {}) };
     for (const row of planned) {
       // Keep newer edits to an already-staged identity. Reimport is not an undo.
-      const current = visible?.[row.kind].find(entry => entry.id === row.id);
-      if (current && (row.kind !== 'document' || sameReportEvidence(current, row.payload))) continue;
-      if (row.kind === 'document') { const entry = documentContent.decode(row.payload); if (entry) entries.document.push(entry); }
-      if (row.kind === 'comparison') { const entry = comparisonContent.decode(row.payload); if (entry) entries.comparison.push(entry); }
-      if (row.kind === 'validation') { const entry = validationContent.decode(row.payload); if (entry) entries.validation.push(entry); }
+      const current = visible?.[row.kind]?.find(entry => entry.id === row.id);
+      if (current && (CONTENT_POLICIES[row.kind].immutableEvidence || sameReportEvidence(current, row.payload))) continue;
+      if (row.kind === 'assistant') { const entry = CONTENT_DEFINITIONS.assistant.decode(row.payload); if (entry) (entries.assistant ??= []).push(entry); }
+      if (row.kind === 'clashGroups') { const entry = CONTENT_DEFINITIONS.clashGroups.decode(row.payload); if (entry) (entries.clashGroups ??= []).push(entry); }
+      if (row.kind === 'bcfDrafts') { const entry = CONTENT_DEFINITIONS.bcfDrafts.decode(row.payload); if (entry) (entries.bcfDrafts ??= []).push(entry); }
+      if (row.kind === 'bcfOutbox') { const entry = CONTENT_DEFINITIONS.bcfOutbox.decode(row.payload); if (entry) (entries.bcfOutbox ??= []).push(entry); }
+      if (row.kind === 'modelChanges') { const entry = CONTENT_DEFINITIONS.modelChanges.decode(row.payload); if (entry) (entries.modelChanges ??= []).push(entry); }
+      if (row.kind === 'clashGroupApplications') { const entry = CONTENT_DEFINITIONS.clashGroupApplications.decode(row.payload); if (entry) (entries.clashGroupApplications ??= []).push(entry); }
+      if (row.kind === 'reviewWorkspaces') { const entry = CONTENT_DEFINITIONS.reviewWorkspaces.decode(row.payload); if (entry) (entries.reviewWorkspaces ??= []).push(entry); }
+      if (row.kind === 'clashReports') { const entry = CONTENT_DEFINITIONS.clashReports.decode(row.payload); if (entry) (entries.clashReports ??= []).push(entry); }
+      if (row.kind === 'semanticReviews') { const entry = CONTENT_DEFINITIONS.semanticReviews.decode(row.payload); if (entry) (entries.semanticReviews ??= []).push(entry); }
+      if (row.kind === 'assistantRecipes') { const entry = CONTENT_DEFINITIONS.assistantRecipes.decode(row.payload); if (entry) (entries.assistantRecipes ??= []).push(entry); }
+      if (row.kind === 'assistantPreferences') { const entry = CONTENT_DEFINITIONS.assistantPreferences.decode(row.payload); if (entry) (entries.assistantPreferences ??= []).push(entry); }
+      if (row.kind === 'document') { const entry = CONTENT_DEFINITIONS.document.decode(row.payload); if (entry) entries.document.push(entry); }
+      if (row.kind === 'comparison') { const entry = CONTENT_DEFINITIONS.comparison.decode(row.payload); if (entry) entries.comparison.push(entry); }
+      if (row.kind === 'validation') { const entry = CONTENT_DEFINITIONS.validation.decode(row.payload); if (entry) entries.validation.push(entry); }
     }
     throw new ContentImportFailure(error, entries);
   }
   forgetContentDrafts(drafts); forgetContentImports(planned);
   committed?.(receipts);
-  for (const kind of ['validation', 'comparison', 'document'] as const) announceContentChange(kind);
+  for (const kind of CONTENT_KINDS) announceContentChange(kind);
   return planned.length;
 }
 
@@ -191,7 +263,7 @@ export async function readContentRecovery(): Promise<RecoveryRow[]> {
     rows.push(...await readStoredRecovery());
   } catch (error) { console.warn('[User content] Reading preserved originals failed', error); failure = error; }
   // A failed migration must not prevent exporting its still-intact local original.
-  for (const definition of [validationContent, comparisonContent, documentContent]) {
+  for (const definition of Object.values(CONTENT_DEFINITIONS)) {
     try {
       for (const original of readLegacyOriginals(definition.legacyKey)) {
         if (!rows.some(row => row.key === original.key && row.raw === original.raw)) {
@@ -229,8 +301,7 @@ export async function cleanupContentLegacy(): Promise<void> {
 /** TODO(remove-by: next incompatible viewer release, owner: louistrue), #6679.
  * Older tabs can still write legacy keys. Archive changes; never replay their libraries. */
 export async function preserveLegacyChange(key: string, raw: string): Promise<void> {
-  const keys = [validationContent.legacyKey, comparisonContent.legacyKey, documentContent.legacyKey];
-  if (!keys.includes(key)) return;
+  if (!contentKindForLegacyKey(key)) return;
   const tx = await contentTransaction('recovery', 'readwrite');
   const done = transactionDone(tx);
   tx.objectStore('recovery').add({ key: `${key}:later:${crypto.randomUUID()}`, raw, createdAt: Date.now() } satisfies RecoveryRow);

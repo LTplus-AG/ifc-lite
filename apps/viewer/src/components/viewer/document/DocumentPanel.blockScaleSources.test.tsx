@@ -41,7 +41,7 @@ const liveReport: ValidationReport = {
 };
 
 function editor(block: DocumentBlock, onChange: (b: DocumentBlock) => void = noop, report: ValidationReport | null = null): HTMLElement {
-  return render(<BlockEditor block={block} index={0} count={1} bindings={BINDINGS} topics={new Map()} charts={[]} idsValidationReport={report} onChange={onChange} onMove={noop} onRemove={noop} />);
+  return render(<BlockEditor block={block} index={0} count={1} bindings={BINDINGS} topics={new Map()} charts={[]} idsValidationReport={report} onChange={onChange} onMove={noop} onCopy={noop} onRemove={noop} />);
 }
 const settle = async (): Promise<void> => { for (let i = 0; i < 4; i++) await act(async () => { await Promise.resolve(); }); };
 

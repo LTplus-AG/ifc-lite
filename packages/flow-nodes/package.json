@@ -10,6 +10,11 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
       "default": "./dist/index.js"
+    },
+    "./ai": {
+      "types": "./dist/ai.d.ts",
+      "import": "./dist/ai.js",
+      "default": "./dist/ai.js"
     }
   },
   "scripts": {
@@ -19,6 +24,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@ifc-lite/ai": "workspace:^",
     "@ifc-lite/bcf-api": "workspace:^",
     "@ifc-lite/data": "workspace:^",
     "@ifc-lite/documents-api": "workspace:^",

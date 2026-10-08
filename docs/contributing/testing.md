@@ -60,6 +60,20 @@ cd packages/parser && pnpm exec vitest --watch
 cd packages/parser && pnpm exec vitest run --coverage
 ```
 
+### Local BCF publication peer
+
+Run `pnpm dev:bcf-test-server` from the repository root for a controlled local BCF API peer. It prints its loopback URL, synthetic token and project ID. In the viewer's BCF server connection form, choose a custom URL and the access-token sign-in method, then load the printed project. Use a local viewer origin (`localhost` or `127.0.0.1`); the peer does not allow other browser origins. It holds only in-memory test data and discards that data on shutdown.
+
+Run its integration acceptance through root Turbo:
+
+```bash
+TEST_PATTERN='bcf-server.publication' pnpm test --filter=@ifc-lite/viewer --only --env-mode=loose
+```
+
+The suite uses actual HTTP requests through the native viewer connector and BCF client. It covers creation/update, human comments, viewpoints referencing a parsed committed SketchUp IFC model, project pull and BCF archive roundtrip, vocabulary rejection, permission loss, and a connection closed after a committed write. This is controlled-peer evidence, not vendor conformance.
+
+The draft/outbox suites run against the same peer (`TEST_PATTERN='bcf-drafts|bcf-publication|BCFDraftsDialog'`). The peer's `loseNextWriteResponse` drops the next committed write's response, and `loseResponsesOfWrites` drops the responses of chosen accepted-write ordinals (1-based), so a test can lose exactly a viewpoint or comment response. Server timestamps use the peer's clock. Snapshot upload, OAuth grants, server-side revision headers and vendor-specific idempotency remain outside this peer's contract.
+
 ### Rust Tests
 
 The Cargo workspace root is the repo root:
@@ -94,7 +108,7 @@ cargo fuzz run parse_entity -- -max_total_time=60
 ```
 
 The contract under fuzz is that `parse_entity` never panics, hangs, or overflows
-on arbitrary bytes (only returns `Ok`/`Err`). `tests/malformed_input.rs` pins the
+on arbitrary bytes (only returns `Ok`/`Err`). `rust/core/tests/malformed_input.rs` pins the
 same contract for specific inputs in normal CI.
 
 ## Writing Tests

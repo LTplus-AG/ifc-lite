@@ -1,0 +1,13 @@
+diff --git a/packages/ids-authoring/src/lint/suppress.ts b/packages/ids-authoring/src/lint/suppress.ts
+index 105673f50..6910a7e33 100644
+--- a/packages/ids-authoring/src/lint/suppress.ts
++++ b/packages/ids-authoring/src/lint/suppress.ts
+@@ -21,7 +21,7 @@ import type { Diagnostic, SuppressedDiagnostic } from './types.js';
+ export function ancestry(doc: StudioDocument, nodeId: Uuid): Uuid[] {
+   const loc = locateNode(doc, nodeId);
+   const chain = [nodeId];
+-  if (loc && loc.kind === 'constraint') chain.push(loc.facetId);
++  if (loc && loc.kind === 'constraint') chain.push(loc.facetId, loc.specId);
+   else if (loc && (loc.kind === 'applicabilityFacet' || loc.kind === 'requirement')) chain.push(loc.specId);
+   if (nodeId !== doc.nodes.document) chain.push(doc.nodes.document);
+   return chain;

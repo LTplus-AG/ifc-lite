@@ -115,6 +115,12 @@
       "@ifc-lite/ids/*": [
         "packages/ids/dist/*"
       ],
+      "@ifc-lite/ids-authoring": [
+        "packages/ids-authoring/dist/index.d.ts"
+      ],
+      "@ifc-lite/ids-authoring/*": [
+        "packages/ids-authoring/dist/*"
+      ],
       "@ifc-lite/lists": [
         "packages/lists/dist/index.d.ts"
       ],

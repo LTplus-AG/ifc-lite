@@ -17,7 +17,7 @@
  */
 
 import { IfcQuery } from '@ifc-lite/query';
-import { extractProjectUnits, ProjectUnits, type IfcDataStore } from '@ifc-lite/parser';
+import { extractProjectUnits, materialAssignmentsAvailable, ProjectUnits, type IfcDataStore } from '@ifc-lite/parser';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
 import type { ViewerState } from '@/store';
 import type { EntityRef } from '@/store/types';
@@ -25,6 +25,8 @@ import { stringToEntityRef } from '@/store/entity-ref';
 import { resolveEntityRef, resolveEntityRefGlobalIdFromState } from '@/store/resolveEntityRef';
 import { resolveQuantityDisplay } from '@/lib/units/display';
 import { effectiveElementData } from '@/components/viewer/properties/effectiveElementData';
+import { effectiveMaterials, effectiveMaterialProperties } from '@/components/viewer/properties/effectiveMaterials';
+import { materialEvidence } from './selection-materials';
 import { effectiveTypeProperties } from '@/components/viewer/properties/effectiveTypeProperties';
 import { effectiveSelectedClass } from '@/components/viewer/properties/effectiveSelectedClass';
 import { propertyDisplayValue } from '@/components/viewer/properties/propertyDisplayValue';
@@ -99,6 +101,10 @@ function elementRow(s: ViewerState, ref: EntityRef, source: ModelSource, rich: b
   const setLimit = rich ? 16 : 6;
   const valueLimit = rich ? 32 : 12;
   const data = effectiveElementData(ref.expressId, source.query, source.view);
+  const materials = effectiveMaterials(source.store, ref.expressId, source.view);
+  const materialAssignmentsVerified = Boolean(source.store && materialAssignmentsAvailable(source.store, ref.expressId, source.view));
+  const materialPropertiesVerified = materialAssignmentsVerified && Boolean(source.store?.source?.length) && !materials.some(material => material.unresolved);
+  const materialProperties = effectiveMaterialProperties(source.store, ref.expressId, source.view, s.mutationVersion);
   const attributes = Object.fromEntries([...data.attributes].slice(0, rich ? 32 : 12).map(([name, value]) => [name, bounded(value)]));
   const inherited = effectiveTypeProperties(source.store, ref.expressId, source.view);
   const typeAttributes = inherited ? source.view?.getAttributeMutationsForEntity(inherited.typeId) ?? [] : [];
@@ -130,6 +136,21 @@ function elementRow(s: ViewerState, ref: EntityRef, source: ModelSource, rich: b
     type: effectiveSelectedClass(source.store, source.view, ref.expressId),
     name: typeof name === 'string' && name.length > 0 ? bounded(name) : null,
     attributes, psets, psetCount: data.psets.length, quantities, qsetCount: data.qsets.length,
+    materialsStatus: !source.store ? 'unavailable' : materialAssignmentsVerified ? 'available' : 'unavailable-membership',
+    materialCount: materialAssignmentsVerified ? materials.length : null,
+    materials: materials.slice(0, setLimit).map(material => materialEvidence(material, valueLimit)),
+    materialPropertiesStatus: !source.store?.source?.length ? 'unverified-without-source'
+      : materialPropertiesVerified ? 'available' : 'unverified-material-associations',
+    materialPropertyGroupCount: materialPropertiesVerified ? materialProperties.length : null,
+    materialProperties: materialProperties.slice(0, setLimit).map(group => ({
+      modelId: ref.modelId, expressId: group.materialId, displayName: bounded(group.materialName),
+      psetCount: materialPropertiesVerified ? group.psets.length : null,
+      psets: group.psets.slice(0, setLimit).map(pset => ({
+        name: pset.name, propertyCount: materialPropertiesVerified ? pset.properties.length : null,
+        properties: Object.fromEntries(pset.properties.slice(0, valueLimit)
+          .map(prop => [prop.name, bounded(propertyDisplayValue(prop, source.units, s.unitDisplayOverrides).full)])),
+      })),
+    })),
     inheritedType: inherited ? {
       modelId: ref.modelId, modelName: source.name,
       GlobalId: typeof typeGlobalId === 'string' && typeGlobalId && typeGlobalId !== '$' ? typeGlobalId : null,
@@ -180,7 +201,7 @@ export const selectionAdapter: EvidenceAdapter = {
         perElementBounds: rich ? { sets: 16, valuesPerSet: 32, attributes: 32 } : { sets: 6, valuesPerSet: 12, attributes: 12 },
         units: 'Quantity values carry {value, unit} in the Properties panel display unit (project unit, or the display-unit override below); a null unit is undeclared. Property values are the panel display strings, with the unit inline when the measure declares one.',
         displayUnitOverrides: s.unitDisplayOverrides,
-        limitations: 'Values include unsaved edits made this session (status "edited"). Property and quantity sets are bounded per element (see perElementBounds; propertyCount/quantityCount/psetCount/qsetCount are the full counts). Type-inherited property sets are a separate inheritedType definition with model and type GlobalId provenance; occurrence properties override same-named type properties for that occurrence. Each section uses the same bounds. Materials, classifications and relationships are not included. Only the first elements of a large selection are read; byClass/byModel cover the whole selection.',
+        limitations: 'Includes session edits; element status covers its own edits. Associated materials/properties are included by native reads and snapshot freshness. Sets, values and material members use perElementBounds, with full counts. inheritedType carries model/type GlobalId provenance; occurrence properties override same-named type values. Materials use occurrence-before-type precedence and include session associations. LayerThickness is metres. Generic material properties use panel display units and model/material provenance. Unreadable source-free assignments are unverified; absent values are unknown. Missing membership data or edited unavailable source associations make totals null/unavailable. Unreadable material property totals are null/unverified; empty rows do not establish absence. Typed IFC2X3 scalar material-property subtypes are outside the generic-set reader. Classifications and relationships are excluded. Large selection is sampled; byClass/byModel cover all selected elements.',
       },
       rows: sample.map(ref => elementRow(s, ref, sourceFor(ref.modelId), rich)),
       totalRows: refs.length, availability: 'available',

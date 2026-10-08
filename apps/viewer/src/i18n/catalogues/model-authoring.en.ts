@@ -6,6 +6,9 @@ import type { TranslationValue } from '../types';
 
 /** Reviewed native authoring (viewer AI P15A): `components/viewer/actions/ModelAuthoringReview.tsx`, assistant proposals. */
 export const modelAuthoringEn = {
+  'modelAuthoring.splitResult': 'Split at {cut}; the {side} piece keeps the existing identity and one new piece is created',
+  'modelAuthoring.splitPreview': 'Preview shows the cut marker, not the resulting solids. Native profiles, openings and structural engineering intent are not represented by the marker.',
+  'modelAuthoring.splitOpenings': 'Hosted opening assignments: left {toLeft}, right {toRight}, unreadable or skipped {skipped}.',
   'modelAuthoring.commandLabel': 'Apply reviewed authoring',
   'modelAuthoring.title': 'Review model authoring',
   'modelAuthoring.rows': 'Proposed operations',
@@ -13,6 +16,7 @@ export const modelAuthoringEn = {
   'modelAuthoring.counts': '{ready} ready · {attention} need attention · {other} unchanged, blocked or unsupported',
   'modelAuthoring.op.element.create': 'Create',
   'modelAuthoring.op.element.delete': 'Delete',
+  'modelAuthoring.op.element.split': 'Split',
   'modelAuthoring.op.element.resize': 'Resize',
   'modelAuthoring.op.element.profile': 'Change profile',
   'modelAuthoring.op.element.move': 'Move',

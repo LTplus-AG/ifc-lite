@@ -76,7 +76,8 @@ export function snapshotClashReport(state: ClashReportCaptureState, name: string
     };
   });
   const models: SavedClashModel[] = [...modelIds].map((id) => {
-    const model = state.models.get(id);
+    // Stamped runs retain their run-start identity even after a model swap or unload.
+    const model = stamp ? stamp.placement?.get(id) : state.models.get(id);
     return {
       id, name: model?.name?.trim() ? model.name : id,
       ...(model?.sourceFingerprint ? { sourceFingerprint: model.sourceFingerprint } : {}),

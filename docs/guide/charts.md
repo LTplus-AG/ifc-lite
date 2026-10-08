@@ -82,6 +82,8 @@ The card names its source and anything that limits it as evidence:
 | Label | Meaning |
 |-------|---------|
 | **Saved clash report: name, saved date** | The chart shows this saved report, not the current result. |
+| **Clash rules matched no elements** | Every rule with recorded coverage matched zero elements on at least one side. Zero clashes do not establish a clean check. |
+| **Some clash rules matched no elements** | Some rules compared no elements; the count only describes the rules that had matches. |
 | **Partial run** | The run stopped at its candidate-pair limit, so some pairs were never checked. Absent clashes are not evidence that they are gone. |
 | **Models changed before saving** | The model was edited or moved after the run finished and before it was saved. |
 | **N hidden by exclusions** | Your enabled exclusion rules were hiding N clashes when the report was saved. The report holds the clashes the panel showed, so the chart counts a subset of the run. |

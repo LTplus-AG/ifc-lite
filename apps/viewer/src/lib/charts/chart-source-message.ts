@@ -14,6 +14,7 @@
  * imports may import this module.
  */
 
+import { classifyRuleCoverage } from '@ifc-lite/clash';
 import type { UseTranslationResult } from '@/i18n/useTranslation';
 import type { ClashReportRevision } from '@/lib/clash/saved-report-revision';
 import type { SavedClashReport } from '@/lib/clash/saved-report-schema';
@@ -26,7 +27,12 @@ type Translate = UseTranslationResult['t'];
  * clashes the exclusion rules were hiding, another model revision.
  * One list for every chart surface and the Clash panel's saved-report list. */
 export function clashReportLimitBadges(report: SavedClashReport, revision: ClashReportRevision, t: Translate): string[] {
+  const coverage = classifyRuleCoverage({ ruleCoverage: report.run.rules.flatMap((rule) =>
+    rule.matchedA !== undefined && rule.matchedB !== undefined
+      ? [{ rule: rule.id, matchedA: rule.matchedA, matchedB: rule.matchedB }] : []) });
   return [
+    ...(coverage === 'no-match' ? [t('clashChart.badgeNoMatch')] : []),
+    ...(coverage === 'partial' ? [t('clashChart.badgePartialCoverage')] : []),
     ...(report.completeness.truncated ? [t('clashChart.badgePartial')] : []),
     ...(report.completeness.stale ? [t('clashChart.badgeStale')] : []),
     ...(report.completeness.excluded > 0 ? [t('clashChart.badgeExcluded', { count: report.completeness.excluded })] : []),

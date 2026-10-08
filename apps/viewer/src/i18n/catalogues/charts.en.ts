@@ -44,6 +44,8 @@ export const chartsEn = {
   'clashChart.missing': 'Saved clash report unavailable in this browser. Choose a source; the current result is not shown in its place.',
   'clashChart.chooseSource': 'Choose a source',
   'clashChart.caption': 'Saved clash report: {name}, saved {date}',
+  'clashChart.badgeNoMatch': 'Clash rules matched no elements',
+  'clashChart.badgePartialCoverage': 'Some clash rules matched no elements',
   'clashChart.badgePartial': 'Partial run',
   'clashChart.badgeStale': 'Models changed before saving',
   'clashChart.badgeExcluded': '{count} hidden by exclusions',

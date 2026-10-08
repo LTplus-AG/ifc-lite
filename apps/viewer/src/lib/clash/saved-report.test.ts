@@ -124,3 +124,55 @@ describe('Saved clash report: what capture keeps of a run (#6947)', () => {
     assert.equal(defaultClashReportName(rules(), now), 'Clash run 2026-10-07 09:30');
   });
 });
+
+
+describe('Saved clash report: run provenance and empty coverage (#6947)', () => {
+  it('keeps revision A when revision B replaces the same model id before saving, including after unload', async () => {
+    const { snapshotClashReport, clashReportRevision } = await load();
+    const { fixtureModel } = await import('@/test/store-fixture.js');
+    const { captureAnalysisStamp, stampAnalysisReport } = await import('@/hooks/useAnalysisStaleness.js');
+    const before = useViewerStore.getState();
+    const modelA = { ...fixtureModel('m1'), name: 'Revision A.ifc', sourceContentHash: 'hash-A' };
+    useViewerStore.setState({ models: new Map([['m1', modelA]]), geometryContentVersion: 0, mutationVersion: 0 });
+    try {
+      const stamp = captureAnalysisStamp(true);
+      const result = stampAnalysisReport(await createClashEngine({ backend: 'ts' }).run(
+        [box('wall', 11, 'IfcWall'), box('beam', 12, 'IfcBeam')],
+        [{ id: 'r', name: 'Walls vs beams', a: 'IfcWall', b: 'IfcBeam', mode: 'hard' }]), stamp);
+      assert.equal(result.clashes.length, 1);
+      const modelB = { ...modelA, name: 'Revision B.ifc', sourceContentHash: 'hash-B' };
+      useViewerStore.setState({ models: new Map([['m1', modelB]]), geometryContentVersion: 1 });
+      const capture = () => snapshotClashReport({ ...useViewerStore.getState(), clashResult: result, clashRawResult: result }, 'Run A');
+      const report = capture();
+      assert.ok(report);
+      assert.deepEqual(report.models, [{ id: 'm1', name: 'Revision A.ifc', sourceContentHash: 'hash-A' }]);
+      assert.equal(report.completeness.stale, true);
+      assert.equal(clashReportRevision(report, [modelB], 0), 'not-loaded');
+      useViewerStore.setState({ models: new Map() });
+      assert.deepEqual(capture()?.models, report.models, 'unloading cannot erase run identity');
+    } finally { useViewerStore.setState(before); }
+  });
+
+  it('qualifies zero-clash rules that matched no elements, with a covered control', async () => {
+    const { snapshotClashReport } = await load();
+    const { clashReportLimitBadges } = await import('../charts/chart-source-message.js');
+    const { chartsEn } = await import('@/i18n/catalogues/charts.en.js');
+    const { registerEnglish, resolve } = await import('@/i18n/registry.js');
+    registerEnglish(chartsEn);
+    const elements = [box('wall', 11, 'IfcWall'), box('beam', 12, 'IfcBeam')];
+    const engine = createClashEngine({ backend: 'ts' });
+    const empty = { id: 'empty', name: 'Walls vs ducts', a: 'IfcWall', b: 'IfcDuctSegment', mode: 'hard' as const };
+    const covered = { id: 'covered', name: 'Walls vs beams', a: 'IfcWall', b: 'IfcBeam', mode: 'hard' as const };
+    const badges = async (rules: typeof empty[]) => {
+      const result = await engine.run(elements, rules);
+      const report = snapshotClashReport({ ...useViewerStore.getState(), clashResult: result, clashRawResult: result }, 'Coverage');
+      assert.ok(report);
+      return { result, badges: clashReportLimitBadges(report, 'same', resolve) };
+    };
+    const noMatch = await badges([empty]);
+    assert.equal(noMatch.result.clashes.length, 0);
+    assert.ok(noMatch.badges.includes('Clash rules matched no elements'));
+    assert.ok((await badges([empty, covered])).badges.includes('Some clash rules matched no elements'));
+    assert.deepEqual((await badges([covered])).badges, [], 'a covered run has no empty-selection warning');
+  });
+});

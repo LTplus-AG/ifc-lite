@@ -5,7 +5,7 @@
 import '@/test/setup-dom.js';
 import test, { afterEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { extractStructuralOnDemand, getAttributeNames } from '@ifc-lite/parser';
+import { extractStructuralOnDemand, getAttributeNames, extractProjectUnits } from '@ifc-lite/parser';
 import type { IfcAttributeValue } from '@ifc-lite/data';
 import { recordCompoundMutation, undoRecordedMutationOperations } from '@ifc-lite/mutations';
 import { structuralEvidenceFixture as fixture } from '@/test/structural-evidence-fixture';
@@ -18,8 +18,8 @@ import { captureEvidence } from '../evidence';
 
 const initial = useViewerStore.getState();
 afterEach(() => useViewerStore.setState(initial, true));
-interface EvidenceRow { data: { modelId: string; structural: { nativeResolvedActivityCount: number | null;
-  activities: Array<{ AppliedLoad: { components: { ForceX?: number } } | null }> } } }
+interface EvidenceRow { data: { modelId: string; structural: { member: { thicknessUnit: string | null }; nativeResolvedActivityCount: number | null;
+  activities: Array<{ AppliedLoad: { components: { ForceX?: number }; componentUnits: { ForceX?: string | null } } | null }> } } }
 const rows = (): EvidenceRow[] => JSON.parse(captureEvidence('selection').payload).evidence.rows;
 
 test('#7195 native structural deleted membership and actual undo invalidate the shared reader', async () => {
@@ -58,7 +58,7 @@ test('#7195 native structural same EXPRESS identities in two models remain isola
     [['a', 1234], ['b', 2345]]);
 });
 
-test('#7195 selected structural samples retain exact native totals above the reported row bound', async () => {
+test('#7195 selected structural samples retain exact native totals and declared units above the reported row bound', async () => {
   const { file, memberId, loadId } = await fixture();
   const view = getOrCreateMutationView(useViewerStore, 'native'); assert.ok(view); view.setExpressIdWatermark(200_000);
   const author = (type: string, fields: Record<string, IfcAttributeValue>) =>
@@ -76,7 +76,12 @@ test('#7195 selected structural samples retain exact native totals above the rep
   const native = extractStructuralOnDemand(saved);
   assert.equal(native.members[0].activityGlobalIds.length, 21);
   assert.ok(native.activities.every(activity => activity.appliedLoad?.components.ForceX === 1234));
+  const units = extractProjectUnits(saved.source, saved.entityIndex);
+  assert.equal(units.resolvedForUnitType('LENGTHUNIT')?.symbol, 'mm');
+  assert.equal(units.resolvedForUnitType('FORCEUNIT'), undefined);
   const structural = rows()[0].data.structural;
+  assert.equal(structural.member.thicknessUnit, 'mm');
+  assert.equal(structural.activities[0].AppliedLoad?.componentUnits.ForceX, null);
   assert.equal(structural.nativeResolvedActivityCount, 21);
   assert.equal(structural.activities.length, 16);
 });

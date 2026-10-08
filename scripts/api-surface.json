@@ -8400,6 +8400,7 @@
     "createSyntheticDataStore: function",
     "detectFormat: function",
     "deterministicGlobalId: function",
+    "effectiveMetadataRecord: function",
     "effectiveRelationshipEdges: function",
     "effectiveSpatialMemberIds: function",
     "effectiveStoreyId: function",

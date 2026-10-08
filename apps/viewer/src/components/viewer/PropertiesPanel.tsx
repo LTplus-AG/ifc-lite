@@ -1653,7 +1653,7 @@ export function PropertiesPanel() {
                     {(visiblePsetCount > 0 || visibleClassificationCount > 0 || visibleMaterialCount > 0 || foundMaterialProperties.length > 0) && (
                       <div className="border-t border-zinc-200 dark:border-zinc-800 pt-2 mt-2" />
                     )}
-                    {!findQuery && documentData.membershipUnavailable && <p role="status" className="text-xs text-amber-700 dark:text-amber-300">{t('properties.document.membershipUnavailable')}</p>}
+                    {!findQuery && documentData.membershipUnavailable && <output className="block text-xs text-amber-700 dark:text-amber-300">{t('properties.document.membershipUnavailable')}</output>}
                     {findQuery ? foundAssociations.documents.map((card, i) => <AssociationAttributeSearchCard key={`doc-${i}`} card={card} query={findQuery} />)
                       : renderedDocuments.map((doc, i) => <DocumentCard key={`doc-${i}`} document={doc} sectionId={associationDisclosureId('document', doc, renderedDocuments, i)} />)}
                   </>

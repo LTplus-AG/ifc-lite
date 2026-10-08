@@ -59,6 +59,13 @@ These design decisions have the biggest impact on performance:
 - **Columnar storage**: Data is stored by type (IDs, types, names as separate arrays) for cache-efficient access patterns.
 - **Zero-copy ArrayBuffer transfer**: Buffers are transferred between worker and main thread, not copied.
 
+Worker tracing must publish before terminal messages: the main thread may
+terminate a worker as soon as its completion event arrives. A
+`createWorkerTraceHost` handler calls `flush(completedSpanName)` before sending
+that event to complete and publish its named span along with pending counters.
+Plain `flush()` publishes only spans that have already ended. The geometry
+prepass follows this contract so its scan remains visible in load traces.
+
 ## Client vs Server Performance
 
 | | Client (WASM) | Server (Rust) |

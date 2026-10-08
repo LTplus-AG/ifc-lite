@@ -6,12 +6,72 @@ import { describe, expect, it } from 'vitest';
 import {
   createLoadTracer,
   createWorkerTraceHost,
+  createPerfCounters,
   enableWorkerTrace,
   isTraceSpansMessage,
   type TraceSpansMessage,
 } from './index.js';
 
 describe('worker trace alignment (#6956)', () => {
+  it('publishes the completed scan before a terminal event can terminate the worker (#6993)', async () => {
+    let now = 10;
+    const events: Array<TraceSpansMessage | { type: 'complete' }> = [];
+    const counters = createPerfCounters();
+    const host = createWorkerTraceHost({
+      spanNames: { scan: 'prepass.scan' },
+      post: (message) => events.push(message),
+      counters,
+      now: () => now,
+      timeOrigin: 100,
+    });
+    await host({ type: 'load-trace:enable', thread: 'prepass' }, async () => {});
+    await host({ type: 'scan' }, async () => {
+      now = 25;
+      counters.add('wasm.bytesIn', 40);
+      host.flush('prepass.scan');
+      events.push({ type: 'complete' });
+      // The host can terminate us here; later handler cleanup is not observed.
+      expect(events).toEqual([
+        {
+          type: 'load-trace:spans',
+          payload: {
+            thread: 'prepass', timeOrigin: 100,
+            spans: [{ name: 'prepass.scan', start: 10, end: 25 }],
+            counters: { 'wasm.bytesIn': 40 },
+          },
+        },
+        { type: 'complete' },
+      ]);
+      now = 30;
+    });
+    expect(events).toHaveLength(2); // handler finally must not publish it twice
+  });
+
+  it('a terminal flush completes only its named work, preserving other in-flight spans (#6993)', async () => {
+    let now = 0;
+    const posted: TraceSpansMessage[] = [];
+    const host = createWorkerTraceHost({
+      spanNames: { scan: 'prepass.scan', styles: 'styles.finalize' },
+      post: (message) => posted.push(message),
+      counters: createPerfCounters(), now: () => now, timeOrigin: 0,
+    });
+    await host({ type: 'load-trace:enable', thread: 'prepass' }, async () => {});
+    let finishStyles!: () => void;
+    const styles = host({ type: 'styles' }, () => new Promise<void>((resolve) => { finishStyles = resolve; }));
+    now = 5;
+    await host({ type: 'scan' }, async () => {
+      now = 10;
+      host.flush('prepass.scan');
+    });
+    expect(posted.flatMap((message) => message.payload.spans)).toEqual([
+      { name: 'prepass.scan', start: 5, end: 10 },
+    ]);
+    now = 20;
+    finishStyles();
+    await styles;
+    expect(posted[1].payload.spans).toEqual([{ name: 'styles.finalize', start: 0, end: 20 }]);
+  });
+
   it('shifts worker spans onto the main clock by the timeOrigin difference', async () => {
     // Main thread started at epoch 1_000_000; the worker was created 250 ms later,
     // so worker-local t=10 is main-local t=260.

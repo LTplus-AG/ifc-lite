@@ -28,6 +28,10 @@ export interface JobLaunchOptions {
   persistPrepared(prepared: JobPrepared): Promise<void>;
 }
 type Packet = Record<string, unknown>;
+interface SupervisorNoStart {
+  executable: 'powershell.exe'; code: 'ENOENT' | 'EACCES'; errno: -2 | -13;
+  syscall: 'spawn powershell.exe';
+}
 interface ExitStatus { code: number | null; signal: NodeJS.Signals | null }
 const literal = (value: string) => `'${value.replace(/'/g, "''")}'`;
 function object(value: unknown): Packet {
@@ -56,6 +60,8 @@ class JobProtocol {
   private packets: Packet[] = [];
   private waiters: Array<{ resolve(packet: Packet): void; reject(error: Error): void }> = [];
   retirement: ExitStatus | null = null;
+  noStart: SupervisorNoStart | null = null;
+  private spawned = false;
   readonly closed: Promise<ExitStatus>;
   constructor(readonly child: ChildProcessWithoutNullStreams) {
     child.stderr.setEncoding('utf8');
@@ -65,12 +71,25 @@ class JobProtocol {
       try {
         if (line.length > 1048576) throw Error('Oversized Job supervisor packet');
         const packet = object(JSON.parse(line));
+        this.noStart = null; // Any actual packet disproves a never-started supervisor.
         this.receipts.push(packet);
         const waiter = this.waiters.shift();
         if (waiter) waiter.resolve(packet); else this.packets.push(packet);
       } catch (error) { this.fail(new Error(`Invalid Job output: ${String(error)}`)); }
     });
-    child.on('error', error => this.fail(error));
+    child.once('spawn', () => { this.spawned = true; this.noStart = null; });
+    child.on('error', error => {
+      // Positive no-birth evidence is captured only at this owned OS event.
+      // A later process error, missing output, or an arbitrary AggregateError
+      // cannot establish that the supervisor never started.
+      const code: unknown = Reflect.get(error, 'code'), errno: unknown = Reflect.get(error, 'errno');
+      if (!this.spawned && child.pid === undefined && this.receipts.length === 0
+        && Reflect.get(error, 'syscall') === 'spawn powershell.exe' && Reflect.get(error, 'path') === 'powershell.exe'
+        && ((code === 'ENOENT' && errno === -2) || (code === 'EACCES' && errno === -13))) {
+        this.noStart = { executable: 'powershell.exe', code, errno, syscall: 'spawn powershell.exe' };
+      }
+      this.fail(error);
+    });
     child.stdin.on('error', error => this.fail(error));
     this.closed = new Promise(resolve => child.once('close', (code, signal) => {
       this.retirement = { code, signal };
@@ -81,6 +100,10 @@ class JobProtocol {
   private fail(error: Error): void {
     this.failure ??= error;
     for (const waiter of this.waiters.splice(0)) waiter.reject(error);
+  }
+  get noStartProof(): SupervisorNoStart | null {
+    if (this.spawned || this.child.pid !== undefined || this.receipts.length !== 0) this.noStart = null;
+    return this.noStart;
   }
   async next(timeoutMs: number): Promise<Packet> {
     const packet = this.packets.shift();
@@ -114,7 +137,7 @@ export interface OwnedJobController {
   dispose(): Promise<void>;
 }
 export class OwnedJobProtocolError extends AggregateError {
-  constructor(errors: unknown[], readonly receipts: readonly Packet[], readonly retirement: ExitStatus | null) {
+  constructor(errors: unknown[], readonly receipts: readonly Packet[], readonly retirement: ExitStatus | null, readonly supervisorNoStart: SupervisorNoStart | null = null) {
     super(errors, `Owned Job refused: ${errors.map(String).join('; ')}. Retain ownership ledger.`);
     this.name = 'OwnedJobProtocolError';
   }
@@ -132,8 +155,8 @@ export async function launchOwnedJob(options: JobLaunchOptions): Promise<OwnedJo
   const protocol = new JobProtocol(child);
   async function refuseAndRetire(error: unknown): Promise<never> {
     try { await protocol.endAndWait(options.cleanupMs + 1000); }
-    catch (cleanup) { throw new OwnedJobProtocolError([error, cleanup], [...protocol.receipts], protocol.retirement); }
-    throw new OwnedJobProtocolError([error], [...protocol.receipts], protocol.retirement);
+    catch (cleanup) { throw new OwnedJobProtocolError([error, cleanup], [...protocol.receipts], protocol.retirement, protocol.noStartProof); }
+    throw new OwnedJobProtocolError([error], [...protocol.receipts], protocol.retirement, protocol.noStartProof);
   }
   let sequence = 0;
   let tail: Promise<unknown> = Promise.resolve();

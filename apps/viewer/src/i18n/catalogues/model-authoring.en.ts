@@ -6,6 +6,8 @@ import type { TranslationValue } from '../types';
 
 /** Reviewed native authoring (viewer AI P15A): `components/viewer/actions/ModelAuthoringReview.tsx`, assistant proposals. */
 export const modelAuthoringEn = {
+  'modelAuthoring.reachNeighborPreview': 'The preview shows the target body; adjoining wall updates are not drawn. Applying uses the native joined-wall writer.',
+  'modelAuthoring.trimExtendResult': '{mode} {end} · length {length} {units} {joined}',
   'modelAuthoring.splitResult': 'Split at {cut}; the {side} piece keeps the existing identity and one new piece is created',
   'modelAuthoring.splitPreview': 'Preview shows the cut marker, not the resulting solids. Native profiles, openings and structural engineering intent are not represented by the marker.',
   'modelAuthoring.splitOpenings': 'Hosted opening assignments: left {toLeft}, right {toRight}, unreadable or skipped {skipped}.',
@@ -34,6 +36,7 @@ export const modelAuthoringEn = {
   'modelAuthoring.op.element.split': 'Split',
   'modelAuthoring.op.element.resize': 'Resize',
   'modelAuthoring.op.element.profile': 'Change profile',
+  'modelAuthoring.op.element.trimExtend': 'Trim/Extend',
   'modelAuthoring.op.element.move': 'Move',
   'modelAuthoring.op.element.rotate': 'Rotate',
   'modelAuthoring.op.type.assign': 'Assign type',

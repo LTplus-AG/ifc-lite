@@ -23,6 +23,7 @@
 import { parseExpectedHostedEdit, parseHostedEdit, type ExpectedHostedEdit } from './model-authoring-hosted-edit';
 import type { HostedElementEdit } from '@ifc-lite/create';
 import { parseShapeParams, parseProfileSectionParams, AUTHORING_OUTLINE_WORK_LIMIT, type ShapeParams } from './model-authoring-shape-params';
+import { parseReachFields, type ReachFields } from './model-authoring-reach-fields';
 import { parseSplitSnapshot, parseSplitCut, type SplitCut } from './model-authoring-split-params';
 import type { SplitSnapshot } from './model-authoring-split-state';
 import { parseSizeParams, type ExpectedSize } from './model-authoring-size-params';
@@ -64,6 +65,7 @@ export type AuthoringOp =
   | ({ op: 'element.copy'; target: ElementTarget; ref: string } & CopyFields)
   | ({ op: 'element.array'; target: ElementTarget; refs: string[] } & ArrayFields)
   | { op: 'hosted.edit'; target: ExistingElement; expected: ExpectedHostedEdit; edit: HostedElementEdit }
+  | ({ op: 'element.trimExtend'; target: ExistingElement } & ReachFields)
   | { op: 'element.delete'; target: ExistingElement }
   | { op: 'element.resize'; target: ExistingElement; expected: ExpectedSize; size: ElementSizePatch }
   | { op: 'element.profile'; target: ExistingElement; expected: ProfileSection; Profile: ProfileSection }
@@ -79,7 +81,7 @@ export type AuthoringOp =
   | { op: 'hosted.create'; ref?: string; kind: HostedKind; host: ElementTarget; name?: string; offset: number; sill: number; width: number; height: number };
 
 export type AuthoringOpName = AuthoringOp['op'];
-export const AUTHORING_OPS: readonly AuthoringOpName[] = ['stair.resize', 'stair.delete', 'railing.delete', 'stair.replace', 'railing.replace', 'stair.create', 'railing.create', 'element.create', 'element.delete', 'element.split', 'element.resize', 'element.profile', 'element.move', 'element.rotate', 'element.copy', 'element.array',
+export const AUTHORING_OPS: readonly AuthoringOpName[] = ['stair.resize', 'stair.delete', 'railing.delete', 'stair.replace', 'railing.replace', 'stair.create', 'railing.create', 'element.create', 'element.delete', 'element.split', 'element.resize', 'element.profile', 'element.trimExtend', 'element.move', 'element.rotate', 'element.copy', 'element.array',
   'type.assign', 'type.detach', 'material.assign', 'walls.join', 'hosted.create', 'hosted.edit'];
 
 export interface ModelAuthoringBatch {
@@ -195,6 +197,8 @@ function operation(value: unknown, index: number, units: AuthoringUnits, refs: M
       if (!['IfcDoor', 'IfcWindow', 'IfcOpeningElement', 'IfcOpeningStandardCase'].includes(target.ifcClass)) throw new Error(`${at}: hosted.edit requires a native door, window or opening occurrence`);
       return { op: value.op, target, expected: parseExpectedHostedEdit(value.expected, units, `${at} expected`), edit: parseHostedEdit(value.edit, units, `${at} edit`) };
     }
+    case 'element.trimExtend':
+      return { op: value.op, target: existing(value.target, at), ...parseReachFields(value, units, at, (v, name) => element(v, name, refs)) };
     case 'element.split': {
       if (Object.keys(value).some(key => !['op', 'target', 'expected', 'cut'].includes(key))) throw new Error(`${at}: unsupported split field`);
       const expected = parseSplitSnapshot(value.expected, `${at} expected`), cut = parseSplitCut(value.cut, units, `${at} cut`);

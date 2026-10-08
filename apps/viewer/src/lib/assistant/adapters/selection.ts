@@ -16,6 +16,7 @@
  * total is over the whole selection.
  */
 
+import { authoringReachEvidenceFromTarget } from '@/lib/actions/model-authoring-reach';
 import { IfcQuery } from '@ifc-lite/query';
 import { extractClassificationsOnDemand, extractProjectUnits, materialAssignmentsAvailable, ProjectUnits, type IfcDataStore } from '@ifc-lite/parser';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
@@ -158,6 +159,7 @@ function elementRow(s: ViewerState, ref: EntityRef, source: ModelSource, rich: b
     modelName: source.name,
     type: effectiveSelectedClass(source.store, source.view, ref.expressId),
     name: typeof name === 'string' && name.length > 0 ? bounded(name) : null,
+    nativeTrimExtendExpected: authoringReachEvidenceFromTarget(nativeTarget, ref.expressId),
     attributes, psets, psetCount: data.psets.length, quantities, qsetCount: data.qsets.length,
     nativeEdit: nativeEditEvidence(nativeTarget, ref.expressId),
     nativeStairExpected: nativeStairEvidenceFromTarget(nativeTarget,ref.expressId),

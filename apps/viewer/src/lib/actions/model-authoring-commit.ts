@@ -36,6 +36,7 @@ import { setElementProfile } from '@/store/slices/mutation-element-profile';
 import { writeStairLifecycle, writeStairCreation } from './model-authoring-stair-lifecycle';
 import { completeEntityRemoval } from '@/store/slices/mutation-mesh-stash';
 import { completeStairRailingGeometry } from '@/store/slices/mutation-stair-railing';
+import { writeAuthoringReach } from './model-authoring-reach';
 import { sizeInMetres } from './model-authoring-size-params';
 import { profileInMetres } from './model-authoring-shape-params';
 
@@ -102,6 +103,14 @@ function writeRow(tx: AuthoringTransaction, batch: ModelAuthoringBatch, row: Aut
       const read = recordModellingEdit(tx.api, modelId, (_methods, draft) => writeHostedEdit(batch, source, draft, resolved.target!, op.expected, op.edit, op.target.globalId), tx.batchId);
       written.remesh.push(read.hostId, read.openingId, ...(read.fillingId === null ? [] : [read.fillingId]));
       return [{ ...base, globalId: op.target.globalId, field: 'Hosted occurrence', before: JSON.stringify(before.hosted), after: JSON.stringify(op.edit) }];
+    }
+    case 'element.trimExtend': {
+      const result = recordModellingEdit(tx.api, modelId, (_methods, editor) =>
+        writeAuthoringReach(batch, tx.store.models.get(modelId)!.ifcDataStore!, editor, resolved.target!, op, resolved.reachBoundary, ids), tx.batchId);
+      written.remesh.push(...result.walls);
+      written.moved = true;
+      return [{ ...base, globalId: op.target.globalId, field: 'Trim/Extend', before: JSON.stringify(before.reach),
+        after: JSON.stringify({ mode: result.op, end: result.end, lengthMetres: result.length, joined: result.joined }) }];
     }
     case 'element.split': {
       const scopes = [...tx.store.models].map(([id, model]) => ({ dataStore: model.ifcDataStore, view: tx.store.mutationViews.get(id) }));

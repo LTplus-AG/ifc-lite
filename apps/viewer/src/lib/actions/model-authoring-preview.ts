@@ -32,6 +32,7 @@ import { captureAuthoringSources } from './model-authoring-sources';
 import { resolveGlobalId } from './resolve-global-id';
 import { readElementProfileFromTarget } from '@/store/slices/mutation-element-profile';
 import { readAuthoringSizeFromTarget, sameNativeDimensions } from './model-authoring-size';
+import { verifyReachExpected, verifyReachStoreyFrame, reachBefore } from './model-authoring-reach';
 import { sizeInMetres } from './model-authoring-size-params';
 import { profileInMetres } from './model-authoring-shape-params';
 import { authoringHostedEditGhost } from './model-authoring-hosted-edit-ghost';
@@ -77,7 +78,7 @@ function existing(ctx: Context, target: ExistingElement, row: AuthoringRow): num
   join(row, modelId);
   const r = reader(ctx, modelId);
   if ((row.op.op.startsWith('stair.') || row.op.op.startsWith('railing.')) && !uniqueSplitGuid(r.dataStore, r.editor, target.globalId)) throw new Refusal('ambiguous-target', 'The native stair or railing target GlobalId is not unique in its owning model');
-  if ((row.op.op === 'element.split' || row.op.op === 'type.detach') && !uniqueSplitGuid(r.dataStore, r.editor, target.globalId)) throw new Refusal('ambiguous-target', 'The native target GlobalId is not unique in its owning model');
+  if ((row.op.op === 'element.split' || row.op.op === 'element.trimExtend' || row.op.op === 'type.detach') && !uniqueSplitGuid(r.dataStore, r.editor, target.globalId)) throw new Refusal('ambiguous-target', 'The native target GlobalId is not unique in its owning model');
   const ifcClass = className(r, expressId);
   const name = nameOf(r, expressId);
   row.before.ifcClass = ifcClass;
@@ -121,6 +122,23 @@ const near = (a: number, b: number, tolerance: number) => Math.abs(a - b) <= tol
 function resolve(ctx: Context, row: AuthoringRow): void {
   const { op } = row;
   switch (op.op) {
+    case 'element.trimExtend': {
+      row.resolved.target = row.expressId = existing(ctx, op.target, row);
+      const r = reader(ctx, row.modelId!);
+      try { verifyReachStoreyFrame(r.dataStore, r.view, row.expressId); }
+      catch (error) { throw new Refusal('unsupported', error instanceof Error ? error.message : String(error)); }
+      try { verifyReachExpected(r.dataStore, r.view, r.editor, row.expressId, op); }
+      catch (error) { throw new Refusal('conflict', error instanceof Error ? error.message : String(error)); }
+      row.before.reach = reachBefore(ctx.state, row.modelId!, row.expressId) ?? undefined;
+      if ('wall' in op.boundary) {
+        row.resolved.reachBoundary = element(ctx, op.boundary.wall, row);
+        if ('id' in row.resolved.reachBoundary) {
+          try { verifyReachStoreyFrame(r.dataStore, r.view, row.resolved.reachBoundary.id); }
+          catch (error) { throw new Refusal('unsupported', error instanceof Error ? error.message : String(error)); }
+        }
+      }
+      return;
+    }
     case 'hosted.edit': {
       row.resolved.target = row.expressId = existing(ctx, op.target, row);
       const r = reader(ctx, row.modelId!);
@@ -323,7 +341,16 @@ export function previewModelAuthoring(state: ViewerState, batch: ModelAuthoringB
     }
   }
   nativeDryRun(ctx, batch);
-  for (const row of ctx.rows) if (row.status === 'ready' && row.modelId && (row.op.op === 'element.resize' || row.op.op === 'element.profile')) {
+  for (const row of ctx.rows) if (row.status === 'ready' && row.modelId && (row.op.op === 'element.resize' || row.op.op === 'element.profile' || row.op.op === 'element.trimExtend')) {
+    const boundary = row.op.op === 'element.trimExtend' ? row.resolved.reachBoundary : undefined;
+    // The whole native batch validates this boundary; the independent body draft
+    // cannot reproduce a preceding edit of the same existing wall (#7262).
+    if (boundary && 'id' in boundary && ctx.rows.some(previous => previous.index < row.index
+      && previous.status === 'ready' && previous.modelId === row.modelId && previous.expressId === boundary.id
+      && previous.op.op !== 'element.copy' && previous.op.op !== 'element.array')) {
+      row.previewUnavailable = true;
+      continue;
+    }
     const ghost = authoringSizeGhost(state, batch, row, row.modelId, 0);
     row.previewUnavailable = ghost.unavailable;
     row.previewOmitted = ghost.omitted;

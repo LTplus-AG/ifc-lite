@@ -42,7 +42,7 @@ export * from './filter/entity-predefined-type.js';
 export * from './filter/lens-material-names.js';
 export * from './filter/model-tag.js';
 export { isCapturedEntityScope, resolveCapturedEntityScope, MAX_CAPTURED_SCOPE_MEMBERS,
-  type CapturedEntityScope, type CapturedScopeModel } from './filter/captured-scope.js';
+  type CapturedEntityScope } from './filter/captured-scope.js';
 
 // ── `.rules.json` shape + parse/serialize (Node/browser-portable half) ─────
 export * from './rule-set/rule-set.js';

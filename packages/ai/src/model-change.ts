@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * Reviewed model changes (viewer AI P04): a serialisable, bounded batch of
+ * Portable reviewed model changes (P04 / P19, #7070): a serialisable, bounded batch of
  * native data edits. Every change names its target by GlobalId and states the
  * value it expects to replace, so a preview can prove nothing moved underneath
  * it before one grouped commit. Producers (assistant answers, table imports,
@@ -11,7 +11,6 @@
  */
 
 import { validatePropertyDataType } from '@ifc-lite/export';
-import { MODEL_AUTHORING_OUTPUT_GUIDANCE } from './model-authoring-guidance';
 
 export type ChangeScalar = string | number | boolean | null;
 
@@ -136,12 +135,11 @@ export function changeKey(item: ModelChange): string {
   }
 }
 
-/** Guidance for providers: the exact contract, kept short so it fits beside evidence. Carries the authoring contract too (P15A). */
-export const MODEL_CHANGE_OUTPUT_GUIDANCE =
+/** Guidance for providers: the exact contract, kept short so it fits beside evidence. Data edits only; hosts add their supported authoring contracts separately. */
+export const MODEL_DATA_CHANGE_OUTPUT_GUIDANCE =
   'When asked to prepare corrections, return only JSON {"version":1,"kind":"model.changes","title":"Short title",'
   + '"rationale":"Why","changes":[{"op":"property.set","target":{"globalId":"<22-char GlobalId>"},"pset":"Pset_WallCommon",'
   + '"name":"FireRating","expected":null,"value":"EI60"}]}. Ops: property.set, property.delete (expected = current value), '
   + 'quantity.set (qset, name, numeric expected/value), attribute.set (Name, Description, ObjectType or Tag). '
   + '"expected" must be the value shown in the evidence (null when absent). Use only GlobalIds from the evidence; '
-  + 'never invent values the user did not ask for. The user reviews every change before anything is applied. '
-  + MODEL_AUTHORING_OUTPUT_GUIDANCE;
+  + 'never invent values the user did not ask for. The user reviews every change before anything is applied. ';

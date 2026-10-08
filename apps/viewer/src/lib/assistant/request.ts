@@ -10,7 +10,7 @@ import type { StreamMessage } from '@/lib/llm/stream-client';
 import { evidenceIsCurrent } from './evidence';
 import { adapterFor } from './adapters/registry';
 import { CLASH_GROUP_OUTPUT_GUIDANCE } from './clash-taxonomy';
-import { MODEL_CHANGE_OUTPUT_GUIDANCE } from '../actions/model-change';
+import { MODEL_CHANGE_OUTPUT_GUIDANCE } from '../actions/model-change-guidance';
 import { SCENE_ACTION_OUTPUT_GUIDANCE } from '../actions/scene-actions';
 import { CHECK_AUTHORING_GUIDANCE } from '../check-authoring/guidance';
 import { artifactGuidance } from './artifacts/artifact-guidance';

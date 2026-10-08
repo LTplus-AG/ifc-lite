@@ -17,8 +17,9 @@ import type { FlowNodeDef } from './host.js';
 import { aiClassifyNode } from './ai-classify.js';
 import { aiExtractNode } from './ai-extract.js';
 import { aiSummarizeNode } from './ai-summarize.js';
+import { aiProposeNode } from './ai-propose.js';
 
 export { AI_CAPABILITY, AI_FEATURE, FLOW_AI_BUDGET } from './ai-service.js';
 export type { FlowAiCall, FlowAiService } from './ai-service.js';
 
-export const aiNodes: readonly FlowNodeDef[] = [aiClassifyNode, aiSummarizeNode, aiExtractNode];
+export const aiNodes: readonly FlowNodeDef[] = [aiClassifyNode, aiSummarizeNode, aiExtractNode, aiProposeNode];

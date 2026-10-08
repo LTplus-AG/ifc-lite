@@ -54,3 +54,13 @@ A transport must not retry on its own: a retry is a new request that spends the 
 ## License
 
 MPL-2.0
+
+## Portable native change artifacts
+
+`@ifc-lite/ai/artifacts` is a separate entry exposing `parseModelChangeBatch`,
+`changeKey`, native change types, editable attributes and bounded provider
+guidance. It is the canonical parser consumed by viewer correction previews
+and Flow `ai.propose`. Parsing validates the native data contract; hosts must
+resolve targets and recheck current values, permissions and reviewer selection
+before applying any changes. Importing the request core alone does not load
+the artifact validator. See the [Flow guide](../../docs/guide/flow.md).

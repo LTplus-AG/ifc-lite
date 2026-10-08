@@ -14,7 +14,7 @@ import { adapterFor } from '@/lib/assistant/adapters/registry';
 import { parseClashGroupPatch } from '@/lib/assistant/clash-group-proposal';
 import { parseFlowPatch } from '@/lib/assistant/flow-patch';
 import { parseFlowCreate } from '@/lib/assistant/flow-create-envelope';
-import { parseModelChangeBatch } from '@/lib/actions/model-change';
+import { parseModelChangeBatch } from '@ifc-lite/ai/artifacts';
 import { parseModelAuthoringBatch } from '@/lib/actions/model-authoring';
 import { parseSceneActions } from '@/lib/actions/scene-actions';
 import { parseTableMapping } from '@/lib/actions/table-mapping';

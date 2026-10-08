@@ -7,6 +7,7 @@
   "examples/collab-demo": 1,
   "examples/threejs-collab": 1,
   "examples/threejs-viewer": 0,
+  "packages/ai": 0,
   "packages/bcf": 2,
   "packages/bcf-api": 0,
   "packages/cache": 5,

@@ -13,6 +13,10 @@ export const CONTENT_POLICIES = {
   bcfOutbox: { immutableEvidence: false },
   modelChanges: { immutableEvidence: false },
   clashGroupApplications: { immutableEvidence: false },
+  reviewWorkspaces: { immutableEvidence: false },
+  semanticReviews: { immutableEvidence: false },
+  assistantRecipes: { immutableEvidence: false },
+  assistantPreferences: { immutableEvidence: false },
 } as const;
 export type ContentKind = keyof typeof CONTENT_POLICIES;
 export const CONTENT_KINDS: readonly ContentKind[] = Object.keys(CONTENT_POLICIES) as ContentKind[];

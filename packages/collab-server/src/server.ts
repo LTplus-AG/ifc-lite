@@ -6,8 +6,9 @@
 
 import * as http from 'node:http';
 import { createHash, timingSafeEqual } from 'node:crypto';
-import { WebSocketServer, type WebSocket } from 'ws';
-import { RoomManager, type PeerConnection, type VerifyMessageFn } from './room-manager.js';
+import { WebSocketServer } from 'ws';
+import { RoomManager, type VerifyMessageFn } from './room-manager.js';
+import { handleConnection } from './connection.js';
 import { startExpirySweep } from './principal-expiry.js';
 import { MemoryPersistence, type Persistence } from './persistence.js';
 import { allowAnonymousEditor, type AuthenticateFn, type Principal } from './auth.js';
@@ -25,7 +26,7 @@ import {
   type RegistryAuthorizeFn,
 } from './layer-registry-route.js';
 import { defaultMetrics, MetricsRegistry } from './metrics.js';
-import { parseRequestUrl, parseRoomRequest } from './request-target.js';
+import { parseRequestUrl } from './request-target.js';
 import { makeBlobAuthorizer, makeRegistryAuthorizer } from './http-authorizers.js';
 
 /**
@@ -202,8 +203,6 @@ export interface CollabServerHandle {
   readonly roomManager: RoomManager;
   stop(): Promise<void>;
 }
-
-const PING_INTERVAL_MS = 30_000;
 
 /**
  * Application-level keepalive period. Must stay comfortably under
@@ -456,6 +455,7 @@ export async function startCollabServer(
         roomManager,
         authenticate,
         keepaliveIntervalMs,
+        reject: (reason) => rejectsCounter.inc(1, { reason }),
       }).catch((err) => {
         // eslint-disable-next-line no-console
         console.error('[collab-server] connection setup failed:', err);
@@ -501,83 +501,6 @@ export async function startCollabServer(
       await roomManager.unloadAll();
     },
   };
-}
-
-interface ConnectionContext {
-  roomManager: RoomManager;
-  authenticate: AuthenticateFn;
-  /** See `StartCollabServerOptions.keepaliveIntervalMs`. */
-  keepaliveIntervalMs?: number;
-}
-
-async function handleConnection(ws: WebSocket, req: http.IncomingMessage, ctx: ConnectionContext) {
-  ws.binaryType = 'arraybuffer';
-  const parsed = parseRoomRequest(req.url);
-  if (!parsed) { ws.close(4400, 'malformed-room'); return; } // bad target or percent-escape
-  const { url, roomId } = parsed;
-  const token = url.searchParams.get('token') ?? undefined;
-  if (!roomId) {
-    ws.close(4400, 'missing-room');
-    return;
-  }
-
-  let principal: Principal | null;
-  try {
-    principal = await ctx.authenticate(token, roomId);
-  } catch (err) {
-    // eslint-disable-next-line no-console
-    console.error('[collab-server] auth threw:', err);
-    ws.close(4500, 'auth-error');
-    return;
-  }
-
-  if (!principal) {
-    ws.close(4401, 'unauthorized');
-    return;
-  }
-
-  const room = await ctx.roomManager.getOrCreate(roomId);
-  const conn: PeerConnection = {
-    ws,
-    principal,
-    awarenessClients: new Set<number>(),
-  };
-  room.addConnection(conn);
-
-  // Application-level keepalive. Distinct from the protocol ping below: only
-  // a real message refreshes y-websocket's reconnect watchdog.
-  const keepalive = setInterval(() => {
-    room.sendKeepalive(conn);
-  }, ctx.keepaliveIntervalMs ?? KEEPALIVE_INTERVAL_MS);
-
-  let alive = true;
-  const ping = setInterval(() => {
-    if (!alive) {
-      try { ws.terminate(); } catch { /* socket already gone */ }
-      clearInterval(ping);
-      return;
-    }
-    alive = false;
-    try { ws.ping(); } catch { /* socket already gone */ }
-  }, PING_INTERVAL_MS);
-  ws.on('pong', () => { alive = true; });
-
-  ws.on('message', (data: ArrayBuffer | Buffer) => {
-    const bytes = data instanceof ArrayBuffer ? new Uint8Array(data) : new Uint8Array(data);
-    room.handleMessage(conn, bytes);
-  });
-
-  const cleanup = () => {
-    clearInterval(ping);
-    clearInterval(keepalive);
-    room.removeConnection(conn);
-  };
-  ws.on('close', cleanup);
-  ws.on('error', (err) => {
-    // eslint-disable-next-line no-console
-    console.error('[collab-server] ws error:', err);
-    cleanup();
-  });
 }
 
 /**

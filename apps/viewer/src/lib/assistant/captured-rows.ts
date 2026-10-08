@@ -7,6 +7,9 @@
 const record = (value: unknown): value is Record<string, unknown> =>
   !!value && typeof value === 'object' && !Array.isArray(value);
 
+/** Captured payloads are bounded well below this (a request carries at most 90k characters); larger input is refused before parsing. */
+const MAX_CAPTURED_PAYLOAD = 200_000;
+
 export interface CapturedEvidence {
   summary: unknown;
   rows: Map<string, unknown>;
@@ -14,7 +17,7 @@ export interface CapturedEvidence {
 
 /** Captured rows by citation; null when the payload is not a bounded evidence envelope. */
 export function capturedEvidence(payload: string): CapturedEvidence | null {
-  if (payload.length > 200_000) return null;
+  if (payload.length > MAX_CAPTURED_PAYLOAD) return null;
   let parsed: unknown;
   try { parsed = JSON.parse(payload); }
   catch (error) { console.warn('[Assistant] Captured evidence is not JSON', error); return null; }
@@ -24,6 +27,29 @@ export function capturedEvidence(payload: string): CapturedEvidence | null {
     if (record(row) && typeof row.citation === 'string' && !rows.has(row.citation)) rows.set(row.citation, row.data);
   }
   return { summary: parsed.evidence.summary, rows };
+}
+
+/**
+ * Strict reading for documents built from the evidence (#6918): every row
+ * must carry a unique `E<n>` citation, or the payload is refused.
+ */
+export function parseCapturedEvidence(payload: string): CapturedEvidence {
+  if (payload.length > MAX_CAPTURED_PAYLOAD) throw new Error('The report evidence is too large.');
+  const parsed: unknown = JSON.parse(payload);
+  if (!record(parsed) || !record(parsed.evidence) || !Array.isArray(parsed.evidence.rows)) throw new Error('The report evidence rows are invalid.');
+  const rows = new Map<string, unknown>();
+  for (const row of parsed.evidence.rows) {
+    if (!record(row) || typeof row.citation !== 'string' || !/^E[1-9]\d{0,2}$/.test(row.citation) || rows.has(row.citation)) {
+      throw new Error('The report contains an invalid evidence identity.');
+    }
+    rows.set(row.citation, row.data);
+  }
+  return { summary: parsed.evidence.summary, rows };
+}
+
+/** One value as people read it in claim checks and documents: a captured empty text is shown as such, never as the absent-value dash. */
+export function displayScalar(value: unknown): string {
+  return value === '' ? '""' : scalar(value);
 }
 
 function scalar(value: unknown): string {

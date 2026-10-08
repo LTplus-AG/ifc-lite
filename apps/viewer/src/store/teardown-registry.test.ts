@@ -81,6 +81,7 @@ const PINNED_SESSION_RESET_KEYS: readonly string[] = [
   'pointCloudDeviationStatistics', // #6833 stored deviation statistics describe the outgoing scene's run
   'pointCloudFixedColor', 'pointCloudPointSize', 'pointCloudPreviewStride',
   'pointCloudRoundShape', 'pointCloudSizeMode', 'pointCloudWorldRadius', 'polygonArea2DPoints',
+  'scanDetectionError', 'scanDetectionRun', 'scanDetectionStage', 'scanDetectionStatus', 'scanCreatedGlobalIds', 'scanProposalCreated', 'scanProposalDecisions', 'scanProposalFilter', // #6894 scan-to-BIM review
   'polygonArea2DResults', 'progress', 'projectionMode', 'redoStacks', 'scheduleData',
   'scheduleRange', 'scriptAssistantTurnSnapshot', 'scriptDeleteConfirmId',
   'scriptExecutionState', 'scriptLastDiagnostics', 'scriptLastError', 'scriptLastResult',
@@ -115,6 +116,7 @@ const PINNED_ALL_MODELS_CLEARED_KEYS: readonly string[] = [
   'selectedEntities', 'selectedEntitiesSet',
   'selectedEntity', 'selectedEntityId', 'selectedEntityIds', 'selectedLandXmlSource', 'selectedModelId', 'selectedStoreys', 'selectionRevision',
   'validationRuleSetDraft', 'validationRuleSetEditing', // #5825 full unload discards the unsaved editor
+  'scanDetectionError', 'scanDetectionRun', 'scanDetectionStage', 'scanDetectionStatus', 'scanCreatedGlobalIds', 'scanProposalCreated', 'scanProposalDecisions', // #6894 a scan-to-BIM run dies with its models
 ];
 
 /**
@@ -279,6 +281,7 @@ const PINNED_OWNED_KEYS: readonly string[] = [
   'pointCloudDeviationStatistics', // #6833 stored deviation statistics describe the outgoing scene's run
   'pointCloudFixedColor', 'pointCloudPointSize', 'pointCloudPreviewStride',
   'pointCloudRoundShape', 'pointCloudSizeMode', 'pointCloudWorldRadius', 'polygonArea2DPoints',
+  'scanDetectionError', 'scanDetectionRun', 'scanDetectionStage', 'scanDetectionStatus', 'scanCreatedGlobalIds', 'scanProposalCreated', 'scanProposalDecisions', 'scanProposalFilter', // #6894 scan-to-BIM review
   'polygonArea2DResults', 'progress', 'projectionMode', 'redoStacks', 'scheduleData',
   'scheduleRange', 'scriptAssistantTurnSnapshot', 'scriptDeleteConfirmId',
   'scriptExecutionState', 'scriptLastDiagnostics', 'scriptLastError', 'scriptLastResult',

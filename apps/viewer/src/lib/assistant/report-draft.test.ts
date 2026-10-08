@@ -11,11 +11,14 @@ import { useViewerStore } from '@/store';
 import { captureAnalysisStamp, stampAnalysisReport } from '@/hooks/useAnalysisStaleness';
 import { captureEvidence } from './evidence';
 import { replaceEvidence, useAssistant, cancelAssistant } from './conversation';
-import { prepareReportDraft, saveReportDraft, isReportDraftCurrent } from './report-draft';
+import { prepareReportDraft, reviseReportClaim, saveReportDraft, isReportDraftCurrent } from './report-draft';
 import { validateDocumentSpec } from '../document/types';
+import { aiBlockOrigin } from '../document/ai-report-types';
+import { clashDiscussion, typedReport } from '@/test/ai-report-fixture';
 import { renderTemplate, templatePaths } from '../document/bindings';
 import { readContentRows } from '../storage/content-database';
 import { openConversation } from './library';
+import { printDocumentText } from '@/test/document-pdf-text';
 
 const initial = useViewerStore.getState();
 afterEach(() => { cancelAssistant(); useViewerStore.setState(initial, true); mock.restoreAll(); });
@@ -49,6 +52,8 @@ test('native report preserves complete sample coverage and literal text after so
   assert.doesNotMatch(rendered, /^E101\s/m);
   assert.doesNotMatch(rendered, /"citation":/);
   assert.deepEqual(draft.citations, ['E1']);
+  // Review of #6972: narrative citations record their native row too, so a refresh can re-find it.
+  assert.deepEqual(draft.document.aiReport?.citedRows, { E1: 'id=c0' });
   const frozen = JSON.stringify(draft.document);
   useViewerStore.setState({ clashResult: null, clashRawResult: null });
   assert.equal(isReportDraftCurrent(draft), false);
@@ -124,40 +129,27 @@ test('actual native PDF retains evidence and literal braces against a parsed rea
   assert.equal(Array.from(store.entities.expressId).filter(id => store.entities.getTypeName(id) === 'IfcWall').length, 4);
   discussion('Literal {Count[IfcWall]} and source estimate -0.02 [E1].', 1);
   const draft = prepareReportDraft('PDF evidence');
-  const { generateDocumentPdf } = await import('../document/generate-document-pdf');
-  const { browserReportSeams } = await import('../export/report/generate-report-pdf');
-  const jspdf = await import('jspdf');
-  const previous = Reflect.get(window, 'jspdf');
-  Reflect.set(window, 'jspdf', jspdf);
-  let result;
-  try {
-    result = await generateDocumentPdf({ document: draft.document,
-      bindings: { models: [{ id: 'public', name: 'building-architecture.ifc', store }], activeModelId: 'public', today: new Date() },
-      aggregations: new Map(), chartMessages: new Map(), topics: new Map(), tables: new Map(), snapshotIds: () => [] },
-    { ...await browserReportSeams(null), imageSize: async () => { throw new Error('Text-only report must not measure images'); } });
-  } finally { Reflect.set(window, 'jspdf', previous); }
-  assert.deepEqual(result.unresolved, []);
-  const { createRequire } = await import('node:module');
-  const { dirname, join } = await import('node:path');
-  const require = createRequire(import.meta.url);
-  const reader = await import('pdfjs-dist/legacy/build/pdf.mjs');
-  const task = reader.getDocument({ data: new Uint8Array(await result.blob.arrayBuffer()), stopAtErrors: true,
-    standardFontDataUrl: `${join(dirname(require.resolve('pdfjs-dist/package.json')), 'standard_fonts')}/` });
-  try {
-    const pdf = await task.promise;
-    const pages: string[] = [];
-    for (let number = 1; number <= pdf.numPages; number++) {
-      const page = await pdf.getPage(number);
-      try { pages.push((await page.getTextContent()).items.flatMap(item => 'str' in item ? [item.str] : []).join('\n')); }
-      finally { page.cleanup(); }
-    }
-    const text = pages.join('\n');
-    assert.match(text, /Literal \{Count\[IfcWall\]\}/);
-    assert.match(text, /estimate -0.02 \[E1\]/);
-    assert.match(text, /actual-provider/);
-    assert.match(text, /1 of 1 native rows/);
-    // Standard PDF fonts only: the appendix line must extract as real text, not re-encoded glyphs.
-    assert.match(text, /E1\s+IfcWall vs IfcPipeSegment · hard · major · -0\.02 m \(estimate\)/);
-    assert.equal(pdf.numPages, result.pages);
-  } finally { await task.destroy(); }
+  const { text, unresolved } = await printDocumentText(draft.document,
+    { models: [{ id: 'public', name: 'building-architecture.ifc', store }], activeModelId: 'public', today: new Date() });
+  assert.deepEqual(unresolved, []);
+  assert.match(text, /Literal \{Count\[IfcWall\]\}/);
+  assert.match(text, /estimate -0.02 \[E1\]/);
+  assert.match(text, /actual-provider/);
+  assert.match(text, /1 of 1 native rows/);
+  // Standard PDF fonts only: the appendix line must extract as real text, not re-encoded glyphs.
+  assert.match(text, /E1\s+IfcWall vs IfcPipeSegment · hard · major · -0\.02 m \(estimate\)/);
+});
+
+// Review of #6972: a claim the reviewer rewrote before saving is their text, not AI-generated text.
+test('a claim edited during review is saved as human-edited text', () => {
+  clashDiscussion(typedReport('Hard clashes [E1].', [{ text: 'E1 overlaps by 2 cm.', facts: [{ citation: 'E1', field: 'distance', value: -2, unit: 'cm' }] }]));
+  const draft = reviseReportClaim(prepareReportDraft('Edited claim'), 'C1', { text: 'E1 overlaps by 20 mm.' });
+  const block = draft.document.blocks.find(entry => entry.kind === 'text' && entry.aiProvenance?.slot === 'claim:C1');
+  assert.ok(block?.kind === 'text');
+  assert.equal(block.text, 'E1 overlaps by 20 mm.');
+  assert.equal(aiBlockOrigin(block), 'human-edited');
+  assert.equal(block.aiProvenance?.generated, 'E1 overlaps by 2 cm.', 'the AI statement stays the generated baseline');
+  assert.deepEqual(validateDocumentSpec(JSON.parse(draft.documentJson)), []);
+  const untouched = prepareReportDraft('Untouched').document.blocks.find(entry => entry.kind === 'text' && entry.aiProvenance?.slot === 'claim:C1');
+  assert.ok(untouched?.kind === 'text' && aiBlockOrigin(untouched) === 'ai-generated');
 });

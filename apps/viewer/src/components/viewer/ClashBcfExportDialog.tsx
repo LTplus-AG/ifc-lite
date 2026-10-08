@@ -42,6 +42,7 @@ import { useExportDialogOpenGuard } from '@/hooks/useExportDialogOpenGuard';
 import { useClash, type ClashBcfConfig, type ClashBcfGroupBy } from '@/hooks/useClash';
 import { summarizeClashes, type ClashSeverity } from '@ifc-lite/clash';
 import { ScopeControl, type ResultScope } from '@/components/viewer/result/ScopeControl';
+import { recordActivity } from '@/lib/activity/activity-journal';
 
 /** The findings each scope names, pinned when the dialog opened (#6925). */
 export interface ClashBcfScopeIds {
@@ -112,7 +113,11 @@ export function ClashBcfExportDialog({ open, onOpenChange: setOpen, scope, onSco
     setExporting(true);
     setProgress(config.includeSnapshots ? { done: 0, total: preview.topics } : null);
     try {
-      await exportBcf(config, (done, total) => setProgress({ done, total }));
+      // Outside ExportDialogShell, so it records itself in the activity tray (#6925).
+      await recordActivity(
+        { kind: 'export', title: 'activityTray.job.export', subject: t('clashTools.bcfExport.dialogTitle') },
+        () => exportBcf(config, (done, total) => setProgress({ done, total })),
+      );
       toast.success(t('clashTools.bcfExport.exportSuccessToast', { count: preview.topics }));
       setOpen(false);
     } catch (err) {
@@ -122,7 +127,7 @@ export function ClashBcfExportDialog({ open, onOpenChange: setOpen, scope, onSco
       setExporting(false);
       setProgress(null);
     }
-  }, [config, exportBcf, preview.topics]);
+  }, [config, exportBcf, preview.topics, t]);
 
   // The snapshot loop drives the live renderer (camera + isolation), and there's
   // no UI to resume into if the dialog vanishes mid-export.

@@ -36,6 +36,7 @@ import type { TranslationValue } from '../types';
  */
 export const cesiumGeoEn = {
   // CesiumPlacementGizmo / GeoreferenceTab
+  'cesiumGeo.placement.requiresProjectedCrs': 'Moving georeferencing requires a projected CRS. Geographic coordinates use angles, not metres.',
   'cesiumGeo.placement.headerTitle': 'Move Georef',
   'cesiumGeo.placement.dragPlaneTitle': 'Drag to move Eastings/Northings',
   'cesiumGeo.placement.dragHeightTitle': 'Drag to change OrthogonalHeight',

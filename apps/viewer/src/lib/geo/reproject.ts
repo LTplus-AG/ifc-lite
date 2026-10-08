@@ -23,7 +23,7 @@ import { getEffectiveAxisScales, resolveMapUnitToMetreScale } from './geo-scale'
 import { computeModelCenterInIfcMeters, effectiveMapConversionForGeometry } from './map-absolute';
 import { ifcToViewerAxes } from './coordinate-frame';
 import { wellKnownCrsCode } from './well-known-crs';
-import { isGeographicProj4, utmProj4String } from './proj4-utils';
+import { isGeographicProj4, projectedDefinitionInMetres, utmProj4String } from './proj4-utils';
 import { resolveMapAxisDirection } from './map-axis-direction';
 
 export { computeModelCenterInIfcMeters, effectiveMapConversionForGeometry } from './map-absolute';
@@ -204,6 +204,17 @@ async function fetchProj4Def(epsgCode: string): Promise<string | null> {
   }
 }
 
+/** Skip blank or invalid zone metadata before trying the next source. */
+function utmDefinitionFromMetadata(crs: ProjectedCRS): string | null {
+  const candidates = [crs.mapZone, ...[crs.name, crs.description, crs.mapProjection]
+    .map(value => value?.match(/UTM\s+zone\s+(\d{1,2}[NS])/i)?.[1])];
+  for (const zone of candidates) {
+    const definition = zone ? utmProj4String(zone) : null;
+    if (definition) return definition;
+  }
+  return null;
+}
+
 /**
  * Resolve a proj4 definition for the given ProjectedCRS.
  *
@@ -213,12 +224,28 @@ async function fetchProj4Def(epsgCode: string): Promise<string | null> {
  *      (RD/NL, OSGB/UK, BD72/BE) — fetched once from cdn.proj.org, gives
  *      sub-decimeter accuracy. Falls through to (3) if the fetch fails.
  *   3. Bundled EPSG index (7000+ codes with proj4 strings)
- *   4. Well-known CRS name lookup (e.g. "WGS 84" → EPSG:4326)
- *   5. UTM zone heuristic (from CRS metadata — mapZone, name, description, mapProjection)
- *   6. Fetch from epsg.io (network fallback)
+ *   4. UTM zone heuristic (from CRS metadata — mapZone, name, description, mapProjection)
+ *   5. Fetch from epsg.io (network fallback)
  */
 export async function resolveProjection(crs: ProjectedCRS): Promise<string | null> {
-  let code = extractEpsgCode(crs);
+  const explicitCode = extractEpsgCode(crs);
+  const aliasCode = explicitCode ? undefined : wellKnownCrsCode(crs.name ?? '');
+  // A datum-only geographic label may accompany an explicit UTM zone. Keep
+  // that metadata interpretation local; caching it under EPSG:4326 would
+  // corrupt subsequent geographic resolutions and make results load-order dependent.
+  if (aliasCode && ['4326', '4269', '4267', '4258'].includes(aliasCode)) {
+    const utm = utmDefinitionFromMetadata(crs);
+    if (utm) {
+      // Retain the declared datum rather than changing NAD27/NAD83/ETRS89
+      // coordinates into WGS84 UTM. Cache only the native geographic CRS.
+      const geographic = await resolveProjection({ id: crs.id, name: `EPSG:${aliasCode}` });
+      if (!geographic || !isGeographicProj4(geographic)) return null;
+      const zoneParameters = utm.match(/\+zone=\d+(?: \+south)?/)?.[0];
+      if (!zoneParameters) return null;
+      return projectedDefinitionInMetres(geographic.replace(/\+proj=longlat\b/, `+proj=utm ${zoneParameters}`));
+    }
+  }
+  const code = explicitCode ?? aliasCode ?? null;
 
   // 1. Check cache
   // A cached approximate/refused fallback is not terminal for a CRS with a
@@ -267,54 +294,11 @@ export async function resolveProjection(crs: ProjectedCRS): Promise<string | nul
     }
   }
 
-  // 3. Well-known CRS name → EPSG code (handles "WGS 84", "NAD83", "RD New", etc.)
-  if (!code) {
-    const wellKnownCode = wellKnownCrsCode(crs.name ?? '');
-    if (wellKnownCode) {
-      code = wellKnownCode;
-      if (projDefCache.has(code)) {
-        return projDefCache.get(code) ?? null;
-      }
-      try {
-        const entry = await lookupEpsgByCode(code);
-        if (entry?.proj4) {
-          const sanitized = sanitizeProj4(entry.proj4, code, entry.datum);
-          projDefCache.set(code, sanitized);
-          // For geographic CRS (longlat), check if we can infer a projected CRS
-          // from the UTM zone metadata — a projected CRS is much more useful.
-          // If we can't, fall through and return the geographic def below.
-        }
-      } catch {
-        // continue
-      }
-    }
-  }
-
   // 4. UTM zone heuristic — check mapZone, name, description, AND mapProjection
-  if (crs.mapZone) {
-    const def = utmProj4String(crs.mapZone);
-    if (def) {
-      if (code) projDefCache.set(code, def);
-      return def;
-    }
-  }
-  const name = crs.name?.toUpperCase() ?? '';
-  const utmMatch = name.match(/UTM\s+ZONE\s+(\d{1,2}[NS])/i)
-    ?? crs.description?.match(/UTM\s+zone\s+(\d{1,2}[NS])/i)
-    ?? crs.mapProjection?.match(/UTM\s+zone\s+(\d{1,2}[NS])/i);
-  if (utmMatch) {
-    const def = utmProj4String(utmMatch[1]);
-    if (def) {
-      if (code) projDefCache.set(code, def);
-      return def;
-    }
-  }
-
-  // If step 3 resolved a geographic CRS (e.g. EPSG:4326) and we couldn't
-  // upgrade it to a projected CRS via the UTM heuristic, still return it —
-  // reprojectToLatLon will handle the longlat identity case.
-  if (code && projDefCache.has(code)) {
-    return projDefCache.get(code) ?? null;
+  const utm = utmDefinitionFromMetadata(crs);
+  if (utm) {
+    if (code) projDefCache.set(code, utm);
+    return utm;
   }
 
   // 5. Network fallback — fetch from epsg.io
@@ -435,6 +419,25 @@ function computeProjectedCenter(
   return { easting, northing };
 }
 
+/** Geographic input and WGS84 output use finite longitude/latitude degrees. */
+function validLatLon(lon: number, lat: number): boolean {
+  return Number.isFinite(lon) && Number.isFinite(lat)
+    && lon >= -180 && lon <= 180 && lat >= -90 && lat <= 90;
+}
+
+/** Inputs are degrees for geographic CRSs, metres for projected CRSs. */
+function coordinatesToLatLon(definition: string, x: number, y: number): LatLon | null {
+  if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
+  if (isGeographicProj4(definition) && !validLatLon(x, y)) return null;
+  try {
+    const [lon, lat] = proj4(projectedDefinitionInMetres(definition), 'WGS84', [x, y]);
+    return validLatLon(lon, lat) ? { lat, lon } : null;
+  } catch (error) {
+    console.warn('[reproject] coordinate transformation failed', error);
+    return null;
+  }
+}
+
 /**
  * Reproject the model center from the projected CRS to WGS84 lat/lon.
  *
@@ -455,14 +458,10 @@ export async function reprojectToLatLon(
   const projDef = await resolveProjection(crs);
   if (!projDef) return null;
 
-  // Geographic CRS (e.g. EPSG:4326) — eastings/northings are already lon/lat.
+  // Geographic CRS offsets are source-datum angles, transformed separately.
   // Don't add the model's geometry center (in meters) to degree-based coordinates.
   if (isGeographicProj4(projDef)) {
-    const lon = conversion.eastings;
-    const lat = conversion.northings;
-    if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
-    if (lat < -90 || lat > 90 || lon < -180 || lon > 180) return null;
-    return { lat, lon };
+    return coordinatesToLatLon(projDef, conversion.eastings, conversion.northings);
   }
 
   // MapConversion values use the unit from IfcProjectedCRS.MapUnit. If MapUnit
@@ -472,14 +471,7 @@ export async function reprojectToLatLon(
   if (!center) return null;
   const { easting, northing } = center;
 
-  try {
-    const [lon, lat] = proj4(projDef, 'WGS84', [easting, northing]);
-    if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
-    if (lat < -90 || lat > 90 || lon < -180 || lon > 180) return null;
-    return { lat, lon };
-  } catch {
-    return null;
-  }
+  return coordinatesToLatLon(projDef, easting, northing);
 }
 
 /**
@@ -503,70 +495,10 @@ export async function reprojectPointToLatLon(
   const projDef = await resolveProjection(crs);
   if (!projDef) return null;
 
-  // Geographic CRS (e.g. EPSG:4326) — eastings/northings are already lon/lat.
-  if (isGeographicProj4(projDef)) {
-    const lon = eastings;
-    const lat = northings;
-    if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
-    if (lat < -90 || lat > 90 || lon < -180 || lon > 180) return null;
-    return { lat, lon };
-  }
-
-  const mapScale = resolveMapUnitToMetreScale(crs.mapUnitScale, lengthUnitScale);
-  const eastingM = eastings * mapScale;
-  const northingM = northings * mapScale;
-  try {
-    const [lon, lat] = proj4(projDef, 'WGS84', [eastingM, northingM]);
-    if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
-    if (lat < -90 || lat > 90 || lon < -180 || lon > 180) return null;
-    return { lat, lon };
-  } catch {
-    return null;
-  }
-}
-
-/**
- * Derive a primitive cache key for a {@link reprojectPointToLatLon} call.
- *
- * The key must fold **every** input the reprojection reads, or an effect keyed
- * by it would leave a rendered lat/lon stale when a georef edit changes the
- * projection while the CRS name and rounded E/N stay put. `resolveProjection`
- * reads `name`, `mapZone`, `description` and `mapProjection`;
- * `reprojectPointToLatLon` additionally reads `mapUnitScale` and
- * `lengthUnitScale`. The E/N are quantised to ~millimetre in metre-space (unit
- * independent — the raw offsets may be millimetres or metres) so sub-mm hover
- * jitter does not spam proj4. Keeping this a pure function makes the
- * correctness-critical key derivation directly testable.
- *
- * @param eastings        Easting in the CRS map unit (as fed to reprojectPointToLatLon).
- * @param northings       Northing in the CRS map unit.
- * @param crs             IfcProjectedCRS.
- * @param lengthUnitScale IFC project length unit to metres.
- */
-export function reprojectionInputKey(
-  eastings: number,
-  northings: number,
-  crs: ProjectedCRS,
-  lengthUnitScale = 1,
-): string {
-  const mapScale = resolveMapUnitToMetreScale(crs.mapUnitScale, lengthUnitScale);
-  const eMm = Math.round(eastings * mapScale * 1000);
-  const nMm = Math.round(northings * mapScale * 1000);
-  // JSON-encode rather than join with a delimiter: the free-text CRS fields
-  // (name, mapZone, description, mapProjection) can legally contain any
-  // character, and a delimiter that also appears in a field lets two different
-  // georefs collide to one key, freezing the async lat/lon effect on a stale
-  // value. JSON escaping keeps the key injective.
-  return JSON.stringify([
-    crs.name ?? '',
-    crs.mapZone ?? '',
-    crs.description ?? '',
-    crs.mapProjection ?? '',
-    crs.mapUnitScale ?? '',
-    lengthUnitScale,
-    eMm,
-    nMm,
-  ]);
+  // Geographic coordinates remain degrees; projected coordinates enter proj4 in metres.
+  const mapScale = isGeographicProj4(projDef)
+    ? 1 : resolveMapUnitToMetreScale(crs.mapUnitScale, lengthUnitScale);
+  return coordinatesToLatLon(projDef, eastings * mapScale, northings * mapScale);
 }
 
 /**
@@ -582,18 +514,16 @@ export async function reprojectFromLatLon(
   const projDef = await resolveProjection(crs);
   if (!projDef) return null;
 
-  // Geographic CRS — coordinates are lon/lat in degrees, no projection needed.
-  if (isGeographicProj4(projDef)) {
-    return { easting: latLon.lon, northing: latLon.lat };
-  }
-
+  if (!validLatLon(latLon.lon, latLon.lat)) return null;
   try {
-    const [projE, projN] = proj4('WGS84', projDef, [latLon.lon, latLon.lat]);
+    const [projE, projN] = proj4('WGS84', projectedDefinitionInMetres(projDef), [latLon.lon, latLon.lat]);
     if (!Number.isFinite(projE) || !Number.isFinite(projN)) return null;
 
-    const mapScale = resolveMapUnitToMetreScale(crs.mapUnitScale, lengthUnitScale);
+    const mapScale = isGeographicProj4(projDef)
+      ? 1 : resolveMapUnitToMetreScale(crs.mapUnitScale, lengthUnitScale);
     return { easting: projE / mapScale, northing: projN / mapScale };
-  } catch {
+  } catch (error) {
+    console.warn('[reproject] inverse coordinate transformation failed', error);
     return null;
   }
 }
@@ -671,13 +601,9 @@ export async function computeFootprintGeoJSON(
     const northing = conversion.northings * mapScale + ordinate * scaleX * ifcX + abscissa * scaleY * ifcY;
 
     // Projected CRS → WGS84
-    try {
-      const [lon, lat] = proj4(projDef, 'WGS84', [easting, northing]);
-      if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
-      ring.push([lon, lat]);
-    } catch {
-      return null;
-    }
+    const point = coordinatesToLatLon(projDef, easting, northing);
+    if (!point) return null;
+    ring.push([point.lon, point.lat]);
   }
 
   // Close the ring (GeoJSON requirement)

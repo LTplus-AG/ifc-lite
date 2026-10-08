@@ -92,6 +92,14 @@ test('untrusted envelope bounds and prototype keys cannot become native patch op
   assert.throws(() => parseFlowPatch('{"version":1,"kind":"flow.patch","operations":[{"op":"setParam","node":"n","param":"__proto__","value":{"__proto__":{"pwned":true}}}]}'));
   assert.throws(() => parseFlowPatch(patch([{ op: 'rename', name: 'okay', execute: true }])));
   assert.throws(() => parseFlowPatch('{"version":1,"kind":"flow.patch","operations":[{"op":"setParam","node":"n","param":"value","value":1e9999}]}'));
+  // #6919: a debug diagnosis is a bounded citation of node ids and prose, nothing else.
+  const debug = (diagnosis: unknown) => JSON.stringify({ version: 1, kind: 'flow.patch', operations: [{ op: 'rename', name: 'x' }], diagnosis });
+  assert.deepEqual(parseFlowPatch(debug({ nodes: ['pt'], explanation: 'strings' })).diagnosis, { nodes: ['pt'], explanation: 'strings' });
+  for (const invalid of [{ nodes: [], explanation: 'x' }, { nodes: ['pt'], explanation: ' ' }, { nodes: ['pt'] },
+    { nodes: ['pt'], explanation: 'x', run: 'code' }, { nodes: Array.from({ length: 21 }, (_, i) => `n${i}`), explanation: 'x' },
+    { nodes: ['pt'], explanation: 'x'.repeat(2001) }, 'pt failed']) {
+    assert.throws(() => parseFlowPatch(debug(invalid)), /diagnosis/, JSON.stringify(invalid));
+  }
   assert.equal('pwned' in {}, false);
 });
 
@@ -106,4 +114,18 @@ test('additional native capabilities are visible and extension-owned or running 
   const extension = { ...newFlowDocument('Extension workflow'), id: 'ext:review-test:graph' };
   useViewerStore.setState({ flowRunning: false, flowDoc: extension, activeFlowId: null });
   assert.throws(() => prepareFlowProposal(patch([{ op: 'rename', name: 'Forbidden edit' }]), captureEvidence('flow')), /read-only/);
+});
+
+// #6919: script source the model writes is listed in review, not only inside the collapsed graph JSON.
+test('script code a patch sets is listed for review and pinned by the digest', () => {
+  const evidence = open();
+  const code = 'const factor = 2;\ninputs.a * factor';
+  const proposal = prepareFlowProposal(patch([{ op: 'addNode', alias: 'calc', type: 'script.run', pos: [0, 0] },
+    { op: 'setParam', node: 'calc', param: 'code', value: code }]), evidence);
+  assert.deepEqual(proposal.code.map(entry => [entry.param, entry.language, entry.code]), [['code', 'javascript', code]]);
+  assert.throws(() => applyFlowProposal({ ...proposal, code: [] }, proposal.digest), /proposal has changed/);
+  const receipt = applyFlowProposal(proposal, proposal.digest);
+  // Changing another parameter of the script node sets no code.
+  const retime = prepareFlowProposal(patch([{ op: 'setParam', node: receipt.applied.nodes[0].id, param: 'timeoutMs', value: 500 }]), captureEvidence('flow'));
+  assert.deepEqual(retime.code, []);
 });

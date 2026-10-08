@@ -14,7 +14,7 @@
  * gains an eye toggle inline.
  */
 
-import { useMemo, useState } from 'react';
+import { lazy, Suspense, useMemo, useState } from 'react';
 import {
   SlidersHorizontal,
   PanelRightClose,
@@ -42,7 +42,7 @@ import { WORKSPACE_PANELS, getPanelDef, panelGroupDefinition, type PanelGroup, t
 import { useRailPanelIds } from '@/hooks/useRailPanelIds';
 import { pendingCompositionMutations } from '@/lib/layers/pending';
 import { activityAnchor, tourAnchor } from '@/lib/tours/anchors';
-import { CustomizeSidebar } from './CustomizeSidebar';
+const CustomizeSidebar = lazy(() => import('./CustomizeSidebar').then(module => ({ default: module.CustomizeSidebar })));
 
 /** Alt+N shortcut KEY per panel, by registry index (frozen since #1200): 1-9,
  *  then 0. Only the first ten registry entries get a shortcut; later
@@ -313,7 +313,7 @@ export function ActivityBar() {
         </DropdownMenu>
       </div>
 
-      {customizing && <CustomizeSidebar onClose={() => setSidebarCustomizing(false)} />}
+      {customizing && <Suspense fallback={null}><CustomizeSidebar onClose={() => setSidebarCustomizing(false)} /></Suspense>}
     </div>
   );
 }

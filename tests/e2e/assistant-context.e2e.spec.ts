@@ -13,7 +13,8 @@ const fixture = join(process.cwd(), 'tests/models/ara3d/AC20-FZK-Haus.ifc');
 
 // #6839: retain the successful coordinator journey for the user's UX review.
 // Recorded provider text verifies product behavior, not live LLM quality.
-test.use({ video: 'on' });
+// #6926: Flow's bottom dock must leave every split Assistant control reachable at ordinary laptop height.
+test.use({ video: 'on', viewport: { width: 1280, height: 720 } });
 
 // #6813: real ArchiCAD model, native duplicate scan and actual panel hosts.
 // Only the paid provider response is intercepted; evidence must come from the model.
@@ -60,7 +61,9 @@ test('native clash evidence reaches the assistant without executing model output
     await route.fulfill({ contentType: 'text/event-stream', body:
       `data: ${JSON.stringify({ choices: [{ delta: { content } }] })}\n\ndata: [DONE]\n\n` });
   });
-  await page.getByRole('button', { name: 'Discuss with AI', exact: true }).click();
+  const clashHeader = page.getByRole('heading', { name: 'Clash detection', exact: true }).locator('..');
+  await expect(clashHeader).toBeVisible();
+  await clashHeader.getByRole('button', { name: 'Discuss with AI', exact: true }).click();
   const assistant = page.getByRole('region', { name: 'Assistant', exact: true });
   await expect(assistant.getByText(/rows attached|The captured native source contains no result rows/).first()).toBeVisible();
   // #6860: the coordinator's default sidebar must fit the refresh action.
@@ -82,7 +85,7 @@ test('native clash evidence reaches the assistant without executing model output
   await assistant.getByRole('button', { name: 'Send', exact: true }).click();
   await expect(assistant).toContainText('<script>globalThis.assistantExecuted = true</script>');
   await expect(assistant.getByRole('button', { name: 'Cancel', exact: true })).toHaveCount(0);
-  const completedReply = assistant.locator('[aria-live="polite"] > div').filter({ hasText: '<script>globalThis.assistantExecuted = true</script>' });
+  const completedReply = assistant.getByRole('article', { name: 'Answer 1', exact: true }).filter({ hasText: '<script>globalThis.assistantExecuted = true</script>' });
   await expect(completedReply).toHaveCount(1);
   await completedReply.scrollIntoViewIfNeeded();
   expect(outbound?.maxOutputTokens).toBe(4096);
@@ -121,7 +124,22 @@ test('native clash evidence reaches the assistant without executing model output
     if (!store.getState().createFlow('AI coordination workflow')) throw new Error('Native Flow creation refused');
     store.getState().openPanelInHome('flow');
   });
-  await page.getByRole('button', { name: 'Discuss with AI', exact: true }).click();
+  // #7076: Flow is lazy-mounted; the still-visible Clash header must never receive this click.
+  const flowPanel = page.getByRole('tabpanel', { name: 'Flow', exact: true });
+  await expect(flowPanel).toBeVisible();
+  await flowPanel.getByRole('button', { name: 'Discuss with AI', exact: true }).click();
+  const flowEvidenceDetails = assistant.getByText('Evidence details', { exact: true });
+  await flowEvidenceDetails.scrollIntoViewIfNeeded();
+  await expect.poll(() => flowEvidenceDetails.evaluate(element => {
+    const bounds = element.getBoundingClientRect();
+    const hit = document.elementFromPoint(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2);
+    return hit !== null && element.contains(hit);
+  }), { message: '#6926: the Flow dock must leave split Assistant evidence controls pointer-accessible' }).toBe(true);
+  await flowEvidenceDetails.click();
+  await assistant.getByText('Inspect evidence sent to the model', { exact: true }).click();
+  await expect(assistant.locator('pre')).toContainText('"source":"flow"');
+  await expect(assistant.locator('pre')).toContainText('AI coordination workflow');
+  await assistant.getByText('Evidence details', { exact: true }).click();
   await assistant.getByLabel('Ask about these results').fill('Draft a Flow patch to select IfcWall elements.');
   await assistant.getByRole('button', { name: 'Send', exact: true }).click();
   // A typed patch renders as a proposal card; its review opens beside it without another prompt.
@@ -148,8 +166,9 @@ test('native clash evidence reaches the assistant without executing model output
     (globalThis as unknown as { __ifc_lite_viewer_store__: { getState(): { openPanelInHome(panel: 'loadReport'): void } } })
       .__ifc_lite_viewer_store__.getState().openPanelInHome('loadReport');
   });
-  await page.getByRole('region', { name: 'Load report', exact: true })
-    .getByRole('button', { name: 'Discuss with AI', exact: true }).click();
+  const loadReport = page.getByRole('region', { name: 'Load report', exact: true });
+  await expect(loadReport).toBeVisible();
+  await loadReport.getByRole('button', { name: 'Discuss with AI', exact: true }).click();
   await assistant.getByText('Evidence details', { exact: true }).click();
   await assistant.getByText('Inspect evidence sent to the model', { exact: true }).click();
   await expect(assistant.locator('pre')).toContainText('"source":"loadReport"');

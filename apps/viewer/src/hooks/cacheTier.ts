@@ -1,6 +1,7 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+import { PLACEMENT_IDENTITY_PREFIX } from '@/lib/model-placement/source-identity';
 
 /**
  * Which persisted-cache tier a model of a given byte length qualifies for.
@@ -13,8 +14,8 @@
  *     instanced shards WITHOUT the source (too big for IndexedDB at 150-400MB);
  *     on re-open the freshly read file buffer hydrates the accessors. The
  *     spread-sampled cache key (see `@ifc-lite/cache`'s `source-fingerprint.ts`) only KEYS the
- *     lookup; the hit is VALIDATED by the mtime guard plus an off-thread
- *     full-file hash ({@link decideMeshOnlyCacheHit}), so repeat opens still
+ *     lookup; the hit is VALIDATED by the mtime guard plus the load's
+ *     full-content identity ({@link decideCacheHit}), so repeat opens still
  *     have no main-thread stall.
  *
  * The ONLY difference between the two caching tiers is `persistSource` (and the
@@ -137,6 +138,31 @@ export function decideSourceTierCacheHit(opts: {
   const mtimeKnown = !!storedMtime && !!freshMtime;
   if (mtimeKnown && storedMtime !== freshMtime) return 'miss';
   return 'serve';
+}
+
+/**
+ * Whether a looked-up entry may be served, and the stored hash a served hit is
+ * background-revalidated against (#4269). The mtime rules are
+ * {@link decideMeshOnlyCacheHit} (source-decoupled) and
+ * {@link decideSourceTierCacheHit}. Since #7022 the stored hash is the load's
+ * placement identity, the one full-source pass a load makes; a hash without
+ * that prefix was written by an older viewer as a bare whole-file SHA-256 that
+ * the load no longer computes. Such an entry is a `miss`: serving it would
+ * either skip revalidation or "fail" it against a different construction, and
+ * the reparse rewrites it in the current form.
+ */
+export function decideCacheHit(opts: {
+  sourceDecoupled: boolean;
+  storedMtime?: number;
+  freshMtime?: number;
+  fullSourceHash?: string;
+}): { serve: boolean; revalidateAgainst?: string } {
+  const { sourceDecoupled, storedMtime, freshMtime, fullSourceHash } = opts;
+  if (fullSourceHash && !fullSourceHash.startsWith(PLACEMENT_IDENTITY_PREFIX)) return { serve: false };
+  const decision = sourceDecoupled
+    ? decideMeshOnlyCacheHit({ storedMtime, freshMtime, hasFullHash: !!fullSourceHash })
+    : decideSourceTierCacheHit({ storedMtime, freshMtime });
+  return decision === 'serve' ? { serve: true, revalidateAgainst: fullSourceHash } : { serve: false };
 }
 
 /**

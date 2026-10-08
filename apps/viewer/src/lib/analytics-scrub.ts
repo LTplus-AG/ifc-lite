@@ -119,15 +119,15 @@ const scrubProperties = (
   seen.add(props);
   for (const k of Object.keys(props)) {
     const v = props[k];
-    // URL_KEYS must be checked BEFORE SENSITIVE_KEY: keys like `$current_url`
-    // match SENSITIVE_KEY's `url` word, so without this they'd be deleted
-    // outright instead of having their query/hash stripped — losing the route
-    // we intend to keep (see the URL_KEYS comment above).
+    // URL_KEYS must be checked BEFORE SENSITIVE_KEY: keys like `$current_url` match its `url`
+    // word, so they'd be deleted outright instead of having their query/hash stripped —
+    // losing the route we intend to keep (see the URL_KEYS comment above).
     if (URL_KEYS.has(k)) {
       if (typeof v === 'string') props[k] = stripQueryAndHash(v);
       continue;
     }
     if (k === 'model_count' && typeof v === 'number' && Number.isSafeInteger(v) && v >= 0) continue; // aggregate only
+    if (k === 'load_path' && typeof v === 'string' && /^(?:wasm|cache|server|point-cloud|landxml)$/.test(v)) continue; // closed pipeline id, never a file path (#6961)
     if (SENSITIVE_KEY.test(k)) {
       delete props[k];
       continue;

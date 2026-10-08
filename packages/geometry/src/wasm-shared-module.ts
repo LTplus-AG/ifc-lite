@@ -159,7 +159,7 @@ export async function prepareSharedWasmInit(
  * slow link the whole download sits in front of first geometry (measured 2.5 s
  * on a ~4 Mbit connection, for a 225 KB model).
  *
- * Fire-and-forget by design: a prewarm failure must never surface to the user or
+ * Fire-and-forget by design (the returned promise never rejects): a prewarm failure must never surface to the user or
  * poison the load path. `compileSharedWasmModule` already evicts a failed URL so
  * the real load retries, and every consumer falls back to its own `init()` when
  * no shared module is available. Callers decide *when* to call this (idle,
@@ -170,10 +170,13 @@ export async function prepareSharedWasmInit(
  * Vite/webpack consumers (the viewer included) pass none and share the default
  * resolution, which is the intended usage.
  */
-export function prewarmSharedWasmModule(wasmUrl?: string): void {
-  void compileSharedWasmModule(wasmUrl).catch((err) => {
+export function prewarmSharedWasmModule(wasmUrl?: string): Promise<boolean> {
+  // Resolves whether a module compiled (the viewer's `viewer_boot` field
+  // event times it, #6961); callers that only prewarm can ignore it.
+  return compileSharedWasmModule(wasmUrl).then((module) => module !== null, (err) => {
     // Unreachable in practice — compileSharedWasmModule swallows its own
     // failures and resolves null — but never let a prewarm reject unhandled.
     console.warn('[stream] wasm prewarm failed; load path will retry:', err);
+    return false;
   });
 }

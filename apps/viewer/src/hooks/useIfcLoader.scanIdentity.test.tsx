@@ -31,6 +31,8 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import type { Renderer } from '@ifc-lite/renderer';
 import { useViewerStore } from '@/store';
+import { __resetSharedSessionForTests } from '../../../../packages/pointcloud/dist/streaming/worker-client.js';
+import { useActivityJournal } from '@/lib/activity/activity-journal';
 import { modelIndices } from '@/lib/model-placement/model-indices';
 import { addIfcModel, readbackIdentities, scanTestRenderer } from '@/test/scan-federation';
 import { useIfcLoader } from './useIfcLoader.js';
@@ -114,8 +116,9 @@ beforeEach(async () => {
   setGlobalRendererRef({ current: scanRenderer.renderer as Renderer });
   // The worker module registers `self.onmessage` when first imported, so the
   // fake scope must be in place before that import.
+  __resetSharedSessionForTests();
   restoreWorker = installInThreadDecodeWorker();
-  await import(DECODE_WORKER);
+  await import(`${DECODE_WORKER}?scope=${Date.now()}-${Math.random()}`);
   container = document.createElement('div');
   document.body.appendChild(container);
   root = createRoot(container);
@@ -163,4 +166,25 @@ describe('useIfcLoader.loadFile binds a streamed scan identity (#6887)', () => {
     assert.equal(asset.modelIndex, modelIndices(state.models).get('scan'), 'the asset reports the model\'s own index');
     assert.equal(asset.modelIndex, 1, 'second model, so index 1: not the readback default 0 (the IFC model)');
   });
+});
+
+// #6952: a published primary placeholder is not completion when its stream aborts.
+it('a native point-cloud AbortError after model publication is journaled as cancelled', async () => {
+  const renderer = scanRenderer!.renderer;
+  const append = renderer.appendPointCloudChunk;
+  let publishedAtAbort = false;
+  renderer.appendPointCloudChunk = function (...args) {
+    publishedAtAbort = useViewerStore.getState().models.has('cancelled-scan');
+    append.apply(this, args);
+    // Native upload boundary: a browser/GPU abort reaches the real stream and loader catch.
+    throw new DOMException('Upload aborted', 'AbortError');
+  };
+  try {
+    await act(async () => hookApi!.loadFile(lasFile('cancelled-scan.las'), { kind: 'primary', modelId: 'cancelled-scan' }));
+    assert.equal(publishedAtAbort, true, 'the primary model was visible before the native abort');
+    assert.equal(useViewerStore.getState().models.get('cancelled-scan')?.loadError, 'cancelled');
+    const row = useActivityJournal.getState().jobs.find(job => job.subject === 'cancelled-scan.las');
+    assert.ok(row);
+    assert.equal(row.outcome, 'cancelled');
+  } finally { renderer.appendPointCloudChunk = append; }
 });

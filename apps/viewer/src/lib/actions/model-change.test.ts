@@ -13,7 +13,7 @@ import { fixtureModel } from '@/test/store-fixture';
 import { changeOperations } from '@/lib/changes/change-operations';
 import { inverseMutationTargets } from '@/store/slices/mutation-inverse-registry';
 import { editedModelBytes } from '@/lib/export/edited-model-bytes';
-import { parseModelChangeBatch, type ModelChangeBatch } from './model-change';
+import { parseModelChangeBatch, type ModelChangeBatch } from '@ifc-lite/ai/artifacts';
 import { previewCounts, previewModelChanges } from './model-change-preview';
 import { commitModelChanges, undoModelChanges } from './model-change-commit';
 import { decodeModelChangeReceipt } from './receipts';

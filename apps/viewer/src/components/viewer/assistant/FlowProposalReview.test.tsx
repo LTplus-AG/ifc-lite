@@ -41,3 +41,20 @@ test('mounted Flow review requires approval and enables guarded graph undo', () 
   click(button('Undo graph changes'));
   assert.equal(useViewerStore.getState().flowDoc, doc);
 });
+
+// #6919: model-written script source is shown verbatim in the review card, outside the collapsed graph JSON.
+test('mounted Flow review lists the script code a patch sets', () => {
+  const doc = newFlowDocument('Scripted workflow');
+  useViewerStore.setState({ flowDoc: doc, activeFlowId: doc.id, flowRunning: false });
+  replaceEvidence(captureEvidence('flow'));
+  const code = 'const factor = 2;\ninputs.a * factor';
+  useAssistant.setState({ messages: [{ role: 'user', content: 'Add a script' }, { role: 'assistant', model: 'test-provider',
+    content: JSON.stringify({ version: 1, kind: 'flow.patch', operations: [{ op: 'addNode', alias: 'calc', type: 'script.run', pos: [0, 0] },
+      { op: 'setParam', node: 'calc', param: 'code', value: code }] }) }] });
+  const ui = render(<FlowProposalReview />);
+  click([...ui.querySelectorAll('button')].find(b => b.textContent === 'Review changes')!);
+  const listed = ui.querySelector('[aria-label="Script code this change sets"]');
+  assert.ok(listed, 'code parameters have their own review block');
+  assert.ok(!listed.closest('details'), 'and it is not collapsed');
+  assert.equal(listed.querySelector('pre')?.textContent, code);
+});

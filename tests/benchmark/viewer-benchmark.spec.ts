@@ -317,6 +317,11 @@ test.describe('Viewer Performance Benchmarks', () => {
         expect(counters?.structural['msg.geometry.out.count'] ?? 0, 'no geometry worker messages counted').toBeGreaterThan(0);
         expect(counters?.scheduling['store.setState'] ?? 0, 'no store writes counted').toBeGreaterThan(0);
         expect(counters?.mainThread, 'no long-frame summary recorded').not.toBeNull();
+        // #7022: full-source hash passes per primary load. One is the loader's
+        // (placement identity, shared by the cache write and warm revalidation);
+        // the other is the drawing-markup restore, which keys localStorage by a
+        // bare whole-file SHA-256 of the active model. A third pass fails here.
+        expect(counters?.structural['hash.fullSource.count'], 'full-source hash passes per load').toBe(2);
       }
 
       // Geometry correctness validation: Check mesh count matches expected (within 5% tolerance)

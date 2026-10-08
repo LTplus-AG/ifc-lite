@@ -122,6 +122,27 @@ rt('a measured commit must be a sha, since lower copies it into provenance.commi
   assert.match(problems[0], /git sha/);
 });
 
+// #7007: informational values are validated, shown, and never compared.
+rt('informational values never fail a check, and are listed in the report', () => {
+  const m = { ...measured([{ id: 'raw', value: 1000 }]), informational: [{ id: 'raw-brotli', value: 999999, unit: 'bytes', detail: 'main.js' }] };
+  assert.deepEqual(ceilings.validateMeasuredFile(m), []);
+  // No ceiling for raw-brotli: a gated metric without one would read `unratcheted`.
+  const res = compare.compareFamily(family([entry('raw', 1000)]), m);
+  assert.equal(res.failed, false);
+  assert.deepEqual(res.rows.map((r) => r.id), ['raw']);
+  const md = report.formatReport([res]);
+  assert.match(md, /all metrics within their ceilings/);
+  assert.match(md, /Informational, not gated:\n- `bundle\/raw-brotli`: 999,999 bytes \(main\.js\)/);
+});
+
+rt('an informational id must be distinct, well-formed and finite', () => {
+  const base = measured([{ id: 'raw', value: 1 }]);
+  assert.match(ceilings.validateMeasuredFile({ ...base, informational: {} }).join('\n'), /must be an array/);
+  assert.match(ceilings.validateMeasuredFile({ ...base, informational: [{ id: 'raw', value: 1 }] }).join('\n'), /gated or informational, not both/);
+  assert.match(ceilings.validateMeasuredFile({ ...base, informational: [{ id: 'x', value: 1 }, { id: 'x', value: 2 }] }).join('\n'), /duplicate id/);
+  assert.match(ceilings.validateMeasuredFile({ ...base, informational: [{ id: 'x', value: -1 }] }).join('\n'), /finite number/);
+});
+
 rt('the report lists only moved metrics, flags failure, and notes improvements', () => {
   const ceil = family([entry('up', 1000), entry('same', 50), entry('down', 1000)]);
   const res = compare.compareFamily(ceil, measured([{ id: 'up', value: 1100 }, { id: 'same', value: 50 }, { id: 'down', value: 900 }]));

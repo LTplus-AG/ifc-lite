@@ -8,7 +8,7 @@ import type { TranslationValue } from '../types';
 export const assistantPackAutomationEn = {
   'assistantSources.flowRun.title': 'Flow run',
   'assistantSources.flowRun.description': 'The last run of the open graph: node results, warnings, outputs and artifacts.',
-  'assistantSources.flowRun.rows': 'Rows are node results, run warnings, artifacts (metadata only), graph outputs and log entries.',
+  'assistantSources.flowRun.rows': 'Rows are failing node results first (with incoming edges, and parameters only for failing nodes and the nodes feeding them, script source withheld and credentials redacted), run warnings, artifacts (metadata only), graph outputs, other node results and log entries.',
   'assistantSources.flowRun.unavailable': 'No Flow run result was available at capture. Run the graph in Flow and refresh the evidence.',
   'assistantSources.flowRun.discussRun': 'Discuss run with AI',
   'assistantSources.flowRun.suggestExplain': 'Explain what this run did and what it produced',

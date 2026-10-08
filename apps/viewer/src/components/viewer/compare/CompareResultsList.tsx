@@ -7,6 +7,7 @@
  * to keep it under the module-size house rule (AGENTS.md).
  */
 
+import type { ReactNode } from 'react';
 import { Plus, Minus, PencilLine, MousePointerClick } from 'lucide-react';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { cn } from '@/lib/utils';
@@ -89,6 +90,8 @@ interface CompareResultsListProps {
   onFocusSuggestionGroup: (rows: SuggestionRow[]) => void;
   onAcceptSuggestion: (decision: SuggestionDecision) => void;
   onRejectSuggestion: (decision: SuggestionDecision) => void;
+  /** Rendered above the change groups, inside the scroll pane (#6921 impact and reconciliation). */
+  header?: ReactNode;
 }
 
 export function CompareResultsList({
@@ -108,6 +111,7 @@ export function CompareResultsList({
   onFocusSuggestionGroup,
   onAcceptSuggestion,
   onRejectSuggestion,
+  header,
 }: CompareResultsListProps) {
   const { t } = useTranslation();
   return (
@@ -117,6 +121,8 @@ export function CompareResultsList({
           {t('comparePanel.resultsList.emptyPrompt')}
         </div>
       ) : (
+        <>
+        {header}
         <div className="p-2 space-y-3">
           {LISTED_STATES.map(({ state, labelKey, color, Icon }) => {
             const bucket = groups.get(state);
@@ -191,6 +197,7 @@ export function CompareResultsList({
             </div>
           )}
         </div>
+        </>
       )}
     </ScrollArea>
   );

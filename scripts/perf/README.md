@@ -40,6 +40,23 @@ fan-out, memory bandwidth, GPU); a change in those still needs an end-to-end
 A/B (`ab.sh`, the browser rigs below), and a green ratchet is no evidence for it.
 
 
+## Workbench preset controls load on demand (#6926)
+
+The U03 preset controls initially exceeded the eager bundle allowance when
+combined with the U02 activity tray, although each branch fit separately.
+Loading the sidebar customizer only when opened reduced eager startup code,
+but did not by itself clear the combined allowance. The subsequent shared
+editor-state chunk separation on main restored headroom for the complete
+campaign snapshot without another ceiling increase or tolerance change.
+The real activity-bar regression opens the customizer, previews and applies
+the coordinator preset, then restores the original layout and keyboard focus.
+Reset also retires the saved preset through a small startup gateway instead
+of importing the optional preview and placement controls. The mounted
+regression reopens customization after Reset and confirms Restore is gone.
+This is a bundle-size verdict; it makes no model-load speed claim.
+Lesson: measure queued viewer features together, and keep optional editor
+surfaces behind their actual entry point.
+
 ## Structural counters and long frames per load (#6957)
 
 Under `?perfTrace=1` and in every benchmark run, each load's span tree also
@@ -71,6 +88,54 @@ call sites and `useViewerStore` subscriptions on the viewport, properties,
 hierarchy and streaming paths statically (minified component names make a
 runtime fiber census unattributable, and mounted counts move with UI state).
 
+## Worker warm-up candidate held (#7036)
+
+The resumed [cold-load captures](evidence/worker-warmup-7036/README.md) show
+earlier worker readiness but mixed first-visible and total-load results. No
+end-to-end speedup is accepted. The candidate creates fresh workers beside the
+file read and still terminates them after each load; it does not satisfy the
+original persistent-reuse requirement. Geometry counts match, but an ordered
+geometry hash was not collected. Repeat/federation measurements during takeover
+overlapped validation builds and need an idle-machine repeat. Lesson: moving
+worker initialization earlier is an opportunity screen, not a performance
+verdict. Keep the measurement and memory constraints before changing the rollout.
+
+The experiment defaults off on both the viewer and worker paths. Repeated cache
+hits cannot extend an unused worker's expiry, and memory-pressure retries drain
+the pool without refilling it. These are lifecycle corrections, not an accepted
+performance win; the end-to-end verdict above remains held.
+
+## Single-model appends cost O(new meshes) in the viewport (#7021)
+
+**Shipped.** While one model streamed in, `geometryWithModelIndex` copied
+every accumulated mesh on each viewport render to stamp `modelIndex`. The
+copy gave the merged array a new identity, so the "incremental" type
+filter, the type/occurrence scans and `Viewport`'s appearance-source list
+started over each time, and that list copied every mesh a second time.
+Measured with `loadCounters` (4 pinned workers, viewer-benchmark-ci): on
+Holter each JS-side mesh was copied about 13 times, filtered 13 times and
+copied 13 more times for appearance sources per load. Fix: a single model
+renders its own mesh array, with `modelIndex` stamped in place by
+`stampModelIndex`. It remembers per array how far it has stamped, so the
+array keeps its identity and the existing incremental scans stay
+incremental. One model's appearance list is that same array, and the index
+allocator returns one shared map until an assignment changes. After the
+fix, `viewer.modelIndexStamp` and `viewer.filterScan` each equal the JS
+mesh count, and `viewer.modelIndexRespread` and `viewer.appearanceSource`
+are 0 on single-model loads. Mesh and draw counts are unchanged.
+`useFederatedGeometry.streaming.test.tsx` guards the per-append cost.
+
+**Kept, deliberately:** the store still clones `models` per append. About
+125 selectors read `s.models`, and its identity is how they hear about an
+append to a non-active model, so dropping the clone would freeze them. The
+clone itself is O(models). The cost was in what rescanned downstream.
+**Still open:** several models keep wrapper copies (O(new) per append) and
+build the appearance list in O(total) on every `models` change.
+`store.notifications` (about 680 subscribers per write) is untouched.
+**Lesson:** a cache keyed on array identity is only as incremental as its
+least stable upstream producer. Count the visits (`viewer.filterScan`)
+instead of trusting the "incremental" comment.
+
 ## Frame-time rigs (#6960)
 
 Two rigs measure viewer frames; neither is a PR gate. Both inject the same
@@ -99,6 +164,20 @@ rendered vs idle frames (a frame that called `getCurrentTexture`), and
   so pass `--dist-base <base build>` for counterbalanced base/branch pairs and
   read the paired ratio. Serialise timed runs:
   `flock /tmp/ifclite-perf.lock npx tsx scripts/perf/frame-gpu-rig.mts tests/models/ara3d/AC20-FZK-Haus.ifc --pairs 3`.
+
+## Viewer JS is gated on raw bytes, not brotli (#7007)
+
+The viewer build is byte-reproducible apart from `__BUILD_DATE__` (the build
+timestamp `vite.config.ts` bakes into the entry chunk and `analytics`). Module
+order was NOT the cause: three clean builds of one tree kept all 304 JS files'
+raw sizes and, chunk hashes stripped, every file's content except those two;
+both CI attempts of one commit kept the entry's raw size and the eager file
+order. Brotli-11 of the entry chunk is still noisy, because a
+same-length timestamp swap alone is enough to jump it by ~0.5% (bimodal over
+48 dates, matching the 4.3 KB CI re-run swing). Pinning the timestamp would
+only make one tree repeat; every other edit perturbs the compressor the same
+way. **Lesson:** gate the JS on raw bytes, report brotli, and don't try to
+make a brotli number on a multi-megabyte JS chunk stable to better than ~0.5%.
 
 ## Instruction counts track kernel and parse work, not scheduling (#6958)
 
@@ -519,6 +598,34 @@ budget is the default whenever geometry streams. Lesson: a time slice sized
 for one phase silently carries into the next. Timestamp phase boundaries
 (`Stream complete`, `Streaming ended`, `finalizeStreamingAsync complete`)
 before assuming the tail is finalize work.
+## One full-source hash per load, beside the critical path (#7022)
+
+The loader awaited the placement identity (SHA-256 in 1 MiB chunks) before the
+cache lookup, then hashed the same bytes again for the cache write or for a
+warm hit's background revalidation. The identity now starts once the bytes are
+in hand and is awaited only by finalize (so a complete model still carries it),
+the cache write (which stores it) and the revalidation (which compares against
+it). A cache entry holding a bare whole-file hash from an older viewer is a
+miss, purged and rewritten by the reparse. Each full-source pass now counts as
+`hash.fullSource` in the structural counters.
+
+Interleaved real-GPU pairs (Windows Chrome over CDP, five rounds, FZK, Snowdon,
+a 54 MB and a 327 MB model, cold and warm) gave identical mesh counts and
+identity values. The cache lookup now starts up to ~0.4 s earlier on the 327 MB
+model, but first geometry, first visible and load total stayed within the base
+spread on every fixture. The pass was never the gate: engine init (cold) and
+the IndexedDB read (warm) end at the same time either way. Verdict: structural
+win (one loader pass instead of two, none on the critical path), no end-to-end
+speed claim.
+
+Lesson: count passes before timing them. The counter showed a second pass per
+primary load that the issue never listed: the drawing-markup restore
+(`useDrawing2DPersistence`) re-reads the whole Blob and hashes it, because its
+localStorage key is a bare SHA-256. Sharing it needs a key migration, so it is
+the next lever, not part of this change. Freeing a span from the critical path
+only helps if nothing parallel ends at the same moment; check the next span's
+end, not just this one's start.
+
 ## Placement identity from memory (#6431)
 
 Before parsing, the loader awaited a full-content SHA-256 identity (1 MiB chunks)
@@ -1393,6 +1500,13 @@ Preserve failed loads alongside successful samples. Listen for renderer crashes
 as well as JavaScript errors, and stop memory sampling on every exit path.
 
 ### Shipped wins
+- **Review startup bundle (#7015):** load the Script panel on demand and keep
+  CodeMirror's shared state module in its own chunk. Assistant text-edit planning
+  still uses `ChangeSet`, while the editor UI stays outside the eager import
+  closure. The production bundle clears the unchanged size ceilings; this is a
+  byte-size verdict, not a measured load-time improvement. **Lesson:** inspect
+  the complete HTML preload closure, and isolate shared state before assuming a
+  dynamic panel import makes its dependencies lazy.
 - **Firefox spatial-publication stall (#3983):** Chrome-only cold-load timing
   missed an engine-dependent entity-cache eviction cost. Georeference discovery
   runs through the property-set index during React rendering. Restarting a Map
@@ -2087,6 +2201,170 @@ The existing prepass can publish the exact full-byte source key through a fresh 
   spatial readiness, total load, mesh counts and visible-frame progress. The
   initial Holter browser cohort confirmed frame progress and no 14-second load,
   but concurrent host jobs made its small timing delta inconclusive.
+
+#### Field properties on every load and journey (#6961)
+
+`ifc_model_loaded` now carries the same milestones on every load path (wasm
+streaming, cache, server, IFCX, GLB, point cloud, LandXML), plus main-thread
+health, worker bytes, the journey and the perf-flag arm. Absent always means
+"not measured", never 0; a value the load path measured itself always wins.
+
+| property | meaning |
+|---|---|
+| `first_visible_geometry_ms` | first pixel: the paint after the first geometry append (`geometry.firstVisible`). Was wasm-only; now also cache. |
+| `spatial_ready_ms` | spatial tree usable (`parser.spatialReady`; on a cache hit, the store restore `cache.storeReady`). New. |
+| `metadata_complete_ms` | properties usable (`parser.complete`; cache: `cache.storeReady`). Was wasm-only. |
+| `stream_complete_ms` | last geometry batch appended (`geometry.streamComplete`). Was wasm-only; now also cache. |
+| `milestone_source` | `trace`: the four come from the load's streamed milestones. `commit`: a single-step path (server, IFCX, GLB, point cloud, LandXML) committed the model at once, so all four are its `total_elapsed_ms`. Never compare a `commit` row's first pixel with a `trace` row's. |
+| `journey` | charter journey: `J1` cold open, `J2` cache hit, `J4` federated add. |
+| `cache_tier` | `source`, `mesh-only` or `none` (the cache plan for this load). |
+| `worker_count` | geometry workers the pool started (absent on paths without a pool). |
+| `main_thread_blocked_ms` | sum of long-animation-frame `blockingDuration` (or long-task time over 50 ms where LoAF is missing) for frames starting between load start and capture. |
+| `longest_long_frame_ms`, `long_frame_count` | the longest such frame and how many there were. |
+| `long_frame_source` | `loaf` or `longtask`; compare rows of the same source only. All four main-thread fields are absent where the engine has neither (Firefox, Safari). |
+| `worker_transfer_bytes` | mesh bytes the geometry workers handed the main thread plus the parser's transport bytes, from `memoryAccounting` (already on every load). 0 when a pool ran and moved nothing; absent when no pool ran (cache, server). It counts payload bytes, not the clone estimate `?perfTrace=1` records per message. |
+| `perf_flags` | the M7 arm: `default`, or the non-default flags as sorted `id=value` pairs joined by `,` (read at capture). |
+| `load_path` | now actually arrives. The scrubber deleted it until #6961 (the key matches the `path` word); the closed vocabulary `wasm`/`cache`/`server`/`point-cloud`/`landxml` is now kept. Rows before that have no `load_path` and no `journey`, so a pre-#6961 cache hit reads as `J1`: judge `J1` against `J2` only on a baseline captured entirely after this change. |
+
+How it is measured without the tracer. With `?perfTrace=1` off, every load
+gets a `FieldLoadTrace` (`apps/viewer/src/lib/perf/fieldLoadTrace.ts`) in place
+of the old no-op trace: it records the first time of each milestone and the
+load attributes that the instrumented call sites already pass, and nothing
+else (spans, records and worker merges stay no-ops). Main-thread health comes
+from one `PerformanceObserver` on `long-animation-frame` (and `longtask`),
+created when the first load starts and reading back missed frames through its
+`buffered` replay; it only fires on frames over 50 ms and keeps at most 2,000.
+Both, and the three events below, live in an on-demand chunk
+(`lib/perf/fieldTelemetry.ts`), so the entry chunk grows by about 600 raw
+bytes. The recording tracer was not an option: it keeps every span, a counter
+registry and a 20k-entry frame log, and counting message bytes walks every
+worker payload.
+
+Sampled events. All carry `journey`, `perf_flags`, `was_hidden` and, where a model is
+loaded, `file_size_mb`/`mesh_count` from the last load (the same model key as
+`ifc_model_loaded`); nothing else identifies the model.
+
+| event | journey | what | sample rate, and why |
+|---|---|---|---|
+| `ifc_inspect` | J5 | `inspect_ms`: viewport click to the paint after the properties panel committed that entity | 10% of selection clicks, at most 10 per page session. Clicks outnumber loads by an order of magnitude; the paired ratio needs a few samples per person per window, not every click. Sent only when the panel is open. |
+| `ifc_navigate` | J6 | `frame_p50_ms`, `frame_p95_ms`, `frame_max_ms` over 120 camera-interaction frames (orbit, pan, zoom), excluding each interaction's first frame, frames while geometry streams and hidden-tab frames | once per page session, every session: one row per session is already the cap. Frame intervals include the adaptive render throttle, which is what the user sees. |
+| `viewer_boot` | J0 | `drop_target_ms` (navigation to the empty viewer's drop target enabled), `engine_wasm_compiled_ms` (navigation to the prewarmed engine compiled), `engine_wasm_compile_ms` (the prewarm's own fetch + compile), `engine_wasm_compiled` | once per page load, every page load. Sent when both are known, or 30 s after the field chunk loads. `drop_target_ms` is absent when a load started first; `engine_wasm_compile_ms` is absent when a load joined the compile; both are absent when the prewarm was skipped (Save-Data, 2G). |
+
+#### The field verdict (#6961)
+
+`scripts/perf/field-verdict.mjs` applies the paired-ratio method above to one
+deployed build: per (event, metric, journey, person, model) cell,
+`median(recent) / median(baseline)`, where recent is the judged build's rows
+and the divisor comes from the baseline window (the 14 days before that build
+first appeared) and from the `default` arm only. A group's pooled ratio is the
+median of its cell ratios, reported per journey and pooled across journeys,
+each per `perf_flags` arm. The threshold is on speed (1 / ratio): pooled speed
+below 0.95 with at least 5 paired cells is `regressed`; fewer cells is
+`insufficient`, which is the common case at current volume and is not a
+pass. `was_hidden = true` rows and bot traffic are excluded in the query.
+
+```bash
+node scripts/perf/field-verdict.mjs --print-sql --build <sha> > verdict.sql   # the HogQL below, filled in
+POSTHOG_PERSONAL_API_KEY=... node scripts/perf/field-verdict-fetch.mjs --build <sha> --out result.json
+node scripts/perf/field-verdict.mjs result.json --build <sha>                  # markdown; --json for data
+```
+
+`.github/workflows/field-verdict.yml` runs this daily at 05:15 UTC, before the
+05:45 deploy, against the build production has served since the previous
+deploy, and posts the markdown on the PR that build's commit came from (once
+per build). It needs one repository secret, `POSTHOG_PERSONAL_API_KEY`: a
+PostHog personal API key with only `query:read`, scoped to project 199147
+(EU cloud). Without it every run skips with a notice. Opening a thread when a
+pooled group regresses is the next step and is not wired yet.
+
+The HogQL the script expects (`__BUILD__` is the 12-character
+`app_build_sha`, `__BASELINE_DAYS__` the baseline length; the script reads it
+from this block). It already aggregates to one row per (person, model,
+journey, arm, metric, window) cell, not per load; `field-verdict-fetch.mjs`
+appends `LIMIT`/`OFFSET` and pages over the fully ordered result until it is
+complete, and fails rather than judge a partial one:
+
+<!-- field-verdict-hogql -->
+```sql
+SELECT
+  event,
+  journey,
+  arm,
+  person,
+  model,
+  metric,
+  window,
+  quantile(0.5)(value) AS median,
+  count() AS n
+FROM (
+  SELECT
+    event,
+    -- Rows before #6961 carry no `journey` (and no `load_path`: the scrubber
+    -- deleted it), so they fall back to load_target; a pre-#6961 cache hit
+    -- therefore reads as J1.
+    coalesce(
+      toString(properties.journey),
+      multiIf(
+        event = 'ifc_model_loaded' AND properties.load_target = 'federated', 'J4',
+        event = 'ifc_model_loaded' AND properties.load_path = 'cache', 'J2',
+        event = 'ifc_model_loaded', 'J1',
+        event = 'ifc_inspect', 'J5',
+        event = 'ifc_navigate', 'J6',
+        'J0'
+      )
+    ) AS journey,
+    coalesce(toString(properties.perf_flags), 'default') AS arm,
+    toString(person_id) AS person,
+    -- The model is its format plus size to 10 KB: no name ever leaves the browser.
+    if(event = 'viewer_boot', '-', concat(coalesce(toString(properties.format), '?'), ':', toString(round(toFloat(properties.file_size_mb), 2)))) AS model,
+    if(toString(properties.app_build_sha) = '__BUILD__', 'recent', 'baseline') AS window,
+    arrayJoin(arrayFilter(m -> isNotNull(m.2), [
+      tuple('total_elapsed_ms', toFloat(properties.total_elapsed_ms)),
+      tuple('first_visible_geometry_ms', toFloat(properties.first_visible_geometry_ms)),
+      tuple('spatial_ready_ms', toFloat(properties.spatial_ready_ms)),
+      tuple('metadata_complete_ms', toFloat(properties.metadata_complete_ms)),
+      tuple('stream_complete_ms', toFloat(properties.stream_complete_ms)),
+      tuple('main_thread_blocked_ms', toFloat(properties.main_thread_blocked_ms)),
+      tuple('inspect_ms', toFloat(properties.inspect_ms)),
+      tuple('frame_p95_ms', toFloat(properties.frame_p95_ms)),
+      tuple('drop_target_ms', toFloat(properties.drop_target_ms)),
+      tuple('engine_wasm_compile_ms', toFloat(properties.engine_wasm_compile_ms))
+    ])) AS pair,
+    pair.1 AS metric,
+    pair.2 AS value
+  FROM events
+  WHERE event IN ('ifc_model_loaded', 'ifc_inspect', 'ifc_navigate', 'viewer_boot')
+    AND timestamp >= now() - INTERVAL 90 DAY
+    -- Baseline: the __BASELINE_DAYS__ days before the judged build first appeared.
+    AND timestamp >= (
+      SELECT min(timestamp) FROM events
+      WHERE event = 'ifc_model_loaded' AND timestamp >= now() - INTERVAL 60 DAY
+        AND toString(properties.app_build_sha) = '__BUILD__'
+    ) - INTERVAL __BASELINE_DAYS__ DAY
+    AND (
+      toString(properties.app_build_sha) = '__BUILD__'
+      OR (
+        timestamp < (
+          SELECT min(timestamp) FROM events
+          WHERE event = 'ifc_model_loaded' AND timestamp >= now() - INTERVAL 60 DAY
+            AND toString(properties.app_build_sha) = '__BUILD__'
+        )
+        -- Only people who also used the judged build can form a pair.
+        AND person_id IN (
+          SELECT person_id FROM events
+          WHERE event IN ('ifc_model_loaded', 'ifc_inspect', 'ifc_navigate', 'viewer_boot')
+            AND timestamp >= now() - INTERVAL 60 DAY
+            AND toString(properties.app_build_sha) = '__BUILD__'
+        )
+      )
+    )
+    -- A load spanning a tab switch timed the user's absence (#2385).
+    AND NOT ifNull(toString(properties.was_hidden) = 'true', false)
+    AND NOT ifNull(toString(properties.$virt_is_bot) = 'true', false)
+)
+GROUP BY event, journey, arm, person, model, metric, window
+ORDER BY event, journey, metric, person, model, window
+```
 
 ### Source and buffer ownership during WASM prepass (#3989)
 
@@ -3290,3 +3568,17 @@ prototype removing unused nested value trees on this evidence or revisit the
 rejected general constructor. A different worker capture must first establish
 substantial unused materialization on the critical path. This native opportunity
 screen is not a browser speedup or a measurement of indirect style decoding.
+
+## Activity tray startup budget (#6952, U02)
+
+The maintainer approved the measured eager-JavaScript ceiling for U02 while
+keeping its existing tolerance. Job recording, the running badge and completion
+announcements must work before the detail tray opens; detail rows remain lazy.
+Deferring popup initialization and journal restoration increased eager bytes in
+the production bundle and was discarded. The verdict is a deliberately approved
+startup cost, not a speed improvement. Measure the complete eager chunk graph:
+extracting a module can increase shared imports even when its entry chunk shrinks.
+
+### Viewer preferences editor imports (P20, #6924)
+
+A hook used by the Assistant must live separately from the optional preferences editor: importing the hook from the editor makes its dynamic import ineffective. Keep the live project/model hook in a small module and load the form through its native lazy boundary. The combined production measurement showed no meaningful size improvement from the hook split. The remaining content-library registration and recipe run state still participate in startup; keep the split for the lazy editor boundary, without claiming a bundle reduction.

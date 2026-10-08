@@ -6,7 +6,8 @@
  * The markdown a `check` run prints, writes to the step summary and posts as
  * the sticky PR comment. It lists MOVED metrics only (anything whose measured
  * value differs from its ceiling, plus every failing row), so an unchanged
- * family stays one line long.
+ * family stays one line long. A measured file's `informational` values
+ * (#7007) follow as a plain list: shown, never compared.
  */
 
 import {
@@ -85,6 +86,13 @@ export function formatReport(results, context = {}) {
       (queued
         ? `${queued} of them cleared the tolerance band, so the daily lowering job (\`perf-ratchet-lower.yml\`) will lower ${queued === 1 ? 'its ceiling' : 'their ceilings'} once this is on \`main\`.`
         : 'None cleared the tolerance band yet, so no ceiling will move; small wins accumulate until they do.'));
+  }
+  const info = results.flatMap(({ family, informational = [] }) => informational.map((m) => ({ family, ...m })));
+  if (info.length) {
+    out.push('', 'Informational, not gated:');
+    for (const m of info) {
+      out.push(`- \`${m.family}/${m.id}\`: ${num(m.value)}${m.unit ? ` ${m.unit}` : ''}${m.detail ? ` (${m.detail})` : ''}`);
+    }
   }
   if (failed) {
     out.push('', 'A ceiling only moves up by a human PR that edits `tests/perf-ratchets/<family>.json` and says why. ' +

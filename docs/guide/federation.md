@@ -302,6 +302,66 @@ const stats = await computeDeviationStatisticsAsync(values, { tolerance: 0.01, c
 console.log(stats.p95Abs, stats.withinTolerance?.share, stats.clippedCount);
 ```
 
+### Scan to BIM: detect and review elements
+
+The Point Clouds panel's **Scan to BIM** section runs **Detect elements** on a
+loaded scan. It reads the scan's retained sample (up to 2 million points, or
+the coarse COPC levels). When the section box is on and shown, it reads only
+the points inside the box, mapped back through the scan's alignment. Planes and
+cylinders are found off the main thread and turned into proposed `IfcWall`,
+`IfcSlab`, `IfcColumn` and pipe elements in the coordinates of the active IFC
+model, or the first one loaded. The proposals include that model's offsets,
+its placement and the scan's alignment. Pipes are `IfcPipeSegment`, or
+`IfcFlowSegment` in an IFC2X3 model. With no IFC model loaded, proposals use
+the workspace coordinates. **Cancel** stops a running detection, and a second
+**Detect** replaces it. The rules behind the proposals (wall pairing, default
+thicknesses, floor and ceiling sides, snapping, confidence) are in the
+[proposal contract](../api/wasm.md#scan-element-proposals).
+
+The detected planes and cylinders are drawn over the scan, coloured by
+proposed class: walls blue, slabs grey, columns orange, pipes green. The
+review list shows each proposal's size, how it was derived, its confidence
+and its fit (RMS and points). **Accept** or **Reject** each one, or use
+**Accept all shown** and **Reject all shown** after filtering by class and
+minimum confidence. Rejected proposals disappear from the overlay, and
+accepted ones are drawn more opaque. A run ends when its scan or its IFC
+model is removed; removing either while detection runs stops the worker and
+discards its result.
+
+**Create accepted elements** writes the accepted proposals into the IFC
+model as one undo step, through the same path as the Model workspace's own
+commands. The new elements appear in the model tree and the properties
+panel, and they export with the model. Each element goes on the highest
+storey whose floor is at or below its base, within 0.3 m; an element below
+every floor goes on the lowest storey. Its geometry passes through that
+storey's own frame:
+- walls have a centred axis;
+- slabs are the outline extruded by their thickness;
+- columns have a circular profile;
+- pipes are a circular member along the axis, reclassified as
+  `IfcPipeSegment` or `IfcFlowSegment`.
+
+Each element carries an `IfcLite_ScanDetection` property set with
+`SourceScan`, `DetectionId`, `Basis`, `SourceDetections`, `Confidence`,
+`FitRmsMetres` and `InlierPoints`. The set does not use the `Pset_` prefix,
+which is reserved for buildingSMART's own property sets.
+
+- **Create** acts on the accepted proposals the filter shows. Accepted
+  proposals the filter hides are counted under the button, not created.
+- Created proposals are marked **Created** while the target model holds an
+  element with their GlobalId, so a reopened export still shows them.
+  Undoing the batch makes them available to create again.
+- **Detect again** starts a fresh review. If the target model already holds
+  elements created from the same scan earlier in the session, the bar warns
+  that creating again may duplicate them. It does not match new proposals to
+  old elements, and it does not know about elements created in an earlier
+  session.
+- **Create** refuses when the scan's placement or alignment, or the workspace
+  anchor, has changed since detection: detect again first.
+
+Editing must be on. With no IFC model loaded, **Create a blank IFC model**
+adds one beside the scan to hold the elements.
+
 World Context refreshes its Cesium model after movement pauses, using the same
 placed geometry. Its previous model stays visible until the replacement is ready;
 the WebGPU view updates immediately throughout the move.

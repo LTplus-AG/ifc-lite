@@ -12,6 +12,10 @@ import { bcfDraftLibrary } from '@/lib/bcf-drafts/draft-library';
 import { bcfOutboxLibrary } from '@/lib/bcf-publication/outbox-store';
 import { modelChangeLibrary } from '@/lib/actions/receipts';
 import { clashGroupApplicationLibrary } from '@/lib/clash/group-applications';
+import { reviewWorkspaceLibrary } from '@/lib/review/workspace';
+import { semanticReviewLibrary } from '@/lib/semantic/assist/library';
+import { assistantRecipeLibrary } from '@/lib/assistant/reuse/recipe-library';
+import { assistantPreferencesLibrary } from '@/lib/assistant/reuse/preferences';
 import { waitFor } from './render.js';
 import { createDocumentSlice } from '@/store/slices/documentSlice';
 import { createValidationReportsSlice } from '@/store/slices/validationReportsSlice';
@@ -64,7 +68,7 @@ beforeEach(async () => {
     localStorage.removeItem('ifc-lite-saved-comparisons');
     localStorage.removeItem('ifc-lite-clash-manual-groups');
     await clashGroupLibrary.restore();
-    await Promise.all([bcfDraftLibrary.restore(), bcfOutboxLibrary.restore(), modelChangeLibrary.restore(), clashGroupApplicationLibrary.restore()]);
+    await Promise.all([bcfDraftLibrary.restore(), bcfOutboxLibrary.restore(), modelChangeLibrary.restore(), clashGroupApplicationLibrary.restore(), reviewWorkspaceLibrary.restore(), semanticReviewLibrary.restore(), assistantRecipeLibrary.restore(), assistantPreferencesLibrary.restore()]);
     useClashGroupLibrary.setState({ activeId: DEFAULT_GROUP_WORKSPACE });
     useViewerStore.setState({
       ...createDocumentSlice(useViewerStore.setState, useViewerStore.getState, useViewerStore),

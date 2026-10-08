@@ -43,6 +43,7 @@ subscribeRevisionBaseline(clearSourcePin);
 useViewerStore.subscribe((next, previous) => {
   if (next.clashResult !== previous.clashResult || next.clashRawResult !== previous.clashRawResult
     || next.idsValidationReport !== previous.idsValidationReport || next.compareResult !== previous.compareResult
+    || next.compareReconciliation !== previous.compareReconciliation || next.compareRunCaptures !== previous.compareRunCaptures
     || next.savedComparisons !== previous.savedComparisons || next.bcfProject !== previous.bcfProject
     || next.models !== previous.models || next.mutationVersion !== previous.mutationVersion
     || next.geometryContentVersion !== previous.geometryContentVersion || next.modelPlacement !== previous.modelPlacement) clearSourcePin();

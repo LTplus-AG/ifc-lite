@@ -9,11 +9,12 @@
  * shows a second copy of the evidence as if it were the original.
  */
 
+import { currentReconciliationOf } from '@/lib/compare/compare-analysis-state';
 import { clashReviewKey } from '@ifc-lite/clash';
 import { loadRevisionBaseline } from '../clash/revision-baseline';
 import { useOriginalClashBaseline } from '../clash/original-baseline';
 import { useSemanticSession } from '@/lib/semantic/session';
-import { useSavedComparisonFocus, useSemanticRecordFocus } from '@/lib/panels/evidence-focus';
+import { useReconciliationFocus, useSavedComparisonFocus, useSemanticRecordFocus } from '@/lib/panels/evidence-focus';
 import { useViewerStore } from '@/store';
 import type { WorkspacePanelId } from '@/lib/panels/registry';
 import { selectChangedEntity } from '../changes/select-changed-entity';
@@ -22,7 +23,7 @@ import type { FindingEvidence, ReviewFinding } from './types';
 
 export const EVIDENCE_PANEL: Record<FindingEvidence['kind'], WorkspacePanelId> = {
   clash: 'clash', 'clash-baseline': 'clash', validation: 'validation', comparison: 'compare', 'saved-comparison': 'compare',
-  bcf: 'bcf', linked: 'semantic',
+  bcf: 'bcf', linked: 'semantic', 'run-reconciliation': 'compare',
 };
 
 /** Whether the original can still be reached: a historical clash baseline has no row in the live clash list. */
@@ -47,6 +48,13 @@ export function openOriginal(finding: ReviewFinding, openPanel: (panel: Workspac
     const expected = finding.elements.find(element => element.modelId === evidence.modelId)?.globalId;
     if (!expected || !sourceGlobalId || sourceGlobalId !== expected) return false;
     if (!selectChangedEntity(evidence.modelId, evidence.expressId)) return false;
+  } else if (evidence.kind === 'run-reconciliation') {
+    const held = state.compareReconciliation;
+    if (currentReconciliationOf(state)?.stale || !held || held.comparison !== state.compareResult || !held.outcome.ok
+      || held.outcome.baseRunId !== evidence.baseRunId || held.outcome.headRunId !== evidence.headRunId
+      || held.outcome.findings.filter(row => row.identity === evidence.identity).length !== 1
+      || ![evidence.baseRunId, evidence.headRunId].every(id => state.compareRunCaptures.some(run => run.id === id))) return false;
+    useReconciliationFocus.setState({ record: { baseRunId: evidence.baseRunId, headRunId: evidence.headRunId, identity: evidence.identity } });
   } else if (evidence.kind === 'comparison') {
     if (!state.compareResult?.diff.entries.some(entry => entry.key === evidence.key)) return false;
     state.setCompareSelectedKey(evidence.key);

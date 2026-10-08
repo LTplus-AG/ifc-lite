@@ -6,3 +6,5 @@ import { create } from 'zustand';
 /** Native panels consume exact record requests from external entry points. */
 export const useSavedComparisonFocus = create<{ record: { comparisonId: string; key: string } | null }>(() => ({ record: null }));
 export const useSemanticRecordFocus = create<{ record: { resourceId: string } | null }>(() => ({ record: null }));
+
+export const useReconciliationFocus = create<{ record: { baseRunId: string; headRunId: string; identity: string } | null }>(() => ({ record: null }));

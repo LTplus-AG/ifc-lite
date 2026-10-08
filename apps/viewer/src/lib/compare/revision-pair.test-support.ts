@@ -137,6 +137,8 @@ export interface IdsRunOptions {
   view?: MutablePropertyView;
   /** Omit passing entities, as a capped run does: the report then evaluates fewer than it found applicable. */
   omitPassing?: boolean;
+  /** Native per-specification evaluation cap, retaining explicit passing results. */
+  maxEntities?: number;
 }
 
 /** The committed IDS validated against one model, as the viewer's main-thread path runs it. */
@@ -146,7 +148,7 @@ export async function runIds(pair: RevisionPair, modelId: string, options: IdsRu
   const document = options.edit ? parseIDS(options.edit(xml)) : (ids ??= parseIDS(xml));
   const accessor = createDataAccessor(m.ifcDataStore, modelId, options.view ?? null);
   return validateIDS(document, accessor, { modelId, schemaVersion: 'IFC4', entityCount: m.ifcDataStore.entityCount },
-    { includePassingEntities: !options.omitPassing });
+    { includePassingEntities: !options.omitPassing, ...(options.maxEntities !== undefined ? { maxEntities: options.maxEntities } : {}) });
 }
 
 /** A rule set run against one model through the viewer's shared native runner. */

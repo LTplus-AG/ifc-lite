@@ -24,6 +24,7 @@ import { openNativeLibraryArtifact } from '@/lib/libraries/open-native-artifact'
 import { useLibraryFocus } from '@/lib/libraries/library-focus';
 import { SavedValidationReports } from './validation/SavedValidationReports';
 import { NativeLibrarySearch } from './libraries/NativeLibrarySearch';
+import { useValidationSourceChoice } from '@/lib/validation/validation-source-choice';
 import { createDocumentSlice } from '@/store/slices/documentSlice';
 import { registerLocale, setLocale } from '@/i18n';
 import { ExtensionHostService } from '@/services/extensions/host';
@@ -88,6 +89,13 @@ test('#7235 all nine native library families retain exact artifact navigation on
     assert.equal(await openNativeLibraryArtifact(row, host), 'opened', `native ${row.kind} target opens`);
     assert.deepEqual(useLibraryFocus.getState().target, { kind: row.kind, id: row.id });
     const current = useViewerStore.getState();
+    if (row.kind === 'check') {
+      assert.equal(current.validationDefinitions.active.ids, row.id);
+      assert.equal(useValidationSourceChoice.getState().choice, 'ids');
+      assert.equal(current.idsDocument?.info.title, parseIDS(xml).info.title);
+      assert.equal(current.idsAuditing, false);
+      assert.equal(current.idsValidationReport, null, 'opening checks does not run validation');
+    }
     if (row.kind === 'document') assert.equal(current.activeDocumentId, row.id);
     if (row.kind === 'topic') assert.equal(current.activeTopicId, topic.guid);
     if (row.kind === 'script') assert.equal(current.activeScriptId, row.id);

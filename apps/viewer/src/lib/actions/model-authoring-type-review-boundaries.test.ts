@@ -23,6 +23,12 @@ import { previewModelAuthoring } from './model-authoring-preview';
 
 const initial = useViewerStore.getState();
 afterEach(() => useViewerStore.setState(initial));
+
+function requiredTypeId(relation: { relatingId?: number }): number {
+  const id = relation.relatingId;
+  assert.ok(typeof id === 'number' && id > 0, 'native type relationship has an explicit positive relating EXPRESS ID');
+  return id;
+}
 for (const kind of ['resize', 'profile'] as const) test(`#7267 first-read ${kind} preview preserves the native lease on an independently saved procedural source`, async () => {
   const { dataStore, view: live } = await seedAuthoringSample();
   const state = useViewerStore.getState(), storey = dataStore.entities.getExpressIdByGlobalId(GROUND_STOREY);
@@ -40,7 +46,7 @@ for (const kind of ['resize', 'profile'] as const) test(`#7267 first-read ${kind
     ...(kind === 'resize' ? { size: { kind: 'wall', height: 4.1, thickness: .25 } } : { Profile: { Type: 'Circle', Radius: .25 } }) };
   const batch = parseModelAuthoringBatch(JSON.stringify({ version: 1, kind: 'model.authoring', title: 'Pure native preview', units: 'm', frame: 'storey-local', operations: [operation] }));
   const preview = previewModelAuthoring(useViewerStore.getState(), batch);
-  assert.equal(preview.rows[0].status, 'ready', preview.rows[0].issue);
+  assert.equal(preview.rows[0].status, 'ready', preview.rows[0].issue ?? 'native type review status');
   assert.doesNotThrow(() => lease.validate(), 'read-only preflight and native ghost cannot invalidate the live allocator lease');
   assert.equal(useViewerStore.getState().storeEditors, editors); assert.equal(editors.size, 0);
 });
@@ -49,15 +55,15 @@ for (const duplicate of ['target', 'type'] as const) test(`#7267 genuine same-mo
   const { dataStore, view } = await seedAuthoringSample();
   const id = dataStore.entities.getExpressIdByGlobalId(BACK_WALL);
   const relation = readRelatedLists(dataStore, 'IfcRelDefinesByType', view).find(row => row.relatedIds.includes(id)); assert.ok(relation);
-  const copyId = duplicate === 'target' ? id : relation.relatingId;
+  const copyId = duplicate === 'target' ? id : requiredTypeId(relation);
   const original = dataStore.getEntity(copyId); assert.ok(original);
   const copy = new StoreEditor(dataStore, view).addEntity(original.type, original.attributes);
   const exported = await parseIfc(editedModelBytes(dataStore, view));
   const GlobalId = dataStore.entities.getGlobalId(copyId);
   assert.equal(exported.getEntity(copyId)?.attributes[0], GlobalId); assert.equal(exported.getEntity(copy.expressId)?.attributes[0], GlobalId);
-  const batch = parseModelAuthoringBatch(JSON.stringify({ version: 1, kind: 'model.authoring', title: 'Ambiguous native root', units: 'm', frame: 'storey-local', operations: [{ op: 'type.detach', target: { modelId: SAMPLE_MODEL, globalId: BACK_WALL, ifcClass: 'IfcWall', name: BACK_WALL_NAME }, expected: { GlobalId: dataStore.entities.getGlobalId(relation.relatingId), Name: dataStore.entities.getName(relation.relatingId) } }] }));
+  const batch = parseModelAuthoringBatch(JSON.stringify({ version: 1, kind: 'model.authoring', title: 'Ambiguous native root', units: 'm', frame: 'storey-local', operations: [{ op: 'type.detach', target: { modelId: SAMPLE_MODEL, globalId: BACK_WALL, ifcClass: 'IfcWall', name: BACK_WALL_NAME }, expected: { GlobalId: dataStore.entities.getGlobalId(requiredTypeId(relation)), Name: dataStore.entities.getName(requiredTypeId(relation)) } }] }));
   const preview = previewModelAuthoring(useViewerStore.getState(), batch);
-  assert.equal(preview.rows[0].status, 'ambiguous-target', preview.rows[0].issue);
+  assert.equal(preview.rows[0].status, 'ambiguous-target', preview.rows[0].issue ?? 'native type review status');
 });
 
 test('#7267 earlier native type assignment cannot invalidate a later detach expectation silently', async () => {
@@ -65,17 +71,17 @@ test('#7267 earlier native type assignment cannot invalidate a later detach expe
   const id = dataStore.entities.getExpressIdByGlobalId(BACK_WALL);
   const relation = readRelatedLists(dataStore, 'IfcRelDefinesByType', view).find(row => row.relatedIds.includes(id)); assert.ok(relation);
   const replacement = dataStore.entities.getExpressIdByGlobalId('2YJwrhcCv9v8UXU8cWK40m');
-  assert.ok(replacement > 0 && replacement !== relation.relatingId);
+  assert.ok(replacement > 0 && replacement !== requiredTypeId(relation));
   const target = { modelId: SAMPLE_MODEL, globalId: BACK_WALL, ifcClass: 'IfcWall', name: BACK_WALL_NAME };
   const batch = parseModelAuthoringBatch(JSON.stringify({ version: 1, kind: 'model.authoring', title: 'Native intermediate type ownership', units: 'm', frame: 'storey-local', operations: [
-    { op: 'type.assign', target, expected: dataStore.entities.getName(relation.relatingId), type: { globalId: dataStore.entities.getGlobalId(replacement), name: dataStore.entities.getName(replacement) } },
-    { op: 'type.detach', target, expected: { GlobalId: dataStore.entities.getGlobalId(relation.relatingId), Name: dataStore.entities.getName(relation.relatingId) } },
+    { op: 'type.assign', target, expected: dataStore.entities.getName(requiredTypeId(relation)), type: { globalId: dataStore.entities.getGlobalId(replacement), name: dataStore.entities.getName(replacement) } },
+    { op: 'type.detach', target, expected: { GlobalId: dataStore.entities.getGlobalId(requiredTypeId(relation)), Name: dataStore.entities.getName(requiredTypeId(relation)) } },
   ] }));
   const preview = previewModelAuthoring(useViewerStore.getState(), batch);
-  assert.equal(preview.rows[0].status, 'ready', preview.rows[0].issue);
+  assert.equal(preview.rows[0].status, 'ready', preview.rows[0].issue ?? 'native type review status');
   assert.notEqual(preview.rows[1].status, 'ready', 'detach must recheck the expected current type on the actual intermediate native draft');
   const unchanged = await parseIfc(editedModelBytes(dataStore, view));
-  assert.ok(readRelatedLists(unchanged, 'IfcRelDefinesByType').some(row => row.relatingId === relation.relatingId && row.relatedIds.includes(id)));
+  assert.ok(readRelatedLists(unchanged, 'IfcRelDefinesByType').some(row => row.relatingId === requiredTypeId(relation) && row.relatedIds.includes(id)));
 });
 
 
@@ -84,16 +90,16 @@ test('#7267 native intermediate detach accepts the matching replacement and refu
   const target = dataStore.entities.getExpressIdByGlobalId(BACK_WALL);
   const originalType = readRelatedLists(dataStore, 'IfcRelDefinesByType', view).find(row => row.relatedIds.includes(target)); assert.ok(originalType);
   const replacement = dataStore.entities.getExpressIdByGlobalId('2YJwrhcCv9v8UXU8cWK40m');
-  assert.ok(replacement > 0 && replacement !== originalType.relatingId);
+  assert.ok(replacement > 0 && replacement !== requiredTypeId(originalType));
   const operation = (typeId: number) => ({ op: 'type.detach' as const,
     target: { modelId: SAMPLE_MODEL, globalId: BACK_WALL, ifcClass: 'IfcWall', name: BACK_WALL_NAME },
     expected: { GlobalId: dataStore.entities.getGlobalId(typeId), Name: dataStore.entities.getName(typeId) ?? '' } });
   assert.throws(() => recordModellingEdit(useViewerStore, SAMPLE_MODEL, (methods, draft) => {
     methods.assignType(SAMPLE_MODEL, replacement, [target]);
-    writeNativeTypeDetach(operation(originalType.relatingId), dataStore, draft, { target, typeId: originalType.relatingId });
+    writeNativeTypeDetach(operation(requiredTypeId(originalType)), dataStore, draft, { target, typeId: requiredTypeId(originalType) });
   }), /expected binding/);
   const refused = await parseIfc(editedModelBytes(dataStore, view));
-  assert.ok(readRelatedLists(refused, 'IfcRelDefinesByType').some(row => row.relatingId === originalType.relatingId && row.relatedIds.includes(target)), 'failed native group restores the original exported assignment');
+  assert.ok(readRelatedLists(refused, 'IfcRelDefinesByType').some(row => row.relatingId === requiredTypeId(originalType) && row.relatedIds.includes(target)), 'failed native group restores the original exported assignment');
   recordModellingEdit(useViewerStore, SAMPLE_MODEL, (methods, draft) => {
     methods.assignType(SAMPLE_MODEL, replacement, [target]);
     writeNativeTypeDetach(operation(replacement), dataStore, draft, { target, typeId: replacement });
@@ -103,7 +109,7 @@ test('#7267 native intermediate detach accepts the matching replacement and refu
   assert.equal(detached.entities.getGlobalId(replacement), dataStore.entities.getGlobalId(replacement), 'the replacement type itself remains');
   useViewerStore.getState().undo(SAMPLE_MODEL);
   const restored = await parseIfc(editedModelBytes(dataStore, view));
-  assert.ok(readRelatedLists(restored, 'IfcRelDefinesByType').some(row => row.relatingId === originalType.relatingId && row.relatedIds.includes(target)), 'one native Undo restores the pre-assignment binding');
+  assert.ok(readRelatedLists(restored, 'IfcRelDefinesByType').some(row => row.relatingId === requiredTypeId(originalType) && row.relatedIds.includes(target)), 'one native Undo restores the pre-assignment binding');
 });
 
 
@@ -112,7 +118,7 @@ for (const subject of ['target', 'type'] as const) for (const origin of ['live',
     let { dataStore, view } = await seedAuthoringSample();
     const target = dataStore.entities.getExpressIdByGlobalId(BACK_WALL);
     const relation = readRelatedLists(dataStore, 'IfcRelDefinesByType', view).find(row => row.relatedIds.includes(target)); assert.ok(relation);
-    const typeId = relation.relatingId;
+    const typeId = requiredTypeId(relation);
     const editor = new StoreEditor(dataStore, view);
     const materialGuid = subject === 'target' ? BACK_WALL : dataStore.entities.getGlobalId(typeId);
     const material = editor.addEntity('IfcMaterial', [materialGuid]);
@@ -126,7 +132,7 @@ for (const subject of ['target', 'type'] as const) for (const origin of ['live',
     }
     const batch = parseModelAuthoringBatch(JSON.stringify({ version: 1, kind: 'model.authoring', title: 'Native root role', units: 'm', frame: 'storey-local', operations: [{ op: 'type.detach', target: { modelId: SAMPLE_MODEL, globalId: BACK_WALL, ifcClass: 'IfcWall', name: BACK_WALL_NAME }, expected: { GlobalId: dataStore.entities.getGlobalId(typeId), Name: dataStore.entities.getName(typeId) ?? '' } }] }));
     const preview = previewModelAuthoring(useViewerStore.getState(), batch);
-    assert.equal(preview.rows[0].status, 'ready', preview.rows[0].issue);
+    assert.equal(preview.rows[0].status, 'ready', preview.rows[0].issue ?? 'native type review status');
     const committed = commitModelAuthoring(useViewerStore, preview, new Set([0]), 'Native root role');
     assert.ok(committed.ok, committed.ok ? '' : committed.detail ?? committed.reason);
     const detached = await parseIfc(editedModelBytes(dataStore, view));

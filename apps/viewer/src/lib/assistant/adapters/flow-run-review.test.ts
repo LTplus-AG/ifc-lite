@@ -9,6 +9,8 @@ import assert from 'node:assert/strict';
 import { runFlow, type FlowDocument, type NodeStatus, type RunResult } from '@ifc-lite/flow';
 import { approveCheckpoint, claimCheckpoint, createCheckpoint, graphDigest, resumeOutputs, updateCheckpoint } from '@ifc-lite/flow/checkpoint';
 import { createStandardRegistry } from '@ifc-lite/flow-nodes';
+import { createBimContext } from '@ifc-lite/sdk';
+import { LocalBackend } from '@/sdk/local-backend';
 import { useViewerStore } from '@/store';
 import { browserCheckpointStore } from '@/lib/flow/checkpoint-store';
 import { captureEvidence } from '../evidence';
@@ -26,9 +28,10 @@ async function paused() {
     nodes: [{ id: 'proposal', type: 'test.reviewNumber' }, { id: 'five', type: 'core.number', params: { value: 5 } },
       { id: 'sum', type: 'core.math', params: { op: 'add' } }],
     edges: [{ from: ['proposal', 'value'], to: ['sum', 'a'] }, { from: ['five', 'value'], to: ['sum', 'b'] }] };
-  const run = await runFlow(doc, { host: {}, registry });
+  const host = { bim: createBimContext({ backend: new LocalBackend(useViewerStore) }) };
+  const run = await runFlow(doc, { host, registry });
   assert.equal(run.ok, true); assert.deepEqual(run.review, ['proposal']);
-  return { doc, registry, run, proposals: () => proposals };
+  return { doc, registry, host, run, proposals: () => proposals };
 }
 function summary(doc: FlowDocument, run: RunResult) {
   useViewerStore.setState({ flowDoc: doc, flowLastRun: run, flowLastError: null, flowLastRunWindow: null, flowRunWarnings: [], flowArtifacts: [] });
@@ -59,7 +62,7 @@ test('#7084 native digest-approved checkpoint replay counts restored nodes separ
   const claimed = await updateCheckpoint(browserCheckpointStore, checkpoint.id, current => claimCheckpoint(current, {
     owner: 'review-evidence-test', graphDigest: graphDigest(fixture.doc, {}, fixture.registry), sourceDigest, leaseMs: 60_000,
   }));
-  const resumed = await runFlow(fixture.doc, { host: {}, registry: fixture.registry, resume: resumeOutputs(claimed) });
+  const resumed = await runFlow(fixture.doc, { host: fixture.host, registry: fixture.registry, resume: resumeOutputs(claimed) });
   const evidence = summary(fixture.doc, resumed);
   assert.equal(evidence.nodeStatusCounts.restored, 2); assert.equal(evidence.executedNodes, 1);
   assert.equal(evidence.verdict, 'passed'); assert.equal(evidence.nodeStatusCounts.paused, 0);

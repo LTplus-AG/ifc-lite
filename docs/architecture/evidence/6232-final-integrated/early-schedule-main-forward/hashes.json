@@ -1,0 +1,82 @@
+{
+  "qualification": {
+    "source": "ed68e240572316addc867de9be11548434e82bd2",
+    "tree": "68068e434c0f1a108306204137c4426863959407",
+    "actualMain": "a0f7cfa07fc7a220b93e316c1523536859a808c5",
+    "ownPublishedHead": "db35b74ac1e94046da26ccae4f56bd92c7450979",
+    "literalInheritedPaths": [
+      ".changeset/schedule-early-dates-6803.md",
+      "apps/viewer/src/components/viewer/properties/ScheduleCard.tsx",
+      "apps/viewer/src/components/viewer/properties/TaskEditCard.tsx",
+      "apps/viewer/src/components/viewer/schedule/GanttTaskTree.tsx",
+      "apps/viewer/src/components/viewer/schedule/schedule-animator.ts",
+      "apps/viewer/src/components/viewer/schedule/useGanttBarDrag.early-dates.test.tsx",
+      "apps/viewer/src/components/viewer/schedule/useGanttBarDrag.ts",
+      "apps/viewer/src/lib/charts/datasets/schedule.ts",
+      "apps/viewer/src/store/slices/schedule-edit-helpers.ts",
+      "apps/viewer/src/store/slices/schedule-task-dates.test.ts",
+      "apps/viewer/src/store/slices/schedule-task-dates.ts",
+      "apps/viewer/src/store/slices/scheduleSlice.test.ts",
+      "apps/viewer/src/store/slices/scheduleSlice.ts"
+    ],
+    "all13InheritedBlobsExactMain": true,
+    "packagesRustApiBimPlannerUnchanged": true,
+    "typecheck": {
+      "tasks": 111,
+      "cached": 110,
+      "testFiles": 3407,
+      "exit": 0
+    },
+    "viewerScheduleChart": {
+      "passed": 490,
+      "failed": 0,
+      "skipped": 0,
+      "cancelled": 0,
+      "cache": 0,
+      "exit": 0,
+      "pattern": "schedule|Schedule|Gantt|TaskEdit|lib/charts/datasets"
+    },
+    "runtime": "a050aed5572273e63c8a08a243f5ebe6180da0ea202875e6cf97b7e6d726b23b",
+    "scope": "13 inherited viewer-only scheduling paths; playback/date presentation/editor behavior qualified by affected schedule/chart controls. Modelling/Rust/packages/API unchanged. Earlier14browser/2edeMCP labels remain literal; no new capture/build/perfclaim.",
+    "time": "2026-10-04T10:17:33.219992+00:00"
+  },
+  "scope": "13 inherited viewer-only scheduling paths; playback/date presentation/editor behavior qualified by affected schedule/chart controls. Modelling/Rust/packages/API unchanged. Earlier14browser/2edeMCP labels remain literal; no new capture/build/perfclaim.",
+  "originalArtifacts": [
+    {
+      "original": "/tmp/6232-final-maina0f-drift.json",
+      "archive": "6232-final-maina0f-drift.json",
+      "originalSHA256": "82dc4abd0381715de470cf8861064d35819f4d5d6ce7804b571620a305c9836b",
+      "archiveSHA256": "82dc4abd0381715de470cf8861064d35819f4d5d6ce7804b571620a305c9836b"
+    },
+    {
+      "original": "/tmp/6232-align-maina0-source-preserving-composition-proof.json",
+      "archive": "6232-align-maina0-source-preserving-composition-proof.json",
+      "originalSHA256": "3ff75341f000fc049281bbaa51c3a64fa9621f19588da106ed7b4cd9563bfbf4",
+      "archiveSHA256": "3ff75341f000fc049281bbaa51c3a64fa9621f19588da106ed7b4cd9563bfbf4"
+    },
+    {
+      "original": "/tmp/6232-final-maina0f-qualification-receipt.json",
+      "archive": "6232-final-maina0f-qualification-receipt.json",
+      "originalSHA256": "9757fc80a59cedbf2d69840ddd1a2be492ee2795ce78c4e1870597bba7c158c8",
+      "archiveSHA256": "9757fc80a59cedbf2d69840ddd1a2be492ee2795ce78c4e1870597bba7c158c8"
+    },
+    {
+      "original": "/tmp/6232-final-maina0f-runtime-preservation.json",
+      "archive": "6232-final-maina0f-runtime-preservation.json",
+      "originalSHA256": "6f971e37f37c7f6820d98e3824ed7b51abf837c50ce594505428344d5443335a",
+      "archiveSHA256": "6f971e37f37c7f6820d98e3824ed7b51abf837c50ce594505428344d5443335a"
+    },
+    {
+      "original": "/tmp/6232-final-maina0f-types.log",
+      "archive": "6232-final-maina0f-types.log.gz",
+      "originalSHA256": "6359d4c2e93a5d518042d623cfcd04a5aee6d75c04c2c648277f21a3a74856c7",
+      "archiveSHA256": "b8f26804705731f5aca2a49b5ddcb3d8fe893ea0b1f5dfe930184c2e38d8960c"
+    },
+    {
+      "original": "/tmp/6232-final-maina0f-viewer.log",
+      "archive": "6232-final-maina0f-viewer.log.gz",
+      "originalSHA256": "0e121e948546c67ac092057931ea469cad8b4273d6d19c55c3bcef044ee7322a",
+      "archiveSHA256": "6f75fff3c6289ad5176c23135ebf1a84b4333ada3e2b47efd532fad44316d554"
+    }
+  ]
+}

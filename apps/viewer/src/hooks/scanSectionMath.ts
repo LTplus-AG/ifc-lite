@@ -262,41 +262,26 @@ function readColor(
 }
 
 /**
- * Select the points of `sample` within the section band, honour the LAS
- * class-visibility mask, and decimate to `maxRendered` with a deterministic
- * "keep every Nth in-band point" stride — reproducible across calls and
- * independent of point order (a first pass counts matches before the
- * stride is chosen, so the same input always yields the same output).
- *
- * Two O(n) passes over `sample.positions` (count, then collect); cheap even
- * at a few million retained points and meant to run off the render hot path
- * (debounced on section-plane changes), not per frame.
+ * The one place that turns a sample index into a render-frame position and
+ * decides band membership, shared by {@link selectScanBand} (dots) and
+ * {@link collectScanBandPlaneXY} (the vector outline's input) so the two
+ * layers can never disagree about which points are in the slab.
  */
-export function selectScanBand(params: SelectScanBandParams): ScanBandSelection {
-  const {
-    sample, coordinateInfo, plane, thickness, classMask, model,
-    modelOutputsRenderFrame = false, maxRendered = DEFAULT_SCAN_RENDER_CAP,
-  } = params;
-  const { positions, colors, classifications, count } = sample;
+function bandReader(params: Omit<SelectScanBandParams, 'maxRendered'>) {
+  const { sample, coordinateInfo, plane, thickness, classMask, model, modelOutputsRenderFrame = false } = params;
+  const { positions, classifications } = sample;
   const shift = totalYupOffset(coordinateInfo);
   const halfThickness = Math.max(thickness, 0) / 2;
-  // Cached scan points are RAW decoder output; an aligned asset (#1804) is
-  // drawn through `model` on the GPU. Fold it in here or the 2D overlay
-  // sits at pre-alignment coordinates while the 3D view shows the scan
-  // aligned to the building. Skipped entirely when absent (the common
-  // unaligned case) so nothing pays matrix cost for nothing.
+  // Cached points are RAW decoder output; an aligned asset (#1804) is drawn
+  // through `model` on the GPU, so fold it in (skipped when absent). Skip the
+  // render-frame shift when the matrix already lands there (else it is
+  // subtracted twice).
   const useModel = model !== undefined && model.length === 16;
-  // Skip the render-frame shift when the matrix already produced
-  // render-frame coordinates — otherwise it is subtracted twice.
   const shiftAfterModel = !(useModel && modelOutputsRenderFrame);
-
   const passesClassMask = (i: number): boolean => {
     if (!classMask || !classifications) return true;
     return isPointCloudClassVisible(classMask, classifications[i]);
   };
-  // Single reader for both passes below — the band test and the collect
-  // loop MUST agree on where a point is, so there is deliberately only one
-  // place that turns an index into a render-frame position.
   const readPoint = (i: number): Vec3 => {
     const x = positions[i * 3];
     const y = positions[i * 3 + 1];
@@ -310,14 +295,30 @@ export function selectScanBand(params: SelectScanBandParams): ScanBandSelection 
       : { x, y, z };
     return shiftAfterModel ? toRenderFrame(p, shift) : p;
   };
-  const inBand = (i: number): boolean => {
-    return Math.abs(signedBandDistance(readPoint(i), plane)) <= halfThickness;
-  };
+  const inBand = (rp: Vec3): boolean => Math.abs(signedBandDistance(rp, plane)) <= halfThickness;
+  return { passesClassMask, readPoint, inBand };
+}
+
+/**
+ * Select the points of `sample` within the section band, honour the LAS
+ * class-visibility mask, and decimate to `maxRendered` with a deterministic
+ * "keep every Nth in-band point" stride — reproducible across calls and
+ * independent of point order (a first pass counts matches before the
+ * stride is chosen, so the same input always yields the same output).
+ *
+ * Two O(n) passes over `sample.positions` (count, then collect); cheap even
+ * at a few million retained points and meant to run off the render hot path
+ * (debounced on section-plane changes), not per frame.
+ */
+export function selectScanBand(params: SelectScanBandParams): ScanBandSelection {
+  const { sample, plane, maxRendered = DEFAULT_SCAN_RENDER_CAP } = params;
+  const { colors, count } = sample;
+  const { passesClassMask, readPoint, inBand } = bandReader(params);
 
   let totalInBand = 0;
   for (let i = 0; i < count; i++) {
     if (!passesClassMask(i)) continue;
-    if (inBand(i)) totalInBand++;
+    if (inBand(readPoint(i))) totalInBand++;
   }
 
   const stride = totalInBand > maxRendered && maxRendered > 0
@@ -329,13 +330,35 @@ export function selectScanBand(params: SelectScanBandParams): ScanBandSelection 
   for (let i = 0; i < count; i++) {
     if (!passesClassMask(i)) continue;
     const rp = readPoint(i);
-    if (Math.abs(signedBandDistance(rp, plane)) > halfThickness) continue;
+    if (!inBand(rp)) continue;
     matchIndex++;
     if (matchIndex % stride !== 0) continue;
     points.push({ point: projectScanPoint(rp, plane), color: readColor(colors, i) });
   }
 
   return { points, totalInBand, renderedCount: points.length, stride };
+}
+
+/** Every in-band point, undecimated, as flat drawing-space `[x0, y0, …]`:
+ * the vector outline's input (#6871), which needs the full slab density. */
+export function collectScanBandPlaneXY(params: Omit<SelectScanBandParams, 'maxRendered'>): Float32Array {
+  const { sample, plane } = params;
+  const { passesClassMask, readPoint, inBand } = bandReader(params);
+  let n = 0;
+  for (let i = 0; i < sample.count; i++) {
+    if (passesClassMask(i) && inBand(readPoint(i))) n++;
+  }
+  const out = new Float32Array(n * 2);
+  let k = 0;
+  for (let i = 0; i < sample.count && k < out.length; i++) {
+    if (!passesClassMask(i)) continue;
+    const rp = readPoint(i);
+    if (!inBand(rp)) continue;
+    const p = projectScanPoint(rp, plane);
+    out[k++] = p.x;
+    out[k++] = p.y;
+  }
+  return out;
 }
 
 /**

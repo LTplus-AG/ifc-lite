@@ -48,6 +48,7 @@ const PINNED_SESSION_RESET_KEYS: readonly string[] = [
   'cesiumTerrainClipY', 'cesiumTerrainHeight', 'cesiumTerrainSaveHeight', 'changeSets',
   'chatAbortController', 'chatError', 'chatStatus', 'chatStreamingContent', 'classFilter',
   'cloudAnnotation2DPoints', 'cloudAnnotations2D', 'compareAcceptedIdentity', 'compareError', 'compareKeyProperty', 'compareRejectedClaims', 'compareResult', // #4955/#4989 reviewed identity and its authored-key scheme name the outgoing files' entities
+  'compareReconciliation', 'compareRunCaptures', // #6921 captured runs name the outgoing federation's model ids
   'compareRunning', 'compareSelectedKey', 'contactShadingIntensity', 'contactShadingQuality',
   'contactShadingRadius', 'contextMenu', 'customOverrideRules', 'dirtyModels', 'discoveredLensData', 'draft',
   'drawing2D', 'drawing2DDisplayOptions', 'drawing2DError', 'drawing2DPanelVisible',
@@ -76,9 +77,11 @@ const PINNED_SESSION_RESET_KEYS: readonly string[] = [
   'playbackTime', 'pointCloudAlignmentAvailable', 'pointCloudAlignmentEnabled',
   'pointCloudAssetCount', 'pointCloudClassCounts', 'pointCloudClassMask',
   'pointCloudColorMode', 'pointCloudDeviationCenterOffset', 'pointCloudDeviationComputed',
-  'pointCloudDeviationHalfRange', 'pointCloudEdlEnabled', 'pointCloudEdlStrength',
+  'pointCloudDeviationHalfRange', 'pointCloudDeviationRevision', 'pointCloudEdlEnabled', 'pointCloudEdlStrength',
+  'pointCloudDeviationStatistics', // #6833 stored deviation statistics describe the outgoing scene's run
   'pointCloudFixedColor', 'pointCloudPointSize', 'pointCloudPreviewStride',
   'pointCloudRoundShape', 'pointCloudSizeMode', 'pointCloudWorldRadius', 'polygonArea2DPoints',
+  'scanDetectionError', 'scanDetectionRun', 'scanDetectionStage', 'scanDetectionStatus', 'scanCreatedGlobalIds', 'scanProposalCreated', 'scanProposalDecisions', 'scanProposalFilter', // #6894 scan-to-BIM review
   'polygonArea2DResults', 'progress', 'projectionMode', 'redoStacks', 'scheduleData',
   'scheduleRange', 'scriptAssistantTurnSnapshot', 'scriptDeleteConfirmId',
   'scriptExecutionState', 'scriptLastDiagnostics', 'scriptLastError', 'scriptLastResult',
@@ -113,6 +116,7 @@ const PINNED_ALL_MODELS_CLEARED_KEYS: readonly string[] = [
   'selectedEntities', 'selectedEntitiesSet',
   'selectedEntity', 'selectedEntityId', 'selectedEntityIds', 'selectedLandXmlSource', 'selectedModelId', 'selectedStoreys', 'selectionRevision',
   'validationRuleSetDraft', 'validationRuleSetEditing', // #5825 full unload discards the unsaved editor
+  'scanDetectionError', 'scanDetectionRun', 'scanDetectionStage', 'scanDetectionStatus', 'scanCreatedGlobalIds', 'scanProposalCreated', 'scanProposalDecisions', // #6894 a scan-to-BIM run dies with its models
 ];
 
 /**
@@ -161,6 +165,7 @@ const PINNED_MODEL_REMOVED_KEYS: readonly string[] = [
   'hierarchyBasketSelection', 'hoverState', 'ifcDataStore', 'isolatedEntities',
   'layerDiffBusy', 'layerStack', 'layerStackDiff', 'layerStackPathToId',
   'measure2DCurrent', 'measure2DResults', 'measure2DSnapPoint', 'measure2DStart', 'meshColorBackup', 'models', 'pinboardEntities',
+  'pointCloudDeviationStatistics', // #6833 the run measured scan points against the removed model's meshes
   'polygonArea2DPoints', 'polygonArea2DResults',
   'selectedAnnotation2D', 'selectedEntities', 'selectedEntitiesSet',
   'selectedEntity', 'selectedEntityId', 'selectedEntityIds', 'selectedModelId', 'selectedStoreys', 'selectionRevision',
@@ -208,6 +213,8 @@ function modelRemovedFixture() {
     layerDiffBusy: true,
     // #4215: model 'A' carries a tag, so its assignment is what the removal drops.
     modelTagAssignments: new Map([['A', new Set(['tag-1'])]]),
+    // #6833: a stored deviation run, measured against A's meshes among others.
+    pointCloudDeviationStatistics: { revision: 0, clipRange: 1, overall: {}, assets: [], withinTolerance: null },
   } as unknown as Parameters<typeof modelRemovedScope>[0];
 }
 
@@ -240,6 +247,7 @@ const PINNED_OWNED_KEYS: readonly string[] = [
   'cesiumTerrainHeight', 'cesiumTerrainSaveHeight', 'changeSets', 'chatAbortController',
   'chatError', 'chatStatus', 'chatStreamingContent', 'classFilter', 'cloudAnnotation2DPoints',
   'cloudAnnotations2D', 'compareAcceptedIdentity', 'compareError', 'compareKeyProperty', 'compareRejectedClaims', 'compareResult', 'compareRunning', // #4955/#4989
+  'compareReconciliation', 'compareRunCaptures', // #6921
   'compareSelectedKey', 'contactShadingIntensity', 'contactShadingQuality',
   'contactShadingRadius', 'contextMenu', 'customOverrideRules', 'dirtyModels', 'discoveredLensData', 'draft',
   'drawing2D', 'drawing2DDisplayOptions', 'drawing2DError', 'drawing2DPanelVisible',
@@ -269,9 +277,11 @@ const PINNED_OWNED_KEYS: readonly string[] = [
   'playbackTime', 'pointCloudAlignmentAvailable', 'pointCloudAlignmentEnabled',
   'pointCloudAssetCount', 'pointCloudClassCounts', 'pointCloudClassMask',
   'pointCloudColorMode', 'pointCloudDeviationCenterOffset', 'pointCloudDeviationComputed',
-  'pointCloudDeviationHalfRange', 'pointCloudEdlEnabled', 'pointCloudEdlStrength',
+  'pointCloudDeviationHalfRange', 'pointCloudDeviationRevision', 'pointCloudEdlEnabled', 'pointCloudEdlStrength',
+  'pointCloudDeviationStatistics', // #6833 stored deviation statistics describe the outgoing scene's run
   'pointCloudFixedColor', 'pointCloudPointSize', 'pointCloudPreviewStride',
   'pointCloudRoundShape', 'pointCloudSizeMode', 'pointCloudWorldRadius', 'polygonArea2DPoints',
+  'scanDetectionError', 'scanDetectionRun', 'scanDetectionStage', 'scanDetectionStatus', 'scanCreatedGlobalIds', 'scanProposalCreated', 'scanProposalDecisions', 'scanProposalFilter', // #6894 scan-to-BIM review
   'polygonArea2DResults', 'progress', 'projectionMode', 'redoStacks', 'scheduleData',
   'scheduleRange', 'scriptAssistantTurnSnapshot', 'scriptDeleteConfirmId',
   'scriptExecutionState', 'scriptLastDiagnostics', 'scriptLastError', 'scriptLastResult',

@@ -111,17 +111,7 @@ fn p2(p: &Point2<f64>) -> P2 {
 }
 
 /// Exact orientation sign of `(a, b, c)`: `+1` CCW, `-1` CW, `0` collinear.
-#[inline]
-fn orient(a: P2, b: P2, c: P2) -> i32 {
-    let d = geometry_predicates::orient2d(a, b, c);
-    if d > 0.0 {
-        1
-    } else if d < 0.0 {
-        -1
-    } else {
-        0
-    }
-}
+use crate::geom2d::orientation as orient;
 
 /// Exact in-circle sign: `> 0` when `d` is strictly inside the circumcircle of
 /// the CCW triangle `(a, b, c)`.

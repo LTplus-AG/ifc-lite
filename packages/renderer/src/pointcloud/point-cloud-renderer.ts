@@ -18,7 +18,7 @@ import { assertModelTranslation } from '../model-translation.js';
 
 import type { PointCloudAsset } from '@ifc-lite/geometry';
 import { PointCloudHandleIds } from './point-cloud-handle-ids.js';
-import { PointCloudPlacements, unionPointCloudBounds } from './point-cloud-placement.js';
+import { exactPlacement, PointCloudPlacements, unionPointCloudBounds } from './point-cloud-placement.js';
 import { PointCloudVisibility } from './point-cloud-visibility.js';
 import { PointRenderPipeline, POINT_QUAD_VERTS, POINT_UNIFORM_SIZE } from './point-pipeline.js';
 import {
@@ -31,10 +31,12 @@ import {
   type PointCloudNodeMeta,
 } from './point-cloud-node.js';
 import type { PointCloudSpatialIndex } from './point-cloud-spatial-index.js';
+import { removeKeyedChunks } from './point-cloud-keyed-chunks.js';
 import { buildPickNodeSources, resolvePickedAsset } from './point-cloud-pick-sources.js';
 import { buildRayQuerySources } from './point-cloud-ray-transform.js';
 import {
   normalizeClassMask,
+  resolveSectionPlaneUniform,
   writePointCloudUniforms,
   type PointColorMode,
   type PointSizeMode,
@@ -240,13 +242,20 @@ export class PointCloudRenderer {
     return { id };
   }
 
-  appendChunk(handle: PointCloudAssetHandle, chunk: PointCloudChunkInput): void {
+  /** `key` makes the chunk removable on its own (`removeChunk`), e.g. one COPC octree node (#6869). */
+  appendChunk(handle: PointCloudAssetHandle, chunk: PointCloudChunkInput, key?: string): void {
     const node = this.nodes.get(handle.id);
     if (!node) {
       console.warn(`[PointCloudRenderer] appendChunk: no node for handle ${handle.id}`);
       return;
     }
-    appendChunkToNode(this.device, node, chunk);
+    appendChunkToNode(this.device, node, chunk, key);
+  }
+
+  /** Free every GPU buffer and the snap index appended under `key`; returns the points removed. */
+  removeChunk(handle: PointCloudAssetHandle, key: string): number {
+    const node = this.nodes.get(handle.id);
+    return node ? removeKeyedChunks(node, key) : 0;
   }
 
   /** Mark streaming complete. No-op for now — kept for symmetry. */
@@ -264,17 +273,16 @@ export class PointCloudRenderer {
   }
 
   /**
-   * Reassign a streamed asset's `expressId` after upload — used by
-   * `useIfcFederation` when the FederationRegistry hands out an
-   * `idOffset` for the model. The shader reads expressId from a
-   * per-asset uniform (flags.x), so this is just a metadata update;
-   * the next frame writes the new value into the GPU uniform without
-   * touching the per-vertex attributes.
+   * Reassign a streamed asset's identity after upload: the federated
+   * `expressId` (the shader reads it from a per-asset uniform, flags.x, so
+   * the next frame picks it up without touching per-vertex attributes) and,
+   * when given, the `modelIndex` picks and deviation readback report (#6887).
    */
-  relabelAsset(handle: PointCloudAssetHandle, newExpressId: number): void {
+  relabelAsset(handle: PointCloudAssetHandle, newExpressId: number, modelIndex?: number): void {
     const node = this.nodes.get(handle.id);
     if (!node) return;
     node.meta.expressId = newExpressId >>> 0;
+    if (modelIndex !== undefined) node.meta.modelIndex = modelIndex;
   }
 
   /** Import alignment composes with manual placement without reuploading points. */
@@ -310,6 +318,7 @@ export class PointCloudRenderer {
   }
 
   getAssetTransform(handle: PointCloudAssetHandle): Float32Array | undefined { const matrix = this.nodes.get(handle.id)?.model; return matrix ? new Float32Array(matrix) : undefined; }
+  getAssetPlacement(handle: PointCloudAssetHandle): Float64Array | undefined { return exactPlacement(this.nodes.get(handle.id)); }
 
   getPlacementBounds(modelIndex: number, handle?: PointCloudAssetHandle) {
     // Model-specific framing must obey whole-scene visibility: a hidden scan cannot move the camera.
@@ -369,24 +378,7 @@ export class PointCloudRenderer {
 
     pass.setPipeline(this.pipeline.getPipeline());
 
-    const sp = state.sectionPlane ?? null;
-    let normal: [number, number, number];
-    let distance: number;
-    let enabled: boolean;
-    if (sp && sp.enabled) {
-      enabled = true;
-      if (sp.flipped) {
-        normal = [-sp.normal[0], -sp.normal[1], -sp.normal[2]];
-        distance = -sp.distance;
-      } else {
-        normal = sp.normal;
-        distance = sp.distance;
-      }
-    } else {
-      enabled = false;
-      normal = [0, 1, 0];
-      distance = 0;
-    }
+    const { normal, distance, enabled } = resolveSectionPlaneUniform(state.sectionPlane);
 
     const bounds = this.getBounds();
     const heightMin = bounds ? bounds.min[1] : 0;

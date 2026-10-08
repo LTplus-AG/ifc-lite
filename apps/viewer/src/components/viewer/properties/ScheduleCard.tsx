@@ -22,9 +22,12 @@ import { useMemo } from 'react';
 import { CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { CalendarClock, Diamond, Flag, ChevronDown } from 'lucide-react';
 import type { ScheduleExtraction, ScheduleTaskInfo } from '@ifc-lite/parser';
+import { taskProductExpressIds, taskProductGlobalIds } from '@ifc-lite/parser';
 import { useTranslation } from '@/i18n';
 import { formatLocaleNumber } from '@/i18n/intlFormat';
 import { PersistentCollapsible } from './PersistentCollapsible';
+import { taskStartIso, taskFinishIso, taskDurationIso } from '@/store/slices/schedule-task-dates';
+import { parseIsoDate } from '@/store/slices/schedule-edit-helpers';
 
 interface ScheduleCardProps {
   /** Schedule data from the viewer's slice (parsed or generated). */
@@ -113,9 +116,9 @@ interface TaskRowProps {
 
 function TaskRow({ task, scheduleNames, locale }: TaskRowProps) {
   const { t } = useTranslation();
-  const start = formatDate(task.taskTime?.scheduleStart, locale);
-  const finish = formatDate(task.taskTime?.scheduleFinish, locale);
-  const duration = task.taskTime?.scheduleDuration;
+  const start = formatDate(taskStartIso(task), locale);
+  const finish = formatDate(taskFinishIso(task), locale);
+  const duration = taskDurationIso(task);
   const completion = task.taskTime?.completion;
   const isCritical = task.taskTime?.isCritical === true;
   const scheduleLabels = task.controllingScheduleGlobalIds
@@ -200,15 +203,16 @@ function findControllingTasks(
   if (selectedExpressId === null && !selectedGlobalId) return [];
   const out: ScheduleTaskInfo[] = [];
   for (const task of data.tasks) {
-    const taskHasGlobalIds = task.productGlobalIds.some(Boolean);
+    const productGlobalIds = taskProductGlobalIds(task);
+    const taskHasGlobalIds = productGlobalIds.some(Boolean);
     if (selectedGlobalId && taskHasGlobalIds) {
-      if (task.productGlobalIds.includes(selectedGlobalId)) out.push(task);
+      if (productGlobalIds.includes(selectedGlobalId)) out.push(task);
       // When globalIds are the authoritative side, do NOT also match on
       // expressId — a collision across models would produce a false positive.
       continue;
     }
     if (selectedExpressId !== null && selectedExpressId > 0
-        && task.productExpressIds.includes(selectedExpressId)) {
+        && taskProductExpressIds(task).includes(selectedExpressId)) {
       out.push(task);
     }
   }
@@ -224,10 +228,11 @@ function buildScheduleNameLookup(data: ScheduleExtraction | null): Map<string, s
   return map;
 }
 
+/** Parsed like the Gantt (TZ-less IfcDateTime is UTC, `parseIsoDate`), displayed in local time like its bars. */
 function formatDate(iso: string | undefined, locale: string): string | undefined {
   if (!iso) return undefined;
-  const t = Date.parse(iso);
-  if (Number.isNaN(t)) return iso;
+  const t = parseIsoDate(iso);
+  if (t === undefined) return iso;
   return new Date(t).toLocaleDateString(locale, {
     year: 'numeric', month: 'short', day: 'numeric',
   });

@@ -22,6 +22,9 @@ export function SourceDownloadStatus({ name, state }: { name: string; state: Sou
   if (state.phase === 'queued') {
     return <span className="shrink-0 text-xs text-muted-foreground">{t('sources.downloadStatus.queued')}</span>;
   }
+  if (state.phase === 'preparing') {
+    return <Spinner size="sm" label={t('sources.downloadStatus.preparingAria', { name })} />;
+  }
   if (state.phase === 'failed') {
     return (
       <span className="flex shrink-0 items-center gap-1 text-xs text-red-600 dark:text-red-400">

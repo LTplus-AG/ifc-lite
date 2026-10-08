@@ -1,0 +1,26 @@
+{
+  "name": "@ifc-lite/autodesk-service",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Session-owned Autodesk cloud API gateway for the IFClite viewer",
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "start": "node dist/bin.js",
+    "dev": "tsx src/bin.ts"
+  },
+  "dependencies": {
+    "@ifc-lite/oauth-pkce": "workspace:^",
+    "@ifc-lite/plugin-api": "workspace:^"
+  },
+  "devDependencies": {
+    "@ifc-lite/source-autodesk": "workspace:^",
+    "@types/node": "^26.6.2",
+    "typescript": "^6.0.3",
+    "vitest": "^5.0.2",
+    "tsx": "^4.23.15",
+    "@ifc-lite/ifcx": "workspace:^"
+  }
+}

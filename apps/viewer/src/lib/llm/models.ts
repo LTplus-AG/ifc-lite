@@ -76,16 +76,17 @@ function titleCaseProvider(rawProvider: string): string {
     .join(' ');
 }
 
-function humanizeModelSlug(slug: string): string {
+/** `z-ai/glm-5.3-flash` → `GLM 5.3 Flash`: version dots between digits are kept. */
+export function humanizeModelSlug(slug: string): string {
   const withoutTier = slug.split(':')[0] ?? slug;
   return withoutTier
-    .replace(/[._-]+/g, ' ')
+    .replace(/[_-]+|(?<!\d)\.|\.(?!\d)/g, ' ')
     .split(' ')
     .filter(Boolean)
     .map((word) => {
       if (/^[0-9.]+$/.test(word)) return word;
       const upper = word.toUpperCase();
-      if (upper === 'GPT' || upper === 'OSS' || upper === 'R1') return upper;
+      if (upper === 'GPT' || upper === 'GLM' || upper === 'OSS' || upper === 'R1') return upper;
       if (word.length <= 2) return upper;
       return word.charAt(0).toUpperCase() + word.slice(1);
     })
@@ -162,8 +163,8 @@ const ANTHROPIC_BYOK_MODELS: LLMModel[] = [
     cost: '$$$',
   },
   {
-    id: 'claude-sonnet-5',
-    name: 'Claude Sonnet 5',
+    id: 'claude-sonnet-5-5',
+    name: 'Claude Sonnet 5.5',
     provider: 'Anthropic',
     tier: 'byok',
     source: 'anthropic',
@@ -200,8 +201,8 @@ const OPENAI_BYOK_MODELS: LLMModel[] = [
     cost: '$$$',
   },
   {
-    id: 'gpt-6-sol',
-    name: 'GPT-6 Sol',
+    id: 'gpt-6.1-sol',
+    name: 'GPT-6.1 Sol',
     provider: 'OpenAI',
     tier: 'byok',
     source: 'openai',
@@ -231,7 +232,7 @@ const OPENAI_BYOK_MODELS: LLMModel[] = [
     supportsImages: false,
     supportsFileAttachments: true,
     cost: '$$',
-    // Still current: there is no 5.6 Codex.
+    // Older specialized choice; the current Sol model is listed above.
     openaiApi: 'responses',
   },
 ];
@@ -239,8 +240,9 @@ const OPENAI_BYOK_MODELS: LLMModel[] = [
 export const BYOK_MODELS: LLMModel[] = [...ANTHROPIC_BYOK_MODELS, ...OPENAI_BYOK_MODELS];
 export const ALL_MODELS = [...FREE_MODELS, ...BYOK_MODELS];
 
+export const UNCONFIGURED_MODEL_ID = 'llm-model-missing';
 const FALLBACK_MODEL: LLMModel = {
-  id: 'llm-model-missing',
+  id: UNCONFIGURED_MODEL_ID,
   name: 'No model configured',
   provider: 'Unknown',
   tier: 'free',
@@ -278,12 +280,14 @@ const MODEL_ID_MIGRATIONS: Record<string, string> = {
   'claude-opus-5': 'claude-opus-5-5',
   'claude-opus-4-8': 'claude-opus-5-5',
   'claude-fable-5': 'claude-fable-5-1',
-  'claude-sonnet-4-6': 'claude-sonnet-5',
-  'gpt-5.6-sol': 'gpt-6-sol',
-  'gpt-5.6-terra': 'gpt-6-sol',
+  'claude-sonnet-4-6': 'claude-sonnet-5-5',
+  'claude-sonnet-5': 'claude-sonnet-5-5',
+  'gpt-6-sol': 'gpt-6.1-sol',
+  'gpt-5.6-sol': 'gpt-6.1-sol',
+  'gpt-5.6-terra': 'gpt-6.1-sol',
   'gpt-5.6-luna': 'gpt-6-luna',
-  'gpt-5.5': 'gpt-6-sol',
-  'gpt-5.4': 'gpt-6-sol',
+  'gpt-5.5': 'gpt-6.1-sol',
+  'gpt-5.4': 'gpt-6.1-sol',
   'gpt-5.4-mini-2026-03-17': 'gpt-6-luna',
 };
 

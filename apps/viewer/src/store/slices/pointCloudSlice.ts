@@ -12,7 +12,8 @@
 
 import type { StateCreator } from 'zustand';
 
-import { defineSliceTeardown, notApplicable } from '../teardown.js';
+import type { PointCloudDeviationStatistics } from '@/lib/point-cloud/deviation-run-statistics';
+import { defineSliceTeardown } from '../teardown.js';
 
 export type PointColorModeUi = 'rgb' | 'classification' | 'intensity' | 'height' | 'fixed' | 'deviation';
 export type PointSizeModeUi = 'fixed-px' | 'adaptive-world' | 'attenuated';
@@ -103,6 +104,21 @@ export interface PointCloudSlice {
    */
   pointCloudDeviationComputed: boolean;
   /**
+   * Bumped whenever deviation is recomputed outside the Deviation panel,
+   * e.g. by COPC LOD streaming after each settled pass (#6880). The panel's
+   * statistics are a readback of one run, so they re-read when this moves
+   * (#6872); otherwise they would describe chunks no longer on screen.
+   */
+  pointCloudDeviationRevision: number;
+  /**
+   * Statistics of the current deviation run (#6872), derived once per
+   * readback by the Deviation panel and read by the panel, its CSV export
+   * and the assistant (#6833). Exists only while `pointCloudDeviationComputed`
+   * holds for the run it describes: lowering that flag, a re-run
+   * (`bumpPointCloudDeviationRevision`) and model removal all drop it.
+   */
+  pointCloudDeviationStatistics: PointCloudDeviationStatistics | null;
+  /**
    * Best-effort count of point cloud assets currently uploaded to the
    * renderer. Updated by ingest paths; UI uses it to show/hide the
    * controls panel and the EDL post-pass.
@@ -151,6 +167,8 @@ export interface PointCloudSlice {
   setPointCloudDeviationCenterOffset: (m: number) => void;
   setPointCloudDeviationHalfRange: (m: number) => void;
   setPointCloudDeviationComputed: (computed: boolean) => void;
+  bumpPointCloudDeviationRevision: () => void;
+  setPointCloudDeviationStatistics: (statistics: PointCloudDeviationStatistics | null) => void;
   setPointCloudAssetCount: (count: number) => void;
   incrementPointCloudAssetCount: (n?: number) => void;
   setPointCloudAlignmentAvailable: (available: boolean) => void;
@@ -181,6 +199,8 @@ const POINT_CLOUD_DEFAULTS = {
   pointCloudDeviationCenterOffset: 0,
   pointCloudDeviationHalfRange: 0.05,
   pointCloudDeviationComputed: false,
+  pointCloudDeviationRevision: 0,
+  pointCloudDeviationStatistics: null as PointCloudDeviationStatistics | null,
   pointCloudAssetCount: 0,
   pointCloudAlignmentAvailable: false,
   pointCloudAlignmentEnabled: true,
@@ -241,7 +261,15 @@ export const createPointCloudSlice: StateCreator<PointCloudSlice, [], [], PointC
     // would NaN the GPU ramp's division. Clamp to 0.1 mm minimum.
     pointCloudDeviationHalfRange: Number.isFinite(m) ? Math.max(1e-4, m) : 0.05,
   }),
-  setPointCloudDeviationComputed: (computed) => set({ pointCloudDeviationComputed: computed }),
+  // Statistics describe one computed run; an invalidated run takes them along.
+  setPointCloudDeviationComputed: (computed) => set(computed
+    ? { pointCloudDeviationComputed: true }
+    : { pointCloudDeviationComputed: false, pointCloudDeviationStatistics: null }),
+  // A re-run replaces the distances the statistics were read from.
+  bumpPointCloudDeviationRevision: () => set((s) => ({
+    pointCloudDeviationRevision: s.pointCloudDeviationRevision + 1, pointCloudDeviationStatistics: null,
+  })),
+  setPointCloudDeviationStatistics: (statistics) => set({ pointCloudDeviationStatistics: statistics }),
   setPointCloudAssetCount: (count) => set({
     pointCloudAssetCount: Number.isFinite(count) ? Math.max(0, count) : 0,
   }),
@@ -262,13 +290,17 @@ export const createPointCloudSlice: StateCreator<PointCloudSlice, [], [], PointC
  * explicit field list Trap A asks for: `POINT_CLOUD_DEFAULTS` is this slice's
  * own, it is not the slice's whole state (the actions are not in it), and every
  * field in it is session-scoped — none of them round-trips to localStorage or
- * outlives a model swap. `owns` still names all 17 by hand, so the reviewable
+ * outlives a model swap. `owns` still names all 19 by hand, so the reviewable
  * artefact stays a list.
  *
  * `pointCloudDeviationComputed` is ALSO driven to false by `removeModel` and
  * `clearAllModels` through `setPointCloudDeviationComputed(false)`. That stays
  * an entry-point side effect: taking it into a `model-removed` arm here as well
  * would write the field twice on the same path.
+ *
+ * `pointCloudDeviationStatistics` (#6833) is dropped by the removal arms
+ * whether or not a run was flagged computed: the per-asset rows name scan
+ * assets of the model set the run was computed against.
  */
 export const pointCloudTeardown = defineSliceTeardown(
   'pointCloudSlice',
@@ -287,6 +319,8 @@ export const pointCloudTeardown = defineSliceTeardown(
     'pointCloudDeviationCenterOffset',
     'pointCloudDeviationHalfRange',
     'pointCloudDeviationComputed',
+    'pointCloudDeviationRevision',
+    'pointCloudDeviationStatistics',
     'pointCloudAssetCount',
     'pointCloudAlignmentAvailable',
     'pointCloudAlignmentEnabled',
@@ -298,7 +332,7 @@ export const pointCloudTeardown = defineSliceTeardown(
       // instead of the readonly literal in POINT_CLOUD_DEFAULTS.
       pointCloudFixedColor: [...POINT_CLOUD_DEFAULTS.pointCloudFixedColor] as [number, number, number, number],
     }),
-    'model-removed': notApplicable,
-    'all-models-cleared': notApplicable,
+    'model-removed': (_scope, state) => (state.pointCloudDeviationStatistics ? { pointCloudDeviationStatistics: null } : {}),
+    'all-models-cleared': (_scope, state) => (state.pointCloudDeviationStatistics ? { pointCloudDeviationStatistics: null } : {}),
   },
 );

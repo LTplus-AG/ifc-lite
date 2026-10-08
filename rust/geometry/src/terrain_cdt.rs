@@ -9,6 +9,7 @@
 //! fallback. Keeping that policy outside the geometry crate avoids coupling
 //! the IFC kernel to LandXML (or another source format).
 
+use crate::geom2d::{on_segment, orientation, segments_intersect};
 use crate::Point2;
 use rustc_hash::FxHashSet;
 
@@ -176,35 +177,6 @@ fn split_segments_at_vertices(
     split.sort_unstable();
     split.dedup();
     Ok(split)
-}
-
-fn orientation(a: [f64; 2], b: [f64; 2], c: [f64; 2]) -> i32 {
-    let value = geometry_predicates::orient2d(a, b, c);
-    if value > 0.0 {
-        1
-    } else if value < 0.0 {
-        -1
-    } else {
-        0
-    }
-}
-
-fn on_segment(a: [f64; 2], b: [f64; 2], point: [f64; 2]) -> bool {
-    orientation(a, b, point) == 0
-        && (a[0] <= point[0] && point[0] <= b[0] || b[0] <= point[0] && point[0] <= a[0])
-        && (a[1] <= point[1] && point[1] <= b[1] || b[1] <= point[1] && point[1] <= a[1])
-}
-
-fn segments_intersect(a: [f64; 2], b: [f64; 2], c: [f64; 2], d: [f64; 2]) -> bool {
-    let ab_c = orientation(a, b, c);
-    let ab_d = orientation(a, b, d);
-    let cd_a = orientation(c, d, a);
-    let cd_b = orientation(c, d, b);
-    (ab_c != ab_d && ab_c != 0 && ab_d != 0 && cd_a != cd_b && cd_a != 0 && cd_b != 0)
-        || ab_c == 0 && on_segment(a, b, c)
-        || ab_d == 0 && on_segment(a, b, d)
-        || cd_a == 0 && on_segment(c, d, a)
-        || cd_b == 0 && on_segment(c, d, b)
 }
 
 #[cfg(test)]

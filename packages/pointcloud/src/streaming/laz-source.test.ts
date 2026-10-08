@@ -3,12 +3,20 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { describe, it, expect, afterEach } from 'vitest';
+import { LazStreamingSource } from './laz-source.js';
 import {
-  LazStreamingSource,
   setLazPerfLoaderForTesting,
+  type ChunkDecoderInstance,
   type LasZipInstance,
   type LazPerfModule,
-} from './laz-source.js';
+} from './laz-perf-loader.js';
+
+/** The whole-file LAZ path never touches the per-chunk decoder. */
+class UnusedChunkDecoder implements ChunkDecoderInstance {
+  open(): void { throw new Error('LazStreamingSource must not use ChunkDecoder'); }
+  getPoint(): void { throw new Error('LazStreamingSource must not use ChunkDecoder'); }
+  delete(): void { /* no-op */ }
+}
 
 const RECORD_LEN = 20; // LAS point format 0
 
@@ -50,6 +58,7 @@ function stubLazPerfModule(): LazPerfModule {
   }
   return {
     LASZip: StubLasZip,
+    ChunkDecoder: UnusedChunkDecoder,
     HEAPU8: heap,
     _malloc: (size: number) => {
       const ptr = next;
@@ -85,6 +94,7 @@ function stubLazPerfModuleWithCounter(): LazPerfModule {
   }
   return {
     LASZip: StubLasZip,
+    ChunkDecoder: UnusedChunkDecoder,
     HEAPU8: heap,
     _malloc: (size: number) => {
       const ptr = next;
@@ -177,6 +187,7 @@ function stubLazPerfModuleWithRgb(rgbValue: number): LazPerfModule {
   }
   return {
     LASZip: StubLasZip,
+    ChunkDecoder: UnusedChunkDecoder,
     HEAPU8: heap,
     _malloc: (size: number) => {
       const ptr = next;

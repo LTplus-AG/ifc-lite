@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { loadedInstancedModelIndices } from '@/lib/visibility/model-hidden-entities.js';
 import { useAppearanceReferences } from './useAppearanceReferences.js';
+import { useAppearanceSourceGeometry } from './useAppearanceSourceGeometry.js';
 import { createPlacedEntityBoundsLookup, placedBoundsExcludingTypes } from '@/lib/model-placement/selection-bounds';
 
 /**
@@ -82,9 +83,9 @@ import { createCentreSurfaceZoom } from './zoomSurface.js';
 
 interface ViewportProps {
   geometry: MeshData[] | null;
-  /** Monotonic counter that increments when geometry changes — used to trigger
-   *  streaming effects even when the geometry array reference is stable. */
+  /** Reused-array updates and changes to existing mesh uploads (#7047). */
   geometryVersion?: number;
+  geometryReplacementVersion?: number;
   /** Bumps when existing mesh vertex/normal data has been mutated in place
    *  (e.g. realignFederation). Forces the streaming hook to re-upload buffers. */
   geometryContentVersion?: number;
@@ -103,8 +104,7 @@ interface ViewportProps {
 
 export function Viewport({
   geometry,
-  geometryVersion,
-  geometryContentVersion,
+  geometryVersion, geometryReplacementVersion, geometryContentVersion,
   pointClouds,
   coordinateInfo,
   sectionCoordinateInfo,
@@ -177,17 +177,7 @@ export function Viewport({
     [modelIdToIndex, models],
   );
 
-  // Borrow hidden-model source arrays; stamp only stable renderer ownership (#4404).
-  const appearanceSourceGeometry = useMemo(() => {
-    const sources: MeshData[] = [];
-    for (const [modelId, model] of models) {
-      const modelIndex = modelIdToIndex?.get(modelId) ?? 0;
-      for (const mesh of model.geometryResult?.meshes ?? []) {
-        sources.push(mesh.modelIndex === modelIndex ? mesh : { ...mesh, modelIndex });
-      }
-    }
-    return sources;
-  }, [models, modelIdToIndex, geometryContentVersion]);
+  const appearanceSourceGeometry = useAppearanceSourceGeometry(models, modelIdToIndex, geometryContentVersion);
 
   // pickResult.expressId is a globalId (transformed at load time); the shared
   // click selection writes both selection channels (viewport-selection.ts).
@@ -1525,8 +1515,7 @@ export function Viewport({
     rendererRef,
     isInitialized,
     geometry,
-    geometryVersion,
-    geometryContentVersion,
+    geometryVersion, geometryReplacementVersion, geometryContentVersion,
     appearanceSourceGeometry,
     coordinateInfo,
     isStreaming,

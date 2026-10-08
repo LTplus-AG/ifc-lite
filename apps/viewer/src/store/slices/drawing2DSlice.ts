@@ -14,6 +14,7 @@ import type { DxfReferenceFrame } from '@/hooks/dxfReferencePlane';
 import { createDxfUnderlayActions } from './drawing2DSlice.dxfActions';
 import { validateDrawingDisplayOptions } from '@/lib/drawing/projection-depth';
 import { DEFAULT_SCAN_SECTION_THICKNESS } from '@/hooks/scanSectionMath';
+import { DEFAULT_SCAN_OUTLINE_MAX_GAP } from '@/lib/scan-outline/scan-outline';
 import { isDegenerateMeasurement, isDegenerateArea, isDegenerateCloud } from './drawing2DDegenerateGuards';
 
 export type Drawing2DStatus = 'idle' | 'generating' | 'ready' | 'error';
@@ -180,6 +181,13 @@ export interface Drawing2DState {
     scanSectionOpacity: number;
     /** Include the scan layer's dots in SVG export/print. */
     scanSectionIncludeInExport: boolean;
+    /**
+     * Vector outline (#6871): trace closed rings from the slab points and
+     * draw them as lines; the DXF export writes them on their own layer.
+     */
+    scanSectionOutline: boolean;
+    /** Widest gap (metres) the outline bridges, about a wall thickness. */
+    scanSectionOutlineMaxGap: number;
     /**
      * Print preview (#5496): forces the direct-mode canvas to white paper
      * with black ink regardless of the active app theme, previewing what
@@ -373,6 +381,8 @@ const getDefaultDisplayOptions = (): Drawing2DState['drawing2DDisplayOptions'] =
   scanSectionThickness: DEFAULT_SCAN_SECTION_THICKNESS,
   scanSectionOpacity: 0.9,
   scanSectionIncludeInExport: true,
+  scanSectionOutline: false,
+  scanSectionOutlineMaxGap: DEFAULT_SCAN_OUTLINE_MAX_GAP,
   showPrintPreview: false,
 });
 

@@ -69,7 +69,7 @@ import {
 import { ToolExecutionError, ToolErrorCode, toolError } from './errors.js';
 import { PromptRegistry } from './prompts/types.js';
 import { ResourceRegistry } from './resources/types.js';
-import { disposeLayerWorkspace } from './tools/layer-store.js';
+import { disposeSessionResources } from './session-cleanup.js';
 import { ToolRegistry } from './tools/types.js';
 import { advertisedInputSchema, validateInput } from './validate.js';
 import { ViewerManager } from './viewer-manager.js';
@@ -130,7 +130,7 @@ export class MCPServer {
     this.sessionId = opts.sessionId;
     this.registry = opts.registry ?? new InMemoryModelRegistry();
     this.scope = opts.scope ?? fullScope();
-    this.config = { ...DEFAULT_CONFIG, ...(opts.config ?? {}) };
+    this.config = { ...DEFAULT_CONFIG, ...opts.config };
     this.tools = opts.tools;
     this.resources = opts.resources;
     this.prompts = opts.prompts;
@@ -162,18 +162,9 @@ export class MCPServer {
     this.sink = null;
     this.active.forEach((c) => c.abort());
     this.active.clear();
-    try {
-      // The viewer holds an HTTP server + SSE listener; closing it stops
-      // dangling sockets when the transport disconnects.
-      if (this.viewer.isOpen()) this.viewer.close();
-    } finally {
-      // Per-session layer drafts hold live Y.Docs — free them with the
-      // session even if the viewer close throws. detach() only fires on
-      // true termination (HTTP DELETE / transport close), never on SSE
-      // client drops, so a reconnecting client keeps its workspace until
-      // the session actually ends.
-      if (this.sessionId !== undefined) disposeLayerWorkspace(this.sessionId);
-    }
+    // Close the viewer sockets, layer Y.Docs and native Room plates even if
+    // an earlier resource fails. SSE reconnects do not call detach.
+    disposeSessionResources(this.viewer, this.registry, this.sessionId, this.logger);
   }
 
   /** Update the auth scope mid-session (e.g. token refresh). */

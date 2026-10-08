@@ -2,6 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { readPerfFlag } from '../lib/perf/flags.js';
+
 /**
  * 12-byte lattice-quantized batch vertices (issue #1682, phase 6).
  *
@@ -18,7 +20,7 @@
  * VIEWER_BENCHMARK_QUANTIZED): globalThis.__IFC_LITE_QUANTIZED = 0
  */
 export function isQuantizedEnabled(): boolean {
-  const raw = (globalThis as { __IFC_LITE_QUANTIZED?: unknown }).__IFC_LITE_QUANTIZED;
+  const raw = readPerfFlag('quantized');
   if (raw === undefined || raw === null) return true;
   return raw === 1 || raw === true;
 }

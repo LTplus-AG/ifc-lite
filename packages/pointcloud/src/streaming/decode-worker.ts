@@ -53,8 +53,30 @@ self.onmessage = (event: MessageEvent<WorkerRequest>) => {
     case 'abort':
       handleAbort(msg.sourceId);
       return;
+    case 'copc-open':
+    case 'copc-page':
+    case 'copc-node':
+    case 'copc-cancel':
+      void handleCopc(msg);
+      return;
   }
 };
+
+/** COPC readers are closed by the same `close` message as stream sources. */
+let closeCopcSource: ((sourceId: number) => boolean) | undefined;
+
+async function handleCopc(
+  msg: Extract<WorkerRequest, { kind: 'copc-open' | 'copc-page' | 'copc-node' | 'copc-cancel' }>,
+): Promise<void> {
+  try {
+    // Lazy like the format sources below: only COPC sessions load it.
+    const host = await import('../copc/copc-worker-host.js');
+    closeCopcSource = host.closeCopcSource;
+    await host.handleCopcRequest(msg, post, () => nextSourceId++);
+  } catch (err) {
+    if (msg.kind !== 'copc-cancel') post({ kind: 'error', requestId: msg.requestId, message: errMessage(err) });
+  }
+}
 
 async function handleOpen(msg: Extract<WorkerRequest, { kind: 'open' }>): Promise<void> {
   // Hoisted so the catch below can release a source that was created
@@ -144,6 +166,7 @@ async function handleNext(msg: Extract<WorkerRequest, { kind: 'next' }>): Promis
 }
 
 function handleClose(sourceId: number): void {
+  if (closeCopcSource?.(sourceId)) return;
   const open = sources.get(sourceId);
   if (!open) return;
   try {

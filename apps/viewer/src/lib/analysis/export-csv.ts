@@ -6,6 +6,7 @@
 
 import { tableToCsv } from '@ifc-lite/export';
 import type { CostBackendMethods, CostGraphData } from '@ifc-lite/sdk';
+import type { DeviationStatistics } from '@ifc-lite/renderer';
 import { buildExportFilename, modelExportFilename } from '@/lib/export/download';
 
 export interface CostReportModel {
@@ -75,28 +76,82 @@ export function buildCostCsvReport(
 }
 
 /** One scan asset, with metadata resolved by the viewer's model store. */
-export interface DeviationReportRow {
+export interface DeviationReportAsset {
   Model: string;
   GlobalId: string;
   Name: string;
   IfcClass: string;
+  statistics: DeviationStatistics;
+}
+
+export interface DeviationReportInput {
+  assets: readonly DeviationReportAsset[];
+  /** Pooled statistics over every asset's points; written only for 2+ assets. */
+  overall: { name: string; statistics: DeviationStatistics } | null;
+}
+
+/** Distances in metres; percentiles are of |d| (#6872). */
+interface DeviationReportRow extends Omit<DeviationReportAsset, 'statistics'> {
   PointsProcessed: number;
   FinitePoints: number;
   MinimumDeviationM: number | null;
   MaximumDeviationM: number | null;
   MeanDeviationM: number | null;
+  MeanAbsoluteDeviationM: number | null;
+  RmsDeviationM: number | null;
+  StandardDeviationM: number | null;
+  P50AbsoluteDeviationM: number | null;
+  P95AbsoluteDeviationM: number | null;
+  P99AbsoluteDeviationM: number | null;
+  MaxAbsoluteDeviationM: number | null;
+  ToleranceM: number | null;
+  WithinTolerancePoints: number | null;
+  WithinToleranceShare: number | null;
+  ClippedPoints: number;
+}
+
+const DEVIATION_COLUMNS: ReadonlyArray<keyof DeviationReportRow> = [
+  'GlobalId', 'Name', 'IfcClass', 'PointsProcessed', 'FinitePoints',
+  'MinimumDeviationM', 'MaximumDeviationM', 'MeanDeviationM', 'MeanAbsoluteDeviationM',
+  'RmsDeviationM', 'StandardDeviationM', 'P50AbsoluteDeviationM', 'P95AbsoluteDeviationM',
+  'P99AbsoluteDeviationM', 'MaxAbsoluteDeviationM', 'ToleranceM', 'WithinTolerancePoints',
+  'WithinToleranceShare', 'ClippedPoints',
+];
+
+function deviationRow({ statistics: s, ...identity }: DeviationReportAsset): DeviationReportRow {
+  return {
+    ...identity,
+    PointsProcessed: s.count,
+    FinitePoints: s.validCount,
+    MinimumDeviationM: s.min,
+    MaximumDeviationM: s.max,
+    MeanDeviationM: s.mean,
+    MeanAbsoluteDeviationM: s.meanAbs,
+    RmsDeviationM: s.rms,
+    StandardDeviationM: s.stdDev,
+    P50AbsoluteDeviationM: s.p50Abs,
+    P95AbsoluteDeviationM: s.p95Abs,
+    P99AbsoluteDeviationM: s.p99Abs,
+    MaxAbsoluteDeviationM: s.maxAbs,
+    ToleranceM: s.withinTolerance?.tolerance ?? null,
+    WithinTolerancePoints: s.withinTolerance?.count ?? null,
+    WithinToleranceShare: s.withinTolerance?.share ?? null,
+    ClippedPoints: s.clippedCount,
+  };
 }
 
 export function buildDeviationCsvReport(
-  rows: readonly DeviationReportRow[],
+  input: DeviationReportInput,
   modelNames: readonly string[],
 ): CsvReport | null {
-  if (rows.length === 0) return null;
+  if (input.assets.length === 0) return null;
+  const rows = input.assets.map(deviationRow);
+  if (input.overall && input.assets.length > 1) {
+    rows.push(deviationRow({ Model: '', GlobalId: '', Name: input.overall.name, IfcClass: '', statistics: input.overall.statistics }));
+  }
   const columns: ReadonlyArray<keyof DeviationReportRow> = modelNames.length > 1
-    ? ['Model', 'GlobalId', 'Name', 'IfcClass', 'PointsProcessed', 'FinitePoints',
-      'MinimumDeviationM', 'MaximumDeviationM', 'MeanDeviationM']
-    : ['GlobalId', 'Name', 'IfcClass', 'PointsProcessed', 'FinitePoints',
-      'MinimumDeviationM', 'MaximumDeviationM', 'MeanDeviationM'];
+    ? ['Model', ...DEVIATION_COLUMNS]
+    : DEVIATION_COLUMNS;
   return {
     content: tableToCsv(columns, rows),
     filename: reportFilename(modelNames, '-deviation'),

@@ -1,0 +1,24 @@
+{
+  "source": "2ede141ce45b6ccc7f61fd538ddb98013664b129",
+  "before": {
+    "ifc-lite_bg.wasm": "a050aed5572273e63c8a08a243f5ebe6180da0ea202875e6cf97b7e6d726b23b",
+    "ifc-lite.js": "4719403c55b6061b7ff3ba260ae45783c4db846cb70ccd70ac51d5b03d87373d",
+    "ifc-lite.d.ts": "a34371c64be9a3deb0997261df9d9ce4ee92633ad9c94ae2b41d575c26bddca0"
+  },
+  "afterTasks": {
+    "ifc-lite_bg.wasm": "beebe1239ed71003c0dfff45ca927457620662f04e3f17b77e62bd6158159336",
+    "ifc-lite.js": "4719403c55b6061b7ff3ba260ae45783c4db846cb70ccd70ac51d5b03d87373d",
+    "ifc-lite.d.ts": "a34371c64be9a3deb0997261df9d9ce4ee92633ad9c94ae2b41d575c26bddca0"
+  },
+  "restoredSameHash": true,
+  "results": [
+    {
+      "label": "types",
+      "exit": 0
+    },
+    {
+      "label": "mcp",
+      "exit": 0
+    }
+  ]
+}

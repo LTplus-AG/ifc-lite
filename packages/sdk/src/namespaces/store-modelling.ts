@@ -4,15 +4,82 @@
 
 /** Loaded-model modelling methods of bim.store (#6232 D5). */
 import type {
+  AlignMode, ElementTransformInput, ElementSplitRequest, ElementTrimExtendParams,
+  CopyTransform, CopyArrayParams,
   HostedElementEdit, CurtainWallInStoreParams, GridInStoreParams, GridColumnBinding, ColumnInStoreParams, ProfiledColumnInStoreParams,
   HostedDoorInStoreParams, HostedWindowInStoreParams, OpeningInStoreParams, ElementTypeInStoreParams,
   MaterialInStoreParams, MaterialLayerSetInStoreParams, MaterialLayerSetUsageInStoreParams, WallJoinApplyOptions,
   StairInStoreParams, RailingInStoreParams, InStoreReplacementElement,
 } from '@ifc-lite/create';
+import type { RoomCommand, RoomCommandResult } from '../store-room-command.js';
 import type { BimBackend, EntityRef } from '../types.js';
+import type { PhysicalSizePatch } from '../store-physical-types.js';
 
 export class StoreModellingNamespace {
   constructor(protected backend: BimBackend) {}
+
+  async roomCommand(modelId: string, storeyId: number, command: RoomCommand): Promise<RoomCommandResult> {
+    const method = this.backend.store.roomCommand;
+    if (!method) throw new Error('bim.store.roomCommand: native Room capability is unavailable on this backend');
+    return method.call(this.backend.store, modelId, storeyId, command);
+  }
+
+  async alignElements(modelId: string, reference: number, targets: readonly number[], mode: AlignMode): Promise<EntityRef[]> {
+    const method = this.backend.store.alignElements;
+    if (!method) throw new Error('bim.store.alignElements: native Align capability is unavailable on this backend');
+    return method.call(this.backend.store, modelId, reference, targets, mode);
+  }
+
+  transformElements(modelId: string, expressIds: readonly number[], operation: ElementTransformInput['op']): EntityRef[] {
+    const method = this.backend.store.transformElements;
+    if (!method) throw new Error('bim.store.transformElements: not available on this backend');
+    return method.call(this.backend.store, modelId, expressIds, operation);
+  }
+
+  setElementSize(ref: EntityRef, patch: PhysicalSizePatch): EntityRef[] {
+    const method = this.backend.store.setElementSize;
+    if (!method) throw new Error('bim.store.setElementSize: not available on this backend');
+    return method.call(this.backend.store, ref, patch);
+  }
+
+  resizeWall(ref: EntityRef, start: [number, number, number], end: [number, number, number], options?: { moveJoinedEnds?: boolean }): EntityRef[] {
+    const method = this.backend.store.resizeWall;
+    if (!method) throw new Error('bim.store.resizeWall: not available on this backend');
+    return method.call(this.backend.store, ref, start, end, options);
+  }
+
+  splitElements(modelId: string, requests: readonly ElementSplitRequest[]): { source: EntityRef; added: EntityRef; left: EntityRef; right: EntityRef }[] {
+    const method = this.backend.store.splitElements;
+    if (!method) throw new Error('bim.store.splitElements: not available on this backend');
+    return method.call(this.backend.store, modelId, requests);
+  }
+
+  trimExtendElement(ref: EntityRef, params: ElementTrimExtendParams): EntityRef[] {
+    const method = this.backend.store.trimExtendElement;
+    if (!method) throw new Error('bim.store.trimExtendElement: not available on this backend');
+    return method.call(this.backend.store, ref, params);
+  }
+
+  /** Paste a dependency-pruned selection in storey-local metres/radians. */
+  copyElements(modelId: string, expressIds: readonly number[], transforms: readonly CopyTransform[]): EntityRef[] {
+    const method = this.backend.store.copyElements;
+    if (!method) throw new Error('bim.store.copyElements: not available on this backend');
+    return method.call(this.backend.store, modelId, expressIds, transforms);
+  }
+
+  /** Duplicate with its hosted graph and a new GlobalId; offset is storey-local IFC XYZ metres. */
+  duplicateElement(ref: EntityRef, options: { offset: [number, number, number]; Name?: string }): EntityRef {
+    const method = this.backend.store.duplicateElement;
+    if (!method) throw new Error('bim.store.duplicateElement: not available on this backend');
+    return method.call(this.backend.store, ref, options);
+  }
+
+  /** Linear spacing/fit or polar span, sharing the viewer's placement planner. */
+  arrayElements(modelId: string, expressIds: readonly number[], params: CopyArrayParams): EntityRef[] {
+    const method = this.backend.store.arrayElements;
+    if (!method) throw new Error('bim.store.arrayElements: not available on this backend');
+    return method.call(this.backend.store, modelId, expressIds, params);
+  }
 
   /** Move/resize the opening and its filling together. Lengths are metres in the host frame. */
   editHostedElement(ref: EntityRef, patch: HostedElementEdit): EntityRef {

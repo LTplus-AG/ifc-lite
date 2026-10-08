@@ -211,7 +211,7 @@ export function gatherZoneFacts(zoneSet: ZoneSet, basis: VolumeBasis): ZoneFacts
     const context = contextFor(ref.modelId, contexts);
     if (!context) continue;
     const qsets = quantitySetsFor(context, ref.expressId);
-    const facts = zoneFactsFor(globalId, assignment, zoneNameById, basis, context, qsets, proved, apportioned);
+    const facts = zoneFactsFor(globalId, assignment, zoneNameById, basis, context.volumeSiScale, qsets, proved, apportioned);
     rows.push({
       globalId,
       modelId: ref.modelId,
@@ -230,7 +230,7 @@ export function zoneFactsFor(
   assignment: { zoneId: string | null; zoneName: string | null; straddles: boolean; touchedZoneIds: string[] },
   zoneNameById: ReadonlyMap<string, string>,
   basis: VolumeBasis,
-  context: ModelContext,
+  volumeSiScale: number,
   qsets: ReturnType<typeof quantitySetsFor>,
   proved: ProvedVolumes,
   apportioned: ReturnType<typeof validEntry>,
@@ -242,7 +242,7 @@ export function zoneFactsFor(
     assignment.zoneId,
     basis,
     qsets,
-    context.volumeSiScale,
+    volumeSiScale,
     proved,
     apportioned,
   );

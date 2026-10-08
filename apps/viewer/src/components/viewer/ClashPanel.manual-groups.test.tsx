@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import '@/test/setup-dom.js';
+import '@/test/content-fixture.js';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
@@ -11,7 +12,11 @@ import { clashReviewKey, summarizeClashes, type Clash, type ClashResult } from '
 import { createBCFProject, createBCFTopic } from '@ifc-lite/bcf';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { useViewerStore } from '@/store';
-import { MANUAL_CLASH_GROUPS_KEY } from '@/lib/clash/manual-groups';
+import { MANUAL_CLASH_GROUPS_KEY, manualClashMember } from '@/lib/clash/manual-groups';
+import { clashGroupLibrary, decodeClashGroupWorkspace, DEFAULT_GROUP_WORKSPACE, useClashGroupLibrary } from '@/lib/clash/group-workspace';
+import { readContentRows } from '@/lib/storage/content-database';
+import { refuseContentWrites } from '@/test/content-fixture';
+import { waitFor } from '@/test/render';
 import { ClashPanel } from './ClashPanel.js';
 import { ClashManualGroupDialog } from './ClashManualGroupDialog.js';
 import { Toaster } from '@/components/ui/toast.js';
@@ -37,6 +42,14 @@ function result(): ClashResult {
     rulesRun: [{ id: 'coordination', name: 'Coordination', a: 'IfcWall', b: 'IfcPipeSegment', mode: 'hard' }],
     settings: { tolerance: 0.002, excludeVoidsAndHosts: true },
   };
+}
+
+async function storedWorkspace() {
+  assert.equal(await clashGroupLibrary.retry(), true);
+  const row = (await readContentRows('clashGroups')).find(item => item.id === DEFAULT_GROUP_WORKSPACE);
+  const workspace = row && decodeClashGroupWorkspace(row.payload);
+  assert.ok(workspace, 'native grouping partition must commit');
+  return workspace;
 }
 
 let root: Root | null = null;
@@ -93,6 +106,39 @@ afterEach(async () => {
 });
 
 describe('ClashPanel manual groups (#4921, #5122)', () => {
+  it('selects an independent imported workspace and preserves refused group edits as visible drafts (#6851)', async () => {
+    const groups = [{ id: 'same-group-id', name: 'Original partition', members: result().clashes.map(manualClashMember) }];
+    await act(async () => {
+      await clashGroupLibrary.put(DEFAULT_GROUP_WORKSPACE, { version: 1, id: DEFAULT_GROUP_WORKSPACE, name: 'Original', groups });
+      await clashGroupLibrary.put('imported-workspace', { version: 1, id: 'imported-workspace', name: 'Imported',
+        groups: [{ ...groups[0], name: 'Imported partition' }] });
+      buttonWithText('Groups').click();
+    });
+    const select = [...container!.querySelectorAll('select')].find(element =>
+      [...element.options].some(option => option.value === 'imported-workspace'));
+    assert.ok(select);
+    await act(async () => { select.value = 'imported-workspace'; select.dispatchEvent(new Event('change', { bubbles: true })); });
+    assert.ok(container!.querySelector('button[aria-label="Collapse Imported partition"]'));
+    assert.equal(container!.querySelector('button[aria-label="Collapse Original partition"]'), null);
+    const refused = refuseContentWrites();
+    try {
+      const rename = container!.querySelector<HTMLButtonElement>('button[title="Rename this group"]');
+      assert.ok(rename);
+      await act(async () => rename.click());
+      await setDialogName('Retained unsaved partition');
+      await act(async () => buttonWithText('Save name').click());
+      await waitFor(() => useClashGroupLibrary.getState().status.items['imported-workspace'] === 'quota', 'refused native partition must report quota');
+      assert.ok(container!.querySelector('button[aria-label="Collapse Retained unsaved partition"]'));
+      assert.ok(container!.querySelector('[data-content-storage] [role="alert"]'));
+      const saved = (await readContentRows('clashGroups')).find(row => row.id === 'imported-workspace');
+      assert.equal(decodeClashGroupWorkspace(saved?.payload)?.groups[0].name, 'Imported partition');
+    } finally { refused.mock.restore(); }
+    await act(async () => { assert.equal(await clashGroupLibrary.retry(), true); });
+    const saved = await readContentRows('clashGroups');
+    assert.equal(decodeClashGroupWorkspace(saved.find(row => row.id === 'imported-workspace')?.payload)?.groups[0].name, 'Retained unsaved partition');
+    assert.equal(decodeClashGroupWorkspace(saved.find(row => row.id === DEFAULT_GROUP_WORKSPACE)?.payload)?.groups[0].name, 'Original partition');
+  });
+
   it('creates, renames, edits, and ungroups a persisted expandable group', async () => {
     const checkboxes = [...container!.querySelectorAll('input[type="checkbox"]')]
       .filter((input) => input.getAttribute('aria-label')?.startsWith('Select clash '));
@@ -106,7 +152,7 @@ describe('ClashPanel manual groups (#4921, #5122)', () => {
     await act(async () => buttonWithText('Create group').click());
 
     assert.ok(container!.querySelector('button[aria-label="Collapse Riser coordination"]'));
-    const stored = JSON.parse(localStorage.getItem(MANUAL_CLASH_GROUPS_KEY) ?? 'null') as { groups: Array<{ name: string; members: unknown[] }> };
+    const stored = await storedWorkspace();
     assert.equal(stored.groups[0].name, 'Riser coordination');
     assert.equal(stored.groups[0].members.length, 2);
 
@@ -168,14 +214,14 @@ describe('ClashPanel manual groups (#4921, #5122)', () => {
     const removeMember = container!.querySelector('button[title="Remove this clash from the group"]');
     assert.ok(removeMember instanceof HTMLButtonElement);
     await act(async () => removeMember.click());
-    const afterEdit = JSON.parse(localStorage.getItem(MANUAL_CLASH_GROUPS_KEY) ?? 'null') as { groups: Array<{ members: unknown[] }> };
+    const afterEdit = await storedWorkspace();
     assert.equal(afterEdit.groups[0].members.length, 1, 'editing membership keeps the surviving pair');
 
     const ungroup = container!.querySelector('button[title="Ungroup these clashes"]');
     assert.ok(ungroup instanceof HTMLButtonElement);
     await act(async () => ungroup.click());
     assert.equal(container!.querySelector('button[aria-label="Collapse Level 2 riser"]'), null);
-    const afterUngroup = JSON.parse(localStorage.getItem(MANUAL_CLASH_GROUPS_KEY) ?? 'null') as { groups: unknown[] };
+    const afterUngroup = await storedWorkspace();
     assert.deepEqual(afterUngroup.groups, []);
     await act(async () => buttonWithText('Open BCF').click());
     assert.equal(useViewerStore.getState().bcfPanelVisible, true, 'the toast action opens BCF');
@@ -222,7 +268,7 @@ describe('ClashPanel manual groups (#4921, #5122)', () => {
     await setDialogName('Riser coordination');
     await act(async () => buttonWithText('Create group').click());
 
-    const initialStored = JSON.parse(localStorage.getItem(MANUAL_CLASH_GROUPS_KEY) ?? 'null') as { groups: Array<{ name: string; members: unknown[] }> };
+    const initialStored = await storedWorkspace();
     assert.equal(initialStored.groups[0].members.length, 2, 'initial group has 2 members');
 
     // Now we have result() with 2 clashes (c1, c2). Let's create a third result for testing adds.
@@ -266,7 +312,7 @@ describe('ClashPanel manual groups (#4921, #5122)', () => {
       dialogButton.click();
     });
 
-    const afterAdd = JSON.parse(localStorage.getItem(MANUAL_CLASH_GROUPS_KEY) ?? 'null') as { groups: Array<{ name: string; members: unknown[] }> };
+    const afterAdd = await storedWorkspace();
     assert.equal(afterAdd.groups[0].members.length, 3, 'group now has 3 members after add');
     assert.equal(afterAdd.groups[0].name, 'Riser coordination', 'group name unchanged');
   });

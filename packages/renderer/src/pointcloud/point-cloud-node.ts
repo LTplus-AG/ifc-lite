@@ -14,6 +14,7 @@ import type { PointCloudAsset } from '@ifc-lite/geometry';
 import type { PointRenderPipeline } from './point-pipeline.js';
 import { POINT_VERTEX_BYTES } from './point-pipeline.js';
 import { PointCloudSpatialIndex } from './point-cloud-spatial-index.js';
+import { disposeKeyedIndexes, keyedSpatialIndex } from './point-cloud-keyed-chunks.js';
 
 export interface PointCloudGpuChunk {
   vertexBuffer: GPUBuffer;
@@ -26,6 +27,8 @@ export interface PointCloudGpuChunk {
   deviationBuffer: GPUBuffer;
   pointCount: number;
   bbox: { min: [number, number, number]; max: [number, number, number] };
+  /** Set when appended under a removable key (one COPC octree node, #6869). */
+  key?: string;
 }
 
 /** Inputs to a single chunk upload. */
@@ -61,6 +64,8 @@ export interface PointCloudNode {
    * `appendChunkToNode`, alongside the GPU upload.
    */
   spatialIndex: PointCloudSpatialIndex;
+  /** One snap index per removable key, so removing a key drops its points (#6869). */
+  keyedIndexes?: Map<string, PointCloudSpatialIndex>;
   /**
    * Optional per-asset GPU model matrix (column-major, 16 floats),
    * Its linear part is applied in the vertex shader; the translation is
@@ -184,16 +189,18 @@ export function appendChunkToNode(
   device: GPUDevice,
   node: PointCloudNode,
   chunk: PointCloudChunkInput,
+  key?: string,
 ): void {
   const total = chunk.pointCount;
   if (total <= 0) return;
+  const index = key === undefined ? node.spatialIndex : keyedSpatialIndex(node, key);
   // Index the whole chunk's points for measure-tool snapping (#1860),
   // independent of how the GPU sub-buffer split below divides it up —
   // the index doesn't care about buffer size limits, only world
   // positions. Retains `chunk.positions` (and classifications, so the
   // query can honour the class visibility mask #1783) by reference; see
   // spatial index class docs. No-ops past the index's point cap.
-  node.spatialIndex.insertRange(chunk.positions, total, chunk.classifications ?? null);
+  index.insertRange(chunk.positions, total, chunk.classifications ?? null);
   // Honour BOTH the raw buffer cap and the storage-binding cap, with a 5%
   // margin for safety against driver rounding.
   const maxBytes = Math.min(
@@ -210,7 +217,7 @@ export function appendChunkToNode(
   const dispatchPointCap = device.limits.maxComputeWorkgroupsPerDimension * 64;
   const maxPerBuffer = Math.max(1, Math.min(bufferPointCap, dispatchPointCap));
   for (let start = 0; start < total; start += maxPerBuffer) {
-    appendPointSubBuffer(device, node, chunk, start, Math.min(maxPerBuffer, total - start));
+    appendPointSubBuffer(device, node, chunk, start, Math.min(maxPerBuffer, total - start), key);
   }
 }
 
@@ -221,6 +228,7 @@ function appendPointSubBuffer(
   chunk: PointCloudChunkInput,
   start: number,
   count: number,
+  key: string | undefined,
 ): void {
   const bytes = new ArrayBuffer(count * POINT_VERTEX_BYTES);
   const f32 = new Float32Array(bytes);
@@ -315,6 +323,7 @@ function appendPointSubBuffer(
     deviationBuffer,
     pointCount: count,
     bbox: chunk.bbox,
+    ...(key === undefined ? {} : { key }),
   });
   node.pointCount += count;
   growBounds(node.bounds, chunk.bbox);
@@ -354,6 +363,7 @@ export function destroyNode(node: PointCloudNode): void {
   // this the spatial index would keep every chunk's Float32Array alive
   // for the rest of the session even after the GPU buffers are freed.
   node.spatialIndex.dispose();
+  disposeKeyedIndexes(node);
 }
 
 function growBounds(

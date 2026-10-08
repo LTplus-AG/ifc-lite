@@ -17,7 +17,14 @@ export interface ValidationDraftSlice {
   validationDefinitionsError: string | null;
   validationDefinitionsWritable: boolean;
   validationDefinitionRevision: number;
-  addValidationDefinition: (definition: Omit<Extract<ValidationDefinition, { kind: 'rules' }>, 'id'> | Omit<Extract<ValidationDefinition, { kind: 'ids' }>, 'id'>, existingId?: string) => boolean;
+  /**
+   * Adds (or replaces `existingId`) and makes it the active definition, which
+   * clears the shown report. `activate: false` only stores a NEW entry: the
+   * active definitions, the shown report and the rule editor are untouched.
+   * Replacing `existingId` always re-projects it.
+   */
+  addValidationDefinition: (definition: Omit<Extract<ValidationDefinition, { kind: 'rules' }>, 'id'> | Omit<Extract<ValidationDefinition, { kind: 'ids' }>, 'id'>,
+    existingId?: string, options?: { activate?: boolean }) => boolean;
   selectValidationDefinition: (id: string) => void;
   removeValidationDefinition: (id: string) => void;
   deactivateValidationDefinition: (kind: DefinitionKind) => void;
@@ -53,15 +60,17 @@ export const createValidationDraftSlice: StateCreator<ValidationDraftSlice & IDS
   validationDefinitionsError: loaded.error,
   validationDefinitionsWritable: loaded.writable,
   validationDefinitionRevision: 0,
-  addValidationDefinition: (definition, existingId) => {
+  addValidationDefinition: (definition, existingId, options) => {
     const library = get().validationDefinitions;
     const existing = existingId ? library.entries.find(entry => entry.id === existingId && entry.kind === definition.kind) : undefined;
     if (existingId && !existing) return false;
+    // Replacing an entry in place always re-projects it; only a new entry may stay inactive.
+    const activate = existing !== undefined || (options?.activate ?? true);
     const entry: ValidationDefinition = { ...definition, id: existingId ?? crypto.randomUUID() };
     const next = { ...library, entries: existing ? library.entries.map(candidate => candidate.id === existing.id ? entry : candidate) : [...library.entries, entry],
-      active: { ...library.active, [entry.kind]: entry.id } };
+      active: activate ? { ...library.active, [entry.kind]: entry.id } : library.active };
     if (!commit(next)) return false;
-    project(entry.kind);
+    if (activate) project(entry.kind);
     return true;
   },
   selectValidationDefinition: (id) => {

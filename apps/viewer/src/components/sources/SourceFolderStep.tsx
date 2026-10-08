@@ -3,12 +3,13 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { useMemo } from 'react';
-import type { SourceContainer, SourceFile, SourceProject } from '@ifc-lite/plugin-api';
+import type { FileSourceProvider, PluginContext, SourceContainer, SourceFile, SourceProject } from '@ifc-lite/plugin-api';
 import type { DownloadedSourceFileRecord } from '@/lib/sources/persistence';
 import type { SourceDownloadState } from '@/lib/sources/downloadProgress';
 import { getDownloadedSourceFileRecord, getDownloadedSourceFileStatus } from '@/lib/sources/persistence';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { SourceFolderLocation } from './SourceFolderLocation';
 import { SourceFolderTree } from './SourceFolderTree';
 import { SourceFileRow } from './SourceFileRow';
 import { LoadMoreRow } from './SourceEntityList';
@@ -18,11 +19,15 @@ import { useTranslation } from '@/i18n';
 
 interface SourceFolderStepProps {
   providerName: string;
+  provider?: FileSourceProvider;
+  ctx?: PluginContext;
+  onSelectRevision?: (file: SourceFile) => void;
   selectedProject: SourceProject | null;
   selectedFileArea: SourceContainer;
   selectedContainer: SourceContainer | null;
   onSelectContainer: (container: SourceContainer) => void;
   sortedFolders: SourceContainer[];
+  favouriteFolders: readonly SourceContainer[];
   allFiles: readonly SourceFile[];
   /** Only grey out folders that contain no files when the catalog is complete
    *  enough to actually know that (flat-subtree + recursive files, no pages
@@ -64,11 +69,15 @@ interface SourceFolderStepProps {
 
 export function SourceFolderStep({
   providerName,
+  provider,
+  ctx,
+  onSelectRevision,
   selectedProject,
   selectedFileArea,
   selectedContainer,
   onSelectContainer,
   sortedFolders,
+  favouriteFolders,
   allFiles,
   gateEmptyFolders,
   loadingFolders,
@@ -154,8 +163,10 @@ export function SourceFolderStep({
 
   return (
     <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden">
-      <div className="grid min-h-0 flex-1 grid-cols-2 overflow-hidden">
-        <div className="flex min-h-0 flex-col overflow-hidden border-r">
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+        <details className="shrink-0 border-b">
+          <summary className="cursor-pointer px-3 py-2 text-xs font-medium">{t('sources.workspace.folders')}</summary>
+          <div className="flex max-h-48 flex-col overflow-y-auto">
           {/* The star is a sibling of the button, not inside it: a button
               cannot nest inside a button. This is how the file area ITSELF
               gets favourited — the tree below only covers its subfolders. */}
@@ -199,9 +210,9 @@ export function SourceFolderStep({
               // `direct-children` provider) — unmounting `SourceFolderTree`
               // then would discard its locally-owned `openIds`, collapsing
               // every already-expanded branch.
-              <div className="flex items-center justify-center py-8">
-                <Spinner size="lg" className="text-muted-foreground" />
-              </div>
+              <output className="flex items-center justify-center gap-2 py-8 text-xs text-muted-foreground">
+                <Spinner size="lg" className="text-muted-foreground" />{t('sources.sourceEntityList.loading')}
+              </output>
             ) : (
               <>
                 <SourceFolderTree
@@ -222,9 +233,10 @@ export function SourceFolderStep({
               </>
             )}
           </div>
-        </div>
+          </div>
+        </details>
 
-        <div className="min-h-0 flex flex-col overflow-hidden">
+        <div className="min-h-0 flex flex-1 flex-col overflow-hidden">
           {searchEnabled && (
             <div className="border-b px-3 py-2">
               <div className="relative">
@@ -261,24 +273,9 @@ export function SourceFolderStep({
               )}
             </div>
           )}
-          {!searchActive && (
-            <div className="border-b px-3 py-2 text-xs text-muted-foreground">
-              <div className="flex flex-wrap items-center gap-x-1 gap-y-1">
-                {trail.map((container, index) => (
-                  <div key={container.id} className="flex items-center gap-x-1">
-                    <button
-                      type="button"
-                      className="hover:text-foreground hover:underline"
-                      onClick={() => onSelectContainer(container)}
-                    >
-                      {container.name}
-                    </button>
-                    {index < trail.length - 1 && <span>/</span>}
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
+          <SourceFolderLocation trail={trail} folders={favouriteFolders}
+            selected={selectedContainer ?? selectedFileArea} searchActive={searchActive} isFavourite={isFolderFavourite}
+            onSelect={onSelectContainer} onToggle={onToggleFolderFavourite} />
           {!searchActive && childFolders.length > 0 && (
             <div className="border-b px-3 py-2">
               <div className="mb-1 text-xs uppercase tracking-wide text-muted-foreground">
@@ -306,9 +303,9 @@ export function SourceFolderStep({
           )}
           <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
             {loadingFiles ? (
-              <div className="flex items-center justify-center py-8">
-                <Spinner size="lg" className="text-muted-foreground" />
-              </div>
+              <output className="flex items-center justify-center gap-2 py-8 text-xs text-muted-foreground">
+                <Spinner size="lg" className="text-muted-foreground" />{t('sources.sourceEntityList.loading')}
+              </output>
             ) : (
               <>
                 <ul className="divide-y">
@@ -331,6 +328,7 @@ export function SourceFolderStep({
                         downloadedStatus={getDownloadedSourceFileStatus(f, downloadedRecord)}
                         favourited={isFileFavourite(f)}
                         onToggleFavourite={() => onToggleFileFavourite(f)}
+                        details={provider && ctx && selectedProject && onSelectRevision ? { provider, ctx, projectId: selectedProject.id, selectedFile: selectedFiles.get(f.id), busy, onSelect: onSelectRevision } : undefined}
                       />
                     );
                   })}

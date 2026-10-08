@@ -266,6 +266,9 @@ it('#6695 malformed draft evidence rejects the whole import before valid neighbo
   const entry = blankDocument(), backup = createContentBackup({ validation: [], comparison: [], document: [entry] });
   for (const draft of [{ kind: 'document', id: 'broken', raw: '{' },
     { kind: ['document'], id: entry.id, raw: JSON.stringify(entry) },
+    // #6842: a registry guard must exclude Object.prototype and unknown kinds.
+    { kind: 'constructor', id: entry.id, raw: JSON.stringify(entry) },
+    { kind: 'unregistered-proposal', id: entry.id, raw: JSON.stringify(entry) },
     { kind: 'document', id: 'different', raw: JSON.stringify(entry) }]) {
     await assert.rejects(importContentBackup({ ...backup, drafts: [draft] } as unknown as typeof backup));
     assert.deepEqual(await readContentRows('document'), []);

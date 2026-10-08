@@ -14,6 +14,8 @@ import { loadDocuments } from '@/lib/document/persistence';
 import { createContentBackup, parseContentBackup, readBackupDrafts, readContentRecovery } from '@/lib/storage/content-backup';
 import '@/test/download-capture';
 import { Toaster } from '@/components/ui/toast';
+import { useClashGroupApplications } from '@/lib/clash/group-applications';
+import { useSemanticReviews } from '@/lib/semantic/assist/library';
 import { ContentStorageNotice } from './ContentStorageNotice';
 
 afterEach(cleanup);
@@ -228,11 +230,13 @@ it('#6695 library downloads and preserved originals recover an imported unfinish
   });
   try {
     const find = (text: string) => { const button = [...ui.querySelectorAll('button')].find(value => value.textContent === text); assert.ok(button); return button; };
+    await waitFor(() => !find('Download library backup').disabled, 'import completes and enables library backup');
     click(find('Download library backup'));
     await waitFor(() => downloads.length === 1, 'a further library backup downloads');
     const exported = parseContentBackup(await downloads[0].text());
     assert.deepEqual(exported.libraries.document, [entry]);
     assert.deepEqual(exported.drafts, backup.drafts);
+    await waitFor(() => !find('Download preserved originals').disabled, 'backup completes and enables preserved originals');
     click(find('Download preserved originals'));
     await waitFor(() => downloads.length === 2, 'raw draft originals download');
     const rows = JSON.parse(await downloads[1].text()) as Array<{ raw: string }>;
@@ -275,4 +279,30 @@ it('#6695 a refused raw-draft import stays downloadable during unreadable storag
   assert.ok(!originals[0].key.includes('session:'), 'Retry all commits raw evidence into IndexedDB');
   assert.equal((await loadDocuments()).length, 1);
   assert.equal(await useViewerStore.getState().retryDocumentsSave(), true);
+});
+
+it('#6906 whole-library export waits for the clash group apply receipts too', async () => {
+  const status = useClashGroupApplications.getState().status;
+  useClashGroupApplications.setState({ status: { ...status, phase: 'loading' } });
+  try {
+    const ui = render(<Notice />);
+    const button = [...ui.querySelectorAll('button')].find(value => value.textContent === 'Download library backup');
+    assert.ok(button);
+    assert.equal(button.disabled, true, 'a backup taken now would omit the receipts');
+    await act(async () => { useClashGroupApplications.setState({ status: { ...status, phase: 'ready' } }); });
+    assert.equal(button.disabled, false);
+  } finally { useClashGroupApplications.setState({ status }); }
+});
+
+it('#7000 whole-library backup waits for semantic review decisions to load', async () => {
+  const status = useSemanticReviews.getState().status;
+  useSemanticReviews.setState({ status: { ...status, phase: 'loading' } });
+  try {
+    const ui = render(<Notice />);
+    const button = [...ui.querySelectorAll('button')].find(value => value.textContent === 'Download library backup');
+    assert.ok(button);
+    assert.equal(button.disabled, true, 'an export during loading would silently omit saved semantic decisions');
+    await act(async () => { useSemanticReviews.setState({ status: { ...status, phase: 'ready' } }); });
+    assert.equal(button.disabled, false, 'the backup becomes available after the library finishes loading');
+  } finally { useSemanticReviews.setState({ status }); }
 });

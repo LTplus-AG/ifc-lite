@@ -1,0 +1,51 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
+import type { TranslationValue } from '../types';
+
+/** Reviewed model changes (viewer AI P04): `components/viewer/actions/*`, receipts in the Changes panel. */
+export const modelChangesEn = {
+  'modelChanges.commandLabel': 'Apply reviewed changes',
+  'modelChanges.title': 'Review model changes',
+  'modelChanges.rows': 'Proposed changes',
+  'modelChanges.counts': '{ready} ready · {conflict} need attention · {unchanged} unchanged or unsupported',
+  'modelChanges.status.ready': 'Ready',
+  'modelChanges.status.unchanged': 'Already set',
+  'modelChanges.status.conflict': 'Value changed',
+  'modelChanges.status.missing': 'Element not found',
+  'modelChanges.status.ambiguous': 'Element in several models',
+  'modelChanges.status.denied': 'Not editable',
+  'modelChanges.status.unsupported': 'Unsupported value',
+  'modelChanges.approveRow': 'Apply {field} on {element}',
+  'modelChanges.absent': '(empty)',
+  'modelChanges.removed': '(removed)',
+  'modelChanges.expectedWas': 'The proposal expected {value}; the model has changed since.',
+  'modelChanges.showElement': 'Show element in the model',
+  'modelChanges.editModeRequired': 'Changes are applied with the normal edit tools, so Edit mode must be on.',
+  'modelChanges.turnOnEditMode': 'Turn on Edit mode',
+  'modelChanges.apply': { one: 'Apply {count} change', other: 'Apply {count} changes' },
+  'modelChanges.refused.stale': 'The model changed while you reviewed. Check the updated statuses and apply again.',
+  'modelChanges.refused.nothing-approved': 'Select at least one ready change.',
+  'modelChanges.refused.refused': 'The model refused the changes; nothing was applied.',
+  'modelChanges.receiptApplied': { one: 'Applied {count} change as one undo step', other: 'Applied {count} changes as one undo step' },
+  'modelChanges.receiptUndone': { one: 'Undid {count} change', other: 'Undid {count} changes' },
+  'modelChanges.receiptDetail': '{batches} model edit batch(es) · {skipped} skipped. Listed under Changes and undoable with Ctrl+Z.',
+  'modelChanges.undo': 'Undo these changes',
+  'modelChanges.undoRefused.stale': 'These changes are no longer at the top of the history.',
+  'modelChanges.undoRefused.newer-conflict': 'Newer edits changed the same values. Undo those first.',
+  'modelChanges.undoRefused.shared-room': 'Changes in a shared session are undone from the Changes panel by their author.',
+  'modelChanges.undoRefused.missing-view': 'The model is no longer loaded.',
+  'modelChanges.undoRefused.unsupported': 'This change cannot be undone automatically.',
+  'modelChanges.undoRefused.not-in-history': 'The edit history no longer contains these changes (for example after reload).',
+  'modelChanges.undoRefused.already-undone': 'These changes were already undone.',
+  'modelChanges.undoRefused.edit-mode': 'Turn on Edit mode to undo.',
+  'modelChanges.undoRefused.workflow-running': 'Wait for the running workflow to finish.',
+  'modelChanges.undoRefused.collab-role': 'Your session role cannot edit this model.',
+  'modelChanges.undoRefused.model-unavailable': 'The model is no longer loaded.',
+  'modelChanges.receiptsTitle': 'Reviewed changes',
+  'modelChanges.receiptsEmpty': 'No reviewed change batches yet.',
+  'assistant.proposalChanges': 'Model change proposal',
+  'assistant.proposalChangesSummary': { one: '{count} proposed change', other: '{count} proposed changes' },
+  'assistant.suggestValidationCorrections': 'Prepare corrections for the failing requirements',
+} as const satisfies Record<string, TranslationValue>;

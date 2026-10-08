@@ -40,7 +40,8 @@ import {
   estimateMessagesTokens,
   summarizeDroppedMessages,
 } from './chat/chatPanelHelpers';
-import { fetchUsageSnapshot, streamChat, type UsageInfo } from '@/lib/llm/stream-client';
+import { streamChat, type UsageInfo } from '@/lib/llm/stream-client';
+import { fetchUsageSnapshot } from '@/lib/llm/usage-quota';
 import { streamAnthropicChat, streamOpenAiChat } from '@/lib/llm/stream-direct';
 import { buildStreamMessagesForModel, filterAttachmentsForModel } from '@/lib/llm/message-capabilities';
 import { buildSystemPrompt } from '@/lib/llm/system-prompt';
@@ -308,8 +309,8 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
     let cancelled = false;
     const refreshUsage = async () => {
       const snapshot = await fetchUsageSnapshot(PROXY_URL);
-      if (!cancelled && snapshot) {
-        setChatUsage(snapshot);
+      if (!cancelled && snapshot.ok) {
+        setChatUsage(snapshot.usage);
       }
     };
 

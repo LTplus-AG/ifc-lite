@@ -6,13 +6,9 @@
  * `plan.move` (charter #6232, B3): drag the selected element by its move
  * handle in the plan. The handle is the base point; the cursor, through the
  * shared snap solver (tracking from the base), is the target. Release writes
- * one `translateEntity` in one transaction: one undo step, and the element
+ * the shared selection transform in one transaction: one undo step, and the element
  * re-meshed with what it hosts (its openings, doors and windows follow it).
  *
- * Interim: C2's `element.move` (base point → target point, multi-selection,
- * carried hosted elements) is the move command. When it lands this command
- * goes and the plan's move handle starts `element.move` with the press as
- * its base and the release as its target.
  */
 
 import { hostPlanFrame } from '@ifc-lite/create';
@@ -20,18 +16,16 @@ import { PlanMoveLayer } from '@/components/viewer/plan/PlanMoveLayer';
 import { useViewerStore } from '@/store';
 import type { ViewerState } from '@/store';
 import { resolveEntityRef } from '@/store/resolveEntityRef';
-import { expandAffectedSet } from '@/lib/remesh/affected-set';
+import { commitElementTransform } from '@/lib/element-transform/commit';
 import type { Vec2 } from '@/lib/snap/types';
 import { commitCommand, getCommandRuntime, updateCommandGesture } from '../runtime.js';
-import { buildStoreyWorkplane, elementStoreyId, isWorkplane } from '../workplane.js';
-import type { CommandContext, ModelingCommand, Workplane } from '../types.js';
+import { elementStoreyId } from '../workplane.js';
+import type { CommandContext, ModelingCommand } from '../types.js';
 
 export interface PlanMoveTarget {
   readonly modelId: string;
   readonly expressId: number;
   readonly storeyId: number;
-  /** The angle of the element's parent placement's X in its storey's plan, radians. */
-  readonly parentAngle: number;
 }
 
 export interface PlanMoveGesture {
@@ -46,8 +40,8 @@ const MIN_MOVE = 1e-4;
 
 /**
  * `expressId` as something the plan can move, or null: it needs a storey, a
- * placement whose frame reaches that storey's, and a readable own rotation
- * (the parent frame the translation is written in follows from the two).
+ * placement whose frame reaches that storey's, and a readable own rotation.
+ * The shared transform writer resolves the parent frame at commit.
  */
 export function readPlanMoveTarget(s: ViewerState, modelId: string, expressId: number): PlanMoveTarget | null {
   const dataStore = s.models.get(modelId)?.ifcDataStore;
@@ -56,18 +50,7 @@ export function readPlanMoveTarget(s: ViewerState, modelId: string, expressId: n
   const frame = hostPlanFrame(dataStore, expressId, storeyId, s.mutationViews.get(modelId) ?? null);
   const own = frame ? s.readEntityRotation(modelId, expressId) : null;
   if (!frame || !own || s.readEntityPosition(modelId, expressId) === null) return null;
-  return { modelId, expressId, storeyId, parentAngle: Math.atan2(frame.axisX[1], frame.axisX[0]) - own.yawZ };
-}
-
-/** The storey-frame move from `base` to `to` (workplane-local on `plane`), in the element's parent frame. */
-function parentDelta(s: ViewerState, target: PlanMoveTarget, plane: Workplane, base: Vec2, to: Vec2): [number, number, number] {
-  const storey = buildStoreyWorkplane(s, target.modelId, target.storeyId, 0);
-  if (!isWorkplane(storey)) throw new Error(storey.refused);
-  const local = (p: Vec2) => storey.renderToLocal(plane.localToRender([p[0], p[1], 0]));
-  const a = local(base), b = local(to);
-  const dx = b[0] - a[0], dy = b[1] - a[1];
-  const c = Math.cos(target.parentAngle), sn = Math.sin(target.parentAngle);
-  return [dx * c + dy * sn, -dx * sn + dy * c, 0];
+  return { modelId, expressId, storeyId };
 }
 
 function init(ctx: CommandContext): PlanMoveGesture {
@@ -93,14 +76,10 @@ export const PLAN_MOVE: ModelingCommand<PlanMoveGesture> = {
   commit(g, tx) {
     const { target, base, to } = g;
     if (!target || !base || !to || !tx.workplane) throw new Error('Nothing to move');
-    const delta = parentDelta(tx.store, target, tx.workplane, base, to);
-    const result = tx.store.translateEntity(target.modelId, target.expressId, delta, tx.batchId);
-    if (!result.ok) throw new Error(result.reason);
-    // What it hosts is placed relative to it: re-mesh those with it.
-    const dataStore = tx.store.models.get(target.modelId)?.ifcDataStore;
-    const view = tx.store.mutationViews.get(target.modelId) ?? null;
-    const remesh = dataStore ? [...expandAffectedSet(dataStore, view, [target.expressId], 'hostsChanged')] : [target.expressId];
-    return { modelId: target.modelId, created: [], deleted: [], remesh, select: [target.expressId] };
+    return commitElementTransform(tx, target.modelId, [target.expressId], {
+      kind: 'move', from: tx.workplane.localToRender([base[0], base[1], 0]),
+      to: tx.workplane.localToRender([to[0], to[1], 0]),
+    });
   },
   afterCommit: () => ({ exit: true }),
   cancel: () => 'exit',

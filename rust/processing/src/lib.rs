@@ -45,6 +45,9 @@ mod prepass_styled;
 pub use prepass_styled::flat_styles_rgba8_from_geometry_columns;
 mod prepass_type_material;
 mod processor;
+pub(crate) mod point_pca;
+pub mod scan_proposals;
+pub mod scan_segmentation;
 pub(crate) mod simplify_math;
 pub mod simplify_session;
 // `simplify_session` unit tests live in a sibling `_tests.rs` file so the

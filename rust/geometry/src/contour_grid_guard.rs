@@ -5,21 +5,12 @@
 use crate::contour_bool2d::Ring2D;
 use i_overlay::i_float::adapter::FloatPointAdapter;
 use std::collections::BTreeMap;
-fn orient(a: [f64; 2], b: [f64; 2], c: [f64; 2]) -> i8 {
-    let d = geometry_predicates::orient2d(a, b, c);
-    if d > 0. {
-        1
-    } else if d < 0. {
-        -1
-    } else {
-        0
-    }
-}
-fn integer_orient(a: [i64; 2], b: [i64; 2], c: [i64; 2]) -> i8 {
+use crate::geom2d::orientation as orient;
+fn integer_orient(a: [i64; 2], b: [i64; 2], c: [i64; 2]) -> i32 {
     let x = i128::from(b[0]) - i128::from(a[0]);
     let y = i128::from(b[1]) - i128::from(a[1]);
     let d = x * (i128::from(c[1]) - i128::from(a[1])) - y * (i128::from(c[0]) - i128::from(a[0]));
-    d.signum() as i8
+    d.signum() as i32
 }
 fn distance(p: [f64; 2], a: [f64; 2], b: [f64; 2]) -> f64 {
     let d = [b[0] - a[0], b[1] - a[1]];

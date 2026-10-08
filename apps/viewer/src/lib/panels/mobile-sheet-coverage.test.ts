@@ -25,6 +25,7 @@ import assert from 'node:assert/strict';
 import { isValidElement, Suspense, type ReactNode } from 'react';
 import { ChunkErrorBoundary } from '@/components/ChunkErrorBoundary';
 import { PanelModelGate } from '@/components/viewer/PanelModelGate';
+import { AssistantSourceContext } from '@/components/viewer/assistant/AssistantAction';
 import { WORKSPACE_PANELS, getPanelDef } from './registry.js';
 import { renderPanelBody } from './renderPanelBody.js';
 
@@ -54,11 +55,12 @@ describe('workspace panel registry coverage', () => {
       // #6720: the no-model gate wraps model-dependent panels the same way,
       // and the Information panel sits in a plain `<div>` carrying its tour
       // anchor. Walk down to the first COMPONENT that is not one of those
-      // wrappers: stopping at a host element would let `properties` report
+      // wrappers. The assistant context supplies scope, not panel content (#6813).
+      // Stopping at a host element would let `properties` report
       // 'div', unique by construction, so another id falling through to a
       // bare <PropertiesPanel /> would pass unnoticed.
       while (isValidElement<{ children?: ReactNode }>(body) &&
-        (typeof body.type === 'string' || body.type === ChunkErrorBoundary || body.type === Suspense || body.type === PanelModelGate)) {
+        (typeof body.type === 'string' || body.type === ChunkErrorBoundary || body.type === Suspense || body.type === PanelModelGate || body.type === AssistantSourceContext)) {
         body = body.props.children;
       }
       assert.ok(isValidElement(body), `${panel.id} must have panel content beneath its loading/error hosts`);

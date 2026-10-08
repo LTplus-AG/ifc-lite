@@ -45,11 +45,13 @@ ifc-lite ships its public npm packages under the `@ifc-lite/*` scope, plus the `
 | [`@ifc-lite/wasm`](#ifc-litewasm) | WebAssembly bindings for IFC-Lite |
 | [`@ifc-lite/codegen`](#ifc-litecodegen) | TypeScript code generator from IFC EXPRESS schemas |
 | [`create-ifc-lite`](#create-ifc-lite) | Create IFC-Lite projects with one command |
+| [`@ifc-lite/ai`](https://www.npmjs.com/package/@ifc-lite/ai) | Provider-independent AI request core: transport contract, typed outcomes, root budgets, usage receipts and bounded JSON output parsing |
 | [`@ifc-lite/bcf-api`](https://www.npmjs.com/package/@ifc-lite/bcf-api) | BCF API (OpenCDE) REST client for connecting to BCF servers |
 | [`@ifc-lite/charts`](https://www.npmjs.com/package/@ifc-lite/charts) | Headless chart data binding for IFC-Lite: aggregate model rows into buckets that keep their element ids, build ECharts options, render SVG |
 | [`@ifc-lite/documents-api`](https://www.npmjs.com/package/@ifc-lite/documents-api) | OpenCDE Documents API 1.0 client: select, download, query and upload documents against a buildingSMART Documents API server |
 | [`@ifc-lite/flow`](https://www.npmjs.com/package/@ifc-lite/flow) | Keyed-data graph runtime for BIM workflows: typed ports, item/list/group lifting, memoised evaluation, and element tracking for re-runnable graphs |
 | [`@ifc-lite/flow-nodes`](https://www.npmjs.com/package/@ifc-lite/flow-nodes) | Standard node library for @ifc-lite/flow over the ifc-lite SDK: model reads and writes, tables, viewer, and a sandboxed Script node |
+| [`@ifc-lite/load-trace`](https://www.npmjs.com/package/@ifc-lite/load-trace) | Dependency-free load-trace spans: performance.measure plus a per-load, cross-thread span tree with worker clock alignment and Chrome-trace export |
 | [`@ifc-lite/merge`](https://www.npmjs.com/package/@ifc-lite/merge) | Three-way merge engine for IFCX layers — MergePlan with auto-merged ops and explicit conflict records, merge-layer emission, rebase, and revert. |
 | [`@ifc-lite/oauth-pkce`](https://www.npmjs.com/package/@ifc-lite/oauth-pkce) | Browser OAuth 2.0 Authorization Code + PKCE flow, shared by ifc-lite's file-source providers |
 | [`@ifc-lite/opencde-foundation`](https://www.npmjs.com/package/@ifc-lite/opencde-foundation) | buildingSMART OpenCDE Foundation API client: version discovery, auth discovery, OAuth2 flows and the shared HTTP client used by every OpenCDE service client |
@@ -57,9 +59,10 @@ ifc-lite ships its public npm packages under the `@ifc-lite/*` scope, plus the `
 | [`@ifc-lite/regex-guard`](https://www.npmjs.com/package/@ifc-lite/regex-guard) | A shared, dependency-free guard against catastrophic-backtracking (ReDoS) regex patterns compiled from untrusted input |
 | [`@ifc-lite/rules`](https://www.npmjs.com/package/@ifc-lite/rules) | Filter-rule vocabulary, evaluator and .rules.json information-validation engine for IFC-Lite |
 | [`@ifc-lite/semantic`](https://www.npmjs.com/package/@ifc-lite/semantic) | Portable semantic datasets, profiles, validation and IFC identity resolution |
+| [`@ifc-lite/source-autodesk`](https://www.npmjs.com/package/@ifc-lite/source-autodesk) | Autodesk Forma and Data Exchange cloud-source provider for ifc-lite |
 | [`@ifc-lite/source-dalux`](https://www.npmjs.com/package/@ifc-lite/source-dalux) | Dalux Build (Box) file-source provider for ifc-lite |
 | [`@ifc-lite/source-dropbox`](https://www.npmjs.com/package/@ifc-lite/source-dropbox) | Dropbox file-source provider for ifc-lite |
-| [`@ifc-lite/source-msgraph`](https://www.npmjs.com/package/@ifc-lite/source-msgraph) | Microsoft Graph (OneDrive/SharePoint) file-source provider for ifc-lite |
+| [`@ifc-lite/source-msgraph`](https://www.npmjs.com/package/@ifc-lite/source-msgraph) | Microsoft Graph file-source provider for the signed-in user's own OneDrive |
 | [`@ifc-lite/wasm-lifecycle`](https://www.npmjs.com/package/@ifc-lite/wasm-lifecycle) | Shared WASM engine load-retry classification and cross-realm panic-forwarding, used by @ifc-lite/geometry and @ifc-lite/parser |
 <!-- END GENERATED: package-index -->
 

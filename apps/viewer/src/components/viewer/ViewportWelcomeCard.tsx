@@ -27,6 +27,7 @@ import { TourInvite } from '@/components/tours/TourInvite';
 import { TOUR_ANCHORS, tourAnchor } from '@/lib/tours/anchors';
 import { EVENT_SHOW_SHORTCUTS } from '@/lib/tours/events';
 import { trackUiEvent } from '@/lib/analytics';
+import { onFieldTelemetry } from '@/lib/perf/fieldTelemetryLoader';
 
 /** Plain CSS text, not UI copy — kept as a module-level constant (rather than
  *  an inline `<style>{`…`}</style>` template literal) so the i18n literal
@@ -63,6 +64,12 @@ export function ViewportWelcomeCard({ webgpu, onOpenClick, onStartBlank, recentF
   const [demoLoading, setDemoLoading] = useState(false);
   // One impression per mount: the denominator for the two clicks below.
   useEffect(() => { trackUiEvent('onboarding_surface', { surface: 'welcome_card', action: 'shown' }); }, []);
+  // `viewer_boot` (#6961): navigation -> this drop target accepting a model.
+  useEffect(() => {
+    if (actionsDisabled) return;
+    const at = performance.now();
+    onFieldTelemetry((field) => field.noteDropTargetInteractive(at));
+  }, [actionsDisabled]);
 
   // The first-run primary action (#5840): 43% of sessions never loaded a
   // model, and the sample the tours use already ships with the viewer. It

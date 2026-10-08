@@ -15,7 +15,7 @@ interface SourceProjectsStepProps {
   ctx: PluginContext;
   /** Report a listing error, or clear the current one with `null`. */
   onError: (message: string | null) => void;
-  onSelect: (project: SourceProject) => void;
+  onSelect: (project: SourceProject, autoEntered?: boolean) => void;
 }
 
 /**
@@ -52,6 +52,13 @@ export function SourceProjectsStep({ provider, ctx, onError, onSelect }: SourceP
     start();
   }, [start]);
 
+  // Personal drives have exactly one account root. Enter it directly instead
+  // of making users select the account they just signed into a second time.
+  useEffect(() => {
+    if ((provider.manifest.name === 'dropbox' || provider.manifest.name === 'msgraph')
+      && !discoverableOnly && !paged.loading && !paged.hasMore && paged.items.length === 1 && !query) onSelect(paged.items[0], true);
+  }, [discoverableOnly, provider.manifest.name, paged.loading, paged.hasMore, paged.items, query, onSelect]);
+
   const submitSearch = useCallback(() => {
     // A retry after a failed listing must not render results under the stale
     // red banner — clear it up front.
@@ -62,7 +69,8 @@ export function SourceProjectsStep({ provider, ctx, onError, onSelect }: SourceP
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      {discoverableOnly && (
+      {(
+
         <div className="border-b px-3 py-2">
           <div className="relative">
             <Search
@@ -71,7 +79,7 @@ export function SourceProjectsStep({ provider, ctx, onError, onSelect }: SourceP
             />
             <Input
               className="h-8 pl-7 text-sm"
-              placeholder={t('sources.sourceProjectsStep.searchPlaceholder')}
+              placeholder={t(provider.manifest.name === 'autodesk' ? 'sources.sourceProjectsStep.autodeskPlaceholder' : 'sources.sourceProjectsStep.searchPlaceholder')}
               aria-label={t('sources.sourceProjectsStep.searchAriaLabel')}
               value={query}
               onChange={(e) => setQuery(e.target.value)}
@@ -81,14 +89,14 @@ export function SourceProjectsStep({ provider, ctx, onError, onSelect }: SourceP
             />
           </div>
           <p className="mt-1 text-xs text-muted-foreground">
-            {t('sources.sourceProjectsStep.discoverableHint')}
+            {discoverableOnly && t(provider.manifest.name === 'autodesk' ? 'sources.sourceProjectsStep.autodeskHint' : 'sources.sourceProjectsStep.discoverableHint')}
           </p>
         </div>
       )}
 
-      <div className="flex-1 overflow-y-auto">
+      <div className="min-h-0 flex-1 overflow-y-auto">
         <SourceEntityList
-          items={paged.items}
+          items={discoverableOnly ? paged.items : paged.items.filter((project) => project.name.toLocaleLowerCase().includes(query.toLocaleLowerCase().trim()))}
           loading={paged.loading}
           icon={Folder}
           emptyLabel={

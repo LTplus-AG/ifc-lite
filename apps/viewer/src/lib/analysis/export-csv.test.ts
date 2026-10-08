@@ -6,6 +6,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { createCostBackend } from '@ifc-lite/sdk';
 import type { IfcDataStore } from '@ifc-lite/parser';
+import { computeDeviationStatistics } from '@ifc-lite/renderer';
 import { buildCostCsvReport, buildDeviationCsvReport } from './export-csv.js';
 
 interface StepRef { expressId: number; type: string; byteOffset: number; byteLength: number; lineNumber: number }
@@ -75,29 +76,50 @@ describe('analysis CSV exports (#5832)', () => {
     }), null);
   });
 
-  it('exports signed-distance rows per scan asset, with model attribution in a federation', () => {
-    const scans = [{
+  it('#6872 exports per-asset deviation statistics, with an all-assets summary row in a federation', () => {
+    const tolerance = 0.25;
+    const options = { tolerance, clipRange: 1 };
+    const a = new Float32Array([-0.125, 0.25, 0.25, -0.5]);
+    const b = new Float32Array([1, -0.5, Number.NaN]);
+    const assetA = {
       Model: 'Scan A.las', GlobalId: 'pointcloud-7', Name: 'Scan A', IfcClass: 'IfcGeographicElement',
-      PointsProcessed: 250, FinitePoints: 250,
-      MinimumDeviationM: -0.125, MaximumDeviationM: 0.25, MeanDeviationM: 0.05,
-    }];
-    const single = buildDeviationCsvReport(scans, ['Scan A.las']);
+      statistics: computeDeviationStatistics(a, options),
+    };
+    const header = 'GlobalId,Name,IfcClass,PointsProcessed,FinitePoints,MinimumDeviationM,MaximumDeviationM,' +
+      'MeanDeviationM,MeanAbsoluteDeviationM,RmsDeviationM,StandardDeviationM,P50AbsoluteDeviationM,' +
+      'P95AbsoluteDeviationM,P99AbsoluteDeviationM,MaxAbsoluteDeviationM,ToleranceM,WithinTolerancePoints,' +
+      'WithinToleranceShare,ClippedPoints\n';
+    const single = buildDeviationCsvReport({ assets: [assetA], overall: null }, ['Scan A.las']);
     assert.ok(single);
     assert.equal(single.filename, 'Scan A-deviation.csv');
-    assert.equal(single.content,
-      'GlobalId,Name,IfcClass,PointsProcessed,FinitePoints,MinimumDeviationM,MaximumDeviationM,MeanDeviationM\n' +
-      'pointcloud-7,Scan A,IfcGeographicElement,250,250,-0.125,0.25,0.05\n');
+    assert.equal(single.rows, 1);
+    // |d| = [0.125, 0.25, 0.25, 0.5]: mean −0.03125, mean|d| 0.28125,
+    // Σd² = 0.390625, nearest-rank P50 0.25, P95 = P99 = max 0.5.
+    const [head, row] = single.content.trimEnd().split('\n');
+    assert.equal(`${head}\n`, header);
+    const cells = row.split(',');
+    assert.deepEqual(cells.slice(0, 9), ['pointcloud-7', 'Scan A', 'IfcGeographicElement', '4', '4', '-0.5', '0.25', '-0.03125', '0.28125']);
+    assert.ok(Math.abs(Number(cells[9]) - Math.sqrt(0.390625 / 4)) < 1e-12, `RMS ${cells[9]}`);
+    assert.ok(Math.abs(Number(cells[10]) - Math.sqrt(0.390625 / 4 - 0.03125 ** 2)) < 1e-12, `σ ${cells[10]}`);
+    assert.deepEqual(cells.slice(11), ['0.25', '0.5', '0.5', '0.5', '0.25', '3', '0.75', '0']);
 
-    const federation = buildDeviationCsvReport([...scans, {
-      Model: 'Scan B.las', GlobalId: 'pointcloud-8', Name: 'Scan B', IfcClass: 'IfcGeographicElement',
-      PointsProcessed: 100, FinitePoints: 99,
-      MinimumDeviationM: -0.5, MaximumDeviationM: 0.4, MeanDeviationM: 0,
-    }], ['Building.ifc', 'Scan A.las', 'Scan B.las']);
+    const federation = buildDeviationCsvReport({
+      assets: [assetA, {
+        Model: 'Scan B.las', GlobalId: 'pointcloud-8', Name: '=HYPERLINK("x")', IfcClass: 'IfcGeographicElement',
+        statistics: computeDeviationStatistics(b, options),
+      }],
+      overall: { name: 'All scan assets', statistics: computeDeviationStatistics(new Float32Array([...a, ...b]), options) },
+    }, ['Building.ifc', 'Scan A.las', 'Scan B.las']);
     assert.ok(federation);
     assert.equal(federation.filename, 'federation-deviation.csv');
-    assert.equal(federation.content,
-      'Model,GlobalId,Name,IfcClass,PointsProcessed,FinitePoints,MinimumDeviationM,MaximumDeviationM,MeanDeviationM\n' +
-      'Scan A.las,pointcloud-7,Scan A,IfcGeographicElement,250,250,-0.125,0.25,0.05\n' +
-      'Scan B.las,pointcloud-8,Scan B,IfcGeographicElement,100,99,-0.5,0.4,0\n');
+    assert.equal(federation.rows, 3);
+    const lines = federation.content.trimEnd().split('\n');
+    assert.equal(lines[0], `Model,${header.trimEnd()}`);
+    // A scan name is user-derived: the shared escaper neutralises formulas.
+    assert.ok(lines[2].startsWith(`Scan B.las,pointcloud-8,"'=HYPERLINK(""x"")",IfcGeographicElement,3,2,-0.5,1,0.25,`));
+    assert.ok(lines[2].endsWith(',0.25,0,0,1'), lines[2]);
+    // The summary row pools every asset's points; it is not a mean of means.
+    assert.ok(lines[3].startsWith(',,All scan assets,,7,6,-0.5,1,'), lines[3]);
+    assert.ok(lines[3].endsWith(',0.25,3,0.5,1'), lines[3]);
   });
 });

@@ -33,13 +33,13 @@ export const keyboardShortcutsEn = {
   'keyboardShortcuts.footer.toggleSuffix': 'to toggle this panel',
 
   // About tab — privacy banner
-  'keyboardShortcuts.privacy.banner': 'Your IFC data never leaves your device.',
-  'keyboardShortcuts.privacy.intro': 'All files are processed locally in the browser with',
+  'keyboardShortcuts.privacy.banner': 'Local model viewing runs on your device.',
+  'keyboardShortcuts.privacy.intro': 'Local model viewing uses',
   'keyboardShortcuts.privacy.wasmLink': 'WebAssembly (WASM)',
-  'keyboardShortcuts.privacy.outro': '– no server upload, near-native speed.',
+  'keyboardShortcuts.privacy.outro': 'in your browser. Cloud imports use hosted downloads and, for Forma and Data Exchange, server-side conversion.',
   'keyboardShortcuts.privacy.verifyIntro': 'Verify: press',
   'keyboardShortcuts.privacy.verifyKey': 'F12',
-  'keyboardShortcuts.privacy.verifyOutro': '→ Network tab → no IFC data transmitted.',
+  'keyboardShortcuts.privacy.verifyOutro': '→ Network tab → inspect requests from enabled features.',
 
   // About tab — links, license, packages
   'keyboardShortcuts.about.appName': 'ifc-lite',

@@ -18,6 +18,7 @@ import { useViewportStatusSummary } from '@/hooks/useViewportStatusSummary';
 import { FlavorIndicator } from '@/components/extensions/FlavorIndicator';
 import { StatusBarPresentationButton } from './StatusBarPresentationButton';
 import { StatusBarWorkspaceChip } from './StatusBarWorkspaceChip';
+import { ActivityTrayButton } from './activity/ActivityTray';
 import { FpsMemoryStats, TriangleCount } from './PerformanceStats';
 import { FlavorDialog } from '@/components/extensions/FlavorDialog';
 import { collectEffectivePhysicalEntityIds } from '@/lib/physical-objects';
@@ -335,6 +336,7 @@ export function StatusBar() {
         <Separator orientation="vertical" className="h-3.5" />
 
         <StatusBarWorkspaceChip />
+        <ActivityTrayButton />
         <StatusBarPresentationButton />
         <Separator orientation="vertical" className="h-3.5" />
         <FlavorIndicator onClick={() => setFlavorDialogOpen(true)} />

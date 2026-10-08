@@ -16,6 +16,7 @@ import {
   isPointInBand,
   projectScanPoint,
   selectScanBand,
+  collectScanBandPlaneXY,
   mergeScanBandSelections,
   type ScanSectionPlane,
   type ScanPointSample,
@@ -522,5 +523,44 @@ describe('selectScanBand — aligned matrices must not be shifted twice', () => 
       thickness: 0.2,
     });
     assert.strictEqual(out.totalInBand, 1, 'raw cached points still take the render-frame shift');
+  });
+});
+
+describe('collectScanBandPlaneXY (#6871 outline input)', () => {
+  // 3000 points on a line at y = 5 (in band) interleaved with 1000 at y = 9.
+  const positions = new Float32Array(4000 * 3);
+  for (let i = 0; i < 4000; i++) {
+    positions[i * 3] = i * 0.01;
+    positions[i * 3 + 1] = i % 4 === 3 ? 9 : 5;
+    positions[i * 3 + 2] = -i * 0.002;
+  }
+  const classifications = new Uint8Array(4000).map((_, i) => (i % 8 === 0 ? 7 : 2));
+  const sample: ScanPointSample = { positions, count: 4000, classifications };
+  const plane: ScanSectionPlane = { axis: 'y', position: 5, flipped: true };
+
+  it('returns every in-band point undecimated, where the capped dot layer strides', () => {
+    const xy = collectScanBandPlaneXY({ sample, coordinateInfo: undefined, plane, thickness: 0.2 });
+    const capped = selectScanBand({ sample, coordinateInfo: undefined, plane, thickness: 0.2, maxRendered: 100 });
+    assert.strictEqual(xy.length / 2, capped.totalInBand);
+    assert.strictEqual(capped.totalInBand, 3000);
+    assert.ok(capped.renderedCount <= 100, 'the dot layer did decimate');
+  });
+
+  it('projects exactly as the dot layer does, in the same order', () => {
+    const xy = collectScanBandPlaneXY({ sample, coordinateInfo: undefined, plane, thickness: 0.2 });
+    const all = selectScanBand({ sample, coordinateInfo: undefined, plane, thickness: 0.2, maxRendered: 1e9 });
+    all.points.forEach((p, i) => {
+      assert.strictEqual(xy[i * 2], Math.fround(p.point.x));
+      assert.strictEqual(xy[i * 2 + 1], Math.fround(p.point.y));
+    });
+  });
+
+  it('honours the class mask like the dot layer', () => {
+    // Hide class 7 (every 8th point): word 0, bit 7 cleared.
+    const classMask = [0xffffffff & ~(1 << 7), 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff];
+    const xy = collectScanBandPlaneXY({ sample, coordinateInfo: undefined, plane, thickness: 0.2, classMask });
+    const dots = selectScanBand({ sample, coordinateInfo: undefined, plane, thickness: 0.2, classMask });
+    assert.strictEqual(xy.length / 2, dots.totalInBand);
+    assert.strictEqual(dots.totalInBand, 3000 - 500);
   });
 });

@@ -89,6 +89,7 @@ export function DrawingCanvasView({ vm, layers }: { vm: DrawingViewModel; layers
           dxfUnderlays={layers.dxfUnderlayData}
           scanPoints={displayOptions.showScanSection ? layers.scanSectionLayer.points : undefined}
           scanOpacity={displayOptions.scanSectionOpacity}
+          scanOutline={displayOptions.showScanSection ? layers.scanSectionLayer.outline?.rings : undefined}
           unitDisplayOverrides={vm.unitDisplayOverrides}
           paperTheme={vm.paperTheme}
         />

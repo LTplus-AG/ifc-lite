@@ -123,7 +123,7 @@ OIDC trusted publishing for both registries:
 
 ### Release credential
 
-The git side of a release authenticates with `secrets.RELEASE_PAT`: changesets/action's version commit and push to `changeset-release/main`, opening and updating the Version Packages PR, its per-package tags and GitHub releases on the publish path, the `v*` tag pushes, and the server-bin GitHub release. (The root `v*` GitHub release uses `GITHUB_TOKEN`.) It cannot be `GITHUB_TOKEN` throughout: events that token creates do not start workflows, so the version PR would never get its required checks (#766) and `server-binaries.yml` would never see `release: published`.
+The git side of a release authenticates with `secrets.RELEASE_PAT`: changesets/action's version commit and push to `changeset-release/main`, opening and updating the Version Packages PR, its per-package tags and GitHub releases on the publish path, the `v*` and `server-v*` tag pushes, and the server-bin GitHub release (`server-v<server-bin version>`, a namespace of its own so it cannot collide with a root `v*` release, #6900). (The root `v*` GitHub release uses `GITHUB_TOKEN`.) It cannot be `GITHUB_TOKEN` throughout: events that token creates do not start workflows, so the version PR would never get its required checks (#766) and `server-binaries.yml` would never see `release: published`.
 
 A PAT spends its **owner's** hourly API quota (5,000 REST and 5,000 GraphQL points), shared with everything else that account does. If agent sessions or scripts run `gh` as the same account, they drain it and the Release run fails mid-job (#5693). So the PAT must belong to an account that nothing else uses:
 

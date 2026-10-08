@@ -530,6 +530,7 @@ describe('SourceFolderStep localization', () => {
       selectedContainer: fileArea,
       onSelectContainer: () => {},
       sortedFolders: [folder] as SourceContainer[],
+      favouriteFolders: [] as SourceContainer[],
       allFiles: [file],
       gateEmptyFolders: false,
       loadingFolders: false,

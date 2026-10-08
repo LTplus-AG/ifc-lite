@@ -290,4 +290,18 @@ describe('DXFExporter', () => {
     expect(text.x).toBeCloseTo(5 + 1000);
     expect(text.y).toBeCloseTo(5 - 500);
   });
+
+  it('writes polyline layers on their own layer through coordinateTransform (#6871 scan outline)', () => {
+    const ring = [{ x: 0, y: 0 }, { x: 4, y: 0 }, { x: 4, y: 3 }];
+    const dxf = exportToDXF(emptyDrawing(), {
+      coordinateTransform: (p) => ({ x: p.x + 100, y: p.y + 50 }),
+      polylineLayers: [{ name: 'SCAN-OUTLINE', color: '#0f766e', polylines: [ring, [{ x: 1, y: 1 }, { x: 2, y: 1 }]] }],
+    });
+    const doc = parseDxf(dxf);
+    const polys = doc.entities.filter((e): e is DxfPolylineEntity => e.kind === 'polyline');
+    expect(polys).toHaveLength(2);
+    expect(polys.every((p) => p.layer === 'SCAN-OUTLINE' && p.closed)).toBe(true);
+    expect(polys[0].vertices.map((v) => [v.x, v.y])).toEqual([[100, 50], [104, 50], [104, 53]]);
+    expect(dxf).toContain('2\nSCAN-OUTLINE\n');
+  });
 });

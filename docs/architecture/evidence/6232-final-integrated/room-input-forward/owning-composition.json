@@ -1,0 +1,71 @@
+[
+  {
+    "number": 6758,
+    "beforeHead": "2dd90fc4db90b14d92fcedbeae44a07dbdad8b31",
+    "preparedHead": "d86e9e313feb75f48b92cc91195828428e17824e",
+    "preparedTree": "f3d799bf80175860e39e4fa9091cae69b55a6425",
+    "ownLayerBase": "f04a97289d3130a1d7dc9df056c8b9c5b6d25791",
+    "ownLayerFullBinaryPatchSha256": "d94061ca220b4099a9b50df3d5fc36f19bf6ae85527631c3f1a1f6480e3639d2",
+    "apiSnapshotUnchanged": true,
+    "changedPaths": [
+      ".changeset/native-room-sdk.md",
+      "packages/sdk/src/host-async-channel.test.ts",
+      "packages/sdk/src/store-room-command.ts"
+    ],
+    "cleanActualMainCompositionEqualsPreparedTree": true
+  },
+  {
+    "number": 6759,
+    "beforeHead": "b10bed8fee81fe73a81b9fd71a41e2d05479fb23",
+    "preparedHead": "f05ff9018c7ba80ea2ef7f19e6df77df2aa8c9f7",
+    "preparedTree": "44ad78ca53cc926253f064a3adfd449c78339094",
+    "ownLayerBase": "d86e9e313feb75f48b92cc91195828428e17824e",
+    "ownLayerFullBinaryPatchSha256": "72a99f3781425346592c505214a5dea8565f438c7f205292985f1e3ea27214b2",
+    "allBytesOutsideQualifiedPathsUnchanged": true,
+    "testAndChangesetBlobsExactSdkLeaf": true,
+    "sourceChangeExactGuardReplacement": true,
+    "apiSnapshotUnchanged": true,
+    "changedPaths": [
+      ".changeset/native-room-sdk.md",
+      "packages/sdk/src/host-async-channel.test.ts",
+      "packages/sdk/src/store-room-command.ts"
+    ],
+    "cleanActualMainCompositionEqualsPreparedTree": true
+  },
+  {
+    "number": 6760,
+    "beforeHead": "483a4a555b17e632e9e440f06a3e8c1fdd3cdbee",
+    "preparedHead": "3c81d9af70af1f625aa7c2787f64d1716dda5138",
+    "preparedTree": "661172605d8d390894e5a8726cb6874b94c750c1",
+    "ownLayerBase": "f05ff9018c7ba80ea2ef7f19e6df77df2aa8c9f7",
+    "ownLayerFullBinaryPatchSha256": "28b14f1622d7949afa37074cb2d54dda7890cfcb6e97917b2689173207759a3a",
+    "allBytesOutsideQualifiedPathsUnchanged": true,
+    "testAndChangesetBlobsExactSdkLeaf": true,
+    "sourceChangeExactGuardReplacement": true,
+    "apiSnapshotUnchanged": true,
+    "changedPaths": [
+      ".changeset/native-room-sdk.md",
+      "packages/sdk/src/host-async-channel.test.ts",
+      "packages/sdk/src/store-room-command.ts"
+    ],
+    "cleanActualMainCompositionEqualsPreparedTree": true
+  },
+  {
+    "number": 6761,
+    "beforeHead": "edb74421e2470592b195715b5336686a6f8afeb8",
+    "preparedHead": "586e1bb8bf5dbfff94f7172a976ca5da57c0f279",
+    "preparedTree": "e972569f7e134f59798985516459ac4a08d453ae",
+    "ownLayerBase": "3c81d9af70af1f625aa7c2787f64d1716dda5138",
+    "ownLayerFullBinaryPatchSha256": "29ddc9664ec2949f9cc39687dcf848d12dcee2c35904a7daefcf280b371c3f6f",
+    "allBytesOutsideQualifiedPathsUnchanged": true,
+    "testAndChangesetBlobsExactSdkLeaf": true,
+    "sourceChangeExactGuardReplacement": true,
+    "apiSnapshotUnchanged": true,
+    "changedPaths": [
+      ".changeset/native-room-sdk.md",
+      "packages/sdk/src/host-async-channel.test.ts",
+      "packages/sdk/src/store-room-command.ts"
+    ],
+    "cleanActualMainCompositionEqualsPreparedTree": true
+  }
+]

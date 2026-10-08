@@ -53,7 +53,7 @@ function digestNumberSet(values: Iterable<number>): string {
   return `${count}:${xor >>> 0}:${sum >>> 0}`;
 }
 
-function visibilityFingerprint(state: ViewerStateSnapshot): string {
+export function visibilityFingerprint(state: ViewerStateSnapshot): string {
   const tv = state.typeVisibility;
 
   // Include per-model visible flag and geometry mesh count so the cache

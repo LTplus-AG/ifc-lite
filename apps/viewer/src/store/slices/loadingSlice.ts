@@ -36,6 +36,15 @@ export interface LoadingSlice {
    */
   activeLoadCanceller: (() => void) | null;
   /**
+   * Bumped whenever a cancel actually stops a load (#6925): the model load
+   * canceller and an aborted point-cloud stream both bump it, whoever asked
+   * (status bar, loading card, activity tray, a cancelled Flow run, or GPU
+   * device-loss recovery stopping a stream). A load that ends
+   * with this higher than when it began was cancelled, not completed. Never
+   * reset, like `clashRunSeq`, so it is absent from the teardown below.
+   */
+  loadCancelSeq: number;
+  /**
    * The file the most recently started load is reading (#5849), primary or
    * federated. The loading card names it; a federated add registers no model
    * record until it finalizes, so the models map cannot say which file it is.
@@ -72,6 +81,7 @@ export interface LoadingSlice {
   setError: (error: string | null) => void;
   setActiveStreamCanceller: (cancel: (() => void) | null) => void;
   setActiveLoadCanceller: (cancel: (() => void) | null) => void;
+  noteLoadCancelled: () => void;
   setLoadingFileName: (fileName: string | null) => void;
   setLandXmlUnitsRefusal: (value: LoadingSlice['landXmlUnitsRefusal']) => void;
   setLastLoadRetry: (retry: (() => void) | null) => void;
@@ -87,6 +97,7 @@ export const createLoadingSlice: StateCreator<LoadingSlice, [], [], LoadingSlice
   error: null,
   activeStreamCanceller: null,
   activeLoadCanceller: null,
+  loadCancelSeq: 0,
   loadingFileName: null,
   landXmlUnitsRefusal: null,
   lastLoadRetry: null,
@@ -104,6 +115,7 @@ export const createLoadingSlice: StateCreator<LoadingSlice, [], [], LoadingSlice
   setError: (error) => set(error === null ? { error, lastLoadRetry: null } : { error }),
   setActiveStreamCanceller: (activeStreamCanceller) => set({ activeStreamCanceller }),
   setActiveLoadCanceller: (activeLoadCanceller) => set({ activeLoadCanceller }),
+  noteLoadCancelled: () => set((state) => ({ loadCancelSeq: state.loadCancelSeq + 1 })),
   setLoadingFileName: (loadingFileName) => set({ loadingFileName }),
   setLandXmlUnitsRefusal: (landXmlUnitsRefusal) => set({ landXmlUnitsRefusal }),
   setLastLoadRetry: (lastLoadRetry) => set({ lastLoadRetry }),

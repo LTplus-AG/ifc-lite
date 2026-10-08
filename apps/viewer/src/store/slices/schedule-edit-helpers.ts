@@ -12,7 +12,7 @@
  * to accept raw inputs).
  */
 
-import type { ScheduleExtraction } from '@ifc-lite/parser';
+import type { ScheduleExtraction, ScheduleTaskInfo } from '@ifc-lite/parser';
 
 // ═════════════════════════════════════════════════════════════════════
 // ISO-8601 date/time helpers
@@ -59,23 +59,42 @@ export function msToIsoDuration(ms: number): string {
   return out === 'P' ? 'P0D' : out;
 }
 
+/**
+ * Add an ISO 8601 duration to an epoch (ms). Whole years and months are
+ * calendar arithmetic in UTC, applied first and clamped to the target
+ * month's last day (XML Schema's date + duration, which IfcDuration
+ * follows): 2024-01-31 + P1M is 2024-02-29, and 2024-01-01 + P1M is
+ * 2024-02-01 rather than a 30.44-day average (#6803). Fractional years or
+ * months, and the W/D/H/M/S components, add as fixed lengths. Returns
+ * undefined for a string that is not a duration.
+ */
 export function addIsoDurationToEpoch(start: number, iso: string): number | undefined {
   const match = iso.match(
     /^P(?:(\d+(?:\.\d+)?)Y)?(?:(\d+(?:\.\d+)?)M)?(?:(\d+(?:\.\d+)?)W)?(?:(\d+(?:\.\d+)?)D)?(?:T(?:(\d+(?:\.\d+)?)H)?(?:(\d+(?:\.\d+)?)M)?(?:(\d+(?:\.\d+)?)S)?)?$/,
   );
   if (!match) return undefined;
   const [, y, mo, w, d, h, mi, s] = match;
+  const years = y ? parseFloat(y) : 0;
+  const months = mo ? parseFloat(mo) : 0;
+  const wholeMonths = Math.trunc(years) * 12 + Math.trunc(months);
+  const date = new Date(start);
+  if (wholeMonths !== 0) {
+    const day = date.getUTCDate();
+    date.setUTCDate(1);
+    date.setUTCMonth(date.getUTCMonth() + wholeMonths);
+    const lastDay = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + 1, 0)).getUTCDate();
+    date.setUTCDate(Math.min(day, lastDay));
+  }
   const yearMs = 365.2425 * 86_400_000;
-  const monthMs = yearMs / 12;
   const total =
-    (y ? parseFloat(y) * yearMs : 0) +
-    (mo ? parseFloat(mo) * monthMs : 0) +
+    (years % 1) * yearMs +
+    (months % 1) * (yearMs / 12) +
     (w ? parseFloat(w) * 7 * 86_400_000 : 0) +
     (d ? parseFloat(d) * 86_400_000 : 0) +
     (h ? parseFloat(h) * 3_600_000 : 0) +
     (mi ? parseFloat(mi) * 60_000 : 0) +
     (s ? parseFloat(s) * 1000 : 0);
-  return start + total;
+  return date.getTime() + total;
 }
 
 /** Epoch ms → ISO-8601 UTC (no milliseconds), matching the extractor. */
@@ -119,6 +138,64 @@ export function reconcileTaskTime(
     if (finishMs !== undefined) merged.scheduleFinish = toIsoUtc(finishMs);
   }
   return merged;
+}
+
+// ═════════════════════════════════════════════════════════════════════
+// Product assignment edits
+// ═════════════════════════════════════════════════════════════════════
+
+/**
+ * Append products to a task's IfcRelAssignsToProcess inputs, deduped on the
+ * local id and appended as index-aligned pairs. A product the task already
+ * OUTPUTS (IfcRelAssignsToProduct, #6749) is already assigned; restating it
+ * as an input would double-state it.
+ */
+export function addTaskInputProducts(
+  task: ScheduleTaskInfo,
+  products: ReadonlyArray<{ local: number; global: string }>,
+): void {
+  const assigned = new Set([...task.productExpressIds, ...(task.outputProductExpressIds ?? [])]);
+  for (const { local, global } of products) {
+    if (assigned.has(local)) continue;
+    task.productExpressIds.push(local);
+    task.productGlobalIds.push(global);
+    assigned.add(local);
+  }
+}
+
+/**
+ * Remove products from a task's inputs AND its IfcRelAssignsToProduct
+ * outputs (#6749), filtering each expressId/globalId list as index-aligned
+ * pairs so a dropped product never leaves its partner behind. A pair goes
+ * when either side matches: parsed globalIds are IFC GlobalIds, which the
+ * renderer-space `globalsToDrop` never matches, while viewer-assigned ones
+ * are renderer ids.
+ */
+export function dropTaskProducts(
+  task: ScheduleTaskInfo,
+  localsToDrop: ReadonlySet<number>,
+  globalsToDrop: ReadonlySet<string>,
+): void {
+  const inputs = dropPairs(task.productExpressIds, task.productGlobalIds, localsToDrop, globalsToDrop);
+  task.productExpressIds = inputs.expressIds;
+  task.productGlobalIds = inputs.globalIds;
+  if (!task.outputProductExpressIds?.length) return;
+  const outputs = dropPairs(task.outputProductExpressIds, task.outputProductGlobalIds ?? [], localsToDrop, globalsToDrop);
+  task.outputProductExpressIds = outputs.expressIds;
+  task.outputProductGlobalIds = outputs.globalIds;
+}
+
+function dropPairs(
+  expressIds: readonly number[],
+  globalIds: readonly string[],
+  localsToDrop: ReadonlySet<number>,
+  globalsToDrop: ReadonlySet<string>,
+): { expressIds: number[]; globalIds: string[] } {
+  const drop = (i: number) => localsToDrop.has(expressIds[i]) || globalsToDrop.has(globalIds[i]);
+  return {
+    expressIds: expressIds.filter((_, i) => !drop(i)),
+    globalIds: globalIds.filter((_, i) => !drop(i)),
+  };
 }
 
 // ═════════════════════════════════════════════════════════════════════

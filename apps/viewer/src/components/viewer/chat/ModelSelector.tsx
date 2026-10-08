@@ -21,7 +21,7 @@ import {
 } from '@/components/ui/select';
 import { useViewerStore } from '@/store';
 import { useTranslation } from '@/i18n';
-import { FREE_MODELS, getModelById, getByokModelsForSource } from '@/lib/llm/models';
+import { FREE_MODELS, DEFAULT_FREE_MODEL, getModelById, getByokModelsForSource } from '@/lib/llm/models';
 import type { LLMModel } from '@/lib/llm/types';
 import { hasAnthropicKey, hasOpenaiKey, subscribeApiKeys } from '@/services/api-keys';
 
@@ -52,11 +52,13 @@ export function ModelSelector() {
     return subscribeApiKeys(refresh);
   }, []);
 
+  // Radix emits '' when the active id is not among the items (e.g. the
+  // unconfigured fallback once free models exist); never clear the choice.
   const handleChange = useCallback((value: string) => {
-    setActiveModel(value);
+    if (value) setActiveModel(value);
   }, [setActiveModel]);
 
-  const current = getModelById(activeModel);
+  const current = getModelById(activeModel) ?? (activeModel === DEFAULT_FREE_MODEL.id ? DEFAULT_FREE_MODEL : undefined);
   const anthropicModels = getByokModelsForSource('anthropic');
   const openaiModels = getByokModelsForSource('openai');
 

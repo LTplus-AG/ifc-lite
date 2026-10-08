@@ -132,8 +132,15 @@ interface BimFileAttachment {
 // the engine's own text, not a copy maintained in the generator:
 //   packages/create/src/in-store/wall-join.ts
 //   packages/create/src/in-store/wall-join-apply.ts
+//   packages/create/src/in-store/column.ts
+//   packages/create/src/in-store/beam.ts
+//   packages/create/src/in-store/align-boxes.ts
+//   packages/create/src/in-store/member.ts
+//   packages/create/src/in-store/profile.ts
 
 declare namespace BimCreate {
+  export type AlignMode = 'left' | 'centre' | 'right' | 'top' | 'middle' | 'bottom';
+
   export interface WallJoinApplyOptions extends WallJoinOptions {
     /** Layer priorities for the relationship, by wall. Default empty. */
     priorities?: { a?: readonly number[]; b?: readonly number[] };
@@ -155,6 +162,161 @@ declare namespace BimCreate {
      */
     priority?: 'a' | 'b';
   }
+
+  export interface ColumnInStoreParams {
+    /** Base centre of the column, in storey-local coordinates (metres). */
+    Position: [number, number, number];
+    /** Profile width along storey-local X (metres). */
+    Width: number;
+    /** Profile depth along storey-local Y (metres). */
+    Depth: number;
+    /** Extrusion height along +Z (metres). */
+    Height: number;
+    /**
+     * The placement's `RefDirection`: where the section's local X (Width)
+     * points, in storey-local coordinates. Must be horizontal; it is
+     * normalised. Default `[1, 0, 0]`. Written explicitly either way, with
+     * `Axis` `[0, 0, 1]`, so the column can be turned later (`rotateEntity`
+     * edits the RefDirection and refuses a placement without one).
+     */
+    RefDirection?: [number, number, number];
+    /** IfcRoot Name attribute (default `'Column'`). */
+    Name?: string;
+    Description?: string;
+    ObjectType?: string;
+    Tag?: string;
+    /** Explicit GlobalId (22-char IFC GUID); generated when omitted. */
+    GlobalId?: string;
+  }
+
+  /**
+   * A column with a parameterised cross-section (I, L, T, U, C, circle, hollow;
+   * see `ProfileSection`) in place of the `Width` x `Depth` rectangle, centred
+   * on `Position`; the profile's X runs along `RefDirection`.
+   */
+  export interface ProfiledColumnInStoreParams extends Omit<ColumnInStoreParams, 'Width' | 'Depth'> {
+    Profile: ProfileSection;
+  }
+
+  export interface BeamInStoreParams {
+    Start: [number, number, number];
+    End: [number, number, number];
+    /** Cross-section width along local X (metres). */
+    Width: number;
+    /** Cross-section height along local Y (metres). */
+    Height: number;
+    Name?: string;
+    Description?: string;
+    ObjectType?: string;
+    Tag?: string;
+    /** Explicit GlobalId (22-char IFC GUID); generated when omitted. */
+    GlobalId?: string;
+  }
+
+  /**
+   * A beam with a parameterised cross-section (I, L, T, U, C, circle, hollow;
+   * see `ProfileSection`) in place of the `Width` x `Height` rectangle. The
+   * profile is centred on the axis; its Y is the beam's local Y.
+   */
+  export interface ProfiledBeamInStoreParams extends Omit<BeamInStoreParams, 'Width' | 'Height'> {
+    Profile: ProfileSection;
+  }
+
+  export interface MemberInStoreParams {
+    Start: [number, number, number];
+    End: [number, number, number];
+    Width: number;
+    Height: number;
+    PredefinedType?:
+      | 'BRACE' | 'CHORD' | 'COLLAR' | 'MEMBER' | 'MULLION' | 'PLATE'
+      | 'POST' | 'PURLIN' | 'RAFTER' | 'STRINGER' | 'STRUT' | 'STUD'
+      | 'USERDEFINED' | 'NOTDEFINED';
+    Name?: string;
+    Description?: string;
+    ObjectType?: string;
+    Tag?: string;
+    /** Explicit GlobalId (22-char IFC GUID); generated when omitted. */
+    GlobalId?: string;
+  }
+
+  /** A member with a parameterised cross-section in place of the `Width` x `Height` rectangle. */
+  export interface ProfiledMemberInStoreParams extends Omit<MemberInStoreParams, 'Width' | 'Height'> {
+    Profile: ProfileSection;
+  }
+
+  /** A parameterised cross-section for a beam, column or member. Metres. */
+  export type ProfileSection =
+    | RectangleSection
+    | ISection
+    | LSection
+    | TSection
+    | USection
+    | CSection
+    | CircleSection
+    | RectangleHollowSection
+    | CircleHollowSection;
+
+  /** Centred rectangle, XDim along profile X, YDim along profile Y. */
+  export interface RectangleSection { Type: 'Rectangle'; XDim: number; YDim: number }
+
+  /** I / H section (`IfcIShapeProfileDef`). Depth along profile Y. */
+  export interface ISection {
+    Type: 'I';
+    OverallWidth: number;
+    OverallDepth: number;
+    WebThickness: number;
+    FlangeThickness: number;
+    FilletRadius?: number;
+  }
+
+  /** Angle (`IfcLShapeProfileDef`). Depth along profile Y, Width along X. */
+  export interface LSection { Type: 'L'; Depth: number; Width: number; Thickness: number; FilletRadius?: number }
+
+  /** Tee (`IfcTShapeProfileDef`). Flange at +Y. */
+  export interface TSection {
+    Type: 'T';
+    Depth: number;
+    FlangeWidth: number;
+    WebThickness: number;
+    FlangeThickness: number;
+    FilletRadius?: number;
+  }
+
+  /** Channel (`IfcUShapeProfileDef`). Web at -X, flanges towards +X. */
+  export interface USection {
+    Type: 'U';
+    Depth: number;
+    FlangeWidth: number;
+    WebThickness: number;
+    FlangeThickness: number;
+    FilletRadius?: number;
+  }
+
+  /** Cold-formed lipped channel (`IfcCShapeProfileDef`). */
+  export interface CSection {
+    Type: 'C';
+    Depth: number;
+    Width: number;
+    WallThickness: number;
+    Girth: number;
+    InternalFilletRadius?: number;
+  }
+
+  /** Solid circle (`IfcCircleProfileDef`). */
+  export interface CircleSection { Type: 'Circle'; Radius: number }
+
+  /** Rectangular hollow section / tube (`IfcRectangleHollowProfileDef`). */
+  export interface RectangleHollowSection {
+    Type: 'RectangleHollow';
+    XDim: number;
+    YDim: number;
+    WallThickness: number;
+    InnerFilletRadius?: number;
+    OuterFilletRadius?: number;
+  }
+
+  /** Circular hollow section / pipe (`IfcCircleHollowProfileDef`). */
+  export interface CircleHollowSection { Type: 'CircleHollow'; Radius: number; WallThickness: number }
 }
 
 // ── Clash engine types ────────────────────────────────────────────────
@@ -834,13 +996,13 @@ declare const bim: {
     /** Edit a non-IfcRoot attribute by zero-based STEP argument index (e.g. IfcRectangleProfileDef.XDim is index 3). */
     setPositionalAttribute(entity: { modelId: string; expressId: number }, index: number, value: unknown): void;
     /** Add an IfcColumn to a parsed model anchored to an existing IfcBuildingStorey. Returns the new column entity ref. */
-    addColumn(modelId: string, storeyExpressId: number, params: { Position: [number, number, number]; Width: number; Depth: number; Height: number; Name?: string; Description?: string; ObjectType?: string; Tag?: string }): { modelId: string; expressId: number };
+    addColumn(modelId: string, storeyExpressId: number, params: BimCreate.ColumnInStoreParams | BimCreate.ProfiledColumnInStoreParams): { modelId: string; expressId: number };
     /** Add an IfcWall from Start to End anchored to an IfcBuildingStorey. Returns the new wall entity ref. */
     addWall(modelId: string, storeyExpressId: number, params: { Start: [number, number, number]; End: [number, number, number]; Thickness: number; Height: number; Name?: string; Description?: string; ObjectType?: string; Tag?: string }): { modelId: string; expressId: number };
     /** Add an IfcSlab anchored to an IfcBuildingStorey. Two modes: rectangle (Position + Width + Depth) or polygon (OuterCurve = Array<[x, y]> with ≥3 points). */
     addSlab(modelId: string, storeyExpressId: number, params: { Position: [number, number, number]; Width: number; Depth: number; Thickness: number; Profile?: "rectangle"; Name?: string; Description?: string; ObjectType?: string; Tag?: string } | { Profile: "polygon"; OuterCurve: Array<[number, number]>; Position?: [number, number, number]; Thickness: number; Name?: string; Description?: string; ObjectType?: string; Tag?: string }): { modelId: string; expressId: number };
-    /** Add an IfcBeam from Start to End with a centred rectangular cross-section. */
-    addBeam(modelId: string, storeyExpressId: number, params: { Start: [number, number, number]; End: [number, number, number]; Width: number; Height: number; Name?: string; Description?: string; ObjectType?: string; Tag?: string }): { modelId: string; expressId: number };
+    /** Add an IfcBeam from Start to End with a centred rectangular or canonical parameterised cross-section. */
+    addBeam(modelId: string, storeyExpressId: number, params: BimCreate.BeamInStoreParams | BimCreate.ProfiledBeamInStoreParams): { modelId: string; expressId: number };
     /** Add a free-standing IfcDoor anchored to an IfcBuildingStorey. */
     addDoor(modelId: string, storeyExpressId: number, params: { Position: [number, number, number]; Width: number; Height: number; FrameThickness?: number; PredefinedType?: string; OperationType?: string; UserDefinedOperationType?: string; Name?: string; Description?: string; ObjectType?: string; Tag?: string }): { modelId: string; expressId: number };
     /** Add a free-standing IfcWindow anchored to an IfcBuildingStorey. */
@@ -851,8 +1013,10 @@ declare const bim: {
     addRoof(modelId: string, storeyExpressId: number, params: { Position: [number, number, number]; Width: number; Depth: number; Thickness: number; Profile?: "rectangle"; Name?: string; Description?: string; ObjectType?: string; Tag?: string } | { Profile: "polygon"; OuterCurve: Array<[number, number]>; Position?: [number, number, number]; Thickness: number; Name?: string; Description?: string; ObjectType?: string; Tag?: string }): { modelId: string; expressId: number };
     /** Add an IfcPlate (thin flat element). Two modes: rectangle or polygon. */
     addPlate(modelId: string, storeyExpressId: number, params: { Position: [number, number, number]; Width: number; Depth: number; Thickness: number; Profile?: "rectangle"; PredefinedType?: string; Name?: string; Description?: string; ObjectType?: string; Tag?: string } | { Profile: "polygon"; OuterCurve: Array<[number, number]>; Position?: [number, number, number]; Thickness: number; PredefinedType?: string; Name?: string; Description?: string; ObjectType?: string; Tag?: string }): { modelId: string; expressId: number };
-    /** Add an IfcMember (generic structural — brace, post, strut) from Start to End with a rectangular cross-section. */
-    addMember(modelId: string, storeyExpressId: number, params: { Start: [number, number, number]; End: [number, number, number]; Width: number; Height: number; PredefinedType?: string; Name?: string; Description?: string; ObjectType?: string; Tag?: string }): { modelId: string; expressId: number };
+    /** Add an IfcMember (generic structural — brace, post, strut) from Start to End with a rectangular or canonical parameterised cross-section. */
+    addMember(modelId: string, storeyExpressId: number, params: BimCreate.MemberInStoreParams | BimCreate.ProfiledMemberInStoreParams): { modelId: string; expressId: number };
+    /** Align real native mesh edges or centres in one storey workplane. Fresh geometry and an atomic transaction preserve hosted cuts, joined neighbours and one Undo. */
+    alignElements(modelId: string, reference: number, targets: readonly number[], mode: BimCreate.AlignMode): Promise<{ modelId: string; expressId: number }[]>;
     /** Join two straight walls in the same placement frame through IfcRelConnectsPathElements. Uses the Model workspace core, preserving readable hosted openings and refusing a cut stranded by a joined end face. */
     joinWalls(modelId: string, aExpressId: number, bExpressId: number, options?: BimCreate.WallJoinApplyOptions): { modelId: string; expressId: number };
     /** Cut an IfcOpeningElement (IfcRelVoidsElement) into an existing IfcWall or IfcSlab. Metres, in the host placement frame. */
@@ -1042,9 +1206,9 @@ declare const bim: {
   /** 4D / IFC construction schedule reader (IfcTask, IfcWorkSchedule, IfcRelSequence, IfcWorkCalendar) */
   schedule: {
     /** Full schedule extraction — tasks, dependencies, work schedules, and work calendars. */
-    data(modelId?: string): { HasSchedule: boolean; WorkSchedules: Array<{ GlobalId: string; ExpressId: number; Name: string; Description?: string; Identification?: string; CreationDate?: string; StartTime?: string; FinishTime?: string; Purpose?: string; Duration?: string; PredefinedType?: string; Kind: 'WorkSchedule' | 'WorkPlan'; TaskGlobalIds: string[]; CalendarGlobalIds?: string[] }>; Tasks: Array<{ GlobalId: string; ExpressId: number; Name: string; Description?: string; ObjectType?: string; Identification?: string; LongDescription?: string; Status?: string; WorkMethod?: string; IsMilestone: boolean; Priority?: number; PredefinedType?: string; ParentTaskGlobalId?: string; ChildTaskGlobalIds: string[]; AssignedProductExpressIds: number[]; AssignedProductGlobalIds: string[]; ControllingScheduleGlobalIds: string[]; CalendarGlobalIds?: string[]; TaskTime?: { ScheduleStart?: string; ScheduleFinish?: string; ScheduleDuration?: string; ActualStart?: string; ActualFinish?: string; ActualDuration?: string; EarlyStart?: string; EarlyFinish?: string; LateStart?: string; LateFinish?: string; FreeFloat?: string; TotalFloat?: string; RemainingTime?: string; StatusTime?: string; IsCritical?: boolean; Completion?: number; DurationType?: 'WORKTIME' | 'ELAPSEDTIME' | 'NOTDEFINED' } }>; Sequences: Array<{ RelatingProcessGlobalId: string; RelatedProcessGlobalId: string; SequenceType: 'START_START' | 'START_FINISH' | 'FINISH_START' | 'FINISH_FINISH' | 'USERDEFINED' | 'NOTDEFINED'; UserDefinedSequenceType?: string; TimeLagSeconds?: number; TimeLagDuration?: string }>; WorkCalendars: Array<{ GlobalId: string; ExpressId: number; Name: string; Description?: string; ObjectType?: string; Identification?: string; PredefinedType?: string; WorkingTimes: Array<{ Name?: string; DataOrigin?: string; UserDefinedDataOrigin?: string; Start?: string; Finish?: string; RecurrencePattern?: { RecurrenceType?: string; DayComponent: number[]; WeekdayComponent: number[]; MonthComponent: number[]; Position?: number; Interval?: number; Occurrences?: number; TimePeriods: { Start: string; End: string }[] } }>; ExceptionTimes: Array<{ Name?: string; DataOrigin?: string; UserDefinedDataOrigin?: string; Start?: string; Finish?: string; RecurrencePattern?: { RecurrenceType?: string; DayComponent: number[]; WeekdayComponent: number[]; MonthComponent: number[]; Position?: number; Interval?: number; Occurrences?: number; TimePeriods: { Start: string; End: string }[] } }> }> };
+    data(modelId?: string): { HasSchedule: boolean; WorkSchedules: Array<{ GlobalId: string; ExpressId: number; Name: string; Description?: string; Identification?: string; CreationDate?: string; StartTime?: string; FinishTime?: string; Purpose?: string; Duration?: string; PredefinedType?: string; Kind: 'WorkSchedule' | 'WorkPlan'; TaskGlobalIds: string[]; CalendarGlobalIds?: string[] }>; Tasks: Array<{ GlobalId: string; ExpressId: number; Name: string; Description?: string; ObjectType?: string; Identification?: string; LongDescription?: string; Status?: string; WorkMethod?: string; IsMilestone: boolean; Priority?: number; PredefinedType?: string; ParentTaskGlobalId?: string; ChildTaskGlobalIds: string[]; AssignedProductExpressIds: number[]; AssignedProductGlobalIds: string[]; OutputProductExpressIds?: number[]; OutputProductGlobalIds?: string[]; ControllingScheduleGlobalIds: string[]; CalendarGlobalIds?: string[]; TaskTime?: { ScheduleStart?: string; ScheduleFinish?: string; ScheduleDuration?: string; ActualStart?: string; ActualFinish?: string; ActualDuration?: string; EarlyStart?: string; EarlyFinish?: string; LateStart?: string; LateFinish?: string; FreeFloat?: string; TotalFloat?: string; RemainingTime?: string; StatusTime?: string; IsCritical?: boolean; Completion?: number; DurationType?: 'WORKTIME' | 'ELAPSEDTIME' | 'NOTDEFINED' } }>; Sequences: Array<{ RelatingProcessGlobalId: string; RelatedProcessGlobalId: string; SequenceType: 'START_START' | 'START_FINISH' | 'FINISH_START' | 'FINISH_FINISH' | 'USERDEFINED' | 'NOTDEFINED'; UserDefinedSequenceType?: string; TimeLagSeconds?: number; TimeLagDuration?: string }>; WorkCalendars: Array<{ GlobalId: string; ExpressId: number; Name: string; Description?: string; ObjectType?: string; Identification?: string; PredefinedType?: string; WorkingTimes: Array<{ Name?: string; DataOrigin?: string; UserDefinedDataOrigin?: string; Start?: string; Finish?: string; RecurrencePattern?: { RecurrenceType?: string; DayComponent: number[]; WeekdayComponent: number[]; MonthComponent: number[]; Position?: number; Interval?: number; Occurrences?: number; TimePeriods: { Start: string; End: string }[] } }>; ExceptionTimes: Array<{ Name?: string; DataOrigin?: string; UserDefinedDataOrigin?: string; Start?: string; Finish?: string; RecurrencePattern?: { RecurrenceType?: string; DayComponent: number[]; WeekdayComponent: number[]; MonthComponent: number[]; Position?: number; Interval?: number; Occurrences?: number; TimePeriods: { Start: string; End: string }[] } }> }> };
     /** All IfcTask entities with their times and assigned products. */
-    tasks(modelId?: string): Array<{ GlobalId: string; ExpressId: number; Name: string; Description?: string; ObjectType?: string; Identification?: string; LongDescription?: string; Status?: string; WorkMethod?: string; IsMilestone: boolean; Priority?: number; PredefinedType?: string; ParentTaskGlobalId?: string; ChildTaskGlobalIds: string[]; AssignedProductExpressIds: number[]; AssignedProductGlobalIds: string[]; ControllingScheduleGlobalIds: string[]; CalendarGlobalIds?: string[]; TaskTime?: { ScheduleStart?: string; ScheduleFinish?: string; ScheduleDuration?: string; ActualStart?: string; ActualFinish?: string; ActualDuration?: string; EarlyStart?: string; EarlyFinish?: string; LateStart?: string; LateFinish?: string; FreeFloat?: string; TotalFloat?: string; RemainingTime?: string; StatusTime?: string; IsCritical?: boolean; Completion?: number; DurationType?: 'WORKTIME' | 'ELAPSEDTIME' | 'NOTDEFINED' } }>;
+    tasks(modelId?: string): Array<{ GlobalId: string; ExpressId: number; Name: string; Description?: string; ObjectType?: string; Identification?: string; LongDescription?: string; Status?: string; WorkMethod?: string; IsMilestone: boolean; Priority?: number; PredefinedType?: string; ParentTaskGlobalId?: string; ChildTaskGlobalIds: string[]; AssignedProductExpressIds: number[]; AssignedProductGlobalIds: string[]; OutputProductExpressIds?: number[]; OutputProductGlobalIds?: string[]; ControllingScheduleGlobalIds: string[]; CalendarGlobalIds?: string[]; TaskTime?: { ScheduleStart?: string; ScheduleFinish?: string; ScheduleDuration?: string; ActualStart?: string; ActualFinish?: string; ActualDuration?: string; EarlyStart?: string; EarlyFinish?: string; LateStart?: string; LateFinish?: string; FreeFloat?: string; TotalFloat?: string; RemainingTime?: string; StatusTime?: string; IsCritical?: boolean; Completion?: number; DurationType?: 'WORKTIME' | 'ELAPSEDTIME' | 'NOTDEFINED' } }>;
     /** All IfcWorkSchedule and IfcWorkPlan containers. */
     workSchedules(modelId?: string): Array<{ GlobalId: string; ExpressId: number; Name: string; Description?: string; Identification?: string; CreationDate?: string; StartTime?: string; FinishTime?: string; Purpose?: string; Duration?: string; PredefinedType?: string; Kind: 'WorkSchedule' | 'WorkPlan'; TaskGlobalIds: string[]; CalendarGlobalIds?: string[] }>;
     /** All IfcRelSequence dependency edges (FS/SS/FF/SF, with optional IfcLagTime). */

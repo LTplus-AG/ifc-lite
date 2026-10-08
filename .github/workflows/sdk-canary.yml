@@ -27,6 +27,7 @@ on:
   pull_request:
     branches: [main]
     paths:
+      - 'packages/ai/**'
       - 'packages/bcf/**'
       - 'packages/bcf-api/**'
       - 'packages/cache/**'
@@ -49,6 +50,7 @@ on:
       - 'packages/ifcx/**'
       - 'packages/lens/**'
       - 'packages/lists/**'
+      - 'packages/load-trace/**'
       - 'packages/mcp/**'
       - 'packages/merge/**'
       - 'packages/mutations/**'

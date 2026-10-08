@@ -16,7 +16,7 @@ import { execFileSync } from 'child_process';
 import { getPlatformInfo, getPlatformDescription, type PlatformInfo } from './platform.js';
 import { verifyArchiveChecksum } from './checksum.js';
 import { fallbackInUseWarning, findFallbackRelease, HttpStatusError, noBinaryMessage, parseVersionSidecar,
-  versionSidecar, type FallbackLookup } from './release-fallback.js';
+  serverReleaseTag, versionSidecar, type FallbackLookup } from './release-fallback.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -197,81 +197,56 @@ export async function downloadBinary(onProgress?: ProgressCallback): Promise<str
   console.log(`Downloading IFC-Lite server for ${getPlatformDescription(platformInfo)}...`);
   console.log(`Version: ${version}`);
 
-  // Construct download URL
-  const downloadUrl = `${RELEASE_BASE_URL}/v${version}/${platformInfo.archiveName}`;
+  const tag = serverReleaseTag(version);
+  const downloadUrl = `${RELEASE_BASE_URL}/${tag}/${platformInfo.archiveName}`;
   const archivePath = join(CACHE_DIR, platformInfo.archiveName);
   const binaryPath = getBinaryPath(platformInfo);
 
   if (existsSync(archivePath)) unlinkSync(archivePath); // stale partial download
 
-  // Download archive
   console.log(`Downloading from: ${downloadUrl}`);
 
-  // Track the asset URL that actually succeeded so the checksum sidecar is
-  // fetched from the SAME release/asset that produced this archive.
+  // The asset URL that produced the archive: the checksum sidecar is fetched
+  // from the SAME release/asset, which is the fallback's on a fallback.
   let resolvedAssetUrl = downloadUrl;
   let fallbackVersion: string | undefined;
 
   try {
     await downloadFile(downloadUrl, archivePath, onProgress);
   } catch (error) {
-    // Try alternate URL patterns
-    const altUrls = [
-      `${RELEASE_BASE_URL}/server-v${version}/${platformInfo.archiveName}`,
-      `${RELEASE_BASE_URL}/${version}/${platformInfo.archiveName}`,
-    ];
+    // Only a clean "not found" means this version has no release; any other
+    // failure (network, 5xx) must not silently swap in a different server
+    // version.
+    const notFound = error instanceof HttpStatusError && error.status === 404;
+    const errorText = error instanceof Error ? error.message : String(error);
+    const lookup: FallbackLookup = notFound
+      ? await findFallbackRelease(platformInfo.archiveName, version)
+      : { found: null, reason: `the download failed for a reason other than a missing release (${errorText})` };
 
-    // Only a clean "not found" on every URL means this version has no
-    // release; any other failure (network, 5xx) must not silently swap in a
-    // different server version.
-    let allNotFound = error instanceof HttpStatusError && error.status === 404;
-    let downloaded = false;
-    for (const altUrl of altUrls) {
-      try {
-        console.log(`Trying alternate URL: ${altUrl}`);
-        await downloadFile(altUrl, archivePath, onProgress);
-        resolvedAssetUrl = altUrl;
-        downloaded = true;
-        break;
-      } catch (altError) {
-        // Speculative URL shapes: a miss is the expected case. Only whether
-        // it was a 404 matters, for the fallback decision below.
-        allNotFound &&= altError instanceof HttpStatusError && altError.status === 404;
-        continue;
-      }
+    if (!lookup.found) {
+      throw new Error(noBinaryMessage({
+        version, downloadUrl, errorText, reason: lookup.reason, archiveName: platformInfo.archiveName,
+      }));
     }
 
-    if (!downloaded) {
-      const errorText = error instanceof Error ? error.message : String(error);
-      const lookup: FallbackLookup = allNotFound
-        ? await findFallbackRelease(platformInfo.archiveName, version)
-        : { found: null, reason: `the download failed for a reason other than a missing release (${errorText})` };
-
-      if (!lookup.found) {
-        throw new Error(noBinaryMessage({
-          version, downloadUrl, errorText, reason: lookup.reason, archiveName: platformInfo.archiveName,
-        }));
-      }
-
-      const fallback = lookup.found;
-      console.warn(
-        `Warning: @ifc-lite/server-bin@${version} has no published binary for ${platformInfo.targetTriple} ` +
-        `(release v${version} is missing or lacks this platform's archive).\n` +
-        `Warning: falling back to the server binary from release v${fallback.version}.`
+    const fallback = lookup.found;
+    console.warn(
+      `Warning: @ifc-lite/server-bin@${version} has no published binary for ${platformInfo.targetTriple} ` +
+      `(release ${tag} is missing or lacks this platform's archive).\n` +
+      `Warning: falling back to the server binary from release ${serverReleaseTag(fallback.version)}.`
+    );
+    console.log(`Downloading from: ${fallback.assetUrl}`);
+    try {
+      await downloadFile(fallback.assetUrl, archivePath, onProgress);
+    } catch (fallbackError) {
+      throw new Error(
+        `Release ${tag} has no binary, and downloading the fallback from ${serverReleaseTag(fallback.version)} failed: ` +
+        `${fallbackError instanceof Error ? fallbackError.message : String(fallbackError)}\n` +
+        `Fix: npm i @ifc-lite/server-bin@${fallback.version}`
       );
-      console.log(`Downloading from: ${fallback.assetUrl}`);
-      try {
-        await downloadFile(fallback.assetUrl, archivePath, onProgress);
-      } catch (fallbackError) {
-        throw new Error(
-          `Release v${version} has no binary, and downloading the fallback from v${fallback.version} failed: ` +
-          `${fallbackError instanceof Error ? fallbackError.message : String(fallbackError)}\n` +
-          `Fix: npm i @ifc-lite/server-bin@${fallback.version}`
-        );
-      }
-      resolvedAssetUrl = fallback.assetUrl;
-      fallbackVersion = fallback.version;
     }
+    resolvedAssetUrl = fallback.assetUrl;
+    fallbackVersion = fallback.version;
   }
 
   // Verify archive integrity before we extract / chmod / execute it. Fails

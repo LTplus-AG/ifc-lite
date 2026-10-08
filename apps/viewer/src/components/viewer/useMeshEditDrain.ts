@@ -47,6 +47,8 @@ export interface MeshEditDrainParams {
   /** The main geometry effect's bookkeeping, advanced past a drained edit. */
   lastGeometryLengthRef: MutableRefObject<number>;
   lastGeometryRef: MutableRefObject<MeshData[] | null>;
+  geometryReplacementVersion: number;
+  lastReplacementVersionRef: MutableRefObject<number>;
   processedMeshIdsRef: MutableRefObject<Set<string>>;
 }
 
@@ -54,7 +56,7 @@ export function useMeshEditDrain(params: MeshEditDrainParams): void {
   const {
     rendererRef, isInitialized, isStreaming, geometry,
     pendingMeshRemovals, clearPendingMeshRemovals, pruneGeometryMeshes,
-    lastGeometryLengthRef, lastGeometryRef, processedMeshIdsRef,
+    lastGeometryLengthRef, lastGeometryRef, processedMeshIdsRef, geometryReplacementVersion, lastReplacementVersionRef,
   } = params;
   const pendingMeshEdits = useViewerStore((s) => s.pendingMeshEdits);
   const clearPendingMeshEdits = useViewerStore((s) => s.clearPendingMeshEdits);
@@ -139,6 +141,7 @@ export function useMeshEditDrain(params: MeshEditDrainParams): void {
       for (const key of freshKeys) processedMeshIdsRef.current.add(key);
       lastGeometryLengthRef.current = geometry.length;
       lastGeometryRef.current = geometry;
+      lastReplacementVersionRef.current = geometryReplacementVersion;
     } else {
       // Something else changed the geometry since the main effect last ran: fall back to
       // the main effect's rebuild-keeping-camera (its shrink branch).
@@ -148,7 +151,7 @@ export function useMeshEditDrain(params: MeshEditDrainParams): void {
     renderer.clearCaches();
     renderer.requestRender();
     clearPendingMeshEdits();
-  }, [pendingMeshEdits, geometry, isInitialized, isStreaming, clearPendingMeshEdits]);
+  }, [pendingMeshEdits, geometry, geometryReplacementVersion, isInitialized, isStreaming, clearPendingMeshEdits]);
 
   // Declared AFTER the edit drain, so that drain still reads the tick of the
   // previous committed render, the one the main effect last consumed.

@@ -11,6 +11,7 @@
  * hosts stay in lock-step.
  */
 
+import { AssistantSourceContext } from '@/components/viewer/assistant/AssistantAction';
 import { lazy, Suspense, type ReactNode } from 'react';
 import { panelModelGateMode, type WorkspacePanelId } from './registry';
 import { ChunkErrorBoundary } from '@/components/ChunkErrorBoundary';
@@ -22,7 +23,6 @@ import { ValidationPanel } from '@/components/viewer/validation/ValidationPanel'
 import { LensPanel } from '@/components/viewer/LensPanel';
 import { ClashPanel } from '@/components/viewer/ClashPanel';
 import { ExtensionsPanel } from '@/components/extensions/ExtensionsPanel';
-import { ScriptPanel } from '@/components/viewer/ScriptPanel';
 import { GanttPanel } from '@/components/viewer/schedule/GanttPanel';
 import { ListPanel } from '@/components/viewer/lists/ListPanel';
 import { RoomPanel } from '@/components/viewer/RoomPanel';
@@ -32,7 +32,6 @@ import { ChangesPanel } from '@/components/viewer/ChangesPanel';
 import { ChangeSetPanel } from '@/components/viewer/change-sets/ChangeSetPanel';
 import { CostPanel } from '@/components/viewer/CostPanel';
 import { EnvironmentPanel } from '@/components/viewer/EnvironmentPanel';
-import { PointCloudPanel } from '@/components/viewer/PointCloudPanel';
 import { MeasurementsPanel } from '@/components/viewer/MeasurementsPanel';
 import { PlacementPanel } from '@/components/viewer/placement/PlacementPanel';
 import { ModelInspectorPanel } from '@/components/viewer/model-inspector/ModelInspectorPanel';
@@ -50,6 +49,9 @@ const SourcesPanel = lazy(() =>
   import('@/components/sources/SourcesPanel').then((m) => ({ default: m.SourcesPanel })),
 );
 
+// Lazy: the Point Clouds panel carries scan-to-BIM detection, review and creation (#6894);
+// it stays out of the first-paint bundle until first opened.
+const PointCloudPanel = lazy(() => import('@/components/viewer/PointCloudPanel').then((m) => ({ default: m.PointCloudPanel })));
 // Lazy: the Charts panel pulls in ECharts; it stays out of the first-paint bundle.
 const ChartsPanel = lazy(() => import('@/components/viewer/charts/ChartsPanel').then((m) => ({ default: m.ChartsPanel })));
 const DocumentPanel = lazy(() => import('@/components/viewer/document/DocumentPanel').then((m) => ({ default: m.DocumentPanel })));
@@ -61,9 +63,18 @@ const DrawingPanel = lazy(() => import('@/components/viewer/drawing/DrawingPanel
 // Lazy: the filmstrip of saved basket views (#5508), out of the first-paint bundle like the other bottom panels.
 const PresentationPanel = lazy(() => import('@/components/viewer/presentation/PresentationPanel').then((m) => ({ default: m.PresentationPanel })));
 
+const ScriptPanel = lazy(() => import('@/components/viewer/ScriptPanel').then(m => ({ default: m.ScriptPanel })));
+
+const AssistantPanel = lazy(() => import('@/components/viewer/assistant/AssistantPanel').then(m => ({ default: m.AssistantPanel })));
+
 const SemanticPanel = lazy(() => import('@/components/viewer/SemanticPanel').then(m => ({ default: m.SemanticPanel })));
 function SemanticPanelBody() {
   return <ChunkErrorBoundary label="Linked records panel"><Suspense fallback={null}><SemanticPanel /></Suspense></ChunkErrorBoundary>;
+}
+
+const ReviewPanel = lazy(() => import('@/components/viewer/review/ReviewPanel').then(m => ({ default: m.ReviewPanel })));
+function ReviewPanelBody() {
+  return <ChunkErrorBoundary label="Review panel"><Suspense fallback={null}><ReviewPanel /></Suspense></ChunkErrorBoundary>;
 }
 
 const AppearancePanel = lazy(() => import('@/components/viewer/appearance/AppearancePanel').then(m => ({ default: m.AppearancePanel })));
@@ -123,7 +134,11 @@ function PointCloudPanelBody({ onClose }: { onClose: () => void }) {
     for (const m of s.models.values()) total += m.geometryResult?.totalTriangles ?? 0;
     return total;
   });
-  return <PointCloudPanel assetCount={assetCount} triangleCount={triangleCount} onClose={onClose} />;
+  return (
+    <ChunkErrorBoundary label="Point cloud panel">
+      <Suspense fallback={null}><PointCloudPanel assetCount={assetCount} triangleCount={triangleCount} onClose={onClose} /></Suspense>
+    </ChunkErrorBoundary>
+  );
 }
 
 /**
@@ -137,13 +152,14 @@ function PointCloudPanelBody({ onClose }: { onClose: () => void }) {
 export function renderPanelBody(id: WorkspacePanelId, onClose: () => void): ReactNode {
   const body = panelBody(id, onClose);
   const gate = panelModelGateMode(id);
-  return gate ? <PanelModelGate id={id} mode={gate} onClose={onClose}>{body}</PanelModelGate> : body;
+  return <AssistantSourceContext panel={id}>{gate ? <PanelModelGate id={id} mode={gate} onClose={onClose}>{body}</PanelModelGate> : body}</AssistantSourceContext>;
 }
 
 function panelBody(id: WorkspacePanelId, onClose: () => void): ReactNode {
   switch (id) {
     // Hierarchy's home is the left slot (#1267); it is never routed to the right
     // pane / float / pop-out, but the case keeps the id to body map exhaustive.
+    case 'assistant': return <ChunkErrorBoundary label="Assistant panel"><Suspense fallback={null}><AssistantPanel /></Suspense></ChunkErrorBoundary>;
     case 'appearance': return <AppearancePanelBody />;
     case 'hierarchy': return <HierarchyPanel />;
     // The anchor wraps every Information branch (entity, model metadata,
@@ -156,7 +172,7 @@ function panelBody(id: WorkspacePanelId, onClose: () => void): ReactNode {
     case 'lens': return <LensPanel onClose={onClose} />;
     case 'clash': return <ClashPanel onClose={onClose} />;
     case 'extensions': return <ExtensionsPanel onClose={onClose} />;
-    case 'script': return <ScriptPanel />;
+    case 'script': return <ChunkErrorBoundary label="Script panel"><Suspense fallback={null}><ScriptPanel /></Suspense></ChunkErrorBoundary>;
     case 'gantt': return <GanttPanel />;
     case 'lists': return <ListPanel />;
     case 'collab': return <RoomPanel onClose={onClose} />;
@@ -177,6 +193,7 @@ function panelBody(id: WorkspacePanelId, onClose: () => void): ReactNode {
     case 'placement': return <PlacementPanel onClose={onClose} />;
     case 'model': return <ModelInspectorPanel onClose={onClose} />;
     case 'semantic': return <SemanticPanelBody />;
+    case 'review': return <ReviewPanelBody />;
     case 'changeSets': return <ChangeSetPanel onClose={onClose} />;
   }
 }

@@ -34,6 +34,7 @@ import { runOverlayFrameContracts } from './lib/wasm-overlay-frame-contracts.mjs
 import { runRtcPrecisionContracts } from './lib/wasm-rtc-precision-contracts.mjs';
 import { finishContractRun } from './lib/wasm-landxml-contracts.mjs';
 import { runEarlyContracts } from './lib/wasm-early-contracts.mjs';
+import { runScanOutlineContracts } from './lib/wasm-scan-outline-contracts.mjs';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT_DIR = join(__dirname, '..');
 const FIXTURES_DIR = join(ROOT_DIR, 'tests/models');
@@ -114,6 +115,7 @@ function test(name, fn) {
   }
 }
 runEarlyContracts({ IfcAPI, api, test, skip, root: ROOT_DIR });
+runScanOutlineContracts({ test }); // #6871, fixture-free
 await (await import('./lib/wasm-extrusion-bridge-contracts.mjs')).runExtrusionBridgeContracts(test, ROOT_DIR); // #6306
 if (!COLUMN_AVAILABLE) {
   skip('IFC-backed WASM contracts', `column fixture missing — ${FIXTURES_HINT}`);

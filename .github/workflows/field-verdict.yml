@@ -1,0 +1,146 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
+# Post-deploy field verdict (#6961, perf charter #6954).
+#
+# Daily at 05:15 UTC, before the 05:45 production deploy, so the build judged
+# is the one production has served since the previous deploy. It runs the
+# paired-ratio HogQL from scripts/perf/README.md ("The field verdict") against
+# PostHog project 199147, writes the verdict to the run summary, and posts it
+# once per build on the PR that build's commit came from.
+#
+# MAINTAINER SETUP: add the repository secret POSTHOG_PERSONAL_API_KEY, a
+# PostHog personal API key with only the `query:read` scope, limited to
+# project 199147 (EU cloud). Until it exists every run stops at the first step
+# with a notice; nothing else needs configuring.
+#
+# Not wired yet: opening a thread when a pooled group regresses.
+
+name: Field verdict
+
+on:
+  schedule:
+    - cron: '15 5 * * *'
+  workflow_dispatch:
+    inputs:
+      build:
+        description: 'Commit to judge (default: the production branch head)'
+        required: false
+        default: ''
+      post:
+        description: 'Post the verdict on the commit''s PR'
+        type: boolean
+        required: false
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: field-verdict
+  cancel-in-progress: false
+
+jobs:
+  verdict:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      pull-requests: write
+    env:
+      POSTHOG_PERSONAL_API_KEY: ${{ secrets.POSTHOG_PERSONAL_API_KEY }}
+    steps:
+      - name: Require the PostHog key
+        id: gate
+        run: |
+          if [ -z "$POSTHOG_PERSONAL_API_KEY" ]; then
+            echo "::notice::POSTHOG_PERSONAL_API_KEY is not configured; skipping the field verdict (see the header of field-verdict.yml)."
+            # Deliberately not a failure: an unconfigured secret is the
+            # expected state until a maintainer adds it, and a red nightly
+            # would open a scheduled-failure issue every day. The run summary
+            # says SKIPPED so a green run is never mistaken for a verdict.
+            echo "### Field verdict: SKIPPED, POSTHOG_PERSONAL_API_KEY is not configured" >> "$GITHUB_STEP_SUMMARY"
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Checkout
+        if: steps.gate.outputs.enabled == 'true'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Setup Node
+        if: steps.gate.outputs.enabled == 'true'
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+
+      - name: Resolve the judged build
+        id: build
+        if: steps.gate.outputs.enabled == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          REQUESTED: ${{ inputs.build }}
+        run: |
+          set -euo pipefail
+          SHA="${REQUESTED:-production}"
+          SHA="$(gh api "repos/$REPO/commits/$SHA" --jq .sha)"
+          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+          echo "short=${SHA:0:12}" >> "$GITHUB_OUTPUT"
+          echo "Judging build ${SHA:0:12}"
+
+      - name: Query PostHog
+        if: steps.gate.outputs.enabled == 'true'
+        env:
+          BUILD: ${{ steps.build.outputs.sha }}
+        run: node scripts/perf/field-verdict-fetch.mjs --build "$BUILD" --out "$RUNNER_TEMP/field-verdict.json"
+
+      - name: Compute the verdict
+        if: steps.gate.outputs.enabled == 'true'
+        env:
+          BUILD: ${{ steps.build.outputs.short }}
+        run: |
+          set -euo pipefail
+          node scripts/perf/field-verdict.mjs "$RUNNER_TEMP/field-verdict.json" --build "$BUILD" --out "$RUNNER_TEMP/field-verdict.md"
+          cat "$RUNNER_TEMP/field-verdict.md" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Post on the build's PR
+        if: steps.gate.outputs.enabled == 'true' && (github.event_name == 'schedule' || inputs.post)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ steps.build.outputs.sha }}
+          SHORT: ${{ steps.build.outputs.short }}
+        run: |
+          set -euo pipefail
+          PR="$(gh api "repos/$REPO/commits/$SHA/pulls" --jq '[.[] | select(.merged_at != null)][0].number // empty')"
+          if [ -z "$PR" ]; then
+            echo "::notice::No merged PR for $SHORT; the verdict is in the run summary only."
+            exit 0
+          fi
+          MARKER="<!-- field-verdict:$SHORT -->"
+          # Capture first: `grep -q` would close the pipe early and, under
+          # pipefail, a SIGPIPE'd gh would read as "no marker" and post twice.
+          BODIES="$(gh api --paginate "repos/$REPO/issues/$PR/comments" --jq '.[].body')"
+          if printf '%s\n' "$BODIES" | grep -F -- "$MARKER" >/dev/null; then
+            echo "PR #$PR already has the verdict for $SHORT."
+            exit 0
+          fi
+          { echo "$MARKER"; cat "$RUNNER_TEMP/field-verdict.md"; } > "$RUNNER_TEMP/field-verdict-comment.md"
+          gh pr comment "$PR" --repo "$REPO" --body-file "$RUNNER_TEMP/field-verdict-comment.md"
+
+  report-scheduled-failure:
+    needs: [verdict]
+    if: always() && github.event_name == 'schedule' && needs.verdict.result != 'success'
+    uses: ./.github/workflows/report-scheduled-failure.yml
+    with:
+      workflow_name: Field verdict
+      jobs: verdict
+      result: verdict=${{ needs.verdict.result }}
+    permissions:
+      contents: read
+      issues: write

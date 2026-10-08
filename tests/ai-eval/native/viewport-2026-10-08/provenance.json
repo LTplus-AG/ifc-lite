@@ -1,0 +1,55 @@
+{
+  "version": 1,
+  "capturedAt": "2026-10-08",
+  "capture": "T3 Code collaborative browser, environment-port 5190, qualified Vite production preview",
+  "builtHead": "0daec8861ccec99c42a082fdd224af58e6d0cc6e",
+  "mergedCommit": "c77c4911c93d291bfdaa2e23f052e1979ac2f24d",
+  "model": "apps/viewer/public/samples/building-architecture.ifc",
+  "sha256": "3ff9b10bd00c7b96dded51e7ca5a6b69efbea38b049adcdd05fcd247de7e70d5",
+  "adapter": {
+    "vendor": "NVIDIA",
+    "architecture": "blackwell",
+    "devicePixelRatio": 1.5
+  },
+  "observed": {
+    "fileInfo": {
+      "entities": 444,
+      "geometry": 12,
+      "triangles": 234
+    },
+    "picked": {
+      "expressId": 425,
+      "ifcClass": "IfcSlab",
+      "GlobalId": "12UVOn4wvAJPMUExKdZLb8",
+      "Name": "house - roof - slab right"
+    }
+  },
+  "recordingScope": "Ordinary native rendered-model navigation, TOP camera and GPU roof pick. Includes failed locator attempts; the successful Home restoration happened after recording stopped. No forced device-loss recovery or human study is established.",
+  "review": {
+    "privacy": "pending",
+    "licence": "unrecorded",
+    "humanAcceptance": "pending"
+  },
+  "assets": [
+    {
+      "path": "isometric.png",
+      "size": 311760,
+      "sha256": "e83f241f00fd134e0a348dc065ffabceb6c91d309da54bf13f8e6e46070f8bb4"
+    },
+    {
+      "path": "top.png",
+      "size": 255605,
+      "sha256": "ece0d54ad3dd64a01bb41c59eff455a12b7279e29c21e548ebc330170fa325dc"
+    },
+    {
+      "path": "roof-properties.png",
+      "size": 292499,
+      "sha256": "d14eed955ab1acb7783026b14043db4e55e2ce5b96a4212b7f745508c1d53e6b"
+    },
+    {
+      "path": "render-pick.mp4",
+      "size": 4988343,
+      "sha256": "9a69b6f781b3c2bc59f3586eaf3e53626c1fb12d9b480209790a9b74681714e1"
+    }
+  ]
+}

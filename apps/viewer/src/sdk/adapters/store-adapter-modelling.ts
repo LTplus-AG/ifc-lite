@@ -35,6 +35,9 @@ import { addCurtainWallIn, addGridIn } from '@/store/slices/mutation-curtain-gri
 import { addGridColumnIn } from '@/store/slices/mutation-grid-column';
 import { addStairIn, addRailingIn } from '@/store/slices/mutation-stair-railing';
 import { replaceElementIn } from '@/store/slices/mutation-element-replacement';
+import { alignMutationTracking } from './store-adapter-align.js';
+import { roomMutationTracking } from './store-adapter-room.js';
+import { physicalMutationTracking } from './store-adapter-physical.js';
 import { completeEntityRemoval } from '@/store/slices/mutation-mesh-stash';
 
 type ModellingMethods = ReturnType<typeof createModellingStoreBackend>;
@@ -60,6 +63,9 @@ export function withModellingMutationTracking(
       return { modelId: normalized, expressId: outcome.expressId };
     };
   return {
+    ...physicalMutationTracking(store),
+    ...roomMutationTracking(store),
+    ...alignMutationTracking(store),
     editHostedElement(ref, patch) {
       const normalized = normalizeMutationModelId(store.getState(), ref.modelId);
       const setState = store.setState;

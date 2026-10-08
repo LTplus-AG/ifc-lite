@@ -1,0 +1,111 @@
+{
+  "$schema": "../recording.schema.json",
+  "version": 1,
+  "id": "authoring-annex-wall-release",
+  "task": "authoring-annex-wall",
+  "scene": "authoring-sample",
+  "corpus": "release",
+  "prompt": "Prepare a model authoring proposal for review: add a straight wall named Annex south on storey 1Ano2ZUxnEIvVQ_beukl8b (00 groundfloor) from (10000, 10000, 0) to (14000, 10000, 0) mm, 200 mm thick and 3000 mm high.",
+  "route": {
+    "kind": "proxy",
+    "model": "openai/gpt-free"
+  },
+  "provenance": {
+    "kind": "authored",
+    "recordedAt": "2026-10-06",
+    "note": "Authored authoring proposal with exactly the dimensions the prompt supplied."
+  },
+  "response": {
+    "status": 200,
+    "events": [
+      {
+        "choices": [
+          {
+            "delta": {
+              "content": "{\"version\": 1, \"kind\": \"model.authoring\", \"title\": \"Annex south wall\", \"rationale\": \"Requested straight wall on the ground floor.\", \"units\": \""
+            }
+          }
+        ]
+      },
+      {
+        "choices": [
+          {
+            "delta": {
+              "content": "mm\", \"frame\": \"storey-local\", \"operations\": [{\"op\": \"element.create\", \"ref\": \"wall-1\", \"ifcClass\": \"IfcWall\", \"storey\": {\"globalId\": \"1Ano2ZUx"
+            }
+          }
+        ]
+      },
+      {
+        "choices": [
+          {
+            "delta": {
+              "content": "nEIvVQ_beukl8b\"}, \"name\": \"Annex south\", \"params\": {\"start\": [10000, 10000, 0], \"end\": [14000, 10000, 0], \"thickness\": 200, \"height\": 3000}}]}"
+            }
+          }
+        ]
+      },
+      {
+        "choices": [
+          {
+            "delta": {},
+            "finish_reason": "stop"
+          }
+        ]
+      }
+    ],
+    "done": true
+  },
+  "evidence": {
+    "source": "loadReport",
+    "models": [
+      {
+        "id": "arch",
+        "name": "arch"
+      }
+    ],
+    "totalModels": 1,
+    "modelMetadataTruncated": false,
+    "sourceAvailability": "available",
+    "reportProvenance": "unknown",
+    "totalRows": 1,
+    "includedRows": 1,
+    "sampled": false,
+    "projectionTruncated": false,
+    "evidence": {
+      "summary": {
+        "kind": "model-load-reports",
+        "modelCount": 1,
+        "diagnosticsAvailable": 0,
+        "diagnosticsUnavailable": 1,
+        "cleanLoads": 0,
+        "limitations": "Load diagnostics describe the original load, not validation of later edits. Affected entities are only those supplied by native diagnostics; missing diagnostics never mean clean."
+      },
+      "rows": [
+        {
+          "citation": "E1",
+          "data": {
+            "modelId": "arch",
+            "name": "arch",
+            "diagnosticsAvailable": false,
+            "diagnostics": null,
+            "actions": [],
+            "affectedEntities": [],
+            "isClean": false
+          }
+        }
+      ]
+    }
+  },
+  "expect": {
+    "outcome": "completed",
+    "violations": [],
+    "proposal": {
+      "kind": "model.authoring",
+      "valid": true
+    },
+    "review": {
+      "kind": "model.authoring"
+    }
+  }
+}

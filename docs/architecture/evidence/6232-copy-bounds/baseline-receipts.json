@@ -1,0 +1,27 @@
+{
+  "issue": 6232,
+  "originalCopyHead": "9049edd3fa957ae987f2e92ebfa30c9958e9f11d",
+  "qualifiedTrimParent": "22c4d6df76682a07c5ca15aa487677b16710b591",
+  "runtimeSha256": "7d63d9bc94333f10c4044eac3f70bd86bf361b98659ff5e6cb1161def46f597b",
+  "scope": "Actual runs on an uncommitted regression fixture over the normal parent merge. Deep baseline retains original recursive copy-product writer; parent baseline retains original copy-frame; budget baseline restores original copy-batch only. These are not claims of whole-checkout clean commits.",
+  "receipts": {
+    "deep-before": {
+      "rawBytes": 10356,
+      "rawSha256": "47f85e9279077fbc3cf2aa658fc11bfc3572f28431f0b475ca4f2af386098466",
+      "gzipSha256": "caeddc51f58e412a55ad34323bc01912e5451b49b831faaf5cec645341943a68",
+      "gzipMtime": 0
+    },
+    "parent-before": {
+      "rawBytes": 16631,
+      "rawSha256": "d40c9312118ce8d79b98861ae6e7f0977b3a3da1725b90857d97d89e481cd13e",
+      "gzipSha256": "12eb4490af2a5779feb28bb5de0b26ab42af2c0e0ea41063c010a9461aeae87d",
+      "gzipMtime": 0
+    },
+    "budget-before": {
+      "rawBytes": 9592,
+      "rawSha256": "25680a5b7e377a66f5bc84bcab73ccfca48f73a2db1b43c036a2db4cb6882d86",
+      "gzipSha256": "f1520fea77de0af59c1d659e47058cf693b9ef7e87c255092b6dd9205afec57c",
+      "gzipMtime": 0
+    }
+  }
+}

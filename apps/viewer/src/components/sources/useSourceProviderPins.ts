@@ -1,0 +1,45 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+import { useState } from 'react';
+import { toast } from '@/components/ui/toast';
+import { useTranslation } from '@/i18n';
+
+const KEY = 'ifc-lite-source-provider-pins';
+/** Provider pins contain only public provider ids, never account or folder names. */
+export function useSourceProviderPins() {
+  const { t } = useTranslation();
+  const [state, setState] = useState<{ ids: readonly string[]; restoreFailed: boolean }>(() => {
+    try {
+      const value: unknown = JSON.parse(localStorage.getItem(KEY) ?? '[]');
+      if (!Array.isArray(value) || value.some((id) => typeof id !== 'string')) throw new Error('Invalid provider pin data');
+      return { ids: [...new Set(value.filter((id): id is string => typeof id === 'string'))].slice(0, 100), restoreFailed: false };
+    } catch (error) {
+      console.warn('[sources] Cannot restore provider pins', error);
+      return { ids: [], restoreFailed: true };
+    }
+  });
+  const { ids } = state;
+  const toggle = (id: string) => {
+    if (state.restoreFailed) { toast.error(t('sources.workspace.pinRestoreFailed')); return; }
+    const next = ids.includes(id) ? ids.filter((item) => item !== id) : [...ids, id];
+    if (next.length > 100) { toast.error(t('sources.workspace.pinFailed')); return; }
+    try {
+      localStorage.setItem(KEY, JSON.stringify(next));
+      setState({ ids: next, restoreFailed: false });
+    } catch (error) {
+      console.warn('[sources] Cannot save provider pins', error);
+      toast.error(t('sources.workspace.pinFailed'));
+    }
+  };
+  const reset = () => {
+    try {
+      localStorage.removeItem(KEY);
+      setState({ ids: [], restoreFailed: false });
+    } catch (error) {
+      console.warn('[sources] Cannot reset provider pins', error);
+      toast.error(t('sources.workspace.pinFailed'));
+    }
+  };
+  return { ids, toggle, reset, restoreFailed: state.restoreFailed };
+}

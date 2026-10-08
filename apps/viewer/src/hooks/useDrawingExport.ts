@@ -10,6 +10,7 @@ import { posthog, trackExportCompleted } from '@/lib/analytics';
 import { downloadFile, sanitizeFilename } from '@/lib/export/download';
 import { toast } from '@/components/ui/toast';
 import { useTranslation } from '@/i18n';
+import { recordActivity } from '@/lib/activity/activity-journal';
 import { pdfLineStyleFor } from '@/lib/export/pdf-line-style';
 import {
   GraphicOverrideEngine,
@@ -43,6 +44,7 @@ import { DEFAULT_SCAN_SVG_CAP, type ScanBandPoint } from '@/hooks/scanSectionMat
 import { computeSvgExportViewport, svgExportMmToWorld } from '@/hooks/svgExportViewport';
 import { makePropertiesGetter } from '@/hooks/drawingElementProperties';
 import { titleBlockWithEffectiveScale } from '@/hooks/titleBlockScaleField';
+import { scanOutlineDxfLayers, type ScanOutlineLayer } from '@/lib/scan-outline/scan-outline';
 
 function tryDrawingSvg(generate: () => string | null): string | null {
   try { return generate(); }
@@ -241,8 +243,8 @@ interface UseDrawingExportParams {
   ifcDataStore: IfcDataStore | null;
   /** Geometry coordinate info (RTC offset + origin shift), for the DXF world-coordinate re-derivation (issue #1861). */
   coordinateInfo: GeometryResult['coordinateInfo'] | undefined;
-  /** Point-cloud scan overlay, already in drawing space (issue #1805) */
-  scanSection: { points: readonly ScanBandPoint[] };
+  /** Point-cloud scan overlay, already in drawing space (issue #1805), and its traced outline (#6871) */
+  scanSection: { points: readonly ScanBandPoint[]; outline?: ScanOutlineLayer | null };
   /** Pin View state, shared with the preview canvas. While pinned the sheet
    *  placement is HELD across a regenerate; print/export must honour the same
    *  held placement or it silently prints a different layout from the one on
@@ -951,6 +953,9 @@ function useDrawingExport({
       coordinateTransform,
       metadataComment,
       underlays: mappedDxfUnderlayOptions(dxfUnderlays, sectionPlane.axis),
+      // The traced scan outline (#6871) on its own layer, through the same
+      // georeference transform as the cut.
+      polylineLayers: displayOptions.showScanSection ? scanOutlineDxfLayers(scanSection.outline) : [],
     });
     const stem = `section-${sectionPlane.axis}-${sectionPlane.position}`;
     downloadDxf(dxf, `${stem}.dxf`);
@@ -961,8 +966,8 @@ function useDrawingExport({
       georeferenced: isGeoreferenced,
     });
   }, [
-    drawing, dxfUnderlays, displayOptions.showHiddenLines, sectionPlane, ifcDataStore, coordinateInfo,
-    storeModels, anchorModelIdOverride, georefMutations, mutationVersion,
+    drawing, dxfUnderlays, displayOptions.showHiddenLines, displayOptions.showScanSection, scanSection.outline,
+    sectionPlane, ifcDataStore, coordinateInfo, storeModels, anchorModelIdOverride, georefMutations, mutationVersion,
   ]);
   // Export scaled PDF (issue #2042): a true-vector PDF sized so the
   // requested scale ("1:N") is EXACT — the page itself is sized to the
@@ -1043,8 +1048,8 @@ function useDrawingExport({
       const svg = tryDrawingSvg(generateSheetSVG);
       if (!svg) return;
       const { widthMm, heightMm } = activeSheet.paper;
-      void (async () => {
-        try {
+      void recordActivity({ kind: 'export', title: 'activityTray.job.export', panel: 'drawing',
+        subject: `${activeSheet.name} · PDF` }, async () => {
           const { jsPDF } = await import('jspdf');
           const { dataUrl, fit } = await rasterizeSvgToPngDataUrl(svg, widthMm, heightMm);
           const doc = new jsPDF({
@@ -1083,10 +1088,9 @@ function useDrawingExport({
             raster_dpi: Math.floor(fit.effectiveDpi),
             raster_capped: fit.capped,
           });
-        } catch (err) {
-          toast.error(err instanceof Error ? t('section2d.export.pdfFailed', { error: err.message }) : t('section2d.export.pdfFailedGeneric'));
-        }
-      })();
+      }).catch((err: unknown) => {
+        toast.error(err instanceof Error ? t('section2d.export.pdfFailed', { error: err.message }) : t('section2d.export.pdfFailedGeneric'));
+      });
       return;
     }
 
@@ -1116,7 +1120,8 @@ function useDrawingExport({
     // cannot replace the geometry whose bounds/scale were used above.
     const vectorSnapshot = structuredClone(dxfUnderlays);
 
-    void (async () => {
+    void recordActivity({ kind: 'export', title: 'activityTray.job.export', panel: 'drawing',
+      subject: `section-${sectionPlane.axis}-${sectionPlane.position} · PDF` }, async () => {
       try {
         const { jsPDF } = await import('jspdf');
         const { widthMm, heightMm } = layout.page;
@@ -1198,12 +1203,10 @@ function useDrawingExport({
           axis: sectionPlane.axis,
           scale_factor: effectiveScale,
         });
-      } catch (err) {
-        // The dynamic `jspdf` import, PDF construction and download all run
-        // in this async IIFE, outside the synchronous try/catch above.
-        toast.error(err instanceof Error ? t('section2d.export.pdfFailed', { error: err.message }) : t('section2d.export.pdfFailedGeneric'));
       } finally { referenceSnapshot.release(); }
-    })();
+    }).catch((err: unknown) => {
+      toast.error(err instanceof Error ? t('section2d.export.pdfFailed', { error: err.message }) : t('section2d.export.pdfFailedGeneric'));
+    });
   }, [drawing, dxfUnderlays, displayOptions.scale, displayOptions.showHiddenLines, sectionPlane, sheetEnabled, activeSheet, generateSheetSVG, t]);
 
   // Print handler

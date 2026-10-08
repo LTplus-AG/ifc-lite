@@ -1,0 +1,250 @@
+{
+  "candidateCommit": "84ef726656f001df93845d8fdf5a636ffa000f2d",
+  "candidateParent": "600d36402d",
+  "acceptance": "held",
+  "source": "Inherited local measurement files; association of built JavaScript with Git commits has no retained build manifest.",
+  "ifcWasmSHA256": {
+    "base": "8ad4e61154b5c47c20e11232129b231591c7445b27b276301f47a8b4c7c7d864",
+    "branch": "8ad4e61154b5c47c20e11232129b231591c7445b27b276301f47a8b4c7c7d864"
+  },
+  "captures": {
+    "f-immediate.jsonl": "85f5a875a5a574298f2d3e07a80fbf7c5cb3251d5d4a1bf6c4dbb15b5f8100f5",
+    "f-settled.jsonl": "7b815da858ce1a832c3d17b0e0f53c5b8b955e7c26b0c80a3d58422ebe02fb29"
+  },
+  "summary": [
+    {
+      "scenario": "immediate",
+      "fixture": "fzk.ifc",
+      "metrics": {
+        "firstBatchMs": {
+          "baseMedian": 285,
+          "branchMedian": 243,
+          "pairedMedianDelta": -21,
+          "branchFasterPairs": 4,
+          "pairs": 5
+        },
+        "firstVisibleMs": {
+          "baseMedian": 303,
+          "branchMedian": 294,
+          "pairedMedianDelta": -9,
+          "branchFasterPairs": 3,
+          "pairs": 5
+        },
+        "streamCompleteMs": {
+          "baseMedian": 342,
+          "branchMedian": 312,
+          "pairedMedianDelta": -39,
+          "branchFasterPairs": 4,
+          "pairs": 5
+        },
+        "totalMs": {
+          "baseMedian": 473,
+          "branchMedian": 436,
+          "pairedMedianDelta": -30,
+          "branchFasterPairs": 4,
+          "pairs": 5
+        }
+      },
+      "meshCountsMatch": true,
+      "meshCounts": [
+        317
+      ]
+    },
+    {
+      "scenario": "immediate",
+      "fixture": "m56.ifc",
+      "metrics": {
+        "firstBatchMs": {
+          "baseMedian": 794,
+          "branchMedian": 783,
+          "pairedMedianDelta": -36,
+          "branchFasterPairs": 3,
+          "pairs": 5
+        },
+        "firstVisibleMs": {
+          "baseMedian": 889,
+          "branchMedian": 894,
+          "pairedMedianDelta": -35,
+          "branchFasterPairs": 3,
+          "pairs": 5
+        },
+        "streamCompleteMs": {
+          "baseMedian": 1817,
+          "branchMedian": 1815,
+          "pairedMedianDelta": 39,
+          "branchFasterPairs": 2,
+          "pairs": 5
+        },
+        "totalMs": {
+          "baseMedian": 2000,
+          "branchMedian": 2103,
+          "pairedMedianDelta": 105,
+          "branchFasterPairs": 2,
+          "pairs": 5
+        }
+      },
+      "meshCountsMatch": true,
+      "meshCounts": [
+        16775
+      ]
+    },
+    {
+      "scenario": "immediate",
+      "fixture": "snowdon.ifc",
+      "metrics": {
+        "firstBatchMs": {
+          "baseMedian": 600,
+          "branchMedian": 552,
+          "pairedMedianDelta": -64,
+          "branchFasterPairs": 4,
+          "pairs": 5
+        },
+        "firstVisibleMs": {
+          "baseMedian": 647,
+          "branchMedian": 605,
+          "pairedMedianDelta": -52,
+          "branchFasterPairs": 4,
+          "pairs": 5
+        },
+        "streamCompleteMs": {
+          "baseMedian": 669,
+          "branchMedian": 663,
+          "pairedMedianDelta": -14,
+          "branchFasterPairs": 3,
+          "pairs": 5
+        },
+        "totalMs": {
+          "baseMedian": 715,
+          "branchMedian": 759,
+          "pairedMedianDelta": 16,
+          "branchFasterPairs": 2,
+          "pairs": 5
+        }
+      },
+      "meshCountsMatch": true,
+      "meshCounts": [
+        17380
+      ]
+    },
+    {
+      "scenario": "settled",
+      "fixture": "fzk.ifc",
+      "metrics": {
+        "firstBatchMs": {
+          "baseMedian": 272,
+          "branchMedian": 246,
+          "pairedMedianDelta": -15,
+          "branchFasterPairs": 5,
+          "pairs": 5
+        },
+        "firstVisibleMs": {
+          "baseMedian": 290,
+          "branchMedian": 272,
+          "pairedMedianDelta": -23,
+          "branchFasterPairs": 3,
+          "pairs": 5
+        },
+        "streamCompleteMs": {
+          "baseMedian": 350,
+          "branchMedian": 318,
+          "pairedMedianDelta": -34,
+          "branchFasterPairs": 4,
+          "pairs": 5
+        },
+        "totalMs": {
+          "baseMedian": 539,
+          "branchMedian": 519,
+          "pairedMedianDelta": 10,
+          "branchFasterPairs": 2,
+          "pairs": 5
+        }
+      },
+      "meshCountsMatch": true,
+      "meshCounts": [
+        317
+      ]
+    },
+    {
+      "scenario": "settled",
+      "fixture": "m56.ifc",
+      "metrics": {
+        "firstBatchMs": {
+          "baseMedian": 819,
+          "branchMedian": 752,
+          "pairedMedianDelta": 11,
+          "branchFasterPairs": 2,
+          "pairs": 5
+        },
+        "firstVisibleMs": {
+          "baseMedian": 941,
+          "branchMedian": 878,
+          "pairedMedianDelta": -37,
+          "branchFasterPairs": 3,
+          "pairs": 5
+        },
+        "streamCompleteMs": {
+          "baseMedian": 1897,
+          "branchMedian": 1758,
+          "pairedMedianDelta": 11,
+          "branchFasterPairs": 2,
+          "pairs": 5
+        },
+        "totalMs": {
+          "baseMedian": 2083,
+          "branchMedian": 1939,
+          "pairedMedianDelta": 18,
+          "branchFasterPairs": 2,
+          "pairs": 5
+        }
+      },
+      "meshCountsMatch": true,
+      "meshCounts": [
+        16775
+      ]
+    },
+    {
+      "scenario": "settled",
+      "fixture": "snowdon.ifc",
+      "metrics": {
+        "firstBatchMs": {
+          "baseMedian": 544,
+          "branchMedian": 474,
+          "pairedMedianDelta": -70,
+          "branchFasterPairs": 5,
+          "pairs": 5
+        },
+        "firstVisibleMs": {
+          "baseMedian": 1247,
+          "branchMedian": 1547,
+          "pairedMedianDelta": 209,
+          "branchFasterPairs": 0,
+          "pairs": 5
+        },
+        "streamCompleteMs": {
+          "baseMedian": 781,
+          "branchMedian": 735,
+          "pairedMedianDelta": -28,
+          "branchFasterPairs": 4,
+          "pairs": 5
+        },
+        "totalMs": {
+          "baseMedian": 1526,
+          "branchMedian": 1587,
+          "pairedMedianDelta": 82,
+          "branchFasterPairs": 1,
+          "pairs": 5
+        }
+      },
+      "meshCountsMatch": true,
+      "meshCounts": [
+        17380
+      ]
+    }
+  ],
+  "limitations": [
+    "Mesh counts match but no ordered geometry byte/hash witness was collected.",
+    "Captures do not prove device health or exclusive machine idleness.",
+    "Repeat/federation captures from the resumed batch overlapped local builds and are excluded.",
+    "Large-file and cache-hit scenarios have not completed."
+  ]
+}

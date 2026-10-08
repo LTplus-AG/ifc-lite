@@ -6,7 +6,7 @@
  * ADVERSARIAL probes for PR #1679 (async lat/lon readout for the geo measure).
  *
  * Targets:
- *   reprojectPointToLatLon(), reprojectionInputKey() in reproject.ts
+ *   reprojectPointToLatLon() in reproject.ts
  * Goal: BREAK them. Each test is named CONFIRMED_* (proves a defect) or
  * REFUTED_* (proves a guard holds).
  */
@@ -16,7 +16,6 @@ import assert from 'node:assert';
 
 import {
   reprojectPointToLatLon,
-  reprojectionInputKey,
 } from './reproject.js';
 import type { ProjectedCRS } from '@ifc-lite/parser';
 
@@ -28,74 +27,7 @@ const utmCrs: ProjectedCRS = {
 };
 
 // ---------------------------------------------------------------------------
-// ATTACK 2: KEY COLLISIONS (delimiter injection, empty/undefined, -0)
-// ---------------------------------------------------------------------------
-describe('ADVERSARIAL: reprojectionInputKey collisions', () => {
-  it('delimiter injection cannot collide two different CRS configs', () => {
-    // Free-text fields (description, mapProjection) can contain the '|'
-    // character; a join('|') key let content shift across field boundaries
-    // and collide. The JSON-encoded key must keep such configs distinct.
-    const crsA: ProjectedCRS = {
-      id: 1, name: 'EPSG:32760', mapUnitScale: 1,
-      description: 'c', mapProjection: 'd|e',
-    };
-    const crsB: ProjectedCRS = {
-      id: 1, name: 'EPSG:32760', mapUnitScale: 1,
-      description: 'c|d', mapProjection: 'e',
-    };
-    const keyA = reprojectionInputKey(500000, 5000000, crsA, 1);
-    const keyB = reprojectionInputKey(500000, 5000000, crsB, 1);
-    assert.notStrictEqual(keyA, keyB,
-      'distinct configs must yield distinct keys (JSON-encoded key is injective)');
-  });
-
-  it('zone shifted across field boundaries yields distinct keys', async () => {
-    // mapZone is read FIRST by resolveProjection. Shifting a valid zone across
-    // the mapZone/description boundary changes reprojection resolvability, so
-    // the keys MUST differ or the async effect would freeze on a stale value.
-    const resolves: ProjectedCRS = {
-      id: 1, name: '', mapZone: '60S', description: 'A|B', mapUnitScale: 1,
-    };
-    const doesNot: ProjectedCRS = {
-      id: 1, name: '', mapZone: '60S|A', description: 'B', mapUnitScale: 1,
-    };
-    const kR = reprojectionInputKey(500000, 5000000, resolves, 1);
-    const kD = reprojectionInputKey(500000, 5000000, doesNot, 1);
-    assert.notStrictEqual(kR, kD, 'distinct zone/description splits must yield distinct keys');
-
-    // The two genuinely reproject differently: '60S' -> valid UTM,
-    // '60S|A' -> not a zone -> null. Distinct keys make the effect refetch.
-    const rr = await reprojectPointToLatLon(500000, 5000000, resolves, 1);
-    const rd = await reprojectPointToLatLon(500000, 5000000, doesNot, 1);
-    assert.ok(rr, "'60S' should resolve to a lat/lon");
-    assert.strictEqual(rd, null, "'60S|A' should be unresolvable");
-    // Same key yet different truth: a live georef edit between these is invisible
-    // to the effect -> stale lat/lon retained.
-  });
-
-  it('PROBE_empty_vs_undefined_name: undefined and empty-string name share a key', () => {
-    const a = reprojectionInputKey(1, 2, { id: 1, name: undefined } as unknown as ProjectedCRS, 1);
-    const b = reprojectionInputKey(1, 2, { id: 1, name: '' } as ProjectedCRS, 1);
-    assert.strictEqual(a, b, 'name ?? "" collapses undefined and "" (benign: same resolveProjection path)');
-  });
-
-  it('REFUTED_negative_zero: -0 easting and +0 easting produce the same key (join coerces -0 -> "0")', () => {
-    const a = reprojectionInputKey(-0, 0, utmCrs, 1);
-    const b = reprojectionInputKey(0, 0, utmCrs, 1);
-    assert.strictEqual(a, b, 'no -0 vs 0 key drift');
-    assert.ok(!a.includes('-0'), 'key must not contain a literal -0 token');
-  });
-
-  it('PROBE_quantisation_rounding_boundary: values 0.5mm either side of a bucket edge', () => {
-    // metre CRS: eMm = round(E*1000). E=0.0015 -> 2 (round half up), E=0.0025 -> 3 (round half to even? no, JS Math.round is half-up)
-    const a = reprojectionInputKey(0.00149, 0, utmCrs, 1); // *1000=1.49 -> 1
-    const b = reprojectionInputKey(0.00151, 0, utmCrs, 1); // *1000=1.51 -> 2
-    assert.notStrictEqual(a, b, 'a >0.5mm move across a bucket edge changes the key (expected)');
-  });
-});
-
-// ---------------------------------------------------------------------------
-// ATTACK 3: HOSTILE INPUTS to reprojectPointToLatLon (must return null, never throw / never NaN)
+// HOSTILE PROJECTED INPUTS
 // ---------------------------------------------------------------------------
 describe('ADVERSARIAL: reprojectPointToLatLon hostile inputs', () => {
   it('REFUTED_NaN_input: NaN easting/northing returns null (not NaN, not throw)', async () => {

@@ -5,6 +5,9 @@
 /** #6643: CLI validates actual documents through the shared engines and preserves machine output. */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { createServer } from 'node:http';
+import { once } from 'node:events';
+import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DEFAULT_PROFILE, toRdf } from '@ifc-lite/semantic';
@@ -77,4 +80,24 @@ describe('semantic CLI #6643', () => {
         .rejects.toThrow('Invalid relay provider');
     }
   });
+  it('reads a real loopback SELECT only with explicit boolean authorization #6784', async () => {
+    const server = createServer((_request, response) => {
+      response.setHeader('Content-Type', 'application/sparql-results+json');
+      response.end(JSON.stringify({ head: { vars: ['label'] }, results: { bindings: [{ label: { type: 'literal', value: 'original CLI local result' } }] } }));
+    }).listen(0, '127.0.0.1');
+    await once(server, 'listening');
+    try {
+      const endpoint = `http://127.0.0.1:${(server.address() as AddressInfo).port}/sparql`;
+      const path = join(directory, 'query.rq'); await writeFile(path, 'SELECT * WHERE {?s ?p ?o}');
+      const args = ['query', '--endpoint', endpoint, '--host', '127.0.0.1', '--query', path, '--json'];
+      await expect(semanticCommand(args)).rejects.toThrow(); expect(output).toBe('');
+      await semanticCommand([...args, '--allow-loopback-http']);
+      expect(JSON.parse(output).results.bindings[0].label.value).toBe('original CLI local result');
+      for (const suffix of [['--allow-loopback-http', 'false'], ['--allow-loopback-http', '--allow-loopback-http']]) {
+        await expect(semanticCommand([...args, ...suffix])).rejects.toThrow();
+      }
+      await expect(semanticCommand(['query', '--endpoint', 'http://example.org', '--host', 'example.org', '--allow-loopback-http'])).rejects.toThrow('literal loopback');
+    } finally { server.closeAllConnections(); await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve())); }
+  });
+
 });

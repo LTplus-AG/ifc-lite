@@ -105,6 +105,7 @@ export function useDrawingLayers(vm: DrawingViewModel) {
     classMask: pointCloudClassMask,
     models,
     legacyPointClouds: geometryResult?.pointClouds,
+    outline: { enabled: displayOptions.scanSectionOutline, maxGap: displayOptions.scanSectionOutlineMaxGap },
   });
 
   const { handleExportSVG, handleExportDXF, handleExportPDF, handlePrint } = useDrawingExport({

@@ -26,6 +26,7 @@
  */
 
 import '@/test/setup-dom.js';
+import { waitFor } from '@/test/render.js';
 import { describe, it, after, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
@@ -97,6 +98,7 @@ async function mount(children = (
   await act(async () => {
     root.render(children);
   });
+  await waitFor(() => Boolean(container.querySelector('[aria-label="Drag OrthogonalHeight"]')), 'projected editing resolves');
   return { root, container };
 }
 
@@ -128,7 +130,7 @@ describe('CesiumPlacementGizmo height handle with Scale x FactorZ (#4675)', () =
     const mounted = await mount();
     try {
       const handle = mounted.container.querySelector('[aria-label="Drag OrthogonalHeight"]');
-      assert.ok(handle, 'the height handle renders on the first render — no rAF wait needed now the projection is computed directly in the render body');
+      assert.ok(handle, 'the height handle renders after projected CRS resolution');
       const pointer = (type: string, clientY: number) => new PointerEvent(type, {
         bubbles: true, cancelable: true, pointerId: 1, clientX: 50, clientY,
       });

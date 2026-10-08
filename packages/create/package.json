@@ -23,7 +23,8 @@
     "@ifc-lite/encoding": "workspace:^",
     "@ifc-lite/mutations": "workspace:^",
     "@ifc-lite/parser": "workspace:^",
-    "@ifc-lite/export": "workspace:^"
+    "@ifc-lite/export": "workspace:^",
+    "@ifc-lite/geometry": "workspace:^"
   },
   "devDependencies": {
     "@ifc-lite/wasm": "workspace:^",

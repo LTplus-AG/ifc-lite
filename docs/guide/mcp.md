@@ -104,13 +104,15 @@ Tools are grouped by capability. Everything below is registered in the default t
 | Validation | `ids_validate`, `ids_explain`, `model_audit`, `gherkin_check` *(planned)* |
 | Mutation | `entity_set_property`, `entity_delete_property`, `entity_set_attribute`, `entity_create`, `entity_delete`, `mutation_batch`, `mutation_undo`, `mutation_diff`, `model_save` |
 | Hosted modelling | `place_opening`, `place_door`, `place_window` |
+| Physical edits | `edit_hosted_element`, `edit_element_geometry`, `copy_elements`, `duplicate_element`, `array_elements` |
+| Native Room | `query_rooms`, `room_command` |
 | Design modelling | `place_curtain_wall`, `place_grid`, `place_grid_column` |
 | Wall joins | `join_walls` |
 | BCF | `bcf_topic_list`, `bcf_topic_create`, `bcf_topic_update`, `bcf_topic_close`, `bcf_viewpoint_create`, `bcf_export` |
 | bSDD | `bsdd_search`, `bsdd_class`, `bsdd_property_sets`, `bsdd_match` |
 | Diff | `model_diff`, `quantity_diff` |
 | Export | `export_ifc`, `export_csv`, `export_json`, `export_glb`, `export_obj`, `export_ifcx`, `export_usd`, `export_pdf_report` *(planned)* |
-| Flow | `describe_flow`, `run_flow` |
+| Flow | `describe_flow`, `run_flow`, `propose_flow`, `resume_flow` |
 | Viewer | `viewer_ask`, `viewer_open`, `viewer_close`, `viewer_status`, `viewer_colorize`, `viewer_isolate`, `viewer_hide`, `viewer_show`, `viewer_reset`, `viewer_fly_to`, `viewer_set_section`, `viewer_clear_section`, `viewer_color_by_storey`, `viewer_color_by_property`, `viewer_get_selection`, `viewer_wait_for_selection`, `viewer_describe_selection` |
 | Draft layers & review | `create_draft_layer`, `draft_apply_ops`, `publish_layer`, `diff_layer`, `dry_run_merge`, `list_conflicts`, `request_review`, `add_review_feedback`, `get_review_feedback`, `add_review_topic`, `respond_to_review` |
 
@@ -273,6 +275,22 @@ Tools are grouped by capability. Everything below is registered in the default t
     `truncated` flag. A failed node marks the whole run `ok: false`, and any
     output downstream of it comes back with no data rather than reporting the
     half-applied model as a success.
+
+    AI nodes are opt-in through `IFC_LITE_AI_MODEL`, `IFC_LITE_AI_API_KEY`
+    and optional `IFC_LITE_AI_BASE_URL`, using the CLI's shared compatible
+    transport and root budget. A review-capable `run_flow` requires a new
+    `checkpoint_path` under `--allow`; it returns `pending.artifacts`,
+    `pending.proposal_digest`, the original budget and the active `model_id`.
+    Downstream effects stay paused. The separate authorized `resume_flow`
+    takes the same graph/inputs, `checkpoint_path` and exact `approved_digest`.
+    It checks current mutate scope and native model state, consumes one disk
+    claim, and restores completed outputs without requesting a new answer.
+    Changing the evidence, graph or budget receipt refuses continuation.
+    Downstream AI requests share the existing allowance. Supply a new
+    `next_checkpoint_path` when another review remains ahead; persistence
+    failure after a claim is recorded as partially committed. A lost owner
+    cannot apply the same record again. Cancellation does not undo effects
+    already completed before a pause or failure.
 
     `element.wall`, `element.column`, `element.slab`, `element.beam`,
     `element.stair` and `element.railing` specs
@@ -492,3 +510,58 @@ federated, and a nonempty `patch` containing `OverallWidth`, `OverallHeight`,
 without replacing identity or relationships. Unsupported, overlapping and
 out-of-host changes leave the graph unchanged. The tool requires mutation scope;
 one `mutation_undo` restores the previous graph.
+
+### Physical command edits
+
+`copy_elements` and `array_elements` copy selections with their hosted
+dependants, fresh GlobalIds and the viewer array policy. `duplicate_element`
+accepts an `express_id`, explicit IFC `offset` and optional `Name`; it preserves
+the viewer Duplicate naming policy and copies the complete hosted graph.
+`edit_element_geometry` accepts a discriminated `operation`: `transform`
+(move/rotate), `align`, `size`, `wall_endpoints`, `split`, or `trim_extend`. Coordinates
+are IFC storey-local metres; rotation angles are radians. Dimension names
+retain their IFC spelling (`Depth`, `XDim`, `YDim`).
+
+Supply `model_id` when multiple models are loaded. These tools require mutation
+scope. Each write records one `mutation_undo` batch including its graph helpers.
+Unsupported shapes, independent hosted copies, unsafe shared geometry, read-only
+access and ambiguous model routing refuse without partial IFC writes.
+
+For `align`, provide `reference_id`, `express_ids` and `mode` (`left`, `centre`,
+`right`, `top`, `middle` or `bottom`). The reference and targets must occupy one
+storey. Bounds come from fresh native meshes, including current overlay edits;
+install the WASM runtime. Each target receives its own storey-local translation
+in one atomic batch. A selected host governs its placement dependants, which move once; joined neighbours follow and
+one Undo restores the entire graph. A fixed reference joined to a target, or
+hosted/joined targets requiring incompatible shifts, refuses before writing.
+
+### Native Room operations
+
+`room_command` accepts `storey_express_id` and `command` with `query`, `auto`,
+`pick`, `footprint`, `update` or `edit`. It uses current native wall/space
+geometry and the retained native Room topology; install the WASM runtime.
+Supply `model_id` when multiple models are loaded. Each write records one
+`mutation_undo` batch including synchronized spaces. Unsupported shapes,
+occupied Footprint, read-only access, and ambiguous routing refuse without
+partial writes. Preparation refuses stale model state and observes request
+cancellation before committing. Session termination and model removal release
+the retained native layout handles.
+
+`query_rooms` is available with read-only tokens. It accepts `storey_express_id`,
+optional `model_id`, and optional `settings` (`weld`, `minArea`, `boundary`),
+and delegates to the same native candidate service without IFC or Undo writes.
+Write actions remain protected by `room_command`'s mutation scope. Unchanged
+headless storeys reuse prepared geometry; source, overlay or journal changes
+invalidate it, and model removal releases the cache.
+
+Cancelled requests return `CANCELLED`; concurrent changes or preparation ownership
+return `STATE_CHANGED`, both with `details.retryable: true`. An unavailable native
+runtime returns `UNSUPPORTED_OPERATION` with reason `NATIVE_RUNTIME_UNAVAILABLE`.
+Malformed commands and unsupported input shapes retain `INVALID_INPUT`.
+
+`propose_flow` lets a read-only MCP caller run a native read/AI-only graph to
+a pending artifact. It rejects declared or node-defined effects and permits
+only `model.read` and `network.ai`. The current read scope and model allowlist
+still apply; the separate `resume_flow` requires current mutate authorization.
+MCP responses and checkpoint budgets include provider usage receipts without
+prompts, replies or credentials; receipt history survives subsequent pauses.

@@ -257,12 +257,110 @@ exports include workspace placement. Export the placement manifest alongside
 source IFC or scan files when sharing this arrangement. Transformed LAS/E57
 writing is not provided.
 
-After a completed deviation run, the Deviation panel's **Export CSV** action
-reports minimum, maximum and mean signed distance in metres for each scan asset.
-The CSV identifies the scan model when several models are loaded. The renderer's
-`readDeviationAssetStats()` method provides the same per-asset values on demand;
-it reads GPU deviation buffers only when called and reports no row for a scan
-asset added after the run. Recompute before exporting after a model change.
+After a completed deviation run, the Deviation panel reads every computed
+point's signed distance back once and shows summary statistics: points
+measured, signed mean, mean and RMS of |d|, standard deviation, P50, P95, P99
+and maximum of |d|, and the share of points within an editable tolerance
+(10 mm by default). A histogram above the colour legend counts points over
+the same range as the ramp, with each bar in its ramp colour; points outside
+the range are counted below it. Points the compute pass clamped at its 1 m
+limit are counted separately, because their true distance is larger.
+Percentiles are exact nearest-rank values of |d|, not estimates, found by a
+radix select over the readback without copying it. Every figure takes at most
+two linear passes, run in short slices so the viewer stays responsive at the
+25-million-point cap. The readback holds 4 bytes per point in memory until
+the next run or until the result is invalidated. A streamed COPC scan keeps
+only the octree nodes the view needs, so its statistics and CSV describe the
+points resident now: when the view adds or drops nodes, including when the
+scan leaves the view entirely, deviation re-runs and the statistics are read
+back again.
+
+![Deviation statistics for a synthetic scan sampled from a real Archicad IFC with 4 mm noise and 25 mm offsets on some faces](../assets/deviation-statistics-panel.png)
+
+The panel's **Export CSV** action writes the same statistics for each scan
+asset, in metres, with the tolerance used. With several scan assets, a final
+row pools all of their points. Each scan row names the scan's own model, its
+GlobalId, Name and IFC class, resolved from the asset's federated id, so the
+attribution holds in any load order and after other models are removed; the
+Model column appears when several models are loaded. The renderer's
+`readDeviationDistances()` method returns the signed distances grouped by scan
+asset, and `readDeviationAssetStats()` returns per-asset statistics; both read
+GPU deviation buffers only when called and report nothing for a scan asset
+added after the run. Each asset carries the `expressId` and `modelIndex` it was
+uploaded or bound with: the viewer binds a streamed scan to both through
+`relabelPointCloudAsset(handle, expressId, modelIndex)` once its model is
+registered. Recompute before exporting after a model change.
+
+```ts
+import { computeDeviationStatisticsAsync, type Renderer } from '@ifc-lite/renderer';
+
+declare const renderer: Renderer;
+const { values } = await renderer.readDeviationDistances();
+// Sliced so the page keeps painting; `computeDeviationStatistics` is the
+// synchronous form for a worker, the CLI or a test.
+const stats = await computeDeviationStatisticsAsync(values, { tolerance: 0.01, clipRange: 1 });
+console.log(stats.p95Abs, stats.withinTolerance?.share, stats.clippedCount);
+```
+
+### Scan to BIM: detect and review elements
+
+The Point Clouds panel's **Scan to BIM** section runs **Detect elements** on a
+loaded scan. It reads the scan's retained sample (up to 2 million points, or
+the coarse COPC levels). When the section box is on and shown, it reads only
+the points inside the box, mapped back through the scan's alignment. Planes and
+cylinders are found off the main thread and turned into proposed `IfcWall`,
+`IfcSlab`, `IfcColumn` and pipe elements in the coordinates of the active IFC
+model, or the first one loaded. The proposals include that model's offsets,
+its placement and the scan's alignment. Pipes are `IfcPipeSegment`, or
+`IfcFlowSegment` in an IFC2X3 model. With no IFC model loaded, proposals use
+the workspace coordinates. **Cancel** stops a running detection, and a second
+**Detect** replaces it. The rules behind the proposals (wall pairing, default
+thicknesses, floor and ceiling sides, snapping, confidence) are in the
+[proposal contract](../api/wasm.md#scan-element-proposals).
+
+The detected planes and cylinders are drawn over the scan, coloured by
+proposed class: walls blue, slabs grey, columns orange, pipes green. The
+review list shows each proposal's size, how it was derived, its confidence
+and its fit (RMS and points). **Accept** or **Reject** each one, or use
+**Accept all shown** and **Reject all shown** after filtering by class and
+minimum confidence. Rejected proposals disappear from the overlay, and
+accepted ones are drawn more opaque. A run ends when its scan or its IFC
+model is removed; removing either while detection runs stops the worker and
+discards its result.
+
+**Create accepted elements** writes the accepted proposals into the IFC
+model as one undo step, through the same path as the Model workspace's own
+commands. The new elements appear in the model tree and the properties
+panel, and they export with the model. Each element goes on the highest
+storey whose floor is at or below its base, within 0.3 m; an element below
+every floor goes on the lowest storey. Its geometry passes through that
+storey's own frame:
+- walls have a centred axis;
+- slabs are the outline extruded by their thickness;
+- columns have a circular profile;
+- pipes are a circular member along the axis, reclassified as
+  `IfcPipeSegment` or `IfcFlowSegment`.
+
+Each element carries an `IfcLite_ScanDetection` property set with
+`SourceScan`, `DetectionId`, `Basis`, `SourceDetections`, `Confidence`,
+`FitRmsMetres` and `InlierPoints`. The set does not use the `Pset_` prefix,
+which is reserved for buildingSMART's own property sets.
+
+- **Create** acts on the accepted proposals the filter shows. Accepted
+  proposals the filter hides are counted under the button, not created.
+- Created proposals are marked **Created** while the target model holds an
+  element with their GlobalId, so a reopened export still shows them.
+  Undoing the batch makes them available to create again.
+- **Detect again** starts a fresh review. If the target model already holds
+  elements created from the same scan earlier in the session, the bar warns
+  that creating again may duplicate them. It does not match new proposals to
+  old elements, and it does not know about elements created in an earlier
+  session.
+- **Create** refuses when the scan's placement or alignment, or the workspace
+  anchor, has changed since detection: detect again first.
+
+Editing must be on. With no IFC model loaded, **Create a blank IFC model**
+adds one beside the scan to hold the elements.
 
 World Context refreshes its Cesium model after movement pauses, using the same
 placed geometry. Its previous model stays visible until the replacement is ready;

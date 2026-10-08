@@ -1,0 +1,298 @@
+{
+  "$schema": "../recording.schema.json",
+  "version": 1,
+  "id": "flow-ai-review-release",
+  "task": "flow-ai-review",
+  "scene": "flow-ai-paused",
+  "corpus": "release",
+  "prompt": "Explain this paused AI Flow and what has not run yet",
+  "route": {
+    "kind": "proxy",
+    "model": "openai/gpt-4o-mini"
+  },
+  "provenance": {
+    "kind": "authored",
+    "recordedAt": "2026-10-08",
+    "note": "Authored offline response replayed against native fixture evidence; no live-provider or human-quality claim."
+  },
+  "response": {
+    "status": 200,
+    "events": [
+      {
+        "choices": [
+          {
+            "delta": {
+              "content": "The captured Flow is waiting for review at ai.classify [E5]; model.applyTable remains paused [E6]. Its native run summary records zero writes. Three wall rows received the proposed label Review and one row was not sent [E1][E2]. Review the proposed roles before approving downstream application; the recorded response is an offline fixture, so it establishes orchestration rather than live classification quality."
+            }
+          }
+        ]
+      },
+      {
+        "choices": [
+          {
+            "delta": {},
+            "finish_reason": "stop"
+          }
+        ],
+        "usage": {
+          "prompt_tokens": 100,
+          "completion_tokens": 100,
+          "total_tokens": 200
+        }
+      }
+    ],
+    "done": true
+  },
+  "evidence": {
+    "source": "flowRun",
+    "models": [
+      {
+        "id": "arch",
+        "name": "arch"
+      }
+    ],
+    "totalModels": 1,
+    "modelMetadataTruncated": false,
+    "sourceAvailability": "available",
+    "reportProvenance": "unknown",
+    "totalRows": 7,
+    "includedRows": 7,
+    "sampled": false,
+    "projectionTruncated": false,
+    "evidence": {
+      "summary": {
+        "kind": "flow-run",
+        "graph": {
+          "id": "eval-reviewed-wall-roles",
+          "name": "Recorded wall-role proposal",
+          "nodeCount": 4,
+          "edgeCount": 3,
+          "identity": "document as run"
+        },
+        "status": "review-required",
+        "verdict": "review-required",
+        "failingNodeIds": [],
+        "error": null,
+        "startedAt": "2026-10-08T00:00:00.000Z",
+        "finishedAt": "2026-10-08T00:00:00.000Z",
+        "durationMs": 0,
+        "units": {
+          "durationMs": "ms",
+          "sizeBytes": "bytes"
+        },
+        "nodeReports": 4,
+        "executedNodes": 3,
+        "nodeStatusCounts": {
+          "ok": 2,
+          "memo": 0,
+          "noop": 0,
+          "skipped": 0,
+          "error": 0,
+          "review": 1,
+          "paused": 1,
+          "restored": 0
+        },
+        "nodeWarnings": 0,
+        "writes": 0,
+        "pendingMutationsFromRun": 0,
+        "runWarningCount": 0,
+        "artifactCount": 0,
+        "graphOutputCount": 2,
+        "logCounts": {
+          "info": 0,
+          "warn": 1,
+          "error": 0
+        },
+        "rowOrder": "failing nodeResult, nodeResult of their inputs (nearest first), warning, artifact, graphOutput, other nodeResult, log",
+        "limitations": "Describes the last run of the open graph only. Editing or switching the graph clears the run, so it belongs to the graph named here. executedNodes counts native reports with at least one evaluation lane; cached/restored, no-op, paused and skipped reports have no evaluated lanes. review and paused mean downstream execution awaits approval; restored means reviewed outputs were replayed without evaluation. Node parameters are excluded except on rows of failing nodes (error or laneErrors > 0; skipped nodes only follow an upstream failure) and the nodes feeding them; even there, script source is withheld and credential-like text is redacted. Full output values and artifact contents (PDF bytes) are excluded; graph outputs carry at most a short preview. A run says nothing about model edits made after it finished."
+      },
+      "rows": [
+        {
+          "citation": "E1",
+          "data": {
+            "kind": "graphOutput",
+            "label": "Proposed roles",
+            "nodeId": "roles",
+            "port": "table",
+            "dataKind": "item",
+            "itemCount": 1,
+            "preview": [
+              {
+                "key": "key",
+                "columns": [
+                  {
+                    "name": "key",
+                    "type": "identifier"
+                  },
+                  {
+                    "name": "label",
+                    "type": "label"
+                  },
+                  {
+                    "name": "evidence",
+                    "type": "text"
+                  },
+                  {
+                    "name": "outcome",
+                    "type": "enum"
+                  }
+                ],
+                "rows": [
+                  {
+                    "key": "1AQAupaRP1txwK1AGiN61V",
+                    "label": "Review",
+                    "evidence": "Name",
+                    "outcome": "classified"
+                  },
+                  {
+                    "key": "3wdauVJT5Fx9drrREiDqA$",
+                    "label": "Review",
+                    "evidence": "Name",
+                    "outcome": "classified"
+                  },
+                  {
+                    "key": "0OfZwWc8j9QP5uX8xPTxDH",
+                    "label": "Review",
+                    "evidence": "Name",
+                    "outcome": "classified"
+                  },
+                  {
+                    "key": "1uS5vfZPn9R8PlAaVd73on",
+                    "label": null,
+                    "evidence": "",
+                    "outcome": "not-sent"
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "citation": "E2",
+          "data": {
+            "kind": "graphOutput",
+            "label": "Coverage",
+            "nodeId": "roles",
+            "port": "coverage",
+            "dataKind": "item",
+            "itemCount": 1,
+            "preview": [
+              {
+                "model": "authored-offline",
+                "categoriesVersion": "1",
+                "rows": 4,
+                "requests": 1,
+                "classified": 3,
+                "unknown": 0,
+                "failed": 0,
+                "notSent": 1
+              }
+            ]
+          }
+        },
+        {
+          "citation": "E3",
+          "data": {
+            "kind": "nodeResult",
+            "status": "ok",
+            "unit": "ms",
+            "nodeId": "walls",
+            "nodeType": "model.byType",
+            "nodeLabel": null,
+            "durationMs": 0,
+            "lanes": 1,
+            "laneErrors": 0,
+            "missingInputs": [],
+            "warningCount": 0,
+            "warnings": [],
+            "error": null,
+            "errorMessages": [],
+            "failing": false,
+            "tracking": null
+          }
+        },
+        {
+          "citation": "E4",
+          "data": {
+            "kind": "nodeResult",
+            "status": "ok",
+            "unit": "ms",
+            "nodeId": "table",
+            "nodeType": "table.fromEntities",
+            "nodeLabel": null,
+            "durationMs": 0,
+            "lanes": 1,
+            "laneErrors": 0,
+            "missingInputs": [],
+            "warningCount": 0,
+            "warnings": [],
+            "error": null,
+            "errorMessages": [],
+            "failing": false,
+            "tracking": null
+          }
+        },
+        {
+          "citation": "E5",
+          "data": {
+            "kind": "nodeResult",
+            "status": "review",
+            "unit": "ms",
+            "nodeId": "roles",
+            "nodeType": "ai.classify",
+            "nodeLabel": null,
+            "durationMs": 0,
+            "lanes": 1,
+            "laneErrors": 0,
+            "missingInputs": [],
+            "warningCount": 0,
+            "warnings": [],
+            "error": null,
+            "errorMessages": [],
+            "failing": false,
+            "tracking": null
+          }
+        },
+        {
+          "citation": "E6",
+          "data": {
+            "kind": "nodeResult",
+            "status": "paused",
+            "unit": "ms",
+            "nodeId": "apply",
+            "nodeType": "model.applyTable",
+            "nodeLabel": null,
+            "durationMs": 0,
+            "lanes": 0,
+            "laneErrors": 0,
+            "missingInputs": [],
+            "warningCount": 0,
+            "warnings": [],
+            "error": null,
+            "errorMessages": [],
+            "failing": false,
+            "tracking": null
+          }
+        },
+        {
+          "citation": "E7",
+          "data": {
+            "kind": "log",
+            "status": "warn",
+            "nodeId": "roles",
+            "laneKey": null,
+            "message": "1 row(s) beyond maxRows 3 were not sent"
+          }
+        }
+      ]
+    }
+  },
+  "expect": {
+    "outcome": "completed",
+    "violations": [],
+    "proposal": null,
+    "review": {
+      "kind": "none"
+    }
+  }
+}

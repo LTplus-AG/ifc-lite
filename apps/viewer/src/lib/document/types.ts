@@ -26,6 +26,7 @@ import { validateIdsReportBlock, type IdsReportBlock } from './ids-report-types.
 import { isDocumentImageDataUrl, validatePageBand, type PageBand } from './page-band.js';
 import { validatePageHeading, type PageHeading } from './page-heading.js';
 import { validateTextTypography, type TextFont } from './text-typography.js';
+import { validateAiProvenance, validateAiReportRecord, type AiBlockProvenance, type AiReportRecord } from './ai-report-types.js';
 export { TEXT_SIZE_MIN, TEXT_SIZE_MAX } from './text-typography.js';
 export type { TextFont } from './text-typography.js';
 
@@ -50,6 +51,8 @@ export interface TextBlock extends BlockTitle {
   width?: BlockWidth;
   /** Whole-block size, 0.5-2 (#6548): scales the block's text and graphics together; absent is 1. */
   scale?: number;
+  /** Generator-written text (#6918); see `ai-report-types.ts`. */
+  aiProvenance?: AiBlockProvenance;
 }
 
 export interface ImageBlock extends BlockTitle {
@@ -215,6 +218,8 @@ export interface DocumentSpec {
   /** Optional repeated footer; absence keeps the generated receipt and counter. */
   pageFooter?: PageBand;
   blocks: DocumentBlock[];
+  /** Embedded evidence and claims of an AI-drafted report (#6918). */
+  aiReport?: AiReportRecord;
 }
 
 /** Shared pairing rule for saved, resolved, and preview blocks. */
@@ -266,6 +271,7 @@ export function validateDocumentSpec(input: unknown): DocumentValidationError[] 
   if (!isString(input.name)) errors.push({ path: 'name', message: 'expected a string' });
   if (input.pageHeading !== undefined) errors.push(...validatePageHeading(input.pageHeading));
   if (input.pageFooter !== undefined) errors.push(...validatePageBand(input.pageFooter, 'pageFooter'));
+  if (input.aiReport !== undefined) validateAiReportRecord(input.aiReport, errors);
   const page = input.page;
   if (!isRecord(page) || (page.size !== 'A4' && page.size !== 'A3') || (page.orientation !== 'portrait' && page.orientation !== 'landscape')) {
     errors.push({ path: 'page', message: 'expected { size: A4 | A3, orientation: portrait | landscape }' });
@@ -298,6 +304,7 @@ export function validateDocumentSpec(input: unknown): DocumentValidationError[] 
         if (!isString(block.text)) errors.push({ path: `${at}.text`, message: 'expected a string' });
         if (!TEXT_STYLE_NAMES.includes(block.style as string)) errors.push({ path: `${at}.style`, message: `expected ${TEXT_STYLE_NAMES.join(' | ')}` });
         errors.push(...validateTextTypography(block, at));
+        if (block.aiProvenance !== undefined) validateAiProvenance(block.aiProvenance, at, errors);
         if (block.backgroundColor !== undefined && !isRgbColor(block.backgroundColor)) errors.push({ path: `${at}.backgroundColor`, message: 'expected an RGB colour in #RRGGBB form' });
         checkWidth(block, at);
         break;

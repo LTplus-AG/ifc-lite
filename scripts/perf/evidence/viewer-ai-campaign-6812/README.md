@@ -1,7 +1,7 @@
 # Viewer AI campaign: recovery qualification
 
 This is bundle and interaction qualification, not an end-to-end loading performance or live-provider quality claim.
-Measured source: `880fa7c78eb93e18e9f0e019b7a25c2881a72a34`; main base:
+Measured source: `b133b0a2cb9faeda4851ca8c8c597d15d5875eff`; main base:
 `935c278ae535ae5f69bedb8387abfd09d50c2437`. The source is retained in
 `evidence/viewer-ai-campaign-6de1b059` and proposed through [#7080](https://github.com/LTplus-AG/ifc-lite/pull/7080).
 
@@ -16,13 +16,16 @@ pass all existing ceilings, including the previously approved U02 ceiling and un
 No new ceiling is introduced. The local build uses the workflow’s proxy model setting;
 recorded responses are intercepted, and no paid provider request is required.
 
-Verification on this source:
+Verification of this candidate’s production tree:
 
 - Nine native/mounted viewer cases pass with no skips, including the fetched real ArchiCAD fixture.
 - Root `pnpm typecheck` passes all 119 tasks, covering 3,681 test sources.
 - Both recorded-provider browser journeys pass: native evidence/report/graph review and native Flow creation/preflight/debugging/tracked rerun.
 - A surgical browser mutation reverses only the Assistant layout change: the one-case green baseline becomes one assertion failure at the pointer-access invariant. Restoration is verified clean.
 - The canonical starter-download repair was independently verified at its unchanged prerequisite commit: 113 starter tests and a three-case native/scaffold oracle whose reverted templates produce two assertion failures.
+
+The last change is test-only: the recipe review assertion gives the documented quota GET a controlled response while forbidding every generation request. All six recipe cases pass under the CI model setting; root typecheck passes with the correction. Its scoped [review-render mutation](clash-review-render.patch) changes six green cases into five passing and one assertion failure, with clean restoration.
+The production tree is identical to `880fa7c78eb93e18e9f0e019b7a25c2881a72a34`, where the nine native cases and both local/CI browser journeys above passed. That full CI run passed every lane except the recipe test’s overbroad quota counter; the corrected head still requires its own full gate.
 
 The [layout mutation](assistant-short-host.patch) is written broken-to-fixed for reverse application.
 The oracle prints the broader branch-derived production list even with a custom patch;
@@ -50,6 +53,6 @@ PLAYWRIGHT_PORT=4196 E2E_GPU_STRICT=0 pnpm test:e2e:ci tests/e2e/assistant-conte
 VITE_LLM_FREE_MODELS=openai/gpt-4o-mini PLAYWRIGHT_PORT=4196 E2E_GPU_STRICT=0 node scripts/check-test-revert-oracle.mjs --base origin/main --mutation scripts/perf/evidence/viewer-ai-campaign-6812/assistant-short-host.patch --test tests/e2e/assistant-context.e2e.spec.ts
 ```
 
-Rust source is unchanged by this recovery. The final local run rebuilt WASM through the canonical script;
+Rust source is unchanged by this recovery. WASM artifacts came from the canonical build and its Turbo cache;
 compressed WASM size can differ from CI as documented in the performance guide.
 Raw viewer bytes carry the bundle verdict.

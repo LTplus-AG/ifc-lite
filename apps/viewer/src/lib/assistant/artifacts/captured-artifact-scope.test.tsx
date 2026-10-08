@@ -69,10 +69,11 @@ async function replaySaved(artifact: PreviewArtifact): Promise<number> {
     identity = outcome.saved;
     savedIdentities.set(artifact, identity);
   }
+  const savedName = identity.name;
   const state = useViewerStore.getState();
   switch (artifact.kind) {
     case 'filter.proposal': {
-      const saved = loadSavedFilters().find(row => row.name === identity.name);
+      const saved = loadSavedFilters().find(row => row.name === savedName);
       assert.ok(saved);
       return (await previewFilterGroups(saved.name, saved.groups, state, undefined, saved.capturedScope)).matched;
     }

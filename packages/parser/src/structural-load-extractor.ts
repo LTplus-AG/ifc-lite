@@ -18,7 +18,7 @@
 import type { EntityExtractor } from './entity-extractor.js';
 import type { IfcDataStore } from './columnar-parser.js';
 import { getAttributeNames, normalizeIfcTypeName } from './ifc-schema.js';
-import { asBoolean, asNumber, asString } from './structural-step-values.js';
+import { asBoolean, asNumber, asRef, asString } from './structural-step-values.js';
 
 /** Attributes that every load/condition carries from its supertype, not a component. */
 const NAME_ATTR = 'Name';

@@ -9,8 +9,9 @@ import { getSchemaRegistryForVersion } from './generated/schema-registry-by-vers
 
 /** Native edit values as the STEP reader observes them after serialization (#7195). */
 export function positionalMetadataValue(value: unknown): unknown {
+  if (typeof value === 'number') return Number.isFinite(value) ? value : null;
   if (value !== null && typeof value === 'object' && !Array.isArray(value)) {
-    if ('real' in value) return value.real;
+    if ('real' in value) return typeof value.real === 'number' && Number.isFinite(value.real) ? value.real : null;
     if ('typed' in value && value.typed !== null && typeof value.typed === 'object'
       && 'type' in value.typed && 'value' in value.typed && typeof value.typed.type === 'string') {
       return [value.typed.type.toUpperCase(), value.typed.value];
@@ -20,6 +21,7 @@ export function positionalMetadataValue(value: unknown): unknown {
   const token = value.trim();
   if (token === '$') return null;
   if (token === '*') return '*';
+  if (/^\.[A-Z0-9_]+\.$/i.test(token)) return token.toUpperCase();
   // Public '#id' references become numeric source references, including in
   // positional STRING slots: only named STRING edits force literal quoting.
   return /^#\d+$/.test(token) ? getReference(token) ?? value : value;

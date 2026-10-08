@@ -17,13 +17,13 @@ import { pinReviewCard } from '../assistant';
 import { useReviewAssistantCard } from '../assistant-state';
 import { openOriginal } from '../open';
 import { captureEvidence } from '@/lib/assistant/evidence';
-import { useReconciliationFocus } from '@/lib/panels/evidence-focus';
+import * as evidenceFocus from '@/lib/panels/evidence-focus';
 import { useReviewSnapshot } from '@/components/viewer/review/useReviewSnapshot';
 import { CompareReconcileSection } from '@/components/viewer/compare/CompareReconcileSection';
 import { cleanup, render, waitFor, advance } from '@/test/render';
 
 const initial = useViewerStore.getState();
-afterEach(() => { cleanup(); act(() => { useViewerStore.setState(initial, true); useReconciliationFocus.setState({ record: null }); }); });
+afterEach(() => { cleanup(); act(() => { useViewerStore.setState(initial, true); evidenceFocus.useReconciliationFocus?.setState({ record: null }); }); });
 const run = (id: string, report: Awaited<ReturnType<typeof runIds>>): CapturedRun => ({
   id, kind: 'validation', report, capturedAt: '2026-10-08T00:00:00.000Z', modelIds: report.modelInfo.map(model => model.modelId),
   stamp: { mutationVersion: 0, geometryContentVersion: 0 },
@@ -148,7 +148,7 @@ test('#7087 the mounted native Review hook refreshes when only the reconciliatio
 });
 
 
-test('#7087 an explicit native passing result in a capped run stays a candidate requiring complete coverage', async t => {
+test('#7087 an explicit native passing result cannot confirm resolution in a capped run', async t => {
   const source = await native(t, true, false, true); if (!source || !source.saved.outcome.ok) return;
   assert.equal(source.saved.outcome.partial, true);
   assert.ok(source.saved.outcome.counts.resolved > 0, 'the native cap retains the first wall passing result');

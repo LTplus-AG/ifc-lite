@@ -12,6 +12,8 @@
  * and `bim.store`'s modelling methods for joins, types and materials.
  */
 
+import { writeReviewedLayers } from './model-authoring-layers';
+import type { ApplyLayersSpec } from '@/lib/authoring/material-layers';
 import { profileInMetres } from './model-authoring-shape-params';
 import { StoreEditor } from '@ifc-lite/mutations';
 import type { IfcDataStore } from '@ifc-lite/parser';
@@ -31,6 +33,7 @@ export type ElementId = { id: number } | { ref: string };
 
 /** What preview resolved for an operation; the commit re-resolves and must find the same. */
 export interface ResolvedOp {
+  layers?: ApplyLayersSpec;
   target?: number;
   /** The element a type or material is assigned to. */
   subject?: ElementId;
@@ -163,6 +166,10 @@ export function dryRunAuthoring(
 export function draftAuthoringOperation(batch: ModelAuthoringBatch, dataStore: IfcDataStore, modelId: string, draft: StoreEditor, row: DryRunRow, refs: Map<string, number>): void {
   const { op, resolved } = row;
   switch (op.op) {
+    case 'material.layers':
+      writeReviewedLayers({ modelId, dataStore, view: draft.getMutationView(), editor: draft }, draft,
+        draftMethods(dataStore, modelId, draft), resolved.layers!);
+      return;
     case 'type.detach':
       detachFromType(draft, dataStore, [resolved.target!]);
       return;

@@ -11,6 +11,7 @@
  * anything moved since.
  */
 
+import { resolveReviewedLayers, LayerRefusal } from './model-authoring-layers';
 import type { ViewerState } from '@/store';
 import { mutationDenial } from '@/store/mutation-permission';
 import { materialsOf, typeOf } from '@/lib/commands/modeling/authored-kinds';
@@ -221,6 +222,22 @@ function resolve(ctx: Context, row: AuthoringRow): void {
       row.resolved.target = row.expressId = existing(ctx, op.target, row);
       const root = transformRoot(ctx, row, row.expressId);
       return op.op === 'element.move' ? checkMove(ctx, op, root) : checkTurn(ctx, row, op, root);
+    }
+    case 'material.layers': {
+      row.resolved.target = row.expressId = existing(ctx, op.target, row);
+      try {
+        row.resolved.layers = resolveReviewedLayers(ctx.state, reader(ctx, row.modelId!), row.expressId, op, ctx.batch.units);
+      } catch (error) {
+        if (error instanceof LayerRefusal) throw new Refusal(error.status, error.message);
+        throw error;
+      }
+      if (op.scope === 'element' && row.resolved.layers.kind === 'wall') {
+        const ghost = authoringSizeGhost(ctx.state, ctx.batch, row, row.modelId!, row.expressId);
+        row.previewUnavailable = ghost.unavailable;
+        row.previewOmitted = ghost.omitted;
+        row.previewOuterBodyOnly = ghost.outerBodyOnly;
+      } else row.previewUnavailable = true;
+      return;
     }
     case 'type.detach': {
       row.resolved.target = row.expressId = existing(ctx, op.target, row);

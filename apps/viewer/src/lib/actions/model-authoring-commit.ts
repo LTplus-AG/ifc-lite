@@ -14,6 +14,7 @@
  */
 
 import type { StoreApi } from 'zustand';
+import { writeReviewedLayers } from './model-authoring-layers';
 import { generateIfcGuid } from '@ifc-lite/encoding';
 import type { ViewerState } from '@/store';
 import { copyElements } from '@/lib/commands/modeling/copy-elements';
@@ -109,6 +110,15 @@ function writeRow(tx: AuthoringTransaction, batch: ModelAuthoringBatch, row: Aut
         ids.set(ref, id); refs.set(ref, globalId);
         return { ...base, globalId, field: entity.type, before: null, after: typeof entity.attributes[2] === 'string' ? entity.attributes[2] : null };
       });
+    }
+    case 'material.layers': {
+      const dataStore = tx.store.models.get(modelId)?.ifcDataStore;
+      if (!dataStore) throw new Error('The native model source is unavailable');
+      const changed = recordModellingEdit(tx.api, modelId, (methods, draft) => writeReviewedLayers(
+        { modelId, dataStore, view: draft.getMutationView(), editor: draft }, draft, methods, resolved.layers!), tx.batchId);
+      written.remesh.push(...changed);
+      return [{ ...base, globalId: op.target.globalId, field: 'MaterialLayers', before: JSON.stringify(op.expected),
+        after: JSON.stringify({ scope: op.scope, MaterialLayers: op.MaterialLayers }) }];
     }
     case 'type.detach': {
       const dataStore = tx.store.models.get(modelId)?.ifcDataStore;

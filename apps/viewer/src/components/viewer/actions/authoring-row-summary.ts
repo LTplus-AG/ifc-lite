@@ -83,6 +83,16 @@ export function authoringRowSummary(row: AuthoringRow, batch: ModelAuthoringBatc
     case 'type.assign':
       return { subject: ref(op.target, t), before: before.type ?? none,
         after: 'create' in op.type ? t('modelAuthoring.newType', { name: op.type.create.name, ifcClass: op.type.create.ifcClass }) : op.type.name };
+    case 'material.layers': {
+      const describe = (layers: typeof op.MaterialLayers) => layers.map(layer => `${num(layer.LayerThickness)} ${units} · ${layer.Material === null ? none : 'create' in layer.Material ? t('modelAuthoring.newMaterial', { name: layer.Material.create.Name }) : layer.Material.Name || none}`).join('; ');
+      const detail = [row.previewUnavailable ? t('modelAuthoring.editPreviewUnavailable') : '',
+        row.previewOuterBodyOnly ? t('modelAuthoring.outerBodyPreview') : '',
+        row.previewOmitted?.length ? t('modelAuthoring.filletPreview', { fields: row.previewOmitted.join(', ') }) : ''].filter(Boolean).join(' ');
+      return { subject: ref(op.target, t), before: describe(op.scope === 'type' ? op.expected.typeLayers?.MaterialLayers ?? [] : op.expected.MaterialLayers), after: describe(op.MaterialLayers),
+        previewNote: (op.scope === 'type' ? t('modelAuthoring.layersTypeNote', { type: op.expected.type?.Name ?? none,
+          count: op.expected.peers?.length ?? 0, peers: op.expected.peers?.map(peer => peer.name || peer.globalId).join(', ') ?? none })
+          : t(row.resolved.layers?.kind === 'wall' ? 'modelAuthoring.layersWallNote' : 'modelAuthoring.layersElementNote')) + (detail ? ` ${detail}` : '') };
+    }
     case 'material.assign':
       return { subject: ref(op.target, t), before: before.material ?? none,
         after: row.resolved.materialId === null ? t('modelAuthoring.newMaterial', { name: op.material.name }) : op.material.name };

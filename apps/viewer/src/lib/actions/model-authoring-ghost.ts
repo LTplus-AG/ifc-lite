@@ -141,7 +141,7 @@ export function authoringGhosts(state: ViewerState, preview: ModelAuthoringPrevi
   for (const row of preview.rows) {
     if (row.status !== 'ready' || !row.modelId) continue;
     const id = commandGhostId(state, GHOST_INDEX + row.index);
-    if (row.op.op === 'element.resize' || row.op.op === 'element.profile') {
+    if (row.op.op === 'element.resize' || row.op.op === 'element.profile' || (row.op.op === 'material.layers' && row.op.scope === 'element' && row.resolved.layers?.kind === 'wall')) {
       const ghost = authoringSizeGhost(state, preview.batch, row, row.modelId, id);
       if (ghost.mesh) meshes.push(ghost.mesh);
       continue;

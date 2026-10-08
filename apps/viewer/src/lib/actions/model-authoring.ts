@@ -18,6 +18,7 @@
  * counter-clockwise seen from above. Nothing here writes.
  */
 
+import { parseLayerFields, type LayerFields } from './model-authoring-layer-params';
 import { parseShapeParams, parseProfileSectionParams, AUTHORING_OUTLINE_WORK_LIMIT, type ShapeParams } from './model-authoring-shape-params';
 import { parseSizeParams, type ExpectedSize } from './model-authoring-size-params';
 import type { ProfileSection } from '@ifc-lite/create';
@@ -57,6 +58,7 @@ export type AuthoringOp =
   | { op: 'element.rotate'; target: ExistingElement; angleDeg: number; fromDeg?: number }
   | { op: 'type.detach'; target: ExistingElement; expected: { GlobalId: string; Name: string } }
   | { op: 'type.assign'; target: ElementTarget; expected?: string | null; type: { globalId: string; name: string } | { create: { ifcClass: string; name: string } } }
+  | ({ op: 'material.layers'; target: ExistingElement } & LayerFields)
   | { op: 'material.assign'; target: ElementTarget; expected?: string | null; material: { name: string; create: boolean } }
   | { op: 'walls.join'; walls: [ElementTarget, ElementTarget] }
   /** A door, window or opening in a host wall: `offset` from the wall's placement origin along it to the centre, `sill` above it. */
@@ -64,7 +66,7 @@ export type AuthoringOp =
 
 export type AuthoringOpName = AuthoringOp['op'];
 export const AUTHORING_OPS: readonly AuthoringOpName[] = ['element.create', 'element.delete', 'element.resize', 'element.profile', 'element.move', 'element.rotate', 'element.copy', 'element.array',
-  'type.assign', 'type.detach', 'material.assign', 'walls.join', 'hosted.create'];
+  'type.assign', 'type.detach', 'material.assign', 'material.layers', 'walls.join', 'hosted.create'];
 
 export interface ModelAuthoringBatch {
   version: 1;
@@ -236,6 +238,8 @@ function operation(value: unknown, index: number, units: AuthoringUnits, refs: M
       if (create && !/^Ifc[A-Za-z0-9]+Type$/.test(chosen.create!.ifcClass)) throw new Error(`${at}: a new type needs an Ifc…Type class`);
       return { op: 'type.assign', target, ...expectedName(value, target, at), type: chosen as Extract<AuthoringOp, { op: 'type.assign' }>['type'] };
     }
+    case 'material.layers':
+      return { op: 'material.layers', target: existing(value.target, at), ...parseLayerFields(value, units, at, existing) };
     case 'material.assign': {
       const target = element(value.target, at, refs);
       const material = record(value.material) ? value.material : null;

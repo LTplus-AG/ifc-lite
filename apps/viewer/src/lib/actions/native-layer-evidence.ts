@@ -18,7 +18,13 @@ export const NATIVE_LAYER_PEER_LIMIT = 200;
 export type LayerKind = 'wall' | 'slab' | 'roof' | 'plate';
 export interface NativeMaterialRef { modelId: string; expressId: number; Name: string }
 export interface NativeExpectedLayer { LayerThickness: number; Material: NativeMaterialRef | null }
+export interface NativeLayerPopulation {
+  assignments: Array<{ expressId: number; ifcClass: string }>;
+  layerSetId: number | null;
+  MaterialLayers: NativeExpectedLayer[];
+}
 export interface NativeLayerExpected {
+  typeLayers: NativeLayerPopulation | null;
   assignments: Array<{ expressId: number; ifcClass: string }>;
   layerSetId: number | null;
   via: 'element' | 'type' | 'none';
@@ -35,6 +41,8 @@ export interface NativeLayerEvidence {
   assignmentCount: number | null;
   layerCount: number | null;
   peerCount: number | null;
+  typeAssignmentCount: number | null;
+  typeLayerCount: number | null;
   typeScopeStatus: 'available' | 'unavailable' | 'truncated';
   expected: NativeLayerExpected | null;
 }
@@ -45,7 +53,7 @@ const caches = new WeakMap<ModelEditTarget, Map<number, NativeLayerEvidence>>();
 /** Complete current native layer facts; bounds keep counts and revoke incomplete expected snapshots (#7275). */
 export function nativeLayerEvidence(state: NativeReadState, target: ModelEditTarget | null, expressId: number): NativeLayerEvidence {
   const unknown: NativeLayerEvidence = { units: 'm', status: 'unavailable', kind: null,
-    assignmentCount: null, layerCount: null, peerCount: null, typeScopeStatus: 'unavailable', expected: null };
+    assignmentCount: null, layerCount: null, peerCount: null, typeAssignmentCount: null, typeLayerCount: null, typeScopeStatus: 'unavailable', expected: null };
   if (!target || target.view.isDeleted(expressId)) return unknown;
   let cache = caches.get(target);
   if (!cache) { cache = new Map(); caches.set(target, cache); }
@@ -63,34 +71,17 @@ export function nativeLayerEvidence(state: NativeReadState, target: ModelEditTar
     const own = relations.filter(row => row.relatedIds.includes(expressId));
     const inherited = typeId === null ? [] : relations.filter(row => row.relatedIds.includes(typeId));
     const current = own.length ? own : inherited;
-    const assignments: NativeLayerExpected['assignments'] = [];
-    for (const row of current) {
-      const record = effectiveMetadataRecord(target.dataStore, row.relatingId, target.view);
-      if (!record || !record.attributes.length) return unavailable;
-      assignments.push({ expressId: row.relatingId, ifcClass: record.type });
-    }
-    const set = layerSetOf(target, expressId);
-    const layerCount = set?.layers.length ?? 0;
+    const population = readPopulation(target, expressId, current);
+    const typePopulation = typeId === null ? null : materialAssignmentsAvailable(target.dataStore, typeId, target.view)
+      ? readPopulation(target, typeId, inherited) : { assignmentCount: null, layerCount: null, truncated: false, value: null };
     const peers = typeId === null ? [] : [...new Set(occurrencesOf(target, typeId))].sort((a, b) => a - b);
-    const counts = { assignmentCount: assignments.length, layerCount, peerCount: peers.length };
-    if (layerCount > NATIVE_LAYER_LIMIT || assignments.length > NATIVE_LAYER_LIMIT) return { ...unavailable, ...counts, status: 'truncated' };
-    if (!set && assignments.some(row => ['IfcMaterialLayerSet', 'IfcMaterialLayerSetUsage'].includes(row.ifcClass))) return { ...unavailable, ...counts };
-    const layers: NativeExpectedLayer[] = [];
-    for (const layer of set?.layers ?? []) {
-      if (!Number.isFinite(layer.thickness) || layer.thickness < 0) return { ...unavailable, ...counts };
-      let Material: NativeMaterialRef | null = null;
-      if (layer.materialId !== null) {
-        if (!liveEntityConforms(target.dataStore, layer.materialId, 'IfcMaterial', target.view)) return { ...unavailable, ...counts };
-        const record = effectiveMetadataRecord(target.dataStore, layer.materialId, target.view);
-        if (!record || !record.attributes.length) return { ...unavailable, ...counts };
-        const Name = entityName(target, layer.materialId);
-        if (Name.length > 200) return { ...unavailable, ...counts };
-        Material = { modelId: target.modelId, expressId: layer.materialId, Name };
-      }
-      layers.push({ LayerThickness: layer.thickness, Material });
-    }
-    let typeScopeStatus: NativeLayerEvidence['typeScopeStatus'] = binding.status === 'unavailable' ? 'unavailable' : 'available';
+    const counts = { assignmentCount: population.assignmentCount, layerCount: population.layerCount, peerCount: peers.length,
+      typeAssignmentCount: typePopulation?.assignmentCount ?? (binding.status === 'untyped' ? 0 : null),
+      typeLayerCount: typePopulation?.layerCount ?? (binding.status === 'untyped' ? 0 : null) };
+    if (!population.value) return { ...unavailable, ...counts, status: population.truncated ? 'truncated' : 'unavailable' };
+    let typeScopeStatus: NativeLayerEvidence['typeScopeStatus'] = binding.status === 'unavailable' || typePopulation && !typePopulation.value ? 'unavailable' : 'available';
     let peerRefs: ExistingElement[] | null = [];
+    if (typePopulation?.truncated) typeScopeStatus = 'truncated';
     if (peers.length > NATIVE_LAYER_PEER_LIMIT) { typeScopeStatus = 'truncated'; peerRefs = null; }
     else for (const id of peers) {
       const globalId = resolveEntityRefGlobalIdFromState({ models: state.models, ifcDataStore: null,
@@ -100,12 +91,46 @@ export function nativeLayerEvidence(state: NativeReadState, target: ModelEditTar
       peerRefs!.push({ globalId, modelId: target.modelId, ifcClass: record.type, name });
     }
     return { units: 'm', status: 'available', kind, ...counts, typeScopeStatus, expected: {
-      assignments, layerSetId: set?.layerSetId ?? null, via: own.length ? 'element' : inherited.length ? 'type' : 'none',
-      MaterialLayers: layers, type: binding.expected, typeStatus: binding.status, peers: peerRefs,
+      ...population.value, typeLayers: typePopulation?.value ?? null, via: own.length ? 'element' : inherited.length ? 'type' : 'none',
+      type: binding.expected, typeStatus: binding.status, peers: peerRefs,
       wall: kind === 'wall' ? readAuthoringSizeFromTarget(target, expressId, 'wall') : null,
     } };
   };
   const result = read();
   cache.set(expressId, result);
   return result;
+}
+
+
+/** One canonical population reader for occurrence and separately pinned type assignments. */
+function readPopulation(target: ModelEditTarget, expressId: number,
+  relations: ReturnType<typeof readRelatedLists>): { assignmentCount: number; layerCount: number | null; truncated: boolean; value: NativeLayerPopulation | null } {
+  const assignmentCount = relations.length;
+  const unavailable = { assignmentCount, layerCount: null, truncated: false, value: null };
+  const assignments: NativeLayerPopulation['assignments'] = [];
+  for (const row of relations) {
+    const record = effectiveMetadataRecord(target.dataStore, row.relatingId, target.view);
+    if (!record || !record.attributes.length) return unavailable;
+    assignments.push({ expressId: row.relatingId, ifcClass: record.type });
+  }
+  const set = layerSetOf(target, expressId);
+  if (!set && assignments.some(row => ['IfcMaterialLayerSet', 'IfcMaterialLayerSetUsage'].includes(row.ifcClass))) return unavailable;
+  const layerCount = set?.layers.length ?? 0;
+  const counts = { ...unavailable, layerCount };
+  if (layerCount > NATIVE_LAYER_LIMIT || assignmentCount > NATIVE_LAYER_LIMIT) return { ...counts, truncated: true };
+  const MaterialLayers: NativeExpectedLayer[] = [];
+  for (const layer of set?.layers ?? []) {
+    if (!Number.isFinite(layer.thickness) || layer.thickness < 0) return counts;
+    let Material: NativeMaterialRef | null = null;
+    if (layer.materialId !== null) {
+      if (!liveEntityConforms(target.dataStore, layer.materialId, 'IfcMaterial', target.view)) return counts;
+      const record = effectiveMetadataRecord(target.dataStore, layer.materialId, target.view);
+      if (!record || !record.attributes.length) return counts;
+      const Name = entityName(target, layer.materialId);
+      if (Name.length > 200) return counts;
+      Material = { modelId: target.modelId, expressId: layer.materialId, Name };
+    }
+    MaterialLayers.push({ LayerThickness: layer.thickness, Material });
+  }
+  return { ...counts, value: { assignments, layerSetId: set?.layerSetId ?? null, MaterialLayers } };
 }

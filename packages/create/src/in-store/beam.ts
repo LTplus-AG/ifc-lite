@@ -21,8 +21,8 @@
 
 import { generateIfcGuid } from '@ifc-lite/encoding';
 import type { StoreEditor } from '@ifc-lite/mutations';
-import { vecCross, vecNorm, assertFinitePoint3 } from '../ifc-creator-math.js';
-import type { Point3D } from '../types.js';
+import { assertFinitePoint3 } from '../ifc-creator-math.js';
+import { linearProfileFrame } from './linear-profile-frame.js';
 import { toNativeLength, toNativePoint3, type SpatialAnchor } from './anchor.js';
 import { emitRectangleProfile, ownerHistoryRef, productGuid } from './_emit-helpers.js';
 import { emitProfileSection, linearSection, type ProfileSection } from './profile.js';
@@ -61,13 +61,6 @@ export interface BeamBuildResult {
   relContainedId: number;
 }
 
-/**
- * Stable perpendicular to a beam axis. Mirrors IfcCreator.computeRefDirection.
- */
-function computeRefDirection(axis: Point3D): Point3D {
-  const up: Point3D = Math.abs(axis[2]) < 0.9 ? [0, 0, 1] : [1, 0, 0];
-  return vecNorm(vecCross(up, axis));
-}
 
 export function addBeamToStore(
   editor: StoreEditor,
@@ -91,8 +84,7 @@ export function addBeamToStore(
     throw new Error('addBeamToStore: Start and End must be distinct points');
   }
   const section = linearSection(anchor, params, 'addBeamToStore');
-  const dir: Point3D = vecNorm([dx, dy, dz]);
-  const refDir = computeRefDirection(dir);
+  const { along: dir, u: refDir } = linearProfileFrame(start, end);
 
   // Placement at Start with local Z along the beam axis.
   const beamOriginPt = editor.addEntity('IfcCartesianPoint', [start]).expressId;

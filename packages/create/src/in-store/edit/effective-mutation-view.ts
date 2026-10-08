@@ -31,6 +31,7 @@ export function effectiveMutationRelationships(
   const supersededSourceIds = new Set(result.supersededSourceIds);
   for (const change of view.getEffectiveChanges()) {
     if (view.getNewEntity(change.entityId)) continue;
+    // @raw-entity-enumeration-ok Immutable indexed kind identifies superseded original graph edges when source bytes are absent; it does not resolve current endpoints.
     const types = [store.entityIndex.byId.get(change.entityId)?.type,
       store.entities.getTypeName(change.entityId), view.getEntityTypeMutation(change.entityId)?.newType];
     if (types.some(type => type?.toUpperCase().startsWith('IFCREL'))) supersededSourceIds.add(change.entityId);

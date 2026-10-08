@@ -15,6 +15,7 @@ export function relationshipPopulationUnavailable(
   return Boolean(view?.getEffectiveChanges().some(change => {
     // Complete authored records do not require the missing original source.
     if (view.getNewEntity(change.entityId)) return false;
+    // @raw-entity-enumeration-ok Immutable indexed kind identifies an unreadable edited source relationship; current membership remains unavailable, not inferred from the index.
     const types = [store.entityIndex.byId.get(change.entityId)?.type,
       store.entities.getTypeName(change.entityId), view.getEntityTypeMutation(change.entityId)?.newType];
     return types.some(type => type?.toUpperCase().startsWith('IFCREL'));

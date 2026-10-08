@@ -32,7 +32,7 @@ export const EVIDENCE_PANEL: Record<FindingEvidence['kind'], WorkspacePanelId> =
 useClashGroupLibrary.subscribe((next, previous) => {
   if (next.activeId === previous.activeId) return;
   const held = useClashApplicationFocus.getState().record;
-  if (held && held.activeWorkspaceId !== next.activeId) useClashApplicationFocus.setState({ record: null });
+  if (held && held.contextWorkspaceId !== next.activeId) useClashApplicationFocus.setState({ record: null });
 });
 
 /** Whether the original can still be reached: a historical clash baseline has no row in the live clash list. */
@@ -49,9 +49,10 @@ export function openOriginal(finding: ReviewFinding, openPanel: (panel: Workspac
     const receipt = useClashGroupApplications.getState().entries.find(entry => entry.id === evidence.applicationId);
     if (!receipt || receipt.createdAt !== finding.run.capturedAt || !receipt.addedGroupIds.includes(evidence.groupId)
       || receipt.after.groups.filter(group => group.id === evidence.groupId).length !== 1) return false;
-    if (useClashGroupLibrary.getState().entries.some(workspace => workspace.id === receipt.workspaceId))
-      useClashGroupLibrary.setState({ activeId: receipt.workspaceId });
-    useClashApplicationFocus.setState({ record: { applicationId: evidence.applicationId, activeWorkspaceId: useClashGroupLibrary.getState().activeId } });
+    const orphaned = !useClashGroupLibrary.getState().entries.some(workspace => workspace.id === receipt.workspaceId);
+    if (!orphaned) useClashGroupLibrary.setState({ activeId: receipt.workspaceId });
+    useClashApplicationFocus.setState({ record: { applicationId: evidence.applicationId, workspaceId: receipt.workspaceId,
+      contextWorkspaceId: useClashGroupLibrary.getState().activeId, orphaned } });
   } else if (evidence.kind === 'clash') {
     if (!state.clashResult?.clashes.some(clash => clash.id === evidence.clashId)) return false;
     state.setClashSelectedId(evidence.clashId);

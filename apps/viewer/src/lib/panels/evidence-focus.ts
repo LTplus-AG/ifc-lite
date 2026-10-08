@@ -9,5 +9,5 @@ export const useSemanticRecordFocus = create<{ record: { resourceId: string } | 
 
 export const useReconciliationFocus = create<{ record: { baseRunId: string; headRunId: string; identity: string } | null }>(() => ({ record: null }));
 
-export interface ClashApplicationFocusRequest { applicationId: string; activeWorkspaceId: string }
+export interface ClashApplicationFocusRequest { applicationId: string; workspaceId: string; contextWorkspaceId: string; orphaned: boolean }
 export const useClashApplicationFocus = create<{ record: ClashApplicationFocusRequest | null }>(() => ({ record: null }));

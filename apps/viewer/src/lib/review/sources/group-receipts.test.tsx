@@ -188,3 +188,24 @@ test('#7089 switching native workspaces ends the original receipt context withou
   assert.equal(useClashGroupLibrary.getState().activeId, source.receipt.workspaceId);
   assert.equal(ui.textContent?.includes('Other native workspace'), false);
 });
+
+
+test('#7089 an orphaned original receipt stays separate from another workspace application list', async t => {
+  const source = await applied(t); if (!source) return;
+  assert.equal((await undoClashGroupApplication(source.receipt)).ok, true);
+  const planned = planClashGroupApply([{ name: 'Current native group', members: source.result.clashes.slice(0, 2).map(manualClashOccurrenceKey) }],
+    newWorkspaceBase('Current native workspace'), source.result.clashes); assert.ok(planned.ok);
+  const current = await applyClashGroupPlan(planned.plan, { confirmMoves: false, origin: '#7089 orphan boundary', source: 'full-run', partial: false });
+  assert.ok(current.ok);
+  const finding = projected().find(finding => finding.evidence.kind === 'clash-group-application' && finding.evidence.applicationId === source.receipt.id); assert.ok(finding);
+  assert.equal(openOriginal(finding, () => {}), true);
+  const ui = render(<ClashGroupApplications />);
+  await waitFor(() => ui.querySelector('[data-original-clash-application] [aria-current="true"]') !== null, 'orphaned receipt original');
+  const applications = ui.querySelector('[data-clash-workspace-applications]'); assert.ok(applications);
+  assert.ok(applications.textContent?.includes(current.receipt.workspaceName));
+  assert.equal(applications.textContent?.includes(source.receipt.workspaceName), false);
+  assert.equal(applications.querySelectorAll('[aria-live="polite"]').length, 1);
+  assert.equal(useClashGroupLibrary.getState().activeId, current.receipt.workspaceId, 'a missing historical workspace is not installed as the active one');
+  const original = ui.querySelector('[data-original-clash-application]'); assert.ok(original?.textContent?.includes(source.receipt.workspaceName));
+  assert.equal(document.activeElement, original.querySelector('[aria-current="true"]'));
+});

@@ -87,17 +87,26 @@ export function ClashGroupApplications() {
   const activeId = useClashGroupLibrary(state => state.activeId);
   const entries = useClashGroupApplications(state => state.entries);
   const requested = useClashApplicationFocus(s => s.record);
-  const focus = requested?.activeWorkspaceId === activeId ? requested : null;
+  const focus = requested?.contextWorkspaceId === activeId ? requested : null;
   useEffect(() => { void clashGroupApplicationLibrary.initialize(); }, []);
-  const receipts = useMemo(() => entries.filter(entry => entry.id === focus?.applicationId || (entry.workspaceId === activeId && entry.status === 'applied'))
-    .sort((a, b) => b.createdAt.localeCompare(a.createdAt)), [entries, activeId, focus]);
+  const receipts = useMemo(() => entries.filter(entry => entry.workspaceId === activeId && entry.status === 'applied')
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt)), [entries, activeId]);
+  const original = entries.find(entry => entry.id === focus?.applicationId);
+  const detached = original && !receipts.includes(original) ? original : null;
   const disclosure = useRef<HTMLDetailsElement>(null);
-  const hasOriginal = !!focus && receipts.some(receipt => receipt.id === focus.applicationId);
+  const originalDisclosure = useRef<HTMLDetailsElement>(null);
+  const hasOriginal = !!focus && !!original;
   // A new request must restore the browser's mutable disclosure before child focus effects run.
-  useLayoutEffect(() => { if (hasOriginal && disclosure.current) disclosure.current.open = true; }, [focus, hasOriginal]);
-  if (!receipts.length) return null;
-  return <details ref={disclosure} className="px-2 py-1">
+  useLayoutEffect(() => {
+    const target = detached ? originalDisclosure.current : disclosure.current;
+    if (hasOriginal && target) target.open = true;
+  }, [focus, hasOriginal, detached]);
+  if (!receipts.length && !detached) return null;
+  return <>{receipts.length > 0 && <details ref={disclosure} data-clash-workspace-applications className="px-2 py-1">
     <summary className="cursor-pointer font-medium">{t('clashApply.applicationsTitle', { count: receipts.length })}</summary>
     <div className="mt-1 max-h-64 space-y-2 overflow-y-auto">{receipts.map(receipt => <ClashGroupApplicationCard key={receipt.id} receipt={receipt} focusRequest={focus} />)}</div>
-  </details>;
+  </details>}{detached && <details ref={originalDisclosure} data-original-clash-application className="px-2 py-1">
+    <summary className="cursor-pointer font-medium">{detached.workspaceName}</summary>
+    <ClashGroupApplicationCard receipt={detached} focusRequest={focus} />
+  </details>}</>;
 }

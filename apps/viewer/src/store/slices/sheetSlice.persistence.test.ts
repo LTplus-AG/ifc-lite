@@ -152,20 +152,22 @@ describe('sheet storage (#4836)', () => {
     assert.match(localStorage.getItem(sheetStorageKey('newest')) ?? '', /"savedOrder":"\d+"/);
   });
 
-  it('clears without consuming an eviction slot, and logs failed removals', () => {
+  it('persists an explicit clear within the bounded cache and preserves the last choice if the write fails', () => {
     const sheet = createDefaultSheet();
     for (let i = 0; i < 20; i++) saveSheet(`kept-${i}`, sheet);
-    saveSheet('never-saved', null);
-    assert.equal(localStorage.length, 20);
-    for (let i = 0; i < 20; i++) assert.deepEqual(loadSheet(`kept-${i}`), sheet);
     const warn = mock.method(console, 'warn', () => {});
-    const remove = mock.method(localStorage, 'removeItem', () => { throw new Error('storage denied'); });
+    const write = mock.method(localStorage, 'setItem', () => { throw new Error('storage denied'); });
     saveSheet('kept-0', null);
-    remove.mock.restore();
+    write.mock.restore();
     assert.deepEqual(loadSheet('kept-0'), sheet);
     assert.equal(warn.mock.callCount(), 1);
     warn.mock.restore();
     saveSheet('kept-0', null);
-    assert.equal(localStorage.getItem(sheetStorageKey('kept-0')), null);
+    assert.equal(loadSheet('kept-0'), null);
+    assert.equal(JSON.parse(localStorage.getItem(sheetStorageKey('kept-0'))!).sheet, null);
+    saveSheet('new-choice', null);
+    assert.equal(localStorage.length, 20, 'cleared choices cannot grow storage without a bound');
+    assert.equal(loadSheet('kept-1'), null, 'the least recent choice is evicted');
+    for (let i = 2; i < 20; i++) assert.deepEqual(loadSheet(`kept-${i}`), sheet);
   });
 });

@@ -87,7 +87,7 @@ test('#7204 whole-pass native split button publishes captured source, actual cou
   assert.ok(view.querySelector('[data-status="complete"]'));
   assert.match(view.textContent ?? '', /1 proved splits \/ 1 cached entity outcomes/);
   assert.match(view.textContent ?? '', /Bonsai A\.ifc/);
-  assert.match(view.textContent ?? '', new RegExp(f.guid));
+  assert.ok((view.textContent ?? '').includes(f.guid));
   assert.match(view.textContent ?? '', /IfcWall/);
   assert.ok(view.querySelector('fieldset[aria-label="Result actions"]'), 'existing native split button is the named action');
 });
@@ -182,7 +182,7 @@ test('#7204 native geometry without its IFC table preserves measurements and dis
   const ui = render(<ZoneApportionSummary zoneSet={f.zoneSet} />); const view = region(ui);
   assert.ok(view.querySelector('[data-status="partial"]'));
   assert.match(view.textContent ?? '', /1 cached entity identities are unavailable/);
-  assert.doesNotMatch(view.textContent ?? '', new RegExp(f.guid));
+  assert.equal((view.textContent ?? '').includes(f.guid), false);
   assert.match(view.textContent ?? '', /1 proved splits \/ 1 cached entity outcomes/);
 });
 
@@ -225,7 +225,7 @@ test('#7204 native report remount preserves captured source even after a model r
   useViewerStore.getState().setModelName(f.names[0], 'Later model name.ifc');
   const ui = render(<ZoneApportionSummary zoneSet={f.zoneSet} />); const view = region(ui);
   assert.match(view.textContent ?? '', /Bonsai A\.ifc/); assert.doesNotMatch(view.textContent ?? '', /Later model name/);
-  assert.match(view.textContent ?? '', new RegExp(f.guid));
+  assert.ok((view.textContent ?? '').includes(f.guid));
 });
 
 test('#7204 actual legacy single-model native split uses its retained source and GUID', async t => {
@@ -235,7 +235,7 @@ test('#7204 actual legacy single-model native split uses its retained source and
   const ui = render(<ZoneApportionSummary zoneSet={f.zoneSet} />); const view = region(ui);
   assert.ok(view.querySelector('[data-status="complete"]'));
   assert.match(view.textContent ?? '', /Single-model source/);
-  assert.match(view.textContent ?? '', new RegExp(f.guid));
+  assert.ok((view.textContent ?? '').includes(f.guid));
 });
 
 test('#7204 unrun and an explicitly evaluated empty native pass remain distinct', async t => {
@@ -256,18 +256,19 @@ test('#7204 fresh native split captures current edited Name, class and GlobalId 
   if(!ensureWasm(t))return;
   const f=await seed(),modelId=f.names[0],id=f.wall.expressId,view=new MutablePropertyView(f.store.properties,modelId);
   configureMutationView(view,f.store);useViewerStore.setState({mutationViews:new Map([[modelId,view]]),editEnabled:true,session:null});
-  const state=useViewerStore.getState(),guid=(f.guid[0]==='0'?'1':'0')+f.guid.slice(1);
-  assert.ok(state.setAttribute(modelId,id,'Name','Current native split wall'));
+  // #7281: valid IFC base64 identity and literal Name must exercise regex metacharacters deterministically.
+  const state=useViewerStore.getState(),guid='0$abcdefghijklmnopqrst';
+  assert.ok(state.setAttribute(modelId,id,'Name','Current native split [wall] ($)'));
   assert.ok(state.setAttribute(modelId,id,'GlobalId',guid));
   assert.ok(state.setEntityType(modelId,id,'IfcWall'));
   const bytes=editedModelBytes(f.store,view),parsed=await new IfcParser().parseColumnar(bytes.buffer as ArrayBuffer,{disableWorkerScan:true}),persisted=parsed.entities.getExpressIdByGlobalId(guid);
-  assert.ok(persisted>0);assert.equal(parsed.entities.getName(persisted),'Current native split wall');assert.equal(parsed.entities.getTypeName(persisted),'IfcWall');
+  assert.ok(persisted>0);assert.equal(parsed.entities.getName(persisted),'Current native split [wall] ($)');assert.equal(parsed.entities.getTypeName(persisted),'IfcWall');
   const entry=computeZoneApportionmentNow(f.zoneSet);assert.equal(entry.byElement.size,1,'unchanged actual native body still clips');
   const ui=render(<ZoneApportionSummary zoneSet={f.zoneSet}/>),evidence=region(ui).querySelector('ul[aria-label="Cached split source entities"]');assert.ok(evidence);
   assert.ok(region(ui).querySelector('[data-status="complete"]'),'current native revisions are captured after the edit');
-  assert.match(evidence.textContent??'',new RegExp(parsed.entities.getGlobalId(persisted)));
-  assert.match(evidence.textContent??'',new RegExp(parsed.entities.getName(persisted)));
-  assert.match(evidence.textContent??'',new RegExp(parsed.entities.getTypeName(persisted)));
+  assert.ok((evidence.textContent??'').includes(parsed.entities.getGlobalId(persisted)));
+  assert.ok((evidence.textContent??'').includes(parsed.entities.getName(persisted)));
+  assert.ok((evidence.textContent??'').includes(parsed.entities.getTypeName(persisted)));
 });
 
 test('#7204 native newly authored refused geometry still carries its actual exported identity',async t=>{
@@ -275,10 +276,10 @@ test('#7204 native newly authored refused geometry still carries its actual expo
   const f=await seed(),modelId=f.names[0],view=new MutablePropertyView(f.store.properties,modelId);
   configureMutationView(view,f.store);useViewerStore.setState({mutationViews:new Map([[modelId,view]]),editEnabled:true,session:null});
   const storey=[...f.store.entities.expressId].find(id=>f.store.entities.getTypeName(id)==='IfcBuildingStorey');assert.ok(storey);
-  const made=useViewerStore.getState().addWall(modelId,storey,{Start:[0,5,0],End:[8,5,0],Height:3,Thickness:.2,Name:'Authored cached source'});assert.ok('expressId' in made);
-  const bytes=editedModelBytes(f.store,view),parsed=await new IfcParser().parseColumnar(bytes.buffer as ArrayBuffer,{disableWorkerScan:true}),guid=parsed.entities.getGlobalId(made.expressId);assert.ok(guid);
+  const made=useViewerStore.getState().addWall(modelId,storey,{Start:[0,5,0],End:[8,5,0],Height:3,Thickness:.2,Name:'Authored cached [source] ($)',GlobalId:'1$abcdefghijklmnopqrst'});assert.ok('expressId' in made);
+  const bytes=editedModelBytes(f.store,view),parsed=await new IfcParser().parseColumnar(bytes.buffer as ArrayBuffer,{disableWorkerScan:true}),guid=parsed.entities.getGlobalId(made.expressId);assert.equal(guid,'1$abcdefghijklmnopqrst','the actual native writer/export retains the deterministic metacharacter identity');assert.equal(parsed.entities.getName(made.expressId),'Authored cached [source] ($)');
   const globalId=useViewerStore.getState().toGlobalId(modelId,made.expressId),outcome=computeZoneApportionmentForElement(f.zoneSet,globalId);
   assert.equal(outcome.apportionment,null);assert.equal(outcome.refusal,'no-geometry','the newly authored body has not been loaded into the real CPU scene');
   const ui=render(<ZoneApportionSummary zoneSet={f.zoneSet}/>),evidence=region(ui).querySelector('ul[aria-label="Cached split source entities"]');assert.ok(evidence);
-  assert.match(evidence.textContent??'',new RegExp(guid));assert.match(evidence.textContent??'',new RegExp(parsed.entities.getName(made.expressId)));assert.match(evidence.textContent??'',new RegExp(parsed.entities.getTypeName(made.expressId)));
+  assert.ok((evidence.textContent??'').includes(guid));assert.ok((evidence.textContent??'').includes(parsed.entities.getName(made.expressId)));assert.ok((evidence.textContent??'').includes(parsed.entities.getTypeName(made.expressId)));
 });

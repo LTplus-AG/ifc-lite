@@ -2,4 +2,4 @@
 "@ifc-lite/parser": minor
 ---
 
-Allow canonical material assignment/property readers to suppress inherited fallback when session occurrence assignments exist, preserving occurrence precedence across live and parsed data.
+Allow canonical material readers to consume native mutation views for current assignment precedence, relationship edits and material/property fields. Add materialAssignmentsAvailable for consumers to distinguish proven complete membership from unavailable transported source relationships.

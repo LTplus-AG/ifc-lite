@@ -50,9 +50,9 @@ export function resolveAllMaterialDefIds(store: IfcDataStore, entityId: number):
     return resolveMaterialOwnerAndDefIds(store, entityId).defIds;
 }
 
-export function resolveMaterialOwnerAndDefIds(store: IfcDataStore, entityId: number, includeInherited = true): { ownerId: number; defIds: number[] } {
+export function resolveMaterialOwnerAndDefIds(store: IfcDataStore, entityId: number): { ownerId: number; defIds: number[] } {
     const own = resolveOwnMaterialDefIds(store, entityId);
-    if (own.length > 0 || !includeInherited) return { ownerId: entityId, defIds: own };
+    if (own.length > 0) return { ownerId: entityId, defIds: own };
 
     // Type fallback: first type with any association wins (mirrors the
     // single-def lookup's `break`).

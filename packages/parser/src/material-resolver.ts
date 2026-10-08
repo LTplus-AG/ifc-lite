@@ -9,12 +9,13 @@
  */
 
 import { EntityExtractor } from './entity-extractor.js';
-import { getBoolean } from './attribute-helpers.js';
+import { getReference, getReferences } from './attribute-helpers.js';
+import { materialRecordReader, materialAssignmentState, type MaterialReadView, type MaterialRecordReader } from './material-overlay.js';
+import { resolveMaterial } from './material-definitions.js';
 import { RelationshipType } from '@ifc-lite/data';
 import type { IfcDataStore } from './columnar-parser.js';
 import { isIfcTypeLikeEntity } from './columnar-parser-indexes.js';
-import { resolveEntityLengthUnitScale } from './unit-extractor.js';
-import { resolveAllMaterialDefIds, resolveMaterialOwnerAndDefIds, resolveOwnMaterialDefIds } from './material-associations.js';
+import { resolveAllMaterialDefIds, resolveOwnMaterialDefIds } from './material-associations.js';
 export { resolveAllMaterialDefIds } from './material-associations.js';
 
 export interface MaterialInfo {
@@ -75,30 +76,27 @@ export interface MaterialConstituentInfo {
  * fallback IfcMaterial yield several. Order matches
  * {@link resolveAllMaterialDefIds}. Consumers that need a single value use
  * {@link extractMaterialsOnDemand} (=== element 0 here).
- * Set includeInherited=false when a caller supplies an occurrence assignment.
+ * An optional native view applies current assignments, aliases and material edits.
  */
 export function extractAllMaterialsOnDemand(
-    store: IfcDataStore,
-    entityId: number,
-    includeInherited = true
+    store: IfcDataStore, entityId: number, view?: MaterialReadView | null,
 ): MaterialInfo[] {
-    const { ownerId, defIds } = resolveMaterialOwnerAndDefIds(store, entityId, includeInherited);
-    if (defIds.length === 0) return [];
-    if (!store.source?.length) {
-        const resolved = store.resolvedMaterials?.get(ownerId);
-        // A missing or older wire row stays unverified. Never let a partial
-        // forwarding payload convert an unknown value into a confident mismatch.
-        return defIds.map((id): MaterialInfo =>
-            resolved?.get(id) ?? { type: 'Material', unresolved: true },
-        );
-    }
-    const extractor = new EntityExtractor(store.source);
-    const out: MaterialInfo[] = [];
-    for (const defId of defIds) {
-        const info = resolveMaterial(store, extractor, defId, new Set(), entityId);
-        if (info) out.push(info);
-    }
-    return out;
+    const { ownerId, defIds, complete } = materialAssignmentState(store, entityId, view);
+    const read = materialRecordReader(store, view);
+    return defIds.map((id): MaterialInfo => {
+        const record = read(id);
+        if (!store.source?.length) {
+            const edits = view?.getEffectiveChanges?.().some(edit => {
+                if (!['UPDATE_ATTRIBUTE', 'UPDATE_POSITIONAL_ATTRIBUTE', 'UPDATE_ENTITY_TYPE', 'DELETE_ENTITY'].includes(edit.type)) return false;
+                const sourceType = store.entityIndex.byId.get(edit.entityId)?.type ?? store.deferredEntityIndex?.get(edit.entityId)?.type;
+                return edit.entityId === id || Boolean(sourceType?.toUpperCase().startsWith('IFCMATERIAL'));
+            });
+            const forwarded = complete && !edits ? store.resolvedMaterials?.get(ownerId)?.get(id) : undefined;
+            if (forwarded) return forwarded;
+            if (!record || record.type.toUpperCase() !== 'IFCMATERIAL') return { type: 'Material', unresolved: true };
+        }
+        return resolveMaterial(store, read, id, new Set(), view?.resolveBaseEntityId?.(entityId) ?? entityId) ?? { type: 'Material', unresolved: true };
+    });
 }
 
 /**
@@ -110,250 +108,9 @@ export function extractAllMaterialsOnDemand(
  * Returns the entity's PRIMARY material (lowest-rel-express-id association);
  * use {@link extractAllMaterialsOnDemand} when every association matters.
  */
-export function extractMaterialsOnDemand(
-    store: IfcDataStore,
-    entityId: number
-): MaterialInfo | null {
-    const materialId = resolveAllMaterialDefIds(store, entityId)[0];
-    if (materialId === undefined) return null;
-    if (!store.source?.length) {
-        const info = extractAllMaterialsOnDemand(store, entityId)[0];
-        return info?.unresolved ? null : info ?? null;
-    }
-
-    const extractor = new EntityExtractor(store.source);
-    return resolveMaterial(store, extractor, materialId, new Set(), entityId);
-}
-
-/**
- * Resolve a material entity by ID, handling all IFC material types. `visited`
- * guards cyclic *Usage references; `originEntityId` (the calling element/type)
- * lets a layer's thickness resolve its own project's unit scale below.
- */
-function resolveMaterial(
-    store: IfcDataStore,
-    extractor: EntityExtractor,
-    materialId: number,
-    visited: Set<number> = new Set(), originEntityId?: number
-): MaterialInfo | null {
-    if (visited.has(materialId)) return null;
-    visited.add(materialId);
-
-    // @raw-entity-enumeration-ok decode the selected material definition's one source STEP record
-    const ref = store.entityIndex.byId.get(materialId);
-    if (!ref) return null;
-
-    const entity = extractor.extractEntity(ref);
-    if (!entity) return null;
-
-    const typeUpper = entity.type.toUpperCase();
-    const attrs = entity.attributes || [];
-
-    switch (typeUpper) {
-        case 'IFCMATERIAL': {
-            // IfcMaterial: [Name, Description, Category]
-            return {
-                type: 'Material',
-                name: typeof attrs[0] === 'string' ? attrs[0] : undefined,
-                description: typeof attrs[1] === 'string' ? attrs[1] : undefined,
-                category: typeof attrs[2] === 'string' ? attrs[2] : undefined,
-            };
-        }
-
-        case 'IFCMATERIALLAYERSET': {
-            // IfcMaterialLayerSet: [MaterialLayers, LayerSetName, Description]
-            const layerIds = Array.isArray(attrs[0]) ? attrs[0].filter((id): id is number => typeof id === 'number') : [];
-            const layers: MaterialLayerInfo[] = [];
-
-            for (const layerId of layerIds) {
-                // @raw-entity-enumeration-ok decode this material set's referenced layer record
-                const layerRef = store.entityIndex.byId.get(layerId);
-                if (!layerRef) continue;
-                const layerEntity = extractor.extractEntity(layerRef);
-                if (!layerEntity) continue;
-
-                const la = layerEntity.attributes || [];
-                // IfcMaterialLayer: [Material, LayerThickness, IsVentilated, Name, Description, Category, Priority]
-                const matId = typeof la[0] === 'number' ? la[0] : undefined;
-                let materialName: string | undefined;
-                let materialCategory: string | undefined;
-                if (matId) {
-                    // @raw-entity-enumeration-ok decode the layer's referenced material record
-                    const matRef = store.entityIndex.byId.get(matId);
-                    if (matRef) {
-                        const matEntity = extractor.extractEntity(matRef);
-                        if (matEntity) {
-                            materialName = typeof matEntity.attributes?.[0] === 'string' ? matEntity.attributes[0] : undefined;
-                            materialCategory = typeof matEntity.attributes?.[2] === 'string' ? matEntity.attributes[2] : undefined;
-                        }
-                    }
-                }
-
-                // Convert raw IFC value to metres (a 60 mm slab must not read
-                // "60.0 m"). `store.lengthUnitScale` answers for the file's
-                // FIRST IfcProject only, wrong for a MergedExporter federated
-                // layer in a LATER project — resolve per `originEntityId`.
-                const rawThickness = typeof la[1] === 'number' ? la[1] : undefined;
-                const scale = originEntityId !== undefined ? resolveEntityLengthUnitScale(store.source, store.entityIndex, store.relationships, originEntityId) : (store.lengthUnitScale ?? 1);
-                const thickness = rawThickness !== undefined ? rawThickness * scale : undefined;
-                layers.push({
-                    materialName,
-                    thickness,
-                    isVentilated: getBoolean(la[2]),
-                    name: typeof la[3] === 'string' ? la[3] : undefined,
-                    category: typeof la[5] === 'string' ? la[5] : undefined,
-                    materialCategory,
-                });
-            }
-
-            return {
-                type: 'MaterialLayerSet',
-                name: typeof attrs[1] === 'string' ? attrs[1] : undefined,
-                description: typeof attrs[2] === 'string' ? attrs[2] : undefined,
-                layers,
-            };
-        }
-
-        case 'IFCMATERIALPROFILESET': {
-            // IfcMaterialProfileSet: [Name, Description, MaterialProfiles, CompositeProfile]
-            const profileIds = Array.isArray(attrs[2]) ? attrs[2].filter((id): id is number => typeof id === 'number') : [];
-            const profiles: MaterialProfileInfo[] = [];
-
-            for (const profId of profileIds) {
-                // @raw-entity-enumeration-ok decode this profile set's referenced profile record
-                const profRef = store.entityIndex.byId.get(profId);
-                if (!profRef) continue;
-                const profEntity = extractor.extractEntity(profRef);
-                if (!profEntity) continue;
-
-                const pa = profEntity.attributes || [];
-                // IfcMaterialProfile: [Name, Description, Material, Profile, Priority, Category]
-                const matId = typeof pa[2] === 'number' ? pa[2] : undefined;
-                let materialName: string | undefined;
-                let materialCategory: string | undefined;
-                if (matId) {
-                    // @raw-entity-enumeration-ok decode the profile's referenced material record
-                    const matRef = store.entityIndex.byId.get(matId);
-                    if (matRef) {
-                        const matEntity = extractor.extractEntity(matRef);
-                        if (matEntity) {
-                            materialName = typeof matEntity.attributes?.[0] === 'string' ? matEntity.attributes[0] : undefined;
-                            materialCategory = typeof matEntity.attributes?.[2] === 'string' ? matEntity.attributes[2] : undefined;
-                        }
-                    }
-                }
-
-                profiles.push({
-                    materialName,
-                    name: typeof pa[0] === 'string' ? pa[0] : undefined,
-                    category: typeof pa[5] === 'string' ? pa[5] : undefined,
-                    materialCategory,
-                });
-            }
-
-            return {
-                type: 'MaterialProfileSet',
-                name: typeof attrs[0] === 'string' ? attrs[0] : undefined,
-                description: typeof attrs[1] === 'string' ? attrs[1] : undefined,
-                profiles,
-            };
-        }
-
-        case 'IFCMATERIALCONSTITUENTSET': {
-            // IfcMaterialConstituentSet: [Name, Description, MaterialConstituents]
-            const constituentIds = Array.isArray(attrs[2]) ? attrs[2].filter((id): id is number => typeof id === 'number') : [];
-            const constituents: MaterialConstituentInfo[] = [];
-
-            for (const constId of constituentIds) {
-                // @raw-entity-enumeration-ok decode this constituent set's referenced constituent record
-                const constRef = store.entityIndex.byId.get(constId);
-                if (!constRef) continue;
-                const constEntity = extractor.extractEntity(constRef);
-                if (!constEntity) continue;
-
-                const ca = constEntity.attributes || [];
-                // IfcMaterialConstituent: [Name, Description, Material, Fraction, Category]
-                const matId = typeof ca[2] === 'number' ? ca[2] : undefined;
-                let materialName: string | undefined;
-                let materialCategory: string | undefined;
-                if (matId) {
-                    // @raw-entity-enumeration-ok decode the constituent's referenced material record
-                    const matRef = store.entityIndex.byId.get(matId);
-                    if (matRef) {
-                        const matEntity = extractor.extractEntity(matRef);
-                        if (matEntity) {
-                            materialName = typeof matEntity.attributes?.[0] === 'string' ? matEntity.attributes[0] : undefined;
-                            // IfcMaterial: [Name, Description, Category] — IDS material
-                            // checks consider both the constituent's own category AND
-                            // the underlying IfcMaterial.Category as candidates for
-                            // a value match.
-                            materialCategory = typeof matEntity.attributes?.[2] === 'string' ? matEntity.attributes[2] : undefined;
-                        }
-                    }
-                }
-
-                constituents.push({
-                    materialName,
-                    name: typeof ca[0] === 'string' ? ca[0] : undefined,
-                    fraction: typeof ca[3] === 'number' ? ca[3] : undefined,
-                    category: typeof ca[4] === 'string' ? ca[4] : undefined,
-                    materialCategory,
-                });
-            }
-
-            return {
-                type: 'MaterialConstituentSet',
-                name: typeof attrs[0] === 'string' ? attrs[0] : undefined,
-                description: typeof attrs[1] === 'string' ? attrs[1] : undefined,
-                constituents,
-            };
-        }
-
-        case 'IFCMATERIALLIST': {
-            // IfcMaterialList: [Materials]
-            const matIds = Array.isArray(attrs[0]) ? attrs[0].filter((id): id is number => typeof id === 'number') : [];
-            const materials: Array<{ name: string; category?: string }> = [];
-
-            for (const matId of matIds) {
-                // @raw-entity-enumeration-ok decode this material list's referenced material record
-                const matRef = store.entityIndex.byId.get(matId);
-                if (!matRef) continue;
-                const matEntity = extractor.extractEntity(matRef);
-                if (matEntity) {
-                    const name = typeof matEntity.attributes?.[0] === 'string'
-                        ? matEntity.attributes[0] : `Material #${matId}`;
-                    const category = typeof matEntity.attributes?.[2] === 'string' ? matEntity.attributes[2] : undefined;
-                    materials.push({ name, ...(category ? { category } : {}) });
-                }
-            }
-
-            return {
-                type: 'MaterialList',
-                materials,
-            };
-        }
-
-        case 'IFCMATERIALLAYERSETUSAGE': {
-            // IfcMaterialLayerSetUsage: [ForLayerSet, LayerSetDirection, DirectionSense, OffsetFromReferenceLine, ...]
-            const layerSetId = typeof attrs[0] === 'number' ? attrs[0] : undefined;
-            if (layerSetId) {
-                return resolveMaterial(store, extractor, layerSetId, visited, originEntityId);
-            }
-            return null;
-        }
-
-        case 'IFCMATERIALPROFILESETUSAGE': {
-            // IfcMaterialProfileSetUsage: [ForProfileSet, ...]
-            const profileSetId = typeof attrs[0] === 'number' ? attrs[0] : undefined;
-            if (profileSetId) {
-                return resolveMaterial(store, extractor, profileSetId, visited, originEntityId);
-            }
-            return null;
-        }
-
-        default:
-            return null;
-    }
+export function extractMaterialsOnDemand(store: IfcDataStore, entityId: number, view?: MaterialReadView | null): MaterialInfo | null {
+    const first = extractAllMaterialsOnDemand(store, entityId, view)[0];
+    return first?.unresolved ? null : first ?? null;
 }
 
 // ============================================================================
@@ -399,13 +156,10 @@ function getRef(store: IfcDataStore, id: number) {
 
 /** Read an IfcMaterial's Name (attr 0) and Category (attr 2). */
 function readMaterialNameCategory(
-    store: IfcDataStore,
-    extractor: EntityExtractor,
+    read: MaterialRecordReader,
     materialId: number,
 ): { name?: string; category?: string } {
-    const ref = getRef(store, materialId);
-    if (!ref) return {};
-    const entity = extractor.extractEntity(ref);
+    const entity = read(materialId);
     const attrs = entity?.attributes ?? [];
     return {
         name: typeof attrs[0] === 'string' ? attrs[0] : undefined,
@@ -432,16 +186,16 @@ const leavesCache = new WeakMap<IfcDataStore, Map<number, MaterialLeaf[]>>();
  * leaf with weight 1. Results are memoised per (store, defId) — a type-shared
  * layer set is resolved once for the whole model.
  */
-export function collectMaterialLeaves(store: IfcDataStore, defId: number): MaterialLeaf[] {
+export function collectMaterialLeaves(store: IfcDataStore, defId: number, view?: MaterialReadView | null): MaterialLeaf[] {
+    if (view) return resolveLeaves(materialRecordReader(store, view), defId, new Set());
     let cache = leavesCache.get(store);
     if (!cache) { cache = new Map(); leavesCache.set(store, cache); }
     const cached = cache.get(defId);
     if (cached) return cached;
 
-    const extractor = store.source?.length ? new EntityExtractor(store.source) : null;
     let result: MaterialLeaf[];
-    if (extractor) {
-        result = resolveLeaves(store, extractor, defId, new Set());
+    if (store.source?.length) {
+        result = resolveLeaves(materialRecordReader(store), defId, new Set());
     } else {
         // Source-less store (server-loaded models keep `source` as an EMPTY
         // Uint8Array): a definition's internal structure (layers/profiles/
@@ -476,26 +230,29 @@ function mergeLeaves(into: Map<number, MaterialLeaf>, leaf: MaterialLeaf): void 
 /** Recursively resolve a material definition into weighted base-material leaves
  *  (cycle-guarded via `visited`). See {@link collectMaterialLeaves}. */
 function resolveLeaves(
-    store: IfcDataStore,
-    extractor: EntityExtractor,
+    read: MaterialRecordReader,
     defId: number,
     visited: Set<number>,
 ): MaterialLeaf[] {
+    while (true) {
     if (visited.has(defId)) return [];
     visited.add(defId);
 
-    const ref = getRef(store, defId);
-    if (!ref) return [];
-    const entity = extractor.extractEntity(ref);
+    const entity = read(defId);
     if (!entity) return [];
 
     const typeUpper = entity.type.toUpperCase();
     const attrs = entity.attributes || [];
+    if (typeUpper === 'IFCMATERIALLAYERSETUSAGE' || typeUpper === 'IFCMATERIALPROFILESETUSAGE') {
+        const next = getReference(attrs[0]);
+        if (next === undefined) return [];
+        defId = next; continue;
+    }
     const merged = new Map<number, MaterialLeaf>();
 
     const addMaterialLeaf = (matId: number | undefined, weight: number) => {
         if (matId === undefined) return;
-        const { name, category } = readMaterialNameCategory(store, extractor, matId);
+        const { name, category } = readMaterialNameCategory(read, matId);
         mergeLeaves(merged, { id: matId, name, category, weight });
     };
 
@@ -510,15 +267,15 @@ function resolveLeaves(
 
         case 'IFCMATERIALLAYERSET': {
             // IfcMaterialLayerSet: [MaterialLayers, LayerSetName, Description]
-            const layerIds = Array.isArray(attrs[0]) ? attrs[0].filter((id): id is number => typeof id === 'number') : [];
+            const layerIds = getReferences(attrs[0]) ?? [];
             const layers: Array<{ matId?: number; thickness: number }> = [];
             for (const layerId of layerIds) {
-                const layerRef = getRef(store, layerId);
+                const layerRef = read(layerId);
                 if (!layerRef) continue;
-                const la = extractor.extractEntity(layerRef)?.attributes ?? [];
+                const la = layerRef.attributes ?? [];
                 // IfcMaterialLayer: [Material, LayerThickness, IsVentilated, Name, Description, Category, Priority]
                 layers.push({
-                    matId: typeof la[0] === 'number' ? la[0] : undefined,
+                    matId: getReference(la[0]),
                     // Non-finite thickness would turn every weight into NaN
                     // (Infinity/Infinity) - treat it as absent like <= 0.
                     thickness: typeof la[1] === 'number' && Number.isFinite(la[1]) && la[1] > 0 ? la[1] : 0,
@@ -536,31 +293,31 @@ function resolveLeaves(
 
         case 'IFCMATERIALPROFILESET': {
             // IfcMaterialProfileSet: [Name, Description, MaterialProfiles, CompositeProfile]
-            const profileIds = Array.isArray(attrs[2]) ? attrs[2].filter((id): id is number => typeof id === 'number') : [];
+            const profileIds = getReferences(attrs[2]) ?? [];
             const n = profileIds.length;
             for (const profId of profileIds) {
-                const profRef = getRef(store, profId);
+                const profRef = read(profId);
                 if (!profRef) continue;
-                const pa = extractor.extractEntity(profRef)?.attributes ?? [];
+                const pa = profRef.attributes ?? [];
                 // IfcMaterialProfile: [Name, Description, Material, Profile, Priority, Category]
-                addMaterialLeaf(typeof pa[2] === 'number' ? pa[2] : undefined, n > 0 ? 1 / n : 0);
+                addMaterialLeaf(getReference(pa[2]), n > 0 ? 1 / n : 0);
             }
             return [...merged.values()];
         }
 
         case 'IFCMATERIALCONSTITUENTSET': {
             // IfcMaterialConstituentSet: [Name, Description, MaterialConstituents]
-            const constIds = Array.isArray(attrs[2]) ? attrs[2].filter((id): id is number => typeof id === 'number') : [];
+            const constIds = getReferences(attrs[2]) ?? [];
             const constituents: Array<{ matId?: number; fraction?: number }> = [];
             for (const constId of constIds) {
-                const constRef = getRef(store, constId);
+                const constRef = read(constId);
                 if (!constRef) continue;
-                const ca = extractor.extractEntity(constRef)?.attributes ?? [];
+                const ca = constRef.attributes ?? [];
                 // IfcMaterialConstituent: [Name, Description, Material, Fraction, Category]
                 // An authored Fraction of 0 is preserved as 0 (an explicit
                 // "contributes nothing"), distinct from an ABSENT fraction.
                 constituents.push({
-                    matId: typeof ca[2] === 'number' ? ca[2] : undefined,
+                    matId: getReference(ca[2]),
                     // Non-finite (NaN/Infinity) and negative fractions are
                     // malformed for an IfcNormalisedRatioMeasure — treat them
                     // as unset so they can't poison the weight arithmetic
@@ -600,20 +357,10 @@ function resolveLeaves(
 
         case 'IFCMATERIALLIST': {
             // IfcMaterialList: [Materials]
-            const matIds = Array.isArray(attrs[0]) ? attrs[0].filter((id): id is number => typeof id === 'number') : [];
+            const matIds = getReferences(attrs[0]) ?? [];
             const n = matIds.length;
             for (const matId of matIds) addMaterialLeaf(matId, n > 0 ? 1 / n : 0);
             return [...merged.values()];
-        }
-
-        case 'IFCMATERIALLAYERSETUSAGE': {
-            const layerSetId = typeof attrs[0] === 'number' ? attrs[0] : undefined;
-            return layerSetId ? resolveLeaves(store, extractor, layerSetId, visited) : [];
-        }
-
-        case 'IFCMATERIALPROFILESETUSAGE': {
-            const profileSetId = typeof attrs[0] === 'number' ? attrs[0] : undefined;
-            return profileSetId ? resolveLeaves(store, extractor, profileSetId, visited) : [];
         }
 
         default:
@@ -624,6 +371,7 @@ function resolveLeaves(
                 name: typeof attrs[0] === 'string' ? attrs[0] : undefined,
                 weight: 1,
             }];
+    }
     }
 }
 
@@ -777,7 +525,12 @@ const displayCache = new WeakMap<IfcDataStore, Map<number, { name: string; type:
 
 /** Resolve a material entity's display name + IFC class for headers/labels.
  *  Memoised per (store, materialId) — callers resolve many materials in a loop. */
-export function getMaterialDisplay(store: IfcDataStore, materialId: number): { name: string; type: string } {
+export function getMaterialDisplay(store: IfcDataStore, materialId: number, view?: MaterialReadView | null): { name: string; type: string } {
+    if (view) {
+        const record = materialRecordReader(store, view)(materialId);
+        return { name: typeof record?.attributes[0] === 'string' ? record.attributes[0] : `Material #${materialId}`,
+            type: record?.type ?? 'IfcMaterial' };
+    }
     let cache = displayCache.get(store);
     if (!cache) { cache = new Map(); displayCache.set(store, cache); }
     const hit = cache.get(materialId);

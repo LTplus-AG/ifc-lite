@@ -4,13 +4,12 @@
 
 import { EntityExtractor } from './entity-extractor.js';
 import { getReference } from './attribute-helpers.js';
-import { iterateEffectiveEntities, type EffectiveEntityOverlay } from '@ifc-lite/data';
+import { iterateEffectiveEntities } from '@ifc-lite/data';
 import type { IfcDataStore } from './columnar-parser.js';
-import { getAttributeNames, normalizeIfcTypeName } from './ifc-schema.js';
 import { copyParsedExtras, parsePropertyValue, parsePropertyValueWithComplex, type ExtractedProperty } from './property-value-parser.js';
 import { collectMaterialLeaves, getMaterialDisplay } from './material-resolver.js';
 import type { IfcEntity } from './types.js';
-import { resolveMaterialOwnerAndDefIds } from './material-associations.js';
+import { materialAssignmentState, materialRecordReader, type MaterialReadView } from './material-overlay.js';
 
 export interface MaterialPsetGroup {
     materialId: number;
@@ -32,11 +31,7 @@ export interface MaterialPsetGroup {
 interface MaterialPsetEntry { name: string; properties: MaterialPsetGroup['psets'][number]['properties'] }
 
 /** Structural overlay shape accepted by live on-demand parser reads. */
-export interface MaterialPropertiesView extends EffectiveEntityOverlay {
-    getNewEntity?(expressId: number): { readonly type: string; readonly attributes?: readonly unknown[] } | null;
-    getPositionalMutationsForEntity?(expressId: number): ReadonlyMap<number, unknown> | null;
-    getAttributeMutationsForEntity?(expressId: number): ReadonlyArray<{ name: string; value: string }>;
-}
+export interface MaterialPropertiesView extends MaterialReadView {}
 
 const materialPropertyIndexCache = new WeakMap<IfcDataStore, Map<number, MaterialPsetEntry[]>>();
 const materialPropertyOverlayCache = new WeakMap<IfcDataStore, WeakMap<object, { revision: number; index: Map<number, MaterialPsetEntry[]> }>>();
@@ -87,6 +82,7 @@ function readMaterialPropsEntity(
  * scanning every *MaterialProperties entity once.
  */
 function getMaterialPropertyIndex(store: IfcDataStore, view?: MaterialPropertiesView | null, revision?: number): Map<number, MaterialPsetEntry[]> {
+    revision = view?.getMutationRevision?.() ?? revision;
     const overlayCache = view ? materialPropertyOverlayCache.get(store) : undefined;
     const cached = view
         ? revision === undefined ? undefined : overlayCache?.get(view)?.revision === revision
@@ -111,34 +107,15 @@ function getMaterialPropertyIndex(store: IfcDataStore, view?: MaterialProperties
     for (const [id, mutation] of view?.getTypeMutations?.() ?? []) {
         if (wantedTypes.includes(mutation.newType.toUpperCase())) sourceIds.add(id);
     }
-    const readEffective = (id: number, type: string): IfcEntity | undefined => {
-        const ref = refFromStore(store, id);
-        const source = ref ? extractor.extractEntity(ref) : undefined;
-        const fresh = !source ? view?.getNewEntity?.(id) : null;
-        const base: IfcEntity | undefined = source ?? (fresh ? {
-            expressId: id,
-            type,
-            attributes: [...(fresh.attributes ?? [])] as IfcEntity['attributes'],
-        } : undefined);
-        if (!base) return undefined;
-        const attributes = [...base.attributes];
-        for (const [attributeIndex, value] of view?.getPositionalMutationsForEntity?.(id) ?? []) {
-            attributes[attributeIndex] = value as IfcEntity['attributes'][number];
-        }
-        const names = getAttributeNames(type);
-        for (const mutation of view?.getAttributeMutationsForEntity?.(id) ?? []) {
-            const attributeIndex = names.indexOf(mutation.name);
-            if (attributeIndex >= 0) attributes[attributeIndex] = mutation.value;
-        }
-        // Keep the source STEP spelling for unchanged rows: it is the public
-        // fallback pset name when Name is empty. Retyped rows use their new class.
-        return { ...base, type: base.type.toUpperCase() === type.toUpperCase()
-            ? base.type : normalizeIfcTypeName(type), attributes };
+    const read = materialRecordReader(store, view);
+    const readEffective = (id: number): IfcEntity | undefined => {
+        const record = read(id);
+        return record ? { expressId: id, type: record.type, attributes: record.attributes as IfcEntity['attributes'] } : undefined;
     };
 
     for (const row of iterateEffectiveEntities(store, view, wantedTypes, sourceIds)) {
             const matPropsId = row.expressId;
-            const entity = readEffective(matPropsId, row.type);
+            const entity = readEffective(matPropsId);
             const attrs = entity?.attributes;
             if (!attrs) continue;
 
@@ -155,12 +132,12 @@ function getMaterialPropertyIndex(store: IfcDataStore, view?: MaterialProperties
                     ?? propRefEntity?.type
                     ?? view?.getNewEntity?.(propRef)?.type;
                 if (!propType) continue;
-                const propEntity = readEffective(propRef, propType);
+                const propEntity = readEffective(propRef);
                 if (!propEntity) continue;
                 const propAttrs = propEntity.attributes || [];
                 const propName = typeof propAttrs[0] === 'string' ? propAttrs[0] : '';
                 if (!propName) continue;
-                const pv = propRefEntity
+                const pv = propRefEntity && store.source?.length
                     ? parsePropertyValueWithComplex(store, extractor, propEntity)
                     : parsePropertyValue(propEntity);
                 const entry: MaterialPsetEntry['properties'][number] = {
@@ -198,7 +175,7 @@ function buildMaterialPsetGroups(store: IfcDataStore, materialIds: number[], vie
         seen.add(matId);
         const entries = index.get(matId);
         if (!entries || entries.length === 0) continue;
-        const { name } = getMaterialDisplay(store, matId);
+        const { name } = getMaterialDisplay(store, matId, view);
         groups.push({
             materialId: matId,
             materialName: name,
@@ -214,14 +191,14 @@ function buildMaterialPsetGroups(store: IfcDataStore, materialIds: number[], vie
  * member IfcMaterials (where Pset_Material* typically lives) and also checks
  * the set definition itself. Returns one group per material that has psets.
  */
-export function extractMaterialPropertiesOnDemand(store: IfcDataStore, entityId: number, view?: MaterialPropertiesView | null, revision?: number, includeInherited = true): MaterialPsetGroup[] {
+export function extractMaterialPropertiesOnDemand(store: IfcDataStore, entityId: number, view?: MaterialPropertiesView | null, revision?: number): MaterialPsetGroup[] {
     // Every association, not just the primary — psets on a second
     // IfcRelAssociatesMaterial's definition were previously invisible.
-    const { defIds } = resolveMaterialOwnerAndDefIds(store, entityId, includeInherited);
+    const { defIds } = materialAssignmentState(store, entityId, view);
     if (defIds.length === 0) return [];
     const ids: number[] = [];
     for (const defId of defIds) {
-        ids.push(defId, ...collectMaterialLeaves(store, defId).map((l) => l.id));
+        ids.push(defId, ...collectMaterialLeaves(store, defId, view).map((l) => l.id));
     }
     return buildMaterialPsetGroups(store, ids, view, revision);
 }
@@ -232,6 +209,6 @@ export function extractMaterialPropertiesOnDemand(store: IfcDataStore, entityId:
  * definition, those of its member materials.
  */
 export function extractMaterialPropertiesForMaterialId(store: IfcDataStore, materialId: number, view?: MaterialPropertiesView | null, revision?: number): MaterialPsetGroup[] {
-    const leafIds = collectMaterialLeaves(store, materialId).map((l) => l.id);
+    const leafIds = collectMaterialLeaves(store, materialId, view).map((l) => l.id);
     return buildMaterialPsetGroups(store, [materialId, ...leafIds], view, revision);
 }

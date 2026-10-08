@@ -70,7 +70,7 @@ function sharedMemberType(members: unknown[]): string | undefined {
 /** Public mutation write markers and parsed STEP values share one decoder
  * (#7119). Only direct slots and their list members need normalization;
  * walking arbitrary nested file graphs would add unbounded work here. */
-function parsedWriteValue(value: IfcAttributeValue): IfcAttributeValue {
+export function parsedWriteValue(value: IfcAttributeValue): IfcAttributeValue {
     if (value && typeof value === 'object' && !Array.isArray(value)) {
         if ('typed' in value) return [value.typed.type, value.typed.value];
         if ('real' in value) return value.real;

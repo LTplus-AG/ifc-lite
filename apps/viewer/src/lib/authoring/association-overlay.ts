@@ -14,7 +14,7 @@
  */
 
 import type { IfcAttributeValue, MutablePropertyView } from '@ifc-lite/mutations';
-import { extractMaterialPropertiesForMaterialId, type ClassificationInfo, type IfcDataStore, type MaterialInfo } from '@ifc-lite/parser';
+import { type ClassificationInfo, type IfcDataStore } from '@ifc-lite/parser';
 
 /** `RelatedObjects` / `Relating*` sit at 4 / 5 on every IfcRelAssociates*. */
 const RELATED_OBJECTS = 4;
@@ -84,27 +84,4 @@ export function overlayClassifications(view: MutablePropertyView | null | undefi
       description: isIfc2x3(schema) ? undefined : text(reference.attrs[4]),
     };
   });
-}
-
-/** Materials the session associated with any of `entityIds`, as the panel renders them. */
-export function overlayMaterials(view: MutablePropertyView | null | undefined, entityIds: readonly number[], schema: string | undefined, store?: IfcDataStore): MaterialInfo[] {
-  if (!view) return [];
-  return overlayTargets(view, 'IFCRELASSOCIATESMATERIAL', entityIds, store).map((material): MaterialInfo =>
-    material.type.toUpperCase() !== 'IFCMATERIAL' ? { type: 'Material', unresolved: true } : ({
-    type: 'Material' as const,
-    name: text(material.attrs[0]),
-    description: isIfc2x3(schema) ? undefined : text(material.attrs[1]),
-    category: isIfc2x3(schema) ? undefined : text(material.attrs[2]),
-  }));
-}
-
-
-/** Property groups for the same native session material targets (#7119). */
-export function overlayMaterialProperties(view: MutablePropertyView | null | undefined,
-  entityIds: readonly number[], store: IfcDataStore, revision: number) {
-  if (!view) return [];
-  return overlayTargets(view, 'IFCRELASSOCIATESMATERIAL', entityIds, store).flatMap(material =>
-    extractMaterialPropertiesForMaterialId(store, material.id, view, revision).map(group => ({
-      ...group, materialName: group.materialId === material.id ? text(material.attrs[0]) ?? group.materialName : group.materialName,
-    })));
 }

@@ -262,14 +262,90 @@ test('#7119 unset layer ventilation stays unknown while explicit false and true 
   assert.deepEqual(layers.map(layer => layer.IsVentilated), [null, false, true]);
 });
 
-test('#7119 non-plain session material targets are unverified instead of fabricated IfcMaterial values', async () => {
-  seedModel('arch', 0, await sample(), 52);
+test('#7119 structured session material target agrees with native STEP export readback', async () => {
+  const store = await sample(); seedModel('arch', 0, store, 52);
   const view = getOrCreateMutationView(useViewerStore, 'arch'); assert.ok(view); view.setExpressIdWatermark(100_000);
   const layer = view.createEntity('IfcMaterialLayer', ['#62', 0.25, null, null, null, null, null]);
   const set = view.createEntity('IfcMaterialLayerSet', [[`#${layer.expressId}`], 'Live layers', null]);
-  view.createEntity('IfcRelAssociatesMaterial', ['live layers association', null, null, null, ['#52'], `#${set.expressId}`]);
+  view.createEntity('IfcRelAssociatesMaterial', ['0MaterialLayerRel000001', null, null, null, ['#52'], `#${set.expressId}`]);
   useViewerStore.setState({ mutationVersion: useViewerStore.getState().mutationVersion + 1 });
-  assert.deepEqual(rows()[0].materials[1], { type: null, verification: 'unverified' });
-  assert.equal(rows()[0].materialPropertiesStatus, 'unverified-material-associations');
-  assert.equal(rows()[0].materialPropertyGroupCount, null);
+  const saved = await exportAndReparse('arch', store);
+  const native = extractAllMaterialsOnDemand(saved, 52).find(material => material.type === 'MaterialLayerSet');
+  assert.ok(native); assert.equal(native.name, 'Live layers');
+  assert.equal(native.layers?.[0].thickness, 0.00025);
+  const evidence = rows()[0].materials[1];
+  assert.equal(evidence.type, 'IfcMaterialLayerSet');
+  assert.equal(evidence.LayerSetName, native.name);
+  assert.equal(evidence.MaterialLayers?.[0].LayerThickness.value, native.layers?.[0].thickness);
+  assert.equal(evidence.verification, 'resolved');
+});
+
+// #7119 immutable source assignment evidence must follow real public edits.
+test('#7119 source material retarget agrees with native STEP export readback', async () => {
+  const store = await sample(); seedModel('retarget', 0, store, 52);
+  const view = getOrCreateMutationView(useViewerStore, 'retarget'); assert.ok(view);
+  view.setPositionalAttribute(61, 5, '#180');
+  const file = await exportAndReparse('retarget', store);
+  assert.deepEqual(extractAllMaterialsOnDemand(file, 52).map(material => material.name), ['wood_mdf_plate']);
+  assert.deepEqual(rows()[0].materials.map(material => material.Name), ['wood_mdf_plate']);
+});
+
+test('#7119 deleted source material association agrees with native STEP export readback', async () => {
+  const store = await sample(); seedModel('deleted', 0, store, 52);
+  const view = getOrCreateMutationView(useViewerStore, 'deleted'); assert.ok(view); view.deleteEntity(61);
+  const file = await exportAndReparse('deleted', store);
+  assert.deepEqual(extractAllMaterialsOnDemand(file, 52), []);
+  assert.equal(rows()[0].materialCount, 0); assert.deepEqual(rows()[0].materials, []);
+});
+
+test('#7119 missing wire assignment graph leaves material totals unknown', async () => {
+  const store = await sample(); assert.equal(extractAllMaterialsOnDemand(store, 52).length, 1);
+  // Stated transport omission: both membership inventories are absent; source
+  // fields retained by accessor closures cannot prove the current wire contents.
+  const wire = { ...store, source: EMPTY_SOURCE_BYTES, resolvedMaterials: undefined };
+  Reflect.deleteProperty(wire, 'relationships'); Reflect.deleteProperty(wire, 'onDemandMaterialMap');
+  seedModel('missing-graph', 0, wire, 52);
+  assert.equal(rows()[0].materialCount, null);
+  assert.equal(rows()[0].materialsStatus, 'unavailable-membership');
+});
+
+// #7119: the public named and positional writer contracts must describe the saved material.
+test('#7119 source material named edits, explicit empty text and positional precedence match STEP export', async () => {
+  const store = await sample(); seedModel('names', 0, store, 52);
+  const view = getOrCreateMutationView(useViewerStore, 'names'); assert.ok(view);
+  for (const name of ['', '$', 'Edited concrete']) {
+    view.setAttribute(62, 'Name', name);
+    const saved = await exportAndReparse('names', store);
+    const native = extractAllMaterialsOnDemand(saved, 52)[0]; assert.ok(native);
+    assert.equal(native.name, name === '$' ? undefined : name);
+    assert.equal(rows()[0].materials[0].Name, native.name ?? null);
+  }
+  view.setPositionalAttribute(62, 0, 'Positional concrete');
+  const saved = await exportAndReparse('names', store);
+  assert.equal(extractAllMaterialsOnDemand(saved, 52)[0].name, 'Positional concrete');
+  assert.equal(rows()[0].materials[0].Name, 'Positional concrete');
+});
+
+test('#7119 source type membership reassignment replaces inherited material evidence after export', async () => {
+  const inherited = (await sampleText()).replace('(#52),#62);', '(#50),#62);');
+  const store = await parseStep(inherited); seedModel('types', 0, store, 52);
+  assert.equal(rows()[0].materials[0].Name, 'concrete_reinforced_in-situ');
+  const view = getOrCreateMutationView(useViewerStore, 'types'); assert.ok(view);
+  view.setPositionalAttribute(51, 5, '#174');
+  const saved = await exportAndReparse('types', store);
+  assert.deepEqual(extractAllMaterialsOnDemand(saved, 52), []);
+  assert.equal(rows()[0].materialCount, 0);
+});
+
+test('#7119 source-empty source-association edits retain only unverified original markers with unknown totals', async () => {
+  const source = await sample();
+  const actual = extractAllMaterialsOnDemand(source, 52)[0]; assert.ok(actual);
+  seedModel('wire-edit', 0, { ...source, source: EMPTY_SOURCE_BYTES,
+    resolvedMaterials: new Map([[52, new Map([[62, actual]])]]) }, 52);
+  const view = getOrCreateMutationView(useViewerStore, 'wire-edit'); assert.ok(view);
+  view.setPositionalAttribute(61, 5, '#180');
+  const row = rows()[0];
+  assert.equal(row.materialCount, null);
+  assert.equal(row.materialsStatus, 'unavailable-membership');
+  assert.deepEqual(row.materials, [{ type: null, verification: 'unverified' }]);
 });

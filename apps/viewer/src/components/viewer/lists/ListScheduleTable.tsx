@@ -19,8 +19,7 @@
 
 import React, { useCallback, useMemo } from 'react';
 import type { Virtualizer } from '@tanstack/react-virtual';
-import { ArrowUp, ArrowDown, FileSpreadsheet } from 'lucide-react';
-import { EmptyState } from '@/components/ui/empty-state';
+import { ArrowUp, ArrowDown } from 'lucide-react';
 import type { ColumnDefinition } from '@ifc-lite/lists';
 import { cn } from '@/lib/utils';
 import type { SelectModifiers } from '@/hooks/useEntityListMultiSelect';
@@ -167,7 +166,6 @@ export function ListScheduleTable({
       </div>
 
       {/* One row per group-value tuple — no per-element detail rows. */}
-      {scheduleRows.length === 0 && <EmptyState icon={<FileSpreadsheet className="size-8" />} title={t('lists.resultsTable.noRows')} />}
       <div style={{ height: `${virtualizer.getTotalSize()}px`, width: '100%', position: 'relative' }}>
         {virtualizer.getVirtualItems().map((vRow) => {
           const row = scheduleRows[vRow.index];

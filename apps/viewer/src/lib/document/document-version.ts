@@ -3,4 +3,4 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /** Persisted document compatibility version, independent of browser renderers. */
-export const DOCUMENT_VERSION = 12;
+export const DOCUMENT_VERSION = 13;

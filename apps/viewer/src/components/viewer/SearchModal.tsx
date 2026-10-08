@@ -21,7 +21,7 @@
  *   • ⌘⇧F / Ctrl+⇧F — toggle modal closed (symmetric with open)
  */
 
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Search, SlidersHorizontal } from 'lucide-react';
 import { useShallow } from 'zustand/react/shallow';
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
@@ -35,6 +35,7 @@ import { collectSearchResults } from '@/lib/search/collect-results';
 import { pushRecentSearch } from '@/lib/search/recent-searches';
 import { SearchModalText } from './SearchModal.text';
 import { SearchModalFilter } from './SearchModal.filter';
+const NativeLibrarySearch = lazy(() => import('./libraries/NativeLibrarySearch').then(module => ({ default: module.NativeLibrarySearch })));
 
 const DEBOUNCE_MS = 80;
 
@@ -157,6 +158,7 @@ export function SearchModal() {
                 <SlidersHorizontal className="h-3.5 w-3.5 mr-1.5" />
                 {t('searchModal.shell.filterTab')}
               </TabsTrigger>
+              <TabsTrigger value="libraries">{t('searchModal.library.title')}</TabsTrigger>
             </TabsList>
             <div className="text-2xs text-muted-foreground">
               <kbd className="rounded border border-zinc-300 bg-zinc-100 px-1 font-mono text-2xs dark:border-zinc-700 dark:bg-zinc-900">{t('searchModal.shell.escKey')}</kbd>
@@ -184,6 +186,11 @@ export function SearchModal() {
           </TabsContent>
           <TabsContent value="filter" className="flex-1 min-h-0 mt-0 flex">
             <SearchModalFilter />
+          </TabsContent>
+          <TabsContent value="libraries" className="flex-1 min-h-0 mt-0 flex">
+            <Suspense fallback={<p role="status">{t('searchModal.library.phase.loading', { count: 0 })}</p>}>
+              <NativeLibrarySearch onOpened={close} />
+            </Suspense>
           </TabsContent>
         </Tabs>
       </DialogContent>

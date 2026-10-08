@@ -22,6 +22,7 @@ import { useTranslation } from '@/i18n';
 import { CLASH_REPORT_LIMITS, clashReportRevision, defaultClashReportName, snapshotClashReport, type SavedClashReport } from '@/lib/clash/saved-report';
 import { clashReportLimitBadges } from '@/lib/charts/chart-source-message';
 import { useViewerStore } from '@/store';
+import { useLibraryFocus } from '@/lib/libraries/library-focus';
 
 function ReportRow({ report }: { report: SavedClashReport }) {
   const { t } = useTranslation();
@@ -29,12 +30,14 @@ function ReportRow({ report }: { report: SavedClashReport }) {
   const mutationVersion = useViewerStore((s) => s.mutationVersion);
   const [name, setName] = useState(report.name);
   const [confirming, setConfirming] = useState(false);
+  const target = useLibraryFocus(state => state.target);
+  const requested = target?.kind === 'clash-report' && target.id === report.id;
   useEffect(() => { setName(report.name); }, [report.name]);
   const persisted = (ok: boolean): void => { if (!ok) toast.error(t('clashTools.savedReports.storageFailed')); };
   const badges = clashReportLimitBadges(report, clashReportRevision(report, [...models.values()], mutationVersion), t);
   const state = useViewerStore.getState;
   return (
-    <li className="space-y-1 rounded-md border border-border p-2" data-clash-report={report.id}>
+    <li className={`space-y-1 rounded-md border border-border p-2 ${requested ? 'bg-primary/5' : ''}`} data-clash-report={report.id} aria-current={requested ? 'true' : undefined}>
       <div className="flex gap-1.5">
         <input className="min-w-0 flex-1 rounded border border-border bg-transparent px-1.5 py-0.5 text-xs" value={name}
           maxLength={CLASH_REPORT_LIMITS.name} onChange={(event) => setName(event.target.value)} aria-label={t('clashTools.savedReports.renameLabel', { name: report.name })} />
@@ -65,6 +68,7 @@ export function ClashSavedReportsDialogContent({ open, onOpenChange }: { open: b
   const rawResult = useViewerStore((s) => s.clashRawResult);
   const running = useViewerStore((s) => s.clashRunning);
   const reports = useViewerStore((s) => s.savedClashReports);
+  const target = useLibraryFocus(state => state.target);
   const storage = useViewerStore((s) => s.savedClashReportsStorage);
   const stale = useAnalysisStaleness(analysisStampOf(rawResult ?? result));
   const [name, setName] = useState('');
@@ -113,6 +117,8 @@ export function ClashSavedReportsDialogContent({ open, onOpenChange }: { open: b
           {/* Whether a report is stored, and why the list may be unread: the same notice every saved content library shows. */}
           <ContentStorageNotice status={storage} retry={() => useViewerStore.getState().retrySaveClashReports()}
             restore={() => useViewerStore.getState().restoreSavedClashReports()} />
+          {target?.kind === 'clash-report' && !reports.some(report => report.id === target.id)
+            && storage.phase !== 'loading' && <p role="alert">{t('searchModal.library.open.missing')}</p>}
           {reports.length === 0
             // Only a library that was read can be called empty; loading or unreadable is the notice's to say.
             ? storage.phase === 'ready' && <div className="text-xs text-muted-foreground">{t('clashTools.savedReports.empty')}</div>

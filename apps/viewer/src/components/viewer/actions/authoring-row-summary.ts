@@ -8,13 +8,14 @@
  * around them come from the catalogue.
  */
 
+import { sectionGhostOmissions } from '@/lib/profile-section/profile-outline';
 import type { TranslationKey, TranslationParameters } from '@/i18n';
 import type { AuthoringOp, ModelAuthoringBatch } from '@/lib/actions/model-authoring';
 import type { AuthoringRow } from '@/lib/actions/model-authoring-preview';
 
 type T = (key: TranslationKey, params?: TranslationParameters) => string;
 
-export interface RowSummary { subject: string; before: string; after: string }
+export interface RowSummary { subject: string; before: string; after: string; previewNote?: string }
 
 const num = (v: number) => String(Number(v.toFixed(3)));
 const point = (p: readonly number[]) => `(${p.map(num).join(', ')})`;
@@ -22,6 +23,15 @@ const ref = (target: { ref: string } | { name: string }, t: T) => 'ref' in targe
 
 function dims(op: Extract<AuthoringOp, { op: 'element.create' }>, units: string): string {
   const p = op.params;
+  if ('Profile' in p) {
+    if (p.Profile === 'polygon' && 'OuterCurve' in p) return `polygon · ${p.OuterCurve.length} vertices · ${point(p.position)} · ${num(p.thickness ?? p.height ?? 0)} ${units}`;
+    if (typeof p.Profile === 'object') {
+      const shape = Object.entries(p.Profile).filter(([key]) => key !== 'Type').map(([key, value]) => `${key}=${String(Number(Number(value).toPrecision(12)))}`).join(', ');
+      const axis = 'start' in p ? `${point(p.start)} → ${point(p.end)}` : `${point(p.position)} · height=${num(p.height ?? 0)}`;
+      return `${p.Profile.Type} · ${shape} · ${axis} ${units}`;
+    }
+  }
+  if ('Profile' in p) throw new Error('Unrecognised reviewed native shape');
   if ('start' in p) return `${point(p.start)} → ${point(p.end)} · ${num(p.thickness ?? p.width ?? 0)} × ${num(p.height)} ${units}`;
   return `${point(p.position)} · ${num(p.width)} × ${num(p.depth)} × ${num(p.thickness ?? p.height ?? 0)} ${units}`;
 }
@@ -32,9 +42,12 @@ export function authoringRowSummary(row: AuthoringRow, batch: ModelAuthoringBatc
   const none = t('modelChanges.absent');
   const fromMetres = (v: number) => (units === 'mm' ? v * 1000 : v);
   switch (op.op) {
-    case 'element.create':
-      return { subject: `${op.ifcClass} "${op.name}"`, before: t('modelAuthoring.notYet'),
+    case 'element.create': {
+      const omitted = 'Profile' in op.params && typeof op.params.Profile === 'object' ? sectionGhostOmissions(op.params.Profile) : [];
+      return { ...(omitted.length ? { previewNote: t('modelAuthoring.filletPreview', { fields: omitted.join(', ') }) } : {}),
+        subject: `${op.ifcClass} "${op.name}"`, before: t('modelAuthoring.notYet'),
         after: t('modelAuthoring.createdOn', { storey: before.storeyName ?? op.storey.globalId, dims: dims(op, units) }) };
+    }
     case 'element.copy': case 'element.array': {
       const count = op.op === 'element.copy' ? 1 : op.count - 1;
       const placement = op.op === 'element.copy'

@@ -48,6 +48,7 @@ function Row({ row, batch, checked, onToggle }: { row: AuthoringRow; batch: Mode
       <p className="break-words"><span className="font-medium">{operation}</span> <span className="text-muted-foreground">{summary.subject}</span></p>
       <p className="break-words"><span className="line-through text-muted-foreground">{summary.before}</span>
         {' → '}<span className="font-medium">{summary.after}</span></p>
+      {summary.previewNote && <p className="text-muted-foreground break-words">{summary.previewNote}</p>}
       {row.issue && <p className={row.status === 'denied' || row.status === 'blocked' ? 'text-muted-foreground break-words' : 'text-amber-700 dark:text-amber-400 break-words'}>{row.issue}</p>}
     </div>
     <div className="flex flex-col items-end gap-1">

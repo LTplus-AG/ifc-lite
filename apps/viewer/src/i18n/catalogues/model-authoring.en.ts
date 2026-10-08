@@ -32,6 +32,7 @@ export const modelAuthoringEn = {
   'modelAuthoring.approveRow': 'Apply {operation}: {subject}',
   'modelAuthoring.newElement': 'new element "{ref}"',
   'modelAuthoring.notYet': '(not in the model)',
+  'modelAuthoring.filletPreview': 'The preview shows sharp corners and omits {fields}. Applying writes the specified fillet radii.',
   'modelAuthoring.createdOn': 'on {storey}: {dims}',
   'modelAuthoring.movedBy': 'moved by {delta}',
   'modelAuthoring.turnedBy': 'turned by {angle}°',

@@ -201,7 +201,7 @@ describe('buildingSMART IDS conformance corpus', () => {
  * the way an ignore-list would. Being on it is a claim that gets re-tested on
  * every run, not an exemption from testing.
  *
- * These are not silently passing: `validateIDS` reports `fail` for all 21,
+ * These are not silently passing: `validateIDS` reports `fail` for each,
  * because the model does not satisfy a specification the IDS should never have
  * been able to express. That is a defensible answer to a different question,
  * which is why they are audited here rather than validated.
@@ -220,12 +220,6 @@ const AUDIT_UNDETECTED = new Set([
   'entity/invalid-subclasses_are_not_considered_as_matching',
   'ids/invalid-prohibited_specifications_invalid_if_requirements_are_specified',
   'partof/invalid-a_group_predefined_type_must_match_exactly_1_2',
-  'property/invalid-booleans_must_be_specified_as_lowercase_strings_3_3',
-  'property/invalid-integer_values_are_checked_using_type_casting_4_4',
-  'property/invalid-integer_values_cannot_be_stored_with_decimal_2_4',
-  'property/invalid-integer_values_cannot_be_stored_with_decimal_3_4',
-  'property/invalid-only_specifically_formatted_numbers_are_allowed_1_4',
-  'property/invalid-only_specifically_formatted_numbers_are_allowed_2_4',
   'restriction/invalid-patterns_always_fail_on_any_number',
   'restriction/invalid-patterns_only_work_on_strings_and_nothing_else',
 ]);
@@ -238,7 +232,7 @@ const AUDIT_UNDETECTED = new Set([
  * This one moves if detection regresses OR if the allowlist grows, and both
  * should be a deliberate, visible diff.
  */
-const AUDIT_DETECTS = 6;
+const AUDIT_DETECTS = 12;
 
   describe('invalid-: is the IDS DOCUMENT itself non-conforming', () => {
     it('every allowlisted case is a real corpus file', () => {

@@ -40,7 +40,7 @@ import type {
 } from '../../types.js';
 import type { IDSAuditIssue, IDSAuditOptions } from '../types.js';
 import { assertGuardedRegexPattern, UnsafeRegexPatternError } from '@ifc-lite/regex-guard';
-import { checkDataTypeMatch, checkRestrictionBase } from './datatype-check.js';
+import { checkDataTypeMatch, checkRestrictionBase, checkSimpleValueLexical } from './datatype-check.js';
 import { rowForAlias } from '../../facets/ifc2x3-type-mapping.js';
 
 export async function runIfcSchemaAudit(
@@ -425,6 +425,7 @@ async function auditPropertyFacet(
           `${path}.value`,
           issues
         );
+        checkSimpleValueLexical(facet.value, found.backingType, dt, `${path}.value`, 'property', issues);
       }
     }
   }

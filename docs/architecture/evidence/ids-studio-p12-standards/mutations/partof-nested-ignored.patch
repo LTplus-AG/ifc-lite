@@ -1,0 +1,13 @@
+diff --git b/packages/ids/src/preview/partof-nested.ts a/packages/ids/src/preview/partof-nested.ts
+index 220b5cae5..0c36fd299 100644
+--- b/packages/ids/src/preview/partof-nested.ts
++++ a/packages/ids/src/preview/partof-nested.ts
+@@ -47,7 +47,7 @@ export function checkPartOfParentFacets(
+ ): FacetCheckResult | undefined {
+   for (const [index, nested] of (facet.facets ?? []).entries()) {
+     const result = checkNested(nested, parent.expressId, accessor);
+-    continue;
++    if (result.passed) continue;
+     return {
+       passed: false,
+       actualValue: `${parent.entityType}: ${result.actualValue ?? 'no match'}`,

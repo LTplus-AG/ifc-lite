@@ -90,7 +90,7 @@ export type {
 // Parser
 // ============================================================================
 
-export { parseIDS, IDSParseError } from './parser/xml-parser.js';
+export { parseIDS, IDSParseError, type ParseIDSOptions } from './parser/xml-parser.js';
 
 // ============================================================================
 // Writer
@@ -98,7 +98,28 @@ export { parseIDS, IDSParseError } from './parser/xml-parser.js';
 
 // The one IDS 1.0 writer (ADR-005): `@ifc-lite/rules`' `ruleSetToIds` and the
 // viewer's reviewed IDS drafts serialise through it.
-export { writeIdsXml, type IdsXmlFormat } from './writer/index.js';
+export { writeIdsXml, type IdsXmlFormat, type IdsXmlWriteOptions } from './writer/index.js';
+
+// ============================================================================
+// IDS 1.1 PREVIEW (IDS-124, ADR-011) — unstable, opt-in, follows upstream
+// ============================================================================
+
+// Candidate features of the unreleased IDS 1.1, each tied to its upstream
+// issue. Off unless a caller passes `preview: { ids11: true }`.
+export {
+  IDS11_PREVIEW_FEATURES,
+  IDS11PreviewRequiredError,
+  findIds11Features,
+  type IDS11FeatureInfo,
+} from './preview/features.js';
+export type {
+  IDSPreviewFlags,
+  IDS11PreviewFeature,
+  IDS11FeatureUse,
+  IDS11FacetUri,
+  IDS11FacetInstructions,
+  IDS11ToleranceRule,
+} from './preview/types.js';
 
 // ============================================================================
 // Material bridge

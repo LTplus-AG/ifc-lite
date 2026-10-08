@@ -52,6 +52,12 @@ export class XmlLines {
     this.lines.push(`${this.indent()}<${tag}${renderAttrs(tag, attrs)}>${escapeXml(text, tag)}</${tag}>`);
   }
 
+  /** An XML comment line; `--` cannot appear inside one and is refused. */
+  comment(text: string): void {
+    if (text.includes('--')) throw new Error('writeIdsXml: an XML comment cannot contain "--"');
+    this.lines.push(`${this.indent()}<!-- ${escapeXml(text, 'comment')} -->`);
+  }
+
   empty(tag: string, attrs: Record<string, string | undefined> = {}): void {
     this.lines.push(`${this.indent()}<${tag}${renderAttrs(tag, attrs)}/>`);
   }

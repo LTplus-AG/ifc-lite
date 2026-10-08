@@ -34,8 +34,9 @@ import {
   getChildText,
 } from './dom.js';
 import { parseRestriction } from './parse-restriction.js';
+import { applyIds11Preview } from '../preview/parse-ids11.js';
+import type { IDSPreviewFlags } from '../preview/types.js';
 
-const IDS_NAMESPACE = 'http://standards.buildingsmart.org/IDS';
 const XS_NAMESPACE = 'http://www.w3.org/2001/XMLSchema';
 
 /** Error thrown when parsing invalid IDS XML */
@@ -77,10 +78,11 @@ if (!DOMParserImpl && isNodeRuntime) {
   DOMParserImpl = xmldom.DOMParser;
 }
 
-/**
- * Parse IDS XML content into an IDSDocument
- */
-export function parseIDS(xmlContent: string | ArrayBuffer): IDSDocument {
+/** Options for `parseIDS`. `preview.ids11` also reads IDS 1.1 PREVIEW candidates (unstable). */
+export interface ParseIDSOptions { preview?: IDSPreviewFlags }
+
+/** Parse IDS XML content into an IDSDocument (IDS 1.0 unless `options.preview.ids11`). */
+export function parseIDS(xmlContent: string | ArrayBuffer, options?: ParseIDSOptions): IDSDocument {
   let xmlString =
     typeof xmlContent === 'string'
       ? xmlContent
@@ -143,7 +145,7 @@ export function parseIDS(xmlContent: string | ArrayBuffer): IDSDocument {
     );
   }
 
-  return {
+  const document: IDSDocument = {
     info: parseInfo(root),
     specifications: parseSpecifications(root),
     schemaLocation:
@@ -151,11 +153,11 @@ export function parseIDS(xmlContent: string | ArrayBuffer): IDSDocument {
       root.getAttributeNS('http://www.w3.org/2001/XMLSchema-instance', 'schemaLocation') ||
       undefined,
   };
+  if (options?.preview?.ids11 === true) applyIds11Preview(root, document, parseFacet);
+  return document;
 }
 
-/**
- * Parse the <info> section
- */
+/** Parse the <info> section */
 function parseInfo(root: Element): IDSInfo {
   const info = getChildElement(root, 'info');
   if (!info) {
@@ -174,9 +176,7 @@ function parseInfo(root: Element): IDSInfo {
   };
 }
 
-/**
- * Parse the <specifications> section
- */
+/** Parse the <specifications> section */
 function parseSpecifications(root: Element): IDSSpecification[] {
   const specsContainer = getChildElement(root, 'specifications');
   if (!specsContainer) {
@@ -308,9 +308,7 @@ function parseFacets(parent: Element): IDSFacet[] {
   return facets;
 }
 
-/**
- * Parse a single facet element
- */
+/** Parse a single facet element (also used by the IDS 1.1 preview pass). */
 function parseFacet(el: Element): IDSFacet | null {
   const localName = el.localName.toLowerCase();
 

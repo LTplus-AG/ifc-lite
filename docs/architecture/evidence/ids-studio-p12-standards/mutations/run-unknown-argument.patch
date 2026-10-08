@@ -1,0 +1,13 @@
+diff --git b/scripts/ids-conformance/run.mjs a/scripts/ids-conformance/run.mjs
+index 8a083004a..e33a19371 100644
+--- b/scripts/ids-conformance/run.mjs
++++ a/scripts/ids-conformance/run.mjs
+@@ -51,7 +51,7 @@ export function parseArgs(argv) {
+     else if (arg === '--out') opts.out = value();
+     else if (arg === '--limit') opts.limit = Number(value());
+     else if (arg === '--no-doc') opts.doc = false;
+-
++    else throw new Error(`unknown argument ${arg}`);
+   }
+   return opts;
+ }

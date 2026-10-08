@@ -12,6 +12,8 @@
  */
 
 /** Union of all constraint types */
+import type { IDS11ToleranceRule } from './preview/types.js';
+
 export type IDSConstraint =
   | IDSSimpleValue
   | IDSPatternConstraint
@@ -23,6 +25,8 @@ export interface IDSSimpleValue {
   type: 'simpleValue';
   /** The exact value to match */
   value: string;
+  /** IDS 1.1 PREVIEW (#418): numeric tolerance rule; unset means IDS 1.0. */
+  toleranceRule?: IDS11ToleranceRule;
 }
 
 /** Pattern constraint - regex match */
@@ -57,6 +61,8 @@ export interface IDSEnumerationConstraint {
   type: 'enumeration';
   /** List of allowed values */
   values: string[];
+  /** IDS 1.1 PREVIEW (#418): numeric tolerance rule; unset means IDS 1.0. */
+  toleranceRule?: IDS11ToleranceRule;
   /**
    * The originating `xs:restriction @base` (e.g. `xs:string`,
    * `xs:integer`). Set when the constraint came from an

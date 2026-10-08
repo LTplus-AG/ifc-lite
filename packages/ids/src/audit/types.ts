@@ -14,6 +14,7 @@
  */
 
 import type { FacetType, IDSDocument, IFCVersion } from '../types.js';
+import type { IDSPreviewFlags } from '../preview/types.js';
 
 /** Severity buckets for audit issues. */
 export type IDSAuditSeverity = 'error' | 'warning' | 'info';
@@ -66,7 +67,11 @@ export type IDSAuditCode =
   // Entity requirements (IDS-007): an entity name not in upper case, and a
   // requirement entity no applicable entity can ever be
   | 'E_IFC_ENTITY_CASE'
-  | 'E_IFC_ENTITY_IMPOSSIBLE';
+  | 'E_IFC_ENTITY_IMPOSSIBLE'
+  // IDS 1.1 PREVIEW only (raised only with `preview: { ids11: true }`): a
+  // 1.1 candidate feature in use, and duplicate specification identifiers (#339)
+  | 'I_IDS11_PREVIEW_FEATURE'
+  | 'W_IDS11_IDENTIFIER_DUPLICATE';
 
 /** A single audit finding. */
 export interface IDSAuditIssue {
@@ -135,4 +140,11 @@ export interface IDSAuditOptions {
    * Run coherence checks (restrictions, cardinality). Default `true`.
    */
   coherenceChecks?: boolean;
+  /**
+   * IDS 1.1 PREVIEW (unstable). With `ids11`, the document is parsed with
+   * the 1.1 candidates, their XML shapes are accepted, each use is reported
+   * as `I_IDS11_PREVIEW_FEATURE`, and duplicate specification identifiers
+   * are a warning (#339). Default: IDS 1.0 rules only.
+   */
+  preview?: IDSPreviewFlags;
 }

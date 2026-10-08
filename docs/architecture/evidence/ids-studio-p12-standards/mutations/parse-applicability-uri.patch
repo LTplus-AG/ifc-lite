@@ -1,0 +1,13 @@
+diff --git b/packages/ids/src/preview/parse-ids11.ts a/packages/ids/src/preview/parse-ids11.ts
+index 39c0b14e6..63bf0782e 100644
+--- b/packages/ids/src/preview/parse-ids11.ts
++++ a/packages/ids/src/preview/parse-ids11.ts
+@@ -54,7 +54,7 @@ function enrichFacet(facet: IDSFacet, el: Element, context: Context, parseFacet:
+   // 1.0 file write differently from a default parse.
+   if (context !== 'requirement' && (facet.type === 'property' || facet.type === 'classification' || facet.type === 'material')) {
+     const uri = readAttr(el, 'uri');
+-    if (uri === undefined) facet.uri = uri;
++    if (uri !== undefined) facet.uri = uri;
+   }
+   if (context === 'applicability') {
+     const instructions = readAttr(el, 'instructions');

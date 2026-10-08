@@ -14,7 +14,7 @@
  */
 
 import type { IfcAttributeValue, MutablePropertyView } from '@ifc-lite/mutations';
-import type { ClassificationInfo, IfcDataStore, MaterialInfo } from '@ifc-lite/parser';
+import { type ClassificationInfo, type IfcDataStore } from '@ifc-lite/parser';
 
 /** `RelatedObjects` / `Relating*` sit at 4 / 5 on every IfcRelAssociates*. */
 const RELATED_OBJECTS = 4;
@@ -47,8 +47,8 @@ function includesAny(related: IfcAttributeValue | undefined, ids: readonly numbe
  * `entityIds` (an element and the base it aliases, like the source readers
  * see), with the entity each relates.
  */
-function overlayTargets(view: MutablePropertyView, relType: string, entityIds: readonly number[], store?: IfcDataStore): Array<{ id: number; attrs: IfcAttributeValue[] }> {
-  const targets: Array<{ id: number; attrs: IfcAttributeValue[] }> = [];
+function overlayTargets(view: MutablePropertyView, relType: string, entityIds: readonly number[], store?: IfcDataStore): Array<{ id: number; type: string; attrs: IfcAttributeValue[] }> {
+  const targets: Array<{ id: number; type: string; attrs: IfcAttributeValue[] }> = [];
   const created = Array.from(view.getNewEntitiesOfType(relType), (entity) => entity.expressId);
   const editedSource = store ? [...new Set(view.getMutations()
     .filter((mutation) => mutation.type === 'UPDATE_POSITIONAL_ATTRIBUTE' && mutation.attributeName === '@4')
@@ -63,7 +63,8 @@ function overlayTargets(view: MutablePropertyView, relType: string, entityIds: r
     if (source && includesAny(source.attributes[RELATED_OBJECTS], entityIds)) continue;
     const target = refId(rel[RELATING]);
     const attrs = target === null ? null : effectiveAttributes(view, target, store);
-    if (target !== null && attrs) targets.push({ id: target, attrs });
+    if (target !== null && attrs) targets.push({ id: target, type: view.getTypeMutations().get(target)?.newType
+      ?? view.getNewEntity(target)?.type ?? store?.getEntity(target)?.type ?? '', attrs });
   }
   return targets;
 }
@@ -83,15 +84,4 @@ export function overlayClassifications(view: MutablePropertyView | null | undefi
       description: isIfc2x3(schema) ? undefined : text(reference.attrs[4]),
     };
   });
-}
-
-/** Materials the session associated with any of `entityIds`, as the panel renders them. */
-export function overlayMaterials(view: MutablePropertyView | null | undefined, entityIds: readonly number[], schema: string | undefined, store?: IfcDataStore): MaterialInfo[] {
-  if (!view) return [];
-  return overlayTargets(view, 'IFCRELASSOCIATESMATERIAL', entityIds, store).map((material) => ({
-    type: 'Material' as const,
-    name: text(material.attrs[0]),
-    description: isIfc2x3(schema) ? undefined : text(material.attrs[1]),
-    category: isIfc2x3(schema) ? undefined : text(material.attrs[2]),
-  }));
 }

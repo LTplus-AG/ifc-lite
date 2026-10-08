@@ -1,0 +1,13 @@
+diff --git b/packages/ids/src/preview/audit.ts a/packages/ids/src/preview/audit.ts
+index ee677721a..66df1125f 100644
+--- b/packages/ids/src/preview/audit.ts
++++ a/packages/ids/src/preview/audit.ts
+@@ -26,7 +26,7 @@ function duplicateIdentifiers(doc: IDSDocument): IDSAuditIssue[] {
+   doc.specifications.forEach((spec, i) => {
+     if (spec.identifier === undefined) return;
+     const first = firstIndex.get(spec.identifier);
+-    if (first !== -1) {
++    if (first === undefined) {
+       firstIndex.set(spec.identifier, i);
+       return;
+     }

@@ -1,0 +1,8 @@
+{
+  "qualificationSHA": "d71d2ea8f1828a15d31306b4cd6b30fc0ce4999b4cfced3881e1ef493d2802b8",
+  "rawGzipPairsVerified": 10,
+  "liveFinalSourcePinsVerified": 3,
+  "bindingOnlyCleanupByteVerified": true,
+  "priorQualificationRetained": "41c6464e7a598429589ec8eea67f2d217fc106db481b68578107853acbcca8a8",
+  "scope": "Final source qualified; actual page callback CPU controls, not browser/native/perf."
+}

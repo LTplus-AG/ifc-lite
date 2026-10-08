@@ -17,7 +17,7 @@ Umbrella PR: #7143 (this tracker).
 | P-05 Model loop | `claude/ids-studio-p05-model-loop` | #7146 | ⬜ | Draft PR open (charter + work log); not started |
 | P-06 bSDD | `claude/ids-studio-p06-bsdd` | #7147 | ⬜ | Draft PR open (charter + work log); not started |
 | P-07 Agent | `claude/ids-studio-p07-agent` | #7148 | ⬜ | Draft PR open (charter + work log); not started |
-| P-08 Eval | `claude/ids-studio-p08-eval` | #7149 | ⬜ | Draft PR open (charter + work log); not started |
+| P-08 Eval | `claude/ids-studio-p08-eval` | #7149 | 🟨 | E2 (307 cases), E4 (24), E5 (19), scorer done; self-check 307/307. Human review + runner pending |
 | P-09 Ingestion & documents | `claude/ids-studio-p09-ingestion` | #7150 | ⬜ | Draft PR open (charter + work log); not started |
 | P-10 Trust & teamwork | `claude/ids-studio-p10-trust` | #7151 | ⬜ | Draft PR open (charter + work log); not started |
 | P-11 Headless | `claude/ids-studio-p11-headless` | #7152 | ⬜ | Draft PR open (charter + work log); not started |
@@ -149,11 +149,11 @@ Umbrella PR: #7143 (this tracker).
 
 | ID | Title | State | PR / commit |
 |---|---|---|---|
-| IDS-087 | E2: generate NL descriptions for corpus specs; human review pass | ⬜ | |
+| IDS-087 | E2: generate NL descriptions for corpus specs; human review pass | 🟨 | #7149 — data done (7bcc2fd98); human review pending |
 | IDS-088 | Charter: E3 gold set (≥100 cases, 4 languages) | ⬜ | |
-| IDS-089 | E4 edit tasks + E5 adversarial set | ⬜ | |
-| IDS-090 | Eval runner: CI recorded replay + nightly live (Batch API) + `scores.json` | ⬜ | |
-| IDS-091 | Ishigaki-IDS-Bench adapter (pending D4) | ⬜ | |
+| IDS-089 | E4 edit tasks + E5 adversarial set | 🟨 | #7149 — seed sets done (944d20841); human review pending |
+| IDS-090 | Eval runner: CI recorded replay + nightly live (Batch API) + `scores.json` | 🟨 | #7149 — scorer done (44914239a); runner needs P-07 |
+| IDS-091 | Ishigaki-IDS-Bench adapter (pending D4) | ⏸ | blocked: licence D4 unknown |
 | IDS-092 | Public benchmark page (generated) | ⬜ | |
 
 ### P-09 — Ingestion & documents
@@ -214,4 +214,5 @@ Umbrella PR: #7143 (this tracker).
 
 | Date | Session | Summary |
 |---|---|---|
+| 2026-10-08 | 1 | P-08 datasets + scorer pushed (self-check 307/307); found 18 audit false positives on valid corpus IDS → handed to P-01 |
 | 2026-10-08 | 1 | Plan written; campaign docs, tracker and handover committed; pitch branches and draft PRs opened |

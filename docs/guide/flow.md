@@ -900,8 +900,8 @@ the startup offer only after saving the configured workflow.
 
 #### Worked coordination report
 
-Start with the committed [SketchUp house IFC](../../apps/viewer/public/samples/building-architecture.ifc)
-and the [Walls have names information rule set](../../apps/viewer/src/lib/flow/examples/09-coordination-walls.rules.json).
+Start with the committed [SketchUp house IFC](https://raw.githubusercontent.com/LTplus-AG/ifc-lite/main/apps/viewer/public/samples/building-architecture.ifc)
+and the [Walls have names information rule set](https://raw.githubusercontent.com/LTplus-AG/ifc-lite/main/apps/viewer/src/lib/flow/examples/09-coordination-walls.rules.json).
 Save both files locally. This check applies to `IfcWall` and requires the native
 `Name` attribute to be present. The sample has four applicable walls; all four
 pass. This small check demonstrates the report pipeline, not project compliance.

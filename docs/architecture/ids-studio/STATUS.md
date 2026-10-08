@@ -6,20 +6,22 @@ _Last updated: 2026-10-08 (session 1)._
 
 ## Pitches
 
+Umbrella PR: #7143 (this tracker).
+
 | Pitch | Branch | PR | State | Notes |
 |---|---|---|---|---|
-| P-01 Engine completeness | `claude/ids-studio-p01-engine` | – | ⬜ | |
-| P-02 Authoring core | `claude/ids-studio-p02-authoring-core` | – | ⬜ | |
-| P-03 Studio UI v1 | `claude/ids-studio-p03-studio-ui` | – | ⬜ | |
-| P-04 Lint | `claude/ids-studio-p04-lint` | – | ⬜ | |
-| P-05 Model loop | `claude/ids-studio-p05-model-loop` | – | ⬜ | |
-| P-06 bSDD | `claude/ids-studio-p06-bsdd` | – | ⬜ | |
-| P-07 Agent | `claude/ids-studio-p07-agent` | – | ⬜ | |
-| P-08 Eval | `claude/ids-studio-p08-eval` | – | ⬜ | |
-| P-09 Ingestion & documents | `claude/ids-studio-p09-ingestion` | – | ⬜ | |
-| P-10 Trust & teamwork | `claude/ids-studio-p10-trust` | – | ⬜ | |
-| P-11 Headless | `claude/ids-studio-p11-headless` | – | ⬜ | |
-| P-12 Standards leadership | `claude/ids-studio-p12-standards` | – | ⬜ | |
+| P-01 Engine completeness | `claude/ids-studio-p01-engine` | (opens when first code is pushed) | 🟨 | Implementation running (session 1) |
+| P-02 Authoring core | `claude/ids-studio-p02-authoring-core` | (opens when first code is pushed) | 🟨 | Implementation running (session 1) |
+| P-03 Studio UI v1 | `claude/ids-studio-p03-studio-ui` | #7145 | ⬜ | Draft PR open (charter + work log); not started |
+| P-04 Lint | `claude/ids-studio-p04-lint` | #7144 | ⬜ | Draft PR open (charter + work log); not started |
+| P-05 Model loop | `claude/ids-studio-p05-model-loop` | #7146 | ⬜ | Draft PR open (charter + work log); not started |
+| P-06 bSDD | `claude/ids-studio-p06-bsdd` | #7147 | ⬜ | Draft PR open (charter + work log); not started |
+| P-07 Agent | `claude/ids-studio-p07-agent` | #7148 | ⬜ | Draft PR open (charter + work log); not started |
+| P-08 Eval | `claude/ids-studio-p08-eval` | #7149 | ⬜ | Draft PR open (charter + work log); not started |
+| P-09 Ingestion & documents | `claude/ids-studio-p09-ingestion` | #7150 | ⬜ | Draft PR open (charter + work log); not started |
+| P-10 Trust & teamwork | `claude/ids-studio-p10-trust` | #7151 | ⬜ | Draft PR open (charter + work log); not started |
+| P-11 Headless | `claude/ids-studio-p11-headless` | #7152 | ⬜ | Draft PR open (charter + work log); not started |
+| P-12 Standards leadership | `claude/ids-studio-p12-standards` | #7153 | ⬜ | Draft PR open (charter + work log); not started |
 
 ## Backlog items
 

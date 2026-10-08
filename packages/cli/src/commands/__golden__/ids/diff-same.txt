@@ -1,0 +1,8 @@
+exit: 0
+--- stdout
+
+  IDS diff: <fixtures>/doors-clean.ids → <fixtures>/doors-clean.ids
+
+  No changes
+
+--- stderr

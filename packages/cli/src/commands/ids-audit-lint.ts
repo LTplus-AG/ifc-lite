@@ -12,13 +12,13 @@
  * the Studio runs). Exit codes: see `ids-subcommand.ts`.
  */
 
-import { auditIDSDocument, IDSParseError, type IDSAuditIssue } from '@ifc-lite/ids';
+import { auditIDSDocument, type IDSAuditIssue } from '@ifc-lite/ids';
 import {
   createLintContext,
   lintDocument,
   LINT_RULES,
   nodePath,
-  readStudioDocument,
+  studioDocumentFromIds,
   type Diagnostic,
   type LintSeverity,
   type StudioDocument,
@@ -30,6 +30,7 @@ import {
   EXIT_FINDINGS,
   IdsUsageError,
   positionals,
+  readIds,
   readText,
   rejectUnknownFlags,
   runIdsSubcommand,
@@ -122,15 +123,6 @@ function toRow(doc: StudioDocument, d: Diagnostic): LintRow {
   };
 }
 
-function readForLint(xml: string, file: string): StudioDocument {
-  try {
-    return readStudioDocument(xml);
-  } catch (err) {
-    if (!(err instanceof IDSParseError)) throw err;
-    throw new IdsUsageError(`${file} does not parse as IDS (${err.message}); run \`ifc-lite ids audit\` for details`);
-  }
-}
-
 export async function idsLintCommand(args: string[]): Promise<void> {
   await runIdsSubcommand(async () => {
     rejectUnknownFlags(args, LINT_FLAGS, LINT_VALUE_FLAGS);
@@ -144,7 +136,7 @@ export async function idsLintCommand(args: string[]): Promise<void> {
     const severity = parseSeverity(flagValue(args, '--severity'));
     const failOn = parseFailOn(flagValue(args, '--fail-on'));
 
-    const doc = readForLint(await readText(file), file);
+    const doc = studioDocumentFromIds(await readIds(file));
     const result = lintDocument(doc, await createLintContext(), { rules, severity });
     const rows = result.diagnostics
       .map((d) => toRow(doc, d))

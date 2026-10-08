@@ -3,8 +3,8 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * Golden output and exit codes for `ifc-lite ids audit | lint | fmt`
- * (IDS-115).
+ * Golden output and exit codes for `ifc-lite ids audit | lint | fmt | diff |
+ * explain` (IDS-115, IDS-116).
  *
  * The output IS the contract here: CI steps parse `--json` and people read
  * the text in build logs, so each case pins stdout, stderr and the exit
@@ -84,11 +84,20 @@ const CASES: Array<[string, string[], number]> = [
   ['fmt-author-lossy', ['fmt', fixture('doors-author.ids')], 2],
   ['fmt-broken', ['fmt', fixture('broken.ids')], 2],
   ['fmt-check-write', ['fmt', fixture('doors-clean.ids'), '--check', '--write'], 2],
+  ['diff-same', ['diff', fixture('doors-clean.ids'), fixture('doors-clean.ids')], 0],
+  ['diff-text', ['diff', fixture('doors-clean.ids'), fixture('doors-rev-b.ids')], 1],
+  ['diff-json', ['diff', fixture('doors-clean.ids'), fixture('doors-rev-b.ids'), '--json'], 1],
+  ['diff-md', ['diff', fixture('doors-clean.ids'), fixture('doors-rev-b.ids'), '--md'], 1],
+  ['diff-broken', ['diff', fixture('doors-clean.ids'), fixture('broken.ids')], 2],
+  ['diff-one-file', ['diff', fixture('doors-clean.ids')], 2],
+  ['explain-text', ['explain', fixture('doors-rev-b.ids')], 0],
+  ['explain-md-de', ['explain', fixture('doors-rev-b.ids'), '--md', '--lang', 'de'], 0],
+  ['explain-bad-lang', ['explain', fixture('doors-rev-b.ids'), '--lang', 'xx'], 2],
   ['unknown-flag', ['audit', fixture('doors-clean.ids'), '--jsno'], 2],
   ['missing-file', ['audit', fixture('does-not-exist.ids')], 2],
 ];
 
-describe('ifc-lite ids audit | lint | fmt', () => {
+describe('ifc-lite ids audit | lint | fmt | diff | explain', () => {
   it.each(CASES)('%s', async (name, args, exit) => {
     const r = await run(args);
     expect(r.exit, r.stderr).toBe(exit);

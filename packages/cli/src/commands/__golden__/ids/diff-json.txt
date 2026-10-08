@@ -1,0 +1,53 @@
+exit: 1
+--- stdout
+{
+  "before": "<fixtures>/doors-clean.ids",
+  "after": "<fixtures>/doors-rev-b.ids",
+  "identical": false,
+  "entries": [
+    {
+      "change": "changed",
+      "node": "info",
+      "path": "info.title",
+      "field": "title",
+      "before": "Door fire ratings",
+      "after": "Door fire ratings (rev B)",
+      "text": "Document title changed from \"Door fire ratings\" to \"Door fire ratings (rev B)\""
+    },
+    {
+      "change": "changed",
+      "node": "spec",
+      "spec": "Fire rating on all doors",
+      "path": "specifications[0]",
+      "field": "name",
+      "before": "Fire rating on doors",
+      "after": "Fire rating on all doors",
+      "text": "Specification \"Fire rating on doors\" renamed to \"Fire rating on all doors\""
+    },
+    {
+      "change": "changed",
+      "node": "facet",
+      "spec": "Fire rating on all doors",
+      "path": "specifications[0].requirements[0]",
+      "field": "optionality",
+      "before": "required",
+      "after": "optional",
+      "text": "Fire rating on all doors: requirement changed from required to optional: Property \"\"Pset_DoorCommon\".\"FireRating\"\" must exist"
+    },
+    {
+      "change": "added",
+      "node": "facet",
+      "spec": "Fire rating on all doors",
+      "path": "specifications[0].requirements[1]",
+      "text": "Fire rating on all doors: requirement added: Attribute \"\"Name\"\" must exist"
+    },
+    {
+      "change": "added",
+      "node": "spec",
+      "spec": "Windows carry a thermal transmittance",
+      "path": "specifications[1]",
+      "text": "Specification \"Windows carry a thermal transmittance\" added"
+    }
+  ]
+}
+--- stderr

@@ -14,6 +14,8 @@ import { readFile } from 'node:fs/promises';
 import { printJson, hasFlag, getFlag, fatal } from '../output.js';
 import { createDataAccessor } from '@ifc-lite/ids/bridge';
 import { idsAuditCommand, idsLintCommand } from './ids-audit-lint.js';
+import { idsDiffCommand } from './ids-diff.js';
+import { idsExplainCommand } from './ids-explain.js';
 import { idsFmtCommand } from './ids-fmt.js';
 
 /**
@@ -25,6 +27,8 @@ const SUBCOMMANDS: Record<string, (args: string[]) => Promise<void>> = {
   audit: idsAuditCommand,
   lint: idsLintCommand,
   fmt: idsFmtCommand,
+  diff: idsDiffCommand,
+  explain: idsExplainCommand,
 };
 
 interface ValidatorSummary {

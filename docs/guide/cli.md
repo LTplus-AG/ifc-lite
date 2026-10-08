@@ -589,7 +589,7 @@ Returns pass/fail summary with exit code 0 (pass) or 1 (fail).
 
 #### IDS authoring subcommands
 
-The same command also checks and formats IDS files on their own, with the
+The same command also checks, formats, compares and explains IDS files on their own, with the
 engines the IDS editor uses (`@ifc-lite/ids` audit, `@ifc-lite/ids-authoring`
 lint). No model is needed.
 
@@ -607,6 +607,13 @@ ifc-lite ids lint requirements.ids --severity IDSL-SPEC-008=off --fail-on warnin
 ifc-lite ids fmt requirements.ids            # formatted XML to stdout
 ifc-lite ids fmt requirements.ids --check    # CI: exit 1 when the file would change
 ifc-lite ids fmt requirements.ids --write    # rewrite in place
+
+# What changed between two revisions? (exit 1 when they differ)
+ifc-lite ids diff rev-a.ids rev-b.ids
+ifc-lite ids diff rev-a.ids rev-b.ids --md > CHANGES.md
+
+# Read it in plain language
+ifc-lite ids explain requirements.ids --lang de --md
 ```
 
 | Subcommand | Flags | Exit code |
@@ -614,12 +621,19 @@ ifc-lite ids fmt requirements.ids --write    # rewrite in place
 | `audit <rules.ids>` | `--json` | 1 when the audit reports an error |
 | `lint <rules.ids>` | `--json`, `--rules C,…` (only these rules), `--severity C=error\|warning\|info\|off,…` (override per rule), `--fail-on error\|warning\|info\|never` (default `error`) | 1 when a diagnostic at or above `--fail-on` remains |
 | `fmt <rules.ids>` | `--check`, `--write` | 1 when `--check` finds a file that would change |
+| `diff <before.ids> <after.ids>` | `--json`, `--md` | 1 when the documents differ |
+| `explain <rules.ids>` | `--lang en\|de\|fr`, `--md` | 0 |
 
 Every subcommand exits **2** on a usage error, an unreadable or unparseable
 file, or a file this build cannot write without loss. `fmt` re-reads what it
 writes and refuses (exit 2, naming the values) instead of dropping content:
 the writer in this release does not yet carry some `info` fields (author,
 version, date, …) or length, digit and conjunctive restrictions.
+
+`diff` pairs specifications by identifier, then by name and applicability,
+then by similarity, and facets the same way inside a pair. A renamed
+specification or an edited requirement therefore reads as one change, not as
+a removal plus an addition.
 
 Lint output names each finding by its XML path, e.g.
 `specifications[0].requirements[0].baseName`, and marks findings that have a
@@ -1646,7 +1660,7 @@ The `semantic` command reads JSON/SPARQL providers, generates shared profile art
 | `diagnose-geometry` | CSG / opening diagnostics (failures, classification) |
 | `extract-entities` | Isolate entities into a small, viewable standalone IFC |
 | `anonymize` | Export selected objects + context as an anonymized IFC |
-| `ids` | Validate a model against IDS rules; audit, lint and format IDS files |
+| `ids` | Validate a model against IDS rules; audit, lint, format, diff and explain IDS files |
 | `bcf` | Work with BCF collaboration files |
 | `clash` | Detect geometric clashes between elements |
 | `create` | Create IFC elements (29 types) |

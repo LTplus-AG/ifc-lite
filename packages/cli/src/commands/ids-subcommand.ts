@@ -17,6 +17,7 @@
  */
 
 import { readFile } from 'node:fs/promises';
+import { IDSParseError, parseIDS, type IDSDocument } from '@ifc-lite/ids';
 
 export const EXIT_CLEAN = 0;
 export const EXIT_FINDINGS = 1;
@@ -62,6 +63,17 @@ export async function readText(path: string): Promise<string> {
     return await readFile(path, 'utf-8');
   } catch (err) {
     throw new IdsUsageError(`cannot read ${path}: ${err instanceof Error ? err.message : String(err)}`);
+  }
+}
+
+/** Read and parse an IDS file; a parse failure is a usage error (exit 2). */
+export async function readIds(path: string): Promise<IDSDocument> {
+  const xml = await readText(path);
+  try {
+    return parseIDS(xml);
+  } catch (err) {
+    if (!(err instanceof IDSParseError)) throw err;
+    throw new IdsUsageError(`${path} does not parse as IDS (${err.message})`);
   }
 }
 

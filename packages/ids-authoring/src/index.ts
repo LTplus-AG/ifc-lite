@@ -157,3 +157,4 @@ export {
   type FormatOutcome,
 } from './headless/write.js';
 export { nodePath } from './headless/node-path.js';
+export { diffIds, type IdsDiff, type IdsDiffEntry, type IdsDiffChange } from './headless/diff.js';

@@ -12,6 +12,14 @@ BCF allows teams to create, share, and manage **topics** linked to specific loca
 
 ## Quick Start
 
+The viewer’s topic list identifies its current BCF workspace and reports the
+number of topics in that workspace separately from those shown by the status
+filter. An empty filtered view preserves the existing topics. Archive exports
+include the whole workspace, including topics hidden by the filter. Topic
+records and statuses do not establish that model checks, imports or server
+topic retrieval are complete; the coverage indicator leaves that outcome
+unknown. Loaded IFC models are not automatically claimed as topic source scope.
+
 ### Reading BCF Files
 
 ```typescript

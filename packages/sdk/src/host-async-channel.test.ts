@@ -121,7 +121,7 @@ for (const channel of ['broadcast', 'port'] as const) it.skipIf(!existsSync(wasm
     const before = snapshot();
     expect(before.source.byteLength).toBeGreaterThan(0);
     expect(before.source).toEqual(new Uint8Array(bytes));
-    for (const expressIds of ['1', [1.5], [NaN], [-1], [0], [Number.MAX_SAFE_INTEGER + 1], [null], new Array(1), [1, 1], []]) {
+    for (const expressIds of ['1', [1.5], [NaN], [-1], [0], [Number.MAX_SAFE_INTEGER + 1], [null], new Array(1), Object.assign(new Array(2), { 0: 1 }), Object.assign(new Array(2), { 1: 1 }), [1, 1], []]) {
       const refused = await connection.transport.send({ ...request, args: ['m', 42, { action: 'update', expressIds }] });
       expect(refused.error?.message).toMatch(/^Room update requires 1\.\.10000 unique positive safe-integer rooms$/);
       expect(refused.result).toBeUndefined();

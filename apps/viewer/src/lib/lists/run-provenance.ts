@@ -19,6 +19,8 @@ const runDefinitions = new WeakMap<ListResult, ListDefinition>();
 export interface ListRunModels {
   models: readonly { id: string; name: string }[];
   omittedModels: readonly string[];
+  /** Nonempty snapshot members whose model is no longer available to name or evaluate. */
+  unavailableSnapshotModels: number;
   /** Empty explicit native snapshot is a known absent population; match count alone is not. */
   emptyPopulation: boolean;
 }
@@ -29,12 +31,19 @@ export function captureListRunModels(definition: ListDefinition, pairs: readonly
   const scoped = scopeModelPairs(definition, pairs, state);
   const resolved = resolveListModelTagScope(definition.modelTagScope, state);
   const available = new Set(scoped.map(pair => pair.modelId));
-  const targets = resolved.kind === 'models' ? [...resolved.modelIds] : state.models.size > 0 ? [...state.models.keys()] : [...available];
+  const nativeTargets = resolved.kind === 'models' ? [...resolved.modelIds] : state.models.size > 0 ? [...state.models.keys()] : [...available];
+  // An all-model snapshot retains selected members even after their model was removed.
+  // A model-tag scope still intersects that snapshot with its explicitly resolved models.
+  const snapshotTargets = resolved.kind === 'all' ? Object.keys(definition.expressIdsByModel ?? {}) : [];
+  const targets = [...new Set([...nativeTargets, ...snapshotTargets])];
   return {
-    emptyPopulation: Boolean(definition.expressIdsByModel) && targets.every(id => (definition.expressIdsByModel?.[id] ?? []).length === 0),
+    emptyPopulation: targets.length > 0 && Boolean(definition.expressIdsByModel) && targets.every(id => (definition.expressIdsByModel?.[id] ?? []).length === 0),
+    unavailableSnapshotModels: snapshotTargets.filter(id => !state.models.has(id) && !available.has(id)
+      && (definition.expressIdsByModel?.[id]?.length ?? 0) > 0).length,
     models: scoped.map(pair => ({ id: pair.modelId, name: state.models.get(pair.modelId)?.name ?? legacyName })),
     omittedModels: [...state.models].filter(([id]) => !available.has(id)
-      && (resolved.kind === 'all' || resolved.kind === 'models' && resolved.modelIds.has(id))).map(([, model]) => model.name),
+      && (resolved.kind === 'all' || resolved.kind === 'models' && resolved.modelIds.has(id))
+      && (!definition.expressIdsByModel || (definition.expressIdsByModel[id]?.length ?? 0) > 0)).map(([, model]) => model.name),
   };
 }
 /** Unrecorded scope remains unknown; do not substitute the current model picker. */
@@ -43,7 +52,8 @@ export function listRunModels(result: ListResult): ListRunModels | null { return
 /** Record a freshly executed result: the run-start stamp and the executed definition. */
 export function recordListRun(result: ListResult, definition: ListDefinition, stamp: AnalysisStamp, models?: ListRunModels): ListResult {
   runDefinitions.set(result, definition);
-  if (models) runModels.set(result, { emptyPopulation: models.emptyPopulation, models: models.models.map(model => ({ ...model })), omittedModels: [...models.omittedModels] });
+  if (models) runModels.set(result, { emptyPopulation: models.emptyPopulation, unavailableSnapshotModels: models.unavailableSnapshotModels,
+    models: models.models.map(model => ({ ...model })), omittedModels: [...models.omittedModels] });
   return stampAnalysisReport(result, stamp);
 }
 

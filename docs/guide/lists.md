@@ -302,6 +302,9 @@ providers evaluated. It retains that identity when the current model picker or
 model names change. Known targeted models without IFC table data are named as
 coverage gaps; a stored result without recorded provenance reports an unknown
 source rather than borrowing the current picker.
+Selected snapshot entities from a removed model remain an unavailable coverage
+gap. An unavailable provider outside that snapshot does not create a gap, and
+the native model-tag scope still determines which snapshot members apply.
 
 Matched entities and currently visible rows have separate counts. Search and
 visibility filters keep the native result intact, and a filtered-empty table

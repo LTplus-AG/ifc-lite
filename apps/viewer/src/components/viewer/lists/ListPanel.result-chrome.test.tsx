@@ -123,7 +123,8 @@ it('#7166 actual grouped schedule uses filtered state when native search hides a
 it('#7166 native targeted loaded model without IFC provider is disclosed as partial coverage', async () => {
   const run = await setup();
   const missing = { ...fixtureModel('peer'), name: 'Missing IFC table data', ifcDataStore: null };
-  await act(async () => { useViewerStore.setState({ models: new Map([['authored', run.model], ['peer', missing]]) }); });
+  await act(async () => { useViewerStore.setState({ models: new Map([['authored', run.model], ['peer', missing]]),
+    listDefinitions: [{ ...run.own, expressIdsByModel: { authored: [run.wall], peer: [run.wall] } }] }); });
   await run.run();
   assert.equal(useViewerStore.getState().listResult?.rows.length, 1);
   assert.match(region(run.ui).textContent ?? '', /Partial/);
@@ -173,4 +174,57 @@ it('#7166 native column regrouping preserves the executed source and authored me
   assert.equal(regrouped.rows[0].values[0], run.guid);
   assert.match(region(run.ui).textContent ?? '', /Captured architecture.ifc/);
   assert.doesNotMatch(region(run.ui).textContent ?? '', /Later model name.ifc/);
+});
+
+it('#7166 selected entities from a removed snapshot model disclose incomplete scope rather than no population', async () => {
+  const run = await setup();
+  await act(async () => { useViewerStore.setState({ listDefinitions: [{ ...run.own, expressIdsByModel: { removed: [run.wall] } }] }); });
+  await run.run();
+  assert.equal(useViewerStore.getState().listResult?.totalCount, 0);
+  assert.equal(Boolean(run.ui.querySelector('[data-result-state="no-population"]')), false, 'selected source members were unavailable, not absent');
+  assert.match(region(run.ui).textContent ?? '', /Partial/);
+  assert.match(region(run.ui).textContent ?? '', /unavailable model/);
+});
+
+it('#7166 native model-tag scope with zero targeted models refuses before any successful result', async () => {
+  const run = await setup();
+  await act(async () => { useViewerStore.setState({
+    modelTags: new Map([['unused', { id: 'unused', name: 'Unused scope' }]]),
+    listDefinitions: [{ ...run.own, modelTagScope: { op: 'hasAny', tagIds: ['unused'] } }],
+  }); });
+  await run.run();
+  assert.match(useViewerStore.getState().listError ?? '', /No loaded model matches/);
+  assert.equal(useViewerStore.getState().listResult, null);
+  assert.equal(run.ui.querySelector('[data-result-state="no-population"]'), null);
+  assert.equal(run.ui.querySelector('section[aria-label="Authored walls results"]'), null);
+});
+
+it('#7166 unavailable provider outside the native snapshot does not invent a coverage gap', async () => {
+  const run = await setup();
+  const missing = { ...fixtureModel('peer'), name: 'Not selected provider', ifcDataStore: null };
+  await act(async () => { useViewerStore.setState({ models: new Map([['authored', run.model], ['peer', missing]]) }); });
+  await run.run();
+  assert.equal(useViewerStore.getState().listResult?.totalCount, 1);
+  assert.doesNotMatch(region(run.ui).textContent ?? '', /Partial|Not selected provider/);
+  assert.ok(region(run.ui).textContent?.includes(run.guid ?? 'missing-guid'));
+});
+
+it('#7166 native model-tag intersection excludes peer snapshot members from the known empty selected population', async () => {
+  const run = await setup(definition(), true);
+  await act(async () => { useViewerStore.setState({ listDefinitions: [{ ...run.own, expressIdsByModel: { authored: [], peer: [run.wall] } }] }); });
+  await run.run();
+  assert.equal(useViewerStore.getState().listResult?.totalCount, 0);
+  assert.ok(run.ui.querySelector('[data-result-state="no-population"]'));
+  assert.doesNotMatch(region(run.ui).textContent ?? '', /Partial|Excluded peer.ifc/);
+});
+
+it('#7166 no native data providers disable execution before any result population can be inferred', async () => {
+  const run = await setup();
+  await act(async () => { useViewerStore.setState({ models: new Map([['authored', { ...run.model, ifcDataStore: null }]]), ifcDataStore: null }); });
+  const button = run.ui.querySelector<HTMLButtonElement>('button[aria-label="Run list Authored walls"]'); assert.ok(button);
+  assert.equal(button.disabled, true);
+  click(button);
+  await act(async () => { await Promise.resolve(); });
+  assert.equal(useViewerStore.getState().listResult, null);
+  assert.equal(Boolean(run.ui.querySelector('[data-result-state="no-population"]')), false);
 });

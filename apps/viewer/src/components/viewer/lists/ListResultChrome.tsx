@@ -22,12 +22,13 @@ export function ListResultChrome({ result, visibleCount, filters, actions, child
   const incomplete = [
     ...(!definition || !models ? [t('lists.resultChrome.provenanceUnavailable')] : []),
     ...(models?.omittedModels.map(name => t('lists.resultChrome.modelUnavailable', { name })) ?? []),
+    ...(models?.unavailableSnapshotModels ? [t('lists.resultChrome.snapshotModelsUnavailable', { count: models.unavailableSnapshotModels })] : []),
     ...(visibleCount < result.totalCount ? [t('lists.resultChrome.filtered', { count: result.totalCount - visibleCount })] : []),
   ];
   return <ResultView source={source} className="flex-1 min-h-0"
     header={<ResultSource source={source} models={models?.models ?? []}
       population={t('lists.resultChrome.matched', { count: result.totalCount })} />}
-    coverage={<ResultCoverage status={!definition || !models ? 'uncertain' : stale ? 'stale' : models.omittedModels.length ? 'partial' : 'complete'}
+    coverage={<ResultCoverage status={!definition || !models ? 'uncertain' : stale ? 'stale' : models.omittedModels.length || models.unavailableSnapshotModels ? 'partial' : 'complete'}
       counts={t('lists.resultChrome.visible', { count: visibleCount })} incomplete={incomplete} />}
     summary={<span className="text-xs text-muted-foreground">{t('lists.panel.resultsSummary', {
       count: result.totalCount, countDisplay: formatLocaleCount(result.totalCount, locale), ms: result.executionTime.toFixed(0),

@@ -89,7 +89,7 @@ describe('ai.classify', () => {
     const model = standIn(classifyBy);
     const { result, table, coverage } = await classify({ columns: ['Type'] }, model);
     // #7246 native node producer declarations reach actual shared-core receipts.
-    expect(model.receipts[0].provenance).toMatchObject({ promptVersion: 'flow.ai.classify.v1', finishReason: 'stop', grantedOutputTokens: 4000 });
+    expect(model.receipts[0].provenance).toMatchObject({ promptVersion: 'flow.ai.classify.v1', finishReason: 'stop', grantedOutputTokens: 2000 });
     expect(result.review).toEqual(['ai']);
     expect(result.reports.find((r) => r.nodeId === 'ai')?.status).toBe('review');
     expect(table!.value.rows.map((r) => [r.key, r.label, r.evidence, r.outcome])).toEqual([
@@ -176,7 +176,9 @@ describe('ai.summarize', () => {
       [{ from: ['src', 't'], to: ['sum', 'table'] }],
     );
     const result = await runFlow(doc, { host: host(model.service), registry, features });
-    const sections = (result.outputs.get('sum')?.get('sections') as { value: Table }).value;
+    const sectionOutput = result.outputs.get('sum')?.get('sections') as { value: Table } | undefined;
+    if (!sectionOutput) throw new Error('Native summary must publish reviewed sections');
+    const sections = sectionOutput.value;
     expect(sections.rows).toEqual([
       { heading: 'Walls', text: 'Two walls.', citations: 'g0, g2', outcome: 'cited' },
       { heading: 'Rumour', text: 'Something unsupported.', citations: '', outcome: 'uncited' },

@@ -71,7 +71,7 @@ test('real WASM cut retains native progress, background lease and exact row thro
   const nativeProgress:Array<[number,number]>=[];
   render(<ActivityTrayList/>);
   const run=exportZoneGeometry(zones,0,{split:splitMeshByZones,meshPieces:id=>f.meshes.filter(m=>m.expressId===id),
-    batch:async(request,progress)=>{await gate;return runZoneSplitBatch(splitMeshByZones,request,progress);},
+    batch:async(request,progress)=>{await gate;return runZoneSplitBatch(splitMeshByZones,{...request,zones:[...request.zones]},progress);},
     onProgress:(done,total)=>nativeProgress.push([done,total]),emit:bytes=>{artifact=bytes;}});
   let id='';
   try {

@@ -23,7 +23,7 @@ export async function seedZoneExport() {
   const api = new IfcAPI();
   const meshes: MeshData[] = [];
   try {
-    api.setComputeGeometryHashes(true);
+    api.setComputeGeometryHashes(0.001);
     const pre: PrePass = api.buildPrePassOnce(bytes);
     const collection = api.processGeometryBatch(bytes, pre.jobs, pre.unitScale,
       pre.rtcOffset[0], pre.rtcOffset[1], pre.rtcOffset[2], pre.needsShift,

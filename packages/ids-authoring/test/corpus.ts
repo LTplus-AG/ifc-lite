@@ -22,6 +22,7 @@ export interface CorpusCase {
   /** `facet-dir/file.ids` */
   name: string;
   ids: IDSDocument;
+  xml: string;
 }
 
 let cache: CorpusCase[] | undefined;
@@ -35,7 +36,7 @@ export function loadCorpus(): CorpusCase[] {
       if (!file.endsWith('.ids')) continue;
       if (!file.startsWith('pass-') && !file.startsWith('fail-')) continue;
       const xml = readFileSync(join(CORPUS_ROOT, dir.name, file), 'utf8');
-      out.push({ name: `${dir.name}/${file}`, ids: parseIDS(xml) });
+      out.push({ name: `${dir.name}/${file}`, ids: parseIDS(xml), xml });
     }
   }
   out.sort((a, b) => a.name.localeCompare(b.name));

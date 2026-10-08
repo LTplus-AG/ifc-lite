@@ -28,6 +28,7 @@ export {
   type CommentThread,
   type Suppression,
   type CustomPsetDecl,
+  type UserDefinedTypeDecl,
   type RevisionInfo,
 } from './document/types.js';
 export type { FacetFieldName } from './document/fields.js';

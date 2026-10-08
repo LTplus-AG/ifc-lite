@@ -148,6 +148,8 @@ const PAYLOADS: Record<OpKind, JsonSchema> = {
   ]),
   'meta.custom.declarePset': obj({ decl: ref('CustomPsetDecl'), index }, ['decl']),
   'meta.custom.removePset': obj({ name: nonEmpty }, ['name']),
+  'meta.custom.declareUserDefinedType': obj({ entity: nonEmpty, value: nonEmpty, index }, ['entity', 'value']),
+  'meta.custom.removeUserDefinedType': obj({ entity: nonEmpty, value: nonEmpty }, ['entity', 'value']),
   'bulk.renameProperty': obj(
     { fromPset: nonEmpty, fromName: nonEmpty, toPset: nonEmpty, toName: nonEmpty, scope },
     ['fromPset', 'fromName', 'toPset', 'toName'],

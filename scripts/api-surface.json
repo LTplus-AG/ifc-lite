@@ -6672,6 +6672,7 @@
     "StudioOp: type",
     "Suppression: interface",
     "TemplateOp: interface",
+    "UserDefinedTypeDecl: interface",
     "Uuid: type",
     "UuidV7Source: interface",
     "ValueInput: type",

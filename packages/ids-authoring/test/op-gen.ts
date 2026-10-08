@@ -111,7 +111,7 @@ export function randomOp(rng: Rng, doc: StudioDocument, newId: () => string): St
   const all = facets(doc);
   const spec = specs.length ? pick(rng, specs) : undefined;
   const f = all.length ? pick(rng, all) : undefined;
-  switch (int(rng, 32)) {
+  switch (int(rng, 34)) {
     case 0:
       return { kind: 'doc.setInfo', opId, payload: { field: pick(rng, ['title', 'author', 'purpose'] as InfoField[]), value: pick(rng, WORDS) } };
     case 21:
@@ -222,6 +222,12 @@ export function randomOp(rng: Rng, doc: StudioDocument, newId: () => string): St
       return { kind: 'bulk.renameProperty', opId, payload: { fromPset: pick(rng, WORDS), fromName: pick(rng, WORDS), toPset: pick(rng, WORDS), toName: pick(rng, WORDS) } };
     case 31:
       return { kind: 'bulk.retargetEntity', opId, payload: { from: pick(rng, WORDS), to: pick(rng, WORDS), ...(spec && rng() < 0.5 ? { scope: [spec.id] } : {}) } };
+    case 32:
+      return { kind: 'meta.custom.declareUserDefinedType', opId, payload: { entity: 'IfcWall', value: `UDT_${int(rng, 1e9)}` } };
+    case 33: {
+      const declared = doc.meta.custom.userDefinedTypes;
+      return declared.length ? { kind: 'meta.custom.removeUserDefinedType', opId, payload: { ...pick(rng, declared) } } : undefined;
+    }
     case 20:
       return { kind: 'meta.custom.declarePset', opId, payload: { decl: { name: pick(rng, ['Acme_A', 'Acme_B', 'Acme_C']), properties: rng() < 0.5 ? [{ name: 'Code' }] : undefined } } };
     default: {

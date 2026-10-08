@@ -43,8 +43,10 @@ import {
 import {
   applyAddEnumValue,
   applyDeclarePset,
+  applyDeclareUserDefinedType,
   applyRemoveEnumValue,
   applyRemovePset,
+  applyRemoveUserDefinedType,
   applySetField,
 } from './value-ops.js';
 
@@ -111,6 +113,10 @@ export function applyPrimitive(doc: StudioDocument, op: PrimitiveOp): StepResult
       return applyDeclarePset(doc, op);
     case 'meta.custom.removePset':
       return applyRemovePset(doc, op);
+    case 'meta.custom.declareUserDefinedType':
+      return applyDeclareUserDefinedType(doc, op);
+    case 'meta.custom.removeUserDefinedType':
+      return applyRemoveUserDefinedType(doc, op);
   }
 }
 

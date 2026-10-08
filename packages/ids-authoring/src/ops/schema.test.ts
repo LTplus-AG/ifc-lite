@@ -56,6 +56,8 @@ const EXAMPLES: Record<OpKind, StudioOp['payload']> = {
   'value.removeEnumValue': { facetId: F, field: 'property.value', value: 3 },
   'meta.custom.declarePset': { decl: { name: 'Acme_Wall', properties: [{ name: 'Code', dataType: 'IFCLABEL' }] } },
   'meta.custom.removePset': { name: 'Acme_Wall' },
+  'meta.custom.declareUserDefinedType': { entity: 'IfcSlab', value: 'SLABRADOR' },
+  'meta.custom.removeUserDefinedType': { entity: 'IfcSlab', value: 'SLABRADOR' },
   'bulk.renameProperty': { fromPset: 'Pset_WallCommon', fromName: 'Fire', toPset: 'Pset_WallCommon', toName: 'FireRating' },
   'bulk.retargetEntity': { from: 'IfcWallStandardCase', to: 'IfcWall', scope: [S] },
   'bulk.applyTemplate': {

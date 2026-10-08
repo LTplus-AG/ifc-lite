@@ -74,7 +74,7 @@ function checkAfter(c: Collector, op: PrimitiveOp, before: StudioDocument, after
       if (!constraint) continue;
       const path = c.base + target.at(field);
       for (const p of checkConstraint(constraint)) push(c, { code: p.code, message: `${field}: ${p.message}`, path, facetId: target.facetId, field });
-      const scope: FieldScope = { ctx, spec, versions: specVersions(spec), facet, field, customPsets: after.meta.custom.psets };
+      const scope: FieldScope = { ctx, spec, versions: specVersions(spec), facet, field, customPsets: after.meta.custom.psets, userDefinedTypes: after.meta.custom.userDefinedTypes };
       for (const g of [...groundEntityFields(scope), ...groundPropertyFields(scope)]) {
         push(c, { ...g, path, facetId: target.facetId, field });
       }

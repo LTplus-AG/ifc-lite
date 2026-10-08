@@ -116,15 +116,6 @@ function checkBaseName(scope: FieldScope, facet: IDSPropertyFacet): GroundingPro
   });
 }
 
-/** IDS template type names accepted as dataType for a property kind (mirrors the audit). */
-const TEMPLATE_DATATYPE: Partial<Record<IfcPropertyInfo['kind'], string>> = {
-  single: 'IFCPROPERTYSINGLEVALUE',
-  enumeration: 'IFCPROPERTYENUMERATEDVALUE',
-  list: 'IFCPROPERTYLISTVALUE',
-  bounded: 'IFCPROPERTYBOUNDEDVALUE',
-  reference: 'IFCPROPERTYREFERENCEVALUE',
-};
-
 function checkDataType(scope: FieldScope, facet: IDSPropertyFacet): GroundingProblem[] {
   const dt = single(facet.dataType);
   if (!dt) return [];
@@ -135,7 +126,7 @@ function checkDataType(scope: FieldScope, facet: IDSPropertyFacet): GroundingPro
     }
     const prop = standardProperty(t, facet)?.prop;
     const expected = prop?.dataType ?? (prop?.kind === 'enumeration' ? 'IfcLabel' : undefined);
-    if (!prop || !expected || expected.toUpperCase() === upper || TEMPLATE_DATATYPE[prop.kind] === upper) return [];
+    if (!prop || !expected || expected.toUpperCase() === upper) return [];
     return [
       {
         code: 'GATE-DT-001' as const,

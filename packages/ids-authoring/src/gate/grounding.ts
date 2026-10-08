@@ -15,7 +15,7 @@
 
 import type { IDSConstraint, IDSFacet, IDSSpecification, IFCVersion } from '@ifc-lite/ids';
 import type { FacetFieldName } from '../document/fields.js';
-import type { CustomPsetDecl } from '../document/types.js';
+import type { CustomPsetDecl, UserDefinedTypeDecl } from '../document/types.js';
 import { inheritanceChain, tablesFor, type GateContext, type VersionTables } from './context.js';
 import { rankCandidates } from './rank.js';
 import type { GateCandidate, GateCode } from './types.js';
@@ -36,6 +36,7 @@ export interface FieldScope {
   facet: IDSFacet;
   field: FacetFieldName;
   customPsets: readonly CustomPsetDecl[];
+  userDefinedTypes: readonly UserDefinedTypeDecl[];
 }
 
 /** The literal values of a constraint (simpleValue, or each enumeration value). */
@@ -107,11 +108,16 @@ function checkPredefinedType(scope: FieldScope, entity: IDSConstraint | undefine
     // PredefinedType enumeration in the tables cannot be checked.
     if (!info || info.predefinedTypes.length === 0) return [];
     const allowed = new Set(info.predefinedTypes.map((p) => p.toUpperCase()));
+    const userDefinable = allowed.has('USERDEFINED');
+    const declared = (v: string) =>
+      scope.userDefinedTypes.some((d) => d.entity.toUpperCase() === info.name.toUpperCase() && d.value.toUpperCase() === v.toUpperCase());
     return values
-      .filter((v) => !allowed.has(v.toUpperCase()))
+      .filter((v) => !allowed.has(v.toUpperCase()) && !(userDefinable && declared(v)))
       .map((v) => ({
         code: 'GATE-PDT-001' as const,
-        message: `"${v}" is not a predefined type of ${info.name}`,
+        message: userDefinable
+          ? `"${v}" is not a predefined type of ${info.name}; if it is a user-defined type (ObjectType), declare it with meta.custom.declareUserDefinedType`
+          : `"${v}" is not a predefined type of ${info.name}`,
         value: v,
         candidates: rankCandidates(v, info.predefinedTypes, { minScore: 0 }),
       }));

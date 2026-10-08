@@ -25,7 +25,7 @@ import type {
   RequirementOptionality,
 } from '@ifc-lite/ids';
 import type { FacetFieldName } from '../document/fields.js';
-import type { CustomPsetDecl, FacetNodes, Section, SpecNodes } from '../document/types.js';
+import type { CustomPsetDecl, FacetNodes, Section, SpecNodes, UserDefinedTypeDecl } from '../document/types.js';
 import type { Uuid } from '../uuid.js';
 
 export const OPS_VERSION = 1;
@@ -218,6 +218,8 @@ export type ValueRemoveEnumOp = Op<'value.removeEnumValue', { facetId: Uuid; fie
 
 export type MetaDeclarePsetOp = Op<'meta.custom.declarePset', { decl: CustomPsetDecl; index?: number }>;
 export type MetaRemovePsetOp = Op<'meta.custom.removePset', { name: string }>;
+export type MetaDeclareUserDefinedTypeOp = Op<'meta.custom.declareUserDefinedType', UserDefinedTypeDecl & { index?: number }>;
+export type MetaRemoveUserDefinedTypeOp = Op<'meta.custom.removeUserDefinedType', UserDefinedTypeDecl>;
 
 // ---------------------------------------------------------------------------
 // Compound ops (expand to primitives)
@@ -273,7 +275,9 @@ export type PrimitiveOp =
   | ValueAddEnumOp
   | ValueRemoveEnumOp
   | MetaDeclarePsetOp
-  | MetaRemovePsetOp;
+  | MetaRemovePsetOp
+  | MetaDeclareUserDefinedTypeOp
+  | MetaRemoveUserDefinedTypeOp;
 
 export type CompoundOp = BulkRenamePropertyOp | BulkRetargetEntityOp | BulkApplyTemplateOp;
 

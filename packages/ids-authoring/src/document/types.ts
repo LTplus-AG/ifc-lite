@@ -129,6 +129,20 @@ export interface CustomPsetDecl {
   properties?: { name: string; dataType?: string }[];
 }
 
+/**
+ * A user-defined predefined type the author declared on purpose. In IDS a
+ * predefinedType outside the entity's enumeration matches the element's
+ * ObjectType / ElementType when PredefinedType is USERDEFINED; the gate only
+ * accepts such a value when it is declared, so an invented enum member
+ * cannot pass as "user-defined" by accident.
+ */
+export interface UserDefinedTypeDecl {
+  /** Entity name as written (compared case-insensitively). */
+  entity: string;
+  /** The user-defined value (compared case-insensitively). */
+  value: string;
+}
+
 export interface RevisionInfo {
   parentHash?: string;
   label?: string;
@@ -149,7 +163,7 @@ export interface StudioMeta {
   mappings: unknown[];
   revision: RevisionInfo;
   unresolved: unknown[];
-  custom: { psets: CustomPsetDecl[] };
+  custom: { psets: CustomPsetDecl[]; userDefinedTypes: UserDefinedTypeDecl[] };
 }
 
 export function emptyMeta(): StudioMeta {
@@ -162,6 +176,6 @@ export function emptyMeta(): StudioMeta {
     mappings: [],
     revision: {},
     unresolved: [],
-    custom: { psets: [] },
+    custom: { psets: [], userDefinedTypes: [] },
   };
 }

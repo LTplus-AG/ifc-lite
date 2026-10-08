@@ -12,7 +12,9 @@ import { normaliseValue } from '../ops/draft.js';
 import type {
   ConstraintIds,
   MetaDeclarePsetOp,
+  MetaDeclareUserDefinedTypeOp,
   MetaRemovePsetOp,
+  MetaRemoveUserDefinedTypeOp,
   PrimitiveOp,
   Scalar,
   ValueAddEnumOp,
@@ -163,6 +165,40 @@ export function applyRemovePset(doc: StudioDocument, op: MetaRemovePsetOp): Step
   return {
     doc: { ...doc, meta: { ...doc.meta, custom: { ...doc.meta.custom, psets: removeAt(psets, index) } } },
     inverse: [inv(op, 0, 'meta.custom.declarePset', { decl: psets[index], index })],
+    touched: [doc.nodes.document],
+  };
+}
+
+function sameType(a: { entity: string; value: string }, b: { entity: string; value: string }): boolean {
+  return a.entity.toUpperCase() === b.entity.toUpperCase() && a.value.toUpperCase() === b.value.toUpperCase();
+}
+
+export function applyDeclareUserDefinedType(doc: StudioDocument, op: MetaDeclareUserDefinedTypeOp): StepResult {
+  const { entity, value, index } = op.payload;
+  const list = doc.meta.custom.userDefinedTypes;
+  if (list.some((d) => sameType(d, { entity, value }))) {
+    throw new OpApplyError('GATE-CUST-004', `user-defined type ${entity}.${value} is already declared`);
+  }
+  const at = index ?? list.length;
+  if (!Number.isInteger(at) || at < 0 || at > list.length) {
+    throw new OpApplyError('GATE-STR-006', `index ${at} is out of range 0..${list.length}`);
+  }
+  return {
+    doc: { ...doc, meta: { ...doc.meta, custom: { ...doc.meta.custom, userDefinedTypes: insertAt(list, at, { entity, value }) } } },
+    inverse: [inv(op, 0, 'meta.custom.removeUserDefinedType', { entity, value })],
+    touched: [doc.nodes.document],
+  };
+}
+
+export function applyRemoveUserDefinedType(doc: StudioDocument, op: MetaRemoveUserDefinedTypeOp): StepResult {
+  const list = doc.meta.custom.userDefinedTypes;
+  const index = list.findIndex((d) => sameType(d, op.payload));
+  if (index < 0) {
+    throw new OpApplyError('GATE-CUST-004', `user-defined type ${op.payload.entity}.${op.payload.value} is not declared`);
+  }
+  return {
+    doc: { ...doc, meta: { ...doc.meta, custom: { ...doc.meta.custom, userDefinedTypes: removeAt(list, index) } } },
+    inverse: [inv(op, 0, 'meta.custom.declareUserDefinedType', { ...list[index], index })],
     touched: [doc.nodes.document],
   };
 }

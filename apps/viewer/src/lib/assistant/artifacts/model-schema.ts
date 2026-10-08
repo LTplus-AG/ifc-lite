@@ -25,6 +25,7 @@ import { createElementFieldReader, type ElementFieldCatalog } from '@/lib/charts
 import { catalogFromObservations, emptyObservations, mergeObservations } from '@/lib/charts/element-field-discovery';
 import { iterateEffectiveChartRows } from '@/lib/charts/datasets/effective-elements';
 import { fieldKey, type FieldKind } from './field-refs';
+import { effectiveClassificationSystems } from '@/components/viewer/properties/effective-classification-systems';
 
 export interface FieldPresence {
   kind: FieldKind;
@@ -83,6 +84,15 @@ export async function buildModelSchemaIndex(state: SchemaState, options: { signa
     if (!store) continue;
     const view = state.mutationViews.get(modelId);
     const reader = createElementFieldReader(store, view);
+    // A declared system with no assignments is valid for native absence queries.
+    // Native rule evaluation still reads the source; unsupported live classification
+    // edits are refused at preview until the common effective reader lands (#7131).
+    for (const name of effectiveClassificationSystems(store, null).names) {
+      const key = fieldKey({ kind: 'classification', set: '', name });
+      let entry = fields.get(key);
+      if (!entry) { entry = { kind: 'classification', set: '', name, count: 0, byModel: new Map() }; fields.set(key, entry); }
+      entry.byModel.set(modelId, 0);
+    }
     let elements = 0;
     let scanned = 0;
     let rows = 0;
@@ -99,6 +109,7 @@ export async function buildModelSchemaIndex(state: SchemaState, options: { signa
       const seen = reader.observe([row.expressId]);
       for (const { psetName, propertyName } of seen.properties.values()) bump('property', psetName, propertyName, modelId);
       for (const { qsetName, quantityName } of seen.quantities.values()) bump('quantity', qsetName, quantityName, modelId);
+      for (const name of seen.relations.classificationSystems) bump('classification', '', name, modelId);
       mergeObservations(observations, seen);
     }
     partial ||= scanned < elements;

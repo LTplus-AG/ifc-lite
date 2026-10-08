@@ -18,6 +18,8 @@ export interface WorkerSpanRecorder {
   readonly thread: string;
   begin(name: string, attrs?: TraceAttrs): number;
   end(token: number, attrs?: TraceAttrs): void;
+  /** Finish named work before publishing an event that makes the host terminate us. */
+  endNamed(name: string): void;
   /** Finished spans since the last drain, or `null` when there are none. */
   drain(): WorkerTracePayload | null;
 }
@@ -49,6 +51,14 @@ export function createWorkerSpanRecorder(
       span.end = now();
       if (attrs) span.attrs = { ...span.attrs, ...attrs };
       done.push(span);
+    },
+    endNamed(name) {
+      for (const [token, span] of open) {
+        if (span.name !== name) continue;
+        open.delete(token);
+        span.end = now();
+        done.push(span);
+      }
     },
     drain() {
       if (done.length === 0) return null;
@@ -87,7 +97,12 @@ export interface WorkerTraceHostOptions {
  * main thread terminates on a message it is about to send (the pre-pass
  * worker on its final event) calls it first, or the counters die with it.
  */
-export type WorkerTraceHost = ((data: unknown, run: () => Promise<void>) => Promise<void>) & { flush(): void; reset(): void };
+export type WorkerTraceHost = ((data: unknown, run: () => Promise<void>) => Promise<void>) & {
+  /** Drain finished work; optionally finish all open spans with the given name before a terminal event. */
+  flush(completedSpan?: string): void;
+  /** End this load epoch before admitting the worker to another lease. */
+  reset(): void;
+};
 
 export function createWorkerTraceHost(options: WorkerTraceHostOptions): WorkerTraceHost {
   let recorder: WorkerSpanRecorder | null = null;
@@ -127,7 +142,11 @@ export function createWorkerTraceHost(options: WorkerTraceHostOptions): WorkerTr
     }
   };
   return Object.assign(host, {
-    flush: () => { if (recorder) flush(recorder); },
+    flush: (completedSpan?: string) => {
+      if (!recorder) return;
+      if (completedSpan !== undefined) recorder.endNamed(completedSpan);
+      flush(recorder);
+    },
     reset: () => { recorder = null; seenOnce.clear(); counters.reset(); },
   });
 }

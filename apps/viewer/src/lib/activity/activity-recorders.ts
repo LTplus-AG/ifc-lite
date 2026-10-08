@@ -85,12 +85,17 @@ function watchClash(store: ViewerStoreLike): () => void {
 function watchFlow(store: ViewerStoreLike): () => void {
   return watch(store, {
     running: (s) => s.flowRunning,
-    start: (s) => ({
-      job: { kind: 'flow', title: 'activityTray.job.flow', panel: 'flow', cancel: cancelWorkflowRun,
-        ...(s.flowDoc?.name ? { subject: s.flowDoc.name } : {}) },
-      // useFlowRunner starts the run session before it raises `flowRunning`.
-      baseline: { lastRun: s.flowLastRun, signal: activeWorkflowSignal() },
-    }),
+    start: (s) => {
+      // useFlowRunner starts its native session before raising `flowRunning`.
+      const signal = activeWorkflowSignal();
+      return {
+        job: { kind: 'flow', title: 'activityTray.job.flow', panel: 'flow',
+          // A captured callback can outlive journal cleanup; it owns this run only (#7122).
+          cancel: signal ? () => { if (activeWorkflowSignal() === signal) cancelWorkflowRun(); } : undefined,
+          ...(s.flowDoc?.name ? { subject: s.flowDoc.name } : {}) },
+        baseline: { lastRun: s.flowLastRun, signal },
+      };
+    },
     tick: (s) => (s.flowProgress ? { phase: s.flowProgress } : {}),
     end: (s, { lastRun, signal }) => {
       // Aborted by the Flow panel's Stop, the tray's Cancel, or a superseding change.

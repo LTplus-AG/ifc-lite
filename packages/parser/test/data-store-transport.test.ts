@@ -19,18 +19,14 @@ import { extractPropertiesOnDemand } from '../src/columnar-parser.js';
 import { contiguousSourceBytes, type IfcSourceBytes } from '../src/source-bytes.js';
 
 /**
- * Resolve a fixture from the external ara3d worktree. Tests skip cleanly
- * when the fixture is unavailable so fresh clones don't break.
+ * Resolve a fixture from the repo's own `tests/models/ara3d` (`pnpm fixtures`).
+ * Tests skip cleanly when the fixture is unavailable so fresh clones don't
+ * break. No machine-specific path: a fixture only one developer's disk has
+ * would make the suite pass or skip depending on whose machine runs it.
  */
 function fixture(name: string): string | null {
-  const candidates = [
-    resolve('/Users/louistrue/Development/ifc-lite-fixtures-wt/tests/models/ara3d', name),
-    resolve(__dirname, '..', '..', '..', 'tests', 'models', 'ara3d', name),
-  ];
-  for (const candidate of candidates) {
-    if (existsSync(candidate)) return candidate;
-  }
-  return null;
+  const candidate = resolve(__dirname, '..', '..', '..', 'tests', 'models', 'ara3d', name);
+  return existsSync(candidate) ? candidate : null;
 }
 
 function readFixture(name: string): ArrayBuffer | null {

@@ -14,7 +14,7 @@
 import { extractGeoreferencingOnDemand, extractLengthUnitScale } from '@ifc-lite/parser';
 import type { ComparisonOp, EntityData, QueryFilter } from '@ifc-lite/sdk';
 import type { Tool } from './types.js';
-import { findByGlobalId, okResult, paginate, resolveGlobalIds, resolveModel } from './util.js';
+import { findByGlobalId, fmtInt, okResult, paginate, resolveGlobalIds, resolveModel } from './util.js';
 import { materialFallbackName } from '../material-naming.js';
 import { pendingMutationsField, pendingOverlay } from '../overlay.js';
 import { buildSpatialTree } from '../spatial-tree.js';
@@ -134,7 +134,7 @@ const queryEntities: Tool = {
 };
 
 function formatQueryResult(total: number, truncated: boolean, _shaped: unknown[], items: EntityData[]): string {
-  const head = `Found ${total.toLocaleString()} matching entit${total === 1 ? 'y' : 'ies'}${truncated ? ` (showing ${items.length})` : ''}.`;
+  const head = `Found ${fmtInt(total)} matching entit${total === 1 ? 'y' : 'ies'}${truncated ? ` (showing ${items.length})` : ''}.`;
   if (items.length === 0) return head;
   const lines = items.slice(0, 25).map((e) => {
     const name = e.name ? ` '${e.name}'` : '';
@@ -212,7 +212,7 @@ const countEntities: Tool = {
     if (!groupBy) {
       const total = entities.length;
       return okResult(
-        `${total.toLocaleString()} entities${typeFilter ? ` of type ${typeFilter}` : ''}.`,
+        `${fmtInt(total)} entities${typeFilter ? ` of type ${typeFilter}` : ''}.`,
         { total, ...pendingMutationsField(overlay) },
       );
     }

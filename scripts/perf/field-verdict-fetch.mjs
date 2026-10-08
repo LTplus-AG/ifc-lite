@@ -16,8 +16,8 @@
  */
 
 import { writeFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
 import { verdictSql } from './field-verdict.mjs';
+import { isMainEntry } from '../lib/is-main-entry.mjs';
 
 export const DEFAULT_HOST = 'https://eu.posthog.com';
 export const DEFAULT_PROJECT = '199147';
@@ -80,7 +80,7 @@ async function main(argv) {
   console.log(`field-verdict-fetch: ${rows.results.length} cell rows for build ${build.slice(0, 12)} -> ${out}`);
 }
 
-if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
+if (isMainEntry(import.meta.url)) {
   main(process.argv.slice(2)).catch((error) => {
     console.error(error instanceof Error ? error.message : error);
     process.exitCode = 1;

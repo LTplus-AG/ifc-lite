@@ -27,6 +27,12 @@ export function loadSheet(hash: string): DrawingSheet | null {
   return restoreSheet(entry.sheet);
 }
 
+/** A stored null is an explicit clear, which must outrank a legacy sheet (#7035). */
+export function hasSavedSheetChoice(hash: string): boolean {
+  const entry = record(read(sheetStorageKey(hash)));
+  return entry.sheet === null || restoreSheet(entry.sheet) !== null;
+}
+
 export function loadSheetTemplates(): DrawingSheet[] {
   const entry = record(read(SHEET_TEMPLATES_KEY));
   return Array.isArray(entry.templates)
@@ -86,14 +92,6 @@ function nextSaveOrder(): string {
 
 export function saveSheet(hash: string, sheet: DrawingSheet | null): void {
   const key = sheetStorageKey(hash);
-  if (sheet === null) {
-    try {
-      if (typeof localStorage !== 'undefined') localStorage.removeItem(key);
-    } catch (error) {
-      console.warn('[sheet] Could not clear saved sheet setup', error);
-    }
-    return;
-  }
   const savedAt = Date.now();
   if (!write(key, { sheet, savedAt, savedOrder: nextSaveOrder() })) return;
   // Match the drawing markup cache's 20-model limit. Templates are never evicted.

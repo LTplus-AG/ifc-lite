@@ -7,8 +7,7 @@
  *
  * `drawing2DSlice.ts` is at its module-size budget, and the scoping key this
  * needs — a model content hash — is not known at slice-init time (no model
- * is loaded yet when the store is constructed) nor is it a field on
- * `FederatedModel` (adding one would grow `store/types.ts`, also at budget).
+ * is loaded yet when the store is constructed).
  * So this lives as an external bridge instead of slice actions: this React
  * hook resolves the active model's content hash and restores its markup;
  * `drawingMarkupSave.ts` (split out at the same time, module-size budget)
@@ -32,43 +31,54 @@
  * fields do.
  */
 
+import type { DrawingSheet } from '@ifc-lite/drawing-2d';
 import { useEffect, useRef } from 'react';
 import { useViewerStore } from '@/store';
 import { getDefaultDrawing2DState } from '@/store/slices/drawing2DSlice.js';
-import { computeFullSourceHashFromBlob } from '@/utils/sourceContentHash.js';
-import { loadDrawing2DEntry, defaultMarkupPatch, suppressNextSaveFor } from '@/store/slices/drawing2DSlice.persistence.js';
+import { identifyLoadedPlacementSource } from '@/lib/model-placement/loaded-source-identity';
+import { placementSourceIdentity } from '@/lib/model-placement/source-identity';
+import { loadDrawing2DEntry, defaultMarkupPatch, suppressNextSaveFor, type PersistedDrawing2DEntry } from '@/store/slices/drawing2DSlice.persistence.js';
 import { setCachedHash, notifyDecided } from './drawingMarkupRestorePrecedence.js';
 import { resetSaveState, beginRestore, endRestore, setRestoredSectionConfig, ensureSaveSubscription } from './drawingMarkupSave.js';
-import { ensureSheetPersistence, settleSheetHash } from './sheetPersistence.js';
+import { ensureSheetPersistence, hasUnsavedSheetEdit, settleSheetHash } from './sheetPersistence.js';
 import {
+  drawingPersistenceOnDemand as drawingKey,
   ensureDxfUnderlaySaveSubscription,
   restoreDxfUnderlaysFor,
   settleDxfUnderlayHash,
+  waitForPendingDxfUnderlaySave,
 } from './dxfUnderlaySave.js';
+import type { DrawingKeyHost, UnionById } from './drawingPersistenceKey.js';
 
 export { hasPersistedMarkupEntryFor, onLocalStorageDecidedFor } from './drawingMarkupRestorePrecedence.js';
 export { notifyDrawing2DSectionConfig, consumeRestoredSectionConfig } from './drawingMarkupSave.js';
 
-/** A model id may be reused for replacement bytes; cached hashes belong to a source. */
-const sourceHashes = new WeakMap<File, string | null>();
+/**
+ * The key resolver and the legacy-key move (#7035) are imported on demand
+ * (`drawingKey`): this hook is in the viewer's eager bundle and they need not
+ * be. What they use from modules that ARE eager is handed over, so importing
+ * them does not pull those modules into chunks of their own.
+ */
+const keyHost: DrawingKeyHost = { identifyLoadedPlacementSource, placementSourceIdentity, hasUnsavedSheetEdit, waitForPendingDxfUnderlaySave };
 
 /**
- * Resolves the active model's content hash (from `FederatedModel.sourceFile`)
- * and restores that model's persisted markup into the store. This is a TRUE
- * full-content SHA-256 (`computeFullSourceHashFromBlob`), NOT the
+ * Resolves the active model's content hash and restores that model's
+ * persisted markup into the store. The hash is the load's placement identity
+ * (`FederatedModel.sourceContentHash`, a SHA-256 over every byte of the file
+ * in 1 MiB chunks; see `drawingPersistenceKey.ts`, #7035), NOT the
  * window-sampled fingerprint `services/ifc-cache.ts` keys its geometry cache
  * on: that sampler is a deliberately O(1) cache-lookup key with a proven
  * blind spot (an edit landing between its sample windows is invisible to
  * it — see `@ifc-lite/cache`'s `source-fingerprint.ts`'s docs), safe there only because a
- * false key-hit is still gated by an mtime guard and this same full hash as
- * a background revalidation layer. Markup restore has no such second gate —
+ * false key-hit is still gated by an mtime guard and a full-content
+ * revalidation layer. Markup restore has no such second gate —
  * whatever this resolves to is used directly as the `localStorage` key — so
  * it must be an identity that cannot collide on two genuinely different
  * models, not merely a fast one. Restores defaults (i.e. does nothing — the
  * fields are already `[]`/defaults after `resetViewerState`) when nothing is
- * saved for the hash, or when a hash cannot be computed at all (no
- * `sourceFile` — e.g. a cache-restored model), which degrades to today's
- * non-persisted behaviour for that load rather than throwing.
+ * saved for the hash, or when there is no hash at all (no `sourceFile`, or
+ * no digest available), which leaves that load non-persisted rather than
+ * throwing.
  *
  * ## Precedence over #4170's IFC-embedded restore (`useDrawingMarkupRestoreOnLoad.ts`)
  * `applyHash` below writes unconditionally — no emptiness check — by
@@ -139,7 +149,12 @@ export function useDrawing2DPersistence(): void {
     suppressNextSaveFor(activeModelId);
     useViewerStore.setState(defaultMarkupPatch());
 
-    const applyHash = (hash: string | null, skipDxfRestore = false) => {
+    // `drawnMeanwhile` unites a stored list with the live one. The fields were
+    // cleared when this model became active, so what the live lists hold at
+    // restore time was drawn while the key was resolving (#7035: that can
+    // last until the load ends when a legacy entry is being moved). The resolver
+    // runs on every activation so late legacy writes are included too.
+    const applyHash = (hash: string | null, skipDxfRestore = false, drawnMeanwhile: UnionById = (stored) => stored, fallback?: PersistedDrawing2DEntry) => {
       if (!stillCurrent()) return;
       endRestore(activeModelId);
       if (!hash) return;
@@ -151,45 +166,46 @@ export function useDrawing2DPersistence(): void {
       // `dxfUnderlaySave.ts`'s `restoreDxfUnderlaysFor`/`mergeDxfUnderlays`)
       // rather than a replace. Not awaited: it guards its own staleness via
       // `stillCurrent`, the same closure every other async step here uses.
-      if (!skipDxfRestore) void restoreDxfUnderlaysFor(hash, stillCurrent);
+      // The legacy-key move (#7035) starts only once that restore is done: it
+      // adds to the live list, and the save that follows would replace the
+      // identity key's own underlays if they were not in the list yet.
+      const moveLegacy = () => {
+        if (!activeSourceFile) return;
+        drawingKey().then((key) => key.migrateLegacyDxfUnderlays(hash, activeModelId, activeSourceFile, stillCurrent, keyHost))
+          // eslint-disable-next-line no-console
+          .catch((err) => console.warn('[drawing2D] legacy DXF underlays not moved', err));
+      };
+      if (skipDxfRestore) moveLegacy();
+      else void restoreDxfUnderlaysFor(hash, stillCurrent).then(moveLegacy, moveLegacy);
 
       const defaults = getDefaultDrawing2DState().drawing2DDisplayOptions;
-      const entry = loadDrawing2DEntry(hash, defaults);
+      const entry = fallback ?? loadDrawing2DEntry(hash, defaults);
       if (!entry) return;
 
       setRestoredSectionConfig(activeModelId, entry.sectionConfig);
+      const live = useViewerStore.getState();
       useViewerStore.setState({
-        measure2DResults: entry.measure2DResults,
-        polygonArea2DResults: entry.polygonArea2DResults,
-        textAnnotations2D: entry.textAnnotations2D,
-        cloudAnnotations2D: entry.cloudAnnotations2D,
+        measure2DResults: drawnMeanwhile(entry.measure2DResults, live.measure2DResults),
+        polygonArea2DResults: drawnMeanwhile(entry.polygonArea2DResults, live.polygonArea2DResults),
+        textAnnotations2D: drawnMeanwhile(entry.textAnnotations2D, live.textAnnotations2D),
+        cloudAnnotations2D: drawnMeanwhile(entry.cloudAnnotations2D, live.cloudAnnotations2D),
         drawing2DDisplayOptions: entry.drawing2DDisplayOptions,
       });
     };
 
     const sourceFile = activeSourceFile;
-    const settleHash = (hash: string | null) => {
-      settleSheetHash(activeModelId, hash, sourceFile);
+    const settleHash = (hash: string | null, fallback?: DrawingSheet) => {
+      settleSheetHash(activeModelId, hash, sourceFile, fallback);
       return settleDxfUnderlayHash(activeModelId, hash);
     };
-    const cacheHash = (hash: string | null) => {
+    const cacheHash = (hash: string | null, legacyMarkupKey?: string) => {
       if (useViewerStore.getState().models.get(activeModelId)?.sourceFile !== sourceFile) return false;
-      if (sourceFile) sourceHashes.set(sourceFile, hash);
-      setCachedHash(activeModelId, hash);
+      setCachedHash(activeModelId, hash, legacyMarkupKey);
       return true;
     };
-    const cached = sourceFile ? sourceHashes.get(sourceFile) : undefined;
-    if (cached !== undefined) {
-      cacheHash(cached);
-      applyHash(cached, settleHash(cached));
-      // Symmetric with the branches below — a no-op today (this model's
-      // listeners already fired on the earlier mount that cached its hash;
-      // see `hasPersistedMarkupEntryFor`'s doc) but keeps "hashCache settling
-      // fires decided listeners" true by construction, not just by that
-      // function re-deriving its answer from `hashCache`.
-      notifyDecided(activeModelId);
-      return;
-    }
+    // #7035: recheck legacy entries on every activation, including the same
+    // File. The loaded identity and successful legacy digest already cache
+    // their byte reads; another tab may have saved new legacy entries meanwhile.
 
     if (!sourceFile) {
       cacheHash(null);
@@ -198,10 +214,11 @@ export function useDrawing2DPersistence(): void {
       return;
     }
 
-    computeFullSourceHashFromBlob(sourceFile)
-      .then((hash) => {
-        if (!cacheHash(hash)) { settleSheetHash(activeModelId, hash, sourceFile); return; }
-        applyHash(hash, settleHash(hash));
+    drawingKey()
+      .then(async (key) => {
+        const { key: hash, local } = await key.resolveDrawingPersistenceKey(activeModelId, sourceFile, keyHost);
+        if (!cacheHash(hash, local?.legacyMarkupKey)) { settleSheetHash(activeModelId, hash, sourceFile, local?.sheet); return; }
+        applyHash(hash, settleHash(hash, local?.sheet), key.unionById, local?.markup);
         notifyDecided(activeModelId);
       })
       .catch((err) => {

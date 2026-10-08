@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import '@/test/setup-dom.js';
+import 'fake-indexeddb/auto';
 import assert from 'node:assert/strict';
 import { afterEach, test } from 'node:test';
 import { MutablePropertyView } from '@ifc-lite/mutations';
@@ -15,10 +16,16 @@ import { previewModelAuthoring } from './model-authoring-preview';
 import { commitModelAuthoring } from './model-authoring-commit';
 import { readOnlyModelEditTarget } from './model-authoring-read-target';
 import { readAuthoringSizeFromTarget } from './model-authoring-size';
+import { captureSelectionGrounding } from './selection-grounding';
+import { attachmentsForSend } from '@/components/viewer/assistant/ComposerAttachments';
+import { captureEvidence } from '@/lib/assistant/evidence';
+import { cancelAssistant, replaceEvidence, useAssistant } from '@/lib/assistant/conversation';
+import { sendAssistant } from '@/lib/assistant/request';
 
 const original = useViewerStore.getState();
+const originalAssistant = useAssistant.getState(), originalFetch = globalThis.fetch;
 const WALL_NAME = 'Native layer wall';
-afterEach(() => useViewerStore.setState(original, true));
+afterEach(() => { cancelAssistant(); globalThis.fetch = originalFetch; useAssistant.setState(originalAssistant, true); useViewerStore.setState(original, true); });
 
 async function inspectorControl() {
   const { dataStore, view } = await seedAuthoringSample();
@@ -83,3 +90,21 @@ test('#7275 native inspector preserves its unsupported source-wall section refus
   assert.deepEqual(after.getEntity(target)?.attributes, before.getEntity(target)?.attributes);
   assert.equal(layerSetOf({ dataStore: after, view: new MutablePropertyView(after.properties ?? null, SAMPLE_MODEL) }, target), null);
 });
+
+for (const attached of [false, true]) {
+  test(`#7275 ${attached ? 'explicit attached' : 'rich selection'} actual request supplies a source-owned native layer expectation`, async () => {
+    const { target } = await inspectorControl();
+    useViewerStore.getState().addEntityToSelection({ modelId: SAMPLE_MODEL, expressId: target });
+    useViewerStore.getState().setSelectedEntityIds([target]);
+    const selection = attached ? captureSelectionGrounding(useViewerStore.getState()) : null;
+    replaceEvidence(captureEvidence(attached ? 'loadReport' : 'selection'));
+    let body = '';
+    globalThis.fetch = async (_url, init) => {
+      body = String(init?.body);
+      return new Response('data: {"choices":[{"delta":{"content":"Review"},"finish_reason":"stop"}]}\n\ndata: [DONE]\n\n');
+    };
+    assert.equal(await sendAssistant('Review current native layers', 'openai/gpt-free', '/api/chat',
+      selection ? attachmentsForSend({ selection, screenshot: null }) : undefined), true);
+    assert.match(body, /nativeLayers/, 'the real provider input must include complete native layer expectations rather than only material names');
+  });
+}

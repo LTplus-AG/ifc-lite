@@ -6,8 +6,9 @@ import '@/test/setup-dom.js';
 import test, { afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
-import { EMPTY_SOURCE_BYTES } from '@ifc-lite/parser';
-import { advance, render, cleanup } from '@/test/render';
+import { EMPTY_SOURCE_BYTES, effectiveStoreyId as parsedStoreyId, extractRelationshipsOnDemand } from '@ifc-lite/parser';
+import { effectiveStoreyId } from '../../../../../../packages/create/src/in-store/edit/effective-storey';
+import { advance, render, cleanup, click } from '@/test/render';
 import { exportAndReparse, parseStep, seedModel } from '@/test/properties-panel-harness';
 import { getOrCreateMutationView } from '@/sdk/adapters/mutation-view';
 import { createQueryAdapter } from '@/sdk/adapters/query-adapter';
@@ -102,6 +103,12 @@ test('#7179 source-free edited native relationship membership has an unknown tot
   assert.equal(row.relationshipStatus, 'unavailable-source-membership');
   assert.equal(row.relationshipCount, null);
   assert.ok(row.relationships.some(edge => edge.verification === 'unverified'));
+  const ui = render(renderPanelBody('properties', () => undefined)); await advance(0);
+  const trigger = [...ui.querySelectorAll('button')].find(button => button.textContent?.includes('Relationships'));
+  assert.ok(trigger); assert.match(trigger.textContent ?? '', /\?/);
+  if (!ui.textContent?.includes('Current relationship membership')) { click(trigger); await advance(0); }
+  assert.match(ui.textContent ?? '', /Current relationship membership is unavailable/);
+  assert.equal(sourceReads, 0);
 });
 
 // #7179 actual public authored assignment records must survive STEP export;
@@ -182,4 +189,98 @@ test('#7179 source-free missing native relationship graph does not invent an emp
   const row = rows()[0];
   assert.equal(row.relationshipStatus, 'unavailable-membership');
   assert.equal(row.relationshipCount, null); assert.deepEqual(row.relationships, []);
+});
+
+// #7179 masking bytes must also prevent the old native graph from authorizing
+// spatial edits through a superseded source relationship (not merely warn UI).
+test('#7179 source-free retarget cannot authorize the original native storey membership', async () => {
+  const store = await sample(); seedModel('authoring', 0, store, 89);
+  const view = getOrCreateMutationView(useViewerStore, 'authoring'); assert.ok(view);
+  assert.equal(effectiveStoreyId(store, view, 89), 43);
+  view.setPositionalAttribute(97, 5, ['#52']);
+  const exported = await exportAndReparse('authoring', store);
+  assert.deepEqual(exported.getEntity(97)?.attributes[5], [52]);
+  assert.equal(parsedStoreyId(exported, 89), undefined);
+  store.source = EMPTY_SOURCE_BYTES;
+  assert.equal(effectiveStoreyId(store, view, 89), undefined);
+});
+
+// #7179 fully authored native records remain usable without old source bytes.
+test('#7179 complete authored spatial relationship survives opaque source membership edits', async () => {
+  const store = await sample(); seedModel('complete', 0, store, 89);
+  const view = getOrCreateMutationView(useViewerStore, 'complete'); assert.ok(view); view.setExpressIdWatermark(100_000);
+  view.setPositionalAttribute(97, 5, ['#52']);
+  const authored = view.createEntity('IfcRelAggregates', ['0000000000000000000001', null, null, null, '#43', ['#89']]);
+  const exported = await exportAndReparse('complete', store);
+  assert.deepEqual(exported.getEntity(97)?.attributes[5], [52]);
+  assert.equal(exported.getEntity(authored.expressId)?.attributes[4], 43);
+  assert.deepEqual(exported.getEntity(authored.expressId)?.attributes[5], [89]);
+  assert.equal(parsedStoreyId(exported, 89), 43);
+  store.source = EMPTY_SOURCE_BYTES;
+  const original = store.getEntity; let sourceReads = 0;
+  store.getEntity = id => {
+    if (store.entityIndex.byId.get(id)?.type.startsWith('IFCREL')) { sourceReads++; throw new Error('opaque source relationship'); }
+    return original(id);
+  };
+  assert.equal(effectiveStoreyId(store, view, 89), 43);
+  const row = rows()[0]; assert.equal(row.relationshipCount, null);
+  assert.ok(row.relationships.some(edge => edge.relationshipId === authored.expressId && edge.entity.expressId === 43));
+  assert.equal(sourceReads, 0);
+});
+
+// #7179 the record and endpoint ID are known even when the target entity is
+// missing; a native unresolved target must not disappear as verified absence.
+test('#7179 native relationship evidence preserves graph-proved missing target IDs', async () => {
+  const store = await sample(); seedModel('missing-target', 0, store, 43);
+  const view = getOrCreateMutationView(useViewerStore, 'missing-target'); assert.ok(view);
+  view.setPositionalAttribute(97, 5, ['#999999']);
+  const exported = await exportAndReparse('missing-target', store);
+  assert.deepEqual(exported.getEntity(97)?.attributes[5], [999999]);
+  assert.equal(exported.getEntity(999999), null);
+  assert.ok(extractRelationshipsOnDemand(exported, 43).relations?.some(edge => edge.relationshipId === 97 && edge.entity.id === 999999));
+  const row = rows()[0];
+  const unresolved = row.relationships.find(edge => edge.relationshipId === 97 && edge.entity.expressId === 999999);
+  assert.ok(unresolved, 'known incident relationship must retain its unresolved target ID');
+  assert.equal(unresolved.verification, 'unverified'); assert.equal(unresolved.entity.Name, null); assert.equal(unresolved.entity.type, null);
+});
+
+// #7179 real parsed column kinds remain authoritative when a transport loses
+// an indexed source kind; current retyping cannot erase the original edge kind.
+for (const boundary of ['missing', 'unknown', 'retyped'] as const) {
+  test(`#7179 native authoring suppresses column-proved source relationship with ${boundary} index`, async () => {
+    const store = await sample(); seedModel(boundary, 0, store, 89);
+    assert.equal(store.entities.getTypeName(97), 'IfcRelAggregates');
+    const view = getOrCreateMutationView(useViewerStore, boundary); assert.ok(view);
+    if (boundary === 'retyped') view.setEntityType(97, 'IfcSlab');
+    else view.setPositionalAttribute(97, 5, ['#52']);
+    const exported = await exportAndReparse(boundary, store);
+    assert.equal(parsedStoreyId(exported, 89), undefined);
+    const indexed = store.entityIndex.byId.get(97); assert.ok(indexed);
+    const transportedIndex = new Map(store.entityIndex.byId);
+    if (boundary === 'unknown') transportedIndex.set(97, { ...indexed, type: 'Unknown' });
+    else transportedIndex.delete(97);
+    store.entityIndex.byId = transportedIndex;
+    store.source = EMPTY_SOURCE_BYTES;
+    assert.equal(store.entities.getTypeName(97), 'IfcRelAggregates');
+    assert.equal(effectiveStoreyId(store, view, 89), undefined);
+    assert.equal(rows()[0].relationshipCount, null);
+  });
+}
+
+// #7179 the larger-selection limit is independent of native edge totals.
+test('#7179 large actual native selection bounds each incident edge sample to six', async () => {
+  const store = await sample(); seedModel('large', 0, store, 89);
+  const view = getOrCreateMutationView(useViewerStore, 'large'); assert.ok(view); view.setExpressIdWatermark(100_000);
+  const baseline = native('large', 89).relations?.length ?? 0;
+  const group = view.createEntity('IfcGroup', ['0000000000000000000001', null, 'Large selection group', null, null]);
+  const ids: number[] = [];
+  for (let i = 0; i < 20; i++) ids.push(view.createEntity('IfcRelAssignsToGroup', [`1${String(i).padStart(21, '0')}`, null, null, null, ['#89'], null, `#${group.expressId}`]).expressId);
+  const exported = await exportAndReparse('large', store);
+  assert.equal(ids.filter(id => exported.entityIndex.byId.get(id)?.type === 'IFCRELASSIGNSTOGROUP').length, 20);
+  assert.equal(native('large', 89).relations?.length, baseline + 20);
+  const selected = [89, ...Array.from(store.entities.expressId).filter(id => id !== 89).slice(0, 11)];
+  assert.equal(selected.length, 12);
+  useViewerStore.setState({ selectedEntitiesSet: new Set(selected.map(expressId => entityRefToString({ modelId: 'large', expressId }))) });
+  const captured = rows(); assert.equal(captured.length, 12);
+  assert.equal(captured[0].relationshipCount, baseline + 20); assert.equal(captured[0].relationships.length, 6);
 });

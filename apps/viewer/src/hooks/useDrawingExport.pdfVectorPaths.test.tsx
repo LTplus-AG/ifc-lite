@@ -59,6 +59,7 @@ import {
   type DrawingSheet,
 } from '@ifc-lite/drawing-2d';
 import useDrawingExport from './useDrawingExport.js';
+import { activityCanceller, useActivityJournal } from '@/lib/activity/activity-journal';
 
 /** A valid 1x1 PNG so jsPDF's own decoder accepts the stubbed raster. */
 const TINY_PNG_B64 =
@@ -212,7 +213,8 @@ function stubRasterization(): () => void {
  * nothing shared to patch. The sheet path also creates an object URL for its
  * intermediate SVG blob, hence the `application/pdf` filter.
  */
-async function exportPdf(sheetEnabled: boolean): Promise<string> {
+async function exportPdf(sheetEnabled: boolean, failDownload = false): Promise<string> {
+  useActivityJournal.setState({ jobs: [] });
   const restoreRaster = stubRasterization();
   const container = document.createElement('div');
   document.body.appendChild(container);
@@ -225,7 +227,10 @@ async function exportPdf(sheetEnabled: boolean): Promise<string> {
     resolvePdf = resolve;
   });
   URL.createObjectURL = function (obj: Blob | MediaSource): string {
-    if (obj instanceof Blob && obj.type === 'application/pdf') resolvePdf(obj);
+    if (obj instanceof Blob && obj.type === 'application/pdf') {
+      if (failDownload) throw new Error('PDF download refused #7100');
+      resolvePdf(obj);
+    }
     return originalCreate.call(URL, obj);
   };
 
@@ -245,8 +250,24 @@ async function exportPdf(sheetEnabled: boolean): Promise<string> {
     let blob: Blob | null = null;
     await act(async () => {
       exportFn!();
-      blob = await pdfBlob;
+      const running = useActivityJournal.getState().jobs;
+      assert.equal(running.length, 1, '#7100 native PDF export starts one visible job');
+      assert.equal(running[0].outcome, 'running');
+      assert.equal(running[0].kind, 'export');
+      assert.equal(running[0].panel, 'drawing');
+      assert.equal(activityCanceller(running[0].id), null, 'PDF writers have no abort contract');
+      if (!failDownload) blob = await pdfBlob;
+      const deadline = Date.now() + 5000;
+      while (useActivityJournal.getState().jobs[0].outcome === 'running' && Date.now() < deadline) {
+        await new Promise(resolve => setTimeout(resolve, 5));
+      }
+      const finished = useActivityJournal.getState().jobs;
+      assert.equal(finished.length, 1);
+      assert.equal(finished[0].outcome, failDownload ? 'failed' : 'completed', '#7100 outcome comes from the native writer');
+      assert.ok(finished[0].finishedAt);
+      if (failDownload) assert.equal(finished[0].detail, 'PDF download refused #7100');
     });
+    if (failDownload) return '';
     const bytes = new Uint8Array(await (blob as unknown as Blob).arrayBuffer());
     let text = '';
     for (let i = 0; i < bytes.length; i++) text += String.fromCharCode(bytes[i]);
@@ -270,6 +291,11 @@ const EMBEDDED_IMAGE = '/Subtype /Image';
 const STROKED_PATH = /\d m\n[-\d. ]+ l\nS\n/;
 
 describe('handleExportPDF — which PDFs are vector and which are raster', () => {
+  for (const sheet of [false, true]) {
+    it(`#7100 records native ${sheet ? 'sheet' : 'vector'} PDF download failure`, async () => {
+      await exportPdf(sheet, true);
+    });
+  }
   it('is a RASTER in sheet mode — the documented cost of fixing #2941/#2942', async () => {
     const text = await exportPdf(true);
     assert.ok(

@@ -135,3 +135,14 @@ it('#7184 measured zero surface area over finite degenerate native triangles sta
   assert.equal(Boolean(region(ui).querySelector('[data-result-state="partial"]')), false, 'zero-valued rows are not an empty result');
   assert.ok(region(ui).querySelector('[data-status="partial"]'), 'independent missing volume remains disclosed');
 });
+
+for (const modelId of ['legacy', 'bonsai']) it(`#7184 native single-slot fallback retains known source caption for ${modelId} refs with no federation map`, async t => {
+  if (!ensureWasm(t)) return;
+  const native = await nativeSelection();
+  useViewerStore.setState({ models: new Map(), activeModelId: 'bonsai', ifcDataStore: native.store,
+    geometryResult: native.geometry, selectedEntity: { modelId, expressId: native.wall.expressId }, selectedEntitiesSet: new Set() });
+  const ui = mount();
+  assert.ok(Math.abs(value(ui, 'Volume mesh') - (native.wall.geometryVolume ?? 0)) < 0.01, 'existing native single-slot fallback computes the known quantity');
+  assert.doesNotMatch(region(ui).textContent ?? '', /Unavailable model/);
+  assert.match(region(ui).textContent ?? '', /Single-model source/);
+});

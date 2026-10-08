@@ -16,7 +16,12 @@ export function QuantityResultView({ quantities, children, evidence }: {
   const { t } = useTranslation();
   const { summary, refs, models, activeModelId } = quantities;
   const source = t('measure.quantities.header');
-  const sourceModels = [...new Set(refs.map(ref => ref.modelId === 'legacy' && activeModelId ? activeModelId : ref.modelId))]
+  const sourceIds = refs.map(ref => {
+    // The native engine explicitly uses the single store/geometry slots with no federation map.
+    if (models.size === 0) return 'legacy';
+    return ref.modelId === 'legacy' && activeModelId && models.has(activeModelId) ? activeModelId : ref.modelId;
+  });
+  const sourceModels = [...new Set(sourceIds)]
     .map(id => ({ id, name: models.get(id)?.name ?? (id === 'legacy'
       ? t('measure.quantities.singleModelSource') : t('measure.quantities.unavailableModel', { id })) }));
   const incomplete = summary ? [

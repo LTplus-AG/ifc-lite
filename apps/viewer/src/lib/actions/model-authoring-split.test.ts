@@ -24,7 +24,7 @@ import { authoringSplitMarker } from './model-authoring-split-ghost';
 import { readSplitSnapshot } from './model-authoring-split-state';
 import { previewModelAuthoring } from './model-authoring-preview';
 import { commitModelAuthoring } from './model-authoring-commit';
-import { undoModelChanges } from './model-change-commit';
+import { undoModelChanges, type AppliedChange } from './model-change-commit';
 import { parseModelAuthoringBatch } from './model-authoring';
 
 const original = useViewerStore.getState();
@@ -93,7 +93,7 @@ for (const units of ['m', 'mm'] as const) for (const kind of ['wall', 'wallStand
   const beforeView = s().mutationViews.get(SAMPLE_MODEL)!;
   const count = beforeView.getMutationCount();
   const preview = previewModelAuthoring(s(), proposal);
-  assert.equal(preview.rows[0].status, 'ready', preview.rows[0].issue);
+  assert.equal(preview.rows[0].status, 'ready', preview.rows[0].issue ?? 'native split preview must be ready');
   assert.ok(authoringSplitMarker(s(), proposal, preview.rows[0], 123456), 'supported native storey frame exposes a cut marker, not split solids');
   assert.equal(beforeView.getMutationCount(), count, 'native dry-run cannot publish source reshaping or a new piece');
   const outcome = commitModelAuthoring(useViewerStore, preview, new Set([0]), 'native split test');
@@ -131,7 +131,9 @@ test('#7251 refuses stale actual source transport and revision without publishin
   const preview = previewModelAuthoring(s(), proposal); assert.equal(preview.rows[0].status, 'ready');
   const model = s().models.get(SAMPLE_MODEL)!;
   assert.ok(dataStore.source);
-  useViewerStore.setState({ models: new Map([[SAMPLE_MODEL, { ...model, ifcDataStore: { ...dataStore, source: dataStore.source.slice() } }]]) });
+  const replacement = await parseIfc(dataStore.source.slice());
+  assert.ok(replacement.source); assert.notEqual(replacement.source, dataStore.source);
+  useViewerStore.setState({ models: new Map([[SAMPLE_MODEL, { ...model, ifcDataStore: { ...dataStore, source: replacement.source } }]]) });
   const view = s().mutationViews.get(SAMPLE_MODEL)!, count = view.getMutationCount();
   const swapped = commitModelAuthoring(useViewerStore, preview, new Set([0]), 'source replacement');
   assert.ok(!swapped.ok && swapped.reason === 'stale'); assert.equal(view.getMutationCount(), count);
@@ -196,7 +198,7 @@ test('#7251 explicit two-model selection splits equal native GUIDs without cross
     const view = new MutablePropertyView(parsed.properties, modelId), editor = new StoreEditor(parsed, view);
     const target = resolveSplitTarget(parsed, view, editor, id, getModelLengthUnitScale(parsed));
     assert.ok(target.ok && target.kind === 'wall'); assert.equal(target.chain.wallLength, 6);
-    const effect = outcome.receipt.applied.find(row => row.modelId === modelId);
+    const effect: AppliedChange | undefined = outcome.receipt.applied.find(row => row.modelId === modelId);
     assert.ok(effect && typeof effect.after === 'string');
     const decoded: unknown = JSON.parse(effect.after);
     assert.ok(decoded && typeof decoded === 'object' && 'addedGlobalId' in decoded && typeof decoded.addedGlobalId === 'string');
@@ -267,7 +269,7 @@ for (const transport of ['live', 'saved'] as const) test(`#7251 native ${transpo
   const activeView = transport === 'saved' ? new MutablePropertyView(source.properties, SAMPLE_MODEL) : ctx.view;
   if (transport === 'saved') useViewerStore.setState({ models: new Map([[SAMPLE_MODEL, { ...sourceModel, ifcDataStore: source }]]),
     mutationViews: new Map([[SAMPLE_MODEL, activeView]]), storeEditors: new Map() });
-  const preview = previewModelAuthoring(s(), proposal); assert.equal(preview.rows[0].status, 'ready', preview.rows[0].issue);
+  const preview = previewModelAuthoring(s(), proposal); assert.equal(preview.rows[0].status, 'ready', preview.rows[0].issue ?? 'native split preview must be ready');
   assert.equal(preview.rows[0].resolved.splitEffects?.openings.toLeft, 1);
   const outcome = commitModelAuthoring(useViewerStore, preview, new Set([0]), 'hosted native split');
   assert.ok(outcome.ok, outcome.ok ? '' : outcome.detail ?? outcome.reason);

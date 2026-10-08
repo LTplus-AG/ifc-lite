@@ -45,7 +45,7 @@ for (const kind of ['wall', 'linear', 'slab'] as const) test(`#7251 native WASM 
   assert.equal(expected.kind, kind);
   const cut = kind === 'slab' ? { kind, a: [2, 15], b: [2, 23] } : { kind, distance: 2 };
   const batch = parseModelAuthoringBatch(JSON.stringify({ version: 1, kind: 'model.authoring', title: 'Actual native cut', units: 'm', frame: 'storey-local', operations: [{ op: 'element.split', target: { modelId: SAMPLE_MODEL, globalId: saved.entities.getGlobalId(id), ifcClass: saved.entities.getTypeName(id), name: saved.entities.getName(id) }, expected, cut }] }));
-  const preview = previewModelAuthoring(state(), batch); assert.equal(preview.rows[0].status, 'ready', preview.rows[0].issue);
+  const preview = previewModelAuthoring(state(), batch); assert.equal(preview.rows[0].status, 'ready', preview.rows[0].issue ?? 'native split preview must be ready');
   const marker = authoringSplitMarker(state(), batch, preview.rows[0], -123); assert.ok(marker);
   const plane = buildStoreyWorkplane(state(), SAMPLE_MODEL, storey, 0); assert.ok(isWorkplane(plane));
   const axis = kind !== 'linear' ? [1, 0, 0] : [8 / Math.hypot(8, 2), 0, 2 / Math.hypot(8, 2)];

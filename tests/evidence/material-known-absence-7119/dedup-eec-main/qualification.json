@@ -1,0 +1,194 @@
+{
+  "issue": 7119,
+  "qualifiedSourceHead": "6e15e64faed1bad97aba12e60e907324cfa1d701",
+  "frozenMain": "eec7de970a21a12ef4d09eaed382f45f7210772a",
+  "onlyNonEvidenceDelta": "apps/viewer/src/lib/assistant/adapters/selection-materials.test.tsx",
+  "onlyCodeSha256": "d49b0983d1a40fffb2a248b283a9d6ff4b9fd1a66a6f125af2e07cfc88cb420c",
+  "canonicalProductionAndParserExactMain": true,
+  "duplicatedOwnProductionParserTestsImportChangesetRemoved": true,
+  "canonicalProductionFixAlreadyMerged": "#7213/#7211",
+  "canonicalParserFixtureAlreadyMerged": "#7209/#7208",
+  "selectionSemanticsAlreadyMerged": [
+    "#7183 classifications",
+    "#7185 relationships"
+  ],
+  "scope": "Test fidelity correction only: retain real IFC/material/null/empty/bounds assertions; update obsolete rendered caveats; verify existing native section availability, full counts and bounds. No product behavior added.",
+  "qualification": {
+    "affectedSelection": {
+      "command": [
+        "pnpm",
+        "test",
+        "--filter=@ifc-lite/viewer",
+        "--env-mode=loose",
+        "--concurrency=1"
+      ],
+      "TEST_PATTERN": "selection-materials",
+      "tests": 21,
+      "passed": 21,
+      "failed": 0,
+      "skipped": 0,
+      "exitCode": 0
+    },
+    "plainFullRootTypecheck": {
+      "command": [
+        "pnpm",
+        "typecheck"
+      ],
+      "testFiles": 3734,
+      "packages": 62,
+      "exitCode": 0
+    },
+    "lightGates": [
+      {
+        "command": [
+          "node",
+          "scripts/check-raw-entity-enumeration.mjs"
+        ],
+        "exitCode": 0,
+        "log": "light-0.log"
+      },
+      {
+        "command": [
+          "node",
+          "scripts/check-module-size.mjs"
+        ],
+        "exitCode": 0,
+        "log": "light-1.log"
+      },
+      {
+        "command": [
+          "node",
+          "scripts/check-test-wiring.mjs"
+        ],
+        "exitCode": 0,
+        "log": "light-2.log"
+      },
+      {
+        "command": [
+          "node",
+          "scripts/check-source-text-assertions.mjs"
+        ],
+        "exitCode": 0,
+        "log": "light-3.log"
+      },
+      {
+        "command": [
+          "node",
+          "scripts/check-changesets.mjs"
+        ],
+        "exitCode": 0,
+        "log": "light-4.log"
+      },
+      {
+        "command": [
+          "node",
+          "scripts/add-license-headers.mjs",
+          "--check"
+        ],
+        "exitCode": 0,
+        "log": "light-5.log"
+      },
+      {
+        "command": [
+          "pnpm",
+          "exec",
+          "oxlint",
+          "--config",
+          ".oxlintrc.json",
+          "apps/viewer/src/lib/assistant/adapters/selection-materials.test.tsx"
+        ],
+        "exitCode": 0,
+        "log": "light-6.log"
+      },
+      {
+        "command": [
+          "git",
+          "diff",
+          "--check"
+        ],
+        "exitCode": 0,
+        "log": "light-7.log"
+      }
+    ]
+  },
+  "sourcePins": {
+    "packages/parser/src/material-definitions.ts": "2cd9d9526b3cad0ba895905b91ed3ff39449d6c5c0c968b9e5f20ec7b5c90487",
+    "packages/parser/test/on-demand-classification-material.test.ts": "a227a19286a54587ebc07588488f2ebb1770898265ebcd5f77b80edaf2ef1a0a",
+    "apps/viewer/src/lib/assistant/adapters/selection-materials.test.tsx": "d49b0983d1a40fffb2a248b283a9d6ff4b9fd1a66a6f125af2e07cfc88cb420c"
+  },
+  "historicalArchive": "Parent folder qualification.json and originalrawlogs are immutable historical superseded proof; original guard no longer a PR productiondelta. No relabeling original97/56/20/3732 or2954 rawClaude as current6e15 qualification.",
+  "runtimeScope": "Selection receipt actualpre8b/postb335 andfullroot receipt actualpreb335/post8b retained independently. No in-test runtime hash, browser/native performance or speed claim. Rust source unchanged.",
+  "archives": [
+    {
+      "path": "light-0.log.gz",
+      "rawSha256": "7aafcf3e3817b2839a40b1e00348aed52c3e746650b49394fd1bcb6c78c8d29f",
+      "gzipSha256": "3fe97705e0ace67ebe94b9c6738fb8ebd36bcdb56cf3e0e3b358069bb3faef30",
+      "rawSizeBytes": 46755
+    },
+    {
+      "path": "root-turbo-selection-materials.log.gz",
+      "rawSha256": "698247067a7c033b7a95c75a67671dc7e2811c657f55b0705ce5acb21e579157",
+      "gzipSha256": "1107e07b6eff606fcbf54303a3f6d7e98a197d2680405c00e43cef9709fd27a6",
+      "rawSizeBytes": 99725
+    },
+    {
+      "path": "light-7.log.gz",
+      "rawSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "gzipSha256": "9ceffb7310338057cfe71a4ae1e2c98d2c485d81cdef906532a801f457a38d64",
+      "rawSizeBytes": 0
+    },
+    {
+      "path": "light-4.log.gz",
+      "rawSha256": "107e57304f0cecf409a7c923aeca6ca16c8caa0bdb821e2144675196d8f5f2a1",
+      "gzipSha256": "ced49de787d8812b16ac5b6f1dec17e1f39232dd89dc479a713cfce6cf562dee",
+      "rawSizeBytes": 56
+    },
+    {
+      "path": "plain-root-full-typecheck.log.gz",
+      "rawSha256": "ee7061d72292655c8c5d24831b556692640cda0918fe7a58cefc6ec43695f33b",
+      "gzipSha256": "9dc9d90a2a2b260d74150bd46ee1f8dd176d73b47113b13ac6b782fc145c885e",
+      "rawSizeBytes": 49176
+    },
+    {
+      "path": "light-2.log.gz",
+      "rawSha256": "98a10385e08b01728c5beafad6abc4108f0096cb636594ec566c3f51a2950c30",
+      "gzipSha256": "15b34a6b5c7ff51cbcf9fa5707542d2a6b2fc540ddc13e73db4170356830d853",
+      "rawSizeBytes": 859
+    },
+    {
+      "path": "light-3.log.gz",
+      "rawSha256": "95da1372394c6f437cb06ac760e5e3ee425f414b8bb354719941c99e19197f49",
+      "gzipSha256": "22c8624660b56d59157308f0d162c7a3a2b3ec039d7baef46770a83649cfbed5",
+      "rawSizeBytes": 30991
+    },
+    {
+      "path": "light-5.log.gz",
+      "rawSha256": "10fd095540b45a63869d5a34e1a0b6a9d20885a4aecad7a99e5e05834f1c6e98",
+      "gzipSha256": "ee0b5460981dcf8b4cf314e501c42cbbed1d1ee94f87cedaf5ca9387468260dc",
+      "rawSizeBytes": 171
+    },
+    {
+      "path": "light-1.log.gz",
+      "rawSha256": "1b96ababca64fa7fc761cd3ef3cfe8151f1cadec43d8103a3235c8ed4359f5eb",
+      "gzipSha256": "7b7ec343e015abb4b8a7ea4af68dafc2b158170570dab3a40e9472342b83cc22",
+      "rawSizeBytes": 13046
+    },
+    {
+      "path": "light-6.log.gz",
+      "rawSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "gzipSha256": "9ceffb7310338057cfe71a4ae1e2c98d2c485d81cdef906532a801f457a38d64",
+      "rawSizeBytes": 0
+    }
+  ],
+  "pending": [
+    "fresh finalpublished-head CI actual4requiredcontexts",
+    "newhead rawreview+thread audit",
+    "parent issue7119 acceptance/merge decision"
+  ],
+  "performanceClaim": false,
+  "rootIndependentArchiveVerification": {
+    "path": "root-independent-archive-verification.json",
+    "sha256": "1cc11f6a694ae0933de7d37a722acddc9491a52ec1fb4df507be23ee64b137cf",
+    "scope": "10 raw/gzip hashes and lengths, three committed source pins, canonical parser/production byte identity, test-only delta and no duplicate changeset"
+  }
+}

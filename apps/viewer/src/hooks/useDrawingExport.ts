@@ -10,6 +10,7 @@ import { posthog, trackExportCompleted } from '@/lib/analytics';
 import { downloadFile, sanitizeFilename } from '@/lib/export/download';
 import { toast } from '@/components/ui/toast';
 import { useTranslation } from '@/i18n';
+import { recordActivity } from '@/lib/activity/activity-journal';
 import { pdfLineStyleFor } from '@/lib/export/pdf-line-style';
 import {
   GraphicOverrideEngine,
@@ -1047,8 +1048,8 @@ function useDrawingExport({
       const svg = tryDrawingSvg(generateSheetSVG);
       if (!svg) return;
       const { widthMm, heightMm } = activeSheet.paper;
-      void (async () => {
-        try {
+      void recordActivity({ kind: 'export', title: 'activityTray.job.export', panel: 'drawing',
+        subject: `${activeSheet.name} · PDF` }, async () => {
           const { jsPDF } = await import('jspdf');
           const { dataUrl, fit } = await rasterizeSvgToPngDataUrl(svg, widthMm, heightMm);
           const doc = new jsPDF({
@@ -1087,10 +1088,9 @@ function useDrawingExport({
             raster_dpi: Math.floor(fit.effectiveDpi),
             raster_capped: fit.capped,
           });
-        } catch (err) {
-          toast.error(err instanceof Error ? t('section2d.export.pdfFailed', { error: err.message }) : t('section2d.export.pdfFailedGeneric'));
-        }
-      })();
+      }).catch((err: unknown) => {
+        toast.error(err instanceof Error ? t('section2d.export.pdfFailed', { error: err.message }) : t('section2d.export.pdfFailedGeneric'));
+      });
       return;
     }
 
@@ -1120,7 +1120,8 @@ function useDrawingExport({
     // cannot replace the geometry whose bounds/scale were used above.
     const vectorSnapshot = structuredClone(dxfUnderlays);
 
-    void (async () => {
+    void recordActivity({ kind: 'export', title: 'activityTray.job.export', panel: 'drawing',
+      subject: `section-${sectionPlane.axis}-${sectionPlane.position} · PDF` }, async () => {
       try {
         const { jsPDF } = await import('jspdf');
         const { widthMm, heightMm } = layout.page;
@@ -1202,12 +1203,10 @@ function useDrawingExport({
           axis: sectionPlane.axis,
           scale_factor: effectiveScale,
         });
-      } catch (err) {
-        // The dynamic `jspdf` import, PDF construction and download all run
-        // in this async IIFE, outside the synchronous try/catch above.
-        toast.error(err instanceof Error ? t('section2d.export.pdfFailed', { error: err.message }) : t('section2d.export.pdfFailedGeneric'));
       } finally { referenceSnapshot.release(); }
-    })();
+    }).catch((err: unknown) => {
+      toast.error(err instanceof Error ? t('section2d.export.pdfFailed', { error: err.message }) : t('section2d.export.pdfFailedGeneric'));
+    });
   }, [drawing, dxfUnderlays, displayOptions.scale, displayOptions.showHiddenLines, sectionPlane, sheetEnabled, activeSheet, generateSheetSVG, t]);
 
   // Print handler

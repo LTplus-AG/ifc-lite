@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Undo2 } from 'lucide-react';
 import type { Clash } from '@ifc-lite/clash';
 import { useTranslation } from '@/i18n';
@@ -91,8 +91,12 @@ export function ClashGroupApplications() {
   useEffect(() => { void clashGroupApplicationLibrary.initialize(); }, []);
   const receipts = useMemo(() => entries.filter(entry => entry.id === focus?.applicationId || (entry.workspaceId === activeId && entry.status === 'applied'))
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt)), [entries, activeId, focus]);
+  const disclosure = useRef<HTMLDetailsElement>(null);
+  const hasOriginal = !!focus && receipts.some(receipt => receipt.id === focus.applicationId);
+  // A new request must restore the browser's mutable disclosure before child focus effects run.
+  useLayoutEffect(() => { if (hasOriginal && disclosure.current) disclosure.current.open = true; }, [focus, hasOriginal]);
   if (!receipts.length) return null;
-  return <details open={focus && receipts.some(receipt => receipt.id === focus.applicationId) ? true : undefined} className="px-2 py-1">
+  return <details ref={disclosure} className="px-2 py-1">
     <summary className="cursor-pointer font-medium">{t('clashApply.applicationsTitle', { count: receipts.length })}</summary>
     <div className="mt-1 max-h-64 space-y-2 overflow-y-auto">{receipts.map(receipt => <ClashGroupApplicationCard key={receipt.id} receipt={receipt} />)}</div>
   </details>;

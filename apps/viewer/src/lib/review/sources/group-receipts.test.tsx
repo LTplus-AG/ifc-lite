@@ -121,8 +121,11 @@ test('#7089 original navigation exposes the exact undone receipt and restores re
   await waitFor(() => ui.querySelector('[aria-current="true"]') !== null, 'undone receipt original');
   assert.ok(ui.querySelector('[aria-current="true"]')?.textContent?.includes(source.receipt.workspaceName));
   assert.equal(document.activeElement, ui.querySelector('[aria-current="true"]'));
+  const disclosure = ui.querySelector<HTMLDetailsElement>('details'); assert.ok(disclosure?.open);
+  act(() => { disclosure.open = false; disclosure.dispatchEvent(new window.Event('toggle')); });
   const away = document.createElement('button'); ui.append(away); away.focus();
   act(() => { assert.equal(openOriginal(finding, panel => panels.push(panel)), true); });
+  await waitFor(() => disclosure.open, 'repeated receipt original reopens Applications');
   await waitFor(() => document.activeElement === ui.querySelector('[aria-current="true"]'), 'repeated receipt focus');
   act(() => useClashGroupApplications.setState({ entries: [] }));
   assert.equal(openOriginal(finding, panel => panels.push(panel)), false, 'deleted receipt original refuses');

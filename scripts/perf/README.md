@@ -3635,8 +3635,23 @@ the end-to-end cost.
 The original native rounds on the busy machine, including further S_Office
 rounds with reversed median ordering, do not establish a stable timing effect
 or its cause. Detailed raw timing observations remain in PR #7024 rather than
-being duplicated here. The analytic-path correction was added afterward and
-has not yet received an end-to-end browser worker-pool verdict.
+being duplicated here. Fresh final-source native A/B on a dedicated idle
+runner puts unchanged-output controls within their measured spread. Ordered
+geometry-payload hashes match for FZK, ISSUE_129 and Holter; MiniBIM output
+changes intentionally, so its shorter runtime is not an optimization claim.
+The deterministic instruction counter does identify a small additional FZK
+cost above the existing ratchet tolerance. That check remains failing; the
+ceiling has not been raised.
+
+Three final-source browser worker-pool comparisons retained every sample and
+all failed: ANGLE on ARM, Vulkan/SwiftShader on ARM, and the same Vulkan flags
+on x86. Each loses a WebGPU instance before geometry upload in at least one
+sample; failures occur on both base and candidate across those runs. Adapter
+preflight alone passes and is insufficient. The browser performance verdict
+is unqualified, not neutral or faster. PR #7024 carries the complete source
+provenance and artifacts; #7164 tracks investigation of the GPU failure on
+both architectures. Do not repeat samples until green or use native timing
+to waive the missing worker-pool qualification.
 
 The router regression now checks closure at the kernel snap-grid precision in
 both vertex frames. Its former 1 mm edge keys hid seams in analytic prism

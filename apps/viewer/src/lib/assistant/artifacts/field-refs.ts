@@ -13,7 +13,7 @@ import type { FilterGroup, FilterRule } from '@ifc-lite/rules';
 import type { ArtifactProposal } from './proposal-kinds';
 import type { FieldIdentity } from './chart-proposal';
 
-export type FieldKind = 'property' | 'quantity';
+export type FieldKind = 'property' | 'quantity' | 'classification';
 
 export interface FieldName { kind: FieldKind; set: string; name: string }
 
@@ -39,23 +39,30 @@ function groupSites(groups: readonly FilterGroup[], lensRule: string | undefined
   read: (proposal: ArtifactProposal) => readonly FilterGroup[]): FieldSite[] {
   const sites: FieldSite[] = [];
   groups.forEach((group, g) => group.rules.forEach((rule, r) => {
-    if (rule.kind !== 'property' && rule.kind !== 'quantity') return;
+    if (rule.kind !== 'property' && rule.kind !== 'quantity' && rule.kind !== 'classification') return;
+    if (rule.kind === 'classification' && !rule.system?.trim()) return;
     const swap = (proposal: ArtifactProposal, set: string, name: string): ArtifactProposal => {
       const next = read(proposal).map((each, gi) => gi !== g ? each : { ...each, rules: each.rules.map((item, ri): FilterRule => {
         if (ri !== r) return item;
         if (item.kind === 'property') return { ...item, setName: set, propertyName: name };
         if (item.kind === 'quantity') return { ...item, setName: set, quantityName: name };
+        if (item.kind === 'classification') return { ...item, system: name };
         return item;
       }) });
       return write(proposal, next);
     };
-    sites.push({ kind: rule.kind, set: rule.setName, name: rule.kind === 'property' ? rule.propertyName : rule.quantityName,
+    sites.push({ kind: rule.kind, set: rule.kind === 'classification' ? '' : rule.setName,
+      name: rule.kind === 'classification' ? rule.system!.trim() : rule.kind === 'property' ? rule.propertyName : rule.quantityName,
       where: { kind: 'rule', group: g + 1, rule: r + 1, ...(lensRule !== undefined ? { lensRule } : {}) }, replace: swap });
   }));
   return sites;
 }
 
 function chartFieldSite(field: FieldIdentity | undefined, where: FieldWhere, key: 'elementField' | 'measureField'): FieldSite[] {
+  if (field?.kind === 'classification' && field.system?.trim()) {
+    return [{ kind: 'classification', set: '', name: field.system.trim(), where, replace: (proposal, _set, name) => proposal.kind !== 'chart.proposal'
+      ? proposal : { ...proposal, chart: { ...proposal.chart, [key]: { kind: 'classification', system: name } } } }];
+  }
   if (!field || (field.kind !== 'property' && field.kind !== 'quantity')) return [];
   const set = field.kind === 'property' ? field.psetName : field.qsetName;
   const name = field.kind === 'property' ? field.propertyName : field.quantityName;
@@ -90,6 +97,10 @@ export function fieldSites(proposal: ArtifactProposal): FieldSite[] {
         (p, groups) => p.kind !== 'lens.proposal' ? p : { ...p, lens: { ...p.lens, rules: p.lens.rules.map((each, i) => i === index ? { ...each, groups } : each) } },
         (p) => p.kind === 'lens.proposal' ? p.lens.rules[index]?.groups ?? [] : []));
       const auto = proposal.lens.autoColor;
+      if (auto?.source === 'classification' && auto.psetName?.trim()) {
+        sites.push({ kind: 'classification', set: '', name: auto.psetName.trim(), where: { kind: 'colourBy' },
+          replace: (p, _set, name) => p.kind !== 'lens.proposal' ? p : { ...p, lens: { ...p.lens, autoColor: { ...p.lens.autoColor!, psetName: name } } } });
+      }
       if (auto && (auto.source === 'property' || auto.source === 'quantity')) {
         const kind = auto.source;
         sites.push({ kind, set: auto.psetName ?? '', name: auto.propertyName ?? '', where: { kind: 'colourBy' },

@@ -350,6 +350,18 @@ export class ViewerBenchmarkPage {
     }
   }
 
+  /**
+   * One cold sample as `scripts/perf/browser-cold-ab.mts` drives it: upload at
+   * once, then wait for metadata + geometry + renderer finalize + canvas. The
+   * cold A/B calls only this, so its tracing setup (`setup()`) and readiness
+   * logic (`waitForMetadataRenderReadiness`, with the console fallback for a
+   * base build that predates the spans) are this page's own, never a copy (#7032).
+   */
+  async loadUntilReady(filePath: string, timeoutMs: number) {
+    await this.loadFile(filePath, false);
+    await this.waitForCompletion(timeoutMs, true);
+  }
+
   async waitForCompletion(timeoutMs: number = 600000, requireMetadataRender = false) {
     if (requireMetadataRender) {
       this.loadEndTime = await waitForMetadataRenderReadiness({

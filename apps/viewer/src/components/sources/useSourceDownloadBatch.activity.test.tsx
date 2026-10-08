@@ -16,7 +16,7 @@ import { useSourceDownloadBatch } from './useSourceDownloadBatch';
 const originalFetch = globalThis.fetch;
 afterEach(() => { cleanup(); globalThis.fetch = originalFetch; useActivityJournal.setState({ jobs: [] }); });
 const files: SourceFile[] = [1, 2].map(id => ({ id: String(id), name: `Authored ${id}.ifc`, containerId: 'models', currentRevisionId: 'revision' }));
-async function setup() {
+async function setup(afterSuccess?: () => void) {
   useActivityJournal.setState({ jobs: [] });
   const bytes = await readFile(new URL('../../../public/samples/building-architecture.ifc', import.meta.url));
   const authored = await new IfcParser().parseColumnar(bytes.slice().buffer as ArrayBuffer, { disableWorkerScan: true });
@@ -43,9 +43,9 @@ async function setup() {
   let succeeded = 0;
   function Harness() {
     const batch = useSourceDownloadBatch({ provider, providerId: provider.manifest.name, sourceHost: host,
-      onBatchSucceeded: () => { succeeded++; } });
+      onBatchSucceeded: () => { succeeded++; afterSuccess?.(); } });
     return <><button onClick={() => { void batch.handleDownload({ projectId: 'project', files }); }}>Load authored files</button>
-      <button onClick={batch.cancelDownload}>Native Cancel</button><output>{batch.downloading ? 'Downloading' : 'Idle'}</output><ActivityTrayList /></>;
+      <button onClick={batch.cancelDownload}>Native Cancel</button><button onClick={() => { void batch.handleDownload({ projectId: 'project', files: [] }); }}>Load empty selection</button><output>{batch.downloading ? 'Downloading' : 'Idle'}</output><ActivityTrayList /></>;
   }
   const ui = render(<Harness />);
   const start = () => {
@@ -133,5 +133,36 @@ it('#7134 native source unmount preserves abort ownership and cleans terminal Ac
     cleanup(); assert.equal(run.pending[0].signal?.aborted, true); await run.settle(0);
     await waitFor(() => useActivityJournal.getState().jobs.at(-1)?.outcome === 'cancelled', 'unmounted run settled');
     assert.equal(run.dispatched.length, 0); assert.equal(activityCanceller(row.id), null);
+  } finally { run.removeListener(); }
+});
+
+for (const boundary of ['final dispatch', 'success callback'] as const) it(`#7134 cancellation at ${boundary} keeps Completed when every authored file was dispatched`, async () => {
+  const run = await setup(boundary === 'success callback' ? () => cleanup() : undefined);
+  let dispatches = 0;
+  const stopAtFinalDispatch = () => {
+    if (++dispatches !== 2 || boundary !== 'final dispatch') return;
+    click([...run.ui.querySelectorAll('button')].find(button => button.textContent === 'Native Cancel')!);
+  };
+  window.addEventListener(SOURCE_DOWNLOAD_EVENT, stopAtFinalDispatch);
+  try {
+    run.start(); await waitFor(() => run.pending.length === 1, 'first file'); await run.settle(0);
+    await waitFor(() => run.pending.length === 2, 'final file'); await run.settle(1);
+    await waitFor(() => useActivityJournal.getState().jobs.at(-1)?.outcome !== 'running', 'final-dispatch boundary settled');
+    const row = useActivityJournal.getState().jobs.at(-1)!;
+    assert.equal(run.pending[1].signal?.aborted, true, 'native cancellation happened at the boundary');
+    assert.equal(run.dispatched.length, 2); assert.equal(row.outcome, 'completed', 'no remaining download work was stopped');
+    await run.assertAuthoredDispatch(); assert.equal(activityCanceller(row.id), null);
+  } finally { window.removeEventListener(SOURCE_DOWNLOAD_EVENT, stopAtFinalDispatch); run.removeListener(); }
+});
+it('#7134 empty source selection creates no job or request and does not cancel an active native batch', async () => {
+  const run = await setup();
+  const empty = () => click([...run.ui.querySelectorAll('button')].find(button => button.textContent === 'Load empty selection')!);
+  try {
+    empty(); assert.equal(useActivityJournal.getState().jobs.length, 0); assert.equal(run.pending.length, 0);
+    run.start(); await waitFor(() => run.pending.length === 1, 'native batch started'); empty();
+    assert.equal(useActivityJournal.getState().jobs.length, 1); assert.equal(run.pending[0].signal?.aborted, false);
+    await run.settle(0); await waitFor(() => run.pending.length === 2, 'native second file'); await run.settle(1);
+    await waitFor(() => useActivityJournal.getState().jobs.at(-1)?.outcome === 'completed', 'native batch completed');
+    assert.equal(run.dispatched.length, 2); await run.assertAuthoredDispatch();
   } finally { run.removeListener(); }
 });

@@ -59,7 +59,7 @@ export function useSourceDownloadBatch({
 
   const handleDownload = useCallback(
     async ({ projectId, files }: SourceDownloadSelection) => {
-      if (!provider || !providerId) return;
+      if (!provider || !providerId || files.length === 0) return;
       const ctx = sourceHost.createContext(provider.manifest, loadResolvedSourcePrefs(provider.manifest));
       const providerTitle = provider.manifest.title;
 
@@ -137,7 +137,8 @@ export function useSourceDownloadBatch({
         if (!controller.signal.aborted && failed === 0) onBatchSucceeded();
       } finally {
         const stopped = controller.signal.aborted;
-        const incomplete = stopped || failed > 0;
+        // Cancellation after the final dispatch stopped no download work (#7134).
+        const incomplete = dispatched !== files.length;
         finishActivity(job, incomplete ? (dispatched > 0 ? 'partial' : stopped ? 'cancelled' : 'failed') : 'completed',
           incomplete && dispatched > 0
             ? { detail: t(stopped ? 'activityTray.sourceDownload.partialCancelled' : 'activityTray.sourceDownload.partialFailed', { count: dispatched }) }

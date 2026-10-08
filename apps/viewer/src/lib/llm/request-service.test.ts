@@ -130,7 +130,7 @@ test('#7132 unsupported hosted routes remain parser-only and reject no schema by
 });
 
 test('#7132 rejected direct schemas fail the same request without a text fallback', async () => {
-  const sent = serve('Unsupported schema', { status: 400 });
+  const sent = serve(JSON.stringify({ error: { message: 'Unsupported schema' } }), { status: 400 });
   const budget = createRootBudget({ maxRequests: 2, maxOutputTokens: 8192 });
   const outcome = await runModelRequest(request({ route: { kind: 'openai', model: 'gpt-6.1-sol', apiKey: 'sk-test' }, outputSchema: typedSchema, budget }));
   assert.equal(outcome.kind, 'error');

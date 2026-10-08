@@ -144,3 +144,36 @@ export type {
   SpecView,
   SuppressedDiagnostic,
 } from './lint/types.js';
+
+// bSDD: source port, HTTP client, picker view model (IDS-069)
+export {
+  BsddHttpError,
+  BsddUnavailableError,
+  type BsddAllowedValue,
+  type BsddClass,
+  type BsddClassOptions,
+  type BsddClassProperty,
+  type BsddClassRef,
+  type BsddClassSummary,
+  type BsddDictionary,
+  type BsddSearchPage,
+  type BsddSearchQuery,
+  type BsddSource,
+  type BsddStatus,
+  type BsddUriRecord,
+} from './bsdd/types.js';
+export { createHttpBsddSource, BSDD_API_BASE, type HttpBsddSourceOptions } from './bsdd/http-source.js';
+export {
+  cardFromClass,
+  cardFromSummary,
+  createBsddSearch,
+  initialPickerFilters,
+  type BsddClassCard,
+  type BsddPickerFilters,
+  type BsddPropertyPreview,
+  type BsddSearch,
+  type BsddSearchOptions,
+  type BsddSearchPhase,
+  type BsddSearchState,
+  type BsddSearchTimers,
+} from './bsdd/picker.js';

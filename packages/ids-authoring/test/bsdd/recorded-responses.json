@@ -1,0 +1,774 @@
+{
+ "_comment": "Hand-authored bSDD API v1 responses (synthetic 'Demo Elements' dictionary, CC0-1.0 test data, no content copied from any published dictionary). Shapes follow the public Dictionaries API contracts; see worklog/P-06.md.",
+ "responses": [
+  {
+   "path": "/api/Dictionary/v1",
+   "query": {
+    "IncludeTestDictionaries": "false",
+    "Offset": "0",
+    "Limit": "1000"
+   },
+   "status": 200,
+   "body": {
+    "dictionaries": [
+     {
+      "uri": "https://identifier.example.org/uri/ifc-lite-test/demo/1.0",
+      "name": "Demo Elements",
+      "code": "demo",
+      "version": "1.0",
+      "organizationCodeOwner": "ifc-lite-test",
+      "organizationNameOwner": "ifc-lite test fixtures",
+      "defaultLanguageCode": "EN",
+      "isLatestVersion": false,
+      "isVerified": false,
+      "license": "CC0-1.0",
+      "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+      "status": "Active",
+      "releaseDate": "2026-01-01T00:00:00"
+     },
+     {
+      "uri": "https://identifier.example.org/uri/ifc-lite-test/demo/2.0",
+      "name": "Demo Elements",
+      "code": "demo",
+      "version": "2.0",
+      "organizationCodeOwner": "ifc-lite-test",
+      "organizationNameOwner": "ifc-lite test fixtures",
+      "defaultLanguageCode": "EN",
+      "isLatestVersion": true,
+      "isVerified": false,
+      "license": "CC0-1.0",
+      "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+      "status": "Preview",
+      "releaseDate": "2026-01-01T00:00:00"
+     }
+    ],
+    "totalCount": 2,
+    "offset": 0,
+    "count": 2
+   }
+  },
+  {
+   "path": "/api/Dictionary/v1",
+   "query": {
+    "Uri": "https://identifier.example.org/uri/ifc-lite-test/demo/1.0"
+   },
+   "status": 200,
+   "body": {
+    "dictionaries": [
+     {
+      "uri": "https://identifier.example.org/uri/ifc-lite-test/demo/1.0",
+      "name": "Demo Elements",
+      "code": "demo",
+      "version": "1.0",
+      "organizationCodeOwner": "ifc-lite-test",
+      "organizationNameOwner": "ifc-lite test fixtures",
+      "defaultLanguageCode": "EN",
+      "isLatestVersion": false,
+      "isVerified": false,
+      "license": "CC0-1.0",
+      "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+      "status": "Active",
+      "releaseDate": "2026-01-01T00:00:00"
+     }
+    ],
+    "totalCount": 1,
+    "offset": 0,
+    "count": 1
+   }
+  },
+  {
+   "path": "/api/Dictionary/v1",
+   "query": {
+    "Uri": "https://identifier.example.org/uri/ifc-lite-test/demo/2.0"
+   },
+   "status": 200,
+   "body": {
+    "dictionaries": [
+     {
+      "uri": "https://identifier.example.org/uri/ifc-lite-test/demo/2.0",
+      "name": "Demo Elements",
+      "code": "demo",
+      "version": "2.0",
+      "organizationCodeOwner": "ifc-lite-test",
+      "organizationNameOwner": "ifc-lite test fixtures",
+      "defaultLanguageCode": "EN",
+      "isLatestVersion": true,
+      "isVerified": false,
+      "license": "CC0-1.0",
+      "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+      "status": "Preview",
+      "releaseDate": "2026-01-01T00:00:00"
+     }
+    ],
+    "totalCount": 1,
+    "offset": 0,
+    "count": 1
+   }
+  },
+  {
+   "path": "/api/Dictionary/v1/Classes",
+   "query": {
+    "Uri": "https://identifier.example.org/uri/ifc-lite-test/demo/1.0",
+    "UseNestedClasses": "false",
+    "ClassType": "Class",
+    "Offset": "0",
+    "Limit": "1000"
+   },
+   "status": 200,
+   "body": {
+    "uri": "https://identifier.example.org/uri/ifc-lite-test/demo/1.0",
+    "name": "Demo Elements",
+    "code": "demo",
+    "version": "1.0",
+    "organizationCodeOwner": "ifc-lite-test",
+    "organizationNameOwner": "ifc-lite test fixtures",
+    "defaultLanguageCode": "EN",
+    "isLatestVersion": false,
+    "isVerified": false,
+    "license": "CC0-1.0",
+    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "status": "Active",
+    "releaseDate": "2026-01-01T00:00:00",
+    "classes": [
+     {
+      "uri": "https://identifier.example.org/uri/ifc-lite-test/demo/1.0/class/WAL",
+      "code": "WAL",
+      "name": "Wall",
+      "classType": "Class"
+     },
+     {
+      "uri": "https://identifier.example.org/uri/ifc-lite-test/demo/1.0/class/WAL-EXT",
+      "code": "WAL-EXT",
+      "name": "External wall",
+      "classType": "Class",
+      "parentClassCode": "WAL"
+     },
+     {
+      "uri": "https://identifier.example.org/uri/ifc-lite-test/demo/1.0/class/WAL-INT",
+      "code": "WAL-INT",
+      "name": "Internal wall",
+      "classType": "Class",
+      "parentClassCode": "WAL"
+     },
+     {
+      "uri": "https://identifier.example.org/uri/ifc-lite-test/demo/1.0/class/WAL-PRT",
+      "code": "WAL-PRT",
+      "name": "Partition wall",
+      "classType": "Class",
+      "parentClassCode": "WAL"
+     },
+     {
+      "uri": "https://identifier.example.org/uri/ifc-lite-test/demo/1.0/class/DOR",
+      "code": "DOR",
+      "name": "Door",
+      "classType": "Class"
+     },
+     {
+      "uri": "https://identifier.example.org/uri/ifc-lite-test/demo/1.0/class/SHD",
+      "code": "SHD",
+      "name": "Shading device",
+      "classType": "Class"
+     }
+    ],
+    "classesTotalCount": 6,
+    "classesOffset": 0,
+    "classesCount": 6
+   }
+  },
+  {
+   "path": "/api/Class/v1",
+   "query": {
+    "Uri": "https://identifier.example.org/uri/ifc-lite-test/demo/1.0/class/WAL",
+    "IncludeClassProperties": "true",
+    "IncludeChildClassReferences": "true"
+   },
+   "status": 200,
+   "body": {
+    "uri": "https://identifier.example.org/uri/ifc-lite-test/demo/1.0/class/WAL",
+    "code": "WAL",
+    "name": "Wall",
+    "definition": "Wall (synthetic fixture class).",
+    "status": "Active",
+    "classType": "Class",
+    "dictionaryUri": "https://identifier.example.org/uri/ifc-lite-test/demo/1.0",
+    "relatedIfcEntityNames": [
+     "IfcWall"
+    ],
+    "classProperties": [
+     {
+      "name": "LoadBearing",
+      "propertyCode": "LoadBearing",
+      "propertyUri": "https://identifier.example.org/uri/ifc-lite-test/demo/1.0/prop/LoadBearing",
+      "uri": "https://identifier.example.org/uri/ifc-lite-test/demo/1.0/prop/LoadBearing",
+      "dataType": "Boolean",
+      "propertySet": "Demo_Wall",
+      "isRequired": true,
+      "propertyValueKind": "Single",
+      "definition": "Whether the wall carries loads."
+     },
+     {
+      "name": "Fire rating",
+      "propertyCode": "FireRating",
+      "propertyUri": "https://identifier.example.org/uri/ifc-lite-test/demo/1.0/prop/FireRating",
+      "uri": "https://identifier.example.org/uri/ifc-lite-test/demo/1.0/prop/FireRating",
+      "dataType": "String",
+      "propertySet": "Demo_Wall",
+      "isRequired": true,
+      "propertyValueKind": "Single",
+      "allowedValues": [
+       {
+        "code": "EI30",
+        "value": "EI 30"
+       },
+       {
+        "code": "EI60",
+        "value": "EI 60"
+       },
+       {
+        "code": "EI90",
+        "value": "EI 90"
+       }
+      ]
+     },
+     {
+      "name": "Thickness",
+      "propertyCode": "Thickness",
+      "propertyUri": "https://identifier.example.org/uri/ifc-lite-test/demo/1.0/prop/Thickness",
+      "uri": "https://identifier.example.org/uri/ifc-lite-test/demo/1.0/prop/Thickness",
+      "dataType": "Real",
+      "propertySet": "Demo_Wall",
+      "isRequired": false,
+      "propertyValueKind": "Single",
+      "dimension": "1 0 0 0 0 0 0",
+      "units": [
+       "mm"
+      ],
+      "minInclusive": 50,
+      "maxInclusive": 1000,
+      "physicalQuantity": "Length"
+     }
+    ],
+    "childClassReferences": [
+     {
+      "uri": "https://identifier.example.org/uri/ifc-lite-test/demo/1.0/class/WAL-EXT",
+      "code": "WAL-EXT",
+      "name": "External wall"
+     },
+     {
+      "uri": "https://identifier.example.org/uri/ifc-lite-test/demo/1.0/class/WAL-INT",
+      "code": "WAL-INT",
+      "name": "Internal wall"
+     }
+    ],
+    "replacingObjectCodes": [],
+    "synonyms": []
+   }
+  },
+  {
+   "path": "/api/Class/v1",
+   "query": {
+    "Uri": "https://identifier.example.org/uri/ifc-lite-test/demo/1.0/class/WAL-EXT",
+    "IncludeClassProperties": "true",
+    "IncludeChildClassReferences": "true"
+   },
+   "status": 200,
+   "body": {
+    "uri": "https://identifier.example.org/uri/ifc-lite-test/demo/1.0/class/WAL-EXT",
+    "code": "WAL-EXT",
+    "name": "External wall",
+    "definition": "External wall (synthetic fixture class).",
+    "status": "Active",
+    "classType": "Class",
+    "dictionaryUri": "https://identifier.example.org/uri/ifc-lite-test/demo/1.0",
+    "relatedIfcEntityNames": [
+     "IfcWall",
+     "IfcWallSOLIDWALL"
+    ],
+    "classProperties": [
+     {
+      "name": "ThermalTransmittance",
+      "propertyCode": "ThermalTransmittance",
+      "propertyUri": "https://identifier.example.org/uri/ifc-lite-test/demo/1.0/prop/ThermalTransmittance",
+      "uri": "https://identifier.example.org/uri/ifc-lite-test/demo/1.0/prop/ThermalTransmittance",
+      "dataType": "Real",
+      "propertySet": "Demo_Wall",
+      "isRequired": true,
+      "propertyValueKind": "Single",
+      "dimension": "0 1 -3 0 -1 0 0",
+      "units": [
+       "W/(m2·K)"
+      ],
+      "maxInclusive": 0.3
+     },
+     {
+      "name": "IsExternal",
+      "propertyCode": "IsExternal",
+      "propertyUri": "https://identifier.buildingsmart.org/uri/buildingsmart/ifc/4.3/prop/IsExternal",
+      "uri": "https://identifier.example.org/uri/ifc-lite-test/demo/1.0/class/WAL-EXT/prop/IsExternal",
+      "dataType": "Boolean",
+      "propertySet": "Pset_WallCommon",
+      "isRequired": true,
+      "propertyValueKind": "Single"
+     },
+     {
+      "name": "LoadBearing",
+      "propertyCode": "LoadBearing",
+      "propertyUri": "https://identifier.example.org/uri/ifc-lite-test/demo/1.0/prop/LoadBearing",
+      "uri": "https://identifier.example.org/uri/ifc-lite-test/demo/1.0/prop/LoadBearing",
+      "dataType": "Boolean",
+      "propertySet": "Demo_Wall",
+      "isRequired": false,
+      "propertyValueKind": "Single",
+      "definition": "Overrides the parent: optional on external walls."
+     }
+    ],
+    "childClassReferences": [],
+    "replacingObjectCodes": [],
+    "synonyms": [],
+    "parentClassReference": {
+     "uri": "https://identifier.example.org/uri/ifc-lite-test/demo/1.0/class/WAL",
+     "code": "WAL",
+     "name": "Wall"
+    }
+   }
+  },
+  {
+   "path": "/api/Class/v1",
+   "query": {
+    "Uri": "https://identifier.example.org/uri/ifc-lite-test/demo/1.0/class/WAL-INT",
+    "IncludeClassProperties": "true",
+    "IncludeChildClassReferences": "true"
+   },
+   "status": 200,
+   "body": {
+    "uri": "https://identifier.example.org/uri/ifc-lite-test/demo/1.0/class/WAL-INT",
+    "code": "WAL-INT",
+    "name": "Internal wall",
+    "definition": "Internal wall (synthetic fixture class).",
+    "status": "Active",
+    "classType": "Class",
+    "dictionaryUri": "https://identifier.example.org/uri/ifc-lite-test/demo/1.0",
+    "relatedIfcEntityNames": [
+     "IfcWall",
+     "IfcWallPARTITIONING"
+    ],
+    "classProperties": [],
+    "childClassReferences": [],
+    "replacingObjectCodes": [],
+    "synonyms": [],
+    "parentClassReference": {
+     "uri": "https://identifier.example.org/uri/ifc-lite-test/demo/1.0/class/WAL",
+     "code": "WAL",
+     "name": "Wall"
+    }
+   }
+  },
+  {
+   "path": "/api/Class/v1",
+   "query": {
+    "Uri": "https://identifier.example.org/uri/ifc-lite-test/demo/1.0/class/WAL-PRT",
+    "IncludeClassProperties": "true",
+    "IncludeChildClassReferences": "true"
+   },
+   "status": 200,
+   "body": {
+    "uri": "https://identifier.example.org/uri/ifc-lite-test/demo/1.0/class/WAL-PRT",
+    "code": "WAL-PRT",
+    "name": "Partition wall",
+    "definition": "Partition wall (synthetic fixture class).",
+    "status": "Inactive",
+    "classType": "Class",
+    "dictionaryUri": "https://identifier.example.org/uri/ifc-lite-test/demo/1.0",
+    "relatedIfcEntityNames": [
+     "IfcWall"
+    ],
+    "classProperties": [],
+    "childClassReferences": [],
+    "replacingObjectCodes": [
+     "WAL-INT"
+    ],
+    "synonyms": [],
+    "parentClassReference": {
+     "uri": "https://identifier.example.org/uri/ifc-lite-test/demo/1.0/class/WAL",
+     "code": "WAL",
+     "name": "Wall"
+    }
+   }
+  },
+  {
+   "path": "/api/Class/v1",
+   "query": {
+    "Uri": "https://identifier.example.org/uri/ifc-lite-test/demo/1.0/class/DOR",
+    "IncludeClassProperties": "true",
+    "IncludeChildClassReferences": "true"
+   },
+   "status": 200,
+   "body": {
+    "uri": "https://identifier.example.org/uri/ifc-lite-test/demo/1.0/class/DOR",
+    "code": "DOR",
+    "name": "Door",
+    "definition": "Door (synthetic fixture class).",
+    "status": "Active",
+    "classType": "Class",
+    "dictionaryUri": "https://identifier.example.org/uri/ifc-lite-test/demo/1.0",
+    "relatedIfcEntityNames": [
+     "IfcDoor"
+    ],
+    "classProperties": [
+     {
+      "name": "FireExit",
+      "propertyCode": "FireExit",
+      "propertyUri": "https://identifier.example.org/uri/ifc-lite-test/demo/1.0/prop/FireExit",
+      "uri": "https://identifier.example.org/uri/ifc-lite-test/demo/1.0/prop/FireExit",
+      "dataType": "Boolean",
+      "propertySet": "Demo_Door",
+      "isRequired": true,
+      "propertyValueKind": "Single"
+     },
+     {
+      "name": "ClearWidth",
+      "propertyCode": "ClearWidth",
+      "propertyUri": "https://identifier.example.org/uri/ifc-lite-test/demo/1.0/prop/ClearWidth",
+      "uri": "https://identifier.example.org/uri/ifc-lite-test/demo/1.0/prop/ClearWidth",
+      "dataType": "Real",
+      "propertySet": "Demo_Door",
+      "isRequired": true,
+      "propertyValueKind": "Single",
+      "dimension": "1 0 0 0 0 0 0",
+      "units": [
+       "m"
+      ],
+      "minInclusive": 0.8
+     },
+     {
+      "name": "LeafCount",
+      "propertyCode": "LeafCount",
+      "propertyUri": "https://identifier.example.org/uri/ifc-lite-test/demo/1.0/prop/LeafCount",
+      "uri": "https://identifier.example.org/uri/ifc-lite-test/demo/1.0/prop/LeafCount",
+      "dataType": "Integer",
+      "propertySet": "Demo_Door",
+      "isRequired": false,
+      "propertyValueKind": "Single",
+      "minInclusive": 1,
+      "maxInclusive": 2
+     },
+     {
+      "name": "InstallationDate",
+      "propertyCode": "InstallationDate",
+      "propertyUri": "https://identifier.example.org/uri/ifc-lite-test/demo/1.0/prop/InstallationDate",
+      "uri": "https://identifier.example.org/uri/ifc-lite-test/demo/1.0/prop/InstallationDate",
+      "dataType": "Time",
+      "propertySet": "Demo_Door",
+      "isRequired": false,
+      "propertyValueKind": "Single"
+     },
+     {
+      "name": "Grade",
+      "propertyCode": "Grade",
+      "propertyUri": "https://identifier.example.org/uri/ifc-lite-test/demo/1.0/prop/Grade",
+      "uri": "https://identifier.example.org/uri/ifc-lite-test/demo/1.0/prop/Grade",
+      "dataType": "Character",
+      "propertySet": "Demo_Door",
+      "isRequired": false,
+      "propertyValueKind": "Single",
+      "pattern": "[A-C]"
+     },
+     {
+      "name": "Accessories",
+      "propertyCode": "Accessories",
+      "propertyUri": "https://identifier.example.org/uri/ifc-lite-test/demo/1.0/prop/Accessories",
+      "uri": "https://identifier.example.org/uri/ifc-lite-test/demo/1.0/prop/Accessories",
+      "dataType": "String",
+      "propertySet": "Demo_Door",
+      "isRequired": false,
+      "propertyValueKind": "List"
+     },
+     {
+      "name": "SurfaceFinish",
+      "propertyCode": "SurfaceFinish",
+      "propertyUri": "https://identifier.example.org/uri/ifc-lite-test/demo/1.0/prop/SurfaceFinish",
+      "uri": "https://identifier.example.org/uri/ifc-lite-test/demo/1.0/prop/SurfaceFinish",
+      "dataType": "Rgb",
+      "propertySet": "Demo_Door",
+      "isRequired": false,
+      "propertyValueKind": "Single"
+     },
+     {
+      "name": "Manufacturer",
+      "propertyCode": "Manufacturer",
+      "propertyUri": "https://identifier.example.org/uri/ifc-lite-test/demo/1.0/prop/Manufacturer",
+      "uri": "https://identifier.example.org/uri/ifc-lite-test/demo/1.0/prop/Manufacturer",
+      "dataType": "String",
+      "isRequired": false,
+      "propertyValueKind": "Single"
+     }
+    ],
+    "childClassReferences": [],
+    "replacingObjectCodes": [],
+    "synonyms": []
+   }
+  },
+  {
+   "path": "/api/Class/v1",
+   "query": {
+    "Uri": "https://identifier.example.org/uri/ifc-lite-test/demo/1.0/class/SHD",
+    "IncludeClassProperties": "true",
+    "IncludeChildClassReferences": "true"
+   },
+   "status": 200,
+   "body": {
+    "uri": "https://identifier.example.org/uri/ifc-lite-test/demo/1.0/class/SHD",
+    "code": "SHD",
+    "name": "Shading device",
+    "definition": "Shading device (synthetic fixture class).",
+    "status": "Active",
+    "classType": "Class",
+    "dictionaryUri": "https://identifier.example.org/uri/ifc-lite-test/demo/1.0",
+    "relatedIfcEntityNames": [
+     "IfcShadingDevice",
+     "IfcWindow"
+    ],
+    "classProperties": [
+     {
+      "name": "SolarFactor",
+      "propertyCode": "SolarFactor",
+      "propertyUri": "https://identifier.example.org/uri/ifc-lite-test/demo/1.0/prop/SolarFactor",
+      "uri": "https://identifier.example.org/uri/ifc-lite-test/demo/1.0/prop/SolarFactor",
+      "dataType": "Real",
+      "propertySet": "Demo_Shading",
+      "isRequired": true,
+      "propertyValueKind": "Single",
+      "dimension": "0 0 0 0 0 0 0",
+      "minInclusive": 0,
+      "maxInclusive": 1
+     }
+    ],
+    "childClassReferences": [],
+    "replacingObjectCodes": [],
+    "synonyms": []
+   }
+  },
+  {
+   "path": "/api/Class/v1",
+   "query": {
+    "Uri": "https://identifier.example.org/uri/ifc-lite-test/demo/1.0/class/GONE",
+    "IncludeClassProperties": "true",
+    "IncludeChildClassReferences": "true"
+   },
+   "status": 404,
+   "body": {
+    "error": "Class not found"
+   }
+  },
+  {
+   "path": "/api/Class/Search/v1",
+   "query": {
+    "SearchText": "wall",
+    "Offset": "0",
+    "Limit": "50"
+   },
+   "status": 200,
+   "body": {
+    "classes": [
+     {
+      "uri": "https://identifier.example.org/uri/ifc-lite-test/demo/1.0/class/WAL",
+      "code": "WAL",
+      "name": "Wall",
+      "definition": "Wall (synthetic fixture class).",
+      "dictionaryUri": "https://identifier.example.org/uri/ifc-lite-test/demo/1.0",
+      "dictionaryName": "Demo Elements",
+      "relatedIfcEntityNames": [
+       "IfcWall"
+      ]
+     },
+     {
+      "uri": "https://identifier.example.org/uri/ifc-lite-test/demo/1.0/class/WAL-EXT",
+      "code": "WAL-EXT",
+      "name": "External wall",
+      "definition": "External wall (synthetic fixture class).",
+      "dictionaryUri": "https://identifier.example.org/uri/ifc-lite-test/demo/1.0",
+      "dictionaryName": "Demo Elements",
+      "relatedIfcEntityNames": [
+       "IfcWall",
+       "IfcWallSOLIDWALL"
+      ]
+     },
+     {
+      "uri": "https://identifier.example.org/uri/ifc-lite-test/demo/1.0/class/WAL-INT",
+      "code": "WAL-INT",
+      "name": "Internal wall",
+      "definition": "Internal wall (synthetic fixture class).",
+      "dictionaryUri": "https://identifier.example.org/uri/ifc-lite-test/demo/1.0",
+      "dictionaryName": "Demo Elements",
+      "relatedIfcEntityNames": [
+       "IfcWall",
+       "IfcWallPARTITIONING"
+      ]
+     },
+     {
+      "uri": "https://identifier.example.org/uri/ifc-lite-test/demo/1.0/class/WAL-PRT",
+      "code": "WAL-PRT",
+      "name": "Partition wall",
+      "definition": "Partition wall (synthetic fixture class).",
+      "dictionaryUri": "https://identifier.example.org/uri/ifc-lite-test/demo/1.0",
+      "dictionaryName": "Demo Elements",
+      "relatedIfcEntityNames": [
+       "IfcWall"
+      ]
+     }
+    ],
+    "totalCount": 4,
+    "offset": 0,
+    "count": 4
+   }
+  },
+  {
+   "path": "/api/Class/Search/v1",
+   "query": {
+    "SearchText": "wall",
+    "DictionaryUris": "https://identifier.example.org/uri/ifc-lite-test/demo/1.0",
+    "RelatedIfcEntities": "IfcWall",
+    "Offset": "0",
+    "Limit": "50"
+   },
+   "status": 200,
+   "body": {
+    "classes": [
+     {
+      "uri": "https://identifier.example.org/uri/ifc-lite-test/demo/1.0/class/WAL",
+      "code": "WAL",
+      "name": "Wall",
+      "definition": "Wall (synthetic fixture class).",
+      "dictionaryUri": "https://identifier.example.org/uri/ifc-lite-test/demo/1.0",
+      "dictionaryName": "Demo Elements",
+      "relatedIfcEntityNames": [
+       "IfcWall"
+      ]
+     },
+     {
+      "uri": "https://identifier.example.org/uri/ifc-lite-test/demo/1.0/class/WAL-EXT",
+      "code": "WAL-EXT",
+      "name": "External wall",
+      "definition": "External wall (synthetic fixture class).",
+      "dictionaryUri": "https://identifier.example.org/uri/ifc-lite-test/demo/1.0",
+      "dictionaryName": "Demo Elements",
+      "relatedIfcEntityNames": [
+       "IfcWall",
+       "IfcWallSOLIDWALL"
+      ]
+     },
+     {
+      "uri": "https://identifier.example.org/uri/ifc-lite-test/demo/1.0/class/WAL-INT",
+      "code": "WAL-INT",
+      "name": "Internal wall",
+      "definition": "Internal wall (synthetic fixture class).",
+      "dictionaryUri": "https://identifier.example.org/uri/ifc-lite-test/demo/1.0",
+      "dictionaryName": "Demo Elements",
+      "relatedIfcEntityNames": [
+       "IfcWall",
+       "IfcWallPARTITIONING"
+      ]
+     },
+     {
+      "uri": "https://identifier.example.org/uri/ifc-lite-test/demo/1.0/class/WAL-PRT",
+      "code": "WAL-PRT",
+      "name": "Partition wall",
+      "definition": "Partition wall (synthetic fixture class).",
+      "dictionaryUri": "https://identifier.example.org/uri/ifc-lite-test/demo/1.0",
+      "dictionaryName": "Demo Elements",
+      "relatedIfcEntityNames": [
+       "IfcWall"
+      ]
+     }
+    ],
+    "totalCount": 4,
+    "offset": 0,
+    "count": 4
+   }
+  },
+  {
+   "path": "/api/Class/Search/v1",
+   "query": {
+    "SearchText": "door",
+    "Offset": "0",
+    "Limit": "50"
+   },
+   "status": 200,
+   "body": {
+    "classes": [
+     {
+      "uri": "https://identifier.example.org/uri/ifc-lite-test/demo/1.0/class/DOR",
+      "code": "DOR",
+      "name": "Door",
+      "definition": "Door (synthetic fixture class).",
+      "dictionaryUri": "https://identifier.example.org/uri/ifc-lite-test/demo/1.0",
+      "dictionaryName": "Demo Elements",
+      "relatedIfcEntityNames": [
+       "IfcDoor"
+      ]
+     }
+    ],
+    "totalCount": 1,
+    "offset": 0,
+    "count": 1
+   }
+  },
+  {
+   "path": "/api/Property/v4",
+   "query": {
+    "uri": "https://identifier.example.org/uri/ifc-lite-test/demo/1.0/prop/FireRating"
+   },
+   "status": 200,
+   "body": {
+    "uri": "https://identifier.example.org/uri/ifc-lite-test/demo/1.0/prop/FireRating",
+    "code": "FireRating",
+    "name": "Fire rating",
+    "status": "Active",
+    "dataType": "String",
+    "dictionaryUri": "https://identifier.example.org/uri/ifc-lite-test/demo/1.0",
+    "allowedValues": [
+     {
+      "code": "EI30",
+      "value": "EI 30"
+     },
+     {
+      "code": "EI60",
+      "value": "EI 60"
+     },
+     {
+      "code": "EI90",
+      "value": "EI 90"
+     }
+    ]
+   }
+  },
+  {
+   "path": "/api/Property/v4",
+   "query": {
+    "uri": "https://identifier.example.org/uri/ifc-lite-test/demo/1.0/prop/Thickness"
+   },
+   "status": 200,
+   "body": {
+    "uri": "https://identifier.example.org/uri/ifc-lite-test/demo/1.0/prop/Thickness",
+    "code": "Thickness",
+    "name": "Thickness",
+    "status": "Inactive",
+    "dataType": "Real",
+    "dictionaryUri": "https://identifier.example.org/uri/ifc-lite-test/demo/1.0",
+    "replacingObjectCodes": [
+     "NominalThickness"
+    ]
+   }
+  },
+  {
+   "path": "/api/Property/v4",
+   "query": {
+    "uri": "https://identifier.example.org/uri/ifc-lite-test/demo/1.0/prop/Nope"
+   },
+   "status": 404,
+   "body": {
+    "error": "Property not found"
+   }
+  }
+ ]
+}

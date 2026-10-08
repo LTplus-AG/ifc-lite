@@ -26,7 +26,7 @@ export function ReconcileOutcomeView({ outcome }: { outcome: ReconcileOutcome })
   useEffect(() => {
     if (!focused) return;
     focusedRow.current?.focus(); focusedRow.current?.scrollIntoView?.({ block: 'nearest' });
-  }, [focused]);
+  }, [focused, focus]);
   // A run-level refusal names the picked run by its role, not by an internal id.
   const detail = (item: Incompatibility) => item.sides
     ? item.sides.map(side => t(side === 'base' ? 'compareAnalysis.reconcile.baseRun' : 'compareAnalysis.reconcile.headRun')).join(', ')

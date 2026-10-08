@@ -6,37 +6,44 @@
 import { clashReviewKey } from '@ifc-lite/clash';
 import type { ViewerState } from '@/store';
 import { currentReconciliationOf } from '@/lib/compare/compare-analysis-state';
-import type { CapturedRun, ReconciledFinding } from '@/lib/compare/run-reconcile-types';
+import type { CapturedRun } from '@/lib/compare/run-reconcile-types';
 import type { FindingElement, FindingRun, FindingSourceResult, ReviewModel } from '../types';
 import { clashGlobalId } from './clash';
 import { typeDisciplines } from './disciplines';
 
-function elementsOf(run: CapturedRun | undefined, row: ReconciledFinding, occurrence: string | undefined,
-  models: readonly ReviewModel[], historical: boolean): FindingElement[] {
-  if (!run || !occurrence) return [];
+/** Index each native occurrence once; large runs must not be rescanned per finding. */
+function occurrenceElements(run: CapturedRun | undefined, names: ReadonlyMap<string, string>, historical: boolean) {
+  const indexed = new Map<string, FindingElement[] | null>();
+  if (!run) return indexed;
   const element = (globalId: string, modelId: string, ifcType: string, name?: string): FindingElement => ({
-    globalId, modelId: historical ? null : modelId, modelName: models.find(model => model.id === modelId)?.name ?? null,
+    globalId, modelId: historical ? null : modelId, modelName: names.get(modelId) ?? null,
     ifcType, ...(name ? { name } : {}),
   });
+  const add = (occurrence: string, identity: string, elements: FindingElement[]) => {
+    const key = JSON.stringify([occurrence, identity]);
+    indexed.set(key, indexed.has(key) ? null : elements); // Duplicate native occurrences have no identity.
+  };
   if (run.kind === 'clash') {
-    const matches = run.result.clashes.filter(clash => clash.id === occurrence && clashReviewKey(clash) === row.identity);
-    return matches.length === 1 ? [matches[0].a, matches[0].b].map(ref =>
-      element(clashGlobalId(ref), ref.model, ref.tag, ref.name)) : [];
+    for (const clash of run.result.clashes) add(clash.id, clashReviewKey(clash), [clash.a, clash.b].map(ref =>
+      element(clashGlobalId(ref), ref.model, ref.tag, ref.name)));
+  } else {
+    for (const spec of run.report.specificationResults) for (const entity of spec.entityResults) {
+      if (entity.globalId) add(`${entity.modelId}#${entity.expressId}`, `${spec.specification.id} ${entity.globalId}`,
+        [element(entity.globalId, entity.modelId, entity.entityType, entity.entityName)]);
+    }
   }
-  const matches = run.report.specificationResults.flatMap(spec => spec.entityResults.filter(entity =>
-    `${entity.modelId}#${entity.expressId}` === occurrence && `${spec.specification.id} ${entity.globalId}` === row.identity));
-  return matches.length === 1 && matches[0].globalId ? [element(matches[0].globalId, matches[0].modelId,
-    matches[0].entityType, matches[0].entityName)] : [];
+  return indexed;
 }
 
 export function reconciliationFindings(state: ViewerState, models: readonly ReviewModel[]): FindingSourceResult {
   const current = currentReconciliationOf(state);
   if (!current?.outcome.ok) return { runs: [], findings: [] };
   const { outcome, stale } = current;
+  const modelNames = new Map(models.map(model => [model.id, model.name]));
   const base = state.compareRunCaptures.find(run => run.id === outcome.baseRunId && run.kind === outcome.kind);
   const head = state.compareRunCaptures.find(run => run.id === outcome.headRunId && run.kind === outcome.kind);
   const available = !!base && !!head && [...(base.modelIds ?? []), ...(head.modelIds ?? [])]
-    .every(id => models.some(model => model.id === id));
+    .every(id => modelNames.has(id));
   const incomplete = [
     ...(outcome.partial ? [{ code: 'partial-source' as const, detail: 'Native run reconciliation has incomplete evaluation coverage' }] : []),
     ...(outcome.excluded > 0 ? [{ code: 'partial-source' as const, detail: `${outcome.excluded} native findings were excluded from reconciliation` }] : []),
@@ -47,12 +54,14 @@ export function reconciliationFindings(state: ViewerState, models: readonly Revi
     id: JSON.stringify(['run-reconciliation', outcome.baseRunId, outcome.headRunId, temporal]), source: 'comparison', temporal,
     label: `${state.compareResult?.baseName ?? ''} → ${state.compareResult?.headName ?? ''}: ${outcome.kind}`,
     capturedAt: run?.capturedAt ?? null, complete: incomplete.length === 0, incomplete,
-    models: [...new Set((run?.modelIds ?? []).flatMap(id => models.find(model => model.id === id)?.name ?? []))],
+    models: [...new Set((run?.modelIds ?? []).flatMap(id => modelNames.get(id) ?? []))],
   });
   const before = owner(base, 'historical'), after = owner(head, 'current');
+  const beforeElements = occurrenceElements(base, modelNames, true), afterElements = occurrenceElements(head, modelNames, false);
   return { runs: [before, after], findings: outcome.findings.map(row => {
     const historical = row.state === 'resolved' || !row.headOccurrence;
-    const elements = elementsOf(historical ? base : head, row, historical ? row.baseOccurrence : row.headOccurrence, models, historical);
+    const occurrence = historical ? row.baseOccurrence : row.headOccurrence;
+    const elements = (historical ? beforeElements : afterElements).get(JSON.stringify([occurrence, row.identity])) ?? [];
     const identified = available && elements.length > 0;
     const run = historical ? before : after;
     return { id: JSON.stringify([run.id, row.identity]), lineage: JSON.stringify(['run-reconciliation', outcome.kind, row.identity]),

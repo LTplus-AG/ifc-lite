@@ -110,6 +110,10 @@ test('#7087 Open original displays the native validation reconciliation row, inc
   await waitFor(() => ui.querySelector('[aria-current="true"]') !== null, 'native reconciliation original');
   assert.ok(ui.querySelector('[aria-current="true"]')?.textContent?.includes(finding.title));
   assert.equal(document.activeElement, ui.querySelector('[aria-current="true"]'));
+  const away = document.createElement('button'); ui.append(away); away.focus();
+  assert.equal(document.activeElement, away);
+  act(() => { assert.equal(openOriginal(finding, panel => panels.push(panel)), true); });
+  await waitFor(() => document.activeElement === ui.querySelector('[aria-current="true"]'), 'repeated native original refocus');
   act(() => useViewerStore.getState().setCompareReconciliation(null));
   assert.equal(openOriginal(finding, panel => panels.push(panel)), false, 'replaced original must refuse');
 });
@@ -166,4 +170,22 @@ test('#7087 incompatible native IDS sources stay outside Review reconciliation f
   assert.ok(saved.outcome.incompatibilities.some(reason => reason.code === 'sourceDiffers'));
   useViewerStore.setState({ compareRunCaptures: [changed, base], compareReconciliation: saved });
   assert.equal(projected().length, 0);
+});
+
+
+test('#7087 duplicate captured native occurrences never acquire an element identity', async t => {
+  const source = await native(t); if (!source) return;
+  const target = projected().find(finding => finding.nativeStatus === 'persisting'); assert.ok(target);
+  const globalId = target.elements[0].globalId;
+  const captures = useViewerStore.getState().compareRunCaptures.map(capture => {
+    if (capture.id !== 'head-native-ids' || capture.kind !== 'validation') return capture;
+    return { ...capture, report: { ...capture.report, specificationResults: capture.report.specificationResults.map(spec => {
+      const entity = spec.entityResults.find(entity => entity.globalId === globalId && !entity.passed);
+      return entity ? { ...spec, entityResults: [...spec.entityResults, entity] } : spec;
+    }) } };
+  });
+  useViewerStore.setState({ compareRunCaptures: captures });
+  const ambiguous = projected().find(finding => finding.id === target.id); assert.ok(ambiguous);
+  assert.deepEqual(ambiguous.elements, []); assert.equal(ambiguous.lifecycle, 'not-evaluated');
+  assert.ok(ambiguous.detail.includes('Native occurrence unavailable or ambiguous'));
 });

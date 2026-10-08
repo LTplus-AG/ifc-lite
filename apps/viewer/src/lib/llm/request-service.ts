@@ -56,7 +56,7 @@ export type RequestOutcome = SharedOutcome<SendableRoute['kind']>;
 /** The viewer's stream clients for one route, as a shared-core transport. */
 function viewerTransport(route: SendableRoute, proxyUrl: string, onUsageInfo?: (usage: UsageInfo) => void): AiTransport<StreamMessage> {
   return async (call) => {
-    const options: StreamOptions = { ...call, proxyUrl, messages: [...call.messages], onUsageInfo, allowProxyFallback: false };
+    const options: StreamOptions = { ...call, proxyUrl, messages: [...call.messages], onUsageInfo, allowProxyFallback: false, useParentDeadline: true };
     if (route.kind === 'proxy') await streamChat(options);
     else if (route.kind === 'anthropic') await streamAnthropicChat(route.credentials, options);
     else await streamOpenAiChat(route.apiKey, options);

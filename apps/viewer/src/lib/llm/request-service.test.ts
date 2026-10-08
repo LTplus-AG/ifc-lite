@@ -217,3 +217,38 @@ test('#7093 shared proxy request never adds an unbudgeted development fallback a
     assert.equal(useRequestReceipts.getState().receipts.length, 1);
   } finally { import.meta.env.DEV = previousDev; }
 });
+
+
+for (const headerDelay of [50_000, 150_000]) test(`#7093 shared deadline covers proxy headers arriving after ${headerDelay}ms`, async t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  let posts = 0;
+  let transportSignal: AbortSignal | null | undefined;
+  globalThis.fetch = async (_input, init) => {
+    posts++;
+    transportSignal = init?.signal;
+    return new Promise<Response>((resolve, reject) => {
+      const deliver = setTimeout(() => {
+        transportSignal?.removeEventListener('abort', abort);
+        resolve(new Response(data([{ choices: [{ delta: { content: 'Slow response' }, finish_reason: 'stop' }] }]),
+          { headers: { 'Content-Type': 'text/event-stream' } }));
+      }, headerDelay);
+      const abort = () => { clearTimeout(deliver); reject(transportSignal?.reason ?? new Error('Aborted')); };
+      transportSignal?.addEventListener('abort', abort, { once: true });
+    });
+  };
+  try {
+    const pending = runModelRequest(request({ timeoutMs: 120_000 }));
+    assert.equal(posts, 1);
+    t.mock.timers.tick(45_000);
+    for (let index = 0; index < 20; index++) await Promise.resolve();
+    assert.equal(transportSignal?.aborted, false, 'the old header timeout cannot preempt the shared deadline');
+    assert.equal(useRequestReceipts.getState().inFlight.length, 1);
+    assert.equal(useRequestReceipts.getState().receipts.length, 0);
+    t.mock.timers.tick(headerDelay === 50_000 ? 5_000 : 75_000);
+    const outcome = await pending;
+    assert.equal(outcome.kind, headerDelay === 50_000 ? 'completed' : 'timeout');
+    assert.equal(useRequestReceipts.getState().receipts[0].outcome, outcome.kind);
+    assert.equal(useRequestReceipts.getState().inFlight.length, 0);
+    assert.equal(posts, 1);
+  } finally { t.mock.timers.reset(); }
+});

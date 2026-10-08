@@ -53,6 +53,8 @@ export interface UsageInfo {
 export interface StreamOptions {
   /** Shared budget owners disable the development proxy retry probe. */
   allowProxyFallback?: boolean;
+  /** The shared core supplies the overall deadline through its abort signal. */
+  useParentDeadline?: boolean;
   /** Proxy URL (Edge Function) */
   proxyUrl: string;
   /** Model ID */
@@ -110,7 +112,8 @@ export async function streamChat(options: StreamOptions): Promise<void> {
   });
   const fetchChat = async (url: string) => {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(new Error('Chat request timed out. Please try again.')), STREAM_REQUEST_TIMEOUT_MS);
+    const timeoutId = options.useParentDeadline ? undefined
+      : setTimeout(() => controller.abort(new Error('Chat request timed out. Please try again.')), STREAM_REQUEST_TIMEOUT_MS);
     const abortFromParent = () => controller.abort(signal?.reason);
     if (signal) {
       if (signal.aborted) {

@@ -34,7 +34,7 @@ const capture = () => {
 const report = (nodeId: string, extra: Partial<NodeReport> = {}): NodeReport =>
   ({ nodeId, status: 'ok', durationMs: 1, lanes: 1, laneErrors: 0, missing: {}, warnings: [], ...extra });
 const record = (doc: FlowDocument, reports: NodeReport[], log: RunLogEntry[] = []) => {
-  const run: RunResult = { ok: !reports.some(r => r.status === 'error' || r.status === 'skipped'), writes: 0, outputs: new Map(), graphOutputs: [], reports, log };
+  const run: RunResult = { ok: !reports.some(r => r.status === 'error' || r.status === 'skipped'), writes: 0, outputs: new Map(), graphOutputs: [], reports, log, review: [] };
   useViewerStore.setState({ flowDoc: doc, flowLastRun: run, flowLastError: null, flowLastRunWindow: null, flowRunWarnings: [], flowArtifacts: [] });
 };
 

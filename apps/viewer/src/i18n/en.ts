@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import type { LazyTranslationKey } from './lazy-catalogues';
 import { automationEditorEn } from './catalogues/automation-editor.en';
 import { spaceEnvelopeEn } from './catalogues/space-envelope.en';
 import { semanticIdentityEn } from './catalogues/semantic-identity.en';
@@ -12,6 +13,8 @@ import { appearanceAssignmentListEn } from './catalogues/appearance-assignment-l
 import { appearanceAssignmentMembersEn } from './catalogues/appearance-assignment-members.en';
 import { analysisPanelEn } from './catalogues/analysis-panel.en';
 import { resultViewEn } from './catalogues/result-view.en';
+import { activityTrayEn } from './catalogues/activity-tray.en';
+import type { reviewWorkspaceEn } from './catalogues/review-workspace.en';
 import { panelNoModelEn } from './catalogues/panel-no-model.en';
 import { annotationsEn } from './catalogues/annotations.en';
 import { anonymizedExportEn } from './catalogues/anonymized-export.en';
@@ -41,6 +44,9 @@ import { chatByokEn } from './catalogues/chat-byok.en';
 import { modelChangesEn } from './catalogues/model-changes.en';
 import { clashGroupApplyEn } from './catalogues/clash-group-apply.en';
 import { tableCorrectionsEn } from './catalogues/table-corrections.en';
+import { assistantReuseEn } from './catalogues/assistant-reuse.en';
+import { assistantWorkbenchEn } from './catalogues/assistant-workbench.en';
+import { workspaceMigrationEn } from './catalogues/workspace-migration.en';
 import { assistantUsageEn } from './catalogues/assistant-usage.en';
 import { aiReportsEn } from './catalogues/ai-reports.en';
 import { flowAssistantEn } from './catalogues/flow-assistant.en';
@@ -48,10 +54,13 @@ import { modelAuthoringEn } from './catalogues/model-authoring.en';
 import { sceneActionsEn } from './catalogues/scene-actions.en';
 import { checkAuthoringEn } from './catalogues/check-authoring.en';
 import { assistantArtifactsEn } from './catalogues/assistant-artifacts.en';
+import type { TranslationValue } from './types';
+import type { semanticAssistEn } from './catalogues/semantic-assist.en';
 import { commandPaletteEn } from './catalogues/command-palette.en';
 import { commandsEn } from './catalogues/commands.en';
 import { compareKeyPropertyEn } from './catalogues/compare-key-property.en';
 import { comparePanelEn } from './catalogues/compare-panel.en';
+import { compareAnalysisEn } from './catalogues/compare-analysis.en';
 import { costPanelEn } from './catalogues/cost-panel.en';
 import { deviationStatsEn } from './catalogues/deviation-stats.en';
 import { scanToBimEn } from './catalogues/scan-to-bim.en';
@@ -142,6 +151,8 @@ export const en = {
   ...semanticIdentityEn,
   ...analysisPanelEn,
   ...resultViewEn,
+  ...activityTrayEn,
+  'reviewWorkspace.title': 'Review',
   ...panelNoModelEn,
   ...annotationsEn,
   ...anonymizedExportEn,
@@ -218,6 +229,7 @@ export const en = {
   ...appearanceWorkflowsEn,
   ...compareKeyPropertyEn,
   ...comparePanelEn,
+  ...compareAnalysisEn,
   ...extensionsFlavorsEn,
   ...extensionsPanelsEn,
   ...idsPanelEn,
@@ -240,6 +252,9 @@ export const en = {
   ...clashGroupApplyEn,
   ...tableCorrectionsEn,
   ...assistantUsageEn,
+  ...assistantReuseEn,
+  ...assistantWorkbenchEn,
+  ...workspaceMigrationEn,
   ...aiReportsEn,
   ...flowAssistantEn,
   ...modelAuthoringEn,
@@ -271,4 +286,8 @@ export const en = {
   ...spaceEnvelopeEn,
 } as const;
 
-export type TranslationKey = keyof typeof en;
+/** Strings that load with the panels that use them (see `registerEnglish`); their keys are typed here, their text is not in the eager bundle. */
+type LazyEnglish = typeof semanticAssistEn;
+export type TranslationKey = keyof typeof en | keyof LazyEnglish | LazyTranslationKey | keyof typeof reviewWorkspaceEn;
+/** The live English catalogue: `en` plus whatever lazy catalogues have registered. */
+export const englishCatalogue: Partial<Record<TranslationKey, TranslationValue>> = en;

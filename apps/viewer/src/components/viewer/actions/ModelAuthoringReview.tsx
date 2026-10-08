@@ -31,8 +31,8 @@ import { ReceiptSummary, STATUS } from './ModelChangeReview';
 
 const AUTHORING_STATUS: Record<AuthoringRowStatus, { key: TranslationKey; tone: string }> = {
   ...STATUS,
-  invalid: { key: 'modelAuthoring.status.invalid', tone: 'bg-amber-500/15 text-amber-700 dark:text-amber-400' },
-  blocked: { key: 'modelAuthoring.status.blocked', tone: 'bg-muted text-muted-foreground' },
+  invalid: { key: 'modelAuthoring.status.invalid', tone: 'border border-transparent bg-amber-500/15 text-amber-700 dark:text-amber-400' },
+  blocked: { key: 'modelAuthoring.status.blocked', tone: 'border border-transparent bg-muted text-muted-foreground' },
 };
 
 function Row({ row, batch, checked, onToggle }: { row: AuthoringRow; batch: ModelAuthoringBatch; checked: boolean; onToggle: (on: boolean) => void }) {
@@ -41,9 +41,9 @@ function Row({ row, batch, checked, onToggle }: { row: AuthoringRow; batch: Mode
   const operation = t(`modelAuthoring.op.${row.op.op}`);
   const status = AUTHORING_STATUS[row.status];
   return <li className="grid grid-cols-[auto_1fr_auto] items-start gap-x-2 gap-y-0.5 border-b border-border/60 py-1.5 last:border-0">
-    <input type="checkbox" className="mt-0.5" checked={checked} disabled={row.status !== 'ready'}
+    <label className="-mt-0.5 inline-flex h-6 w-6 cursor-pointer items-center justify-center"><input type="checkbox" className="h-4 w-4" checked={checked} disabled={row.status !== 'ready'}
       aria-label={t('modelAuthoring.approveRow', { operation, subject: summary.subject })}
-      onChange={(event) => onToggle(event.target.checked)} />
+      onChange={(event) => onToggle(event.target.checked)} /></label>
     <div className="min-w-0">
       <p className="break-words"><span className="font-medium">{operation}</span> <span className="text-muted-foreground">{summary.subject}</span></p>
       <p className="break-words"><span className="line-through text-muted-foreground">{summary.before}</span>

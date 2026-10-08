@@ -8,6 +8,8 @@ import assert from 'node:assert/strict';
 import { useViewerStore } from '@/store';
 import { WORKSPACE_PANELS } from '@/lib/panels/registry';
 import { resolveEnglish } from '@/i18n/registry';
+// The Assistant chunk renders adapter copy and registers its lazy English strings (P16).
+import '@/i18n/catalogues/semantic-assist.register';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture';
 import { ASSISTANT_SOURCES } from '../sources';
 import { captureEvidence, evidenceIsCurrent } from '../evidence';

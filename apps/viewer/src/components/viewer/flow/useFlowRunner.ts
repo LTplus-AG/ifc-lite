@@ -11,26 +11,34 @@
  */
 
 import { useCallback, useEffect, useRef } from 'react';
-import { MemoCache } from '@ifc-lite/flow';
+import { MemoCache, type RunResult } from '@ifc-lite/flow';
+import { resumeOutputs, type FlowCheckpoint } from '@ifc-lite/flow/checkpoint';
 import { useBim } from '@/sdk/BimProvider';
 import { useIfc } from '@/hooks/useIfc';
 import { useViewerStore } from '@/store';
 import { captureAnalysisStamp, stampAnalysisReport } from '@/hooks/useAnalysisStaleness';
 import type { FlowRunWindow } from '@/store/slices/flowSlice';
-import { invalidateForExternalChange, runFlowInViewer, viewerFlowFeatures } from '@/lib/flow/runner';
+import { invalidateForExternalChange, runFlowInViewer, viewerFlowFeatures, flowRegistry } from '@/lib/flow/runner';
 import { viewerTableAccess } from '@/lib/flow/viewer-tables';
 import { openBackendWriteCapture } from '@/sdk/adapters/backend-write-capture';
 import { createViewerOpenModel } from '@/lib/flow/open-model';
 import { createAutomationHost } from '@/lib/flow/automation-host';
 import { preflightWorkflow, isAutomationGraph } from '@/lib/flow/preflight';
 import { startWorkflowRun, cancelWorkflowRun } from '@/lib/flow/run-session';
+import { writingNodes } from '@/lib/flow/publish-provenance';
+import { claimReview, finishReview, pauseForReview, useFlowReview } from '@/lib/flow/review-session';
+
+export interface FlowRunOptions {
+  /** Resume from this approved review checkpoint (#6923): its completed nodes are restored, not run again. */
+  readonly resume?: FlowCheckpoint;
+}
 
 /** Ids of every pending mutation, on every model. */
 function pendingMutationIds(): Set<string> {
   return new Set([...useViewerStore.getState().undoStacks.values()].flat().map((mutation) => mutation.id));
 }
 
-export function useFlowRunner(): { run: (inputs?: Record<string, unknown>) => Promise<void>; canRun: boolean; cancel: () => void } {
+export function useFlowRunner(): { run: (inputs?: Record<string, unknown>, options?: FlowRunOptions) => Promise<void>; canRun: boolean; cancel: () => void } {
   const bim = useBim();
   const flowDoc = useViewerStore((s) => s.flowDoc);
   const flowRunning = useViewerStore((s) => s.flowRunning);
@@ -55,7 +63,7 @@ export function useFlowRunner(): { run: (inputs?: Record<string, unknown>) => Pr
   const automationGraph = flowDoc ? isAutomationGraph(flowDoc) : false;
   const canRun = flowDoc !== null && !flowRunning && (activeModelId !== null || automationGraph);
 
-  const run = useCallback(async (inputs?: Record<string, unknown>) => {
+  const run = useCallback(async (inputs?: Record<string, unknown>, options: FlowRunOptions = {}) => {
     if (!flowDoc || (!activeModelId && !automationGraph) || running.current || useViewerStore.getState().flowRunning) return;
     let session;
     try { session = startWorkflowRun(); } catch (error) {
@@ -75,6 +83,7 @@ export function useFlowRunner(): { run: (inputs?: Record<string, unknown>) => Pr
       }
     });
     session.onProgress = (phase) => useViewerStore.getState().setFlowProgress(phase);
+    const heldWindow = useViewerStore.getState().flowLastRunWindow;
     useViewerStore.setState({ flowProgress: 'Checking workflow inputs', flowRunWarnings: [], flowArtifacts: [], flowLastRun: null, flowLastError: null, flowLastRunWindow: null });
     const model = activeModelId ? models.get(activeModelId) : undefined;
     const pin = model?.sourceContentHash ? `content:${model.sourceContentHash}` : `model:${activeModelId}`;
@@ -89,9 +98,10 @@ export function useFlowRunner(): { run: (inputs?: Record<string, unknown>) => Pr
     // pending when it ends, so Publish takes exactly those: never an edit
     // made by hand after the run, nor one made WHILE it was in flight, which
     // goes to the store without passing the SDK backend (#5634).
-    const start = Date.now();
+    const previousWindow = options.resume && heldWindow?.checkpointId === options.resume.id ? heldWindow : null;
+    const start = previousWindow?.start ?? Date.now();
     const capture = openBackendWriteCapture();
-    const record = (): FlowRunWindow => {
+    const record = (result?: RunResult): FlowRunWindow => {
       capture.close();
       const pending = pendingMutationIds();
       // Stamped after the run's own writes: an edit made after the run makes
@@ -100,15 +110,28 @@ export function useFlowRunner(): { run: (inputs?: Record<string, unknown>) => Pr
         start,
         end: Date.now(),
         doc,
-        mutationIds: new Set([...capture.ids].filter((id) => pending.has(id))),
+        mutationIds: new Set([...(previousWindow?.mutationIds ?? []), ...capture.ids].filter((id) => pending.has(id))),
+        writingNodes: result ? writingNodes(doc, flowRegistry(), result, previousWindow?.writingNodes) : previousWindow?.writingNodes ?? [],
+        ...(result && result.review.length > 0 && useFlowReview.getState().checkpoint?.state === 'prepared' ? { checkpointId: useFlowReview.getState().checkpoint!.id } : {}),
       }, captureAnalysisStamp());
     };
     // Another graph opened while this one ran: its panel must not show, or
     // publish, this run (#5380 review). `openFlow` already cleared the result.
     const stillOpen = (): boolean => useViewerStore.getState().flowDoc === initialDoc;
+    const { resume } = options;
+    let claimed: FlowCheckpoint | null = null;
     try {
-      const preparedInputs = await preflightWorkflow(session, doc, inputs ?? {}, viewerFlowFeatures(true));
+      // AI nodes get the Assistant's model, spending one root budget per run; a
+      // resume continues the paused run's budget, and its restored nodes need no model.
+      const restored = new Set(Object.keys(resume?.outputs ?? {}));
+      const ai = doc.nodes.some((n) => n.type.startsWith('ai.') && !restored.has(n.id))
+        ? (await import('@/lib/flow/ai-host')).viewerFlowAi(resume?.budget) : null;
+      const preparedInputs = await preflightWorkflow(session, doc, inputs ?? {}, viewerFlowFeatures(true, !!ai), restored);
       session.check();
+      if (resume) {
+        claimed = await claimReview(doc, preparedInputs);
+        if (!claimed) throw new Error('the reviewed proposal could not be resumed');
+      }
       const ownedAddModel: typeof addModel = (file, options) => addModel(file, { ...options, workflowOwner: session.id });
       const automation = createAutomationHost(session, doc, ownedAddModel, (artifact) => {
         session.check();
@@ -118,11 +141,18 @@ export function useFlowRunner(): { run: (inputs?: Record<string, unknown>) => Pr
       const result = await runFlowInViewer({
         doc, bim, pin, cache, inputs: preparedInputs, signal: session.controller.signal, automation, tables: viewerTableAccess(useViewerStore),
         openModel: createViewerOpenModel(ownedAddModel, (id) => useViewerStore.getState().models.has(id)),
+        ...(ai ? { ai: ai.service } : {}),
+        ...(claimed ? { resume: resumeOutputs(claimed) } : {}),
       });
+      if (claimed) await finishReview(result);
+      claimed = null;
+      // A proposal awaits review: nothing downstream ran. Save it before showing the run.
+      if (result.ok && result.review.length > 0) await pauseForReview({ doc, result, inputs: preparedInputs, values: inputs ?? {}, budget: ai ? { ...ai.budget } : resume?.budget });
       session.check();
-      if (stillOpen()) setFlowLastRun(result, undefined, record());
+      if (stillOpen()) setFlowLastRun(result, undefined, record(result));
       else setFlowRunning(false);
     } catch (err) {
+      if (claimed) await finishReview(null, err instanceof Error ? err.message : String(err));
       if (stillOpen()) setFlowLastRun(null, err instanceof Error ? err.message : String(err), record());
       else setFlowRunning(false);
     } finally {

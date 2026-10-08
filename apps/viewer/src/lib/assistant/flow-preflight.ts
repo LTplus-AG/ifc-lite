@@ -57,7 +57,9 @@ export async function preflightOpenFlow(): Promise<FlowPreflightResult> {
     if (session) {
       try {
         // The editor's Run supplies no Player values; the same empty set is checked here.
-        await preflightWorkflow(session, structuredClone(graph), {}, viewerFlowFeatures(true));
+        // AI nodes are available when the Assistant's model can serve them, exactly as Run decides.
+        const ai = graph.nodes.some(node => node.type.startsWith('ai.')) && (await import('@/lib/flow/ai-host')).viewerFlowAi() !== null;
+        await preflightWorkflow(session, structuredClone(graph), {}, viewerFlowFeatures(true, ai));
       } catch (error) {
         problems.push(native(error));
       } finally {

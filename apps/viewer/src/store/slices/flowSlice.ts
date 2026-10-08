@@ -37,6 +37,9 @@ export interface FlowRunWindow {
    * before" took in a manual edit made while the run was in flight (#5634).
    */
   readonly mutationIds: ReadonlySet<string>;
+  /** Earlier writing nodes and exact checkpoint ownership across reviewed segments. */
+  readonly writingNodes?: readonly { nodeId: string; trackingKey: string }[];
+  readonly checkpointId?: string;
 }
 
 export interface FlowSlice {

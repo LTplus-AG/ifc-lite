@@ -24,6 +24,8 @@ export interface SurfaceCommandContext {
   runExport?: (request: ExportRequest) => void;
   openFiles?: () => void;
   addModel?: () => void;
+  /** The phone's activity tray dialog (#6925); the status bar hosts it elsewhere. */
+  openActivity?: () => void;
   refreshModels?: () => Promise<void>;
   openShareDialog?: () => void;
   /** The context menu owns the current entity and supplies its target-specific action. */

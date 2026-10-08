@@ -110,6 +110,13 @@ export function planContentImport(prepared: PreparedContentImport, existing: Con
     add('clashGroupApplications', entry, () => ({ ...rebound, id: crypto.randomUUID() }), rebound);
   }
   for (const entry of libraries.reviewWorkspaces ?? []) add('reviewWorkspaces', entry, () => ({ ...entry, id: crypto.randomUUID() }));
+  for (const entry of libraries.semanticReviews ?? []) add('semanticReviews', entry, () => ({ ...entry, id: crypto.randomUUID() }));
+  for (const entry of libraries.assistantRecipes ?? []) add('assistantRecipes', entry, () => ({ ...entry, id: crypto.randomUUID() }));
+  // Preferences are identified by their project scope: an existing local entry wins and is never overwritten by an import.
+  for (const entry of libraries.assistantPreferences ?? []) {
+    const current = known.get(key('assistantPreferences', entry.id));
+    if (!current || current.deleted) add('assistantPreferences', entry, () => entry);
+  }
   // An imported outbox never dispatches by itself: every unfinished effect is blocked until checked against the server.
   for (const entry of libraries.bcfOutbox ?? []) {
     const quarantined = quarantineImported(entry);

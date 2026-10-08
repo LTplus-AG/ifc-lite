@@ -45,11 +45,13 @@ function Harness({ renderer, geometry, refs }: { renderer: Renderer; geometry: M
   const rendererRef = useRef<Renderer | null>(renderer);
   const lastGeometryLengthRef = useRef(2);
   const lastGeometryRef = useRef<MeshData[] | null>(null);
+  const lastReplacementVersionRef = useRef(0);
   const processedMeshIdsRef = useRef(new Set<string>());
   useMeshEditDrain({
     rendererRef, isInitialized: true, isStreaming: false, geometry,
     pendingMeshRemovals: null, clearPendingMeshRemovals: () => {}, pruneGeometryMeshes: () => {},
     lastGeometryLengthRef, lastGeometryRef, processedMeshIdsRef,
+    geometryReplacementVersion: 0, lastReplacementVersionRef,
   });
   refs({ length: lastGeometryLengthRef, array: lastGeometryRef });
   return null;

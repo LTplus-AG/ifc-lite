@@ -3,7 +3,10 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { createServer } from 'node:net';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { tsImport } from 'tsx/esm/api';
@@ -19,6 +22,39 @@ const COLD_AB = new URL('./perf/browser-cold-ab.mts', import.meta.url);
 const SAMPLE = new URL('./perf/browser-cold-sample.ts', import.meta.url);
 const PAGE = new URL('../tests/benchmark/viewer-benchmark-page.ts', import.meta.url);
 const SPAN_SPANS = ['parser.complete', 'geometry.streamComplete', 'scene.finalize'];
+
+test('#7032: the executable cold A/B requires renderer finalization through the benchmark page', async () => {
+  const directory = mkdtempSync(join(tmpdir(), 'cold-ab-readiness-'));
+  const fixture = join(directory, 'model.ifc');
+  writeFileSync(fixture, 'fixture for browser transport');
+  const reservation = createServer();
+  await new Promise(resolve => reservation.listen(0, '127.0.0.1', resolve));
+  const port = reservation.address().port;
+  await new Promise(resolve => reservation.close(resolve));
+  try {
+    for (const finalize of ['complete', 'missing']) {
+      const results = join(directory, finalize);
+      const calls = join(directory, finalize + '-calls.jsonl');
+      const run = spawnSync(process.execPath, [
+        '--import', 'tsx', '--import', fileURLToPath(new URL('./test-support/cold-ab/register.mjs', import.meta.url)),
+        fileURLToPath(COLD_AB), fixture, '--dist-branch', directory,
+        '--iters', '1', '--port', String(port), '--timeout-ms', '100', '--results-dir', results,
+      ], { encoding: 'utf8', timeout: 30_000, env: { ...process.env, COLD_AB_FINALIZE: finalize, COLD_AB_CALLS: calls } });
+      assert.equal(run.status, finalize === 'complete' ? 0 : 1, run.stderr + run.stdout);
+      assert.equal(readFileSync(calls, 'utf8').trim().split('\n').length, 2,
+        'both samples must delegate to the production runColdSample readiness path');
+      const samples = readFileSync(join(results, 'runs.jsonl'), 'utf8').trim().split('\n').map(line => JSON.parse(line));
+      assert.equal(samples.length, 2, 'both interleaved sides must exercise readiness');
+      for (const sample of samples) {
+        assert.equal(sample.ok, finalize === 'complete', JSON.stringify(sample));
+        if (finalize === 'complete') assert.ok(sample.metadataRenderReadyMs >= 0);
+        else assert.match(sample.error, /Timed out awaiting.*renderer finalize/);
+      }
+    }
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
 
 test('the cold A/B and the benchmark page modules exist', () => {
   assert.ok(existsSync(COLD_AB), 'scripts/perf/browser-cold-ab.mts');

@@ -86,8 +86,12 @@ it('#7166 native empty snapshot shows no matching entities without inventing sou
   assert.ok(run.ui.querySelector('[data-result-state="no-population"]'));
   assert.match(region(run.ui).textContent ?? '', /0 matched/);
 });
-it('#7166 nonempty authored wall snapshot with a door rule reports no findings rather than no population', async () => {
-  const run = await setup({ ...definition(), entityTypes: [IfcTypeEnum.IfcDoor] }); await run.run();
+it('#7166 nonempty authored IFC with no matching doors reports no findings rather than no population', async () => {
+  const run = await setup({ ...definition(), entityTypes: [IfcTypeEnum.IfcDoor] });
+  assert.equal(run.model.ifcDataStore.entityIndex.byType.get('IFCDOOR')?.length ?? 0, 0, 'authored fixture has walls but no doors');
+  // Native snapshots are already evaluated source sets; a live type filter must not retain that snapshot.
+  await act(async () => { useViewerStore.setState({ listDefinitions: [{ ...run.own, expressIdsByModel: undefined }] }); });
+  await run.run();
   assert.equal(useViewerStore.getState().listResult?.totalCount, 0);
   assert.ok(run.ui.querySelector('[data-result-state="no-findings"]'));
   assert.equal(run.ui.querySelector('[data-result-state="no-population"]'), null);

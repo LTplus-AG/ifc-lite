@@ -25,7 +25,19 @@ function areRules(rules: (LensRule | null)[]): rules is LensRule[] {
   return rules.every((rule) => rule !== null);
 }
 
+/** Scoped JSON deliberately has no legacy name/rules fields: older readers
+ * must refuse it rather than run its criteria over every loaded element (#7186). */
+export function encodeSavedLens(lens: Lens): unknown {
+  return lens.capturedScope
+    ? { format: 'ifc-lite-captured-lens', version: 1, lens }
+    : lens;
+}
+
 export function migrateSavedLens(value: unknown): (Omit<Lens, 'id'> & { id?: string }) | null {
+  if (isRecord(value) && value.format === 'ifc-lite-captured-lens') {
+    if (value.version !== 1 || !isRecord(value.lens) || !isCapturedEntityScope(value.lens.capturedScope)) return null;
+    value = value.lens;
+  }
   if (!isRecord(value) || typeof value.name !== 'string' || value.name.length === 0
     || !Array.isArray(value.rules)
     || (value.autoColor !== undefined && !isAutoColor(value.autoColor))) return null;

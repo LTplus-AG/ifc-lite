@@ -15,7 +15,9 @@ import { previewArtifact, previewFilterGroups } from './artifact-preview';
 import { artifactCapturedScope, type PreviewArtifact } from './preview-shared';
 import { saveArtifact, type SavedArtifact } from './artifact-save';
 import { loadSavedFilters } from '@/lib/search/saved-filters';
-import { loadListDefinitions } from '@/lib/lists/persistence';
+import { encodeSavedLens } from '@/lib/lens/migrate-saved-lens';
+import { encodeSavedList } from '@/lib/lists/saved-list-codec';
+import { loadListDefinitions, importListDefinition } from '@/lib/lists/persistence';
 import { prepareListProviders } from '@/lib/lists/prepare-providers';
 import { runListFederated } from '@/lib/lists/run-list';
 import { resolveRenderFrame } from '@/hooks/useRenderFrameOffsets';
@@ -78,7 +80,9 @@ async function replaySaved(artifact: PreviewArtifact): Promise<number> {
       return (await previewFilterGroups(saved.name, saved.groups, state, undefined, saved.capturedScope)).matched;
     }
     case 'list.proposal': {
-      const saved = loadListDefinitions().find(row => row.id === artifact.definition.id);
+      const persisted = loadListDefinitions().find(row => row.id === artifact.definition.id);
+      assert.ok(persisted);
+      const saved = await importListDefinition(new File([JSON.stringify(encodeSavedList(persisted))], 'captured.list.json', { type: 'application/json' }));
       assert.ok(saved);
       const { pairs } = prepareListProviders(state, resolveRenderFrame(state.models, state.geometryResult));
       return (await runListFederated(saved, pairs, state, { evaluatorModels: evaluatorModelsFromState(state) })).rows.length;
@@ -87,7 +91,7 @@ async function replaySaved(artifact: PreviewArtifact): Promise<number> {
       const exported = state.exportLenses().find(row => row.id === artifact.lens.id);
       assert.ok(exported);
       assert.ok(state.setSavedLenses([]).ok);
-      assert.ok(useViewerStore.getState().importLenses(JSON.parse(JSON.stringify([exported]))).ok);
+      assert.ok(useViewerStore.getState().importLenses(JSON.parse(JSON.stringify([encodeSavedLens(exported)]))).ok);
       const importedState = useViewerStore.getState();
       const saved = importedState.savedLenses.find(row => row.id === exported.id);
       assert.ok(saved);
@@ -170,7 +174,9 @@ for (const entry of cases.filter(row => row.kind !== 'filter.proposal')) test(`#
   click(button(ui, 'Save'));
   const savedState = useViewerStore.getState();
   if (artifact.kind === 'list.proposal') {
-    const saved = loadListDefinitions().find(row => row.id === artifact.definition.id); assert.ok(saved);
+    const persisted = loadListDefinitions().find(row => row.id === artifact.definition.id);
+      assert.ok(persisted);
+      const saved = await importListDefinition(new File([JSON.stringify(encodeSavedList(persisted))], 'captured.list.json', { type: 'application/json' })); assert.ok(saved);
     const { pairs } = prepareListProviders(savedState, resolveRenderFrame(savedState.models, savedState.geometryResult));
     assert.equal((await runListFederated(saved, pairs, savedState, { evaluatorModels: evaluatorModelsFromState(savedState) })).rows.length, 1);
   } else {

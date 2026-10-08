@@ -283,3 +283,10 @@ Saved recipes can be exported and imported as JSON together with the native Flow
 The graph retains the evidence source, user prompts, chosen action types and generation language in its description. It does not retain the discussion's captured result rows or assistant answers. Export from Flow, or export the recipe with its referenced graph, to move it to another browser. Graph and recipe storage failures are reported separately; each retains a session copy and offers a retry. Redrafting requires fresh approval, and cancelling or changing the Assistant's host cannot publish a late draft over a newer review.
 
 **Project preferences** stores terminology, severity wording, expected property sets, naming guidance and report audience against the exact set of loaded-model fingerprints. Another revision or federation uses a different scope; switching scopes clears unsaved preference edits before saving in the new project. Preferences are advisory guidance in subsequent Assistant requests; they do not change native check verdicts. Credential-like text is refused.
+
+Captured Lens and List JSON exports and browser storage use a versioned envelope.
+Older viewers cannot read that envelope, so they skip the saved Lens or refuse the
+List import instead of evaluating it over a wider population. Open these captures
+in a viewer that supports captured scope. Ordinary unscoped exports keep their
+existing format. This covers the native Lens and List routes; it does not add
+these artifacts to whole-library backup.

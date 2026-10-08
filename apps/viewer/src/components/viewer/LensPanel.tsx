@@ -25,6 +25,7 @@ import { Button } from '@/components/ui/button';
 import { IconButton } from '@/components/ui/icon-button';
 import { EmptyState } from '@/components/ui/empty-state';
 import { cn } from '@/lib/utils';
+import { encodeSavedLens } from '@/lib/lens/migrate-saved-lens';
 import { downloadFile } from '@/lib/export/download';
 import { toast } from '@/components/ui/toast';
 import { tourAnchor, TOUR_ANCHORS, lensCardAnchor } from '@/lib/tours/anchors';
@@ -483,7 +484,7 @@ export function LensPanel({ onClose }: LensPanelProps) {
   }, [activeLensId, setActiveLens, deleteLens, releaseRuleIsolation]);
 
   const handleExport = useCallback(() => {
-    downloadFile(JSON.stringify(exportLenses(), null, 2), 'lenses.json', 'application/json');
+    downloadFile(JSON.stringify(exportLenses().map(encodeSavedLens), null, 2), 'lenses.json', 'application/json');
     trackExportCompleted({ format: 'json', surface: 'lens_panel' });
   }, [exportLenses]);
   const handleImport = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {

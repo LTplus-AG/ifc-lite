@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ids xmlns="http://standards.buildingsmart.org/IDS" xmlns:xs="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://standards.buildingsmart.org/IDS http://standards.buildingsmart.org/IDS/1.0/ids.xsd">
+  <info>
+    <title>Space information requirements</title>
+    <version>1.0</version>
+  </info>
+  <specifications>
+    <specification name="Space numbering" ifcVersion="IFC4">
+      <applicability minOccurs="1" maxOccurs="unbounded">
+        <entity>
+          <name>
+            <simpleValue>IFCSPACE</simpleValue>
+          </name>
+        </entity>
+      </applicability>
+      <requirements>
+        <attribute>
+          <name>
+            <simpleValue>Name</simpleValue>
+          </name>
+          <value>
+            <xs:restriction base="xs:string">
+              <xs:pattern value="[A-Z][0-9]{3}"/>
+            </xs:restriction>
+          </value>
+        </attribute>
+        <attribute>
+          <name>
+            <simpleValue>LongName</simpleValue>
+          </name>
+        </attribute>
+      </requirements>
+    </specification>
+  </specifications>
+</ids>

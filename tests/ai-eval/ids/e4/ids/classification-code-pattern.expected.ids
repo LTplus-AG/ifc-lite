@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ids xmlns="http://standards.buildingsmart.org/IDS" xmlns:xs="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://standards.buildingsmart.org/IDS http://standards.buildingsmart.org/IDS/1.0/ids.xsd">
+  <info>
+    <title>Classification requirements</title>
+    <version>1.0</version>
+  </info>
+  <specifications>
+    <specification name="Slab classification" ifcVersion="IFC2X3 IFC4">
+      <applicability minOccurs="1" maxOccurs="unbounded">
+        <entity>
+          <name>
+            <simpleValue>IFCSLAB</simpleValue>
+          </name>
+        </entity>
+      </applicability>
+      <requirements>
+        <classification>
+          <value>
+            <xs:restriction base="xs:string">
+              <xs:pattern value="SL-.*"/>
+            </xs:restriction>
+          </value>
+          <system>
+            <simpleValue>ProjectCodes</simpleValue>
+          </system>
+        </classification>
+      </requirements>
+    </specification>
+  </specifications>
+</ids>

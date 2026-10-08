@@ -125,7 +125,7 @@ export function metricsFromLoadTrace(snapshot: LoadTraceSnapshotJson | null): Sp
     const span = first(snapshot, name);
     if (span) out[key] = Math.round(span.end! - snapshot.start);
   }
-  const metadata = first(snapshot, metadataCompletionSpan(typeof snapshot.attrs.loadPath === 'string' ? snapshot.attrs.loadPath : undefined));
+  const metadata = first(snapshot, metadataCompletionSpan(typeof snapshot.attrs?.loadPath === 'string' ? snapshot.attrs.loadPath : undefined));
   if (metadata) out.metadataCompleteMs = Math.round(metadata.end! - snapshot.start);
   // `[stream] worker[i] first batch @ Xms` counts from the pool start, not the load start.
   const pool = snapshot.spans.find((s) => s.name === 'geometry.pool'); // start is all we need; may still be open

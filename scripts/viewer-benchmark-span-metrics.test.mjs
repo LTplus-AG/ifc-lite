@@ -180,3 +180,14 @@ test('#7036 cached readiness runs actual page trace reducer without any parser c
   assert.equal(bench.getMetrics().canvasHasContent, true);
   assert.equal(bench.getMetrics().firstBatchWaitMs, null, 'cached route creates no worker geometry pool');
 });
+
+// #7036 JSON timing snapshots may omit attributes; cache timing still needs its route.
+test('#7036 attribute-free JSON uses fresh parser timing without inventing cache completion', () => {
+  const snapshot = {
+    loadId: 'attribute-free', start: 100, end: 130,
+    spans: [{ name: 'parser.complete', thread: 'main', start: 110, end: 120 }],
+  };
+  assert.equal(metricsFromLoadTrace(snapshot).metadataCompleteMs, 20);
+  const cacheOnly = { ...snapshot, spans: [{ name: 'cache.storeReady', thread: 'main', start: 110, end: 120 }] };
+  assert.equal(metricsFromLoadTrace(cacheOnly).metadataCompleteMs, undefined);
+});

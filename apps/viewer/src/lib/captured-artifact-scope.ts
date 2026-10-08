@@ -41,10 +41,3 @@ export function captureArtifactScope(mode: CapturedEntityScope['mode'], state: V
   resolveCapturedEntityScope(scope, evaluatorModelsFromState(state));
   return scope;
 }
-
-/** The product describes the population; internal hash and journal formats
- * belong to persisted schema documentation, not the caption. */
-export function capturedScopeCaption(scope: CapturedEntityScope): string {
-  const count = scope.sources.reduce((total, source) => total + source.members.length, 0);
-  return `${count.toLocaleString()} ${scope.mode} elements captured from ${scope.sources.length} file${scope.sources.length === 1 ? '' : 's'}`;
-}

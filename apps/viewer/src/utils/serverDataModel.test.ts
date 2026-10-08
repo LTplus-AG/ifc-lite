@@ -897,6 +897,10 @@ END-ISO-10303-21;`;
   const names = (store: typeof raw) => createDataAccessor(store).getMaterials(28).map((m) => m.name);
   assert.deepEqual(names(raw), ['Material #86']);
   assert.deepEqual(names(server), names(raw));
+  // #7211: known-null material Name proves a definite mismatch, not unreadable evidence.
+  const nonmatchingNullName = { type: 'material' as const, value: { type: 'simpleValue' as const, value: 'Unrelated' } };
+  assert.equal(checkMaterialFacet(nonmatchingNullName, 28, createDataAccessor(raw)).failure?.type, 'MATERIAL_VALUE_MISMATCH');
+  assert.equal(checkMaterialFacet(nonmatchingNullName, 28, createDataAccessor(server)).failure?.type, 'MATERIAL_VALUE_MISMATCH');
   assert.deepEqual(extractAllMaterialsOnDemand(raw, 27), extractAllMaterialsOnDemand(server, 27));
   assert.equal(extractAllMaterialsOnDemand(server, 27)[0]?.materials?.[0]?.name, '');
   assert.equal(extractAllMaterialsOnDemand(raw, 26)[0]?.name, '');

@@ -21,6 +21,12 @@ import { commitModelAuthoring } from './model-authoring-commit';
 const original = useViewerStore.getState();
 afterEach(() => useViewerStore.setState(original));
 
+function requiredTypeId(relation: { relatingId?: number }): number {
+  const id = relation.relatingId;
+  assert.ok(typeof id === 'number' && id > 0, 'native type relationship has an explicit positive relating EXPRESS ID');
+  return id;
+}
+
 async function sharedType() {
   const seeded = await seedAuthoringSample();
   const target = seeded.dataStore.entities.getExpressIdByGlobalId(BACK_WALL)!;
@@ -72,7 +78,7 @@ for (const units of ['m', 'mm'] as const) {
     const redo = state.redoStacks;
     const dirty = state.dirtyModels;
     const preview = previewModelAuthoring(state, reviewedDetach(units));
-    assert.equal(preview.rows[0].status, 'ready', preview.rows[0].issue);
+    assert.equal(preview.rows[0].status, 'ready', preview.rows[0].issue ?? 'native type review status');
     assert.deepEqual(editedModelBytes(dataStore, view), before, 'preview has no published STEP effect');
     assert.equal(useViewerStore.getState().undoStacks, undo);
     assert.equal(useViewerStore.getState().redoStacks, redo);
@@ -103,17 +109,17 @@ test('#7267 detaching the last native occurrence removes only its relationship, 
   const target = dataStore.entities.getExpressIdByGlobalId(BACK_WALL)!;
   const relation = readRelatedLists(dataStore, 'IfcRelDefinesByType', view).find(rel => rel.relatedIds.includes(target))!;
   assert.deepEqual(relation.relatedIds, [target], 'committed native fixture has a single-occurrence type relationship');
-  const current = dataStore.entities.getGlobalId(relation.relatingId);
-  const expectedName = dataStore.entities.getName(relation.relatingId) ?? '';
+  const current = dataStore.entities.getGlobalId(requiredTypeId(relation));
+  const expectedName = dataStore.entities.getName(requiredTypeId(relation)) ?? '';
   const batch = parseModelAuthoringBatch(JSON.stringify({ version: 1, kind: 'model.authoring', title: 'Last typed occurrence',
     units: 'm', frame: 'storey-local', operations: [{ op: 'type.detach', target: { globalId: BACK_WALL,
       ifcClass: 'IfcWall', name: BACK_WALL_NAME }, expected: { GlobalId: current, Name: expectedName } }] }));
   const preview = previewModelAuthoring(useViewerStore.getState(), batch);
-  assert.equal(preview.rows[0].status, 'ready', preview.rows[0].issue);
+  assert.equal(preview.rows[0].status, 'ready', preview.rows[0].issue ?? 'native type review status');
   const outcome = commitModelAuthoring(useViewerStore, preview, new Set([0]), 'test');
   assert.ok(outcome.ok, outcome.ok ? '' : outcome.detail ?? outcome.reason);
   const after = await exportedRelations(dataStore, view);
-  assert.equal(after.parsed.entities.getGlobalId(relation.relatingId), current, 'detaching does not delete the type object');
+  assert.equal(after.parsed.entities.getGlobalId(requiredTypeId(relation)), current, 'detaching does not delete the type object');
   assert.equal(after.relations.some(rel => rel.relId === relation.relId), false);
   useViewerStore.getState().undo(SAMPLE_MODEL);
   const restored = await exportedRelations(dataStore, view);
@@ -144,13 +150,13 @@ test('#7267 first-read native detachment preview preserves the live allocator le
   const relation = readRelatedLists(dataStore, 'IfcRelDefinesByType', view).find(rel => rel.relatedIds.includes(target))!;
   const batch = parseModelAuthoringBatch(JSON.stringify({ version: 1, kind: 'model.authoring', title: 'Pure first read',
     units: 'm', frame: 'storey-local', operations: [{ op: 'type.detach', target: { globalId: BACK_WALL,
-      ifcClass: 'IfcWall', name: BACK_WALL_NAME }, expected: { GlobalId: dataStore.entities.getGlobalId(relation.relatingId),
-        Name: dataStore.entities.getName(relation.relatingId) ?? '' } }] }));
+      ifcClass: 'IfcWall', name: BACK_WALL_NAME }, expected: { GlobalId: dataStore.entities.getGlobalId(requiredTypeId(relation)),
+        Name: dataStore.entities.getName(requiredTypeId(relation)) ?? '' } }] }));
   const editors = useViewerStore.getState().storeEditors;
   const views = useViewerStore.getState().mutationViews;
   const lease = view.prepareAtomic(() => null);
   const preview = previewModelAuthoring(useViewerStore.getState(), batch);
-  assert.equal(preview.rows[0].status, 'ready', preview.rows[0].issue);
+  assert.equal(preview.rows[0].status, 'ready', preview.rows[0].issue ?? 'native type review status');
   assert.equal(useViewerStore.getState().storeEditors, editors);
   assert.equal(editors.size, 0);
   assert.equal(useViewerStore.getState().mutationViews, views);
@@ -169,7 +175,7 @@ test('#7267 federation requires an explicit model for repeated IFC GlobalIds and
     target: { globalId: BACK_WALL, ifcClass: 'IfcWall', name: BACK_WALL_NAME, modelId: SAMPLE_MODEL } })) }));
   const otherBytes = editedModelBytes(dataStore, other);
   const preview = previewModelAuthoring(useViewerStore.getState(), pinned);
-  assert.equal(preview.rows[0].status, 'ready', preview.rows[0].issue);
+  assert.equal(preview.rows[0].status, 'ready', preview.rows[0].issue ?? 'native type review status');
   const outcome = commitModelAuthoring(useViewerStore, preview, new Set([0]), 'test');
   assert.ok(outcome.ok, outcome.ok ? '' : outcome.detail ?? outcome.reason);
   assert.equal(outcome.receipt.applied[0].modelId, SAMPLE_MODEL);
@@ -207,7 +213,7 @@ test('#7267 actual WASM processes the independently exported detached occurrence
     const before = geometry(editedModelBytes(dataStore, view));
     assert.ok(before.length > 0 && before.every(mesh => mesh.indices.length > 0), 'real imported source has native geometry');
     const preview = previewModelAuthoring(useViewerStore.getState(), reviewedDetach('m'));
-    assert.equal(preview.rows[0].status, 'ready', preview.rows[0].issue);
+    assert.equal(preview.rows[0].status, 'ready', preview.rows[0].issue ?? 'native type review status');
     assert.ok(preview.rows[0].previewUnavailable, 'review explicitly withholds a resulting type-detach geometry preview');
     const outcome = commitModelAuthoring(useViewerStore, preview, new Set([0]), 'native WASM detachment');
     assert.ok(outcome.ok, outcome.ok ? '' : outcome.detail ?? outcome.reason);

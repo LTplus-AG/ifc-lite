@@ -23,7 +23,11 @@ it('#7131 refuses a complete population when transported classification membersh
   const bytes = new TextEncoder().encode(STEP);
   const store = await new IfcParser().parseColumnar(bytes.buffer, { disableWorkerScan: true });
   const view = new MutablePropertyView(store.properties ?? null, 'model');
-  const missingMembership = { ...store, source: EMPTY_SOURCE_BYTES, onDemandClassificationMap: undefined, relationships: undefined };
+  const missingMembership = { ...store, source: EMPTY_SOURCE_BYTES };
+  // Simulate omitted transport fields without pretending undefined satisfies
+  // the normal parsed-store contract, which requires a relationship graph.
+  Reflect.deleteProperty(missingMembership, 'onDemandClassificationMap');
+  Reflect.deleteProperty(missingMembership, 'relationships');
   assert.equal(classificationPopulationUnavailable(missingMembership, view), true);
   assert.equal(classificationPopulationUnavailable(store, view), false);
   assert.equal(classificationPopulationUnavailable({ ...store, source: EMPTY_SOURCE_BYTES }, view), false);

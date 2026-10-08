@@ -43,6 +43,17 @@ test('#7131 native filter matches the authored classification before export/relo
   const hits = await evaluateFilterGroupsFederated(evaluatorModelsFromState(state), [{ combinator: 'AND', rules: [{ kind: 'classification', system: 'CCI Construction', op: 'isSet', value: '' }] }], { limit: Infinity });
   assert.ok(hits.some(hit => hit.expressId === 262), 'native absence must not conceal an effective association');
 });
+test('#7131 a graph-proved association with a missing root target remains unresolved rather than unclassified', async () => {
+  const { store, view } = await authoredAssociation();
+  const association = [...view.getNewEntitiesOfType('IFCRELASSOCIATESCLASSIFICATION')][0];
+  view.setPositionalAttribute(association.expressId, 5, '#999999');
+  const out = new StepExporter(store, view).export({ schema: 'IFC4', visibleOnly: false, hiddenEntityIds: new Set<number>() });
+  const text = typeof out.content === 'string' ? out.content : new TextDecoder().decode(out.content);
+  const reparsed = await new IfcParser().parseColumnar(new TextEncoder().encode(text).buffer, { disableWorkerScan: true });
+  assert.ok(reparsed.onDemandClassificationMap?.get(262)?.includes(999999), 'independent parser proves the dangling association target');
+  assert.deepEqual(extractClassificationsOnDemand(reparsed, 262), [{ unresolved: true }]);
+  assert.deepEqual(extractClassificationsOnDemand(store, 262, view), [{ unresolved: true }]);
+});
 test('#7131 native list classifications agree with independently reparsed authoring output', async () => {
   const { store, view, expected } = await authoredAssociation();
   assert.deepEqual(createListDataProvider(store, '', undefined, view).getClassifications?.(262), expected.map(row => ({ system: row.system, code: row.identification, name: row.name })));

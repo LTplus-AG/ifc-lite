@@ -137,7 +137,9 @@ export function extractClassificationsOnDemand(
 /** One source/authored reference, through the same effective record and bounded chain reader. */
 function classificationInfoForRef(store: IfcDataStore, classRefId: number, view?: ClassificationReadView): ClassificationInfo | null {
     const entity = classificationRecord(store, classRefId, view);
-    if (!entity) return null;
+    // The association proves membership even when its root target is missing.
+    // Losing that evidence would assert an authoritative unclassified result.
+    if (!entity) return { unresolved: true };
     const typeUpper = entity.type.toUpperCase();
     const attrs = entity.attributes || [];
 

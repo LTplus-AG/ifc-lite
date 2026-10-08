@@ -44,7 +44,7 @@ for(const identity of ['unchanged','target-named','type-named','target-positiona
  assert.equal(layerSetOf({dataStore:changed,view:null},identity.startsWith('type-')?typeId:id)?.layers[0].thickness,.4);
  useViewerStore.getState().undo(SAMPLE_MODEL);
  const restored=await parseIfc(editedModelBytes(dataStore,view));assert.equal(restored.getEntity(id)?.attributes[0],guid);
- assert.equal(layerSetOf({dataStore:restored,view:null},identity.startsWith('type-')?typeId:id)?.layers[0].thickness,identity.startsWith('type-')?.3:undefined,'Undo restores the actual prior native layer population');
+ assert.equal(layerSetOf({dataStore:restored,view:null},identity.startsWith('type-')?typeId:id)?.layers[0].thickness,identity.startsWith('type-') ? .3 : undefined,'Undo restores the actual prior native layer population');
 });
 
 for(const owner of ['target','type'] as const)test(`#7275 old ${owner} GUID cannot authorize layers after native current identity replacement`,async()=>{

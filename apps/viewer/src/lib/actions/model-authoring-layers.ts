@@ -12,7 +12,7 @@ import { layerExpectedInMetres } from './model-authoring-layer-params';
 import { sameNativeDimensions } from './model-authoring-size';
 import type { AuthoringOp, AuthoringUnits } from './model-authoring';
 import { uniqueSplitGuid } from './model-authoring-split';
-import { readAttributes } from '@/lib/placement-edit';
+import { effectiveMetadataRecord } from '@ifc-lite/parser';
 
 type Operation = Extract<AuthoringOp, { op: 'material.layers' }>;
 export class LayerRefusal extends Error {
@@ -64,13 +64,13 @@ export function writeReviewedLayers(target: ModelEditTarget, draft: StoreEditor,
   spec: ApplyLayersSpec, op: Operation, units: AuthoringUnits, state: NativeReadState): readonly number[] {
   const occurrence = spec.elementId;
   if (occurrence === undefined || !uniqueSplitGuid(target.dataStore, draft, op.target.globalId)
-    || readAttributes(target.dataStore, target.view, draft, occurrence)?.[0] !== op.target.globalId
+    || effectiveMetadataRecord(target.dataStore, occurrence, target.view)?.attributes[0] !== op.target.globalId
     || entityName(target, occurrence) !== op.target.name) throw new Error('The native layer target identity changed or is ambiguous');
   if (op.scope === 'type') {
     const typeId = typeOf(target, occurrence);
     if (typeId === null || typeId !== spec.typeId || !op.expected.type
       || !uniqueSplitGuid(target.dataStore, draft, op.expected.type.GlobalId)
-      || readAttributes(target.dataStore, target.view, draft, typeId)?.[0] !== op.expected.type.GlobalId
+      || effectiveMetadataRecord(target.dataStore, typeId, target.view)?.attributes[0] !== op.expected.type.GlobalId
       || entityName(target, typeId) !== op.expected.type.Name) throw new Error('The native layer type binding changed or is ambiguous');
   }
   for (const layer of op.MaterialLayers) {

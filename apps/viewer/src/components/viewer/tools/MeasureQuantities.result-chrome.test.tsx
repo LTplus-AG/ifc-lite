@@ -91,6 +91,8 @@ it('#7184 native alignment volume withholding remains Partial while real mesh ar
   const ui = mount();
   assert.ok(region(ui).querySelector('[data-status="partial"]'));
   assert.match(region(ui).textContent ?? '', /alignment rescaled/);
+  // #7184 review: shared coverage must own this disclosure exactly once.
+  assert.equal((region(ui).textContent ?? '').match(/alignment rescaled/g)?.length, 1);
   assert.ok(value(ui, 'Area mesh') > 0);
   assert.equal(Boolean([...ui.querySelectorAll('span')].find(span => span.textContent?.trim() === 'Volume mesh')), false);
 });

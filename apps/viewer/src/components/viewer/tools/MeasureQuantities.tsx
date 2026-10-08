@@ -64,7 +64,6 @@
  * user's per-unit-type override from #1573.
  */
 
-import { Boxes, TriangleAlert } from 'lucide-react';
 import { useViewerStore } from '@/store';
 import { useTranslation } from '@/i18n/useTranslation';
 import type { TranslationKey } from '@/i18n/en';
@@ -132,7 +131,7 @@ export function MeasureQuantities() {
 
   if (!summary) return <QuantityResultView quantities={quantities} />;
 
-  const { declared, geometry, meshArea, weights, meshAreaIncomplete, elements, withoutStore, rescaled } = summary;
+  const { declared, geometry, meshArea, weights, elements } = summary;
   // Derived-mass rows only. The `declared` basis is already a row of the
   // `declared` table above; see DERIVED_WEIGHT_LABEL.
   const derivedWeights = weights.rows.filter((r) => r.basis !== 'declared');
@@ -147,16 +146,6 @@ export function MeasureQuantities() {
   return (
     <QuantityResultView quantities={quantities} evidence={<SourceQuantityInspection />}>
     <div className="space-y-1.5 px-3 py-2">
-      <div className="flex items-center justify-between gap-2">
-        <span className="flex items-center gap-1 font-mono text-2xs uppercase tracking-wider text-foreground">
-          <Boxes className="h-3 w-3" />
-          {t('measure.quantities.header')}
-        </span>
-        <span className="font-mono text-2xs text-muted-foreground">
-          {t('measure.quantities.elementsCount', { count: elements })}
-        </span>
-      </div>
-
       {nothing ? (
         <ResultState kind="partial" title={t('measure.quantities.nothingFound')} />
       ) : (
@@ -266,48 +255,6 @@ export function MeasureQuantities() {
           {derivedWeights.some((r) => r.basis === 'derived-library-density')
             ? t('measure.quantities.massLegendWithEstimated')
             : t('measure.quantities.massLegend')}
-        </div>
-      )}
-      {weights.withheld['density-ambiguous'] > 0 && (
-        <div className="font-mono text-2xs leading-tight text-muted-foreground">
-          {t('measure.quantities.densityAmbiguous', { count: weights.withheld['density-ambiguous'] })}
-        </div>
-      )}
-      {weights.withheld['weight-unit-is-force'] > 0 && (
-        <div className="flex items-start gap-1.5 font-mono text-2xs leading-tight text-amber-600 dark:text-amber-500">
-          <TriangleAlert className="mt-0.5 h-2.5 w-2.5 shrink-0" />
-          <span>
-            {t('measure.quantities.weightUnitIsForce', { count: weights.withheld['weight-unit-is-force'] })}
-          </span>
-        </div>
-      )}
-
-      {geometry.unproved > 0 && (
-        <div className="font-mono text-2xs leading-tight text-muted-foreground">
-          {t('measure.quantities.unprovedVolume', { count: geometry.unproved })}
-        </div>
-      )}
-      {meshArea.withoutMesh > 0 && (
-        <div className="font-mono text-2xs leading-tight text-muted-foreground">
-          {t('measure.quantities.noMeshToMeasure', { count: meshArea.withoutMesh })}
-        </div>
-      )}
-      {meshAreaIncomplete > 0 && (
-        <div className="flex items-start gap-1.5 font-mono text-2xs leading-tight text-amber-600 dark:text-amber-500">
-          <TriangleAlert className="mt-0.5 h-2.5 w-2.5 shrink-0" />
-          <span>
-            {t('measure.quantities.meshAreaIncomplete', { count: meshAreaIncomplete })}
-          </span>
-        </div>
-      )}
-      {rescaled > 0 && (
-        <div className="font-mono text-2xs leading-tight text-muted-foreground">
-          {t('measure.quantities.rescaledVolume', { count: rescaled })}
-        </div>
-      )}
-      {withoutStore > 0 && (
-        <div className="font-mono text-2xs leading-tight text-muted-foreground">
-          {t('measure.quantities.unresolvedElements', { count: withoutStore })}
         </div>
       )}
     </div>

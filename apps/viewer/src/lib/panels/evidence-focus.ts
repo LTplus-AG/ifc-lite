@@ -11,3 +11,5 @@ export const useReconciliationFocus = create<{ record: { baseRunId: string; head
 
 export interface ClashApplicationFocusRequest { applicationId: string; workspaceId: string; contextWorkspaceId: string; orphaned: boolean }
 export const useClashApplicationFocus = create<{ record: ClashApplicationFocusRequest | null }>(() => ({ record: null }));
+
+export const useSavedValidationFocus = create<{ record: { reportId: string; rowId: string; capturedAt: string } | null }>(() => ({ record: null }));

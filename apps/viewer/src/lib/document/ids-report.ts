@@ -24,6 +24,7 @@
  * itself; its own counts are exact even for `unique`/`aggregate`, whose
  * entity rows list failures only. An IDS snapshot is built exactly as before.
  */
+import { captureValidationElements } from '../validation/reports/element-evidence';
 import { validationReportSummary } from '../validation/report-summary.js';
 import { capturedReportModelScope, replaceReportSnapshot } from './report-provenance.js';
 import type { SpecificationResult, ValidationReport } from '@ifc-lite/ids';
@@ -134,7 +135,8 @@ function ruleCheck(report: ValidationReport, result: SpecificationResult): IdsRe
 export function idsReportBlockFromReport(report: ValidationReport, id: string, variant?: IdsReportVariant): IdsReportBlock {
   const block = snapshotFromReport(report, id);
   const reportModels = capturedReportModelScope(report);
-  return { ...block, ...(variant ? { variant } : {}), ...(reportModels ? { reportModels } : {}) };
+  return { ...block, elementEvidence: captureValidationElements(report, reportModels),
+    ...(variant ? { variant } : {}), ...(reportModels ? { reportModels } : {}) };
 }
 
 function snapshotFromReport(report: ValidationReport, id: string): IdsReportBlock {

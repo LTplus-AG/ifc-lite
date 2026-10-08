@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 import fixtureSchedule from './worker-pool-lifecycle-schedule.fixture.json' with {type:'json'};
 import {requireEpoch,ownedTree,requireSample,pairedReport} from './worker-pool-lifecycle-invariants.mjs';
 const trace=()=>({loadId:'next',timeOrigin:1000,attrs:{loadPath:'wasm'},start:0,end:20,spans:['parser.complete','geometry.streamComplete','scene.finalize'].map(name=>({name,start:0,end:20}))});
-const row=()=>({index:0,pair:1,side:'A',contrast:'c',workload:{name:'w',mode:'replace',loads:['fzk']},source:'base',query:'warmPool=0',cleanup:{error:null},ok:true,identity:{complete:true,digest:'complete-source'},adapter:{vendor:'nvidia',isFallbackAdapter:false},memory:{rows:[{privateResidentBytes:30000,privateCommitBytes:40000,residentBytesSharedDoubleCount:50000,elapsedMs:1,rootPid:1,rootStart:1,processes:[{pid:1,parent:0,started:1,privateResidentBytes:30000,privateCommitBytes:40000,residentBytes:50000,lifetimePeakResidentBytes:55000}]}],maxGapMs:1,coverageEndElapsedMs:2},admission:[{quiet:true,main:{quiet:true},windows:{quiet:true}}],watcher:[{graphs:[]}],physical:[{admitted:true}],epochs:[{fixture:'fzk',pageGeneration:0,pageTimeOrigin:1000,reloadCompleted:false,previousId:'prior',trace:trace(),metrics:{firstBatchWaitMs:3,firstVisibleGeometryMs:5,totalWallClockMs:10,metadataRenderReadyMs:12}}]});
+const row=()=>({index:0,pair:1,side:'A',contrast:'c',workload:{name:'w',mode:'replace',loads:['fzk']},source:'base',query:'warmPool=0',cleanup:{error:null},ok:true,identity:{complete:true,digest:'complete-source'},adapter:{vendor:'nvidia',isFallbackAdapter:false},memory:{rows:[{privateResidentBytes:30000,privateCommitBytes:40000,residentBytesSharedDoubleCount:50000,elapsedMs:1,rootPid:1,rootStart:1,processes:[{pid:1,parent:0,started:1,privateResidentBytes:30000,privateCommitBytes:40000,residentBytes:50000,lifetimePeakResidentBytes:55000}]}],maxGapMs:1,coverageEndElapsedMs:2},admission:[{quiet:true,main:{quiet:true},windows:{quiet:true}}],watcher:[{graphs:[]}],physical:[{admitted:true}],epochs:[{fixture:'fzk',pageGeneration:0,pageTimeOrigin:1000,reloadCompleted:false,previousId:'prior',trace:trace(),metrics:{firstBatchWaitMs:3,firstVisibleGeometryMs:5,totalWallClockMs:20,metadataRenderReadyMs:25}}]});
 test('#7036 new epoch cannot reuse an ended old root or skip actual finalize',()=>{
  assert.throws(()=>requireEpoch(trace(),'next'),/fresh/);
  const incomplete=trace();incomplete.spans.pop();assert.throws(()=>requireEpoch(incomplete,'prior'),/scene.finalize/);
@@ -122,4 +122,20 @@ test('#7036 copied old-page trace cannot borrow a fresh observed page time origi
  const old=row();old.epochs[0].pageTimeOrigin=2000;assert.throws(()=>requireSample(old),/Trace time origin/);
  const missing=row();delete missing.epochs[0].trace.timeOrigin;assert.throws(()=>requireSample(missing),/timeOrigin/);
  const invalid=row();invalid.epochs[0].trace.timeOrigin=NaN;assert.throws(()=>requireSample(invalid),/timeOrigin/);
+});
+
+test('#7180 readiness cannot be zero or predate actual metadata, geometry and finalize completion',()=>{
+ const valid=row();valid.epochs[0].metrics.metadataRenderReadyMs=25;assert.equal(requireSample(valid).ok,true);
+ const a=structuredClone(valid),b={...structuredClone(valid),index:1,side:'B'};const schedule=[a,b];for(const sample of [a,b])sample.epochs[0].metrics.metadataRenderReadyMs=0;assert.throws(()=>pairedReport([a,b],schedule),/readiness/);
+ for(const value of [0,19]){
+  const early=structuredClone(valid);early.epochs[0].metrics.metadataRenderReadyMs=value;
+  assert.throws(()=>requireSample(early),/readiness/);
+ }
+ const fabricated=structuredClone(valid);Object.assign(fabricated.epochs[0].metrics,{metadataCompleteMs:0,streamCompleteMs:0,metadataRenderReadyMs:15});assert.throws(()=>requireSample(fabricated),/readiness/);
+ for(const name of ['parser.complete','geometry.streamComplete','scene.finalize']){
+  const late=structuredClone(valid);late.epochs[0].trace.spans.find(span=>span.name===name).end=30;assert.throws(()=>requireSample(late),/readiness/);
+ }
+ // The observed readiness endpoint excludes later trace.finish/model bookkeeping.
+ const root=structuredClone(valid);root.epochs[0].trace.end=30;assert.equal(requireSample(root).ok,true);
+ const cached=structuredClone(valid);cached.workload={name:'cache',mode:'cache',loads:['fzk','fzk']};const next=structuredClone(cached.epochs[0]);next.previousId=null;next.trace.loadId='cache-next';next.trace.attrs.loadPath='cache';next.trace.spans[0].name='cache.storeReady';next.trace.spans[0].end=30;next.pageGeneration=1;next.reloadCompleted=true;next.pageTimeOrigin=2000;next.trace.timeOrigin=2000;cached.epochs.push(next);assert.throws(()=>requireSample(cached),/readiness/);
 });

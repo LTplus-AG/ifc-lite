@@ -29,6 +29,16 @@ export function metadataCompletionSpan(loadPath: string | undefined): 'parser.co
   return loadPath === 'cache' ? 'cache.storeReady' : 'parser.complete';
 }
 
+/** Elapsed readiness and completions must share one start/clock. No missing,
+ * zero or predating observation is comparable (#7180). Callers with a trace
+ * derive bounds from that trace, rather than trusting reported milestone fields.
+ */
+export function observedReadinessFollowsCompletion(observedMs: unknown, completionMs: readonly unknown[]): boolean {
+  return typeof observedMs === 'number' && Number.isFinite(observedMs) && observedMs > 0 &&
+    completionMs.length > 0 && completionMs.every(value =>
+      typeof value === 'number' && Number.isFinite(value) && value >= 0 && observedMs >= value);
+}
+
 /**
  * TODO(remove-by: first release after 2026-10-06, i.e. one after #6977, with
  * the regex fallback in viewer-benchmark-page.ts; #7005): console lines for a

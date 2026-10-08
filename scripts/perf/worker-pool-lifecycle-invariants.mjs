@@ -4,7 +4,7 @@
 
 import { createHash } from 'node:crypto';
 import { tsImport } from 'tsx/esm/api';
-const { metadataCompletionSpan } = await tsImport('../../tests/benchmark/metadata-render-readiness.ts', import.meta.url);
+const { metadataCompletionSpan, observedReadinessFollowsCompletion } = await tsImport('../../tests/benchmark/metadata-render-readiness.ts', import.meta.url);
 export const sha = bytes => createHash('sha256').update(bytes).digest('hex');
 export function finiteNonnegative(value,name) {
   if(typeof value!=='number'||!Number.isFinite(value)||value<0)throw Error(`Missing/nonfinite/negative ${name}`);
@@ -106,6 +106,11 @@ export function requireSample(row) {
     if(index>0&&!reloaded&&e.previousId!==priorLoadId)throw Error('Lifecycle epoch predecessor mismatch');
     epochIds.add(e.trace.loadId);priorLoadId=e.trace.loadId;
     for(const name of ['firstBatchWaitMs','firstVisibleGeometryMs','totalWallClockMs','metadataRenderReadyMs'])if(!(name==='firstBatchWaitMs'&&e.trace.attrs?.loadPath==='cache'))finiteNonnegative(e.metrics?.[name],`timing.${name}`);
+    // This metric is elapsed since trace.start on the page's performance clock.
+    // The trace is authoritative even if caller-supplied metadata fields say zero.
+    const required=new Set([metadataCompletionSpan(e.trace.attrs.loadPath),'geometry.streamComplete','scene.finalize']);
+    const completions=e.trace.spans.filter(span=>required.has(span.name)&&span.end!==null).map(span=>span.end);
+    if(!observedReadinessFollowsCompletion(e.metrics?.metadataRenderReadyMs,completions.map(end=>end-e.trace.start)))throw Error('Observed metadata/render readiness predates actual trace completion or is missing/zero');
   }
   return row;
 }

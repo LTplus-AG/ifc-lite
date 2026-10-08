@@ -20,6 +20,8 @@ import { detectCoincidentWalls, mountClashPanel, saveCurrentResultAs } from '@/t
 import { readContentRows, writeContent } from '@/lib/storage/content-database';
 import { createDocumentSlice } from '@/store/slices/documentSlice';
 import { ReportDeletionPreview } from '../ReportDeletionPreview';
+import { Toaster } from '@/components/ui/toast';
+import { latestToast } from '@/test/toasts';
 import { SavedComparisonLibrary } from './SavedComparisonLibrary';
 
 const original = useViewerStore.getState();
@@ -256,4 +258,20 @@ test('#7245 native preview unmount revokes a queued confirmation before its actu
   await waitFor(() => useViewerStore.getState().savedComparisonsStorage.items[report.id] !== 'saving', 'native queued deletion observes lost preview owner');
   assert.equal((await readContentRows('comparison')).find(row => row.id === report.id)?.deleted, false);
   assert.ok(useViewerStore.getState().savedComparisons.some(row => row.id === report.id));
+});
+
+test('#7245 revoked native confirmation explains changed references without reporting a fictitious storage outage', async () => {
+  const report = await realComparison(); await dependents('compare', report.id);
+  const ui = render(<><SavedComparisonLibrary result={null} running={false} /><Toaster /></>);
+  const picker = ui.querySelector('select'); assert.ok(picker);
+  act(() => { picker.value = report.id; picker.dispatchEvent(new window.Event('change', { bubbles: true })); });
+  click(button(ui, 'Delete saved comparison')!); await settle();
+  const dashboard = useViewerStore.getState().dashboards[0];
+  click(button(ui, 'Delete report')!);
+  act(() => useViewerStore.getState().upsertDashboard({ ...dashboard, name: 'Changed just before native write' }));
+  await waitFor(() => useViewerStore.getState().savedComparisonsStorage.items[report.id] !== 'saving', 'revoked native request finishes');
+  await settle();
+  assert.equal((await readContentRows('comparison')).find(row => row.id === report.id)?.deleted, false);
+  assert.match(ui.textContent ?? '', /Chart references changed/);
+  assert.doesNotMatch(latestToast(ui), /Comparison changes are in memory, but browser storage is unavailable or full/);
 });

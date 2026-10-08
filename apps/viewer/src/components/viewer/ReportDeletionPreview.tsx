@@ -48,17 +48,20 @@ export function ReportDeletionPreview({ source, report, onCancel, onDeleted, sto
     const owner = active.current;
     setBusy(true);
     let staged = false;
+    let guardRejected = false;
     const beforeWrite = () => {
       const now = useViewerStore.getState();
       const targetNow = source.kind === 'compare' ? now.savedComparisons.find(row => row.id === source.id) : now.savedClashReports.find(row => row.id === source.id);
       const currentAction = source.kind === 'compare' ? now.deleteSavedComparison : now.deleteSavedClashReport;
       const owned = staged ? targetNow === undefined : targetNow === captured.current && active.current === owner && owner.alive;
-      if (!owned || currentAction !== removeAction || reportChartDependencies(now, source).signature !== acknowledged.signature) return false;
+      if (!owned || currentAction !== removeAction || reportChartDependencies(now, source).signature !== acknowledged.signature) {
+        guardRejected = true; return false;
+      }
       staged = true;
       return true;
     };
     const ok = await removeAction(source.id, beforeWrite);
-    if (!ok) storageFailed();
+    if (!ok && !guardRejected) storageFailed();
     if (active.current === owner && owner.alive) { setBusy(false); if (ok) onDeleted?.(); }
   };
   return <div className="space-y-2 rounded border p-2 text-xs" data-report-deletion-preview role="alert">

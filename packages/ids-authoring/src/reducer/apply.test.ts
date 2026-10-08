@@ -165,7 +165,7 @@ describe('apply ∘ inverses = id (seeded property test)', () => {
       applied += ops.length;
     }
     expect(applied).toBeGreaterThan(SEQUENCES * 4);
-    // Every primitive kind (fidelity ops via inverses) was exercised.
-    expect([...kinds].sort()).toEqual(OP_KINDS.filter((k) => !k.startsWith('bulk.')).sort());
+    // Every kind but templates (fidelity ops via inverses) was exercised.
+    expect([...kinds].sort()).toEqual(OP_KINDS.filter((k) => k !== 'bulk.applyTemplate').sort());
   });
 });

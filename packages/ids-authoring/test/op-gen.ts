@@ -10,7 +10,7 @@
 import type { IDSFacet, IFCVersion, PartOfRelation } from '@ifc-lite/ids';
 import { FACET_FIELDS, getField, REQUIRED_FIELDS, type FacetFieldName } from '../src/document/fields.js';
 import type { Section, StudioDocument } from '../src/document/types.js';
-import type { ConstraintDraft, FacetDraft, InfoField, PrimitiveOp, ValueInput } from '../src/ops/types.js';
+import type { ConstraintDraft, FacetDraft, InfoField, StudioOp, ValueInput } from '../src/ops/types.js';
 
 export type Rng = () => number;
 
@@ -104,14 +104,14 @@ function facets(doc: StudioDocument): FacetRef[] {
   return out;
 }
 
-/** One valid primitive op for `doc`, or `undefined` if the pick does not fit. */
-export function randomOp(rng: Rng, doc: StudioDocument, newId: () => string): PrimitiveOp | undefined {
+/** One valid op (primitive or compound) for `doc`, or `undefined` if the pick does not fit. */
+export function randomOp(rng: Rng, doc: StudioDocument, newId: () => string): StudioOp | undefined {
   const opId = newId();
   const specs = doc.ids.specifications;
   const all = facets(doc);
   const spec = specs.length ? pick(rng, specs) : undefined;
   const f = all.length ? pick(rng, all) : undefined;
-  switch (int(rng, 30)) {
+  switch (int(rng, 32)) {
     case 0:
       return { kind: 'doc.setInfo', opId, payload: { field: pick(rng, ['title', 'author', 'purpose'] as InfoField[]), value: pick(rng, WORDS) } };
     case 21:
@@ -218,6 +218,10 @@ export function randomOp(rng: Rng, doc: StudioDocument, newId: () => string): Pr
       return spec && { kind: 'spec.patch', opId, payload: { specId: spec.id, set: { ifcVersionRaw: 'ifc4', applicabilityCardinality: 'required', maxOccurs: 'unbounded' } } };
     case 29:
       return f?.facet.type === 'partOf' ? { kind: 'facet.patch', opId, payload: { facetId: f.facetId, set: { rawRelation: 'IFCRELBOGUS' } } } : undefined;
+    case 30:
+      return { kind: 'bulk.renameProperty', opId, payload: { fromPset: pick(rng, WORDS), fromName: pick(rng, WORDS), toPset: pick(rng, WORDS), toName: pick(rng, WORDS) } };
+    case 31:
+      return { kind: 'bulk.retargetEntity', opId, payload: { from: pick(rng, WORDS), to: pick(rng, WORDS), ...(spec && rng() < 0.5 ? { scope: [spec.id] } : {}) } };
     case 20:
       return { kind: 'meta.custom.declarePset', opId, payload: { decl: { name: pick(rng, ['Acme_A', 'Acme_B', 'Acme_C']), properties: rng() < 0.5 ? [{ name: 'Code' }] : undefined } } };
     default: {

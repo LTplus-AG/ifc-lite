@@ -6,7 +6,7 @@ import test, { afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { Ajv } from 'ajv';
 import { MutablePropertyView } from '@ifc-lite/mutations';
-import { render, click, cleanup, type, waitFor } from '@/test/render';
+import { render, click, cleanup, type, waitFor, advance } from '@/test/render';
 import { seedArtifactModels, ARCH } from '@/test/artifact-models-fixture';
 import { configureMutationView } from '@/utils/configureMutationView';
 import { useViewerStore } from '@/store';
@@ -165,6 +165,7 @@ test('#7234 source replacement aborts the owned preset request and discards late
   await waitFor(() => started, 'real provider transport begins');
   const refresh = ui.querySelector('button[aria-label="Refresh evidence and start a new conversation"]'); assert.ok(refresh); click(refresh);
   assert.ok(transport.signal?.aborted, 'the active per-request native controller aborts');
-  release!(); await waitFor(() => useAssistant.getState().status !== 'streaming', 'replacement capture owns conversation');
+  release!(); await advance(0);
+  await waitFor(() => useAssistant.getState().status !== 'streaming', 'replacement capture owns conversation');
   assert.equal(useAssistant.getState().messages.length, 0, 'late proposal cannot populate a replacement capture');
 });

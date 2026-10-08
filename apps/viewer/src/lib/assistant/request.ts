@@ -96,7 +96,7 @@ export async function sendAssistant(prompt: string, model: string, proxyUrl: str
     }
   };
   const unsubscribe = useViewerStore.subscribe(staleCheck);
-  // Sources whose native state lives outside the viewer store (Linked records) notify through their adapter.
+  // Native state outside the viewer store (Linked records, Data validation side) notifies through its adapter.
   const detachSource = adapterFor(state.snapshot.source).subscribe?.(staleCheck);
   const ownsRequest = () => useAssistant.getState().controller === controller && !controller.signal.aborted;
   const fail = (error: string) => {

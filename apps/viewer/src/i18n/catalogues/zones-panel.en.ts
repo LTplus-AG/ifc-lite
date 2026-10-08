@@ -80,7 +80,7 @@ export const zonesPanelEn = {
   'zonesPanel.exportZoneError': 'Could not export {name}: {message}',
   'zonesPanel.exportNoBinding': 'The geometry engine in this build cannot split meshes',
   'zonesPanel.exportBusy': 'Another zone is still being cut. Wait for it to finish.',
-  'zonesPanel.exportNothingToExport': 'Nothing to export: no loaded geometry reaches this zone',
+  'zonesPanel.exportNothingToExport': 'Nothing to export: geometry is unavailable or its split was refused',
   'zonesPanel.exportGeometrySuccessPlain': 'Exported {whole} whole and {cut} cut element(s) in {elapsed}s',
   'zonesPanel.exportGeometrySuccessRefusedOnly':
     'Exported {whole} whole and {cut} cut element(s) in {elapsed}s, {refused} not cut (mesh not a proven closed solid, or the pieces did not add up)',

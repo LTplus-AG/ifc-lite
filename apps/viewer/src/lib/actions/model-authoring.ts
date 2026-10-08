@@ -20,6 +20,8 @@
 
 import { parseLayerFields, type LayerFields } from './model-authoring-layer-params';
 import { parseShapeParams, parseProfileSectionParams, AUTHORING_OUTLINE_WORK_LIMIT, type ShapeParams } from './model-authoring-shape-params';
+import { parseSplitSnapshot, parseSplitCut, type SplitCut } from './model-authoring-split-params';
+import type { SplitSnapshot } from './model-authoring-split-state';
 import { parseSizeParams, type ExpectedSize } from './model-authoring-size-params';
 import type { ProfileSection } from '@ifc-lite/create';
 import type { ElementSizePatch } from '@/store/slices/mutation-element-size';
@@ -47,6 +49,7 @@ export interface BoxParams { position: Point3; width: number; depth: number; thi
 
 export type AuthoringOp =
   | { op: 'element.create'; ref: string; ifcClass: AuthoringClass; storey: StoreyTarget; name: string; params: AxisParams | BoxParams | ShapeParams }
+  | { op: 'element.split'; target: ExistingElement; expected: SplitSnapshot; cut: SplitCut }
   | ({ op: 'element.copy'; target: ElementTarget; ref: string } & CopyFields)
   | ({ op: 'element.array'; target: ElementTarget; refs: string[] } & ArrayFields)
   | { op: 'element.delete'; target: ExistingElement }
@@ -65,7 +68,7 @@ export type AuthoringOp =
   | { op: 'hosted.create'; ref?: string; kind: HostedKind; host: ElementTarget; name?: string; offset: number; sill: number; width: number; height: number };
 
 export type AuthoringOpName = AuthoringOp['op'];
-export const AUTHORING_OPS: readonly AuthoringOpName[] = ['element.create', 'element.delete', 'element.resize', 'element.profile', 'element.move', 'element.rotate', 'element.copy', 'element.array',
+export const AUTHORING_OPS: readonly AuthoringOpName[] = ['element.create', 'element.delete', 'element.split', 'element.resize', 'element.profile', 'element.move', 'element.rotate', 'element.copy', 'element.array',
   'type.assign', 'type.detach', 'material.assign', 'material.layers', 'walls.join', 'hosted.create'];
 
 export interface ModelAuthoringBatch {
@@ -169,6 +172,12 @@ function operation(value: unknown, index: number, units: AuthoringUnits, refs: M
     return op;
   };
   switch (value.op) {
+    case 'element.split': {
+      if (Object.keys(value).some(key => !['op', 'target', 'expected', 'cut'].includes(key))) throw new Error(`${at}: unsupported split field`);
+      const expected = parseSplitSnapshot(value.expected, `${at} expected`), cut = parseSplitCut(value.cut, units, `${at} cut`);
+      if (expected.kind !== cut.kind) throw new Error(`${at}: the native snapshot kind and cut kind must agree`);
+      return { op: value.op, target: existing(value.target, at), expected, cut };
+    }
     case 'element.resize': {
       const expected = parseSizeParams(value.expected, units, `${at} expected`, true);
       const size = parseSizeParams(value.size, units, `${at} size`, false);
@@ -283,6 +292,10 @@ export function parseModelAuthoringBatch(answer: string): ModelAuthoringBatch {
   const refs = new Map<string, AuthoringOp>();
   const units = value.units;
   const operations = value.operations.map((op, index) => operation(op, index, units, refs));
+  const splitTargets = operations.filter((op): op is Extract<AuthoringOp, { op: 'element.split' }> => op.op === 'element.split').map(op => `${op.target.modelId ?? ''}:${op.target.globalId}`);
+  if (new Set(splitTargets).size !== splitTargets.length) throw new Error('Split targets must be unique; no targets are silently discarded');
+  const splitWork = operations.reduce((sum, op) => sum + (op.op === 'element.split' && op.expected.kind === 'slab' ? op.expected.chain.footprint.length ** 2 : 0), 0);
+  if (splitWork > AUTHORING_OUTLINE_WORK_LIMIT) throw new Error(`Split preview work exceeds ${AUTHORING_OUTLINE_WORK_LIMIT} vertex-pair units; use a smaller explicit selection`);
   const outlineWork = operations.reduce((sum, op) => sum + (op.op === 'element.create' && 'OuterCurve' in op.params ? op.params.OuterCurve.length ** 2 : 0), 0);
   if (outlineWork > AUTHORING_OUTLINE_WORK_LIMIT) throw new Error(`The polygon preview work exceeds ${AUTHORING_OUTLINE_WORK_LIMIT} vertex-pair units; split this proposal into smaller batches`);
   const copies = operations.reduce((total, op) => total + (op.op === 'element.array' ? op.count - 1 : op.op === 'element.copy' ? 1 : 0), 0);

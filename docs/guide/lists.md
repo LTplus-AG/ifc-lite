@@ -306,8 +306,10 @@ Selected snapshot entities from a removed model remain an unavailable coverage
 gap. An unavailable provider outside that snapshot does not create a gap, and
 the native model-tag scope still determines which snapshot members apply.
 
-Matched entities and currently visible rows have separate counts. Search and
-visibility filters keep the native result intact, and a filtered-empty table
+Matched entities, returned rows and currently visible rows have separate counts.
+Matches absent from the returned rows remain a partial coverage gap; they are
+not attributed to search or visibility filters. Search and visibility filters
+keep the native result intact, and a filtered-empty table
 is distinct from an explicit empty element scope. The viewer does not infer a
 scanned-entity denominator from the match count. Nested and schedule tables use
 the same result vocabulary, while their native grouping, units, selection and

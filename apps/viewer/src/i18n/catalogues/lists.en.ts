@@ -20,6 +20,8 @@ export const listsEn = {
   'lists.resultChrome.filtered': { one: '{count} matched row is hidden by visibility or search filters.', other: '{count} matched rows are hidden by visibility or search filters.' },
   'lists.resultChrome.noPopulation': 'The list’s explicit scope contains no entities',
   'lists.resultChrome.noVisibleRows': 'Matching rows are hidden by the current filters',
+  'lists.resultChrome.noReturnedRows': 'Matching rows are not available to display',
+  'lists.resultChrome.rowsUnavailable': { one: '{count} matched row is not available to display', other: '{count} matched rows are not available to display' },
   'lists.resultChrome.snapshotModelsUnavailable': { one: 'Selected entities from {count} unavailable model could not be evaluated', other: 'Selected entities from {count} unavailable models could not be evaluated' },
   // ColumnHeaderMenu
   'lists.columnMenu.optionsAriaLabel': 'Column options',

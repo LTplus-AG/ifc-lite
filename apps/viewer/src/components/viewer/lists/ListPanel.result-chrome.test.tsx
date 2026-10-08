@@ -13,6 +13,7 @@ import { render, cleanup, click, press, type, waitFor } from '@/test/render';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture';
 import { useViewerStore } from '@/store';
 import type { ListDefinition } from '@/lib/lists';
+import { carryListRun, listRunDefinition } from '@/lib/lists/run-provenance';
 import { ListPanel } from './ListPanel';
 installLayout();
 const initial = useViewerStore.getState();
@@ -227,4 +228,25 @@ it('#7166 no native data providers disable execution before any result populatio
   await act(async () => { await Promise.resolve(); });
   assert.equal(useViewerStore.getState().listResult, null);
   assert.equal(Boolean(run.ui.querySelector('[data-result-state="no-population"]')), false);
+});
+
+it('#7166 unavailable matched rows remain distinct from live filtering over returned native rows', async () => {
+  const run = await setup(definition(), true);
+  await act(async () => { useViewerStore.setState({ listDefinitions: [{ ...run.own, expressIdsByModel: undefined, modelTagScope: undefined }] }); });
+  await run.run();
+  const actual = useViewerStore.getState().listResult; assert.ok(actual);
+  const executed = listRunDefinition(actual); assert.ok(executed);
+  assert.ok(actual.rows.length > 1, 'real authored IFC supplies more than the capped returned population');
+  // Stated ListResult invariant: totalCount precedes pagination; retained rows need not contain every match.
+  await act(async () => { useViewerStore.getState().setListResult(carryListRun(actual, { ...actual, rows: actual.rows.slice(0, 1) }, executed)); });
+  assert.equal(Boolean(region(run.ui).textContent?.includes('hidden by visibility or search filters')), false, 'unreturned matches were not hidden by a live filter');
+  assert.match(region(run.ui).textContent ?? '', /Partial/);
+  assert.match(region(run.ui).textContent ?? '', /not available to display/);
+  const input = run.ui.querySelector<HTMLInputElement>('input[aria-label="Filter list results"]'); assert.ok(input);
+  type(input, 'no-returned-row-can-match-this-name');
+  assert.match(region(run.ui).textContent ?? '', /1 matched row is hidden by visibility or search filters/);
+  assert.match(region(run.ui).textContent ?? '', /not available to display/);
+  await act(async () => { useViewerStore.getState().setListResult(carryListRun(actual, { ...actual, rows: [] }, executed)); });
+  assert.ok(run.ui.querySelector('[data-result-state="partial"]'), 'no returned matches disclose partial availability');
+  assert.equal(Boolean(run.ui.querySelector('[data-result-state="filtered"]')), false, 'unreturned population is not a filter-empty state');
 });

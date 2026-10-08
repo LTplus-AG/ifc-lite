@@ -19,16 +19,19 @@ export function ListResultChrome({ result, visibleCount, filters, actions, child
   const models = listRunModels(result);
   const stale = useAnalysisStaleness(analysisStampOf(result));
   const source = definition?.name ?? t('lists.resultChrome.sourceUnavailable');
+  const unavailableRows = Math.max(0, result.totalCount - result.rows.length);
+  const filteredRows = Math.max(0, result.rows.length - visibleCount);
   const incomplete = [
     ...(!definition || !models ? [t('lists.resultChrome.provenanceUnavailable')] : []),
     ...(models?.omittedModels.map(name => t('lists.resultChrome.modelUnavailable', { name })) ?? []),
     ...(models?.unavailableSnapshotModels ? [t('lists.resultChrome.snapshotModelsUnavailable', { count: models.unavailableSnapshotModels })] : []),
-    ...(visibleCount < result.totalCount ? [t('lists.resultChrome.filtered', { count: result.totalCount - visibleCount })] : []),
+    ...(unavailableRows ? [t('lists.resultChrome.rowsUnavailable', { count: unavailableRows })] : []),
+    ...(filteredRows ? [t('lists.resultChrome.filtered', { count: filteredRows })] : []),
   ];
   return <ResultView source={source} className="flex-1 min-h-0"
     header={<ResultSource source={source} models={models?.models ?? []}
       population={t('lists.resultChrome.matched', { count: result.totalCount })} />}
-    coverage={<ResultCoverage status={!definition || !models ? 'uncertain' : stale ? 'stale' : models.omittedModels.length || models.unavailableSnapshotModels ? 'partial' : 'complete'}
+    coverage={<ResultCoverage status={!definition || !models ? 'uncertain' : stale ? 'stale' : models.omittedModels.length || models.unavailableSnapshotModels || unavailableRows ? 'partial' : 'complete'}
       counts={t('lists.resultChrome.visible', { count: visibleCount })} incomplete={incomplete} />}
     summary={<span className="text-xs text-muted-foreground">{t('lists.panel.resultsSummary', {
       count: result.totalCount, countDisplay: formatLocaleCount(result.totalCount, locale), ms: result.executionTime.toFixed(0),
@@ -39,7 +42,8 @@ export function ListResultChrome({ result, visibleCount, filters, actions, child
 /** The engine records matches, while only an explicit empty snapshot proves no applicable population. */
 export function ListResultEmptyState({ result }: { result: ListResult }) {
   const { t } = useTranslation();
-  const kind = result.totalCount > 0 ? 'filtered' : listRunModels(result)?.emptyPopulation ? 'no-population' : 'no-findings';
+  const kind = result.rows.length > 0 ? 'filtered' : result.totalCount > 0 ? 'partial'
+    : listRunModels(result)?.emptyPopulation ? 'no-population' : 'no-findings';
   return <ResultState kind={kind} title={t(kind === 'filtered' ? 'lists.resultChrome.noVisibleRows'
-    : kind === 'no-population' ? 'lists.resultChrome.noPopulation' : 'lists.resultsTable.noRows')} />;
+    : kind === 'partial' ? 'lists.resultChrome.noReturnedRows' : kind === 'no-population' ? 'lists.resultChrome.noPopulation' : 'lists.resultsTable.noRows')} />;
 }

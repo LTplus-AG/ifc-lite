@@ -22,7 +22,8 @@
   "files": [
     "./frame-gpu-chrome.ts",
     "../../tests/benchmark/viewer-benchmark-page.ts",
-    "../../tests/benchmark/viewer-benchmark.spec.ts"
+    "../../tests/benchmark/viewer-benchmark.spec.ts",
+    "./frame-gpu-job-controller.ts"
   ],
   "include": [],
   "exclude": []

@@ -1,0 +1,13 @@
+diff --git a/packages/ids-authoring/src/ops/units.ts b/packages/ids-authoring/src/ops/units.ts
+index aa77a92b6..a24d4a04f 100644
+--- a/packages/ids-authoring/src/ops/units.ts
++++ b/packages/ids-authoring/src/ops/units.ts
+@@ -16,7 +16,7 @@ interface UnitDef {
+ 
+ const UNITS: Record<string, UnitDef> = {
+   // length → m
+-  mm: { scale: 1e3 },
++  mm: { scale: 1e-3 },
+   cm: { scale: 1e-2 },
+   dm: { scale: 1e-1 },
+   m: { scale: 1 },

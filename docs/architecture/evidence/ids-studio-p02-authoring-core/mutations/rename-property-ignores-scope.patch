@@ -1,0 +1,13 @@
+diff --git a/packages/ids-authoring/src/compound/expand.ts b/packages/ids-authoring/src/compound/expand.ts
+index ba9c6a91e..07dab6f32 100644
+--- a/packages/ids-authoring/src/compound/expand.ts
++++ b/packages/ids-authoring/src/compound/expand.ts
+@@ -30,7 +30,7 @@ interface FacetVisit {
+ }
+ 
+ function visitFacets(doc: StudioDocument, scope: readonly Uuid[] | undefined): FacetVisit[] {
+-  const allowed: Set<Uuid> | undefined = undefined;
++  const allowed = scope ? new Set(scope) : undefined;
+   const out: FacetVisit[] = [];
+   doc.ids.specifications.forEach((spec, i) => {
+     if (allowed && !allowed.has(spec.id)) return;

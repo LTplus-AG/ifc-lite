@@ -1,0 +1,12 @@
+diff --git a/packages/ids-authoring/src/gate/grounding.ts b/packages/ids-authoring/src/gate/grounding.ts
+index 9c9878989..7cd2eefb0 100644
+--- a/packages/ids-authoring/src/gate/grounding.ts
++++ b/packages/ids-authoring/src/gate/grounding.ts
+@@ -43,6 +43,7 @@ export interface FieldScope {
+ export function literals(c: IDSConstraint | undefined): string[] {
+   if (!c) return [];
+   if (c.type === 'simpleValue') return c.value === '' ? [] : [c.value];
++  if (c.type === 'enumeration') return c.values.filter((v) => v !== '');
+   return [];
+ }
+ 

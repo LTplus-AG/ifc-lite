@@ -1,0 +1,13 @@
+diff --git a/packages/ids-authoring/src/gate/values.ts b/packages/ids-authoring/src/gate/values.ts
+index 32217de41..cedd5128f 100644
+--- a/packages/ids-authoring/src/gate/values.ts
++++ b/packages/ids-authoring/src/gate/values.ts
+@@ -86,7 +86,7 @@ function checkBounds(b: IDSBoundsConstraint): ValueProblem[] {
+   }
+   const lo = lower(b);
+   const hi = upper(b);
+-  if (lo && hi && (lo.v > hi.v || (lo.v === hi.v && (lo.exclusive && hi.exclusive)))) {
++  if (lo && hi && (lo.v > hi.v || (lo.v === hi.v && (lo.exclusive || hi.exclusive)))) {
+     out.push({ code: 'GATE-VAL-002', message: `lower bound ${lo.v} is not below upper bound ${hi.v}; no value can match` });
+   }
+   for (const k of ['length', 'minLength', 'maxLength', 'fractionDigits'] as const) {

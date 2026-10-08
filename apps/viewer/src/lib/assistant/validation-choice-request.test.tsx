@@ -17,6 +17,8 @@ import { setValidationSourceChoice, useValidationSourceChoice, type ValidationSo
 import { captureEvidence, evidenceIsCurrent } from './evidence';
 import { replaceEvidence, cancelAssistant, useAssistant } from './conversation';
 import { sendAssistant } from './request';
+import { ValidationPanel } from '@/components/viewer/validation/ValidationPanel';
+import { render, mouseDown, cleanup } from '@/test/render';
 
 const initial = useViewerStore.getState();
 const originalFetch = globalThis.fetch;
@@ -51,6 +53,7 @@ before(async () => {
 });
 
 afterEach(() => {
+  cleanup();
   cancelAssistant();
   globalThis.fetch = originalFetch;
   useViewerStore.setState(initial, true);
@@ -162,7 +165,11 @@ test('switching sides cancels a live native SSE reader and clears partial valida
   const pending = sendAssistant('Explain native wall failures', 'openai/gpt-free', '/api/chat');
   for (let i = 0; i < 100 && !useAssistant.getState().output; i++) await new Promise(resolve => setImmediate(resolve));
   assert.equal(useAssistant.getState().output, 'Partial native findings', 'the real response reader must have consumed a chunk');
-  setValidationSourceChoice('manual');
+  const ui = render(<ValidationPanel />);
+  const manualTab = [...ui.querySelectorAll<HTMLElement>('[role="tab"]')].find(tab => tab.textContent === 'Manual validation');
+  assert.ok(manualTab, 'the native panel must expose its Manual validation tab');
+  mouseDown(manualTab);
+  assert.equal(useValidationSourceChoice.getState().choice, 'manual');
   assert.equal(useAssistant.getState().output, '', 'the revoked subject must not leave partial findings visible');
   assert.equal(await pending, false);
   assert.equal(cancelled, true, 'abort must reach the active response body');

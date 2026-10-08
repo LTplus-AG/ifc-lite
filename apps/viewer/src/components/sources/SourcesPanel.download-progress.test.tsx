@@ -28,6 +28,7 @@ import { render, cleanup, click } from '@/test/render.js';
 import { SourceHostProvider } from '@/services/sources/SourceHostProvider';
 import { SOURCE_DOWNLOAD_EVENT } from '@/services/sources/source-host';
 import { SourcesPanel } from './SourcesPanel.js';
+import { activityCanceller, useActivityJournal } from '@/lib/activity/activity-journal';
 
 const TOWER: SourceFile = { id: 'file-1', name: 'Tower.ifc', containerId: 'area-1', currentRevisionId: 'rev-1', sizeBytes: 100 };
 const PODIUM: SourceFile = { id: 'file-2', name: 'Podium.ifc', containerId: 'area-1', currentRevisionId: 'rev-1', sizeBytes: 50 };
@@ -194,6 +195,10 @@ describe('SourcesPanel per-file download progress (#6375)', () => {
       assert.equal(pending[0].options?.signal?.aborted, true);
       await settle(() => pending[0].resolve(new ArrayBuffer(100)));
       assert.equal(dispatched.length, 0, 'late bytes cannot enter the canonical loader');
+      // #7134: the actual Sources panel settles its native cancellation in Activity.
+      const job = useActivityJournal.getState().jobs.at(-1); assert.ok(job);
+      assert.equal(job.outcome, 'cancelled');
+      assert.equal(activityCanceller(job.id), null);
       assert.equal(pending.length, 1, 'queued file never starts');
       assert.equal(document.querySelector('[role="progressbar"]'), null);
       assert.equal(buttonWithText('Load 2 files as federated model').disabled, false);

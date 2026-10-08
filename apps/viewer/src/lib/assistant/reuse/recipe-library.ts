@@ -43,8 +43,10 @@ const flowIdsOf = (recipes: readonly AssistantRecipe[]) =>
 export function exportRecipeBundle(recipes: readonly AssistantRecipe[], savedFlows: readonly FlowDocument[], exportedAt = new Date().toISOString())
   : { ok: true; json: string } | { ok: false; reason: BundleRefusal } {
   if (!recipes.length) return { ok: false, reason: 'empty' };
+  if (recipes.length > BUNDLE_LIMITS.recipes) return { ok: false, reason: 'too-large' };
   const referenced = flowIdsOf(recipes);
   const flows = savedFlows.filter(doc => referenced.has(doc.id));
+  if (flows.length > BUNDLE_LIMITS.flows) return { ok: false, reason: 'too-large' };
   const bundle: RecipeBundle = { format: RECIPE_BUNDLE_FORMAT, version: 1, exportedAt, recipes: recipes.map(recipe => structuredClone(recipe)), flows };
   const json = `${JSON.stringify(bundle, null, 2)}\n`;
   if (containsCredential([...recipes.flatMap(recipeText), ...flows.map(doc => JSON.stringify(doc))])) return { ok: false, reason: 'credential' };
@@ -90,7 +92,7 @@ export async function importRecipeBundle(bundle: RecipeBundle, importFlow: (doc:
   const ids = new Map<string, string>([...flowIdsOf(bundle.recipes)].map(id => [id, crypto.randomUUID()]));
   let flowsSaved = true;
   for (const doc of bundle.flows) {
-    const id = importFlow(doc);
+    const id = importFlow({ ...doc, id: crypto.randomUUID() });
     if (id) ids.set(doc.id, id);
     else flowsSaved = false;
   }

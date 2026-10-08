@@ -127,11 +127,11 @@ export function parseModelChangeBatch(answer: string): ModelChangeBatch {
 
 /** Identity of the value a change addresses: one edit per value per batch. */
 export function changeKey(item: ModelChange): string {
-  const where = `${item.target.modelId ?? '*'}:${item.target.globalId}`;
+  const where = [item.target.modelId ?? null, item.target.globalId];
   switch (item.op) {
-    case 'property.set': case 'property.delete': return `${where}:p:${item.pset}:${item.name}`;
-    case 'quantity.set': return `${where}:q:${item.qset}:${item.name}`;
-    case 'attribute.set': return `${where}:a:${item.name}`;
+    case 'property.set': case 'property.delete': return JSON.stringify([...where, 'p', item.pset, item.name]);
+    case 'quantity.set': return JSON.stringify([...where, 'q', item.qset, item.name]);
+    case 'attribute.set': return JSON.stringify([...where, 'a', item.name]);
   }
 }
 

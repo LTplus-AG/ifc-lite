@@ -9,6 +9,7 @@ import { SCALAR_ITEM, TABLE_ITEM } from './ports.js';
 import type { FlowNodeDef } from './host.js';
 import { AI_CAPABILITY, AI_FEATURE, aiService, dataBlock, positiveInt, requestJson, rowKeys, sentColumns } from './ai-service.js';
 import { constrainedField, proposalFields } from './ai-propose-fields.js';
+import { proposalSchema } from './ai-response-schemas.js';
 
 export const aiProposeNode: FlowNodeDef = {
   type: 'ai.propose', title: 'AI propose a native artifact', category: 'ai',
@@ -47,12 +48,15 @@ export const aiProposeNode: FlowNodeDef = {
       if (modelColumn && (typeof row[modelColumn] !== 'string' || !String(row[modelColumn]).trim())) throw new Error('Every sent finding needs a native model id');
     }
     const keys = rowKeys(sent), known = new Set(keys);
-    const task = `${MODEL_DATA_CHANGE_OUTPUT_GUIDANCE}\nReply {"artifact":<model.changes>,"citations":["<row key>"]}. Each change must match exactly one cited row. Use targetColumn ${JSON.stringify(targetColumn)} and modelColumn ${JSON.stringify(modelColumn)}; copy each expected value from its field's expectedColumn. Never propose more than ${maxChanges} changes. Use only the supplied fields and allowedValues. If evidence cannot decide, return {"kind":"clarification","message":"What input is missing"}.\nRequested policy: ${p.instructions}\nField constraints: ${JSON.stringify(p.fields)}`;
+    const task = `${MODEL_DATA_CHANGE_OUTPUT_GUIDANCE}\nReply {"artifact":<model.changes>,"citations":["<row key>"],"clarification":null}. Each change must match exactly one cited row. Use targetColumn ${JSON.stringify(targetColumn)} and modelColumn ${JSON.stringify(modelColumn)}; copy each expected value from its field's expectedColumn. Never propose more than ${maxChanges} changes. Use only the supplied fields and allowedValues. If evidence cannot decide, return {"artifact":null,"citations":[],"clarification":"What input is missing"}.\nRequested policy: ${p.instructions}\nField constraints: ${JSON.stringify(p.fields)}`;
     const service = aiService(ctx);
-    const reply = await requestJson(ctx, service, task, dataBlock(sent, keys, keys.map((_, index) => index), columns), maxOutputTokens);
+    const reply = await requestJson(ctx, service, task, dataBlock(sent, keys, keys.map((_, index) => index), columns), maxOutputTokens,
+      proposalSchema(fields, keys, !!modelColumn));
     if (reply.kind !== 'value') throw new Error(reply.kind === 'budget' ? 'The AI proposal budget is exhausted' : reply.message);
     if (reply.value.kind === 'clarification') throw new Error(`Proposal needs clarification: ${String(reply.value.message ?? 'Missing evidence').slice(0, 1000)}`);
-    if (Object.keys(reply.value).some(key => key !== 'artifact' && key !== 'citations')) throw new Error('Unknown proposal envelope field');
+    if (typeof reply.value.clarification === 'string') throw new Error(`Proposal needs clarification: ${reply.value.clarification.slice(0, 1000)}`);
+    if (reply.value.clarification !== undefined && reply.value.clarification !== null) throw new Error('Invalid proposal clarification');
+    if (Object.keys(reply.value).some(key => key !== 'artifact' && key !== 'citations' && key !== 'clarification')) throw new Error('Unknown proposal envelope field');
     const citations = reply.value.citations;
     if (!Array.isArray(citations) || !citations.length || citations.some(key => typeof key !== 'string' || !known.has(key)) || new Set(citations).size !== citations.length) {
       throw new Error('The proposal must cite distinct sent finding keys');

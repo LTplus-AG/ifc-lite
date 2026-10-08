@@ -86,7 +86,12 @@ test('#7258 imported saved copy executes only after native selector open and exp
  assert.equal(sdk.query().byType('IfcWall').toArray().length,4);
  const ui = mounted(); const text = await exported(ui); const sequence = useViewerStore.getState().scriptRunSeq;
  choose(ui,text); await waitFor(() => useViewerStore.getState().savedScripts.length===2, 'native import'); assert.equal(useViewerStore.getState().scriptRunSeq,sequence);
- const copy = useViewerStore.getState().savedScripts[1]; act(() => useViewerStore.getState().setActiveScriptId(copy.id));
+ const copy = useViewerStore.getState().savedScripts[1];
+ const selector = ui.querySelector('button[aria-label="Select saved script"]'); assert.ok(selector);
+ act(() => selector.dispatchEvent(new window.PointerEvent('pointerdown', { bubbles:true, button:0, pointerType:'mouse' })));
+ await waitFor(() => document.querySelectorAll('[role="menuitem"]').length >= 2, 'native saved-script selector opens');
+ const choices = [...document.querySelectorAll('[role="menuitem"]')].filter(row => row.textContent?.trim() === copy.name); assert.equal(choices.length,2); click(choices[1]);
+ assert.equal(useViewerStore.getState().activeScriptId,copy.id,'native selector opens the imported copy');
  const run = [...ui.querySelectorAll('button')].find(button => button.textContent?.trim()==='Run'); assert.ok(run, 'native explicit Run'); click(run);
  await waitFor(() => useViewerStore.getState().scriptExecutionState==='success' || useViewerStore.getState().scriptExecutionState==='error', 'native sandbox terminal execution');
  assert.equal(useViewerStore.getState().scriptExecutionState,'success',useViewerStore.getState().scriptLastError ?? 'native script execution failed');

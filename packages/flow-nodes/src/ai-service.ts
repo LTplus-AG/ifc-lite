@@ -71,7 +71,9 @@ const SYSTEM_RULES = [
 export async function requestJson(ctx: Ctx, service: FlowAiService, task: string, prompt: string, maxOutputTokens: number, outputSchema: JsonResponseSchema): Promise<JsonReply> {
   const outcome = await service.request({ system: `${SYSTEM_RULES}\n\n${task}`, prompt, maxOutputTokens, signal: ctx.signal, outputSchema });
   switch (outcome.kind) {
-    case 'refused': return { kind: 'budget' };
+    case 'refused':
+      if (outcome.reason === 'unsupported-schema') throw new Error(outcome.message);
+      return { kind: 'budget' };
     case 'cancelled': throw new Error('aborted');
     case 'timeout': return { kind: 'failed', message: 'the model request timed out' };
     case 'error': return { kind: 'failed', message: `the model request failed: ${outcome.message}` };

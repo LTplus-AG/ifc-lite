@@ -77,7 +77,9 @@ export type RequestOutcome<Route extends string = string> =
   | { kind: 'timeout'; receipt: UsageReceipt<Route> }
   | { kind: 'error'; code: 'empty-output' | 'request-failed'; message: string; receipt: UsageReceipt<Route> }
   /** Nothing was sent: the task's root budget has no request or output left. */
-  | { kind: 'refused'; reason: 'budget-exhausted' };
+  | { kind: 'refused'; reason: 'budget-exhausted' }
+  /** The host knows the response contract exceeds its provider's limits; nothing was sent. */
+  | { kind: 'refused'; reason: 'unsupported-schema'; message: string };
 
 /** A request the core has just handed to its transport. */
 export interface RequestStart<Route extends string = string> {

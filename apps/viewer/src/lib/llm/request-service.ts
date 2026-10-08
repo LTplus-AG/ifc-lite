@@ -21,6 +21,7 @@ import { modelCapabilities } from './model-capabilities.js';
 import { recordReceipt, recordRequestStart } from './request-receipts.js';
 import { streamChat, type StreamMessage, type StreamOptions, type UsageInfo } from './stream-client.js';
 import { streamAnthropicChat, streamOpenAiChat } from './stream-direct.js';
+import { anthropicSchemaLimitation } from './anthropic-schema.js';
 
 export type SendableRoute = Exclude<StreamRoute, { kind: 'missing-key' }>;
 
@@ -67,6 +68,10 @@ function viewerTransport(route: SendableRoute, proxyUrl: string, onUsageInfo?: (
 
 export function runModelRequest(request: ModelRequest): Promise<RequestOutcome> {
   const { route } = request;
+  if (route.kind === 'anthropic' && request.outputSchema && !request.signal?.aborted) {
+    const message = anthropicSchemaLimitation(request.outputSchema);
+    if (message) return Promise.resolve({ kind: 'refused', reason: 'unsupported-schema', message });
+  }
   return runSharedRequest({
     model: route.model,
     route: route.kind,

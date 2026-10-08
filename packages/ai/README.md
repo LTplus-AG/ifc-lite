@@ -10,6 +10,13 @@ It holds no provider client, no credentials and no UI state. A host brings its o
 - **Bounded JSON output.** `parseJsonOutput` accepts one complete JSON value (optionally in a single ```json fence), bounded by size, depth and value count, and refuses truncated replies and prototype keys. It never extracts JSON from prose.
 - **Response schemas.** An optional `outputSchema: JsonResponseSchema` carries an actual JSON object contract to the transport. A transport that sends it reports `onOutputFormat('json-schema')`; a parser-only transport reports `text`. Typed-request receipts include `outputFormat`, describing the outgoing protocol rather than promising model quality or validating evidence. Receipts never contain the schema or its source identifiers. Unsupported schema requests fail without a hidden retry as text.
 
+A host that detects a documented provider limit before dispatch can return
+`{ kind: 'refused', reason: 'unsupported-schema', message }`. This outcome has
+no usage receipt and does not consume the root budget; it differs from budget
+exhaustion. Native Flow nodes report the limitation without claiming rows were
+sent. The viewer checks Anthropic's documented 16-union and 24-optional-parameter
+limits before reserving a request.
+
 ## Install
 
 ```bash

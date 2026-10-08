@@ -336,6 +336,14 @@ native output shape and selected constraints. Direct OpenAI requests use
 the API's [structured output format](https://developers.openai.com/api/docs/guides/structured-outputs),
 and direct Anthropic requests use
 [`output_config.format`](https://platform.claude.com/docs/en/build-with-claude/structured-outputs).
+The viewer refuses schemas exceeding Anthropic's documented 16 union parameters
+or 24 optional parameters before sending or reserving the request budget. For
+example, 17 nullable extraction fields or seven set-field proposal variants
+exceed the union limit; choose fewer fields or a different provider. The node
+reports this provider limitation rather than budget exhaustion or sent rows.
+Schema enums can include the selected row identifiers, labels and field names.
+Anthropic [caches schemas separately for up to 24 hours since last use](https://platform.claude.com/docs/en/build-with-claude/structured-outputs#data-retention);
+schema content therefore has different retention from message content.
 The hosted proxy remains parser-only because it advertises no upstream schema
 contract. A typed request's receipt records `outputFormat` as `json-schema` or
 `text`; it describes what was requested, not live model quality. Schema errors

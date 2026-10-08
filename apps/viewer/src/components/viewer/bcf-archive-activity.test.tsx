@@ -183,10 +183,10 @@ test('absent native project and draft selection do not create fictitious archive
   assert.equal(archives.length, 0);
 });
 
-test('unnamed native BCF project publication has the same generated Activity subject as its download stem (#7140)', async () => {
+for (const name of ['', '   ']) test(`unnamed native BCF project ${JSON.stringify(name)} publication has the same fallback Activity subject as its download stem (#7140)`, async () => {
   const batch = await reviewedBatch();
   const project = draftBatchToProject(batch, 'coordinator@example.test');
-  project.name = '';
+  project.name = name;
   useViewerStore.setState({ bcfProject: project });
   const filenames: string[] = [];
   mock.method(HTMLAnchorElement.prototype, 'click', function(this: HTMLAnchorElement) { filenames.push(this.download); });

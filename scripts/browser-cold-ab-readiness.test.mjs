@@ -23,6 +23,11 @@ const SAMPLE = new URL('./perf/browser-cold-sample.ts', import.meta.url);
 const PAGE = new URL('../tests/benchmark/viewer-benchmark-page.ts', import.meta.url);
 const SPAN_SPANS = ['parser.complete', 'geometry.streamComplete', 'scene.finalize'];
 
+function assertReadinessTiming(value) {
+  assert.ok(typeof value === 'number' && Number.isFinite(value) && value >= 0,
+    `metadata/render readiness must report a finite non-negative timing, got ${value}`);
+}
+
 test('#7032: the executable cold A/B requires renderer finalization through the benchmark page', async () => {
   const directory = mkdtempSync(join(tmpdir(), 'cold-ab-readiness-'));
   const fixture = join(directory, 'model.ifc');
@@ -48,7 +53,7 @@ test('#7032: the executable cold A/B requires renderer finalization through the 
       for (const sample of samples) {
         assert.equal(sample.ok, finalize === 'complete', JSON.stringify(sample));
         if (finalize === 'complete') {
-          assert.ok(sample.metadataRenderReadyMs >= 0);
+          assertReadinessTiming(sample.metadataRenderReadyMs);
           assert.equal(sample.gpuAdapter.architecture, 'test-transport', 'adapter probe must run after upload');
         }
         else assert.match(sample.error, /Timed out awaiting.*renderer finalize/);
@@ -132,7 +137,7 @@ test('loadUntilReady() completes a sample from the span tree', async () => {
   await bp.setup();
   await bp.loadUntilReady('model.ifc', 2000);
   assert.equal(bp.getMetrics().canvasHasContent, true);
-  assert.ok(bp.getMetrics().metadataRenderReadyMs >= 0);
+  assertReadinessTiming(bp.getMetrics().metadataRenderReadyMs);
 });
 
 test('loadUntilReady() falls back to the console lines for a base build that predates the span API', async () => {

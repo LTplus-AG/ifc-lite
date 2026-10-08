@@ -182,3 +182,36 @@ test('absent native project and draft selection do not create fictitious archive
   assert.equal(jobs().length, 0);
   assert.equal(archives.length, 0);
 });
+
+test('unnamed native BCF project publication has the same generated Activity subject as its download stem (#7140)', async () => {
+  const batch = await reviewedBatch();
+  const project = draftBatchToProject(batch, 'coordinator@example.test');
+  project.name = '';
+  useViewerStore.setState({ bcfProject: project });
+  const filenames: string[] = [];
+  mock.method(HTMLAnchorElement.prototype, 'click', function(this: HTMLAnchorElement) { filenames.push(this.download); });
+  render(<><BCFPanel onClose={() => undefined} /><ActivityTrayList /></>);
+  click(button('Export BCF'));
+  running();
+  await finished();
+  assert.equal(jobs()[0].outcome, 'completed');
+  assert.equal(filenames.length, 1);
+  assert.ok(filenames[0].endsWith('.bcfzip'));
+  assert.equal(jobs()[0].subject, filenames[0].slice(0, -'.bcfzip'.length));
+  const restored = await readBCF(await archives[0].arrayBuffer());
+  assert.deepEqual([...restored.topics.keys()], batch.topics.map(topic => topic.guid));
+});
+
+test('non-Error native draft download refusal is Failed and reports export-specific fallback feedback (#7140)', async () => {
+  await mountDraft();
+  URL.createObjectURL = blob => { assert.ok(blob instanceof Blob, 'actual native ZIP reached browser publication'); throw 'Browser refused draft publication'; };
+  mock.method(console, 'error', () => undefined);
+  const errors = mock.method(toast, 'error', () => undefined);
+  click(button('Export .bcfzip'));
+  running();
+  await finished();
+  assert.equal(jobs()[0].outcome, 'failed');
+  assert.equal(jobs()[0].detail, 'Browser refused draft publication');
+  assert.equal(errors.mock.callCount(), 1);
+  assert.equal(errors.mock.calls[0].arguments[0], 'The archive could not be exported.');
+});

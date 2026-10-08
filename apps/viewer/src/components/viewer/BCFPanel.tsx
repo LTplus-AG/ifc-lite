@@ -207,7 +207,7 @@ export function BCFPanel({ onClose }: BCFPanelProps) {
       setBcfLoading(true);
       setBcfError(null);
       const fileName = sanitizeFilename(bcfProject.name || getDefaultProjectName(), { fallback: 'topics' });
-      await publishBcfArchive(bcfProject.name ?? fileName, `${fileName}.bcfzip`, () => writeBCF(bcfProject));
+      await publishBcfArchive(bcfProject.name || fileName, `${fileName}.bcfzip`, () => writeBCF(bcfProject));
       trackExportCompleted({ format: 'bcfzip', surface: 'bcf_panel', topic_count: bcfProject.topics.size });
       posthog.capture('bcf_exported', { topic_count: bcfProject.topics.size });
     } catch (error) {

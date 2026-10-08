@@ -83,7 +83,7 @@ export function BCFDraftsDialog({ open, onOpenChange }: { open: boolean; onOpenC
       await publishBcfArchive(batch.name, `${sanitizeFilename(batch.name)}.bcfzip`, () => exportDraftArchive(batch, author));
     } catch (error) {
       console.error('[BCF drafts] Archive export failed', error);
-      toast.error(error instanceof Error ? error.message : t('bcfDrafts.archive.failed'));
+      toast.error(error instanceof Error ? error.message : t('bcfDrafts.archive.exportFailed'));
     }
   };
   const importArchive = async (file: File) => {

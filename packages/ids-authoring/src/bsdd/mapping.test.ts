@@ -71,11 +71,14 @@ describe('data types', () => {
     expect(mapBsddDataType({ dataType: 'Integer', units: ['m'] })).toBe('IFCINTEGER'); // only Real is measured
   });
 
-  it('maps an unknown or missing data type to no dataType, with a note (lint IDSL-PROP-003 territory)', () => {
-    const unknown = mapBsddProperty(p('X', { dataType: 'Rgb' }));
+  it('maps an unknown or missing data type to no dataType, with a note; refuses it on an optional requirement (IDS 1.0)', () => {
+    const unknown = mapBsddProperty(p('X', { dataType: 'Rgb', isRequired: true }));
     expect(unknown.facet.dataType).toBeUndefined();
     expect(unknown.notes.map((n) => n.code)).toEqual(['unknown-data-type']);
-    expect(mapBsddProperty(p('Y')).notes.map((n) => n.code)).toEqual(['no-data-type']);
+    expect(mapBsddProperty(p('Y', { isRequired: true })).notes.map((n) => n.code)).toEqual(['no-data-type']);
+    // The audit rejects an optional property requirement without @dataType, so the table does not produce one.
+    expect(() => mapBsddProperty(p('Z', { dataType: 'Rgb', isRequired: false }))).toThrow(/optional requirement needs a dataType/);
+    expect(() => mapBsddProperty(p('Z', { isRequired: true }), { optionality: 'optional' })).toThrow(BsddMappingError);
   });
 
   it('keeps the EXPRESS data type of a standard property', () => {
@@ -127,13 +130,13 @@ describe('set, name, uri, cardinality', () => {
     const m = mapBsddProperty(p('FireExit', { name: 'Fire exit', dataType: 'Boolean', uri: demoProp('FireExit'), isRequired: true }));
     expect(m.facet).toMatchObject({ baseName: { kind: 'equals', value: 'FireExit' }, uri: demoProp('FireExit') });
     expect(m.optionality).toBe('required');
-    expect(mapBsddProperty(p('X', { isRequired: false })).optionality).toBe('optional');
+    expect(mapBsddProperty(p('X', { dataType: 'String', isRequired: false })).optionality).toBe('optional');
     expect(mapBsddProperty(p('X', { isRequired: false }), { optionality: 'required' }).optionality).toBe('required');
-    expect(mapBsddProperty(p('X', { uri: demoProp('X') }), { uri: false }).facet.uri).toBeUndefined();
+    expect(mapBsddProperty(p('X', { uri: demoProp('X'), isRequired: true }), { uri: false }).facet.uri).toBeUndefined();
   });
 
   it('a property without a set needs the caller’s fallback set', () => {
-    expect(() => mapBsddProperty({ code: 'Manufacturer' })).toThrow(BsddMappingError);
+    expect(() => mapBsddProperty({ code: 'Manufacturer', dataType: 'String' })).toThrow(BsddMappingError);
     const m = mapBsddProperty({ code: 'Manufacturer', dataType: 'String' }, { fallbackPropertySet: 'Project_Common' });
     expect(m.propertySet).toBe('Project_Common');
     expect(m.notes.map((n) => n.code)).toEqual(['fallback-property-set']);
@@ -186,11 +189,12 @@ describe('bulk.fromBsddClass with properties', () => {
     expect(apply(declared, [op]).doc.meta.custom.psets[0].properties?.map((x) => x.name)).toEqual(['Existing', 'FireExit']);
   });
 
-  it('refuses a property the class does not define, or one without a set and no fallback', () => {
+  it('refuses a property the class does not define, one without a set and no fallback, or an optional one without a data type', () => {
     const { doc, specId } = specDoc(['IFC4'], 'IfcDoor');
     const codes = (select: string[]) => checkOps([bsddInsertOp({ classes: [door], target: { specId }, mode: 'none', properties: { select } })], doc, gate).issues.map((i) => i.code);
     expect(codes(['Nope'])).toEqual(['GATE-OP-002']);
     expect(codes(['Manufacturer'])).toEqual(['GATE-OP-002']);
+    expect(codes(['SurfaceFinish'])).toEqual(['GATE-OP-002']);
     // An IFC2X3 spec cannot take IFCDATETIME: the gate, not the table, says so.
     const old = specDoc(['IFC2X3'], 'IfcDoor');
     const r = checkOps([bsddInsertOp({ classes: [door], target: { specId: old.specId }, mode: 'none', properties: { select: ['InstallationDate'] } })], old.doc, gate);

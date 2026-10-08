@@ -208,3 +208,22 @@ export {
   type BsddMappingNoteCode,
   type BsddPropertyMapping,
 } from './bsdd/mapping.js';
+
+// Dictionary → IDS generator (IDS-072)
+export {
+  ancestors,
+  buildClassTree,
+  effectiveProperties,
+  loadClassesWithAncestors,
+  MAX_CLASSES,
+  type BsddClassTreeNode,
+} from './bsdd/dictionary.js';
+export {
+  planDictionaryIds,
+  previewDictionaryIds,
+  type DictionaryIdsInput,
+  type DictionaryIdsOptions,
+  type DictionaryIdsPlan,
+  type DictionaryIdsPreview,
+  type PlannedSpec,
+} from './bsdd/generator.js';

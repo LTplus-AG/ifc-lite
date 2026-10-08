@@ -203,5 +203,9 @@ export function mapBsddProperty(p: BsddPropertySnapshot, options: Omit<BsddPrope
   if (p.uri && options.uri !== false) facet.uri = p.uri;
   const policy = options.optionality ?? 'fromClass';
   const optionality: RequirementOptionality = policy === 'fromClass' ? (p.isRequired ? 'required' : 'optional') : policy;
+  if (optionality === 'optional' && !dataType) {
+    // IDS 1.0 (and the buildingSMART audit): an optional property requirement must name its dataType.
+    throw new BsddMappingError(p.code, `bSDD property ${p.code}: an optional requirement needs a dataType in IDS 1.0 and none maps; require it or leave it out`);
+  }
   return { facet, optionality, propertySet: pset, baseName: p.code, ...(dataType ? { dataType } : {}), notes };
 }

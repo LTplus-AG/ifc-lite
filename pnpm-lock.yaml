@@ -1487,9 +1487,15 @@ importers:
         specifier: ^0.8.3
         version: 0.8.3
     devDependencies:
+      '@ifc-lite/rules':
+        specifier: workspace:*
+        version: link:../rules
       '@types/node':
         specifier: ^26.6.2
         version: 26.6.2
+      fake-indexeddb:
+        specifier: ^6.2.5
+        version: 6.2.5
       typescript:
         specifier: ^6.0.3
         version: 6.0.3

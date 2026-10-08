@@ -6,6 +6,8 @@ import 'fake-indexeddb/auto';
 import assert from 'node:assert/strict';
 import { afterEach, beforeEach, test } from 'node:test';
 import { evaluateFilterGroupsFederated } from '@ifc-lite/rules';
+import { MutablePropertyView } from '@ifc-lite/mutations';
+import { captureArtifactScope } from '@/lib/captured-artifact-scope';
 import { evaluateAutoColorLens, evaluateLens } from '@ifc-lite/lens';
 import { useViewerStore } from '@/store';
 import type { EntityRef } from '@/store/types';
@@ -125,6 +127,31 @@ function selectRef(ref: EntityRef): void {
     state.setSelectedEntityId(toGlobalIdFromModels(state.models, ref.modelId, ref.expressId));
   });
 }
+
+test('#7186 native authored selection captures current record provenance and refuses tokenless replacement history', async () => {
+  const state = useViewerStore.getState();
+  const source = state.models.get(ARCH)!.ifcDataStore!;
+  const view = new MutablePropertyView(source.properties, ARCH);
+  view.setExpressIdWatermark(100000);
+  const authored = view.createEntity('IfcWall', ['authored-scope-native-guid', null, 'Captured authored wall', null, null, null, null, null, '.NOTDEFINED.']);
+  useViewerStore.setState({ mutationViews: new Map([[ARCH, view]]), mutationVersion: 1 });
+  selectRef({ modelId: ARCH, expressId: authored.expressId });
+  const scope = captureArtifactScope('selected', useViewerStore.getState());
+  assert.equal(scope.sources[0].members[0].creationId, authored.creationId);
+  const proposal = parseArtifactProposal(JSON.stringify({ version: 1, title: 'Authored scope identity', kind: 'filter.proposal', scope: 'selected', name: 'Captured authored wall', groups }), 'filter.proposal');
+  const preview = await previewArtifact(proposal, useViewerStore.getState(), undefined, scope);
+  assert.equal(preview.matched, 1, 'native criteria execute against the actual currently authored wall');
+  view.deleteEntity(authored.expressId);
+  view.restoreNewEntity({ expressId: authored.expressId, type: authored.type, attributes: structuredClone(authored.attributes) });
+  assert.equal(view.getMutations().find(row => row.type === 'CREATE_ENTITY')?.id, authored.creationId);
+  assert.throws(() => captureArtifactScope('selected', useViewerStore.getState()), /original identity is unavailable/,
+    'a new capture cannot borrow detached original history for the tokenless current record');
+  await assert.rejects(previewArtifact(proposal, useViewerStore.getState(), undefined, scope), /identity changed/,
+    'an existing saved capture cannot bind the tokenless replacement either');
+  view.restoreNewEntity(structuredClone(authored));
+  assert.equal((await previewArtifact(proposal, useViewerStore.getState(), undefined, scope)).matched, 1,
+    'native restoration of the original provenance-bearing record retains its captured population');
+});
 
 async function selectWall() {
   const rows = await evaluateFilterGroupsFederated(evaluatorModelsFromState(useViewerStore.getState()), groups, { limit: Infinity });

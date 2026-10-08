@@ -22,6 +22,8 @@
  * on purpose to demonstrate it.
  */
 
+import { stripJsComments } from './overlay-palette.mjs';
+
 const ARGV = /\bargv(?:\[1\]|\.at\(1\))/;
 const COMPARE = /[!=]==?/;
 /** Most lines a single guard statement may span before the scan stops looking. */
@@ -48,7 +50,7 @@ export function findHandRolledMainGuards(files, read) {
   for (const file of files) {
     if (!/\.(?:[cm]?js|[cm]?ts)$/.test(file)) continue;
     if (file === 'scripts/lib/is-main-entry.mjs' || /\.test\.[cm]?[jt]sx?$/.test(file)) continue;
-    const lines = read(file).split('\n');
+    const lines = stripJsComments(read(file)).split('\n');
     const isComment = (t) => /^\s*(?:\/\/|\*|\/\*)/.test(t);
     let reportedUntil = -1;
     lines.forEach((text, i) => {

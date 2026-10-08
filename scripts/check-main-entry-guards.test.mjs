@@ -99,3 +99,9 @@ test('comparing argv[1] with something that is not the module location is not fl
   assert.deepEqual(scan("if (process.argv[1] === '--help') usage();"), []);
   assert.deepEqual(scan("const same = process.argv[1] === other.path;"), []);
 });
+
+
+test('a comment mentioning the helper cannot exempt a broken guard (#7025 review)', () => {
+  assert.equal(scan('if (process.argv[1] === fileURLToPath(import.meta.url)) main(); // TODO: use isMainEntry').length, 1);
+  assert.equal(scan('if (process.argv[1] /* isMainEntry */ === fileURLToPath(import.meta.url)) main();').length, 1);
+});

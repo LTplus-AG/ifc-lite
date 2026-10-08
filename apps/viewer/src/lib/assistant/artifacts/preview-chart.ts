@@ -21,6 +21,7 @@ import { toGlobalIdFromModels } from '@/store/globalId';
 import { definedModelTagIdsOf, evaluatorModelsFromState } from '@/lib/model-tags/evaluator-models';
 import { fieldIdentityKey, resolveChartSpec, type ChartProposal, type FieldIdentity } from './chart-proposal';
 import { modelSchemaIndex } from './model-schema';
+import { analysisChartDataset, analysisChartInputs, isAnalysisChartSource, validateAnalysisColumns } from './analysis-chart';
 import { populationOf, revisionOf, type ArtifactPreview, type MeasureSummary } from './preview-shared';
 
 /** The binding the chart editor's field picker would offer for `field`, from what the loaded models carry. */
@@ -31,6 +32,8 @@ export function discoveredBinding(field: FieldIdentity, catalog: ElementFieldCat
 }
 
 export async function previewChart(proposal: ChartProposal, state: ViewerState, signal?: AbortSignal): Promise<ArtifactPreview> {
+  signal?.throwIfAborted();
+  if (isAnalysisChartSource(proposal.chart.source)) return previewAnalysisChart(proposal, state);
   const { catalog } = await modelSchemaIndex(state, signal);
   const spec = resolveChartSpec(proposal.chart, `chart-${crypto.randomUUID()}`, (field) => discoveredBinding(field, catalog));
   const fields = [spec.elementField, spec.measureField].filter((field): field is ElementFieldBinding => !!field);
@@ -57,5 +60,43 @@ export async function previewChart(proposal: ChartProposal, state: ViewerState, 
     buckets: aggregation.categories.map((bucket) => ({ label: bucket.label, count: bucket.count, value: bucket.value, color: bucket.color })),
     unassigned: aggregation.unbucketed, ...(aggregation.unit ? { unit: aggregation.unit } : {}),
     artifact: { kind: 'chart.proposal', spec, scope: proposal.scope }, revision: revisionOf(state, scopeKey),
+  };
+}
+
+/** Native analysis rows are findings/topics/tasks/results/changes, not one element each. */
+function previewAnalysisChart(proposal: ChartProposal, state: ViewerState): ArtifactPreview {
+  const source = proposal.chart.source;
+  if (!isAnalysisChartSource(source)) throw new Error('Unknown analysis source');
+  const spec = resolveChartSpec(proposal.chart, `chart-${crypto.randomUUID()}`, () => null);
+  const dataset = analysisChartDataset(source, state);
+  validateAnalysisColumns(spec, dataset);
+  const aggregation = aggregate(spec, dataset);
+  const charted = dataset.rows.length - aggregation.unbucketed;
+  const measure = spec.measure.agg === 'sum' ? dataset.columns.find(column => column.id === spec.measure.column) : undefined;
+  const modelFor = new Map<number, string | null>();
+  let unresolved = 0;
+  const modelRows = dataset.rows.flatMap(row => {
+    const models = new Set<string>();
+    for (let i = 0; i < row.ids.length; i++) {
+      const id = row.ids[i];
+      let modelId = modelFor.get(id);
+      if (modelId === undefined) {
+        modelId = state.resolveGlobalIdFromModels(id)?.modelId ?? null;
+        modelFor.set(id, modelId);
+      }
+      if (modelId !== null) models.add(modelId);
+    }
+    if (models.size === 0) unresolved++;
+    return [...models].map(modelId => ({ modelId }));
+  });
+  return {
+    kind: 'chart.proposal', rowSource: source, unlinkedRows: unresolved, matched: dataset.rows.length,
+    population: populationOf(modelRows, state), sampleColumns: [], samples: [],
+    measures: measure ? [{ label: measure.label, unit: aggregation.unit ?? null, total: aggregation.total,
+      measured: charted - (aggregation.unmeasured ?? 0), rows: charted }] : [],
+    buckets: aggregation.categories.map(bucket => ({ label: bucket.label, count: bucket.count, value: bucket.value, color: bucket.color })),
+    unassigned: aggregation.unbucketed, ...(aggregation.unit ? { unit: aggregation.unit } : {}),
+    artifact: { kind: 'chart.proposal', spec, scope: proposal.scope },
+    revision: { ...revisionOf(state, chartScopeKey(proposal.scope, state)), analysis: { source, inputs: analysisChartInputs(source, state), fingerprint: dataset.fingerprint } },
   };
 }

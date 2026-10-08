@@ -4,8 +4,9 @@
 import { aggregate, type Aggregation, type ChartDataset, type ChartSource } from '@ifc-lite/charts';
 import type { DocumentSpec } from './types';
 import { applyChartFilter, applyClashRuleFilter, chartElementFilterKey } from '../charts/source-filter';
-import { comparisonChartMessage, resolveComparisonChartSource } from '../charts/comparison-source';
-import type { SavedComparison } from '../compare/savedComparisonSchema';
+import { NO_SAVED_CHART_CONTENT, resolveChartSource, type ChartSourceContext } from '../charts/chart-source';
+import { chartSourceMessage } from '../charts/chart-source-message';
+import { withoutBuckets } from '../charts/unavailable-aggregation';
 import { resolve } from '@/i18n/registry';
 
 export type DocumentChartFilterState =
@@ -17,7 +18,7 @@ export type DocumentChartFilterState =
 export function prepareDocumentCharts(document: DocumentSpec | null,
   datasets: Record<ChartSource, ChartDataset>,
   sourceFilters: ReadonlyMap<string, DocumentChartFilterState>,
-  savedComparisons: readonly SavedComparison[] = [],
+  savedContent: ChartSourceContext = NO_SAVED_CHART_CONTENT,
 ): { aggregations: Map<string, Aggregation | null>; chartMessages: Map<string, string>; chartErrors?: ReadonlySet<string> } {
     const aggs = new Map<string, Aggregation | null>();
     const messages = new Map<string, string>();
@@ -29,8 +30,8 @@ export function prepareDocumentCharts(document: DocumentSpec | null,
         // Trimmed-empty is no filter, consistent with ChartCard (review finding).
         const filterKey = chartElementFilterKey(spec.filter);
         const filterState = filterKey ? sourceFilters.get(filterKey) : undefined;
-        const source = resolveComparisonChartSource(spec, datasets[spec.source], savedComparisons);
-        const sourceMessage = comparisonChartMessage(source, resolve);
+        const source = resolveChartSource(spec, datasets[spec.source], savedContent);
+        const sourceMessage = chartSourceMessage(source, resolve);
         if (sourceMessage) {
           messages.set(block.id, sourceMessage);
           if (source.status === 'missing') errors.add(block.id);
@@ -56,7 +57,8 @@ export function prepareDocumentCharts(document: DocumentSpec | null,
         // or erred — an erred selector already emptied `dataset`, so this is
         // a no-op in that case.
         if (spec.source === 'clash' && spec.filter?.clashRule) dataset = applyClashRuleFilter(dataset, spec.filter.clashRule);
-        aggs.set(block.id, aggregate(spec, dataset));
+        const aggregation = aggregate(spec, dataset);
+        aggs.set(block.id, source.status === 'missing' ? withoutBuckets(aggregation) : aggregation);
       } catch (err) {
         console.warn(`[Documents] chart "${block.chart.title}" cannot aggregate`, err);
         messages.set(block.id, err instanceof Error ? err.message : String(err));

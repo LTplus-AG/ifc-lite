@@ -137,6 +137,11 @@ export function getLayerWorkspace(sessionId?: string): LayerWorkspace {
   return { drafts, layers: shared.layers, refs: shared.refs, reviews: shared.reviews };
 }
 
+/** Unpublished drafts a transport session holds; unlike `getLayerWorkspace`, never creates a draft space. */
+export function draftCount(sessionId: string): number {
+  return draftSpaces.get(sessionId)?.size ?? 0;
+}
+
 /** Drafts hold live Y.Docs — destroy them or the CRDT state lingers. */
 function destroyDrafts(drafts: Map<string, DraftLayer>): void {
   for (const draft of drafts.values()) draft.doc.destroy();

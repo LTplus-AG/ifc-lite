@@ -1,0 +1,164 @@
+{
+  "sourceHead": "b38cee4ef16f10e8c135776f9cfae5944a1c802f",
+  "workingTreeUncommitted": true,
+  "cause": "Four specific new benchmark frontend inputs split conservative tests-prefix coverage into uncovered grandchildren, invalidating shallow existing prefix exemptions. Real check-ci-path-coverage mirror copies every tracked benchmark input.",
+  "fix": "Wire tests/benchmark/** in frontend; delete exactly three now-unused benchmark exemptions; baseline negative removes both reachable routes to reopen real input hole. No extractor/matcher or gate allowance weakened.",
+  "sourceFiles": {
+    ".github/workflows/test.yml": {
+      "beforeSHA256": "72b4c553f88f238f1da0054176f04b6ad25139cc9437c777c134023adb22fd7c",
+      "afterSHA256": "ec9b96a7d5a9db2be9c1ce893eaa38646e2253d099636b763b2a1817b6d6baed"
+    },
+    "scripts/ci-path-coverage-allowlist.txt": {
+      "beforeSHA256": "17ced5d2e0751089864bc14f7d683123ee9a1d21ea8172af00d6e02ad85b7b74",
+      "afterSHA256": "0ddc797d66d130bb87a8d7c00cd227f546b4274e22334a7f0462e8bff9c3b559"
+    },
+    "scripts/check-ci-path-coverage.test.mjs": {
+      "beforeSHA256": "d24cce9c43d16cfb6874be07dbfcb81ba2cc59a07b3fe114a682ae09a7a637a7",
+      "afterSHA256": "6b764583857900a679269259bed7d5e016e9e55bd0c9841144875c0fcaa6dfcf"
+    }
+  },
+  "standaloneSourcePinsUnchanged": {
+    "package.json": "6a0d6a988b088f2f27da041835b54c8703c5f83105cd284f565039f5d193248b",
+    "scripts/browser-ab-report.test.mjs": "22af6f3f3549957db83dfbe6d922e2e82f142f39bd2a7784af049ca9463e64cd",
+    "scripts/browser-metadata-readiness.test.mjs": "c8a409d5b00f1b91087b4843a4d334e87a5b443e2b7421a6b7e36addb7d3da0c",
+    "scripts/perf/browser-ab-report.mjs": "62ff7760b356796adcb21c9ca35078211a1b13f36cd9d29feb6ebab75bc2d1dd",
+    "scripts/perf/frame-gpu-chrome-lifecycle.test.mjs": "31f54ab8ddc537760676083bc408cce10b87461a1cb8ec41c7616d7fae8fd799",
+    "scripts/perf/frame-gpu-chrome.ts": "0af0660713e3ad39ee1ccd1c3d1d353240986d3ee8e381e168292b196cff8ddf",
+    "scripts/perf/frame-gpu-owned-profile.ps1": "c99c404ee7768b78da00aeb73d1471da46de0dd2503967c1457c7c0f215de7a3",
+    "scripts/perf/frame-gpu-owned-profile.test.mjs": "41eb0be49af9b943b9bdac5e46a27968ba9632b170161d6119d3bc4936895cb5",
+    "scripts/perf/tsconfig.frames.json": "1f8c02a50980c27ca30c8bfc66ab5829573d9d0cdf7f720c4dee60aee3235ea8",
+    "scripts/perf/worker-pool-lifecycle-invariants.mjs": "60f893959c3b3ae8530559dcd4c5ea4784830aea5ed4850de58cac11cd8dd2ed",
+    "scripts/perf/worker-pool-lifecycle-invariants.test.mjs": "2f0a59a57262efda83511890522720692c17a038dd150efb2abd9a11a7c40ed6",
+    "scripts/perf/worker-pool-lifecycle-schedule.fixture.json": "0c77eb9cef81d0f49a1d29c2cacb1d6a3660bb4b92e38fcc8b7df848c7228cf2",
+    "scripts/viewer-benchmark-span-metrics.test.mjs": "fcfa7c114155d4c3741c75090ac25f5077456a7fc47fe58395db4b3100f133fd",
+    "tests/benchmark/load-trace-metrics.ts": "2d572cfbb78a5889fee3bbfb04adc181ca6fbdc268347a3466af33b00feb7cd7",
+    "tests/benchmark/metadata-render-readiness.ts": "d5c9b3425029ff828c531e4ac0a10a69e661d0b951c9ee31653c90e293fb3460",
+    "tests/benchmark/viewer-benchmark-page.ts": "d32e6e728aa179cb3f8bfc158c9b222a4a4306071931b7f997478ab1d4b1ff8b"
+  },
+  "standaloneScope": "16 nonworkflow standalone files unchanged; workflow is intentional 17th standalone source modification",
+  "results": {
+    "gate": {
+      "command": [
+        "node",
+        "scripts/check-ci-path-coverage.mjs"
+      ],
+      "exitCode": 0
+    },
+    "behavioralTests": {
+      "command": [
+        "node",
+        "--test",
+        "scripts/check-ci-path-coverage.test.mjs"
+      ],
+      "exitCode": 0,
+      "pass": 42,
+      "fail": 0,
+      "skip": 0
+    },
+    "lightChecks": {
+      "gate-restored": {
+        "command": [
+          "node",
+          "scripts/check-ci-path-coverage.mjs"
+        ],
+        "exitCode": 0
+      },
+      "wiring-restored": {
+        "command": [
+          "node",
+          "scripts/check-test-wiring.mjs"
+        ],
+        "exitCode": 0
+      },
+      "module-restored": {
+        "command": [
+          "node",
+          "scripts/check-module-size.mjs"
+        ],
+        "exitCode": 0
+      },
+      "diff-restored": {
+        "command": [
+          "git",
+          "diff",
+          "--check"
+        ],
+        "exitCode": 0
+      }
+    }
+  },
+  "excludedHistoricalFailures": [
+    "Initial narrow helper workflow gate red from six grouped uncoveredinputs and one unused exemption",
+    "Requested broadtrigger+single row removal yielded two newly unused exemptions",
+    "After all three stale rows deleted actualgatepassed but oldbaseline mutation41pass1fail because redundantroute remained; negative updated to remove both actualroutes"
+  ],
+  "noHeavyOrNativeRun": true,
+  "noCommitOrPush": true,
+  "archives": {
+    "diff-check.log": {
+      "archive": "diff-check.log.gz",
+      "rawSHA256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "archiveSHA256": "9ceffb7310338057cfe71a4ae1e2c98d2c485d81cdef906532a801f457a38d64"
+    },
+    "diff-restored.log": {
+      "archive": "diff-restored.log.gz",
+      "rawSHA256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "archiveSHA256": "9ceffb7310338057cfe71a4ae1e2c98d2c485d81cdef906532a801f457a38d64"
+    },
+    "fix.patch": {
+      "archive": "fix.patch.gz",
+      "rawSHA256": "85cc4193cf0d50256ad897af806db551c67097f976f1d281d64f126fdd8d3313",
+      "archiveSHA256": "bd2aed7915cd4c3a204bb32356ce6007de9c02939ef4d125fbba3a62ad9b109c"
+    },
+    "gate-final.log": {
+      "archive": "gate-final.log.gz",
+      "rawSHA256": "51d37f116c762d3c80e3ee80ea557614aeb0257fe1a61a230295a49d09ef2d54",
+      "archiveSHA256": "5167b0baba8c98876f6edda593e5f4430eaeb5310376b0ed29cecfed96c56c32"
+    },
+    "gate-restored.log": {
+      "archive": "gate-restored.log.gz",
+      "rawSHA256": "51d37f116c762d3c80e3ee80ea557614aeb0257fe1a61a230295a49d09ef2d54",
+      "archiveSHA256": "5167b0baba8c98876f6edda593e5f4430eaeb5310376b0ed29cecfed96c56c32"
+    },
+    "gate-tests-final.log": {
+      "archive": "gate-tests-final.log.gz",
+      "rawSHA256": "58bf49af9e39c9fbe7ee59e5a701ac9d1b0609f255cc5abd8aad61680248827f",
+      "archiveSHA256": "b48e1b8c02900fe2642b0bf7a1ac12a55e17d8c7ca4df89036ba84435378fbd1"
+    },
+    "gate-tests-restored.log": {
+      "archive": "gate-tests-restored.log.gz",
+      "rawSHA256": "3c19954fde60009dac6c458ab6b155af208c22b9f88662090937190384437d7a",
+      "archiveSHA256": "18cb71220949222753aa941eaab137da8863438d1e6e53a4dccb0363bdc74b75"
+    },
+    "gate-tests.log": {
+      "archive": "gate-tests.log.gz",
+      "rawSHA256": "a6ce29d1e79e4033aad9223df4c4f988e1eb550bdee4bb47fd1fc07055107c3e",
+      "archiveSHA256": "3670ac5292282db62c613db661da3cd7bacb45e1fd19a3f6a695988297b6eee2"
+    },
+    "gate.log": {
+      "archive": "gate.log.gz",
+      "rawSHA256": "39d0e9e2685a8c51886ef25c4d0f08e25bbce3cd7effee5e25f8c0be06c90fc2",
+      "archiveSHA256": "e06658ff8a3f3fef8ab5ef7a5994ee61468e635759252fe1dae25725abad60f7"
+    },
+    "module-restored.log": {
+      "archive": "module-restored.log.gz",
+      "rawSHA256": "2257aa19eb888349c6345eff4803e5b366c57e9ac4ca977003f4d295b5112804",
+      "archiveSHA256": "83054295e3e8eebf2638c84dd9ce6514273e7d5d2c0ae8aadab22a0973d7612b"
+    },
+    "pre-edit-pins.json": {
+      "archive": "pre-edit-pins.json.gz",
+      "rawSHA256": "53ceab16ba96304e19d80e058e78840eded620b0c2ddf0c0973d8d0186333994",
+      "archiveSHA256": "ba77f9c58cf4d47223c12c2954aef07ef99f477825ded00aea1e10031346995c"
+    },
+    "wiring-restored.log": {
+      "archive": "wiring-restored.log.gz",
+      "rawSHA256": "0a95b0d39fbd8f2530cdd60f06bd456b489429fbbee4dd09a0be0935076acc2d",
+      "archiveSHA256": "cdc420c2708d40c104140c5dc287165120a8d3612be0c7ebc8483ca5773133ed"
+    },
+    "wiring.log": {
+      "archive": "wiring.log.gz",
+      "rawSHA256": "0a95b0d39fbd8f2530cdd60f06bd456b489429fbbee4dd09a0be0935076acc2d",
+      "archiveSHA256": "cdc420c2708d40c104140c5dc287165120a8d3612be0c7ebc8483ca5773133ed"
+    }
+  }
+}

@@ -9,6 +9,7 @@
  */
 
 import { EntityExtractor } from './entity-extractor.js';
+import { getBoolean } from './attribute-helpers.js';
 import { RelationshipType } from '@ifc-lite/data';
 import type { IfcDataStore } from './columnar-parser.js';
 import { isIfcTypeLikeEntity } from './columnar-parser-indexes.js';
@@ -74,12 +75,14 @@ export interface MaterialConstituentInfo {
  * fallback IfcMaterial yield several. Order matches
  * {@link resolveAllMaterialDefIds}. Consumers that need a single value use
  * {@link extractMaterialsOnDemand} (=== element 0 here).
+ * Set includeInherited=false when a caller supplies an occurrence assignment.
  */
 export function extractAllMaterialsOnDemand(
     store: IfcDataStore,
-    entityId: number
+    entityId: number,
+    includeInherited = true
 ): MaterialInfo[] {
-    const { ownerId, defIds } = resolveMaterialOwnerAndDefIds(store, entityId);
+    const { ownerId, defIds } = resolveMaterialOwnerAndDefIds(store, entityId, includeInherited);
     if (defIds.length === 0) return [];
     if (!store.source?.length) {
         const resolved = store.resolvedMaterials?.get(ownerId);
@@ -196,7 +199,7 @@ function resolveMaterial(
                 layers.push({
                     materialName,
                     thickness,
-                    isVentilated: la[2] === true || la[2] === '.T.',
+                    isVentilated: getBoolean(la[2]),
                     name: typeof la[3] === 'string' ? la[3] : undefined,
                     category: typeof la[5] === 'string' ? la[5] : undefined,
                     materialCategory,

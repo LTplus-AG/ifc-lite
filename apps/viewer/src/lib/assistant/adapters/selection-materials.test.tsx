@@ -21,7 +21,7 @@ const sampleText = () => readFile(new URL('../../../../public/samples/building-a
 const sample = async () => parseStep(await sampleText());
 interface Material {
   type: string | null; verification: string; Name?: string; LayerSetName?: string;
-  MaterialLayers?: Array<{ Material: { Name: string }; LayerThickness: { value: number; unit: string } }>;
+  MaterialLayers?: Array<{ Material: { Name: string }; IsVentilated: boolean | null; LayerThickness: { value: number; unit: string } }>;
   memberCount?: number; Materials?: Array<{ Name: string }>;
   MaterialConstituents?: Array<{ Name: string; Fraction: number; Material: { Name: string } }>;
   MaterialProfiles?: Array<{ Name: string; Material: { Name: string } }>;
@@ -220,4 +220,48 @@ test('#7119 missing model store reports unknown assignment totals instead of zer
   assert.equal(rows()[0].materialsStatus, 'unavailable');
   assert.equal(rows()[0].materialCount, null);
   assert.deepEqual(rows()[0].materials, []);
+});
+
+
+test('#7119 live occurrence assignment overrides inherited type materials and their properties', async () => {
+  const source = (await sampleText()).replace("(#52),#62);", "(#50),#62);")
+    .replace('ENDSEC;\nEND-ISO-10303-21;', "#99997=IFCPROPERTYSINGLEVALUE('Type-only marker',$,IFCLABEL('TYPE ONLY'),$);\n#99998=IFCMATERIALPROPERTIES('Inherited material set',$,(#99997),#62);\nENDSEC;\nEND-ISO-10303-21;");
+  seedModel('arch', 0, await parseStep(source), 52);
+  assert.equal(rows()[0].materialProperties[0].psets[0].name, 'Inherited material set');
+  const view = getOrCreateMutationView(useViewerStore, 'arch'); assert.ok(view); view.setExpressIdWatermark(100_000);
+  const material = view.createEntity('IfcMaterial', ['Live occurrence', null, null]);
+  view.createEntity('IfcRelAssociatesMaterial', ['occurrence association', null, null, null, [52], material.expressId]);
+  const property = view.createEntity('IfcPropertySingleValue', ['Occurrence marker', null, { typed: { type: 'IfcLabel', value: 'OCCURRENCE ONLY' } }, null]);
+  view.createEntity('IfcMaterialProperties', ['Occurrence material set', null, [property.expressId], material.expressId]);
+  useViewerStore.setState({ mutationVersion: useViewerStore.getState().mutationVersion + 1 });
+  assert.deepEqual(rows()[0].materials.map(material => material.Name), ['Live occurrence']);
+  assert.deepEqual(rows()[0].materialProperties.map(group => group.expressId), [material.expressId]);
+  const ui = render(renderPanelBody('properties', () => undefined)); await advance(0);
+  assert.match(ui.textContent ?? '', /Occurrence material set/);
+  assert.ok(!ui.textContent?.includes('Inherited material set'));
+});
+
+test('#7119 unset layer ventilation stays unknown while explicit false and true remain distinct', async () => {
+  const additions = `#99901=IFCMATERIALLAYER(#62,0.25,$,$,$,$,$);
+#99902=IFCMATERIALLAYER(#62,0.25,.F.,$,$,$,$);
+#99903=IFCMATERIALLAYER(#62,0.25,.T.,$,$,$,$);
+#99904=IFCMATERIALLAYERSET((#99901,#99902,#99903),'Ventilation invariant',$);
+#99905=IFCRELASSOCIATESMATERIAL('Ventilation association',#1,$,$,(#52),#99904);
+`;
+  seedModel('arch', 0, await parseStep((await sampleText()).replace('ENDSEC;\nEND-ISO-10303-21;', additions + 'ENDSEC;\nEND-ISO-10303-21;')), 52);
+  const layers = rows()[0].materials.find(material => material.LayerSetName === 'Ventilation invariant')?.MaterialLayers;
+  assert.ok(layers);
+  assert.deepEqual(layers.map(layer => layer.IsVentilated), [null, false, true]);
+});
+
+test('#7119 non-plain session material targets are unverified instead of fabricated IfcMaterial values', async () => {
+  seedModel('arch', 0, await sample(), 52);
+  const view = getOrCreateMutationView(useViewerStore, 'arch'); assert.ok(view); view.setExpressIdWatermark(100_000);
+  const layer = view.createEntity('IfcMaterialLayer', [62, 0.25, null, null, null, null, null]);
+  const set = view.createEntity('IfcMaterialLayerSet', [[layer.expressId], 'Live layers', null]);
+  view.createEntity('IfcRelAssociatesMaterial', ['live layers association', null, null, null, [52], set.expressId]);
+  useViewerStore.setState({ mutationVersion: useViewerStore.getState().mutationVersion + 1 });
+  assert.deepEqual(rows()[0].materials[1], { type: null, verification: 'unverified' });
+  assert.equal(rows()[0].materialPropertiesStatus, 'unverified-material-associations');
+  assert.equal(rows()[0].materialPropertyGroupCount, null);
 });

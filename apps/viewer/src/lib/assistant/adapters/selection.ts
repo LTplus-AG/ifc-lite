@@ -102,6 +102,7 @@ function elementRow(s: ViewerState, ref: EntityRef, source: ModelSource, rich: b
   const valueLimit = rich ? 32 : 12;
   const data = effectiveElementData(ref.expressId, source.query, source.view);
   const materials = effectiveMaterials(source.store, ref.expressId, source.view);
+  const materialPropertiesVerified = Boolean(source.store?.source?.length) && !materials.some(material => material.unresolved);
   const materialProperties = effectiveMaterialProperties(source.store, ref.expressId, source.view, s.mutationVersion);
   const attributes = Object.fromEntries([...data.attributes].slice(0, rich ? 32 : 12).map(([name, value]) => [name, bounded(value)]));
   const inherited = effectiveTypeProperties(source.store, ref.expressId, source.view);
@@ -137,13 +138,14 @@ function elementRow(s: ViewerState, ref: EntityRef, source: ModelSource, rich: b
     materialsStatus: source.store ? 'available' : 'unavailable',
     materialCount: source.store ? materials.length : null,
     materials: materials.slice(0, setLimit).map(material => materialEvidence(material, valueLimit)),
-    materialPropertiesStatus: source.store?.source?.length ? 'available' : 'unverified-without-source',
-    materialPropertyGroupCount: source.store?.source?.length ? materialProperties.length : null,
+    materialPropertiesStatus: !source.store?.source?.length ? 'unverified-without-source'
+      : materialPropertiesVerified ? 'available' : 'unverified-material-associations',
+    materialPropertyGroupCount: materialPropertiesVerified ? materialProperties.length : null,
     materialProperties: materialProperties.slice(0, setLimit).map(group => ({
       modelId: ref.modelId, expressId: group.materialId, displayName: bounded(group.materialName),
-      psetCount: source.store?.source?.length ? group.psets.length : null,
+      psetCount: materialPropertiesVerified ? group.psets.length : null,
       psets: group.psets.slice(0, setLimit).map(pset => ({
-        name: pset.name, propertyCount: source.store?.source?.length ? pset.properties.length : null,
+        name: pset.name, propertyCount: materialPropertiesVerified ? pset.properties.length : null,
         properties: Object.fromEntries(pset.properties.slice(0, valueLimit)
           .map(prop => [prop.name, bounded(propertyDisplayValue(prop, source.units, s.unitDisplayOverrides).full)])),
       })),
@@ -198,7 +200,7 @@ export const selectionAdapter: EvidenceAdapter = {
         perElementBounds: rich ? { sets: 16, valuesPerSet: 32, attributes: 32 } : { sets: 6, valuesPerSet: 12, attributes: 12 },
         units: 'Quantity values carry {value, unit} in the Properties panel display unit (project unit, or the display-unit override below); a null unit is undeclared. Property values are the panel display strings, with the unit inline when the measure declares one.',
         displayUnitOverrides: s.unitDisplayOverrides,
-        limitations: 'Includes session edits; element status covers its own edits. Associated materials/properties are included by native reads and snapshot freshness. Sets, values and material members use perElementBounds, with full counts. inheritedType carries model/type GlobalId provenance; occurrence properties override same-named type values. Materials use occurrence-before-type precedence and include session associations. LayerThickness is metres. Generic material properties use panel display units and model/material provenance. Source-free unresolved assignments are unverified; absent values are unknown. A missing store makes assignment totals null/unavailable. Source-free material property totals are null/unverified-without-source; empty rows do not establish absence. Typed IFC2X3 scalar material-property subtypes are outside the generic-set reader. Classifications and relationships are excluded. Large selection is sampled; byClass/byModel cover all selected elements.',
+        limitations: 'Includes session edits; element status covers its own edits. Associated materials/properties are included by native reads and snapshot freshness. Sets, values and material members use perElementBounds, with full counts. inheritedType carries model/type GlobalId provenance; occurrence properties override same-named type values. Materials use occurrence-before-type precedence and include session associations. LayerThickness is metres. Generic material properties use panel display units and model/material provenance. Unreadable source-free or non-plain session assignments are unverified; absent values are unknown. A missing store makes assignment totals null/unavailable. Unreadable material property totals are null/unverified; empty rows do not establish absence. Typed IFC2X3 scalar material-property subtypes are outside the generic-set reader. Classifications and relationships are excluded. Large selection is sampled; byClass/byModel cover all selected elements.',
       },
       rows: sample.map(ref => elementRow(s, ref, sourceFor(ref.modelId), rich)),
       totalRows: refs.length, availability: 'available',

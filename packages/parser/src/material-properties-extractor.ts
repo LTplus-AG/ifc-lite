@@ -7,8 +7,9 @@ import { iterateEffectiveEntities, type EffectiveEntityOverlay } from '@ifc-lite
 import type { IfcDataStore } from './columnar-parser.js';
 import { getAttributeNames, normalizeIfcTypeName } from './ifc-schema.js';
 import { copyParsedExtras, parsePropertyValue, parsePropertyValueWithComplex, type ExtractedProperty } from './property-value-parser.js';
-import { resolveAllMaterialDefIds, collectMaterialLeaves, getMaterialDisplay } from './material-resolver.js';
+import { collectMaterialLeaves, getMaterialDisplay } from './material-resolver.js';
 import type { IfcEntity } from './types.js';
+import { resolveMaterialOwnerAndDefIds } from './material-associations.js';
 
 export interface MaterialPsetGroup {
     materialId: number;
@@ -210,10 +211,10 @@ function buildMaterialPsetGroups(store: IfcDataStore, materialIds: number[], vie
  * member IfcMaterials (where Pset_Material* typically lives) and also checks
  * the set definition itself. Returns one group per material that has psets.
  */
-export function extractMaterialPropertiesOnDemand(store: IfcDataStore, entityId: number, view?: MaterialPropertiesView | null, revision?: number): MaterialPsetGroup[] {
+export function extractMaterialPropertiesOnDemand(store: IfcDataStore, entityId: number, view?: MaterialPropertiesView | null, revision?: number, includeInherited = true): MaterialPsetGroup[] {
     // Every association, not just the primary — psets on a second
     // IfcRelAssociatesMaterial's definition were previously invisible.
-    const defIds = resolveAllMaterialDefIds(store, entityId);
+    const { defIds } = resolveMaterialOwnerAndDefIds(store, entityId, includeInherited);
     if (defIds.length === 0) return [];
     const ids: number[] = [];
     for (const defId of defIds) {

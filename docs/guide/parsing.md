@@ -776,3 +776,10 @@ worker transport preserves these fields when reconstructing a store.
 
 `computeTransformMatrix(MapConversion)` derives the canonical 4×4 matrix
 from the current conversion, including its optional axis scale factors.
+
+
+## Material occurrence precedence
+
+`extractAllMaterialsOnDemand(store, entityId, includeInherited)` returns every occurrence assignment, falling back to the entity's type only when the occurrence has none. `includeInherited` defaults to `true`. Pass `false` when a caller supplies a live occurrence assignment separately, so a stale source type assignment does not remain alongside it.
+
+`extractMaterialPropertiesOnDemand(store, entityId, view, revision, includeInherited)` applies the same choice to generic material property groups. Its final argument also defaults to `true`; the optional mutation view and revision retain live property edits. An unset layer `IsVentilated` remains undefined rather than becoming an explicit false value.

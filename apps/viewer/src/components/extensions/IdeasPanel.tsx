@@ -33,6 +33,7 @@ import { useExtensionHost } from '@/sdk/ExtensionHostProvider';
 import { useViewerStore } from '@/store';
 import { useTranslation } from '@/i18n';
 import { PlanCard } from './PlanCard';
+import { AssistantRecipeIdeas } from './AssistantRecipeIdeas';
 import { toast } from '@/components/ui/toast';
 import { HelpHint } from './HelpHint';
 import { formatExtensionDate } from './localized-date';
@@ -263,6 +264,9 @@ export function IdeasPanel({ onApprovePlan }: IdeasPanelProps) {
             </ul>
           </div>
         )}
+
+        {/* Saved assistant workflows and curated task recipes (viewer AI P20). */}
+        <AssistantRecipeIdeas />
 
         {/* Always-on starter ideas. Hand-curated IFC/AEC workflows the
             user can author without waiting for the miner to learn from

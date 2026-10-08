@@ -60,6 +60,7 @@ import type {
 } from './drawing2DSlice.js';
 import { getDefaultDrawing2DState } from './drawing2DSlice.js';
 import type { SectionConfig } from '@ifc-lite/drawing-2d';
+import { isManualProjectionDepth } from '@/lib/drawing/projection-depth';
 
 /** The five store fields this module persists/restores/clears, as a plain patch. */
 export type Drawing2DMarkupPatch = Pick<
@@ -115,7 +116,6 @@ export function keyFor(modelHash: string): string {
 function isOwnKey(key: string | null): key is string {
   return key !== null && key.startsWith(STORAGE_KEY_PREFIX);
 }
-
 function hashFromKey(key: string): string {
   return key.slice(STORAGE_KEY_PREFIX.length);
 }
@@ -132,11 +132,9 @@ export interface PersistedDrawing2DEntry {
 }
 
 // ── Validation ───────────────────────────────────────────────────────
-
 function isFiniteNumber(v: unknown): v is number {
   return typeof v === 'number' && Number.isFinite(v);
 }
-
 function isPoint2D(v: unknown): v is Point2D {
   if (!v || typeof v !== 'object') return false;
   const p = v as Record<string, unknown>;
@@ -216,10 +214,12 @@ function coalesceDisplayOptions(
     useSymbolicRepresentations: bool('useSymbolicRepresentations'),
     showIfcAnnotations: bool('showIfcAnnotations'),
     showConstructionProjection: bool('showConstructionProjection'),
+    constructionProjectionDepth: isManualProjectionDepth(o.constructionProjectionDepth) ? o.constructionProjectionDepth : null,
     showScanSection: bool('showScanSection'),
     scanSectionThickness: num('scanSectionThickness'),
     scanSectionOpacity: num('scanSectionOpacity'),
     scanSectionIncludeInExport: bool('scanSectionIncludeInExport'),
+    scanSectionOutline: bool('scanSectionOutline'), scanSectionOutlineMaxGap: num('scanSectionOutlineMaxGap'),
     showPrintPreview: bool('showPrintPreview'),
   };
 }

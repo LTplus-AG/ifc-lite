@@ -18,17 +18,41 @@
  */
 
 import { parseCapabilities } from '@ifc-lite/extensions';
-import { runFlow, type FlowDocument, type MemoCache, type RunResult } from '@ifc-lite/flow';
-import { BROWSER_FEATURES, createStandardRegistry, invalidateGlobalIdIndex, referencedSecrets, type FlowHost } from '@ifc-lite/flow-nodes';
+import { runFlow, checkAvailability, type FlowData, type HostFeatures, type FlowDocument, type MemoCache, type RunResult } from '@ifc-lite/flow';
+import { BROWSER_FEATURES, AUTOMATION_FEATURES, createStandardRegistry, invalidateGlobalIdIndex, referencedSecrets, type FlowHost } from '@ifc-lite/flow-nodes';
 import type { BimContext } from '@ifc-lite/sdk';
+import { publishFlowParamDefs } from './param-kinds.js';
 import { BrowserTrackingStore } from './persistence.js';
+import { createViewerBcfWriteGateway } from '../bcf-publication/flow-gateway.js';
+
+/** BCF write nodes share the viewer's durable publication outbox (#6896). */
+const bcfWrites = createViewerBcfWriteGateway();
 
 let registry: ReturnType<typeof createStandardRegistry> | undefined;
 
 /** The standard registry, built once per page. */
 export function flowRegistry(): ReturnType<typeof createStandardRegistry> {
-  registry ??= createStandardRegistry();
+  if (!registry) {
+    const created = createStandardRegistry();
+    registry = created;
+    publishFlowParamDefs(type => created.get(type)?.params);
+  }
   return registry;
+}
+
+let aiNodesLoaded: Promise<void> | undefined;
+
+/**
+ * The AI nodes (`@ifc-lite/flow-nodes/ai`) load with the Flow panel or the
+ * first graph that uses them, not with the page: register them before a
+ * palette, preflight or run needs their definitions.
+ */
+export function ensureFlowAiNodes(): Promise<void> {
+  aiNodesLoaded ??= import('@ifc-lite/flow-nodes/ai').then(({ aiNodes }) => {
+    const registry = flowRegistry();
+    for (const def of aiNodes) if (!registry.has(def.type)) registry.register(def);
+  });
+  return aiNodesLoaded;
 }
 
 export interface ViewerRunInput {
@@ -43,6 +67,11 @@ export interface ViewerRunInput {
   readonly tables?: FlowHost['tables'];
   /** Loads a model for `model.openFromSource` through `addModel` — see `open-model.ts`. */
   readonly openModel?: FlowHost['openModel'];
+  readonly automation?: FlowHost['automation'];
+  /** The Assistant's model as the run's AI service (`lib/flow/ai-host.ts`); AI nodes are unavailable without it. */
+  readonly ai?: FlowHost['ai'];
+  /** Resume after a review: the outputs restored from the approved checkpoint (`RunOptions.resume`). */
+  readonly resume?: ReadonlyMap<string, ReadonlyMap<string, FlowData>>;
 }
 
 export class FlowCapabilityError extends Error {
@@ -85,19 +114,29 @@ export async function runFlowInViewer(input: ViewerRunInput): Promise<RunResult>
     grants: parsed.value,
     networkGrants: parsed.value,
     defaultModelId: input.bim.model.activeId() ?? undefined,
+    bcfWrites,
     ...(input.tables ? { tables: input.tables } : {}),
     ...(input.openModel ? { openModel: input.openModel } : {}),
+    ...(input.automation ? { automation: input.automation } : {}),
+    ...(input.ai ? { ai: input.ai } : {}),
   };
+  if (input.doc.nodes.some((n) => n.type.startsWith('ai.'))) await ensureFlowAiNodes();
+  const features = viewerFlowFeatures(!!input.automation, !!input.ai);
+  // Restored nodes do not run again, so a replayed AI proposal needs no AI service.
+  const unavailable = checkAvailability(input.doc, flowRegistry(), features)
+    .filter((n) => !input.resume?.has(n.nodeId) && (n.status === 'unknown' || n.status === 'unavailable'));
+  if (unavailable.length) throw new Error(unavailable.map((n) => `${n.nodeId}: ${n.reasons.join(', ')}`).join('; '));
   const tracking = new BrowserTrackingStore(input.doc.id, input.pin);
   const result = await input.bim.mutate.batchAsync(`flow:${input.doc.name}`, () =>
     runFlow(input.doc, {
       host,
       registry: flowRegistry(),
-      features: BROWSER_FEATURES,
+      features,
       cache: input.cache,
       tracking,
       inputs: input.inputs,
       signal: input.signal,
+      resume: input.resume,
     }),
   );
   // The model was written but the sets were not saved: the next run would
@@ -108,6 +147,10 @@ export async function runFlowInViewer(input: ViewerRunInput): Promise<RunResult>
     ok: false,
     log: [...result.log, { nodeId: TRACKING_NODE_ID, laneKey: null, level: 'error', message: `tracked sets could not be saved to browser storage: ${tracking.persistError}` }],
   };
+}
+
+export function viewerFlowFeatures(automation: boolean, ai = false): HostFeatures {
+  return { ...BROWSER_FEATURES, backend: new Set([...BROWSER_FEATURES.backend, ...(automation ? AUTOMATION_FEATURES : []), ...(ai ? ['ai'] : [])]) };
 }
 
 /** Log entries about the tracking store itself carry this in place of a node id. */

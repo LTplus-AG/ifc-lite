@@ -1,0 +1,245 @@
+{
+  "version": 10,
+  "id": "ring-proof",
+  "name": "Public IFC validation outcome rings",
+  "page": {
+    "size": "A4",
+    "orientation": "portrait"
+  },
+  "blocks": [
+    {
+      "kind": "ids-report",
+      "id": "ids-compact",
+      "sourceKind": "ids",
+      "sourceName": "Public wall name checks",
+      "generatedAt": "2026-09-30T23:18:00.892Z",
+      "summary": {
+        "checked": 8,
+        "passed": 5,
+        "failed": 3,
+        "passRate": 62
+      },
+      "checks": [
+        {
+          "id": "names",
+          "shortDescription": "Wall Name exists",
+          "checked": 4,
+          "passed": 4,
+          "failed": 0,
+          "passRate": 100,
+          "rules": [
+            {
+              "id": "name",
+              "name": "Name",
+              "shortDescription": "Attribute \"\"Name\"\" must exist",
+              "longDescription": "Attribute \"\"Name\"\" must exist",
+              "checked": 4,
+              "passed": 4,
+              "failed": 0,
+              "passRate": 100
+            }
+          ]
+        },
+        {
+          "id": "plumbing",
+          "shortDescription": "Wall Name is plumbing wall",
+          "checked": 4,
+          "passed": 1,
+          "failed": 3,
+          "passRate": 25,
+          "rules": [
+            {
+              "id": "name",
+              "name": "Name",
+              "shortDescription": "Attribute \"\"Name\"\" must equal \"plumbing wall\"",
+              "longDescription": "Attribute \"\"Name\"\" must equal \"plumbing wall\"",
+              "checked": 4,
+              "passed": 1,
+              "failed": 3,
+              "passRate": 25
+            }
+          ]
+        }
+      ],
+      "reportModels": [
+        {
+          "name": "building-architecture.ifc",
+          "fingerprint": "building-architecture.ifc:f778982157aa24e"
+        }
+      ],
+      "variant": "compact",
+      "title": "IDS outcome audit (compact)",
+      "benchmarks": true
+    },
+    {
+      "kind": "ids-report",
+      "id": "ids-long",
+      "sourceKind": "ids",
+      "sourceName": "Public wall name checks",
+      "generatedAt": "2026-09-30T23:18:00.892Z",
+      "summary": {
+        "checked": 8,
+        "passed": 5,
+        "failed": 3,
+        "passRate": 62
+      },
+      "checks": [
+        {
+          "id": "names",
+          "shortDescription": "Wall Name exists",
+          "checked": 4,
+          "passed": 4,
+          "failed": 0,
+          "passRate": 100,
+          "rules": [
+            {
+              "id": "name",
+              "name": "Name",
+              "shortDescription": "Attribute \"\"Name\"\" must exist",
+              "longDescription": "Attribute \"\"Name\"\" must exist",
+              "checked": 4,
+              "passed": 4,
+              "failed": 0,
+              "passRate": 100
+            }
+          ]
+        },
+        {
+          "id": "plumbing",
+          "shortDescription": "Wall Name is plumbing wall",
+          "checked": 4,
+          "passed": 1,
+          "failed": 3,
+          "passRate": 25,
+          "rules": [
+            {
+              "id": "name",
+              "name": "Name",
+              "shortDescription": "Attribute \"\"Name\"\" must equal \"plumbing wall\"",
+              "longDescription": "Attribute \"\"Name\"\" must equal \"plumbing wall\"",
+              "checked": 4,
+              "passed": 1,
+              "failed": 3,
+              "passRate": 25
+            }
+          ]
+        }
+      ],
+      "reportModels": [
+        {
+          "name": "building-architecture.ifc",
+          "fingerprint": "building-architecture.ifc:f778982157aa24e"
+        }
+      ],
+      "variant": "long",
+      "title": "IDS outcome audit (long)",
+      "benchmarks": true
+    },
+    {
+      "kind": "ids-report",
+      "id": "rules-compact",
+      "sourceKind": "rules",
+      "sourceName": "Public wall information checks",
+      "generatedAt": "2026-09-30T23:18:00.896Z",
+      "summary": {
+        "checked": 12,
+        "passed": 6,
+        "failed": 3,
+        "passRate": 50,
+        "warnings": 3
+      },
+      "checks": [
+        {
+          "id": "description",
+          "shortDescription": "Description exists",
+          "checked": 4,
+          "passed": 4,
+          "failed": 0,
+          "passRate": 100,
+          "rules": []
+        },
+        {
+          "id": "plumbing",
+          "shortDescription": "Name is plumbing wall",
+          "checked": 4,
+          "passed": 1,
+          "failed": 3,
+          "passRate": 25,
+          "rules": []
+        },
+        {
+          "id": "warning",
+          "shortDescription": "Description mentions plumbing",
+          "checked": 4,
+          "passed": 1,
+          "failed": 3,
+          "passRate": 25,
+          "rules": [],
+          "severity": "warning"
+        }
+      ],
+      "reportModels": [
+        {
+          "name": "building-architecture.ifc",
+          "fingerprint": "building-architecture.ifc:f778982157aa24e"
+        }
+      ],
+      "variant": "compact",
+      "title": "Information outcome audit (compact)",
+      "benchmarks": true
+    },
+    {
+      "kind": "ids-report",
+      "id": "rules-long",
+      "sourceKind": "rules",
+      "sourceName": "Public wall information checks",
+      "generatedAt": "2026-09-30T23:18:00.896Z",
+      "summary": {
+        "checked": 12,
+        "passed": 6,
+        "failed": 3,
+        "passRate": 50,
+        "warnings": 3
+      },
+      "checks": [
+        {
+          "id": "description",
+          "shortDescription": "Description exists",
+          "checked": 4,
+          "passed": 4,
+          "failed": 0,
+          "passRate": 100,
+          "rules": []
+        },
+        {
+          "id": "plumbing",
+          "shortDescription": "Name is plumbing wall",
+          "checked": 4,
+          "passed": 1,
+          "failed": 3,
+          "passRate": 25,
+          "rules": []
+        },
+        {
+          "id": "warning",
+          "shortDescription": "Description mentions plumbing",
+          "checked": 4,
+          "passed": 1,
+          "failed": 3,
+          "passRate": 25,
+          "rules": [],
+          "severity": "warning"
+        }
+      ],
+      "reportModels": [
+        {
+          "name": "building-architecture.ifc",
+          "fingerprint": "building-architecture.ifc:f778982157aa24e"
+        }
+      ],
+      "variant": "long",
+      "title": "Information outcome audit (long)",
+      "benchmarks": true
+    }
+  ]
+}

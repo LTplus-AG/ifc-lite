@@ -12,15 +12,21 @@
 import type { IDSDocument } from '@ifc-lite/ids';
 import { auditIDSDocument, IDSParseError, parseIDS } from '@ifc-lite/ids';
 import type { useViewerStore } from '@/store';
+import { beginDefinitionImport, type DefinitionImportOwner } from '@/lib/validation/definition-import-owner';
 
-export function loadIdsContent(store: typeof useViewerStore, xmlContent: string): void {
+const loads = new WeakMap<typeof useViewerStore, number>();
+
+export function loadIdsContent(store: typeof useViewerStore, xmlContent: string, existingId?: string, request?: DefinitionImportOwner): Promise<void> {
+  const owner = request ?? beginDefinitionImport(store, 'ids');
+  if (!owner.wanted()) return Promise.resolve();
   const s = store.getState();
+  const load = (loads.get(store) ?? 0) + 1;
+  loads.set(store, load);
   s.setIdsLoading(true);
   s.setIdsError(null);
   s.setIdsAuditing(true);
   // Clear the previous audit/document up front so a re-load with a
   // malformed file doesn't show stale issues from the previous one.
-  s.setIdsAuditReport(null);
 
   // Try to parse synchronously so the panel switches into "document
   // loaded" mode immediately. Capture any parse error but DON'T early-
@@ -31,14 +37,20 @@ export function loadIdsContent(store: typeof useViewerStore, xmlContent: string)
   let parseErrorMessage: string | null = null;
   try {
     parsed = parseIDS(xmlContent);
-    s.setIdsDocument(parsed);
+    if (!s.addValidationDefinition({ kind: 'ids', xml: xmlContent, document: parsed }, existingId)) {
+      s.setIdsError(store.getState().validationDefinitionsError);
+      s.setIdsAuditing(false);
+      return Promise.resolve();
+    }
+    owner.committed();
+    s.setIdsAuditing(true);
     console.info(
       `[IDS] Loaded: "${parsed.info.title}" (${parsed.specifications.length} specifications)`
     );
   } catch (err) {
     // Drop any previously-loaded document so the panel shows the
     // empty state with the new audit, not the stale prior content.
-    s.setIdsDocument(null);
+    if (!s.validationDefinitions.active.ids) s.setIdsDocument(null);
     // Preserve the underlying detail (e.g. xmldom's
     // "unexpected token at line N column M") instead of just the
     // top-level "Invalid XML format" - that's the actionable bit.
@@ -55,11 +67,22 @@ export function loadIdsContent(store: typeof useViewerStore, xmlContent: string)
     s.setIdsLoading(false);
   }
 
+  // An invalid replacement is an import error, not a license to discard the
+  // active saved source or attach another document's audit to it.
+  if (parseErrorMessage && store.getState().validationDefinitions.active.ids) {
+    s.setIdsError(parseErrorMessage);
+    s.setIdsAuditing(false);
+    return Promise.resolve();
+  }
+  const wanted = () => owner.isLatest() && loads.get(store) === load
+    && store.getState().idsDocument === parsed;
+
   // Always run the audit, even on parse failure. The permissive
   // shim handles malformed XML gracefully and produces a single
   // `E_PARSE_XML` issue plus whatever else it can salvage.
-  void auditIDSDocument(xmlContent)
+  return auditIDSDocument(xmlContent)
     .then((report) => {
+      if (!wanted()) return;
       s.setIdsAuditReport(report);
       // If parse failed but the audit succeeded with no errors,
       // something is internally inconsistent - keep the parse error
@@ -83,6 +106,7 @@ export function loadIdsContent(store: typeof useViewerStore, xmlContent: string)
       }
     })
     .catch((auditErr) => {
+      if (!wanted()) return;
       // Audit itself crashed - non-fatal but unusual. Clear the audit
       // and fall back to whatever parse error we collected.
       console.error('[IDS] Audit failed:', auditErr);
@@ -90,6 +114,6 @@ export function loadIdsContent(store: typeof useViewerStore, xmlContent: string)
       if (parseErrorMessage) s.setIdsError(parseErrorMessage);
     })
     .finally(() => {
-      s.setIdsAuditing(false);
+      if (wanted()) s.setIdsAuditing(false);
     });
 }

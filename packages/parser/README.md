@@ -107,6 +107,10 @@ if (georef?.hasGeoreference) {
 }
 ```
 
+The exported, immutable `SI_PREFIX_MULTIPLIERS` table maps the exact `IfcSIPrefix`
+enumeration names to their numeric prefix factors. IFC readers and STEP compatibility writers
+share this table; an unknown prefix must be refused rather than treated as 1.
+
 ## Read cost data
 
 ```typescript

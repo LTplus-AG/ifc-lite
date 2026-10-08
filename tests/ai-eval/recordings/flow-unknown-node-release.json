@@ -1,0 +1,106 @@
+{
+  "$schema": "../recording.schema.json",
+  "version": 1,
+  "id": "flow-unknown-node-release",
+  "task": "flow-sum",
+  "scene": "flow-empty",
+  "corpus": "release",
+  "prompt": "Suggest an improvement to this graph as a Flow patch: two number inputs, 7 and 5, summed by a math node.",
+  "route": {
+    "kind": "proxy",
+    "model": "openai/gpt-free"
+  },
+  "provenance": {
+    "kind": "authored",
+    "recordedAt": "2026-10-06",
+    "note": "A node type outside the registry is refused by native preview, not trusted."
+  },
+  "response": {
+    "status": 200,
+    "events": [
+      {
+        "choices": [
+          {
+            "delta": {
+              "content": "{\"version\": 1, \"kind\": \"flow.patch\", \"operations\": [{\"op\": \"addNode\", \"alias\": \"a\", \"type\": \"core.number\", \"pos\": [0, 0]}, {\"op\": \"setParam\", \"node\": \"a\", \"param\": \"value\", \"value\": 7}, {\"op\": \"addN"
+            }
+          }
+        ]
+      },
+      {
+        "choices": [
+          {
+            "delta": {
+              "content": "ode\", \"alias\": \"b\", \"type\": \"core.number\", \"pos\": [0, 120]}, {\"op\": \"setParam\", \"node\": \"b\", \"param\": \"value\", \"value\": 5}, {\"op\": \"addNode\", \"alias\": \"sum\", \"type\": \"core.sumproduct\", \"pos\": [260, "
+            }
+          }
+        ]
+      },
+      {
+        "choices": [
+          {
+            "delta": {
+              "content": "60]}, {\"op\": \"setParam\", \"node\": \"sum\", \"param\": \"op\", \"value\": \"add\"}, {\"op\": \"connect\", \"from\": [\"a\", \"value\"], \"to\": [\"sum\", \"a\"]}, {\"op\": \"connect\", \"from\": [\"b\", \"value\"], \"to\": [\"sum\", \"b\"]}]}"
+            }
+          }
+        ]
+      },
+      {
+        "choices": [
+          {
+            "delta": {},
+            "finish_reason": "stop"
+          }
+        ]
+      }
+    ],
+    "done": true
+  },
+  "evidence": {
+    "source": "flow",
+    "models": [],
+    "totalModels": 0,
+    "modelMetadataTruncated": false,
+    "sourceAvailability": "available",
+    "reportProvenance": "unknown",
+    "totalRows": 1,
+    "includedRows": 1,
+    "sampled": false,
+    "projectionTruncated": false,
+    "evidence": {
+      "summary": {
+        "kind": "graph-only",
+        "executionStatus": "not included"
+      },
+      "rows": [
+        {
+          "citation": "E1",
+          "data": {
+            "graph": {
+              "id": "00000000-0000-4000-8000-000000006928",
+              "name": "Coordinator workflow",
+              "nodes": [],
+              "edges": [],
+              "nodeCount": 0,
+              "edgeCount": 0,
+              "omitted": "Node parameters and input/output values are excluded from this discussion snapshot"
+            },
+            "graphTruncated": false
+          }
+        }
+      ]
+    }
+  },
+  "expect": {
+    "outcome": "completed",
+    "violations": [],
+    "proposal": {
+      "kind": "flow.patch",
+      "valid": true
+    },
+    "review": {
+      "kind": "refused",
+      "stage": "preview"
+    }
+  }
+}

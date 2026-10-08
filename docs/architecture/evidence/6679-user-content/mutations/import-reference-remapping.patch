@@ -1,0 +1,16 @@
+--- a/apps/viewer/src/lib/storage/content-backup-references.ts
++++ b/apps/viewer/src/lib/storage/content-backup-references.ts
+@@ -10,11 +10,11 @@
+   return { ...document, blocks: document.blocks.map(block => {
+     if (block.kind === 'chart' && block.chart.comparisonId) {
+       const id = comparisons.get(block.chart.comparisonId);
+-      if (id) return block;
++      if (id) return { ...block, chart: { ...block.chart, comparisonId: id } };
+     }
+     if ((block.kind === 'ids-report' || block.kind === 'manual-report') && block.savedReportId) {
+       const id = validation.get(block.savedReportId);
+-      if (id) return block;
++      if (id) return { ...block, savedReportId: id };
+     }
+     return block;
+   }) };

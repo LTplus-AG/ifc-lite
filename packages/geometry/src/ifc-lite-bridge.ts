@@ -8,13 +8,14 @@
  */
 
 import { createLogger } from '@ifc-lite/data';
+import { runDomainExport } from './domain-export-call.js';
 import type { KmzAltitudeMode, TessellationQuality } from './types.js';
 import type { RtcFrame } from './rtc-frame.js';
 import type { HbjsonStats } from './hbjson-stats.js';
 import * as energyExport from './energy-export-bridge.js';
 import type { GeometryDiagnostics } from './diagnostics.js';
 import type { ExtrusionDefinitions, SweptDiskDescriptions } from './analytic-descriptions.js';
-import { getStartedSharedWasmModule } from './wasm-shared-module.js';
+import { initMainThreadEngine } from './main-engine-init.js';
 import {
   isWasmRuntimeTrap,
   notifyWasmRuntimeUnrecoverable,
@@ -166,32 +167,15 @@ export class IfcLiteBridge {
         const wasmPath: string = requireFromHere.resolve('@ifc-lite/wasm/ifc-lite_bg.wasm');
         wasmInitArg = (await nodeFs.readFile(wasmPath)) as BufferSource;
       }
-      // Reuse the shared compiled module when some other consumer (an idle
-      // prewarm, or the N-worker pool on an earlier load) already fetched this
-      // binary — passing the `WebAssembly.Module` skips the network entirely and
-      // skips a redundant compile of the same ~3.9 MB. `getStartedSharedWasmModule`
-      // never *starts* a compile, so when nothing else did, this path is exactly
-      // what it was before: wasm-bindgen fetches from import.meta.url itself.
-      // Node is excluded — it hands over bytes it read off disk.
-      const sharedModule = wasmInitArg ? null : await (getStartedSharedWasmModule() ?? null);
-
-      // Browser: init() with no arg fetches from import.meta.url. Node: pass the
-      // bytes via the modern object form ({ module_or_path }) to avoid the
-      // deprecated positional-bytes signature.
-      //
-      // Wrapped in `initWasmWithRetry` (issue #1903) so one blip on the ~1.3 MB
-      // (brotli) engine download no longer kills the whole load. This was the
-      // only self-fetching `init()` in the app WITHOUT the retry both workers
-      // already use, and it is the one a first-time visitor hits first — a
-      // returning visitor has the binary in the immutable `/assets/*` cache.
-      // `isTransientWasmLoadError` gates the retry, so a corrupt/invalid module
-      // still fails fast; the shared-module and Node paths pass a prebuilt
-      // `Module`/bytes and cannot be transient, so they never retry.
-      const initArg = wasmInitArg ?? sharedModule ?? undefined;
-      await initWasmWithRetry(
-        () => init(initArg ? { module_or_path: initArg } : undefined),
-        { label: 'ifc-lite-bridge' },
-      );
+      // Raw package resolution and Node's supplied bytes retain their paths; the
+      // browser path joins the realm's one main-thread init (#7036), which a host
+      // may already have started when the load was requested.
+      if (wasmInitArg) {
+        const bytes = wasmInitArg;
+        await initWasmWithRetry(async () => { await init({ module_or_path: bytes }); }, { label: 'ifc-lite-bridge' });
+      } else {
+        await initMainThreadEngine();
+      }
 
       // The WASM bundle has no in-WASM thread pool; rayon `par_iter()`
       // (e.g. FacetedBrep preprocessing) runs sequentially on the main
@@ -521,6 +505,11 @@ export class IfcLiteBridge {
     );
   }
 
+  /** Plan coordinate compatibility patches; all domain math remains in Rust. */
+  planMapConversionNormalization(content: Uint8Array): string {
+    return this.runExport('planMapConversionNormalization', content, api => api.planMapConversionNormalization(content));
+  }
+
   /**
    * Re-serialize the model in `content` to a STEP/IFC string (P1: base
    * re-serialization + reference-closed subset). Empty `schema` preserves the source;
@@ -720,18 +709,9 @@ export class IfcLiteBridge {
    * logging + fatal-wasm-error marking, mirroring the other bridge entry points.
    */
   private runExport<T>(op: string, content: Uint8Array, run: (api: IfcAPI) => T): T {
-    if (!this.ifcApi) {
-      throw new Error('IFC-Lite not initialized. Call init() first.');
-    }
-    try {
-      return run(this.ifcApi);
-    } catch (error) {
-      log.error(`Failed to ${op}`, error, { operation: op, data: { contentLength: content.length } });
-      if (this.isWasmRuntimeError(error)) {
-        this.recordWasmRuntimeTrap();
-      }
-      throw error;
-    }
+    return runDomainExport(this.ifcApi, op, content, run, error => {
+      if (this.isWasmRuntimeError(error)) this.recordWasmRuntimeTrap();
+    });
   }
 
   /**

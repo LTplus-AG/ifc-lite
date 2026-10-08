@@ -27,6 +27,15 @@ export type PointColorMode =
 
 export type PointSizeMode = 'fixed-px' | 'adaptive-world' | 'attenuated';
 
+/** The section plane the shader clips against: flip folded in, disabled → a harmless default. */
+export function resolveSectionPlaneUniform(
+  sp: { normal: [number, number, number]; distance: number; enabled: boolean; flipped?: boolean } | null | undefined,
+): { normal: [number, number, number]; distance: number; enabled: boolean } {
+  if (!sp || !sp.enabled) return { normal: [0, 1, 0], distance: 0, enabled: false };
+  if (!sp.flipped) return { normal: sp.normal, distance: sp.distance, enabled: true };
+  return { normal: [-sp.normal[0], -sp.normal[1], -sp.normal[2]], distance: -sp.distance, enabled: true };
+}
+
 /** Number of u32 words in the 256-bit LAS class-visibility mask. */
 export const CLASS_MASK_WORDS = 8;
 

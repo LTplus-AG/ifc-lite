@@ -31,6 +31,8 @@ import { ClipboardList, ChevronDown, Diamond, Plus, Minus, Trash2, Info } from '
 import { useShallow } from 'zustand/react/shallow';
 import { useViewerStore } from '@/store';
 import type { ScheduleTaskInfo } from '@ifc-lite/parser';
+import { taskProductExpressIds } from '@ifc-lite/parser';
+import { taskStartIso, taskExplicitFinishIso, taskDurationIso } from '@/store/slices/schedule-task-dates';
 import { useTranslation } from '@/i18n';
 import { formatLocaleNumber } from '@/i18n/intlFormat';
 import { EXPRESS_GLOBAL_ID_ATTRIBUTE, EXPRESS_IDENTIFICATION_ATTRIBUTE, EXPRESS_NAME_ATTRIBUTE, EXPRESS_PREDEFINED_TYPE_ATTRIBUTE } from './express-labels';
@@ -291,7 +293,7 @@ export const TaskEditCard = memo(function TaskEditCard({ taskGlobalId }: TaskEdi
           <div className="grid gap-2 rounded border border-border/60 p-2">
             <div className="flex items-center justify-between">
               <Label className="text-2xs">{t('properties.taskEdit.productsLabel')}</Label>
-              <span className="text-2xs font-mono text-muted-foreground">{t('properties.taskEdit.productsAssignedCount', { countDisplay: formatLocaleNumber(locale, task.productExpressIds.length) })}</span>
+              <span className="text-2xs font-mono text-muted-foreground">{t('properties.taskEdit.productsAssignedCount', { countDisplay: formatLocaleNumber(locale, new Set(taskProductExpressIds(task)).size) })}</span>
             </div>
             <div className="grid grid-cols-2 gap-1.5">
               <Tooltip>
@@ -422,17 +424,17 @@ interface DerivedTimeFields {
 
 function deriveTimeFields(task: ScheduleTaskInfo | null): DerivedTimeFields {
   if (!task?.taskTime) return { startLocal: '', finishLocal: '', durationDays: 0 };
-  const startLocal = toDatetimeLocal(task.taskTime.scheduleStart);
-  const finishLocal = toDatetimeLocal(task.taskTime.scheduleFinish);
+  // The window the Gantt draws (#6803); `updateTaskTime` seeds early dates as planned on first edit.
+  const [startIso, finishIso, duration] = [taskStartIso(task), taskExplicitFinishIso(task), taskDurationIso(task)];
+  const start = parseIso(startIso);
+  const finish = parseIso(finishIso);
   let durationDays = 0;
-  const start = parseIso(task.taskTime.scheduleStart);
-  const finish = parseIso(task.taskTime.scheduleFinish);
   if (start !== undefined && finish !== undefined) {
     durationDays = Math.round(((finish - start) / MS_PER_DAY) * 100) / 100;
-  } else if (task.taskTime.scheduleDuration) {
-    durationDays = isoDurationToDays(task.taskTime.scheduleDuration);
+  } else if (duration) {
+    durationDays = isoDurationToDays(duration);
   }
-  return { startLocal, finishLocal, durationDays };
+  return { startLocal: toDatetimeLocal(startIso), finishLocal: toDatetimeLocal(finishIso), durationDays };
 }
 
 /** ISO-8601 → `datetime-local` string (strips seconds and any TZ). */

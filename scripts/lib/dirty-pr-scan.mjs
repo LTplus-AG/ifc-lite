@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { missingLanes as reviewSignalMissingLanes } from './pr-review-signal.mjs';
-import { pullRequestBaseBranches } from './workflow-base-branches.mjs';
+import { pullRequestBaseBranches, matchesBaseBranch } from './workflow-base-branches.mjs';
 import { cadenceReport } from './scan-cadence.mjs';
 
 export { pullRequestBaseBranches, cadenceReport };
@@ -174,7 +174,7 @@ export function classifyPr(pr, required, baseBranches, aliases = new Map()) {
   const missing = missingLanes(required, rollup, aliases);
   const isConflicted = pr.mergeable === 'CONFLICTING' || pr.mergeStateStatus === 'DIRTY';
   const isUnknown = pr.mergeable === 'UNKNOWN' || pr.mergeStateStatus === 'UNKNOWN';
-  const isBaseFiltered = baseBranches !== null && !baseBranches.includes(pr.baseRefName);
+  const isBaseFiltered = baseBranches !== null && !matchesBaseBranch(baseBranches, pr.baseRefName);
 
   // Base filter first: it is the condition a merge has no power over, so it
   // names the group. It is not the whole remedy for a PR that is both --

@@ -16,6 +16,7 @@ import { ELEMENT_SPLIT } from './commands/element-split.js';
 import { ELEMENT_MOVE } from './commands/element-move.js';
 import { ELEMENT_ROTATE } from './commands/element-rotate.js';
 import { ROOM_PLACE } from './commands/room-place.js';
+import { SPACE_ENVELOPE } from './commands/space-envelope.js';
 import { DOOR_PLACE, OPENING_PLACE, WINDOW_PLACE } from './commands/hosted-place.js';
 import { SLAB_PLACE } from './commands/slab-place.js';
 import { WALL_MOVE_ENDPOINT } from './commands/wall-move-endpoint.js';
@@ -29,6 +30,8 @@ import { RAILING_PLACE } from './commands/railing-place.js';
 import { SPLIT_MULTI } from './commands/multi-split.js';
 import { ELEMENT_ALIGN } from './commands/element-align.js';
 import { ELEMENT_PUSH_PULL } from './commands/element-push-pull.js';
+import { CURTAINWALL_PLACE } from './commands/curtainwall-place.js';
+import { GRID_PLACE } from './commands/grid-place.js';
 import { ELEMENT_TRIM_EXTEND } from './commands/trim-extend.js';
 import type { ModelingCommand } from './types.js';
 
@@ -44,6 +47,7 @@ registerOnce(SLAB_PLACE);
 registerOnce(COLUMN_PLACE);
 registerOnce(BEAM_PLACE);
 registerOnce(ROOM_PLACE);
+registerOnce(SPACE_ENVELOPE);
 registerOnce(OPENING_PLACE);
 registerOnce(DOOR_PLACE);
 registerOnce(WINDOW_PLACE);
@@ -58,6 +62,8 @@ registerOnce(RAILING_PLACE);
 registerOnce(SPLIT_MULTI);
 registerOnce(ELEMENT_PUSH_PULL);
 registerOnce(ELEMENT_ALIGN);
+registerOnce(CURTAINWALL_PLACE);
+registerOnce(GRID_PLACE);
 registerOnce(ELEMENT_TRIM_EXTEND);
 
 setWorkplaneResolver((s, modelId, spec) => (spec.kind === 'storey'

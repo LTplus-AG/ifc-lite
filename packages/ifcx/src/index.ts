@@ -10,12 +10,15 @@
  */
 
 import type { IfcxFile, ComposedNode } from './types.js';
+import type { IfcxParseResult, IfcxParseOptions } from './parse-result.js';
+export type { IfcxParseResult, IfcxParseOptions } from './parse-result.js';
+import { extractGeoreference } from './georeference.js';
 import { ATTR, SPATIAL_TYPES, isTypedPropertyValue, parseV5aKey } from './types.js';
 import { composeIfcx } from './composition.js';
 import { extractEntities } from './entity-extractor.js';
 import { extractProperties, mirroredFlatPropertyKeys, routesToQuantityTable } from './property-extractor.js';
-import { extractGeometry, type MeshData } from './geometry-extractor.js';
-import { extractPointClouds, type PointCloudExtraction } from './pointcloud-extractor.js';
+import { extractGeometry } from './geometry-extractor.js';
+import { extractPointClouds } from './pointcloud-extractor.js';
 import { buildHierarchy } from './hierarchy-builder.js';
 import {
   StringTable,
@@ -24,7 +27,7 @@ import {
   QuantityTableBuilder,
   safeUtf8Decode,
 } from '@ifc-lite/data';
-import type { SpatialHierarchy, EntityTable, PropertyTable, QuantityTable, RelationshipGraph } from '@ifc-lite/data';
+import type { QuantityTable, RelationshipGraph } from '@ifc-lite/data';
 
 // Federated composition imports
 import { LayerStack, createLayerStack } from './layer-stack.js';
@@ -119,46 +122,6 @@ export {
 } from './writer.js';
 
 /**
- * Result of parsing an IFCX file.
- * Compatible with existing ifc-lite data structures.
- */
-export interface IfcxParseResult {
-  /** Columnar entity table */
-  entities: EntityTable;
-  /** Columnar property table */
-  properties: PropertyTable;
-  /** Columnar quantity table */
-  quantities: QuantityTable;
-  /** Relationship graph */
-  relationships: RelationshipGraph;
-  /** Spatial hierarchy */
-  spatialHierarchy: SpatialHierarchy;
-  /** String table for interned strings */
-  strings: StringTable;
-  /** Pre-tessellated geometry meshes */
-  meshes: MeshData[];
-  /** Decoded point clouds (pcd::base64, points::array, points::base64) */
-  pointClouds: PointCloudExtraction[];
-  /** Mapping from IFCX path to express ID */
-  pathToId: Map<string, number>;
-  /** Mapping from express ID to IFCX path */
-  idToPath: Map<number, string>;
-  /** Schema version */
-  schemaVersion: 'IFC5';
-  /** File size in bytes */
-  fileSize: number;
-  /** Number of entities */
-  entityCount: number;
-  /** Parse time in milliseconds */
-  parseTime: number;
-}
-
-export interface IfcxParseOptions {
-  /** Progress callback */
-  onProgress?: (progress: { phase: string; percent: number }) => void;
-}
-
-/**
  * Parse an IFCX file and return data compatible with existing ifc-lite pipeline.
  */
 export async function parseIfcx(
@@ -189,6 +152,7 @@ export async function parseIfcx(
   // Phase 2: Compose ECS nodes
   options.onProgress?.({ phase: 'compose', percent: 0 });
   const composed = composeIfcx(file);
+  const georeferencing = extractGeoreference(composed);
   options.onProgress?.({ phase: 'compose', percent: 100 });
 
   // Phase 3: Extract entities
@@ -238,6 +202,7 @@ export async function parseIfcx(
     fileSize: buffer.byteLength,
     entityCount: entities.count,
     parseTime,
+    georeferencing,
   };
 }
 
@@ -575,6 +540,7 @@ function finalizeFederatedResult(
   for (const [path, node] of compositionResult.composed) {
     composed.set(path, node as ComposedNode);
   }
+  const georeferencing = extractGeoreference(composed);
 
   // Phase 3: Extract entities
   options.onProgress?.({ phase: 'entities', percent: 0 });
@@ -630,6 +596,7 @@ function finalizeFederatedResult(
     entityCount: entities.count,
     parseTime,
     // Federated-specific fields
+    georeferencing,
     layerStack,
     pathIndex: compositionResult.pathIndex,
     compositionStats: {
@@ -668,37 +635,44 @@ export async function addIfcxOverlay(
 
   // Add to layer stack (at top = strongest)
   const layerStack = baseResult.layerStack;
-  layerStack.addLayer(file, overlayBuffer, overlayName, {
+  const addedLayerId = layerStack.addLayer(file, overlayBuffer, overlayName, {
     type: 'file',
     filename: overlayName,
     size: overlayBuffer.byteLength,
   });
 
-  // Re-compose with the new layer directly from the already-parsed stack.
-  // Avoid round-tripping every layer buffer back through parseFederatedIfcx
-  // (re-JSON.parsing all prior layers), which would make the k-th overlay
-  // cost O(total bytes of all layers).
-  const startTime = performance.now();
-  options.onProgress?.({ phase: 'compose', percent: 0 });
-  const compositionResult = composeFederated(layerStack, {
-    onProgress: (phase, percent) => {
-      options.onProgress?.({ phase: `compose-${phase}`, percent });
-    },
-    maxInheritDepth: options.maxInheritDepth,
-  });
-  options.onProgress?.({ phase: 'compose', percent: 100 });
+  // Failed composition or extraction must leave the previous result usable
+  // (#6824). Successful overlays keep the existing shared-stack semantics.
+  try {
+    // Re-compose with the new layer directly from the already-parsed stack.
+    // Avoid round-tripping every layer buffer back through parseFederatedIfcx
+    // (re-JSON.parsing all prior layers), which would make the k-th overlay
+    // cost O(total bytes of all layers).
+    const startTime = performance.now();
+    options.onProgress?.({ phase: 'compose', percent: 0 });
+    const compositionResult = composeFederated(layerStack, {
+      onProgress: (phase, percent) => {
+        options.onProgress?.({ phase: `compose-${phase}`, percent });
+      },
+      maxInheritDepth: options.maxInheritDepth,
+    });
+    options.onProgress?.({ phase: 'compose', percent: 100 });
 
-  // fileSize reflects the total bytes of every layer (matching parseFederatedIfcx).
-  let totalSize = 0;
-  for (const layer of layerStack.getLayers()) {
-    totalSize += layer.buffer.byteLength;
+    // fileSize reflects the total bytes of every layer (matching parseFederatedIfcx).
+    let totalSize = 0;
+    for (const layer of layerStack.getLayers()) {
+      totalSize += layer.buffer.byteLength;
+    }
+
+    return finalizeFederatedResult(
+      layerStack,
+      compositionResult,
+      totalSize,
+      startTime,
+      options
+    );
+  } catch (error) {
+    layerStack.removeLayer(addedLayerId);
+    throw error;
   }
-
-  return finalizeFederatedResult(
-    layerStack,
-    compositionResult,
-    totalSize,
-    startTime,
-    options
-  );
 }

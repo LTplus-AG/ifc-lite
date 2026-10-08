@@ -23,6 +23,8 @@
  */
 
 import type { StoreEditor } from '@ifc-lite/mutations';
+import type { IfcDataStore } from '@ifc-lite/parser';
+import { assertGridIntersectionOwner } from './grid-intersection-read.js';
 import { assertFinitePoint3 } from '../ifc-creator-math.js';
 import { toNativeLength, toNativePoint3, type SpatialAnchor } from './anchor.js';
 import {
@@ -279,17 +281,24 @@ function assertIntersection(editor: StoreEditor, params: GridIntersectionParams,
  * Emit an IfcGridPlacement on the intersection of two grid axes, for an
  * element's `ObjectPlacement` (IfcProduct attribute 5). The element's own
  * geometry is then relative to the intersection, oriented by `RefDirection`.
+ * Both live axes must belong to different rows of one unambiguous grid.
+ * Curved and radial axes remain supported. For imported axes, pass the editor's source store as
+ * the fourth argument; its live mutation view is applied automatically.
+ * Overlay-only grids do not require a source context. Invalid references
+ * refuse before any placement or intersection entities are emitted.
  */
 export function gridIntersectionPlacement(
   editor: StoreEditor,
   anchor: Pick<SpatialAnchor, 'schema' | 'lengthUnitScale'>,
   params: GridPlacementParams,
+  sourceStore?: IfcDataStore,
 ): GridPlacementResult {
   const op = 'gridIntersectionPlacement';
   const registry = schemaRegistry(anchor.schema, op);
   const isIfc2x3 = registry.name.toUpperCase() === 'IFC2X3';
   const isIfc4x3 = registry.name.toUpperCase().startsWith('IFC4X3');
   assertIntersection(editor, params, 'Location', op);
+  const owner = assertGridIntersectionOwner(editor, params.Axes, params.GridPlacementId, op, sourceStore);
   const ref = params.RefDirection;
   const refIsVector = Array.isArray(ref);
   if (ref !== undefined) {
@@ -301,11 +310,13 @@ export function gridIntersectionPlacement(
       if (isIfc2x3) throw new Error(`${op}: IFC2X3 orients a grid placement only by a second intersection, not a direction`);
     } else {
       assertIntersection(editor, ref as GridIntersectionParams, 'RefDirection', op);
+      const directionOwner = assertGridIntersectionOwner(editor, (ref as GridIntersectionParams).Axes, undefined, op, sourceStore);
+      if (directionOwner.gridId !== owner.gridId) throw new Error(`${op}: RefDirection axes must belong to the location's grid`);
     }
   }
   if (params.GridPlacementId !== undefined && isIfc4x3) {
     const type = editor.getEntityType(params.GridPlacementId);
-    if (type === undefined || !/Placement$/.test(type)) {
+    if (type === undefined || !type.endsWith('Placement')) {
       throw new Error(`${op}: GridPlacementId #${params.GridPlacementId} is ${type ?? 'not an entity'}, not an object placement`);
     }
   }

@@ -22,6 +22,11 @@ import './disable-react-dev-perf-track';
 // translation extension mutating the DOM can't crash the reconciler. See
 // harden-dom-mutations.ts (PostHog issues #1229/#1230/#1232).
 import './harden-dom-mutations';
+// Before react-dom too: under ?perfTrace=1, switches the #6957 counters on
+// before the store and renderer exist, and counts React commits.
+import './lib/perf/reactCommits';
+import { PERF_TRACE_ENABLED } from './lib/perf/perfTraceFlag';
+import { loadTracerReady } from './lib/perf/loadTrace';
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { App } from './App';
@@ -38,6 +43,7 @@ import './i18n/locales.boot';
 import { installWasmVersionSkewRecovery } from './lib/wasm-version-skew';
 import { installChunkVersionSkewRecovery } from './lib/chunk-version-skew';
 import { scheduleWasmPrewarm } from './lib/wasm-prewarm';
+import { initializeUserContent } from './lib/storage/content-boot';
 import type { FileSourceProviderFactory } from './services/sources/source-host';
 
 export type { FileSourceProviderFactory } from './services/sources/source-host';
@@ -59,6 +65,7 @@ export interface ViewerBootstrapOptions {
 
 /** Mounts the viewer into `container`. Call once, from the app entry. */
 export function mountViewer(container: HTMLElement, options: ViewerBootstrapOptions = {}): void {
+  initializeUserContent();
   // WASM engine-binary recovery — the sibling of the chunk recovery below for the
   // `ifc-lite_bg.wasm` binary, which wasm-bindgen fetches inside a worker and so
   // is invisible to Vite's `vite:preloadError`. When a deploy rotates the hashed
@@ -75,11 +82,15 @@ export function mountViewer(container: HTMLElement, options: ViewerBootstrapOpti
   // chunk-version-skew.ts for why the reload must NOT suppress Vite's re-throw.
   installChunkVersionSkewRecovery();
 
-  ReactDOM.createRoot(container).render(
+  const render = () => ReactDOM.createRoot(container).render(
     <React.StrictMode>
       <App sourceProviders={options.sourceProviders} />
     </React.StrictMode>
   );
+  // Trace mode only: mount after the recording tracer exists, so a load can't
+  // start on the no-op tracer and lose its spans. A normal boot renders at once.
+  if (PERF_TRACE_ENABLED) void loadTracerReady.then(render);
+  else render();
 
   // Pull the geometry engine binary down while the user is still deciding which
   // file to open, instead of on the click that opens it. See wasm-prewarm.ts.

@@ -5,11 +5,14 @@
 /**
  * An IDS or information-validation report block on the preview sheet
  * (#5125, #6372): the same summary and check list the PDF prints
- * (`compose-ids-report.ts`), as HTML — mirrors `TablePreview.tsx`'s split
+ * (`compose-ids-report.ts`), as HTML — mirrors `ComposedPageItems.tsx`'s split
  * between "nothing to print" and rows.
  */
+import { BlockHeading } from './BlockHeading';
+import { blockTitle } from '@/lib/document/block-title';
+import { ValidationBenchmark } from '../validation/ValidationBenchmark';
 import { passRateBand } from '@ifc-lite/ids';
-import { reportScopeText } from '@/lib/document/report-provenance';
+import { reportStamp } from '@/lib/document/report-provenance';
 import { useTranslation } from '@/i18n';
 import { localeCount } from '@/i18n/intlFormat';
 import { reportBlockSourceKind, type IdsReportBlock, type IdsReportCardinality, type IdsReportCheckSummary } from '@/lib/document/types';
@@ -84,7 +87,7 @@ function RateBar({ rate }: { rate: number | null }) {
 function CompactRow({ name, passed, checked, rate, nested, error, warning }: { name: string; passed: number | null; checked: number; rate: number | null; nested?: boolean; error?: string; warning?: boolean }) {
   const { t, locale } = useTranslation();
   return (
-    <li className={`flex items-center gap-2 ${nested ? 'text-2xs' : 'text-xs font-medium'}`} data-ids-report-row>
+    <li className={`flex items-center gap-2 ${nested ? 'text-2xs' : 'text-xs font-semibold'}`} data-ids-report-row>
       <span className="w-2/5 min-w-0 truncate" title={name}>
         {warning && <span className="mr-1 rounded bg-amber-100 px-1 font-semibold text-amber-900" data-ids-report-warning>{t('document.preview.idsReportWarningTag')}</span>}
         {name}
@@ -105,38 +108,56 @@ function CompactRow({ name, passed, checked, rate, nested, error, warning }: { n
 
 function CompactChecks({ block }: { block: IdsReportBlock }) {
   return (
-    <ul className="mt-1 flex flex-col gap-1" data-ids-report-checks={block.checks.length} data-ids-report-variant="compact">
-      {block.checks.flatMap((check) => [
-        <CompactRow key={check.id} name={check.shortDescription || check.id} passed={check.passed} checked={check.checked} rate={check.passRate} error={check.error} warning={check.severity === 'warning'} />,
-        ...check.rules.map((rule) => (
-          <CompactRow key={`${check.id}/${rule.id}`} nested name={rule.name ?? (rule.shortDescription || rule.id)} passed={rule.passed} checked={rule.checked} rate={rule.passRate} />
-        )),
-        <li key={`${check.id}/details`} className="ml-3 list-none"><ul className="space-y-1"><RuleDetailRows check={check} /></ul></li>,
-      ])}
+    <ul className="mt-1 flex flex-col gap-2.5" data-ids-report-checks={block.checks.length} data-ids-report-variant="compact">
+      {/* A specification heads a group; its requirements sit indented under a rule, as the PDF indents them (#6550). */}
+      {block.checks.map((check) => (
+        <li key={check.id} className="list-none" data-ids-report-spec={check.id}>
+          <ul className="flex flex-col gap-1">
+            <CompactRow name={check.shortDescription || check.id} passed={check.passed} checked={check.checked} rate={check.passRate} error={check.error} warning={check.severity === 'warning'} />
+            {!block.specificationsOnly && (check.rules.length > 0 || !!check.cardinality || (check.sets?.length ?? 0) > 0 || !!check.setsTruncated) && (
+              <li className="ml-3 list-none border-l border-neutral-200 pl-2">
+                <ul className="flex flex-col gap-1" data-ids-report-requirements={check.rules.length}>
+                  {check.rules.map((rule) => (
+                    <CompactRow key={rule.id} nested name={rule.name ?? (rule.shortDescription || rule.id)} passed={rule.passed} checked={rule.checked} rate={rule.passRate} />
+                  ))}
+                  <RuleDetailRows check={check} />
+                </ul>
+              </li>
+            )}
+          </ul>
+        </li>
+      ))}
     </ul>
   );
 }
 
 export interface IdsReportPreviewProps {
   block: IdsReportBlock;
+  /** Browser pixels per point of the sheet, for an authored heading size. */
+  pointScale?: number;
 }
 
-export function IdsReportPreview({ block }: IdsReportPreviewProps) {
+export function IdsReportPreview({ block, pointScale = 1 }: IdsReportPreviewProps) {
   const { t, locale } = useTranslation();
   const { checked, passed, failed, passRate, warnings } = block.summary;
   // Long keeps the classic structure but never cuts text (#6470); a document saved before variants existed keeps its truncated rows.
   const cut = block.variant === 'long' ? 'break-words' : 'truncate';
-  const heading = reportBlockSourceKind(block) === 'rules'
+  const heading = blockTitle(block, reportBlockSourceKind(block) === 'rules'
     ? t('document.preview.rulesReportHeading', { name: block.sourceName })
-    : t('document.preview.idsReportHeading', { name: block.sourceName });
+    : t('document.preview.idsReportHeading', { name: block.sourceName }));
+
+  const stamp = reportStamp(block);
 
   return (
     <div data-block-ids-report data-source-kind={reportBlockSourceKind(block)}>
-      <div className="truncate text-sm font-semibold" title={heading}>{heading}</div>
-      <div className={`text-2xs ${DOCUMENT_PREVIEW_MUTED_TEXT_CLASS}`}>
-        {t('document.preview.idsReportGeneratedAt', { timestamp: block.generatedAt })}
-      </div>
-      {reportScopeText(block) && <div className="text-2xs text-neutral-600" data-report-model-scope>{t('validationPanel.history.models', { models: reportScopeText(block) })}</div>}
+      <BlockHeading block={block} text={heading} pointScale={pointScale} className="truncate text-sm font-semibold" title={heading} />
+      {stamp && <>
+        <div className={`text-2xs ${DOCUMENT_PREVIEW_MUTED_TEXT_CLASS}`}>
+          {t('document.preview.idsReportGeneratedAt', { timestamp: stamp.generatedAt })}
+        </div>
+        {stamp.models && <div className="text-2xs text-neutral-600" data-report-model-scope>{t('validationPanel.history.models', { models: stamp.models })}</div>}
+      </>}
+      {block.benchmarks && <ValidationBenchmark summary={block.summary} name={block.sourceName} paper />}
       <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 rounded border border-neutral-200 bg-neutral-50 px-2 py-1.5">
         <Stat label={t('document.preview.idsReportChecked')} value={checked.toLocaleString(locale)} />
         <Stat label={t('document.preview.idsReportPassed')} value={passed.toLocaleString(locale)} />

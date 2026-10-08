@@ -118,13 +118,51 @@ describe('drag and atomic import invariants (#4226)', () => {
   });
 });
 
-import { createModelIndexAllocator } from './model-indices.js';
+import type { MeshData } from '@ifc-lite/geometry';
+import { createModelIndexAllocator, geometryWithModelIndex } from './model-indices.js';
+
+it('shares one index map until an assignment changes (#7021)', () => {
+  const indices = createModelIndexAllocator();
+  const first = indices(new Map([['ifc', {}]]));
+  // A streamed append re-creates the store's models map with the same ids.
+  assert.equal(indices(new Map([['ifc', {}]])), first);
+  const grown = indices(new Map([['ifc', {}], ['scan', {}]]));
+  assert.notEqual(grown, first);
+  assert.deepEqual([...grown], [['ifc', 0], ['scan', 1]]);
+  assert.deepEqual([...first], [['ifc', 0]], 'an earlier map is never mutated');
+  assert.notEqual(indices(new Map([['scan', {}]])), grown);
+});
+
+it('stamps one model\'s meshes in place and restarts for a new index (#7021)', () => {
+  const part = (id: number): MeshData => ({ expressId: id, positions: new Float32Array(0), normals: new Float32Array(0),
+    indices: new Uint32Array(0), color: [1, 1, 1, 1] });
+  const zero = { x: 0, y: 0, z: 0 };
+  const meshes = [part(1), part(2)];
+  const firstMesh = meshes[0];
+  const geometry = { meshes, totalTriangles: 0, totalVertices: 0,
+    coordinateInfo: { originShift: zero, originalBounds: { min: zero, max: zero }, shiftedBounds: { min: zero, max: zero }, hasLargeCoordinates: false } };
+  const stamped = geometryWithModelIndex(geometry, 0)!;
+  assert.equal(stamped, geometry, 'no point clouds to restamp: the model geometry itself');
+  assert.equal(stamped.meshes, meshes, 'the model\'s own array, not a copy');
+  assert.equal(stamped.meshes[0], firstMesh, 'stamped in place, not copied');
+  assert.deepEqual(meshes.map((m) => m.modelIndex), [0, 0]);
+  meshes.push(part(3));
+  geometryWithModelIndex(geometry, 0);
+  assert.deepEqual(meshes.map((m) => m.modelIndex), [0, 0, 0]);
+  geometryWithModelIndex(geometry, 2);
+  assert.deepEqual(meshes.map((m) => m.modelIndex), [2, 2, 2]);
+});
 
 it('keeps retained instance ownership stable after removal, addition, and single-model fallback (#4226)', () => {
   const indices = createModelIndexAllocator();
   assert.deepEqual([...indices(new Map([['ifc', {}], ['scan', {}]]))], [['ifc', 0], ['scan', 1]]);
   const remaining = indices(new Map([['scan', {}]]));
   assert.equal(remaining.get('scan'), 1);
+  const zero = { x: 0, y: 0, z: 0 };
+  const geometry = geometryWithModelIndex({ meshes: [], totalTriangles: 0, totalVertices: 0,
+    coordinateInfo: { originShift: zero, originalBounds: { min: zero, max: zero }, shiftedBounds: { min: zero, max: zero }, hasLargeCoordinates: false },
+    pointClouds: [{ expressId: 9, chunk: { positions: new Float32Array([1, 2, 3]), pointCount: 1, bbox: { min: [1, 2, 3], max: [1, 2, 3] } } }] }, remaining.get('scan')!);
+  assert.equal(geometry?.pointClouds?.[0].modelIndex, 1);
   assert.deepEqual([...indices(new Map([['scan', {}], ['replacement', {}]]))], [['scan', 1], ['replacement', 2]]);
   indices(new Map());
   assert.equal(indices(new Map([['new-session', {}]])).get('new-session'), 0);

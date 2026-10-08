@@ -1,0 +1,12 @@
+# Windows worker-only gateway. No viewer or OAuth application secret is needed.
+# Set IFCLITE_EXCHANGE_WORKER_HOST to the worker's public DNS hostname.
+{$IFCLITE_EXCHANGE_WORKER_HOST} {
+    request_body {
+        max_size 64KB
+    }
+    reverse_proxy 127.0.0.1:3003 {
+        transport http {
+            response_header_timeout 30s
+        }
+    }
+}

@@ -1453,11 +1453,26 @@ ifc-lite flow validate audit.flow.json
 |------------|---------|
 | `run <graph> <file.ifc>` | Evaluate the graph. `--input <nodeId.param=value>` (repeatable; JSON values parse, others are strings), `--out <file>` (IFC with the run's mutations applied), `--tracking <file>` / `--no-tracking` (element sets of tracked creation nodes; default `<graph>.tracking.json` beside the graph), `--json` |
 | `describe <graph>` | Print declared inputs (with param defaults) and outputs (with value kind and access). `--json` |
+| `run ... --checkpoint <file>` | A graph with AI nodes pauses for review: the run saves a review checkpoint to `<file>`, prints the proposal and its digest, and exits **3**. A run that wrote to the model or opened a different model before pausing also needs `--out`; the resume must start from that file. `--ai-max-requests` / `--ai-max-output-tokens` set the run's AI root budget (default 12 requests, 24,000 output tokens) |
+| `review <checkpoint> --approve <digest>` / `--reject` | Approve exactly the proposal that was shown (the digest must match) or decline it. Without a flag it prints the checkpoint. `--json` |
+| `resume <graph> <file.ifc> --checkpoint <file>` | Claim an approved checkpoint once, check that the graph, `--input` values and model are the ones the pause recorded, restore every completed node without running it again (no AI request is sent for the reviewed proposal), and run what was paused. `--out`, `--next-checkpoint <file>` when the graph pauses again |
 | `validate <graph>` | Validate the document's wiring against the node registry (unknown types, missing ports, type-incompatible edges, unconnected required inputs, `inputs`/`outputs` markers that name nothing) and report each node as `ok`, `noop`, `unavailable` or `unknown` on this host. Exit 2 on any wiring problem or unrunnable node. `--json` |
 
 `run` exits 1 when any node failed; per-lane errors inside a lifted node do not fail the run
 (the lane yields `null`) and are listed under `errors` in the summary. Secrets are resolved from
 environment variables; a node that requires one the host lacks is reported as `unavailable`.
+
+AI nodes (`ai.classify`, `ai.summarize`, `ai.extract`) run only when the environment names an
+OpenAI-compatible provider: `IFC_LITE_AI_MODEL` and `IFC_LITE_AI_API_KEY` (and optionally
+`IFC_LITE_AI_BASE_URL`, default OpenRouter). Without them the graph is refused before the model is
+opened. The key never appears in output or in a checkpoint.
+
+```bash
+ifc-lite flow run roles.flow.json model.ifc --checkpoint roles.checkpoint.json   # exit 3: paused for review
+ifc-lite flow review roles.checkpoint.json                                       # print the proposal and its digest
+ifc-lite flow review roles.checkpoint.json --approve <digest>
+ifc-lite flow resume roles.flow.json model.ifc --checkpoint roles.checkpoint.json --out roles.ifc
+```
 
 A graph with a tracked creation node (`model.addElement`) re-run on its own output updates the
 elements it made — same GlobalIds, changed geometry — and removes the ones whose lanes vanished:
@@ -1574,6 +1589,8 @@ Run `ifc-lite schema` to see the full API before writing eval expressions.
 
 ## Command Reference
 
+The `semantic` command reads JSON/SPARQL providers, generates shared profile artifacts, validates JSON or RDF, and operates an authenticated HTTPS relay. See [Headless semantic records](semantic-headless.md) for flags, result formats, credential references, and reproduction examples.
+
 <!-- BEGIN GENERATED: cli-commands -->
 | Command | Description |
 |---------|-------------|
@@ -1613,5 +1630,6 @@ Run `ifc-lite schema` to see the full API before writing eval expressions.
 | `gym` | reset/step/reward environment loop (JSONL over stdin/stdout) |
 | `delivery` | Repeatable delivery check (structural + IDS + rule sets) from a saved recipe |
 | `check` | Run a .rules.json information-validation rule set (same engine as the viewer) |
-| `flow` | Evaluate a node graph headlessly |
+| `semantic` | Shared semantic profiles, SHACL and JSON/SPARQL providers |
+| `flow` | Evaluate a node graph headlessly; pause and resume reviewed AI proposals |
 <!-- END GENERATED: cli-commands -->

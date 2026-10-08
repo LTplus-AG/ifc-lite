@@ -172,28 +172,32 @@ export function resolveProductIds(
   task: ScheduleTaskInfo,
   resolver?: (gid: string) => number | undefined,
 ): number[] {
-  // Prefer expressIds when they're present and non-zero (the in-memory schedule
-  // path). When only globalIds are known (e.g. round-tripping through the SDK
-  // boundary), use the caller-supplied resolver to look them up against the
-  // current model — falls back to expressIds whenever the resolver returns
-  // undefined.
-  //
   // Walk the union of both arrays so global-id-only entries (common for
   // generated schedules where expressId was never filled in) still hit the
   // resolver instead of being silently dropped.
   const out: number[] = [];
   const count = Math.max(task.productExpressIds.length, task.productGlobalIds.length);
   for (let i = 0; i < count; i++) {
-    const expressId = task.productExpressIds[i];
-    const globalId = task.productGlobalIds[i];
-    if (resolver && globalId) {
-      const resolved = resolver(globalId);
-      if (resolved !== undefined && resolved > 0) {
-        out.push(resolved);
-        continue;
-      }
-    }
-    if (expressId !== undefined && expressId > 0) out.push(expressId);
+    const id = resolveProductId(task.productExpressIds[i], task.productGlobalIds[i], resolver);
+    if (id !== undefined) out.push(id);
   }
   return out;
+}
+
+/**
+ * Resolve one product reference to the express ID to write. Prefer the
+ * caller-supplied resolver for a known globalId (round-tripping through the
+ * SDK boundary, where the expressId may belong to another ID space); fall
+ * back to a positive expressId (the in-memory schedule path).
+ */
+export function resolveProductId(
+  expressId: number | undefined,
+  globalId: string | undefined,
+  resolver?: (gid: string) => number | undefined,
+): number | undefined {
+  if (resolver && globalId) {
+    const resolved = resolver(globalId);
+    if (resolved !== undefined && resolved > 0) return resolved;
+  }
+  return expressId !== undefined && expressId > 0 ? expressId : undefined;
 }

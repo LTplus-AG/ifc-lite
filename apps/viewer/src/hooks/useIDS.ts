@@ -15,39 +15,29 @@
  * for `UseIDSResult`'s callers, none of which have changed shape.
  */
 
-import { validationReportSnapshot } from '@/lib/validation/reports/history';
-import { useCallback, useMemo, useRef } from 'react';
+import { beginActivity, finishActivity, updateActivity } from '@/lib/activity/activity-journal';
+import { runIdsCheck } from '@/lib/validation/run-ids-check';
+import { isNativeWorkflowBusy } from '@/lib/flow/run-session';
+import { useCallback, useEffect, useRef } from 'react';
 import { captureAnalysisStamp, stampAnalysisReport } from './useAnalysisStaleness';
 import { useViewerStore } from '@/store';
 import type {
   IDSAuditReport,
   IDSDocument,
   IDSValidationReport,
-  IDSModelInfo,
   SupportedLocale,
   ValidationProgress,
 } from '@ifc-lite/ids';
-import {
-  validateIDS,
-  isIDSValidationReport,
-  createTranslationService,
-} from '@ifc-lite/ids';
+import { isIDSValidationReport } from '@ifc-lite/ids';
 import { loadIdsContent } from './ids/loadIdsContent';
+import { beginDefinitionImport, isDefinitionImportReading } from '@/lib/validation/definition-import-owner';
 import type { IDSBCFExportSettings, IDSExportProgress } from '@/components/viewer/IDSExportDialog';
 
-import { createDataAccessor } from './ids/idsDataAccessor';
-import {
-  snapshotPropertyOverlay,
-  snapshotEntityVisibility,
-} from '@/lib/ids/property-overlay-snapshot';
-import { canUseIdsWorker } from './ids/canUseIdsWorker';
 import { resolveValidationTarget, type IdsErrorState } from './ids/resolveValidationTarget';
-import { runValidationInWorker } from './ids/idsWorkerClient';
 import { DEFAULT_FAILED_COLOR, DEFAULT_PASSED_COLOR } from './ids/idsColorSystem';
 import type { IDSFocusMode } from '@/store/slices/idsSlice';
 import { posthog } from '../lib/analytics';
 import { errorCaptureProps } from '../lib/load-errors';
-import { getWholeSourceForWorker } from '@/lib/overlay-parse';
 import { useValidationResults, type UseValidationResults } from './validation/useValidationResults';
 import { useValidationEpoch } from './validation/useValidationEpoch';
 
@@ -97,6 +87,7 @@ export function useIDS(options: UseIDSOptions = {}): UseIDSResult {
   const defaultPassedColor = optionsPassedColor ?? DEFAULT_PASSED_COLOR;
 
   const document = useViewerStore((s) => s.idsDocument);
+  const definitionRevision = useViewerStore((s) => s.validationDefinitionRevision);
   const auditReport = useViewerStore((s) => s.idsAuditReport);
   const auditing = useViewerStore((s) => s.idsAuditing);
   const loading = useViewerStore((s) => s.idsLoading);
@@ -105,13 +96,13 @@ export function useIDS(options: UseIDSOptions = {}): UseIDSResult {
   const locale = useViewerStore((s) => s.idsLocale);
   const panelVisible = useViewerStore((s) => s.idsPanelVisible);
 
-  const clearIdsDocument = useViewerStore((s) => s.clearIdsDocument);
   const setIdsValidationReport = useViewerStore((s) => s.setIdsValidationReport);
   const clearIdsValidationReport = useViewerStore((s) => s.clearIdsValidationReport);
   const setIdsProgress = useViewerStore((s) => s.setIdsProgress);
   const setIdsPanelVisible = useViewerStore((s) => s.setIdsPanelVisible);
   const toggleIdsPanel = useViewerStore((s) => s.toggleIdsPanel);
   const setIdsLoading = useViewerStore((s) => s.setIdsLoading);
+  const setIdsAuditing = useViewerStore((s) => s.setIdsAuditing);
   const setIdsError = useViewerStore((s) => s.setIdsError);
   const setIdsLocale = useViewerStore((s) => s.setIdsLocale);
   const getMutationView = useViewerStore((s) => s.getMutationView);
@@ -132,43 +123,62 @@ export function useIDS(options: UseIDSOptions = {}): UseIDSResult {
   // captures its own epoch and every store write after an `await` checks it
   // is still the most recent call before landing, so a superseded run can
   // never resurrect a stale report or clobber a newer one's `finally`.
-  const { bump: bumpEpoch, stillWanted } = useValidationEpoch();
+  const { bump: bumpEpoch, stillWanted, sourceIsCurrent } = useValidationEpoch();
   const workerAbortRef = useRef<AbortController | null>(null);
 
   const cancelValidation = useCallback(() => {
     bumpEpoch();
     workerAbortRef.current?.abort();
     workerAbortRef.current = null;
-    setIdsLoading(false);
+    if (!isDefinitionImportReading(useViewerStore, 'ids')) setIdsLoading(false);
     setIdsProgress(null);
     setIdsError(null);
   }, [bumpEpoch, setIdsLoading, setIdsProgress, setIdsError]);
 
-  const translator = useMemo(() => createTranslationService(locale), [locale]);
+  // A passive caller must not clear another caller's current validation.
+  useEffect(() => {
+    if (workerAbortRef.current && !sourceIsCurrent()) cancelValidation();
+  }, [definitionRevision, cancelValidation, sourceIsCurrent]);
+
+  useEffect(() => {
+    const state = useViewerStore.getState();
+    const entry = state.validationDefinitions.entries.find(candidate => candidate.id === state.validationDefinitions.active.ids);
+    if (!state.idsDocument && entry?.kind === 'ids') loadIdsContent(useViewerStore, entry.xml, entry.id);
+  }, []);
 
   const loadIDS = useCallback((xmlContent: string) => {
     loadIdsContent(useViewerStore, xmlContent);
   }, []);
 
   const loadIDSFile = useCallback(async (file: File) => {
+    const owner = beginDefinitionImport(useViewerStore, 'ids', true);
     try {
       setIdsLoading(true);
       setIdsError(null);
       const content = await file.text();
-      loadIDS(content);
+      if (!owner.wanted()) return;
+      void loadIdsContent(useViewerStore, content, undefined, owner);
     } catch (err) {
-      setIdsError(err instanceof Error ? err.message : 'Failed to read IDS file');
+      if (owner.wanted()) {
+        setIdsError(err instanceof Error ? err.message : 'Failed to read IDS file');
+        setIdsAuditing(false);
+      }
     } finally {
-      setIdsLoading(false);
+      owner.finishedReading();
+      if (owner.wanted()) setIdsLoading(false);
     }
-  }, [loadIDS, setIdsLoading, setIdsError]);
+  }, [setIdsLoading, setIdsError, setIdsAuditing]);
 
   const clearIDS = useCallback(() => {
     cancelValidation();
-    clearIdsDocument();
-  }, [cancelValidation, clearIdsDocument]);
+    useViewerStore.getState().deactivateValidationDefinition('ids');
+  }, [cancelValidation]);
 
   const runValidation = useCallback(async (targetModelId?: string): Promise<IDSValidationReport | null> => {
+    if (isNativeWorkflowBusy()) {
+      setIdsError('A workflow is running; wait or cancel it.');
+      return null;
+    }
     if (!document) {
       setIdsError('No IDS document loaded');
       return null;
@@ -184,6 +194,10 @@ export function useIDS(options: UseIDSOptions = {}): UseIDSResult {
     const abortController = new AbortController();
     workerAbortRef.current = abortController;
     const stamp = captureAnalysisStamp();
+    const job = beginActivity({ kind: 'check', title: 'activityTray.job.validation', panel: 'validation', subject: document.info.title,
+      cancel: () => { abortController.abort(); if (workerAbortRef.current === abortController) cancelValidation(); } });
+    let outcome: 'completed' | 'failed' | 'cancelled' = 'cancelled';
+    let detail: string | undefined;
 
     try {
       setIdsLoading(true);
@@ -204,7 +218,6 @@ export function useIDS(options: UseIDSOptions = {}): UseIDSResult {
       });
       if (!stillWanted(myEpoch)) return null;
 
-      const schemaVersion = dataStore.schemaVersion || 'IFC4';
       let lastProgressUpdate = 0;
       const onProgress = (p: ValidationProgress) => {
         if (!stillWanted(myEpoch)) return;
@@ -212,50 +225,22 @@ export function useIDS(options: UseIDSOptions = {}): UseIDSResult {
         if (p.phase === 'complete' || now - lastProgressUpdate >= 120) {
           lastProgressUpdate = now;
           setIdsProgress(p);
+          if (p.totalSpecifications > 0) updateActivity(job, { progress: {
+            done: Math.min(p.specificationIndex + 1, p.totalSpecifications), total: p.totalSpecifications,
+          } });
         }
       };
 
-      let validationReport: IDSValidationReport | null = null;
-
-      // A model with in-memory property edits (e.g. an IDS correction, #3929)
-      // must validate against THOSE edits — the worker re-parses raw source
-      // bytes, so it is handed a snapshot of the same overlay projection the
-      // main-thread accessor applies (#3946). A deleted or overlay-created
-      // entity needs the same treatment (#5184): the re-parsed store still
-      // has the deleted entity's bytes and lacks the created one's.
-      const mutationView = getMutationView(modelId);
-      const propertyOverlay = mutationView?.hasPendingChanges() ? snapshotPropertyOverlay(mutationView) : undefined;
-      const entityVisibility = mutationView?.hasPendingChanges() ? snapshotEntityVisibility(mutationView) : undefined;
-
-      if (canUseIdsWorker(dataStore)) {
-        try {
-          validationReport = await runValidationInWorker({
-            source: getWholeSourceForWorker(dataStore),
-            document, schemaVersion, modelId, locale,
-            includePassingEntities: true, propertyOverlay, entityVisibility, onProgress,
-            signal: abortController.signal,
-          });
-        } catch (workerErr) {
-          if (!stillWanted(myEpoch)) return null;
-          console.warn('[IDS] Worker validation failed; falling back to main thread.', workerErr);
-        }
-      }
-
-      if (!validationReport) {
-        const accessor = createDataAccessor(dataStore, modelId, mutationView);
-        const modelInfo: IDSModelInfo = {
-          modelId, schemaVersion, entityCount: dataStore.entityCount || accessor.getAllEntityIds().length,
-        };
-        validationReport = await validateIDS(document, accessor, modelInfo, {
-          translator, onProgress, includePassingEntities: true,
-        });
-      }
+      const { report: validationReport, snapshot } = await runIdsCheck({
+        document, modelId, dataStore, mutationView: getMutationView(modelId),
+        locale, models, signal: abortController.signal, onProgress,
+      });
 
       // A newer call may have started (and even published) while this one
       // awaited the worker/main-thread validation above (#2802).
       if (!stillWanted(myEpoch)) return null;
-      const snapshot = validationReportSnapshot(validationReport, models, 'run');
       setIdsValidationReport(stampAnalysisReport(validationReport, stamp), snapshot);
+      outcome = 'completed';
 
       posthog.capture('ids_validation_completed', {
         total_specifications: validationReport.summary.totalSpecifications,
@@ -270,21 +255,24 @@ export function useIDS(options: UseIDSOptions = {}): UseIDSResult {
       );
       return validationReport;
     } catch (err) {
-      if (!stillWanted(myEpoch)) return null;
+      if (!stillWanted(myEpoch) || (err instanceof Error && err.name === 'AbortError')) return null;
       const message = err instanceof Error ? err.message : 'Validation failed';
+      outcome = 'failed';
+      detail = message;
       setIdsError(message);
       posthog.captureException(err, { context: 'ids_validation', ...errorCaptureProps(err) });
       console.error('[IDS] Validation error:', err);
       return null;
     } finally {
+      finishActivity(job, outcome, detail ? { detail } : {});
       if (workerAbortRef.current === abortController) workerAbortRef.current = null;
       // A superseded call must not report itself as no-longer-loading — the
       // call that superseded it is the one actually in flight (#2802).
       if (stillWanted(myEpoch)) setIdsLoading(false);
     }
   }, [
-    document, ifcDataStore, models, activeModelId, translator, locale, getMutationView,
-    setIdsLoading, setIdsError, setIdsProgress, setIdsValidationReport, bumpEpoch, stillWanted,
+    document, ifcDataStore, models, activeModelId, locale, getMutationView,
+    setIdsLoading, setIdsError, setIdsProgress, setIdsValidationReport, bumpEpoch, stillWanted, cancelValidation,
   ]);
 
   const clearValidation = useCallback(() => {

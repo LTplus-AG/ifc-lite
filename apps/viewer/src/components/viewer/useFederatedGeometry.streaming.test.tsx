@@ -1,207 +1,274 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
+/**
+ * #7021: what the viewport gets while one model streams in, through the real
+ * store actions and the hook chain `ViewportContainer` runs (`modelIndices`
+ * -> `useFederatedGeometry`). The first tests pin the OUTPUT: which meshes,
+ * in which order, with which modelIndex, and that in-place edits to a store
+ * mesh stay visible. The last one is the regression guard on the per-append
+ * cost. The type filter and the appearance list downstream rescan from
+ * scratch whenever this array changes identity, so a stable array is what
+ * keeps them incremental.
+ */
+
 import '@/test/setup-dom.js';
 import { afterEach, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { act } from 'react';
-import { createRoot } from 'react-dom/client';
-import type { GeometryResult, MeshData } from '@ifc-lite/geometry';
-import type { FederatedModel } from '@/store';
-import { fixtureModel, fixtureModels } from '@/test/store-fixture.js';
-import { useViewerStore } from '@/store';
-import { meshGeometryCounts, hasMeshGeometryProvenance } from '@/lib/released-mesh-provenance';
+import { act, useMemo } from 'react';
+import type { MeshData } from '@ifc-lite/geometry';
+import { perfCounters } from '@ifc-lite/load-trace';
+import { useViewerStore, type FederatedModel } from '@/store';
+import { modelIndices } from '@/lib/model-placement/model-indices.js';
+import { carryReleasedMesh, meshGeometryCounts, hasMeshGeometryProvenance } from '@/lib/released-mesh-provenance.js';
+import { fixtureModel } from '@/test/store-fixture.js';
+import { cleanup, render } from '@/test/render.js';
 import { useFederatedGeometry } from './useFederatedGeometry.js';
+import { useFilteredGeometry } from './useFilteredGeometry.js';
 
-const mesh = (id: number): MeshData => ({ expressId: id, geometryItemId: id, color: [1, 0, 0, 1],
-  positions: new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0]),
-  normals: new Float32Array([0, 0, 1, 0, 0, 1, 0, 0, 1]), indices: new Uint32Array([0, 1, 2]) });
-const geometry = (meshes: MeshData[]): GeometryResult => ({ meshes, totalVertices: meshes.length * 3, totalTriangles: meshes.length, coordinateInfo: { originShift: { x: 0, y: 0, z: 0 }, originalBounds: { min: { x: 0, y: 0, z: 0 }, max: { x: 1, y: 1, z: 1 } }, shiftedBounds: { min: { x: 0, y: 0, z: 0 }, max: { x: 1, y: 1, z: 1 } }, hasLargeCoordinates: false } });
-const model = (id: string, meshes: MeshData[]): FederatedModel => ({ ...fixtureModel(id), geometryResult: geometry(meshes) });
-const cleanups: (() => void)[] = [];
-afterEach(() => { for (const dispose of cleanups.splice(0)) dispose(); });
-function mounted(initial: Map<string, FederatedModel>) {
-  let models = initial, version = 0;
-  let indices = new Map([...models.keys()].map((id, i) => [id, i]));
-  let current: GeometryResult | null = null;
-  const node = document.createElement('div'); document.body.appendChild(node); const root = createRoot(node);
-  function Probe() {
-    current = useFederatedGeometry(models, null, indices, version);
-    return <output>{current?.meshes.map(m => `${m.geometryItemId}:${m.modelIndex}`).join(',')}</output>;
-  }
-  cleanups.push(() => { act(() => root.unmount()); node.remove(); });
-  return { node, draw: () => { act(() => root.render(<Probe />)); return current!; },
-    update: (next: Map<string, FederatedModel>, nextIndices = indices, nextVersion = version) => {
-      models = next; indices = nextIndices; version = nextVersion;
-    } };
+const coordinateInfo = {
+  originShift: { x: 0, y: 0, z: 0 },
+  originalBounds: { min: { x: 0, y: 0, z: 0 }, max: { x: 1, y: 1, z: 1 } },
+  shiftedBounds: { min: { x: 0, y: 0, z: 0 }, max: { x: 1, y: 1, z: 1 } },
+  hasLargeCoordinates: false,
+};
+
+let seen: { merged: MeshData[]; filtered: MeshData[]; replacement: number; indices: ReadonlyMap<string, number> } | null = null;
+
+function Probe() {
+  const s = useViewerStore();
+  const indices = useMemo(() => modelIndices(s.models), [s.models]);
+  const merged = useFederatedGeometry(s.models, s.geometryResult, indices, s.geometryContentVersion);
+  const filtered = useFilteredGeometry(merged, s.geometryContentVersion, s.typeVisibility, s.typeViewMode);
+  seen = { merged: merged?.meshes ?? [], filtered: filtered.filteredGeometry ?? [],
+    replacement: filtered.geometryReplacementVersion, indices };
+  return null;
 }
 
-it('stamps only the new single-model streaming suffix without mutating source owners (#6537)', () => {
-  const source = [mesh(1)], first = model('a', source), f = mounted(new Map([['a', first]]));
-  let reads = 0;
-  Object.defineProperty(source[0], 'color', { enumerable: true, get: () => { reads++; return [1, 0, 0, 1]; } });
-  const before = f.draw(), wrapper = before.meshes[0];
-  for (let i = 2; i <= 20; i++) {
-    source.push(mesh(i));
-    f.update(new Map([['a', { ...first, geometryResult: geometry(source) }]]));
-    const next = f.draw();
-    assert.equal(next.meshes, before.meshes, 'append keeps the array used by incremental viewport filtering');
-    assert.equal(next.meshes[0], wrapper, 'existing wrappers remain stable');
-    assert.equal(next.totalVertices, i * 3); assert.equal(next.totalTriangles, i);
+afterEach(() => {
+  cleanup();
+  useViewerStore.getState().clearAllModels();
+  modelIndices(new Map());
+  seen = null;
+});
+
+let nextId = 1;
+function mesh(ifcType = 'IfcWall'): MeshData {
+  const id = nextId++;
+  return {
+    expressId: id, ifcType, color: [0.5, 0.5, 0.5, 1],
+    positions: new Float32Array([id, 0, 0, id + 1, 0, 0, id, 1, 0]),
+    normals: new Float32Array(9), indices: new Uint32Array([0, 1, 2]),
+  } as MeshData;
+}
+
+function startLoad(id: string): void {
+  const model = { ...fixtureModel(id), geometryResult: null } as unknown as FederatedModel;
+  act(() => { useViewerStore.getState().upsertModel(model); });
+}
+
+function append(id: string, meshes: MeshData[]): void {
+  act(() => { useViewerStore.getState().appendGeometryBatch(id, meshes, coordinateInfo); });
+}
+
+const ids = (list: readonly MeshData[]) => list.map((m) => m.expressId);
+
+it('streams a single model into the viewport in order, with its model index (#7021)', () => {
+  startLoad('m');
+  render(<Probe />);
+  const appended: MeshData[] = [];
+  for (let batch = 0; batch < 6; batch++) {
+    const part = [mesh(), mesh('IfcOpeningElement'), mesh('IfcSlab')];
+    appended.push(...part);
+    append('m', part);
+    assert.deepEqual(ids(seen!.merged), ids(appended), `merged after batch ${batch}`);
+    for (const m of seen!.merged) assert.equal(m.modelIndex, 0);
+    // The viewport's mesh carries the store mesh's own buffers.
+    assert.equal(seen!.merged.at(-1)!.positions, part.at(-1)!.positions);
   }
-  assert.equal(reads, 1, 'twenty streaming publishes read the original mesh only once');
-  assert.ok(source.every(m => m.modelIndex === undefined), 'source MeshData retains its original ownership');
-  assert.ok(f.node.textContent?.endsWith('20:0'), 'the mounted consumer observes the appended suffix');
 });
 
-for (const grows of [false, true]) it(`replaces single-model ${grows ? 'growing' : 'same-size'} immutable geometry (#6537)`, () => {
-  const f = mounted(new Map([['a', model('a', [mesh(1)])]])); const before = f.draw();
-  f.update(new Map([['a', model('a', grows ? [mesh(2), mesh(3)] : [mesh(2)])]])); const after = f.draw();
-  assert.notEqual(after.meshes, before.meshes); assert.equal(f.node.textContent, grows ? '2:0,3:0' : '2:0');
+it('keeps in-place edits to a store mesh visible after the next write (#7021)', () => {
+  startLoad('m');
+  render(<Probe />);
+  append('m', [mesh(), mesh()]);
+  // releaseGeometryMemory, alignment restores and the loader's colour pass
+  // reassign fields on the store's own mesh objects.
+  const released = new Float32Array(0);
+  const stored = useViewerStore.getState().models.get('m')!.geometryResult!.meshes[0];
+  stored.positions = released;
+  stored.color = [1, 0, 0, 1];
+  append('m', [mesh()]);
+  assert.equal(seen!.merged[0].positions, released);
+  assert.deepEqual(seen!.merged[0].color, [1, 0, 0, 1]);
 });
 
-it('rebuilds for in-place content changes, shrink and changed stable owner index (#6537)', () => {
-  const source = [mesh(1), mesh(2)], first = model('a', source), f = mounted(new Map([['a', first]]));
-  const before = f.draw(); source[0] = mesh(3);
-  f.update(new Map([['a', first]]), new Map([['a', 0]]), 1); const edited = f.draw();
-  assert.notEqual(edited.meshes, before.meshes); assert.equal(f.node.textContent, '3:0,2:0');
-  source.pop(); f.update(new Map([['a', { ...first, geometryResult: geometry(source) }]]));
-  const shortened = f.draw(); assert.equal(f.node.textContent, '3:0'); assert.notEqual(shortened.meshes, edited.meshes);
-  f.update(new Map([['a', first]]), new Map([['a', 7]])); const changedIndex = f.draw();
-  assert.equal(f.node.textContent, '3:7'); assert.notEqual(changedIndex.meshes, shortened.meshes);
+it('shows the replacement after a completion recolour swaps the mesh array (#7021)', () => {
+  startLoad('m');
+  render(<Probe />);
+  const a = mesh(), b = mesh();
+  append('m', [a, b]);
+  act(() => { useViewerStore.getState().updateMeshColors(new Map([[b.expressId, [0, 1, 0, 1]]])); });
+  assert.deepEqual(ids(seen!.merged), [a.expressId, b.expressId]);
+  assert.deepEqual(seen!.merged[1].color, [0, 1, 0, 1]);
+  assert.equal(seen!.merged[1].modelIndex, 0);
+  assert.equal(seen!.replacement, 0, 'completion recolouring uses the colour drain, not a geometry rebuild (#7047)');
 });
 
-it('preserves ownership through one-to-many, visibility and many-to-one transitions (#6537)', () => {
-  const a = model('a', [mesh(1)]), b = model('b', [mesh(2)]), f = mounted(new Map([['a', a]]));
-  f.draw(); f.update(new Map([['a', a], ['b', b]]), new Map([['a', 0], ['b', 1]])); f.draw();
-  assert.equal(f.node.textContent, '1:0,2:1');
-  f.update(new Map([['a', { ...a, visible: false }], ['b', b]])); f.draw(); assert.equal(f.node.textContent, '2:1');
-  f.update(new Map([['b', b]]), new Map([['b', 1]])); f.draw(); assert.equal(f.node.textContent, '2:1');
-  f.update(new Map([['b', { ...b, visible: false }]])); f.draw(); assert.equal(f.node.textContent, '');
-  f.update(new Map([['b', b]])); f.draw(); assert.equal(f.node.textContent, '2:1');
-  assert.equal(a.geometryResult!.meshes[0].modelIndex, undefined); assert.equal(b.geometryResult!.meshes[0].modelIndex, undefined);
+it('stamps each model its own index once a second model joins (#7021)', () => {
+  startLoad('a');
+  render(<Probe />);
+  append('a', [mesh(), mesh()]);
+  startLoad('b');
+  append('b', [mesh()]);
+  append('b', [mesh()]);
+  assert.deepEqual(seen!.merged.map((m) => m.modelIndex), [0, 0, 1, 1]);
 });
 
-
-it('preserves point-cloud chunk identity and the surviving single-model owner (#4226, #6537)', () => {
-  const cloud = { expressId: 9, chunk: { positions: new Float32Array([1, 2, 3]), pointCount: 1,
-    bbox: { min: [1, 2, 3] as [number, number, number], max: [1, 2, 3] as [number, number, number] } } };
-  const scan = model('scan', []); scan.geometryResult = { ...scan.geometryResult!, pointClouds: [cloud] };
-  const f = mounted(new Map([['scan', scan]])); f.update(new Map([['scan', scan]]), new Map([['scan', 7]]));
-  const after = f.draw();
-  assert.equal(after.pointClouds?.[0].modelIndex, 7);
-  assert.equal(after.pointClouds?.[0].chunk, cloud.chunk);
-  assert.equal('modelIndex' in cloud, false);
-});
-
-it('clears the retained owner cache between model sessions (#6537)', () => {
-  const source = [mesh(1)], a = model('a', source), f = mounted(new Map([['a', a]])); f.draw();
-  f.update(new Map()); assert.equal(f.draw(), null);
-  source[0] = mesh(2); f.update(new Map([['a', a]])); f.draw();
-  assert.equal(f.node.textContent, '2:0', 'a newly loaded session cannot reuse cleared wrappers');
-});
-
-
-for (const count of [1, 2]) it(`drops released CPU buffers from cached wrappers for ${count} models (#6537)`, () => {
-  const a = model('a', [mesh(1)]), b = model('b', [mesh(2)]);
-  useViewerStore.setState({ ...fixtureModels(...(count === 1 ? [a] : [a, b])), geometryResult: a.geometryResult!,
-    boundedGeometryMode: true, geometryContentVersion: 0 });
-  let current: GeometryResult | null = null;
-  const indices = new Map([['a', 0], ['b', 1]]);
-  const node = document.createElement('div'); document.body.appendChild(node); const root = createRoot(node);
-  function Probe() {
-    const state = useViewerStore();
-    current = useFederatedGeometry(state.models, state.geometryResult, indices, state.geometryContentVersion);
-    return <output>{current?.meshes.map(m => `${m.expressId}:${m.positions.length}`).join(',')}</output>;
+/**
+ * The regression guard (#7021): a streamed append must cost the viewport work
+ * in the appended meshes only. Before the fix every append copied every mesh
+ * accumulated so far (`viewer.modelIndexRespread`) into a new array, so the
+ * filters and the appearance list downstream rescanned everything too.
+ */
+it('costs O(appended meshes) per streamed append on a single model (#7021)', () => {
+  perfCounters.enable();
+  const read = () => perfCounters.read();
+  const delta = (after: Record<string, number>, before: Record<string, number>, key: string) => (after[key] ?? 0) - (before[key] ?? 0);
+  startLoad('m');
+  render(<Probe />);
+  append('m', [mesh(), mesh()]);
+  const mergedArray = seen!.merged, indexMap = seen!.indices;
+  let total = 2;
+  for (const size of [3, 5, 8, 13, 21]) {
+    const before = read();
+    append('m', Array.from({ length: size }, () => mesh()));
+    total += size;
+    const after = read();
+    assert.equal(seen!.merged.length, total);
+    assert.equal(delta(after, before, 'viewer.modelIndexRespread.meshes'), 0, 'no mesh is copied to stamp its model index');
+    assert.equal(delta(after, before, 'viewer.modelIndexStamp.meshes'), size, 'only the appended meshes are stamped');
+    assert.equal(delta(after, before, 'viewer.filterScan.meshes'), size, 'the replacement detector never rescans the old prefix (#7047)');
+    assert.deepEqual(ids(seen!.filtered), ids(seen!.merged), 'all streamed occurrence meshes reach the viewport filter');
+    assert.equal(seen!.replacement, 0, 'streaming appends do not request replacement uploads');
+    assert.equal(seen!.merged, mergedArray, 'the merged array keeps its identity');
+    assert.equal(seen!.indices, indexMap, 'the model-index map keeps its identity');
   }
-  cleanups.push(() => { act(() => root.unmount()); node.remove(); });
-  act(() => root.render(<Probe />));
-  assert.equal(current!.meshes[0].positions.length, 9);
-  act(() => useViewerStore.getState().releaseGeometryMemory());
-  assert.equal(current!.meshes[0].positions.length, 0, 'cached wrappers must not retain buffers released by the canonical store action');
-  assert.equal(current!.meshes[0].normals.length, 0); assert.equal(current!.meshes[0].indices.length, 0);
-  assert.equal(useViewerStore.getState().geometryContentVersion, 0, 'release does not request a GPU reupload from emptied CPU buffers');
-  assert.equal(node.textContent, count === 1 ? '1:0' : '1:0,2:9');
 });
 
-// Independent review #6584: React can observe release plus append as one publish.
-// Repeated releases also cover a previously empty first mesh and fresh suffix.
-for (const count of [1, 2]) it(`refreshes released prefixes when release and append are batched for ${count} models (#6537)`, () => {
-  const a = model('a', [mesh(1)]), b = model('b', [mesh(2)]);
-  useViewerStore.setState({ ...fixtureModels(...(count === 1 ? [a] : [a, b])), geometryResult: a.geometryResult!,
-    boundedGeometryMode: true, geometryContentVersion: 0 });
-  let current: GeometryResult | null = null;
-  const indices = new Map([['a', 0], ['b', 1]]);
-  const node = document.createElement('div'); document.body.appendChild(node); const root = createRoot(node);
-  function Probe() {
-    const state = useViewerStore();
-    current = useFederatedGeometry(state.models, state.geometryResult, indices, state.geometryContentVersion);
-    return <output>{current?.meshes.map(m => `${m.expressId}:${m.positions.length}`).join(',')}</output>;
-  }
-  cleanups.push(() => { act(() => root.unmount()); node.remove(); });
-  act(() => root.render(<Probe />));
-  for (const suffixId of [100, 200]) {
+it('restamps a model that is removed and added back under a new index (#7021 review)', () => {
+  startLoad('a');
+  render(<Probe />);
+  append('a', [mesh()]);
+  startLoad('b');
+  append('b', [mesh()]);
+  const a = useViewerStore.getState().models.get('a')!;
+  act(() => { useViewerStore.getState().removeModel('a'); });
+  assert.deepEqual(seen!.merged.map((m) => m.modelIndex), [1]);
+  act(() => { useViewerStore.getState().upsertModel(a); });
+  const index = seen!.indices.get('a');
+  assert.notEqual(index, 0, 'the allocator never reuses a removed model\'s index');
+  assert.deepEqual(seen!.merged.map((m) => m.modelIndex).sort(), [1, index].sort());
+});
+
+// #6584: canonical CPU release must also empty spread wrappers retained by the
+// actual viewport filter, without making the peer or fresh append unuploadable.
+for (const appendAfterRelease of [false, true]) it(`releases federated aliases${appendAfterRelease ? ' across batched appends' : ''} (#6584)`, () => {
+  startLoad('a');
+  render(<Probe />);
+  const first = mesh(); append('a', [first]);
+  startLoad('b');
+  const peer = mesh(); append('b', [peer]);
+  act(() => { useViewerStore.getState().setActiveModel('a'); useViewerStore.setState({ boundedGeometryMode: true }); });
+  assert.equal(useViewerStore.getState().activeModelId, 'a');
+  for (let attempt = 0; attempt < (appendAfterRelease ? 2 : 1); attempt++) {
+    const retained = seen!.merged.slice(), filtered = seen!.filtered.slice();
+    const prefix = ids(retained), suffix = mesh();
     const source = useViewerStore.getState().models.get('a')!.geometryResult!.meshes;
-    const prefixIds = source.map(m => m.expressId);
-    const retained = current!.meshes.slice();
-    const order = retained.map(m => `${m.modelIndex}:${m.expressId}`);
     act(() => {
       useViewerStore.getState().releaseGeometryMemory();
-      useViewerStore.getState().appendGeometryBatch('a', [mesh(suffixId)]);
+      if (appendAfterRelease) useViewerStore.getState().appendGeometryBatch('a', [suffix], coordinateInfo);
     });
-    assert.equal(useViewerStore.getState().models.get('a')!.geometryResult!.meshes, source, 'the canonical actions preserve source-array identity');
-    assert.deepEqual(current!.meshes.slice(0, retained.length).map(m => `${m.modelIndex}:${m.expressId}`), order,
-      'the GPU upload cursor requires an unchanged global prefix and a new tail');
-    for (let i = 0; i < retained.length; i++) {
-      assert.equal(current!.meshes[i], retained[i], 'filtered consumers retain the same cached wrapper');
-      if (retained[i].modelIndex === 0) assert.equal(retained[i].positions.length, 0, 'retained consumers release CPU buffers too');
+    for (const alias of [...retained, ...filtered].filter(m => m.modelIndex === 0)) {
+      assert.equal(alias.positions.length, 0, 'a retained viewport alias must not pin released CPU buffers');
+      assert.equal(alias.normals.length, 0); assert.equal(alias.indices.length, 0);
+      assert.equal(hasMeshGeometryProvenance(alias), true);
+      assert.deepEqual(meshGeometryCounts(alias), { vertices: 3, triangles: 1 });
     }
-    for (const id of prefixIds) {
-      const cached: MeshData = current!.meshes.find(m => m.expressId === id && m.modelIndex === 0)!;
-      assert.equal(cached.positions.length, 0, `released prefix ${id} cannot retain its previous positions`);
-      assert.equal(hasMeshGeometryProvenance(cached), true, 'retained appearance consumers can resolve released identities');
-      assert.deepEqual(meshGeometryCounts(cached), { triangles: 1, vertices: 3 }, 'release preserves the contribution to geometry totals');
-      assert.equal(cached.normals.length, 0); assert.equal(cached.indices.length, 0);
-    }
-    assert.equal(current!.meshes.find(m => m.expressId === suffixId)!.positions.length, 9, 'the fresh suffix remains uploadable');
-    if (count === 2) assert.equal(current!.meshes.find(m => m.expressId === 2 && m.modelIndex === 1)!.positions.length, 9, 'the peer model remains intact');
-    assert.equal(useViewerStore.getState().geometryContentVersion, 0, 'CPU release never requests GPU reupload of emptied prefixes');
+    assert.equal(seen!.merged.find(m => m.expressId === peer.expressId)!.positions, peer.positions);
+    assert.equal(peer.positions.length, 9, 'unreleased peer remains uploadable');
+    assert.equal(useViewerStore.getState().models.get('a')!.geometryResult!.meshes, source);
+    assert.deepEqual(ids(seen!.merged).slice(0, prefix.length), prefix, 'the GPU upload cursor keeps its global prefix');
+    if (appendAfterRelease) assert.equal(seen!.merged.at(-1)!.positions, suffix.positions);
+    assert.equal(useViewerStore.getState().geometryContentVersion, 0, 'CPU release must not request an empty GPU reupload');
   }
 });
 
-for (const replacement of ['colors', 'peer', 'clear'] as const) it(`empties retained released wrappers before ${replacement} replacement rebuild (#6537)`, () => {
-  const a = model('a', [mesh(1)]), b = model('b', [mesh(2)]);
-  useViewerStore.setState({ ...fixtureModels(a, b), geometryResult: a.geometryResult!,
-    boundedGeometryMode: true, geometryContentVersion: 0 });
-  let current: GeometryResult | null = null;
-  const indices = new Map([['a', 0], ['b', 1]]);
-  const node = document.createElement('div'); document.body.appendChild(node); const root = createRoot(node);
-  function Probe() {
-    const state = useViewerStore();
-    current = useFederatedGeometry(state.models, state.geometryResult, indices, state.geometryContentVersion);
-    return null;
-  }
-  cleanups.push(() => { act(() => root.unmount()); node.remove(); });
-  act(() => root.render(<Probe />));
-  const retained = current!.meshes.slice();
+for (const replacement of ['colors', 'peer', 'clear'] as const) it(`empties federated aliases before batched ${replacement} replacement (#6584)`, () => {
+  startLoad('a'); render(<Probe />);
+  const first = mesh(); append('a', [first]);
+  startLoad('b'); const peer = mesh(); append('b', [peer]);
+  act(() => { useViewerStore.getState().setActiveModel('a'); useViewerStore.setState({ boundedGeometryMode: true }); });
+  const retained = seen!.merged.slice(), filtered = seen!.filtered.slice();
   act(() => {
     useViewerStore.getState().releaseGeometryMemory();
     if (replacement === 'clear') useViewerStore.getState().clearAllModels();
-    else if (replacement === 'peer') {
-      const state = useViewerStore.getState();
-      const peer = state.models.get('b')!;
-      useViewerStore.setState({ models: new Map(state.models).set('b', { ...peer, geometryResult: geometry([mesh(3)]) }) });
-    } else useViewerStore.getState().updateMeshColors(new Map([[1, [0, 1, 0, 1]]]));
+    else if (replacement === 'colors') useViewerStore.getState().updateMeshColors(new Map([[first.expressId, [0, 1, 0, 1]]]));
+    else {
+      const state = useViewerStore.getState(), model = state.models.get('b')!, fresh = mesh();
+      useViewerStore.setState({ models: new Map(state.models).set('b', { ...model, geometryResult: { ...model.geometryResult!, meshes: [fresh] } }) });
+    }
   });
-  assert.equal(retained[0].positions.length, 0, 'a replacement cannot strand already released buffers in retained aliases');
-  assert.equal(retained[0].normals.length, 0); assert.equal(retained[0].indices.length, 0);
-  assert.equal(hasMeshGeometryProvenance(retained[0]), true);
-  assert.deepEqual(meshGeometryCounts(retained[0]), { triangles: 1, vertices: 3 });
-  assert.equal(retained[1].positions.length, 9, 'the unreleased peer alias is untouched');
-  if (replacement === 'clear') assert.equal(current, null);
-  else {
-    assert.equal(current!.meshes.find(m => m.modelIndex === 0)!.positions.length, 0);
-    assert.equal(current!.meshes.find(m => m.modelIndex === 1)!.expressId, replacement === 'peer' ? 3 : 2);
+  for (const alias of [...retained, ...filtered].filter(m => m.modelIndex === 0)) {
+    assert.equal(alias.positions.length, 0); assert.equal(alias.normals.length, 0); assert.equal(alias.indices.length, 0);
+    assert.equal(hasMeshGeometryProvenance(alias), true);
+    assert.deepEqual(meshGeometryCounts(alias), { vertices: 3, triangles: 1 });
   }
-  assert.equal(useViewerStore.getState().geometryContentVersion, 0);
+  assert.equal(retained.find(m => m.modelIndex === 1)!.positions.length, 9, 'unreleased retained peer stays intact');
+});
+
+// Retired consumers can outlive an immutable colour replacement. Release must
+// reach those aliases too; observing only the current source array is too late.
+it('releases previously retained federation wrappers after an earlier recolour (#6584)', () => {
+  startLoad('a'); render(<Probe />); const first = mesh(); append('a', [first]);
+  startLoad('b'); const peer = mesh(); append('b', [peer]);
+  act(() => { useViewerStore.getState().setActiveModel('a'); useViewerStore.setState({ boundedGeometryMode: true }); });
+  const retained = seen!.merged.find(m => m.expressId === first.expressId)!;
+  act(() => useViewerStore.getState().updateMeshColors(new Map([[first.expressId, [0, 1, 0, 1]]])));
+  assert.equal(retained.positions.length, 9, 'recolour itself retains uploadable geometry');
+  act(() => useViewerStore.getState().releaseGeometryMemory());
+  assert.equal(retained.positions.length, 0, 'a preceding immutable replacement cannot strand a retained alias');
+  assert.equal(retained.normals.length, 0); assert.equal(retained.indices.length, 0);
+  assert.equal(peer.positions.length, 9);
+});
+
+it('canonical release empties shared copy fields and preserves independent updates (#6584)', () => {
+  startLoad('a'); render(<Probe />);
+  const first = mesh(); first.geometryItemId = first.expressId;
+  first.appearanceSource = { kind: 'canonical-item', indices: first.indices, sourceIndices: first.indices };
+  append('a', [first]);
+  const source = useViewerStore.getState().models.get('a')!.geometryResult!.meshes[0];
+  const shared = carryReleasedMesh(source, { ...source });
+  const fresh = mesh();
+  const independent = carryReleasedMesh(source, { ...source, positions: fresh.positions, normals: fresh.normals,
+    indices: fresh.indices, appearanceSource: { kind: 'canonical-item', indices: fresh.indices, sourceIndices: fresh.indices } });
+  const partial = carryReleasedMesh(source, { ...source });
+  const updatedPositions = new Float32Array(source.positions);
+  partial.positions = updatedPositions;
+  const updatedAppearance = { kind: 'canonical-item' as const, indices: new Uint32Array(source.indices), sourceIndices: new Uint32Array(source.indices) };
+  partial.appearanceSource = updatedAppearance;
+  act(() => { useViewerStore.setState({ boundedGeometryMode: true }); useViewerStore.getState().releaseGeometryMemory(); });
+  assert.equal(shared.positions.length, 0); assert.equal(shared.normals.length, 0); assert.equal(shared.indices.length, 0);
+  assert.equal(shared.appearanceSource, undefined);
+  assert.equal(partial.positions, updatedPositions); assert.equal(partial.positions.length, 9);
+  assert.equal(partial.normals.length, 0); assert.equal(partial.indices.length, 0);
+  assert.equal(partial.appearanceSource, updatedAppearance, 'a replaced appearance buffer is independently owned');
+  assert.equal(independent.positions, fresh.positions); assert.equal(independent.normals, fresh.normals);
+  assert.equal(independent.indices, fresh.indices); assert.equal(independent.indices.length, 3);
+  assert.equal(independent.appearanceSource!.sourceIndices, fresh.indices);
+  for (const released of [source, shared]) {
+    assert.equal(hasMeshGeometryProvenance(released), true);
+    assert.deepEqual(meshGeometryCounts(released), { triangles: 1, vertices: 3 });
+  }
 });

@@ -115,7 +115,8 @@ export function stairFlightOutline(
   return [...top, ...underside].reverse();
 }
 
-function assertStairParams(params: StairInStoreParams, op: string): void {
+/** Package-private validation shared by creation and occurrence edits. */
+export function assertStairParams(params: StairInStoreParams, op: string): void {
   assertFinitePoint3({ Position: params.Position }, op);
   if (!Number.isInteger(params.NumberOfRisers) || params.NumberOfRisers < 1) {
     throw new Error(`${op}: NumberOfRisers must be a positive integer`);
@@ -180,20 +181,7 @@ export function addStairToStore(
   );
   const flightPlacementId = emitLocalPlacement(editor, placementId, [0, 0, 0]);
 
-  // The stepped side outline lies in the solid's XY plane. The solid's frame
-  // maps profile X -> stair +X (run) and profile Y -> stair +Z (rise) with
-  // extrusion along -Y, from y = width, so the flight spans y in [0, width].
-  const profileId = emitPolygonProfile(editor, stairFlightOutline(params.NumberOfRisers, riser, tread, waist));
-  const solidOrigin = editor.addEntity('IfcCartesianPoint', [[0, width, 0]]).expressId;
-  const solidAxis = editor.addEntity('IfcDirection', [[0, -1, 0]]).expressId;
-  const solidRef = editor.addEntity('IfcDirection', [[1, 0, 0]]).expressId;
-  const solidPosition = editor.addEntity('IfcAxis2Placement3D', [
-    `#${solidOrigin}`, `#${solidAxis}`, `#${solidRef}`,
-  ]).expressId;
-  const extrusion = editor.addEntity('IfcDirection', [[0, 0, 1]]).expressId;
-  const solidId = editor.addEntity('IfcExtrudedAreaSolid', [
-    `#${profileId}`, `#${solidPosition}`, `#${extrusion}`, width,
-  ]).expressId;
+  const { profileId, solidId } = emitStairFlightBody(editor, params.NumberOfRisers, riser, tread, width, waist);
   const { shapeRepId, productShapeId } = emitBodyRepresentation(editor, anchor.bodyContextId, solidId);
 
   const stairId = editor.addEntity(
@@ -237,4 +225,23 @@ export function addStairToStore(
     relAggregatesId,
     relContainedId,
   };
+}
+
+/** The canonical stepped solid, in native units; package-private. */
+export function emitStairFlightBody(editor: StoreEditor, risers: number, riser: number, tread: number, width: number, waist?: number) {
+  // The stepped side outline lies in the solid's XY plane. The solid's frame
+  // maps profile X -> stair +X (run) and profile Y -> stair +Z (rise) with
+  // extrusion along -Y, from y = width, so the flight spans y in [0, width].
+  const profileId = emitPolygonProfile(editor, stairFlightOutline(risers, riser, tread, waist));
+  const solidOrigin = editor.addEntity('IfcCartesianPoint', [[0, width, 0]]).expressId;
+  const solidAxis = editor.addEntity('IfcDirection', [[0, -1, 0]]).expressId;
+  const solidRef = editor.addEntity('IfcDirection', [[1, 0, 0]]).expressId;
+  const solidPosition = editor.addEntity('IfcAxis2Placement3D', [
+    `#${solidOrigin}`, `#${solidAxis}`, `#${solidRef}`,
+  ]).expressId;
+  const extrusion = editor.addEntity('IfcDirection', [[0, 0, 1]]).expressId;
+  const solidId = editor.addEntity('IfcExtrudedAreaSolid', [
+    `#${profileId}`, `#${solidPosition}`, `#${extrusion}`, width,
+  ]).expressId;
+  return { profileId, solidId };
 }

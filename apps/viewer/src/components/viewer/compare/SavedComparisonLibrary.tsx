@@ -5,7 +5,8 @@
 /** Completed reports remain reviewable without reattaching historical renderer ids (#6506). */
 import { SavedComparisonHistoryNotice } from './SavedComparisonHistoryNotice';
 import { analysisStampOf, useAnalysisStaleness } from '@/hooks/useAnalysisStaleness';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { useSavedComparisonFocus } from '@/lib/panels/evidence-focus';
 import { useViewerStore } from '@/store';
 import { useTranslation } from '@/i18n';
 import { Button } from '@/components/ui/button';
@@ -17,6 +18,7 @@ import { downloadFile, sanitizeFilename } from '@/lib/export/download';
 
 export function SavedComparisonLibrary({ result, running }: { result: CompareResult | null; running: boolean }) {
   const { t } = useTranslation();
+  useEffect(() => { void useViewerStore.getState().initializeSavedComparisons(); }, []);
   const stale = useAnalysisStaleness(analysisStampOf(result));
   const saved = useViewerStore((s) => s.savedComparisons);
   const models = useViewerStore((s) => s.models);
@@ -27,14 +29,31 @@ export function SavedComparisonLibrary({ result, running }: { result: CompareRes
   const [name, setName] = useState('');
   const [selectedId, setSelectedId] = useState('');
   const [renamed, setRenamed] = useState('');
+  const requested = useSavedComparisonFocus(s => s.record);
+  const consumed = useRef<typeof requested>(null);
+  useEffect(() => {
+    const entry = saved.find(item => item.id === requested?.comparisonId);
+    if (entry && requested !== consumed.current) {
+      consumed.current = requested; setSelectedId(entry.id); setRenamed(entry.name);
+    }
+  }, [requested, saved]);
   const selected = saved.find((c) => c.id === selectedId);
+  const visibleRows = selected?.report.rows.slice(0, 100) ?? [];
+  const requestedRow = requested?.comparisonId === selected?.id
+    ? selected?.report.rows.find(row => (row.key ?? row.globalId) === requested?.key) : undefined;
+  // The requested evidence is visible immediately, including rows beyond the display cap.
+  if (requestedRow) {
+    const prior = visibleRows.indexOf(requestedRow);
+    if (prior >= 0) visibleRows.splice(prior, 1);
+    visibleRows.unshift(requestedRow);
+  }
   const canSave = !!result && !running && !stale && models.has(result.baseModelId) && models.has(result.headModelId)
     && (result.mutationVersion === undefined || result.mutationVersion === mutationVersion);
   const persisted = (ok: boolean): void => { if (!ok) toast.error(t('comparePanel.saved.storageFailed')); };
-  const saveCurrent = (): void => {
+  const saveCurrent = async (): Promise<void> => {
     if (!canSave || !result) return;
     const snapshot = snapshotComparison(result, models, name);
-    persisted(save(snapshot));
+    persisted(await save(snapshot));
     setSelectedId(snapshot.id);
     setRenamed(snapshot.name);
     setName('');
@@ -64,15 +83,15 @@ export function SavedComparisonLibrary({ result, running }: { result: CompareRes
         <div className="space-y-1" data-saved-comparison-summary>{comparisonSummary(selected).map((line, i) => <p key={i}>{line}</p>)}</div>
         <div className="flex flex-wrap gap-2">
           <input className="min-w-0 flex-1 rounded border bg-background px-2" value={renamed} onChange={(e) => setRenamed(e.target.value)} aria-label={t('comparePanel.saved.renameName')} />
-          <Button size="sm" variant="outline" disabled={!renamed.trim()} onClick={() => persisted(rename(selected.id, renamed))}>{t('comparePanel.saved.rename')}</Button>
+          <Button size="sm" variant="outline" disabled={!renamed.trim()} onClick={() => void rename(selected.id, renamed).then(persisted)}>{t('comparePanel.saved.rename')}</Button>
           <Button size="sm" variant="outline" onClick={() => download(selected, 'csv')}>CSV</Button>
           <Button size="sm" variant="outline" onClick={() => download(selected, 'json')}>JSON</Button>
-          <Button size="sm" variant="outline" onClick={() => { persisted(remove(selected.id)); setSelectedId(''); }}>{t('comparePanel.saved.delete')}</Button>
+          <Button size="sm" variant="outline" onClick={() => { void remove(selected.id).then(persisted); setSelectedId(''); }}>{t('comparePanel.saved.delete')}</Button>
         </div>
         <p className="text-muted-foreground">{t('comparePanel.saved.hint', { count: selected.report.rows.length })}</p>
         <div className="max-h-48 overflow-auto">
           <table className="w-full text-left"><thead><tr><th>{t('document.table.column.globalId')}</th><th>{t('document.table.column.name')}</th><th>IfcType</th><th>{t('comparePanel.saved.change')}</th></tr></thead>
-            <tbody>{selected.report.rows.slice(0, 100).map((row, i) => <tr key={i}><td>{row.globalId}</td><td>{row.name}</td><td>{row.ifcType}</td><td>{row.change}</td></tr>)}</tbody>
+            <tbody>{visibleRows.map((row, i) => <tr key={i} data-original-comparison={row === requestedRow ? requested?.key : undefined} className={row === requestedRow ? 'bg-muted' : undefined}><td>{row.globalId}</td><td>{row.name}</td><td>{row.ifcType}</td><td>{row.change}</td></tr>)}</tbody>
           </table>
         </div>
       </>}

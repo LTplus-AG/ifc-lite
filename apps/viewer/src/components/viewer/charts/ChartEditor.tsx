@@ -20,6 +20,9 @@ import { FilterGroupEditor, type FilterGroupEditorState } from '../FilterGroupEd
 import { DOCS_URL, useActiveSchemaVersion } from '../SearchModal.filter.selector';
 import { SelectorFeedbackList, type SelectorFeedback } from '../SearchModal.filter.feedback';
 import { ElementFieldPicker } from './ElementFieldPicker';
+import { ChartSourcePicker, SOURCE_LABELS } from './ChartSourcePicker';
+import { resolveComparisonChartSource } from '@/lib/charts/comparison-source';
+import { isSavedComparison } from '@/lib/compare/savedComparisons';
 import { dimensionColumns, draftToSpec, editorColumns, specToDraft, type ChartDraft } from './chart-editor-draft';
 import type { ElementFieldCatalog } from '@/lib/charts/element-field-reader';
 
@@ -33,15 +36,6 @@ const TYPE_LABELS: Record<ChartType, string> = {
   histogram: 'Histogram',
   timeline: 'Timeline (per week)',
   elementCount: 'Element Count',
-};
-
-const SOURCE_LABELS: Record<ChartSource, string> = {
-  elements: 'Elements',
-  clash: 'Clash results',
-  bcf: 'BCF topics',
-  schedule: 'Schedule tasks',
-  ids: 'IDS results',
-  compare: 'Model compare',
 };
 
 /** One detection rule of the current clash run, for the "Clash rule" picker
@@ -66,9 +60,11 @@ export interface ChartEditorProps {
   elementFieldCatalogLoading: boolean;
   /** The rules of the current clash run, for `filter.clashRule` (#5156). */
   clashRuleOptions?: readonly ClashRuleOption[];
+  /** New charts bind to a completed saved comparison; legacy charts stay readable. */
+  isNew?: boolean;
 }
 
-export function ChartEditor({ spec, datasets, onSave, onCancel, elementFieldCatalog, elementFieldCatalogLoading, clashRuleOptions = NO_CLASH_RULES }: ChartEditorProps) {
+export function ChartEditor({ spec, datasets, onSave, onCancel, elementFieldCatalog, elementFieldCatalogLoading, clashRuleOptions = NO_CLASH_RULES, isNew = false }: ChartEditorProps) {
   const { t } = useTranslation();
   const [draft, setDraft] = useState<ChartDraft>(() => specToDraft(spec));
   const schemaVersion = useActiveSchemaVersion();
@@ -94,8 +90,13 @@ export function ChartEditor({ spec, datasets, onSave, onCancel, elementFieldCata
     [filterApplicable, filterMode, filterText, schemaVersion],
   );
   const filterValid = filterReading === null || filterReading.ok;
-  const columns = editorColumns(datasets[draft.source], draft);
-  const rowCount = datasets[draft.source].rows.length;
+  const savedComparisons = useViewerStore((state) => state.savedComparisons);
+  const history = useMemo(() => savedComparisons.filter(isSavedComparison), [savedComparisons]);
+  const source = useMemo(() => resolveComparisonChartSource(draft, datasets[draft.source], history), [draft, datasets, history]);
+  const allowLegacy = !isNew && spec.source === 'compare' && spec.comparisonId === undefined;
+  const comparisonValid = draft.source !== 'compare' || source.status === 'saved' || (allowLegacy && draft.comparisonId === undefined);
+  const columns = editorColumns(source.dataset, draft);
+  const rowCount = source.dataset.rows.length;
   const numberColumns = columns.filter((c) => c.kind === 'number');
   const numericFields = draft.source === 'elements' ? [
     ...elementFieldCatalog.attributes,
@@ -115,12 +116,12 @@ export function ChartEditor({ spec, datasets, onSave, onCancel, elementFieldCata
   const stackOk = draft.type !== 'stackedBar' || (draft.stackBy !== draft.dimension && categoryColumns.some((c) => c.id === draft.stackBy));
   const topNOk = draft.topN === undefined || (Number.isInteger(draft.topN) && draft.topN >= 0);
   const rulesValid = filterMode !== 'rules' || filterGroups.every((g) => g.rules.length > 0) || filterGroups.every((g) => g.rules.length === 0);
-  const valid = draft.title.trim().length > 0 && dimensionOk && measureOk && stackOk && topNOk && filterValid && rulesValid;
+  const valid = draft.title.trim().length > 0 && dimensionOk && measureOk && stackOk && topNOk && filterValid && rulesValid && comparisonValid;
 
   const setSource = (source: ChartSource): void => {
     const cols = datasets[source].columns;
     const allowed = dimensionColumns(draft.type, cols);
-    setDraft({ ...draft, source, elementField: undefined, measureField: undefined, dimension: allowed[0]?.id ?? '', stackBy: undefined, measure: { agg: 'count' } });
+    setDraft({ ...draft, source, comparisonId: undefined, elementField: undefined, measureField: undefined, dimension: allowed[0]?.id ?? '', stackBy: undefined, measure: { agg: 'count' } });
     // Not every source can be filtered (#4946); switching to one clears the
     // field rather than leave text behind that the next save would drop
     // silently. `clashRule` is meaningless off `clash` for the same reason.
@@ -221,12 +222,8 @@ export function ChartEditor({ spec, datasets, onSave, onCancel, elementFieldCata
         <input className={field} value={draft.title} onChange={(e) => setDraft({ ...draft, title: e.target.value })} aria-label={t('chartEditor.titleAriaLabel')} />
       </label>
       <div className="grid grid-cols-2 gap-2">
-        <label className="flex flex-col gap-0.5">
-          <span className="text-muted-foreground">{rowCount === 0 ? t('chartEditor.sourceLabelEmpty') : t('chartEditor.sourceLabelWithCount', { count: rowCount.toLocaleString() })}</span>
-          <select className={field} value={draft.source} onChange={(e) => setSource(e.target.value as ChartSource)} aria-label={t('chartEditor.sourceAriaLabel')}>
-            {(Object.keys(SOURCE_LABELS) as ChartSource[]).map((s) => <option key={s} value={s}>{SOURCE_LABELS[s]}</option>)}
-          </select>
-        </label>
+        <ChartSourcePicker source={draft.source} rowCount={rowCount} comparisonId={draft.comparisonId} history={history}
+          allowLegacy={allowLegacy} className={field} onSource={setSource} onComparison={(comparisonId) => setDraft({ ...draft, comparisonId })} />
         {draft.source === 'elements' && (
           <ElementFieldPicker value={draft.elementField} catalog={elementFieldCatalog} loading={elementFieldCatalogLoading} className={field} onChange={setElementField} />
         )}

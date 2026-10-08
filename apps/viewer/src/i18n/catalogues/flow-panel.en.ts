@@ -27,7 +27,7 @@ export const flowPanelEn = {
 
   'flowPanel.examples.open': 'Examples…',
   'flowPanel.examples.ariaLabel': 'Open an example graph',
-  'flowPanel.examples.heading': 'Start from an example — each one runs against the loaded model, and opens as your own editable copy.',
+  'flowPanel.examples.heading': 'Start from an example — query a loaded model or prepare a local coordination session. Each opens as your own editable copy.',
   'flowPanel.examples.size': '{nodes} nodes · {edges} edges',
   'flowPanel.noModel': 'Load a model to run a graph.',
 
@@ -40,7 +40,8 @@ export const flowPanelEn = {
 
   'flowPanel.run.ok': 'Run finished',
   'flowPanel.run.failed': 'Run failed',
-  'flowPanel.run.summary': '{ok} ok · {memo} cached · {noop} no-op · {error} failed · {skipped} skipped',
+  'flowPanel.run.awaitingReview': 'Awaiting review',
+  'flowPanel.run.summary': '{ok} ok · {memo} cached · {noop} no-op · {error} failed · {skipped} skipped · {review} awaiting review · {paused} paused · {restored} restored',
   'flowPanel.run.writes': '{count} write node(s) — undo reverts the whole run',
   'flowPanel.run.errors': 'Errors',
   'flowPanel.run.warnings': 'Warnings',
@@ -89,6 +90,9 @@ export const flowPanelEn = {
   'flowPanel.status.noop': 'no-op',
   'flowPanel.status.skipped': 'skipped',
   'flowPanel.status.error': 'error',
+  'flowPanel.status.review': 'awaiting review',
+  'flowPanel.status.paused': 'paused',
+  'flowPanel.status.restored': 'restored',
 
   'flowPanel.view.editor': 'Editor',
   'flowPanel.view.player': 'Player',
@@ -116,6 +120,7 @@ export const flowPanelEn = {
   'flowPanel.publish.hint': 'Publish this run’s writes as a layer, with the graph recorded as provenance',
   'flowPanel.publish.success': 'Published layer {layerId}… onto "{ref}"',
   'flowPanel.publish.reason.noRun': 'Run the graph before publishing',
+  'flowPanel.publish.reason.review': 'Review and finish the graph before publishing',
   'flowPanel.publish.reason.failed': 'The last run failed — fix it before publishing',
   'flowPanel.publish.reason.noWrites': 'The last run wrote nothing to publish',
   'flowPanel.publish.reason.nothingPending': 'This run\'s edits are no longer pending: they were already published or undone. Run the graph again to publish.',

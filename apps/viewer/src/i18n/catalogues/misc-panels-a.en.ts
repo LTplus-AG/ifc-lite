@@ -77,6 +77,7 @@ export const miscPanelsAEn = {
   'deviationPanel.computeLabel': 'Compute deviation',
   'deviationPanel.exportCsv': 'Export CSV',
   'deviationPanel.exportingCsv': 'Exporting CSV…',
+  'deviationPanel.resultsChangedError': 'Deviation results changed during export. Compute deviation again.',
   'deviationPanel.statsLine': '{points} pts vs. {triangles} tris in {duration} ms',
   'deviationPanel.rangeSliderTitle':
     'Deviation half-range in millimetres — values past ±this map to the ramp endpoints',
@@ -89,6 +90,7 @@ export const miscPanelsAEn = {
   'deviationPanel.rendererNotReadyError': 'Renderer not initialised yet.',
   'deviationPanel.positionsChangedError': 'Model positions changed during computation. Compute deviation again.',
   'deviationPanel.noPointsError': 'No points processed — load a point cloud first.',
+  'deviationPanel.exportNoPointsNotice': 'No scan points are loaded in the current view. Frame the scan and recompute.',
   'deviationPanel.noMeshError': 'No mesh geometry in the scene — load an IFC first.',
 
   // ExportChangesReviewDialog
@@ -139,6 +141,19 @@ export const miscPanelsAEn = {
     'A scan is loaded but the overlay is hidden — enable "Show scan points" above.',
   'scanSectionPanel.showingAllMessage': 'Showing all {total} points in band.',
   'scanSectionPanel.showingPartialMessage': 'Showing {rendered} of {total} points in band (decimated for display).',
+  'scanSectionPanel.outlineLabel': 'Vector outline',
+  'scanSectionPanel.outlineTitle':
+    'Trace closed outlines from every point in the band; drawn as lines and exported to DXF on the SCAN-OUTLINE layer',
+  'scanSectionPanel.outlineMaxGapLabel': 'Bridge gaps up to: {value}',
+  'scanSectionPanel.outlineMaxGapTitle':
+    'Gaps in the scan narrower than this are closed, about one wall thickness; wider openings such as doors stay open',
+  'scanSectionPanel.outlineTracingMessage': 'Tracing the outline…',
+  'scanSectionPanel.outlineFailedMessage': 'The outline could not be traced. Details are in the browser console.',
+  'scanSectionPanel.outlineSummary': {
+    one: '{count} outline ring, traced on {cell} cells.',
+    other: '{count} outline rings, traced on {cell} cells.',
+  },
+  'scanSectionPanel.outlineCapHitMessage': 'The scan is too large for the cell budget, so the outline uses coarser cells.',
 
   // SpaceMousePanel — the Navigation section's own heading comes from
   // `settings.display.spaceMouseTitle` (Settings → Display, #5857), so no

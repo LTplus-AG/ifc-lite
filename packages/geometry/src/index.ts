@@ -57,6 +57,11 @@ export { type StallPhase, type StallPhaseHandle } from './stall-phase.js';
 // opened so the download overlaps think time instead of blocking first
 // geometry. The host app decides when (idle / intent) and affordability.
 export { prewarmSharedWasmModule } from './wasm-shared-module.js';
+export { prewarmGeometryWorkers, releaseWarmGeometryWorkers, warmGeometryWorkerPoolStats } from './warm-pool.js'; // #7036
+export { prewarmMainThreadEngine } from './main-engine-init.js';
+export type { GeometryWorkerPoolStats } from './geometry-worker-pool.js';
+// `__IFC_LITE_*` flag bindings the host reads; the viewer registry spreads these (#6962).
+export { GEOMETRY_PERF_FLAG_BINDINGS } from './perf-flags.js';
 // Stale-deployment WASM-asset detection (#1363). The host app subscribes to
 // WASM_ASSET_UNAVAILABLE_EVENT and uses `isWasmAssetUnavailableError` to
 // reload onto the deployment; `notifyIfWasmAssetUnavailable` stays internal.
@@ -91,6 +96,7 @@ export * from './spatial-reference.js';
 import { IfcLiteBridge } from './ifc-lite-bridge.js';
 import type { ExtrusionDefinitions, SweptDiskDescriptions } from './analytic-descriptions.js';
 import { notifyIfWasmAssetUnavailable } from './wasm-asset-error.js';
+import { exportMerged, planMapConversionNormalization } from './map-normalization-capability.js';
 import { BufferBuilder } from './buffer-builder.js';
 import { CoordinateHandler } from './coordinate-handler.js';
 import { GEOM_CLASS_OCCURRENCE, geometryClassOf } from './geometry-class.js';
@@ -102,7 +108,9 @@ import type { HbjsonStats } from './hbjson-stats.js';
 import { getStreamingBatchSize, convertMeshCollectionToBatch, withBuildingRotation } from './geometry-coordinate.js';
 import { resolveRtcFrame, type RtcFrame } from './rtc-frame.js';
 import { streamNativeGeometry } from './geometry-native.js';
-import { processParallel } from './geometry-parallel.js';
+import { processParallel, type ProcessParallelOptions } from './geometry-parallel.js';
+import { getWarmGeometryWorkerPool } from './warm-pool.js';
+import { acquireWasmStreamingOperation } from './wasm-streaming-guard.js';
 import type { StallPhaseHandle } from './stall-phase.js';
 import type { ByteStreamingPrePassResult } from './byte-streaming-prepass-result.js';
 import { buildPrePassWithFinishes } from './style-finishes.js';
@@ -149,23 +157,6 @@ export interface GeometryProcessorOptions {
    * exporters/drawings leave it off so their geometry stays full fidelity.
    */
   skipSmallCuts?: boolean;
-}
-
-let activeWasmStreamingOperation: string | null = null;
-
-function acquireWasmStreamingOperation(operation: string): () => void {
-  if (activeWasmStreamingOperation) {
-    throw new Error(
-      `GeometryProcessor ${operation} cannot start while ${activeWasmStreamingOperation} is still running. ` +
-      'Wait for the active stream to finish, or cancel it before starting another geometry operation.',
-    );
-  }
-  activeWasmStreamingOperation = operation;
-  return () => {
-    if (activeWasmStreamingOperation === operation) {
-      activeWasmStreamingOperation = null;
-    }
-  };
 }
 
 /**
@@ -769,7 +760,7 @@ export class GeometryProcessor {
     /** Opt in to hung-call recovery; see `ProcessParallelOptions.hungJobTimeoutMs` (#4884). */
     hungJobTimeoutMs?: number,
     /** See `ProcessParallelOptions.stallPhaseHandle` (#4902). */
-    stallPhaseHandle?: StallPhaseHandle,
+    stallPhaseHandle?: StallPhaseHandle, trace?: ProcessParallelOptions['trace'], // #6956
   ): AsyncGenerator<StreamingGeometryEvent> {
     // Initialize if needed
     if (!this.bridge?.isInitialized()) {
@@ -781,7 +772,7 @@ export class GeometryProcessor {
       sourceFingerprint,
       signal,
       hungJobTimeoutMs,
-      stallPhaseHandle,
+      stallPhaseHandle, trace,
       // Issue #540: forward the merge-layers preference snapshotted
       // at construction time. processParallel posts `set-merge-layers`
       // to every spawned worker right after `init`.
@@ -800,6 +791,8 @@ export class GeometryProcessor {
       skipSmallCuts: this.skipSmallCuts,
       wasmUrls,
       workerCountOverride,
+      // #7036: lease warm workers when the `warmPool` experiment is enabled.
+      workerPool: getWarmGeometryWorkerPool() ?? undefined,
     });
   }
 
@@ -855,6 +848,7 @@ export class GeometryProcessor {
       hungJobTimeoutMs?: number;
       /** See `ProcessParallelOptions.stallPhaseHandle` (#4902); parallel path only. */
       stallPhaseHandle?: StallPhaseHandle;
+      trace?: ProcessParallelOptions['trace']; // load trace, parallel path only (#6956)
     } = {}
   ): AsyncGenerator<StreamingGeometryEvent> {
     const sizeThreshold = options.sizeThreshold ?? 2 * 1024 * 1024; // Default 2MB
@@ -928,7 +922,7 @@ export class GeometryProcessor {
           options.sourceFingerprint,
           options.signal,
           options.hungJobTimeoutMs,
-          options.stallPhaseHandle,
+          options.stallPhaseHandle, options.trace,
         );
       } else {
         yield* this.processStreaming(buffer, options.entityIndex, batchConfig, options.sharedRtcOffset);
@@ -1187,6 +1181,8 @@ export class GeometryProcessor {
     return this.bridge.exportJsonld(buffer, context, includeProperties, includeQuantities, pretty, included);
   }
 
+  /** Canonical Rust plan; unsupported platforms refuse explicitly. */
+  planMapConversionNormalization(buffer: Uint8Array): string { return planMapConversionNormalization(this.bridge, this.platformBridge, buffer); }
   exportStep(
     buffer: Uint8Array,
     schema = '',
@@ -1210,18 +1206,7 @@ export class GeometryProcessor {
 
   /** Merge several IFC models (raw byte buffers) into one STEP/IFC UTF-8 byte buffer. */
   exportMerged(buffers: Uint8Array[], schema = ''): Uint8Array | null {
-    if (!this.bridge?.isInitialized()) return null;
-    let total = 0;
-    for (const b of buffers) total += b.byteLength;
-    const concatenated = new Uint8Array(total);
-    const lengths = new Uint32Array(buffers.length);
-    let off = 0;
-    for (let i = 0; i < buffers.length; i++) {
-      concatenated.set(buffers[i], off);
-      lengths[i] = buffers[i].byteLength;
-      off += buffers[i].byteLength;
-    }
-    return this.bridge.exportMerged(concatenated, lengths, schema);
+    return exportMerged(this.bridge, buffers, schema);
   }
 
   /**

@@ -1,0 +1,11 @@
+--- a/apps/viewer/src/lib/storage/content-database.ts
++++ b/apps/viewer/src/lib/storage/content-database.ts
+@@ -111,7 +111,7 @@
+       }
+       const revision = expected + 1;
+       // Only a new, revision-checked identity may consume staged import provenance.
+-      const importedFrom = current?.importedFrom ?? (!current ? (contentImportIdentity(kind, id), undefined) : undefined);
++      const importedFrom = current?.importedFrom ?? (!current ? contentImportIdentity(kind, id) : undefined);
+       store.put({ kind, id, version: 1, revision, createdAt: current?.createdAt ?? contentCreatedAt(),
+         modifiedAt: Date.now(), deleted: payload === null, payload,
+         ...(importedFrom ? { importedFrom } : {}) } satisfies ContentRow);

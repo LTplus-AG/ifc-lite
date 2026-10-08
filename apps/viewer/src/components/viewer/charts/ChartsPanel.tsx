@@ -21,8 +21,10 @@ import { useViewerStore } from '@/store';
 import { chartElementFields } from '@/lib/charts/chart-fields';
 import type { ChartFocusMode } from '@/store/slices/chartSlice';
 import { DASHBOARD_PRESETS, duplicateChart, modelOverviewDashboard, newChartSpec } from '@/lib/charts/presets';
+import { AssistantAction } from '@/components/viewer/assistant/AssistantAction';
 import { ChartCard } from './ChartCard';
 import { ChartEditor, type ClashRuleOption } from './ChartEditor';
+import { isSavedComparisonChart } from '@/lib/charts/comparison-source';
 import { DashboardGrid } from './DashboardGrid';
 import { DashboardMenu } from './DashboardMenu';
 import { ReportExportDialog } from './ReportExportDialog';
@@ -107,16 +109,16 @@ export function ChartsPanel({ renderer, reportSeams }: ChartsPanelProps) {
   const [aggregations, setAggregations] = useState<Map<string, Aggregation | null>>(new Map());
   const chartIds = useMemo(() => dashboard?.charts.map((c) => c.id) ?? [], [dashboard]);
   const chartIdSet = useMemo(() => new Set(chartIds), [chartIds]);
+  const recordedChartIds = useMemo(() => new Set(dashboard?.charts.filter(isSavedComparisonChart).map((chart) => chart.id) ?? []), [dashboard]);
   const onAggregation = useCallback((spec: ChartSpec, aggregation: Aggregation | null) => {
     setAggregations((prev) => (prev.get(spec.id) === aggregation ? prev : new Map(prev).set(spec.id, aggregation)));
   }, []);
   useEffect(() => {
     setAggregations((prev) => {
-      if (modelCount === 0) return prev.size === 0 ? prev : new Map();
-      const next = new Map([...prev].filter(([id]) => chartIdSet.has(id)));
+      const next = new Map([...prev].filter(([id]) => chartIdSet.has(id) && (modelCount > 0 || recordedChartIds.has(id))));
       return next.size === prev.size ? prev : next;
     });
-  }, [chartIdSet, modelCount]);
+  }, [chartIdSet, modelCount, recordedChartIds]);
   useEffect(() => {
     if (chartSliceSource && chartSlice && chartSliceBuckets && !chartIdSet.has(chartSliceSource)) {
       link.clearSelectionIfOwned(chartSliceSource, chartSlice, chartSliceBuckets);
@@ -145,7 +147,7 @@ export function ChartsPanel({ renderer, reportSeams }: ChartsPanelProps) {
     const exists = dashboard.charts.some((c) => c.id === spec.id);
     const previous = dashboard.charts.find((c) => c.id === spec.id);
     const fieldsOf = (chart: ChartSpec) => JSON.stringify([chart.elementField, chart.measureField].map((field) => field ? elementFieldColumnId(field) : null));
-    if (previous && (previous.source !== spec.source || fieldsOf(previous) !== fieldsOf(spec)) && chartSliceSource === spec.id && chartSlice && chartSliceBuckets) {
+    if (previous && (previous.source !== spec.source || previous.comparisonId !== spec.comparisonId || fieldsOf(previous) !== fieldsOf(spec)) && chartSliceSource === spec.id && chartSlice && chartSliceBuckets) {
       link.clearSelectionIfOwned(spec.id, chartSlice, chartSliceBuckets);
     }
     const charts = exists ? dashboard.charts.map((c) => (c.id === spec.id ? spec : c)) : [...dashboard.charts, spec];
@@ -249,6 +251,7 @@ export function ChartsPanel({ renderer, reportSeams }: ChartsPanelProps) {
             {t('chartsPanel.addChartButton')}
           </Button>
           <ReportExportDialog dashboard={dashboard} aggregations={aggregations} onSaveReportSetup={upsertDashboard} seams={reportSeams} />
+          <AssistantAction />
         </div>
       </div>
 
@@ -257,6 +260,7 @@ export function ChartsPanel({ renderer, reportSeams }: ChartsPanelProps) {
           <ChartEditor
             key={editing.id}
             spec={editing}
+            isNew={!dashboard?.charts.some((chart) => chart.id === editing.id)}
             datasets={datasets}
             elementFieldCatalog={fieldCatalog.catalog}
             elementFieldCatalogLoading={fieldCatalog.loading}
@@ -268,7 +272,7 @@ export function ChartsPanel({ renderer, reportSeams }: ChartsPanelProps) {
       )}
 
       <div className="flex-1 min-h-0 overflow-auto p-2">
-        {modelCount === 0 ? (
+        {modelCount === 0 && recordedChartIds.size === 0 ? (
           <div className="h-full flex items-center justify-center text-muted-foreground">{t('chartsPanel.loadModelEmptyState')}</div>
         ) : !dashboard || dashboard.charts.length === 0 ? (
           <div className="h-full flex flex-col items-center justify-center gap-2 text-muted-foreground">

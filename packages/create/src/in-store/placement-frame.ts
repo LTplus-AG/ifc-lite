@@ -26,6 +26,7 @@ import {
   type IfcAttributeValue,
 } from '@ifc-lite/parser';
 import type { Vec2 } from './auto-space-detect.js';
+import { axis3d } from './host-geometry-frame.js';
 
 /**
  * Optional overlay reader. If supplied, overlay walls (entities
@@ -41,6 +42,8 @@ export interface OverlayWallReader {
   isDeleted?(expressId: number): boolean;
   /** Retypes queued this session (#5249). */
   getTypeMutations?(): ReadonlyMap<number, { readonly newType: string }>;
+  /** Point lookup of a live retype, without copying the whole retype map. */
+  getEntityTypeMutation?(expressId: number): { readonly newType: string } | null | undefined;
   /** Queued positional attribute edits of one entity (#5249). */
   getPositionalMutationsForEntity?(expressId: number): ReadonlyMap<number, IfcAttributeValue> | null;
 }
@@ -58,7 +61,8 @@ export interface PlacementFrame {
  * Walk IfcLocalPlacement → IfcAxis2Placement3D → CartesianPoint and read the
  * ground-plane origin + RefDirection *of this one placement*, i.e. expressed
  * in its own `PlacementRelTo` parent's frame. Returns null when any link is
- * missing.
+ * missing or explicitly unreadable. Only horizontal +Z frames can be
+ * represented by this planar contract (#6511 / #6232).
  */
 export function readOwnPlacementFrame(
   store: IfcDataStore,
@@ -67,31 +71,15 @@ export function readOwnPlacementFrame(
   placementId: number,
 ): PlacementFrame | null {
   const placement = readEntity(store, extractor, overlay, placementId);
-  if (!placement) return null;
+  if (placement?.type?.toUpperCase() !== 'IFCLOCALPLACEMENT') return null;
   const axisPlacementId = numericAttr(placement.attributes[1]);
   if (axisPlacementId === null) return null;
-  const axisPlacement = readEntity(store, extractor, overlay, axisPlacementId);
-  if (!axisPlacement) return null;
-  const locationId = numericAttr(axisPlacement.attributes[0]);
-  const refDirId = numericAttr(axisPlacement.attributes[2]);
-  if (locationId === null) return null;
-  const locationEnt = readEntity(store, extractor, overlay, locationId);
-  if (!locationEnt) return null;
-  const origin = readVec3(locationEnt.attributes[0]);
-  if (!origin) return null;
-
-  let axisX: Vec2 = [1, 0];
-  if (refDirId !== null) {
-    const refDir = readEntity(store, extractor, overlay, refDirId);
-    if (refDir) {
-      const dir = readVec3(refDir.attributes[0]);
-      if (dir) {
-        const len = Math.hypot(dir[0], dir[1]);
-        if (len > AXIS_EPS) axisX = [dir[0] / len, dir[1] / len];
-      }
-    }
-  }
-  return { origin: [origin[0], origin[1]], axisX };
+  const frame = axis3d({ entity: (id) => {
+    const entity = readEntity(store, extractor, overlay, id);
+    return entity?.type ? { type: entity.type, attributes: entity.attributes } : null;
+  } }, axisPlacementId);
+  if (!frame || Math.abs(frame.z[0]) > AXIS_EPS || Math.abs(frame.z[1]) > AXIS_EPS || frame.z[2] <= 0) return null;
+  return { origin: [frame.o[0], frame.o[1]], axisX: [frame.x[0], frame.x[1]] };
 }
 
 /**
@@ -136,9 +124,9 @@ export function storeyPlacementChain(
  * innermost one first. `hops === 0` is the storey's own placement, whose frame
  * relative to itself is the identity.
  *
- * Returns `null` when any of those placements has no readable frame — the
- * caller must then leave the element where it is rather than move it by a
- * partial chain.
+ * Returns `null` when any required placement has no readable frame; callers
+ * refuse the element instead of labelling a partial transform storey-local.
+ * Placements at or above the shared ancestor cancel and need not be read.
  */
 export function storeyFrameAboveBy(
   store: IfcDataStore,
@@ -260,13 +248,12 @@ export function frameInStoreyFrame(
       // remove it, so the two directions land on different coordinates and the
       // #3003 fixture pins which one this is.
       const storeyFrame = storeyFrameAboveBy(store, extractor, overlay, storeyChain, hops);
-      return storeyFrame ? composeFrames(invertFrame(storeyFrame), frame) : frame;
+      return storeyFrame ? composeFrames(invertFrame(storeyFrame), frame) : null;
     }
-    // A cycle in a malformed `PlacementRelTo`: nothing above is trustworthy,
-    // so stop with what has been composed so far.
-    if (visited.has(relToId)) return frame;
+    // A cycle or unreadable parent cannot make a trustworthy partial frame.
+    if (visited.has(relToId)) return null;
     const parent = readOwnPlacementFrame(store, extractor, overlay, relToId);
-    if (!parent) return frame;
+    if (!parent) return null;
     frame = composeFrames(parent, frame);
     visited.add(relToId);
     currentId = relToId;
@@ -315,6 +302,8 @@ export function readEntity(
     }
   }
   if (!entity) return null;
+  const retype = overlay?.getEntityTypeMutation?.(expressId)?.newType;
+  if (retype) entity = { ...entity, type: retype };
   const edits = overlay?.getPositionalMutationsForEntity?.(expressId);
   if (!edits?.size) return entity;
   const attributes = [...entity.attributes];

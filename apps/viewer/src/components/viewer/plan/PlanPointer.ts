@@ -18,7 +18,7 @@
  */
 
 import { commandDoubleClick, commandPointerDown, commandPointerMove, commandPointerUp, getCommandRuntime } from '@/lib/commands/modeling/runtime';
-import { profileOf, semanticSource, solveCommandSnap, type PointerModifiers } from '@/lib/commands/modeling/snap-solve';
+import { modelSnapSources, profileOf, solveCommandSnap, type PointerModifiers } from '@/lib/commands/modeling/snap-solve';
 import type { SnapProfile, SnapResult, SnapSource, Vec2 } from '@/lib/snap/types';
 import { selectPickedGlobalId, toggleGlobalIdInSelection } from '../viewport-selection';
 import { beginWallEndpointDrag } from '@/lib/commands/modeling/commands/wall-move-endpoint';
@@ -47,9 +47,9 @@ function planProfile(profile: SnapProfile): SnapProfile {
 export function resolvePlanSnap(input: PlanPointerInput): SnapResult | null {
   const runtime = getCommandRuntime();
   const { command, ctx } = runtime;
-  if (!command || !ctx?.workplane) return null;
+  if (!command || !ctx?.workplane || ctx.workplane.spec.kind === 'section') return null;
   const snapping = input.snapping && !input.mods.altKey;
-  const sources = snapping ? [semanticSource(ctx.modelId), ...input.planSources] : [];
+  const sources = snapping ? [...modelSnapSources(ctx.modelId), ...input.planSources] : [];
   return solveCommandSnap(runtime, ctx.workplane, {
     cursor: input.local,
     metresPerPixel: input.metresPerPixel,
@@ -61,6 +61,9 @@ export function resolvePlanSnap(input: PlanPointerInput): SnapResult | null {
 
 /** Feed a plan pointer event to the running command. False when no command took it. */
 export function routePlanPointer(kind: 'move' | 'down' | 'up', input: PlanPointerInput): boolean {
+  // A plan cursor describes XY, whereas a section command expects horizontal
+  // distance and height. Consume these events without changing its gesture.
+  if (getCommandRuntime().ctx?.workplane?.spec.kind === 'section') return true;
   const snap = resolvePlanSnap(input);
   if (!snap) return false;
   // The second click of a double-click (detail 2) closes a polygon, as in 3D.

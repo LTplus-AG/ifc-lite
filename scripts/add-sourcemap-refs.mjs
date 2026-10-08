@@ -6,8 +6,11 @@
  * Append a `//# sourceMappingURL=` comment to every built chunk that has a
  * sibling `.map`, so PostHog's CLI can pair the two before uploading.
  *
- * Why this exists: the viewer builds with rolldown-vite, which writes the map
- * files but does NOT emit the trailing sourceMappingURL comment. posthog-cli
+ * Why this exists: every chunk vite-plugin-top-level-await wraps (main, store,
+ * exporters, ~85 in all) is re-printed by SWC after the bundler ran, and the
+ * re-print drops the trailing sourceMappingURL comment the bundler wrote (the
+ * maps themselves are kept right by patches/vite-plugin-top-level-await, see
+ * scripts/tla-sourcemaps.test.mjs). posthog-cli
  * documents that it locates maps through that comment — see its
  * `--public-path-prefix` flag ("we need to ignore it while searching for
  * them") — so without it the upload may find no maps to pair. Adding the

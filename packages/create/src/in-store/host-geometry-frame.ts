@@ -8,6 +8,12 @@ import { firstProjAxis } from '@ifc-lite/data';
 import type { AnchorEntityReader } from './resolve-anchor.js';
 import type { HostBounds } from './anchor.js';
 
+/** Structural entity access lets body and planar readers share the same
+ * placement validation without requiring an anchor's unrelated methods. */
+export interface GeometryEntityReader {
+  entity(id: number): { type: string; attributes: readonly unknown[] } | null;
+}
+
 export type Vec3 = [number, number, number];
 export type Frame3 = { o: Vec3; x: Vec3; y: Vec3; z: Vec3 };
 
@@ -32,7 +38,7 @@ export function vec3(value: unknown, dimension: 2 | 3 = 3): Vec3 | null {
   return x === null || y === null || z === null ? null : [x, y, z];
 }
 
-export function pointOf(reader: AnchorEntityReader, ref: unknown, type = 'IFCCARTESIANPOINT', dimension: 2 | 3 = 3): Vec3 | null {
+export function pointOf(reader: GeometryEntityReader, ref: unknown, type = 'IFCCARTESIANPOINT', dimension: 2 | 3 = 3): Vec3 | null {
   const id = refId(ref);
   const entity = id === null ? null : reader.entity(id);
   return entity?.type.toUpperCase() === type ? vec3(entity.attributes[0], dimension) : null;
@@ -44,7 +50,7 @@ export function unit(v: Vec3): Vec3 | null {
 }
 
 /** IfcAxis2Placement2D: Position is optional on a profile; Location is required. */
-export function axis2d(reader: AnchorEntityReader, ref: unknown): { o: [number, number]; x: [number, number] } | null {
+export function axis2d(reader: GeometryEntityReader, ref: unknown): { o: [number, number]; x: [number, number] } | null {
   if (ref === null || ref === undefined) return { o: [0, 0], x: [1, 0] };
   const id = refId(ref), placement = id === null ? null : reader.entity(id);
   if (placement?.type.toUpperCase() !== 'IFCAXIS2PLACEMENT2D') return null;
@@ -57,7 +63,7 @@ export function axis2d(reader: AnchorEntityReader, ref: unknown): { o: [number, 
 
 /** IfcAxis2Placement3D: only an omitted optional Position/Axis/RefDirection
  * uses defaults. An explicit missing, zero or parallel axis is unreadable. */
-export function axis3d(reader: AnchorEntityReader, ref: unknown): Frame3 | null {
+export function axis3d(reader: GeometryEntityReader, ref: unknown): Frame3 | null {
   if (ref === null || ref === undefined) return { o: [0, 0, 0], x: [1, 0, 0], y: [0, 1, 0], z: [0, 0, 1] };
   const id = refId(ref), placement = id === null ? null : reader.entity(id);
   if (placement?.type.toUpperCase() !== 'IFCAXIS2PLACEMENT3D') return null;
@@ -110,7 +116,7 @@ export function inverseFrame(f: Frame3): Frame3 {
 
 /** Full 3D local-placement chain, including the opening's rotated frame.
  * Missing references, cycles and excessive acyclic chains are unreadable. */
-export function placementInAncestor(reader: AnchorEntityReader, placementId: number, ancestorId: number): Frame3 | null {
+export function placementInAncestor(reader: GeometryEntityReader, placementId: number, ancestorId: number | null): Frame3 | null {
   let frame = IDENTITY_FRAME3;
   let id: number | null = placementId;
   const visited = new Set<number>();
@@ -126,6 +132,37 @@ export function placementInAncestor(reader: AnchorEntityReader, placementId: num
     id = refId(placement.attributes[0]);
   }
   return id === ancestorId ? frame : null;
+}
+
+/** Express one local placement in another's full 3D frame. Only the branches
+ * below their common ancestor need readable frames; the shared ancestor
+ * cancels, as it does in the canonical planar storey reader (#6232). */
+export function placementRelativeTo(reader: GeometryEntityReader, placementId: number, referenceId: number): Frame3 | null {
+  const parent = (id: number): number | null | undefined => {
+    const entity = reader.entity(id);
+    if (entity?.type.toUpperCase() !== 'IFCLOCALPLACEMENT') return undefined;
+    const value = entity.attributes[0];
+    return value === null || value === undefined ? null : refId(value) ?? undefined;
+  };
+  const referenceChain = new Set<number>();
+  let id: number | null | undefined = referenceId;
+  while (id !== null && id !== undefined && !referenceChain.has(id)) {
+    if (referenceChain.size >= 10_000) return null;
+    referenceChain.add(id);
+    id = parent(id);
+  }
+  const referenceReachesRoot = id === null;
+  const visited = new Set<number>();
+  id = placementId;
+  while (id !== null && id !== undefined && !referenceChain.has(id)) {
+    if (visited.size >= 10_000 || visited.has(id)) return null;
+    visited.add(id);
+    id = parent(id);
+  }
+  if (id === undefined || (id === null && !referenceReachesRoot)) return null;
+  const own = placementInAncestor(reader, placementId, id);
+  const reference = placementInAncestor(reader, referenceId, id);
+  return own && reference ? composeFrame(inverseFrame(reference), own) : null;
 }
 
 /** Subcontexts inherit CoordinateSpaceDimension from ParentContext. */

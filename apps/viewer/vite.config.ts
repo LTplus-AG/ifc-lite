@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { viewerAliases } from './vite-aliases';
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import Icons from 'unplugin-icons/vite';
@@ -253,35 +254,7 @@ export default defineConfig({
     CESIUM_BASE_URL: JSON.stringify('/cesium'),
   },
   resolve: {
-    alias: {
-      '@': path.resolve(__dirname, './src'),
-      '@ifc-lite/parser/browser': path.resolve(__dirname, '../../packages/parser/src/browser.ts'),
-      '@ifc-lite/parser': path.resolve(__dirname, '../../packages/parser/src'),
-      '@ifc-lite/geometry': path.resolve(__dirname, '../../packages/geometry/src'),
-      '@ifc-lite/renderer': path.resolve(__dirname, '../../packages/renderer/src'),
-      '@ifc-lite/query': path.resolve(__dirname, '../../packages/query/src'),
-      '@ifc-lite/server-client': path.resolve(__dirname, '../../packages/server-client/src'),
-      '@ifc-lite/spatial': path.resolve(__dirname, '../../packages/spatial/src'),
-      '@ifc-lite/data': path.resolve(__dirname, '../../packages/data/src'),
-      '@ifc-lite/export': path.resolve(__dirname, '../../packages/export/src'),
-      '@ifc-lite/cache': path.resolve(__dirname, '../../packages/cache/src'),
-      '@ifc-lite/collab': path.resolve(__dirname, '../../packages/collab/src'),
-      '@ifc-lite/ifcx': path.resolve(__dirname, '../../packages/ifcx/src'),
-      '@ifc-lite/pointcloud': path.resolve(__dirname, '../../packages/pointcloud/src'),
-      '@ifc-lite/wasm': path.resolve(__dirname, '../../packages/wasm/pkg/ifc-lite.js'),
-      '@ifc-lite/sdk': path.resolve(__dirname, '../../packages/sdk/src'),
-      '@ifc-lite/create': path.resolve(__dirname, '../../packages/create/src'),
-      '@ifc-lite/sandbox/schema': path.resolve(__dirname, '../../packages/sandbox/src/bridge-schema.ts'),
-      '@ifc-lite/sandbox': path.resolve(__dirname, '../../packages/sandbox/src'),
-      '@ifc-lite/lens': path.resolve(__dirname, '../../packages/lens/src'),
-      '@ifc-lite/mutations': path.resolve(__dirname, '../../packages/mutations/src'),
-      '@ifc-lite/bcf': path.resolve(__dirname, '../../packages/bcf/src'),
-      '@ifc-lite/bcf-api': path.resolve(__dirname, '../../packages/bcf-api/src'),
-      '@ifc-lite/oauth-pkce': path.resolve(__dirname, '../../packages/oauth-pkce/src'),
-      '@ifc-lite/drawing-2d': path.resolve(__dirname, '../../packages/drawing-2d/src'),
-      '@ifc-lite/encoding': path.resolve(__dirname, '../../packages/encoding/src'),
-      '@ifc-lite/ids': path.resolve(__dirname, '../../packages/ids/src'),
-      '@ifc-lite/lists': path.resolve(__dirname, '../../packages/lists/src'),    },
+    alias: viewerAliases,
   },
   server: {
     port: 3000,
@@ -295,6 +268,7 @@ export default defineConfig({
       allow: ['../..'],
     },
     proxy: {
+      '/api/autodesk': { target: 'http://127.0.0.1:3002', changeOrigin: false },
       '/api/chat': {
         // Single API source of truth lives at repo-root `api/chat.ts`.
         // For local dev, run `pnpm dev:api` from repo root.
@@ -339,6 +313,9 @@ export default defineConfig({
       },
       output: {
         manualChunks(id) {
+          // Assistant text edits need ChangeSet, not the lazy CodeMirror editor UI.
+          // Keep state separate so sharing it cannot pull the whole editor into startup.
+          if (id.includes('/node_modules/@codemirror/state/')) return 'codemirror-state';
           if (id.includes('/packages/sandbox/')) return 'sandbox';
           if (id.includes('/packages/export/')) return 'exporters';
           if (id.includes('/packages/server-client/')) return 'server-client';

@@ -13,6 +13,7 @@
  */
 
 import { EditProperty, Extension, FileCsv, FileGlb, FileHbjson, FileIfc, FileJson, FileKmz, FilePdf, FileUsd, HideSelected, Screenshot } from '@/icons';
+import { CesiumIonUpload } from '@/icons';
 import type { ExportIconSet } from '../../toolbar/export-commands';
 
 export const RIBBON_EXPORT_ICONS: ExportIconSet = {
@@ -24,6 +25,7 @@ export const RIBBON_EXPORT_ICONS: ExportIconSet = {
   'modified-ifc': EditProperty,
   glb: FileGlb,
   kmz: FileKmz,
+  ion: CesiumIonUpload,
   usd: FileUsd,
   energy: FileHbjson,
   csv: FileCsv,

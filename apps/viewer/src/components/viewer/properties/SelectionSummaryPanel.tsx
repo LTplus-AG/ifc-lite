@@ -16,6 +16,7 @@ import { TOUR_ANCHORS, tourAnchor } from '@/lib/tours/anchors';
 import { CopyValueButton } from './CopyValueButton';
 import { PersistentCollapsible } from './PersistentCollapsible';
 import { UnitDisplayControl } from './UnitDisplayControl';
+import { AssistantAction } from '@/components/viewer/assistant/AssistantAction';
 import { summarizeSelection, type SummaryRow } from './selectionSummary';
 import { selectOnlyEntity } from './useSelectAssembly';
 
@@ -100,7 +101,7 @@ export function SelectionSummaryPanel({ models, ifcDataStore }: { models: Map<st
         <h2 className="font-bold uppercase tracking-wider text-xs text-zinc-900 dark:text-zinc-100">
           {t('properties.summary.elementCount', localeCount(locale, summary.total))}
         </h2>
-        <div className="ml-auto"><UnitDisplayControl /></div>
+        <div className="ml-auto flex items-center gap-1"><AssistantAction /><UnitDisplayControl /></div>
       </div>
       <ScrollArea className="flex-1">
         <Section id="classes" icon={<Layers className="h-4 w-4 text-muted-foreground" />} title={t('properties.summary.byClassHeading')} count={summary.byClass.length}>

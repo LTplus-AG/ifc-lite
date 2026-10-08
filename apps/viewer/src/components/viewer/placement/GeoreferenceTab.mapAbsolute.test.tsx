@@ -24,6 +24,7 @@
  */
 
 import '@/test/setup-dom.js';
+import { waitFor } from '@/test/render.js';
 import { describe, it, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
@@ -84,6 +85,7 @@ async function mount(props: {
       />,
     );
   });
+  await waitFor(() => Boolean(container.querySelector('[aria-label="Nudge east"]')), 'projected editing resolves');
   return { root, container };
 }
 

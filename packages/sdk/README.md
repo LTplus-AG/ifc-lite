@@ -33,12 +33,27 @@ bim.viewer.colorize(walls.map(w => w.ref), '#ff0000');
 
 - `bim.query()` - fluent entity queries by type, property, quantity
 - `bim.model` / `bim.mutate` / `bim.store` - model info, edits, raw store access
+- `bim.store.addWall` / `addColumn` / `addSlab` / `addBeam` / `addSpace` /
+  `addRoof` / `addPlate` / `addMember` - ordinary loaded-model creation through
+  the shared atomic core. Host adapters compose these existing methods with
+  `createOrdinaryStoreBackend(resolveModel)`; the resolver supplies the live
+  store, editor and mutation view. Existing strict anchor placement is retained.
+- `bim.store.addColumn` / `addBeam` / `addMember` accept canonical parameterised
+  `Profile` sections in place of rectangular dimensions. Columns also accept
+  storey-local `RefDirection`; dimensions remain metres in every model unit.
 - `bim.store.joinWalls(modelId, aExpressId, bExpressId, options?)` - join straight
   walls through the same atomic core as the Model workspace and MCP. Returns
   `IfcRelConnectsPathElements`; `Name`, `priority`, `tolerance` and per-wall
   `priorities` use the existing `WallJoinApplyOptions` contract. Readable hosted
   cuts must fit both joined end faces. The viewer records one undo and remeshes
   both walls; headless export writes the new IFC graph.
+- `bim.store.addStair` / `addRailing` - canonical stair/railing parameters in
+  storey-local metres. `removeStair(ref)` removes a uniquely owned parent/flight
+  pair, retains shared geometry and refuses ambiguous ownership or foreign
+  product references. Backend capabilities are optional; unsupported hosts
+  refuse explicitly. `replaceElement(ref, storeyId, element)` stages removal
+  and canonical creation together, retaining the old graph on late refusal.
+  Generic `removeEntity` retains its one-record contract.
 - `bim.viewer` - selection, visibility, colorization, camera, sections
 - `bim.export` - `csv`, `json`, `ifc` (STEP), `hbjson`, `dfjson`, `download`
 - `bim.ids` / `bim.bcf` / `bim.clash` - validation, collaboration, interference checks
@@ -65,3 +80,5 @@ Also exported: `BimHost` (viewer side), `RemoteBackend`, `MessagePortTransport`,
 ## License
 
 MPL-2.0
+
+Direct SDK property writes can supply an optional IFC datatype: `bim.mutate.setProperty(ref, "Pset_WallCommon", "ThermalTransmittance", 1, "IfcThermalTransmittanceMeasure")`. Declarations are schema-validated and retained through STEP export; omitted datatypes retain existing inference. See the [SDK guide](https://ifclite.dev/docs/guide/scripting-sdk/).

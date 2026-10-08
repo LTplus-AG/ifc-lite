@@ -3,6 +3,12 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import type { PointCloudNode } from '../pointcloud/point-cloud-node.js';
+import {
+    summarizeDeviationAssetsAsync,
+    type DeviationAssetRange,
+    type DeviationDistances,
+    type DeviationStatistics,
+} from './deviation-statistics.js';
 
 /** One scan asset's measured signed distances in metres. */
 export interface DeviationAssetStats {
@@ -13,27 +19,39 @@ export interface DeviationAssetStats {
     minimumDeviation: number | null;
     maximumDeviation: number | null;
     meanDeviation: number | null;
+    /** Full summary: |d| percentiles, RMS, σ (#6872). */
+    statistics: DeviationStatistics;
 }
 
 /**
- * Read signed distances only for an explicit export. One staging buffer is
- * alive at a time, so a large scan never needs a second full copy in RAM or
- * VRAM. The normal deviation compute and render path does no readback.
+ * Read every computed point's signed distance back from the GPU, on demand.
+ * The normal compute and render path does no readback.
+ *
+ * The result is ONE `Float32Array` (4 bytes per computed point, the size of
+ * the GPU deviation buffers themselves) with each scan asset as a contiguous
+ * range, so per-asset and whole-run statistics share it without a second
+ * copy. One staging buffer is alive at a time, so VRAM grows by one chunk.
  */
-export async function readDeviationAssetStats(
+export async function readDeviationDistances(
     device: GPUDevice,
     nodes: Iterable<PointCloudNode>,
     wasComputed: (buffer: GPUBuffer) => boolean,
-): Promise<DeviationAssetStats[]> {
-    const results: DeviationAssetStats[] = [];
+): Promise<DeviationDistances> {
+    const assets: DeviationAssetRange[] = [];
+    const plan: Array<PointCloudNode['chunks']> = [];
+    let total = 0;
     for (const node of nodes) {
-        let count = 0;
-        let finiteCount = 0;
-        let sum = 0;
-        let min = Infinity;
-        let max = -Infinity;
-        for (const chunk of node.chunks) {
-            if (!wasComputed(chunk.deviationBuffer) || chunk.pointCount === 0) continue;
+        const chunks = node.chunks.filter((chunk) => chunk.pointCount > 0 && wasComputed(chunk.deviationBuffer));
+        const count = chunks.reduce((sum, chunk) => sum + chunk.pointCount, 0);
+        if (count === 0) continue;
+        assets.push({ expressId: node.meta.expressId, modelIndex: node.meta.modelIndex ?? 0, offset: total, count });
+        plan.push(chunks);
+        total += count;
+    }
+    const values = new Float32Array(total);
+    let cursor = 0;
+    for (const chunks of plan) {
+        for (const chunk of chunks) {
             const size = chunk.pointCount * Float32Array.BYTES_PER_ELEMENT;
             const staging = device.createBuffer({
                 size,
@@ -41,20 +59,13 @@ export async function readDeviationAssetStats(
             });
             let mapped = false;
             try {
-                const encoder = device.createCommandEncoder({ label: 'deviation-csv-readback' });
+                const encoder = device.createCommandEncoder({ label: 'deviation-readback' });
                 encoder.copyBufferToBuffer(chunk.deviationBuffer, 0, staging, 0, size);
                 device.queue.submit([encoder.finish()]);
                 await staging.mapAsync(GPUMapMode.READ);
                 mapped = true;
-                const values = new Float32Array(staging.getMappedRange());
-                count += values.length;
-                for (const value of values) {
-                    if (!Number.isFinite(value)) continue;
-                    finiteCount++;
-                    sum += value;
-                    min = Math.min(min, value);
-                    max = Math.max(max, value);
-                }
+                values.set(new Float32Array(staging.getMappedRange(), 0, chunk.pointCount), cursor);
+                cursor += chunk.pointCount;
             } finally {
                 try {
                     if (mapped) staging.unmap();
@@ -63,16 +74,29 @@ export async function readDeviationAssetStats(
                 }
             }
         }
-        if (count === 0) continue;
-        results.push({
-            expressId: node.meta.expressId,
-            modelIndex: node.meta.modelIndex ?? 0,
-            pointsProcessed: count,
-            finitePoints: finiteCount,
-            minimumDeviation: finiteCount > 0 ? min : null,
-            maximumDeviation: finiteCount > 0 ? max : null,
-            meanDeviation: finiteCount > 0 ? sum / finiteCount : null,
-        });
     }
-    return results;
+    return { values, assets };
+}
+
+/**
+ * Per-scan-asset statistics over {@link readDeviationDistances}. Holds the
+ * readback (4 bytes per point) for the duration of the call; the statistics
+ * themselves add a fixed ~1 MiB and run in slices that yield to the event loop.
+ */
+export async function readDeviationAssetStats(
+    device: GPUDevice,
+    nodes: Iterable<PointCloudNode>,
+    wasComputed: (buffer: GPUBuffer) => boolean,
+): Promise<DeviationAssetStats[]> {
+    const distances = await readDeviationDistances(device, nodes, wasComputed);
+    return (await summarizeDeviationAssetsAsync(distances)).map(({ expressId, modelIndex, statistics }) => ({
+        expressId,
+        modelIndex,
+        pointsProcessed: statistics.count,
+        finitePoints: statistics.validCount,
+        minimumDeviation: statistics.min,
+        maximumDeviation: statistics.max,
+        meanDeviation: statistics.mean,
+        statistics,
+    }));
 }

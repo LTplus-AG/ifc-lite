@@ -8,6 +8,7 @@
  * that model, the page composes with breaks, and the PDF is drawn from the
  * resolved blocks through recording seams.
  */
+import { clearContentDatabase } from '@/test/content-fixture.js';
 import { describe, it, before } from 'node:test';
 import assert from 'node:assert/strict';
 import { IfcParser, type IfcDataStore } from '@ifc-lite/parser';
@@ -18,6 +19,9 @@ import { configureMutationView } from '../../utils/configureMutationView.js';
 import { composeDocument, estimateTextWidth, wrapText } from './compose.js';
 import { largestBucketIds } from '../charts/buckets.js';
 import { generateDocumentPdf, topicLines, type DocumentPdfSeams } from './generate-document-pdf.js';
+import { documentPdfWarnings } from './export-prepared-document.js';
+import { prepareDocumentCharts } from './prepare-charts.js';
+import { chartElementFilterKey } from '../charts/source-filter.js';
 import { loadDocuments, parseDocumentFile } from './persistence.js';
 import { blankDocument, coverSheetDocument } from './presets.js';
 import { resolveValidationTableState } from './resolve-validation-table.js';
@@ -700,6 +704,30 @@ function recordingSeams(): { seams: DocumentPdfSeams; calls: Array<{ op: string;
 }
 
 describe('generateDocumentPdf', () => {
+  it('reports chart filter and aggregation failures in both PDF content and artifact warnings (#6612)', async () => {
+    const chart = coverSheetDocument().blocks.find((block) => block.kind === 'chart');
+    assert.ok(chart?.kind === 'chart');
+    const filtered = { ...chart, id: 'filtered', chart: { ...chart.chart, title: 'Filtered result', filter: { selector: 'IfcWall' } } };
+    const malformed = { ...chart, id: 'malformed', chart: { ...chart.chart, type: 'bar' as const, title: 'Missing column', dimension: 'MissingDimension' } };
+    const document: DocumentSpec = { version: DOCUMENT_VERSION, id: 'errors', name: 'Diagnostics',
+      page: { size: 'A4', orientation: 'portrait' }, blocks: [filtered, malformed] };
+    const dataset = elementsDataset([{ store: ctx.models[0].store, toGlobalId: (id) => id, name: 'tower.ifc' }]);
+    const key = chartElementFilterKey(filtered.chart.filter);
+    assert.ok(key);
+    const prepared = prepareDocumentCharts(document, { elements: dataset, clash: dataset, bcf: dataset,
+      schedule: dataset, ids: dataset, compare: dataset }, new Map([[key, { status: 'error' as const, message: 'Selector refused' }]]));
+    assert.equal(prepared.aggregations.get('malformed'), null);
+    const { seams, calls } = recordingSeams();
+    const result = await generateDocumentPdf({ document, bindings: ctx, ...prepared,
+      snapshotIds: () => [], topics: new Map(), tables: new Map() }, seams);
+    const warnings = documentPdfWarnings(result);
+    assert.ok(warnings.some((warning) => warning.includes('Filtered result: Selector refused')));
+    assert.ok(warnings.some((warning) => warning.includes('Missing column:') && warning.includes('MissingDimension')));
+    const texts = calls.filter((call) => call.op === 'text').map((call) => String(call.args[0])).join('\n');
+    assert.ok(texts.includes('Selector refused'));
+    assert.ok(texts.includes('MissingDimension'));
+    assert.equal(calls.filter((call) => call.op === 'svg').length, 0);
+  });
   it('prints resolved text, the chart SVG with its snapshot, the logo, a topic, and reports what did not resolve', async () => {
     const store = ctx.models[0].store;
     const dataset = elementsDataset([{ store, toGlobalId: (id) => id, name: 'tower.ifc' }]);
@@ -724,7 +752,7 @@ describe('generateDocumentPdf', () => {
     assert.ok(texts.includes('Tower — 2026-09-12'), texts.join(' | '));
     assert.ok(texts.includes('Roof: [IfcBuildingStorey["Roof"].Name: no IfcBuildingStorey "Roof"]'));
     assert.ok(texts.includes('Clash at grid B') && texts.includes('Status: Open') && texts.includes('Created: 2026-09-01 by Ada'));
-    assert.ok(texts.some((t) => t.startsWith('[BCF topic gone')));
+    assert.ok(texts.includes('[BCF topic gone: not among the loaded topics]'), 'the not-loaded notice is printed whole');
     assert.deepEqual(result.unresolved, ['IfcBuildingStorey["Roof"].Name']);
     assert.deepEqual(result.missingTopics, ['gone']);
     const svgs = calls.filter((c) => c.op === 'svg');
@@ -735,6 +763,17 @@ describe('generateDocumentPdf', () => {
     assert.deepEqual(images, [['JPEG', 3], ['PNG', 2], ['PNG', 3]]);
     assert.equal(result.pages, 1);
     assert.deepEqual(topicLines({ guid: 'x', title: 'x', comments: [], viewpoints: [] }), []);
+  });
+
+  it('a topic that is not loaded keeps its whole notice under a large heading cut to its strip (#6705)', async () => {
+    const guid = '3vB2YO$MX4xv5uCqZZG05x-0a1b2c3d4e5f60718293a4b5c6d7e8f9';
+    const doc: DocumentSpec = { version: DOCUMENT_VERSION, id: 'd', name: 'Doc', page: { size: 'A4', orientation: 'portrait' },
+      blocks: [{ kind: 'topic', id: 'tp', guid, snapshot: false, titleFontSize: 24 }] };
+    const { seams, calls } = recordingSeams();
+    await generateDocumentPdf({ document: doc, bindings: ctx, aggregations: new Map(), chartMessages: new Map(), snapshotIds: () => [], topics: new Map(), tables: new Map() }, seams);
+    const texts = calls.filter((c) => c.op === 'text').map((c) => String(c.args[0]));
+    assert.ok(texts.includes(`BCF topic ${guid}`) || texts.some((t) => t.startsWith('BCF topic ') && t.endsWith('…')), `the heading names the topic: ${texts.join(' | ')}`);
+    assert.ok(texts.join(' ').replace(/\s+/g, ' ').includes(`[BCF topic ${guid}: not among the loaded topics]`), `the notice is printed whole: ${texts.join(' | ')}`);
   });
 
   it('a blank document prints one page with its title binding resolved', async () => {
@@ -777,15 +816,16 @@ describe('table block (#5142)', () => {
     assert.equal(source.list.columns.length, 3);
   });
 
-  it('rejects malformed embedded Rules groups while keeping valid neighboring saved documents (#5894)', () => {
+  it('rejects malformed embedded Rules groups while keeping valid neighboring saved documents (#5894)', async () => {
     const brokenList = { ...listOf(), groups: [null] };
     const broken = docWith([{ ...tableBlock(), source: { kind: 'list', list: brokenList } } as unknown as TableBlock]);
     const valid = { ...docWith([tableBlock()]), id: 'valid-neighbor' };
     assert.deepEqual(validateDocumentSpec(broken).map(({ path }) => path), ['blocks[0].source.list']);
     assert.throws(() => parseDocumentFile(JSON.stringify(broken)), /blocks\[0\]\.source\.list/);
     try {
+      await clearContentDatabase();
       localStorage.setItem('ifc-lite-documents', JSON.stringify([broken, valid]));
-      assert.deepEqual(loadDocuments().map(({ id }) => id), ['valid-neighbor']);
+      assert.deepEqual((await loadDocuments()).map(({ id }) => id), ['valid-neighbor']);
     } finally {
       localStorage.removeItem('ifc-lite-documents');
     }
@@ -890,7 +930,7 @@ describe('validation-results table source (#5138)', () => {
     const { seams, calls } = recordingSeams();
     const pdf = await generateDocumentPdf({ document: doc, bindings: ctx, aggregations: new Map(), chartMessages: new Map(), snapshotIds: () => [], topics: new Map(), tables: new Map([['vt1', absentState]]) }, seams);
     const texts = calls.filter((c) => c.op === 'text').map((c) => String(c.args[0]));
-    assert.ok(texts.includes('No validation report yet — run validation, then export again.'));
+    assert.ok(texts.includes('No validation report yet — run validation to include results.'));
     assert.deepEqual(pdf.tableFailures, ['vt1']);
 
     const emptyReport = {

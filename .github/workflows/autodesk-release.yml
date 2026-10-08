@@ -1,0 +1,85 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+name: Autodesk deployment bundle
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: autodesk-bundle-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  viewer:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - uses: ./.github/actions/setup-wasm-build
+        with:
+          cache-prefix: autodesk-release
+      - run: pnpm build:wasm
+      - name: Build viewer for server-owned Autodesk sign-in
+        run: pnpm build --filter=@ifc-lite/viewer...
+        env:
+          VITE_AUTODESK_HOSTED: 'true'
+          VITE_CLOUD_HOSTED: 'true'
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: autodesk-viewer-${{ github.sha }}
+          path: apps/viewer/dist
+          retention-days: 7
+          if-no-files-found: error
+  windows-bundle:
+    needs: viewer
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          cache: pnpm
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: '8.0.x'
+      - run: rustup show
+      - run: cargo build --locked --release -p ifc-lite-cloud-import
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build --filter=@ifc-lite/autodesk-service...
+      - name: Native parser and session contracts
+        run: pnpm test --env-mode=loose --filter=@ifc-lite/autodesk-service --filter=@ifc-lite/source-autodesk --filter=@ifc-lite/ifcx
+        env:
+          TEST_FORMA_CONVERTER: ${{ github.workspace }}/target/release/ifc-lite-cloud-import.exe
+      - name: Package service and native importers without credentials
+        shell: pwsh
+        run: |
+          $bundle = Join-Path $env:RUNNER_TEMP 'ifclite-autodesk'
+          pnpm --filter=@ifc-lite/autodesk-service deploy --legacy --prod "$bundle/service"
+          if ($LASTEXITCODE -ne 0) { throw 'Service packaging failed' }
+          New-Item -ItemType Directory -Force "$bundle/native" | Out-Null
+          Copy-Item target/release/ifc-lite-cloud-import.exe "$bundle/native/"
+          dotnet publish apps/autodesk-exchange-worker/AutodeskExchangeWorker.csproj -c Release -p:RestoreLockedMode=true -o "$bundle/exchange"
+          if ($LASTEXITCODE -ne 0) { throw 'SDK publication failed' }
+          & "$bundle/exchange/AutodeskExchangeWorker.exe" --self-test
+          if ($LASTEXITCODE -ne 0) { throw 'SDK snapshot guards failed' }
+          Copy-Item deploy/autodesk "$bundle/deployment" -Recurse
+          @{ commit = '${{ github.sha }}'; ref = '${{ github.ref }}'; node = '24'; exchangeRuntime = '.NET 8 Windows x64'; hosted = $true } |
+            ConvertTo-Json | Set-Content "$bundle/release.json" -Encoding utf8
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: autodesk-viewer-${{ github.sha }}
+          path: ${{ runner.temp }}/ifclite-autodesk/viewer
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ifclite-autodesk-windows-${{ github.sha }}
+          path: ${{ runner.temp }}/ifclite-autodesk
+          retention-days: 7
+          if-no-files-found: error

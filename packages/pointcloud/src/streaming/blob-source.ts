@@ -10,14 +10,17 @@
  * `Uint8Array` — the underlying ArrayBuffer is owned by the caller and
  * safe to transfer across postMessage boundaries.
  */
-export class BlobByteSource {
+import type { RangeByteSource } from './types.js';
+
+export class BlobByteSource implements RangeByteSource {
   constructor(private readonly blob: Blob) {}
 
   get size(): number {
     return this.blob.size;
   }
 
-  async read(start: number, end: number): Promise<Uint8Array> {
+  async read(start: number, end: number, signal?: AbortSignal): Promise<Uint8Array> {
+    signal?.throwIfAborted();
     const safeStart = Math.max(0, start);
     const safeEnd = Math.min(end, this.blob.size);
     if (safeEnd <= safeStart) return new Uint8Array(0);

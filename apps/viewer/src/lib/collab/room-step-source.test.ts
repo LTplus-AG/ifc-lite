@@ -68,6 +68,7 @@ describe('portable room STEP source (#4604)', () => {
     assert.ok(model?.ifcDataStore);
     const portable = roomStepExportSource(model.ifcDataStore, undefined, model.id);
     assert.ok(portable);
+    assert.equal(portable.mutationView?.getMutations().filter(mutation => mutation.type === 'CREATE_PROPERTY' || mutation.type === 'UPDATE_PROPERTY').length ?? 0, 0, 'Q9Xh: unchanged nominal source declarations create no property writes');
     const output = await new StepExporter(portable.dataStore, portable.mutationView).exportAsync({
       schema: 'IFC4', applyMutations: true, includeGeometry: true,
     });
@@ -498,4 +499,48 @@ describe('portable room STEP source (#4604)', () => {
       'portable export must not resurrect the deleted annotation');
     guest.reconstructor.teardown();
   });
+});
+
+it('rejected room declarations stay quarantined across initial join, reconstruction and STEP export (#6643, Q9Xc/Q9Xo)', async context => {
+  const control = new Uint8Array(await readFile(new URL('../../../../../docs/architecture/evidence/pdf-fidelity-report/control-text-accepted.ifc', import.meta.url)));
+  const bytes = withTaggedQuantityRoot(control); const store = await new IfcParser().parseColumnar(bytes.slice().buffer);
+  const doc = collab.createCollabDoc(); const blobs = new collab.MemoryBlobStore(); const slot = collab.modelSlotRef('m0');
+  await ownerShare(doc, blobs, [{ modelId: 'typed', name: 'typed.ifc', store, isIfcx: false, meshes: [], idOffset: 0, schemaVersion: 'IFC4', fileName: 'typed.ifc', portableStepSource: bytes }], new Map([['typed', slot]]));
+  const path = `${slot.pathPrefix}/0aaaaaaaaaaaaaaaaaaaaa`;
+  collab.setPropertyValue(doc, path, 'Material', 'Collision', { type: 'IfcNonexistentValue', value: 'REJECTED' });
+  collab.setPropertyValue(doc, path, 'Pset_WallCommon', 'ThermalTransmittance', { type: 'IfcThermalTransmittanceMeasure', value: 'invalid' });
+  const warning = context.mock.method(console, 'warn', () => {});
+  const guest = joiner(doc, blobs, 'rejected-declarations');
+  try {
+    for (let iteration = 0; iteration < 2; iteration++) {
+      await guest.reconstructor.reconstruct(); const model = guest.store.state().models.values().next().value; assert.ok(model?.ifcDataStore);
+      const id = localIdOf(model, path);
+      const effective = model.ifcDataStore.getProperties(id).flatMap(pset => pset.properties);
+      assert.ok(!effective.some(property => property.value === 'REJECTED' || property.value === 'invalid'));
+      assert.ok(guest.notices.some(notice => notice.includes('Rejected room property')));
+      assert.equal(collab.getPropertyValue(doc, path, 'Material', 'Collision')?.value, 'REJECTED', 'quarantine must not erase the peer original');
+      const portable = roomStepExportSource(model.ifcDataStore, undefined, model.id); assert.ok(portable);
+      const output = await new StepExporter(portable.dataStore, portable.mutationView).exportAsync({ schema: 'IFC4', applyMutations: true, includeGeometry: true });
+      const text = typeof output.content === 'string' ? output.content : new TextDecoder().decode(output.content);
+      assert.doesNotMatch(text, /REJECTED|invalid|IFCNONEXISTENTVALUE/);
+      assert.match(text, /IFCPROPERTYSINGLEVALUE\('Collision'[^\n]*IFCLABEL\('exact'\)/, 'the rejected replacement must retain the immutable source declaration');
+    }
+    assert.ok(warning.mock.callCount() >= 2);
+  } finally { guest.reconstructor.teardown(); }
+});
+
+it('room STEP comparison retains genuine explicit nominal type changes (#6643, Q9Xh)', async () => {
+  const control = new Uint8Array(await readFile(new URL('../../../../../docs/architecture/evidence/pdf-fidelity-report/control-text-accepted.ifc', import.meta.url)));
+  const bytes = withTaggedQuantityRoot(control); const store = await new IfcParser().parseColumnar(bytes.slice().buffer);
+  const doc = collab.createCollabDoc(); const blobs = new collab.MemoryBlobStore(); const slot = collab.modelSlotRef('m0');
+  await ownerShare(doc, blobs, [{ modelId: 'typed', name: 'typed.ifc', store, isIfcx: false, meshes: [], idOffset: 0, schemaVersion: 'IFC4', fileName: 'typed.ifc', portableStepSource: bytes }], new Map([['typed', slot]]));
+  collab.setPropertyValue(doc, `${slot.pathPrefix}/0aaaaaaaaaaaaaaaaaaaaa`, 'Material', 'Collision', { type: 'IfcIdentifier', value: 'exact' });
+  const guest = joiner(doc, blobs, 'changed-declaration');
+  try {
+    await guest.reconstructor.reconstruct(); const model = guest.store.state().models.values().next().value; assert.ok(model?.ifcDataStore);
+    const portable = roomStepExportSource(model.ifcDataStore, undefined, model.id); assert.ok(portable);
+    const output = await new StepExporter(portable.dataStore, portable.mutationView).exportAsync({ schema: 'IFC4', applyMutations: true, includeGeometry: true });
+    const text = typeof output.content === 'string' ? output.content : new TextDecoder().decode(output.content);
+    assert.match(text, /IFCPROPERTYSINGLEVALUE\('Collision'[^\n]*IFCIDENTIFIER\('exact'\)/);
+  } finally { guest.reconstructor.teardown(); }
 });

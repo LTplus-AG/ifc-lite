@@ -4,6 +4,9 @@
 
 import { useSearchIndex } from '@/hooks/useSearchIndex';
 import { useUnexportedChangesGuard } from '@/hooks/useUnexportedChanges';
+import { useEffect } from 'react';
+import { useViewerStore } from '@/store';
+import { startActivityRecorders } from '@/lib/activity/activity-recorders';
 
 /**
  * Session-wide effects that read `models` / `mutationVersion` (#6232 perf).
@@ -15,5 +18,6 @@ import { useUnexportedChangesGuard } from '@/hooks/useUnexportedChanges';
 export function ShellStoreEffects(): null {
   useSearchIndex();
   useUnexportedChangesGuard(); // leaving the page with unexported edits asks first (#5604)
+  useEffect(() => startActivityRecorders(useViewerStore), []); // the activity tray's job journal (#6925)
   return null;
 }

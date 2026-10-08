@@ -10,8 +10,7 @@
  *
  * The bug this exists to prevent: `computePdfScaleLayout`'s page offsets
  * are derived from `bounds.min`/`bounds.max` in their ORIGINAL (un-negated)
- * frame. `front`/`side` section exports negate X and/or Y per point when
- * mapping into paper space (matching the "as displayed" SVG export), so if
+ * frame. Section exports negate X and/or Y before the PDF transform, so if
  * the layout is derived from the un-flipped bounds while points are drawn
  * flipped, the offsets are correct only when `bounds` happens to be
  * symmetric about zero — for any model at ordinary (positive) world
@@ -31,8 +30,7 @@ import {
 
 export type SectionAxis = 'down' | 'front' | 'side';
 
-/** Matches the flip `generateExportSVG`/`generateSheetSVG` apply per axis so
- *  the "as displayed" PDF export mirrors the on-screen/SVG orientation:
+/** Matches the CSS/SVG flip `generateExportSVG`/`generateSheetSVG` apply:
  *  `front` and `side` sections flip Y (world "up" reads as paper "up" in the
  *  section view), and `side` additionally flips X. `down` (plan) is never
  *  flipped. */
@@ -40,8 +38,15 @@ export function axisFlipForSection(axis: SectionAxis): AxisFlip {
   return { flipX: axis === 'side', flipY: axis !== 'down' };
 }
 
+/** #6615: worldPointToPdfMm already negates Y. Undo that extra inversion
+ * before feeding it CSS-oriented section coordinates, on points AND bounds. */
+function pdfInputFlipForSection(axis: SectionAxis): AxisFlip {
+  const flip = axisFlipForSection(axis);
+  return { flipX: flip.flipX, flipY: !flip.flipY };
+}
+
 /** Compute the page layout for a section PDF export, deriving the page
- *  size/offsets from `bounds` AS FLIPPED for `axis` — see module doc for
+ *  size/offsets from `bounds` in the PDF transform's input frame — see module doc for
  *  why this must not use the un-flipped `bounds` directly. */
 export function computePdfSectionLayout(
   bounds: Bounds2D,
@@ -49,18 +54,18 @@ export function computePdfSectionLayout(
   scaleFactor: number,
   marginMm: number
 ): PdfScaleLayout {
-  const flippedBounds = flipBounds2D(bounds, axisFlipForSection(axis));
+  const flippedBounds = flipBounds2D(bounds, pdfInputFlipForSection(axis));
   return computePdfScaleLayout(flippedBounds, scaleFactor, marginMm);
 }
 
 /** Build the world (metres) -> paper (mm) point mapper for a section PDF
- *  export: applies the same per-axis flip used to derive `layout` (via
+ *  export: applies the same PDF-input flip used to derive `layout` (via
  *  {@link computePdfSectionLayout}), then the layout's transform. */
 export function makeSectionMapPoint(
   axis: SectionAxis,
   layout: PdfScaleLayout
 ): (x: number, y: number) => { x: number; y: number } {
-  const { flipX, flipY } = axisFlipForSection(axis);
+  const { flipX, flipY } = pdfInputFlipForSection(axis);
   return (x: number, y: number) =>
     worldPointToPdfMm({ x: flipX ? -x : x, y: flipY ? -y : y }, layout.transform);
 }

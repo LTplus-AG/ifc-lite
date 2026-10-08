@@ -1,27 +1,38 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+import { perfTally } from '@ifc-lite/load-trace';
 
 /**
- * TRUE full-file content hash of an IFC source, used to VALIDATE a mesh-only
- * cache hit (distinct from the O(1) spread fingerprint in `@ifc-lite/cache`'s `source-fingerprint.ts`,
- * which only keys the entry and cannot see bytes between its sample windows).
+ * TRUE full-file content hash of a source (distinct from the O(1) spread
+ * fingerprint in `@ifc-lite/cache`'s `source-fingerprint.ts`, which only keys a
+ * cache entry and cannot see bytes between its sample windows). A model LOAD
+ * does not call this: its one full-source pass is the chunked placement
+ * identity (`lib/model-placement/source-identity.ts`), which the cache write
+ * and warm-hit revalidation reuse (#7022). Each call counts as one
+ * `hash.fullSource` pass in the load-trace counters.
  *
  * Uses the Web Crypto `crypto.subtle.digest('SHA-256', …)`, which is:
  *   - asynchronous and implemented natively OFF the JS main thread (no worker
  *     file, no message-passing), so hashing a 300MB+ source never janks the UI;
  *   - zero-copy for a normal `ArrayBuffer` (the digest reads the buffer in
  *     place). A `SharedArrayBuffer`-backed view is rejected by SubtleCrypto for
- *     data-race safety, so it is copied to a plain buffer first — that only
- *     happens for the ≥256MB SAB-streaming band, and only on the backgrounded
- *     write / background revalidation, never on the interactive path.
+ *     data-race safety, so it is copied to a plain buffer first.
  *
  * Returns `null` when Web Crypto is unavailable (e.g. an insecure-context / very
- * old browser). Callers treat `null` as "cannot revalidate": combined with the
- * mtime guard, a hit is only served when mtime confirms it OR a full hash is
- * available to revalidate — never served fully unvalidated.
+ * old browser); callers treat that as "no content identity".
  */
 export async function computeFullSourceHash(
+  source: ArrayBufferLike | ArrayBufferView,
+): Promise<string | null> {
+  perfTally('hash.fullSource', source.byteLength); // #7022: one full pass over a source
+  return sha256Hex(source);
+}
+
+/** SHA-256 hex of `source` WITHOUT counting a full-source pass: for a caller
+ *  that hashes one piece of a pass and counts the pass itself
+ *  (`placementSourceIdentity`'s chunks). Same contract as above. */
+export async function sha256Hex(
   source: ArrayBufferLike | ArrayBufferView,
 ): Promise<string | null> {
   const subtle = globalThis.crypto?.subtle;

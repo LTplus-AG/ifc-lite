@@ -22,6 +22,9 @@ const BINDINGS: BindingContext = { models: [], activeModelId: null, today: new D
 const noop = (): void => {};
 
 const TEST_LOCALE: Catalogue = {
+  'document.block.copyAriaLabel': 'Block kopieren',
+  'document.block.titleAriaLabel': 'Titre du bloc',
+  'document.block.titlePlaceholder': 'Titre facultatif',
   'document.block.kindText': 'Texte',
   'document.block.kindImage': 'Image_DE',
   'document.block.kindChart': 'Diagramm',
@@ -74,12 +77,14 @@ describe('BlockEditor localization (#4918)', () => {
   it('translates the text block: kind badge, style/insert-field controls, and move/remove buttons', () => {
     const block: TextBlock = { kind: 'text', id: 'b1', text: '', style: 'body' };
     const ui = render(
-      <BlockEditor block={block} index={0} count={2} bindings={BINDINGS} topics={new Map()} charts={[]} idsValidationReport={null} onChange={noop} onMove={noop} onRemove={noop} />,
+      <BlockEditor block={block} index={0} count={2} bindings={BINDINGS} topics={new Map()} charts={[]} idsValidationReport={null} onChange={noop} onMove={noop} onCopy={noop} onRemove={noop} />,
     );
     assert.equal(ui.querySelector('[data-block-editor]')?.textContent?.includes('Text'), true, 'the English kind badge is visible first');
     assert.ok(ui.querySelector('button[aria-label="Move block up"]'));
     assert.ok(ui.querySelector('button[aria-label="Move block down"]'));
     assert.ok(ui.querySelector('button[aria-label="Remove block"]'));
+    assert.ok(ui.querySelector('button[aria-label="Copy block"]'));
+    assert.ok(ui.querySelector('input[aria-label="Block title"][placeholder="Title (leave empty for the original heading)"]'));
     assert.ok(ui.querySelector('select[aria-label="Text style"]'));
     assert.equal(ui.querySelector('select[aria-label="Insert field"]')?.getAttribute('title'), 'Insert a {path} that reads the model');
 
@@ -90,6 +95,8 @@ describe('BlockEditor localization (#4918)', () => {
     assert.ok(ui.querySelector('button[aria-label="Block nach oben"]'));
     assert.ok(ui.querySelector('button[aria-label="Block nach unten"]'));
     assert.ok(ui.querySelector('button[aria-label="Block entfernen"]'));
+    assert.ok(ui.querySelector('button[aria-label="Block kopieren"]'));
+    assert.ok(ui.querySelector('input[aria-label="Titre du bloc"][placeholder="Titre facultatif"]'));
     assert.ok(ui.querySelector('select[aria-label="Textstil"]'));
     assert.equal(ui.textContent?.includes('Feld einfügen'), true);
   });
@@ -97,7 +104,7 @@ describe('BlockEditor localization (#4918)', () => {
   it('translates the image block: empty state, height/align/caption fields', () => {
     const block: ImageBlock = { kind: 'image', id: 'b2', dataUrl: '', height: 60, align: 'left' };
     const ui = render(
-      <BlockEditor block={block} index={0} count={1} bindings={BINDINGS} topics={new Map()} charts={[]} idsValidationReport={null} onChange={noop} onMove={noop} onRemove={noop} />,
+      <BlockEditor block={block} index={0} count={1} bindings={BINDINGS} topics={new Map()} charts={[]} idsValidationReport={null} onChange={noop} onMove={noop} onCopy={noop} onRemove={noop} />,
     );
     assert.equal(ui.textContent?.includes('No image yet'), true);
     assert.ok(ui.querySelector('input[aria-label="Image height"]'));
@@ -117,7 +124,7 @@ describe('BlockEditor localization (#4918)', () => {
     const block: ChartBlock = { kind: 'chart', id: 'b3', chart: { id: 'c1', title: 'Costs by storey' } as unknown as ChartSpec, snapshot: false };
     const charts = [{ dashboard: 'Dash', chart: { id: 'c2', title: 'Other chart' } as unknown as ChartSpec }];
     const ui = render(
-      <BlockEditor block={block} index={0} count={1} bindings={BINDINGS} topics={new Map()} charts={charts} idsValidationReport={null} onChange={noop} onMove={noop} onRemove={noop} />,
+      <BlockEditor block={block} index={0} count={1} bindings={BINDINGS} topics={new Map()} charts={charts} idsValidationReport={null} onChange={noop} onMove={noop} onCopy={noop} onRemove={noop} />,
     );
     assert.equal(ui.textContent?.includes('Costs by storey — replace with…'), true, 'the chart\'s own title is model content, not translated');
     assert.equal(ui.textContent?.includes('3D snapshot'), true);
@@ -133,7 +140,7 @@ describe('BlockEditor localization (#4918)', () => {
   it('translates the topic block: kind label, the not-loaded/pick-a-topic interpolation, and the snapshot toggle', () => {
     const block: TopicBlock = { kind: 'topic', id: 'b4', guid: 'guid-123', snapshot: true };
     const ui = render(
-      <BlockEditor block={block} index={0} count={1} bindings={BINDINGS} topics={new Map<string, BCFTopic>()} charts={[]} idsValidationReport={null} onChange={noop} onMove={noop} onRemove={noop} />,
+      <BlockEditor block={block} index={0} count={1} bindings={BINDINGS} topics={new Map<string, BCFTopic>()} charts={[]} idsValidationReport={null} onChange={noop} onMove={noop} onCopy={noop} onRemove={noop} />,
     );
     assert.equal(ui.textContent?.includes('guid-123 (not loaded)'), true);
     assert.equal(ui.textContent?.includes('Viewpoint snapshot'), true);
@@ -151,7 +158,7 @@ describe('BlockEditor localization (#4918)', () => {
     const list = { ...LIST_PRESETS[0], id: 'copy-1' };
     const block: TableBlock = { kind: 'table', id: 'b6', source: { kind: 'list', list, fromListId: LIST_PRESETS[0].id } };
     const ui = render(
-      <BlockEditor block={block} index={0} count={1} bindings={BINDINGS} topics={new Map()} charts={[]} idsValidationReport={null} onChange={noop} onMove={noop} onRemove={noop} />,
+      <BlockEditor block={block} index={0} count={1} bindings={BINDINGS} topics={new Map()} charts={[]} idsValidationReport={null} onChange={noop} onMove={noop} onCopy={noop} onRemove={noop} />,
     );
     assert.equal(ui.textContent?.includes(`${list.name} — replace with…`), true, 'the list name is model content, not translated');
     assert.equal(ui.textContent?.includes('Edit in Lists'), true);
@@ -174,7 +181,7 @@ describe('BlockEditor localization (#4918)', () => {
       checks: [{ id: 's1', shortDescription: 'Walls have a fire rating', checked: 4, passed: 3, failed: 1, passRate: 75, rules: [] }],
     };
     const ui = render(
-      <BlockEditor block={block} index={0} count={1} bindings={BINDINGS} topics={new Map()} charts={[]} idsValidationReport={null} onChange={noop} onMove={noop} onRemove={noop} />,
+      <BlockEditor block={block} index={0} count={1} bindings={BINDINGS} topics={new Map()} charts={[]} idsValidationReport={null} onChange={noop} onMove={noop} onCopy={noop} onRemove={noop} />,
     );
     assert.equal(ui.querySelector('[data-block-editor]')?.textContent?.includes('IDS report'), true);
     assert.equal(ui.textContent?.includes('Fire safety IDS'), true, 'the report source name is model content, not translated');
@@ -202,7 +209,7 @@ describe('BlockEditor localization (#4918)', () => {
 
     const block: TableBlock = { kind: 'table', id: 'b7', source: { kind: 'validation', rows: 'failed', columns: ['rule', 'result'] } };
     const ui = render(
-      <BlockEditor block={block} index={0} count={1} bindings={BINDINGS} topics={new Map()} charts={[]} idsValidationReport={null} onChange={noop} onMove={noop} onRemove={noop} />,
+      <BlockEditor block={block} index={0} count={1} bindings={BINDINGS} topics={new Map()} charts={[]} idsValidationReport={null} onChange={noop} onMove={noop} onCopy={noop} onRemove={noop} />,
     );
     assert.ok(ui.querySelector('select[aria-label="Table source"]'));
     assert.ok(ui.querySelector('select[aria-label="Which rows to show"]'));
@@ -226,7 +233,7 @@ describe('BlockEditor localization (#4918)', () => {
   it('translates the spacer block\'s kind badge', () => {
     const block: SpacerBlock = { kind: 'spacer', id: 'b5', height: 20 };
     const ui = render(
-      <BlockEditor block={block} index={0} count={1} bindings={BINDINGS} topics={new Map()} charts={[]} idsValidationReport={null} onChange={noop} onMove={noop} onRemove={noop} />,
+      <BlockEditor block={block} index={0} count={1} bindings={BINDINGS} topics={new Map()} charts={[]} idsValidationReport={null} onChange={noop} onMove={noop} onCopy={noop} onRemove={noop} />,
     );
     assert.equal(ui.querySelector('[data-block-editor]')?.textContent?.includes('Spacer'), true);
 

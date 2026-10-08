@@ -1,7 +1,7 @@
 {
   "name": "@ifc-lite/mcp",
-  "version": "0.22.1",
-  "description": "Model Context Protocol server for ifc-lite — agent-native BIM via MCP (stdio + Streamable HTTP)",
+  "version": "0.23.0",
+  "description": "Model Context Protocol server for ifc-lite \u2014 agent-native BIM via MCP (stdio + Streamable HTTP)",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -39,6 +39,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@ifc-lite/ai": "workspace:^",
     "@ifc-lite/bcf": "workspace:^",
     "@ifc-lite/cache": "workspace:^",
     "@ifc-lite/clash": "workspace:^",
@@ -61,6 +62,7 @@
     "@ifc-lite/rules": "workspace:^",
     "@ifc-lite/sdk": "workspace:^",
     "@ifc-lite/viewer-core": "workspace:^",
+    "@ifc-lite/wasm": "workspace:^",
     "yjs": "^13.6.33"
   },
   "devDependencies": {

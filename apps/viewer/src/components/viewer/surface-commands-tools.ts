@@ -9,7 +9,7 @@ import {
 } from 'lucide-react';
 import { openRepositionModels } from '@/lib/model-placement/commands';
 import { launchModelCommand } from '@/lib/commands/modeling/keys-workspace';
-import { BeamIcon, ColumnIcon, DoorIcon, OpeningIcon, RoomIcon, SlabIcon, WallIcon, WindowIcon } from './model/model-icons';
+import { BeamIcon, ColumnIcon, CurtainWallIcon, DoorIcon, GridIcon, OpeningIcon, RoomIcon, SlabIcon, WallIcon, WindowIcon } from './model/model-icons';
 import { RailingIcon, StairIcon } from './model/stair-railing-icons';
 import { useViewerStore } from '@/store';
 import type { SurfaceCommandDefinition, SurfaceCommandState } from './surface-commands';
@@ -98,6 +98,26 @@ export const TOOL_SURFACE_COMMANDS = [
     category: 'Tools', icon: RoomIcon, surfaces: paletteOnly, enabled: editable,
     shortcut: 'model.room',
     run: () => { launchModelCommand('room.place'); },
+  },
+  {
+    id: 'tool:space-envelope', labelKey: 'spaceEnvelope.label',
+    searchLabel: 'Edit space envelope', keywords: 'room space ceiling floor height slope pitched roof ridge section snap',
+    category: 'Tools', icon: RoomIcon, surfaces: paletteOnly, enabled: editable,
+    run: () => { launchModelCommand('space.envelope', { drawsOnWorkplane: false }); },
+  },
+  {
+    id: 'tool:curtain-wall', labelKey: 'curtainWall.palette',
+    searchLabel: 'Place curtain walls', keywords: 'curtain wall glazing facade mullion transom panel storefront model author build create',
+    category: 'Tools', icon: CurtainWallIcon, surfaces: paletteOnly, enabled: editable,
+    shortcut: 'model.curtainWall',
+    run: () => { launchModelCommand('curtainwall.place'); },
+  },
+  {
+    id: 'tool:grid', labelKey: 'grid.palette',
+    searchLabel: 'Place grids', keywords: 'grid axis axes structural bay column line tag bubble model author build create',
+    category: 'Tools', icon: GridIcon, surfaces: paletteOnly, enabled: editable,
+    shortcut: 'model.grid',
+    run: () => { launchModelCommand('grid.place'); },
   },
   {
     id: 'tool:opening', labelKey: 'commandPalette.tool.opening.label',

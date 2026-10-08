@@ -25,21 +25,31 @@ import {
   commandDoubleClick,
   commandPointerDown,
   commandPointerMove,
+  commandPointerUp,
   getCommandRuntime,
   type CommandRuntimeState,
 } from '@/lib/commands/modeling/runtime';
 import type { ModelingCommand, Vec3, Workplane } from '@/lib/commands/modeling/types';
 import { commandGhostId } from '@/lib/commands/modeling/ghost';
 import {
-  NO_MODIFIERS, semanticSource, solveCommandSnap, type PointerModifiers,
+  NO_MODIFIERS, modelSnapSources, solveCommandSnap, type PointerModifiers,
 } from '@/lib/commands/modeling/snap-solve';
 import { useViewerStore } from '@/store';
+import { toGlobalIdFromModels } from '@/store/globalId';
 import { createMeshSource, type MeshPick } from '@/lib/snap/sources/mesh';
 import type { MouseHandlerContext } from './mouseHandlerTypes.js';
 
 /** Ghost ids a command preview may use (`ghost.ts` allocates from `commandGhostId`). */
 const GHOST_PICK_GUARD = 4;
-let latest: { x: number; y: number; mods: PointerModifiers } | null = null;
+const latest = new WeakMap<MouseHandlerContext, { x: number; y: number; mods: PointerModifiers; runtime: CommandRuntimeState }>();
+
+/** Discard a coalesced preview before a press, release, cancellation or teardown. */
+export function cancelCommandPointer(ctx: MouseHandlerContext): void {
+  latest.delete(ctx);
+  if (ctx.measureRaycastFrameRef.current !== null) cancelAnimationFrame(ctx.measureRaycastFrameRef.current);
+  ctx.measureRaycastFrameRef.current = null;
+  ctx.measureRaycastPendingRef.current = false;
+}
 
 /** The cursor ray in render space, from CSS-pixel canvas coordinates. */
 function cursorRay(ctx: MouseHandlerContext, x: number, y: number): { origin: Vec3; direction: Vec3 } | null {
@@ -63,10 +73,15 @@ function onPlane(ctx: MouseHandlerContext, plane: Workplane, x: number, y: numbe
 /** Pick options that never hit the command's own ghost preview. */
 function pickOptions(ctx: MouseHandlerContext, command: ModelingCommand) {
   const options = ctx.getPickOptions();
-  if (!command.ghost) return options;
+  const excluded = command.pickExclusions?.(getCommandRuntime().gesture) ?? [];
+  if (!command.ghost && !excluded.length) return options;
   const hiddenIds = new Set(options.hiddenIds);
-  const first = commandGhostId(useViewerStore.getState());
-  for (let i = 0; i < GHOST_PICK_GUARD; i++) hiddenIds.add(first + i);
+  const state = useViewerStore.getState();
+  for (const ref of excluded) hiddenIds.add(toGlobalIdFromModels(state.models, ref.modelId, ref.expressId));
+  if (command.ghost) {
+    const first = commandGhostId(state);
+    for (let i = 0; i < GHOST_PICK_GUARD; i++) hiddenIds.add(first + i);
+  }
   return { ...options, hiddenIds };
 }
 
@@ -104,7 +119,7 @@ function resolveCommandSnap(
     const l = plane.renderToLocal([p.x, p.y, p.z]);
     return { local: [l[0], l[1]] as Vec2, elevation: l[2] };
   };
-  const cursor = hit ? toLocal(hit.point).local : onPlane(ctx, plane, x, y);
+  const cursor = plane.spec.kind === 'section' ? onPlane(ctx, plane, x, y) : hit ? toLocal(hit.point).local : onPlane(ctx, plane, x, y);
   if (!cursor) return null;
   const beside = onPlane(ctx, plane, x + 1, y);
   const here = onPlane(ctx, plane, x, y);
@@ -115,7 +130,7 @@ function resolveCommandSnap(
       lock: { get: () => ctx.edgeLockStateRef.current, set: ctx.setEdgeLock, clear: ctx.clearEdgeLock },
       toLocal,
     }),
-    semanticSource(commandCtx.modelId),
+    ...(plane.spec.kind === 'section' ? [] : modelSnapSources(commandCtx.modelId)),
   ] : [];
   ctx.setSnapTarget(pick?.snapTarget ?? null);
   return solveCommandSnap(runtime, plane, { cursor, metresPerPixel, sources, mods });
@@ -124,27 +139,31 @@ function resolveCommandSnap(
 /** True when a command is running and took the event. */
 export function routeCommandPointer(
   ctx: MouseHandlerContext,
-  kind: 'move' | 'down',
+  kind: 'move' | 'down' | 'up',
   x: number,
   y: number,
   mods: PointerModifiers = NO_MODIFIERS,
 ): boolean {
   const runtime = getCommandRuntime();
   if (!runtime.command || !runtime.ctx) return false;
-  if (kind === 'down') {
+  if (kind !== 'move') {
+    cancelCommandPointer(ctx);
     const snap = resolveCommandSnap(ctx, runtime, x, y, mods);
-    if (snap) ((mods.detail ?? 1) >= 2 ? commandDoubleClick : commandPointerDown)(snap);
+    if (snap) (kind === 'up' ? commandPointerUp : (mods.detail ?? 1) >= 2 ? commandDoubleClick : commandPointerDown)(snap);
     return true;
   }
-  latest = { x, y, mods };
+  latest.set(ctx, { x, y, mods, runtime });
   if (ctx.measureRaycastPendingRef.current) return true;
   ctx.measureRaycastPendingRef.current = true;
   ctx.measureRaycastFrameRef.current = requestAnimationFrame(() => {
     ctx.measureRaycastPendingRef.current = false;
     ctx.measureRaycastFrameRef.current = null;
-    const at = latest;
+    const at = latest.get(ctx);
+    latest.delete(ctx);
     if (!at) return;
-    const snap = resolveCommandSnap(ctx, getCommandRuntime(), at.x, at.y, at.mods);
+    const current = getCommandRuntime();
+    if (current.command !== at.runtime.command || current.ctx !== at.runtime.ctx) return;
+    const snap = resolveCommandSnap(ctx, current, at.x, at.y, at.mods);
     if (snap) commandPointerMove(snap);
   });
   return true;

@@ -20,6 +20,32 @@
  */
 
 import { getViewerStoreApi } from '@/store';
+import { selectActiveLoadProgress } from '@/store/slices/loadingSlice';
+import { beginActivity, finishActivity, updateActivity } from '@/lib/activity/activity-journal';
+
+interface LoadActivity {
+  subject: string;
+  result: () => { outcome: 'completed' | 'failed' | 'cancelled'; detail?: string };
+}
+
+/** Per-load publication and error evidence; shared UI flags cannot settle a file. */
+export function createModelLoadActivity(subject: string) {
+  return {
+    subject, published: false, cancelled: false, error: undefined as string | undefined,
+    fail(message: string): string {
+      this.error = message;
+      return message;
+    },
+    result(): { outcome: 'completed' | 'failed' | 'cancelled'; detail?: string } {
+      return { outcome: this.cancelled ? 'cancelled' : this.error ? 'failed' : this.published ? 'completed' : 'cancelled',
+        ...(this.error ? { detail: this.error } : {}) };
+    },
+  };
+}
+
+// Hook instances are independent; a replacement primary invalidates every
+// unfinished load, while concurrent federated additions remain independent.
+const pendingLoads = new Map<() => void, () => void>();
 
 /**
  * Publish a canceller for the load that `supersede` belongs to. Returns the
@@ -30,17 +56,48 @@ export function installModelLoadCanceller(
   kind: 'primary' | 'federated',
   supersede: () => void,
   ownedStream: () => (() => void) | null = () => null,
+  activity?: LoadActivity,
 ): () => void {
   const store = getViewerStoreApi();
+  if (kind === 'primary') {
+    for (const abandon of [...pendingLoads.keys()]) abandon();
+  }
+  let released = false;
+  let abandoned = false;
+  let stopProgress = () => {};
+  let jobId: string | undefined;
   const release = () => {
-    if (store.getState().activeLoadCanceller === cancel) store.getState().setActiveLoadCanceller(null);
+    if (released) return;
+    released = true;
+    stopProgress();
+    if (jobId) {
+      const result = abandoned ? { outcome: 'cancelled' as const } : activity?.result() ?? { outcome: 'cancelled' as const };
+      finishActivity(jobId, result.outcome, result.detail ? { detail: result.detail } : {});
+    }
+    pendingLoads.delete(abandon);
+    if (store.getState().activeLoadCanceller === cancel) {
+      store.getState().setActiveLoadCanceller([...pendingLoads.values()].at(-1) ?? null);
+    }
+  };
+  const abandon = () => {
+    if (released) return;
+    abandoned = true;
+    supersede();
+    const stream = ownedStream();
+    if (stream) {
+      stream();
+      if (store.getState().activeStreamCanceller === stream) store.getState().setActiveStreamCanceller(null);
+    }
+    release();
   };
   const cancel = () => {
     // A retained reference to a load that has since ended or been replaced
     // must not supersede, or reset the viewer under, the load that owns the slot.
-    if (store.getState().activeLoadCanceller !== cancel) return;
-    supersede();
-    release();
+    if (released) return;
+    const ownsUi = store.getState().activeLoadCanceller === cancel;
+    // Keep the native cancellation counter for other load observers.
+    store.getState().noteLoadCancelled();
+    abandon();
     const state = store.getState();
     // Stop this load's point-cloud stream too. A federated add may overlap
     // another load, so only cancel its own stream handle in that case.
@@ -49,6 +106,7 @@ export function installModelLoadCanceller(
       cancelStream();
       state.setActiveStreamCanceller(null);
     }
+    if (!ownsUi || pendingLoads.size > 0) return;
     if (kind === 'primary') {
       // The same reset a primary load starts with (useIfcLoader.loadFile).
       state.resetViewerState();
@@ -66,6 +124,17 @@ export function installModelLoadCanceller(
       state.setError(null);
     }
   };
+  if (activity) {
+    jobId = beginActivity({ kind: 'load', title: 'activityTray.job.load', panel: 'loadReport', subject: activity.subject, cancel });
+    stopProgress = store.subscribe((state) => {
+      // Shared status-bar progress belongs only to its current owner. Another
+      // federated run must never overwrite this file's phase or finish it.
+      if (state.activeLoadCanceller === cancel && jobId) {
+        updateActivity(jobId, { phase: selectActiveLoadProgress(state)?.phase });
+      }
+    });
+  }
+  pendingLoads.set(abandon, cancel);
   store.getState().setActiveLoadCanceller(cancel);
   return release;
 }

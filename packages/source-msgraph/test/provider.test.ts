@@ -6,8 +6,11 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { PLUGIN_API_VERSION, satisfiesCaretRange } from '@ifc-lite/plugin-api';
 
 import { MsGraphProvider } from '../src/provider.js';
+import { BrowserGraphApiClient } from '../src/http-client.js';
+import type { SourceAuth } from '@ifc-lite/plugin-api';
 import { clampPageSize, searchEndpoint } from '../src/mapping.js';
 import {
+  MOCK_ACCESS_TOKEN,
   GRAPH_MOCK_DOWNLOAD_HOST,
   GRAPH_MOCK_DOWNLOAD_SECRET,
   downloadUrlFor,
@@ -70,6 +73,56 @@ describe('MsGraphProvider', () => {
     expect(clientId?.required).toBe(true);
     expect(tenant?.required).toBe(false);
     expect(tenant?.default).toBe('common');
+  });
+
+  // #6840: hosted transport must not read deployment settings or browser tokens.
+  it('browses and maps files through injected transport without browser credentials', async () => {
+    const base = createGraphMockContext(WORLD);
+    const ctx = {
+      ...base,
+      getPreference: () => { throw new Error('Hosted browsing must not read app settings'); },
+      storage: {
+        get: () => { throw new Error('Hosted browsing must not read browser tokens'); },
+        set: () => { throw new Error('Hosted browsing must not write browser tokens'); },
+        delete: () => { throw new Error('Hosted browsing must not delete browser tokens'); },
+        keys: () => { throw new Error('Hosted browsing must not enumerate browser tokens'); },
+      },
+    };
+    const auth: SourceAuth = {
+      restore: async () => null,
+      getIdentity: async () => null,
+      signIn: async () => { throw new Error('Browsing must not prompt for sign-in'); },
+      signOut: async () => { throw new Error('Browsing must not sign out'); },
+    };
+    const hosted = new MsGraphProvider({ auth, createClient: () => new BrowserGraphApiClient(MOCK_ACCESS_TOKEN, base) });
+    const files = await hosted.listFiles(ctx, 'me', 'f-alpha', { namePatterns: ['*.ifc'] });
+    expect(files.items.map((file) => file.name)).toEqual(['model.ifc']);
+    expect(files.items[0]?.containerId).toBe('f-alpha');
+    expect(hosted.manifest.preferences).toEqual([]);
+    expect(hosted.manifest.permissions).toEqual({ network: [] });
+  });
+
+  // #6840: a hosted item download cannot request or expose a signed URL.
+  it('passes the pinned item reference and cancellation to hosted download', async () => {
+    const ctx = createGraphMockContext(WORLD);
+    const controller = new AbortController();
+    const ref = { projectId: 'me', containerId: 'f-alpha', fileId: 'file-1', revisionId: 'ctag-v1' };
+    const requested: unknown[] = [];
+    const hosted = new MsGraphProvider({
+      auth: new MsGraphProvider().auth,
+      createClient: () => ({
+        get: async () => { throw new Error('Hosted download must not request a signed URL'); },
+        downloadItem: async (item, options) => {
+          requested.push({ item, signal: options?.signal });
+          throw new DOMException('Cancelled', 'AbortError');
+        },
+      }),
+    });
+    controller.abort();
+    await expect(hosted.download(ctx, ref, { signal: controller.signal })).rejects.toMatchObject({ name: 'AbortError' });
+    expect(requested).toEqual([{ item: ref, signal: controller.signal }]);
+    expect(hosted.manifest.title).toBe('OneDrive');
+    expect(hosted.manifest.capabilities.downloadHistoricalRevisions).toBe(false);
   });
 
   describe('listProjects', () => {

@@ -161,3 +161,14 @@ export {
   type EffectiveEntityOverlay,
   type EffectiveEntitySource,
 } from './effective-entities.js';
+
+// Shared reader for `__IFC_LITE_*` runtime perf flags (#6962). The viewer's
+// registry (apps/viewer/src/lib/perf/flags.ts) declares the flags; geometry
+// reads its own three through the same function.
+export {
+  readPerfFlagRaw,
+  readPerfFlagUrlParam,
+  parsePerfFlagUrlValue,
+  type PerfFlagBinding,
+  type PerfFlagGlobalName,
+} from './perf-flag-reader.js';

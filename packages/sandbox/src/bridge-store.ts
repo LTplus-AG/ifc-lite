@@ -86,7 +86,7 @@ export function buildStoreNamespace(): NamespaceSchema {
         tsParamTypes: [
           'string',
           'number',
-          '{ Position: [number, number, number]; Width: number; Depth: number; Height: number; Name?: string; Description?: string; ObjectType?: string; Tag?: string }',
+          'BimCreate.ColumnInStoreParams | BimCreate.ProfiledColumnInStoreParams',
         ],
         tsReturn: '{ modelId: string; expressId: number }',
         call: (sdk, args) => {
@@ -95,7 +95,8 @@ export function buildStoreNamespace(): NamespaceSchema {
           const params = args[2] as Parameters<typeof sdk.store.addColumn>[2];
           if (!params) throw new Error('bim.store.addColumn: params is required');
           requirePositionVec3(params.Position, 'addColumn');
-          requirePositiveDims(params, ['Width', 'Depth', 'Height'], 'addColumn');
+          requirePositiveDims(params, ['Height'], 'addColumn');
+          if (!('Profile' in params) || params.Profile === undefined) requirePositiveDims(params, ['Width', 'Depth'], 'addColumn');
           return sdk.store.addColumn(args[0] as string, storeyExpressId, params);
         },
         returns: 'value',
@@ -149,13 +150,13 @@ export function buildStoreNamespace(): NamespaceSchema {
       },
       {
         name: 'addBeam',
-        doc: 'Add an IfcBeam from Start to End with a centred rectangular cross-section.',
+        doc: 'Add an IfcBeam from Start to End with a centred rectangular or canonical parameterised cross-section.',
         args: ['string', 'number', 'dump'],
         paramNames: ['modelId', 'storeyExpressId', 'params'],
         tsParamTypes: [
           'string',
           'number',
-          '{ Start: [number, number, number]; End: [number, number, number]; Width: number; Height: number; Name?: string; Description?: string; ObjectType?: string; Tag?: string }',
+          'BimCreate.BeamInStoreParams | BimCreate.ProfiledBeamInStoreParams',
         ],
         tsReturn: '{ modelId: string; expressId: number }',
         call: (sdk, args) => {
@@ -172,12 +173,7 @@ export function buildStoreNamespace(): NamespaceSchema {
               || !params.End.every((n) => typeof n === 'number' && Number.isFinite(n))) {
             throw new Error('bim.store.addBeam: Start/End values must be finite numbers');
           }
-          for (const key of ['Width', 'Height'] as const) {
-            const v = params[key];
-            if (typeof v !== 'number' || !Number.isFinite(v) || v <= 0) {
-              throw new Error(`bim.store.addBeam: params.${key} must be a finite number > 0, got ${v}`);
-            }
-          }
+          if (!('Profile' in params) || params.Profile === undefined) requirePositiveDims(params, ['Width', 'Height'], 'addBeam');
           return sdk.store.addBeam(args[0] as string, storeyExpressId, params);
         },
         returns: 'value',
@@ -289,13 +285,13 @@ export function buildStoreNamespace(): NamespaceSchema {
       },
       {
         name: 'addMember',
-        doc: 'Add an IfcMember (generic structural — brace, post, strut) from Start to End with a rectangular cross-section.',
+        doc: 'Add an IfcMember (generic structural — brace, post, strut) from Start to End with a rectangular or canonical parameterised cross-section.',
         args: ['string', 'number', 'dump'],
         paramNames: ['modelId', 'storeyExpressId', 'params'],
         tsParamTypes: [
           'string',
           'number',
-          '{ Start: [number, number, number]; End: [number, number, number]; Width: number; Height: number; PredefinedType?: string; Name?: string; Description?: string; ObjectType?: string; Tag?: string }',
+          'BimCreate.MemberInStoreParams | BimCreate.ProfiledMemberInStoreParams',
         ],
         tsReturn: '{ modelId: string; expressId: number }',
         call: (sdk, args) => {
@@ -303,7 +299,7 @@ export function buildStoreNamespace(): NamespaceSchema {
           const params = args[2] as Parameters<typeof sdk.store.addMember>[2];
           requireAxisVec3(params?.Start, 'addMember', 'Start');
           requireAxisVec3(params?.End, 'addMember', 'End');
-          requirePositiveDims(params, ['Width', 'Height'], 'addMember');
+          if (!('Profile' in params) || params.Profile === undefined) requirePositiveDims(params, ['Width', 'Height'], 'addMember');
           return sdk.store.addMember(args[0] as string, storeyExpressId, params);
         },
         returns: 'value',

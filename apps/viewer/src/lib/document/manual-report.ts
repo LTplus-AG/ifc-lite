@@ -13,6 +13,11 @@
 import type { ChecklistTemplate, ManualAnswerMap } from '../validation/manual/checklist.js';
 import { summarizeChecklist, EMPTY_MANUAL_COUNTS } from '../validation/manual/checklist-summary.js';
 import type { ManualReportBlock, ManualReportItem } from './manual-report-types.js';
+import { replaceReportSnapshot } from './report-provenance.js';
+
+/** #6566: changing the recorded evidence preserves the destination block's
+ * identity and presentation, whether reading live answers or saved history. */
+export const replaceManualReportSnapshot = (current: ManualReportBlock, snapshot: ManualReportBlock): ManualReportBlock => replaceReportSnapshot(current, snapshot);
 
 export interface ManualReportSource {
   checklist: ChecklistTemplate;

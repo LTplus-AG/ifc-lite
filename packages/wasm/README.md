@@ -208,6 +208,21 @@ residuals. Frames and asset identities are bound into the report; the call does
 not align a loaded model or approve scan accuracy. See the
 [registration contract](../../docs/api/wasm.md#scan-correspondence-registration).
 
+`IfcAPI.segmentScanPoints` detects planes in an xyz `Float32Array` point cloud
+(voxel means, PCA normals, region growing, a robust refit and coplanar
+merging). It also detects cylinders, such as columns and pipes, among the
+remaining voxels (seeded RANSAC, then a least-squares refit), and wide round
+and polygonal columns among rings of vertical planes; a column's surface is
+not also reported as planes. The JSON report is independent of point order. See the
+[segmentation contract](../../docs/api/wasm.md#scan-plane-segmentation); the
+typed wrapper is `@ifc-lite/geometry/scan-segmentation`.
+
+`IfcAPI.proposeScanElements` turns that report into proposed walls, slabs,
+columns and pipes in the IFC model frame, each with a confidence and its source
+detections; it creates nothing. See the
+[proposal contract](../../docs/api/wasm.md#scan-element-proposals); the typed
+wrapper is `@ifc-lite/geometry/scan-proposals`.
+
 `IfcAPI.planMeshTransfer` composes registered opaque textured-mesh observations
 onto supported direct IFC tessellations using the shared atlas planner. Unknown
 samples retain existing target albedo; the IFPA response includes explicit
@@ -236,3 +251,34 @@ the versioned behavior.
 Combined fill and dashed-stroke paints can still refuse atomically when
 multiple run boundaries produce crossings outside the current fill-region
 qualifier.
+
+## Retained alignment station frames
+
+`AlignmentAxisJs` evaluates one `IfcAlignment` through the canonical Rust
+evaluator. Its `GlobalId` and `Name` properties use exact IFC EXPRESS names;
+`expressId`, `geometricHorizontalLengthMeters` and `approximate` are derived
+metadata. The caller owns the handle and must call `free()` in `finally`.
+
+```ts
+import init, { AlignmentAxisJs } from '@ifc-lite/wasm';
+
+await init();
+const content = await (await fetch('alignment.ifc')).text();
+const axis = new AlignmentAxisJs(content, 39);
+try {
+  const sample = axis.evaluate(10);
+  console.log(axis.GlobalId, axis.Name, sample);
+} finally {
+  axis.free();
+}
+```
+
+`evaluate(distanceMeters)` returns a `Float64Array` containing horizontal
+distance, absolute IFC Z-up point X/Y/Z in metres, and normalized world tangent
+X/Y/Z. Distance is alignment-local geometric horizontal length from the physical
+start, independent of authored chainage and different from 3D arc length. No
+renderer origin or axis conversion is applied. Nonfinite or out-of-range
+distances and unresolved units, curves or placements fail explicitly. The
+`approximate` flag identifies supported approximation paths; it must be exposed
+to precision-sensitive consumers. Whole-source parsing belongs in a disposable
+worker when used by the viewer, so releasing the tool also releases WASM pages.

@@ -111,7 +111,7 @@ describe('KeyboardShortcutsDialog localization (#4918)', () => {
     assert.match(aboutText(), /Report issue/);
     assert.match(aboutText(), /MPL-2\.0/);
     assert.match(aboutText(), /1 package/);
-    assert.match(aboutText(), /Your IFC data never leaves your device\./);
+    assert.match(aboutText(), /Local model viewing runs on your device\./);
 
     render(<KeyboardShortcutsDialog open onClose={() => {}} initialTab="whatsnew" />);
     await flush();
@@ -135,7 +135,7 @@ describe('KeyboardShortcutsDialog localization (#4918)', () => {
     // portals its content to `document.body` rather than into the
     // container `render()` returns.
     const privacyToggle = Array.from(document.querySelectorAll('button')).find((b) =>
-      b.textContent?.includes('Your IFC data never leaves your device.'),
+      b.textContent?.includes('Local model viewing runs on your device.'),
     );
     assert.ok(privacyToggle, 'expected the privacy disclosure toggle');
     act(() => privacyToggle.click());

@@ -192,6 +192,21 @@ describe('scrubEvent — noise filter + PII guard (regression)', () => {
     assert.equal(out, null);
   });
 
+  it('keeps ifc_model_loaded\'s closed load_path vocabulary, which the `path` word rule used to delete (#6961)', () => {
+    // Field verdicts split by load path; before #6961 the property never
+    // reached PostHog at all, because `load_path` matches the `path` word.
+    for (const loadPath of ['wasm', 'cache', 'server', 'point-cloud', 'landxml']) {
+      const out = scrubEvent({ event: 'ifc_model_loaded', properties: { load_path: loadPath } });
+      assert.equal(out?.properties?.load_path, loadPath);
+    }
+    // Anything outside the vocabulary is still a path-shaped key and goes.
+    const leaked = scrubEvent({ event: 'ifc_model_loaded', properties: { load_path: '/Users/me/Tower.ifc', mesh_count: 3 } });
+    assert.ok(leaked?.properties, 'the event itself is kept');
+    const kept: Record<string, unknown> = leaked.properties;
+    assert.ok(!('load_path' in kept));
+    assert.equal(kept.mesh_count, 3);
+  });
+
   it('strips a confidential file name and path from event properties', () => {
     const out = scrubEvent({
       event: 'custom',
@@ -202,6 +217,26 @@ describe('scrubEvent — noise filter + PII guard (regression)', () => {
     assert.equal(out?.properties?.file_name, undefined);
     assert.equal(out?.properties?.detail, '[redacted]');
     assert.equal(out?.properties?.count, 3);
+  });
+
+  it('keeps `file:*` command ids but still redacts file: and blob: URLs', () => {
+    const out = scrubEvent({
+      event: 'command_executed',
+      properties: {
+        command_id: 'file:open',
+        recent: 'file:recent',
+        local: 'file:///srv/share/plans',
+        local_short: 'file:/srv/share/plans',
+        drive: 'file:c:/projects/plans.rvt',
+        blob: 'blob:https://www.ifclite.com/0b6e9a8c-5d1f-4c3e-9a1b-2f4d6e8a0c1e',
+      },
+    });
+    assert.equal(out?.properties?.command_id, 'file:open');
+    assert.equal(out?.properties?.recent, 'file:recent');
+    assert.equal(out?.properties?.local, '[redacted]');
+    assert.equal(out?.properties?.local_short, '[redacted]');
+    assert.equal(out?.properties?.drive, '[redacted]');
+    assert.equal(out?.properties?.blob, '[redacted]');
   });
 
   it('strips query + hash from URL auto-properties instead of deleting them', () => {

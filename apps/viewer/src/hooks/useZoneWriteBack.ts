@@ -39,7 +39,7 @@
 import { useCallback } from 'react';
 import { QuantityType, PropertyValueType } from '@ifc-lite/data';
 import { useViewerStore } from '@/store';
-import { canMutate, mutationPermission } from '@/store/mutation-permission';
+import { canMutate, mutationPermission, type MutationDenialReason } from '@/store/mutation-permission';
 import { resolveEntityRef } from '@/store/resolveEntityRef';
 import {
   buildElementWriteBack,
@@ -72,7 +72,7 @@ export interface ZoneWriteBackResult {
   modelIds: string[];
   elapsedMs: number;
   /** Set when nothing was written, and why. */
-  blocked: 'edit-mode' | 'collab-role' | 'duplicate-set-name' | null;
+  blocked: MutationDenialReason | 'duplicate-set-name' | null;
 }
 
 /**
@@ -172,7 +172,7 @@ export function applyZoneWriteBack(zoneSet: ZoneSet, basis: VolumeBasis): ZoneWr
   // Check once before any direct overlay write; every target element shares
   // the same viewer edit mode and collaboration role.
   const permission = mutationPermission(state);
-  if (!permission.allowed) return { ...EMPTY, blocked: permission.reason === 'edit-mode' ? 'edit-mode' : 'collab-role' };
+  if (!permission.allowed) return { ...EMPTY, blocked: permission.reason };
   if (collidesByName(zoneSet)) return { ...EMPTY, blocked: 'duplicate-set-name' };
 
   const t0 = performance.now();
@@ -211,7 +211,7 @@ export function applyZoneWriteBack(zoneSet: ZoneSet, basis: VolumeBasis): ZoneWr
     // declared basis and the stale-zone-qset sweep below. Each read is an
     // on-demand extraction, so asking twice would double the run's cost.
     const qsets = quantitySetsFor(context, ref.expressId);
-    const facts = zoneFactsFor(globalId, assignment, zoneNameById, basis, context, qsets, proved, apportioned);
+    const facts = zoneFactsFor(globalId, assignment, zoneNameById, basis, context.volumeSiScale, qsets, proved, apportioned);
     const built = buildElementWriteBack(facts, {
       zoneSetName: zoneSet.name,
       zoneSetId: zoneSet.id,
@@ -262,7 +262,7 @@ export interface ZoneWriteBackRemoval {
   /** Elements something was actually deleted from. */
   removed: number;
   modelIds: string[];
-  blocked: 'edit-mode' | 'collab-role' | 'duplicate-set-name' | null;
+  blocked: MutationDenialReason | 'duplicate-set-name' | null;
 }
 
 /**
@@ -286,7 +286,7 @@ export function removeZoneWriteBack(zoneSet: ZoneSet): ZoneWriteBackRemoval {
   // were not allowed to" are different answers, and only one of them means the
   // user should do something next.
   const permission = mutationPermission(state);
-  if (!permission.allowed) return { removed: 0, modelIds: [], blocked: permission.reason === 'edit-mode' ? 'edit-mode' : 'collab-role' };
+  if (!permission.allowed) return { removed: 0, modelIds: [], blocked: permission.reason };
   if (collidesByName(zoneSet)) return { removed: 0, modelIds: [], blocked: 'duplicate-set-name' };
   const contexts = new Map<string, ModelContext | null>();
   const touchedModels = new Set<string>();

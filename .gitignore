@@ -91,6 +91,7 @@ tests/models/local
 tests/models/ara3d
 tests/models/issues
 tests/models/various
+tests/models/georeferencer
 tests/models/**/*.ifc
 tests/models/**/*.IFC
 tests/models/**/*.ifcx
@@ -155,4 +156,12 @@ apps/*/tsconfig.tests.json
 # multi-GB models) and must never be committed; see browser-corpus.example.json
 # for the shape.
 scripts/perf/.browser-cold-ab-results/
+scripts/perf/.frame-gpu-rig-results/
 scripts/perf/browser-corpus.local.json
+
+# Autodesk SDK worker build outputs (proprietary SDK/native dependencies).
+apps/autodesk-exchange-worker/bin/
+apps/autodesk-exchange-worker/obj/
+
+# Unreviewed live AI evaluation runs (scripts/ai-eval/run-live-eval.mjs); only reviewed recordings are promoted.
+tests/ai-eval/results/

@@ -27,6 +27,8 @@ import fireRatingAudit from './examples/05-fire-rating-audit.flow.json?raw';
 import namingAudit from './examples/06-naming-audit.flow.json?raw';
 import rankByQuantity from './examples/07-rank-by-quantity.flow.json?raw';
 import columnGrid from './examples/08-column-grid.flow.json?raw';
+import coordinationStartup from './examples/09-coordination-startup.flow.json?raw';
+import aiWallRoles from './examples/10-ai-wall-roles.flow.json?raw';
 
 const SOURCES: readonly string[] = [
   countElements,
@@ -37,6 +39,8 @@ const SOURCES: readonly string[] = [
   namingAudit,
   rankByQuantity,
   columnGrid,
+  coordinationStartup,
+  aiWallRoles,
 ];
 
 let parsed: readonly FlowDocument[] | undefined;

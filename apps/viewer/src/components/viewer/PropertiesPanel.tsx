@@ -24,7 +24,7 @@ import { toGlobalIdFromModels } from '@/store/globalId';
 import { useIfc } from '@/hooks/useIfc';
 import { getOrCreateMutationView } from '@/sdk/adapters/mutation-view';
 import { IfcQuery } from '@ifc-lite/query';
-import { extractClassificationsOnDemand, extractAllMaterialsOnDemand, extractMaterialPropertiesOnDemand, extractTypePropertiesOnDemand, extractTypeQuantitiesOnDemand, extractTypeEntityOwnProperties, extractDocumentsOnDemand, extractGeoreferencingOnDemand, extractLengthUnitScale, extractProjectUnits, ProjectUnits, extractStructuralOnDemand, type IfcDataStore, type MaterialPsetGroup } from '@ifc-lite/parser';
+import { extractClassificationsOnDemand, extractAllMaterialsOnDemand, extractMaterialPropertiesOnDemand, extractTypePropertiesOnDemand, extractTypeQuantitiesOnDemand, extractTypeEntityOwnProperties, extractDocumentsOnDemand, extractGeoreferencingOnDemand, extractLengthUnitScale, extractProjectUnits, ProjectUnits, extractStructuralOnDemand, taskProductExpressIds, taskProductGlobalIds, type IfcDataStore, type MaterialPsetGroup } from '@ifc-lite/parser';
 import { RelationshipType, isSpatialStructureTypeName, isStoreyLikeSpatialTypeName } from '@ifc-lite/data';
 import type { EntityRef, FederatedModel } from '@/store/types';
 import { ZoneVolumeBreakdown } from './ZoneVolumeBreakdown';
@@ -42,6 +42,7 @@ import { QuantitySetCard } from './properties/QuantitySetCard';
 import { SweptDiskInspection } from './properties/SweptDiskInspection';
 import { ExtrusionInspection } from './properties/ExtrusionInspection';
 import { ModelMetadataPanel } from './properties/ModelMetadataPanel';
+import { useInspectTiming } from './properties/useInspectTiming';
 import { useLandXmlSourceInspector } from './properties/useLandXmlSourceInspector';
 import { ClassificationCard } from './properties/ClassificationCard';
 import { MaterialCard } from './properties/MaterialCard';
@@ -59,7 +60,6 @@ import { GeoreferencingPanel } from './properties/GeoreferencingPanel';
 import { RawStepCard } from './properties/RawStepCard';
 import { UnitDisplayControl } from './properties/UnitDisplayControl';
 import { EntityHeaderActions } from './properties/EntityHeaderActions';
-import { TOUR_ANCHORS, tourAnchor } from '@/lib/tours/anchors';
 import { isMaterialDefinitionType } from '@/utils/materialDefinitionTypes';
 import { attributesFromOverlayEntity } from './properties/overlayAttributes';
 import { createQueryAdapter } from '@/sdk/adapters/query-adapter';
@@ -79,6 +79,7 @@ import { AttributeEditorField } from './properties/AttributeEditorField';
 import { CopyValueButton } from './properties/CopyValueButton';
 import { useCopyValue } from './properties/useCopyValue';
 import { SelectionSummaryPanel } from './properties/SelectionSummaryPanel';
+import { AssistantAction } from './assistant/AssistantAction';
 export function PropertiesPanel() {
   const { t, locale } = useTranslation();
   // Display-unit converter overrides (issue #1573 proposal 2) — read once
@@ -770,12 +771,12 @@ export function PropertiesPanel() {
     const expressId = selectedEntity.expressId;
     const gid = selectedEntityGlobalId;
     for (const task of scheduleData.tasks) {
-      const taskHasGlobalIds = task.productGlobalIds.some(Boolean);
-      if (gid && taskHasGlobalIds) {
-        if (task.productGlobalIds.includes(gid)) return true;
+      const productGlobalIds = taskProductGlobalIds(task);
+      if (gid && productGlobalIds.some(Boolean)) {
+        if (productGlobalIds.includes(gid)) return true;
         continue;
       }
-      if (expressId > 0 && task.productExpressIds.includes(expressId)) return true;
+      if (expressId > 0 && taskProductExpressIds(task).includes(expressId)) return true;
     }
     return false;
   }, [selectedEntity, scheduleData, selectedEntityGlobalId]);
@@ -1156,9 +1157,9 @@ export function PropertiesPanel() {
     }
     return names;
   }, [renderedAttributes]);
-
   // Model metadata display (when clicking top-level model in hierarchy)
   const landXmlInspector = useLandXmlSourceInspector(models);
+  useInspectTiming(!landXmlInspector && !selectedModelId && selectedMaterialId === null && selectedEntities.length <= 1 && selectedEntityId !== null && modelQuery && (entityNode || overlayEntity) ? selectedEntityId : null); // #6961 ifc_inspect: the single-entity view only
   if (landXmlInspector) return landXmlInspector;
 
   if (selectedModelId) {
@@ -1217,7 +1218,7 @@ export function PropertiesPanel() {
     }
     // Multi-model or no model loaded: show empty state
     return (
-      <div {...tourAnchor(TOUR_ANCHORS.propertiesPanel)} className="h-full flex flex-col border-l-2 border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-black">
+      <div className="h-full flex flex-col border-l-2 border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-black">
         <div className="p-3 border-b-2 border-zinc-200 dark:border-zinc-800 bg-white dark:bg-black">
           <h2 className="font-bold uppercase tracking-wider text-xs text-zinc-900 dark:text-zinc-100">{t('properties.panel.title')}</h2>
         </div>
@@ -1237,7 +1238,7 @@ export function PropertiesPanel() {
   const entityGlobalId = renderedEntityGlobalId;
 
   return (
-    <div {...tourAnchor(TOUR_ANCHORS.propertiesPanel)} className="h-full flex flex-col border-l-2 border-zinc-200 dark:border-zinc-800 bg-white dark:bg-black">
+    <div className="h-full flex flex-col border-l-2 border-zinc-200 dark:border-zinc-800 bg-white dark:bg-black">
       {/* Entity Header */}
       <div className="p-4 border-b-2 border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-black space-y-3">
         <div className="flex items-start gap-3">
@@ -1826,9 +1827,7 @@ function MultiEntityPanel({
           </span>
           {/* Display-unit converter (issue #1573 proposal 2) — one control
               for the whole stacked list below, not per-entity section. */}
-          <div className="ml-auto">
-            <UnitDisplayControl />
-          </div>
+          <div className="ml-auto flex items-center gap-1"><AssistantAction /><UnitDisplayControl /></div>
         </div>
       </div>
 

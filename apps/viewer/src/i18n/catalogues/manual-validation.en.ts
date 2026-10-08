@@ -28,6 +28,11 @@ export const manualValidationEn = {
   'manualValidation.save': 'Save .checklist.json',
   'manualValidation.close': 'Close checklist',
 
+  'manualValidation.reuse.editCopy': 'Edit a copy',
+  'manualValidation.reuse.noIdentity': 'This report has no recorded model identity. Its saved evidence is retained.',
+  'manualValidation.reuse.modelNotLoaded': 'Load the recorded model to edit these answers. The saved evidence is retained.',
+  'manualValidation.reuse.invalid': 'This saved report cannot be recovered as an editable checklist. Its saved evidence is retained.',
+
   'manualValidation.model.label': 'Model',
   'manualValidation.model.none': 'Load a model to record verdicts. Answers are stored per model.',
   'manualValidation.model.noIdentity': 'This model has no stable identity yet, so verdicts cannot be recorded for it.',
@@ -71,7 +76,6 @@ export const manualValidationEn = {
 
   // The manual report document block (#6401): DocumentPanel.tsx, BlockEditor.tsx, ManualReportPreview.tsx.
   'manualValidation.report.kind': 'Manual validation report',
-  'manualValidation.report.add': 'Manual validation report',
   'manualValidation.report.heading': 'Manual validation: {name}',
   'manualValidation.report.unavailableTitle': 'Create or open a checklist under Data validation → Manual validation first',
   'manualValidation.report.sourceLabel': 'Checklist',
@@ -80,6 +84,7 @@ export const manualValidationEn = {
   'manualValidation.report.long': 'Long',
   'manualValidation.report.compact': 'Short',
   'manualValidation.report.benchmarks': 'Show benchmark scores',
+  'manualValidation.report.showStamp': 'Show stamp information',
   'manualValidation.report.modelLabel': 'Answers from',
   'manualValidation.report.modelNotLoaded': 'The model these answers were recorded against ({model}) is not loaded. Load it to refresh, or pick another model.',
   'manualValidation.report.modelNotLoadedUnnamed': 'The model these answers were recorded against is not loaded. Load it to refresh, or pick another model.',

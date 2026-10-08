@@ -10,12 +10,13 @@
  */
 import { useCallback, useEffect, useMemo, useRef } from 'react';
 import { Copy, Crosshair, Pencil, X } from 'lucide-react';
-import { aggregate, buildEChartsOption, type Aggregation, type ChartDataset, type ChartSource, type ChartSpec, type PaletteAssignment } from '@ifc-lite/charts';
+import { buildEChartsOption, type Aggregation, type ChartDataset, type ChartSource, type ChartSpec, type PaletteAssignment } from '@ifc-lite/charts';
 import { Button } from '@/components/ui/button';
 import { useTranslation } from '@/i18n/useTranslation';
 import { useViewerStore } from '@/store';
-import { applyChartFilter, applyClashRuleFilter, chartElementFilterKey } from '@/lib/charts/source-filter';
+import { chartCardAggregation, chartCardDataset, chartCardSlice, chartClashRule, chartFilterSelector } from '@/lib/charts/card-aggregation';
 import { countRows } from '@/lib/charts/row-noun';
+import { comparisonChartMessage, isSavedComparisonChart, resolveComparisonChartSource } from '@/lib/charts/comparison-source';
 import { readChartTheme, useEChart, type ChartRenderer, type ChartSize, type ChartSelectEvent } from './useEChart';
 import { GRID_DRAG_HANDLE_CLASS } from './DashboardGrid';
 import { chartBucketIdentity, chartSelectionIsLive, sameChartBucketIdentity, type Chart3DLink } from './useChart3DLink';
@@ -86,43 +87,24 @@ export function ChartCard({ spec, dataset, filterState, link, renderer, onEdit, 
   const chartSliceSource = useViewerStore((s) => s.chartSliceSource);
   const chartSliceBuckets = useViewerStore((s) => s.chartSliceBuckets);
   const theme = useViewerStore((s) => s.theme);
+  const savedComparisons = useViewerStore((s) => s.savedComparisons);
+  const source = useMemo(() => resolveComparisonChartSource(spec, dataset, savedComparisons), [spec, dataset, savedComparisons]);
+  const recorded = isSavedComparisonChart(spec);
   // Colours are kept by label across re-aggregations; the previous palette lives here.
   const paletteRef = useRef<PaletteAssignment | undefined>(undefined);
 
-  // Trimmed-empty is treated as no filter, consistent with every other
-  // reader of `spec.filter.selector` (`resolveChartFilter`, `validate.ts`
-  // now also refuses it outright) — a malformed saved/imported dashboard
-  // must not strand the card on "Resolving filter…" forever (review finding).
-  const filterSelector = chartElementFilterKey(spec.filter) ? (spec.filter?.groups?.length ? `${spec.filter.groups.reduce((sum, group) => sum + group.rules.length, 0)} rules` : spec.filter?.selector) : undefined;
-  // Only meaningful on `clash` — `validate.ts` refuses it on every other
-  // source (#5156). A rule id is a value already on the dataset, so it needs
-  // no async resolution the way a selector does.
-  const clashRule = spec.source === 'clash' ? spec.filter?.clashRule : undefined;
+  // Filter, slice and aggregation are the pure `card-aggregation` functions the
+  // assistant's charts evidence also calls (#6833), so both read one engine.
+  const filterSelector = chartFilterSelector(spec);
+  const clashRule = chartClashRule(spec);
   const clashRuleLabel = useViewerStore((s) => (clashRule ? s.clashResult?.rulesRun.find((r) => r.id === clashRule)?.name : undefined));
-  // Resolving or erred: an EMPTY dataset, never the unfiltered rows under a
-  // filter (#4946) — a card must not flash the whole model's numbers while
-  // its filter is still running, or keep showing them after it fails.
-  const filteredDataset = useMemo<ChartDataset>(() => {
-    let result = dataset;
-    if (filterSelector) {
-      if (filterState?.status !== 'ok') return { ...dataset, rows: [] };
-      result = applyChartFilter(result, filterState.ids);
-    }
-    if (clashRule) result = applyClashRuleFilter(result, clashRule);
-    return result;
-  }, [dataset, filterSelector, filterState, clashRule]);
+  const filteredDataset = useMemo<ChartDataset>(() => chartCardDataset(spec, source.dataset, filterState), [spec, source.dataset, filterState]);
 
   const aggregation = useMemo<Aggregation | null>(() => {
-    try {
-      const slice = chartSliceSource === spec.id ? null : chartSlice;
-      const result = aggregate(spec, filteredDataset, { slice, palette: paletteRef.current });
-      paletteRef.current = result.palette;
-      return result;
-    } catch (err) {
-      console.warn(`[Charts] chart "${spec.title}" cannot aggregate`, err);
-      return null;
-    }
-  }, [spec, filteredDataset, chartSlice, chartSliceSource]);
+    const result = chartCardAggregation(spec, filteredDataset, chartCardSlice(spec, recorded, chartSlice, chartSliceSource), paletteRef.current);
+    if (result) paletteRef.current = result.palette;
+    return result;
+  }, [spec, filteredDataset, chartSlice, chartSliceSource, recorded]);
 
   useEffect(() => { onAggregation?.(spec, aggregation); }, [onAggregation, spec, aggregation]);
 
@@ -132,11 +114,11 @@ export function ChartCard({ spec, dataset, filterState, link, renderer, onEdit, 
       && chartSliceSource === spec.id
       && chartSlice
       && chartSliceBuckets
-      && !chartSelectionIsLive(aggregation, chartSliceBuckets, chartSlice)
+      && (recorded || !chartSelectionIsLive(aggregation, chartSliceBuckets, chartSlice))
     ) link.clearSelectionIfOwned(spec.id, chartSlice, chartSliceBuckets);
-  }, [aggregation, chartSlice, chartSliceBuckets, chartSliceSource, link, spec.id]);
+  }, [aggregation, chartSlice, chartSliceBuckets, chartSliceSource, link, spec.id, recorded]);
 
-  const selection = useMemo(() => (aggregation ? link.selectionFor(aggregation) : { full: [], partial: [] }), [aggregation, link]);
+  const selection = useMemo(() => (aggregation && !recorded ? link.selectionFor(aggregation) : { full: [], partial: [] }), [aggregation, link, recorded]);
 
   const option = useCallback(({ width, height }: ChartSize) => {
     if (!aggregation) return null;
@@ -146,16 +128,16 @@ export function ChartCard({ spec, dataset, filterState, link, renderer, onEdit, 
   }, [aggregation, selection.full, theme]);
 
   const onSelect = useCallback((event: ChartSelectEvent) => {
-    if (!aggregation) return;
+    if (!aggregation || recorded) return;
     if (event.items.length === 0) link.clearSelection();
     else link.selectItems(aggregation, event.items);
-  }, [aggregation, link]);
+  }, [aggregation, link, recorded]);
 
   const canClearSelection = useCallback((item: { seriesIndex: number; dataIndex: number }) => {
-    if (!aggregation || chartSliceSource !== spec.id) return false;
+    if (!aggregation || recorded || chartSliceSource !== spec.id) return false;
     const clicked = chartBucketIdentity(aggregation, item);
     return clicked !== null && (chartSliceBuckets ?? []).some((active) => sameChartBucketIdentity(active, clicked));
-  }, [aggregation, chartSliceBuckets, chartSliceSource, spec.id]);
+  }, [aggregation, chartSliceBuckets, chartSliceSource, spec.id, recorded]);
 
   const { ref } = useEChart({
     option,
@@ -167,12 +149,14 @@ export function ChartCard({ spec, dataset, filterState, link, renderer, onEdit, 
   });
 
   const frame = useCallback(() => {
-    if (!aggregation) return;
+    if (!aggregation || recorded) return;
     const items = selection.full.length > 0 ? selection.full : aggregation.categories.map((_, i) => ({ seriesIndex: 0, dataIndex: i }));
     link.frameItems(aggregation, items);
-  }, [aggregation, selection.full, link]);
+  }, [aggregation, selection.full, link, recorded]);
 
-  const subtitle = subtitleFor(spec, aggregation, filterSelector, filterState, clashRuleLabel || clashRule);
+  const sourceMessage = comparisonChartMessage(source, t);
+  const summary = subtitleFor(spec, aggregation, filterSelector, filterState, clashRuleLabel || clashRule);
+  const subtitle = source.status === 'missing' ? t('chartComparison.unavailable') : sourceMessage && aggregation && aggregation.categories.length > 0 ? `${summary} · ${sourceMessage}` : summary;
 
   return (
     <div className="flex h-full flex-col min-h-0 rounded-md border border-border bg-card" data-chart-id={spec.id}>
@@ -181,7 +165,7 @@ export function ChartCard({ spec, dataset, filterState, link, renderer, onEdit, 
           <div className="font-medium truncate" title={spec.title}>{spec.title}</div>
           <div className="text-2xs text-muted-foreground truncate" data-chart-subtitle>{subtitle}</div>
         </div>
-        <Button variant="ghost" size="sm" className="h-6 w-6 p-0" title={t('chartCard.frameTitle')} onClick={frame} aria-label={t('chartCard.frameAriaLabel', { title: spec.title })}>
+        <Button variant="ghost" size="sm" className="h-6 w-6 p-0" disabled={recorded} title={t('chartCard.frameTitle')} onClick={frame} aria-label={t('chartCard.frameAriaLabel', { title: spec.title })}>
           <Crosshair className="h-3.5 w-3.5" />
         </Button>
         <Button variant="ghost" size="sm" className="h-6 w-6 p-0" title={t('chartCard.editChartTitle')} onClick={onEdit} aria-label={t('chartCard.editAriaLabel', { title: spec.title })}>
@@ -198,13 +182,13 @@ export function ChartCard({ spec, dataset, filterState, link, renderer, onEdit, 
         <div ref={ref} className="absolute inset-0" data-chart-host />
         {aggregation && aggregation.categories.length === 0 && (
           <div className="absolute inset-0 flex items-center justify-center px-4 text-center text-muted-foreground" data-chart-empty>
-            {filterSelector && filterState?.status !== 'ok'
+            {sourceMessage ?? (filterSelector && filterState?.status !== 'ok'
               ? subtitle
               : filteredDataset.rows.length === 0
                 ? filterSelector || clashRule
                   ? t('chartCard.noSourceFilterMatches')
                   : EMPTY_HINTS[spec.source]
-                : t('chartCard.nothingToBucket')}
+                : t('chartCard.nothingToBucket'))}
           </div>
         )}
       </div>
@@ -213,7 +197,7 @@ export function ChartCard({ spec, dataset, filterState, link, renderer, onEdit, 
         <ul className="sr-only" data-chart-legend>
           {aggregation.categories.map((bucket, index) => (
             <li key={`${bucket.key}:${'isOther' in bucket && bucket.isOther === true ? 'other' : 'value'}`}>
-              <button type="button" onClick={() => link.selectItems(aggregation, [{ seriesIndex: 0, dataIndex: index }])}>
+              <button type="button" disabled={recorded} onClick={() => { if (!recorded) link.selectItems(aggregation, [{ seriesIndex: 0, dataIndex: index }]); }}>
                 {bucket.label}: {bucket.value}
               </button>
             </li>

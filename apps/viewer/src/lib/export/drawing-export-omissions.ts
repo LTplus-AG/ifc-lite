@@ -5,12 +5,14 @@
 import type { TranslationKey } from '@/i18n';
 
 export type DrawingExportFormat = 'pdf' | 'dxf';
-export type DrawingExportOmission = 'markups' | 'underlays' | 'requestedScale';
+export type DrawingExportOmission = 'markups' | 'rasterReferences' | 'requestedScale';
 
 export interface DrawingExportContent {
   markupCounts: Readonly<{ measurements: number; areas: number; texts: number; clouds: number }>;
   /** Count only underlays the drawing actually shows (opacity > 0). */
   visibleUnderlayCount: number;
+  /** Visible, available, non-edge-on PDF/image references. DXF has no raster embedding. */
+  visibleRasterReferenceCount?: number;
   /** Null unless a sheet is enabled and present. Sheet PDF embeds underlays. */
   sheetScale: number | null;
   requestedScale?: number;
@@ -18,24 +20,22 @@ export interface DrawingExportContent {
 
 export const DRAWING_OMISSION_LABEL_KEYS = {
   markups: 'section2d.export.omission.markups',
-  underlays: 'section2d.export.omission.underlays',
+  rasterReferences: 'section2d.export.omission.rasterReferences',
   requestedScale: 'section2d.export.omission.requestedScale',
 } as const satisfies Record<DrawingExportOmission, TranslationKey>;
 
-/** Describe content excluded by the current writers without changing their bytes (#5850). */
+/** #6615: vector references export everywhere; only DXF omits raster references. */
 export function drawingExportOmissions(
   content: DrawingExportContent,
   format: DrawingExportFormat,
 ): DrawingExportOmission[] {
   const omissions: DrawingExportOmission[] = [];
-  const { markupCounts, visibleUnderlayCount, sheetScale, requestedScale } = content;
+  const { markupCounts, visibleRasterReferenceCount = 0, sheetScale, requestedScale } = content;
   if (markupCounts.measurements + markupCounts.areas + markupCounts.texts + markupCounts.clouds > 0) {
     omissions.push('markups');
   }
-  // Sheet PDF rasterizes the sheet SVG, which includes visible DXF underlays.
-  // The vector PDF and DXF writers do not include them.
-  if (visibleUnderlayCount > 0 && (format === 'dxf' || sheetScale === null)) {
-    omissions.push('underlays');
+  if (visibleRasterReferenceCount > 0 && format === 'dxf') {
+    omissions.push('rasterReferences');
   }
   if (format === 'pdf' && sheetScale !== null && requestedScale !== undefined && requestedScale !== sheetScale) {
     omissions.push('requestedScale');

@@ -251,6 +251,7 @@ export type { CostStoreModelResolution, CostStoreModelResolver } from './cost-st
 export type { CostStoreBackendMethods } from './store-cost-types.js';
 export type { StructuralStoreBackendMethods } from './store-structural-types.js';
 export { createModellingStoreBackend, type ModellingStoreModelResolver } from './store-modelling-backend.js';
+export { createOrdinaryStoreBackend, type OrdinaryStoreBackendMethods } from './store-ordinary-backend.js';
 export type { ModellingStoreBackendMethods } from './store-modelling-types.js';
 
 // Clash — geometric interference detection over caller-provided ClashElement[]
@@ -392,3 +393,8 @@ export { RemoteBackend } from './transport/remote-backend.js';
 // ============================================================================
 
 export { BimHost } from './host.js';
+
+export type { PhysicalSizePatch } from './store-physical-types.js';
+
+export { RoomCommandConflictError, createRoomCommandBackend, type RoomGeometryProvider, type RoomCommand, type RoomCommandResult } from './store-room-command.js';
+export { createAlignCommandBackend, type AlignGeometryProvider } from './store-align-command.js';

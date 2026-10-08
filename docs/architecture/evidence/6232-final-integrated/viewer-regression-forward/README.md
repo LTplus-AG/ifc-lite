@@ -1,0 +1,7 @@
+# Viewer CI regression repairs (#6232)
+
+The failed main CI at `784bee5cb` exposed two independent regression forms. Shard 6 exercises metre and millimetre resizing with deliberately missing extrusion Depth. The strict numeric conversion had rejected the existing unavailable-height sentinel. Owning Transform repair `c7de2db` preserves NaN only for nonnumeric Depth; numerical conversions stay strict. Unchanged controls reproduce six passes/two failures before and eight passes/zero failures after. The integrated forced run at `a9a1703b` passes all eight, including retaining the prior mesh after the simulated remeshing failure. This is a preservation control, not a native-mesh qualification.
+
+Shard 2's existing hosted Split controls retained their geometry/placement assertions but compared an exact diagnostics object without its new empty `skipReasons` map. The expectation now includes that map. The forced integrated run at `ba33bb8` passes all 24 metre/millimetre authored Split controls, with zero skips. Actual source and mesh positions remain asserted. Both forced runs use the root Turbo test entrypoint without dependency builds; the verified generated JS/WASM pair remains `4719403c…` / `7d63d9bc…`.
+
+Lossless failed-CI and before/restored/current logs identify their own source commits in the manifest. These receipts do not relabel the earlier clean `acbc97c0b` browser captures or claim current-head remote CI readiness.

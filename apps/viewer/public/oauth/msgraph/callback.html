@@ -4,6 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="robots" content="noindex" />
+    <meta name="referrer" content="no-referrer" />
     <title>Microsoft sign-in</title>
     <style>
       body {
@@ -61,6 +62,30 @@
         var CHANNEL = 'ifc-lite:oauth-callback';
 
         var params = new URLSearchParams(window.location.search);
+        var result = window.location.href;
+        var pendingKey = 'ifc-lite:cloud:msgraph:authorization';
+        var callbackKey = 'ifc-lite:cloud:msgraph:callback';
+        var pending = sessionStorage.getItem(pendingKey);
+        // Remove transient authorization parameters from browser history.
+        history.replaceState(null, '', location.pathname);
+        if (pending) {
+          try {
+            var transaction = JSON.parse(pending);
+            if (typeof transaction.state !== 'string' || transaction.state !== params.get('state') ||
+                typeof transaction.expiresAt !== 'number' || transaction.expiresAt <= Date.now()) throw new Error('Expired sign-in');
+            var destination = new URL(transaction.returnPath || '/', location.origin);
+            if (destination.origin !== location.origin || destination.pathname.indexOf('/oauth/') === 0) throw new Error('Invalid return location');
+            sessionStorage.setItem(callbackKey, result);
+            location.replace(destination.href);
+            return;
+          } catch (error) {
+            sessionStorage.removeItem(pendingKey);
+            sessionStorage.removeItem(callbackKey);
+            document.getElementById('status').textContent = 'Sign-in expired. Return to IFClite and try again.';
+            return;
+          }
+        }
+
         try {
           var channel = new BroadcastChannel(CHANNEL);
           channel.postMessage({
@@ -69,7 +94,7 @@
             // opener ignores anything carrying a different state, and
             // re-validates it before trusting the code.
             state: params.get('state') || '',
-            url: window.location.href,
+            url: result,
           });
           channel.close();
         } catch (err) {

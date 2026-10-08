@@ -11,6 +11,8 @@
  * keyboard is never trapped.
  */
 import '@/test/setup-dom.js';
+import { documentPreviewReady } from '@/test/document-preview';
+import '@/test/content-fixture.js';
 import { describe, it, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
@@ -48,6 +50,7 @@ function seedDocument(style: TextBlock['style'], text = ''): void {
 
 async function settle(): Promise<void> {
   for (let i = 0; i < 4; i++) await act(async () => { await Promise.resolve(); });
+  await documentPreviewReady();
 }
 
 const storedText = (): string => (useViewerStore.getState().documents[0].blocks[0] as TextBlock).text;
@@ -203,7 +206,7 @@ describe('Document Text block line breaks and indentation (#6370)', () => {
 
     // The browser copy (what the panel reloads) and "Export template" (the same JSON `exportDocument`
     // writes) both restore the text exactly as typed.
-    const saved = loadDocuments().find((d) => d.id === 'doc-6370');
+    const saved = (await loadDocuments()).find((d) => d.id === 'doc-6370');
     assert.equal((saved?.blocks[0] as TextBlock | undefined)?.text, 'Prüfbericht\n\tBIM-Gesamtkoordination');
     const imported = parseDocumentFile(JSON.stringify(useViewerStore.getState().documents[0], null, 2));
     assert.equal((imported.blocks[0] as TextBlock).text, 'Prüfbericht\n\tBIM-Gesamtkoordination');

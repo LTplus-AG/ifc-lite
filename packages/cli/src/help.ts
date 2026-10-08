@@ -72,7 +72,12 @@ export function buildHelp(version: string): string {
               recipe: {"models":["m.ifc"],"structural":true,"ids":["rules.ids"],"rules":["checks.rules.json"]}, paths relative to the recipe file
     check     <model.ifc>... --rules <file.rules.json>     Run a .rules.json information-validation rule set (same engine as the viewer)
               [--format json|table] [--fail-on error|warning]  exit 0 all pass / 1 any fail / 2 rule error or unreadable input
-    flow      <run|describe|validate> <graph.flow.json> [<file.ifc>] [--input k=v] [--out F]  Evaluate a node graph headlessly
+    semantic  <validate|query|assets|serve> [--json] [--out F]  Shared semantic profiles, SHACL and JSON/SPARQL providers
+              validate <records.json|graph.ttl> [--profile F] [--rdf] [--shapes F] [--graph-format turtle|nquads|jsonld]  exit 0 conforms / 1 findings
+              query --endpoint URL --host HOST [--query F] [--kind json|select|construct] [--bearer-env NAME] [--relay-provider ID] [--allow-loopback-http]
+              serve --config F --cert F --key F [--port N]  Authenticated HTTPS relay (env credential references only)
+              assets [--profile F] [--artifact schema|context|shapes|vocabulary|profile]  Generate profile artifacts
+    flow      <run|resume|review|describe|validate> <graph.flow.json> [<file.ifc>] [--input k=v] [--out F] [--checkpoint F]  Evaluate a node graph headlessly; pause and resume reviewed AI proposals
 
   Options:
     --help, -h           Show help

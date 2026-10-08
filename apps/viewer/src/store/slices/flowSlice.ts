@@ -15,6 +15,8 @@ import type { StateCreator } from 'zustand';
 import type { FlowDocument, RunResult } from '@ifc-lite/flow';
 import { isContributedFlowId } from '../../services/extensions/host-flows.js';
 import { BrowserTrackingStore, canCreateFlow, isFlowWithinSizeLimit, loadSavedFlows, newFlowDocument, saveFlows, type SavedFlow } from '../../lib/flow/persistence.js';
+import type { WorkflowArtifact } from '../../lib/flow/artifact.js';
+import { cancelWorkflowRun } from '../../lib/flow/run-session.js';
 import { clearPlayerValues } from '../../lib/flow/player-values.js';
 
 /** A finished run's time window and the graph document that ran in it. */
@@ -35,10 +37,22 @@ export interface FlowRunWindow {
    * before" took in a manual edit made while the run was in flight (#5634).
    */
   readonly mutationIds: ReadonlySet<string>;
+  /** Earlier writing nodes and exact checkpoint ownership across reviewed segments. */
+  readonly writingNodes?: readonly { nodeId: string; trackingKey: string }[];
+  readonly checkpointId?: string;
 }
 
 export interface FlowSlice {
   flowPanelVisible: boolean;
+  flowView: 'editor' | 'player';
+  flowProgress: string | null;
+  flowRunWarnings: string[];
+  flowArtifacts: WorkflowArtifact[];
+  flowStorageError: string | null;
+  setFlowView: (view: 'editor' | 'player') => void;
+  setFlowProgress: (progress: string | null) => void;
+  setFlowRunWarnings: (warnings: string[]) => void;
+  setFlowArtifacts: (artifacts: WorkflowArtifact[]) => void;
   savedFlows: SavedFlow[];
   /** Id of the saved graph the editor holds, or `null` for none. */
   activeFlowId: string | null;
@@ -83,6 +97,11 @@ export interface FlowSlice {
 
 export const createFlowSlice: StateCreator<FlowSlice, [], [], FlowSlice> = (set, get) => ({
   flowPanelVisible: false,
+  flowView: 'editor', flowProgress: null, flowRunWarnings: [], flowArtifacts: [], flowStorageError: null,
+  setFlowView: (flowView) => set({ flowView }),
+  setFlowProgress: (flowProgress) => set({ flowProgress }),
+  setFlowRunWarnings: (flowRunWarnings) => set({ flowRunWarnings }),
+  setFlowArtifacts: (flowArtifacts) => set({ flowArtifacts }),
   savedFlows: loadSavedFlows(),
   activeFlowId: null,
   flowDoc: null,
@@ -100,43 +119,48 @@ export const createFlowSlice: StateCreator<FlowSlice, [], [], FlowSlice> = (set,
     if (!canCreateFlow(savedFlows.length)) return null;
     const doc = newFlowDocument(name.trim() || 'Untitled flow');
     const next = [...savedFlows, { doc, updatedAt: Date.now() }];
-    saveFlows(next);
-    set({ savedFlows: next, activeFlowId: doc.id, flowDoc: doc, flowDirty: false, flowSelectedNodeId: null, flowLastRun: null, flowLastError: null, flowLastRunWindow: null });
+    const persisted = saveFlows(next);
+    set({ flowStorageError: persisted ? null : 'Workflow is available in memory, but browser storage refused the save.' });
+    set({ savedFlows: next, activeFlowId: doc.id, flowDoc: doc, flowDirty: !persisted, flowSelectedNodeId: null, flowLastRun: null, flowLastError: null, flowLastRunWindow: null, flowArtifacts: [], flowProgress: null, flowRunWarnings: [] });
     return doc.id;
   },
 
   openFlow: (id) => {
     const saved = get().savedFlows.find((f) => f.doc.id === id);
     if (!saved) return;
-    set({ activeFlowId: id, flowDoc: saved.doc, flowDirty: false, flowSelectedNodeId: null, flowLastRun: null, flowLastError: null, flowLastRunWindow: null });
+    set({ activeFlowId: id, flowDoc: saved.doc, flowDirty: false, flowSelectedNodeId: null, flowLastRun: null, flowLastError: null, flowLastRunWindow: null, flowArtifacts: [], flowProgress: null, flowRunWarnings: [] });
   },
 
   saveFlow: () => {
     const { activeFlowId, flowDoc, savedFlows } = get();
-    if (!activeFlowId || !flowDoc || !isFlowWithinSizeLimit(flowDoc)) return;
+    if (!activeFlowId || !flowDoc) return;
+    if (!isFlowWithinSizeLimit(flowDoc)) { set({ flowStorageError: 'Workflow exceeds the 500 KB save limit. Use external file slots for large definitions.' }); return; }
     const entry: SavedFlow = { doc: flowDoc, updatedAt: Date.now() };
     const next = savedFlows.some((f) => f.doc.id === activeFlowId)
       ? savedFlows.map((f) => (f.doc.id === activeFlowId ? entry : f))
       : [...savedFlows, entry];
-    saveFlows(next);
-    set({ savedFlows: next, flowDirty: false });
+    const persisted = saveFlows(next);
+    set({ flowStorageError: persisted ? null : 'Workflow is available in memory, but browser storage refused the save.' });
+    set({ savedFlows: next, flowDirty: !persisted });
   },
 
   deleteFlow: (id) => {
     const next = get().savedFlows.filter((f) => f.doc.id !== id);
-    saveFlows(next);
+    const persisted = saveFlows(next);
+    set({ flowStorageError: persisted ? null : 'Workflow is available in memory, but browser storage refused the save.' });
     // The sidecar is the graph's; a graph deleted here and re-imported later
     // under the same id must not inherit tracked elements it never made. The
     // Player's last-used inputs are the graph's too, for the same reason.
     BrowserTrackingStore.clear(id);
     clearPlayerValues(id);
     const closing = get().activeFlowId === id;
-    set({ savedFlows: next, ...(closing ? { activeFlowId: null, flowDoc: null, flowDirty: false, flowSelectedNodeId: null, flowLastRun: null, flowLastError: null, flowLastRunWindow: null } : {}) });
+    set({ savedFlows: next, ...(closing ? { activeFlowId: null, flowDoc: null, flowDirty: false, flowSelectedNodeId: null, flowLastRun: null, flowLastError: null, flowLastRunWindow: null, flowArtifacts: [], flowProgress: null, flowRunWarnings: [] } : {}) });
   },
 
   importFlow: (doc) => {
     const { savedFlows } = get();
-    if (!canCreateFlow(savedFlows.length) || !isFlowWithinSizeLimit(doc)) return null;
+    if (!isFlowWithinSizeLimit(doc)) { set({ flowStorageError: 'Workflow exceeds the 500 KB import limit. Use external file slots for large definitions.' }); return null; }
+    if (!canCreateFlow(savedFlows.length)) return null;
     // `ext:` ids are reserved for extension-contributed graphs: a saved graph
     // carrying one would be taken for a contribution and closed or made
     // read-only (#5431 review), so it gets a fresh id like a collision does.
@@ -144,15 +168,16 @@ export const createFlowSlice: StateCreator<FlowSlice, [], [], FlowSlice> = (set,
     const id = reserved || savedFlows.some((f) => f.doc.id === doc.id) ? crypto.randomUUID() : doc.id;
     const imported: FlowDocument = { ...doc, id };
     const next = [...savedFlows, { doc: imported, updatedAt: Date.now() }];
-    saveFlows(next);
-    set({ savedFlows: next, activeFlowId: id, flowDoc: imported, flowDirty: false, flowSelectedNodeId: null, flowLastRun: null, flowLastError: null, flowLastRunWindow: null });
+    const persisted = saveFlows(next);
+    set({ flowStorageError: persisted ? null : 'Workflow is available in memory, but browser storage refused the save.' });
+    set({ savedFlows: next, activeFlowId: id, flowDoc: imported, flowDirty: !persisted, flowSelectedNodeId: null, flowLastRun: null, flowLastError: null, flowLastRunWindow: null, flowArtifacts: [], flowProgress: null, flowRunWarnings: [] });
     return id;
   },
 
-  openContributedFlow: (doc) => set({ activeFlowId: null, flowDoc: doc, flowDirty: false, flowSelectedNodeId: null, flowLastRun: null, flowLastError: null }),
-  closeFlow: () => set({ activeFlowId: null, flowDoc: null, flowDirty: false, flowSelectedNodeId: null, flowLastRun: null, flowLastError: null }),
+  openContributedFlow: (doc) => set({ activeFlowId: null, flowDoc: doc, flowDirty: false, flowSelectedNodeId: null, flowLastRun: null, flowLastError: null, flowLastRunWindow: null, flowArtifacts: [], flowProgress: null, flowRunWarnings: [] }),
+  closeFlow: () => set({ activeFlowId: null, flowDoc: null, flowDirty: false, flowSelectedNodeId: null, flowLastRun: null, flowLastError: null, flowLastRunWindow: null, flowArtifacts: [], flowProgress: null, flowRunWarnings: [] }),
 
-  setFlowDoc: (doc) => set({ flowDoc: doc, flowDirty: true }),
+  setFlowDoc: (doc) => { cancelWorkflowRun(); set({ flowDoc: doc, flowDirty: true, flowLastRun: null, flowLastError: null, flowLastRunWindow: null, flowArtifacts: [], flowProgress: null, flowRunWarnings: [] }); },
   setFlowSelectedNodeId: (id) => set({ flowSelectedNodeId: id }),
   setFlowRunning: (running) => set({ flowRunning: running }),
   setFlowLastRun: (run, error = null, window = null) => set({ flowLastRun: run, flowLastError: error, flowLastRunWindow: window, flowRunning: false }),

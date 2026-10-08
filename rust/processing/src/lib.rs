@@ -45,6 +45,9 @@ mod prepass_styled;
 pub use prepass_styled::flat_styles_rgba8_from_geometry_columns;
 mod prepass_type_material;
 mod processor;
+pub(crate) mod point_pca;
+pub mod scan_proposals;
+pub mod scan_segmentation;
 pub(crate) mod simplify_math;
 pub mod simplify_session;
 // `simplify_session` unit tests live in a sibling `_tests.rs` file so the
@@ -60,7 +63,10 @@ pub mod style;
 mod symbolic;
 mod types;
 
-pub use geometry_export::{build_geometry_data_export, ExportedElement, GeometryDataExport};
+pub use geometry_export::{
+    build_geometry_data_export, build_colored_geometry_data_export, ColoredGeometryDataExport,
+    ExportedElement, GeometryDataExport,
+};
 pub use analytic_export::{check_swept_disk, extract_analytic_quantity_sources,
     AnalyticQuantitySources, extract_swept_disk_definitions,
     extract_swept_disk_descriptions, extract_swept_disk_views,

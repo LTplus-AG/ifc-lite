@@ -2,47 +2,19 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
-/**
- * Score a rubric against defects that were REALLY missed.
- *
- * WHY THIS EXISTS. The lane's rubric buys precision with recall on purpose, and
- * measured on live traffic it returned `clean` on six pull requests carrying
- * ELEVEN real findings -- including a Major defect that reopened a hole, and one
- * where the lane's own author had mis-described his design. Changing the rubric
- * to recover that recall is obviously tempting and completely unmeasurable by
- * argument: a prose edit either finds more real defects or invents more noise,
- * and reading the prose cannot tell you which.
- *
- * So this replays diffs whose answer is already known -- CodeRabbit found these,
- * the lane did not -- and reports two numbers a rubric change has to move in the
- * right direction together:
- *
- *   RECALL    of the known findings, how many did this rubric surface?
- *   EXTRA     findings it produced that are NOT in the ground truth.
- *
- * EXTRA IS NOT "FALSE POSITIVES", and calling it that would be the mistake this
- * file has to avoid. CodeRabbit's findings are a floor, not a census: a finding
- * the lane makes that CodeRabbit missed may be perfectly real. So EXTRA is
- * reported as a number to LOOK AT, never as a score to minimise, and the harness
- * prints each one so a human decides. A harness that auto-penalised extras would
- * train the rubric toward silence, which is the failure it exists to fix.
- *
- * IT COSTS SUBSCRIPTION QUOTA. Each case is one model call, so this is
- * `workflow_dispatch` and local, never per-PR. Run it before and after a rubric
- * change, on the same cases, and compare.
- *
- * STATED HOLE: two cases and three known findings is a small sample, and a
- * rubric that improves on these may not improve in general. It is enough to
- * catch a change that makes recall WORSE, which is the direction that matters
- * when the current recall is zero.
+/** Replay real historical defects through the production validator and retry.
+ * Extras need human adjudication: the known defects are a floor, not a census.
+ * --output-dir preserves raw/validated evidence and a machine-readable score.
+ * Manual only: each replay spends provider quota.
  */
-import { readFileSync, writeFileSync, readdirSync, mkdtempSync, rmSync } from 'node:fs';
+import { readFileSync, writeFileSync, readdirSync, mkdtempSync, rmSync, mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import { buildPack, retrievalFailed, retrievalFailedMessage } from './build-context-pack.mjs';
 import { validateWithOneRetry, validatorReason, REVIEWER_FAULT } from './eval-validation.mjs';
+import { readEvalCache } from './lib/eval-cache.mjs';
 import { ensureEvalCommit } from './eval-commit.mjs';
 import { MAX_POSTED_FINDINGS } from './post-review.mjs';
 import { stripFence } from './validate-findings.mjs';
@@ -136,7 +108,9 @@ async function main() {
   const rubric = arg('--rubric', join(HERE, 'rubric.md'));
   const model = process.env.EVAL_MODEL || 'sonnet';
   const noJudge = process.argv.includes('--no-judge');
-  const tmp = mkdtempSync(join(tmpdir(), 'rubric-eval-'));
+  const outputDir = arg('--output-dir', null);
+  if (outputDir) mkdirSync(outputDir, { recursive: true });
+  const tmp = outputDir ?? mkdtempSync(join(tmpdir(), 'rubric-eval-'));
   // Removed on SUCCESS only. It holds each case's raw reviewer output and
   // validated findings, which is exactly what you need when a case fails --
   // deleting it on the failure path would throw away the evidence the harness
@@ -165,11 +139,13 @@ async function main() {
     const validatedResults = [];
     for (const f of files) {
       const c = JSON.parse(readFileSync(join(caseDir, f), 'utf8'));
+      const cached = process.argv.includes('--resume') ? readEvalCache(tmp, f, c.input, model, process.env.EVAL_REASONING_PROFILE || 'high') : null;
+      if (cached) { c.input = cached.input; console.log(`  ${f}: reusing completed model attempts; revalidating without another paid call.`); }
       // THE CONTEXT PACK, built per case so the eval measures the pipeline the
     // lane actually runs rather than a diff-only ghost of it. `--base` names
     // the tree siblings are retrieved from; without it the eval measures the
     // old behaviour, which is exactly what the baseline run did.
-    if (baseRef) {
+    if (baseRef && !cached) {
       ensureEvalCommit(c.input.headSha);
       try {
         // `body` MATTERS, and its absence was not merely an untested prompt
@@ -200,7 +176,8 @@ async function main() {
     const inputPath = join(tmp, `${f}.input.json`);
       const outPath = join(tmp, `${f}.out.txt`);
       writeFileSync(inputPath, JSON.stringify(c.input));
-      const r = spawnSync(
+      console.log(`  ${f}: ${cached ? 'cached' : 'requesting'} ${model}`);
+      const r = cached ? { status: 0 } : spawnSync(
         process.execPath,
         [reviewer, '--rubric', rubric, '--input', inputPath, '--out', outPath, '--model', model],
         { encoding: 'utf8' },
@@ -228,6 +205,7 @@ async function main() {
       // the reviewer for findings that would have been dropped for quoting a line
       // that is not in the diff.
       const findingsPath = join(tmp, `${f}.findings.json`);
+      if (!cached) writeFileSync(join(tmp, `${f}.initial.out.txt`), readFileSync(outPath));
       const validation = validateWithOneRetry({
         reviewer,
         rubric,
@@ -237,7 +215,10 @@ async function main() {
         model,
         validatePath: join(HERE, 'validate-findings.mjs'),
         retryLogPath: join(tmp, `${f}.validate.log`),
+        allowRetry: !cached,
       });
+      if (cached) validation.attempts = cached.attempts;
+      writeFileSync(join(tmp, `${f}.validation.json`), JSON.stringify({ attempts: validation.attempts, reason: validation.reason, reviewerFailure: Boolean(validation.reviewerFailure), diagnostics: validation.said }));
       const v = validation.processResult;
       // A non-zero exit is not one thing: see REVIEWER_FAULT above for which
       // refusals are the model answering badly (scored zero, the eval carries on)
@@ -388,10 +369,11 @@ async function main() {
     console.log(`  MISSES whose defect class the review declared NOT-APPLICABLE: ${s.skippedClass} of ${s.total - s.hits}`);
     console.log('\n  Compare against the same command on the other rubric. A change that lowers');
     console.log('  recall is a regression whatever it does to EXTRA.\n');
+    writeFileSync(join(tmp, 'score.json'), JSON.stringify({ rubric, model, reasoningProfile: process.env.EVAL_REASONING_PROFILE || 'high', baseRef, corpusFiles: files, matcher: m.note, judgeRequested: !noJudge, validatedScore, postedScore: s, results }, null, 2));
     ok = true;
   } finally {
-    if (ok) rmSync(tmp, { recursive: true, force: true });
-    else console.error(`\n  Left the working directory in place for diagnosis: ${tmp}`);
+    if (ok && !outputDir) rmSync(tmp, { recursive: true, force: true });
+    else if (!ok) console.error(`\n  Left the working directory in place for diagnosis: ${tmp}`);
   }
 }
 

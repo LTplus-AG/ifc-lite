@@ -21,6 +21,7 @@ import type { Renderer } from '@ifc-lite/renderer';
 import { useViewerStore } from '@/store';
 import { unregisterPointCloudAlignment, hasRegisteredPointCloudAlignment } from '@/hooks/ingest/pointCloudAlignment';
 import { removePointCloudScanCache } from '@/hooks/ingest/pointCloudScanCache';
+import { stopCopcLodStream } from '@/hooks/ingest/copc/copcLodStream';
 
 export interface UsePointCloudLifecycleParams {
   rendererRef: MutableRefObject<Renderer | null>;
@@ -56,6 +57,8 @@ export function usePointCloudLifecycle(params: UsePointCloudLifecycleParams): vo
       const nextHandle = current.get(modelId);
       if (nextHandle !== handleId) {
         renderer.removePointCloudAsset({ id: handleId });
+        // A COPC asset also stops its view-dependent node stream (#6869).
+        stopCopcLodStream(handleId);
         // Drop the asset's classification histogram so the classes
         // checklist stops listing points that are no longer loaded.
         setClassCounts(handleId, null);

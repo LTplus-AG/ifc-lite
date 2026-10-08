@@ -3,19 +3,16 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import '@/test/setup-dom.js';
-import { beforeEach, describe, it } from 'node:test';
+import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { clashReviewKey, type Clash } from '@ifc-lite/clash';
 import {
-  MANUAL_CLASH_GROUPS_KEY,
   defaultManualClashGroupName,
-  loadManualClashGroups,
   manualClashMember,
   manualClashOccurrenceKey,
   normalizeManualClashGroups,
   resolveManualClashGroups,
   removeResolvedManualClashMember,
-  saveManualClashGroups,
 } from './manual-groups.js';
 
 function clash(id: string, shared = false): Clash {
@@ -29,32 +26,6 @@ function clash(id: string, shared = false): Clash {
 }
 
 describe('manual clash groups (#4921)', () => {
-  beforeEach(() => localStorage.removeItem(MANUAL_CLASH_GROUPS_KEY));
-
-  it('persists durable clash keys and restores them after panel/reload state is recreated', () => {
-    const groups = [{ id: 'manual-1', name: 'Riser issue', members: [
-      { reviewKey: 'key-1', occurrenceKey: 'occurrence-1' },
-      { reviewKey: 'key-2', occurrenceKey: 'occurrence-2' },
-    ] }];
-    assert.deepEqual(saveManualClashGroups(groups), { ok: true });
-    assert.deepEqual(loadManualClashGroups(), groups);
-  });
-
-  it('quarantines unreadable saved groups before accepting a replacement (#4921 review)', () => {
-    const unreadable = '{not-json';
-    localStorage.setItem(MANUAL_CLASH_GROUPS_KEY, unreadable);
-
-    assert.deepEqual(loadManualClashGroups(), []);
-    assert.equal(localStorage.getItem(MANUAL_CLASH_GROUPS_KEY), null);
-    assert.equal(localStorage.getItem(`${MANUAL_CLASH_GROUPS_KEY}:unreadable`), unreadable);
-
-    const groups = [{ id: 'manual-1', name: 'Recovered', members: [
-      { reviewKey: 'key-1', occurrenceKey: 'occurrence-1' },
-    ] }];
-    assert.deepEqual(saveManualClashGroups(groups), { ok: true });
-    assert.deepEqual(loadManualClashGroups(), groups);
-  });
-
   it('keeps absent keys and resolves a rerun even when transient clash ids change', () => {
     const first = clash('first');
     const absent = clash('absent');

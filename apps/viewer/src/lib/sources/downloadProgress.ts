@@ -9,6 +9,7 @@
  */
 export type SourceDownloadState =
   | { readonly phase: 'queued' }
+  | { readonly phase: 'preparing' }
   | { readonly phase: 'downloading'; readonly received: number; readonly total?: number }
   | { readonly phase: 'failed' };
 

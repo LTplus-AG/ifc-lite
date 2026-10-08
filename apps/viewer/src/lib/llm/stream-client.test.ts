@@ -4,7 +4,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { drainSseBuffer, streamChat } from './stream-client.js';
+import { drainSseBuffer, readSseStream, streamChat } from './stream-client.js';
 
 test('drainSseBuffer flushes a final unterminated SSE event', () => {
   const drained = drainSseBuffer('data: {"choices":[{"delta":{"content":"tail"}}]}', true);
@@ -132,4 +132,43 @@ test('a retired model still tells the user what they can actually do (#2886)', a
   } finally {
     globalThis.fetch = originalFetch;
   }
+});
+
+// #6809: assert the request sent to the provider, not a budget setter.
+test('proxy transport sends caller output ceiling and rejects invalid budgets before fetch', async () => {
+  const original = globalThis.fetch;
+  const sent: Array<{ maxOutputTokens: number }> = [];
+  globalThis.fetch = async (_url, init) => {
+    sent.push(JSON.parse(String(init?.body)) as { maxOutputTokens: number });
+    return new Response('data: [DONE]\n\n');
+  };
+  try {
+    for (const requested of [undefined, 256, 50_000, 0, -1, 1.5, Number.NaN, Number.POSITIVE_INFINITY]) {
+      let error: Error | undefined;
+      const previous = sent.length;
+      await streamChat({
+        proxyUrl: '/api/chat', model: 'openai/gpt-free', messages: [{ role: 'user', content: 'hi' }],
+        maxOutputTokens: requested, onChunk: () => {}, onComplete: () => {}, onError: e => { error = e; },
+      });
+      if (requested === undefined || requested === 256 || requested === 50_000) {
+        assert.equal(error, undefined);
+        assert.equal(sent.at(-1)?.maxOutputTokens, requested === 256 ? 256 : 8192);
+      } else {
+        assert.match(error?.message ?? '', /positive safe integer/);
+        assert.equal(sent.length, previous);
+      }
+    }
+  } finally { globalThis.fetch = original; }
+});
+
+// #6813: provider SSE framing may use CRLF and omit the optional field space.
+test('SSE supports CRLF split across chunks and multiline data fields', async () => {
+  const chunks = ['data:{"a":\r', '\ndata:1}\r\n\r', '\ndata: {"b":2}\r\n\r\n'];
+  const events: unknown[] = [];
+  const body = new ReadableStream<Uint8Array>({ start(controller) {
+    for (const chunk of chunks) controller.enqueue(new TextEncoder().encode(chunk));
+    controller.close();
+  } });
+  assert.equal(await readSseStream(body, undefined, data => { events.push(JSON.parse(data)); }, error => { throw error; }), true);
+  assert.deepEqual(events, [{ a: 1 }, { b: 2 }]);
 });

@@ -15,6 +15,7 @@ import { Spinner } from '@/components/ui/spinner';
 import type { Annotation2DTool, SelectedAnnotation2D } from '@/store/slices/drawing2DSlice';
 import { useTranslation } from '@/i18n';
 import { cn } from '@/lib/utils';
+import { useViewerStore } from '@/store';
 
 export interface DrawingStatusLineProps {
   activeTool: Annotation2DTool;
@@ -32,6 +33,7 @@ export interface DrawingStatusLineProps {
 
 export function DrawingStatusLine(p: DrawingStatusLineProps) {
   const { t } = useTranslation();
+  const navigationPreset = useViewerStore((s) => s.navigationPreset);
 
   let hint: string;
   switch (p.activeTool) {
@@ -52,7 +54,7 @@ export function DrawingStatusLine(p: DrawingStatusLineProps) {
     default:
       hint = p.selection
         ? (p.selection.type === 'text' ? t('section2d.tip.selectionText') : t('section2d.tip.selectionOther'))
-        : t('section2d.tip.pan');
+        : t(navigationPreset === 'trackpad' ? 'section2d.tip.trackpad' : 'section2d.tip.pan');
   }
 
   const facts: string[] = [];

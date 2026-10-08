@@ -16,6 +16,7 @@
 import type { BcfTopicDto, BcfTopicWriteDto } from '@ifc-lite/bcf-api';
 import type { Cell, Column, Row, Table } from '@ifc-lite/flow';
 import { BCF_CONNECTION_PARAMS, bcfClientFor, requiredString, withBcfErrors } from './bcf-client.js';
+import { sendBcfWrite, type BcfWriteIntent } from './bcf-write-gateway.js';
 import { ANY_ITEM, ANY_LIST, SCALAR_ITEM, SCALAR_LIST, TABLE_ITEM, type FlowNodeDef } from './host.js';
 import { tableOf } from './table-nodes.js';
 
@@ -88,6 +89,12 @@ function topicWrite(params: Readonly<Record<string, unknown>>, row: Readonly<Rec
   return out;
 }
 
+/** Where a write goes, as configured (never the token). */
+function writeTarget(params: Readonly<Record<string, unknown>>, projectId: string) {
+  const version = typeof params.version === 'string' && params.version.trim() !== '' ? params.version.trim() : '2.1';
+  return { baseUrl: String(params.baseUrl).trim(), version, projectId };
+}
+
 export const bcfNodes: FlowNodeDef[] = [
   {
     type: 'bcf.listTopics',
@@ -141,13 +148,15 @@ export const bcfNodes: FlowNodeDef[] = [
     ...NETWORK,
     run: (ctx, i, p) => withBcfErrors('bcf.createTopic', async () => {
       const { client, projectId } = bcfClientFor(ctx, 'bcf.createTopic', p);
+      const target = writeTarget(p, projectId);
       const writes = i.rows === undefined
         ? [topicWrite(p, undefined, 'the node')]
         : tableOf(i.rows).rows.map((row, idx) => topicWrite(p, row, `row ${idx + 1}`));
       const topics: BcfTopicDto[] = [];
       for (const write of writes) {
         try {
-          topics.push(await client.createTopic(projectId, write));
+          const intent: BcfWriteIntent = { ...target, nodeType: 'bcf.createTopic', operation: 'createTopic', payload: write };
+          topics.push(await sendBcfWrite(ctx, intent, () => client.createTopic(projectId, write)));
         } catch (err) {
           // Name what already exists on the server, so a rerun does not duplicate it blindly.
           if (topics.length === 0) throw err;
@@ -185,7 +194,9 @@ export const bcfNodes: FlowNodeDef[] = [
       const topicGuid = requiredString('bcf.addComment', merged, 'topicGuid');
       const comment = requiredString('bcf.addComment', merged, 'comment');
       const replyTo = text(p.replyToCommentGuid);
-      const created = await client.createComment(projectId, topicGuid, replyTo ? { comment, reply_to_comment_guid: replyTo } : { comment });
+      const payload = replyTo ? { comment, reply_to_comment_guid: replyTo } : { comment };
+      const intent: BcfWriteIntent = { ...writeTarget(p, projectId), nodeType: 'bcf.addComment', operation: 'createComment', topicGuid, payload };
+      const created = await sendBcfWrite(ctx, intent, () => client.createComment(projectId, topicGuid, payload));
       return { guid: created.guid, created };
     }),
   },

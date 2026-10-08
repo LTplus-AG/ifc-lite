@@ -27,7 +27,7 @@ import { useViewerStore } from '@/store';
 import { useTranslation } from '@/i18n';
 import type { TranslationKey } from '@/i18n/en';
 import { DrawingSettingsPanel } from '../DrawingSettingsPanel';
-import { DxfUnderlayPanel } from '../DxfUnderlayPanel';
+import { DrawingUnderlaysPanel } from './DrawingUnderlaysPanel';
 import { ScanSectionPanel } from '../ScanSectionPanel';
 import { SheetSetupPanel } from '../SheetSetupPanel';
 import type { DrawingDrawer, DrawingViewModel } from './useDrawingViewModel';
@@ -106,9 +106,10 @@ export function DrawingInspector({ vm, layers, panelWidth }: DrawingInspectorPro
           <SheetSetupPanel onOpenTitleBlockEditor={() => vm.setTitleBlockEditorVisible(true)} />
         </TabsContent>
         <TabsContent value="underlays" className="m-0 h-full">
-          <DxfUnderlayPanel
+          <DrawingUnderlaysPanel
             onCenterOnModel={layers.handleCenterDxfUnderlay}
             planViewActive={vm.sectionPlane.axis === 'down' && vm.sectionPlane.custom === undefined}
+            sectionPlane={vm.drawing?.config.plane}
             georeferenceAvailable={layers.dxfGeoreferenceAvailable}
           />
         </TabsContent>
@@ -117,6 +118,8 @@ export function DrawingInspector({ vm, layers, panelWidth }: DrawingInspectorPro
             hasPointCloud={layers.scanSectionLayer.hasPointCloud}
             totalInBand={layers.scanSectionLayer.totalInBand}
             renderedCount={layers.scanSectionLayer.renderedCount}
+            outline={layers.scanSectionLayer.outline}
+            outlineFailed={layers.scanSectionLayer.outlineFailed}
           />
         </TabsContent>
       </div>

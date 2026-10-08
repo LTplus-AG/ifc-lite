@@ -54,6 +54,17 @@ export function useAnalysisStaleness(stamp: AnalysisStamp | null): boolean {
   const geometryContentVersion = useViewerStore((state) => state.geometryContentVersion);
   const placement = useViewerStore((state) => stamp?.placement ? state.modelPlacement : null);
   const models = useViewerStore((state) => stamp?.placement ? state.models : null);
+  return isAnalysisStale(stamp, { mutationVersion, geometryContentVersion, modelPlacement: placement, models });
+}
+
+/** Shared native freshness check for both UI and commit/request boundaries. */
+export function isAnalysisStale(stamp: AnalysisStamp | null, state: {
+  mutationVersion: number;
+  geometryContentVersion: number;
+  modelPlacement: ReturnType<typeof useViewerStore.getState>['modelPlacement'] | null;
+  models: ReturnType<typeof useViewerStore.getState>['models'] | null;
+}): boolean {
+  const { mutationVersion, geometryContentVersion, modelPlacement: placement, models } = state;
   return stamp !== null && (
     stamp.mutationVersion !== mutationVersion ||
     stamp.geometryContentVersion !== geometryContentVersion ||

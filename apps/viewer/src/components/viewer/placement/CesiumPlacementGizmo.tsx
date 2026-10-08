@@ -157,6 +157,11 @@ export function CesiumPlacementGizmo({
   const controller = useCesiumPlacementController({ modelId, mapConversion, baseMapConversion, projectedCRS, coordinateInfo, lengthUnitScale });
   const { editMode, activeDraft, guardConversion, updateDraft } = controller;
   const dragStateRef = useRef<DragState | null>(null);
+  // Losing edit capability removes the captured handle. A later session must
+  // start with a new press, rather than continuing its abandoned gesture.
+  useEffect(() => {
+    if (!editMode) dragStateRef.current = null;
+  }, [editMode]);
   // Shared-projector wake (#5995, #5510) — re-renders on real camera motion
   // via the scene kernel's one shared `SceneProjector` tick instead of a
   // private `requestAnimationFrame` poll. Skipped while not editing.

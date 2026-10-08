@@ -39,6 +39,19 @@ for (const s of storeys) {
 }
 ```
 
+## Explicit property declarations
+
+The SDK's `bim.mutate.setProperty(ref, psetName, propName, value, dataType?)` accepts an optional IFC `IfcValue` defined type. Use the EXPRESS name, for example `IfcThermalTransmittanceMeasure` or `IfcLabel`. The shared schema registry validates membership, scalar value compatibility, declared numeric domains, and string width before writing. Invalid or unknown declarations throw; an integer JavaScript value can still declare a real-valued IFC measure.
+
+```js
+const wall = bim.query().byType('IfcWall').toArray()[0];
+if (wall) {
+  bim.mutate.setProperty(wall.ref, 'Pset_WallCommon', 'ThermalTransmittance', 1, 'IfcThermalTransmittanceMeasure');
+}
+```
+
+The declaration survives the effective property overlay, collaboration mirror/peer application, and IFC export/reimport. Without `dataType`, the existing string/boolean/integer/real inference remains unchanged. This optional argument belongs to the direct SDK and CLI `eval`/`run` API; the sandbox script bridge retains its existing four-argument contract.
+
 ## Running scripts from the CLI
 
 ### `eval` — one-liners
@@ -227,3 +240,24 @@ text. Supplying an `.ifc` download filename automatically changes it to
 `.ifczip` with ZIP MIME type. Untextured exports retain their ordinary STEP
 content. This packaging belongs to the web viewer adapter; other SDK backends
 provide their own resource packaging.
+
+### Canonical structural profiles
+
+Sandbox `bim.store.addColumn`, `addBeam` and `addMember` accept the same
+parameterized `Profile` union as the typed SDK. A supplied `Profile` replaces
+the rectangular Width/Depth or Width/Height inputs; column Height and element
+placement remain required. Profile dimensions keep their IFC names and use
+metres. The shared builder validates the actual profile before committing.
+Ordinary creation through the viewer SDK records the complete authored graph,
+so one Undo removes auxiliary placement, profile and containment records too.
+
+### Align loaded elements
+
+`await bim.store.alignElements(modelId, reference, targets, mode)` aligns current
+native mesh edges or centres in one storey workplane. Modes are `left`, `centre`,
+`right`, `top`, `middle` and `bottom`. It derives bounds from fresh owning-model
+geometry and records one atomic Undo batch. A selected host governs its placement dependants, which move once, and
+joined neighbours follow. Stale geometry, unavailable native geometry, unsafe
+shared placements, incompatible hosted/joined shifts, or a reference that would
+move with a target refuse without partial IFC writes. Supply the owning model
+ID when federated; lengths are IFC storey-local metres.

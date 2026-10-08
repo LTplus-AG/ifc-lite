@@ -8,7 +8,7 @@
  */
 
 import React from 'react';
-import { AddFile, CloudSources, Loading, OpenFile, Refresh, Share, CollabsRoom } from '@/icons';
+import { AddFile, CloudSources, Loading, OpenFile, SaveFederationSetup, Refresh, Share, CollabsRoom } from '@/icons';
 import { useViewerStore } from '@/store';
 import { useIfc } from '@/hooks/useIfc';
 import { isCollabEnabled } from '@/lib/collab/config';
@@ -25,6 +25,7 @@ import {
 } from '../primitives';
 import { RibbonCommandLargeButton, RibbonCommandSmallButton } from '../command-button';
 
+/** Renders model input/output commands, with compact setup actions beside the prominent export controls. */
 export function FileTab({ fileCommands }: { fileCommands: FileCommands }) {
   const { t } = useTranslation();
   const { handleOpenClick, handleAddModelClick, handleRefresh, canRefresh, hasModelsLoaded, openShareDialog } = fileCommands;
@@ -84,22 +85,20 @@ export function FileTab({ fileCommands }: { fileCommands: FileCommands }) {
             commandContext={{ refreshModels: handleRefresh }}
           />
         </RibbonSmallStack>
-        <RibbonCommandLargeButton
-          commandId={saveSetup.id}
-          tooltip={t(saveSetup.labelKey)}
-          disabled={!saveSetup.enabled({ canEditInSession })}
-        />
-        <RibbonSmallStack className="gap-1">
-          {[openSetup, modelTags].map((command) => (
-            <RibbonCommandSmallButton
-              key={command.id}
-              commandId={command.id}
-              tooltip={t(command.labelKey)}
-              className="min-h-6"
-              disabled={!command.enabled({ canEditInSession })}
-            />
-          ))}
-        </RibbonSmallStack>
+        {[[saveSetup, openSetup], [modelTags]].map((commands) => (
+          <RibbonSmallStack key={commands[0].id} className="gap-1">
+            {commands.map((command) => (
+              <RibbonCommandSmallButton
+                key={command.id}
+                commandId={command.id}
+                icon={command.id === saveSetup.id ? SaveFederationSetup : undefined}
+                tooltip={t(command.labelKey)}
+                className="min-h-6"
+                disabled={!command.enabled({ canEditInSession })}
+              />
+            ))}
+          </RibbonSmallStack>
+        ))}
       </RibbonGroup>
 
       <RibbonGroupDivider />

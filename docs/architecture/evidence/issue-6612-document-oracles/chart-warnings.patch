@@ -1,0 +1,9 @@
+--- a/apps/viewer/src/lib/document/export-prepared-document.ts
++++ b/apps/viewer/src/lib/document/export-prepared-document.ts
+@@ -27,5 +27,6 @@
+     ...result.snapshotFailures.map((name) => `3D snapshot unavailable: ${name}`),
+     ...result.imageFailures.map((name) => `Image unavailable: ${name}`),
+     ...result.tableFailures.map((id) => `Table unavailable: ${id}`),
++    ...(result.chartFailures ?? []).map((message) => `Chart unavailable: ${message}`),
+   ];
+ }

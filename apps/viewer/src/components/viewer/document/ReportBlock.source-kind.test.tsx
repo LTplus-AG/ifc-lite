@@ -9,6 +9,8 @@
  * the kind — and refresh must refuse a report of the other kind.
  */
 import '@/test/setup-dom.js';
+import { documentPreviewReady } from '@/test/document-preview';
+import '@/test/content-fixture.js';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
@@ -118,7 +120,7 @@ describe('report block preview (#6372)', () => {
 
 describe('report block editor refresh (#6372)', () => {
   function editor(block: IdsReportBlock, report: ValidationReport | null, onChange: (b: DocumentBlock) => void = noop) {
-    return render(<BlockEditor block={block} index={0} count={1} bindings={BINDINGS} topics={new Map()} charts={[]} idsValidationReport={report} onChange={onChange} onMove={noop} onRemove={noop} />);
+    return render(<BlockEditor block={block} index={0} count={1} bindings={BINDINGS} topics={new Map()} charts={[]} idsValidationReport={report} onChange={onChange} onMove={noop} onCopy={noop} onRemove={noop} />);
   }
 
   it('labels an information validation block by its kind', () => {
@@ -161,6 +163,7 @@ describe('report block editor refresh (#6372)', () => {
 describe('report block add menu (#6372)', () => {
   async function settle(): Promise<void> {
     for (let i = 0; i < 4; i++) await act(async () => { await Promise.resolve(); });
+    await documentPreviewReady();
   }
   function openMenu(ui: HTMLElement): void {
     const trigger = [...ui.querySelectorAll('button')].find((b) => b.title === 'Add a block to the page')!;
@@ -176,14 +179,15 @@ describe('report block add menu (#6372)', () => {
     });
   });
 
-  it('offers "Information validation report" for a rule-set run and adds a block of that kind', async () => {
+  it('adds a block of the rule-set kind from a rule-set run through the one validation report entry (#6372, #6553)', async () => {
     useViewerStore.setState({ idsValidationReport: liveReport('rules'), validationSource: 'rules' });
     const ui = render(<DocumentPanel />);
     await settle();
     openMenu(ui);
-    assert.equal(menuItem('IDS validation report') !== undefined, false, 'no IDS item for a rule-set run');
-    const item = menuItem('Information validation report');
-    assert.ok(item, 'the menu names the rule-set report');
+    assert.equal(menuItem('IDS validation report') !== undefined, false, 'no separate IDS item');
+    assert.equal(menuItem('Information validation report') !== undefined, false, 'no separate information validation item');
+    const item = menuItem('Validation report');
+    assert.ok(item, 'the menu names the one validation report entry');
     click(item!);
     await settle();
     const added = useViewerStore.getState().documents[0].blocks.find((b): b is IdsReportBlock => b.kind === 'ids-report');
@@ -191,22 +195,24 @@ describe('report block add menu (#6372)', () => {
     assert.ok(ui.querySelector('[data-block-ids-report]')?.textContent?.includes('Information validation report: Delivery rules'));
   });
 
-  it('offers "IDS validation report" for an IDS run, and a disabled item naming both kinds with no run', async () => {
+  it('adds an IDS block from an IDS run, and the entry is disabled naming every source with nothing to add (#6553)', async () => {
     useViewerStore.setState({ idsValidationReport: liveReport('ids'), validationSource: 'ids' });
     const ui = render(<DocumentPanel />);
     await settle();
     openMenu(ui);
-    assert.ok(menuItem('IDS validation report'));
-    assert.equal(menuItem('Information validation report') !== undefined, false, 'no rule-set item for an IDS run');
+    assert.equal(menuItem('Validation report')?.hasAttribute('data-disabled'), false);
+    click(menuItem('Validation report')!);
+    await settle();
+    assert.equal(useViewerStore.getState().documents[0].blocks.find((b): b is IdsReportBlock => b.kind === 'ids-report')?.sourceKind, 'ids');
     cleanup();
 
-    useViewerStore.setState({ idsValidationReport: null, validationSource: null });
+    useViewerStore.setState({ idsValidationReport: null, validationSource: null, documents: [], activeDocumentId: null });
     const empty = render(<DocumentPanel />);
     await settle();
     openMenu(empty);
-    const disabled = menuItem('IDS validation report');
+    const disabled = menuItem('Validation report');
     assert.ok(disabled);
-    assert.equal(disabled?.getAttribute('title'), 'Run an IDS or information validation first');
+    assert.equal(disabled?.getAttribute('title'), 'Save a report under Data validation, run a validation, or create a manual checklist first');
     assert.equal(disabled?.hasAttribute('data-disabled'), true);
   });
 });

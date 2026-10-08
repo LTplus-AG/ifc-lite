@@ -13,11 +13,14 @@
  * publish a stale or partial report.
  */
 
-import { validationReportSnapshot } from '@/lib/validation/reports/history';
-import { useCallback, useRef, useState } from 'react';
+import { beginActivity, finishActivity, updateActivity } from '@/lib/activity/activity-journal';
+import { runInformationCheck } from '@/lib/validation/run-information-check';
+import { isNativeWorkflowBusy } from '@/lib/flow/run-session';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useViewerStore } from '@/store';
+import { captureAnalysisStamp, stampAnalysisReport } from '../useAnalysisStaleness';
 import { useTranslation } from '@/i18n';
-import { resolveTargetModels, runRuleSet, type RuleEngineProgress } from '@ifc-lite/rules';
+import { resolveTargetModels, type RuleEngineProgress } from '@ifc-lite/rules';
 import type { RuleSetFile } from '@ifc-lite/rules';
 import { parseRuleSetFile } from '@ifc-lite/rules';
 import { importRuleSetFile, exportRuleSet } from '@/lib/validation/rule-set-io-browser';
@@ -29,6 +32,8 @@ import {
   addRecentRuleSet, loadRecentRuleSets, removeRecentRuleSet, type RecentRuleSet,
 } from '@/lib/validation/recent-rule-sets';
 import { useValidationEpoch } from './useValidationEpoch';
+import { activeDefinition } from '@/lib/validation/definition-library';
+import { beginDefinitionImport } from '@/lib/validation/definition-import-owner';
 
 /** What the last IDS export or import converted, and what it refused and why (#5225). */
 export interface IdsInterchangeSummary {
@@ -42,8 +47,8 @@ export interface IdsInterchangeSummary {
   dropped?: readonly string[];
 }
 
-function blankRuleSet(): RuleSetFile {
-  return { version: 1, name: '', rules: [] };
+function blankRuleSet(name: string): RuleSetFile {
+  return { version: 1, name, rules: [] };
 }
 
 export interface UseInformationValidationResult {
@@ -87,6 +92,8 @@ export function useInformationValidation(): UseInformationValidationResult {
   const file = useViewerStore((s) => s.validationRuleSetDraft);
   const editing = useViewerStore((s) => s.validationRuleSetEditing);
   const setFileState = useViewerStore((s) => s.setValidationRuleSetDraft);
+  const definitionRevision = useViewerStore((s) => s.validationDefinitionRevision);
+  const activeDefinitionId = useViewerStore((s) => s.validationDefinitions.active.rules);
   const setEditing = useViewerStore((s) => s.setValidationRuleSetEditing);
   const [running, setRunning] = useState(false);
   const [progress, setProgress] = useState<RuleEngineProgress | null>(null);
@@ -96,7 +103,13 @@ export function useInformationValidation(): UseInformationValidationResult {
 
   const setIdsValidationReport = useViewerStore((s) => s.setIdsValidationReport);
   const abortRef = useRef<AbortController | null>(null);
-  const { bump: bumpEpoch, stillWanted } = useValidationEpoch();
+  const { bump: bumpEpoch, stillWanted, sourceIsCurrent } = useValidationEpoch();
+
+  useEffect(() => {
+    const state = useViewerStore.getState();
+    const entry = activeDefinition(state.validationDefinitions, 'rules');
+    if (!state.validationRuleSetDraft && entry?.kind === 'rules') state.selectValidationDefinition(entry.id);
+  }, [file, activeDefinitionId]);
 
   const setFile = useCallback((next: RuleSetFile) => {
     setFileState(next);
@@ -104,17 +117,20 @@ export function useInformationValidation(): UseInformationValidationResult {
   }, [setFileState]);
 
   const newRuleSet = useCallback(() => {
-    setFile(blankRuleSet());
+    useViewerStore.getState().addValidationDefinition({ kind: 'rules', file: blankRuleSet(t('validationPanel.library.untitled')) });
     setEditing(true);
-  }, [setFile]);
+  }, [setEditing, t]);
 
   const openFromFile = useCallback(async (pickedFile: File): Promise<{ ok: boolean; error?: string }> => {
+    const owner = beginDefinitionImport(useViewerStore, 'rules');
     const result = await importRuleSetFile(pickedFile);
+    if (!owner.wanted()) return { ok: false };
     if (!result.ok) {
       setError(result.error);
       return { ok: false, error: result.error };
     }
-    setFile(result.file);
+    if (!useViewerStore.getState().addValidationDefinition({ kind: 'rules', file: result.file })) return { ok: false, error: useViewerStore.getState().validationDefinitionsError ?? 'The rule set could not be added.' };
+    owner.committed();
     setEditing(true);
     setRecentRuleSets(addRecentRuleSet(result.file.name, JSON.stringify(result.file, null, 2)));
     return { ok: true };
@@ -135,7 +151,7 @@ export function useInformationValidation(): UseInformationValidationResult {
       setRecentRuleSets(removeRecentRuleSet(entry.name));
       return;
     }
-    setFile(result.file);
+    if (!useViewerStore.getState().addValidationDefinition({ kind: 'rules', file: result.file })) return;
     setEditing(true);
   }, [setFile, t]);
 
@@ -164,7 +180,9 @@ export function useInformationValidation(): UseInformationValidationResult {
   }, [file]);
 
   const importIds = useCallback(async (pickedFile: File): Promise<{ ok: boolean; error?: string }> => {
+    const owner = beginDefinitionImport(useViewerStore, 'rules');
     const outcome = await importIdsFileAsRuleSet(pickedFile);
+    if (!owner.wanted()) return { ok: false };
     if (!outcome.ok) {
       setError(outcome.error);
       return { ok: false, error: outcome.error };
@@ -183,7 +201,8 @@ export function useInformationValidation(): UseInformationValidationResult {
       setError(null);
       return { ok: false };
     }
-    setFile(result.file);
+    if (!useViewerStore.getState().addValidationDefinition({ kind: 'rules', file: result.file })) return { ok: false, error: useViewerStore.getState().validationDefinitionsError ?? 'The rule set could not be added.' };
+    owner.committed();
     setEditing(true);
     return { ok: true };
   }, [setFile]);
@@ -197,11 +216,25 @@ export function useInformationValidation(): UseInformationValidationResult {
     setProgress(null);
   }, [bumpEpoch]);
 
+  // A passive caller must not clear another caller's current validation.
+  useEffect(() => {
+    if (abortRef.current && !sourceIsCurrent()) cancel();
+  }, [definitionRevision, cancel, sourceIsCurrent]);
+
   const run = useCallback(async () => {
+    if (isNativeWorkflowBusy()) {
+      setError('A workflow is running; wait or cancel it.');
+      return;
+    }
     if (!file) return;
     const myEpoch = bumpEpoch();
+    abortRef.current?.abort();
     const controller = new AbortController();
     abortRef.current = controller;
+    const job = beginActivity({ kind: 'check', title: 'activityTray.job.validation', panel: 'validation', subject: file.name,
+      cancel: () => { controller.abort(); if (abortRef.current === controller) cancel(); } });
+    let outcome: 'completed' | 'failed' | 'cancelled' = 'cancelled';
+    let detail: string | undefined;
 
     setRunning(true);
     setProgress(null);
@@ -212,20 +245,29 @@ export function useInformationValidation(): UseInformationValidationResult {
       // live store state is turned into that shape here, the one place the
       // adapter (`lib/model-tags/evaluator-models.ts`) is called from.
       const state = useViewerStore.getState();
-      const report = await runRuleSet({
+      // The run's model versions, taken before the engine reads them: an edit
+      // during or after the run marks this report stale, like IDS (#6833).
+      const stamp = captureAnalysisStamp();
+      const { report, snapshot } = await runInformationCheck({
         ruleSet: file,
         models: evaluatorModelsFromState(state),
         definedModelTagIds: definedModelTagIdsOf(state),
+        reportModels: state.models,
         signal: controller.signal,
-        onProgress: (p) => { if (stillWanted(myEpoch)) setProgress(p); },
+        onProgress: (p) => {
+          if (stillWanted(myEpoch)) {
+            setProgress(p);
+            if (p.total > 0) updateActivity(job, { progress: { done: p.done, total: p.total } });
+          }
+        },
       });
       // A cancelled/superseded run must never publish a report — checked
       // AFTER the (possibly long) engine run completes, mirroring
       // `useIDS.runValidation`'s `stillWantedValidation` guard (#2802).
       if (!stillWanted(myEpoch)) return;
-      const snapshot = validationReportSnapshot(report, state.models, 'run');
-      setIdsValidationReport(report, snapshot);
+      setIdsValidationReport(stampAnalysisReport(report, stamp), snapshot);
       setEditing(false);
+      outcome = 'completed';
     } catch (err) {
       if (err instanceof DOMException && err.name === 'AbortError') return;
       if (!stillWanted(myEpoch)) return;
@@ -234,14 +276,18 @@ export function useInformationValidation(): UseInformationValidationResult {
       // see `resolveValidationTarget.ts`'s `IdsErrorState` doc); only the
       // FALLBACK, shown when there is no such message, is a fixed
       // user-visible string and goes through the catalogue.
-      setError(err instanceof Error ? err.message : t('validationPanel.error.validationFailed'));
+      detail = err instanceof Error ? err.message : t('validationPanel.error.validationFailed');
+      setError(detail);
+      outcome = 'failed';
     } finally {
+      finishActivity(job, outcome, detail ? { detail } : {});
+      if (abortRef.current === controller) abortRef.current = null;
       if (stillWanted(myEpoch)) {
         setRunning(false);
         setProgress(null);
       }
     }
-  }, [file, bumpEpoch, stillWanted, setIdsValidationReport, t]);
+  }, [file, cancel, bumpEpoch, stillWanted, setIdsValidationReport, t]);
 
   return {
     file, setFile, newRuleSet, openFromFile, loadFromRecent, save,

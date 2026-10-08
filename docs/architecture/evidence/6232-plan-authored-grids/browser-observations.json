@@ -1,0 +1,164 @@
+{
+  "tabId": "tab_5",
+  "url": "http://localhost:5199/",
+  "sourceHead": "2de581a53d1951cba21148b1712857032210c434",
+  "sourceAdjustments": [
+    "remove redundant nested fit guard",
+    "qualify oversized-label fit description"
+  ],
+  "before": {
+    "adapterAvailable": true,
+    "axes": [
+      {
+        "AxisTag": "1",
+        "id": 10001
+      },
+      {
+        "AxisTag": "2",
+        "id": 10005
+      },
+      {
+        "AxisTag": "3",
+        "id": 10009
+      },
+      {
+        "AxisTag": "A",
+        "id": 10013
+      },
+      {
+        "AxisTag": "B",
+        "id": 10017
+      },
+      {
+        "AxisTag": "C",
+        "id": 10021
+      }
+    ],
+    "drawing": {
+      "axes": 6,
+      "rect": {
+        "bottom": 752,
+        "height": 595,
+        "left": 373.953125,
+        "right": 861.96875,
+        "top": 157,
+        "width": 488.015625,
+        "x": 373.953125,
+        "y": 157
+      },
+      "tags": [
+        "1",
+        "1",
+        "2",
+        "2",
+        "3",
+        "3",
+        "A",
+        "A",
+        "B",
+        "B",
+        "C",
+        "C"
+      ]
+    },
+    "gridIds": [
+      10025
+    ],
+    "modelId": "35d9c652-8949-478f-9fab-336a77f3bc3e",
+    "models": 1,
+    "source": {
+      "bytes": 79592,
+      "name": "hello-wall.ifc",
+      "sha256": "0ab20f4ea355ea9aa4fade7264b97ee9f9929addfa3961b2437c4381bd674014"
+    },
+    "storeyId": 42,
+    "viewport": [
+      1920,
+      780
+    ],
+    "visibility": "visible"
+  },
+  "undo": {
+    "axes": 0,
+    "tags": []
+  },
+  "redo": {
+    "axes": 6,
+    "tags": [
+      "1",
+      "1",
+      "2",
+      "2",
+      "3",
+      "3",
+      "A",
+      "A",
+      "B",
+      "B",
+      "C",
+      "C"
+    ]
+  },
+  "screenshot": "/home/louistrue/.t3/userdata/browser-artifacts/browser-screenshot-localhost-muojsrxn-f0deb63e.png",
+  "mouseActions": [
+    {
+      "action": "select Author and Model workspace via UI"
+    },
+    {
+      "action": "select Grid via Create menu",
+      "x": 431,
+      "y": 429
+    },
+    {
+      "action": "place first corner",
+      "x": 480,
+      "y": 850,
+      "viewport": [
+        1920,
+        1080
+      ]
+    },
+    {
+      "action": "place second corner",
+      "x": 745,
+      "y": 390,
+      "viewport": [
+        1920,
+        1080
+      ]
+    },
+    {
+      "action": "Escape, select Plan, Fit; screenshot",
+      "viewport": [
+        1920,
+        780
+      ]
+    },
+    {
+      "action": "Undo ribbon",
+      "x": 105,
+      "y": 55
+    },
+    {
+      "action": "Redo ribbon",
+      "x": 103,
+      "y": 76
+    }
+  ],
+  "limitations": [
+    "Functional proof only; no performance timing claim.",
+    "T3 PNG captures 1094 by 780 of the 1920 by 780 CSS viewport; the complete plan and all tags are captured."
+  ],
+  "productionFileSha256": {
+    "apps/viewer/src/components/viewer/plan/PlanView.tsx": "685e7388cfa1f923aa8bf5592191799d7a6865cfcf8f175b91bbfbc9aa328bde",
+    "apps/viewer/src/components/viewer/plan/plan-fit.ts": "7196b21bdbfd55076fdeb0239259f734a260026184e45eb90279a8a2c6781164",
+    "apps/viewer/src/components/viewer/plan/DesignGridLayer.tsx": "d833afcff1effddb2d3c95cb1139becd31b0cb8db27771c4e606bdb9cb6bbb26",
+    "apps/viewer/src/components/viewer/plan/usePlanGridAxes.ts": "7f6f31a0aa6784d67c842fcdd6787c898c16159dbf5dd4f7ca023ce26eee8505",
+    "apps/viewer/src/lib/snap/sources/ifc-grid-store.ts": "341595d4bd94094c1619b7f8a61357970061b45025063f1217a0d8530a45b290"
+  },
+  "runtimeFileSha256": {
+    "packages/wasm/pkg/ifc-lite_bg.wasm": "9646cc889c7a5148a2a97a6b90fa4349869840aea0065bd382b3a4e3bcfd3034",
+    "packages/wasm/pkg/ifc-lite.js": "27cff2a3870d71260ecdb0ecf2cbffcb2fd9e437c87ba6af1ea00378dbecc97d",
+    "packages/wasm/pkg/ifc-lite.d.ts": "a16682ec147389827ace1a289b7b17dbd0c1d38c2cdbc28c9c82350d76e72b23"
+  }
+}

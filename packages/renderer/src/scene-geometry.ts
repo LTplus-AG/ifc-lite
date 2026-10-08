@@ -10,6 +10,7 @@
  */
 
 import type { MeshData } from '@ifc-lite/geometry';
+import { perfTally } from '@ifc-lite/load-trace';
 import { BATCH_CONSTANTS } from './constants.js';
 import type { BoundingBox } from './scene-raycaster.js';
 import { worldBounds } from './scene-precision.js';
@@ -170,6 +171,7 @@ export function mergeGeometry(
     totalVertices += mesh.positions.length / 3;
     totalIndices += mesh.indices.length;
   }
+  perfTally('render.mergeGeometry', totalVertices, 'vertices'); // #6957
 
   // Create merged buffers
   const vertexBufferRaw = new ArrayBuffer(totalVertices * 7 * 4);

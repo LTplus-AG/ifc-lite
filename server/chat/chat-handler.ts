@@ -2,6 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { outputTokenLimit, PROXY_OUTPUT_TOKEN_CEILING } from '../../shared/ai/output-budget.js';
+
 export interface ChatConfig {
   apiBase: string;
   apiKey: string;
@@ -369,6 +371,7 @@ export function createChatHandler(config: ChatConfig, deps: ChatHandlerDeps) {
       messages: Array<{ role: string; content: string | Array<{ type: string; text?: string; image_url?: { url: string } }> }>;
       model: string;
       system?: string;
+      maxOutputTokens?: unknown;
     };
     try {
       body = await readJsonBody<typeof body>(req);
@@ -378,6 +381,15 @@ export function createChatHandler(config: ChatConfig, deps: ChatHandlerDeps) {
 
     if (!body?.messages || !body?.model) {
       return corsResponse(config, 400, requestOrigin, url, { error: 'Missing messages or model' }, undefined, isDev);
+    }
+
+    let maxOutputTokens: number;
+    try {
+      maxOutputTokens = outputTokenLimit(body.maxOutputTokens, PROXY_OUTPUT_TOKEN_CEILING);
+    } catch (error) {
+      return corsResponse(config, 400, requestOrigin, url, {
+        error: error instanceof Error ? error.message : String(error), code: 'invalid_output_budget',
+      }, undefined, isDev);
     }
 
     // Bound the attacker-controlled prompt before consuming quota or contacting
@@ -470,7 +482,7 @@ export function createChatHandler(config: ChatConfig, deps: ChatHandlerDeps) {
             messages: upstreamMessages,
             stream: true,
             temperature: 0.3,
-            max_tokens: 8192,
+            max_tokens: maxOutputTokens,
           }),
           signal: controller.signal,
         }),

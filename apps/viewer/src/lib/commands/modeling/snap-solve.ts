@@ -19,6 +19,8 @@ import { solveSnap } from '@/lib/snap/solve';
 import type { SnapProfile, SnapResult, SnapSource, Vec2 } from '@/lib/snap/types';
 import { createSemanticSource, type SemanticSource } from '@/lib/snap/sources/semantic';
 import { storeyWallAxes } from '@/lib/snap/sources/semantic-walls';
+import { createIfcGridSource, type IfcGridSource } from '@/lib/snap/sources/ifc-grid';
+import { storeyGridAxes } from '@/lib/snap/sources/ifc-grid-store';
 import { useViewerStore } from '@/store';
 import type { CommandRuntimeState } from './runtime.js';
 import type { ModelingCommand, Workplane } from './types.js';
@@ -36,7 +38,7 @@ export function profileOf(command: ModelingCommand): SnapProfile {
 /** One semantic (wall-axis) source per session model; it rebuilds itself on edits and storey changes. */
 let semantic: { modelId: string; source: SemanticSource } | null = null;
 
-export function semanticSource(modelId: string): SemanticSource {
+function semanticSource(modelId: string): SemanticSource {
   if (semantic?.modelId === modelId) return semantic.source;
   const source = createSemanticSource({
     modelId,
@@ -53,6 +55,31 @@ export function semanticSource(modelId: string): SemanticSource {
   });
   semantic = { modelId, source };
   return source;
+}
+
+/** One design-grid source per session model, rebuilt like the semantic one. */
+let designGrid: { modelId: string; source: IfcGridSource } | null = null;
+
+export function ifcGridSource(modelId: string): IfcGridSource {
+  if (designGrid?.modelId === modelId) return designGrid.source;
+  const source = createIfcGridSource({
+    modelId,
+    version: () => useViewerStore.getState().mutationVersion,
+    storeyId: () => useViewerStore.getState().session?.storeyId ?? null,
+    loadAxes: (storeyId) => {
+      const s = useViewerStore.getState();
+      const store = s.models.get(modelId)?.ifcDataStore;
+      const view = s.mutationViews.get(modelId);
+      return store && view ? storeyGridAxes(store, view, storeyId) : [];
+    },
+  });
+  designGrid = { modelId, source };
+  return source;
+}
+
+/** The store-backed sources every command pointer consults, 3D and plan alike. */
+export function modelSnapSources(modelId: string): SnapSource[] {
+  return [semanticSource(modelId), ifcGridSource(modelId)];
 }
 
 export interface CommandSnapInput {

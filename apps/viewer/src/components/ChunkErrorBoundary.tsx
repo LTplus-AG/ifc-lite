@@ -25,6 +25,7 @@ import { Component, type ErrorInfo, type ReactNode } from 'react';
 import { RefreshCw } from 'lucide-react';
 import { useTranslation, type TranslationKey } from '@/i18n';
 import { posthog } from '@/lib/analytics';
+import { reloadKeepingOpenModels } from '@/lib/reload-resume';
 import { isStaleDeploymentError } from '@/lib/stale-deployment';
 
 /**
@@ -43,8 +44,13 @@ type ChunkErrorTone = 'panel' | 'night';
 const NIGHT_TONE = { fg: '#ede4d3', dim: '#9c9486' } as const;
 
 const CHUNK_LABEL_KEYS = {
+  'Linked records panel': 'semantic.title',
   'Appearance panel': 'viewerShell.chunkLabel.appearancePanel',
   'Charts panel': 'viewerShell.chunkLabel.chartsPanel',
+  'Assistant panel': 'assistant.title',
+  'Point cloud panel': 'pointCloudPanel.title',
+  'Review panel': 'reviewWorkspace.title',
+  'Script panel': 'scriptPanel.header.defaultTitle',
   'Flow panel': 'viewerShell.chunkLabel.flowPanel',
   'Drawing panel': 'viewerShell.chunkLabel.drawingPanel',
   'Document panel': 'viewerShell.chunkLabel.documentPanel',
@@ -156,7 +162,9 @@ function ChunkErrorFallback({
       </span>
       <button
         type="button"
-        onClick={() => window.location.reload()}
+        // A stale chunk keeps the open models across the reload; a crash does
+        // not, so reopening cannot replay whatever crashed.
+        onClick={() => (chunk ? reloadKeepingOpenModels('user') : window.location.reload())}
         className={
           night
             ? 'mt-1 inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-2xs transition-opacity hover:opacity-80'

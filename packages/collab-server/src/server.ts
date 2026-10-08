@@ -6,23 +6,19 @@
 
 import * as http from 'node:http';
 import { createHash, timingSafeEqual } from 'node:crypto';
-import { WebSocketServer, type WebSocket } from 'ws';
-import { RoomManager, type PeerConnection, type VerifyMessageFn } from './room-manager.js';
+import { WebSocketServer } from 'ws';
+import { RoomManager, type VerifyMessageFn } from './room-manager.js';
+import { handleConnection } from './connection.js';
 import { startExpirySweep } from './principal-expiry.js';
-import { FilePersistence, MemoryPersistence, type Persistence } from './persistence.js';
-import { allowAnonymousEditor, canWrite, type AuthenticateFn, type Principal } from './auth.js';
+import { MemoryPersistence, type Persistence } from './persistence.js';
+import { allowAnonymousEditor, type AuthenticateFn, type Principal } from './auth.js';
 import { type AuditSink } from './audit-log.js';
 import { type RateLimitOptions } from './rate-limit.js';
 import { handleBlobRequest, type BlobAuthorizeFn } from './blob-route.js';
 import { InMemoryBlobStorage, type ServerBlobStorage } from './blob-storage.js';
-import {
-  handleTokenMintRequest,
-  handleRevokeRequest,
-  handleKickRequest,
-  type TokenEndpointOptions,
-  type RevokeEndpointOptions,
-  type KickEndpointOptions,
-} from './room-token.js';
+import { handleTokenMintRequest, type TokenEndpointOptions } from './room-token.js';
+import { handleKickRequest, handleReleaseRequest, handleRevokeRequest } from './room-admin-routes.js';
+import type { KickEndpointOptions, ReleaseEndpointOptions, RevokeEndpointOptions } from './room-admin-routes.js';
 import { MemoryLayerRegistry, type LayerRegistryStore } from './layer-registry.js';
 import type { RegistryWebhook } from './registry-webhooks.js';
 import {
@@ -30,6 +26,8 @@ import {
   type RegistryAuthorizeFn,
 } from './layer-registry-route.js';
 import { defaultMetrics, MetricsRegistry } from './metrics.js';
+import { parseRequestUrl } from './request-target.js';
+import { makeBlobAuthorizer, makeRegistryAuthorizer } from './http-authorizers.js';
 
 /**
  * Cross-origin policy for the HTTP routes (`/blobs`, `/collab/*`, `/healthz`,
@@ -175,6 +173,8 @@ export interface StartCollabServerOptions {
    * only the verifying `secret` is supplied here. Omit to disable (404).
    */
   kickEndpoint?: Pick<KickEndpointOptions, 'secret' | 'isRevoked'>;
+  /** Enable `POST /collab/release` (hand back an unused fresh-room claim). Omit to disable (404). */
+  releaseEndpoint?: ReleaseEndpointOptions;
   /**
    * Cross-origin access for the HTTP routes. Default: enabled with origin
    * reflection (permissive). Pass an allow-list to restrict, or `false` to
@@ -203,8 +203,6 @@ export interface CollabServerHandle {
   readonly roomManager: RoomManager;
   stop(): Promise<void>;
 }
-
-const PING_INTERVAL_MS = 30_000;
 
 /**
  * Application-level keepalive period. Must stay comfortably under
@@ -319,7 +317,8 @@ export async function startCollabServer(
     opts.server ??
     http.createServer(async (req, res) => {
       try {
-        const reqUrl = new URL(req.url ?? '/', 'http://localhost');
+        const reqUrl = parseRequestUrl(req.url);
+        if (!reqUrl) { res.writeHead(400).end(); return; } // unparseable target: this client's error
         const pathname = reqUrl.pathname;
         applyCors(req, res, opts.cors);
         // Preflight: answer OPTIONS before any route so cross-origin PUT/HEAD/
@@ -391,6 +390,9 @@ export async function startCollabServer(
           });
           if (handled) return;
         }
+        if (opts.releaseEndpoint && pathname === '/collab/release') {
+          if (await handleReleaseRequest(req, res, opts.releaseEndpoint)) return;
+        }
         // Blob route: PUT / GET / HEAD / DELETE on /blobs/<hash>, GET /blobs.
         if (pathname.startsWith('/blobs')) {
           const handled = await handleBlobRequest(req, res, {
@@ -453,6 +455,7 @@ export async function startCollabServer(
         roomManager,
         authenticate,
         keepaliveIntervalMs,
+        reject: (reason) => rejectsCounter.inc(1, { reason }),
       }).catch((err) => {
         // eslint-disable-next-line no-console
         console.error('[collab-server] connection setup failed:', err);
@@ -497,141 +500,6 @@ export async function startCollabServer(
       }
       await roomManager.unloadAll();
     },
-  };
-}
-
-interface ConnectionContext {
-  roomManager: RoomManager;
-  authenticate: AuthenticateFn;
-  /** See `StartCollabServerOptions.keepaliveIntervalMs`. */
-  keepaliveIntervalMs?: number;
-}
-
-async function handleConnection(ws: WebSocket, req: http.IncomingMessage, ctx: ConnectionContext) {
-  ws.binaryType = 'arraybuffer';
-  const url = new URL(req.url ?? '/', 'http://localhost');
-  // y-websocket convention: room id is the path (e.g. ws://host/project/model)
-  const roomId = decodeURIComponent(url.pathname.replace(/^\/+/, ''));
-  const token = url.searchParams.get('token') ?? undefined;
-  if (!roomId) {
-    ws.close(4400, 'missing-room');
-    return;
-  }
-
-  let principal: Principal | null;
-  try {
-    principal = await ctx.authenticate(token, roomId);
-  } catch (err) {
-    // eslint-disable-next-line no-console
-    console.error('[collab-server] auth threw:', err);
-    ws.close(4500, 'auth-error');
-    return;
-  }
-
-  if (!principal) {
-    ws.close(4401, 'unauthorized');
-    return;
-  }
-
-  const room = await ctx.roomManager.getOrCreate(roomId);
-  const conn: PeerConnection = {
-    ws,
-    principal,
-    awarenessClients: new Set<number>(),
-  };
-  room.addConnection(conn);
-
-  // Application-level keepalive. Distinct from the protocol ping below: only
-  // a real message refreshes y-websocket's reconnect watchdog.
-  const keepalive = setInterval(() => {
-    room.sendKeepalive(conn);
-  }, ctx.keepaliveIntervalMs ?? KEEPALIVE_INTERVAL_MS);
-
-  let alive = true;
-  const ping = setInterval(() => {
-    if (!alive) {
-      try { ws.terminate(); } catch { /* socket already gone */ }
-      clearInterval(ping);
-      return;
-    }
-    alive = false;
-    try { ws.ping(); } catch { /* socket already gone */ }
-  }, PING_INTERVAL_MS);
-  ws.on('pong', () => { alive = true; });
-
-  ws.on('message', (data: ArrayBuffer | Buffer) => {
-    const bytes = data instanceof ArrayBuffer ? new Uint8Array(data) : new Uint8Array(data);
-    room.handleMessage(conn, bytes);
-  });
-
-  const cleanup = () => {
-    clearInterval(ping);
-    clearInterval(keepalive);
-    room.removeConnection(conn);
-  };
-  ws.on('close', cleanup);
-  ws.on('error', (err) => {
-    // eslint-disable-next-line no-console
-    console.error('[collab-server] ws error:', err);
-    cleanup();
-  });
-}
-
-/**
- * Pseudo-room scope handed to `authenticate` for blob requests. Blobs are
- * content-addressed and not room-scoped, but reusing the WS `authenticate`
- * hook keeps the credential scheme identical. Custom authenticators that
- * key off roomId see this sentinel and can grant/deny blob access
- * explicitly.
- */
-const BLOB_AUTH_ROOM = '__blobs__';
-
-/**
- * Derive a blob authorizer from the websocket `authenticate` hook so the
- * blob route shares the same token scheme. A null principal (bad/missing
- * token) is rejected; PUT/DELETE additionally require write capability,
- * GET/HEAD/list accept any authenticated principal.
- */
-/** Room key the registry authorizer authenticates against. */
-const REGISTRY_AUTH_ROOM = '__layer_registry__';
-
-/**
- * Derive a registry authorizer from the websocket `authenticate` hook —
- * same scheme as blobs: reads accept any authenticated principal, writes
- * (POST/PUT) require write capability. The principal flows through so the
- * merge endpoint records it as the acting resolver.
- */
-function makeRegistryAuthorizer(authenticate: AuthenticateFn): RegistryAuthorizeFn {
-  return async (token, method) => {
-    let principal: Principal | null;
-    try {
-      principal = await authenticate(token, REGISTRY_AUTH_ROOM);
-    } catch (err) {
-      // eslint-disable-next-line no-console
-      console.error('[collab-server] registry auth threw:', err);
-      return null;
-    }
-    if (!principal) return null;
-    if ((method === 'POST' || method === 'PUT' || method === 'DELETE') && !canWrite(principal)) {
-      return null;
-    }
-    return principal;
-  };
-}
-
-function makeBlobAuthorizer(authenticate: AuthenticateFn): BlobAuthorizeFn {
-  return async (token, method, _hash) => {
-    let principal: Principal | null;
-    try {
-      principal = await authenticate(token, BLOB_AUTH_ROOM);
-    } catch (err) {
-      // eslint-disable-next-line no-console
-      console.error('[collab-server] blob auth threw:', err);
-      return false;
-    }
-    if (!principal) return false;
-    if (method === 'PUT' || method === 'DELETE') return canWrite(principal);
-    return true;
   };
 }
 

@@ -57,6 +57,7 @@ function Harness() {
       selectedContainer={folder}
       onSelectContainer={() => {}}
       sortedFolders={[folder]}
+      favouriteFolders={favourites.favouriteFolders}
       allFiles={[file]}
       gateEmptyFolders={false}
       loadingFolders={false}

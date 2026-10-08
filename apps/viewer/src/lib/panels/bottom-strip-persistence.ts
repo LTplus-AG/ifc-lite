@@ -27,9 +27,14 @@ export const BOTTOM_STRIP_DEFAULT_HEIGHT = 300;
 /** Max resize height, as a ratio of the layout container (#1208's cap). */
 export const BOTTOM_STRIP_MAX_RATIO = 0.7;
 
+/** Tab ids this build does not know (a newer build's panel), written back on
+ *  every persist by this preservation-aware build (#6927). */
+let preservedTabs: string[] = [];
+
 /** The persisted tab order, filtered to ids the current build still knows —
- *  a retired panel id or a corrupt entry is dropped rather than crashing. */
+ *  a corrupt entry is dropped; an unknown id is kept in storage, not shown. */
 export function loadBottomStripTabs(): BottomPanelId[] {
+  preservedTabs = [];
   if (typeof window === 'undefined') return [];
   try {
     const raw = window.localStorage.getItem(TABS_STORAGE_KEY);
@@ -39,7 +44,10 @@ export function loadBottomStripTabs(): BottomPanelId[] {
     const seen = new Set<BottomPanelId>();
     const out: BottomPanelId[] = [];
     for (const entry of parsed) {
-      if (typeof entry === 'string' && isBottomPanel(entry) && !seen.has(entry)) {
+      if (typeof entry !== 'string' || entry.length > 200) continue;
+      if (!isBottomPanel(entry)) {
+        if (!preservedTabs.includes(entry)) preservedTabs.push(entry);
+      } else if (!seen.has(entry)) {
         seen.add(entry);
         out.push(entry);
       }
@@ -54,7 +62,7 @@ export function loadBottomStripTabs(): BottomPanelId[] {
 export function persistBottomStripTabs(tabs: readonly BottomPanelId[]): void {
   if (typeof window === 'undefined') return;
   try {
-    window.localStorage.setItem(TABS_STORAGE_KEY, JSON.stringify(tabs));
+    window.localStorage.setItem(TABS_STORAGE_KEY, JSON.stringify([...tabs, ...preservedTabs]));
   } catch (error) {
     console.warn('[bottom-strip] failed to persist tabs:', error);
   }

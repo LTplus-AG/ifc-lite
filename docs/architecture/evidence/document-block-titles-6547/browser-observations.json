@@ -1,0 +1,232 @@
+{
+  "capture": "real mounted Export PDF output captured at Blob URL boundary; browser anchor download suppressed for repeat after successful confirmed first download",
+  "document": {
+    "blocks": [
+      {
+        "id": "notes",
+        "kind": "text",
+        "style": "body",
+        "text": "Public SketchUp 2024 model: {IfcProject.Name}",
+        "title": "Project notes"
+      },
+      {
+        "align": "left",
+        "caption": "Original favicon caption",
+        "dataUrl": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAACxElEQVR42nVSS09TQRg930xvobfig7QVsDwqqFjUqBBMjFjQBB8LF5oajcEfYHRBJCHxkaLG6Mr4A9ygiZjelSvixudGoxgrVSTgo7zUG4UCpbe3t3PHhQgoeFaTL9+cOefMAZZAJBJhs0cGgP8z+wu0eCQJILn76MmmQJn/GiNiHxPD7U+jtx9BSgKR/C9BOBzmADCuqJfXV647V7elBoqi4N3AJ7yJxW4uN6faAEDTNIEFEufJgkGuaZrwFHpqVdWFeF+/+Sb+fnLoy9AF27ZNTdNEMBiUCx9eZKH24OGmDVWVt+q3bysf+67z+93d+3X9R1/z3sa7Y9/1K8+idx78Y0ESAOw8dLzY5/Ncr15f1TI5PY1AqV9Op1LoicV7tm7aWFcVqMDw2Ff0xOJdqZlM68OuWzqIwEKhDg6QdBe493iLVrcQpCVytk1EkACktPVMxvyZnJyCYRjW2rWB44qT7QCRDIVCnKHxtxRbCqvE6xVm1qKZ9AzLz8sTxDh9GPjUceNie9nz17HBYp+Pl672CsM0rT8WHHOfl5MkpeRlJSW5tJFBYniEG6Ypm5saugbLK04XuF0Jn9dTlRgZBZdsNrvGeYLfKmwIWyA5NYXpVIp21ddKVVUrhS27jXQ6m82aghjjC+/MK2CMGGPCEkIWuN1wqy7E+weIQHaRp5DShuoUQliKwwHJGM334PEsgW1lM6bFOWMKEeXK/GvgdDqxvMDN1gXKAaIc5w4lnTG5sHJzGfBE4okNKalIu/d5Qk9+s0Su3qE4l3kKV9lGJiNdeXmycOUK6BNJPjw6pr/tjZ9VksvuD544IBOdl8SiIlXWNZRWbwpe3VwTbGHE4Mp3ghHhVay388mLl+fHY89H8T+EQpG5TBqPtuwLn2rtPXam7W3DkZPNS+0sjUiEhcNRDgDFxbUq/H4XAISjUf6ntQvxCx1sLObzIQ+xAAAAAElFTkSuQmCC",
+        "height": 32,
+        "id": "mark",
+        "kind": "image",
+        "title": "Project mark"
+      },
+      {
+        "chart": {
+          "dimension": "IfcType",
+          "id": "original-chart",
+          "measure": {
+            "agg": "count"
+          },
+          "source": "elements",
+          "title": "Original element chart",
+          "type": "bar"
+        },
+        "height": 120,
+        "id": "elements",
+        "kind": "chart",
+        "snapshot": false,
+        "title": "Element distribution"
+      },
+      {
+        "guid": "title-demo-topic",
+        "id": "topic",
+        "kind": "topic",
+        "snapshot": false,
+        "title": "Coordination note"
+      },
+      {
+        "id": "schedule",
+        "kind": "table",
+        "source": {
+          "kind": "list",
+          "list": {
+            "columns": [
+              {
+                "id": "name",
+                "propertyName": "Name",
+                "source": "attribute"
+              }
+            ],
+            "createdAt": 1,
+            "entityTypes": [
+              10
+            ],
+            "groups": [],
+            "id": "source-list",
+            "name": "Original wall schedule",
+            "updatedAt": 1
+          }
+        },
+        "title": "Wall schedule"
+      },
+      {
+        "checks": [
+          {
+            "checked": 4,
+            "failed": 0,
+            "id": "wall-name",
+            "passRate": 100,
+            "passed": 4,
+            "rules": [
+              {
+                "checked": 4,
+                "failed": 0,
+                "id": "name",
+                "longDescription": "Attribute \"\"Name\"\" must exist",
+                "name": "Name",
+                "passRate": 100,
+                "passed": 4,
+                "shortDescription": "Attribute \"\"Name\"\" must exist"
+              }
+            ],
+            "shortDescription": "Wall Name exists"
+          }
+        ],
+        "generatedAt": "2026-09-30T20:30:39.212Z",
+        "id": "ids-check",
+        "kind": "ids-report",
+        "reportModels": [
+          {
+            "fingerprint": "building-architecture.ifc:f778982157aa24e",
+            "name": "building-architecture.ifc"
+          }
+        ],
+        "sourceKind": "ids",
+        "sourceName": "Wall Name presence source",
+        "summary": {
+          "checked": 4,
+          "failed": 0,
+          "passRate": 100,
+          "passed": 4
+        },
+        "title": "Wall attribute audit",
+        "variant": "compact"
+      },
+      {
+        "checks": [
+          {
+            "checked": 4,
+            "failed": 0,
+            "id": "wall-names",
+            "passRate": 100,
+            "passed": 4,
+            "rules": [],
+            "shortDescription": "Wall Names are unique"
+          }
+        ],
+        "generatedAt": "2026-09-30T20:30:39.215Z",
+        "id": "information-check",
+        "kind": "ids-report",
+        "reportModels": [
+          {
+            "fingerprint": "building-architecture.ifc:f778982157aa24e",
+            "name": "building-architecture.ifc"
+          }
+        ],
+        "sourceKind": "rules",
+        "sourceName": "Wall Name uniqueness source",
+        "summary": {
+          "checked": 4,
+          "failed": 0,
+          "passRate": 100,
+          "passed": 4,
+          "warnings": 0
+        },
+        "title": "Wall uniqueness audit",
+        "variant": "long"
+      },
+      {
+        "checklistName": "Original manual checklist",
+        "generatedAt": "2026-09-30T20:30:39.222Z",
+        "groups": [
+          {
+            "counts": {
+              "fail": 0,
+              "pass": 1,
+              "total": 1,
+              "unanswered": 0,
+              "warning": 0
+            },
+            "id": "review",
+            "items": [
+              {
+                "id": "names",
+                "status": "pass",
+                "text": "Review the wall Names"
+              }
+            ],
+            "name": "Authored demonstration review"
+          }
+        ],
+        "id": "manual",
+        "kind": "manual-report",
+        "modelFingerprint": "building-architecture.ifc:f778982157aa24e",
+        "modelName": "building-architecture.ifc",
+        "summary": {
+          "fail": 0,
+          "pass": 1,
+          "total": 1,
+          "unanswered": 0,
+          "warning": 0
+        },
+        "title": "Manual review record"
+      }
+    ],
+    "id": "title-demo",
+    "name": "Document block title demonstration",
+    "page": {
+      "orientation": "portrait",
+      "size": "A4"
+    },
+    "version": 10
+  },
+  "headings": [
+    {
+      "id": "notes",
+      "text": "Project notesPublic SketchUp 2024 model: ifc silly sample scene - project"
+    },
+    {
+      "id": "mark",
+      "text": "Project markOriginal favicon caption"
+    },
+    {
+      "id": "elements",
+      "text": "Element distribution6 buckets \u00b7 14\n\n\n\n\n\n\n\n0\n1\n2\n3\n4\nIfcWall\nIfcBuil\u2026roxy\nIfcSlab\nIfcSpace\nIfcFurniture\nIfcSpa\u2026one\n\n\n\n\n\n\n\n.zr0-cls-0:hover {\npointer-events:none;\n}\n.zr0-cls-1:hover {\ncursor:pointer;\nfill:rgba(251,62,58,1);\n}\n.zr0-cls-2:hover {\ncursor:pointer;\nfill:rgba(33,149,251,1);\n}\n.zr0-cls-3:hover {\ncursor:pointer;\nfill:rgba(255,237,58,1);\n}\n.zr0-cls-4:hover {\ncursor:pointer;\nfill:rgba(73,176,78,1);\n}\n.zr0-cls-5:hover {\ncursor:pointer;\nfill:rgba(156,39,187,1);\n}\n.zr0-cls-6:hover {\ncursor:pointer;\nfill:rgba(0,189,212,1);\n}\n\n\n\n\n"
+    },
+    {
+      "id": "topic",
+      "text": "Coordination noteAuthored annotation about wall coordination."
+    },
+    {
+      "id": "schedule",
+      "text": "Wall scheduleNamehouse - outer wall - house right fronthouse - outer wall - house right backhouse - outer wall - house leftplumbing wall"
+    },
+    {
+      "id": "ids-check",
+      "text": "Wall attribute auditValidation run: 2026-09-30T20:30:39.212ZModels: building-architecture.ifcChecked4Passed4Failed0Pass rate100%1 checkWall Name exists4/4 \u00b7 100%Name4/4 \u00b7 100%"
+    },
+    {
+      "id": "information-check",
+      "text": "Wall uniqueness auditValidation run: 2026-09-30T20:30:39.215ZModels: building-architecture.ifcChecked4Passed4Failed0Warnings0Pass rate100%1 checkWall Names are unique4 \u00b7 4 / 0 \u00b7 100%"
+    },
+    {
+      "id": "manual",
+      "text": "Manual review recordModel: building-architecture.ifc \u00b7 Recorded: 2026-09-30T20:30:39.222Z100%100% passed (1 of 1 checks)Pass1Warning0Fail0Not checked0Authored demonstration review1 of 1 checkedPassReview the wall Names"
+    }
+  ],
+  "loadedModels": [
+    {
+      "entityCount": 444,
+      "fingerprint": "building-architecture.ifc:f778982157aa24e",
+      "name": "building-architecture.ifc"
+    }
+  ]
+}

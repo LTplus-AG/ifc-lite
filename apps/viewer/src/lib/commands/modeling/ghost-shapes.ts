@@ -144,3 +144,31 @@ export function prismGhostMesh(
   });
   return { expressId, positions, normals, indices, color: [...GHOST_COLOR] };
 }
+
+/**
+ * One mesh out of several prisms (a curtain wall's members, a grid's axis
+ * strips): the ghost then costs one draw and one channel entry however many
+ * parts the layout has. Null when there is nothing to draw.
+ */
+export function mergeGhostMeshes(
+  meshes: readonly MeshData[],
+  expressId: number,
+  color: [number, number, number, number],
+): MeshData | null {
+  if (meshes.length === 0) return null;
+  const vertexCount = meshes.reduce((n, m) => n + m.positions.length / 3, 0);
+  const indexCount = meshes.reduce((n, m) => n + m.indices.length, 0);
+  const positions = new Float32Array(vertexCount * 3);
+  const normals = new Float32Array(vertexCount * 3);
+  const indices = new Uint32Array(indexCount);
+  let vertex = 0;
+  let index = 0;
+  for (const m of meshes) {
+    positions.set(m.positions, vertex * 3);
+    normals.set(m.normals, vertex * 3);
+    for (let i = 0; i < m.indices.length; i++) indices[index + i] = m.indices[i] + vertex;
+    vertex += m.positions.length / 3;
+    index += m.indices.length;
+  }
+  return { expressId, positions, normals, indices, color };
+}

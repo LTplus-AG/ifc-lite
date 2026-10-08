@@ -757,4 +757,64 @@ A successor row and a picked pair have **Accept** and **Not the same**. Accept w
 
 The strip above the results exports and imports the artifacts: **Export map** writes the accepted entries as an [identity-map sidecar](#the-sidecar), **Export lineage** writes the [lineage sidecar](#the-lineage-sidecar) (committed identity, splits, merges, and the accepted replacements), and **Import map** loads an identity-map sidecar into the accepted list. Both are pinned to the two files by the same `sha256:` digest the CLI's `--identity-out` writes, so a map exported here replays under `ifc-lite diff --identity-in` and an import written for other bytes is refused with the mismatch shown. A model restored from the viewer's cache has no bytes to digest and cannot be pinned; Compare says so instead of writing an unpinned file.
 
+### Impact on other analyses
+
+Below the change list, **Impact on other analyses** shows which loaded results name a changed element. It covers the current clash run, the loaded IDS or rules report, the active list and the open BCF project. Each source reads **Not loaded**, a count of touched findings, or the same count marked *run before later edits* when the analysis predates a model edit. A source that records no run state, such as a list, is marked *not known to be current*. The rows below copy native values: clash rule, severity and the two elements; the specification and its failed requirements; the list's touched-row count and the touched and total sums of each numeric column; the BCF topic title and status. Each row names the changed elements with their side (A or B), class, GlobalId and change state.
+
+Joins use membership only. A clash, validation result or list row is joined when it names the same model and GlobalId that the comparison reported as added, deleted or modified. BCF topics carry no model, so they join on GlobalId alone. An unchanged element, a change with no GlobalId and a reused GlobalId in a third loaded model are never joined. A touched finding does not mean that the change caused it or fixed it. The panel lists at most 50 rows, while the per-source counts remain exact.
+
+### Reconciling findings across revisions
+
+**Reconcile findings across revisions** compares two completed runs of one analysis across the comparison's A and B. Choose **Clash** or **Validation**, then select **Capture current run** after each run. Captures stay for the session, up to eight. A clash run over both loaded revisions can serve as both base and head; a validation run covers one model, so capture one run on A and one on B. Pick the **Base run (A)** and **Head run (B)**, then select **Reconcile**.
+
+The runs must be compatible. Clash runs need the same rules (selectors, mode, tolerance, clearance, severity and touch reporting), the same tolerance and void/host setting, and the same membership-based scope. Validation runs need the same IDS, or the same rule set content: editing a rule's applicability or requirement makes the runs incompatible even when the rule set keeps its name. The base run must have examined A, and the head run B. Neither run may be older than a later model edit, and a run that does not record the model state it ran against is refused. A refusal names the run by its role, for example *A run was made before later model edits: Base run (A)*. If anything differs, nothing is reconciled. Instead, the panel lists each named reason, for example *The clash settings differ: tolerance 0.002 / 0.01*.
+
+Compatible runs produce **New**, **Resolved**, **Persisting**, **Changed** and **Not evaluated** counts. Persisting findings are counted but not listed. Identity across revisions is the clash review key (rule plus the two durable element keys) or the specification plus GlobalId. Absence counts as **Resolved** only after a complete re-examination:
+
+- A clash qualifies when the head run was not truncated and its rule matched both elements, in the same roles, in B.
+- A validation failure qualifies when the head run holds an explicit passing result for the same specification and element.
+
+Everything else is **Not evaluated**, with its reason. Examples include a truncated head run, a rule that matched nothing, a deleted element and a specification that failed to run. The base run is held to the same standard: a head finding is **New** only when the base run was complete for it. A clash found by B is **Not evaluated** when the base run was truncated. A validation failure is **Not evaluated** when the base run did not list the element and its specification failed to run or listed fewer elements than applied. Either gap marks the result **Partial**. Clashes pairing an A element with a B element are excluded and counted, as are validation results whose GlobalId occurs twice in one run.
+
+A result is shown only while its base and head runs are selected. After a model edit, the panel replaces the counts with *The models changed after these runs*; capture current runs and reconcile again.
+
+The assistant receives the impact counts and rows, and the latest reconciliation. A refusal is sent with its reasons only, never with findings. A result made stale by a later edit is sent as stale, without counts or findings.
+
 For the full API, see the [`@ifc-lite/diff` README](https://github.com/LTplus-AG/ifc-lite/tree/main/packages/diff).
+
+## Save and reopen comparison setups
+
+**Save comparison setup** downloads a version 1 `.comparison.json` recipe.
+It records the A/base and B/head direction, data/geometry scope, excluded IFC
+classes, content matching option and authored key (`Tag` or `Pset.Property`).
+Omitting `keyProperty` means matching by `GlobalId`. Recipes contain no report
+rows or accepted identity decisions.
+
+**Open comparison setup** validates the recipe and configures the Compare
+panel. It never starts a comparison: click **Run comparison** when ready.
+Filename selectors use the original source filename rather than a renamed
+model label; each side must resolve exactly one loaded model. Tag-name selectors
+use the existing model tag vocabulary and also require exactly one model.
+Workflow file-slot selectors must be opened within a Flow workflow. Imported
+portable selectors remain intact when saving the setup again with the same
+model selections.
+
+A recipe reruns checks against current models. A saved comparison or exported
+Compare report is completed historical evidence for review and documents.
+Opening a completed report as a recipe is rejected, so these two operations
+cannot accidentally substitute stale evidence for a new check.
+
+
+## Reusable comparison setups
+
+In the viewer Compare panel, **Save comparison setup** downloads a version-1
+`.comparison.json` recipe. It preserves A/base and B/head direction, scope,
+excluded IFC classes, content matching and the authored key. **Open comparison setup**
+configures the current comparison and never executes it; each side must resolve
+exactly one distinct loaded model. Filename and tag-name selectors travel with
+the setup. Recipes using workflow file-slot selectors open through Flow.
+
+A recipe is separate from a Saved comparisons report: recipes rerun checks on
+selected models, while saved reports retain completed evidence and its original
+date. [Session automation](flow.md#file-slots-reports-and-portability) provides
+separate file inputs for both and can combine their native reports in one PDF.

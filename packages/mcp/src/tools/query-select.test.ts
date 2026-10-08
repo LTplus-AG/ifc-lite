@@ -26,7 +26,7 @@ import type { ToolContext } from '../context.js';
 import { DEFAULT_CONFIG, InMemoryModelRegistry, NOOP_PROGRESS, SILENT_LOGGER } from '../context.js';
 import { fullScope } from '../auth/scope.js';
 import { loadIfcModel } from '../loader.js';
-import { queryTools } from './query.js';
+import { queryTools } from './query-tools.js';
 
 function guid(mnemonic: string): string {
   return (mnemonic + '0'.repeat(22)).slice(0, 22);

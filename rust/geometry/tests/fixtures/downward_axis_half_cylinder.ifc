@@ -1,0 +1,29 @@
+ISO-10303-21;
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+HEADER;
+FILE_DESCRIPTION(('Synthetic invariant: downward-axis half-cylinder, issue 6597'),'2;1');
+FILE_NAME('downward_axis_half_cylinder.ifc','2026-10-01T00:00:00',('IFC-Lite Contributors'),(''),'','Synthetic invariant','');
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#1=IFCCARTESIANPOINT((0.,0.,0.));
+#2=IFCDIRECTION((0.,0.,-1.));
+#3=IFCDIRECTION((1.,0.,0.));
+#4=IFCAXIS2PLACEMENT3D(#1,#2,#3);
+#5=IFCCIRCLE(#4,1.);
+#6=IFCTRIMMEDCURVE(#5,(IFCPARAMETERVALUE(0.)),(IFCPARAMETERVALUE(3.14159265358979)),.T.,.PARAMETER.);
+#7=IFCCOMPOSITECURVESEGMENT(.CONTINUOUS.,.T.,#6);
+#8=IFCCARTESIANPOINT((-1.,0.));
+#9=IFCCARTESIANPOINT((1.,0.));
+#10=IFCPOLYLINE((#8,#9));
+#11=IFCCOMPOSITECURVESEGMENT(.CONTINUOUS.,.T.,#10);
+#12=IFCCOMPOSITECURVE((#7,#11),.F.);
+#13=IFCARBITRARYCLOSEDPROFILEDEF(.AREA.,$,#12);
+#14=IFCDIRECTION((0.,0.,1.));
+#15=IFCAXIS2PLACEMENT3D(#1,$,$);
+#16=IFCEXTRUDEDAREASOLID(#13,#15,#14,1.);
+
+ENDSEC;
+END-ISO-10303-21;

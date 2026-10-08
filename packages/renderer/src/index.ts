@@ -18,7 +18,7 @@ export { invertAppearancePartition, validateAppearancePartition, type Appearance
 import type { AppearancePreview } from './appearance-preview.js';
 import { createReferenceImageManager } from './reference-image-host.js';
 export type { ReferenceImages, ReferenceImageInput, ReferenceImageHit, ReferenceCorners } from './reference-image-types.js';
-import { measureDrawingBuffer, resizeRendererViewport } from './renderer-viewport.js';
+import { MAX_DRAWING_BUFFER_PIXEL_RATIO, measureDrawingBuffer, resizeRendererViewport } from './renderer-viewport.js';
 export type { ProjectionMode } from './camera-state.js';
 export type { InteractionMode } from './camera-controls.js';
 export { pickFitPolicy } from './camera-fit-policy.js';
@@ -207,13 +207,16 @@ import {
     appendPointCloudChunk as appendPointCloudChunkImpl,
     beginPointCloudStream as beginPointCloudStreamImpl,
     endPointCloudStream as endPointCloudStreamImpl,
-    removePointCloudAsset as removePointCloudAssetImpl,
+    removePointCloudAsset as removePointCloudAssetImpl, removePointCloudChunk as removePointCloudChunkImpl,
     type PointCloudStreamHost,
 } from './pointcloud/point-cloud-stream-lifecycle.js';
 import type { PointCloudAsset } from '@ifc-lite/geometry';
-import { DeviationComputer, type DeviationComputeOptions, type DeviationComputeResult } from './deviation/deviation-computer.js';
+import { DeviationComputer, type DeviationComputeContext, type DeviationComputeOptions, type DeviationComputeResult } from './deviation/deviation-computer.js';
 export type { DeviationAssetStats } from './deviation/deviation-readback.js';
 import type { DeviationAssetStats } from './deviation/deviation-readback.js';
+import type { DeviationDistances } from './deviation/deviation-statistics.js';
+export { computeDeviationStatistics, computeDeviationStatisticsAsync, countWithinToleranceAsync, deviationHistogramAsync, summarizeDeviationAssetsAsync } from './deviation/deviation-statistics.js';
+export type { DeviationAssetRange, DeviationAssetSummary, DeviationAsyncOptions, DeviationDistances, DeviationHistogram, DeviationHistogramRange, DeviationStatistics, DeviationStatisticsOptions, DeviationToleranceShare } from './deviation/deviation-statistics.js';
 import { runGuardedGpuUpload, isDeviceLossThrow, type GpuUploadOutcome } from './gpu-upload-guard.js';
 import { recoverRendererDevice, rendererDeviceLostError, type DeviceRecoveryOmission, type DeviceRecoveryResult, type RendererRecoveryHost } from './device-recovery.js';
 
@@ -271,6 +274,7 @@ export class Renderer {
     private readonly hoverMeshes = new HoverMeshCache();
     /** Device px per CSS px in the drawing buffer; CSS-px sizes scale by it (#5383). */
     private pixelRatio = 1;
+    private maxPixelRatio = MAX_DRAWING_BUFFER_PIXEL_RATIO;
     private readonly interactionEffects = new InteractionEffectsGovernor();
     // Procedural sky background — created lazily on the first frame that
     // enables it (most sessions never do).
@@ -630,7 +634,7 @@ export class Renderer {
         // are clamped to the GPU's max 2D texture dimension so the initial
         // pipeline allocations can't overflow on tall/wide layouts.
         const maxDim = this.device.getMaxTextureDimension();
-        const measured = measureDrawingBuffer(this.canvas, maxDim);
+        const measured = measureDrawingBuffer(this.canvas, maxDim, this.maxPixelRatio);
         this.pixelRatio = measured?.pixelRatio ?? 1;
         const width = Math.max(1, Math.min(measured?.width ?? this.canvas.width, maxDim));
         const height = Math.max(1, Math.min(measured?.height ?? this.canvas.height, maxDim));
@@ -1040,11 +1044,14 @@ export class Renderer {
         return beginPointCloudStreamImpl(this as unknown as PointCloudStreamHost, meta);
     }
 
-    appendPointCloudChunk(
-        handle: PointCloudAssetHandle,
-        chunk: import('./pointcloud/point-cloud-node.js').PointCloudChunkInput,
-    ): void {
-        appendPointCloudChunkImpl(this as unknown as PointCloudStreamHost, handle, chunk);
+    /** `key` makes the chunk removable on its own via `removePointCloudChunk` (one COPC node, #6869). */
+    appendPointCloudChunk(handle: PointCloudAssetHandle, chunk: import('./pointcloud/point-cloud-node.js').PointCloudChunkInput, key?: string): void {
+        appendPointCloudChunkImpl(this as unknown as PointCloudStreamHost, handle, chunk, key);
+    }
+
+    /** Free the chunks appended under `key`; returns the points removed (0 for a stale handle). */
+    removePointCloudChunk(handle: PointCloudAssetHandle, key: string): number {
+        return removePointCloudChunkImpl(this as unknown as PointCloudStreamHost, handle, key);
     }
 
     endPointCloudStream(handle: PointCloudAssetHandle): void {
@@ -1056,17 +1063,13 @@ export class Renderer {
     }
 
     /**
-     * Reassign a streamed point-cloud's expressId after upload. Use
-     * this when the federation registry assigns a new model offset and
-     * the renderer needs to emit the post-offset globalId in picking
-     * outputs. The change takes effect on the next render — no GPU
-     * buffer rewrite needed.
+     * Bind a streamed point cloud to its federation identity after upload:
+     * the post-offset globalId picking and deviation readback report, and,
+     * when given, the model index they attribute the asset to (#6887). Takes
+     * effect on the next render — no GPU buffer rewrite needed.
      */
-    relabelPointCloudAsset(
-        handle: import('./pointcloud/point-cloud-renderer.js').PointCloudAssetHandle,
-        newExpressId: number,
-    ): void {
-        this.pointCloudRenderer?.relabelAsset(handle, newExpressId);
+    relabelPointCloudAsset(handle: import('./pointcloud/point-cloud-renderer.js').PointCloudAssetHandle, newExpressId: number, modelIndex?: number): void {
+        this.pointCloudRenderer?.relabelAsset(handle, newExpressId, modelIndex);
         this.requestRender();
     }
 
@@ -1126,6 +1129,10 @@ export class Renderer {
     getPointCloudTransform(handle: { id: number }): Float32Array | undefined {
         return this.pointCloudRenderer?.getAssetTransform(handle);
     }
+    /** Exact float64 placement copy for CPU math; the f32 transform rounds map-grid origins (#6894). */
+    getPointCloudPlacement(handle: { id: number }): Float64Array | undefined {
+        return this.pointCloudRenderer?.getAssetPlacement(handle);
+    }
 
     /**
      * Set/clear a streamed cloud's column-major model matrix (16 floats) for
@@ -1148,23 +1155,20 @@ export class Renderer {
      * `deviation/deviation-computer.ts` for the full contract.
      */
     async computeDeviations(opts: DeviationComputeOptions = {}): Promise<DeviationComputeResult> {
-        return this.deviationComputer.compute(opts, {
-            device: this.device,
-            scene: this.scene,
-            pointCloudRenderer: this.pointCloudRenderer,
-            requestRender: () => this.requestRender(),
-        });
+        return this.deviationComputer.compute(opts, this.deviationContext());
     }
 
     /** Read per-scan-asset signed-distance statistics after a completed run. */
     async readDeviationAssetStats(): Promise<DeviationAssetStats[]> {
-        return this.deviationComputer.readAssetStats({
-            device: this.device,
-            scene: this.scene,
-            pointCloudRenderer: this.pointCloudRenderer,
-            requestRender: () => this.requestRender(),
-        });
+        return this.deviationComputer.readAssetStats(this.deviationContext());
     }
+
+    /** Read every computed point's signed distance (4 B/point) for summary statistics (#6872). */
+    async readDeviationDistances(): Promise<DeviationDistances> {
+        return this.deviationComputer.readDistances(this.deviationContext());
+    }
+
+    private readonly deviationContext = (): DeviationComputeContext => ({ device: this.device, scene: this.scene, pointCloudRenderer: this.pointCloudRenderer, requestRender: () => this.requestRender() });
 
     /**
      * Toggle Eye-Dome Lighting and tune its strength.
@@ -1606,7 +1610,7 @@ export class Renderer {
 
         // Drawing buffer = the element's device-pixel size (capped ratio, clamped
         // to the GPU's max texture dimension); see computeDrawingBufferSize (#5383).
-        const measured = measureDrawingBuffer(this.canvas, this.device.getMaxTextureDimension());
+        const measured = measureDrawingBuffer(this.canvas, this.device.getMaxTextureDimension(), this.maxPixelRatio);
         // Skip rendering while the canvas is collapsed or too small.
         if (!measured || measured.height < 10) { this._renderSkipCount++; return; }
         const { width, height } = measured;
@@ -2573,6 +2577,9 @@ export class Renderer {
                     batch: typeof allBatchedMeshes[0],
                     kind: 'opaque' | 'transparent',
                 ): GPURenderPipeline => {
+                    const ghost = kind === 'transparent' && xray.isGhostBatch(batch)
+                        ? this.pipeline!.getGhostPipeline(!!batch.quantized, () => this.requestRender()) : null;
+                    if (ghost) return ghost;
                     const base = kind === 'opaque' ? this.pipeline!.getPipeline() : this.pipeline!.getTransparentPipeline();
                     if (!batch.quantized) return base;
                     return this.pipeline!.getQuantizedPipelineVariant(kind) ?? base;
@@ -3320,6 +3327,9 @@ export class Renderer {
     resize(width: number, height: number): void {
         resizeRendererViewport(this.canvas, this.camera, width, height);
     }
+
+    /** Cap the drawing buffer's device-pixel ratio, trading sharpness for fill on HiDPI screens; see computeDrawingBufferSize. */
+    setMaxPixelRatio(ratio: number): void { this.maxPixelRatio = ratio; this.requestRender(); }
 
     /** Stage one new owner; borrowed mesh buffers must remain immutable until disposal. */
     prepareAuthoredOwner(parts: readonly MeshData[]) {

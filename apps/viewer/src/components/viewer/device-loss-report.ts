@@ -10,6 +10,7 @@ import {
   type DeviceLossContextSource,
 } from './device-loss-context.js';
 import { startDeviceLossRecovery, type DeviceRecoverySource } from './device-loss-recovery.js';
+import { notifyDeviceHealth } from './device-loss-notification.js';
 import { reportDeviceRecovery } from './device-loss-recovery-report.js';
 import { useViewerStore } from '@/store';
 export { modelsWithoutOmittedPointCloudHandles } from './device-loss-recovery-report.js';
@@ -152,29 +153,12 @@ export function reportDeviceLost(
     console.warn('[Viewport] device-loss capture failed:', err);
   }
 
-  // Imported lazily to keep the render-path module free of UI imports (same
-  // pattern as gpu-upload-guard). Wording follows that guard's toast, but says
-  // "stopped drawing" rather than its "part of the model may not be drawn":
-  // a lost device stops the WHOLE view, not one batch, and it does not come
-  // back without a reload.
-  void import('@/components/ui/toast').then((m) => {
-    m.toast.error(
-      'The graphics device was lost, so the 3D view has stopped drawing. ' +
-      (recoveryAvailable
-        ? 'Automatic recovery is starting; reload the page if it does not return.'
-        : 'Reload the page to restore rendering.'),
-    );
-  }).catch((err) => {
-    // Best-effort: a failed toast must never mask the device loss itself. But
-    // swallow it SILENTLY and the one case that matters — the toast chunk
-    // failing to load, so the user gets no notification at all about a view
-    // that has stopped — becomes invisible to us too. Log, do not rethrow.
-    // `[Viewport]`, like every other line this module logs. The `[device-loss]`
-    // it used to carry was the only prefix in the file that named a failure
-    // rather than the subsystem, which made the module ungreppable as a whole
-    // and invited its copy on the degradation path to be wrong outright.
-    console.warn('[Viewport] device-loss toast unavailable; loss reported to telemetry only:', err);
-  });
+  notifyDeviceHealth('error',
+    'The graphics device was lost, so the 3D view has stopped drawing. ' +
+    (recoveryAvailable
+      ? 'Automatic recovery is starting; reload the page if it does not return.'
+      : 'Reload the page to restore rendering.'),
+  );
 }
 
 /**

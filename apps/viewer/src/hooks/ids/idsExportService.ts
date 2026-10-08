@@ -12,6 +12,7 @@
 import { boundedPassRate, type ValidationReport, type SupportedLocale } from '@ifc-lite/ids';
 import { posthog, trackExportCompleted } from '../../lib/analytics';
 import { downloadFile } from '../../lib/export/download';
+import { idsCheckSummary } from '../../lib/validation/ids-check-summary';
 
 // ============================================================================
 // JSON Export
@@ -354,35 +355,26 @@ export function buildReportHTML(report: ValidationReport, locale: SupportedLocal
   // the requirement blocks and the check-level tally below.
   const requirementGroupsBySpec = report.specificationResults.map(spec => buildRequirementGroups(spec));
 
-  // Three levels, three DIFFERENT and DELIBERATELY DISTINCT rates. None of
-  // them repurposes an existing field's meaning — `report.summary` is
-  // consumed by the CLI/BCF/JSON exports too, so its fields keep exactly
-  // the meaning the validator gives them.
-  //
-  // - Check (finest): one element measured against one requirement. Not
-  //   computed anywhere upstream — aggregated here from
-  //   `requirementResults` via `buildRequirementGroups`.
-  // - Entity: an entity passes only if ALL its requirements pass
-  //   (`validateEntityRequirements` in packages/ids/src/validation/validator.ts
-  //   ANDs across `spec.requirements`). This is `report.summary.overallPassRate`,
-  //   read directly rather than recomputed, and is the rate the report showed
-  //   before this change.
-  // - Specification (coarsest): a specification passes only if every one of
-  //   its entities passes, so a handful of scattered failures can fail many
-  //   specifications while the entity- and check-level rates stay high.
-  //   This is the number that matters for a compliance deliverable.
-  let checkPassed = 0;
-  let checkFailed = 0;
-  for (const groups of requirementGroupsBySpec) {
-    for (const group of groups) {
-      checkPassed += group.passed;
-      checkFailed += group.failed;
+  // Share complete IDS totals with the panel, including omitted passing
+  // entities. Rules retain their existing requirement-group aggregation.
+  // The engine's entity/specification rates keep their existing meanings.
+  const idsChecks = idsCheckSummary(report);
+  const completeChecks = report.source.kind === 'rules' || idsChecks !== null;
+  let checkPassed = idsChecks?.passed ?? 0;
+  let checkFailed = idsChecks?.failed ?? 0;
+  if (report.source.kind === 'rules') {
+    for (const groups of requirementGroupsBySpec) {
+      for (const group of groups) {
+        checkPassed += group.passed;
+        checkFailed += group.failed;
+      }
     }
   }
   const totalChecksAtCheckLevel = checkPassed + checkFailed;
   const checkLevelPassRate =
     totalChecksAtCheckLevel > 0 ? boundedPassRate(checkPassed, totalChecksAtCheckLevel) : 100;
 
+  const showCheckRate = report.source.kind === 'rules' || (completeChecks && totalChecksAtCheckLevel > 0);
   const entityLevelPassRate = report.summary.overallPassRate;
 
   const specLevelPassRate =
@@ -594,11 +586,13 @@ export function buildReportHTML(report: ValidationReport, locale: SupportedLocal
     <div class="two-rates">
       <div class="rate-block">
         <div class="rate-block-header">
-          <span class="rate-value">${checkLevelPassRate}%</span>
+          <span class="rate-value">${showCheckRate ? `${checkLevelPassRate}%` : '&mdash;'}</span>
           <span class="rate-label">Check pass rate</span>
         </div>
-        <div class="progress"><div class="progress-fill" style="width: ${checkLevelPassRate}%;"></div></div>
-        <div class="rate-detail">${checkPassed} of ${totalChecksAtCheckLevel} element&ndash;requirement checks passed</div>
+        ${showCheckRate ? `<div class="progress"><div class="progress-fill" style="width: ${checkLevelPassRate}%;"></div></div>` : ''}
+        <div class="rate-detail">${!completeChecks ? 'Requirement check totals unavailable for this incomplete report'
+          : report.source.kind === 'ids' && totalChecksAtCheckLevel === 0 ? 'No requirement checks evaluated'
+          : `${checkPassed} of ${totalChecksAtCheckLevel} element&ndash;requirement checks passed`}</div>
       </div>
       <div class="rate-block">
         <div class="rate-block-header">

@@ -3,11 +3,14 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { useCallback } from 'react';
+import { buildDxfUnderlaySvg, drawDxfUnderlaysPdf, mappedDxfUnderlayOptions } from '@/lib/export/drawing-vector-underlays';
+import { drawingReferenceSvg, snapshotDrawingReferences, rasterizeReferenceLayer } from '@/lib/export/drawing-raster-references';
 import type React from 'react';
 import { posthog, trackExportCompleted } from '@/lib/analytics';
 import { downloadFile, sanitizeFilename } from '@/lib/export/download';
 import { toast } from '@/components/ui/toast';
 import { useTranslation } from '@/i18n';
+import { recordActivity } from '@/lib/activity/activity-journal';
 import { pdfLineStyleFor } from '@/lib/export/pdf-line-style';
 import {
   GraphicOverrideEngine,
@@ -41,84 +44,11 @@ import { DEFAULT_SCAN_SVG_CAP, type ScanBandPoint } from '@/hooks/scanSectionMat
 import { computeSvgExportViewport, svgExportMmToWorld } from '@/hooks/svgExportViewport';
 import { makePropertiesGetter } from '@/hooks/drawingElementProperties';
 import { titleBlockWithEffectiveScale } from '@/hooks/titleBlockScaleField';
+import { scanOutlineDxfLayers, type ScanOutlineLayer } from '@/lib/scan-outline/scan-outline';
 
-/** Map a DXF vertical justification onto an SVG dominant-baseline. */
-function dxfValignToBaseline(valign: 'baseline' | 'bottom' | 'middle' | 'top'): string {
-  switch (valign) {
-    case 'bottom': return 'text-after-edge';
-    case 'middle': return 'central';
-    case 'top': return 'text-before-edge';
-    default: return 'alphabetic';
-  }
-}
-
-/**
- * Render DXF reference underlays as an SVG group (issue #1782). Geometry
- * arrives pre-mapped to drawing space (render-frame shift, flipped-section
- * mirror, and user placement applied by useDxfUnderlaysForDrawing — plan
- * sections only); `mapPoint` converts a drawing-space point into the
- * export's coordinate system (identity for the direct export, paper mm for
- * the sheet export). `strokeWidthForMm` and `fontScale` are in export units.
- */
-function buildDxfUnderlaySvg(
-  underlays: readonly DxfUnderlayRenderData[],
-  mapPoint: (x: number, y: number) => { x: number; y: number },
-  strokeWidthForMm: (mm: number) => number,
-  fontScale: number,
-  escapeXml: (s: string) => string,
-): string {
-  const visibleUnderlays = underlays.filter((u) => u.opacity > 0);
-  if (visibleUnderlays.length === 0) return '';
-
-  let svg = '  <g id="dxf-underlays">\n';
-  for (const data of visibleUnderlays) {
-    svg += `    <g data-dxf-underlay="${escapeXml(data.id)}" opacity="${data.opacity.toFixed(2)}">\n`;
-
-    for (const fill of data.fills) {
-      let d = '';
-      for (const ring of fill.loops) {
-        if (ring.length < 3) continue;
-        const first = mapPoint(ring[0].x, ring[0].y);
-        d += `${d ? ' ' : ''}M ${first.x.toFixed(4)} ${first.y.toFixed(4)}`;
-        for (let i = 1; i < ring.length; i++) {
-          const p = mapPoint(ring[i].x, ring[i].y);
-          d += ` L ${p.x.toFixed(4)} ${p.y.toFixed(4)}`;
-        }
-        d += ' Z';
-      }
-      if (!d) continue;
-      svg += `      <path d="${d}" fill="${fill.color}" fill-opacity="${fill.pattern ? 0.25 : 1}" fill-rule="evenodd" stroke="none"/>\n`;
-    }
-
-    for (const line of data.lines) {
-      if (line.points.length < 2) continue;
-      const pts = line.points.map((p) => mapPoint(p.x, p.y));
-      const pointsAttr = pts.map((p) => `${p.x.toFixed(4)},${p.y.toFixed(4)}`).join(' ');
-      const tag = line.closed ? 'polygon' : 'polyline';
-      const strokeWidth = strokeWidthForMm(line.widthMm ?? 0.18);
-      const dash = line.dashed ? ` stroke-dasharray="${(strokeWidth * 6).toFixed(4)} ${(strokeWidth * 4).toFixed(4)}"` : '';
-      svg += `      <${tag} points="${pointsAttr}" fill="none" stroke="${line.color}" stroke-width="${strokeWidth.toFixed(4)}" stroke-linecap="round"${dash}/>\n`;
-    }
-
-    for (const text of data.texts) {
-      const anchor = mapPoint(text.x, text.y);
-      const tip = mapPoint(text.x + text.dirX, text.y + text.dirY);
-      const angle = (Math.atan2(tip.y - anchor.y, tip.x - anchor.x) * 180) / Math.PI;
-      const fontSize = text.height * fontScale;
-      if (fontSize <= 0) continue;
-      const anchorAttr = text.align === 'center' ? 'middle' : text.align === 'right' ? 'end' : 'start';
-      // Multiline MTEXT stacks with tspans, matching the canvas layout.
-      const content = text.text
-        .split('\n')
-        .map((line, i) => `<tspan x="${anchor.x.toFixed(4)}" dy="${i === 0 ? 0 : (fontSize * 1.3).toFixed(4)}">${escapeXml(line)}</tspan>`)
-        .join('');
-      svg += `      <text x="${anchor.x.toFixed(4)}" y="${anchor.y.toFixed(4)}" font-family="Arial, sans-serif" font-size="${fontSize.toFixed(4)}" fill="${text.color}" text-anchor="${anchorAttr}" dominant-baseline="${dxfValignToBaseline(text.valign)}" transform="rotate(${angle.toFixed(2)} ${anchor.x.toFixed(4)} ${anchor.y.toFixed(4)})">${content}</text>\n`;
-    }
-
-    svg += '    </g>\n';
-  }
-  svg += '  </g>\n';
-  return svg;
+function tryDrawingSvg(generate: () => string | null): string | null {
+  try { return generate(); }
+  catch (error) { toast.error(error instanceof Error ? error.message : String(error)); return null; }
 }
 
 /**
@@ -313,8 +243,8 @@ interface UseDrawingExportParams {
   ifcDataStore: IfcDataStore | null;
   /** Geometry coordinate info (RTC offset + origin shift), for the DXF world-coordinate re-derivation (issue #1861). */
   coordinateInfo: GeometryResult['coordinateInfo'] | undefined;
-  /** Point-cloud scan overlay, already in drawing space (issue #1805) */
-  scanSection: { points: readonly ScanBandPoint[] };
+  /** Point-cloud scan overlay, already in drawing space (issue #1805), and its traced outline (#6871) */
+  scanSection: { points: readonly ScanBandPoint[]; outline?: ScanOutlineLayer | null };
   /** Pin View state, shared with the preview canvas. While pinned the sheet
    *  placement is HELD across a regenerate; print/export must honour the same
    *  held placement or it silently prints a different layout from the one on
@@ -446,12 +376,12 @@ function useDrawingExport({
   <rect x="${viewBoxMinX.toFixed(4)}" y="${viewBoxMinY.toFixed(4)}" width="${viewWidth.toFixed(4)}" height="${viewHeight.toFixed(4)}" fill="#FFFFFF"/>
 `;
 
-    // 0. DXF REFERENCE UNDERLAYS (issue #1782) - beneath everything. Data
-    // exists only for plan ('down') sections, where the direct export has
-    // no axis flips, so the identity mapping matches the canvas.
+    const mapUnderlay = (x: number, y: number) => ({ x: flipX ? -x : x, y: flipY ? -y : y });
+    svg += drawingReferenceSvg(useViewerStore.getState(), drawing.config.plane, mapUnderlay);
+    // Shared drawing-space geometry; apply the same final axis mapping as IFC.
     svg += buildDxfUnderlaySvg(
       dxfUnderlays,
-      (x, y) => ({ x, y }),
+      mapUnderlay,
       mmToModel,
       1, // text height is already in model units (metres)
       escapeXml,
@@ -813,13 +743,11 @@ function useDrawingExport({
       return path;
     };
 
-    // DXF reference underlays (issue #1782) - beneath everything. Data
-    // exists only for plan ('down') sections, where the sheet mapping has
-    // no axis flips, so the plain drawing→paper transform matches the canvas.
+    svg += drawingReferenceSvg(useViewerStore.getState(), drawing.config.plane, modelToPaper);
     svg += buildDxfUnderlaySvg(
       dxfUnderlays,
-      (x, y) => ({ x: x * scaleFactor + translateX, y: y * scaleFactor + translateY }),
-      (mm) => mm * 0.3, // mm on paper, matching the model outline convention
+      modelToPaper,
+      (mm) => mm, // CAD lineweights are paper millimetres, as in raw SVG/PDF.
       scaleFactor, // metres -> mm on paper
       escapeXml,
     );
@@ -973,7 +901,7 @@ function useDrawingExport({
   // Export SVG
   const handleExportSVG = useCallback(() => {
     // Use sheet export if enabled, otherwise raw drawing export
-    const svg = (sheetEnabled && activeSheet) ? generateSheetSVG() : generateExportSVG();
+    const svg = tryDrawingSvg(() => (sheetEnabled && activeSheet) ? generateSheetSVG() : generateExportSVG());
     if (!svg) return;
     const stem = (sheetEnabled && activeSheet)
       ? `${sanitizeFilename(activeSheet.name, { fallback: 'sheet' })}-${sectionPlane.axis}-${sectionPlane.position}`
@@ -987,7 +915,7 @@ function useDrawingExport({
   // not represented) — real-world metres, with a plan ('down') section
   // re-georeferenced to true IFC world coordinates (and further to
   // map/CRS coordinates when the model has an IfcMapConversion). DXF
-  // reference underlays are not embedded in this export; see PR notes.
+  // reference vectors are embedded from the same mapped drawing geometry.
   // The point-cloud scan overlay (issue #1805) is likewise deliberately
   // excluded: it is a raster-like screen aid (tens of thousands of circles),
   // not vector content — SVG export carries it (opt-in) instead.
@@ -1024,6 +952,10 @@ function useDrawingExport({
       showHiddenLines: displayOptions.showHiddenLines,
       coordinateTransform,
       metadataComment,
+      underlays: mappedDxfUnderlayOptions(dxfUnderlays, sectionPlane.axis),
+      // The traced scan outline (#6871) on its own layer, through the same
+      // georeference transform as the cut.
+      polylineLayers: displayOptions.showScanSection ? scanOutlineDxfLayers(scanSection.outline) : [],
     });
     const stem = `section-${sectionPlane.axis}-${sectionPlane.position}`;
     downloadDxf(dxf, `${stem}.dxf`);
@@ -1034,8 +966,8 @@ function useDrawingExport({
       georeferenced: isGeoreferenced,
     });
   }, [
-    drawing, displayOptions.showHiddenLines, sectionPlane, ifcDataStore, coordinateInfo,
-    storeModels, anchorModelIdOverride, georefMutations, mutationVersion,
+    drawing, dxfUnderlays, displayOptions.showHiddenLines, displayOptions.showScanSection, scanSection.outline,
+    sectionPlane, ifcDataStore, coordinateInfo, storeModels, anchorModelIdOverride, georefMutations, mutationVersion,
   ]);
   // Export scaled PDF (issue #2042): a true-vector PDF sized so the
   // requested scale ("1:N") is EXACT — the page itself is sized to the
@@ -1046,9 +978,10 @@ function useDrawingExport({
   // v1 scope, deliberately smaller than the SVG export: cut-polygon
   // OUTLINES and drawing LINES only (matching what an engineer actually
   // measures off a printed section). Not yet included: area fills /
-  // hatching, DXF underlays, text/cloud annotations, and the point-cloud
+  // hatching, text/cloud annotations, and the point-cloud
   // scan overlay. Those are straightforward follow-ups once this scale
-  // plumbing is reviewed; see the PR description.
+  // plumbing is reviewed; see the PR description. Reference raster pages and
+  // DXF vectors are included beneath these strokes (#6615).
   //
   // The drawing-sheet frame / title block / scale bar are NOT on that list
   // any more, and this path is not where they will arrive. It is the
@@ -1112,11 +1045,11 @@ function useDrawingExport({
     // vector — see `useDrawingExport.pdfVectorPaths.test.tsx`, which pins
     // both halves of that split.
     if (sheetEnabled && activeSheet) {
-      const svg = generateSheetSVG();
+      const svg = tryDrawingSvg(generateSheetSVG);
       if (!svg) return;
       const { widthMm, heightMm } = activeSheet.paper;
-      void (async () => {
-        try {
+      void recordActivity({ kind: 'export', title: 'activityTray.job.export', panel: 'drawing',
+        subject: `${activeSheet.name} · PDF` }, async () => {
           const { jsPDF } = await import('jspdf');
           const { dataUrl, fit } = await rasterizeSvgToPngDataUrl(svg, widthMm, heightMm);
           const doc = new jsPDF({
@@ -1155,10 +1088,9 @@ function useDrawingExport({
             raster_dpi: Math.floor(fit.effectiveDpi),
             raster_capped: fit.capped,
           });
-        } catch (err) {
-          toast.error(err instanceof Error ? t('section2d.export.pdfFailed', { error: err.message }) : t('section2d.export.pdfFailedGeneric'));
-        }
-      })();
+      }).catch((err: unknown) => {
+        toast.error(err instanceof Error ? t('section2d.export.pdfFailed', { error: err.message }) : t('section2d.export.pdfFailedGeneric'));
+      });
       return;
     }
 
@@ -1181,7 +1113,15 @@ function useDrawingExport({
     }
     const mapPoint = makeSectionMapPoint(currentAxis, layout);
 
-    void (async () => {
+    let referenceSnapshot: ReturnType<typeof snapshotDrawingReferences>;
+    try { referenceSnapshot = snapshotDrawingReferences(useViewerStore.getState(), drawing.config.plane); }
+    catch (error) { toast.error(error instanceof Error ? error.message : t('section2d.export.pdfFailedGeneric')); return; }
+    // Own mapped vectors at click time; model/reference edits during async export
+    // cannot replace the geometry whose bounds/scale were used above.
+    const vectorSnapshot = structuredClone(dxfUnderlays);
+
+    void recordActivity({ kind: 'export', title: 'activityTray.job.export', panel: 'drawing',
+      subject: `section-${sectionPlane.axis}-${sectionPlane.position} · PDF` }, async () => {
       try {
         const { jsPDF } = await import('jspdf');
         const { widthMm, heightMm } = layout.page;
@@ -1190,6 +1130,10 @@ function useDrawingExport({
           format: [widthMm, heightMm],
           orientation: widthMm >= heightMm ? 'landscape' : 'portrait',
         });
+
+        const raster = await rasterizeReferenceLayer(referenceSnapshot, widthMm, heightMm, mapPoint);
+        if (raster) doc.addImage(raster, 'PNG', 0, 0, widthMm, heightMm);
+        drawDxfUnderlaysPdf(doc, vectorSnapshot, mapPoint, 1000 / effectiveScale);
 
         doc.setDrawColor(0, 0, 0);
         doc.setLineCap('round');
@@ -1259,18 +1203,16 @@ function useDrawingExport({
           axis: sectionPlane.axis,
           scale_factor: effectiveScale,
         });
-      } catch (err) {
-        // The dynamic `jspdf` import, PDF construction and download all run
-        // in this async IIFE, outside the synchronous try/catch above.
-        toast.error(err instanceof Error ? t('section2d.export.pdfFailed', { error: err.message }) : t('section2d.export.pdfFailedGeneric'));
-      }
-    })();
-  }, [drawing, displayOptions.scale, displayOptions.showHiddenLines, sectionPlane, sheetEnabled, activeSheet, generateSheetSVG, t]);
+      } finally { referenceSnapshot.release(); }
+    }).catch((err: unknown) => {
+      toast.error(err instanceof Error ? t('section2d.export.pdfFailed', { error: err.message }) : t('section2d.export.pdfFailedGeneric'));
+    });
+  }, [drawing, dxfUnderlays, displayOptions.scale, displayOptions.showHiddenLines, sectionPlane, sheetEnabled, activeSheet, generateSheetSVG, t]);
 
   // Print handler
   const handlePrint = useCallback(() => {
     // Use sheet export if enabled, otherwise raw drawing export
-    const svg = (sheetEnabled && activeSheet) ? generateSheetSVG() : generateExportSVG();
+    const svg = tryDrawingSvg(() => (sheetEnabled && activeSheet) ? generateSheetSVG() : generateExportSVG());
     if (!svg) return;
 
     // Create a new window for printing

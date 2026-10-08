@@ -1,6 +1,6 @@
 {
   "name": "ifc-lite",
-  "version": "10.2.0",
+  "version": "10.3.0",
   "description": "High-performance browser IFC parser & renderer",
   "private": true,
   "type": "module",
@@ -12,6 +12,7 @@
   "scripts": {
     "dev": "pnpm build && pnpm --filter viewer dev",
     "dev:api": "zsh -lc 'set -a; source \"api/.env.local\"; set +a; PORT=3001 tsx scripts/dev-chat-api.ts'",
+    "dev:bcf-test-server": "tsx scripts/dev-bcf-test-server.ts",
     "dev:embed": "pnpm build && pnpm --filter @ifc-lite/viewer-embed dev",
     "build": "turbo build",
     "build:e2e": "turbo build --filter=@ifc-lite/viewer",
@@ -42,6 +43,7 @@
     "check:rust-source-text-assertions": "node scripts/check-rust-source-text-assertions.mjs",
     "check:refwalk-guards": "node scripts/check-refwalk-guards.mjs",
     "check:raw-entity-enumeration": "node scripts/check-raw-entity-enumeration.mjs",
+    "check:perf-flags": "node scripts/check-perf-flags.mjs",
     "check:module-size": "node scripts/check-module-size.mjs",
     "check:i18n-literals": "node scripts/check-i18n-literals.mjs",
     "lint:i18n-literals-baseline": "node scripts/check-i18n-literals.mjs --update",
@@ -110,6 +112,7 @@
     "publish:dry": "pnpm -r publish --access public --dry-run",
     "test:benchmark:viewer": "playwright test tests/benchmark/viewer-benchmark.spec.ts --project=viewer-benchmark",
     "test:benchmark:viewer:ci": "playwright test tests/benchmark/viewer-benchmark.spec.ts --project=viewer-benchmark-ci --reporter=json",
+    "test:benchmark:frames": "playwright test --project=viewer-frames-ci",
     "benchmark:check": "node scripts/check-benchmark-regression.js",
     "benchmark:baseline": "pnpm --filter viewer build && pnpm test:benchmark:viewer",
     "generate:bim-globals": "pnpm turbo build --filter=@ifc-lite/sandbox && node scripts/generate-bim-globals.mjs",
@@ -174,6 +177,13 @@
       "@zip.js/zip.js": "2.8.26",
       "browserslist": "^4.28.9",
       "baseline-browser-mapping": "^2.11.22"
+    },
+    "packageExtensions": {
+      "vite-plugin-top-level-await@1.6.0": {
+        "dependencies": {
+          "@jridgewell/remapping": "^2.3.5"
+        }
+      }
     },
     "patchedDependencies": {
       "vite-plugin-top-level-await@1.6.0": "patches/vite-plugin-top-level-await@1.6.0.patch",

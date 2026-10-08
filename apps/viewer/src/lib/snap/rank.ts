@@ -21,13 +21,13 @@ export const MODELING_SNAP_PROFILE: SnapProfile = {
   radiusPx: 12,
   tiers: [
     ['endpoint', 'vertex'],
-    ['intersection', 'midpoint'],
+    ['intersection', 'midpoint', 'gridIntersection'],
     ['perpendicular'],
     ['edge', 'extension', 'parallel'],
     ['face'],
     ['grid'],
   ],
-  sources: ['mesh', 'semantic', 'grid'],
+  sources: ['mesh', 'semantic', 'grid', 'ifc-grid'],
   angleStepDeg: 15,
   hysteresisPx: 3,
 };

@@ -17,6 +17,50 @@
 import type { TranslationValue } from '../types';
 
 export const documentEn = {
+  'document.pageHeading.label': 'Page heading',
+  'document.pageHeading.text': 'Page heading text',
+  'document.pageHeading.font': 'Page heading font',
+  'document.pageHeading.size': 'Page heading size',
+  'document.pageHeading.color': 'Page heading colour',
+  'document.pageHeading.resetColor': 'Reset page heading colour',
+  'document.pageHeading.reset': 'Reset page heading',
+  'document.pageHeading.date': 'Page heading date',
+  'document.pageHeading.pageNumbers': 'Page heading page numbers',
+  'document.pageHeading.logo': 'Page heading logo',
+  'document.pageHeading.logoHeight': 'Page heading logo height',
+  'document.pageHeading.removeLogo': 'Remove page heading logo',
+  'document.pageFooter.date': 'Page footer date',
+  'document.pageFooter.pageNumbers': 'Page footer page numbers',
+  'document.pageFooter.logo': 'Page footer logo',
+  'document.pageFooter.logoHeight': 'Page footer logo height',
+  'document.pageFooter.removeLogo': 'Remove page footer logo',
+  'document.pageFooter.label': 'Page footer',
+  'document.pageFooter.text': 'Page footer text',
+  'document.pageFooter.font': 'Page footer font',
+  'document.pageFooter.size': 'Page footer size',
+  'document.pageFooter.color': 'Page footer colour',
+  'document.pageFooter.resetColor': 'Reset page footer colour',
+  'document.pageFooter.reset': 'Reset page footer',
+  // Canonical paper labels are formatted before preview/PDF pagination (#6610).
+  'document.print.footer': 'Generated {timestamp} · ifc-lite',
+  'document.print.pageCounter': 'Page {page} / {total}',
+  'document.print.passPercent': '{percent}% passed',
+  'document.print.partialCounts': 'Checked {checked} · Passed/failed unavailable (partial report)',
+  'document.print.cardinalityExactly': 'exactly {min}',
+  'document.print.cardinalityRange': '{min} to {max}',
+  'document.print.cardinalityAtLeast': 'at least {min}',
+  'document.print.cardinalityAtMost': 'at most {max}',
+  'document.print.expected': 'Expected {value}',
+  'document.print.actual': 'Actual {value}',
+  'document.print.moreSets': 'More sets not shown',
+  'document.print.setLimit': 'The validation run capped its set results',
+  'document.print.comment': 'Comment: {comment}',
+  'document.print.noGroupChecks': 'No checks in this group.',
+  'document.print.snapshot': '3D snapshot in the PDF',
+  'document.print.preparing': 'Preparing document pages…',
+  'document.print.imageError': 'The image could not be decoded.',
+  'document.print.bandFrameTooShort': 'The header and footer leave too little space for this block. Reduce their height or the block size.',
+  'document.print.layoutError': 'Document preview could not be prepared: {message}',
   'document.block.tableSourceComparison': 'Saved comparison',
   'document.block.comparisonPicker': 'Choose saved comparison for document',
   'document.block.comparisonSnapshotHint': 'This document embeds a copy of the completed report. Renaming or deleting its saved comparison does not change this copy.',
@@ -27,6 +71,9 @@ export const documentEn = {
   'document.block.widthTitle': 'Half pairs with the next half text, chart, or image into one row',
   'document.block.widthFull': 'Full',
   'document.block.widthHalf': 'Half',
+  'document.block.scaleLabel': 'Block size (%)',
+  'document.block.scaleAriaLabel': 'Block size percentage',
+  'document.block.scaleTitle': 'Scales this block\'s text and graphics together. 100 is the size the block was authored at.',
   'document.block.heightPtLabel': 'Height (pt)',
   'document.block.chartHeightAriaLabel': 'Chart height',
   'document.block.spacerHeightAriaLabel': 'Spacer height',
@@ -46,6 +93,13 @@ export const documentEn = {
   'document.block.textColorReset': 'Reset text colour',
   'document.block.backgroundColorReset': 'Clear background colour',
   'document.block.colorReset': 'Reset',
+  'document.block.titleSizeLabel': 'Title size (pt)',
+  'document.block.titleSizeAriaLabel': 'Title text size',
+  'document.block.titleTextColorLabel': 'Title colour',
+  'document.block.titleTextColorReset': 'Reset title colour',
+  'document.block.titleBackgroundColorLabel': 'Title background',
+  'document.block.titleBackgroundColorReset': 'Clear title background',
+  'document.block.titleLowContrast': 'The title colour has low contrast on what it prints on, its background or the white page ({ratio}:1, at least {minimum}:1 recommended), so the title may be hard or impossible to read.',
 
   // BlockEditor.tsx (#4918 doc slice): the block-kind badge, and every
   // field/control each block kind renders.
@@ -67,6 +121,7 @@ export const documentEn = {
   'document.block.textKeysHint': 'Enter: new line · Tab: indent (Shift+Tab: outdent) · Esc, then Tab: leave the text box',
   'document.block.moveUpAriaLabel': 'Move block up',
   'document.block.moveDownAriaLabel': 'Move block down',
+  'document.block.copyAriaLabel': 'Copy block',
   'document.block.removeAriaLabel': 'Remove block',
   'document.block.imageEmpty': 'No image yet',
   'document.block.imageReading': 'Reading…',
@@ -157,6 +212,10 @@ export const documentEn = {
     one: '{countDisplay} table not printed',
     other: '{countDisplay} tables not printed',
   },
+  'document.panel.problemCharts': {
+    one: '{countDisplay} chart not printed',
+    other: '{countDisplay} charts not printed',
+  },
 
   // DocumentPreview.tsx (#4918 doc slice): empty-state and unresolved-topic
   // messages the rendered page itself shows.
@@ -166,7 +225,7 @@ export const documentEn = {
   'document.preview.topicNotLoaded': 'BCF topic {guid} is not among the loaded topics.',
   'document.preview.emptyPage': 'An empty page — add a block on the left.',
 
-  // Table block (#5142): TableBlockEditor.tsx, TablePreview.tsx, DocumentPanel.tsx.
+  // Table block (#5142): TableBlockEditor.tsx, ComposedPageItems.tsx, DocumentPanel.tsx.
   'document.addBlock.table': 'Table (from a list)',
   'document.block.tableSourceLabel': 'Source',
   'document.block.tableSourceAriaLabel': 'Table source',
@@ -181,6 +240,8 @@ export const documentEn = {
   'document.block.tableEditInLists': 'Edit in Lists',
   'document.block.tableEditInListsHint': 'Opened in the Lists panel — save there, then "Update from saved list" here.',
   'document.block.tableSelectionDropped': 'The selection this list was made from is not kept in a document: the table prints every element the list\'s classes and conditions match.',
+  'document.block.titleAriaLabel': 'Block title',
+  'document.block.titlePlaceholder': 'Title (leave empty for the original heading)',
   'document.block.tableTitleAriaLabel': 'Table title',
   'document.block.tableCaptionAriaLabel': 'Table caption',
   'document.block.tableOrderLabel': 'Group order',
@@ -210,14 +271,19 @@ export const documentEn = {
   // A summary of checked/passed/failed and the top-level check list, mirroring
   // the table block's structure, with per-rule rows under each check.
   'document.block.kindIdsReport': 'IDS report',
-  'document.addBlock.idsReport': 'IDS validation report',
-  'document.addBlock.idsReportDisabledTitle': 'Run an IDS or information validation first',
+  // One Add block entry for every validation report (#6553); the block's source picker chooses saved or live.
+  'document.addBlock.validationReport': 'Validation report',
+  'document.addBlock.validationReportDisabledTitle': 'Save a report under Data validation, run a validation, or create a manual checklist first',
+  'document.block.reportSourceLiveIds': 'Current IDS validation run (live)',
+  'document.block.reportSourceLiveRules': 'Current information validation run (live)',
+  'document.block.reportSourceLiveManual': 'Current manual checklist (live)',
   'document.block.idsReportSourceLabel': 'Source',
   'document.block.idsReportVariantLabel': 'Layout',
   'document.block.idsReportVariantAriaLabel': 'IDS report layout',
   'document.block.idsReportVariantClassic': 'Classic',
   'document.block.idsReportVariantCompact': 'Compact (bars)',
   'document.block.idsReportVariantLong': 'Long (full text)',
+  'document.block.idsReportSpecificationsOnly': 'Specifications only',
   'document.block.idsReportRefresh': 'Refresh from current validation report',
   'document.block.idsReportRefreshDisabledTitle': 'Run an IDS validation first',
   'document.block.idsReportRefreshed': 'Refreshed from the current validation report',
@@ -238,7 +304,6 @@ export const documentEn = {
   // `sourceKind` picks the label, refresh only accepts a report of the same kind, and the
   // rule engine's extra detail (severity, set rows, cardinality, errors) is shown.
   'document.block.kindRulesReport': 'Information validation report',
-  'document.addBlock.rulesReport': 'Information validation report',
   'document.block.rulesReportRefreshDisabledTitle': 'Run an information validation first',
   'document.preview.idsReportHeading': 'IDS report: {name}',
   'document.preview.rulesReportHeading': 'Information validation report: {name}',
@@ -258,7 +323,7 @@ export const documentEn = {
   'document.preview.idsReportSetsTruncated': 'More sets exist than the validation run kept.',
 
   // Validation-results table source (#5138): ValidationSourceEditor in TableBlockEditor.tsx, and
-  // the placeholder states TablePreview.tsx shows in place of rows.
+  // the placeholder states the canonical preview shows in place of rows.
   'document.block.tableValidationRowsLabel': 'Rows',
   'document.block.tableValidationRowsAriaLabel': 'Which rows to show',
   'document.block.tableValidationRowsFailed': 'Failed entities',
@@ -269,7 +334,7 @@ export const documentEn = {
   'document.block.tableRuleAriaLabel': 'Filter to one rule',
   'document.block.tableRuleAll': 'Every rule',
   'document.block.tableColumnsLabel': 'Columns',
-  'document.table.noReport': 'No validation report yet — run validation, then this table fills in.',
+  'document.table.noReport': 'No validation report yet — run validation to include results.',
   'document.table.ruleNotFound': 'The rule this table refers to is not in the current validation report.',
   'document.table.validationNoRows': 'No rows match this rule.',
 

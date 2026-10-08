@@ -91,7 +91,7 @@ npx @ifc-lite/server-bin download
 
 ## When a version has no release binaries
 
-The binary is downloaded from the GitHub release `v<package version>`. If that release is missing, or has no archive for your platform (every URL returns 404), the downloader uses the newest **older** `vX.Y.Z` release that has your platform's archive and a checksum. It verifies that archive the same way and prints a warning naming both versions. The warning is repeated on every run that uses the fallback binary. To try the exact version again, run `npx @ifc-lite/server-bin download`. A network error, 5xx response or rate limit never triggers the fallback. If `GITHUB_TOKEN` or `GH_TOKEN` is set, the release lookup is authenticated.
+The binary is downloaded from the GitHub release `server-v<package version>`. (Up to 1.22.1, server-bin releases were tagged `v<package version>`; `v*` tags now belong to the root product release only.) If that release is missing, or has no archive for your platform (every URL returns 404), the downloader uses the newest **older** release of the **same major version** that has your platform's archive and a checksum. It never crosses a major version, since the server API differs between majors. It verifies that archive the same way and prints a warning naming both versions. The warning is repeated on every run that uses the fallback binary. To try the exact version again, run `npx @ifc-lite/server-bin download`. A network error, 5xx response or rate limit never triggers the fallback. If `GITHUB_TOKEN` or `GH_TOKEN` is set, the release lookup is authenticated.
 
 ## Falling back
 

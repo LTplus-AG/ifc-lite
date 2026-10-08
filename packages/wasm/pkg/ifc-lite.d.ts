@@ -1,6 +1,55 @@
 /* tslint:disable */
 /* eslint-disable */
 
+/** Every field is optional; absent or `undefined` means the default. Unknown fields and non-finite numbers are refused. Lengths in metres; pass plane coordinates local to the slab (f32 input). */
+export interface ScanOutlineOptionsJs {
+    /** Fixed cell edge; omit to pick it from the point density between minCellSize and maxCellSize. */
+    cellSize?: number;
+    /** Default 0.02, at least 0.001. */ minCellSize?: number;
+    /** Default 0.05. */ maxCellSize?: number;
+    /** Adaptive cells grow until the median occupied cell holds this many points. Default 6. */
+    targetPointsPerCell?: number;
+    /** Cell budget for the padded grid, from (2·pad + 1)² (81 with the defaults) up to 67108864. Default 16777216; hitting it sets diagnostics.cellCapHit. */
+    maxCells?: number;
+    /** Default 1. */ minPointsPerCell?: number;
+    /** A cell is occupied from this fraction of the median occupied-cell count. Default 0.25. */
+    noiseFraction?: number;
+    /** Widest gap the closing bridges, about a wall thickness; clamped to 0.5. Default 0.3. */
+    maxGap?: number;
+    /** Speckle opening radius in cells (0 disables). Default 1. */ openRadiusCells?: number;
+    /** Solid components below this area (m²) are dropped. Default 0.02. */ minComponentArea?: number;
+    /** Enclosed holes below this area (m²) are filled. Default 0.5. */ minHoleArea?: number;
+    /** Douglas-Peucker tolerance in cells. Default 1.5. */ simplifyToleranceCells?: number;
+    /** Refit edges to the points. Default true. */ snap?: boolean;
+    /** Evidence band beside an edge, in cells (at most 16). Default 3. */ snapDistanceCells?: number;
+    /** Fewest points to refit an edge. Default 8. */ minSnapPoints?: number;
+    /** Largest squaring move, in cells (at most 32). Default 4. */ maxVertexMoveCells?: number;
+    /** Square edges to the dominant direction. Default true. */ square?: boolean;
+    /** Default 3. */ squareAngleToleranceDeg?: number;
+    /** Squares edges whose ends move at most this far. Default 0.03. */ squareOffsetTolerance?: number;
+}
+/** world = origin + u * uAxis + v * vAxis */
+export interface ScanOutlinePlaneFrameJs {
+    origin: [number, number, number];
+    uAxis: [number, number, number];
+    vAxis: [number, number, number];
+}
+export interface ScanOutlineDiagnosticsJs {
+    inputPoints: number; usedPoints: number; nonFinitePoints: number; outlierPoints: number;
+    cellSize: number; gridWidth: number; gridHeight: number;
+    cellCapHit: boolean; maxGapClamped: boolean; countThreshold: number;
+    /** f32 step at the largest input coordinate; `coordinatePrecisionDegraded` when above a tenth of a cell. Pass coordinates local to the slab. */
+    coordinateSpacingMetres: number; coordinatePrecisionDegraded: boolean;
+    occupiedCells: number; solidCells: number; componentsDropped: number; holesFilled: number;
+    ringCount: number; outerRingCount: number; holeRingCount: number; vertexCount: number;
+    simplifyReinsertions: number; snappedEdges: number;
+    /** Degrees in [0, 90); absent when no edge was long enough to tell. */
+    dominantAngleDeg?: number;
+    squaredEdges: number; revertedMoves: number;
+}
+
+
+
 /** Exact browser mesh RTC frame, in IFC Z-up metres. */
 export interface RtcFrame {
     x: number;
@@ -181,6 +230,22 @@ export interface ExtrusionDefinitionsJs {
 }
 
 
+
+export class AlignmentAxisJs {
+    free(): void;
+    [Symbol.dispose](): void;
+    /**
+     * [horizontal distance, IFC Z-up point XYZ, normalized world tangent XYZ].
+     * Coordinates remain f64 absolute metres; no renderer origin is applied.
+     */
+    evaluate(distance_m: number): Float64Array;
+    constructor(content: string, express_id: number);
+    readonly GlobalId: string | undefined;
+    readonly Name: string | undefined;
+    readonly approximate: boolean;
+    readonly expressId: number;
+    readonly geometricHorizontalLengthMeters: number;
+}
 
 /**
  * The overlap solid of one clashing pair, or the reason there is none.
@@ -938,6 +1003,11 @@ export class IfcAPI {
      */
     planCapturedMesh(content: Uint8Array, request_json: string): Uint8Array;
     /**
+     * Plan opt-in map similarity normalization on a completed STEP export.
+     * Returns entity patches, allocated IDs and atomic refusal warnings as JSON.
+     */
+    planMapConversionNormalization(content: Uint8Array): string;
+    /**
      * Registered mesh observations over canonical target albedo. Host verifies
      * original GLB identity against decoded source mesh/image and freezes frames.
      * Run in an owned cancellable worker. IFPA output adds `transfer` coverage;
@@ -1035,6 +1105,15 @@ export class IfcAPI {
      */
     processGeometryBatchPartitionedFromSource(jobs_flat: Uint32Array, unit_scale: number, rtc_x: number, rtc_y: number, rtc_z: number, needs_shift: boolean, void_keys: Uint32Array, void_counts: Uint32Array, void_values: Uint32Array, style_ids: Uint32Array, style_colors: Uint8Array, plane_angle_to_radians?: number | null, material_element_ids?: Uint32Array | null, material_color_counts?: Uint32Array | null, material_colors_rgba?: Uint8Array | null): PartitionedBatch;
     /**
+     * Propose IFC walls, slabs, columns and pipes from a scan segmentation
+     * report (#6894). `report_json` is the JSON `segmentScanPoints`
+     * returned; `options_json` is a camelCase `ScanProposalOptions` object
+     * (`{}` for the defaults; `scanToModel` maps the report's frame into the
+     * IFC model frame). Returns the UTF-8 JSON `ScanProposalReport` in the
+     * model frame (Z up, metres). Pure: loads and changes nothing.
+     */
+    proposeScanElements(report_json: string, options_json: string): Uint8Array;
+    /**
      * Fit bounded manual correspondences in source metres -> IFC world Z-up
      * metres, reporting held-out errors separately. Does not load or move models.
      */
@@ -1119,6 +1198,13 @@ export class IfcAPI {
      * Much faster than scanning all entities (3x speedup for large files)
      */
     scanGeometryEntitiesFast(content: string): any;
+    /**
+     * Detect planes and cylinders (columns, pipes) in a point cloud (#6870). `positions` are xyz f32 metres
+     * (at most 100,000,000 points); `options_json` is a camelCase
+     * `ScanSegmentationOptions` object (`{}` for the defaults). Returns the
+     * UTF-8 JSON `ScanSegmentationReport`. Pure: loads and changes nothing.
+     */
+    segmentScanPoints(positions: Float32Array, options_json: string): Uint8Array;
     /**
      * Enable or disable per-entity geometry fingerprinting in
      * `processGeometryBatch`, used by the viewer's revision-diff feature.
@@ -1790,6 +1876,50 @@ export class ProfileEntryJs {
 }
 
 /**
+ * The traced outline. Owns wasm memory: call `free()`.
+ */
+export class ScanOutlineJs {
+    private constructor();
+    free(): void;
+    [Symbol.dispose](): void;
+    /**
+     * Every ring's plane coordinates concatenated, `[u0, v0, u1, v1, …]`.
+     */
+    coords(): Float64Array;
+    /**
+     * What the run did: cell size, cap hits, ring counts, repairs.
+     */
+    diagnostics(): ScanOutlineDiagnosticsJs;
+    /**
+     * Vertex count of each ring, in `coords()` order.
+     */
+    ringLengths(): Uint32Array;
+    /**
+     * The ring directly containing each ring (a hole's outer boundary, an
+     * island's hole), or `-1` at top level.
+     */
+    ringParents(): Int32Array;
+    /**
+     * Ring index at which each shape starts; entry `s` is shape `s`'s outer
+     * ring and the rings up to the next entry are its holes.
+     */
+    shapeOffsets(): Uint32Array;
+    /**
+     * Every ring mapped through the plane frame, `[x0, y0, z0, …]` in
+     * `coords()` order, or `undefined` when no frame was given.
+     */
+    worldCoords(): Float64Array | undefined;
+    /**
+     * Total number of rings (outer boundaries and holes).
+     */
+    readonly ringCount: number;
+    /**
+     * Number of outer boundaries.
+     */
+    readonly shapeCount: number;
+}
+
+/**
  * Flat result of `simplifyMeshes`: per surviving element `i`,
  * `vertexCounts[i]` vertices and `indexCounts[i]` indices taken in order
  * from the concatenated arrays (mirrors the `exportGlbFromMeshes` wire
@@ -2328,6 +2458,14 @@ export function meshOutline2d(positions: Float32Array, indices: Uint32Array, axi
 export function resolve2d(a: Contours2D): Contours2D;
 
 /**
+ * Install (or, with `undefined`, remove) the callback invoked at most once a
+ * second while geometry work is in progress inside a WASM call. It runs
+ * synchronously inside that call, so it must only do something cheap such as
+ * `postMessage`, and must not call back into this module.
+ */
+export function setGeometryProgressCallback(callback?: Function | null): void;
+
+/**
  * Split a mesh into one closed solid per zone, plus the remainder.
  *
  * `positions` is flat XYZ (f64, caller's frame), `indices` flat triangle
@@ -2379,6 +2517,14 @@ export function resolve2d(a: Contours2D): Contours2D;
 export function splitMeshByZones(positions: Float64Array, indices: Uint32Array, zones: Float64Array, footprints?: Float64Array | null, footprint_counts?: Uint32Array | null): ZoneSplitJs | undefined;
 
 /**
+ * Trace closed outlines from slab points given in plane coordinates.
+ *
+ * THROWS on invalid options or plane frame (unknown field, non-finite or
+ * out-of-range value). Points that are not finite are skipped and counted.
+ */
+export function traceScanOutline(plane_xy: Float32Array, options?: ScanOutlineOptionsJs | null, plane_frame?: ScanOutlinePlaneFrameJs | null): ScanOutlineJs;
+
+/**
  * `a ∪ b`.
  */
 export function union2d(a: Contours2D, b: Contours2D): Contours2D;
@@ -2402,6 +2548,7 @@ export type InitInput = RequestInfo | URL | Response | BufferSource | WebAssembl
 
 export interface InitOutput {
     readonly memory: WebAssembly.Memory;
+    readonly __wbg_alignmentaxisjs_free: (a: number, b: number) => void;
     readonly __wbg_clashintersectionsolidjs_free: (a: number, b: number) => void;
     readonly __wbg_clashrunresult_free: (a: number, b: number) => void;
     readonly __wbg_clashsession_free: (a: number, b: number) => void;
@@ -2416,6 +2563,7 @@ export interface InitOutput {
     readonly __wbg_partitionedbatch_free: (a: number, b: number) => void;
     readonly __wbg_profilecollection_free: (a: number, b: number) => void;
     readonly __wbg_profileentryjs_free: (a: number, b: number) => void;
+    readonly __wbg_scanoutlinejs_free: (a: number, b: number) => void;
     readonly __wbg_simplifiedmeshes_free: (a: number, b: number) => void;
     readonly __wbg_spaceplatehandle_free: (a: number, b: number) => void;
     readonly __wbg_symboliccircle_free: (a: number, b: number) => void;
@@ -2425,6 +2573,13 @@ export interface InitOutput {
     readonly __wbg_symbolictext_free: (a: number, b: number) => void;
     readonly __wbg_zonepiecejs_free: (a: number, b: number) => void;
     readonly __wbg_zonesplitjs_free: (a: number, b: number) => void;
+    readonly alignmentaxisjs_GlobalId: (a: number, b: number) => void;
+    readonly alignmentaxisjs_Name: (a: number, b: number) => void;
+    readonly alignmentaxisjs_approximate: (a: number) => number;
+    readonly alignmentaxisjs_evaluate: (a: number, b: number, c: number) => void;
+    readonly alignmentaxisjs_expressId: (a: number) => number;
+    readonly alignmentaxisjs_geometricHorizontalLengthMeters: (a: number) => number;
+    readonly alignmentaxisjs_new: (a: number, b: number, c: number, d: number) => void;
     readonly clashIntersectionSolid: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number) => number;
     readonly clashintersectionsolidjs_degenerateReason: (a: number, b: number) => void;
     readonly clashintersectionsolidjs_indices: (a: number, b: number) => void;
@@ -2512,6 +2667,7 @@ export interface InitOutput {
     readonly ifcapi_planAnnotationPlane: (a: number, b: number, c: number, d: number, e: number, f: number) => void;
     readonly ifcapi_planAppearance: (a: number, b: number, c: number, d: number, e: number, f: number) => void;
     readonly ifcapi_planCapturedMesh: (a: number, b: number, c: number, d: number, e: number, f: number) => void;
+    readonly ifcapi_planMapConversionNormalization: (a: number, b: number, c: number, d: number) => void;
     readonly ifcapi_planMeshTransfer: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number) => void;
     readonly ifcapi_planPageAppearance: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number) => void;
     readonly ifcapi_planPdfFillAnnotation: (a: number, b: number, c: number, d: number, e: number, f: number) => void;
@@ -2524,6 +2680,7 @@ export interface InitOutput {
     readonly ifcapi_processGeometryBatchInstanced: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number, m: number, n: number, o: number, p: number, q: number, r: number, s: number, t: number, u: number, v: number, w: number, x: number, y: number, z: number, a1: number, b1: number, c1: number) => void;
     readonly ifcapi_processGeometryBatchPartitioned: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number, m: number, n: number, o: number, p: number, q: number, r: number, s: number, t: number, u: number, v: number, w: number, x: number, y: number, z: number, a1: number, b1: number) => number;
     readonly ifcapi_processGeometryBatchPartitionedFromSource: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number, m: number, n: number, o: number, p: number, q: number, r: number, s: number, t: number, u: number, v: number, w: number, x: number, y: number, z: number) => number;
+    readonly ifcapi_proposeScanElements: (a: number, b: number, c: number, d: number, e: number, f: number) => void;
     readonly ifcapi_registerScanCorrespondences: (a: number, b: number, c: number, d: number) => void;
     readonly ifcapi_resolveStyledItemsShard: (a: number, b: number, c: number, d: number, e: number, f: number) => void;
     readonly ifcapi_resolveStyledItemsShardFromSource: (a: number, b: number, c: number, d: number) => void;
@@ -2532,6 +2689,7 @@ export interface InitOutput {
     readonly ifcapi_scanEntityIndexShard: (a: number, b: number, c: number, d: number, e: number) => number;
     readonly ifcapi_scanEntityIndexShardFromSource: (a: number, b: number, c: number) => number;
     readonly ifcapi_scanGeometryEntitiesFast: (a: number, b: number, c: number) => number;
+    readonly ifcapi_segmentScanPoints: (a: number, b: number, c: number, d: number, e: number, f: number) => void;
     readonly ifcapi_setComputeGeometryHashes: (a: number, b: number, c: number) => void;
     readonly ifcapi_setEntityIndex: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number) => void;
     readonly ifcapi_setInstantiatedTypeIds: (a: number, b: number, c: number) => void;
@@ -2620,6 +2778,15 @@ export interface InitOutput {
     readonly profileentryjs_outerPoints: (a: number) => number;
     readonly profileentryjs_transform: (a: number) => number;
     readonly resolve2d: (a: number) => number;
+    readonly scanoutlinejs_coords: (a: number) => number;
+    readonly scanoutlinejs_diagnostics: (a: number, b: number) => void;
+    readonly scanoutlinejs_ringCount: (a: number) => number;
+    readonly scanoutlinejs_ringLengths: (a: number) => number;
+    readonly scanoutlinejs_ringParents: (a: number) => number;
+    readonly scanoutlinejs_shapeCount: (a: number) => number;
+    readonly scanoutlinejs_shapeOffsets: (a: number) => number;
+    readonly scanoutlinejs_worldCoords: (a: number) => number;
+    readonly setGeometryProgressCallback: (a: number) => void;
     readonly simplifiedmeshes_cavitiesDropped: (a: number, b: number) => void;
     readonly simplifiedmeshes_elementIds: (a: number, b: number) => void;
     readonly simplifiedmeshes_indexCounts: (a: number, b: number) => void;
@@ -2712,6 +2879,7 @@ export interface InitOutput {
     readonly symbolictext_repIdentifier: (a: number, b: number) => void;
     readonly symbolictext_x: (a: number) => number;
     readonly symbolictext_y: (a: number) => number;
+    readonly traceScanOutline: (a: number, b: number, c: number, d: number, e: number) => void;
     readonly union2d: (a: number, b: number) => number;
     readonly version: (a: number) => void;
     readonly zonepiecejs_indices: (a: number) => number;

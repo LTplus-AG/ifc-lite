@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { defineConfig, devices } from '@playwright/test';
+import { BEGIN_FRAME_CHROME_ARGS } from './tests/benchmark/frames/begin-frame-driver';
 
 // One preview server per run. Every project shares it; `reuseExistingServer`
 // means a server another checkout already runs on the port would be tested
@@ -51,7 +52,7 @@ export default defineConfig({
   projects: [
     {
       name: 'viewer-e2e',
-      testMatch: /(viewer-smoke|mobile-page-zoom|mobile-panels|mobile-long-press|mobile-journey|usd-export|laz-wasm|model-reposition|document-text|validation-colors|rte-gpu-witness|federation-control-triplet|landxml-units-smoke|ribbon-labels|ribbon-classic-migration|panel-groups-5873|ribbon-reachability-5874|hierarchy-names|hierarchy-row-selection|bulk-target-sources|bulk-filter-groups|entity-context-menu|ribbon-entity-actions|viewport-hud|command-palette-entry|navigation-presets|sticky-overrides|orbit-pivot-marker|target-size-focus-5826|visibility-chips|visibility-empty-result|visibility-scenarios|section-measure-lasting-5893|lens-filter-groups|keyboard-dispatcher|lists-value-rules|swept-disk-centreline|swept-disk-inspection|swept-disk-source-snap)\.e2e\.spec\.ts/,
+      testMatch: /(assistant-context|assistant-report-claims|compare-impact-6921|assistant-check-authoring|assistant-artifacts|viewer-smoke|semantic-linked-records|mobile-page-zoom|mobile-panels|mobile-long-press|mobile-journey|usd-export|laz-wasm|copc-lod|copc-deviation|deviation-attribution|model-reposition|document-text|content-storage|document-chart-source-6629|validation-colors|rte-gpu-witness|federation-control-triplet|landxml-units-smoke|ribbon-labels|ribbon-classic-migration|panel-groups-5873|ribbon-reachability-5874|hierarchy-names|hierarchy-row-selection|bulk-target-sources|bulk-filter-groups|entity-context-menu|ribbon-entity-actions|viewport-hud|command-palette-entry|navigation-presets|sticky-overrides|orbit-pivot-marker|target-size-focus-5826|visibility-chips|visibility-empty-result|visibility-scenarios|section-measure-lasting-5893|lens-filter-groups|keyboard-dispatcher|lists-value-rules|swept-disk-centreline|swept-disk-inspection|swept-disk-source-snap|ortho-depth-nudge|flow-ai-review|semantic-assist|review-workspace)\.e2e\.spec\.ts/,
       timeout: 240000,
       use: {
         ...devices['Desktop Chrome'],
@@ -72,7 +73,7 @@ export default defineConfig({
     },
     {
       name: 'viewer-e2e-ci',
-      testMatch: /(viewer-smoke|mobile-page-zoom|mobile-panels|mobile-long-press|mobile-journey|usd-export|laz-wasm|model-reposition|document-text|validation-colors|rte-gpu-witness|federation-control-triplet|landxml-units-smoke|ribbon-labels|ribbon-classic-migration|panel-groups-5873|ribbon-reachability-5874|hierarchy-names|hierarchy-row-selection|bulk-target-sources|bulk-filter-groups|entity-context-menu|ribbon-entity-actions|viewport-hud|command-palette-entry|navigation-presets|sticky-overrides|orbit-pivot-marker|target-size-focus-5826|visibility-chips|visibility-empty-result|visibility-scenarios|section-measure-lasting-5893|lens-filter-groups|keyboard-dispatcher|lists-value-rules|swept-disk-centreline|swept-disk-inspection|swept-disk-source-snap)\.e2e\.spec\.ts/,
+      testMatch: /(assistant-context|assistant-report-claims|compare-impact-6921|assistant-check-authoring|assistant-artifacts|viewer-smoke|semantic-linked-records|mobile-page-zoom|mobile-panels|mobile-long-press|mobile-journey|usd-export|laz-wasm|copc-lod|copc-deviation|deviation-attribution|model-reposition|document-text|content-storage|document-chart-source-6629|validation-colors|rte-gpu-witness|federation-control-triplet|landxml-units-smoke|ribbon-labels|ribbon-classic-migration|panel-groups-5873|ribbon-reachability-5874|hierarchy-names|hierarchy-row-selection|bulk-target-sources|bulk-filter-groups|entity-context-menu|ribbon-entity-actions|viewport-hud|command-palette-entry|navigation-presets|sticky-overrides|orbit-pivot-marker|target-size-focus-5826|visibility-chips|visibility-empty-result|visibility-scenarios|section-measure-lasting-5893|lens-filter-groups|keyboard-dispatcher|lists-value-rules|swept-disk-centreline|swept-disk-inspection|swept-disk-source-snap|ortho-depth-nudge|flow-ai-review|semantic-assist|review-workspace)\.e2e\.spec\.ts/,
       timeout: 240000,
       use: {
         baseURL: BASE_URL,
@@ -185,6 +186,23 @@ export default defineConfig({
             '--ignore-gpu-blocklist',
           ],
         },
+      },
+    },
+    {
+      // Deterministic 120 Hz frame-cost rig (#6960): chrome-headless-shell
+      // driven frame by frame over CDP HeadlessExperimental.beginFrame, which
+      // new-headless Chrome does not implement. WebGPU runs on SwiftShader,
+      // so the rig reports main-thread cost and encoded GPU work, never GPU
+      // time. Flags live with the driver (tests/benchmark/frames/begin-frame-driver.ts).
+      name: 'viewer-frames-ci',
+      testMatch: /frames\/frame-rig\.spec\.ts/,
+      timeout: 600000,
+      use: {
+        baseURL: BASE_URL,
+        actionTimeout: 120000,
+        headless: true,
+        channel: 'chromium-headless-shell',
+        launchOptions: { args: BEGIN_FRAME_CHROME_ARGS },
       },
     },
     {

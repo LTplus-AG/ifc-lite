@@ -914,3 +914,20 @@ def test_a_type_only_property_survives_a_set_name_collision():
     # The occurrence still wins Shared, AND the type-only property arrives.
     assert merged == {"Shared": "from-occurrence", "TypeOnly": "kept"}
     assert set(merged) > set(own_only)
+
+
+def test_issue_6601_per_face_colors_match_json_and_preserve_transparency():
+    source = (REPO / "rust/processing/tests/fixtures/issue_6601_multicolor_element.ifc").read_bytes()
+    buffers = ifclite_geom.geometry_data_buffers(source)
+    document = json.loads(ifclite_geom.geometry_data_json(source))
+    assert len(buffers["elements"]) == 1
+    for step_id, element in buffers["elements"].items():
+        encoded = document["elements"][str(step_id)]
+        indices = struct.unpack(f"<{len(element['face_colors']) // 8}Q", element["face_colors"])
+        assert len(indices) == len(element["faces"]) // 12
+        assert list(indices) == encoded["face_colors"]
+        assert len(element["palette"]) == 2
+        assert set(indices) == {0, 1}
+        assert sorted(c[3] for c in element["palette"]) == pytest.approx([0.25, 1.0])
+        for actual, expected in zip(element["palette"], encoded["palette"]):
+            assert actual == pytest.approx(expected)

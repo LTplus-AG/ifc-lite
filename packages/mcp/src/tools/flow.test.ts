@@ -28,9 +28,8 @@ const REPO_ROOT = resolve(here, '../../../../');
 const SAMPLE_IFC = resolve(REPO_ROOT, 'apps/viewer/public/samples/building-architecture.ifc');
 // The same shipped example the CLI's `flow.test.ts` runs: a write-capable
 // graph (`model.setProperty`, gated on the exact pset) with no element
-// creation, so it runs fine against `HeadlessLikeBackend`'s store adapter
-// (which does not yet implement `addColumn`/`addWall`/etc. — see flow.ts's
-// module doc).
+// creation. Public creation routes and native Undo are independently exercised
+// in flow-creation-native.test.ts (#6232).
 const AUDIT_FLOW = resolve(REPO_ROOT, 'apps/viewer/src/lib/flow/examples/05-fire-rating-audit.flow.json');
 
 const registry = buildDefaultToolRegistry();
@@ -63,6 +62,32 @@ describe('#5167 describe_flow / run_flow', () => {
   it('registers both tools in default discovery', () => {
     expect(describeFlow, 'describe_flow must be registered').toBeDefined();
     expect(runFlow, 'run_flow must be registered').toBeDefined();
+  });
+
+  it('describes missing session services and refuses execution before model resolution (#6612)', async () => {
+    if (!describeFlow || !runFlow) throw new Error('flow tools not registered');
+    const ctx: ToolContext = { registry: new InMemoryModelRegistry(), scope: fullScope(), progress: NOOP_PROGRESS,
+      log: SILENT_LOGGER, signal: new AbortController().signal, config: DEFAULT_CONFIG };
+    const flow = { flowVersion: 2, id: 'session', name: 'Session', capabilities: ['model.create'],
+      inputs: [], outputs: [], nodes: [{ id: 'load', type: 'session.loadModels' }], edges: [] };
+    const description = structured(await describeFlow.handler({ flow }, ctx));
+    expect(description.ok).toBe(false);
+    expect(description.availability).toEqual(expect.arrayContaining([expect.objectContaining({ nodeId: 'load', status: 'unavailable' })]));
+    await expect(runFlow.handler({ flow }, ctx)).rejects.toMatchObject({ code: 'UNSUPPORTED_OPERATION', message: expect.stringContaining('sessionModels') });
+    expect(ctx.registry.list()).toHaveLength(0);
+  });
+
+  it('reports a missing AI model service before model resolution (#6923)', async () => {
+    if (!describeFlow || !runFlow) throw new Error('flow tools not registered');
+    const ctx: ToolContext = { registry: new InMemoryModelRegistry(), scope: fullScope(), progress: NOOP_PROGRESS,
+      log: SILENT_LOGGER, signal: new AbortController().signal, config: DEFAULT_CONFIG };
+    const flow = { flowVersion: 2, id: 'ai', name: 'AI', capabilities: ['model.read', 'network.ai'], inputs: [], outputs: [],
+      nodes: [{ id: 'walls', type: 'model.select' }, { id: 'table', type: 'table.fromEntities' }, { id: 'sum', type: 'ai.summarize' }],
+      edges: [{ from: ['walls', 'entities'], to: ['table', 'entities'] }, { from: ['table', 'table'], to: ['sum', 'table'] }] };
+    const description = structured(await describeFlow.handler({ flow }, ctx));
+    expect(description.availability).toEqual(expect.arrayContaining([expect.objectContaining({ nodeId: 'sum', status: 'unavailable' })]));
+    await expect(runFlow.handler({ flow }, ctx)).rejects.toMatchObject({ code: 'UNSUPPORTED_OPERATION', message: expect.stringContaining('backend feature "ai"') });
+    expect(ctx.registry.list()).toHaveLength(0);
   });
 
   it('describe_flow returns the declared inputs and outputs with types, from an inline document', async () => {
@@ -132,7 +157,9 @@ describe('#5167 describe_flow / run_flow', () => {
     const summary = structured(result) as { ok: boolean; outputs: Array<{ key: string; data: unknown }> };
     expect(summary.ok).toBe(true);
     const table = summary.outputs.find((o) => o.key === 'table.table');
-    const rows = (table?.data as { rows: Array<Record<string, unknown>> }).rows;
+    expect(table).toBeDefined();
+    if (!table) throw new Error('run_flow did not return its declared table output');
+    const rows = (table.data as { rows: Array<Record<string, unknown>> }).rows;
     // The rows the run just wrote (walls that had no FireRating) now carry
     // the overridden value, never the graph's own default ('REI60').
     expect(rows.some((r) => r['Pset_WallCommon.FireRating'] === 'REI90')).toBe(true);

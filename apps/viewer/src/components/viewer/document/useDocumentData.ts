@@ -9,12 +9,15 @@
  * so what is on screen is what prints.
  */
 import { useMemo } from 'react';
-import { aggregate, type Aggregation, type ChartSpec } from '@ifc-lite/charts';
+import { type Aggregation, type ChartSpec } from '@ifc-lite/charts';
 import type { BCFTopic } from '@ifc-lite/bcf';
 import { useViewerStore } from '@/store';
+import { useTranslation } from '@/i18n/useTranslation';
+import { captureTranslation } from '@/i18n/registry';
+import type { DocumentLabelFormatter } from '@/lib/document/document-labels';
 import type { BindingContext } from '@/lib/document/bindings';
 import type { DocumentSpec } from '@/lib/document/types';
-import { applyChartFilter, applyClashRuleFilter, chartElementFilterKey } from '@/lib/charts/source-filter';
+import { prepareDocumentCharts } from '@/lib/document/prepare-charts';
 import { chartElementFields } from '@/lib/charts/chart-fields';
 import type { TableState } from '@/lib/document/resolve-table';
 import { useChartDatasets } from '../charts/useChartDatasets';
@@ -22,13 +25,15 @@ import { useChartSourceFilters } from '../charts/useChartSourceFilters';
 import { useDocumentTables } from './useDocumentTables';
 
 export interface DocumentData {
+  labels: DocumentLabelFormatter;
   bindings: BindingContext;
   aggregations: Map<string, Aggregation | null>;
-  /** Set for a chart block whose `filter` is still resolving or was refused
-   *  (#4946): the preview and the PDF export must tell that apart from a
-   *  selector that legitimately matched nothing — both print an empty
-   *  `Aggregation`, so the message is the only thing that distinguishes them. */
+  /** Chart block id → source provenance or a resolving/refused error caption.
+   * Failure identities travel in chartErrors so recorded-source captions
+   * stay informational while refused filters remain explicit (#4946 / #6549). */
   chartMessages: Map<string, string>;
+  /** Failure identities classified once with chartMessages; provenance captions stay informational. */
+  chartErrors?: ReadonlySet<string>;
   topics: Map<string, BCFTopic>;
   /** Table block id → its list run (#5142); preview and PDF print the same rows. */
   tables: ReadonlyMap<string, TableState>;
@@ -37,6 +42,9 @@ export interface DocumentData {
 const ALL_SCOPE = { kind: 'all' as const };
 
 export function useDocumentData(document: DocumentSpec | null): DocumentData {
+  const { revision } = useTranslation();
+  const labels = useMemo(() => captureTranslation(), [revision]);
+  const savedComparisons = useViewerStore((s) => s.savedComparisons);
   const models = useViewerStore((s) => s.models);
   const activeModelId = useViewerStore((s) => s.activeModelId);
   const mutationViews = useViewerStore((s) => s.mutationViews);
@@ -56,47 +64,12 @@ export function useDocumentData(document: DocumentSpec | null): DocumentData {
     return { models: bound, activeModelId, today: new Date() };
   }, [models, activeModelId, mutationViews, mutationVersion]);
 
-  const { aggregations, chartMessages } = useMemo(() => {
-    const aggs = new Map<string, Aggregation | null>();
-    const messages = new Map<string, string>();
-    for (const block of document?.blocks ?? []) {
-      if (block.kind !== 'chart') continue;
-      const spec = block.chart;
-      try {
-        // Trimmed-empty is no filter, consistent with ChartCard (review finding).
-        const filterKey = chartElementFilterKey(spec.filter);
-        const filterState = filterKey ? sourceFilters.get(filterKey) : undefined;
-        const baseDataset = datasets[spec.source];
-        // Never the unfiltered rows under a filter (#4946): resolving/erred
-        // prints an EMPTY dataset, same as the dashboard card — but unlike
-        // the card (which reads the status straight off the hook) the
-        // preview/PDF only ever see an `Aggregation`, so the REASON has to
-        // travel separately or a broken filter prints identically to one
-        // that legitimately matched nothing (review finding on PR #4984).
-        let dataset = baseDataset;
-        if (filterKey) {
-          if (filterState?.status === 'ok') dataset = applyChartFilter(baseDataset, filterState.ids);
-          else {
-            dataset = { ...baseDataset, rows: [] };
-            messages.set(block.id, filterState?.status === 'error' ? filterState.message : 'Resolving filter…');
-          }
-        }
-        // A clash rule filter (#5156) is a plain row-value match, so it
-        // applies on top regardless of whether a selector was also resolving
-        // or erred — an erred selector already emptied `dataset`, so this is
-        // a no-op in that case.
-        if (spec.source === 'clash' && spec.filter?.clashRule) dataset = applyClashRuleFilter(dataset, spec.filter.clashRule);
-        aggs.set(block.id, aggregate(spec, dataset));
-      } catch (err) {
-        console.warn(`[Documents] chart "${block.chart.title}" cannot aggregate`, err);
-        aggs.set(block.id, null);
-      }
-    }
-    return { aggregations: aggs, chartMessages: messages };
-  }, [document, datasets, sourceFilters]);
+  const { aggregations, chartMessages, chartErrors } = useMemo(() => {
+    return prepareDocumentCharts(document, datasets, sourceFilters, savedComparisons);
+  }, [document, datasets, sourceFilters, savedComparisons, revision]);
 
   const topics = useMemo(() => bcfProject?.topics ?? new Map<string, BCFTopic>(), [bcfProject]);
   const tables = useDocumentTables(document);
 
-  return { bindings, aggregations, chartMessages, topics, tables };
+  return { bindings, aggregations, chartMessages, chartErrors, topics, tables, labels };
 }

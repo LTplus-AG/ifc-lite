@@ -10,7 +10,8 @@
  */
 
 export { BcfApiClient, normalizeBcfBaseUrl } from './client.js';
-export type { BcfApiClientOptions, TopicQueryOptions } from './client.js';
+export type { BcfApiClientOptions, BcfRequestOptions, TopicQueryOptions } from './client.js';
+export { topicToApiWrite, viewpointToApi } from './write-mapping.js';
 
 // bcfBaseUrlCandidates and resolveBcfBaseUrl stay module-local: the
 // candidate list and probe order are implementation details of the two

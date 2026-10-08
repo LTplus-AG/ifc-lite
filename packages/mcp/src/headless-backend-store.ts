@@ -7,11 +7,19 @@ import type { StoreBackendMethods } from '@ifc-lite/sdk';
 import type { StoreEditor } from '@ifc-lite/mutations';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { unsupportedStoreAuthoring } from './headless-backend-store-stubs.js';
+import { createHeadlessAlignBackend } from './headless-backend-align.js';
+import { createHeadlessRoomBackend } from './headless-backend-room.js';
 import { createRecordedModellingBackend } from './headless-backend-modelling.js';
 
 export function createHeadlessStoreAdapter(
   dataStore: IfcDataStore, modelId: string, get: () => StoreEditor, assertKnownModelId: (id: string) => void,
-): StoreBackendMethods {
+  getPeerScopes: () => import('@ifc-lite/create').ElementSplitOptions['globalIdScopes'],
+): StoreBackendMethods & { disposeRooms(): void } {
+  const resolveModel = (requestedModelId?: string) => {
+    if (requestedModelId !== undefined) assertKnownModelId(requestedModelId);
+    const editor = get();
+    return { modelId, store: dataStore, editor, mutationView: editor.getMutationView(), ownerHistoryId: null, globalIdScopes: getPeerScopes() };
+  };
   return {
     addEntity: (modelId, def) => {
       // The ref carries `modelId`, and `bim.mutate.*` refuses one this
@@ -25,28 +33,13 @@ export function createHeadlessStoreAdapter(
     setPositionalAttribute: (ref, index, value) => {
       get().setPositionalAttribute(ref.expressId, index, value as Parameters<StoreEditor['setPositionalAttribute']>[2]);
     },
-    // The element-creation helpers (addWall, addSlab, …) are not used by the
-    // MCP server in v0.1 — agent flows go through entity_create with raw
-    // attributes. Stubs throw so a misconfigured caller fails loudly.
-    addColumn: () => { throw new Error('addColumn not supported in MCP v0.1; use entity_create'); },
-    addWall: () => { throw new Error('addWall not supported in MCP v0.1; use entity_create'); },
-    addSlab: () => { throw new Error('addSlab not supported in MCP v0.1; use entity_create'); },
-    addBeam: () => { throw new Error('addBeam not supported in MCP v0.1; use entity_create'); },
+    // Free door/window creation remains unsupported here. Hosted fills use
+    // the canonical host-required API supplied by the recorded factory below.
     addDoor: () => { throw new Error('addDoor not supported in MCP v0.1; use entity_create'); },
     addWindow: () => { throw new Error('addWindow not supported in MCP v0.1; use entity_create'); },
-    addSpace: () => { throw new Error('addSpace not supported in MCP v0.1; use entity_create'); },
-    addRoof: () => { throw new Error('addRoof not supported in MCP v0.1; use entity_create'); },
-    addPlate: () => { throw new Error('addPlate not supported in MCP v0.1; use entity_create'); },
-    addMember: () => { throw new Error('addMember not supported in MCP v0.1; use entity_create'); },
     ...unsupportedStoreAuthoring(),
-    ...createRecordedModellingBackend(requestedModelId => {
-      if (requestedModelId !== undefined) assertKnownModelId(requestedModelId);
-      const editor = get();
-      const mutationView = editor.getMutationView();
-      return {
-        modelId, store: dataStore, editor, mutationView,
-        ownerHistoryId: null, // Hosted placement resolves the host's live anchor in the shared core.
-      };
-    }),
+    ...createRecordedModellingBackend(resolveModel),
+    ...createHeadlessRoomBackend(resolveModel),
+    ...createHeadlessAlignBackend(resolveModel),
   };
 }

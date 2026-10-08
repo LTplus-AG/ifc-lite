@@ -7,8 +7,9 @@ import { Cloud } from 'lucide-react';
 import { IconButton } from '@/components/ui/icon-button';
 import { useTranslation } from '@/i18n';
 import { BCFServerDialog } from './BCFServerDialog';
+import { BCFDraftsControl } from './BCFDraftsControl';
 
-/** Header control that owns the BCF server dialog's open state. */
+/** Header controls for the BCF server dialog and BCF drafts & publication (#6896). */
 export function BCFServerControl() {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
@@ -22,6 +23,7 @@ export function BCFServerControl() {
         <Cloud className="h-4 w-4" />
       </IconButton>
       <BCFServerDialog open={open} onOpenChange={setOpen} />
+      <BCFDraftsControl />
     </>
   );
 }

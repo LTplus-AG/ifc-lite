@@ -11,7 +11,8 @@
  */
 
 import { useCallback, useRef } from 'react';
-import { beginAbortableRun, cancelClashRun, invalidateAbortableRun } from './analysisRunCancellation';
+import { clashElementCache } from '@/lib/clash/element-cache';
+import { beginAbortableRun, cancelClashRun, clearClashRun, releaseAbortableRun } from './analysisRunCancellation';
 import { captureAnalysisStamp, stampAnalysisReport, type AnalysisStamp } from './useAnalysisStaleness';
 import { rememberPlacementSnapshot, jobPlacementIsCurrent } from '@/lib/model-placement/placement-snapshot';
 import { useViewerStore } from '@/store';
@@ -30,7 +31,6 @@ import {
   type ClashResult,
   type ClashReviewStatus,
   type ClashRule,
-  type ClashSeverity,
   type ExclusionSet,
 } from '@ifc-lite/clash';
 import { elementsFromStep } from '@ifc-lite/clash/step';
@@ -50,6 +50,7 @@ import {
 import { clashFramingBounds } from '@/lib/clash/clash-framing';
 import { contactLineList } from '@/lib/clash/contact-lines';
 import { filterResultBySeverity } from '@/lib/clash/severity-filter';
+import type { ClashBcfConfig } from '@/lib/clash/bcf-export-config';
 import { withResolvedClashSetFilters } from '@/lib/clash/set-filter-resolve';
 import { computeClashIntersectionSolid } from '@/lib/clash/intersection-solid';
 import { restoreOverridesForGhosting } from '@/lib/clash/ghost-color-overrides';
@@ -150,21 +151,7 @@ interface SelectionRef {
  */
 export type { ClashFocusMode };
 
-/** How clashes collapse into BCF topics. `storey` is omitted — Clash has no
- *  storey, so it degrades to `rule` (see grouping.ts) and would only confuse. */
-export type ClashBcfGroupBy = 'cluster' | 'rule' | 'typePair' | 'element';
-
-/** User-controllable settings for a BCF export — "what gets created". */
-export interface ClashBcfConfig {
-  /** Grouping dimension → one BCF topic per group. */
-  groupBy: ClashBcfGroupBy;
-  /** Only clashes of these severities become topics. */
-  severities: ClashSeverity[];
-  /** Render each topic's viewpoint offscreen and embed a PNG snapshot. */
-  includeSnapshots: boolean;
-  /** Safety cap on topic count; overflow is recorded in one marker topic. */
-  maxTopics: number;
-}
+export type { ClashBcfConfig, ClashBcfGroupBy } from '@/lib/clash/bcf-export-config';
 
 /** Dark, neutral background for offscreen snapshot captures (Tokyo Night base). */
 const SNAPSHOT_CLEAR_COLOR: [number, number, number, number] = [0.04, 0.05, 0.1, 1];
@@ -212,10 +199,9 @@ export function useClash() {
   // deliberately SHARED across every occurrence of a GPU-instanced entity, while
   // `key` folds in `mesh.occurrenceKey` to stay distinct per physical occurrence
   // (#2865). Keying this cache by `ref` collapsed multiple occurrences onto one
-  // map entry (last-write-wins), so `focusClash` below could build the contact
-  // interface / intersection solid from the WRONG occurrence's geometry whenever
-  // two instanced copies of one element actually clashed.
-  const elementsByIdentity = useRef(new Map<string, ClashElement>());
+  // map entry (last-write-wins), so `focusClash` could build the contact interface /
+  // solid from the WRONG occurrence's geometry when two instanced copies clashed.
+  const elementsByIdentity = clashElementCache; // shared across hook instances
   const elementIdentity = (element: Pick<ClashElement, 'model' | 'key'>): string =>
     JSON.stringify([element.model, element.key]);
 
@@ -461,12 +447,12 @@ export function useClash() {
   }, [releaseClashVisibility]);
 
   const run = useCallback(
-    async (rules: ClashRule[], tagInputs: ClashModelTagInputs | null = null, request: ClashRunRequest | null = null): Promise<void> => {
+    async (rules: ClashRule[], tagInputs: ClashModelTagInputs | null = null, request: ClashRunRequest | null = null, prepared?: ReturnType<typeof beginAbortableRun>): Promise<void> => {
       // Captured before anything else so a call issued while this one is
       // already in flight (`runAll` again, a duplicate scan, a preset) makes
       // every write below — including this call's own error/finally, once
       // superseded — a no-op instead of clobbering the newer call (#2802).
-      const { runEpoch: myEpoch, controller: abortController } = beginAbortableRun(runEpochRef, runAbortRef);
+      const { runEpoch: myEpoch, controller: abortController } = prepared ?? beginAbortableRun(runEpochRef, runAbortRef);
       const stamp = captureAnalysisStamp(true);
       const state = useViewerStore.getState();
       discardSolidPresentation();
@@ -479,6 +465,7 @@ export function useClash() {
         // a hidden tab never delivers a frame, and the whole run sits after this
         // await, so an unbounded wait means the run simply never starts. (#2385)
         await nextFrameOrTimeout(PAINT_FRAME_WAIT_MS);
+        if (!stillWanted(myEpoch)) return;
         const { elements, exclusions, federationIdentity } = gatherElements();
         if (elements.length === 0) {
           if (stillWanted(myEpoch)) state.setClashError('No model geometry is loaded. Load an IFC model first.');
@@ -517,7 +504,7 @@ export function useClash() {
         state.setClashError(err instanceof Error ? err.message : String(err));
         posthog.captureException(err, { context: 'clash_detection', ...errorCaptureProps(err) });
       } finally {
-        if (runAbortRef.current === abortController) runAbortRef.current = null;
+        releaseAbortableRun(abortController, runAbortRef);
         // A superseded call must not report itself as no-longer-running: the
         // call that superseded it is the one actually in flight, and this
         // would flip `clashRunning` off underneath it (#2802).
@@ -547,7 +534,8 @@ export function useClash() {
       // (#2802's ordering, which only holds while every start bumps). The
       // running flag is set for the same window, so the panel says it is
       // working instead of looking idle for the length of the scan.
-      const myEpoch = invalidateAbortableRun(runEpochRef, runAbortRef);
+      const prepared = beginAbortableRun(runEpochRef, runAbortRef);
+      const myEpoch = prepared.runEpoch;
       state.setClashError(null);
       state.setClashRunning(true);
       let resolved: ClashRule[];
@@ -557,11 +545,12 @@ export function useClash() {
         // A refused filter reports itself here or nothing on screen changes.
         if (!stillWanted(myEpoch)) return;
         state.setClashError(err instanceof Error ? err.message : String(err));
+        releaseAbortableRun(prepared.controller, runAbortRef);
         state.setClashRunning(false);
         return;
       }
       if (!stillWanted(myEpoch)) return;
-      return run(resolved, tagInputs, request);
+      return run(resolved, tagInputs, request, prepared);
     },
     [run, mode, clearance, reportTouch, stillWanted],
   );
@@ -607,13 +596,8 @@ export function useClash() {
    * shape, so the panel, grouping and BCF export render it unchanged.
    */
   const runDuplicates = useCallback(async (): Promise<void> => {
-    // Same epoch capture as `run()`, and for the same reason: a duplicate
-    // scan started while an "All elements" run (or another scan) is still
-    // in flight — the two share one Run panel and neither disables the
-    // other's trigger while it's the other one running — must not have its
-    // OWN eventual completion, or the older call's, win by landing last
-    // (#2802).
-    const myEpoch = invalidateAbortableRun(runEpochRef, runAbortRef);
+    // Owned cancellation also bounds the frame wait before the synchronous scan (#2802).
+    const { runEpoch: myEpoch, controller: abortController } = beginAbortableRun(runEpochRef, runAbortRef);
     const stamp = captureAnalysisStamp(true);
     const state = useViewerStore.getState();
     discardSolidPresentation();
@@ -624,6 +608,7 @@ export function useClash() {
       // Paint the running state before the (synchronous) scan blocks the thread.
       // Bounded for the same reason as the clash run above (#2385).
       await nextFrameOrTimeout(PAINT_FRAME_WAIT_MS);
+      if (!stillWanted(myEpoch)) return;
       const { elements, exclusions, federationIdentity } = gatherElements();
       if (elements.length === 0) {
         if (stillWanted(myEpoch)) state.setClashError('No model geometry is loaded. Load an IFC model first.');
@@ -664,6 +649,7 @@ export function useClash() {
       state.setClashError(err instanceof Error ? err.message : String(err));
       posthog.captureException(err, { context: 'clash_duplicates', ...errorCaptureProps(err) });
     } finally {
+      releaseAbortableRun(abortController, runAbortRef);
       if (stillWanted(myEpoch)) {
         state.setClashRunning(false);
         state.setClashProgress(null);
@@ -1135,7 +1121,7 @@ export function useClash() {
     const state = useViewerStore.getState();
     const current = state.clashResult;
     if (!current) return { clashes: 0, topics: 0 };
-    const filtered = filterResultBySeverity(current, new Set(config.severities));
+    const filtered = filterResultBySeverity(current, new Set(config.severities), config.clashIds);
     if (filtered.clashes.length === 0) return { clashes: 0, topics: 0 };
     const groups = groupClashes(filtered, { by: config.groupBy, epsilon: state.clashClusterEpsilon });
     const capped = Math.min(groups.length, config.maxTopics);
@@ -1158,7 +1144,7 @@ export function useClash() {
       const state = useViewerStore.getState();
       const current = state.clashResult;
       if (!current) return;
-      const filtered = filterResultBySeverity(current, new Set(config.severities));
+      const filtered = filterResultBySeverity(current, new Set(config.severities), config.clashIds);
       if (filtered.clashes.length === 0) return;
       const groups = groupClashes(filtered, { by: config.groupBy, epsilon: state.clashClusterEpsilon });
 
@@ -1259,7 +1245,7 @@ export function useClash() {
     // when the user clears must not be able to resurrect what they just
     // cleared once it lands — see `runEpochRef`'s doc above `elementsByRef`
     // (#2802).
-    invalidateAbortableRun(runEpochRef, runAbortRef);
+    clearClashRun(runEpochRef, runAbortRef);
     const state = useViewerStore.getState();
     state.clearEntitySelection();
     state.clearIsolation();

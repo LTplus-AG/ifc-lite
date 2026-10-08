@@ -1,0 +1,48 @@
+{
+  "source": "6566d991cb7078715d9da87db65cbd26b359ac74",
+  "followingPreparedParent": "546288c4566dd6c52a7551833d39929484d21cd7",
+  "followingIntegratedHead": "f30d5ef405abbc68569661ad80c969e95dc1e08d",
+  "repair": "6408159801ca4b2153c0937e015798c7e54cbb5e",
+  "failedCIHead": "852b55f205a4113a58320a8b1e4808fa5de78970",
+  "failedJob": "https://github.com/LTplus-AG/ifc-lite/actions/runs/37143308313/job/111263560850",
+  "scope": "One approved distinct IFC-plan RTC expression registry path follows its unchanged Room reader from viewer to create. No new allowance or conversion behavior. The unchanged RTC guard passes 4511 sources, and 25 additional authoritative Node static guards pass. Following normal prepared-Align merge only removes three surplus EOF blank lines; production semantics remain unchanged. Existing browser/native receipts retain exact source identities. Current required CI and lower main landing remain pending.",
+  "additionalStaticGuardCommands": [
+    "node scripts/check-test-wiring.mjs",
+    "node scripts/check-export-event-calls.mjs",
+    "node scripts/check-i18n-literals.mjs",
+    "node scripts/check-asset-usage.mjs",
+    "node scripts/check-css-vars.mjs",
+    "node scripts/check-overlay-palette.mjs",
+    "node scripts/check-pset-name-find.mjs",
+    "node scripts/check-unbounded-frame-wait.mjs",
+    "node scripts/check-icon-button-adoption.mjs",
+    "node scripts/check-wasm-disposal.mjs",
+    "node scripts/check-collab-placement-sweep.mjs",
+    "node scripts/check-collab-room-model-target.mjs",
+    "node scripts/check-loader-hook-specifier-match.mjs",
+    "node scripts/check-isolate-expansion-routing.mjs",
+    "node scripts/check-clash-degenerate-reason-parity.mjs",
+    "node scripts/check-server-browser-type-parity.mjs",
+    "node scripts/check-server-attr-index-usage.mjs",
+    "node scripts/check-swallowed-push.mjs",
+    "node scripts/check-ci-path-coverage.mjs",
+    "node scripts/check-ci-aggregate-coverage.mjs",
+    "node scripts/check-workflow-report-paths.mjs",
+    "node scripts/check-sdk-canary-coverage.mjs",
+    "node scripts/check-csv-escaper-copies.mjs",
+    "node scripts/check-step-escaper-copies.mjs",
+    "node scripts/check-server-bin-targets.mjs"
+  ],
+  "archives": {
+    "failed-ci": {
+      "rawBytes": 770348,
+      "rawSha256": "06a8cf1555e8a7e55fced4db9cb1b104971488f24f09fd8c632eeca15321648f",
+      "gzipSha256": "bf587c1c212a92e888deda96eee707d12b1a327b0c3bbbb691e0abdcf2bf45f8"
+    },
+    "fixed-guard": {
+      "rawBytes": 66,
+      "rawSha256": "4f04d6d59291e56b2bca9f1f48607df3ffe4e4bd8ba47e681c2ac19c210b2856",
+      "gzipSha256": "ae7ae7023ac8b1c55082f67a79a81b464480de837dd7cb4341df36cb8ed65773"
+    }
+  }
+}

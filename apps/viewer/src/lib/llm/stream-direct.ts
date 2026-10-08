@@ -14,6 +14,7 @@
  * They never pass through our server.
  */
 
+import { outputTokenLimit, ANTHROPIC_OUTPUT_TOKEN_CEILING, OPENAI_OUTPUT_TOKEN_CEILING } from '../../../../../shared/ai/output-budget.js';
 import {
   anthropicErrorMessage,
   createAnthropicClient,
@@ -22,6 +23,7 @@ import {
 import { readSseStream, type StreamMessage, type StreamOptions } from './stream-client.js';
 import { getModelById, sendsSamplingParams } from './models.js';
 import { buildCacheableSystem, logCacheHit } from './prompt-cache.js';
+import { anthropicUsage, chatCompletionsUsage, responsesUsage } from '@ifc-lite/ai';
 
 const STREAM_REQUEST_TIMEOUT_MS = 45_000;
 
@@ -82,14 +84,17 @@ export async function streamAnthropicChat(
     // Inside the try: constructing the client rejects a workspace id that
     // cannot go in a header, and that belongs on `onError` like every other
     // failure rather than escaping as an unhandled throw.
+    const maxOutputTokens = outputTokenLimit(options.maxOutputTokens, ANTHROPIC_OUTPUT_TOKEN_CEILING);
+    if (signal?.aborted) return;
     const client = createAnthropicClient(credentials);
     const stream = client.messages.stream({
       model,
       // Opus 5.5 (the default BYOK model) runs adaptive thinking when `thinking`
       // is omitted. Thinking spends this ceiling, and
       // `display` defaults to omitted, so too low a value truncates the visible
-      // answer with nothing to show for the tokens. Safe to raise: we stream.
-      max_tokens: 32_000,
+      // answer with nothing to show for the tokens. Keep that default unless
+      // the caller explicitly chooses a smaller budget.
+      max_tokens: maxOutputTokens,
       ...(sendSamplingParams ? { temperature: 0.3 } : {}),
       // Wrap the system prompt in an ephemeral cache block when it's
       // long enough to be worth caching (Anthropic's minimum is ~1024
@@ -98,7 +103,7 @@ export async function streamAnthropicChat(
       // turns fall under it and pass through as plain string.
       system: buildCacheableSystem(system),
       messages: toAnthropicMessages(messages),
-    });
+    }, { maxRetries: 0 }); // A retry is another budgeted request, owned by the caller.
 
     // Wire up abort signal
     if (signal) {
@@ -119,6 +124,9 @@ export async function streamAnthropicChat(
     // Surface cache hit/miss numbers in dev tools so we can see
     // whether the authoring contract is paying off.
     logCacheHit(finalMessage.usage as { cache_creation_input_tokens?: number; cache_read_input_tokens?: number });
+    // The SDK accumulates message_start.usage and message_delta.usage into this.
+    const tokenUsage = anthropicUsage(finalMessage.usage);
+    if (tokenUsage) options.onTokenUsage?.(tokenUsage);
 
     const stopReason = finalMessage.stop_reason;
     onFinishReason?.(stopReason === 'end_turn' ? 'stop' : stopReason);
@@ -141,6 +149,13 @@ export async function streamOpenAiChat(
   apiKey: string,
   options: Omit<StreamOptions, 'proxyUrl' | 'authToken' | 'onUsageInfo'>,
 ): Promise<void> {
+  try {
+    options = { ...options, maxOutputTokens: outputTokenLimit(options.maxOutputTokens, OPENAI_OUTPUT_TOKEN_CEILING) };
+  } catch (error) {
+    options.onError(error instanceof Error ? error : new Error(String(error)));
+    return;
+  }
+  if (options.signal?.aborted) return;
   const modelDef = getModelById(options.model);
   if (modelDef?.openaiApi === 'responses') {
     return streamOpenAiResponses(apiKey, options);
@@ -169,11 +184,14 @@ async function streamOpenAiChatCompletions(
       messages: allMessages.map((m) => ({ role: m.role, content: m.content })),
       stream: true,
       ...(sendSamplingParams ? { temperature: 0.3 } : {}),
-      max_completion_tokens: 8192,
+      max_completion_tokens: options.maxOutputTokens,
+      // Without this OpenAI streams no usage at all; with it the last chunk carries it.
+      stream_options: { include_usage: true },
     },
     apiKey,
     signal,
     onError,
+    options.useParentDeadline,
   );
   if (!response) return;
 
@@ -186,6 +204,8 @@ async function streamOpenAiChatCompletions(
     const parsed = JSON.parse(data) as {
       choices?: Array<{ delta?: { content?: string }; finish_reason?: string | null }>;
     };
+    const tokenUsage = chatCompletionsUsage(parsed);
+    if (tokenUsage) options.onTokenUsage?.(tokenUsage);
     const content = parsed.choices?.[0]?.delta?.content;
     if (content) { fullText += content; onChunk(content); }
     const fr = parsed.choices?.[0]?.finish_reason;
@@ -218,11 +238,12 @@ async function streamOpenAiResponses(
       model,
       input,
       stream: true,
-      max_output_tokens: 8192,
+      max_output_tokens: options.maxOutputTokens,
     },
     apiKey,
     signal,
     onError,
+    options.useParentDeadline,
   );
   if (!response) return;
 
@@ -235,6 +256,10 @@ async function streamOpenAiResponses(
   // the ChatPanel "Continue" UX can resume a truncated Codex reply. Other
   // explicit reasons (e.g. `content_filter`) pass through unchanged.
   let finishReason: string | null = 'stop';
+  const reportResponsesUsage = (event: unknown) => {
+    const tokenUsage = responsesUsage(event);
+    if (tokenUsage) options.onTokenUsage?.(tokenUsage);
+  };
 
   const ok = await readSseStream(response.body, signal, (data) => {
     const event = JSON.parse(data) as {
@@ -249,9 +274,11 @@ async function streamOpenAiResponses(
       fullText += event.delta;
       onChunk(event.delta);
     } else if (event.type === 'response.incomplete') {
+      reportResponsesUsage(event);
       const reason = event.response?.incomplete_details?.reason;
       finishReason = reason == null || reason === 'max_output_tokens' ? 'length' : reason;
     } else if (event.type === 'response.completed') {
+      reportResponsesUsage(event);
       finishReason = 'stop';
     }
   }, onError);
@@ -268,9 +295,10 @@ async function openAiFetch(
   apiKey: string,
   signal: AbortSignal | undefined,
   onError: (err: Error) => void,
+  useParentDeadline = false,
 ): Promise<{ response: Response | null; cleanup: () => void }> {
   const controller = new AbortController();
-  const timeoutId = setTimeout(
+  const timeoutId = useParentDeadline ? undefined : setTimeout(
     () => controller.abort(new Error('Chat request timed out. Please try again.')),
     STREAM_REQUEST_TIMEOUT_MS,
   );

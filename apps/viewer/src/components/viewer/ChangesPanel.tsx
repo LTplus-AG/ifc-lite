@@ -9,17 +9,21 @@ import { IconButton } from '@/components/ui/icon-button';
 import { useTranslation, type TranslationKey } from '@/i18n';
 import { useViewerStore } from '@/store';
 import { selectChangedEntity } from '@/lib/changes/select-changed-entity';
+import { useModelChangeReceipts } from '@/lib/actions/receipts';
+import { ReceiptList } from './actions/ReceiptList';
 import { inverseMutationTargets, pruneInverseMutationTargets } from '@/store/slices/mutation-inverse-registry';
 import { changeOperations, type ChangeOperation } from '@/lib/changes/change-operations';
 import { revertChangeOperation, type RevertRefusal } from '@/lib/changes/revert-change-operation';
 import { ExportChangesButton } from './ExportChangesButton';
 import { ExportDialog } from './ExportDialog';
+import { AssistantAction } from './assistant/AssistantAction';
 import { useChangedModels } from '@/hooks/useUnexportedChanges';
 import { totalChangeCount } from '@/lib/export/model-changes';
 
 function refusalKey(reason: RevertRefusal): TranslationKey {
   switch (reason) {
     case 'stale': return 'changesPanel.revertStale';
+    case 'workflow-running': return 'mutationPermission.workflowRunning';
     case 'edit-mode':
     case 'collab-role':
     case 'model-unavailable': return 'changesPanel.revertPermission';
@@ -47,6 +51,9 @@ export function ChangesPanel({ onClose }: { onClose?: () => void }) {
     return changeOperations(undoStacks, mutationBatchTags, inverseMutationTargets(useViewerStore));
   }, [undoStacks, mutationBatchTags, mutationVersion]);
 
+  const receipts = useModelChangeReceipts(state => state.entries);
+  const reviewedTitle = (operation: ChangeOperation) =>
+    receipts.find(receipt => receipt.batches.some(batch => operation.id === `batch:${batch.batchId}`))?.title;
   const revert = (operation: ChangeOperation) => {
     const result = revertChangeOperation(useViewerStore, operation);
     setError(result.ok ? null : refusalKey(result.reason));
@@ -57,6 +64,7 @@ export function ChangesPanel({ onClose }: { onClose?: () => void }) {
       <History className="h-4 w-4" aria-hidden="true" />
       <h2 className="flex-1 text-sm font-medium">{t('changesPanel.title')}</h2>
       <span className="text-xs text-muted-foreground">{t('changesPanel.rowCount', { count: rows.length })}</span>
+      <AssistantAction />
       {onClose && <IconButton label={t('changesPanel.close')} className="h-6 w-6" onClick={onClose}><X className="h-3.5 w-3.5" /></IconButton>}
     </div>
     {error && <p role="alert" className="px-3 pt-2 text-xs text-destructive">{t(error)}</p>}
@@ -66,7 +74,7 @@ export function ChangesPanel({ onClose }: { onClose?: () => void }) {
         : <ol className="divide-y">{rows.map(operation => <li key={operation.id} className="space-y-2 p-3">
           <div className="flex items-center gap-2">
             <span className="min-w-0 flex-1 truncate text-xs font-medium">
-              {operation.modelIds.map(id => models.get(id)?.name ?? id).join(', ')}
+              {reviewedTitle(operation) ?? operation.modelIds.map(id => models.get(id)?.name ?? id).join(', ')}
             </span>
             <span className="text-2xs text-muted-foreground">{t('changesPanel.rowCount', { count: operation.mutations.length })}</span>
             <Button type="button" variant="outline" size="sm" onClick={() => revert(operation)}>
@@ -93,6 +101,7 @@ export function ChangesPanel({ onClose }: { onClose?: () => void }) {
           })}</ul>
         </li>)}</ol>}
     </div>
+    <ReceiptList />
     <div className="flex flex-wrap gap-2 border-t p-3">
       <ExportChangesButton surface="changes_panel" trigger={<Button type="button" size="sm" disabled={!hasExportableChanges}>{t('exportChangesButton.buttonLabel')}</Button>} />
       <ExportDialog surface="changes_panel" initialChangesOnly trigger={<Button type="button" variant="outline" size="sm" disabled={rows.length === 0}>{deltaLabel}</Button>} />

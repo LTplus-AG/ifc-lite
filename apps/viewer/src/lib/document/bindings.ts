@@ -62,24 +62,39 @@ export interface ResolvedBinding {
 /** The `{path}` placeholders of a template, in order of appearance. */
 export function templatePaths(text: string): string[] {
   const paths: string[] = [];
-  for (const m of text.matchAll(/\{([^{}]+)\}/g)) paths.push(m[1].trim());
+  for (const m of text.matchAll(/\{\{|\}\}|\{([^{}]+)\}/g)) if (m[1] !== undefined) paths.push(m[1].trim());
   return paths;
 }
+
+/** Double braces represent literal braces, leaving ordinary authored fields live. */
+export function literalTemplateText(text: string): string {
+  return text.replace(/[{}]/g, (brace) => brace + brace);
+}
+
+export interface ResolvedBindingSpan extends ResolvedBinding { start: number; end: number }
 
 export interface RenderedTemplate {
   text: string;
   bindings: ResolvedBinding[];
+  /** Source ranges in rendered text, retained through canonical wrapping for preview annotations. */
+  spans?: ResolvedBindingSpan[];
 }
 
 /** Replace every `{path}` in `text`; an unresolved one prints as `[path: reason]`. */
 export function renderTemplate(text: string, ctx: BindingContext): RenderedTemplate {
   const bindings: ResolvedBinding[] = [];
-  const rendered = text.replace(/\{([^{}]+)\}/g, (_, raw: string) => {
+  const spans: ResolvedBindingSpan[] = [];
+  let delta = 0;
+  const rendered = text.replace(/\{\{|\}\}|\{([^{}]+)\}/g, (token: string, raw: string | undefined, offset: number) => {
+    if (raw === undefined) { delta -= 1; return token[0]; }
     const resolved = resolveBinding(raw.trim(), ctx);
     bindings.push(resolved);
-    return resolved.ok ? resolved.value : `[${resolved.path}: ${resolved.reason ?? 'unresolved'}]`;
+    const value = resolved.ok ? resolved.value : `[${resolved.path}: ${resolved.reason ?? 'unresolved'}]`;
+    spans.push({ ...resolved, start: offset + delta, end: offset + delta + value.length });
+    delta += value.length - token.length;
+    return value;
   });
-  return { text: rendered, bindings };
+  return { text: rendered, bindings, spans };
 }
 
 // ── Resolution ──────────────────────────────────────────────────────────

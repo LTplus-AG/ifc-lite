@@ -15,6 +15,7 @@ import { useViewerStore } from '@/store';
 import { fromGlobalIdFromModels } from '@/store/globalId';
 import { toast } from '@/components/ui/toast';
 import { routeCommandPointer } from './commandPointer.js';
+import { fieldTelemetry } from '@/lib/perf/fieldTelemetryLoader';
 import { raycastForPolylinePoint, isNearPolylineStart,
   isDuplicateClickPoint,
 } from './measureHandlers.js';
@@ -130,6 +131,7 @@ export async function handleSelectionClick(ctx: MouseHandlerContext, e: MouseEve
     return;
   }
 
+  fieldTelemetry?.noteInspectClick(e.timeStamp); // #6961 ifc_inspect: sampled click -> properties shown
   const now = Date.now();
   const timeSinceLastClick = now - ctx.lastClickTimeRef.current;
   const clickPos = { x, y };

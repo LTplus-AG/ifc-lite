@@ -23,6 +23,9 @@ import {
 } from '@/lib/lists';
 import type { ListDefinition, ListGrouping } from '@/lib/lists';
 import { runListFederated } from '@/lib/lists/run-list';
+import { carryListRun, recordListRun } from '@/lib/lists/run-provenance';
+import { captureAnalysisStamp } from '@/hooks/useAnalysisStaleness';
+import { AssistantAction } from '@/components/viewer/assistant/AssistantAction';
 import { evaluatorModelsFromState } from '@/lib/model-tags/evaluator-models';
 import { useListProviders } from './useListProviders';
 import { ListBuilder } from './ListBuilder';
@@ -87,11 +90,13 @@ export function ListPanel() {
       try {
         if (controller.signal.aborted) return;
         const state = useViewerStore.getState();
+        // Stamped at run start, so an edit landing mid-run leaves the result stale (#6833).
+        const stamp = captureAnalysisStamp();
         const result = await runListFederated(definition, modelProviderPairs, state, {
           evaluatorModels: evaluatorModelsFromState(state), signal: controller.signal,
         });
         if (controller.signal.aborted) return;
-        setListResult(result);
+        setListResult(recordListRun(result, definition, stamp));
         setView('results');
       } catch (err) {
         if (controller.signal.aborted) return;
@@ -165,7 +170,7 @@ export function ListPanel() {
     const current = useViewerStore.getState().listResult;
     if (current) {
       const summ = summariseListRows(next, current.rows);
-      setListResult({ ...current, groups: summ.groups, summary: summ.summary });
+      setListResult(carryListRun(current, { ...current, groups: summ.groups, summary: summ.summary }, next));
     }
   }, [editingList, listDefinitions, updateListDefinition, setListResult]);
 
@@ -210,6 +215,7 @@ export function ListPanel() {
           )}
         </div>
         <div className="flex items-center gap-1">
+          <AssistantAction />
           {view === 'results' && (
             <>
               <IconButton

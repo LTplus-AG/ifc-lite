@@ -12,6 +12,9 @@
  * Shared between the ribbon's file commands (writes) and CommandPalette (reads).
  */
 
+import { markLocalModelFiles } from './reload-resume.js';
+import { countCopy } from '@ifc-lite/load-trace';
+
 const KEY = 'ifc-lite:recent-files';
 const DB_NAME = 'ifc-lite-file-cache';
 // v2 adds a `timestamp` index so eviction can order records newest-first via a
@@ -122,6 +125,9 @@ function openDB(): Promise<IDBDatabase> {
 
 /** Cache file blobs in IndexedDB for instant reload from palette. */
 export async function cacheFileBlobs(files: File[]): Promise<void> {
+  // Every caller hands over files the user just opened from disk: those are the
+  // models a stale-deployment reload may bring back (./reload-resume.ts).
+  markLocalModelFiles(files);
   let db: IDBDatabase | undefined;
   try {
     // Only stage up to the cache capacity. The store keeps at most
@@ -140,7 +146,7 @@ export async function cacheFileBlobs(files: File[]): Promise<void> {
     for (const file of eligible) {
       records.push({
         name: file.name,
-        blob: await file.arrayBuffer(),
+        blob: countCopy('source.recentFiles', await file.arrayBuffer()), // #6957: a second full read
         size: file.size,
         type: file.type,
         timestamp: Date.now(),
@@ -227,7 +233,9 @@ export async function getCachedFile(target: string | RecentFileEntry): Promise<F
       req.onerror = () => reject(req.error);
     });
     if (!result) return null;
-    return new File([result.blob], result.name, { type: result.type || 'application/octet-stream' });
+    const file = new File([result.blob], result.name, { type: result.type || 'application/octet-stream' });
+    markLocalModelFiles([file]);
+    return file;
   } catch (err) {
     // The caller falls back to the file picker, which looks to the user like
     // the cache simply missed — name the real cause here. One per click.

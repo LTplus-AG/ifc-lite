@@ -7,6 +7,9 @@ import { copyFile, mkdtemp, readFile, readdir, writeFile } from 'node:fs/promise
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { parseFlowDocument, checkAvailability } from '@ifc-lite/flow';
+import { createStandardRegistry, headlessFeatures } from '@ifc-lite/flow-nodes';
+import { aiNodes } from '@ifc-lite/flow-nodes/ai';
 import { flowCommand } from './flow.js';
 import { createHeadlessContext } from '../loader.js';
 
@@ -162,6 +165,21 @@ describe('ifc-lite flow', () => {
     expect(c2.err.join('')).toMatch(/--out needs a value/);
   });
 
+  it('refuses session.loadModels before opening the CLI model (#6612)', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'ifc-flow-session-'));
+    const graph = join(dir, 'local-models.flow.json');
+    await writeFile(graph, JSON.stringify({ flowVersion: 2, id: 'local', name: 'Local models',
+      capabilities: ['model.create'], inputs: [], outputs: [], edges: [],
+      nodes: [{ id: 'load', type: 'session.loadModels', params: { selectors: [] } }] }));
+    const c = capture();
+    const exit = vi.spyOn(process, 'exit').mockImplementation((() => { throw new Error('exit'); }) as never);
+    await expect(flowCommand(['run', graph, join(dir, 'nonexistent.ifc'), '--no-tracking', '--json'])).rejects.toThrow('exit');
+    expect(exit).toHaveBeenCalledWith(1);
+    expect(c.err.join('')).toMatch(/Flow cannot run on this host/);
+    expect(c.err.join('')).toMatch(/sessionModels/);
+    expect(c.err.join('')).not.toMatch(/ENOENT/);
+  });
+
   // Every shipped example, run for real against a real model. Validation
   // only proves a graph is wired; this proves it computes something. An
   // example that throws on a live model is worse than no example.
@@ -170,6 +188,19 @@ describe('ifc-lite flow', () => {
     expect(files.length).toBeGreaterThan(0);
     for (const file of files) {
       const c = capture();
+      const graph = parseFlowDocument(await readFile(join(EXAMPLES, file), 'utf8'));
+      const unavailable = checkAvailability(graph, createStandardRegistry().registerAll(aiNodes), headlessFeatures()).filter((node) => node.status === 'unavailable');
+      if (unavailable.length) {
+        // Browser session services, and an AI model service the environment does
+        // not configure, must be refused before trying to open even the CLI model.
+        const exit = vi.spyOn(process, 'exit').mockImplementation((() => { throw new Error('exit'); }) as never);
+        await expect(flowCommand(['run', join(EXAMPLES, file), '/missing-model-proves-preflight.ifc', '--no-tracking', '--json'])).rejects.toThrow('exit');
+        expect(exit).toHaveBeenCalledWith(1);
+        expect(c.err.join('')).toMatch(/Flow cannot run on this host/);
+        expect(c.err.join('')).toMatch(/sessionModels|"ai"/);
+        vi.restoreAllMocks();
+        continue;
+      }
       // `--no-tracking`: the default sidecar path is beside the graph, which
       // here is the repo's own source tree.
       await flowCommand(['run', join(EXAMPLES, file), SAMPLE_IFC, '--no-tracking', '--json']);

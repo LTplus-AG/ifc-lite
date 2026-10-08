@@ -1,0 +1,86 @@
+{
+  "observer": "tests",
+  "baseline": {
+    "kind": "pass",
+    "passed": 4,
+    "total": 4
+  },
+  "reverted": {
+    "kind": "assertion-failure",
+    "passed": 3,
+    "failed": 1,
+    "total": 4,
+    "evidence": []
+  },
+  "ledger": [
+    {
+      "file": "apps/viewer/src/lib/flow/report-retention.test.ts",
+      "role": "executable",
+      "runKey": "test:apps/viewer/src/lib/flow/report-retention.test.ts",
+      "adapter": "node-test",
+      "runner": {
+        "family": "node-test",
+        "command": [
+          "tsx",
+          "--import",
+          "./src/test/vite-module-hooks.mjs",
+          "--test-timeout=120000",
+          "--test-concurrency=1",
+          "--test",
+          "src/lib/flow/report-retention.test.ts"
+        ]
+      },
+      "features": [],
+      "attribution": "runtime-v8-file",
+      "baseline": {
+        "kind": "pass",
+        "passed": 4,
+        "failed": 0,
+        "total": 4,
+        "exitCode": 0,
+        "signal": null,
+        "toolchain": "node v24.21.0",
+        "attributed": true,
+        "files": [
+          "apps/viewer/src/lib/flow/report-retention.test.ts"
+        ],
+        "testIdentities": [],
+        "evidence": []
+      },
+      "reverted": {
+        "kind": "assertion-failure",
+        "passed": 3,
+        "failed": 1,
+        "total": 4,
+        "exitCode": 1,
+        "signal": null,
+        "toolchain": "node v24.21.0",
+        "attributed": true,
+        "files": [
+          "apps/viewer/src/lib/flow/report-retention.test.ts"
+        ],
+        "testIdentities": [],
+        "evidence": []
+      }
+    }
+  ],
+  "schemaVersion": 2,
+  "channel": "pull-request",
+  "verdict": "OBSERVED",
+  "exitCode": 0,
+  "reason": "reverting production turned an assertion RED in apps/viewer/src/lib/flow/report-retention.test.ts; that file has a green, attributable baseline.",
+  "base": "7e1bfc76dd5a153054291e70997a878f42e8d49b",
+  "head": "56366859515b2b9258f528f834293a88c7d35219",
+  "production": [
+    "apps/viewer/src/lib/flow/report-retention.ts"
+  ],
+  "tests": [
+    "apps/viewer/src/lib/flow/report-retention.test.ts"
+  ],
+  "invocationId": "637e85ae-a216-4b45-8aa6-9098b5718fab",
+  "timing": {
+    "startedAt": "2026-10-02T11:33:40.906Z",
+    "finishedAt": "2026-10-02T11:34:17.849Z"
+  },
+  "restoration": "verified"
+}

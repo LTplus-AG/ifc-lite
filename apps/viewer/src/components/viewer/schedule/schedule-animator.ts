@@ -32,7 +32,8 @@
  * layer.
  */
 
-import type { ScheduleExtraction, ScheduleTaskInfo } from '@ifc-lite/parser';
+import { taskProductExpressIds, type ScheduleExtraction, type ScheduleTaskInfo } from '@ifc-lite/parser';
+import { taskStartEpoch, taskFinishEpoch } from '@/store/slices/schedule-task-dates';
 
 // ─────────────────────────────────────────────────────────────────────────
 // Types
@@ -231,25 +232,10 @@ function easeInCubic(t: number): number {
   return clamped * clamped * clamped;
 }
 
-/**
- * Parse an ISO 8601 datetime → epoch ms. Identical to
- * `scheduleSlice.parseIsoDate`. We keep a local copy rather than importing
- * from `@/store` because `scheduleSlice` already imports from this module
- * for `AnimationSettings` / `DEFAULT_ANIMATION_SETTINGS` — sharing the
- * helper through `@/store` closes the loop and breaks ESM initialisation
- * order ("Cannot access X before initialization"). Any fix to TZ-less
- * normalization must land in both copies; linked via comment.
- */
-function parseEpoch(value: string | undefined): number | undefined {
-  if (!value) return undefined;
-  const hasTz = /Z$|[+-]\d{2}:?\d{2}$/.test(value);
-  const t = Date.parse(hasTz ? value : `${value}Z`);
-  return Number.isNaN(t) ? undefined : t;
-}
-
+/** The task's window from the canonical resolver (`schedule-task-dates.ts`, #6803). */
 function taskWindow(task: ScheduleTaskInfo): { start: number; finish: number } | null {
-  const start = parseEpoch(task.taskTime?.scheduleStart ?? task.taskTime?.actualStart);
-  const finish = parseEpoch(task.taskTime?.scheduleFinish ?? task.taskTime?.actualFinish);
+  const start = taskStartEpoch(task);
+  const finish = taskFinishEpoch(task);
   if (start === undefined || finish === undefined || finish < start) return null;
   return { start, finish };
 }
@@ -449,11 +435,11 @@ export function computeAnimationFrame(
         && !task.controllingScheduleGlobalIds.includes(scheduleGlobalId)) {
       continue;
     }
-    if (task.productExpressIds.length === 0) continue;
-    const phase = computeTaskPhase(task, playbackTime, settings);
+    const productIds = taskProductExpressIds(task);
+    const phase = productIds.length > 0 ? computeTaskPhase(task, playbackTime, settings) : null;
     if (!phase) continue;
 
-    for (const id of task.productExpressIds) {
+    for (const id of productIds) {
       const existing = chosenByProduct.get(id);
       if (!existing || phasePriority[phase.phase] > phasePriority[existing.phase]) {
         chosenByProduct.set(id, phase);

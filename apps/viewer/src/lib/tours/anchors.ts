@@ -21,9 +21,11 @@ import type { WorkspacePanelId } from '@/lib/panels/registry';
 export const TOUR_ANCHORS = {
   /** The empty-state "Load IFC" card in ViewportContainer. */
   emptyStateCard: 'empty-state-card',
-  /** PropertiesPanel root (valid docked, floating, or split). */
+  /** Information panel body, wrapped around every PropertiesPanel branch
+   *  by `renderPanelBody` (valid docked, floating, or split). */
   propertiesPanel: 'properties-panel',
-  /** HierarchyPanel root in the left slot. */
+  /** HierarchyPanel root in the left slot, on every branch (no model and
+   *  still-loading included). */
   hierarchyPanel: 'hierarchy-panel',
   /** ViewCube wrapper div (top-right viewport overlay). Card placement
    *  must stay clear of this corner - never anchor a card 'bottom' here. */

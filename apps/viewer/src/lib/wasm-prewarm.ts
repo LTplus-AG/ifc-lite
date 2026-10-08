@@ -21,6 +21,8 @@
  * engine they didn't ask for. They pay it on first load instead, as today.
  */
 
+import { onFieldTelemetry } from './perf/fieldTelemetryLoader.js';
+
 /** Subset of the (non-standard, Chromium-only) NetworkInformation we consult. */
 interface NetworkInformationLike {
   saveData?: boolean;
@@ -64,8 +66,11 @@ export function scheduleWasmPrewarm(): void {
     // geometry package. (It does NOT keep it out of the entry chunk —
     // useIfcLoader value-imports GeometryProcessor, so @ifc-lite/geometry is
     // already in the entry graph and this resolves from memory.)
+    const startedAt = performance.now();
     void import('@ifc-lite/geometry')
       .then(({ prewarmSharedWasmModule }) => prewarmSharedWasmModule())
+      // `viewer_boot` (#6961): when the engine binary finished compiling.
+      .then((compiled) => { const endedAt = performance.now(); onFieldTelemetry((field) => field.noteEngineCompiled(startedAt, endedAt, compiled)); })
       .catch((err) => {
         console.warn('[wasm-prewarm] engine prewarm skipped:', err);
       });

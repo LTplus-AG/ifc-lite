@@ -4,9 +4,10 @@
 
 import { describe, expect, it } from 'vitest';
 import { checkAvailability, type HostFeatures } from './availability.js';
-import { parseFlowDocument, validateFlowDocument, type FlowDocument } from './document.js';
+import { FLOW_VERSION, parseFlowDocument, validateFlowDocument, type FlowDocument } from './document.js';
 import { NodeRegistry, type NodeDef } from './registry.js';
-import { FlowCycleError, MemoCache, runFlow, topologicalOrder } from './scheduler.js';
+import { FlowCycleError, topologicalOrder } from './order.js';
+import { MemoCache, runFlow } from './scheduler.js';
 import { group, list, type EntityRef } from './values.js';
 
 /** A tiny fake host: a "model" of walls with areas, and a colorize call log. */
@@ -73,7 +74,7 @@ const registry = new NodeRegistry<Host>().registerAll([
 ] satisfies NodeDef<Host>[]);
 
 const doc: FlowDocument = {
-  flowVersion: 1,
+  flowVersion: FLOW_VERSION,
   id: 'g1',
   name: 'areas',
   capabilities: ['model.read', 'viewer.colorize'],
@@ -174,7 +175,7 @@ describe('runFlow', () => {
       },
     ]);
     const d: FlowDocument = {
-      flowVersion: 1,
+      flowVersion: FLOW_VERSION,
       id: 'g3',
       name: 'write then read',
       capabilities: [],
@@ -240,7 +241,7 @@ describe('runFlow', () => {
       },
     ]);
     const d: FlowDocument = {
-      flowVersion: 1,
+      flowVersion: FLOW_VERSION,
       id: 'g2',
       name: 'per storey',
       capabilities: [],
@@ -307,7 +308,7 @@ describe('volatile nodes are never memoised (#5446 review)', () => {
       run: () => { calls += 1; return { value: calls }; },
     }]);
     const graph: FlowDocument = {
-      flowVersion: 1, id: 'v', name: 'v', capabilities: [], inputs: [],
+      flowVersion: FLOW_VERSION, id: 'v', name: 'v', capabilities: [], inputs: [],
       outputs: [{ nodeId: 'f', port: 'value', label: 'v' }], nodes: [{ id: 'f', type: 'test.fetch' }], edges: [],
     };
     const cache = new MemoCache();
@@ -341,7 +342,7 @@ describe('a run that marks itself volatile is not memoised (#5634)', () => {
       },
     ]);
     const graph = (fetchOn: number): FlowDocument => ({
-      flowVersion: 1, id: 'v', name: 'v', capabilities: [], inputs: [], outputs: [],
+      flowVersion: FLOW_VERSION, id: 'v', name: 'v', capabilities: [], inputs: [], outputs: [],
       nodes: [{ id: 'p', type: 'test.pair' }, { id: 'f', type: 'test.maybeFetch', params: { fetchOn } }],
       edges: [{ from: ['p', 'items'], to: ['f', 'n'] }],
     });

@@ -109,6 +109,9 @@ const STATES: ReadonlyArray<{ name: string; settleMs?: number; mayBeEmpty?: bool
   { name: 'room', settleMs: 1500 },
   // #6232 A1: the hosted placing commands' bar (offset, sill, width, height).
   { name: 'window' },
+  // #6232 D3: the curtain wall bar is the widest command bar (eight typed fields); the grid bar adds a tag scheme.
+  { name: 'curtainwall' },
+  { name: 'grid' },
   // #6232 C3: the Array bar (count, spacing, linear / polar, spacing / fit).
   { name: 'array' },
   // #6232 D1: the Stair bar (five fields and its riser summary) and the Railing bar (four fields, summary, Finish).
@@ -199,6 +202,8 @@ for (const width of [1280, 1600, 1920]) {
             },
             room: (s) => s.startCommand('room.place'),
             window: (s) => s.startCommand('window.place'),
+            curtainwall: (s) => s.startCommand('curtainwall.place'),
+            grid: (s) => s.startCommand('grid.place'),
             array: (s) => s.startCommand('element.array'),
             stair: (s) => s.startCommand('stair.place'),
             railing: (s) => s.startCommand('railing.place'),
@@ -219,8 +224,8 @@ for (const width of [1280, 1600, 1920]) {
           };
           enter[name](api.getState());
         }, [STORE, state.name] as const);
-        if (state.name === 'split' || state.name === 'slab' || state.name === 'beam' || state.name === 'column' || state.name === 'rotate' || state.name === 'room' || state.name === 'window' || state.name === 'array' || state.name === 'stair' || state.name === 'railing' || state.name === 'splitMulti' || state.name === 'pushPull' || state.name === 'align' || state.name === 'trimExtend') {
-          const id = { split: 'element.split', slab: 'slab.place', beam: 'beam.place', column: 'column.place', rotate: 'element.rotate', room: 'room.place', window: 'window.place', array: 'element.array', stair: 'stair.place', railing: 'railing.place', splitMulti: 'split.multi', pushPull: 'element.pushPull', align: 'element.align', trimExtend: 'element.trimExtend' }[state.name];
+        if (state.name === 'split' || state.name === 'slab' || state.name === 'beam' || state.name === 'column' || state.name === 'rotate' || state.name === 'room' || state.name === 'window' || state.name === 'array' || state.name === 'stair' || state.name === 'railing' || state.name === 'splitMulti' || state.name === 'pushPull' || state.name === 'align' || state.name === 'trimExtend' || state.name === 'curtainwall' || state.name === 'grid') {
+          const id = { split: 'element.split', slab: 'slab.place', beam: 'beam.place', column: 'column.place', rotate: 'element.rotate', room: 'room.place', window: 'window.place', array: 'element.array', stair: 'stair.place', railing: 'railing.place', splitMulti: 'split.multi', pushPull: 'element.pushPull', align: 'element.align', trimExtend: 'element.trimExtend', curtainwall: 'curtainwall.place', grid: 'grid.place' }[state.name];
           await expect(page.locator(`[data-hud-region] [data-command-id="${id}"]`)).toBeVisible();
         }
         if (state.name === 'section+cap') {

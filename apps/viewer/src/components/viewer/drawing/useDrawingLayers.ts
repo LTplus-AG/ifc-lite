@@ -14,7 +14,9 @@ import { useIfc } from '@/hooks/useIfc';
 import { useTranslation } from '@/i18n';
 import { drawingAnnotationFrame } from '@/lib/model-placement/drawing-annotation-frame';
 import { useSymbolicAnnotationsForDrawing, symbolicAnnotationsOverlayEnabled } from '@/hooks/useSymbolicAnnotations';
-import { useDxfUnderlaysForDrawing, useDxfMapToWorldTransform, dxfWorldShift, dxfUnderlayDrawingBounds } from '@/hooks/useDxfUnderlay';
+import { useDxfMapToWorldTransform, dxfWorldShift, dxfUnderlayDrawingBounds } from '@/hooks/useDxfUnderlay';
+import { drawingModelCenter } from '@/hooks/dxfDrawingBounds';
+import { dxfPlaneDrawingMapper, dxfDrawingDeltaToPlacement } from '@/hooks/dxfReferencePlane';
 import { useScanSectionLayer } from '@/hooks/useScanSectionLayer';
 import { useDrawingExport } from '@/hooks/useDrawingExport';
 import type { DrawingViewModel } from './useDrawingViewModel';
@@ -46,16 +48,7 @@ export function useDrawingLayers(vm: DrawingViewModel) {
     fallbackY: ifcAnnotationsForDrawing.fallbackY,
   });
 
-  // DXF reference underlays mapped to drawing space (issue #1782): the hook
-  // applies the render-frame origin shift, the flipped-section mirror, and
-  // each underlay's placement. Plan sections only.
-  const dxfUnderlayData = useDxfUnderlaysForDrawing({
-    enabled: status === 'ready',
-    sectionAxis: sectionPlane.axis,
-    isCustomPlane: sectionPlane.custom !== undefined,
-    flipped: sectionPlane.flipped,
-    coordinateInfo: geometryResult?.coordinateInfo,
-  });
+  const dxfUnderlayData = vm.dxfUnderlayData;
 
   // Centre an underlay on the generated drawing: offset = model-drawing
   // centre − underlay centre at zero offset (same world→drawing mapping
@@ -68,7 +61,11 @@ export function useDrawingLayers(vm: DrawingViewModel) {
     if (!entry || !drawing) return;
     const shift = dxfWorldShift(geometryResult?.coordinateInfo);
     const mirrorX = sectionPlane.flipped && sectionPlane.custom === undefined;
-    const underlayBounds = dxfUnderlayDrawingBounds(entry, shift, mirrorX, dxfMapToWorld, dxfGeoreferenceAvailable);
+    const zeroOffsetEntry = {...entry,placement:{...entry.placement,offsetX:0,offsetY:0}};
+    const state = useViewerStore.getState();
+    const mapper = entry.referenceFrame ? dxfPlaneDrawingMapper(zeroOffsetEntry, state, drawing.config.plane) : undefined;
+    if (entry.referenceFrame && !mapper) { toast.error(t('section2d.underlay.unavailableReference')); return; }
+    const underlayBounds = dxfUnderlayDrawingBounds(entry, shift, mirrorX, dxfMapToWorld, dxfGeoreferenceAvailable, mapper ?? undefined);
     if (!underlayBounds) {
       // PR #1965 review: this guard fires when the underlay has no usable
       // bounds AT ALL (missing extents) OR the georeference produced a
@@ -78,12 +75,13 @@ export function useDrawingLayers(vm: DrawingViewModel) {
       toast.error(t('section2d.underlay.missingBounds'));
       return;
     }
-    const modelCx = (drawing.bounds.min.x + drawing.bounds.max.x) / 2;
-    const modelCy = (drawing.bounds.min.y + drawing.bounds.max.y) / 2;
+    const modelCenter = drawingModelCenter(vm.sourceDrawing);
+    if (!modelCenter) { toast.error(t('section2d.underlay.emptyDrawing')); return; }
     const underlayCx = (underlayBounds.min.x + underlayBounds.max.x) / 2;
     const underlayCy = (underlayBounds.min.y + underlayBounds.max.y) / 2;
-    const offsetX = modelCx - underlayCx;
-    const offsetY = modelCy - underlayCy;
+    const offset = dxfDrawingDeltaToPlacement(entry,state,drawing.config.plane,{x:modelCenter.x-underlayCx,y:modelCenter.y-underlayCy});
+    if (!offset) { toast.error(t('section2d.underlay.incompatiblePlacement')); return; }
+    const offsetX = offset.x, offsetY = offset.y;
     // Defense-in-depth (PR #1965 review): `drawing.bounds` comes from the
     // generated drawing, not the underlay, and a NaN here would otherwise be
     // written into the stored placement, which survives toggling
@@ -93,7 +91,7 @@ export function useDrawingLayers(vm: DrawingViewModel) {
       return;
     }
     updateDxfUnderlayPlacement(id, { offsetX, offsetY });
-  }, [dxfUnderlays, drawing, geometryResult, sectionPlane.flipped, sectionPlane.custom, updateDxfUnderlayPlacement, dxfMapToWorld, dxfGeoreferenceAvailable, t]);
+  }, [dxfUnderlays, drawing, vm.sourceDrawing, geometryResult, sectionPlane.flipped, sectionPlane.custom, updateDxfUnderlayPlacement, dxfMapToWorld, dxfGeoreferenceAvailable, t]);
 
   // Point-cloud scan overlay (issue #1805): a thin band of the loaded
   // scan(s) around the active section plane, projected into the SAME
@@ -107,6 +105,7 @@ export function useDrawingLayers(vm: DrawingViewModel) {
     classMask: pointCloudClassMask,
     models,
     legacyPointClouds: geometryResult?.pointClouds,
+    outline: { enabled: displayOptions.scanSectionOutline, maxGap: displayOptions.scanSectionOutlineMaxGap },
   });
 
   const { handleExportSVG, handleExportDXF, handleExportPDF, handlePrint } = useDrawingExport({

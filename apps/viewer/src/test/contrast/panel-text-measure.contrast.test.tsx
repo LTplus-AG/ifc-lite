@@ -32,7 +32,7 @@ import { MeasureGeoReadout } from '@/components/viewer/tools/MeasureHudReadouts.
 import { SectionToolbar } from '@/components/viewer/tools/SectionToolbar.js';
 import { HoverTooltip } from '@/components/viewer/HoverTooltip.js';
 import { ViewportHud } from '@/components/viewport-ui/hud/ViewportHud.js';
-import { cleanup, render } from '@/test/render.js';
+import { cleanup, render, waitFor } from '@/test/render.js';
 import { fixtureModel } from '@/test/store-fixture.js';
 import { closeContrastBrowser, warmContrastBrowser } from './render-harness.js';
 import {
@@ -86,15 +86,24 @@ function seedGeoreferencedRebased(): void {
 }
 
 /** Mount the docked Measurements panel and open `tabKey`'s tab. */
-function mountMeasurementsPanel(tabKey?: Parameters<typeof resolve>[0]): void {
+function mountMeasurementsPanel(tabKey?: Parameters<typeof resolve>[0]): HTMLElement {
   const container = render(<MeasurementsPanel onClose={() => {}} />);
-  if (!tabKey) return;
+  if (!tabKey) return container;
   const label = resolve(tabKey);
   const tab = [...container.querySelectorAll('[role="tab"]')].find((b) => b.textContent?.trim() === label);
   assert.ok(tab, `no tab labelled "${label}" on the Measurements panel`);
   act(() => {
     tab.dispatchEvent(new window.MouseEvent('mousedown', { bubbles: true, cancelable: true, button: 0 }));
   });
+  return container;
+}
+
+/** Classification and the picked-point projection settle separately (#7060).
+ * Capture the claimed georeferenced state only after both rows are mounted. */
+async function waitForProjectedPointReadout(panel: HTMLElement): Promise<void> {
+  await waitFor(() => (panel.textContent?.includes(CRS_NAME) ?? false)
+    && (panel.textContent?.includes(resolve('measure.point.rowLatLon')) ?? false),
+  'the projected Point readout must resolve before its contrast snapshot');
 }
 
 /** Qty tab state from `measure-quantities-mesh-area.test.tsx`: a selected
@@ -149,7 +158,8 @@ describe('Measure / Section / hover secondary text: rendered contrast (#4792, #6
 
     it(`MeasurePointReadout rebased + georeferenced rows, notice and CRS clear AA in ${theme}`, async () => {
       seedGeoreferencedRebased();
-      mountMeasurementsPanel('measure.section.point.label');
+      const panel = mountMeasurementsPanel('measure.section.point.label');
+      await waitForProjectedPointReadout(panel);
       await assertRenderedTextClears(theme, snapshotRenderedDom(VIEWER_SHELL_SURFACE), [
         resolve('measure.point.rowAnchor'),
         resolve('measure.point.rowMap'),
@@ -161,7 +171,10 @@ describe('Measure / Section / hover secondary text: rendered contrast (#4792, #6
 
     it(`MeasurementList geo-readout EnhLine labels clear AA in ${theme}`, async () => {
       seedGeoreferencedRebased();
-      mountMeasurementsPanel();
+      const panel = mountMeasurementsPanel();
+      await waitFor(() => ['A', 'B'].every(label => [...panel.querySelectorAll('span')]
+        .some(element => element.textContent?.trim() === label)),
+      'the projected endpoint E/N/H rows must mount before their contrast snapshot');
       await assertRenderedTextClears(theme, snapshotRenderedDom(VIEWER_SHELL_SURFACE), ['A', 'B'], WCAG_AA_NORMAL_TEXT);
     });
 
@@ -176,7 +189,10 @@ describe('Measure / Section / hover secondary text: rendered contrast (#4792, #6
 
     it(`MeasureGeoReadout projected-CRS name on its HudSurface clears AA in ${theme}`, async () => {
       seedGeoreferencedRebased();
-      render(<><ViewportHud /><MeasureGeoReadout /></>);
+      const hud = render(<><ViewportHud /><MeasureGeoReadout /></>);
+      await waitFor(() => (hud.textContent?.includes(CRS_NAME) ?? false)
+        && /-?\d+\.\d{6}/.test(hud.textContent ?? ''),
+        'the projected HUD readout must resolve before its contrast snapshot');
       await assertRenderedTextClears(theme, snapshotRenderedDom(VIEWPORT_SURFACE), [CRS_NAME], WCAG_AA_NORMAL_TEXT);
     });
 
@@ -193,7 +209,8 @@ describe('Measure / Section / hover secondary text: rendered contrast (#4792, #6
 
     it(`non-vacuousness: ${OLD_PANEL_CLASS} on MeasurePointReadout rebased notice reddens in ${theme}`, async (t) => {
       seedGeoreferencedRebased();
-      mountMeasurementsPanel('measure.section.point.label');
+      const panel = mountMeasurementsPanel('measure.section.point.label');
+      await waitForProjectedPointReadout(panel);
       const ratios = await assertForcedClassReddens(theme, rebasedNote(), OLD_PANEL_CLASS, WCAG_AA_NORMAL_TEXT, VIEWER_SHELL_SURFACE);
       t.diagnostic(ratios.map((r) => `${r.toFixed(2)}:1`).join(', '));
     });

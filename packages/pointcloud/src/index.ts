@@ -44,7 +44,8 @@ export type {
   DownsampleHint,
 } from './streaming/types.js';
 export { LasStreamingSource } from './streaming/las-source.js';
-export { LazStreamingSource, probeLazPerfWasmLoad } from './streaming/laz-source.js';
+export { LazStreamingSource } from './streaming/laz-source.js';
+export { probeLazPerfWasmLoad } from './streaming/laz-perf-loader.js';
 export { PlyStreamingSource } from './streaming/ply-source.js';
 export { PcdStreamingSource } from './streaming/pcd-source.js';
 export { E57StreamingSource, inspectE57SpatialMetadata } from './streaming/e57-source.js';
@@ -95,3 +96,52 @@ export {
   classificationCountEntries,
   type ClassificationCountEntry,
 } from './classification.js';
+
+// COPC: range-read octree LAZ, decoded node by node in the worker (#6869)
+export type { RangeByteSource } from './streaming/types.js';
+export type { CopcSourceDescriptor } from './streaming/protocol.js';
+export { HttpRangeSource, type HttpRangeSourceOptions } from './streaming/http-range-source.js';
+export {
+  COPC_PROBE_BYTES,
+  isCopcHeader,
+  copcNodeBounds,
+  voxelKeyId,
+  type CopcInfo,
+  type CopcFileInfo,
+  type VoxelKey,
+} from './copc/copc-info.js';
+export {
+  CopcHierarchy,
+  copcChildKeys,
+  type CopcChildState,
+  type CopcHierarchyLimits,
+  type CopcHierarchyPage,
+  type CopcNodeEntry,
+  type CopcPageRef,
+} from './copc/copc-hierarchy.js';
+export {
+  openCopcWorkerReader,
+  type CopcWorkerReader,
+  type OpenCopcOptions,
+} from './copc/copc-worker-client.js';
+
+// View-dependent LOD selection + progressive pacing, renderer-agnostic (#6869)
+export {
+  selectLod,
+  type LodNode,
+  type LodCamera,
+  type LodOptions,
+  type LodSelection,
+  type LodSelectedNode,
+} from './lod/select.js';
+export {
+  LodPacer,
+  shouldReplacePass,
+  type LodPacerOptions,
+  type LodPassQuality,
+} from './lod/pacer.js';
+export {
+  createCopcLodTree,
+  type CopcLodNode,
+  type CopcLodTree,
+} from './lod/copc-lod-tree.js';

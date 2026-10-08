@@ -24,9 +24,11 @@
  * itself; its own counts are exact even for `unique`/`aggregate`, whose
  * entity rows list failures only. An IDS snapshot is built exactly as before.
  */
-import { capturedReportModelScope } from './report-provenance.js';
+import { captureValidationElements } from '../validation/reports/element-evidence';
+import { validationReportSummary } from '../validation/report-summary.js';
+import { capturedReportModelScope, replaceReportSnapshot } from './report-provenance.js';
 import type { SpecificationResult, ValidationReport } from '@ifc-lite/ids';
-import { boundedPassRate, calculateSummary, formatConstraint } from '@ifc-lite/ids';
+import { boundedPassRate, formatConstraint } from '@ifc-lite/ids';
 import type { IDSConstraint, IDSFacet } from '@ifc-lite/ids';
 import type { IdsReportBlock, IdsReportCheckSummary, IdsReportRuleSummary, IdsReportVariant } from './types.js';
 
@@ -133,25 +135,18 @@ function ruleCheck(report: ValidationReport, result: SpecificationResult): IdsRe
 export function idsReportBlockFromReport(report: ValidationReport, id: string, variant?: IdsReportVariant): IdsReportBlock {
   const block = snapshotFromReport(report, id);
   const reportModels = capturedReportModelScope(report);
-  return { ...block, ...(variant ? { variant } : {}), ...(reportModels ? { reportModels } : {}) };
+  return { ...block, elementEvidence: captureValidationElements(report, reportModels),
+    ...(variant ? { variant } : {}), ...(reportModels ? { reportModels } : {}) };
 }
 
 function snapshotFromReport(report: ValidationReport, id: string): IdsReportBlock {
-  const summary = calculateSummary(report.specificationResults);
+  const totals = validationReportSummary(report);
   const generatedAt = report.timestamp.toISOString();
-  const totals = {
-    checked: summary.totalEntitiesChecked,
-    passed: summary.totalEntitiesPassed,
-    failed: summary.totalEntitiesFailed,
-    passRate: summary.overallPassRate,
-  };
   if (report.source.kind === 'rules') {
     const checks = report.specificationResults.map((result) => ruleCheck(report, result));
-    // A warning rule's failing elements are warnings, not failures (#6372).
-    const warnings = checks.reduce((sum, check) => sum + (check.severity === 'warning' ? check.failed : 0), 0);
     return {
       kind: 'ids-report', id, sourceKind: 'rules', sourceName: report.source.ruleSet.name, generatedAt,
-      summary: { ...totals, failed: totals.failed - warnings, warnings },
+      summary: totals,
       checks,
     };
   }
@@ -167,3 +162,6 @@ function snapshotFromReport(report: ValidationReport, id: string): IdsReportBloc
   }));
   return { kind: 'ids-report', id, sourceKind: 'ids', sourceName: report.source.document.info.title, generatedAt, summary: totals, checks };
 }
+
+/** Refresh and saved-source replacement keep the destination's identity and presentation (#6678). */
+export const replaceIdsReportSnapshot = (current: IdsReportBlock, snapshot: IdsReportBlock): IdsReportBlock => replaceReportSnapshot(current, snapshot);

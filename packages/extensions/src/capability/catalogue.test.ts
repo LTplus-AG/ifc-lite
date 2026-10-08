@@ -52,7 +52,7 @@ describe('isKnownCapability', () => {
   it.each([
     'model.read', 'model.mutate:Pset_*', 'model.create', 'model.delete',
     'viewer.read', 'viewer.colorize', 'viewer.isolate', 'viewer.fly', 'viewer.section',
-    'export.create:csv', 'storage.local', 'network.fetch:example.invalid',
+    'export.create:csv', 'storage.local', 'network.fetch:example.invalid', 'network.ai',
     'command.invoke:ext.*', 'ui.dock', 'ui.toolbar', 'ui.contextMenu', 'ui.statusBar',
   ])('recognises the catalogued capability "%s"', (raw) => {
     expect(isKnownCapability(cap(raw))).toBe(true);

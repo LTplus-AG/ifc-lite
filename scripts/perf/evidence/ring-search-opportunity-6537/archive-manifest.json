@@ -1,0 +1,101 @@
+{
+  "format": "lossless gzip, mtime zero",
+  "files": [
+    {
+      "originalName": "994-instrumented.json",
+      "originalBytes": 3656,
+      "originalSha256": "3274a986d11ad69f05237b6521dfd0edcc9099bccc7922bfedbe66597862f4ea",
+      "archiveName": "994-instrumented.json.gz",
+      "archiveBytes": 1057,
+      "archiveSha256": "dabb5def8bfa1741adcc98ec8f68b939e246103585eaa5ecdaf0f4373586d460"
+    },
+    {
+      "originalName": "994-ordinary.json",
+      "originalBytes": 1342,
+      "originalSha256": "0324399bd1387cd5bf2476c522110a464516cd651dd48e167b6781f9c4a79cad",
+      "archiveName": "994-ordinary.json.gz",
+      "archiveBytes": 451,
+      "archiveSha256": "6c6acaecb1af591cf6be622e65847ae3908018d5a06d204597c1670af2334724"
+    },
+    {
+      "originalName": "house-instrumented.json",
+      "originalBytes": 12018,
+      "originalSha256": "2d47b676bb1473f3acc89dedd5b6429b3cdb2f98d769a89fbc8b5486c9150369",
+      "archiveName": "house-instrumented.json.gz",
+      "archiveBytes": 1681,
+      "archiveSha256": "1cfc31e1317820f640d2103d76591342ac44fc21a9fc39537968c71dbaf1ec71"
+    },
+    {
+      "originalName": "house-ordinary.json",
+      "originalBytes": 9709,
+      "originalSha256": "21f991e2ffb4387a252b5a28240993bfd5725dbbf1a55570378672b178d1acd5",
+      "archiveName": "house-ordinary.json.gz",
+      "archiveBytes": 1068,
+      "archiveSha256": "b2edfd91838d68426787541e2a9419c57cf88d49f92b5804cd95b762028fea4c"
+    },
+    {
+      "originalName": "csg-instrumented.json",
+      "originalBytes": 116725,
+      "originalSha256": "3374d8114a298aa08e970159e2a135423cc42a8194eb268b31332266ab0dd06e",
+      "archiveName": "csg-instrumented.json.gz",
+      "archiveBytes": 8686,
+      "archiveSha256": "551c0461155298d4a6dc7501269948d15262357fbf5f5e7567cca6a63ccd42b3"
+    },
+    {
+      "originalName": "csg-ordinary.json",
+      "originalBytes": 114368,
+      "originalSha256": "732298c59c4ce6a588be3a3146283accb6112ee707d4e7ce7db83b8aaf3e8836",
+      "archiveName": "csg-ordinary.json.gz",
+      "archiveBytes": 7883,
+      "archiveSha256": "9b62d2d6fe7865281caf61585d742f92eaf437206f6dd825cb48d75ad85e166a"
+    },
+    {
+      "originalName": "holter-instrumented.json",
+      "originalBytes": 5321360,
+      "originalSha256": "295725aa1a6ecf78b452a2416a51948e9036b19c205713f8fe352d8eee81fb30",
+      "archiveName": "holter-instrumented.json.gz",
+      "archiveBytes": 230401,
+      "archiveSha256": "9c3ca804e83fa818ed4a838768c92afd3ce6c805e8cf76c0ea823a42d44bed67"
+    },
+    {
+      "originalName": "holter-ordinary.json",
+      "originalBytes": 5319037,
+      "originalSha256": "4a06bd128ed99edebce4da79ba70707545e8f1c8bf1c317731211df52915d926",
+      "archiveName": "holter-ordinary.json.gz",
+      "archiveBytes": 229533,
+      "archiveSha256": "4c98ee35b4cee988026f13f00da5e18fdac1c4c710adb9e26bbb26bc2471c92a"
+    },
+    {
+      "originalName": "instrumented-build-receipt.json",
+      "originalBytes": 168982,
+      "originalSha256": "752abd4166cc3517def562e7bfc39da5a1d6745e9dfda667929e7bc8aaf6bc47",
+      "archiveName": "instrumented-build-receipt.json.gz",
+      "archiveBytes": 68857,
+      "archiveSha256": "99f579c41f192caea95fa58a857acdbfdb2301e49534780d8a7bb8cb0e7483a4"
+    },
+    {
+      "originalName": "ordinary-build-receipt.json",
+      "originalBytes": 168954,
+      "originalSha256": "6f487109f9cdf17ca955ec5474d8dc2094432fe1a5c110f157977ba135cf9604",
+      "archiveName": "ordinary-build-receipt.json.gz",
+      "archiveBytes": 68845,
+      "archiveSha256": "02550f60a33fffd4d05b209ae31ff4c5399edff67373a456daeff738209ebd92"
+    },
+    {
+      "originalName": "instrumented-build-receipt-v2.json",
+      "originalBytes": 169046,
+      "originalSha256": "76011c2c8c837adf706aad52e655524f365b96e7ea4497a7365daf4dfd1ac0ff",
+      "archiveName": "instrumented-build-receipt-v2.json.gz",
+      "archiveBytes": 68906,
+      "archiveSha256": "bda0357352ea1b6ba1fc465c3bfd6f6f02244fc651ad44fde892edba9e9abad9"
+    },
+    {
+      "originalName": "ordinary-build-receipt-v2.json",
+      "originalBytes": 169018,
+      "originalSha256": "84ca680638152ac4ab201108daea47ab9d45ea1e64bb26b53c60b83b4bfc0509",
+      "archiveName": "ordinary-build-receipt-v2.json.gz",
+      "archiveBytes": 68891,
+      "archiveSha256": "961a137f4c07e740b3c61eca83308180f41eed5dd9a56311c2ee326eadbbf5d0"
+    }
+  ]
+}

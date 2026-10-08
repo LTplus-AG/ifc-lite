@@ -14,6 +14,7 @@
  * recorded, and it travels with the `.ifclite-document.json` file.
  */
 
+import { validateBlockTitle, type BlockTitle } from './block-title.js';
 import type { DocumentValidationError } from './types.js';
 import { validateReportProvenance, type ReportProvenance } from './report-provenance.js';
 
@@ -44,7 +45,7 @@ export interface ManualReportGroup {
   items: ManualReportItem[];
 }
 
-export interface ManualReportBlock extends ReportProvenance {
+export interface ManualReportBlock extends ReportProvenance, BlockTitle {
   kind: 'manual-report';
   id: string;
   /** The checklist's name, printed in the block's heading. */
@@ -55,6 +56,8 @@ export interface ManualReportBlock extends ReportProvenance {
   variant?: 'long' | 'compact';
   /** Missing on older documents: display their existing rings and scores. */
   benchmarks?: boolean;
+  /** Whole-block size, 0.5-2 (#6548); absent is 1. */
+  scale?: number;
   /** The model the answers were recorded against, when there was one (display only). */
   modelName?: string;
   /**
@@ -85,6 +88,7 @@ const COUNTS_MESSAGE = 'expected { total, pass, fail, warning, unanswered: non-n
 /** Structural check of a manual report block (#6401), every problem with its JSON path. */
 export function validateManualReportBlock(block: Record<string, unknown>, at: string, errors: DocumentValidationError[]): void {
   validateReportProvenance(block, at, errors);
+  validateBlockTitle(block, at, errors);
   if (!isString(block.checklistName)) errors.push({ path: `${at}.checklistName`, message: 'expected a string' });
   if (block.checklistId !== undefined && !(isString(block.checklistId) && block.checklistId.trim())) errors.push({ path: `${at}.checklistId`, message: 'expected a nonblank string' });
   if (block.variant !== undefined && block.variant !== 'long' && block.variant !== 'compact') errors.push({ path: `${at}.variant`, message: 'expected long or compact' });

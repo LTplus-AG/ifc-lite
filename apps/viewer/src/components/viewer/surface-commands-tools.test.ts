@@ -8,11 +8,15 @@ import assert from 'node:assert/strict';
 import { Crosshair, Slice } from 'lucide-react';
 import { useViewerStore } from '@/store';
 import { paletteSurfaceCommands, SURFACE_COMMANDS } from './surface-commands.js';
+import { MODEL_ID, STOREY, seedModelingSession } from '@/test/modeling-session-fixture';
+import { commitCommand, getCommandRuntime, writeCommandField } from '@/lib/commands/modeling/runtime';
+import { setRequestRemesh } from '@/lib/commands/modeling/transaction';
+import '@/lib/commands/modeling/builtin';
 
 const TOOL_IDS = [
   'tool:select', 'tool:walk', 'model:reposition', 'tool:measure',
   'tool:section', 'tool:annotate', 'tool:wall', 'tool:slab', 'tool:column', 'tool:beam', 'tool:room',
-  'tool:opening', 'tool:door', 'tool:window',
+  'tool:space-envelope', 'tool:curtain-wall', 'tool:grid', 'tool:opening', 'tool:door', 'tool:window',
   'tool:edit-mode', 'tool:split', 'tool:stair', 'tool:railing', 'tool:split-multi', 'tool:push-pull', 'tool:align', 'tool:trim-extend',
 ] as const;
 const isCoreTool = (id: string) => id.startsWith('tool:') || id === 'model:reposition';
@@ -20,6 +24,29 @@ const originalTool = useViewerStore.getState().activeTool;
 afterEach(() => useViewerStore.setState({ activeTool: originalTool }));
 
 describe('shared Tools palette commands (#5870)', () => {
+  it('#6686 launches the space envelope action on a vertical plane and applies a typed ceiling', async () => {
+    await seedModelingSession();
+    const state = useViewerStore.getState();
+    const space = state.addSpace(MODEL_ID, STOREY, { Profile: 'polygon', OuterCurve: [[0, 0], [4, 0], [4, 3], [0, 3]], Position: [0, 0, 0], Height: 3 });
+    assert.ok('expressId' in space);
+    state.setSelectedEntityId(space.expressId);
+    const restore = setRequestRemesh(() => {});
+    try {
+      const action = paletteSurfaceCommands({ canEditInSession: true }, () => {})
+        .find(command => command.id === 'tool:space-envelope');
+      assert.ok(action, 'editable sessions offer space envelope editing');
+      action.action();
+      assert.equal(getCommandRuntime().command?.id, 'space.envelope');
+      assert.equal(getCommandRuntime().ctx?.workplane?.spec.kind, 'section');
+      writeCommandField(1, 4);
+      commitCommand();
+      const quantities = useViewerStore.getState().mutationViews.get(MODEL_ID)!.getQuantitiesForEntity(space.expressId).flatMap(q => q.quantities);
+      assert.equal(quantities.find(q => q.name === 'GrossVolume')?.value, 48);
+    } finally {
+      restore(); useViewerStore.getState().exitModelWorkspace();
+    }
+  });
+
   it('keeps browse order and hides authoring commands in a read-only session', () => {
     assert.deepEqual(SURFACE_COMMANDS.filter((command) => isCoreTool(command.id)).map((command) => command.id),
       [...TOOL_IDS]);

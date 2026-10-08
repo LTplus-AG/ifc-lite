@@ -8,9 +8,11 @@
  * selected element's attributes and properties — and the bindings resolve
  * live in the preview. Image, chart and topic blocks pick their source.
  */
+import { BlockTitleEditor } from './BlockTitleEditor';
+import { isSavedComparisonChart } from '@/lib/charts/comparison-source';
 import { SavedReportSource } from './SavedReportSource';
 import { useId, useLayoutEffect, useRef, useState, type KeyboardEvent } from 'react';
-import { ArrowDown, ArrowUp, X } from 'lucide-react';
+import { ArrowDown, ArrowUp, Copy, X } from 'lucide-react';
 import type { ChartSpec } from '@ifc-lite/charts';
 import type { BCFTopic } from '@ifc-lite/bcf';
 import type { ValidationReport } from '@ifc-lite/ids';
@@ -20,14 +22,15 @@ import { useTranslation, type TranslationKey } from '@/i18n';
 import { CHART_FONT_SIZE } from '@ifc-lite/charts';
 import { readImageFile } from '@/lib/document/persistence';
 import type { BindingContext } from '@/lib/document/bindings';
-import { idsReportBlockFromReport } from '@/lib/document/ids-report';
+import { idsReportBlockFromReport, replaceIdsReportSnapshot } from '@/lib/document/ids-report';
 import { TAB_SIZE, tabEdit } from '@/lib/document/text-tabs';
 import { CHART_BLOCK_HEIGHT_MAX, CHART_BLOCK_HEIGHT_MIN, TEXT_SIZE_MAX, TEXT_SIZE_MIN, reportBlockSourceKind, type DocumentBlock, type IdsReportBlock, type IdsReportVariant, type TextBlock, type TextFont } from '@/lib/document/types';
-import { ClampedNumberInput, WidthEditor, field } from './BlockEditor.parts';
+import { BlockScaleEditor, ClampedNumberInput, WidthEditor, field } from './BlockEditor.parts';
 import { TableBlockEditor } from './TableBlockEditor';
 import { ManualReportBlockEditor, ManualReportPresentation } from './ManualReportBlockEditor';
 import { TextColorEditor } from './TextColorEditor';
 import { FieldPicker } from './FieldPicker';
+import { AiOriginBadge } from './AiOriginBadge';
 
 export interface BlockEditorProps {
   block: DocumentBlock;
@@ -41,6 +44,7 @@ export interface BlockEditorProps {
   idsValidationReport: ValidationReport | null;
   onChange: (block: DocumentBlock) => void;
   onMove: (delta: -1 | 1) => void;
+  onCopy: () => void;
   onRemove: () => void;
 }
 
@@ -79,7 +83,7 @@ function ReportBlockSource({ block, report, onChange }: { block: IdsReportBlock;
         title={refreshable ? undefined : t(kind === 'rules' ? 'document.block.rulesReportRefreshDisabledTitle' : 'document.block.idsReportRefreshDisabledTitle')}
         onClick={() => {
           if (!report || report.source.kind !== kind) return;
-          onChange(idsReportBlockFromReport(report, block.id, block.variant));
+          onChange(replaceIdsReportSnapshot(block, idsReportBlockFromReport(report, block.id, block.variant)));
           toast.success(t('document.block.idsReportRefreshed'));
         }}
       >
@@ -93,18 +97,34 @@ function ReportBlockSource({ block, report, onChange }: { block: IdsReportBlock;
 function ReportBlockPresentation({ block, onChange }: { block: IdsReportBlock; onChange: (block: DocumentBlock) => void }) {
   const { t } = useTranslation();
   return (
-    <label className="inline-flex items-center gap-1 text-muted-foreground">{t('document.block.idsReportVariantLabel')}
-      <select
-        className={field}
-        value={block.variant ?? ''}
-        onChange={(e) => onChange({ ...block, variant: (e.target.value || undefined) as IdsReportVariant | undefined })}
-        aria-label={t('document.block.idsReportVariantAriaLabel')}
-      >
-        {block.variant === undefined && <option value="">{t('document.block.idsReportVariantClassic')}</option>}
-        <option value="compact">{t('document.block.idsReportVariantCompact')}</option>
-        <option value="long">{t('document.block.idsReportVariantLong')}</option>
-      </select>
-    </label>
+    <>
+      <label className="inline-flex items-center gap-1 text-muted-foreground">{t('document.block.idsReportVariantLabel')}
+        <select
+          className={field}
+          value={block.variant ?? ''}
+          onChange={(e) => onChange({ ...block, variant: (e.target.value || undefined) as IdsReportVariant | undefined })}
+          aria-label={t('document.block.idsReportVariantAriaLabel')}
+        >
+          {block.variant === undefined && <option value="">{t('document.block.idsReportVariantClassic')}</option>}
+          <option value="compact">{t('document.block.idsReportVariantCompact')}</option>
+          <option value="long">{t('document.block.idsReportVariantLong')}</option>
+        </select>
+      </label>
+      {block.variant === 'compact' && (
+        <label className="inline-flex items-center gap-1 text-muted-foreground">
+          <input type="checkbox" checked={block.specificationsOnly === true} onChange={(event) => onChange({ ...block, specificationsOnly: event.target.checked || undefined })} />
+          {t('document.block.idsReportSpecificationsOnly')}
+        </label>
+      )}
+      <label className="inline-flex items-center gap-1 text-muted-foreground">
+        <input type="checkbox" checked={block.benchmarks === true} onChange={(event) => onChange({ ...block, benchmarks: event.target.checked })} />
+        {t('manualValidation.report.benchmarks')}
+      </label>
+      <label className="inline-flex items-center gap-1 text-muted-foreground">
+        <input type="checkbox" checked={block.showStamp !== false} onChange={(event) => onChange({ ...block, showStamp: event.target.checked })} />
+        {t('manualValidation.report.showStamp')}
+      </label>
+    </>
   );
 }
 
@@ -185,7 +205,7 @@ function TextEditor({ block, bindings, onChange }: { block: TextBlock; bindings:
   );
 }
 
-export function BlockEditor({ block, index, count, bindings, topics, charts, idsValidationReport, onChange, onMove, onRemove }: BlockEditorProps) {
+export function BlockEditor({ block, index, count, bindings, topics, charts, idsValidationReport, onChange, onMove, onCopy, onRemove }: BlockEditorProps) {
   const { t } = useTranslation();
   const [busy, setBusy] = useState(false);
   const pickImage = async (file: File | undefined): Promise<void> => {
@@ -205,11 +225,17 @@ export function BlockEditor({ block, index, count, bindings, topics, charts, ids
       <div className="flex items-center gap-1">
         <span className="font-medium">{t(block.kind === 'ids-report' && reportBlockSourceKind(block) === 'rules' ? 'document.block.kindRulesReport' : KIND_LABEL_KEY[block.kind])}</span>
         <span className="text-muted-foreground">#{index + 1}</span>
+        {block.kind === 'text' && <AiOriginBadge block={block} />}
         <span className="flex-1" />
         <Button variant="ghost" size="sm" className="h-6 w-6 p-0" disabled={index === 0} onClick={() => onMove(-1)} aria-label={t('document.block.moveUpAriaLabel')}><ArrowUp className="h-3.5 w-3.5" /></Button>
         <Button variant="ghost" size="sm" className="h-6 w-6 p-0" disabled={index === count - 1} onClick={() => onMove(1)} aria-label={t('document.block.moveDownAriaLabel')}><ArrowDown className="h-3.5 w-3.5" /></Button>
+        <Button variant="ghost" size="sm" className="h-6 w-6 p-0" onClick={onCopy} aria-label={t('document.block.copyAriaLabel')} title={t('document.block.copyAriaLabel')}><Copy className="h-3.5 w-3.5" /></Button>
         <Button variant="ghost" size="sm" className="h-6 w-6 p-0" onClick={onRemove} aria-label={t('document.block.removeAriaLabel')}><X className="h-3.5 w-3.5" /></Button>
       </div>
+
+      {block.kind !== 'table' && block.kind !== 'spacer' && block.kind !== 'page-break' && <BlockTitleEditor block={block} onChange={onChange} />}
+
+      {block.kind !== 'spacer' && block.kind !== 'page-break' && <BlockScaleEditor scale={block.scale} onChange={(scale) => onChange({ ...block, scale })} />}
 
       {block.kind === 'text' && <TextEditor block={block} bindings={bindings} onChange={onChange} />}
 
@@ -239,7 +265,9 @@ export function BlockEditor({ block, index, count, bindings, topics, charts, ids
 
       {block.kind === 'chart' && (
         <div className="flex flex-wrap items-center gap-2">
-          <label className="inline-flex min-w-0 flex-1 items-center gap-1 text-muted-foreground">{t('document.block.kindChart')}
+          {/* `basis-48` (12rem) is the label's own floor: with `flex-1` alone its basis is 0, so in this wrapping row it never
+              wraps to a new line and the picker gets only what the sibling controls leave over, which can be ~0 (#6629). */}
+          <label className="inline-flex min-w-0 basis-48 grow items-center gap-1 text-muted-foreground">{t('document.block.kindChart')}
             <select
               className={`${field} min-w-0 flex-1`}
               value=""
@@ -255,7 +283,7 @@ export function BlockEditor({ block, index, count, bindings, topics, charts, ids
             </select>
           </label>
           <label className="inline-flex items-center gap-1 text-muted-foreground">
-            <input type="checkbox" checked={block.snapshot} onChange={(e) => onChange({ ...block, snapshot: e.target.checked })} className="accent-[#7aa2f7]" /> {t('document.block.chartSnapshotLabel')}
+            <input type="checkbox" checked={block.snapshot && !isSavedComparisonChart(block.chart)} disabled={isSavedComparisonChart(block.chart)} onChange={(e) => onChange({ ...block, snapshot: e.target.checked })} className="accent-[#7aa2f7]" /> {t('document.block.chartSnapshotLabel')}
           </label>
           <label className="inline-flex items-center gap-1 text-muted-foreground">{t('document.block.heightPtLabel')}
             <ClampedNumberInput

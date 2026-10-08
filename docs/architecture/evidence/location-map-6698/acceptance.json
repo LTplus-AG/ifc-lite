@@ -1,0 +1,86 @@
+{
+  "issue": 6698,
+  "viewerSource": "b587b75c07cb0b7c17120ba20e85b629fd10c4d4",
+  "wasmSha256": "6b19adeb0a159d514b7282aa96907066fb966fb891d25ccfa281c2b60d24a801",
+  "route": "Fresh canonical file input in native T3 preview at localhost5243; no store injection, source edits, token, or provider upload.",
+  "policy": "For canonical projected axes1/0 and an effective identity, show physical centre after metadata arrives. Also use physical centre when declared origin cannot project. Preserve declared offsets and origin picking; other operations retain the declared-origin diagnostic.",
+  "models": [
+    {
+      "fixture": "public MiniBIM actual georeferencer rotation15, canonically normalized STEP",
+      "sha256": "6bd27184942e3f5d44bbc3a0df28ec57f935f7747365237edf4c4ab91d5debf5",
+      "bytes": 7362491,
+      "epsg": 28992,
+      "tab": "tab_e",
+      "location": [
+        51.90293951065917,
+        4.4540955142506
+      ],
+      "footprintLonLat": [
+        [
+          4.453814832913253,
+          51.90320316308427
+        ],
+        [
+          4.454365159671652,
+          51.90320753195793
+        ],
+        [
+          4.454376192293405,
+          51.9026758575374
+        ],
+        [
+          4.453825872035384,
+          51.902671488748524
+        ],
+        [
+          4.453814832913253,
+          51.90320316308427
+        ]
+      ]
+    },
+    {
+      "fixture": "catalogued AC20-FZK-Haus, georeferenced and canonically normalized STEP",
+      "sha256": "b166652983eb6c104647de7e5e5dd7be0c7bd23d1f509ebef43d1ab19a8260cc",
+      "bytes": 2483805,
+      "epsg": 32632,
+      "tab": "tab_f",
+      "location": [
+        49.10049733356908,
+        8.436544177647942
+      ],
+      "footprintLonLat": [
+        [
+          8.436374321089666,
+          49.100596832203
+        ],
+        [
+          8.43671176276568,
+          49.100598479263304
+        ],
+        [
+          8.436714033527519,
+          49.10039783468101
+        ],
+        [
+          8.436376593211653,
+          49.100396187632306
+        ],
+        [
+          8.436374321089666,
+          49.100596832203
+        ]
+      ]
+    }
+  ],
+  "observedForBoth": {
+    "declaredEastings": 0,
+    "declaredNorthings": 0,
+    "headerTitle": "Model Lat/Lon",
+    "originMarkers": 0,
+    "mapLibreCanvases": 1,
+    "locationLinksMatchCenter": true,
+    "physicalFootprintPresent": true
+  },
+  "independentReview": "Root replayed both fresh canonical loads and confirmed displayed numeric links, unchanged E0/N0, canvas, labels, banner and zero origin markers.",
+  "limitation": "Native T3 snapshot failed on the client. No new PNG or visual screenshot claim; proof is actual DOM, MapLibre center/source data and mounted real-projection invariants."
+}

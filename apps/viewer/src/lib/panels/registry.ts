@@ -20,7 +20,7 @@
 // lucide only, never `@/icons`: the store imports this module, so it sits in
 // the viewer-embed bundle too, which has no unplugin-icons resolver for the
 // `~icons/viewer/*` virtual modules (#6315 broke that build).
-import { BarChart3, Box, CalendarRange, ClipboardCheck, Cloud, Coins, Crosshair, DraftingCompass, FileText, FileWarning, GitBranch, GitCompareArrows, History, Info, Layers as LayersIcon, ListTree, MessageSquare, Move3d, Palette, PencilRuler, Presentation, Puzzle, Ruler, Scan, Sun, Table2, Terminal, type LucideIcon, Users, Workflow } from 'lucide-react';
+import { BarChart3, Box, CalendarRange, ClipboardCheck, Cloud, Coins, Crosshair, DraftingCompass, FileText, FileWarning, GitBranch, GitCompareArrows, History, Info, Link2, Layers as LayersIcon, ListChecks, ListTree, MessageSquare, Move3d, Palette, PencilRuler, Presentation, Puzzle, Ruler, Scan, Sun, Table2, Terminal, type LucideIcon, Users, Workflow } from 'lucide-react';
 import type { TranslationKey } from '@/i18n';
 
 /** Every panel reachable from the unified sidebar rail. `properties` is the
@@ -58,7 +58,10 @@ export type WorkspacePanelId =
   | 'presentation'
   | 'changes'
   | 'model'
-  | 'changeSets';
+  | 'changeSets'
+  | 'semantic'
+  | 'review'
+  | 'assistant';
 
 /** Shared task grouping for the rail, ribbon panel browser, and palette commands (#5873). */
 export type PanelGroup = 'coordinate' | 'check' | 'quantify' | 'automate' | 'site' | 'author';
@@ -200,7 +203,52 @@ export const WORKSPACE_PANELS: readonly WorkspacePanelDef[] = [
   // Named change sets (#6232 D4): the active set collects new edits; export /
   // import as files. Flag-free like 'changes' / 'model'. APPENDED (no Alt shortcut).
   { id: 'changeSets', titleKey: 'changeSets.panel.title', Icon: GitBranch, group: 'author', region: 'side' },
+  { id: 'assistant', titleKey: 'assistant.title', Icon: MessageSquare, group: 'coordinate', region: 'side', prefersWide: true },
+  { id: 'semantic', titleKey: 'semantic.title', Icon: Link2, group: 'coordinate', region: 'side', prefersWide: true },
+  { id: 'review', titleKey: 'reviewWorkspace.title', Icon: ListChecks, group: 'coordinate', region: 'side', prefersWide: true },
 ];
+
+/** How a panel opened on an empty viewer offers a way to a model
+ *  (`components/viewer/PanelModelGate.tsx`). */
+export type PanelModelGateMode = 'takeover' | 'banner';
+
+/**
+ * Panels that mean nothing without a model. `takeover`: the whole panel is
+ * model-derived (a lens over no elements, a chart of nothing), so it shows a
+ * no-model state instead. `banner`: the panel also holds work that exists
+ * before a model (list and document definitions, a schedule imported from MS
+ * Project or CSV, zone sets imported from JSON), so one quiet line sits above
+ * it and the panel stays mounted across the load.
+ *
+ * Left out on purpose: panels that are themselves a way in (Cloud sources,
+ * Layers' demo stack), that carry their own demo empty state (Compare,
+ * Clash, Data validation), that work on a model-independent artifact (BCF
+ * topics, IDS / rule sets, scripts, extensions, a collaboration room),
+ * Measurements (only the Measure tool opens it, and that needs a model), and
+ * Properties / Hierarchy, whose own no-model states the welcome tour anchors.
+ */
+const PANEL_MODEL_GATE: Partial<Record<WorkspacePanelId, PanelModelGateMode>> = {
+  lens: 'takeover',
+  charts: 'takeover',
+  environment: 'takeover',
+  presentation: 'takeover',
+  drawing: 'takeover',
+  model: 'takeover',
+  changes: 'takeover',
+  changeSets: 'takeover',
+  cost: 'takeover',
+  placement: 'takeover',
+  loadReport: 'takeover',
+  lists: 'banner',
+  document: 'banner',
+  flow: 'banner',
+  gantt: 'banner',
+  zones: 'banner',
+};
+
+export function panelModelGateMode(id: WorkspacePanelId): PanelModelGateMode | undefined {
+  return PANEL_MODEL_GATE[id];
+}
 
 // The bottom strip (Script / Schedule / Lists) is table-driven; the id union and
 // the type guard are re-exported here so registry consumers keep one import.

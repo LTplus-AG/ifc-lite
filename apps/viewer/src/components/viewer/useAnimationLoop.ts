@@ -27,6 +27,7 @@ import { projectToCssScreen } from '../../utils/projectScreen.js';
 import { getContributionCullConfig } from '../../utils/renderCullConfig.js';
 import { getLodScreenPx } from '../../utils/lodConfig.js';
 import { runGpuUpload } from './gpu-upload-guard';
+import { fieldTelemetry } from '@/lib/perf/fieldTelemetryLoader';
 /** Sun cast-shadow render options, driven by the Environment panel (#2670). */
 export interface SunShadowSettings {
   enabled: boolean;
@@ -172,6 +173,7 @@ export function useAnimationLoop(params: UseAnimationLoopParams): void {
 
       const deltaTime = currentTime - lastFrameTimeRef.current;
       lastFrameTimeRef.current = currentTime;
+      fieldTelemetry?.noteNavigateFrame(deltaTime, isInteractingRef.current); // #6961 ifc_navigate (null until a load)
 
       // 1. Drain mesh queue (streaming GPU uploads)
       let queueFlushed = false;
@@ -192,8 +194,7 @@ export function useAnimationLoop(params: UseAnimationLoopParams): void {
       // 1b. Rebuild GPU-evicted batches the last frame asked for (residency
       // budget, issue #1682 phase 3a). Time-budgeted; requests a render so
       // the restored batches appear on the next frame. Guarded like the
-      // instanced-shard drain: an uncaught throw here (e.g. buffer creation
-      // on a lost device) would kill the rAF loop and blank the canvas.
+      // instanced-shard drain: an uncaught throw here (e.g. buffer creation on a lost device) would kill the rAF loop.
       if (scene.hasResidencyRestoreWork()) {
         try {
           const device = renderer.getGPUDevice();

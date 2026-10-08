@@ -1,0 +1,85 @@
+{
+  "sourceHead": "fb5cc7619929741daaf8c9780209241b48e9135e",
+  "actualMain": "e79f27342beb01a6f30d9b63c44795ecd118f4de",
+  "testOnlyCheckpoint": "6485c84d87fd9b160ecf4b2751acca3609b09f05",
+  "testOnlyProductionParent": "ba49e8b785ba518869cd991fea706772024d2c4d",
+  "genuineNormalGraphRed": {
+    "buildTasks": 49,
+    "cached": 48,
+    "passed": 15,
+    "assertionFailed": 1,
+    "skipped": 0,
+    "cancelled": 0,
+    "assertion": "a foreign cancellation cannot abandon the uncaptured owned mouse press",
+    "actualDrag": null
+  },
+  "fullRootBuild": {
+    "passedTasks": 61,
+    "cachedTasks": 60
+  },
+  "plainRootTypecheck": {
+    "passedTasks": 109,
+    "testFiles": 3234
+  },
+  "mountedCommand": {
+    "passed": 16,
+    "skipped": 0
+  },
+  "surgicalOwnerOracle": {
+    "beforePassed": 16,
+    "afterPassed": 15,
+    "afterAssertionFailed": 1,
+    "restoration": "verified"
+  },
+  "fullProductionOracle": {
+    "beforePassed": 45,
+    "afterPassed": 31,
+    "afterAssertionFailed": 14,
+    "restoration": "verified"
+  },
+  "changedLint": {
+    "files": 3,
+    "diagnostics": 0
+  },
+  "api": {
+    "exports": 9165,
+    "snapshotChanged": false
+  },
+  "localGates": [
+    "MPL",
+    "module-size",
+    "source-assertions",
+    "test-wiring",
+    "changesets",
+    "changeset-bump"
+  ],
+  "nativeSourceUnchanged": "a695734678d5c78206807921b4d173b8977f7162",
+  "nativeRoomCaptureClaim": false,
+  "freshCompleteCIAndAllFeedbackRequiredBeforeMerge": true,
+  "logs": {
+    "6232-foreign-cancel-main-red.log": {
+      "sha256": "204c453cb8b2f80e9fa4f251d70cd0c27667facf04952e2d033e6f1148001b6a",
+      "bytes": 78891
+    },
+    "6232-foreign-cancel-fix-main-green.log": {
+      "sha256": "c23af4929fb59d5d1b851298cbed0392789f25e2bcf1f90eb0dd521829712dbf",
+      "bytes": 9193
+    },
+    "6232-foreign-cancel-owner-oracle.log": {
+      "sha256": "3b4c5ee81974d801bded8f2a55656d9b4bfc98401b6b0dfc0e87ceec72219446",
+      "bytes": 5551
+    },
+    "6232-foreign-cancel-full-oracle.log": {
+      "sha256": "a2c9cb12c91ab163492f52a2c5094f1f1e799d3cfaa2a350a8fa95cc65a29ed9",
+      "bytes": 9642
+    },
+    "6232-foreign-cancel-fix-main-build.log": {
+      "sha256": "111d4ac9226d92f0f502ce30cf914abf63ffa7ff399ac3a6828a2e2b39814140",
+      "bytes": 111282
+    },
+    "6232-foreign-cancel-fix-main-typecheck.log": {
+      "sha256": "0bee9e1192373a1471ec1c00d38a5f0ef591d5453d38d1a1314031f1e0a83cbe",
+      "bytes": 56307
+    }
+  }
+}

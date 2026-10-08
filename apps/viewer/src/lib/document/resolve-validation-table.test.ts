@@ -102,7 +102,7 @@ describe('resolveValidationTableState (#5138)', () => {
     const resolved = resolveValidationTableState(source({ rows: 'sets' }, columns), report([oneSpec]), modelName);
     assert.ok(resolved.status === 'ok' && resolved.kind === 'validation');
     if (resolved.status === 'ok' && resolved.kind === 'validation') {
-      // `id` is what a translating consumer (TablePreview/TableBlockEditor) keys off; `label` is the
+      // `id` is what a translating consumer (canonical preview/TableBlockEditor) keys off; `label` is the
       // plain-English fallback the PDF prints (review finding: keep column ids in the resolved model).
       assert.deepEqual(resolved.model.columns, [{ id: 'rule', label: 'Rule', numeric: false }, { id: 'members', label: 'Members', numeric: true }]);
     }

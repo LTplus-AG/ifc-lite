@@ -35,7 +35,8 @@ mod mapping;
 mod page;
 mod transfer;
 mod transfer_types;
-mod transfer_math;
+/// Its `Point`, `sub`, `dot` and `cross` are shared with `scan_segmentation`.
+pub(crate) mod transfer_math;
 mod transfer_budget;
 mod transfer_surface;
 mod transfer_target;

@@ -3,11 +3,11 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * LocationMap — a compact MapLibre GL JS minimap that shows the model's
- * real-world position derived from IfcMapConversion + IfcProjectedCRS.
+ * LocationMap — a compact MapLibre GL JS minimap of the declared
+ * georeference origin, with the independently transformed geometry footprint.
  *
  * Features:
- *   - Place/drag pin on map to reposition the model
+ *   - Place/drag pin on map to edit the georeference origin
  *   - Search for places via Nominatim geocoding
  *   - Query terrain elevation at pin location
  *   - Apply pin position back to IfcMapConversion (eastings/northings/height)
@@ -24,11 +24,11 @@ import { toast } from '@/components/ui/toast';
 import type { MapConversion, ProjectedCRS } from '@ifc-lite/parser';
 import type { CoordinateInfo, GeometryResult } from '@ifc-lite/geometry';
 import { downloadBlob, modelExportFilename } from '@/lib/export/download';
-import { reprojectToLatLon, reprojectFromLatLon, queryTerrainElevation, computeFootprintGeoJSON, type LatLon } from '@/lib/geo/reproject';
+import { reprojectFromLatLon, queryTerrainElevation, computeFootprintGeoJSON, type LatLon } from '@/lib/geo/reproject';
 import { buildKmzForResolvedGeoref } from '@/lib/geo/kmz-export';
 import type { KmzProcessor } from '@/lib/geo/kmz-exporter';
 import type { InstancedModelRange } from '@/utils/instancedExport';
-import { formatLocaleNumber, useTranslation, type TranslationKey } from '@/i18n';
+import { formatLocaleNumber, useTranslation } from '@/i18n';
 import {
   probeMapWebglSupport, markMapWebglUnsupported, takeMapWebglReportSlot,
   getMapWebglVerdict, describeMapInitFailure, watchContextCreationStatus,
@@ -37,8 +37,9 @@ import {
 import { posthog } from '@/lib/analytics';
 import { addFootprintToMap, removeFootprintFromMap } from './location-map-footprint';
 import { geocodeSearch, type GeocodeResult } from './location-map-geocode';
-import { loadMaplibre, disposeMap, purgeMapContainer } from './location-map-lifecycle';
+import { loadMaplibre, disposeMap, purgeMapContainer, updateOriginMarker } from './location-map-lifecycle';
 import { LocationMapSearchBar } from './location-map-search';
+import { useLocationGeoreference } from './use-location-georeference';
 import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 
 /** Position picked on the map, ready to be applied to IfcMapConversion */
@@ -69,9 +70,9 @@ export interface LocationMapProps {
   modelName?: string; // the displayed model's; the KMZ download is filed under it (#5833)
   /** IFC project length unit → metres (e.g. 0.001 for mm models). Default 1 (metres). */
   lengthUnitScale?: number;
-  /** Whether the map is in edit mode (allows repositioning) */
+  /** Whether georeference origin editing is enabled */
   editable?: boolean;
-  /** Called when the user applies a new position from the map */
+  /** Called when the user applies a new origin and optional terrain height */
   onApplyPosition?: (position: PickedPosition) => void;
   /**
    * wasm seam for the KMZ export, forwarded to `buildKmzForResolvedGeoref`.
@@ -84,8 +85,6 @@ export interface LocationMapProps {
    */
   createKmzProcessor?: () => KmzProcessor;
 }
-
-type MapState = 'idle' | 'loading' | 'ready' | 'error';
 
 /**
  * Why the minimap could not be shown. Kept separate from `MapState`, which
@@ -127,9 +126,9 @@ export function LocationMap({
     }
   }, [editable]);
 
-  const [mapState, setMapState] = useState<MapState>('idle');
-  const [latLon, setLatLon] = useState<LatLon | null>(null);
-  const [errorKey, setErrorKey] = useState<TranslationKey | null>(null);
+  const { latLon, mapState, errorKey, geometryDistanceKm, locationKind } = useLocationGeoreference(
+    mapConversion, projectedCRS, coordinateInfo, lengthUnitScale,
+  );
 
   // Seeded from the session latch, so a remount on a device already known to
   // refuse WebGL paints the fallback immediately — no probe, no construction,
@@ -232,34 +231,6 @@ export function LocationMap({
     return () => { cancelled = true; };
   }, [debouncedQuery]);
 
-  // Reproject model position to lat/lon
-  useEffect(() => {
-    if (!mapConversion || !projectedCRS) {
-      setLatLon(null);
-      setErrorKey(null);
-      return;
-    }
-
-    let cancelled = false;
-    setMapState('loading');
-    setErrorKey(null);
-
-    reprojectToLatLon(mapConversion, projectedCRS, coordinateInfo, lengthUnitScale).then(result => {
-      if (cancelled) return;
-      if (result) {
-        setLatLon(result);
-        setMapState('ready');
-      } else {
-        setLatLon(null);
-        setErrorKey('properties.locationMap.projectionUnresolved');
-        setMapState('error');
-      }
-    });
-
-    return () => { cancelled = true; };
-  }, [mapConversion, projectedCRS, coordinateInfo, lengthUnitScale]);
-
-  // When a picked position changes, reverse-project and query elevation
   useEffect(() => {
     if (!pickedLatLon || !projectedCRS) {
       setProjectedCoords(null);
@@ -271,8 +242,8 @@ export function LocationMap({
     setProjectedCoords(null);
 
     // Reverse-project to get IfcMapConversion eastings/northings
-    // Accounts for model local geometry offset, rotation, and scale
-    reprojectFromLatLon(pickedLatLon, projectedCRS, mapConversion, coordinateInfo, lengthUnitScale).then(coords => {
+    // The pin edits the declared origin, so do not subtract the mesh centre (#6677).
+    reprojectFromLatLon(pickedLatLon, projectedCRS, lengthUnitScale).then(coords => {
       if (!cancelled) setProjectedCoords(coords);
     });
 
@@ -286,7 +257,7 @@ export function LocationMap({
     });
 
     return () => { cancelled = true; };
-  }, [pickedLatLon, projectedCRS, mapConversion, coordinateInfo, lengthUnitScale]);
+  }, [pickedLatLon, projectedCRS, lengthUnitScale]);
 
   // Place or move the picked marker on the map
   const updatePickedMarker = useCallback((pos: LatLon, maplibregl: typeof import('maplibre-gl')) => {
@@ -377,9 +348,7 @@ export function LocationMap({
       // If map already exists, just fly to new position
       if (mapRef.current) {
         mapRef.current.flyTo({ center: [latLon.lon, latLon.lat], zoom: 15, duration: 1200 });
-        if (markerRef.current) {
-          markerRef.current.setLngLat([latLon.lon, latLon.lat]);
-        }
+        markerRef.current = updateOriginMarker(maplibregl, mapRef.current, markerRef.current, latLon, locationKind === 'origin');
         return;
       }
 
@@ -487,19 +456,8 @@ export function LocationMap({
       map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-right');
       map.addControl(new maplibregl.AttributionControl({ compact: false }), 'bottom-right');
 
-      // Add marker at model location (teal = current model position)
-      const marker = new maplibregl.Marker({ color: '#14b8a6' })
-        .setLngLat([latLon.lon, latLon.lat])
-        .addTo(map);
-
-      // Toggle marker vs footprint based on zoom level
-      map.on('zoomend', () => {
-        const zoom = map.getZoom();
-        if (markerRef.current) {
-          markerRef.current.getElement().style.opacity = zoom >= 17 ? '0' : '1';
-          markerRef.current.getElement().style.pointerEvents = zoom >= 17 ? 'none' : 'auto';
-        }
-      });
+      // Teal marker is the declared origin, independent of geometry bounds.
+      const marker = updateOriginMarker(maplibregl, map, null, latLon, locationKind === 'origin');
 
       // Map click to place pin (only in edit mode)
       map.on('click', handleMapClick);
@@ -527,7 +485,7 @@ export function LocationMap({
     return () => {
       cancelled = true;
     };
-  }, [latLon, handleMapClick, mapUnavailable, degradeMap]);
+  }, [latLon, locationKind, handleMapClick, mapUnavailable, degradeMap]);
 
   // Add/update building footprint GeoJSON layer when footprint or style changes
   useEffect(() => {
@@ -647,7 +605,7 @@ export function LocationMap({
           {t('properties.locationMap.heading')}
         </span>
         {latLon && !searchOpen && (
-          <span className="text-xs font-mono text-teal-600/70 dark:text-teal-500/60">
+          <span className="text-xs font-mono text-teal-600/70 dark:text-teal-500/60" title={t(locationKind === 'geometry' ? 'properties.locationMap.geometryLatLon' : 'properties.locationMap.latLon')}>
             {formatLocaleNumber(locale, latLon.lat, { minimumFractionDigits: 5, maximumFractionDigits: 5 })}, {formatLocaleNumber(locale, latLon.lon, { minimumFractionDigits: 5, maximumFractionDigits: 5 })}
           </span>
         )}
@@ -674,6 +632,18 @@ export function LocationMap({
           onSelect={handleSearchSelect}
           onClose={() => { setSearchOpen(false); setSearchQuery(''); setSearchResults([]); }}
         />
+      )}
+
+      {locationKind === 'geometry' && (
+        <p className="px-3 pb-2 text-xs text-zinc-500 dark:text-zinc-400">
+          {t('properties.locationMap.geometryLocation')}
+        </p>
+      )}
+
+      {geometryDistanceKm !== null && (
+        <output className="block px-3 py-2 text-xs text-amber-700 dark:text-amber-400">
+          {t('properties.locationMap.geometryDistance', { value: formatLocaleNumber(locale, geometryDistanceKm) })}
+        </output>
       )}
 
       {/* Map container */}
@@ -759,7 +729,7 @@ export function LocationMap({
                   </>
                 )}
 
-                <div className="text-zinc-500 dark:text-zinc-400 flex items-center gap-1">
+                <div title={t('properties.locationMap.terrainHeightHelp')} className="text-zinc-500 dark:text-zinc-400 flex items-center gap-1">
                   <Mountain className="h-2.5 w-2.5" />
                   {t('properties.locationMap.elevation')}
                 </div>
@@ -805,7 +775,7 @@ export function LocationMap({
                     {t('properties.locationMap.googleMaps')}
                   </a>
                 </TooltipTrigger>
-                <TooltipContent>{t('properties.locationMap.googleMapsTooltip')}</TooltipContent>
+                <TooltipContent>{t(locationKind === 'geometry' ? 'properties.locationMap.geometryGoogleMapsTooltip' : 'properties.locationMap.googleMapsTooltip')}</TooltipContent>
               </Tooltip>
             )}
             {openStreetMapUrl && (
@@ -821,7 +791,7 @@ export function LocationMap({
                     {t('properties.locationMap.openStreetMap')}
                   </a>
                 </TooltipTrigger>
-                <TooltipContent>{t('properties.locationMap.openStreetMapTooltip')}</TooltipContent>
+                <TooltipContent>{t(locationKind === 'geometry' ? 'properties.locationMap.geometryOpenStreetMapTooltip' : 'properties.locationMap.openStreetMapTooltip')}</TooltipContent>
               </Tooltip>
             )}
             {geometryResult && (

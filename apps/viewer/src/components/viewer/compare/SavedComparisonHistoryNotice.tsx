@@ -3,12 +3,10 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { useViewerStore } from '@/store';
-import { useTranslation } from '@/i18n';
-import { SavedHistoryNotice } from '../SavedHistoryNotice';
+import { ContentStorageNotice } from '../ContentStorageNotice';
 
 export function SavedComparisonHistoryNotice() {
-  const { t } = useTranslation();
-  const issue = useViewerStore((s) => s.savedComparisonsLoadIssue);
+  const status = useViewerStore((s) => s.savedComparisonsStorage);
   const retry = useViewerStore((s) => s.retrySaveComparisons);
-  return <SavedHistoryNotice issue={issue} subject={t('comparePanel.saved.title')} onRetry={retry} />;
+  return <ContentStorageNotice status={status} restore={() => useViewerStore.getState().restoreSavedComparisons()} retry={retry} />;
 }

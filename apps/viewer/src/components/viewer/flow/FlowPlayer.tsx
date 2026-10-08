@@ -14,12 +14,16 @@
  * this panel) and are restored the next time this graph opens in Player.
  */
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { useViewerStore } from '@/store';
+import { downloadBlob } from '@/lib/export/download';
+import { FlowAutomationEditor } from './FlowAutomationEditor';
 import { Play } from 'lucide-react';
 import type { FlowDocument, NodeRegistry, RunResult } from '@ifc-lite/flow';
 import { useTranslation } from '@/i18n/useTranslation';
 import type { TranslatableMessage } from '@/i18n/types';
 import { useBim } from '@/sdk/BimProvider';
+import { selectedFiles } from '@/lib/flow/file-values';
 import { initialPlayerValues, playerFields, validatePlayerValues } from '@/lib/flow/player-fields';
 import { loadPlayerValues, savePlayerValues } from '@/lib/flow/player-values';
 import { FlowPlayerField } from './FlowPlayerField';
@@ -33,17 +37,24 @@ export interface FlowPlayerProps {
   readonly registry: NodeRegistry<unknown>;
   readonly lastRun: RunResult | null;
   readonly lastError: string | null;
+  readonly onDocChange?: (doc: FlowDocument) => void;
 }
 
-export function FlowPlayer({ doc, registry, lastRun, lastError }: FlowPlayerProps) {
+export function FlowPlayer({ doc, registry, lastRun, lastError, onDocChange }: FlowPlayerProps) {
   const { t } = useTranslation();
   const bim = useBim();
-  const { run, canRun } = useFlowRunner();
+  const { run, canRun, cancel } = useFlowRunner();
+  const running = useViewerStore((s) => s.flowRunning);
+  const progress = useViewerStore((s) => s.flowProgress);
+  const warnings = useViewerStore((s) => s.flowRunWarnings);
+  const artifacts = useViewerStore((s) => s.flowArtifacts);
+  const [storageError, setStorageError] = useState<string | null>(null);
   const fields = useMemo(() => playerFields(doc, registry), [doc, registry]);
   const storeys = useMemo(() => {
     try {
       return bim.storeys();
-    } catch {
+    } catch (error) {
+      console.warn('[flow] storeys are unavailable for Player', error);
       return [];
     }
   }, [bim]);
@@ -52,8 +63,25 @@ export function FlowPlayer({ doc, registry, lastRun, lastError }: FlowPlayerProp
   // Restore per-graph values when the open graph changes; a different
   // graph id must never inherit another graph's last-used values. Fields
   // with nothing stored pre-fill from their declared defaults.
-  useEffect(() => setValues(initialPlayerValues(fields, loadPlayerValues(doc.id))), [doc.id, fields]);
+  const previousGraph = useRef(doc.id);
+  useEffect(() => {
+    if (previousGraph.current !== doc.id) {
+      previousGraph.current = doc.id;
+      setValues(initialPlayerValues(fields, loadPlayerValues(doc.id)));
+    } else {
+      setValues((previous) => {
+        const next = initialPlayerValues(fields, previous);
+        for (const field of fields) if (field.input.kind === 'files') next[field.key] = previous[field.key];
+        return next;
+      });
+    }
+  }, [doc.id, fields]);
 
+  const selectedFilenames = fields.flatMap((field) => {
+    if (field.input.kind !== 'files' || doc.nodes.find((node) => node.id === field.input.nodeId)?.type !== 'session.loadModels') return [];
+    try { return Object.values(selectedFiles(values[field.key] ?? {})).flat().map((file) => file.name); }
+    catch (error) { console.warn('[flow] filename preview unavailable', error); return []; }
+  });
   const validated = useMemo(() => validatePlayerValues(fields, values), [fields, values]);
   const errors: Record<string, TranslatableMessage> = validated.ok ? {} : validated.errors;
 
@@ -63,14 +91,16 @@ export function FlowPlayer({ doc, registry, lastRun, lastError }: FlowPlayerProp
     // would silently re-send the old contents — and a large one would push the
     // whole save past its size cap, losing every other field's value.
     const persistable = Object.fromEntries(
-      fields.filter((field) => field.input.kind !== 'file').map((field) => [field.key, values[field.key]]),
+      fields.filter((field) => field.input.kind !== 'file' && field.input.kind !== 'files').map((field) => [field.key, values[field.key]]),
     );
-    savePlayerValues(doc.id, persistable);
+    setStorageError(savePlayerValues(doc.id, persistable));
     void run(validated.inputs);
   };
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-3 text-xs" data-flow-player>
+      {onDocChange && <fieldset disabled={running}><FlowAutomationEditor doc={doc} onChange={onDocChange} selectedFilenames={selectedFilenames} /></fieldset>}
+      <fieldset disabled={running}>
       {fields.length === 0 ? (
         <p className="text-muted-foreground">{t('flowPanel.player.empty')}</p>
       ) : (
@@ -88,6 +118,7 @@ export function FlowPlayer({ doc, registry, lastRun, lastError }: FlowPlayerProp
         </div>
       )}
 
+      </fieldset>
       <button
         type="button"
         className={`${button} inline-flex w-fit items-center gap-1 border-[#7aa2f7] text-[#7aa2f7]`}
@@ -97,6 +128,12 @@ export function FlowPlayer({ doc, registry, lastRun, lastError }: FlowPlayerProp
         <Play className="h-3 w-3" aria-hidden="true" />{t('flowPanel.run')}
       </button>
 
+      {running && <button type="button" className={button} onClick={cancel}>{t('automationEditor.cancel')}</button>}
+      {progress && <output aria-live="polite">{progress}</output>}
+      {storageError && <output className="text-amber-500">{t('automationEditor.storageError', { reason: storageError })}</output>}
+      {warnings.length > 0 && <ul>{warnings.map((warning, index) => <li key={index}>{warning}</li>)}</ul>}
+      {artifacts.map((artifact) => <button key={artifact.id} type="button" className={button}
+        onClick={() => downloadBlob(artifact.blob, artifact.name)}>{t('automationEditor.download', { name: artifact.name })}</button>)}
       {lastError && <div className="text-red-400">{t('flowPanel.run.failed')}: {lastError}</div>}
 
       {doc.outputs.length > 0 && (
@@ -108,7 +145,8 @@ export function FlowPlayer({ doc, registry, lastRun, lastError }: FlowPlayerProp
               return (
                 <div key={`${o.nodeId}.${o.port}`} className="rounded border border-border/60 p-1.5">
                   <div className="mb-1 font-medium">{o.label}</div>
-                  <FlowValuePreview data={data} />
+                  {data?.kind === 'item' && typeof data.value === 'string' && data.value.startsWith('flow-resource:')
+                    ? <span>{t('automationEditor.preparedResult')}</span> : <FlowValuePreview data={data} />}
                 </div>
               );
             })}

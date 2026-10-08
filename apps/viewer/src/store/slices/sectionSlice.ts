@@ -15,33 +15,7 @@ import { createSectionBoxSlice, type SectionBoxSlice } from './sectionBoxSlice.j
 import { saveLastSectionMode, clearLastSectionMode } from './sectionLastMode.js';
 export { loadLastSectionMode, clearLastSectionMode, type LastSectionMode } from './sectionLastMode.js';
 
-/**
- * Project `pickedAt` onto the current cut plane and return that point as
- * the "anchor on the live plane".
- *
- * The plane equation is `dot(p, normal) = distance`. As the user drags
- * the gizmo (or moves the slider) only `distance` changes — `pickedAt`
- * stays at the original face-pick location, which sits OFF the live
- * plane. Any visual that needs a "point on the current plane" (cap
- * polygon basis origin, 3D drag gizmo position, hatch UV anchor) must
- * use the projected point instead, otherwise it freezes at the original
- * pick location while the actual cut slides along the normal.
- *
- * Derivation: the projection of `pickedAt` onto the plane is
- * `pickedAt + (distance − dot(pickedAt, normal)) · normal`, which moves
- * `pickedAt` along the unit normal by exactly the offset required to
- * satisfy `dot(out, normal) = distance`.
- *
- * Round-trip note: when `distance == dot(pickedAt, normal)` (i.e. just
- * after a fresh face-pick) the result equals `pickedAt`, so the legacy
- * code path that fed `pickedAt` directly is preserved at pick-time.
- */
-export function customPlaneCenter(plane: CustomSectionPlane): [number, number, number] {
-  const { pickedAt: p, normal: n, distance: d } = plane;
-  const dotPicked = p[0] * n[0] + p[1] * n[1] + p[2] * n[2];
-  const k = d - dotPicked;
-  return [p[0] + k * n[0], p[1] + k * n[1], p[2] + k * n[2]];
-}
+export { customPlaneCenter } from './section-plane-center';
 
 // ─── Persistence ─────────────────────────────────────────────────────────
 // Cap appearance (hatch pattern, colours, spacing, angle, whether the cap is
@@ -299,7 +273,7 @@ export const createSectionSlice: StateCreator<SectionSlice, [], [], SectionSlice
       // `pickedAt` stays anchored; only `distance` changes.
       const fallbackSpan = 10;
       const dPct = (clampedPosition - state.sectionPlane.position) / 100;
-      planePatch.custom = { ...c, distance: c.distance + dPct * fallbackSpan };
+      planePatch.custom = { ...c, distance: c.distance + dPct * fallbackSpan, alignment: undefined };
     }
     enableSectionPlane(planePatch);
   },
@@ -446,17 +420,19 @@ export const createSectionSlice: StateCreator<SectionSlice, [], [], SectionSlice
     return {
       sectionPlane: {
         ...state.sectionPlane,
-        custom: { ...state.sectionPlane.custom, distance },
+        custom: { ...state.sectionPlane.custom, distance, alignment: undefined },
       },
     };
   }),
 
-  setSectionPickMode: (enabled) => set(() => (
+  setSectionPickMode: (enabled) => set((state) => (
     // Disarming pick mode also drops any hovering preview overlay so
     // it doesn't linger after the user toggles off (Esc, second toggle
     // press, tool change). Re-arming starts fresh.
     enabled
-      ? { sectionPickMode: true }
+      ? { sectionPickMode: true, ...(state.sectionPlane.custom?.alignment ? {
+        sectionPlane: { ...state.sectionPlane, custom: { ...state.sectionPlane.custom, alignment: undefined } },
+      } : {}) }
       : { sectionPickMode: false, sectionPickPreview: null }
   )),
 

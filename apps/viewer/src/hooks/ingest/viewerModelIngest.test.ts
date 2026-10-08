@@ -140,3 +140,19 @@ it('retains IFCX texture bytes and UV associations at the canonical viewer inges
   assert.equal(result[0].texture?.rgba, rgba);
   assert.equal(result[0].texture?.repeatS, true);
 });
+
+it('carries projected IFCX placement into the canonical store georeference consumer', async () => {
+  const { parseIfcx, extractGeoreferencingOnDemand } = await import('@ifc-lite/parser');
+  const bytes = new TextEncoder().encode(JSON.stringify({ header: { ifcxVersion: 'ifcx_alpha' }, imports: [], schemas: {}, data: [{
+    path: 'site', attributes: { 'ifclite::georeference::v1': {
+      IfcProjectedCRS: { Name: 'EPSG:32632', MapUnit: 'METRE' },
+      IfcMapConversion: { Eastings: 500000, Northings: 6000000, OrthogonalHeight: 0, XAxisAbscissa: 1, XAxisOrdinate: 0, Scale: 1 },
+    } },
+  }] })).buffer;
+  const parsed = await parseIfcx(bytes);
+  const store = buildIfcxDataStore(parsed, bytes);
+  const placement = extractGeoreferencingOnDemand(store);
+  assert.equal(placement?.projectedCRS?.name, 'EPSG:32632');
+  assert.equal(placement?.mapConversion?.eastings, 500000);
+  assert.equal(placement?.mapConversion?.orthogonalHeight, 0);
+});

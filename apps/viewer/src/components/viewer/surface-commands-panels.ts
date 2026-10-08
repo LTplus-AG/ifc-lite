@@ -6,7 +6,7 @@
 import {
   BarChart3, Box, CalendarClock, ClipboardCheck, Cloud, Coins, Crosshair,
   FileCode2, FileSpreadsheet, FileText, FileWarning, GitBranch, GitCompareArrows,
-  History, Layout, Layers, MessageSquare, Palette, PencilLine, PencilRuler, Puzzle,
+  History, Layout, Layers, Link2, ListChecks, MessageSquare, Palette, PencilLine, PencilRuler, Puzzle,
   Ruler, Scan, Sparkles, TreeDeciduous, Users, Workflow,
 } from 'lucide-react';
 import type { BottomPanelId } from '@/lib/panels/bottom-panels';
@@ -78,12 +78,15 @@ export const PANEL_SURFACE_COMMANDS = [
       state.setLeftPanelCollapsed(!state.leftPanelCollapsed);
     },
   },
+  rightCommand('panel:assistant', 'assistant', 'assistant analysis ai evidence discussion report', MessageSquare),
   rightCommand('panel:bcf', 'bcf', 'collaboration topics comments viewpoint', MessageSquare, true),
   rightCommand('panel:ids', 'validation', 'ids validation information delivery specification check', ClipboardCheck, true),
   rightCommand('panel:clash', 'clash', 'collision interference clearance coordination clash matrix mep', Crosshair, true),
   rightCommand('panel:compare', 'compare', 'diff revision version change added deleted modified geometry data', GitCompareArrows, true),
   rightCommand('panel:changes', 'changes', 'authored edits modifications properties history review', History),
   rightCommand('panel:model', 'model', 'model inspector author defaults wall type dimensions edit workspace', PencilLine),
+  rightCommand('panel:review', 'review', 'review coordination cards findings clash validation comparison bcf linked records decisions workspace', ListChecks),
+  rightCommand('panel:semantic', 'semantic', 'linked records semantic sparql json rdf dbl dpp passport profile validation', Link2, true),
   rightCommand('panel:changeSets', 'changeSets', 'change set changeset edits group active export import share discard', GitBranch, true),
   rightCommand('panel:cost', 'cost', '5d cost schedule item quantity budget estimate', Coins, true),
   {

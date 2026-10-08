@@ -1,5 +1,16 @@
 # @ifc-lite/collab
 
+## 0.10.0
+
+### Minor Changes
+
+- [#6522](https://github.com/LTplus-AG/ifc-lite/pull/6522) [`ec983d3`](https://github.com/LTplus-AG/ifc-lite/commit/ec983d378bfccc2b65fb636a76e321a2c9482aa4) Thanks [@louistrue](https://github.com/louistrue)! - Preserve per-model spatial metadata in collaboration rooms and allow reconstructed stores to retain pre-extracted georeferencing through worker transport. Synchronize subsequent georeference edits through the same room metadata and expose the canonical computeTransformMatrix helper to keep derived transforms coherent. Older rooms remain readable without fabricated coordinate offsets.
+
+### Patch Changes
+
+- Updated dependencies [[`93098dc`](https://github.com/LTplus-AG/ifc-lite/commit/93098dcb7f4125326db5d602977c5b3f9e9083cb), [`e8ced94`](https://github.com/LTplus-AG/ifc-lite/commit/e8ced940d5cd6c9789f1221c5aeb7cdae883da3b)]:
+  - @ifc-lite/mutations@3.1.0
+
 ## 0.9.2
 
 ### Patch Changes

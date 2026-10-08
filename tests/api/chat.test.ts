@@ -334,3 +334,31 @@ test('chat handler rejects non-free models with 400', async () => {
   const body = await response.json() as { code?: string };
   assert.equal(body.code, 'model_not_allowed');
 });
+
+// #6809: server validation precedes both quota reservation and provider calls.
+test('proxy output budget is validated before quota and propagated within the server ceiling', async () => {
+  for (const requested of [undefined, 256, 50_000, 0, -1, 1.5, null, '256', true]) {
+    const usageStore = new MemoryUsageStore();
+    let payload: Record<string, unknown> | undefined;
+    const handler = createChatHandler(createConfig(), {
+      fetchImpl: async (_url, init) => {
+        payload = JSON.parse(String(init?.body)) as Record<string, unknown>;
+        return createSseResponse();
+      }, usageStore, now: () => Date.now(),
+    });
+    const response = await handler(new Request('https://app.example/api/chat', {
+      method: 'POST', headers: { origin: 'https://app.example', 'content-type': 'application/json' },
+      body: JSON.stringify({ model: 'openai/gpt-free', messages: [{ role: 'user', content: 'hi' }], maxOutputTokens: requested }),
+    }));
+    if (requested === undefined || requested === 256 || requested === 50_000) {
+      assert.equal(response.status, 200);
+      await response.text();
+      assert.equal(payload?.max_tokens, requested === 256 ? 256 : 8192);
+    } else {
+      assert.equal(response.status, 400);
+      assert.equal((await response.json() as { code: string }).code, 'invalid_output_budget');
+      assert.equal(payload, undefined);
+      assert.equal(usageStore.lastUserIds.length, 0);
+    }
+  }
+});

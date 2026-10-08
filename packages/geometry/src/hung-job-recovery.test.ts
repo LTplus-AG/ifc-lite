@@ -4,6 +4,7 @@
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
+  MAX_GEOMETRY_CALL_MS,
   MAX_HUNG_JOB_RECOVERIES,
   readJobIfcType,
   SkippedHungElementsCollector,
@@ -110,6 +111,46 @@ describe('WorkerJobLedger (#4884)', () => {
       [[7, 8], 3],
     ]);
     expect(later).toBeGreaterThan(seq);
+  });
+
+  it('recovers a call that keeps heartbeating past the absolute call bound: skips a single job', () => {
+    const ledger = new WorkerJobLedger(1, 0);
+    const seq = ledger.recordDispatch(0, jobs(1, 2), 1);
+    ledger.onCallStart(0, seq, 0, 1, 0);
+    for (let now = 1_000; now < MAX_GEOMETRY_CALL_MS; now += 1_000) {
+      ledger.onHeard(0, now);
+      expect(ledger.findHung(now, 45_000)).toEqual([]);
+    }
+    ledger.onHeard(0, MAX_GEOMETRY_CALL_MS);
+    expect(ledger.callOverCap(0, MAX_GEOMETRY_CALL_MS)).toBe(true);
+    expect(ledger.findHung(MAX_GEOMETRY_CALL_MS, 45_000)).toEqual([0]);
+    const plan = ledger.takeRecoveryPlan(0, MAX_GEOMETRY_CALL_MS);
+    expect(ids(plan.skippedJob!)).toEqual([1]);
+    expect(plan.slices.map((s) => ids(s.jobs))).toEqual([[2]]);
+  });
+
+  it('replays a heartbeating multi-job call one job at a time once it passes the bound', () => {
+    const ledger = new WorkerJobLedger(1, 0);
+    const seq = ledger.recordDispatch(0, jobs(1, 2, 3));
+    ledger.onCallStart(0, seq, 0, 3, 0);
+    ledger.onHeard(0, MAX_GEOMETRY_CALL_MS - 1);
+    expect(ledger.findHung(MAX_GEOMETRY_CALL_MS - 1, 45_000)).toEqual([]);
+    ledger.onHeard(0, MAX_GEOMETRY_CALL_MS);
+    expect(ledger.findHung(MAX_GEOMETRY_CALL_MS, 45_000)).toEqual([0]);
+    const plan = ledger.takeRecoveryPlan(0, MAX_GEOMETRY_CALL_MS);
+    expect(plan.skippedJob).toBeNull();
+    expect(plan.slices.map((s) => [ids(s.jobs), s.maxBatchJobs])).toEqual([[[1, 2, 3], 1]]);
+  });
+
+  it('does not count a host suspension against the call bound, and tracks calls with recovery off', () => {
+    const ledger = new WorkerJobLedger(1, 0, false);
+    const seq = ledger.recordDispatch(0, jobs(1));
+    ledger.onCallStart(0, seq, 0, 1, 0);
+    ledger.onHostResumed(MAX_GEOMETRY_CALL_MS - 1_000);
+    expect(ledger.callOverCap(0, MAX_GEOMETRY_CALL_MS)).toBe(false);
+    expect(ledger.callOverCap(0, 2 * MAX_GEOMETRY_CALL_MS - 1_000)).toBe(true);
+    ledger.onSliceDone(0, seq, 2 * MAX_GEOMETRY_CALL_MS);
+    expect(ledger.callOverCap(0, 3 * MAX_GEOMETRY_CALL_MS)).toBe(false);
   });
 
   it('retains nothing to replay when recovery is disabled', () => {

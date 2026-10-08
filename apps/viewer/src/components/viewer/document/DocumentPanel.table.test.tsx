@@ -10,6 +10,8 @@
  * it was computed from.
  */
 import '@/test/setup-dom.js';
+import { documentPreviewReady } from '@/test/document-preview';
+import '@/test/content-fixture.js';
 import { describe, it, before, after, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { act, useState } from 'react';
@@ -22,7 +24,7 @@ import { useViewerStore } from '@/store/index.js';
 import type { FederatedModel } from '@/store/types.js';
 import { jsPDF } from 'jspdf';
 import { fixtureModel } from '@/test/store-fixture.js';
-import { render, click, cleanup, type as typeInput } from '@/test/render.js';
+import { render, click, cleanup, waitFor, type as typeInput } from '@/test/render.js';
 import type { DocumentPdfSeams } from '@/lib/document/generate-document-pdf.js';
 import { browserReportSeams, type ReportTableArgs } from '@/lib/export/report/generate-report-pdf.js';
 import { DOCUMENT_VERSION, type DocumentSpec, type ListTableSource, type TableBlock } from '@/lib/document/types.js';
@@ -33,6 +35,8 @@ import { DocumentPanel } from './DocumentPanel.js';
 import { TableBlockEditor } from './TableBlockEditor.js';
 import { useDocumentTables } from './useDocumentTables.js';
 import { useDocumentData } from './useDocumentData.js';
+import { Toaster } from '@/components/ui/toast.js';
+import { newChartSpec } from '@/lib/charts/presets.js';
 
 const MINI_IFC = `ISO-10303-21;
 HEADER;
@@ -71,8 +75,12 @@ async function parsedModel(): Promise<FederatedModel> {
   return { ...fixtureModel('m1', { idOffset: 1_000_000 }), name: 'tower.ifc', ifcDataStore: store, maxExpressId: 91 };
 }
 
-async function settle(): Promise<void> {
+async function flushEffects(): Promise<void> {
   for (let i = 0; i < 4; i++) await act(async () => { await Promise.resolve(); });
+}
+async function settle(): Promise<void> {
+  await flushEffects();
+  await documentPreviewReady();
 }
 
 // The hook runs one list per animation frame; frames are captured here and fired on demand, so a
@@ -95,7 +103,7 @@ async function runLists(): Promise<void> {
     const cb = frames.shift()!;
     await act(async () => { cb(0); });
   }
-  await settle();
+  await flushEffects();
 }
 
 function openMenu(trigger: HTMLElement): void {
@@ -175,6 +183,31 @@ describe('DocumentPanel table block (#5142)', () => {
   });
   afterEach(() => cleanup());
 
+  it('shows count-only native export warnings for real chart aggregation errors (#6612, #6620)', async () => {
+    const doc: DocumentSpec = { version: DOCUMENT_VERSION, id: 'broken-charts', name: 'Private report',
+      page: { size: 'A4', orientation: 'portrait' }, blocks: [1, 2].map((index) => ({
+        kind: 'chart', id: `broken-${index}`, snapshot: false,
+        chart: newChartSpec({ title: `Private chart ${index}`, dimension: `AbsentColumn${index}` }),
+      })) };
+    useViewerStore.setState({ documents: [doc], activeDocumentId: doc.id });
+    const texts: string[] = [];
+    const ui = render(<><DocumentPanel pdfSeams={recordingSeams([], texts)} /><Toaster /></>);
+    await settle();
+    assert.ok(ui.querySelector('[data-preview-block="broken-1"]')?.textContent?.includes('AbsentColumn1'),
+      'the native aggregator must reject the missing column before export');
+    const exportButton = ui.querySelector<HTMLButtonElement>('[data-document-export]');
+    assert.ok(exportButton);
+    click(exportButton);
+    await waitFor(() => /2 charts not printed/.test(ui.querySelector('[role="status"]')?.textContent ?? ''),
+      'native PDF completion must report both chart errors');
+    const notification = ui.querySelector('[role="status"]')?.textContent ?? '';
+    assert.ok(notification.includes('Document exported:'));
+    assert.ok(!notification.includes('Private') && !notification.includes('AbsentColumn'),
+      'toast diagnostics expose counts without document names, chart names or column names');
+    assert.ok(texts.some((text) => text.includes('AbsentColumn1')));
+    assert.ok(texts.some((text) => text.includes('AbsentColumn2')));
+  });
+
   it('edits group order and header colours, persists them and prints parsed IFC tables (#6543)', async () => {
     const list = wallList({ name: 'Products by class', entityTypes: [IfcTypeEnum.IfcWall, IfcTypeEnum.IfcDoor],
       columns: [{ id: 'class', source: 'attribute', propertyName: 'Class' }, { id: 'name', source: 'attribute', propertyName: 'Name' }],
@@ -184,7 +217,7 @@ describe('DocumentPanel table block (#5142)', () => {
     const tables: ReportTableArgs[] = [];
     const pdfOutputs: Blob[] = [];
     const ui = render(<DocumentPanel pdfSeams={recordingBrowserSeams(tables, pdfOutputs)} />);
-    await settle(); await runLists();
+    await settle(); await runLists(); await documentPreviewReady();
     const groupLabels = (id: string): string[] => [...ui.querySelectorAll(`[data-preview-block="${id}"] tr[data-role="group"]`)].map((r) => r.firstElementChild?.textContent ?? '');
     assert.deepEqual(groupLabels('t1'), ['IfcWall  (2)', 'IfcDoor  (1)']);
     assert.deepEqual(groupLabels('t2'), groupLabels('t1'));
@@ -201,14 +234,15 @@ describe('DocumentPanel table block (#5142)', () => {
     assert.equal(header.style.color, '#000000');
     const headerTextColor = editor.querySelector<HTMLInputElement>('input[aria-label="Header text"]'); assert.ok(headerTextColor);
     typeInput(headerTextColor, '#6b21a8'); await settle();
-    assert.equal(header.style.color, '#6b21a8', 'the preview renders the authored header ink');
-    const persisted = loadDocuments().find((d) => d.id === doc.id); assert.ok(persisted);
+    const authoredHeader = ui.querySelector<HTMLElement>('[data-preview-block="t2"] th'); assert.ok(authoredHeader);
+    assert.equal(authoredHeader.style.color, '#6b21a8', 'the recomposed current page renders the authored header ink');
+    const persisted = (await loadDocuments()).find((d) => d.id === doc.id); assert.ok(persisted);
     const imported = parseDocumentFile(JSON.stringify(persisted));
     const second = imported.blocks[1]; assert.ok(second?.kind === 'table');
     // File import allocates fresh block ids; presentation and order survive the copy.
     assert.equal(second.groupOrder, 'label'); assert.equal(second.headerBackground, '#ffee88'); assert.equal(second.headerTextColor, '#6b21a8');
     click(ui.querySelector('[data-document-export]')!);
-    for (let i = 0; i < 20 && tables.length < 2; i++) await settle();
+    await waitFor(() => tables.length === 2 && pdfOutputs.length === 1, 'the native PDF renderer prints both styled tables and produces its PDF');
     assert.equal(tables.length, 2);
     assert.deepEqual(tables[0].body.filter((_, i) => tables[0].rowRoles?.[i] === 'group').map((r) => r[0]), groupLabels('t1'));
     assert.deepEqual(tables[1].body.filter((_, i) => tables[1].rowRoles?.[i] === 'group').map((r) => r[0]), groupLabels('t2'));
@@ -217,10 +251,12 @@ describe('DocumentPanel table block (#5142)', () => {
     assert.equal(pdfOutputs[0]?.type, 'application/pdf');
     assert.ok((pdfOutputs[0]?.size ?? 0) > 0, 'the configured table is included in a real generated PDF');
     click(editor.querySelector('button[aria-label="Reset table header text color"]')!); await settle();
-    assert.equal(header.style.backgroundColor, '#ffee88'); assert.equal(header.style.color, '#000000', 'reset returns to automatic contrast');
+    const resetInkHeader = ui.querySelector<HTMLElement>('[data-preview-block="t2"] th'); assert.ok(resetInkHeader);
+    assert.equal(resetInkHeader.style.backgroundColor, '#ffee88'); assert.equal(resetInkHeader.style.color, '#000000', 'reset returns to automatic contrast');
     click(editor.querySelector('button[aria-label="Reset table header background"]')!); await settle();
-    assert.equal(header.style.backgroundColor, '#334155'); assert.equal(header.style.color, '#ffffff');
-    const reset = loadDocuments().find((d) => d.id === doc.id)?.blocks.find((b) => b.id === 't2');
+    const resetPaletteHeader = ui.querySelector<HTMLElement>('[data-preview-block="t2"] th'); assert.ok(resetPaletteHeader);
+    assert.equal(resetPaletteHeader.style.backgroundColor, '#334155'); assert.equal(resetPaletteHeader.style.color, '#ffffff');
+    const reset = (await loadDocuments()).find((d) => d.id === doc.id)?.blocks.find((b) => b.id === 't2');
     assert.ok(reset?.kind === 'table'); assert.equal(reset.headerBackground, undefined); assert.equal(reset.headerTextColor, undefined);
     assert.equal(reset.groupOrder, 'label', 'resetting the palette preserves group ordering');
   });
@@ -249,7 +285,7 @@ describe('DocumentPanel table block (#5142)', () => {
     assert.equal(exportButton.disabled, true);
     assert.equal(exportButton.textContent?.includes('Running lists'), true);
 
-    await runLists();
+    await runLists(); await documentPreviewReady();
     const rows = ui.querySelector('[data-block-table] table');
     assert.ok(rows, 'the table rendered');
     const head = [...rows.querySelectorAll('th')].map((th) => th.textContent);
@@ -267,7 +303,7 @@ describe('DocumentPanel table block (#5142)', () => {
     await settle();
     const exportButton = ui.querySelector<HTMLButtonElement>('[data-document-export]')!;
     assert.equal(exportButton.disabled, true, 'disabled while the list runs');
-    await runLists();
+    await runLists(); await documentPreviewReady();
     const message = ui.querySelector('[data-block-table] [data-table-message]')?.textContent ?? '';
     assert.ok(message.length > 0 && !message.startsWith('Running'), message);
     assert.equal(exportButton.disabled, false, 'an error is a settled state; the PDF prints it in place');
@@ -282,14 +318,14 @@ describe('DocumentPanel table block (#5142)', () => {
     const seams = recordingSeams(tables, texts);
     const ui = render(<DocumentPanel pdfSeams={seams} />);
     await settle();
-    await runLists();
+    await runLists(); await documentPreviewReady();
     const previews = ui.querySelectorAll('[data-block-table] table');
     assert.equal(previews.length, 2, 'both blocks rendered their rows');
     // The saved-list origin resolves, so "Update from saved list" is offered.
     assert.equal(ui.querySelectorAll('[data-table-update]').length, 2);
 
     click(ui.querySelector('[data-document-export]')!);
-    for (let i = 0; i < 20 && tables.length < 2; i++) await settle();
+    await waitFor(() => tables.length === 2, 'the PDF seam prints both sorted table blocks');
     assert.equal(tables.length, 2);
     assert.deepEqual(tables[0].head, [['Name', 'Storey']]);
     // sortBy name desc, maxRows 1: Wall B first, then "… 1 more row".

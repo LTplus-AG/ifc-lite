@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Authored internally for the IDS lint corpus (MPL-2.0). A deliberately clean IDS: every warning or error raised on it is a false positive. -->
+<ids xmlns="http://standards.buildingsmart.org/IDS" xmlns:xs="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <info>
+    <title>Clean reference</title>
+    <author>bim@example.com</author>
+    <date>2026-10-08</date>
+  </info>
+  <specifications>
+    <specification name="Door fire rating" ifcVersion="IFC4 IFC4X3_ADD2" identifier="CR-01" description="Fire doors state their rating." instructions="Set Pset_DoorCommon.FireRating on every door type.">
+      <applicability minOccurs="0" maxOccurs="unbounded">
+        <entity><name><simpleValue>IFCDOOR</simpleValue></name></entity>
+      </applicability>
+      <requirements>
+        <property dataType="IFCLABEL"><propertySet><simpleValue>Pset_DoorCommon</simpleValue></propertySet><baseName><simpleValue>FireRating</simpleValue></baseName><value><xs:restriction base="xs:string"><xs:pattern value="E?I[0-9]{2,3}"/></xs:restriction></value></property>
+        <property dataType="IFCBOOLEAN"><propertySet><simpleValue>Pset_DoorCommon</simpleValue></propertySet><baseName><simpleValue>IsExternal</simpleValue></baseName><value><simpleValue>false</simpleValue></value></property>
+      </requirements>
+    </specification>
+    <specification name="Wall thickness" ifcVersion="IFC4X3_ADD2" identifier="CR-02" description="Walls are at least 10 cm thick." instructions="Model the full wall build-up.">
+      <applicability minOccurs="0" maxOccurs="unbounded">
+        <entity><name><simpleValue>IFCWALL</simpleValue></name></entity>
+      </applicability>
+      <requirements>
+        <property dataType="IFCLENGTHMEASURE"><propertySet><simpleValue>Qto_WallBaseQuantities</simpleValue></propertySet><baseName><simpleValue>Width</simpleValue></baseName><value><xs:restriction base="xs:double"><xs:minInclusive value="0.1"/></xs:restriction></value></property>
+        <partOf relation="IFCRELCONTAINEDINSPATIALSTRUCTURE"><entity><name><simpleValue>IFCBUILDINGSTOREY</simpleValue></name></entity></partOf>
+      </requirements>
+    </specification>
+  </specifications>
+</ids>

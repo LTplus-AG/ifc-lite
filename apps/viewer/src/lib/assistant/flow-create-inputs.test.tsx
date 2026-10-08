@@ -12,7 +12,7 @@ import { openFlowSample } from '@/test/flow-sample-fixture';
 import { render, click, type, cleanup, advance } from '@/test/render';
 import { BimReactContext } from '@/sdk/BimProvider';
 import { FlowPlayer } from '@/components/viewer/flow/FlowPlayer';
-import { flowRegistry } from '@/lib/flow/runner';
+import { flowRegistry, viewerFlowFeatures } from '@/lib/flow/runner';
 import { flowToJson, loadSavedFlows, newFlowDocument } from '@/lib/flow/persistence';
 import { toggleInput } from '@/lib/flow/editor-ops';
 import { playerFields } from '@/lib/flow/player-fields';
@@ -21,6 +21,8 @@ import { prepareFlowCreateProposal, applyFlowCreateProposal } from './flow-creat
 import { preflightOpenFlow } from './flow-preflight';
 import { replaceEvidence, useAssistant, cancelAssistant } from './conversation';
 import { FlowCreateReview, useFlowCreateReview } from '@/components/viewer/assistant/FlowCreateReview';
+import { preflightWorkflow } from '@/lib/flow/preflight';
+import { startWorkflowRun } from '@/lib/flow/run-session';
 
 const initial = useViewerStore.getState();
 afterEach(() => { cleanup(); cancelAssistant(); useViewerStore.setState(initial, true); localStorage.clear();
@@ -70,15 +72,40 @@ test('#7241 reviewed creation retains native Player inputs through Save, export 
   const field = ui.querySelector('input');
   assert.ok(field instanceof HTMLInputElement);
   assert.equal(field.value, 'IfcWall');
-  type(field, 'IfcSlab');
   const run = [...ui.querySelectorAll('button')].find(button => button.textContent === 'Run');
   assert.ok(run && !run.disabled);
-  await act(async () => { click(run); await advance(100); });
-  for (let tries = 0; tries < 40 && useViewerStore.getState().flowRunning; tries++) await act(async () => advance(25));
-  const result = useViewerStore.getState().flowLastRun;
-  assert.ok(result?.ok, useViewerStore.getState().flowLastError ?? 'native Player did not finish');
+  const finish = async () => {
+    await act(async () => { click(run); await advance(100); });
+    for (let tries = 0; tries < 40 && useViewerStore.getState().flowRunning; tries++) await act(async () => advance(25));
+    const result = useViewerStore.getState().flowLastRun;
+    assert.ok(result?.ok, useViewerStore.getState().flowLastError ?? 'native Player did not finish');
+    return result;
+  };
+  assert.equal(countItems((await finish()).graphOutputs[0].data!), 4, 'unchanged native Player default queries four walls');
+  type(field, 'IfcSlab');
+  const result = await finish();
   assert.equal(countItems(result.graphOutputs[0].data!), 3, 'the submitted native Player override queries slabs, not four default walls');
   assert.equal(model.bim.query().byType('IfcWall').toArray().length, 4, 'read-only graph does not mutate the model');
+});
+
+test('#7241 exposing a writer parameter keeps native override preflight and scoped grants authoritative before any mutation', async () => {
+  const model = await openFlowSample();
+  const proposal = prepareFlowCreateProposal(JSON.stringify({ version: 1, kind: 'flow.create', name: 'Reviewed attribute writer',
+    nodes: [...graph.nodes, { id: 'value', type: 'core.string', params: { value: 'Reviewed' } },
+      { id: 'write', type: 'model.setAttribute', params: { attribute: 'Name' } }],
+    edges: [{ from: ['query', 'entities'], to: ['write', 'entity'] }, { from: ['value', 'value'], to: ['write', 'value'] }],
+    inputs: [{ nodeId: 'write', param: 'attribute', label: 'Attribute', kind: 'enum', options: ['Name', 'Description'] }],
+  }), captureEvidence('flow'));
+  const created = applyFlowCreateProposal(proposal, proposal.digest);
+  const doc = { ...created.created, capabilities: ['model.read', 'model.mutate:attr.Name'] };
+  const names = model.bim.query().byType('IfcWall').toArray().map(wall => wall.name);
+  const run = startWorkflowRun();
+  try {
+    assert.deepEqual(await preflightWorkflow(run, doc, { 'write.attribute': 'Name' }, viewerFlowFeatures(true)), { 'write.attribute': 'Name' });
+    await assert.rejects(preflightWorkflow(run, doc, { 'write.attribute': 'Description' }, viewerFlowFeatures(true)), /Workflow capability denied: model.mutate:attr.Description/);
+    assert.deepEqual(model.bim.query().byType('IfcWall').toArray().map(wall => wall.name), names);
+    assert.equal(useViewerStore.getState().flowLastRun, null, 'preflight never runs the writer');
+  } finally { run.release(); }
 });
 
 test('#7241 explicit input metadata uses native kind/parameter validation and refuses unknown, duplicate or oversized declarations', () => {

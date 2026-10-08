@@ -36,7 +36,6 @@ import {
 } from './dom.js';
 import { parseRestriction } from './parse-restriction.js';
 
-const IDS_NAMESPACE = 'http://standards.buildingsmart.org/IDS';
 const XS_NAMESPACE = 'http://www.w3.org/2001/XMLSchema';
 
 /** Error thrown when parsing invalid IDS XML */

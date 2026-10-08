@@ -188,9 +188,7 @@ export {
   bsddInsertOp,
   entityChoices,
   snapshotBsddClass,
-  snapshotBsddProperty,
   splitRelatedEntity,
-  standardDataType,
   type BsddInsertMode,
   type BsddInsertRequest,
 } from './bsdd/insert.js';
@@ -198,8 +196,6 @@ export {
 // bSDD property → requirement mapping table (IDS-071)
 export {
   BSDD_DATA_TYPES,
-  DIMENSION_MEASURES,
-  UNIT_MEASURES,
   BsddMappingError,
   mapBsddDataType,
   mapBsddProperty,
@@ -211,11 +207,9 @@ export {
 
 // Dictionary → IDS generator (IDS-072)
 export {
-  ancestors,
   buildClassTree,
   effectiveProperties,
   loadClassesWithAncestors,
-  MAX_CLASSES,
   type BsddClassTreeNode,
 } from './bsdd/dictionary.js';
 export {
@@ -233,7 +227,6 @@ export {
   checkUriHealth,
   collectDocUris,
   createBsddUriIndex,
-  isBsddUri,
   URI_HEALTH_TTL_MS,
   type BsddUriIndex,
   type DocUri,
@@ -243,10 +236,8 @@ export {
 
 // bSDD offline cache (IDS-074)
 export {
-  BSDD_CACHE_VERSION,
   createCachedBsddSource,
   createMemoryBsddStore,
-  isTransportFailure,
   loadUriIndex,
   type BsddCacheEntry,
   type BsddCacheKind,
@@ -254,4 +245,4 @@ export {
   type CachedBsddSource,
   type CachedBsddSourceOptions,
 } from './bsdd/cache.js';
-export { createIndexedDbBsddStore, BSDD_IDB_NAME, type IndexedDbBsddStoreOptions } from './bsdd/idb-store.js';
+export { createIndexedDbBsddStore, type IndexedDbBsddStoreOptions } from './bsdd/idb-store.js';

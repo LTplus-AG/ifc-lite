@@ -29,7 +29,7 @@ export const demoClass = (code: string): string => `${DEMO}/class/${code}`;
 export const demoProp = (code: string): string => `${DEMO}/prop/${code}`;
 
 function sameQuery(a: URLSearchParams, b: Record<string, string>): boolean {
-  const keys = new Set([...a.keys()]);
+  const keys = new Set(a.keys());
   if (keys.size !== Object.keys(b).length) return false;
   return Object.entries(b).every(([k, v]) => a.getAll(k).length === 1 && a.get(k) === v);
 }

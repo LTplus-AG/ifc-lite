@@ -33,10 +33,10 @@ const writer: Partial<typeof import('./associations.js')> = await import('./asso
 const reader: Partial<typeof import('./association-overlay.js')> = await import('./association-overlay.js').catch(() => ({}));
 function api() {
   const { addClassificationAssociation, addMaterialAssociation } = writer;
-  const { overlayClassifications, overlayMaterials } = reader;
-  assert.ok(addClassificationAssociation && addMaterialAssociation && overlayClassifications && overlayMaterials,
+  const { overlayClassifications } = reader;
+  assert.ok(addClassificationAssociation && addMaterialAssociation && overlayClassifications,
     'lib/authoring exports the association writer and overlay readers (#5876)');
-  return { addClassificationAssociation, addMaterialAssociation, overlayClassifications, overlayMaterials };
+  return { addClassificationAssociation, addMaterialAssociation, overlayClassifications };
 }
 
 const step = (schema: string, data: string) => `ISO-10303-21;
@@ -208,7 +208,7 @@ describe('Add Classification / Add Material create real IFC entities (#5876)', (
       assert.doesNotMatch(text, /Material \[/, 'no look-alike property set');
       const read = extractAllMaterialsOnDemand(reparsed, 10);
       assert.deepEqual(read.map((m) => [m.type, m.name, m.category]), [['Material', 'Steel', 'Metal']]);
-      assert.deepEqual(api().overlayMaterials(view(), [10], 'IFC4').map((m) => m.name), ['Steel']);
+      assert.deepEqual(extractAllMaterialsOnDemand(store, 10, view()).map((m) => m.name), ['Steel']);
     });
 
     it('a same-named material reuses its entity and association, preserving its original fields', async () => {
@@ -216,7 +216,7 @@ describe('Add Classification / Add Material create real IFC entities (#5876)', (
       api().addMaterialAssociation('m', 12, { name: 'Steel', category: 'Wood' });
       assert.equal([...view().getNewEntitiesOfType('IFCMATERIAL')].length, 1);
       assert.equal([...view().getNewEntitiesOfType('IFCRELASSOCIATESMATERIAL')].length, 1);
-      assert.deepEqual(api().overlayMaterials(view(), [12], 'IFC4').map((m) => m.category), ['Metal']);
+      assert.deepEqual(extractAllMaterialsOnDemand(store, 12, view()).map((m) => m.category), ['Metal']);
       const { reparsed } = await exportAndReparse(store, 'IFC4');
       assert.deepEqual(extractAllMaterialsOnDemand(reparsed, 12).map((m) => m.category), ['Metal']);
     });
@@ -225,7 +225,7 @@ describe('Add Classification / Add Material create real IFC entities (#5876)', (
       assert.deepEqual(api().addMaterialAssociation('m', 10, { name: 'Concrete' }), { ok: true });
       assert.equal(view().getNewEntities().length, 0, 'source material and relationship are reused');
       assert.deepEqual(view().getPositionalMutationsForEntity(21)?.get(4), ['#11', '#10']);
-      assert.deepEqual(api().overlayMaterials(view(), [10], 'IFC4', store).map((m) => m.name), ['Concrete']);
+      assert.deepEqual(extractAllMaterialsOnDemand(store, 10, view()).map((m) => m.name), ['Concrete']);
       const { reparsed } = await exportAndReparse(store, 'IFC4');
       assert.deepEqual(extractAllMaterialsOnDemand(reparsed, 10).map((m) => m.name), ['Concrete']);
       useViewerStore.getState().undo('m');
@@ -294,9 +294,10 @@ describe('Add Classification / Add Material create real IFC entities (#5876)', (
     it('an element sees the session associations of the base it aliases', () => {
       api().addClassificationAssociation('m', 10, { system: 'Uniclass', identification: 'Ss_25' });
       api().addMaterialAssociation('m', 10, { name: 'Steel' });
-      // A duplicate (say #99) resolving to base #10 reads [99, 10], as the panel passes it.
+      // Exercise the actual public alias transport rather than supplying two guessed subjects.
+      view().setEntityAlias(99, 10);
       assert.equal(api().overlayClassifications(view(), [99, 10], 'IFC4').length, 1);
-      assert.equal(api().overlayMaterials(view(), [99, 10], 'IFC4').length, 1);
+      assert.equal(extractAllMaterialsOnDemand(store, 99, view()).length, 1);
     });
 
     it('refuses a conflicting material association on an element that already has one', () => {

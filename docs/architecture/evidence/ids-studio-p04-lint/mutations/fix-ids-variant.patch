@@ -1,0 +1,13 @@
+diff --git a/packages/ids-authoring/src/lint/fix.ts b/packages/ids-authoring/src/lint/fix.ts
+index 4110cd0f0..b1db894c3 100644
+--- a/packages/ids-authoring/src/lint/fix.ts
++++ b/packages/ids-authoring/src/lint/fix.ts
+@@ -26,7 +26,7 @@ import type { QuickFix } from './types.js';
+ /** Deterministic id source for one fix. */
+ export function fixIds(code: string, nodeId: Uuid, variant = ''): () => Uuid {
+   let n = 0;
+-  const seed = `lint|${code}|${nodeId}`;
++  const seed = `lint|${code}|${nodeId}|${variant}`;
+   return () => deriveId(seed, `#${n++}`);
+ }
+ 

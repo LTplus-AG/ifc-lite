@@ -1,0 +1,13 @@
+diff --git a/packages/ids-authoring/src/reducer/facet-ops.ts b/packages/ids-authoring/src/reducer/facet-ops.ts
+index 3fc376f21..19c88f2a1 100644
+--- a/packages/ids-authoring/src/reducer/facet-ops.ts
++++ b/packages/ids-authoring/src/reducer/facet-ops.ts
+@@ -62,7 +62,7 @@ function snapshotOf(item: SectionItem): RequirementSnapshot | undefined {
+   let snap: RequirementSnapshot = { optionality: r.optionality };
+   snap = withKey(snap, 'cardinalityRaw', r.cardinalityRaw);
+   snap = withKey(snap, 'description', r.description);
+-  return snap;
++  return withKey(snap, 'instructions', r.instructions);
+ }
+ 
+ /** Inverse ops that put `item` back at `loc` after it was removed. */

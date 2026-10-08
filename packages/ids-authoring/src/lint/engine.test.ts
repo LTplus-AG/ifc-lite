@@ -138,6 +138,20 @@ describe('incremental re-lint', () => {
     expect(linter.lint(next).stats).toEqual({ specsLinted: 0, specsReused: 2 });
   });
 
+  it('detects a changed specification by identity, without a touched hint', () => {
+    const doc = twoSpecs();
+    const linter = createLinter(ctx, { registry: REGISTRY });
+    linter.lint(doc);
+    const facetId = doc.nodes.specs[0].requirements[0].id;
+    // A new specification object under the SAME node index object (e.g. a host
+    // that rebuilt the IDS content): only identity of the spec reveals it.
+    const [first, ...rest] = doc.ids.specifications;
+    const changed = { ...first, requirements: first.requirements.map((r) => (r.id === facetId ? { ...r, optionality: 'optional' as const } : r)) };
+    const next: StudioDocument = { ...doc, ids: { ...doc.ids, specifications: [changed, ...rest] } };
+    const r = linter.lint(next);
+    expect(r.stats).toEqual({ specsLinted: 1, specsReused: 1 });
+  });
+
   it('honours an explicit touched hint and invalidates on custom declarations', () => {
     const doc = twoSpecs();
     const linter = createLinter(ctx, { registry: REGISTRY });

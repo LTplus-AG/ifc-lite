@@ -8,7 +8,10 @@ import { beforeAll, describe, expect, it } from 'vitest';
 import { attribute, docFromXml, entity, enumeration, idsXml, lintCode, runRuleFixtures, specXml, sv, type RuleFixtures } from '../../../test/lint-helpers.js';
 import { emptyMeta } from '../../document/types.js';
 import { createLintContext } from '../context.js';
+import { quickFix } from '../fix.js';
 import type { LintContext } from '../types.js';
+import { setValues } from './entity.js';
+import { gated } from './util.js';
 
 let ctx: LintContext;
 beforeAll(async () => {
@@ -99,6 +102,15 @@ describe('entity, predefined type and attribute rules', () => {
     expect(values[0]).toBe('IFCWALL');
     expect(values).toContain('IfcSlab');
     expect(values.filter((v) => String(v).toUpperCase() === 'IFCWALL')).toHaveLength(1);
+  });
+
+  it('drops quick fixes that the grounding gate refuses', () => {
+    const doc = docFromXml(one(entity('IFCWALL')));
+    const facetId = doc.nodes.specs[0].applicability[0].id;
+    const bad = quickFix('Invent a class', 'IDSL-ENT-001', facetId, 'bad', [setValues(facetId, 'entity.name', ['IfcNotAClass'])]);
+    const good = quickFix('Use IfcSlab', 'IDSL-ENT-001', facetId, 'good', [setValues(facetId, 'entity.name', ['IfcSlab'])]);
+    expect(gated(doc, ctx, [bad, undefined, good])?.map((f) => f.label)).toEqual(['Use IfcSlab']);
+    expect(gated(doc, ctx, [bad])).toBeUndefined();
   });
 
   it('PDT-003 offers the case-corrected enumeration value first', () => {

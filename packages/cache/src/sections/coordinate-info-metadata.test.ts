@@ -6,7 +6,7 @@ import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import type { CoordinateInfo } from '@ifc-lite/geometry';
 import { IfcParser } from '@ifc-lite/parser';
-import capture from './coordinate-info-c20-capture.json';
+import capture from './coordinate-info-c20-capture.json' with { type: 'json' };
 import { BufferReader, BufferWriter } from '../utils/buffer-utils.js';
 import { readCoordinateInfo, writeCoordinateInfo } from './coordinate-info.js';
 import { buildGeometrySectionV13, readGeometryV13 } from './geometry-chunks.js';

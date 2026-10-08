@@ -16,6 +16,7 @@ import { Archive, Save } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { toast } from '@/components/ui/toast';
+import { ReportDeletionPreview } from './ReportDeletionPreview';
 import { ContentStorageNotice } from '@/components/viewer/ContentStorageNotice';
 import { analysisStampOf, useAnalysisStaleness } from '@/hooks/useAnalysisStaleness';
 import { useTranslation } from '@/i18n';
@@ -46,13 +47,8 @@ function ReportRow({ report }: { report: SavedClashReport }) {
         {t('clashTools.savedReports.entrySummary', { clashes: t('clashTools.revisionCompare.clashCount', { count: report.clashes.length }), when: new Date(report.savedAt).toLocaleString(), models: report.models.map((model) => model.name).join(', ') })}
       </div>
       {badges.length > 0 && <div className="text-xs font-medium" data-clash-report-limits>{badges.join(' · ')}</div>}
-      {confirming && (
-        <div className="flex flex-wrap items-center gap-1.5 text-xs" role="alert">
-          <span className="min-w-0 flex-1">{t('clashTools.savedReports.deleteWarning', { name: report.name })}</span>
-          <Button variant="destructive" size="sm" className="h-6 px-2 text-xs" onClick={() => void state().deleteSavedClashReport(report.id).then(persisted)}>{t('clashTools.savedReports.confirmDeleteButton')}</Button>
-          <Button variant="ghost" size="sm" className="h-6 px-2 text-xs" onClick={() => setConfirming(false)}>{t('clashTools.savedReports.cancelDeleteButton')}</Button>
-        </div>
-      )}
+      {confirming && <ReportDeletionPreview source={{ kind: 'clash', id: report.id }} report={report}
+        onCancel={() => setConfirming(false)} storageFailed={() => persisted(false)} />}
     </li>
   );
 }

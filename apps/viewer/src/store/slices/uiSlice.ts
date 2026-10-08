@@ -48,6 +48,11 @@ export interface PropertyFocusTarget {
   propName: string;
 }
 
+/** Transient saved identities, resolved by the native editor at consumption (#7167). */
+export type ArtifactEditorTarget =
+  | { kind: 'lens'; id: string }
+  | { kind: 'chart'; id: string; dashboardId: string };
+
 /**
  * Tools that require edit mode to function. Entering one flips
  * `editEnabled` on; leaving edit mode forces these back to `'select'`.
@@ -106,6 +111,7 @@ export interface UISlice extends GeometryLoadSettingsState, GeometryLoadSettings
   /** One-shot "scroll to + highlight + edit this property" request, armed by
    *  the bSDD add flow and consumed by the Properties panel. Null when idle. */
   pendingPropertyFocus: PropertyFocusTarget | null;
+  pendingArtifactEditor: ArtifactEditorTarget | null;
   theme: ThemeMode;
   isMobile: boolean;
   hoverTooltipsEnabled: boolean;
@@ -147,6 +153,7 @@ export interface UISlice extends GeometryLoadSettingsState, GeometryLoadSettings
   setHierarchyMode: (mode: HierarchyMode) => void;
   /** Arm (or clear, with null) the one-shot property-focus request. */
   setPendingPropertyFocus: (focus: PropertyFocusTarget | null) => void;
+  setPendingArtifactEditor: (target: ArtifactEditorTarget | null) => void;
   setTheme: (theme: ThemeMode) => void;
   toggleTheme: () => void;
   /** Shift+click secret: toggle colorful mode on/off */
@@ -194,6 +201,7 @@ export const createUISlice: StateCreator<UISlice & UICrossSliceState, [], [], UI
   propertiesActiveTab: 'properties',
   hierarchyMode: getInitialHierarchyMode(),
   pendingPropertyFocus: null,
+  pendingArtifactEditor: null,
   theme: UI_DEFAULTS.THEME,
   isMobile: false,
   hoverTooltipsEnabled: UI_DEFAULTS.HOVER_TOOLTIPS_ENABLED,
@@ -285,6 +293,7 @@ export const createUISlice: StateCreator<UISlice & UICrossSliceState, [], [], UI
   },
 
   setPendingPropertyFocus: (pendingPropertyFocus) => set({ pendingPropertyFocus }),
+  setPendingArtifactEditor: (pendingArtifactEditor) => set({ pendingArtifactEditor }),
 
   setTheme: (theme) => {
     applyThemeClasses(theme);

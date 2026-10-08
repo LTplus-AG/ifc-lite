@@ -157,6 +157,47 @@
                 "Name": "house - roof - slab right"
               }
             },
+            "nativeLayers": {
+              "units": "m",
+              "status": "available",
+              "kind": "slab",
+              "assignmentCount": 1,
+              "layerCount": 0,
+              "peerCount": 1,
+              "typeAssignmentCount": 0,
+              "typeLayerCount": 0,
+              "typeScopeStatus": "available",
+              "expected": {
+                "assignments": [
+                  {
+                    "expressId": 405,
+                    "ifcClass": "IfcMaterial"
+                  }
+                ],
+                "layerSetId": null,
+                "MaterialLayers": [],
+                "typeLayers": {
+                  "assignments": [],
+                  "layerSetId": null,
+                  "MaterialLayers": []
+                },
+                "via": "element",
+                "type": {
+                  "GlobalId": "3n9C2OuJjE89DiYlOaoccO",
+                  "Name": "house - roof - slab right"
+                },
+                "typeStatus": "typed",
+                "peers": [
+                  {
+                    "globalId": "12UVOn4wvAJPMUExKdZLb8",
+                    "modelId": "arch",
+                    "ifcClass": "IfcSlab",
+                    "name": "house - roof - slab right"
+                  }
+                ],
+                "wall": null
+              }
+            },
             "structuralStatus": "available",
             "structural": null,
             "documentStatus": "available",

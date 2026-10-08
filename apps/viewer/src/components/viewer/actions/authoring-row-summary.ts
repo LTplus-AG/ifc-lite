@@ -77,6 +77,9 @@ export function authoringRowSummary(row: AuthoringRow, batch: ModelAuthoringBatc
     case 'element.rotate':
       return { subject: `${op.target.ifcClass} "${op.target.name}"`, before: before.angleDeg === undefined ? none : `${num(before.angleDeg)}°`,
         after: before.angleDeg === undefined ? t('modelAuthoring.turnedBy', { angle: num(op.angleDeg) }) : `${num(before.angleDeg + op.angleDeg)}°` };
+    case 'type.detach':
+      return { subject: ref(op.target, t), before: before.type ?? none, after: none,
+        previewNote: t('modelAuthoring.editPreviewUnavailable') };
     case 'type.assign':
       return { subject: ref(op.target, t), before: before.type ?? none,
         after: 'create' in op.type ? t('modelAuthoring.newType', { name: op.type.create.name, ifcClass: op.type.create.ifcClass }) : op.type.name };

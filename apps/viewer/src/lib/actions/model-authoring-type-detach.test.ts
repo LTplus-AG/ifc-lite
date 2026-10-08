@@ -85,5 +85,94 @@ for (const units of ['m', 'mm'] as const) {
     assert.equal(parsed.entities.getGlobalId(typeId), FRONT_WALL_TYPE);
     assert.ok(relations.some(rel => rel.relatingId === typeId && rel.relatedIds.includes(peer)));
     assert.equal(relations.some(rel => rel.relatedIds.includes(target)), false);
+    assert.equal(outcome.receipt.batches.length, 1, 'one native grouped edit');
+    useViewerStore.getState().undo(SAMPLE_MODEL);
+    const restored = await exportedRelations(dataStore, view);
+    assert.ok(restored.relations.some(rel => rel.relatingId === typeId && rel.relatedIds.includes(target) && rel.relatedIds.includes(peer)));
+    useViewerStore.getState().redo(SAMPLE_MODEL);
+    const redone = await exportedRelations(dataStore, view);
+    assert.equal(redone.relations.some(rel => rel.relatedIds.includes(target)), false);
+    assert.ok(redone.relations.some(rel => rel.relatingId === typeId && rel.relatedIds.includes(peer)));
   });
 }
+
+test('#7267 detaching the last native occurrence removes only its relationship, and Undo restores it', async () => {
+  const { dataStore, view } = await seedAuthoringSample();
+  const target = dataStore.entities.getExpressIdByGlobalId(BACK_WALL)!;
+  const relation = readRelatedLists(dataStore, 'IfcRelDefinesByType', view).find(rel => rel.relatedIds.includes(target))!;
+  assert.deepEqual(relation.relatedIds, [target], 'committed native fixture has a single-occurrence type relationship');
+  const current = dataStore.entities.getGlobalId(relation.relatingId);
+  const expectedName = dataStore.entities.getName(relation.relatingId) ?? '';
+  const batch = parseModelAuthoringBatch(JSON.stringify({ version: 1, kind: 'model.authoring', title: 'Last typed occurrence',
+    units: 'm', frame: 'storey-local', operations: [{ op: 'type.detach', target: { globalId: BACK_WALL,
+      ifcClass: 'IfcWall', name: BACK_WALL_NAME }, expected: { GlobalId: current, Name: expectedName } }] }));
+  const preview = previewModelAuthoring(useViewerStore.getState(), batch);
+  assert.equal(preview.rows[0].status, 'ready', preview.rows[0].issue);
+  const outcome = commitModelAuthoring(useViewerStore, preview, new Set([0]), 'test');
+  assert.ok(outcome.ok, outcome.ok ? '' : outcome.detail ?? outcome.reason);
+  const after = await exportedRelations(dataStore, view);
+  assert.equal(after.parsed.entities.getGlobalId(relation.relatingId), current, 'detaching does not delete the type object');
+  assert.equal(after.relations.some(rel => rel.relId === relation.relId), false);
+  useViewerStore.getState().undo(SAMPLE_MODEL);
+  const restored = await exportedRelations(dataStore, view);
+  assert.ok(restored.relations.some(rel => rel.relId === relation.relId && rel.relatedIds.includes(target)));
+});
+
+test('#7267 exact type expectation, source revisions and edit permissions refuse stale detachment without publishing', async () => {
+  const { dataStore, view, target } = await sharedType();
+  const batch = reviewedDetach('m');
+  const expected = parseModelAuthoringBatch(JSON.stringify({ ...batch, operations: batch.operations.map(op => ({ ...op,
+    expected: { GlobalId: FRONT_WALL_TYPE, Name: 'Different same-id type name' } })) }));
+  assert.equal(previewModelAuthoring(useViewerStore.getState(), expected).rows[0].status, 'conflict');
+  const preview = previewModelAuthoring(useViewerStore.getState(), batch);
+  assert.equal(preview.rows[0].status, 'ready');
+  const editor = useViewerStore.getState().storeEditors.get(SAMPLE_MODEL)!;
+  editor.setPositionalAttribute(target, 4, 'Changed without history');
+  const before = editedModelBytes(dataStore, view);
+  const refused = commitModelAuthoring(useViewerStore, preview, new Set([0]), 'test');
+  assert.equal(refused.ok, false, 'even a history-free native source edit revokes approval');
+  assert.deepEqual(editedModelBytes(dataStore, view), before);
+  useViewerStore.setState({ editEnabled: false });
+  assert.equal(previewModelAuthoring(useViewerStore.getState(), batch).rows[0].status, 'denied');
+});
+
+test('#7267 first-read native detachment preview preserves the live allocator lease and editor registry', async () => {
+  const { dataStore, view } = await seedAuthoringSample();
+  const target = dataStore.entities.getExpressIdByGlobalId(BACK_WALL)!;
+  const relation = readRelatedLists(dataStore, 'IfcRelDefinesByType', view).find(rel => rel.relatedIds.includes(target))!;
+  const batch = parseModelAuthoringBatch(JSON.stringify({ version: 1, kind: 'model.authoring', title: 'Pure first read',
+    units: 'm', frame: 'storey-local', operations: [{ op: 'type.detach', target: { globalId: BACK_WALL,
+      ifcClass: 'IfcWall', name: BACK_WALL_NAME }, expected: { GlobalId: dataStore.entities.getGlobalId(relation.relatingId),
+        Name: dataStore.entities.getName(relation.relatingId) ?? '' } }] }));
+  const editors = useViewerStore.getState().storeEditors;
+  const views = useViewerStore.getState().mutationViews;
+  const lease = view.prepareAtomic(() => null);
+  const preview = previewModelAuthoring(useViewerStore.getState(), batch);
+  assert.equal(preview.rows[0].status, 'ready', preview.rows[0].issue);
+  assert.equal(useViewerStore.getState().storeEditors, editors);
+  assert.equal(editors.size, 0);
+  assert.equal(useViewerStore.getState().mutationViews, views);
+  assert.doesNotThrow(() => lease.validate(), 'a read-only preview must not alter the live allocator watermark');
+});
+
+test('#7267 federation requires an explicit model for repeated IFC GlobalIds and edits only the selected owner', async () => {
+  const { dataStore, view, target, typeId, peer } = await sharedType();
+  const model = useViewerStore.getState().models.get(SAMPLE_MODEL)!;
+  useViewerStore.getState().addModel({ ...model, id: 'other', name: 'Other source with repeated GlobalIds', idOffset: 2_000_000 });
+  const other = new MutablePropertyView(dataStore.properties ?? null, 'other');
+  useViewerStore.getState().registerMutationView('other', other);
+  const unqualified = reviewedDetach('m');
+  assert.equal(previewModelAuthoring(useViewerStore.getState(), unqualified).rows[0].status, 'ambiguous-target');
+  const pinned = parseModelAuthoringBatch(JSON.stringify({ ...unqualified, operations: unqualified.operations.map(op => ({ ...op,
+    target: { globalId: BACK_WALL, ifcClass: 'IfcWall', name: BACK_WALL_NAME, modelId: SAMPLE_MODEL } })) }));
+  const otherBytes = editedModelBytes(dataStore, other);
+  const preview = previewModelAuthoring(useViewerStore.getState(), pinned);
+  assert.equal(preview.rows[0].status, 'ready', preview.rows[0].issue);
+  const outcome = commitModelAuthoring(useViewerStore, preview, new Set([0]), 'test');
+  assert.ok(outcome.ok, outcome.ok ? '' : outcome.detail ?? outcome.reason);
+  assert.equal(outcome.receipt.applied[0].modelId, SAMPLE_MODEL);
+  const after = await exportedRelations(dataStore, view);
+  assert.equal(after.relations.some(rel => rel.relatedIds.includes(target)), false);
+  assert.ok(after.relations.some(rel => rel.relatingId === typeId && rel.relatedIds.includes(peer)));
+  assert.deepEqual(editedModelBytes(dataStore, other), otherBytes, 'the independently owned overlay remains unchanged');
+});

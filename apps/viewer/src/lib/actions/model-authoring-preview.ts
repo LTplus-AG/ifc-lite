@@ -13,7 +13,7 @@
 
 import type { ViewerState } from '@/store';
 import { mutationDenial } from '@/store/mutation-permission';
-import { materialsOf } from '@/lib/commands/modeling/authored-kinds';
+import { materialsOf, typeOf } from '@/lib/commands/modeling/authored-kinds';
 import { buildStoreyWorkplane, elementStoreyId, isWorkplane } from '@/lib/commands/modeling/workplane';
 import { planElementTransform, type TransformRoot } from '@/lib/element-transform/plan';
 import { describeRefusal } from '@/lib/element-transform/commit';
@@ -221,6 +221,18 @@ function resolve(ctx: Context, row: AuthoringRow): void {
       row.resolved.target = row.expressId = existing(ctx, op.target, row);
       const root = transformRoot(ctx, row, row.expressId);
       return op.op === 'element.move' ? checkMove(ctx, op, root) : checkTurn(ctx, row, op, root);
+    }
+    case 'type.detach': {
+      row.resolved.target = row.expressId = existing(ctx, op.target, row);
+      const r = reader(ctx, row.modelId!);
+      const current = typeOf({ dataStore: r.dataStore, view: r.view }, row.expressId);
+      if (current === null) throw new Refusal('unchanged', 'The occurrence is already untyped');
+      const expected = locate(ctx, { globalId: op.expected.GlobalId, modelId: row.modelId! });
+      if (expected.expressId !== current || nameOf(r, current) !== op.expected.Name) throw new Refusal('conflict', 'The occurrence has a different current type');
+      row.resolved.typeId = current;
+      row.before.type = nameOf(r, current);
+      row.previewUnavailable = true;
+      return;
     }
     case 'type.assign': case 'material.assign': {
       const subject = row.resolved.subject = element(ctx, op.target, row);

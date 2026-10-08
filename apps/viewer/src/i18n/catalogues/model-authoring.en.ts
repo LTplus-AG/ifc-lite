@@ -26,6 +26,7 @@ export const modelAuthoringEn = {
   'modelAuthoring.op.element.move': 'Move',
   'modelAuthoring.op.element.rotate': 'Rotate',
   'modelAuthoring.op.type.assign': 'Assign type',
+  'modelAuthoring.op.type.detach': 'Detach type',
   'modelAuthoring.op.material.assign': 'Assign material',
   'modelAuthoring.op.walls.join': 'Join walls',
   'modelAuthoring.op.hosted.create': 'Place in wall',

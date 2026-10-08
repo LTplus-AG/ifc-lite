@@ -19,7 +19,7 @@ import { copyBatchInStore, addHostedElementInStore, addOrdinaryElementInStore, r
 import { createModellingStoreBackend, resolveLiveOwnerHistoryId } from '@ifc-lite/sdk';
 import { ensureStoreyPlacement } from '@/store/slices/storeyPlacement';
 import type { HostedFillSpec } from '@/store/slices/mutation-hosted-fill';
-import type { ModellingMethods } from '@/store/slices/mutation-modelling-records';
+import { detachFromType, type ModellingMethods } from '@/store/slices/mutation-modelling-records';
 import { draftElementSize } from '@/lib/element-size-commit';
 import { writeElementProfile } from '@/store/slices/mutation-element-profile';
 import { sizeInMetres } from './model-authoring-size-params';
@@ -163,6 +163,9 @@ export function dryRunAuthoring(
 export function draftAuthoringOperation(batch: ModelAuthoringBatch, dataStore: IfcDataStore, modelId: string, draft: StoreEditor, row: DryRunRow, refs: Map<string, number>): void {
   const { op, resolved } = row;
   switch (op.op) {
+    case 'type.detach':
+      detachFromType(draft, dataStore, [resolved.target!]);
+      return;
     case 'element.resize': {
       const outcome = draftElementSize(dataStore, draft, draftMethods(dataStore, modelId, draft), modelId, resolved.target!, sizeInMetres(op.size, batch.units));
       if (!outcome.ok) throw new Error(outcome.reason);

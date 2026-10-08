@@ -85,12 +85,13 @@ export function ClashGroupApplicationCard({ receipt, focusRequest = null }: { re
 export function ClashGroupApplications() {
   const { t } = useTranslation();
   const activeId = useClashGroupLibrary(state => state.activeId);
+  const workspaceExists = useClashGroupLibrary(state => state.entries.some(workspace => workspace.id === state.activeId));
   const entries = useClashGroupApplications(state => state.entries);
   const requested = useClashApplicationFocus(s => s.record);
   const focus = requested?.contextWorkspaceId === activeId ? requested : null;
   useEffect(() => { void clashGroupApplicationLibrary.initialize(); }, []);
-  const receipts = useMemo(() => entries.filter(entry => entry.workspaceId === activeId && entry.status === 'applied')
-    .sort((a, b) => b.createdAt.localeCompare(a.createdAt)), [entries, activeId]);
+  const receipts = useMemo(() => entries.filter(entry => workspaceExists && entry.workspaceId === activeId && entry.status === 'applied')
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt)), [entries, activeId, workspaceExists]);
   const original = entries.find(entry => entry.id === focus?.applicationId);
   const detached = original && !receipts.includes(original) ? original : null;
   const disclosure = useRef<HTMLDetailsElement>(null);

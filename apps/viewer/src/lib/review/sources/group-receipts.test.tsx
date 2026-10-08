@@ -206,6 +206,7 @@ test('#7089 an orphaned original receipt stays separate from another workspace a
   assert.equal(applications.textContent?.includes(source.receipt.workspaceName), false);
   assert.equal(applications.querySelectorAll('[aria-live="polite"]').length, 1);
   assert.equal(useClashGroupLibrary.getState().activeId, current.receipt.workspaceId, 'a missing historical workspace is not installed as the active one');
-  const original = ui.querySelector('[data-original-clash-application]'); assert.ok(original?.textContent?.includes(source.receipt.workspaceName));
+  const original = ui.querySelector('[data-original-clash-application]'); assert.ok(original);
+  assert.ok(original.textContent?.includes(source.receipt.workspaceName));
   assert.equal(document.activeElement, original.querySelector('[aria-current="true"]'));
 });

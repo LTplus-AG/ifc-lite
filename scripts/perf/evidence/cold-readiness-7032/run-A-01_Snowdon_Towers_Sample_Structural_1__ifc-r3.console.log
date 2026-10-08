@@ -1,0 +1,85 @@
+Failed to load resource: the server responded with a status of 404 (Not Found)
+[Vercel Web Analytics] Failed to load script from /_vercel/insights/script.js. Be sure to enable Web Analytics for your project and deploy again. See https://vercel.com/docs/analytics/quickstart for more information.
+[useIfc] File: 01_Snowdon_Towers_Sample_Structural(1).ifc, size: 8.31MB, read in 42ms
+[useIfc] loadFile "01_Snowdon_Towers_Sample_Structural(1).ifc" session=1 mergeLayers=false geomMode=fast tier=medium cacheKey=ifc-8714606-ba4efc6b8bce39da-v23-g5-sc
+[stream] shared wasm module compiled once — workers initSync (no per-worker recompile)
+[stream] processParallel start, fileSizeMB=8.3 workerCount=4 (override=4, bound=cores)
+[stream][shard] dispatching 4 shard scans over 8.3MB @ 0ms
+[useIfc] Data model parsing start for 01_Snowdon_Towers_Sample_Structural(1).ifc: 327ms (worker)
+[stream] worker[0] WASM ready @ 37ms
+[stream] worker[3] WASM ready @ 50ms
+[stream] worker[2] WASM ready @ 59ms
+[stream] worker[1] WASM ready @ 61ms
+[stream][shard] worker[0] shard 0 done @ 102ms (37446 entities, remaining=3)
+[stream][shard] worker[1] shard 1 done @ 106ms (39959 entities, remaining=2)
+[stream][shard] worker[3] shard 3 done @ 107ms (31436 entities, remaining=1)
+[stream][shard] worker[2] shard 2 done @ 108ms (38301 entities, remaining=0)
+[stream][shard] stitched 147142 entities @ 114ms (shard scan started @ 0ms)
+[stream] entity-index (sharded) @ 114ms (147142 entries)
+[stream][shard] 2185 styled items -> 8 style slices @ 123ms
+[stream][shard] worker[0] style slice 0 done @ 141ms (271 geometry styles, remaining=7)
+[stream][shard] worker[1] style slice 1 done @ 142ms (273 geometry styles, remaining=6)
+[stream][shard] worker[2] style slice 2 done @ 142ms (273 geometry styles, remaining=5)
+[stream][shard] worker[3] style slice 3 done @ 142ms (273 geometry styles, remaining=4)
+[stream][shard] worker[0] style slice 4 done @ 142ms (272 geometry styles, remaining=3)
+[stream][shard] worker[2] style slice 6 done @ 142ms (273 geometry styles, remaining=2)
+[stream][shard] worker[1] style slice 5 done @ 142ms (273 geometry styles, remaining=1)
+[stream][shard] worker[3] style slice 7 done @ 142ms (108 geometry styles, remaining=0)
+[stream][shard] styles merged: 2016 geometry + 4 orphan @ 144ms
+[stream] meta @ 167ms unitScale=0.3048 rtc=[0,0,0]
+[stream][shard] styles finalize dispatched to worker[0] @ 169ms
+[stream] prepass-columns @ 174ms (128 repmaps, 123 inst-types, 1378 layer-elems)
+[stream] first jobs chunk @ 183ms (1024 jobs, affinity=on)
+[stream] chunk #1 @ 183ms (+1024 jobs, total 1024)
+[stream] styles @ 208ms (3346 styled, 27 void hosts), draining 1 queued chunks
+[stream] chunk #2 @ 238ms (+581 jobs, total 1605)
+[stream] prepass complete @ 266ms totalJobs=1605 chunks=2
+[IFC-LITE] Opening classifier: rect=70 diag=0 non_rect=0 (total=70)
+[IFC-LITE] Opening pipeline: 0 CSG failures. 9 hosts with openings.
+  IfcSlab: hosts=2 openings=3 (rect=3 diag=0 non_rect=0)
+  IfcWallStandardCase: hosts=7 openings=67 (rect=67 diag=0 non_rect=0)
+[IFC-LITE] rect_fast: fired=4 (cut 21 openings) | deferred: host_not_box=0 not_through=0 off_face=0 near_edge=0
+[IFC-LITE] Opening classifier: rect=25 diag=0 non_rect=0 (total=25)
+[IFC-LITE] Opening pipeline: 0 CSG failures. 9 hosts with openings.
+  IfcSlab: hosts=2 openings=2 (rect=2 diag=0 non_rect=0)
+  IfcWallStandardCase: hosts=7 openings=23 (rect=23 diag=0 non_rect=0)
+[IFC-LITE] rect_fast: fired=5 (cut 12 openings) | deferred: host_not_box=1 not_through=0 off_face=0 near_edge=0
+[IFC-LITE] Opening classifier: rect=15 diag=0 non_rect=0 (total=15)
+[IFC-LITE] Opening pipeline: 0 CSG failures. 4 hosts with openings.
+  IfcSlab: hosts=1 openings=1 (rect=1 diag=0 non_rect=0)
+  IfcWallStandardCase: hosts=3 openings=14 (rect=14 diag=0 non_rect=0)
+[IFC-LITE] rect_fast: fired=2 (cut 3 openings) | deferred: host_not_box=0 not_through=0 off_face=0 near_edge=0
+[stream] worker[1] first batch @ 837ms (938 meshes)
+[IFC-LITE] Opening classifier: rect=11 diag=0 non_rect=2 (total=13)
+[IFC-LITE] Opening pipeline: 0 CSG failures. 4 hosts with openings.
+  IfcSlab: hosts=2 openings=3 (rect=1 diag=0 non_rect=2)
+  IfcWallStandardCase: hosts=2 openings=10 (rect=10 diag=0 non_rect=0)
+[IFC-LITE] rect_fast: fired=0 (cut 0 openings) | deferred: host_not_box=2 not_through=0 off_face=0 near_edge=0
+[useIfc] First appendGeometryBatch for 01_Snowdon_Towers_Sample_Structural(1).ifc: 1189ms
+[stream] worker[2] first batch @ 916ms (722 meshes)
+[stream] worker[0] first batch @ 940ms (911 meshes)
+[stream] worker[3] first batch @ 954ms (757 meshes)
+[IFC-LITE] Opening classifier: rect=16 diag=0 non_rect=0 (total=16)
+[IFC-LITE] Opening pipeline: 0 CSG failures. 1 hosts with openings.
+  IfcWallStandardCase: hosts=1 openings=16 (rect=16 diag=0 non_rect=0)
+[mem-summary] peakJs=61.0MB peakWasm=166.4MB geom=16.6MB source=8.3MB transport=0.0MB overlap=1037ms total=1349ms
+[useIfc] Spatial tree ready for 01_Snowdon_Towers_Sample_Structural(1).ifc at 1410ms
+[useIfc] Data model parsing complete for 01_Snowdon_Towers_Sample_Structural(1).ifc: 1546ms
+[useIfc] First visible geometry for 01_Snowdon_Towers_Sample_Structural(1).ifc: 4427ms
+[useIfc] Geometry streaming complete: 8 batches, 17380 meshes
+[useIfc] Stream complete for 01_Snowdon_Towers_Sample_Structural(1).ifc: 1359ms
+[useIfc] finalizing: session=1 meshes=4445 dataStore=true
+[ifc-lite] 01_Snowdon_Towers_Sample_Structural(1).ifc (8.3MB) → 4445 meshes, 453k verts in 4.5s
+[ifc-lite] render stats: unavailable (no completed frame)
+[Viewport] spatial chunk bucketing on (cellSize=32m)
+[Viewport] GPU residency budget on (2048MB)
+[Viewport] host residency budget on (3072MB)
+[Viewport] LOD1 on (below 48px projected)
+[GeomSync] new file currentLength=4299 lastLength=0 releaseAfterFinalize=false
+[GeomSync] stream transition complete geometryLength=4299 queued=false batches=37
+[GeomStream] Streaming ended — starting finalize
+[GeomSync] finalize start geometryLength=4299 releaseAfterFinalize=false
+[GeomStream] computeBounds: 5ms
+[GeomStream] finalizeStreamingAsync complete: 0ms → 37 consolidated batches, 0.5M triangles
+[GeomSync] finalize complete elapsed=0ms batches=37 queued=false
+[Viewport] quantized vertices on (12B lattice)

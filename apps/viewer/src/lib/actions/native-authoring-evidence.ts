@@ -15,6 +15,7 @@ export interface NativeAuthoringEvidence {
   nativeHostedExpected: ExpectedHostedEdit | null;
   nativeTrimExtendExpected: ReturnType<typeof authoringReachEvidenceFromTarget>;
   nativeStairExpected: ReturnType<typeof nativeStairEvidenceFromTarget>;
+  nativeAuthoringUnits: { split: 'm'; hosted: 'm'; stair: 'm'; trimExtend: 'verbatim-native-fields' };
   nativeAuthoringRefusals: { split: string | null; hosted: string | null };
   /** Split/Hosted lengths are metres; Trim remains verbatim mixed native fields;
    * Stair follows the canonical SI dimension reader. No IDs are converted. */
@@ -49,6 +50,7 @@ export function nativeAuthoringEvidence(target: ModelEditTarget | null, expressI
   }
   return { nativeSplitExpected: split, nativeHostedExpected: hosted,
     nativeTrimExtendExpected: trim, nativeStairExpected: stair,
+    nativeAuthoringUnits: { split: 'm', hosted: 'm', stair: 'm', trimExtend: 'verbatim-native-fields' },
     nativeAuthoringRefusals: refusals,
     nativeAuthoringAvailability: { split: split ? 'available' : unavailable,
       hosted: hosted ? 'available' : unavailable, trimExtend: trim ? 'available' : unavailable,

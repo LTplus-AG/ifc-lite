@@ -224,7 +224,14 @@ export const selectionAdapter: EvidenceAdapter = {
       : { status: { labelKey: 'assistantSources.selection.none' }, ready: false };
   },
   // Every selection action replaces one of these; edits are covered by the context stamp.
-  identity: s => [s.selectedEntities, s.selectedEntitiesSet, s.selectedEntityIds, s.selectedEntity, s.selectedEntityId],
+  identity: s => [s.selectedEntities, s.selectedEntitiesSet, s.selectedEntityIds, s.selectedEntity, s.selectedEntityId,
+    // #7282: native expected pins belong to these exact loaded sources/views,
+    // even when a replacement preserves the same GUIDs and analysis versions.
+    ...[...new Set((selectionRefs(s)?.refs ?? []).map(ref => ref.modelId))].flatMap(modelId => [
+      modelId, isLegacy(modelId) ? s.ifcDataStore : s.models.get(modelId)?.ifcDataStore,
+      s.mutationViews.get(isLegacy(modelId) ? '__legacy__' : modelId),
+    ]),
+  ],
   capture: (s, limit) => {
     const selection = selectionRefs(s);
     if (!selection || selection.refs.length === 0) return unavailableCapture();

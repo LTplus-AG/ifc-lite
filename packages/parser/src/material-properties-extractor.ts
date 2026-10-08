@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { EntityExtractor } from './entity-extractor.js';
+import { getReference } from './attribute-helpers.js';
 import { iterateEffectiveEntities, type EffectiveEntityOverlay } from '@ifc-lite/data';
 import type { IfcDataStore } from './columnar-parser.js';
 import { getAttributeNames, normalizeIfcTypeName } from './ifc-schema.js';
@@ -73,9 +74,10 @@ function readMaterialPropsEntity(
         return null; // typed IFC2x3 scalar subtype — no generic property list
     }
 
-    if (typeof materialId !== 'number' || !Array.isArray(propsList)) return null;
+    const resolvedMaterialId = getReference(materialId);
+    if (resolvedMaterialId === undefined || !Array.isArray(propsList)) return null;
     const psetName = typeof name === 'string' && name ? name : (entityType || 'Material Properties');
-    return { materialId, propsList, psetName };
+    return { materialId: resolvedMaterialId, propsList, psetName };
 }
 
 /**
@@ -144,8 +146,9 @@ function getMaterialPropertyIndex(store: IfcDataStore, view?: MaterialProperties
             if (!parsed) continue;
 
             const properties: MaterialPsetEntry['properties'] = [];
-            for (const propRef of parsed.propsList) {
-                if (typeof propRef !== 'number') continue;
+            for (const member of parsed.propsList) {
+                const propRef = getReference(member);
+                if (propRef === undefined) continue;
                 if (view?.isDeleted(propRef)) continue;
                 const propRefEntity = refFromStore(store, propRef);
                 const propType = view?.getTypeMutations?.().get(propRef)?.newType

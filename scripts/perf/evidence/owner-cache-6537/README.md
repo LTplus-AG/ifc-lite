@@ -205,3 +205,5 @@ overwrite existing results, closes each owned browser, and stops after retaining
 an invalid sample. The initial attempt had an optional-render-stats observer
 ReferenceError; it is not a model failure or a valid timing sample, and is
 excluded from this independent complete schedule. No CI baseline was changed.
+
+The source-frame replacement follow-up in [source-frame-replacement](source-frame-replacement/README.md) preserves a genuine dropped review finding and its actual canonical counterexample. Weak historical ownership corrects registered copies across source restoration without retaining old allocations; current raw controls and source/runtime hashes remain separate from earlier qualification.

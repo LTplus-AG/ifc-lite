@@ -3654,3 +3654,5 @@ The [retained controls and earlier negative measurements](evidence/owner-cache-6
 prove reference removal and collectability; they do not measure OS peak memory
 or establish a current end-to-end speedup. Lesson: invalidate shared CPU owners
 at release rather than repairing only the current rendering cache.
+
+Follow-up review of the bounded CPU release fix found that canonical frame restoration replaces source allocations before release, leaving prior registered copies alive. The release helper now remembers historical source allocation identities weakly and clears them alongside current shared fields while preserving independent replacements. Actual frame-restore regression and backing-allocation collection controls qualify this correction; no native speed or resident-memory improvement is claimed. See `evidence/owner-cache-6537/source-frame-replacement/`.

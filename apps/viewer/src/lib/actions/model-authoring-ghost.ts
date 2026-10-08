@@ -14,6 +14,8 @@
  * ghost; their row says what changes.
  */
 
+import { linearProfileFrame } from '@ifc-lite/create';
+import { sectionGhostMesh } from '@/lib/profile-section/profile-outline';
 import type { MeshData } from '@ifc-lite/geometry';
 import type { ViewerState } from '@/store';
 import { toGlobalIdFromModels } from '@/store/globalId';
@@ -47,6 +49,18 @@ function createGhost(state: ViewerState, batch: ModelAuthoringBatch, row: Author
   const wp = plane(state, row.modelId!, row.resolved.storey ?? null);
   if (!wp) return null;
   const element = authoredElementOf(batch, op);
+  if (element.kind === 'beam' || element.kind === 'member') {
+    if ('Profile' in element.params) return sectionGhostMesh(wp, element.params.Profile, linearProfileFrame(element.params.Start, element.params.End), id);
+  }
+  if (element.kind === 'column' && 'Profile' in element.params) {
+    const p = element.params;
+    return sectionGhostMesh(wp, p.Profile, { origin: p.Position, u: [1, 0, 0], v: [0, 1, 0], along: [0, 0, 1], length: p.Height }, id);
+  }
+  if ((element.kind === 'slab' || element.kind === 'roof' || element.kind === 'plate' || element.kind === 'space') && 'OuterCurve' in element.params) {
+    const p = element.params, origin = p.Position ?? [0, 0, 0];
+    const depth = 'Thickness' in p ? p.Thickness : p.Height;
+    return prismGhostMesh(wp, p.OuterCurve.map(([x, y]) => [x + origin[0], y + origin[1]]), origin[2], origin[2] + depth, id);
+  }
   switch (element.kind) {
     case 'wall': case 'beam': case 'member': {
       const p = element.params as { Start: V3; End: V3; Height: number; Thickness?: number; Width?: number };

@@ -22,6 +22,15 @@ const ref = (target: { ref: string } | { name: string }, t: T) => 'ref' in targe
 
 function dims(op: Extract<AuthoringOp, { op: 'element.create' }>, units: string): string {
   const p = op.params;
+  if ('Profile' in p) {
+    if (p.Profile === 'polygon' && 'OuterCurve' in p) return `polygon · ${p.OuterCurve.length} vertices · ${point(p.position)} · ${num(p.thickness ?? p.height ?? 0)} ${units}`;
+    if (typeof p.Profile === 'object') {
+      const shape = Object.entries(p.Profile).filter(([key]) => key !== 'Type').map(([key, value]) => `${key}=${num(Number(value))}`).join(', ');
+      const axis = 'start' in p ? `${point(p.start)} → ${point(p.end)}` : `${point(p.position)} · height=${num(p.height ?? 0)}`;
+      return `${p.Profile.Type} · ${shape} · ${axis} ${units}`;
+    }
+  }
+  if ('Profile' in p) throw new Error('Unrecognised reviewed native shape');
   if ('start' in p) return `${point(p.start)} → ${point(p.end)} · ${num(p.thickness ?? p.width ?? 0)} × ${num(p.height)} ${units}`;
   return `${point(p.position)} · ${num(p.width)} × ${num(p.depth)} × ${num(p.thickness ?? p.height ?? 0)} ${units}`;
 }

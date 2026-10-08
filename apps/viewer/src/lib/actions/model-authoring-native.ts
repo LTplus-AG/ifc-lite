@@ -12,6 +12,7 @@
  * and `bim.store`'s modelling methods for joins, types and materials.
  */
 
+import { profileInMetres } from './model-authoring-shape-params';
 import { StoreEditor } from '@ifc-lite/mutations';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { addHostedElementInStore, addOrdinaryElementInStore, resolveSpatialAnchor, type OrdinaryInStoreElement } from '@ifc-lite/create';
@@ -49,6 +50,19 @@ export function authoredElementOf(batch: ModelAuthoringBatch, op: Create, global
   const m = (v: number) => toMetres(batch, v);
   const identity = { Name: op.name, ...(globalId ? { GlobalId: globalId } : {}) };
   const kind = KIND[op.ifcClass];
+  const shape = op.params;
+  if ('Profile' in shape) {
+    if (shape.Profile === 'polygon' && 'OuterCurve' in shape) {
+      const footprint = { ...identity, Profile: 'polygon' as const, OuterCurve: shape.OuterCurve.map(([x, y]): [number, number] => [m(x), m(y)]), Position: pointToMetres(batch, shape.position) };
+      if (kind === 'space') return { kind, params: { ...footprint, Height: m(shape.height!) } };
+      if (kind === 'slab' || kind === 'roof' || kind === 'plate') return { kind, params: { ...footprint, Thickness: m(shape.thickness!) } };
+    } else if (typeof shape.Profile === 'object') {
+      const Profile = profileInMetres(shape.Profile, batch.units);
+      if (kind === 'column' && 'position' in shape) return { kind, params: { ...identity, Profile, Position: pointToMetres(batch, shape.position), Height: m(shape.height!) } };
+      if ((kind === 'beam' || kind === 'member') && 'start' in shape) return { kind, params: { ...identity, Profile, Start: pointToMetres(batch, shape.start), End: pointToMetres(batch, shape.end) } };
+    }
+    throw new Error('The native shape does not match its element class');
+  }
   if (kind === 'wall' || kind === 'beam' || kind === 'member') {
     const p = op.params as AxisParams;
     const axis = { ...identity, Start: pointToMetres(batch, p.start), End: pointToMetres(batch, p.end), Height: m(p.height) };

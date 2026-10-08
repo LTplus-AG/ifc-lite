@@ -94,8 +94,21 @@ test('#7036 cached metadata completes through actual cache.storeReady route', as
   assert.equal(await waitForMetadataRenderReadiness(scenario({loadPath:'cache',metadataSpan:'cache.storeReady'})),265);
 });
 test('#7036 cached store readiness still waits for actual scene finalization and canvas', async () => {
-  assert.equal(await waitForMetadataRenderReadiness(scenario({loadPath:'cache',metadataSpan:'cache.storeReady',rendererAt:350,canvasAt:450})),450);
+  assert.equal(await waitForMetadataRenderReadiness(scenario({loadPath:'cache',metadataSpan:'cache.storeReady',rendererAt:350,canvasAt:200})),350);
 });
+// #7180: stale console completion cannot certify the current traced load.
+for (const loadPath of ['wasm', 'cache']) {
+  test(`#7180 ${loadPath} probe needs its own scene.finalize despite a stale renderer log`, async () => {
+    const options = { loadPath, metadataSpan: loadPath === 'cache' ? 'cache.storeReady' : 'parser.complete', canvasAt: 0 };
+    const incomplete = scenario({ ...options, rendererAt: Infinity });
+    incomplete.logs = () => ['[GeomStream] finalizeStreamingAsync complete: 10ms → 2 consolidated batches'];
+    await assert.rejects(waitForMetadataRenderReadiness(incomplete), /Timed out/);
+    const completed = scenario({ ...options, rendererAt: 550 });
+    completed.logs = incomplete.logs;
+    assert.equal(await waitForMetadataRenderReadiness(completed), 550);
+  });
+}
+
 test('#7036 fresh parse cannot substitute a cache store marker for parser.complete', async () => {
   await assert.rejects(waitForMetadataRenderReadiness(scenario({metadataSpan:'cache.storeReady'})),/Timed out/);
 });

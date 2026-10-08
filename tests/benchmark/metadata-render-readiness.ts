@@ -91,7 +91,9 @@ export async function waitForMetadataRenderReadiness(options: {
     }
     const metadata = probe ? done.has(metadataSpan) : legacy.metadata;
     const geometry = probe ? done.has('geometry.streamComplete') : legacy.geometry;
-    const renderer = done.has('scene.finalize') || legacy.renderer;
+    // A present probe is authoritative for every completion, including the
+    // renderer; retained console lines belong only to the no-probe fallback.
+    const renderer = probe ? done.has('scene.finalize') : legacy.renderer;
     if (metadata && geometry && renderer && await options.canvasReady()) return options.now();
     await options.pause();
   }

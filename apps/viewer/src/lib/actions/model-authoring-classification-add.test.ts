@@ -151,3 +151,51 @@ test('#7271 federated classification addition requires an explicit owner and pre
   assert.deepEqual(extractClassificationsOnDemand(exported, target).map(row => row.identification).sort(), ['WALL-001', 'WALL-002']);
   assert.deepEqual(editedModelBytes(dataStore, other), otherBytes);
 });
+
+test('#7271 reviewed Add reuses an independently exported source system with its current Name', async () => {
+  const { dataStore, target, view } = await nativeControl();
+  const reparsed = await parseIfc(editedModelBytes(dataStore, view));
+  const model = useViewerStore.getState().models.get(SAMPLE_MODEL)!;
+  const sourceView = new MutablePropertyView(reparsed.properties ?? null, SAMPLE_MODEL);
+  useViewerStore.setState({ models: new Map([[SAMPLE_MODEL, { ...model, ifcDataStore: reparsed }]]),
+    mutationViews: new Map([[SAMPLE_MODEL, sourceView]]), storeEditors: new Map(), undoStacks: new Map(), redoStacks: new Map() });
+  const preview = previewModelAuthoring(useViewerStore.getState(), reviewedAdd());
+  assert.equal(preview.rows[0].status, 'ready', preview.rows[0].issue);
+  const outcome = commitModelAuthoring(useViewerStore, preview, new Set([0]), 'test');
+  assert.ok(outcome.ok, outcome.ok ? '' : outcome.detail ?? outcome.reason);
+  assert.equal(Array.from(sourceView.getNewEntitiesOfType('IFCCLASSIFICATION')).length, 0, 'the source system is reused');
+  const exported = await parseIfc(editedModelBytes(reparsed, sourceView));
+  assert.deepEqual(extractClassificationsOnDemand(exported, target).map(row => row.identification).sort(), ['WALL-001', 'WALL-002']);
+});
+
+for (const ownerHistory of [true, false]) {
+  test(`#7271 IFC2X3 classification layouts ${ownerHistory ? 'retain native OwnerHistory' : 'refuse missing mandatory OwnerHistory'}`, async () => {
+    await seedAuthoringSample();
+    // Stated schema invariant, not an authoring-tool fixture: IFC2X3 RelatedObjects requires IfcRoot and the relationship requires OwnerHistory.
+    const text = `ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION((''),'2;1');\nFILE_NAME('invariant.ifc','',(''),(''),'','','');\nFILE_SCHEMA(('IFC2X3'));\nENDSEC;\nDATA;\n${ownerHistory ? '#5=IFCOWNERHISTORY($,$,$,.ADDED.,$,$,$,0);\n' : ''}#1=IFCPROJECT('0Project0000000000000a',${ownerHistory ? '#5' : '$'},'P',$,$,$,$,$,$);\n#10=IFCWALL('0Wall00000000000000010',${ownerHistory ? '#5' : '$'},'Wall A',$,$,$,$,$);\nENDSEC;\nEND-ISO-10303-21;`;
+    const source = await parseIfc(new TextEncoder().encode(text));
+    const model = useViewerStore.getState().models.get(SAMPLE_MODEL)!;
+    const view = new MutablePropertyView(source.properties ?? null, SAMPLE_MODEL);
+    useViewerStore.setState({ models: new Map([[SAMPLE_MODEL, { ...model, ifcDataStore: source }]]),
+      mutationViews: new Map([[SAMPLE_MODEL, view]]), storeEditors: new Map(), undoStacks: new Map(), redoStacks: new Map() });
+    const batch = parseModelAuthoringBatch(JSON.stringify({ ...reviewedAdd(), operations: [{ op: 'classification.add',
+      target: { globalId: '0Wall00000000000000010', modelId: SAMPLE_MODEL, ifcClass: 'IfcWall', name: 'Wall A' },
+      Classification: { Name: 'Explicit legacy system' }, Reference: { ItemReference: 'LEGACY-001' } }] }));
+    const before = editedModelBytes(source, view);
+    const preview = previewModelAuthoring(useViewerStore.getState(), batch);
+    if (!ownerHistory) {
+      assert.notEqual(preview.rows[0].status, 'ready');
+      assert.equal(commitModelAuthoring(useViewerStore, preview, new Set([0]), 'test').ok, false);
+      assert.deepEqual(editedModelBytes(source, view), before);
+      return;
+    }
+    assert.equal(preview.rows[0].status, 'ready', preview.rows[0].issue);
+    const result = commitModelAuthoring(useViewerStore, preview, new Set([0]), 'test');
+    assert.ok(result.ok, result.ok ? '' : result.detail ?? result.reason);
+    const exported = await parseIfc(editedModelBytes(source, view));
+    assert.deepEqual(extractClassificationsOnDemand(exported, 10).map(row => [row.system, row.identification]), [['Explicit legacy system', 'LEGACY-001']]);
+    const relation = Array.from(view.getNewEntitiesOfType('IFCRELASSOCIATESCLASSIFICATION'))[0];
+    assert.ok(relation);
+    assert.equal(exported.getEntity(relation.expressId)?.attributes[1], 5);
+  });
+}

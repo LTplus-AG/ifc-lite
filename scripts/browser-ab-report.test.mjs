@@ -132,7 +132,7 @@ test('a real regression on one fixture and a crashed-on-one-side second fixture:
 });
 
 test('#3978 refuses legacy or contradictory readiness without rewriting the app total', () => {
-  for (const readiness of [undefined, 200]) {
+  for (const readiness of [undefined, 0, 200]) {
     const a = sample({ side: 'A', fixture: 'late-metadata', round: 1 });
     const b = sample({ side: 'B', fixture: 'late-metadata', round: 1 });
     a.totalWallClockMs = b.totalWallClockMs = 200;

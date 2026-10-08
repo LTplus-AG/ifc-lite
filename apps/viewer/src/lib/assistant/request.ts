@@ -22,6 +22,7 @@ import { useAssistant } from './conversation';
 import { ensureFlowAiNodes } from '../flow/runner';
 import { preferenceGuidance, preferencesFor, projectScope } from './reuse/preferences';
 import { generationLanguageInstruction } from './language';
+import { selectionGroundingIsCurrent, selectionGroundingText, type SelectionGrounding } from '@/lib/actions/selection-grounding';
 
 /** Output ceiling per Assistant answer; the route ceiling and root budget may lower it. */
 export const ASSISTANT_OUTPUT_TOKENS = 4096;
@@ -40,6 +41,8 @@ const ASSISTANT_IMAGE_LIMIT = 1_200_000;
 export interface AssistantAttachments {
   /** Prompt block from `selectionGroundingText`. */
   selection?: string;
+  /** Native ownership sidecar for the explicitly attached snapshot; never sent or persisted. */
+  selectionSnapshot?: SelectionGrounding;
   /** Viewport screenshot as an image data URL; refused for models without image input. */
   screenshot?: string;
 }
@@ -57,6 +60,13 @@ export async function sendAssistant(prompt: string, model: string, proxyUrl: str
     return false;
   }
   if (!evidenceIsCurrent(state.snapshot)) {
+    useAssistant.setState({ error: 'stale-evidence', status: 'error' });
+    return false;
+  }
+  const attachmentCurrent = () => !attachments.selectionSnapshot || (
+    attachments.selection === selectionGroundingText(attachments.selectionSnapshot)
+    && selectionGroundingIsCurrent(attachments.selectionSnapshot, useViewerStore.getState()));
+  if (!attachmentCurrent()) {
     useAssistant.setState({ error: 'stale-evidence', status: 'error' });
     return false;
   }
@@ -90,7 +100,7 @@ export async function sendAssistant(prompt: string, model: string, proxyUrl: str
   const budget = state.budget;
   useAssistant.setState({ controller, status: 'streaming', error: null, output: '', pendingPrompt: prompt.trim() });
   const staleCheck = () => {
-    if (useAssistant.getState().controller === controller && !evidenceIsCurrent(state.snapshot!)) {
+    if (useAssistant.getState().controller === controller && (!evidenceIsCurrent(state.snapshot!) || !attachmentCurrent())) {
       controller.abort();
       useAssistant.setState({ controller: null, pendingPrompt: null, status: 'error', error: 'stale-evidence', output: '' });
     }
@@ -122,6 +132,7 @@ export async function sendAssistant(prompt: string, model: string, proxyUrl: str
     if (!isFlowSource(state.snapshot.source)) {
       const guidance = await artifactGuidance(useViewerStore.getState(), controller.signal);
       if (!ownsRequest()) return false;
+      if (!attachmentCurrent()) { fail('stale-evidence'); return false; }
       system = `${system}\n${guidance}`;
     }
     system = `${system}\n${generationLanguageInstruction({ ...state.language, generation: options.generationLanguage ?? preferences?.language ?? state.language.generation })}`;

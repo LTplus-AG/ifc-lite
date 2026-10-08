@@ -31,7 +31,13 @@ import { readElementProfile } from '@/store/slices/mutation-element-profile';
 import { readAuthoringSize, sameNativeDimensions } from './model-authoring-size';
 import { sizeInMetres, type ExpectedSize } from './model-authoring-size-params';
 import { profileInMetres } from './model-authoring-shape-params';
+import { authoringHostedEditGhost } from './model-authoring-hosted-edit-ghost';
+import { hostedFillRefusal } from '@/store/slices/mutation-hosted-fill';
+import { readExpectedHostedEdit, sameHostedEdit, type ExpectedHostedEdit } from './model-authoring-hosted-edit';
 import type { ProfileSection } from '@ifc-lite/create';
+import { readSplitSnapshot, sameSplitSnapshot, type SplitSnapshot } from './model-authoring-split-state';
+import { uniqueSplitGuid } from './model-authoring-split';
+import { authoringSplitMarker } from './model-authoring-split-ghost';
 import { authoringSizeGhost } from './model-authoring-size-ghost';
 
 /** P04's statuses plus `invalid` (a native builder or planner refused it) and `blocked` (it needs a row that is not ready). */
@@ -39,6 +45,8 @@ export type AuthoringRowStatus = RowStatus | 'invalid' | 'blocked';
 
 /** What the element is now, for the before → after summary. */
 export interface AuthoringBefore {
+  hosted?: ExpectedHostedEdit;
+  split?: SplitSnapshot;
   size?: ExpectedSize;
   Profile?: ProfileSection;
   ifcClass?: string;
@@ -107,6 +115,7 @@ function existing(ctx: Context, target: ExistingElement, row: AuthoringRow): num
   const { modelId, expressId } = locate(ctx, target);
   join(row, modelId);
   const r = reader(ctx, modelId);
+  if (row.op.op === 'element.split' && !uniqueSplitGuid(r.dataStore, r.editor, target.globalId)) throw new Refusal('ambiguous-target', 'The native split target GlobalId is not unique in its owning model');
   const ifcClass = className(r, expressId);
   const name = nameOf(r, expressId);
   row.before.ifcClass = ifcClass;
@@ -150,6 +159,25 @@ const near = (a: number, b: number, tolerance: number) => Math.abs(a - b) <= tol
 function resolve(ctx: Context, row: AuthoringRow): void {
   const { op } = row;
   switch (op.op) {
+    case 'hosted.edit': {
+      row.resolved.target = row.expressId = existing(ctx, op.target, row);
+      const r = reader(ctx, row.modelId!);
+      const refusal = hostedFillRefusal(ctx.state, row.modelId!);
+      if (refusal) throw new Refusal('unsupported', refusal);
+      if (!uniqueSplitGuid(r.dataStore, r.editor, op.target.globalId)) throw new Refusal('ambiguous-target', 'The native hosted target GlobalId is not unique in its owning model');
+      try { row.before.hosted = readExpectedHostedEdit(r.dataStore, r.editor, row.expressId, ctx.batch.units); }
+      catch (error) { throw new Refusal('invalid', error instanceof Error ? error.message : String(error)); }
+      if (!sameHostedEdit(row.before.hosted, op.expected)) throw new Refusal('conflict', 'The current native hosted binding, position or dimensions differ from the expected state');
+      return;
+    }
+    case 'element.split': {
+      row.resolved.target = row.expressId = existing(ctx, op.target, row);
+      const r = reader(ctx, row.modelId!);
+      try { row.before.split = readSplitSnapshot(r.dataStore, r.editor, row.expressId, ctx.batch.units); }
+      catch (error) { throw new Refusal('invalid', error instanceof Error ? error.message : String(error)); }
+      if (!sameSplitSnapshot(row.before.split, op.expected)) throw new Refusal('conflict', 'The current native split shape, placement or provenance differs from the expected snapshot');
+      return;
+    }
     case 'element.resize': case 'element.profile': {
       row.resolved.target = row.expressId = existing(ctx, op.target, row);
       if (op.op === 'element.resize') {
@@ -312,6 +340,10 @@ export function previewModelAuthoring(state: ViewerState, batch: ModelAuthoringB
     row.previewOmitted = ghost.omitted;
     row.previewOuterBodyOnly = ghost.outerBodyOnly;
   }
+  for (const row of ctx.rows) if (row.status === 'ready' && row.op.op === 'hosted.edit') row.previewUnavailable = authoringHostedEditGhost(state, batch, row, 0, ctx.rows) === null;
+  for (const row of ctx.rows) if (row.status === 'ready' && row.op.op === 'element.split') {
+    row.previewUnavailable = authoringSplitMarker(state, batch, row, 0) === null;
+  }
   const preview = { batch, rows: ctx.rows, mutationVersion: state.mutationVersion, digest: batchDigest(batch) };
   captureAuthoringSources(state, preview);
   return preview;
@@ -323,7 +355,7 @@ function nativeDryRun(ctx: Context, batch: ModelAuthoringBatch): void {
   for (const row of ctx.rows) if (row.status === 'ready' && row.modelId) byModel.set(row.modelId, [...(byModel.get(row.modelId) ?? []), row]);
   for (const [modelId, rows] of byModel) {
     const r = reader(ctx, modelId);
-    const refusals = dryRunAuthoring(batch, r.dataStore, r.view, modelId, rows.map(({ index, op, resolved }) => ({ index, op, resolved })));
+    const refusals = dryRunAuthoring(batch, r.dataStore, r.view, modelId, rows.map(({ index, op, resolved }) => ({ index, op, resolved })), { globalIdScopes: [...ctx.state.models].map(([id, model]) => ({ dataStore: model.ifcDataStore, view: ctx.state.mutationViews.get(id) })) });
     for (const row of rows) {
       const refusal = refusals.get(row.index);
       if (refusal === undefined) continue;

@@ -70,6 +70,17 @@ it('#7166 native tag-scoped source names only evaluated models and remains captu
   assert.match(view.textContent ?? '', /Captured architecture.ifc/); assert.doesNotMatch(view.textContent ?? '', /New source label.ifc/);
   assert.equal(useViewerStore.getState().listResult?.rows[0].modelId, 'authored');
 });
+it('#7166 native explicit snapshot source excludes available providers with no targeted members', async () => {
+  const run = await setup(definition(), true);
+  const own = { ...run.own, modelTagScope: undefined, expressIdsByModel: { authored: [run.wall] } };
+  await act(async () => { useViewerStore.setState({ listDefinitions: [own] }); });
+  await run.run();
+  const result = useViewerStore.getState().listResult; assert.ok(result);
+  assert.equal(result.totalCount, 1); assert.equal(result.rows[0].modelId, 'authored');
+  assert.equal(result.rows[0].values[0], run.guid);
+  assert.match(region(run.ui).textContent ?? '', /Captured architecture.ifc/);
+  assert.doesNotMatch(region(run.ui).textContent ?? '', /Excluded peer.ifc/);
+});
 it('#7166 native search hides real matching rows with filtered state and original matched count', async () => {
   const run = await setup(); await run.run();
   const input = run.ui.querySelector<HTMLInputElement>('input[aria-label="Filter list results"]'); assert.ok(input);

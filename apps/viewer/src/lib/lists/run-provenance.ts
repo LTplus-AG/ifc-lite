@@ -40,7 +40,8 @@ export function captureListRunModels(definition: ListDefinition, pairs: readonly
     emptyPopulation: targets.length > 0 && Boolean(definition.expressIdsByModel) && targets.every(id => (definition.expressIdsByModel?.[id] ?? []).length === 0),
     unavailableSnapshotModels: snapshotTargets.filter(id => !state.models.has(id) && !available.has(id)
       && (definition.expressIdsByModel?.[id]?.length ?? 0) > 0).length,
-    models: scoped.map(pair => ({ id: pair.modelId, name: state.models.get(pair.modelId)?.name ?? legacyName })),
+    models: scoped.filter(pair => !definition.expressIdsByModel || (definition.expressIdsByModel[pair.modelId]?.length ?? 0) > 0)
+      .map(pair => ({ id: pair.modelId, name: state.models.get(pair.modelId)?.name ?? legacyName })),
     omittedModels: [...state.models].filter(([id]) => !available.has(id)
       && (resolved.kind === 'all' || resolved.kind === 'models' && resolved.modelIds.has(id))
       && (!definition.expressIdsByModel || (definition.expressIdsByModel[id]?.length ?? 0) > 0)).map(([, model]) => model.name),

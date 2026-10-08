@@ -404,6 +404,9 @@ jobs:
               # (scripts/README-vercel-cost.md).
               - 'rust-major-offset.json'
               - 'tests/models/manifest.json'
+              # The path-coverage regression harness mirrors tracked evidence,
+              # and conservative gate inputs include the committed archive tree.
+              - 'tests/evidence/**'
               # The AI evaluation gates (scripts/ai-eval) read the corpus,
               # recordings, label sheets and study records: an edit to any of
               # them must run the gates that validate them.

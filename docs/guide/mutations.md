@@ -2,6 +2,12 @@
 
 IFClite supports editing IFC properties in-place with full change tracking, undo/redo, and export. The `@ifc-lite/mutations` package provides the mutation infrastructure, while the viewer integrates it with a property editor UI.
 
+Authored `NewEntity` records carry native `creationId` provenance matching the
+original `CREATE_ENTITY` mutation UUID. It is not an IFC attribute. Preserve
+the original record's token through clone, undo and recovery; a tokenless body
+at a reused express ID cannot establish the identity of a captured entity from
+old journal entries or matching fields.
+
 ## How It Works
 
 Mutations are tracked through a **MutablePropertyView** that wraps the original read-only property table. When you edit a property:

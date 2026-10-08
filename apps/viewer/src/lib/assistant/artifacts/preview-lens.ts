@@ -30,7 +30,7 @@ export async function previewLens(proposal: LensProposal, state: ViewerState, si
   let buckets: PreviewBucket[];
   let considered: number;
   if (lens.autoColor) {
-    const result = evaluateAutoColorLens(lens.autoColor, provider);
+    const result = evaluateAutoColorLens(lens.autoColor, provider, lens.capturedScope);
     buckets = result.legend.map((entry) => ({ label: entry.name, count: entry.count, color: entry.color, ...(entry.isAbsent ? { absence: true } : {}) }));
     const absent = new Set(result.legend.filter((entry) => entry.isAbsent).map((entry) => entry.id));
     // A multi-material element is in each of its materials' buckets but coloured once (the engine's first group wins).

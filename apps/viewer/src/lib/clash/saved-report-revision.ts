@@ -36,9 +36,16 @@ export function clashReportRevision(report: Pick<SavedClashReport, 'models' | 'r
   if (report.models.length === 0) return 'unverified';
   let unverified = report.run.mutationRevision !== 0 || mutationVersion !== 0;
   let notLoaded = false;
-  for (const model of report.models) {
-    if (loaded.some((candidate) => sameSource(model, candidate))) continue;
-    const named = loaded.filter((candidate) => candidate.name === model.name);
+  const remaining = [...loaded];
+  // Reserve exact matches first; each loaded instance can satisfy one recorded instance.
+  const unmatched = report.models.filter((model) => {
+    const index = remaining.findIndex((candidate) => sameSource(model, candidate));
+    if (index < 0) return true;
+    remaining.splice(index, 1);
+    return false;
+  });
+  for (const model of unmatched) {
+    const named = remaining.filter((candidate) => candidate.name === model.name);
     if (named.length === 0) notLoaded = true;
     // Another revision only where an identity was compared and differed. A name alone, or a hash on one side
     // against a fingerprint on the other, compares nothing: that is a gap, not a difference.

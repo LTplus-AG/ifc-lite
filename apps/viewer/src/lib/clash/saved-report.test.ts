@@ -50,6 +50,15 @@ describe('Saved clash report: loaded model revision (#6947)', () => {
     assert.equal(clashReportRevision(report, [], 0), 'not-loaded');
   });
 
+  it('requires a distinct loaded instance for every recorded copy of the same source (#6947)', async () => {
+    const { clashReportRevision } = await load();
+    const model = { name: 'arch.ifc', sourceContentHash: 'hash-A' };
+    const report = recorded([{ id: 'a', ...model }, { id: 'b', ...model }]);
+    assert.equal(clashReportRevision(report, [model, { ...model }], 0), 'same');
+    assert.equal(clashReportRevision(report, [model], 0), 'not-loaded', 'one copy cannot satisfy two recorded instances');
+    assert.equal(clashReportRevision(report, [], 0), 'not-loaded');
+  });
+
   it('never calls an edited or unidentified model the same revision', async () => {
     const { clashReportRevision } = await load();
     const arch = { name: 'arch.ifc', sourceFingerprint: 'fp-a' };

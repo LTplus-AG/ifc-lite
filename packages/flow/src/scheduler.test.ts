@@ -6,7 +6,8 @@ import { describe, expect, it } from 'vitest';
 import { checkAvailability, type HostFeatures } from './availability.js';
 import { FLOW_VERSION, parseFlowDocument, validateFlowDocument, type FlowDocument } from './document.js';
 import { NodeRegistry, type NodeDef } from './registry.js';
-import { FlowCycleError, MemoCache, runFlow, topologicalOrder } from './scheduler.js';
+import { FlowCycleError, topologicalOrder } from './order.js';
+import { MemoCache, runFlow } from './scheduler.js';
 import { group, list, type EntityRef } from './values.js';
 
 /** A tiny fake host: a "model" of walls with areas, and a colorize call log. */

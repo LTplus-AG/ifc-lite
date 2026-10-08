@@ -286,3 +286,17 @@ retained native layout handles. Unsupported schema/storey planes return
 `UNSUPPORTED_OPERATION`. Unexpected export, parse, processing or runtime
 import failures return `INTERNAL_ERROR`; cancellation and state conflicts
 retain their distinct retryable codes.
+
+AI Flow nodes use explicit host environment configuration (`IFC_LITE_AI_MODEL`,
+`IFC_LITE_AI_API_KEY`, optional `IFC_LITE_AI_BASE_URL`). Review-capable runs require
+a new allowed `checkpoint_path` and return a pending artifact. A separate
+`resume_flow` with the exact `approved_digest` rechecks native source state and
+current scope, restores the original budget and consumes one durable disk claim.
+See the [MCP guide](../../docs/guide/mcp.md) for further pauses and refusals.
+
+`propose_flow` lets a read-only MCP caller run a native read/AI-only graph to
+a pending artifact. It rejects declared or node-defined effects and permits
+only `model.read` and `network.ai`. The current read scope and model allowlist
+still apply; the separate `resume_flow` requires current mutate authorization.
+MCP responses and checkpoint budgets include provider usage receipts without
+prompts, replies or credentials; receipt history survives subsequent pauses.

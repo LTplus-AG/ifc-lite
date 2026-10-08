@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import type { SavedFlow } from './persistence';
+import { DEEP_LINK_PARAMS } from '../deep-links/artifact-link';
 
 export const FLOW_STARTUP_KEY = 'ifc-lite:flow-startup-v1';
 interface StartupPreference { version: 1; flowId: string }
@@ -39,5 +40,5 @@ export function resolveStartupFlow(flows: readonly SavedFlow[], flowId: string |
 /** Explicit deep-link startup actions take priority over optional workflows. */
 export function suppressStartupWorkflow(search: string): boolean {
   const params = new URLSearchParams(search);
-  return ['model', 'room', 'tour', 'workflow', 'flow'].some((key) => params.has(key));
+  return ['model', 'room', 'tour', 'workflow', 'flow', ...DEEP_LINK_PARAMS].some((key) => params.has(key));
 }

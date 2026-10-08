@@ -4,7 +4,7 @@
 
 /** Static workspace, schedule, preference, and help commands (#5870). */
 import {
-  CalendarPlus, ChevronsRight, Crosshair, Eraser, GraduationCap, Info, Palette,
+  CalendarPlus, ChevronsRight, Crosshair, Eraser, GraduationCap, Info, LayoutTemplate, Palette,
   PanelRight, RotateCcw, Settings, SlidersHorizontal, Sparkles, Sun,
 } from 'lucide-react';
 import { EVENT_SHOW_SHORTCUTS } from '@/lib/tours/events';
@@ -65,6 +65,17 @@ export const WORKSPACE_SURFACE_COMMANDS = [
     keywords: 'layout sidebar floating panels reset default order width restore',
     category: 'Panels', icon: RotateCcw, surfaces: paletteOnly, enabled: alwaysEnabled,
     run: () => { resetLayout(); },
+  },
+  {
+    // Presets are previewed and applied in the Customize popover, never applied from the palette directly (#6926).
+    id: 'sidebar:layout-presets', labelKey: 'layoutPresets.paletteLabel',
+    keywords: 'layout preset coordinator review workspace arrange clash bcf assistant restore',
+    category: 'Panels', icon: LayoutTemplate, surfaces: paletteOnly, enabled: alwaysEnabled,
+    run: () => {
+      const state = useViewerStore.getState();
+      state.setSidebarMode('expanded');
+      state.setSidebarCustomizing(true);
+    },
   },
   {
     id: 'schedule:generate', labelKey: 'commandPalette.schedule.generate.label',

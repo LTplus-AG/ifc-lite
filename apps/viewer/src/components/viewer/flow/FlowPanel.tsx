@@ -13,14 +13,14 @@ import { trackExportCompleted } from '@/lib/analytics';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ReactFlowProvider } from '@xyflow/react';
 import { Play } from 'lucide-react';
-import { parseFlowDocument, type FlowDocument, type NodeReport } from '@ifc-lite/flow';
+import { parseFlowDocument, type FlowDocument, type NodeReport, type NodeStatus } from '@ifc-lite/flow';
 import { useTranslation } from '@/i18n/useTranslation';
 import { useDialogs } from '@/components/ui/confirm-dialog';
 import { useViewerStore } from '@/store';
 import { addNode } from '@/lib/flow/editor-ops';
 import { downloadBlob, sanitizeFilename } from '@/lib/export/download';
 import { flowToJson } from '@/lib/flow/persistence';
-import { flowRegistry } from '@/lib/flow/runner';
+import { ensureFlowAiNodes, flowRegistry } from '@/lib/flow/runner';
 import { useContributedFlows } from '@/hooks/useContributedFlows';
 import { isContributedFlowId } from '@/services/extensions/host-flows.js';
 import { FlowCanvas, useCanvasDropPosition } from './FlowCanvas';
@@ -31,6 +31,7 @@ import { FlowPalette } from './FlowPalette';
 import { FlowStartupPreference } from './FlowStartupPreference';
 import { FlowPlayer } from './FlowPlayer';
 import { FlowPublishButton } from './FlowPublishButton';
+import { FlowReviewCheckpoint } from './FlowReviewCheckpoint';
 import { useFlowRunner } from './useFlowRunner';
 
 const select = 'min-w-0 rounded border border-border bg-transparent px-1.5 py-0.5';
@@ -74,6 +75,9 @@ export function FlowPanel() {
   const view = useViewerStore((s) => s.flowView);
   const setView = useViewerStore((s) => s.setFlowView);
   const registry = flowRegistry();
+  // The AI nodes load with this panel; re-render once they are in the palette.
+  const [, setAiNodesLoaded] = useState(false);
+  useEffect(() => { void ensureFlowAiNodes().then(() => setAiNodesLoaded(true)); }, []);
 
   // Extension-contributed graphs (#5167 phase 4.2): read-only until the
   // user duplicates one into their own saved graphs.
@@ -174,7 +178,7 @@ export function FlowPanel() {
   };
 
   const statusCounts = useMemo(() => {
-    const c = { ok: 0, memo: 0, noop: 0, error: 0, skipped: 0 };
+    const c: Record<NodeStatus, number> = { ok: 0, memo: 0, noop: 0, error: 0, skipped: 0, review: 0, paused: 0, restored: 0 };
     for (const r of lastRun?.reports ?? []) c[r.status] += 1;
     return c;
   }, [lastRun]);
@@ -260,12 +264,15 @@ export function FlowPanel() {
         <FlowExampleGallery onOpen={onOpenExample} />
       )}
 
+      {flowDoc && <FlowReviewCheckpoint doc={flowDoc} onResume={(checkpoint, values) => run(values, { resume: checkpoint })} />}
+
       {(lastRun || lastError) && (
         <div className="flex flex-wrap items-center gap-x-3 border-t border-border px-3 py-1 text-2xs" data-flow-run-bar>
           {lastError && <span className="text-red-400">{t('flowPanel.run.failed')}: {lastError}</span>}
+          {lastError?.includes('backend feature "ai"') && <span className="text-amber-300">{t('flowReview.needsModel')}</span>}
           {lastRun && (
             <>
-              <span className={lastRun.ok ? 'text-emerald-300' : 'text-red-400'}>{lastRun.ok ? t('flowPanel.run.ok') : t('flowPanel.run.failed')}</span>
+              <span className={lastRun.ok ? 'text-emerald-300' : 'text-red-400'}>{!lastRun.ok ? t('flowPanel.run.failed') : lastRun.review.length ? t('flowPanel.run.awaitingReview') : t('flowPanel.run.ok')}</span>
               <span className="text-muted-foreground">{t('flowPanel.run.summary', statusCounts)}</span>
               {lastRun.writes > 0 && <span className="text-muted-foreground">{t('flowPanel.run.writes', { count: lastRun.writes })}</span>}
               {lastRun.log.filter((l) => l.level === 'error').slice(0, 3).map((l, i) => <span key={i} className="text-red-400">{l.nodeId}{l.laneKey ? `[${l.laneKey}]` : ''}: {l.message}</span>)}

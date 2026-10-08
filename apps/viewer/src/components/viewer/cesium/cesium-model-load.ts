@@ -6,6 +6,7 @@ import type { MutableRefObject } from 'react';
 import type { CoordinateInfo } from '@ifc-lite/geometry';
 import { buildCesiumModelGLB, cesiumModelGLBKey, type CesiumModelGLBInput } from '@/lib/geo/cesium-model-glb';
 import type { CesiumBridge } from '@/lib/geo/cesium-bridge';
+import { buildViewerToEcefMatrix } from '@/lib/geo/cesium-viewer-frame';
 import { swapCesiumModel } from '@/lib/geo/cesium-model-swap';
 import { whenModelRenderable, type CesiumModelPrimitive } from './cesium-model-renderable';
 import type { CesiumViewerLifetime } from './cesium-viewer-lifetime';
@@ -18,22 +19,9 @@ export function buildCesiumModelMatrix(
   bridge: CesiumBridge,
   coordinateInfo: CoordinateInfo | undefined,
 ) {
-  const bounds = coordinateInfo?.originalBounds;
-  const mvx = bounds ? (bounds.min.x + bounds.max.x) / 2 : 0;
-  const mvy = bounds ? (bounds.min.y + bounds.max.y) / 2 : 0;
-  const mvz = bounds ? (bounds.min.z + bounds.max.z) / 2 : 0;
-  const origin = Cesium.Cartesian3.fromDegrees(
-    bridge.modelOrigin.longitude, bridge.modelOrigin.latitude, bridge.modelOrigin.height,
+  return buildViewerToEcefMatrix(
+    Cesium, bridge.modelOrigin, bridge.viewerRotation, bridge.viewerUpScale, coordinateInfo,
   );
-  const enuToEcef = Cesium.Transforms.eastNorthUpToFixedFrame(origin);
-  const rot = bridge.viewerRotation;
-  const ifcToEnu = new Cesium.Matrix4(
-    rot.eastFromVx, 0, rot.eastFromVz, -(rot.eastFromVx * mvx + rot.eastFromVz * mvz),
-    rot.northFromVx, 0, rot.northFromVz, -(rot.northFromVx * mvx + rot.northFromVz * mvz),
-    0, bridge.viewerUpScale, 0, -bridge.viewerUpScale * mvy,
-    0, 0, 0, 1,
-  );
-  return Cesium.Matrix4.multiply(enuToEcef, ifcToEnu, new Cesium.Matrix4());
 }
 
 export interface LoadCesiumModelParams {

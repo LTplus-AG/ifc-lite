@@ -12,7 +12,7 @@ import { IfcParser } from '@ifc-lite/parser';
 import { render, click, cleanup } from '@/test/render';
 import { useViewerStore } from '@/store';
 import { fixtureModel } from '@/test/store-fixture';
-import { parseModelChangeBatch } from '@/lib/actions/model-change';
+import { parseModelChangeBatch } from '@ifc-lite/ai/artifacts';
 import { modelChangeLibrary, useModelChangeReceipts } from '@/lib/actions/receipts';
 import { ModelChangeReview } from './ModelChangeReview';
 

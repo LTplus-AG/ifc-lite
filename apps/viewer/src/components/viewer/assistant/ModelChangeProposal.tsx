@@ -4,7 +4,7 @@
 
 import { useMemo } from 'react';
 import { useAssistant } from '@/lib/assistant/conversation';
-import { parseModelChangeBatch, type ModelChangeBatch } from '@/lib/actions/model-change';
+import { parseModelChangeBatch, type ModelChangeBatch } from '@ifc-lite/ai/artifacts';
 import { parseModelAuthoringBatch, type ModelAuthoringBatch } from '@/lib/actions/model-authoring';
 import { ModelChangeReview } from '../actions/ModelChangeReview';
 import { ModelAuthoringReview } from '../actions/ModelAuthoringReview';

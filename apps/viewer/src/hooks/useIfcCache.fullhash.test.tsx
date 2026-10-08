@@ -3,18 +3,20 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * `saveToCache` must store the TRUE full-file hash for BOTH cache tiers
- * (#4269). Before the fix, the write path computed `fullSourceHash` only when
+ * `saveToCache` must store a TRUE full-file content hash for BOTH cache tiers
+ * (#4269). Before that fix, the write path computed `fullSourceHash` only when
  * `persistSource` was false (the mesh-only tier), so a source-persisting entry
  * could never be background-revalidated — an mtime-preserved,
  * byte-length-preserving in-place edit (invisible to the spread-sampled cache
  * key by design, see `@ifc-lite/cache`'s `source-fingerprint.ts`) was served stale forever.
  *
+ * Since #7022 that hash is the load's own placement identity, handed in by the
+ * loader: the write stores it and hashes nothing itself, so a cold load digests
+ * its source once. The expectation is computed with node:crypto, not with the
+ * viewer's hashing, so a hash-function bug cannot self-certify.
+ *
  * Drives the REAL hook (`saveToCache`) against fake-indexeddb and reads the
- * persisted record back through the real `getCached`, asserting the stored
- * hash against an INDEPENDENT SHA-256 (node:crypto) rather than the
- * implementation's own `computeFullSourceHash` — so a hash-function bug cannot
- * self-certify.
+ * persisted record back through the real `getCached`.
  */
 
 import 'fake-indexeddb/auto';
@@ -88,47 +90,60 @@ afterEach(async () => {
   if (current) await act(async () => current.unmount());
 });
 
-/** Independent expectation: SHA-256 hex via node:crypto, NOT the viewer's own
- *  `computeFullSourceHash`. */
-function sha256hex(buffer: ArrayBuffer): string {
-  return createHash('sha256').update(new Uint8Array(buffer)).digest('hex');
+const MIB = 1024 * 1024;
+const sha256 = (bytes: Uint8Array | string) => createHash('sha256').update(bytes).digest('hex');
+/** Independent expectation: the placement identity's chunked SHA-256 via
+ *  node:crypto, NOT the viewer's own `placementSourceIdentity`. */
+function referenceIdentity(buffer: ArrayBuffer): string {
+  const bytes = new Uint8Array(buffer);
+  const parts = [`placement-sha256-1m-v1:${bytes.byteLength}`];
+  for (let start = 0; start < bytes.byteLength; start += MIB) parts.push(sha256(bytes.subarray(start, start + MIB)));
+  return `placement-sha256-1m-v1:${sha256(parts.join(':'))}`;
 }
 
 async function saveAndRead(key: string, persistSource: boolean) {
   const sourceBuffer = new TextEncoder()
     .encode(`ISO-10303-21; /* ${key} */ END-ISO-10303-21;`).buffer as ArrayBuffer;
-  await act(async () => {
-    await saveToCache!(key, buildDataStore(), GEOMETRY, sourceBuffer, `${key}.ifc`, {
-      persistSource,
-      lastModified: 1_700_000_000_000,
+  const identity = referenceIdentity(sourceBuffer);
+  const subtle = globalThis.crypto.subtle;
+  const realDigest = subtle.digest.bind(subtle);
+  let digests = 0;
+  Object.defineProperty(subtle, 'digest', { configurable: true, writable: true,
+    value: (algorithm: AlgorithmIdentifier, data: BufferSource) => { digests++; return realDigest(algorithm, data); } });
+  try {
+    await act(async () => {
+      await saveToCache!(key, buildDataStore(), GEOMETRY, sourceBuffer, `${key}.ifc`, {
+        persistSource,
+        lastModified: 1_700_000_000_000,
+        fullSourceHash: Promise.resolve(identity),
+      });
     });
-  });
+  } finally {
+    delete (subtle as { digest?: unknown }).digest;
+  }
   const entry = await getCached(key);
   assert.ok(entry, 'the entry must have been written');
-  return { entry, sourceBuffer };
+  return { entry, identity, digests };
 }
 
-describe('saveToCache stores the full-file validation hash for BOTH tiers (#4269)', () => {
-  it('a SOURCE-PERSISTING write stores fullSourceHash (was skipped before the fix)', async () => {
-    const { entry, sourceBuffer } = await saveAndRead('fullhash-source-tier', true);
+describe('saveToCache stores the load\'s full-content hash for BOTH tiers (#4269, #7022)', () => {
+  it('a SOURCE-PERSISTING write stores fullSourceHash without hashing the source again', async () => {
+    const { entry, identity, digests } = await saveAndRead('fullhash-source-tier', true);
     assert.ok(entry.sourceBuffer, 'the source tier must persist the source buffer');
     assert.equal(
       entry.fullSourceHash,
-      sha256hex(sourceBuffer),
-      'a source-persisting entry must carry the TRUE full-file SHA-256 so a '
-      + 'served hit can be background-revalidated (#4269 — the pre-fix write '
-      + 'path computed it only for the mesh-only tier)',
+      identity,
+      'a source-persisting entry must carry the full-content hash so a served hit '
+      + 'can be background-revalidated (#4269), and it is the load\'s identity (#7022)',
     );
+    assert.equal(digests, 0, 'the write reuses the load\'s hash instead of digesting the source a second time');
     assert.equal(entry.lastModified, 1_700_000_000_000, 'the mtime guard field must be stored too');
   });
 
-  it('a MESH-ONLY write still stores fullSourceHash (unchanged behavior control)', async () => {
-    const { entry, sourceBuffer } = await saveAndRead('fullhash-mesh-only-tier', false);
+  it('a MESH-ONLY write stores the same hash, also without hashing', async () => {
+    const { entry, identity, digests } = await saveAndRead('fullhash-mesh-only-tier', false);
     assert.equal(entry.sourceBuffer, undefined, 'the mesh-only tier must not persist the source');
-    assert.equal(
-      entry.fullSourceHash,
-      sha256hex(sourceBuffer),
-      'the mesh-only tier must keep storing the full-file SHA-256 it already had',
-    );
+    assert.equal(entry.fullSourceHash, identity);
+    assert.equal(digests, 0);
   });
 });

@@ -10,7 +10,7 @@
 
 import type { Clash } from '@ifc-lite/clash';
 import { manualClashOccurrenceKey } from '../clash/manual-groups';
-import type { RootBudgetLimits } from '../llm/root-budget';
+import type { RootBudgetLimits } from '@ifc-lite/ai';
 import { clashDisciplineCandidates, CLASH_TAXONOMY_LIMITATIONS } from './clash-taxonomy';
 import { evidenceJson } from './evidence';
 import type { DraftFinding } from './clash-group-draft';

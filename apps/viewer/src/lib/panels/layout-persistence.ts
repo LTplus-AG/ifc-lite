@@ -1,0 +1,175 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
+/**
+ * Storage around the versioned sidebar layout (#6927). The layout key keeps
+ * its historical name so older builds still read it. A migration that changes
+ * anything first copies the ORIGINAL value to a backup key (never deleted by
+ * this module) and queues the changes for the review notice, which survives a
+ * reload until the user keeps or resets the layout.
+ */
+
+import { migrateSidebarLayout, readLayoutChanges, layoutChangeKey, type LayoutChange, type StoredSidebarLayout, type PreservedPlacement } from './layout-migration';
+import { migratePanelId } from './registry';
+
+export const SIDEBAR_LAYOUT_KEY = 'ifc-lite:sidebar-layout-v1';
+export const LAYOUT_BACKUP_KEY = 'ifc-lite:sidebar-layout-backup-v1';
+export const LAYOUT_NOTICE_KEY = 'ifc-lite:layout-migration-notice-v1';
+/** Older builds never write this key, so their four-field saves cannot erase placements. */
+export const LAYOUT_COMPAT_KEY = 'ifc-lite:sidebar-layout-placements-v2';
+
+export interface LayoutBackup {
+  reason: 'migration';
+  savedAt: string;
+  /** The exact stored string before migration. */
+  raw: string;
+}
+
+function storage(): Storage | null {
+  try { return typeof window === 'undefined' ? null : window.localStorage; }
+  catch (error) { console.warn('[sidebar] Layout storage is unavailable:', error); return null; }
+}
+
+function readItem(key: string): string | null {
+  try { return storage()?.getItem(key) ?? null; }
+  catch (error) { console.warn('[sidebar] Failed to read layout storage:', error); return null; }
+}
+
+export function writeSidebarLayout(layout: StoredSidebarLayout, beforeImport = false): boolean {
+  const store = storage();
+  if (!store) return typeof window === 'undefined';
+  let previousCompanion: string | null = null;
+  let companionWritten = false;
+  try {
+    const original = store.getItem(SIDEBAR_LAYOUT_KEY);
+    if (original !== null) {
+      let parsed: unknown;
+      try { parsed = JSON.parse(original); }
+      catch (error) { console.warn('[sidebar] Preserving unreadable original layout:', error); parsed = ''; }
+      if ((beforeImport || migrateSidebarLayout(parsed).changes.length > 0) && !backupOriginal(original)) return false;
+    }
+    previousCompanion = store.getItem(LAYOUT_COMPAT_KEY);
+    const serialized = JSON.stringify(layout);
+    store.setItem(LAYOUT_COMPAT_KEY, serialized);
+    companionWritten = true;
+    store.setItem(SIDEBAR_LAYOUT_KEY, serialized);
+    return true;
+  } catch (error) {
+    // Quota / private mode: the layout just won't persist this session.
+    console.warn('[sidebar] failed to persist layout:', error);
+    if (companionWritten) {
+      try {
+        if (previousCompanion === null) store.removeItem(LAYOUT_COMPAT_KEY);
+        else store.setItem(LAYOUT_COMPAT_KEY, previousCompanion);
+      } catch (rollbackError) {
+        console.warn('[sidebar] failed to restore rollback placements:', rollbackError);
+      }
+    }
+    return false;
+  }
+}
+
+/** Recover only placements omitted by an older writer; its current order and widths win. */
+function withRollbackPlacements(parsed: unknown): unknown {
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return parsed;
+  const value = parsed as Record<string, unknown>;
+  if (value.version === 2) return value;
+  const raw = readItem(LAYOUT_COMPAT_KEY);
+  if (!raw) return value;
+  try {
+    const previous = migrateSidebarLayout(JSON.parse(raw)).layout;
+    const seen = new Set((Array.isArray(value.order) ? value.order : [])
+      .filter((id): id is string => typeof id === 'string').map(id => migratePanelId(id) ?? id));
+    const placements: PreservedPlacement[] = previous.order.map((id, index) => ({
+      id, after: previous.order[index - 1] ?? null, hidden: previous.hiddenIds.includes(id),
+    }));
+    placements.push(...previous.preserved);
+    return { ...value, preserved: [...(Array.isArray(value.preserved) ? value.preserved : []),
+      ...placements.filter(placement => !seen.has(placement.id))] };
+  } catch (error) {
+    console.warn('[sidebar] ignoring unreadable rollback placements:', error);
+    return value;
+  }
+}
+
+export function readPendingLayoutChanges(): LayoutChange[] {
+  const raw = readItem(LAYOUT_NOTICE_KEY);
+  if (!raw) return [];
+  try {
+    return readLayoutChanges((JSON.parse(raw) as { changes?: unknown }).changes);
+  } catch (error) {
+    console.warn('[sidebar] ignoring unreadable layout notice:', error);
+    return [];
+  }
+}
+
+/** Merge new changes into the pending notice (a later `added` replaces none). */
+export function queueLayoutChanges(changes: readonly LayoutChange[]): LayoutChange[] {
+  const merged = new Map(readPendingLayoutChanges().map((change) => [layoutChangeKey(change), change]));
+  for (const change of changes) merged.set(layoutChangeKey(change), change);
+  const list = [...merged.values()];
+  try {
+    storage()?.setItem(LAYOUT_NOTICE_KEY, JSON.stringify({ changes: list }));
+  } catch (error) {
+    console.warn('[sidebar] failed to persist the layout notice:', error);
+  }
+  return list;
+}
+
+export function clearLayoutNotice(): void {
+  try {
+    storage()?.removeItem(LAYOUT_NOTICE_KEY);
+  } catch (error) {
+    console.warn('[sidebar] failed to clear the layout notice:', error);
+  }
+}
+
+export function readLayoutBackup(): LayoutBackup | null {
+  const raw = readItem(LAYOUT_BACKUP_KEY);
+  if (!raw) return null;
+  try {
+    const value = JSON.parse(raw) as Partial<LayoutBackup>;
+    return value.reason === 'migration' && typeof value.raw === 'string' && typeof value.savedAt === 'string'
+      ? { reason: 'migration', savedAt: value.savedAt, raw: value.raw } : null;
+  } catch (error) {
+    console.warn('[sidebar] unreadable layout backup:', error);
+    return null;
+  }
+}
+
+function backupOriginal(raw: string): boolean {
+  // The first original of a pending review is the one worth keeping.
+  if (readPendingLayoutChanges().length > 0 && readLayoutBackup()) return true;
+  try {
+    const store = storage();
+    if (!store) return false;
+    store.setItem(LAYOUT_BACKUP_KEY, JSON.stringify({ reason: 'migration', savedAt: new Date().toISOString(), raw } satisfies LayoutBackup));
+    return true;
+  } catch (error) {
+    console.warn('[sidebar] failed to back up the layout before migration:', error);
+    return false;
+  }
+}
+
+/** Boot read: migrate, back up the original if anything changed, stamp v2. */
+export function loadSidebarLayout(): { layout: StoredSidebarLayout; pending: LayoutChange[] } {
+  const raw = readItem(SIDEBAR_LAYOUT_KEY);
+  if (raw === null) return { layout: migrateSidebarLayout(null).layout, pending: readPendingLayoutChanges() };
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (error) {
+    console.warn('[sidebar] keeping a backup of an unreadable layout:', error);
+    parsed = '';
+  }
+  const migration = migrateSidebarLayout(withRollbackPlacements(parsed));
+  if (migration.changes.length > 0) {
+    // Never overwrite the rollback source when the backup could not be saved.
+    writeSidebarLayout(migration.layout);
+    return { layout: migration.layout, pending: queueLayoutChanges(migration.changes) };
+  }
+  // Prime the companion before a user rolls back to a four-field writer.
+  writeSidebarLayout(migration.layout);
+  return { layout: migration.layout, pending: readPendingLayoutChanges() };
+}

@@ -11,7 +11,8 @@
  * to English instead of rendering `{modelName}` literally.
  */
 import { en, type TranslationKey } from './en';
-import type { Catalogue } from './registry';
+import { englishMessage, type Catalogue } from './registry';
+import { lazyMessageParameters } from './lazy-catalogue-shape';
 import type { TranslationValue } from './types';
 
 const PLACEHOLDER = /\{([A-Za-z][A-Za-z0-9_]*)\}/g;
@@ -31,7 +32,7 @@ function placeholders(value: TranslationValue): Set<string> {
 }
 
 function isTranslationKey(key: string): key is TranslationKey {
-  return Object.hasOwn(en, key);
+  return Object.hasOwn(en, key) || lazyMessageParameters(key) !== null;
 }
 
 function shapeProblem(value: unknown): string | null {
@@ -69,7 +70,8 @@ export function checkCatalogue(raw: Readonly<Record<string, unknown>>): CheckedC
       continue;
     }
     const message = value;
-    const expected = placeholders(en[key]);
+    const english = englishMessage(key);
+    const expected = english === undefined ? new Set(lazyMessageParameters(key) ?? []) : placeholders(english);
     const actual = placeholders(message);
     const before = problems.length;
     for (const name of actual) {

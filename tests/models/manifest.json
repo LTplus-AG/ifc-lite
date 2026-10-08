@@ -10,8 +10,8 @@
     },
     {
       "path": "ara3d/AC20-FZK-Haus.ifc",
-      "sha256": "ea6f04eaf92fac4d7ad0038bc3d2dfea4c094dd3f516ecc33c50bf1835ca108d",
-      "size": 2526544
+      "sha256": "d42ab0dee01173106c16cd823b4614efe188fa15dd65195d95b9879bec59acc5",
+      "size": 2526511
     },
     {
       "path": "ara3d/advanced_model.ifc",
@@ -55,8 +55,8 @@
     },
     {
       "path": "ara3d/ISSUE_005_haus.ifc",
-      "sha256": "ea6f04eaf92fac4d7ad0038bc3d2dfea4c094dd3f516ecc33c50bf1835ca108d",
-      "size": 2526544
+      "sha256": "d42ab0dee01173106c16cd823b4614efe188fa15dd65195d95b9879bec59acc5",
+      "size": 2526511
     },
     {
       "path": "ara3d/ISSUE_021_Mini Project.ifc",

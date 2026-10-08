@@ -32,6 +32,7 @@ export const activityTrayEn = {
 
   'activityTray.job.load': 'Load model',
   'activityTray.job.sourceDownload': 'Download source files',
+  'activityTray.job.extensionExport': 'Extension export',
   'activityTray.sourceDownload.partialCancelled': { one: 'Cancelled after dispatching {count} file for loading. Dispatched files remain available.', other: 'Cancelled after dispatching {count} files for loading. Dispatched files remain available.' },
   'activityTray.sourceDownload.partialFailed': { one: 'Dispatched {count} file for loading; some downloads failed. Dispatched files remain available.', other: 'Dispatched {count} files for loading; some downloads failed. Dispatched files remain available.' },
   'activityTray.sourceDownload.failed': { one: '{count} download failed; no files were dispatched for loading.', other: '{count} downloads failed; no files were dispatched for loading.' },

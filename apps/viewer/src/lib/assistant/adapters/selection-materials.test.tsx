@@ -22,6 +22,9 @@ const sample = async () => parseStep(await sampleText());
 interface Material {
   type: string | null; verification: string; Name?: string; LayerSetName?: string;
   MaterialLayers?: Array<{ Material: { Name: string }; LayerThickness: { value: number; unit: string } }>;
+  memberCount?: number; Materials?: Array<{ Name: string }>;
+  MaterialConstituents?: Array<{ Name: string; Fraction: number; Material: { Name: string } }>;
+  MaterialProfiles?: Array<{ Name: string; Material: { Name: string } }>;
 }
 interface Row { modelId: string; materialCount: number; materials: Material[];
   materialPropertiesStatus: string; materialPropertyGroupCount: number;
@@ -102,6 +105,34 @@ test('#7119 source-free verified materials remain known and missing wire rows re
   assert.match(JSON.parse(captureEvidence('selection').payload).evidence.summary.limitations, /absent values are unknown/);
 });
 
+test('#7119 material collection shapes preserve native members and bound list fan-out', async () => {
+  // Stated IFC collection invariant: additional associations on the real
+  // slab reference its two actual materials through each native set shape.
+  const list = Array.from({ length: 35 }, (_, i) => i % 2 ? '#180' : '#62').join(',');
+  const additions = `#99901=IFCMATERIALLIST((${list}));
+#99902=IFCMATERIALCONSTITUENT('Concrete part',$,#62,0.25,'Structural');
+#99903=IFCMATERIALCONSTITUENT('Wood part',$,#180,0.75,$);
+#99904=IFCMATERIALCONSTITUENTSET('Constituents',$,(#99902,#99903));
+#99905=IFCRECTANGLEPROFILEDEF(.AREA.,'Rectangle',$,0.2,0.3);
+#99906=IFCMATERIALPROFILE('Concrete profile',$,#62,#99905,$,'Structural');
+#99907=IFCMATERIALPROFILESET('Profiles',$,(#99906),$);
+#99911=IFCRELASSOCIATESMATERIAL('List association',#1,$,$,(#52),#99901);
+#99912=IFCRELASSOCIATESMATERIAL('Constituent association',#1,$,$,(#52),#99904);
+#99913=IFCRELASSOCIATESMATERIAL('Profile association',#1,$,$,(#52),#99907);
+`;
+  const source = (await sampleText()).replace('ENDSEC;\nEND-ISO-10303-21;', additions + 'ENDSEC;\nEND-ISO-10303-21;');
+  seedModel('collections', 0, await parseStep(source), 52);
+  const row = rows()[0]; assert.equal(row.materialCount, 4);
+  const members = row.materials.find(material => material.type === 'IfcMaterialList'); assert.ok(members);
+  assert.equal(members.memberCount, 35); assert.equal(members.Materials?.length, 32);
+  assert.deepEqual(members.Materials?.slice(0, 2).map(member => member.Name), ['concrete_reinforced_in-situ', 'wood_mdf_plate']);
+  const constituents = row.materials.find(material => material.type === 'IfcMaterialConstituentSet'); assert.ok(constituents);
+  assert.deepEqual(constituents.MaterialConstituents?.map(member => [member.Name, member.Fraction, member.Material.Name]),
+    [['Concrete part', 0.25, 'concrete_reinforced_in-situ'], ['Wood part', 0.75, 'wood_mdf_plate']]);
+  assert.equal(row.materials.find(material => material.type === 'IfcMaterialProfileSet')?.MaterialProfiles?.[0].Material.Name,
+    'concrete_reinforced_in-situ');
+});
+
 test('#7119 overlay aliases and independent federation retain model-specific material assignments', async () => {
   seedModel('a', 0, await sample(), 52);
   const models = new Map(useViewerStore.getState().models); const a = models.get('a'); assert.ok(a);
@@ -112,11 +143,16 @@ test('#7119 overlay aliases and independent federation retain model-specific mat
   view.setEntityAlias(duplicate.expressId, 52);
   const material = view.createEntity('IfcMaterial', ['B ONLY', null, null]);
   view.createEntity('IfcRelAssociatesMaterial', ['new association', null, null, null, [duplicate.expressId], material.expressId]);
+  const property = view.createEntity('IfcPropertySingleValue', ['B marker', null, ['IFCLABEL', 'B PROPERTY ONLY'], null]);
+  view.createEntity('IfcMaterialProperties', ['B material set', null, [property.expressId], 62]);
   useViewerStore.setState({ selectedEntitiesSet: new Set([
     entityRefToString({ modelId: 'a', expressId: 52 }), entityRefToString({ modelId: 'b', expressId: duplicate.expressId })]) });
   const [aRow, bRow] = rows();
   assert.equal(aRow.modelId, 'a'); assert.deepEqual(aRow.materials.map(m => m.Name), ['concrete_reinforced_in-situ']);
   assert.equal(bRow.modelId, 'b'); assert.deepEqual(bRow.materials.map(m => m.Name), ['concrete_reinforced_in-situ', 'B ONLY']);
+  assert.deepEqual(aRow.materialProperties, []);
+  assert.equal(bRow.materialProperties[0].modelId, 'b'); assert.equal(bRow.materialProperties[0].expressId, 62);
+  assert.equal(bRow.materialProperties[0].psets[0].properties['B marker'], 'B PROPERTY ONLY');
 });
 
 test('#7119 session associations invalidate frozen evidence and are bounded with full counts', async () => {

@@ -9,6 +9,8 @@ import { stampAnalysisReport, type AnalysisStamp } from '@/hooks/useAnalysisStal
 import {
   countDeviationWithinTolerance, summarizeDeviationRun, type PointCloudDeviationStatistics,
 } from '@/lib/point-cloud/deviation-run-statistics';
+import { captureDeviationSource, recordDeviationSource } from '@/lib/point-cloud/deviation-source';
+import type { DeviationAssetIdentity } from '@/lib/point-cloud/deviation-asset-identity';
 
 /**
  * Derive the stored deviation statistics (#6872, #6833) from the Deviation
@@ -23,7 +25,8 @@ export function useDeviationStatisticsDerivation(
   runStampRef: RefObject<AnalysisStamp | null>,
   clipRange: number,
 ): void {
-  const summarizedRef = useRef<{ distances: DeviationDistances; summary: Pick<PointCloudDeviationStatistics, 'overall' | 'assets'> } | null>(null);
+  const summarizedRef = useRef<{ distances: DeviationDistances; summary: Pick<PointCloudDeviationStatistics, 'overall' | 'assets'>;
+    source: readonly DeviationAssetIdentity[] | null } | null>(null);
   useEffect(() => {
     // Dropping the readback also drops the summary cache that pins it (4 B/point).
     if (!distances) { summarizedRef.current = null; return; }
@@ -31,16 +34,19 @@ export function useDeviationStatisticsDerivation(
     const { signal } = controller;
     const revisionAt = readRevisionRef.current ?? useViewerStore.getState().pointCloudDeviationRevision;
     const stamp = runStampRef.current;
+    const cached = summarizedRef.current?.distances === distances ? summarizedRef.current : null;
+    const source = cached ? cached.source : captureDeviationSource(distances.assets, stamp);
     const adopt = (record: PointCloudDeviationStatistics) => {
       const s = useViewerStore.getState();
       if (signal.aborted || !s.pointCloudDeviationComputed || s.pointCloudDeviationRevision !== revisionAt) return;
+      recordDeviationSource(record, source);
       s.setPointCloudDeviationStatistics(stamp ? stampAnalysisReport(record, stamp) : record);
     };
     void (async () => {
-      let summary = summarizedRef.current?.distances === distances ? summarizedRef.current.summary : null;
+      let summary = cached?.summary ?? null;
       if (!summary) {
         summary = await summarizeDeviationRun(distances, { clipRange, signal });
-        summarizedRef.current = { distances, summary };
+        summarizedRef.current = { distances, summary, source };
         adopt({ revision: revisionAt, clipRange, ...summary, withinTolerance: null });
       }
       const withinTolerance = await countDeviationWithinTolerance(distances, tolerance, { signal });

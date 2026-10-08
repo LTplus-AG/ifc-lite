@@ -7,6 +7,7 @@
 import type { LintRule } from '../types.js';
 import { ENT_001, ENT_002, ENT_003, ENT_004, ENT_005 } from './entity.js';
 import { ATT_001, ATT_002, PDT_001, PDT_002, PDT_003 } from './pdt-att.js';
+import { DOC_001, PART_001, VER_001 } from './doc-ver-part.js';
 import { CARD_001, CARD_002, CARD_003, CARD_004 } from './card.js';
 import { SPEC_001, SPEC_002, SPEC_003, SPEC_007, SPEC_008 } from './spec.js';
 import { SPEC_005, SPEC_006, SPEC_009 } from './spec-doc.js';
@@ -56,4 +57,7 @@ export const LINT_RULES: readonly LintRule[] = [
   SPEC_007,
   SPEC_008,
   SPEC_009,
+  DOC_001,
+  VER_001,
+  PART_001,
 ];

@@ -6576,6 +6576,7 @@
     "IDSSpecificationResult: type",
     "IDSValidationReport: type",
     "IDSValidationSummary: interface",
+    "IFC2X3_MAPPED_ALIASES: const",
     "IFCDataAccessor: interface",
     "IFCVersion: type",
     "MaterialInfo: interface",

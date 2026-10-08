@@ -73,6 +73,10 @@ test('#7267 actual provider proposal reaches mounted selective review and preser
   useViewerStore.getState().setSelectedEntityIds([expressId, peer.expressId]);
   const grounding = captureSelectionGrounding(useViewerStore.getState());
   assert.equal(grounding.elements.length, 2);
+  for (const element of grounding.elements) {
+    assert.equal(element.nativeType?.status, 'typed', 'provider proposal must be grounded in the current native type');
+    assert.ok(element.nativeType.expected);
+  }
   const proposal = JSON.stringify({ version: 1, kind: 'model.authoring', title: 'Detach selected types', units: 'm',
     frame: 'storey-local', operations: grounding.elements.map(element => ({ op: 'type.detach',
       target: { globalId: element.globalId, modelId: element.modelId, ifcClass: element.type, name: element.name },

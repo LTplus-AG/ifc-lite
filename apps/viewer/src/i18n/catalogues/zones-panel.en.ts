@@ -90,6 +90,7 @@ export const zonesPanelEn = {
     'Exported {whole} whole and {cut} cut element(s) in {elapsed}s, {refused} not cut (mesh not a proven closed solid, or the pieces did not add up), {noGeometry} with no loaded geometry',
 
   // ZoneApportionSummary
+  'zonesPanel.apportionSummary.globalId': ' · GlobalId: {value}',
   'zonesPanel.apportionSummary.source': 'Volume splits · {name}',
   'zonesPanel.apportionSummary.cachedPopulation': { one: '{count} cached entity outcome', other: '{count} cached entity outcomes' },
   'zonesPanel.apportionSummary.coverage': '{apportioned} proved splits / {processed} cached entity outcomes',

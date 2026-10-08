@@ -131,7 +131,7 @@ export function ZoneApportionSummary({ zoneSet }: { zoneSet: ZoneSet }) {
         <ul aria-label={t('zonesPanel.apportionSummary.evidence')} className="space-y-1">
         {rows.slice(0, EVIDENCE_SAMPLE_SIZE).map(([id, row]) => <li key={id}>
           {row?.legacy ? t('zonesPanel.apportionSummary.singleModel') : row?.modelName ?? t('zonesPanel.apportionSummary.unknownModel')}
-          {' · GlobalId: '}{row?.GlobalId ?? t('zonesPanel.apportionSummary.notAvailable')}
+          {t('zonesPanel.apportionSummary.globalId', { value: row?.GlobalId ?? t('zonesPanel.apportionSummary.notAvailable') })}
           {row?.IfcClass ? ` · ${row.IfcClass}` : ''}{row?.Name ? ` · ${row.Name}` : ''}
         </li>)}
         </ul>

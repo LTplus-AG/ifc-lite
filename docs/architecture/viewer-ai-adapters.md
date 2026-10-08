@@ -50,6 +50,12 @@ The common capture path (`evidence.ts`) adds the envelope every source shares: `
 | `script` (Automation) · Script | `scriptLastResult`/`Error`/`Diagnostics` | Return value (bounded), diagnostic, log entry · counts per level | Result refs; stamp on publication (`useSandbox`) | Script source and diagnostic snippets excluded; credential-named fields in the return value are withheld (projection). Log text is passed as printed. | `script.test.tsx` |
 | `document` (Automation) · Document | `documents`/`activeDocumentId` | Block: kind, excerpt/bindings, image/chart metadata only | Identity active document | No data URLs. | `document.test.tsx` |
 
+## Existing source actions
+
+Each registered adapter has descriptors for the existing **Open**, **Discuss** and picker **Run** hosts (#7160). Open names its canonical workspace panel and the actual panel command ID when one is registered; `null` explicitly means no palette command, while the existing `openInHome` workspace host remains available. Discuss requires native evidence readiness. Recipes derive their source launch and evidence availability from the same descriptors.
+
+The picker currently hosts only the native clash producer. Other sources declare that their preparation uses the source panel controls. Clash Run requires an idle producer and an IFC model with flat geometry or its own recorded IFNS handoff. The check reads model records and array sizes, including hashing-disabled instanced-only models after the upload queue drains. A handoff proves input delivery; it does not prove current GPU residency, eligible elements or successful detection. The existing native gathering preflight and error result remain authoritative.
+
 ## Explicit boundaries
 
 | Panel | Reason (shown in the source picker under **Not discussable**) |

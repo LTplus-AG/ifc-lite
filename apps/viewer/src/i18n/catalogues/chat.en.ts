@@ -140,6 +140,8 @@ export const chatEn = {
   'assistant.pickOpen': 'Open',
   'assistant.pickOpenLabel': 'Open {source}',
   'assistant.pickRunClash': 'Run clash detection',
+  'assistant.pickNeedsGeometry': 'Load model geometry before running clash detection.',
+  'assistant.pickRunInPanel': 'Prepare this evidence with the source panel controls.',
   'assistant.pickRunFailed': 'Clash detection did not produce a result.',
   'assistant.changeSource': 'Discuss something else',
   'assistant.switchConfirm': 'Switching starts a new conversation and clears this one. Save it first from Saved conversations if you want to keep it. Switch?',

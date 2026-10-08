@@ -17,7 +17,7 @@ export const clashAdapter: EvidenceAdapter = {
   suggestionKeys: ['assistant.suggestClashSummary', 'assistant.suggestClashGroups', 'sceneActions.suggestShowClashes'],
   readiness: s => s.clashRunning ? { status: { labelKey: 'assistant.pickRunning' }, ready: false, running: true }
     : s.clashResult ? { status: { labelKey: 'assistant.pickFindings', params: { count: s.clashResult.clashes.length } }, ready: true }
-      : { status: { labelKey: 'assistant.pickNotRun' }, ready: false, runnable: s.models.size > 0 },
+      : { status: { labelKey: 'assistant.pickNotRun' }, ready: false },
   identity: s => s.clashResult,
   reportStamp: s => analysisStampOf(s.clashRawResult ?? s.clashResult),
   capture: (s, limit) => {

@@ -69,3 +69,5 @@ const { content } = creator.toIfc(); // IFC STEP text
 ## License
 
 MPL-2.0
+
+`linearProfileFrame(Start, End)` returns the existing native beam/member extrusion frame (`origin`, `u`, `v`, `along`, `length`) in the coordinates and units supplied. The in-store beam/member builders and reviewed viewer section ghosts share it, including the near-vertical reference-axis fallback. Non-finite or coincident endpoints are refused.

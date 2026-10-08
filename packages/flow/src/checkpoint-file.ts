@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * Review checkpoints on disk for `ifc-lite flow` (#6923).
+ * Review checkpoints on disk shared by CLI and MCP Flow hosts (#6923).
  *
  * The file is the same portable record the viewer stores (`FlowCheckpoint`
  * from `@ifc-lite/flow`) plus a revision. Writes are compare-and-swap under
@@ -15,7 +15,7 @@
 
 import { createHash } from 'node:crypto';
 import { open, readFile, rename, unlink, writeFile } from 'node:fs/promises';
-import { parseCheckpoint, type CheckpointStore, type FlowCheckpoint, type StoredCheckpoint } from '@ifc-lite/flow/checkpoint';
+import { parseCheckpoint, type CheckpointStore, type FlowCheckpoint, type StoredCheckpoint } from './checkpoint.js';
 
 export class FileCheckpointStore implements CheckpointStore {
   constructor(readonly path: string) {}

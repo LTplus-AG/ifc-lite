@@ -4,10 +4,14 @@
 import '@/test/setup-dom.js';
 import { afterEach, test } from 'node:test';
 import assert from 'node:assert/strict';
+import { summarizeClashes } from '@ifc-lite/clash';
+import { fixtureModel, fixtureModels } from '@/test/store-fixture';
+import { AssistantPanel } from './AssistantPanel';
 import { FLOW_VERSION } from '@ifc-lite/flow';
 import { useViewerStore } from '@/store';
 import { ConfirmDialogHost } from '@/components/ui/confirm-dialog';
 import { cleanup, click, render, waitFor } from '@/test/render.js';
+import { setAssistantDraft, useAssistantDraft } from '@/lib/assistant/composer-draft';
 import { useAssistant } from '@/lib/assistant/conversation';
 import type { AssistantRecipe } from '@/lib/assistant/reuse/recipe';
 // #6924: deleting the new production modules must fail native assertions,
@@ -28,7 +32,7 @@ try {
 const initial = useViewerStore.getState();
 const assistantInitial = useAssistant.getState();
 const nativeFetch = globalThis.fetch;
-afterEach(() => { cleanup(); recipeRun?.stopRecipe(); globalThis.fetch = nativeFetch; useViewerStore.setState(initial, true); useAssistant.setState(assistantInitial, true); });
+afterEach(() => { cleanup(); recipeRun?.stopRecipe(); setAssistantDraft(''); globalThis.fetch = nativeFetch; useViewerStore.setState(initial, true); useAssistant.setState(assistantInitial, true); });
 const recipe: AssistantRecipe = { version: 1, id: 'recorded-native-workflow', origin: 'imported', revision: 1,
   title: 'Discuss the native graph', description: '', createdAt: '2026-10-07T00:00:00Z',
   steps: [{ kind: 'ask', source: 'flow', prompt: 'Explain this native graph without executing it' }] };
@@ -86,4 +90,39 @@ test('#6924 an imported graph step cannot replace a dirty native graph', () => {
   render(<RecipeRunCard />);
   const open = button(); assert.ok(open); assert.equal(open.disabled, true);
   assert.ok(document.body.textContent?.includes('Save or close the open Flow graph'));
+});
+
+test('#7055 a clash-group review step attaches native clash evidence before opening its review home', async () => {
+  assert.ok(recipeRun && availability && RecipeRunCard, 'the native recipe entry point must exist');
+  useViewerStore.setState(fixtureModels(fixtureModel('clash-project')));
+  const result = { clashes: [], summary: summarizeClashes([]), rulesRun: [], settings: { tolerance: 0.002, excludeVoidsAndHosts: true } };
+  useViewerStore.setState({ clashResult: result, clashRawResult: result });
+  useAssistant.setState({ snapshot: null, messages: [], status: 'idle', controller: null });
+  let requests = 0;
+  globalThis.fetch = async () => { requests += 1; throw new Error('Review navigation must not contact a provider'); };
+  assert.equal(recipeRun.startRecipe({ ...recipe, steps: [{ kind: 'review', action: 'clash.groups' }] }, availability.readHostSnapshot(useViewerStore.getState())).ok, true);
+  recipeRun.useRecipeRun.setState({ draftPrompt: 'Earlier recipe prompt still queued' });
+  setAssistantDraft('My unsent review note');
+  render(<RecipeRunCard />);
+  const open = button(); assert.ok(open); assert.equal(open.disabled, false); click(open);
+  assert.equal(useAssistant.getState().snapshot?.source, 'clash');
+  assert.equal(useViewerStore.getState().sidebarActivePanel, 'assistant');
+  assert.equal(recipeRun.useRecipeRun.getState().draftPrompt, null, 'review does not enqueue a composer prompt');
+  const assistantUi = render(<AssistantPanel />);
+  await waitFor(() => assistantUi.querySelector('section[aria-label="Review clash groups"]') !== null, 'native clash review section inside Assistant');
+  assert.equal(useAssistantDraft.getState().text, 'My unsent review note', 'review navigation preserves the user-editable composer');
+  assert.equal(document.querySelector('[role="alertdialog"]'), null, 'review does not replay the queued ask prompt');
+  assert.equal(useAssistant.getState().controller, null); assert.equal(requests, 0);
+});
+
+test('#7055 a graph-patch review step attaches native Flow evidence without queuing a request', () => {
+  assert.ok(recipeRun && availability && RecipeRunCard, 'the native recipe entry point must exist');
+  useViewerStore.setState({ flowDoc: { flowVersion: FLOW_VERSION, id: 'review-graph', name: 'Review graph', capabilities: [], nodes: [], edges: [], inputs: [], outputs: [] } });
+  useAssistant.setState({ snapshot: null, messages: [], status: 'idle', controller: null });
+  assert.equal(recipeRun.startRecipe({ ...recipe, steps: [{ kind: 'review', action: 'flow.patch' }] }, availability.readHostSnapshot(useViewerStore.getState())).ok, true);
+  render(<RecipeRunCard />); const open = button(); assert.ok(open); click(open);
+  assert.equal(useAssistant.getState().snapshot?.source, 'flow');
+  assert.equal(useViewerStore.getState().sidebarActivePanel, 'assistant');
+  assert.equal(recipeRun.useRecipeRun.getState().draftPrompt, null);
+  assert.equal(useAssistant.getState().controller, null);
 });

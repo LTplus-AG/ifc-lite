@@ -27,6 +27,22 @@
     "runModelRequest: function",
     "settleRequest: function"
   ],
+  "@ifc-lite/ai/artifacts": [
+    "ChangeScalar: type",
+    "EDITABLE_ATTRIBUTES: const",
+    "EditableAttribute: type",
+    "MODEL_CHANGE_LIMIT: const",
+    "MODEL_DATA_CHANGE_OUTPUT_GUIDANCE: const",
+    "ModelChange: type",
+    "ModelChangeBatch: interface",
+    "changeKey: function",
+    "parseModelChangeBatch: function"
+  ],
+  "@ifc-lite/ai/chat-completions": [
+    "FlowAiConfig: interface",
+    "chatCompletionsTransport: function",
+    "flowAiConfig: function"
+  ],
   "@ifc-lite/bcf": [
     "BCFBimSnippet: interface",
     "BCFBitmap: interface",
@@ -6345,6 +6361,10 @@
     "rejectCheckpoint: function",
     "resumeOutputs: function",
     "updateCheckpoint: function"
+  ],
+  "@ifc-lite/flow/checkpoint-file": [
+    "FileCheckpointStore: class",
+    "sourceDigestOf: function"
   ],
   "@ifc-lite/geometry": [
     "AABB: interface",

@@ -224,13 +224,14 @@ editor show the same per-node report.
 
 ## AI nodes and review checkpoints
 
-`@ifc-lite/flow-nodes/ai` adds three nodes that call the host's AI model
+`@ifc-lite/flow-nodes/ai` adds four nodes that call the host's AI model
 service (`FlowHost.ai`); they never call a provider themselves:
 
 | Node | Input | Output |
 |---|---|---|
 | `ai.classify` | a table and versioned category definitions | one row per input row: allowed `label`, cited `evidence` columns, `outcome` (`classified`, `unknown`, `failed`, `not-sent`), plus `coverage` |
 | `ai.summarize` | a table of evidence rows, audience, language | narrative `sections` citing row keys; a section without a valid citation is kept as `uncited` |
+| `ai.propose` | selected findings, target/expected-value columns, native field bindings and allowed candidate values | portable `model.changes` artifact with cited row keys and bounded coverage; no mutation |
 | `ai.extract` | text passages and a field schema | typed `records`, each quoting its source span; a span not found verbatim in its passage, or a value of the wrong type, makes the record `unsupported` |
 
 Every AI node declares `network.ai` (graph data goes to the host's model
@@ -254,6 +255,19 @@ claim. For `ai.extract`, `supported` means the quote occurs verbatim and field
 values have the declared types. A reply quoting “30 minutes” with a typed
 value of `999` still passes that structural check; the reviewer must compare
 all candidate values with the captured passage before approval.
+
+`ai.propose` currently allowlists only `model.changes`. Select `GlobalId` and
+all expected-value columns, then bind each allowed native operation through
+`fields` (`op`, `name`, optional `pset`/`qset`/`dataType`, `expectedColumn`,
+and `allowedValues`; deletes omit candidate values). A shared GlobalId requires
+an explicit selected model-id column. Unknown targets, uncited changes,
+changed expected values, unselected fields and candidates outside the allowed
+values refuse the entire draft. Clarification, truncation and exhausted budgets
+also produce no artifact. Coverage distinguishes findings sent from findings
+excluded by `maxRows`. The artifact uses the same parser as viewer corrections,
+exported separately through `@ifc-lite/ai/artifacts`; it remains a proposal.
+Approval of a checkpoint does not establish current permissions or values:
+application must still pass native mutation preflight and explicit review.
 
 **Review checkpoints.** A node that declares `review: 'required'` (every AI
 node does) produces a proposal; the run stops downstream of it (status
@@ -318,7 +332,18 @@ writes before and after the pause are separate undo steps.
 In a real host the transitions go through `updateCheckpoint` with a durable
 store; the CLI's `flow run --checkpoint` / `flow review` / `flow resume`
 (see the [CLI guide](cli.md)) and the viewer's Flow
-panel do exactly that. MCP currently reports AI nodes unavailable.
+panel do exactly that. MCP uses the same opt-in provider environment as the CLI.
+`run_flow` requires a new allowed `checkpoint_path` for review-capable graphs
+and returns a `pending` artifact with its exact approval digest. A separate
+`resume_flow` call supplies that `approved_digest`, the same graph and Player
+inputs, and the returned `model_id`. It rechecks current mutate scope, graph,
+all accessible native effective model exports and the original root budget
+before claiming once. Completed nodes replay without a provider request;
+downstream AI still needs host configuration. A further review requires a new
+`next_checkpoint_path` before continuation. Checkpoints never overwrite existing
+files; secret-bearing restored outputs are refused. The shared
+`@ifc-lite/flow/checkpoint-file` entry provides the CLI/MCP disk CAS store.
+MCP tracking remains per run, as on the existing native host.
 Pass the effective node registry when creating a checkpoint and computing its
 claim digest so a changed review policy refuses the resume. Graph identities, names and node labels also bind the digest,
 because they determine default write tracking keys. Cached proposals still pause
@@ -897,3 +922,10 @@ that lock and retrying; an old lock alone does not establish that a writer stopp
 Checkpoint compatibility uses the executed graph, including resolved secret parameters;
 the checkpoint stores its digest, not those credentials. Changing the execution parameters
 requires a new run and review.
+
+`propose_flow` lets a read-only MCP caller run a native read/AI-only graph to
+a pending artifact. It rejects declared or node-defined effects and permits
+only `model.read` and `network.ai`. The current read scope and model allowlist
+still apply; the separate `resume_flow` requires current mutate authorization.
+MCP responses and checkpoint budgets include provider usage receipts without
+prompts, replies or credentials; receipt history survives subsequent pauses.

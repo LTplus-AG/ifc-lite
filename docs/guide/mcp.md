@@ -112,7 +112,7 @@ Tools are grouped by capability. Everything below is registered in the default t
 | bSDD | `bsdd_search`, `bsdd_class`, `bsdd_property_sets`, `bsdd_match` |
 | Diff | `model_diff`, `quantity_diff` |
 | Export | `export_ifc`, `export_csv`, `export_json`, `export_glb`, `export_obj`, `export_ifcx`, `export_usd`, `export_pdf_report` *(planned)* |
-| Flow | `describe_flow`, `run_flow` |
+| Flow | `describe_flow`, `run_flow`, `propose_flow`, `resume_flow` |
 | Viewer | `viewer_ask`, `viewer_open`, `viewer_close`, `viewer_status`, `viewer_colorize`, `viewer_isolate`, `viewer_hide`, `viewer_show`, `viewer_reset`, `viewer_fly_to`, `viewer_set_section`, `viewer_clear_section`, `viewer_color_by_storey`, `viewer_color_by_property`, `viewer_get_selection`, `viewer_wait_for_selection`, `viewer_describe_selection` |
 | Draft layers & review | `create_draft_layer`, `draft_apply_ops`, `publish_layer`, `diff_layer`, `dry_run_merge`, `list_conflicts`, `request_review`, `add_review_feedback`, `get_review_feedback`, `add_review_topic`, `respond_to_review` |
 
@@ -275,6 +275,22 @@ Tools are grouped by capability. Everything below is registered in the default t
     `truncated` flag. A failed node marks the whole run `ok: false`, and any
     output downstream of it comes back with no data rather than reporting the
     half-applied model as a success.
+
+    AI nodes are opt-in through `IFC_LITE_AI_MODEL`, `IFC_LITE_AI_API_KEY`
+    and optional `IFC_LITE_AI_BASE_URL`, using the CLI's shared compatible
+    transport and root budget. A review-capable `run_flow` requires a new
+    `checkpoint_path` under `--allow`; it returns `pending.artifacts`,
+    `pending.proposal_digest`, the original budget and the active `model_id`.
+    Downstream effects stay paused. The separate authorized `resume_flow`
+    takes the same graph/inputs, `checkpoint_path` and exact `approved_digest`.
+    It checks current mutate scope and native model state, consumes one disk
+    claim, and restores completed outputs without requesting a new answer.
+    Changing the evidence, graph or budget receipt refuses continuation.
+    Downstream AI requests share the existing allowance. Supply a new
+    `next_checkpoint_path` when another review remains ahead; persistence
+    failure after a claim is recorded as partially committed. A lost owner
+    cannot apply the same record again. Cancellation does not undo effects
+    already completed before a pause or failure.
 
     `element.wall`, `element.column`, `element.slab`, `element.beam`,
     `element.stair` and `element.railing` specs
@@ -542,3 +558,10 @@ Cancelled requests return `CANCELLED`; concurrent changes or preparation ownersh
 return `STATE_CHANGED`, both with `details.retryable: true`. An unavailable native
 runtime returns `UNSUPPORTED_OPERATION` with reason `NATIVE_RUNTIME_UNAVAILABLE`.
 Malformed commands and unsupported input shapes retain `INVALID_INPUT`.
+
+`propose_flow` lets a read-only MCP caller run a native read/AI-only graph to
+a pending artifact. It rejects declared or node-defined effects and permits
+only `model.read` and `network.ai`. The current read scope and model allowlist
+still apply; the separate `resume_flow` requires current mutate authorization.
+MCP responses and checkpoint budgets include provider usage receipts without
+prompts, replies or credentials; receipt history survives subsequent pauses.

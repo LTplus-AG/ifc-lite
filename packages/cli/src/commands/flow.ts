@@ -62,8 +62,9 @@ import {
 import { aiNodes, AI_FEATURE, FLOW_AI_BUDGET } from '@ifc-lite/flow-nodes/ai';
 import { createRootBudget, restoreRootBudget } from '@ifc-lite/ai';
 import { createHeadlessContext } from '../loader.js';
-import { createCliAiService, flowAiConfig } from './flow-ai.js';
-import { sourceDigestOf } from './flow-checkpoint.js';
+import { createCliAiService } from './flow-ai.js';
+import { flowAiConfig } from '@ifc-lite/ai/chat-completions';
+import { sourceDigestOf } from '@ifc-lite/flow/checkpoint-file';
 import { checkDistinctDestinations, checkPauseDestination, checkpointNodes, claimForResume, failResume, finishResume, PAUSED_FOR_REVIEW, preparePause, reportPause, reviewCommand, savePause, type Resume } from './flow-review.js';
 import { createCliFlowSession } from './flow-host.js';
 import { fatal, getAllFlags, hasFlag, printJson } from '../output.js';

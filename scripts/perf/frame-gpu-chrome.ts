@@ -147,7 +147,14 @@ async function launchOnce(exe: string, policy: Limits): Promise<WindowsChrome> {
       '--disable-features=BatterySaverModeAvailable,HighEfficiencyModeAvailable', 'about:blank',
     ], { detached: true, stdio: 'ignore' });
     let spawnError: Error | null = null;
-    child.once('error', error => { spawnError = error; });
+    let spawnSucceeded = false;
+    child.once('spawn', () => { spawnSucceeded = true; });
+    child.once('error', error => {
+      spawnError = error;
+      // Only a failed OS spawn with neither a spawn event nor a PID proves
+      // there was no child. Errors after spawn retain owned cleanup (#7180).
+      if (!spawnSucceeded && child.pid === undefined) spawned = false;
+    });
     child.unref(); spawned = true;
     const ownedWin = profileWin;
     const chrome: WindowsChrome = { cdpUrl: `http://127.0.0.1:${port}`, profileWin, startupFailures: [],

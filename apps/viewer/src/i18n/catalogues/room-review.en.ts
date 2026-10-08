@@ -1,0 +1,43 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
+import type { TranslationValue } from '../types';
+export const roomReviewEn = {
+  'roomReview.title': 'Review rooms',
+  'roomReview.proposal': 'Room proposal',
+  'roomReview.summary': 'One Room action, prepared locally before approval',
+  'roomReview.action.auto': 'Create rooms from all untaken faces',
+  'roomReview.action.pick': 'Create a room at the supplied point',
+  'roomReview.action.footprint': 'Create one storey footprint room',
+  'roomReview.action.update': 'Update the supplied rooms',
+  'roomReview.action.edit': 'Edit the current room layout',
+  'roomReview.unnamedStorey': 'Unnamed storey',
+  'roomReview.unnamedRoom': 'Unnamed room',
+  'roomReview.settings': 'Native metres: weld {weld}, height {height}, elevation {z}; minimum area {area} m²; boundary {boundary}.',
+  'roomReview.prepareHint': 'Prepare from the current walls to inspect the complete affected population. This changes no IFC rooms.',
+  'roomReview.point': 'Explicit pick point: {x}, {y} metres in this storey.',
+  'roomReview.wholeAuto': 'Approval applies every captured untaken face on this storey together. Individual room selection is unavailable for Auto.',
+  'roomReview.prepare': 'Prepare room preview',
+  'roomReview.preparing': 'Preparing current rooms…',
+  'roomReview.cancel': 'Cancel preparation',
+  'roomReview.population': '{candidates} native candidates · {rooms} existing rooms in this storey',
+  'roomReview.planned': 'Create {created} · update {updated} · delete {deleted} · skip {skipped}',
+  'roomReview.plan': 'Prepared native room outlines in storey-local metres',
+  'roomReview.geometry': 'Outline area {area} m² · extrusion height {height} m · elevation {z} m',
+  'roomReview.contour': 'Complete native contour in metres',
+  'roomReview.operation': 'Layout operation: {kind}; tolerance {tolerance} m.',
+  'roomReview.layoutContours': '{count} complete post-edit layout contours in metres',
+  'roomReview.deleteRoom': 'Delete room: {name}',
+  'roomReview.skipped': '{count} supplied rooms have no supported current face and will remain unchanged.',
+  'roomReview.sessionOnly': 'This changes the session layout only. No IFC room is written; IFC export does not save this unmaterialized layout. Native Undo/Redo retains it in this session.',
+  'roomReview.approveAction': 'Approve this complete Room action',
+  'roomReview.apply': 'Apply Room action',
+  'roomReview.attach': 'Attach this room snapshot to the next message',
+  'roomReview.attached': 'Room snapshot: {candidates} candidates, {rooms} existing rooms',
+  'roomReview.stale': 'The current source or layout changed. Prepare the Room preview again.',
+  'roomReview.applied': 'Applied through native Room: created {created}, updated {updated}, deleted {deleted}.',
+  'roomReview.undo': 'Undo this Room action',
+  'roomReview.undone': 'The native Room action was undone.',
+  'roomReview.receiptFailed': 'The native Room action succeeded, but its library receipt could not be stored. The current native Undo history remains available.',
+} as const satisfies Record<string, TranslationValue>;

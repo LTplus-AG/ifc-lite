@@ -29,6 +29,8 @@ validation:
 # Autodesk's delivery plan records qualification work; public usage belongs in
 # the web viewer guide rather than the implementation checklist.
 not_in_nav: |
+  # IDS Studio campaign plan, tracker and handover; internal engineering docs, linked from the IDS guide once Studio ships.
+  architecture/ids-studio/**
   # Issue-scoped viewer AI charter; linked from its user guide as layers ship.
   architecture/viewer-ai-plan.md
   architecture/viewer-ai-implementation.md

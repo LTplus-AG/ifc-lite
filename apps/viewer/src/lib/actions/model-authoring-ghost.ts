@@ -14,6 +14,8 @@
  * ghost; their row says what changes.
  */
 
+import { linearProfileFrame } from '@ifc-lite/create';
+import { sectionGhostMesh } from '@/lib/profile-section/profile-outline';
 import type { MeshData } from '@ifc-lite/geometry';
 import type { ViewerState } from '@/store';
 import { toGlobalIdFromModels } from '@/store/globalId';
@@ -24,6 +26,7 @@ import type { Workplane } from '@/lib/commands/modeling/types';
 import { transformedGhosts, type TransformSelection } from '@/lib/commands/modeling/commands/element-transform-shared';
 import { planElementTransform } from '@/lib/element-transform/plan';
 import { readWallMetres } from '@/store/slices/mutation-wall-resize';
+import { authoringCopyGhosts } from './model-authoring-copy-ghost';
 import { authoredElementOf, type ElementId } from './model-authoring-native';
 import { toMetres, type AuthoringOp, type ModelAuthoringBatch } from './model-authoring';
 import type { AuthoringRow, ModelAuthoringPreview } from './model-authoring-preview';
@@ -47,13 +50,25 @@ function createGhost(state: ViewerState, batch: ModelAuthoringBatch, row: Author
   const wp = plane(state, row.modelId!, row.resolved.storey ?? null);
   if (!wp) return null;
   const element = authoredElementOf(batch, op);
+  if (element.kind === 'beam' || element.kind === 'member') {
+    const p = element.params;
+    const profile = 'Profile' in p ? p.Profile : { Type: 'Rectangle' as const, XDim: p.Width, YDim: p.Height };
+    return sectionGhostMesh(wp, profile, linearProfileFrame(p.Start, p.End), id);
+  }
+  if (element.kind === 'column' && 'Profile' in element.params) {
+    const p = element.params;
+    return sectionGhostMesh(wp, p.Profile, { origin: p.Position, u: [1, 0, 0], v: [0, 1, 0], along: [0, 0, 1], length: p.Height }, id);
+  }
+  if ((element.kind === 'slab' || element.kind === 'roof' || element.kind === 'plate' || element.kind === 'space') && 'OuterCurve' in element.params) {
+    const p = element.params, origin = p.Position ?? [0, 0, 0];
+    const depth = 'Thickness' in p ? p.Thickness : p.Height;
+    return prismGhostMesh(wp, p.OuterCurve.map(([x, y]) => [x + origin[0], y + origin[1]]), origin[2], origin[2] + depth, id);
+  }
   switch (element.kind) {
-    case 'wall': case 'beam': case 'member': {
-      const p = element.params as { Start: V3; End: V3; Height: number; Thickness?: number; Width?: number };
-      const outline = segmentOutline([p.Start[0], p.Start[1]], [p.End[0], p.End[1]], p.Thickness ?? p.Width ?? 0);
-      // A wall stands on its axis; a beam's or member's section is centred on it.
-      const [z0, z1] = element.kind === 'wall' ? [p.Start[2], p.Start[2] + p.Height] : [p.Start[2] - p.Height / 2, p.Start[2] + p.Height / 2];
-      return prismGhostMesh(wp, outline, z0, z1, id);
+    case 'wall': {
+      const p = element.params;
+      const outline = segmentOutline([p.Start[0], p.Start[1]], [p.End[0], p.End[1]], p.Thickness);
+      return prismGhostMesh(wp, outline, p.Start[2], p.Start[2] + p.Height, id);
     }
     case 'column': {
       const p = element.params as { Position: V3; Width: number; Depth: number; Height: number };
@@ -71,7 +86,8 @@ function createGhost(state: ViewerState, batch: ModelAuthoringBatch, row: Author
 function hostAxis(state: ViewerState, batch: ModelAuthoringBatch, preview: ModelAuthoringPreview, row: AuthoringRow, host: ElementId): { axis: WallAxis; storey: number | null } | null {
   if ('ref' in host) {
     const creator = preview.rows[row.dependsOn[0]];
-    const element = authoredElementOf(batch, creator.op as Extract<AuthoringOp, { op: 'element.create' }>);
+    if (creator.op.op !== 'element.create') return null;
+    const element = authoredElementOf(batch, creator.op);
     if (element.kind !== 'wall') return null;
     return { axis: { start: element.params.Start, end: element.params.End, thickness: element.params.Thickness }, storey: creator.resolved.storey ?? null };
   }
@@ -127,6 +143,7 @@ export function authoringGhosts(state: ViewerState, preview: ModelAuthoringPrevi
     switch (row.op.op) {
       case 'element.create': { const mesh = createGhost(state, preview.batch, row, id); if (mesh) meshes.push(mesh); break; }
       case 'hosted.create': { const mesh = hostedGhost(state, preview.batch, preview, row, id); if (mesh) meshes.push(mesh); break; }
+      case 'element.copy': case 'element.array': meshes.push(...authoringCopyGhosts(state, preview.batch, row, id)); break;
       case 'element.move': case 'element.rotate': case 'element.delete': meshes.push(...transformGhosts(state, preview.batch, row, id)); break;
       default: break;
     }

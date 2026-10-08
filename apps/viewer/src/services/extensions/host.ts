@@ -495,11 +495,8 @@ export class ExtensionHostService {
     // we cast it back to the viewer's Lens shape since both ends agree
     // on the schema (FlavorDialog.handleCaptureCurrent put it in).
     try {
-      const lenses = target.lenses
-        .map((entry) => entry.definition as unknown)
-        .filter((d): d is import('@ifc-lite/lens').Lens =>
-          !!d && typeof d === 'object' && 'id' in d && 'rules' in d,
-        );
+      const { decodeFlavorLenses } = await import('@/lib/lens/flavor-lens-codec');
+      const lenses = decodeFlavorLenses(target.lenses.map(entry => entry.definition));
       // Late import keeps the host service free of UI store deps for
       // headless test environments — only the browser viewer wires it.
       const { useViewerStore } = await import('@/store');

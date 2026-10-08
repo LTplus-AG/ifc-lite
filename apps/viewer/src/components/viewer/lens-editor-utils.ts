@@ -49,6 +49,7 @@ export function duplicateLensConfig(lens: Lens, generateId: () => string): Lens 
     rules: cloneLensRules(lens.rules).map((r, i) => ({ ...r, id: `${newId}-rule-${i}` })),
   };
   if (lens.autoColor) copy.autoColor = { ...lens.autoColor };
+  if (lens.capturedScope) copy.capturedScope = structuredClone(lens.capturedScope);
   return copy;
 }
 

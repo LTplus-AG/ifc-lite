@@ -15,7 +15,6 @@ export function captureArtifactScope(mode: CapturedEntityScope['mode'], state: V
   if (refs.length === 0) throw new Error(`There are no ${mode} elements to capture. Select or show elements and try again.`);
   if (refs.length > MAX_CAPTURED_SCOPE_MEMBERS) throw new Error(`Capture at most ${MAX_CAPTURED_SCOPE_MEMBERS.toLocaleString()} elements. Narrow the selection or visible population first.`);
   const sources = new Map<string, CapturedEntityScope['sources'][number]>();
-  const creationsByModel = new Map<string, Map<number, string>>();
   for (const ref of refs) {
     const model = state.models.get(ref.modelId);
     if (!model?.sourceFingerprint || !model.sourceContentHash) throw new Error('The original file identity is unavailable. Reload that file before capturing its elements.');
@@ -26,14 +25,10 @@ export function captureArtifactScope(mode: CapturedEntityScope['mode'], state: V
     }
     const view = state.mutationViews.get(ref.modelId);
     let creationId: string | undefined;
-    if (view?.getNewEntity(ref.expressId)) {
-      let creations = creationsByModel.get(ref.modelId);
-      if (!creations) {
-        creations = new Map(view.getMutations().filter(m => m.type === 'CREATE_ENTITY').map(m => [m.entityId, m.id]));
-        creationsByModel.set(ref.modelId, creations);
-      }
-      creationId = creations.get(ref.expressId);
-      if (!creationId) throw new Error('An authored element has no recoverable creation identity. Capture after restoring its original edit history.');
+    const created = view?.getNewEntity(ref.expressId);
+    if (created) {
+      creationId = created.creationId;
+      if (!creationId) throw new Error('An authored element\'s original identity is unavailable. Restore its original record before capturing it.');
     }
     source.members.push({ expressId: ref.expressId, ...(creationId ? { creationId } : {}) });
   }

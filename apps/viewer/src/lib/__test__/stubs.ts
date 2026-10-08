@@ -83,6 +83,9 @@ export class StubStoreEditor {
 export class StubView {
   private positional = new Map<number, Map<number, unknown>>();
 
+  // #7289: this fixture has no logical property/quantity edits; positional
+  // relationship edits are modeled separately by the paired editor.
+  hasChanges(_id: number): boolean { return false; }
   isDeleted(_id: number): boolean { return false; }
   getNewEntities(): OverlayEntity[] { return []; }
   getTypeMutations(): Map<number, { newType: string }> { return new Map(); }

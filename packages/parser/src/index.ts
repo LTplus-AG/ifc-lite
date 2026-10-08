@@ -222,10 +222,10 @@ export * from './types.js';
 // belong in a fix PR; it needs its own.
 export { getAttributeNames, getAttributeNamesAcrossSchemas, getAttributeNamesForSchema, getAttributeTypeForSchema, getAttributeNameAt, isKnownType, isInstantiable, isQueryableObjectType, normalizeIfcTypeName, resolveEntityNameAlias, getInheritanceChain as getInheritanceChainAcrossSchemas } from './ifc-schema.js';
 export { resolveEffectiveEntityRecord, type EffectiveEntityRecord, type EntityRecordEdits } from './effective-entity-record.js';
+export { effectiveMetadataRecord } from './effective-metadata-record.js';
 export { resolveEffectiveRelationshipOverlay, effectiveRelationshipEdges, type EffectiveRelationship, type EffectiveRelationshipOverlay, type RelationshipOverlayReader } from './effective-relationship-overlay.js';
 export { effectiveSpatialMemberIds, type EffectiveSpatialContext } from './effective-spatial-members.js';
 export { effectiveStoreyId } from './effective-storey.js';
-
 import type { IfcEntity, ParseResult } from './types.js';
 import { EntityIndexBuilder } from './entity-index.js';
 import { EntityExtractor } from './entity-extractor.js';

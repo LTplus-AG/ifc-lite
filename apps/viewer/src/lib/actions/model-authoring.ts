@@ -103,7 +103,7 @@ function element(value: unknown, at: string, refs: ReadonlyMap<string, Authoring
 
 /** A wall by its expected class, or a wall an earlier `element.create` builds. */
 function isWall(target: ElementTarget, refs: ReadonlyMap<string, AuthoringOp>): boolean {
-  if (!isNewElement(target)) return /^IfcWall/.test(target.ifcClass);
+  if (!isNewElement(target)) return target.ifcClass.startsWith('IfcWall');
   const creator = refs.get(target.ref);
   return creator?.op === 'element.create' && creator.ifcClass === 'IfcWall';
 }

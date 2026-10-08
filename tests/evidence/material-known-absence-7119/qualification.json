@@ -1,0 +1,209 @@
+{
+  "issue": 7119,
+  "sourceCommit": "3f8d6a14c93a3a5ed3aadb28e3e9ab9128553499",
+  "frozenMain": "61bda95f21e16ce37ddced25ad0432943736a068",
+  "rustTree": "1a1acc4260011c591fd8ce3c5387bb7c10b42f20",
+  "sourcePins": {
+    "packages/parser/src/material-definitions.ts": "1a462d754a3d7117cfb19fed3b2a1feeef07f9a8ad9d863422cba23775d3d510",
+    "packages/parser/test/on-demand-classification-material.test.ts": "83123043c120ce23de6a9e4ab4622d384362294f17d9d629e6730b6f7f6db9ac",
+    "apps/viewer/src/lib/assistant/adapters/selection-materials.test.tsx": "d49b0983d1a40fffb2a248b283a9d6ff4b9fd1a66a6f125af2e07cfc88cb420c",
+    ".changeset/quiet-material-names.md": "8649798f31a12bcbcb8d334947235890d02acf6ec724c5a038d2ab7489f96e36"
+  },
+  "qualification": [
+    {
+      "phase": "f43 old production with new real parser fixture",
+      "result": "19 pass, 1 new known-absent assertion failure; exact production restored",
+      "log": "root-turbo-inverse.log.gz"
+    },
+    {
+      "phase": "f43 restored production",
+      "result": "20/20 focused and97/97 broader parser passed; original helper subsequently superseded by main7209",
+      "logs": [
+        "root-turbo-restored.log.gz",
+        "root-turbo-parser-broader.log.gz"
+      ]
+    },
+    {
+      "phase": "f43 first viewer run",
+      "result": "54 pass,2 inherited obsolete rendered-caveat assertion failures; actual raw/server5296 material semantics passed",
+      "log": "root-turbo-viewer-material.log.gz"
+    },
+    {
+      "phase": "f43 corrected viewer caveats",
+      "result": "56/56 passed; subsequent typing-only expected numeric count adjustment covered by21/21 affected file",
+      "logs": [
+        "root-turbo-final-viewer-material.log.gz",
+        "root-turbo-final-typed-selection-material.log.gz"
+      ]
+    },
+    {
+      "phase": "final61b canonical7209 helper",
+      "result": "20/20 parser tests passed; only two7119 invariants and one import added to main fixture",
+      "log": "root-turbo-final-main61b-parser.log.gz"
+    },
+    {
+      "phase": "final61b four-file source",
+      "result": "plain fullroot typecheck passed3732/3732 test files across62 packages; all8 final light gates passed",
+      "log": "plain-root-full-typecheck.log.gz"
+    }
+  ],
+  "runtimeScope": "Fresh inverse build emitted5606 wasm; loose Turbo viewer receipt records5606 before andb335 after. Fullroot typecheck independently records5606 before and8b after. These actual artifact transitions are preserved; no unified runtime identity, browser/native performance or speed claim. Typing-only viewer rerun has source receipt but no inline runtime receipt. Rust source tree unchanged.",
+  "canonicalHelperNormalizationProof": "final-canonical-fixture-and-selection-provenance.json",
+  "ciOriginScope": "Node parser fixture failure and viewer shard1 material known-absence failure; root receipt additionally references quantity shard5 owned by peer7212 and outside this fix.",
+  "archives": [
+    {
+      "path": "tests/evidence/material-known-absence-7119/root-turbo-parser-broader.log.gz",
+      "rawSha256": "2b602912a039d65890f109853f57515027b33a4a74ddeeae2aaf1776d924ff88",
+      "gzipSha256": "6973a9ae2b595f49a364a471f29d4bde2d443c370d629742b226b2376c258a95",
+      "rawSizeBytes": 6662
+    },
+    {
+      "path": "tests/evidence/material-known-absence-7119/final-light-0.log.gz",
+      "rawSha256": "7aafcf3e3817b2839a40b1e00348aed52c3e746650b49394fd1bcb6c78c8d29f",
+      "gzipSha256": "3fe97705e0ace67ebe94b9c6738fb8ebd36bcdb56cf3e0e3b358069bb3faef30",
+      "rawSizeBytes": 46755
+    },
+    {
+      "path": "tests/evidence/material-known-absence-7119/final-light-7.log.gz",
+      "rawSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "gzipSha256": "9ceffb7310338057cfe71a4ae1e2c98d2c485d81cdef906532a801f457a38d64",
+      "rawSizeBytes": 0
+    },
+    {
+      "path": "tests/evidence/material-known-absence-7119/final-light-5.log.gz",
+      "rawSha256": "7c171e7e4285b28cda57f3ef004e5665205a158bc943abfa1eaba361d4c2aeb7",
+      "gzipSha256": "16968c31f9248af2cf03cecd333f3baf523d92341ab533225fbdde92bb006c3c",
+      "rawSizeBytes": 171
+    },
+    {
+      "path": "tests/evidence/material-known-absence-7119/offline-install.log.gz",
+      "rawSha256": "4fd708b18e068f0f58363618ed0aa31116dad884e3aa4e7e8de3ff38664b9fc5",
+      "gzipSha256": "661b4b87294dd291c8c8b473a3bfb2dd59ae94248ee6762bae82ccdfab043ce9",
+      "rawSizeBytes": 1762
+    },
+    {
+      "path": "tests/evidence/material-known-absence-7119/light-0.log.gz",
+      "rawSha256": "7aafcf3e3817b2839a40b1e00348aed52c3e746650b49394fd1bcb6c78c8d29f",
+      "gzipSha256": "3fe97705e0ace67ebe94b9c6738fb8ebd36bcdb56cf3e0e3b358069bb3faef30",
+      "rawSizeBytes": 46755
+    },
+    {
+      "path": "tests/evidence/material-known-absence-7119/root-turbo-viewer-material.log.gz",
+      "rawSha256": "8922ba926b535babb923139fdadb52bcdb4e26b6c1e7addadd60c963834bb1ed",
+      "gzipSha256": "3a26105e61c4035b4b61f9a614d309d9f873bd285fc2372add4ef4e8e4843608",
+      "rawSizeBytes": 113778
+    },
+    {
+      "path": "tests/evidence/material-known-absence-7119/light-4.log.gz",
+      "rawSha256": "107e57304f0cecf409a7c923aeca6ca16c8caa0bdb821e2144675196d8f5f2a1",
+      "gzipSha256": "ced49de787d8812b16ac5b6f1dec17e1f39232dd89dc479a713cfce6cf562dee",
+      "rawSizeBytes": 56
+    },
+    {
+      "path": "tests/evidence/material-known-absence-7119/plain-root-full-typecheck.log.gz",
+      "rawSha256": "907d84fae40006af41c477715a5bafb3568beaafb7b27b09425b5e5d552a3864",
+      "gzipSha256": "2b53c7df2875a1593e2e2f1112549fae44bf9ac1e6f10802172e7e8f60be568a",
+      "rawSizeBytes": 48847
+    },
+    {
+      "path": "tests/evidence/material-known-absence-7119/light-2.log.gz",
+      "rawSha256": "98a10385e08b01728c5beafad6abc4108f0096cb636594ec566c3f51a2950c30",
+      "gzipSha256": "15b34a6b5c7ff51cbcf9fa5707542d2a6b2fc540ddc13e73db4170356830d853",
+      "rawSizeBytes": 859
+    },
+    {
+      "path": "tests/evidence/material-known-absence-7119/final-light-2.log.gz",
+      "rawSha256": "98a10385e08b01728c5beafad6abc4108f0096cb636594ec566c3f51a2950c30",
+      "gzipSha256": "15b34a6b5c7ff51cbcf9fa5707542d2a6b2fc540ddc13e73db4170356830d853",
+      "rawSizeBytes": 859
+    },
+    {
+      "path": "tests/evidence/material-known-absence-7119/final-light-3.log.gz",
+      "rawSha256": "1eb61a718f2d55532a9068fbceb3ae882496bcca1c26cd2f7fdf320afbcda433",
+      "gzipSha256": "86b16fcb55a6d7d0cd1e9832c52da2ef8dec1c8e3eee895ee7d76e55f5f90340",
+      "rawSizeBytes": 30991
+    },
+    {
+      "path": "tests/evidence/material-known-absence-7119/final-light-4.log.gz",
+      "rawSha256": "107e57304f0cecf409a7c923aeca6ca16c8caa0bdb821e2144675196d8f5f2a1",
+      "gzipSha256": "ced49de787d8812b16ac5b6f1dec17e1f39232dd89dc479a713cfce6cf562dee",
+      "rawSizeBytes": 56
+    },
+    {
+      "path": "tests/evidence/material-known-absence-7119/root-turbo-final-viewer-material.log.gz",
+      "rawSha256": "b7cc13752084c45498b878fab044cfdc7a2acbe7ed97fa4e3f36394a19116399",
+      "gzipSha256": "4723d09c13ae2d3d770b64734620f0ca2b93aad2fe7e975f02bc612e9e1b5bca",
+      "rawSizeBytes": 107098
+    },
+    {
+      "path": "tests/evidence/material-known-absence-7119/light-3.log.gz",
+      "rawSha256": "14a8ec4c973f8354b827519d2ca00ce032086896b6b13a663f89b08d0feb995d",
+      "gzipSha256": "6107c53ca1f35d25be28e9901a56f87bef1811e5e533865c4255355e990c1a6d",
+      "rawSizeBytes": 30991
+    },
+    {
+      "path": "tests/evidence/material-known-absence-7119/root-turbo-restored.log.gz",
+      "rawSha256": "2e2f8d5db8508108cbff53fd33e8909a63b13498d374ceca49ba54c2eca0631a",
+      "gzipSha256": "9ee9204e7d26cc23be5e64161fd83f5e2a1fc1e0d4771d50bfd52574ba9e5a59",
+      "rawSizeBytes": 15406
+    },
+    {
+      "path": "tests/evidence/material-known-absence-7119/light-5.log.gz",
+      "rawSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "gzipSha256": "9ceffb7310338057cfe71a4ae1e2c98d2c485d81cdef906532a801f457a38d64",
+      "rawSizeBytes": 0
+    },
+    {
+      "path": "tests/evidence/material-known-absence-7119/root-turbo-final-typed-selection-material.log.gz",
+      "rawSha256": "4289085bcdc2107b78616f5da58f3ec091d694de11c0334d4e4e61a50e92a011",
+      "gzipSha256": "0f2605e8d1daeafbf27f3a8d439eb7f36628dbd30376ed48a44f55c1361bb4e2",
+      "rawSizeBytes": 98542
+    },
+    {
+      "path": "tests/evidence/material-known-absence-7119/root-turbo-inverse.log.gz",
+      "rawSha256": "686f8d942c1341405c989c4c17dbc19600f382b624733cebafb2ba02a608e6c8",
+      "gzipSha256": "5d16a76b1801c08b300e4d04124c848c46d87131e457b7120cc5fa0170c738fd",
+      "rawSizeBytes": 18046
+    },
+    {
+      "path": "tests/evidence/material-known-absence-7119/root-turbo-final-main61b-parser.log.gz",
+      "rawSha256": "2b92897a1df6a791980a4a62265ae72db5f51527525e4972abdebb953c7d0787",
+      "gzipSha256": "3892ddd6b0aa1dde915248416270442cb2388c1d2b94ad6cbf771673de6e8be8",
+      "rawSizeBytes": 15406
+    },
+    {
+      "path": "tests/evidence/material-known-absence-7119/root-turbo-final-guid-parser.log.gz",
+      "rawSha256": "963af3885f8ef6f707e7262d39219668aadffa752f8940e81063ee3c171e8f33",
+      "gzipSha256": "de2ab4feec9fdf47ec5b327cecf6f415dbcb646390a5bb028200991f3fe0ec63",
+      "rawSizeBytes": 15406
+    },
+    {
+      "path": "tests/evidence/material-known-absence-7119/light-1.log.gz",
+      "rawSha256": "ee0b5789606315022268c1fdbf1128a49b853a3dacd4b4b68c2a36e865d0e91a",
+      "gzipSha256": "7138b4bc7f873f5eaf457d489dbd432943d44a790d91b84ae1ccbd21dade6004",
+      "rawSizeBytes": 13046
+    },
+    {
+      "path": "tests/evidence/material-known-absence-7119/final-light-6.log.gz",
+      "rawSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "gzipSha256": "9ceffb7310338057cfe71a4ae1e2c98d2c485d81cdef906532a801f457a38d64",
+      "rawSizeBytes": 0
+    },
+    {
+      "path": "tests/evidence/material-known-absence-7119/final-light-1.log.gz",
+      "rawSha256": "c7d347bca78c9e4465c0bc005f95ce268d2d5991d54c5ff864c5ac046aa4f6bf",
+      "gzipSha256": "24555c3ebb9b9a134e1b6dc489828bbf08d11fa514f83f3744b95a89aa2fca4f",
+      "rawSizeBytes": 13046
+    }
+  ],
+  "pending": [
+    "fresh exact-head CI and PR review",
+    "parent merge assessment"
+  ],
+  "performanceClaim": false,
+  "rootIndependentReview": {
+    "path": "root-independent-review.json",
+    "sha256": "176ed7817e433c7c50ed178587f4e32be3ed38b736525766ae0722c99c60698e",
+    "scope": "four final source pins, canonical helper provenance, final parser/fullroot/viewer21 and light receipts; fresh PR-head CI remains required"
+  }
+}

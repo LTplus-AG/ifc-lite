@@ -39,10 +39,20 @@ for (let generation = 0; generation < 3; generation++) await requireCollected(di
 assert.equal(source.positions.length, 9, 'the source is intentionally still alive');
 
 const retained = carryReleasedMesh(source, { ...source });
-const buffers = [new WeakRef(source.positions), new WeakRef(source.normals), new WeakRef(source.indices)];
+const independentIndices = source.indices.slice();
+const appearanceOnly = carryReleasedMesh(source, { ...source, positions: source.positions.slice(), normals: source.normals.slice(),
+  indices: independentIndices, appearanceSource: { kind: 'canonical-item', indices: independentIndices,
+    sourceIndices: source.indices.subarray(0, 0) } });
+const buffers = [new WeakRef(source.positions), new WeakRef(source.normals), new WeakRef(source.indices),
+  new WeakRef(source.positions.buffer), new WeakRef(source.normals.buffer), new WeakRef(source.indices.buffer),
+  new WeakRef(appearanceOnly.appearanceSource!.sourceIndices)];
 releaseCpuMeshBuffers([source]);
 await requireCollected(buffers);
 assert.equal(source.positions.length, 0);
 assert.equal(retained.positions.length, 0, 'the retained copy itself stays alive');
 assert.deepEqual(meshGeometryCounts(source), { triangles: 1, vertices: 3 });
 assert.deepEqual(meshGeometryCounts(retained), { triangles: 1, vertices: 3 });
+assert.equal(appearanceOnly.indices, independentIndices, 'independent topology intentionally stays alive');
+assert.equal(appearanceOnly.appearanceSource!.indices, independentIndices);
+assert.equal(appearanceOnly.appearanceSource!.sourceIndices.buffer.byteLength, 0, 'retained empty view no longer pins the backing buffer');
+assert.deepEqual(meshGeometryCounts(appearanceOnly), { triangles: 1, vertices: 3 });

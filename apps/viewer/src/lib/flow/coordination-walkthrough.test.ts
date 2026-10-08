@@ -59,14 +59,14 @@ it('runs the loaded-model variant through the real graph, retained report, nativ
   try {
     const rulesText = await readFile(new URL('./examples/09-coordination-walls.rules.json', import.meta.url), 'utf8');
     const parsed = parseRuleSetFile(JSON.parse(rulesText));
-    assert.equal(parsed.ok, true);
-    if (!parsed.ok) assert.fail(parsed.error);
+    assert.ok(parsed.ok, parsed.ok ? 'Native wall rule set parsed' : parsed.error);
     assert.equal(parsed.file.name, 'Walls have names');
     const inputs = await preflightWorkflow(run, doc, {
       'validation.files': { checks: [new File([rulesText], 'walls.rules.json')] },
     }, viewerFlowFeatures(true));
     const host = createAutomationHost(run, doc, async () => assert.fail('loaded selector must reuse the actual model'),
       artifact => artifacts.push(artifact));
+    assert.ok(model.sourceFingerprint, 'The loaded native source retains its workflow ownership fingerprint');
     const result = await runFlowInViewer({ doc, bim: model.bim, pin: model.sourceFingerprint,
       cache: new MemoCache(), inputs, automation: host, signal: run.controller.signal });
     assert.equal(result.ok, true, JSON.stringify(result.log));

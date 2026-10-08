@@ -16,6 +16,8 @@ import { createLensDataProvider } from '@/lib/lens/adapter';
 import { createElementFieldReader } from '@/lib/charts/element-field-reader';
 import { getOrCreateMutationView } from '@/sdk/adapters/mutation-view';
 import { classificationPopulationUnavailable } from '@/components/viewer/properties/effective-classification-systems';
+import { createQueryAdapter } from '@/sdk/adapters/query-adapter';
+import { discoverFilterValues } from '@/lib/search/filter-schema';
 import { addClassificationAssociation } from './associations';
 
 const pristine = useViewerStore.getState();
@@ -55,6 +57,12 @@ test('#7131 native chart classification discovery and value agree with authored 
   const reader = createElementFieldReader(store, view);
   assert.ok(reader.observe([262]).relations.classificationSystems.has('CCI Construction'));
   assert.equal(reader.read(262, { kind: 'classification', system: 'CCI Construction', valueKind: 'category' }), 'E-AAA-WALL');
+});
+
+test('#7131 native SDK classification query and filter suggestions read the authored IFC association', async () => {
+  const { store, view, expected } = await authoredAssociation();
+  assert.deepEqual(createQueryAdapter(useViewerStore).classifications({ modelId: 'm', expressId: 262 }), expected);
+  assert.ok(discoverFilterValues(store, view).classifications.includes('E-AAA-WALL'));
 });
 
 test('#7131 source system Name edits update native memberships and undo returns to the true EXPRESS base value', async () => {
@@ -97,6 +105,7 @@ test('#7131 source reference and source recipient edits refresh native classific
   view.setPositionalAttribute(relationId, 4, ['#52']);
   assert.deepEqual(list.getClassifications?.(262), [], 'the old wall no longer has the source association');
   assert.equal(list.getClassifications?.(52)[0]?.code, 'E-NEW-7131', 'the actual source slab receives it');
+  assert.ok(discoverFilterValues(reparsed, view).classifications.includes('E-NEW-7131'), 'a nonempty original classification map must not conceal the newly classified source recipient');
   const chart = createElementFieldReader(reparsed, view);
   assert.equal(chart.read(52, { kind: 'classification', system: 'CCI Construction', valueKind: 'category' }), 'E-NEW-7131');
   view.deleteEntity(relationId);
@@ -157,4 +166,18 @@ test('#7131 a live reference cycle agrees with exported IFC and cannot establish
   assert.deepEqual(extractClassificationsOnDemand(store, 262, view), expected);
   const hits = await evaluateFilterGroupsFederated(evaluatorModelsFromState(useViewerStore.getState()), [{ combinator: 'AND', rules: [{ kind: 'classification', system: 'CCI Construction', op: 'isNotSet', value: '' }] }], { limit: Infinity });
   assert.equal(hits.some(hit => hit.expressId === 262), false, 'unknown live system membership cannot prove native absence');
+});
+
+test('#7131 classification reference retyping and deletion describe the native exported IFC', async () => {
+  const { store, view } = await authoredAssociation();
+  const reference = [...view.getNewEntitiesOfType('IFCCLASSIFICATIONREFERENCE')][0];
+  view.setEntityType(reference.expressId, 'IfcClassification');
+  const out = new StepExporter(store, view).export({ schema: 'IFC4', visibleOnly: false, hiddenEntityIds: new Set<number>() });
+  const text = typeof out.content === 'string' ? out.content : new TextDecoder().decode(out.content);
+  const reparsed = await new IfcParser().parseColumnar(new TextEncoder().encode(text).buffer, { disableWorkerScan: true });
+  const expected = extractClassificationsOnDemand(reparsed, 262);
+  assert.equal(expected[0]?.system, 'Outer wall', 'export re-lays the reference Name into the classification Name slot');
+  assert.deepEqual(extractClassificationsOnDemand(store, 262, view), expected);
+  view.deleteEntity(reference.expressId);
+  assert.deepEqual(extractClassificationsOnDemand(store, 262, view), [], 'a deleted target contributes no live classification reference');
 });

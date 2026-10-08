@@ -15,16 +15,24 @@ export function effectiveClassificationSystems(
 
 const CLASSIFICATION_TYPES = new Set(['IFCCLASSIFICATION', 'IFCCLASSIFICATIONREFERENCE', 'IFCRELASSOCIATESCLASSIFICATION', 'IFCRELDEFINESBYTYPE']);
 
-/** A source-empty transport cannot reconstruct live source membership edits (#7131). */
-export function classificationPopulationUnavailable(
+/** Current classification edits, shared by discovery and availability checks (#7131). */
+export function hasClassificationEdits(
   store: IfcDataStore | null | undefined,
   view: MutablePropertyView | null | undefined,
 ): boolean {
-  if (!store || store.source?.length || !view) return false;
+  if (!store || !view) return false;
   // Effective changes are current; append-only history would incorrectly
   // report an unavailable edit after undo restored the source value.
   return view.getEffectiveChanges().some(change => {
     const types = [store.entities.getTypeName(change.entityId), view.getNewEntity(change.entityId)?.type, view.getEntityTypeMutation(change.entityId)?.newType];
     return types.some(type => type !== undefined && CLASSIFICATION_TYPES.has(type.toUpperCase()));
   });
+}
+
+/** A source-empty transport cannot reconstruct live source membership edits (#7131). */
+export function classificationPopulationUnavailable(
+  store: IfcDataStore | null | undefined,
+  view: MutablePropertyView | null | undefined,
+): boolean {
+  return Boolean(store && !store.source?.length && hasClassificationEdits(store, view));
 }

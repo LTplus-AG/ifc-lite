@@ -28,6 +28,9 @@ export interface ClassificationInfo {
      * Distinguishes "classified but unresolved" from "genuinely unclassified"
      * (an empty result array), which are otherwise byte-identical to every
      * caller. All other fields are left `undefined` on an unresolved entry.
+     * With live edits on a source-empty store these markers retain immutable
+     * source evidence; edited source membership needs the original bytes and
+     * must not be counted as a known current population.
      */
     unresolved?: boolean;
 }

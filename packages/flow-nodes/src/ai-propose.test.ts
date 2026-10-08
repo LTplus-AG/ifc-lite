@@ -84,7 +84,8 @@ it.each([
 });
 
 it('refuses clarification and truncated replies without retrying or publishing a draft', async () => {
-  for (const [reply, finish] of [[{ kind: 'clarification', message: 'Which wall?' }, 'stop'], [answer(), 'length']] as const) {
+  for (const [reply, finish] of [[{ kind: 'clarification', message: 'Which wall?' }, 'stop'],
+    [{ artifact: null, citations: [], clarification: 'Which wall?' }, 'stop'], [answer(), 'length']] as const) {
     const { result, prompts } = await run(reply, {}, { finish });
     expect(result.ok).toBe(false); expect(result.review).toEqual([]); expect(prompts).toHaveLength(1);
   }

@@ -20,6 +20,8 @@
  * counter-clockwise seen from above. Nothing here writes.
  */
 
+import { parseExpectedHostedEdit, parseHostedEdit, type ExpectedHostedEdit } from './model-authoring-hosted-edit';
+import type { HostedElementEdit } from '@ifc-lite/create';
 import { parseShapeParams, parseProfileSectionParams, AUTHORING_OUTLINE_WORK_LIMIT, type ShapeParams } from './model-authoring-shape-params';
 import { parseSplitSnapshot, parseSplitCut, type SplitCut } from './model-authoring-split-params';
 import type { SplitSnapshot } from './model-authoring-split-state';
@@ -60,6 +62,7 @@ export type AuthoringOp =
   | { op: 'element.split'; target: ExistingElement; expected: SplitSnapshot; cut: SplitCut }
   | ({ op: 'element.copy'; target: ElementTarget; ref: string } & CopyFields)
   | ({ op: 'element.array'; target: ElementTarget; refs: string[] } & ArrayFields)
+  | { op: 'hosted.edit'; target: ExistingElement; expected: ExpectedHostedEdit; edit: HostedElementEdit }
   | { op: 'element.delete'; target: ExistingElement }
   | { op: 'element.resize'; target: ExistingElement; expected: ExpectedSize; size: ElementSizePatch }
   | { op: 'element.profile'; target: ExistingElement; expected: ProfileSection; Profile: ProfileSection }
@@ -75,7 +78,7 @@ export type AuthoringOp =
 
 export type AuthoringOpName = AuthoringOp['op'];
 export const AUTHORING_OPS: readonly AuthoringOpName[] = ['stair.resize', 'stair.delete', 'railing.delete', 'stair.replace', 'railing.replace', 'stair.create', 'railing.create', 'element.create', 'element.delete', 'element.split', 'element.resize', 'element.profile', 'element.move', 'element.rotate', 'element.copy', 'element.array',
-  'type.assign', 'material.assign', 'walls.join', 'hosted.create'];
+  'type.assign', 'material.assign', 'walls.join', 'hosted.create', 'hosted.edit'];
 
 export interface ModelAuthoringBatch {
   version: 1;
@@ -184,6 +187,12 @@ function operation(value: unknown, index: number, units: AuthoringUnits, refs: M
     case 'railing.replace': return defineRef({op:value.op,target:existing(value.target,at),ref:parseRef(value.ref,at),storey:parseGlobalIdTarget(value.storey,`${at} storey`),params:parseStairRailingParams(value.params,'railing',units,at)});
     case 'stair.create': return defineRef({ op: value.op, ref: parseRef(value.ref, at), storey: parseGlobalIdTarget(value.storey, `${at} storey`), params: parseStairRailingParams(value.params, 'stair', units, at) });
     case 'railing.create': return defineRef({ op: value.op, ref: parseRef(value.ref, at), storey: parseGlobalIdTarget(value.storey, `${at} storey`), params: parseStairRailingParams(value.params, 'railing', units, at) });
+    case 'hosted.edit': {
+      if (Object.keys(value).some(key => !['op', 'target', 'expected', 'edit'].includes(key))) throw new Error(`${at}: unsupported hosted edit field`);
+      const target = existing(value.target, at);
+      if (!['IfcDoor', 'IfcWindow', 'IfcOpeningElement', 'IfcOpeningStandardCase'].includes(target.ifcClass)) throw new Error(`${at}: hosted.edit requires a native door, window or opening occurrence`);
+      return { op: value.op, target, expected: parseExpectedHostedEdit(value.expected, units, `${at} expected`), edit: parseHostedEdit(value.edit, units, `${at} edit`) };
+    }
     case 'element.split': {
       if (Object.keys(value).some(key => !['op', 'target', 'expected', 'cut'].includes(key))) throw new Error(`${at}: unsupported split field`);
       const expected = parseSplitSnapshot(value.expected, `${at} expected`), cut = parseSplitCut(value.cut, units, `${at} cut`);

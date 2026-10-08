@@ -162,17 +162,18 @@ export function SearchModalFilterBuilder() {
     if (totalRules === 0) return;
     const name = await promptDialog({ description: t('searchModal.filterBuilder.saveFilterPrompt'), defaultValue: '' });
     if (!name) return;
-    const result = saveFilter(name, filter.groups);
+    const result = saveFilter(name, filter.groups, filter.capturedScope);
     setSavedPresets(result.presets);
     // A refused write used to return the in-memory catalog as though saved —
     // the user saw the filter and lost it next session (#2089).
     if (!result.persisted) {
       toast.error(t('searchModal.filterBuilder.saveFilterFailed'));
     }
-  }, [filter.groups, totalRules, t, promptDialog]);
+  }, [filter.groups, filter.capturedScope, totalRules, t, promptDialog]);
 
   const handleLoadPreset = useCallback((preset: SavedFilterPreset) => {
     setSearchFilter({
+      ...(preset.capturedScope ? { capturedScope: structuredClone(preset.capturedScope) } : {}),
       groups: preset.groups.map((g) => ({ rules: g.rules.map((r) => ({ ...r }) as FilterRule), combinator: g.combinator })),
       limit: filter.limit,
     });

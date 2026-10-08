@@ -71,7 +71,7 @@ export function saveArtifact(artifact: PreviewArtifact): SaveOutcome {
     case 'filter.proposal': {
       if (savedFilterReviews.has(artifact)) return { ok: false, reason: 'already-saved' };
       const name = uniqueName(artifact.name, loadSavedFilters().map((preset) => preset.name));
-      const { persisted } = saveFilter(name, artifact.groups);
+      const { persisted } = saveFilter(name, artifact.groups, artifact.capturedScope);
       if (!persisted) return { ok: false, reason: 'storage' };
       savedFilterReviews.add(artifact);
       return { ok: true, saved: { kind: 'filter.proposal', name } };
@@ -104,7 +104,7 @@ export function saveArtifact(artifact: PreviewArtifact): SaveOutcome {
  */
 export function openFilterInSearch(groups: PreviewArtifact & { kind: 'filter.proposal' }): void {
   const state = useViewerStore.getState();
-  state.setSearchFilter({ groups: groups.groups, limit: state.searchFilter.limit });
+  state.setSearchFilter({ groups: groups.groups, capturedScope: groups.capturedScope, limit: state.searchFilter.limit });
   state.setSearchModalTab('filter');
   state.setSearchFilterAutoRunPending(true);
   state.setSearchModalOpen(true);

@@ -42,6 +42,13 @@ export interface ArtifactEnvelope {
   rationale?: string;
 }
 
+export type NativeArtifactScope = 'all' | 'selected' | 'visible';
+export function parseNativeArtifactScope(value: unknown): NativeArtifactScope | undefined {
+  if (value === undefined) return undefined;
+  if (value !== 'all' && value !== 'selected' && value !== 'visible') throw new Error('The artifact scope must be all, selected, or visible.');
+  return value;
+}
+
 /**
  * Parse a complete JSON answer (optionally one fenced block) declaring `kind`.
  * Returns the raw object plus the common envelope; the caller reads its own body.

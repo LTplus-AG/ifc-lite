@@ -17,7 +17,7 @@
  */
 
 import {
-  parseFilterRules,
+  isCapturedEntityScope, parseFilterRules, type CapturedEntityScope,
   type Combinator,
   type FilterRule,
 } from '@ifc-lite/rules';
@@ -50,6 +50,7 @@ const MAX_NAME_LEN = 80;
 const SCHEMA_VERSION = 2;
 
 export interface SavedFilterPreset {
+  capturedScope?: CapturedEntityScope;
   name: string;
   /** Every OR'd group (#4904). Length 1 for a union-free preset — every
    *  preset saved before this change, and the common case since. */
@@ -108,6 +109,8 @@ let catalogUnwritable = false;
  *  RULE inside it is silently dropped by `parseFilterRules`, unchanged
  *  pre-#4904 behaviour that stays for the implicit-single-group case. */
 function readGroups(o: Record<string, unknown>): FilterGroup[] | null {
+  if (o.schemaVersion === 3) return isCapturedEntityScope(o.capturedScope) ? parseFilterGroups(o.groups) : null;
+  if (o.capturedScope !== undefined) return null;
   // `schemaVersion` ABSENT means v1 (the pre-#4904 shape). PRESENT but not a
   // number (`"2"`, `null`, …) is corruption, not "no version" — review (PR
   // #4987) caught that coercing a non-number to v1 silently read a v2
@@ -182,6 +185,7 @@ function readRaw(validate?: (preset: unknown) => unknown): SavedFilterPreset[] {
       }
       const updatedAt = typeof o.updatedAt === 'number' ? o.updatedAt : Date.now();
       const preset: SavedFilterPreset = {
+        ...(isCapturedEntityScope(o.capturedScope) ? { capturedScope: structuredClone(o.capturedScope) } : {}),
         name,
         groups,
         combinator: groups[0]?.combinator ?? 'AND',
@@ -254,9 +258,10 @@ function writeRaw(list: SavedFilterPreset[]): boolean {
     // `SCHEMA_VERSION`'s doc comment.
     const onDisk = list.map((p) => ({
       name: p.name,
-      schemaVersion: SCHEMA_VERSION,
+      schemaVersion: p.capturedScope ? 3 : SCHEMA_VERSION,
       groups: p.groups,
-      ...(p.groups.length === 1 ? { combinator: p.groups[0].combinator, rules: p.groups[0].rules } : {}),
+      ...(p.groups.length === 1 && !p.capturedScope ? { combinator: p.groups[0].combinator, rules: p.groups[0].rules } : {}),
+      ...(p.capturedScope ? { capturedScope: p.capturedScope } : {}),
       updatedAt: p.updatedAt,
     }));
     ls.setItem(STORAGE_KEY, JSON.stringify(onDisk));
@@ -282,7 +287,8 @@ export function loadSavedFilters(validate?: (preset: unknown) => unknown): Saved
  * resulting full catalog (sorted) so callers can refresh UI without a
  * second read.
  */
-export function saveFilter(name: string, groups: readonly FilterGroup[]): SavedFilterMutation {
+export function saveFilter(name: string, groups: readonly FilterGroup[], capturedScope?: CapturedEntityScope): SavedFilterMutation {
+  if (capturedScope && !isCapturedEntityScope(capturedScope)) throw new Error('The captured filter population is malformed. Capture its elements again.');
   const trimmed = name.trim();
   // Rejected name: nothing was asked of storage, so nothing is unpersisted.
   if (!trimmed || trimmed.length > MAX_NAME_LEN) return { presets: loadSavedFilters(), persisted: true };
@@ -297,6 +303,7 @@ export function saveFilter(name: string, groups: readonly FilterGroup[]): SavedF
   const existing = readRaw();
   const idx = existing.findIndex((p) => p.name.toLowerCase() === trimmed.toLowerCase());
   const preset: SavedFilterPreset = {
+    ...(capturedScope ? { capturedScope: structuredClone(capturedScope) } : {}),
     name: trimmed,
     groups: savedGroups,
     combinator: savedGroups[0]?.combinator ?? 'AND',

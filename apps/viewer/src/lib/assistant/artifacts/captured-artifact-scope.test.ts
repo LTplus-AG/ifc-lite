@@ -11,10 +11,22 @@ import { evaluatorModelsFromState } from '@/lib/model-tags/evaluator-models';
 import { ARCH, seedArtifactModels } from '@/test/artifact-models-fixture';
 import { parseArtifactProposal, type ArtifactKind } from './proposal-kinds';
 import { previewArtifact } from './artifact-preview';
+import { placementSourceIdentity } from '@/lib/model-placement/source-identity';
 
 const original = useViewerStore.getState();
 const groups = [{ combinator: 'AND' as const, rules: [{ kind: 'ifcType' as const, op: 'in' as const, values: ['IfcWall', 'IfcWallStandardCase'] }] }];
-beforeEach(async () => { useViewerStore.setState(original, true); await seedArtifactModels({ federated: true }); });
+beforeEach(async () => {
+  useViewerStore.setState(original, true);
+  await seedArtifactModels({ federated: true });
+  const models = new Map(useViewerStore.getState().models);
+  for (const [id, model] of models) {
+    const bytes = model.ifcDataStore!.source.slice();
+    const sourceContentHash = await placementSourceIdentity(new Blob([bytes]), undefined, bytes);
+    assert.ok(sourceContentHash, 'the actual native fixture obtains the same full-content identity as the loader');
+    models.set(id, { ...model, sourceContentHash });
+  }
+  useViewerStore.setState({ models });
+});
 afterEach(() => useViewerStore.setState(original, true));
 const cases: Array<{ kind: ArtifactKind; label: string; body: Record<string, unknown> }> = [
   { kind: 'filter.proposal', label: 'filter', body: { name: 'Captured walls', groups } },

@@ -9,7 +9,7 @@
  */
 
 import type { FilterGroup } from '@ifc-lite/rules';
-import { parseEnvelope, requiredText, type ArtifactEnvelope } from './artifact-json';
+import { parseEnvelope, parseNativeArtifactScope, requiredText, type ArtifactEnvelope, type NativeArtifactScope } from './artifact-json';
 import { parseProposalGroups } from './artifact-rules';
 
 export interface FilterProposal extends ArtifactEnvelope {
@@ -17,10 +17,11 @@ export interface FilterProposal extends ArtifactEnvelope {
   /** Saved-filter name. */
   name: string;
   groups: FilterGroup[];
+  scope?: NativeArtifactScope;
 }
 
 export function parseFilterProposal(answer: string): FilterProposal {
-  const { value, envelope } = parseEnvelope(answer, 'filter.proposal', ['name', 'groups']);
-  return { ...envelope, kind: 'filter.proposal', name: requiredText(value.name ?? value.title, 'The filter "name"'),
+  const { value, envelope } = parseEnvelope(answer, 'filter.proposal', ['name', 'groups', 'scope']);
+  return { ...envelope, scope: parseNativeArtifactScope(value.scope), kind: 'filter.proposal', name: requiredText(value.name ?? value.title, 'The filter "name"'),
     groups: parseProposalGroups(value.groups, 'The filter') };
 }

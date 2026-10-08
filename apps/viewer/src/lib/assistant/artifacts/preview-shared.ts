@@ -52,7 +52,7 @@ export interface ArtifactPreview {
 }
 
 export type PreviewArtifact =
-  | { kind: 'filter.proposal'; name: string; groups: FilterGroup[] }
+  | { kind: 'filter.proposal'; name: string; groups: FilterGroup[]; capturedScope?: import('@ifc-lite/rules').CapturedEntityScope }
   | { kind: 'list.proposal'; definition: ListDefinition }
   | { kind: 'lens.proposal'; lens: Lens }
   | { kind: 'chart.proposal'; spec: ChartSpec; scope: ChartScope };
@@ -94,4 +94,3 @@ export function populationOf(rows: Iterable<{ modelId: string }>, state: Pick<Vi
   for (const [modelId, count] of counts) if (!state.models.has(modelId)) out.push({ modelId, name: modelId, count });
   return out;
 }
-

@@ -7,7 +7,7 @@ import test, { afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { PropertyValueType, PropertyTableBuilder, StringTable } from '@ifc-lite/data';
-import { extractTypePropertiesOnDemand } from '@ifc-lite/parser';
+import { EMPTY_SOURCE_BYTES, extractTypePropertiesOnDemand } from '@ifc-lite/parser';
 import { advance, render, cleanup, click } from '@/test/render';
 import { parseStep, seedModel } from '@/test/properties-panel-harness';
 import { renderPanelBody } from '@/lib/panels/renderPanelBody';
@@ -118,7 +118,7 @@ test('#7104 source-free native property tables retain the real IFC type definiti
     builder.add({ entityId: loaded.typeId, psetName: pset.name, psetGlobalId: pset.globalId ?? '',
       propName: property.name, propType: property.type, value: String(property.value) });
   }
-  seedModel('server', 0, { ...store, source: new Uint8Array(), properties: builder.build() }, 52);
+  seedModel('server', 0, { ...store, source: EMPTY_SOURCE_BYTES, properties: builder.build() }, 52);
   assert.equal(inherited().psets[0].properties.FireRating, 'REI60');
   const ui = render(renderPanelBody('properties', () => undefined)); await advance(0);
   const triggers = [...ui.querySelectorAll('button')].filter(button => button.textContent?.includes('Pset_SlabCommon'));

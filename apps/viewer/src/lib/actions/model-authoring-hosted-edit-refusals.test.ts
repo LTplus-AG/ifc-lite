@@ -15,6 +15,7 @@ import { previewModelAuthoring } from './model-authoring-preview';
 import { commitModelAuthoring } from './model-authoring-commit';
 import { getModelLengthUnitScale } from '@/lib/length-unit-scale';
 import { writeHostedEdit } from './model-authoring-hosted-edit';
+import { configureMutationView } from '@/utils/configureMutationView';
 
 const initial = useViewerStore.getState();
 afterEach(() => useViewerStore.setState(initial));
@@ -166,4 +167,20 @@ test(`#7265 ${transport} non-root material Name collision retains real hosted ed
   assert.equal(after.getEntity(material.expressId)?.attributes[0], transport === 'saved-deleted-material' ? undefined : op.target.globalId);
   useViewerStore.getState().undo(SAMPLE_MODEL);
   assert.deepEqual(await exportedEntities(source, view), before, 'one grouped Undo preserves the original native graph and prior material deletion');
+});
+
+// #7265: valid saved native sources must preserve a separately held edit lease
+// when preview is the first operation to read an uncached native editor.
+test('#7265 first-read saved hosted preview preserves the live prepared transaction lease', async () => {
+  const f = await fixture();
+  assert.ok(readHostedFill(f.saved, f.id), 'independent saved native source has the hosted binding');
+  const view = new MutablePropertyView(f.saved.properties, SAMPLE_MODEL);
+  configureMutationView(view, f.saved);
+  const model = useViewerStore.getState().models.get(SAMPLE_MODEL); assert.ok(model);
+  useViewerStore.setState({ models: new Map([[SAMPLE_MODEL, { ...model, ifcDataStore: f.saved }]]),
+    mutationViews: new Map([[SAMPLE_MODEL, view]]), storeEditors: new Map() });
+  const prepared = view.prepareAtomic(() => undefined);
+  const preview = previewModelAuthoring(useViewerStore.getState(), f.batch({ Sill: .9 }));
+  assert.equal(preview.rows[0].status, 'ready', preview.rows[0].issue ?? 'Saved native hosted edit is supported');
+  assert.doesNotThrow(() => prepared.validate(), 'Reading a reviewed preview must leave the held native transaction valid');
 });

@@ -44,7 +44,7 @@ export function materialRecordReader(store: IfcDataStore, view?: MaterialReadVie
       ? store.getEntity(id) : ref ? extractor.extractEntity(ref) : null;
     const base = created ?? source;
     if (!base?.attributes) return null;
-    const row = resolveEffectiveEntityRecord(base, {
+    const row = resolveEffectiveEntityRecord({ type: base.type, attributes: base.attributes }, {
       retype: view?.getTypeMutations?.().get(id)?.newType,
       named: view?.getAttributeMutationsForEntity?.(id).map(edit => [edit.name, edit.value === '$' || edit.value === '*' ? null : edit.value] as const) ?? [],
       positional: view?.getPositionalMutationsForEntity?.(id) ?? [],

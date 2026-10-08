@@ -24,6 +24,7 @@ import type { EntityRef } from '@/store/types';
 import type { SceneActionSet, SceneActionType } from './scene-actions';
 import { previewSceneActions, type ActionPreview, type SceneActionPreview } from './scene-preview';
 import { captureRecords, captureSelection, setActiveApplication, useSceneSession, type RestoreReport, type SceneApplication } from './scene-session';
+import { captureSceneSources } from './scene-source-ownership';
 import { restoreSceneApplication } from './scene-restore';
 
 type RGBA = [number, number, number, number];
@@ -146,7 +147,7 @@ export function applySceneActions(set: SceneActionSet, evidence: EvidenceSnapsho
   const earlier = useSceneSession.getState().active;
   const replaced = earlier ? restoreSceneApplication(earlier) : null;
 
-  const application: SceneApplication = { id: crypto.randomUUID(), title, modelIds: [...useViewerStore.getState().models.keys()] };
+  const application: SceneApplication = { id: crypto.randomUUID(), title, sources: captureSceneSources(useViewerStore.getState()) };
   const applied: ApplyResult['applied'] = [];
   const unavailable: SceneActionType[] = [];
   // Visibility before selection and camera: framing reads what is visible.

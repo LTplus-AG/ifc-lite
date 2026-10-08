@@ -218,7 +218,7 @@ interface RootAttrIndices {
 // entities, keeping the on-demand path cheap even when called per entity.
 const rootAttrIndexCache = new Map<string, RootAttrIndices>();
 
-function getRootAttrIndices(type: string): RootAttrIndices {
+export function getRootAttrIndices(type: string): RootAttrIndices {
     let idx = rootAttrIndexCache.get(type);
     if (!idx) {
         const names = getAttributeNames(type);

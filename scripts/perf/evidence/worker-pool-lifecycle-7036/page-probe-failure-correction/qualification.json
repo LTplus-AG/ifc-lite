@@ -1,0 +1,171 @@
+{
+  "headBeforeCorrection": "2cd4d883339b3483abd3ec3e57fdabfa39ba7757",
+  "scope": "Canonical page callback projection and readiness refusal, actual recorder/direct callback CPU controls. No browser execution, native GPU, or performance acceptance.",
+  "sourcePins": [
+    {
+      "path": "tests/benchmark/metadata-render-readiness.ts",
+      "beforeSha256": "097e02c88d8a7487fe7d943e22b24e44d883c6e24326132f487a2eae0727f116",
+      "afterSha256": "cd680148638e191f6ee353b3bbc4f1bd0030d302658d3538adffb2af440743c0"
+    },
+    {
+      "path": "tests/benchmark/viewer-benchmark-page.ts",
+      "beforeSha256": "d32e6e728aa179cb3f8bfc158c9b222a4a4306071931b7f997478ab1d4b1ff8b",
+      "afterSha256": "20a8d75accbfe5df236dcdf87c00b789b75c4970dcd82d3856c80c43c068e5bd"
+    },
+    {
+      "path": "scripts/browser-metadata-readiness.test.mjs",
+      "beforeSha256": "c50aeab278373bdbc90234ad6adb25845e8fd7f4aa56d5cdcd566673739446b9",
+      "afterSha256": "08c5176e58a50901f90f59bcdbcc8594cd5c8a2f37e925f0b46d6fa1c075dfa5"
+    }
+  ],
+  "results": {
+    "focused": {
+      "pass": 22,
+      "fail": 0,
+      "skip": 0
+    },
+    "inverse": {
+      "pass": 20,
+      "fail": 2,
+      "skip": 0,
+      "expectedAssertions": [
+        "unfinished parser.failed Missing expected rejection",
+        "unfinished worker.scan attrs.error:true Missing expected rejection"
+      ]
+    },
+    "restored": {
+      "pass": 22,
+      "fail": 0,
+      "skip": 0
+    },
+    "rootTypecheck": {
+      "exitCode": 0,
+      "testFilesInProgramme": 3739,
+      "auditedPackages": 62,
+      "packageCache": "Turbo package checks replayed cache; audit and permanent frames programme run by actual root command",
+      "permanentProgramme": "scripts/perf/tsconfig.frames.json"
+    },
+    "lightGates": 6
+  },
+  "toolSessions": {
+    "focused": 69821,
+    "inverseAndRestore": 79332,
+    "rootTypecheck": 87480,
+    "lights": 41270
+  },
+  "runs": {
+    "source-text": {
+      "command": [
+        "node",
+        "scripts/check-source-text-assertions.mjs"
+      ],
+      "exitCode": 0,
+      "elapsedSeconds": 6.394051790237427
+    },
+    "old-projection-inverse": {
+      "command": [
+        "node",
+        "--import",
+        "tsx",
+        "--test",
+        "scripts/browser-metadata-readiness.test.mjs"
+      ],
+      "exitCode": 1,
+      "elapsedSeconds": 6.666378736495972
+    },
+    "mpl": {
+      "command": [
+        "node",
+        "scripts/add-license-headers.mjs",
+        "--check"
+      ],
+      "exitCode": 0,
+      "elapsedSeconds": 0.420513391494751
+    },
+    "full-root-typecheck": {
+      "command": [
+        "pnpm",
+        "typecheck"
+      ],
+      "exitCode": 0,
+      "elapsedSeconds": 6.0222485065460205
+    },
+    "module-size": {
+      "command": [
+        "node",
+        "scripts/check-module-size.mjs"
+      ],
+      "exitCode": 0,
+      "elapsedSeconds": 1.7678873538970947
+    },
+    "diff": {
+      "command": [
+        "git",
+        "diff",
+        "--check"
+      ],
+      "exitCode": 0,
+      "elapsedSeconds": 0.20775103569030762
+    },
+    "focused-green": {
+      "command": [
+        "node",
+        "--import",
+        "tsx",
+        "--test",
+        "scripts/browser-metadata-readiness.test.mjs"
+      ],
+      "exitCode": 0,
+      "elapsedSeconds": 6.198172330856323
+    },
+    "touched-oxlint": {
+      "command": [
+        "pnpm",
+        "exec",
+        "oxlint",
+        "tests/benchmark/metadata-render-readiness.ts",
+        "tests/benchmark/viewer-benchmark-page.ts",
+        "scripts/browser-metadata-readiness.test.mjs"
+      ],
+      "exitCode": 0,
+      "elapsedSeconds": 0.2774624824523926
+    },
+    "test-wiring": {
+      "command": [
+        "node",
+        "scripts/check-test-wiring.mjs"
+      ],
+      "exitCode": 0,
+      "elapsedSeconds": 0.30739283561706543
+    },
+    "restored-green": {
+      "command": [
+        "node",
+        "--import",
+        "tsx",
+        "--test",
+        "scripts/browser-metadata-readiness.test.mjs"
+      ],
+      "exitCode": 0,
+      "elapsedSeconds": 0.13086581230163574
+    }
+  },
+  "proofLimits": "Page callback is executed directly against actual createLoadTracer snapshots, not inside a real browser. Ordinary unfinished spans and root stay allowed; any failure marker refuses. Prior historical77 remains separate and untouched.",
+  "review": {
+    "thread": "PRRT_kwDOQ3UF-86qf11r",
+    "comment": 4222646867,
+    "path": [
+      "useIfcLoader.ts cache captureModelLoaded at1207 and return1229 before wasm callback1401",
+      "utils/loadTelemetry.ts183-199 actual capture\u2192fieldLoadProps\u2192PostHog",
+      "lib/perf/fieldTelemetry.ts103/109 cache.storeReady fallback",
+      "lib/perf/fieldTelemetry.test.ts129-140 canonical cache control metadata230"
+    ],
+    "genuineFinding": {
+      "thread": "PRRT_kwDOQ3UF-86qf137",
+      "comment": 4222647081
+    },
+    "cacheEvidenceReply": 4222859412,
+    "rawReviewReceipt": "/home/louistrue/.t3/artifacts/7180-2cd-raw-review-and-superseded-ci-shepherd-20261008/receipt.json"
+  },
+  "archiveManifest": "archive-manifest.json"
+}

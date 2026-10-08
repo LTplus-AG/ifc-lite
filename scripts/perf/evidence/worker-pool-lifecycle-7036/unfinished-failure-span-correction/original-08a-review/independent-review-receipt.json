@@ -1,0 +1,92 @@
+{
+  "run": 37813792306,
+  "artifact": 11567396593,
+  "head": "08a891e40492b3bff2ed150a551a42751a204f54",
+  "counts": {
+    "findings.json": {
+      "headSha": "08a891e40492b3bff2ed150a551a42751a204f54",
+      "verdict": "findings",
+      "findings": 1,
+      "omitted": 79,
+      "classPass": false,
+      "counts": {
+        "emitted": 1,
+        "surviving": 1,
+        "capped": 0,
+        "kept": 1
+      }
+    },
+    "validated-findings.json": {
+      "headSha": "08a891e40492b3bff2ed150a551a42751a204f54",
+      "verdict": "findings",
+      "findings": 1,
+      "omitted": 79,
+      "classPass": false,
+      "counts": {
+        "emitted": 1,
+        "surviving": 1,
+        "capped": 0,
+        "kept": 1
+      }
+    },
+    "judged.json": {
+      "headSha": "08a891e40492b3bff2ed150a551a42751a204f54",
+      "verdict": "findings",
+      "findings": 1,
+      "omitted": 79,
+      "classPass": false,
+      "counts": {
+        "emitted": 1,
+        "surviving": 1,
+        "capped": 0,
+        "kept": 1,
+        "judgeInput": 1,
+        "dropped": 0
+      }
+    }
+  },
+  "sourceObservation": "requireEpoch builds ended[] by skipping end===null, then checks parser.failed/error attrs only in ended[]. An unfinished failure-marked span is not refused. Read-only source review; direct executable counterexample pending admission.",
+  "recommendation": "Apply failure-marker refusal over every observed span before filtering ended completions. Preserve ordinary unfinished non-error spans and existing temporal/completion checks. Controls: open parser.failed and open attrs.error=true with required completions reject; ordinary open span remains admissible; guard-only inverse fails both refusal assertions.",
+  "files": [
+    {
+      "path": "extracted/findings.json",
+      "bytes": 9630,
+      "sha256": "1126c5cd849801188bf0973973d70d0028e4b83646260f749b9c53ffc6e9613b"
+    },
+    {
+      "path": "extracted/judged.json",
+      "bytes": 9687,
+      "sha256": "f53767b2d68aa81d2bccb23c065f12196ca67ba54399cd8f0f787ac01a979ada"
+    },
+    {
+      "path": "extracted/raw-review.initial.txt",
+      "bytes": 2674,
+      "sha256": "509a3c31538713989f739a6920d06d6b5aaa0e53bad93fc17686fdbd8f10a39a"
+    },
+    {
+      "path": "extracted/raw-review.txt",
+      "bytes": 2674,
+      "sha256": "509a3c31538713989f739a6920d06d6b5aaa0e53bad93fc17686fdbd8f10a39a"
+    },
+    {
+      "path": "extracted/raw-review.txt.telemetry.jsonl",
+      "bytes": 1484,
+      "sha256": "ebbca002e9d9f2e6dd03dbbba5b5e207f7449344f9387d4ea8f8a380fe7da536"
+    },
+    {
+      "path": "extracted/validate.log",
+      "bytes": 558,
+      "sha256": "483908508374e5d12dc4779715ab5cf45f841c8eafa5ad5b37bd5c2aed84dab6"
+    },
+    {
+      "path": "extracted/validated-findings.json",
+      "bytes": 9497,
+      "sha256": "3d7044a26f584c8ae44d5d8f41d5115e3e22ae40ea8ca0e9c6674e29e2793a73"
+    },
+    {
+      "path": "review-outcomes.zip",
+      "bytes": 7437,
+      "sha256": "6420d55eba5cc53673ee226fd9a721c711c833304948b4d53315597a5809afb1"
+    }
+  ]
+}

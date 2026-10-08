@@ -45,7 +45,10 @@ test('an attached selection is sent as bounded GlobalId grounding and recorded i
   useViewerStore.setState(sceneModels());
   store().setSelectedEntityIds([101, 10_103]);
   const grounding = captureSelectionGrounding(store());
-  assert.deepEqual(grounding.elements, [
+  assert.deepEqual(grounding.elements.map(({ nativeEdit, ...identity }) => {
+    assert.equal(nativeEdit.dimensionsStatus, 'unavailable', 'this identity-only fixture has no native geometry index');
+    return identity;
+  }), [
     { globalId: W1, modelId: 'a', type: 'IfcWall', name: 'Wall A' },
     { globalId: '0Shared000000000000001', modelId: 'b', type: 'IfcSlab', name: 'Slab copy' },
   ]);

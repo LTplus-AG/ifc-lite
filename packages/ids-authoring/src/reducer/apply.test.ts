@@ -109,6 +109,9 @@ function withImportLeftovers(spec: IDSSpecification): IDSSpecification {
     requirements: spec.requirements.map((r) => ({
       ...r,
       cardinalityRaw: 'Required',
+      // The corpus has no requirement-level description/instructions; add them so undo is checked for both.
+      description: r.description ?? 'imported requirement note',
+      instructions: r.instructions ?? 'imported requirement hint',
       facet: r.facet.type === 'partOf' ? { ...r.facet, rawRelation: 'IFCRELBOGUS' } : r.facet,
     })),
   };

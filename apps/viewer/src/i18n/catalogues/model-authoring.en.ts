@@ -29,6 +29,7 @@ export const modelAuthoringEn = {
   'modelAuthoring.op.element.split': 'Split',
   'modelAuthoring.op.element.resize': 'Resize',
   'modelAuthoring.op.element.profile': 'Change profile',
+  'modelAuthoring.op.element.trimExtend': 'Trim/Extend',
   'modelAuthoring.op.element.move': 'Move',
   'modelAuthoring.op.element.rotate': 'Rotate',
   'modelAuthoring.op.type.assign': 'Assign type',

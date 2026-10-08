@@ -37,7 +37,7 @@ export type ElementId = { id: number } | { ref: string };
 export interface ResolvedOp {
   target?: number;
   reachBoundary?: ElementId;
-  reachPlan?: import('@ifc-lite/create').ElementTrimExtendResult;
+  reachPlan?: ReturnType<typeof import('@ifc-lite/create').trimExtendElementInStore>;
   splitEffects?: ReturnType<typeof import('@ifc-lite/create').splitElementsInStore>[number];
   /** The element a type or material is assigned to. */
   subject?: ElementId;

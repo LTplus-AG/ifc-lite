@@ -91,7 +91,7 @@ for (const kind of ['wall', 'beam'] as const) for (const subject of ['target', '
     const op = { ...f.op, click: [8 * k, 5 * k], boundary: subject === 'boundary' ? f.op.boundary
       : { line: { a: [10 * k, 0], b: [10 * k, 10 * k], tMin: 0, tMax: 1, reach: 0 } } };
     const preview = previewModelAuthoring(useViewerStore.getState(), batch(op, units));
-    assert.equal(preview.rows[0].status, 'unsupported', preview.rows[0].issue);
+    assert.equal(preview.rows[0].status, 'unsupported', preview.rows[0].issue ?? "native Trim/Extend review status");
     assert.match(preview.rows[0].issue ?? '', /storey-local/);
     assert.doesNotThrow(() => lease.validate());
     assert.equal(commitModelAuthoring(useViewerStore, preview, new Set([0]), 'native frame refusal').ok, false);
@@ -102,7 +102,7 @@ for (const unit of ['metre', 'millimetre'] as const) for (const parent of ['dire
     const f = await fixture(unit, 'wall', parent, 'target', true), lease = f.view.prepareAtomic(() => null);
     const units = unit === 'metre' ? 'm' : 'mm', k = units === 'm' ? 1 : 1000;
     const op = { ...f.op, click: [8 * k, 5 * k], boundary: { line: { a: [10 * k, 0], b: [10 * k, 10 * k], tMin: 0, tMax: 1, reach: 0 } } };
-    const preview = previewModelAuthoring(useViewerStore.getState(), batch(op, units)); assert.equal(preview.rows[0].status, 'ready', preview.rows[0].issue);
+    const preview = previewModelAuthoring(useViewerStore.getState(), batch(op, units)); assert.equal(preview.rows[0].status, 'ready', preview.rows[0].issue ?? "native Trim/Extend review status");
     assert.doesNotThrow(() => lease.validate());
     const outcome = commitModelAuthoring(useViewerStore, preview, new Set([0]), 'native supported storey frame'); assert.ok(outcome.ok, outcome.ok ? '' : outcome.detail ?? outcome.reason);
     const saved = await parseIfc(editedModelBytes(f.source, f.view));

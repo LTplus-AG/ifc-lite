@@ -56,7 +56,7 @@ test('#7262 reviewed Trim/Extend admits native wall trim independently proven by
     expected: { kind: 'wall', wall: current }, click: [6, 5], boundary: { line: line(10, 5) } }),
   'Assistant review must admit the native wall operation already proven by independent reparse');
   const preview=previewModelAuthoring(s(),proposal({op:'element.trimExtend',mode:'extend',target:{globalId:gid,ifcClass:'IfcWall',name:'Native reach wall'},expected:{kind:'wall',wall:current},click:[6,5],boundary:{line:line(10,5)}}));
-  assert.equal(preview.rows[0].status,'ready',preview.rows[0].issue);
+  assert.equal(preview.rows[0].status,'ready',preview.rows[0].issue ?? "native Trim/Extend review status");
   const committed=commitModelAuthoring(useViewerStore,preview,new Set([0]),'native reach witness');assert.ok(committed.ok,committed.ok?'':committed.detail??committed.reason);
   const changed=await exported();assert.deepEqual(readWallJoinTarget(changed.store,changed.view,changed.store.entities.getExpressIdByGlobalId(gid),changed.scale)?.wall.end,[10,5]);
 
@@ -81,7 +81,7 @@ test('#7262 reviewed Trim/Extend admits a native sloped beam extension with its 
     expected: { kind: 'beam', chain }, click: [10, 20], boundary: { line: line(6, 20) } }),
   'Assistant review must admit the native sloped beam operation without changing its axis');
   const preview=previewModelAuthoring(s(),proposal({op:'element.trimExtend',mode:'trim',target:{globalId:gid,ifcClass:'IfcBeam',name:'Native sloped reach'},expected:{kind:'beam',chain},click:[10,20],boundary:{line:line(6,20)}}));
-  assert.equal(preview.rows[0].status,'ready',preview.rows[0].issue);
+  assert.equal(preview.rows[0].status,'ready',preview.rows[0].issue ?? "native Trim/Extend review status");
   assert.ok(commitModelAuthoring(useViewerStore,preview,new Set([0]),'native sloped witness').ok);
   const changed=await exported(),actual=resolveLinearElementChain(changed.store,changed.view,changed.editor,changed.store.entities.getExpressIdByGlobalId(gid),changed.scale);assert.ok(actual);
   assert.ok(Math.abs(actual.depth-Math.hypot(6,1.5))<1e-9,'reviewed native trim persists the correct sloped depth');

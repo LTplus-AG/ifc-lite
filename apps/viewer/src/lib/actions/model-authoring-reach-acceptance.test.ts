@@ -175,11 +175,11 @@ test('#7262 native wall boundary joins survive later reach and one Undo without 
   const doorBefore=readHostedFill(dataStore,fill.expressId,view);assert.ok(doorBefore);
   const nativeBoundary=authoringReachEvidence(state(),SAMPLE_MODEL,boundary);assert.ok(nativeBoundary?.kind==='wall');
   const preview=previewModelAuthoring(state(),batch([operation(id,'extend',[8,5],{wall:target(boundary),expected:nativeBoundary.wall})]));
-  assert.equal(preview.rows[0].status,'ready',preview.rows[0].issue);
+  assert.equal(preview.rows[0].status,'ready',preview.rows[0].issue ?? "native Trim/Extend review status");
   const joined=commitModelAuthoring(useViewerStore,preview,new Set([0]),'native join');assert.ok(joined.ok);
   assert.equal(readWallJoinRels(dataStore,view,new Set([id])).length,1);
   const next=previewModelAuthoring(state(),batch([operation(id,'trim',[0,5],{line:line(2,5)})]));
-  assert.equal(next.rows[0].status,'ready',next.rows[0].issue);
+  assert.equal(next.rows[0].status,'ready',next.rows[0].issue ?? "native Trim/Extend review status");
   const trimmed=commitModelAuthoring(useViewerStore,next,new Set([0]),'native joined host trim');assert.ok(trimmed.ok);
   assert.equal(readWallJoinRels(dataStore,view,new Set([id])).length,1,'opposite native joined end is retained');
   const doorAfter=readHostedFill(dataStore,fill.expressId,view);assert.ok(doorAfter);assert.equal(doorAfter.location[0],doorBefore.location[0]-2000,'moved start refits filling in actual file units');
@@ -201,7 +201,7 @@ for(const unit of ['metre','millimetre'] as const)test(`#7262 native ${unit} fil
   const id=added(state().addWall(MODEL_ID,STOREY,{Start:[0,5,0],End:[8,5,0],Height:3,Thickness:.2,Name:'File unit reach'}));
   const pin=authoringReachEvidence(state(),MODEL_ID,id);assert.ok(pin?.kind==='wall');
   assert.equal(pin.wall.location[1],unit==='metre'?5:5000);
-  const preview=previewModelAuthoring(state(),batch([operation(id,'extend',[8,5],{line:line(10,5)},MODEL_ID)]));assert.equal(preview.rows[0].status,'ready',preview.rows[0].issue);
+  const preview=previewModelAuthoring(state(),batch([operation(id,'extend',[8,5],{line:line(10,5)},MODEL_ID)]));assert.equal(preview.rows[0].status,'ready',preview.rows[0].issue ?? "native Trim/Extend review status");
   assert.ok(commitModelAuthoring(useViewerStore,preview,new Set([0]),'file unit reach').ok);
   const exported=await read(MODEL_ID);assert.deepEqual(readWallJoinTarget(exported.store,exported.view,exported.store.entities.getExpressIdByGlobalId(target(id,MODEL_ID).globalId),exported.scale)?.wall.end,[10,5]);
   assert.ok(view.getMutationCount()>0&&store.source.length>0);
@@ -225,7 +225,7 @@ test('#7262 shared native beam start refuses while end reach preserves the peer 
   const editor=state().storeEditors.get(SAMPLE_MODEL)!,scale=getModelLengthUnitScale(dataStore),chain=resolveLinearElementChain(dataStore,view,editor,id,scale),placement=resolvePlacementChain(dataStore,view,editor,peer);assert.ok(chain&&placement);
   editor.setPositionalAttribute(placement.axisPlacementId,0,`#${chain.startPointId}`);
   const before=structuredClone(resolveLinearElementChain(dataStore,view,editor,peer,scale));
-  const end=previewModelAuthoring(state(),batch([operation(id,'extend',[8,20],{line:line(10,20)})]));assert.equal(end.rows[0].status,'ready',end.rows[0].issue);
+  const end=previewModelAuthoring(state(),batch([operation(id,'extend',[8,20],{line:line(10,20)})]));assert.equal(end.rows[0].status,'ready',end.rows[0].issue ?? "native Trim/Extend review status");
   assert.ok(commitModelAuthoring(useViewerStore,end,new Set([0]),'shared end').ok);
   assert.deepEqual(resolveLinearElementChain(dataStore,view,editor,peer,scale),before);
   const journal=structuredClone({entities:view.getNewEntities(),mutations:view.getMutations(),next:view.peekNextExpressId()});

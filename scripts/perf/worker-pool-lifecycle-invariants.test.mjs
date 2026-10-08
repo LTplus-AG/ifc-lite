@@ -139,3 +139,12 @@ test('#7180 readiness cannot be zero or predate actual metadata, geometry and fi
  const root=structuredClone(valid);root.epochs[0].trace.end=30;assert.equal(requireSample(root).ok,true);
  const cached=structuredClone(valid);cached.workload={name:'cache',mode:'cache',loads:['fzk','fzk']};const next=structuredClone(cached.epochs[0]);next.previousId=null;next.trace.loadId='cache-next';next.trace.attrs.loadPath='cache';next.trace.spans[0].name='cache.storeReady';next.trace.spans[0].end=30;next.pageGeneration=1;next.reloadCompleted=true;next.pageTimeOrigin=2000;next.trace.timeOrigin=2000;cached.epochs.push(next);assert.throws(()=>requireSample(cached),/readiness/);
 });
+
+// #7180: each arm can match its own plan while the pair compares unlike workloads.
+for(const [label,change] of [['mode',workload=>workload.mode='immediate'],['option',workload=>workload.idleMs=100]]) {
+ test(`#7036 same-name A/B pairs refuse a distinct planned ${label}`,()=>{
+  const a=row(),b={...row(),index:1,side:'B'};change(b.workload);
+  const schedule=[a,b].map(sample=>({index:sample.index,side:sample.side,pair:sample.pair,contrast:sample.contrast,workload:structuredClone(sample.workload),source:sample.source,query:sample.query}));
+  assert.throws(()=>pairedReport([a,b],schedule),/Paired workload options differ/);
+ });
+}

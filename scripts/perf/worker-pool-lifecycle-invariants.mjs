@@ -139,8 +139,9 @@ export function pairedReport(rows, schedule) {
   }
   return [...groups].map(([key,pair])=>{
     if(pair.length!==2 || new Set(pair.map(x=>x.side)).size!==2)throw Error('Incomplete pair');
-    if(pair[0].identity.digest!==pair[1].identity.digest)throw Error('Payload identity mismatch');
     const a=pair.find(r=>r.side==='A'),b=pair.find(r=>r.side==='B');
+    if(!sameWorkload(a.workload,b.workload))throw Error('Paired workload options differ');
+    if(a.identity.digest!==b.identity.digest)throw Error('Payload identity mismatch');
     if(a.epochs.length!==b.epochs.length||a.epochs.some((epoch,index)=>epoch.fixture!==b.epochs[index].fixture))throw Error('Lifecycle epoch sequence mismatch');
     const epochs=a.epochs.map((epoch,index)=>({index,fixture:epoch.fixture,metrics:Object.fromEntries(['firstBatchWaitMs','firstVisibleGeometryMs','totalWallClockMs','metadataRenderReadyMs'].map(name=>{const av=epoch.metrics[name],bv=b.epochs[index].metrics[name];return [name,{base:av,candidate:bv,deltaMs:Number.isFinite(av)&&Number.isFinite(bv)?bv-av:null,ratio:av>0&&Number.isFinite(bv)?bv/av:null}];}))}));
     return {key,identical:true,rows:pair.map(x=>x.index),performanceAdmitted:pair.every(r=>r.performanceAdmitted===true&&r.mode==='timing'&&r.memory.identityDuringInterval===false),epochs};

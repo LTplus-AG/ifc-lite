@@ -17,8 +17,8 @@ function fixture(mode) {
     const scripts = {
         'cmd.exe': `import os\nprint(os.environ['IFC_CHROME_FIXTURE_ROOT'])`,
         wslpath: `import sys,os\nif sys.argv[1]=='-w' and os.environ['IFC_CHROME_FIXTURE_MODE']=='conversion-fail':sys.exit(9)\nprint(sys.argv[-1].replace('\\\\','/'))`,
-        'chrome-fixture': `import os,sys,json,time,signal,http.server\na=dict(x[2:].split('=',1) for x in sys.argv[1:] if x.startswith('--') and '=' in x)\np=a['user-data-dir'];open(os.path.join(os.environ['IFC_CHROME_FIXTURE_ROOT'],'allocations.jsonl'),'a').write(json.dumps({'pid':os.getpid(),'profile':p})+'\\n')\nif os.environ['IFC_CHROME_FIXTURE_MODE'] in ('delayed-no-endpoint','hung-cleanup'):time.sleep(.4)\nopen(os.path.join(p,'owner.json'),'w').write(json.dumps({'pid':os.getpid(),'profile':p}))\nopen(os.path.join(os.environ['IFC_CHROME_FIXTURE_ROOT'],'launches'),'a').write(p+'\\n')\nopen(os.path.join(os.environ['IFC_CHROME_FIXTURE_ROOT'],'identities.jsonl'),'a').write(json.dumps({'pid':os.getpid(),'profile':p})+'\\n')\nif os.environ['IFC_CHROME_FIXTURE_MODE']=='wrong-endpoint':\n class Handler(http.server.BaseHTTPRequestHandler):\n  def do_GET(self):\n   open(os.path.join(os.environ['IFC_CHROME_FIXTURE_ROOT'],'responses'),'a').write('200\\n');self.send_response(200);self.end_headers()\n  def log_message(self,*args):pass\n http.server.HTTPServer(('127.0.0.1',int(a['remote-debugging-port'])),Handler).serve_forever()\nelse:\n while True:time.sleep(.01)`,
-        'powershell.exe': `import os,sys,re,base64,json,signal,time\ns=base64.b64decode(sys.argv[-1]).decode('utf-16le');p=re.search(r"\\$profile='((?:[^']|'')*)'",s).group(1).replace("''", "'")\nif 'Get-NetTCPConnection' in s:\n open(os.path.join(os.environ['IFC_CHROME_FIXTURE_ROOT'],'ownership-refusals'),'a').write(p+'\\n');sys.exit(9)\nif os.environ['IFC_CHROME_FIXTURE_MODE']=='hung-cleanup':time.sleep(5)\nf=os.path.join(p,'owner.json')\nif os.path.exists(f):\n try:\n  pid=json.load(open(f))['pid'];args=open('/proc/'+str(pid)+'/cmdline','rb').read().split(b'\\0')\n  if ('--user-data-dir='+p).encode() in args:os.kill(pid,signal.SIGTERM)\n  elif any(args):sys.exit(10)\n except (ProcessLookupError,FileNotFoundError):pass\n`,
+        'chrome-fixture': `import os,sys,json,time,signal,http.server\na=dict(x[2:].split('=',1) for x in sys.argv[1:] if x.startswith('--') and '=' in x)\np=a['user-data-dir'];open(os.path.join(os.environ['IFC_CHROME_FIXTURE_ROOT'],'allocations.jsonl'),'a').write(json.dumps({'pid':os.getpid(),'profile':p})+'\\n')\nif os.environ['IFC_CHROME_FIXTURE_MODE'] in ('delayed-no-endpoint','hung-cleanup'):time.sleep(.4)\nif os.environ['IFC_CHROME_FIXTURE_MODE'] in ('pre-owner-abort','pre-owner-wait'):\n while not os.path.exists(os.path.join(os.environ['IFC_CHROME_FIXTURE_ROOT'],'ack-release')):time.sleep(.01)\nopen(os.path.join(os.environ['IFC_CHROME_FIXTURE_ROOT'],'launches'),'a').write(p+'\\n')\nopen(os.path.join(os.environ['IFC_CHROME_FIXTURE_ROOT'],'identities.jsonl'),'a').write(json.dumps({'pid':os.getpid(),'profile':p})+'\\n')\nowner=os.path.join(p,'owner.json');open(owner+'.tmp','w').write(json.dumps({'pid':os.getpid(),'profile':p}));os.replace(owner+'.tmp',owner)\nif os.environ['IFC_CHROME_FIXTURE_MODE']=='wrong-endpoint':\n class Handler(http.server.BaseHTTPRequestHandler):\n  def do_GET(self):\n   open(os.path.join(os.environ['IFC_CHROME_FIXTURE_ROOT'],'responses'),'a').write('200\\n');self.send_response(200);self.end_headers()\n  def log_message(self,*args):pass\n http.server.HTTPServer(('127.0.0.1',int(a['remote-debugging-port'])),Handler).serve_forever()\nelse:\n while True:time.sleep(.01)`,
+        'powershell.exe': `import os,sys,re,base64,json,signal,time\ns=base64.b64decode(sys.argv[-1]).decode('utf-16le');p=re.search(r"\\$profile='((?:[^']|'')*)'",s).group(1).replace("''", "'")\nif 'Get-NetTCPConnection' in s:\n open(os.path.join(os.environ['IFC_CHROME_FIXTURE_ROOT'],'ownership-refusals'),'a').write(p+'\\n');sys.exit(9)\nif os.environ['IFC_CHROME_FIXTURE_MODE']=='hung-cleanup':time.sleep(5)\nf=os.path.join(p,'owner.json')\nif os.environ['IFC_CHROME_FIXTURE_MODE'] in ('pre-owner-abort','pre-owner-wait'):\n open(os.path.join(os.environ['IFC_CHROME_FIXTURE_ROOT'],'cleanup-entered'),'w').write(p)\n if os.environ['IFC_CHROME_FIXTURE_MODE']=='pre-owner-wait':open(os.path.join(os.environ['IFC_CHROME_FIXTURE_ROOT'],'ack-release'),'w').write(p)\nrequest=re.search(r'Invoke-OwnedChromeCleanup -Profile \\$profile -DeadlineMs (\\d+)',s)\nif request:\n budget=max(.001,(int(request.group(1))-1000)/1000);until=time.monotonic()+budget\n while not os.path.exists(f) and time.monotonic()<until:time.sleep(.01)\n if not os.path.exists(f):sys.exit(11)\nif os.path.exists(f):\n try:\n  pid=json.load(open(f))['pid'];args=open('/proc/'+str(pid)+'/cmdline','rb').read().split(b'\\0')\n  if ('--user-data-dir='+p).encode() in args:os.kill(pid,signal.SIGTERM)\n  elif any(args):sys.exit(10)\n except (ProcessLookupError,FileNotFoundError):pass\n`,
     };
     for (const [name, body] of Object.entries(scripts))
         writeFileSync(join(bin, name), '#!/usr/bin/env python3\n' + body + '\n', { mode: 0o755 });
@@ -26,7 +26,7 @@ function fixture(mode) {
     process.env.PATH = bin + ':' + before.PATH;
     process.env.IFC_CHROME_FIXTURE_ROOT = root;
     process.env.IFC_CHROME_FIXTURE_MODE = mode;
-    return { root, exe: join(bin, 'chrome-fixture'), identities: () => existsSync(join(root, 'identities.jsonl')) ? readFileSync(join(root, 'identities.jsonl'), 'utf8').trim().split('\n').map(x => JSON.parse(x)) : [], profiles: () => readdirSync(join(root, 'Temp')).filter(x => x.slice(0,8)==='ifclite-').map(x => join(root, 'Temp', x)), cleanup() {
+    return { root, exe: join(bin, 'chrome-fixture'), allocations: () => existsSync(join(root, 'allocations.jsonl')) ? readFileSync(join(root, 'allocations.jsonl'), 'utf8').trim().split('\n').map(x => JSON.parse(x)) : [], identities: () => existsSync(join(root, 'identities.jsonl')) ? readFileSync(join(root, 'identities.jsonl'), 'utf8').trim().split('\n').map(x => JSON.parse(x)) : [], profiles: () => readdirSync(join(root, 'Temp')).filter(x => x.slice(0,8)==='ifclite-').map(x => join(root, 'Temp', x)), cleanup() {
             // The startup witness may fail before owner.json is acknowledged. The
             // separate allocation journal still permits exact owned-child retirement.
             const allocations = existsSync(join(root, 'allocations.jsonl')) ? readFileSync(join(root, 'allocations.jsonl'), 'utf8').trim().split('\n').map(x => JSON.parse(x)) : [];
@@ -161,3 +161,38 @@ test('#7036 failure after profile allocation but before browser spawn removes th
         f.cleanup();
     }
 });
+
+// #7180: journal allocation is deliberately earlier than acknowledged ownership.
+for (const cleanupMs of [250, 2000]) {
+ test(`#7036 abort before provider ownership ${cleanupMs===250?'refuses unknown retirement':'waits for observed root retirement'}`, async()=>{
+  const f=fixture(cleanupMs===250?'pre-owner-abort':'pre-owner-wait'), abort=new AbortController();
+  const starting=launchWindowsChrome(f.exe,3,{...policy,startupMs:15000,cleanupMs,signal:abort.signal}).then(value=>({value}),error=>({error}));
+  try {
+   const deadline=Date.now()+10000;
+   while(!f.allocations().length){assert.ok(Date.now()<deadline,'Actual child allocation must precede abort');await sleep(5);}
+   assert.equal(f.identities().length,0,'Abort must precede owner acknowledgement');
+   abort.abort(Error('pre-owner abort'));
+   const result=await starting;assert.ok(result.error instanceof ChromeStartupError);
+   assert.equal(result.error.startupFailures.length,1,'Unproved owner or abort must prohibit another launch');
+   assert.equal(existsSync(join(f.root,'cleanup-entered')),true,'Actual cleanup provider must start before acknowledgement release');
+   const receipt=result.error.receipt;
+   console.info(JSON.stringify({control:'pre-owner-abort',cleanupMs,receipt,allocations:f.allocations(),acknowledged:f.identities(),live:f.allocations().map(owner=>({ ...owner,live:ownedProcessLive(owner)}))}));
+   if(cleanupMs===250){
+    assert.equal(existsSync(join(f.root,'ack-release')),false,'Unknown owner must remain blocked until finally retirement');
+    assert.ok(receipt.cleanupError,'Unknown initial absence must refuse cleanup');
+    assert.equal(existsSync(receipt.profileWsl),true,'Unproved allocated profile must remain');
+    assert.ok(f.allocations().some(ownedProcessLive),'Actual starting child remains recorded for finally retirement');
+   } else {
+    assert.equal(receipt.cleanupError,null);assert.equal(existsSync(receipt.profileWsl),false);
+    assert.equal(f.identities().length,1);assert.ok(f.identities().every(owner=>!ownedProcessLive(owner)));
+   }
+  } finally {
+   if(!abort.signal.aborted)abort.abort(Error('fixture teardown'));
+   await starting;const allocated=f.allocations();f.cleanup();
+   const retirementDeadline=Date.now()+1000;
+   while(allocated.some(ownedProcessLive)&&Date.now()<retirementDeadline)await sleep(5);
+   assert.ok(allocated.every(owner=>!ownedProcessLive(owner)),'Finally must retire every exact allocated fixture child');
+   console.info(JSON.stringify({control:'pre-owner-finally',cleanupMs,retired:allocated.map(owner=>({...owner,live:ownedProcessLive(owner)}))}));
+  }
+ });
+}

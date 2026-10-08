@@ -1,0 +1,126 @@
+{
+  "generatedAt": "2026-10-08T11:35:25.979582+00:00",
+  "qualifiedSourceHead": "7ca5c76875f9a50a19dda4e8eb6a331e1c80ebea",
+  "frozenMain": "c696805e543d934d8df47029813925d92bd4ff3f",
+  "normalMerge": "3c3a27e7fb",
+  "sourceHashes": {
+    "scripts/perf/frame-gpu-chrome.ts": "0af0660713e3ad39ee1ccd1c3d1d353240986d3ee8e381e168292b196cff8ddf",
+    "scripts/perf/frame-gpu-owned-profile.ps1": "c99c404ee7768b78da00aeb73d1471da46de0dd2503967c1457c7c0f215de7a3",
+    "scripts/perf/worker-pool-lifecycle-invariants.mjs": "60f893959c3b3ae8530559dcd4c5ea4784830aea5ed4850de58cac11cd8dd2ed",
+    "scripts/perf/worker-pool-lifecycle-invariants.test.mjs": "2f0a59a57262efda83511890522720692c17a038dd150efb2abd9a11a7c40ed6",
+    "tests/benchmark/metadata-render-readiness.ts": "d5c9b3425029ff828c531e4ac0a10a69e661d0b951c9ee31653c90e293fb3460",
+    "scripts/perf/tsconfig.frames.json": "1f8c02a50980c27ca30c8bfc66ab5829573d9d0cdf7f720c4dee60aee3235ea8",
+    "package.json": "6a0d6a988b088f2f27da041835b54c8703c5f83105cd284f565039f5d193248b",
+    ".github/workflows/test.yml": "72b4c553f88f238f1da0054176f04b6ad25139cc9437c777c134023adb22fd7c",
+    "scripts/browser-ab-report.test.mjs": "22af6f3f3549957db83dfbe6d922e2e82f142f39bd2a7784af049ca9463e64cd",
+    "scripts/perf/browser-ab-report.mjs": "62ff7760b356796adcb21c9ca35078211a1b13f36cd9d29feb6ebab75bc2d1dd",
+    "apps/viewer/src/components/viewer/properties/effective-classification-systems.ts": "81d7f01e2d3f62b312594cc89c0f3c6f59f30ddc30af658eed19346b4e49383f",
+    "packages/parser/src/material-resolver.ts": "7ea4dde4f2faf0c9e813308b3f5ce52a82c9f546d41f457911f929c030b125c8"
+  },
+  "controls": {
+    "command": "node --test --test-concurrency=1 scripts/browser-ab-report.test.mjs scripts/browser-metadata-readiness.test.mjs scripts/viewer-benchmark-span-metrics.test.mjs scripts/perf/frame-gpu-chrome-lifecycle.test.mjs scripts/perf/frame-gpu-owned-profile.test.mjs scripts/perf/worker-pool-lifecycle-invariants.test.mjs",
+    "session": 37292,
+    "terminalExitCode": 0,
+    "pass": 62,
+    "fail": 0,
+    "skip": 0,
+    "scope": "Actual owned CPU/provider/readiness invariants; no native Chrome"
+  },
+  "fullRootTypecheck": {
+    "command": "pnpm typecheck",
+    "session": 75252,
+    "terminalExitCode": 0,
+    "packageTestFiles": 3728,
+    "packages": 62,
+    "permanentScriptProgramme": "scripts/perf/tsconfig.frames.json",
+    "scriptEntries": 3
+  },
+  "finalLightGates": {
+    "rawEntityAccess": 0,
+    "moduleSize": 0,
+    "testWiring": 0,
+    "sourceTextAssertions": 0,
+    "MPL": 0,
+    "diffCheck": 0
+  },
+  "runtimeAndDeclarationsAfter": [
+    {
+      "path": "packages/wasm/pkg/ifc-lite_bg.wasm",
+      "present": true,
+      "sha256": "8b74229bbd4a991cbf1f32a8d52add195c5fdd333921f998b1c18eb713185143",
+      "size": 9970066,
+      "mtimeNs": 1791459158588074626
+    },
+    {
+      "path": "packages/wasm/pkg/ifc-lite.js",
+      "present": true,
+      "sha256": "0a281479eb65141ae75aeef987d331d44439741a0cae855f122e53e800311a39",
+      "size": 304051,
+      "mtimeNs": 1791459158548072839
+    },
+    {
+      "path": "packages/wasm/pkg/ifc-lite.d.ts",
+      "present": true,
+      "sha256": "54c9d0a52eb515e517d76726fefe5f6a63e553a81c1b10331a597965d14620f6",
+      "size": 164165,
+      "mtimeNs": 1791459158548072839
+    },
+    {
+      "path": "packages/parser/dist/index.d.ts",
+      "present": true,
+      "sha256": "ca97f60fd2651205ac05ad2216d60fb1f3d1d02dc04cf48c0aa527a046e183e6",
+      "size": 10909,
+      "mtimeNs": 1791459158888088027
+    },
+    {
+      "path": "packages/renderer/dist/index.d.ts",
+      "present": true,
+      "sha256": "5cba2b97cf7d8a9231f7480cd6b50aa84d87af886f4846cce1a1e7fd7af0c7ac",
+      "size": 57422,
+      "mtimeNs": 1791459158868087134
+    }
+  ],
+  "environment": {
+    "node": "v24.21.0",
+    "pnpm": "10.8.1",
+    "platform": "Linux/WSL with actual Windows provider CPU controls"
+  },
+  "logs": [
+    {
+      "archive": "7180-main-integration-exact-62-controls.log.gz",
+      "rawSHA256": "f4976852964dfb57f97bea40fe34b55b53cf74db8f7d8957af8f93db5a6600fd"
+    },
+    {
+      "archive": "7180-main-integration-full-root-typecheck.log.gz",
+      "rawSHA256": "500f36c381b9254f0f4005d11d9ac3a3f547dfb7db8878a92f6f73f26e09e1de"
+    },
+    {
+      "archive": "7180-main-final-check-raw-entity-enumeration.mjs.log.gz",
+      "rawSHA256": "90e5373784d1b13731daabd75e73393a719a3974d8510138cbf33439e389ea04"
+    },
+    {
+      "archive": "7180-main-final-check-module-size.mjs.log.gz",
+      "rawSHA256": "599fe4df65cd9b10478aa9d0d7e573d252b85fce474ba36031f76984b1be6b5d"
+    },
+    {
+      "archive": "7180-main-final-check-test-wiring.mjs.log.gz",
+      "rawSHA256": "0a95b0d39fbd8f2530cdd60f06bd456b489429fbbee4dd09a0be0935076acc2d"
+    },
+    {
+      "archive": "7180-main-final-check-source-text-assertions.mjs.log.gz",
+      "rawSHA256": "fdf4d08ee9a015fc4b6718990cab4a552340885d936d51763f1bc8b47a6b7321"
+    },
+    {
+      "archive": "7180-main-final-add-license-headers.mjs.log.gz",
+      "rawSHA256": "bb2577957920915e45a475bf20902ef312e22b1d5ae4b99745b21eb1ca79c0c4"
+    }
+  ],
+  "limits": [
+    "Standalone prerequisites; no7161 persistent-worker runtime carriage",
+    "No nativeChrome/GPU/performance/complete process retirement proof",
+    "Root Turbo may replay content-addressed sibling cache; permanent supplemental programme is reached by plain root command",
+    "Original failedCIrawlogs retained in sibling main-raw-point-read-correction",
+    "Evidence-only commit does not change qualified source; freshheadCI stillrequired",
+    "No push"
+  ]
+}

@@ -84,11 +84,12 @@
           "attributes": 32,
           "classifications": 16,
           "classificationPath": 16,
-          "relationships": 16
+          "relationships": 16,
+          "documents": 16
         },
         "units": "Quantity values carry {value, unit} in the Properties panel display unit (project unit, or the display-unit override below); a null unit is undeclared. Property values are the panel display strings, with the unit inline when the measure declares one.",
         "displayUnitOverrides": {},
-        "limitations": "Includes edits; own-element status and native associated definitions use snapshot freshness. Sections use perElementBounds and full known counts. inheritedType has model/type GlobalId provenance; occurrence properties override same-named type values. Materials use occurrence-before-type precedence, LayerThickness metres, and panel display units for generic properties. Unverified fields are unknown. Missing membership inputs or unreadable live source edits make totals null/unavailable; source-free classification markers may describe the original source, not current membership. Unverified paths have unknown totals and bounded known ancestors. IFC2X3 uses ItemReference; other schemas use Identification. Missing systems stay unknown. Unverified material-property counts stay null; empty rows do not prove absence. Typed IFC2X3 scalar material-property subtypes are outside the generic-set reader. Relationships count exact native edges; alias rows identify their inherited lookup ID. Source-free edited graph rows are unverified source-origin evidence. Selection is sampled; byClass/byModel cover every selected element."
+        "limitations": "Includes current native edits; element status covers its own edits. Definitions/associations use snapshot freshness. Sections use perElementBounds and full known counts. inheritedType has model/type provenance; occurrence properties override same-named type values. Materials use occurrence-before-type precedence; LayerThickness is metres and generic properties use panel display units. IFC2X3 scalar material-property subtypes are outside the generic-set reader. Unverified fields remain unknown; missing membership inputs/unreadable source edits make totals null/unavailable. Source-free classification/document markers describe original source, not current assignments. Paths have bounded known ancestors; unverified path totals are null. Classification codes use schema-exact ItemReference/Identification; missing systems stay unknown. Relationships count exact native edges; aliases carry inherited lookup IDs. Edited source-free graph edges are unverified source-origin evidence. Documents use native references/information with model/document provenance and independent bounds. Empty samples do not prove absence. Selection is sampled; byClass/byModel cover every selected element."
       },
       "rows": [
         {
@@ -141,6 +142,9 @@
               }
             ],
             "qsetCount": 1,
+            "documentStatus": "available",
+            "documentCount": 0,
+            "documents": [],
             "relationshipLookupExpressId": 425,
             "relationshipStatus": "available",
             "relationshipCount": 5,

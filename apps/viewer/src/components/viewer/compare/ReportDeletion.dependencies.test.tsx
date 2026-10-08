@@ -280,3 +280,18 @@ test('#7245 revoked native confirmation explains changed references without repo
   assert.match(ui.textContent ?? '', /Chart references changed/);
   assert.doesNotMatch(latestToast(ui), /Comparison changes are in memory, but browser storage is unavailable or full/);
 });
+
+test('#7245 closing a quota-refused native preview revokes its retained deletion on Retry', async () => {
+  const report = await realComparison(); await dependents('compare', report.id);
+  const ui = previewFor(report); await settle();
+  const refused = refuseContentWrites();
+  try {
+    click(button(ui, 'Delete report')!);
+    await waitFor(() => useViewerStore.getState().savedComparisonsStorage.items[report.id] === 'quota', 'native deletion actually stages a refused quota tombstone');
+    assert.equal((await readContentRows('comparison')).find(row => row.id === report.id)?.deleted, false, 'durable native source survives actual quota refusal');
+  } finally { refused.mock.restore(); }
+  cleanup();
+  assert.equal(await useViewerStore.getState().retrySaveComparisons(), false, 'closed review cannot authorize a later native storage retry');
+  assert.equal((await readContentRows('comparison')).find(row => row.id === report.id)?.deleted, false);
+  assert.ok(useViewerStore.getState().savedComparisons.some(row => row.id === report.id), 'revocation restores the original readable native source');
+});

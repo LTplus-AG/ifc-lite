@@ -85,7 +85,9 @@
           "classifications": 16,
           "classificationPath": 16,
           "relationships": 16,
-          "documents": 16
+          "documents": 16,
+          "zoneSets": 16,
+          "sharesPerVolumeBasis": 32
         },
         "units": "Quantity values carry {value, unit} in the Properties panel display unit (project unit, or the display-unit override below); a null unit is undeclared. Property values are the panel display strings, with the unit inline when the measure declares one.",
         "displayUnitOverrides": {},
@@ -143,6 +145,12 @@
               }
             ],
             "qsetCount": 1,
+            "zoneVolumeBreakdowns": {
+              "quantityStatus": "available",
+              "zoneSetCount": 0,
+              "zoneSets": [],
+              "volumeBases": []
+            },
             "structuralStatus": "available",
             "structural": null,
             "documentStatus": "available",

@@ -4,7 +4,7 @@
 
 import { getAttributeTypeForSchema, measureUnit, type ProjectUnits, type StructuralExtraction, type StructuralLoadInfo,
   type BoundaryConditionInfo } from '@ifc-lite/parser';
-import { selectedStructuralMember } from '@/components/viewer/properties/selectedStructuralMember';
+import { selectedStructuralMember, structuralRelatedRows } from '@/components/viewer/properties/selectedStructuralMember';
 const bounded = (value: string | undefined) => value === undefined || value === '' ? null : value.length > 240 ? `${value.slice(0, 240)}…` : value;
 function components(record: StructuralLoadInfo | BoundaryConditionInfo, limit: number, units: ProjectUnits, schema: string | undefined) {
   const all = Object.entries(record.components);
@@ -51,14 +51,18 @@ export function structuralEvidence(data: StructuralExtraction | null, expressId:
   limit: number, valueLimit: number, units: ProjectUnits, schema: string | undefined, sourceAvailable: boolean) {
   const member = selectedStructuralMember(data, expressId, globalId);
   if (!member || !data) return null;
-  const connections = data.connections.filter(connection => member.connectionGlobalIds.includes(connection.globalId));
-  const activities = data.activities.filter(activity => member.activityGlobalIds.includes(activity.globalId));
-  const models = data.analysisModels.filter(model => member.analysisModelGlobalIds.includes(model.globalId));
-  const count = (value: number) => sourceAvailable ? value : null;
+  const connectionRows = structuralRelatedRows(data.connections, member.connectionGlobalIds);
+  const activityRows = structuralRelatedRows(data.activities, member.activityGlobalIds);
+  const modelRows = structuralRelatedRows(data.analysisModels, member.analysisModelGlobalIds);
+  const connections = connectionRows.rows;
+  const activities = activityRows.rows;
+  const models = modelRows.rows;
+  const count = (value: number, unavailable = false) => sourceAvailable && !unavailable ? value : null;
   return { member: { expressId: member.expressId, type: member.type, GlobalId: bounded(member.globalId), Name: bounded(member.name),
     Description: bounded(member.description), ObjectType: bounded(member.objectType), PredefinedType: bounded(member.predefinedType),
     Thickness: member.thickness ?? null, thicknessUnit: units.resolvedForUnitType('LENGTHUNIT')?.symbol ?? null },
-    nativeResolvedConnectionCount: count(connections.length), nativeResolvedActivityCount: count(activities.length), nativeResolvedAnalysisModelCount: count(models.length),
+    nativeResolvedConnectionCount: count(connections.length, connectionRows.unavailable), nativeResolvedActivityCount: count(activities.length, activityRows.unavailable), nativeResolvedAnalysisModelCount: count(models.length, modelRows.unavailable),
+    relationshipTargetsUnavailable: connectionRows.unavailable || activityRows.unavailable || modelRows.unavailable,
     modelNativeLoadsTruncated: data.loadsTruncated,
     connections: connections.slice(0, limit).map(connection => ({ expressId: connection.expressId, type: connection.type,
       GlobalId: bounded(connection.globalId), Name: bounded(connection.name), AppliedCondition: connection.appliedCondition ? {

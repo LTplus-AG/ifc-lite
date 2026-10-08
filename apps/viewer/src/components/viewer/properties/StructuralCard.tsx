@@ -24,11 +24,9 @@ import { formatLocaleList } from '@/i18n/intlFormat';
 import { EXPRESS_PREDEFINED_TYPE_ATTRIBUTE, EXPRESS_THICKNESS_ATTRIBUTE } from './express-labels';
 import type {
   StructuralExtraction,
-  StructuralConnectionInfo,
-  StructuralActivityInfo,
   StructuralLoadInfo,
 } from '@ifc-lite/parser';
-import { selectedStructuralMember } from './selectedStructuralMember';
+import { selectedStructuralMember, structuralRelatedRows } from './selectedStructuralMember';
 import { PersistentCollapsible } from './PersistentCollapsible';
 
 interface StructuralCardProps {
@@ -36,7 +34,7 @@ interface StructuralCardProps {
   structuralData: StructuralExtraction | null;
   /** Selected entity's local express ID. */
   selectedExpressId: number | null;
-  /** Selected entity's globalId (federation-safe match, preferred over expressId). */
+  /** GUID-only fallback when no local EXPRESS identity is available; must be unique in this model. */
   selectedGlobalId?: string | null;
   sourceUnavailable?: boolean;
 }
@@ -52,36 +50,19 @@ export function StructuralCard({
     [structuralData, selectedExpressId, selectedGlobalId],
   );
 
-  const analysisModelNames = useMemo(() => {
-    const map = new Map<string, string>();
-    if (!structuralData) return map;
-    for (const m of structuralData.analysisModels) {
-      if (m.globalId && m.name) map.set(m.globalId, m.name);
-    }
-    return map;
-  }, [structuralData]);
-
-  const connections = useMemo(() => {
-    if (!member || !structuralData) return [];
-    const byId = new Map(structuralData.connections.map((c) => [c.globalId, c]));
-    return member.connectionGlobalIds
-      .map((id) => byId.get(id))
-      .filter((c): c is StructuralConnectionInfo => Boolean(c));
+  const related = useMemo(() => {
+    if (!member || !structuralData) return null;
+    return {
+      connections: structuralRelatedRows(structuralData.connections, member.connectionGlobalIds),
+      activities: structuralRelatedRows(structuralData.activities, member.activityGlobalIds),
+      models: structuralRelatedRows(structuralData.analysisModels, member.analysisModelGlobalIds),
+    };
   }, [member, structuralData]);
-
-  const activities = useMemo(() => {
-    if (!member || !structuralData) return [];
-    const byId = new Map(structuralData.activities.map((a) => [a.globalId, a]));
-    return member.activityGlobalIds
-      .map((id) => byId.get(id))
-      .filter((a): a is StructuralActivityInfo => Boolean(a));
-  }, [member, structuralData]);
-
-  if (!member) return null;
-
-  const modelLabels = member.analysisModelGlobalIds
-    .map((id) => analysisModelNames.get(id))
-    .filter((s): s is string => Boolean(s));
+  if (!member || !related) return null;
+  const connections = related.connections.rows;
+  const activities = related.activities.rows;
+  const modelLabels = related.models.rows.flatMap(model => model.name ? [model.name] : []);
+  const relatedUnavailable = related.connections.unavailable || related.activities.unavailable || related.models.unavailable;
 
   return (
     <PersistentCollapsible
@@ -108,7 +89,8 @@ export function StructuralCard({
         <ChevronDown className="size-3 shrink-0 transition-transform group-data-[state=closed]/disclosure:-rotate-90" aria-hidden="true" />
       </CollapsibleTrigger>
       <CollapsibleContent>
-        {sourceUnavailable && <p role="status" className="p-3 text-xs text-amber-700 dark:text-amber-300">{t('properties.structural.sourceUnavailable')}</p>}
+        {sourceUnavailable && <output className="block p-3 text-xs text-amber-700 dark:text-amber-300">{t('properties.structural.sourceUnavailable')}</output>}
+        {relatedUnavailable && <output className="block p-3 text-xs text-amber-700 dark:text-amber-300">{t('properties.structural.relatedUnavailable')}</output>}
         <div className="border-t-2 border-violet-200 dark:border-violet-800 divide-y divide-violet-100 dark:divide-violet-900/30">
           <div className="px-3 py-2 text-xs">
             <div className="grid grid-cols-[minmax(70px,auto)_1fr] gap-x-2 gap-y-0.5 text-2xs">

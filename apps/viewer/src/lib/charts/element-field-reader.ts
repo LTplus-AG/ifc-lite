@@ -59,7 +59,7 @@ const UNSUPPORTED: ResolvedElementFieldValue = { value: null, status: 'unsupport
 
 /** Cached model-local reader. Recreate it when the store or mutation revision changes. */
 export function createElementFieldReader(store: IfcDataStore, mutationView?: MutablePropertyView): ElementFieldReader {
-  const provider = createListDataProvider(store);
+  const provider = createListDataProvider(store, '', undefined, mutationView);
   const schema = createElementAttributeSchema(store);
   const families = createElementFamilyReader(provider, (id) => definingTypeId(id), mutationView);
   const attributes = new Map<number, Map<string, unknown>>();

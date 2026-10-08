@@ -17,7 +17,7 @@
  *
  * A guard that only asks `argv[1].endsWith('name.mjs')` has no such failure
  * and is not flagged: the rule is about COMPARING `argv[1]` with the module's
- * own location. A comparison that realpaths both sides is correct and is not
+ * own location. A comparison that realpaths `argv[1]` is correct and is not
  * flagged either; test files are skipped, since they may spell the naive guard
  * on purpose to demonstrate it.
  */
@@ -28,6 +28,14 @@ const COMPARE = /[!=]==?/;
 const STATEMENT_LINES = 12;
 /** A line that closes a statement or a block header (`;`, `{`, `}`), or is blank. */
 const endsStatement = (t) => t.trim() === '' || /[;{}]\s*(?:\/\/.*)?$/.test(t.trim());
+/**
+ * `argv[1]` passed through a realpath call. `import.meta.url` is already
+ * symlink-resolved by node, so resolving the other side is what makes the
+ * comparison correct; a `realpath` that wraps only the module path (the
+ * `argv[1] === realpathSync(fileURLToPath(import.meta.url))` shape) is still
+ * the broken comparison and must not exempt the statement.
+ */
+const REALPATH_ARGV = /realpath\w*(?:\.native)?\(\s*(?:resolve\(\s*)?process\.argv/;
 const SELF_LOCATION = /import\.meta\b|\bfileURLToPath\b|\bpathToFileURL\b/;
 
 /**
@@ -56,7 +64,7 @@ export function findHandRolledMainGuards(files, read) {
         .slice(lo, hi + 1)
         .filter((t) => !isComment(t))
         .join(' ');
-      if (COMPARE.test(window) && SELF_LOCATION.test(window) && !/isMainEntry|realpath/.test(window)) {
+      if (COMPARE.test(window) && SELF_LOCATION.test(window) && !/isMainEntry/.test(window) && !REALPATH_ARGV.test(window)) {
         out.push({ file, line: i + 1, text: text.trim() });
         reportedUntil = hi;
       }

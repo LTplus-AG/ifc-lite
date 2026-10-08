@@ -25,7 +25,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, rmSync, symlinkSync } from 'node:fs';
+import { copyFileSync, mkdirSync, mkdtempSync, rmSync, symlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -69,6 +69,51 @@ for (const [gate, verdict] of GATES) {
   test(`${gate} does not run when it is only imported`, { timeout: 120_000 }, () => {
     const url = pathToFileURL(join(REPO, 'scripts', gate)).href;
     const r = run(['--input-type=module', '-e', `await import(${JSON.stringify(url)}); console.log('imported');`], REPO);
+    assert.match(r.output, /imported/, `the import itself failed (exit ${r.status}): ${r.output}`);
+    assert.doesNotMatch(r.output, verdict, 'importing the module ran its main()');
+  });
+}
+
+// The #6516 work-bundle scripts are copied ON THEIR OWN into the bundle
+// directory, where `scripts/lib/is-main-entry.mjs` does not exist, so they carry
+// their own entry-point check. Run each copy from a directory with no `lib`
+// beside it: directly, through a symlinked directory, and imported. A repo
+// relative `import` of the helper would fail to load in all three.
+const BUNDLE_SCRIPTS = [
+  ['csg-work-diagnostic.mjs', /Usage: node csg-work-diagnostic\.mjs/],
+  ['run-csg-work-bundle.mjs', /REFUSE LAUNCHER_SETUP/],
+  ['build-csg-work-bundle.mjs', /usage: build-csg-work-bundle\.mjs/],
+];
+
+for (const [script, verdict] of BUNDLE_SCRIPTS) {
+  const place = (t) => {
+    const dir = mkdtempSync(join(tmpdir(), 'main-entry-bundle-'));
+    t.after(() => rmSync(dir, { recursive: true, force: true }));
+    const bundle = join(dir, 'bundle');
+    mkdirSync(bundle);
+    copyFileSync(join(REPO, 'scripts', 'perf', script), join(bundle, script));
+    return { dir, bundle };
+  };
+
+  test(`${script} copied alone into a bundle runs directly and through a symlinked directory`, { timeout: 60_000 }, (t) => {
+    const { dir, bundle } = place(t);
+    const direct = run([join(bundle, script)], bundle);
+    assert.match(direct.output, verdict, `no main() output when run directly (exit ${direct.status}): ${direct.output}`);
+    const link = join(dir, 'link');
+    try {
+      symlinkSync(bundle, link, 'dir');
+    } catch (err) {
+      if (err && (err.code === 'EPERM' || err.code === 'EACCES')) return t.skip('cannot create a symlink here');
+      throw err;
+    }
+    const viaLink = run([join(link, script)], link);
+    assert.match(viaLink.output, verdict, `never ran through the symlink (exit ${viaLink.status}): ${viaLink.output}`);
+  });
+
+  test(`${script} copied alone into a bundle does not run when only imported`, { timeout: 60_000 }, (t) => {
+    const { bundle } = place(t);
+    const url = pathToFileURL(join(bundle, script)).href;
+    const r = run(['--input-type=module', '-e', `await import(${JSON.stringify(url)}); console.log('imported');`], bundle);
     assert.match(r.output, /imported/, `the import itself failed (exit ${r.status}): ${r.output}`);
     assert.doesNotMatch(r.output, verdict, 'importing the module ran its main()');
   });

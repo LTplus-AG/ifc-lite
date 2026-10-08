@@ -39,6 +39,14 @@ test('accepts isMainEntry, an endsWith guard, and comments that quote the bad sh
   assert.deepEqual(scan(' * `import.meta.url === ' + FILE_URL_OF('argv[1]') + '` is wrong'), []);
 });
 
+test('a realpath around only the module path does not exempt the guard (#7025 review)', () => {
+  assert.equal(scan('if (process.argv[1] === realpathSync(fileURLToPath(import.meta.url))) main();').length, 1);
+  assert.equal(scan('if (realpathSync(\n  fileURLToPath(import.meta.url)\n) === process.argv[1]) main();').length, 1);
+  // Resolving argv is what matters: node has already resolved import.meta.url.
+  assert.deepEqual(scan('if (realpathSync(process.argv[1]) === fileURLToPath(import.meta.url)) main();'), []);
+  assert.deepEqual(scan('if (realpathSync(resolve(process.argv[1])) === fileURLToPath(import.meta.url)) main();'), []);
+});
+
 test('accepts a comparison that realpaths both sides', () => {
   assert.deepEqual(scan('process.argv[1] && realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url));'), []);
 });

@@ -4,11 +4,23 @@
 
 // #6516 source-prepared diagnostic ONLY: positive wrapper observations, not timing.
 import { createHash } from 'node:crypto';
+import { realpathSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import { join, resolve } from 'node:path';
-import { pathToFileURL } from 'node:url';
-import { isMainEntry } from '../lib/is-main-entry.mjs';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+
+// This file is copied on its own into the work bundle (see `copyProjectTools` in
+// build-csg-work-bundle.mjs), where scripts/lib does not exist, so the entry-point
+// check is spelled here instead of imported. Same rule as scripts/lib/is-main-entry.mjs:
+// `argv[1]` is resolved through realpath, because `import.meta.url` already is.
+function isMainEntry(moduleUrl) {
+  try {
+    return realpathSync(process.argv[1]) === fileURLToPath(moduleUrl);
+  } catch {
+    return false;
+  }
+}
 
 const meshFields = [
   'expressId', 'ifcType', 'geometryClass', 'geometryItemId', 'materialId',

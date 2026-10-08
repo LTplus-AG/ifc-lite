@@ -9,8 +9,21 @@ import {
   access, copyFile, cp, lstat, mkdir, readFile, readdir, realpath, stat, writeFile,
 } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
+import { realpathSync } from 'node:fs';
 import { dirname, join, relative, resolve, sep } from 'node:path';
-import { isMainEntry } from '../lib/is-main-entry.mjs';
+import { fileURLToPath } from 'node:url';
+
+// This file is copied on its own into the work bundle (see `copyProjectTools` in
+// build-csg-work-bundle.mjs), where scripts/lib does not exist, so the entry-point
+// check is spelled here instead of imported. Same rule as scripts/lib/is-main-entry.mjs:
+// `argv[1]` is resolved through realpath, because `import.meta.url` already is.
+function isMainEntry(moduleUrl) {
+  try {
+    return realpathSync(process.argv[1]) === fileURLToPath(moduleUrl);
+  } catch {
+    return false;
+  }
+}
 
 const exec = promisify(execFile);
 const runTimeoutMs = 10 * 60 * 1000;

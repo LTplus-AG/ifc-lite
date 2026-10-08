@@ -3,12 +3,23 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 // #6516 private-file diagnostic delivery. No timing or complete-census verdict.
 import { createHash } from 'node:crypto';
-import { createReadStream } from 'node:fs';
+import { createReadStream, realpathSync } from 'node:fs';
 import { lstat, readFile, readdir, realpath, mkdir, writeFile } from 'node:fs/promises';
 import { spawn } from 'node:child_process';
 import { join, resolve, relative, isAbsolute, sep, dirname, basename } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { isMainEntry } from '../lib/is-main-entry.mjs';
+
+// This file is copied on its own into the work bundle (see `copyProjectTools` in
+// build-csg-work-bundle.mjs), where scripts/lib does not exist, so the entry-point
+// check is spelled here instead of imported. Same rule as scripts/lib/is-main-entry.mjs:
+// `argv[1]` is resolved through realpath, because `import.meta.url` already is.
+function isMainEntry(moduleUrl) {
+  try {
+    return realpathSync(process.argv[1]) === fileURLToPath(moduleUrl);
+  } catch {
+    return false;
+  }
+}
 
 const ROLES = ['release6-stock', 'release6-on', 'release7-stock', 'release7-on'];
 const SHA = /^[a-f0-9]{64}$/;

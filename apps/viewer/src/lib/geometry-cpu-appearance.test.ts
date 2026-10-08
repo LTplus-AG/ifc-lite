@@ -11,6 +11,8 @@ import { splitMeshForStreaming } from '../../../../packages/renderer/src/scene-s
 import { useViewerStore } from '@/store';
 import { fixtureModel } from '@/test/store-fixture.js';
 import { carryReleasedMesh, meshGeometryCounts, hasMeshGeometryProvenance } from './released-mesh-provenance.js';
+import { capturePreAlignment, restorePreAlignment } from '@/hooks/ingest/federationPreAlignment.js';
+import { placedMesh } from './model-placement/placed-geometry.js';
 
 afterEach(() => useViewerStore.getState().clearAllModels());
 
@@ -28,6 +30,30 @@ function seed(): MeshData {
     geometryResult: geometry, boundedGeometryMode: true });
   return source;
 }
+
+it('canonical pre-alignment restore releases prior registered allocations and preserves independent alias fields (#6584)', () => {
+  const source = seed();
+  const geometry = useViewerStore.getState().geometryResult!;
+  const snapshot = capturePreAlignment(geometry);
+  const retained = placedMesh(source, [1, 0, 0]);
+  const partial = carryReleasedMesh(source, { ...source });
+  const independentPositions = source.positions.slice();
+  partial.positions = independentPositions;
+  const oldPositions = retained.positions, oldNormals = retained.normals;
+  restorePreAlignment(geometry, snapshot);
+  assert.notEqual(source.positions, oldPositions, 'actual frame restore replaces the source allocation');
+  assert.notEqual(source.normals, oldNormals);
+  useViewerStore.getState().releaseGeometryMemory();
+  assert.equal(source.positions.byteLength, 0);
+  assert.equal(retained.positions.byteLength, 0, 'prior source positions cannot remain pinned by a registered copy');
+  assert.equal(retained.normals.byteLength, 0, 'prior source normals cannot remain pinned by a registered copy');
+  assert.equal(retained.indices.byteLength, 0);
+  assert.equal(partial.positions, independentPositions, 'unrelated replacement allocation remains live');
+  assert.deepEqual(meshGeometryCounts(retained), { triangles: 2, vertices: 4 });
+  assert.deepEqual(meshGeometryCounts(partial), { triangles: 2, vertices: 4 });
+  assert.deepEqual(retained.origin, [1, 0, 0]);
+  assert.equal(hasMeshGeometryProvenance(retained), true);
+});
 
 it('canonical stream fragments release appearance-only aliases while retaining their independent topology (#6584)', () => {
   const source = seed();

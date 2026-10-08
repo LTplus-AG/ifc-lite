@@ -4,7 +4,7 @@
 
 import type { MeshData } from '@ifc-lite/geometry';
 import { cpuMeshAliases } from './geometry-cpu-aliases';
-import { meshCpuBuffers, sharesCpuBuffer } from './geometry-cpu-buffers';
+import { meshCpuReleaseBuffers, sharesCpuBuffer } from './geometry-cpu-buffers';
 import { retainReleasedMeshProvenance } from './released-mesh-provenance';
 
 const EMPTY_POSITIONS = new Float32Array(0);
@@ -13,7 +13,7 @@ const EMPTY_INDICES = new Uint32Array(0);
 /** Canonical CPU-only release; preserve independent fields on derived copies. */
 export function releaseCpuMeshBuffers(meshes: MeshData[]): void {
   for (const mesh of meshes) {
-    const buffers = meshCpuBuffers(mesh);
+    const buffers = meshCpuReleaseBuffers(mesh);
     for (const alias of cpuMeshAliases(mesh)) {
       const positionsShared = sharesCpuBuffer(alias.positions, buffers);
       const normalsShared = sharesCpuBuffer(alias.normals, buffers);

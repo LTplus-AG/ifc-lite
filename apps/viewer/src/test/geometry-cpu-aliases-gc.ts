@@ -46,6 +46,11 @@ const appearanceOnly = carryReleasedMesh(source, { ...source, positions: source.
 const buffers = [new WeakRef(source.positions), new WeakRef(source.normals), new WeakRef(source.indices),
   new WeakRef(source.positions.buffer), new WeakRef(source.normals.buffer), new WeakRef(source.indices.buffer),
   new WeakRef(appearanceOnly.appearanceSource!.sourceIndices)];
+// The mounted regression performs actual restorePreAlignment. Here replace
+// the same source fields before release so GC also proves historical weak
+// allocation membership cannot retain the original backing allocations.
+source.positions = source.positions.slice();
+source.normals = source.normals.slice();
 releaseCpuMeshBuffers([source]);
 await requireCollected(buffers);
 assert.equal(source.positions.length, 0);

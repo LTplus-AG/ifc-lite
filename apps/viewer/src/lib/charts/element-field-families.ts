@@ -125,6 +125,7 @@ export function createElementFamilyReader(
   const explicitScaleFor = (id: number, found: FoundQuantity, qsetName: string): number | undefined => {
     const own = explicitQuantityScale(found.quantity);
     const owner = found.fromType ? definingTypeId(id) : id;
+    if (mutationView?.getQuantityMutation(owner, qsetName, found.quantity.name)?.unitRemoved) return undefined;
     if (own !== undefined || found.quantity.unit || !mutationView?.hasChanges(owner)) return own;
     const baseSets = found.fromType ? sourceProvider.getTypeQuantitySets?.(id) ?? [] : sourceProvider.getQuantitySets(id);
     const base = findQuantityInSets(baseSets, qsetName, found.quantity.name);

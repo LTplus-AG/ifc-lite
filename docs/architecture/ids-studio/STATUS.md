@@ -2,7 +2,7 @@
 
 Single source of truth for progress. Update it in the campaign PR (`claude/stoic-cannon-6hceqo`) whenever a pitch PR changes state. Legend: ⬜ todo · 🟨 in progress · 🟦 in review (PR ready) · ✅ merged · ⏸ blocked.
 
-_Last updated: 2026-10-08 (session 1)._
+_Last updated: 2026-10-08 (session 1, P-02 PR opened)._
 
 ## Pitches
 
@@ -11,7 +11,7 @@ Umbrella PR: #7143 (this tracker).
 | Pitch | Branch | PR | State | Notes |
 |---|---|---|---|---|
 | P-01 Engine completeness | `claude/ids-studio-p01-engine` | (opens when first code is pushed) | 🟨 | Implementation running (session 1) |
-| P-02 Authoring core | `claude/ids-studio-p02-authoring-core` | (opens when first code is pushed) | 🟨 | Implementation running (session 1) |
+| P-02 Authoring core | `claude/ids-studio-p02-authoring-core` | #7168 | 🟨 | Draft PR: IDS-015–026 done, IDS-027 partial; 173 tests green. Remaining ops (split/merge, `bulk.from*`, setVersion) + GATE-BSDD-001 still to do; see worklog/P-02.md |
 | P-03 Studio UI v1 | `claude/ids-studio-p03-studio-ui` | #7145 | ⬜ | Draft PR open (charter + work log); not started |
 | P-04 Lint | `claude/ids-studio-p04-lint` | #7144 | ⬜ | Draft PR open (charter + work log); not started |
 | P-05 Model loop | `claude/ids-studio-p05-model-loop` | #7146 | ⬜ | Draft PR open (charter + work log); not started |
@@ -49,19 +49,19 @@ Umbrella PR: #7143 (this tracker).
 
 | ID | Title | State | PR / commit |
 |---|---|---|---|
-| IDS-015 | Scaffold `@ifc-lite/ids-authoring` (README, MPL headers, changeset, api-surface) | ⬜ | |
-| IDS-016 | `StudioDocument` + `NodeIndex` (UUIDv7) + import from `IDSDocument` | ⬜ | |
-| IDS-017 | Op schema v1 (zod): document + spec ops | ⬜ | |
-| IDS-018 | Facet + value ops; `ConstraintDraft` → `IDSConstraint` normalisation (units → SI) | ⬜ | |
-| IDS-019 | Reducer with exact inverses + property tests (apply∘inverse = id) | ⬜ | |
-| IDS-020 | Compound ops (`bulk.*`) expansion | ⬜ | |
-| IDS-021 | Gate: entity, predefined type, attribute (per version, inherited) | ⬜ | |
-| IDS-022 | Gate: pset/property/enum/dataType (per version; pset kinds) | ⬜ | |
-| IDS-023 | Gate: custom declarations, reserved prefixes, structural rules, value well-formedness (XSD regex + ReDoS guard) | ⬜ | |
-| IDS-024 | History + transactions + persistence adapter interface (IndexedDB impl in viewer) | ⬜ | |
-| IDS-025 | Sidecar (`studio.json`) + `.idsz` bundle read/write | ⬜ | |
-| IDS-026 | Re-identification matcher (identifier → signature → similarity) | ⬜ | |
-| IDS-027 | Plain-language renderer per facet × section × cardinality (en/de/fr/it) | ⬜ | |
+| IDS-015 | Scaffold `@ifc-lite/ids-authoring` (README, MPL headers, changeset, api-surface) | 🟨 | #7168 `78aae11ef` |
+| IDS-016 | `StudioDocument` + `NodeIndex` (UUIDv7) + import from `IDSDocument` | 🟨 | #7168 `abcdeeb67` |
+| IDS-017 | Op schema v1 (JSON Schema; no zod in workspace): document + spec ops | 🟨 | #7168 `5738c5c3a` |
+| IDS-018 | Facet + value ops; `ConstraintDraft` → `IDSConstraint` normalisation (units → SI) | 🟨 | #7168 `2a2efc231` |
+| IDS-019 | Reducer with exact inverses + property tests (apply∘inverse = id) | 🟨 | #7168 `00a1ccd4d` |
+| IDS-020 | Compound ops (`bulk.*`) expansion | 🟨 | #7168 `8ac752446` |
+| IDS-021 | Gate: entity, predefined type, attribute (per version, inherited) | 🟨 | #7168 `e64b08a6c` |
+| IDS-022 | Gate: pset/property/enum/dataType (per version; pset kinds) | 🟨 | #7168 `e59a568c7` |
+| IDS-023 | Gate: custom declarations, reserved prefixes, structural rules, value well-formedness (XSD regex + ReDoS guard) | 🟨 | #7168 `8ce4ee246` |
+| IDS-024 | History + transactions + persistence adapter interface (IndexedDB impl in viewer) | 🟨 | #7168 `06513e195` |
+| IDS-025 | Sidecar (`studio.json`) + `.idsz` bundle read/write | 🟨 | #7168 `775cbe277` |
+| IDS-026 | Re-identification matcher (identifier → signature → similarity) | 🟨 | #7168 `97b8d7e93` |
+| IDS-027 | Plain-language renderer per facet × section × cardinality (en/de/fr/it) | 🟨 | #7168 `85b23fadf` — en/de/fr via existing translation service; `it` + dedicated renderer + native review pending |
 
 ### P-03 — Studio UI v1
 
@@ -214,5 +214,6 @@ Umbrella PR: #7143 (this tracker).
 
 | Date | Session | Summary |
 |---|---|---|
+| 2026-10-08 | 1 | P-02 pushed: `@ifc-lite/ids-authoring` (IDS-015–026, IDS-027 partial), 173 tests; draft PR #7168. 11 spec deviations recorded in worklog/P-02.md and folded into 02-document-model-and-ops.md |
 | 2026-10-08 | 1 | P-08 datasets + scorer pushed (self-check 307/307); found 18 audit false positives on valid corpus IDS → handed to P-01 |
 | 2026-10-08 | 1 | Plan written; campaign docs, tracker and handover committed; pitch branches and draft PRs opened |

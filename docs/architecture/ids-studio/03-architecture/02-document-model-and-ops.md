@@ -176,4 +176,23 @@ Deterministic writer settings: 2-space indent, `ids:`/`xs:` prefixes, attribute 
 
 ## 8. Versioning of the op schema
 - `opsVersion: 1`. Ops are additive. Renames require a migration function `vN→vN+1` for persisted logs.
-- Agent tool JSON Schemas are **generated** from the op TypeScript types (zod source of truth → JSON Schema). The AI's contract therefore can't drift from the reducer.
+- Agent tool JSON Schemas come from the **same schema the runtime validator interprets** (`validateOp` / `getOpJsonSchema` in `@ifc-lite/ids-authoring`). The AI's contract therefore can't drift from the reducer. (The plan said zod; the workspace has no zod, so the contract is written once as JSON Schema — see §9.)
+
+## 9. As built in P-02 (deviations from the sections above)
+`@ifc-lite/ids-authoring` 0.1.0 (draft PR #7168) implements this document with the following differences. Each is recorded with its reasoning in `worklog/P-02.md`. Later ops PRs must keep this section current.
+
+| # | Plan said | As built | Why |
+|---|---|---|---|
+| 1 | zod schemas → JSON Schema | One JSON Schema plus a small interpreter that both validates and exports | No zod in the workspace; a single source still prevents drift |
+| 2 | Inverses expressed with the public ops | Four extra undo ops: `spec.restore`, `spec.patch`, `facet.restore`, `facet.patch` (raw IDS content + node ids) | Exact restoration of everything, including import leftovers |
+| 3 | `ValueInput` is a draft | Also `{kind:'raw', constraint}` (verbatim `IDSConstraint`) | Lossless round-trips of imported values |
+| 4 | Ops carry all ids | `constraintIds` / `constraintId` optional; derived deterministically from `opId` when absent | Keeps `apply` pure without forcing callers to mint ids |
+| 5 | — | `meta.custom.declareUserDefinedType` / `removeUserDefinedType`; `StudioMeta.custom.userDefinedTypes` | The gate refuses a predefinedType outside the entity enumeration unless declared; otherwise an invented value passes as "user-defined" on any entity that allows USERDEFINED |
+| 6 | `NodeIndex` as id → path map | `NodeIndex` mirrors the document shape; spec / requirement `id` fields carry node UUIDs | Simpler lookups, cheap verification (`verifyNodeIndex`) |
+| 7 | `bulk.applyTemplate { templateId }` | Template passed inline | Reducer needs no template registry |
+| 8 | Gate result per op | `checkOps` → `{ok, issues[]}`; each issue has `opIndex`, `facetId`, `field`, `value`, `versions`; undo/redo don't re-run the gate | Replaying an already-gated history must not be refused later |
+| 9 | Gate codes as in §5 | Extra codes OP-001/002, CUST-002…004, STR-001…008, VAL-001…008 (listed in the package README) | Structural and value rules live in the same checker |
+| 10 | `meta.provenance` written by ops | Provenance stored on history entries | Writing it from the reducer would break exact undo |
+| 11 | Full §3 vocabulary | Not yet: `spec.split`, `spec.merge`, `value.convertKind`, `bulk.expandAbstract`, `bulk.fromBsddClass`, `bulk.fromInference`, `bulk.fromMapping`, `bulk.setVersion`, remaining `meta.*`; gate rule GATE-BSDD-001 | Follow-ups in P-02, P-05 (inference) and P-06 (bSDD) |
+
+**Open question (owner):** should `studio.json` carry a content snapshot so an `.idsz` can be re-identified on its own after an external edit? Today the matcher needs the previous document (e.g. from the local library).

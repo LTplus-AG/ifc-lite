@@ -24,9 +24,9 @@ import type { AuthoringTransaction, CommitResult, ModelingCommand } from '@/lib/
 import { buildStoreyWorkplane, isWorkplane } from '@/lib/commands/modeling/workplane';
 import { commitElementTransform, planSelectionTransform } from '@/lib/element-transform/commit';
 import { writeNativeSplit } from './model-authoring-split';
-import { detachFromType, recordModellingEdit, recordModellingCommit } from '@/store/slices/mutation-modelling-records';
+import { recordModellingEdit, recordModellingCommit } from '@/store/slices/mutation-modelling-records';
 import { toMetres, type AuthoringOp, type ModelAuthoringBatch } from './model-authoring';
-import { authoredElementOf, hostedSpecOf, idOf, writeRelation } from './model-authoring-native';
+import { authoredElementOf, hostedSpecOf, idOf, writeRelation, writeNativeTypeDetach } from './model-authoring-native';
 import { previewModelAuthoring, type AuthoringRow, type ModelAuthoringPreview } from './model-authoring-preview';
 import { undoBatch, type AppliedChange, type CommitOutcome, type ModelChangeReceipt } from './model-change-commit';
 import { commitElementSize } from '@/lib/element-size-commit';
@@ -122,7 +122,7 @@ function writeRow(tx: AuthoringTransaction, batch: ModelAuthoringBatch, row: Aut
     case 'type.detach': {
       const dataStore = tx.store.models.get(modelId)?.ifcDataStore;
       if (!dataStore) throw new Error('The native model source is unavailable');
-      recordModellingEdit(tx.api, modelId, (_methods, draft) => detachFromType(draft, dataStore, [resolved.target!]), tx.batchId);
+      recordModellingEdit(tx.api, modelId, (_methods, draft) => writeNativeTypeDetach(op, dataStore, draft, resolved), tx.batchId);
       written.remesh.push(resolved.target!);
       return [{ ...base, globalId: op.target.globalId, field: 'Type', before: before.type ?? null, after: null }];
     }

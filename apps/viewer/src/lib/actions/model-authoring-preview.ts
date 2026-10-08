@@ -27,8 +27,8 @@ import {
 } from './model-authoring-read';
 import { captureAuthoringSources } from './model-authoring-sources';
 import { resolveGlobalId } from './resolve-global-id';
-import { readElementProfile } from '@/store/slices/mutation-element-profile';
-import { readAuthoringSize, sameNativeDimensions } from './model-authoring-size';
+import { readElementProfileFromTarget } from '@/store/slices/mutation-element-profile';
+import { readAuthoringSizeFromTarget, sameNativeDimensions } from './model-authoring-size';
 import { sizeInMetres, type ExpectedSize } from './model-authoring-size-params';
 import { profileInMetres } from './model-authoring-shape-params';
 import type { ProfileSection } from '@ifc-lite/create';
@@ -111,7 +111,7 @@ function existing(ctx: Context, target: ExistingElement, row: AuthoringRow): num
   const { modelId, expressId } = locate(ctx, target);
   join(row, modelId);
   const r = reader(ctx, modelId);
-  if (row.op.op === 'element.split' && !uniqueSplitGuid(r.dataStore, r.editor, target.globalId)) throw new Refusal('ambiguous-target', 'The native split target GlobalId is not unique in its owning model');
+  if ((row.op.op === 'element.split' || row.op.op === 'type.detach') && !uniqueSplitGuid(r.dataStore, r.editor, target.globalId)) throw new Refusal('ambiguous-target', 'The native target GlobalId is not unique in its owning model');
   const ifcClass = className(r, expressId);
   const name = nameOf(r, expressId);
   row.before.ifcClass = ifcClass;
@@ -165,8 +165,9 @@ function resolve(ctx: Context, row: AuthoringRow): void {
     }
     case 'element.resize': case 'element.profile': {
       row.resolved.target = row.expressId = existing(ctx, op.target, row);
+      const r = reader(ctx, row.modelId!);
       if (op.op === 'element.resize') {
-        const current = readAuthoringSize(ctx.state, row.modelId!, row.expressId, op.expected.kind);
+        const current = readAuthoringSizeFromTarget(r, row.expressId, op.expected.kind);
         if (!current) throw new Refusal('invalid', 'The native editor cannot read this target as the requested editable size kind');
         row.before.size = current;
         if (!sameNativeDimensions(current, sizeInMetres(op.expected, ctx.batch.units))) throw new Refusal('conflict', 'The current native dimensions differ from the expected dimensions');
@@ -175,7 +176,7 @@ function resolve(ctx: Context, row: AuthoringRow): void {
         if (Object.entries(next).filter(([, value]) => typeof value === 'number').every(([key, value]) =>
           Math.abs(Number(currentValues[key]) - Number(value)) <= 1e-9)) throw new Refusal('unchanged', 'Already these dimensions');
       } else {
-        const current = readElementProfile(ctx.state, row.modelId!, row.expressId);
+        const current = readElementProfileFromTarget(r, row.expressId);
         if (!current) throw new Refusal('invalid', 'The native editor cannot read a supported centred extrusion section');
         row.before.Profile = current;
         if (!sameNativeDimensions(current, profileInMetres(op.expected, ctx.batch.units))) throw new Refusal('conflict', 'The current native section differs from the expected Profile');
@@ -240,6 +241,7 @@ function resolve(ctx: Context, row: AuthoringRow): void {
       const r = reader(ctx, row.modelId!);
       const current = typeOf({ dataStore: r.dataStore, view: r.view }, row.expressId);
       if (current === null) throw new Refusal('unchanged', 'The occurrence is already untyped');
+      if (!uniqueSplitGuid(r.dataStore, r.editor, op.expected.GlobalId)) throw new Refusal('ambiguous-target', 'The expected native type GlobalId is not unique in its owning model');
       const expected = locate(ctx, { globalId: op.expected.GlobalId, modelId: row.modelId! });
       if (expected.expressId !== current || nameOf(r, current) !== op.expected.Name) throw new Refusal('conflict', 'The occurrence has a different current type');
       row.resolved.typeId = current;

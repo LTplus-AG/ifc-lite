@@ -4,6 +4,7 @@
 import '@/test/setup-dom.js';
 import assert from 'node:assert/strict';
 import { afterEach, test } from 'node:test';
+import { EMPTY_SOURCE_BYTES } from '@ifc-lite/parser';
 import { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
 import { editHostedElementInStore, readHostedFill, readHostedElementSize } from '@ifc-lite/create';
 import { useViewerStore } from '@/store';
@@ -19,6 +20,13 @@ afterEach(() => useViewerStore.setState(initial));
 const created = (value: { expressId: number } | { error: string }) => {
   assert.ok('expressId' in value, 'error' in value ? value.error : ''); return value.expressId;
 };
+async function exportedEntities(store: Awaited<ReturnType<typeof parseIfc>>, view: MutablePropertyView) {
+  const parsed = await parseIfc(editedModelBytes(store, view));
+  return [...parsed.entityIndex.byId.keys()].map(expressId => {
+    const entity = parsed.getEntity(expressId); assert.ok(entity);
+    return { expressId, type: entity.type, attributes: entity.attributes };
+  });
+}
 async function fixture(kind: 'door' | 'opening' = 'door', sibling = false) {
   const { dataStore, view } = await seedAuthoringSample();
   const state = useViewerStore.getState(), storey = dataStore.entities.getExpressIdByGlobalId(GROUND_STOREY);
@@ -38,15 +46,15 @@ test(`#7265 reviewed hosted ${refusal} retains the actual native refusal without
   const f = await fixture(refusal === 'bare-size' ? 'opening' : 'door', refusal === 'overlap');
   const edit = refusal === 'bare-size' ? { OverallWidth: 1.4 } : refusal === 'outside-length' ? { Offset: 20 } : refusal === 'outside-height' ? { OverallHeight: 10 } : { Offset: 5 };
   const nativeView = new MutablePropertyView(f.saved.properties, SAMPLE_MODEL), nativeEditor = new StoreEditor(f.saved, nativeView);
-  const beforeNative = editedModelBytes(f.saved, nativeView);
+  const beforeNative = await exportedEntities(f.saved, nativeView);
   assert.throws(() => editHostedElementInStore(f.saved, nativeEditor, f.id, edit), /geometry|bounds|wall|fit|overlap|filling|door|window/i, 'real native writer establishes this refusal');
-  assert.deepEqual(editedModelBytes(f.saved, nativeView), beforeNative, 'canonical failed native draft is atomic');
-  const before = editedModelBytes(f.dataStore, f.view), preview = previewModelAuthoring(useViewerStore.getState(), f.batch(edit));
+  assert.deepEqual(await exportedEntities(f.saved, nativeView), beforeNative, 'canonical failed native draft preserves every exported entity and value');
+  const before = await exportedEntities(f.dataStore, f.view), preview = previewModelAuthoring(useViewerStore.getState(), f.batch(edit));
   assert.equal(preview.rows[0].status, 'invalid', preview.rows[0].issue ?? 'native hosted row status');
-  assert.ok(preview.rows[0].issue ?? 'native hosted row status');
+  assert.ok(preview.rows[0].issue);
   const result = commitModelAuthoring(useViewerStore, preview, new Set([0]), 'invalid hosted edit');
   assert.equal(result.ok, false);
-  assert.deepEqual(editedModelBytes(f.dataStore, f.view), before, 'refused reviewed edit never publishes native changes');
+  assert.deepEqual(await exportedEntities(f.dataStore, f.view), before, 'refused reviewed edit preserves every native exported entity and value');
 });
 
 for (const stale of ['binding', 'view-revision', 'source-replacement'] as const)
@@ -107,9 +115,10 @@ test('#7265 source-free transport refuses hosted geometry editing despite retain
   const model = state.models.get(SAMPLE_MODEL)!;
   // A transport can retain the parsed index/getter closure while omitting the
   // geometry source. The existing native UI gate must stay authoritative.
-  useViewerStore.setState({ models: new Map([[SAMPLE_MODEL, { ...model, ifcDataStore: { ...f.dataStore, source: undefined } }]]) });
-  const before = editedModelBytes(f.dataStore, f.view), preview = previewModelAuthoring(useViewerStore.getState(), f.batch({ Offset: 5 }));
+  useViewerStore.setState({ models: new Map([[SAMPLE_MODEL, { ...model, ifcDataStore: { ...f.dataStore, source: EMPTY_SOURCE_BYTES } }]]) });
+  const count = f.view.getMutationCount(), preview = previewModelAuthoring(useViewerStore.getState(), f.batch({ Offset: 5 }));
   assert.equal(preview.rows[0].status, 'unsupported'); assert.match(preview.rows[0].issue ?? '', /source|IFC/i);
   assert.equal(commitModelAuthoring(useViewerStore, preview, new Set([0]), 'source-free hosted edit').ok, false);
-  assert.deepEqual(editedModelBytes(f.dataStore, f.view), before);
+  assert.equal(f.view.getMutationCount(), count);
+  assert.deepEqual(readHostedFill(await parseIfc(editedModelBytes(f.dataStore, f.view)), f.id), f.binding);
 });

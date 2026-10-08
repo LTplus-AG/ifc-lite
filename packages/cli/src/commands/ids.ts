@@ -4,14 +4,28 @@
 
 /**
  * ifc-lite ids <file.ifc> <rules.ids> [options]
+ * ifc-lite ids <audit|lint|fmt|diff> …
  *
- * Validate an IFC file against IDS (Information Delivery Specification) rules.
+ * Validate an IFC file against IDS (Information Delivery Specification)
+ * rules, or run one of the IDS authoring subcommands on an IDS file.
  */
 
 import { readFile } from 'node:fs/promises';
-import { createHeadlessContext } from '../loader.js';
 import { printJson, hasFlag, getFlag, fatal } from '../output.js';
 import { createDataAccessor } from '@ifc-lite/ids/bridge';
+import { idsAuditCommand, idsLintCommand } from './ids-audit-lint.js';
+import { idsFmtCommand } from './ids-fmt.js';
+
+/**
+ * Authoring subcommands. A first argument with one of these names is the
+ * subcommand, never a model path: validation needs a model file AND an IDS
+ * file, and a model file named `lint` (no extension) is not a real input.
+ */
+const SUBCOMMANDS: Record<string, (args: string[]) => Promise<void>> = {
+  audit: idsAuditCommand,
+  lint: idsLintCommand,
+  fmt: idsFmtCommand,
+};
 
 interface ValidatorSummary {
   totalSpecifications: number;
@@ -44,6 +58,8 @@ function idsPositionals(args: string[]): string[] {
 }
 
 export async function idsCommand(args: string[]): Promise<void> {
+  const sub = Object.hasOwn(SUBCOMMANDS, args[0] ?? '') ? SUBCOMMANDS[args[0]] : undefined;
+  if (sub) return sub(args.slice(1));
   const positional = idsPositionals(args);
   if (positional.length < 2) fatal('Usage: ifc-lite ids <file.ifc> <rules.ids> [--json]');
 
@@ -51,6 +67,9 @@ export async function idsCommand(args: string[]): Promise<void> {
   const jsonOutput = hasFlag(args, '--json');
   const locale = (getFlag(args, '--locale') ?? 'en') as 'en' | 'de' | 'fr';
 
+  // Loaded on demand: the model loader pulls in the geometry/wasm stack,
+  // which the IDS-only subcommands above never need.
+  const { createHeadlessContext } = await import('../loader.js');
   const { bim, store } = await createHeadlessContext(ifcPath);
 
   // Read IDS file

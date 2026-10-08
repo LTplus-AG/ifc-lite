@@ -144,3 +144,16 @@ export type {
   SpecView,
   SuppressedDiagnostic,
 } from './lint/types.js';
+
+// Headless surfaces: CLI, MCP, SDK, Flow (IDS-115, IDS-118)
+export { readStudioDocument, studioDocumentFromIds, parseStudioDocument } from './headless/read.js';
+export {
+  formatIds,
+  writeIdsChecked,
+  writeStudioDocument,
+  type IdsWriter,
+  type WriteOutcome,
+  type WriteFailure,
+  type FormatOutcome,
+} from './headless/write.js';
+export { nodePath } from './headless/node-path.js';

@@ -1,0 +1,12 @@
+exit: 1
+--- stdout
+
+  IDS audit: <fixtures>/broken.ids
+
+  error   E_PARSE_XML                         (document)
+            Failed to parse IDS XML: unclosed xml tag(s): ids, info
+
+  1 error, 0 warnings, 0 info
+  Result: FAIL
+
+--- stderr

@@ -1,0 +1,4 @@
+exit: 2
+--- stdout
+--- stderr
+Error: <fixtures>/broken.ids does not parse as IDS (Failed to parse IDS XML); run `ifc-lite ids audit` for details

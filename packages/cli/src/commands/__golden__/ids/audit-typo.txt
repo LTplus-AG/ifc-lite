@@ -1,0 +1,12 @@
+exit: 1
+--- stdout
+
+  IDS audit: <fixtures>/doors-typo.ids
+
+  error   E_IFC_PROP_NOT_IN_PSET              specifications[0].requirements[0].baseName
+            property "FireRatng" is not part of Pset_DoorCommon (IFC4)
+
+  1 error, 0 warnings, 0 info
+  Result: FAIL
+
+--- stderr

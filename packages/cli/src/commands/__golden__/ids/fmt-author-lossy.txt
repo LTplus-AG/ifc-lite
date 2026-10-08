@@ -1,0 +1,5 @@
+exit: 2
+--- stdout
+--- stderr
+Error: cannot format <fixtures>/doors-author.ids without loss: the IDS writer in this build cannot represent 1 value(s) without loss
+  - info.author

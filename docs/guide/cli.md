@@ -587,6 +587,46 @@ Returns pass/fail summary with exit code 0 (pass) or 1 (fail).
 | `--json` | Full validation report as JSON |
 | `--locale <lang>` | Message language: `en`, `de`, `fr` |
 
+#### IDS authoring subcommands
+
+The same command also checks and formats IDS files on their own, with the
+engines the IDS editor uses (`@ifc-lite/ids` audit, `@ifc-lite/ids-authoring`
+lint). No model is needed.
+
+```bash
+# Is this a valid IDS 1.0 file? (XSD shape, IFC names, restriction coherence)
+ifc-lite ids audit requirements.ids
+ifc-lite ids audit requirements.ids --json
+
+# Does it mean what the author intends? (43 IDSL-* rules)
+ifc-lite ids lint requirements.ids
+ifc-lite ids lint requirements.ids --rules IDSL-PROP-001,IDSL-VAL-001
+ifc-lite ids lint requirements.ids --severity IDSL-SPEC-008=off --fail-on warning
+
+# Canonical formatting, for readable git diffs
+ifc-lite ids fmt requirements.ids            # formatted XML to stdout
+ifc-lite ids fmt requirements.ids --check    # CI: exit 1 when the file would change
+ifc-lite ids fmt requirements.ids --write    # rewrite in place
+```
+
+| Subcommand | Flags | Exit code |
+|------------|-------|-----------|
+| `audit <rules.ids>` | `--json` | 1 when the audit reports an error |
+| `lint <rules.ids>` | `--json`, `--rules C,…` (only these rules), `--severity C=error\|warning\|info\|off,…` (override per rule), `--fail-on error\|warning\|info\|never` (default `error`) | 1 when a diagnostic at or above `--fail-on` remains |
+| `fmt <rules.ids>` | `--check`, `--write` | 1 when `--check` finds a file that would change |
+
+Every subcommand exits **2** on a usage error, an unreadable or unparseable
+file, or a file this build cannot write without loss. `fmt` re-reads what it
+writes and refuses (exit 2, naming the values) instead of dropping content:
+the writer in this release does not yet carry some `info` fields (author,
+version, date, …) or length, digit and conjunctive restrictions.
+
+Lint output names each finding by its XML path, e.g.
+`specifications[0].requirements[0].baseName`, and marks findings that have a
+quick fix. Apply quick fixes in the IDS editor or through the MCP
+`ids_apply_ops` tool; the CLI never rewrites content on its own. Model-aware
+lint (`--model`) is not available yet.
+
 ---
 
 ### `bcf` — BCF Collaboration
@@ -1606,7 +1646,7 @@ The `semantic` command reads JSON/SPARQL providers, generates shared profile art
 | `diagnose-geometry` | CSG / opening diagnostics (failures, classification) |
 | `extract-entities` | Isolate entities into a small, viewable standalone IFC |
 | `anonymize` | Export selected objects + context as an anonymized IFC |
-| `ids` | Validate against IDS rules |
+| `ids` | Validate a model against IDS rules; audit, lint and format IDS files |
 | `bcf` | Work with BCF collaboration files |
 | `clash` | Detect geometric clashes between elements |
 | `create` | Create IFC elements (29 types) |

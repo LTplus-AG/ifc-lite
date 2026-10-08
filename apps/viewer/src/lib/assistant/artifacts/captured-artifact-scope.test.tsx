@@ -316,3 +316,43 @@ test('#7186 native Flavor file export/import preserves captured Lens output and 
     assert.equal(useViewerStore.getState().savedLenses, prior, 'an unreadable population does not replace the native Lens library');
   } finally { await host.dispose(); }
 });
+
+test('#7186 native Document captured List replays through file, durable storage and existing Document backup; versions1..12 remain readable', async () => {
+  const { clearContentDatabase } = await import('@/test/content-fixture');
+  const { coverSheetDocument } = await import('@/lib/document/presets');
+  const { DOCUMENT_VERSION, listCopyForDocument } = await import('@/lib/document/types');
+  const { parseDocumentFile, loadDocuments } = await import('@/lib/document/persistence');
+  const { createContentBackup, parseContentBackup } = await import('@/lib/storage/content-backup');
+  await clearContentDatabase();
+  await selectWall();
+  const entry = cases.find(row => row.label === 'list')!;
+  const proposal = parseArtifactProposal(JSON.stringify({ version: 1, title: 'Document scope', kind: entry.kind, scope: 'selected', ...entry.body }), entry.kind);
+  const preview = await previewArtifact(proposal, useViewerStore.getState());
+  if (preview.artifact.kind !== 'list.proposal') throw new Error('Unexpected artifact');
+  const definition = preview.artifact.definition;
+  const document = { ...coverSheetDocument(), blocks: [{ kind: 'table' as const, id: 'captured-table',
+    source: { kind: 'list' as const, list: listCopyForDocument(definition, 'document-list-copy') }, maxRows: 10 }] };
+  assert.equal(document.version, 13, 'native document compatibility version protects executable captured List semantics');
+  const run = async (doc: import('@/lib/document/types').DocumentSpec) => {
+    const block = doc.blocks[0];
+    if (block.kind !== 'table' || block.source.kind !== 'list') throw new Error('Expected native table');
+    const state = useViewerStore.getState();
+    const { pairs } = prepareListProviders(state, resolveRenderFrame(state.models, state.geometryResult));
+    return (await runListFederated(block.source.list, pairs, state, { evaluatorModels: evaluatorModelsFromState(state) })).rows.length;
+  };
+  const imported = parseDocumentFile(JSON.stringify(document));
+  assert.equal(await run(imported), 1);
+  assert.ok(await useViewerStore.getState().initializeDocuments());
+  assert.ok(await useViewerStore.getState().upsertDocument(imported));
+  const stored = (await loadDocuments()).find(row => row.id === imported.id);
+  assert.ok(stored); assert.equal(await run(stored), 1);
+  const backup = parseContentBackup(JSON.stringify(createContentBackup({ document: [stored], validation: [], comparison: [] })));
+  assert.equal(await run(backup.libraries.document[0]), 1, 'existing Document backup codec keeps its executable captured List population');
+  for (let version = 1; version < DOCUMENT_VERSION; version++) {
+    const legacy = { ...document, version, blocks: document.blocks.map(block => ({ ...block,
+      source: { kind: 'list', list: { ...block.source.list, capturedScope: undefined } } })) };
+    const migrated = parseDocumentFile(JSON.stringify(legacy));
+    assert.equal(migrated.version, DOCUMENT_VERSION);
+    assert.ok(await run(migrated) > 1, `native unscoped version${version} retains its broad criteria population`);
+  }
+});

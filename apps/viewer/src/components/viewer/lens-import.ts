@@ -9,7 +9,14 @@
  * pinned without rendering the panel.
  */
 
-import { migrateSavedLens } from '@/lib/lens/migrate-saved-lens';
+import type { Lens } from '@ifc-lite/lens';
+import { downloadFile } from '@/lib/export/download';
+import { encodeSavedLens, migrateSavedLens } from '@/lib/lens/migrate-saved-lens';
+
+/** Native JSON download uses the same guarded codec as browser storage (#7186). */
+export function exportLensFile(lenses: readonly Lens[]): void {
+  downloadFile(JSON.stringify(lenses.map(encodeSavedLens), null, 2), 'lenses.json', 'application/json');
+}
 
 /**
  * Read `file` as text, surfacing a failed read instead of leaving the

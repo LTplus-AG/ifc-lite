@@ -25,8 +25,6 @@ import { Button } from '@/components/ui/button';
 import { IconButton } from '@/components/ui/icon-button';
 import { EmptyState } from '@/components/ui/empty-state';
 import { cn } from '@/lib/utils';
-import { encodeSavedLens } from '@/lib/lens/migrate-saved-lens';
-import { downloadFile } from '@/lib/export/download';
 import { toast } from '@/components/ui/toast';
 import { tourAnchor, TOUR_ANCHORS, lensCardAnchor } from '@/lib/tours/anchors';
 import { useViewerStore } from '@/store';
@@ -36,7 +34,7 @@ import { LensEditor } from './LensEditor';
 import { cloneLensRules } from './lens-editor-utils';
 import { AutoColorEditor } from './AutoColorEditor';
 export { AutoColorEditor } from './AutoColorEditor';
-import { importLensFile } from './lens-import';
+import { exportLensFile, importLensFile } from './lens-import';
 import { ruleIsolationOwnsChannel } from './lens-visibility-ownership';
 import { resolvePresentationIds } from '@/lib/presentation/resolvePresentationIds';
 import type { Lens, AutoColorLegendEntry } from '@/store/slices/lensSlice';
@@ -484,7 +482,7 @@ export function LensPanel({ onClose }: LensPanelProps) {
   }, [activeLensId, setActiveLens, deleteLens, releaseRuleIsolation]);
 
   const handleExport = useCallback(() => {
-    downloadFile(JSON.stringify(exportLenses().map(encodeSavedLens), null, 2), 'lenses.json', 'application/json');
+    exportLensFile(exportLenses());
     trackExportCompleted({ format: 'json', surface: 'lens_panel' });
   }, [exportLenses]);
   const handleImport = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {

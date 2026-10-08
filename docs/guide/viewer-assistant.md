@@ -290,3 +290,10 @@ List import instead of evaluating it over a wider population. Open these capture
 in a viewer that supports captured scope. Ordinary unscoped exports keep their
 existing format. This covers the native Lens and List routes; it does not add
 these artifacts to whole-library backup.
+
+A Document can embed a captured List and re-run that exact population. Native
+Document version 13 preserves this behavior through file import, durable storage,
+and the existing Document backup route; older viewers refuse the newer document
+version. Documents saved in versions 1 through 12 remain readable in the newer
+viewer. This does not add standalone Filters, Lists, or Lenses to library backup.
+Flavor Lens snapshots use the same guarded Lens envelope as native Lens JSON.

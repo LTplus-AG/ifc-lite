@@ -118,10 +118,10 @@ describe('immutable worker index publication (#3985)', () => {
 
 // Archicad Haus contains real IfcRelDefinesByProperties and property atoms;
 // IfcOpenHouse has no property associations and cannot exercise this contract.
-const fixture = [
-  resolve(__dirname, '../../../tests/models/ara3d/AC20-FZK-Haus.ifc'),
-  '/Users/louistrue/Development/ifc-lite-fixtures-wt/tests/models/ara3d/AC20-FZK-Haus.ifc',
-].find(existsSync);
+// Looked up only under the repository (`tests/models`, fetched by `pnpm fixtures`):
+// a path on one developer's disk would decide the outcome by whose machine runs it.
+const fixtureCandidate = resolve(__dirname, '../../../tests/models/ara3d/AC20-FZK-Haus.ifc');
+const fixture = existsSync(fixtureCandidate) ? fixtureCandidate : undefined;
 if (!fixture) console.warn('skip: immutable transport real IFC fixture missing — run pnpm fixtures');
 it.skipIf(!fixture)('retains real-model properties, all references and byType lists (#3985)', async () => {
   const input = Uint8Array.from(readFileSync(fixture!)).buffer;

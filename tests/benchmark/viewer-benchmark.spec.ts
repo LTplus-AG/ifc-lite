@@ -317,11 +317,13 @@ test.describe('Viewer Performance Benchmarks', () => {
         expect(counters?.structural['msg.geometry.out.count'] ?? 0, 'no geometry worker messages counted').toBeGreaterThan(0);
         expect(counters?.scheduling['store.setState'] ?? 0, 'no store writes counted').toBeGreaterThan(0);
         expect(counters?.mainThread, 'no long-frame summary recorded').not.toBeNull();
-        // #7022: full-source hash passes per primary load. One is the loader's
-        // (placement identity, shared by the cache write and warm revalidation);
-        // the other is the drawing-markup restore, which keys localStorage by a
-        // bare whole-file SHA-256 of the active model. A third pass fails here.
-        expect(counters?.structural['hash.fullSource.count'], 'full-source hash passes per load').toBe(2);
+        // #7022, #7035: one full-source hash pass per primary load, the loader's
+        // placement identity. The cache write, the warm revalidation and the
+        // drawing-markup storage key all reuse it. A second pass fails here.
+        expect(counters?.structural['hash.fullSource.count'], 'full-source hash passes per load').toBe(1);
+        // Moving markup saved under a pre-#7035 key costs one whole-file pass,
+        // counted apart. This fresh profile has no such entry.
+        expect(counters?.structural['hash.drawingLegacyKey.count'] ?? 0, 'legacy drawing-key passes').toBe(0);
       }
 
       // Geometry correctness validation: Check mesh count matches expected (within 5% tolerance)

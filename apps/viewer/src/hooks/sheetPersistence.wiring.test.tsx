@@ -13,7 +13,7 @@ import { useViewerStore } from '@/store';
 import { fixtureModel } from '@/test/store-fixture';
 import { cleanup, render } from '@/test/render';
 import { useDrawing2DPersistence } from './useDrawing2DPersistence';
-import { computeFullSourceHashFromBlob } from '@/utils/sourceContentHash';
+import { placementSourceIdentity } from '@/lib/model-placement/source-identity';
 import type { DrawingSheet } from '@ifc-lite/drawing-2d';
 
 afterEach(cleanup);
@@ -25,7 +25,7 @@ it('restores sheet setup and global templates through the drawing lifecycle (#48
   useViewerStore.getState().updateTitleBlockField('project-name', 'Saved project');
   const expected = useViewerStore.getState().activeSheet!;
   const a = { ...fixtureModel('real-hash-a'), sourceFile: new File(['ISO-10303-21;sheet-model-a'], 'a.ifc') };
-  const hash = await computeFullSourceHashFromBlob(a.sourceFile);
+  const hash = await placementSourceIdentity(a.sourceFile);
   assert.ok(hash);
   const key = `ifc-lite:drawing-sheet:v1:${hash}`;
   localStorage.setItem(key, JSON.stringify({ sheet: expected, savedAt: 1 }));
@@ -44,7 +44,7 @@ it('restores sheet setup and global templates through the drawing lifecycle (#48
   // Replacement bytes may arrive under the same model id. The old cached
   // hash must not restore or overwrite the previous file's sheet.
   const replacement = { ...a, sourceFile: new File(['ISO-10303-21;replacement'], 'a.ifc') };
-  const replacementHash = await computeFullSourceHashFromBlob(replacement.sourceFile);
+  const replacementHash = await placementSourceIdentity(replacement.sourceFile);
   assert.ok(replacementHash);
   const replacementSheet = { ...expected, name: 'Replacement sheet' };
   localStorage.setItem(`ifc-lite:drawing-sheet:v1:${replacementHash}`, JSON.stringify({ sheet: replacementSheet, savedAt: 2 }));

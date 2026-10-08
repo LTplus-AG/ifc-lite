@@ -29,14 +29,8 @@ records are in `summary.json`.
 | `corpus-unknown-prefix.patch` | `corpus.mjs` | a file with an unknown prefix is skipped silently | `matrix.test.mjs` |
 | `report-error-not-counted.patch` | `report.mjs` | errors are dropped from the denominator, inflating agreement | `report.test.mjs` |
 | `command-verdict-allowed.patch` | `command.mjs` | a verdict that does not answer the question is accepted | `adapters.test.mjs` |
-| `spec-verdict-prohibited.patch` | `thatopen-components.mjs` | more elements apply than maxOccurs allows (including a prohibited specification) and the verdict is still pass | `adapters.test.mjs` |
 | `ifc-lite-audit-verdict.patch` | `ifc-lite.mjs` | the audit column ignores error-severity issues | `run.test.mjs` |
 | `run-unknown-argument.patch` | `run.mjs` | an unknown CLI argument is ignored | `run.test.mjs` |
-
-`spec-verdict-prohibited` first targeted an explicit `maxOccurs === 0` branch
-and came back **UNOBSERVED**: the branch was redundant (`maxOccurs="0"` is the
-`applicable > maxOccurs` case). The branch was deleted in `ae9be3a5a` and the
-mutation retargeted at the bound check that does the work.
 
 Whole diff, no `--mutation` (`summary.json`, first entry): **OBSERVED**
 at head `a311d32f6`. With all production reverted, assertions went red in
@@ -48,10 +42,6 @@ surgical runs above exist.
 Not mutated, and why:
 
 - `preview/types.ts`: types only, no runtime code.
-- `scripts/ids-conformance/lib/adapters/thatopen-process.mjs`: needs the
-  third-party engine installed outside the lockfile; it runs only in the
-  dashboard run (`node scripts/ids-conformance/run.mjs --thatopen-root …`), whose
-  output is committed in `docs/guide/ids-conformance.json`.
 - `scripts/ids-conformance/proposed-cases.mjs`: a generator; its committed
   output is checked by `packages/ids/src/__corpus__/proposed-cases.test.ts`
   (each file is the writer's own output and gets the verdict in its name).

@@ -11,7 +11,6 @@ import { mkdtempSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { createCommandAdapter, parseVerdict } from './command.mjs';
-import { applicabilityOccurs, specVerdict } from './thatopen-components.mjs';
 import { UnsupportedCase } from '../matrix.mjs';
 
 function config(body) {
@@ -47,20 +46,4 @@ test('a command engine config is validated up front', () => {
   assert.throws(() => createCommandAdapter(config({ ...BASE })), /needs "validate", "audit" or both/);
   assert.throws(() => createCommandAdapter(config({ ...BASE, id: 'Bad Id', audit: ['x'] })), /"id" must match/);
   assert.throws(() => createCommandAdapter(config({ ...BASE, validate: 'x' })), /non-empty array of strings/);
-});
-
-test('applicability cardinality is read from the IDS text with the IDS 1.0 defaults', () => {
-  assert.deepEqual(applicabilityOccurs('<applicability maxOccurs="unbounded">'), { minOccurs: 1, maxOccurs: Infinity });
-  assert.deepEqual(applicabilityOccurs('<ids:applicability minOccurs="0" maxOccurs="0">'), { minOccurs: 0, maxOccurs: 0 });
-  assert.deepEqual(applicabilityOccurs('<applicability>'), { minOccurs: 1, maxOccurs: Infinity });
-});
-
-test('the specification verdict follows IDS 1.0 cardinality over per-element results', () => {
-  const required = { minOccurs: 1, maxOccurs: Infinity };
-  assert.equal(specVerdict(0, 0, required), 'fail'); // nothing applicable
-  assert.equal(specVerdict(2, 0, required), 'pass');
-  assert.equal(specVerdict(2, 1, required), 'fail');
-  assert.equal(specVerdict(0, 0, { minOccurs: 0, maxOccurs: Infinity }), 'pass');
-  assert.equal(specVerdict(1, 0, { minOccurs: 0, maxOccurs: 0 }), 'fail'); // prohibited
-  assert.equal(specVerdict(0, 0, { minOccurs: 0, maxOccurs: 0 }), 'pass');
 });

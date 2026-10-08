@@ -29,19 +29,6 @@
         "audit: auditIDSDocument; a document with at least one error-severity issue is invalid.",
         "IDS 1.1 preview flag on parse, validate and audit (#418 tolerance candidate applies to simple values)."
       ]
-    },
-    {
-      "id": "thatopen-components",
-      "name": "@thatopen/components (IDS module)",
-      "version": "3.4.9 (fragments 3.4.8, web-ifc 0.0.78)",
-      "licence": "MIT (web-ifc: MPL-2.0)",
-      "source": "https://www.npmjs.com/package/@thatopen/components",
-      "notes": [
-        "validate: IfcLoader converts the IFC, IDSSpecifications loads the IDS, the single specification is tested; the engine reports one pass/fail per applicable element.",
-        "The adapter derives the specification verdict with IDS 1.0 cardinality: fail if any applicable element fails, if fewer elements apply than minOccurs (default 1), or if maxOccurs=\"0\" and any element applies. Applicable elements are collected with the engine's own applicability facets, as its test() does.",
-        "IfcLoader runs with its default import settings. Entities its importer does not convert (for example IfcTaskTime, which is not a product) are invisible to the engine, so a specification on them finds nothing applicable.",
-        "audit: not offered by the engine; invalid- cases are n/a."
-      ]
     }
   ],
   "summary": {
@@ -212,90 +199,6 @@
           "na": 0
         }
       }
-    },
-    "thatopen-components": {
-      "overall": {
-        "agree": 206,
-        "disagree": 80,
-        "error": 21,
-        "na": 27
-      },
-      "byExpected": {
-        "fail": {
-          "agree": 77,
-          "disagree": 35,
-          "error": 8,
-          "na": 0
-        },
-        "invalid": {
-          "agree": 0,
-          "disagree": 0,
-          "error": 0,
-          "na": 27
-        },
-        "pass": {
-          "agree": 129,
-          "disagree": 45,
-          "error": 13,
-          "na": 0
-        }
-      },
-      "byGroup": {
-        "attribute": {
-          "agree": 27,
-          "disagree": 18,
-          "error": 0,
-          "na": 11
-        },
-        "classification": {
-          "agree": 17,
-          "disagree": 10,
-          "error": 0,
-          "na": 0
-        },
-        "entity": {
-          "agree": 20,
-          "disagree": 5,
-          "error": 2,
-          "na": 6
-        },
-        "ids": {
-          "agree": 11,
-          "disagree": 0,
-          "error": 0,
-          "na": 1
-        },
-        "material": {
-          "agree": 24,
-          "disagree": 5,
-          "error": 0,
-          "na": 0
-        },
-        "partof": {
-          "agree": 17,
-          "disagree": 16,
-          "error": 0,
-          "na": 1
-        },
-        "property": {
-          "agree": 51,
-          "disagree": 6,
-          "error": 19,
-          "na": 6
-        },
-        "restriction": {
-          "agree": 17,
-          "disagree": 6,
-          "error": 0,
-          "na": 2
-        },
-        "tolerance": {
-          "agree": 22,
-          "disagree": 14,
-          "error": 0,
-          "na": 0
-        }
-      }
     }
   },
   "cases": [
@@ -311,11 +214,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "fail",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "fail",
-          "agrees": true,
-          "detail": "1 applicable, 1 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -331,11 +229,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "fail",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "pass",
-          "agrees": false,
-          "detail": "1 applicable, 0 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -351,11 +244,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "fail",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "fail",
-          "agrees": true,
-          "detail": "1 applicable, 1 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -371,11 +259,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "fail",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "fail",
-          "agrees": true,
-          "detail": "1 applicable, 1 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -391,11 +274,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "fail",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "fail",
-          "agrees": true,
-          "detail": "0 applicable, 0 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -411,11 +289,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "fail",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "fail",
-          "agrees": true,
-          "detail": "0 applicable, 0 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -431,11 +304,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "fail",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "fail",
-          "agrees": true,
-          "detail": "0 applicable, 0 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -451,11 +319,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "fail",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "fail",
-          "agrees": true,
-          "detail": "1 applicable, 1 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -471,11 +334,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "fail",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "fail",
-          "agrees": true,
-          "detail": "1 applicable, 1 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -491,11 +349,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "fail",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "fail",
-          "agrees": true,
-          "detail": "0 applicable, 0 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -511,11 +364,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "fail",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "fail",
-          "agrees": true,
-          "detail": "0 applicable, 0 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -531,11 +379,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "fail",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "fail",
-          "agrees": true,
-          "detail": "0 applicable, 0 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -551,11 +394,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "fail",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "fail",
-          "agrees": true,
-          "detail": "0 applicable, 0 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -571,11 +409,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "fail",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "fail",
-          "agrees": true,
-          "detail": "0 applicable, 0 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -591,11 +424,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "fail",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "fail",
-          "agrees": true,
-          "detail": "1 applicable, 1 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -611,11 +439,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "invalid",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "n/a",
-          "agrees": null,
-          "detail": "engine has no document audit"
         }
       }
     },
@@ -631,11 +454,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "invalid",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "n/a",
-          "agrees": null,
-          "detail": "engine has no document audit"
         }
       }
     },
@@ -651,11 +469,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "invalid",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "n/a",
-          "agrees": null,
-          "detail": "engine has no document audit"
         }
       }
     },
@@ -671,11 +484,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "invalid",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "n/a",
-          "agrees": null,
-          "detail": "engine has no document audit"
         }
       }
     },
@@ -691,11 +499,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "invalid",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "n/a",
-          "agrees": null,
-          "detail": "engine has no document audit"
         }
       }
     },
@@ -711,11 +514,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "invalid",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "n/a",
-          "agrees": null,
-          "detail": "engine has no document audit"
         }
       }
     },
@@ -731,11 +529,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "invalid",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "n/a",
-          "agrees": null,
-          "detail": "engine has no document audit"
         }
       }
     },
@@ -751,11 +544,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "invalid",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "n/a",
-          "agrees": null,
-          "detail": "engine has no document audit"
         }
       }
     },
@@ -771,11 +559,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "invalid",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "n/a",
-          "agrees": null,
-          "detail": "engine has no document audit"
         }
       }
     },
@@ -791,11 +574,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "invalid",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "n/a",
-          "agrees": null,
-          "detail": "engine has no document audit"
         }
       }
     },
@@ -811,11 +589,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "invalid",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "n/a",
-          "agrees": null,
-          "detail": "engine has no document audit"
         }
       }
     },
@@ -831,11 +604,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "pass",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "pass",
-          "agrees": true,
-          "detail": "1 applicable, 0 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -851,11 +619,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "pass",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "pass",
-          "agrees": true,
-          "detail": "1 applicable, 0 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -871,11 +634,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "pass",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "pass",
-          "agrees": true,
-          "detail": "1 applicable, 0 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -891,11 +649,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "pass",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "fail",
-          "agrees": false,
-          "detail": "0 applicable, 0 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -911,11 +664,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "pass",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "pass",
-          "agrees": true,
-          "detail": "1 applicable, 0 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -931,11 +679,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "pass",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "fail",
-          "agrees": false,
-          "detail": "0 applicable, 0 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -951,11 +694,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "pass",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "fail",
-          "agrees": false,
-          "detail": "0 applicable, 0 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -971,11 +709,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "pass",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "fail",
-          "agrees": false,
-          "detail": "0 applicable, 0 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -991,11 +724,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "pass",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "fail",
-          "agrees": false,
-          "detail": "0 applicable, 0 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -1011,11 +739,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "pass",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "pass",
-          "agrees": true,
-          "detail": "1 applicable, 0 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -1031,11 +754,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "pass",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "fail",
-          "agrees": false,
-          "detail": "0 applicable, 0 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -1051,11 +769,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "pass",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "pass",
-          "agrees": true,
-          "detail": "1 applicable, 0 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -1071,11 +784,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "pass",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "fail",
-          "agrees": false,
-          "detail": "0 applicable, 0 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -1091,11 +799,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "pass",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "fail",
-          "agrees": false,
-          "detail": "0 applicable, 0 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -1111,11 +814,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "pass",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "fail",
-          "agrees": false,
-          "detail": "0 applicable, 0 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -1131,11 +829,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "pass",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "fail",
-          "agrees": false,
-          "detail": "1 applicable, 1 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -1151,11 +844,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "pass",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "pass",
-          "agrees": true,
-          "detail": "1 applicable, 0 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -1171,11 +859,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "pass",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "pass",
-          "agrees": true,
-          "detail": "1 applicable, 0 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -1191,11 +874,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "pass",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "pass",
-          "agrees": true,
-          "detail": "1 applicable, 0 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -1211,11 +889,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "pass",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "pass",
-          "agrees": true,
-          "detail": "1 applicable, 0 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -1231,11 +904,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "pass",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "pass",
-          "agrees": true,
-          "detail": "1 applicable, 0 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -1251,11 +919,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "pass",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "fail",
-          "agrees": false,
-          "detail": "0 applicable, 0 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -1271,11 +934,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "pass",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "fail",
-          "agrees": false,
-          "detail": "0 applicable, 0 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -1291,11 +949,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "pass",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "fail",
-          "agrees": false,
-          "detail": "0 applicable, 0 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -1311,11 +964,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "pass",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "fail",
-          "agrees": false,
-          "detail": "0 applicable, 0 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -1331,11 +979,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "pass",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "fail",
-          "agrees": false,
-          "detail": "0 applicable, 0 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -1351,11 +994,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "pass",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "fail",
-          "agrees": false,
-          "detail": "0 applicable, 0 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -1371,11 +1009,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "pass",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "fail",
-          "agrees": false,
-          "detail": "0 applicable, 0 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -1391,11 +1024,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "pass",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "pass",
-          "agrees": true,
-          "detail": "1 applicable, 0 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -1411,11 +1039,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "pass",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "pass",
-          "agrees": true,
-          "detail": "1 applicable, 0 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -1431,11 +1054,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "fail",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "pass",
-          "agrees": false,
-          "detail": "1 applicable, 0 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -1451,11 +1069,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "fail",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "pass",
-          "agrees": false,
-          "detail": "1 applicable, 0 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -1471,11 +1084,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "fail",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "pass",
-          "agrees": false,
-          "detail": "1 applicable, 0 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -1491,11 +1099,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "fail",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "pass",
-          "agrees": false,
-          "detail": "1 applicable, 0 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -1511,11 +1114,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "fail",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "pass",
-          "agrees": false,
-          "detail": "1 applicable, 0 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -1531,11 +1129,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "fail",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "pass",
-          "agrees": false,
-          "detail": "1 applicable, 0 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -1551,11 +1144,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "fail",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "pass",
-          "agrees": false,
-          "detail": "1 applicable, 0 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -1571,11 +1159,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "fail",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "pass",
-          "agrees": false,
-          "detail": "1 applicable, 0 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -1591,11 +1174,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "fail",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "pass",
-          "agrees": false,
-          "detail": "1 applicable, 0 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -1611,11 +1189,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "fail",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "pass",
-          "agrees": false,
-          "detail": "1 applicable, 0 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -1631,11 +1204,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "pass",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "pass",
-          "agrees": true,
-          "detail": "1 applicable, 0 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -1651,11 +1219,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "pass",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "pass",
-          "agrees": true,
-          "detail": "1 applicable, 0 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -1671,11 +1234,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "pass",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "pass",
-          "agrees": true,
-          "detail": "1 applicable, 0 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -1691,11 +1249,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "pass",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "pass",
-          "agrees": true,
-          "detail": "1 applicable, 0 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -1711,11 +1264,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "pass",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "pass",
-          "agrees": true,
-          "detail": "1 applicable, 0 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -1731,11 +1279,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "pass",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "pass",
-          "agrees": true,
-          "detail": "1 applicable, 0 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -1751,11 +1294,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "pass",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "pass",
-          "agrees": true,
-          "detail": "1 applicable, 0 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -1771,11 +1309,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "pass",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "pass",
-          "agrees": true,
-          "detail": "1 applicable, 0 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -1791,11 +1324,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "pass",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "pass",
-          "agrees": true,
-          "detail": "1 applicable, 0 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -1811,11 +1339,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "pass",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "pass",
-          "agrees": true,
-          "detail": "1 applicable, 0 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -1831,11 +1354,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "pass",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "pass",
-          "agrees": true,
-          "detail": "1 applicable, 0 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -1851,11 +1369,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "pass",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "pass",
-          "agrees": true,
-          "detail": "1 applicable, 0 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -1871,11 +1384,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "pass",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "pass",
-          "agrees": true,
-          "detail": "1 applicable, 0 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -1891,11 +1399,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "pass",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "pass",
-          "agrees": true,
-          "detail": "1 applicable, 0 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -1911,11 +1414,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "pass",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "pass",
-          "agrees": true,
-          "detail": "1 applicable, 0 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -1931,11 +1429,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "pass",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "pass",
-          "agrees": true,
-          "detail": "1 applicable, 0 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -1951,11 +1444,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "pass",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "pass",
-          "agrees": true,
-          "detail": "1 applicable, 0 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -1971,11 +1459,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "fail",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "error",
-          "agrees": false,
-          "detail": "Cannot use 'in' operator to search for 'value' in undefined"
         }
       }
     },
@@ -1991,11 +1474,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "fail",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "fail",
-          "agrees": true,
-          "detail": "1 applicable, 1 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -2011,11 +1489,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "fail",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "fail",
-          "agrees": true,
-          "detail": "1 applicable, 1 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -2031,11 +1504,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "fail",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "fail",
-          "agrees": true,
-          "detail": "0 applicable, 0 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -2051,11 +1519,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "fail",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "fail",
-          "agrees": true,
-          "detail": "0 applicable, 0 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -2071,11 +1534,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "fail",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "fail",
-          "agrees": true,
-          "detail": "0 applicable, 0 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -2091,11 +1549,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "fail",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "fail",
-          "agrees": true,
-          "detail": "0 applicable, 0 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -2111,11 +1564,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "fail",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "pass",
-          "agrees": false,
-          "detail": "1 applicable, 0 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -2131,11 +1579,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "fail",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "fail",
-          "agrees": true,
-          "detail": "1 applicable, 1 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -2151,11 +1594,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "invalid",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "n/a",
-          "agrees": null,
-          "detail": "engine has no document audit"
         }
       }
     },
@@ -2171,11 +1609,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "invalid",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "n/a",
-          "agrees": null,
-          "detail": "engine has no document audit"
         }
       }
     },
@@ -2191,11 +1624,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "invalid",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "n/a",
-          "agrees": null,
-          "detail": "engine has no document audit"
         }
       }
     },
@@ -2211,11 +1639,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "invalid",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "n/a",
-          "agrees": null,
-          "detail": "engine has no document audit"
         }
       }
     },
@@ -2231,11 +1654,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "invalid",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "n/a",
-          "agrees": null,
-          "detail": "engine has no document audit"
         }
       }
     },
@@ -2251,11 +1669,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "invalid",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "n/a",
-          "agrees": null,
-          "detail": "engine has no document audit"
         }
       }
     },
@@ -2271,11 +1684,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "pass",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "pass",
-          "agrees": true,
-          "detail": "1 applicable, 0 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -2291,11 +1699,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "pass",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "pass",
-          "agrees": true,
-          "detail": "1 applicable, 0 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -2311,11 +1714,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "pass",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "pass",
-          "agrees": true,
-          "detail": "1 applicable, 0 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -2331,11 +1729,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "pass",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "pass",
-          "agrees": true,
-          "detail": "1 applicable, 0 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -2351,11 +1744,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "pass",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "pass",
-          "agrees": true,
-          "detail": "1 applicable, 0 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -2371,11 +1759,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "pass",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "pass",
-          "agrees": true,
-          "detail": "1 applicable, 0 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -2391,11 +1774,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "pass",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "pass",
-          "agrees": true,
-          "detail": "1 applicable, 0 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -2411,11 +1789,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "pass",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "pass",
-          "agrees": true,
-          "detail": "1 applicable, 0 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -2431,11 +1804,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "pass",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "pass",
-          "agrees": true,
-          "detail": "1 applicable, 0 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -2451,11 +1819,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "pass",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "fail",
-          "agrees": false,
-          "detail": "0 applicable, 0 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -2471,11 +1834,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "pass",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "fail",
-          "agrees": false,
-          "detail": "0 applicable, 0 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -2491,11 +1849,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "pass",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "fail",
-          "agrees": false,
-          "detail": "0 applicable, 0 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -2511,11 +1864,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "pass",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "fail",
-          "agrees": false,
-          "detail": "0 applicable, 0 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -2531,11 +1879,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "pass",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "error",
-          "agrees": false,
-          "detail": "Cannot use 'in' operator to search for 'value' in undefined"
         }
       }
     },
@@ -2551,11 +1894,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "pass",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "pass",
-          "agrees": true,
-          "detail": "1 applicable, 0 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -2571,11 +1909,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "pass",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "pass",
-          "agrees": true,
-          "detail": "1 applicable, 0 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -2591,11 +1924,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "pass",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "pass",
-          "agrees": true,
-          "detail": "1 applicable, 0 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -2611,11 +1939,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "pass",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "pass",
-          "agrees": true,
-          "detail": "1 applicable, 0 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -2631,11 +1954,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "fail",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "fail",
-          "agrees": true,
-          "detail": "2 applicable, 1 failed (minOccurs 0, maxOccurs unbounded)"
         }
       }
     },
@@ -2651,11 +1969,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "fail",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "fail",
-          "agrees": true,
-          "detail": "1 applicable, 1 failed (minOccurs 0, maxOccurs unbounded)"
         }
       }
     },
@@ -2671,11 +1984,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "fail",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "fail",
-          "agrees": true,
-          "detail": "1 applicable, 0 failed (minOccurs 0, maxOccurs 0)"
         }
       }
     },
@@ -2691,11 +1999,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "fail",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "fail",
-          "agrees": true,
-          "detail": "0 applicable, 0 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -2711,11 +2014,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "invalid",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "n/a",
-          "agrees": null,
-          "detail": "engine has no document audit"
         }
       }
     },
@@ -2731,11 +2029,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "pass",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "pass",
-          "agrees": true,
-          "detail": "2 applicable, 0 failed (minOccurs 0, maxOccurs unbounded)"
         }
       }
     },
@@ -2751,11 +2044,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "pass",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "pass",
-          "agrees": true,
-          "detail": "1 applicable, 0 failed (minOccurs 0, maxOccurs unbounded)"
         }
       }
     },
@@ -2771,11 +2059,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "pass",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "pass",
-          "agrees": true,
-          "detail": "0 applicable, 0 failed (minOccurs 0, maxOccurs unbounded)"
         }
       }
     },
@@ -2791,11 +2074,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "pass",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "pass",
-          "agrees": true,
-          "detail": "0 applicable, 0 failed (minOccurs 0, maxOccurs 0)"
         }
       }
     },
@@ -2811,11 +2089,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "pass",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "pass",
-          "agrees": true,
-          "detail": "1 applicable, 0 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -2831,11 +2104,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "pass",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "pass",
-          "agrees": true,
-          "detail": "1 applicable, 0 failed (minOccurs 0, maxOccurs unbounded)"
         }
       }
     },
@@ -2851,11 +2119,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "pass",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "pass",
-          "agrees": true,
-          "detail": "2 applicable, 0 failed (minOccurs 0, maxOccurs unbounded)"
         }
       }
     },
@@ -2871,11 +2134,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "fail",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "pass",
-          "agrees": false,
-          "detail": "1 applicable, 0 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -2891,11 +2149,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "fail",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "fail",
-          "agrees": true,
-          "detail": "1 applicable, 1 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -2911,11 +2164,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "fail",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "pass",
-          "agrees": false,
-          "detail": "1 applicable, 0 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -2931,11 +2179,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "fail",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "pass",
-          "agrees": false,
-          "detail": "1 applicable, 0 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -2951,11 +2194,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "fail",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "fail",
-          "agrees": true,
-          "detail": "1 applicable, 1 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -2971,11 +2209,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "fail",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "fail",
-          "agrees": true,
-          "detail": "1 applicable, 1 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -2991,11 +2224,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "pass",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "pass",
-          "agrees": true,
-          "detail": "1 applicable, 0 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -3011,11 +2239,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "pass",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "pass",
-          "agrees": true,
-          "detail": "1 applicable, 0 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -3031,11 +2254,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "pass",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "pass",
-          "agrees": true,
-          "detail": "1 applicable, 0 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -3051,11 +2269,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "pass",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "pass",
-          "agrees": true,
-          "detail": "1 applicable, 0 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -3071,11 +2284,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "pass",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "fail",
-          "agrees": false,
-          "detail": "1 applicable, 1 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -3091,11 +2299,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "pass",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "pass",
-          "agrees": true,
-          "detail": "1 applicable, 0 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -3111,11 +2314,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "pass",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "pass",
-          "agrees": true,
-          "detail": "1 applicable, 0 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -3131,11 +2329,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "pass",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "pass",
-          "agrees": true,
-          "detail": "1 applicable, 0 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -3151,11 +2344,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "pass",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "pass",
-          "agrees": true,
-          "detail": "1 applicable, 0 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -3171,11 +2359,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "pass",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "pass",
-          "agrees": true,
-          "detail": "1 applicable, 0 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -3191,11 +2374,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "pass",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "pass",
-          "agrees": true,
-          "detail": "1 applicable, 0 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -3211,11 +2389,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "pass",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "pass",
-          "agrees": true,
-          "detail": "1 applicable, 0 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -3231,11 +2404,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "pass",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "pass",
-          "agrees": true,
-          "detail": "1 applicable, 0 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -3251,11 +2419,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "pass",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "pass",
-          "agrees": true,
-          "detail": "1 applicable, 0 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -3271,11 +2434,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "pass",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "pass",
-          "agrees": true,
-          "detail": "1 applicable, 0 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -3291,11 +2449,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "pass",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "pass",
-          "agrees": true,
-          "detail": "1 applicable, 0 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -3311,11 +2464,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "pass",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "pass",
-          "agrees": true,
-          "detail": "1 applicable, 0 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -3331,11 +2479,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "pass",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "pass",
-          "agrees": true,
-          "detail": "1 applicable, 0 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -3351,11 +2494,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "pass",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "pass",
-          "agrees": true,
-          "detail": "1 applicable, 0 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -3371,11 +2509,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "pass",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "pass",
-          "agrees": true,
-          "detail": "1 applicable, 0 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -3391,11 +2524,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "pass",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "pass",
-          "agrees": true,
-          "detail": "1 applicable, 0 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -3411,11 +2539,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "pass",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "fail",
-          "agrees": false,
-          "detail": "1 applicable, 1 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -3431,11 +2554,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "pass",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "pass",
-          "agrees": true,
-          "detail": "1 applicable, 0 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -3451,11 +2569,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "fail",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "pass",
-          "agrees": false,
-          "detail": "1 applicable, 0 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -3471,11 +2584,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "fail",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "pass",
-          "agrees": false,
-          "detail": "1 applicable, 0 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -3491,11 +2599,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "fail",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "pass",
-          "agrees": false,
-          "detail": "1 applicable, 0 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -3511,11 +2614,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "fail",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "pass",
-          "agrees": false,
-          "detail": "1 applicable, 0 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -3531,11 +2629,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "fail",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "pass",
-          "agrees": false,
-          "detail": "1 applicable, 0 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -3551,11 +2644,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "fail",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "pass",
-          "agrees": false,
-          "detail": "1 applicable, 0 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -3571,11 +2659,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "fail",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "pass",
-          "agrees": false,
-          "detail": "1 applicable, 0 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -3591,11 +2674,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "fail",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "pass",
-          "agrees": false,
-          "detail": "1 applicable, 0 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -3611,11 +2689,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "fail",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "pass",
-          "agrees": false,
-          "detail": "1 applicable, 0 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -3631,11 +2704,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "fail",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "pass",
-          "agrees": false,
-          "detail": "1 applicable, 0 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -3651,11 +2719,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "fail",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "pass",
-          "agrees": false,
-          "detail": "1 applicable, 0 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -3671,11 +2734,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "fail",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "pass",
-          "agrees": false,
-          "detail": "1 applicable, 0 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -3691,11 +2749,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "fail",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "pass",
-          "agrees": false,
-          "detail": "1 applicable, 0 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -3711,11 +2764,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "fail",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "pass",
-          "agrees": false,
-          "detail": "1 applicable, 0 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -3731,11 +2779,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "fail",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "pass",
-          "agrees": false,
-          "detail": "1 applicable, 0 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -3751,11 +2794,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "fail",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "pass",
-          "agrees": false,
-          "detail": "1 applicable, 0 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -3771,11 +2809,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "invalid",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "n/a",
-          "agrees": null,
-          "detail": "engine has no document audit"
         }
       }
     },
@@ -3791,11 +2824,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "pass",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "pass",
-          "agrees": true,
-          "detail": "1 applicable, 0 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -3811,11 +2839,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "pass",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "pass",
-          "agrees": true,
-          "detail": "1 applicable, 0 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -3831,11 +2854,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "pass",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "pass",
-          "agrees": true,
-          "detail": "1 applicable, 0 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -3851,11 +2869,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "pass",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "pass",
-          "agrees": true,
-          "detail": "1 applicable, 0 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -3871,11 +2884,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "pass",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "pass",
-          "agrees": true,
-          "detail": "1 applicable, 0 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -3891,11 +2899,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "pass",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "pass",
-          "agrees": true,
-          "detail": "1 applicable, 0 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -3911,11 +2914,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "pass",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "pass",
-          "agrees": true,
-          "detail": "1 applicable, 0 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -3931,11 +2929,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "pass",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "pass",
-          "agrees": true,
-          "detail": "1 applicable, 0 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -3951,11 +2944,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "pass",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "pass",
-          "agrees": true,
-          "detail": "1 applicable, 0 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -3971,11 +2959,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "pass",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "pass",
-          "agrees": true,
-          "detail": "1 applicable, 0 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -3991,11 +2974,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "pass",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "pass",
-          "agrees": true,
-          "detail": "1 applicable, 0 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -4011,11 +2989,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "pass",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "pass",
-          "agrees": true,
-          "detail": "1 applicable, 0 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -4031,11 +3004,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "pass",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "pass",
-          "agrees": true,
-          "detail": "1 applicable, 0 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -4051,11 +3019,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "pass",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "pass",
-          "agrees": true,
-          "detail": "1 applicable, 0 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -4071,11 +3034,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "pass",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "pass",
-          "agrees": true,
-          "detail": "1 applicable, 0 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -4091,11 +3049,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "pass",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "pass",
-          "agrees": true,
-          "detail": "1 applicable, 0 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -4111,11 +3064,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "pass",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "pass",
-          "agrees": true,
-          "detail": "1 applicable, 0 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -4131,11 +3079,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "fail",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "pass",
-          "agrees": false,
-          "detail": "1 applicable, 0 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -4151,11 +3094,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "fail",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "fail",
-          "agrees": true,
-          "detail": "1 applicable, 1 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -4171,11 +3109,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "fail",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "fail",
-          "agrees": true,
-          "detail": "1 applicable, 1 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -4191,11 +3124,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "fail",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "fail",
-          "agrees": true,
-          "detail": "1 applicable, 1 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -4211,11 +3139,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "fail",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "fail",
-          "agrees": true,
-          "detail": "1 applicable, 1 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -4231,11 +3154,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "fail",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "error",
-          "agrees": false,
-          "detail": "Cannot use 'in' operator to search for 'value' in undefined"
         }
       }
     },
@@ -4251,11 +3169,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "fail",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "error",
-          "agrees": false,
-          "detail": "Cannot use 'in' operator to search for 'value' in undefined"
         }
       }
     },
@@ -4271,11 +3184,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "fail",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "error",
-          "agrees": false,
-          "detail": "Cannot use 'in' operator to search for 'value' in undefined"
         }
       }
     },
@@ -4291,11 +3199,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "fail",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "fail",
-          "agrees": true,
-          "detail": "1 applicable, 1 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -4311,11 +3214,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "fail",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "error",
-          "agrees": false,
-          "detail": "Cannot use 'in' operator to search for 'value' in undefined"
         }
       }
     },
@@ -4331,11 +3229,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "fail",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "fail",
-          "agrees": true,
-          "detail": "1 applicable, 1 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -4351,11 +3244,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "fail",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "fail",
-          "agrees": true,
-          "detail": "1 applicable, 1 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -4371,11 +3259,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "fail",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "fail",
-          "agrees": true,
-          "detail": "1 applicable, 1 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -4391,11 +3274,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "fail",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "fail",
-          "agrees": true,
-          "detail": "1 applicable, 1 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -4411,11 +3289,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "fail",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "fail",
-          "agrees": true,
-          "detail": "1 applicable, 1 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -4431,11 +3304,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "fail",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "fail",
-          "agrees": true,
-          "detail": "1 applicable, 1 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -4451,11 +3319,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "fail",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "fail",
-          "agrees": true,
-          "detail": "1 applicable, 1 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -4471,11 +3334,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "fail",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "fail",
-          "agrees": true,
-          "detail": "1 applicable, 1 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -4491,11 +3349,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "fail",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "fail",
-          "agrees": true,
-          "detail": "1 applicable, 1 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -4511,11 +3364,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "fail",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "fail",
-          "agrees": true,
-          "detail": "1 applicable, 1 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -4531,11 +3379,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "fail",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "error",
-          "agrees": false,
-          "detail": "Cannot use 'in' operator to search for 'value' in undefined"
         }
       }
     },
@@ -4551,11 +3394,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "fail",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "error",
-          "agrees": false,
-          "detail": "Cannot use 'in' operator to search for 'value' in undefined"
         }
       }
     },
@@ -4571,11 +3409,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "fail",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "fail",
-          "agrees": true,
-          "detail": "1 applicable, 1 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -4591,11 +3424,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "fail",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "fail",
-          "agrees": true,
-          "detail": "1 applicable, 1 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -4611,11 +3439,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "fail",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "fail",
-          "agrees": true,
-          "detail": "4 applicable, 4 failed (minOccurs 0, maxOccurs unbounded)"
         }
       }
     },
@@ -4631,11 +3454,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "fail",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "fail",
-          "agrees": true,
-          "detail": "1 applicable, 1 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -4651,11 +3469,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "fail",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "fail",
-          "agrees": true,
-          "detail": "1 applicable, 1 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -4671,11 +3484,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "fail",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "fail",
-          "agrees": true,
-          "detail": "1 applicable, 1 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -4691,11 +3499,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "fail",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "error",
-          "agrees": false,
-          "detail": "Cannot use 'in' operator to search for 'value' in undefined"
         }
       }
     },
@@ -4711,11 +3514,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "fail",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "fail",
-          "agrees": true,
-          "detail": "1 applicable, 1 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -4731,11 +3529,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "fail",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "fail",
-          "agrees": true,
-          "detail": "1 applicable, 1 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -4751,11 +3544,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "fail",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "pass",
-          "agrees": false,
-          "detail": "1 applicable, 0 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -4771,11 +3559,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "invalid",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "n/a",
-          "agrees": null,
-          "detail": "engine has no document audit"
         }
       }
     },
@@ -4791,11 +3574,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "invalid",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "n/a",
-          "agrees": null,
-          "detail": "engine has no document audit"
         }
       }
     },
@@ -4811,11 +3589,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "invalid",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "n/a",
-          "agrees": null,
-          "detail": "engine has no document audit"
         }
       }
     },
@@ -4831,11 +3604,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "invalid",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "n/a",
-          "agrees": null,
-          "detail": "engine has no document audit"
         }
       }
     },
@@ -4851,11 +3619,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "invalid",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "n/a",
-          "agrees": null,
-          "detail": "engine has no document audit"
         }
       }
     },
@@ -4871,11 +3634,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "invalid",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "n/a",
-          "agrees": null,
-          "detail": "engine has no document audit"
         }
       }
     },
@@ -4891,11 +3649,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "pass",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "pass",
-          "agrees": true,
-          "detail": "1 applicable, 0 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -4911,11 +3664,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "pass",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "pass",
-          "agrees": true,
-          "detail": "1 applicable, 0 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -4931,11 +3679,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "pass",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "pass",
-          "agrees": true,
-          "detail": "1 applicable, 0 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -4951,11 +3694,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "pass",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "pass",
-          "agrees": true,
-          "detail": "1 applicable, 0 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -4971,11 +3709,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "pass",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "pass",
-          "agrees": true,
-          "detail": "1 applicable, 0 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -4991,11 +3724,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "pass",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "pass",
-          "agrees": true,
-          "detail": "1 applicable, 0 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -5011,11 +3739,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "pass",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "pass",
-          "agrees": true,
-          "detail": "1 applicable, 0 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -5031,11 +3754,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "pass",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "pass",
-          "agrees": true,
-          "detail": "1 applicable, 0 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -5051,11 +3769,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "pass",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "pass",
-          "agrees": true,
-          "detail": "1 applicable, 0 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -5071,11 +3784,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "pass",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "pass",
-          "agrees": true,
-          "detail": "1 applicable, 0 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -5091,11 +3799,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "pass",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "pass",
-          "agrees": true,
-          "detail": "1 applicable, 0 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -5111,11 +3814,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "pass",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "pass",
-          "agrees": true,
-          "detail": "1 applicable, 0 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -5131,11 +3829,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "pass",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "pass",
-          "agrees": true,
-          "detail": "1 applicable, 0 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -5151,11 +3844,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "pass",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "error",
-          "agrees": false,
-          "detail": "Cannot use 'in' operator to search for 'value' in undefined"
         }
       }
     },
@@ -5171,11 +3859,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "pass",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "error",
-          "agrees": false,
-          "detail": "Cannot use 'in' operator to search for 'value' in undefined"
         }
       }
     },
@@ -5191,11 +3874,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "pass",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "error",
-          "agrees": false,
-          "detail": "Cannot use 'in' operator to search for 'value' in undefined"
         }
       }
     },
@@ -5211,11 +3889,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "pass",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "error",
-          "agrees": false,
-          "detail": "Cannot use 'in' operator to search for 'value' in undefined"
         }
       }
     },
@@ -5231,11 +3904,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "pass",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "error",
-          "agrees": false,
-          "detail": "Cannot use 'in' operator to search for 'value' in undefined"
         }
       }
     },
@@ -5251,11 +3919,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "pass",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "error",
-          "agrees": false,
-          "detail": "Cannot use 'in' operator to search for 'value' in undefined"
         }
       }
     },
@@ -5271,11 +3934,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "pass",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "error",
-          "agrees": false,
-          "detail": "Cannot use 'in' operator to search for 'value' in undefined"
         }
       }
     },
@@ -5291,11 +3949,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "pass",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "error",
-          "agrees": false,
-          "detail": "Cannot use 'in' operator to search for 'value' in undefined"
         }
       }
     },
@@ -5311,11 +3964,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "pass",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "error",
-          "agrees": false,
-          "detail": "Cannot use 'in' operator to search for 'value' in undefined"
         }
       }
     },
@@ -5331,11 +3979,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "pass",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "pass",
-          "agrees": true,
-          "detail": "1 applicable, 0 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -5351,11 +3994,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "pass",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "pass",
-          "agrees": true,
-          "detail": "1 applicable, 0 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -5371,11 +4009,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "pass",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "pass",
-          "agrees": true,
-          "detail": "1 applicable, 0 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -5391,11 +4024,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "pass",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "pass",
-          "agrees": true,
-          "detail": "1 applicable, 0 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -5411,11 +4039,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "pass",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "pass",
-          "agrees": true,
-          "detail": "1 applicable, 0 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -5431,11 +4054,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "pass",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "fail",
-          "agrees": false,
-          "detail": "1 applicable, 1 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -5451,11 +4069,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "pass",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "fail",
-          "agrees": false,
-          "detail": "1 applicable, 1 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -5471,11 +4084,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "pass",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "pass",
-          "agrees": true,
-          "detail": "1 applicable, 0 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -5491,11 +4099,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "pass",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "pass",
-          "agrees": true,
-          "detail": "1 applicable, 0 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -5511,11 +4114,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "pass",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "pass",
-          "agrees": true,
-          "detail": "1 applicable, 0 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -5531,11 +4129,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "pass",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "pass",
-          "agrees": true,
-          "detail": "1 applicable, 0 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -5551,11 +4144,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "pass",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "error",
-          "agrees": false,
-          "detail": "Cannot use 'in' operator to search for 'value' in undefined"
         }
       }
     },
@@ -5571,11 +4159,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "pass",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "pass",
-          "agrees": true,
-          "detail": "1 applicable, 0 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -5591,11 +4174,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "pass",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "pass",
-          "agrees": true,
-          "detail": "1 applicable, 0 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -5611,11 +4189,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "pass",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "error",
-          "agrees": false,
-          "detail": "Cannot use 'in' operator to search for 'value' in undefined"
         }
       }
     },
@@ -5631,11 +4204,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "pass",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "fail",
-          "agrees": false,
-          "detail": "1 applicable, 1 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -5651,11 +4219,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "pass",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "error",
-          "agrees": false,
-          "detail": "Cannot use 'in' operator to search for 'value' in undefined"
         }
       }
     },
@@ -5671,11 +4234,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "pass",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "pass",
-          "agrees": true,
-          "detail": "1 applicable, 0 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -5691,11 +4249,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "pass",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "pass",
-          "agrees": true,
-          "detail": "1 applicable, 0 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -5711,11 +4264,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "pass",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "pass",
-          "agrees": true,
-          "detail": "1 applicable, 0 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -5731,11 +4279,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "pass",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "pass",
-          "agrees": true,
-          "detail": "1 applicable, 0 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -5751,11 +4294,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "pass",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "fail",
-          "agrees": false,
-          "detail": "1 applicable, 1 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -5771,11 +4309,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "fail",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "fail",
-          "agrees": true,
-          "detail": "0 applicable, 0 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -5791,11 +4324,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "fail",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "fail",
-          "agrees": true,
-          "detail": "0 applicable, 0 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -5811,11 +4339,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "fail",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "fail",
-          "agrees": true,
-          "detail": "0 applicable, 0 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -5831,11 +4354,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "fail",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "fail",
-          "agrees": true,
-          "detail": "1 applicable, 1 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -5851,11 +4369,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "fail",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "fail",
-          "agrees": true,
-          "detail": "1 applicable, 1 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -5871,11 +4384,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "fail",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "fail",
-          "agrees": true,
-          "detail": "1 applicable, 1 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -5891,11 +4399,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "fail",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "pass",
-          "agrees": false,
-          "detail": "1 applicable, 0 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -5911,11 +4414,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "fail",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "fail",
-          "agrees": true,
-          "detail": "1 applicable, 1 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -5931,11 +4429,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "fail",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "fail",
-          "agrees": true,
-          "detail": "1 applicable, 1 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -5951,11 +4444,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "fail",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "pass",
-          "agrees": false,
-          "detail": "1 applicable, 0 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -5971,11 +4459,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "invalid",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "n/a",
-          "agrees": null,
-          "detail": "engine has no document audit"
         }
       }
     },
@@ -5991,11 +4474,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "invalid",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "n/a",
-          "agrees": null,
-          "detail": "engine has no document audit"
         }
       }
     },
@@ -6011,11 +4489,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "pass",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "fail",
-          "agrees": false,
-          "detail": "0 applicable, 0 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -6031,11 +4504,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "pass",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "fail",
-          "agrees": false,
-          "detail": "0 applicable, 0 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -6051,11 +4519,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "pass",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "fail",
-          "agrees": false,
-          "detail": "0 applicable, 0 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -6071,11 +4534,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "pass",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "fail",
-          "agrees": false,
-          "detail": "0 applicable, 0 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -6091,11 +4549,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "pass",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "pass",
-          "agrees": true,
-          "detail": "1 applicable, 0 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -6111,11 +4564,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "pass",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "pass",
-          "agrees": true,
-          "detail": "1 applicable, 0 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -6131,11 +4579,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "pass",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "pass",
-          "agrees": true,
-          "detail": "1 applicable, 0 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -6151,11 +4594,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "pass",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "pass",
-          "agrees": true,
-          "detail": "1 applicable, 0 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -6171,11 +4609,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "pass",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "pass",
-          "agrees": true,
-          "detail": "1 applicable, 0 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -6191,11 +4624,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "pass",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "pass",
-          "agrees": true,
-          "detail": "1 applicable, 0 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -6211,11 +4639,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "pass",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "pass",
-          "agrees": true,
-          "detail": "1 applicable, 0 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -6231,11 +4654,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "pass",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "pass",
-          "agrees": true,
-          "detail": "1 applicable, 0 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -6251,11 +4669,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "pass",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "pass",
-          "agrees": true,
-          "detail": "1 applicable, 0 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -6271,11 +4684,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "fail",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "fail",
-          "agrees": true,
-          "detail": "1 applicable, 1 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -6291,11 +4699,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "fail",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "fail",
-          "agrees": true,
-          "detail": "1 applicable, 1 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -6311,11 +4714,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "fail",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "fail",
-          "agrees": true,
-          "detail": "1 applicable, 1 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -6331,11 +4729,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "fail",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "fail",
-          "agrees": true,
-          "detail": "1 applicable, 1 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -6351,11 +4744,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "fail",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "fail",
-          "agrees": true,
-          "detail": "1 applicable, 1 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -6371,11 +4759,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "fail",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "fail",
-          "agrees": true,
-          "detail": "1 applicable, 1 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -6391,11 +4774,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "fail",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "fail",
-          "agrees": true,
-          "detail": "1 applicable, 1 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -6411,11 +4789,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "fail",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "fail",
-          "agrees": true,
-          "detail": "1 applicable, 1 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -6431,11 +4804,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "fail",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "fail",
-          "agrees": true,
-          "detail": "1 applicable, 1 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -6451,11 +4819,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "fail",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "fail",
-          "agrees": true,
-          "detail": "1 applicable, 1 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -6471,11 +4834,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "fail",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "fail",
-          "agrees": true,
-          "detail": "1 applicable, 1 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -6491,11 +4849,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "fail",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "fail",
-          "agrees": true,
-          "detail": "1 applicable, 1 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -6511,11 +4864,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "fail",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "fail",
-          "agrees": true,
-          "detail": "1 applicable, 1 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -6531,11 +4879,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "fail",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "fail",
-          "agrees": true,
-          "detail": "1 applicable, 1 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -6551,11 +4894,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "fail",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "fail",
-          "agrees": true,
-          "detail": "1 applicable, 1 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -6571,11 +4909,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "fail",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "fail",
-          "agrees": true,
-          "detail": "1 applicable, 1 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -6591,11 +4924,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "fail",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "fail",
-          "agrees": true,
-          "detail": "1 applicable, 1 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -6611,11 +4939,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "fail",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "fail",
-          "agrees": true,
-          "detail": "1 applicable, 1 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -6631,11 +4954,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "pass",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "fail",
-          "agrees": false,
-          "detail": "1 applicable, 1 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -6651,11 +4969,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "pass",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "fail",
-          "agrees": false,
-          "detail": "1 applicable, 1 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -6671,11 +4984,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "pass",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "fail",
-          "agrees": false,
-          "detail": "1 applicable, 1 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -6691,11 +4999,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "pass",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "fail",
-          "agrees": false,
-          "detail": "1 applicable, 1 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -6711,11 +5014,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "pass",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "fail",
-          "agrees": false,
-          "detail": "1 applicable, 1 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -6731,11 +5029,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "pass",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "fail",
-          "agrees": false,
-          "detail": "1 applicable, 1 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -6751,11 +5044,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "pass",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "fail",
-          "agrees": false,
-          "detail": "1 applicable, 1 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -6771,11 +5059,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "pass",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "fail",
-          "agrees": false,
-          "detail": "1 applicable, 1 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -6791,11 +5074,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "pass",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "fail",
-          "agrees": false,
-          "detail": "1 applicable, 1 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -6811,11 +5089,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "pass",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "fail",
-          "agrees": false,
-          "detail": "1 applicable, 1 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -6831,11 +5104,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "pass",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "fail",
-          "agrees": false,
-          "detail": "1 applicable, 1 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -6851,11 +5119,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "pass",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "fail",
-          "agrees": false,
-          "detail": "1 applicable, 1 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -6871,11 +5134,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "pass",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "pass",
-          "agrees": true,
-          "detail": "1 applicable, 0 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -6891,11 +5149,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "pass",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "pass",
-          "agrees": true,
-          "detail": "1 applicable, 0 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -6911,11 +5164,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "pass",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "pass",
-          "agrees": true,
-          "detail": "1 applicable, 0 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -6931,11 +5179,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "pass",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "pass",
-          "agrees": true,
-          "detail": "1 applicable, 0 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -6951,11 +5194,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "pass",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "fail",
-          "agrees": false,
-          "detail": "1 applicable, 1 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     },
@@ -6971,11 +5209,6 @@
         "ifc-lite-ids11-preview": {
           "verdict": "pass",
           "agrees": true
-        },
-        "thatopen-components": {
-          "verdict": "fail",
-          "agrees": false,
-          "detail": "1 applicable, 1 failed (minOccurs 1, maxOccurs unbounded)"
         }
       }
     }

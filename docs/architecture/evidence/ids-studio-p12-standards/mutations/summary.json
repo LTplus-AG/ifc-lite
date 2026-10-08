@@ -158,20 +158,6 @@
     ],
     "restoration": "verified"
   },
-  "spec-verdict-prohibited": {
-    "verdict": "OBSERVED",
-    "exitCode": 0,
-    "reason": "reverting production turned an assertion RED in scripts/ids-conformance/lib/adapters/adapters.test.mjs; that file has a green, attributable baseline.",
-    "base": "4e36dfc588f55e15b3c2095023c1b2aa8e53dd18",
-    "head": "ae9be3a5a397a6140d95ce2cbdede26cfe89aa42",
-    "production": [
-      "scripts/ids-conformance/lib/adapters/thatopen-components.mjs"
-    ],
-    "tests": [
-      "scripts/ids-conformance/lib/adapters/adapters.test.mjs"
-    ],
-    "restoration": "verified"
-  },
   "ifc-lite-audit-verdict": {
     "verdict": "OBSERVED",
     "exitCode": 0,

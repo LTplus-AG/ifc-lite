@@ -13,7 +13,6 @@
  *
  * Usage (build first: `pnpm turbo build --filter=@ifc-lite/ids...`):
  *   node scripts/ids-conformance/run.mjs                       # ifc-lite + IDS 1.1 preview columns
- *   node scripts/ids-conformance/run.mjs --thatopen-root <dir> # + @thatopen/components (see its adapter)
  *   node scripts/ids-conformance/run.mjs --engine-config e.json [--engine-config f.json]
  *   node scripts/ids-conformance/run.mjs --out <dir> --limit 20 --no-doc
  *
@@ -40,7 +39,7 @@ const CORPUS = join(REPO, 'packages/ids/src/__corpus__/buildingsmart-ids');
 
 /** @param {string[]} argv */
 export function parseArgs(argv) {
-  const opts = { engineConfigs: /** @type {string[]} */ ([]), thatopenRoot: '', out: join(REPO, 'docs/guide'), limit: 0, doc: true };
+  const opts = { engineConfigs: /** @type {string[]} */ ([]), out: join(REPO, 'docs/guide'), limit: 0, doc: true };
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
     const value = () => {
@@ -49,7 +48,6 @@ export function parseArgs(argv) {
       return v;
     };
     if (arg === '--engine-config') opts.engineConfigs.push(value());
-    else if (arg === '--thatopen-root') opts.thatopenRoot = value();
     else if (arg === '--out') opts.out = value();
     else if (arg === '--limit') opts.limit = Number(value());
     else if (arg === '--no-doc') opts.doc = false;
@@ -64,10 +62,6 @@ async function main() {
   const cases = opts.limit > 0 ? all.slice(0, opts.limit) : all;
 
   const adapters = [await createIfcLiteAdapter(), await createIfcLiteAdapter({ ids11: true })];
-  if (opts.thatopenRoot) {
-    const { createThatOpenAdapter } = await import('./lib/adapters/thatopen-components.mjs');
-    adapters.push(await createThatOpenAdapter(opts.thatopenRoot));
-  }
   for (const config of opts.engineConfigs) adapters.push(createCommandAdapter(config));
 
   const matrix = await buildMatrix(cases, adapters, {

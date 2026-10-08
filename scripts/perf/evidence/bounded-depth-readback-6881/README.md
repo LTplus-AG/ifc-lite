@@ -93,7 +93,7 @@ only in the manual harness. No runtime full-depth fallback exists.
 One initial development-route attempt produced swapchain/device mismatch errors;
 the original production build cleared those errors. A subsequent full viewer
 build for the corrected witness was killed with exit 137 under shared-host
-memory pressure. Neither attempt is accepted timing evidence. Both corrected-harness root viewer builds subsequently completed successfully. Their frozen distributions and fixture hashes are recorded in `viewer-build-receipt.json`.
+memory pressure. Neither attempt is accepted timing evidence. Both corrected-harness root viewer builds subsequently completed successfully. Their frozen distributions and fixture hashes are recorded in `viewer-build-receipt.json.gz`.
 
 ## Public IFC hover A/B, still held
 

@@ -44,7 +44,8 @@ import { BCFServerControl } from './bcf/BCFServerControl';
 import { AnalysisPanel } from './analysis/AnalysisPanel';
 import { AnalysisExportMenu } from './analysis/AnalysisExportMenu';
 import { openGenericFileDialog } from '@/services/file-dialog';
-import { downloadBlob, sanitizeFilename } from '@/lib/export/download';
+import { sanitizeFilename } from '@/lib/export/download';
+import { publishBcfArchive } from '@/lib/bcf-drafts/archive-activity';
 import { readBCFWithDiagnostics, warnIfNoModelLoaded, warnIfImportTruncated, warnIfUnsupportedVersion } from './bcf/bcfImportGuidance';
 import { useSectionViewpointCapture } from '@/hooks/bcf/useSectionViewpointCapture';
 // ============================================================================
@@ -205,10 +206,8 @@ export function BCFPanel({ onClose }: BCFPanelProps) {
     try {
       setBcfLoading(true);
       setBcfError(null);
-      const blob = await writeBCF(bcfProject);
-      // Use project name, or generate from model name, or date-based fallback
       const fileName = sanitizeFilename(bcfProject.name || getDefaultProjectName(), { fallback: 'topics' });
-      downloadBlob(blob, `${fileName}.bcfzip`);
+      await publishBcfArchive(bcfProject.name ?? fileName, `${fileName}.bcfzip`, () => writeBCF(bcfProject));
       trackExportCompleted({ format: 'bcfzip', surface: 'bcf_panel', topic_count: bcfProject.topics.size });
       posthog.capture('bcf_exported', { topic_count: bcfProject.topics.size });
     } catch (error) {

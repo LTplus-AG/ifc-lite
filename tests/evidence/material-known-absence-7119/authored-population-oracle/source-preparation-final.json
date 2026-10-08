@@ -1,0 +1,56 @@
+{
+  "base": "ae27edc77b596700595ce0fc13f03e416af179c2",
+  "sourceHead": "ae27edc77b596700595ce0fc13f03e416af179c2",
+  "fixture": "apps/viewer/public/samples/building-architecture.ifc",
+  "fixtureSha256": "3ff9b10bd00c7b96dded51e7ca5a6b69efbea38b049adcdd05fcd247de7e70d5",
+  "authoredAnchors": [
+    {
+      "line": 58,
+      "step": "#51=IFCRELDEFINESBYTYPE('0KEb1WVHHEhQZ4xbbd6b2c',#1,$,$,(#52),#50);"
+    },
+    {
+      "line": 70,
+      "step": "#58=IFCRELDEFINESBYPROPERTIES('3bj39wbsr6AATUS83mcVZl',#1,$,$,(#52),#57);"
+    },
+    {
+      "line": 73,
+      "step": "#61=IFCRELASSOCIATESMATERIAL('0oKrXjQf58gwTDmoHg_xVx',#1,$,$,(#52),#62);"
+    },
+    {
+      "line": 79,
+      "step": "#67=IFCRELDEFINESBYPROPERTIES('0RxTehyvnBkfOSEQBZduh2',#1,$,$,(#52),#66);"
+    },
+    {
+      "line": 80,
+      "step": "#68=IFCRELCONTAINEDINSPATIALSTRUCTURE('3deDUGWdPDIRHoCNFWfaCk',#1,$,$,(#52,#262,#291,#315,#339,#345,#353),#43);"
+    }
+  ],
+  "oldTestSha256": "d49b0983d1a40fffb2a248b283a9d6ff4b9fd1a66a6f125af2e07cfc88cb420c",
+  "candidateTestSha256": "2a32bb6b86f2856be83f9a4f5aa24e152063bc2b0db54da418583a184b2efeee",
+  "keptFinding": {
+    "run": 37786972172,
+    "artifact": 11554199978,
+    "head": "15a35dbf7f7469ba20dac247aad0e757b665c95c",
+    "emitted": 1,
+    "kept": 1,
+    "omitted": 0,
+    "dropped": 0,
+    "classPass": false
+  },
+  "testingPlan": [
+    "same real production helper loses only source edge51 for selectedslab52: old same-helper expectation passes (demonstrate hole)",
+    "new literal expected authored5-edge population: same helper loss must fail real count or identity assertion",
+    "exact original helper restore: new21controls pass",
+    "plainfullroot typecheck and lightgates"
+  ],
+  "unrun": true,
+  "scope": "One existing viewer test; independent literal relationship and classification populations. No production change or source-text assertions.",
+  "authoredClassificationAnchor": [
+    {
+      "line": 43,
+      "step": "#36=IFCRELASSOCIATESCLASSIFICATION('1SrkBqoCD6S9IIkFd5cBbw',#1,'CCI Construction Classification',$,(#30),#35);"
+    }
+  ],
+  "priorCandidateSha256": "49e8ce8022c2cfdd79af85b5a2febdf6dd1b9b74b81fa87b6eabc069ffc9f038",
+  "classificationExpectation": "literal zero and empty rows from authored #36 applies building30, not selected slab52 or type50"
+}

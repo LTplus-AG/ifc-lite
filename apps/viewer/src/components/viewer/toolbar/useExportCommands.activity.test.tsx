@@ -50,7 +50,7 @@ async function setup(federated = false) {
     const button = [...ui.querySelectorAll('button')].find(candidate => candidate.textContent === mode); assert.ok(button);
     click(button); assert.ok(running); return running;
   };
-  return { ui, blobs, start, wall, guid: store.entities.getGlobalId(wall) };
+  return { ui, blobs, start, wall, store, guid: store.entities.getGlobalId(wall) };
 }
 function latest() {
   const job = useActivityJournal.getState().jobs.at(-1); assert.ok(job, '#7162 native CSV invocation enters Activity'); return job;
@@ -121,4 +121,31 @@ it('#7162 native no-model preflight creates no export job or file', async () => 
   await act(async () => { useViewerStore.setState({ models: new Map(), activeModelId: null, ifcDataStore: null }); });
   await act(async () => { await run.start('entities'); });
   assert.equal(useActivityJournal.getState().jobs.length, 0); assert.equal(run.blobs.length, 0);
+});
+
+it('#7162 real CSV keeps invocation source identity when active model switches during native initialization', async t => {
+  if (!ensureWasm(t)) return;
+  const run = await setup();
+  let release: (() => void) | undefined;
+  const nativeInit = GeometryProcessor.prototype.init;
+  mock.method(GeometryProcessor.prototype, 'init', async function(this: GeometryProcessor) {
+    await nativeInit.call(this);
+    await new Promise<void>(resolve => { release = resolve; });
+  });
+  const names: string[] = [];
+  mock.method(HTMLAnchorElement.prototype, 'click', function(this: HTMLAnchorElement) { names.push(this.download); });
+  const pending = run.start('entities');
+  try {
+    await waitFor(() => Boolean(release), 'actual source A processor initialized');
+    const job = latest(); assert.equal(job.subject, 'Authored.ifc');
+    const other = { ...fixtureModel('other'), name: 'Other.ifc', ifcDataStore: run.store };
+    await act(async () => { useViewerStore.setState({ ...fixtureModels(other), ifcDataStore: run.store, mutationViews: new Map() }); });
+    assert.equal(useViewerStore.getState().activeModelId, 'other');
+    await act(async () => { release?.(); await pending; });
+    assert.equal(latest().id, job.id); assert.equal(latest().subject, 'Authored.ifc');
+    assert.equal(latest().outcome, 'completed');
+    assert.equal(run.blobs.length, 1);
+    assert.ok((await run.blobs[0].text()).includes('Reviewed CSV wall'), 'actual exported A edit survived switching to unedited B');
+    assert.deepEqual(names, ['Authored_entities.csv'], 'browser filename identifies the same source as bytes and Activity row');
+  } finally { release?.(); await pending; }
 });

@@ -86,13 +86,16 @@ export function useExportCommands(surface: ExportSurface) {
   const handleExportCSV = useCallback(async (type: CsvExportType) => {
     if (!ifcDataStore || ifcDataStore.source.byteLength <= 0) return;
     try {
+      const state = useViewerStore.getState();
+      const sourceName = activeModelName(state);
+      const filename = modelExportFilename(sourceName, 'csv', CSV_SUFFIX[type]);
+      const mutationView = state.activeModelId ? state.getMutationView(state.activeModelId) : null;
       await recordActivity({ kind: 'export', title: CSV_ACTIVITY_TITLE[type],
-        subject: `${activeModelName(useViewerStore.getState())}${activeModelOnlyNote}` }, async () => {
+        subject: `${sourceName}${activeModelOnlyNote}` }, async () => {
         // The model as edited, not the file as loaded (#5397).
-        const { activeModelId, getMutationView } = useViewerStore.getState();
-        const bytes = editedModelBytes(ifcDataStore, activeModelId ? getMutationView(activeModelId) : null);
+        const bytes = editedModelBytes(ifcDataStore, mutationView);
         const csv = await exportCsvFromBytes(bytes, type, { includeProperties: type === 'entities' });
-        downloadFile(csv, modelExportFilename(activeModelName(useViewerStore.getState()), 'csv', CSV_SUFFIX[type]), 'text/csv');
+        downloadFile(csv, filename, 'text/csv');
       });
       trackExportCompleted({ format: 'csv', surface });
       toast.success(`Exported ${type} CSV${activeModelOnlyNote}`);

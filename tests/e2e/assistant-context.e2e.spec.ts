@@ -13,7 +13,8 @@ const fixture = join(process.cwd(), 'tests/models/ara3d/AC20-FZK-Haus.ifc');
 
 // #6839: retain the successful coordinator journey for the user's UX review.
 // Recorded provider text verifies product behavior, not live LLM quality.
-test.use({ video: 'on' });
+// #6926: Flow's bottom dock must leave every split Assistant control reachable at ordinary laptop height.
+test.use({ video: 'on', viewport: { width: 1280, height: 720 } });
 
 // #6813: real ArchiCAD model, native duplicate scan and actual panel hosts.
 // Only the paid provider response is intercepted; evidence must come from the model.
@@ -127,7 +128,14 @@ test('native clash evidence reaches the assistant without executing model output
   const flowPanel = page.getByRole('tabpanel', { name: 'Flow', exact: true });
   await expect(flowPanel).toBeVisible();
   await flowPanel.getByRole('button', { name: 'Discuss with AI', exact: true }).click();
-  await assistant.getByText('Evidence details', { exact: true }).click();
+  const flowEvidenceDetails = assistant.getByText('Evidence details', { exact: true });
+  await flowEvidenceDetails.scrollIntoViewIfNeeded();
+  await expect.poll(() => flowEvidenceDetails.evaluate(element => {
+    const bounds = element.getBoundingClientRect();
+    const hit = document.elementFromPoint(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2);
+    return hit !== null && element.contains(hit);
+  }), { message: '#6926: the Flow dock must leave split Assistant evidence controls pointer-accessible' }).toBe(true);
+  await flowEvidenceDetails.click();
   await assistant.getByText('Inspect evidence sent to the model', { exact: true }).click();
   await expect(assistant.locator('pre')).toContainText('"source":"flow"');
   await expect(assistant.locator('pre')).toContainText('AI coordination workflow');

@@ -223,6 +223,8 @@ test('#7089 pending native hydration is an explicit gap and cannot orphan an exi
   pinReviewCard(card, null);
   // Model the cold-session read boundary while retaining real committed native content.
   useClashGroupLibrary.setState(state => ({ entries: [], status: { ...state.status, phase: 'loading' } }));
+  assert.equal(openOriginal(finding, () => assert.fail('receipt hydration cannot establish workspace absence')), false);
+  assert.equal(evidenceFocus.useClashApplicationFocus.getState().record, null);
   useClashGroupApplications.setState(state => ({ entries: [], status: { ...state.status, phase: 'loading' } }));
   assert.equal(useReviewAssistantCard.getState().card, null);
   assert.equal(openOriginal(finding, () => assert.fail('pending libraries cannot open an original')), false);

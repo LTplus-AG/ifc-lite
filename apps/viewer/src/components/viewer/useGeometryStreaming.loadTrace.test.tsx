@@ -29,11 +29,14 @@ import { useFederatedGeometry } from './useFederatedGeometry.js';
 import { useGeometryStreaming } from './useGeometryStreaming.js';
 
 let setStreaming: (streaming: boolean) => void = () => {};
+let setInitialized: (initialized: boolean) => void = () => {};
 
-function Viewport({ renderer }: { renderer: Renderer }) {
+function Viewport({ renderer, startsInitialized = true }: { renderer: Renderer; startsInitialized?: boolean }) {
   const s = useViewerStore();
   const [isStreaming, set] = useState(false);
+  const [isInitialized, setInit] = useState(startsInitialized);
   setStreaming = set;
+  setInitialized = setInit;
   const indices = useMemo(() => modelIndices(s.models), [s.models]);
   const geometry = useFederatedGeometry(s.models, s.geometryResult, indices, s.geometryContentVersion);
   const rendererRef = useRef<Renderer | null>(renderer);
@@ -43,7 +46,7 @@ function Viewport({ renderer }: { renderer: Renderer }) {
     appearanceSourceGeometry: geometry?.meshes, coordinateInfo: geometry?.coordinateInfo,
     geometryVersion: s.geometryUpdateTick, geometryContentVersion: s.geometryContentVersion,
     modelCount: s.models.size, modelIdToIndex: indices,
-    presentInstancedModelIndices: new Set(indices.values()), isInitialized: true, isStreaming,
+    presentInstancedModelIndices: new Set(indices.values()), isInitialized, isStreaming,
     geometryBoundsRef, clearColorRef, pendingMeshColorUpdates: null, pendingColorUpdates: null,
     pendingMeshRemovals: null, pendingMeshTranslations: null, pendingMeshRotations: null, pendingInstancedShards: null,
     clearPendingMeshColorUpdates: s.clearPendingMeshColorUpdates, clearPendingColorUpdates: s.clearPendingColorUpdates,
@@ -107,3 +110,27 @@ it('records the streaming batches, upload slices, camera fit, queue drain, refit
   assert.ok(names(snapshot).includes('scene.finalize.regroup'), 'the scene reports its finalize phases');
 });
 
+
+it('still finalizes when the renderer finishes initialising after the stream has ended (#7032)', async () => {
+  const tracer = createLoadTracer({ enabled: true, sink: null });
+  publishLoadTrace('ifc', tracer.startLoad('ifc'));
+
+  const native = appearanceInstanceScene([]);
+  const camera = new Camera();
+  const renderer = { getScene: () => native.scene, getGPUDevice: () => native.device, getPipeline: () => native.pipeline,
+    getCamera: () => camera, getCanvas: () => ({ clientWidth: 800, clientHeight: 600 }),
+    clearCaches() {}, requestRender() {} } as unknown as Renderer;
+  render(<Viewport renderer={renderer} startsInitialized={false} />);
+
+  // The whole stream runs before the (slow) renderer is up.
+  const all = meshes(6);
+  await act(async () => { setStreaming(true); });
+  await act(async () => { useViewerStore.setState({ models: new Map([['ifc', model(all)]]) }); });
+  await act(async () => { setStreaming(false); });
+  await act(async () => { await new Promise((r) => setTimeout(r, 20)); });
+  assert.equal(count(tracer.latest(), 'scene.finalize'), 0, 'nothing to finalize against before the renderer exists');
+
+  await act(async () => { setInitialized(true); });
+  await act(async () => { await new Promise((r) => setTimeout(r, 20)); });
+  assert.equal(count(tracer.latest(), 'scene.finalize'), 1, 'the load still ends with exactly one scene.finalize');
+});

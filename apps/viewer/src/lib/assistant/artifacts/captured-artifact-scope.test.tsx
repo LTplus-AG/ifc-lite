@@ -372,7 +372,7 @@ test('#7186 mounted review captures original selected population before asynchro
   const ui = render(<ArtifactProposalReview onAsk={null} />);
   assert.match(ui.textContent ?? '', /Checking the names against the loaded models/, 'actual native schema discovery is still pending');
   selectRef({ modelId: WALL, expressId: replacement.expressId });
-  const save = () => [...ui.querySelectorAll('button')].find(row => row.textContent?.trim() === 'Save to Filters');
+  const save = () => [...ui.querySelectorAll('button')].find(row => row.textContent?.trim() === 'Save to saved filters');
   await waitFor(() => !!save() && !save()?.disabled, 'native review completes after initial schema discovery');
   click(save()!);
   const saved = loadSavedFilters().find(row => row.name === 'Captured walls');
@@ -382,4 +382,20 @@ test('#7186 mounted review captures original selected population before asynchro
     limit: Infinity, candidateExpressIdsByModel: resolveCapturedEntityScope(saved.capturedScope, models),
   });
   assert.deepEqual(result.map(row => [row.modelId, row.expressId]), [[ARCH, originalWall.expressId]], 'native saved output uses the selection at review creation rather than a later schema-scan selection');
+});
+
+test('#7186 mounted review refuses unavailable capture identity without broadening its native population', async () => {
+  await selectWall();
+  const state = useViewerStore.getState(), models = new Map(state.models);
+  const source = models.get(ARCH); assert.ok(source);
+  models.set(ARCH, { ...source, sourceContentHash: undefined });
+  useViewerStore.setState({ models });
+  const entry = cases.find(row => row.label === 'filter')!;
+  act(() => useAssistant.setState({ status: 'idle', error: null, messages: [{ role: 'assistant', model: 'recorded',
+    content: JSON.stringify({ version: 1, title: 'Unavailable selected walls', kind: entry.kind, scope: 'selected', ...entry.body }) }] }));
+  const ui = render(<ArtifactProposalReview onAsk={null} />);
+  assert.match(ui.querySelector('[role="alert"]')?.textContent ?? '', /original file identity is unavailable/);
+  await waitFor(() => !(ui.textContent ?? '').includes('Checking the names against the loaded models'), 'actual schema discovery finishes despite a refused capture');
+  assert.ok(![...ui.querySelectorAll('button')].some(row => row.textContent?.trim() === 'Save to saved filters'), 'native save never becomes available for an unproved captured population');
+  assert.deepEqual(loadSavedFilters(), []);
 });

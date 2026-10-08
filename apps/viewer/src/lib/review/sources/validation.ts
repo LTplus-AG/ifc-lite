@@ -4,9 +4,9 @@
 
 /**
  * IDS / information-validation findings: one finding per failed
- * (specification, element) pair of the live report. Saved validation
- * snapshots keep counts only, never element rows, so they cannot become
- * element findings; they stay in the Validation panel's history.
+ * (specification, element) pair of the live report. Immutable saved failure
+ * facts are projected separately by saved-validation; count-only older
+ * snapshots never acquire invented element rows.
  */
 
 import type { ValidationReport } from '@ifc-lite/ids';

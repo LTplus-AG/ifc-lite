@@ -102,3 +102,25 @@ test('a fold over the decision limit still saves: the local review takes the edi
   assert.equal(decisionFor(view, 'i7')?.status, 'accepted');
   assert.equal(view.decisions.length, 5_200, 'both reviews remain visible');
 });
+
+// #7015: a pin stays attached to the current human decision after its panel closes.
+test('a native decision change and clear replace pinned evidence and invalidate the old identity', async () => {
+  const { pinReviewCard } = await import('./assistant');
+  const { useReviewAssistantCard } = await import('./assistant-state');
+  const { buildCards } = await import('./cards');
+  const { finding } = await import('./test-support');
+  const { reviewAdapter } = await import('../assistant/adapters/review');
+  const { useViewerStore } = await import('@/store');
+  const card = buildCards([finding('decision-card', 'validation', [])], []).cards[0];
+  await saveCardDecision(card.key, { status: 'accepted', comment: 'old decision' });
+  pinReviewCard(card, decisionFor(currentReviewWorkspace(useReviewWorkspaces.getState().entries), card.key));
+  const identity = reviewAdapter.identity(useViewerStore.getState());
+  const summary = () => reviewAdapter.capture(useViewerStore.getState(), 10).summary as { humanDecision: { status: string } | null };
+  assert.equal(summary().humanDecision?.status, 'accepted');
+  await saveCardDecision(card.key, { status: 'in-progress', comment: 'changed' });
+  assert.equal(summary().humanDecision?.status, 'in-progress');
+  assert.notEqual(reviewAdapter.identity(useViewerStore.getState()), identity);
+  await saveCardDecision(card.key, null);
+  assert.equal(summary().humanDecision, null);
+  useReviewAssistantCard.setState({ card: null, project: null });
+});

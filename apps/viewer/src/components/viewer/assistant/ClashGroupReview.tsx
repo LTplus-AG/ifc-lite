@@ -80,7 +80,7 @@ export function ClashGroupReview() {
             focusClash={focusClash} focusClashes={clashes => focusClashes(clashes)} />
           <ClashGroupApply draft={review.draft} clashes={stale ? undefined : result?.clashes} enabled={!stale} origin={review.origin} onApplied={setReceipt} />
         </>}
-        {review.preview && <details><summary className="cursor-pointer text-muted-foreground hover:text-foreground">{t('assistant.evidenceDetails')}</summary>
+        {review.preview && <details><summary className="cursor-pointer py-1 text-muted-foreground hover:text-foreground">{t('assistant.evidenceDetails')}</summary>
           <div className="mt-2"><EvidenceView evidence={review.preview.evidence} state={stale ? 'stale' : 'captured'} /></div>
         </details>}
       </>}

@@ -404,6 +404,10 @@ jobs:
               # (scripts/README-vercel-cost.md).
               - 'rust-major-offset.json'
               - 'tests/models/manifest.json'
+              # The AI evaluation gates (scripts/ai-eval) read the corpus,
+              # recordings, label sheets and study records: an edit to any of
+              # them must run the gates that validate them.
+              - 'tests/ai-eval/**'
               - '.github/workflows/test.yml'
               # scripts/generate-coverage-ledger.mjs and its test read these
               # two paths directly (the sample fixture set and the generated
@@ -1039,6 +1043,13 @@ jobs:
         run: node scripts/check-test-wiring.mjs
       - name: Check export completion calls
         run: node scripts/check-export-event-calls.mjs
+      # AI evaluation corpus (#6928): fingerprints, privacy scan, recordings,
+      # label sheets and study records; then the release invariants over the
+      # recorded corpus. Replay through the viewer runs in the viewer suite.
+      - name: Check AI evaluation manifest
+        run: node scripts/ai-eval/check-ai-eval-manifest.mjs
+      - name: Check AI evaluation release invariants
+        run: node scripts/ai-eval/check-ai-eval-invariants.mjs
       # Executable proof the wiring gate cannot pass vacuously — the failure
       # mode it exists to catch is exactly the one it could have itself. Its
       # first fixture reconstructs #3062's pre-wiring state (a gate script and
@@ -1690,7 +1701,7 @@ jobs:
       # per-DIRECTORY, so it goes blind on the next subdirectory anyone adds.
       # scripts/xmatch/ joined with its first test file (#4955, PR-6).
       - name: Run every scripts/ test file (glob catch-all)
-        run: node --test scripts/*.test.mjs scripts/lib/*.test.mjs scripts/fixtures/*.test.mjs scripts/docs/*.test.mjs scripts/review/*.test.mjs scripts/review/lib/*.test.mjs scripts/perf/*.test.mjs scripts/perf-ratchet/*.test.mjs scripts/xmatch/*.test.mjs
+        run: node --test scripts/*.test.mjs scripts/lib/*.test.mjs scripts/fixtures/*.test.mjs scripts/docs/*.test.mjs scripts/review/*.test.mjs scripts/review/lib/*.test.mjs scripts/perf/*.test.mjs scripts/perf-ratchet/*.test.mjs scripts/xmatch/*.test.mjs scripts/ai-eval/*.test.mjs scripts/ai-eval/lib/*.test.mjs
       # Committed codegen output (packages/codegen/generated/**,
       # packages/parser/src/generated/**, packages/data/src/ifc-schema/
       # generated/**) had no CI freshness gate at all — a generator bug fixed

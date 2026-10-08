@@ -4,7 +4,8 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import type { FlowDocument, NodeReport, RunResult } from '@ifc-lite/flow';
+import { FLOW_VERSION, NodeRegistry, runFlow, type FlowDocument, type NodeReport, type RunResult } from '@ifc-lite/flow';
+import { createCheckpoint, approveCheckpoint, claimCheckpoint, updateCheckpoint, graphDigest, resumeOutputs, type CheckpointStore, type StoredCheckpoint } from '@ifc-lite/flow/checkpoint';
 import { createStandardRegistry } from '@ifc-lite/flow-nodes';
 import { flowPublishEligibility, flowPublishIntent, writingNodes, FLOW_PUBLISH_AUTHOR_KIND, mutationsInRun, countPendingOutsideRun } from './publish-provenance.js';
 import { newFlowDocument } from './persistence.js';
@@ -17,7 +18,7 @@ function report(nodeId: string, status: NodeReport['status']): NodeReport {
 }
 
 function runResult(overrides: Partial<RunResult>): RunResult {
-  return { ok: true, writes: 0, outputs: new Map(), graphOutputs: [], reports: [], log: [], ...overrides };
+  return { ok: true, writes: 0, outputs: new Map(), graphOutputs: [], reports: [], log: [], review: [], ...overrides };
 }
 
 describe('flowPublishEligibility', () => {
@@ -110,7 +111,7 @@ describe('FLOW_PUBLISH_AUTHOR_KIND', () => {
 });
 
 describe('flowPublishEligibility — other pending edits (#5380 review)', () => {
-  const run = { ok: true, writes: 2, outputs: new Map(), graphOutputs: [], reports: [], log: [] } as never;
+  const run = { ok: true, writes: 2, outputs: new Map(), graphOutputs: [], reports: [], log: [], review: [] } satisfies RunResult;
 
   it('blocks Publish while edits outside the run are pending, so clearing cannot lose them', () => {
     // Publish clears the pending set after moving the run's edits into a
@@ -137,4 +138,56 @@ describe('flowPublishEligibility — other pending edits (#5380 review)', () => 
     assert.equal(countPendingOutsideRun(edits, run, 1), 3, 'a pending georef change counts too');
     assert.equal(countPendingOutsideRun(edits, null, 0), 3, 'no recorded run: nothing belongs to it');
   });
+});
+
+// #7038: a successful paused run may have upstream writes, but cannot publish them yet.
+for (const reviewOnWriter of [false, true]) it(`#7038 retains paused writer provenance when review is ${reviewOnWriter ? 'on the writer' : 'downstream'}`, async () => {
+  let writes = 0;
+  const scalar = { kind: 'scalar', access: 'item' } as const;
+  const native = new NodeRegistry().registerAll([
+    { type: 'test.write', title: 'Write', category: 'test', inputs: [], outputs: [{ name: 'value', type: scalar }],
+      params: [], capabilities: [], writes: 'model', ...(reviewOnWriter ? { review: 'required' as const } : {}), run: () => { writes++; return { value: 7 }; } },
+    { type: 'test.review', title: 'Review', category: 'test', inputs: [{ name: 'value', type: scalar }],
+      outputs: [{ name: 'value', type: scalar }], params: [], capabilities: [], ...(!reviewOnWriter ? { review: 'required' as const } : {}),
+      run: (_ctx, inputs) => ({ value: inputs.value }) },
+    { type: 'test.finish', title: 'Finish', category: 'test', inputs: [{ name: 'value', type: scalar }],
+      outputs: [], params: [], capabilities: [], run: () => ({}) },
+  ]);
+  const doc: FlowDocument = { flowVersion: FLOW_VERSION, id: 'review-publish', name: 'Review before publish',
+    capabilities: [], inputs: [], outputs: [], nodes: [
+      { id: 'write', type: 'test.write' }, { id: 'review', type: 'test.review' }, { id: 'finish', type: 'test.finish' },
+    ], edges: [{ from: ['write', 'value'], to: ['review', 'value'] }, { from: ['review', 'value'], to: ['finish', 'value'] }] };
+  const paused = await runFlow(doc, { registry: native, host: {} });
+  assert.equal(paused.ok, true);
+  assert.equal(paused.writes, 1);
+  assert.deepEqual(flowPublishEligibility(paused, null), { canPublish: false, reason: 'flowPanel.publish.reason.review' });
+  const checkpoint = createCheckpoint({ doc, registry: native, result: paused, sourceDigest: 'source' });
+  const rows = new Map<string, StoredCheckpoint>();
+  const store: CheckpointStore = {
+    async read(id) { return structuredClone(rows.get(id) ?? null); },
+    async write(value, expected) {
+      const current = rows.get(value.id);
+      if ((current?.revision ?? null) !== expected) return false;
+      rows.set(value.id, { checkpoint: structuredClone(value), revision: (current?.revision ?? 0) + 1 });
+      return true;
+    },
+  };
+  await store.write(approveCheckpoint(checkpoint, checkpoint.proposalDigest), null);
+  const claimed = await updateCheckpoint(store, checkpoint.id, current => claimCheckpoint(current, {
+    owner: 'publish-test', graphDigest: graphDigest(doc, {}, native), sourceDigest: 'source', leaseMs: 60_000,
+  }));
+  const resumed = await runFlow(doc, { registry: native, host: {}, resume: resumeOutputs(claimed) });
+  assert.equal(resumed.ok, true);
+  assert.deepEqual(resumed.review, []);
+  assert.equal(writes, 1, 'resume does not repeat the upstream write');
+  assert.equal(resumed.writes, 0, 'the resumed tail is read-only');
+  const earlierWriters = writingNodes(doc, native, paused);
+  assert.deepEqual(earlierWriters, [{ nodeId: 'write', trackingKey: 'write' }]);
+  assert.deepEqual(flowPublishEligibility(resumed, null, 0, 1, earlierWriters.length), { canPublish: true });
+  assert.deepEqual(writingNodes(doc, native, resumed, earlierWriters), earlierWriters, 'publish retains the completed writer provenance');
+});
+
+it('#7038 failure takes precedence over an independent pending review', () => {
+  assert.deepEqual(flowPublishEligibility(runResult({ ok: false, writes: 1, review: ['proposal'] }), null),
+    { canPublish: false, reason: 'flowPanel.publish.reason.failed' });
 });

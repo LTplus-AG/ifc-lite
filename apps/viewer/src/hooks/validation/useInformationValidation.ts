@@ -13,6 +13,7 @@
  * publish a stale or partial report.
  */
 
+import { beginActivity, finishActivity, updateActivity } from '@/lib/activity/activity-journal';
 import { runInformationCheck } from '@/lib/validation/run-information-check';
 import { isNativeWorkflowBusy } from '@/lib/flow/run-session';
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -230,6 +231,10 @@ export function useInformationValidation(): UseInformationValidationResult {
     abortRef.current?.abort();
     const controller = new AbortController();
     abortRef.current = controller;
+    const job = beginActivity({ kind: 'check', title: 'activityTray.job.validation', panel: 'validation', subject: file.name,
+      cancel: () => { controller.abort(); if (abortRef.current === controller) cancel(); } });
+    let outcome: 'completed' | 'failed' | 'cancelled' = 'cancelled';
+    let detail: string | undefined;
 
     setRunning(true);
     setProgress(null);
@@ -249,7 +254,12 @@ export function useInformationValidation(): UseInformationValidationResult {
         definedModelTagIds: definedModelTagIdsOf(state),
         reportModels: state.models,
         signal: controller.signal,
-        onProgress: (p) => { if (stillWanted(myEpoch)) setProgress(p); },
+        onProgress: (p) => {
+          if (stillWanted(myEpoch)) {
+            setProgress(p);
+            if (p.total > 0) updateActivity(job, { progress: { done: p.done, total: p.total } });
+          }
+        },
       });
       // A cancelled/superseded run must never publish a report — checked
       // AFTER the (possibly long) engine run completes, mirroring
@@ -257,6 +267,7 @@ export function useInformationValidation(): UseInformationValidationResult {
       if (!stillWanted(myEpoch)) return;
       setIdsValidationReport(stampAnalysisReport(report, stamp), snapshot);
       setEditing(false);
+      outcome = 'completed';
     } catch (err) {
       if (err instanceof DOMException && err.name === 'AbortError') return;
       if (!stillWanted(myEpoch)) return;
@@ -265,15 +276,18 @@ export function useInformationValidation(): UseInformationValidationResult {
       // see `resolveValidationTarget.ts`'s `IdsErrorState` doc); only the
       // FALLBACK, shown when there is no such message, is a fixed
       // user-visible string and goes through the catalogue.
-      setError(err instanceof Error ? err.message : t('validationPanel.error.validationFailed'));
+      detail = err instanceof Error ? err.message : t('validationPanel.error.validationFailed');
+      setError(detail);
+      outcome = 'failed';
     } finally {
+      finishActivity(job, outcome, detail ? { detail } : {});
       if (abortRef.current === controller) abortRef.current = null;
       if (stillWanted(myEpoch)) {
         setRunning(false);
         setProgress(null);
       }
     }
-  }, [file, bumpEpoch, stillWanted, setIdsValidationReport, t]);
+  }, [file, cancel, bumpEpoch, stillWanted, setIdsValidationReport, t]);
 
   return {
     file, setFile, newRuleSet, openFromFile, loadFromRecent, save,

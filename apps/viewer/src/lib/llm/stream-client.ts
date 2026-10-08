@@ -13,7 +13,7 @@ import { outputTokenLimit, PROXY_OUTPUT_TOKEN_CEILING } from '../../../../../sha
 import { readSseStream } from './sse-reader.js';
 export { drainSseBuffer, readSseStream } from './sse-reader.js';
 import { buildCacheableSystem, logCacheHit } from './prompt-cache.js';
-import { chatCompletionsUsage, type TokenUsage } from './token-usage.js';
+import { chatCompletionsUsage, type TokenUsage } from '@ifc-lite/ai';
 import { parseUsageFromHeaders } from './usage-quota.js';
 /** A text content part in a multimodal message */
 export interface TextContentPart {

@@ -183,6 +183,9 @@ importers:
       '@floating-ui/dom':
         specifier: ^1.8.0
         version: 1.8.0
+      '@ifc-lite/ai':
+        specifier: workspace:^
+        version: link:../../packages/ai
       '@ifc-lite/bcf':
         specifier: workspace:^
         version: link:../../packages/bcf
@@ -523,6 +526,9 @@ importers:
 
   apps/viewer-embed:
     dependencies:
+      '@ifc-lite/ai':
+        specifier: workspace:^
+        version: link:../../packages/ai
       '@ifc-lite/bcf':
         specifier: workspace:^
         version: link:../../packages/bcf
@@ -790,6 +796,19 @@ importers:
         specifier: ^8.1.0
         version: 8.3.1(@types/node@26.6.2)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1)
 
+  packages/ai:
+    dependencies:
+      '@ifc-lite/export':
+        specifier: workspace:^
+        version: link:../export
+    devDependencies:
+      typescript:
+        specifier: ^6.0.3
+        version: 6.0.3
+      vitest:
+        specifier: ^4.1.0
+        version: 4.1.11(@edge-runtime/vm@3.2.0)(@types/node@26.6.2)(happy-dom@20.14.5)(vite@8.3.1(@types/node@26.6.2)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1))
+
   packages/bcf:
     dependencies:
       '@ifc-lite/encoding':
@@ -920,6 +939,9 @@ importers:
 
   packages/cli:
     dependencies:
+      '@ifc-lite/ai':
+        specifier: workspace:^
+        version: link:../ai
       '@ifc-lite/bcf':
         specifier: workspace:^
         version: link:../bcf
@@ -1337,6 +1359,9 @@ importers:
 
   packages/flow-nodes:
     dependencies:
+      '@ifc-lite/ai':
+        specifier: workspace:^
+        version: link:../ai
       '@ifc-lite/bcf-api':
         specifier: workspace:^
         version: link:../bcf-api
@@ -1521,6 +1546,9 @@ importers:
 
   packages/mcp:
     dependencies:
+      '@ifc-lite/ai':
+        specifier: workspace:^
+        version: link:../ai
       '@ifc-lite/bcf':
         specifier: workspace:^
         version: link:../bcf

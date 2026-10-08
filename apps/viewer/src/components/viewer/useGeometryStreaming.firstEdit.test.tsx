@@ -18,6 +18,7 @@ import { blankFile, load, wallMeshes, skip, installRealRemesh } from '@/test/bla
 import { render, cleanup, waitFor } from '@/test/render.js';
 import { useFederatedGeometry } from './useFederatedGeometry.js';
 import { useGeometryStreaming } from './useGeometryStreaming.js';
+import { useFilteredGeometry } from './useFilteredGeometry.js';
 
 /** Actual viewport source reconciliation, drain and real Scene. Only browser
  * GPU allocation/presentation is replaced; IFC production is the real WASM. */
@@ -25,12 +26,14 @@ function Viewport({ renderer }: { renderer: Renderer }) {
   const s = useViewerStore();
   const indices = useMemo(() => modelIndices(s.models), [s.models]);
   const geometry = useFederatedGeometry(s.models, s.geometryResult, indices, s.geometryContentVersion);
+  const filtered = useFilteredGeometry(geometry, s.geometryContentVersion, s.typeVisibility, s.typeViewMode);
   const rendererRef = useRef<Renderer | null>(renderer);
   const geometryBoundsRef = useRef({ min: { x: -100, y: -100, z: -100 }, max: { x: 100, y: 100, z: 100 } });
   const clearColorRef = useRef<[number, number, number, number]>([0, 0, 0, 1]);
-  useGeometryStreaming({ rendererRef, geometry: geometry?.meshes ?? null,
+  useGeometryStreaming({ rendererRef, geometry: filtered.filteredGeometry,
     appearanceSourceGeometry: geometry?.meshes, coordinateInfo: geometry?.coordinateInfo,
-    geometryVersion: s.geometryUpdateTick, geometryContentVersion: s.geometryContentVersion,
+    geometryVersion: filtered.geometryVersion, geometryContentVersion: s.geometryContentVersion,
+    geometryReplacementVersion: filtered.geometryReplacementVersion,
     modelCount: s.models.size, modelIdToIndex: indices,
     presentInstancedModelIndices: new Set(indices.values()), isInitialized: true, isStreaming: false,
     geometryBoundsRef, clearColorRef, pendingMeshColorUpdates: null, pendingColorUpdates: null,
@@ -65,6 +68,31 @@ async function newWall(modelId: string, y = 3) {
 }
 
 describe('first authored mesh resident ownership (#6232)', () => {
+  it('a drained real wall replacement is uploaded once without rebuilding the whole Scene (#7047)', { skip }, async () => {
+    const primary = await load(blankFile('METRE'));
+    const { scene } = mountViewport();
+    try {
+      const id = await newWall(primary.id);
+      await act(async () => {
+        assert.equal((await requestRemesh(useViewerStore.getState, primary.id, [id], 'created')).status, 'applied');
+      });
+      await waitFor(() => useViewerStore.getState().pendingMeshEdits === null, 'initial wall drained');
+      const original = wallMeshes(primary.id, id);
+      const replacement = original.map(mesh => ({ ...mesh,
+        positions: Float32Array.from(mesh.positions, (v, i) => i % 3 === 0 ? v + 2 : v) }));
+      const rebuild = mock.method(scene, 'clearFlatGeometryForRebuild');
+      const append = mock.method(scene, 'appendToBatches');
+      act(() => useViewerStore.getState().replaceEntityMeshes(primary.id,
+        new Map([[original[0].expressId, replacement]])));
+      await waitFor(() => useViewerStore.getState().pendingMeshEdits === null, 'replacement wall drained');
+      const resident = scene.getMeshDataPieces(original[0].expressId) ?? [];
+      assert.deepEqual(resident.map(mesh => Array.from(mesh.positions)), replacement.map(mesh => Array.from(mesh.positions)),
+        'resident geometry follows the edited engine mesh');
+      assert.equal(append.mock.callCount(), 1, 'only the mesh-edit drain uploads the replacement');
+      assert.equal(rebuild.mock.callCount(), 0, 'acknowledged replacement revisions do not rebuild the Scene');
+    } finally { cleanup(); scene.clear(); }
+  });
+
   for (const unit of ['METRE', 'MILLIMETRE'] as const) {
     for (const count of [1, 2]) {
       it(`${unit}, ${count} models: first real wall occupies its Scene once and still fits the camera`, { skip }, async () => {

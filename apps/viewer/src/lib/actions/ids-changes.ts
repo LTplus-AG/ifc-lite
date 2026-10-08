@@ -17,7 +17,7 @@ import { CorrectionValueError, inferValueType, parseCorrectionValue, type Correc
 import { scaleCorrectionForWrite } from '@/hooks/ids/idsCorrectionScale';
 import type { ViewerState } from '@/store';
 import { toConversion, type ChangeConversion, type ConversionIssue } from './change-conversion';
-import type { ModelChange } from './model-change';
+import type { ModelChange } from '@ifc-lite/ai/artifacts';
 import { currentValue, modelReader, sameValue, UNSUPPORTED_VALUE } from './model-change-values';
 
 export interface IdsCorrectionInput {

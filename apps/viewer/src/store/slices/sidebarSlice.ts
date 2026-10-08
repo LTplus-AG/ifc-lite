@@ -21,14 +21,21 @@
  */
 
 import type { StateCreator } from 'zustand';
+import { getPanelDef, SIDEBAR_DEFAULT_WIDTH_PCT, type WorkspacePanelId } from '@/lib/panels/registry';
 import {
-  WORKSPACE_PANELS,
-  PANEL_GROUPS,
-  migratePanelId,
-  getPanelDef,
-  SIDEBAR_DEFAULT_WIDTH_PCT,
-  type WorkspacePanelId,
-} from '@/lib/panels/registry';
+  DEFAULT_SIDEBAR_ORDER,
+  SIDEBAR_LAYOUT_VERSION,
+  clampSidebarWidth,
+  migrateSidebarLayout,
+  type LayoutChange,
+  type PreservedPlacement,
+  type SidebarLayoutSnapshot,
+  type StoredSidebarLayout,
+  type SidebarMode,
+} from '@/lib/panels/layout-migration';
+import { clearLayoutNotice, loadSidebarLayout, queueLayoutChanges, writeSidebarLayout } from '@/lib/panels/layout-persistence';
+
+export type { SidebarLayoutSnapshot, SidebarMode } from '@/lib/panels/layout-migration';
 
 /** Clamp the docked-split ratio so neither half can collapse to nothing. */
 const MIN_SPLIT_RATIO = 0.2;
@@ -42,138 +49,6 @@ function clampSplitRatio(r: number): number {
  *  and left panels have their own regions. */
 function canShareSplit(id: WorkspacePanelId): boolean {
   return getPanelDef(id)?.region === 'side';
-}
-
-/** Expanded = rail + content pane; collapsed = icon-only rail. The activity-bar
- *  rail is always visible — there is intentionally no "fully off" mode (the
- *  rail is the always-available entry point to every panel). */
-export type SidebarMode = 'expanded' | 'collapsed';
-
-/** The portable shape captured into a Flavor's `layout.state.sidebar`. */
-export interface SidebarLayoutSnapshot {
-  mode: SidebarMode;
-  widthPct: number;
-  order: WorkspacePanelId[];
-  hiddenIds: WorkspacePanelId[];
-}
-
-const STORAGE_KEY = 'ifc-lite:sidebar-layout-v1';
-const MIN_WIDTH_PCT = 14;
-const MAX_WIDTH_PCT = 60;
-
-// Fresh layouts cluster the registry's task groups; persisted custom order is
-// preserved by normalizeOrder. Hierarchy leads Coordinate without changing the
-// registry's frozen first-ten Alt+digit shortcut order (#1200, #5873).
-const DEFAULT_ORDER: WorkspacePanelId[] = PANEL_GROUPS.flatMap((group) => {
-  const ids = WORKSPACE_PANELS.filter((panel) => panel.group === group.id).map((panel) => panel.id);
-  return group.id === 'coordinate'
-    ? [...ids.filter((id) => id === 'hierarchy'), ...ids.filter((id) => id !== 'hierarchy')]
-    : ids;
-});
-
-// An unchanged saved order from before task groups should receive the new
-// grouping on upgrade. A reordered list remains the user's own layout.
-const PRE_GROUP_DEFAULT_ORDER: WorkspacePanelId[] = [
-  'hierarchy',
-  ...WORKSPACE_PANELS.map((panel) => panel.id).filter((id) => id !== 'hierarchy'),
-];
-
-function clampWidth(pct: number): number {
-  if (!Number.isFinite(pct)) return SIDEBAR_DEFAULT_WIDTH_PCT;
-  return Math.max(MIN_WIDTH_PCT, Math.min(MAX_WIDTH_PCT, pct));
-}
-
-/**
- * Reconcile a possibly-stale persisted order with the live registry: keep the
- * persisted ordering for ids that still exist, drop unknown ids, and append
- * any registry panels the persisted list never knew about (so newly-added
- * panels surface instead of silently vanishing).
- */
-function normalizeOrder(order: unknown): WorkspacePanelId[] {
-  const seen = new Set<WorkspacePanelId>();
-  const out: WorkspacePanelId[] = [];
-  if (Array.isArray(order)) {
-    for (const raw of order) {
-      // A retired panel id (e.g. pre-#5138 'ids') migrates to its
-      // replacement rather than silently vanishing from a persisted order.
-      const id = typeof raw === 'string' ? migratePanelId(raw) : undefined;
-      if (id !== undefined && !seen.has(id)) {
-        seen.add(id);
-        out.push(id);
-      }
-    }
-  }
-  if (out.length >= 10) {
-    const priorOrder = PRE_GROUP_DEFAULT_ORDER.filter((id) => seen.has(id));
-    if (out.every((id, index) => id === priorOrder[index])) return [...DEFAULT_ORDER];
-  }
-  // Surface registry panels the persisted list never knew about, in
-  // DEFAULT_ORDER order. Hierarchy (#1267) is special: its documented home is
-  // the TOP of the rail, so a first-time migration of an order saved BEFORE it
-  // existed prepends it instead of trailing it at the bottom.
-  for (const id of DEFAULT_ORDER) {
-    if (seen.has(id)) continue;
-    if (id === 'hierarchy') out.unshift(id);
-    else out.push(id);
-  }
-  return out;
-}
-
-/** Information is the always-available fallback — it can never be hidden. */
-function normalizeHidden(hidden: unknown): WorkspacePanelId[] {
-  if (!Array.isArray(hidden)) return [];
-  const out = new Set<WorkspacePanelId>();
-  for (const raw of hidden) {
-    const id = typeof raw === 'string' ? migratePanelId(raw) : undefined;
-    if (id !== undefined && id !== 'properties') out.add(id);
-  }
-  return [...out];
-}
-
-function isMode(m: unknown): m is SidebarMode {
-  return m === 'expanded' || m === 'collapsed';
-}
-
-/** Coerce a persisted / captured mode, migrating the retired `hidden` value to
- *  `collapsed` so the rail stays visible. */
-function coerceMode(m: unknown, fallback: SidebarMode): SidebarMode {
-  if (isMode(m)) return m;
-  if (m === 'hidden') return 'collapsed';
-  return fallback;
-}
-
-function loadPersisted(): SidebarLayoutSnapshot {
-  const fallback: SidebarLayoutSnapshot = {
-    mode: 'expanded',
-    widthPct: SIDEBAR_DEFAULT_WIDTH_PCT,
-    order: [...DEFAULT_ORDER],
-    hiddenIds: [],
-  };
-  if (typeof window === 'undefined') return fallback;
-  try {
-    const raw = window.localStorage.getItem(STORAGE_KEY);
-    if (!raw) return fallback;
-    const parsed = JSON.parse(raw) as Partial<SidebarLayoutSnapshot>;
-    return {
-      mode: coerceMode(parsed?.mode, 'expanded'),
-      widthPct: clampWidth(typeof parsed?.widthPct === 'number' ? parsed.widthPct : SIDEBAR_DEFAULT_WIDTH_PCT),
-      order: normalizeOrder(parsed?.order),
-      hiddenIds: normalizeHidden(parsed?.hiddenIds),
-    };
-  } catch (error) {
-    console.warn('[sidebar] ignoring malformed persisted layout:', error);
-    return fallback;
-  }
-}
-
-function persist(snap: SidebarLayoutSnapshot): void {
-  if (typeof window === 'undefined') return;
-  try {
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(snap));
-  } catch (error) {
-    // Quota / private mode — the layout just won't persist this session.
-    console.warn('[sidebar] failed to persist layout:', error);
-  }
 }
 
 export interface SidebarSlice {
@@ -197,6 +72,12 @@ export interface SidebarSlice {
   /** Fraction (0.2 to 0.8) of the docked pane's height given to the TOP panel
    *  when split. Runtime-only. */
   sidebarSplitRatio: number;
+  /** Placements this build cannot show (another build's or an extension's
+   *  panel), kept verbatim in the persisted layout instead of dropped (#6927). */
+  sidebarPreserved: PreservedPlacement[];
+  /** Layout changes made by a migration or a profile import, awaiting review
+   *  (keep or reset). Persisted until acknowledged. */
+  layoutMigrationChanges: LayoutChange[];
   /** Panels currently torn off into an OS / PiP window — runtime only
    *  (window handles can't persist, and pop-up blockers forbid auto-reopen). */
   poppedOutIds: WorkspacePanelId[];
@@ -225,22 +106,27 @@ export interface SidebarSlice {
   setPanelPoppedOut: (id: WorkspacePanelId, on: boolean) => void;
 
   /** Capture the customizable layout (for a Flavor's `layout.state.sidebar`). */
-  serializeSidebarLayout: () => SidebarLayoutSnapshot;
-  /** Apply a captured layout (from a Flavor). Persists + tolerates garbage. */
-  applySidebarLayout: (snap: unknown) => void;
+  serializeSidebarLayout: () => StoredSidebarLayout;
+  /** Apply a captured layout (from a Flavor). Persists + tolerates garbage.
+   *  Returns what the migration changed, which also joins the review notice. */
+  applySidebarLayout: (snap: unknown) => LayoutChange[];
+  /** Keep the migrated layout: clears the review notice (backups stay). */
+  acknowledgeLayoutMigration: () => void;
 }
 
 export const createSidebarSlice: StateCreator<SidebarSlice, [], [], SidebarSlice> = (set, get) => {
-  const persisted = loadPersisted();
+  const { layout: persisted, pending } = loadSidebarLayout();
 
-  /** Persist only the four layout fields, reading the rest from current state. */
+  /** Persist the layout fields plus preserved placements, reading the rest from state. */
   const persistCurrent = (patch: Partial<SidebarLayoutSnapshot>) => {
     const s = get();
-    persist({
+    writeSidebarLayout({
+      version: SIDEBAR_LAYOUT_VERSION,
       mode: patch.mode ?? s.sidebarMode,
       widthPct: patch.widthPct ?? s.sidebarWidthPct,
       order: patch.order ?? s.sidebarOrder,
       hiddenIds: patch.hiddenIds ?? s.sidebarHiddenIds,
+      preserved: s.sidebarPreserved,
     });
   };
 
@@ -249,6 +135,8 @@ export const createSidebarSlice: StateCreator<SidebarSlice, [], [], SidebarSlice
     sidebarWidthPct: persisted.widthPct,
     sidebarOrder: persisted.order,
     sidebarHiddenIds: persisted.hiddenIds,
+    sidebarPreserved: persisted.preserved,
+    layoutMigrationChanges: pending,
     sidebarCustomizing: false,
     sidebarActivePanel: 'properties',
     sidebarSecondaryPanel: null,
@@ -271,7 +159,7 @@ export const createSidebarSlice: StateCreator<SidebarSlice, [], [], SidebarSlice
     },
 
     setSidebarWidthPct: (pct) => {
-      const widthPct = clampWidth(pct);
+      const widthPct = clampSidebarWidth(pct);
       set({ sidebarWidthPct: widthPct });
       persistCurrent({ widthPct });
     },
@@ -303,7 +191,7 @@ export const createSidebarSlice: StateCreator<SidebarSlice, [], [], SidebarSlice
       const snap: SidebarLayoutSnapshot = {
         mode: 'expanded',
         widthPct: SIDEBAR_DEFAULT_WIDTH_PCT,
-        order: [...DEFAULT_ORDER],
+        order: [...DEFAULT_SIDEBAR_ORDER],
         hiddenIds: [],
       };
       set({
@@ -315,8 +203,11 @@ export const createSidebarSlice: StateCreator<SidebarSlice, [], [], SidebarSlice
         // Drop any docked split back to a single panel (#1266).
         sidebarSecondaryPanel: null,
         sidebarSplitRatio: 0.5,
+        // A reset answers the review notice; preserved placements stay stored.
+        layoutMigrationChanges: [],
       });
-      persist(snap);
+      clearLayoutNotice();
+      writeSidebarLayout({ ...snap, version: SIDEBAR_LAYOUT_VERSION, preserved: get().sidebarPreserved });
     },
 
     setSidebarActivePanel: (id) => {
@@ -345,28 +236,44 @@ export const createSidebarSlice: StateCreator<SidebarSlice, [], [], SidebarSlice
     serializeSidebarLayout: () => {
       const s = get();
       return {
+        version: SIDEBAR_LAYOUT_VERSION,
         mode: s.sidebarMode,
         widthPct: s.sidebarWidthPct,
         order: [...s.sidebarOrder],
         hiddenIds: [...s.sidebarHiddenIds],
+        preserved: s.sidebarPreserved.map(placement => ({ ...placement })),
       };
     },
 
     applySidebarLayout: (snap) => {
-      const obj = (snap ?? {}) as Partial<SidebarLayoutSnapshot>;
-      const next: SidebarLayoutSnapshot = {
-        mode: coerceMode(obj.mode, get().sidebarMode),
-        widthPct: clampWidth(typeof obj.widthPct === 'number' ? obj.widthPct : get().sidebarWidthPct),
-        order: normalizeOrder(obj.order),
-        hiddenIds: normalizeHidden(obj.hiddenIds),
-      };
+      const obj = snap && typeof snap === 'object' ? snap as Record<string, unknown> : {};
+      const { layout: next, changes } = migrateSidebarLayout(
+        { ...obj, widthPct: typeof obj.widthPct === 'number' ? obj.widthPct : get().sidebarWidthPct },
+        get().sidebarMode,
+      );
+      // A captured layout never erases placements this browser is keeping.
+      for (const kept of get().sidebarPreserved) {
+        if (!next.preserved.some((p) => p.id === kept.id)) next.preserved.push(kept);
+      }
+      // Save the current layout before queuing the import notice: the first
+      // pending review must retain the actual pre-import state (#6927).
+      if (!writeSidebarLayout(next, true)) {
+        throw new Error('Cannot import the layout without preserving the current stored layout');
+      }
       set({
         sidebarMode: next.mode,
         sidebarWidthPct: next.widthPct,
         sidebarOrder: next.order,
         sidebarHiddenIds: next.hiddenIds,
+        sidebarPreserved: next.preserved,
+        ...(changes.length > 0 ? { layoutMigrationChanges: queueLayoutChanges(changes) } : {}),
       });
-      persist(next);
+      return changes;
+    },
+
+    acknowledgeLayoutMigration: () => {
+      clearLayoutNotice();
+      set({ layoutMigrationChanges: [] });
     },
   };
 };

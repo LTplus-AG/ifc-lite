@@ -12,7 +12,7 @@
 
 import type { SendableRoute } from '../llm/request-service';
 import { runModelRequest } from '../llm/request-service';
-import type { RootBudget } from '../llm/root-budget';
+import type { RootBudget } from '@ifc-lite/ai';
 import type { UsageReceipt } from '../llm/request-receipts';
 import { normalizeClashGroupRows, parseClashGroupPatch, type ClashGroupPatch } from './clash-group-proposal';
 import { CLASH_GROUP_OUTPUT_GUIDANCE } from './clash-taxonomy';

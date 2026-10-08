@@ -16,6 +16,7 @@
 import { useCallback, useEffect, useMemo } from 'react';
 import type { CoordinateInfo } from '@ifc-lite/geometry';
 import type { MapConversion, ProjectedCRS } from '@ifc-lite/parser';
+import { usePlacementProjectionKind } from '@/lib/geo/use-placement-projection-kind';
 import { toast } from '@/components/ui/toast';
 import { useTranslation } from '@/i18n';
 import { getMapUnitScale, metersToMapUnits } from '@/lib/geo/cesium-placement';
@@ -41,11 +42,13 @@ export function useCesiumPlacementController({
   lengthUnitScale = 1,
 }: CesiumPlacementControllerProps) {
   const { t } = useTranslation();
+  const projectionKind = usePlacementProjectionKind(projectedCRS);
+  const canEdit = projectionKind === 'projected';
   const editMode = useViewerStore((s) => s.cesiumPlacementEditMode);
   const draftModelId = useViewerStore((s) => s.cesiumPlacementDraftModelId);
   const draft = useViewerStore((s) => s.cesiumPlacementDraft);
   const beginDraft = useViewerStore((s) => s.beginCesiumPlacementDraft);
-  const updateDraft = useViewerStore((s) => s.updateCesiumPlacementDraft);
+  const updateStoredDraft = useViewerStore((s) => s.updateCesiumPlacementDraft);
   const resetDraft = useViewerStore((s) => s.resetCesiumPlacementDraft);
   const setEditMode = useViewerStore((s) => s.setCesiumPlacementEditMode);
   const setActiveTool = useViewerStore((s) => s.setActiveTool);
@@ -62,9 +65,9 @@ export function useCesiumPlacementController({
   // hook (the gizmo and the Georeference tab) both run this effect; it is
   // idempotent per model.
   useEffect(() => {
-    if (!editMode) return;
+    if (!editMode || !canEdit) return;
     if (draftModelId !== modelId || !draft) beginDraft(modelId, baseMapConversion);
-  }, [baseMapConversion, beginDraft, draft, draftModelId, editMode, modelId]);
+  }, [baseMapConversion, beginDraft, canEdit, draft, draftModelId, editMode, modelId]);
 
   const activeDraft: CesiumPlacementDraft = draftModelId === modelId && draft
     ? draft
@@ -101,12 +104,16 @@ export function useCesiumPlacementController({
     [guardConversion, mapUnitScale, coordinateInfo],
   );
 
+  const updateDraft = useCallback((values: Partial<CesiumPlacementDraft>) => {
+    if (canEdit) updateStoredDraft(values);
+  }, [canEdit, updateStoredDraft]);
+
   const handleReset = useCallback(() => {
-    beginDraft(modelId, baseMapConversion);
-  }, [baseMapConversion, beginDraft, modelId]);
+    if (canEdit) beginDraft(modelId, baseMapConversion);
+  }, [baseMapConversion, beginDraft, canEdit, modelId]);
 
   const handleApply = useCallback(() => {
-    if (!dirty) return;
+    if (!canEdit || !dirty) return;
     setGeorefFields(modelId, 'mapConversion', [
       { field: 'eastings', value: activeDraft.eastings, oldValue: baseMapConversion.eastings },
       { field: 'northings', value: activeDraft.northings, oldValue: baseMapConversion.northings },
@@ -119,7 +126,7 @@ export function useCesiumPlacementController({
     ]);
     resetDraft();
     toast.success(t('cesiumGeo.placement.toastApplied'));
-  }, [activeDraft, baseMapConversion, dirty, modelId, resetDraft, setGeorefFields, t]);
+  }, [activeDraft, baseMapConversion, canEdit, dirty, modelId, resetDraft, setGeorefFields, t]);
 
   const nudge = useCallback((eastDelta: number, northDelta: number) => {
     updateDraft({
@@ -143,11 +150,11 @@ export function useCesiumPlacementController({
   }, [resetDraft, setActiveTool, setEditMode]);
 
   const beginEditing = useCallback(() => {
-    setEditMode(true);
-  }, [setEditMode]);
+    if (canEdit) setEditMode(true);
+  }, [canEdit, setEditMode]);
 
   return {
-    editMode, draftModelId, draft, activeDraft, updateDraft, beginDraft,
+    editMode: editMode && canEdit, canEdit, draftModelId, draft, activeDraft, updateDraft,
     mapUnitScale, mapUnitSuffix, activeAngle, deltaE, deltaN, deltaH, deltaAngle,
     dirty, nudgeStep, guardConversion, mapAbsoluteActive,
     handleReset, handleApply, handleClose, beginEditing,

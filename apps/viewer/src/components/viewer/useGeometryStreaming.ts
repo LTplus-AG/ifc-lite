@@ -72,6 +72,8 @@ export interface UseGeometryStreamingParams {
   /** Monotonic counter — triggers the streaming effect even when the geometry
    *  array reference is stable (incremental filtering reuses the same array). */
   geometryVersion?: number;
+  /** Existing filtered meshes changed; same-count replacements need a rebuild (#7047). */
+  geometryReplacementVersion?: number;
   /**
    * Monotonic counter that bumps whenever existing mesh data has been mutated
    * in place (e.g. realignFederation rewrote vertex positions). Length-based
@@ -200,6 +202,7 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
     isInitialized,
     geometry,
     geometryVersion,
+    geometryReplacementVersion = 0,
     appearanceSourceGeometry,
     geometryContentVersion,
     coordinateInfo,
@@ -231,6 +234,7 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
   const processedMeshIdsRef = useRef<Set<string>>(new Set());
   const lastGeometryLengthRef = useRef(0);
   const lastGeometryRef = useRef<MeshData[] | null>(null);
+  const lastReplacementVersionRef = useRef(geometryReplacementVersion);
   const cameraFittedRef = useRef(false);
   const robustFitAccRef = useRef(createRobustFitBoundsAccumulator());
   const finalBoundsRefittedRef = useRef(false);
@@ -277,6 +281,7 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
   useMeshEditDrain({
     rendererRef, isInitialized, isStreaming, geometry, pendingMeshRemovals, clearPendingMeshRemovals,
     pruneGeometryMeshes, lastGeometryLengthRef, lastGeometryRef, processedMeshIdsRef,
+    geometryReplacementVersion, lastReplacementVersionRef,
   });
 
   // ─── Main geometry effect ────────────────────────────────────────────
@@ -356,7 +361,9 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
     const lastLength = lastGeometryLengthRef.current;
 
     // ── Classify the change ──
-    const isIncremental = currentLength > lastLength && lastLength > 0;
+    const isReplacement = geometryReplacementVersion !== lastReplacementVersionRef.current;
+    lastReplacementVersionRef.current = geometryReplacementVersion;
+    const isIncremental = !isReplacement && currentLength > lastLength && lastLength > 0;
     const isNewFile = currentLength > 0 && lastLength === 0;
     const isCleared = currentLength === 0;
 
@@ -385,32 +392,17 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
       lastGeometryRef.current = geometry;
       renderer.getCamera().reset();
       geometryBoundsRef.current = { ...DEFAULT_BOUNDS };
-    } else if (!isIncremental && currentLength !== lastLength) {
-      if (currentLength < lastLength) {
-        traceGeometrySync(`geometry rebuilt after shrink currentLength=${currentLength} lastLength=${lastLength}`);
-        // Length decreased (model hidden): rebuild while retaining the camera.
-        reshapeSceneKeepingPresentInstanced(scene, presentInstancedModelIndices, geometry, appearanceSourceGeometry);
-        invalidateLandXmlGpuOwnershipAfterSceneClear();
-        scene.setEphemeralStreamingMode(releaseGeometryAfterFinalize);
-        processedMeshIdsRef.current.clear();
-        lastGeometryLengthRef.current = 0;
-        lastGeometryRef.current = geometry;
-      } else {
-        traceGeometrySync(`geometry rebuilt after replace currentLength=${currentLength} lastLength=${lastLength} releaseAfterFinalize=${releaseGeometryAfterFinalize}`);
-        // New file while another was open — full reset
-        reshapeSceneKeepingPresentInstanced(scene, presentInstancedModelIndices, geometry, appearanceSourceGeometry);
-        invalidateLandXmlGpuOwnershipAfterSceneClear();
-        scene.setEphemeralStreamingMode(releaseGeometryAfterFinalize);
-        processedMeshIdsRef.current.clear();
-        cameraFittedRef.current = false;
-        finalBoundsRefittedRef.current = false;
-        cameraSnapshotRef.current = null;
-        robustFitAccRef.current.reset();
-        lastGeometryLengthRef.current = 0;
-        lastGeometryRef.current = geometry;
-        renderer.getCamera().reset();
-        geometryBoundsRef.current = { ...DEFAULT_BOUNDS };
-      }
+    } else if (isReplacement || currentLength < lastLength) {
+      traceGeometrySync(`geometry rebuilt after replacement/shrink currentLength=${currentLength} lastLength=${lastLength}`);
+      // An existing model changed, or visibility removed meshes. Keep the
+      // camera and present instanced owners while replacing flat buffers.
+      reshapeSceneKeepingPresentInstanced(scene, presentInstancedModelIndices, geometry, appearanceSourceGeometry);
+      invalidateLandXmlGpuOwnershipAfterSceneClear();
+      scene.setEphemeralStreamingMode(releaseGeometryAfterFinalize);
+      processedMeshIdsRef.current.clear();
+      robustFitAccRef.current.reset();
+      lastGeometryLengthRef.current = 0;
+      lastGeometryRef.current = geometry;
     } else if (currentLength === lastLength) {
       // No mesh-count change, so the queueMeshes / appendToBatches block
       // below would be a no-op. But we MUST still reach the camera-fit
@@ -435,7 +427,7 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
       // every streamed mesh a second time (a mesh-less scan joining a streamed
       // IFC, or the #859 streaming-complete fit; #6953).
     }
-    const unchangedLength = currentLength === lastLength;
+    const unchangedLength = !isReplacement && currentLength === lastLength;
 
     // Visibility toggle while NOT streaming — array rebuilt from scratch
     if (isIncremental && !isStreaming && !prevIsStreamingRef.current) {
@@ -635,7 +627,7 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
     }
 
     renderer.requestRender();
-  }, [geometry, geometryVersion, geometryContentVersion, appearanceSourceGeometry, coordinateInfo, isInitialized, isStreaming, modelCount]);
+  }, [geometry, geometryVersion, geometryReplacementVersion, geometryContentVersion, appearanceSourceGeometry, coordinateInfo, isInitialized, isStreaming, modelCount]);
 
   useEffect(() => {
     return () => {

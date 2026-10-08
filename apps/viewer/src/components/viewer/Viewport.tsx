@@ -83,9 +83,9 @@ import { createCentreSurfaceZoom } from './zoomSurface.js';
 
 interface ViewportProps {
   geometry: MeshData[] | null;
-  /** Monotonic counter that increments when geometry changes — used to trigger
-   *  streaming effects even when the geometry array reference is stable. */
+  /** Reused-array updates and changes to existing mesh uploads (#7047). */
   geometryVersion?: number;
+  geometryReplacementVersion?: number;
   /** Bumps when existing mesh vertex/normal data has been mutated in place
    *  (e.g. realignFederation). Forces the streaming hook to re-upload buffers. */
   geometryContentVersion?: number;
@@ -104,8 +104,7 @@ interface ViewportProps {
 
 export function Viewport({
   geometry,
-  geometryVersion,
-  geometryContentVersion,
+  geometryVersion, geometryReplacementVersion, geometryContentVersion,
   pointClouds,
   coordinateInfo,
   sectionCoordinateInfo,
@@ -1516,8 +1515,7 @@ export function Viewport({
     rendererRef,
     isInitialized,
     geometry,
-    geometryVersion,
-    geometryContentVersion,
+    geometryVersion, geometryReplacementVersion, geometryContentVersion,
     appearanceSourceGeometry,
     coordinateInfo,
     isStreaming,

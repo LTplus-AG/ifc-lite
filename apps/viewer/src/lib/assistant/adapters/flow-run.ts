@@ -25,7 +25,6 @@ import { evidenceRow, take, unavailableCapture, type EvidenceAdapter } from './t
 
 const TEXT = 500;
 const PREVIEW_ITEMS = 5;
-const NODE_STATUSES = ['ok', 'memo', 'noop', 'skipped', 'error'] as const;
 
 /** Redacted, then bounded: logs, errors, warnings and refusals can carry credential-like text a node logged. */
 const bounded = (raw: string, limit = TEXT): string => {
@@ -145,10 +144,11 @@ export const flowRunAdapter: EvidenceAdapter = {
     const runWindow = s.flowLastRunWindow;
     const doc = runWindow?.doc ?? s.flowDoc;
     const reports = run?.reports ?? [];
-    const statusCounts = Object.fromEntries(NODE_STATUSES.map(status => [status, 0])) as Record<NodeReport['status'], number>;
+    const statusCounts = { ok: 0, memo: 0, noop: 0, skipped: 0, error: 0, review: 0, paused: 0, restored: 0 } satisfies Record<NodeReport['status'], number>;
     for (const report of reports) statusCounts[report.status] += 1;
     const logCounts = { info: 0, warn: 0, error: 0 };
     for (const entry of run?.log ?? []) logCounts[entry.level] += 1;
+    const verdict = flowRunVerdict(run, s.flowLastError, runWindow);
     const totalRows = reports.length + s.flowRunWarnings.length + s.flowArtifacts.length
       + (run?.graphOutputs.length ?? 0) + (run?.log.length ?? 0);
     return {
@@ -156,15 +156,15 @@ export const flowRunAdapter: EvidenceAdapter = {
         kind: 'flow-run',
         graph: doc ? { id: doc.id, name: doc.name, nodeCount: doc.nodes.length, edgeCount: doc.edges.length,
           identity: runWindow ? 'document as run' : 'open working copy (the run window was not recorded)' } : null,
-        status: run ? (run.ok ? 'ok' : 'failed') : 'error',
-        verdict: flowRunVerdict(run, s.flowLastError, runWindow),
+        status: run ? (run.ok ? (verdict === 'review-required' ? verdict : 'ok') : 'failed') : 'error',
+        verdict,
         failingNodeIds: reports.filter(isFailingNode).slice(0, 100).map(report => report.nodeId),
         error: s.flowLastError === null ? null : bounded(s.flowLastError, 2000),
         startedAt: iso(runWindow?.start), finishedAt: iso(runWindow?.end),
         durationMs: runWindow ? runWindow.end - runWindow.start : null,
         units: { durationMs: 'ms', sizeBytes: 'bytes' },
         nodeReports: reports.length,
-        executedNodes: reports.length - statusCounts.skipped,
+        executedNodes: reports.filter(report => report.lanes > 0 && (report.status === 'ok' || report.status === 'error' || report.status === 'review')).length,
         nodeStatusCounts: statusCounts,
         nodeWarnings: reports.reduce((sum, report) => sum + report.warnings.length, 0),
         writes: run?.writes ?? null,
@@ -175,7 +175,8 @@ export const flowRunAdapter: EvidenceAdapter = {
         logCounts,
         rowOrder: 'failing nodeResult, nodeResult of their inputs (nearest first), warning, artifact, graphOutput, other nodeResult, log',
         limitations: 'Describes the last run of the open graph only. Editing or switching the graph clears the run, so it belongs to the graph named here. '
-          + 'executedNodes counts every node report that was not skipped; memo means cached outputs were reused. '
+          + 'executedNodes counts native reports with at least one evaluation lane; cached/restored, no-op, paused and skipped reports have no evaluated lanes. '
+          + 'review and paused mean downstream execution awaits approval; restored means reviewed outputs were replayed without evaluation. '
           + 'Node parameters are excluded except on rows of failing nodes (error or laneErrors > 0; skipped nodes only follow an upstream failure) and the nodes feeding them; '
           + 'even there, script source is withheld and credential-like text is redacted. '
           + 'Full output values and artifact contents (PDF bytes) are excluded; graph outputs carry at most a short preview. '

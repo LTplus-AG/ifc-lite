@@ -7,5 +7,6 @@ import { changesAdapter } from './changes';
 import { changeSetsAdapter } from './change-sets';
 import { scheduleAdapter } from './schedule';
 import { semanticAdapter } from './semantic';
+import { reviewAdapter } from './review';
 
-export const PACK: readonly EvidenceAdapter[] = [changesAdapter, changeSetsAdapter, scheduleAdapter, semanticAdapter];
+export const PACK: readonly EvidenceAdapter[] = [changesAdapter, changeSetsAdapter, scheduleAdapter, semanticAdapter, reviewAdapter];

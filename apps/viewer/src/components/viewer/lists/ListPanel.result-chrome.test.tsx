@@ -11,7 +11,7 @@ import { IfcTypeEnum } from '@ifc-lite/data';
 import { installLayout } from '@/test/dom-layout';
 import { render, cleanup, click, press, type, waitFor } from '@/test/render';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture';
-import { useViewerStore } from '@/store';
+import { useViewerStore, type FederatedModel } from '@/store';
 import type { ListDefinition } from '@/lib/lists';
 import { carryListRun, listRunDefinition } from '@/lib/lists/run-provenance';
 import { ListPanel } from './ListPanel';
@@ -135,7 +135,7 @@ it('#7166 actual grouped schedule uses filtered state when native search hides a
 it('#7166 native targeted loaded model without IFC provider is disclosed as partial coverage', async () => {
   const run = await setup();
   const missing = { ...fixtureModel('peer'), name: 'Missing IFC table data', ifcDataStore: null };
-  await act(async () => { useViewerStore.setState({ models: new Map([['authored', run.model], ['peer', missing]]),
+  await act(async () => { useViewerStore.setState({ models: new Map<string, FederatedModel>([['authored', run.model], ['peer', missing]]),
     listDefinitions: [{ ...run.own, expressIdsByModel: { authored: [run.wall], peer: [run.wall] } }] }); });
   await run.run();
   assert.equal(useViewerStore.getState().listResult?.rows.length, 1);
@@ -216,7 +216,7 @@ it('#7166 native model-tag scope with zero targeted models refuses before any su
 it('#7166 unavailable provider outside the native snapshot does not invent a coverage gap', async () => {
   const run = await setup();
   const missing = { ...fixtureModel('peer'), name: 'Not selected provider', ifcDataStore: null };
-  await act(async () => { useViewerStore.setState({ models: new Map([['authored', run.model], ['peer', missing]]) }); });
+  await act(async () => { useViewerStore.setState({ models: new Map<string, FederatedModel>([['authored', run.model], ['peer', missing]]) }); });
   await run.run();
   assert.equal(useViewerStore.getState().listResult?.totalCount, 1);
   assert.doesNotMatch(region(run.ui).textContent ?? '', /Partial|Not selected provider/);

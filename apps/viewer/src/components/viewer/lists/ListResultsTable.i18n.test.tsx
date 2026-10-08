@@ -279,7 +279,10 @@ describe('ListResultsTable / ListGroupingBar / ColumnHeaderMenu localization (#4
     const container = render(
       <ListResultsTable result={emptyResult} modelUnits={MODEL_UNITS} onGroupingChange={() => {}} />,
     );
-    assert.ok(container.textContent?.includes('No matching rows'));
+    // #7166: this standalone result has no recorded evaluated scope; absence is uncertain.
+    assert.ok(container.querySelector('[data-result-state="partial"]'));
+    assert.equal(Boolean(container.querySelector('[data-result-state="no-findings"]')), false);
+    assert.ok(container.textContent?.includes('incomplete or unrecorded evaluation'));
     const nameHeader = [...container.querySelectorAll('button')].find((button) => button.textContent?.trim() === 'Name');
     assert.ok(nameHeader, 'the Name column remains sortable');
     const menuTrigger = container.querySelector('button[aria-label="Column options"]');

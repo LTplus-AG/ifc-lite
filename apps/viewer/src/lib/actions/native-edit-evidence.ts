@@ -7,6 +7,7 @@ import { readElementProfileFromTarget } from '@/store/slices/mutation-element-pr
 import type { ModelEditTarget } from '@/store/slices/mutation-modelling-records';
 import { readAuthoringSizeFromTarget } from './model-authoring-size';
 import type { ExpectedSize } from './model-authoring-size-params';
+import { nativeLengthUnitAvailable } from './model-authoring-read-target';
 export { entityName as nativeRootName } from '@/lib/commands/modeling/authored-kinds';
 
 export interface NativeEditEvidence {
@@ -21,7 +22,7 @@ export interface NativeEditEvidence {
 export function nativeEditEvidence(target: ModelEditTarget | null, expressId: number): NativeEditEvidence {
   let dimensions: ExpectedSize | null = null;
   let Profile: ProfileSection | null = null;
-  if (target) {
+  if (target && nativeLengthUnitAvailable(target)) {
     const type = target.editor.getEntityType(expressId)?.toUpperCase();
     if (type === 'IFCWALL' || type === 'IFCWALLSTANDARDCASE') dimensions = readAuthoringSizeFromTarget(target, expressId, 'wall');
     else if (type === 'IFCBEAM' || type === 'IFCCOLUMN' || type === 'IFCMEMBER') {

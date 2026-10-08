@@ -3,6 +3,8 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
+import { extractProjectUnits } from '@ifc-lite/parser';
+import { getModelLengthUnitScale } from '@/lib/length-unit-scale';
 import type { ViewerState } from '@/store';
 import type { ModelEditTarget } from '@/store/slices/mutation-modelling-records';
 import { configureMutationView } from '@/utils/configureMutationView';
@@ -38,4 +40,23 @@ export function nativeReadTargets(state: NativeReadState): (modelId: string) => 
     if (!targets.has(modelId)) targets.set(modelId, readOnlyModelEditTarget(state, modelId));
     return targets.get(modelId) ?? null;
   };
+}
+
+const unitAvailability = new WeakMap<ModelEditTarget, boolean>();
+/** Evidence requires a known scale; the native edit reader's fallback is not a unit declaration. */
+export function nativeLengthUnitAvailable(target: ModelEditTarget | null): boolean {
+  if (!target) return false;
+  const cached = unitAvailability.get(target);
+  if (cached !== undefined) return cached;
+  const store = target.dataStore;
+  const knownScale = store.lengthUnitScale;
+  const recorded = typeof knownScale === 'number' && Number.isFinite(knownScale) && knownScale > 0;
+  const declared = store.source.byteLength > 0
+    ? extractProjectUnits(store.source, store.entityIndex, store.spatialHierarchy?.project?.expressId).resolvedForUnitType('LENGTHUNIT')
+    : undefined;
+  const available = store.source.byteLength === 0 ? recorded
+    : !!declared && Number.isFinite(declared.siScale) && declared.siScale > 0
+      && Math.abs(getModelLengthUnitScale(store) - declared.siScale) <= Math.max(1e-12, declared.siScale * 1e-9);
+  unitAvailability.set(target, available);
+  return available;
 }

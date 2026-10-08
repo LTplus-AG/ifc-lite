@@ -99,7 +99,7 @@ test('a lens proposal is either first-match rules or one auto-colour spec, never
   assert.throws(() => parseLensProposal(json({ version: 1, kind: 'lens.proposal', title: 'T', lens: { name: 'L', rules: [{ name: 'R', groups: [walls], action: 'colorize', color: 'red' }] } })), /#RRGGBB/);
 });
 
-test('a chart proposal charts model elements only, names fields by identity and resolves to a valid native ChartSpec', () => {
+test('an elements chart proposal names fields by identity and resolves to a valid native ChartSpec', () => {
   const proposal = parseChartProposal(json({ version: 1, kind: 'chart.proposal', title: 'Slab area by class', scope: 'visible', chart: {
     type: 'bar', dimension: 'IfcType', measure: { agg: 'sum' }, measureField: { kind: 'quantity', qsetName: 'Qto_SlabBaseQuantities', quantityName: 'NetArea' },
     filter: { groups: [walls] }, topN: 5 } }));
@@ -110,7 +110,7 @@ test('a chart proposal charts model elements only, names fields by identity and 
   assert.deepEqual(spec.measure, { agg: 'sum', column: elementFieldColumnId(binding) }, 'the summed column is the discovered binding, never the answer\'s');
   assert.throws(() => resolveChartSpec(proposal.chart, 'c1', () => ({ ...binding, valueKind: 'category' })), /not numeric in the loaded models/);
   const chart = (patch: Record<string, unknown>) => json({ version: 1, kind: 'chart.proposal', title: 'T', chart: { type: 'bar', dimension: 'Storey', measure: { agg: 'count' }, ...patch } });
-  assert.throws(() => parseChartProposal(chart({ source: 'clash' })), /chart model elements only/);
+  assert.throws(() => parseChartProposal(chart({ source: 'invented7106' })), /Unknown chart source/);
   assert.throws(() => parseChartProposal(chart({ measure: { agg: 'sum' } })), /names the summed field in "measureField"/);
   assert.throws(() => parseChartProposal(chart({ elementField: { kind: 'material' } })), /not both/);
   assert.throws(() => parseChartProposal(chart({ type: 'stackedBar' })), /needs "stackBy"/);

@@ -8,7 +8,7 @@
  * the native running flag and records start, phase and the native outcome:
  *
  *   load    recorded per canonical load by modelLoadCanceller, independent of shared UI flags
- *   clash   `clashRunning`, `clashProgress`, `clashError`, `clashRunSeq` (bumped only on success)
+ *   clash   native owned session, `clashRunning`/progress/error/result sequence; cancel uses that session
  *   ids     recorded by useIDS per native run, before its first progress update
  *   flow    `flowRunning`, `flowProgress`, `flowLastRun.ok`, `flowLastError`, the run's abort signal; cancel = `cancelWorkflowRun`
  *   ai      request-service in-flight entries and their receipts; cancel aborts the request
@@ -24,6 +24,7 @@
 import { en } from '@/i18n/en';
 import type { TranslationKey } from '@/i18n';
 import type { ViewerState } from '@/store';
+import { activeClashRunSession } from '@/hooks/analysisRunCancellation';
 import { activeWorkflowSignal, cancelWorkflowRun } from '@/lib/flow/run-session';
 import { useRequestReceipts, type UsageReceipt } from '@/lib/llm/request-receipts';
 import {
@@ -70,13 +71,14 @@ function watchClash(store: ViewerStoreLike): () => void {
   return watch(store, {
     running: (s) => s.clashRunning,
     start: (s) => ({ job: { kind: 'check', title: 'activityTray.job.clash', panel: 'clash',
-      subject: [...s.models.values()].map(model => model.name).join(', ') || undefined }, baseline: s.clashRunSeq }),
+      subject: [...s.models.values()].map(model => model.name).join(', ') || undefined,
+      cancel: activeClashRunSession()?.cancel }, baseline: { sequence: s.clashRunSeq, signal: activeClashRunSession()?.controller.signal } }),
     tick: (s) => (s.clashProgress && s.clashProgress.total > 0
       ? { progress: { done: s.clashProgress.done, total: s.clashProgress.total } }
       : {}),
-    end: (s, seq) => s.clashError
+    end: (s, { sequence, signal }) => signal?.aborted ? { outcome: 'cancelled' } : s.clashError
       ? { outcome: 'failed', detail: s.clashError }
-      : { outcome: s.clashRunSeq > seq ? 'completed' : 'cancelled' },
+      : { outcome: s.clashRunSeq > sequence ? 'completed' : 'cancelled' },
   });
 }
 

@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { ACTION_NAME_KEYS } from '@/lib/commands/action-names';
+import { effectiveTypeProperties } from './properties/effectiveTypeProperties';
 import { useMemo, useState, useCallback, useEffect } from 'react';
 import { useTranslation } from '@/i18n';
 import { Copy, Check, Building2, Layers, Layers2, FileText, Calculator, Tag, MousePointer2, PenLine, Crosshair, Box, ChevronDown } from 'lucide-react';
@@ -24,7 +25,7 @@ import { toGlobalIdFromModels } from '@/store/globalId';
 import { useIfc } from '@/hooks/useIfc';
 import { getOrCreateMutationView } from '@/sdk/adapters/mutation-view';
 import { IfcQuery } from '@ifc-lite/query';
-import { extractClassificationsOnDemand, extractTypePropertiesOnDemand, extractTypeQuantitiesOnDemand, extractTypeEntityOwnProperties, extractDocumentsOnDemand, extractGeoreferencingOnDemand, extractLengthUnitScale, extractProjectUnits, ProjectUnits, extractStructuralOnDemand, taskProductExpressIds, taskProductGlobalIds, type IfcDataStore, type MaterialPsetGroup } from '@ifc-lite/parser';
+import { extractClassificationsOnDemand, extractTypeQuantitiesOnDemand, extractTypeEntityOwnProperties, extractDocumentsOnDemand, extractGeoreferencingOnDemand, extractLengthUnitScale, extractProjectUnits, ProjectUnits, extractStructuralOnDemand, taskProductExpressIds, taskProductGlobalIds, type IfcDataStore, type MaterialPsetGroup } from '@ifc-lite/parser';
 import { RelationshipType, isSpatialStructureTypeName, isStoreyLikeSpatialTypeName } from '@ifc-lite/data';
 import type { EntityRef, FederatedModel } from '@/store/types';
 import { ZoneVolumeBreakdown } from './ZoneVolumeBreakdown';
@@ -855,57 +856,8 @@ export function PropertiesPanel() {
     if (!selectedEntity) return null;
     const dataStore = model?.ifcDataStore ?? ifcDataStore;
     if (!dataStore) return null;
-    const result = extractTypePropertiesOnDemand(dataStore as IfcDataStore, selectedEntity.expressId);
-    if (!result) return null;
-
-    let modelId = selectedEntity.modelId;
-    if (modelId === 'legacy') modelId = '__legacy__';
-    const mutationView = modelId ? mutationViews.get(modelId) : null;
-    const mutations = mutationView?.getMutationsForEntity(result.typeId) ?? [];
-    const mergedTypeProps = mutationView?.getForEntity(result.typeId) ?? [];
-
-    const mutatedKeys = new Set<string>();
-    const newPsetNames = new Set<string>();
-    for (const mutation of mutations) {
-      if (mutation.psetName && mutation.propName) {
-        mutatedKeys.add(`${mutation.psetName}:${mutation.propName}`);
-      }
-      if (mutation.type === 'CREATE_PROPERTY_SET' && mutation.psetName) {
-        newPsetNames.add(mutation.psetName);
-      }
-      if (mutation.type === 'CREATE_PROPERTY' && mutation.psetName) {
-        const existsInBase = result.properties.some(pset => pset.name === mutation.psetName);
-        if (!existsInBase) {
-          newPsetNames.add(mutation.psetName);
-        }
-      }
-    }
-
-    const sourcePsets = mergedTypeProps.length > 0
-      ? mergedTypeProps
-      : result.properties.map(pset => ({
-          name: pset.name,
-          globalId: pset.globalId || '',
-          properties: pset.properties.map(p => ({
-            name: p.name,
-            type: p.type,
-            value: p.value,
-          })),
-        }));
-
-    return {
-      typeName: result.typeName,
-      typeId: result.typeId,
-      psets: sourcePsets.map(pset => ({
-        name: pset.name,
-        properties: pset.properties.map(p => ({
-          name: p.name,
-          value: p.value,
-          isMutated: mutatedKeys.has(`${pset.name}:${p.name}`),
-        })),
-        isNewPset: newPsetNames.has(pset.name),
-      })),
-    };
+    const modelId = selectedEntity.modelId === 'legacy' ? '__legacy__' : selectedEntity.modelId;
+    return effectiveTypeProperties(dataStore as IfcDataStore, selectedEntity.expressId, mutationViews.get(modelId));
   }, [selectedEntity, model, ifcDataStore, mutationViews, mutationVersion]);
 
   // Spatial containment info for spatial containers (Project, Facility, Part, Storey, Space)

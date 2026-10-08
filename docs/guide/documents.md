@@ -114,6 +114,14 @@ own evidence. Recorded-source provenance remains an informational caption;
 missing history, refused filters and aggregation errors are reported as PDF
 export problems.
 
+A chart block can likewise use a dashboard chart bound to a **saved clash
+report**. Preview and PDF show the saved run rather than the current result,
+print which report it is and whether the run was partial or recorded on another
+model revision, and take no 3D snapshot. The block keeps the report's ID, so
+a deleted report, or a file opened where the report does not exist, prints
+**Saved clash report unavailable** and is reported as a PDF export problem. See
+[saved clash report charts](./charts.md#saved-clash-report-charts).
+
 In Documentation, **Add block → Saved comparison** embeds the first saved report.
 Select the block and choose another saved comparison in its source picker. The
 preview and PDF show the selected pair's provenance, summary and change table.

@@ -124,6 +124,9 @@ export * from './diff/index.js';
 // Three-way merge and conflict view model (IDS-106)
 export * from './merge/index.js';
 
+// Revisions, sign-off and hash chain (IDS-107)
+export * from './revision/index.js';
+
 // Plain-language rendering (IDS-027)
 export { describeFacet } from './render/describe.js';
 

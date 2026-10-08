@@ -267,6 +267,29 @@ if (view.cards.length) {
   other added an entity that only exists in the old ones.
 - `mergeOps(base, oursOps, theirsOps)` merges two op sequences.
 
+## Revisions and sign-off
+
+A `RevisionLog` holds immutable snapshots chained by SHA-256: each
+revision's hash covers its record and its parent's hash, and its
+`contentHash` covers the normative content (IDS content without node ids,
+custom declarations, test suites). Sign-offs are chained the same way.
+Sign-off is an attestation, not a qualified electronic signature.
+
+```ts
+import { commitRevision, createRevisionLog, signOff, verifyRevisionLog, type StudioDocument } from '@ifc-lite/ids-authoring';
+
+declare const doc: StudioDocument;
+let log = createRevisionLog(doc.docId);
+const released = commitRevision(log, doc, { author: 'lead@example.com', label: 'released', message: 'v1.0' });
+log = signOff(released.log, released.revision.revId, { by: 'Client', role: 'Reviewer', statement: 'Accepted' }).log;
+verifyRevisionLog(log); // { ok: true, problems: [] }; any edit of a stored record is reported
+```
+
+- A released revision is read-only: a later revision with different
+  content on top of it must be a `draft`.
+- `revisionTimeline(log)` is the view model for a revision list (labels,
+  sign-offs, plain-language changes against the parent, verification).
+
 ## Sidecar, bundles, re-identification
 
 - `createSidecar(doc, xml)` and `attachSidecar(parsed, sidecar, { previous })`

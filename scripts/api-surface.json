@@ -8478,6 +8478,7 @@
     "isKnownType: function",
     "isQueryableObjectType: function",
     "isSourceBytes: function",
+    "materialAssignmentsAvailable: function",
     "measureUnit: function",
     "mergeInheritedPropertySets: function",
     "mergeInheritedQuantitySets: function",

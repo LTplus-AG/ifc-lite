@@ -149,3 +149,21 @@ for (const boundary of ['account', 'clear'] as const) test(`#7093 ${boundary} re
   assert.equal(useViewerStore.getState().scriptLastResult, null);
   assert.equal(useViewerStore.getState().chatToolReady, null);
 });
+
+test('#7093 Anthropic failure is one shared budgeted HTTP attempt without hidden SDK retries', async t => {
+  let posts = 0;
+  globalThis.fetch = (async (_input, init) => {
+    if (init?.method !== 'POST') return new Response('{}');
+    posts++;
+    return new Response(JSON.stringify({ type: 'error', error: { type: 'api_error', message: '7093 temporary provider failure' } }), {
+      status: 500, headers: { 'Content-Type': 'application/json' },
+    });
+  }) as typeof fetch;
+  const native = await mountNative(t, 'claude-opus-5-5'); if (!native) return;
+  send(native.ui);
+  await waitFor(() => useRequestReceipts.getState().receipts.length === 1 && !['sending', 'streaming'].includes(useViewerStore.getState().chatStatus), 'terminal native Anthropic error');
+  assert.equal(posts, 1, 'the SDK must not spend unaccounted requests');
+  assert.equal(useRequestReceipts.getState().receipts[0].outcome, 'error');
+  assert.equal(useRequestReceipts.getState().inFlight.length, 0);
+  assert.equal(useViewerStore.getState().scriptLastResult, null);
+});

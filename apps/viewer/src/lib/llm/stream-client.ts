@@ -51,6 +51,8 @@ export interface UsageInfo {
 }
 
 export interface StreamOptions {
+  /** Shared budget owners disable the development proxy retry probe. */
+  allowProxyFallback?: boolean;
   /** Proxy URL (Edge Function) */
   proxyUrl: string;
   /** Model ID */
@@ -135,7 +137,7 @@ export async function streamChat(options: StreamOptions): Promise<void> {
       signal?.removeEventListener('abort', abortFromParent);
     }
   };
-  const canFallbackToAppProxy = isDev && proxyUrl !== '/api/chat';
+  const canFallbackToAppProxy = options.allowProxyFallback !== false && isDev && proxyUrl !== '/api/chat';
 
   let response: Response;
   try {
@@ -166,7 +168,7 @@ export async function streamChat(options: StreamOptions): Promise<void> {
         response = retry;
       }
     } catch {
-      // ignore fallback failure, original response handling below will surface error
+      console.warn('[Chat] Development proxy fallback failed; retaining the original response');
     }
   }
 
@@ -216,7 +218,7 @@ export async function streamChat(options: StreamOptions): Promise<void> {
         errorDetail = `${errorBody.error ?? `Request failed (${response.status})`}\nProvider: ${errorBody.providerMessage}`;
       }
     } catch {
-      // ignore parse failure
+      console.warn('[Chat] Error response could not be decoded as JSON');
     }
     onError(new Error(errorDetail));
     return;

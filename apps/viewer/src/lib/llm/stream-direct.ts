@@ -103,7 +103,7 @@ export async function streamAnthropicChat(
       // turns fall under it and pass through as plain string.
       system: buildCacheableSystem(system),
       messages: toAnthropicMessages(messages),
-    });
+    }, { maxRetries: 0 }); // A retry is another budgeted request, owned by the caller.
 
     // Wire up abort signal
     if (signal) {

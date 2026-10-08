@@ -48,8 +48,10 @@ test('proxy stream: forwarded OpenRouter usage chunk becomes a reported receipt'
     { choices: [{ delta: { content: '' }, finish_reason: 'stop' }], usage: { prompt_tokens: 1234, completion_tokens: 456, total_tokens: 1690 } },
     { __ifcLiteUsage: { type: 'requests', used: 6, limit: 50, pct: 12, resetAt: 1_700_000_000 } },
   ]) + 'data: [DONE]\n\n');
-  const outcome = await runModelRequest(request());
+  const quota: Array<{ used: number; type: string }> = [];
+  const outcome = await runModelRequest(request({ onUsageInfo: info => quota.push(info) }));
   assert.equal(outcome.kind, 'completed');
+  assert.deepEqual(quota.map(info => [info.type, info.used]), [['requests', 6]], 'hosted quota remains separate from provider tokens');
   assert.ok(outcome.kind === 'completed');
   assert.equal(outcome.text, 'Hello');
   assert.deepEqual({ ...outcome.receipt, id: '', startedAt: 0, finishedAt: 0 }, {
@@ -199,4 +201,19 @@ test('the receipt store keeps only the most recent receipts', () => {
   const receipts = useRequestReceipts.getState().receipts;
   assert.equal(receipts.length, RECEIPT_LIMIT);
   assert.equal(receipts[0]?.id, 'r5');
+});
+
+test('#7093 shared proxy request never adds an unbudgeted development fallback attempt', async () => {
+  const previousDev = import.meta.env.DEV;
+  import.meta.env.DEV = true;
+  try {
+    const sent = serve(JSON.stringify({ error: '7093 missing proxy route' }), { status: 404, headers: { 'Content-Type': 'application/json' } });
+    const budget = createRootBudget();
+    const outcome = await runModelRequest(request({ proxyUrl: 'http://localhost:7093/api/chat', budget }));
+    assert.equal(outcome.kind, 'error');
+    assert.equal(sent.length, 1, 'the explicit transport URL is the only budgeted attempt');
+    assert.equal(sent[0].url, 'http://localhost:7093/api/chat');
+    assert.equal(budget.requests, 1);
+    assert.equal(useRequestReceipts.getState().receipts.length, 1);
+  } finally { import.meta.env.DEV = previousDev; }
 });

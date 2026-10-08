@@ -44,7 +44,8 @@ export const manualChecklistAdapter: EvidenceAdapter = {
   readiness: s => s.manualChecklist
     ? { status: { labelKey: 'assistantSources.manualChecklist.pickItems', params: { count: itemCount(s.manualChecklist) } }, ready: true }
     : { status: { labelKey: 'assistantSources.manualChecklist.pickNone' }, ready: false },
-  identity: s => [s.manualLibrary, s.manualChecklist, s.manualAnswers],
+  subscribe: listener => useValidationSourceChoice.subscribe(listener),
+  identity: s => [s.manualLibrary, s.manualChecklist, s.manualAnswers, useValidationSourceChoice.getState().choice],
   capture: (s, limit) => {
     const checklist = s.manualChecklist;
     if (!checklist) return unavailableCapture();

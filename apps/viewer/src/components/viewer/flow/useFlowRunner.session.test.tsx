@@ -45,6 +45,7 @@ before(() => {
   });
 });
 function Probe() { api = useFlowRunner(); return null; }
+function currentNodeSignal(): AbortSignal | undefined { return nodeSignal; }
 function graph(): FlowDocument {
   return { flowVersion: 2, id: 'lifecycle', name: 'Historical workflow',
     capabilities: ['storage.write:savedComparisons', 'storage.write:documents', 'export.create:pdf'],
@@ -99,14 +100,14 @@ describe('mounted workflow run ownership (#6612)', () => {
     await act(async () => { pending = api!.run(selections()); await entered.promise; });
     assert.ok(useViewerStore.getState().savedComparisons.length > 0, 'native history import executed');
     act(() => retainedCancel());
-    assert.equal(nodeSignal?.aborted, false, 'old callback cannot abort the new scheduler signal');
+    assert.equal(currentNodeSignal()?.aborted, false, 'old callback cannot abort the new scheduler signal');
     assert.equal(isNativeWorkflowBusy(), true);
     const second = useActivityJournal.getState().jobs.find(job => job.kind === 'flow' && job.id !== first.id);
     assert.ok(second);
     const cancelCurrent = activityCanceller(second.id);
     assert.ok(cancelCurrent);
     act(() => cancelCurrent());
-    assert.equal(nodeSignal?.aborted, true, 'current Activity row still aborts actual native work');
+    assert.equal(currentNodeSignal()?.aborted, true, 'current Activity row still aborts actual native work');
     await act(async () => { settle.resolve(); await pending; });
     assert.equal(isNativeWorkflowBusy(), false);
     assert.equal(useViewerStore.getState().documents.length, 0, 'cancelled import must not activate dependent document/PDF effects');

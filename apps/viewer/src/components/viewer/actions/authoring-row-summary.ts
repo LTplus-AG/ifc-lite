@@ -52,3 +52,41 @@ export function authoringRowSummary(row: AuthoringRow, batch: ModelAuthoringBatc
         after: `${fields(op.op === 'element.resize' ? { ...op.expected, ...op.size } : op.Profile)} ${units}`,
         ...(notes.length ? { previewNote: notes.join(' ') } : {}) };
     }
+    case 'element.create': {
+      const omitted = 'Profile' in op.params && typeof op.params.Profile === 'object' ? sectionGhostOmissions(op.params.Profile) : [];
+      return { ...(omitted.length ? { previewNote: t('modelAuthoring.filletPreview', { fields: omitted.join(', ') }) } : {}),
+        subject: `${op.ifcClass} "${op.name}"`, before: t('modelAuthoring.notYet'),
+        after: t('modelAuthoring.createdOn', { storey: before.storeyName ?? op.storey.globalId, dims: dims(op, units) }) };
+    }
+    case 'element.copy': case 'element.array': {
+      const count = op.op === 'element.copy' ? 1 : op.count - 1;
+      const placement = op.op === 'element.copy'
+        ? `${point(op.offset)} ${units}${op.angleDeg === undefined ? '' : ` · ${num(op.angleDeg)}° @ ${point(op.pivot!)} ${units}`}`
+        : op.mode === 'polar' ? `${num(op.angleDeg ?? 360)}° @ ${point(op.anchor)} ${units}`
+          : `${point(op.anchor)} → ${point(op.cursor!)} ${units} · ${t(op.fit ? 'modelAuthoring.arraySpan' : 'modelAuthoring.arraySpacing')}: ${op.distance === undefined ? t('modelAuthoring.cursorDistance') : `${num(op.distance)} ${units}`}`;
+      return { subject: ref(op.target, t), before: before.origin ? `${point(before.origin.map(fromMetres))} ${units}` : none,
+        after: t('modelAuthoring.copied', { count, placement, storey: before.storeyName ?? t('modelAuthoring.sourceStorey') }) };
+    }
+    case 'element.delete':
+      return { subject: `${op.target.ifcClass} "${op.target.name}"`, before: `${before.ifcClass ?? op.target.ifcClass} "${before.name ?? op.target.name}"`, after: t('modelChanges.removed') };
+    case 'element.move': {
+      const origin = before.origin?.map(fromMetres);
+      return { subject: `${op.target.ifcClass} "${op.target.name}"`, before: origin ? `${point(origin)} ${units}` : none,
+        after: origin ? `${point([origin[0] + op.delta[0], origin[1] + op.delta[1]])} ${units}` : t('modelAuthoring.movedBy', { delta: `${point(op.delta)} ${units}` }) };
+    }
+    case 'element.rotate':
+      return { subject: `${op.target.ifcClass} "${op.target.name}"`, before: before.angleDeg === undefined ? none : `${num(before.angleDeg)}°`,
+        after: before.angleDeg === undefined ? t('modelAuthoring.turnedBy', { angle: num(op.angleDeg) }) : `${num(before.angleDeg + op.angleDeg)}°` };
+    case 'type.assign':
+      return { subject: ref(op.target, t), before: before.type ?? none,
+        after: 'create' in op.type ? t('modelAuthoring.newType', { name: op.type.create.name, ifcClass: op.type.create.ifcClass }) : op.type.name };
+    case 'material.assign':
+      return { subject: ref(op.target, t), before: before.material ?? none,
+        after: row.resolved.materialId === null ? t('modelAuthoring.newMaterial', { name: op.material.name }) : op.material.name };
+    case 'walls.join':
+      return { subject: `${ref(op.walls[0], t)} + ${ref(op.walls[1], t)}`, before: t('modelAuthoring.unjoined'), after: t('modelAuthoring.joined') };
+    case 'hosted.create':
+      return { subject: ref(op.host, t), before: t('modelAuthoring.notYet'),
+        after: t(`modelAuthoring.hosted.${op.kind}`, { size: `${num(op.width)} × ${num(op.height)} ${units}`, offset: num(op.offset), sill: num(op.sill), units }) };
+  }
+}

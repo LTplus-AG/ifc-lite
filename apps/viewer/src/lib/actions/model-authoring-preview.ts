@@ -312,7 +312,31 @@ export function previewModelAuthoring(state: ViewerState, batch: ModelAuthoringB
     row.previewOmitted = ghost.omitted;
     row.previewOuterBodyOnly = ghost.outerBodyOnly;
   }
-  return { batch, rows: ctx.rows, mutationVersion: state.mutationVersion, digest: batchDigest(batch) };
   const preview = { batch, rows: ctx.rows, mutationVersion: state.mutationVersion, digest: batchDigest(batch) };
   captureAuthoringSources(state, preview);
   return preview;
+}
+
+/** The builders decide what static checks cannot: dimensions, hosts, joins, schema support. */
+function nativeDryRun(ctx: Context, batch: ModelAuthoringBatch): void {
+  const byModel = new Map<string, AuthoringRow[]>();
+  for (const row of ctx.rows) if (row.status === 'ready' && row.modelId) byModel.set(row.modelId, [...(byModel.get(row.modelId) ?? []), row]);
+  for (const [modelId, rows] of byModel) {
+    const r = reader(ctx, modelId);
+    const refusals = dryRunAuthoring(batch, r.dataStore, r.view, modelId, rows.map(({ index, op, resolved }) => ({ index, op, resolved })));
+    for (const row of rows) {
+      const refusal = refusals.get(row.index);
+      if (refusal === undefined) continue;
+      const blocked = row.dependsOn.some((i) => refusals.has(i));
+      row.status = blocked ? 'blocked' : 'invalid';
+      row.issue = blocked ? 'It needs an element another row creates, which the model refused' : refusal;
+    }
+  }
+}
+
+export function authoringCounts(rows: readonly AuthoringRow[]): Record<AuthoringRowStatus, number> {
+  const counts: Record<AuthoringRowStatus, number> = { ready: 0, unchanged: 0, conflict: 0, 'missing-target': 0, 'ambiguous-target': 0,
+    denied: 0, unsupported: 0, invalid: 0, blocked: 0 };
+  for (const row of rows) counts[row.status]++;
+  return counts;
+}

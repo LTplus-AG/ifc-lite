@@ -32,3 +32,31 @@ Preview always starts with resolution, the expected-state checks and the native 
 | `element.resize` | Full `commitElementSize`: canonical size editor through `recordModellingEdit`, plus occurrence-only material layer clone/rescale | Expected full native editable dimensions; shared geometry/layer write on an unpublished draft; native hosted-fit and shared-ownership refusal | Native post-edit push/pull prism or section sweep; bounded outline, direct storey-frame proof; each row discloses unavailable placement/geometry, sharp fillets and outer-body-only preview | Same, including geometry and layers | Stable identity, reparsed dimensions and layer totals; sibling/type unchanged | Wall height/thickness, flat slab/roof/plate thickness, straight beam/column/member length and rectangular cross section; fixed start/end rule. Existing GlobalId targets only |
 | `element.profile` | Existing native `setElementProfile` section writer inside the reviewed transaction | Expected native section; shared centred-section reader/validator and emit core on an unpublished draft | Existing section sweep with current native axes; sharp-corner fillet disclosure or explicit preview unavailability | Same | Reparsed native profile class/dimensions; undo restores the original section | Nine existing native variants on centred straight beam/column/member extrusions; no arbitrary geometry inferred |
 | `element.copy` / `element.array` | Native `copyElements` / `copyBatchInStore`; arrays use `arrayCopyTransforms` | Pinned source class/name, optional source placement, same-model target storey, unique output refs, finite declared-unit transforms; unpublished native copy dry run | Exact native `copyGhosts`; first 64 placements, missing source/draft meshes explicitly disclosed | Same transaction/receipt; one applied identity per copied root | Fresh GUIDs, native void/fill dependents, placements and units survive export/reparse; real Bonsai source/copy WASM geometry and cut volume agree | One root per operation, 200 copy roots per proposal; existing source before earlier edits, native hosted/assembly/work refusals; copied refs feed copies/type/material and wall-only hosted/join operations; hosted cut ghosts on draft copies are unavailable |
+| `element.delete` | Store `removeEntity` | Expected class/name; allowed classes (walls, slabs, roofs, plates, columns, beams, members, spaces, doors, windows, coverings, furnishing, proxies); refused for assemblies and for hosts of openings; dry run of the removal | Element meshes in red | Same | Element absent after reparse, no dangling `#` reference | A deleted door or window leaves its opening; openings themselves are not deleted |
+
+Commit re-runs the preview and refuses a stale one. It writes each model's approved rows inside one `runTransaction` with the store's gated actions, so the edit gate, collaboration role and workflow lock apply. The created, hosted, joined, retyped, re-materialled, moved and turned elements are re-meshed through the wasm re-mesh service (`created` cause when anything was created, else `hostsChanged` for moves). Undo and redo re-mesh the same batch.
+
+## Explicit refusals
+
+Not offered and refused by the contract with a reason: curtain walls, stairs and railings, grids, free-standing doors and windows, split, trim and extend, vertical moves, independent storey or containment changes (copy target storey is supported), group and zone membership, arbitrary layer-set authoring, classifications, and any operation on IFC5/IFCX models that the builders refuse. Each has a native tool in the Model workspace. Adding one here needs its own parameter validation, preview and export proof. Structural intent and missing dimensions are never invented: the guidance tells the provider to ask instead.
+
+## Evidence
+
+`model-authoring-copy*.test.ts*` (#7202) uses the committed SketchUp source for draft/commit/export/undo/ref/dependency/federation proofs, the committed Bonsai source and real canonical WASM for ghost/export cut-volume and opening retention, and the stated two-storey invariant fixture for metre/millimetre files and polar target-storey placements. The mounted native review discloses root counts and ghost limits and excludes dependent edits when their copy is unapproved. Copy previews retain the loaded source/store/overlay identities, the native overlay revision (including skip-history writes), and the loader full source hash when available; they conservatively refuse reloads rather than inventing a sampled fingerprint. Native copying and coordinate conversion are reused, with no alternative pipeline.
+
+Tests run against the committed SketchUp-authored `building-architecture.ifc` (IFC4, millimetres), using `apps/viewer/src/test/authoring-sample-fixture.ts`:
+
+- `lib/actions/model-authoring.test.ts` (8 tests) covers:
+  - contract refusals: units, frame, unit mistakes, classes, refs, vertical moves;
+  - preview resolution with no writes;
+  - builder refusals and blocked dependents;
+  - the edit gate;
+  - one undo batch with re-mesh, export/reparse referential integrity (containment, type, material, void, fill, join), and undo;
+  - move, rotate and delete with reparse proof, expected-origin conflict and single-use previews;
+  - session-created GlobalIds and refusal to delete a host;
+  - receipt decoding.
+- `lib/actions/model-authoring-ghost.test.ts` checks that the wall and window ghosts match the committed builder geometry in the storey frame.
+- `components/viewer/actions/ModelAuthoringReview.test.tsx` mounts the card and covers the Edit-mode gate, dependent exclusion, the ghost upload and clear, apply, the receipt and undo.
+- `components/viewer/assistant/ModelChangeProposal.test.tsx` covers the authoring proposal card, the native review and a refused malformed answer.
+
+The copy-family tests also cover a pinned native write with two loaded models and refusal of ambiguous GlobalIds. No real provider answer or viewport screenshot is recorded yet.

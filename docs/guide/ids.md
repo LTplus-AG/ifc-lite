@@ -140,6 +140,8 @@ const auditReport = await auditIDSDocument(idsXml);
 
 Use `auditIDSStructure(idsDocument)` to audit an already-parsed document.
 
+The audit checks that an IDS is valid IDS 1.0. To check that it means what you intend (abstract entities that match nothing, `^` in XSD patterns, millimetres where metres are expected, requirements that can never fail or never pass), lint it with `@ifc-lite/ids-authoring`; see [IDS lint rules](ids-lint/index.md).
+
 ## What `.rules.json` rule sets cover that IDS 1.0 cannot
 
 IDS 1.0 has documented limitations (buildingSMART's own user manual

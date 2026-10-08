@@ -177,6 +177,53 @@ nav:
     - LandXML: guide/landxml.md
     - BCF Collaboration: guide/bcf.md
     - IDS Validation: guide/ids.md
+    - IDS Lint Rules:
+      # BEGIN GENERATED ids-lint-nav (packages/ids-authoring/scripts/generate-lint-docs.mjs)
+      - Overview: guide/ids-lint/index.md
+      - "IDSL-ENT-001 Abstract entity in an entity facet": guide/ids-lint/idsl-ent-001.md
+      - "IDSL-ENT-002 Entity removed in IFC4X3": guide/ids-lint/idsl-ent-002.md
+      - "IDSL-ENT-003 Entity has subtypes the author may also mean": guide/ids-lint/idsl-ent-003.md
+      - "IDSL-ENT-004 Type entity where an occurrence is meant": guide/ids-lint/idsl-ent-004.md
+      - "IDSL-ENT-005 Entity name not in upper case": guide/ids-lint/idsl-ent-005.md
+      - "IDSL-PDT-001 Predefined type not in the entity enumeration": guide/ids-lint/idsl-pdt-001.md
+      - "IDSL-PDT-002 USERDEFINED predefined type without an ObjectType requirement": guide/ids-lint/idsl-pdt-002.md
+      - "IDSL-PDT-003 Undeclared user-defined predefined type": guide/ids-lint/idsl-pdt-003.md
+      - "IDSL-ATT-001 Attribute not defined on the entity": guide/ids-lint/idsl-att-001.md
+      - "IDSL-ATT-002 Value check on an entity-typed attribute": guide/ids-lint/idsl-att-002.md
+      - "IDSL-PSET-001 Standard property set not applicable to the entity": guide/ids-lint/idsl-pset-001.md
+      - "IDSL-PSET-002 Custom property set with a reserved prefix": guide/ids-lint/idsl-pset-002.md
+      - "IDSL-PSET-003 Quantity set with a non-measure data type or value": guide/ids-lint/idsl-pset-003.md
+      - "IDSL-PROP-001 Property not in the standard property set": guide/ids-lint/idsl-prop-001.md
+      - "IDSL-PROP-002 Data type differs from the standard property": guide/ids-lint/idsl-prop-002.md
+      - "IDSL-PROP-003 Numeric constraint without a data type": guide/ids-lint/idsl-prop-003.md
+      - "IDSL-VAL-001 Value not in the standard enumeration": guide/ids-lint/idsl-val-001.md
+      - "IDSL-VAL-002 Restriction base incompatible with the data type": guide/ids-lint/idsl-val-002.md
+      - "IDSL-VAL-003 Simple value that looks like a list": guide/ids-lint/idsl-val-003.md
+      - "IDSL-VAL-004 Simple value that looks like a comparison": guide/ids-lint/idsl-val-004.md
+      - "IDSL-VAL-005 Boolean literal in a form IDS does not accept": guide/ids-lint/idsl-val-005.md
+      - "IDSL-VAL-006 Leading or trailing whitespace, or invisible characters": guide/ids-lint/idsl-val-006.md
+      - "IDSL-VAL-008 Exact match on a real number": guide/ids-lint/idsl-val-008.md
+      - "IDSL-UNIT-001 Magnitude suggests a non-SI unit": guide/ids-lint/idsl-unit-001.md
+      - "IDSL-REGEX-001 ^ or $ in an XSD pattern": guide/ids-lint/idsl-regex-001.md
+      - "IDSL-REGEX-002 Pattern that is a plain value or matches everything": guide/ids-lint/idsl-regex-002.md
+      - "IDSL-REGEX-003 Construct not supported by XSD regex": guide/ids-lint/idsl-regex-003.md
+      - "IDSL-REGEX-004 Catastrophic backtracking risk": guide/ids-lint/idsl-regex-004.md
+      - "IDSL-CARD-001 Prohibited requirement with a value or data type": guide/ids-lint/idsl-card-001.md
+      - "IDSL-CARD-002 Optional requirement that checks nothing": guide/ids-lint/idsl-card-002.md
+      - "IDSL-CARD-003 Prohibited specification with requirements": guide/ids-lint/idsl-card-003.md
+      - "IDSL-CARD-004 Required specification with a narrow applicability": guide/ids-lint/idsl-card-004.md
+      - "IDSL-SPEC-001 Requirement that can never fail": guide/ids-lint/idsl-spec-001.md
+      - "IDSL-SPEC-002 Contradictory requirements": guide/ids-lint/idsl-spec-002.md
+      - "IDSL-SPEC-003 Applicability that can never match": guide/ids-lint/idsl-spec-003.md
+      - "IDSL-SPEC-005 Duplicate specification": guide/ids-lint/idsl-spec-005.md
+      - "IDSL-SPEC-006 Overlapping specifications with conflicting requirements": guide/ids-lint/idsl-spec-006.md
+      - "IDSL-SPEC-007 Specification without requirements": guide/ids-lint/idsl-spec-007.md
+      - "IDSL-SPEC-008 Specification without description or instructions": guide/ids-lint/idsl-spec-008.md
+      - "IDSL-SPEC-009 Duplicate identifier": guide/ids-lint/idsl-spec-009.md
+      - "IDSL-DOC-001 Author is not an e-mail address, or date is not xs:date": guide/ids-lint/idsl-doc-001.md
+      - "IDSL-VER-001 Name valid in only some IFC versions of the specification": guide/ids-lint/idsl-ver-001.md
+      - "IDSL-PART-001 Unlikely partOf relation for these entities": guide/ids-lint/idsl-part-001.md
+      # END GENERATED ids-lint-nav
     - 2D Drawings: guide/drawing-2d.md
     - Property Editing: guide/mutations.md
     - Performance: guide/performance.md

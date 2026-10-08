@@ -10,7 +10,7 @@ import { render,click,cleanup } from '@/test/render';
 import { useViewerStore } from '@/store';
 import { modelChangeLibrary } from '@/lib/actions/receipts';
 import { parseModelAuthoringBatch } from '@/lib/actions/model-authoring';
-import { seedAuthoringSample,SAMPLE_MODEL,GROUND_STOREY,parseIfc,danglingReferences } from '@/test/authoring-sample-fixture';
+import { seedAuthoringSample,GROUND_STOREY,parseIfc,danglingReferences } from '@/test/authoring-sample-fixture';
 import { editedModelBytes } from '@/lib/export/edited-model-bytes';
 import { ModelAuthoringReview } from './ModelAuthoringReview';
 const original=useViewerStore.getState();afterEach(()=>{cleanup();useViewerStore.setState(original);});

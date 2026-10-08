@@ -20,7 +20,7 @@ const initial = useViewerStore.getState();
 afterEach(() => { cleanup(); useViewerStore.setState(initial, true); });
 interface Document { expressId: number; verification: string; type: string; Name: string | null;
   Identification?: string; Location: string | null; Revision?: string }
-interface Row { modelId: string; documentStatus: string; documentCount: number | null; documents: Document[] }
+interface Row { expressId: number; modelId: string; documentStatus: string; documentCount: number | null; documents: Document[] }
 const rows = (): Row[] => JSON.parse(captureEvidence('selection').payload).evidence.rows.map((row: { data: Row }) => row.data);
 
 /** Authored metadata is an explicit native writer addition to real SketchUp. */
@@ -125,17 +125,24 @@ test('#7187 native document metadata samples and text are bounded with full coun
   assert.equal(productIds.length, 12); assert.ok(productIds.includes(52));
   useViewerStore.setState({ selectedEntities: productIds.map(expressId => ({ modelId: 'native', expressId })), selectedEntity: null });
   const captured = rows(); assert.equal(captured.length, 12);
-  const large = captured.find(row => row.documents.some(document => document.Location === 'https://example.test/roof-ref.pdf')); assert.ok(large);
+  const large = captured.find(row => row.expressId === 52); assert.ok(large);
   assert.equal(large.documentCount, 21); assert.equal(large.documents.length, 6);
 });
 
 test('#7187 missing native document membership inputs disclose unknown totals in evidence and Properties', async () => {
-  const { file } = await fixture();
+  const { file, referenceId } = await fixture();
+  const sourceGraph = file.relationships;
   file.source = EMPTY_SOURCE_BYTES;
   file.onDemandDocumentMap = undefined;
   assert.equal(Reflect.deleteProperty(file, 'relationships'), true);
   const row = rows()[0]; assert.equal(row.documentCount, null);
   assert.equal(row.documentStatus, 'unavailable-source-membership'); assert.deepEqual(row.documents, []);
+  // The missing-input evidence boundary does not fabricate a full native
+  // IfcDataStore for Properties: its query facade requires a relationship graph.
+  // Restore the actual graph and prove the panel's real source-free edit path.
+  file.relationships = sourceGraph;
+  const view = getOrCreateMutationView(useViewerStore, 'native'); assert.ok(view);
+  view.setAttribute(referenceId, 'Name', 'Known edit with unavailable source');
   const ui = render(renderPanelBody('properties', () => undefined)); await advance(0);
   assert.match(ui.textContent ?? '', /Current document membership is unknown/);
 });

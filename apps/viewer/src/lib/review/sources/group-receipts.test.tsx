@@ -49,8 +49,12 @@ test('#7089 real native group apply enters Review with saved membership and verb
   assert.equal(finding.title, 'Native coordination'); assert.equal(finding.elements.length, 4);
   assert.ok(finding.elements.every(element => !!element.modelId && (element.modelId === 'A' ? source.pair.base : source.pair.head).ifcDataStore.entities.getExpressIdByGlobalId(element.globalId) > 0));
   assert.ok(finding.detail.includes('native continuity: unchanged 2; reidentified 0; gone 0'));
-  const receiptOnly = buildCards(findings, liveReviewModels()).cards; assert.equal(receiptOnly[0].state, 'record');
-  assert.deepEqual(captureReviewSnapshot().failed, []);
+  const receiptOnly = buildCards(findings, liveReviewModels()); assert.equal(receiptOnly.cards[0].state, 'record');
+  assert.equal(receiptOnly.totals.currentFindings, 0); assert.equal(receiptOnly.totals.historicalFindings, 0);
+  assert.equal(receiptOnly.totals.cards, 1);
+  const snapshot = captureReviewSnapshot(); assert.deepEqual(snapshot.failed, []);
+  assert.equal(snapshot.totals.currentFindings, source.result.clashes.length, 'saving a grouping decision does not add analysis findings');
+  assert.equal(snapshot.totals.historicalFindings, 0);
 });
 
 test('#7089 partial sample receipts never confirm native resolution', async t => {

@@ -122,7 +122,7 @@ export function buildCards(findings: readonly ReviewFinding[], models: readonly 
 export function totalsForCards(cards: readonly CoordinationCard[]): ReviewTotals {
   const validatedElements = new Set(cards.flatMap(card => card.elements.flatMap(element => element.key ? [element.key] : [])));
   const unverifiedElements = new Set(cards.flatMap(card => card.elements.filter(element => !element.key).map(element => `${element.modelName ?? ''}\u001f${element.globalId}`)));
-  const analysis = cards.flatMap(card => card.findings).filter(finding => finding.source !== 'bcf');
+  const analysis = cards.flatMap(card => card.findings).filter(finding => finding.lifecycle !== 'record');
   return {
     uniqueElements: validatedElements.size,
     unverifiedElements: unverifiedElements.size,

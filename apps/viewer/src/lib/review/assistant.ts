@@ -59,8 +59,9 @@ useSemanticSession.subscribe((next, previous) => {
 
 export const REVIEW_EVIDENCE_LIMITATIONS =
   'One coordination card from the review workspace. Findings were grouped only because they name exactly the same validated elements; '
-  + 'nativeStatus is the source analysis status, verbatim. run.temporal=historical is saved earlier evidence and does not describe the live model. '
+  + 'nativeStatus is the native source status, verbatim. run.temporal=historical is saved earlier evidence and does not describe the live model. '
   + 'lifecycle no-longer-observed is a resolution candidate for a person to confirm, never a resolution; not-evaluated means no complete compatible run looked again. '
+  + 'lifecycle record is a coordination record, including a saved grouping application, and never confirms analysis resolution. '
   + 'humanDecision is the reviewer\'s own status and comment; do not restate it as an engine result, and never propose changing native statuses or BCF topic status.';
 
 /** One cited row per finding; the common envelope first, then the source fields. */

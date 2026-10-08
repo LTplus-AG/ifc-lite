@@ -24,6 +24,10 @@ import type { ContentStatus } from '@/lib/storage/content-library';
 import { cleanupContentLegacy, ContentImportFailure, createContentBackup, importContentBackup, parseContentBackup, readBackupDrafts,
   readContentRecovery, retryContentDrafts, retryContentImports } from '@/lib/storage/content-backup';
 import { stageContentDrafts } from '@/lib/storage/content-backup-drafts';
+import { loadSavedFilters } from '@/lib/search/saved-filters';
+import { encodeContentBackup } from '@/lib/storage/content-backup';
+import type { StandaloneArtifactLibraries } from '@/lib/storage/artifact-backup';
+import { importArtifactLibraries } from '@/lib/storage/artifact-backup-import';
 
 const messages = {
   quota: 'contentStorage.quota', unavailable: 'contentStorage.unavailable',
@@ -31,7 +35,8 @@ const messages = {
 } as const satisfies Record<string, TranslationKey>;
 const visibleLibraries = () => {
   const state = useViewerStore.getState();
-  return { validation: state.savedValidationReports, comparison: state.savedComparisons, document: state.documents, clashReports: state.savedClashReports,
+  return { filters: loadSavedFilters(), lists: state.listDefinitions, lenses: state.exportLenses(),
+    validation: state.savedValidationReports, comparison: state.savedComparisons, document: state.documents, clashReports: state.savedClashReports,
     assistant: useAssistantLibrary.getState().entries, clashGroups: useClashGroupLibrary.getState().entries,
     bcfDrafts: useBcfDraftLibrary.getState().entries, bcfOutbox: useBcfOutbox.getState().entries,
     modelChanges: useModelChangeReceipts.getState().entries, clashGroupApplications: useClashGroupApplications.getState().entries, reviewWorkspaces: useReviewWorkspaces.getState().entries,
@@ -62,6 +67,14 @@ export function ContentStorageNotice({ status, retry, restore }: {
   const receiptsLoading = changeReceiptsLoading || groupReceiptsLoading || reviewsLoading || semanticReviewsLoading;
   const input = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
+  const pendingArtifacts = useRef<StandaloneArtifactLibraries | null>(null);
+  const [artifactsPending, setArtifactsPending] = useState(false);
+  const saveArtifacts = (libraries: StandaloneArtifactLibraries) => {
+    const outcome = importArtifactLibraries(libraries);
+    pendingArtifacts.current = outcome.failed.length ? libraries : null;
+    setArtifactsPending(outcome.failed.length > 0);
+    return outcome;
+  };
   const states = Object.values(status.items);
   const problem = states.find(state => state in messages) as keyof typeof messages | undefined;
   const key = status.phase === 'loading' ? 'contentStorage.loading'
@@ -78,7 +91,7 @@ export function ContentStorageNotice({ status, retry, restore }: {
   const backup = async () => {
     const state = useViewerStore.getState();
     const preserved = await readBackupDrafts();
-    downloadFile(JSON.stringify(createContentBackup(visibleLibraries(), {
+    downloadFile(JSON.stringify(encodeContentBackup(createContentBackup(visibleLibraries(), {
       validation: state.validationReportsStorage, comparison: state.savedComparisonsStorage, document: state.documentsStorage, assistant: useAssistantLibrary.getState().status,
       clashGroups: useClashGroupLibrary.getState().status, bcfDrafts: useBcfDraftLibrary.getState().status,
       bcfOutbox: useBcfOutbox.getState().status,
@@ -89,7 +102,7 @@ export function ContentStorageNotice({ status, retry, restore }: {
       semanticReviews: useSemanticReviews.getState().status,
       assistantRecipes: useAssistantRecipes.getState().status,
       assistantPreferences: useAssistantPreferences.getState().status,
-    }, preserved.drafts), null, 2), 'ifc-lite-library-backup.json', 'application/json');
+    }, preserved.drafts)), null, 2), 'ifc-lite-library-backup.json', 'application/json');
     if (!preserved.complete) toast.info(t('contentStorage.draftReadUnavailable'));
   };
   const importFile = async (file: File) => {
@@ -124,10 +137,15 @@ export function ContentStorageNotice({ status, retry, restore }: {
       for (const entry of error.entries.bcfOutbox ?? []) bcfOutboxLibrary.stage(entry.id, entry);
       for (const entry of error.entries.document) state.stageDocument(entry);
       toast.error(t('contentStorage.importFailed'));
+      pendingArtifacts.current = parsed.libraries;
+      setArtifactsPending(Boolean(parsed.libraries.filters?.length || parsed.libraries.lists?.length || parsed.libraries.lenses?.length));
       if (drafts.length) toast.error(t('contentStorage.draftsUnsaved', { count: drafts.length }));
       return;
     }
-    toast.success(t('contentStorage.imported', { count }));
+    const artifacts = saveArtifacts(parsed.libraries);
+    count += artifacts.saved;
+    if (artifacts.failed.length) toast.error(t('contentStorage.artifactsPending'));
+    else toast.success(t('contentStorage.imported', { count }));
     if (drafts.length) toast.info(t('contentStorage.draftsPreserved', { count: drafts.length }));
     // A committed import is never restaged just because refreshing its UI failed.
     try {
@@ -141,6 +159,7 @@ export function ContentStorageNotice({ status, retry, restore }: {
     }
   };
   return <div className="shrink-0 px-2 py-1 text-xs" data-content-storage>
+    {artifactsPending && <p role="alert">{t('contentStorage.artifactsPending')}</p>}
     {key && <p role={problem || status.phase === 'unavailable' ? 'alert' : 'status'}>{t(key)}</p>}
     {status.recovered && <p role="alert">{t('contentStorage.recovered')}</p>}
     {(problem || status.phase === 'unavailable') && <Button size="sm" variant="outline" disabled={busy} onClick={() => void run(async () => {
@@ -159,7 +178,8 @@ export function ContentStorageNotice({ status, retry, restore }: {
           const live = useViewerStore.getState();
           const saved = await Promise.all([assistantLibrary.retry(), clashGroupLibrary.retry(), bcfDraftLibrary.retry(), bcfOutboxLibrary.retry(), modelChangeLibrary.retry(), clashGroupApplicationLibrary.retry(), reviewWorkspaceLibrary.retry(), semanticReviewLibrary.retry(), assistantRecipeLibrary.retry(), assistantPreferencesLibrary.retry(), live.retryDocumentsSave(), live.retryValidationReportsSave(), live.retrySaveComparisons(), live.retrySaveClashReports(), retryContentDrafts()]);
           const identitiesSaved = await retryContentImports();
-          if (saved.every(Boolean) && identitiesSaved) toast.success(t('contentStorage.saved'));
+          const artifacts = pendingArtifacts.current ? saveArtifacts(pendingArtifacts.current) : null;
+          if (saved.every(Boolean) && identitiesSaved && !artifacts?.failed.length) toast.success(t('contentStorage.saved'));
           else toast.error(t('contentStorage.someUnsaved'));
         })}>{t('contentStorage.retryAll')}</Button>
         <Button size="sm" variant="outline" disabled={busy} onClick={() => void run(async () => {

@@ -32,7 +32,7 @@ export interface ListSlice {
   listVisibilityOwned: VisibilityOwnership;
 
   // Actions
-  setListDefinitions: (definitions: ListDefinition[]) => void;
+  setListDefinitions: (definitions: ListDefinition[]) => boolean;
   addListDefinition: (definition: ListDefinition) => void;
   updateListDefinition: (id: string, updates: Partial<ListDefinition>) => void;
   deleteListDefinition: (id: string) => void;
@@ -58,8 +58,9 @@ export const createListSlice: StateCreator<ListSlice, [], [], ListSlice> = (set,
 
   // Actions
   setListDefinitions: (listDefinitions) => {
+    if (!saveListDefinitions(listDefinitions)) return false;
     set({ listDefinitions });
-    saveListDefinitions(listDefinitions);
+    return true;
   },
 
   addListDefinition: (definition) => {

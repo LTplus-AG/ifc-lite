@@ -133,6 +133,26 @@ function readGroups(o: Record<string, unknown>): FilterGroup[] | null {
   return parseFilterGroups(o.groups);
 }
 
+/** One native codec for persistent catalog rows and library backups (#7218). */
+export function decodeSavedFilter(value: unknown): SavedFilterPreset | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const row = value as Record<string, unknown>;
+  const name = typeof row.name === 'string' ? row.name.trim() : '';
+  if (!name || name.length > MAX_NAME_LEN) return null;
+  const groups = readGroups(row);
+  return groups ? normalizeSavedFilter(row, name, groups) : null;
+}
+function normalizeSavedFilter(row: Record<string, unknown>, name: string, groups: FilterGroup[]): SavedFilterPreset {
+  return { name, groups, combinator: groups[0]?.combinator ?? 'AND', rules: groups[0]?.rules ?? [],
+    updatedAt: typeof row.updatedAt === 'number' ? row.updatedAt : Date.now(),
+    ...(isCapturedEntityScope(row.capturedScope) ? { capturedScope: structuredClone(row.capturedScope) } : {}) };
+}
+export function encodeSavedFilter(preset: SavedFilterPreset): unknown {
+  return { name: preset.name, schemaVersion: preset.capturedScope ? 3 : SCHEMA_VERSION, groups: preset.groups,
+    ...(preset.groups.length === 1 && !preset.capturedScope ? { combinator: preset.groups[0].combinator, rules: preset.groups[0].rules } : {}),
+    ...(preset.capturedScope ? { capturedScope: preset.capturedScope } : {}), updatedAt: preset.updatedAt };
+}
+
 function readRaw(validate?: (preset: unknown) => unknown): SavedFilterPreset[] {
   const ls = safeStorage();
   if (!ls) return [];
@@ -183,15 +203,7 @@ function readRaw(validate?: (preset: unknown) => unknown): SavedFilterPreset[] {
         );
         continue;
       }
-      const updatedAt = typeof o.updatedAt === 'number' ? o.updatedAt : Date.now();
-      const preset: SavedFilterPreset = {
-        ...(isCapturedEntityScope(o.capturedScope) ? { capturedScope: structuredClone(o.capturedScope) } : {}),
-        name,
-        groups,
-        combinator: groups[0]?.combinator ?? 'AND',
-        rules: groups[0]?.rules ?? [],
-        updatedAt,
-      };
+      const preset = normalizeSavedFilter(o, name, groups);
 
       // `validate` runs against the RAW JSON, unchanged from before #4904 —
       // NOT the normalized `preset` above. `ownAppearanceQuery` (the one
@@ -256,14 +268,7 @@ function writeRaw(list: SavedFilterPreset[]): boolean {
     // the first OR-branch, and a reader taking that as the whole filter would
     // silently narrow a `+` union rather than fail to read it — see
     // `SCHEMA_VERSION`'s doc comment.
-    const onDisk = list.map((p) => ({
-      name: p.name,
-      schemaVersion: p.capturedScope ? 3 : SCHEMA_VERSION,
-      groups: p.groups,
-      ...(p.groups.length === 1 && !p.capturedScope ? { combinator: p.groups[0].combinator, rules: p.groups[0].rules } : {}),
-      ...(p.capturedScope ? { capturedScope: p.capturedScope } : {}),
-      updatedAt: p.updatedAt,
-    }));
+    const onDisk = list.map(encodeSavedFilter);
     ls.setItem(STORAGE_KEY, JSON.stringify(onDisk));
     return true;
   } catch (err) {

@@ -788,7 +788,7 @@ export function LensPanel({ onClose }: LensPanelProps) {
     setCreatingAutoColor(false);
     setEditingLens(lens ? { ...lens, rules: cloneLensRules(lens.rules) } : null);
   }, []);
-  const editorRequestVersion = useLensEditorRequest(handleEditLens);
+  const { version: editorRequestVersion, canSave } = useLensEditorRequest(handleEditLens, editingLens?.id);
   /** Duplicate a lens (incl. a builtin) and open the editable copy for editing. */
   const handleDuplicateLens = useCallback((id: string) => {
     const result = duplicateLens(id);
@@ -803,6 +803,7 @@ export function LensPanel({ onClose }: LensPanelProps) {
   }, [duplicateLens]);
 
   const handleSaveLens = useCallback((lens: Lens) => {
+    if (!canSave(lens.id)) return;
     const exists = savedLenses.some(l => l.id === lens.id);
     const result = exists
       ? updateLens(lens.id, { name: lens.name, rules: lens.rules, autoColor: lens.autoColor })
@@ -816,7 +817,7 @@ export function LensPanel({ onClose }: LensPanelProps) {
     }
     setEditingLens(null);
     setCreatingAutoColor(false);
-  }, [savedLenses, createLens, updateLens]);
+  }, [savedLenses, createLens, updateLens, canSave]);
 
   const handleDeleteLens = useCallback((id: string) => {
     if (activeLensId === id) {

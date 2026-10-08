@@ -37,7 +37,7 @@ const walls = { combinator: 'AND', rules: [{ kind: 'ifcType', op: 'in', values: 
 // saved libraries, field discovery and persistence execute unchanged.
 const renderer: ChartRenderer = async () => () => ({ setOption: () => {}, select: () => {}, resize: () => {}, dispose: () => {} });
 function nameInput(ui: HTMLElement, name: string): HTMLInputElement | undefined {
-  return [...ui.querySelectorAll('input')].find(input => input.value === name);
+  return [...ui.querySelectorAll('input')].find(input => input.type === 'text' && input.value === name);
 }
 function editorButton(ui: HTMLElement, action: 'save' | 'cancel'): HTMLButtonElement {
   const button = [...ui.querySelectorAll('button')].find(item => new RegExp(action, 'i').test(item.textContent?.trim() ?? ''));
@@ -203,3 +203,79 @@ test('#7167 auto-color proposals reuse the native AutoColorEditor and preserve t
   const rerun = await previewLens({ version: 1, kind: 'lens.proposal', title: 'Native saved auto color', lens: reloaded }, useViewerStore.getState());
   assert.equal(rerun.matched, reviewed.matched);
 });
+
+test('#7167 switching the native dashboard picker cannot save a reviewed chart into another dashboard', async () => {
+  const { target, artifact } = await savedReview('chart.proposal', 'Owner chart A');
+  assert.ok(target.kind === 'chart.proposal');
+  act(() => openSavedArtifact(target, artifact));
+  const ui = render(<ChartsPanel renderer={renderer} />);
+  await advance(25);
+  const input = nameInput(ui, target.name);
+  assert.ok(input);
+  typeInput(input, 'Must remain in owner A');
+  const picker = ui.querySelector('select');
+  assert.ok(picker);
+  const preset = [...picker.options].find(option => option.value.startsWith('preset:'));
+  assert.ok(preset);
+  act(() => { picker.value = preset.value; picker.dispatchEvent(new window.Event('change', { bubbles: true })); });
+  await advance(25);
+  const otherDashboardId = useViewerStore.getState().activeDashboardId;
+  assert.notEqual(otherDashboardId, target.dashboardId, 'native picker creates and selects a distinct preset dashboard');
+  const save = [...ui.querySelectorAll('button')].find(button => /save/i.test(button.textContent ?? ''));
+  if (save) click(save);
+  assert.equal(loadDashboards().find(dashboard => dashboard.id === otherDashboardId)?.charts.some(chart => chart.id === target.id), false, 'a reviewed chart cannot be inserted into the newly selected dashboard');
+});
+
+for (const kind of ['lens.proposal', 'chart.proposal'] as const) {
+  test(`#7167 ${kind} removal after the editor opens cannot recreate the saved item`, async () => {
+    const { target, artifact } = await savedReview(kind, 'Remove while editing');
+    act(() => openSavedArtifact(target, artifact));
+    const ui = render(nativePanel(kind));
+    await advance(25);
+    const input = nameInput(ui, target.name);
+    assert.ok(input);
+    typeInput(input, 'Cannot recreate this item');
+    act(() => {
+      const state = useViewerStore.getState();
+      if (target.kind === 'lens.proposal') state.deleteLens(target.id);
+      else {
+        const dashboard = state.dashboards.find(item => item.id === target.dashboardId);
+        assert.ok(dashboard);
+        state.upsertDashboard({ ...dashboard, charts: dashboard.charts.filter(chart => chart.id !== target.id), layout: dashboard.layout.filter(item => item.chartId !== target.id) });
+      }
+    });
+    await advance(25);
+    const save = [...ui.querySelectorAll('button')].find(button => /save/i.test(button.textContent ?? ''));
+    if (save) click(save);
+    const state = useViewerStore.getState();
+    assert.equal(target.kind === 'lens.proposal' ? state.savedLenses.some(lens => lens.id === target.id) : state.dashboards.some(dashboard => dashboard.charts.some(chart => chart.id === target.id)), false, 'native Save cannot re-create a removed saved identity');
+  });
+}
+
+for (const kind of ['lens.proposal', 'chart.proposal'] as const) {
+  test(`#7167 ${kind} native new authoring remains saveable after a reviewed editor is cancelled`, async () => {
+    const { target, artifact } = await savedReview(kind, 'Previous reviewed owner');
+    act(() => openSavedArtifact(target, artifact));
+    const ui = render(nativePanel(kind));
+    await advance(25);
+    click(editorButton(ui, 'cancel'));
+    const add = [...ui.querySelectorAll('button')].find(button => button.textContent?.includes(kind === 'lens.proposal' ? 'New Auto-Color Lens' : 'Add chart'));
+    assert.ok(add); click(add); await advance(25);
+    const input = nameInput(ui, kind === 'lens.proposal' ? 'Color by IFC Class' : 'Elements by type');
+    assert.ok(input); typeInput(input, 'Independent native draft');
+    act(() => {
+      const state = useViewerStore.getState();
+      if (target.kind === 'lens.proposal') state.deleteLens(target.id);
+      else {
+        const dashboard = state.dashboards.find(item => item.id === target.dashboardId);
+        assert.ok(dashboard);
+        state.upsertDashboard({ ...dashboard, charts: dashboard.charts.filter(chart => chart.id !== target.id) });
+      }
+    });
+    await advance(25);
+    assert.ok(nameInput(ui, 'Independent native draft'), 'removing the cancelled owner cannot close a new native draft');
+    click(editorButton(ui, 'save'));
+    const state = useViewerStore.getState();
+    assert.equal(kind === 'lens.proposal' ? state.savedLenses.some(lens => lens.id !== target.id && lens.name === 'Independent native draft') : loadDashboards().some(dashboard => dashboard.charts.some(chart => chart.id !== target.id && chart.title === 'Independent native draft')), true);
+  });
+}

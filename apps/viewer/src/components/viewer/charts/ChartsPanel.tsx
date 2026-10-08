@@ -86,7 +86,7 @@ export function ChartsPanel({ renderer, reportSeams }: ChartsPanelProps) {
   const dashboard = useMemo(() => dashboards.find((d) => d.id === activeDashboardId) ?? null, [dashboards, activeDashboardId]);
   const scope = dashboard?.scope ?? { kind: 'all' as const };
   const [editing, setEditing] = useState<ChartSpec | null>(null);
-  const editorRequestVersion = useChartEditorRequest(setEditing);
+  const { version: editorRequestVersion, canSave } = useChartEditorRequest(setEditing, editing?.id);
   // Only SAVED charts decide which IFC fields the shared datasets carry. The
   // editor's draft binds to a synthesized column of its own (`editorColumns`),
   // so picking through fields never rebuilds every card's dataset (#4833).
@@ -145,7 +145,7 @@ export function ChartsPanel({ renderer, reportSeams }: ChartsPanelProps) {
 
   const update = useCallback((next: DashboardSpec) => upsertDashboard(next), [upsertDashboard]);
   const saveChart = useCallback((spec: ChartSpec) => {
-    if (!dashboard) return;
+    if (!dashboard || !canSave(spec.id)) return;
     const exists = dashboard.charts.some((c) => c.id === spec.id);
     const previous = dashboard.charts.find((c) => c.id === spec.id);
     const fieldsOf = (chart: ChartSpec) => JSON.stringify([chart.elementField, chart.measureField].map((field) => field ? elementFieldColumnId(field) : null));
@@ -156,7 +156,7 @@ export function ChartsPanel({ renderer, reportSeams }: ChartsPanelProps) {
     const layout = exists ? dashboard.layout : [...dashboard.layout, { chartId: spec.id, x: 0, y: dashboard.layout.length * 4, w: 6, h: 4 }];
     update({ ...dashboard, charts, layout });
     setEditing(null);
-  }, [chartSlice, chartSliceBuckets, chartSliceSource, dashboard, link, update]);
+  }, [chartSlice, chartSliceBuckets, chartSliceSource, dashboard, link, update, canSave]);
   const removeChart = useCallback((id: string) => {
     if (!dashboard) return;
     update({ ...dashboard, charts: dashboard.charts.filter((c) => c.id !== id), layout: dashboard.layout.filter((l) => l.chartId !== id) });

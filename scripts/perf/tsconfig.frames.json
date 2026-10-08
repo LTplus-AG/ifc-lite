@@ -11,6 +11,8 @@
   },
   "files": [
     "./frame-gpu-rig.mts",
+    "./frame-gpu-night-history.test.ts",
+    "./frame-gpu-night-profile.test.ts",
     "../../tests/benchmark/viewer-benchmark-page.ts",
     "../../tests/benchmark/frames/frame-rig.spec.ts"
   ],

@@ -18,7 +18,7 @@ import type { ViewerState } from '@/store';
 import { entityName, typeOf } from '@/lib/commands/modeling/authored-kinds';
 import { pointToMetres } from '@/lib/length-unit-scale';
 import { resolvePlacementChain, resolveRotationState } from '@/lib/placement-edit';
-import { modelReader, type ModelReader } from './model-change-values';
+import type { ModelReader } from './model-change-values';
 import { readOnlyModelEditTarget } from './model-authoring-read-target';
 
 export interface AuthoringReader extends ModelReader {
@@ -28,9 +28,7 @@ export interface AuthoringReader extends ModelReader {
 
 /** Snapshot current native facts without publishing an editor, view or allocator watermark (#7267). */
 export function authoringReader(state: ViewerState, modelId: string): AuthoringReader | null {
-  const reader = modelReader(state, modelId);
-  const target = readOnlyModelEditTarget(state, modelId);
-  return reader && target ? { ...reader, ...target } : null;
+  return readOnlyModelEditTarget(state, modelId);
 }
 
 const live = (reader: AuthoringReader) => ({ dataStore: reader.dataStore, view: reader.view });

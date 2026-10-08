@@ -87,7 +87,7 @@ export interface WorkerTraceHostOptions {
  * main thread terminates on a message it is about to send (the pre-pass
  * worker on its final event) calls it first, or the counters die with it.
  */
-export type WorkerTraceHost = ((data: unknown, run: () => Promise<void>) => Promise<void>) & { flush(): void };
+export type WorkerTraceHost = ((data: unknown, run: () => Promise<void>) => Promise<void>) & { flush(): void; reset(): void };
 
 export function createWorkerTraceHost(options: WorkerTraceHostOptions): WorkerTraceHost {
   let recorder: WorkerSpanRecorder | null = null;
@@ -120,11 +120,16 @@ export function createWorkerTraceHost(options: WorkerTraceHostOptions): WorkerTr
     try {
       await run();
     } finally {
-      if (traced) rec.end(token);
-      flush(rec);
+      if (recorder === rec) {
+        if (traced) rec.end(token);
+        flush(rec);
+      }
     }
   };
-  return Object.assign(host, { flush: () => { if (recorder) flush(recorder); } });
+  return Object.assign(host, {
+    flush: () => { if (recorder) flush(recorder); },
+    reset: () => { recorder = null; seenOnce.clear(); counters.reset(); },
+  });
 }
 
 /** Ask `worker` to record spans for `trace` (no-op when tracing is off). Returns `worker`. */

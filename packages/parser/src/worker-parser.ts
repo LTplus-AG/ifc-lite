@@ -20,6 +20,7 @@
  * completes (matches the in-process callback behavior).
  */
 
+import { deliverCompiledParserModule } from './parser-worker-engine-module.js';
 import type { IfcDataStore } from './columnar-parser.js';
 import type { ParseOptions } from './index.js';
 import { WorkerIndexReceiver, type WorkerStorePayload } from './worker-index-publication.js';
@@ -34,6 +35,10 @@ import { makeAbortError } from './abort-error.js';
 import { NOOP_LOAD_TRACE, accountWorkerMessages, enableWorkerTrace, isTraceSpansMessage, type LoadTrace } from '@ifc-lite/load-trace';
 
 export interface WorkerParserOptions extends ParseOptions {
+  /** Already compiled engine from the host; structured-cloned only when the scanner is needed. */
+  wasmModule?: WebAssembly.Module | null;
+  /** Shared compilation delivered asynchronously; does not delay worker spawn or index handoff. */
+  wasmModulePromise?: Promise<WebAssembly.Module | null>;
   /** Fresh per-request 16-byte prepass fingerprint cell; never awaited. */
   sourceFingerprint?: SharedArrayBuffer;
   /** Override the worker URL. Default: bundler-resolved `parser.worker.ts`. */
@@ -298,6 +303,8 @@ export class WorkerParser {
       enableWorkerTrace(worker, trace, 'parser');
       const input: ParserWorkerInputMessage = {
         type: 'parse',
+        wasmModule: options.wasmModule ?? undefined,
+        waitForWasmModule: options.wasmModulePromise !== undefined,
         sourceFingerprint: options.sourceFingerprint,
         indexTransport: 'packed-index-v1',
         id,
@@ -308,13 +315,9 @@ export class WorkerParser {
       };
       try {
         worker.postMessage(input);
+        if (options.wasmModulePromise) deliverCompiledParserModule(worker, id, options.wasmModulePromise, () => settled, cancel);
       } catch (err) {
-        // postMessage can itself throw (e.g. a DataCloneError from structured
-        // clone). It's called after the worker is spawned, assigned to
-        // `this.worker`, and its handlers attached, so without this catch the
-        // Promise executor's synchronous throw auto-rejects the returned
-        // promise while nothing ever calls settle() — the worker thread is
-        // left running (and `this.worker` left pointing at it) forever.
+        // A clone failure must settle and tear down this already-spawned request.
         settle(() => {
           worker.terminate();
           if (this.worker === worker) this.worker = null;
@@ -378,8 +381,8 @@ export class WorkerParser {
    * that request's `signal` instead.
    */
   terminate(): void {
-    // Snapshot: each cancel removes itself from the set while we iterate.
-    for (const cancel of [...this.activeCancels]) cancel();
+    // Deleting the current entry preserves iteration over the remaining requests.
+    for (const cancel of this.activeCancels) cancel();
     if (this.worker) {
       // No in-flight promise to settle (e.g. called after a request already
       // resolved/rejected but before a new one started) — just drop the

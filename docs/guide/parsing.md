@@ -132,6 +132,15 @@ if (WorkerParser.isSupported()) {
 }
 ```
 
+When a host also uses geometry workers, pass their canonical compiled engine
+as `wasmModulePromise: compileSharedWasmModule(wasmUrl)` to
+`WorkerParser.parseColumnar`, using the compiler from `@ifc-lite/geometry`.
+Worker startup and cancellation do not wait for compilation. The parser receives
+the module through a request-tagged control message and awaits it only if it
+actually scans. A pre-pass entity-index handoff skips this wait and scanner
+initialization. A null compilation result retains normal scanner initialization;
+an already compiled `wasmModule` is also accepted.
+
 For an integrated geometry/parser load, both `WorkerParser.parseColumnar` and
 `GeometryProcessor.processAdaptive` accept an optional `sourceFingerprint` cell.
 Use a fresh 16-byte `SharedArrayBuffer` for each immutable source and pass that

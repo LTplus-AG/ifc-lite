@@ -5,6 +5,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   createLoadTracer,
+  createPerfCounters,
   createWorkerTraceHost,
   enableWorkerTrace,
   isTraceSpansMessage,
@@ -76,4 +77,40 @@ describe('worker trace alignment (#6956)', () => {
     expect(enableWorkerTrace(worker, off, 'geom-0')).toBe(worker);
     expect(sent).toEqual([]);
   });
+});
+
+// #7036: a persistent geometry worker must not attribute a later untraced load to an old epoch.
+it('reset ends a worker trace epoch and restores untraced execution', async () => {
+  const counters = createPerfCounters();
+  const posted: TraceSpansMessage[] = [];
+  const host = createWorkerTraceHost({ spanNames: { job: 'geometry.job' }, counters, post: m => posted.push(m) });
+  await host({ type: 'load-trace:enable', thread: 'first' }, async () => {});
+  await host({ type: 'job' }, async () => { counters.add('source.bytes', 20); });
+  expect(posted).toHaveLength(1);
+  host.reset();
+  await host({ type: 'job' }, async () => { counters.add('source.bytes', 30); });
+  expect(posted).toHaveLength(1);
+  expect(counters.read()).toEqual({});
+  await host({ type: 'load-trace:enable', thread: 'second' }, async () => {});
+  await host({ type: 'job' }, async () => { counters.add('source.bytes', 7); });
+  expect(posted[1].payload.thread).toBe('second');
+  expect(posted[1].payload.counters).toEqual({ 'source.bytes': 7 });
+});
+
+it('#7036 an old handler finishing after reset cannot flush into a new trace epoch', async () => {
+  const counters = createPerfCounters();
+  const posted: TraceSpansMessage[] = [];
+  const host = createWorkerTraceHost({ spanNames: { job: 'geometry.job' }, counters, post: m => posted.push(m) });
+  await host({ type: 'load-trace:enable', thread: 'old' }, async () => {});
+  let finishOld: (() => void) | undefined;
+  const old = host({ type: 'job' }, () => new Promise(resolve => { finishOld = resolve; }));
+  host.reset();
+  await host({ type: 'load-trace:enable', thread: 'new' }, async () => {});
+  await host({ type: 'job' }, async () => { counters.add('new.bytes', 7); });
+  finishOld?.();
+  await old;
+  expect(posted).toHaveLength(1);
+  expect(posted[0].payload.thread).toBe('new');
+  expect(posted[0].payload.counters).toEqual({ 'new.bytes': 7 });
+  expect(posted[0].payload.spans).toHaveLength(1);
 });

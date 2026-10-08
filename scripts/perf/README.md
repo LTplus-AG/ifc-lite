@@ -92,8 +92,8 @@ runtime fiber census unattributable, and mounted counts move with UI state).
 
 The resumed [cold-load captures](evidence/worker-warmup-7036/README.md) show
 earlier worker readiness but mixed first-visible and total-load results. No
-end-to-end speedup is accepted. The candidate creates fresh workers beside the
-file read and still terminates them after each load; it does not satisfy the
+end-to-end speedup is accepted. The historical candidate created fresh workers beside the
+file read and terminated them after each load; it does not satisfy the
 original persistent-reuse requirement. Geometry counts match, but an ordered
 geometry hash was not collected. Repeat/federation measurements during takeover
 overlapped validation builds and need an idle-machine repeat. Lesson: moving
@@ -104,6 +104,19 @@ The experiment defaults off on both the viewer and worker paths. Repeated cache
 hits cannot extend an unused worker's expiry, and memory-pressure retries drain
 the pool without refilling it. These are lifecycle corrections, not an accepted
 performance win; the end-to-end verdict above remains held.
+
+The persistent-pool follow-up uses the existing pool rather than adding another
+worker home. A serialized reset acknowledges only after the previous worker
+callback unwinds and frees the model API, source, indexes and pre-pass cache.
+Measured initial and reset heaps gate idle admission; failure, abandonment,
+unknown/grown heaps, hidden documents and memory pressure terminate workers.
+The parser receives the shared compiled module asynchronously so index handoff
+does not wait for compilation. Actual authoring-tool correctness controls are
+separate from the still-pending real-GPU A/B and resident-memory acceptance.
+No performance win or rollout is admitted from booked memory or unit controls.
+Lesson: posting engine init is not worker readiness. An idle counter before its
+acknowledgement made a reset deadline include cold startup, so fresh instances
+need the same measured admission contract as returned instances.
 
 ## Single-model appends cost O(new meshes) in the viewport (#7021)
 

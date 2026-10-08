@@ -98,8 +98,9 @@ describe('#7186 captured native membership', () => {
     const entity = view.createEntity('IfcWall', ['atomic-authored-guid', null, 'Original wall']);
     const creation = view.getMutations().find(mutation => mutation.type === 'CREATE_ENTITY')!;
     const scope = scopeFor(entity.expressId, creation.id);
-    const prepared = view.prepareAtomic(draft => draft.setAttribute(entity.expressId, 'Name', 'Atomic wall edit', true));
+    const prepared = view.prepareAtomic(draft => draft.setAttribute(entity.expressId, 'Name', 'Atomic wall edit', undefined, true));
     prepared.commit();
+    expect(view.getMutations()).toHaveLength(1);
     expect(view.getNewEntity(entity.expressId)).not.toBe(entity);
     expect(view.getNewEntity(entity.expressId)?.creationId).toBe(creation.id);
     expect(resolveCapturedEntityScope(scope, [source('a', view)]).get('a')?.has(entity.expressId)).toBe(true);

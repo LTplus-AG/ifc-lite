@@ -16,6 +16,7 @@
  * total is over the whole selection.
  */
 
+import { authoringReachEvidence } from '@/lib/actions/model-authoring-reach';
 import { IfcQuery } from '@ifc-lite/query';
 import { extractClassificationsOnDemand, extractProjectUnits, materialAssignmentsAvailable, ProjectUnits, type IfcDataStore } from '@ifc-lite/parser';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
@@ -153,6 +154,7 @@ function elementRow(s: ViewerState, ref: EntityRef, source: ModelSource, rich: b
     modelName: source.name,
     type: effectiveSelectedClass(source.store, source.view, ref.expressId),
     name: typeof name === 'string' && name.length > 0 ? bounded(name) : null,
+    nativeTrimExtendExpected: authoringReachEvidence(s, ref.modelId, ref.expressId),
     attributes, psets, psetCount: data.psets.length, quantities, qsetCount: data.qsets.length,
     structuralStatus: !source.store ? 'unavailable' : source.store.source?.length ? 'available' : 'unavailable-source',
     structural: structuralEvidence(structuralData, ref.expressId, typeof data.attributes.get('GlobalId') === 'string'

@@ -14,8 +14,8 @@ import { PROFILE_FIELDS, PROFILE_KINDS } from '@/lib/profile-section/profile-kin
 const sectionDimensions = PROFILE_KINDS.map((type) => `${type} {${PROFILE_FIELDS[type].map((field) => field.name).join(',')}}`).join('; ');
 
 export const MODEL_AUTHORING_OUTPUT_GUIDANCE =
-  'When asked to create, copy, array, delete, move, turn, type, join or place elements, return only JSON {"version":1,"kind":"model.authoring",'
-  + '"title":"Short title","rationale":"Why","units":"mm","frame":"storey-local","operations":[...]}. "units" is "m" or "mm" and applies to every length; '
+  'When asked to create, copy, array, delete, move, turn, trim, extend, type, join or place elements, return only JSON {"version":1,"kind":"model.authoring",'
+  + '"title":"Short title","rationale":"Why","units":"mm","frame":"storey-local","operations":[...]}. "units" is "m" or "mm" and applies to command lengths (nativeTrimExtendExpected is a verbatim mixed-unit source snapshot); '
   + 'coordinates are storey-local [x,y,z], Z up; angles are degrees counter-clockwise from above. Existing elements are '
   + '{"globalId","ifcClass","name"} exactly as in the evidence; elements created earlier in the batch are {"ref":"wall-1"}. Ops: '
   + 'element.create {ref, ifcClass: IfcWall|IfcSlab|IfcRoof|IfcPlate|IfcColumn|IfcBeam|IfcMember|IfcSpace, storey:{globalId}, name, params}: '
@@ -27,6 +27,7 @@ export const MODEL_AUTHORING_OUTPUT_GUIDANCE =
   + 'Positive fillet radii are written accurately but the preview uses the native sharp-corner approximation; review discloses this. '
   + 'Native builder acceptance is not a polygon topology/engineering validity verdict; use simple valid footprints. '
   + 'element.delete {target}; element.move {target, delta:[dx,dy]}; element.rotate {target, angleDeg}; '
+  + 'element.trimExtend {target, mode:trim|extend, expected: nativeTrimExtendExpected from selected-element evidence, click:[x,y], boundary:{line:{a:[x,y],b:[x,y],tMin,tMax,reach}} or {wall:target or earlier ref, expected:that existing wall nativeTrimExtendExpected.wall}}. Targets are existing walls/beams/members, joined walls and sloped supported native sections included. Copy the entire expected native snapshot verbatim; never convert its file coordinates, metre values or internal IDs. Click/line endpoints/reach use declared units; tMin/tMax are finite dimensionless bounds. Ask for unavailable expected geometry or boundary data. Native fit/shared-geometry/host checks decide; review shows planned end/length/join and outer-body-only or unavailable ghosts. '
   + 'element.resize {target, expected, size}: existing targets only; expected is the full current native dimensions: {kind:"wall",height,thickness}, {kind:"slab",thickness}, or {kind:"linear",length,width,cross,profiled:boolean}. size repeats kind and supplies one or more changed dimensions; linear length may state fixed:"start"|"end". Non-rectangular sections cannot change width/cross through resize. '
   + 'element.profile {target, expected:current Profile, Profile:new Profile}: existing centred beam/column/member extrusion sections only, with the same exact native fields and declared units as creation. Never invent the expected current dimensions/section; ask if unavailable. '
   + 'Resize uses the native hosted-fit/ownership checks; wall/slab thickness also updates only that occurrence\'s material layers. Review states unavailable geometry previews, omitted fillets and outer-body-only previews. '

@@ -28,6 +28,7 @@ import {
 import { captureAuthoringSources } from './model-authoring-sources';
 import { resolveGlobalId } from './resolve-global-id';
 import { readElementProfile } from '@/store/slices/mutation-element-profile';
+import { verifyReachExpected, reachBefore } from './model-authoring-reach';
 import { readAuthoringSize, sameNativeDimensions } from './model-authoring-size';
 import { sizeInMetres, type ExpectedSize } from './model-authoring-size-params';
 import { profileInMetres } from './model-authoring-shape-params';
@@ -40,6 +41,7 @@ export type AuthoringRowStatus = RowStatus | 'invalid' | 'blocked';
 /** What the element is now, for the before → after summary. */
 export interface AuthoringBefore {
   size?: ExpectedSize;
+  reach?: Record<string, unknown>;
   Profile?: ProfileSection;
   ifcClass?: string;
   name?: string;
@@ -150,6 +152,15 @@ const near = (a: number, b: number, tolerance: number) => Math.abs(a - b) <= tol
 function resolve(ctx: Context, row: AuthoringRow): void {
   const { op } = row;
   switch (op.op) {
+    case 'element.trimExtend': {
+      row.resolved.target = row.expressId = existing(ctx, op.target, row);
+      const r = reader(ctx, row.modelId!);
+      try { verifyReachExpected(r.dataStore, r.view, r.editor, row.expressId, op); }
+      catch (error) { throw new Refusal('conflict', error instanceof Error ? error.message : String(error)); }
+      row.before.reach = reachBefore(ctx.state, row.modelId!, row.expressId) ?? undefined;
+      if ('wall' in op.boundary) row.resolved.reachBoundary = element(ctx, op.boundary.wall, row);
+      return;
+    }
     case 'element.resize': case 'element.profile': {
       row.resolved.target = row.expressId = existing(ctx, op.target, row);
       if (op.op === 'element.resize') {
@@ -306,7 +317,7 @@ export function previewModelAuthoring(state: ViewerState, batch: ModelAuthoringB
     }
   }
   nativeDryRun(ctx, batch);
-  for (const row of ctx.rows) if (row.status === 'ready' && row.modelId && (row.op.op === 'element.resize' || row.op.op === 'element.profile')) {
+  for (const row of ctx.rows) if (row.status === 'ready' && row.modelId && (row.op.op === 'element.resize' || row.op.op === 'element.profile' || row.op.op === 'element.trimExtend')) {
     const ghost = authoringSizeGhost(state, batch, row, row.modelId, 0);
     row.previewUnavailable = ghost.unavailable;
     row.previewOmitted = ghost.omitted;

@@ -6,6 +6,8 @@ import type { TranslationValue } from '../types';
 
 /** Reviewed native authoring (viewer AI P15A): `components/viewer/actions/ModelAuthoringReview.tsx`, assistant proposals. */
 export const modelAuthoringEn = {
+  'modelAuthoring.reachNeighborPreview': 'The preview shows the target body; adjoining wall updates are not drawn. Applying uses the native joined-wall writer.',
+  'modelAuthoring.trimExtendResult': '{mode} {end} · length {length} {units} {joined}',
   'modelAuthoring.commandLabel': 'Apply reviewed authoring',
   'modelAuthoring.title': 'Review model authoring',
   'modelAuthoring.rows': 'Proposed operations',

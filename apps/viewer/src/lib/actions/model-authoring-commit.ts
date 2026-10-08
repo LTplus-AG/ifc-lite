@@ -30,6 +30,7 @@ import { previewModelAuthoring, type AuthoringRow, type ModelAuthoringPreview } 
 import { undoBatch, type AppliedChange, type CommitOutcome, type ModelChangeReceipt } from './model-change-commit';
 import { commitElementSize } from '@/lib/element-size-commit';
 import { setElementProfile } from '@/store/slices/mutation-element-profile';
+import { writeAuthoringReach } from './model-authoring-reach';
 import { sizeInMetres } from './model-authoring-size-params';
 import { profileInMetres } from './model-authoring-shape-params';
 
@@ -70,6 +71,14 @@ function writeRow(tx: AuthoringTransaction, batch: ModelAuthoringBatch, row: Aut
   const base = { index: row.index, op: op.op, modelId };
   const targetGid = 'target' in op && !('ref' in op.target) ? op.target.globalId : undefined;
   switch (op.op) {
+    case 'element.trimExtend': {
+      const result = recordModellingEdit(tx.api, modelId, (_methods, editor) =>
+        writeAuthoringReach(batch, tx.store.models.get(modelId)!.ifcDataStore!, editor, resolved.target!, op, resolved.reachBoundary, ids), tx.batchId);
+      written.remesh.push(...result.walls);
+      written.moved = true;
+      return [{ ...base, globalId: op.target.globalId, field: 'Trim/Extend', before: JSON.stringify(before.reach),
+        after: JSON.stringify({ mode: result.op, end: result.end, lengthMetres: result.length, joined: result.joined }) }];
+    }
     case 'element.resize': case 'element.profile': {
       const outcome = op.op === 'element.resize'
         ? commitElementSize(tx.api, modelId, resolved.target!, sizeInMetres(op.size, batch.units))

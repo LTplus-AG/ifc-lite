@@ -10,6 +10,8 @@
  * identity, so pinning another card makes earlier evidence stale.
  */
 
+import { useClashGroupApplications } from '../clash/group-applications';
+import { useClashGroupLibrary } from '../clash/group-workspace';
 import { subscribeRevisionBaseline } from '../clash/revision-baseline';
 import { useViewerStore } from '@/store';
 import { useSemanticSession } from '../semantic/session';
@@ -40,6 +42,8 @@ const clearSourcePin = () => {
   if (useReviewAssistantCard.getState().card) useReviewAssistantCard.setState({ card: null, project: null });
 };
 subscribeRevisionBaseline(clearSourcePin);
+useClashGroupApplications.subscribe((next, previous) => { if (next.entries !== previous.entries || next.status.phase !== previous.status.phase) clearSourcePin(); });
+useClashGroupLibrary.subscribe((next, previous) => { if (next.entries !== previous.entries || next.status.phase !== previous.status.phase) clearSourcePin(); });
 useViewerStore.subscribe((next, previous) => {
   if (next.clashResult !== previous.clashResult || next.clashRawResult !== previous.clashRawResult
     || next.idsValidationReport !== previous.idsValidationReport || next.compareResult !== previous.compareResult
@@ -55,8 +59,9 @@ useSemanticSession.subscribe((next, previous) => {
 
 export const REVIEW_EVIDENCE_LIMITATIONS =
   'One coordination card from the review workspace. Findings were grouped only because they name exactly the same validated elements; '
-  + 'nativeStatus is the source analysis status, verbatim. run.temporal=historical is saved earlier evidence and does not describe the live model. '
+  + 'nativeStatus is the native source status, verbatim. run.temporal=historical is saved earlier evidence and does not describe the live model. '
   + 'lifecycle no-longer-observed is a resolution candidate for a person to confirm, never a resolution; not-evaluated means no complete compatible run looked again. '
+  + 'lifecycle record is a coordination record, including a saved grouping application, and never confirms analysis resolution. '
   + 'humanDecision is the reviewer\'s own status and comment; do not restate it as an engine result, and never propose changing native statuses or BCF topic status.';
 
 /** One cited row per finding; the common envelope first, then the source fields. */

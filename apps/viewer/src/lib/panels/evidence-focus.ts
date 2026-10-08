@@ -8,3 +8,6 @@ export const useSavedComparisonFocus = create<{ record: { comparisonId: string; 
 export const useSemanticRecordFocus = create<{ record: { resourceId: string } | null }>(() => ({ record: null }));
 
 export const useReconciliationFocus = create<{ record: { baseRunId: string; headRunId: string; identity: string } | null }>(() => ({ record: null }));
+
+export interface ClashApplicationFocusRequest { applicationId: string; workspaceId: string; contextWorkspaceId: string; orphaned: boolean }
+export const useClashApplicationFocus = create<{ record: ClashApplicationFocusRequest | null }>(() => ({ record: null }));

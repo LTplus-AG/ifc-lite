@@ -19,6 +19,9 @@ import { useSemanticSession } from '../../semantic/session';
 import type { FindingSource } from '../types';
 import { bcfFindings } from './bcf';
 import { clashFindings } from './clash';
+import { groupReceiptFindings } from './group-receipts';
+import { useClashGroupApplications } from '../../clash/group-applications';
+import { useClashGroupLibrary } from '../../clash/group-workspace';
 import { comparisonFindings } from './comparison';
 import { reconciliationFindings } from './reconciliation';
 import { linkedFindings } from './linked';
@@ -34,10 +37,18 @@ export const FINDING_SOURCES: readonly FindingSource[] = [
   { kind: 'clash', collect(models) {
     const state = useViewerStore.getState();
     const result = state.clashResult;
-    return clashFindings({
+    const findings = clashFindings({
       current: result ? { result, stale: stale(state.clashRawResult ?? result) } : null,
       baseline: loadRevisionBaseline(),
     }, models);
+    const applications = useClashGroupApplications.getState(), workspaces = useClashGroupLibrary.getState();
+    const receipts = groupReceiptFindings(applications.entries, workspaces.status.phase === 'ready' ? workspaces.entries : [],
+      result ? { result, stale: stale(state.clashRawResult ?? result) } : null, models);
+    const loading = [applications, workspaces].filter(library => library.status.phase !== 'ready');
+    if (loading.length) receipts.runs.push({ id: 'clash-group-libraries', source: 'clash', temporal: 'historical',
+      label: 'Saved grouping evidence', capturedAt: null, complete: false, models: [],
+      incomplete: [{ code: 'partial-source', detail: `Saved grouping libraries: applications ${applications.status.phase}; workspaces ${workspaces.status.phase}` }] });
+    return { runs: [...findings.runs, ...receipts.runs], findings: [...findings.findings, ...receipts.findings] };
   } },
   { kind: 'validation', collect(models) {
     const report = useViewerStore.getState().idsValidationReport;

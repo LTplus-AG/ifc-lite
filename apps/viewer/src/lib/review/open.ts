@@ -11,10 +11,12 @@
 
 import { currentReconciliationOf } from '@/lib/compare/compare-analysis-state';
 import { clashReviewKey } from '@ifc-lite/clash';
+import { useClashGroupLibrary } from '../clash/group-workspace';
+import { useClashGroupApplications } from '../clash/group-applications';
 import { loadRevisionBaseline } from '../clash/revision-baseline';
 import { useOriginalClashBaseline } from '../clash/original-baseline';
 import { useSemanticSession } from '@/lib/semantic/session';
-import { useReconciliationFocus, useSavedComparisonFocus, useSemanticRecordFocus } from '@/lib/panels/evidence-focus';
+import { useClashApplicationFocus, useReconciliationFocus, useSavedComparisonFocus, useSemanticRecordFocus } from '@/lib/panels/evidence-focus';
 import { useViewerStore } from '@/store';
 import type { WorkspacePanelId } from '@/lib/panels/registry';
 import { selectChangedEntity } from '../changes/select-changed-entity';
@@ -23,8 +25,15 @@ import type { FindingEvidence, ReviewFinding } from './types';
 
 export const EVIDENCE_PANEL: Record<FindingEvidence['kind'], WorkspacePanelId> = {
   clash: 'clash', 'clash-baseline': 'clash', validation: 'validation', comparison: 'compare', 'saved-comparison': 'compare',
-  bcf: 'bcf', linked: 'semantic', 'run-reconciliation': 'compare',
+  bcf: 'bcf', linked: 'semantic', 'run-reconciliation': 'compare', 'clash-group-application': 'clash',
 };
+
+// Workspace changes end ownership even while the native receipt host is unmounted.
+useClashGroupLibrary.subscribe((next, previous) => {
+  if (next.activeId === previous.activeId) return;
+  const held = useClashApplicationFocus.getState().record;
+  if (held && held.contextWorkspaceId !== next.activeId) useClashApplicationFocus.setState({ record: null });
+});
 
 /** Whether the original can still be reached: a historical clash baseline has no row in the live clash list. */
 export function openOriginal(finding: ReviewFinding, openPanel: (panel: WorkspacePanelId) => void): boolean {
@@ -36,7 +45,18 @@ export function openOriginal(finding: ReviewFinding, openPanel: (panel: Workspac
     if (!baseline || finding.run.capturedAt === null || baseline.takenAt !== Date.parse(finding.run.capturedAt) || matches.length !== 1) return false;
     useOriginalClashBaseline.setState({ finding: { clash: matches[0], takenAt: baseline.takenAt, modelNames: baseline.modelNames } });
   }
-  if (evidence.kind === 'clash') {
+  if (evidence.kind === 'clash-group-application') {
+    const applications = useClashGroupApplications.getState(), workspaces = useClashGroupLibrary.getState();
+    // A pending or failed durable read cannot prove that the original workspace is absent.
+    if (applications.status.phase !== 'ready' || workspaces.status.phase !== 'ready') return false;
+    const receipt = applications.entries.find(entry => entry.id === evidence.applicationId);
+    if (!receipt || receipt.createdAt !== finding.run.capturedAt || !receipt.addedGroupIds.includes(evidence.groupId)
+      || receipt.after.groups.filter(group => group.id === evidence.groupId).length !== 1) return false;
+    const orphaned = !useClashGroupLibrary.getState().entries.some(workspace => workspace.id === receipt.workspaceId);
+    if (!orphaned) useClashGroupLibrary.setState({ activeId: receipt.workspaceId });
+    useClashApplicationFocus.setState({ record: { applicationId: evidence.applicationId, workspaceId: receipt.workspaceId,
+      contextWorkspaceId: useClashGroupLibrary.getState().activeId, orphaned } });
+  } else if (evidence.kind === 'clash') {
     if (!state.clashResult?.clashes.some(clash => clash.id === evidence.clashId)) return false;
     state.setClashSelectedId(evidence.clashId);
   } else if (evidence.kind === 'bcf') {

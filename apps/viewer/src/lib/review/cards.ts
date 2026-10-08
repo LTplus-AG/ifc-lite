@@ -30,7 +30,7 @@ export interface CardElement extends FindingElement {
  * `current`: an analysis observes it now. `not-evaluated`: only historical
  * evidence, and no complete compatible run looked again. `resolution-candidate`:
  * only historical evidence, every item re-examined by a complete current run
- * and no longer observed; a human decides. `record`: only coordination records (BCF topics).
+ * and no longer observed; a human decides. `record`: only coordination records (BCF topics or saved grouping receipts).
  */
 export type CardState = 'current' | 'not-evaluated' | 'resolution-candidate' | 'record';
 export const CARD_STATES: readonly CardState[] = ['current', 'not-evaluated', 'resolution-candidate', 'record'];
@@ -66,7 +66,7 @@ const ANALYSIS_CURRENT = new Set(['observed', 'new', 'persistent']);
 
 function cardState(findings: readonly ReviewFinding[]): CardState {
   if (findings.some(finding => finding.source !== 'bcf' && ANALYSIS_CURRENT.has(finding.lifecycle))) return 'current';
-  const historical = findings.filter(finding => finding.source !== 'bcf');
+  const historical = findings.filter(finding => finding.lifecycle !== 'record');
   if (historical.length === 0) return 'record';
   // A partial or missing re-run leaves at least one item not evaluated, which blocks a resolution candidate.
   return historical.every(finding => finding.lifecycle === 'no-longer-observed') ? 'resolution-candidate' : 'not-evaluated';
@@ -122,7 +122,7 @@ export function buildCards(findings: readonly ReviewFinding[], models: readonly 
 export function totalsForCards(cards: readonly CoordinationCard[]): ReviewTotals {
   const validatedElements = new Set(cards.flatMap(card => card.elements.flatMap(element => element.key ? [element.key] : [])));
   const unverifiedElements = new Set(cards.flatMap(card => card.elements.filter(element => !element.key).map(element => `${element.modelName ?? ''}\u001f${element.globalId}`)));
-  const analysis = cards.flatMap(card => card.findings).filter(finding => finding.source !== 'bcf');
+  const analysis = cards.flatMap(card => card.findings).filter(finding => finding.lifecycle !== 'record');
   return {
     uniqueElements: validatedElements.size,
     unverifiedElements: unverifiedElements.size,

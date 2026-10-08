@@ -115,7 +115,11 @@ export {
 export { writeIdsz, readIdsz, type IdszContent } from './sidecar/idsz.js';
 
 // Re-identification (IDS-026)
-export { reidentify, type ReidentifyReport, type ReidentifyOptions, type MatchStep } from './match/reidentify.js';
+export { reidentify, type ReidentifyReport, type ReidentifyOptions } from './match/reidentify.js';
+export type { MatchStep, FacetMatchStep } from './match/cascade.js';
+
+// Semantic diff and plain-language changelog (IDS-104)
+export * from './diff/index.js';
 
 // Plain-language rendering (IDS-027)
 export { describeFacet } from './render/describe.js';

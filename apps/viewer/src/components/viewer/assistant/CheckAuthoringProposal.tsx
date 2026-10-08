@@ -43,6 +43,8 @@ export function CheckAuthoringProposal() {
   if (reviewable.kind === 'rules') return <RulesDraftReview key={key} initial={reviewable.proposal} />;
   // Outline tables bind by report specification id, so only the report this conversation read can back them.
   const identity = assistant.snapshot?.source === 'validation' ? assistant.snapshot.sourceIdentity : null;
-  const evidence = typeof identity === 'object' ? identity : null;
+  // #7115: the validation adapter also freezes the selected side; outline tables bind to its report component.
+  const report = Array.isArray(identity) ? identity[0] : identity;
+  const evidence = typeof report === 'object' ? report : null;
   return <DocumentOutlineReview key={key} initial={reviewable.proposal} evidence={evidence} />;
 }

@@ -365,3 +365,14 @@ test('when several remotes are canonical, origin wins wherever git lists it; oth
 test('only a fetch URL counts: a remote that merely pushes to the canonical repository is not read from it (#7031)', () => {
   assert.equal(baseRefWith([['origin', FORK_URL], ['upstream', FORK_URL, CANONICAL_URL]]), 'origin/main');
 });
+
+// #7031: a same-path mirror cannot outrank the actual GitHub repository.
+test('a mirror on another host is not canonical even when named origin (#7031)', () => {
+  for (const url of [
+    'https://gitlab.com/LTplus-AG/ifc-lite.git',
+    'git@gitlab.com:LTplus-AG/ifc-lite.git',
+    'ssh://git@gitlab.com/LTplus-AG/ifc-lite.git',
+    'https://github.com.evil.example/LTplus-AG/ifc-lite.git',
+    'https://github.com@evil.example/LTplus-AG/ifc-lite.git',
+  ]) assert.equal(baseRefWith([['origin', url], ['upstream', CANONICAL_URL]]), 'upstream/main', url);
+});

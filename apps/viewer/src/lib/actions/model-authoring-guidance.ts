@@ -14,7 +14,7 @@ import { PROFILE_FIELDS, PROFILE_KINDS } from '@/lib/profile-section/profile-kin
 const sectionDimensions = PROFILE_KINDS.map((type) => `${type} {${PROFILE_FIELDS[type].map((field) => field.name).join(',')}}`).join('; ');
 
 export const MODEL_AUTHORING_OUTPUT_GUIDANCE =
-  'When asked to create, delete, move, turn, type, join or place elements, return only JSON {"version":1,"kind":"model.authoring",'
+  'When asked to create, copy, array, delete, move, turn, type, join or place elements, return only JSON {"version":1,"kind":"model.authoring",'
   + '"title":"Short title","rationale":"Why","units":"mm","frame":"storey-local","operations":[...]}. "units" is "m" or "mm" and applies to every length; '
   + 'coordinates are storey-local [x,y,z], Z up; angles are degrees counter-clockwise from above. Existing elements are '
   + '{"globalId","ifcClass","name"} exactly as in the evidence; elements created earlier in the batch are {"ref":"wall-1"}. Ops: '
@@ -27,6 +27,11 @@ export const MODEL_AUTHORING_OUTPUT_GUIDANCE =
   + 'Positive fillet radii are written accurately but the preview uses the native sharp-corner approximation; review discloses this. '
   + 'Native builder acceptance is not a polygon topology/engineering validity verdict; use simple valid footprints. '
   + 'element.delete {target}; element.move {target, delta:[dx,dy]}; element.rotate {target, angleDeg}; '
+  + 'element.copy {target (existing or earlier ref), ref, offset:[dx,dy,dz], angleDeg? with pivot:[x,y], storey?:{globalId}, from?:[x,y]}; '
+  + 'element.array {target, refs (one per new copy), mode:linear|polar, count (2..201 including original), anchor:[x,y], storey?, from?}; '
+  + 'linear requires cursor:[x,y], distance? (spacing, or total span with fit:true), fit?; polar takes angleDeg (default360, full turns omit coincident copy). '
+  + 'At most200 new copy roots per batch; native host/assembly dependents travel with each root. Copy an existing source before editing it in the same batch. '
+  + 'Copy refs support later copies, type/material assignments, and hosted/join targets when their source is a wall. '
   + 'type.assign {target, expected: current type name or null, type:{globalId,name} or {create:{ifcClass,name}}}; '
   + 'material.assign {target, expected, material:{name, create}}; walls.join {walls:[a,b]}; '
   + 'hosted.create {kind: door|window|opening, host (a wall), offset (along the wall from its start to the centre), sill, width, height}. '

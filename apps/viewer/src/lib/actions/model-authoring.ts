@@ -18,7 +18,7 @@
  * counter-clockwise seen from above. Nothing here writes.
  */
 
-import { parseShapeParams, AUTHORING_OUTLINE_WORK_LIMIT, type ShapeParams } from './model-authoring-shape-params';
+import { parseCopyFields, type CopyFields, type ArrayFields } from './model-authoring-copy-fields';
 import { parseGlobalIdTarget, parseLength, parsePoint, parseRef, parseText, record, type LengthRange } from './model-authoring-fields';
 
 export const AUTHORING_CLASSES = ['IfcWall', 'IfcSlab', 'IfcRoof', 'IfcPlate', 'IfcColumn', 'IfcBeam', 'IfcMember', 'IfcSpace'] as const;
@@ -30,7 +30,7 @@ export type Point3 = [number, number, number];
 
 /** An element of a loaded model, with the class and name the proposal expects it to have now. */
 export interface ExistingElement { globalId: string; modelId?: string; ifcClass: string; name: string }
-/** An element created by an earlier `element.create` / `hosted.create` of the same batch. */
+/** An element created by an earlier `element.create`, `hosted.create`, copy or array of the same batch. */
 export interface NewElement { ref: string }
 export type ElementTarget = ExistingElement | NewElement;
 export interface StoreyTarget { globalId: string; modelId?: string }
@@ -42,6 +42,9 @@ export interface BoxParams { position: Point3; width: number; depth: number; thi
 
 export type AuthoringOp =
   | { op: 'element.create'; ref: string; ifcClass: AuthoringClass; storey: StoreyTarget; name: string; params: AxisParams | BoxParams | ShapeParams }
+  | { op: 'element.create'; ref: string; ifcClass: AuthoringClass; storey: StoreyTarget; name: string; params: AxisParams | BoxParams }
+  | ({ op: 'element.copy'; target: ElementTarget; ref: string } & CopyFields)
+  | ({ op: 'element.array'; target: ElementTarget; refs: string[] } & ArrayFields)
   | { op: 'element.delete'; target: ExistingElement }
   /** Horizontal move by a storey-local delta; `from` optionally pins today's placement origin [x, y] in the storey. */
   | { op: 'element.move'; target: ExistingElement; delta: [number, number]; from?: [number, number] }
@@ -55,7 +58,7 @@ export type AuthoringOp =
 
 export type AuthoringOpName = AuthoringOp['op'];
 export const AUTHORING_OPS: readonly AuthoringOpName[] = ['element.create', 'element.delete', 'element.move', 'element.rotate',
-  'type.assign', 'material.assign', 'walls.join', 'hosted.create'];
+  'type.assign', 'material.assign', 'walls.join', 'hosted.create', 'element.copy', 'element.array'];
 
 export interface ModelAuthoringBatch {
   version: 1;
@@ -106,6 +109,16 @@ function isWall(target: ElementTarget, refs: ReadonlyMap<string, AuthoringOp>): 
   if (!isNewElement(target)) return target.ifcClass.startsWith('IfcWall');
   const creator = refs.get(target.ref);
   return creator?.op === 'element.create' && creator.ifcClass === 'IfcWall';
+  const visited = new Set<string>();
+  while (isNewElement(target)) {
+    if (visited.has(target.ref)) return false;
+    visited.add(target.ref);
+    const creator = refs.get(target.ref);
+    if (creator?.op === 'element.create') return creator.ifcClass === 'IfcWall';
+    if (creator?.op !== 'element.copy' && creator?.op !== 'element.array') return false;
+    target = creator.target;
+  }
+  return target.ifcClass.startsWith('IfcWall');
 }
 
 function createParams(value: Record<string, unknown>, ifcClass: AuthoringClass, units: AuthoringUnits, at: string): AxisParams | BoxParams | ShapeParams {
@@ -158,6 +171,23 @@ function operation(value: unknown, index: number, units: AuthoringUnits, refs: M
       const ifcClass = value.ifcClass as AuthoringClass;
       return defineRef({ op: 'element.create', ref: parseRef(value.ref, at), ifcClass, storey: parseGlobalIdTarget(value.storey, `${at} storey`),
         name: parseText(value.name, `${at} name`), params: createParams(value, ifcClass, units, at) });
+    }
+    case 'element.copy': {
+      const target = element(value.target, at, refs);
+      const fields = parseCopyFields(value, units, at, false);
+      return defineRef({ ...fields, op: 'element.copy', target, ref: parseRef(value.ref, at) });
+    }
+    case 'element.array': {
+      const target = element(value.target, at, refs);
+      const fields = parseCopyFields(value, units, at, true);
+      if (!Array.isArray(value.refs) || value.refs.length !== fields.count - 1) throw new Error(`${at}: refs must name each of the count - 1 copies`);
+      const names = value.refs.map(name => parseRef(name, at));
+      const op: AuthoringOp = { ...fields, op: 'element.array', target, refs: names };
+      for (const name of names) {
+        if (refs.has(name)) throw new Error(`${at} reuses ref "${name}"`);
+        refs.set(name, op);
+      }
+      return op;
     }
     case 'element.delete':
       return { op: 'element.delete', target: existing(value.target, at) };
@@ -234,6 +264,8 @@ export function parseModelAuthoringBatch(answer: string): ModelAuthoringBatch {
   const operations = value.operations.map((op, index) => operation(op, index, units, refs));
   const outlineWork = operations.reduce((sum, op) => sum + (op.op === 'element.create' && 'OuterCurve' in op.params ? op.params.OuterCurve.length ** 2 : 0), 0);
   if (outlineWork > AUTHORING_OUTLINE_WORK_LIMIT) throw new Error(`The polygon preview work exceeds ${AUTHORING_OUTLINE_WORK_LIMIT} vertex-pair units; split this proposal into smaller batches`);
+  const copies = operations.reduce((total, op) => total + (op.op === 'element.array' ? op.count - 1 : op.op === 'element.copy' ? 1 : 0), 0);
+  if (copies > MODEL_AUTHORING_LIMIT) throw new Error(`An authoring batch may create at most ${MODEL_AUTHORING_LIMIT} copy roots`);
   return { version: 1, kind: 'model.authoring', title, ...(typeof value.rationale === 'string' ? { rationale: value.rationale } : {}),
     units, frame: 'storey-local', operations };
 }

@@ -26,6 +26,7 @@ import type { Workplane } from '@/lib/commands/modeling/types';
 import { transformedGhosts, type TransformSelection } from '@/lib/commands/modeling/commands/element-transform-shared';
 import { planElementTransform } from '@/lib/element-transform/plan';
 import { readWallMetres } from '@/store/slices/mutation-wall-resize';
+import { authoringCopyGhosts } from './model-authoring-copy-ghost';
 import { authoredElementOf, type ElementId } from './model-authoring-native';
 import { toMetres, type AuthoringOp, type ModelAuthoringBatch } from './model-authoring';
 import type { AuthoringRow, ModelAuthoringPreview } from './model-authoring-preview';
@@ -85,7 +86,8 @@ function createGhost(state: ViewerState, batch: ModelAuthoringBatch, row: Author
 function hostAxis(state: ViewerState, batch: ModelAuthoringBatch, preview: ModelAuthoringPreview, row: AuthoringRow, host: ElementId): { axis: WallAxis; storey: number | null } | null {
   if ('ref' in host) {
     const creator = preview.rows[row.dependsOn[0]];
-    const element = authoredElementOf(batch, creator.op as Extract<AuthoringOp, { op: 'element.create' }>);
+    if (creator.op.op !== 'element.create') return null;
+    const element = authoredElementOf(batch, creator.op);
     if (element.kind !== 'wall') return null;
     return { axis: { start: element.params.Start, end: element.params.End, thickness: element.params.Thickness }, storey: creator.resolved.storey ?? null };
   }
@@ -141,6 +143,7 @@ export function authoringGhosts(state: ViewerState, preview: ModelAuthoringPrevi
     switch (row.op.op) {
       case 'element.create': { const mesh = createGhost(state, preview.batch, row, id); if (mesh) meshes.push(mesh); break; }
       case 'hosted.create': { const mesh = hostedGhost(state, preview.batch, preview, row, id); if (mesh) meshes.push(mesh); break; }
+      case 'element.copy': case 'element.array': meshes.push(...authoringCopyGhosts(state, preview.batch, row, id)); break;
       case 'element.move': case 'element.rotate': case 'element.delete': meshes.push(...transformGhosts(state, preview.batch, row, id)); break;
       default: break;
     }

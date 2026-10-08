@@ -128,6 +128,8 @@ export function ModelAuthoringReview({ batch, origin }: { batch: ModelAuthoringB
         </Button>
       </div>}
       {showGhosts && <p className="text-muted-foreground">{t('modelAuthoring.previewHint')}</p>}
+      {!receipt && batch.operations.some(op => op.op === 'element.copy' || op.op === 'element.array') &&
+        <p className="text-muted-foreground">{t('modelAuthoring.copyPreviewHint')}</p>}
       {receipt && <ReceiptSummary receipt={receipt} />}
       {error && <p role="alert" className="rounded border border-destructive/40 bg-destructive/10 p-2 text-destructive">{error}</p>}
     </div>

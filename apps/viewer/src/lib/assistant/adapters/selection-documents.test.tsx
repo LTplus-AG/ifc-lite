@@ -108,3 +108,34 @@ test('#7187 native document field edits remain isolated across one and multiple 
   const captured = rows(); assert.equal(captured.length, 2);
   assert.deepEqual(captured.map(row => [row.modelId, row.documents[0].Name]), [['a', 'Native roof document'], ['b', 'B ONLY']]);
 });
+
+test('#7187 native document metadata samples and text are bounded with full counts for large selections', async () => {
+  const { file } = await fixture();
+  const view = getOrCreateMutationView(useViewerStore, 'native'); assert.ok(view); view.setExpressIdWatermark(200_000);
+  for (let i = 0; i < 20; i++) {
+    const reference = view.createEntity('IfcDocumentReference', [`document-${i}.pdf`, `DOC-${i}`, `Native ${i} ${'x'.repeat(500)}`, null, null]);
+    view.createEntity('IfcRelAssociatesDocument', [`${String(i + 10).padStart(22, '0')}`, null, null, null, ['#52'], `#${reference.expressId}`]);
+  }
+  const saved = await exportAndReparse('native', file);
+  assert.equal(extractDocumentsOnDemand(saved, 52).length, 21);
+  const small = rows()[0]; assert.equal(small.documentCount, 21); assert.equal(small.documents.length, 16);
+  assert.ok(small.documents.some(document => document.Name?.length === 241 && document.Name.endsWith('…')));
+  // @raw-entity-enumeration-ok test chooses actual parsed SketchUp product ids, never synthesized federation arithmetic
+  const productIds = ['IFCSLAB', 'IFCSPACE', 'IFCWALL', 'IFCBUILDINGELEMENTPROXY'].flatMap(type => file.entityIndex.byType.get(type) ?? []).slice(0, 12);
+  assert.equal(productIds.length, 12); assert.ok(productIds.includes(52));
+  useViewerStore.setState({ selectedEntities: productIds.map(expressId => ({ modelId: 'native', expressId })), selectedEntity: null });
+  const captured = rows(); assert.equal(captured.length, 12);
+  const large = captured.find(row => row.documents.some(document => document.Location === 'https://example.test/roof-ref.pdf')); assert.ok(large);
+  assert.equal(large.documentCount, 21); assert.equal(large.documents.length, 6);
+});
+
+test('#7187 missing native document membership inputs disclose unknown totals in evidence and Properties', async () => {
+  const { file } = await fixture();
+  file.source = EMPTY_SOURCE_BYTES;
+  file.onDemandDocumentMap = undefined;
+  assert.equal(Reflect.deleteProperty(file, 'relationships'), true);
+  const row = rows()[0]; assert.equal(row.documentCount, null);
+  assert.equal(row.documentStatus, 'unavailable-source-membership'); assert.deepEqual(row.documents, []);
+  const ui = render(renderPanelBody('properties', () => undefined)); await advance(0);
+  assert.match(ui.textContent ?? '', /Current document membership is unknown/);
+});

@@ -1,0 +1,16 @@
+{
+  "command": [
+    "pnpm",
+    "test",
+    "--filter=@ifc-lite/viewer",
+    "--env-mode=loose",
+    "--concurrency=1"
+  ],
+  "TEST_PATTERN": "artifact-proposals\\.test|captured-artifact-scope\\.test",
+  "exitCode": 1,
+  "started": "2026-10-08T17:53:16.410751+00:00",
+  "ended": "2026-10-08T17:55:35.283420+00:00",
+  "baselineTestSHA": "b065e33973564143735a7a2ae2a88927363122923af503ee5a4996e760a77d7e",
+  "candidateTestSHA": "0a60817c732e2294c2f091986e403844620c73caad6b73bab611a6439eaaa8f7",
+  "logSHA": "f24fd98314f6d93001ad2c2d979a3b3f2bfca300a9e0395ecc32801fc1349d72"
+}

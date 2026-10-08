@@ -188,7 +188,7 @@
   "performanceClaim": false,
   "rootIndependentArchiveVerification": {
     "path": "root-independent-archive-verification.json",
-    "sha256": "1cc11f6a694ae0933de7d37a722acddc9491a52ec1fb4df507be23ee64b137cf",
+    "sha256": "8bd54f8b417242d356efb788297b19a8cec1ed0b822e0a57b65340b057072487",
     "scope": "10 raw/gzip hashes and lengths, three committed source pins, canonical parser/production byte identity, test-only delta and no duplicate changeset"
   }
 }

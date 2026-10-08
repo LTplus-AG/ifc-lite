@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { spawnSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import assert from 'node:assert/strict';
@@ -28,10 +28,18 @@ test('viewer-embed unused-locals baseline matches the measured count (#6093)', (
   const output = `${run.stdout}${run.stderr}`;
   // A workspace package that has not been built resolves to nothing, and every
   // file importing it then fails to compile, so the count is not a count. That
-  // is a host without `pnpm build`, not a baseline mismatch. CI restores the
-  // build output first, and a missing package THERE must still fail.
-  if (!isCI() && /error TS2307: Cannot find module '@ifc-lite\//.test(output)) {
-    t.skip('workspace packages are not built here (TS2307 on an @ifc-lite/* import); run `pnpm build`. CI never skips this test.');
+  // is a host without `pnpm build`, not a baseline mismatch. Only that case
+  // skips: every unresolved `@ifc-lite/*` specifier must be a linked workspace
+  // package whose `dist` is missing. A specifier with no workspace link (a typo)
+  // is a source regression and still fails. CI restores the build output first,
+  // and a missing package THERE must still fail.
+  const unresolved = [...output.matchAll(/error TS2307: Cannot find module '(@ifc-lite\/[^'/]+)/g)].map((m) => m[1]);
+  const notBuilt = (spec) => {
+    const linked = join(packageDir, 'node_modules', spec);
+    return existsSync(linked) && !existsSync(join(linked, 'dist'));
+  };
+  if (!isCI() && unresolved.length > 0 && unresolved.every(notBuilt)) {
+    t.skip(`workspace packages are not built here (${[...new Set(unresolved)].join(', ')} have no dist); run \`pnpm build\`. CI never skips this test.`);
     return;
   }
   const measured = classifyTscOutput(output);

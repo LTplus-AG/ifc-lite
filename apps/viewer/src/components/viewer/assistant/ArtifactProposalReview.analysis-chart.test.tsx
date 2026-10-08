@@ -69,3 +69,14 @@ test('#7106 native BCF edit reruns the mounted chart without a new model revisio
   assert.match(closedRow?.textContent ?? '', /Closed2/);
   assert.equal(useViewerStore.getState().mutationVersion, state.mutationVersion);
 });
+
+test('#7106 native model rename refreshes analysis population labels and restores save authority', async () => {
+  const ui = await review('bcf', 'Status');
+  const state = useViewerStore.getState();
+  const model = [...state.models.values()][0];
+  act(() => state.updateModel(model.id, { name: 'Renamed chart source #7106' }));
+  await waitFor(() => !!saveButton(ui) && !saveButton(ui)?.disabled && /Renamed chart source #7106/.test(ui.textContent ?? ''), 'native model change refreshes the analysis preview');
+  assert.equal(useViewerStore.getState().bcfProject, state.bcfProject, 'the BCF topic source itself did not change');
+  click(saveButton(ui)!);
+  assert.equal(useViewerStore.getState().dashboards.length, 1);
+});

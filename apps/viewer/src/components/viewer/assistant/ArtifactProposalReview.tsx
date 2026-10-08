@@ -111,7 +111,7 @@ function ArtifactReview({ initial, onAsk }: { initial: ArtifactProposal; onAsk: 
       })
       .finally(() => { if (!controller.signal.aborted) setRunning(false); });
     return () => controller.abort();
-  }, [proposal, blocked, index, scopeKey, sourceInputs]);
+  }, [proposal, blocked, index, scopeKey, sourceInputs, models, mutationVersion]);
 
   const current = !!preview && !running && isPreviewCurrent(preview, useViewerStore.getState());
   const save = () => {

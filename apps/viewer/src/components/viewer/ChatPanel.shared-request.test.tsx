@@ -176,7 +176,7 @@ test('#7093 native preflight automatic repair shares the exhausted Continue task
   send(native.ui);
   for (let count = 1; count < maxRequests; count++) {
     await waitFor(() => useRequestReceipts.getState().receipts.length === count && !['sending', 'streaming'].includes(useViewerStore.getState().chatStatus), 'truncated task request');
-    const button = [...native.ui.querySelectorAll('button')].find(button => button.textContent === 'Continue'); assert.ok(button); click(button);
+    const button: HTMLButtonElement | undefined = [...native.ui.querySelectorAll('button')].find(candidate => candidate.textContent === 'Continue'); assert.ok(button); click(button);
   }
   await waitFor(() => useViewerStore.getState().chatError?.includes('budget exhausted') === true, 'native preflight repair refuses exhausted root');
   assert.equal(posts, maxRequests);

@@ -17,7 +17,7 @@ import { materialsOf } from '@/lib/commands/modeling/authored-kinds';
 import { buildStoreyWorkplane, elementStoreyId, isWorkplane } from '@/lib/commands/modeling/workplane';
 import { planElementTransform, type TransformRoot } from '@/lib/element-transform/plan';
 import { describeRefusal } from '@/lib/element-transform/commit';
-import { liveEntityConforms } from '@ifc-lite/create';
+import { copiedProductsInStore, createCopyContext, productStoreyOrigin, liveEntityConforms } from '@ifc-lite/create';
 import type { RowStatus } from './model-change-preview';
 import { batchDigest } from './model-change-preview';
 import { isNewElement, toMetres, type AuthoringOp, type ElementTarget, type ExistingElement, type ModelAuthoringBatch } from './model-authoring';
@@ -25,6 +25,7 @@ import { dryRunAuthoring, type ElementId, type ResolvedOp } from './model-author
 import {
   authoringReader, className, conforms, deletionRefusal, materialNameOf, nameOf, placementAngle, typeNameOf, type AuthoringReader,
 } from './model-authoring-read';
+import { captureAuthoringSources } from './model-authoring-sources';
 import { resolveGlobalId } from './resolve-global-id';
 import { readElementProfile } from '@/store/slices/mutation-element-profile';
 import { readAuthoringSize, sameNativeDimensions } from './model-authoring-size';
@@ -178,6 +179,38 @@ function resolve(ctx: Context, row: AuthoringRow): void {
       row.before.storeyName = nameOf(r, storey.expressId);
       return;
     }
+    case 'element.copy': case 'element.array': {
+      try {
+        row.resolved.subject = element(ctx, op.target, row);
+        if ('id' in row.resolved.subject) {
+          row.expressId = row.resolved.subject.id;
+          const r = reader(ctx, row.modelId!);
+          const copyContext = createCopyContext(r.dataStore, r.editor);
+          const population = new Set(copiedProductsInStore(copyContext, [row.expressId]));
+          if (ctx.rows.slice(0, row.index).some(previous => previous.status === 'ready' && previous.modelId === row.modelId
+            && previous.expressId !== null && population.has(previous.expressId)
+            && previous.op.op !== 'element.copy' && previous.op.op !== 'element.array')) {
+            throw new Refusal('unsupported', 'Copy the source before editing it in this batch, so its preview uses the same geometry as the copy');
+          }
+          const placement = productStoreyOrigin(copyContext, row.expressId);
+          if (!placement) throw new Refusal('invalid', 'The element has no native copy placement');
+          row.before.origin = [placement.origin[0], placement.origin[1]];
+          if (op.from && (!near(toMetres(ctx.batch, op.from[0]), placement.origin[0], 0.001) || !near(toMetres(ctx.batch, op.from[1]), placement.origin[1], 0.001))) throw new Refusal('conflict', 'The source copy placement differs from the expected from point');
+        } else if (op.from) throw new Refusal('unsupported', 'An element created in this batch has no prior placement to pin');
+        if (op.storey) {
+          const target = locate(ctx, op.storey);
+          join(row, target.modelId);
+          const r = reader(ctx, target.modelId);
+          if (!liveEntityConforms(r.dataStore, target.expressId, 'IfcBuildingStorey', r.view)) throw new Refusal('conflict', 'The target is not an IfcBuildingStorey');
+          row.resolved.storey = target.expressId;
+          row.before.storeyName = nameOf(r, target.expressId);
+        }
+      } catch (error) {
+        if (error instanceof Refusal) throw error;
+        throw new Refusal('invalid', error instanceof Error ? error.message : String(error));
+      }
+      return;
+    }
     case 'element.delete': {
       row.resolved.target = row.expressId = existing(ctx, op.target, row);
       const refusal = deletionRefusal(reader(ctx, row.modelId!), row.expressId);
@@ -260,6 +293,7 @@ export function previewModelAuthoring(state: ViewerState, batch: ModelAuthoringB
     const row: AuthoringRow = { index, op, status: 'ready', modelId: null, expressId: null, resolved: {}, before: {}, dependsOn: [] };
     ctx.rows.push(row);
     if ('ref' in op && typeof op.ref === 'string') ctx.creators.set(op.ref, index);
+    if (op.op === 'element.array') for (const ref of op.refs) ctx.creators.set(ref, index);
     try {
       resolve(ctx, row);
       if (row.dependsOn.some((i) => ctx.rows[i].status !== 'ready')) throw new Refusal('blocked', 'It needs an element another row creates, which is not ready');
@@ -279,28 +313,6 @@ export function previewModelAuthoring(state: ViewerState, batch: ModelAuthoringB
     row.previewOuterBodyOnly = ghost.outerBodyOnly;
   }
   return { batch, rows: ctx.rows, mutationVersion: state.mutationVersion, digest: batchDigest(batch) };
-}
-
-/** The builders decide what static checks cannot: dimensions, hosts, joins, schema support. */
-function nativeDryRun(ctx: Context, batch: ModelAuthoringBatch): void {
-  const byModel = new Map<string, AuthoringRow[]>();
-  for (const row of ctx.rows) if (row.status === 'ready' && row.modelId) byModel.set(row.modelId, [...(byModel.get(row.modelId) ?? []), row]);
-  for (const [modelId, rows] of byModel) {
-    const r = reader(ctx, modelId);
-    const refusals = dryRunAuthoring(batch, r.dataStore, r.view, modelId, rows.map(({ index, op, resolved }) => ({ index, op, resolved })));
-    for (const row of rows) {
-      const refusal = refusals.get(row.index);
-      if (refusal === undefined) continue;
-      const blocked = row.dependsOn.some((i) => refusals.has(i));
-      row.status = blocked ? 'blocked' : 'invalid';
-      row.issue = blocked ? 'It needs an element another row creates, which the model refused' : refusal;
-    }
-  }
-}
-
-export function authoringCounts(rows: readonly AuthoringRow[]): Record<AuthoringRowStatus, number> {
-  const counts: Record<AuthoringRowStatus, number> = { ready: 0, unchanged: 0, conflict: 0, 'missing-target': 0, 'ambiguous-target': 0,
-    denied: 0, unsupported: 0, invalid: 0, blocked: 0 };
-  for (const row of rows) counts[row.status]++;
-  return counts;
-}
+  const preview = { batch, rows: ctx.rows, mutationVersion: state.mutationVersion, digest: batchDigest(batch) };
+  captureAuthoringSources(state, preview);
+  return preview;

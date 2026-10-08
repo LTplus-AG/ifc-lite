@@ -6,7 +6,8 @@ import '@/test/setup-dom.js';
 import test, { afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
-import { PropertyValueType } from '@ifc-lite/data';
+import { PropertyValueType, PropertyTableBuilder, StringTable } from '@ifc-lite/data';
+import { extractTypePropertiesOnDemand } from '@ifc-lite/parser';
 import { advance, render, cleanup, click } from '@/test/render';
 import { parseStep, seedModel } from '@/test/properties-panel-harness';
 import { renderPanelBody } from '@/lib/panels/renderPanelBody';
@@ -105,4 +106,49 @@ test('#7104 the first edited property set on a previously empty real type is inh
     [{ name: 'FireRating', value: 'REI30', type: PropertyValueType.Label }]));
   assert.equal(inherited().GlobalId, '2YJwrhcCv9v8UXU8cWK40m');
   assert.equal(inherited().psets[0].properties.FireRating, 'REI30');
+});
+
+
+test('#7104 source-free native property tables retain the real IFC type definition', async () => {
+  const store = await sample();
+  const loaded = extractTypePropertiesOnDemand(store, 52); assert.ok(loaded);
+  const builder = new PropertyTableBuilder(new StringTable());
+  for (const pset of loaded.properties) for (const property of pset.properties) {
+    assert.equal(typeof property.value, 'string', 'the real slab type carries label values');
+    builder.add({ entityId: loaded.typeId, psetName: pset.name, psetGlobalId: pset.globalId ?? '',
+      propName: property.name, propType: property.type, value: String(property.value) });
+  }
+  seedModel('server', 0, { ...store, source: new Uint8Array(), properties: builder.build() }, 52);
+  assert.equal(inherited().psets[0].properties.FireRating, 'REI60');
+  const ui = render(renderPanelBody('properties', () => undefined)); await advance(0);
+  const triggers = [...ui.querySelectorAll('button')].filter(button => button.textContent?.includes('Pset_SlabCommon'));
+  assert.ok(triggers.length);
+  for (const trigger of triggers) if (trigger.getAttribute('data-state') !== 'open') click(trigger);
+  await advance(0);
+  assert.ok(ui.querySelector('[data-prop-key="50:Pset_SlabCommon:FireRating"]'));
+  assert.match(ui.textContent ?? '', /REI60/);
+});
+
+test('#7104 an overlay occurrence alias inherits its real source type without a parsed occurrence ID', async () => {
+  seedModel('arch', 1_000_000, await sample(), 52);
+  const view = getOrCreateMutationView(useViewerStore, 'arch'); assert.ok(view);
+  // Native duplication uses these overlay primitives: a new occurrence plus
+  // its source alias. The inherited reader must follow the alias, not source ids.
+  view.setExpressIdWatermark(100_000); // the fixture model's allocation watermark
+  const copy = view.createEntity('IfcSlab', ['0hnSKr4LD8eRixcnqcc6X2', null, 'Copy', null, null, null, null, null, null]);
+  view.setEntityAlias(copy.expressId, 52);
+  assert.equal(useViewerStore.getState().models.get('arch')?.ifcDataStore?.entityIndex.byId.has(copy.expressId), false);
+  useViewerStore.setState({ selectedEntity: { modelId: 'arch', expressId: copy.expressId }, selectedEntityId: copy.expressId + 1_000_000 });
+  assert.equal(inherited().GlobalId, '0hnSKr4LD8eRixcnqcc6X1');
+  assert.equal(inherited().psets[0].properties.FireRating, 'REI60');
+});
+
+test('#7104 clearing the associated type Name with the IFC unset marker never exposes a literal dollar', async () => {
+  seedModel('arch', 0, await sample(), 52);
+  assert.ok(getOrCreateMutationView(useViewerStore, 'arch'));
+  assert.ok(useViewerStore.getState().setAttribute('arch', 50, 'Name', '$', 'house - groundfloor'));
+  assert.equal(inherited().Name, '');
+  const ui = render(renderPanelBody('properties', () => undefined)); await advance(0);
+  assert.ok(ui.querySelector('[title="IfcSlabType: "]'), 'the real associated-type header renders a cleared name');
+  assert.ok(![...ui.querySelectorAll('[title]')].some(element => element.getAttribute('title') === 'IfcSlabType: $'));
 });

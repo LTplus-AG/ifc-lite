@@ -18,12 +18,15 @@ export function effectiveTypeProperties(
   view: MutablePropertyView | null | undefined,
 ) {
   if (!store) return null;
-  const loaded = extractTypePropertiesOnDemand(store, expressId);
+  const baseId = view?.resolveBaseEntityId(expressId) ?? expressId;
+  const loaded = extractTypePropertiesOnDemand(store, baseId);
   // The extractor returns null when the type has no loaded sets; a user can
   // still add its first set this session. Resolve the same native relationship.
-  const typeId = loaded?.typeId ?? store.relationships?.getRelated(expressId, RelationshipType.DefinesByType, 'inverse')[0];
+  const typeId = loaded?.typeId ?? store.relationships?.getRelated(baseId, RelationshipType.DefinesByType, 'inverse')[0];
   if (typeId === undefined) return null;
-  const result = loaded ?? { typeId, typeName: store.entities.getName(typeId), properties: [] };
+  const result = loaded ?? { typeId, typeName: store.entities.getName(typeId),
+    properties: !store.source?.length ? store.properties?.getForEntity(typeId) ?? [] : [],
+  };
   const mutations = view?.getMutationsForEntity(result.typeId) ?? [];
   const mutatedKeys = new Map<string, Set<string>>();
   const newPsetNames = new Set<string>();
@@ -41,7 +44,7 @@ export function effectiveTypeProperties(
   const psets = effectivePropertySets(view, result.typeId, () => result.properties);
   const editedName = view?.getAttributeMutationsForEntity(result.typeId).find(attr => attr.name === 'Name')?.value;
   return {
-    typeName: typeof editedName === 'string' ? editedName : result.typeName,
+    typeName: typeof editedName === 'string' ? (editedName === '$' ? '' : editedName) : result.typeName,
     typeId: result.typeId,
     psets: psets.map(pset => ({
       ...pset,

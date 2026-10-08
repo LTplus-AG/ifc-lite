@@ -132,8 +132,8 @@ function elementRow(s: ViewerState, ref: EntityRef, source: ModelSource, rich: b
     attributes, psets, psetCount: data.psets.length, quantities, qsetCount: data.qsets.length,
     inheritedType: inherited ? {
       modelId: ref.modelId, modelName: source.name,
-      GlobalId: typeof typeGlobalId === 'string' && typeGlobalId ? typeGlobalId : null,
-      Name: bounded(typeName), expressId: inherited.typeId,
+      GlobalId: typeof typeGlobalId === 'string' && typeGlobalId && typeGlobalId !== '$' ? typeGlobalId : null,
+      Name: bounded(typeName === '$' ? '' : typeName), expressId: inherited.typeId,
       status: source.view?.hasChanges(inherited.typeId) ? 'edited' : 'as-loaded',
       psetCount: inherited.psets.length,
       psets: inherited.psets.slice(0, setLimit).map(pset => ({

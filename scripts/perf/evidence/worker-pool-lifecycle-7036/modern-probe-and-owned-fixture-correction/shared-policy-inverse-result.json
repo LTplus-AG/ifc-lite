@@ -1,0 +1,88 @@
+{
+  "inverseTestSha": "7e70dd5cba875bc64650f1746ca897cbc8e1536440c1ca92eb9ba9dfa6cb2507",
+  "exitCode": 1,
+  "restoredTestSha": "460316ba36f9f8b9bf09321dc86e8152e9c996af02af7207069dee4e47244b11",
+  "actualAllocationObservations": [
+    {
+      "pid": 41051,
+      "profile": "/tmp/7036-lifecycle-mpjjAQ/Temp/ifclite-frame-rig-8b07b09941a1",
+      "observedJournal": [
+        "allocations.jsonl"
+      ],
+      "commandLine": [
+        "python3",
+        "/tmp/7036-lifecycle-mpjjAQ/bin/chrome-fixture",
+        "--remote-debugging-port=39287",
+        "--user-data-dir=/tmp/7036-lifecycle-mpjjAQ/Temp/ifclite-frame-rig-8b07b09941a1",
+        "--no-first-run",
+        "--no-default-browser-check",
+        "--disable-extensions",
+        "--disable-background-timer-throttling",
+        "--disable-renderer-backgrounding",
+        "--disable-backgrounding-occluded-windows",
+        "--enable-unsafe-webgpu",
+        "--window-size=1280,800",
+        "--window-position=0,0",
+        "--disable-features=BatterySaverModeAvailable,HighEfficiencyModeAvailable",
+        "about:blank"
+      ],
+      "stat": "41051 (python3) R 41041 41051 41051 0 -1 4194304 4100 0 0 0 2 1 0 0 20 0 1 0 17855048 34783232 5712 18446744073709551615 4333568 8025729 140733483521360 0 0 0 0 16781312 2 0 0 0 17 18 0 0 0 0 0 11038136 11672392 628600832 140733483523006 140733483523497 140733483523497 140733483528167 0\n",
+      "ownedProcessLiveAfter": false,
+      "profileExistsAfter": false
+    },
+    {
+      "pid": 41260,
+      "profile": "/tmp/7036-lifecycle-mpjjAQ/Temp/ifclite-frame-rig-9d41494b7e89",
+      "observedJournal": [
+        "allocations.jsonl"
+      ],
+      "commandLine": [
+        "python3",
+        "/tmp/7036-lifecycle-mpjjAQ/bin/chrome-fixture",
+        "--remote-debugging-port=39128",
+        "--user-data-dir=/tmp/7036-lifecycle-mpjjAQ/Temp/ifclite-frame-rig-9d41494b7e89",
+        "--no-first-run",
+        "--no-default-browser-check",
+        "--disable-extensions",
+        "--disable-background-timer-throttling",
+        "--disable-renderer-backgrounding",
+        "--disable-backgrounding-occluded-windows",
+        "--enable-unsafe-webgpu",
+        "--window-size=1280,800",
+        "--window-position=0,0",
+        "--disable-features=BatterySaverModeAvailable,HighEfficiencyModeAvailable",
+        "about:blank"
+      ],
+      "stat": "41260 (python3) S 41041 41260 41260 0 -1 4194304 3022 0 0 0 1 1 0 0 20 0 1 0 17855672 31428608 4704 18446744073709551615 4333568 8025729 140729151825312 0 0 0 0 16781312 2 1 0 0 17 1 0 0 0 0 0 11038136 11672392 40792064 140729151826878 140729151827369 140729151827369 140729151832039 0\n",
+      "ownedProcessLiveAfter": false,
+      "profileExistsAfter": false
+    },
+    {
+      "pid": 42657,
+      "profile": "/tmp/7036-lifecycle-HBwYbk/Temp/ifclite-frame-rig-a4c63af5175d",
+      "observedJournal": [
+        "allocations.jsonl"
+      ],
+      "commandLine": [
+        "python3",
+        "/tmp/7036-lifecycle-HBwYbk/bin/chrome-fixture",
+        "--remote-debugging-port=39160",
+        "--user-data-dir=/tmp/7036-lifecycle-HBwYbk/Temp/ifclite-frame-rig-a4c63af5175d",
+        "--no-first-run",
+        "--no-default-browser-check",
+        "--disable-extensions",
+        "--disable-background-timer-throttling",
+        "--disable-renderer-backgrounding",
+        "--disable-backgrounding-occluded-windows",
+        "--enable-unsafe-webgpu",
+        "--window-size=1280,800",
+        "--window-position=0,0",
+        "--disable-features=BatterySaverModeAvailable,HighEfficiencyModeAvailable",
+        "about:blank"
+      ],
+      "stat": "42657 (python3) S 41041 42657 42657 0 -1 4194304 3024 0 0 0 3 2 0 0 20 0 1 0 17856045 31428608 4656 18446744073709551615 4333568 8025729 140732822325536 0 0 0 0 16781312 2 1 0 0 17 1 0 0 0 0 0 11038136 11672392 368345088 140732822330309 140732822330800 140732822330800 140732822335463 0\n",
+      "ownedProcessLiveAfter": false,
+      "profileExistsAfter": false
+    }
+  ]
+}

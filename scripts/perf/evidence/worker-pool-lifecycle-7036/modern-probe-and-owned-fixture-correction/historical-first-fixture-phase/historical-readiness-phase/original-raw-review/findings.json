@@ -1,0 +1,36 @@
+{
+  "headSha": "0ec416fc384d4740c064399fba37e68f56cbad2b",
+  "verdict": "findings",
+  "findings": [
+    {
+      "path": "tests/benchmark/metadata-render-readiness.ts",
+      "line": 92,
+      "quote": "    const metadata = probe ? done.has(metadataSpan) : legacy.metadata;",
+      "body": "A cache probe with `cache.storeReady` and `geometry.streamComplete` done but no `scene.finalize` can still return ready if the logs retain a previous `[GeomStream] finalizeStreamingAsync complete` line: the unchanged renderer check accepts `legacy.renderer` even when a probe exists. The new cache route therefore need not wait for its actual scene finalization.",
+      "class": "absence-reads-as-success"
+    }
+  ],
+  "omitted": [],
+  "classPass": false,
+  "counts": {
+    "emitted": 2,
+    "surviving": 2,
+    "capped": 0,
+    "kept": 2
+  },
+  "warnings": [],
+  "dedup": {
+    "ran": true,
+    "threshold": 0.7,
+    "dropped": [
+      {
+        "index": 1,
+        "duplicateOf": 0,
+        "probability": 0.8,
+        "path": "scripts/browser-metadata-readiness.test.mjs",
+        "line": 97
+      }
+    ],
+    "note": null
+  }
+}

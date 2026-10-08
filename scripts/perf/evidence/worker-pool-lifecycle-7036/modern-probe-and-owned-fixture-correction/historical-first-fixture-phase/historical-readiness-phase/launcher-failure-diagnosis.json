@@ -1,0 +1,19 @@
+{
+  "sourcePins": {
+    "scripts/perf/frame-gpu-chrome-lifecycle.test.mjs": "31f54ab8ddc537760676083bc408cce10b87461a1cb8ec41c7616d7fae8fd799",
+    "scripts/perf/frame-gpu-chrome.ts": "0af0660713e3ad39ee1ccd1c3d1d353240986d3ee8e381e168292b196cff8ddf",
+    "scripts/perf/frame-gpu-owned-profile.ps1": "c99c404ee7768b78da00aeb73d1471da46de0dd2503967c1457c7c0f215de7a3"
+  },
+  "originalCommittedPins": {
+    "scripts/perf/frame-gpu-chrome-lifecycle.test.mjs": "31f54ab8ddc537760676083bc408cce10b87461a1cb8ec41c7616d7fae8fd799",
+    "scripts/perf/frame-gpu-chrome.ts": "0af0660713e3ad39ee1ccd1c3d1d353240986d3ee8e381e168292b196cff8ddf",
+    "scripts/perf/frame-gpu-owned-profile.ps1": "c99c404ee7768b78da00aeb73d1471da46de0dd2503967c1457c7c0f215de7a3"
+  },
+  "fixtureDirectoriesRemaining": [
+    {
+      "path": "/tmp/7036-lifecycle-invariants-canonical.log",
+      "owners": []
+    }
+  ],
+  "ownedFixtureProcesses": []
+}

@@ -1,0 +1,31 @@
+{
+  "headSha": "0ec416fc384d4740c064399fba37e68f56cbad2b",
+  "verdict": "findings",
+  "findings": [],
+  "omitted": [],
+  "classPass": false,
+  "counts": {
+    "emitted": 2,
+    "surviving": 2,
+    "capped": 0,
+    "kept": 0,
+    "judgeInput": 1,
+    "dropped": 1
+  },
+  "warnings": [],
+  "dedup": {
+    "ran": true,
+    "threshold": 0.7,
+    "dropped": [
+      {
+        "index": 1,
+        "duplicateOf": 0,
+        "probability": 0.8,
+        "path": "scripts/browser-metadata-readiness.test.mjs",
+        "line": 97
+      }
+    ],
+    "note": null
+  },
+  "judged": true
+}

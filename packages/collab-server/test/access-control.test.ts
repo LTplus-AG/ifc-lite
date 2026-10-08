@@ -298,25 +298,29 @@ describe('state persistence (debounced, atomic, flushable)', () => {
     expect(fs.existsSync(path.join(dir, 'access-control.json'))).toBe(false);
   });
 
-  it('flush() rejects when the state cannot be written (unwritable dir)', async () => {
+  it('flush() rejects when the state cannot be written (temp path blocked, any user)', async () => {
     const dir = freshDir();
     const ac = create({ secret: SECRET, dir, persistDebounceMs: 1 });
     const authorize = authorizeOf(ac);
     expect(
       await authorize({ roomId: 'm/doomed', role: 'editor' }, { bearerClaims: null, clientIp: '6.6.6.6' }),
     ).toBe('admin');
-    fs.chmodSync(dir, 0o500); // read + traverse, no write
+    // A directory where the temp file goes makes the write fail for any user.
+    // A read-only chmod would not: root (a container, or a root-run CI
+    // runner) ignores mode bits, so the flush would succeed there.
+    const tmp = path.join(dir, 'access-control.json.tmp');
+    fs.mkdirSync(tmp);
     try {
       await expect(ac.flush()).rejects.toThrow(/could not be persisted/);
-      // Nothing landed and no torn temp file exists.
+      // Nothing landed.
       expect(fs.existsSync(path.join(dir, 'access-control.json'))).toBe(false);
-      // Once the volume is writable again a later flush succeeds and the
+      // Once the path is writable again a later flush succeeds and the
       // pending claim finally lands (state stayed dirty, not dropped).
-      fs.chmodSync(dir, 0o700);
+      fs.rmdirSync(tmp);
       await ac.flush();
       expect(readState(dir).claimedRooms).toContain('m/doomed');
     } finally {
-      fs.chmodSync(dir, 0o700);
+      fs.rmSync(tmp, { recursive: true, force: true });
     }
   });
 });

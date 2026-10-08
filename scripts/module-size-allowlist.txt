@@ -85,7 +85,7 @@
    825 apps/viewer/src/components/viewer/properties/LocationMap.tsx
    417 apps/viewer/src/components/viewer/properties/MaterialTotalsPanel.tsx
    510 apps/viewer/src/components/viewer/properties/TaskEditCard.tsx
-  2046 apps/viewer/src/components/viewer/PropertiesPanel.tsx
+  1998 apps/viewer/src/components/viewer/PropertiesPanel.tsx
    577 apps/viewer/src/components/viewer/PropertyEditor.tsx
    535 apps/viewer/src/components/viewer/schedule/AnimationSettingsPopover.tsx
    648 apps/viewer/src/components/viewer/schedule/generate-schedule.ts
@@ -237,7 +237,6 @@
    470 packages/mcp/src/tools/layer-review.ts
    648 packages/mcp/src/tools/query.ts
    694 packages/mcp/src/tools/viewer.ts
-   413 packages/mcp/src/transport/http.ts
    465 packages/merge/src/component-state.ts
    530 packages/merge/src/three-way.ts
    558 packages/mutations/src/csv-connector.ts

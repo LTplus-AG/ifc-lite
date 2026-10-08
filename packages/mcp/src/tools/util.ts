@@ -147,9 +147,22 @@ export function okResult(text: string, structured?: Record<string, unknown>): Ca
   return { content };
 }
 
+/**
+ * A number for tool TEXT, grouped the en-US way (`2,500`) on every host.
+ *
+ * `toLocaleString()` with no argument follows the host's `LC_ALL` / `LANG`, so
+ * the same tool call answered `2 500` on a Swedish machine and `2.500` on a
+ * German one (#7027). Tool text is English prose read by a model and a person;
+ * its numbers are en-US wherever the server runs. Machine-read values do not
+ * come through here: they travel as plain numbers in `structuredContent`.
+ */
+export function fmtInt(n: number): string {
+  return n.toLocaleString('en-US');
+}
+
 export function fmtCount(n: number, singular: string, plural?: string): string {
   if (n === 1) return `1 ${singular}`;
-  return `${n.toLocaleString()} ${plural ?? singular + 's'}`;
+  return `${fmtInt(n)} ${plural ?? singular + 's'}`;
 }
 
 /** Slice a large array down to `limit` and return `{ items, truncated }`. */

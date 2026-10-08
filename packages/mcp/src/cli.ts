@@ -22,6 +22,7 @@ import { createMCPServer, VERSION } from './index.js';
 import { loadIfcModel } from './loader.js';
 import { fullScope, readOnlyScope, type AuthScope } from './auth/scope.js';
 import { InMemoryModelRegistry } from './context.js';
+import { fmtInt } from './tools/util.js';
 
 function printHelp(): void {
   process.stdout.write(`
@@ -102,7 +103,7 @@ async function main(): Promise<void> {
       const m = await loadIfcModel(resolve(file), { allowedPaths: opts.allowedPaths });
       registry.add(m);
       // Use stderr — stdout is sacred for the JSON-RPC channel.
-      process.stderr.write(`[ifc-lite-mcp] loaded ${m.name} (${m.id}) — ${m.store.entityCount.toLocaleString()} entities\n`);
+      process.stderr.write(`[ifc-lite-mcp] loaded ${m.name} (${m.id}) — ${fmtInt(m.store.entityCount)} entities\n`);
     }
 
     const server = createMCPServer({

@@ -72,7 +72,7 @@ function bytesToHex(bytes: Uint8Array): string {
 
 /**
  * {@link computeFullSourceHash} from a `Blob`/`File` handle rather than an
- * already-loaded buffer — for a caller (e.g. `useDrawing2DPersistence`) that
+ * already-loaded buffer — for a caller (e.g. `lib/compare/identitySidecar.ts`) that
  * only holds `FederatedModel.sourceFile` and needs a TRUE full-content
  * identity, not the O(1) spread sampler in `@ifc-lite/cache`'s `source-fingerprint.ts` (that
  * sampler is a cache-lookup key backed by an mtime guard and this same

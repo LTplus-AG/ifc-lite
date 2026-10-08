@@ -28,7 +28,7 @@ import { getDefaultDrawing2DState } from '@/store/slices/drawing2DSlice.js';
 import { loadDrawing2DEntry } from '@/store/slices/drawing2DSlice.persistence.js';
 
 /** modelId -> resolved content hash, or `null` when one could not be computed (no `sourceFile`). */
-const hashCache = new Map<string, { hash: string | null; source?: WeakRef<File> }>();
+const hashCache = new Map<string, { hash: string | null; source?: WeakRef<File>; legacyMarkupKey?: string }>();
 
 /** Read `modelId`'s cached hash. `undefined` means no hash has been resolved (or attempted) for it yet. */
 export function getCachedHash(modelId: string): string | null | undefined {
@@ -40,9 +40,9 @@ export function getCachedHash(modelId: string): string | null | undefined {
 }
 
 /** Record `modelId`'s resolved hash (or `null` when one could not be computed), and nothing else — callers still notify {@link notifyDecided} themselves once ready to. */
-export function setCachedHash(modelId: string, hash: string | null): void {
+export function setCachedHash(modelId: string, hash: string | null, legacyMarkupKey?: string): void {
   const source = useViewerStore.getState().models.get(modelId)?.sourceFile;
-  hashCache.set(modelId, { hash, source: source ? new WeakRef(source) : undefined });
+  hashCache.set(modelId, { hash, legacyMarkupKey, source: source ? new WeakRef(source) : undefined });
 }
 
 /**
@@ -89,7 +89,8 @@ export function hasPersistedMarkupEntryFor(modelId: string): 'pending' | boolean
   }
   if (!hash) return false;
   const defaults = getDefaultDrawing2DState().drawing2DDisplayOptions;
-  return loadDrawing2DEntry(hash, defaults) !== null;
+  const legacy = hashCache.get(modelId)?.legacyMarkupKey;
+  return loadDrawing2DEntry(hash, defaults) !== null || !!legacy && loadDrawing2DEntry(legacy, defaults) !== null;
 }
 
 /**

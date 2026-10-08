@@ -5,7 +5,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, mkdirSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, isAbsolute, join, relative } from 'node:path';
 import { preparePythonWheel } from './revert-oracle-python-wheel.mjs';
@@ -61,11 +61,14 @@ test('#5800: a wheel test imports separately built baseline and reverted source 
       });
       assert.equal(imported.status, 0, imported.stderr);
       const loaded = JSON.parse(imported.stdout.trim());
-      const installedPath = relative(dirname(dirname(wheel.bin)), loaded.file);
+      // Python reports realpath'd module paths; the venv path is spelled through
+      // `tmpdir()`, which on macOS is `/var/...`, a symlink to `/private/var/...`.
+      const envRoot = realpathSync(dirname(dirname(wheel.bin)));
+      const installedPath = relative(envRoot, loaded.file);
       assert.equal(isAbsolute(installedPath) || installedPath.startsWith('..'), false,
         `probe imported outside the wheel environment: ${loaded.file}`);
       assert.match(installedPath, /site-packages/);
-      const pytestPath = relative(dirname(dirname(wheel.bin)), loaded.pytest_file);
+      const pytestPath = relative(envRoot, loaded.pytest_file);
       assert.equal(isAbsolute(pytestPath) || pytestPath.startsWith('..'), false,
         `pytest imported outside the wheel environment: ${loaded.pytest_file}`);
       assert.match(pytestPath, /site-packages/);

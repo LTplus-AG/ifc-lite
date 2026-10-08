@@ -59,11 +59,17 @@ export function isInertPath(path) {
  * same classifier false-positive shape the inert list above fixed for
  * binary assets. Kept exact, not a pattern: `scripts/lib/` is otherwise real
  * production tooling and must keep reading as such.
+ *
+ * `host-preconditions` and the xmatch `build-output-guard` (#7030) compute the
+ * `skip` value script tests pass to `node:test` when a tool or build output is
+ * missing; only test files import them.
  */
 const TEST_SUPPORT_EXACT = new Set([
   'scripts/lib/shard-refusal-boundary.mjs',
   'scripts/lib/relocated-gate-source.mjs',
   'scripts/lib/wasm-rtc-precision-contracts.mjs',
+  'scripts/lib/host-preconditions.mjs',
+  'scripts/xmatch/build-output-guard.mjs',
 ]);
 
 export function isTestSupportPath(path) {

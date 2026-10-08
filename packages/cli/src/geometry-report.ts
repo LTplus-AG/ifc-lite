@@ -8,6 +8,7 @@
  * identical report.
  */
 import type { GeometryDiagnostics } from '@ifc-lite/geometry';
+import { formatCount } from './output.js';
 
 /** One-liner used when the geometry pass recorded nothing diagnostic-worthy. */
 export const NO_DIAGNOSTICS_LINE =
@@ -88,7 +89,7 @@ function formatHostDetail(h: GeometryDiagnostics['worstHosts'][number]): string 
     parts.push(`bbox=[${h.bbox.min.map(fmt).join(', ')}] – [${h.bbox.max.map(fmt).join(', ')}]`);
   }
   if (h.triangleCount !== undefined) {
-    parts.push(`triangles=${h.triangleCount.toLocaleString()}`);
+    parts.push(`triangles=${formatCount(h.triangleCount)}`);
   }
   return parts.length > 0 ? parts.join('  ') : undefined;
 }

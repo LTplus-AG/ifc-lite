@@ -29,7 +29,7 @@ export function SavedValidationElements({ snapshot, rowId, request }: {
     {evidence.gaps.map(gap => <p key={gap} className="text-amber-600 dark:text-amber-400">{gap}</p>)}
     {rows.map(row => <article key={row.id} ref={row.id === rowId ? focused : undefined} tabIndex={-1}
       aria-current={row.id === rowId ? 'true' : undefined} data-saved-validation-row={row.id}
-      className="rounded border border-border p-2 focus:outline focus:outline-2 focus:outline-primary">
+      className="break-words rounded border border-border p-2 focus:outline focus:outline-2 focus:outline-primary">
       <p className="font-medium">{row.title} · {row.nativeStatus}</p>
       <p>{row.modelName} · {row.ifcType}{row.Name !== undefined ? ` · ${row.Name}` : ''}</p>
       {row.GlobalId && <p>{t('validationPanel.history.globalId', { value: row.GlobalId })}</p>}

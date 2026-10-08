@@ -113,7 +113,7 @@ function existing(ctx: Context, target: ExistingElement, row: AuthoringRow): num
   const { modelId, expressId } = locate(ctx, target);
   join(row, modelId);
   const r = reader(ctx, modelId);
-  if (row.op.op === 'element.split' && !uniqueSplitGuid(r.dataStore, r.editor, target.globalId)) throw new Refusal('ambiguous-target', 'The native split target GlobalId is not unique in its owning model');
+  if ((row.op.op === 'element.split' || row.op.op === 'element.trimExtend') && !uniqueSplitGuid(r.dataStore, r.editor, target.globalId)) throw new Refusal('ambiguous-target', 'The native target GlobalId is not unique in its owning model');
   const ifcClass = className(r, expressId);
   const name = nameOf(r, expressId);
   row.before.ifcClass = ifcClass;
@@ -331,6 +331,15 @@ export function previewModelAuthoring(state: ViewerState, batch: ModelAuthoringB
   }
   nativeDryRun(ctx, batch);
   for (const row of ctx.rows) if (row.status === 'ready' && row.modelId && (row.op.op === 'element.resize' || row.op.op === 'element.profile' || row.op.op === 'element.trimExtend')) {
+    const boundary = row.op.op === 'element.trimExtend' ? row.resolved.reachBoundary : undefined;
+    // The whole native batch validates this boundary; the independent body draft
+    // cannot reproduce a preceding edit of the same existing wall (#7262).
+    if (boundary && 'id' in boundary && ctx.rows.some(previous => previous.index < row.index
+      && previous.status === 'ready' && previous.modelId === row.modelId && previous.expressId === boundary.id
+      && previous.op.op !== 'element.copy' && previous.op.op !== 'element.array')) {
+      row.previewUnavailable = true;
+      continue;
+    }
     const ghost = authoringSizeGhost(state, batch, row, row.modelId, 0);
     row.previewUnavailable = ghost.unavailable;
     row.previewOmitted = ghost.omitted;

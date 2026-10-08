@@ -99,6 +99,7 @@ test('#7262 selected native evidence exposes verbatim geometry pins and federate
   const ref=target(id,'second');useViewerStore.setState({selectedEntity:{modelId:'second',expressId:id},selectedEntityId:null,selectedEntities:[],selectedEntitiesSet:new Set(),selectedEntityIds:new Set()});
   const snapshot=captureEvidence('selection');
   const evidence=JSON.parse(snapshot.payload).evidence.rows[0].data.nativeTrimExtendExpected;
+  assert.ok(evidence && evidence.kind === 'wall', 'selected native evidence must provide the current wall snapshot before reviewed authoring');
   assert.equal(evidence.wall.location[1],5000,'native file coordinate remains millimetres');assert.equal(evidence.wall.wall.start[1],5,'canonical wall axis remains metres');
   const proposal=batch([{op:'element.trimExtend',target:ref,expected:evidence,mode:'extend',click:[8000,5000],boundary:{line:line(10,5,1000)}}],'mm');
   const preview=previewModelAuthoring(state(),proposal);assert.deepEqual(preview.rows.map(r=>[r.status,r.modelId]),[['ready','second']]);

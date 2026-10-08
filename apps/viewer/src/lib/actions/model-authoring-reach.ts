@@ -10,6 +10,7 @@ import { resolveLinearElementChain } from '@/lib/linear-element-edit';
 import { readOnlyModelEditTarget, nativeLengthUnitAvailable } from './model-authoring-read-target';
 import type { ModelEditTarget } from '@/store/slices/mutation-modelling-records';
 import type { ViewerState } from '@/store';
+import { uniqueSplitGuid } from './model-authoring-split';
 import { nativeReachPin, sameReachPin } from './model-authoring-reach-fields';
 import { toMetres, type AuthoringOp, type ModelAuthoringBatch } from './model-authoring';
 import type { ElementId } from './model-authoring-native';
@@ -64,6 +65,10 @@ export function reachParams(batch: ModelAuthoringBatch, op: ReachOp, boundary: E
 export function writeAuthoringReach(batch: ModelAuthoringBatch, store: IfcDataStore, editor: StoreEditor, id: number,
   op: ReachOp, boundary: ElementId | undefined, refs: ReadonlyMap<string, number>) {
   const view = editor.getMutationView();
+  if (!uniqueSplitGuid(store, editor, op.target.globalId)) throw new Error('The native Trim/Extend target GlobalId is not unique');
+  if ('wall' in op.boundary && !('ref' in op.boundary.wall) && !uniqueSplitGuid(store, editor, op.boundary.wall.globalId)) {
+    throw new Error('The native Trim/Extend boundary GlobalId is not unique');
+  }
   verifyReachExpected(store, view, editor, id, op);
   const params = reachParams(batch, op, boundary, refs);
   if ('wallId' in params.boundary && 'wall' in op.boundary && op.boundary.expected) {

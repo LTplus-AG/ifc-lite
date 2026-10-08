@@ -6,7 +6,7 @@ import '@/test/setup-dom.js';
 import test, { afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
-import { extractAllMaterialsOnDemand } from '@ifc-lite/parser';
+import { EMPTY_SOURCE_BYTES, extractAllMaterialsOnDemand } from '@ifc-lite/parser';
 import { advance, render, cleanup } from '@/test/render';
 import { parseStep, seedModel } from '@/test/properties-panel-harness';
 import { renderPanelBody } from '@/lib/panels/renderPanelBody';
@@ -94,10 +94,10 @@ test('#7119 real ArchiCAD layer usage preserves material name and metre thicknes
 test('#7119 source-free verified materials remain known and missing wire rows remain unverified', async () => {
   const store = await sample();
   const actual = extractAllMaterialsOnDemand(store, 52)[0]; assert.ok(actual);
-  seedModel('server', 0, { ...store, source: new Uint8Array(), resolvedMaterials: new Map([[52, new Map([[62, actual]])]]) }, 52);
+  seedModel('server', 0, { ...store, source: EMPTY_SOURCE_BYTES, resolvedMaterials: new Map([[52, new Map([[62, actual]])]]) }, 52);
   assert.equal(rows()[0].materials[0].Name, 'concrete_reinforced_in-situ');
   assert.equal(rows()[0].materials[0].verification, 'resolved');
-  seedModel('unknown', 0, { ...store, source: new Uint8Array(), resolvedMaterials: undefined }, 52);
+  seedModel('unknown', 0, { ...store, source: EMPTY_SOURCE_BYTES, resolvedMaterials: undefined }, 52);
   assert.equal(rows()[0].materialCount, 1);
   assert.deepEqual(rows()[0].materials, [{ type: null, verification: 'unverified' }]);
   assert.equal(rows()[0].materialPropertiesStatus, 'unverified-without-source');

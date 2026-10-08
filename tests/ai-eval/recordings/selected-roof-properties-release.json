@@ -104,6 +104,7 @@
             "modelName": "arch",
             "type": "IfcSlab",
             "name": "house - roof - slab right",
+            "nativeTrimExtendExpected": null,
             "attributes": {
               "Name": "house - roof - slab right",
               "Description": "A roof slab that's got it all covered",

@@ -65,7 +65,7 @@
    529 apps/viewer/src/components/viewer/BCFPanel.tsx
    604 apps/viewer/src/components/viewer/BulkPropertyEditor.tsx
    485 apps/viewer/src/components/viewer/CesiumOverlay.tsx
-  1682 apps/viewer/src/components/viewer/ChatPanel.tsx
+  1434 apps/viewer/src/components/viewer/ChatPanel.tsx
   1243 apps/viewer/src/components/viewer/ClashPanel.tsx
    966 apps/viewer/src/components/viewer/DataConnector.tsx
   1698 apps/viewer/src/components/viewer/Drawing2DCanvas.tsx
@@ -237,7 +237,6 @@
    470 packages/mcp/src/tools/layer-review.ts
    648 packages/mcp/src/tools/query.ts
    694 packages/mcp/src/tools/viewer.ts
-   413 packages/mcp/src/transport/http.ts
    465 packages/merge/src/component-state.ts
    530 packages/merge/src/three-way.ts
    558 packages/mutations/src/csv-connector.ts

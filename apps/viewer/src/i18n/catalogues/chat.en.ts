@@ -208,6 +208,8 @@ export const chatEn = {
   'chat.panel.installAsToolButton': 'Install as tool',
   'chat.panel.notNowButton': 'Not now',
   'chat.panel.continueButton': 'Continue',
+  'chat.panel.taskBudgetExhausted': 'Task budget exhausted. Start a new request to continue.',
+  'chat.panel.requestTimeout': 'Model request timed out.',
   'chat.panel.contactSupportLink': 'Contact support',
   'chat.panel.attachTooltipEnabled': 'Attach file or image (paste, drag & drop)',
   'chat.panel.attachTooltipDisabled': 'Selected model does not support attachments',

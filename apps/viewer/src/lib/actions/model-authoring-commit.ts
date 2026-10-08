@@ -23,7 +23,8 @@ import { runTransaction } from '@/lib/commands/modeling/transaction';
 import type { AuthoringTransaction, CommitResult, ModelingCommand } from '@/lib/commands/modeling/types';
 import { buildStoreyWorkplane, isWorkplane } from '@/lib/commands/modeling/workplane';
 import { commitElementTransform, planSelectionTransform } from '@/lib/element-transform/commit';
-import { detachFromType, recordModellingEdit } from '@/store/slices/mutation-modelling-records';
+import { writeNativeSplit } from './model-authoring-split';
+import { detachFromType, recordModellingEdit, recordModellingCommit } from '@/store/slices/mutation-modelling-records';
 import { toMetres, type AuthoringOp, type ModelAuthoringBatch } from './model-authoring';
 import { authoredElementOf, hostedSpecOf, idOf, writeRelation } from './model-authoring-native';
 import { previewModelAuthoring, type AuthoringRow, type ModelAuthoringPreview } from './model-authoring-preview';
@@ -70,6 +71,14 @@ function writeRow(tx: AuthoringTransaction, batch: ModelAuthoringBatch, row: Aut
   const base = { index: row.index, op: op.op, modelId };
   const targetGid = 'target' in op && !('ref' in op.target) ? op.target.globalId : undefined;
   switch (op.op) {
+    case 'element.split': {
+      const scopes = [...tx.store.models].map(([id, model]) => ({ dataStore: model.ifcDataStore, view: tx.store.mutationViews.get(id) }));
+      const result = recordModellingCommit(tx.api, modelId, (editor, store) => writeNativeSplit(batch, op, store, editor, resolved.target!, { globalIdScopes: scopes }), tx.batchId);
+      tx.api.getState().recordAuthoredElement(modelId, result.storeyId, result.addedId, result.element, { historyRecorded: true });
+      written.created.push(result.addedId); written.remesh.push(result.sourceId, result.addedId);
+      return [{ ...base, globalId: op.target.globalId, field: 'Split', before: JSON.stringify(before.split),
+        after: JSON.stringify({ addedGlobalId: result.element.params.GlobalId, leftId: result.leftId, rightId: result.rightId, openings: result.openings }) }];
+    }
     case 'element.resize': case 'element.profile': {
       const outcome = op.op === 'element.resize'
         ? commitElementSize(tx.api, modelId, resolved.target!, sizeInMetres(op.size, batch.units))

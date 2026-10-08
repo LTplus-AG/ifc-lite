@@ -73,13 +73,16 @@ for (const units of ['m', 'mm'] as const) {
   test(`#7267 reviewed type detachment in ${units} preserves independent exported occurrence/type/peer identities`, async () => {
     const { dataStore, view, target, typeId, peer } = await sharedType();
     const state = useViewerStore.getState();
-    const before = editedModelBytes(dataStore, view);
+    const before = await parseIfc(editedModelBytes(dataStore, view));
+    const entityGraph = (store: typeof before) => [...store.entityIndex.byId.keys()].sort((a, b) => a - b).map(id => [id, store.getEntity(id)]);
+    const beforeGraph = entityGraph(before);
     const undo = state.undoStacks;
     const redo = state.redoStacks;
     const dirty = state.dirtyModels;
     const preview = previewModelAuthoring(state, reviewedDetach(units));
     assert.equal(preview.rows[0].status, 'ready', preview.rows[0].issue ?? 'native type review status');
-    assert.deepEqual(editedModelBytes(dataStore, view), before, 'preview has no published STEP effect');
+    const afterPreview = await parseIfc(editedModelBytes(dataStore, view));
+    assert.deepEqual(entityGraph(afterPreview), beforeGraph, 'preview preserves the entire independently parsed native entity graph; export HEADER timestamps are outside this contract');
     assert.equal(useViewerStore.getState().undoStacks, undo);
     assert.equal(useViewerStore.getState().redoStacks, redo);
     assert.equal(useViewerStore.getState().dirtyModels, dirty);

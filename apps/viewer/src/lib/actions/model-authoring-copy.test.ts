@@ -171,7 +171,7 @@ test('#7202 target storey and polar placements export in native file units for m
       { op: 'element.array', target, refs: ['half', 'quarter'], mode: 'polar', count: 3, anchor: [0, 0], angleDeg: 90,
         from: [0, 5000], storey: { globalId: dataStore.entities.getGlobalId(UPPER_STOREY) } },
     ]));
-    assert.equal(preview.rows[0].status, 'ready', preview.rows[0].issue);
+    assert.equal(preview.rows[0].status, 'ready', preview.rows[0].issue ?? 'native array preview must be ready');
     const restore = setRequestRemesh(() => {});
     let outcome;
     try { outcome = commitModelAuthoring(useViewerStore, preview, new Set([0]), 'test'); } finally { restore(); }

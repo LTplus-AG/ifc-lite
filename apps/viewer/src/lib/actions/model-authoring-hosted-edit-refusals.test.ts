@@ -101,3 +101,15 @@ test('#7265 hosted preview reports unavailable after an earlier host transform i
   const after = await parseIfc(editedModelBytes(f.dataStore, f.view));
   assert.equal(readHostedFill(after, f.id)?.offset, 5);
 });
+
+test('#7265 source-free transport refuses hosted geometry editing despite retained parsed getters', async () => {
+  const f = await fixture(), state = useViewerStore.getState();
+  const model = state.models.get(SAMPLE_MODEL)!;
+  // A transport can retain the parsed index/getter closure while omitting the
+  // geometry source. The existing native UI gate must stay authoritative.
+  useViewerStore.setState({ models: new Map([[SAMPLE_MODEL, { ...model, ifcDataStore: { ...f.dataStore, source: undefined } }]]) });
+  const before = editedModelBytes(f.dataStore, f.view), preview = previewModelAuthoring(useViewerStore.getState(), f.batch({ Offset: 5 }));
+  assert.equal(preview.rows[0].status, 'unsupported'); assert.match(preview.rows[0].issue ?? '', /source|IFC/i);
+  assert.equal(commitModelAuthoring(useViewerStore, preview, new Set([0]), 'source-free hosted edit').ok, false);
+  assert.deepEqual(editedModelBytes(f.dataStore, f.view), before);
+});

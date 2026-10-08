@@ -107,8 +107,8 @@ function locate(ctx: Context, target: { globalId: string; modelId?: string }): {
   return hit;
 }
 
-function existing(ctx: Context, target: ExistingElement, row: AuthoringRow): number {
-  const { modelId, expressId } = locate(ctx, target);
+function existing(ctx: Context, target: ExistingElement, row: AuthoringRow, located = locate(ctx, target)): number {
+  const { modelId, expressId } = located;
   join(row, modelId);
   const r = reader(ctx, modelId);
   const ifcClass = className(r, expressId);
@@ -155,10 +155,11 @@ function resolve(ctx: Context, row: AuthoringRow): void {
   const { op } = row;
   switch (op.op) {
     case 'hosted.edit': {
-      row.resolved.target = row.expressId = existing(ctx, op.target, row);
-      const r = reader(ctx, row.modelId!);
-      const refusal = hostedFillRefusal(ctx.state, row.modelId!);
+      const located = locate(ctx, op.target);
+      const refusal = hostedFillRefusal(ctx.state, located.modelId);
       if (refusal) throw new Refusal('unsupported', refusal);
+      row.resolved.target = row.expressId = existing(ctx, op.target, row, located);
+      const r = reader(ctx, row.modelId!);
       try { row.before.hosted = readExpectedHostedEdit(r.dataStore, r.editor, row.expressId, ctx.batch.units); }
       catch (error) { throw new Refusal('invalid', error instanceof Error ? error.message : String(error)); }
       if (!sameHostedEdit(row.before.hosted, op.expected)) throw new Refusal('conflict', 'The current native hosted binding, position or dimensions differ from the expected state');

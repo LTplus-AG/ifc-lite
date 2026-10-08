@@ -9,7 +9,7 @@
  * (malformed members, an unknown operator or source, a rule this build cannot
  * read) stays in `unreadableConditions`, visible and removable. */
 import {
-  LIST_CONDITION_OPERATORS, LIST_CONDITION_SOURCES, Rule, isFilterRule, legacyListOperatorToFilterRule,
+  LIST_CONDITION_OPERATORS, LIST_CONDITION_SOURCES, Rule, isCapturedEntityScope, isFilterRule, legacyListOperatorToFilterRule,
   type FilterGroup, type FilterRule,
 } from '@ifc-lite/rules';
 import { isNamePattern } from './name-pattern.js';
@@ -38,6 +38,7 @@ export function isSavedListShape(value: unknown): value is Record<string, unknow
       && typeof column.id === 'string' && typeof column.source === 'string' && COLUMN_SOURCES.has(column.source)
       && typeof column.propertyName === 'string')) return false;
   if (value.groups !== undefined && !Array.isArray(value.groups)) return false;
+  if (value.capturedScope !== undefined && !isCapturedEntityScope(value.capturedScope)) return false;
   if (value.unreadableConditions !== undefined && (!Array.isArray(value.unreadableConditions)
     || !value.unreadableConditions.every((row) => isRecord(row) && (
       (row.reason === 'invalid-condition' && 'condition' in row)

@@ -441,6 +441,15 @@ The PDF writer has no native abort contract, so its row offers no Cancel action.
 
 ## CSV Export
 
+The web viewer’s entities, properties, quantities and spatial hierarchy CSV commands
+share the same handler across the ribbon, command palette and mobile toolbar.
+They export the active model with pending native edits applied. In a federation,
+the Activity subject and existing export toast state that other loaded models
+are excluded. Each invocation has its own Activity row; Completed follows browser
+publication and Failed records writer or publication errors. Exports can finish
+after their initiating controls close. The Rust CSV writer has no abort contract,
+so these rows offer no Cancel action. An unavailable source creates no job.
+
 Export tabular data for spreadsheet applications:
 
 CSV is produced in Rust (`ifc-lite-export`) via `GeometryProcessor`. The `mode`

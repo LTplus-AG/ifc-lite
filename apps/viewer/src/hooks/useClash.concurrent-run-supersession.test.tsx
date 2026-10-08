@@ -49,6 +49,11 @@ import type { ClashRule } from '@ifc-lite/clash';
 import type { CoordinateInfo, GeometryResult, MeshData } from '@ifc-lite/geometry';
 import { useViewerStore, type FederatedModel } from '@/store';
 import { useClash } from './useClash.js';
+import { startActivityRecorders, resetActivityRecordersForTest } from '@/lib/activity/activity-recorders';
+import { useActivityJournal, activityCanceller, cancelActivity } from '@/lib/activity/activity-journal';
+import { activeClashRunSession } from './analysisRunCancellation';
+import { render, click, cleanup } from '@/test/render';
+import { ActivityTrayList } from '@/components/viewer/activity/ActivityTrayList';
 
 // ─── Fixture: N mutually-overlapping unit boxes (real narrow-phase work) ───
 
@@ -253,5 +258,116 @@ describe('useClash - concurrent-run supersession (#2802)', () => {
         'FIRST - it is the one the user is waiting on. The earlier, slower run() finishing later must not ' +
         'overwrite it just because it lands last.',
     );
+  });
+});
+
+
+// Stated invariant: 200 parsed IFC walls with mutually overlapping closed
+// boxes exercise the real native broad/narrow loops and their yield points.
+describe('owned native clash activity cancellation (#7110)', () => {
+  let stopRecorders = () => {};
+  beforeEach(() => {
+    resetActivityRecordersForTest();
+    stopRecorders = startActivityRecorders(useViewerStore);
+  });
+  afterEach(() => {
+    stopRecorders();
+    cleanup();
+    sessionStorage.clear();
+  });
+
+  for (const modelCount of [1, 2] as const) {
+    it(`mounted tray Cancel aborts the real narrow phase with ${modelCount} models`, async () => {
+      await seed(modelCount);
+      await act(async () => { await api!.runDuplicates(); });
+      const previous = useViewerStore.getState().clashResult;
+      const ui = render(<ActivityTrayList onOpened={() => {}} />);
+      let cancelled = false;
+      const detach = fireAtNarrowPhase(() => {
+        const button = [...ui.querySelectorAll('button')].find(candidate => candidate.textContent === 'Cancel');
+        assert.ok(button, 'the mounted tray must expose native check cancellation');
+        click(button);
+        cancelled = true;
+      });
+      try { await act(async () => { await api!.run([ALL_RULE]); }); }
+      finally { detach(); }
+      assert.equal(cancelled, true);
+      assert.equal(useViewerStore.getState().clashResult, previous);
+      assert.deepEqual(useActivityJournal.getState().jobs.map(job => job.outcome), ['completed', 'cancelled']);
+      assert.equal(useViewerStore.getState().clashError, null);
+      assert.equal(activeClashRunSession(), null);
+      assert.equal(activityCanceller(useActivityJournal.getState().jobs.at(-1)!.id), null);
+    });
+  }
+
+  for (const path of ['duplicates', 'preset'] as const) {
+    it(`tray cancels ${path} preparation before geometry is examined`, async () => {
+      await seed();
+      let pending: Promise<void> | undefined;
+      act(() => {
+        pending = path === 'duplicates' ? api!.runDuplicates() : api!.runPreset(useViewerStore.getState().clashPresets[0].id);
+      });
+      const job = useActivityJournal.getState().jobs.at(-1)!;
+      assert.equal(job.outcome, 'running');
+      const session = activeClashRunSession();
+      assert.ok(session);
+      act(() => cancelActivity(job.id));
+      assert.equal(session.controller.signal.aborted, true);
+      await act(async () => { await pending; });
+      assert.equal(useViewerStore.getState().clashResult, null);
+      assert.equal(useActivityJournal.getState().jobs.at(-1)?.outcome, 'cancelled');
+      assert.equal(activityCanceller(job.id), null);
+      assert.equal(activeClashRunSession(), null);
+    });
+  }
+
+  it('a completed preset transfers preparation ownership into one completed native activity', async () => {
+    await seed();
+    await act(async () => { await api!.runPreset(useViewerStore.getState().clashPresets[0].id); });
+    assert.ok(useViewerStore.getState().clashResult);
+    assert.deepEqual(useActivityJournal.getState().jobs.map(job => job.outcome), ['completed']);
+    assert.equal(activeClashRunSession(), null);
+  });
+
+  it('a superseded row and retained callback cannot cancel the newer native job', async () => {
+    await seed();
+    let newer: Promise<void> | undefined;
+    let called = false;
+    const detach = fireAtNarrowPhase(() => {
+      const oldJob = useActivityJournal.getState().jobs.at(-1)!;
+      const oldCancel = activityCanceller(oldJob.id);
+      assert.ok(oldCancel);
+      newer = api!.runDuplicates();
+      const current = activeClashRunSession();
+      assert.ok(current);
+      oldCancel();
+      assert.equal(current.controller.signal.aborted, false, 'retained old authority cannot abort the new owner');
+      assert.equal(activityCanceller(oldJob.id), null, 'a superseded row has no live registry entry');
+      called = true;
+    });
+    try { await act(async () => { await api!.run([ALL_RULE]); await newer; }); }
+    finally { detach(); }
+    assert.equal(called, true);
+    assert.equal(useViewerStore.getState().clashResult?.rulesRun[0].id, 'duplicates');
+    assert.deepEqual(useActivityJournal.getState().jobs.map(job => job.outcome), ['cancelled', 'completed']);
+    assert.equal(activeClashRunSession(), null);
+  });
+
+  it('closing the owning panel leaves a native background run cancellable from its tray row', async () => {
+    await seed();
+    let pending: Promise<void> | undefined;
+    act(() => { pending = api!.runDuplicates(); });
+    const job = useActivityJournal.getState().jobs.at(-1)!;
+    const current = root!;
+    root = null;
+    act(() => current.unmount());
+    assert.equal(job.outcome, 'running');
+    assert.ok(activityCanceller(job.id), 'panel closure must not orphan the native cancel authority');
+    act(() => cancelActivity(job.id));
+    await act(async () => { await pending; });
+    assert.equal(useViewerStore.getState().clashResult, null);
+    assert.equal(useActivityJournal.getState().jobs.at(-1)?.outcome, 'cancelled');
+    assert.equal(activityCanceller(job.id), null);
+    assert.equal(activeClashRunSession(), null);
   });
 });

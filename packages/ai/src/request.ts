@@ -164,7 +164,7 @@ export async function runModelRequest<Message, Route extends string>(
       provenance = {
         contractVersion: 'ifc-lite.ai.request.v1', grantedOutputTokens: grant.maxOutputTokens, timeoutMs, finishReason: 'unknown',
         ...(typeof request.promptVersion === 'string' && /^[A-Za-z0-9][A-Za-z0-9._-]{0,199}$/.test(request.promptVersion) ? { promptVersion: request.promptVersion } : {}),
-        ...(inputDigest ? { inputDigest: { algorithm: 'sha256', referent: 'logical-input.v1', value: inputDigest } } : { inputDigestUnavailable: 'non-json-input' }),
+        ...('value' in inputDigest ? { inputDigest: { algorithm: 'sha256', referent: 'logical-input.v1', value: inputDigest.value } } : { inputDigestUnavailable: inputDigest.unavailable }),
       };
       await request.transport({
       model: request.model,

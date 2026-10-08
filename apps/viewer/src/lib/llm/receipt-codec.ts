@@ -23,12 +23,12 @@ function decodeProvenance(value: unknown): Provenance | null {
   };
   const input = inputDigest === undefined ? undefined : digest(inputDigest, 'logical-input.v1');
   const output = outputTextDigest === undefined ? undefined : digest(outputTextDigest, 'output-text.utf8.v1');
-  if (input === null || output === null || (inputDigestUnavailable !== undefined && inputDigestUnavailable !== 'non-json-input')
-    || (!!input === (inputDigestUnavailable === 'non-json-input'))) return null;
+  if (input === null || output === null || (inputDigestUnavailable !== undefined && inputDigestUnavailable !== 'non-json-input' && inputDigestUnavailable !== 'digest-limit')
+    || (!!input === (inputDigestUnavailable !== undefined))) return null;
   return {
     contractVersion, grantedOutputTokens, timeoutMs, finishReason: safeReason,
     ...(promptVersion === undefined ? {} : { promptVersion }),
-    ...(input ? { inputDigest: input } : { inputDigestUnavailable: 'non-json-input' as const }),
+    ...(input ? { inputDigest: input } : { inputDigestUnavailable: inputDigestUnavailable === 'digest-limit' ? 'digest-limit' as const : 'non-json-input' as const }),
     ...(output ? { outputTextDigest: output } : {}),
   };
 }

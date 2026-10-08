@@ -24,7 +24,7 @@ export interface RequestProvenance {
   finishReason: 'stop' | 'length' | 'max_tokens' | 'end_turn' | 'stop_sequence' | 'tool_calls' | 'function_call' | 'content_filter' | 'refusal' | 'pause_turn' | 'unknown';
   /** Finalized logical system/messages/schema; never a provider wire-byte claim. */
   inputDigest?: { algorithm: 'sha256'; referent: 'logical-input.v1'; value: string };
-  inputDigestUnavailable?: 'non-json-input';
+  inputDigestUnavailable?: 'non-json-input' | 'digest-limit';
   /** Exact completed output text, NOT a native output-artifact digest. */
   outputTextDigest?: { algorithm: 'sha256'; referent: 'output-text.utf8.v1'; value: string };
 }

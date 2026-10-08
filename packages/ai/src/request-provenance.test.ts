@@ -186,3 +186,29 @@ it('never records undeclared non-string or endpoint-shaped prompt versions from 
     expect(result.receipt.provenance).not.toHaveProperty('promptVersion');
   }
 });
+
+it('bounds digest-only expansion of shared JSON DAGs without refusing the native host request', async () => {
+  let input: unknown = 'leaf';
+  for (let depth = 0; depth < 12; depth++) input = [input, input, input];
+  let dispatched = false;
+  const result = await runModelRequest({ model: 'generic-host', route: 'test', messages: [input],
+    budget: createRootBudget({ maxRequests: 1, maxOutputTokens: 100 }), maxOutputTokens: 100, routeCeiling: 80, timeoutMs: 10_000,
+    transport: async call => { dispatched = true; call.onChunk(output); call.onComplete(output); } });
+  expect(dispatched).toBe(true);
+  expect(result).toMatchObject({ kind: 'completed', receipt: { provenance: { inputDigestUnavailable: 'digest-limit' } } });
+  if (result.kind !== 'completed') throw new Error('Expected native host completion');
+  expect(result.receipt.provenance).not.toHaveProperty('inputDigest');
+});
+
+it('retains a full digest across the established viewer context and image size contract', async () => {
+  // Size/UTF8 metadata invariant only: no claim that this test image is rendered or provider-validated.
+  const image = 'A'.repeat(1_200_000), context = 'C'.repeat(90_000);
+  const input = [{ role: 'user', content: [{ type: 'image_url', image_url: { url: image } }] }];
+  const result = await runModelRequest({ model: 'native-test', route: 'test', messages: input, system: context,
+    budget: createRootBudget({ maxRequests: 1, maxOutputTokens: 100 }), maxOutputTokens: 100, routeCeiling: 80, timeoutMs: 10_000,
+    transport: async call => { call.onChunk(output); call.onComplete(output); } });
+  if (result.kind !== 'completed') throw new Error('Expected completed size-bound request');
+  const logical = JSON.stringify({ messages: [{ content: [{ image_url: { url: image }, type: 'image_url' }], role: 'user' }], system: context, version: 'ifc-lite.ai.logical-input.v1' });
+  expect(result.receipt).toMatchObject({ provenance: { inputDigest: { value: sha(logical) } } });
+  expect(result.receipt.provenance).not.toHaveProperty('inputDigestUnavailable');
+});

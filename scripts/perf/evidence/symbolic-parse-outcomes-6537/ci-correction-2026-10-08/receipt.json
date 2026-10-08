@@ -1,0 +1,61 @@
+{
+  "snapshotHead": "8f15d290c4e73860fa0bb405bd8d48f301cb6a94",
+  "parentHead": "5a38a8d68ec8225b5e2f6adf5c83afe425929cc7",
+  "base": "1ccb61c110d2c69dc9bc6a2c9bd40a1fd6037f67",
+  "sourceBoundary": "Isolated snapshot normal-merged prior CI base1ccb, then exact parent three-file correction plus only two-line existing-loader UI attachment wait. No latest-main equivalence claim.",
+  "sources": [
+    {
+      "path": "apps/viewer/src/hooks/symbolic-parse-outcomes.test.ts",
+      "sha256": "861b5e8409ed2c1db07bc7086ebe0f1a4e13fae689ff1814e9e55f4bf8aaad6c",
+      "parentWorkingTreeIdentical": true
+    },
+    {
+      "path": "apps/viewer/src/hooks/symbolic-parse-outcomes.ts",
+      "sha256": "648cd88e7990b89f4eaa05826a6ae0afa6322a8b19a79d2743cfe5756514044f",
+      "parentWorkingTreeIdentical": true
+    },
+    {
+      "path": "tests/e2e/symbolic-parse-outcomes.e2e.spec.ts",
+      "sha256": "235b7782b046d77e22ef3cb4d0acf3ec9cbd80e3b9857082f28a6c28a8d32c5f",
+      "parentWorkingTreeIdentical": true
+    }
+  ],
+  "runs": [
+    {
+      "log": "6787-ci-correction-controls.log.gz",
+      "sha256Uncompressed": "115b1f3bdd0ef4e07f7fbb6071c0de64b115f4b780a9969654b6fe9daeaeb94a",
+      "command": "TEST_PATTERN=\"(symbolic-parse|SymbolicAnnotations|overlay-parse)\" NODE_OPTIONS=--max-old-space-size=6144 pnpm test --filter=@ifc-lite/viewer --env-mode=loose",
+      "exitCode": 0,
+      "verdict": "160pass3skip zero fail; related cache/frame/room/overlay controls"
+    },
+    {
+      "log": "6787-ci-correction-oracle.log.gz",
+      "sha256Uncompressed": "ce4a72a0f795f703db0598462bc8571458036197ea3b35b92012757f6d8e6489",
+      "command": "NODE_OPTIONS=--max-old-space-size=6144 E2E_GPU_STRICT=0 node scripts/check-test-revert-oracle.mjs --base 1ccb61c110 --ci --json",
+      "exitCode": 0,
+      "verdict": "OBSERVED; baseline18/18pass, fullproductionrevert18assertionfails, restorationverified, no module-load error; cheaper observer appropriately skipped browser"
+    },
+    {
+      "log": "6787-ci-correction-real-ifc-e2e.log.gz",
+      "sha256Uncompressed": "6a51cbed11d9f4f5dff36f3566d7641a117a5ce52189a9713d55d260fd48091f",
+      "command": "PLAYWRIGHT_PORT=8834 E2E_GPU_STRICT=0 NODE_OPTIONS=--max-old-space-size=6144 pnpm test:e2e:ci tests/e2e/symbolic-parse-outcomes.e2e.spec.ts",
+      "exitCode": 0,
+      "verdict": "1pass zero skips; actual canonical FZK primary and federation via viewer-e2e-ci; software-GPU functional check, no native GPU/frame/performance claim"
+    }
+  ],
+  "oracleInvocationId": "754b01f5-8ac9-4c2e-97f5-5faa50cada88",
+  "fixture": {
+    "path": "tests/models/ara3d/AC20-FZK-Haus.ifc",
+    "sha256": "d42ab0dee01173106c16cd823b4614efe188fa15dd65195d95b9879bec59acc5"
+  },
+  "runtime": {
+    "wasmSha256": "b335d9e2742a0f35db846b3a95f7b30152585ef2dd6e7abdc2328dae557dc1d0",
+    "jsSha256": "0a281479eb65141ae75aeef987d331d44439741a0cae855f122e53e800311a39",
+    "rustTree": "1a1acc4260011c591fd8ce3c5387bb7c10b42f20",
+    "note": "Actual tested ignored runtime after root Turbo dependency build; functional proof only. Historical native IFC/source evidence was not edited."
+  },
+  "limits": [
+    "No full typecheck rerun: prior5a38CI typecheck green; reviewed changes only extract same typed hierarchy references and use existing typed census reason/Playwright API. Fresh CI still required.",
+    "Candidate Playwright default reporter discarded in-memory census attachments; test assertions passed, no fresh exact counts/epochs receipt beyond logs. Historical real native records remain unchanged."
+  ]
+}

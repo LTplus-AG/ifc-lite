@@ -74,7 +74,7 @@ export function createBimSandboxFactory(opts: SandboxFactoryOptions): RuntimeSan
  * with "<x> is not a function". The root Proxy resolves members via
  * the prototype chain, so nothing is dropped.
  *
- * Top-level functions (e.g. `sdk.query()`, `sdk.entity()`) pass
+ * Top-level functions (e.g. `sdk.query()`, `sdk.entity()`)
  * retain their native receiver — the coarse permission ring already gates whole
  * namespaces; this inner ring only wraps object-namespace methods
  * (`sdk.viewer.colorize`, etc.).

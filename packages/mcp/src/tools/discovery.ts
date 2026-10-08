@@ -21,7 +21,7 @@ import { IFC_ENTITY_NAMES } from '@ifc-lite/data';
 import { entityInfoAcrossSchemas, entityInfoInSchema } from '../schema-tables.js';
 import { foldedEntityCount, foldedTypeCounts, pendingMutationsField, pendingOverlay } from '../overlay.js';
 import type { Tool } from './types.js';
-import { resolveModel, okResult } from './util.js';
+import { fmtInt, resolveModel, okResult } from './util.js';
 import { loadIfcModel } from '../loader.js';
 import { resolveSafePath } from '../safe-path.js';
 import { modelAllowed } from '../auth/scope.js';
@@ -53,7 +53,7 @@ export const modelInfo: Tool = {
     const typeCounts = foldedTypeCounts(m.store, overlay);
     const entityCount = foldedEntityCount(m.store, overlay);
 
-    const summary = `Model '${m.name}' (${m.store.schemaVersion}): ${entityCount.toLocaleString()} entities, ${(m.store.fileSize / 1024).toFixed(1)} KB`
+    const summary = `Model '${m.name}' (${m.store.schemaVersion}): ${fmtInt(entityCount)} entities, ${(m.store.fileSize / 1024).toFixed(1)} KB`
       + (overlay ? `, including ${overlay.pendingMutations} unsaved mutation(s)` : '');
     return okResult(summary, {
       id: m.id,
@@ -142,7 +142,7 @@ export const modelLoad: Tool = {
       ctx.registry.add(loaded);
       ctx.log.log('info', 'model_load', { id: loaded.id, file: filePath, entities: loaded.store.entityCount });
       return okResult(
-        `Loaded '${loaded.name}' as model '${loaded.id}' (${loaded.store.entityCount.toLocaleString()} entities).`,
+        `Loaded '${loaded.name}' as model '${loaded.id}' (${fmtInt(loaded.store.entityCount)} entities).`,
         { id: loaded.id, name: loaded.name, schema: loaded.store.schemaVersion, entityCount: loaded.store.entityCount },
       );
     } catch (err) {

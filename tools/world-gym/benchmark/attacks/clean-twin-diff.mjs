@@ -86,7 +86,6 @@
  */
 
 import { writeFile, mkdir } from 'node:fs/promises';
-import { fileURLToPath } from 'node:url';
 import { dirname } from 'node:path';
 import { generateModel } from '../../generator.mjs';
 import {
@@ -94,6 +93,7 @@ import {
   DEFECT_TYPES, QUANTITY_KEYS, seedsForSplit,
 } from '../splits.mjs';
 import { resolveSaltFromArgs, describeSalt, redactSalt } from '../../lib/salt.mjs';
+import { isMainEntry } from '../../../../scripts/lib/is-main-entry.mjs';
 
 // ============================================================================
 // Byte-only structural summary (reads a raw STEP string; no labels involved)
@@ -400,7 +400,7 @@ async function main() {
   process.stderr.write(`  node tools/world-gym/benchmark/score.mjs --submission ${outPath} --split ${split}\n`);
 }
 
-const isMain = process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1];
+const isMain = isMainEntry(import.meta.url);
 if (isMain) {
   main().catch((err) => {
     // A SaltFormatError is an operator message, not a bug: print it without a

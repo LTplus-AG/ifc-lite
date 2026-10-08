@@ -7,7 +7,10 @@ import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import { join, resolve } from 'node:path';
-import { pathToFileURL, fileURLToPath } from 'node:url';
+import { pathToFileURL } from 'node:url';
+
+
+import { isMainEntry } from '../lib/is-main-entry.mjs';
 
 const meshFields = [
   'expressId', 'ifcType', 'geometryClass', 'geometryItemId', 'materialId',
@@ -285,7 +288,7 @@ export async function diagnoseCsgWork(modelPath, { cwd = process.cwd(), mode = '
   return report;
 }
 
-if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+if (isMainEntry(import.meta.url)) {
   if (process.argv.length !== 4 || !['ordinary', 'diagnostic'].includes(process.argv[2])) {
     throw new Error('Usage: node csg-work-diagnostic.mjs <ordinary|diagnostic> <model.ifc>');
   }

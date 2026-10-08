@@ -38,9 +38,9 @@ import {
 import { tmpdir } from 'node:os';
 import { join, relative, resolve } from 'node:path';
 import { pipeline } from 'node:stream/promises';
-import { fileURLToPath } from 'node:url';
 import { upstreamBlobUrl } from './download-url.mjs';
 import { validateManifest } from './manifest-validation.mjs';
+import { isMainEntry } from '../lib/is-main-entry.mjs';
 
 /** Thrown for a refusal the maintainer must fix; the CLI exits 2 on it. */
 export class UploadRefused extends Error {}
@@ -264,6 +264,6 @@ async function main() {
   }
 }
 
-if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+if (isMainEntry(import.meta.url)) {
   await main();
 }

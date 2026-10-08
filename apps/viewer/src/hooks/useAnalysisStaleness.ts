@@ -7,6 +7,9 @@ import { displayedTranslation, placementFor } from '@/lib/model-placement/state'
 import { equalTranslation, type Translation } from '@/lib/model-placement/translation';
 
 interface PlacementStamp {
+  name?: string;
+  sourceFingerprint?: string;
+  sourceContentHash?: string;
   translation: Translation;
   angle: number;
   pivot: Translation;
@@ -30,9 +33,10 @@ export function captureAnalysisStamp(includePlacement = false): AnalysisStamp {
     mutationVersion: state.mutationVersion,
     geometryContentVersion: state.geometryContentVersion,
     ...(includePlacement ? {
-      placement: new Map([...state.models.keys()].map((id) => {
+      placement: new Map([...state.models].map(([id, model]) => {
         const rotation = placementFor(state.modelPlacement, id).rotation;
-        return [id, { translation: [...displayedTranslation(state.modelPlacement, id)] as Translation,
+        return [id, { name: model.name, sourceFingerprint: model.sourceFingerprint, sourceContentHash: model.sourceContentHash,
+          translation: [...displayedTranslation(state.modelPlacement, id)] as Translation,
           angle: rotation.angle, pivot: [...rotation.pivot] as Translation }] as const;
       })),
       realignedFrameKey: state.modelPlacement.realignedFrameKey,

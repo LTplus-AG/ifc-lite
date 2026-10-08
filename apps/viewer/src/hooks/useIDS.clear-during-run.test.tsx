@@ -40,7 +40,7 @@ import { IfcParser, type IfcDataStore } from '@ifc-lite/parser';
 import { parseIDS } from '@ifc-lite/ids';
 import type { GeometryResult } from '@ifc-lite/geometry';
 import { useViewerStore, type FederatedModel } from '@/store';
-import { useActivityJournal } from '@/lib/activity/activity-journal';
+import { useActivityJournal, activityCanceller, cancelActivity } from '@/lib/activity/activity-journal';
 import { useIDS } from './useIDS.js';
 import { SaveValidationReportButton } from '@/components/viewer/validation/SaveValidationReportButton';
 import { loadValidationReports } from '@/lib/validation/reports/persistence';
@@ -280,4 +280,41 @@ describe('useIDS — clearing during an in-flight runValidation (PR #2837 review
         'not the report it computed but discarded',
     );
   });
+});
+
+
+it('#7110 tray cancellation of native IDS releases its callback and preserves a newer request', async () => {
+  await seed();
+  let pending: Promise<unknown> | undefined;
+  await act(async () => { pending = api!.runValidation('Slow'); });
+  const first = useActivityJournal.getState().jobs.at(-1)!;
+  const oldCancel = activityCanceller(first.id);
+  assert.ok(oldCancel);
+  act(() => cancelActivity(first.id));
+  await act(async () => { assert.equal(await pending, null); });
+  assert.equal(useActivityJournal.getState().jobs.at(-1)?.outcome, 'cancelled');
+  assert.equal(activityCanceller(first.id), null);
+  await act(async () => { pending = api!.runValidation('Slow'); });
+  act(() => oldCancel());
+  assert.equal(useViewerStore.getState().idsLoading, true, 'an old captured callback must not reset the new native run');
+  await act(async () => { assert.ok(await pending); });
+  assert.equal(useViewerStore.getState().idsValidationReport?.summary.totalEntitiesFailed, SLOW_COUNT);
+  assert.deepEqual(useActivityJournal.getState().jobs.map(job => job.outcome), ['cancelled', 'completed']);
+  assert.equal(activityCanceller(useActivityJournal.getState().jobs.at(-1)!.id), null);
+});
+
+it('#7110 closing the IDS owner preserves a native background run and its tray cancellation', async () => {
+  await seed();
+  let pending: Promise<unknown> | undefined;
+  await act(async () => { pending = api!.runValidation('Slow'); });
+  const job = useActivityJournal.getState().jobs.at(-1)!;
+  const current = root!;
+  root = null;
+  act(() => current.unmount());
+  assert.ok(activityCanceller(job.id));
+  act(() => cancelActivity(job.id));
+  await act(async () => { assert.equal(await pending, null); });
+  assert.equal(useViewerStore.getState().idsValidationReport, null);
+  assert.equal(useActivityJournal.getState().jobs.at(-1)?.outcome, 'cancelled');
+  assert.equal(activityCanceller(job.id), null);
 });

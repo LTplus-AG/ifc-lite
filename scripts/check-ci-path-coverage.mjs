@@ -73,7 +73,7 @@
 import { readdirSync, readFileSync, existsSync, statSync } from 'node:fs';
 import { join, dirname, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
-
+import { createSpelledExactly } from './lib/exact-case-path.mjs';
 import {
   parseFilterBlock,
   splitJobs,
@@ -120,7 +120,7 @@ function fail(reason) {
 }
 
 const abs = (p) => join(ROOT, p);
-const exists = (p) => existsSync(abs(p));
+const exists = (p) => existsSync(abs(p)), spelledExactly = createSpelledExactly(ROOT); // #7026
 
 /**
  * Everything `.gitignore` excludes, as globs.
@@ -289,7 +289,7 @@ for (const [gate, info] of gates) {
   // never be what a `paths:` filter matches. Dropping it HERE as well as in
   // the walk keeps the reported input COUNT a function of the commit too --
   // otherwise a warmed fixture cache silently moves the number in the summary.
-  const derived = deriveInputs(readFileSync(abs(gate), 'utf8'), (q) => exists(q) && !isIgnored(q));
+  const derived = deriveInputs(readFileSync(abs(gate), 'utf8'), (q) => exists(q) && !isIgnored(q), spelledExactly);
   // A gate's own source file is trivially an input; keep it, it is the
   // self-coverage case and it must hold for every gate, not just this one.
   const inputs = [...new Set([gate, ...derived])].sort();

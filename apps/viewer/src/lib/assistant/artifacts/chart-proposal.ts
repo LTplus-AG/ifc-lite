@@ -9,12 +9,15 @@
  * reads (number or category, its IFC measure and unit) is taken from what the
  * loaded models actually carry at review time (`resolveChartSpec`), exactly
  * as the chart editor's field picker does, never from the model's answer.
- * Other chart sources (clash, BCF, schedule, IDS, compare) are refused.
+ * Analysis sources use their existing native dataset columns, validated at
+ * review time, with whole-analysis scope and source-bound freshness.
  */
 
 import { ELEMENT_COLUMNS, elementFieldColumnId, validateChartSpec, type ChartScope, type ChartSpec, type ChartType, type ElementFieldBinding } from '@ifc-lite/charts';
 import { onlyKeys, parseEnvelope, record, requiredText, type ArtifactEnvelope } from './artifact-json';
 import { parseProposalGroups } from './artifact-rules';
+import { isAnalysisChartSource, parseAnalysisChart, resolveAnalysisChartSpec } from './analysis-chart';
+import type { ChartSource } from '@ifc-lite/charts';
 import type { FilterGroup } from '@ifc-lite/rules';
 
 type Identity<T> = T extends unknown ? Omit<T, 'valueKind' | 'unit' | 'dataType'> : never;
@@ -23,12 +26,13 @@ export type FieldIdentity = Identity<ElementFieldBinding>;
 
 export interface ChartDraft {
   title: string;
-  type: Exclude<ChartType, 'timeline'>;
+  type: ChartType;
+  source?: ChartSource;
   /** A built-in elements column (`IfcType`, `Storey`, `Model`, `Name`); absent when `elementField` is the dimension. */
   dimension?: string;
   elementField?: FieldIdentity;
   stackBy?: string;
-  measure: { agg: 'count' | 'sum' };
+  measure: { agg: 'count' | 'sum'; column?: string };
   measureField?: FieldIdentity;
   filter?: { groups: FilterGroup[] };
   sort?: 'value' | 'label';
@@ -86,7 +90,11 @@ export function parseChartProposal(answer: string): ChartProposal {
   if (!record(value.chart)) throw new Error('A chart.proposal needs a "chart" object');
   const chart = value.chart;
   onlyKeys(chart, ['title', 'source', 'type', 'dimension', 'elementField', 'stackBy', 'measure', 'measureField', 'filter', 'sort', 'topN', 'bins'], 'The chart');
-  if (chart.source !== undefined && chart.source !== 'elements') throw new Error('Assistant chart proposals chart model elements only ("source": "elements"); build clash, BCF, schedule, IDS or compare charts in the chart editor');
+  if (isAnalysisChartSource(chart.source)) {
+    if (scope.kind !== 'all') throw new Error('Analysis chart proposals use the native whole-analysis population; visible and basket scopes are unsupported');
+    return { ...envelope, kind: 'chart.proposal', scope, chart: parseAnalysisChart(chart, envelope.title) };
+  }
+  if (chart.source !== undefined && chart.source !== 'elements') throw new Error('Unknown chart source');
   if (!TYPES.includes(chart.type as typeof TYPES[number])) throw new Error(`The chart "type" must be one of ${TYPES.join(', ')}`);
   const type = chart.type as ChartDraft['type'];
   const elementField = chart.elementField === undefined ? undefined : parseFieldIdentity(chart.elementField, 'The chart "elementField"');
@@ -142,6 +150,7 @@ export function fieldIdentityKey(field: FieldIdentity | ElementFieldBinding): st
  * is not numeric in the loaded models).
  */
 export function resolveChartSpec(draft: ChartDraft, id: string, bindingOf: (field: FieldIdentity) => ElementFieldBinding | null): ChartSpec {
+  if (isAnalysisChartSource(draft.source)) return resolveAnalysisChartSpec(draft, id);
   let elementField: ElementFieldBinding | undefined;
   if (draft.elementField) {
     const found = bindingOf(draft.elementField);

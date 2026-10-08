@@ -6,6 +6,7 @@ import type { MutablePropertyView } from '@ifc-lite/mutations';
 import { extractRelationshipsOnDemand, normalizeIfcTypeName, type IfcDataStore } from '@ifc-lite/parser';
 import type { EntityData, EntityRef, EntityRelationshipsData } from '@ifc-lite/sdk';
 import { effectiveMutationRelationships, foldMutationRelationshipEdges } from './query-overlay-relations.js';
+import { relationshipPopulationUnavailable } from '../../components/viewer/properties/effective-relationship-availability.js';
 
 export function foldRelationshipData(
   dataStore: IfcDataStore,
@@ -16,9 +17,12 @@ export function foldRelationshipData(
   const result = extractRelationshipsOnDemand(dataStore, ref.expressId);
   if (view.isDeleted(ref.expressId)) return { voids: [], fills: [], groups: [], connections: [], relations: [] };
   const effective = effectiveMutationRelationships(dataStore, view);
+  // Read-only panels may retain explicitly unverified source-origin rows when
+  // current membership is unreadable; native authoring uses suppression above.
+  const sourceOriginOnly = relationshipPopulationUnavailable(dataStore, view);
   const seen = new Set<string>();
   const relations = (result.relations ?? []).flatMap((edge) => {
-    if (view.isDeleted(edge.relationshipId) || effective.supersededSourceIds.has(edge.relationshipId)
+    if (view.isDeleted(edge.relationshipId) || (effective.supersededSourceIds.has(edge.relationshipId) && !sourceOriginOnly)
       || view.isDeleted(edge.entity.id)) return [];
     const target = entityData({ modelId: ref.modelId, expressId: edge.entity.id });
     if (!target) return [];

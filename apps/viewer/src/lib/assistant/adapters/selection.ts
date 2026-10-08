@@ -19,7 +19,10 @@
 import { IfcQuery } from '@ifc-lite/query';
 import { extractClassificationsOnDemand, extractProjectUnits, materialAssignmentsAvailable, ProjectUnits, type IfcDataStore } from '@ifc-lite/parser';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
-import type { ViewerState } from '@/store';
+import { useViewerStore, type ViewerState } from '@/store';
+import { createQueryAdapter } from '@/sdk/adapters/query-adapter';
+import { relationshipsForSelection } from '@/components/viewer/properties/merge-relationship-data';
+import { relationshipPopulationUnavailable } from '@/components/viewer/properties/effective-relationship-availability';
 import type { EntityRef } from '@/store/types';
 import { stringToEntityRef } from '@/store/entity-ref';
 import { resolveEntityRef, resolveEntityRefGlobalIdFromState } from '@/store/resolveEntityRef';
@@ -101,6 +104,11 @@ function bounded(value: unknown): string | number | boolean | null {
 
 function elementRow(s: ViewerState, ref: EntityRef, source: ModelSource, rich: boolean) {
   const setLimit = rich ? 16 : 6;
+  const relationshipLookupExpressId = source.view?.resolveBaseEntityId(ref.expressId) ?? ref.expressId;
+  const nativeRelationships = source.store ? relationshipsForSelection(
+    createQueryAdapter({ getState: () => s, subscribe: useViewerStore.subscribe }).relationships,
+    ref, relationshipLookupExpressId).relations ?? [] : [];
+  const relationshipsUnavailable = relationshipPopulationUnavailable(source.store, source.view);
   const valueLimit = rich ? 32 : 12;
   const data = effectiveElementData(ref.expressId, source.query, source.view);
   const classifications = source.store ? extractClassificationsOnDemand(source.store, ref.expressId, source.view) : [];
@@ -140,6 +148,15 @@ function elementRow(s: ViewerState, ref: EntityRef, source: ModelSource, rich: b
     type: effectiveSelectedClass(source.store, source.view, ref.expressId),
     name: typeof name === 'string' && name.length > 0 ? bounded(name) : null,
     attributes, psets, psetCount: data.psets.length, quantities, qsetCount: data.qsets.length,
+    relationshipLookupExpressId,
+    relationshipStatus: !source.store ? 'unavailable' : !relationshipsUnavailable ? 'available'
+      : !source.store.relationships ? 'unavailable-membership' : 'unavailable-source-membership',
+    relationshipCount: source.store && !relationshipsUnavailable ? nativeRelationships.length : null,
+    relationships: nativeRelationships.slice(0, setLimit).map(edge => ({
+      relationshipId: edge.relationshipId, relationshipType: edge.relationshipType, direction: edge.direction,
+      verification: relationshipsUnavailable || !edge.entity.type || edge.entity.type === 'Unknown' ? 'unverified' : 'resolved',
+      entity: { modelId: ref.modelId, expressId: edge.entity.id, Name: bounded(edge.entity.name), type: bounded(edge.entity.type === 'Unknown' ? null : edge.entity.type) },
+    })),
     classificationStatus: !source.store ? 'unavailable' : !classificationsUnavailable ? 'available'
       : !source.store.onDemandClassificationMap && !source.store.relationships
         ? 'unavailable-membership' : 'unavailable-source-membership',
@@ -208,11 +225,11 @@ export const selectionAdapter: EvidenceAdapter = {
         kind: 'selection', channel, selectionSize: refs.length, modelCount: byModel.size,
         byModel: [...byModel].map(([modelId, count]) => ({ modelId, name: sourceFor(modelId).name, count })),
         byClass: [...byClass].map(([type, count]) => ({ type, count })).sort((a, b) => b.count - a.count),
-        perElementBounds: rich ? { sets: 16, valuesPerSet: 32, attributes: 32, classifications: 16, classificationPath: 16 }
-          : { sets: 6, valuesPerSet: 12, attributes: 12, classifications: 6, classificationPath: 6 },
+        perElementBounds: rich ? { sets: 16, valuesPerSet: 32, attributes: 32, classifications: 16, classificationPath: 16, relationships: 16 }
+          : { sets: 6, valuesPerSet: 12, attributes: 12, classifications: 6, classificationPath: 6, relationships: 6 },
         units: 'Quantity values carry {value, unit} in the Properties panel display unit (project unit, or the display-unit override below); a null unit is undeclared. Property values are the panel display strings, with the unit inline when the measure declares one.',
         displayUnitOverrides: s.unitDisplayOverrides,
-        limitations: 'Includes session edits; element status covers its own edits. Definitions/associations use native readers and snapshot freshness. Sections use perElementBounds and full known counts. inheritedType has model/type GlobalId provenance; occurrence properties override same-named type values. Materials use occurrence-before-type precedence, LayerThickness metres, and panel display units for generic properties. Unverified fields are unknown. Missing membership inputs or unreadable live source edits make totals null/unavailable; source-free classification markers may describe the original source, not current membership. Unverified paths have unknown totals and bounded known ancestors. IFC2X3 uses ItemReference; other schemas use Identification. Missing systems stay unknown. Unverified material-property counts stay null; empty rows do not prove absence. Typed IFC2X3 scalar material-property subtypes are outside the generic-set reader. Relationships are excluded. Selection is sampled; byClass/byModel cover every selected element.',
+        limitations: 'Includes edits; own-element status and native associated definitions use snapshot freshness. Sections use perElementBounds and full known counts. inheritedType has model/type GlobalId provenance; occurrence properties override same-named type values. Materials use occurrence-before-type precedence, LayerThickness metres, and panel display units for generic properties. Unverified fields are unknown. Missing membership inputs or unreadable live source edits make totals null/unavailable; source-free classification markers may describe the original source, not current membership. Unverified paths have unknown totals and bounded known ancestors. IFC2X3 uses ItemReference; other schemas use Identification. Missing systems stay unknown. Unverified material-property counts stay null; empty rows do not prove absence. Typed IFC2X3 scalar material-property subtypes are outside the generic-set reader. Relationships count exact native edges; alias rows identify their inherited lookup ID. Source-free edited graph rows are unverified source-origin evidence. Selection is sampled; byClass/byModel cover every selected element.',
       },
       rows: sample.map(ref => elementRow(s, ref, sourceFor(ref.modelId), rich)),
       totalRows: refs.length, availability: 'available',

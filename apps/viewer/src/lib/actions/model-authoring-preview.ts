@@ -28,7 +28,7 @@ import {
 import { captureAuthoringSources } from './model-authoring-sources';
 import { resolveGlobalId } from './resolve-global-id';
 import { readElementProfile } from '@/store/slices/mutation-element-profile';
-import { verifyReachExpected, reachBefore } from './model-authoring-reach';
+import { verifyReachExpected, verifyReachStoreyFrame, reachBefore } from './model-authoring-reach';
 import { readAuthoringSize, sameNativeDimensions } from './model-authoring-size';
 import { sizeInMetres, type ExpectedSize } from './model-authoring-size-params';
 import { profileInMetres } from './model-authoring-shape-params';
@@ -160,10 +160,18 @@ function resolve(ctx: Context, row: AuthoringRow): void {
     case 'element.trimExtend': {
       row.resolved.target = row.expressId = existing(ctx, op.target, row);
       const r = reader(ctx, row.modelId!);
+      try { verifyReachStoreyFrame(r.dataStore, r.view, row.expressId); }
+      catch (error) { throw new Refusal('unsupported', error instanceof Error ? error.message : String(error)); }
       try { verifyReachExpected(r.dataStore, r.view, r.editor, row.expressId, op); }
       catch (error) { throw new Refusal('conflict', error instanceof Error ? error.message : String(error)); }
       row.before.reach = reachBefore(ctx.state, row.modelId!, row.expressId) ?? undefined;
-      if ('wall' in op.boundary) row.resolved.reachBoundary = element(ctx, op.boundary.wall, row);
+      if ('wall' in op.boundary) {
+        row.resolved.reachBoundary = element(ctx, op.boundary.wall, row);
+        if ('id' in row.resolved.reachBoundary) {
+          try { verifyReachStoreyFrame(r.dataStore, r.view, row.resolved.reachBoundary.id); }
+          catch (error) { throw new Refusal('unsupported', error instanceof Error ? error.message : String(error)); }
+        }
+      }
       return;
     }
     case 'element.split': {

@@ -5,6 +5,8 @@
 import { readWallJoinTarget, trimExtendElementInStore, type ElementTrimExtendParams } from '@ifc-lite/create';
 import type { StoreEditor, MutablePropertyView } from '@ifc-lite/mutations';
 import type { IfcDataStore } from '@ifc-lite/parser';
+import { planElementTransform } from '@/lib/element-transform/plan';
+import { effectiveStoreyId } from '@/lib/effective-storey';
 import { getModelLengthUnitScale } from '@/lib/length-unit-scale';
 import { resolveLinearElementChain } from '@/lib/linear-element-edit';
 import { readOnlyModelEditTarget, nativeLengthUnitAvailable } from './model-authoring-read-target';
@@ -40,6 +42,20 @@ export function authoringReachEvidenceFromTarget(target: ModelEditTarget | null,
     ? nativeAuthoringReach(target.dataStore, target.view, target.editor, id) : null;
 }
 
+/** Explicit plan coordinates are storey-local; the native reach writer uses
+ * its immediate parent frame. Reuse the canonical transform planner's proof,
+ * never reinterpret coordinates through an unproved parent (#7262). */
+export function verifyReachStoreyFrame(store: IfcDataStore, view: MutablePropertyView, id: number): void {
+  const plan = planElementTransform({ dataStore: store, view, selected: [id],
+    storeyOf: candidate => effectiveStoreyId(store, view, candidate) ?? null });
+  const frame = plan.roots.find(candidate => candidate.expressId === id)?.parent;
+  if (!frame || ![...frame.origin, ...frame.axis].every(Number.isFinite)
+    || Math.abs(frame.origin[0]) > 1e-9 || Math.abs(frame.origin[1]) > 1e-9
+    || Math.abs(frame.axis[0] - 1) > 1e-9 || Math.abs(frame.axis[1]) > 1e-9) {
+    throw new Error('Trim/Extend requires a native parent plan frame matching the storey-local coordinates; inspect or reparent this element before proposing the edit');
+  }
+}
+
 export function verifyReachExpected(store: IfcDataStore, view: MutablePropertyView, editor: StoreEditor, id: number, op: ReachOp): void {
   const actual = nativeAuthoringReach(store, view, editor, id);
   const snapshot = actual?.kind === 'wall' ? actual.wall : actual?.chain;
@@ -69,8 +85,10 @@ export function writeAuthoringReach(batch: ModelAuthoringBatch, store: IfcDataSt
   if ('wall' in op.boundary && !('ref' in op.boundary.wall) && !uniqueSplitGuid(store, editor, op.boundary.wall.globalId)) {
     throw new Error('The native Trim/Extend boundary GlobalId is not unique');
   }
+  verifyReachStoreyFrame(store, view, id);
   verifyReachExpected(store, view, editor, id, op);
   const params = reachParams(batch, op, boundary, refs);
+  if ('wallId' in params.boundary) verifyReachStoreyFrame(store, view, params.boundary.wallId);
   if ('wallId' in params.boundary && 'wall' in op.boundary && op.boundary.expected) {
     const actual = readWallJoinTarget(store, view, params.boundary.wallId, getModelLengthUnitScale(store));
     if (!sameReachPin(actual, op.boundary.expected)) throw new Error('The native boundary wall differs from expected');

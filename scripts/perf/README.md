@@ -3589,20 +3589,12 @@ carries both rules. Same pinned toolchain and `profiling` profile on both
 sides, Apple M4 Pro. The machine was NOT idle (1-minute load 5.6 to 6.5 during
 the rounds), so read the ranges, not the medians.
 
-Base/branch, median (min-max) milliseconds:
-
-| Fixture | Parse | Geometry | Pipeline total |
-|---|---:|---:|---:|
-| AC20-FZK-Haus | 5 (5-11) / 5 (5-14) | 7 (6-11) / 7 (7-12) | 13 (12-22) / 13 (12-27) |
-| ISSUE_129 | 16 (15-16) / 16 (15-16) | 745 (709-758) / 729 (707-746) | 761 (725-774) / 745 (723-762) |
-| S_Office | 39 (39-40) / 40 (39-40) | 589 (554-621) / 620 (567-647) | 628 (594-661) / 660 (606-688) |
-| ISSUE_053 (Holter) | 283 (273-289) / 278 (272-300) | 451 (435-529) / 459 (412-543) | 737 (710-819) / 738 (712-828) |
-| MiniBIM-3.1-DO_01_VORM | 12 (12-12) / 12 (12-13) | 299 (283-333) / 218 (205-230) | 311 (295-346) / 230 (217-242) |
-
-S_Office was the one fixture whose branch median sat above the base's, inside
-overlapping ranges. Fifteen further interleaved rounds of it read 652
-(604-827) / 618 (583-1182) for geometry, the other way round, so that was the
-machine and not the change.
+The detailed timing table is recorded in [PR #7024](https://github.com/LTplus-AG/ifc-lite/pull/7024).
+The default Haus, ISSUE_129, S_Office and heavy Holter fixtures showed no
+stable timing effect. S_Office's median ordering reversed in fifteen
+additional interleaved rounds. These measurements do not establish a stable
+timing effect or its cause; the machine was not idle, which limits the
+inference. MiniBIM's output changes are described below.
 
 Output. The first four fixtures kept their mesh, vertex and triangle counts
 and their ordered mesh FNV-1a64 on every run of both sides (`c4d504b83ff698ea`,

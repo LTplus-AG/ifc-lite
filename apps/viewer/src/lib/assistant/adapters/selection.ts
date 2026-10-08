@@ -25,6 +25,7 @@ import { relationshipsForSelection } from '@/components/viewer/properties/merge-
 import { relationshipPopulationUnavailable } from '@/components/viewer/properties/effective-relationship-availability';
 import type { EntityRef } from '@/store/types';
 import { stringToEntityRef } from '@/store/entity-ref';
+import { toGlobalIdForRef } from '@/store/globalId';
 import { resolveEntityRef, resolveEntityRefGlobalIdFromState } from '@/store/resolveEntityRef';
 import { resolveQuantityDisplay } from '@/lib/units/display';
 import { effectiveElementData } from '@/components/viewer/properties/effectiveElementData';
@@ -32,6 +33,7 @@ import { classificationPopulationUnavailable } from '@/components/viewer/propert
 import { effectiveMaterials, effectiveMaterialProperties } from '@/components/viewer/properties/effectiveMaterials';
 import { materialEvidence } from './selection-materials';
 import { classificationEvidence } from './selection-classifications';
+import { selectedZoneVolumeBreakdowns, zoneQuantitySources } from './zone-volume-bases';
 import { effectiveTypeProperties } from '@/components/viewer/properties/effectiveTypeProperties';
 import { effectiveSelectedClass } from '@/components/viewer/properties/effectiveSelectedClass';
 import { propertyDisplayValue } from '@/components/viewer/properties/propertyDisplayValue';
@@ -102,7 +104,8 @@ function bounded(value: unknown): string | number | boolean | null {
   return text.length > VALUE_CHARS ? `${text.slice(0, VALUE_CHARS)}…` : text;
 }
 
-function elementRow(s: ViewerState, ref: EntityRef, source: ModelSource, rich: boolean) {
+function elementRow(s: ViewerState, ref: EntityRef, source: ModelSource, rich: boolean,
+  quantitySource: ReturnType<typeof zoneQuantitySources>) {
   const setLimit = rich ? 16 : 6;
   const relationshipLookupExpressId = source.view?.resolveBaseEntityId(ref.expressId) ?? ref.expressId;
   const nativeRelationships = source.store ? relationshipsForSelection(
@@ -139,6 +142,7 @@ function elementRow(s: ViewerState, ref: EntityRef, source: ModelSource, rich: b
     })),
   }));
   const name = data.attributes.get('Name');
+  const zoneQuantities = quantitySource(ref);
   return evidenceRow({
     kind: 'selected-element', modelId: ref.modelId,
     globalId: resolveEntityRefGlobalIdFromState(s, ref), expressId: ref.expressId,
@@ -148,6 +152,9 @@ function elementRow(s: ViewerState, ref: EntityRef, source: ModelSource, rich: b
     type: effectiveSelectedClass(source.store, source.view, ref.expressId),
     name: typeof name === 'string' && name.length > 0 ? bounded(name) : null,
     attributes, psets, psetCount: data.psets.length, quantities, qsetCount: data.qsets.length,
+    zoneVolumeBreakdowns: { quantityStatus: zoneQuantities.status,
+      ...selectedZoneVolumeBreakdowns(s, toGlobalIdForRef(s.models, ref),
+        zoneQuantities.quantities, zoneQuantities.scale, setLimit, valueLimit) },
     relationshipLookupExpressId,
     relationshipStatus: !source.store ? 'unavailable' : !relationshipsUnavailable ? 'available'
       : !source.store.relationships ? 'unavailable-membership' : 'unavailable-source-membership',
@@ -204,12 +211,14 @@ export const selectionAdapter: EvidenceAdapter = {
       : { status: { labelKey: 'assistantSources.selection.none' }, ready: false };
   },
   // Every selection action replaces one of these; edits are covered by the context stamp.
-  identity: s => [s.selectedEntities, s.selectedEntitiesSet, s.selectedEntityIds, s.selectedEntity, s.selectedEntityId],
+  identity: s => [s.selectedEntities, s.selectedEntitiesSet, s.selectedEntityIds, s.selectedEntity, s.selectedEntityId,
+    s.zoneSets, s.zoneAssignments, s.zoneApportionment],
   capture: (s, limit) => {
     const selection = selectionRefs(s);
     if (!selection || selection.refs.length === 0) return unavailableCapture();
     const { refs, channel } = selection;
     const sourceFor = sources(s);
+    const quantitySource = zoneQuantitySources(s);
     const byModel = new Map<string, number>();
     const byClass = new Map<string, number>();
     for (const ref of refs) {
@@ -225,13 +234,13 @@ export const selectionAdapter: EvidenceAdapter = {
         kind: 'selection', channel, selectionSize: refs.length, modelCount: byModel.size,
         byModel: [...byModel].map(([modelId, count]) => ({ modelId, name: sourceFor(modelId).name, count })),
         byClass: [...byClass].map(([type, count]) => ({ type, count })).sort((a, b) => b.count - a.count),
-        perElementBounds: rich ? { sets: 16, valuesPerSet: 32, attributes: 32, classifications: 16, classificationPath: 16, relationships: 16 }
-          : { sets: 6, valuesPerSet: 12, attributes: 12, classifications: 6, classificationPath: 6, relationships: 6 },
+        perElementBounds: rich ? { sets: 16, valuesPerSet: 32, attributes: 32, classifications: 16, classificationPath: 16, relationships: 16, zoneSets: 16, sharesPerVolumeBasis: 32 }
+          : { sets: 6, valuesPerSet: 12, attributes: 12, classifications: 6, classificationPath: 6, relationships: 6, zoneSets: 6, sharesPerVolumeBasis: 12 },
         units: 'Quantity values carry {value, unit} in the Properties panel display unit (project unit, or the display-unit override below); a null unit is undeclared. Property values are the panel display strings, with the unit inline when the measure declares one.',
         displayUnitOverrides: s.unitDisplayOverrides,
         limitations: 'Includes edits; own-element status and native associated definitions use snapshot freshness. Sections use perElementBounds and full known counts. inheritedType has model/type GlobalId provenance; occurrence properties override same-named type values. Materials use occurrence-before-type precedence, LayerThickness metres, and panel display units for generic properties. Unverified fields are unknown. Missing membership inputs or unreadable live source edits make totals null/unavailable; source-free classification markers may describe the original source, not current membership. Unverified paths have unknown totals and bounded known ancestors. IFC2X3 uses ItemReference; other schemas use Identification. Missing systems stay unknown. Unverified material-property counts stay null; empty rows do not prove absence. Typed IFC2X3 scalar material-property subtypes are outside the generic-set reader. Relationships count exact native edges; alias rows identify their inherited lookup ID. Source-free edited graph rows are unverified source-origin evidence. Selection is sampled; byClass/byModel cover every selected element.',
       },
-      rows: sample.map(ref => elementRow(s, ref, sourceFor(ref.modelId), rich)),
+      rows: sample.map(ref => elementRow(s, ref, sourceFor(ref.modelId), rich, quantitySource)),
       totalRows: refs.length, availability: 'available',
     };
   },

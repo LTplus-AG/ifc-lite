@@ -21,6 +21,8 @@ import { describeElement } from '@/hooks/useZoneTableExport';
 import { zoneFactsFor } from '@/hooks/zoneFacts';
 import { gatherProvedVolumes } from '@/hooks/useZoneApportionment';
 import { evidenceRow, unavailableCapture, type EvidenceAdapter } from './types';
+import { zoneQuantitySources } from './zone-volume-bases';
+import { declaredVolumeBases, volumeBasisRatioNote, ZONE_QUANTITY_SET_NAME_PREFIX } from '@/lib/zones';
 
 const BASIS = 'mesh' as const;
 const SPLIT_NOT_COMPUTED = 'straddler split not computed for the current zones (run the zone volume split in the Zones panel)';
@@ -87,6 +89,7 @@ export const zonesAdapter: EvidenceAdapter = {
     const modelNames = new Map([...s.models].map(([id, model]) => [id, model.name ?? id]));
     // One pass over the loaded meshes, shared by every set, as the export does.
     const proved = gatherProvedVolumes();
+    const quantitySource = zoneQuantitySources(s);
     const rows: unknown[] = [];
     const sets = [];
     let totalRows = 0;
@@ -104,13 +107,24 @@ export const zonesAdapter: EvidenceAdapter = {
         // Mesh basis reads no declared quantity, so no quantity sets and no unit scale are needed.
         const facts = zoneFactsFor(globalId, assignment, names, BASIS, 1, [], proved, apportioned);
         const ref = resolveEntityRef(globalId);
-        for (const row of zoneTableRows(describeElement(globalId, modelNames), facts, set.name, BASIS)) {
+        const source = quantitySource(ref);
+        const declared = declaredVolumeBases(source.quantities.filter(set => !set.name.startsWith(ZONE_QUANTITY_SET_NAME_PREFIX)), source.scale);
+        const element = describeElement(globalId, modelNames);
+        const basisRows = declared.map(basis => ({ basis: basis.basis,
+          ratioNote: assignment.straddles ? volumeBasisRatioNote(basis.basis)
+            : 'The declared total belongs to the home zone under the native whole-element assignment.',
+          rows: zoneTableRows(element, zoneFactsFor(globalId, assignment, names, basis.basis,
+            source.scale, source.quantities, proved, apportioned), set.name, basis.basis) }));
+        for (const [index, row] of zoneTableRows(element, facts, set.name, BASIS).entries()) {
           if (rows.length >= limit) break;
           const unavailable = assignment.straddles && !apportioned ? SPLIT_NOT_COMPUTED : row.Unavailable;
           rows.push(evidenceRow({
             kind: 'zone-element', modelId: ref.modelId, globalId: row.GlobalId || null, expressId: row.ExpressId,
             unit: 'm3', status: row.VolumeM3 === null ? 'unmeasured' : 'measured',
-          }, { ...row, ZoneSetId: set.id, Unavailable: unavailable }));
+          }, { ...row, ZoneSetId: set.id, Unavailable: unavailable, DeclaredQuantityStatus: source.status,
+            VolumeBases: basisRows.map(basis => ({ basis: basis.basis, ratioNote: basis.ratioNote,
+              ...basis.rows[index],
+              Unavailable: assignment.straddles && !apportioned ? SPLIT_NOT_COMPUTED : basis.rows[index].Unavailable })) }));
         }
       }
     }
@@ -125,7 +139,7 @@ export const zonesAdapter: EvidenceAdapter = {
         assignment: s.zoneAssignmentTiming ? { elementCount: s.zoneAssignmentTiming.elementCount,
           computedAt: new Date(s.zoneAssignmentTiming.computedAt).toISOString() } : null,
         units: { VolumeM3: 'm3', ElementVolumeM3: 'm3', Fraction: 'ratio 0..1 of the element volume' },
-        limitations: 'One row per (element, zone) pair the element reaches, on the mesh volume basis only; declared NetVolume/GrossVolume bases are not read here. Elements reaching no zone are not rows. A null VolumeM3 is unmeasured with its reason, never zero. Straddler splits come only from a split already computed for the current zones; capture never runs the split. assignedCount is per zone set, so an element in several sets counts once per set.',
+        limitations: 'One row per (element, zone) pair on the mesh basis, with separately named declared net/gross/unqualified VolumeBases when available. Declared straddler magnitudes use fractions measured on the as-built mesh, then applied to the declared total. No declared basis entry means none was read, not proof of absence when DeclaredQuantityStatus is unverified. Elements reaching no zone are not rows. A null VolumeM3 is unmeasured with its reason, never zero. Straddler splits come only from a split already computed for the current zones; capture never runs the split. assignedCount is per zone set, so an element in several sets counts once per set.',
       },
       rows, totalRows, availability: 'available',
     };

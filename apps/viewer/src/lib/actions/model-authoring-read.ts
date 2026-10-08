@@ -10,7 +10,7 @@
  * preview can run during render.
  */
 
-import { StoreEditor } from '@ifc-lite/mutations';
+import type { StoreEditor } from '@ifc-lite/mutations';
 import { RelationshipType } from '@ifc-lite/data';
 import { liveEntityConforms, liveEntityType, readRelatedLists } from '@ifc-lite/create';
 import { remeshContextRoots } from '@ifc-lite/export';
@@ -19,18 +19,18 @@ import { entityName, typeOf } from '@/lib/commands/modeling/authored-kinds';
 import { pointToMetres } from '@/lib/length-unit-scale';
 import { resolvePlacementChain, resolveRotationState } from '@/lib/placement-edit';
 import { modelReader, type ModelReader } from './model-change-values';
+import { readOnlyModelEditTarget } from './model-authoring-read-target';
 
 export interface AuthoringReader extends ModelReader {
   readonly modelId: string;
   readonly editor: StoreEditor;
 }
 
-/** The live view and the store's cached editor when the model has them; otherwise private ones that never enter the store. */
+/** Snapshot current native facts without publishing an editor, view or allocator watermark (#7267). */
 export function authoringReader(state: ViewerState, modelId: string): AuthoringReader | null {
   const reader = modelReader(state, modelId);
-  if (!reader) return null;
-  const cached = state.mutationViews.get(modelId) === reader.view ? state.storeEditors.get(modelId) : undefined;
-  return { ...reader, modelId, editor: cached ?? new StoreEditor(reader.dataStore, reader.view) };
+  const target = readOnlyModelEditTarget(state, modelId);
+  return reader && target ? { ...reader, ...target } : null;
 }
 
 const live = (reader: AuthoringReader) => ({ dataStore: reader.dataStore, view: reader.view });

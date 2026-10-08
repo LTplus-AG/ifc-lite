@@ -123,3 +123,13 @@ it('validates property, quantity and delete bindings through the shared native p
     expect(result.ok).toBe(true); expect(result.review).toEqual(['proposal']);
   }
 });
+
+it('#7081 refuses a delimiter-colliding field outside the graph constraints', async () => {
+  const reply = { artifact: { version: 1, kind: 'model.changes', title: 'Substituted native field', changes: [
+    { op: 'property.set', target: { globalId: id }, pset: 'A', name: 'B:C', expected: 'Old', value: 'Reviewed' },
+  ] }, citations: [id] };
+  const { result, prompts } = await run(reply, { fields: [{ op: 'property.set', pset: 'A:B', name: 'C', expectedColumn: 'Name', allowedValues: ['Reviewed'] }] });
+  expect(result.ok).toBe(false); expect(result.outputs.has('proposal')).toBe(false);
+  expect(result.reports.find(report => report.nodeId === 'proposal')?.error).toContain('outside the selected native fields');
+  expect(prompts).toHaveLength(1);
+});

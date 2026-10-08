@@ -195,7 +195,7 @@ function instancedFrame(
   return { ...frame(encoder, null), instanced: { uniforms: new Float32Array(92), rteCamera, ...instanced } } as SelectionMaskFrame;
 }
 
-const labelOf = (v: unknown) => (v as { label?: string }).label;
+const labelOf = (v: unknown) => (v as { label?: string }).label?.replace(/-msaa$/, '');
 const instancedDraws = (calls: Call[]) => calls.filter((c) => c[0] === 'drawIndexed' && c[2] !== 1);
 const drawsOn = (passes: { view: unknown; calls: Call[] }[], target: string) =>
   passes.filter((p) => labelOf(p.view) === target).flatMap((p) => instancedDraws(p.calls));

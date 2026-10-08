@@ -1,0 +1,93 @@
+{
+  "sourceCommit": "df373b9933",
+  "validationCommit": "8385ca5a2d6b65708ac6fe99800f1b9e8f194390",
+  "sourceAndServedWasmSha256": "b335d9e2742a0f35db846b3a95f7b30152585ef2dd6e7abdc2328dae557dc1d0",
+  "qualified": "functional readiness only; self-A/B, three rounds per fixture and side, software WebGPU under shared host load; no performance verdict",
+  "laterChange": "8385 changes only the test assertion: finite non-negative number required; runtime and frozen viewer match df373",
+  "samples": [
+    {
+      "side": "run-A",
+      "fixture": "AC20-FZK-Haus.ifc",
+      "round": 1,
+      "metadataRenderReadyMs": 3729,
+      "type": "number"
+    },
+    {
+      "side": "run-A",
+      "fixture": "01_Snowdon_Towers_Sample_Structural(1).ifc",
+      "round": 1,
+      "metadataRenderReadyMs": 3844,
+      "type": "number"
+    },
+    {
+      "side": "run-B",
+      "fixture": "AC20-FZK-Haus.ifc",
+      "round": 1,
+      "metadataRenderReadyMs": 3461,
+      "type": "number"
+    },
+    {
+      "side": "run-B",
+      "fixture": "01_Snowdon_Towers_Sample_Structural(1).ifc",
+      "round": 1,
+      "metadataRenderReadyMs": 3408,
+      "type": "number"
+    },
+    {
+      "side": "run-A",
+      "fixture": "AC20-FZK-Haus.ifc",
+      "round": 2,
+      "metadataRenderReadyMs": 8457,
+      "type": "number"
+    },
+    {
+      "side": "run-A",
+      "fixture": "01_Snowdon_Towers_Sample_Structural(1).ifc",
+      "round": 2,
+      "metadataRenderReadyMs": 5591,
+      "type": "number"
+    },
+    {
+      "side": "run-B",
+      "fixture": "AC20-FZK-Haus.ifc",
+      "round": 2,
+      "metadataRenderReadyMs": 5293,
+      "type": "number"
+    },
+    {
+      "side": "run-B",
+      "fixture": "01_Snowdon_Towers_Sample_Structural(1).ifc",
+      "round": 2,
+      "metadataRenderReadyMs": 6827,
+      "type": "number"
+    },
+    {
+      "side": "run-A",
+      "fixture": "AC20-FZK-Haus.ifc",
+      "round": 3,
+      "metadataRenderReadyMs": 5957,
+      "type": "number"
+    },
+    {
+      "side": "run-A",
+      "fixture": "01_Snowdon_Towers_Sample_Structural(1).ifc",
+      "round": 3,
+      "metadataRenderReadyMs": 6321,
+      "type": "number"
+    },
+    {
+      "side": "run-B",
+      "fixture": "AC20-FZK-Haus.ifc",
+      "round": 3,
+      "metadataRenderReadyMs": 5560,
+      "type": "number"
+    },
+    {
+      "side": "run-B",
+      "fixture": "01_Snowdon_Towers_Sample_Structural(1).ifc",
+      "round": 3,
+      "metadataRenderReadyMs": 4909,
+      "type": "number"
+    }
+  ]
+}

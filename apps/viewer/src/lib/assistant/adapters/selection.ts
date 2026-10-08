@@ -25,6 +25,7 @@ import { stringToEntityRef } from '@/store/entity-ref';
 import { resolveEntityRef, resolveEntityRefGlobalIdFromState } from '@/store/resolveEntityRef';
 import { resolveQuantityDisplay } from '@/lib/units/display';
 import { effectiveElementData } from '@/components/viewer/properties/effectiveElementData';
+import { effectiveTypeProperties } from '@/components/viewer/properties/effectiveTypeProperties';
 import { effectiveSelectedClass } from '@/components/viewer/properties/effectiveSelectedClass';
 import { propertyDisplayValue } from '@/components/viewer/properties/propertyDisplayValue';
 import { evidenceRow, unavailableCapture, type EvidenceAdapter } from './types';
@@ -99,6 +100,12 @@ function elementRow(s: ViewerState, ref: EntityRef, source: ModelSource, rich: b
   const valueLimit = rich ? 32 : 12;
   const data = effectiveElementData(ref.expressId, source.query, source.view);
   const attributes = Object.fromEntries([...data.attributes].slice(0, rich ? 32 : 12).map(([name, value]) => [name, bounded(value)]));
+  const inherited = effectiveTypeProperties(source.store, ref.expressId, source.view);
+  const typeAttributes = inherited ? source.view?.getAttributeMutationsForEntity(inherited.typeId) ?? [] : [];
+  const typeGlobalId = inherited ? typeAttributes.find(attr => attr.name === 'GlobalId')?.value
+    ?? source.store?.entities.getGlobalId(inherited.typeId) : null;
+  const typeName = inherited ? typeAttributes.find(attr => attr.name === 'Name')?.value
+    ?? source.store?.entities.getName(inherited.typeId) : null;
   const psets = data.psets.slice(0, setLimit).map(pset => ({
     name: pset.name, propertyCount: pset.properties.length,
     properties: Object.fromEntries(pset.properties.slice(0, valueLimit)
@@ -123,6 +130,18 @@ function elementRow(s: ViewerState, ref: EntityRef, source: ModelSource, rich: b
     type: effectiveSelectedClass(source.store, source.view, ref.expressId),
     name: typeof name === 'string' && name.length > 0 ? bounded(name) : null,
     attributes, psets, psetCount: data.psets.length, quantities, qsetCount: data.qsets.length,
+    inheritedType: inherited ? {
+      modelId: ref.modelId, modelName: source.name,
+      GlobalId: typeof typeGlobalId === 'string' && typeGlobalId && typeGlobalId !== '$' ? typeGlobalId : null,
+      Name: bounded(typeName === '$' ? '' : typeName), expressId: inherited.typeId,
+      status: source.view?.hasChanges(inherited.typeId) ? 'edited' : 'as-loaded',
+      psetCount: inherited.psets.length,
+      psets: inherited.psets.slice(0, setLimit).map(pset => ({
+        name: pset.name, propertyCount: pset.properties.length,
+        properties: Object.fromEntries(pset.properties.slice(0, valueLimit)
+          .map(prop => [prop.name, bounded(propertyDisplayValue(prop, source.units, s.unitDisplayOverrides).full)])),
+      })),
+    } : null,
   });
 }
 
@@ -161,7 +180,7 @@ export const selectionAdapter: EvidenceAdapter = {
         perElementBounds: rich ? { sets: 16, valuesPerSet: 32, attributes: 32 } : { sets: 6, valuesPerSet: 12, attributes: 12 },
         units: 'Quantity values carry {value, unit} in the Properties panel display unit (project unit, or the display-unit override below); a null unit is undeclared. Property values are the panel display strings, with the unit inline when the measure declares one.',
         displayUnitOverrides: s.unitDisplayOverrides,
-        limitations: 'Values include unsaved edits made this session (status "edited"). Property and quantity sets are bounded per element (see perElementBounds; propertyCount/quantityCount/psetCount/qsetCount are the full counts). Type-inherited property sets, materials, classifications and relationships are not included. Only the first elements of a large selection are read; byClass/byModel cover the whole selection.',
+        limitations: 'Values include unsaved edits made this session (status "edited"). Property and quantity sets are bounded per element (see perElementBounds; propertyCount/quantityCount/psetCount/qsetCount are the full counts). Type-inherited property sets are a separate inheritedType definition with model and type GlobalId provenance; occurrence properties override same-named type properties for that occurrence. Each section uses the same bounds. Materials, classifications and relationships are not included. Only the first elements of a large selection are read; byClass/byModel cover the whole selection.',
       },
       rows: sample.map(ref => elementRow(s, ref, sourceFor(ref.modelId), rich)),
       totalRows: refs.length, availability: 'available',

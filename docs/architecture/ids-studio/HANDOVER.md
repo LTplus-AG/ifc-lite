@@ -71,6 +71,12 @@ All PRs are **drafts** until their pitch's "Done means" (in its pitch file) is m
 - Node 22, pnpm 10.8. `pnpm install --frozen-lockfile` takes about 20 s with a warm store.
 - Package tests use vitest (`pnpm --filter @ifc-lite/ids test`). The IDS conformance corpus lives in `packages/ids/src/__corpus__/buildingsmart-ids` (CC BY-ND: never modify those files).
 - `pnpm turbo build --filter=<pkg>...` builds a package and its workspace dependencies. Tests import workspace packages from their `dist`.
+- **Revert oracle (`Changed tests observe production`).** CI reverts the PR's production files and requires the PR's tests to go red. When the production files are *new* (a new package or module), the revert deletes them, the tests can't load, and the verdict is INCONCLUSIVE (`REVERT-BROKE-BUILD`). That blocks CI. The fix is evidence plus a label, never a code workaround:
+  1. Write surgical mutation patches (mutant→fixed orientation) and keep them outside the worktree, because the oracle refuses a dirty tree.
+  2. Run `node scripts/check-test-revert-oracle.mjs --base <PR base> --only <module> --test <its test> --mutation <patch> --ci --json` until each is `OBSERVED`.
+  3. Commit patches + README + `summary.json` under `docs/architecture/evidence/<pitch>/mutations/` (template: P-08's).
+  4. Ask the maintainer for the `revert-oracle-exempt` label in a PR comment.
+- **Superseded runs.** `Build + WASM + Rust + Node` reports *failure* when its jobs were cancelled by a newer push. Check the log before acting; a cancelled-only run needs nothing.
 
 ## 7. Contacts and authority
 - Owner and maintainer: Louis True. Decisions are recorded in README → Decisions.

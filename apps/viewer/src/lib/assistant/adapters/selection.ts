@@ -242,3 +242,9 @@ export const selectionAdapter: EvidenceAdapter = {
         units: 'Quantity values carry {value, unit} in the Properties panel display unit (project unit, or the display-unit override below); a null unit is undeclared. Property values are the panel display strings, with the unit inline when the measure declares one.',
         displayUnitOverrides: s.unitDisplayOverrides,
         limitations: 'Selection is sampled; byClass/byModel cover all refs. Native readers include edits; own-element status, snapshot-wide association freshness. Samples use perElementBounds with full known counts. inheritedType carries model/type GlobalId; occurrence properties override type values. Materials use occurrence-before-type precedence, LayerThickness metres and panel units for generic properties; IFC2X3 scalar-only material properties are outside the generic-set reader. Unverified fields/properties are unknown; unreadable current memberships make totals null. Source-free classification/document/relationship markers describe original source, not current assignments. Paths have bounded ancestors and null unverified totals; classification codes are schema-exact, missing systems unknown. Relationships count exact native edges; aliases identify inherited lookup IDs. Documents use native bounded metadata. Structural rows match the native member card; counts cover resolved native records, units are declared source units only, load/evidence bounds are explicit. Source-free original structural fields/totals are unknown; authored fields remain readable. Empty samples do not prove absence.',
+      },
+      rows: sample.map(ref => elementRow(s, ref, sourceFor(ref.modelId), rich)),
+      totalRows: refs.length, availability: 'available',
+    };
+  },
+};

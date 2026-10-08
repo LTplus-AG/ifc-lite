@@ -31,8 +31,16 @@ export const activityTrayEn = {
 
 
   'activityTray.job.load': 'Load model',
+  'activityTray.job.sourceDownload': 'Download source files',
+  'activityTray.sourceDownload.partialCancelled': { one: 'Cancelled after dispatching {count} file for loading. Dispatched files remain available.', other: 'Cancelled after dispatching {count} files for loading. Dispatched files remain available.' },
+  'activityTray.sourceDownload.partialFailed': { one: 'Dispatched {count} file for loading; some downloads failed. Dispatched files remain available.', other: 'Dispatched {count} files for loading; some downloads failed. Dispatched files remain available.' },
+  'activityTray.sourceDownload.failed': { one: '{count} download failed; no files were dispatched for loading.', other: '{count} downloads failed; no files were dispatched for loading.' },
   'activityTray.job.clash': 'Clash detection',
   'activityTray.job.validation': 'Data validation',
+  'activityTray.job.list': 'List execution',
+  'activityTray.job.bulk': 'Bulk property update',
+  'activityTray.bulk.cancelledWithChanges': { one: 'Cancelled after changing {count} entity. Applied changes remain available to undo.', other: 'Cancelled after changing {count} entities. Applied changes remain available to undo.' },
+  'activityTray.bulk.failedWithChanges': { one: 'Changed {count} entity; some updates failed. Applied changes remain available to undo.', other: 'Changed {count} entities; some updates failed. Applied changes remain available to undo.' },
   'activityTray.job.flow': 'Flow run',
   'activityTray.job.ai': 'Assistant request',
   'activityTray.job.export': 'Export',

@@ -21,7 +21,9 @@ import { DOCS_URL, useActiveSchemaVersion } from '../SearchModal.filter.selector
 import { SelectorFeedbackList, type SelectorFeedback } from '../SearchModal.filter.feedback';
 import { ElementFieldPicker } from './ElementFieldPicker';
 import { ChartSourcePicker, SOURCE_LABELS } from './ChartSourcePicker';
-import { resolveComparisonChartSource } from '@/lib/charts/comparison-source';
+import { resolveChartSource } from '@/lib/charts/chart-source';
+import { chartSourceMessage } from '@/lib/charts/chart-source-message';
+import { useChartSourceContext } from './useChartSourceContext';
 import { isSavedComparison } from '@/lib/compare/savedComparisons';
 import { dimensionColumns, draftToSpec, editorColumns, specToDraft, type ChartDraft } from './chart-editor-draft';
 import type { ElementFieldCatalog } from '@/lib/charts/element-field-reader';
@@ -82,7 +84,9 @@ export function ChartEditor({ spec, datasets, onSave, onCancel, elementFieldCata
   // persisted (#5156's `filter.clashRule` is `undefined`, not `''`, for "no
   // filter" — see the submit handler).
   const [clashRuleId, setClashRuleId] = useState(spec.filter?.clashRule ?? '');
-  const filterApplicable = !CHART_FILTER_NOT_APPLICABLE_SOURCES.has(draft.source);
+  // A saved clash report (#6947) keeps no element ids for a selector to match; only its rule filter applies.
+  const savedClashReport = draft.source === 'clash' && draft.clashReportId !== undefined;
+  const filterApplicable = !CHART_FILTER_NOT_APPLICABLE_SOURCES.has(draft.source) && !savedClashReport;
   // `null` means "no filter typed" — always valid; a real reading is either
   // ok or a refusal message (#4946's all-or-nothing rule, `readChartFilter`).
   const filterReading = useMemo(
@@ -92,9 +96,13 @@ export function ChartEditor({ spec, datasets, onSave, onCancel, elementFieldCata
   const filterValid = filterReading === null || filterReading.ok;
   const savedComparisons = useViewerStore((state) => state.savedComparisons);
   const history = useMemo(() => savedComparisons.filter(isSavedComparison), [savedComparisons]);
-  const source = useMemo(() => resolveComparisonChartSource(draft, datasets[draft.source], history), [draft, datasets, history]);
+  const savedContent = useChartSourceContext();
+  const source = useMemo(() => resolveChartSource(draft, datasets[draft.source], savedContent), [draft, datasets, savedContent]);
   const allowLegacy = !isNew && spec.source === 'compare' && spec.comparisonId === undefined;
   const comparisonValid = draft.source !== 'compare' || source.status === 'saved' || (allowLegacy && draft.comparisonId === undefined);
+  // A chart bound to a report that is gone cannot be saved as it is: the author picks the current result or another report.
+  const clashReportValid = !savedClashReport || source.status === 'saved';
+  const ruleOptions = source.saved === 'clashReport' ? (source.status === 'saved' ? source.report.run.rules : NO_CLASH_RULES) : clashRuleOptions;
   const columns = editorColumns(source.dataset, draft);
   const rowCount = source.dataset.rows.length;
   const numberColumns = columns.filter((c) => c.kind === 'number');
@@ -116,12 +124,12 @@ export function ChartEditor({ spec, datasets, onSave, onCancel, elementFieldCata
   const stackOk = draft.type !== 'stackedBar' || (draft.stackBy !== draft.dimension && categoryColumns.some((c) => c.id === draft.stackBy));
   const topNOk = draft.topN === undefined || (Number.isInteger(draft.topN) && draft.topN >= 0);
   const rulesValid = filterMode !== 'rules' || filterGroups.every((g) => g.rules.length > 0) || filterGroups.every((g) => g.rules.length === 0);
-  const valid = draft.title.trim().length > 0 && dimensionOk && measureOk && stackOk && topNOk && filterValid && rulesValid && comparisonValid;
+  const valid = draft.title.trim().length > 0 && dimensionOk && measureOk && stackOk && topNOk && filterValid && rulesValid && comparisonValid && clashReportValid;
 
   const setSource = (source: ChartSource): void => {
     const cols = datasets[source].columns;
     const allowed = dimensionColumns(draft.type, cols);
-    setDraft({ ...draft, source, comparisonId: undefined, elementField: undefined, measureField: undefined, dimension: allowed[0]?.id ?? '', stackBy: undefined, measure: { agg: 'count' } });
+    setDraft({ ...draft, source, comparisonId: undefined, clashReportId: undefined, elementField: undefined, measureField: undefined, dimension: allowed[0]?.id ?? '', stackBy: undefined, measure: { agg: 'count' } });
     // Not every source can be filtered (#4946); switching to one clears the
     // field rather than leave text behind that the next save would drop
     // silently. `clashRule` is meaningless off `clash` for the same reason.
@@ -206,8 +214,9 @@ export function ChartEditor({ spec, datasets, onSave, onCancel, elementFieldCata
         const clashRule = draft.source === 'clash' && clashRuleId ? clashRuleId : undefined;
         const groups = filterMode === 'rules' && filterGroups.some((g) => g.rules.length > 0) ? filterGroups : undefined;
         const selector = filterMode === 'selector' ? trimmedSelector : '';
-        const filter = filterApplicable && (selector.length > 0 || groups !== undefined || clashRule !== undefined)
-          ? { selector, groups, clashRule }
+        const elementFilter = filterApplicable && (selector.length > 0 || groups !== undefined);
+        const filter = elementFilter || clashRule !== undefined
+          ? { selector: elementFilter ? selector : '', groups: elementFilter ? groups : undefined, clashRule }
           : undefined;
         // draftToSpec (#5151) is still the one place that resolves the
         // `dimension`/`measure` sentinels back into the real contract —
@@ -223,7 +232,9 @@ export function ChartEditor({ spec, datasets, onSave, onCancel, elementFieldCata
       </label>
       <div className="grid grid-cols-2 gap-2">
         <ChartSourcePicker source={draft.source} rowCount={rowCount} comparisonId={draft.comparisonId} history={history}
-          allowLegacy={allowLegacy} className={field} onSource={setSource} onComparison={(comparisonId) => setDraft({ ...draft, comparisonId })} />
+          allowLegacy={allowLegacy} className={field} onSource={setSource} onComparison={(comparisonId) => setDraft({ ...draft, comparisonId })}
+          clashReport={{ id: draft.clashReportId, reports: savedContent.clashReports, note: source.saved === 'clashReport' ? chartSourceMessage(source, t) : undefined,
+            onChange: (clashReportId) => { setDraft({ ...draft, clashReportId }); setClashRuleId(''); } }} />
         {draft.source === 'elements' && (
           <ElementFieldPicker value={draft.elementField} catalog={elementFieldCatalog} loading={elementFieldCatalogLoading} className={field} onChange={setElementField} />
         )}
@@ -232,7 +243,7 @@ export function ChartEditor({ spec, datasets, onSave, onCancel, elementFieldCata
             <span className="text-muted-foreground">{t('chartEditor.clashRuleLabel')}</span>
             <select className={field} value={clashRuleId} onChange={(e) => setClashRuleId(e.target.value)} aria-label={t('chartEditor.clashRuleAriaLabel')}>
               <option value="">{t('chartEditor.clashRuleAllOption')}</option>
-              {clashRuleOptions.map((rule) => <option key={rule.id} value={rule.id}>{rule.name}</option>)}
+              {ruleOptions.map((rule) => <option key={rule.id} value={rule.id}>{rule.name}</option>)}
             </select>
           </label>
         )}
@@ -291,7 +302,7 @@ export function ChartEditor({ spec, datasets, onSave, onCancel, elementFieldCata
             </>
           ) : (
             <span className="text-2xs text-muted-foreground">
-              {t('chartEditor.sourceFilterNotApplicable', { source: SOURCE_LABELS[draft.source] })}
+              {t('chartEditor.sourceFilterNotApplicable', { source: savedClashReport ? t('clashChart.savedSource') : SOURCE_LABELS[draft.source] })}
             </span>
           )}
         </div>

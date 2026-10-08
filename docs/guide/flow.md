@@ -222,6 +222,8 @@ on a headless host and pass their entities through, so a graph that
 colorizes failures runs unchanged in CI. `ifc-lite flow validate` and the
 editor show the same per-node report.
 
+In the viewer, the status bar’s **Activity** tray offers **Cancel** for a running Flow. Each row addresses its own native run. Cancellation stops downstream effects at the scheduler’s next checkpoint and records **Cancelled**. If a node needs time to finish its current work, the run keeps its execution lease while cancellation drains; another run can start after the lease releases. Terminal rows release their cancellation controls.
+
 ## AI nodes and review checkpoints
 
 `@ifc-lite/flow-nodes/ai` adds four nodes that call the host's AI model
@@ -328,6 +330,27 @@ checkpoint is kept in the browser, so after a reload with the same model
 files and no edits the same proposal can still be approved; any edit, undo
 or model change in between refuses the resume and asks for a new run. Graph
 writes before and after the pause are separate undo steps.
+
+All four AI node families attach a JSON response schema derived from their
+native output shape and selected constraints. Direct OpenAI requests use
+the API's [structured output format](https://developers.openai.com/api/docs/guides/structured-outputs),
+and direct Anthropic requests use
+[`output_config.format`](https://platform.claude.com/docs/en/build-with-claude/structured-outputs).
+The viewer refuses schemas exceeding Anthropic's documented 16 union parameters
+or 24 optional parameters before sending or reserving the request budget. For
+example, 17 nullable extraction fields or seven set-field proposal variants
+exceed the union limit; choose fewer fields or a different provider. The node
+reports this provider limitation rather than budget exhaustion or sent rows.
+Schema enums can include the selected row identifiers, labels and field names.
+Anthropic [caches schemas separately for up to 24 hours since last use](https://platform.claude.com/docs/en/build-with-claude/structured-outputs#data-retention);
+schema content therefore has different retention from message content.
+The hosted proxy remains parser-only because it advertises no upstream schema
+contract. A typed request's receipt records `outputFormat` as `json-schema` or
+`text`; it describes what was requested, not live model quality. Schema errors
+are not retried as unstructured text. Native citation, target, expected-value,
+allowed-value and source-span checks still run, and every proposal still pauses
+for review. Large citation inventories retain native membership validation
+without duplicating the entire inventory into a provider enum.
 
 In a real host the transitions go through `updateCheckpoint` with a durable
 store; the CLI's `flow run --checkpoint` / `flow review` / `flow resume`

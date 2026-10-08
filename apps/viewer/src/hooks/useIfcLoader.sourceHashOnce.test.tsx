@@ -41,6 +41,7 @@ import { resolveLoadTessellationTier } from '@/store/constants.js';
 import { buildGeometryCacheKey } from './geometryCacheKey.js';
 import { getCached, setCached } from '../services/cacheService.js';
 import { useIfcLoader } from './useIfcLoader.js';
+import { hasPersistedMarkupEntryFor, useDrawing2DPersistence } from './useDrawing2DPersistence.js';
 
 const MIB = 1024 * 1024;
 const sha256 = (bytes: Uint8Array | string) => createHash('sha256').update(bytes).digest('hex');
@@ -315,5 +316,70 @@ describe('useIfcLoader — a warm hit validates against the load\'s one hash (#7
     assert.notEqual(onlyModel()?.cacheState, 'hit', 'an entry the load cannot validate is not served');
     assert.ok(progressPhases.includes('Starting geometry streaming'), 'the file is parsed instead');
     assert.equal(await getCached(key), null, 'the unverifiable entry is dropped so the reparse can rewrite it');
+  });
+});
+
+// The viewer mounts drawing persistence beside every load. It used to hash the
+// whole file again for its storage key; it now uses the load's identity.
+describe('useIfcLoader — a primary load with drawing persistence mounted hashes the source once (#7035)', () => {
+  const MARKUP_PREFIX = 'ifc-lite:drawing2d-markup:v1:';
+  function DrawingProbe(): null {
+    useDrawing2DPersistence();
+    return null;
+  }
+  let drawingRoot: Root | null = null;
+  let drawingContainer: HTMLDivElement | null = null;
+  const passes = (name: string) => perfCounters.read()[`${name}.count`] ?? 0;
+
+  beforeEach(async () => {
+    localStorage.clear();
+    perfCounters.enable(); // what `?perfTrace=1` and the benchmark do; this file's process only
+    drawingContainer = document.createElement('div');
+    document.body.appendChild(drawingContainer);
+    drawingRoot = createRoot(drawingContainer);
+    await act(async () => { drawingRoot!.render(<DrawingProbe />); });
+  });
+  afterEach(async () => {
+    const current = drawingRoot;
+    drawingRoot = null;
+    if (current) await act(async () => current.unmount());
+    drawingContainer?.remove();
+    drawingContainer = null;
+    localStorage.clear();
+  });
+
+  async function loadAndRestore(bytes: Uint8Array, name: string): Promise<void> {
+    await act(async () => { await hookApi!.loadFile(new File([bytes as BlobPart], name)); });
+    await waitFor(() => hasPersistedMarkupEntryFor(onlyModel()!.id) !== 'pending', 'the drawing restore to settle');
+    await settle(100); // a second pass, if one were started, would have been counted by now
+  }
+
+  it('the hash-pass counter reads 1 per primary load with no legacy entry', async () => {
+    const bytes = glbBytes(4);
+    const before = { full: passes('hash.fullSource'), legacy: passes('hash.drawingLegacyKey') };
+    await loadAndRestore(bytes, 'drawing-mounted.glb');
+    assert.equal(passes('hash.fullSource') - before.full, 1, 'full-source hash passes for the load');
+    assert.equal(passes('hash.drawingLegacyKey') - before.legacy, 0, 'no legacy-key pass');
+
+    await act(async () => {
+      useViewerStore.setState({ measure2DResults: [{ id: 'drawn', start: { x: 0, y: 0 }, end: { x: 3, y: 4 }, distance: 5 }] });
+    });
+    assert.ok(localStorage.getItem(MARKUP_PREFIX + referenceIdentity(bytes)), 'markup drawn after the load is stored under the load\'s identity');
+  });
+
+  it('a legacy entry adds one pass, reported under its own counter', async () => {
+    const bytes = glbBytes(5);
+    localStorage.setItem(MARKUP_PREFIX + sha256(bytes), JSON.stringify({
+      measure2DResults: [{ id: 'legacy-1', start: { x: 0, y: 0 }, end: { x: 3, y: 4 }, distance: 5 }],
+      polygonArea2DResults: [], textAnnotations2D: [], cloudAnnotations2D: [],
+      drawing2DDisplayOptions: {}, sectionConfig: null, savedAt: 1,
+    }));
+    const before = { full: passes('hash.fullSource'), legacy: passes('hash.drawingLegacyKey') };
+    await loadAndRestore(bytes, 'drawing-legacy.glb');
+    assert.equal(passes('hash.fullSource') - before.full, 1, 'the load itself still makes one full-source pass');
+    assert.equal(passes('hash.drawingLegacyKey') - before.legacy, 1, 'the extra pass is visible, not hidden');
+    assert.deepEqual(useViewerStore.getState().measure2DResults.map((m) => m.id), ['legacy-1']);
+    assert.equal(localStorage.getItem(MARKUP_PREFIX + sha256(bytes)), null);
+    assert.ok(localStorage.getItem(MARKUP_PREFIX + referenceIdentity(bytes)));
   });
 });

@@ -42,6 +42,7 @@ export function viewerFlowAi(savedBudget?: unknown): ViewerFlowAi | null {
       request: (call) => runModelRequest({
         route, proxyUrl: LLM_PROXY_URL, messages: [{ role: 'user', content: call.prompt }], system: call.system,
         maxOutputTokens: call.maxOutputTokens, budget, signal: call.signal, timeoutMs: FLOW_AI_TIMEOUT_MS,
+        outputSchema: call.outputSchema,
       }),
     },
   };

@@ -75,12 +75,13 @@ export function runMergeBaseAudits({ root, allowlistPath, headRows, measured, ba
 check-module-size: the merge-base audit could not run: ${why}.
 
 CI is set, so this is a failure, not a skip (#4388). Check out with full history
-and an origin/main ref, or pass --base <ref> to name the base by hand.
+and the canonical main ref (origin/main, or upstream/main when upstream is the
+LTplus-AG/ifc-lite remote), or pass --base <ref> to name the base by hand.
 `);
     } else {
       console.warn(
         `check-module-size: WARNING -- merge-base audit SKIPPED: ${why}. Allowlist rows were ` +
-          `NOT judged against the merge base this run (#4388); fetch origin/main or pass --base <ref>.`,
+          `NOT judged against the merge base this run (#4388); fetch the canonical main (origin/main, or upstream/main) or pass --base <ref>.`,
       );
     }
     return null;

@@ -4,7 +4,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { existsSync, mkdirSync, readdirSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { isMainEntry } from './lib/is-main-entry.mjs';
 
 const escapeHtml = (value) => value.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('"', '&quot;');
 
@@ -21,7 +21,7 @@ export function buildRustdocIndex(rustdocDir, outputFile) {
   return crates;
 }
 
-if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+if (isMainEntry(import.meta.url)) {
   const [rustdocDir, outputFile] = process.argv.slice(2);
   if (!rustdocDir || !outputFile) throw new Error('usage: build-rustdoc-index.mjs <target/doc> <output.html>');
   const crates = buildRustdocIndex(resolve(rustdocDir), resolve(outputFile));

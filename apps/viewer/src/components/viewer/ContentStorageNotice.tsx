@@ -31,7 +31,7 @@ const messages = {
 } as const satisfies Record<string, TranslationKey>;
 const visibleLibraries = () => {
   const state = useViewerStore.getState();
-  return { validation: state.savedValidationReports, comparison: state.savedComparisons, document: state.documents,
+  return { validation: state.savedValidationReports, comparison: state.savedComparisons, document: state.documents, clashReports: state.savedClashReports,
     assistant: useAssistantLibrary.getState().entries, clashGroups: useClashGroupLibrary.getState().entries,
     bcfDrafts: useBcfDraftLibrary.getState().entries, bcfOutbox: useBcfOutbox.getState().entries,
     modelChanges: useModelChangeReceipts.getState().entries, clashGroupApplications: useClashGroupApplications.getState().entries, reviewWorkspaces: useReviewWorkspaces.getState().entries,
@@ -44,7 +44,7 @@ export function ContentStorageNotice({ status, retry, restore }: {
 }) {
   const { t } = useTranslation();
   const { confirmDialog } = useDialogs();
-  const librariesLoading = useViewerStore(state => [state.documentsStorage, state.validationReportsStorage, state.savedComparisonsStorage]
+  const librariesLoading = useViewerStore(state => [state.documentsStorage, state.validationReportsStorage, state.savedComparisonsStorage, state.savedClashReportsStorage]
     .some(library => library.phase === 'loading'));
   const assistantLoading = useAssistantLibrary(s => s.status.phase === 'loading');
   const clashGroupsLoading = useClashGroupLibrary(s => s.status.phase === 'loading');
@@ -85,6 +85,7 @@ export function ContentStorageNotice({ status, retry, restore }: {
       modelChanges: useModelChangeReceipts.getState().status,
       clashGroupApplications: useClashGroupApplications.getState().status,
       reviewWorkspaces: useReviewWorkspaces.getState().status,
+      clashReports: state.savedClashReportsStorage,
       semanticReviews: useSemanticReviews.getState().status,
       assistantRecipes: useAssistantRecipes.getState().status,
       assistantPreferences: useAssistantPreferences.getState().status,
@@ -92,12 +93,14 @@ export function ContentStorageNotice({ status, retry, restore }: {
     if (!preserved.complete) toast.info(t('contentStorage.draftReadUnavailable'));
   };
   const importFile = async (file: File) => {
+    const state = useViewerStore.getState();
+    // Opening the clash report library loads its validator, which parsing a backup needs.
+    const clashReportsReady = await state.initializeSavedClashReports();
     const parsed = parseContentBackup(await file.text());
     const drafts = parsed.drafts ?? [];
     stageContentDrafts(drafts);
-    const state = useViewerStore.getState();
     const initialized = await Promise.all([assistantLibrary.initialize(), clashGroupLibrary.initialize(), bcfDraftLibrary.initialize(), modelChangeLibrary.initialize(), clashGroupApplicationLibrary.initialize(), reviewWorkspaceLibrary.initialize(), semanticReviewLibrary.initialize(), assistantRecipeLibrary.initialize(), assistantPreferencesLibrary.initialize(),
-      initializeBcfOutbox(), state.initializeValidationReports(), state.initializeSavedComparisons(), state.initializeDocuments()]);
+      initializeBcfOutbox(), state.initializeValidationReports(), state.initializeSavedComparisons(), clashReportsReady, state.initializeDocuments()]);
     let count: number, committed: readonly ContentCommitReceipt[] = [];
     try {
       count = await importContentBackup(parsed, visibleLibraries, initialized.every(Boolean), rows => { committed = rows; });
@@ -107,6 +110,7 @@ export function ContentStorageNotice({ status, retry, restore }: {
       console.warn('[User content] Import remains in memory', error);
       for (const entry of error.entries.validation) state.stageValidationReport(entry);
       for (const entry of error.entries.comparison) state.stageComparison(entry);
+      for (const entry of error.entries.clashReports ?? []) void state.stageClashReport(entry);
       for (const entry of error.entries.assistant ?? []) assistantLibrary.stage(entry.id, entry);
       for (const entry of error.entries.clashGroups ?? []) clashGroupLibrary.stage(entry.id, entry);
       for (const entry of error.entries.bcfDrafts ?? []) bcfDraftLibrary.stage(entry.id, entry);
@@ -128,7 +132,7 @@ export function ContentStorageNotice({ status, retry, restore }: {
     // A committed import is never restaged just because refreshing its UI failed.
     try {
       const refreshed = await Promise.all([assistantLibrary.refresh(committed), clashGroupLibrary.refresh(committed),
-        bcfDraftLibrary.refresh(committed), bcfOutboxLibrary.refresh(committed), modelChangeLibrary.refresh(committed), clashGroupApplicationLibrary.refresh(committed), reviewWorkspaceLibrary.refresh(committed), semanticReviewLibrary.refresh(committed), assistantRecipeLibrary.refresh(committed), assistantPreferencesLibrary.refresh(committed), state.refreshValidationReports(committed), state.refreshSavedComparisons(committed), state.refreshDocuments(committed)]);
+        bcfDraftLibrary.refresh(committed), bcfOutboxLibrary.refresh(committed), modelChangeLibrary.refresh(committed), clashGroupApplicationLibrary.refresh(committed), reviewWorkspaceLibrary.refresh(committed), semanticReviewLibrary.refresh(committed), assistantRecipeLibrary.refresh(committed), assistantPreferencesLibrary.refresh(committed), state.refreshValidationReports(committed), state.refreshSavedComparisons(committed), state.refreshSavedClashReports(committed), state.refreshDocuments(committed)]);
       if (!refreshed.every(Boolean)) toast.info(t('contentStorage.refreshFailed'));
     }
     catch (error) {
@@ -153,7 +157,7 @@ export function ContentStorageNotice({ status, retry, restore }: {
         <Button size="sm" variant="outline" disabled={busy} onClick={() => input.current?.click()}>{t('contentStorage.import')}</Button>
         <Button size="sm" variant="outline" disabled={busy} onClick={() => void run(async () => {
           const live = useViewerStore.getState();
-          const saved = await Promise.all([assistantLibrary.retry(), clashGroupLibrary.retry(), bcfDraftLibrary.retry(), bcfOutboxLibrary.retry(), modelChangeLibrary.retry(), clashGroupApplicationLibrary.retry(), reviewWorkspaceLibrary.retry(), semanticReviewLibrary.retry(), assistantRecipeLibrary.retry(), assistantPreferencesLibrary.retry(), live.retryDocumentsSave(), live.retryValidationReportsSave(), live.retrySaveComparisons(), retryContentDrafts()]);
+          const saved = await Promise.all([assistantLibrary.retry(), clashGroupLibrary.retry(), bcfDraftLibrary.retry(), bcfOutboxLibrary.retry(), modelChangeLibrary.retry(), clashGroupApplicationLibrary.retry(), reviewWorkspaceLibrary.retry(), semanticReviewLibrary.retry(), assistantRecipeLibrary.retry(), assistantPreferencesLibrary.retry(), live.retryDocumentsSave(), live.retryValidationReportsSave(), live.retrySaveComparisons(), live.retrySaveClashReports(), retryContentDrafts()]);
           const identitiesSaved = await retryContentImports();
           if (saved.every(Boolean) && identitiesSaved) toast.success(t('contentStorage.saved'));
           else toast.error(t('contentStorage.someUnsaved'));
@@ -169,7 +173,7 @@ export function ContentStorageNotice({ status, retry, restore }: {
         <Button size="sm" variant="outline" disabled={busy} onClick={() => void run(async () => {
           const estimate = await navigator.storage?.estimate?.();
           const live = useViewerStore.getState();
-          const bytes = new Blob([JSON.stringify([live.documents, live.savedComparisons, live.savedValidationReports])]).size;
+          const bytes = new Blob([JSON.stringify([live.documents, live.savedComparisons, live.savedValidationReports, live.savedClashReports])]).size;
           const mib = (value: number | undefined) => value === undefined ? t('contentStorage.unknown') : (value / 1024 / 1024).toFixed(1);
           toast.info(t('contentStorage.estimate', { library: mib(bytes), usage: mib(estimate?.usage), quota: mib(estimate?.quota) }));
         })}>{t('contentStorage.checkUsage')}</Button>

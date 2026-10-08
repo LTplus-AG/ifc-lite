@@ -15,7 +15,7 @@
  */
 import type { Aggregation, ReportPageSetup } from '@ifc-lite/charts';
 import { countRows, rowCountHeader } from '@/lib/charts/row-noun';
-import { isSavedComparisonChart } from '@/lib/charts/comparison-source';
+import { isRecordedChart } from '@/lib/charts/chart-source';
 
 export const PAGE_SIZES_PT: Record<ReportPageSetup['size'], { w: number; h: number }> = {
   A4: { w: 595.28, h: 841.89 },
@@ -129,7 +129,7 @@ export function composeReport(input: ComposeReportInput): ReportLayout {
   y += TITLE_HEIGHT + Math.ceil(fields.length / 2) * 14 + BLOCK_GAP;
 
   for (const chart of input.charts) {
-    const withSnapshot = input.snapshots && chart.snapshot !== false && chart.aggregation !== null && !isSavedComparisonChart(chart.aggregation.spec) && chart.aggregation.categories.length > 0;
+    const withSnapshot = input.snapshots && chart.snapshot !== false && chart.aggregation !== null && !isRecordedChart(chart.aggregation.spec) && chart.aggregation.categories.length > 0;
     // Chart and snapshot side by side when the page is wide enough, stacked otherwise.
     const sideBySide = withSnapshot && contentW >= 640;
     const chartW = sideBySide ? Math.round(contentW * 0.6) - BLOCK_GAP / 2 : contentW;

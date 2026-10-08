@@ -16,6 +16,7 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const UPLOAD = join(HERE, 'upload-fixtures.mjs');
 const VALIDATOR = join(HERE, 'manifest-validation.mjs');
 const DOWNLOAD_URL = join(HERE, 'download-url.mjs');
+const IS_MAIN_ENTRY = join(HERE, '..', 'lib', 'is-main-entry.mjs');
 
 test('uploader refuses an unreviewed v2 fixture before invoking GitHub', () => {
   const root = mkdtempSync(join(tmpdir(), 'fixupload-'));
@@ -24,6 +25,8 @@ test('uploader refuses an unreviewed v2 fixture before invoking GitHub', () => {
   try {
     mkdirSync(scriptsDir, { recursive: true });
     mkdirSync(modelsDir, { recursive: true });
+    mkdirSync(join(root, 'scripts', 'lib'), { recursive: true });
+    copyFileSync(IS_MAIN_ENTRY, join(root, 'scripts', 'lib', 'is-main-entry.mjs'));
     copyFileSync(UPLOAD, join(scriptsDir, 'upload-fixtures.mjs'));
     copyFileSync(VALIDATOR, join(scriptsDir, 'manifest-validation.mjs'));
     copyFileSync(DOWNLOAD_URL, join(scriptsDir, 'download-url.mjs'));
@@ -53,6 +56,8 @@ test('uploader excludes a source-hosted IFC even when its bytes are absent local
   try {
     mkdirSync(scriptsDir, { recursive: true });
     mkdirSync(modelsDir, { recursive: true });
+    mkdirSync(join(root, 'scripts', 'lib'), { recursive: true });
+    copyFileSync(IS_MAIN_ENTRY, join(root, 'scripts', 'lib', 'is-main-entry.mjs'));
     copyFileSync(UPLOAD, join(scriptsDir, 'upload-fixtures.mjs'));
     copyFileSync(VALIDATOR, join(scriptsDir, 'manifest-validation.mjs'));
     copyFileSync(DOWNLOAD_URL, join(scriptsDir, 'download-url.mjs'));

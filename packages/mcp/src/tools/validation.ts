@@ -20,7 +20,7 @@ import { effectiveSourceIds, pendingEntityMembership } from '../effective-entity
 import { isProductType } from '../backend-query.js';
 import { EntityNode } from '@ifc-lite/query';
 import type { Tool } from './types.js';
-import { okResult, resolveModel } from './util.js';
+import { fmtInt, okResult, resolveModel } from './util.js';
 import { ToolErrorCode, ToolExecutionError } from '../errors.js';
 import { resolveSafePath } from '../safe-path.js';
 import type { ToolContext } from '../context.js';
@@ -278,7 +278,7 @@ const modelAudit: Tool = {
     if (unnamed > 0) {
       issues.push({
         severity: 'warning', category: 'data-quality', rule: 'has-name', entityCount: unnamed,
-        message: `${unnamed.toLocaleString()} of ${totalProducts.toLocaleString()} entities have no Name attribute.`,
+        message: `${fmtInt(unnamed)} of ${fmtInt(totalProducts)} entities have no Name attribute.`,
       });
     }
 

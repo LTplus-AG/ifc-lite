@@ -28,6 +28,8 @@ import { errorResponse, parseMessage } from '../protocol/jsonrpc.js';
 import { JsonRpcErrorCode } from '../protocol/index.js';
 import { MCPServer, OutgoingMessageSink } from '../server.js';
 import { AuthScope } from '../auth/scope.js';
+import { draftCount } from '../tools/layer-store.js';
+import { assertSessionLimits, parseHostHeader, pickReclaimable, readBody, sameScope, sendSessionCapacity, sendUnknownSession, writeSse, setCors, DEFAULT_MAX_SESSIONS, DEFAULT_SESSION_IDLE_MS, type SessionCapacityOptions } from './http-helpers.js';
 
 export interface HttpAuthenticator {
   /**
@@ -50,7 +52,7 @@ export interface SessionFactory {
   build(scope: AuthScope, sessionId: string): Promise<MCPServer> | MCPServer;
 }
 
-export interface HttpTransportOptions {
+export interface HttpTransportOptions extends SessionCapacityOptions {
   port: number;
   host?: string;
   authenticator: HttpAuthenticator;
@@ -71,12 +73,17 @@ interface Session {
   server: MCPServer;
   scope: AuthScope;
   sseClients: Set<ServerResponse>;
-  createdAt: number;
+  /** Wall-clock ms of the last authorised request, SSE open or close, or request completion. */
+  lastSeen: number;
+  /** Requests being handled right now: a session mid-call is never idle. */
+  inFlight: number;
 }
 
 export class HttpTransport {
   private server: Server;
   private sessions = new Map<string, Session>();
+  /** Sessions whose factory call is in flight: not yet in `sessions`, but already spoken for. */
+  private building = 0;
   private opts: HttpTransportOptions;
   /** Browser Origins permitted to read responses (empty = none). */
   private allowedOrigins: Set<string>;
@@ -91,6 +98,7 @@ export class HttpTransport {
   private enforceHostCheck: boolean;
 
   constructor(opts: HttpTransportOptions) {
+    assertSessionLimits(opts);
     this.opts = opts;
     this.allowedOrigins = new Set(opts.allowedOrigins ?? []);
     // A wildcard bind has no single hostname to allowlist — real clients send
@@ -174,17 +182,15 @@ export class HttpTransport {
       // Open an SSE channel for an existing session. Same identity rule as
       // POST: a leaked Mcp-Session-Id must not let a differently-scoped
       // token attach to the victim's event stream.
-      if (!sessionId || !this.sessions.has(sessionId)) {
-        res.statusCode = 404;
-        res.end('Unknown session');
-        return;
-      }
-      const session = this.sessions.get(sessionId) as Session;
+      if (!sessionId) { res.statusCode = 400; res.end('Mcp-Session-Id required'); return; }
+      const session = this.sessions.get(sessionId);
+      if (!session) return sendUnknownSession(res);
       if (!sameScope(session.scope, scope)) {
         res.statusCode = 403;
         res.end('session scope mismatch');
         return;
       }
+      session.lastSeen = Date.now();
       this.openSse(session, res);
       return;
     }
@@ -214,7 +220,11 @@ export class HttpTransport {
       return;
     }
 
-    const body = await readBody(req, this.opts.maxBodyBytes ?? 32 * 1024 * 1024);
+    // A POST still uploading its body counts as in flight for the session it
+    // names (same scope only), so an `initialize` at the cap cannot reclaim it
+    // between the headers and the last byte.
+    const named = sessionId ? this.sessions.get(sessionId) : undefined;
+    const body = await readBody(req, this.opts.maxBodyBytes ?? 32 * 1024 * 1024, named && sameScope(named.scope, scope) ? named : undefined);
     const message = parseMessage(body);
     if (!message) {
       res.statusCode = 400;
@@ -238,17 +248,31 @@ export class HttpTransport {
         res.end(JSON.stringify({ error: 'session scope mismatch' }));
         return;
       }
+      // After the identity check: a refused caller must not keep another
+      // principal's session from ever looking idle.
+      session.lastSeen = Date.now();
     } else {
+      // A session id we do not hold (DELETEd, reclaimed at the cap, never issued)
+      // is the spec's 404 for `initialize` too: re-initialize WITHOUT an id.
+      if (sessionId) return sendUnknownSession(res);
       // Per spec, `initialize` is the only request allowed without a session;
       // the response carries the new Mcp-Session-Id.
-      const isInitialize = (message as { method?: string }).method === 'initialize';
-      if (!isInitialize) {
+      if ((message as { method?: string }).method !== 'initialize') {
         res.statusCode = 400;
         res.end('Mcp-Session-Id required');
         return;
       }
+      if (!this.makeRoomForSession()) return sendSessionCapacity(res);
       const newId = randomUUID();
-      const server = await this.opts.sessionFactory.build(scope, newId);
+      // The factory may await, so concurrent initializes would each pass the
+      // capacity check above; count the ones still building.
+      this.building++;
+      let server: MCPServer;
+      try {
+        server = await this.opts.sessionFactory.build(scope, newId);
+      } finally {
+        this.building--;
+      }
       // A factory that drops the session id would put every HTTP session
       // on the shared local layer workspace (cross-session reads/writes,
       // no disposal) — refuse the deployment bug instead of running unsafe.
@@ -260,7 +284,7 @@ export class HttpTransport {
         }));
         return;
       }
-      session = { id: newId, server, scope, sseClients: new Set(), createdAt: Date.now() };
+      session = { id: newId, server, scope, sseClients: new Set(), lastSeen: Date.now(), inFlight: 0 };
       session.server.attach(this.makeSinkFor(session));
       this.sessions.set(newId, session);
       res.setHeader('Mcp-Session-Id', newId);
@@ -273,20 +297,31 @@ export class HttpTransport {
       res.setHeader('Content-Type', 'text/event-stream');
       res.setHeader('Cache-Control', 'no-cache, no-transform');
       res.setHeader('Connection', 'keep-alive');
-      session.sseClients.add(res);
-      const response = await session.server.handleMessage(message);
-      if (response) writeSse(res, response);
       // Keep the connection open until client closes; progress notifications
-      // arrive via the session's sink.
-      req.on('close', () => session.sseClients.delete(res));
+      // arrive via the session's sink. Tracked before the dispatch so a client
+      // that leaves mid-call is still removed.
+      this.trackSse(session, res);
+      const response = await this.dispatch(session, message);
+      if (response && !res.writableEnded) writeSse(res, response);
       return;
     }
 
     // Plain JSON response (the common case).
-    const response = await session.server.handleMessage(message);
+    const response = await this.dispatch(session, message);
     res.statusCode = 200;
     res.setHeader('Content-Type', 'application/json');
     res.end(response ? JSON.stringify(response) : '{}');
+  }
+
+  /** Run one message; the session counts as busy until it settles, and active when it does. */
+  private async dispatch(session: Session, message: JsonRpcMessage): Promise<Awaited<ReturnType<MCPServer['handleMessage']>>> {
+    session.inFlight++;
+    try {
+      return await session.server.handleMessage(message);
+    } finally {
+      session.inFlight--;
+      session.lastSeen = Date.now();
+    }
   }
 
   private openSse(session: Session, res: ServerResponse): void {
@@ -295,12 +330,32 @@ export class HttpTransport {
     res.setHeader('Cache-Control', 'no-cache, no-transform');
     res.setHeader('Connection', 'keep-alive');
     res.write(': connected\n\n');
-    session.sseClients.add(res);
+    this.trackSse(session, res);
     const ka = setInterval(() => res.write(': keepalive\n\n'), 15_000);
+    res.on('close', () => clearInterval(ka));
+  }
+
+  /** An open stream keeps its session from being reclaimed; idle time starts when it closes. */
+  private trackSse(session: Session, res: ServerResponse): void {
+    session.sseClients.add(res);
     res.on('close', () => {
       session.sseClients.delete(res);
-      clearInterval(ka);
+      session.lastSeen = Date.now();
     });
+  }
+
+  /**
+   * Whether a new session fits. Live sessions and pending builds both count.
+   * At the cap, only a session that is safe to end (see `pickReclaimable`)
+   * makes room; with none, the answer is no and nothing is ended.
+   */
+  private makeRoomForSession(): boolean {
+    const max = this.opts.maxSessions ?? DEFAULT_MAX_SESSIONS;
+    const need = this.sessions.size + this.building - max + 1;
+    if (need <= 0) return true;
+    const idleMs = this.opts.sessionIdleMs ?? DEFAULT_SESSION_IDLE_MS;
+    for (const id of pickReclaimable(this.sessions, idleMs, need, draftCount)) this.endSession(id);
+    return this.sessions.size + this.building < max;
   }
 
   private endSession(sessionId: string): void {
@@ -316,81 +371,13 @@ export class HttpTransport {
       send: (message: JsonRpcMessage) => {
         // Fan out notifications + responses to every active SSE client.
         for (const sse of session.sseClients) {
-          try { writeSse(sse, message); } catch { /* SSE client gone — cleaned up on close */ }
+          try { writeSse(sse, message); } catch (err) {
+            console.error('[ifc-lite-mcp http] event stream write failed', err);
+          }
         }
       },
     };
   }
-}
-
-/**
- * Strict scope identity check used when reusing an HTTP session — both the
- * permission set and any narrowing (model_ids, user, session) must match
- * what the session was created with. We sort the scopes set so callers
- * that pass them in different orders still compare equal.
- */
-function sameScope(a: AuthScope, b: AuthScope): boolean {
-  if (a === b) return true;
-  if (a.user !== b.user || a.session !== b.session) return false;
-  const as = [...a.scopes].sort();
-  const bs = [...b.scopes].sort();
-  if (as.length !== bs.length || as.some((s, i) => s !== bs[i])) return false;
-  const am = a.modelIds ? [...a.modelIds].sort() : undefined;
-  const bm = b.modelIds ? [...b.modelIds].sort() : undefined;
-  if ((am?.length ?? 0) !== (bm?.length ?? 0)) return false;
-  if (am && bm && am.some((m, i) => m !== bm[i])) return false;
-  return true;
-}
-
-/**
- * Reflect CORS headers ONLY when the request carries an Origin we explicitly
- * allow. We never emit a wildcard `Access-Control-Allow-Origin` — that would
- * let any web page read JSON-RPC responses cross-origin. When `origin` is not
- * allowlisted we emit no CORS headers, so the browser blocks the response.
- */
-function setCors(res: ServerResponse, origin: string | undefined, allowed: Set<string>): void {
-  if (!origin || !allowed.has(origin)) return;
-  res.setHeader('Access-Control-Allow-Origin', origin);
-  res.setHeader('Vary', 'Origin');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, Mcp-Session-Id');
-  res.setHeader('Access-Control-Expose-Headers', 'Mcp-Session-Id');
-}
-
-/**
- * Extract the host name from a `Host` header, stripping the port. Handles the
- * bracketed IPv6 literal form (`[::1]:8765` -> `::1`).
- */
-function parseHostHeader(raw: string | undefined): string | undefined {
-  if (!raw) return undefined;
-  const value = raw.trim();
-  if (value.startsWith('[')) {
-    const end = value.indexOf(']');
-    return end > 0 ? value.slice(1, end) : value;
-  }
-  return value.split(':')[0];
-}
-
-function writeSse(res: ServerResponse, message: unknown): void {
-  res.write(`data: ${JSON.stringify(message)}\n\n`);
-}
-
-async function readBody(req: IncomingMessage, max: number): Promise<string> {
-  return new Promise((resolve, reject) => {
-    let total = 0;
-    const chunks: Buffer[] = [];
-    req.on('data', (chunk: Buffer) => {
-      total += chunk.length;
-      if (total > max) {
-        reject(new Error('Request body too large'));
-        req.destroy();
-        return;
-      }
-      chunks.push(chunk);
-    });
-    req.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')));
-    req.on('error', reject);
-  });
 }
 
 // ── Built-in authenticators ──────────────────────────────────────────────

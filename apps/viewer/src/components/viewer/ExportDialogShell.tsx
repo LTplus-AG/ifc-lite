@@ -58,12 +58,17 @@ import {
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { useExportDialogOpenGuard } from '@/hooks/useExportDialogOpenGuard';
 import { useTranslation } from '@/i18n';
-import { beginActivity, discardActivity, finishActivity } from '@/lib/activity/activity-journal';
+import { beginActivity, discardActivity, finishActivity, updateActivity } from '@/lib/activity/activity-journal';
 
 /** What one export run produced, rendered as the result `<Alert>`. */
-export interface ExportDialogShellResult {
-  success: boolean;
-  message: string;
+export type ExportDialogShellResult = { message: string } & (
+  | { success: boolean; cancelled?: false }
+  | { success: false; cancelled: true }
+);
+
+/** Register only an export's existing native cancellation authority. */
+export interface ExportDialogShellActivity {
+  registerCancellation: (controller: AbortController) => void;
 }
 
 /** State a render-prop `children` can read. */
@@ -105,7 +110,7 @@ export interface ExportDialogShellProps {
    * Return `null` when the host reports the outcome itself, e.g. the
    * modified-IFC review, which closes and hands off to a background export.
    */
-  onExport: () => Promise<ExportDialogShellResult | null>;
+  onExport: (activity: ExportDialogShellActivity) => Promise<ExportDialogShellResult | null>;
   children: ReactNode | ((state: ExportDialogShellRenderState) => ReactNode);
   /** Controlled visibility for host dialogs opened by another surface. */
   open?: boolean;
@@ -183,12 +188,16 @@ export function ExportDialogShell({
     // The activity tray records every export this shell runs (#6925).
     const job = beginActivity({ kind: 'export', title: 'activityTray.job.export', subject: title });
     let recorded = false;
+    let cancellation: AbortController | undefined;
     try {
-      const outcome = await onExport();
+      const outcome = await onExport({ registerCancellation: controller => {
+        cancellation = controller;
+        updateActivity(job, { cancel: () => controller.abort() });
+      } });
       recorded = true;
       // `null`: the host reports the outcome itself (a hand-off), so the tray does not guess one.
       if (outcome === null) { discardActivity(job); return; }
-      finishActivity(job, outcome.success ? 'completed' : 'failed', outcome.success ? {} : { detail: outcome.message });
+      finishActivity(job, outcome.cancelled || cancellation?.signal.aborted ? 'cancelled' : outcome.success ? 'completed' : 'failed', outcome.success ? {} : { detail: outcome.message });
       if (closeOnSuccess && outcome.success) {
         setResult(null);
         setOpen(false);
@@ -196,7 +205,7 @@ export function ExportDialogShell({
         setResult(outcome);
       }
     } catch (error) {
-      if (!recorded) finishActivity(job, 'failed', { detail: error instanceof Error ? error.message : String(error) });
+      if (!recorded) finishActivity(job, cancellation?.signal.aborted ? 'cancelled' : 'failed', { detail: error instanceof Error ? error.message : String(error) });
       throw error;
     } finally {
       setIsExporting(false);

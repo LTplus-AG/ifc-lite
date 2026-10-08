@@ -22,6 +22,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
+import { skipUnlessCommand } from './host-preconditions.mjs';
 
 const repo = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const oracle = join(repo, 'scripts/check-test-revert-oracle.mjs');
@@ -93,9 +94,21 @@ function repoWith({ spec, specName = 'target.e2e.spec.mjs', nodeWitness = false 
   return { root, run, oracleRun, cleanup: () => rmSync(root, { recursive: true, force: true }) };
 }
 
+// The three specs below launch real Google Chrome (`channel: 'chrome'`, as the
+// repo's own Playwright projects do); without it every run dies in
+// `browserType.launch` and the oracle reports BASELINE-BROKEN for a reason the
+// test is not about.
+const CHROME_SKIP = skipUnlessCommand(
+  process.execPath,
+  ['--input-type=module', '-e', "import { chromium } from '@playwright/test'; const b = await chromium.launch({ channel: 'chrome' }); await b.close();"],
+  'install it with `npx playwright install chrome`',
+  process.env,
+  { cwd: repo, timeoutMs: 60_000, label: "Google Chrome for Playwright's `chrome` channel" },
+);
+
 const browserEntry = (payload) => payload.ledger.find((entry) => entry.file.startsWith('tests/e2e/'));
 
-test('#6254 shape: reverting a production-only CSS target size fails the measured 24px browser assertion -> OBSERVED', { timeout: 240_000 }, () => {
+test('#6254 shape: reverting a production-only CSS target size fails the measured 24px browser assertion -> OBSERVED', { skip: CHROME_SKIP, timeout: 240_000 }, () => {
   const fixture = repoWith({ spec: measuringSpec('.add') });
   try {
     const payload = fixture.oracleRun(0);
@@ -113,7 +126,7 @@ test('#6254 shape: reverting a production-only CSS target size fails the measure
   }
 });
 
-test('a Playwright spec that does not touch the changed behavior passes on both sides -> UNOBSERVED', { timeout: 240_000 }, () => {
+test('a Playwright spec that does not touch the changed behavior passes on both sides -> UNOBSERVED', { skip: CHROME_SKIP, timeout: 240_000 }, () => {
   const fixture = repoWith({ spec: measuringSpec('.other') });
   try {
     const payload = fixture.oracleRun(1);
@@ -127,7 +140,7 @@ test('a Playwright spec that does not touch the changed behavior passes on both 
   }
 });
 
-test('a Playwright spec whose only test skips (missing fixture) never counts as observation', { timeout: 240_000 }, () => {
+test('a Playwright spec whose only test skips (missing fixture) never counts as observation', { skip: CHROME_SKIP, timeout: 240_000 }, () => {
   const fixture = repoWith({ spec: measuringSpec('.add', { skip: true }) });
   try {
     const payload = fixture.oracleRun(3);

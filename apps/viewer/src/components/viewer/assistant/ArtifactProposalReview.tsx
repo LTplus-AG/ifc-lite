@@ -11,6 +11,8 @@
  * native panel on it; nothing changes the scene.
  */
 
+import { useShallow } from 'zustand/react/shallow';
+import { analysisChartInputs, isAnalysisChartSource } from '@/lib/assistant/artifacts/analysis-chart';
 import { useEffect, useMemo, useState } from 'react';
 import { CheckCircle2, ClipboardCheck, ExternalLink, Save } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -62,8 +64,10 @@ function ArtifactReview({ initial, onAsk }: { initial: ArtifactProposal; onAsk: 
   const models = useViewerStore((s) => s.models);
   const mutationViews = useViewerStore((s) => s.mutationViews);
   const mutationVersion = useViewerStore((s) => s.mutationVersion);
-  const pinboardEntities = useViewerStore((s) => s.pinboardEntities);
   const [proposal, setProposal] = useState(initial);
+  const analysis = proposal.kind === 'chart.proposal' && isAnalysisChartSource(proposal.chart.source);
+  const sourceInputs = useViewerStore(useShallow((s) => proposal.kind === 'chart.proposal' && isAnalysisChartSource(proposal.chart.source)
+    ? analysisChartInputs(proposal.chart.source, s) : []));
   // What a visible or basket chart counts beyond the models: a change reruns the engine.
   const scopeKey = useViewerStore((s) => proposal.kind === 'chart.proposal' ? chartScopeKey(proposal.scope, s) : null);
   const [preview, setPreview] = useState<ArtifactPreview | null>(null);
@@ -73,7 +77,7 @@ function ArtifactReview({ initial, onAsk }: { initial: ArtifactProposal; onAsk: 
   // The schema index is scanned in chunks; a newer federation or revision abandons the stale scan.
   const [schema, setSchema] = useState<{ index: ModelSchemaIndex | null; error: string | null; checking: boolean }>({ index: null, error: null, checking: false });
   useEffect(() => {
-    if (models.size === 0) { setSchema({ index: null, error: null, checking: false }); return; }
+    if (analysis || models.size === 0) { setSchema({ index: null, error: null, checking: false }); return; }
     const controller = new AbortController();
     setSchema({ index: null, error: null, checking: true });
     modelSchemaIndex({ models, mutationViews, mutationVersion }, controller.signal)
@@ -84,11 +88,11 @@ function ArtifactReview({ initial, onAsk }: { initial: ArtifactProposal; onAsk: 
         setSchema({ index: null, error: reason instanceof Error ? reason.message : String(reason), checking: false });
       });
     return () => controller.abort();
-  }, [models, mutationViews, mutationVersion]);
+  }, [models, mutationViews, mutationVersion, analysis]);
   const { index, error: indexError, checking } = schema;
   const resolutions = useMemo<FieldResolution[]>(() => (index ? resolveFields(fieldSites(proposal), index) : []), [proposal, index]);
   const unresolved = resolutions.filter((resolution): resolution is Extract<FieldResolution, { status: 'unresolved' }> => resolution.status === 'unresolved');
-  const blocked = !index || unresolved.length > 0;
+  const blocked = (!analysis && !index) || unresolved.length > 0;
 
   // The engine reruns whenever the proposal resolves or the models change, so the numbers shown are always current.
   useEffect(() => {
@@ -107,11 +111,11 @@ function ArtifactReview({ initial, onAsk }: { initial: ArtifactProposal; onAsk: 
       })
       .finally(() => { if (!controller.signal.aborted) setRunning(false); });
     return () => controller.abort();
-  }, [proposal, blocked, index, scopeKey]);
+  }, [proposal, blocked, index, scopeKey, sourceInputs, models, mutationVersion]);
 
-  const current = !!preview && !running && isPreviewCurrent(preview, { models, mutationVersion, pinboardEntities });
+  const current = !!preview && !running && isPreviewCurrent(preview, useViewerStore.getState());
   const save = () => {
-    if (!preview) return;
+    if (!preview || !isPreviewCurrent(preview, useViewerStore.getState())) return;
     const outcome = saveArtifact(preview.artifact);
     if (outcome.ok) { setSaved(outcome.saved); setError(null); }
     else setError(t(REFUSED[outcome.reason]));
@@ -129,7 +133,9 @@ function ArtifactReview({ initial, onAsk }: { initial: ArtifactProposal; onAsk: 
         {t('assistantArtifacts.indexFailed', { reason: indexError })}</p>}
       {resolutions.some((resolution) => resolution.status === 'exact') && <ul aria-label={t('assistantArtifacts.checkedFields')} className="text-muted-foreground">
         {resolutions.flatMap((resolution, i) => resolution.status === 'exact' ? [<li key={i} className="break-words">
-          {t('assistantArtifacts.checkedField', { field: `${resolution.presence.set}.${resolution.presence.name}`, count: resolution.presence.count })}
+          {resolution.presence.kind === 'classification'
+            ? t('assistantArtifacts.checkedClassification', { field: resolution.presence.name, models: resolution.presence.byModel.size })
+            : t('assistantArtifacts.checkedField', { field: `${resolution.presence.set}.${resolution.presence.name}`, count: resolution.presence.count })}
         </li>] : [])}
       </ul>}
       {unresolved.length > 0 && <ArtifactAmbiguity unresolved={unresolved} onAsk={onAsk}

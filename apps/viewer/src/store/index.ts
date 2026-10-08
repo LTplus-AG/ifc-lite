@@ -39,6 +39,7 @@ import { createPinboardSlice, type PinboardSlice } from './slices/pinboardSlice.
 import { createLensSlice, type LensSlice } from './slices/lensSlice.js';
 import { createClashSlice, type ClashSlice } from './slices/clashSlice.js';
 import { createSavedComparisonsSlice, type SavedComparisonsSlice } from './slices/savedComparisonsSlice.js';
+import { createSavedClashReportsSlice, type SavedClashReportsSlice } from './slices/savedClashReportsSlice.js';
 import { createCompareSlice, type CompareSlice } from './slices/compareSlice.js';
 import { createCompareRunsSlice, type CompareRunsSlice } from './slices/compareRunsSlice.js';
 import { createDockSlice, type DockSlice } from './slices/dockSlice.js';
@@ -161,7 +162,7 @@ export type ViewerState = AppearanceSlice & LoadingSlice &
   DocumentSlice &
   PinboardSlice &
   LensSlice &
-  ClashSlice &
+  ClashSlice & SavedClashReportsSlice &
   CompareSlice & SavedComparisonsSlice & CompareRunsSlice &
   LayerStackSlice &
   DockSlice &
@@ -221,6 +222,7 @@ const createViewerStore = () => create<ViewerState>()(withStoreChurnCounters(wit
   ...createPinboardSlice(...args),
   ...createLensSlice(...args),
   ...createClashSlice(...args),
+  ...createSavedClashReportsSlice(...args),
   ...createCompareSlice(...args),
   ...createSavedComparisonsSlice(...args),
   ...createCompareRunsSlice(...args),

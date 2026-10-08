@@ -29,7 +29,7 @@
  */
 
 import { readFileSync, writeFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
+import { isMainEntry } from '../lib/is-main-entry.mjs';
 
 const ROW_KEYS = ['event', 'journey', 'arm', 'person', 'model', 'metric', 'window', 'median', 'n'];
 const README = new URL('./README.md', import.meta.url);
@@ -236,7 +236,7 @@ export function main(argv = process.argv.slice(2)) {
   return args.failOnRegression && verdict.regressed.length > 0 ? 2 : 0;
 }
 
-if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
+if (isMainEntry(import.meta.url)) {
   try {
     process.exitCode = main();
   } catch (error) {

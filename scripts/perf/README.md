@@ -88,6 +88,21 @@ call sites and `useViewerStore` subscriptions on the viewport, properties,
 hierarchy and streaming paths statically (minified component names make a
 runtime fiber census unattributable, and mounted counts move with UI state).
 
+## Prepass terminal trace publication (#6993)
+
+The host terminates the prepass worker on its completion event. Draining only
+finished spans at that point preserved counters but lost the active scan
+span, whose handler had not returned. The worker now completes that named
+span before publishing completion, using the shared trace host. Behavioral
+controls observe the scan and counters before the terminal event, preserve
+unrelated in-flight spans, and reject duplicate publication on handler return.
+Verdict: diagnostic correctness, with no model-load speed claim. The disabled
+trace returns before scanning active spans, and geometry production is
+unchanged. Lesson: flush-before-termination must close the work represented
+by the terminal event; a drain alone cannot preserve an open span. Other M2b
+transfer, interaction, deterministic-upload and device-loss obligations remain
+open.
+
 ## Worker warm-up candidate held (#7036)
 
 The resumed [cold-load captures](evidence/worker-warmup-7036/README.md) show
@@ -625,6 +640,48 @@ localStorage key is a bare SHA-256. Sharing it needs a key migration, so it is
 the next lever, not part of this change. Freeing a span from the critical path
 only helps if nothing parallel ends at the same moment; check the next span's
 end, not just this one's start.
+
+## Drawing persistence keyed by the load's identity (#7035)
+
+The second full-source pass #7022 found is gone. 2D-drawing persistence
+(markup and sheet in localStorage, DXF underlays in IndexedDB) was keyed by a
+bare whole-file SHA-256 that `useDrawing2DPersistence` computed by re-reading
+the file. It is now keyed by the placement identity already on the model
+record, so a primary load makes one `hash.fullSource` pass and the FZK
+benchmark pins that at 1.
+
+Entries saved under the old key are moved, not dropped. A bare 64-hex key can
+be told from an identity key by its shape, so a load pays for the old hash
+only when some old-shaped entry is stored, only after the model has finished
+loading, and once per file: an identity that has been checked is remembered.
+Activations recheck for newly written legacy entries without rereading a successfully hashed File. Failed byte or IndexedDB reads leave the move unchecked and retryable.
+That pass is counted as `hash.drawingLegacyKey`, apart from `hash.fullSource`.
+Each move writes under the identity key, reads it back and only then removes
+the old entry. When a quota failure prevents that write, restore still uses
+the readable merged entry while retaining the original and retrying the move
+on the next activation. A cleared sheet is an explicit stored choice, so a
+legacy sheet cannot revive it.
+
+Verdict: structural win (one pass per load instead of two), no timing claim.
+The removed pass ran beside the load, not in front of it.
+
+Lesson: one key served three stores. The issue named the markup; the same
+hash also keyed the sheet and the DXF underlays, and re-keying only the markup
+would have kept the whole-file hash alive for the other two. Before removing a
+derived value, list every store keyed by it.
+
+Bundle: the key resolver, the legacy-key move and the IndexedDB underlay store
+are imported on demand, so the change lowers the eager bytes instead of adding
+to them. Two things cost more than the code they moved. A first dynamic import
+in a chunk brings a preload table that lists every file the imported chunk
+depends on. And the bundler groups modules by the set of entries that reach
+them, so an on-demand entry that reaches only part of an eager chunk splits
+that chunk: importing the underlay store alone (it reaches
+`dxfReferencePlane` but not the rest of the store chunk) cut the store chunk
+in two. One entry for both, with the eager functions it needs handed over
+rather than imported, left every eager chunk as it was. Lesson: after moving
+code behind a dynamic import, compare the per-chunk sizes and the eager file
+count against the base build, not just the total.
 
 ## Placement identity from memory (#6431)
 

@@ -404,6 +404,9 @@ jobs:
               # (scripts/README-vercel-cost.md).
               - 'rust-major-offset.json'
               - 'tests/models/manifest.json'
+              # The path-coverage regression harness mirrors tracked evidence,
+              # and conservative gate inputs include the committed archive tree.
+              - 'tests/evidence/**'
               # The AI evaluation gates (scripts/ai-eval) read the corpus,
               # recordings, label sheets and study records: an edit to any of
               # them must run the gates that validate them.
@@ -724,8 +727,9 @@ jobs:
       # them as silent skips instead of the real assertions the oracle needs
       # to revert against.
       # #6267: a changed Playwright spec can be the witness, measured in a real
-      # browser. Only then are fixtures provisioned; the oracle itself decides
-      # whether the browser runs at all (not when a cheaper test observes).
+      # browser. Manifest fixtures are provisioned for every oracle runner;
+      # the optional browser encoder is installed only for these specs. The
+      # oracle decides whether a browser runs (not when a cheaper test observes).
       - name: Detect changed Playwright specs
         id: browser
         run: |

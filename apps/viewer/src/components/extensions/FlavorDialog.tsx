@@ -16,6 +16,7 @@
  * Spec: docs/architecture/ai-customization/05-flavors-and-sharing.md §6.
  */
 
+import { encodeSavedLens } from '@/lib/lens/migrate-saved-lens';
 import { trackExportCompleted } from '@/lib/analytics';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Palette } from 'lucide-react';
@@ -158,7 +159,7 @@ export function FlavorDialog({ open, onClose }: FlavorDialogProps) {
       const lenses = savedLenses.map((lens) => ({
         id: lens.id,
         name: lens.name ?? lens.id,
-        definition: lens as unknown as Parameters<typeof host.flavors.put>[0]['lenses'][number]['definition'],
+        definition: encodeSavedLens(lens) as unknown as Parameters<typeof host.flavors.put>[0]['lenses'][number]['definition'],
       }));
       const next = {
         ...target,
@@ -203,7 +204,7 @@ export function FlavorDialog({ open, onClose }: FlavorDialogProps) {
         ? useViewerStore.getState().savedLenses.map((lens) => ({
             id: lens.id,
             name: lens.name ?? lens.id,
-            definition: lens as unknown as Parameters<typeof host.flavors.put>[0]['lenses'][number]['definition'],
+            definition: encodeSavedLens(lens) as unknown as Parameters<typeof host.flavors.put>[0]['lenses'][number]['definition'],
           }))
         : [];
       const flavor: Flavor = {

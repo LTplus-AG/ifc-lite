@@ -27,9 +27,8 @@ export interface GroupSnapshot extends GroupRootIdentity {
 /** Scan actual effective export records, never attribute numbers mistaken for refs. */
 export function groupRecordReferences(text: string): number[] {
   const refs: number[] = [];
-  const start = text.indexOf('(');
-  if (start < 0) throw new Error('Group graph has an unreadable record');
-  for (let i = start; i < text.length; i++) {
+  let attributes = false;
+  for (let i = 0; i < text.length; i++) {
     if (text[i] === '/' && text[i + 1] === '*') {
       const end = text.indexOf('*/', i + 2);
       if (end < 0) throw new Error('Group graph has an unterminated record');
@@ -46,7 +45,8 @@ export function groupRecordReferences(text: string): number[] {
       i = end;
       continue;
     }
-    if (text[i] !== '#') continue;
+    if (text[i] === '(') attributes = true;
+    if (!attributes || text[i] !== '#') continue;
     let end = i + 1;
     while (end < text.length && text[end] >= '0' && text[end] <= '9') end++;
     if (end === i + 1) throw new Error('Group graph has an unreadable reference');
@@ -54,6 +54,7 @@ export function groupRecordReferences(text: string): number[] {
     if (!Number.isSafeInteger(id) || id <= 0) throw new Error('Group graph has an invalid reference');
     refs.push(id); i = end - 1;
   }
+  if (!attributes) throw new Error('Group graph has an unreadable record');
   return refs;
 }
 

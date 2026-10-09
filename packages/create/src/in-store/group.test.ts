@@ -183,11 +183,41 @@ it('scans real references after escaped strings and comments without treating th
   // The STEP lexical invariant is independent of a parser accepting malformed input.
   const record = "#99=IFCRELASSIGNSTOGROUP('Owner''s #123 /* text */',/* '#456 */#7,$,'#890',(#11,#12),$,#13);";
   expect(groupGraphApi.groupRecordReferences?.(record)).toEqual([7, 11, 12, 13]);
+  expect(groupGraphApi.groupRecordReferences?.('#99=IFCGROUP/* ( #42 */($,#17);')).toEqual([17]);
+  expect(() => groupGraphApi.groupRecordReferences?.('#99=IFCGROUP/* ( #42 */;')).toThrow(/unreadable record/);
   expect(groupGraphApi.groupRecordReferences?.("#99=IFCGROUP('" + 'x'.repeat(2_000_000) + "''#999',$,#17);" )).toEqual([17]);
 });
 
+it('native removal ignores a group reference inside a comment before an unrelated record attribute opener #7329', async () => {
+  const s = await session();
+  const group = addGroupToStore(s, { Name: 'Comment-only reference', RelatedObjects: [] });
+  const content = new StepExporter(s.store, s.mutationView).export({ schema: 'IFC4', applyMutations: true }).content;
+  const type = new AnchorEntityReader(s.store, s.mutationView).entity(s.member.expressId)?.type;
+  expect(type).toBeDefined();
+  const opener = `#${s.member.expressId}=${type?.toUpperCase()}(`;
+  const source = new TextDecoder().decode(content);
+  expect(source.includes(opener)).toBe(true);
+  const commented = source.replace(opener, `${opener.slice(0, -1)}/* ( #${group.expressId} */(`);
+  const bytes = new TextEncoder().encode(commented);
+  const store = await new IfcParser().parseColumnar(bytes.buffer, { disableWorkerScan: true });
+  const view = new MutablePropertyView(null, 'commented-native');
+  const context = { store, mutationView: view, ownerHistoryId: null };
+  expect(new AnchorEntityReader(store, view).entity(s.member.expressId)?.attributes[0]).toBe(s.member.GlobalId);
+  const row = store.entityIndex.byId.get(s.member.expressId); expect(row).toBeDefined();
+  if (!row) throw new Error('Native commented wall must retain its source record');
+  expect(store.source.decodeUtf8(row.byteOffset, row.byteOffset + row.byteLength)).toContain(`/* ( #${group.expressId} */`);
+  const before = readGroupInStore(context, group);
+  recordCompoundMutation(view, draft => removeGroupInStore({ ...context, mutationView: draft }, before));
+  const exported = new StepExporter(store, view).export({ schema: 'IFC4', applyMutations: true }).content;
+  const saved = await new IfcParser().parseColumnar(exported.slice().buffer as ArrayBuffer, { disableWorkerScan: true });
+  expect(saved.entityIndex.byId.has(group.expressId)).toBe(false);
+  expect(saved.getEntity(s.member.expressId)?.attributes[0]).toBe(s.member.GlobalId);
+  expect(undoRecordedMutationOperations(view, 1, () => { throw new Error('Removal must undo as one compound operation'); })).toBeGreaterThan(0);
+  expect(readGroupInStore(context, group)).toEqual(before);
+});
+
 it('refuses unterminated quoted or comment spans and invalid real references instead of certifying truncated dependencies #7329', () => {
-  for (const record of ["#99=IFCGROUP('never closes,#17);", "#99=IFCGROUP(/* never closes #17);", "#99=IFCGROUP('escaped''", "#99=IFCGROUP($,#);", "#99=IFCGROUP($,#0);", "#99=IFCGROUP($,#9007199254740992);"]) {
+  for (const record of ["#99=IFCGROUP/* ( never closes #17;", "#99=IFCGROUP'never closes ( #17;", "#99=IFCGROUP('never closes,#17);", "#99=IFCGROUP(/* never closes #17);", "#99=IFCGROUP('escaped''", "#99=IFCGROUP($,#);", "#99=IFCGROUP($,#0);", "#99=IFCGROUP($,#9007199254740992);"]) {
     expect(() => groupGraphApi.groupRecordReferences?.(record)).toThrow(/unterminated|unreadable reference|invalid reference/);
   }
 });

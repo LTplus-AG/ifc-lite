@@ -15,6 +15,7 @@
  */
 
 import { gridCreationGhost } from './model-authoring-grid-ghost';
+import { authoringSlabOpeningGhost } from './model-authoring-slab-opening-ghost';
 import { stairRailingGhost } from './model-authoring-stair-railing-ghost';
 import { linearProfileFrame } from '@ifc-lite/create';
 import { sectionGhostMesh } from '@/lib/profile-section/profile-outline';
@@ -107,6 +108,7 @@ function hostAxis(state: ViewerState, batch: ModelAuthoringBatch, preview: Model
 
 function hostedGhost(state: ViewerState, batch: ModelAuthoringBatch, preview: ModelAuthoringPreview, row: AuthoringRow, id: number): MeshData | null {
   const op = row.op as Extract<AuthoringOp, { op: 'hosted.create' }>;
+  if ('params' in op) return null; // Slab cutters never use the wall-only ghost.
   const host = hostAxis(state, batch, preview, row, row.resolved.host!);
   const wp = host ? plane(state, row.modelId!, host.storey) : null;
   if (!host || !wp) return null;
@@ -160,7 +162,7 @@ export function authoringGhosts(state: ViewerState, preview: ModelAuthoringPrevi
       case 'grid.create': case 'column.createOnGrid': { const ghosts = gridCreationGhost(state, preview.batch, row, id); row.previewUnavailable = ghosts.length === 0; meshes.push(...ghosts); break; }
       case 'stair.create': case 'railing.create': case 'stair.replace': case 'railing.replace': {const mesh=stairRailingGhost(state,preview.batch,row,id);row.previewUnavailable=!mesh;if(mesh)meshes.push(mesh);break;}
       case 'element.create': { const mesh = createGhost(state, preview.batch, row, id); if (mesh) meshes.push(mesh); break; }
-      case 'hosted.create': { const mesh = hostedGhost(state, preview.batch, preview, row, id); if (mesh) meshes.push(mesh); break; }
+      case 'hosted.create': { const mesh = 'params' in row.op ? authoringSlabOpeningGhost(state,row,preview.rows,id) : hostedGhost(state, preview.batch, preview, row, id); if (mesh) meshes.push(mesh); break; }
       case 'element.copy': case 'element.array': meshes.push(...authoringCopyGhosts(state, preview.batch, row, id)); break;
       case 'element.move': case 'element.rotate': case 'element.delete': meshes.push(...transformGhosts(state, preview.batch, row, id)); break;
       default: break;

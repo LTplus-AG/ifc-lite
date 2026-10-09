@@ -14,6 +14,8 @@
 import { gridCreationGhost } from './model-authoring-grid-ghost';
 import { nativeGridExpected, sameGridExpected } from './model-authoring-grid-native';
 import { nativeLengthUnitAvailable } from './model-authoring-read-target';
+import { authoringSlabOpeningGhost } from './model-authoring-slab-opening-ghost';
+import { verifySlabOpeningHost } from './model-authoring-slab-opening';
 import { stairRailingGhost } from './model-authoring-stair-railing-ghost';
 import { nativeStairEvidence, sameStairSnapshot } from './model-authoring-stair-lifecycle';
 import { stairPatchInMetres } from './model-authoring-stair-railing-fields';
@@ -285,6 +287,12 @@ function resolve(ctx: Context, row: AuthoringRow): void {
     case 'hosted.create': {
       row.resolved.host = element(ctx, op.host, row);
       if ('id' in row.resolved.host) row.expressId = row.resolved.host.id;
+      if ('params' in op) {
+        if (row.expressId !== null) { const r = reader(ctx, row.modelId!);
+          try { row.before.split = verifySlabOpeningHost(ctx.batch, op, r.dataStore, r.editor, row.expressId, false); }
+          catch (error) { throw new Refusal('invalid', error instanceof Error ? error.message : String(error)); }
+        }
+      }
       return;
     }
   }
@@ -376,6 +384,7 @@ export function previewModelAuthoring(state: ViewerState, batch: ModelAuthoringB
   for (const row of ctx.rows) if (row.status === 'ready' && row.op.op === 'element.split') {
     row.previewUnavailable = authoringSplitMarker(state, batch, row, 0) === null;
   }
+  for(const row of ctx.rows)if(row.status==='ready'&&row.op.op==='hosted.create'&&'params' in row.op)row.previewUnavailable=!authoringSlabOpeningGhost(state,row,ctx.rows,0);
   for(const row of ctx.rows)if(row.status==='ready'&&['stair.create','railing.create','stair.replace','railing.replace'].includes(row.op.op))row.previewUnavailable=!stairRailingGhost(state,batch,row,0);
   for (const row of ctx.rows) if (row.status === 'ready' && (row.op.op === 'grid.create' || row.op.op === 'column.createOnGrid')) row.previewUnavailable = gridCreationGhost(state, batch, row, 0).length === 0;
   const preview = { batch, rows: ctx.rows, mutationVersion: state.mutationVersion, digest: batchDigest(batch) };

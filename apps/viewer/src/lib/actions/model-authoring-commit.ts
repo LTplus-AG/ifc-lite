@@ -13,6 +13,7 @@
  * and `undoModelChanges` serve both producers.
  */
 
+import { writeSlabOpening } from './model-authoring-slab-opening';
 import type { StoreApi } from 'zustand';
 import { generateIfcGuid } from '@ifc-lite/encoding';
 import type { ViewerState } from '@/store';
@@ -142,7 +143,9 @@ function writeRow(tx: AuthoringTransaction, batch: ModelAuthoringBatch, row: Aut
     case 'hosted.create': {
       const globalId = generateIfcGuid();
       const host = idOf(resolved.host!, ids);
-      const out = tx.store.addHostedFill(modelId, host, hostedSpecOf(batch, op, globalId), tx.batchId);
+      const out = 'params' in op
+        ? recordModellingEdit(tx.api, modelId, (_methods, draft) => writeSlabOpening(batch, op, tx.store.models.get(modelId)!.ifcDataStore!, draft, host, globalId), tx.batchId)
+        : tx.store.addHostedFill(modelId, host, hostedSpecOf(batch, op, globalId), tx.batchId);
       if ('error' in out) throw new Error(out.error);
       if (op.ref) { ids.set(op.ref, out.expressId); refs.set(op.ref, globalId); }
       written.created.push(out.expressId); written.remesh.push(out.expressId, out.openingId, out.hostId);

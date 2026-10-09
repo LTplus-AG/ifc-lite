@@ -120,12 +120,8 @@ function bounded(value: unknown): string | number | boolean | null {
   return text.length > VALUE_CHARS ? `${text.slice(0, VALUE_CHARS)}…` : text;
 }
 
-<<<<<<< HEAD
 function elementRow(s: ViewerState, ref: EntityRef, source: ModelSource, rich: boolean,
-  nativeTarget: ModelEditTarget | null, quantitySource: ReturnType<typeof zoneQuantitySources>) {
-=======
-function elementRow(s: ViewerState, ref: EntityRef, source: ModelSource, rich: boolean, nativeTarget: ModelEditTarget | null, completeStructuralPin: boolean) {
->>>>>>> fc27e12d113534b952b1eb430ed0b9b87b3387b6
+  nativeTarget: ModelEditTarget | null, completeStructuralPin: boolean, quantitySource: ReturnType<typeof zoneQuantitySources>) {
   const setLimit = rich ? 16 : 6;
   const relationshipLookupExpressId = source.view?.resolveBaseEntityId(ref.expressId) ?? ref.expressId;
   const nativeRelationships = source.store ? relationshipsForSelection(
@@ -164,11 +160,8 @@ function elementRow(s: ViewerState, ref: EntityRef, source: ModelSource, rich: b
     })),
   }));
   const name = source.store ? nativeRootName({ dataStore: source.store, view: source.view }, ref.expressId) : data.attributes.get('Name');
-<<<<<<< HEAD
   const zoneQuantities = quantitySource(ref);
-=======
   const gridName = nativeGridName(nativeTarget, ref.expressId);
->>>>>>> fc27e12d113534b952b1eb430ed0b9b87b3387b6
   return evidenceRow({
     kind: 'selected-element', modelId: ref.modelId,
     globalId: resolveEntityRefGlobalIdFromState(s, ref), expressId: ref.expressId,
@@ -249,13 +242,9 @@ export const selectionAdapter: EvidenceAdapter = {
     return size > 0 ? { status: { labelKey: 'assistantSources.selection.ready', params: { count: size } }, ready: true }
       : { status: { labelKey: 'assistantSources.selection.none' }, ready: false };
   },
-<<<<<<< HEAD
-  // Selection/cache references and exact native declared-quantity source revisions.
-  identity: s => [s.selectedEntities, s.selectedEntitiesSet, s.selectedEntityIds, s.selectedEntity, s.selectedEntityId,
-    s.zoneSets, s.zoneAssignments, s.zoneApportionment, ...zoneQuantitySourceIdentity(s)],
-=======
   // Every selection action replaces one of these; edits are covered by the context stamp.
   identity: s => [s.selectedEntities, s.selectedEntitiesSet, s.selectedEntityIds, s.selectedEntity, s.selectedEntityId,
+    s.zoneSets, s.zoneAssignments, s.zoneApportionment, ...zoneQuantitySourceIdentity(s),
     // #7282: native expected pins belong to these exact loaded sources/views,
     // even when a replacement preserves the same GUIDs and analysis versions.
     ...[...new Set((selectionRefs(s)?.refs ?? []).map(ref => ref.modelId))].flatMap(modelId => [
@@ -263,7 +252,6 @@ export const selectionAdapter: EvidenceAdapter = {
       s.mutationViews.get(isLegacy(modelId) ? '__legacy__' : modelId),
     ]),
   ],
->>>>>>> fc27e12d113534b952b1eb430ed0b9b87b3387b6
   capture: (s, limit) => {
     const selection = selectionRefs(s);
     if (!selection || selection.refs.length === 0) return unavailableCapture();
@@ -295,11 +283,7 @@ export const selectionAdapter: EvidenceAdapter = {
         limitations: 'Includes native edits; status covers own edits. Definitions/associations use snapshot freshness. Sections use perElementBounds and full known counts. inheritedType has model/type provenance; occurrence properties override same-named type values. Materials prefer occurrence over type; LayerThickness is metres; properties use panel units. IFC2X3 scalar material-property subtypes are outside the generic-set reader. Unverified fields remain unknown; missing membership inputs/unreadable source edits make totals null/unavailable. Source-free classification/document markers describe original source, not current assignments. Paths have bounded known ancestors; unverified path totals are null. Classification codes use schema-exact ItemReference/Identification; missing systems stay unknown. Relationships count exact native edges; aliases carry inherited lookup IDs. Edited source-free graph edges are unverified source-origin evidence. Unverified material-property counts stay null; empty rows do not prove absence. Documents have native model/target IDs and separate bounds. Empty samples do not prove absence. Selection is sampled; byClass/byModel cover every selected element.',
         structuralLimitations: 'Structural rows match the native member card; counts cover resolved native records and units are declared source units only. Load/evidence bounds are explicit. Missing/duplicate native GUID targets are omitted with unknown resolved totals. Source-free original fields/totals are unknown; authored fields remain readable.',
       },
-<<<<<<< HEAD
-      rows: sample.map(ref => elementRow(s, ref, sourceFor(ref.modelId), rich, nativeTarget(ref.modelId), quantitySource)),
-=======
-      rows: sample.map(ref => elementRow(s, ref, sourceFor(ref.modelId), rich, nativeTarget(ref.modelId), sample.length === 1)),
->>>>>>> fc27e12d113534b952b1eb430ed0b9b87b3387b6
+      rows: sample.map(ref => elementRow(s, ref, sourceFor(ref.modelId), rich, nativeTarget(ref.modelId), sample.length === 1, quantitySource)),
       totalRows: refs.length, availability: 'available',
     };
   },

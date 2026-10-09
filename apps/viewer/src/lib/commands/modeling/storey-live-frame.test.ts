@@ -49,11 +49,11 @@ for (const edit of ['named-placement','positional-over-named','direction','delet
  if(edit==='cycle')editor.setAttribute(f.placement,'PlacementRelTo',`#${f.placement}`);
  if(edit==='tilted-axis')editor.setPositionalAttribute(f.vertical,0,[1,0,0]);
  if(edit==='retyped-storey')editor.setEntityType(f.storey,'IfcBuilding');
- const independentlySaved=await parseIfc(editedModelBytes(f.source,f.view));const beforeVersion=f.view.documentVersion;
+ const independentlySaved=await parseIfc(editedModelBytes(f.source,f.view));const beforeVersion=f.view.getMutationRevision();
  const plane=buildStoreyWorkplane(useViewerStore.getState(),SAMPLE_MODEL,f.storey,0);
  if(['deleted-point','cycle','tilted-axis','retyped-storey'].includes(edit)){assert.equal(isWorkplane(plane),false,`Explicit current ${edit} may not resurrect a source frame`);if(edit!=='retyped-storey')assert.equal(storeyPlanFrame(independentlySaved,f.storey),null,'Independent source proves unreadable/nonplanar frame');}
  else{assert.ok(isWorkplane(plane));const independent=storeyPlanFrame(independentlySaved,f.storey);assert.ok(independent);const [x,y]=edit==='named-placement'?[23,31]:edit==='positional-over-named'?[33,41]:[16,22];assert.deepEqual(independent.origin,edit==='direction'?[15,20]:edit==='named-placement'?[25,30]:[35,40]);assert.deepEqual(plane.localToRender([1,2,0]),[x,5,-y]);}
- assert.equal(f.view.documentVersion,beforeVersion,'Current frame extraction is read-only');
+ assert.equal(f.view.getMutationRevision(),beforeVersion,'Current frame extraction is read-only');
 });
 
 test('#7306 identical source ids in two models retain model-local current placement',async()=>{

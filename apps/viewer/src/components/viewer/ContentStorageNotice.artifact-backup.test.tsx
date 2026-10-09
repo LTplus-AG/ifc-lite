@@ -238,7 +238,7 @@ for (const remount of [false, true]) for (const filterCollision of [false, true]
     original(key, value);
   });
   try {
-    await act(async () => { input.dispatchEvent(new Event('change', { bubbles: true })); });
+    await act(async () => { assert.ok(input); input.dispatchEvent(new Event('change', { bubbles: true })); });
     await waitFor(() => [...ui.querySelectorAll('[role="alert"]')].some(node => node.textContent?.includes('Some saved Filters')), 'native partial-save warning remains visible');
     assert.deepEqual(loadListDefinitions(), []);
     assert.deepEqual(useViewerStore.getState().listDefinitions, [], 'a refused durable save cannot enter the visible library');
@@ -258,7 +258,7 @@ for (const remount of [false, true]) for (const filterCollision of [false, true]
     const legacy = JSON.parse(text); legacy.version = 1;
     delete legacy.libraries.filters; delete legacy.libraries.lists; delete legacy.libraries.lenses;
     Object.defineProperty(input, 'files', { value: [new File([JSON.stringify(legacy)], 'legacy-B.json')], configurable: true });
-    await act(async () => { input.dispatchEvent(new Event('change', { bubbles: true })); });
+    await act(async () => { assert.ok(input); input.dispatchEvent(new Event('change', { bubbles: true })); });
     const retryReady = [...ui.querySelectorAll('button')].find(node => node.textContent?.includes('Retry all libraries')); assert.ok(retryReady);
     await waitFor(() => !retryReady.disabled, 'the attempted second import finishes');
     assert.ok(ui.textContent?.includes('Some saved Filters'), '#7218 importing legacy B must not discard the refused artifact from backup A');
@@ -420,10 +420,12 @@ test('#7218 native matching Lens import verifies durability after its browser en
   const preview = await previewArtifact(proposal, useViewerStore.getState());
   assert.ok(preview.matched > 0, 'the real IFC engine establishes the imported Lens population');
   const saved = saveArtifact(preview.artifact); assert.ok(saved.ok);
+  assert.ok(saved.saved.kind === 'lens.proposal');
+  const savedId = saved.saved.id;
   const wire = await nativeBackupWire({ lenses: useViewerStore.getState().exportLenses() });
   localStorage.removeItem('ifc-lite-custom-lenses');
-  assert.ok(useViewerStore.getState().savedLenses.some(row => row.id === saved.saved.id), 'the actual native session retains the Lens');
-  assert.ok(!createStore<LensSlice>()(createLensSlice).getState().savedLenses.some(row => row.id === saved.saved.id), 'a fresh native reload establishes missing durability');
+  assert.ok(useViewerStore.getState().savedLenses.some(row => row.id === savedId), 'the actual native session retains the Lens');
+  assert.ok(!createStore<LensSlice>()(createLensSlice).getState().savedLenses.some(row => row.id === savedId), 'a fresh native reload establishes missing durability');
   const ui = render(<Notice />);
   const retry = [...ui.querySelectorAll('button')].find(node => node.textContent?.includes('Retry all libraries')); assert.ok(retry);
   await waitFor(() => !retry.disabled, 'native libraries finish loading before import');
@@ -433,7 +435,7 @@ test('#7218 native matching Lens import verifies durability after its browser en
   await waitFor(() => !retry.disabled, 'the native matching Lens import finishes');
   assert.ok(!ui.textContent?.includes('Some saved Filters'), 'native import reports a durable success');
   const fresh = createStore<LensSlice>()(createLensSlice).getState().savedLenses;
-  assert.equal(fresh.filter(row => row.id === saved.saved.id).length, 1, 'success must restore the matching Lens through a fresh native store reload');
+  assert.equal(fresh.filter(row => row.id === savedId).length, 1, 'success must restore the matching Lens through a fresh native store reload');
 });
 
 test('#7218 Retry preserves a conflicting Filter already saved before a later Filter quota refusal', async () => {

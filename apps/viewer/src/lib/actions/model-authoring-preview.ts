@@ -32,7 +32,7 @@ import { captureAuthoringSources } from './model-authoring-sources';
 import { resolveGlobalId } from './resolve-global-id';
 import { readElementProfileFromTarget } from '@/store/slices/mutation-element-profile';
 import { readAuthoringSizeFromTarget, sameNativeDimensions } from './model-authoring-size';
-import { verifyReachExpected, reachBefore } from './model-authoring-reach';
+import { verifyReachExpected, verifyReachStoreyFrame, reachBefore } from './model-authoring-reach';
 import { sizeInMetres } from './model-authoring-size-params';
 import { profileInMetres } from './model-authoring-shape-params';
 import { authoringHostedEditGhost } from './model-authoring-hosted-edit-ghost';
@@ -122,6 +122,23 @@ const near = (a: number, b: number, tolerance: number) => Math.abs(a - b) <= tol
 function resolve(ctx: Context, row: AuthoringRow): void {
   const { op } = row;
   switch (op.op) {
+    case 'element.trimExtend': {
+      row.resolved.target = row.expressId = existing(ctx, op.target, row);
+      const r = reader(ctx, row.modelId!);
+      try { verifyReachStoreyFrame(r.dataStore, r.view, row.expressId); }
+      catch (error) { throw new Refusal('unsupported', error instanceof Error ? error.message : String(error)); }
+      try { verifyReachExpected(r.dataStore, r.view, r.editor, row.expressId, op); }
+      catch (error) { throw new Refusal('conflict', error instanceof Error ? error.message : String(error)); }
+      row.before.reach = reachBefore(ctx.state, row.modelId!, row.expressId) ?? undefined;
+      if ('wall' in op.boundary) {
+        row.resolved.reachBoundary = element(ctx, op.boundary.wall, row);
+        if ('id' in row.resolved.reachBoundary) {
+          try { verifyReachStoreyFrame(r.dataStore, r.view, row.resolved.reachBoundary.id); }
+          catch (error) { throw new Refusal('unsupported', error instanceof Error ? error.message : String(error)); }
+        }
+      }
+      return;
+    }
     case 'hosted.edit': {
       row.resolved.target = row.expressId = existing(ctx, op.target, row);
       const r = reader(ctx, row.modelId!);
@@ -132,15 +149,6 @@ function resolve(ctx: Context, row: AuthoringRow): void {
       catch (error) { throw new Refusal('invalid', error instanceof Error ? error.message : String(error)); }
       if (!sameHostedEdit(row.before.hosted, op.expected)) throw new Refusal('conflict', 'The current native hosted binding, position or dimensions differ from the expected state');
       break;
-    }
-    case 'element.trimExtend': {
-      row.resolved.target = row.expressId = existing(ctx, op.target, row);
-      const r = reader(ctx, row.modelId!);
-      try { verifyReachExpected(r.dataStore, r.view, r.editor, row.expressId, op); }
-      catch (error) { throw new Refusal('conflict', error instanceof Error ? error.message : String(error)); }
-      row.before.reach = reachBefore(ctx.state, row.modelId!, row.expressId) ?? undefined;
-      if ('wall' in op.boundary) row.resolved.reachBoundary = element(ctx, op.boundary.wall, row);
-      return;
     }
     case 'element.split': {
       row.resolved.target = row.expressId = existing(ctx, op.target, row);

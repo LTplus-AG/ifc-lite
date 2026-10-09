@@ -38,7 +38,7 @@ export type ElementId = { id: number } | { ref: string };
 export interface ResolvedOp {
   target?: number;
   reachBoundary?: ElementId;
-  reachPlan?: import('@ifc-lite/create').ElementTrimExtendResult;
+  reachPlan?: ReturnType<typeof import('@ifc-lite/create').trimExtendElementInStore>;
   splitEffects?: ReturnType<typeof import('@ifc-lite/create').splitElementsInStore>[number];
   /** The element a type or material is assigned to. */
   subject?: ElementId;
@@ -185,9 +185,12 @@ export function writeNativeTypeDetach(op: Extract<AuthoringOp, { op: 'type.detac
 export function draftAuthoringOperation(batch: ModelAuthoringBatch, dataStore: IfcDataStore, modelId: string, draft: StoreEditor, row: DryRunRow, refs: Map<string, number>, splitScopes?: Parameters<typeof import('@ifc-lite/create').splitElementsInStore>[3]): void {
   const { op, resolved } = row;
   switch (op.op) {
+    case 'type.detach':
+      writeNativeTypeDetach(op, dataStore, draft, resolved);
+      return;
     case 'hosted.edit':
       writeHostedEdit(batch, dataStore, draft, resolved.target!, op.expected, op.edit, op.target.globalId);
-      break;
+      return;
     case 'element.trimExtend':
       resolved.reachPlan = writeAuthoringReach(batch, dataStore, draft, resolved.target!, op, resolved.reachBoundary, refs);
       return;
@@ -199,9 +202,6 @@ export function draftAuthoringOperation(batch: ModelAuthoringBatch, dataStore: I
       const made = writeStairCreation(dataStore, draft, batch, op, resolved.storey!);
       refs.set(op.ref, made.expressId);return;
     }
-    case 'type.detach':
-      writeNativeTypeDetach(op, dataStore, draft, resolved);
-      return;
     case 'element.split':
       resolved.splitEffects = writeNativeSplit(batch, op, dataStore, draft, resolved.target!, splitScopes);
       return;

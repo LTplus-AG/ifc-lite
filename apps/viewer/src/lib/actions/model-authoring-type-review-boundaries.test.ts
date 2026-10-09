@@ -149,7 +149,7 @@ test('#7267 valid source-empty transport keeps imported binding unavailable and 
   const target = dataStore.entities.getExpressIdByGlobalId(BACK_WALL);
   const original = dataStore.getEntity(target); assert.ok(original);
   const association = readRelatedLists(dataStore, 'IfcRelDefinesByType', view).find(row => row.relatedIds.includes(target)); assert.ok(association);
-  const originalType = dataStore.getEntity(association.relatingId); assert.ok(originalType);
+  const originalType = dataStore.getEntity(requiredTypeId(association)); assert.ok(originalType);
   const editor = new StoreEditor(dataStore, view);
   const occurrenceGlobalId = generateIfcGuid(), typeGlobalId = generateIfcGuid();
   const occurrence = editor.addEntity(original.type, [occurrenceGlobalId, ...original.attributes.slice(1)]);

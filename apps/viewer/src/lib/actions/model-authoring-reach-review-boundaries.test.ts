@@ -18,7 +18,7 @@ import { commitModelAuthoring } from './model-authoring-commit';
 import { previewModelAuthoring } from '@/lib/actions/model-authoring-preview';
 const initial = useViewerStore.getState();
 afterEach(() => useViewerStore.setState(initial));
-const line = (x:number) => ({a:[x,0],b:[x,10],tMin:0,tMax:1,reach:0});
+const line = (x:number): Parameters<typeof trimExtendElementInStore>[3]['boundary'] => ({a:[x,0],b:[x,10],tMin:0,tMax:1,reach:0});
 async function savedFixture() {
  const {dataStore,view}=await seedAuthoringSample();
  const storey=dataStore.entities.getExpressIdByGlobalId(GROUND_STOREY);
@@ -43,7 +43,7 @@ test('#7262 native saved Trim/Extend writer control has independently exported e
 });
 test('#7262 first-read saved Trim/Extend preview preserves the prepared live lease and empty editor registry',async()=>{
  const f=await savedFixture(),lease=f.sourceView.prepareAtomic(()=>null),editors=useViewerStore.getState().storeEditors;
- const preview=previewModelAuthoring(useViewerStore.getState(),proposal(f.op));assert.equal(preview.rows[0].status,'ready',preview.rows[0].issue);
+ const preview=previewModelAuthoring(useViewerStore.getState(),proposal(f.op));assert.equal(preview.rows[0].status,'ready',preview.rows[0].issue ?? "native Trim/Extend review status");
  assert.doesNotThrow(()=>lease.validate(),'read-only trim preflight must not alter the source allocator watermark');
  assert.equal(useViewerStore.getState().storeEditors,editors);assert.equal(editors.size,0);
 });
@@ -55,7 +55,7 @@ for(const duplicate of ['target','boundary'] as const) test(`#7262 genuine same-
  const boundaryExpected=readWallJoinTarget(f.source,f.sourceView,f.boundary,f.scale);assert.ok(boundaryExpected);
  const op=duplicate==='target'?f.op:{...f.op,boundary:{wall:f.ref(f.boundary),expected:boundaryExpected}};
  const preview=previewModelAuthoring(useViewerStore.getState(),proposal(op));
- assert.equal(preview.rows[0].status,'ambiguous-target',preview.rows[0].issue);
+ assert.equal(preview.rows[0].status,'ambiguous-target',preview.rows[0].issue ?? "native Trim/Extend review status");
 });
 for(const subject of ['target','boundary'] as const) test(`#7262 saved non-root material Name matching the ${subject} GUID is a valid native Trim/Extend control`,async()=>{
  const f=await savedFixture(),id=subject==='target'?f.id:f.boundary;
@@ -70,7 +70,7 @@ for(const subject of ['target','boundary'] as const) test(`#7262 saved non-root 
  const ref=(id:number)=>({modelId:SAMPLE_MODEL,globalId:f.source.entities.getGlobalId(id),ifcClass:f.source.entities.getTypeName(id),name:f.source.entities.getName(id)});
  const op={...f.op,target:ref(f.id),expected:{kind:'wall',wall:expected},boundary:subject==='target'?f.op.boundary:{wall:ref(f.boundary),expected:edge}};
  const preview=previewModelAuthoring(useViewerStore.getState(),proposal(op));
- assert.equal(preview.rows[0].status,'ready',preview.rows[0].issue);
+ assert.equal(preview.rows[0].status,'ready',preview.rows[0].issue ?? "native Trim/Extend review status");
  const outcome=commitModelAuthoring(useViewerStore,preview,new Set([0]),'native role control');assert.ok(outcome.ok,outcome.ok?'':outcome.detail??outcome.reason);
  const changed=await parseIfc(editedModelBytes(source,sourceView));
  assert.deepEqual(readWallJoinTarget(changed,new MutablePropertyView(changed.properties,SAMPLE_MODEL),f.id,f.scale)?.wall.end,[10,5]);
@@ -82,7 +82,7 @@ for(const subject of ['target','boundary'] as const) test(`#7262 saved non-root 
 for(const expectedState of ['old','intermediate'] as const) test(`#7262 preceding boundary edit checks the actual ${expectedState} native snapshot`,async()=>{
  const f=await savedFixture();
  const expected=readWallJoinTarget(f.source,f.sourceView,f.boundary,f.scale);assert.ok(expected);
- const horizontal={a:[5,8],b:[15,8],tMin:0,tMax:1,reach:0};
+ const horizontal: Parameters<typeof trimExtendElementInStore>[3]['boundary']={a:[5,8],b:[15,8],tMin:0,tMax:1,reach:0};
  const draftView=new MutablePropertyView(f.source.properties,SAMPLE_MODEL);configureMutationView(draftView,f.source);
  trimExtendElementInStore(f.source,new StoreEditor(f.source,draftView),f.boundary,{mode:'trim',click:[10,10],boundary:horizontal});
  const nativeChanged=readWallJoinTarget(f.source,draftView,f.boundary,f.scale);assert.ok(nativeChanged);assert.deepEqual(nativeChanged.wall.end,[10,8]);
@@ -92,12 +92,12 @@ for(const expectedState of ['old','intermediate'] as const) test(`#7262 precedin
  const later={...f.op,boundary:{wall:f.ref(f.boundary),expected:expectedState==='old'?expected:nativeChanged}};
  const batch=parseModelAuthoringBatch(JSON.stringify({version:1,kind:'model.authoring',title:'Native intermediate boundary',units:'m',frame:'storey-local',operations:[prior,later]}));
  const preview=previewModelAuthoring(useViewerStore.getState(),batch);
- assert.equal(preview.rows[0].status,'ready',preview.rows[0].issue);
+ assert.equal(preview.rows[0].status,'ready',preview.rows[0].issue ?? "native Trim/Extend review status");
  if(expectedState==='old') {
   assert.equal(preview.rows[1].status,'invalid');assert.match(preview.rows[1].issue??'',/boundary wall differs/);
   assert.deepEqual(readWallJoinTarget(f.source,f.sourceView,f.boundary,f.scale)?.wall.end,[10,10]);
  } else {
-  assert.equal(preview.rows[1].status,'ready',preview.rows[1].issue);
+  assert.equal(preview.rows[1].status,'ready',preview.rows[1].issue ?? "native Trim/Extend review status");
   assert.equal(preview.rows[1].previewUnavailable,true,'single-row body ghost must disclose its absent intermediate boundary state');
   const outcome=commitModelAuthoring(useViewerStore,preview,new Set([0,1]),'native intermediate boundary');assert.ok(outcome.ok,outcome.ok?'':outcome.detail??outcome.reason);
   const changed=await parseIfc(editedModelBytes(f.source,f.sourceView));

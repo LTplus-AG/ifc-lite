@@ -9,7 +9,8 @@ import { aggregate } from '@ifc-lite/charts';
 import { chartSourceContext, resolveChartSource } from '@/lib/charts/chart-source';
 import { readContentRows } from '@/lib/storage/content-database';
 import { useViewerStore } from '@/store';
-import { click, render } from '@/test/render';
+import { click, render, waitFor } from '@/test/render';
+import { refuseContentWrites } from '@/test/content-fixture';
 import { detectCoincidentWalls, mountClashPanel, saveCurrentResultAs } from '@/test/clash-report-fixture';
 import { button, dependents, realComparison, setupReportDeletionFixtures } from '@/test/report-deletion-fixture';
 import { SavedComparisonLibrary } from './SavedComparisonLibrary';
@@ -46,4 +47,26 @@ test('#7245 independent native saved-report chart remains readable before deleti
   const chart = useViewerStore.getState().dashboards[0].charts[0];
   const bound = resolveChartSource(chart, { source: 'compare', columns: [], rows: [], fingerprint: 'empty-live-control' }, chartSourceContext(useViewerStore.getState()));
   assert.ok(aggregate(chart, bound.dataset).total > 0, 'independent chart still reads the parsed IFC revision evidence');
+});
+
+// #7245: approval belongs to the mounted public dialog until durable completion.
+test('#7245 mounted native clash deletion retains approval through real quota failure and Retry', async () => {
+  mountClashPanel(); await detectCoincidentWalls(2);
+  const report = await saveCurrentResultAs('Native mounted quota retry');
+  assert.equal(report.clashes.length, 1); await dependents('clash', report.id);
+  const row = document.body.querySelector(`[data-clash-report="${report.id}"]`); assert.ok(row);
+  click(button(row, 'Delete')!);
+  await waitFor(() => button(row, 'Delete report')?.disabled === false, 'native dependency preview becomes ready');
+  const beforeModels = useViewerStore.getState().models;
+  const beforeVersion = useViewerStore.getState().mutationVersion;
+  const refused = refuseContentWrites();
+  try {
+    click(button(row, 'Delete report')!);
+    await waitFor(() => useViewerStore.getState().savedClashReportsStorage.items[report.id] === 'quota', 'real native quota refusal');
+    assert.equal((await readContentRows('clashReports')).find(entry => entry.id === report.id)?.deleted, false);
+  } finally { refused.mock.restore(); }
+  assert.equal(await useViewerStore.getState().retrySaveClashReports(), true, 'mounted public approval survives native quota Retry');
+  assert.equal((await readContentRows('clashReports')).find(entry => entry.id === report.id)?.deleted, true);
+  assert.equal(useViewerStore.getState().models, beforeModels);
+  assert.equal(useViewerStore.getState().mutationVersion, beforeVersion);
 });

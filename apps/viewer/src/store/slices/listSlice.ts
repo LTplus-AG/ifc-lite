@@ -72,9 +72,9 @@ export const createListSlice: StateCreator<ListSlice, [], [], ListSlice> = (set,
   addListDefinition: (definition) => {
     const updated = [...get().listDefinitions, definition];
     set({ listDefinitions: updated });
-    const saved = saveListDefinitionsResult(updated);
+    const saved = saveListDefinitionsResult(updated, get().listDefinitionSource);
     set({ listError: saved.ok ? null : saved.message,
-      ...(saved.ok ? { listDefinitionSource: structuredClone(updated) } : {}) });
+      ...(saved.ok ? { listDefinitions: saved.rows, listDefinitionSource: structuredClone(saved.rows) } : {}) });
   },
 
   updateListDefinition: (id, updates) => {
@@ -82,9 +82,9 @@ export const createListSlice: StateCreator<ListSlice, [], [], ListSlice> = (set,
       d.id === id ? { ...d, ...updates, updatedAt: Date.now() } : d
     );
     set({ listDefinitions: updated });
-    const saved = saveListDefinitionsResult(updated);
+    const saved = saveListDefinitionsResult(updated, get().listDefinitionSource);
     set({ listError: saved.ok ? null : saved.message,
-      ...(saved.ok ? { listDefinitionSource: structuredClone(updated) } : {}) });
+      ...(saved.ok ? { listDefinitions: saved.rows, listDefinitionSource: structuredClone(saved.rows) } : {}) });
   },
 
   deleteListDefinition: (id) => {
@@ -92,9 +92,9 @@ export const createListSlice: StateCreator<ListSlice, [], [], ListSlice> = (set,
     const activeListId = get().activeListId === id ? null : get().activeListId;
     const listResult = get().activeListId === id ? null : get().listResult;
     set({ listDefinitions: updated, activeListId, listResult });
-    const saved = saveListDefinitionsResult(updated);
+    const saved = saveListDefinitionsResult(updated, get().listDefinitionSource);
     set({ listError: saved.ok ? null : saved.message,
-      ...(saved.ok ? { listDefinitionSource: structuredClone(updated) } : {}) });
+      ...(saved.ok ? { listDefinitions: saved.rows, listDefinitionSource: structuredClone(saved.rows) } : {}) });
   },
 
   setActiveListId: (activeListId) => set({ activeListId }),

@@ -44,10 +44,8 @@ export function readLocalLibrary<T>(key: string, decode: (value: unknown) => T |
 /** Fresh source checks precede serialization and the final synchronous write.
  * This is a refusal boundary, not a transaction across browser libraries. */
 export function saveLocalLibrary<T>(key: string, value: unknown, source: LocalLibrarySource<T>, subject: string): SaveResult {
-  if (source.phase === 'unreadable') return { ok: false, reason: 'unavailable',
-    message: `The saved library includes unreadable content — ${subject} were not saved. Originals were left untouched; export current drafts and recover the saved library before retrying.` };
-  if (source.phase === 'unavailable') return { ok: false, reason: 'unavailable',
-    message: `Browser storage could not be read — ${subject} were not saved. Originals were left untouched.` };
+  const refusal = localLibraryWriteRefusal(source, subject);
+  if (refusal) return refusal;
   return saveJson(key, value, subject, () => {
     try {
       if (localStorage.getItem(key) !== source.raw) return { ok: false, reason: 'unavailable',
@@ -58,4 +56,13 @@ export function saveLocalLibrary<T>(key: string, value: unknown, source: LocalLi
       return { ok: false, reason: 'unavailable', message: `Browser storage could not be read — ${subject} were not saved.` };
     }
   });
+}
+
+/** Refuse incomplete reads before reconciliation or serialization. */
+export function localLibraryWriteRefusal<T>(source: LocalLibrarySource<T>, subject: string): Extract<SaveResult, { ok: false }> | null {
+  if (source.phase === 'unreadable') return { ok: false, reason: 'unavailable',
+    message: `The saved library includes unreadable content — ${subject} were not saved. Originals were left untouched; export current drafts and recover the saved library before retrying.` };
+  if (source.phase === 'unavailable') return { ok: false, reason: 'unavailable',
+    message: `Browser storage could not be read — ${subject} were not saved. Originals were left untouched.` };
+  return null;
 }

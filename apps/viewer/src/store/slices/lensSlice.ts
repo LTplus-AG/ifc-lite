@@ -134,15 +134,15 @@ export const createLensSlice: StateCreator<LensSlice, [], [], LensSlice> = (set,
   // Actions
   createLens: (lens) => {
     const next = [...get().savedLenses, lens];
-    const result = saveLenses(next);
-    if (result.ok) set({ savedLenses: next });
+    const result = saveLenses(next, get().savedLenses);
+    if (result.ok) set({ savedLenses: result.rows });
     return result;
   },
 
   updateLens: (id, patch) => {
     const next = get().savedLenses.map(l => l.id === id ? { ...l, ...patch } : l);
-    const result = saveLenses(next);
-    if (result.ok) set({ savedLenses: next });
+    const result = saveLenses(next, get().savedLenses);
+    if (result.ok) set({ savedLenses: result.rows });
     return result;
   },
 
@@ -151,10 +151,10 @@ export const createLensSlice: StateCreator<LensSlice, [], [], LensSlice> = (set,
     const lens = state.savedLenses.find(l => l.id === id);
     if (lens?.builtin) return { ok: true }; // built-ins are reset, never deleted
     const next = state.savedLenses.filter(l => l.id !== id);
-    const result = saveLenses(next);
+    const result = saveLenses(next, get().savedLenses);
     if (result.ok) {
       set({
-        savedLenses: next,
+        savedLenses: result.rows,
         activeLensId: state.activeLensId === id ? null : state.activeLensId,
       });
     }
@@ -169,9 +169,9 @@ export const createLensSlice: StateCreator<LensSlice, [], [], LensSlice> = (set,
     const copy = duplicateLensConfig(state.savedLenses[index], () => reserveUniqueId(`lens-${Date.now()}`, taken));
     const next = [...state.savedLenses];
     next.splice(index + 1, 0, copy);
-    const result = saveLenses(next);
+    const result = saveLenses(next, get().savedLenses);
     if (!result.ok) return result;
-    set({ savedLenses: next });
+    set({ savedLenses: result.rows });
     return { ok: true, lens: copy };
   },
 
@@ -210,8 +210,8 @@ export const createLensSlice: StateCreator<LensSlice, [], [], LensSlice> = (set,
       lenses,
       (i) => reserveUniqueId(`lens-imported-${ts}-${i}`, taken),
     );
-    const result = saveLenses(next);
-    if (result.ok) set({ savedLenses: next });
+    const result = saveLenses(next, get().savedLenses);
+    if (result.ok) set({ savedLenses: result.rows });
     return result;
   },
 

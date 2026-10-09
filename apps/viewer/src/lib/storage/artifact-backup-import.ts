@@ -4,6 +4,7 @@
 import type { Lens } from '@ifc-lite/lens';
 import type { ListDefinition } from '@ifc-lite/lists';
 import { useViewerStore } from '@/store';
+import { reconcileLibraryRows } from './reconcile-library-rows.js';
 import { sameReportEvidence } from '../flow/report-provenance.js';
 import { loadSavedFilters, saveFilter, __internal, type SavedFilterPreset } from '../search/saved-filters.js';
 import { readListLibrarySource } from '../lists/persistence.js';
@@ -41,22 +42,7 @@ export function currentListDefinitions(requireComplete = false): ListDefinition[
   const state = useViewerStore.getState();
   const physical = readListLibrarySource();
   if (requireComplete) requireCompleteSource(physical, 'Lists');
-  const saved = new Map(physical.rows.map(row => [row.id, row]));
-  const local = new Map(state.listDefinitions.map(row => [row.id, row]));
-  const source = new Map(state.listDefinitionSource.map(row => [row.id, row]));
-  const equal = (a: ListDefinition | undefined, b: ListDefinition | undefined) =>
-    a === undefined || b === undefined ? a === b : sameReportEvidence(encodeSavedList(a), encodeSavedList(b));
-  for (const id of new Set([...source.keys(), ...local.keys()])) {
-    const previous = source.get(id), current = local.get(id), durable = saved.get(id);
-    // Unchanged session rows follow the peer's edit or deletion.
-    if (equal(previous, current)) continue;
-    if (!equal(previous, durable) && !equal(current, durable)) {
-      throw new Error('Lists changed in another tab. Reload the library before backing up or importing.');
-    }
-    if (current) saved.set(id, current);
-    else saved.delete(id);
-  }
-  return [...saved.values()];
+  return reconcileLibraryRows(physical.rows, state.listDefinitionSource, state.listDefinitions, encodeSavedList);
 }
 export function currentLensDefinitions(requireComplete = false): Lens[] {
   const physical = readSavedLensSource();

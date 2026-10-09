@@ -3,7 +3,8 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { BUILTIN_LENSES, type Lens } from '@ifc-lite/lens';
 import { encodeSavedLens, migrateSavedLens } from './migrate-saved-lens.js';
-import { readLocalLibrary, saveLocalLibrary } from '../storage/local-library-source.js';
+import { reconcileLibraryRows, LibraryRowsConflict } from '../storage/reconcile-library-rows.js';
+import { readLocalLibrary, saveLocalLibrary, localLibraryWriteRefusal } from '../storage/local-library-source.js';
 import type { SaveResult } from '../storage/save-result.js';
 
 const STORAGE_KEY = 'ifc-lite-custom-lenses';
@@ -32,16 +33,26 @@ const SAVE_SUBJECT = 'lens changes';
  * below commits to the store only when the write actually landed, so the panel
  * can never show a lens that will be gone on reload.
  */
-export function saveLenses(lenses: Lens[]): SaveResult {
+export function saveLenses(lenses: Lens[], baseline?: readonly Lens[]): Exclude<SaveResult, { ok: true }> | { ok: true; rows: Lens[] } {
   const source = readSavedLensSource();
+  const refusal = localLibraryWriteRefusal(source, SAVE_SUBJECT);
+  if (refusal) return refusal;
   let toStore: Lens[];
+  let rows: Lens[];
   try {
     // Save non-builtin custom lenses, but never the ephemeral
     // "color from list column" lens — it is intentionally transient and must
     // not be restored as a stray "Color by …" lens on reload.
-    const custom = lenses.filter(l => !l.builtin && l.id !== AUTO_COLOR_FROM_LIST_ID);
+    rows = baseline ? reconcileLibraryRows(buildInitialLenses(source), baseline, lenses, row => {
+      const normalized = migrateSavedLens(encodeSavedLens(row));
+      if (!normalized) throw new Error('The Lens definition cannot be read.');
+      return encodeSavedLens({ ...normalized, id: row.id });
+    }) : lenses;
+    const ephemeral = lenses.find(row => row.id === AUTO_COLOR_FROM_LIST_ID);
+    if (ephemeral && !rows.some(row => row.id === ephemeral.id)) rows.push(ephemeral);
+    const custom = rows.filter(l => !l.builtin && l.id !== AUTO_COLOR_FROM_LIST_ID);
     // Also save built-in lenses that differ from their defaults (user overrides)
-    const builtinOverrides = lenses.filter(l => {
+    const builtinOverrides = rows.filter(l => {
       if (!l.builtin) return false;
       const original = BUILTIN_LENSES.find(b => b.id === l.id);
       if (!original) return false;
@@ -54,12 +65,14 @@ export function saveLenses(lenses: Lens[]): SaveResult {
     });
     toStore = [...custom, ...builtinOverrides];
   } catch (error) {
+    if (error instanceof LibraryRowsConflict) return { ok: false, reason: 'unavailable', message: error.message };
     console.warn('[Lenses] Failed to serialize lens overrides', error);
     // The override check stringifies rules/autoColor, so a non-serializable
     // lens fails here rather than in saveJson. Same class of failure.
     return { ok: false, reason: 'serialize', message: `Could not save ${SAVE_SUBJECT}.` };
   }
-  return saveLocalLibrary(STORAGE_KEY, toStore.map(encodeSavedLens), source, SAVE_SUBJECT);
+  const saved = saveLocalLibrary(STORAGE_KEY, toStore.map(encodeSavedLens), source, SAVE_SUBJECT);
+  return saved.ok ? { ok: true, rows } : saved;
 }
 
 /** Build initial lens list: builtins (with overrides applied) + custom */

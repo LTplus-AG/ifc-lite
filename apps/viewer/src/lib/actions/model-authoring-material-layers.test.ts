@@ -6,6 +6,7 @@ import 'fake-indexeddb/auto';
 import assert from 'node:assert/strict';
 import { afterEach, test } from 'node:test';
 import { generateIfcGuid } from '@ifc-lite/encoding';
+import { readRelatedLists } from '@ifc-lite/create';
 import { EMPTY_SOURCE_BYTES, effectiveMetadataRecord, extractAllMaterialsOnDemand, extractMaterialsOnDemand, getAttributeNamesForSchema } from '@ifc-lite/parser';
 import { MutablePropertyView } from '@ifc-lite/mutations';
 import { useViewerStore } from '@/store';
@@ -550,8 +551,8 @@ for (const invalid of ['deleted', 'wrong-type', 'assignment-type', 'thickness-un
   const evidence = transportedLayerEvidence(useViewerStore.getState(), target); assert.equal(evidence.status, 'unavailable'); assert.equal(evidence.expected, null, 'unknown current layer records must not be published as a complete available population');
 });
 
-// #7275: an indexed association does not prove a readable MaterialSelect target.
-test('#7275 native unset association target retains its known population and unavailable evidence', async () => {
+// #7275: an unset target has no assigned native definition; raw relation rows are not definition counts.
+test('#7275 native unset association target follows exported canonical empty-definition semantics', async () => {
   const { dataStore, view, target } = await inspectorControl();
   const saved = await parseIfc(editedModelBytes(dataStore, view));
   const association = [...saved.entityIndex.byType.get('IFCRELASSOCIATESMATERIAL') ?? []].find(id => {
@@ -566,7 +567,10 @@ test('#7275 native unset association target retains its known population and una
   const related = effectiveMetadataRecord(reparsed, association)?.attributes[4];
   assert.ok(Array.isArray(related) && related.includes(target), 'native association ownership survives independently');
   const evidence = transportedLayerEvidence(useViewerStore.getState(), target);
-  assert.equal(evidence.assignmentCount, 1);
-  assert.equal(evidence.status, 'unavailable');
-  assert.equal(evidence.expected, null);
+  assert.equal(readRelatedLists(reparsed, 'IfcRelAssociatesMaterial').filter(row => row.relatedIds.includes(target)).length, 0,
+    'the native query excludes unset MaterialSelect targets from valid assignments');
+  assert.equal(evidence.assignmentCount, 0);
+  assert.equal(evidence.layerCount, 0);
+  assert.equal(evidence.status, 'available');
+  assert.deepEqual(evidence.expected?.MaterialLayers, []);
 });

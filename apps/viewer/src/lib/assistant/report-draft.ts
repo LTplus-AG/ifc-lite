@@ -65,7 +65,7 @@ function citedRows(claims: CheckedClaim[], prose: string[], captured: CapturedEv
 function compose(draft: Omit<ReportDraft, 'document' | 'documentJson'>, id: string, title: string): DocumentSpec {
   const answer = draft.source.messages.at(-1)!;
   const record: AiReportRecord = { version: 1, language: draft.language, model: answer.model ?? 'unknown', conversationId: draft.source.id,
-    revision: 1, evidence: { ...draft.source.evidence }, citedRows: citedRows(draft.claims, draft.citations, draft.captured),
+    revision: 1, ...(answer.receipt ? { generationReceipt: { ...answer.receipt } } : {}), evidence: { ...draft.source.evidence }, citedRows: citedRows(draft.claims, draft.citations, draft.captured),
     claims: draft.claims.map(({ id: claimId, text, citations, facts, status, edited, generatedText }) =>
       ({ id: claimId, text, citations, facts, status, edited, ...(generatedText === undefined ? {} : { generatedText }) })),
     narrative: draft.prose, slots: [] };

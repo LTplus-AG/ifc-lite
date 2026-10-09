@@ -101,6 +101,11 @@ const cross = (a: Vec3, b: Vec3): Vec3 => [a[1] * b[2] - a[2] * b[1], a[2] * b[0
 const dot = (a: Vec3, b: Vec3): number => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
 
 /** Where a section sits: its origin, its X and Y axes (workplane-local metres), and the way it is extruded. */
+/** Detail the canonical sharp-corner outline deliberately omits. No native default radii are invented. */
+export function sectionGhostOmissions(section: ProfileSection): string[] {
+  return Object.entries(section).filter(([field, value]) => field.endsWith('FilletRadius') && typeof value === 'number' && value > 0).map(([field]) => field);
+}
+
 export interface SectionFrame {
   readonly origin: Vec3;
   readonly u: Vec3;

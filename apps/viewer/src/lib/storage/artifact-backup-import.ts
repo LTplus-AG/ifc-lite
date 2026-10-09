@@ -28,21 +28,19 @@ function copyName(name: string, index: number, limit = 200): string {
 }
 /** Filters use native names as identities; List/Lens provenance requires IDs. */
 function reusableFilter(rows: readonly SavedFilterPreset[], incoming: SavedFilterPreset): boolean {
-  return rows.some(row => (row.name === incoming.name || Array.from({ length: rows.length + 1 },
-    (_, index) => copyName(incoming.name, index + 1, __internal.MAX_NAME_LEN)).includes(row.name))
+  const identity = incoming.name.trim().toLowerCase();
+  return rows.some(row => row.name.trim().toLowerCase() === identity
     && sameReportEvidence(evidence(row), evidence(incoming)));
 }
 /** Collision copies have deterministic native IDs. Only that exact source-ID
  * lineage can be reused; equal independent local definitions remain independent. */
 function importIdentity<T extends { id: string; name: string }>(rows: readonly T[], incoming: T,
-  owners: ImportIdentityOwners): { id: string; existing: boolean } {
-  const matches = (row: T) => !owners.claimed.has(row.id)
-    && (row.name === incoming.name || Array.from({ length: rows.length + 1 },
-      (_, index) => copyName(incoming.name, index + 1)).includes(row.name))
-    && sameReportEvidence(evidence(row), evidence(incoming));
+  owners: ImportIdentityOwners): { id: string; name: string; existing: boolean } {
+  const matches = (row: T, name: string) => !owners.claimed.has(row.id)
+    && row.name === name && sameReportEvidence(evidence(row), evidence(incoming));
   const original = rows.find(row => row.id === incoming.id);
-  if (!original && !owners.claimed.has(incoming.id)) return { id: incoming.id, existing: false };
-  if (original && matches(original)) return { id: original.id, existing: true };
+  if (!original && !owners.claimed.has(incoming.id)) return { id: incoming.id, name: incoming.name, existing: false };
+  if (original && matches(original, incoming.name)) return { id: original.id, name: original.name, existing: true };
   // At most rows+incoming+claimed IDs are reserved, so one further candidate
   // must be free. This also bounds adversarial source-ID collisions.
   const bound = rows.length + owners.sourceIds.size + owners.claimed.size + 1;
@@ -50,8 +48,9 @@ function importIdentity<T extends { id: string; name: string }>(rows: readonly T
     const id = `ifc-lite-backup:${index}:${incoming.id}`;
     if (owners.sourceIds.has(id) || owners.claimed.has(id)) continue;
     const row = rows.find(candidate => candidate.id === id);
-    if (!row) return { id, existing: false };
-    if (matches(row)) return { id, existing: true };
+    const name = copyName(incoming.name, index);
+    if (!row) return { id, name, existing: false };
+    if (matches(row, name)) return { id, name, existing: true };
   }
   throw new Error('An independent imported artifact identity could not be allocated');
 }
@@ -85,7 +84,7 @@ export function importArtifactLibraries(incoming: StandaloneArtifactLibraries): 
       owners.claimed.add(identity.id);
       if (identity.existing) continue;
       const copy = { ...entry, id: identity.id,
-        name: uniqueName(rows, entry.name) };
+        name: identity.name };
       rows.push(copy); count++;
     }
     // List CRUD can retain an unsaved session draft after quota refusal. Equal
@@ -101,7 +100,7 @@ export function importArtifactLibraries(incoming: StandaloneArtifactLibraries): 
       owners.claimed.add(identity.id);
       if (identity.existing) continue;
       const copy = { ...entry, id: identity.id,
-        name: uniqueName(rows, entry.name), builtin: false };
+        name: identity.name, builtin: false };
       copies.push(copy); rows.push(copy);
     }
     if (copies.length && !state.importLenses(copies).ok) outcome.failed.push('lenses');

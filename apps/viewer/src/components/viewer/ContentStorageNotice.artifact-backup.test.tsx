@@ -32,8 +32,55 @@ import { evaluateLens } from '@ifc-lite/lens';
 import { toGlobalIdFromModels } from '@/store/globalId';
 import { createStore } from 'zustand/vanilla';
 import { createLensSlice, type LensSlice } from '@/store/slices/lensSlice';
-import { createContentBackup, encodeContentBackup, parseContentBackup } from '@/lib/storage/content-backup';
-import { importArtifactLibraries } from '@/lib/storage/artifact-backup-import';
+import { parseContentBackup, type ContentLibraries } from '@/lib/storage/content-backup';
+
+async function nativeBackupWire(libraries: Partial<ContentLibraries>): Promise<string> {
+  const state = useViewerStore.getState();
+  const previous = { filters: loadSavedFilters(), lists: loadListDefinitions(), lenses: state.exportLenses() };
+  const filters = (rows: ReturnType<typeof loadSavedFilters>) => {
+    clearSavedFilters();
+    for (const row of rows) assert.ok(saveFilter(row.name, row.groups, row.capturedScope).persisted);
+  };
+  const blobs: Blob[] = [];
+  const download = mock.method(URL, 'createObjectURL', (value: Blob | MediaSource) => {
+    assert.ok(value instanceof Blob); blobs.push(value); return 'blob:native-source-backup';
+  });
+  try {
+    if (libraries.filters) filters(libraries.filters);
+    if (libraries.lists) state.setListDefinitions(libraries.lists);
+    if (libraries.lenses) assert.ok(state.setSavedLenses(libraries.lenses).ok);
+    const source = { filters: loadSavedFilters(), lists: loadListDefinitions(), lenses: useViewerStore.getState().exportLenses() };
+    const ui = render(<Notice />);
+    const button = [...ui.querySelectorAll('button')].find(node => node.textContent?.includes('Download library backup')); assert.ok(button);
+    await waitFor(() => !button.disabled, 'native source libraries finish loading before public Download');
+    click(button); await waitFor(() => blobs.length === 1, 'native source backup download');
+    const wire = await blobs[0].text();
+    const decoded = parseContentBackup(wire).libraries;
+    for (const kind of ['filters', 'lists', 'lenses'] as const) {
+      if (libraries[kind]) assert.equal(decoded[kind]?.length, source[kind].length, `native public Download retains the complete ${kind} source library, including native builtins`);
+    }
+    return wire;
+  } finally {
+    download.mock.restore(); cleanup();
+    if (libraries.filters) filters(previous.filters);
+    if (libraries.lists) state.setListDefinitions(previous.lists);
+    if (libraries.lenses) assert.ok(state.setSavedLenses(previous.lenses).ok);
+  }
+}
+
+async function importNativeLibraries(libraries: Partial<ContentLibraries>): Promise<void> {
+  const wire = await nativeBackupWire(libraries);
+  const ui = render(<Notice />);
+  try {
+    const retry = [...ui.querySelectorAll('button')].find(node => node.textContent?.includes('Retry all libraries')); assert.ok(retry);
+    await waitFor(() => !retry.disabled, 'native libraries finish loading before import');
+    const input = ui.querySelector<HTMLInputElement>('input[type="file"]'); assert.ok(input);
+    Object.defineProperty(input, 'files', { value: [new File([wire], 'native-identity-backup.json')], configurable: true });
+    await act(async () => { input.dispatchEvent(new Event('change', { bubbles: true })); });
+    await waitFor(() => !retry.disabled, 'native import finishes before checking durable results');
+    assert.ok(!ui.textContent?.includes('Some saved Filters'), 'the native public import saves every incoming artifact');
+  } finally { cleanup(); }
+}
 
 const groups = [{ combinator: 'AND', rules: [{ kind: 'ifcType', op: 'in', values: ['IfcWall', 'IfcWallStandardCase'] }] }];
 const entries: Array<{ kind: ArtifactKind; key: string; body: Record<string, unknown> }> = [
@@ -49,7 +96,7 @@ function Notice() {
 afterEach(() => { cleanup(); localStorage.clear(); });
 beforeEach(() => {
   clearSavedFilters();
-  assert.equal(useViewerStore.getState().setListDefinitions([]), true);
+  useViewerStore.getState().setListDefinitions([]); assert.deepEqual(loadListDefinitions(), []);
   assert.ok(useViewerStore.getState().setSavedLenses([]).ok);
 });
 
@@ -93,7 +140,7 @@ for (const entry of entries.filter(row => row.key === 'lists' || row.key === 'le
     const parsed = parseContentBackup(text);
     const exported = entry.key === 'lists' ? parsed.libraries.lists : parsed.libraries.lenses;
     assert.equal(exported?.filter(row => identities.includes(row.id)).length, 2, 'native codecs retain both source identities in the actual downloaded file');
-    if (entry.key === 'lists') assert.equal(useViewerStore.getState().setListDefinitions([]), true);
+    if (entry.key === 'lists') { useViewerStore.getState().setListDefinitions([]); assert.deepEqual(loadListDefinitions(), []); }
     else assert.ok(useViewerStore.getState().setSavedLenses([]).ok);
     if (peer !== 'none') {
       const peerId = peer === 'source' ? cloneId : crypto.randomUUID();
@@ -176,9 +223,8 @@ for (const memoryPeer of [false, true]) test(`#7218 native import preserves a re
     assert.ok(saveArtifact(preview.artifact).ok);
   }
   const state = useViewerStore.getState();
-  const text = JSON.stringify(encodeContentBackup(createContentBackup({ validation: [], comparison: [], document: [],
-    filters: loadSavedFilters(), lists: loadListDefinitions(), lenses: state.exportLenses() })));
-  clearSavedFilters(); assert.equal(state.setListDefinitions([]), true); assert.ok(state.setSavedLenses([]).ok);
+  const text = await nativeBackupWire({ filters: loadSavedFilters(), lists: loadListDefinitions(), lenses: state.exportLenses() });
+  clearSavedFilters(); state.setListDefinitions([]); assert.deepEqual(loadListDefinitions(), []); assert.ok(state.setSavedLenses([]).ok);
   const ui = render(<Notice />);
   const input = ui.querySelector<HTMLInputElement>('input[type="file"]'); assert.ok(input);
   Object.defineProperty(input, 'files', { value: [new File([text], 'quota-library-backup.json')], configurable: true });
@@ -231,9 +277,7 @@ test('#7218 the native backup parser refuses unknown artifact formats and duplic
     assert.ok(saveArtifact((await previewArtifact(proposal, useViewerStore.getState())).artifact).ok);
   }
   const state = useViewerStore.getState();
-  const wire = encodeContentBackup(createContentBackup({ validation: [], comparison: [], document: [],
-    filters: loadSavedFilters(), lists: loadListDefinitions(), lenses: state.exportLenses() }));
-  const raw = JSON.parse(JSON.stringify(wire));
+  const raw = JSON.parse(await nativeBackupWire({ filters: loadSavedFilters(), lists: loadListDefinitions(), lenses: state.exportLenses() }));
   assert.equal(parseContentBackup(JSON.stringify(raw)).libraries.lists?.length, 1);
   const previous = { filters: loadSavedFilters(), lists: loadListDefinitions(), lenses: state.exportLenses() };
   for (const kind of ['filters', 'lists', 'lenses']) {
@@ -287,7 +331,7 @@ for (const entry of entries) for (const collision of [false, true]) test(`#7218 
   try { click(button); await waitFor(() => blobs.length === 1, 'actual native captured backup download'); text = await blobs[0].text(); }
   finally { download.mock.restore(); }
   assert.equal(JSON.parse(text).version, 2, 'older native whole-backup readers must refuse the new complete backup');
-  clearSavedFilters(); assert.equal(useViewerStore.getState().setListDefinitions([]), true);
+  clearSavedFilters(); useViewerStore.getState().setListDefinitions([]); assert.deepEqual(loadListDefinitions(), []);
   assert.ok(useViewerStore.getState().setSavedLenses([]).ok);
   if (collision) {
     if (preview.artifact.kind === 'filter.proposal') {
@@ -301,9 +345,10 @@ for (const entry of entries) for (const collision of [false, true]) test(`#7218 
   const input = ui.querySelector<HTMLInputElement>('input[type="file"]'); assert.ok(input);
   Object.defineProperty(input, 'files', { value: [new File([text], 'captured-library-backup.json')], configurable: true });
   await act(async () => { input.dispatchEvent(new Event('change', { bubbles: true })); });
+  const restoredName = collision && entry.key !== 'filters' ? `${saved.saved.name} (imported)` : saved.saved.name;
   await waitFor(() => entry.key === 'filters' ? loadSavedFilters().some(row => row.capturedScope && row.name.startsWith(saved.saved.name))
-    : entry.key === 'lists' ? loadListDefinitions().some(row => row.name === saved.saved.name)
-    : useViewerStore.getState().exportLenses().some(row => row.name === saved.saved.name), 'native import commits the actual artifact library');
+    : entry.key === 'lists' ? loadListDefinitions().some(row => row.name === restoredName || collision && row.name === saved.saved.name)
+    : useViewerStore.getState().exportLenses().some(row => row.name === restoredName || collision && row.name === saved.saved.name), 'native import commits the actual artifact library');
   const state = useViewerStore.getState();
   if (entry.key === 'filters') {
     const filter = loadSavedFilters().find(row => row.capturedScope && row.name.startsWith(saved.saved.name)); assert.ok(filter);
@@ -315,7 +360,7 @@ for (const entry of entries) for (const collision of [false, true]) test(`#7218 
     assert.equal((await previewFilterGroups(filter.name, filter.groups, state, undefined, filter.capturedScope)).matched, 1);
     await assert.rejects(previewFilterGroups(filter.name, filter.groups, { ...state, models: new Map() }, undefined, filter.capturedScope), /Captured scope source is missing/);
   } else if (entry.key === 'lists') {
-    const list = loadListDefinitions().find(row => row.name === saved.saved.name); assert.ok(list);
+    const list = loadListDefinitions().find(row => row.name === restoredName); assert.ok(list);
     if (collision && preview.artifact.kind === 'list.proposal') {
       const originalId = preview.artifact.definition.id;
       assert.ok(loadListDefinitions().some(row => row.id === originalId && row.name === 'Locally edited wall names'));
@@ -326,7 +371,7 @@ for (const entry of entries) for (const collision of [false, true]) test(`#7218 
     await assert.rejects(runListFederated(list, pairs, { ...state, models: new Map() }, { evaluatorModels: [] }), /Captured scope source is missing/);
   } else {
     const reloaded = createStore<LensSlice>()(createLensSlice);
-    const lens = reloaded.getState().savedLenses.find(row => row.name === saved.saved.name); assert.ok(lens);
+    const lens = reloaded.getState().savedLenses.find(row => row.name === restoredName); assert.ok(lens);
     if (collision && preview.artifact.kind === 'lens.proposal') {
       const originalId = preview.artifact.lens.id;
       assert.ok(reloaded.getState().savedLenses.some(row => row.id === originalId && row.name === 'Locally edited wall colors'));
@@ -339,11 +384,17 @@ for (const entry of entries) for (const collision of [false, true]) test(`#7218 
   }
   const identities = { filters: loadSavedFilters().map(row => row.name), lists: loadListDefinitions().map(row => row.id),
     lenses: createStore<LensSlice>()(createLensSlice).getState().savedLenses.map(row => row.id) };
-  await act(async () => { input.dispatchEvent(new Event('change', { bubbles: true })); });
-  await waitFor(() => !button.disabled, 'repeated native import finishes');
-  assert.deepEqual({ filters: loadSavedFilters().map(row => row.name), lists: loadListDefinitions().map(row => row.id),
-    lenses: createStore<LensSlice>()(createLensSlice).getState().savedLenses.map(row => row.id) }, identities,
-  'a repeated import retains the actual independent copy identities without duplicates');
+  await importNativeLibraries(parseContentBackup(text).libraries);
+  if (collision && entry.key === 'filters') {
+    assert.equal(loadSavedFilters().length, identities.filters.length + 1, 'without native import lineage a conflicting Filter retry preserves both independent existing names and creates another source copy');
+    for (const name of identities.filters) assert.ok(loadSavedFilters().some(row => row.name === name));
+    const next = loadSavedFilters().find(row => !identities.filters.includes(row.name)); assert.ok(next);
+    assert.equal((await previewFilterGroups(next.name, next.groups, state, undefined, next.capturedScope)).matched, 1, 'the additional conflict copy retains the actual captured IFC population');
+  } else {
+    assert.deepEqual({ filters: loadSavedFilters().map(row => row.name), lists: loadListDefinitions().map(row => row.id),
+      lenses: createStore<LensSlice>()(createLensSlice).getState().savedLenses.map(row => row.id) }, identities,
+      'an unchanged native identity retry retains the independent copy identities');
+  }
 });
 
 test('#7218 refused native Filter import cannot produce an incomplete successful download', async () => {
@@ -353,7 +404,7 @@ test('#7218 refused native Filter import cannot produce an incomplete successful
   const proposal = parseArtifactProposal(JSON.stringify({ version: 1, title: 'Native filter recovery', kind: entry.kind, ...entry.body }), entry.kind);
   const preview = await previewArtifact(proposal, useViewerStore.getState());
   assert.ok(preview.matched > 0); assert.ok(saveArtifact(preview.artifact).ok);
-  const text = JSON.stringify(encodeContentBackup(createContentBackup({ validation: [], comparison: [], document: [], filters: loadSavedFilters() })));
+  const text = await nativeBackupWire({ filters: loadSavedFilters() });
   clearSavedFilters();
   const ui = render(<Notice />), input = ui.querySelector<HTMLInputElement>('input[type="file"]'); assert.ok(input);
   const retry = [...ui.querySelectorAll('button')].find(node => node.textContent?.includes('Retry all libraries')); assert.ok(retry);
@@ -387,23 +438,25 @@ for (const entry of entries.filter(row => row.key === 'lists' || row.key === 'le
     ? { lists: [preview.artifact.definition, { ...preview.artifact.definition, id: reserved }] }
     : { lenses: [preview.artifact.lens, { ...preview.artifact.lens, id: reserved }] };
   // Actual guarded native codecs accept string IDs; no private storage surface.
-  const wire = JSON.stringify(encodeContentBackup(createContentBackup({ validation: [], comparison: [], document: [], ...sourceLibraries })));
+  const wire = await nativeBackupWire(sourceLibraries);
   const decoded = parseContentBackup(wire).libraries;
   if (preview.artifact.kind === 'list.proposal') {
-    assert.equal(useViewerStore.getState().setListDefinitions([{ ...preview.artifact.definition, name: 'Local edit retained' }]), true);
+    useViewerStore.getState().setListDefinitions([{ ...preview.artifact.definition, name: 'Local edit retained' }]);
+    assert.equal(loadListDefinitions()[0]?.name, 'Local edit retained');
   } else assert.ok(useViewerStore.getState().setSavedLenses([{ ...preview.artifact.lens, name: 'Local edit retained' }]).ok);
   const durable = () => entry.key === 'lists' ? loadListDefinitions() : createStore<LensSlice>()(createLensSlice).getState().savedLenses.filter(row => !row.builtin);
-  assert.deepEqual(importArtifactLibraries(decoded).failed, []);
+  await importNativeLibraries(decoded);
   const rows = durable();
   assert.deepEqual(rows.map(row => row.id).sort(), [incoming.id, reserved, copyId].sort(), 'copy cannot steal a later source identity');
   assert.equal(rows.find(row => row.id === incoming.id)?.name, 'Local edit retained');
   const snapshot = rows.map(row => ({ id: row.id, name: row.name }));
-  assert.deepEqual(importArtifactLibraries(decoded).failed, []);
+  await importNativeLibraries(decoded);
   assert.deepEqual(durable().map(row => ({ id: row.id, name: row.name })), snapshot, 'native deterministic copy IDs certify an unchanged retry');
   if (preview.artifact.kind === 'list.proposal') {
-    assert.equal(useViewerStore.getState().setListDefinitions(loadListDefinitions().map(row => row.id === copyId ? { ...row, name: 'Edited independent copy' } : row)), true);
+    useViewerStore.getState().setListDefinitions(loadListDefinitions().map(row => row.id === copyId ? { ...row, name: 'Edited independent copy' } : row));
+    assert.equal(loadListDefinitions().find(row => row.id === copyId)?.name, 'Edited independent copy');
   } else assert.ok(useViewerStore.getState().setSavedLenses(useViewerStore.getState().exportLenses().map(row => row.id === copyId ? { ...row, name: 'Edited independent copy' } : row)).ok);
-  assert.deepEqual(importArtifactLibraries(decoded).failed, []);
+  await importNativeLibraries(decoded);
   const final = durable();
   assert.equal(final.find(row => row.id === copyId)?.name, 'Edited independent copy', 'retry must preserve local edits to the previous imported identity');
   const freshId = `ifc-lite-backup:3:${incoming.id}`;
@@ -418,4 +471,40 @@ for (const entry of entries.filter(row => row.key === 'lists' || row.key === 'le
     const matches = await evaluateLensGroups(lens, evaluatorModelsFromState(state), state.models, new Set(state.modelTags.keys()));
     assert.ok(evaluateLens(lens, createLensDataProvider(state.models, state.ifcDataStore, state.mutationViews, id => state.resolveGlobalIdFromModels(id)), matches).colorMap.size > 0);
   }
+});
+
+for (const entry of entries.filter(row => row.key === 'lists' || row.key === 'lenses')) test(`#7218 native ${entry.key} original-ID rename to an imported-looking name remains an independent local edit`, async () => {
+  await seedArtifactModels({ federated: true });
+  const proposal = parseArtifactProposal(JSON.stringify({ version: 1, title: 'Native renamed identity witness', kind: entry.kind, ...entry.body }), entry.kind);
+  const preview = await previewArtifact(proposal, useViewerStore.getState()); assert.ok(preview.matched > 0);
+  assert.ok(saveArtifact(preview.artifact).ok);
+  if (preview.artifact.kind !== 'list.proposal' && preview.artifact.kind !== 'lens.proposal') assert.fail('native identity keyed artifact required');
+  const incoming = preview.artifact.kind === 'list.proposal' ? preview.artifact.definition : preview.artifact.lens;
+  const localName = `${incoming.name} (imported)`;
+  if (preview.artifact.kind === 'list.proposal') {
+    useViewerStore.getState().setListDefinitions([{ ...preview.artifact.definition, name: localName }]);
+    assert.equal(loadListDefinitions()[0]?.name, localName);
+  }
+  else assert.ok(useViewerStore.getState().setSavedLenses([{ ...preview.artifact.lens, name: localName }]).ok);
+  await importNativeLibraries(preview.artifact.kind === 'list.proposal' ? { lists: [preview.artifact.definition] } : { lenses: [preview.artifact.lens] });
+  const rows = entry.key === 'lists' ? loadListDefinitions() : createStore<LensSlice>()(createLensSlice).getState().savedLenses.filter(row => !row.builtin);
+  assert.equal(rows.length, 2, 'same-ID renamed local artifact cannot consume the unchanged incoming artifact');
+  assert.equal(rows.find(row => row.id === incoming.id)?.name, localName, 'native local rename is preserved');
+  assert.ok(rows.some(row => row.id !== incoming.id), 'incoming definition receives its own native collision identity');
+});
+
+test('#7218 native independently saved Filter imported-looking name cannot consume an incoming Filter', async () => {
+  await seedArtifactModels({ federated: true });
+  const proposal = parseArtifactProposal(JSON.stringify({ version: 1, title: 'Native filter identity witness', kind: 'filter.proposal', ...entries[0].body }), 'filter.proposal');
+  const preview = await previewArtifact(proposal, useViewerStore.getState()); assert.ok(preview.matched > 0);
+  assert.ok(saveArtifact(preview.artifact).ok);
+  const incoming = loadSavedFilters()[0]; assert.ok(incoming);
+  clearSavedFilters(); assert.ok(saveFilter(`${incoming.name} (imported)`, incoming.groups, incoming.capturedScope).persisted);
+  await importNativeLibraries({ filters: [incoming] });
+  const rows = loadSavedFilters();
+  assert.equal(rows.length, 2, 'an independent suffix-named Filter cannot substitute for the source Filter');
+  assert.ok(rows.some(row => row.name === incoming.name));
+  assert.ok(rows.some(row => row.name === `${incoming.name} (imported)`));
+  const actual = await previewFilterGroups(incoming.name, rows.find(row => row.name === incoming.name)!.groups, useViewerStore.getState());
+  assert.equal(actual.matched, preview.matched, 'actual imported Filter retains its real native IFC population');
 });

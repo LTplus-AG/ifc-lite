@@ -232,9 +232,10 @@ test('#7353 current project unit assignment follows newly allocated native conte
  const project = store.entityIndex.byType.get('IFCPROJECT')?.[0]; assert.ok(project);
  const assignment = store.getEntity(project)?.attributes[8]; assert.equal(typeof assignment, 'number');
  const members = store.getEntity(assignment as number)?.attributes[0]; assert.ok(Array.isArray(members));
+ const unitIds = members.map(id => { assert.ok(typeof id === 'number'); return id; });
  const editor = new StoreEditor(store, view);
  const unit = editor.addEntity('IfcSIUnit', ['*', '.VOLUMEUNIT.', '.CENTI.', '.CUBIC_METRE.']).expressId;
- const replacement = members.map(id => String(store.getEntity(id)?.attributes[1]).replace(/\./g, '') === 'VOLUMEUNIT' ? unit : id);
+ const replacement = unitIds.map(id => String(store.getEntity(id)?.attributes[1]).replace(/\./g, '') === 'VOLUMEUNIT' ? unit : id);
  const context = editor.addEntity('IfcUnitAssignment', [replacement.map(id => `#${id}`)]).expressId;
  view.setPositionalAttribute(project, 8, `#${context}`);
  view.createQuantitySet(f.id, 'Native occurrence quantities', [{ name: 'NetVolume', value: 25, quantityType: QuantityType.Volume }]);
@@ -257,6 +258,7 @@ for (const kind of ['unset-context', 'deleted-project', 'deleted-assignment', 'u
   const project = store.entityIndex.byType.get('IFCPROJECT')?.[0]; assert.ok(project);
   const assignment = store.getEntity(project)?.attributes[8]; assert.equal(typeof assignment, 'number');
   const members = store.getEntity(assignment as number)?.attributes[0]; assert.ok(Array.isArray(members));
+ const unitIds = members.map(id => { assert.ok(typeof id === 'number'); return id; });
   const editor = new StoreEditor(store, view);
   if (kind === 'unset-context') view.setPositionalAttribute(project, 8, null);
   else if (kind === 'deleted-project') view.deleteEntity(project);
@@ -265,7 +267,7 @@ for (const kind of ['unset-context', 'deleted-project', 'deleted-assignment', 'u
   else if (kind === 'unsupported-unit') {
    const dimensions = editor.addEntity('IfcDimensionalExponents', [3, 0, 0, 0, 0, 0, 0]).expressId;
    const unit = editor.addEntity('IfcContextDependentUnit', [`#${dimensions}`, '.VOLUMEUNIT.', 'Unknown native volume']).expressId;
-   view.setPositionalAttribute(assignment as number, 0, members.map(id =>
+   view.setPositionalAttribute(assignment as number, 0, unitIds.map(id =>
     `#${String(store.getEntity(id)?.attributes[1]).replace(/\./g, '') === 'VOLUMEUNIT' ? unit : id}`));
   } else if (kind === 'cyclic-unit') {
    // Deliberately malformed file-supplied graph: a derived element cannot name itself.

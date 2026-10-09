@@ -20,14 +20,19 @@ import { revertChangeOperation, type RevertRefusal } from '@/lib/changes/revert-
 import { inverseMutationTargets } from '@/store/slices/mutation-inverse-registry';
 import { modelEditTarget } from '@/store/slices/mutation-modelling-records';
 import type { ChangeScalar, ModelChange } from '@ifc-lite/ai/artifacts';
+import type { StructuralOpName } from './structural-graph-proposal';
 import type { AuthoringOpName } from './model-authoring';
+import type { CostOpName } from './cost-graph-proposal';
 import { previewModelChanges, type ModelChangePreview, type PreviewRow } from './model-change-preview';
 import type { ReceiptValidation } from './validation-verdicts';
 
 export interface AppliedChange {
   index: number;
-  op: ModelChange['op'] | AuthoringOpName | 'room.command';
+  op: ModelChange['op'] | AuthoringOpName | 'room.command' | StructuralOpName | CostOpName;
+  /** Empty only for non-root Cost records, addressed by native expressId. */
   globalId: string;
+  /** Exact native model-bound owner/relationship identity. */
+  expressId?: number;
   modelId: string;
   /** Human-readable address of the value, e.g. `Pset_WallCommon.FireRating`. */
   field: string;
@@ -38,7 +43,7 @@ export interface AppliedChange {
 export interface ModelChangeReceipt {
   version: 1;
   /** Absent on model.changes; other native reviewed producer kinds share the same durable receipt/Undo route. */
-  kind?: 'model.authoring' | 'room.command';
+  kind?: 'model.authoring' | 'room.command' | 'structural.graph' | 'cost.graph';
   id: string;
   title: string;
   digest: string;

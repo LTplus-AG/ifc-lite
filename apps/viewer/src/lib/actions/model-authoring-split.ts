@@ -13,16 +13,26 @@ type Split = Extract<AuthoringOp, { op: 'element.split' }>;
 /** The generic resolver supplies model ownership. This native inventory
  * rejects malformed same-model GUID collisions before assigning effects. */
 export function uniqueSplitGuid(store: IfcDataStore, editor: StoreEditor, guid: string): boolean {
-  let hits = 0;
+  return uniqueSplitGuids(store, editor, [guid]);
+}
+
+/** The same Root inventory in one walk for a native aggregate's complete authored population. */
+export function uniqueSplitGuids(store: IfcDataStore, editor: StoreEditor, guids: readonly string[]): boolean {
+  const hits = new Map(guids.map(guid => [guid, 0]));
+  if (hits.size !== guids.length) return false;
   const view = editor.getMutationView();
   const changed = new Set(view.getEffectiveChanges().map(change => change.entityId));
   for (const { expressId } of iterateEffectiveEntityIds(store, view)) {
     const native = changed.has(expressId) || view.getNewEntity(expressId)
       ? effectiveMetadataRecord(store, expressId, view)?.attributes[0] : store.entities.getGlobalId(expressId);
     // Only IfcRoot owns GlobalId: non-root attribute zero can be a Name.
-    if (native === guid && liveEntityConforms(store, expressId, 'IfcRoot', view) && ++hits > 1) return false;
+    if (typeof native === 'string' && hits.has(native) && liveEntityConforms(store, expressId, 'IfcRoot', view)) {
+      const count = hits.get(native)! + 1;
+      if (count > 1) return false;
+      hits.set(native, count);
+    }
   }
-  return hits === 1;
+  return [...hits.values()].every(count => count === 1);
 }
 
 export function writeNativeSplit(batch: ModelAuthoringBatch, op: Split, store: IfcDataStore, editor: StoreEditor, id: number,

@@ -179,6 +179,12 @@ const bounds = result.coordinateInfo.shiftedBounds;
 console.log(`Model bounds:`, bounds);
 ```
 
+Binary geometry caches preserve the complete `CoordinateInfo` metadata.
+Format v24 adds optional `boundsRecoveryFallbackCount` and `lengthUnitScale`:
+a recorded zero recovery count survives a cache hit, while missing values
+remain unknown. Reading older entries leaves these fields absent; the
+viewer’s versioned cache key rebuilds older entries once.
+
 ### Exact extrusion source definitions
 
 `GeometryProcessor.extractExtrusionDefinitions` returns the authored

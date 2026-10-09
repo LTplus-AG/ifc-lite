@@ -5,8 +5,11 @@
 import '@/test/setup-dom.js';
 import { beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import type { IfcDataStore } from '@ifc-lite/parser';
-import { MutablePropertyView } from '@ifc-lite/mutations';
+import { StoreEditor } from '@ifc-lite/mutations';
+import { IfcCreator } from '@ifc-lite/create';
+import { generateIfcGuid } from '@ifc-lite/encoding';
+import { BACK_WALL, SAMPLE_MODEL, parseIfc, seedAuthoringSample } from '@/test/authoring-sample-fixture';
+import { editedModelBytes } from '@/lib/export/edited-model-bytes';
 import { federationRegistry } from '@ifc-lite/renderer';
 import { useViewerStore, type ViewerState } from './index.js';
 import { resolveEntityRef, resolveEntityRefGlobalIdFromState, resolveGlobalId } from './resolveEntityRef.js';
@@ -38,59 +41,31 @@ describe('resolveGlobalId compatibility', () => {
       'the store remains canonical for an installed model');
   });
 
-  it('keeps the legacy store fallback while a registered model is hydrating', () => {
-    const legacyStore = {
-      entities: { getGlobalId: (expressId: number) => `LEGACY-${expressId}` },
-    } as unknown as IfcDataStore;
-    useViewerStore.setState({
-      models: new Map([['primary', {
-        id: 'primary', idOffset: 0, maxExpressId: 100, ifcDataStore: null,
-      }]]) as unknown as ViewerState['models'],
-      ifcDataStore: legacyStore,
-    });
-
-    assert.equal(resolveGlobalId(7), 'LEGACY-7');
-    assert.equal(
-      resolveEntityRefGlobalIdFromState(useViewerStore.getState(), { modelId: 'primary', expressId: 7 }),
-      null,
-      'exact model refs must not borrow a different model’s legacy store',
-    );
+  it('keeps the legacy store fallback while a registered model is hydrating (#7282)', async () => {
+    const { dataStore } = await seedAuthoringSample(), id = dataStore.entities.getExpressIdByGlobalId(BACK_WALL);
+    const model = useViewerStore.getState().models.get(SAMPLE_MODEL)!;
+    useViewerStore.setState({ models: new Map([['primary', { ...model, id: 'primary', idOffset: 0, maxExpressId: id, ifcDataStore: null }]]), ifcDataStore: dataStore });
+    assert.equal(resolveGlobalId(id), BACK_WALL);
+    assert.equal(resolveEntityRefGlobalIdFromState(useViewerStore.getState(), { modelId: 'primary', expressId: id }), null,
+      'exact model refs must not borrow a different model’s legacy store');
   });
 
-  it('does not borrow a legacy GUID when the resolved federated store is hydrated', () => {
-    const storeWithoutGuid = {
-      entities: { getGlobalId: () => undefined },
-    } as unknown as IfcDataStore;
-    const legacyStore = {
-      entities: { getGlobalId: (expressId: number) => `WRONG-${expressId}` },
-    } as unknown as IfcDataStore;
-    useViewerStore.setState({
-      models: new Map([['federated', {
-        id: 'federated', idOffset: 0, maxExpressId: 100, ifcDataStore: storeWithoutGuid,
-      }]]) as unknown as ViewerState['models'],
-      ifcDataStore: legacyStore,
-    });
-
-    assert.equal(resolveGlobalId(7), null,
-      'a missing GUID in a hydrated model must not resolve to another model’s entity');
+  it('does not borrow a legacy GUID when the resolved federated store is hydrated (#7282)', async () => {
+    const { dataStore } = await seedAuthoringSample(), id = dataStore.entities.getExpressIdByGlobalId(BACK_WALL);
+    const creator = new IfcCreator({ Schema: 'IFC4', LengthUnit: 'METRE', Name: 'Empty federated owner' });
+    const hydrated = await parseIfc(new TextEncoder().encode(creator.toIfc().content));
+    assert.equal(hydrated.getEntity(id), null);
+    const model = useViewerStore.getState().models.get(SAMPLE_MODEL)!;
+    useViewerStore.setState({ models: new Map([['federated', { ...model, id: 'federated', idOffset: 0, maxExpressId: id, ifcDataStore: hydrated }]]),
+      mutationViews: new Map(), ifcDataStore: dataStore });
+    assert.equal(resolveGlobalId(id), null, 'a missing GUID in a hydrated model must not resolve to another model’s entity');
   });
 
-  it('resolves an edited GlobalId before the immutable entity table (#4921)', () => {
-    const baseStore = {
-      entities: { getGlobalId: () => 'ORIGINAL-GUID' },
-    } as unknown as IfcDataStore;
-    const overlay = new MutablePropertyView(null, 'edited');
-    overlay.setAttribute(7, 'GlobalId', 'EDITED-GUID', 'ORIGINAL-GUID');
-    useViewerStore.setState({
-      models: new Map([['edited', {
-        id: 'edited', idOffset: 0, maxExpressId: 100, ifcDataStore: baseStore,
-      }]]) as unknown as ViewerState['models'],
-      mutationViews: new Map([['edited', overlay]]),
-    });
-
-    assert.equal(
-      resolveEntityRefGlobalIdFromState(useViewerStore.getState(), { modelId: 'edited', expressId: 7 }),
-      'EDITED-GUID',
-    );
+  it('resolves an edited GlobalId before the immutable entity table (#4921, #7282)', async () => {
+    const { dataStore, view } = await seedAuthoringSample(), id = dataStore.entities.getExpressIdByGlobalId(BACK_WALL), current = generateIfcGuid();
+    new StoreEditor(dataStore, view).setAttribute(id, 'GlobalId', current);
+    const saved = await parseIfc(editedModelBytes(dataStore, view));
+    assert.equal(dataStore.entities.getGlobalId(id), BACK_WALL); assert.equal(saved.entities.getGlobalId(id), current);
+    assert.equal(resolveEntityRefGlobalIdFromState(useViewerStore.getState(), { modelId: SAMPLE_MODEL, expressId: id }), current);
   });
 });

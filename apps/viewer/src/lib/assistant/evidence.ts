@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { preserveNativeExpectedProjection } from '@/lib/actions/native-authoring-evidence';
 import { useViewerStore } from '@/store';
 import { captureAnalysisStamp, isAnalysisStale, type AnalysisStamp } from '@/hooks/useAnalysisStaleness';
 import type { AssistantSource } from './sources';
@@ -53,8 +54,20 @@ export function captureEvidence(source: AssistantSource): EvidenceSnapshot {
   // Reserve envelope space and include projected model metadata in the same budget.
   let textLength = summaryProjection.text.length + JSON.stringify(promptModels).length + 2000;
   for (const row of rows) {
-    const projection = evidenceJson(row);
-    const projected: unknown = JSON.parse(projection.text);
+    let projection = evidenceJson(row);
+    let projected: unknown = JSON.parse(projection.text);
+    // A complete optional Structural pin must not displace ordinary evidence.
+    // Refuse that pin as a whole when it cannot fit in the remaining envelope.
+    if ((typeof projected !== 'object' || projected === null || !('citation' in projected)
+      || textLength + projection.text.length > TEXT_LIMIT)
+      && typeof row.data === 'object' && row.data !== null && 'nativeStructural' in row.data) {
+      const data = row.data as Record<string, unknown>;
+      projection = evidenceJson({ ...row, data: { ...data,
+        nativeStructural: { status: 'unavailable-selection-budget', recordCount: null, expectedJsonParts: null },
+      } });
+      projected = JSON.parse(projection.text);
+    }
+    preserveNativeExpectedProjection(row, projected);
     if (typeof projected !== 'object' || projected === null || !('citation' in projected) || textLength + projection.text.length > TEXT_LIMIT) {
       projectionTruncated = true;
       break;

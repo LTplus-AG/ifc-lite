@@ -206,7 +206,7 @@ test('#7202 wall provenance follows copied/array refs for native hosted writes a
   const copied = new IfcQuery(parsed).entity(parsed.entities.getExpressIdByGlobalId(outcome.receipt.applied[2].globalId));
   assert.equal(copied.voids().length, 1);
   assert.equal(copied.voids()[0].filledBy()[0].globalId, outcome.receipt.applied[3].globalId);
-  assert.throws(() => batch([{ ...copy, target: { ...target, ifcClass: 'IfcSlab' }, ref: 'cloned' }, host]), /hosted in walls only/);
+  assert.throws(() => batch([{ ...copy, target: { ...target, ifcClass: 'IfcSlab' }, ref: 'cloned' }, host]), /slab hosts support bare openings only/);
 });
 
 test('#7202 native skip-history overlay edits invalidate a copy even without a viewer mutation notification', async () => {

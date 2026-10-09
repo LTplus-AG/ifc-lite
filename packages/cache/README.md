@@ -4,6 +4,12 @@ Binary cache format for IFClite. Caches the parsed data store and geometry in a 
 
 **Properties and quantities are not part of that speedup.** `BinaryCacheWriter.write` serializes whatever the data store's property/quantity tables already hold. A STEP-parsed store resolves properties lazily on demand and never populates those tables, so a cache written straight from a STEP parse round-trips with EMPTY property/quantity tables — a cache-restored model queries properties exactly as slow as a fresh parse (see `docs/guide/querying.md`). If your application needs fast repeat property queries too, retain the source buffer alongside the cache entry and re-attach on-demand extraction on read, the way the viewer's cache hook does.
 
+Geometry cache format v24 also preserves `CoordinateInfo.boundsRecoveryFallbackCount`
+and `CoordinateInfo.lengthUnitScale`, including defined zero values. An absent
+field remains unknown; reading a pre-v24 cache does not infer these values.
+Versioned cache keys invalidate older entries once so fresh loads can retain
+the complete coordinate metadata.
+
 ## Installation
 
 ```bash

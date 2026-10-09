@@ -43,7 +43,7 @@ async function graph(LengthUnit: string, Schema: 'IFC4' | 'IFC4X3' = 'IFC4') {
   assert.equal(parsed.entityIndex.byType.get('IFCMONETARYUNIT')?.length ?? 0, 0, 'no supplied currency means no invented currency');
   return file;
 }
-for (const [units, schema] of [['METRE', 'IFC4'], ['MILLIMETRE', 'IFC4'], ['METRE', 'IFC4X3']] as const) test(`Campaign6812 new-file native ${schema}/${units} exports canonical rooted scaffold and declared unit graph`, () => graph(units, schema));
+for (const [units, schema] of [['METRE', 'IFC4'], ['MILLIMETRE', 'IFC4'], ['METRE', 'IFC4X3']] as const) test(`Campaign6812 new-file native ${schema}/${units} exports canonical rooted scaffold and declared unit graph`, async () => { await graph(units, schema); });
 test('Campaign6812 native standalone supplied wall reaches real WASM with nonempty finite geometry', async t => {
   if (!ensureWasm(t)) return;
   const file = nativeFile('METRE', 'IFC4', true), bytes = new TextEncoder().encode(file.content), api = new IfcAPI();

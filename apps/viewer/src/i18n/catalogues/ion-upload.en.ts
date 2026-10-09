@@ -21,7 +21,10 @@ export const ionUploadEn = {
   'ionUpload.failure.rateLimit': 'Cesium ion is limiting requests. Wait before retrying.',
   'ionUpload.failure.service': 'Cesium ion could not complete this request. Check its service status before retrying.',
   'ionUpload.failure.request': 'Check the connection and the asset in Cesium ion before retrying. The upload may not have completed.',
-  'ionUpload.exportWarnings': 'IFC preparation reported {count} warnings. Export IFC locally and resolve them before uploading.',
+  'ionUpload.exportWarnings': {
+    one: 'Preparing the IFC for Cesium ion reported a problem, so nothing was uploaded.',
+    other: 'Preparing the IFC for Cesium ion reported {count} problems, so nothing was uploaded.',
+  },
   'ionUpload.serializationFailed': 'Could not prepare the edited IFC. Try exporting IFC locally to check the model.',
   'ionUpload.texturesUnsupported': 'This model includes image resources. Export IFCZIP locally to preserve its images. Direct texture upload is not supported yet.',
   'ionUpload.noModel': 'Load a STEP IFC model to upload. IFCX and LandXML are not supported.',

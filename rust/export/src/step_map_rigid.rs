@@ -24,12 +24,11 @@ pub(super) fn plan(
     let mut shapes = HashSet::new();
     let mut products = HashSet::new();
     for record in records {
-        if record.kind.is_subtype_of(IfcType::IfcAlignment)
-            || record.kind.is_subtype_of(IfcType::IfcStructuralItem)
-            || matches!(
-                record.kind,
-                IfcType::IfcGrid | IfcType::IfcGridPlacement | IfcType::IfcLinearPlacement
-            )
+        // Alignments and their linear placements are ordinary root-frame
+        // consumers (see `placement_root`); grids and structural analysis
+        // models carry frames this root edit does not own.
+        if record.kind.is_subtype_of(IfcType::IfcStructuralItem)
+            || matches!(record.kind, IfcType::IfcGrid | IfcType::IfcGridPlacement)
         {
             return Err(format!(
                 "{} #{} has unsupported engineering-frame consumers",
@@ -178,17 +177,32 @@ fn placement_root(
         let placement = decoder
             .decode_by_id(current)
             .map_err(|error| error.to_string())?;
-        if placement.ifc_type != IfcType::IfcLocalPlacement {
-            return Err(format!(
-                "ObjectPlacement #{current} is not an IfcLocalPlacement"
-            ));
+        let parent = placement.get(0).filter(|attr| !attr.is_null());
+        match placement.ifc_type {
+            IfcType::IfcLocalPlacement => {
+                let frame = decoder
+                    .decode_by_id(placement.get_ref(1).ok_or("RelativePlacement is missing")?)
+                    .map_err(|error| error.to_string())?;
+                preflight::axis(&frame, decoder)?;
+            }
+            // The renderer composes PlacementRelTo * (curve sample or
+            // CartesianPosition), both expressed in the parent frame, so a
+            // rigid edit of the parent's root carries them exactly. Without a
+            // parent the basis curve is read in the untransformed world frame.
+            IfcType::IfcLinearPlacement if parent.is_some() => {}
+            IfcType::IfcLinearPlacement => {
+                return Err(format!(
+                    "IfcLinearPlacement #{current} has no PlacementRelTo to carry its basis curve"
+                ));
+            }
+            _ => {
+                return Err(format!(
+                    "ObjectPlacement #{current} is not an IfcLocalPlacement or IfcLinearPlacement"
+                ));
+            }
         }
-        let frame = decoder
-            .decode_by_id(placement.get_ref(1).ok_or("RelativePlacement is missing")?)
-            .map_err(|error| error.to_string())?;
-        preflight::axis(&frame, decoder)?;
         path.push(current);
-        match placement.get(0).filter(|attr| !attr.is_null()) {
+        match parent {
             None => break (current, 0),
             Some(attr) => {
                 current = attr

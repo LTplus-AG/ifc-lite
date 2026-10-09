@@ -42,14 +42,16 @@ IFC4 and IFC4X3 uploads use the canonical compatibility exporter after applying
 edits. It normalizes map units to metres. When the physical scale is one, supported
 map rotation and translation move into the original root `IfcLocalPlacement`
 frames; child placements, representations, openings and fills retain their
-original relationships. Other supported uniform scales use mapped Body
+original relationships. Alignments and `IfcLinearPlacement` elements move with
+the root frame their placement is relative to; a linear placement without
+`PlacementRelTo` is refused. Other supported uniform scales use mapped Body
 representations under stricter ownership checks. These transformations preserve
 physical map coordinates, project units, properties and authored shape data.
 Ordinary IFC downloads retain their original coordinate representation. IFC2X3
 uploads keep their source schema and edits without an implicit upgrade.
 
 Unsupported coordinate consumers, ambiguous units or export warnings stop the
-upload before network transfer. For a model without georeferencing, set its
+upload before network transfer, and the dialog lists each reason. For a model without georeferencing, set its
 location in Cesium ion. No undocumented heading or placement override is sent.
 A successful upload starts tiling; follow the asset link to check its progress.
 

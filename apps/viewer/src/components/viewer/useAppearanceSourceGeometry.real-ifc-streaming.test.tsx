@@ -15,6 +15,7 @@ import { modelIndices } from '@/lib/model-placement/model-indices.js';
 import { meshGeometryCounts } from '@/lib/released-mesh-provenance.js';
 import { cleanup, render } from '@/test/render.js';
 import { load, skip as wasmSkip } from '@/test/blank-ifc-loader-harness.js';
+import { useFederatedGeometry } from './useFederatedGeometry.js';
 import { useAppearanceSourceGeometry } from './useAppearanceSourceGeometry.js';
 
 // Real Archicad architecture and Autodesk structural model families. The
@@ -30,9 +31,11 @@ let sources: MeshData[] = [];
 let indices: ReadonlyMap<string, number> = new Map();
 
 function Probe() {
-  const models = useViewerStore(state => state.models);
-  const contentVersion = useViewerStore(state => state.geometryContentVersion);
+  const { models, geometryResult, geometryContentVersion: contentVersion } = useViewerStore();
   indices = useMemo(() => modelIndices(models), [models]);
+  // ViewportContainer derives visible geometry before its Viewport child
+  // requests appearance sources. Preserve that stamping/copy interaction.
+  useFederatedGeometry(models, geometryResult, indices, contentVersion);
   sources = useAppearanceSourceGeometry(models, indices, contentVersion);
   return <output>{sources.length}</output>;
 }
@@ -76,10 +79,14 @@ for (const position of [0, 1] as const) {
   it(`visits only new real IFC appearance meshes when model ${position} appends (#6537 / #7021)`,
     { skip, timeout: 120_000 }, async context => {
       const bytes = fixtures.map(path => readFileSync(path));
+      perfCounters.enable();
+      const beforeLoad = perfCounters.read();
+      const ui = render(<Probe />);
       const initial = [
         await load(new File([bytes[0]], 'AC20-FZK-Haus.ifc', { type: 'application/ifc' })),
         await load(new File([bytes[1]], 'Snowdon-structural.ifc', { type: 'application/ifc' }), 'appearance-peer'),
       ];
+      const loadDelta = diffCounters(perfCounters.read(), beforeLoad);
       const state = useViewerStore.getState();
       assert.equal(state.models.size, 2, 'both canonical loads remain in the federation');
       const loaded = initial.map(model => {
@@ -94,11 +101,10 @@ for (const position of [0, 1] as const) {
       assert.ok(loaded[1 - position].geometryResult?.meshes.length,
         'an independently loaded peer exercises the retained-prefix/suffix cost');
       const originalIdentity = fingerprint(complete);
+      const previouslyStamped = complete.filter(mesh => mesh.modelIndex === indices.get(target.id)).length;
       act(() => useViewerStore.getState().upsertModel({ ...target, preAlignment: undefined,
         geometryResult: { ...target.geometryResult!, meshes: [], totalVertices: 0, totalTriangles: 0 },
       }));
-      perfCounters.enable();
-      const ui = render(<Probe />);
       assertOrderedSources();
       const before = perfCounters.read();
       // A fixed batch schedule attributes repeated prefix work. This is an
@@ -118,11 +124,11 @@ for (const position of [0, 1] as const) {
         fixtures: bytes.map((data, i) => ({ name: fixtures[i].pathname.split('/').at(-1), bytes: data.length,
           sha256: createHash('sha256').update(data).digest('hex') })),
         models: loaded.map(model => ({ id: model.id, meshes: model.geometryResult?.meshes.length })),
-        replayMeshes: complete.length, replayGeometrySha256: originalIdentity,
+        replayMeshes: complete.length, previouslyStamped, replayGeometrySha256: originalIdentity,
         counts: complete.reduce((sum, mesh) => {
           const counts = meshGeometryCounts(mesh);
           return { vertices: sum.vertices + counts.vertices, triangles: sum.triangles + counts.triangles };
-        }, { vertices: 0, triangles: 0 }), delta,
+        }, { vertices: 0, triangles: 0 }), loadDelta, delta,
         scope: 'Mounted canonical-output replay; no timing, GPU, whole-load memory or worker-pool acceptance.' }));
       assert.equal(delta['viewer.appearanceSource.meshes'] ?? 0, complete.length,
         'old peer and accumulated meshes must not be revisited on each append');

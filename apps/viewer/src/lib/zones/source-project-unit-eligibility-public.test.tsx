@@ -56,7 +56,7 @@ for (const disposition of ['assigned', 'unassigned', 'overlay', 'deleted'] as co
       assert.equal(String(native.attributes[3]).replace(/\./g, ''), 'METRE');
       current.setQuantity(f.f.id, 'Qto_EligibilityControl', 'NativeLength', 35, QuantityType.Length, normalized);
       const saved = await parse(editedModelBytes(source, current));
-      const qset = parser.extractEntityQuantitiesOnDemand(saved, f.f.id).find(set => set.name === 'Qto_EligibilityControl');
+      const qset = parser.extractQuantitiesOnDemand(saved, f.f.id).find(set => set.name === 'Qto_EligibilityControl');
       const quantity = qset?.quantities.find(q => q.name === 'NativeLength'); assert.ok(quantity);
       assert.equal(quantity.value, 35);
       assert.equal(quantity.explicitUnit, 'mm');

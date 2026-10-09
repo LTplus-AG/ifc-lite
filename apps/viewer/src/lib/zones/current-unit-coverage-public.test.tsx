@@ -143,6 +143,7 @@ test('#7353 implicit occurrence and material measures remain raw when current ph
   const volumeLabel = [...material.querySelectorAll('span')].find(span => span.textContent === 'Volume');
   assert.ok(volumeLabel, 'real native selected material has aggregated occurrence volume');
   const total = volumeLabel.nextElementSibling; assert.ok(total);
+  assert.equal(total.textContent, '54.48', 'unit-context refusal preserves the measured native fixture raw aggregate instead of hiding it');
   assert.doesNotMatch(total.textContent ?? '', /[A-Za-z²³]/,
     'unavailable aggregate context preserves a raw total without a physical suffix or override conversion');
 });

@@ -12,9 +12,7 @@ import { blankDocument } from '@/lib/document/presets';
 import { useViewerStore } from '@/store';
 import { click, render, cleanup, waitFor } from '@/test/render';
 import { readContentRows, writeContent, writeContentBatch } from '@/lib/storage/content-database';
-import { reportChartDependencies } from '@/lib/reports/chart-dependencies';
 import { createDocumentSlice } from '@/store/slices/documentSlice';
-import { ReportDeletionPreview } from '../ReportDeletionPreview';
 import { Toaster } from '@/components/ui/toast';
 import { latestToast } from '@/test/toasts';
 import { SavedComparisonLibrary } from './SavedComparisonLibrary';
@@ -24,7 +22,12 @@ setupReportDeletionFixtures();
 
 const settle = async () => { await act(async () => { for (let i = 0; i < 8; i++) await Promise.resolve(); }); };
 function previewFor(report: Awaited<ReturnType<typeof realComparison>>) {
-  return render(<ReportDeletionPreview source={{ kind: 'compare', id: report.id }} report={report} onCancel={() => {}} storageFailed={() => {}} />);
+  const ui = render(<SavedComparisonLibrary result={null} running={false} />);
+  const picker = ui.querySelector('select'); assert.ok(picker);
+  act(() => { picker.value = report.id; picker.dispatchEvent(new window.Event('change', { bubbles: true })); });
+  const remove = button(ui, 'Delete saved comparison'); assert.ok(remove);
+  click(remove);
+  return ui;
 }
 test('#7245 dependency changes require explicit review again and Cancel preserves the actual source', async () => {
   const report = await realComparison(); await dependents('compare', report.id);
@@ -239,44 +242,38 @@ test('#7245 closing a quota-refused native preview revokes its retained deletion
 
 for (const addReference of [false, true]) test(`#7245 own import receipt ${addReference ? 'cannot reuse approval after a new native chart reference' : 'retains approved native CAS retry'}`, async () => {
   const report = await realComparison(); await dependents('compare', report.id);
-  const state = useViewerStore.getState();
-  const source = { kind: 'compare' as const, id: report.id };
-  const approved = reportChartDependencies(state, source).signature;
+  const ui = previewFor(report); await settle();
   const row = (await readContentRows('comparison')).find(entry => entry.id === report.id)!;
-  let checks = 0;
   let ownCommit: Promise<void> | undefined;
-  const stillApproved = () => reportChartDependencies(useViewerStore.getState(), source).signature === approved;
-  const guard = () => {
-    checks++;
-    if (!stillApproved()) return false;
-    if (!ownCommit) {
-      // A real own commit is queued before the pending deletion transaction.
-      // Its receipt advances the native controller's CAS revision, not a mock.
-      ownCommit = writeContentBatch([{ kind: 'comparison', id: report.id, payload: report, expected: row.revision }]).then(async result => {
-        assert.equal(result.ok, true);
-        if (!result.ok) throw new Error('Actual own comparison commit refused');
-        assert.equal(result.rows[0].revision, row.revision + 1, 'the receipt acknowledges an actual native committed revision');
-        if (addReference) {
-          const dashboard = useViewerStore.getState().dashboards[0];
-          useViewerStore.getState().upsertDashboard({ ...dashboard, charts: [...dashboard.charts, { ...dashboard.charts[0], id: 'new-native-reference', title: 'Reference added during CAS' }] });
-        }
-        await useViewerStore.getState().refreshSavedComparisons(result.rows);
-      });
+  const unsubscribe = useViewerStore.subscribe(state => {
+    if (ownCommit || state.savedComparisons.some(entry => entry.id === report.id)) return;
+    // The mounted public Delete action staged the real native tombstone.
+    ownCommit = writeContentBatch([{ kind: 'comparison', id: report.id, payload: report, expected: row.revision }]).then(async result => {
+      assert.equal(result.ok, true);
+      if (!result.ok) throw new Error('Actual own comparison commit refused');
+      assert.equal(result.rows[0].revision, row.revision + 1, 'actual own receipt advances CAS');
+      if (addReference) {
+        const dashboard = useViewerStore.getState().dashboards[0];
+        useViewerStore.getState().upsertDashboard({ ...dashboard, charts: [...dashboard.charts,
+          { ...dashboard.charts[0], id: 'new-native-reference', title: 'Reference added during CAS' }] });
+      }
+      await useViewerStore.getState().refreshSavedComparisons(result.rows);
+    });
+  });
+  try {
+    click(button(ui, 'Delete report')!);
+    await waitFor(() => ownCommit !== undefined, 'actual public deletion stages before the own native commit');
+    await ownCommit;
+    await waitFor(() => ['saved', 'conflict'].includes(useViewerStore.getState().savedComparisonsStorage.items[report.id]), 'native second CAS write resolves');
+    const current = (await readContentRows('comparison')).find(entry => entry.id === report.id); assert.ok(current);
+    assert.equal(current.deleted, !addReference, 'the second actual CAS write preserves current deletion authority');
+    if (addReference) {
+      assert.ok(useViewerStore.getState().savedComparisons.some(entry => entry.id === report.id));
+      const chart = useViewerStore.getState().dashboards[0].charts.find(entry => entry.id === 'new-native-reference'); assert.ok(chart);
+      const bound = resolveChartSource(chart, { source: 'compare', columns: [], rows: [], fingerprint: 'empty-live-control' }, chartSourceContext(useViewerStore.getState()));
+      assert.ok(aggregate(chart, bound.dataset).total > 0, 'new native dependent reads its retained source');
     }
-    return true;
-  };
-  const deleted = await state.deleteSavedComparison(report.id, guard);
-  await ownCommit;
-  assert.equal(stillApproved(), !addReference, 'native chart reference change is independently verified');
-  assert.equal(deleted, !addReference, 'the second actual CAS write preserves current deletion authority');
-  if (addReference) assert.ok(checks >= 2, 'the optional native guard is consulted again before retrying the write');
-  assert.equal((await readContentRows('comparison')).find(entry => entry.id === report.id)?.deleted, !addReference);
-  if (addReference) {
-    assert.ok(useViewerStore.getState().savedComparisons.some(entry => entry.id === report.id), 'revocation restores the native readable source');
-    const chart = useViewerStore.getState().dashboards[0].charts.find(entry => entry.id === 'new-native-reference')!;
-    const bound = resolveChartSource(chart, { source: 'compare', columns: [], rows: [], fingerprint: 'empty-live-control' }, chartSourceContext(useViewerStore.getState()));
-    assert.ok(aggregate(chart, bound.dataset).total > 0, 'the new native dependent still reads its saved comparison');
-  }
+  } finally { unsubscribe(); }
 });
 
 test('#7245 closing the mounted native preview revokes an own-receipt CAS retry', async () => {

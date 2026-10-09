@@ -10,6 +10,7 @@
  * anything moved since.
  */
 
+import { authoringCurtainWallGhost } from './model-authoring-curtain-wall-ghost';
 import { resolveReviewedLayers, LayerRefusal } from './model-authoring-layers';
 import { gridCreationGhost } from './model-authoring-grid-ghost';
 import { nativeGridExpected, sameGridExpected } from './model-authoring-grid-native';
@@ -184,11 +185,13 @@ function resolve(ctx: Context, row: AuthoringRow): void {
       if('storey' in op){const storey=locate(ctx,op.storey);join(row,storey.modelId);if(!liveEntityConforms(r.dataStore,storey.expressId,'IfcBuildingStorey',r.view))throw new Refusal('conflict','Replacement target is not an IfcBuildingStorey');row.resolved.storey=storey.expressId;row.before.storeyName=nameOf(r,storey.expressId);}
       row.previewUnavailable=true;return;
     }
+    case 'curtainWall.create':
     case 'grid.create': case 'column.createOnGrid':
     case 'stair.create': case 'railing.create':
     case 'element.create': {
       const storey = locate(ctx, op.storey);
       join(row, storey.modelId);
+      if(op.op==='curtainWall.create'){const data=ctx.state.models.get(storey.modelId)?.ifcDataStore;if(!data?.source.byteLength||String(data.schemaVersion).toUpperCase()==='IFC5')throw new Refusal('unsupported','Curtain walls require a native IFC2X3, IFC4 or IFC4X3 source');}
       if(op.op==='stair.create'||op.op==='railing.create'){const nativeRefusal=stairRailingRefusal(ctx.state,storey.modelId);if(nativeRefusal)throw new Refusal('unsupported',nativeRefusal);}
       const r = reader(ctx, storey.modelId);
       if (!liveEntityConforms(r.dataStore, storey.expressId, 'IfcBuildingStorey', r.view)) throw new Refusal('conflict', `${op.storey.globalId} is not an IfcBuildingStorey`);
@@ -376,6 +379,7 @@ export function previewModelAuthoring(state: ViewerState, batch: ModelAuthoringB
   }
   for(const row of ctx.rows)if(row.status==='ready'&&row.op.op==='hosted.create'&&'params' in row.op)row.previewUnavailable=!authoringSlabOpeningGhost(state,row,ctx.rows,0);
   for(const row of ctx.rows)if(row.status==='ready'&&['stair.create','railing.create','stair.replace','railing.replace'].includes(row.op.op))row.previewUnavailable=!stairRailingGhost(state,batch,row,0);
+  for (const row of ctx.rows) if (row.status === 'ready' && row.op.op === 'curtainWall.create') row.previewUnavailable = authoringCurtainWallGhost(state, batch, row, 0).length === 0;
   for (const row of ctx.rows) if (row.status === 'ready' && (row.op.op === 'grid.create' || row.op.op === 'column.createOnGrid')) row.previewUnavailable = gridCreationGhost(state, batch, row, 0).length === 0;
   const preview = { batch, rows: ctx.rows, mutationVersion: state.mutationVersion, digest: batchDigest(batch) };
   captureAuthoringSources(state, preview);

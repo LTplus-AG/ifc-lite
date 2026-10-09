@@ -1,3 +1,4 @@
+import { STRUCTURAL_OPS } from './structural-graph-proposal';
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
@@ -19,11 +20,12 @@ import { VERDICT_SPEC_LIMIT, type ReceiptValidation } from './validation-verdict
 const record = (value: unknown): value is Record<string, unknown> =>
   !!value && typeof value === 'object' && !Array.isArray(value);
 const scalar = (value: unknown) => value === null || ['string', 'number', 'boolean'].includes(typeof value);
-const OPS = new Set<string>(['property.set', 'property.delete', 'quantity.set', 'attribute.set', 'room.command', ...AUTHORING_OPS]);
+const OPS = new Set<string>(['property.set', 'property.delete', 'quantity.set', 'attribute.set', 'room.command', ...STRUCTURAL_OPS, ...AUTHORING_OPS]);
 
 function applied(value: unknown): value is AppliedChange {
   return record(value) && Number.isInteger(value.index) && OPS.has(String(value.op)) && typeof value.globalId === 'string'
-    && typeof value.modelId === 'string' && typeof value.field === 'string' && scalar(value.before) && scalar(value.after);
+    && typeof value.modelId === 'string' && typeof value.field === 'string' && scalar(value.before) && scalar(value.after)
+    && (!STRUCTURAL_OPS.includes(value.op as typeof STRUCTURAL_OPS[number]) || Number.isSafeInteger(value.expressId) && (value.expressId as number) > 0);
 }
 
 const count = (value: unknown) => Number.isInteger(value) && (value as number) >= 0;
@@ -49,7 +51,8 @@ export function decodeModelChangeReceipt(value: unknown): ModelChangeReceipt | n
   if (!value.applied.every(applied)) return null;
   if (!value.skipped.every((skip) => record(skip) && Number.isInteger(skip.index) && typeof skip.status === 'string')) return null;
   if (value.undoneAt !== undefined && typeof value.undoneAt !== 'string') return null;
-  if (value.kind !== undefined && value.kind !== 'model.authoring' && value.kind !== 'room.command') return null;
+  if (value.kind !== undefined && value.kind !== 'model.authoring' && value.kind !== 'room.command' && value.kind !== 'structural.graph') return null;
+  if (value.applied.some(item => record(item) && STRUCTURAL_OPS.includes(item.op as typeof STRUCTURAL_OPS[number])) && value.kind !== 'structural.graph') return null;
   if (value.validation !== undefined && !validation(value.validation)) return null;
   return structuredClone(value) as unknown as ModelChangeReceipt;
 }

@@ -1,3 +1,4 @@
+import { nativeStructuralTransportEvidence } from '@/lib/actions/structural-graph-evidence';
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
@@ -159,6 +160,7 @@ function elementRow(s: ViewerState, ref: EntityRef, source: ModelSource, rich: b
     type: effectiveSelectedClass(source.store, source.view, ref.expressId),
     name: typeof name === 'string' && name.length > 0 ? bounded(name) : null,
     ...nativeAuthoringEvidence(nativeTarget, ref.expressId),
+    nativeStructural: nativeStructuralTransportEvidence(nativeTarget, ref.expressId),
     attributes, psets, psetCount: data.psets.length, quantities, qsetCount: data.qsets.length,
     nativeEdit: nativeEditEvidence(nativeTarget, ref.expressId),
     nativeType: nativeTypeEvidence(s, nativeTarget, ref.expressId),

@@ -11,7 +11,10 @@ import { useViewerStore } from '@/store';
 import { recordModellingEdit } from '@/store/slices/mutation-modelling-records';
 import { GROUND_STOREY, SAMPLE_MODEL, seedAuthoringSample, parseIfc, danglingReferences } from '@/test/authoring-sample-fixture';
 import { editedModelBytes } from '@/lib/export/edited-model-bytes';
-import { parseModelAuthoringBatch } from './model-authoring';
+import { parseStructuralProposal } from './structural-graph-proposal';
+import { prepareStructuralReview } from './structural-graph-review';
+import { readStructuralSnapshot } from './structural-graph-evidence';
+import { readOnlyModelEditTarget } from './model-authoring-read-target';
 
 // Campaign6812 finite audit: supplied analytical geometry, restraint booleans
 // and literal load components are test inputs, never inferred engineering design.
@@ -72,9 +75,18 @@ async function nativeGraph() {
 test('Campaign6812 supplied native Structural graph factory survives independent IFC reparse and grouped Undo/Redo', async () => { await nativeGraph(); });
 test('Campaign6812 existing supplied native StructuralAnalysisModel should admit a reviewed proposal after the full native control', async () => {
   await nativeGraph();
-  assert.doesNotThrow(() => parseModelAuthoringBatch(JSON.stringify({ version: 1, kind: 'model.authoring', title: 'Supplied analytical graph', units: 'm', frame: 'storey-local', operations: [{ op: 'structural.analysis.create', ref: 'analysis', params: { Name: 'Reviewed supplied analytical graph', PredefinedType: 'LOADING_3D' } }] })), 'reviewed Assistant route must admit the already native-supported supplied analysis owner');
+  const state = useViewerStore.getState(), target = readOnlyModelEditTarget(state, SAMPLE_MODEL)!;
+  const expected = readStructuralSnapshot(target, [dataStoreStorey(target.dataStore)]);
+  const proposal = parseStructuralProposal(JSON.stringify({ version: 1, kind: 'structural.graph', title: 'Supplied analytical graph', modelId: SAMPLE_MODEL, nativeMeasuresAcknowledged: true, expected, operations: [{ op: 'structural.analysis.create', ref: 'analysis', params: { Name: 'Reviewed supplied analytical graph', PredefinedType: 'LOADING_3D' } }] }));
+  const bytes = editedModelBytes(target.dataStore, target.view), history = state.undoStacks.get(SAMPLE_MODEL)?.length;
+  const review = prepareStructuralReview(useViewerStore, proposal);
+  assert.ok(review.delta.some(row => row.after?.type === 'IfcStructuralAnalysisModel'));
+  assert.deepEqual(editedModelBytes(target.dataStore, target.view), bytes);
+  assert.equal(useViewerStore.getState().undoStacks.get(SAMPLE_MODEL)?.length, history);
+  review.commit();
+  assert.ok(extractStructuralOnDemand(await parseIfc(editedModelBytes(target.dataStore, useViewerStore.getState().mutationViews.get(SAMPLE_MODEL)!))).analysisModels.some(row => row.name === 'Reviewed supplied analytical graph'));
 });
-
+function dataStoreStorey(store: Parameters<typeof extractStructuralOnDemand>[0]) { return store.entities.getExpressIdByGlobalId(GROUND_STOREY)!; }
 test('Campaign6812 canonical Structural refusals preserve source and grouped history', async () => {
   const { dataStore, view } = await seedAuthoringSample();
   const storey = dataStore.entities.getExpressIdByGlobalId(GROUND_STOREY)!;

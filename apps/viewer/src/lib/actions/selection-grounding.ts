@@ -1,3 +1,4 @@
+import { nativeStructuralEvidence } from './structural-graph-evidence';
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
@@ -25,6 +26,7 @@ export interface SelectionElement extends NativeAuthoringEvidence {
   /** IFC class, `IfcPascalCase`. */
   type: string;
   name: string | null;
+  nativeStructural: ReturnType<typeof nativeStructuralEvidence>;
   nativeEdit: NativeEditEvidence;
   nativeType: NativeTypeEvidence;
 }
@@ -97,6 +99,7 @@ export function captureSelectionGrounding(state: GroundingState, limit = SELECTI
       name: nativeRootName({ dataStore: store, view: state.mutationViews.get(ref.modelId) }, ref.expressId) || null,
       nativeEdit: nativeEditEvidence(nativeTarget(ref.modelId), ref.expressId),
       ...nativeAuthoringEvidence(nativeTarget(ref.modelId), ref.expressId),
+      nativeStructural: nativeStructuralEvidence(nativeTarget(ref.modelId), ref.expressId),
       nativeType: nativeTypeEvidence(state, nativeTarget(ref.modelId), ref.expressId),
     });
   }

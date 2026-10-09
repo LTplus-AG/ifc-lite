@@ -40,11 +40,11 @@ export function zoneQuantitySources(s: ViewerState) {
       let units: CurrentProjectUnitResult = { status: 'available', reason: null, value: ProjectUnits.empty() };
       if (store && view) units = readCurrentProjectUnits(store, view);
       else if (store?.source?.length) {
-          try { units = { status: 'available', reason: null, value: extractProjectUnits(store.source, store.entityIndex) }; }
-          catch (error) {
-            console.warn('[Assistant] Zone source project units are unreadable', error);
-            units = { status: 'unavailable', reason: 'Source project units are unreadable', value: null };
-          }
+        try { units = { status: 'available', reason: null, value: extractProjectUnits(store.source, store.entityIndex) }; }
+        catch (error) {
+          console.warn('[Assistant] Zone source project units are unreadable', error);
+          units = { status: 'unavailable', reason: 'Source project units are unreadable', value: null };
+        }
       }
       source = { store, query: store ? new IfcQuery(store) : null, units };
       models.set(ref.modelId, source);

@@ -151,6 +151,7 @@ for (const attached of [false, true]) {
       row = captured.evidence.rows[0].data;
       evidence = row.nativeLayers;
     }
+    assert.ok(evidence, 'the actual provider request must carry native layer evidence before its availability can be certified');
     assert.equal(evidence.status, 'available');
     assert.equal(evidence.units, 'm');
     assert.equal(evidence.layerCount, 2);

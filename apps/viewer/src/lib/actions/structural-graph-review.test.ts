@@ -119,7 +119,8 @@ test('#7318 changed named and positional source storey frames refuse creation af
     assert.ok(placement > 0);
     const operation: StructuralOperation = { op: 'structural.member.create', storey, params: { Name: 'Supplied current frame', Start: [0, 0, 0], End: [4, 0, 0] } };
     assert.ok(prepareStructuralReview(useViewerStore, proposal(storey, [operation])).delta.length);
-    view.setAttribute(placement, field, '$', true);
+    if (field === '@0') view.setPositionalAttribute(placement, 0, null);
+    else view.setAttribute(placement, field, '$', true);
     assert.equal((await parseIfc(editedModelBytes(dataStore, view))).getEntity(placement)?.attributes[0], null, 'actual native STEP/reparse confirms the current placement retarget before review refuses it');
     assert.throws(() => prepareStructuralReview(useViewerStore, proposal(storey, [operation])), /frame|placement/);
   }

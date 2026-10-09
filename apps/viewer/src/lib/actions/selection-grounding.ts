@@ -1,6 +1,8 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+import { nativeStructuralEvidence } from './structural-graph-evidence';
+
 
 /**
  * The current selection as bounded, model-resolved grounding: GlobalId, model,
@@ -11,23 +13,25 @@
  * citations resolve by).
  */
 
+import { nativeAuthoringEvidence, type NativeAuthoringEvidence } from './native-authoring-evidence';
 import type { ViewerState } from '@/store';
 import { resolveEntityRefGlobalIdFromState } from '@/store/resolveEntityRef';
 import { effectiveSelectedClass } from '@/components/viewer/properties/effectiveSelectedClass';
 import { readOnlyModelEditLease, type NativeReadLease } from './model-authoring-read-target';
 import { nativeEditEvidence, nativeRootName, type NativeEditEvidence } from './native-edit-evidence';
 import { nativeTypeEvidence, type NativeTypeEvidence } from './native-type-evidence';
-import { nativeStairEvidenceFromTarget } from './model-authoring-stair-lifecycle';
+import { nativeCostEvidence, type CostEvidence } from './cost-graph-evidence';
 
-export interface SelectionElement {
+export interface SelectionElement extends NativeAuthoringEvidence {
   globalId: string;
   modelId: string;
   /** IFC class, `IfcPascalCase`. */
   type: string;
   name: string | null;
+  nativeStructural: ReturnType<typeof nativeStructuralEvidence>;
   nativeEdit: NativeEditEvidence;
   nativeType: NativeTypeEvidence;
-  nativeStairExpected: ReturnType<typeof nativeStairEvidenceFromTarget>;
+  nativeCost: CostEvidence;
 }
 
 export interface SelectionGrounding {
@@ -97,8 +101,10 @@ export function captureSelectionGrounding(state: GroundingState, limit = SELECTI
       type: effectiveSelectedClass(store, state.mutationViews.get(ref.modelId), ref.expressId) ?? 'unknown',
       name: nativeRootName({ dataStore: store, view: state.mutationViews.get(ref.modelId) }, ref.expressId) || null,
       nativeEdit: nativeEditEvidence(nativeTarget(ref.modelId), ref.expressId),
+      ...nativeAuthoringEvidence(nativeTarget(ref.modelId), ref.expressId),
+      nativeStructural: nativeStructuralEvidence(nativeTarget(ref.modelId), ref.expressId),
       nativeType: nativeTypeEvidence(state, nativeTarget(ref.modelId), ref.expressId),
-      nativeStairExpected: nativeStairEvidenceFromTarget(nativeTarget(ref.modelId), ref.expressId),
+      nativeCost: nativeCostEvidence(nativeTarget(ref.modelId), ref.expressId),
     });
   }
   const grounding = { capturedAt: new Date().toISOString(), total, elements, unresolved,

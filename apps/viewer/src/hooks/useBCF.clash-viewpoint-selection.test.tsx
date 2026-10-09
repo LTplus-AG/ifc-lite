@@ -36,6 +36,11 @@ import type { IfcDataStore } from '@ifc-lite/parser';
 import { writeBCF, type BCFProject, type BCFViewpoint } from '@ifc-lite/bcf';
 import { useViewerStore, type ViewerState } from '@/store';
 import { useBCF } from './useBCF.js';
+import { StoreEditor } from '@ifc-lite/mutations';
+import { generateIfcGuid } from '@ifc-lite/encoding';
+import { BACK_WALL, SAMPLE_MODEL, parseIfc, seedAuthoringSample } from '@/test/authoring-sample-fixture';
+import { editedModelBytes } from '@/lib/export/edited-model-bytes';
+import { getMaxExpressId } from '@/hooks/ingest/viewerModelIngest';
 
 /** Express ids behind the two clashing entities, and their IFC GlobalIds. */
 const CLASH_A_ID = 501;
@@ -388,26 +393,23 @@ describe('useBCF — clash-to-BCF export carries the clashing pair (#4806)', () 
   });
 
   it('includes a StoreEditor-created clash member in selection, coloring, and isolation (#4921)', async () => {
-    const overlayId = 900;
-    const overlayGuid = 'AUTHORED00000000000001';
+    const { dataStore: nativeStore, view } = await seedAuthoringSample();
+    const sourceId = nativeStore.entities.getExpressIdByGlobalId(BACK_WALL);
+    const source = nativeStore.getEntity(sourceId); assert.ok(source);
+    const overlayGuid = generateIfcGuid(), attributes = [...source.attributes];
+    attributes[0] = overlayGuid; attributes[2] = 'Native authored BCF member';
+    const overlayId = new StoreEditor(nativeStore, view).addEntity(source.type, attributes).expressId;
+    const exported = await parseIfc(editedModelBytes(nativeStore, view));
+    assert.equal(exported.entities.getGlobalId(overlayId), overlayGuid);
+    const nativeModel = useViewerStore.getState().models.get(SAMPLE_MODEL); assert.ok(nativeModel);
+    const parsedMax = getMaxExpressId(nativeStore, []);
+    assert.ok(overlayId > parsedMax, 'The real authored ID is outside the parsed source range');
     await act(async () => {
       useViewerStore.setState({
-        models: new Map([
-          ['ordinary', {
-            id: 'ordinary', name: 'ordinary', idOffset: 0, maxExpressId: CLASH_B_ID,
-            ifcDataStore: dataStore, geometryResult: null, loadedAt: 0,
-          }],
-        ]) as unknown as ViewerState['models'],
+        models: new Map([['ordinary', { ...nativeModel, id: 'ordinary', maxExpressId: parsedMax, ifcDataStore: nativeStore }]]),
         ifcDataStore: null,
         isolatedEntities: new Set([overlayId]),
-        mutationViews: new Map([
-          ['ordinary', {
-            getAttributeMutationsForEntity: () => [],
-            getNewEntity: (expressId: number) => expressId === overlayId
-              ? { attributes: [overlayGuid] }
-              : null,
-          }],
-        ]) as unknown as ViewerState['mutationViews'],
+        mutationViews: new Map([['ordinary', view]]),
       });
     });
 

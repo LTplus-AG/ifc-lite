@@ -35,6 +35,7 @@ import {
   asCoordinateTriple,
   asDirectionRatios,
   readAttributes,
+  readPlacementAttributes,
   resolvePlacementChain,
 } from './placement-core.js';
 
@@ -152,12 +153,12 @@ export function resolveLinearElementChain(
 
   // Pull the axis direction. IfcAxis2Placement3D.Axis (index 1) may
   // be null → implicit world +Z (matches the column builder).
-  const axisAttrs = readAttributes(dataStore, view, editor, chain.axisPlacementId);
+  const axisAttrs = readPlacementAttributes(dataStore, view, editor, chain.axisPlacementId);
   if (!axisAttrs) return null;
   const axisDirId = asExpressIdRef(axisAttrs[1]);
   let axisDirection: [number, number, number] = [0, 0, 1];
   if (axisDirId !== null) {
-    const dirAttrs = readAttributes(dataStore, view, editor, axisDirId);
+    const dirAttrs = readPlacementAttributes(dataStore, view, editor, axisDirId);
     if (!dirAttrs) return null;
     const ratios = asDirectionRatios(dirAttrs[0]);
     if (!ratios) return null;

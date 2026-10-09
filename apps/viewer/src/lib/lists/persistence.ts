@@ -43,11 +43,13 @@ export function loadListDefinitions(): ListDefinition[] {
   }
 }
 
-export function saveListDefinitions(definitions: ListDefinition[]): void {
+export function saveListDefinitions(definitions: ListDefinition[]): boolean {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(definitions.map(encodeSavedList)));
-  } catch {
-    console.warn('[Lists] Failed to save list definitions to localStorage');
+    return true;
+  } catch (error) {
+    console.warn('[Lists] Failed to save list definitions to localStorage', error);
+    return false;
   }
 }
 

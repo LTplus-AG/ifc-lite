@@ -3375,6 +3375,518 @@
       "gzipSha256": "246424f631de59c56b37a8b19148eff099ffbbf51bfeef30768217e3b751968a",
       "rawBytes": 239,
       "gzipBytes": 201
+    },
+    {
+      "rawPath": "local-correction/actual-blob-admitted-posix-6954d2e8/actual-fixtures/baseline-tK7h0D/ifc-job-no-start-9fyuBu/archived-file-pins.json",
+      "gzipPath": "local-correction/actual-blob-admitted-posix-6954d2e8/actual-fixtures/baseline-tK7h0D/ifc-job-no-start-9fyuBu/archived-file-pins.json.gz",
+      "rawSha256": "5a965f1d5cdd7e2703d6d55231cc1ffa0cdec1adeb219eb381a10f797b92dfd5",
+      "gzipSha256": "7bdba4bdb4e61fed57cb373ffece2db296432d673f77969c2322589ac8d27f1a",
+      "rawBytes": 192,
+      "gzipBytes": 167
+    },
+    {
+      "rawPath": "local-correction/actual-blob-admitted-posix-6954d2e8/actual-fixtures/baseline-tK7h0D/ifc-job-no-start-9fyuBu/fixture-metadata.json",
+      "gzipPath": "local-correction/actual-blob-admitted-posix-6954d2e8/actual-fixtures/baseline-tK7h0D/ifc-job-no-start-9fyuBu/fixture-metadata.json.gz",
+      "rawSha256": "674fbb140ceab23da5a7b20704f32d2e1ecea377e7a1c23c9f299d42753a3d49",
+      "gzipSha256": "cf16efaabc07bda07e0921478ec8672fb3aa0654825e97d410eabbf011930b78",
+      "rawBytes": 267,
+      "gzipBytes": 208
+    },
+    {
+      "rawPath": "local-correction/actual-blob-admitted-posix-6954d2e8/actual-fixtures/baseline-tK7h0D/ifc-job-no-start-9fyuBu/no-start-receipt.json",
+      "gzipPath": "local-correction/actual-blob-admitted-posix-6954d2e8/actual-fixtures/baseline-tK7h0D/ifc-job-no-start-9fyuBu/no-start-receipt.json.gz",
+      "rawSha256": "0f64f431590066becd1316112eccf438f3f791fc63cf5e4696ce16d8a31525d4",
+      "gzipSha256": "8b5f80e7e67683f49ea4f9697a4843da7c62e71a0b1de8ef9a41dee202ea39c4",
+      "rawBytes": 1583,
+      "gzipBytes": 760
+    },
+    {
+      "rawPath": "local-correction/actual-blob-admitted-posix-6954d2e8/actual-fixtures/baseline-tK7h0D/ifc-job-no-start-SJybM4/archived-file-pins.json",
+      "gzipPath": "local-correction/actual-blob-admitted-posix-6954d2e8/actual-fixtures/baseline-tK7h0D/ifc-job-no-start-SJybM4/archived-file-pins.json.gz",
+      "rawSha256": "419ae45dc8c6ce0968fe5a9b728b0ceee90024e9d29db93cae961689597d43bb",
+      "gzipSha256": "ccf89c4167961eb1f901690bfba171f179b6d860bc7c3efeb88e648863c2ca05",
+      "rawBytes": 192,
+      "gzipBytes": 165
+    },
+    {
+      "rawPath": "local-correction/actual-blob-admitted-posix-6954d2e8/actual-fixtures/baseline-tK7h0D/ifc-job-no-start-SJybM4/bin/powershell.exe",
+      "gzipPath": "local-correction/actual-blob-admitted-posix-6954d2e8/actual-fixtures/baseline-tK7h0D/ifc-job-no-start-SJybM4/bin/powershell.exe.gz",
+      "rawSha256": "aabc4dc64ad6ffef101f0fec08a3d1ba6428d419e886c2cbc56a74ff0a5f7a3e",
+      "gzipSha256": "9ef688e2b1880807c2537173a80e7f8e77a2a0c46d8eba2e2573ef9101ba3b7d",
+      "rawBytes": 14,
+      "gzipBytes": 34
+    },
+    {
+      "rawPath": "local-correction/actual-blob-admitted-posix-6954d2e8/actual-fixtures/baseline-tK7h0D/ifc-job-no-start-SJybM4/fixture-metadata.json",
+      "gzipPath": "local-correction/actual-blob-admitted-posix-6954d2e8/actual-fixtures/baseline-tK7h0D/ifc-job-no-start-SJybM4/fixture-metadata.json.gz",
+      "rawSha256": "459255f10db243aaf68b6dec2465f5aa35de03eb5bc6270d85b5fd7a59aa1efb",
+      "gzipSha256": "99d743ca675cb73cd353c8705233f08755f1d9f7ad725ce0d5b8e9b5073dea13",
+      "rawBytes": 268,
+      "gzipBytes": 210
+    },
+    {
+      "rawPath": "local-correction/actual-blob-admitted-posix-6954d2e8/actual-fixtures/baseline-tK7h0D/ifc-job-no-start-SJybM4/no-start-receipt.json",
+      "gzipPath": "local-correction/actual-blob-admitted-posix-6954d2e8/actual-fixtures/baseline-tK7h0D/ifc-job-no-start-SJybM4/no-start-receipt.json.gz",
+      "rawSha256": "623468eeaf83ae099525b01de5f988474948c81538f5ac82ac520c715abc5c23",
+      "gzipSha256": "921edef51a72a927bd4c9ada526294ba51470eb401b47cc24e737a20dbfb99fe",
+      "rawBytes": 1586,
+      "gzipBytes": 759
+    },
+    {
+      "rawPath": "local-correction/actual-blob-admitted-posix-6954d2e8/actual-fixtures/original-meY0kE/ifc-job-no-start-8GjL0f/archived-file-pins.json",
+      "gzipPath": "local-correction/actual-blob-admitted-posix-6954d2e8/actual-fixtures/original-meY0kE/ifc-job-no-start-8GjL0f/archived-file-pins.json.gz",
+      "rawSha256": "1cf9f09531ada78f5d04ed04152b910ab33904a3f7fffcbf5047f4d1972ff7a9",
+      "gzipSha256": "3e91693fdb67c34121d84178a7151efab58f93749f3d9f38ddf0ce3682a9429a",
+      "rawBytes": 192,
+      "gzipBytes": 165
+    },
+    {
+      "rawPath": "local-correction/actual-blob-admitted-posix-6954d2e8/actual-fixtures/original-meY0kE/ifc-job-no-start-8GjL0f/fixture-metadata.json",
+      "gzipPath": "local-correction/actual-blob-admitted-posix-6954d2e8/actual-fixtures/original-meY0kE/ifc-job-no-start-8GjL0f/fixture-metadata.json.gz",
+      "rawSha256": "959503629084b50eeffed9c29d2043942100b058d869589d79f53ef11eec7797",
+      "gzipSha256": "cd7b501e2d0ec2798edcbdfab5adc76268a0ee14d41c31155077e772366f34c9",
+      "rawBytes": 267,
+      "gzipBytes": 208
+    },
+    {
+      "rawPath": "local-correction/actual-blob-admitted-posix-6954d2e8/actual-fixtures/original-meY0kE/ifc-job-no-start-8GjL0f/no-start-receipt.json",
+      "gzipPath": "local-correction/actual-blob-admitted-posix-6954d2e8/actual-fixtures/original-meY0kE/ifc-job-no-start-8GjL0f/no-start-receipt.json.gz",
+      "rawSha256": "ada5b8b77ce29e7daa97b0a3140bb1eaf73cccc530c85cec4d887d106a7cb591",
+      "gzipSha256": "2e4182960516655a07161f13340bd3018a291c910fa2917390bbc5ab42b254dc",
+      "rawBytes": 1583,
+      "gzipBytes": 758
+    },
+    {
+      "rawPath": "local-correction/actual-blob-admitted-posix-6954d2e8/actual-fixtures/original-meY0kE/ifc-job-no-start-rnXLPH/archived-file-pins.json",
+      "gzipPath": "local-correction/actual-blob-admitted-posix-6954d2e8/actual-fixtures/original-meY0kE/ifc-job-no-start-rnXLPH/archived-file-pins.json.gz",
+      "rawSha256": "2cc2fffec8cb679706c36e8c5bb10e0c954b2b9a3ad0961c6542747ba4d0c09b",
+      "gzipSha256": "1570b25db257d73c87af0358149a85bab076faaf700783d7c5f8ba5d904ca331",
+      "rawBytes": 192,
+      "gzipBytes": 165
+    },
+    {
+      "rawPath": "local-correction/actual-blob-admitted-posix-6954d2e8/actual-fixtures/original-meY0kE/ifc-job-no-start-rnXLPH/bin/powershell.exe",
+      "gzipPath": "local-correction/actual-blob-admitted-posix-6954d2e8/actual-fixtures/original-meY0kE/ifc-job-no-start-rnXLPH/bin/powershell.exe.gz",
+      "rawSha256": "aabc4dc64ad6ffef101f0fec08a3d1ba6428d419e886c2cbc56a74ff0a5f7a3e",
+      "gzipSha256": "9ef688e2b1880807c2537173a80e7f8e77a2a0c46d8eba2e2573ef9101ba3b7d",
+      "rawBytes": 14,
+      "gzipBytes": 34
+    },
+    {
+      "rawPath": "local-correction/actual-blob-admitted-posix-6954d2e8/actual-fixtures/original-meY0kE/ifc-job-no-start-rnXLPH/fixture-metadata.json",
+      "gzipPath": "local-correction/actual-blob-admitted-posix-6954d2e8/actual-fixtures/original-meY0kE/ifc-job-no-start-rnXLPH/fixture-metadata.json.gz",
+      "rawSha256": "96716df0aba5851b2bd791f9f34e1d2fbcd09805921ca64ddf7cfdb4d2c1f905",
+      "gzipSha256": "7c77cb4b81e97fcbdba7b1e14be8333d0c13bb0fb14962e38a6c4b16307ff9df",
+      "rawBytes": 268,
+      "gzipBytes": 209
+    },
+    {
+      "rawPath": "local-correction/actual-blob-admitted-posix-6954d2e8/actual-fixtures/original-meY0kE/ifc-job-no-start-rnXLPH/no-start-receipt.json",
+      "gzipPath": "local-correction/actual-blob-admitted-posix-6954d2e8/actual-fixtures/original-meY0kE/ifc-job-no-start-rnXLPH/no-start-receipt.json.gz",
+      "rawSha256": "c3afc0c9e7282e66df9a921d9d9887272a3679dde370b576ef09d20da16bf43a",
+      "gzipSha256": "9828f4c0ca54c76a7ae2dd08ecbf47abef979e10b25494987cf4c0fae22e67f9",
+      "rawBytes": 1586,
+      "gzipBytes": 759
+    },
+    {
+      "rawPath": "local-correction/actual-blob-admitted-posix-6954d2e8/actual-fixtures/restored-sflUsj/ifc-job-no-start-WMFHU6/archived-file-pins.json",
+      "gzipPath": "local-correction/actual-blob-admitted-posix-6954d2e8/actual-fixtures/restored-sflUsj/ifc-job-no-start-WMFHU6/archived-file-pins.json.gz",
+      "rawSha256": "f987f3cfd9ee2996e277fd5979bc514207f64da46c9a9b62716d92d7e238d5f4",
+      "gzipSha256": "65a24a19a4048238b0aab6f5e65eef21cd0fd7d62e545eb7e6216919058cdf19",
+      "rawBytes": 192,
+      "gzipBytes": 166
+    },
+    {
+      "rawPath": "local-correction/actual-blob-admitted-posix-6954d2e8/actual-fixtures/restored-sflUsj/ifc-job-no-start-WMFHU6/fixture-metadata.json",
+      "gzipPath": "local-correction/actual-blob-admitted-posix-6954d2e8/actual-fixtures/restored-sflUsj/ifc-job-no-start-WMFHU6/fixture-metadata.json.gz",
+      "rawSha256": "bafcad6dbc11753c614355731a627175af7aeb6678689353035c0574c416d238",
+      "gzipSha256": "851c55ebfe301b003630e44ec155ceac24a626a4c4ac37d6852e0efcdb9754d7",
+      "rawBytes": 267,
+      "gzipBytes": 209
+    },
+    {
+      "rawPath": "local-correction/actual-blob-admitted-posix-6954d2e8/actual-fixtures/restored-sflUsj/ifc-job-no-start-WMFHU6/no-start-receipt.json",
+      "gzipPath": "local-correction/actual-blob-admitted-posix-6954d2e8/actual-fixtures/restored-sflUsj/ifc-job-no-start-WMFHU6/no-start-receipt.json.gz",
+      "rawSha256": "0fa25d685f4b849ab9880c53a5d8dc3d3728e958f35245968e6c2e2aead6a2c6",
+      "gzipSha256": "f05fee226cede7147a994daa5ff9b5863467154eaaf5675cb0c56f45a99c4e0f",
+      "rawBytes": 1583,
+      "gzipBytes": 757
+    },
+    {
+      "rawPath": "local-correction/actual-blob-admitted-posix-6954d2e8/actual-fixtures/restored-sflUsj/ifc-job-no-start-dEdsnA/archived-file-pins.json",
+      "gzipPath": "local-correction/actual-blob-admitted-posix-6954d2e8/actual-fixtures/restored-sflUsj/ifc-job-no-start-dEdsnA/archived-file-pins.json.gz",
+      "rawSha256": "1716e996da5dcc757e94a46e8194b1f0d233d809f9042df1eb3bac6c98ff9fd7",
+      "gzipSha256": "6ae19006f1a9008f54ccb18e33257401f8d27fa67d22ba39408fe548bba11c99",
+      "rawBytes": 192,
+      "gzipBytes": 165
+    },
+    {
+      "rawPath": "local-correction/actual-blob-admitted-posix-6954d2e8/actual-fixtures/restored-sflUsj/ifc-job-no-start-dEdsnA/bin/powershell.exe",
+      "gzipPath": "local-correction/actual-blob-admitted-posix-6954d2e8/actual-fixtures/restored-sflUsj/ifc-job-no-start-dEdsnA/bin/powershell.exe.gz",
+      "rawSha256": "aabc4dc64ad6ffef101f0fec08a3d1ba6428d419e886c2cbc56a74ff0a5f7a3e",
+      "gzipSha256": "9ef688e2b1880807c2537173a80e7f8e77a2a0c46d8eba2e2573ef9101ba3b7d",
+      "rawBytes": 14,
+      "gzipBytes": 34
+    },
+    {
+      "rawPath": "local-correction/actual-blob-admitted-posix-6954d2e8/actual-fixtures/restored-sflUsj/ifc-job-no-start-dEdsnA/fixture-metadata.json",
+      "gzipPath": "local-correction/actual-blob-admitted-posix-6954d2e8/actual-fixtures/restored-sflUsj/ifc-job-no-start-dEdsnA/fixture-metadata.json.gz",
+      "rawSha256": "afdc3ee027bee9782eaa49aa02396f36734b8751912dcff39af6b12c42707458",
+      "gzipSha256": "1f1817b7da8f817224dff150f46b3e76bfe19ca992f4a16132ec22b852d54dd8",
+      "rawBytes": 268,
+      "gzipBytes": 207
+    },
+    {
+      "rawPath": "local-correction/actual-blob-admitted-posix-6954d2e8/actual-fixtures/restored-sflUsj/ifc-job-no-start-dEdsnA/no-start-receipt.json",
+      "gzipPath": "local-correction/actual-blob-admitted-posix-6954d2e8/actual-fixtures/restored-sflUsj/ifc-job-no-start-dEdsnA/no-start-receipt.json.gz",
+      "rawSha256": "38d82be2d3643d52c20552845d022285012be37e96b5c61043f0205aa91b3837",
+      "gzipSha256": "1900d436f0651fe689990a9dbaa1135ee85360fa82138e55b837c7ecd5a96219",
+      "rawBytes": 1586,
+      "gzipBytes": 757
+    },
+    {
+      "rawPath": "local-correction/actual-blob-admitted-posix-6954d2e8/actual-fixtures/reverted-4zRJIP/ifc-job-no-start-S8Yzg7/archived-file-pins.json",
+      "gzipPath": "local-correction/actual-blob-admitted-posix-6954d2e8/actual-fixtures/reverted-4zRJIP/ifc-job-no-start-S8Yzg7/archived-file-pins.json.gz",
+      "rawSha256": "16b087abb0c04c2d2c46373018aa5860a6ecb5b38f0cbc791bd8db03380a7928",
+      "gzipSha256": "1a2af6929077453bcc0e5fbc3ff22cdce6437f033289990ab32fc50fc2c5ac2a",
+      "rawBytes": 192,
+      "gzipBytes": 164
+    },
+    {
+      "rawPath": "local-correction/actual-blob-admitted-posix-6954d2e8/actual-fixtures/reverted-4zRJIP/ifc-job-no-start-S8Yzg7/fixture-metadata.json",
+      "gzipPath": "local-correction/actual-blob-admitted-posix-6954d2e8/actual-fixtures/reverted-4zRJIP/ifc-job-no-start-S8Yzg7/fixture-metadata.json.gz",
+      "rawSha256": "218f874ea648608b75332ec8fb765be6ded11da5bb8dbeac97f5899a7a5ad893",
+      "gzipSha256": "9fc3f7d8988354533f5ae1e1982dc54d63d663800060c57525a3fcc5059bd809",
+      "rawBytes": 267,
+      "gzipBytes": 209
+    },
+    {
+      "rawPath": "local-correction/actual-blob-admitted-posix-6954d2e8/actual-fixtures/reverted-4zRJIP/ifc-job-no-start-S8Yzg7/no-start-receipt.json",
+      "gzipPath": "local-correction/actual-blob-admitted-posix-6954d2e8/actual-fixtures/reverted-4zRJIP/ifc-job-no-start-S8Yzg7/no-start-receipt.json.gz",
+      "rawSha256": "a6fd5b5d781c0911f29aa8571d5a17cf3cd0253e100bc64b861701e63c2588eb",
+      "gzipSha256": "9a584a14e81116c935f3f2cc7823e492940bfc622971efde07ffea5694bdb137",
+      "rawBytes": 1469,
+      "gzipBytes": 742
+    },
+    {
+      "rawPath": "local-correction/actual-blob-admitted-posix-6954d2e8/actual-fixtures/reverted-4zRJIP/ifc-job-no-start-qjUxNG/archived-file-pins.json",
+      "gzipPath": "local-correction/actual-blob-admitted-posix-6954d2e8/actual-fixtures/reverted-4zRJIP/ifc-job-no-start-qjUxNG/archived-file-pins.json.gz",
+      "rawSha256": "036287d4c7a5c9b25dacf812c2f12270d8e138b7a2c913ac9711ff690a6e22e9",
+      "gzipSha256": "b4d86b6525c69e511f7d56fba793012e62587c3b0af42d98ca197e215c2a6a30",
+      "rawBytes": 192,
+      "gzipBytes": 166
+    },
+    {
+      "rawPath": "local-correction/actual-blob-admitted-posix-6954d2e8/actual-fixtures/reverted-4zRJIP/ifc-job-no-start-qjUxNG/bin/powershell.exe",
+      "gzipPath": "local-correction/actual-blob-admitted-posix-6954d2e8/actual-fixtures/reverted-4zRJIP/ifc-job-no-start-qjUxNG/bin/powershell.exe.gz",
+      "rawSha256": "aabc4dc64ad6ffef101f0fec08a3d1ba6428d419e886c2cbc56a74ff0a5f7a3e",
+      "gzipSha256": "9ef688e2b1880807c2537173a80e7f8e77a2a0c46d8eba2e2573ef9101ba3b7d",
+      "rawBytes": 14,
+      "gzipBytes": 34
+    },
+    {
+      "rawPath": "local-correction/actual-blob-admitted-posix-6954d2e8/actual-fixtures/reverted-4zRJIP/ifc-job-no-start-qjUxNG/fixture-metadata.json",
+      "gzipPath": "local-correction/actual-blob-admitted-posix-6954d2e8/actual-fixtures/reverted-4zRJIP/ifc-job-no-start-qjUxNG/fixture-metadata.json.gz",
+      "rawSha256": "d248d7b845160ac5a0090765178d0aa466240aa2cb620bec156c02e8a1041bac",
+      "gzipSha256": "8d2cff456ed69ec819cb3f97de8a99ce01c9c7eff0371f168a8264dbbe194bae",
+      "rawBytes": 268,
+      "gzipBytes": 210
+    },
+    {
+      "rawPath": "local-correction/actual-blob-admitted-posix-6954d2e8/actual-fixtures/reverted-4zRJIP/ifc-job-no-start-qjUxNG/no-start-receipt.json",
+      "gzipPath": "local-correction/actual-blob-admitted-posix-6954d2e8/actual-fixtures/reverted-4zRJIP/ifc-job-no-start-qjUxNG/no-start-receipt.json.gz",
+      "rawSha256": "a53572d367c6be4f132db524ce189ff7a9cfcf8be67e4b39efcf71c713cbb9ba",
+      "gzipSha256": "3dbe0f589ae4852afede0b5aa72f9696155acef565990e9196d56a920c97c26f",
+      "rawBytes": 1471,
+      "gzipBytes": 745
+    },
+    {
+      "rawPath": "local-correction/actual-blob-admitted-posix-6954d2e8/admission.json",
+      "gzipPath": "local-correction/actual-blob-admitted-posix-6954d2e8/admission.json.gz",
+      "rawSha256": "e3ebf8945c5b911c790f1e210f3c1db0eda110ef908be72497b9607f2cad26e8",
+      "gzipSha256": "c1a041f08a1dba6914b57aef7e57d3dd0306d83576fd45a4a274ad2e92fd8554",
+      "rawBytes": 5382,
+      "gzipBytes": 1103
+    },
+    {
+      "rawPath": "local-correction/actual-blob-admitted-posix-6954d2e8/oracle-0-result.json",
+      "gzipPath": "local-correction/actual-blob-admitted-posix-6954d2e8/oracle-0-result.json.gz",
+      "rawSha256": "dca1663a8e89098f99ff6f19349c927a1ea8841c060a6f769051cd87cf476fdd",
+      "gzipSha256": "105f1c13896f4590c65fd00b227dd5af5b135d5b09abd95048ce7d4af09c60c5",
+      "rawBytes": 6805,
+      "gzipBytes": 1376
+    },
+    {
+      "rawPath": "local-correction/actual-blob-admitted-posix-6954d2e8/oracle-0-stderr.log",
+      "gzipPath": "local-correction/actual-blob-admitted-posix-6954d2e8/oracle-0-stderr.log.gz",
+      "rawSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "gzipSha256": "9ceffb7310338057cfe71a4ae1e2c98d2c485d81cdef906532a801f457a38d64",
+      "rawBytes": 0,
+      "gzipBytes": 20
+    },
+    {
+      "rawPath": "local-correction/actual-blob-admitted-posix-6954d2e8/oracle-0-stdout.log",
+      "gzipPath": "local-correction/actual-blob-admitted-posix-6954d2e8/oracle-0-stdout.log.gz",
+      "rawSha256": "d90b5b510d12ae106ed043513cb066deeae5fbb5a56febdd9cb0f7022174459c",
+      "gzipSha256": "cd222e52bd84bc1ca17519cf63ccf2e7cd3d99702b2a09653b40638b3be360a6",
+      "rawBytes": 25419,
+      "gzipBytes": 3557
+    },
+    {
+      "rawPath": "local-correction/actual-blob-admitted-posix-6954d2e8/oracle-0-terminal.json",
+      "gzipPath": "local-correction/actual-blob-admitted-posix-6954d2e8/oracle-0-terminal.json.gz",
+      "rawSha256": "4921cd428e414c33853c0a4ec9c12d073a155b666d5b28898f14eabaa62a5b8d",
+      "gzipSha256": "b5c16c005533aebdff9876596c6ff381ba6a66105573a87ef465a2d14309e540",
+      "rawBytes": 226,
+      "gzipBytes": 177
+    },
+    {
+      "rawPath": "local-correction/actual-blob-admitted-posix-6954d2e8/original-0-parsed.json",
+      "gzipPath": "local-correction/actual-blob-admitted-posix-6954d2e8/original-0-parsed.json.gz",
+      "rawSha256": "ca4a01e5aa5e5657c626c04624a55f7958e9a7b7910cf5aff33f4cd29a671088",
+      "gzipSha256": "0175311332a8864fdce23a9c83383de98d0093db195bef662596abbb41c9e621",
+      "rawBytes": 2083,
+      "gzipBytes": 633
+    },
+    {
+      "rawPath": "local-correction/actual-blob-admitted-posix-6954d2e8/original-0-raw.json",
+      "gzipPath": "local-correction/actual-blob-admitted-posix-6954d2e8/original-0-raw.json.gz",
+      "rawSha256": "8ad1ee7b4781072c78d69a5d9927a0a1f463c8dffc11f7b97f85d1e548322b4a",
+      "gzipSha256": "e0969fd82ecdaf5179a89ec2118d1020d37f62a60b99fdbb18eead7c39bf975e",
+      "rawBytes": 2503,
+      "gzipBytes": 762
+    },
+    {
+      "rawPath": "local-correction/actual-blob-admitted-posix-6954d2e8/restored-0-parsed.json",
+      "gzipPath": "local-correction/actual-blob-admitted-posix-6954d2e8/restored-0-parsed.json.gz",
+      "rawSha256": "0d0856005c93b13e937332177377f0999001648bfb3f312c14c4e6e6fbadc902",
+      "gzipSha256": "79d53c07312fc53ae684fac94aca0abb5fec27717a834365b288bdc801e24e8c",
+      "rawBytes": 2084,
+      "gzipBytes": 632
+    },
+    {
+      "rawPath": "local-correction/actual-blob-admitted-posix-6954d2e8/restored-0-raw.json",
+      "gzipPath": "local-correction/actual-blob-admitted-posix-6954d2e8/restored-0-raw.json.gz",
+      "rawSha256": "eafd7df7ffaf62f7625ef69253a3c72a4c4fdfa597edfaaab318f9039d4675b2",
+      "gzipSha256": "37dee865ab411894c9ffb8fa4b2541b9db6eb96b25046da215d7886bdb5b492e",
+      "rawBytes": 2503,
+      "gzipBytes": 759
+    },
+    {
+      "rawPath": "local-correction/actual-blob-admitted-posix-6954d2e8/terminal.json",
+      "gzipPath": "local-correction/actual-blob-admitted-posix-6954d2e8/terminal.json.gz",
+      "rawSha256": "b5d1fe422c8c1eb266e1d9c165cee8f553159da9595d8878445c03f24b2a11ea",
+      "gzipSha256": "c0ec2de871efac8299d9e1bea8415ded8ce95ab4346ba46212b7b6a1efecb63c",
+      "rawBytes": 605,
+      "gzipBytes": 312
+    },
+    {
+      "rawPath": "local-correction/actual-raw-blob-refusal-normalized-index-6954d2e8/admission.json",
+      "gzipPath": "local-correction/actual-raw-blob-refusal-normalized-index-6954d2e8/admission.json.gz",
+      "rawSha256": "cc9a0d2c6c1ac2b9f925f2931859f069674b300f8d7de2439cfee173bd7f8de6",
+      "gzipSha256": "119606cda6f3f552f45153bef87712c3f56f295b23ba44111e607835aaa88566",
+      "rawBytes": 5382,
+      "gzipBytes": 1143
+    },
+    {
+      "rawPath": "local-correction/actual-raw-blob-refusal-normalized-index-complete-6954d2e8/admission.json",
+      "gzipPath": "local-correction/actual-raw-blob-refusal-normalized-index-complete-6954d2e8/admission.json.gz",
+      "rawSha256": "cc9a0d2c6c1ac2b9f925f2931859f069674b300f8d7de2439cfee173bd7f8de6",
+      "gzipSha256": "119606cda6f3f552f45153bef87712c3f56f295b23ba44111e607835aaa88566",
+      "rawBytes": 5382,
+      "gzipBytes": 1143
+    },
+    {
+      "rawPath": "local-correction/actual-review-signal-three-files.json",
+      "gzipPath": "local-correction/actual-review-signal-three-files.json.gz",
+      "rawSha256": "5c525639d4ca65b1177d97c8f578a388f6fc77f8c945d04d2958fb3f5761a771",
+      "gzipSha256": "fb34312d68930f93b84bf561edc82e195cbc9dfb513821dc98860fa2f724a232",
+      "rawBytes": 15659,
+      "gzipBytes": 6050
+    },
+    {
+      "rawPath": "local-correction/blob-admission-gate-0.json",
+      "gzipPath": "local-correction/blob-admission-gate-0.json.gz",
+      "rawSha256": "a1492081bb8d677c33f059db5586ed02dc3581063925a87506684132d99630aa",
+      "gzipSha256": "0ba4adafaa8083924ba03128175fb5ccdc5f88276f9944030401942770eb35f4",
+      "rawBytes": 182,
+      "gzipBytes": 157
+    },
+    {
+      "rawPath": "local-correction/blob-admission-gate-1.json",
+      "gzipPath": "local-correction/blob-admission-gate-1.json.gz",
+      "rawSha256": "6308a7f02f7bdcaf311e625cde357f2d17dd93d393d1d6e02dce55723ed63cc8",
+      "gzipSha256": "37b315c579c40a0bf747783f3c872a1235e8447a92be9b5579902fb82ffdead3",
+      "rawBytes": 1049,
+      "gzipBytes": 488
+    },
+    {
+      "rawPath": "local-correction/blob-admission-gate-2.json",
+      "gzipPath": "local-correction/blob-admission-gate-2.json.gz",
+      "rawSha256": "17e3ef5ff0d2f266bcee4f1e57da67fb1377e8c1efcca3c260a8d49fee640c50",
+      "gzipSha256": "c2f175c51efa41bc3442e1c3511a0fbf11ef66427595a8d00cfb5beee44c5c33",
+      "rawBytes": 13305,
+      "gzipBytes": 2336
+    },
+    {
+      "rawPath": "local-correction/blob-admission-gate-3.json",
+      "gzipPath": "local-correction/blob-admission-gate-3.json.gz",
+      "rawSha256": "fcd7edff61b3f421b94a1ff1cf3bc33dff47094a12e2706e3fb3192a101ee94a",
+      "gzipSha256": "c25bfe2755f82892a0924a4cb6ca1456c0d209fcd5cc7b699073956110325e34",
+      "rawBytes": 31360,
+      "gzipBytes": 3091
+    },
+    {
+      "rawPath": "local-correction/blob-admission-gate-4.json",
+      "gzipPath": "local-correction/blob-admission-gate-4.json.gz",
+      "rawSha256": "f8a37ae2e8d6913f13c90c525a84b7ba977fca2d1d340183deacbd6b143c64f5",
+      "gzipSha256": "ff3318dab88128f4d9a69128d261099152ffc612532fd62d02a287d8b707a708",
+      "rawBytes": 274,
+      "gzipBytes": 212
+    },
+    {
+      "rawPath": "local-correction/blob-admission-gate-5.json",
+      "gzipPath": "local-correction/blob-admission-gate-5.json.gz",
+      "rawSha256": "19923c45574f9ae65b3a1c5d586f715f8ae26d44936527c28e12c337421593a6",
+      "gzipSha256": "4e7ba224d42ceafac7132e836fea3ff9ee2200a3a7a3a77595cdbd40fdb5a160",
+      "rawBytes": 207,
+      "gzipBytes": 174
+    },
+    {
+      "rawPath": "local-correction/blob-admission-gate-6.json",
+      "gzipPath": "local-correction/blob-admission-gate-6.json.gz",
+      "rawSha256": "b0e597829bc58dddf75f86c4dd9d8bd405d61306d1069386b0fdc9b6cc612e31",
+      "gzipSha256": "008cc684c9009243152058d420797282fb05d95c54ade6381399bac8b954eb4c",
+      "rawBytes": 151,
+      "gzipBytes": 135
+    },
+    {
+      "rawPath": "local-correction/blob-admitted-posix-driver.json",
+      "gzipPath": "local-correction/blob-admitted-posix-driver.json.gz",
+      "rawSha256": "17896fb2b51f40b9415e64113e8d2ccc9fe4545656eb3b0ea68c185279d73637",
+      "gzipSha256": "347040b4d8467dd218681485dcb4d70894ef3ecd0c5590a37ab08449e3384f72",
+      "rawBytes": 621,
+      "gzipBytes": 387
+    },
+    {
+      "rawPath": "local-correction/final-correction-qualification.json",
+      "gzipPath": "local-correction/final-correction-qualification.json.gz",
+      "rawSha256": "76a613738df53d2134abf307cf6a5eb86e6c81bca17c0086a230adf07b72df1c",
+      "gzipSha256": "ed37565084e64d0f6bc41dbd7eb916e962e3142b66f131f95b263193100eeca4",
+      "rawBytes": 4527,
+      "gzipBytes": 1576
+    },
+    {
+      "rawPath": "local-correction/raw-blob-control-prior-attempts.json",
+      "gzipPath": "local-correction/raw-blob-control-prior-attempts.json.gz",
+      "rawSha256": "5bcf0deb8bd6ea0e283a99849dd92f240639f2feccaada1bd520731b6966d65e",
+      "gzipSha256": "26c7a44696df4b15eda46dfc20220e9f28ebc2f487f4e46e11796be2a2c60487",
+      "rawBytes": 632,
+      "gzipBytes": 365
+    },
+    {
+      "rawPath": "local-correction/raw-blob-guard-complete-control.json",
+      "gzipPath": "local-correction/raw-blob-guard-complete-control.json.gz",
+      "rawSha256": "f3046da1cf1e4608bb962a4779fd7f48d842e9d02a3bb5a40eef137cf30e7a27",
+      "gzipSha256": "19e50006c8ee83a16c9d0ee3445d8cdd0debdd17293532e9d7045db3e31025f5",
+      "rawBytes": 2092,
+      "gzipBytes": 1030
+    },
+    {
+      "rawPath": "local-correction/raw-blob-guard-inverse-refusal.json",
+      "gzipPath": "local-correction/raw-blob-guard-inverse-refusal.json.gz",
+      "rawSha256": "a65e9879ea818ca24e964798371fac373a9212e7c5f440d5104ed343aa8efc94",
+      "gzipSha256": "2f06e03f121125cf3ad04b97bc9262828afa66658a75fb029b8294086e7059c1",
+      "rawBytes": 323,
+      "gzipBytes": 254
+    },
+    {
+      "rawPath": "local-correction/raw-blob-guard-scoped-source-restored.json",
+      "gzipPath": "local-correction/raw-blob-guard-scoped-source-restored.json.gz",
+      "rawSha256": "ffd724d8c70741e2c01bd3148d6f0f9ea3489203067a2e20a4120cc1cba6d22d",
+      "gzipSha256": "f3094d910aeccd412677865aa58e34a83480e9126c0d389a26531145dc60c91e",
+      "rawBytes": 167,
+      "gzipBytes": 152
+    },
+    {
+      "rawPath": "local-correction/raw-blob-guard-source-restored.json",
+      "gzipPath": "local-correction/raw-blob-guard-source-restored.json.gz",
+      "rawSha256": "8eac6cc95109a0bb8aef77680cf58d064ee2796deea4afb8b418b58b652f7608",
+      "gzipSha256": "6f497455165131072e47feffcb64f792fb1c9247cc132a9e6497880d9950d189",
+      "rawBytes": 132,
+      "gzipBytes": 132
+    },
+    {
+      "rawPath": "superseded-hosted/review-signal-fa37.log",
+      "gzipPath": "superseded-hosted/review-signal-fa37.log.gz",
+      "rawSha256": "45628cddb2f6da60703f9838b927025d3417798cd933b4830dbcc9173e3a5e17",
+      "gzipSha256": "ad7d8c2ad60a390f1a5e5d2f298d1bf4e9caaac141fda5b40fc7a21bc9a92ca2",
+      "rawBytes": 105873,
+      "gzipBytes": 13484
+    },
+    {
+      "rawPath": "local-correction/final-correction-gate-0.json",
+      "gzipPath": "local-correction/final-correction-gate-0.json.gz",
+      "rawSha256": "8af4f87f792001609ea8fcd286f569f28bda3c9aea4b5105dffbac330c3d36a3",
+      "gzipSha256": "33259a7ba7ee491f9fec0af14f6081e13fdd18929be73893b4ae4506f66e1f88",
+      "rawBytes": 182,
+      "gzipBytes": 158
+    },
+    {
+      "rawPath": "local-correction/final-correction-gate-1.json",
+      "gzipPath": "local-correction/final-correction-gate-1.json.gz",
+      "rawSha256": "1a90ece3fb894af090fd7f585e333389638c7def77f361c792aff9e034c8e48e",
+      "gzipSha256": "a5ea4b8d683422b48fbf4ebf3331737a97b62b01710d2ab04dd6b356b7d813de",
+      "rawBytes": 151,
+      "gzipBytes": 135
+    },
+    {
+      "rawPath": "local-correction/final-correction-gate-2.json",
+      "gzipPath": "local-correction/final-correction-gate-2.json.gz",
+      "rawSha256": "32c380677df18cff90f50d2f0ece56a00376aa7933f0fdc208fec8dc24c06118",
+      "gzipSha256": "71dc7dea848f25e945e4c2cdd4abdc2ab2034f6d007e0786654f3be10caf8f5d",
+      "rawBytes": 1047,
+      "gzipBytes": 486
+    },
+    {
+      "rawPath": "local-correction/final-correction-gate-3.json",
+      "gzipPath": "local-correction/final-correction-gate-3.json.gz",
+      "rawSha256": "77895f4cd95c0a7b3b0156b989672ecbc446b055346aabd692dff1635216d469",
+      "gzipSha256": "48722d0955250ea52aca9ebe71504ab222f05b45428f84edb575941173afbfc4",
+      "rawBytes": 13305,
+      "gzipBytes": 2336
+    },
+    {
+      "rawPath": "local-correction/final-correction-gate-4.json",
+      "gzipPath": "local-correction/final-correction-gate-4.json.gz",
+      "rawSha256": "28a7fbab4c2e149de239240dd1ac007664ebb7d9ba727a82acc7159c6991c8be",
+      "gzipSha256": "6c53466139434591c1bfbcc738a201fb01e00f3bf95434cd9145c61dc0cac2d8",
+      "rawBytes": 31360,
+      "gzipBytes": 3091
+    },
+    {
+      "rawPath": "local-correction/final-correction-gate-5.json",
+      "gzipPath": "local-correction/final-correction-gate-5.json.gz",
+      "rawSha256": "49c3341fc5db40730d21491fa62546f83fade10f380f54513fc3a93ff1185a4b",
+      "gzipSha256": "6c927eab458ba0217de47577d6297879050633ca72006b487cf76a3fd93a4874",
+      "rawBytes": 274,
+      "gzipBytes": 211
+    },
+    {
+      "rawPath": "local-correction/final-correction-gate-6.json",
+      "gzipPath": "local-correction/final-correction-gate-6.json.gz",
+      "rawSha256": "3d80ca8ed603690c4447fdbe09d3ffac19ccc2e20f638ff3f3326fde6cf0c9c8",
+      "gzipSha256": "05f7e336784256b2d2a43e917e4ea145662596e89cee7e254b8788b9f6021813",
+      "rawBytes": 208,
+      "gzipBytes": 175
+    },
+    {
+      "rawPath": "local-correction/final-correction-gate-7.json",
+      "gzipPath": "local-correction/final-correction-gate-7.json.gz",
+      "rawSha256": "d57c94a2dee4ed614082d5d3faf7e989c8508a6a81d4a582ff1be0fa546eec11",
+      "gzipSha256": "05f70568a0cb94498abb018ccf0b99f0f7ff38c2fe7f17ba9323077b6edc244e",
+      "rawBytes": 362,
+      "gzipBytes": 263
     }
   ]
 }

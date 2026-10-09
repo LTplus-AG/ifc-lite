@@ -47,6 +47,7 @@ interface FlavorListViewProps {
   flavors: readonly Flavor[];
   activeId: string | undefined;
   busy: boolean;
+  readPhase?: 'loading' | 'ready' | 'unavailable';
   /** Count of lenses currently in viewer state — surfaces "you have N lenses uncaptured" hint. */
   liveLensCount: number;
   onActivate(id: string): void;
@@ -70,6 +71,7 @@ export function FlavorListView({
   flavors,
   activeId,
   busy,
+  readPhase = 'ready',
   liveLensCount,
   onActivate,
   onExport,
@@ -113,7 +115,8 @@ export function FlavorListView({
 
   return (
     <div className="space-y-3">
-      {requested && !flavors.some(flavor => flavor.id === requested.id)
+      {readPhase === 'unavailable' && <p role="alert">{t('searchModal.library.open.unavailable')}</p>}
+      {readPhase === 'ready' && requested && !flavors.some(flavor => flavor.id === requested.id)
         && <p role="alert">{t('searchModal.library.open.missing')}</p>}
       <div className="flex items-center justify-between gap-2 flex-wrap">
         <div className="text-xs text-muted-foreground flex-1 min-w-[200px]">

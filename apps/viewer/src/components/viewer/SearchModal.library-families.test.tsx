@@ -39,6 +39,8 @@ import { flowExamples } from '@/lib/flow/examples';
 import { flowToJson, loadSavedFlows } from '@/lib/flow/persistence';
 import { createDocumentSlice } from '@/store/slices/documentSlice';
 import { registerLocale, setLocale } from '@/i18n';
+import { FlavorDialog } from '../extensions/FlavorDialog';
+import { ExtensionHostContext } from '@/sdk/ExtensionHostProvider';
 import { ExtensionHostService } from '@/services/extensions/host';
 
 const initial = useViewerStore.getState();
@@ -299,4 +301,43 @@ for (const kind of ['validation-report', 'clash-report'] as const) test(`#7235 h
   assert.equal(nativeLibraryCatalogue(useViewerStore.getState(), profiles).find(group => group.family === 'reports')?.phase, 'unavailable');
   assert.equal(await openNativeLibraryArtifact(target, null), 'missing', 'another unreadable report source cannot hide proven deletion in this ready native source');
   otherDenied.mock.restore();
+});
+
+
+test('#7235 native profile dialog read must establish absence before claiming a held profile is missing', async () => {
+  const { host, profiles } = await nativeLibraries();
+  const target = profiles.entries.find(profile => profile.id === 'coordination-profile'); assert.ok(target);
+  useLibraryFocus.setState({ target: { kind: 'profile', id: target.id } });
+  render(<ExtensionHostContext.Provider value={host}><FlavorDialog open onClose={() => {}} /></ExtensionHostContext.Provider>);
+  assert.doesNotMatch(document.body.textContent ?? '', /This artifact is no longer available/, 'a pending real native read cannot establish deletion');
+  await waitFor(() => Boolean(document.querySelector('li[aria-current="true"]')), 'actual native profile read finishes');
+  assert.match(document.querySelector('li[aria-current="true"]')?.textContent ?? '', /Coordination profile/);
+  cleanup();
+  const denied = mock.method(IDBDatabase.prototype, 'transaction', () => { throw new DOMException('Native profile read denied', 'SecurityError'); });
+  render(<ExtensionHostContext.Provider value={host}><FlavorDialog open onClose={() => {}} /></ExtensionHostContext.Provider>);
+  await waitFor(() => /Its native library could not open this artifact/.test(document.body.textContent ?? ''), 'actual denied native profile read remains visible');
+  assert.doesNotMatch(document.body.textContent ?? '', /This artifact is no longer available/, 'a refused read cannot establish deletion');
+  cleanup(); denied.mock.restore();
+  render(<ExtensionHostContext.Provider value={host}><FlavorDialog open onClose={() => {}} /></ExtensionHostContext.Provider>);
+  await waitFor(() => Boolean(document.querySelector('li[aria-current="true"]')), 'actual native repair recovers the durable profile');
+  await act(async () => { await host.flavors.delete(target.id); });
+  await waitFor(() => /This artifact is no longer available/.test(document.body.textContent ?? ''), 'successful native refresh confirms the real deletion');
+});
+
+test('#7235 native deletion of library-targeted report keeps the remaining report picker usable', async () => {
+  const { report: first } = await nativeLibraries();
+  const second = newSavedReport(first.snapshot, 'Other native report');
+  assert.ok(await useViewerStore.getState().saveValidationReportEntry(second));
+  useLibraryFocus.setState({ target: { kind: 'validation-report', id: first.id } });
+  render(<SavedValidationReports />);
+  const remove = [...document.querySelectorAll('button')].find(button => button.textContent === 'Remove report'); assert.ok(remove);
+  click(remove);
+  await waitFor(() => !useViewerStore.getState().savedValidationReports.some(report => report.id === first.id), 'actual native removal commits');
+  assert.match(document.body.textContent ?? '', /This artifact is no longer available/, 'the requested deleted report is not silently replaced');
+  const picker = document.querySelector<HTMLSelectElement>('select[aria-label="Select saved validation report"]'); assert.ok(picker, 'remaining native reports stay selectable');
+  assert.ok([...picker.options].some(option => option.value === second.id));
+  act(() => { picker.value = second.id; picker.dispatchEvent(new window.Event('change', { bubbles: true })); });
+  assert.equal(useLibraryFocus.getState().target, null);
+  assert.equal(document.querySelector<HTMLSelectElement>('select[aria-label="Select saved validation report"]')?.value, second.id);
+  assert.doesNotMatch(document.body.textContent ?? '', /This artifact is no longer available/);
 });

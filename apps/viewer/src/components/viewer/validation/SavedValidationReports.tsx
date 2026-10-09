@@ -52,11 +52,14 @@ export function SavedValidationReports() {
       <ContentStorageNotice status={storage} restore={() => useViewerStore.getState().restoreValidationReports()} retry={() => useViewerStore.getState().retryValidationReportsSave()} />
       <details className="shrink-0 border-b p-2 text-xs" data-saved-validation-reports ref={disclosure}>
         <summary className="cursor-pointer font-medium">{t('validationPanel.history.title')} ({reports.length})</summary>
-        {report ? (
-          <div className="mt-2 flex flex-col gap-2">
-            <select aria-label={t('validationPanel.history.select')} value={report.id} className="rounded border border-input bg-background p-1" onChange={(e) => { useSavedValidationFocus.setState({ record: null }); useLibraryFocus.setState({ target: null }); setPicked(e.target.value); }}>
+        {reports.length > 0 && (
+            <select aria-label={t('validationPanel.history.select')} value={report?.id ?? ''} className="rounded border border-input bg-background p-1" onChange={(e) => { useSavedValidationFocus.setState({ record: null }); useLibraryFocus.setState({ target: null }); setPicked(e.target.value); }}>
+              {!report && <option value="" disabled>{t('validationPanel.history.select')}</option>}
               {reports.map((entry) => <option key={entry.id} value={entry.id}>{savedReportLabel(entry)}</option>)}
             </select>
+        )}
+        {report ? (
+          <div className="mt-2 flex flex-col gap-2">
             <div className="flex gap-2">
               <input className="min-w-0 flex-1 rounded border border-input bg-background px-2" aria-label={t('validationPanel.history.name')} key={report.id + report.name} defaultValue={report.name} onBlur={(e) => rename(report.id, e.target.value)} />
               <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => remove(report.id)}>{t('validationPanel.history.remove')}</Button>

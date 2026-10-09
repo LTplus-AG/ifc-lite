@@ -10,7 +10,8 @@ import type { ExportPass } from './step-export-types.js';
 
 interface RecordEntry { id: number; index: number; record: StepRecordSlots }
 const ref = (token: string | undefined): number | undefined => token?.match(/^#([0-9]+)$/) ? Number(token.slice(1)) : undefined;
-const enumeration = (token: string | undefined): string => token?.replaceAll('.', '').toUpperCase() ?? '';
+// Slots keep authored whitespace: `IFCSIUNIT(*, .LENGTHUNIT., $, .METRE.)` is valid STEP.
+const enumeration = (token: string | undefined): string => token?.trim().replaceAll('.', '').toUpperCase() ?? '';
 const real = (token: string | undefined): number => token !== undefined && /^[+-]?[0-9]+\.[0-9]*(?:E[+-]?[0-9]+)?$/i.test(token) ? Number(token) : NaN;
 const definedTypes = new Map(Object.keys(SCHEMA_REGISTRY.types).map(name => [name.toUpperCase(), name]));
 const maps = new Set(['IFCMAPCONVERSION', 'IFCMAPCONVERSIONSCALED']);

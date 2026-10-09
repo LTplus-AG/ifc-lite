@@ -33,6 +33,7 @@ export async function prepareNewIfcFile(input: NewIfcProposal) {
   const creator = new CreateNamespace().project(proposal.project); for (const storey of proposal.storeys) creator.addIfcBuildingStorey(storey);
   const result = creator.toIfc(), content = result.content, bytes = new TextEncoder().encode(content);
   const parsed = await new IfcParser().parseColumnar(bytes.buffer, { disableWorkerScan: true });
+  // @raw-entity-enumeration-ok Detached native exported scaffold parse, before any overlay or model registration.
   const projectId = parsed.entityIndex.byType.get('IFCPROJECT')?.[0]; if (!projectId) throw new Error('Native file has no project');
   const units = extractProjectUnits(parsed.source, parsed.entityIndex, projectId).resolvedForUnitType('LENGTHUNIT');
   if (!units || units.siScale !== (proposal.project.LengthUnit === 'MILLIMETRE' ? 0.001 : 1)) throw new Error('Native exported units differ from the approved supplied unit');
@@ -41,7 +42,7 @@ export async function prepareNewIfcFile(input: NewIfcProposal) {
   const filename = sanitizeFilename(proposal.filename.replace(/\.ifc$/i, '')) + '.ifc'; let downloaded = false, requested = false;
   const validate = () => { if (JSON.stringify(proposal) !== ownership) throw new Error('The reviewed file definition changed; prepare again'); };
   return { proposal, content, filename, roots, entityCount: result.stats.entityCount, byteLength: bytes.byteLength, lengthUnitScale: units.siScale, validate,
-    download() { validate(); if (downloaded) throw new Error('This approved file was already downloaded'); downloadFile(content, filename, 'application/x-step;charset=utf-8'); downloaded = true; },
+    download() { validate(); if (typeof document === 'undefined' || typeof URL === 'undefined' || typeof URL.createObjectURL !== 'function') throw new Error('Browser download is unavailable'); if (downloaded) throw new Error('This approved file was already downloaded'); downloadFile(content, filename, 'application/x-step;charset=utf-8'); downloaded = true; },
     requestPrimaryLoad() {
       validate(); if (requested) throw new Error('This file load was already requested'); const state = useViewerStore.getState();
       if (state.loading) throw new Error('A native load is running; wait before requesting this file');

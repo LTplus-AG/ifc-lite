@@ -1,10 +1,10 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
-// Campaign6812 audit only: native standalone builder capability, not a new reviewed implementation.
+// #7326: actual native scaffold, publication and reviewed admission controls.
 import '@/test/setup-dom.js';
 import assert from 'node:assert/strict';
-import { afterEach, test, type TestContext } from 'node:test';
+import { afterEach, test } from 'node:test';
 import { CreateNamespace } from '@ifc-lite/sdk';
 import { fileSchemaIdentifier } from '@ifc-lite/data';
 import { IfcParser, effectiveMetadataRecord, extractProjectUnits } from '@ifc-lite/parser';
@@ -68,11 +68,11 @@ test('#7326 blank native context advertises native builder capability without fa
   const empty = { ...useViewerStore.getState(), models: new Map(), scriptExecutionState: 'idle' as const, scriptLastError: null, scriptLastResult: null, scriptLastDiagnostics: [] };
   assert.equal(adapterFor('loadReport').readiness(empty).ready, true); const capture = adapterFor('loadReport').capture(empty, 10); assert.equal(capture.totalRows, 0); assert.deepEqual(capture.rows, []); const summary = capture.summary as { modelCount: number; loadReportsAvailable: boolean; nativeNewIfc: { existingModelFacts: boolean } }; assert.equal(summary.modelCount, 0); assert.equal(summary.loadReportsAvailable, false); assert.equal(summary.nativeNewIfc.existingModelFacts, false); assert.equal(adapterFor('script').readiness(empty).ready, false);
 });
-test('Campaign6812 actual completed assistant publication lacks a reviewed canonical new-file scaffold route', async () => {
+test('#7326 completed assistant publication admits only the reviewed canonical scaffold', async () => {
   const native = await graph('METRE'); assert.ok(native.content.includes('IFCPROJECT('));
   useAssistant.setState({ status: 'idle', messages: [{ role: 'assistant', content: JSON.stringify({ version: 1, kind: 'ifc.create', title: 'Supplied native project', filename: 'supplied.ifc', project: { Name: 'Supplied project', Schema: 'IFC4', LengthUnit: 'METRE' }, storeys: [{ Name: 'Supplied level', Elevation: 3 }] }) }] });
   const ui = render(<ModelChangeProposal />);
-  assert.ok([...ui.querySelectorAll('button')].some(button => button.textContent === 'Prepare new IFC file'), 'a genuine native scaffold currently has no bounded reviewed publication admission');
+  assert.ok([...ui.querySelectorAll('button')].some(button => button.textContent === 'Prepare new IFC file'), 'a genuine native scaffold needs bounded reviewed publication admission');
 });
 
 test('Campaign6812 native new-file audit does not pretend an arbitrary declared length-unit string is supported', async () => {

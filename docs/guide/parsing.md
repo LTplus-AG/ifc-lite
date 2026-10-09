@@ -862,3 +862,20 @@ function currentVolumeContext(store: IfcDataStore, view: MutablePropertyView) {
     volumeUnit: current.value?.resolvedForUnitType('VOLUMEUNIT') ?? null };
 }
 ```
+
+`findSourceProjectLengthUnit` and `normalizeMapUnitName` expose the STEP
+writer's existing replacement-unit eligibility to canonical reader consumers.
+The resolver uses the first effective source `IfcProject`, its source
+`UnitsInContext`, and source assigned length units. Deleted units, unassigned
+units, overlay-created units, and unsupported labels cannot supply a source
+replacement reference. Labels compare whole canonical unit names rather than
+substrings; the physical scale is retained.
+
+This lower layer shares the existing STEP writer resolver without changing
+its accepted replacement units. Type quantity journal projection consumes it
+in the subsequent fix for #7355.
+
+Pass current effective `IfcProject` ids as `projectIds`, excluding deleted or
+retyped projects with the canonical `iterateEffectiveEntities` inventory. The
+`isDeleted` callback filters assignment and unit references; it does not filter
+the project inventory supplied by the caller.

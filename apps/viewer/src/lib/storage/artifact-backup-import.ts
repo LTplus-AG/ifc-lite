@@ -6,6 +6,8 @@ import type { ListDefinition } from '@ifc-lite/lists';
 import { useViewerStore } from '@/store';
 import { sameReportEvidence } from '../flow/report-provenance.js';
 import { loadSavedFilters, saveFilter, __internal, type SavedFilterPreset } from '../search/saved-filters.js';
+import { loadListDefinitions } from '../lists/persistence.js';
+import { encodeSavedList } from '../lists/saved-list-codec.js';
 import type { StandaloneArtifactLibraries } from './artifact-backup.js';
 
 type Kind = keyof StandaloneArtifactLibraries;
@@ -25,6 +27,18 @@ function evidence(value: object): unknown {
 function copyName(name: string, index: number, limit = 200): string {
   const suffix = index === 1 ? ' (imported)' : ` (imported ${index})`;
   return name.slice(0, Math.max(1, limit - suffix.length)) + suffix;
+}
+/** Include newly durable peer-tab rows without overwriting a conflicting local draft. */
+export function currentListDefinitions(): ListDefinition[] {
+  const rows = new Map(loadListDefinitions().map(row => [row.id, row]));
+  for (const row of useViewerStore.getState().listDefinitions) {
+    const saved = rows.get(row.id);
+    if (saved && !sameReportEvidence(encodeSavedList(saved), encodeSavedList(row))) {
+      throw new Error('Lists changed in another tab. Reload the library before backing up or importing.');
+    }
+    if (!saved) rows.set(row.id, row);
+  }
+  return [...rows.values()];
 }
 /** Filters use native names as identities; List/Lens provenance requires IDs. */
 function reusableFilter(rows: readonly SavedFilterPreset[], incoming: SavedFilterPreset): boolean {
@@ -81,7 +95,7 @@ export function importArtifactLibraries(incoming: StandaloneArtifactLibraries): 
     }
   }
   if (incoming.lists) {
-    const state = useViewerStore.getState(), rows: ListDefinition[] = [...state.listDefinitions];
+    const state = useViewerStore.getState(), rows: ListDefinition[] = currentListDefinitions();
     const owners = identityOwners(incoming.lists);
     let count = 0;
     for (const entry of incoming.lists) {

@@ -15,7 +15,7 @@ import { saveArtifact } from '@/lib/assistant/artifacts/artifact-save';
 import { blankDocument } from '@/lib/document/presets';
 import { assistantLibrary } from '@/lib/assistant/library';
 import { loadSavedFilters, clearSavedFilters, saveFilter } from '@/lib/search/saved-filters';
-import { loadListDefinitions } from '@/lib/lists/persistence';
+import { loadListDefinitions, saveListDefinitions } from '@/lib/lists/persistence';
 import { ContentStorageNotice } from './ContentStorageNotice';
 import { ConfirmDialogHost } from '@/components/ui/confirm-dialog';
 import { act } from 'react';
@@ -33,7 +33,7 @@ import { evaluateLens } from '@ifc-lite/lens';
 import { toGlobalIdFromModels } from '@/store/globalId';
 import { createStore } from 'zustand/vanilla';
 import { createLensSlice, type LensSlice } from '@/store/slices/lensSlice';
-import { parseContentBackup, type ContentLibraries } from '@/lib/storage/content-backup';
+import { createContentBackup, parseContentBackup, type ContentLibraries } from '@/lib/storage/content-backup';
 
 async function nativeBackupWire(libraries: Partial<ContentLibraries>): Promise<string> {
   const state = useViewerStore.getState();
@@ -96,10 +96,105 @@ function Notice() {
 }
 afterEach(() => { cleanup(); localStorage.clear(); });
 beforeEach(() => {
-  useViewerStore.setState({ pendingStandaloneArtifactImport: null });
+  useViewerStore.setState({ pendingStandaloneArtifactImport: null, contentStorageActionBusy: false });
   clearSavedFilters();
   useViewerStore.getState().setListDefinitions([]); assert.deepEqual(loadListDefinitions(), []);
   assert.ok(useViewerStore.getState().setSavedLenses([]).ok);
+});
+
+test('#7218 native empty arrays preserve version-1 while public builtin Lenses stay complete', async () => {
+  await seedArtifactModels({ federated: true });
+  await Promise.all([assistantLibrary.initialize(), useViewerStore.getState().initializeSavedClashReports()]);
+  const blobs: Blob[] = [];
+  const download = mock.method(URL, 'createObjectURL', (value: Blob | MediaSource) => {
+    assert.ok(value instanceof Blob); blobs.push(value); return 'blob:native-empty-backup';
+  });
+  const ui = render(<Notice />);
+  try {
+    const button = [...ui.querySelectorAll('button')].find(node => node.textContent?.includes('Download library backup')); assert.ok(button);
+    await waitFor(() => !button.disabled, 'native empty libraries ready');
+    click(button); await waitFor(() => blobs.length === 1, 'native empty Download');
+    const wire = await blobs[0].text();
+    const decoded = parseContentBackup(wire);
+    assert.equal(decoded.version, 2, 'the native public Lens export includes actual builtin Lens definitions');
+    assert.equal(decoded.libraries.lenses?.length, useViewerStore.getState().exportLenses().length, 'builtin native definitions are retained rather than silently dropped for compatibility');
+    const emptyWire = JSON.stringify(createContentBackup({ validation: [], comparison: [], document: [], filters: [], lists: [], lenses: [] }));
+    assert.equal(parseContentBackup(emptyWire).version, 1, 'the stated empty-array invariant requires no new artifact version');
+    for (const kind of ['filters', 'lists', 'lenses']) assert.ok(!Object.hasOwn(JSON.parse(emptyWire).libraries, kind));
+  } finally { download.mock.restore(); }
+});
+
+test('#7218 remounted native notice cannot race a delayed import and clear its refused rows', async () => {
+  await seedArtifactModels({ federated: true });
+  await Promise.all([assistantLibrary.initialize(), useViewerStore.getState().initializeSavedClashReports()]);
+  const proposal = parseArtifactProposal(JSON.stringify({ version: 1, title: 'Native delayed import', kind: 'filter.proposal', ...entries[0].body }), 'filter.proposal');
+  const saved = await saveArtifact(proposal, useViewerStore.getState()); assert.ok(saved.ok);
+  const wire = await nativeBackupWire({ filters: loadSavedFilters() });
+  clearSavedFilters();
+  let release: (text: string) => void = () => { throw new Error('file read not started'); };
+  let reading = false;
+  const file = new File([wire], 'delayed-native-backup.json');
+  const delayed = mock.method(file, 'text', () => { reading = true; return new Promise<string>(resolve => { release = resolve; }); });
+  let ui = render(<Notice />);
+  const input = ui.querySelector<HTMLInputElement>('input[type="file"]'); assert.ok(input);
+  Object.defineProperty(input, 'files', { value: [file], configurable: true });
+  await act(async () => { input.dispatchEvent(new Event('change', { bubbles: true })); });
+  await waitFor(() => reading, 'real File import awaits its text');
+  cleanup(); ui = render(<Notice />);
+  const legacy = JSON.parse(wire); legacy.version = 1;
+  for (const kind of ['filters', 'lists', 'lenses']) delete legacy.libraries[kind];
+  const other = ui.querySelector<HTMLInputElement>('input[type="file"]'); assert.ok(other);
+  const secondFile = new File([JSON.stringify(legacy)], 'legacy-native-backup.json');
+  const readSecond = secondFile.text.bind(secondFile); let secondReads = 0;
+  const observedSecond = mock.method(secondFile, 'text', () => { secondReads++; return readSecond(); });
+  Object.defineProperty(other, 'files', { value: [secondFile], configurable: true });
+  await act(async () => { other.dispatchEvent(new Event('change', { bubbles: true })); await new Promise(resolve => setTimeout(resolve, 50)); });
+  const original = localStorage.setItem.bind(localStorage);
+  const denied = mock.method(localStorage, 'setItem', (key: string, value: string) => {
+    if (key === 'ifc-lite:search:saved-filters') throw new DOMException('Native delayed quota', 'QuotaExceededError');
+    original(key, value);
+  });
+  try {
+    const button = [...ui.querySelectorAll('button')].find(node => node.textContent?.includes('Import library backup')); assert.ok(button);
+    assert.equal(secondReads, 0, 'a second real File cannot start reading while the first owner remains unfinished');
+    assert.ok(button.disabled, 'the same tab import remains owned across remount');
+  } finally {
+    await act(async () => { release(wire); });
+    await waitFor(() => useViewerStore.getState().pendingStandaloneArtifactImport !== null, 'original refused rows remain retryable');
+    denied.mock.restore(); delayed.mock.restore(); observedSecond.mock.restore();
+  }
+});
+
+for (const action of ['download', 'import'] as const) test(`#7218 native ${action} retains a List saved by another tab after this tab loaded`, async () => {
+  await seedArtifactModels({ federated: true });
+  await Promise.all([assistantLibrary.initialize(), useViewerStore.getState().initializeSavedClashReports()]);
+  const proposal = parseArtifactProposal(JSON.stringify({ version: 1, title: 'Native stale tab Lists', kind: 'list.proposal', ...entries[1].body }), 'list.proposal');
+  const preview = await previewArtifact(proposal, useViewerStore.getState()); assert.ok(preview.matched > 0);
+  assert.equal(preview.artifact.kind, 'list.proposal'); if (preview.artifact.kind !== 'list.proposal') assert.fail('native List required');
+  const a = { ...preview.artifact.definition, id: 'native-tab-list-a', name: 'Native tab A' };
+  const b = { ...preview.artifact.definition, id: 'native-tab-list-b', name: 'Native tab B' };
+  const incoming = { ...preview.artifact.definition, id: 'native-tab-import-c', name: 'Native import C' };
+  useViewerStore.getState().setListDefinitions([a]);
+  const wire = await nativeBackupWire({ lists: [incoming] });
+  assert.ok(saveListDefinitions([a, b]), 'another tab uses the existing native durable List writer');
+  assert.deepEqual(useViewerStore.getState().listDefinitions.map(row => row.id), [a.id], 'the original tab is genuinely stale');
+  const blobs: Blob[] = [];
+  const download = mock.method(URL, 'createObjectURL', (value: Blob | MediaSource) => { assert.ok(value instanceof Blob); blobs.push(value); return 'blob:native-stale-tab'; });
+  const ui = render(<Notice />);
+  try {
+    if (action === 'download') {
+      const button = [...ui.querySelectorAll('button')].find(node => node.textContent?.includes('Download library backup')); assert.ok(button);
+      await waitFor(() => !button.disabled, 'native export ready'); click(button);
+      await waitFor(() => blobs.length === 1, 'native stale-tab Download');
+      assert.ok(parseContentBackup(await blobs[0].text()).libraries.lists?.some(row => row.id === b.id), 'native backup includes the independently saved durable peer');
+    } else {
+      const input = ui.querySelector<HTMLInputElement>('input[type="file"]'); assert.ok(input);
+      Object.defineProperty(input, 'files', { value: [new File([wire], 'native-stale-tab-import.json')], configurable: true });
+      await act(async () => { input.dispatchEvent(new Event('change', { bubbles: true })); });
+      await waitFor(() => loadListDefinitions().some(row => row.id === incoming.id), 'native source List saved');
+      assert.ok(loadListDefinitions().some(row => row.id === b.id), 'native import must not overwrite another tab’s durable peer');
+    }
+  } finally { download.mock.restore(); }
 });
 
 for (const entry of entries.filter(row => row.key === 'lists' || row.key === 'lenses')) {
@@ -648,7 +743,7 @@ test('#7218 cancelling a refused import explicitly releases whole-backup downloa
     await waitFor(() => !button.disabled, 'whole-backup recovery becomes available despite persistent write refusal');
     click(button); await waitFor(() => blobs.length === 1, 'actual native recovery download');
     const recovered = parseContentBackup(await blobs[0].text());
-    assert.equal(recovered.libraries.filters?.length, 0, 'cancelled unsaved entries are not falsely represented as saved');
+    assert.equal(recovered.libraries.filters?.length ?? 0, 0, 'cancelled unsaved entries are not falsely represented as saved');
     assert.deepEqual(parseContentBackup(wire).libraries.filters?.length, 1, 'the original source file still contains the refused Filter');
   } finally { denied.mock.restore(); download.mock.restore(); }
 });

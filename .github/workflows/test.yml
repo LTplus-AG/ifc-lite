@@ -705,7 +705,7 @@ jobs:
       # lane, but make its formatter dependency explicit rather than relying
       # on a runner image incidental.
       - name: Install Rust formatter for codegen freshness
-        uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # master 2026-05
+        uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f # master 2026-05
         with:
           toolchain: stable
           components: rustfmt
@@ -2601,7 +2601,7 @@ jobs:
       # high enough: >=1.93.0 needed, got 1.93.0-nightly"). The gate invokes it
       # as `cargo +stable semver-checks`, so this only has to exist.
       - name: Install stable Rust
-        uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # master 2026-05
+        uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f # master 2026-05
         with:
           toolchain: stable
 

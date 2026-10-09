@@ -460,3 +460,6 @@ shared references, choose operations, prepare the native changes, and explicitly
 Apply. Updates preserve group identity and replace the entire membership list;
 removing a group keeps its members and other memberships. The edit has one Undo.
 Unavailable or incomplete captured evidence requires a fresh attachment.
+Generic replacement refuses typed `RelatedObjectsType` assignments and
+semantically distinct assignment records instead of merging their meanings.
+Those groups can still be read and safely removed through native review.

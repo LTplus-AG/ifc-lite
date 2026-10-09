@@ -37,3 +37,20 @@ Campaign #6812 human evaluation labels, fixture privacy/licence approvals and co
 - Proper root typecheck: 119 Turbo tasks passed, all 3,860 test sources audited, and final frame-source tsc passed before the last external-fixture test addition. Proper root lint then passed; no warnings were present in any touched file. These earlier terminal checks do not substitute for the final combined all-ten-step qualification at the final committed head.
 
 The accepted semantic production source before evidence-only addition was composed head `ce302d9c16b04eb7fdefb83bfadaff432720999a`. The final combined receipt is recorded separately after the frozen stack qualifies.
+
+## Corrective native assignment semantics after review
+
+Review found that mixed PRODUCT/PROCESS assignments could be consolidated into
+one relationship. Generic replacement now refuses any typed RelatedObjectsType
+assignment and consolidation of distinct OwnerHistory, Name or Description.
+A complete member list cannot express the separate assignment semantics. Reads
+and safe removal remain supported. Refusal precedes metadata edits, allocation
+and publication; real Bonsai source controls independently parse every exported
+entity type/attribute and prove graph, revision and allocator preservation.
+
+Final native class: 19 passes, zero skips. Typed-guard inverse: 17 passes/two
+actual refusal assertions fail; distinct-semantics guard inverse: 18 passes/one
+actual refusal assertion fails. Exact source SHA restoration yields 19 passes.
+Compressed logs, hashes and restoration receipts accompany this correction.
+The earlier afff combined all-ten PASS is preserved, but does not qualify this
+corrective source head; fresh qualification remains pending.

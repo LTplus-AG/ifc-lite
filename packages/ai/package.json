@@ -57,6 +57,7 @@
     "README.md"
   ],
   "dependencies": {
-    "@ifc-lite/export": "workspace:^"
+    "@ifc-lite/export": "workspace:^",
+    "@noble/hashes": "^2.4.0"
   }
 }

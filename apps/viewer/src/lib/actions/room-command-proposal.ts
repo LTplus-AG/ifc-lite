@@ -91,7 +91,7 @@ export function parseRoomProposal(content: string): RoomProposal {
     namePattern: nativeText(c.namePattern, 'command.namePattern', 200),
     ...(c.PredefinedType !== undefined ? { PredefinedType: requiredText(c, 'PredefinedType', 'command', 80) } : {}),
     ...(c.ObjectType !== undefined ? { ObjectType: nativeText(c.ObjectType, 'command.ObjectType', 240) } : {}),
-  };
+  } satisfies Pick<RoomProposal['command'], 'weld' | 'minArea' | 'boundary' | 'height' | 'z' | 'namePattern' | 'PredefinedType' | 'ObjectType'>;
   let command: RoomProposal['command'];
   let rooms: RoomRootTarget[] | undefined;
   if (c.action === 'auto' || c.action === 'footprint') command = { ...settings, action: c.action };

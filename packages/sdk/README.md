@@ -55,6 +55,13 @@ bim.viewer.colorize(walls.map(w => w.ref), '#ff0000');
   and canonical creation together, retaining the old graph on late refusal.
   Generic `removeEntity` retains its one-record contract.
 - `bim.viewer` - selection, visibility, colorization, camera, sections
+- `bim.store.addGroup` / `readGroup` / `updateGroup` / `removeGroup` - exact
+  generic `IfcGroup` lifecycle in IFC4/IFC4X3 through the shared native owner.
+  Member identities include `modelId`, `expressId`, and current `GlobalId`.
+  Updates replace the complete explicit `RelatedObjects` list and preserve
+  group identity; `[]` removes owned membership edges. Deletion keeps members
+  and their other group memberships, and refuses protected dependencies.
+  The viewer publishes one Undo batch; unsupported hosts refuse explicitly.
 - `bim.export` - `csv`, `json`, `ifc` (STEP), `hbjson`, `dfjson`, `download`
 - `bim.ids` / `bim.bcf` / `bim.clash` - validation, collaboration, interference checks
 - `bim.drawing` / `bim.list` / `bim.lens` - section cuts and SVG, schedules, rule-based coloring

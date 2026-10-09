@@ -22,6 +22,7 @@ const sourcePaths = [
   'packages/load-trace/src/counters.ts', 'apps/viewer/src/lib/wasm-prewarm.ts',
   'tests/e2e/worker-pool-reuse-7036.wasm.ts', 'tests/e2e/worker-pool-reuse-7036.e2e.spec.ts',
   'tests/e2e/worker-pool-reuse-7036.assertions.ts',
+  'tests/e2e/worker-pool-reuse-7036.entry.html',
 ];
 
 
@@ -32,7 +33,7 @@ test('#7036 real WASM restores source, settings and federation IDs across reset 
   for (let i = 0; i < fixtures.length; i++) expect(hashes[i]).toBe(manifest.files.find(file => file.path === fixtures[i])?.sha256);
   const server = await startViewerDevServer('worker-pool-reuse-7036');
   try {
-    await page.goto(new URL('/oauth/autodesk/callback', server.url).href);
+    await page.goto(new URL(`/@fs/${fileURLToPath(new URL('./worker-pool-reuse-7036.entry.html', import.meta.url))}`, server.url).href);
     const report: PoolReuseReport = await page.evaluate(async ({ moduleUrl, sourceUrls }) => {
       const module: { runPoolReuseWitness(urls: [string, string]): Promise<PoolReuseReport> } = await import(moduleUrl);
       return module.runPoolReuseWitness(sourceUrls);
@@ -107,7 +108,7 @@ test('#7036 real WASM restores source, settings and federation IDs across reset 
 test('#7036 idle boot does not create instances in an already hidden document', async ({ page }) => {
   const server = await startViewerDevServer('worker-pool-hidden-7036');
   try {
-    await page.goto(new URL('/oauth/autodesk/callback', server.url).href);
+    await page.goto(new URL(`/@fs/${fileURLToPath(new URL('./worker-pool-reuse-7036.entry.html', import.meta.url))}`, server.url).href);
     const stats = await page.evaluate(async moduleUrl => {
       const module: { runHiddenBootAdmissionWitness(): Promise<{ idle: number; spawned: number }> } = await import(moduleUrl);
       return module.runHiddenBootAdmissionWitness();

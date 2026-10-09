@@ -20,6 +20,7 @@
 
 import type { EntityRef } from './types.js';
 import { EntityExtractor } from './entity-extractor.js';
+import { getReference } from './attribute-helpers.js';
 import type { IfcSourceBytes } from './source-bytes.js';
 import {
   composeDerived,
@@ -41,6 +42,9 @@ export interface ResolvedUnit {
   symbol: string;
   siScale: number;
 }
+
+/** Native current point provider; omitted readers retain parsed-source semantics. */
+export type UnitEntityReader = (expressId: number) => { type: string; attributes: readonly unknown[] } | null;
 
 interface EntityByIdIndexLike {
   byId: { get(expressId: number): EntityRef | undefined };
@@ -113,20 +117,35 @@ export function resolveUnitByRef(
   extractor: EntityExtractor,
   entityIndex: EntityByIdIndexLike,
   ref: number,
+  readEntity?: UnitEntityReader,
 ): UnitEntry | null {
-  const entry = resolveDeclaredUnit(extractor, entityIndex, ref);
-  return entry?.resolved ? { ...entry, resolved: entry.resolved } : null;
+  return resolveUnit(extractor, entityIndex, ref, readEntity, readEntity ? new Set() : undefined);
+}
+
+function resolveUnit(extractor: EntityExtractor, entityIndex: EntityByIdIndexLike,
+  ref: number, readEntity?: UnitEntityReader, active?: Set<number>): UnitEntry | null {
+  // Native current callers also count every dependency read; this path set
+  // refuses cycles immediately, before recursion consumes the read budget.
+  if (active?.has(ref)) return null;
+  active?.add(ref);
+  try {
+    const entry = resolveDeclaredUnit(extractor, entityIndex, ref, readEntity, active);
+    return entry?.resolved ? { ...entry, resolved: entry.resolved } : null;
+  } finally {
+    active?.delete(ref);
+  }
 }
 
 function resolveDeclaredUnit(
   extractor: EntityExtractor,
   entityIndex: EntityByIdIndexLike,
   ref: number,
+  readEntity?: UnitEntityReader,
+  active?: Set<number>,
 ): DeclaredUnit | null {
   // @raw-entity-enumeration-ok resolve a declared unit from the parsed source index
   const entRef = entityIndex.byId.get(ref);
-  if (!entRef) return null;
-  const entity = extractor.extractEntity(entRef);
+  const entity = readEntity ? readEntity(ref) : entRef ? extractor.extractEntity(entRef) : null;
   if (!entity) return null;
   const attrs = entity.attributes ?? [];
   const cleanEnum = (v: unknown): string | null =>
@@ -154,8 +173,8 @@ function resolveDeclaredUnit(
       // at 1.0 (#4690).
       const namedFactor = unitType === 'LENGTHUNIT' ? CONVERSION_BASED_UNIT_FACTORS[name.toUpperCase()] : undefined;
       const scale = (typeof attrs[3] === 'number'
-        ? conversionFactorScale(extractor, entityIndex, attrs[3])
-        : null) ?? namedFactor;
+        ? conversionFactorScale(extractor, entityIndex, attrs[3], readEntity)
+        : null) ?? (readEntity ? undefined : namedFactor);
       const resolved = scale === undefined ? null : { symbol: conversionUnitSymbol(name), siScale: scale };
       return { unitType, resolved, monetary: false };
     }
@@ -167,8 +186,9 @@ function resolveDeclaredUnit(
       let scale = 1.0;
       let incomplete = false;
       for (const er of elemRefs) {
-        if (typeof er !== 'number') { incomplete = true; continue; }
-        const el = resolveDerivedElement(extractor, entityIndex, er);
+        const elementRef = readEntity ? getReference(er) : typeof er === 'number' ? er : undefined;
+        if (elementRef === undefined) { incomplete = true; continue; }
+        const el = resolveDerivedElement(extractor, entityIndex, elementRef, readEntity, active);
         if (el) {
           scale *= Math.pow(el.unitScale, el.exponent);
           parts.push([el.symbol, el.exponent]);
@@ -194,17 +214,18 @@ function resolveDerivedElement(
   extractor: EntityExtractor,
   entityIndex: EntityByIdIndexLike,
   elemRef: number,
+  readEntity?: UnitEntityReader,
+  active?: Set<number>,
 ): { symbol: string; unitScale: number; exponent: number } | null {
   // @raw-entity-enumeration-ok resolve an element of a parsed derived unit
   const ref = entityIndex.byId.get(elemRef);
-  if (!ref) return null;
-  const elem = extractor.extractEntity(ref);
+  const elem = readEntity ? readEntity(elemRef) : ref ? extractor.extractEntity(ref) : null;
   if (!elem || elem.type.toUpperCase() !== 'IFCDERIVEDUNITELEMENT') return null;
   const attrs = elem.attributes ?? [];
   const unitRef = attrs[0];
   if (typeof unitRef !== 'number') return null;
   const exponent = typeof attrs[1] === 'number' ? Math.trunc(attrs[1]) : 1;
-  const entry = resolveUnitByRef(extractor, entityIndex, unitRef);
+  const entry = resolveUnit(extractor, entityIndex, unitRef, readEntity, active);
   if (!entry) return null;
   return { symbol: entry.resolved.symbol, unitScale: entry.resolved.siScale, exponent };
 }
@@ -213,11 +234,11 @@ function conversionFactorScale(
   extractor: EntityExtractor,
   entityIndex: EntityByIdIndexLike,
   measureRef: number,
+  readEntity?: UnitEntityReader,
 ): number | null {
   // @raw-entity-enumeration-ok read the source measure in a conversion-based unit
   const ref = entityIndex.byId.get(measureRef);
-  if (!ref) return null;
-  const measure = extractor.extractEntity(ref);
+  const measure = readEntity ? readEntity(measureRef) : ref ? extractor.extractEntity(ref) : null;
   if (!measure || measure.type.toUpperCase() !== 'IFCMEASUREWITHUNIT') return null;
   const attrs = measure.attributes ?? [];
   // [0]=ValueComponent (number or [type, number]), [1]=UnitComponent
@@ -233,9 +254,9 @@ function conversionFactorScale(
   const compRef = attrs[1];
   // @raw-entity-enumeration-ok follow the source unit component reference
   const cRef = typeof compRef === 'number' ? entityIndex.byId.get(compRef) : undefined;
-  const comp = cRef ? extractor.extractEntity(cRef) : null;
+  const comp = readEntity && typeof compRef === 'number' ? readEntity(compRef) : cRef ? extractor.extractEntity(cRef) : null;
   if (!comp) return null;
-  if (comp.type.toUpperCase() !== 'IFCSIUNIT') return value;
+  if (comp.type.toUpperCase() !== 'IFCSIUNIT') return readEntity ? null : value;
   const cAttrs = comp.attributes ?? [];
   const name = typeof cAttrs[3] === 'string' ? cAttrs[3] : null;
   const prefixAttr = cAttrs[2];

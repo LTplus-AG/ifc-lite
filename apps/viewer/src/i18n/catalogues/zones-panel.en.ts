@@ -126,6 +126,7 @@ export const zonesPanelEn = {
   'zonesPanel.volumeBreakdown.unprovedSolidMessage': 'Its mesh is not a proven closed solid, so no volume can be stated for it — let alone split.',
   'zonesPanel.volumeBreakdown.rescaledMessage':
     "Federation alignment rescaled this element's model, so its proved volume no longer describes the geometry on screen. Re-anchor the federation on this model to split it.",
+  'zonesPanel.volumeBreakdown.inheritedUnavailable': 'Inherited type quantities are unavailable ({reason}).',
   'zonesPanel.volumeBreakdown.unknownReasonMessage': 'Its volume could not be split ({reason}).',
   'zonesPanel.volumeBreakdown.splitButton': 'Split volume by zone',
   'zonesPanel.volumeBreakdown.overlapWarning': 'These zones overlap each other, so the shares double-count and do not add up to the whole.',

@@ -24,6 +24,7 @@ export interface QuantityEntityRecord {
     type: string;
     attributes: readonly unknown[];
 }
+export type QuantityUnitResolver = (expressId: number) => ReturnType<typeof resolveUnitByRef>;
 export type QuantityEntityReader = (expressId: number) => QuantityEntityRecord | null;
 
 /** One extracted quantity, in the shape both call sites report. */
@@ -118,6 +119,7 @@ export function collectQuantitiesFromRefs(
     extractor: EntityExtractor,
     refs: unknown,
     readEntity?: QuantityEntityReader,
+    resolveCurrentUnit?: QuantityUnitResolver,
 ): CollectedQuantity[] {
     const quantities: CollectedQuantity[] = [];
     if (!Array.isArray(refs)) return quantities;
@@ -144,7 +146,7 @@ export function collectQuantitiesFromRefs(
         // physical value rather than silently treating (say) 2000 mm as 2000 m.
         const unitRef = qtyAttrs[2];
         const unit = typeof unitRef === 'number'
-            ? resolveUnitByRef(extractor, store.entityIndex, unitRef)
+            ? resolveCurrentUnit ? resolveCurrentUnit(unitRef) : resolveUnitByRef(extractor, store.entityIndex, unitRef)
             : null;
         const rawValue = qtyAttrs[SIMPLE_QUANTITY_VALUE_SLOT];
 
@@ -258,6 +260,7 @@ export function readQuantitySetRecord(
     extractor: EntityExtractor,
     qsetEntity: QuantityEntityRecord,
     readEntity?: QuantityEntityReader,
+    resolveCurrentUnit?: QuantityUnitResolver,
 ): CollectedQuantitySet | null {
     const qsetAttrs = qsetEntity.attributes || [];
     // Left empty rather than a fabricated `QuantitySet #<id>` when the source
@@ -266,7 +269,7 @@ export function readQuantitySetRecord(
     // the model had genuinely declared that name (#3530 census).
     const qsetName = typeof qsetAttrs[2] === 'string' ? qsetAttrs[2] : '';
     const qsetGlobalId = typeof qsetAttrs[0] === 'string' ? qsetAttrs[0] : undefined;
-    const quantities = collectQuantitiesFromRefs(store, extractor, qsetAttrs[QUANTITIES_SLOT], readEntity);
+    const quantities = collectQuantitiesFromRefs(store, extractor, qsetAttrs[QUANTITIES_SLOT], readEntity, resolveCurrentUnit);
 
     if (quantities.length === 0) return null;
     return { name: qsetName, globalId: qsetGlobalId, quantities };

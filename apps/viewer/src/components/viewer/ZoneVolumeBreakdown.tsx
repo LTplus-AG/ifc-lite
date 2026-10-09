@@ -55,6 +55,7 @@ interface Props {
   quantitySets: readonly QuantitySetLike[];
   projectUnits: ProjectUnits;
   unitDisplayOverrides: Record<string, string>;
+  inheritedQuantityCoverage?: { status: 'available' | 'unavailable'; reason: string | null };
 }
 
 /** Render a cubic-metre value in the file's declared volume unit (or the user's
@@ -112,7 +113,7 @@ function BasisRows({ breakdown, format }: { breakdown: BasisBreakdown; format: (
   );
 }
 
-export function ZoneVolumeBreakdown({ zoneSet, globalId, quantitySets, projectUnits, unitDisplayOverrides }: Props) {
+export function ZoneVolumeBreakdown({ zoneSet, globalId, quantitySets, projectUnits, unitDisplayOverrides, inheritedQuantityCoverage }: Props) {
   const { t } = useTranslation();
   const cache = useViewerStore((s) => s.zoneApportionment);
   const { computeElement } = useZoneApportionment();
@@ -136,10 +137,13 @@ export function ZoneVolumeBreakdown({ zoneSet, globalId, quantitySets, projectUn
   }, [apportionment, quantitySets, volume.siScale]);
 
   const reason = cachedRefusal ?? refusal;
+  const inheritedUnavailable = inheritedQuantityCoverage?.status === 'unavailable'
+    ? <output className="block px-3 py-2 text-xs text-muted-foreground">{t('zonesPanel.volumeBreakdown.inheritedUnavailable', { reason: inheritedQuantityCoverage.reason ?? 'unverified current data' })}</output> : null;
 
   if (!apportionment) {
     return (
       <div className="px-3 py-2 space-y-1">
+        {inheritedUnavailable}
         {reason === 'no-geometry' && (
           <p className="text-xs text-muted-foreground flex items-center gap-1.5">
             <TriangleAlert className="h-3.5 w-3.5" /> {t('zonesPanel.volumeBreakdown.noGeometryMessage')}
@@ -185,6 +189,7 @@ export function ZoneVolumeBreakdown({ zoneSet, globalId, quantitySets, projectUn
 
   return (
     <div className="border-t">
+      {inheritedUnavailable}
       {apportionment.overlapping && (
         <p className="px-3 pt-2 text-2xs text-amber-600 flex items-center gap-1.5">
           <TriangleAlert className="h-3.5 w-3.5" />

@@ -804,6 +804,30 @@ import { extractTypeQuantitiesOnDemand, type IfcDataStore } from '@ifc-lite/pars
 import type { MutablePropertyView } from '@ifc-lite/mutations';
 
 function currentTypeQuantities(store: IfcDataStore, expressId: number, view: MutablePropertyView) {
-  return extractTypeQuantitiesOnDemand(store, expressId, view)?.quantities ?? [];
+  return extractTypeQuantitiesOnDemand(store, expressId, view)?.quantities ?? null;
+}
+```
+
+
+For current reads that need completeness, `readCurrentTypeQuantities(store,
+expressId, view)` returns `{ status, reason, value }`. Unavailable coverage means
+current inherited facts remain unknown, with an explicit reason. Keep occurrence
+quantities separate and preserve that coverage instead of displaying a verified
+empty type inventory or retrying the source snapshot. The current reader bounds
+relationship references, type definitions and quantity members; unsupported
+quantity classes or unreadable values also produce unavailable coverage. Explicit
+quantity units use the same canonical resolver with current native records,
+including newly allocated unit entities. Unreadable/deleted/unsupported units,
+cycles, or more than 512 unit dependency reads refuse current coverage instead
+of falling back to an obsolete scale or default SI. Source-only reads retain
+their existing unit conventions.
+
+```typescript
+import { readCurrentTypeQuantities, type IfcDataStore } from '@ifc-lite/parser';
+import type { MutablePropertyView } from '@ifc-lite/mutations';
+
+function verifiedCurrentTypeQuantities(store: IfcDataStore, expressId: number, view: MutablePropertyView) {
+  const result = readCurrentTypeQuantities(store, expressId, view);
+  return { status: result.status, reason: result.reason, quantities: result.value?.quantities ?? null };
 }
 ```

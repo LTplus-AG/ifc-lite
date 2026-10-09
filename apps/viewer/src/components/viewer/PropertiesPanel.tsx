@@ -25,13 +25,13 @@ import { toGlobalIdFromModels } from '@/store/globalId';
 import { useIfc } from '@/hooks/useIfc';
 import { getOrCreateMutationView } from '@/sdk/adapters/mutation-view';
 import { IfcQuery } from '@ifc-lite/query';
-import { extractClassificationsOnDemand, extractTypeQuantitiesOnDemand, extractTypeEntityOwnProperties, extractGeoreferencingOnDemand, extractLengthUnitScale, extractProjectUnits, ProjectUnits, taskProductExpressIds, taskProductGlobalIds, type IfcDataStore, type MaterialPsetGroup } from '@ifc-lite/parser';
+import { extractClassificationsOnDemand, extractTypeEntityOwnProperties, extractGeoreferencingOnDemand, extractLengthUnitScale, extractProjectUnits, ProjectUnits, taskProductExpressIds, taskProductGlobalIds, type IfcDataStore, type MaterialPsetGroup } from '@ifc-lite/parser';
 import { RelationshipType, isSpatialStructureTypeName, isStoreyLikeSpatialTypeName } from '@ifc-lite/data';
 import type { EntityRef, FederatedModel } from '@/store/types';
 import { ZoneVolumeBreakdown } from './ZoneVolumeBreakdown';
 import type { ZoneSet } from '@/lib/zones';
 import { effectiveMaterials, effectiveMaterialProperties } from './properties/effectiveMaterials';
-import { withInheritedTypeQuantities } from '@/lib/zones/inherited-quantities';
+import { useInheritedTypeQuantities } from './properties/useInheritedTypeQuantities';
 import { CoordVal, CoordRow } from './properties/CoordinateDisplay';
 import { renderToWorldViewer } from './tools/measure-modes/coordinates';
 import { viewerToIfcAxes } from '@/lib/geo/coordinate-frame';
@@ -524,19 +524,9 @@ export function PropertiesPanel() {
     return effectiveQuantitySets(mutationView, expressId, (baseId) => (baseId === expressId ? entityNode : modelQuery?.entity(baseId))?.quantities() ?? []);
   }, [entityNode, modelQuery, selectedEntity, mutationViews, mutationVersion]);
 
-  /** Occurrence quantities remain first (#2508). Type assignments and native
-   * quantity attributes follow the current view, including direct revisions
-   * that do not publish mutationVersion (#7353). Source-free models retain
-   * the existing prebuilt type-table branch. */
-  const inheritedQuantityView = mutationViews.get(selectedEntity?.modelId === 'legacy' ? '__legacy__' : selectedEntity?.modelId ?? '__legacy__');
-  const inheritedQuantityRevision = inheritedQuantityView?.getMutationRevision();
-  const quantitiesWithInheritedType = useMemo(() => withInheritedTypeQuantities(
-    quantities,
-    (model?.ifcDataStore ?? ifcDataStore) as IfcDataStore | null,
-    selectedEntity?.expressId,
-    RelationshipType.DefinesByType,
-    (store, id) => extractTypeQuantitiesOnDemand(store as IfcDataStore, id, inheritedQuantityView)?.quantities as QuantitySet[] | undefined,
-  ), [quantities, selectedEntity, model, ifcDataStore, inheritedQuantityView, inheritedQuantityRevision, mutationVersion]);
+  const inheritedTypeQuantities = useInheritedTypeQuantities(quantities,
+    (model?.ifcDataStore ?? ifcDataStore) as IfcDataStore | null, selectedEntity?.expressId,
+    mutationViews.get(selectedEntity?.modelId === 'legacy' ? '__legacy__' : selectedEntity?.modelId ?? '__legacy__'));
 
   // Build attributes array for display - must be before early return to maintain hook order
   // Uses schema-aware extraction to show ALL string/enum attributes for the entity type.
@@ -1028,7 +1018,7 @@ export function PropertiesPanel() {
   const renderedInheritedTypeProperties = inheritedTypeProperties;
   const renderedMergedProperties = mergedProperties;
   const renderedQuantities = quantities;
-  const renderedQuantitiesWithInheritedType = quantitiesWithInheritedType;
+  const renderedQuantitiesWithInheritedType = inheritedTypeQuantities.quantities;
   const renderedAttributes = attributes;
   const renderedClassifications = classifications;
   const renderedMaterialInfos = materialInfos;
@@ -1428,6 +1418,7 @@ export function PropertiesPanel() {
                       zoneSet={item.zoneSet}
                       globalId={selectedEntityId}
                       quantitySets={renderedQuantitiesWithInheritedType}
+                      inheritedQuantityCoverage={inheritedTypeQuantities}
                       projectUnits={renderedProjectUnits}
                       unitDisplayOverrides={unitDisplayOverrides}
                     />

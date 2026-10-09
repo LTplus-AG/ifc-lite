@@ -59,6 +59,7 @@ export {
   type RequirementSnapshot,
   type OpTemplate,
   type TemplateOp,
+  type CommentDraft,
 } from './ops/types.js';
 export { OP_KINDS, validateOp, getOpJsonSchema, type OpValidation } from './ops/schema.js';
 export type { SchemaError } from './ops/json-schema-lite.js';
@@ -115,7 +116,30 @@ export {
 export { writeIdsz, readIdsz, type IdszContent } from './sidecar/idsz.js';
 
 // Re-identification (IDS-026)
-export { reidentify, type ReidentifyReport, type ReidentifyOptions, type MatchStep } from './match/reidentify.js';
+export { reidentify, type ReidentifyReport, type ReidentifyOptions } from './match/reidentify.js';
+export type { MatchStep, FacetMatchStep } from './match/cascade.js';
+
+// Semantic diff and plain-language changelog (IDS-104)
+export * from './diff/index.js';
+
+// Three-way merge and conflict view model (IDS-106)
+export * from './merge/index.js';
+
+// Revisions, sign-off and hash chain (IDS-107)
+export * from './revision/index.js';
+
+// IDS test suites: model, runner, JUnit, view model (IDS-110)
+export * from './testing/index.js';
+
+// Comment threads in the sidecar (IDS-108)
+export {
+  commentThreads,
+  extractMentions,
+  type CommentAnchor,
+  type CommentThreadView,
+  type CommentView,
+  type CommentsView,
+} from './comments/view.js';
 
 // Plain-language rendering (IDS-027)
 export { describeFacet } from './render/describe.js';

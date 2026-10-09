@@ -1,0 +1,25 @@
+{
+  "scope": "Supplement to immutable historical manifests and receipt; original JSON and source identities remain unchanged. No new captures or qualification runs.",
+  "historicalSources": {
+    "chrome-cpu-capture.cjs": {
+      "archive": "chrome-cpu-capture.cjs.gz",
+      "originalSHA256": "c0e174e6c875ec2a0d5e8ef8dda873df773604a3a09579290de5b7d9650c6895",
+      "archiveSHA256": "42488bf4f79468627c73dce4062d774ccab2867c8ebf498de5ca51a706258a2f",
+      "status": "Immutable historical capture source; archived rather than an executable/current reproduction entry point."
+    },
+    "chrome-cpu-static-server.py": {
+      "archive": "chrome-cpu-static-server.py.gz",
+      "originalSHA256": "34dcb5537a7efad81866f753bca0bc90dbe4ab185557d089bea1fc737a2b8adf",
+      "archiveSHA256": "5c636fbcbb1ca95c779e4a286a6770a1c9e8c54900f0fa7b35f97b33135a2f58",
+      "status": "Immutable historical capture source; archived rather than an executable/current reproduction entry point."
+    }
+  },
+  "historicalWiringReceipt": {
+    "receipt": "main-integration-20261008/receipt.json",
+    "receiptSHA256": "4fae6941b77fc7224e9e036356db1116f8924d455718e0f144e6879a05d34de0",
+    "archive": "main-integration-20261008/6584-main-integration-wiring.log.gz",
+    "recordedSHA256Scope": "decompressed original log",
+    "rawSHA256": "98a10385e08b01728c5beafad6abc4108f0096cb636594ec566c3f51a2950c30",
+    "archiveSHA256": "15b34a6b5c7ff51cbcf9fa5707542d2a6b2fc540ddc13e73db4170356830d853"
+  }
+}

@@ -76,6 +76,43 @@
       "summary": {
         "kind": "model-load-reports",
         "modelCount": 1,
+        "loadReportsAvailable": true,
+        "nativeNewIfc": {
+          "kind": "native-new-ifc-scaffold",
+          "schemas": [
+            "IFC4",
+            "IFC4X3"
+          ],
+          "LengthUnit": [
+            "METRE",
+            "MILLIMETRE"
+          ],
+          "operations": [
+            "project",
+            "addIfcBuildingStorey",
+            "toIfc"
+          ],
+          "suppliedFields": [
+            "Name",
+            "Schema",
+            "LengthUnit",
+            "Description",
+            "Author",
+            "Organization",
+            "Currency",
+            "storeys.Name",
+            "storeys.Elevation"
+          ],
+          "nativeDefaults": {
+            "SiteName": "Site",
+            "BuildingName": "Building",
+            "GUIDs": "native generated",
+            "timestamp": "native preparation time"
+          },
+          "existingModelFacts": false,
+          "publication": "explicit file download; optional primary viewer load request is not load completion or Undo",
+          "limitation": "No product geometry, currency, units, elevations or engineering requirements may be inferred."
+        },
         "diagnosticsAvailable": 0,
         "diagnosticsUnavailable": 1,
         "cleanLoads": 0,

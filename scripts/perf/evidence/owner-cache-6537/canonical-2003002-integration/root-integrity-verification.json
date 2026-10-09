@@ -1,0 +1,11 @@
+{
+  "verifiedAt": "2026-10-08T15:47:22.277641+00:00",
+  "sourceHead": "b95389289601c8584efbffaa8136fbc09b0cde10",
+  "qualificationSha256": "8c8016f402cb814ddec09f1ba00e9806cff74d49a270a34897d606763e1bbd53",
+  "exactArchivePairs": 15,
+  "ownershipFiles": 4,
+  "actualTestRuntimeRows": 20,
+  "testRuntimePidsPaired": 10,
+  "functionalRuntime": "b335",
+  "scope": "Registeredweakaliases actualfunctional qualification only; no automaticScene alias/OSresident/nativeperformance/charterclosure claim"
+}

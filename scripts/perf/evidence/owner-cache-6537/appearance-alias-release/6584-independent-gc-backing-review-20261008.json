@@ -1,0 +1,13 @@
+{
+  "timeUtc": "2026-10-08T09:02:32.603632+00:00",
+  "scope": "Independent read-only testhelper review; no execution",
+  "path": "/tmp/ifc-6584/apps/viewer/src/test/geometry-cpu-aliases-gc.ts",
+  "sha256": "6160ad0d324be52d4f7054c854a6d5f0f770b072c5e4a36cf74093a7eba24402",
+  "findings": [],
+  "observations": [
+    "WeakRefs include original typedarrays AND backing ArrayBuffers plus retained emptyappearance view",
+    "GC separated from deref jobs;bounded100attempts;no strong original allocation locals retained",
+    "Source/retainedalias remainlive withretainedcounts; appearance-onlyalias independenttopology remainslive andformer backingallocation must collect",
+    "This validates actual backingallocation release when picker executes isolated --expose-gc witness, not just wrapper collection"
+  ]
+}

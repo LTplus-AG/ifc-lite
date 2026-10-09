@@ -24,21 +24,28 @@ export interface GroupSnapshot extends GroupRootIdentity {
 }
 
 /** Scan actual effective export records, never attribute numbers mistaken for refs. */
-function references(text: string): number[] {
+export function groupRecordReferences(text: string): number[] {
   const refs: number[] = [];
-  let quoted = false;
-  let comment = false;
   const start = text.indexOf('(');
   if (start < 0) throw new Error('Group graph has an unreadable record');
   for (let i = start; i < text.length; i++) {
-    if (comment) { if (text[i] === '*' && text[i + 1] === '/') { comment = false; i++; } continue; }
-    if (!quoted && text[i] === '/' && text[i + 1] === '*') { comment = true; i++; continue; }
+    if (text[i] === '/' && text[i + 1] === '*') {
+      const end = text.indexOf('*/', i + 2);
+      if (end < 0) throw new Error('Group graph has an unterminated record');
+      i = end + 1; continue;
+    }
     if (text[i] === "'") {
-      if (quoted && text[i + 1] === "'") i++;
-      else quoted = !quoted;
+      let end = i;
+      do {
+        end = text.indexOf("'", end + 1);
+        if (end < 0) throw new Error('Group graph has an unterminated record');
+        if (text[end + 1] !== "'") break;
+        end++;
+      } while (true);
+      i = end;
       continue;
     }
-    if (quoted || text[i] !== '#') continue;
+    if (text[i] !== '#') continue;
     let end = i + 1;
     while (end < text.length && text[end] >= '0' && text[end] <= '9') end++;
     if (end === i + 1) throw new Error('Group graph has an unreadable reference');
@@ -46,7 +53,6 @@ function references(text: string): number[] {
     if (!Number.isSafeInteger(id) || id <= 0) throw new Error('Group graph has an invalid reference');
     refs.push(id); i = end - 1;
   }
-  if (quoted || comment) throw new Error('Group graph has an unterminated record');
   return refs;
 }
 
@@ -82,7 +88,7 @@ export class GroupGraph {
       if (record.text.length > GROUP_GRAPH_LIMITS.recordCharacters) throw new Error('Group graph record budget exceeded');
       recordCharacters += record.text.length;
       if (recordCharacters > GROUP_GRAPH_LIMITS.totalRecordCharacters) throw new Error('Group graph total record work budget exceeded');
-      for (const target of references(record.text)) {
+      for (const target of groupRecordReferences(record.text)) {
         if (++referenceCount > GROUP_GRAPH_LIMITS.references) throw new Error('Group graph reference budget exceeded');
         const ids = this.incoming.get(target) ?? new Set<number>(); ids.add(expressId); this.incoming.set(target, ids);
       }

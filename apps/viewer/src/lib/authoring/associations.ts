@@ -20,7 +20,7 @@
  * room so recipients reconstruct the same IFC relationships.
  */
 
-import { MutablePropertyView, StoreEditor, type IfcAttributeValue } from '@ifc-lite/mutations';
+import { MutablePropertyView, StoreEditor, iterateEffectiveEntityIds, type IfcAttributeValue } from '@ifc-lite/mutations';
 import { effectiveMetadataRecord, resolveAllMaterialDefIds, type IfcDataStore } from '@ifc-lite/parser';
 import { liveEntityConforms } from '@ifc-lite/create';
 import { RelationshipType } from '@ifc-lite/data';
@@ -85,11 +85,14 @@ function effectiveAttributes(target: Pick<Target, 'store' | 'view'>, id: number)
 }
 
 function entityNamed(target: Pick<Target, 'store' | 'view'>, type: string, name: string, nameSlot: number): number | null {
-  const matches = (id: number) => {
-    if (type !== 'IFCCLASSIFICATION') return effectiveAttributes(target, id)?.[nameSlot] === name;
-    const record = effectiveMetadataRecord(target.store, id, target.view);
-    return record?.type.toUpperCase() === type && record.attributes[nameSlot] === name;
-  };
+  if (type === 'IFCCLASSIFICATION') {
+    for (const { expressId } of iterateEffectiveEntityIds(target.store, target.view, ['IfcClassification'])) {
+      const record = effectiveMetadataRecord(target.store, expressId, target.view);
+      if (record?.attributes[nameSlot] === name) return expressId;
+    }
+    return null;
+  }
+  const matches = (id: number) => effectiveAttributes(target, id)?.[nameSlot] === name;
   // The source is immutable, so this index walk happens only when the user
   // presses Add; no per-element attribute reparsing on the render path.
   // @raw-entity-enumeration-ok source Name candidates are paired with overlay entities; effectiveAttributes applies tombstones and edits before matching.

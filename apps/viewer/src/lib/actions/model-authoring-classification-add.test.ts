@@ -230,3 +230,29 @@ test('#7271 classification resolves a freshly authored native wall identity outs
   assert.equal(undone.entities.getGlobalId(target), globalId, 'Undo addition preserves the previously created native wall');
   assert.deepEqual(extractClassificationsOnDemand(undone, target), []);
 });
+
+
+test('#7271 reviewed Add reuses a source entity retyped into the current native classification system', async () => {
+  const { dataStore, target, view } = await nativeControl();
+  const materialId = dataStore.entityIndex.byType.get('IFCMATERIAL')?.[0];
+  assert.ok(materialId, 'real authoring fixture contains a source material');
+  const name = 'Retyped current classification system';
+  view.setEntityType(materialId, 'IfcClassification');
+  view.setAttribute(materialId, 'Name', name);
+  const before = await parseIfc(editedModelBytes(dataStore, view));
+  assert.equal(before.entities.getTypeName(materialId), 'IfcClassification');
+  assert.equal(before.getEntity(materialId)?.attributes[3], name, 'native exporter independently confirms the retyped system Name');
+  const batch = reviewedAdd();
+  assert.equal(batch.operations[0].op, 'classification.add');
+  if (batch.operations[0].op !== 'classification.add') throw new Error('Expected classification operation');
+  batch.operations[0].Classification.Name = name;
+  const preview = previewModelAuthoring(useViewerStore.getState(), batch);
+  assert.equal(preview.rows[0].status, 'ready', preview.rows[0].issue);
+  const outcome = commitModelAuthoring(useViewerStore, preview, new Set([0]), 'test');
+  assert.ok(outcome.ok, outcome.ok ? '' : outcome.detail ?? outcome.reason);
+  const after = await parseIfc(editedModelBytes(dataStore, view));
+  const systems = [...(after.entityIndex.byType.get('IFCCLASSIFICATION') ?? [])]
+    .filter(id => after.getEntity(id)?.attributes[3] === name);
+  assert.deepEqual(systems, [materialId], 'native reviewed Add must reuse the current source system rather than create a duplicate');
+  assert.ok(extractClassificationsOnDemand(after, target).some(row => row.system === name && row.identification === 'WALL-002'));
+});

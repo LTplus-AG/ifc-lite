@@ -21,10 +21,12 @@ import { getModelById } from '@/lib/llm/models';
 import { captureSelectionGrounding, selectionGroundingText, type SelectionGrounding } from '@/lib/actions/selection-grounding';
 import type { AssistantAttachments } from '@/lib/assistant/request';
 import { captureViewportScreenshot } from './viewport-screenshot';
+import { roomAttachmentText, type RoomGrounding } from '@/lib/actions/room-review';
 
 export interface ComposerAttachmentValue {
   selection: SelectionGrounding | null;
   screenshot: string | null;
+  rooms?: RoomGrounding | null;
 }
 
 export const NO_ATTACHMENTS: ComposerAttachmentValue = { selection: null, screenshot: null };
@@ -34,6 +36,7 @@ export function attachmentsForSend(value: ComposerAttachmentValue): AssistantAtt
   return {
     ...(value.selection ? { selection: selectionGroundingText(value.selection), selectionSnapshot: value.selection } : {}),
     ...(value.screenshot ? { screenshot: value.screenshot } : {}),
+    ...(value.rooms ? { rooms: roomAttachmentText(value.rooms), roomSnapshot: value.rooms } : {}),
   };
 }
 
@@ -76,7 +79,7 @@ export function ComposerAttachments({ model, value, onChange, disabled, sent }: 
     if (shot) onChange(current => ({ ...current, screenshot: shot }));
     else setProblem('failed');
   };
-  const attached = value.selection !== null || value.screenshot !== null;
+  const attached = value.selection !== null || value.screenshot !== null || !!value.rooms;
   return <div className="space-y-1">
     <div className="flex flex-wrap items-center gap-1">
       {!value.selection && <Button type="button" size="sm" variant="ghost" className="h-6 px-1.5 text-2xs" disabled={disabled || selected === 0}
@@ -92,6 +95,8 @@ export function ComposerAttachments({ model, value, onChange, disabled, sent }: 
       {value.selection && <Chip label={t('sceneActions.selectionAttached', { count: value.selection.elements.length })}
         onRemove={() => onChange({ ...value, selection: null })} />}
       {value.screenshot && <Chip label={t('sceneActions.viewAttached')} onRemove={() => onChange({ ...value, screenshot: null })} />}
+      {value.rooms && <Chip label={t('roomReview.attached', { candidates: value.rooms.snapshot.candidateCount, rooms: value.rooms.snapshot.roomCount })}
+        onRemove={() => onChange({ ...value, rooms: null })} />}
     </div>
     {problem && <p role="alert" className="text-2xs text-destructive">
       {t(problem === 'unsupported' ? 'sceneActions.attachViewUnsupported' : 'sceneActions.viewFailed')}</p>}

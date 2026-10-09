@@ -42,14 +42,20 @@ IFC4 and IFC4X3 uploads use the canonical compatibility exporter after applying
 edits. It normalizes map units to metres. When the physical scale is one, supported
 map rotation and translation move into the original root `IfcLocalPlacement`
 frames; child placements, representations, openings and fills retain their
-original relationships. Other supported uniform scales use mapped Body
+original relationships. Cesium ion evaluates `IfcLinearPlacement` without a
+transformed `PlacementRelTo`, so each linear placement is written as the
+equivalent `IfcLocalPlacement` (same parent, its resolved curve frame); a linear
+placement without `PlacementRelTo` is refused. Other supported uniform scales use mapped Body
 representations under stricter ownership checks. These transformations preserve
 physical map coordinates, project units, properties and authored shape data.
-Ordinary IFC downloads retain their original coordinate representation. IFC2X3
+Ordinary IFC downloads retain their original coordinate representation.
+Cesium ion currently tiles `IfcSectionedSolidHorizontal` sweeps (for example
+girders and pavement along an alignment) without their full alignment
+geometry, with or without this compatibility export. IFC2X3
 uploads keep their source schema and edits without an implicit upgrade.
 
 Unsupported coordinate consumers, ambiguous units or export warnings stop the
-upload before network transfer. For a model without georeferencing, set its
+upload before network transfer, and the dialog lists each reason. For a model without georeferencing, set its
 location in Cesium ion. No undocumented heading or placement override is sent.
 A successful upload starts tiling; follow the asset link to check its progress.
 

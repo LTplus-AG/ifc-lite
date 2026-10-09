@@ -4,7 +4,7 @@
 
 /** #7070: a proposal is bounded evidence, never authority to mutate. */
 import { expect, it } from 'vitest';
-import { createRootBudget, runModelRequest } from '@ifc-lite/ai';
+import { createRootBudget, runModelRequest, type UsageReceipt } from '@ifc-lite/ai';
 import { NodeRegistry, runFlow, type FlowDocument, type NodeDef, type Table } from '@ifc-lite/flow';
 import { parseCapabilities } from '@ifc-lite/extensions';
 import { aiNodes, AI_FEATURE, type FlowAiService } from './ai.js';
@@ -31,11 +31,13 @@ async function run(reply: unknown = answer(), patch: Record<string, unknown> = {
   const budget = createRootBudget({ maxRequests: Math.max(1, options.requests ?? 1), maxOutputTokens: 4000 });
   if (options.requests === 0) budget.requests = budget.maxRequests;
   const prompts: string[] = [];
+  const receipts: UsageReceipt[] = [];
   const ai: FlowAiService = { model: 'fixture', request: call => runModelRequest({ model: 'fixture', route: 'fixture', budget,
-    routeCeiling: 1000, timeoutMs: 1000, messages: [call.prompt], system: call.system, signal: call.signal, maxOutputTokens: call.maxOutputTokens,
+    routeCeiling: 1000, timeoutMs: 1000, prepareInput: () => JSON.stringify({ messages: [call.prompt], system: call.system, outputSchema: call.outputSchema }),
+      messages: [call.prompt], system: call.system, promptVersion: call.promptVersion, signal: call.signal, maxOutputTokens: call.maxOutputTokens,
     transport: async transport => { prompts.push(call.prompt); const text = JSON.stringify(reply); transport.onChunk(text);
       transport.onFinishReason(options.finish ?? 'stop'); transport.onComplete(text); },
-  }) };
+  }, { onReceipt: receipt => receipts.push(receipt) }) };
   const doc: FlowDocument = { flowVersion: 2, id: 'proposal', name: 'Proposal', inputs: [], outputs: [], capabilities: ['network.ai'],
     nodes: [{ id: 'source', type: source.type }, { id: 'proposal', type: 'ai.propose', params: { ...params, ...patch } }],
     edges: [{ from: ['source', 'table'], to: ['proposal', 'table'] }] };
@@ -43,11 +45,13 @@ async function run(reply: unknown = answer(), patch: Record<string, unknown> = {
   const result = await runFlow(doc, { registry: new NodeRegistry<FlowHost>().registerAll([{ ...source, run: () => ({ table: options.table ?? table }) }, ...aiNodes]),
     features: { ...features, backend: new Set([...features.backend, AI_FEATURE]) }, signal: options.signal,
     host: { bim: createFakeBim().bim, ai, networkGrants: capabilities, grants: options.granted === false ? [] : capabilities } });
-  return { result, prompts, budget };
+  return { result, prompts, budget, receipts };
 }
 
 it('keeps a canonical portable artifact at review, sending only selected bounded findings', async () => {
-  const { result, prompts, budget } = await run();
+  const { result, prompts, budget, receipts } = await run();
+  // #7246 proposal identity is declared by its native producer, retained by the canonical request owner.
+  expect(receipts[0].provenance).toMatchObject({ promptVersion: 'flow.ai.propose.v1', finishReason: 'stop', grantedOutputTokens: 1000 });
   expect(result.ok).toBe(true);
   expect(result.review).toEqual(['proposal']);
   expect(result.outputs.get('proposal')?.get('proposal')).toMatchObject({ kind: 'item', value: answer() });

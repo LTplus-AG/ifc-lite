@@ -7,6 +7,8 @@ import { useViewerStore } from '@/store';
 import { sameReportEvidence } from '../flow/report-provenance.js';
 import { loadSavedFilters, saveFilter, __internal, type SavedFilterPreset } from '../search/saved-filters.js';
 import { loadListDefinitions } from '../lists/persistence.js';
+import { buildInitialLenses, AUTO_COLOR_FROM_LIST_ID } from '@/store/slices/lensSlice';
+import { encodeSavedLens, migrateSavedLens } from '../lens/migrate-saved-lens.js';
 import { encodeSavedList } from '../lists/saved-list-codec.js';
 import type { StandaloneArtifactLibraries } from './artifact-backup.js';
 
@@ -29,16 +31,27 @@ function copyName(name: string, index: number, limit = 200): string {
   return name.slice(0, Math.max(1, limit - suffix.length)) + suffix;
 }
 /** Include newly durable peer-tab rows without overwriting a conflicting local draft. */
-export function currentListDefinitions(): ListDefinition[] {
-  const rows = new Map(loadListDefinitions().map(row => [row.id, row]));
-  for (const row of useViewerStore.getState().listDefinitions) {
-    const saved = rows.get(row.id);
-    if (saved && !sameReportEvidence(encodeSavedList(saved), encodeSavedList(row))) {
-      throw new Error('Lists changed in another tab. Reload the library before backing up or importing.');
+function currentRows<T extends { id: string }>(saved: T[], local: T[], encode: (row: T) => unknown, kind: string): T[] {
+  const rows = new Map(saved.map(row => [row.id, row]));
+  for (const row of local) {
+    const durable = rows.get(row.id);
+    if (durable && !sameReportEvidence(encode(durable), encode(row))) {
+      throw new Error(`${kind} changed in another tab. Reload the library before backing up or importing.`);
     }
-    if (!saved) rows.set(row.id, row);
+    if (!durable) rows.set(row.id, row);
   }
   return [...rows.values()];
+}
+export function currentListDefinitions(): ListDefinition[] {
+  return currentRows(loadListDefinitions(), useViewerStore.getState().listDefinitions, encodeSavedList, 'Lists');
+}
+export function currentLensDefinitions(): Lens[] {
+  return currentRows(buildInitialLenses(), useViewerStore.getState().savedLenses, row => {
+    const normalized = migrateSavedLens(encodeSavedLens(row));
+    if (!normalized) throw new Error('A saved Lens is unreadable. Export its original before refreshing the library.');
+    return normalized;
+  }, 'Lenses')
+    .filter(row => row.id !== AUTO_COLOR_FROM_LIST_ID);
 }
 /** Filters use native names as identities; List/Lens provenance requires IDs. */
 function reusableFilter(rows: readonly SavedFilterPreset[], incoming: SavedFilterPreset): boolean {
@@ -114,7 +127,9 @@ export function importArtifactLibraries(incoming: StandaloneArtifactLibraries): 
     else outcome.saved += count;
   }
   if (incoming.lenses) {
-    const state = useViewerStore.getState(), rows: Lens[] = [...state.savedLenses], copies: Lens[] = [];
+    const state = useViewerStore.getState(), rows = currentLensDefinitions();
+    const copies = rows.filter(row => !state.savedLenses.some(local => local.id === row.id));
+    let count = 0;
     const owners = identityOwners(incoming.lenses);
     for (const entry of incoming.lenses) {
       const identity = importIdentity(rows, entry, owners);
@@ -122,12 +137,12 @@ export function importArtifactLibraries(incoming: StandaloneArtifactLibraries): 
       if (identity.existing) continue;
       const copy = { ...entry, id: identity.id,
         name: identity.name, builtin: false };
-      copies.push(copy); rows.push(copy);
+      copies.push(copy); rows.push(copy); count++;
     }
     if (incoming.lenses.length && !state.importLenses(copies).ok) {
       outcome.failed.push('lenses'); outcome.pending.lenses = incoming.lenses;
     }
-    else outcome.saved += copies.length;
+    else outcome.saved += count;
   }
   return outcome;
 }

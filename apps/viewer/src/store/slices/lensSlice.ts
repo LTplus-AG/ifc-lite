@@ -17,7 +17,7 @@ import { duplicateLensConfig, reserveUniqueId } from '@/components/viewer/lens-e
 import { mergeImportedGroupLenses, migrateSavedLens } from '@/lib/lens/migrate-saved-lens';
 import type { SaveResult } from '@/lib/storage/save-result';
 import { AUTO_COLOR_FROM_LIST_ID, buildInitialLenses, saveLenses } from '@/lib/lens/persistence';
-export { AUTO_COLOR_FROM_LIST_ID } from '@/lib/lens/persistence';
+export { AUTO_COLOR_FROM_LIST_ID, buildInitialLenses } from '@/lib/lens/persistence';
 import { defineSliceTeardown, notApplicable } from '../teardown.js';
 export type { Lens, LensRule, AutoColorSpec, AutoColorLegendEntry, DiscoveredLensData };
 export type { SaveResult };

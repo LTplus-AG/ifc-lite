@@ -27,7 +27,7 @@ import { stageContentDrafts } from '@/lib/storage/content-backup-drafts';
 import { loadSavedFilters } from '@/lib/search/saved-filters';
 import { encodeContentBackup } from '@/lib/storage/content-backup';
 import type { StandaloneArtifactLibraries } from '@/lib/storage/artifact-backup';
-import { currentListDefinitions, importArtifactLibraries } from '@/lib/storage/artifact-backup-import';
+import { currentLensDefinitions, currentListDefinitions, importArtifactLibraries } from '@/lib/storage/artifact-backup-import';
 
 const messages = {
   quota: 'contentStorage.quota', unavailable: 'contentStorage.unavailable',
@@ -35,7 +35,7 @@ const messages = {
 } as const satisfies Record<string, TranslationKey>;
 const visibleLibraries = () => {
   const state = useViewerStore.getState();
-  return { filters: loadSavedFilters(), lists: currentListDefinitions(), lenses: state.exportLenses(),
+  return { filters: loadSavedFilters(), lists: currentListDefinitions(), lenses: currentLensDefinitions(),
     validation: state.savedValidationReports, comparison: state.savedComparisons, document: state.documents, clashReports: state.savedClashReports,
     assistant: useAssistantLibrary.getState().entries, clashGroups: useClashGroupLibrary.getState().entries,
     bcfDrafts: useBcfDraftLibrary.getState().entries, bcfOutbox: useBcfOutbox.getState().entries,

@@ -128,7 +128,8 @@ test('#7218 remounted native notice cannot race a delayed import and clear its r
   await seedArtifactModels({ federated: true });
   await Promise.all([assistantLibrary.initialize(), useViewerStore.getState().initializeSavedClashReports()]);
   const proposal = parseArtifactProposal(JSON.stringify({ version: 1, title: 'Native delayed import', kind: 'filter.proposal', ...entries[0].body }), 'filter.proposal');
-  const saved = await saveArtifact(proposal, useViewerStore.getState()); assert.ok(saved.ok);
+  const prepared = await previewArtifact(proposal, useViewerStore.getState()); assert.ok(prepared.matched > 0);
+  const saved = saveArtifact(prepared.artifact); assert.ok(saved.ok);
   const wire = await nativeBackupWire({ filters: loadSavedFilters() });
   clearSavedFilters();
   let release: (text: string) => void = () => { throw new Error('file read not started'); };
@@ -193,6 +194,39 @@ for (const action of ['download', 'import'] as const) test(`#7218 native ${actio
       await act(async () => { input.dispatchEvent(new Event('change', { bubbles: true })); });
       await waitFor(() => loadListDefinitions().some(row => row.id === incoming.id), 'native source List saved');
       assert.ok(loadListDefinitions().some(row => row.id === b.id), 'native import must not overwrite another tab’s durable peer');
+    }
+  } finally { download.mock.restore(); }
+});
+
+for (const action of ['download', 'import'] as const) test(`#7218 native ${action} retains a Lens saved by another tab after this tab loaded`, async () => {
+  await seedArtifactModels({ federated: true });
+  await Promise.all([assistantLibrary.initialize(), useViewerStore.getState().initializeSavedClashReports()]);
+  const proposal = parseArtifactProposal(JSON.stringify({ version: 1, title: 'Native stale tab Lenses', kind: 'lens.proposal', ...entries[2].body }), 'lens.proposal');
+  const preview = await previewArtifact(proposal, useViewerStore.getState()); assert.ok(preview.matched > 0);
+  assert.equal(preview.artifact.kind, 'lens.proposal'); if (preview.artifact.kind !== 'lens.proposal') assert.fail('native Lens required');
+  const a = { ...preview.artifact.lens, id: 'native-tab-lens-a', name: 'Native tab A' };
+  const b = { ...preview.artifact.lens, id: 'native-tab-lens-b', name: 'Native tab B' };
+  const incoming = { ...preview.artifact.lens, id: 'native-tab-lens-import-c', name: 'Native import C' };
+  assert.ok(useViewerStore.getState().setSavedLenses([a]).ok);
+  const wire = await nativeBackupWire({ lenses: [incoming] });
+  const peerTab = createStore<LensSlice>()(createLensSlice);
+  assert.ok(peerTab.getState().setSavedLenses([a, b]).ok, 'a fresh native Lens store writes the independent peer');
+  assert.ok(!useViewerStore.getState().savedLenses.some(row => row.id === b.id), 'the original tab is genuinely stale');
+  const blobs: Blob[] = [];
+  const download = mock.method(URL, 'createObjectURL', (value: Blob | MediaSource) => { assert.ok(value instanceof Blob); blobs.push(value); return 'blob:native-stale-lens-tab'; });
+  const ui = render(<Notice />);
+  try {
+    if (action === 'download') {
+      const button = [...ui.querySelectorAll('button')].find(node => node.textContent?.includes('Download library backup')); assert.ok(button);
+      await waitFor(() => !button.disabled, 'native Lens export ready'); click(button);
+      await waitFor(() => blobs.length === 1, 'native stale-tab Lens Download');
+      assert.ok(parseContentBackup(await blobs[0].text()).libraries.lenses?.some(row => row.id === b.id), 'native backup includes the independent durable Lens peer');
+    } else {
+      const input = ui.querySelector<HTMLInputElement>('input[type="file"]'); assert.ok(input);
+      Object.defineProperty(input, 'files', { value: [new File([wire], 'native-stale-lens-tab-import.json')], configurable: true });
+      await act(async () => { input.dispatchEvent(new Event('change', { bubbles: true })); });
+      await waitFor(() => createStore<LensSlice>()(createLensSlice).getState().savedLenses.some(row => row.id === incoming.id), 'native source Lens saved durably');
+      assert.ok(createStore<LensSlice>()(createLensSlice).getState().savedLenses.some(row => row.id === b.id), 'native import must not overwrite another tab’s durable Lens');
     }
   } finally { download.mock.restore(); }
 });

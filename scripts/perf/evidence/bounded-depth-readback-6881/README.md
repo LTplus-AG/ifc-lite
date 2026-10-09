@@ -4,6 +4,33 @@ Status: candidate held for qualification. These hardware runs prove a bounded
 mechanism and several correctness invariants; they do not establish a viewer
 hover speedup or satisfy every acceptance condition of #6881.
 
+## Cleanup qualification, 2026-10-09
+
+The campaign's existing cleanup repair and ten fault controls were adopted into
+an independent Linux checkout at published head `ac5e1ad39`. Point ID copying
+and the entire rectangle readback now run inside the existing resource-release
+boundary. Both paths use `releaseReadbacks`; no coordinate or ownership
+calculation was added. Five controls fail with the published cleanup code
+(point ID copy; rectangle ID copy, finish, submission and mapped-range access).
+All ten pass with the repair. These injected faults prove buffer ownership,
+not actual GPU picking or a performance improvement.
+
+`cleanup-qualification-20261009.json.gz` preserves full logs, exact commands,
+source hashes and terminal/restoration receipts. Root Turbo typecheck passed,
+including the audit of all 3,693 test files in 62 packages. Root renderer tests
+passed 2,078 tests, with zero failures and two skips: the opt-in 340 MB stress
+test and real WebGPU packed-origin test unavailable in Node. Root lint,
+test wiring, source-assertion and module-size checks passed. The initial
+module-size failure against a stale local main is retained; the check passes
+against the fetched GitHub main's actual merge base `e60ed32ee`. Picker's
+allowlist budget was lowered to its measured 708 lines.
+
+The prior FZK attempt's 1,000 ms animation-frame refusal is preserved under
+`/home/louistrue/.t3/artifacts/6881-fzk-overlap-recovery-plan-20261009`.
+It produced no declared serial/overlap comparisons and proves neither a picking
+defect nor acceptance. Current GPU comparison, real federation and focused
+physical performance remain unqualified. Keep this PR in draft.
+
 The candidate dispatches one depth-texture `textureLoad` after the unchanged pick
 render and copies the resulting f32 into byte 4 of that pick's ID staging buffer.
 Render, compute and copies share one command submission. Every call owns its

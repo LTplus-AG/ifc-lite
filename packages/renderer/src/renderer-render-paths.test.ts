@@ -101,6 +101,8 @@ interface Harness {
         encodeThrows: boolean;
         /** make queue.submit() throw after the color readback has been encoded */
         submitThrows: boolean;
+        /** #6881: faults after a Picker owns transient readback buffers. */
+        pickFault: 'id-copy' | 'depth-encode' | 'depth-copy' | 'finish' | 'mapped-range' | null;
         /** make popErrorScope() reject (device lost while scope pending) */
         popRejects: boolean;
         /**
@@ -134,16 +136,21 @@ function makeHarness(): Harness {
     const stats: Harness['stats'] = { push: 0, pop: 0, draws: [], createdBuffers: [], mapAsync: 0, writes: [], commands: [], passes: [], createdTextures: 0, textures: [], destroyedTextures: [], boundColorTables: [] };
     const knobs: Harness['knobs'] = {
         textureMode: 'texture', encodeThrows: false, submitThrows: false, popRejects: false, gpuDead: false,
-        deferMaps: false,
+        deferMaps: false, pickFault: null,
     };
     const parkedMaps: { resolve: () => void; reject: (e: unknown) => void }[] = [];
 
-    const makeBuffer = (desc: { size: number }): FakeBuffer => {
+    const makeBuffer = (desc: { size: number; usage?: number }): FakeBuffer => {
         const buf: FakeBuffer & { _ab: ArrayBuffer } = {
             size: desc.size,
             destroyed: 0,
             _ab: new ArrayBuffer(desc.size),
-            getMappedRange() { return this._ab; },
+            getMappedRange() {
+                if (knobs.pickFault === 'mapped-range' && ((desc.usage ?? 0) & GPUBufferUsage.MAP_READ)) {
+                    throw new Error('boom mapped range');
+                }
+                return this._ab;
+            },
             mapAsync() {
                 stats.mapAsync++;
                 // Same failure mode as the browser: a map issued against a dead
@@ -201,8 +208,20 @@ function makeHarness(): Harness {
                     return pass;
                 };
             }
-            if (prop === 'beginComputePass') return () => pass;
-            if (prop === 'finish') return () => ({});
+            if (prop === 'copyTextureToBuffer') return () => {
+                if (knobs.pickFault === 'id-copy') throw new Error('boom ID copy');
+            };
+            if (prop === 'copyBufferToBuffer') return () => {
+                if (knobs.pickFault === 'depth-copy') throw new Error('boom depth copy');
+            };
+            if (prop === 'beginComputePass') return () => {
+                if (knobs.pickFault === 'depth-encode') throw new Error('boom depth encode');
+                return pass;
+            };
+            if (prop === 'finish') return () => {
+                if (knobs.pickFault === 'finish') throw new Error('boom encoder finish');
+                return {};
+            };
             return () => undefined;
         },
     });
@@ -1101,6 +1120,48 @@ describe('pick path survives the device dying mid-readback (#1901)', () => {
             picker.destroy();
         }
     });
+
+    for (const fault of ['id-copy', 'depth-encode', 'depth-copy', 'finish', 'submit', 'mapped-range'] as const) {
+        it(`point-pick releases every owned buffer when ${fault} fails (#6881)`, async () => {
+            const h = makeHarness();
+            const picker = installPicker(h);
+            const before = h.stats.createdBuffers.length;
+            if (fault === 'submit') h.knobs.submitThrows = true;
+            else h.knobs.pickFault = fault;
+            try {
+                await assert.rejects(picker.pick(0, 0, 64, 64, [], new Float32Array(16)), /boom/);
+                const owned = h.stats.createdBuffers.slice(before);
+                assert.strictEqual(owned.length, fault === 'id-copy' ? 1 : 3,
+                    'fault must occur after the expected transient allocations');
+                assert.strictEqual(h.stats.mapAsync, fault === 'mapped-range' ? 1 : 0,
+                    'fault must occur at the requested encoding or mapped-read boundary');
+                assert.ok(owned.every(buffer => buffer.destroyed === 1),
+                    'every transient buffer must be released exactly once on propagation');
+            } finally {
+                picker.destroy();
+            }
+        });
+    }
+
+    for (const fault of ['id-copy', 'finish', 'submit', 'mapped-range'] as const) {
+        it(`rectangle-pick releases its staging buffer when ${fault} fails (#6881)`, async () => {
+            const h = makeHarness();
+            const picker = installPicker(h);
+            const before = h.stats.createdBuffers.length;
+            if (fault === 'submit') h.knobs.submitThrows = true;
+            else h.knobs.pickFault = fault;
+            try {
+                await assert.rejects(picker.pickRect(0, 0, 8, 8, 64, 64, [], new Float32Array(16)), /boom/);
+                const owned = h.stats.createdBuffers.slice(before);
+                assert.strictEqual(owned.length, 1, 'rectangle fault must reach its staging allocation');
+                assert.strictEqual(h.stats.mapAsync, fault === 'mapped-range' ? 1 : 0,
+                    'fault must occur at the requested encoding or mapped-read boundary');
+                assert.strictEqual(owned[0].destroyed, 1, 'staging must be released exactly once');
+            } finally {
+                picker.destroy();
+            }
+        });
+    }
 
     it('a REAL readback fault still propagates — the catch is not a blanket swallow', async () => {
         const h = makeHarness();

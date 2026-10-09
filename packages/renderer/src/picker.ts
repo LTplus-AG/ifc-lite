@@ -367,14 +367,6 @@ export class Picker {
       size: BYTES_PER_ROW,
       usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
     });
-    encoder.copyTextureToBuffer(
-      {
-        texture: this.colorTexture,
-        origin: { x: sampleX, y: sampleY, z: 0 },
-      },
-      { buffer: readBuffer, bytesPerRow: BYTES_PER_ROW, rowsPerImage: 1 },
-      { width: 1, height: 1 },
-    );
 
     // The compute sample and ID copy share the render submission and staging
     // buffer. Each pick owns its coordinates and output until mapping finishes.
@@ -382,6 +374,14 @@ export class Picker {
     let sample: number;
     let depth: number;
     try {
+      encoder.copyTextureToBuffer(
+        {
+          texture: this.colorTexture,
+          origin: { x: sampleX, y: sampleY, z: 0 },
+        },
+        { buffer: readBuffer, bytesPerRow: BYTES_PER_ROW, rowsPerImage: 1 },
+        { width: 1, height: 1 },
+      );
       depthResources = this.depthSample.encode(
         encoder, this.depthTexture, sampleX, sampleY, readBuffer, 4,
       );
@@ -478,53 +478,49 @@ export class Picker {
       size: rowStride * rectH,
       usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
     });
-    encoder.copyTextureToBuffer(
-      {
-        texture: this.colorTexture,
-        origin: { x: lx, y: ly, z: 0 },
-      },
-      { buffer: readBuffer, bytesPerRow: rowStride, rowsPerImage: rectH },
-      { width: rectW, height: rectH },
-    );
-    this.device.queue.submit([encoder.finish()]);
     try {
+      encoder.copyTextureToBuffer(
+        {
+          texture: this.colorTexture,
+          origin: { x: lx, y: ly, z: 0 },
+        },
+        { buffer: readBuffer, bytesPerRow: rowStride, rowsPerImage: rectH },
+        { width: rectW, height: rectH },
+      );
+      this.device.queue.submit([encoder.finish()]);
       await readBuffer.mapAsync(1);
+      const view = new Uint32Array(readBuffer.getMappedRange());
+      const ids = new Set<number>();
+      const stridePx = rowStride / 4;
+      for (let y = 0; y < rectH; y++) {
+        const row = y * stridePx;
+        for (let x = 0; x < rectW; x++) {
+          const sample = view[row + x];
+          if (sample === 0) continue;
+          // Same three-way decode single-click uses — including the instanced
+          // case (the shader writes the express id straight into the sample) and
+          // the mesh case's (index + 1) offset. Both live in pick-resolve.ts and
+          // must not be re-implemented here.
+          //
+          // The bare id, not a PickResult: this returns a Set<expressId>, which
+          // has no room for a per-item result — a marquee that hits three panes
+          // of one curtain wall is one entry — and allocating a result per
+          // non-zero texel just to read `.expressId` off it dominated the rect.
+          // Single-click pick is the per-item surface.
+          //
+          // modelIndex is dropped for the same reason, which is why a point
+          // sample's owning asset (a linear scan, once per texel) is not resolved.
+          const expressId = resolvePickedExpressId(decodePickSample(sample), meshes);
+          if (expressId !== null) ids.add(expressId);
+        }
+      }
+      return ids;
     } catch (err) {
-      // Released on every failure path, not just the aborted one — a real
-      // fault must not leak the readback's GPU allocation on its way out.
-      releaseReadbacks(readBuffer);
-      // The device died between submit and readback — see isReadbackAbort.
       if (!isReadbackAbort(err)) throw err;
       return new Set();
+    } finally {
+      releaseReadbacks(readBuffer);
     }
-    const view = new Uint32Array(readBuffer.getMappedRange());
-    const ids = new Set<number>();
-    const stridePx = rowStride / 4;
-    for (let y = 0; y < rectH; y++) {
-      const row = y * stridePx;
-      for (let x = 0; x < rectW; x++) {
-        const sample = view[row + x];
-        if (sample === 0) continue;
-        // Same three-way decode single-click uses — including the instanced
-        // case (the shader writes the express id straight into the sample) and
-        // the mesh case's (index + 1) offset. Both live in pick-resolve.ts and
-        // must not be re-implemented here.
-        //
-        // The bare id, not a PickResult: this returns a Set<expressId>, which
-        // has no room for a per-item result — a marquee that hits three panes
-        // of one curtain wall is one entry — and allocating a result per
-        // non-zero texel just to read `.expressId` off it dominated the rect.
-        // Single-click pick is the per-item surface.
-        //
-        // modelIndex is dropped for the same reason, which is why a point
-        // sample's owning asset (a linear scan, once per texel) is not resolved.
-        const expressId = resolvePickedExpressId(decodePickSample(sample), meshes);
-        if (expressId !== null) ids.add(expressId);
-      }
-    }
-    readBuffer.unmap();
-    readBuffer.destroy();
-    return ids;
   }
 
   /**

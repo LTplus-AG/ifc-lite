@@ -1019,3 +1019,5 @@ only `model.read` and `network.ai`. The current read scope and model allowlist
 still apply; the separate `resume_flow` requires current mutate authorization.
 MCP responses and checkpoint budgets include provider usage receipts without
 prompts, replies or credentials; receipt history survives subsequent pauses.
+
+Native `ai.classify`, `ai.extract`, `ai.summarize` and `ai.propose` producers declare their prompt version to viewer, CLI and MCP request hosts. The shared core records the actual dispatched output-token grant after route and resumed-root-budget clamping, effective parent deadline, safe terminal reason and versioned logical-input/output-text digests. Generic host calls without a declared prompt version remain unknown. These digests supplement generation audit metadata; they do not replace the graph, source or reviewed-proposal digests that authorize checkpoint continuation.

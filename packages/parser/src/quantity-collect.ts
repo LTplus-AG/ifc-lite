@@ -18,6 +18,15 @@ import { QUANTITY_TYPE_MAP } from './columnar-parser-indexes.js';
 import { isUnrepresentableNumericValue } from './attribute-helpers.js';
 import { resolveUnitByRef, type ProjectUnits } from './project-units.js';
 
+/** Point records supplied by the native overlay path; source collection shares the same rules. */
+export interface QuantityEntityRecord {
+    expressId: number;
+    type: string;
+    attributes: readonly unknown[];
+}
+export type QuantityUnitResolver = (expressId: number) => ReturnType<typeof resolveUnitByRef>;
+export type QuantityEntityReader = (expressId: number) => QuantityEntityRecord | null;
+
 /** One extracted quantity, in the shape both call sites report. */
 export interface CollectedQuantity {
     name: string;
@@ -109,6 +118,8 @@ export function collectQuantitiesFromRefs(
     store: QuantityLookupStore,
     extractor: EntityExtractor,
     refs: unknown,
+    readEntity?: QuantityEntityReader,
+    resolveCurrentUnit?: QuantityUnitResolver,
 ): CollectedQuantity[] {
     const quantities: CollectedQuantity[] = [];
     if (!Array.isArray(refs)) return quantities;
@@ -118,9 +129,7 @@ export function collectQuantitiesFromRefs(
 
         // @raw-entity-enumeration-ok quantity parsing follows one source member reference in the supplied set
         const qtyEntityRef = store.entityIndex.byId.get(qtyRef) ?? store.deferredEntityIndex?.get(qtyRef);
-        if (!qtyEntityRef) continue;
-
-        const qtyEntity = extractor.extractEntity(qtyEntityRef);
+        const qtyEntity = readEntity ? readEntity(qtyRef) : qtyEntityRef ? extractor.extractEntity(qtyEntityRef) : null;
         if (!qtyEntity) continue;
 
         const qtyTypeUpper = qtyEntity.type.toUpperCase();
@@ -137,7 +146,7 @@ export function collectQuantitiesFromRefs(
         // physical value rather than silently treating (say) 2000 mm as 2000 m.
         const unitRef = qtyAttrs[2];
         const unit = typeof unitRef === 'number'
-            ? resolveUnitByRef(extractor, store.entityIndex, unitRef)
+            ? resolveCurrentUnit ? resolveCurrentUnit(unitRef) : resolveUnitByRef(extractor, store.entityIndex, unitRef)
             : null;
         const rawValue = qtyAttrs[SIMPLE_QUANTITY_VALUE_SLOT];
 
@@ -242,7 +251,17 @@ export function readQuantitySet(
 ): CollectedQuantitySet | null {
     const qsetEntity = extractor.extractEntity(qsetRef);
     if (!qsetEntity) return null;
+    return readQuantitySetRecord(store, extractor, qsetEntity);
+}
 
+/** Shared collection for one effective native quantity-set record (#7353). */
+export function readQuantitySetRecord(
+    store: QuantityLookupStore,
+    extractor: EntityExtractor,
+    qsetEntity: QuantityEntityRecord,
+    readEntity?: QuantityEntityReader,
+    resolveCurrentUnit?: QuantityUnitResolver,
+): CollectedQuantitySet | null {
     const qsetAttrs = qsetEntity.attributes || [];
     // Left empty rather than a fabricated `QuantitySet #<id>` when the source
     // declared no Name: this is `store.getQuantities()`'s answer, consumed
@@ -250,7 +269,7 @@ export function readQuantitySet(
     // the model had genuinely declared that name (#3530 census).
     const qsetName = typeof qsetAttrs[2] === 'string' ? qsetAttrs[2] : '';
     const qsetGlobalId = typeof qsetAttrs[0] === 'string' ? qsetAttrs[0] : undefined;
-    const quantities = collectQuantitiesFromRefs(store, extractor, qsetAttrs[QUANTITIES_SLOT]);
+    const quantities = collectQuantitiesFromRefs(store, extractor, qsetAttrs[QUANTITIES_SLOT], readEntity, resolveCurrentUnit);
 
     if (quantities.length === 0) return null;
     return { name: qsetName, globalId: qsetGlobalId, quantities };

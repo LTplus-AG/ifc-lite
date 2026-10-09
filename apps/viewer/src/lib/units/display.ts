@@ -21,7 +21,7 @@
  */
 
 import { QuantityType } from '@ifc-lite/data';
-import { measureUnit, type ProjectUnits } from '@ifc-lite/parser';
+import { measureUnit, quantitySiScale, type ProjectUnits } from '@ifc-lite/parser';
 import { alternativesForUnitType } from './alternatives.js';
 import { convertValue, resolveFromUnit } from './convert.js';
 
@@ -83,7 +83,9 @@ export function resolveMeasureDisplay(
   dataType: string | undefined,
   projectUnits: ProjectUnits,
   overrides: Record<string, string>,
+  projectUnitsAvailable = true,
 ): UnitDisplay {
+  if (!projectUnitsAvailable) return { unit: null, converted: null };
   const m = dataType ? measureUnit(dataType) : undefined;
   if (m?.kind === 'typed' && typeof value === 'number' && Number.isFinite(value)) {
     const optionId = overrides[m.unitType];
@@ -107,18 +109,24 @@ export function resolveQuantityDisplay(
   quantityType: number,
   projectUnits: ProjectUnits,
   overrides: Record<string, string>,
+  quantity?: ReturnType<typeof import('@ifc-lite/parser').extractQuantitiesOnDemand>[number]['quantities'][number],
+  projectUnitsAvailable = true,
 ): UnitDisplay {
+  const explicit = quantity?.explicitUnitSiScale !== undefined && quantity.explicitUnit !== undefined;
+  if (!projectUnitsAvailable && !explicit) return { unit: null, converted: null };
   const entry = QUANTITY_TYPE_UNIT[quantityType];
   if (entry && Number.isFinite(value)) {
     const optionId = overrides[entry.unitType];
     const option = optionId ? alternativesForUnitType(entry.unitType).find((o) => o.id === optionId) : undefined;
     if (option) {
-      const fileUnit = projectUnits.resolvedForUnitType(entry.unitType) ?? { symbol: entry.defaultSymbol, siScale: 1.0 };
+      const fileUnit = explicit && quantity
+        ? { symbol: quantity.explicitUnit!, siScale: quantitySiScale(quantity, projectUnits) }
+        : projectUnits.resolvedForUnitType(entry.unitType) ?? { symbol: entry.defaultSymbol, siScale: 1.0 };
       const from = resolveFromUnit(entry.unitType, fileUnit);
       return { unit: option.symbol, converted: convertValue(value, from, option) };
     }
   }
-  return { unit: formatQuantityUnit(quantityType, projectUnits), converted: null };
+  return { unit: explicit ? quantity!.explicitUnit! : formatQuantityUnit(quantityType, projectUnits), converted: null };
 }
 
 /** Format a converted numeric value for display: locale-aware, capped at 4

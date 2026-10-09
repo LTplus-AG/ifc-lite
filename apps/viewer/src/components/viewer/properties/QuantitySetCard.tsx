@@ -32,13 +32,14 @@ const QUANTITY_TYPE_KEYS: Record<number, TranslationKey> = {
 export interface QuantitySetCardProps {
   qset: QuantitySet;
   projectUnits: ProjectUnits;
+  projectUnitsAvailable?: boolean;
   /** Per-unit-type display-unit overrides (issue #1573 proposal 2). See
    *  `PropertySetCardProps.unitDisplayOverrides`. */
   unitDisplayOverrides?: Record<string, string>;
   searchQuery?: string;
 }
 
-export function QuantitySetCard({ qset, projectUnits, unitDisplayOverrides, searchQuery }: QuantitySetCardProps) {
+export function QuantitySetCard({ qset, projectUnits, projectUnitsAvailable = true, unitDisplayOverrides, searchQuery }: QuantitySetCardProps) {
   const { t, locale } = useTranslation();
   const [open, setOpen] = usePersistentDisclosure(`qset:${qset.name}`);
   return (
@@ -50,12 +51,12 @@ export function QuantitySetCard({ qset, projectUnits, unitDisplayOverrides, sear
       </CollapsibleTrigger>
       <CollapsibleContent>
         <div className="border-t-2 border-blue-200 dark:border-blue-800 divide-y divide-blue-100 dark:divide-blue-900/30">
-          {qset.quantities.map((q: { name: string; value: number; type: number }, index: number) => {
+          {qset.quantities.map((q, index: number) => {
             // Names render VERBATIM: the parse path already decoded them
             // (see the note on `parsePropertyValue`), and decoding a second
             // time collapses `\\` twice.
             const typeKey = QUANTITY_TYPE_KEYS[q.type];
-            const display = quantityDisplayValue(q, projectUnits, unitDisplayOverrides ?? {}, locale);
+            const display = quantityDisplayValue(q, projectUnits, unitDisplayOverrides ?? {}, locale, projectUnitsAvailable);
             return (
               <div key={`${q.name}-${index}`} className="group/copyrow flex items-start gap-2 px-3 py-2 text-xs hover:bg-blue-50/50 dark:hover:bg-blue-900/20">
                 <div className="flex flex-1 min-w-0 flex-col gap-0.5">

@@ -54,7 +54,7 @@ export function withInheritedTypeQuantities<T extends InheritableQuantitySet>(
 ): readonly T[] {
   if (!store || expressId === undefined) return own;
   const typeIds = store.relationships?.getRelated(expressId, definesByType, 'inverse') ?? [];
-  if (typeIds.length === 0) return own;
+  if (!store.source?.length && typeIds.length === 0) return own;
 
   const inherited = (store.source?.length
     ? extractFromSource(store, expressId)

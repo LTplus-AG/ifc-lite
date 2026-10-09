@@ -157,7 +157,8 @@ for (const entry of entries) test(`#7218 native library download includes the sa
     assert.ok(raw && typeof raw === 'object' && 'libraries' in raw);
     const libraries = raw.libraries as Record<string, unknown>;
     assert.ok(Array.isArray(libraries.document) && libraries.document.some(row => row.id === registered.id), 'existing registered document is an independent actual download control');
-    assert.ok(Array.isArray(libraries[entry.key]) && libraries[entry.key].length > 0, 'native Download library backup must retain the standalone saved artifact library');
+    const downloadedLibrary = libraries[entry.key];
+    assert.ok(Array.isArray(downloadedLibrary) && downloadedLibrary.length > 0, 'native Download library backup must retain the standalone saved artifact library');
   } finally { download.mock.restore(); }
 });
 
@@ -305,7 +306,8 @@ for (const entry of entries) for (const collision of [false, true]) test(`#7218 
   } else if (entry.key === 'lists') {
     const list = loadListDefinitions().find(row => row.name === saved.saved.name); assert.ok(list);
     if (collision && preview.artifact.kind === 'list.proposal') {
-      assert.ok(loadListDefinitions().some(row => row.id === preview.artifact.definition.id && row.name === 'Locally edited wall names'));
+      const originalId = preview.artifact.definition.id;
+      assert.ok(loadListDefinitions().some(row => row.id === originalId && row.name === 'Locally edited wall names'));
       assert.notEqual(list.id, preview.artifact.definition.id);
     }
     const { pairs } = prepareListProviders(state, resolveRenderFrame(state.models, state.geometryResult));
@@ -315,7 +317,8 @@ for (const entry of entries) for (const collision of [false, true]) test(`#7218 
     const reloaded = createStore<LensSlice>()(createLensSlice);
     const lens = reloaded.getState().savedLenses.find(row => row.name === saved.saved.name); assert.ok(lens);
     if (collision && preview.artifact.kind === 'lens.proposal') {
-      assert.ok(reloaded.getState().savedLenses.some(row => row.id === preview.artifact.lens.id && row.name === 'Locally edited wall colors'));
+      const originalId = preview.artifact.lens.id;
+      assert.ok(reloaded.getState().savedLenses.some(row => row.id === originalId && row.name === 'Locally edited wall colors'));
       assert.notEqual(lens.id, preview.artifact.lens.id);
     }
     const provider = createLensDataProvider(state.models, state.ifcDataStore, state.mutationViews, id => state.resolveGlobalIdFromModels(id));

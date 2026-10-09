@@ -84,6 +84,7 @@ export function StructuralGraphReview({ proposal, origin }: { proposal: Structur
     {review && <>
       <output className="block">{t('structuralReview.population', { records: review.snapshot.records.length,
         created: delta.filter(row => !row.before).length, modified: delta.filter(row => row.before && row.after).length, deleted: delta.filter(row => !row.after).length })}</output>
+      <details><summary>{t('structuralReview.units')}</summary><pre className="whitespace-pre-wrap break-words">{JSON.stringify({ declaredUnits: review.snapshot.declaredUnits, diagnostics: review.snapshot.unitDiagnostics }, null, 2)}</pre></details>
       <details><summary>{t('structuralReview.nativeChanges')}</summary><ul className="space-y-2 max-h-64 overflow-auto">
         {delta.map(row => <li key={row.expressId}><p>{row.after?.type ?? row.before?.type} #{row.expressId}</p>
           <pre className="whitespace-pre-wrap break-words">{JSON.stringify(row.before?.attributes ?? null)}{' → '}{JSON.stringify(row.after?.attributes ?? null)}</pre></li>)}

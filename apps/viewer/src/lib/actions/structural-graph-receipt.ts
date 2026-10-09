@@ -8,7 +8,7 @@ import type { ViewerState } from '@/store';
 import type { ModelChangeReceipt } from './model-change-commit';
 import { structuralReviewDigest, type StructuralReview } from './structural-graph-review';
 
-/** A non-root value or quantity has no IFC GlobalId. Preserve its real model-bound expressId instead. */
+/** The native factories return rooted owner/relationship records; preserve their actual model-bound expressIds and GlobalIds. */
 export function commitReviewedStructural(store: StoreApi<ViewerState>, review: StructuralReview, origin: string): ModelChangeReceipt {
   const digest = structuralReviewDigest(review);
   const { rows, batchId } = review.commit();

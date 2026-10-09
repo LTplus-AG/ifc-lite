@@ -10,6 +10,7 @@ export const structuralReviewEn = {
   'structuralReview.acknowledgement': 'I confirm the load and stiffness values are supplied in the model’s native measures. No conversion or missing unit declaration is assumed.',
   'structuralReview.previewUnavailable': 'An analytical geometry preview is unavailable here. Inspect the native IFC records before Apply.',
   'structuralReview.population': '{records} source records reviewed · {created} created · {modified} modified · {deleted} deleted. Created IFC identities are assigned at Apply.',
+  'structuralReview.units': 'Inspect declared native units and unavailable declarations',
   'structuralReview.nativeChanges': 'Inspect native IFC changes, including shared references and deletions',
   'structuralReview.receiptProblem': 'The changes were applied, but their receipt could not be saved. The native edit history still contains the changes.',
   'structuralReview.op.structural.analysis.create': 'Create analytical model',

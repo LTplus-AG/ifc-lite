@@ -1,6 +1,7 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+import { iterateEffectiveEntities } from '@ifc-lite/data';
 import { effectiveMetadataRecord, extractStructuralOnDemand } from '@ifc-lite/parser';
 import { collectReferencedEntityIds } from '@ifc-lite/export';
 import type { ModelEditTarget } from '@/store/slices/mutation-modelling-records';
@@ -16,9 +17,9 @@ export interface StructuralNativeRecord { expressId: number; type: string; attri
 export interface StructuralSnapshot { modelId: string; selected: number[]; graph: ReturnType<typeof extractStructuralOnDemand>; declaredUnits: unknown[]; unitDiagnostics: CostDiagnostic[]; records: StructuralNativeRecord[]; incoming: Array<{ target: number; referrers: Array<{ expressId: number; count: number }> }> }
 /** Reuse the exporter's effective reference closure, with a strict per-record read budget. */
 export function structuralClosure(target: ModelEditTarget, roots: Set<number>): Set<number> {
-  const index = getEffectiveEntityIndex(target.dataStore, target.view), seen = new Set<number>();
+  const index = getEffectiveEntityIndex(target.dataStore, target.view, true), seen = new Set<number>();
   return collectReferencedEntityIds(roots, target.dataStore.source, { ...index,
-    get(id) { seen.add(id); if (seen.size > 200) throw new Error('The complete Structural record population exceeds 200'); return index.get(id); },
+    get(id) { seen.add(id); if (seen.size > 200) throw new Error('The complete Structural record population exceeds 200'); const record = index.get(id); if (record && record.byteLength > 100000) throw new Error('A native Structural reference record exceeds the bounded review input'); return record; },
     has: id => index.has(id), refsOf: id => index.refsOf(id), refGroupsOf: (id, groups) => index.refGroupsOf(id, groups),
     effectiveType: (id, type) => index.effectiveType(id, type), hasSourceMutation: id => index.hasSourceMutation?.(id) ?? false,
   });
@@ -39,6 +40,12 @@ export function readStructuralSnapshot(target: ModelEditTarget, selected: readon
     if (Array.isArray(value)) pending.push(...value);
     else if (isRecord(value)) { if (typeof value.expressId === 'number') roots.add(value.expressId); pending.push(...Object.values(value)); }
   }
+  const candidates = new Set<number>();
+  const structuralType = (type: string) => /^(IFCSTRUCTURAL|IFCBOUNDARY|IFCRELCONNECTSSTRUCTURAL)/.test(type.toUpperCase());
+  // @raw-entity-enumeration-ok source type buckets seed candidates; the canonical effective iterator applies deletions, creations and retypes before any record is included.
+  for (const [type, ids] of dataStore.entityIndex.byType) if (structuralType(type)) for (const id of ids) candidates.add(id);
+  for (const row of iterateEffectiveEntities(dataStore, view, undefined, candidates)) if (structuralType(row.type)) roots.add(row.expressId);
+  if (roots.size > 200) throw new Error('The complete native Structural candidate population exceeds 200');
   const ids = structuralClosure(target, roots);
   const incoming = [...effectiveCostReferenceOccurrences(dataStore, view, roots)].sort(([a], [b]) => a - b).map(([target, refs]) => ({ target, referrers: [...refs].sort(([a], [b]) => a - b).map(([expressId, count]) => ({ expressId, count })) }));
   for (const row of incoming) for (const ref of row.referrers) ids.add(ref.expressId);

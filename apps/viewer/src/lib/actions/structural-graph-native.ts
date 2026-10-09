@@ -32,6 +32,9 @@ export function writeStructuralOperations(_state: Pick<ViewerState, 'models' | '
     const id = resolve(ref, 'IfcBuildingStorey');
     if (!nativeLengthUnitAvailable({ ...target, editor: draft, view })) throw new Error('The source geometry length unit is unavailable');
     const sourceView = new MutablePropertyView(dataStore.properties ?? null, modelId), sourceTarget = { ...target, view: sourceView };
+    for (const record of snapshot.records) if (['IfcProject', 'IfcUnitAssignment'].includes(record.type) || liveEntityConforms(dataStore, record.expressId, 'IfcUnit', view)) {
+      if (JSON.stringify(effectiveMetadataRecord(dataStore, record.expressId, sourceView)) !== JSON.stringify(effectiveMetadataRecord(dataStore, record.expressId, view))) throw new Error('The native source geometry unit declaration changed');
+    }
     const source = effectiveMetadataRecord(dataStore, id, sourceView), current = effectiveMetadataRecord(dataStore, id, view);
     if (!source || JSON.stringify(source.attributes[5]) !== JSON.stringify(current?.attributes[5])) throw new Error('The native Structural builder requires an unchanged source storey placement');
     for (const dependency of structuralClosure(sourceTarget, new Set([id]))) if (dependency !== id

@@ -19,6 +19,7 @@ import { effectiveSelectedClass } from '@/components/viewer/properties/effective
 import { readOnlyModelEditLease, type NativeReadLease } from './model-authoring-read-target';
 import { nativeEditEvidence, nativeRootName, type NativeEditEvidence } from './native-edit-evidence';
 import { nativeTypeEvidence, type NativeTypeEvidence } from './native-type-evidence';
+import { nativeCostEvidence, type CostEvidence } from './cost-graph-evidence';
 
 export interface SelectionElement extends NativeAuthoringEvidence {
   nativeZoneEmission: ReturnType<typeof nativeZoneEmissionEvidence>;
@@ -29,6 +30,7 @@ export interface SelectionElement extends NativeAuthoringEvidence {
   name: string | null;
   nativeEdit: NativeEditEvidence;
   nativeType: NativeTypeEvidence;
+  nativeCost: CostEvidence;
 }
 
 export interface SelectionGrounding {
@@ -102,6 +104,7 @@ export function captureSelectionGrounding(state: GroundingState, limit = SELECTI
       ...nativeAuthoringEvidence(nativeTarget(ref.modelId), ref.expressId),
       nativeType: nativeTypeEvidence(state, nativeTarget(ref.modelId), ref.expressId),
       nativeZoneEmission: nativeZoneEmissionEvidence(state, ref.modelId),
+      nativeCost: nativeCostEvidence(nativeTarget(ref.modelId), ref.expressId),
     });
   }
   const grounding = { capturedAt: new Date().toISOString(), total, elements, unresolved,

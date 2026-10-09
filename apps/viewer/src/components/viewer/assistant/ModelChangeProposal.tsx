@@ -13,8 +13,10 @@ import { ModelAuthoringReview } from '../actions/ModelAuthoringReview';
 import { declaresRoomCommand, parseRoomProposal, type RoomProposal } from '@/lib/actions/room-command-proposal';
 import type { RoomReview } from '@/lib/actions/room-review';
 import { RoomCommandReview } from './RoomCommandReview';
+import { declaresCostGraph, parseCostProposal, type CostProposal } from '@/lib/actions/cost-graph-proposal';
+import { CostGraphReview } from './CostGraphReview';
 
-type Reviewable = { kind: 'zones'; proposal: ZoneEmissionProposal } | { kind: 'changes'; batch: ModelChangeBatch } | { kind: 'authoring'; batch: ModelAuthoringBatch } | { kind: 'room'; proposal: RoomProposal };
+type Reviewable = { kind: 'zones'; proposal: ZoneEmissionProposal } | { kind: 'cost'; proposal: CostProposal } | { kind: 'changes'; batch: ModelChangeBatch } | { kind: 'authoring'; batch: ModelAuthoringBatch } | { kind: 'room'; proposal: RoomProposal };
 
 /** Latest completed changes, authoring or async Room answer, reviewed natively and never applied by itself. */
 export function ModelChangeProposal({ onAttachRoom }: { onAttachRoom?: (review: RoomReview) => void } = {}) {
@@ -25,6 +27,10 @@ export function ModelChangeProposal({ onAttachRoom }: { onAttachRoom?: (review: 
     if (content && declaresZoneEmission(content)) {
       try { return { kind: 'zones', proposal: parseZoneEmissionProposal(content) }; }
       catch (error) { console.warn('[Assistant] Zone emission proposal is not reviewable', error); return null; }
+    }
+    if (content && declaresCostGraph(content)) {
+      try { return { kind: 'cost', proposal: parseCostProposal(content) }; }
+      catch (error) { console.warn('[Assistant] Cost proposal is not reviewable', error); return null; }
     }
     if (content && declaresRoomCommand(content)) {
       try { return { kind: 'room', proposal: parseRoomProposal(content) }; }
@@ -43,6 +49,7 @@ export function ModelChangeProposal({ onAttachRoom }: { onAttachRoom?: (review: 
   if (!reviewable) return null;
   const origin = `assistant:${assistant.snapshot?.id ?? assistant.archived?.id ?? 'conversation'}:${assistant.messages.length}`;
   if (reviewable.kind === 'zones') return <ZoneEmissionReview key={origin} proposal={reviewable.proposal} origin={origin} />;
+  if (reviewable.kind === 'cost') return <CostGraphReview key={origin} proposal={reviewable.proposal} origin={origin} />;
   if (reviewable.kind === 'room') return <RoomCommandReview key={origin} proposal={reviewable.proposal} origin={origin} onAttach={onAttachRoom} />;
   // Keyed by answer so a newer proposal starts a fresh review.
   return reviewable.kind === 'changes'

@@ -15,7 +15,7 @@ export type NativeReplacementOp=Base & (
  | {ifcClass:'IfcRailing';params:RailingInStoreParams});
 /** No reduced expectation can authorize a native source replacement. */
 export function parseReplacementFields(value:Record<string,unknown>,target:ExistingElement,units:AuthoringUnits,at:string):NativeReplacementOp {
- if(!record(value.expected)||!record(value.expected.record)||typeof value.expected.record.type!=='string'||!Array.isArray(value.expected.record.attributes)||!record(value.expected.placement)||!Array.isArray(value.expected.types)||!Array.isArray(value.expected.materials)||!Number.isInteger(value.expected.storeyId))throw new Error(`${at}: expected needs the complete nativeReplacementExpected evidence`);
+ if(!record(value.expected)||!record(value.expected.record)||typeof value.expected.record.type!=='string'||!Array.isArray(value.expected.record.attributes)||!record(value.expected.shape)||!Array.isArray(value.expected.companions)||!Number.isInteger(value.expected.revision)||!record(value.expected.placement)||!Array.isArray(value.expected.types)||!Array.isArray(value.expected.materials)||!Number.isInteger(value.expected.storeyId))throw new Error(`${at}: expected needs the complete nativeReplacementExpected evidence`);
  const expected=value.expected as unknown as NativeReplacementExpected,name=parseText(value.name,`${at} destination Name`);
  const base={op:'element.replace' as const,target,ref:parseRef(value.ref,at),storey:parseGlobalIdTarget(value.storey,`${at} storey`),name,expected};
  if(value.ifcClass==='IfcStair'||value.ifcClass==='IfcRailing'){

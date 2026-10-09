@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 /** #7320: current native replacement evidence and one writer for draft/commit. */
 import { effectiveMetadataRecord,type IfcDataStore } from '@ifc-lite/parser';
-import { readRelatedLists,liveEntityConforms,replaceElementInStore,resolveSpatialAnchor,type InStoreReplacementElement } from '@ifc-lite/create';
+import { readRelatedLists,readStairDimensions,liveEntityConforms,replaceElementInStore,resolveSpatialAnchor,type InStoreReplacementElement } from '@ifc-lite/create';
 import type { StoreEditor } from '@ifc-lite/mutations';
 import { readSplitPlacement } from '../../../../../packages/create/src/in-store/element-split-placement';
 import { effectiveStoreyId } from '@/lib/effective-storey';
@@ -15,10 +15,13 @@ import { authoredElementOf } from './model-authoring-native';
 import type { ModelAuthoringBatch,AuthoringOp } from './model-authoring';
 import type { NativeReplacementOp } from './model-authoring-replacement-fields';
 import { stairParamsInMetres,railingParamsInMetres } from './model-authoring-stair-railing-fields';
-import { sameSplitSnapshot } from './model-authoring-split-state';
+import { readSplitSnapshot,sameSplitSnapshot } from './model-authoring-split-state';
 import { uniqueSplitGuid } from './model-authoring-split';
 export interface NativeReplacementExpected {
  record:{type:string;attributes:unknown[]};
+ shape: {kind:'split';units:'m';expected:ReturnType<typeof readSplitSnapshot>} | {kind:'stair';units:'m';expected:NonNullable<ReturnType<typeof readStairDimensions>>} | {kind:'unavailable';reason:string};
+ companions:{expressId:number;record:{type:string;attributes:unknown[]};placement:ReturnType<typeof readSplitPlacement>;types:NativeReplacementExpected['types'];materials:NativeReplacementExpected['materials']}[];
+ revision:number;
  placement:ReturnType<typeof readSplitPlacement>;
  storeyId:number;
  types:{expressId:number;record:{type:string;attributes:unknown[]};relationshipId:number;relatedIds:number[]}[];
@@ -33,14 +36,25 @@ export function readNativeReplacementExpected(store:IfcDataStore,editor:StoreEdi
  const record=effectiveMetadataRecord(store,id,view),storeyId=effectiveStoreyId(store,view,id);
  if(!record||storeyId===undefined||typeof record.attributes[0]!=='string'||!uniqueSplitGuid(store,editor,record.attributes[0]))throw new Error('Current native replacement identity/storey is unavailable or ambiguous');
  const placement=readSplitPlacement({dataStore:store,editor,view,storeyExpressId:storeyId,lengthUnitScale:getModelLengthUnitScale(store),newGlobalId:record.attributes[0],name:String(record.attributes[2]??'')},id);
- const associations=(kind:'IfcRelDefinesByType'|'IfcRelAssociatesMaterial')=>{
-  const rows=readRelatedLists(store,kind,view).filter(row=>row.relatedIds.includes(id));
+ const associations=(kind:'IfcRelDefinesByType'|'IfcRelAssociatesMaterial',subject=id)=>{
+  const rows=readRelatedLists(store,kind,view).filter(row=>row.relatedIds.includes(subject));
   if(rows.length>256)throw new Error('Native replacement association population exceeds256; no memberships are omitted');
   return rows.map(row=>{const record=effectiveMetadataRecord(store,row.relatingId,view);if(!record)throw new Error('A current native replacement association is unreadable');
    if(kind==='IfcRelDefinesByType'&&(typeof record.attributes[0]!=='string'||!uniqueSplitGuid(store,editor,record.attributes[0])))throw new Error('Current native replacement type identity is ambiguous');
    return {expressId:row.relatingId,record,relationshipId:row.relId,relatedIds:row.relatedIds};});
  };
- const result={record,placement,storeyId,types:associations('IfcRelDefinesByType'),materials:associations('IfcRelAssociatesMaterial')};
+ let shape:NativeReplacementExpected['shape'];
+ const stair=readStairDimensions(store,id,view);
+ if(stair)shape={kind:'stair',units:'m',expected:stair};
+ else try{shape={kind:'split',units:'m',expected:readSplitSnapshot(store,editor,id,'m')};}catch(error){if(!(error instanceof Error))throw error;shape={kind:'unavailable',reason:error.message};}
+ const companions:NativeReplacementExpected['companions']=[];
+ if(stair){
+  const flightRecord=effectiveMetadataRecord(store,stair.flightId,view),flightGuid=flightRecord?.attributes[0];
+  if(!flightRecord||typeof flightGuid!=='string'||!uniqueSplitGuid(store,editor,flightGuid))throw new Error('The native removed Stair flight identity is unavailable or ambiguous');
+  const flightPlacement=readSplitPlacement({dataStore:store,editor,view,storeyExpressId:storeyId,lengthUnitScale:getModelLengthUnitScale(store),newGlobalId:flightGuid,name:String(flightRecord.attributes[2]??'')},stair.flightId);
+  companions.push({expressId:stair.flightId,record:flightRecord,placement:flightPlacement,types:associations('IfcRelDefinesByType',stair.flightId),materials:associations('IfcRelAssociatesMaterial',stair.flightId)});
+ }
+ const result={record,shape,companions,revision:view.getMutationRevision(),placement,storeyId,types:associations('IfcRelDefinesByType'),materials:associations('IfcRelAssociatesMaterial')};
  // Compare with the existing bounded native snapshot comparator; an oversized
  // expected record is unavailable, not a smaller pin or a successful prefix.
  if(!sameSplitSnapshot(result,structuredClone(result)))throw new Error('Complete native replacement expectation exceeds the snapshot work bound');
@@ -64,7 +78,7 @@ export function replacementElement(batch:ModelAuthoringBatch,op:NativeReplacemen
 /** Both native dry run and commit recheck the same current intermediate view. */
 export function verifyReplacementExpected(store:IfcDataStore,editor:StoreEditor,id:number,op:NativeReplacementOp):NativeReplacementExpected {
  const current=readNativeReplacementExpected(store,editor,id);
- if(current.record.attributes[0]!==op.target.globalId||(current.record.attributes[2]??'')!==op.target.name||!liveEntityConforms(store,id,op.target.ifcClass,editor.getMutationView())||!sameSplitSnapshot(current,op.expected))throw new Error('The current native replacement identity, placement, type or material differs from expected');
+ if(current.record.attributes[0]!==op.target.globalId||(current.record.attributes[2]??'')!==op.target.name||!liveEntityConforms(store,id,op.target.ifcClass,editor.getMutationView())||!sameSplitSnapshot(current,op.expected))throw new Error('The current native replacement identity, shape, removed flight, placement, mutation revision, type or material differs from expected');
  return current;
 }
 export function writeNativeReplacement(batch:ModelAuthoringBatch,store:IfcDataStore,editor:StoreEditor,id:number,storeyId:number,op:NativeReplacementOp){

@@ -19,7 +19,7 @@ for (const dpr of [2, 1]) {
       const warn = mock.method(console, 'warn', () => {});
       const error = mock.method(console, 'error', () => {});
       try {
-        h.step();
+        h.renderer.requestRender(); h.step();
         assert.ok(h.gpu.stats.submissions > 0, 'fixture must first submit an actual canonical frame');
         const previous = h.gpu.stats.submissions;
         const waits = h.waits;
@@ -51,7 +51,8 @@ for (const dpr of [2, 1]) {
   it(`reads the newly submitted owned frame after deferred completion at DPR${dpr} (#6709)`, async () => {
     const h = await captureLifecycle(dpr);
     try {
-      h.step();
+      h.renderer.requestRender(); h.step();
+      assert.ok(h.gpu.stats.submissions > 0, 'fixture must first submit an actual canonical frame');
       const previous = h.gpu.stats.submissions;
       h.deferWork();
       const captured = h.bcf.captureSnapshot();
@@ -73,7 +74,8 @@ it('releases refusal ownership and lets a queued canonical capture submit (#6709
   const warn = mock.method(console, 'warn', () => {});
   const error = mock.method(console, 'error', () => {});
   try {
-    h.step();
+    h.renderer.requestRender(); h.step();
+    assert.ok(h.gpu.stats.submissions > 0, 'fixture must first submit an actual canonical frame');
     const previous = h.gpu.stats.submissions;
     const refused = captureViewportFrame(h.renderer, {
       prepare: () => h.gpu.refuse('encode'), read: canvas => canvas.toDataURL('image/png'),

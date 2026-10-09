@@ -1,0 +1,200 @@
+{
+  "qualifiedEventHead": "c2b49021010b9d71e2f53c2d61528e08ba2d1783",
+  "syntheticCheckoutHead": "a989b91b98dd4d7cb0e4cf6f7f41d7e9a5552587",
+  "actualBase": "fc27e12d113534b952b1eb430ed0b9b87b3387b6",
+  "run": 37926535044,
+  "nativeJob": 113808373329,
+  "posixJob": 113808373362,
+  "sourceRelation": "Both stages actual raw source/Git blob admissions equal published c2 source. This archive and the separate fixture-provisioning caller test fix follow c2; no claim of new-head hosted execution. Native/POSIX runner, subject, fixture and mutation bytes remain c2-exact.",
+  "stages": {
+    "windows": {
+      "eventHead": "c2b49021010b9d71e2f53c2d61528e08ba2d1783",
+      "checkoutHead": "a989b91b98dd4d7cb0e4cf6f7f41d7e9a5552587",
+      "rawSourcePins": {
+        "scripts/perf/frame-gpu-process-identity.cs": "02bd217212fd1d512fd45d08abeeac0f364abf7b3307d5f8aaf95f69a131d503",
+        "scripts/perf/frame-gpu-job.cs": "99bd3010fb31c191ca7c7e3c4c772b24df0ff0aa00caf2954c41de6ad1d9163a",
+        "scripts/perf/frame-gpu-job-input.cs": "1d5b7467f26badd983a0dc1579da76df91b32f3d7e00c5b409f5e4ccadcd73f5",
+        "scripts/perf/frame-gpu-job-supervisor.ps1": "3884a78f3e1f8fc051c96f906cd6075a85a1a67a9c46575ad9f3b4292f06e2e8",
+        "scripts/perf/frame-gpu-cpu-fixture.cs": "eefac421147b805c2f9f582e2600e68f74ec84d87157d7e7776b08c0e7635187",
+        "scripts/perf/frame-gpu-cpu-fixture.mjs": "5eb32fad1434982164197c6ed58a91650b946afdabd2546d109bd628fcf21c19",
+        "scripts/perf/frame-gpu-job-controller.ts": "52f3cba9863587b29a3b5a9081bd4f772649cf4e53f7bf96ee2bf94d9a311943",
+        "scripts/perf/frame-gpu-job.test.mjs": "fba98217954a31742b643e9e442fa876d0c2a3425e1a6a66a88a87821c36599d",
+        "scripts/perf/frame-gpu-job-controller.test.mjs": "5c1f84b6d6044f73b722ed8dfacda1eb34806ffff00937b70b32a52da9d74f37",
+        "scripts/perf/evidence/worker-pool-lifecycle-7036/native-ci/native-kill-on-close.mutation.patch": "29d77e12246612d630c7e2478dbc509fc55134aa8f8f580ea5e7dc38db33f484",
+        "scripts/perf/evidence/worker-pool-lifecycle-7036/native-ci/native-exact-identity.mutation.patch": "620108b5ae2900f7e9454595ff8a76d67183d3eea7d0d5aaa4545afe2aceee5f"
+      },
+      "rawSourceBlobComparisons": [
+        {
+          "path": "scripts/perf/frame-gpu-process-identity.cs",
+          "observedSha256": "02bd217212fd1d512fd45d08abeeac0f364abf7b3307d5f8aaf95f69a131d503",
+          "blobSha256": "02bd217212fd1d512fd45d08abeeac0f364abf7b3307d5f8aaf95f69a131d503",
+          "blobExitCode": 0,
+          "blobError": ""
+        },
+        {
+          "path": "scripts/perf/frame-gpu-job.cs",
+          "observedSha256": "99bd3010fb31c191ca7c7e3c4c772b24df0ff0aa00caf2954c41de6ad1d9163a",
+          "blobSha256": "99bd3010fb31c191ca7c7e3c4c772b24df0ff0aa00caf2954c41de6ad1d9163a",
+          "blobExitCode": 0,
+          "blobError": ""
+        },
+        {
+          "path": "scripts/perf/frame-gpu-job-input.cs",
+          "observedSha256": "1d5b7467f26badd983a0dc1579da76df91b32f3d7e00c5b409f5e4ccadcd73f5",
+          "blobSha256": "1d5b7467f26badd983a0dc1579da76df91b32f3d7e00c5b409f5e4ccadcd73f5",
+          "blobExitCode": 0,
+          "blobError": ""
+        },
+        {
+          "path": "scripts/perf/frame-gpu-job-supervisor.ps1",
+          "observedSha256": "3884a78f3e1f8fc051c96f906cd6075a85a1a67a9c46575ad9f3b4292f06e2e8",
+          "blobSha256": "3884a78f3e1f8fc051c96f906cd6075a85a1a67a9c46575ad9f3b4292f06e2e8",
+          "blobExitCode": 0,
+          "blobError": ""
+        },
+        {
+          "path": "scripts/perf/frame-gpu-cpu-fixture.cs",
+          "observedSha256": "eefac421147b805c2f9f582e2600e68f74ec84d87157d7e7776b08c0e7635187",
+          "blobSha256": "eefac421147b805c2f9f582e2600e68f74ec84d87157d7e7776b08c0e7635187",
+          "blobExitCode": 0,
+          "blobError": ""
+        },
+        {
+          "path": "scripts/perf/frame-gpu-cpu-fixture.mjs",
+          "observedSha256": "5eb32fad1434982164197c6ed58a91650b946afdabd2546d109bd628fcf21c19",
+          "blobSha256": "5eb32fad1434982164197c6ed58a91650b946afdabd2546d109bd628fcf21c19",
+          "blobExitCode": 0,
+          "blobError": ""
+        },
+        {
+          "path": "scripts/perf/frame-gpu-job-controller.ts",
+          "observedSha256": "52f3cba9863587b29a3b5a9081bd4f772649cf4e53f7bf96ee2bf94d9a311943",
+          "blobSha256": "52f3cba9863587b29a3b5a9081bd4f772649cf4e53f7bf96ee2bf94d9a311943",
+          "blobExitCode": 0,
+          "blobError": ""
+        },
+        {
+          "path": "scripts/perf/frame-gpu-job.test.mjs",
+          "observedSha256": "fba98217954a31742b643e9e442fa876d0c2a3425e1a6a66a88a87821c36599d",
+          "blobSha256": "fba98217954a31742b643e9e442fa876d0c2a3425e1a6a66a88a87821c36599d",
+          "blobExitCode": 0,
+          "blobError": ""
+        },
+        {
+          "path": "scripts/perf/frame-gpu-job-controller.test.mjs",
+          "observedSha256": "5c1f84b6d6044f73b722ed8dfacda1eb34806ffff00937b70b32a52da9d74f37",
+          "blobSha256": "5c1f84b6d6044f73b722ed8dfacda1eb34806ffff00937b70b32a52da9d74f37",
+          "blobExitCode": 0,
+          "blobError": ""
+        },
+        {
+          "path": "scripts/perf/evidence/worker-pool-lifecycle-7036/native-ci/native-kill-on-close.mutation.patch",
+          "observedSha256": "29d77e12246612d630c7e2478dbc509fc55134aa8f8f580ea5e7dc38db33f484",
+          "blobSha256": "29d77e12246612d630c7e2478dbc509fc55134aa8f8f580ea5e7dc38db33f484",
+          "blobExitCode": 0,
+          "blobError": ""
+        },
+        {
+          "path": "scripts/perf/evidence/worker-pool-lifecycle-7036/native-ci/native-exact-identity.mutation.patch",
+          "observedSha256": "620108b5ae2900f7e9454595ff8a76d67183d3eea7d0d5aaa4545afe2aceee5f",
+          "blobSha256": "620108b5ae2900f7e9454595ff8a76d67183d3eea7d0d5aaa4545afe2aceee5f",
+          "blobExitCode": 0,
+          "blobError": ""
+        }
+      ]
+    },
+    "posix": {
+      "eventHead": "c2b49021010b9d71e2f53c2d61528e08ba2d1783",
+      "checkoutHead": "a989b91b98dd4d7cb0e4cf6f7f41d7e9a5552587",
+      "rawSourcePins": {
+        "scripts/perf/frame-gpu-process-identity.cs": "02bd217212fd1d512fd45d08abeeac0f364abf7b3307d5f8aaf95f69a131d503",
+        "scripts/perf/frame-gpu-job.cs": "99bd3010fb31c191ca7c7e3c4c772b24df0ff0aa00caf2954c41de6ad1d9163a",
+        "scripts/perf/frame-gpu-job-input.cs": "1d5b7467f26badd983a0dc1579da76df91b32f3d7e00c5b409f5e4ccadcd73f5",
+        "scripts/perf/frame-gpu-job-supervisor.ps1": "3884a78f3e1f8fc051c96f906cd6075a85a1a67a9c46575ad9f3b4292f06e2e8",
+        "scripts/perf/frame-gpu-cpu-fixture.cs": "eefac421147b805c2f9f582e2600e68f74ec84d87157d7e7776b08c0e7635187",
+        "scripts/perf/frame-gpu-cpu-fixture.mjs": "5eb32fad1434982164197c6ed58a91650b946afdabd2546d109bd628fcf21c19",
+        "scripts/perf/frame-gpu-job-controller.ts": "52f3cba9863587b29a3b5a9081bd4f772649cf4e53f7bf96ee2bf94d9a311943",
+        "scripts/perf/frame-gpu-job.test.mjs": "fba98217954a31742b643e9e442fa876d0c2a3425e1a6a66a88a87821c36599d",
+        "scripts/perf/frame-gpu-job-controller.test.mjs": "5c1f84b6d6044f73b722ed8dfacda1eb34806ffff00937b70b32a52da9d74f37",
+        "scripts/perf/evidence/worker-pool-lifecycle-7036/native-ci/posix-no-start.mutation.patch": "8c28b8332ba5ae5b49fbba613c99cd41228572a6f2b9be622588c38c5f329d71"
+      },
+      "rawSourceBlobComparisons": [
+        {
+          "path": "scripts/perf/frame-gpu-process-identity.cs",
+          "observedSha256": "02bd217212fd1d512fd45d08abeeac0f364abf7b3307d5f8aaf95f69a131d503",
+          "blobSha256": "02bd217212fd1d512fd45d08abeeac0f364abf7b3307d5f8aaf95f69a131d503",
+          "blobExitCode": 0,
+          "blobError": ""
+        },
+        {
+          "path": "scripts/perf/frame-gpu-job.cs",
+          "observedSha256": "99bd3010fb31c191ca7c7e3c4c772b24df0ff0aa00caf2954c41de6ad1d9163a",
+          "blobSha256": "99bd3010fb31c191ca7c7e3c4c772b24df0ff0aa00caf2954c41de6ad1d9163a",
+          "blobExitCode": 0,
+          "blobError": ""
+        },
+        {
+          "path": "scripts/perf/frame-gpu-job-input.cs",
+          "observedSha256": "1d5b7467f26badd983a0dc1579da76df91b32f3d7e00c5b409f5e4ccadcd73f5",
+          "blobSha256": "1d5b7467f26badd983a0dc1579da76df91b32f3d7e00c5b409f5e4ccadcd73f5",
+          "blobExitCode": 0,
+          "blobError": ""
+        },
+        {
+          "path": "scripts/perf/frame-gpu-job-supervisor.ps1",
+          "observedSha256": "3884a78f3e1f8fc051c96f906cd6075a85a1a67a9c46575ad9f3b4292f06e2e8",
+          "blobSha256": "3884a78f3e1f8fc051c96f906cd6075a85a1a67a9c46575ad9f3b4292f06e2e8",
+          "blobExitCode": 0,
+          "blobError": ""
+        },
+        {
+          "path": "scripts/perf/frame-gpu-cpu-fixture.cs",
+          "observedSha256": "eefac421147b805c2f9f582e2600e68f74ec84d87157d7e7776b08c0e7635187",
+          "blobSha256": "eefac421147b805c2f9f582e2600e68f74ec84d87157d7e7776b08c0e7635187",
+          "blobExitCode": 0,
+          "blobError": ""
+        },
+        {
+          "path": "scripts/perf/frame-gpu-cpu-fixture.mjs",
+          "observedSha256": "5eb32fad1434982164197c6ed58a91650b946afdabd2546d109bd628fcf21c19",
+          "blobSha256": "5eb32fad1434982164197c6ed58a91650b946afdabd2546d109bd628fcf21c19",
+          "blobExitCode": 0,
+          "blobError": ""
+        },
+        {
+          "path": "scripts/perf/frame-gpu-job-controller.ts",
+          "observedSha256": "52f3cba9863587b29a3b5a9081bd4f772649cf4e53f7bf96ee2bf94d9a311943",
+          "blobSha256": "52f3cba9863587b29a3b5a9081bd4f772649cf4e53f7bf96ee2bf94d9a311943",
+          "blobExitCode": 0,
+          "blobError": ""
+        },
+        {
+          "path": "scripts/perf/frame-gpu-job.test.mjs",
+          "observedSha256": "fba98217954a31742b643e9e442fa876d0c2a3425e1a6a66a88a87821c36599d",
+          "blobSha256": "fba98217954a31742b643e9e442fa876d0c2a3425e1a6a66a88a87821c36599d",
+          "blobExitCode": 0,
+          "blobError": ""
+        },
+        {
+          "path": "scripts/perf/frame-gpu-job-controller.test.mjs",
+          "observedSha256": "5c1f84b6d6044f73b722ed8dfacda1eb34806ffff00937b70b32a52da9d74f37",
+          "blobSha256": "5c1f84b6d6044f73b722ed8dfacda1eb34806ffff00937b70b32a52da9d74f37",
+          "blobExitCode": 0,
+          "blobError": ""
+        },
+        {
+          "path": "scripts/perf/evidence/worker-pool-lifecycle-7036/native-ci/posix-no-start.mutation.patch",
+          "observedSha256": "8c28b8332ba5ae5b49fbba613c99cd41228572a6f2b9be622588c38c5f329d71",
+          "blobSha256": "8c28b8332ba5ae5b49fbba613c99cd41228572a6f2b9be622588c38c5f329d71",
+          "blobExitCode": 0,
+          "blobError": ""
+        }
+      ]
+    }
+  },
+  "changedExecutableTest": "scripts/revert-oracle-fixture-provisioning.test.mjs",
+  "localFixQualification": "node-ci-failure/minimal-fix-qualification.json.gz",
+  "currentChanges": [
+    "scripts/revert-oracle-fixture-provisioning.test.mjs"
+  ]
+}

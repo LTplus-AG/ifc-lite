@@ -58,7 +58,7 @@ test('stale empty source and older portable envelopes never acquire current scop
 test('missing native sources offer the matching native workflow rather than zero findings', () => {
   useViewerStore.setState({ clashResult: null, idsValidationReport: null, compareResult: null, flowDoc: null, models: new Map() });
   // Flow is not listed: with no graph open, describing a new graph is a captured native state (#6919).
-  for (const source of ['clash', 'validation', 'compare', 'loadReport'] as const) {
+  for (const source of ['clash', 'validation', 'compare'] as const) {
     const evidence = captureEvidence(source);
     const ui = render(<EvidenceView evidence={evidence} state="captured" />);
     assert.equal(JSON.parse(evidence.payload).sourceAvailability, 'unavailable');
@@ -68,6 +68,16 @@ test('missing native sources offer the matching native workflow rather than zero
     cleanup();
   }
   assert.equal(JSON.parse(captureEvidence('flow').payload).sourceAvailability, 'available');
+  // #7326: capability remains in the summary while the absent load report is unavailable.
+  const models = captureEvidence('loadReport'), payload = JSON.parse(models.payload);
+  assert.equal(payload.sourceAvailability, 'unavailable');
+  assert.equal(payload.totalRows, 0); assert.equal(payload.evidence.summary.loadReportsAvailable, false);
+  assert.equal(payload.evidence.summary.cleanLoads, 0);
+  assert.equal(payload.evidence.summary.nativeNewIfc.existingModelFacts, false);
+  const ui = render(<EvidenceView evidence={models} state="captured" />);
+  assert.ok(ui.textContent?.includes('native-new-ifc-scaffold'));
+  const rendered = JSON.parse(ui.querySelector('pre')!.textContent ?? '{}');
+  assert.equal(rendered.evidence.summary.loadReportsAvailable, false);
 });
 
 test('a captured empty clash report keeps native settings and scope without a clean verdict', async () => {

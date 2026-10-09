@@ -20,7 +20,7 @@ export function structuralClosure(target: ModelEditTarget, roots: Set<number>): 
   const index = getEffectiveEntityIndex(target.dataStore, target.view, true), seen = new Set<number>();
   return collectReferencedEntityIds(roots, target.dataStore.source, { ...index,
     get(id) { seen.add(id); if (seen.size > 200) throw new Error('The complete Structural record population exceeds 200'); const record = index.get(id); if (record && record.byteLength > 100000) throw new Error('A native Structural reference record exceeds the bounded review input'); return record; },
-    has: id => index.has(id), refsOf: id => index.refsOf(id), refGroupsOf: (id, groups) => index.refGroupsOf(id, groups),
+    has: id => index.has(id), refsOf: id => index.refsOf(id), refGroupsOf: (id, groups) => index.refGroupsOf?.(id, groups),
     effectiveType: (id, type) => index.effectiveType(id, type), hasSourceMutation: id => index.hasSourceMutation?.(id) ?? false,
   });
 }

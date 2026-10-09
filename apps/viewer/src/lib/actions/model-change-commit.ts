@@ -41,7 +41,7 @@ export interface AppliedChange {
 export interface ModelChangeReceipt {
   version: 1;
   /** Absent on model.changes; other native reviewed producer kinds share the same durable receipt/Undo route. */
-  kind?: 'model.authoring' | 'room.command' | StructuralOpName;
+  kind?: 'model.authoring' | 'room.command' | 'structural.graph';
   id: string;
   title: string;
   digest: string;

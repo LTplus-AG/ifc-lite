@@ -12,6 +12,7 @@ import type { TranslationValue } from '../types';
  */
 export const compareAnalysisEn = {
   'compareAnalysis.sectionsLabel': 'Comparison impact and reconciliation',
+  'compareAnalysis.impact.navigationUnavailable': 'This link no longer identifies current native evidence. Refresh the comparison and analysis.',
   'compareAnalysis.impact.title': 'Impact on other analyses',
   'compareAnalysis.impact.summary': {
     one: '{count} changed element checked against loaded results',

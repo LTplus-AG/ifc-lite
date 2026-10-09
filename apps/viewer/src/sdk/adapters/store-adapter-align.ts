@@ -3,7 +3,6 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { createAlignCommandBackend, type createModellingStoreBackend } from '@ifc-lite/sdk';
-import { planBoxOf, type PlanBox } from '@ifc-lite/create';
 import type { StoreApi } from './types.js';
 import { normalizeMutationModelId } from './mutation-view.js';
 import { trackBackendWrite } from './backend-write-capture.js';
@@ -11,10 +10,7 @@ import { completePhysicalEdit } from './store-adapter-physical.js';
 import { modelEditTarget, recordModellingCommit } from '@/store/slices/mutation-modelling-records';
 import { mutationDenial } from '@/store/mutation-permission';
 import { undoHead } from '@/lib/rooms/room-layout';
-import { modelMeshes } from '@/lib/commands/modeling/align-boxes';
-import { toGlobalIdFromModels } from '@/store/globalId';
-import { buildStoreyWorkplane } from '@/lib/commands/modeling/workplane';
-import { requestRemesh } from '@/lib/remesh/remesh-service';
+import { prepareNativeAlignmentGeometry } from '@/lib/element-transform/prepare-alignment';
 
 /** Fresh owning-model geometry, collab gate, one shared history record. */
 export function alignMutationTracking(store: StoreApi): Pick<ReturnType<typeof createModellingStoreBackend>, 'alignElements'> {
@@ -26,16 +22,7 @@ export function alignMutationTracking(store: StoreApi): Pick<ReturnType<typeof c
     return { modelId, store: target.dataStore, editor: target.editor, mutationView: target.view, ownerHistoryId: null };
   };
   const service = createAlignCommandBackend(resolve, async (model, storeyId, ids) => {
-    const native = await requestRemesh(store.getState, model.modelId, ids, 'shape');
-    if (native.status !== 'applied') throw new Error(`Align native geometry preparation ${native.status}; retry after the model finishes updating`);
-    const state = store.getState(), plane = buildStoreyWorkplane(state, model.modelId, storeyId, 0);
-    if ('refused' in plane) throw new Error(plane.refused);
-    const boxes = new Map<number, PlanBox>();
-    for (const id of ids) {
-      const box = planBoxOf(modelMeshes(state, model.modelId), toGlobalIdFromModels(state.models, model.modelId, id), plane);
-      if (box) boxes.set(id, box);
-    }
-    return boxes;
+    return (await prepareNativeAlignmentGeometry(store.getState, model.modelId, storeyId, ids)).boxes;
   }, {
     historyHead: modelId => undoHead(store.getState(), modelId),
     record: (modelId, write) => {

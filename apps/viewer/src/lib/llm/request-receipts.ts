@@ -5,8 +5,8 @@
 /**
  * Usage receipts: one per model request, kept in memory for the session.
  * A receipt holds identifiers, times, the outcome and provider-reported token
- * counts. It never holds a prompt, a reply or a credential, and it is never
- * persisted.
+ * counts. It never holds a prompt, a reply or a credential. This global history
+ * is not persisted; saved artifacts retain only their own allowlisted receipts.
  */
 
 import { create } from 'zustand';

@@ -1,0 +1,202 @@
+{
+  "base": "3e2779997ae165c36f6939419f9229debc73c163",
+  "branchProductionSource": "ffa087d031df2f48d57fd216aa8d00b783dfd8c4",
+  "publicationSource": "1862d3f0686f68da4e140f7af2a6db1751d461ac",
+  "status": "partial foreground observations; no universal improvement verdict",
+  "sampleProtocol": "Fresh document, canonical first file input, localStorage/CacheStorage/IDB cleared before every sample; same existing T3 tab reused. Five alternating A/B pairs per fixture. Not a literal new browser tab per load. Further fresh-tab/noise/larger-model controls pending.",
+  "instrumentation": "AC20 uses remote completion polling. Holter additionally records first ready frame through post-final console-triggered observation and defers remote polling 22 seconds; preparation and waiting are outside measured finalization time. Both sides of each fixture use identical instrumentation.",
+  "oracleScope": "Retained flat mesh positions/normals/indices/appearance only, no complete instanced GPU byte oracle.",
+  "summary": {
+    "ac20": {
+      "base": {
+        "samples": 5,
+        "parseMedianMs": 2015,
+        "streamMedianMs": 2073,
+        "finalMedianMs": 2140.429999947548,
+        "flatGeometryFingerprints": [
+          "62abde08"
+        ],
+        "minFinalMs": 2025.1299999952316,
+        "maxFinalMs": 2173.289999961853
+      },
+      "branch": {
+        "samples": 5,
+        "parseMedianMs": 1988,
+        "streamMedianMs": 2092,
+        "finalMedianMs": 2163.195000052452,
+        "flatGeometryFingerprints": [
+          "62abde08"
+        ],
+        "minFinalMs": 2048.360000014305,
+        "maxFinalMs": 2170.984999895096
+      },
+      "parseMedianMsDeltaPercent": -1.3399503722084316,
+      "streamMedianMsDeltaPercent": 0.9165460684997573,
+      "finalMedianMsDeltaPercent": 1.0635713433965188
+    },
+    "holter": {
+      "base": {
+        "samples": 5,
+        "parseMedianMs": 4015,
+        "streamMedianMs": 4986,
+        "finalMedianMs": 6484.5650000572205,
+        "flatGeometryFingerprints": [
+          "38ab4345"
+        ],
+        "minFinalMs": 6391.330000042915,
+        "maxFinalMs": 6629.430000066757
+      },
+      "branch": {
+        "samples": 5,
+        "parseMedianMs": 4043,
+        "streamMedianMs": 4975,
+        "finalMedianMs": 6471.275000095367,
+        "flatGeometryFingerprints": [
+          "38ab4345"
+        ],
+        "minFinalMs": 6280.990000009537,
+        "maxFinalMs": 6570.75
+      },
+      "parseMedianMsDeltaPercent": 0.6973848069738553,
+      "streamMedianMsDeltaPercent": -0.2206177296430023,
+      "finalMedianMsDeltaPercent": -0.20494821104786176
+    }
+  },
+  "records": [
+    {
+      "name": "6537-foreground-ab-ac20-base-1.json",
+      "bytes": 8498,
+      "sha256": "4ab5003c024e5d9f24b3faede8213de62f483734865f1c40e7e7fef7cd16c3fe"
+    },
+    {
+      "name": "6537-foreground-ab-ac20-base-2.json",
+      "bytes": 8830,
+      "sha256": "3866b901cc71c9ccf9d99354960b64941aa58d930e2fbff236b6e8bd00b85f04"
+    },
+    {
+      "name": "6537-foreground-ab-ac20-base-3.json",
+      "bytes": 8794,
+      "sha256": "e5c0e9ca6dc888e31d1d2e68d8aded6670bc64b6d92d169b379df77c4f3f7e93"
+    },
+    {
+      "name": "6537-foreground-ab-ac20-base-4.json",
+      "bytes": 8541,
+      "sha256": "fe42680bee8f27af168f437d9344b3f1ee42e056b91a85ac802d460d65021682"
+    },
+    {
+      "name": "6537-foreground-ab-ac20-base-5.json",
+      "bytes": 8754,
+      "sha256": "e4047feb3368aa8c745cbe7348618e43bb38bcc7393a8d2b767bbb618cec5c93"
+    },
+    {
+      "name": "6537-foreground-ab-ac20-branch-1.json",
+      "bytes": 8510,
+      "sha256": "410a4e43f7c4dbec723e5fba62514fa42ddc64ef32c043c8421156330d8bcc13"
+    },
+    {
+      "name": "6537-foreground-ab-ac20-branch-2.json",
+      "bytes": 8551,
+      "sha256": "21ee966ddddb344edd84bdce6dd76de1bf53f44cc3eac96b8afb4513c99a8a04"
+    },
+    {
+      "name": "6537-foreground-ab-ac20-branch-3.json",
+      "bytes": 8816,
+      "sha256": "185a6b141d9c8c35e13d0f3c13e1e7703fdab9f7db9097c9557c91fd59c37486"
+    },
+    {
+      "name": "6537-foreground-ab-ac20-branch-4.json",
+      "bytes": 8565,
+      "sha256": "622ebcb3b34f878eb82540216dd1cd71f9f66595c1a3e9db9ba04085e6352ff7"
+    },
+    {
+      "name": "6537-foreground-ab-ac20-branch-5.json",
+      "bytes": 8556,
+      "sha256": "96a1141b5c5615656a3a74727f1204758d4e9869352e3e2b17838aeba805e652"
+    },
+    {
+      "name": "6537-foreground-ab-holter-base-1.json",
+      "bytes": 13420,
+      "sha256": "934590122de1b9ad310eef41c7374ee1a267b88684d89eb536928562411e23c2"
+    },
+    {
+      "name": "6537-foreground-ab-holter-base-2.json",
+      "bytes": 13462,
+      "sha256": "e81c0d5065df4973a267002380d51b2b198c20c2d377b0380cb31c6e16e434be"
+    },
+    {
+      "name": "6537-foreground-ab-holter-base-3.json",
+      "bytes": 13343,
+      "sha256": "c27adad2ba52befcc224e5f63f324c56aa6356160dfaec8b613c29666a3f4d65"
+    },
+    {
+      "name": "6537-foreground-ab-holter-base-4.json",
+      "bytes": 13454,
+      "sha256": "2e4d1a09b95a2f4aec390d6c8f2c5be59cf132b94c26187e48851c3932b4145f"
+    },
+    {
+      "name": "6537-foreground-ab-holter-base-5.json",
+      "bytes": 13327,
+      "sha256": "c2d8aa9869d0d75714c4dc6753dd5e5fcdf7249f26d2469d92e0aef5286965a7"
+    },
+    {
+      "name": "6537-foreground-ab-holter-branch-1.json",
+      "bytes": 13414,
+      "sha256": "64c6f3aa39adb9accf9396ba2faba8fef398f418971264cd21ea5f35151222ec"
+    },
+    {
+      "name": "6537-foreground-ab-holter-branch-2.json",
+      "bytes": 13373,
+      "sha256": "ddaae998eb3037591ddceb55c6e4da3b8889bd8c4af99eb0091e263f2cbbea85"
+    },
+    {
+      "name": "6537-foreground-ab-holter-branch-3.json",
+      "bytes": 13471,
+      "sha256": "d81b41279da4b1d12b9c10c3c5e5ebedfe5982c9f03381e85a841c8ab94214dd"
+    },
+    {
+      "name": "6537-foreground-ab-holter-branch-4.json",
+      "bytes": 13426,
+      "sha256": "ac9f317fe8eddab84f58805382a87fa0781ed0d03b7fa815b78bff51980fb7b5"
+    },
+    {
+      "name": "6537-foreground-ab-holter-branch-5.json",
+      "bytes": 13409,
+      "sha256": "508c6653e7fe7d4782fd8b5b79e213f50d2134d8a6ff938ea0a0fb64b918d347"
+    },
+    {
+      "name": "6537-foreground-bootstrap-retry.json",
+      "bytes": 373,
+      "sha256": "5c20fa6058679bc4d6d343b1c858a5e287eddb0bb8b5524b0ec855060f975350"
+    },
+    {
+      "name": "6537-foreground-holter-automation-timeout-diagnostic.json",
+      "bytes": 32533,
+      "sha256": "42481d547145d5b591e802fbbcebfecef4c0b91bb8db342c18c21f4926df05fe"
+    },
+    {
+      "name": "6537-foreground-holter-second-poll-timeout-diagnostic.json",
+      "bytes": 27581,
+      "sha256": "d9ea96bb0f6e75ed771f8602fdaac0812f95458690004d62b9b0482241e18952"
+    },
+    {
+      "name": "6537-owner-foreground-artifact-provenance.json",
+      "bytes": 1100,
+      "sha256": "17725984c3622a88d7f3e39caf035131ab333c949196dc1995280794f89a027c"
+    },
+    {
+      "name": "6537-standalone-chrome-cadence.json",
+      "bytes": 2281,
+      "sha256": "0d33384c4c243296dc59e17e231d365500904c1498ed5e1c452b4ad2a25f7dc7"
+    },
+    {
+      "name": "6537-standalone-chrome-system-info.json",
+      "bytes": 6678,
+      "sha256": "912e37eba26eb4ed4d07fa3f73c3bec9eca3e6633498be2cd282b79180b80b21"
+    },
+    {
+      "name": "6537-t3-foreground-cadence-after-chrome.json",
+      "bytes": 3508,
+      "sha256": "54b9fdf5f2322eeb25b110e04b2ed0556cdcf6ef8e9941775b14070a54fbf426"
+    }
+  ]
+}

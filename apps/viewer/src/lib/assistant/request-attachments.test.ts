@@ -45,8 +45,19 @@ test('an attached selection is sent as bounded GlobalId grounding and recorded i
   useViewerStore.setState(sceneModels());
   store().setSelectedEntityIds([101, 10_103]);
   const grounding = captureSelectionGrounding(store());
-  assert.deepEqual(grounding.elements.map(({ nativeEdit, ...identity }) => {
+  assert.deepEqual(grounding.elements.map(({ nativePlacement, nativeStructural: _nativeStructural, nativeEdit, nativeType, nativeReplacementExpected, nativeCost, nativeLayers, nativeSlabOpeningExpected, nativeStairExpected, nativeSplitExpected, nativeHostedExpected, nativeTrimExtendExpected, nativeAuthoringAvailability, nativeAuthoringUnits, nativeAuthoringRefusals, ...identity }) => {
     assert.equal(nativeEdit.dimensionsStatus, 'unavailable', 'this identity-only fixture has no native geometry index');
+    assert.deepEqual(nativeType, { status: 'unavailable', expected: null }, 'this identity-only fixture has no native type graph');
+    assert.equal(nativeReplacementExpected, null, '#7320 identity-only fixtures cannot authorize native replacement');
+    assert.equal(nativePlacement, null, 'identity-only fixtures cannot prove current placement');
+    assert.deepEqual(nativeCost, { status: 'unavailable-source', recordCount: null, expected: null }, 'this identity-only fixture cannot prove a complete native Cost graph');
+    assert.equal(nativeSlabOpeningExpected, null, 'identity-only fixtures cannot prove a slab host');
+    assert.equal(nativeStairExpected, null, 'this identity-only fixture cannot prove native stair dimensions');
+    assert.deepEqual(nativeLayers, { status: 'unavailable', units: 'm', kind: null, assignmentCount: null, layerCount: null, expected: null, typeAssignmentCount: null, typeLayerCount: null, typeScopeStatus: 'unavailable', peerCount: null }, 'this identity-only fixture has no authoritative native layer graph');
+    assert.deepEqual([nativeSplitExpected, nativeHostedExpected, nativeTrimExtendExpected], [null, null, null], '#7282 identity-only fixtures cannot prove native operation snapshots');
+    assert.deepEqual(nativeAuthoringAvailability, { placement: 'unavailable-target', replacement: 'unavailable-target', slabOpening: 'unavailable-target', split: 'unavailable-target', hosted: 'unavailable-target', stair: 'unavailable-target', trimExtend: 'unavailable-target' });
+    assert.deepEqual(nativeAuthoringUnits, { replacement: 'verbatim-native-fields', slabOpening: 'm', split: 'm', hosted: 'm', stair: 'm', trimExtend: 'verbatim-native-fields' });
+    assert.deepEqual(nativeAuthoringRefusals, { split: null, hosted: null });
     return identity;
   }), [
     { globalId: W1, modelId: 'a', type: 'IfcWall', name: 'Wall A' },

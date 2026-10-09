@@ -24,9 +24,12 @@ const unavailable = (): SizeGhost => ({ mesh: null, omitted: [], unavailable: tr
 export function authoringSizeGhost(state: ViewerState, batch: ModelAuthoringBatch, row: DryRunRow, modelId: string, id: number): SizeGhost {
   const dataStore = state.models.get(modelId)?.ifcDataStore, view = state.mutationViews.get(modelId);
   if (!dataStore || !view || row.resolved.target === undefined) return unavailable();
+  // #7262: the independent body draft does not contain an earlier-created boundary.
+  // The whole batch dry run validates it; disclose unavailable geometry here.
+  if (row.op.op === 'element.trimExtend' && row.resolved.reachBoundary && 'ref' in row.resolved.reachBoundary) return unavailable();
   return view.prepareAtomic((draftView) => {
     const editor = new StoreEditor(dataStore, draftView);
-    draftAuthoringOperation(batch, dataStore, modelId, editor, row, new Map());
+    draftAuthoringOperation(batch, dataStore, modelId, editor, row, new Map(), undefined, state);
     const draftState: ViewerState = { ...state, mutationViews: new Map([...state.mutationViews, [modelId, draftView]]),
       storeEditors: new Map([...state.storeEditors, [modelId, editor]]) };
     const expressId = row.resolved.target!;

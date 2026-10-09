@@ -1,0 +1,25 @@
+{
+  "reviewedBase": "287350ae266f1cb624b5bae4948063f13345a8fb",
+  "candidateSources": {
+    "apps/viewer/src/lib/geometry-cpu-buffers.ts": "bbd5a484ab119e3dcfa660839d3b452263dec0a321d8a4759826445c55c343d7",
+    "apps/viewer/src/lib/geometry-cpu-aliases.ts": "1d1fdc6c9ca491f6412b46dcd5919ba73ea7bed61caf573f79fff68beec79e82",
+    "apps/viewer/src/lib/geometry-cpu-release.ts": "5dae8336db131705959353981a7c8220b5a65d4b65477f0e74abe4715620a567",
+    "apps/viewer/src/lib/geometry-cpu-appearance.test.ts": "b447e2f5f72487fe225edc905c0189dcedcabe445d8a6e40a1913de267f6654d",
+    "apps/viewer/src/test/geometry-cpu-aliases-gc.ts": "ee0e250d43c920470cd16299d97dc4ebc8104ebe6e845602117c78d2a6a16acc"
+  },
+  "review": "No new defect found in weak historical allocation membership correction. Current and historical target allocation identities govern shared-field release; unrelated later replacement fields on copies remain excluded. WeakMap keys and WeakSet members retain neither original mesh nor backing allocation. Actual registration seam captures identities; no duplicate release path.",
+  "observedControls": {
+    "inverse": "4pass1 genuine canonical restore assertion failure0skip",
+    "restored": "5pass0fail0skip"
+  },
+  "pending": [
+    "broader controls and strengthened real GC",
+    "plain root full typecheck",
+    "fresh exacthead CI and final review"
+  ],
+  "limits": [
+    "No native viewer memory/performance claim",
+    "No automatic registration of unregistered Scene fragments claim"
+  ],
+  "rawFilteredFinding": "/tmp/6584-287350-review-outcomes/validated-findings.json"
+}

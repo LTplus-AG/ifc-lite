@@ -70,6 +70,25 @@ test('#7275 mounted layer review discloses coupled native wall effects and write
   assert.equal(parsed.entities.getName(layerSetOf({ dataStore: parsed, view: parsedView }, ids[0])!.layers[0].materialId!), 'Approved layer material 0');
 });
 
+test('#7275 mounted approval preserves distinct sub-millimetre layer thicknesses in declared units', async () => {
+  const { dataStore, view, ids, batch } = await targets();
+  const op = batch.operations[0];
+  assert.equal(op.op, 'material.layers');
+  if (op.op !== 'material.layers') throw new Error('Expected material.layers');
+  op.MaterialLayers = [{ LayerThickness: .0004, Material: null }, { LayerThickness: .00045, Material: null }];
+  const count = view.getMutationCount(), ui = render(<ModelAuthoringReview batch={batch} origin="thin layer witness" />);
+  assert.match(ui.textContent ?? '', /0\.0004 m/);
+  assert.match(ui.textContent ?? '', /0\.00045 m/);
+  assert.equal(view.getMutationCount(), count);
+  const apply = [...ui.querySelectorAll('button')].find(button => button.textContent === 'Apply 1 operation');
+  assert.ok(apply);
+  click(apply);
+  assert.match(ui.textContent ?? '', /Applied 1 change/);
+  const parsed = await parseIfc(editedModelBytes(dataStore, view));
+  const parsedView = new MutablePropertyView(parsed.properties ?? null, SAMPLE_MODEL);
+  assert.deepEqual(layerSetOf({ dataStore: parsed, view: parsedView }, ids[0])?.layers.map(layer => layer.thickness), [.0004, .00045]);
+});
+
 function volume(positions: ArrayLike<number>, indices: ArrayLike<number>): number {
   let sum = 0;
   for (let i = 0; i < indices.length; i += 3) {
@@ -85,7 +104,7 @@ test('#7275 actual WASM exported wall thickness matches the native reviewed draf
   { skip: !existsSync(wasm) && 'run pnpm build:wasm:fetch' }, async () => {
     const { dataStore, view, ids, batch } = await targets();
     const lease = view.prepareAtomic(() => undefined), preview = previewModelAuthoring(useViewerStore.getState(), batch);
-    assert.equal(preview.rows[0].status, 'ready', preview.rows[0].issue);
+    assert.equal(preview.rows[0].status, 'ready', preview.rows[0].issue ?? '');
     const ghosts = authoringGhosts(useViewerStore.getState(), preview);
     assert.equal(ghosts.length, 1);
     assert.doesNotThrow(lease.validate, 'native ghost generation publishes no model or allocator mutation');

@@ -37,7 +37,7 @@ for(const identity of ['unchanged','target-named','type-named','target-positiona
  if(identity.startsWith('type-'))assert.equal(expected.type?.GlobalId,newGuid);
  const batch=parseModelAuthoringBatch(JSON.stringify({version:1,kind:'model.authoring',title:'Current native identities',units:'m',frame:'storey-local',operations:[{op:'material.layers',target:{globalId:guid,modelId:SAMPLE_MODEL,ifcClass:'IfcWall',name:'Current layer wall'},scope:identity.startsWith('type-')?'type':'element',expected,MaterialLayers:[{LayerThickness:.4,Material:null}]}]}));
  const preview=previewModelAuthoring(state,batch);
- assert.equal(preview.rows[0].status,'ready',preview.rows[0].issue);
+ assert.equal(preview.rows[0].status,'ready',preview.rows[0].issue ?? '');
  const outcome=commitModelAuthoring(useViewerStore,preview,new Set([0]),'independent layer review');assert.ok(outcome.ok,outcome.ok?'':outcome.detail??outcome.reason);
  const changed=await parseIfc(editedModelBytes(dataStore,view));
  assert.equal(changed.getEntity(id)?.attributes[0],guid);

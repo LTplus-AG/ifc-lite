@@ -132,6 +132,8 @@ test('#7360 real native small complete Cost pin remains admitted without alterin
   const baseline = capture(); assert.equal(baseline.includedRows, 2);
   f.view.setAttribute(f.schedule, 'Name', 'Small native schedule');
   const actual = capture(); assert.equal(actual.includedRows, 2);
+  assert.equal(actual.evidence.summary.nativeStructuralCapture, 'unavailable-selection-budget');
+  assert.ok(actual.evidence.rows.every(row => !('nativeStructural' in row.data)));
   assert.deepEqual(ordinary(actual.evidence.rows), ordinary(baseline.evidence.rows));
   assert.ok(actual.evidence.rows.some(row => row.data.nativeCost.status === 'available'));
   assertPins(actual); await verifyNativeClassifications(f, actual);
@@ -141,6 +143,7 @@ test('#7360 competing real escaped Cost pins refuse a whole graph and preserve a
   const f = await fixture(); f.setValues(1);
   const baseline = capture(); assert.equal(baseline.includedRows, 2);
   let measured: number[] = [];
+  let singleSerialized: number[] = [];
   // Grow a finite actual graph with schema-valid <=255-character IfcLabels.
   // No individual name or graph is fabricated to bypass canonical admission.
   const escapedName = String.fromCharCode(34, 92).repeat(120);
@@ -151,10 +154,13 @@ test('#7360 competing real escaped Cost pins refuse a whole graph and preserve a
     const pins = f.ids.map(id => nativeCostTransportEvidence(currentTarget, id));
     assert.ok(pins.every(pin => pin.status === 'available'));
     measured = pins.map(pin => JSON.stringify(JSON.stringify(pin)).length);
+    singleSerialized = pins.map(pin => JSON.stringify(pin).length);
     if (measured.every(length => length < 12000) && measured.reduce((sum, length) => sum + length, 0) > 12000) break;
     if (schedules < 4) f.view.createEntity('IfcCostSchedule', [String(100 + schedules).padStart(22, '0'), null,
       escapedName, null, null, `Competing ${schedules}`, '.BUDGET.', null, null, null]);
   }
+  assert.ok(singleSerialized.reduce((sum, length) => sum + length, 0) <= 12000,
+    `Single-serialized aggregate must fit: ${singleSerialized.join("+")}`);
   assert.ok(measured.every(length => length < 12000));
   assert.ok(measured.reduce((sum, length) => sum + length, 0) > 12000);
   const actual = capture(); assert.equal(actual.includedRows, 2);

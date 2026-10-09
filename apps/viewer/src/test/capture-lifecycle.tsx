@@ -41,6 +41,7 @@ export async function captureLifecycle(dpr: number) {
     }
   };
   let completeWork = () => {};
+  let rejectWork = (_error: Error) => {};
   let work: Promise<void> = Promise.resolve();
   let waits = 0;
   const canvas = document.createElement('canvas');
@@ -59,8 +60,9 @@ export async function captureLifecycle(dpr: number) {
     resize: (width: number, height: number) => { resizes.push([width, height]); },
   };
   let lastOptions: RenderOptions = {};
+  const frames: RenderOptions[] = [];
   const originalRender = renderer.render.bind(renderer);
-  renderer.render = options => { lastOptions = options ?? {}; originalRender(options); };
+  renderer.render = options => { lastOptions = options ?? {}; frames.push(lastOptions); originalRender(options); };
   const captures: CaptureObservation[] = [];
   canvas.toDataURL = () => {
     const observation = {
@@ -91,6 +93,7 @@ export async function captureLifecycle(dpr: number) {
     bcf = useBCF({ canvasRef: params.canvasRef, rendererRef: params.rendererRef });
     return null;
   }
+  const savedStore = useViewerStore.getState();
   useViewerStore.setState({ models: new Map(), geometryResult: null, ifcDataStore: null,
     hiddenEntities: new Set(), isolatedEntities: null, ghostExceptEntities: null,
     selectedEntityId: null, selectedEntityIds: new Set(), clashHighlightColors: new Map() });
@@ -102,15 +105,20 @@ export async function captureLifecycle(dpr: number) {
   await act(async () => root.render(<Probe />));
   assert.ok(bcf);
   const api = bcf;
+  let disposed = false;
   return {
-    renderer, canvas, params, bcf: api, step, captures, resizes,
+    renderer, canvas, params, bcf: api, step, captures, resizes, frames,
     get waits() { return waits; },
-    deferWork() { work = new Promise<void>(resolve => { completeWork = resolve; }); },
+    deferWork() { work = new Promise<void>((resolve, reject) => { completeWork = resolve; rejectWork = reject; }); },
     finishWork() { const resolve = completeWork; work = Promise.resolve(); resolve(); },
+    failWork(error: Error) { const reject = rejectWork; work = Promise.resolve(); reject(error); },
     async flush() { for (let i = 0; i < 8; i++) await Promise.resolve(); },
     async dispose() {
+      if (disposed) return;
+      disposed = true;
       await act(async () => root.unmount());
       container.remove(); clearGlobalRefs();
+      useViewerStore.setState(savedStore, true);
       globalThis.requestAnimationFrame = savedRaf;
       globalThis.cancelAnimationFrame = savedCancel;
       Date.now = savedDateNow;

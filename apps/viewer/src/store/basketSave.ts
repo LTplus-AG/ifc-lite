@@ -4,6 +4,7 @@
 
 import { useViewerStore } from './index.js';
 import { getGlobalRenderer } from '../hooks/useBCF.js';
+import { captureViewportFrame } from '@/lib/viewport-capture';
 
 type BasketViewSource = 'selection' | 'visible' | 'hierarchy' | 'manual';
 
@@ -74,24 +75,17 @@ async function captureCanvasThumbnail(): Promise<string | null> {
   const src = document.querySelector('canvas[data-viewport="main"]') as HTMLCanvasElement | null;
   if (!src) return null;
 
-  // Ensure submitted GPU work is complete before sampling the canvas.
   const renderer = getGlobalRenderer();
-  const device = renderer?.getGPUDevice();
-  if (device) {
-    await device.queue.onSubmittedWorkDone();
-  }
-
-  // FRAME-WAIT-ALLOW(#2385): must NOT be raced against a timer — the point is
-  // that the frame was presented before `toDataURL()` samples the canvas, and
-  // timing out would save a stale or blank basket thumbnail. A hidden tab
-  // cannot present a frame at all, so bounding this buys nothing.
-  await new Promise<void>((resolve) =>
-    requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
-  );
+  if (!renderer) return null;
 
   try {
     // Capture from the WebGPU canvas first (reliable), then downscale.
-    const fullFrameDataUrl = src.toDataURL('image/png');
+    const captured = await captureViewportFrame(renderer, { canvas: src,
+      options: { selectedId: null, selectedIds: undefined, selectedModelIndex: undefined, hoverOutline: null },
+      read: canvas => ({ image: canvas.toDataURL('image/png'), width: canvas.width, height: canvas.height }),
+    });
+    if (!captured) return null;
+    const fullFrameDataUrl = captured.image;
 
     const thumb = document.createElement('canvas');
     thumb.width = 320;
@@ -110,8 +104,8 @@ async function captureCanvasThumbnail(): Promise<string | null> {
       img.src = fullFrameDataUrl;
     });
 
-    const srcW = img.naturalWidth || src.width || src.clientWidth;
-    const srcH = img.naturalHeight || src.height || src.clientHeight;
+    const srcW = img.naturalWidth || captured.width;
+    const srcH = img.naturalHeight || captured.height;
     if (srcW <= 0 || srcH <= 0) return null;
 
     const scale = Math.max(thumb.width / srcW, thumb.height / srcH);
@@ -121,7 +115,8 @@ async function captureCanvasThumbnail(): Promise<string | null> {
     const offsetY = Math.floor((thumb.height - drawH) / 2);
     ctx.drawImage(img, offsetX, offsetY, drawW, drawH);
     return thumb.toDataURL('image/jpeg', 0.75);
-  } catch {
+  } catch (error) {
+    console.warn('[basket] Thumbnail capture failed:', error);
     return null;
   }
 }

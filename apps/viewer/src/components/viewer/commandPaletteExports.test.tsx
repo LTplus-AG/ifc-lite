@@ -23,7 +23,7 @@ import { GeometryProcessor } from '@ifc-lite/geometry';
 import type { BimContext } from '@ifc-lite/sdk';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { BimReactContext } from '@/sdk/BimProvider.js';
-import { cleanup, render } from '@/test/render.js';
+import { advance, cleanup, render } from '@/test/render.js';
 import { downloadedNames, clearDownloads } from '@/test/download-capture';
 import { resolveEnglish } from '@/i18n/registry';
 import { useViewerStore } from '@/store';
@@ -38,6 +38,7 @@ import { buildCommandPaletteCommands, type CommandPaletteBuildParams } from './c
 import { CommandPalette } from './CommandPalette.js';
 import { useExportRunner, type ExportRequest } from './useExportRunner.js';
 import { parseFixtureModel } from './anonymized-export/anonymized-export-fixture.test-support';
+import { installViewportCaptureBoundary } from '@/test/viewport-capture-boundary';
 
 const PARAMS: CommandPaletteBuildParams = {
   execute: () => {},
@@ -224,6 +225,7 @@ describe('command palette exports (#5601)', () => {
     canvas.dataset.viewport = 'main';
     canvas.toDataURL = () => 'data:image/png;base64,AA==';
     document.body.appendChild(canvas);
+    const releaseCapture = installViewportCaptureBoundary(canvas);
     const events: Array<{ event: string; properties: Record<string, unknown> }> = [];
     const analytics = mock.method(posthog, 'capture', (event: string, properties: Record<string, unknown>) => {
       events.push({ event, properties });
@@ -248,6 +250,7 @@ describe('command palette exports (#5601)', () => {
       await act(async () => {
         assert.ok(paletteRunner);
         paletteRunner.runExport({ id: 'screenshot' });
+        await advance(20);
       });
       assert.deepEqual(events.slice(before).filter(({ event }) => event === 'export_completed'), [
         { event: 'export_completed', properties: { format: 'png', surface: 'palette' } },
@@ -259,6 +262,7 @@ describe('command palette exports (#5601)', () => {
       init.mock.restore();
       exportCsv.mock.restore();
       dispose.mock.restore();
+      releaseCapture();
       canvas.remove();
     }
   });

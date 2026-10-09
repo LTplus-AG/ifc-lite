@@ -21,7 +21,8 @@ import { IDS_BCF_MAX_TOPICS, idsBcfSnapshotTargets } from '@/lib/ids/bcf-topic-e
 import { getEntityBounds } from '@/utils/viewportUtils';
 import { getGlobalRenderer } from '@/hooks/useBCF';
 import { bcfWorldOffset, projectViewpointsToWorld } from '@/hooks/bcf/viewpoint-world-frame';
-import { useViewerStore, type FederatedModel } from '@/store';
+import type { FederatedModel } from '@/store';
+import { captureEntityViewportFrame } from '@/lib/export/entity-viewport-capture';
 import type { IDSBCFExportSettings, IDSExportProgress } from '@/components/viewer/IDSExportDialog';
 
 const SNAPSHOT_CLEAR_COLOR: [number, number, number, number] = [0.102, 0.106, 0.149, 1];
@@ -132,17 +133,9 @@ export async function runIdsBcfExport({
     if (!renderer) {
       console.warn('[IDS] No renderer available for snapshot capture');
     } else {
-      const camera = renderer.getCamera();
-
       const entitiesToSnapshot = idsBcfSnapshotTargets(report, includePassingEntities);
 
       const total = entitiesToSnapshot.length;
-
-      // Save current viewer state to restore after snapshot batch
-      const storeState = useViewerStore.getState();
-      const savedSelection = storeState.selectedEntityId;
-      const savedIsolation = storeState.isolatedEntities;
-      const savedHidden = storeState.hiddenEntities;
 
       for (let i = 0; i < total; i++) {
         const entity = entitiesToSnapshot[i];
@@ -161,57 +154,15 @@ export async function runIdsBcfExport({
         const globalExpressId = toViewerGlobalId(entity.modelId, entity.expressId);
         if (globalExpressId == null) continue;
 
-        // Frame the entity bounds directly via camera (properly centers the object)
-        // duration=1 (not 0) because the animator skips updates when duration===0,
-        // causing the camera to never move. 1ms is effectively instant.
-        await camera.frameBounds(bounds.min, bounds.max, 1);
-
-        // Render with: entity isolated, NO selection highlight (no cyan), IDS colors intact
-        const isolationSet = new Set([globalExpressId]);
-        renderer.render({
-          isolatedIds: isolationSet,
-          selectedId: null,           // No cyan selection highlight
-          clearColor: SNAPSHOT_CLEAR_COLOR,
-          // Isolation may reveal batches evicted under the GPU residency
-          // budget — restore them synchronously so the capture is complete.
-          restoreEvictedForCapture: true,
+        const dataUrl = await captureEntityViewportFrame(renderer, {
+          ids: new Set([globalExpressId]), mode: 'isolate', bounds, clearColor: SNAPSHOT_CLEAR_COLOR,
         });
-
-        // Wait for GPU commands to complete
-        const device = renderer.getGPUDevice();
-        if (device) {
-          await device.queue.onSubmittedWorkDone();
-        }
-
-        // Wait for the browser compositor to present the frame to the canvas.
-        // Without this, toDataURL() reads a stale canvas — only the last snapshot
-        // would show the entity because previous frames haven't been composited yet.
-        // FRAME-WAIT-ALLOW(#2385): must NOT be raced against a timer. The whole
-        // point is that the frame was actually presented; timing out would read
-        // a stale canvas into the IDS report snapshot. A hidden tab cannot
-        // present a frame at all, so bounding this buys nothing.
-        await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
-
-        // Capture the now-presented frame
-        const dataUrl = await renderer.captureScreenshot();
         if (dataUrl) {
           entitySnapshots.set(entity.boundsKey, dataUrl);
         }
       }
 
-      // Restore viewer state — set store back to saved state directly
-      useViewerStore.setState({
-        selectedEntityId: savedSelection,
-        isolatedEntities: savedIsolation,
-        hiddenEntities: savedHidden,
-      });
 
-      // Re-render with restored state (original clearColor restored by omitting it)
-      renderer.render({
-        hiddenIds: savedHidden,
-        isolatedIds: savedIsolation,
-        selectedId: savedSelection,
-      });
     }
   }
 

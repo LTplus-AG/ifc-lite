@@ -90,6 +90,12 @@ CPU-bound scenes may see little improvement. The renderer's persistent
 it for subsequent full-quality or capture frames. Invalid frame caps are
 ignored, and a frame cap cannot raise the configured maximum.
 
+Viewer captures share the normal frame's appearance and clipping options,
+and render at the configured settled resolution. The capture owns its camera
+and drawing buffer through GPU completion, presentation, and image readback;
+the navigation loop resumes afterward. Rendering another frame during those
+asynchronous waits can replace the image being exported, even at DPR1.
+
 ## Appearance triangle mapping
 
 `expandAppearanceCorners(mesh, sourceIndices, cornerUvs, targetIndices, targetCornerNormals, targetVertexCount)` binds

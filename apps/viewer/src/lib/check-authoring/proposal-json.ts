@@ -4,13 +4,12 @@
 
 /**
  * Shared strict-parsing helpers for the reviewed check-authoring proposals
- * (viewer AI P07, #6915): `ids.specifications`, `rules.proposal` and
- * `document.outline`. Every refusal names the field and what to change, so
+ * (viewer AI P07, #6915): `rules.proposal` and `document.outline`. Every refusal names the field and what to change, so
  * the assistant's "ask again" correction carries an actionable reason.
  */
 
-export type CheckAuthoringKind = 'ids.specifications' | 'rules.proposal' | 'document.outline';
-export const CHECK_AUTHORING_KINDS: readonly CheckAuthoringKind[] = ['ids.specifications', 'rules.proposal', 'document.outline'];
+export type CheckAuthoringKind = 'rules.proposal' | 'document.outline';
+export const CHECK_AUTHORING_KINDS: readonly CheckAuthoringKind[] = ['rules.proposal', 'document.outline'];
 
 export const ANSWER_LIMIT = 200_000;
 export const TEXT_LIMIT = 2000;
@@ -54,7 +53,7 @@ export function requiredText(value: JsonRecord, key: string, at: string, max = 2
 export function declaredCheckKind(content: string): CheckAuthoringKind | null {
   const trimmed = content.trimStart();
   if (!trimmed.startsWith('{') && !trimmed.startsWith('```')) return null;
-  const kind = /"kind"\s*:\s*"(ids\.specifications|rules\.proposal|document\.outline)"/.exec(content)?.[1];
+  const kind = /"kind"\s*:\s*"(rules\.proposal|document\.outline)"/.exec(content)?.[1];
   return kind ? kind as CheckAuthoringKind : null;
 }
 

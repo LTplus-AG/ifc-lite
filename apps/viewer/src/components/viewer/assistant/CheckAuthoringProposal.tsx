@@ -5,19 +5,18 @@
 import { useMemo } from 'react';
 import { useAssistant } from '@/lib/assistant/conversation';
 import { declaredCheckKind } from '@/lib/check-authoring/proposal-json';
-import { parseIdsProposal, type IdsProposal } from '@/lib/check-authoring/ids-proposal';
 import { parseRulesProposal, type RulesProposal } from '@/lib/check-authoring/rules-proposal';
 import { parseDocumentOutline, type DocumentOutline } from '@/lib/check-authoring/document-outline';
-import { IdsDraftReview } from '../check-authoring/IdsDraftReview';
 import { RulesDraftReview } from '../check-authoring/RulesDraftReview';
 import { DocumentOutlineReview } from '../check-authoring/DocumentOutlineReview';
 
-type Reviewable = { kind: 'ids'; proposal: IdsProposal } | { kind: 'rules'; proposal: RulesProposal } | { kind: 'document'; proposal: DocumentOutline };
+type Reviewable = { kind: 'rules'; proposal: RulesProposal } | { kind: 'document'; proposal: DocumentOutline };
 
 /**
- * The latest completed `ids.specifications`, `rules.proposal` or
- * `document.outline` answer, reviewed natively below the conversation (P07).
- * Nothing is run or saved until the coordinator does so in the review.
+ * The latest completed `rules.proposal` or `document.outline` answer,
+ * reviewed natively below the conversation (P07). Nothing is run or saved
+ * until the coordinator does so in the review. IDS drafts come from the IDS
+ * agent (`IdsAgentReview`), not from a JSON answer.
  */
 export function CheckAuthoringProposal() {
   const assistant = useAssistant();
@@ -27,7 +26,6 @@ export function CheckAuthoringProposal() {
     const kind = content ? declaredCheckKind(content) : null;
     if (!content || !kind) return null;
     try {
-      if (kind === 'ids.specifications') return { kind: 'ids', proposal: parseIdsProposal(content) };
       if (kind === 'rules.proposal') return { kind: 'rules', proposal: parseRulesProposal(content) };
       return { kind: 'document', proposal: parseDocumentOutline(content) };
     } catch (error) {
@@ -39,7 +37,6 @@ export function CheckAuthoringProposal() {
   if (!reviewable) return null;
   // Keyed by answer so a newer proposal starts a fresh review.
   const key = `${assistant.snapshot?.id ?? assistant.archived?.id ?? 'conversation'}:${assistant.messages.length}`;
-  if (reviewable.kind === 'ids') return <IdsDraftReview key={key} initial={reviewable.proposal} />;
   if (reviewable.kind === 'rules') return <RulesDraftReview key={key} initial={reviewable.proposal} />;
   // Outline tables bind by report specification id, so only the report this conversation read can back them.
   const identity = assistant.snapshot?.source === 'validation' ? assistant.snapshot.sourceIdentity : null;

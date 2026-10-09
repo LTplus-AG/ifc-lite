@@ -31,8 +31,11 @@ async function systemFor(source: 'loadReport' | 'clash'): Promise<string> {
 // #6915: the authoring contracts reach the provider in model and validation contexts only, within the prompt bound.
 test('check authoring guidance is sent with model evidence, not with clash evidence', async () => {
   const withModels = await systemFor('loadReport');
-  for (const kind of ['ids.specifications', 'rules.proposal', 'document.outline']) assert.match(withModels, new RegExp(`"kind":"${kind.replace('.', '\\.')}"`));
+  for (const kind of ['rules.proposal', 'document.outline']) assert.match(withModels, new RegExp(`"kind":"${kind.replace('.', '\\.')}"`));
+  // IDS drafts go through the IDS agent, never a JSON contract (IDS-085).
+  assert.doesNotMatch(withModels, /ids\.specifications/);
+  assert.match(withModels, /Draft IDS with tools/);
   assert.match(withModels, /never drop them/);
   assert.ok(withModels.length < 90_000);
-  assert.doesNotMatch(await systemFor('clash'), /ids\.specifications/);
+  assert.doesNotMatch(await systemFor('clash'), /rules\.proposal/);
 });

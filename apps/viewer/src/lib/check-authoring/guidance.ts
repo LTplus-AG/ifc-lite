@@ -4,21 +4,15 @@
 
 /**
  * Provider guidance for reviewed check authoring (#6915): the exact
- * `ids.specifications`, `rules.proposal` and `document.outline` contracts,
+ * `rules.proposal` and `document.outline` contracts, and a pointer to the IDS
+ * agent for IDS drafts (IDS Studio P-07),
  * kept short so they fit beside the evidence. Validated by the strict parsers
  * in this folder; the user reviews, dry-runs and saves every draft natively.
  */
 
-const IDS = 'To draft IDS checks return only JSON {"version":1,"kind":"ids.specifications","title","description"?,"ifcVersions":["IFC4"],'
-  + '"specifications":[{"name","description"?,"instructions"?,"cardinality":"required|optional|prohibited","applicability":[facet],'
-  + '"requirements":[facet + "cardinality"?: "required|optional|prohibited", "instructions"?]}],"unsupported":[...]}. '
-  + 'Facets use the IDS 1.0 names: {"type":"entity","name":"IFCWALL","predefinedType"?}, {"type":"attribute","name":"Name","value"?}, '
-  + '{"type":"property","propertySet":"Pset_WallCommon","baseName":"FireRating","dataType":"IFCLABEL","value"?,"unit"?}, '
-  + '{"type":"classification","system","value"?}, {"type":"material","value"?}, '
-  + '{"type":"partOf","relation":"IfcRelContainedInSpatialStructure|IfcRelAggregates|IfcRelAssignsToGroup|IfcRelNests","entity":{"name":"IFCBUILDINGSTOREY"}}. '
-  + 'A value is text/number/boolean or {"type":"enumeration","values":[...]}, {"type":"pattern","pattern":"XSD regex"}, '
-  + '{"type":"bounds","minInclusive"?,"maxInclusive"?,"minExclusive"?,"maxExclusive"?}. Entity names are exact classes (IFCWALL excludes IFCWALLSTANDARDCASE). '
-  + '"unit" (mm, cm, m, mm2, m2, mm3, m3) is allowed only with IFCLENGTHMEASURE, IFCPOSITIVELENGTHMEASURE, IFCAREAMEASURE or IFCVOLUMEMEASURE and is converted to SI. ';
+/** IDS is drafted by the IDS agent (tool calling against the grounding gate), never as a JSON answer here. */
+const IDS = 'Do not write IDS as JSON. To draft IDS specifications, tell the user to write the requirements in the message box and use '
+  + '"Draft IDS with tools" below the conversation: that agent looks every IFC name up and the user reviews each change. ';
 
 const RULES = 'To draft information rules (uniqueness, counts/sums, comparisons, units, which IDS cannot express) return only JSON '
   + '{"version":1,"kind":"rules.proposal","title","ruleSet":{"version":1,"name","rules":[{"id","name","severity":"error|warning",'

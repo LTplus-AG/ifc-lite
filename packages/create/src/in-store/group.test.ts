@@ -182,7 +182,8 @@ it('bounds total effective record work and reports refusal rather than a truncat
   expect(s.mutationView.peekNextExpressId()).toBe(next);
   expect(s.mutationView.getMutationRevision()).toBe(revision);
   expect(s.mutationView.getNewEntities()).toHaveLength(count);
-});
+  // 82 MB of record text by design: past vitest's 5 s default on shared CI runners.
+}, 30_000);
 
 function danglingExportReferences(bytes: Uint8Array): number[] {
   const step = new TextDecoder().decode(bytes).replace(/'(?:[^']|'')*'|\/\*[\s\S]*?\*\//g, '');
@@ -226,4 +227,5 @@ it.skipIf(!hasExternalIfc4x3)('preserves the complete SierraSoft IFC4X3_ADD2 rai
   const records = (source: IfcDataStore) => [...source.entityIndex.byId.keys()].sort((a, b) => a - b)
     .map(expressId => ({ expressId, ...effectiveMetadataRecord(source, expressId) }));
   expect(records(restored)).toEqual(records(store));
-});
+  // Real railway parse, edit, export and reparse: past the 5 s default on shared CI runners.
+}, 30_000);

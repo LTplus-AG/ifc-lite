@@ -76,13 +76,15 @@ test('#7302 French native Save/IDB/reload/export/import/PDF retain chosen langua
   assert.match(printed.text, /IfcWall vs IfcPipeSegment/);
 });
 
-test('#7302 German native refresh localizes changed/missing facts and preserves reviewer ownership/deleted slots', () => {
+test('#7302 German native refresh localizes changed/missing facts and preserves reviewer ownership/deleted slots', async () => {
   clashDiscussion(typedReport('Prüfung nötig [E1].', [
     { text: 'E1 überlappt um 20 mm.', facts: [{ citation: 'E1', field: 'distance', value: -20, unit: 'mm' }] },
     { text: 'E2 überlappt um 35 mm.', facts: [{ citation: 'E2', field: 'distance', value: -35, unit: 'mm' }] },
   ], 'de'));
   const saved = prepareReportDraft('Prüfung', 'de').document;
   const old = slot(saved, 'claim-facts:C1'); assert.ok(old);
+  assert.ok(old.text.startsWith('Durch erfasste Daten unterstützt · Quellen: E1\n'),
+    'the browser review locates the actual saved German caption, independently of UI language');
   const edited: DocumentSpec = { ...saved, blocks: saved.blocks.filter(block => block.id !== slot(saved, 'coverage')?.id)
     .map(block => block.id === old.id ? { ...old, text: 'Auf der Baustelle prüfen.' } : block) };
   seedClashResult([-0.04, -0.035, -0.05], [0, 2]);
@@ -100,6 +102,11 @@ test('#7302 German native refresh localizes changed/missing facts and preserves 
   const replaced = applyReportRefresh(edited, plan, new Set([old.id]));
   assert.match(slot(replaced, 'claim-facts:C1')?.text ?? '', /behauptet -20 mm, erfasst -0\.04 m/);
   assert.equal(aiBlockOrigin(slot(replaced, 'claim-facts:C1')!), 'ai-generated');
+  const printed = await printDocumentText(kept);
+  assert.deepEqual(printed.unresolved, []);
+  assert.match(printed.text, /Berichtssprache: de · Revision 2/);
+  assert.match(printed.text, /Nachweise aktualisiert \(Revision 2\): 1 zitierte Werte geändert/);
+  assert.match(printed.text, /Auf der Baustelle prüfen\./);
 });
 
 test('#7302 French supported/unverifiable/contradicted claim captions do not change native verdicts', () => {

@@ -20,7 +20,7 @@ export function prepareZoneEmission(store: StoreApi<ViewerState>, input: ZoneEmi
   const deny = mutationDenial(state, proposal.modelId); if (deny) throw new Error(deny);
   const lease = readOnlyModelEditLease(state, proposal.modelId); if (!lease) throw new Error('Native model unavailable');
   const ref = resolveGlobalId(state, { globalId: proposal.storey.GlobalId, modelId: proposal.modelId });
-  if (!ref) throw new Error('Explicit current storey is unavailable or ambiguous');
+  if (typeof ref === 'string') throw new Error('Explicit current storey is unavailable or ambiguous');
   const snapshot = readZoneEmissionSnapshot(state, proposal.modelId, proposal.zoneSetId, ref.expressId);
   if (snapshot.storey.Name !== proposal.storey.Name || !sameReportEvidence(proposal.expected, snapshot)) throw new Error('The complete current native zone-set evidence differs; attach again');
   const dry = lease.target.view.prepareAtomic(view => {

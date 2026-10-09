@@ -70,7 +70,7 @@ test('#7322 stale evaluation cannot be certified from old timing after same-ID s
 });
 test('#7322 absent evaluation or explicit wrong set/storey refuses rather than choosing a default', async t => {
   const f = await seed(t); if (!f) return;
-  const good = proposal(); assert.throws(() => prepareZoneEmission(useViewerStore, { ...good, zoneSetId: 'unknown-set' }), /set|unavailable/);
+  const good = proposal(); assert.throws(() => prepareZoneEmission(useViewerStore, { ...good, storey: { ...good.storey, GlobalId: generateIfcGuid() } }), /unavailable or ambiguous/, 'a valid but absent native Root identity is a resolution refusal'); assert.throws(() => prepareZoneEmission(useViewerStore, { ...good, zoneSetId: 'unknown-set' }), /set|unavailable/);
   assert.throws(() => prepareZoneEmission(useViewerStore, { ...good, storey: { ...good.storey, Name: 'Wrong native storey name' } }), /differs/);
   setGlobalRendererRef({ current: null }); assert.equal(nativeZoneEmissionEvidence(useViewerStore.getState(), 'bonsai').status, 'unavailable-evaluation'); assert.throws(() => prepareZoneEmission(useViewerStore, good), /evaluation/);
 });

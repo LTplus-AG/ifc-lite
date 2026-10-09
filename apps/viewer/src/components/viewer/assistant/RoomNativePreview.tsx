@@ -51,7 +51,7 @@ export function RoomNativePreview({ review }: { review: RoomReview }) {
     <ul className="max-h-48 overflow-auto list-disc pl-4">
       {rows.map(row => <li key={row.id}>{row.name || t('roomReview.unnamedRoom')}
         <p>{t('roomReview.geometry', { area: Number(row.area.toFixed(4)), height: row.height, z: row.z })}</p>
-        <p>PredefinedType: {String(row.PredefinedType ?? '—')} · ObjectType: {String(row.ObjectType ?? '—')}</p>
+        <p>{t('roomReview.PredefinedType')}: {String(row.PredefinedType ?? '—')} · {t('roomReview.ObjectType')}: {String(row.ObjectType ?? '—')}</p>
         <details><summary>{t('roomReview.contour')}</summary><pre className="whitespace-pre-wrap break-words">{JSON.stringify(row.outline)}</pre></details>
       </li>)}
     </ul>

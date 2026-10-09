@@ -25,6 +25,8 @@ export const roomReviewEn = {
   'roomReview.planned': 'Create {created} · update {updated} · delete {deleted} · skip {skipped}',
   'roomReview.plan': 'Prepared native room outlines in storey-local metres',
   'roomReview.geometry': 'Outline area {area} m² · extrusion height {height} m · elevation {z} m',
+  'roomReview.PredefinedType': 'PredefinedType',
+  'roomReview.ObjectType': 'ObjectType',
   'roomReview.contour': 'Complete native contour in metres',
   'roomReview.drag': 'Move the layout corner from ({from}) to ({to}) metres.',
   'roomReview.split': 'Split the layout along ({from}) to ({to}) metres.',

@@ -57,9 +57,11 @@ describe('canonical registry lookup #7362', () => {
 
   it('reads replaced public schema attribute definitions immediately and restores the original definition', () => {
     const registry = getSchemaRegistryForVersion('IFC4'), original = registry.entities.IfcTask;
+    const attributes = original.allAttributes;
+    if (!attributes) throw new Error('IFC4 IfcTask must declare inherited attributes');
     expect(getAttributeTypeForSchema('IFCTASK', 'IsMilestone', 'IFC4')).toBe('IfcBoolean');
     try {
-      registry.entities.IfcTask = { ...original, allAttributes: original.allAttributes.map(attribute =>
+      registry.entities.IfcTask = { ...original, allAttributes: attributes.map(attribute =>
         attribute.name === 'IsMilestone' ? { ...attribute, type: 'IfcLabel' } : attribute) };
       expect(getAttributeTypeForSchema('ifctask', 'IsMilestone', 'IFC4')).toBe('IfcLabel');
     } finally { registry.entities.IfcTask = original; }

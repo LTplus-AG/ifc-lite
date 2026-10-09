@@ -56,7 +56,7 @@ test('an attached selection is sent as bounded GlobalId grounding and recorded i
     assert.deepEqual(nativeLayers, { status: 'unavailable', units: 'm', kind: null, assignmentCount: null, layerCount: null, expected: null, typeAssignmentCount: null, typeLayerCount: null, typeScopeStatus: 'unavailable', peerCount: null }, 'this identity-only fixture has no authoritative native layer graph');
     assert.deepEqual([nativeSplitExpected, nativeHostedExpected, nativeTrimExtendExpected], [null, null, null], '#7282 identity-only fixtures cannot prove native operation snapshots');
     assert.deepEqual(nativeAuthoringAvailability, { storeyReassignment: 'unavailable-target', placement: 'unavailable-target', replacement: 'unavailable-target', slabOpening: 'unavailable-target', split: 'unavailable-target', hosted: 'unavailable-target', stair: 'unavailable-target', trimExtend: 'unavailable-target' });
-    assert.deepEqual(nativeAuthoringUnits, { replacement: 'verbatim-native-fields', slabOpening: 'm', split: 'm', hosted: 'm', stair: 'm', trimExtend: 'verbatim-native-fields' });
+    assert.deepEqual(nativeAuthoringUnits, { storeyReassignment: 'verbatim-native-fields', replacement: 'verbatim-native-fields', slabOpening: 'm', split: 'm', hosted: 'm', stair: 'm', trimExtend: 'verbatim-native-fields' });
     assert.deepEqual(nativeAuthoringRefusals, { split: null, hosted: null });
     return identity;
   }), [

@@ -5,6 +5,8 @@ import '@/test/setup-dom.js';
 import 'fake-indexeddb/auto';
 import test, { beforeEach, afterEach, mock } from 'node:test';
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
+import { restoreRootBudget } from '@ifc-lite/ai';
 import { readFile } from 'node:fs/promises';
 import { act } from 'react';
 import { render, click, cleanup, type } from '@/test/render';
@@ -45,17 +47,33 @@ async function answer(reported = true) {
   const store = await parseStep(bytes); seedModel('native', 0, store, 52);
   assert.equal(store.entities.getTypeName(52), 'IfcSlab');
   replaceEvidence(captureEvidence('selection'));
+  const budget = restoreRootBudget({ maxRequests: 3, maxOutputTokens: 1000, requests: 1, outputTokens: 400 });
+  assert.ok(budget); useAssistant.setState({ budget });
   useViewerStore.setState({ chatActiveModel: 'openai/gpt-free' });
   const frames = [
     { choices: [{ delta: { content: 'Native source element [E1].' }, finish_reason: null }] },
     { choices: [{ delta: { content: '' }, finish_reason: 'stop' }], ...(reported ? { usage: { prompt_tokens: 1234, completion_tokens: 456 } } : {}) },
   ];
-  globalThis.fetch = async () => new Response(frames.map(frame => `data: ${JSON.stringify(frame)}\n\n`).join('') + 'data: [DONE]\n\n');
+  let sent: Record<string, unknown> | undefined;
+  globalThis.fetch = async (_url, init) => {
+    sent = JSON.parse(String(init?.body)) as Record<string, unknown>;
+    return new Response(frames.map(frame => `data: ${JSON.stringify(frame)}\n\n`).join('') + 'data: [DONE]\n\n');
+  };
   assert.equal(await sendAssistant('Explain the native element', 'openai/gpt-free', '/api/chat'), true);
   const receipt = useAssistant.getState().messages.at(-1)?.receipt; assert.ok(receipt);
   assert.equal(receipt.usageReported, reported);
   if (receipt.usageReported) { assert.equal(receipt.inputTokens, 1234); assert.equal(receipt.outputTokens, 456); }
-  assert.equal(receipt.outcome, 'completed'); return receipt;
+  assert.equal(receipt.outcome, 'completed');
+  // #7246 assertions run against the actual rebuilt core, never a receipt stand-in.
+  assert.ok(receipt.provenance);
+  assert.equal(sent?.maxOutputTokens, 600, 'actual outgoing proxy body obeys the resumed parent grant');
+  assert.equal(receipt.provenance.grantedOutputTokens, sent?.maxOutputTokens);
+  assert.equal(receipt.provenance.promptVersion, 'viewer.assistant.v1');
+  assert.equal(receipt.provenance.finishReason, 'stop');
+  assert.equal(receipt.provenance.timeoutMs, 120_000);
+  assert.equal(receipt.provenance.outputTextDigest?.referent, 'output-text.utf8.v1');
+  assert.equal(receipt.provenance.outputTextDigest?.value, createHash('sha256').update('Native source element [E1].', 'utf8').digest('hex'));
+  return receipt;
 }
 const generationReceipt = (document: { aiReport?: unknown }): unknown => {
   const record = document.aiReport;
@@ -152,6 +170,9 @@ test('#7242 provider usage absent and legacy turns/reports stay unknown rather t
   assert.deepEqual(portable.messages.at(-1)?.receipt, receipt);
   const current = documentContent.decode(draft.document); assert.ok(current);
   assert.deepEqual(generationReceipt(current), receipt);
+  const oldReceipt = { ...receipt }; Reflect.deleteProperty(oldReceipt, 'provenance');
+  const previous = decodeConversation({ ...draft.source, messages: [draft.source.messages[0], { ...draft.source.messages[1], receipt: oldReceipt }] });
+  assert.ok(previous); assert.equal(previous.messages.at(-1)?.receipt?.provenance, undefined, '#7246 old receipt fields remain known without reconstructed provenance');
   const legacy = { ...draft.source, messages: draft.source.messages.map(({ receipt: _receipt, ...message }) => message) };
   const old = decodeConversation(legacy); assert.ok(old); assert.equal(old.messages.at(-1)?.receipt, undefined);
   const legacyDocument = structuredClone(draft.document); assert.ok(legacyDocument.aiReport);
@@ -162,7 +183,9 @@ test('#7242 provider usage absent and legacy turns/reports stay unknown rather t
 
 test('#7242 portable conversations reconstruct receipt metadata and exclude unknown private transport fields', async () => {
   const receipt = await answer(), draft = prepareReportDraft('Private-field exclusion');
-  const hostile = { ...receipt, system: 'PRIVATE_PROMPT', reply: 'PRIVATE_REPLY', outputSchema: { SECRET: 'PRIVATE_SCHEMA' },
+  const provenance = receipt.provenance; assert.ok(provenance);
+  const inputDigest = provenance.inputDigest; assert.ok(inputDigest, 'the native producer supplies its actual logical input digest');
+  const hostile = { ...receipt, provenance: { ...provenance, apiKey: 'PRIVATE_KEY', inputDigest: { ...inputDigest, evidence: 'PRIVATE_EVIDENCE' } }, system: 'PRIVATE_PROMPT', reply: 'PRIVATE_REPLY', outputSchema: { SECRET: 'PRIVATE_SCHEMA' },
     evidence: 'PRIVATE_EVIDENCE', proxyUrl: 'https://private.test/endpoint', apiKey: 'PRIVATE_KEY', error: 'PRIVATE_ERROR' };
   const conversation = decodeConversation({ ...draft.source, messages: [draft.source.messages[0], { ...draft.source.messages[1], receipt: hostile }] });
   assert.ok(conversation); assert.deepEqual(conversation.messages.at(-1)?.receipt, receipt);
@@ -170,7 +193,9 @@ test('#7242 portable conversations reconstruct receipt metadata and exclude unkn
 
 test('#7242 native document decode/import/export independently exclude private receipt fields', async () => {
   const receipt = await answer(), draft = prepareReportDraft('Document private-field exclusion');
-  const hostile = { ...receipt, system: 'PRIVATE_PROMPT', reply: 'PRIVATE_REPLY', outputSchema: { SECRET: 'PRIVATE_SCHEMA' },
+  const provenance = receipt.provenance; assert.ok(provenance);
+  const inputDigest = provenance.inputDigest; assert.ok(inputDigest, 'the native producer supplies its actual logical input digest');
+  const hostile = { ...receipt, provenance: { ...provenance, apiKey: 'PRIVATE_KEY', inputDigest: { ...inputDigest, evidence: 'PRIVATE_EVIDENCE' } }, system: 'PRIVATE_PROMPT', reply: 'PRIVATE_REPLY', outputSchema: { SECRET: 'PRIVATE_SCHEMA' },
     evidence: 'PRIVATE_EVIDENCE', proxyUrl: 'https://private.test/endpoint', apiKey: 'PRIVATE_KEY', error: 'PRIVATE_ERROR' };
   assert.ok(draft.document.aiReport);
   const raw = { ...draft.document, aiReport: { ...draft.document.aiReport, generationReceipt: hostile } };
@@ -191,6 +216,9 @@ test('#7242 malformed declared receipts are refused instead of silently becoming
     { ...receipt, model: 'different-model' }, { ...receipt, route: 'https://private.test' }, { ...receipt, outcome: 'success' },
     { ...receipt, usageReported: true, inputTokens: -1 }, { ...receipt, usageReported: true, outputTokens: 0.5 },
     { ...receipt, usageReported: 'yes' }, { ...receipt, outputFormat: 'ignored-schema' },
+    ...[{ contractVersion: 'guessed-version' }, { grantedOutputTokens: -1 }, { timeoutMs: 2_147_483_648 },
+      { finishReason: 'PRIVATE_REASON https://private.test' }, { inputDigest: { algorithm: 'sha256', referent: 'native-artifact', value: '0'.repeat(64) } },
+      { outputTextDigest: { algorithm: 'sha256', referent: 'output-text.utf8.v1', value: 'PRIVATE_TEXT' } }].map(patch => ({ ...receipt, provenance: { ...receipt.provenance, ...patch } })),
   ];
   for (const value of invalid) {
     assert.equal(decodeConversation({ ...draft.source, messages: [draft.source.messages[0], { ...draft.source.messages[1], receipt: value }] }), null);

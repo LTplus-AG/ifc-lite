@@ -54,7 +54,15 @@ test('proxy stream: forwarded OpenRouter usage chunk becomes a reported receipt'
   assert.deepEqual(quota.map(info => [info.type, info.used]), [['requests', 6]], 'hosted quota remains separate from provider tokens');
   assert.ok(outcome.kind === 'completed');
   assert.equal(outcome.text, 'Hello');
-  assert.deepEqual({ ...outcome.receipt, id: '', startedAt: 0, finishedAt: 0 }, {
+  // #7246: provider usage stays independent of the newly recorded request provenance.
+  const { provenance, ...usageReceipt } = outcome.receipt;
+  assert.ok(provenance, 'a dispatched native request records provenance');
+  assert.equal(provenance.grantedOutputTokens, 4096);
+  assert.equal(provenance.timeoutMs, 10_000);
+  assert.equal(provenance.finishReason, 'stop');
+  assert.match(provenance.inputDigest?.value ?? '', /^[a-f0-9]{64}$/);
+  assert.match(provenance.outputTextDigest?.value ?? '', /^[a-f0-9]{64}$/);
+  assert.deepEqual({ ...usageReceipt, id: '', startedAt: 0, finishedAt: 0 }, {
     id: '', startedAt: 0, finishedAt: 0, model: 'openai/gpt-free', route: 'proxy', outcome: 'completed',
     usageReported: true, inputTokens: 1234, outputTokens: 456,
   });

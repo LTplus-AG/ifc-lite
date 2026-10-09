@@ -11,6 +11,7 @@ import type { CostSnapshot } from './cost-graph-evidence';
 import { uniqueSplitGuid } from './model-authoring-split';
 import { liveEntityConforms } from '@ifc-lite/create';
 import { effectiveMetadataRecord } from '@ifc-lite/parser';
+import { isValidIfcGuid } from '@ifc-lite/encoding';
 
 export interface CostWriteRow { index: number; expressId: number | null }
 /** Existing references must be present in the complete supplied native snapshot, never guessed IDs. */
@@ -34,7 +35,7 @@ export function writeCostOperations(state: Pick<ViewerState, 'models' | 'mutatio
     if (!record || view.isDeleted(value)) throw new Error(`Native reference #${value} was not captured or is no longer available`);
     if (liveEntityConforms(dataStore, value, 'IfcRoot', view)) {
       const guid = record.attributes[0];
-      if (typeof guid !== 'string' || !uniqueSplitGuid(dataStore, draft, guid)) throw new Error(`Native target #${value} has an unavailable or ambiguous GlobalId`);
+      if (typeof guid !== 'string' || !isValidIfcGuid(guid) || !uniqueSplitGuid(dataStore, draft, guid)) throw new Error(`Native target #${value} has an unavailable or ambiguous GlobalId`);
     }
     return value;
   };
@@ -61,7 +62,7 @@ export function writeCostOperations(state: Pick<ViewerState, 'models' | 'mutatio
     }
     if (expressId !== null && liveEntityConforms(dataStore, expressId, 'IfcRoot', view)) {
       const guid = effectiveMetadataRecord(dataStore, expressId, view)?.attributes[0];
-      if (typeof guid !== 'string' || !uniqueSplitGuid(dataStore, draft, guid)) throw new Error('The native Cost result has an ambiguous or unavailable Root identity');
+      if (typeof guid !== 'string' || !isValidIfcGuid(guid) || !uniqueSplitGuid(dataStore, draft, guid)) throw new Error('The native Cost result has an ambiguous or unavailable Root identity');
     }
     if (operation.ref) {
       if (expressId === null) throw new Error('This native Cost operation returned no reference');

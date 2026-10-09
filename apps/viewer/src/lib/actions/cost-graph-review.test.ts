@@ -241,3 +241,12 @@ test('#7311 native permission and same-model Root GlobalId ambiguity refuse Cost
   assert.throws(() => review.commit(), /Edit mode/);
   assert.deepEqual(editedModelBytes(dataStore, view), baseline);
 });
+test('#7311 malformed current Root identity cannot authorize a native Cost assignment', async () => {
+  const { dataStore, view } = await seedAuthoringSample();
+  view.setAttribute(291, 'GlobalId', 'not-an-ifc-guid');
+  const saved = await parseIfc(editedModelBytes(dataStore, view));
+  assert.equal(saved.getEntity(291)?.attributes[0], 'not-an-ifc-guid', 'actual STEP export/reparse proves the current malformed identity before admission');
+  const proposal = input([{ op: 'cost.item.create', ref: 'item', params: { Name: 'Invalid current identity control' } },
+    { op: 'cost.item.assign', target: nativeRef('item'), related: [291] }]);
+  assert.throws(() => prepareCostReview(useViewerStore, proposal), /GlobalId|Root identity/);
+});

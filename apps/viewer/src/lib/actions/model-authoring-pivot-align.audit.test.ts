@@ -16,6 +16,7 @@ import { ensureRoomWasm } from '@/test/room-walls-fixture';
 import { meshWalls } from '../../../../../packages/create/src/in-store/wall-join-mesh.oracle';
 import { parseModelAuthoringBatch } from './model-authoring';
 import { previewModelAuthoring } from './model-authoring-preview';
+import { captureSelectionGrounding } from './selection-grounding';
 import { commitModelAuthoring } from './model-authoring-commit';
 
 const original = useViewerStore.getState();
@@ -53,8 +54,11 @@ test('native explicit-pivot writer persists the off-origin rotation in independe
 test('reviewed explicit-pivot request must preserve the native pivot rather than rotate about the origin', async () => {
   const s = await setup();
   const guid = s.view.getNewEntity(s.id)?.attributes[0]; assert.equal(typeof guid, 'string');
+  useViewerStore.setState({ selectedEntityId: s.id });
+  const expected = captureSelectionGrounding(useViewerStore.getState()).elements[0]?.nativePlacement;
+  assert.ok(expected);
   const preview = previewModelAuthoring(useViewerStore.getState(), batch([
-    { op: 'element.rotate', target: { globalId: guid, modelId: SAMPLE_MODEL, ifcClass: 'IfcWall', name: 'Placement audit wall' }, angleDeg: 90, pivot: [0, 0] },
+    { op: 'element.rotate', target: { globalId: guid, modelId: SAMPLE_MODEL, ifcClass: 'IfcWall', name: 'Placement audit wall' }, angleDeg: 90, pivot: [0, 0], expected },
   ]));
   assert.equal(preview.rows[0].status, 'ready');
   const applied = commitModelAuthoring(useViewerStore, preview, new Set([0]), 'native audit');
@@ -83,6 +87,10 @@ test('native Align uses real exported mesh bounds and moves the target while ret
 test('reviewed native Align must have a supported proposal contract', async () => {
   const s = await setup(), other = s.make([20, 20, 0], [25, 20, 0]);
   const ref = (id: number) => ({ modelId: SAMPLE_MODEL, globalId: s.view.getNewEntity(id)?.attributes[0], ifcClass: 'IfcWall', name: 'Placement audit wall' });
-  assert.doesNotThrow(() => batch([{ op: 'element.align', reference: ref(s.id), targets: [ref(other)], mode: 'left' }]),
+  useViewerStore.setState({ selectedEntityIds: new Set([s.id, other]), selectedEntityId: s.id });
+  const captured = captureSelectionGrounding(useViewerStore.getState()).elements;
+  const expected = { reference: captured.find(row => row.globalId === ref(s.id).globalId)?.nativePlacement,
+    targets: [captured.find(row => row.globalId === ref(other).globalId)?.nativePlacement] };
+  assert.doesNotThrow(() => batch([{ op: 'element.align', reference: ref(s.id), targets: [ref(other)], mode: 'left', expected }]),
     'The existing native Align operation is currently absent from reviewed authoring');
 });

@@ -14,6 +14,7 @@
  * ghost; their row says what changes.
  */
 
+import { alignmentGhosts } from '@/lib/commands/modeling/align-ghosts';
 import { stairRailingGhost } from './model-authoring-stair-railing-ghost';
 import { linearProfileFrame } from '@ifc-lite/create';
 import { sectionGhostMesh } from '@/lib/profile-section/profile-outline';
@@ -133,7 +134,7 @@ function transformGhosts(state: ViewerState, batch: ModelAuthoringBatch, row: Au
     return transformedGhosts(state, selection, { kind: 'move', from: origin, to: wp.localToRender([toMetres(batch, op.delta[0]), toMetres(batch, op.delta[1]), 0]) }, wp.plane.normal, id);
   }
   if (op.op === 'element.rotate') {
-    return transformedGhosts(state, selection, { kind: 'rotate', pivot: wp.localToRender([root.origin[0], root.origin[1], 0]), angle: (op.angleDeg * Math.PI) / 180 }, wp.plane.normal, id);
+    return transformedGhosts(state, selection, { kind: 'rotate', pivot: wp.localToRender(op.pivot ? [toMetres(batch, op.pivot[0]), toMetres(batch, op.pivot[1]), 0] : [root.origin[0], root.origin[1], 0]), angle: (op.angleDeg * Math.PI) / 180 }, wp.plane.normal, id);
   }
   return transformedGhosts(state, selection, { kind: 'move', from: origin, to: origin }, wp.plane.normal, id).map((mesh) => ({ ...mesh, color: DELETE_COLOR }));
 }
@@ -156,6 +157,15 @@ export function authoringGhosts(state: ViewerState, preview: ModelAuthoringPrevi
       case 'element.create': { const mesh = createGhost(state, preview.batch, row, id); if (mesh) meshes.push(mesh); break; }
       case 'hosted.create': { const mesh = hostedGhost(state, preview.batch, preview, row, id); if (mesh) meshes.push(mesh); break; }
       case 'element.copy': case 'element.array': meshes.push(...authoringCopyGhosts(state, preview.batch, row, id)); break;
+      case 'element.align': {
+        const a = row.resolved.alignment;
+        if (a?.geometry) {
+          const target = authoringReader(state, row.modelId);
+          const plan = target ? planElementTransform({ ...target, selected: a.targets, storeyOf: () => a.storeyId }) : null;
+          meshes.push(...alignmentGhosts({ ...a, reference: a.reference, boxes: a.geometry.boxes, mode: row.op.mode, hover: null, carried: plan?.carried }, a.geometry.plane, id));
+        }
+        break;
+      }
       case 'element.move': case 'element.rotate': case 'element.delete': meshes.push(...transformGhosts(state, preview.batch, row, id)); break;
       default: break;
     }

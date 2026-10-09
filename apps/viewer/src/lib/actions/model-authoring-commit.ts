@@ -24,7 +24,7 @@ import { authoringSourcesAreCurrent } from './model-authoring-sources';
 import { runTransaction } from '@/lib/commands/modeling/transaction';
 import type { AuthoringTransaction, CommitResult, ModelingCommand } from '@/lib/commands/modeling/types';
 import { buildStoreyWorkplane, isWorkplane } from '@/lib/commands/modeling/workplane';
-import { commitElementTransform, planSelectionTransform } from '@/lib/element-transform/commit';
+import { commitElementAlignment, commitElementTransform, planSelectionTransform } from '@/lib/element-transform/commit';
 import { writeNativeSplit } from './model-authoring-split';
 import { recordModellingEdit, recordModellingCommit } from '@/store/slices/mutation-modelling-records';
 import { toMetres, type AuthoringOp, type ModelAuthoringBatch } from './model-authoring';
@@ -171,6 +171,17 @@ function writeRow(tx: AuthoringTransaction, batch: ModelAuthoringBatch, row: Aut
       if (!tx.store.removeEntity(modelId, resolved.target!)) throw new Error(`${op.target.globalId} could not be removed`);
       written.deleted.push(resolved.target!);
       return [{ ...base, globalId: op.target.globalId, field: before.ifcClass ?? op.target.ifcClass, before: before.name ?? null, after: null }];
+    case 'element.align': {
+      const a = resolved.alignment;
+      if (!a?.geometry) throw new Error('Native Align preparation is unavailable');
+      const result = commitElementAlignment(tx, modelId, { reference: a.reference, targets: a.targets, mode: op.mode }, a.geometry.boxes, a.geometry.plane);
+      written.remesh.push(...result.remesh); written.moved = true;
+      const moved = planSelectionTransform(tx.store, modelId, a.targets);
+      return op.targets.map((target, i) => ({ ...base, globalId: target.globalId, field: 'Placement',
+        before: fmt(batch, op.expected.targets[i].origin),
+        after: moved?.roots.find(root => root.expressId === a.targets[i])
+          ? fmt(batch, moved.roots.find(root => root.expressId === a.targets[i])!.origin) : `Carried with aligned host ${op.reference.globalId}` }));
+    }
     case 'element.move': case 'element.rotate': {
       const root = planSelectionTransform(tx.store, modelId, [resolved.target!])?.roots.find((r) => r.expressId === resolved.target);
       const plane = root ? buildStoreyWorkplane(tx.store, modelId, root.storeyId, 0) : null;
@@ -178,11 +189,17 @@ function writeRow(tx: AuthoringTransaction, batch: ModelAuthoringBatch, row: Aut
       const m = (v: number) => toMetres(batch, v);
       const result = op.op === 'element.move'
         ? commitElementTransform(tx, modelId, [resolved.target!], { kind: 'move', from: plane.localToRender([0, 0, 0]), to: plane.localToRender([m(op.delta[0]), m(op.delta[1]), 0]) })
-        : commitElementTransform(tx, modelId, [resolved.target!], { kind: 'rotate', pivot: plane.localToRender([root.origin[0], root.origin[1], 0]), angle: (op.angleDeg * Math.PI) / 180 });
+        : commitElementTransform(tx, modelId, [resolved.target!], { kind: 'rotate', pivot: plane.localToRender(op.pivot ? [m(op.pivot[0]), m(op.pivot[1]), 0] : [root.origin[0], root.origin[1], 0]), angle: (op.angleDeg * Math.PI) / 180 });
       written.remesh.push(...result.remesh); written.moved = true;
       if (op.op === 'element.rotate') {
         const from = before.angleDeg ?? 0;
-        return [{ ...base, globalId: op.target.globalId, field: 'Angle', before: `${from.toFixed(1)}°`, after: `${(from + op.angleDeg).toFixed(1)}°` }];
+        const changes: AppliedChange[] = [{ ...base, globalId: op.target.globalId, field: 'Angle', before: `${from.toFixed(1)}°`, after: `${(from + op.angleDeg).toFixed(1)}°` }];
+        if (op.pivot) {
+          const actual = planSelectionTransform(tx.store, modelId, [resolved.target!])?.roots.find(r => r.expressId === resolved.target);
+          if (!actual) throw new Error('Native rotated placement is unavailable');
+          changes.push({ ...base, globalId: op.target.globalId, field: 'Placement', before: fmt(batch, root.origin), after: fmt(batch, actual.origin) });
+        }
+        return changes;
       }
       const origin = before.origin ?? root.origin;
       return [{ ...base, globalId: op.target.globalId, field: 'Placement', before: fmt(batch, origin),

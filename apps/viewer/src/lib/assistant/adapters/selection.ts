@@ -42,6 +42,7 @@ import { effectiveSelectedClass } from '@/components/viewer/properties/effective
 import { propertyDisplayValue } from '@/components/viewer/properties/propertyDisplayValue';
 import { evidenceRow, unavailableCapture, type EvidenceAdapter } from './types';
 import { nativeReadTargets } from '@/lib/actions/model-authoring-read-target';
+
 import { nativeEditEvidence, nativeRootName } from '@/lib/actions/native-edit-evidence';
 import { nativeTypeEvidence } from '@/lib/actions/native-type-evidence';
 import type { ModelEditTarget } from '@/store/slices/mutation-modelling-records';

@@ -18,7 +18,7 @@ import { writeHostedEdit } from './model-authoring-hosted-edit';
 import { profileInMetres } from './model-authoring-shape-params';
 import { StoreEditor } from '@ifc-lite/mutations';
 import type { IfcDataStore } from '@ifc-lite/parser';
-import { copyBatchInStore, addHostedElementInStore, addOrdinaryElementInStore, resolveSpatialAnchor, type OrdinaryInStoreElement } from '@ifc-lite/create';
+import { alignElementsInStore, copyBatchInStore, addHostedElementInStore, addOrdinaryElementInStore, resolveSpatialAnchor, type OrdinaryInStoreElement } from '@ifc-lite/create';
 import { createModellingStoreBackend, resolveLiveOwnerHistoryId } from '@ifc-lite/sdk';
 import { ensureStoreyPlacement } from '@/store/slices/storeyPlacement';
 import type { HostedFillSpec } from '@/store/slices/mutation-hosted-fill';
@@ -36,6 +36,7 @@ export type ElementId = { id: number } | { ref: string };
 
 /** What preview resolved for an operation; the commit re-resolves and must find the same. */
 export interface ResolvedOp {
+  alignment?: { reference: number; targets: number[]; storeyId: number; geometry?: import('./model-authoring-align').PreparedAlignment };
   target?: number;
   reachBoundary?: ElementId;
   reachPlan?: ReturnType<typeof import('@ifc-lite/create').trimExtendElementInStore>;
@@ -238,6 +239,13 @@ export function draftAuthoringOperation(batch: ModelAuthoringBatch, dataStore: I
     case 'element.delete':
       if (!draft.removeEntity(resolved.target!)) throw new Error('The element could not be removed');
       return;
+    case 'element.align': {
+      const a = resolved.alignment;
+      if (!a?.geometry) throw new Error('Prepare native Align geometry first');
+      alignElementsInStore({ dataStore, view: draft.getMutationView(), editor: draft },
+        { reference: a.reference, targets: a.targets, mode: op.mode }, a.geometry.boxes);
+      return;
+    }
     case 'element.move': case 'element.rotate':
       // Checked against the transform planner and placement chain in preview; nothing to stage.
       return;

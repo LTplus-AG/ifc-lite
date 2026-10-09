@@ -75,7 +75,7 @@ test('#7271 reviewed classification preserves existing metadata through native e
   const before = editedModelBytes(dataStore, view);
   const lease = view.prepareAtomic(() => null);
   const preview = previewModelAuthoring(state, reviewedAdd());
-  assert.equal(preview.rows[0].status, 'ready', preview.rows[0].issue);
+  assert.equal(preview.rows[0].status, 'ready', preview.rows[0].issue ?? 'Classification preview must be ready');
   await assertSameNativeIfcGraph(editedModelBytes(dataStore, view), before);
   assert.equal(useViewerStore.getState().undoStacks, state.undoStacks);
   assert.equal(useViewerStore.getState().dirtyModels, state.dirtyModels);
@@ -144,7 +144,7 @@ test('#7271 federated classification addition requires an explicit owner and pre
   assert.equal(previewModelAuthoring(useViewerStore.getState(), ambiguous).rows[0].status, 'ambiguous-target');
   const otherBytes = editedModelBytes(dataStore, other);
   const preview = previewModelAuthoring(useViewerStore.getState(), batch);
-  assert.equal(preview.rows[0].status, 'ready', preview.rows[0].issue);
+  assert.equal(preview.rows[0].status, 'ready', preview.rows[0].issue ?? 'Classification preview must be ready');
   const outcome = commitModelAuthoring(useViewerStore, preview, new Set([0]), 'test');
   assert.ok(outcome.ok, outcome.ok ? '' : outcome.detail ?? outcome.reason);
   assert.equal(outcome.receipt.applied[0].modelId, SAMPLE_MODEL);
@@ -161,7 +161,7 @@ test('#7271 reviewed Add reuses an independently exported source system with its
   useViewerStore.setState({ models: new Map([[SAMPLE_MODEL, { ...model, ifcDataStore: reparsed }]]),
     mutationViews: new Map([[SAMPLE_MODEL, sourceView]]), storeEditors: new Map(), undoStacks: new Map(), redoStacks: new Map() });
   const preview = previewModelAuthoring(useViewerStore.getState(), reviewedAdd());
-  assert.equal(preview.rows[0].status, 'ready', preview.rows[0].issue);
+  assert.equal(preview.rows[0].status, 'ready', preview.rows[0].issue ?? 'Classification preview must be ready');
   const outcome = commitModelAuthoring(useViewerStore, preview, new Set([0]), 'test');
   assert.ok(outcome.ok, outcome.ok ? '' : outcome.detail ?? outcome.reason);
   assert.equal(Array.from(sourceView.getNewEntitiesOfType('IFCCLASSIFICATION')).length, 0, 'the source system is reused');
@@ -190,7 +190,7 @@ for (const ownerHistory of [true, false]) {
       await assertSameNativeIfcGraph(editedModelBytes(source, view), before);
       return;
     }
-    assert.equal(preview.rows[0].status, 'ready', preview.rows[0].issue);
+    assert.equal(preview.rows[0].status, 'ready', preview.rows[0].issue ?? 'Classification preview must be ready');
     const result = commitModelAuthoring(useViewerStore, preview, new Set([0]), 'test');
     assert.ok(result.ok, result.ok ? '' : result.detail ?? result.reason);
     const exported = await parseIfc(editedModelBytes(source, view));
@@ -219,7 +219,7 @@ test('#7271 classification resolves a freshly authored native wall identity outs
     target: { globalId, modelId: SAMPLE_MODEL, ifcClass: 'IfcWall', name: 'Current authored wall' },
     Classification: { Name: 'Explicit authored system' }, Reference: { Identification: 'NEW-001' } }] }));
   const preview = previewModelAuthoring(useViewerStore.getState(), add);
-  assert.equal(preview.rows[0].status, 'ready', preview.rows[0].issue);
+  assert.equal(preview.rows[0].status, 'ready', preview.rows[0].issue ?? 'Classification preview must be ready');
   const result = commitModelAuthoring(useViewerStore, preview, new Set([0]), 'test');
   assert.ok(result.ok, result.ok ? '' : result.detail ?? result.reason);
   const exported = await parseIfc(editedModelBytes(dataStore, view));
@@ -247,7 +247,7 @@ test('#7271 reviewed Add reuses a source entity retyped into the current native 
   if (batch.operations[0].op !== 'classification.add') throw new Error('Expected classification operation');
   batch.operations[0].Classification.Name = name;
   const preview = previewModelAuthoring(useViewerStore.getState(), batch);
-  assert.equal(preview.rows[0].status, 'ready', preview.rows[0].issue);
+  assert.equal(preview.rows[0].status, 'ready', preview.rows[0].issue ?? 'Classification preview must be ready');
   const outcome = commitModelAuthoring(useViewerStore, preview, new Set([0]), 'test');
   assert.ok(outcome.ok, outcome.ok ? '' : outcome.detail ?? outcome.reason);
   const after = await parseIfc(editedModelBytes(dataStore, view));

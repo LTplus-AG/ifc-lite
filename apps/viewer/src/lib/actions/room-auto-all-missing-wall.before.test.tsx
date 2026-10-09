@@ -17,6 +17,7 @@ import { modelEditTarget } from '@/store/slices/mutation-modelling-records';
 import { clearStoreyRoomsCache } from '@/lib/rooms/storey-rooms';
 import { clearModelLayouts } from '@/lib/rooms/room-layout';
 import { prepareRoomReview } from './room-review';
+import { getMaxExpressId } from '@/hooks/ingest/viewerModelIngest';
 
 const initial = useViewerStore.getState();
 afterEach(() => {
@@ -24,10 +25,17 @@ afterEach(() => {
   useViewerStore.setState(initial, true);
 });
 const points: [number,number,number][] = [[20,20,0],[24,20,0],[24,23,0],[20,23,0]];
+function registerParsedOwnership() {
+  const model = useViewerStore.getState().models.get(MODEL); assert.ok(model?.ifcDataStore);
+  const meshes = model.geometryResult?.meshes ?? [];
+  useViewerStore.setState({models:new Map([[MODEL,{...model,maxExpressId:getMaxExpressId(model.ifcDataStore,[])}]])});
+  for (const mesh of meshes) assert.equal(useViewerStore.getState().resolveGlobalIdFromModels(mesh.expressId)?.modelId,MODEL,'canonical loader ownership resolves actual source meshes');
+}
 
 for (const mixed of [false, true]) test(`#7324 native AutoAll refuses live contained walls without Representation${mixed ? ' across a mixed storey population' : ''}`, async t => {
   if (!ensureRoomWasm(t)) return;
   const native = await seedReviewedRoom();
+  registerParsedOwnership();
   const editor = modelEditTarget(useViewerStore.getState(), MODEL)!.editor;
   let owner = 42;
   if (mixed) {
@@ -50,6 +58,7 @@ for (const mixed of [false, true]) test(`#7324 native AutoAll refuses live conta
   for (const id of missing) native.view.setPositionalAttribute(id, 6, null);
   const bytes = new StepExporter(native.store,native.view).export({ schema:'IFC4',applyMutations:true }).content;
   const reloaded = await seedNativeSdkModel(bytes);
+  registerParsedOwnership();
   for (const id of missing) {
     const record = effectiveMetadataRecord(reloaded.store,id,reloaded.view); assert.ok(record);
     assert.equal(record.type.toUpperCase(),'IFCWALL');
@@ -80,6 +89,7 @@ for (const mixed of [false, true]) test(`#7324 native AutoAll refuses live conta
 test('#7324 genuine wall-free upper storey remains noWalls alongside the native enclosed lower storey',async t => {
   if (!ensureRoomWasm(t)) return;
   const native = await seedReviewedRoom();
+  registerParsedOwnership();
   const editor = modelEditTarget(useViewerStore.getState(),MODEL)!.editor;
   const point = editor.addEntity('IfcCartesianPoint',[[0,0,3]]).expressId;
   const axis = editor.addEntity('IfcAxis2Placement3D',[`#${point}`,null,null]).expressId;

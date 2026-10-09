@@ -96,15 +96,23 @@ test('#7139 independent federation preserves model-local authored classification
   assert.equal(snapshot.includedRows, 2);
   const capture = selectionAdapter.capture(useViewerStore.getState(), 100);
   const targets = nativeReadTargets(useViewerStore.getState());
-  let refused = 0;
   for (const data of capture.rows) {
     const row = data as { modelId: string; nativeCost: { status: string; recordCount: number | null; expectedJsonParts: string[] | null } };
+    assert.deepEqual(row.nativeCost, nativeCostTransportEvidence(targets(row.modelId), 20909),
+      'the adapter supplies the complete native graph; the canonical envelope owns admission');
+  }
+  const projectedRows = JSON.parse(snapshot.payload).evidence.rows as Array<{ data: {
+    modelId: string; nativeCost: { status: string; recordCount: number | null; expectedJsonParts: string[] | null };
+  } }>;
+  let refused = 0;
+  for (const { data: row } of projectedRows) {
     if (row.nativeCost.status === 'unavailable-transport-budget') {
       refused++;
       assert.equal(row.nativeCost.recordCount, null);
       assert.equal(row.nativeCost.expectedJsonParts, null);
     } else {
-      assert.deepEqual(row.nativeCost, nativeCostTransportEvidence(targets(row.modelId), 20909), 'admitted native expected graph remains complete');
+      assert.deepEqual(row.nativeCost, nativeCostTransportEvidence(targets(row.modelId), 20909),
+        'admitted native expected graph remains complete');
     }
   }
   assert.ok(refused > 0, 'actual native optional graph must trigger explicit whole-pin refusal');

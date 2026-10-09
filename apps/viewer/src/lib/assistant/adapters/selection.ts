@@ -261,7 +261,7 @@ export const selectionAdapter: EvidenceAdapter = {
     }
     const sample = refs.slice(0, limit);
     const rich = sample.length <= 10;
-    const optionalPin = optionalNativeTransportBudget();
+    const optionalPin = optionalNativeTransportBudget(sample.length > 1);
     return {
       summary: {
         kind: 'selection', channel, selectionSize: refs.length, modelCount: byModel.size,

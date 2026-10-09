@@ -14,10 +14,11 @@ import { PROFILE_FIELDS, PROFILE_KINDS } from '@/lib/profile-section/profile-kin
 const sectionDimensions = PROFILE_KINDS.map((type) => `${type} {${PROFILE_FIELDS[type].map((field) => field.name).join(',')}}`).join('; ');
 
 export const MODEL_AUTHORING_OUTPUT_GUIDANCE =
-  'When asked to create, copy, array, delete, move, turn, trim, extend, type, join or place elements, return only JSON {"version":1,"kind":"model.authoring",'
+  'When asked to create, replace, copy, array, delete, move, turn, trim, extend, type, join or place elements, return only JSON {"version":1,"kind":"model.authoring",'
   + '"title":"Short title","rationale":"Why","units":"mm","frame":"storey-local","operations":[...]}. "units" is "m" or "mm" and applies to command lengths (nativeTrimExtendExpected is a verbatim mixed-unit source snapshot); '
   + 'coordinates are storey-local [x,y,z], Z up; angles are degrees counter-clockwise from above. Existing elements are '
   + '{"globalId","ifcClass","name"} exactly as in the evidence; elements created earlier in the batch are {"ref":"wall-1"}. Ops: '
+  + 'element.replace {ref,target (existing),storey:{globalId},ifcClass,name,params,expected:nativeReplacementExpected}; copy the COMPLETE current nativeReplacementExpected unchanged, which pins native references and placement fields in native units. Only destination params use declared m/mm lengths. The same ten source/destination families are IfcWall|IfcColumn|IfcSlab|IfcBeam|IfcSpace|IfcRoof|IfcPlate|IfcMember|IfcStair|IfcRailing. Ordinary destination params use element.create, Stair/Railing use their existing canonical params. Hosted-opening and non-stair aggregate sources refuse; Stair removal requires its native unique single-flight ownership. Replacement creates a new product record; type/material/properties are not transferred and shared old geometry/style leaves are retained. Preview shows destination only, with the existing native profile/Stair limitations; missing source/current snapshot is unavailable and cannot be guessed. '
   + 'element.create {ref, ifcClass: IfcWall|IfcSlab|IfcRoof|IfcPlate|IfcColumn|IfcBeam|IfcMember|IfcSpace, storey:{globalId}, name, params}: '
   + 'walls {start,end,thickness,height}, beams/members {start,end,width,height}, columns {position (base centre),width,depth,height}, '
   + 'slabs/roofs/plates {position (corner),width,depth,thickness}, spaces {position,width,depth,height}; '

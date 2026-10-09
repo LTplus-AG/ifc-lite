@@ -4,9 +4,12 @@
 import type { Lens } from '@ifc-lite/lens';
 import type { ListDefinition } from '@ifc-lite/lists';
 import { useViewerStore } from '@/store';
+import { reconcileLibraryRows } from './reconcile-library-rows.js';
 import { sameReportEvidence } from '../flow/report-provenance.js';
 import { loadSavedFilters, saveFilter, __internal, type SavedFilterPreset } from '../search/saved-filters.js';
-import { loadListDefinitions } from '../lists/persistence.js';
+import { readListLibrarySource } from '../lists/persistence.js';
+import { readSavedLensSource } from '../lens/persistence.js';
+import type { LocalLibrarySource } from './local-library-source.js';
 import { buildInitialLenses, AUTO_COLOR_FROM_LIST_ID } from '@/store/slices/lensSlice';
 import { encodeSavedList } from '../lists/saved-list-codec.js';
 import type { StandaloneArtifactLibraries } from './artifact-backup.js';
@@ -30,29 +33,23 @@ function copyName(name: string, index: number, limit = 200): string {
   return name.slice(0, Math.max(1, limit - suffix.length)) + suffix;
 }
 /** Reconcile durable peers with genuine local edits against the last native save. */
-export function currentListDefinitions(): ListDefinition[] {
-  const state = useViewerStore.getState();
-  const saved = new Map(loadListDefinitions().map(row => [row.id, row]));
-  const local = new Map(state.listDefinitions.map(row => [row.id, row]));
-  const source = new Map(state.listDefinitionSource.map(row => [row.id, row]));
-  const equal = (a: ListDefinition | undefined, b: ListDefinition | undefined) =>
-    a === undefined || b === undefined ? a === b : sameReportEvidence(encodeSavedList(a), encodeSavedList(b));
-  for (const id of new Set([...source.keys(), ...local.keys()])) {
-    const previous = source.get(id), current = local.get(id), durable = saved.get(id);
-    // Unchanged session rows follow the peer's edit or deletion.
-    if (equal(previous, current)) continue;
-    if (!equal(previous, durable) && !equal(current, durable)) {
-      throw new Error('Lists changed in another tab. Reload the library before backing up or importing.');
-    }
-    if (current) saved.set(id, current);
-    else saved.delete(id);
+function requireCompleteSource<T>(source: LocalLibrarySource<T>, kind: string): void {
+  if (source.phase === 'unreadable' || source.phase === 'unavailable') {
+    throw new Error(`The saved ${kind} library cannot be read completely. Keep earlier backups and recover the saved originals before downloading a complete library backup.`);
   }
-  return [...saved.values()];
 }
-export function currentLensDefinitions(): Lens[] {
+export function currentListDefinitions(requireComplete = false): ListDefinition[] {
+  const state = useViewerStore.getState();
+  const physical = readListLibrarySource();
+  if (requireComplete) requireCompleteSource(physical, 'Lists');
+  return reconcileLibraryRows(physical.rows, state.listDefinitionSource, state.listDefinitions, encodeSavedList);
+}
+export function currentLensDefinitions(requireComplete = false): Lens[] {
+  const physical = readSavedLensSource();
+  if (requireComplete) requireCompleteSource(physical, 'Lenses');
   // Native Lens CRUD updates memory only after a successful save, so there
   // are no unsaved Lens rows to recover from a stale tab snapshot.
-  return buildInitialLenses().filter(row => row.id !== AUTO_COLOR_FROM_LIST_ID);
+  return buildInitialLenses(physical).filter(row => row.id !== AUTO_COLOR_FROM_LIST_ID);
 }
 /** Filters use native names as identities; List/Lens provenance requires IDs. */
 function reusableFilter(rows: readonly SavedFilterPreset[], incoming: SavedFilterPreset): boolean {

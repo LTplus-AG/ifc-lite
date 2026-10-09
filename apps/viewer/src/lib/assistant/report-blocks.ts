@@ -18,6 +18,7 @@ import { parseCapturedEvidence } from './captured-rows';
 import { declaredUnit, formatFactValue, valueAt } from './report-facts';
 import { sampledCapture, type CheckedClaim } from './report-claims';
 import { appendixBlocks, narrativeBlocks } from './report-narrative';
+import { reportFontNotice, reportTextFor, type ReportText } from './report-text';
 
 export interface SlotBlock { slot: string | null; block: DocumentBlock }
 
@@ -48,51 +49,46 @@ export interface ReportBuild {
   refreshSummary?: string;
 }
 
-const STATUS_LABEL = {
-  supported: 'Supported by captured data',
-  unverifiable: 'Unverifiable from captured data (treat as interpretation)',
-  contradicted: 'Contradicted by captured data',
-} as const;
-
 type Current = (citation: string) => string | null;
 
 /**
  * A citation as it reads against the current capture: renumbered rows name both numbers; a row not
  * found is gone, unless the capture is a sample (`partial`) that may simply not include it.
  */
-function relabel(citation: string, current: Current, partial: boolean): string {
+function relabel(citation: string, current: Current, partial: boolean, t: ReportText): string {
   const now = current(citation);
-  if (now === null) return `${citation} (${partial ? 'outside the captured sample' : 'no longer in the evidence'})`;
-  return now === citation ? citation : `${now} (cited as ${citation})`;
+  if (now === null) return `${citation} (${t(partial ? 'citationOutside' : 'citationMissing')})`;
+  return now === citation ? citation : `${now} (${t('citedAs', { citation })})`;
 }
 
 /** Rewrites every row citation in generated text against the current capture. */
-const relabelText = (value: string, current: Current, partial: boolean) =>
-  value.replace(/\bE\d+\b/g, citation => relabel(citation, current, partial));
+const relabelText = (value: string, current: Current, partial: boolean, t: ReportText) =>
+  value.replace(/\bE\d+\b/g, citation => relabel(citation, current, partial, t));
 
-function claimCaption({ claim, current, changes }: ClaimPresentation, rows: ReturnType<typeof parseCapturedEvidence>, partial: boolean): string {
-  const sources = claim.citations.map(citation => relabel(citation, current, partial));
-  const lines = [`${STATUS_LABEL[claim.status]} · Sources: ${sources.length ? sources.join(', ') : 'none'}`];
+function claimCaption({ claim, current, changes }: ClaimPresentation, rows: ReturnType<typeof parseCapturedEvidence>, partial: boolean, t: ReportText): string {
+  const sources = claim.citations.map(citation => relabel(citation, current, partial, t));
+  const lines = [`${t(claim.status)} · ${t('sources')}: ${sources.length ? sources.join(', ') : t('none')}`];
   claim.results.forEach((result, index) => {
     const { fact, check } = result;
     const now = current(fact.citation) ?? fact.citation;
     const change = changes?.[index];
-    const was = change && change.kind !== 'unchanged' ? `; was ${formatFactValue(change.previous, change.previousUnit)}` : '';
-    if (check.kind === 'unknown-citation') { lines.push(`${fact.citation} ${fact.field}: missing from the evidence${was}`); return; }
+    const was = change && change.kind !== 'unchanged' ? `; ${t('was')} ${formatFactValue(change.previous, change.previousUnit)}` : '';
+    if (check.kind === 'unknown-citation') { lines.push(`${fact.citation} ${fact.field}: ${t('missingEvidence')}${was}`); return; }
     const data = now === 'summary' ? rows.summary : rows.rows.get(now);
     const captured = formatFactValue(valueAt(data, fact.field), declaredUnit(data, rows.summary, fact.field));
     const claimed = formatFactValue(fact.value, fact.unit);
-    if (check.kind === 'match') lines.push(`${now} ${fact.field}: ${captured} (captured)${change?.kind === 'changed' ? ` - changed${was}` : ''}`);
-    else if (check.kind === 'mismatch') lines.push(`${now} ${fact.field}: claimed ${claimed}, captured ${captured} - ${check.reason}${was}`);
-    else lines.push(`${now} ${fact.field}: claimed ${claimed}; ${check.reason}${was}`);
+    if (check.kind === 'match') lines.push(`${now} ${fact.field}: ${captured} (${t('captured')})${change?.kind === 'changed' ? ` - ${t('changed')}${was}` : ''}`);
+    else if (check.kind === 'mismatch') lines.push(`${now} ${fact.field}: ${t('claimed')} ${claimed}, ${t('captured')} ${captured} - ${check.reason}${was}`);
+    else lines.push(`${now} ${fact.field}: ${t('claimed')} ${claimed}; ${check.reason}${was}`);
   });
-  if (claim.edited) lines.push('Claim text edited by a reviewer before saving.');
+  if (claim.edited) lines.push(t('claimEdited'));
   return lines.join('\n');
 }
 
 /** Blocks in document order. Throws when the text is mostly unprintable in the standard PDF fonts. */
 export function buildReportBlocks(input: ReportBuild): SlotBlock[] {
   const { record } = input;
+  const t = reportTextFor(record.language);
   const current: Current = input.current ?? (citation => citation);
   const partial = sampledCapture(record.evidence);
   // Judged on the provider's own text: native values in other scripts are reported, the narrative must print.
@@ -112,50 +108,47 @@ export function buildReportBlocks(input: ReportBuild): SlotBlock[] {
   const payload = JSON.parse(evidence.payload) as Record<string, unknown>;
   const head: SlotBlock[] = [
     text('title', 'title', input.title),
-    text('provenance', 'small', `AI narrative draft · Source: ${evidence.source} · Captured: ${evidence.capturedAt}\nEvidence identity: ${record.conversationId}`
-      + `\nProvider model: ${record.model}\nNarrative language: ${record.language} · Revision ${record.revision}`),
-    text('coverage', 'body', `Included evidence: ${evidence.includedRows} of ${evidence.totalRows} native rows.\n`
-      + (sampledCapture(evidence) ? 'This is a sample; unseen findings are not evaluated by this narrative.\n' : '')
-      + (evidence.projectionTruncated ? 'Some evidence values were shortened or omitted.\n' : '')
-      + 'Captured evidence is historical. AI prose requires human verification and does not change native results or certify compliance.'),
+    text('provenance', 'small', t('provenance', { source: evidence.source, capturedAt: evidence.capturedAt,
+      id: record.conversationId, model: record.model, language: record.language, revision: record.revision })),
+    text('coverage', 'body', t('coverage', { included: evidence.includedRows, total: evidence.totalRows })
+      + (sampledCapture(evidence) ? t('sample') : '') + (evidence.projectionTruncated ? t('truncated') : '') + t('historical')),
     ...(input.refreshSummary ? [text('refresh-summary', 'small', input.refreshSummary)] : []),
   ];
   const body: SlotBlock[] = [];
   if (record.narrative.trim() || !input.claims.length) {
     const narrative = counter('narrative');
-    body.push(text('narrative-heading', 'heading', 'Narrative for review'),
-      ...narrativeBlocks(record.narrative, (style, value) => narrative(style, relabelText(value, current, partial)).block as TextBlock)
+    body.push(text('narrative-heading', 'heading', t('narrativeHeading')),
+      ...narrativeBlocks(record.narrative, (style, value) => narrative(style, relabelText(value, current, partial, t)).block as TextBlock, t)
         .map(block => ({ slot: block.aiProvenance!.slot, block })));
   }
   if (input.claims.length) {
-    body.push(text('claims-heading', 'heading', 'Claims checked against captured evidence'),
-      text('claims-intro', 'small', 'Each claim was checked against the native values it cites. Supported means every cited value matches the captured row; it does not certify the conclusion.'));
+    body.push(text('claims-heading', 'heading', t('claimsHeading')),
+      text('claims-intro', 'small', t('claimsIntro')));
     for (const presentation of input.claims) {
       const { claim, changes } = presentation;
-      body.push(text(`claim:${claim.id}`, 'body', relabelText(claim.text, presentation.current, partial),
-        relabelText(claim.generatedText ?? claim.text, presentation.current, partial)), text(`claim-facts:${claim.id}`, 'caption', claimCaption(presentation, rows, partial)));
+      body.push(text(`claim:${claim.id}`, 'body', relabelText(claim.text, presentation.current, partial, t),
+        relabelText(claim.generatedText ?? claim.text, presentation.current, partial, t)), text(`claim-facts:${claim.id}`, 'caption', claimCaption(presentation, rows, partial, t)));
       const flagged = changes?.filter(change => change.kind !== 'unchanged') ?? [];
       if (flagged.length) {
         const unsampled = flagged.filter(c => c.kind === 'unsampled').length;
-        body.push(text(`claim-refresh:${claim.id}`, 'small', `Evidence refreshed (revision ${record.revision}): ${flagged.filter(c => c.kind === 'changed').length} cited value(s) changed`
-          + ` and ${flagged.filter(c => c.kind === 'missing').length} are missing since this claim was written.`
-          + (unsampled ? ` ${unsampled} could not be re-checked because their rows are outside the captured sample.` : '') + ' Review the statement above.'));
+        body.push(text(`claim-refresh:${claim.id}`, 'small', t('claimRefresh', { revision: record.revision,
+          changed: flagged.filter(c => c.kind === 'changed').length, missing: flagged.filter(c => c.kind === 'missing').length })
+          + (unsampled ? t('claimRefreshUnsampled', { count: unsampled }) : '') + t('reviewStatement')));
       }
     }
   }
   body.push(text('citations-note', 'small', input.proseCitations.length
-    ? `Referenced evidence: ${input.proseCitations.map(citation => relabel(citation, current, partial)).join(', ')}. Citation existence does not prove that a claim is supported.`
-    : input.claims.length ? 'The narrative prose has no row citations; only the claims above were checked against the evidence.'
-      : 'The narrative has no row citations. Verify each factual claim against the captured evidence.'));
-  if (input.tables.length) body.push(text('native-heading', 'heading', 'Native results'), ...input.tables.map(block => ({ slot: null, block })));
+    ? t('citations', { citations: input.proseCitations.map(citation => relabel(citation, current, partial, t)).join(', ') })
+    : t(input.claims.length ? 'citationsNoneClaims' : 'citationsNone')));
+  if (input.tables.length) body.push(text('native-heading', 'heading', t('nativeHeading')), ...input.tables.map(block => ({ slot: null, block })));
   const appendix = counter('appendix');
   const tail: SlotBlock[] = [
     { slot: null, block: { kind: 'page-break', id: freshBlockId() } },
-    text('appendix-heading', 'heading', 'Captured evidence appendix'),
+    text('appendix-heading', 'heading', t('appendixHeading')),
     // Every included row and omission notice travels with the document as literal text, never live bindings.
     ...appendixBlocks(payload, [...rows.rows].map(([citation, data]) => ({ citation, data })),
-      (style, value) => appendix(style, value).block as TextBlock).map(block => ({ slot: block.aiProvenance!.slot, block })),
+      (style, value) => appendix(style, value).block as TextBlock, t).map(block => ({ slot: block.aiProvenance!.slot, block })),
   ];
-  const notice = ledger.notice();
+  const notice = reportFontNotice(ledger, t);
   return [...head, ...(notice ? [text('font-notice', 'small', notice)] : []), ...body, ...tail];
 }

@@ -231,6 +231,28 @@ for (const action of ['download', 'import'] as const) test(`#7218 native ${actio
   } finally { download.mock.restore(); }
 });
 
+test('#7218 public Download includes saved native Filters when every browser storage write is quota-refused', async () => {
+  await seedArtifactModels({ federated: true });
+  await Promise.all([assistantLibrary.initialize(), useViewerStore.getState().initializeSavedClashReports()]);
+  const proposal = parseArtifactProposal(JSON.stringify({ version: 1, title: 'Full storage native Filters', kind: entries[0].kind, ...entries[0].body }), entries[0].kind);
+  const preview = await previewArtifact(proposal, useViewerStore.getState()); assert.ok(preview.matched > 0);
+  assert.ok(saveArtifact(preview.artifact).ok);
+  const saved = loadSavedFilters(); assert.equal(saved.length, 1);
+  const original = localStorage.getItem('ifc-lite:search:saved-filters'); assert.ok(original);
+  const denied = mock.method(localStorage, 'setItem', () => { throw new DOMException('All browser storage writes quota-refused', 'QuotaExceededError'); });
+  const blobs: Blob[] = [];
+  const download = mock.method(URL, 'createObjectURL', (value: Blob | MediaSource) => { assert.ok(value instanceof Blob); blobs.push(value); return 'blob:all-write-quota'; });
+  try {
+    const ui = render(<Notice />);
+    const button = [...ui.querySelectorAll('button')].find(node => node.textContent?.includes('Download library backup')); assert.ok(button);
+    await waitFor(() => !button.disabled, 'full-quota native backup ready'); click(button);
+    await waitFor(() => blobs.length === 1, 'full-quota native public Download');
+    const rows = parseContentBackup(await blobs[0].text()).libraries.filters ?? [];
+    assert.deepEqual(rows.map(row => row.name), saved.map(row => row.name), 'every readable saved Filter remains in the actual public backup even when the write probe would fail');
+    assert.equal(localStorage.getItem('ifc-lite:search:saved-filters'), original, 'actual persisted Filter bytes remain unchanged');
+  } finally { denied.mock.restore(); download.mock.restore(); }
+});
+
 for (const operation of ['add', 'update', 'delete'] as const) test(`#7218 backup retains a genuine unsaved native List ${operation} after quota refusal`, async () => {
   await seedArtifactModels({ federated: true });
   await Promise.all([assistantLibrary.initialize(), useViewerStore.getState().initializeSavedClashReports()]);

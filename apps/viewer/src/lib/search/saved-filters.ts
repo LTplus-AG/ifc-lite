@@ -82,15 +82,18 @@ interface StorageLike {
   removeItem(key: string): void;
 }
 
-function safeStorage(): StorageLike | null {
+function safeStorage(forWrite = true): StorageLike | null {
   try {
     const ls = (globalThis as typeof globalThis & { localStorage?: StorageLike }).localStorage;
     if (!ls) return null;
-    const probe = `${STORAGE_KEY}:__probe__`;
-    ls.setItem(probe, '1');
-    ls.removeItem(probe);
+    if (forWrite) {
+      const probe = `${STORAGE_KEY}:__probe__`;
+      ls.setItem(probe, '1');
+      ls.removeItem(probe);
+    }
     return ls;
-  } catch {
+  } catch (error) {
+    console.warn('[ifc-lite] Browser storage is unavailable for saved filters.', error);
     return null;
   }
 }
@@ -154,7 +157,8 @@ export function encodeSavedFilter(preset: SavedFilterPreset): unknown {
 }
 
 function readRaw(validate?: (preset: unknown) => unknown): SavedFilterPreset[] {
-  const ls = safeStorage();
+  // A full quota can refuse writes while every persisted row remains readable.
+  const ls = safeStorage(false);
   if (!ls) return [];
   catalogUnwritable = false;
   const raw = ls.getItem(STORAGE_KEY);

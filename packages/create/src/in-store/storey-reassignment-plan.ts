@@ -151,6 +151,12 @@ function planWithInventory(store: IfcDataStore, view: MutablePropertyView, selec
   });
   const guids = new Set([...storeyGuids, ...products.map(product => product.GlobalId)]);
   if (guids.size !== products.length + 2 || [...guids].some(guid => guidCounts.get(guid) !== 1)) fail('ambiguous duplicate product GlobalId');
+  const sourceMemberships = (outgoing.get(sourceStoreyId) ?? []).filter(rel => rel.children.some(id => ids.has(id)));
+  for (const relation of [...ownedRelationships, ...sourceMemberships]) {
+    const guid = relation.attributes[0];
+    if (typeof guid !== 'string' || !/^[0-3][0-9A-Za-z_$]{21}$/.test(guid)) fail(`relationship GlobalId is missing or malformed for #${relation.id}`);
+    if (guidCounts.get(guid) !== 1) fail(`ambiguous duplicate relationship GlobalId for #${relation.id}`);
+  }
   const placementIds = new Set(products.map(product => product.placementId));
   const placements = [...placementIds].filter(id => {
     const visited = new Set<number>(); let parent = refId(reader.entity(id)?.attributes[0]);
@@ -176,7 +182,7 @@ function planWithInventory(store: IfcDataStore, view: MutablePropertyView, selec
   const refusal = ownership.get(ownershipKey);
   if (refusal) fail(refusal);
   return { sourceStoreyId, destinationStoreyId, destinationPlacementId, products, placements,
-    relationships: ownedRelationships, sourceMemberships: (outgoing.get(sourceStoreyId) ?? []).filter(rel => rel.children.some(id => ids.has(id))) };
+    relationships: ownedRelationships, sourceMemberships };
 }
 
 /** Complete read-only admission for one destination. */

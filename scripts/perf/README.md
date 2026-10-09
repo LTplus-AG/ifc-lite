@@ -101,9 +101,11 @@ Independent Linux qualification adopted the existing readback cleanup repair;
 inverse fault controls demonstrate the ownership defects and the repaired paths
 release their buffers. Source-matched base/candidate viewer runtimes were built
 and pinned. T3 navigation refused before the declared model phase, with the
-earlier RAF refusal preserved. Current real-model comparisons, federation,
-focused physical performance and main integration remain held; CPU cleanup
-qualification does not replace them.
+earlier RAF refusal preserved. The subsequent current-main integration passed
+root renderer tests, full serial root typecheck with both postchecks, lint and
+source gates. Current real-model comparisons, federation and focused physical
+performance remain held; CPU integration and cleanup qualification do not
+replace them. No browser or GPU cohort ran for the integration update.
 
 ## Prepass terminal trace publication (#6993)
 

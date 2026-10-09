@@ -4,6 +4,48 @@ Status: candidate held for qualification. These hardware runs prove a bounded
 mechanism and several correctness invariants; they do not establish a viewer
 hover speedup or satisfy every acceptance condition of #6881.
 
+## Current-main CPU qualification, 2026-10-09
+
+The isolated integration at `011a235d538d3cda5625e32c2d0a830f61dfcc9b`
+includes main `29a1648b3ea56a346012b65ab3b7e41ecd598e8f` and the existing
+cleanup repair. The earlier prepared merge retained both the #6881 refusal
+and main's unrelated #6993 ledger entry; the subsequent main merge was clean.
+No additional picking implementation or hypothesis-driven fix was added.
+
+Root Turbo renderer tests pass: 2,058 passed, zero failed, two existing skips.
+All ten cleanup fault controls pass without skips. The omitted tests remain
+the opt-in 340 MB memoization stress test and real WebGPU packed-origin
+readback unavailable in Node. These controls qualify allocation and resource
+ownership invariants, not actual GPU picking or a performance result.
+
+Full root `pnpm typecheck` passes, including all 3,862 test files in 62 packages,
+the root test-program audit and `scripts/perf/tsconfig.frames.json` postcheck.
+The actual native Turbo processes were independently inspected with
+`--concurrency=1`; renderer tests used two-CPU affinity and bounded concurrency.
+Temporary package scripts were restored byte for byte. Root lint and the
+module-size, test-wiring, source-assertion, CI-path, license-header,
+changeset-bump, API-surface and candidate whitespace gates pass. API surface
+matches 55 packages, 95 surfaces and 9,597 exports. Existing lint warnings
+remain in the full report; there are no lint errors.
+
+`main-integration-cpu-20261009.json.gz` preserves exact commands, complete logs,
+source/runtime manifests, host conditions and terminal/restoration receipts.
+Before and after tracked source manifests match. The initial acquisition
+parser refusal and the command-verifier's erroneous launcher match are also
+retained with their corrections and independent native-process proofs.
+The retained real FZK file is hashed again without loading it. No browser,
+server, model comparison or GPU/performance cohort ran under this CPU grant.
+The earlier runtime pair and hardware evidence retain their original source
+pins; they do not qualify this new integration's GPU behavior.
+
+Verdict: **CPU integration qualified; NOT READY; retain draft.** Current-source
+real-model base/candidate serial/overlap and coordinate/lifecycle comparisons,
+second fixture/federation, unexplained historical XYZ differences, focused
+physical browser performance, required review and current-head CI remain open.
+The original browser coordinates and refusal deadlines are unchanged.
+Full local evidence and the eventual matching lane-release receipt are under
+`/home/louistrue/.t3/artifacts/6881-qualification-48637c43-20261009/main-integration-cpu-20261009`.
+
 ## Cleanup qualification, 2026-10-09
 
 The campaign's existing cleanup repair and ten fault controls were adopted into
@@ -78,11 +120,11 @@ owned cleanup receipts. Frozen runtimes and full source manifests remain under
 | Single/federated ownership | Canonical decoding and store-backed model resolver reviewed; no offset calculation added | Current single-model certificate, real federation and second fixture unqualified |
 
 Verdict: **NOT READY; retain draft.** Focused physical browser performance remains
-unavailable and unqualified. Current main integration/merge-conflict qualification,
-required review and CI, unexplained historical XYZ differences and all missing
+unavailable and unqualified. Required review and current-head CI,
+unexplained historical XYZ differences and all missing
 real-model controls remain requirements. No hover or load speedup is claimed.
 
-The final API-surface check matches 55 packages, 95 export surfaces and 9,569
+The prior cleanup cohort's final API-surface check matches 55 packages, 95 export surfaces and 9,569
 exports. Its initial missing-declaration refusal is retained; a bounded root
 Turbo build supplied the five missing package declarations before rechecking.
 The standard module-size check also passes after the isolated clone's origin

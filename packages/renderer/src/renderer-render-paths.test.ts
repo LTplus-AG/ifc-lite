@@ -1105,6 +1105,51 @@ describe('pick path survives the device dying mid-readback (#1901)', () => {
         assert.deepStrictEqual(settled.map((s) => s.status), ['fulfilled', 'fulfilled']);
     });
 
+    for (const path of ['point', 'rectangle'] as const) {
+        it(`direct ${path} teardown rejects completed old data (#6881 lifecycle)`, async () => {
+            const h = makeHarness();
+            const picker = installPicker(h);
+            const before = h.stats.createdBuffers.length;
+            const { inflight } = await park(h, () => path === 'point'
+                ? picker.pick(0, 0, 64, 64, [], new Float32Array(16))
+                : picker.pickRect(0, 0, 0, 0, 64, 64, [], new Float32Array(16)));
+            const owned = h.stats.createdBuffers.slice(before);
+            // Stated byte-layout input, not a GPU oracle: instanced ID 123 at
+            // staging byte zero. A map completed before destroy may be delivered
+            // afterwards without rejecting (e.g. a delayed promise continuation).
+            new Uint32Array(owned[0].getMappedRange())[0] = 0x40000000 | 123;
+            h.settlePendingMaps();
+            picker.destroy(); // lands before the awaiting continuation resumes
+            assert.deepEqual(await inflight, path === 'point' ? null : new Set());
+            assert.ok(owned.every(buffer => buffer.destroyed === 1),
+                'every transient resource must still be released exactly once');
+        });
+    }
+
+    for (const path of ['point', 'rectangle'] as const) {
+        it(`direct ${path} teardown releases all overlapping pending readbacks (#6881 lifecycle)`, async () => {
+            const h = makeHarness();
+            const picker = installPicker(h);
+            const before = h.stats.createdBuffers.length;
+            const start = () => path === 'point'
+                ? picker.pick(0, 0, 64, 64, [], new Float32Array(16))
+                : picker.pickRect(0, 0, 0, 0, 64, 64, [], new Float32Array(16));
+            const first = await park(h, start);
+            const mapsPerCall = h.pendingMaps();
+            const second = await park(h, start);
+            const owned = h.stats.createdBuffers.slice(before);
+            assert.equal(h.pendingMaps(), mapsPerCall * 2, 'both calls reached the async boundary');
+            assert.ok(owned.length >= 2, 'both calls allocated owned readbacks');
+            picker.destroy();
+            const releasedBeforeDelivery = owned.every(buffer => buffer.destroyed === 1);
+            // Drain even the failing baseline: never leave parked fixture work.
+            h.settlePendingMaps();
+            await Promise.all([first.inflight, second.inflight]);
+            assert.ok(releasedBeforeDelivery, 'destroy releases without waiting for promise delivery');
+            assert.ok(owned.every(buffer => buffer.destroyed === 1), 'late finally must not double-release');
+        });
+    }
+
     it('point-pick transient allocation stays bounded across viewport sizes (#6881)', async () => {
         for (const [width, height] of [[64, 64], [1292, 1047]]) {
             const h = makeHarness();

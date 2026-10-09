@@ -18,7 +18,7 @@ import {
   writeInstancedPickUniforms,
   writePickUniforms,
 } from './picker-rte-uniforms.js';
-import { isReadbackAbort, releaseReadbacks } from './picker-readbacks.js';
+import { isReadbackAbort, PickerReadbackOwner } from './picker-readbacks.js';
 import { PickDepthSample } from './picker-depth-sample.js';
 import { relativeToEyeWgsl } from './shaders/relative-to-eye.wgsl.js';
 import { drawInstanceRuns, uploadInstancedRteDeltas } from './instanced-rte.js';
@@ -49,6 +49,7 @@ export class Picker {
   private maxMeshes: number = 100000; // Support up to 100K meshes (was 10K)
   /** Set by `destroy()`; makes it idempotent and turns `pick`/`pickRect` into no-ops. */
   private destroyed = false;
+  private readonly readbacks = new PickerReadbackOwner();
   private pointPicker: PointPicker | null = null;
   // Flat meshes each bind a dynamic 256-byte slot: RTE view projection +
   // model linear transform + clip state + split drawable origin. A single
@@ -352,11 +353,7 @@ export class Picker {
       width, height, meshes, viewProj, pointNodes, pointSizing, instancedTemplates, clip, pointRteSnapshot,
     );
 
-    // Clamp the texel origin to the texture bounds. Math.floor(x/y) can
-    // be -1 or equal to width/height on border clicks (and on
-    // pointer-captured drags that leave the canvas), and either makes
-    // copyTextureToBuffer reject the submit. pickRect already guards
-    // this path; pick() needs the same.
+    // Border clicks and pointer-captured drags use the same clamped ID/depth texel.
     const sampleX = Math.max(0, Math.min(width - 1, Math.floor(x)));
     const sampleY = Math.max(0, Math.min(height - 1, Math.floor(y)));
 
@@ -370,6 +367,7 @@ export class Picker {
 
     // The compute sample and ID copy share the render submission and staging
     // buffer. Each pick owns its coordinates and output until mapping finishes.
+    this.readbacks.track(readBuffer);
     let depthResources: readonly GPUBuffer[] = [];
     let sample: number;
     let depth: number;
@@ -385,8 +383,10 @@ export class Picker {
       depthResources = this.depthSample.encode(
         encoder, this.depthTexture, sampleX, sampleY, readBuffer, 4,
       );
+      this.readbacks.track(...depthResources);
       this.device.queue.submit([encoder.finish()]);
       await readBuffer.mapAsync(GPUMapMode.READ);
+      if (this.destroyed) return null;
       const bytes = readBuffer.getMappedRange();
       sample = new Uint32Array(bytes, 0, 1)[0];
       depth = new Float32Array(bytes, 4, 1)[0];
@@ -394,18 +394,13 @@ export class Picker {
       if (!isReadbackAbort(err)) throw err;
       return null;
     } finally {
-      releaseReadbacks(readBuffer, ...depthResources);
+      this.readbacks.release(readBuffer, ...depthResources);
     }
 
     const decoded = decodePickSample(sample);
     if (decoded.kind === 'none') return null;
 
-    // Unproject (x, y, depth) → world space. Reverse-Z keeps depth in
-    // [0, 1] (1 = near, 0 = far) — same NDC convention as the camera
-    // raycaster, so MathUtils.transformPoint with the inverse viewProj
-    // gives the world hit position directly.
-    // Flat meshes, points and instanced occurrences all rasterise in the
-    // captured RTE frame. Decode depth with that same immutable projection.
+    // Decode reverse-Z depth with the immutable RTE projection used to rasterise.
     const rteDecoded = decoded.kind === 'mesh' || decoded.kind === 'point' || decoded.kind === 'instanced';
     const projectedWorld = unprojectPickSample(
       rteDecoded && pointRteSnapshot ? pointRteSnapshot.getViewProjection().m : viewProj,
@@ -478,6 +473,7 @@ export class Picker {
       size: rowStride * rectH,
       usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
     });
+    this.readbacks.track(readBuffer);
     try {
       encoder.copyTextureToBuffer(
         {
@@ -489,6 +485,7 @@ export class Picker {
       );
       this.device.queue.submit([encoder.finish()]);
       await readBuffer.mapAsync(1);
+      if (this.destroyed) return new Set();
       const view = new Uint32Array(readBuffer.getMappedRange());
       const ids = new Set<number>();
       const stridePx = rowStride / 4;
@@ -519,7 +516,7 @@ export class Picker {
       if (!isReadbackAbort(err)) throw err;
       return new Set();
     } finally {
-      releaseReadbacks(readBuffer);
+      this.readbacks.release(readBuffer);
     }
   }
 
@@ -697,6 +694,7 @@ export class Picker {
   destroy(): void {
     if (this.destroyed) return;
     this.destroyed = true;
+    this.readbacks.destroy();
     this.colorTexture.destroy();
     this.depthTexture.destroy();
     this.uniformBuffer.destroy();

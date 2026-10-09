@@ -5,7 +5,7 @@ import '@/test/setup-dom.js';
 import assert from 'node:assert/strict';
 import { afterEach, test } from 'node:test';
 import * as parser from '@ifc-lite/parser';
-import { QuantityType } from '@ifc-lite/data';
+import { iterateEffectiveEntities, QuantityType } from '@ifc-lite/data';
 import { StoreEditor } from '@ifc-lite/mutations';
 import { getOrCreateMutationView } from '@/sdk/adapters/mutation-view';
 import { useViewerStore } from '@/store';
@@ -64,3 +64,15 @@ for (const disposition of ['assigned', 'unassigned', 'overlay', 'deleted'] as co
     }
   });
 }
+
+for (const disposition of ['deleted', 'retyped'] as const) test(`#7355 source unit eligibility requires current effective projects: ${disposition}`, async t => {
+  const f = await inheritedSource(t); if (!f) return;
+  const project = f.store.entityIndex.byType.get('IFCPROJECT')?.[0]; assert.ok(project);
+  assert.equal(f.store.getEntity(project)?.type.toUpperCase(), 'IFCPROJECT', 'real source still contains its authored Project');
+  if (disposition === 'deleted') assert.equal(f.view.deleteEntity(project), true);
+  else f.view.setEntityType(project, 'IfcBuilding');
+  const ids = [...iterateEffectiveEntities(f.store, f.view, ['IfcProject'])].map(row => row.expressId);
+  assert.deepEqual(ids, [], 'canonical current inventory excludes the deleted/retyped authored Project');
+  assert.equal(Object.hasOwn(parser, 'findSourceProjectLengthUnit'), true, 'published canonical source-unit resolver must exist');
+  assert.equal(parser.findSourceProjectLengthUnit('METRE', f.store, ids, id => f.view.isDeleted(id)), null);
+});

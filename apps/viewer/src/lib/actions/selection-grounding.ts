@@ -11,6 +11,7 @@
  * citations resolve by).
  */
 
+import { nativeSlabOpeningEvidence, type SlabOpeningEvidence } from './model-authoring-slab-opening';
 import type { ViewerState } from '@/store';
 import { resolveEntityRefGlobalIdFromState } from '@/store/resolveEntityRef';
 import { effectiveSelectedClass } from '@/components/viewer/properties/effectiveSelectedClass';
@@ -26,6 +27,7 @@ export interface SelectionElement {
   type: string;
   name: string | null;
   nativeEdit: NativeEditEvidence;
+  nativeSlabOpening: SlabOpeningEvidence;
   nativeType: NativeTypeEvidence;
   nativeStairExpected: ReturnType<typeof nativeStairEvidenceFromTarget>;
 }
@@ -97,6 +99,7 @@ export function captureSelectionGrounding(state: GroundingState, limit = SELECTI
       type: effectiveSelectedClass(store, state.mutationViews.get(ref.modelId), ref.expressId) ?? 'unknown',
       name: nativeRootName({ dataStore: store, view: state.mutationViews.get(ref.modelId) }, ref.expressId) || null,
       nativeEdit: nativeEditEvidence(nativeTarget(ref.modelId), ref.expressId),
+      nativeSlabOpening: nativeSlabOpeningEvidence(nativeTarget(ref.modelId), ref.expressId),
       nativeType: nativeTypeEvidence(state, nativeTarget(ref.modelId), ref.expressId),
       nativeStairExpected: nativeStairEvidenceFromTarget(nativeTarget(ref.modelId), ref.expressId),
     });

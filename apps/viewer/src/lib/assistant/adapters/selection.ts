@@ -43,6 +43,7 @@ import { propertyDisplayValue } from '@/components/viewer/properties/propertyDis
 import { evidenceRow, unavailableCapture, type EvidenceAdapter } from './types';
 import { nativeReadTargets } from '@/lib/actions/model-authoring-read-target';
 import { nativeStairEvidenceFromTarget } from '@/lib/actions/model-authoring-stair-lifecycle';
+import { nativeSlabOpeningEvidence } from '@/lib/actions/model-authoring-slab-opening';
 import { nativeEditEvidence, nativeRootName } from '@/lib/actions/native-edit-evidence';
 import { nativeTypeEvidence } from '@/lib/actions/native-type-evidence';
 import type { ModelEditTarget } from '@/store/slices/mutation-modelling-records';
@@ -162,6 +163,7 @@ function elementRow(s: ViewerState, ref: EntityRef, source: ModelSource, rich: b
     nativeTrimExtendExpected: authoringReachEvidenceFromTarget(nativeTarget, ref.expressId),
     attributes, psets, psetCount: data.psets.length, quantities, qsetCount: data.qsets.length,
     nativeEdit: nativeEditEvidence(nativeTarget, ref.expressId),
+    nativeSlabOpening: nativeSlabOpeningEvidence(nativeTarget, ref.expressId),
     nativeStairExpected: nativeStairEvidenceFromTarget(nativeTarget,ref.expressId),
     nativeType: nativeTypeEvidence(s, nativeTarget, ref.expressId),
     structuralStatus: !source.store ? 'unavailable' : source.store.source?.length ? 'available' : 'unavailable-source',

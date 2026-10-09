@@ -33,7 +33,7 @@ import { evaluateLens } from '@ifc-lite/lens';
 import { toGlobalIdFromModels } from '@/store/globalId';
 import { createStore } from 'zustand/vanilla';
 import { createLensSlice, type LensSlice } from '@/store/slices/lensSlice';
-import { createContentBackup, encodeContentBackup, parseContentBackup, type ContentLibraries } from '@/lib/storage/content-backup';
+import { createContentBackup, parseContentBackup, type ContentLibraries } from '@/lib/storage/content-backup';
 
 async function nativeBackupWire(libraries: Partial<ContentLibraries>): Promise<string> {
   const state = useViewerStore.getState();
@@ -118,7 +118,7 @@ test('#7218 native empty arrays preserve version-1 while public builtin Lenses s
     const decoded = parseContentBackup(wire);
     assert.equal(decoded.version, 2, 'the native public Lens export includes actual builtin Lens definitions');
     assert.equal(decoded.libraries.lenses?.length, useViewerStore.getState().exportLenses().length, 'builtin native definitions are retained rather than silently dropped for compatibility');
-    const emptyWire = JSON.stringify(encodeContentBackup(createContentBackup({ validation: [], comparison: [], document: [], filters: [], lists: [], lenses: [] })));
+    const emptyWire = JSON.stringify(createContentBackup({ validation: [], comparison: [], document: [], filters: [], lists: [], lenses: [] }));
     assert.equal(parseContentBackup(emptyWire).version, 1, 'the stated empty-array invariant requires no new artifact version');
     for (const kind of ['filters', 'lists', 'lenses']) assert.ok(!Object.hasOwn(JSON.parse(emptyWire).libraries, kind));
   } finally { download.mock.restore(); }

@@ -146,6 +146,14 @@ export {
 // IDS import (#5225) so an imported pattern means what the checker reads.
 export { translateXsdRegex, type TranslateResult } from './constraints/xsd-regex.js';
 
+// Matching and non-matching example strings for an XSD pattern, verified
+// against `matchConstraint` (pattern explanations, synthetic test fixtures).
+export {
+  generatePatternExamples,
+  type PatternExamples,
+  type PatternExampleOptions,
+} from './constraints/xsd-examples.js';
+
 // IFC4 class names an IFC2X3 entity facet may use through buildingSMART's
 // occurrence/type mapping table, so authoring tools (`@ifc-lite/ids-authoring`
 // lint) do not report them as missing from IFC2X3.

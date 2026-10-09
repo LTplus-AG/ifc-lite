@@ -2,6 +2,9 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { liveEntityConforms } from '@ifc-lite/create';
+import type { IfcDataStore } from '@ifc-lite/parser';
+import type { MutablePropertyView } from '@ifc-lite/mutations';
 import type { ClassificationInput } from '@/lib/authoring/associations';
 import { parseText, record } from './model-authoring-fields';
 
@@ -38,4 +41,18 @@ export function classificationInput(fields: ClassificationAddFields, schema: str
 
 export function classificationLabel(fields: ClassificationAddFields): string {
   return `${fields.Classification.Name} · ${fields.Reference.Identification ?? fields.Reference.ItemReference}${fields.Reference.Name ? ` · ${fields.Reference.Name}` : ''}`;
+}
+
+/** Keep metadata preflight separate from the shared geometry authoring resolver (#7271). */
+export function validateClassificationAdd(fields: ClassificationAddFields,
+  target: { dataStore: IfcDataStore; view: MutablePropertyView }, expressId: number,
+  refuse: (message: string) => never): void {
+  try { classificationInput(fields, target.dataStore.schemaVersion); } catch (error) {
+    if (error instanceof Error) refuse(error.message);
+    throw error;
+  }
+  if (!liveEntityConforms(target.dataStore, expressId,
+    target.dataStore.schemaVersion === 'IFC2X3' ? 'IfcRoot' : 'IfcDefinitionSelect', target.view)) {
+    refuse('This element cannot carry a classification in this IFC schema');
+  }
 }

@@ -40,7 +40,7 @@ import { readAuthoringSizeFromTarget, sameNativeDimensions } from './model-autho
 import { verifyReachExpected, verifyReachStoreyFrame, reachBefore } from './model-authoring-reach';
 import { sizeInMetres } from './model-authoring-size-params';
 import { profileInMetres } from './model-authoring-shape-params';
-import { classificationInput } from './model-authoring-classification';
+import { validateClassificationAdd } from './model-authoring-classification';
 import { authoringHostedEditGhost } from './model-authoring-hosted-edit-ghost';
 import { hostedFillRefusal } from '@/store/slices/mutation-hosted-fill';
 import { readExpectedHostedEdit, sameHostedEdit } from './model-authoring-hosted-edit';
@@ -287,19 +287,10 @@ function resolve(ctx: Context, row: AuthoringRow): void {
       row.previewUnavailable = true;
       return;
     }
-    case 'classification.add': {
+    case 'classification.add':
       row.resolved.target = row.expressId = existing(ctx, op.target, row);
-      const r = reader(ctx, row.modelId!);
-      try { classificationInput(op, r.dataStore.schemaVersion); } catch (error) {
-        if (error instanceof Error) throw new Refusal('invalid', error.message);
-        throw error;
-      }
-      if (!conforms(r, row.expressId, r.dataStore.schemaVersion === 'IFC2X3' ? 'IfcRoot' : 'IfcDefinitionSelect')) {
-        throw new Refusal('invalid', 'This element cannot carry a classification in this IFC schema');
-      }
-      row.previewUnavailable = true;
-      return;
-    }
+      validateClassificationAdd(op, reader(ctx, row.modelId!), row.expressId, message => { throw new Refusal('invalid', message); });
+      row.previewUnavailable = true; return;
     case 'type.assign': case 'material.assign': {
       const subject = row.resolved.subject = element(ctx, op.target, row);
       if ('id' in subject) row.expressId = subject.id;

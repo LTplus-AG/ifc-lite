@@ -32,7 +32,7 @@ function registerParsedOwnership() {
   for (const mesh of meshes) assert.equal(useViewerStore.getState().resolveGlobalIdFromModels(mesh.expressId)?.modelId,MODEL,'canonical loader ownership resolves actual source meshes');
 }
 
-for (const mixed of [false, true]) test(`#7324 native AutoAll refuses live contained walls without Representation${mixed ? ' across a mixed storey population' : ''}`, async t => {
+for (const {mixed,withoutView} of [{mixed:false,withoutView:false},{mixed:true,withoutView:false},{mixed:true,withoutView:true}]) test(`#7324 native AutoAll refuses live contained walls without Representation${mixed ? ' across a mixed storey population' : ''}${withoutView ? ' in a fresh model without a registered mutation view' : ''}`, async t => {
   if (!ensureRoomWasm(t)) return;
   const native = await seedReviewedRoom();
   registerParsedOwnership();
@@ -59,9 +59,13 @@ for (const mixed of [false, true]) test(`#7324 native AutoAll refuses live conta
   const bytes = new StepExporter(native.store,native.view).export({ schema:'IFC4',applyMutations:true }).content;
   const reloaded = await seedNativeSdkModel(bytes);
   registerParsedOwnership();
+  if (withoutView) useViewerStore.setState({mutationViews:new Map(),storeEditors:new Map()});
+  const viewsBefore = useViewerStore.getState().mutationViews;
+  const editorsBefore = useViewerStore.getState().storeEditors;
   for (const id of missing) {
     const record = effectiveMetadataRecord(reloaded.store,id,reloaded.view); assert.ok(record);
     assert.equal(record.type.toUpperCase(),'IFCWALL');
+    assert.deepEqual(useViewerStore.getState().resolveGlobalIdFromModels(id),{modelId:MODEL,expressId:id},'canonical loaded model ownership resolves the live native wall');
     assert.equal(record.attributes[0],originalGuids.get(id),'independent native export/reload retains the exact wall GlobalId');
     assert.equal(record.attributes[6],null,'independent native export/reload preserves the absent optional Representation');
   }
@@ -84,6 +88,11 @@ for (const mixed of [false, true]) test(`#7324 native AutoAll refuses live conta
   assert.deepEqual(reloaded.view.getEffectiveChanges(),before);
   assert.equal(reloaded.view.getNewEntities().length,count,'refusal preserves allocation');
   assert.equal(useViewerStore.getState().undoStacks.get(MODEL)?.length ?? 0,undo);
+  if (withoutView) {
+    assert.equal(useViewerStore.getState().mutationViews,viewsBefore,'preparation must not initialize a registered mutation view');
+    assert.equal(useViewerStore.getState().storeEditors,editorsBefore,'preparation must not initialize a registered editor');
+    assert.equal(viewsBefore.size,0); assert.equal(editorsBefore.size,0);
+  }
 });
 
 test('#7324 genuine wall-free upper storey remains noWalls alongside the native enclosed lower storey',async t => {

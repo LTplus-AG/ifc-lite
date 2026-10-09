@@ -35,6 +35,9 @@ import { draftElementSize } from '@/lib/element-size-commit';
 import { writeElementProfile } from '@/store/slices/mutation-element-profile';
 import { writeAuthoringReach } from './model-authoring-reach';
 import { sizeInMetres } from './model-authoring-size-params';
+import { addClassificationInDraft } from '@/lib/authoring/associations';
+import { classificationInput } from './model-authoring-classification';
+import { resolveEnglish } from '@/i18n/registry';
 import { authoringCopyTransforms, copyRefs } from './model-authoring-copy';
 import { pointToMetres, toMetres, type AuthoringOp, type AxisParams, type BoxParams, type ModelAuthoringBatch } from './model-authoring';
 
@@ -198,6 +201,11 @@ export function writeNativeTypeDetach(op: Extract<AuthoringOp, { op: 'type.detac
 export function draftAuthoringOperation(batch: ModelAuthoringBatch, dataStore: IfcDataStore, modelId: string, draft: StoreEditor, row: DryRunRow, refs: Map<string, number>, splitScopes?: Parameters<typeof import('@ifc-lite/create').splitElementsInStore>[3], readState?: NativeReadState): void {
   const { op, resolved } = row;
   switch (op.op) {
+    case 'classification.add': {
+      const outcome = addClassificationInDraft(dataStore, draft, resolved.target!, classificationInput(op, dataStore.schemaVersion));
+      if (!outcome.ok) throw new Error(resolveEnglish(outcome.reasonKey));
+      return;
+    }
     case 'material.layers':
       if (!readState) throw new Error('The native layer source context is unavailable');
       writeReviewedLayers({ modelId, dataStore, view: draft.getMutationView(), editor: draft }, draft,

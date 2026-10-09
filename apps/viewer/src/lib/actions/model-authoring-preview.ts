@@ -40,6 +40,7 @@ import { readAuthoringSizeFromTarget, sameNativeDimensions } from './model-autho
 import { verifyReachExpected, verifyReachStoreyFrame, reachBefore } from './model-authoring-reach';
 import { sizeInMetres } from './model-authoring-size-params';
 import { profileInMetres } from './model-authoring-shape-params';
+import { validateClassificationAdd } from './model-authoring-classification';
 import { authoringHostedEditGhost } from './model-authoring-hosted-edit-ghost';
 import { hostedFillRefusal } from '@/store/slices/mutation-hosted-fill';
 import { readExpectedHostedEdit, sameHostedEdit } from './model-authoring-hosted-edit';
@@ -82,7 +83,7 @@ function existing(ctx: Context, target: ExistingElement, row: AuthoringRow): num
   join(row, modelId);
   const r = reader(ctx, modelId);
   if ((row.op.op.startsWith('stair.') || row.op.op.startsWith('railing.')) && !uniqueSplitGuid(r.dataStore, r.editor, target.globalId)) throw new Refusal('ambiguous-target', 'The native stair or railing target GlobalId is not unique in its owning model');
-  if ((row.op.op === 'material.layers' || row.op.op === 'element.replace' || row.op.op === 'element.align' || (row.op.op === 'element.rotate' && !!row.op.pivot) || row.op.op === 'element.split' || row.op.op === 'element.trimExtend' || row.op.op === 'type.detach') && !uniqueSplitGuid(r.dataStore, r.editor, target.globalId)) throw new Refusal('ambiguous-target', 'The native target GlobalId is not unique in its owning model');
+  if ((row.op.op === 'material.layers' || row.op.op === 'element.replace' || row.op.op === 'element.align' || (row.op.op === 'element.rotate' && !!row.op.pivot) || row.op.op === 'element.split' || row.op.op === 'element.trimExtend' || row.op.op === 'type.detach' || row.op.op === 'classification.add') && !uniqueSplitGuid(r.dataStore, r.editor, target.globalId)) throw new Refusal('ambiguous-target', 'The native target GlobalId is not unique in its owning model');
   const ifcClass = className(r, expressId);
   const name = nameOf(r, expressId);
   row.before.ifcClass = ifcClass;
@@ -286,6 +287,10 @@ function resolve(ctx: Context, row: AuthoringRow): void {
       row.previewUnavailable = true;
       return;
     }
+    case 'classification.add':
+      row.resolved.target = row.expressId = existing(ctx, op.target, row);
+      validateClassificationAdd(op, reader(ctx, row.modelId!), row.expressId, message => { throw new Refusal('invalid', message); });
+      row.previewUnavailable = true; return;
     case 'type.assign': case 'material.assign': {
       const subject = row.resolved.subject = element(ctx, op.target, row);
       if ('id' in subject) row.expressId = subject.id;

@@ -78,7 +78,8 @@ for (const family of families) for (const bucket of states) test(`#7300 native b
     const button = [...ui.querySelectorAll('button')].find(node => node.textContent?.includes('Download library backup')); assert.ok(button);
     await waitFor(() => !button.disabled, 'native library widget startup');
     await act(async () => { input.dispatchEvent(new Event('change', { bubbles: true })); });
-    await waitFor(() => !button.disabled, 'native widget finishes restore');
+    const retryReady = [...ui.querySelectorAll('button')].find(node => node.textContent?.includes('Retry all libraries')); assert.ok(retryReady);
+    await waitFor(() => !retryReady.disabled, 'native widget finishes restore; pending sources block complete export');
     if (bucket === 'readable' || bucket === 'absent') {
       const loaded = family.library === 'lists' ? loadListDefinitions() : createStore<LensSlice>()(createLensSlice).getState().savedLenses.filter(row => !row.builtin);
       assert.deepEqual(loaded.map(row => row.id), nativeRows.map(row => row.id), 'readable native library survives canonical migration and idempotent import');

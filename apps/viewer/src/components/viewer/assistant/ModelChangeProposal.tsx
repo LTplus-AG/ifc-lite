@@ -3,6 +3,8 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { useMemo } from 'react';
+import { declaresZoneEmission, parseZoneEmissionProposal, type ZoneEmissionProposal } from '@/lib/actions/zone-emission-proposal';
+import { ZoneEmissionReview } from './ZoneEmissionReview';
 import { useAssistant } from '@/lib/assistant/conversation';
 import { parseModelChangeBatch, type ModelChangeBatch } from '@ifc-lite/ai/artifacts';
 import { parseModelAuthoringBatch, type ModelAuthoringBatch } from '@/lib/actions/model-authoring';
@@ -12,7 +14,7 @@ import { declaresRoomCommand, parseRoomProposal, type RoomProposal } from '@/lib
 import type { RoomReview } from '@/lib/actions/room-review';
 import { RoomCommandReview } from './RoomCommandReview';
 
-type Reviewable = { kind: 'changes'; batch: ModelChangeBatch } | { kind: 'authoring'; batch: ModelAuthoringBatch } | { kind: 'room'; proposal: RoomProposal };
+type Reviewable = { kind: 'zones'; proposal: ZoneEmissionProposal } | { kind: 'changes'; batch: ModelChangeBatch } | { kind: 'authoring'; batch: ModelAuthoringBatch } | { kind: 'room'; proposal: RoomProposal };
 
 /** Latest completed changes, authoring or async Room answer, reviewed natively and never applied by itself. */
 export function ModelChangeProposal({ onAttachRoom }: { onAttachRoom?: (review: RoomReview) => void } = {}) {
@@ -20,6 +22,10 @@ export function ModelChangeProposal({ onAttachRoom }: { onAttachRoom?: (review: 
   const reply = assistant.messages.at(-1);
   const content = reply?.role === 'assistant' && assistant.status !== 'streaming' ? reply.content : null;
   const reviewable = useMemo((): Reviewable | null => {
+    if (content && declaresZoneEmission(content)) {
+      try { return { kind: 'zones', proposal: parseZoneEmissionProposal(content) }; }
+      catch (error) { console.warn('[Assistant] Zone emission proposal is not reviewable', error); return null; }
+    }
     if (content && declaresRoomCommand(content)) {
       try { return { kind: 'room', proposal: parseRoomProposal(content) }; }
       catch (error) { console.warn('[Assistant] Room proposal is not reviewable', error); return null; }
@@ -36,6 +42,7 @@ export function ModelChangeProposal({ onAttachRoom }: { onAttachRoom?: (review: 
   }, [content]);
   if (!reviewable) return null;
   const origin = `assistant:${assistant.snapshot?.id ?? assistant.archived?.id ?? 'conversation'}:${assistant.messages.length}`;
+  if (reviewable.kind === 'zones') return <ZoneEmissionReview key={origin} proposal={reviewable.proposal} origin={origin} />;
   if (reviewable.kind === 'room') return <RoomCommandReview key={origin} proposal={reviewable.proposal} origin={origin} onAttach={onAttachRoom} />;
   // Keyed by answer so a newer proposal starts a fresh review.
   return reviewable.kind === 'changes'

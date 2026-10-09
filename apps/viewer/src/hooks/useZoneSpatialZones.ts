@@ -98,7 +98,7 @@ interface ModelContext {
  * The scene-wide frame remains the fallback for the legacy single-model path,
  * where there is no per-model geometry result to read.
  */
-function frameFor(model: FederatedModel | undefined, scene: RenderFrameOffsets): RenderFrameOffsets {
+export function zoneEmissionFrameFor(model: FederatedModel | undefined, scene: RenderFrameOffsets): RenderFrameOffsets {
   const info = model?.geometryResult?.coordinateInfo;
   if (!info) return scene;
   return { originShift: info.originShift ?? null, wasmRtcOffsetIfc: info.wasmRtcOffset ?? null };
@@ -152,7 +152,7 @@ function contextFor(
     store,
     name: model?.name ?? modelId,
     rebased: model ? !geometryVolumesSurviveAlignment(model.federationAlignmentStatus) : false,
-    frame: frameFor(model, scene),
+    frame: zoneEmissionFrameFor(model, scene),
   };
   cache.set(modelId, context);
   return context;

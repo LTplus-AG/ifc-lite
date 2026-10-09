@@ -16,6 +16,7 @@
  * total is over the whole selection.
  */
 
+import { nativeZoneEmissionTransport } from '@/lib/actions/zone-emission-evidence';
 import { nativeAuthoringEvidence } from '@/lib/actions/native-authoring-evidence';
 import { IfcQuery } from '@ifc-lite/query';
 import { extractClassificationsOnDemand, extractProjectUnits, materialAssignmentsAvailable, ProjectUnits, type IfcDataStore } from '@ifc-lite/parser';
@@ -162,6 +163,7 @@ function elementRow(s: ViewerState, ref: EntityRef, source: ModelSource, rich: b
     attributes, psets, psetCount: data.psets.length, quantities, qsetCount: data.qsets.length,
     nativeEdit: nativeEditEvidence(nativeTarget, ref.expressId),
     nativeType: nativeTypeEvidence(s, nativeTarget, ref.expressId),
+    nativeZoneEmission: nativeZoneEmissionTransport(s, ref.modelId),
     structuralStatus: !source.store ? 'unavailable' : source.store.source?.length ? 'available' : 'unavailable-source',
     structural: structuralEvidence(structuralData, ref.expressId, typeof data.attributes.get('GlobalId') === 'string'
       ? String(data.attributes.get('GlobalId')) : undefined, setLimit, valueLimit, source.units, source.store?.schemaVersion, Boolean(source.store?.source?.length)),

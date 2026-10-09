@@ -11,6 +11,7 @@
  * citations resolve by).
  */
 
+import { nativeZoneEmissionEvidence } from './zone-emission-evidence';
 import { nativeAuthoringEvidence, type NativeAuthoringEvidence } from './native-authoring-evidence';
 import type { ViewerState } from '@/store';
 import { resolveEntityRefGlobalIdFromState } from '@/store/resolveEntityRef';
@@ -20,6 +21,7 @@ import { nativeEditEvidence, nativeRootName, type NativeEditEvidence } from './n
 import { nativeTypeEvidence, type NativeTypeEvidence } from './native-type-evidence';
 
 export interface SelectionElement extends NativeAuthoringEvidence {
+  nativeZoneEmission: ReturnType<typeof nativeZoneEmissionEvidence>;
   globalId: string;
   modelId: string;
   /** IFC class, `IfcPascalCase`. */
@@ -41,7 +43,7 @@ export interface SelectionGrounding {
 
 const SELECTION_GROUNDING_LIMIT = 100;
 
-type GroundingState = Pick<ViewerState, 'models' | 'selectedEntityIds' | 'selectedEntityId' | 'resolveGlobalIdFromModels' | 'mutationViews'>;
+type GroundingState = ViewerState;
 const groundingOwners = new WeakMap<SelectionGrounding, {
   elements: string;
   sources: Map<string, { store: unknown; view: unknown; hash: unknown; fingerprint: unknown; lease: NativeReadLease | null }>;
@@ -98,6 +100,7 @@ export function captureSelectionGrounding(state: GroundingState, limit = SELECTI
       nativeEdit: nativeEditEvidence(nativeTarget(ref.modelId), ref.expressId),
       ...nativeAuthoringEvidence(nativeTarget(ref.modelId), ref.expressId),
       nativeType: nativeTypeEvidence(state, nativeTarget(ref.modelId), ref.expressId),
+      nativeZoneEmission: nativeZoneEmissionEvidence(state, ref.modelId),
     });
   }
   const grounding = { capturedAt: new Date().toISOString(), total, elements, unresolved,

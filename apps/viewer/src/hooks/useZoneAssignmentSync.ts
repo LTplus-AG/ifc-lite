@@ -27,6 +27,7 @@
  */
 
 import { useEffect, useRef } from 'react';
+import { recordZoneEvaluationOwner } from '@/lib/zones/evaluation-owner';
 import { useViewerStore } from '@/store';
 import { getGlobalRenderer } from './useBCF.js';
 import { assignElementsToZoneSets, type ElementAABB } from '../lib/zones/index.js';
@@ -77,6 +78,7 @@ export function recomputeZoneAssignmentsNow(): void {
     zoneSetCount: state.zoneSets.length,
     computedAt: Date.now(),
   });
+  recordZoneEvaluationOwner(useViewerStore.getState(), elements);
 }
 
 /** Mount once (e.g. in `ViewportContainer`) to keep `zoneAssignments` live

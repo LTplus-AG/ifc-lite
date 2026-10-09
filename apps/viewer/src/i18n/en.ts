@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { zoneEmissionEn } from './catalogues/zone-emission.en';
 import type { LazyTranslationKey } from './lazy-catalogues';
 import { automationEditorEn } from './catalogues/automation-editor.en';
 import { spaceEnvelopeEn } from './catalogues/space-envelope.en';
@@ -148,6 +149,7 @@ import { zonesPanelEn } from './catalogues/zones-panel.en';
 
 /** English is assembled from feature catalogues so no locale becomes a monolith. */
 export const en = {
+  ...zoneEmissionEn,
   ...semanticEn,
   ...semanticResultsEn,
   ...semanticIdentityEn,

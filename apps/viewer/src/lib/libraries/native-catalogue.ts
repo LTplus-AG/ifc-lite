@@ -3,7 +3,6 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import type { Flavor } from '@ifc-lite/extensions';
 import type { ViewerState } from '@/store';
-import type { WorkspacePanelId } from '../panels/registry';
 import { definitionTitle } from '../validation/definition-library';
 import type { ContentStatus } from '../storage/content-library';
 
@@ -17,7 +16,7 @@ export interface LibraryArtifact {
   family: LibraryFamily;
   id: string;
   name: string;
-  panel: WorkspacePanelId;
+  panel: Parameters<ViewerState['openWorkspacePanel']>[0];
   /** The actual native record observed when listing; used to refuse replaced targets. */
   record: object;
   /** Native loaded-project/host namespace; a repeated record id does not cross owners. */
@@ -33,7 +32,7 @@ export interface LibraryGroup {
 export interface ProfileLibrary { phase: LibraryGroup['phase']; entries: readonly Flavor[]; warning?: string; owner?: object }
 
 export function nativeLibraryCatalogue(state: ViewerState, profiles: ProfileLibrary): LibraryGroup[] {
-  const row = (kind: LibraryKind, family: LibraryFamily, id: string, name: string, panel: WorkspacePanelId, record: object): LibraryArtifact =>
+  const row = (kind: LibraryKind, family: LibraryFamily, id: string, name: string, panel: LibraryArtifact['panel'], record: object): LibraryArtifact =>
     ({ kind, family, id, name, panel, record });
   const status = (storage: ContentStatus): LibraryGroup['phase'] => storage.phase;
   // Reports retain each native library's availability; a failed source cannot

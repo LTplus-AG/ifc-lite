@@ -163,7 +163,8 @@ test('#7235 mounted profile read cannot navigate through an old host after provi
   assert.ok(button); click(button);
   await waitFor(() => entered, 'actual native profile read pending');
   assert.ok(replaceHost); act(replaceHost);
-  assert.ok(release); await act(async () => { release(); await pending; });
+  const finishRead = release;
+  assert.ok(finishRead); await act(async () => { finishRead(); await pending; });
   await waitFor(() => !ui.querySelector('button:disabled'), 'superseded open released');
   assert.equal(opened, 0);
   assert.equal(useLibraryFocus.getState().target, null);

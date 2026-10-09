@@ -6,7 +6,8 @@ import assert from 'node:assert/strict';
 import { afterEach, test } from 'node:test';
 import { IfcAPI } from '@ifc-lite/wasm';
 import { alignElementsInStore, planBoxOf, readWallJoinTarget, transformElementsInStore } from '@ifc-lite/create';
-import { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
+import { MutablePropertyView } from '@ifc-lite/mutations';
+import type { MeshData } from '@ifc-lite/geometry';
 import { useViewerStore } from '@/store';
 import { modelEditTarget } from '@/store/slices/mutation-modelling-records';
 import { editedModelBytes } from '@/lib/export/edited-model-bytes';
@@ -68,7 +69,7 @@ test('native Align uses real exported mesh bounds and moves the target while ret
   const boxes = new Map([s.id, other].map(id => {
     const vertices = meshes.get(id); assert.ok(vertices?.length);
     // Canonical bounds consumer over the real WASM positions; normals/colors are not read by it.
-    const box = planBoxOf(vertices.map(mesh => ({ expressId: id, positions: Float32Array.from(mesh.positions),
+    const box = planBoxOf(vertices.map((mesh): MeshData => ({ expressId: id, positions: Float32Array.from(mesh.positions),
       indices: mesh.indices, normals: new Float32Array(0), color: [1, 1, 1, 1] })), id,
     { renderToLocal: ([x, y, z]) => [x, -z, y] });
     assert.ok(box); return [id, box] as const;

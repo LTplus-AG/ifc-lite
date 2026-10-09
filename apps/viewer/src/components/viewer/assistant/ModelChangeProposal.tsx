@@ -13,8 +13,10 @@ import type { RoomReview } from '@/lib/actions/room-review';
 import { RoomCommandReview } from './RoomCommandReview';
 import { declaresCostGraph, parseCostProposal, type CostProposal } from '@/lib/actions/cost-graph-proposal';
 import { CostGraphReview } from './CostGraphReview';
+import { declaresNewIfc, parseNewIfcProposal, type NewIfcProposal } from '@/lib/actions/new-ifc-file';
+import { NewIfcFileReview } from './NewIfcFileReview';
 
-type Reviewable = { kind: 'cost'; proposal: CostProposal } | { kind: 'changes'; batch: ModelChangeBatch } | { kind: 'authoring'; batch: ModelAuthoringBatch } | { kind: 'room'; proposal: RoomProposal };
+type Reviewable = { kind: 'newIfc'; proposal: NewIfcProposal } | { kind: 'cost'; proposal: CostProposal } | { kind: 'changes'; batch: ModelChangeBatch } | { kind: 'authoring'; batch: ModelAuthoringBatch } | { kind: 'room'; proposal: RoomProposal };
 
 /** Latest completed changes, authoring or async Room answer, reviewed natively and never applied by itself. */
 export function ModelChangeProposal({ onAttachRoom }: { onAttachRoom?: (review: RoomReview) => void } = {}) {
@@ -22,6 +24,10 @@ export function ModelChangeProposal({ onAttachRoom }: { onAttachRoom?: (review: 
   const reply = assistant.messages.at(-1);
   const content = reply?.role === 'assistant' && assistant.status !== 'streaming' ? reply.content : null;
   const reviewable = useMemo((): Reviewable | null => {
+    if (content && declaresNewIfc(content)) {
+      try { return { kind: 'newIfc', proposal: parseNewIfcProposal(content) }; }
+      catch (error) { console.warn('[Assistant] Native new-file proposal is not reviewable', error); return null; }
+    }
     if (content && declaresCostGraph(content)) {
       try { return { kind: 'cost', proposal: parseCostProposal(content) }; }
       catch (error) { console.warn('[Assistant] Cost proposal is not reviewable', error); return null; }
@@ -42,6 +48,7 @@ export function ModelChangeProposal({ onAttachRoom }: { onAttachRoom?: (review: 
   }, [content]);
   if (!reviewable) return null;
   const origin = `assistant:${assistant.snapshot?.id ?? assistant.archived?.id ?? 'conversation'}:${assistant.messages.length}`;
+  if (reviewable.kind === 'newIfc') return <NewIfcFileReview key={origin} proposal={reviewable.proposal} />;
   if (reviewable.kind === 'cost') return <CostGraphReview key={origin} proposal={reviewable.proposal} origin={origin} />;
   if (reviewable.kind === 'room') return <RoomCommandReview key={origin} proposal={reviewable.proposal} origin={origin} onAttach={onAttachRoom} />;
   // Keyed by answer so a newer proposal starts a fresh review.

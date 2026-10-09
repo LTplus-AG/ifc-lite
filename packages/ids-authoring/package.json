@@ -26,7 +26,9 @@
     "fflate": "^0.8.3"
   },
   "devDependencies": {
+    "@ifc-lite/rules": "workspace:*",
     "@types/node": "^26.6.2",
+    "fake-indexeddb": "^6.2.5",
     "typescript": "^6.0.3",
     "vitest": "^5.0.2"
   },

@@ -37,6 +37,7 @@ import { groundPropertyFields } from './grounding-pset.js';
 import { checkFacetStructure, checkOpPayload, groundingTargets, structureTargets } from './structural.js';
 import type { GateCode, GateIssue, GateResult } from './types.js';
 import { checkConstraint } from './values.js';
+import { checkBsddUri } from './bsdd.js';
 
 interface Collector {
   issues: GateIssue[];
@@ -62,6 +63,7 @@ function checkAfter(c: Collector, op: PrimitiveOp, before: StudioDocument, after
     if (!loc) continue;
     const item = itemAt(after, loc);
     for (const p of checkFacetStructure(item.facet, item.requirement)) push(c, { code: p.code, message: p.message, path: c.base + p.at, facetId });
+    for (const p of checkBsddUri(item.facet, ctx)) push(c, { ...p, path: c.base + '.payload', facetId });
   }
   const specOfBefore = (id: Uuid) => locateFacet(before, id)?.specId;
   for (const target of groundingTargets(op, after, specOfBefore)) {
@@ -96,7 +98,8 @@ function checkPrimitive(c: Collector, op: PrimitiveOp, doc: StudioDocument, ctx:
     return undefined;
   }
   checkAfter(c, op, doc, next, ctx);
-  return c.issues.length > before ? undefined : next;
+  // A warning (e.g. a deprecated bSDD URI) does not stop the batch.
+  return c.issues.slice(before).some((i) => i.severity !== 'warning') ? undefined : next;
 }
 
 function isCompound(op: StudioOp): op is CompoundOp {
@@ -137,5 +140,5 @@ export function checkOps(ops: readonly unknown[], doc: StudioDocument, ctx: Gate
     });
     if (working) current = working;
   });
-  return { ok: issues.length === 0, issues };
+  return { ok: issues.every((i) => i.severity === 'warning'), issues };
 }

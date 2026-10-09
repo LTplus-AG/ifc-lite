@@ -31,6 +31,7 @@ const int = (rng: Rng, n: number): number => Math.floor(rng() * n);
 
 const VERSIONS: IFCVersion[] = ['IFC2X3', 'IFC4', 'IFC4X3_ADD2'];
 const RELATIONS: PartOfRelation[] = ['IfcRelAggregates', 'IfcRelContainedInSpatialStructure', 'IfcRelNests', 'IfcRelAssignsToGroup'];
+const URIS = ['https://identifier.buildingsmart.org/uri/example/demo/1.0/class/EW', 'https://example.org/prop/FireRating'];
 const WORDS = ['IfcWall', 'IfcDoor', 'Pset_WallCommon', 'FireRating', 'EI60', 'Concrete', 'A-01', 'IsExternal'];
 
 export function randomDraft(rng: Rng, depth = 0): ConstraintDraft {
@@ -62,6 +63,7 @@ function randomValue(rng: Rng): ValueInput {
 export function randomFacetDraft(rng: Rng): FacetDraft {
   const v = () => randomValue(rng);
   const maybe = () => (rng() < 0.5 ? v() : undefined);
+  const uri = () => (rng() < 0.3 ? pick(rng, URIS) : undefined);
   const strip = <T extends object>(o: T): T =>
     Object.fromEntries(Object.entries(o).filter(([, x]) => x !== undefined)) as T;
   switch (int(rng, 6)) {
@@ -70,11 +72,11 @@ export function randomFacetDraft(rng: Rng): FacetDraft {
     case 1:
       return strip({ type: 'attribute', name: v(), value: maybe() });
     case 2:
-      return strip({ type: 'property', propertySet: v(), baseName: v(), dataType: maybe(), value: maybe() });
+      return strip({ type: 'property', propertySet: v(), baseName: v(), dataType: maybe(), value: maybe(), uri: uri() });
     case 3:
-      return strip({ type: 'classification', system: maybe(), value: maybe() });
+      return strip({ type: 'classification', system: maybe(), value: maybe(), uri: uri() });
     case 4:
-      return strip({ type: 'material', value: maybe() });
+      return strip({ type: 'material', value: maybe(), uri: uri() });
     default:
       return rng() < 0.8
         ? { type: 'partOf', relation: pick(rng, RELATIONS), entity: strip({ name: v(), predefinedType: maybe() }) }
@@ -111,7 +113,7 @@ export function randomOp(rng: Rng, doc: StudioDocument, newId: () => string): St
   const all = facets(doc);
   const spec = specs.length ? pick(rng, specs) : undefined;
   const f = all.length ? pick(rng, all) : undefined;
-  switch (int(rng, 34)) {
+  switch (int(rng, 36)) {
     case 0:
       return { kind: 'doc.setInfo', opId, payload: { field: pick(rng, ['title', 'author', 'purpose'] as InfoField[]), value: pick(rng, WORDS) } };
     case 21:
@@ -227,6 +229,18 @@ export function randomOp(rng: Rng, doc: StudioDocument, newId: () => string): St
     case 33: {
       const declared = doc.meta.custom.userDefinedTypes;
       return declared.length ? { kind: 'meta.custom.removeUserDefinedType', opId, payload: { ...pick(rng, declared) } } : undefined;
+    }
+    case 34: {
+      const t = f?.facet.type;
+      if (f?.section !== 'requirements' || (t !== 'property' && t !== 'classification' && t !== 'material')) return undefined;
+      return { kind: 'facet.setUri', opId, payload: { facetId: f.facetId, uri: rng() < 0.3 ? null : pick(rng, URIS) } };
+    }
+    case 35: {
+      if (!spec && rng() < 0.5) return undefined;
+      const cls = { uri: URIS[0], code: pick(rng, ['EW', 'IW']), name: 'Wall', dictionaryUri: 'https://identifier.buildingsmart.org/uri/example/demo/1.0', dictionaryName: 'Demo', relatedIfcEntities: [{ entity: pick(rng, ['IfcWall', 'IfcDoor']) }] };
+      const target = spec && rng() < 0.5 ? { specId: spec.id } : { newSpec: { specId: newId(), name: 'Bsdd', ifcVersions: [pick(rng, VERSIONS)] } };
+      const section = (): Section => (rng() < 0.5 ? 'applicability' : 'requirements');
+      return { kind: 'bulk.fromBsddClass', opId, payload: { classes: [cls], target, classification: { section: section() }, ...(rng() < 0.5 ? { entity: { section: 'applicability' as const } } : {}) } };
     }
     case 20:
       return { kind: 'meta.custom.declarePset', opId, payload: { decl: { name: pick(rng, ['Acme_A', 'Acme_B', 'Acme_C']), properties: rng() < 0.5 ? [{ name: 'Code' }] : undefined } } };

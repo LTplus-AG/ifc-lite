@@ -59,6 +59,11 @@ export {
   type RequirementSnapshot,
   type OpTemplate,
   type TemplateOp,
+  type BsddClassSnapshot,
+  type BsddEntityRef,
+  type BsddNewSpec,
+  type BsddPropertySelection,
+  type BsddPropertySnapshot,
 } from './ops/types.js';
 export { OP_KINDS, validateOp, getOpJsonSchema, type OpValidation } from './ops/schema.js';
 export type { SchemaError } from './ops/json-schema-lite.js';
@@ -144,3 +149,100 @@ export type {
   SpecView,
   SuppressedDiagnostic,
 } from './lint/types.js';
+
+// bSDD: source port, HTTP client, picker view model (IDS-069)
+export {
+  BsddHttpError,
+  BsddUnavailableError,
+  type BsddAllowedValue,
+  type BsddClass,
+  type BsddClassOptions,
+  type BsddClassProperty,
+  type BsddClassRef,
+  type BsddClassSummary,
+  type BsddDictionary,
+  type BsddSearchPage,
+  type BsddSearchQuery,
+  type BsddSource,
+  type BsddStatus,
+  type BsddUriRecord,
+} from './bsdd/types.js';
+export { createHttpBsddSource, BSDD_API_BASE, type HttpBsddSourceOptions } from './bsdd/http-source.js';
+export {
+  cardFromClass,
+  cardFromSummary,
+  createBsddSearch,
+  initialPickerFilters,
+  type BsddClassCard,
+  type BsddPickerFilters,
+  type BsddPropertyPreview,
+  type BsddSearch,
+  type BsddSearchOptions,
+  type BsddSearchPhase,
+  type BsddSearchState,
+  type BsddSearchTimers,
+} from './bsdd/picker.js';
+
+// bSDD class → classification / entity facets (IDS-070)
+export {
+  bsddInsertOp,
+  entityChoices,
+  snapshotBsddClass,
+  splitRelatedEntity,
+  type BsddInsertMode,
+  type BsddInsertRequest,
+} from './bsdd/insert.js';
+
+// bSDD property → requirement mapping table (IDS-071)
+export {
+  BSDD_DATA_TYPES,
+  BsddMappingError,
+  mapBsddDataType,
+  mapBsddProperty,
+  type BsddDataTypeRule,
+  type BsddMappingNote,
+  type BsddMappingNoteCode,
+  type BsddPropertyMapping,
+} from './bsdd/mapping.js';
+
+// Dictionary → IDS generator (IDS-072)
+export {
+  buildClassTree,
+  effectiveProperties,
+  loadClassesWithAncestors,
+  type BsddClassTreeNode,
+} from './bsdd/dictionary.js';
+export {
+  planDictionaryIds,
+  previewDictionaryIds,
+  type DictionaryIdsInput,
+  type DictionaryIdsOptions,
+  type DictionaryIdsPlan,
+  type DictionaryIdsPreview,
+  type PlannedSpec,
+} from './bsdd/generator.js';
+
+// bSDD URI health (IDS-073); its lint rules are in LINT_RULES (IDSL-BSDD-001…003), the gate rule is GATE-BSDD-001
+export {
+  checkUriHealth,
+  collectDocUris,
+  createBsddUriIndex,
+  URI_HEALTH_TTL_MS,
+  type BsddUriIndex,
+  type DocUri,
+  type UriHealthOptions,
+  type UriHealthReport,
+} from './bsdd/uri-health.js';
+
+// bSDD offline cache (IDS-074)
+export {
+  createCachedBsddSource,
+  createMemoryBsddStore,
+  loadUriIndex,
+  type BsddCacheEntry,
+  type BsddCacheKind,
+  type BsddCacheStore,
+  type CachedBsddSource,
+  type CachedBsddSourceOptions,
+} from './bsdd/cache.js';
+export { createIndexedDbBsddStore, type IndexedDbBsddStoreOptions } from './bsdd/idb-store.js';

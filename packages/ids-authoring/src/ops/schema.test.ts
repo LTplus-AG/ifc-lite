@@ -40,6 +40,7 @@ const EXAMPLES: Record<OpKind, StudioOp['payload']> = {
   'facet.replace': { facetId: F, facet: { type: 'material', value: { kind: 'pattern', pattern: 'Concrete.*' } } },
   'facet.setField': { facetId: F, field: 'property.value', value: { kind: 'range', min: 30, unit: 'min' } },
   'facet.setRelation': { facetId: F, relation: 'IfcRelAggregates' },
+  'facet.setUri': { facetId: F, uri: 'https://identifier.buildingsmart.org/uri/example/demo/1.0/class/EW' },
   'facet.restore': {
     specId: S,
     section: 'requirements',
@@ -67,6 +68,21 @@ const EXAMPLES: Record<OpKind, StudioOp['payload']> = {
       ops: [{ kind: 'spec.add', payload: { specId: '{{id:s}}', name: '{{entity}}', ifcVersions: ['IFC4'] } }],
     },
     params: { entity: 'IfcDoor' },
+  },
+  'bulk.fromBsddClass': {
+    classes: [
+      {
+        uri: 'https://identifier.example.org/uri/ifc-lite-test/demo/1.0/class/WAL',
+        code: 'WAL',
+        name: 'Wall',
+        dictionaryUri: 'https://identifier.example.org/uri/ifc-lite-test/demo/1.0',
+        dictionaryName: 'Demo Elements',
+        relatedIfcEntities: [{ entity: 'IfcWall', predefinedType: 'SOLIDWALL' }],
+      },
+    ],
+    target: { newSpec: { specId: S, name: 'Walls', ifcVersions: ['IFC4'] } },
+    classification: { section: 'requirements', uri: true },
+    entity: { section: 'applicability' },
   },
 };
 

@@ -154,6 +154,8 @@ function dataTypeAttr(facet: Extract<IDSFacet, { type: 'property' }>): string | 
 }
 
 function writeFacet(xml: XmlLines, facet: IDSFacet, cardinality: string | undefined, instructions?: string): void {
+  // IDS 1.0 allows @uri on property, classification and material facets in requirements only.
+  const uri = cardinality !== undefined && 'uri' in facet ? facet.uri : undefined;
   switch (facet.type) {
     case 'entity':
       writeEntity(xml, facet, { instructions });
@@ -165,20 +167,20 @@ function writeFacet(xml: XmlLines, facet: IDSFacet, cardinality: string | undefi
       xml.close('attribute');
       return;
     case 'property':
-      xml.open('property', { dataType: dataTypeAttr(facet), cardinality, instructions });
+      xml.open('property', { dataType: dataTypeAttr(facet), uri, cardinality, instructions });
       writeConstraint(xml, 'propertySet', facet.propertySet);
       writeConstraint(xml, 'baseName', facet.baseName);
       if (facet.value) writeConstraint(xml, 'value', facet.value);
       xml.close('property');
       return;
     case 'classification':
-      xml.open('classification', { cardinality, instructions });
+      xml.open('classification', { uri, cardinality, instructions });
       if (facet.value) writeConstraint(xml, 'value', facet.value);
       if (facet.system) writeConstraint(xml, 'system', facet.system);
       xml.close('classification');
       return;
     case 'material':
-      xml.open('material', { cardinality, instructions });
+      xml.open('material', { uri, cardinality, instructions });
       if (facet.value) writeConstraint(xml, 'value', facet.value);
       xml.close('material');
       return;

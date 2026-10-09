@@ -97,6 +97,8 @@ export function applyPrimitive(doc: StudioDocument, op: PrimitiveOp): StepResult
       return applySetField(doc, op, op.payload.facetId, op.payload.field, op.payload.value, op.payload.constraintId);
     case 'facet.setRelation':
       return applyFacetPatch(doc, op, op.payload.facetId, { relation: op.payload.relation, rawRelation: null });
+    case 'facet.setUri':
+      return applyFacetPatch(doc, op, op.payload.facetId, { uri: op.payload.uri });
     case 'facet.restore':
       return applyFacetRestore(doc, op);
     case 'facet.patch':

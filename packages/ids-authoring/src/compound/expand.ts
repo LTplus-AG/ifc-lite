@@ -22,6 +22,7 @@ import type {
   PrimitiveOp,
 } from '../ops/types.js';
 import { OpApplyError } from '../reducer/edit.js';
+import { expandFromBsddClass } from './from-bsdd.js';
 import { deriveId, type Uuid } from '../uuid.js';
 
 interface FacetVisit {
@@ -146,5 +147,7 @@ export function expandCompound(doc: StudioDocument, op: CompoundOp): PrimitiveOp
       return expandRetargetEntity(doc, op);
     case 'bulk.applyTemplate':
       return expandApplyTemplate(op);
+    case 'bulk.fromBsddClass':
+      return expandFromBsddClass(doc, op);
   }
 }

@@ -64,3 +64,9 @@ export function getChildText(parent: Element, localName: string): string | undef
   const child = getChildElement(parent, localName);
   return child?.textContent?.trim() || undefined;
 }
+
+/** A facet's `@uri` attribute as an object to spread (empty when absent or blank). */
+export function uriOf(el: Element): { uri?: string } {
+  const uri = el.getAttribute('uri')?.trim();
+  return uri ? { uri } : {};
+}

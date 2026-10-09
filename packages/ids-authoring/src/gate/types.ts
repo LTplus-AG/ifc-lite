@@ -37,6 +37,7 @@ export type GateCode =
   | 'GATE-STR-006'
   | 'GATE-STR-007'
   | 'GATE-STR-008'
+  | 'GATE-STR-009'
   // Value well-formedness
   | 'GATE-VAL-001'
   | 'GATE-VAL-002'
@@ -45,7 +46,10 @@ export type GateCode =
   | 'GATE-VAL-005'
   | 'GATE-VAL-006'
   | 'GATE-VAL-007'
-  | 'GATE-VAL-008';
+  | 'GATE-VAL-008'
+  | 'GATE-VAL-009'
+  // bSDD references (resolved through the bSDD cache)
+  | 'GATE-BSDD-001';
 
 /** A ranked "did you mean" suggestion. */
 export interface GateCandidate {
@@ -73,10 +77,15 @@ export interface GateIssue {
   value?: string;
   /** IFC versions of the spec in which the literal does not resolve. */
   versions?: IFCVersion[];
+  /**
+   * `warning`: reported but not blocking (e.g. a deprecated bSDD URI).
+   * Absent: the issue blocks the batch.
+   */
+  severity?: 'warning';
 }
 
 export interface GateResult {
-  /** True when every op passed and the batch may be applied. */
+  /** True when no blocking issue was found and the batch may be applied (warnings may remain). */
   ok: boolean;
   issues: GateIssue[];
 }

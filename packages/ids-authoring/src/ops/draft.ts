@@ -208,6 +208,10 @@ function optional<K extends string>(
   return c ? ({ [key]: c } as Record<K, IDSConstraint>) : {};
 }
 
+function uriOf(uri: string | undefined): { uri?: string } {
+  return uri ? { uri } : {};
+}
+
 /** Build the IDS facet a draft describes. Throws `DraftError`. */
 export function facetFromDraft(draft: FacetDraft): IDSFacet {
   switch (draft.type) {
@@ -230,15 +234,17 @@ export function facetFromDraft(draft: FacetDraft): IDSFacet {
         baseName: required(draft.baseName, 'property.baseName'),
         ...optional('dataType', draft.dataType, 'property.dataType'),
         ...optional('value', draft.value, 'property.value'),
+        ...uriOf(draft.uri),
       };
     case 'classification':
       return {
         type: 'classification',
         ...optional('system', draft.system, 'classification.system'),
         ...optional('value', draft.value, 'classification.value'),
+        ...uriOf(draft.uri),
       };
     case 'material':
-      return { type: 'material', ...optional('value', draft.value, 'material.value') };
+      return { type: 'material', ...optional('value', draft.value, 'material.value'), ...uriOf(draft.uri) };
     case 'partOf': {
       if (!draft.entity) return { type: 'partOf', relation: draft.relation };
       return {

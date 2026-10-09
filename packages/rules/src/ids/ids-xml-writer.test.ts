@@ -110,6 +110,27 @@ describe('writeIdsXml round-trips the buildingSMART IDS corpus (#6915)', () => {
       .toThrow(/length or digit bounds are not supported/);
   });
 
+  // IDS Studio P-06: a bSDD reference survives the round trip; IDS 1.0 has no @uri in applicability.
+  it('writes @uri on property, classification and material requirements only, and the audit accepts it', async () => {
+    const cls = 'https://identifier.buildingsmart.org/uri/example/demo/1.0/class/EW';
+    const prop = 'https://identifier.buildingsmart.org/uri/example/demo/1.0/prop/LoadBearing';
+    const doc: IDSDocument = { info: { title: 'uri' }, specifications: [{
+      id: 's', name: 'Walls', ifcVersions: ['IFC4'], minOccurs: 0, maxOccurs: 'unbounded',
+      applicability: { facets: [{ type: 'classification', system: { type: 'simpleValue', value: 'Demo' }, uri: cls }] },
+      requirements: [
+        { id: 'a', optionality: 'required', facet: { type: 'classification', system: { type: 'simpleValue', value: 'Demo' }, value: { type: 'simpleValue', value: 'EW' }, uri: cls } },
+        { id: 'b', optionality: 'required', facet: { type: 'property', propertySet: { type: 'simpleValue', value: 'Demo_Wall' }, baseName: { type: 'simpleValue', value: 'LoadBearing' }, dataType: { type: 'simpleValue', value: 'IFCBOOLEAN' }, uri: prop } },
+        { id: 'c', optionality: 'optional', facet: { type: 'material', value: { type: 'simpleValue', value: 'Concrete' }, uri: 'https://example.org/material/concrete' } },
+      ],
+    }] };
+    const xml = writeIdsXml(doc);
+    const reread = parseIDS(xml).specifications[0];
+    expect(reread.requirements.map((r) => r.facet)).toEqual(doc.specifications[0].requirements.map((r) => r.facet));
+    expect(reread.applicability.facets[0]).toEqual({ type: 'classification', system: { type: 'simpleValue', value: 'Demo' } });
+    const audit = await auditIDSDocument(xml);
+    expect(audit.issues.filter((issue) => issue.severity === 'error')).toEqual([]);
+  });
+
   // #6915 review: attribute-value normalisation turns raw line breaks and tabs into spaces, and
   // XML 1.0 cannot carry other control characters at all.
   it('keeps line breaks and tabs in attributes, and refuses control characters by field', () => {

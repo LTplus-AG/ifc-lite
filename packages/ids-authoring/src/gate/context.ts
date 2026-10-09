@@ -23,6 +23,7 @@ import {
   type IfcSchemaVersion,
 } from '@ifc-lite/data';
 import type { IFCVersion } from '@ifc-lite/ids';
+import type { BsddUriIndex } from '../bsdd/uri-health.js';
 import type { CustomPsetDecl } from '../document/types.js';
 
 export interface VersionTables {
@@ -52,6 +53,8 @@ export interface GateContext {
   readonly tables: Readonly<Record<IfcSchemaVersion, VersionTables>>;
   /** Custom psets declared outside the document (e.g. an organisation library). */
   readonly custom: readonly CustomPsetDecl[];
+  /** Checked bSDD URIs (GATE-BSDD-001). Absent or unchecked: URIs are not judged here, lint reports them later. */
+  readonly bsdd?: BsddUriIndex;
 }
 
 const VERSIONS: readonly IfcSchemaVersion[] = ['IFC2X3', 'IFC4', 'IFC4X3', 'IFC4X3_ADD2'];
@@ -103,8 +106,8 @@ function loadAll(): Promise<Readonly<Record<IfcSchemaVersion, VersionTables>>> {
 }
 
 /** Load the schema tables (once per process) and build a gate context. */
-export async function createGateContext(options: { custom?: readonly CustomPsetDecl[] } = {}): Promise<GateContext> {
-  return { tables: await loadAll(), custom: options.custom ?? [] };
+export async function createGateContext(options: { custom?: readonly CustomPsetDecl[]; bsdd?: BsddUriIndex } = {}): Promise<GateContext> {
+  return { tables: await loadAll(), custom: options.custom ?? [], ...(options.bsdd ? { bsdd: options.bsdd } : {}) };
 }
 
 export function tablesFor(ctx: GateContext, version: IFCVersion): VersionTables {

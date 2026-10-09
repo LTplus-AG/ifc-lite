@@ -280,7 +280,7 @@ export function createLensDataProvider(
       const resolved = resolve(globalId);
       if (!resolved) return [];
       const store = resolved.entry.ifcDataStore;
-      return extractClassificationsOnDemand(store, resolved.expressId);
+      return extractClassificationsOnDemand(store, resolved.expressId, resolved.entry.mutationView);
     },
 
     getQuantitySets(globalId: number): ReadonlyArray<{

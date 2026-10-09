@@ -19,6 +19,7 @@ import type { IfcAttributeInfo, IfcSchemaVersion } from '@ifc-lite/data';
 import type { IDSFacet, IDSRequirement, IDSSpecification, IFCVersion } from '@ifc-lite/ids';
 import type { FacetFieldName } from '../document/fields.js';
 import type { Section, SpecNodes, StudioDocument, Suppression } from '../document/types.js';
+import type { BsddUriIndex } from '../bsdd/uri-health.js';
 import type { GateContext } from '../gate/context.js';
 import type { StudioOp } from '../ops/types.js';
 import type { Uuid } from '../uuid.js';
@@ -39,7 +40,8 @@ export type LintArea =
   | 'SPEC'
   | 'DOC'
   | 'VER'
-  | 'PART';
+  | 'PART'
+  | 'BSDD';
 
 export interface QuickFix {
   /** Short imperative label, e.g. `Remove the anchors`. */
@@ -120,6 +122,8 @@ export interface LintContext {
   readonly gate: GateContext;
   /** Attribute metadata per IFC version, keyed by lower-case attribute name. */
   readonly attributes: Readonly<Record<IfcSchemaVersion, ReadonlyMap<string, IfcAttributeInfo>>>;
+  /** Checked bSDD URIs (IDSL-BSDD-*). Without it the bSDD rules find nothing. */
+  readonly bsdd?: BsddUriIndex;
 }
 
 export interface RuleInput {

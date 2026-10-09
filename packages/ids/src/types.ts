@@ -158,6 +158,12 @@ export interface IDSPropertyFacet {
   dataType?: IDSConstraint;
   /** Optional value constraint */
   value?: IDSConstraint;
+  /**
+   * `@uri` of the facet (IDS 1.0 allows it on property, classification and
+   * material facets inside requirements): the identifier of the property
+   * definition, e.g. a bSDD property URI.
+   */
+  uri?: string;
 }
 
 /** Classification facet - match by classification reference */
@@ -167,6 +173,8 @@ export interface IDSClassificationFacet {
   system?: IDSConstraint;
   /** Optional classification value/code constraint */
   value?: IDSConstraint;
+  /** `@uri` of the facet (requirements only): e.g. the bSDD class URI. */
+  uri?: string;
 }
 
 /** Material facet - match by material assignment */
@@ -174,6 +182,8 @@ export interface IDSMaterialFacet {
   type: 'material';
   /** Optional material value/name constraint */
   value?: IDSConstraint;
+  /** `@uri` of the facet (requirements only): e.g. a bSDD material URI. */
+  uri?: string;
 }
 
 /** PartOf facet - match by spatial/compositional relationship */

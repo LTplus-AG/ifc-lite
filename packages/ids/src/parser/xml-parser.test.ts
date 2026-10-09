@@ -763,3 +763,34 @@ ${facets}
     expect(matchConstraint(bounds, 61)).toBe(true);
   });
 });
+
+describe('parseIDS: the facet @uri attribute (bSDD references)', () => {
+  const xml = `<?xml version="1.0" encoding="utf-8"?>
+<ids xmlns="http://standards.buildingsmart.org/IDS" xmlns:xs="http://www.w3.org/2001/XMLSchema">
+  <info><title>uri</title></info>
+  <specifications>
+    <specification name="s" ifcVersion="IFC4">
+      <applicability><entity><name><simpleValue>IFCWALL</simpleValue></name></entity></applicability>
+      <requirements>
+        <property dataType="IFCLABEL" uri="https://identifier.buildingsmart.org/uri/example/demo/1.0/prop/FireRating" cardinality="required">
+          <propertySet><simpleValue>Pset_WallCommon</simpleValue></propertySet>
+          <baseName><simpleValue>FireRating</simpleValue></baseName>
+        </property>
+        <classification uri=" https://identifier.buildingsmart.org/uri/example/demo/1.0/class/EW " cardinality="required">
+          <value><simpleValue>EW</simpleValue></value>
+          <system><simpleValue>Demo</simpleValue></system>
+        </classification>
+        <material uri="" cardinality="optional"><value><simpleValue>Concrete</simpleValue></value></material>
+      </requirements>
+    </specification>
+  </specifications>
+</ids>`;
+
+  it('keeps a trimmed uri on property and classification facets and drops a blank one', () => {
+    const [property, classification, material] = parseIDS(xml).specifications[0].requirements.map((r) => r.facet);
+    expect(property).toMatchObject({ type: 'property', uri: 'https://identifier.buildingsmart.org/uri/example/demo/1.0/prop/FireRating' });
+    expect(classification).toMatchObject({ type: 'classification', uri: 'https://identifier.buildingsmart.org/uri/example/demo/1.0/class/EW' });
+    expect(material.type).toBe('material');
+    expect('uri' in material).toBe(false);
+  });
+});

@@ -120,8 +120,13 @@ export function placedAxes(plan: Extract<GridPlan, { ok: true }>): PlacedAxis[] 
 
 /** The axes as thin strips on the workplane: one ghost mesh however many axes there are. */
 export function gridGhost(plane: Workplane, plan: Extract<GridPlan, { ok: true }>, id: number): MeshData[] {
-  const strips = placedAxes(plan)
-    .map((axis) => prismGhostMesh(plane, segmentOutline(axis.a, axis.b, AXIS_STRIP_WIDTH), 0.005, AXIS_STRIP_HEIGHT, id))
+  return gridAxesGhost(plane, placedAxes(plan), 0, id);
+}
+
+/** Shared native axis-strip constructor; callers provide canonical placed axes. */
+export function gridAxesGhost(plane: Workplane, axes: readonly Pick<PlacedAxis, 'a' | 'b'>[], elevation: number, id: number): MeshData[] {
+  const strips = axes
+    .map((axis) => prismGhostMesh(plane, segmentOutline(axis.a, axis.b, AXIS_STRIP_WIDTH), elevation + 0.005, elevation + AXIS_STRIP_HEIGHT, id))
     .filter((m): m is MeshData => m !== null);
   const merged = mergeGhostMeshes(strips, id, GRID_COLOR);
   return merged ? [merged] : [];

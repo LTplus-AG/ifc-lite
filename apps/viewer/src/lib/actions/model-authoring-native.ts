@@ -22,6 +22,7 @@ import { StoreEditor } from '@ifc-lite/mutations';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { alignElementsInStore, copyBatchInStore, addHostedElementInStore, addOrdinaryElementInStore, resolveSpatialAnchor, type OrdinaryInStoreElement } from '@ifc-lite/create';
 import { createModellingStoreBackend, resolveLiveOwnerHistoryId } from '@ifc-lite/sdk';
+import { writeGridCreation } from './model-authoring-grid-native';
 import { ensureStoreyPlacement } from '@/store/slices/storeyPlacement';
 import type { HostedFillSpec } from '@/store/slices/mutation-hosted-fill';
 import { detachFromType, type ModellingMethods } from '@/store/slices/mutation-modelling-records';
@@ -47,6 +48,7 @@ export interface ResolvedOp {
   /** The element a type or material is assigned to. */
   subject?: ElementId;
   storey?: number;
+  grid?: ElementId;
   host?: ElementId;
   walls?: [ElementId, ElementId];
   /** Existing type / material to relate, or null to create the one the operation names. */
@@ -220,6 +222,11 @@ export function draftAuthoringOperation(batch: ModelAuthoringBatch, dataStore: I
       const outcome = writeElementProfile({ modelId, dataStore, view: draft.getMutationView(), editor: draft }, resolved.target!, profileInMetres(op.Profile, batch.units),
         (updates) => { for (const update of updates) draft.setPositionalAttribute(update.entityId, update.index, update.value); });
       if (!outcome.ok) throw new Error(outcome.reason);
+      return;
+    }
+    case 'grid.create': case 'column.createOnGrid': {
+      const id = writeGridCreation(dataStore, draft, batch, op, resolved.storey!, resolved.grid, refs);
+      refs.set(op.ref, id);
       return;
     }
     case 'element.create': {

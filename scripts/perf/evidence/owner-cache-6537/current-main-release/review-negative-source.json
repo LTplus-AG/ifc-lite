@@ -1,0 +1,54 @@
+{
+  "integrationHead": "5a4e5d7054",
+  "purpose": "Previous per-field count fallback and still-unregistered actual shallow-copy seams; intentionally expected negative behavior controls.",
+  "sources": [
+    {
+      "path": "apps/viewer/src/lib/released-mesh-provenance.ts",
+      "source": "review-negative-released-mesh-provenance.ts.gz",
+      "sha256": "50e3d143a1b624b34c79ce28b566087628ba041e12310bf1ca5f97a6a3baaa0c"
+    },
+    {
+      "path": "apps/viewer/src/lib/geometry-cpu-release.ts",
+      "source": "review-negative-geometry-cpu-release.ts.gz",
+      "sha256": "65429265a81860b449c79ef2cf0c718ca4f3351d85d8d84aa685db85db2b01ca"
+    },
+    {
+      "path": "apps/viewer/src/lib/geometry-cpu-aliases.ts",
+      "source": "review-negative-geometry-cpu-aliases.ts.gz",
+      "sha256": "74c275c4857cec79f0003e75057c264571f33ee40e260de2c278e85228f1c777"
+    },
+    {
+      "path": "apps/viewer/src/store/slices/dataSlice.ts",
+      "source": "review-negative-dataSlice.ts.gz",
+      "sha256": "4e372ec81e1b0b247156def6e14f344c5434588693d98995e5a6a745e1d555dc"
+    },
+    {
+      "path": "apps/viewer/src/components/viewer/useAppearanceSourceGeometry.ts",
+      "source": "review-negative-useAppearanceSourceGeometry.ts.gz",
+      "sha256": "e2e54ab302ba88ca50877ced1e9724988cc77b3bb57cef7bdb5c022c777dc566"
+    },
+    {
+      "path": "apps/viewer/src/lib/model-placement/placed-geometry.ts",
+      "source": "review-negative-placed-geometry.ts.gz",
+      "sha256": "eb35a68804b7176635186f75f45bb5daea0af4b12b70233a7579f12a482fa126"
+    },
+    {
+      "path": "apps/viewer/src/components/viewer/useFederatedGeometry.streaming.test.tsx",
+      "source": "review-negative-useFederatedGeometry.streaming.test.tsx.gz",
+      "sha256": "5e6fe541b842e7a3b1fc332e790404f5e44e9def1efd3f8784804203d73e0f08"
+    }
+  ],
+  "command": "TEST_PATTERN=useFederatedGeometry.streaming NODE_OPTIONS=--max-old-space-size=6144 pnpm test --filter=@ifc-lite/viewer --env-mode=loose",
+  "log": "6584-review-negative-controls.log.gz",
+  "logSha256Uncompressed": "d962b6d81d9748277c8a90be29a2b3e6f537eab03a37f41e4ba022ca60570c14",
+  "exitCode": 1,
+  "tests": 18,
+  "pass": 14,
+  "fail": 4,
+  "failures": [
+    "replacement empty indices resurrected triangles1 instead of0",
+    "colour reset copy retained9 positions instead of0",
+    "appearance-source wrapper retained9 positions instead of0",
+    "placed shallow copy retained9 positions instead of0"
+  ]
+}

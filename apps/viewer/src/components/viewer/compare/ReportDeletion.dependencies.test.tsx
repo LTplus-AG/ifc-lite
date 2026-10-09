@@ -304,3 +304,60 @@ test('#7245 closing the mounted native preview revokes an own-receipt CAS retry'
     assert.ok(useViewerStore.getState().savedComparisons.some(entry => entry.id === report.id), 'the original readable source is recovered');
   } finally { unsubscribe(); }
 });
+
+test('#7245 a renamed actual own-receipt replacement revokes staged native deletion', async () => {
+  const report = await realComparison(); await dependents('compare', report.id);
+  const ui = previewFor(report); await settle();
+  const row = (await readContentRows('comparison')).find(entry => entry.id === report.id)!;
+  const replacementName = 'Actual own imported renamed replacement';
+  let ownCommit: Promise<void> | undefined;
+  const unsubscribe = useViewerStore.subscribe(state => {
+    if (ownCommit || state.savedComparisons.some(entry => entry.id === report.id)) return;
+    // The first approved guard has actually staged the native tombstone.
+    ownCommit = writeContentBatch([{ kind: 'comparison', id: report.id, payload: { ...report, name: replacementName }, expected: row.revision }]).then(async result => {
+      assert.equal(result.ok, true);
+      if (!result.ok) throw new Error('Actual own comparison commit refused');
+      assert.equal(result.rows[0].revision, row.revision + 1);
+      await useViewerStore.getState().refreshSavedComparisons(result.rows);
+    });
+  });
+  try {
+    click(button(ui, 'Delete report')!);
+    await waitFor(() => ownCommit !== undefined, 'actual native deletion stages before the competing own commit');
+    await ownCommit;
+    await waitFor(() => ['saved', 'conflict'].includes(useViewerStore.getState().savedComparisonsStorage.items[report.id]), 'native CAS operation reaches its result');
+    const current = (await readContentRows('comparison')).find(entry => entry.id === report.id);
+    assert.equal(current?.deleted, false, 'a renamed actual own-receipt replacement cannot inherit old deletion approval');
+    assert.equal((current?.payload as { name: string }).name, replacementName, 'the actual durable replacement remains intact');
+    assert.equal(useViewerStore.getState().savedComparisons.find(entry => entry.id === report.id)?.name, replacementName, 'revocation restores the actual current replacement instead of the stale captured report');
+  } finally { unsubscribe(); }
+});
+
+test('#7245 own imported replacement cannot be deleted by a dependency-only approval callback', async () => {
+  const report = await realComparison(); await dependents('compare', report.id);
+  const row = (await readContentRows('comparison')).find(entry => entry.id === report.id)!;
+  const replacementName = 'Actual replacement with unchanged dependencies';
+  let ownCommit: Promise<void> | undefined;
+  let checks = 0;
+  const guard = () => {
+    checks++;
+    if (!ownCommit) ownCommit = writeContentBatch([{ kind: 'comparison', id: report.id,
+      payload: { ...report, name: replacementName }, expected: row.revision }]).then(async result => {
+      assert.equal(result.ok, true);
+      if (!result.ok) throw new Error('Actual own comparison replacement refused');
+      assert.equal(result.rows[0].revision, row.revision + 1);
+      await useViewerStore.getState().refreshSavedComparisons(result.rows);
+    });
+    return true; // Unchanged dependencies alone cannot approve a different source.
+  };
+  assert.equal(await useViewerStore.getState().deleteSavedComparison(report.id, guard), false);
+  await ownCommit;
+  assert.ok(checks >= 2, 'the authority callback is still consulted on retry');
+  const current = (await readContentRows('comparison')).find(entry => entry.id === report.id);
+  assert.equal(current?.deleted, false);
+  assert.equal((current?.payload as { name: string }).name, replacementName);
+  assert.equal(useViewerStore.getState().savedComparisons.find(entry => entry.id === report.id)?.name, replacementName);
+  const chart = useViewerStore.getState().dashboards[0].charts[0];
+  const bound = resolveChartSource(chart, { source: 'compare', columns: [], rows: [], fingerprint: 'empty-live-control' }, chartSourceContext(useViewerStore.getState()));
+  assert.ok(aggregate(chart, bound.dataset).total > 0, 'the actual replacement remains readable by its native dependent');
+});

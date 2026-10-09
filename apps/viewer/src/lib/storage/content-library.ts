@@ -29,7 +29,7 @@ export function createContentLibrary<T extends { id: string }>(definition: Conte
   const queues = new Map<string, Promise<boolean>>();
   const generations = new Map<string, number>();
   // Optional native deletion authority stays with refused tombstones for explicit Retry.
-  const deletionGuards = new Map<string, { check: () => boolean; original: T | undefined }>();
+  const deletionGuards = new Map<string, { check: () => boolean; original: T | undefined; replacement?: T }>();
   let editGeneration = 0;
   const emit = () => publish(read(), { ...status, items: copyItemStatus(status.items) });
   const change = (id: string, entry: T | null) => {
@@ -112,8 +112,9 @@ export function createContentLibrary<T extends { id: string }>(definition: Conte
     const generation = (generations.get(id) ?? 0) + 1;
     generations.set(id, generation);
     if (beforeWrite && value === null) {
-      const original = deletionGuards.get(id)?.original ?? read().find(entry => entry.id === id);
-      deletionGuards.set(id, { check: beforeWrite, original });
+      const prior = deletionGuards.get(id);
+      const original = prior?.replacement ?? prior?.original ?? read().find(entry => entry.id === id);
+      deletionGuards.set(id, { check: beforeWrite, original, replacement: prior?.replacement });
       status.items[id] = 'saving'; emit();
     } else {
       deletionGuards.delete(id);
@@ -121,10 +122,13 @@ export function createContentLibrary<T extends { id: string }>(definition: Conte
     }
     const previous = queues.get(id) ?? Promise.resolve(true);
     const deletionAllowed = (): boolean => {
-      if (!beforeWrite || beforeWrite()) return true;
+      const authority = deletionGuards.get(id);
+      // Restore the actual own-import replacement before checking source identity.
+      if (authority?.replacement && generations.get(id) === generation) change(id, authority.replacement);
+      if ((!beforeWrite || beforeWrite()) && !authority?.replacement) return true;
       // A newer native draft owns its own generation; never restore over it.
       if (generations.get(id) === generation) {
-        const original = deletionGuards.get(id)?.original;
+        const original = authority?.replacement ?? authority?.original;
         deletionGuards.delete(id);
         if (dirty.get(id) === null) dirty.delete(id);
         status.items[id] = 'conflict';
@@ -187,6 +191,12 @@ export function createContentLibrary<T extends { id: string }>(definition: Conte
       if (row.kind !== definition.kind || !dirty.has(row.id) || row.revision < (revisions.get(row.id) ?? 0)) continue;
       revisions.set(row.id, row.revision);
       const current = dirty.get(row.id), committedEntry = definition.decode(row.payload);
+      const authority = deletionGuards.get(row.id);
+      if (current === null && authority && !row.deleted && committedEntry
+        && (authority.replacement || !sameReportEvidence(authority.original, committedEntry))) {
+        // #7245: an import can replace a source hidden by a pending tombstone.
+        authority.replacement = committedEntry;
+      }
       if (current && row.stagedPayload !== undefined && committedEntry && definition.mergeCommitted) {
         const merged = definition.mergeCommitted(current, row.stagedPayload, committedEntry);
         dirty.set(row.id, merged); change(row.id, merged);

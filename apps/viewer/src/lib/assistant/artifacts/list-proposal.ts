@@ -32,7 +32,9 @@ const COLUMN_SOURCES = ['attribute', 'property', 'quantity', 'material', 'classi
 const SPATIAL_LEVELS = ['Container', 'Storey', 'Building', 'Site', 'Project'];
 
 /** #7234 concrete wall-measurement preset, owned beside its native parser. */
-export function wallListResponseProfile(area: { set: string; name: string }, rating: { set: string; name: string }): JsonResponseSchema {
+export function wallListResponseProfile(area: { set: string; name: string }, rating: { set: string; name: string }): JsonResponseSchema | null {
+  // Match the native parseColumn text boundary without rewriting authored names.
+  if ([area.set, area.name, rating.set, rating.name].some(value => !text(value) || value.trim() !== value)) return null;
   const column = (id: string, source: 'quantity' | 'property', field: typeof area) => profileObject({
     id: profileLiteral(id), source: profileLiteral(source), psetName: profileLiteral(field.set), propertyName: profileLiteral(field.name),
   });

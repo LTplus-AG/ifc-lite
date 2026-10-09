@@ -21,6 +21,8 @@ import { setAssistantDraft } from './composer-draft';
 import { captureEvidence } from './evidence';
 import { parseArtifactProposal, type ArtifactKind } from './artifacts/proposal-kinds';
 import { previewArtifact } from './artifacts/artifact-preview';
+import { modelSchemaIndex } from './artifacts/model-schema';
+import { canonicalClasses } from './artifacts/artifact-rules';
 
 const pristine = useViewerStore.getState();
 const assistant = useAssistant.getState();
@@ -42,12 +44,12 @@ type Protocol = 'chat' | 'responses' | 'anthropic' | 'hosted';
 const models: Record<Protocol, string> = { chat: 'gpt-6.1-sol', responses: 'gpt-5.3-codex',
   anthropic: 'claude-opus-5-5', hosted: 'openai/gpt-free' };
 
-async function seed(protocol: Protocol, federated: boolean) {
+async function seed(protocol: Protocol, federated: boolean, ratingSet = 'Pset_WallCommon') {
   await seedArtifactModels({ federated });
   const store = useViewerStore.getState().models.get(ARCH)?.ifcDataStore; assert.ok(store);
   // Real live authored value on actual SketchUp wall#291; no fabricated parser.
   const view = new MutablePropertyView(null, ARCH); configureMutationView(view, store);
-  view.setProperty(291, 'Pset_WallCommon', 'FireRating', 'EI60');
+  view.setProperty(291, ratingSet, 'FireRating', 'EI60');
   useViewerStore.setState({ mutationViews: new Map([[ARCH, view]]), mutationVersion: 1, chatActiveModel: models[protocol] });
   updateApiKeys({ openaiKey: 'sk-native-test', anthropicKey: 'sk-ant-native-test' });
   replaceEvidence(captureEvidence('loadReport'));
@@ -152,6 +154,36 @@ for (const control of ['edited', 'typed', 'refreshed', 'unavailable-fields', 'ho
       assert.equal(useAssistant.getState().messages.at(-1)?.receipt?.outputFormat, control === 'hosted' ? 'text' : undefined);
       assert.equal(useAssistant.getState().messages.at(-1)?.content, 'Native evidence remains available for review.');
     }
+  });
+}
+
+for (const length of [81, 255]) {
+  test(`#7234 native wall set name of ${length} characters retains prose when native list syntax cannot represent it`, async () => {
+    const setName = 'Pset_' + 'x'.repeat(length - 5);
+    await seed('chat', false, setName);
+    const index = await modelSchemaIndex(useViewerStore.getState());
+    const wallClasses = new Set(canonicalClasses(['IfcWall']));
+    const authored = [...index.fields.values()].filter(field => field.kind === 'property'
+      && field.name === 'FireRating' && [...(field.byClass ?? [])].some(([name, count]) => wallClasses.has(name) && count > 0));
+    assert.equal(authored.length, 1, 'the real wall has exactly one authored rating candidate');
+    assert.equal(authored[0].set, setName, 'native field discovery retains the exact authored set name');
+    assert.equal(index.partial, false);
+    const invalid = { ...list, list: { ...list.list, columns: [list.list.columns[0],
+      { ...list.list.columns[1], psetName: setName }] } };
+    assert.throws(() => parseArtifactProposal(JSON.stringify(invalid), 'list.proposal'), /psetName.*at most 80/,
+      'the exact authored field must remain subject to the existing native acceptance boundary');
+    const sent: Record<string, unknown>[] = [];
+    globalThis.fetch = async (_url, init) => {
+      sent.push(JSON.parse(String(init?.body)));
+      return new Response(stream('chat', 'The authored wall fields require native review.'));
+    };
+    const ui = render(<AssistantPanel />);
+    const preset = [...ui.querySelectorAll('button')].find(button => button.textContent === 'Build a list of walls with their area and fire rating');
+    assert.ok(preset); click(preset); click(ui.querySelector('button[type="submit"]')!); await settled();
+    assert.equal(sent.length, 1);
+    assert.equal(sent[0].response_format, undefined,
+      'a real native field outside the parser name boundary cannot produce a strict profile');
+    assert.equal(useAssistant.getState().messages.at(-1)?.content, 'The authored wall fields require native review.');
   });
 }
 

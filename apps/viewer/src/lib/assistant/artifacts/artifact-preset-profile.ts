@@ -27,6 +27,8 @@ export async function artifactPresetProfile(preset: ArtifactPreset, state: Viewe
   const areas = onWalls.filter(field => field.kind === 'quantity' && field.name === 'NetSideArea');
   const ratings = onWalls.filter(field => field.kind === 'property' && field.name === 'FireRating');
   if (areas.length !== 1 || ratings.length !== 1) return null;
-  return { schema: wallListResponseProfile(areas[0], ratings[0]),
+  const schema = wallListResponseProfile(areas[0], ratings[0]);
+  if (!schema) return null;
+  return { schema,
     guidance: 'This explicit preset requests one native list.proposal: IfcWall, with area and fire-rating columns from the exact native fields in the supplied profile. Return both distinct columns; optional fields are omitted. Missing per-wall values remain native review gaps, never invented.' };
 }

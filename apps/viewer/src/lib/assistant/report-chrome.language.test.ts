@@ -34,7 +34,7 @@ for (const sample of [
     assert.match(printed.text, /E1/);
     assert.match(printed.text, /E1 distance: -0\.02 m/);
     const chrome = draft.document.blocks.flatMap(block => block.kind === 'text' && block.aiProvenance
-      && !block.aiProvenance.slot.startsWith('narrative:') && !/^claim:/.test(block.aiProvenance.slot)
+      && !block.aiProvenance.slot.startsWith('narrative:') && !block.aiProvenance.slot.startsWith('claim:')
       ? [block.text] : []).join('\n');
     assert.doesNotMatch(chrome + '\nPDF:\n' + printed.text,
       /Narrative for review|Claims checked against captured evidence|Supported by captured data|Captured evidence appendix|Narrative language:/,

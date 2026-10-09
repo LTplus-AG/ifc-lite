@@ -31,6 +31,66 @@ It produced no declared serial/overlap comparisons and proves neither a picking
 defect nor acceptance. Current GPU comparison, real federation and focused
 physical performance remain unqualified. Keep this PR in draft.
 
+## Source-matched admission refusal, 2026-10-09
+
+Both root viewer builds passed, including the chunk-await postcheck, before
+the new candidate admission. The optimization's original parent
+`e60ed32ee7299839cdce76e4a5c907ab0f1d4266` is the comparison base; the candidate
+runtime is from cleanup commit `b5840a84f7cf402a28fd3f26a873b3ea9b0b0a4e`.
+Full source and runtime manifests are retained. Their Rust trees, lockfiles,
+WASM build scripts and actual WASM bytes match. The ten-input diagnostic helper
+was rebuilt against this candidate's canonical helpers, without constructing a
+second Renderer or adding a load path. Seven HTTP admission reads matched the
+pinned Renderer, main, helper, HTML, provenance, FZK and WASM bytes.
+
+The one allowed T3 navigation timed out after 15,000 ms. Inspection returned
+`about:blank`, with no diagnostic boot or phase in that inspected context.
+The server received asset requests after the timeout; these do not establish a
+successful application boot or model load. No model phase was invoked by the
+agent, and no actual serial/overlap, picked identity/depth/XYZ, loaded geometry
+hash, or GPU adapter certificate was obtained. No retry, point search or
+deadline extension followed. Base picking and the expanded cohorts remain
+unrun. This setup refusal is separate from the retained historical RAF refusal;
+neither proves a picking defect or completes acceptance.
+
+The owned server (PID 56757, start ticks 1789452, port 5431, exec session 33693)
+received SIGTERM after identity verification, exited 0, and had both PID and
+listener absence checked independently. The owned tab was inspected blank.
+Separate explicit cleanup navigation/open calls failed on the preview client,
+so app/device/tap/listener retirement is not inferred. The terminal tool reported
+truncated HTTP stdout; its exact reported excerpt and truncation are retained,
+without claiming a complete request transcript. Shared tabs, servers, the
+campaign integration checkout and historical evidence were preserved.
+
+`qualification-attempt-20261009.json.gz` preserves full build logs, source/runtime
+and model pins, the finite plan, raw browser tool refusals/inspections, and exact
+owned cleanup receipts. Frozen runtimes and full source manifests remain under
+`/home/louistrue/.t3/artifacts/6881-qualification-48637c43-20261009/execution`.
+
+| Contract | Independent qualification | Current-source real-model requirement |
+| --- | --- | --- |
+| CSS offsets, device pixels and HiDPI | Canonical viewport/drawing-buffer helpers reviewed; root manager tests passed | Untimed DPR 2 admission observed; actual picking cohort unrun |
+| Edge texels and resize | Point picker's single floor/clamp and canonical texel-center unprojection reviewed; root controls passed; historical GPU corner/resize evidence retained | Real-model edge/resize controls unrun |
+| Format, mip/sample and alignment | Single-sample depth32float, mip 0; ID byte 0/depth byte 4; 256-byte staging plus 8-byte coordinates/4-byte result reviewed and tested | New actual GPU encode/map validation unqualified |
+| Asynchronous ordering and overlap | Per-call immutable resources and one submission/map reviewed; ten failure controls qualify ownership | Serial 2/held-delivery overlap 2 comparisons unrun |
+| Navigation and stale results | Canonical manager viewport/RTE guards passed root controls; reference-selection cancellation reviewed in source | Current GPU navigation/cancellation unrun; tooltip ordering remains a source hypothesis |
+| Device loss and destruction | Root abort/fault/disposal controls passed; historical real-device evidence retained | New actual loss/teardown unqualified; direct-Picker destruction remains a source hypothesis |
+| Single/federated ownership | Canonical decoding and store-backed model resolver reviewed; no offset calculation added | Current single-model certificate, real federation and second fixture unqualified |
+
+Verdict: **NOT READY; retain draft.** Focused physical browser performance remains
+unavailable and unqualified. Current main integration/merge-conflict qualification,
+required review and CI, unexplained historical XYZ differences and all missing
+real-model controls remain requirements. No hover or load speedup is claimed.
+
+The final API-surface check matches 55 packages, 95 export surfaces and 9,569
+exports. Its initial missing-declaration refusal is retained; a bounded root
+Turbo build supplied the five missing package declarations before rechecking.
+The standard module-size check also passes after the isolated clone's origin
+was set to GitHub main. Git objects were copied into this clone's Linux object
+store, its Windows alternate removed, and connectivity verified. No foreign
+Git metadata changed. The campaign heavy lane was released after all owned
+heavy jobs and the server terminated.
+
 The candidate dispatches one depth-texture `textureLoad` after the unchanged pick
 render and copies the resulting f32 into byte 4 of that pick's ID staging buffer.
 Render, compute and copies share one command submission. Every call owns its

@@ -97,6 +97,14 @@ match the original renderer, and device destruction retires pending picks. The c
 Four complete interleaved cold public-model viewer pairs retain unchanged geometry and hit provenance, reduced mapped bytes, and mixed interaction timings. One pair has unresolved world-coordinate differences without camera/frame receipts; a fifth attempt lost the native browser. Real federated viewer qualification is outstanding. No speedup or shipping verdict is accepted. Lesson: a bounded readback and exact
 GPU sample establish neither complete picking parity nor interaction throughput.
 
+Independent Linux qualification adopted the existing readback cleanup repair;
+inverse fault controls demonstrate the ownership defects and the repaired paths
+release their buffers. Source-matched base/candidate viewer runtimes were built
+and pinned. T3 navigation refused before the declared model phase, with the
+earlier RAF refusal preserved. Current real-model comparisons, federation,
+focused physical performance and main integration remain held; CPU cleanup
+qualification does not replace them.
+
 ## Worker warm-up candidate held (#7036)
 
 The resumed [cold-load captures](evidence/worker-warmup-7036/README.md) show

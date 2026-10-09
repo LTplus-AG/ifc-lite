@@ -208,7 +208,7 @@ test(`#7282 ${route} ${edit} current native identity reaches wire, Apply and ind
   assert.equal(await sendAssistant('Prepare current native trim', 'openai/gpt-free', '/api/chat', grounding ? attachmentsForSend({ selection: grounding, screenshot: null }) : {}), true, useAssistant.getState().error ?? '');
   assert.equal(calls, 1);
   const answer = useAssistant.getState().messages.at(-1)?.content; assert.ok(answer);
-  const preview = previewModelAuthoring(s(), parseModelAuthoringBatch(answer)); assert.equal(preview.rows[0].status, 'ready', preview.rows[0].issue);
+  const preview = previewModelAuthoring(s(), parseModelAuthoringBatch(answer)); assert.equal(preview.rows[0].status, 'ready', preview.rows[0].issue ?? '');
   const committed = commitModelAuthoring(useViewerStore, preview, new Set([0]), '#7282 current identity');
   assert.ok(committed.ok, committed.ok ? '' : committed.detail ?? committed.reason);
   const after = await parseIfc(editedModelBytes(store, view));

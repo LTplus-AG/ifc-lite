@@ -22,6 +22,8 @@ import { storeySpaces, storeyWalls, storeyRooms, clearStoreyRoomsCache } from '@
 import { modelEditTarget } from '@/store/slices/mutation-modelling-records';
 import { RoomCommandReview } from '@/components/viewer/assistant/RoomCommandReview';
 import { prepareRoomReview } from './room-review';
+import { roomAutoAllEvidence } from './room-auto-all-evidence';
+import { nativeLengthUnitAvailable } from './model-authoring-read-target';
 import { roomChainInStore } from '../../../../../packages/create/src/in-store/room-store.js';
 import { useAssistant, replaceEvidence, cancelAssistant } from '@/lib/assistant/conversation';
 import { captureEvidence } from '@/lib/assistant/evidence';
@@ -271,4 +273,17 @@ it('#7324 unavailable storeys never announce an empty AutoAll plan', async t => 
   assert.ok(!ui.textContent?.includes('No IFC rooms or session layout changes are planned.'), 'unavailable coverage is not an empty plan');
   assert.ok(ui.textContent?.includes('Coverage is unavailable'), ui.textContent ?? '');
   assert.deepEqual(view.getEffectiveChanges(), before);
+});
+
+it('#7324 no live native storeys publish unavailable AutoAll evidence rather than an empty usable anchor set', async t => {
+  if (!ensureRoomWasm(t)) return;
+  const { upper, view } = await population();
+  const target = modelEditTarget(useViewerStore.getState(), MODEL)!;
+  target.editor.removeEntity(42); target.editor.removeEntity(upper);
+  assert.equal(nativeLengthUnitAvailable(target), true, 'the original native IFC length unit remains authoritative');
+  const before = structuredClone({ changes: view.getEffectiveChanges(), revision: view.getMutationRevision(), next: view.peekNextExpressId() });
+  const evidence = roomAutoAllEvidence(target);
+  assert.equal(evidence.status, 'unavailable', 'an AutoAll anchor cannot exist without a live native storey');
+  assert.deepEqual(evidence.storeys, []);
+  assert.deepEqual({ changes: view.getEffectiveChanges(), revision: view.getMutationRevision(), next: view.peekNextExpressId() }, before);
 });

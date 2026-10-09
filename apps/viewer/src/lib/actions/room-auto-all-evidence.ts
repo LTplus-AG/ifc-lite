@@ -23,6 +23,7 @@ export function roomAutoAllEvidence(target:ModelEditTarget|null):RoomAutoAllEvid
   if (!target || !nativeLengthUnitAvailable(target)) return unavailable('Current editable IFC source/index/length unit is unavailable');
   if (!target.dataStore.schemaVersion || !['IFC2X3','IFC4','IFC4X3'].includes(target.dataStore.schemaVersion)) return unavailable('Current supported IFC schema is unavailable');
   const ids=effectiveStoreyIds(target.dataStore,target.view).sort((a,b)=>a-b);
+  if (!ids.length) return unavailable('No current native building storey can anchor AutoAll');
   if (ids.length>128) return unavailable('More than 128 current storeys: complete AutoAll publication is unavailable');
   const storeys:RoomAutoAllEvidence['storeys']=[];
   for (const expressId of ids) {

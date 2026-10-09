@@ -29,7 +29,7 @@ export async function prepareAllStoreyRooms(
     const geometry = await provide(model, storeyId);
     currentModel();
     geometries.push(geometry);
-    if (geometry.unavailable) {
+    if (geometry.unavailable !== undefined) {
       rows.push({ storeyId, status:'unavailable', reason:geometry.unavailable, roomCount, candidates:[], created:[] });
       continue;
     }

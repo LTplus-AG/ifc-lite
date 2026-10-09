@@ -465,3 +465,20 @@ it.skipIf(!available)('#7324 AutoAll counts unsupported live spaces independentl
     prepared.dispose();
   } finally { f.backend.disposeRooms(); }
 });
+
+for (const action of ['query', 'autoAll'] as const) it.skipIf(!available)(`#7324 ${action} refuses an explicitly unavailable empty reason without native writes`, async () => {
+  const { store, view, backend } = await setup(async () => ({ walls: [], factory, unavailable: '' }));
+  const graph = () => Array.from(new StepExporter(store, view).export({ schema: 'IFC4', applyMutations: true, timeStamp: '2026-10-03T00:00:00' }).content);
+  const before = structuredClone({ graph: graph(), journal: view.getMutations(), revision: view.getMutationRevision(), next: view.peekNextExpressId() });
+  try {
+    if (action === 'query') await expect(backend.roomCommand('m', 42, { action })).rejects.toThrow(/unavailable/i);
+    else {
+      const prepared = await backend.prepareRoomCommand('m', 42, { action });
+      expect(prepared.result.storeys?.map(row => row.status)).toEqual(['unavailable']);
+      expect(prepared.result.created).toHaveLength(0);
+      expect(() => prepared.commit()).toThrow(/unavailable/i);
+      prepared.dispose();
+    }
+    expect({ graph: graph(), journal: view.getMutations(), revision: view.getMutationRevision(), next: view.peekNextExpressId() }).toEqual(before);
+  } finally { backend.disposeRooms(); }
+});

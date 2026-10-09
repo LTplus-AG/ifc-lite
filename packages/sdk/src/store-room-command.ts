@@ -150,7 +150,7 @@ export function createRoomCommandBackend(resolve: RoomCommandModelResolver, prov
       }
       if (op.action === 'autoAll') return await prepareAllStoreyRooms(model, storeyId, op, provide, host, currentModel);
       const geometry = await provide(model, storeyId);
-      if (geometry.unavailable) throw new Error(geometry.unavailable);
+      if (geometry.unavailable !== undefined) throw new Error(geometry.unavailable || 'Native Room geometry is unavailable');
       currentModel();
       geometry.validate?.();
       const spaces = geometry.spaces ?? existingSpaceFootprintEntriesByStorey(model.store, model.mutationView).get(storeyId) ?? [];

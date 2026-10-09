@@ -27,7 +27,7 @@ export function createSchemaEntityNameSnapshot(registry: SchemaRegistry): Schema
 }
 
 /** Resolve the first own registry key matching the IFC name, case-insensitively.
- * Public registries remain mutable: additions, deletions and key order invalidate
+ * Without a snapshot, additions, deletions and key order invalidate
  * the index; replacing a definition never caches its old metadata.
  */
 export function getCanonicalEntityName(registry: SchemaRegistry, type: string, snapshot?: SchemaEntityNameSnapshot): string | undefined {

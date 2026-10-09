@@ -14,6 +14,7 @@
  * ghost; their row says what changes.
  */
 
+import { authoringCurtainWallGhost } from './model-authoring-curtain-wall-ghost';
 import { gridCreationGhost } from './model-authoring-grid-ghost';
 import { replacementCreation } from './model-authoring-replacement';
 import { alignmentGhosts } from '@/lib/commands/modeling/align-ghosts';
@@ -161,6 +162,7 @@ export function authoringGhosts(state: ViewerState, preview: ModelAuthoringPrevi
     if (row.op.op === 'hosted.edit') { const mesh = authoringHostedEditGhost(state, preview.batch, row, id, preview.rows); if (mesh) meshes.push(mesh); continue; }
     if (row.op.op === 'element.split') { const mesh = authoringSplitMarker(state, preview.batch, row, id); if (mesh) meshes.push(mesh); continue; }
     switch (row.op.op) {
+      case 'curtainWall.create': meshes.push(...authoringCurtainWallGhost(state, preview.batch, row, id)); break;
       case 'grid.create': case 'column.createOnGrid': { const ghosts = gridCreationGhost(state, preview.batch, row, id); row.previewUnavailable = ghosts.length === 0; meshes.push(...ghosts); break; }
       case 'stair.create': case 'railing.create': case 'stair.replace': case 'railing.replace': {const mesh=stairRailingGhost(state,preview.batch,row,id);row.previewUnavailable=!mesh;if(mesh)meshes.push(mesh);break;}
       case 'element.replace': {const creation=replacementCreation(row.op),created={...row,op:creation};const mesh=creation.op==='element.create'?createGhost(state,preview.batch,created,id):stairRailingGhost(state,preview.batch,created,id);row.previewUnavailable=!mesh;row.previewOuterBodyOnly=true;if(mesh)meshes.push(mesh);break;}

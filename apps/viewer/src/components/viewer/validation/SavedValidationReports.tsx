@@ -74,7 +74,7 @@ export function SavedValidationReports() {
             </div>
             {report.snapshot.kind === 'ids-report' && <SavedValidationElements snapshot={report.snapshot} rowId={focus?.rowId ?? null} request={focus} />}
           </div>
-        ) : <p role={libraryRequest ? 'alert' : undefined} className="mt-2 text-muted-foreground">{t(libraryRequest ? 'searchModal.library.open.missing' : 'validationPanel.history.empty')}</p>}
+        ) : storage.phase === 'ready' && <p role={libraryRequest ? 'alert' : undefined} className="mt-2 text-muted-foreground">{t(libraryRequest ? 'searchModal.library.open.missing' : 'validationPanel.history.empty')}</p>}
       </details>
     </>
   );

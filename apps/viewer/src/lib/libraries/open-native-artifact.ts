@@ -24,9 +24,18 @@ export async function openNativeLibraryArtifact(target: LibraryArtifact, host: E
   }
   if (!wanted()) return 'changed';
   const state = useViewerStore.getState();
-  const live = nativeLibraryCatalogue(state, profiles).flatMap(group => group.rows)
+  const groups = nativeLibraryCatalogue(state, profiles);
+  const live = groups.flatMap(group => group.rows)
     .find(row => row.kind === target.kind && row.id === target.id);
-  if (!live) return 'missing';
+  if (!live) {
+    // A refused read cannot establish deletion. The reports family combines
+    // three stores; only this target's native source can establish absence.
+    const phase = target.kind === 'validation-report' ? state.validationReportsStorage.phase
+      : target.kind === 'clash-report' ? state.savedClashReportsStorage.phase
+      : target.kind === 'comparison-report' ? state.savedComparisonsStorage.phase
+      : groups.find(group => group.family === target.family)?.phase;
+    return phase === 'loading' || phase === 'unavailable' ? 'unavailable' : 'missing';
+  }
   if (live.owner !== target.owner || !sameReportEvidence(live.record, target.record)) return 'changed';
   switch (target.kind) {
     case 'flow':

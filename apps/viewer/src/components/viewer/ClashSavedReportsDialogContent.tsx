@@ -118,7 +118,7 @@ export function ClashSavedReportsDialogContent({ open, onOpenChange }: { open: b
           <ContentStorageNotice status={storage} retry={() => useViewerStore.getState().retrySaveClashReports()}
             restore={() => useViewerStore.getState().restoreSavedClashReports()} />
           {target?.kind === 'clash-report' && !reports.some(report => report.id === target.id)
-            && storage.phase !== 'loading' && <p role="alert">{t('searchModal.library.open.missing')}</p>}
+            && storage.phase === 'ready' && <p role="alert">{t('searchModal.library.open.missing')}</p>}
           {reports.length === 0
             // Only a library that was read can be called empty; loading or unreadable is the notice's to say.
             ? storage.phase === 'ready' && <div className="text-xs text-muted-foreground">{t('clashTools.savedReports.empty')}</div>

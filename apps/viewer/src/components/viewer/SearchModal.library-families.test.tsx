@@ -23,6 +23,9 @@ import { nativeLibraryCatalogue, searchNativeLibraries, LIBRARY_FAMILIES } from 
 import { openNativeLibraryArtifact } from '@/lib/libraries/open-native-artifact';
 import { useLibraryFocus } from '@/lib/libraries/library-focus';
 import { SavedValidationReports } from './validation/SavedValidationReports';
+import { ClashSavedReportsDialogContent } from './ClashSavedReportsDialogContent';
+import { createValidationReportsSlice } from '@/store/slices/validationReportsSlice';
+import { createSavedClashReportsSlice } from '@/store/slices/savedClashReportsSlice';
 import { NativeLibrarySearch } from './libraries/NativeLibrarySearch';
 import { useValidationSourceChoice } from '@/lib/validation/validation-source-choice';
 import { prepareComparison, comparePreparedPair } from '@/lib/compare/run-comparison';
@@ -217,12 +220,18 @@ test('#7235 portable native Flow examples keep their registered parameters throu
   await seedArtifactModels({ federated: true });
   const registry = createStandardRegistry().registerAll(aiNodes);
   const initialModels = useViewerStore.getState().models;
-  for (const example of flowExamples()) {
+  const examples = flowExamples();
+  assert.ok(examples.reduce((count, example) => count + example.inputs.length, 0) > 0, 'the original native examples provide real Player parameter witnesses');
+  for (const example of examples) {
     const portable = parseFlowDocument(flowToJson(example));
     assert.deepEqual(validateFlowWiring(portable, registry), []);
-    for (const input of portable.inputs) {
+    assert.equal(portable.inputs.length, example.inputs.length, 'export retains the ORIGINAL native example input count');
+    assert.deepEqual(portable.inputs, example.inputs, 'canonical export preserves original native input names, labels, kinds and optional values');
+    for (const input of example.inputs) {
       const node = portable.nodes.find(entry => entry.id === input.nodeId); assert.ok(node);
       const parameter = registry.get(node.type)?.params.find(entry => entry.name === input.param); assert.ok(parameter);
+      const original = example.nodes.find(entry => entry.id === input.nodeId); assert.ok(original);
+      assert.deepEqual(node.params?.[input.param], original.params?.[input.param], 'native parameter value survives canonical export');
     }
     const state = useViewerStore.getState(); let id: string | null = null;
     act(() => { id = state.importFlow(portable); state.closeFlow(); }); assert.ok(id);
@@ -233,9 +242,52 @@ test('#7235 portable native Flow examples keep their registered parameters throu
     const button = [...ui.querySelectorAll('button')].find(entry => entry.textContent === portable.name); assert.ok(button); click(button);
     await waitFor(() => useViewerStore.getState().flowDoc?.id === id, 'mounted catalogue opens imported native template');
     const current = useViewerStore.getState(); assert.ok(current.flowDoc);
+    assert.deepEqual(current.flowDoc.inputs, example.inputs, 'native library Open retains the original producer parameter bindings');
+    assert.deepEqual(parseFlowDocument(flowToJson(current.flowDoc)).inputs, example.inputs, 're-export preserves the original native inputs');
     assert.deepEqual(parseFlowDocument(flowToJson(current.flowDoc)), saved.doc, 'canonical portable document survives the native library and editor boundary');
     assert.equal(current.flowRunning, false); assert.equal(current.flowLastRun, null);
     assert.strictEqual(current.models, initialModels);
     cleanup();
   }
+});
+
+for (const kind of ['validation-report', 'clash-report'] as const) test(`#7235 held ${kind} does not claim missing when a fresh native library read is denied`, async () => {
+  const { profiles, report: validation } = await nativeLibraries();
+  let id = validation.id;
+  if (kind === 'clash-report') {
+    mountClashPanel(); await detectCoincidentWalls(2, 2);
+    const report = await saveCurrentResultAs('Native held unreadable clash');
+    assert.equal(report.clashes.length, 1); id = report.id;
+  }
+  const target = nativeLibraryCatalogue(useViewerStore.getState(), profiles).flatMap(group => group.rows)
+    .find(row => row.kind === kind && row.id === id); assert.ok(target);
+  assert.equal(await openNativeLibraryArtifact(target, null), 'opened');
+  cleanup();
+  // Actual startup controllers reset their in-memory projection, not their
+  // durable entries or the held native library target.
+  const fresh = kind === 'validation-report' ? createValidationReportsSlice : createSavedClashReportsSlice;
+  useViewerStore.setState(fresh(useViewerStore.setState, useViewerStore.getState, useViewerStore));
+  const denied = mock.method(IDBDatabase.prototype, 'transaction', () => { throw new DOMException('Native saved report read denied', 'SecurityError'); });
+  render(kind === 'validation-report' ? <SavedValidationReports /> : <ClashSavedReportsDialogContent open onOpenChange={() => {}} />);
+  await act(async () => {
+    const state = useViewerStore.getState();
+    assert.equal(await (kind === 'validation-report' ? state.initializeValidationReports() : state.initializeSavedClashReports()), false);
+  });
+  const state = useViewerStore.getState();
+  assert.equal((kind === 'validation-report' ? state.validationReportsStorage : state.savedClashReportsStorage).phase, 'unavailable');
+  assert.doesNotMatch(document.body.textContent ?? '', /This artifact is no longer available/, 'a genuine native read refusal does not establish deletion');
+  assert.equal(await openNativeLibraryArtifact(target, null), 'unavailable', 'held native Open preserves the current source-read distinction');
+  denied.mock.restore();
+  await act(async () => {
+    const current = useViewerStore.getState();
+    assert.equal(await (kind === 'validation-report' ? current.initializeValidationReports() : current.initializeSavedClashReports()), true);
+  });
+  assert.ok((kind === 'validation-report' ? useViewerStore.getState().savedValidationReports : useViewerStore.getState().savedClashReports).some(row => row.id === id), 'the actual durable report survives the refused read');
+  assert.doesNotMatch(document.body.textContent ?? '', /This artifact is no longer available/);
+  await act(async () => {
+    const current = useViewerStore.getState();
+    assert.equal(await (kind === 'validation-report' ? current.removeValidationReport(id) : current.deleteSavedClashReport(id)), true);
+  });
+  assert.match(document.body.textContent ?? '', /This artifact is no longer available/, 'native successful deletion with a ready source genuinely confirms missing');
+  assert.equal(await openNativeLibraryArtifact(target, null), 'missing');
 });

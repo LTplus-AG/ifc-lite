@@ -54,12 +54,12 @@ function importIdentity<T extends { id: string; name: string }>(rows: readonly T
   }
   throw new Error('An independent imported artifact identity could not be allocated');
 }
-function uniqueName(rows: readonly { name: string }[], name: string, limit = 200): string {
+function uniqueName(rows: readonly { name: string }[], name: string, limit = 200, reserved: ReadonlySet<string> = new Set()): string {
   const names = new Set(rows.map(row => row.name.toLowerCase()));
   if (!names.has(name.toLowerCase())) return name;
-  for (let index = 1; index <= rows.length + 1; index++) {
+  for (let index = 1; index <= rows.length + reserved.size + 1; index++) {
     const candidate = copyName(name, index, limit);
-    if (!names.has(candidate.toLowerCase())) return candidate;
+    if (!names.has(candidate.toLowerCase()) && !reserved.has(candidate.toLowerCase())) return candidate;
   }
   throw new Error('An independent imported artifact name could not be allocated');
 }
@@ -67,12 +67,13 @@ export function importArtifactLibraries(incoming: StandaloneArtifactLibraries): 
   const outcome: ArtifactImportOutcome = { saved: 0, failed: [], pending: {} };
   if (incoming.filters) {
     let rows = loadSavedFilters();
+    const sourceNames = new Set(incoming.filters.map(row => row.name.trim().toLowerCase()));
     for (const [index, entry] of incoming.filters.entries()) {
       if (reusableFilter(rows, entry)) continue;
       if (rows.length >= __internal.MAX_ENTRIES) {
         outcome.failed.push('filters'); outcome.pending.filters = incoming.filters.slice(index); break;
       }
-      const result = saveFilter(uniqueName(rows, entry.name, __internal.MAX_NAME_LEN), entry.groups, entry.capturedScope);
+      const result = saveFilter(uniqueName(rows, entry.name, __internal.MAX_NAME_LEN, sourceNames), entry.groups, entry.capturedScope);
       if (!result.persisted) {
         outcome.failed.push('filters'); outcome.pending.filters = incoming.filters.slice(index); break;
       }

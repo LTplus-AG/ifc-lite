@@ -173,6 +173,13 @@ export function ContentStorageNotice({ status, retry, restore }: {
       <summary className="cursor-pointer">{t('contentStorage.controls')}</summary>
       <div className="flex flex-wrap gap-1 py-1">
         <Button size="sm" variant="outline" disabled={busy || artifactsPending || librariesLoading || assistantLoading || clashGroupsLoading || bcfLoading || receiptsLoading || recipesLoading || preferencesLoading} onClick={() => void run(backup)}>{t('contentStorage.export')}</Button>
+        {artifactsPending && <Button size="sm" variant="outline" disabled={busy} onClick={() => void run(async () => {
+          const unfinished = pendingArtifacts();
+          if (unfinished && await confirmDialog({ description: t('contentStorage.cancelArtifactImportConfirm'),
+            confirmLabel: t('contentStorage.cancelArtifactImport'), destructive: true }) && pendingArtifacts() === unfinished) {
+            useViewerStore.setState({ pendingStandaloneArtifactImport: null });
+          }
+        })}>{t('contentStorage.cancelArtifactImport')}</Button>}
         {problem && <Button size="sm" variant="outline" disabled={busy} onClick={() => void run(async () => {
           if (await confirmDialog({ description: t('contentStorage.restoreConfirm'), destructive: true })) await restore();
         })}>{t('contentStorage.restore')}</Button>}

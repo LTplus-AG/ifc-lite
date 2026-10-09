@@ -17,6 +17,7 @@ import { assistantLibrary } from '@/lib/assistant/library';
 import { loadSavedFilters, clearSavedFilters, saveFilter } from '@/lib/search/saved-filters';
 import { loadListDefinitions } from '@/lib/lists/persistence';
 import { ContentStorageNotice } from './ContentStorageNotice';
+import { ConfirmDialogHost } from '@/components/ui/confirm-dialog';
 import { act } from 'react';
 import { ARCH } from '@/test/artifact-models-fixture';
 import { placementSourceIdentity } from '@/lib/model-placement/source-identity';
@@ -588,4 +589,66 @@ test('#7218 native independently saved Filter imported-looking name cannot consu
   assert.ok(rows.some(row => row.name === `${incoming.name} (imported)`));
   const actual = await previewFilterGroups(incoming.name, rows.find(row => row.name === incoming.name)!.groups, useViewerStore.getState());
   assert.equal(actual.matched, preview.matched, 'actual imported Filter retains its real native IFC population');
+});
+
+
+test('#7218 native Filter collision copies reserve every incoming source name', async () => {
+  await seedArtifactModels({ federated: true });
+  const proposal = parseArtifactProposal(JSON.stringify({ version: 1, title: 'Native incoming Filter identity reservation', kind: 'filter.proposal', ...entries[0].body }), 'filter.proposal');
+  const preview = await previewArtifact(proposal, useViewerStore.getState()); assert.ok(preview.matched > 0);
+  assert.ok(saveArtifact(preview.artifact).ok);
+  const source = loadSavedFilters()[0]; assert.ok(source);
+  assert.ok(saveFilter(`${source.name} (imported)`, source.groups, source.capturedScope).persisted);
+  const sibling = loadSavedFilters().find(row => row.name === `${source.name} (imported)`); assert.ok(sibling);
+  clearSavedFilters();
+  assert.ok(saveFilter(source.name, [{ combinator: 'AND', rules: [{ kind: 'ifcType', op: 'in', values: ['IfcSlab'] }] }]).persisted);
+  await importNativeLibraries({ filters: [sibling, source] });
+  const rows = loadSavedFilters();
+  assert.equal(rows.length, 3, 'the native conflicting local Filter and both independently named source Filters must survive');
+  for (const name of [sibling.name, `${source.name} (imported 2)`]) {
+    const row = rows.find(candidate => candidate.name === name); assert.ok(row);
+    assert.equal((await previewFilterGroups(name, row.groups, useViewerStore.getState())).matched, preview.matched);
+  }
+});
+
+test('#7218 cancelling a refused import explicitly releases whole-backup download without losing saved content', async () => {
+  await seedArtifactModels({ federated: true });
+  const proposal = parseArtifactProposal(JSON.stringify({ version: 1, title: 'Native cancelled import recovery', kind: 'filter.proposal', ...entries[0].body }), 'filter.proposal');
+  const preview = await previewArtifact(proposal, useViewerStore.getState()); assert.ok(preview.matched > 0);
+  assert.ok(saveArtifact(preview.artifact).ok);
+  const wire = await nativeBackupWire({ filters: loadSavedFilters() });
+  clearSavedFilters();
+  const ui = render(<><Notice /><ConfirmDialogHost /></>);
+  const retry = [...ui.querySelectorAll('button')].find(node => node.textContent?.includes('Retry all libraries')); assert.ok(retry);
+  await waitFor(() => !retry.disabled, 'native libraries finish loading before import');
+  const input = ui.querySelector<HTMLInputElement>('input[type="file"]'); assert.ok(input);
+  Object.defineProperty(input, 'files', { value: [new File([wire], 'cancelled-import-backup.json')], configurable: true });
+  const original = localStorage.setItem.bind(localStorage), blobs: Blob[] = [];
+  const denied = mock.method(localStorage, 'setItem', (key: string, value: string) => {
+    if (key === 'ifc-lite:search:saved-filters') throw new DOMException('Persistent native Filter quota', 'QuotaExceededError');
+    original(key, value);
+  });
+  const download = mock.method(URL, 'createObjectURL', (value: Blob | MediaSource) => { assert.ok(value instanceof Blob); blobs.push(value); return 'blob:cancelled-import-recovery'; });
+  try {
+    await act(async () => { input.dispatchEvent(new Event('change', { bubbles: true })); });
+    await waitFor(() => !retry.disabled && ui.textContent?.includes('Some saved Filters') === true, 'the native refused import remains pending');
+    const cancelImport = [...ui.querySelectorAll('button')].find(node => node.textContent === 'Cancel unfinished import'); assert.ok(cancelImport, 'a refused import needs an explicit recovery action');
+    click(cancelImport);
+    await waitFor(() => document.querySelector('[role="alertdialog"]') !== null, 'actual native confirmation appears');
+    let dialog = document.querySelector('[role="alertdialog"]'); assert.ok(dialog);
+    assert.ok(dialog.textContent?.includes('Keep the original backup file'));
+    const cancel = [...dialog.querySelectorAll('button')].find(node => node.textContent === 'Cancel'); assert.ok(cancel); click(cancel);
+    await waitFor(() => !cancelImport.disabled, 'cancelled confirmation finishes');
+    assert.ok(ui.textContent?.includes('Some saved Filters'), 'declining cancellation retains the unfinished import');
+    click(cancelImport); await waitFor(() => document.querySelector('[role="alertdialog"]') !== null, 'second native confirmation appears');
+    dialog = document.querySelector('[role="alertdialog"]'); assert.ok(dialog);
+    const confirm = [...dialog.querySelectorAll('button')].find(node => node.textContent === 'Cancel unfinished import'); assert.ok(confirm); click(confirm);
+    await waitFor(() => !ui.textContent?.includes('Some saved Filters'), 'explicit confirmation clears only unfinished artifacts');
+    const button = [...ui.querySelectorAll('button')].find(node => node.textContent?.includes('Download library backup')); assert.ok(button);
+    await waitFor(() => !button.disabled, 'whole-backup recovery becomes available despite persistent write refusal');
+    click(button); await waitFor(() => blobs.length === 1, 'actual native recovery download');
+    const recovered = parseContentBackup(await blobs[0].text());
+    assert.equal(recovered.libraries.filters?.length, 0, 'cancelled unsaved entries are not falsely represented as saved');
+    assert.deepEqual(parseContentBackup(wire).libraries.filters?.length, 1, 'the original source file still contains the refused Filter');
+  } finally { denied.mock.restore(); download.mock.restore(); }
 });

@@ -6,6 +6,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import type { PoolReuseReport } from './worker-pool-reuse-7036.wasm.js';
+import { assertHiddenBootAdmission, assertPoolReuseReport } from './worker-pool-reuse-7036.assertions.js';
 import { startViewerDevServer } from './viewer-dev-server.js';
 
 const root = new URL('../../', import.meta.url);
@@ -20,6 +21,7 @@ const sourcePaths = [
   'packages/parser/src/parser-worker-engine-module.ts', 'packages/load-trace/src/worker.ts',
   'packages/load-trace/src/counters.ts', 'apps/viewer/src/lib/wasm-prewarm.ts',
   'tests/e2e/worker-pool-reuse-7036.wasm.ts', 'tests/e2e/worker-pool-reuse-7036.e2e.spec.ts',
+  'tests/e2e/worker-pool-reuse-7036.assertions.ts',
 ];
 
 
@@ -40,25 +42,65 @@ test('#7036 real WASM restores source, settings and federation IDs across reset 
       sourceSha256: Object.fromEntries(sourcePaths.map(path => [path, createHash('sha256').update(readFileSync(new URL(path, root))).digest('hex')])),
       browser: await page.evaluate(() => ({ userAgent: navigator.userAgent, hardwareConcurrency: navigator.hardwareConcurrency, crossOriginIsolated })),
       wasmSha256: createHash('sha256').update(readFileSync(new URL('packages/wasm/pkg/ifc-lite_bg.wasm', root))).digest('hex'), report }, null, 2), contentType: 'application/json' });
-    expect(report.outputs.first.meshes).toBeGreaterThan(0);
-    expect(report.outputs.repeat).toEqual(report.outputs.first);
-    expect(report.spawnedAfterRepeat).toBe(report.spawnedBeforeRepeat);
-    expect(report.outputs.federated).toEqual(report.outputs.federatedFresh);
-    expect(report.outputs.federated.geometryHashes).toBeGreaterThan(0);
-    expect(report.outputs.restored).toEqual(report.outputs.restoredFresh);
-    expect(report.outputs.restored.geometryHashes).toBe(0);
-    expect(report.outputs.restored.digest).toBe(report.outputs.first.digest);
-    expect(report.outputs.federated.digest).not.toBe(report.outputs.first.digest);
-    expect(report.bootWorkerCreations).toBe(2);
-    expect(report.bootAdmittedWorkers).toBe(2);
-    expect(report.bootWarmingWorkers).toBe(0);
-    expect(report.initialWorkerHeapBytes).toHaveLength(2);
-    for (const heap of report.initialWorkerHeapBytes) {
-      expect(heap).toBeGreaterThan(0); expect(heap).toBeLessThanOrEqual(9 * 1024 * 1024);
+    assertPoolReuseReport(report);
+    // #7036: refusal controls alter genuine report copies, never Worker execution.
+    const controls: Array<(copy: PoolReuseReport) => void> = [
+      copy => { copy.outputs.first.meshes = 0; },
+      copy => { copy.outputs.repeat.digest += '-changed'; },
+      copy => { copy.outputs.repeat.ids.push(-1); },
+      copy => { copy.outputs.repeat.coordinates += '-changed'; },
+      copy => { copy.outputs.repeat.triangles++; },
+      copy => { Object.assign(copy.outputs.repeat, { unexpectedField: 1 }); },
+      copy => { copy.spawnedAfterRepeat++; },
+      copy => { copy.outputs.federatedFresh.digest += '-changed'; },
+      copy => { copy.outputs.federated.geometryHashes = copy.outputs.federatedFresh.geometryHashes = 0; },
+      copy => { copy.outputs.restoredFresh.digest += '-changed'; },
+      copy => { copy.outputs.restored.geometryHashes = copy.outputs.restoredFresh.geometryHashes = 1; },
+      copy => { copy.outputs.restored.digest = copy.outputs.restoredFresh.digest = 'changed'; },
+      copy => { copy.outputs.federated.digest = copy.outputs.federatedFresh.digest = copy.outputs.first.digest; },
+      copy => { copy.bootWorkerCreations++; },
+      copy => { copy.bootAdmittedWorkers++; },
+      copy => { copy.bootWarmingWorkers++; },
+      copy => { copy.initialWorkerHeapBytes.pop(); },
+      copy => { copy.initialWorkerHeapBytes[0] = 0; },
+      copy => { copy.initialWorkerHeapBytes[0] = 9 * 1024 * 1024 + 1; },
+      copy => { copy.parserHandoffDigest += '-changed'; },
+      copy => { copy.finalIdleBytes = 144 * 1024 * 1024 + 1; },
+      copy => { copy.federationIdsDistinct = false; },
+    ];
+    for (const mutate of controls) {
+      const copy = structuredClone(report);
+      mutate(copy);
+      expect(() => assertPoolReuseReport(copy)).toThrow('#7036 Worker witness invariant failed:');
     }
-    expect(report.parserHandoffDigest).toBe(report.parserScanDigest);
-    expect(report.finalIdleBytes).toBeLessThanOrEqual(144 * 1024 * 1024);
-    expect(report.federationIdsDistinct).toBe(true);
+    // Agreement with the original matcher on the complete plain report domain.
+    const equalCopies = [
+      Object.fromEntries(Object.entries(report.outputs.first).reverse()),
+      { ...report.outputs.first, omitted: undefined },
+    ];
+    for (const output of equalCopies) {
+      expect(output).toEqual(report.outputs.first);
+      const copy = structuredClone(report);
+      Reflect.set(copy.outputs, 'repeat', output);
+      expect(() => assertPoolReuseReport(copy)).not.toThrow();
+    }
+    const arrayCases = [
+      { left: [1, , 3], right: [1, undefined, 3], equal: true },
+      { left: [1], right: [1, undefined], equal: true },
+      { left: [0], right: [-0], equal: false },
+      { left: [1, 2], right: [2, 1], equal: false },
+    ];
+    for (const { left, right, equal } of arrayCases) {
+      if (equal) expect(right).toEqual(left);
+      else expect(right).not.toEqual(left);
+      const copy = structuredClone(report);
+      // Undefined/sparse slots are deliberate matcher-domain controls, not IFC IDs.
+      Reflect.set(copy.outputs.first, 'ids', left);
+      Reflect.set(copy.outputs.repeat, 'ids', right);
+      if (equal) expect(() => assertPoolReuseReport(copy)).not.toThrow();
+      else expect(() => assertPoolReuseReport(copy)).toThrow('repeat equals first');
+    }
+    assertPoolReuseReport(report);
   } finally { await server.close(); }
 });
 
@@ -70,6 +112,9 @@ test('#7036 idle boot does not create instances in an already hidden document', 
       const module: { runHiddenBootAdmissionWitness(): Promise<{ idle: number; spawned: number }> } = await import(moduleUrl);
       return module.runHiddenBootAdmissionWitness();
     }, `/@fs/${fileURLToPath(new URL('./worker-pool-reuse-7036.wasm.ts', import.meta.url))}`);
-    expect(stats.idle).toBe(0); expect(stats.spawned).toBe(0);
+    assertHiddenBootAdmission(stats);
+    expect(() => assertHiddenBootAdmission({ ...stats, idle: 1 })).toThrow('hidden idle = 0');
+    expect(() => assertHiddenBootAdmission({ ...stats, spawned: 1 })).toThrow('hidden spawned = 0');
+    assertHiddenBootAdmission(stats);
   } finally { await server.close(); }
 });

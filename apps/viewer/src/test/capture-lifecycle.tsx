@@ -81,7 +81,7 @@ export async function captureLifecycle(dpr: number) {
     isolatedEntitiesRef: ref(null), ghostExceptEntitiesRef: ref(null), selectedEntityIdRef: ref(null),
     selectedModelIndexRef: ref(undefined), clearColorRef: ref([1, 1, 1, 1]),
     visualEnhancementRef: ref({ enabled: false }), environmentRef: ref({}), sunShadowsRef: ref(null),
-    sectionPlaneRef: ref({ axis: 'y', position: 0, enabled: false, flipped: false }),
+    sectionPlaneRef: ref({ ...useViewerStore.getState().sectionPlane, axis: 'down', position: 0, enabled: false, flipped: false }),
     sectionRangeRef: ref(null), selectedEntityIdsRef: ref(undefined), clashHighlightColorsRef: ref(null),
     coordinateInfoRef: ref(undefined), isInteractingRef: ref(false), lastCameraStateRef: ref(null),
     updateCameraRotationRealtime: () => {}, calculateScale: () => {},

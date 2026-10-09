@@ -20,7 +20,7 @@ it('preserves the canonical appearance, section and visibility options in an own
     h.params.hiddenEntitiesRef.current = new Set([99]);
     h.params.isolatedEntitiesRef.current = new Set([7]);
     h.params.ghostExceptEntitiesRef.current = new Set([7]);
-    h.params.sectionPlaneRef.current = { axis: 'y', position: 50, enabled: true, flipped: false };
+    h.params.sectionPlaneRef.current = { ...h.params.sectionPlaneRef.current, axis: 'down', position: 50, enabled: true, flipped: false };
     useViewerStore.setState(state => ({ sceneState: { ...state.sceneState, section: { ...state.sceneState.section, visible: true } } }));
     h.params.isInteractingRef.current = true;
     h.step();

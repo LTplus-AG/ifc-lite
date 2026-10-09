@@ -5,7 +5,7 @@ import '@/test/setup-dom.js';
 import assert from 'node:assert/strict';
 import { writeFile } from 'node:fs/promises';
 import { afterEach, test, type TestContext } from 'node:test';
-import { IfcParser, extractTypeQuantitiesOnDemand, extractQuantitiesOnDemand } from '@ifc-lite/parser';
+import { IfcParser, extractTypeQuantitiesOnDemand, extractQuantitiesOnDemand, extractTypePropertiesOnDemand } from '@ifc-lite/parser';
 import { StoreEditor, MutablePropertyView } from '@ifc-lite/mutations';
 import { generateIfcGuid } from '@ifc-lite/encoding';
 import { QuantityType } from '@ifc-lite/data';
@@ -110,7 +110,10 @@ for (const kind of ['type-default-history', 'occurrence-default-history', 'occur
  });
 }
 
-test('#7355 shared native type quantity copy retains units Formula opaque atoms and unrelated full graph', async t => {
+for (const alsoEditProperty of [false, true]) {
+test(alsoEditProperty
+ ? '#7355 simultaneous same-named property and quantity edits retain both native type definitions and shared owners'
+ : '#7355 shared native type quantity copy retains units Formula opaque atoms and unrelated full graph', async t => {
  const fixture = await inheritedSource(t); if (!fixture) return;
  const { f, store, a, b, view } = fixture;
  const editor = new StoreEditor(store, view);
@@ -129,7 +132,7 @@ test('#7355 shared native type quantity copy retains units Formula opaque atoms 
  const pset = editor.addEntity('IfcPropertySet', [generateIfcGuid(), typeof owner === 'number' ? `#${owner}` : null,
   'Qto_WallBaseQuantities', 'Same name as the quantity set', [`#${property}`]]).expressId;
  view.setPositionalAttribute(a.type, 5, [`#${pset}`, `#${a.qto}`]);
- view.setPositionalAttribute(b.type, 5, [`#${b.qto}`, `#${a.qto}`]);
+ view.setPositionalAttribute(b.type, 5, [`#${b.qto}`, `#${a.qto}`, `#${pset}`]);
  const sourceBytes = editedModelBytes(store, view);
  const source = await parse(sourceBytes);
  const model = useViewerStore.getState().models.get('arch'); assert.ok(model);
@@ -137,13 +140,24 @@ test('#7355 shared native type quantity copy retains units Formula opaque atoms 
   mutationViews: new Map(), storeEditors: new Map() });
  const current = getOrCreateMutationView(useViewerStore, 'arch'); assert.ok(current);
  current.setQuantity(a.type, 'Qto_WallBaseQuantities', 'NetVolume', 35, QuantityType.Volume);
+ if (alsoEditProperty) current.setProperty(a.type, 'Qto_WallBaseQuantities', 'Unrelated property', 'Edited native property');
  const bytes = editedModelBytes(source, current);
  const exported = await parse(bytes);
  assert.equal(net(extractTypeQuantitiesOnDemand(exported, f.id)?.quantities ?? []), 35);
  const owned = exported.getEntity(a.type)?.attributes[5]; assert.ok(Array.isArray(owned));
- assert.ok(owned.includes(pset), 'same-named native property set keeps its original ownership');
+ const propertySets = owned.filter(id => exported.getEntity(id)?.type === 'IFCPROPERTYSET');
+ assert.equal(propertySets.length, 1, 'same-named property and quantity sets remain different native classes');
+ if (alsoEditProperty) {
+  assert.ok(!owned.includes(pset), 'edited property set is also copied away from its shared owner');
+  const properties = extractTypePropertiesOnDemand(exported, f.id)?.properties ?? [];
+  const values = properties.filter(set => set.name === 'Qto_WallBaseQuantities')
+   .flatMap(set => set.properties.filter(item => item.name === 'Unrelated property').map(item => item.value));
+  assert.deepEqual(values, ['Edited native property'], 'saved/reparsed type exposes the property edit beside quantity35');
+ } else assert.ok(owned.includes(pset), 'same-named native property set keeps its original ownership');
  assert.ok(!owned.includes(a.qto), 'only the edited type leaves the shared quantity set');
- const replacementId = owned.find(id => exported.getEntity(id)?.type === 'IFCELEMENTQUANTITY'); assert.ok(replacementId);
+ const quantitySets = owned.filter(id => exported.getEntity(id)?.type === 'IFCELEMENTQUANTITY');
+ assert.equal(quantitySets.length, 1, 'the same export retains exactly one current quantity definition');
+ const replacementId = quantitySets[0]; assert.ok(replacementId);
  const replacement = exported.getEntity(replacementId); assert.ok(replacement);
  assert.equal(replacement.attributes[3], 'Exact source set description');
  assert.equal(replacement.attributes[4], 'Exact source measurement method');
@@ -164,10 +178,11 @@ test('#7355 shared native type quantity copy retains units Formula opaque atoms 
   } else assert.deepEqual(after.attributes, before.attributes, `unrelated native source #${id} changed`);
  }
  if (process.env.CAMPAIGN_WRITER_EXPORT_PREFIX) {
-  await writeFile(`${process.env.CAMPAIGN_WRITER_EXPORT_PREFIX}-shared-native.before.ifc`, sourceBytes);
-  await writeFile(`${process.env.CAMPAIGN_WRITER_EXPORT_PREFIX}-shared-native.ifc`, bytes);
+  await writeFile(`${process.env.CAMPAIGN_WRITER_EXPORT_PREFIX}-${alsoEditProperty ? 'combined-native' : 'shared-native'}.before.ifc`, sourceBytes);
+  await writeFile(`${process.env.CAMPAIGN_WRITER_EXPORT_PREFIX}-${alsoEditProperty ? 'combined-native' : 'shared-native'}.ifc`, bytes);
  }
 });
+}
 
 test('#7355 native pending type quantity edit uses HasPropertySets without a source-owned type record', async t => {
  const fixture = await inheritedSource(t); if (!fixture) return;

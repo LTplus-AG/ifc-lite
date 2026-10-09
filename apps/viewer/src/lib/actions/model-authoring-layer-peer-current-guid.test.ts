@@ -34,7 +34,7 @@ for(const edit of ['named','positional'] as const)test(`#7275 complete native pe
  const expected=row.expected;assert.ok(expected);const prior=layerSetOf({dataStore:saved,view:null},typeId)?.layers.map(layer=>layer.thickness)??null;
  const globalId=saved.getEntity(made.expressId)?.attributes[0];assert.equal(typeof globalId,'string');
  const batch=parseModelAuthoringBatch(JSON.stringify({version:1,kind:'model.authoring',title:'Current peer population',units:'m',frame:'storey-local',operations:[{op:'material.layers',target:{globalId,modelId:SAMPLE_MODEL,ifcClass:'IfcWall',name:'Peer read target'},scope:'type',expected,MaterialLayers:[{LayerThickness:.4,Material:null}]}]}));
- const preview=previewModelAuthoring(useViewerStore.getState(),batch);assert.equal(preview.rows[0].status,'ready',preview.rows[0].issue);
+ const preview=previewModelAuthoring(useViewerStore.getState(),batch);assert.equal(preview.rows[0].status,'ready',preview.rows[0].issue ?? '');
  const result=commitModelAuthoring(useViewerStore,preview,new Set([0]),'native peer review');assert.ok(result.ok,result.ok?'':result.detail??result.reason);
  const changed=await parseIfc(editedModelBytes(dataStore,view));assert.equal(changed.getEntity(peer)?.attributes[0],currentGuid);assert.equal(layerSetOf({dataStore:changed,view:null},typeId)?.layers[0].thickness,.4);
  useViewerStore.getState().undo(SAMPLE_MODEL);const restored=await parseIfc(editedModelBytes(dataStore,view));assert.equal(restored.getEntity(peer)?.attributes[0],currentGuid);assert.deepEqual(layerSetOf({dataStore:restored,view:null},typeId)?.layers.map(layer=>layer.thickness)??null,prior);

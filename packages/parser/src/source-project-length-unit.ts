@@ -137,7 +137,10 @@ export function normalizeMapUnitName(unitName: string): string {
 
 /** Resolve only an assigned source length unit, matching STEP writer eligibility.
  * Overlay-created projects/assignments/units cannot supply source STEP bytes;
- * deleted references and unsupported names return null. #7355 */
+ * `projectIds` must already contain only current effective IfcProject ids,
+ * with deleted/retyped projects excluded (use iterateEffectiveEntities).
+ * `isDeleted` filters assignment/unit references, not the project inventory.
+ * Deleted references and unsupported names return null. #7355 */
 export function findSourceProjectLengthUnit(preferredUnitName: string, store: IfcDataStore, projectIds: readonly number[], isDeleted: (id: number) => boolean): number | null {
   const extractor = new EntityExtractor(store.source);
   // An empty label is not a unit name, and it is reachable: the caller guards

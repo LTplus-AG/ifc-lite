@@ -917,3 +917,8 @@ substrings; the physical scale is retained.
 This lower layer shares the existing STEP writer resolver without changing
 its accepted replacement units. Type quantity journal projection consumes it
 in the subsequent fix for #7355.
+
+Pass current effective `IfcProject` ids as `projectIds`, excluding deleted or
+retyped projects with the canonical `iterateEffectiveEntities` inventory. The
+`isDeleted` callback filters assignment and unit references; it does not filter
+the project inventory supplied by the caller.

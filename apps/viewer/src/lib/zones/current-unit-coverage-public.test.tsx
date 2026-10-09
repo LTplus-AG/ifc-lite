@@ -129,6 +129,11 @@ test('#7353 implicit occurrence and material measures remain raw when current ph
   assert.match(material.textContent ?? '', /3\.125/);
   assert.doesNotMatch(material.textContent ?? '', /3,?125\s*mm|3\.125\s*m\b/,
     'selected-material property card uses the same unavailable current unit coverage');
+  const volumeLabel = [...material.querySelectorAll('span')].find(span => span.textContent === 'Volume');
+  assert.ok(volumeLabel, 'real native selected material has aggregated occurrence volume');
+  const total = volumeLabel.nextElementSibling; assert.ok(total);
+  assert.doesNotMatch(total.textContent ?? '', /[A-Za-z²³]/,
+    'unavailable aggregate context preserves a raw total without a physical suffix or override conversion');
 });
 
 test('#7353 native explicit non-SI quantity unit and display override remain independent of unavailable project units', async t => {

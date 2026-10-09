@@ -99,7 +99,7 @@ export const aiClassifyNode: FlowNodeDef = {
     for (let start = 0; start < sendable.length; start += batchSize) {
       const batch = sendable.slice(start, start + batchSize);
       const reply = await requestJson(ctx, service, task, dataBlock(table, keys, batch, columns), maxOutputTokens,
-        classificationSchema(batch.map(i => keys[i]), [...labels], columns));
+        classificationSchema(batch.map(i => keys[i]), [...labels], columns), 'flow.ai.classify.v1');
       if (reply.kind === 'budget') {
         ctx.log('warn', `the AI budget ran out after ${requests} request(s); ${sendable.length - start} row(s) were not sent`);
         break;

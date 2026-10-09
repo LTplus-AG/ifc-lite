@@ -21,8 +21,8 @@ export const MODEL = 'native';
 const frame = { x: 0, y: 0, z: 0, needsShift: false };
 const sample = new URL('../../public/samples/hello-wall.ifc', import.meta.url);
 export const requests: RemeshRequest[] = [];
-export async function seedNativeSdkModel() {
-  const bytes = readFileSync(sample);
+export async function seedNativeSdkModel(sourceBytes?: Uint8Array) {
+  const bytes = sourceBytes?.slice() ?? readFileSync(sample);
   const store = await new IfcParser().parseColumnar(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength), { disableWorkerScan: true });
   const api = new IfcAPI();
   const config = { mergeLayers: false, tessellationQuality: null, skipSmallCuts: false, rectParamFastPath: true } as const;

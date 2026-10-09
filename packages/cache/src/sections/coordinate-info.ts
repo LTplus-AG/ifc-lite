@@ -29,6 +29,23 @@ export function writeCoordinateInfo(writer: BufferWriter, info: CoordinateInfo):
     writeVec3(writer, frame);
     writer.writeUint8(frame.needsShift ? 1 : 0);
   }
+
+  // Version 24+: absence is unknown; a recorded zero recovery count is known.
+  writeOptionalNumber(writer, info.boundsRecoveryFallbackCount);
+  writeOptionalNumber(writer, info.lengthUnitScale);
+}
+
+function writeOptionalNumber(writer: BufferWriter, value: number | undefined): void {
+  writer.writeUint8(value === undefined ? 0 : 1);
+  if (value !== undefined) writer.writeFloat64(value);
+}
+
+function readOptionalNumber(reader: BufferReader, name: string): number | undefined {
+  const present = reader.readUint8();
+  if (present !== 0 && present !== 1) {
+    throw new Error(`Invalid ${name} presence flag: ${present}`);
+  }
+  return present === 1 ? reader.readFloat64() : undefined;
 }
 
 function validateWasmRtcFrame(
@@ -68,6 +85,8 @@ export function readCoordinateInfo(reader: BufferReader, version: number = 2): C
   let wasmRtcOffset: Vec3 | undefined;
   let buildingRotation: number | undefined;
   let wasmRtcFrame: CoordinateInfo['wasmRtcFrame'];
+  let boundsRecoveryFallbackCount: number | undefined;
+  let lengthUnitScale: number | undefined;
 
   if (version >= 3) {
     if (reader.readUint8() === 1) wasmRtcOffset = readVec3(reader);
@@ -90,6 +109,11 @@ export function readCoordinateInfo(reader: BufferReader, version: number = 2): C
     }
   }
 
+  if (version >= 24) {
+    boundsRecoveryFallbackCount = readOptionalNumber(reader, 'boundsRecoveryFallbackCount');
+    lengthUnitScale = readOptionalNumber(reader, 'lengthUnitScale');
+  }
+
   return {
     originShift,
     originalBounds,
@@ -98,6 +122,8 @@ export function readCoordinateInfo(reader: BufferReader, version: number = 2): C
     wasmRtcOffset,
     wasmRtcFrame,
     buildingRotation,
+    boundsRecoveryFallbackCount,
+    lengthUnitScale,
   };
 }
 

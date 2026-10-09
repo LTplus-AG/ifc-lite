@@ -24,10 +24,10 @@ import type { SnapProfile } from '@/lib/snap/types';
 import { commitElementAlignment, planSelectionTransform } from '@/lib/element-transform/commit';
 import { AlignBar } from '@/components/viewer/tools/command/AlignBar';
 import { AlignPlan, AlignScene } from '@/components/viewer/tools/command/AlignLayers';
-import { pickBox, shiftBox, storeyBoxes, type PlanBox } from '../align-boxes.js';
+import { pickBox, storeyBoxes, type PlanBox } from '../align-boxes.js';
 import { alignMoves, type AlignGesture } from '../align-gesture.js';
 import { commandGhostId } from '../ghost.js';
-import { prismGhostMesh, rectOutline } from '../ghost-shapes.js';
+import { alignmentGhosts } from '../align-ghosts';
 import type { CommandContext, ModelingCommand } from '../types.js';
 
 function init(ctx: CommandContext): AlignGesture {
@@ -101,12 +101,6 @@ export const ELEMENT_ALIGN: ModelingCommand<AlignGesture> = {
     if (!ctx.workplane) return [];
     const plane = ctx.workplane;
     const base = commandGhostId(ctx.get());
-    return alignMoves(g).flatMap(({ id, shift }, i) => {
-      const box = g.boxes.get(id);
-      if (!box) return [];
-      const moved = shiftBox(box, shift);
-      const mesh = prismGhostMesh(plane, rectOutline(moved.min, moved.max), moved.z0, moved.z1, base + i);
-      return mesh ? [mesh] : [];
-    });
+    return alignmentGhosts(g, plane, base);
   },
 };

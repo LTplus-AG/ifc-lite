@@ -16,11 +16,12 @@ const makeStore = () => createStore<ListSlice>(createListSlice);
 const def = (id: string): ListDefinition => ({
   id,
   name: `List ${id}`,
-  entityTypes: ['IfcWall'],
+  entityTypes: [],
+  groups: [],
   columns: [],
   createdAt: 1,
   updatedAt: 1,
-} as unknown as ListDefinition);
+});
 
 describe('listSlice', () => {
   beforeEach(() => {

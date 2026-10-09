@@ -1,0 +1,111 @@
+{
+  "qualifiedSourceHead": "9982a24f692dff990ee4920e085b20da581e269d",
+  "mainIntegrated": "295a2439e533af87a838ee2f252d87da19755890",
+  "rustTree": "1a1acc4260011c591fd8ce3c5387bb7c10b42f20",
+  "sourceSHA256": {
+    "apps/viewer/src/lib/geometry-cpu-buffers.ts": "1fbad7d1cd88975646600c54e8de095a109b1831af80ea6ba03978538027d49f",
+    "apps/viewer/src/lib/geometry-cpu-aliases.ts": "24c70e620c0bd66cdd4ac35fe62a5e6602bff73f517cb347c13b28d62af9bbfb",
+    "apps/viewer/src/lib/geometry-cpu-release.ts": "45464f755c522d8dc9818b41ab834da31b14b0ce9286415019c7dd675d98ea30",
+    "apps/viewer/src/lib/geometry-cpu-appearance.test.ts": "c27f5ea2eb0971d16e22dba8636da5f3fd7060b65fea8ac4ce29db0ef68e8a8e",
+    "apps/viewer/src/test/geometry-cpu-aliases-gc.ts": "6160ad0d324be52d4f7054c854a6d5f0f770b072c5e4a36cf74093a7eba24402",
+    "apps/viewer/src/lib/released-mesh-provenance.ts": "e46a6232d903f5febfe0168a4e4355aaaac6c562396d91575a164a9a634fc5f8",
+    "packages/parser/src/material-resolver.ts": "7ea4dde4f2faf0c9e813308b3f5ce52a82c9f546d41f457911f929c030b125c8"
+  },
+  "sameAliasSourcesAsB513": true,
+  "runtimeSHA256": {
+    "packages/wasm/pkg/ifc-lite.d.ts": "54c9d0a52eb515e517d76726fefe5f6a63e553a81c1b10331a597965d14620f6",
+    "packages/wasm/pkg/ifc-lite.js": "0a281479eb65141ae75aeef987d331d44439741a0cae855f122e53e800311a39",
+    "packages/wasm/pkg/ifc-lite_bg.wasm": "8b74229bbd4a991cbf1f32a8d52add195c5fdd333921f998b1c18eb713185143"
+  },
+  "logs": {
+    "6584-exact-b513-node-failure": {
+      "archive": "6584-exact-b513-node-failure.log.gz",
+      "sha256": "1daa58cd8384eaf3da7165ff091b848d41fc51a02a7046a2f9f5f82b484c6d32"
+    },
+    "6584-main-integration-raw-gate-before": {
+      "archive": "6584-main-integration-raw-gate-before.log.gz",
+      "sha256": "93115b8e1683a8d33817b163d8a750548ec82062180d678264f2859e8c53b80e"
+    },
+    "6584-main-integration-raw-gate-restored": {
+      "archive": "6584-main-integration-raw-gate-restored.log.gz",
+      "sha256": "07df8a306a5a586a3e6b5598a13b3d2f548c061a76758dcdd82d778281bff354"
+    },
+    "6584-main-integration-offline-install": {
+      "archive": "6584-main-integration-offline-install.log.gz",
+      "sha256": "da7d5a74ee8d9c1aa43acef70f50bb053e29282442fbfc53d1b15830b6b2e405"
+    },
+    "6584-main-integration-viewer-controls": {
+      "archive": "6584-main-integration-viewer-controls.log.gz",
+      "sha256": "611d17a6785b737ffb7861e5602de7088a22f08608aaf5745a6cac9c5c23254a"
+    },
+    "6584-main-integration-owner-controls": {
+      "archive": "6584-main-integration-owner-controls.log.gz",
+      "sha256": "1a2289788377aa3463a0daa6a882ebf0b1c1c942133369285b38307d9edfb321"
+    },
+    "6584-main-integration-material-controls": {
+      "archive": "6584-main-integration-material-controls.log.gz",
+      "sha256": "48c90c2777ef8ebc95347b597c846e7bf7eeb82743ad4e81ff09455811e25445"
+    },
+    "6584-main-integration-full-typecheck": {
+      "archive": "6584-main-integration-full-typecheck.log.gz",
+      "sha256": "9fc5994c0f2e8af1735547547005e7f639f51ca7c17a31a11d2015032ffec1fc"
+    },
+    "6584-main-integration-module-size": {
+      "archive": "6584-main-integration-module-size.log.gz",
+      "sha256": "540bb0322d95b2d8909355df5ed26f40310512e284e2e74d47e9f24b5571e01a"
+    },
+    "6584-main-integration-mpl": {
+      "archive": "6584-main-integration-mpl.log.gz",
+      "sha256": "e0f55404a191ff231b0b5077a9cbdb7af493e1581ad33aea639922b3b8ffa45b"
+    },
+    "6584-main-integration-mpl-restored": {
+      "archive": "6584-main-integration-mpl-restored.log.gz",
+      "sha256": "c3d45f494da44497049b0f121d31bf862aaa5b23115a0c03ef38e3341ee6a54c"
+    },
+    "6584-main-integration-wiring": {
+      "archive": "6584-main-integration-wiring.log.gz",
+      "sha256": "98a10385e08b01728c5beafad6abc4108f0096cb636594ec566c3f51a2950c30"
+    },
+    "6584-main-integration-changesets": {
+      "archive": "6584-main-integration-changesets.log.gz",
+      "sha256": "9d15fcd717ed20d69f7298023459464f392701cbd1e2462788daaaee32e40eee"
+    }
+  },
+  "results": {
+    "rawGateBefore": 1,
+    "rawGateRestored": 0,
+    "viewerControls": {
+      "pass": 69,
+      "skip": 0,
+      "tasks": 54
+    },
+    "ownerCacheControls": {
+      "pass": 1,
+      "skip": 0,
+      "tasks": 54
+    },
+    "materialControls": {
+      "pass": 20,
+      "skip": 1,
+      "tasks": 54
+    },
+    "plainFullRootTypecheck": {
+      "exit": 0,
+      "testFiles": 3726,
+      "packages": 62
+    },
+    "moduleSize": 0,
+    "mplCorrectCommand": 0,
+    "testWiring": 0,
+    "changesets": 0
+  },
+  "excluded": [
+    "Initial check-mpl-headers.mjs invocation names a nonexistent script; its MODULE_NOT_FOUND is not source evidence. The authoritative add-license-headers.mjs --check passes."
+  ],
+  "scope": [
+    "Alias/release/control modules unchanged from qualified b513. Normal main integration plus one intent comment; no material algorithm changes.",
+    "Viewer69 controls began on the identical working source before the annotation commit; full typecheck and subsequent controls use the recorded clean source head.",
+    "Material controls include one absent authoring-tool fixture skip; nested deletion/retype reasoning is source-reviewed, not independently executed.",
+    "No native GPU, OS resident peak-memory or speed claim. #6537 remains open."
+  ]
+}

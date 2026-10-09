@@ -184,10 +184,14 @@ export function readLayerSet(model: LiveModel, layerSetId: number): LayerRow[] |
   const refs = liveAttributes(model, layerSetId)?.[0];
   if (!Array.isArray(refs)) return null;
   const unit = { lengthUnitScale: getModelLengthUnitScale(model.dataStore) };
-  return refs.map((ref) => {
-    const layer = liveAttributes(model, refId(ref) ?? 0);
-    return { materialId: refId(layer?.[0]), thickness: fromNativeLength(unit, real(layer?.[1])) };
-  });
+  const layers: LayerRow[] = [];
+  for (const ref of refs) {
+    const layerId = refId(ref);
+    if (layerId === null || !liveEntityConforms(model.dataStore, layerId, 'IfcMaterialLayer', model.view)) return null;
+    const layer = liveAttributes(model, layerId);
+    layers.push({ materialId: refId(layer?.[0]), thickness: fromNativeLength(unit, real(layer?.[1])) });
+  }
+  return layers;
 }
 
 /** An associated IfcMaterialLayerSetUsage or IfcMaterialLayerSet, resolved to the set. */

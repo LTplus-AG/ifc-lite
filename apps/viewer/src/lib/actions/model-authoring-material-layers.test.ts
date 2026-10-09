@@ -6,7 +6,7 @@ import 'fake-indexeddb/auto';
 import assert from 'node:assert/strict';
 import { afterEach, test } from 'node:test';
 import { generateIfcGuid } from '@ifc-lite/encoding';
-import { EMPTY_SOURCE_BYTES, extractAllMaterialsOnDemand, extractMaterialsOnDemand, getAttributeNamesForSchema } from '@ifc-lite/parser';
+import { EMPTY_SOURCE_BYTES, effectiveMetadataRecord, extractAllMaterialsOnDemand, extractMaterialsOnDemand, getAttributeNamesForSchema } from '@ifc-lite/parser';
 import { MutablePropertyView } from '@ifc-lite/mutations';
 import { useViewerStore } from '@/store';
 import { applyMaterialLayers } from '@/components/viewer/model-inspector/inspector-edits';
@@ -528,4 +528,17 @@ test('#7275 multiple distinct native layer definitions retain assignment count a
   assert.equal(evidence.status, 'unavailable', 'one layerSetId cannot honestly represent two different native sets');
   assert.equal(evidence.layerCount, null);
   assert.equal(evidence.expected, null);
+});
+
+for (const invalid of ['deleted', 'wrong-type'] as const) test(`#7275 current native ${invalid} layer reference cannot become authoritative layer evidence`, async () => {
+  const { dataStore, view, target } = await inspectorControl();
+  const valid = transportedLayerEvidence(useViewerStore.getState(), target); assert.equal(valid.status, 'available'); assert.ok(valid.expected?.layerSetId);
+  const saved = await parseIfc(editedModelBytes(dataStore, view)); const layerIds = effectiveMetadataRecord(saved, valid.expected.layerSetId)?.attributes[0]; assert.ok(Array.isArray(layerIds)); assert.equal(layerIds.length, 2);
+  const editor = useViewerStore.getState().storeEditors.get(SAMPLE_MODEL); assert.ok(editor);
+  let invalidId = Number(layerIds[0]);
+  if (invalid === 'deleted') assert.equal(editor.removeEntity(invalidId), true);
+  else { invalidId = saved.entityIndex.byType.get('IFCBUILDING')![0]; const building = effectiveMetadataRecord(saved, invalidId); assert.equal(building?.type, 'IfcBuilding'); assert.equal(typeof building?.attributes[1], 'number'); editor.setPositionalAttribute(valid.expected.layerSetId, 0, [`#${invalidId}`]); }
+  const reparsed = await parseIfc(editedModelBytes(dataStore, view)); const exportedRefs = effectiveMetadataRecord(reparsed, valid.expected.layerSetId)?.attributes[0]; assert.ok(Array.isArray(exportedRefs)); assert.equal(exportedRefs.includes(invalidId), invalid !== 'deleted', 'native export prunes deleted references and preserves wrong-type references');
+  assert.equal(effectiveMetadataRecord(reparsed, invalidId)?.type ?? null, invalid === 'deleted' ? null : 'IfcBuilding', 'actual STEP retains a missing or wrong EXPRESS target, not a material layer');
+  const evidence = transportedLayerEvidence(useViewerStore.getState(), target); assert.equal(evidence.status, 'unavailable'); assert.equal(evidence.expected, null, 'unknown current layer records must not be published as a complete available population');
 });

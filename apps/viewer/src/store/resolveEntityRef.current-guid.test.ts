@@ -33,13 +33,17 @@ test(`#7282 forward identity ${edit} ${federation ? 'N' : '1'} matches native sa
   if (federation) assert.equal(resolveEntityRefGlobalIdFromState(held, { modelId: 'peer', expressId: id }), BACK_WALL);
   assert.equal(useViewerStore.getState(), held); assert.deepEqual(view.getMutations(), journal); assert.doesNotThrow(lease.validate);
 });
-test('#7282 forward identity never publishes a native non-Root Name or deleted Root GlobalId', async () => {
+test('#7282 forward identity never publishes a native non-Root Name', async () => {
   const { dataStore, view } = await seedAuthoringSample(), editor = new StoreEditor(dataStore, view);
   const material = editor.addEntity('IfcMaterial', ['Material has no GlobalId', null, null]);
+  const saved = await parseIfc(editedModelBytes(dataStore, view));
+  assert.equal(saved.getEntity(material.expressId)?.attributes[0], 'Material has no GlobalId');
+  assert.equal(resolveEntityRefGlobalIdFromState(useViewerStore.getState(), { modelId: SAMPLE_MODEL, expressId: material.expressId }), null);
+});
+test('#7282 forward identity refuses a native deleted Root despite its retained parsed GUID column', async () => {
+  const { dataStore, view } = await seedAuthoringSample(), editor = new StoreEditor(dataStore, view);
   const id = dataStore.entities.getExpressIdByGlobalId(BACK_WALL); assert.equal(editor.removeEntity(id), true);
   const saved = await parseIfc(editedModelBytes(dataStore, view));
-  assert.equal(saved.getEntity(id), null); assert.equal(saved.getEntity(material.expressId)?.attributes[0], 'Material has no GlobalId');
-  const state = useViewerStore.getState();
-  assert.equal(resolveEntityRefGlobalIdFromState(state, { modelId: SAMPLE_MODEL, expressId: material.expressId }), null);
-  assert.equal(resolveEntityRefGlobalIdFromState(state, { modelId: SAMPLE_MODEL, expressId: id }), null);
+  assert.equal(saved.getEntity(id), null); assert.equal(dataStore.entities.getGlobalId(id), BACK_WALL);
+  assert.equal(resolveEntityRefGlobalIdFromState(useViewerStore.getState(), { modelId: SAMPLE_MODEL, expressId: id }), null);
 });

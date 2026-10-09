@@ -13,6 +13,8 @@
 
 import type { EntityRef } from './types.js';
 import { federationRegistry } from '@ifc-lite/renderer';
+import { effectiveMetadataRecord } from '@ifc-lite/parser';
+import { liveEntityConforms } from '@ifc-lite/create';
 import { useViewerStore } from './index.js';
 
 /** Resolve a renderer/global ID against one consistent Viewer store snapshot. */
@@ -98,13 +100,11 @@ export function resolveEntityRefGlobalIdFromState(
     ? state.ifcDataStore
     : state.models.get(entityRef.modelId)?.ifcDataStore;
   const mutationView = state.mutationViews.get(entityRef.modelId);
-  const globalIdMutation = mutationView?.getAttributeMutationsForEntity(entityRef.expressId)
-    .find(mutation => mutation.name === 'GlobalId');
-  if (globalIdMutation) return globalIdMutation.value.length > 0 ? globalIdMutation.value : null;
-
-  const resolvedGlobalId = dataStore?.entities.getGlobalId(entityRef.expressId);
-  if (resolvedGlobalId) return resolvedGlobalId;
-
-  const overlayGlobalId = mutationView?.getNewEntity(entityRef.expressId)?.attributes[0];
-  return typeof overlayGlobalId === 'string' && overlayGlobalId.length > 0 ? overlayGlobalId : null;
+  // #7282: current native Root metadata owns positional/named precedence,
+  // retypes and tombstones. A non-Root attribute 0 is never a GlobalId.
+  if (!dataStore || !liveEntityConforms(dataStore, entityRef.expressId, 'IfcRoot', mutationView)) return null;
+  const globalId = mutationView?.hasChanges(entityRef.expressId)
+    ? effectiveMetadataRecord(dataStore, entityRef.expressId, mutationView)?.attributes[0]
+    : dataStore.entities.getGlobalId(entityRef.expressId);
+  return typeof globalId === 'string' && globalId.length > 0 ? globalId : null;
 }

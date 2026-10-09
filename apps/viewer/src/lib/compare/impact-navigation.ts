@@ -8,6 +8,7 @@ import { useViewerStore, type ViewerState } from '@/store';
 import { resolveGlobalId } from '@/lib/actions/resolve-global-id';
 import { selectChangedEntity } from '@/lib/changes/select-changed-entity';
 import { compareImpactOf } from './compare-analysis-state';
+import { comparisonNavigationIsCurrent } from './comparison-navigation-lease';
 import type { ChangedElementRef, CompareImpact, ImpactRow } from './impact';
 
 export interface ImpactNavigation {
@@ -19,11 +20,6 @@ export interface ImpactNavigation {
 
 export function captureImpactNavigation(captured: ViewerState, impact: CompareImpact): ImpactNavigation {
   const comparison = captured.compareResult;
-  const stores = new Map([comparison?.baseModelId, comparison?.headModelId].flatMap(id => {
-    const model = id ? captured.models.get(id) : null;
-    return id && model ? [[id, { store: model.ifcDataStore, fingerprint: model.sourceFingerprint,
-      hash: model.sourceContentHash }]] as const : [];
-  }));
   const source = (state: ViewerState, row: ImpactRow): object | null | undefined => {
     switch (row.kind) {
       case 'clash': return state.clashResult;
@@ -34,28 +30,24 @@ export function captureImpactNavigation(captured: ViewerState, impact: CompareIm
   };
   const sourcePins = new Map(impact.rows.map(row => [row, source(captured, row)]));
   const listDefinition = captured.listDefinitions.find(def => def.id === captured.activeListId);
-  const current = (row: ImpactRow): ViewerState | null => {
+  const current = (row: ImpactRow, verifyRow = false): ViewerState | null => {
     const state = useViewerStore.getState();
     if (!comparison || !impact.rows.includes(row) || state.compareResult !== comparison
       || comparison.mutationVersion === undefined || comparison.mutationVersion !== state.mutationVersion
-      || state.mutationVersion !== captured.mutationVersion || state.geometryContentVersion !== captured.geometryContentVersion
-      || state.modelPlacement !== captured.modelPlacement || stores.size !== 2
-      || [...stores].some(([id, pin]) => {
-        const model = state.models.get(id);
-        return !model || model.ifcDataStore !== pin.store || model.sourceFingerprint !== pin.fingerprint
-          || model.sourceContentHash !== pin.hash;
-      }) || (row.kind === 'clash' && state.clashRawResult !== captured.clashRawResult)
+      || state.mutationVersion !== captured.mutationVersion
+      || !comparisonNavigationIsCurrent(comparison, state)
+      || (row.kind === 'clash' && state.clashRawResult !== captured.clashRawResult)
       || source(state, row) !== sourcePins.get(row) || !sourcePins.get(row)
       || (row.kind === 'list' && state.listDefinitions.find(def => def.id === row.listId) !== listDefinition)) return null;
     // Source objects can contain mutable topic maps. Check the exact native
     // row again at invocation, rather than trusting a displayed title/id.
-    const now = compareImpactOf(state);
-    if (!now?.rows.some(candidate => JSON.stringify(candidate) === JSON.stringify(row))) return null;
+    const now = verifyRow ? compareImpactOf(state) : impact;
+    if (!now || (verifyRow && !now.rows.some(candidate => JSON.stringify(candidate) === JSON.stringify(row)))) return null;
     if (row.kind !== 'list' && now.sources[row.kind] !== 'available') return null;
     return state;
   };
-  const target = (row: ImpactRow, changed: ChangedElementRef) => {
-    const state = current(row);
+  const target = (row: ImpactRow, changed: ChangedElementRef, verifyRow = false) => {
+    const state = current(row, verifyRow);
     const members = row.kind === 'validation' ? [row.changed] : row.changed;
     if (!state || !members.includes(changed) || !comparison) return null;
     const modelId = changed.side === 'base' ? comparison.baseModelId : comparison.headModelId;
@@ -73,12 +65,12 @@ export function captureImpactNavigation(captured: ViewerState, impact: CompareIm
   return {
     canOpen: row => !!current(row) && (row.kind !== 'validation' || !!target(row, row.changed)),
     open: row => {
-      const state = current(row);
+      const state = current(row, true);
       if (!state) return false;
       switch (row.kind) {
         case 'clash': state.setClashSelectedId(row.clashId); break;
         case 'validation': {
-          const ref = target(row, row.changed);
+          const ref = target(row, row.changed, true);
           if (!ref || !selectChangedEntity(ref.modelId, ref.expressId)) return false;
           state.setIdsActiveSpecification(row.specificationId);
           state.setIdsActiveEntity(ref);
@@ -92,7 +84,7 @@ export function captureImpactNavigation(captured: ViewerState, impact: CompareIm
     },
     canSelect: (row, changed) => !!target(row, changed),
     select: (row, changed) => {
-      const ref = target(row, changed);
+      const ref = target(row, changed, true);
       return !!ref && selectChangedEntity(ref.modelId, ref.expressId);
     },
   };

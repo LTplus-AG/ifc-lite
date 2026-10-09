@@ -26,14 +26,15 @@ export function useCompareImpact() {
   const listDefinitions = useViewerStore(s => s.listDefinitions);
   const activeListId = useViewerStore(s => s.activeListId);
   const bcfProject = useViewerStore(s => s.bcfProject);
+  const mutationViews = useViewerStore(s => s.mutationViews);
   const mutationVersion = useViewerStore(s => s.mutationVersion);
   const geometryContentVersion = useViewerStore(s => s.geometryContentVersion);
   const modelPlacement = useViewerStore(s => s.modelPlacement);
   return useMemo(() => {
     const impact = compareImpactOf({ compareResult, models, clashResult, clashRawResult, idsValidationReport, listResult,
-    listDefinitions, activeListId, bcfProject, mutationVersion, geometryContentVersion, modelPlacement }, PANEL_IMPACT_ROWS);
+      listDefinitions, activeListId, bcfProject, mutationVersion, geometryContentVersion, modelPlacement }, PANEL_IMPACT_ROWS);
     return impact ? { impact, navigation: captureImpactNavigation(useViewerStore.getState(), impact) } : null;
   },
   [compareResult, models, clashResult, clashRawResult, idsValidationReport, listResult, listDefinitions, activeListId, bcfProject,
-    mutationVersion, geometryContentVersion, modelPlacement]);
+    mutationViews, mutationVersion, geometryContentVersion, modelPlacement]);
 }

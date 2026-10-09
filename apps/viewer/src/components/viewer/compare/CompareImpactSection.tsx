@@ -10,6 +10,8 @@
  * nothing is inferred.
  */
 
+import { useState } from 'react';
+import '@/i18n/catalogues/review-workspace.register';
 import { useTranslation } from '@/i18n';
 import { formatLocaleNumber } from '@/i18n';
 import { cn } from '@/lib/utils';
@@ -23,14 +25,14 @@ const STATE_KEY = {
   modified: 'comparePanel.resultsList.stateChanged',
 } as const;
 
-function ChangedChips({ changed, row, navigation }: { changed: readonly ChangedElementRef[]; row: ImpactRow; navigation: ImpactNavigation }) {
+function ChangedChips({ changed, row, navigation, onUnavailable }: { changed: readonly ChangedElementRef[]; row: ImpactRow; navigation: ImpactNavigation; onUnavailable: () => void }) {
   const { t } = useTranslation();
   return (
     <span className="flex flex-wrap gap-1">
       {changed.map(c => (
         <button type="button" key={`${c.side}:${c.globalId}`} disabled={!navigation.canSelect(row, c)}
           title={t(navigation.canSelect(row, c) ? 'reviewWorkspace.selectIn3d' : 'reviewWorkspace.selectIn3dNone')}
-          onClick={() => navigation.select(row, c)} className="rounded bg-muted px-1 text-2xs text-muted-foreground hover:bg-accent disabled:opacity-60 disabled:cursor-not-allowed">
+          onClick={() => { if (!navigation.select(row, c)) onUnavailable(); }} className="rounded bg-muted px-1 text-2xs text-muted-foreground hover:bg-accent disabled:opacity-60 disabled:cursor-not-allowed">
           {t(c.side === 'base' ? 'compareAnalysis.side.base' : 'compareAnalysis.side.head')} · {c.ifcType.replace(/^Ifc/, '')}{' '}
           {c.globalId} · {t(STATE_KEY[c.state])}
         </button>
@@ -41,6 +43,7 @@ function ChangedChips({ changed, row, navigation }: { changed: readonly ChangedE
 
 function RowView({ row, navigation }: { row: ImpactRow; navigation: ImpactNavigation }) {
   const { t, locale } = useTranslation();
+  const [unavailable, setUnavailable] = useState(false);
   const number = (value: number) => formatLocaleNumber(locale, value, { maximumFractionDigits: 3 });
   let title: string;
   let detail: string | null = null;
@@ -69,11 +72,13 @@ function RowView({ row, navigation }: { row: ImpactRow; navigation: ImpactNaviga
         <span className="text-muted-foreground">{t(`compareAnalysis.source.${row.kind}`)}: </span>{title}
       </div>
       {detail && <div className="text-2xs text-muted-foreground break-words">{detail}</div>}
-      <button type="button" disabled={!navigation.canOpen(row)} onClick={() => navigation.open(row)}
+      <button type="button" disabled={!navigation.canOpen(row)} title={!navigation.canOpen(row) ? t('compareAnalysis.impact.navigationUnavailable') : undefined}
+        onClick={() => { if (!navigation.open(row)) setUnavailable(true); }}
         className="text-2xs underline underline-offset-2 disabled:opacity-60 disabled:cursor-not-allowed">
         {t('reviewWorkspace.open')}
       </button>
-      <ChangedChips changed={changed} row={row} navigation={navigation} />
+      <ChangedChips changed={changed} row={row} navigation={navigation} onUnavailable={() => setUnavailable(true)} />
+      {unavailable && <p role="status" className="text-2xs text-muted-foreground">{t('compareAnalysis.impact.navigationUnavailable')}</p>}
     </li>
   );
 }

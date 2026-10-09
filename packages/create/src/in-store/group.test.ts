@@ -162,7 +162,7 @@ it('a first refused operation preserves the fresh live allocator as well as its 
 it('complete replacement safely consolidates multiple owned assignments and reuses the first Root identity #7329', async () => {
   const s = await session();
   const group = addGroupToStore(s, { Name: 'Multiple membership edges', RelatedObjects: [s.member] });
-  const extra = s.editor.addEntity('IfcRelAssignsToGroup', [generateIfcGuid(), null, null, null, [`#${s.member.expressId}`], null, `#${group.expressId}`]).expressId;
+  const extra = s.editor.addEntity('IfcRelAssignsToGroup', [generateIfcGuid(), s.ownerHistoryId === null ? null : `#${s.ownerHistoryId}`, null, null, [`#${s.member.expressId}`], null, `#${group.expressId}`]).expressId;
   const before = readGroupInStore(s, group);
   expect(before.memberships).toHaveLength(2);
   updateGroupInStore(s, before, { RelatedObjects: [s.member] });
@@ -170,6 +170,55 @@ it('complete replacement safely consolidates multiple owned assignments and reus
   expect(readGroupInStore(saved, group).memberships).toEqual([before.memberships[0]]);
   expect(saved.store.entityIndex.byId.has(extra)).toBe(false);
   expect(saved.store.relationships.getRelated(group.expressId, RelationshipType.AssignsToGroup, 'forward')).toEqual([s.member.expressId]);
+});
+
+it('refuses complete replacement of PRODUCT/PROCESS assignments without changing either exported semantic record #7329', async () => {
+  const s = await session();
+  const group = addGroupToStore(s, { Name: 'Typed memberships', RelatedObjects: [s.member] });
+  const product = readGroupInStore(s, group).memberships[0].relationship.expressId;
+  s.editor.setPositionalAttribute(product, 5, '.PRODUCT.');
+  const taskGuid = generateIfcGuid();
+  const taskId = s.editor.addEntity('IfcTask', [taskGuid, null, 'Task', null, null, null, null, null, null, '.F.', null, null, '.NOTDEFINED.']).expressId;
+  const task = { expressId: taskId, GlobalId: taskGuid };
+  s.editor.addEntity('IfcRelAssignsToGroup', [generateIfcGuid(), null, null, null, [`#${taskId}`], '.PROCESS.', `#${group.expressId}`]);
+  const expected = readGroupInStore(s, group);
+  const before = await reread(s), transaction = state(s);
+  for (const RelatedObjects of [[s.member, task], [], [task]]) {
+    expect(() => updateGroupInStore(s, expected, { Name: 'Must not publish', RelatedObjects })).toThrow(/typed RelatedObjectsType/);
+    expect(state(s)).toBe(transaction);
+    const after = await reread(s);
+    const graph = (source: typeof before) => {
+      const reader = new AnchorEntityReader(source.store, source.mutationView);
+      return [...source.store.entityIndex.byId.keys()].map(id => {
+        const entity = reader.entity(id);
+        if (!entity) throw new Error(`Independently exported graph record #${id} is unreadable`);
+        return { id, type: entity.type, attributes: entity.attributes };
+      });
+    };
+    expect(graph(after)).toEqual(graph(before));
+  }
+  expect(readGroupInStore(await reread(s), group)).toEqual(expected);
+});
+
+it('refuses consolidation of distinct untyped assignment metadata without publishing #7329', async () => {
+  const s = await session();
+  const group = addGroupToStore(s, { Name: 'Distinct edges', RelatedObjects: [s.member] });
+  s.editor.addEntity('IfcRelAssignsToGroup', [generateIfcGuid(), null, 'Distinct assignment', 'Keep this description', [`#${s.member.expressId}`], null, `#${group.expressId}`]);
+  const expected = readGroupInStore(s, group), before = state(s);
+  expect(() => updateGroupInStore(s, expected, { RelatedObjects: [s.member] })).toThrow(/distinct assignment semantics/);
+  expect(state(s)).toBe(before);
+  expect(readGroupInStore(await reread(s), group)).toEqual(expected);
+});
+
+it('refuses changing even one typed assignment through an unpartitioned member list #7329', async () => {
+  const s = await session();
+  const group = addGroupToStore(s, { Name: 'Product-only group', RelatedObjects: [s.member] });
+  const relation = readGroupInStore(s, group).memberships[0].relationship.expressId;
+  s.editor.setPositionalAttribute(relation, 5, '.PRODUCT.');
+  const expected = readGroupInStore(s, group), before = state(s);
+  expect(() => updateGroupInStore(s, expected, { Name: 'Must not publish', RelatedObjects: [] })).toThrow(/typed RelatedObjectsType/);
+  expect(state(s)).toBe(before);
+  expect(readGroupInStore(await reread(s), group)).toEqual(expected);
 });
 
 it('bounds total effective record work and reports refusal rather than a truncated success #7329', async () => {

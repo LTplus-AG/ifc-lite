@@ -1,0 +1,21 @@
+{
+  "sourceSHA256": {
+    "apps/viewer/src/lib/actions/group-lifecycle-evidence.ts": "ff62620014ea752052e23a233204018b60231ff204cb581a3594bd0242820588",
+    "apps/viewer/src/lib/actions/selection-grounding.ts": "3126108fcb446fc17ed9a8c4484a8eaa6da14f59c90642f67edbdcc3fb290017"
+  },
+  "inverses": [
+    {
+      "guard": "group-limit",
+      "exit": 1
+    },
+    {
+      "guard": "attachment-native-limit",
+      "exit": 1
+    }
+  ],
+  "restoredExit": 0,
+  "restoredSHA256": {
+    "apps/viewer/src/lib/actions/group-lifecycle-evidence.ts": "ff62620014ea752052e23a233204018b60231ff204cb581a3594bd0242820588",
+    "apps/viewer/src/lib/actions/selection-grounding.ts": "3126108fcb446fc17ed9a8c4484a8eaa6da14f59c90642f67edbdcc3fb290017"
+  }
+}

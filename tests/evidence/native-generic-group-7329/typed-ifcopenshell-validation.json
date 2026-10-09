@@ -1,0 +1,51 @@
+{
+  "version": "0.8.5",
+  "results": [
+    {
+      "file": "before",
+      "schema": "IFC4",
+      "entities": 1049,
+      "task": {
+        "id": 9995,
+        "type": "IfcTask",
+        "GlobalId": "2ZwInmlvT6H8ZMnfO2fHnW",
+        "OwnerHistory": null,
+        "Name": "Task",
+        "Description": null,
+        "ObjectType": null,
+        "Identification": null,
+        "LongDescription": null,
+        "Status": null,
+        "WorkMethod": null,
+        "IsMilestone": false,
+        "Priority": null,
+        "TaskTime": null,
+        "PredefinedType": "NOTDEFINED"
+      },
+      "issues": []
+    },
+    {
+      "file": "after",
+      "schema": "IFC4",
+      "entities": 1049,
+      "task": {
+        "id": 9995,
+        "type": "IfcTask",
+        "GlobalId": "2ZwInmlvT6H8ZMnfO2fHnW",
+        "OwnerHistory": null,
+        "Name": "Task",
+        "Description": null,
+        "ObjectType": null,
+        "Identification": null,
+        "LongDescription": null,
+        "Status": null,
+        "WorkMethod": null,
+        "IsMilestone": false,
+        "Priority": null,
+        "TaskTime": null,
+        "PredefinedType": "NOTDEFINED"
+      },
+      "issues": []
+    }
+  ]
+}

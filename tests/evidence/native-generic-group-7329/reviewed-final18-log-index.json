@@ -1,0 +1,22 @@
+[
+  {
+    "file": "campaign-generic-group-reviewed-final18-dispatch-inverse.log.gz",
+    "sha256": "968d01752316da793f813a5e02dbada5d9df36ed0a0188eef07f71433e8030a0",
+    "bytes": 26141
+  },
+  {
+    "file": "campaign-generic-group-reviewed-final18-dispatch-restored.log.gz",
+    "sha256": "eb807d80571f62bd462c1ec71ca6524ca43dcf5646cfb6cecc113524ad78ded4",
+    "bytes": 24522
+  },
+  {
+    "file": "campaign-generic-group-reviewed-final18-native-write-inverse.log.gz",
+    "sha256": "16e2c335b1080d76ee8f86a1f96119f0dfb4eb87107a981d3cc6c85d5d4fa9e6",
+    "bytes": 28443
+  },
+  {
+    "file": "campaign-generic-group-reviewed-final18-native-write-restored.log.gz",
+    "sha256": "75a37ec4be0a9ad067baf8a87e52cebdb8db6ec2d658d5aca7d062adedccb03a",
+    "bytes": 24522
+  }
+]

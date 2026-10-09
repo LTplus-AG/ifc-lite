@@ -290,4 +290,8 @@ Deleting a group preserves its member objects and other group memberships;
 shared incoming memberships are rewritten safely. Other incoming dependencies,
 ambiguous/deleted identities, specialized assignment semantics, and exceeded
 graph budgets refuse the whole edit. The viewer records one native Undo batch.
+Replacement refuses typed `RelatedObjectsType` assignments and consolidation
+of assignments with distinct OwnerHistory, Name or Description. Their separate
+semantics cannot be represented by this complete-member-list update; reading
+and safe deletion remain supported.
 Specialized Structural groups retain their separate authoring methods.

@@ -1,0 +1,14 @@
+[
+  {
+    "label": "dispatch",
+    "inverseExit": 1,
+    "restoredExit": 0,
+    "sourceSha256": "a73bd2fa75a83fa5eb57af1677c7bdee4295e08cd0151079dcaff24676036473"
+  },
+  {
+    "label": "native-write",
+    "inverseExit": 1,
+    "restoredExit": 0,
+    "sourceSha256": "6c22e1392bac5997817060568401d8d583342bce7accbbf19909855e036b4363"
+  }
+]

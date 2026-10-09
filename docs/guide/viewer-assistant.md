@@ -456,3 +456,20 @@ A reviewed `ifc.create` answer creates only a standalone project scaffold. **Pre
 **Request viewer load (replace session)** dispatches the native File request to the existing primary load owner. It refuses a busy, edited, shared or changed workspace. The request does not confirm loading: follow native Activity and Load reports for the actual outcome. File publication and session replacement have no model-edit Undo. Browser loading acceptance and human evaluation remain separate from native scaffold evidence.
 
 Comparison’s **Impact on other analyses** rows offer **Open original** for the current native clash, failed IDS element/specification, list aggregate or BCF topic. Changed-element chips select the exact compared base or head model in 3D; opening a BCF topic does not guess a model from its component GUIDs. A list opens its recorded aggregate without claiming its unstamped result is current. Links require source ownership recorded by the native comparison producer. Imported/manual comparisons, replaced model sources, direct overlay edits, stale or replaced findings and removed elements keep readable facts but cannot acquire navigation authority by mounting the panel; refresh the comparison and analysis when a link is unavailable.
+## Generic group changes
+
+The Assistant can propose `group.lifecycle` from an explicitly attached
+selection or selection evidence. Review group names, complete membership and
+shared references, choose operations, prepare the native changes, and explicitly
+Apply. Updates preserve group identity and replace the entire membership list;
+removing a group keeps its members and other memberships. The edit has one Undo.
+Unavailable or incomplete captured evidence requires a fresh attachment.
+Generic replacement refuses typed `RelatedObjectsType` assignments and
+semantically distinct assignment records instead of merging their meanings.
+Those groups can still be read and safely removed through native review.
+Complete Group facts share a transport budget across every selected model,
+including escaped JSON. Oversized facts are explicitly unavailable; select a
+smaller set of groups before capturing again. Reattaching the same oversized
+selection cannot repair that refusal. Optional complete Cost and Structural
+snapshots also share the attachment budget and are refused whole when necessary;
+unavailable snapshots do not establish an empty graph or permit an edit.

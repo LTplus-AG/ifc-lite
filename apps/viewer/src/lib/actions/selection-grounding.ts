@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { nativeStructuralEvidence } from './structural-graph-evidence';
+import { groupTransportBudget, nativeGroupEvidence, type NativeGroupEvidence } from './group-lifecycle-evidence';
 
 
 /**
@@ -27,6 +28,7 @@ import { nativeStairEvidenceFromTarget } from './model-authoring-stair-lifecycle
 import { nativeCostEvidence, type CostEvidence } from './cost-graph-evidence';
 
 export interface SelectionElement extends NativeAuthoringEvidence {
+  nativeGroup?: NativeGroupEvidence;
   nativeGrid?: NativeGridEvidence;
   globalId: string;
   modelId: string;
@@ -38,7 +40,7 @@ export interface SelectionElement extends NativeAuthoringEvidence {
   nativeType: NativeTypeEvidence;
   nativeLayers?: NativeLayerEvidence;
   nativeStairExpected: ReturnType<typeof nativeStairEvidenceFromTarget>;
-  nativeCost: CostEvidence;
+  nativeCost: CostEvidence | { status: 'unavailable-transport-budget'; recordCount: null; expected: null };
 }
 
 export interface SelectionGrounding {
@@ -95,6 +97,7 @@ export function captureSelectionGrounding(state: GroundingState, limit = SELECTI
   };
   let unresolved = 0;
   let examined = 0;
+  const groupPopulation = new Map<string, number[]>();
   for (const id of ids) {
     if (examined >= readLimit) break;
     examined++;
@@ -103,6 +106,8 @@ export function captureSelectionGrounding(state: GroundingState, limit = SELECTI
     const globalId = ref && store ? resolveEntityRefGlobalIdFromState({ models: state.models,
       mutationViews: state.mutationViews, ifcDataStore: null }, ref) : null;
     if (!ref || !store || !globalId || state.mutationViews?.get(ref.modelId)?.isDeleted(ref.expressId)) { unresolved++; continue; }
+    const population = groupPopulation.get(ref.modelId) ?? [];
+    population.push(ref.expressId); groupPopulation.set(ref.modelId, population);
     const gridName = nativeGridName(nativeTarget(ref.modelId), ref.expressId);
     elements.push({
       globalId, modelId: ref.modelId,
@@ -120,6 +125,24 @@ export function captureSelectionGrounding(state: GroundingState, limit = SELECTI
   }
   const grounding = { capturedAt: new Date().toISOString(), total, elements, unresolved,
     truncated: elements.length + unresolved < total };
+  const groupBudget = groupTransportBudget();
+  for (const modelId of new Set(elements.map(row => row.modelId))) {
+    const rows = elements.filter(row => row.modelId === modelId);
+    rows[0].nativeGroup = grounding.truncated || unresolved ? { status: 'unavailable-selection-budget', snapshot: null }
+      : nativeGroupEvidence(nativeTarget(modelId), groupPopulation.get(modelId)!, groupBudget);
+  }
+  // Optional complete graph pins share the attachment envelope. They must not
+  // duplicate large selected Group records until the whole request cannot fit.
+  // Refuse each entire pin explicitly; never truncate its expected records.
+  let graphBudget = 12_000;
+  for (const row of elements) {
+    for (const key of ['nativeStructural', 'nativeCost'] as const) {
+      const evidence = row[key];
+      const cost = JSON.stringify(JSON.stringify(evidence)).length;
+      if (cost > graphBudget) row[key] = { status: 'unavailable-transport-budget', recordCount: null, expected: null };
+      else graphBudget -= cost;
+    }
+  }
   groundingOwners.set(grounding, { elements: JSON.stringify(elements), sources });
   return grounding;
 }

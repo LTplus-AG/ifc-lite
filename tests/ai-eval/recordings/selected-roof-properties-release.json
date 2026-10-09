@@ -104,12 +104,14 @@
             "modelName": "arch",
             "type": "IfcSlab",
             "name": "house - roof - slab right",
+            "nativeReplacementExpected": null,
             "nativeSlabOpeningExpected": null,
             "nativeSplitExpected": null,
             "nativeHostedExpected": null,
             "nativeTrimExtendExpected": null,
             "nativeStairExpected": null,
             "nativeAuthoringUnits": {
+              "replacement": "verbatim-native-fields",
               "slabOpening": "m",
               "split": "m",
               "hosted": "m",
@@ -121,6 +123,7 @@
               "hosted": "The native hosted binding or placement is unavailable"
             },
             "nativeAuthoringAvailability": {
+              "replacement": "unavailable-native-layout",
               "slabOpening": "unavailable-native-layout",
               "split": "unavailable-native-layout",
               "hosted": "unavailable-native-layout",

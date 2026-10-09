@@ -12,6 +12,9 @@ import { replacementVariants,setupReplacementSource,replacementReviewParams } fr
 import { SAMPLE_MODEL,GROUND_STOREY,FRONT_WALL_TYPE,FRONT_WALL_TYPE_NAME,parseIfc,danglingReferences } from '@/test/authoring-sample-fixture';
 import { editedModelBytes } from '@/lib/export/edited-model-bytes';
 import { captureSelectionGrounding } from './selection-grounding';
+import { captureEvidence } from '@/lib/assistant/evidence';
+import { getMaxExpressId } from '@/hooks/ingest/viewerModelIngest';
+import { effectiveStoreyId } from '@/lib/effective-storey';
 import { parseModelAuthoringBatch } from './model-authoring';
 import { previewModelAuthoring } from './model-authoring-preview';
 import { commitModelAuthoring } from './model-authoring-commit';
@@ -46,7 +49,7 @@ test('#7320 first-read replacement evidence/preview preserve the held source lea
  const evidence=captureSelectionGrounding({...useViewerStore.getState(),selectedEntityIds:new Set([f.made.expressId]),selectedEntityId:f.made.expressId});assert.ok(evidence.elements[0]?.nativeReplacementExpected);
  const preview=previewModelAuthoring(useViewerStore.getState(),f.batch());assert.equal(preview.rows[0].status,'ready',preview.rows[0].issue??'');assert.doesNotThrow(()=>held.validate());assert.equal(useViewerStore.getState().storeEditors.size,0);
 });
-test('#7320 genuine duplicate source/storey Root identities refuse without conflating material Names',async()=>{
+test('#7320 genuine duplicate source Root identities refuse without conflating material Names',async()=>{
  const f=await fixture(),editor=new StoreEditor(f.dataStore,f.view);editor.addEntity('IfcMaterial',[f.op.target.globalId,null,null]);assert.ok(captureSelectionGrounding({...useViewerStore.getState(),selectedEntityIds:new Set([f.made.expressId]),selectedEntityId:f.made.expressId}).elements[0]?.nativeReplacementExpected,'non-root material Name is not a second GlobalId');
  assert.equal(previewModelAuthoring(useViewerStore.getState(),f.batch()).rows[0].status,'ready');
  editor.addEntity('IfcWall',f.record.attributes);const saved=await parseIfc(f.bytes());assert.equal([...saved.entityIndex.byId.keys()].filter(id=>saved.getEntity(id)?.type==='IFCWALL'&&saved.getEntity(id)?.attributes[0]===f.op.target.globalId).length,2);
@@ -68,4 +71,26 @@ test('#7320 two same-GUID native models require explicit owner and keep the peer
  const {modelId:omitted,...target}=f.op.target;void omitted;assert.equal(previewModelAuthoring(useViewerStore.getState(),f.batch([{...f.op,target}])).rows[0].status,'ambiguous-target','both original roots exist before writing');
  const peerBefore=await graph(editedModelBytes(peerStore,peerView)),preview=previewModelAuthoring(useViewerStore.getState(),f.batch());assert.equal(preview.rows[0].status,'ready',preview.rows[0].issue??'');
  const result=commitModelAuthoring(useViewerStore,preview,new Set([0]),'explicit replacement owner');assert.ok(result.ok,result.ok?'':result.detail??result.reason);assert.deepEqual(await graph(editedModelBytes(peerStore,peerView)),peerBefore);
+});
+
+test('#7320 a genuine duplicate destination storey Root refuses without changing the source graph',async()=>{
+ const f=await fixture(),editor=new StoreEditor(f.dataStore,f.view),record=f.dataStore.getEntity(f.storey);assert.ok(record);
+ editor.addEntity('IfcBuildingStorey',record.attributes);const saved=await parseIfc(f.bytes());assert.equal([...saved.entityIndex.byId.keys()].filter(id=>saved.getEntity(id)?.type==='IFCBUILDINGSTOREY'&&saved.getEntity(id)?.attributes[0]===GROUND_STOREY).length,2);
+ const before=await graph(f.bytes()),preview=previewModelAuthoring(useViewerStore.getState(),f.batch());assert.notEqual(preview.rows[0].status,'ready');assert.equal(commitModelAuthoring(useViewerStore,preview,new Set([0]),'ambiguous destination storey').ok,false);assert.deepEqual(await graph(f.bytes()),before);
+});
+
+test('#7320 bounded native evidence drops an entire oversized peer-membership pin rather than authorizing a prefix',async()=>{
+ const f=await fixture(),ids=[f.made.expressId];for(let i=0;i<105;i++)ids.push(f.sdk.store.addWall(SAMPLE_MODEL,f.storey,{Start:[30+i,20,0],End:[30+i,25,0],Height:3,Thickness:.2}).expressId);
+ const typeId=f.dataStore.entities.getExpressIdByGlobalId(FRONT_WALL_TYPE);assert.ok(typeId>0);const editor=new StoreEditor(f.dataStore,f.view),methods=createModellingStoreBackend(()=>({modelId:SAMPLE_MODEL,store:f.dataStore,editor,mutationView:f.view,ownerHistoryId:resolveLiveOwnerHistoryId(f.dataStore,editor,f.view)}));methods.assignType(SAMPLE_MODEL,typeId,ids);
+ const saved=await parseIfc(f.bytes());const relation=[...saved.entityIndex.byId.keys()].map(id=>saved.getEntity(id)).find(row=>{const peers=row?.attributes[4];return row?.type==='IFCRELDEFINESBYTYPE'&&Array.isArray(peers)&&ids.every(id=>peers.includes(id));});assert.ok(relation,'independent STEP confirms every one of the106 supplied memberships and preserves pre-existing peers');
+ useViewerStore.getState().setSelectedEntity({modelId:SAMPLE_MODEL,expressId:f.made.expressId});useViewerStore.getState().setSelectedEntityIds([f.made.expressId]);const attached=captureSelectionGrounding(useViewerStore.getState()).elements[0];assert.ok(attached?.nativeReplacementExpected);assert.deepEqual(attached.nativeReplacementExpected.types[0].relatedIds,relation.attributes[4]);
+ const projected=JSON.parse(captureEvidence('selection').payload).evidence.rows[0].data;assert.equal(projected.nativeReplacementExpected,null);assert.equal(projected.nativeAuthoringAvailability.replacement,'unavailable-projection');
+});
+test('#7320 selected committed SketchUp roof replacement availability is derived only from native STEP root and placement',async()=>{
+ const {seedAuthoringSample}=await import('@/test/authoring-sample-fixture'),{dataStore,view}=await seedAuthoringSample();const id=425,source=await parseIfc(dataStore.source.materialize());assert.equal(source.entities.getGlobalId(id),'12UVOn4wvAJPMUExKdZLb8');assert.equal(source.entities.getTypeName(id),'IfcSlab');
+ const model=useViewerStore.getState().models.get(SAMPLE_MODEL);assert.ok(model);useViewerStore.getState().updateModel(SAMPLE_MODEL,{maxExpressId:getMaxExpressId(dataStore,[])});
+ const captured=captureSelectionGrounding({...useViewerStore.getState(),selectedEntityIds:new Set([id]),selectedEntityId:id}).elements[0];assert.ok(captured);
+ assert.equal(effectiveStoreyId(source,new MutablePropertyView(source.properties,SAMPLE_MODEL),id),undefined,'the native source has no proven containment storey for this roof');
+ assert.equal(captured.nativeReplacementExpected,null);assert.equal(captured.nativeAuthoringAvailability.replacement,'unavailable-native-layout');
+ assert.equal(view.getMutationCount(),0,'native capture performs no authoring');
 });

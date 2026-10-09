@@ -30,6 +30,7 @@ export async function setupReplacementSource(element:InStoreReplacementElement){
  }};
  const made=add(element),saved=await parseIfc(editedModelBytes(dataStore,view)),savedView=new MutablePropertyView(saved.properties,SAMPLE_MODEL);configureMutationView(savedView,saved);
  const state=useViewerStore.getState(),model=state.models.get(SAMPLE_MODEL);assert.ok(model);
+ // @raw-entity-enumeration-ok: independent saved source allocation watermark before any live edit view writes
  useViewerStore.setState({models:new Map([[SAMPLE_MODEL,{...model,ifcDataStore:saved,maxExpressId:Math.max(...saved.entityIndex.byId.keys())}]]),mutationViews:new Map([[SAMPLE_MODEL,savedView]]),storeEditors:new Map(),undoStacks:new Map(),redoStacks:new Map(),mutationBatchTags:new Map()});
  return {dataStore:saved,view:savedView,sdk,storey,made};
 }

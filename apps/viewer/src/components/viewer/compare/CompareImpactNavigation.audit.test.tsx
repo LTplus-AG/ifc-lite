@@ -68,12 +68,25 @@ it('7307 native clash impact opens its exact finding and selects its head-side c
  await publishComparison(pair);
  const clash = stampAnalysisReport(await runClash(pair, ['A', 'B']), captureAnalysisStamp(true));
  act(() => useViewerStore.setState({ clashResult: clash, clashRawResult: clash }));
- const root = openImpact(); const row = impactRow(root, PINS.clashAdded);
- const matching = clash.clashes.find(c => row.textContent?.includes(c.rule));
+ const root = openImpact();
+ const rows = [...root.querySelectorAll('li')].filter(row => row.textContent?.includes(PINS.clashAdded));
+ assert.ok(clash.clashes.length >= 2, '#7338 real native run supplies another finding for wrong-target surgery');
+ assert.ok(rows.length > 0);
+ const row = rows.at(-1)!;
+ const matches = clash.clashes.filter(finding => row.textContent?.includes(finding.rule)
+  && row.textContent.includes(finding.a.key) && row.textContent.includes(finding.b.key));
+ assert.ok(matches.length > 0);
+ // The native pair has colliding wall GUIDs across A/B. Identical visible
+ // descriptions remain distinct finding IDs; their documented ID order must
+ // retain every native finding rather than selecting any member of the run.
+ const equivalentRows = rows.filter(candidate => candidate.textContent === row.textContent);
+ const ordered = matches.toSorted((a, b) => a.id.localeCompare(b.id));
+ assert.equal(equivalentRows.length, ordered.length, '#7338 every native finding with these exact endpoints has its own row');
+ const matching = ordered[equivalentRows.indexOf(row)];
  assert.ok(matching);
  act(() => click(openButton(row)));
  assert.equal(useViewerStore.getState().sidebarActivePanel, 'clash');
- assert.ok(clash.clashes.some(c => c.id === useViewerStore.getState().clashSelectedId), 'native selected finding belongs to actual run');
+ assert.equal(useViewerStore.getState().clashSelectedId, matching.id, '#7338 Open original selects the clicked native finding, not another member of its run');
  const chip = [...row.querySelectorAll('button')].find(b => b.textContent?.includes(PINS.clashAdded));
  assert.ok(chip); assert.equal(chip.disabled, false); act(() => click(chip));
  assert.equal(useViewerStore.getState().selectedEntity?.modelId, 'B');
@@ -325,12 +338,21 @@ it('7307 actual Information validation evidence opens Rules instead of remembere
   requirement: { kind: 'element', block: { groups: [{ rules: [Rule.attribute('Name', 'eq', 'never-authored-7307')], combinator: 'AND' }], authoredAs: 'chips' } },
  }] }), captureAnalysisStamp(true));
  act(() => useViewerStore.setState({ idsValidationReport: report, validationSource: 'rules' }));
- setValidationSourceChoice('manual'); const root = openImpact(); const row = impactRow(root, 'Native walls are named');
+ setValidationSourceChoice('manual'); const root = openImpact();
+ const rows = [...root.querySelectorAll('li')].filter(row => row.textContent?.includes('Native walls are named'));
+ assert.ok(rows.length >= 2, '#7338 real native rules yield distinct impacted rows; choose a non-first failure');
+ const row = rows[1];
+ const spec = report.specificationResults.find(result => result.specification.name === 'Native walls are named');
+ assert.ok(spec);
+ const failures = spec.entityResults.filter(entity => !entity.passed && entity.globalId && row.textContent?.includes(entity.globalId));
+ assert.equal(failures.length, 1, '#7338 clicked native changed-entity identity identifies one real failure');
+ const expected = failures[0];
  act(() => click(openButton(row)));
  assert.equal(useValidationSourceChoice.getState().choice, 'rules');
  assert.equal(useViewerStore.getState().sidebarActivePanel, 'validation');
  const active = useViewerStore.getState().idsActiveEntityId; assert.ok(active);
- assert.equal(active.modelId, 'A');
- assert.ok(report.specificationResults.some(spec => spec.entityResults.some(entity => !entity.passed
-  && entity.modelId === active.modelId && entity.expressId === active.expressId)));
+ assert.equal(useViewerStore.getState().idsActiveSpecificationId, spec.specification.id);
+ assert.deepEqual(active, { modelId: expected.modelId, expressId: expected.expressId }, '#7338 exact clicked failure, not any failed entity from the native report');
+ assert.equal(pair.base.ifcDataStore.entities.getGlobalId(active.expressId), expected.globalId);
+ assert.equal(useViewerStore.getState().idsValidationReport, report, 'opening exact native failure does not replace the analysis');
 });

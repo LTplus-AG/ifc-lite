@@ -43,5 +43,6 @@ test('#7310 both real selection transports carry the same complete current nativ
  assert.equal(attached.elements.length,1);assert.ok(attached.elements[0].nativeSlabOpeningExpected,'the shipping attachment includes the native slab snapshot');assert.equal(attached.elements[0].nativeAuthoringAvailability.slabOpening,'available');
  const evidence=selectionAdapter.capture(state,10),reader=authoringReader(state,SAMPLE_MODEL);assert.ok(reader);
  assert.deepEqual(attached.elements[0].nativeSlabOpeningExpected,readSplitSnapshot(dataStore,reader.editor,made.expressId,'m'));
- assert.deepEqual(evidence.rows?.[0]?.nativeSlabOpeningExpected,attached.elements[0].nativeSlabOpeningExpected,'attachment and evidence adapter use one authoritative native reader');
+ const row=evidence.rows?.[0];assert.ok(row && typeof row==='object' && 'nativeSlabOpeningExpected' in row);
+ assert.deepEqual(row.nativeSlabOpeningExpected,attached.elements[0].nativeSlabOpeningExpected,'attachment and evidence adapter use one authoritative native reader');
 });

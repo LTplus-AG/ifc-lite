@@ -43,7 +43,7 @@ async function graph(store: Awaited<ReturnType<typeof parseIfc>>,view:MutablePro
 }
 for(const polygon of [false,true])test(`#7310 native ${polygon?'polygon':'rectangle'} slab complete expected snapshot preserves host metadata and cut depth`,async()=>{
  const f=await fixture(polygon),preview=previewModelAuthoring(useViewerStore.getState(),f.batch());
- assert.equal(preview.rows[0].status,'ready',preview.rows[0].issue);
+ assert.equal(preview.rows[0].status,'ready',preview.rows[0].issue ?? '');
  assert.equal(preview.rows[0].previewUnavailable,false,'review draws the native cutter only on its supported storey frame');
  const before=await graph(f.dataStore,f.view),result=commitModelAuthoring(useViewerStore,preview,new Set([0]),'complete slab expectation');assert.ok(result.ok,result.ok?'':result.detail??result.reason);
  const bytes=editedModelBytes(f.dataStore,f.view),after=await parseIfc(bytes),cuts=readHostOpeningExtents(after,f.id);
@@ -60,7 +60,7 @@ for(const stale of ['snapshot','revision','source'] as const)test(`#7310 ${stale
  const preview=previewModelAuthoring(useViewerStore.getState(),batch);
  if(stale==='snapshot')assert.notEqual(preview.rows[0].status,'ready');
  else {
-  assert.equal(preview.rows[0].status,'ready',preview.rows[0].issue);
+  assert.equal(preview.rows[0].status,'ready',preview.rows[0].issue ?? '');
   if(stale==='revision')f.view.setAttribute(f.id,'Description','Independent edit after approval');
   else {const state=useViewerStore.getState(),model=state.models.get(SAMPLE_MODEL);assert.ok(model);const replacement=await parseIfc(f.dataStore.source.materialize());useViewerStore.setState({models:new Map([[SAMPLE_MODEL,{...model,ifcDataStore:replacement}]])});}
  }
@@ -83,7 +83,7 @@ test('#7310 saved first-read slab preview and evidence preserve a held native tr
  const view=new MutablePropertyView(f.saved.properties,SAMPLE_MODEL);configureMutationView(view,f.saved);
  useViewerStore.setState({models:new Map([[SAMPLE_MODEL,{...model,ifcDataStore:f.saved,maxExpressId:Math.max(...f.saved.entityIndex.byId.keys())}]]),mutationViews:new Map([[SAMPLE_MODEL,view]]),storeEditors:new Map()});
  const prepared=view.prepareAtomic(()=>undefined),preview=previewModelAuthoring(useViewerStore.getState(),f.batch());
- assert.equal(preview.rows[0].status,'ready',preview.rows[0].issue);
+ assert.equal(preview.rows[0].status,'ready',preview.rows[0].issue ?? '');
  const reader=authoringReader(useViewerStore.getState(),SAMPLE_MODEL);assert.ok(reader);assert.equal(slabEvidence(f.id).status,'available');
  assert.doesNotThrow(()=>prepared.validate(),'native snapshot reads never invalidate another prepared edit');
  assert.equal(useViewerStore.getState().storeEditors.size,0,'preview does not install a live editor');
@@ -92,7 +92,7 @@ test('#7310 owning model isolates identical slab GlobalIds in two real native so
  const f=await fixture(),state=useViewerStore.getState(),model=state.models.get(SAMPLE_MODEL);assert.ok(model);
  const peerView=new MutablePropertyView(f.saved.properties,'peer');
  useViewerStore.setState({models:new Map([...state.models,['peer',{...model,id:'peer',name:'peer.ifc',idOffset:1000000,ifcDataStore:f.saved}]]),mutationViews:new Map([...state.mutationViews,['peer',peerView]])});
- const peerBefore=await graph(f.saved,peerView),preview=previewModelAuthoring(useViewerStore.getState(),f.batch());assert.equal(preview.rows[0].status,'ready',preview.rows[0].issue);assert.equal(preview.rows[0].modelId,SAMPLE_MODEL);
+ const peerBefore=await graph(f.saved,peerView),preview=previewModelAuthoring(useViewerStore.getState(),f.batch());assert.equal(preview.rows[0].status,'ready',preview.rows[0].issue ?? '');assert.equal(preview.rows[0].modelId,SAMPLE_MODEL);
  const result=commitModelAuthoring(useViewerStore,preview,new Set([0]),'owning slab model');assert.ok(result.ok,result.ok?'':result.detail??result.reason);
  assert.equal(readHostOpeningExtents(await parseIfc(editedModelBytes(f.dataStore,f.view)),f.id).cuts.length,1);
  assert.deepEqual(await graph(f.saved,peerView),peerBefore,'same-GUID peer keeps its complete native graph');
@@ -114,7 +114,7 @@ test('#7310 intermediate native slab resize requires and accepts the exact curre
  const expected=readAuthoringSizeFromTarget(reader,f.id,'slab');assert.ok(expected);
  const resize={op:'element.resize',target:f.host,expected,size:{kind:'slab',thickness:.4}};
  const batch=f.batch([resize,f.operation]),stale=previewModelAuthoring(useViewerStore.getState(),batch);
- assert.equal(stale.rows[0].status,'ready',stale.rows[0].issue);assert.notEqual(stale.rows[1].status,'ready','native earlier resize invalidates the bound source dimensions');
+ assert.equal(stale.rows[0].status,'ready',stale.rows[0].issue ?? '');assert.notEqual(stale.rows[1].status,'ready','native earlier resize invalidates the bound source dimensions');
  const current=f.view.prepareAtomic(view=>{
   const editor=new StoreEditor(f.dataStore,view);
   draftAuthoringOperation(batch,f.dataStore,SAMPLE_MODEL,editor,stale.rows[0],new Map());
@@ -157,7 +157,7 @@ for(const write of ['named-metadata','positional'] as const)test(`#7310 current 
  if(write==='named-metadata')editor.setAttribute(f.id,'Name','Current named slab host');else editor.setPositionalAttribute(pointId,0,[22000,21000,3000]);
  const saved=await parseIfc(editedModelBytes(store,view));if(write==='named-metadata')assert.equal(saved.entities.getName(f.id),'Current named slab host');else assert.deepEqual(saved.getEntity(pointId)?.attributes[0],[22000,21000,3000],'actual native export confirms the edited placement');
  const stale=previewModelAuthoring(useViewerStore.getState(),f.batch());assert.notEqual(stale.rows[0].status,'ready');
- const current=readSplitSnapshot(store,editor,f.id,'m'),preview=previewModelAuthoring(useViewerStore.getState(),f.batch([{...f.operation,host:{...f.host,name:saved.entities.getName(f.id)},expected:current}]));assert.equal(preview.rows[0].status,'ready',preview.rows[0].issue);
+ const current=readSplitSnapshot(store,editor,f.id,'m'),preview=previewModelAuthoring(useViewerStore.getState(),f.batch([{...f.operation,host:{...f.host,name:saved.entities.getName(f.id)},expected:current}]));assert.equal(preview.rows[0].status,'ready',preview.rows[0].issue ?? '');
  const result=commitModelAuthoring(useViewerStore,preview,new Set([0]),'current native slab placement');assert.ok(result.ok,result.ok?'':result.detail??result.reason);
  assert.equal(readHostOpeningExtents(await parseIfc(editedModelBytes(store,view)),f.id).cuts.length,1);
 });
@@ -167,7 +167,7 @@ test('#7310 a native nested host remains authorable with an explicitly unavailab
  const parent=editor.addEntity('IfcLocalPlacement',[`#${f.expected.placement.parent}`,`#${axis.expressId}`]);
  const host=f.view.getNewEntity(f.id);assert.ok(host);const localId=Number(String(host.attributes[5]).slice(1));editor.setPositionalAttribute(localId,0,`#${parent.expressId}`);
  const saved=await parseIfc(editedModelBytes(f.dataStore,f.view));assert.deepEqual(saved.getEntity(point.expressId)?.attributes[0],[100000,0,0]);assert.equal(saved.getEntity(localId)?.attributes[0],parent.expressId);
- const expected=readSplitSnapshot(f.dataStore,editor,f.id,'m'),preview=previewModelAuthoring(useViewerStore.getState(),f.batch([{...f.operation,expected}]));assert.equal(preview.rows[0].status,'ready',preview.rows[0].issue);assert.equal(preview.rows[0].previewUnavailable,true,'no storey-local marker can conceal a real nested +100m parent');
+ const expected=readSplitSnapshot(f.dataStore,editor,f.id,'m'),preview=previewModelAuthoring(useViewerStore.getState(),f.batch([{...f.operation,expected}]));assert.equal(preview.rows[0].status,'ready',preview.rows[0].issue ?? '');assert.equal(preview.rows[0].previewUnavailable,true,'no storey-local marker can conceal a real nested +100m parent');
  const result=commitModelAuthoring(useViewerStore,preview,new Set([0]),'native nested slab');assert.ok(result.ok,result.ok?'':result.detail??result.reason);
  const after=await parseIfc(editedModelBytes(f.dataStore,f.view));assert.equal(readHostOpeningExtents(after,f.id).cuts.length,1);assert.equal(after.getEntity(localId)?.attributes[0],parent.expressId,'native commit preserves the actual parent frame');
 });
@@ -189,13 +189,13 @@ test('#7310 unreadable current native snapshot never attests a named placement r
  // current native source. That source is supported without another resolver.
  const savedView=new MutablePropertyView(saved.properties,SAMPLE_MODEL);configureMutationView(savedView,saved);
  useViewerStore.setState({models:new Map([[SAMPLE_MODEL,{...model,ifcDataStore:saved,maxExpressId:Math.max(...saved.entityIndex.byId.keys())}]]),mutationViews:new Map([[SAMPLE_MODEL,savedView]]),storeEditors:new Map()});
- const current=readSplitSnapshot(saved,new StoreEditor(saved,savedView),f.id,'m'),ready=previewModelAuthoring(useViewerStore.getState(),f.batch([{...f.operation,expected:current}]));assert.equal(ready.rows[0].status,'ready',ready.rows[0].issue);
+ const current=readSplitSnapshot(saved,new StoreEditor(saved,savedView),f.id,'m'),ready=previewModelAuthoring(useViewerStore.getState(),f.batch([{...f.operation,expected:current}]));assert.equal(ready.rows[0].status,'ready',ready.rows[0].issue ?? '');
  const result=commitModelAuthoring(useViewerStore,ready,new Set([0]),'independently saved current frame');assert.ok(result.ok,result.ok?'':result.detail??result.reason);assert.equal(readHostOpeningExtents(await parseIfc(editedModelBytes(saved,savedView)),f.id).cuts.length,1);
 });
 
 test('#7310 a publicly deleted native slab refuses a previously reviewed opening without restoring the host',async()=>{
  const f=await fixture(),batch=f.batch(),preview=previewModelAuthoring(useViewerStore.getState(),batch);
- assert.equal(preview.rows[0].status,'ready',preview.rows[0].issue);
+ assert.equal(preview.rows[0].status,'ready',preview.rows[0].issue ?? '');
  new StoreEditor(f.dataStore,f.view).removeEntity(f.id);
  const saved=await parseIfc(editedModelBytes(f.dataStore,f.view));assert.equal(saved.getEntity(f.id),null,'independent STEP proves the native host removal');
  const before=await graph(f.dataStore,f.view);assert.notEqual(previewModelAuthoring(useViewerStore.getState(),batch).rows[0].status,'ready');

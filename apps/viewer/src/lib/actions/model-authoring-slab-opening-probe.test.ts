@@ -75,7 +75,7 @@ test('#6812 reviewed bare slab opening admits the existing canonical native slab
  const proposal={version:1,kind:'model.authoring',title:'Explicit slab opening',units:'m',frame:'storey-local',operations:[{op:'hosted.create',kind:'opening',host:{modelId:SAMPLE_MODEL,globalId:saved.entities.getGlobalId(slab.expressId),ifcClass:'IfcSlab',name:saved.entities.getName(slab.expressId)},params:{Position:[2,1],Width:1,Depth:.8},expected:readSplitSnapshot(current.dataStore,current.editor,slab.expressId,'m')}]};
  const batch = parseModelAuthoringBatch(JSON.stringify(proposal));
  const preview = previewModelAuthoring(useViewerStore.getState(), batch);
- assert.equal(preview.rows[0].status, 'ready', preview.rows[0].issue);
+ assert.equal(preview.rows[0].status, 'ready', preview.rows[0].issue ?? '');
  assert.equal(preview.rows[0].previewUnavailable, false, 'the supported frame draws a native slab cutter, never a wall ghost');
 });
 
@@ -87,7 +87,7 @@ for (const polygon of [false,true]) for (const units of ['m', 'mm'] as const) te
   op:'hosted.create',kind:'opening',host:{modelId:SAMPLE_MODEL,globalId:saved.entities.getGlobalId(slab.expressId),ifcClass:'IfcSlab',name:saved.entities.getName(slab.expressId)},
   expected:readSplitSnapshot(reader.dataStore,reader.editor,slab.expressId,units),params:{Position:[2*factor,1*factor],Width:factor,Depth:.8*factor}}]}));
  const before=meshVolume(editedModelBytes(dataStore,view),slab.expressId),preview=previewModelAuthoring(useViewerStore.getState(),batch);
- assert.equal(preview.rows[0].status,'ready',preview.rows[0].issue);
+ assert.equal(preview.rows[0].status,'ready',preview.rows[0].issue ?? '');
  const outcome=commitModelAuthoring(useViewerStore,preview,new Set([0]),'slab-native-contract');assert.ok(outcome.ok,outcome.ok?'':outcome.detail??outcome.reason);
  const bytes=editedModelBytes(dataStore,view),reparsed=await parseIfc(bytes);
  assert.deepEqual(danglingReferences(new TextDecoder().decode(bytes)),[]);
@@ -98,7 +98,7 @@ for (const polygon of [false,true]) for (const units of ['m', 'mm'] as const) te
  assert.ok(Math.abs(after-(polygon?4.8:5.8))<.001,'actual reviewed native commit cuts precisely the supported slab');
  const plane=buildStoreyWorkplane(useViewerStore.getState(),SAMPLE_MODEL,storey,0);assert.ok(isWorkplane(plane));
  const ghost=authoringGhosts(useViewerStore.getState(),preview)[0];assert.ok(ghost);
- const ghostLocal:[number,number,number][]=[];for(let k=0;k<ghost.positions.length;k+=3)ghostLocal.push(plane.renderToLocal([ghost.positions[k],ghost.positions[k+1],ghost.positions[k+2]]));
+ const ghostLocal:(readonly [number,number,number])[]=[];for(let k=0;k<ghost.positions.length;k+=3)ghostLocal.push(plane.renderToLocal([ghost.positions[k],ghost.positions[k+1],ghost.positions[k+2]]));
  for(const [axis,min,max] of [[0,21.5,22.5],[1,20.6,21.4],[2,2.95,3.3]]){
   const values=ghostLocal.map(p=>p[axis]);assert.ok(Math.abs(Math.min(...values)-min)<.001);assert.ok(Math.abs(Math.max(...values)-max)<.001);
  }

@@ -54,3 +54,23 @@ actual refusal assertion fails. Exact source SHA restoration yields 19 passes.
 Compressed logs, hashes and restoration receipts accompany this correction.
 The earlier afff combined all-ten PASS is preserved, but does not qualify this
 corrective source head; fresh qualification remains pending.
+
+The initial corrective task fixture had an incorrect twelve-slot IfcTask record;
+review caught it before merge. It now uses all thirteen IFC4 attributes, with
+mandatory IsMilestone .F. and final PredefinedType .NOTDEFINED. The pinned actual
+IfcOpenShell 0.8.5 validates both native regression exports with EXPRESS rules:
+zero issues before and after refusal. Native19 and each guard inverse above were
+repeated after this correction; their original logs remain preserved.
+
+After ordinary integration of actual main fe3070cfb18853dd857554615160806a607dbae2,
+the five actual public-entry whole comparison gives 11 genuine passing controls
+and three real provider/request evidence assertions, then exact-SHA restoration
+gives 14 passes with zero skips. Main now includes the native foundation; this
+is the transport boundary, with private review helpers retained to execute real
+controls. It does not reuse the older fc27 five-failure count.
+
+The first corrective broad Create run under concurrent heavy work hit the
+unchanged five-second railway test and ten-second mapped-WASM hook deadlines.
+Those timeout failures remain recorded; no deadline or acceptance was relaxed.
+Broad rerun and new-head all-ten qualification require their actual terminal
+receipts and remain pending at this evidence commit.

@@ -178,7 +178,7 @@ it('refuses complete replacement of PRODUCT/PROCESS assignments without changing
   const product = readGroupInStore(s, group).memberships[0].relationship.expressId;
   s.editor.setPositionalAttribute(product, 5, '.PRODUCT.');
   const taskGuid = generateIfcGuid();
-  const taskId = s.editor.addEntity('IfcTask', [taskGuid, null, 'Task', null, null, null, null, null, '.NOTDEFINED.', null, null, null]).expressId;
+  const taskId = s.editor.addEntity('IfcTask', [taskGuid, null, 'Task', null, null, null, null, null, null, '.F.', null, null, '.NOTDEFINED.']).expressId;
   const task = { expressId: taskId, GlobalId: taskGuid };
   s.editor.addEntity('IfcRelAssignsToGroup', [generateIfcGuid(), null, null, null, [`#${taskId}`], '.PROCESS.', `#${group.expressId}`]);
   const expected = readGroupInStore(s, group);

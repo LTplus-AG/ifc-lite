@@ -1,0 +1,27 @@
+[
+  {
+    "file": "campaign-group-validtask-typed-inverse.log.gz",
+    "sha256": "f12c39c288bdb629c6765ae0081c6279c886f919136fd1c10314b1e43a110605",
+    "bytes": 7729
+  },
+  {
+    "file": "campaign-group-validtask-distinct-inverse.log.gz",
+    "sha256": "96a3aa54fc5609c23a26102f38827d2b5597d0a1130a55f690147d008db6486e",
+    "bytes": 6324
+  },
+  {
+    "file": "campaign-group-validtask-restored.log.gz",
+    "sha256": "4218775edd3db239e1ec3d8ad0459c87479e7685a9be62361bee6f43450bf8fe",
+    "bytes": 2747
+  },
+  {
+    "file": "campaign-generic-group-public-whole-mainfe307.log.gz",
+    "sha256": "0b1d88aa44330b6d60ac9fc381d3eb725dddd5b65bd7cfb1e0c074a7ead33f99",
+    "bytes": 7352
+  },
+  {
+    "file": "campaign-generic-group-public-whole-mainfe307-restored.log.gz",
+    "sha256": "5763a710c2fe4ea051ee11147e4e258d9e24367f22fd36c74cf9c8634ae6d8a7",
+    "bytes": 3590
+  }
+]

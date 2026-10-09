@@ -55,13 +55,12 @@ export function useAppearanceSourceGeometry(
         index: modelIdToIndex?.get(modelId) ?? 0 });
     }
     const cache = cacheRef.current;
-    const rebuild = !cache || cache.version !== geometryContentVersion
+    if (!cache || cache.version !== geometryContentVersion
       || cache.sources.length !== sources.length || sources.some((source, i) => {
         const previous = cache.sources[i];
         return previous.id !== source.id || previous.meshes !== source.meshes
           || previous.index !== source.index || previous.length > source.length;
-      });
-    if (rebuild) {
+      })) {
       const meshes: MeshData[] = [];
       for (const source of sources) {
         stampModelIndex(source.meshes, source.index);

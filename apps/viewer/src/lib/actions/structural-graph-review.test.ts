@@ -161,6 +161,8 @@ test('#7318 invalid current Root identity and effective geometry-unit declaratio
   const id = made.applied[0].expressId!;
   view.setAttribute(id, 'GlobalId', 'invalid-guid', true);
   assert.equal(extractStructuralOnDemand(await parseIfc(editedModelBytes(dataStore, view))).loadGroups[0].globalId, 'invalid-guid', 'actual STEP preserves the malformed native identity before admission refusal');
+  const current = readStructuralSnapshot(readOnlyModelEditTarget(useViewerStore.getState(), SAMPLE_MODEL)!, [storey]);
+  assert.equal(current.records.find(record => record.expressId === id)?.attributes[0], 'invalid-guid', 'the complete current evidence must retain the authored native Root record proved in saved IFC');
   assert.throws(() => prepareStructuralReview(useViewerStore, proposal(storey, [{ op: 'structural.group.assign', target: id, related: [storey] }])), /identity|GlobalId/);
   const units = readStructuralSnapshot(readOnlyModelEditTarget(useViewerStore.getState(), SAMPLE_MODEL)!, [storey]).records;
   const lengthUnit = units.find(row => row.type === 'IfcSIUnit' && String(row.attributes[1]).replaceAll('.', '') === 'LENGTHUNIT');

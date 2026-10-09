@@ -125,6 +125,28 @@ ENDSEC;\nEND-ISO-10303-21;\n";
             m[(2, 3)],
         );
     }
+
+    /// #7335: a writer bakes the strict local frame back into the file, so it
+    /// must stay in file units whatever unit scale the router renders with,
+    /// for both the sampled curve and the authored CartesianPosition.
+    #[test]
+    fn strict_local_frame_is_in_file_units_for_any_router_scale() {
+        for content in [
+            AUTHORED_IFC.to_string(),
+            AUTHORED_IFC.replace("#8=IFCLINEARPLACEMENT($,#5,#7);", "#8=IFCLINEARPLACEMENT($,#5,$);"),
+        ] {
+            let mut decoder = EntityDecoder::new(&content);
+            let placement = decoder.decode_by_id(8).expect("decode #8");
+            let metre = GeometryRouter::with_scale(1.0)
+                .resolve_linear_placement_local_strict(&placement, &mut decoder)
+                .expect("strict local frame");
+            let milli = GeometryRouter::with_scale(0.001)
+                .resolve_linear_placement_local_strict(&placement, &mut decoder)
+                .expect("strict local frame");
+            assert_eq!(metre, milli);
+            assert!(metre[12] >= 5.0, "translation stays in file units: {metre:?}");
+        }
+    }
 }
 
 mod sample_polyline_tests {

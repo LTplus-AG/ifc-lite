@@ -345,18 +345,25 @@ fn issue_6692_no_added_wrapper_preserves_depth_31_colors_and_reports_depth_cycle
 }
 
 fn aligned_model(linear_parent: &str) -> String {
+    aligned_model_in(1., linear_parent)
+}
+
+/// Lengths are authored in project units: `unit` metres per unit.
+fn aligned_model_in(unit: f64, linear_parent: &str) -> String {
+    let length = |metres: f64| writer::real(metres / unit).unwrap();
     with_entities(
-        &rigid_model(1.),
+        &rigid_model(unit),
         &format!("\
 #100=IFCLOCALPLACEMENT($,#11);\n\
-#101=IFCCARTESIANPOINT((0.,0.,0.));\n#102=IFCCARTESIANPOINT((10.,5.,0.));\n#103=IFCPOLYLINE((#101,#102));\n\
+#101=IFCCARTESIANPOINT((0.,0.,0.));\n#102=IFCCARTESIANPOINT(({},{},0.));\n#103=IFCPOLYLINE((#101,#102));\n\
 #104=IFCSHAPEREPRESENTATION(#10,'Axis','Curve3D',(#103));\n#105=IFCPRODUCTDEFINITIONSHAPE($,$,(#104));\n\
 #106=IFCALIGNMENT('0M7tQ9Jbj1BAeHd7rqnDmU',$,'Alignment',$,$,#100,#105,$);\n\
-#107=IFCPOINTBYDISTANCEEXPRESSION(IFCLENGTHMEASURE(4.),1.,0.5,$,#103);\n#108=IFCAXIS2PLACEMENTLINEAR(#107,$,$);\n\
+#107=IFCPOINTBYDISTANCEEXPRESSION(IFCLENGTHMEASURE({}),{},{},$,#103);\n#108=IFCAXIS2PLACEMENTLINEAR(#107,$,$);\n\
 #109=IFCLINEARPLACEMENT({linear_parent},#108,$);\n\
 #110=IFCREFERENT('0M7tQ9Jbj1BAeHd7rqnDmV',$,'Station',$,$,#109,$,.STATION.);\n\
 #111=IFCLINEARPLACEMENT(#30,#108,$);\n\
-#112=IFCREFERENT('0M7tQ9Jbj1BAeHd7rqnDmW',$,'Nested station',$,$,#111,$,.STATION.);"),
+#112=IFCREFERENT('0M7tQ9Jbj1BAeHd7rqnDmW',$,'Nested station',$,$,#111,$,.STATION.);",
+            length(10.), length(5.), length(4.), length(1.), length(0.5)),
     )
 }
 
@@ -440,4 +447,31 @@ fn issue_7335_world_relative_linear_placement_refuses_without_partial_patches() 
     );
     assert!(plan.replacements.is_empty());
     assert!(plan.new_entities.is_empty());
+}
+
+#[test]
+fn issue_7335_millimetre_project_bakes_linear_placements_in_file_units() {
+    // The same physical model authored in metres and in millimetres must
+    // normalize to the same physical product frames: a baked station 4 m
+    // along its curve must not become 4 mm (#7335 review).
+    let resolve = |unit: f64| {
+        let source = aligned_model_in(unit, "#100");
+        let plan = plan_map_conversion_normalization(source.as_bytes()).unwrap();
+        assert!(plan.warnings.is_empty(), "{:?}", plan.warnings);
+        let output = apply(&source, &plan);
+        let mut after = EntityDecoder::new(&output);
+        let router = GeometryRouter::with_scale(unit);
+        [106, 110, 112, 50].map(|id| {
+            let product = after.decode_by_id(id).unwrap();
+            Matrix4::from_column_slice(
+                &router
+                    .resolve_scaled_placement_strict(&product, &mut after)
+                    .unwrap(),
+            )
+        })
+    };
+    let (metre, milli) = (resolve(1.), resolve(0.001));
+    for (index, (m, mm)) in metre.iter().zip(&milli).enumerate() {
+        assert!((m - mm).amax() < 1e-6, "product {index}: {m} vs {mm}");
+    }
 }

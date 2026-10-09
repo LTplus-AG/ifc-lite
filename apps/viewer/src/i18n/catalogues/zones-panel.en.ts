@@ -127,6 +127,7 @@ export const zonesPanelEn = {
   'zonesPanel.volumeBreakdown.rescaledMessage':
     "Federation alignment rescaled this element's model, so its proved volume no longer describes the geometry on screen. Re-anchor the federation on this model to split it.",
   'zonesPanel.volumeBreakdown.inheritedUnavailable': 'Inherited type quantities are unavailable ({reason}).',
+  'zonesPanel.volumeBreakdown.quantityUnitsUnavailable': 'Current quantity units are unavailable ({reason}).',
   'zonesPanel.volumeBreakdown.unknownReasonMessage': 'Its volume could not be split ({reason}).',
   'zonesPanel.volumeBreakdown.splitButton': 'Split volume by zone',
   'zonesPanel.volumeBreakdown.overlapWarning': 'These zones overlap each other, so the shares double-count and do not add up to the whole.',

@@ -25,13 +25,14 @@ import { toGlobalIdFromModels } from '@/store/globalId';
 import { useIfc } from '@/hooks/useIfc';
 import { getOrCreateMutationView } from '@/sdk/adapters/mutation-view';
 import { IfcQuery } from '@ifc-lite/query';
-import { extractClassificationsOnDemand, extractTypeEntityOwnProperties, extractGeoreferencingOnDemand, extractLengthUnitScale, extractProjectUnits, ProjectUnits, taskProductExpressIds, taskProductGlobalIds, type IfcDataStore, type MaterialPsetGroup } from '@ifc-lite/parser';
+import { extractClassificationsOnDemand, extractTypeEntityOwnProperties, extractGeoreferencingOnDemand, extractLengthUnitScale, ProjectUnits, taskProductExpressIds, taskProductGlobalIds, type IfcDataStore, type MaterialPsetGroup } from '@ifc-lite/parser';
 import { RelationshipType, isSpatialStructureTypeName, isStoreyLikeSpatialTypeName } from '@ifc-lite/data';
 import type { EntityRef, FederatedModel } from '@/store/types';
 import { ZoneVolumeBreakdown } from './ZoneVolumeBreakdown';
 import type { ZoneSet } from '@/lib/zones';
 import { effectiveMaterials, effectiveMaterialProperties } from './properties/effectiveMaterials';
 import { useInheritedTypeQuantities } from './properties/useInheritedTypeQuantities';
+import { useCurrentProjectUnits } from './properties/useCurrentProjectUnits';
 import { CoordVal, CoordRow } from './properties/CoordinateDisplay';
 import { renderToWorldViewer } from './tools/measure-modes/coordinates';
 import { viewerToIfcAxes } from '@/lib/geo/coordinate-frame';
@@ -818,15 +819,12 @@ export function PropertiesPanel() {
     return extractLengthUnitScale(dataStore.source, dataStore.entityIndex);
   }, [model, ifcDataStore]);
 
-  // Extract the file's full declared unit assignment (per-unit-type symbols +
-  // SI scales) so property/quantity cards can render values with their units
-  // (issue #1573). Falls back to an empty resolver (SI defaults) when the
-  // source buffer / entity index aren't available.
-  const projectUnits = useMemo(() => {
-    const dataStore = model?.ifcDataStore ?? ifcDataStore;
-    if (!dataStore?.source?.length || !dataStore?.entityIndex) return ProjectUnits.empty();
-    return extractProjectUnits(dataStore.source, dataStore.entityIndex);
-  }, [model, ifcDataStore]);
+  // Native edits to UnitsInContext and its dependencies determine current
+  // quantity units. Preserve unavailable coverage rather than interpreting
+  // an occurrence basis through obsolete source units (#7353).
+  const quantityUnitContext = useCurrentProjectUnits((model?.ifcDataStore ?? ifcDataStore) as IfcDataStore | null,
+    mutationViews.get(selectedEntity?.modelId === 'legacy' ? '__legacy__' : selectedEntity?.modelId ?? '__legacy__'));
+  const projectUnits = quantityUnitContext.value ?? ProjectUnits.empty();
 
   // Extract type-level properties (e.g., from IfcWallType's HasPropertySets)
   const typeProperties = useMemo(() => {
@@ -1035,7 +1033,8 @@ export function PropertiesPanel() {
   const foundZones = zoneMembership?.filter((item) => matchesPropertySearch(item.label, findQuery) || matchesPropertySearch(item.value, findQuery));
   const foundOccurrence = filterPropertySets(renderedOccurrenceProperties, findQuery, projectUnits, unitDisplayOverrides);
   const foundInherited = filterPropertySets(renderedInheritedTypeProperties, findQuery, projectUnits, unitDisplayOverrides);
-  const foundQuantities = filterQuantitySets(renderedQuantities, findQuery, projectUnits, unitDisplayOverrides, locale);
+  const foundQuantities = quantityUnitContext.status === 'unavailable' ? []
+    : filterQuantitySets(renderedQuantities, findQuery, projectUnits, unitDisplayOverrides, locale);
   const foundMaterialProperties = filterMaterialPropertyGroups(renderedMaterialProperties, findQuery, projectUnits, unitDisplayOverrides);
   const foundAssociations = findAssociationAttributes({
     classifications: renderedClassifications, materials: renderedMaterialInfos,
@@ -1419,6 +1418,7 @@ export function PropertiesPanel() {
                       globalId={selectedEntityId}
                       quantitySets={renderedQuantitiesWithInheritedType}
                       inheritedQuantityCoverage={inheritedTypeQuantities}
+                      quantityUnitCoverage={quantityUnitContext}
                       projectUnits={renderedProjectUnits}
                       unitDisplayOverrides={unitDisplayOverrides}
                     />
@@ -1688,7 +1688,9 @@ export function PropertiesPanel() {
           <TabsContent value="quantities" className="m-0 p-3 overflow-hidden">
             <div className="mb-3"><SweptDiskInspection enabled={propertiesActiveTab === 'quantities'} /></div>
             <div className="mb-3"><ExtrusionInspection enabled={propertiesActiveTab === 'quantities'} /></div>
-            {foundQuantities.length === 0 ? (
+            {quantityUnitContext.status === 'unavailable' ? (
+              <output className="block text-sm text-muted-foreground">{t('zonesPanel.volumeBreakdown.quantityUnitsUnavailable', { reason: quantityUnitContext.reason ?? 'unverified current data' })}</output>
+            ) : foundQuantities.length === 0 ? (
               findQuery ? null : <p className="text-sm text-zinc-500 dark:text-zinc-500 text-center py-8 font-mono">{t('properties.panel.noQuantities')}</p>
             ) : (
               <div className="space-y-3 w-full overflow-hidden">
@@ -1843,12 +1845,10 @@ function EntityDataSection({
     return entityNode.quantities();
   }, [entityNode]);
 
-  // The file's declared units, for rendering unit suffixes on property/
-  // quantity values (issue #1573). Mirrors the `projectUnits` memo above.
-  const projectUnits = useMemo(() => {
-    if (!dataStore?.source?.length || !dataStore?.entityIndex) return ProjectUnits.empty();
-    return extractProjectUnits(dataStore.source, dataStore.entityIndex);
-  }, [dataStore]);
+  // Multi-selection quantity cards use the same current native unit context.
+  const quantityUnitContext = useCurrentProjectUnits(dataStore as IfcDataStore | null,
+    headerMutationViews.get(entityRef.modelId === 'legacy' ? '__legacy__' : entityRef.modelId));
+  const projectUnits = quantityUnitContext.value ?? ProjectUnits.empty();
 
   // Display-unit converter overrides (issue #1573 proposal 2) — this
   // component renders in the multi-entity selection panel, a sibling
@@ -1967,7 +1967,9 @@ function EntityDataSection({
           </CollapsibleTrigger>
           <CollapsibleContent>
             <div className="p-2 pt-0 space-y-2">
-              {quantities.map((qset, index) => (
+              {quantityUnitContext.status === 'unavailable' ? (
+                <output className="block text-xs text-muted-foreground">{t('zonesPanel.volumeBreakdown.quantityUnitsUnavailable', { reason: quantityUnitContext.reason ?? 'unverified current data' })}</output>
+              ) : quantities.map((qset, index) => (
                 <QuantitySetCard key={`${qset.name}-${index}`} qset={qset} projectUnits={projectUnits} unitDisplayOverrides={unitDisplayOverrides} />
               ))}
             </div>

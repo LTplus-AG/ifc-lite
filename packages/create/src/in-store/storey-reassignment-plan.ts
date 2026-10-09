@@ -154,8 +154,9 @@ function planWithInventory(store: IfcDataStore, view: MutablePropertyView, selec
   const sourceMemberships = (outgoing.get(sourceStoreyId) ?? []).filter(rel => rel.children.some(id => ids.has(id)));
   for (const relation of [...ownedRelationships, ...sourceMemberships]) {
     const guid = relation.attributes[0];
-    if (typeof guid !== 'string' || !/^[0-3][0-9A-Za-z_$]{21}$/.test(guid)) fail(`relationship GlobalId is missing or malformed for #${relation.id}`);
-    if (guidCounts.get(guid) !== 1) fail(`ambiguous duplicate relationship GlobalId for #${relation.id}`);
+    const GlobalId = typeof guid === 'string' && /^[0-3][0-9A-Za-z_$]{21}$/.test(guid)
+      ? guid : fail(`relationship GlobalId is missing or malformed for #${relation.id}`);
+    if (guidCounts.get(GlobalId) !== 1) fail(`ambiguous duplicate relationship GlobalId for #${relation.id}`);
   }
   const placementIds = new Set(products.map(product => product.placementId));
   const placements = [...placementIds].filter(id => {

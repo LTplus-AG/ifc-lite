@@ -5,7 +5,7 @@ import '@/test/setup-dom.js';
 import assert from 'node:assert/strict';
 import { writeFile } from 'node:fs/promises';
 import { afterEach, test, type TestContext } from 'node:test';
-import { IfcParser, extractProjectUnits, extractTypeQuantitiesOnDemand, extractQuantitiesOnDemand, readCurrentTypeQuantities, type IfcDataStore } from '@ifc-lite/parser';
+import { IfcParser, extractProjectUnits, extractTypeQuantitiesOnDemand, extractQuantitiesOnDemand, readCurrentTypeQuantities, readCurrentProjectUnits, type IfcDataStore } from '@ifc-lite/parser';
 import { IfcQuery } from '@ifc-lite/query';
 import { StoreEditor, MutablePropertyView } from '@ifc-lite/mutations';
 import { generateIfcGuid } from '@ifc-lite/encoding';
@@ -198,6 +198,110 @@ test('#7353 current inherited quantity explicit Unit scale agrees with native ex
  assert.equal(readScale(source, current), reassigned, 'current quantity Unit reassignment uses that native entity');
  assert.equal(readScale(source), 1, 'source-only unit semantics retain the original snapshot');
 });
+
+test('#7353 current inherited quantity implicit project Unit agrees with native export', async t => {
+ const fixture = await inheritedSource(t); if (!fixture) return;
+ const { f, store, a, view } = fixture;
+ assert.equal(store.getEntity(a.volume)?.attributes[2], null, 'native type quantity inherits its project unit');
+ const volumeUnit = (store.entityIndex.byType.get('IFCSIUNIT') ?? []).find(id =>
+  String(store.getEntity(id)?.attributes[1]).replace(/\./g, '') === 'VOLUMEUNIT');
+ assert.ok(volumeUnit, 'authentic AC20 source has an explicit project volume unit');
+ const sourceUnits = extractProjectUnits(store.source, store.entityIndex);
+ assert.equal(sourceUnits.resolvedForUnitType('VOLUMEUNIT')?.siScale, 1);
+ view.setPositionalAttribute(volumeUnit, 2, '.MILLI.');
+ const exported = await parse(editedModelBytes(store, view));
+ const nativeUnits = extractProjectUnits(exported.source, exported.entityIndex);
+ assert.equal(nativeUnits.resolvedForUnitType('VOLUMEUNIT')?.siScale, 1e-9,
+  'independent native project context now declares cubic millimetres');
+ assert.equal(net(extractTypeQuantitiesOnDemand(exported, f.id)?.quantities ?? []), 10);
+ const currentContext = readCurrentProjectUnits(store, view);
+ assert.equal(currentContext.status, 'available');
+ assert.deepEqual(currentContext.value?.resolvedForUnitType('VOLUMEUNIT'), nativeUnits.resolvedForUnitType('VOLUMEUNIT'));
+ assert.equal(extractTypeQuantitiesOnDemand(store, f.id, view)?.quantities[0]?.quantities[0]?.explicitUnitSiScale, undefined,
+  'an implicit unit remains implicit; current project context is separate');
+ const panel = render(<PropertiesPanel />);
+ console.log('NATIVE_IMPLICIT_QUANTITY_UNIT', JSON.stringify({ nativeUnit: nativeUnits.resolvedForUnitType('VOLUMEUNIT'),
+  coverage: readCurrentTypeQuantities(store, f.id, view).status, cardText: panel.textContent }));
+ assert.match(panel.textContent ?? '', /NetVolume10 mm³/,
+  'mounted current card must agree with the native inherited project unit instead of presenting10 cubic metres');
+});
+
+test('#7353 current project unit assignment follows newly allocated native context and preserves own basis', async t => {
+ const fixture = await inheritedSource(t); if (!fixture) return;
+ const { f, store, view } = fixture;
+ const project = store.entityIndex.byType.get('IFCPROJECT')?.[0]; assert.ok(project);
+ const assignment = store.getEntity(project)?.attributes[8]; assert.equal(typeof assignment, 'number');
+ const members = store.getEntity(assignment as number)?.attributes[0]; assert.ok(Array.isArray(members));
+ const editor = new StoreEditor(store, view);
+ const unit = editor.addEntity('IfcSIUnit', ['*', '.VOLUMEUNIT.', '.CENTI.', '.CUBIC_METRE.']).expressId;
+ const replacement = members.map(id => String(store.getEntity(id)?.attributes[1]).replace(/\./g, '') === 'VOLUMEUNIT' ? unit : id);
+ const context = editor.addEntity('IfcUnitAssignment', [replacement.map(id => `#${id}`)]).expressId;
+ view.setPositionalAttribute(project, 8, `#${context}`);
+ view.createQuantitySet(f.id, 'Native occurrence quantities', [{ name: 'NetVolume', value: 25, quantityType: QuantityType.Volume }]);
+ const exported = await parse(editedModelBytes(store, view));
+ const nativeUnits = extractProjectUnits(exported.source, exported.entityIndex);
+ assert.equal(net(extractQuantitiesOnDemand(exported, f.id)), 25, 'native occurrence value is independent of the inherited quantity');
+ assert.equal(nativeUnits.resolvedForUnitType('VOLUMEUNIT')?.symbol, 'cm³');
+ assert.deepEqual(readCurrentProjectUnits(store, view).value?.resolvedForUnitType('VOLUMEUNIT'), nativeUnits.resolvedForUnitType('VOLUMEUNIT'));
+ const panel = render(<PropertiesPanel />);
+ assert.match(panel.textContent ?? '', /netNetVolume25 cm³/, 'own implicit basis uses the current native context');
+ assert.doesNotMatch(panel.textContent ?? '', /netNetVolume25 m³/);
+ assert.equal(extractProjectUnits(store.source, store.entityIndex).resolvedForUnitType('VOLUMEUNIT')?.symbol, 'm³',
+  'source-only project defaults remain unchanged');
+});
+
+for (const kind of ['unset-context', 'deleted-project', 'deleted-assignment', 'unsupported-unit', 'empty-assignment', 'cyclic-unit', 'oversized-dependencies'] as const) {
+ test(`#7353 ${kind} current project context reports unknown instead of a false own quantity basis`, async t => {
+  const fixture = await inheritedSource(t); if (!fixture) return;
+  const { f, store, view } = fixture;
+  const project = store.entityIndex.byType.get('IFCPROJECT')?.[0]; assert.ok(project);
+  const assignment = store.getEntity(project)?.attributes[8]; assert.equal(typeof assignment, 'number');
+  const members = store.getEntity(assignment as number)?.attributes[0]; assert.ok(Array.isArray(members));
+  const editor = new StoreEditor(store, view);
+  if (kind === 'unset-context') view.setPositionalAttribute(project, 8, null);
+  else if (kind === 'deleted-project') view.deleteEntity(project);
+  else if (kind === 'deleted-assignment') view.deleteEntity(assignment as number);
+  else if (kind === 'empty-assignment') view.setPositionalAttribute(assignment as number, 0, []);
+  else if (kind === 'unsupported-unit') {
+   const dimensions = editor.addEntity('IfcDimensionalExponents', [3, 0, 0, 0, 0, 0, 0]).expressId;
+   const unit = editor.addEntity('IfcContextDependentUnit', [`#${dimensions}`, '.VOLUMEUNIT.', 'Unknown native volume']).expressId;
+   view.setPositionalAttribute(assignment as number, 0, members.map(id =>
+    `#${String(store.getEntity(id)?.attributes[1]).replace(/\./g, '') === 'VOLUMEUNIT' ? unit : id}`));
+  } else if (kind === 'cyclic-unit') {
+   // Deliberately malformed file-supplied graph: a derived element cannot name itself.
+   const unit = editor.addEntity('IfcDerivedUnit', [[], '.USERDEFINED.', 'Native cycle']).expressId;
+   const element = editor.addEntity('IfcDerivedUnitElement', [`#${unit}`, 1]).expressId;
+   view.setPositionalAttribute(unit, 0, [`#${element}`]);
+   view.setPositionalAttribute(assignment as number, 0, [...members, unit].map(id => `#${id}`));
+  } else {
+   const component = editor.addEntity('IfcSIUnit', ['*', '.LENGTHUNIT.', null, '.METRE.']).expressId;
+   const elements = Array.from({ length: 513 }, (_, i) => editor.addEntity('IfcDerivedUnitElement', [`#${component}`, i === 0 ? 3 : 0]).expressId);
+   const unit = editor.addEntity('IfcDerivedUnit', [elements.map(id => `#${id}`), '.USERDEFINED.', 'Native large unit']).expressId;
+   view.setPositionalAttribute(assignment as number, 0, [...members, unit].map(id => `#${id}`));
+  }
+  view.createQuantitySet(f.id, 'Native occurrence quantities', [{ name: 'NetVolume', value: 25, quantityType: QuantityType.Volume }]);
+  const exported = await parse(editedModelBytes(store, view));
+  assert.equal(net(extractQuantitiesOnDemand(exported, f.id)), 25, 'raw native quantity stays intact when its physical unit is unknown');
+  if (kind === 'unset-context') {
+   assert.equal(exported.getEntity(project)?.attributes[8], null, 'independent native export actually removes UnitsInContext');
+   assert.equal(extractProjectUnits(exported.source, exported.entityIndex).declaredCount, 0,
+    'source-only native reparse retains its existing undeclared-unit convention');
+   assert.equal(extractProjectUnits(store.source, store.entityIndex).resolvedForUnitType('VOLUMEUNIT')?.siScale, 1,
+    'the original source unit context remains unchanged');
+  }
+  const revision = view.getMutationRevision();
+  const current = readCurrentProjectUnits(store, view);
+  assert.equal(current.status, 'unavailable'); assert.equal(current.value, null); assert.ok(current.reason);
+  if (kind === 'oversized-dependencies') assert.match(current.reason, /read limit/);
+  if (kind === 'cyclic-unit') assert.match(current.reason, /unresolved or unsupported/,
+   'active cycle refusal precedes read-budget exhaustion or stack overflow');
+  const panel = render(<PropertiesPanel />);
+  assert.match(panel.textContent ?? '', /Current quantity units are unavailable/);
+  assert.doesNotMatch(panel.textContent ?? '', /netNetVolume25 m³/, 'unknown current units cannot fabricate a25-cubic-metre own basis');
+  assert.doesNotMatch(panel.textContent ?? '', /netNetVolume10 m³/, 'unknown context cannot resurrect the source inherited physical basis');
+  assert.equal(view.getMutationRevision(), revision, 'context capture and mounted refusal remain read-only');
+ });
+}
 
 for (const kind of ['deleted', 'unsupported', 'cyclic', 'oversized'] as const) {
  test(`#7353 ${kind} native quantity Unit dependency refuses unknown coverage without crashing the card`, async t => {

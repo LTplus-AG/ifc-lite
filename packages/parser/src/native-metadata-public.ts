@@ -9,3 +9,4 @@ export { resolveEffectiveRelationshipOverlay, effectiveRelationshipEdges, type E
 export { effectiveSpatialMemberIds, type EffectiveSpatialContext } from './effective-spatial-members.js';
 export { effectiveStoreyId } from './effective-storey.js';
 export { readCurrentTypeQuantities, type CurrentTypeQuantityResult } from './current-type-quantities.js';
+export { readCurrentProjectUnits, type CurrentProjectUnitResult } from './current-project-units.js';

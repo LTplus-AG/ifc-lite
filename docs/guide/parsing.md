@@ -831,3 +831,26 @@ function verifiedCurrentTypeQuantities(store: IfcDataStore, expressId: number, v
   return { status: result.status, reason: result.reason, quantities: result.value?.quantities ?? null };
 }
 ```
+
+When a quantity's `Unit` is unset, its raw value uses the current project's
+`UnitsInContext`. `readCurrentProjectUnits(store, view, projectId?)` follows the
+current project, unit assignment and canonical unit dependencies. The optional
+project id selects an owning project; omission keeps the canonical default-project
+convention. Available results hold a `ProjectUnits` resolver. Unreadable, deleted,
+unsupported, cyclic or oversized contexts yield `value: null` and an explicit
+unavailable reason. Preserve that coverage instead of substituting the source
+snapshot or interpreting a raw occurrence quantity as SI. These current reads
+bound the project inventory and allow at most 512 dependency reads. They do not
+change source-only conventions, annotate implicit quantities as explicit units,
+or reinterpret cached geometry.
+
+```typescript
+import { readCurrentProjectUnits, type IfcDataStore } from '@ifc-lite/parser';
+import type { MutablePropertyView } from '@ifc-lite/mutations';
+
+function currentVolumeContext(store: IfcDataStore, view: MutablePropertyView) {
+  const current = readCurrentProjectUnits(store, view);
+  return { status: current.status, reason: current.reason,
+    volumeUnit: current.value?.resolvedForUnitType('VOLUMEUNIT') ?? null };
+}
+```

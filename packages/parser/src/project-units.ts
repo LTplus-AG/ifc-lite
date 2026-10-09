@@ -46,6 +46,9 @@ export interface ResolvedUnit {
 /** Native current point provider; omitted readers retain parsed-source semantics. */
 export type UnitEntityReader = (expressId: number) => { type: string; attributes: readonly unknown[] } | null;
 
+/** Expected refusal of a current native context; source-only defaults stay unchanged. */
+export class ProjectUnitReadError extends Error {}
+
 interface EntityByIdIndexLike {
   byId: { get(expressId: number): EntityRef | undefined };
 }
@@ -268,14 +271,25 @@ function conversionFactorScale(
 /**
  * Resolve the file's declared units from `IFCPROJECT → IFCUNITASSIGNMENT`.
  * `projectId` defaults to the file's first IFCPROJECT (pass explicitly,
- * from `resolveOwningIfcProjectId`, for an entity owning a later one). Never
- * throws: an absent/malformed assignment yields an empty {@link ProjectUnits}.
+ * from `resolveOwningIfcProjectId`, for an entity owning a later one).
+ * Source-only reads never throw: an absent/malformed assignment yields an
+ * empty resolver. An optional current provider refuses unreadable native
+ * contexts with ProjectUnitReadError instead of guessing their units.
  */
 export function extractProjectUnits(
   source: Uint8Array | IfcSourceBytes,
   entityIndex: EntityIndexLike,
   projectId?: number,
+  readEntity?: UnitEntityReader,
 ): ProjectUnits {
+  if (readEntity) {
+    const point = readEntity;
+    let reads = 0;
+    readEntity = id => {
+      if (++reads > 512) throw new ProjectUnitReadError('Native project unit dependencies exceed the read limit');
+      return point(id);
+    };
+  }
   const byType = new Map<string, ResolvedUnit | null>();
   let monetary: ResolvedUnit | null = null;
 
@@ -284,33 +298,57 @@ export function extractProjectUnits(
   if (resolvedId === undefined) return new ProjectUnits(byType, monetary);
   // @raw-entity-enumeration-ok dereference the parsed project whose unit assignment is being read
   const projectRef = entityIndex.byId.get(resolvedId);
-  if (!projectRef) return new ProjectUnits(byType, monetary);
+  if (!projectRef && !readEntity) return new ProjectUnits(byType, monetary);
 
   const extractor = new EntityExtractor(source);
-  const project = extractor.extractEntity(projectRef);
-  if (!project) return new ProjectUnits(byType, monetary);
+  const project = readEntity ? readEntity(resolvedId) : extractor.extractEntity(projectRef!);
+  if (!project || project.type.toUpperCase() !== 'IFCPROJECT') {
+    if (readEntity) throw new ProjectUnitReadError('Native project unit context is unreadable');
+    return new ProjectUnits(byType, monetary);
+  }
 
   // IFCPROJECT[8] = UnitsInContext (IFCUNITASSIGNMENT)
   const unitsRef = (project.attributes ?? [])[8];
-  if (typeof unitsRef !== 'number') return new ProjectUnits(byType, monetary);
+  if (unitsRef === null) return new ProjectUnits(byType, monetary);
+  if (typeof unitsRef !== 'number') {
+    if (readEntity) throw new ProjectUnitReadError('Native project unit assignment reference is unreadable');
+    return new ProjectUnits(byType, monetary);
+  }
   // @raw-entity-enumeration-ok dereference the parsed IfcUnitAssignment from IfcProject
   const assignmentRef = entityIndex.byId.get(unitsRef);
-  if (!assignmentRef) return new ProjectUnits(byType, monetary);
-  const assignment = extractor.extractEntity(assignmentRef);
+  if (!assignmentRef && !readEntity) return new ProjectUnits(byType, monetary);
+  const assignment = readEntity ? readEntity(unitsRef) : extractor.extractEntity(assignmentRef!);
   if (!assignment || assignment.type.toUpperCase() !== 'IFCUNITASSIGNMENT') {
+    if (readEntity) throw new ProjectUnitReadError('Native project unit assignment is unreadable');
     return new ProjectUnits(byType, monetary);
   }
   const unitList = (assignment.attributes ?? [])[0];
-  if (!Array.isArray(unitList)) return new ProjectUnits(byType, monetary);
+  if (!Array.isArray(unitList)) {
+    if (readEntity) throw new ProjectUnitReadError('Native project unit assignment members are unreadable');
+    return new ProjectUnits(byType, monetary);
+  }
+  if (readEntity && (unitList.length === 0 || unitList.length > 512)) {
+    throw new ProjectUnitReadError(unitList.length === 0
+      ? 'Native project unit assignment is empty' : 'Native project unit assignment exceeds the read limit');
+  }
 
   for (const ref of unitList) {
-    if (typeof ref !== 'number') continue;
-    const entry = resolveDeclaredUnit(extractor, entityIndex, ref);
+    const unitRef = readEntity ? getReference(ref) : typeof ref === 'number' ? ref : undefined;
+    if (unitRef === undefined) {
+      if (readEntity) throw new ProjectUnitReadError('Native project unit assignment member is unreadable');
+      continue;
+    }
+    const entry = resolveDeclaredUnit(extractor, entityIndex, unitRef, readEntity, readEntity ? new Set() : undefined);
+    if (readEntity && (!entry?.resolved || !Number.isFinite(entry.resolved.siScale) || entry.resolved.siScale <= 0)) {
+      throw new ProjectUnitReadError('Native project unit is unresolved or unsupported');
+    }
     if (!entry) continue;
     if (entry.monetary) {
       monetary ??= entry.resolved;
     } else if (entry.unitType && !byType.has(entry.unitType)) {
       byType.set(entry.unitType, entry.resolved);
+    } else if (readEntity && entry.unitType) {
+      throw new ProjectUnitReadError('Native project unit assignment repeats a unit type');
     }
   }
 

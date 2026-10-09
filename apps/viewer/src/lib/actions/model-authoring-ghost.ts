@@ -14,6 +14,7 @@
  * ghost; their row says what changes.
  */
 
+import { stairRailingGhost } from './model-authoring-stair-railing-ghost';
 import { linearProfileFrame } from '@ifc-lite/create';
 import { sectionGhostMesh } from '@/lib/profile-section/profile-outline';
 import type { MeshData } from '@ifc-lite/geometry';
@@ -143,7 +144,7 @@ export function authoringGhosts(state: ViewerState, preview: ModelAuthoringPrevi
   for (const row of preview.rows) {
     if (row.status !== 'ready' || !row.modelId) continue;
     const id = commandGhostId(state, GHOST_INDEX + row.index);
-    if (row.op.op === 'element.resize' || row.op.op === 'element.profile' || (row.op.op === 'material.layers' && row.op.scope === 'element' && row.resolved.layers?.kind === 'wall')) {
+    if (row.op.op === 'element.resize' || row.op.op === 'element.profile' || row.op.op === 'element.trimExtend' || (row.op.op === 'material.layers' && row.op.scope === 'element' && row.resolved.layers?.kind === 'wall')) {
       const ghost = authoringSizeGhost(state, preview.batch, row, row.modelId, id);
       if (ghost.mesh) meshes.push(ghost.mesh);
       continue;
@@ -151,6 +152,7 @@ export function authoringGhosts(state: ViewerState, preview: ModelAuthoringPrevi
     if (row.op.op === 'hosted.edit') { const mesh = authoringHostedEditGhost(state, preview.batch, row, id, preview.rows); if (mesh) meshes.push(mesh); continue; }
     if (row.op.op === 'element.split') { const mesh = authoringSplitMarker(state, preview.batch, row, id); if (mesh) meshes.push(mesh); continue; }
     switch (row.op.op) {
+      case 'stair.create': case 'railing.create': case 'stair.replace': case 'railing.replace': {const mesh=stairRailingGhost(state,preview.batch,row,id);row.previewUnavailable=!mesh;if(mesh)meshes.push(mesh);break;}
       case 'element.create': { const mesh = createGhost(state, preview.batch, row, id); if (mesh) meshes.push(mesh); break; }
       case 'hosted.create': { const mesh = hostedGhost(state, preview.batch, preview, row, id); if (mesh) meshes.push(mesh); break; }
       case 'element.copy': case 'element.array': meshes.push(...authoringCopyGhosts(state, preview.batch, row, id)); break;

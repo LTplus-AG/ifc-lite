@@ -18,6 +18,7 @@ import { readOnlyModelEditLease, type NativeReadLease } from './model-authoring-
 import { nativeEditEvidence, nativeRootName, type NativeEditEvidence } from './native-edit-evidence';
 import { nativeTypeEvidence, type NativeTypeEvidence } from './native-type-evidence';
 import { nativeLayerEvidence, type NativeLayerEvidence } from './native-layer-evidence';
+import { nativeStairEvidenceFromTarget } from './model-authoring-stair-lifecycle';
 
 export interface SelectionElement {
   globalId: string;
@@ -28,6 +29,7 @@ export interface SelectionElement {
   nativeEdit: NativeEditEvidence;
   nativeType: NativeTypeEvidence;
   nativeLayers?: NativeLayerEvidence;
+  nativeStairExpected: ReturnType<typeof nativeStairEvidenceFromTarget>;
 }
 
 export interface SelectionGrounding {
@@ -99,6 +101,7 @@ export function captureSelectionGrounding(state: GroundingState, limit = SELECTI
       nativeEdit: nativeEditEvidence(nativeTarget(ref.modelId), ref.expressId),
       nativeType: nativeTypeEvidence(state, nativeTarget(ref.modelId), ref.expressId),
       nativeLayers: nativeLayerEvidence(state, nativeTarget(ref.modelId), ref.expressId),
+      nativeStairExpected: nativeStairEvidenceFromTarget(nativeTarget(ref.modelId), ref.expressId),
     });
   }
   const grounding = { capturedAt: new Date().toISOString(), total, elements, unresolved,

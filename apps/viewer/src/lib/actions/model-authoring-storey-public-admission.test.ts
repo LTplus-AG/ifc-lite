@@ -38,16 +38,21 @@ const graph = async (bytes: Uint8Array) => {
 
 test('#7328 public admission native control: existing copy is available and creates a distinct identity', fixtureOptions, async t => {
   if (!ensureRoomWasm(t)) return;
-  const s = await load(), sourceGuid = s.store.entities.getGlobalId(s.expressId);
+  const s = await load();
+  const source = s.adapter.addWall(MODEL, 42, { Start: [0, 7, 0], End: [4, 7, 0], Thickness: .2, Height: 3, Name: 'Existing native Copy control' });
+  await settle();
+  const sourceId = source.expressId;
+  const sourceStore = await parseIfc(editedModelBytes(s.store, s.view));
+  const sourceGuid = sourceStore.entities.getGlobalId(sourceId);
   assert.ok(s.adapter.copyElements);
-  const copies = s.adapter.copyElements(MODEL, [s.expressId], [{ offset: [0, 2, 0] }]);
+  const copies = s.adapter.copyElements(MODEL, [sourceId], [{ offset: [0, 2, 0] }]);
   assert.equal(copies.length,1); await settle();
   const rendererId = toGlobalIdFromModels(useViewerStore.getState().models, MODEL, copies[0].expressId);
   assert.ok(useViewerStore.getState().models.get(MODEL)?.geometryResult?.meshes.some(mesh => mesh.expressId === rendererId && mesh.indices.length > 0), 'existing native Copy produces an actual remeshed body');
   const copied = await parseIfc(editedModelBytes(s.store,s.view));
-  assert.notEqual(copies[0].expressId,s.expressId);
+  assert.notEqual(copies[0].expressId,sourceId);
   assert.notEqual(copied.entities.getGlobalId(copies[0].expressId),sourceGuid);
-  assert.equal(copied.entities.getGlobalId(s.expressId),sourceGuid);
+  assert.equal(copied.entities.getGlobalId(sourceId),sourceGuid);
 });
 
 test('#7328 unchanged public authoring endpoints admit a complete independently saved native same-identity envelope', fixtureOptions, async t => {

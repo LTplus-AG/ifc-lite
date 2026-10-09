@@ -7,7 +7,9 @@ import assert from 'node:assert/strict';
 import { readFile, writeFile } from 'node:fs/promises';
 import { afterEach, test } from 'node:test';
 import { createElement, act } from 'react';
-import { StoreEditor } from '@ifc-lite/mutations';
+import { StoreEditor, MutablePropertyView } from '@ifc-lite/mutations';
+import { federationRegistry } from '@ifc-lite/renderer';
+import { toGlobalIdFromModels } from '@/store/globalId';
 import { generateIfcGuid } from '@ifc-lite/encoding';
 import { EntityExtractor, effectiveMetadataRecord } from '@ifc-lite/parser';
 import { planStoreyReassignment, reassignElementsToStoreyInStore } from '@ifc-lite/create';
@@ -34,7 +36,7 @@ import { render, click, cleanup } from '@/test/render';
 import { meshStairs, stairWasmAvailable } from '../../../../../packages/create/src/in-store/__test__/stair-mesh.oracle';
 
 const initial = useViewerStore.getState(), initialAssistant = useAssistant.getState(), originalFetch = globalThis.fetch;
-afterEach(() => { cancelAssistant(); globalThis.fetch = originalFetch; useAssistant.setState(initialAssistant, true); cleanup(); setRemeshClientFactory(null); useViewerStore.setState(initial, true); });
+afterEach(() => { federationRegistry.clear(); cancelAssistant(); globalThis.fetch = originalFetch; useAssistant.setState(initialAssistant, true); cleanup(); setRemeshClientFactory(null); useViewerStore.setState(initial, true); });
 const graph = async (bytes: Uint8Array) => {
   const parsed = await parseIfc(bytes), extractor = new EntityExtractor(parsed.source);
   return [...parsed.entityIndex.byId].map(([id, info]) => [id, info.type, extractor.extractEntity(info)?.attributes]);
@@ -186,4 +188,26 @@ test('#7328 preserve an independently reparsed native envelope for unchanged-pub
   const envelope=JSON.stringify({...s.batch(),operations:[{...s.operation,expected}]});
   if(process.env.CAMPAIGN_STOREY_PUBLIC_ARTIFACT) await writeFile(process.env.CAMPAIGN_STOREY_PUBLIC_ARTIFACT,JSON.stringify({step,envelope,expressId:s.id,destinationId:s.destination},null,2));
   assert.equal(store.entities.getGlobalId(s.id),s.row.globalId);
+});
+
+
+test('#7328 two real federated models with duplicate source/destination GlobalIds keep the explicit owning model isolated', async t => {
+  if(!ensureRoomWasm(t))return;
+  const s=await setup(false,true), saved=await parseIfc(s.bytesNow()), peer=await parseIfc(s.bytesNow()), state=useViewerStore.getState(), model=state.models.get(MODEL)!;
+  federationRegistry.clear();
+  const ownOffset=state.registerModelOffset(MODEL,getMaxExpressId(saved,[])), peerOffset=state.registerModelOffset('peer',getMaxExpressId(peer,[]));
+  const ownView=new MutablePropertyView(saved.properties,MODEL), peerView=new MutablePropertyView(peer.properties,'peer');
+  const models=new Map([[MODEL,{...model,idOffset:ownOffset,ifcDataStore:saved,maxExpressId:getMaxExpressId(saved,[])}],['peer',{...model,id:'peer',idOffset:peerOffset,ifcDataStore:peer,maxExpressId:getMaxExpressId(peer,[])}]]);
+  for(const [id,m] of models)if(m.geometryResult)m.geometryResult={...m.geometryResult,meshes:m.geometryResult.meshes.map(mesh=>({...mesh,expressId:toGlobalIdFromModels(models,id,mesh.expressId)}))};
+  const rendererId=toGlobalIdFromModels(models,MODEL,s.id);
+  useViewerStore.setState({models,mutationViews:new Map([[MODEL,ownView],['peer',peerView]]),storeEditors:new Map(),undoStacks:new Map(),redoStacks:new Map(),selectedEntityIds:new Set([rendererId]),selectedEntityId:rendererId});
+  const captured=captureSelectionGrounding(useViewerStore.getState()).elements[0];assert.equal(captured.modelId,MODEL);assert.ok(captured.nativeStoreyReassignments);
+  const candidate=captured.nativeStoreyReassignments.find(entry=>entry.destinationStorey.globalId===s.operation.destinationStorey.globalId);assert.ok(candidate);
+  const batch=parseModelAuthoringBatch(JSON.stringify({...s.batch(),operations:[{...s.operation,sourceStorey:candidate.sourceStorey,destinationStorey:candidate.destinationStorey,expected:JSON.parse(candidate.expectedJsonParts.join(''))}]}));
+  const before=await graph(editedModelBytes(saved,ownView)), peerBefore=await graph(editedModelBytes(peer,peerView));
+  const preview=previewModelAuthoring(useViewerStore.getState(),batch);assert.equal(preview.rows[0].status,'ready',preview.rows[0].issue??'');
+  const result=commitModelAuthoring(useViewerStore,preview,new Set([0]),'explicit owning model');assert.ok(result.ok,result.ok?'':result.detail??result.reason);await settle(MODEL);
+  assert.deepEqual(await graph(editedModelBytes(peer,peerView)),peerBefore);assert.equal(peerView.hasPendingChanges(),false);
+  assert.deepEqual(undoModelChanges(useViewerStore,result.receipt),{ok:true});await settle(MODEL);
+  assert.deepEqual(await graph(editedModelBytes(saved,ownView)),before);assert.deepEqual(await graph(editedModelBytes(peer,peerView)),peerBefore);
 });

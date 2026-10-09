@@ -86,7 +86,7 @@ test('#7282 source-free unknown length units never fabricate native expected geo
   useViewerStore.setState({ models: new Map([[SAMPLE_MODEL, { ...model, ifcDataStore: { ...original, source: EMPTY_SOURCE_BYTES, lengthUnitScale: undefined } }]]) });
   const actual = row(), attachment = captureSelectionGrounding(s()).elements[0]; assert.ok(attachment);
   for (const data of [actual, attachment]) {
-    assert.deepEqual(data.nativeAuthoringAvailability, { split: 'unavailable-unit', hosted: 'unavailable-unit', trimExtend: 'unavailable-unit', stair: 'unavailable-unit' });
+    assert.deepEqual(data.nativeAuthoringAvailability, { split: 'unavailable-unit', hosted: 'unavailable-unit', trimExtend: 'unavailable-unit', stair: 'unavailable-unit', placement: 'unavailable-unit' });
     for (const key of ['nativeSplitExpected', 'nativeHostedExpected', 'nativeTrimExtendExpected', 'nativeStairExpected']) assert.equal(data[key], null);
   }
 });
@@ -124,13 +124,13 @@ test('#7282 genuine saved IFC with omitted project units refuses source fallback
   const project=store.spatialHierarchy?.project?.expressId;assert.ok(project);new StoreEditor(store,view).setPositionalAttribute(project,8,null);
   const unknown=await parseIfc(editedModelBytes(store,view));assert.equal(unknown.entities.getGlobalId(id),store.entities.getGlobalId(id));assert.equal(extractProjectUnits(unknown.source,unknown.entityIndex,project).resolvedForUnitType('LENGTHUNIT'),undefined);
   const unknownView=new MutablePropertyView(unknown.properties,SAMPLE_MODEL);useViewerStore.setState({models:new Map([[SAMPLE_MODEL,{...s().models.get(SAMPLE_MODEL)!,ifcDataStore:unknown}]]),mutationViews:new Map([[SAMPLE_MODEL,unknownView]])});
-  for(const data of [row(),captureSelectionGrounding(s()).elements[0]]){assert.deepEqual(data.nativeAuthoringAvailability,{split:'unavailable-unit',hosted:'unavailable-unit',trimExtend:'unavailable-unit',stair:'unavailable-unit'});assert.equal(data.nativeSplitExpected,null);assert.equal(data.nativeTrimExtendExpected,null);}
+  for(const data of [row(),captureSelectionGrounding(s()).elements[0]]){assert.deepEqual(data.nativeAuthoringAvailability,{split:'unavailable-unit',hosted:'unavailable-unit',trimExtend:'unavailable-unit',stair:'unavailable-unit',placement:'unavailable-unit'});assert.equal(data.nativeSplitExpected,null);assert.equal(data.nativeTrimExtendExpected,null);}
 });
 
 test('#7282 real imported mesh layout is unavailable for native expected edits rather than absent geometry', async () => {
   await seedModelingSession();const model=s().models.get(MODEL_ID)!;s().updateModel(MODEL_ID,{maxExpressId:getMaxExpressId(model.ifcDataStore!,[])});assert.equal(model.ifcDataStore!.entities.getTypeName(MESH_WALL),'IfcWall');
   useViewerStore.setState({selectedEntity:{modelId:MODEL_ID,expressId:MESH_WALL},selectedEntityId:MESH_WALL,selectedEntityIds:new Set([MESH_WALL]),selectedEntities:[],selectedEntitiesSet:new Set()});
-  for(const data of [row(),captureSelectionGrounding(s()).elements[0]]){assert.ok(data);assert.deepEqual(data.nativeAuthoringAvailability,{split:'unavailable-native-layout',hosted:'unavailable-native-layout',trimExtend:'unavailable-native-layout',stair:'unavailable-native-layout'});assert.equal(data.nativeSplitExpected,null);assert.equal(data.nativeTrimExtendExpected,null);assert.match(data.nativeAuthoringRefusals.split,/Split unavailable/i);}
+  for(const data of [row(),captureSelectionGrounding(s()).elements[0]]){assert.ok(data);assert.deepEqual(data.nativeAuthoringAvailability,{split:'unavailable-native-layout',hosted:'unavailable-native-layout',trimExtend:'unavailable-native-layout',stair:'unavailable-native-layout',placement:'available'});assert.equal(data.nativeSplitExpected,null);assert.equal(data.nativeTrimExtendExpected,null);assert.match(data.nativeAuthoringRefusals.split,/Split unavailable/i);}
 });
 
 

@@ -66,6 +66,7 @@ export function ModelAuthoringReview({ batch, origin }: { batch: ModelAuthoringB
   const mutationVersion = useViewerStore((s) => s.mutationVersion);
   const editEnabled = useViewerStore((s) => s.editEnabled);
   const models = useViewerStore((s) => s.models);
+  const modelPlacement = useViewerStore((s) => s.modelPlacement);
   const [preparedVersion, setPreparedVersion] = useState(0);
   const [preparing, setPreparing] = useState(false);
   const preparation = useRef<AbortController | null>(null);
@@ -73,7 +74,7 @@ export function ModelAuthoringReview({ batch, origin }: { batch: ModelAuthoringB
   // Recomputed whenever the model or edit gate changes, so statuses (and the dry run) are always current.
   const preview = useMemo(() => previewModelAuthoring(useViewerStore.getState(), batch),
     // eslint-disable-next-line react-hooks/exhaustive-deps -- the preview reads the live store; these are its inputs
-    [batch, mutationVersion, editEnabled, models, preparedVersion]);
+    [batch, mutationVersion, editEnabled, models, modelPlacement, preparedVersion]);
   const [excluded, setExcluded] = useState<ReadonlySet<number>>(new Set());
   const [receipt, setReceipt] = useState<ModelChangeReceipt | null>(null);
   const [error, setError] = useState<string | null>(null);

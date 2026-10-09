@@ -22,6 +22,7 @@ interface OwnedPreparation extends PreparedAlignment {
 }
 const prepared = new WeakMap<ModelAuthoringBatch, Map<number, OwnedPreparation>>();
 const frameKey = (plane: Workplane) => JSON.stringify([[0,0,0], [1,0,0], [0,1,0], [0,0,1]].map(p => plane.localToRender([p[0],p[1],p[2]])));
+const cloneBoxes = (boxes: ReadonlyMap<number, PlanBox>) => new Map([...boxes].map(([id, box]) => [id, { ...box, min: [...box.min] as [number, number], max: [...box.max] as [number, number] }]));
 const generations = new WeakMap<ModelAuthoringBatch, object>();
 
 /** Resolve native eligibility first, then require geometry produced for this exact
@@ -40,7 +41,7 @@ export function reviewAlignment(state: ViewerState, batch: ModelAuthoringBatch, 
   if (!owned || owned.digest !== batchDigest(batch) || !owned.current(state)) {
     throw new AuthoringRefusal('blocked', 'Prepare current native Align geometry before approving this row');
   }
-  row.resolved.alignment.geometry = owned;
+  row.resolved.alignment.geometry = { plane: { ...owned.plane }, boxes: cloneBoxes(owned.boxes) };
 }
 
 /** Explicit review preparation, not Apply. Remeshing remains the native worker's
@@ -70,7 +71,7 @@ export async function prepareReviewedAlignments(get: () => ViewerState, batch: M
     const meshes = modelMeshes(get(), modelId), frame = frameKey(geometry.plane);
     // Native remesh replaces this owning mesh array. A later remesh/reload must
     // be prepared again; identical file fingerprints cannot adopt old bounds.
-    results.set(row.index, { ...geometry, digest, current: state => {
+    results.set(row.index, { plane: { ...geometry.plane }, boxes: cloneBoxes(geometry.boxes), digest, current: state => {
       try { lease.validate(); }
       catch (error) { if (!(error instanceof Error)) throw error; return false; }
       const plane = buildStoreyWorkplane(state, modelId, binding.storeyId, 0);

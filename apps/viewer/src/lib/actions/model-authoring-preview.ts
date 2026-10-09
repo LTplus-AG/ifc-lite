@@ -74,7 +74,7 @@ function existing(ctx: Context, target: ExistingElement, row: AuthoringRow): num
   join(row, modelId);
   const r = reader(ctx, modelId);
   if ((row.op.op.startsWith('stair.') || row.op.op.startsWith('railing.')) && !uniqueSplitGuid(r.dataStore, r.editor, target.globalId)) throw new Refusal('ambiguous-target', 'The native stair or railing target GlobalId is not unique in its owning model');
-  if ((row.op.op === 'element.split' || row.op.op === 'element.trimExtend' || row.op.op === 'type.detach') && !uniqueSplitGuid(r.dataStore, r.editor, target.globalId)) throw new Refusal('ambiguous-target', 'The native target GlobalId is not unique in its owning model');
+  if ((row.op.op === 'element.align' || (row.op.op === 'element.rotate' && !!row.op.pivot) || row.op.op === 'element.split' || row.op.op === 'element.trimExtend' || row.op.op === 'type.detach') && !uniqueSplitGuid(r.dataStore, r.editor, target.globalId)) throw new Refusal('ambiguous-target', 'The native target GlobalId is not unique in its owning model');
   const ifcClass = className(r, expressId);
   const name = nameOf(r, expressId);
   row.before.ifcClass = ifcClass;
@@ -342,7 +342,7 @@ export function previewModelAuthoring(state: ViewerState, batch: ModelAuthoringB
 function nativeDryRun(ctx: Context, batch: ModelAuthoringBatch): void {
   for (const row of ctx.rows) if (row.op.op === 'element.align' && row.modelId
     && ctx.rows.some(other => other.index < row.index && other.modelId === row.modelId
-      && other.status === 'ready' && other.op.op !== 'classification.add')) {
+      && other.status === 'ready' && !new Set<string>(['type.detach', 'classification.add']).has(other.op.op))) {
     row.status = 'unsupported';
     row.issue = 'Apply earlier same-model geometry operations before preparing native Align bounds';
   }

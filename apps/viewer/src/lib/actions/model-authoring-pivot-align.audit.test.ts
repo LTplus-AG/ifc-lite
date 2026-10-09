@@ -94,3 +94,28 @@ test('reviewed native Align must have a supported proposal contract', async () =
   assert.doesNotThrow(() => batch([{ op: 'element.align', reference: ref(s.id), targets: [ref(other)], mode: 'left', expected }]),
     'The existing native Align operation is currently absent from reviewed authoring');
 });
+
+test('#7313 no-pivot review retains native origin rotation', async () => {
+  const s = await setup(), guid = s.view.getNewEntity(s.id)?.attributes[0]; assert.equal(typeof guid, 'string');
+  const preview = previewModelAuthoring(useViewerStore.getState(), batch([{ op: 'element.rotate',
+    target: { globalId: guid, modelId: SAMPLE_MODEL, ifcClass: 'IfcWall', name: 'Placement audit wall' }, angleDeg: 90 }]));
+  assert.equal(preview.rows[0].status, 'ready');
+  const applied = commitModelAuthoring(useViewerStore, preview, new Set([0]), '#7313 origin control'); assert.ok(applied.ok);
+  assert.deepEqual(await startOf(s), [10,10]);
+});
+
+test('#7313 millimetre explicit nonzero pivot and negative angle agree with the canonical native writer', async () => {
+  const native = await setup();
+  native.target.editor.runAtomic(editor => transformElementsInStore({ dataStore: native.dataStore,
+    view: editor.getMutationView(), editor, selected: [native.id], op: { kind: 'rotate', pivot: [15,5], angle: -Math.PI / 4 } }));
+  const actual = await startOf(native);
+  const s = await setup(), guid = s.view.getNewEntity(s.id)?.attributes[0]; assert.equal(typeof guid, 'string');
+  useViewerStore.setState({ selectedEntityId: s.id, selectedEntityIds: new Set([s.id]) });
+  const expected = captureSelectionGrounding(useViewerStore.getState()).elements[0]?.nativePlacement; assert.ok(expected);
+  const proposal = parseModelAuthoringBatch(JSON.stringify({ version: 1, kind: 'model.authoring', title: 'Negative native pivot', units: 'mm', frame: 'storey-local',
+    operations: [{ op:'element.rotate', target: { globalId:guid, modelId:SAMPLE_MODEL, ifcClass:'IfcWall', name:'Placement audit wall' },
+      angleDeg:-45, pivot:[15000,5000], expected }] }));
+  const preview = previewModelAuthoring(useViewerStore.getState(), proposal); assert.equal(preview.rows[0].status, 'ready', preview.rows[0].issue);
+  const result = commitModelAuthoring(useViewerStore, preview, new Set([0]), '#7313 native mm pivot'); assert.ok(result.ok);
+  assert.deepEqual(await startOf(s), actual);
+});

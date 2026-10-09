@@ -33,6 +33,7 @@ export function GroupLifecycleReview({ proposal, origin }: { proposal: GroupProp
     return () => { current.mounted = false; current.review = null; unsubscribe(); };
   }, [proposal]);
   const prepare = (selection = approved) => {
+    setAcknowledged(false);
     try {
       const next = prepareGroupReview(useViewerStore, proposal, selection);
       owner.current.review = next; setReview(next); setProblem(null); setStale(false);

@@ -7,7 +7,7 @@ export const groupReviewEn = {
   'groupReview.hint': 'Select changes, then review the group names and complete membership. Removing a group keeps its members and their other memberships.',
   'groupReview.prepare': 'Review selected group changes',
   'groupReview.acknowledgement': 'I have reviewed the complete membership and shared references.',
-  'groupReview.population': '{created} created · {modified} modified · {deleted} deleted',
+  'groupReview.population': 'Native records: {created} created · {modified} modified · {deleted} deleted',
   'groupReview.nativeChanges': 'Inspect group changes and shared references',
   'groupReview.receiptProblem': 'The changes were applied, but their receipt could not be saved. Undo remains available in the edit history.',
   'groupReview.op.group.create': 'Create group',

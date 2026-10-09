@@ -145,6 +145,14 @@ test('#7329 actual provider answer reaches mounted selective Group review, nativ
   await assertSameNativeIfcGraph(editedModelBytes(dataStore, view), before, 'native preview publishes no graph or history');
   const apply = [...ui.querySelectorAll('button')].find(button => button.textContent === 'Apply 1 change');
   assert.ok(apply, ui.textContent ?? ''); assert.equal(apply.disabled, true);
+  act(() => boxes[2].click()); assert.equal(apply.disabled, false);
+  act(() => boxes[1].click());
+  const expandedApply = [...ui.querySelectorAll('button')].find(button => button.textContent === 'Apply 2 changes');
+  assert.ok(expandedApply); assert.equal(expandedApply.disabled, true, 'a newly selected operation requires acknowledgment of its new complete preview');
+  assert.equal(boxes[2].checked, false);
+  act(() => boxes[1].click());
+  assert.equal(apply.disabled, true, 'returning to the old selection still requires acknowledging the freshly prepared preview');
+  assert.match(ui.textContent ?? '', /Native records: 2 created/);
   act(() => boxes[2].click()); assert.equal(apply.disabled, false); click(apply);
   assert.match(ui.textContent ?? '', /Applied 1 change/);
   const bytes = editedModelBytes(dataStore, view), saved = await parseIfc(bytes);

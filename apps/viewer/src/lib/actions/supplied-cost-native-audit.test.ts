@@ -4,6 +4,7 @@
 import '@/test/setup-dom.js';
 import assert from 'node:assert/strict';
 import { afterEach, test } from 'node:test';
+import { setTimeout as delay } from 'node:timers/promises';
 import { createCostBackend, createCostStoreBackend } from '@ifc-lite/sdk';
 import { useViewerStore } from '@/store';
 import { recordModellingEdit } from '@/store/slices/mutation-modelling-records';
@@ -77,10 +78,27 @@ test('#7311 actual supported native supplied schedule admits a detached review w
     operations: [{ op: 'cost.schedule.create', ref: 'schedule', params: { Name: 'Reviewed supplied schedule', Identification: 'AUDIT', PredefinedType: 'TENDER' } }] }));
   const view = state.mutationViews.get(SAMPLE_MODEL)!;
   const bytes = editedModelBytes(state.models.get(SAMPLE_MODEL)!.ifcDataStore!, view);
+  const beforeStore = await parseIfc(bytes);
+  const entityGraph = (store: typeof beforeStore) => [...store.entityIndex.byId.keys()]
+    .sort((a, b) => a - b).map(id => [id, store.getEntity(id)]);
+  const beforeGraph = entityGraph(beforeStore);
+  const undo = state.undoStacks;
+  const redo = state.redoStacks;
+  const dirty = state.dirtyModels;
   const history = state.undoStacks.get(SAMPLE_MODEL)?.length;
   const review = prepareCostReview(useViewerStore, proposal);
   assert.equal(review.delta.filter(row => !row.before && row.after?.type === 'IfcCostSchedule').length, 1);
-  assert.deepEqual(editedModelBytes(state.models.get(SAMPLE_MODEL)!.ifcDataStore!, view), bytes);
+  // #7336: a real second boundary must not turn a pure native preview into a failure.
+  await delay(1100);
+  const afterBytes = editedModelBytes(state.models.get(SAMPLE_MODEL)!.ifcDataStore!, view);
+  const header = (value: Uint8Array) => new TextDecoder().decode(value).split('DATA;')[0];
+  assert.notEqual(header(afterBytes), header(bytes), 'native export records the real clock crossing');
+  const afterStore = await parseIfc(afterBytes);
+  assert.deepEqual(entityGraph(afterStore), beforeGraph,
+    'detached Cost review preserves every independently parsed IFC entity; HEADER timestamps are not model edits');
+  assert.equal(useViewerStore.getState().undoStacks, undo);
+  assert.equal(useViewerStore.getState().redoStacks, redo);
+  assert.equal(useViewerStore.getState().dirtyModels, dirty);
   assert.equal(useViewerStore.getState().undoStacks.get(SAMPLE_MODEL)?.length, history);
   const result = review.commit();
   assert.equal(result.rows.length, 1);

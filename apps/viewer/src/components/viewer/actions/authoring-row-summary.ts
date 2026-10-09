@@ -60,6 +60,7 @@ export function authoringRowSummary(row: AuthoringRow, batch: ModelAuthoringBatc
         after: t('modelAuthoring.splitResult', { cut, side: effects?.leftId === row.expressId ? 'left' : 'right' }),
         previewNote: `${row.previewUnavailable ? t('modelAuthoring.editPreviewUnavailable') : t('modelAuthoring.splitPreview')}${effects ? ` ${t('modelAuthoring.splitOpenings', effects.openings)}` : ''}` };
     }
+    case 'element.replace': return {subject:`${op.target.ifcClass} ${op.target.name}`,before:`${op.target.globalId} · type=${op.expected.types.map(type=>type.record.attributes[2]).join(', ')||t('modelChanges.absent')} · materials=${op.expected.materials.length}`,after:`${op.ifcClass} ${op.name} · ${JSON.stringify(op.params)} ${units}`,previewNote:t('modelAuthoring.replacementPreview')+(row.previewUnavailable?' '+t('modelAuthoring.editPreviewUnavailable'):'')+((op.ifcClass==='IfcStair'||op.ifcClass==='IfcRailing')?' '+t('modelAuthoring.stairRailingPreview'):('Profile' in op.params&&typeof op.params.Profile==='object'&&sectionGhostOmissions(op.params.Profile).length?' '+t('modelAuthoring.filletPreview',{fields:sectionGhostOmissions(op.params.Profile).join(', ')}):''))};
     case 'stair.resize': return {subject:`${op.target.ifcClass} ${op.target.name}`,before:`${fields({Width:op.expected.Width,RiserHeight:op.expected.RiserHeight,TreadLength:op.expected.TreadLength,...(op.expected.WaistThickness===undefined?{}:{WaistThickness:op.expected.WaistThickness})},units==='mm'?1000:1)} ${units}`,after:`${fields({...stairPatchDisplay(op.expected,units),...op.size})} ${units}`,previewNote:t('modelAuthoring.editPreviewUnavailable')};
     case 'stair.delete': case 'railing.delete': return {subject:`${op.target.ifcClass} ${op.target.name}`,before:op.target.name,after:t('modelChanges.removed'),previewNote:t('modelAuthoring.editPreviewUnavailable')};
     case 'stair.replace': case 'railing.replace': return {subject:`${op.target.ifcClass} ${op.target.name}`,before:op.target.globalId,after:`${op.op==='stair.replace'?'IfcStair':'IfcRailing'} ${JSON.stringify(op.params)} ${units}`,previewNote:t('modelAuthoring.stairRailingPreview')+(row.previewUnavailable?' '+t('modelAuthoring.editPreviewUnavailable'):'')};
@@ -95,9 +96,13 @@ export function authoringRowSummary(row: AuthoringRow, batch: ModelAuthoringBatc
       return { subject: `${op.target.ifcClass} "${op.target.name}"`, before: origin ? `${point(origin)} ${units}` : none,
         after: origin ? `${point([origin[0] + op.delta[0], origin[1] + op.delta[1]])} ${units}` : t('modelAuthoring.movedBy', { delta: `${point(op.delta)} ${units}` }) };
     }
+    case 'element.align':
+      return { subject: `${op.targets.length} → ${op.reference.name}`, before: 'Current native placement',
+        after: `${op.mode} alignment`, previewNote: t('modelAuthoring.alignBounds') };
     case 'element.rotate':
       return { subject: `${op.target.ifcClass} "${op.target.name}"`, before: before.angleDeg === undefined ? none : `${num(before.angleDeg)}°`,
-        after: before.angleDeg === undefined ? t('modelAuthoring.turnedBy', { angle: num(op.angleDeg) }) : `${num(before.angleDeg + op.angleDeg)}°` };
+        after: (before.angleDeg === undefined ? t('modelAuthoring.turnedBy', { angle: num(op.angleDeg) }) : `${num(before.angleDeg + op.angleDeg)}°`)
+          + (op.pivot ? ` @ ${point(op.pivot)} ${units}` : '') };
     case 'type.detach':
       return { subject: ref(op.target, t), before: before.type ?? none, after: none,
         previewNote: t('modelAuthoring.editPreviewUnavailable') };

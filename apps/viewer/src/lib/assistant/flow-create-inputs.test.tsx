@@ -47,7 +47,11 @@ test('#7241 reviewed creation retains native Player inputs through Save, export 
   useAssistant.setState({ messages: [{ role: 'user', content: 'Expose IFC type in Player' },
     { role: 'assistant', model: 'controlled-provider', content: envelope(native.inputs) }] });
   const review = render(<FlowCreateReview />);
-  const button = (name: string) => [...review.querySelectorAll('button')].find(item => item.textContent === name)!;
+  const button = (name: string) => {
+    const found = [...review.querySelectorAll('button')].find(item => item.textContent === name);
+    assert.ok(found, `Native reviewed graph UI must expose ${name}`);
+    return found;
+  };
   click(button('Review new graph'));
   assert.match(review.textContent ?? '', /Player inputs[\s\S]*IFC type · query\.type · scalar/);
   assert.equal(button('Create and open graph').disabled, true, 'explicit approval still gates creation');

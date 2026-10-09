@@ -12,7 +12,7 @@ import { createHash } from 'node:crypto';
 import { classifyDiff, parseNameStatus } from '../lib/revert-oracle.mjs';
 import { planRuns } from '../lib/revert-oracle-plan-runs.mjs';
 import { runPlan } from '../lib/revert-oracle-run-plan.mjs';
-const root = fileURLToPath(new URL('../../', import.meta.url));
+const root = resolve(fileURLToPath(new URL('../../', import.meta.url)));
 const args = process.argv.slice(2);
 const value = flag => { const at = args.indexOf(flag); assert.ok(at >= 0 && args[at + 1], `Missing ${flag}`); return args[at + 1]; };
 const stage = value('--platform'), base = value('--base'), output = resolve(value('--output'));

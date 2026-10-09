@@ -549,3 +549,24 @@ for (const invalid of ['deleted', 'wrong-type', 'assignment-type', 'thickness-un
   if (invalid === 'material-value') assert.equal(effectiveMetadataRecord(reparsed, invalidId)?.attributes[0], 'not a native material reference');
   const evidence = transportedLayerEvidence(useViewerStore.getState(), target); assert.equal(evidence.status, 'unavailable'); assert.equal(evidence.expected, null, 'unknown current layer records must not be published as a complete available population');
 });
+
+// #7275: an indexed association does not prove a readable MaterialSelect target.
+test('#7275 native unset association target retains its known population and unavailable evidence', async () => {
+  const { dataStore, view, target } = await inspectorControl();
+  const saved = await parseIfc(editedModelBytes(dataStore, view));
+  const association = [...saved.entityIndex.byType.get('IFCRELASSOCIATESMATERIAL') ?? []].find(id => {
+    const related = effectiveMetadataRecord(saved, id)?.attributes[4];
+    return Array.isArray(related) && related.includes(target);
+  });
+  assert.ok(association);
+  const editor = useViewerStore.getState().storeEditors.get(SAMPLE_MODEL); assert.ok(editor);
+  editor.setPositionalAttribute(association, 5, null);
+  const reparsed = await parseIfc(editedModelBytes(dataStore, view));
+  assert.equal(effectiveMetadataRecord(reparsed, association)?.attributes[5], null, 'independent STEP retains the actual unset MaterialSelect slot');
+  const related = effectiveMetadataRecord(reparsed, association)?.attributes[4];
+  assert.ok(Array.isArray(related) && related.includes(target), 'native association ownership survives independently');
+  const evidence = transportedLayerEvidence(useViewerStore.getState(), target);
+  assert.equal(evidence.assignmentCount, 1);
+  assert.equal(evidence.status, 'unavailable');
+  assert.equal(evidence.expected, null);
+});

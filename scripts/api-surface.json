@@ -9266,6 +9266,7 @@
     "PlateParams: interface",
     "Point2D: type",
     "Point3D: type",
+    "PreparedRoomCommand: interface",
     "ProfileDef: type",
     "ProjectParams: interface",
     "ProjectionMode: type",

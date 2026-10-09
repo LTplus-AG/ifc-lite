@@ -1,0 +1,34 @@
+{
+  "head": "0ac7fa1e68e7639c94503fe727fef7399b68f23a",
+  "nativeTests": {
+    "passed": 22,
+    "failed": 0,
+    "skipped": 0,
+    "deadlineMs": 5000,
+    "v8Coverage": true,
+    "log": "/tmp/campaign-group-snapshot-0ac7-v8-native.log"
+  },
+  "byteTests": {
+    "passed": 2,
+    "failed": 0,
+    "skipped": 0,
+    "log": "/tmp/campaign-group-snapshot-0ac7-byte.log"
+  },
+  "exports": [
+    {
+      "schema": "IFC4",
+      "bytes": 80818,
+      "sha256": "9b3a5ff3be91701a12b1f439463abef3cc370fe63b703c677fe66ba5a9305cb7",
+      "baselineSha256": "9b3a5ff3be91701a12b1f439463abef3cc370fe63b703c677fe66ba5a9305cb7",
+      "exactRawBytesEqual": true
+    },
+    {
+      "schema": "IFC4X3",
+      "bytes": 1714817,
+      "sha256": "db7b4c01f0733a40a4337d4bf73e6e0dda0951abcba11c2ded8ec35c3d8821c5",
+      "baselineSha256": "db7b4c01f0733a40a4337d4bf73e6e0dda0951abcba11c2ded8ec35c3d8821c5",
+      "exactRawBytesEqual": true
+    }
+  ],
+  "scope": "Composed scanner, canonical schema snapshot, and printable ASCII codec; functional acceptance, no idle throughput claim"
+}

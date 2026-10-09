@@ -1,6 +1,8 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+import { structuralReviewEn } from './catalogues/structural-review.en';
+
 
 import { newIfcEn } from './catalogues/new-ifc.en';
 import type { LazyTranslationKey } from './lazy-catalogues';
@@ -151,6 +153,7 @@ import { zonesPanelEn } from './catalogues/zones-panel.en';
 /** English is assembled from feature catalogues so no locale becomes a monolith. */
 export const en = {
   ...newIfcEn,
+  ...structuralReviewEn,
   ...semanticEn,
   ...semanticResultsEn,
   ...semanticIdentityEn,

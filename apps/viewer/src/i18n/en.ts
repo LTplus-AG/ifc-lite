@@ -52,6 +52,7 @@ import { assistantUsageEn } from './catalogues/assistant-usage.en';
 import { aiReportsEn } from './catalogues/ai-reports.en';
 import { flowAssistantEn } from './catalogues/flow-assistant.en';
 import { modelAuthoringEn } from './catalogues/model-authoring.en';
+import { roomReviewEn } from './catalogues/room-review.en';
 import { sceneActionsEn } from './catalogues/scene-actions.en';
 import { checkAuthoringEn } from './catalogues/check-authoring.en';
 import { assistantArtifactsEn } from './catalogues/assistant-artifacts.en';
@@ -260,6 +261,7 @@ export const en = {
   ...aiReportsEn,
   ...flowAssistantEn,
   ...modelAuthoringEn,
+  ...roomReviewEn,
   ...sceneActionsEn,
   ...checkAuthoringEn,
   ...assistantArtifactsEn,

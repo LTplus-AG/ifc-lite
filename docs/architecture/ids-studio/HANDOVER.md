@@ -48,14 +48,14 @@ All PRs are **drafts** until their pitch's "Done means" (in its pitch file) is m
    - tests with an oracle where one exists (see [`05-delivery/02-test-and-eval-strategy.md`](05-delivery/02-test-and-eval-strategy.md));
    - docs in the same PR;
    - a changeset plus `pnpm api-surface:update` for published packages.
-4. Run the checks for the packages you touched:
+4. Run checks through the root Turbo tasks, so workspace dependencies build before tests and typecheck resolve their declarations. Coordinate a bounded lane on the shared host:
    ```bash
-   pnpm turbo build --filter=<pkg>...      # build deps
-   pnpm --filter <pkg> test                # vitest
-   pnpm --filter <pkg> typecheck
+   pnpm test
+   pnpm typecheck
    node scripts/check-module-size.mjs
-   pnpm lint                               # oxlint
+   pnpm lint
    ```
+   Keep the root typecheck postchecks intact. Read the current root script before constraining Turbo concurrency: trailing CLI arguments to a compound script can reach a postcheck rather than Turbo. Package-local tests/typechecks are not qualification evidence; see AGENTS.md.
 5. Commit with the backlog ID in the subject, e.g. `feat(ids): emit length restrictions (IDS-001)`.
 6. Append to `worklog/P-xx.md`: what changed, what you learned, what's next and any open question.
 7. Tick the item in the PR body checklist and update `STATUS.md` on the campaign branch.
@@ -69,7 +69,7 @@ All PRs are **drafts** until their pitch's "Done means" (in its pitch file) is m
 
 ## 6. Environment notes (from the first session)
 - Node 22, pnpm 10.8. `pnpm install --frozen-lockfile` takes about 20 s with a warm store.
-- Package tests use vitest (`pnpm --filter @ifc-lite/ids test`). The IDS conformance corpus lives in `packages/ids/src/__corpus__/buildingsmart-ids` (CC BY-ND: never modify those files).
+- Package tests use vitest, reached through the root `pnpm test` Turbo task. The IDS conformance corpus lives in `packages/ids/src/__corpus__/buildingsmart-ids` (CC BY-ND: never modify those files).
 - `pnpm turbo build --filter=<pkg>...` builds a package and its workspace dependencies. Tests import workspace packages from their `dist`.
 - **Revert oracle (`Changed tests observe production`).** CI reverts the PR's production files and requires the PR's tests to go red. When the production files are *new* (a new package or module), the revert deletes them, the tests can't load, and the verdict is INCONCLUSIVE (`REVERT-BROKE-BUILD`). That blocks CI. The fix is evidence plus a label, never a code workaround:
   1. Write surgical mutation patches (mutant→fixed orientation) and keep them outside the worktree, because the oracle refuses a dirty tree.
@@ -77,7 +77,7 @@ All PRs are **drafts** until their pitch's "Done means" (in its pitch file) is m
   3. Commit patches + README + `summary.json` under `docs/architecture/evidence/<pitch>/mutations/` (template: P-08's).
   4. Ask the maintainer for the `revert-oracle-exempt` label in a PR comment.
 - **Stacked PRs get no CI lanes.** `test.yml` only triggers for PRs based on `main`. A PR stacked on another pitch branch therefore runs no test lanes, and `PR review signal` fails with "NOT ONE lane from test.yml appeared". An empty commit doesn't help. Until the base merges and the PR is retargeted to `main`:
-  1. Run the package checks locally.
+  1. Run local checks through root Turbo tasks, with the dependency graph and root postchecks intact.
   2. Run the revert oracle with `--base <pitch base branch>`.
   3. Paste the results into the PR body.
   CodeRabbit also skips `low-risk`-labelled PRs, so its result carries no review verdict either.
@@ -86,3 +86,9 @@ All PRs are **drafts** until their pitch's "Done means" (in its pitch file) is m
 ## 7. Contacts and authority
 - Owner and maintainer: Louis True. Decisions are recorded in README → Decisions.
 - Anything not covered here: follow the architecture docs. If they are silent, decide, record the decision in the pitch worklog, and flag it in the PR body under "Decisions taken".
+
+## Charter-only pitches consolidated on 2026-10-09
+
+P-05 (#7146) and P-09 (#7150) contained only their charter and work log. Their original work logs are preserved byte-for-byte here as [`P-05.md`](worklog/P-05.md) and [`P-09.md`](worklog/P-09.md); their pitch plans, backlog and unchecked acceptance remain unchanged. Their existing branches remain available for implementation, with the dependency bases in §3 applied when work starts. Closing the duplicate charter PRs does not mark either pitch implemented or accepted.
+
+The interrupted implementation PRs #7145, #7147, #7148, #7151 and #7152 stay separate. Their published WIP checkpoints are unverified. The campaign coordinator confirmed on #7143 on 2026-10-09 that all five workers had stopped and all local changes were pushed. A new worker must register ownership before editing a pitch branch and qualify its exact source head; timestamps and checked backlog rows alone are not acceptance evidence.

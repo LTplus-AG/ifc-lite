@@ -14,11 +14,11 @@ Umbrella PR: #7143 (this tracker).
 | P-02 Authoring core | `claude/ids-studio-p02-authoring-core` | #7168 | 🟨 | Draft PR: IDS-015–026 done, IDS-027 partial; 173 tests green. Remaining ops (split/merge, `bulk.from*`, setVersion) + GATE-BSDD-001 still to do; see worklog/P-02.md |
 | P-03 Studio UI v1 | `claude/ids-studio-p03-studio-ui` | #7145 | ⏸ | Interrupted 2026-10-08 (usage limit). One UNVERIFIED WIP checkpoint e8aa7a81f (64 files). Needs checks, per-ID split, screenshots |
 | P-04 Lint | `claude/ids-studio-p04-lint` | #7144 | 🟨 | Draft PR (base P-02): IDS-046–054 done, 43 static rules, precision 600 findings / 0 FP (self-labelled), 269 tests, 11 mutations OBSERVED |
-| P-05 Model loop | `claude/ids-studio-p05-model-loop` | #7146 | ⬜ | Draft PR open (charter + work log); not started |
+| P-05 Model loop | `claude/ids-studio-p05-model-loop` | #7146 (charter consolidated) | ⬜ | Not started; charter/work log preserved in umbrella #7143; branch retained for future P-03-based implementation |
 | P-06 bSDD | `claude/ids-studio-p06-bsdd` | #7147 | ⏸ | Interrupted. IDS-069–074 committed by agent (final checks unreported) + WIP evidence baca3552f. Needs checks, fixture licence confirmation |
 | P-07 Agent | `claude/ids-studio-p07-agent` | #7148 | ⏸ | Interrupted. One UNVERIFIED WIP checkpoint 7e18628c8 (91 files; deletes old check-authoring editor — verify supersession) |
 | P-08 Eval | `claude/ids-studio-p08-eval` | #7149 | 🟨 | E2 (307 cases), E4 (24), E5 (19), scorer done; self-check 307/307. Human review + runner pending |
-| P-09 Ingestion & documents | `claude/ids-studio-p09-ingestion` | #7150 | ⬜ | Draft PR open (charter + work log); not started |
+| P-09 Ingestion & documents | `claude/ids-studio-p09-ingestion` | #7150 (charter consolidated) | ⬜ | Not started; charter/work log preserved in umbrella #7143; branch retained for future P-07-based implementation |
 | P-10 Trust & teamwork | `claude/ids-studio-p10-trust` | #7151 | ⏸ | Interrupted. IDS-104/106/107/108/110 committed; IDS-114 WIP d5b0b85e1 (UNVERIFIED); 105/109/111–113 not started |
 | P-11 Headless | `claude/ids-studio-p11-headless` | #7152 | ⏸ | Interrupted. IDS-115/116/118/119 committed; IDS-120/122 WIP a3e5f591f (UNVERIFIED); 117/121/123 not started |
 | P-12 Standards leadership | `claude/ids-studio-p12-standards` | #7153 | 🟨 | Draft PR (base P-01): IDS-124–126 done; 1.1 preview flag, engine-neutral conformance dashboard (334/334), 5 upstream drafts (not sent) |
@@ -221,3 +221,7 @@ Umbrella PR: #7143 (this tracker).
 | 2026-10-08 | 1 | P-02 pushed: `@ifc-lite/ids-authoring` (IDS-015–026, IDS-027 partial), 173 tests; draft PR #7168. 11 spec deviations recorded in worklog/P-02.md and folded into 02-document-model-and-ops.md |
 | 2026-10-08 | 1 | P-08 datasets + scorer pushed (self-check 307/307); found 18 audit false positives on valid corpus IDS → handed to P-01 |
 | 2026-10-08 | 1 | Plan written; campaign docs, tracker and handover committed; pitch branches and draft PRs opened |
+
+### 2026-10-09 — charter consolidation and check instructions
+
+Preserved the original P-05 and P-09 work logs from heads `a319b68141c204c9066507c9f86e4abfd52f4ced` and `bf5a80dbab10c22ca9586e78cbff8ad18658fc02` in this umbrella. These two drafts contain no implementation and can close once preservation is published. Their pitches remain todo and their branches remain available. All other pitch implementation PRs and unverified WIP checkpoints remain intact. Handover check commands now use root Turbo tasks, following AGENTS.md; no runtime, human, oracle or benchmark acceptance is inferred from this documentation cleanup.

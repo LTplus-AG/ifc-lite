@@ -9,12 +9,14 @@ import { Renderer, type RenderOptions } from '../../../../packages/renderer/src/
 import { useAnimationLoop, type UseAnimationLoopParams } from '@/components/viewer/useAnimationLoop';
 import { useBCF, clearGlobalRefs, setGlobalCanvasRef, setGlobalRendererRef } from '@/hooks/useBCF';
 import { useViewerStore } from '@/store';
+import { installCaptureGpu } from '@/test/capture-gpu';
 
 export interface CaptureObservation {
   width: number;
   height: number;
   ghostIds: number[] | null;
   camera: { x: number; y: number; z: number };
+  submission: number;
 }
 
 const ref = <T,>(current: T) => ({ current });
@@ -28,6 +30,7 @@ interface CaptureLifecycle {
   captures: CaptureObservation[];
   resizes: number[][];
   frames: RenderOptions[];
+  gpu: ReturnType<typeof installCaptureGpu>;
   readonly waits: number;
   deferWork: () => void;
   finishWork: () => void;
@@ -64,28 +67,27 @@ export async function captureLifecycle(dpr: number): Promise<CaptureLifecycle> {
   const canvas = document.createElement('canvas');
   canvas.getBoundingClientRect = () => ({ x: 0, y: 0, left: 0, top: 0, right: 600, bottom: 400, width: 600, height: 400, toJSON: () => ({}) });
   const renderer = new Renderer(canvas);
-  const deviceState = renderer['device'] as unknown as Record<string, unknown>;
-  deviceState.device = {
-    limits: { maxTextureDimension2D: 8192 },
-    queue: { onSubmittedWorkDone: () => { waits++; return work; } },
-  };
-  // Real render() measures/resizes and sets camera aspect, then exits at ensureContext.
-  // No GPU encoding or real PNG/image equivalence is claimed by this fixture.
-  deviceState.context = {};
   const resizes: number[][] = [];
-  (renderer as unknown as Record<string, unknown>).pipeline = {
-    resize: (width: number, height: number) => { resizes.push([width, height]); },
-  };
   let lastOptions: RenderOptions = {};
   const frames: RenderOptions[] = [];
+  let submitted: Pick<CaptureObservation, 'ghostIds' | 'camera' | 'submission'> | undefined;
+  const gpu = installCaptureGpu(renderer, canvas, {
+    complete: () => { waits++; return work; },
+    resize: (width, height) => { resizes.push([width, height]); },
+    submit: () => {
+      submitted = { ghostIds: lastOptions.ghostExceptIds ? [...lastOptions.ghostExceptIds] : null,
+        camera: { ...renderer.getCamera().getPosition() }, submission: gpu.stats.submissions };
+    },
+  });
   const originalRender = renderer.render.bind(renderer);
-  renderer.render = options => { lastOptions = options ?? {}; frames.push(lastOptions); originalRender(options); };
+  renderer.render = options => { lastOptions = options ?? {}; frames.push(lastOptions); return originalRender(options); };
   const captures: CaptureObservation[] = [];
   canvas.toDataURL = () => {
     const observation = {
       width: canvas.width, height: canvas.height,
-      ghostIds: lastOptions.ghostExceptIds ? [...lastOptions.ghostExceptIds] : null,
-      camera: { ...renderer.getCamera().getPosition() },
+      ghostIds: submitted?.ghostIds ?? null,
+      camera: submitted?.camera ?? { ...renderer.getCamera().getPosition() },
+      submission: submitted?.submission ?? 0,
     };
     captures.push(observation);
     // A readback observation sentinel, deliberately not a fabricated physical GPU PNG.
@@ -124,7 +126,7 @@ export async function captureLifecycle(dpr: number): Promise<CaptureLifecycle> {
   const api = bcf;
   let disposed = false;
   return {
-    renderer, canvas, params, bcf: api, step, captures, resizes, frames,
+    renderer, canvas, params, bcf: api, step, captures, resizes, frames, gpu,
     get waits() { return waits; },
     deferWork() { work = new Promise<void>((resolve, reject) => { completeWork = resolve; rejectWork = reject; }); },
     finishWork() { const resolve = completeWork; work = Promise.resolve(); resolve(); },
@@ -134,6 +136,7 @@ export async function captureLifecycle(dpr: number): Promise<CaptureLifecycle> {
       if (disposed) return;
       disposed = true;
       await act(async () => root.unmount());
+      gpu.dispose();
       container.remove(); clearGlobalRefs();
       useViewerStore.setState(savedStore, true);
       globalThis.requestAnimationFrame = savedRaf;

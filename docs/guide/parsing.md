@@ -844,6 +844,14 @@ bound the project inventory and allow at most 512 dependency reads. They do not
 change source-only conventions, annotate implicit quantities as explicit units,
 or reinterpret cached geometry.
 
+Unavailable project context leaves implicit property and quantity values raw, without
+a physical suffix or display-unit conversion. Dimensionless rows remain readable.
+A quantity with an independently resolved explicit native Unit retains its own
+symbol and canonical SI scale, including display overrides. Current view records
+are consulted even when the store has no source buffer. These display rules do
+not provide live occurrence-member Unit dependency reads; that separate limitation
+is tracked in #7379.
+
 ```typescript
 import { readCurrentProjectUnits, type IfcDataStore } from '@ifc-lite/parser';
 import type { MutablePropertyView } from '@ifc-lite/mutations';

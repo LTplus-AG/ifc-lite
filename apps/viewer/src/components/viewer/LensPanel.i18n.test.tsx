@@ -35,7 +35,7 @@ import '@/test/setup-dom.js';
 import { afterEach, beforeEach, describe, it, mock } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
-import { cleanup, render } from '@/test/render.js';
+import { cleanup, render, type as typeInput } from '@/test/render.js';
 import { registerLocale, setLocale, type Catalogue } from '@/i18n';
 import type { TranslationValue } from '@/i18n/types';
 import { useViewerStore } from '@/store';
@@ -635,11 +635,19 @@ describe('Lens panel localization (#4918)', () => {
     act(() => edit.dispatchEvent(new window.MouseEvent('click', { bubbles: true, cancelable: true })));
     const save = [...container.querySelectorAll('button')].find((button) => button.textContent?.trim() === 'Save');
     assert.ok(save);
+    const valueInput = [...container.querySelectorAll<HTMLInputElement>('input')].find(input => input.value === 'Wall');
+    assert.ok(valueInput);
+    typeInput(valueInput, 'Facade');
+    const expectedGroups: LensRule['groups'] = [{ combinator: 'AND', rules: [
+      { kind: 'name', op: 'contains', value: 'Facade' },
+    ] }];
+    assert.deepEqual(readSavedLensSource().rows.find(lens => lens.id === original.id)?.rules[0].groups, nameRule.groups,
+      'editing alone must not persist before Save');
     assert.equal(save.disabled, false, 'a configured Name chip must remain saveable');
     act(() => save.dispatchEvent(new window.MouseEvent('click', { bubbles: true, cancelable: true })));
     const saved = useViewerStore.getState().savedLenses.find(lens => lens.id === original.id);
     assert.ok(saved);
-    assert.deepEqual(saved.rules[0].groups, nameRule.groups);
-    assert.deepEqual(readSavedLensSource().rows.find(lens => lens.id === original.id)?.rules[0].groups, nameRule.groups);
+    assert.deepEqual(saved.rules[0].groups, expectedGroups);
+    assert.deepEqual(readSavedLensSource().rows.find(lens => lens.id === original.id)?.rules[0].groups, expectedGroups);
   });
 });

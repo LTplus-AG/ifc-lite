@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { preserveNativeExpectedProjection } from '@/lib/actions/native-authoring-evidence';
 import { useViewerStore } from '@/store';
 import { captureAnalysisStamp, isAnalysisStale, type AnalysisStamp } from '@/hooks/useAnalysisStaleness';
 import type { AssistantSource } from './sources';
@@ -55,6 +56,7 @@ export function captureEvidence(source: AssistantSource): EvidenceSnapshot {
   for (const row of rows) {
     const projection = evidenceJson(row);
     const projected: unknown = JSON.parse(projection.text);
+    preserveNativeExpectedProjection(row, projected);
     if (typeof projected !== 'object' || projected === null || !('citation' in projected) || textLength + projection.text.length > TEXT_LIMIT) {
       projectionTruncated = true;
       break;

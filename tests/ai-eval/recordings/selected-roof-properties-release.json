@@ -104,7 +104,26 @@
             "modelName": "arch",
             "type": "IfcSlab",
             "name": "house - roof - slab right",
+            "nativeSplitExpected": null,
+            "nativeHostedExpected": null,
             "nativeTrimExtendExpected": null,
+            "nativeStairExpected": null,
+            "nativeAuthoringUnits": {
+              "split": "m",
+              "hosted": "m",
+              "stair": "m",
+              "trimExtend": "verbatim-native-fields"
+            },
+            "nativeAuthoringRefusals": {
+              "split": "Split unavailable: mesh",
+              "hosted": "The native hosted binding or placement is unavailable"
+            },
+            "nativeAuthoringAvailability": {
+              "split": "unavailable-native-layout",
+              "hosted": "unavailable-native-layout",
+              "trimExtend": "unavailable-native-layout",
+              "stair": "unavailable-native-layout"
+            },
             "attributes": {
               "Name": "house - roof - slab right",
               "Description": "A roof slab that's got it all covered",
@@ -151,7 +170,6 @@
               "profileStatus": "unavailable",
               "Profile": null
             },
-            "nativeStairExpected": null,
             "nativeType": {
               "status": "typed",
               "expected": {

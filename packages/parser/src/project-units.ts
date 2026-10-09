@@ -309,7 +309,10 @@ export function extractProjectUnits(
 
   // IFCPROJECT[8] = UnitsInContext (IFCUNITASSIGNMENT)
   const unitsRef = (project.attributes ?? [])[8];
-  if (unitsRef === null) return new ProjectUnits(byType, monetary);
+  if (unitsRef === null) {
+    if (readEntity) throw new ProjectUnitReadError('Native project unit context is unset');
+    return new ProjectUnits(byType, monetary);
+  }
   if (typeof unitsRef !== 'number') {
     if (readEntity) throw new ProjectUnitReadError('Native project unit assignment reference is unreadable');
     return new ProjectUnits(byType, monetary);

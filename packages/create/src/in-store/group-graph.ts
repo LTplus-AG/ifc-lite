@@ -10,6 +10,7 @@ import { conformsTo, schemaRegistry } from './schema-attributes.js';
 
 /** Explicit bounds on file-controlled input; refusal never returns a partial graph. */
 export const GROUP_GRAPH_LIMITS = { entities: 250_000, recordCharacters: 4_000_000, totalRecordCharacters: 80_000_000, references: 2_000_000, members: 10_000 } as const;
+export type GroupGraphLimits = { readonly [K in keyof typeof GROUP_GRAPH_LIMITS]: number };
 
 export interface GroupRootIdentity { expressId: number; GlobalId: string }
 export interface GroupMembershipSnapshot {
@@ -62,7 +63,9 @@ export class GroupGraph {
   readonly incoming = new Map<number, Set<number>>();
   private readonly roots = new Map<string, number[]>();
 
-  constructor(readonly store: IfcDataStore, readonly view: MutablePropertyView) {
+  /** `limits` exists so the budgets can be exercised at test scale; callers use the defaults. */
+  constructor(readonly store: IfcDataStore, readonly view: MutablePropertyView,
+    private readonly limits: GroupGraphLimits = GROUP_GRAPH_LIMITS) {
     if (store.schemaVersion !== 'IFC4' && store.schemaVersion !== 'IFC4X3') {
       throw new Error('Generic IfcGroup authoring requires a declared IFC4 or IFC4X3 model');
     }
@@ -71,7 +74,7 @@ export class GroupGraph {
     let referenceCount = 0;
     let recordCharacters = 0;
     for (const { expressId } of iterateEffectiveEntityIds(store, view)) {
-      if (this.entities.size >= GROUP_GRAPH_LIMITS.entities) throw new Error('Group graph entity budget exceeded');
+      if (this.entities.size >= this.limits.entities) throw new Error('Group graph entity budget exceeded');
       const entity = reader.entity(expressId);
       if (!entity) throw new Error(`Group graph cannot read current entity #${expressId}`);
       this.entities.set(expressId, entity);
@@ -85,11 +88,11 @@ export class GroupGraph {
       const record = created ?? (source ? effectiveSourceRecord(view, expressId,
         store.source.decodeUtf8(source.byteOffset, source.byteOffset + source.byteLength), source.type, store.schemaVersion) : null);
       if (!record || record.notWritten.length) throw new Error(`Group graph cannot certify exported entity #${expressId}`);
-      if (record.text.length > GROUP_GRAPH_LIMITS.recordCharacters) throw new Error('Group graph record budget exceeded');
+      if (record.text.length > this.limits.recordCharacters) throw new Error('Group graph record budget exceeded');
       recordCharacters += record.text.length;
-      if (recordCharacters > GROUP_GRAPH_LIMITS.totalRecordCharacters) throw new Error('Group graph total record work budget exceeded');
+      if (recordCharacters > this.limits.totalRecordCharacters) throw new Error('Group graph total record work budget exceeded');
       for (const target of groupRecordReferences(record.text)) {
-        if (++referenceCount > GROUP_GRAPH_LIMITS.references) throw new Error('Group graph reference budget exceeded');
+        if (++referenceCount > this.limits.references) throw new Error('Group graph reference budget exceeded');
         const ids = this.incoming.get(target) ?? new Set<number>(); ids.add(expressId); this.incoming.set(target, ids);
       }
     }
@@ -127,13 +130,13 @@ export class GroupGraph {
       if (relating !== target.expressId) continue;
       if (row.type.toUpperCase() !== 'IFCRELASSIGNSTOGROUP') throw new Error('Group membership has specialized assignment semantics');
       const values = row.attributes[row.names.indexOf('RelatedObjects')];
-      if (!Array.isArray(values) || !values.length || values.length > GROUP_GRAPH_LIMITS.members) {
+      if (!Array.isArray(values) || !values.length || values.length > this.limits.members) {
         throw new Error('IfcRelAssignsToGroup.RelatedObjects is incomplete or exceeds its budget');
       }
       const ids = values.map(referenceId);
       if (ids.some(value => value === null) || new Set(ids).size !== ids.length) throw new Error('Group membership references are unreadable or duplicated');
       totalMembers += ids.length;
-      if (totalMembers > GROUP_GRAPH_LIMITS.members) throw new Error('Complete group membership budget exceeded');
+      if (totalMembers > this.limits.members) throw new Error('Complete group membership budget exceeded');
       for (const member of ids) {
         const type = this.entities.get(member!)?.type;
         if (member === target.expressId || !type || !conformsTo(registry, type, 'IfcObjectDefinition', this.schemaNames)) throw new Error('Current group membership has an invalid object definition');

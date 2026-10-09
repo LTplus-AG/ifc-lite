@@ -12,7 +12,7 @@ import { RelationshipType } from '@ifc-lite/data';
 import { IfcCreator } from '../ifc-creator.js';
 import { AnchorEntityReader } from './resolve-anchor.js';
 import { addGroupToStore, readGroupInStore, updateGroupInStore, removeGroupInStore } from './group.js';
-import { GROUP_GRAPH_LIMITS } from './group-graph.js';
+import { GROUP_GRAPH_LIMITS, GroupGraph } from './group-graph.js';
 import * as groupGraphApi from './group-graph.js';
 
 async function session(schema: 'IFC4' | 'IFC4X3' = 'IFC4') {
@@ -224,15 +224,18 @@ it('complete replacement safely consolidates multiple owned assignments and reus
 });
 
 it('bounds total effective record work and reports refusal rather than a truncated success #7329', async () => {
-  const s = await session(), name = 'x'.repeat(2_000_000);
-  // Native overlay records model exporter-controlled breadth; each record is below the per-record bound.
-  for (let i = 0; i < 41; i++) s.editor.addEntity('IfcGroup', [generateIfcGuid(), null, name, null, null]);
-  const next = s.mutationView.peekNextExpressId(), revision = s.mutationView.getMutationRevision();
-  const count = s.mutationView.getNewEntities().length;
-  expect(() => addGroupToStore(s, { Name: 'Must not publish a partial certification', RelatedObjects: [] })).toThrow(/total record work budget/);
-  expect(s.mutationView.peekNextExpressId()).toBe(next);
-  expect(s.mutationView.getMutationRevision()).toBe(revision);
-  expect(s.mutationView.getNewEntities()).toHaveLength(count);
+  const s = await session();
+  // The production budget is 80 M characters; pushing that through record
+  // serialization is GC-bound and timed out on CI (#7366). The same check is
+  // exercised at test scale: the real model fits, then exporter-controlled
+  // breadth (each record below the per-record bound) exceeds the total.
+  const limits = { ...GROUP_GRAPH_LIMITS, totalRecordCharacters: 200_000 };
+  expect(() => new GroupGraph(s.store, s.mutationView, limits)).not.toThrow();
+  for (let i = 0; i < 60; i++) s.editor.addEntity('IfcGroup', [generateIfcGuid(), null, 'x'.repeat(3_500), null, null]);
+  expect(() => new GroupGraph(s.store, s.mutationView, { ...limits, totalRecordCharacters: Infinity })).not.toThrow();
+  expect(() => new GroupGraph(s.store, s.mutationView, limits)).toThrow(/total record work budget/);
+  // Atomic refusal through addGroupToStore is the graph-construction path covered
+  // by 'reports an oversized effective native record before publishing any group edit'.
 });
 
 function danglingExportReferences(bytes: Uint8Array): number[] {
@@ -277,4 +280,5 @@ it.skipIf(!hasExternalIfc4x3)('preserves the complete SierraSoft IFC4X3_ADD2 rai
   const records = (source: IfcDataStore) => [...source.entityIndex.byId.keys()].sort((a, b) => a - b)
     .map(expressId => ({ expressId, ...effectiveMetadataRecord(source, expressId) }));
   expect(records(restored)).toEqual(records(store));
-});
+  // Real railway parse, edit, export and reparse: 2.4 s locally, 27 s on a shared CI runner (#7366).
+}, 60_000);

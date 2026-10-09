@@ -4,6 +4,7 @@
 import '@/test/setup-dom.js';
 import 'fake-indexeddb/auto';
 import assert from 'node:assert/strict';
+import { assertSameNativeIfcGraph } from '@/test/native-ifc-graph';
 import { afterEach, test } from 'node:test';
 import { generateIfcGuid } from '@ifc-lite/encoding';
 import { readRelatedLists } from '@ifc-lite/create';
@@ -301,7 +302,7 @@ test('#7275 native material rename conflicts with old expected fields and skip-h
   const before = editedModelBytes(dataStore, view);
   assert.deepEqual(commitModelAuthoring(useViewerStore, preview, new Set([0]), 'test'), { ok: false, reason: 'stale' });
   assert.equal(previewModelAuthoring(useViewerStore.getState(), batch).rows[0].status, 'conflict', 'new preflight rejects stale transported material names');
-  assert.deepEqual(editedModelBytes(dataStore, view), before, 'both refusals preserve the current native model');
+  await assertSameNativeIfcGraph(editedModelBytes(dataStore, view), before, 'both refusals preserve the current native model');
 });
 
 test('#7275 a source replacement with matching root fields still invalidates old layer approval', async () => {
@@ -368,7 +369,7 @@ test('#7275 native federation refuses ambiguous roots and foreign material owner
   assert.equal(result.receipt.applied[0].modelId, SAMPLE_MODEL);
   const after = await parseIfc(editedModelBytes(dataStore, view));
   assert.equal(layerSetOf({ dataStore: after, view: new MutablePropertyView(after.properties ?? null, SAMPLE_MODEL) }, target)?.layers[0].thickness, .7);
-  assert.deepEqual(editedModelBytes(exported, other), otherBefore, 'the independently owned federated source and overlay remain unchanged');
+  await assertSameNativeIfcGraph(editedModelBytes(exported, other), otherBefore, 'the independently owned federated source and overlay remain unchanged');
 });
 
 test('#7275 strict native layer contract refuses aliases, invented material GlobalIds, incomplete populations and STEP-token names', async () => {

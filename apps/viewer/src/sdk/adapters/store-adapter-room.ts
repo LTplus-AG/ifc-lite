@@ -8,7 +8,7 @@ import type { StoreApi } from './types.js';
 import { normalizeMutationModelId } from './mutation-view.js';
 import { trackBackendWrite } from './backend-write-capture.js';
 import { completePhysicalEdit } from './store-adapter-physical.js';
-import { modelEditTarget, recordModellingCommit } from '@/store/slices/mutation-modelling-records';
+import { recordModellingCommit } from '@/store/slices/mutation-modelling-records';
 import { completeEntityRemoval } from '@/store/slices/mutation-mesh-stash';
 import { mutationDenial } from '@/store/mutation-permission';
 import { ensureSpaceWasm } from '@/lib/rooms/space-wasm';
@@ -16,6 +16,8 @@ import { roomLayoutCache, undoHead } from '@/lib/rooms/room-layout';
 import { storeyWalls, storeySpaces, storeyOccupancy, storeyRoomGeometryIds } from '@/lib/rooms/storey-rooms';
 import { buildStoreyWorkplane } from '@/lib/commands/modeling/workplane';
 import { requestRemesh } from '@/lib/remesh/remesh-service';
+import { roomGeometryLease } from './store-adapter-room-geometry';
+import { nativeLengthUnitAvailable, readOnlyModelEditTarget } from '@/lib/actions/model-authoring-read-target';
 
 type Methods = ReturnType<typeof createModellingStoreBackend>;
 
@@ -29,27 +31,43 @@ function nativeRoomService(store: StoreApi) {
 }
 
 function createNativeRoomService(store: StoreApi) {
+  type NativeTarget = NonNullable<ReturnType<typeof readOnlyModelEditTarget>>;
+  const absentViews = new WeakMap<NativeTarget['dataStore'], Map<string, NativeTarget>>();
   const resolve = (modelId: string) => {
     const denial = mutationDenial(store.getState(), modelId);
     if (denial) throw new Error(denial);
-    const target = modelEditTarget(store.getState(), modelId);
-    if (!target) throw new Error('Room requires an editable loaded model');
-    return { modelId, store: target.dataStore, editor: target.editor, mutationView: target.view, ownerHistoryId: null };
+    const state = store.getState();
+    const live = state.mutationViews.get(modelId);
+    const source = state.models.get(modelId)?.ifcDataStore;
+    let target = source ? absentViews.get(source)?.get(modelId) : undefined;
+    if (live || !target || target.dataStore !== state.models.get(modelId)?.ifcDataStore) {
+      target = readOnlyModelEditTarget(state,modelId) ?? undefined;
+      if (target && !live) {
+        let targets = absentViews.get(target.dataStore);
+        if (!targets) { targets = new Map(); absentViews.set(target.dataStore,targets); }
+        targets.set(modelId,target);
+      }
+    }
+    if (!target || !nativeLengthUnitAvailable(target)) throw new Error('Room requires an editable loaded model with an authoritative native length unit');
+    return { modelId, store: target.dataStore, editor: target.editor, mutationView: live ?? target.view, ownerHistoryId: null };
   };
   const service = createRoomCommandBackend(resolve, async (model, storeyId) => {
     await ensureSpaceWasm();
     // Await the canonical native mesh producer so an immediately preceding
     // script edit cannot derive rooms from an older renderer snapshot.
     const initial = store.getState(), initialPlane = buildStoreyWorkplane(initial, model.modelId, storeyId, 0);
-    if ('refused' in initialPlane) throw new Error(initialPlane.refused);
+    if ('refused' in initialPlane) return { walls:[],factory:SpacePlateHandle,unavailable:initialPlane.refused };
+    if (!initial.models.get(model.modelId)?.geometryResult) return {walls:[],factory:SpacePlateHandle,unavailable:'Current native mesh geometry is unavailable'};
+    const frameBefore = JSON.stringify([[0,0,0],[1,0,0],[0,1,0],[0,0,1]].map(point=>initialPlane.localToRender(point as [number,number,number])));
     const ids = storeyRoomGeometryIds(initial, model.modelId, storeyId, initialPlane);
     if (ids.length) {
       const mesh = await requestRemesh(store.getState, model.modelId, ids, 'shape');
       if (mesh.status !== 'applied') throw new Error(`Room native geometry preparation ${mesh.status}; retry after the model finishes updating`);
     }
     const state = store.getState(), plane = buildStoreyWorkplane(state, model.modelId, storeyId, 0);
-    if ('refused' in plane) throw new Error(plane.refused);
-    return { factory: SpacePlateHandle, walls: storeyWalls(state, model.modelId, storeyId, plane),
+    if ('refused' in plane) return {walls:[],factory:SpacePlateHandle,unavailable:plane.refused};
+    if (JSON.stringify([[0,0,0],[1,0,0],[0,1,0],[0,0,1]].map(point=>plane.localToRender(point as [number,number,number])))!==frameBefore) throw new Error('The native storey/model frame changed during Room preparation');
+    return { factory: SpacePlateHandle, validate:roomGeometryLease(store.getState,model.modelId,storeyId), walls: storeyWalls(state, model.modelId, storeyId, plane),
       spaces: storeySpaces(state, model.modelId, storeyId), occupied: storeyOccupancy(state, model.modelId, storeyId, plane) };
   }, {
     layouts: roomLayoutCache,

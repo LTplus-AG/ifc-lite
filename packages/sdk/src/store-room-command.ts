@@ -13,6 +13,7 @@ import {
 import { StoreEditor } from '@ifc-lite/mutations';
 import type { CostStoreModelResolution } from './cost-store-backend.js';
 import type { EntityRef } from './types.js';
+import { prepareAllStoreyRooms } from './store-room-auto-all.js';
 
 type LayoutFace = ReturnType<typeof readFaces>[number];
 
@@ -30,7 +31,7 @@ interface RoomCommandSettings {
   readonly ObjectType?: string;
 }
 export type RoomCommand = RoomCommandSettings & (
-  | { readonly action: 'auto' | 'footprint' | 'query' }
+  | { readonly action: 'auto' | 'autoAll' | 'footprint' | 'query' }
   | { readonly action: 'pick'; readonly point: readonly [number, number] }
   | { readonly action: 'update'; readonly expressIds: readonly number[] }
   | { readonly action: 'edit'; readonly operation: LayoutOp; readonly tolerance?: number }
@@ -41,10 +42,23 @@ export interface RoomCommandResult {
   readonly deleted: EntityRef[];
   readonly skipped: EntityRef[];
   readonly candidates: readonly RoomCandidate[];
+  /** Complete model-owned AutoAll coverage; absent for single-storey commands. */
+  readonly storeys?: readonly {
+    storeyId: number;
+    status: 'ready' | 'noWalls' | 'occupied' | 'noFaces' | 'unavailable';
+    reason?: string;
+    roomCount: number | null;
+    candidates: readonly RoomCandidate[];
+    created: readonly EntityRef[];
+  }[];
 }
 export interface NativeRoomGeometry {
   /** Exactly the native mesh decoder's rectangles, transformed into storey-local metres. */
   readonly walls: readonly RoomWallRect[];
+  /** The host could not obtain a truthful current frame/geometry. Never means no walls. */
+  readonly unavailable?: string;
+  /** Recheck native geometry/frame ownership after asynchronous work and before approval. */
+  readonly validate?: () => void;
   readonly factory: RoomPlateFactory;
   readonly spaces?: readonly SpaceFootprint[];
   /** Includes native IfcSpace mesh triangle occupancy for faceted source spaces. */
@@ -86,7 +100,7 @@ function capturedCommand(command: RoomCommand): RoomCommand {
     boundary: command.boundary, height: command.height, z: command.z, namePattern: command.namePattern,
     PredefinedType: command.PredefinedType, ObjectType: command.ObjectType };
   switch (command.action) {
-    case 'query': case 'auto': case 'footprint': return { ...settings, action: command.action };
+    case 'query': case 'auto': case 'autoAll': case 'footprint': return { ...settings, action: command.action };
     case 'pick': return { ...settings, action: 'pick', point: [command.point[0], command.point[1]] };
     case 'update': return { ...settings, action: 'update', expressIds: [...command.expressIds] };
     case 'edit': {
@@ -110,7 +124,7 @@ export function createRoomCommandBackend(resolve: RoomCommandModelResolver, prov
     const signal = command.signal;
     signal?.throwIfAborted();
     if (running.has(modelId)) throw new RoomCommandConflictError('Another Room command is preparing this model');
-    if (!['auto', 'pick', 'footprint', 'query', 'update', 'edit'].includes(command.action)) throw new Error('Unsupported Room command action');
+    if (!['auto', 'autoAll', 'pick', 'footprint', 'query', 'update', 'edit'].includes(command.action)) throw new Error('Unsupported Room command action');
     if (command.action === 'update' && (!Array.isArray(command.expressIds) || command.expressIds.length === 0 || command.expressIds.length > 10000 || !Array.from(command.expressIds).every(id => Number.isSafeInteger(id) && id > 0) || new Set(command.expressIds).size !== command.expressIds.length)) throw new Error('Room update requires 1..10000 unique positive safe-integer rooms');
     const op = capturedCommand(command);
     if (!Number.isSafeInteger(storeyId) || storeyId <= 0) throw new Error('Room requires a positive storey expressId');
@@ -134,8 +148,11 @@ export function createRoomCommandBackend(resolve: RoomCommandModelResolver, prov
         if (attached) host.layouts.clearModel(modelId);
         modelStores.set(modelId, new WeakRef(model.store));
       }
+      if (op.action === 'autoAll') return await prepareAllStoreyRooms(model, op, provide, host, currentModel);
       const geometry = await provide(model, storeyId);
+      if (geometry.unavailable) throw new Error(geometry.unavailable);
       currentModel();
+      geometry.validate?.();
       const spaces = geometry.spaces ?? existingSpaceFootprintEntriesByStorey(model.store, model.mutationView).get(storeyId) ?? [];
       const occupied = geometry.occupied ?? occupancyTest(spaces.map(space => space.footprint), []);
       const entry = host.layouts.read(modelId, storeyId, weld, head, geometry.walls.map(wall => wall.corners), geometry.factory);
@@ -153,6 +170,7 @@ export function createRoomCommandBackend(resolve: RoomCommandModelResolver, prov
         const validate = () => {
           if (disposed || committed) throw new RoomCommandConflictError('This Room preparation is no longer available; prepare it again');
           currentModel();
+          geometry.validate?.();
           if (host.layouts.version() !== layoutVersion) throw new RoomCommandConflictError('The native Room layout changed; prepare it again');
           draft.validate();
         };

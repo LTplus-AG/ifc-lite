@@ -19,6 +19,7 @@ import { readOnlyModelEditLease, type NativeReadLease } from './model-authoring-
 import { nativeEditEvidence, nativeRootName, type NativeEditEvidence } from './native-edit-evidence';
 import { nativeTypeEvidence, type NativeTypeEvidence } from './native-type-evidence';
 import { nativeCostEvidence, type CostEvidence } from './cost-graph-evidence';
+import { roomAutoAllEvidence, type RoomAutoAllEvidence } from './room-auto-all-evidence';
 
 export interface SelectionElement extends NativeAuthoringEvidence {
   globalId: string;
@@ -29,6 +30,8 @@ export interface SelectionElement extends NativeAuthoringEvidence {
   nativeEdit: NativeEditEvidence;
   nativeType: NativeTypeEvidence;
   nativeCost: CostEvidence;
+  /** Absent on historical selection snapshots; current native capture always publishes it. */
+  nativeRoomAutoAll?: RoomAutoAllEvidence;
 }
 
 export interface SelectionGrounding {
@@ -101,6 +104,7 @@ export function captureSelectionGrounding(state: GroundingState, limit = SELECTI
       ...nativeAuthoringEvidence(nativeTarget(ref.modelId), ref.expressId),
       nativeType: nativeTypeEvidence(state, nativeTarget(ref.modelId), ref.expressId),
       nativeCost: nativeCostEvidence(nativeTarget(ref.modelId), ref.expressId),
+      nativeRoomAutoAll: roomAutoAllEvidence(nativeTarget(ref.modelId)),
     });
   }
   const grounding = { capturedAt: new Date().toISOString(), total, elements, unresolved,

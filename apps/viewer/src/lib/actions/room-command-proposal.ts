@@ -14,7 +14,7 @@ export interface RoomProposal {
   storey: RoomRootTarget;
   units: 'm' | 'mm';
   frame: 'storey-local';
-  command: RoomCommand & { action: 'auto' | 'footprint' | 'pick' | 'update' | 'edit' }
+  command: RoomCommand & { action: 'auto' | 'autoAll' | 'footprint' | 'pick' | 'update' | 'edit' }
     & Required<Pick<RoomCommand, 'weld' | 'minArea' | 'boundary' | 'height' | 'z' | 'namePattern'>>;
   rooms?: RoomRootTarget[];
   /** Supplied complete native snapshot, compared exactly; never an instruction or a writer input. */
@@ -22,7 +22,7 @@ export interface RoomProposal {
 }
 
 const actionKeys = {
-  auto: [], footprint: [], pick: ['point'], update: ['rooms'], edit: ['operation', 'tolerance'],
+  auto: [], autoAll: [], footprint: [], pick: ['point'], update: ['rooms'], edit: ['operation', 'tolerance'],
 } as const;
 export function declaresRoomCommand(content: string): boolean {
   return /^\s*(?:\{|```)/.test(content) && /"kind"\s*:\s*"room\.command"/.test(content);
@@ -80,7 +80,7 @@ export function parseRoomProposal(content: string): RoomProposal {
   const factor = value.units === 'mm' ? .001 : 1;
   const storey = rootTarget(value.storey, 'storey');
   const c = value.command;
-  if (!isRecord(c) || (c.action !== 'auto' && c.action !== 'pick' && c.action !== 'footprint' && c.action !== 'update' && c.action !== 'edit')) throw new Error('Supported Room actions are pick, auto, footprint, update and edit');
+  if (!isRecord(c) || (c.action !== 'auto' && c.action !== 'autoAll' && c.action !== 'pick' && c.action !== 'footprint' && c.action !== 'update' && c.action !== 'edit')) throw new Error('Supported Room actions are pick, auto, autoAll, footprint, update and edit');
   onlyKeys(c, ['action', 'weld', 'minArea', 'boundary', 'height', 'z', 'namePattern', 'PredefinedType', 'ObjectType', ...actionKeys[c.action]], 'command');
   if (c.boundary !== 'inner' && c.boundary !== 'center' && c.boundary !== 'outer') throw new Error('Choose inner, center or outer boundary');
   const settings = {
@@ -116,4 +116,4 @@ export function parseRoomProposal(content: string): RoomProposal {
     ...(value.expected !== undefined ? { expected: boundedExpected(value.expected) } : {}) };
 }
 
-export const ROOM_COMMAND_GUIDANCE = `Room proposals use kind "room.command", version 1, title, one modelId, storey {GlobalId,Name}, explicit units m/mm and frame storey-local. command action is pick/auto/footprint/update/edit, with explicit weld, minArea (always m²), boundary inner/center/outer, height, z and namePattern; optional exact native PredefinedType/ObjectType. Pick requires the user's explicit point [x,y]; never choose a candidate index or infer a click. Update requires command.rooms with explicit current {GlobalId,Name} targets, resolved to native expressIds at preparation. Edit requires tolerance and native operation drag {from,to}, split {a,b}, remove {at} or prune. This requests an explicit local preparation and review, not execution. Auto approves the entire captured untaken population, never a per-room subset. If supplied native Room evidence is unavailable or sampled, ask for preparation; do not invent contours, settings, room identities or expected values. When a complete native Room snapshot is attached, preserve it as expected. All lengths and points in a proposal use the declared units; expected native snapshot stays SI metres. No AutoAll, new-file builder, mixed model.authoring batch or automatic run.`;
+export const ROOM_COMMAND_GUIDANCE = `Room proposals use kind "room.command", version 1, title, one modelId, storey {GlobalId,Name}, explicit units m/mm and frame storey-local. command action is pick/auto/footprint/update/edit, with explicit weld, minArea (always m²), boundary inner/center/outer, height, z and namePattern; optional exact native PredefinedType/ObjectType. Pick requires the user's explicit point [x,y]; never choose a candidate index or infer a click. Update requires command.rooms with explicit current {GlobalId,Name} targets, resolved to native expressIds at preparation. Edit requires tolerance and native operation drag {from,to}, split {a,b}, remove {at} or prune. This requests an explicit local preparation and review, not execution. Auto approves the entire captured untaken population, never a per-room subset. If supplied native Room evidence is unavailable or sampled, ask for preparation; do not invent contours, settings, room identities or expected values. When a complete native Room snapshot is attached, preserve it as expected. All lengths and points in a proposal use the declared units; expected native snapshot stays SI metres. AutoAll prepares every current storey in the explicit model as one action; unavailable storeys block approval. No new-file builder, mixed model.authoring batch or automatic run.`;

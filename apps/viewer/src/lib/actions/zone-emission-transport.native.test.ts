@@ -17,14 +17,14 @@ import { captureEvidence } from '../assistant/evidence';
 const initial = useViewerStore.getState();
 afterEach(() => { setGlobalRendererRef({ current: null }); useViewerStore.setState(initial, true); });
 
-test('#7322 complete native Zone pins preserve the ordinary selected row within the existing transport budget', async t => {
+for (const zoneCount of [75, 100]) test(`#7322 ${zoneCount} native Zone pins preserve the ordinary selected row within the existing transport budget`, async t => {
   if (!ensureWasm(t)) return;
   const f = await seedZoneExport();
   const model = useViewerStore.getState().models.get('bonsai')!;
   useViewerStore.setState({ models: new Map([['bonsai', { ...model, idOffset: 0, maxExpressId: Math.max(...f.store.entityIndex.byId.keys()) }]]),
     editEnabled: true, collabRole: null, collabRoomId: null, storeEditors: new Map(), undoStacks: new Map(), redoStacks: new Map(),
     mutationBatchTags: new Map(), removedNewEntities: new Map(), removedMeshes: new Map(), dirtyModels: new Set(), mutationVersion: 0,
-    zoneSets: [{ ...f.zoneSet, zones: Array.from({ length: 75 }, (_, index) => ({ ...f.zoneSet.zones[0],
+    zoneSets: [{ ...f.zoneSet, zones: Array.from({ length: zoneCount }, (_, index) => ({ ...f.zoneSet.zones[0],
       id: `zone-${index}-${'I'.repeat(140)}`, name: `Zone ${index} ${'A'.repeat(230)}` })) }] });
   const scene = new Scene(); f.meshes.forEach(mesh => scene.addMeshData(mesh));
   setGlobalRendererRef({ current: { getScene: () => scene } as unknown as Renderer });

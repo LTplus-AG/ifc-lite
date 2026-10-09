@@ -11,7 +11,7 @@
  * with undo (`ReceiptSummary`).
  */
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Box, Crosshair, Hammer } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { IconButton } from '@/components/ui/icon-button';
@@ -22,6 +22,7 @@ import { selectChangedEntity } from '@/lib/changes/select-changed-entity';
 import type { ModelAuthoringBatch } from '@/lib/actions/model-authoring';
 import { authoringCounts, previewModelAuthoring, type AuthoringRow, type AuthoringRowStatus } from '@/lib/actions/model-authoring-preview';
 import { commitModelAuthoring, writableRows } from '@/lib/actions/model-authoring-commit';
+import { prepareReviewedAlignments } from '@/lib/actions/model-authoring-align';
 import { authoringGhosts } from '@/lib/actions/model-authoring-ghost';
 import type { ModelChangeReceipt } from '@/lib/actions/model-change-commit';
 import { modelChangeLibrary } from '@/lib/actions/receipts';
@@ -65,10 +66,15 @@ export function ModelAuthoringReview({ batch, origin }: { batch: ModelAuthoringB
   const mutationVersion = useViewerStore((s) => s.mutationVersion);
   const editEnabled = useViewerStore((s) => s.editEnabled);
   const models = useViewerStore((s) => s.models);
+  const modelPlacement = useViewerStore((s) => s.modelPlacement);
+  const [preparedVersion, setPreparedVersion] = useState(0);
+  const [preparing, setPreparing] = useState(false);
+  const preparation = useRef<AbortController | null>(null);
+  useEffect(() => () => preparation.current?.abort(), [batch]);
   // Recomputed whenever the model or edit gate changes, so statuses (and the dry run) are always current.
   const preview = useMemo(() => previewModelAuthoring(useViewerStore.getState(), batch),
     // eslint-disable-next-line react-hooks/exhaustive-deps -- the preview reads the live store; these are its inputs
-    [batch, mutationVersion, editEnabled, models]);
+    [batch, mutationVersion, editEnabled, models, modelPlacement, preparedVersion]);
   const [excluded, setExcluded] = useState<ReadonlySet<number>>(new Set());
   const [receipt, setReceipt] = useState<ModelChangeReceipt | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -86,6 +92,16 @@ export function ModelAuthoringReview({ batch, origin }: { batch: ModelAuthoringB
     // eslint-disable-next-line react-hooks/exhaustive-deps -- `approved` is derived from these
   }, [showGhosts, preview, excluded]);
 
+  const prepareAlignment = async () => {
+    preparation.current?.abort();
+    const controller = new AbortController(); preparation.current = controller; setPreparing(true);
+    try {
+      await prepareReviewedAlignments(useViewerStore.getState, batch, controller.signal);
+      if (!controller.signal.aborted) { setError(null); setPreparedVersion(v => v + 1); }
+    } catch (failure) {
+      if (!controller.signal.aborted) setError(failure instanceof Error ? failure.message : String(failure));
+    } finally { if (preparation.current === controller) { preparation.current = null; setPreparing(false); } }
+  };
   const apply = () => {
     // As for reviewed changes: the loaded check's counts first, so Re-run validation can show what the apply changed.
     const validation = captureValidationBefore(useViewerStore.getState());
@@ -121,6 +137,9 @@ export function ModelAuthoringReview({ batch, origin }: { batch: ModelAuthoringB
       </div>}
       {!receipt && <ul aria-label={t('modelAuthoring.rows')}>{preview.rows.map((row) => <Row key={row.index} row={row} batch={batch}
         checked={approved.has(row.index)} onToggle={(on) => toggle(row, on)} />)}</ul>}
+      {!receipt && batch.operations.some(op => op.op === 'element.align') && <Button size="sm" variant="outline" className="h-7" disabled={preparing || !editEnabled} onClick={() => void prepareAlignment()}>
+        {t(preparing ? 'modelAuthoring.alignPreparing' : 'modelAuthoring.alignPrepare')}
+      </Button>}
       {!receipt && <div className="flex flex-wrap items-center gap-2">
         <Button size="sm" className="h-7" disabled={approved.size === 0} onClick={apply}>{t('modelAuthoring.apply', { count: approved.size })}</Button>
         <Button size="sm" variant="outline" className="h-7" aria-pressed={ghosts} disabled={approved.size === 0} onClick={() => setGhosts((on) => !on)}>

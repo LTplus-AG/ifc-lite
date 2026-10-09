@@ -348,3 +348,22 @@ for (const kind of ['deleted', 'unsupported', 'cyclic', 'oversized'] as const) {
   assert.equal(view.getMutationRevision(), revision, 'bounded refusal and mounted card are read-only');
  });
 }
+
+for (const field of ['RelatingType', 'RelatedObjects'] as const) {
+ test(`#7353 null required native IfcRelDefinesByType.${field} reports unavailable inherited coverage`, async t => {
+  const fixture = await inheritedSource(t); if (!fixture) return;
+  const { f, store, relation, view } = fixture;
+  const slot = field === 'RelatingType' ? 5 : 4;
+  view.setPositionalAttribute(relation, slot, null);
+  const exported = await parse(editedModelBytes(store, view));
+  assert.equal(exported.getEntity(relation)?.attributes[slot], null, 'independent native export contains the malformed required field');
+  assert.equal(net(extractTypeQuantitiesOnDemand(exported, f.id)?.quantities ?? []), undefined,
+   'saved source has no verified inherited quantity assignment');
+  const current = readCurrentTypeQuantities(store, f.id, view);
+  assert.equal(current.status, 'unavailable', 'malformed native ownership cannot certify empty inherited facts');
+  assert.equal(current.value, null); assert.ok(current.reason);
+  const panel = render(<PropertiesPanel />);
+  assert.match(panel.textContent ?? '', /Inherited type quantities are unavailable/);
+  assert.doesNotMatch(panel.textContent ?? '', /netNetVolume10 m³/, 'malformed current ownership cannot resurrect the immutable source basis');
+ });
+}

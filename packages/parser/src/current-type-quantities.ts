@@ -59,10 +59,10 @@ function inventory(store: IfcDataStore, view: MetadataReadView): CurrentInventor
         const record = effectiveMetadataRecord(store, row.expressId, view);
         if (!record) throw new CurrentQuantityRefusal('Native type relationship is unreadable');
         const target = record.attributes[5];
+        if (record.attributes[4] === null) throw new CurrentQuantityRefusal('Native type relationship required members are unreadable');
         const members = refIds(record.attributes[4]);
         referenceCount += members.length;
         if (referenceCount > MAX_RELATION_REFERENCES) throw new CurrentQuantityRefusal('Native type relationship references exceed the read limit');
-        if (target === null) continue;
         if (typeof target !== 'number' || !Number.isSafeInteger(target) || target <= 0) throw new CurrentQuantityRefusal('Native type relationship target is unreadable');
         const map = record.type.toUpperCase() === 'IFCRELDEFINESBYTYPE' ? result.types : result.sets;
         for (const id of members) {

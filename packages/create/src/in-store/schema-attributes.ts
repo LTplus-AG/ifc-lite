@@ -19,7 +19,7 @@
  * the enumeration has that value.
  */
 
-import { getSchemaRegistryForVersion, type SchemaRegistry } from '@ifc-lite/parser';
+import { getSchemaRegistryForVersion, getCanonicalEntityName, type SchemaRegistry } from '@ifc-lite/parser';
 import type { SpatialAnchorSchema } from './anchor.js';
 
 type Schema = Exclude<SpatialAnchorSchema, 'IFC5'>;
@@ -41,8 +41,7 @@ export function schemaRegistry(schema: SpatialAnchorSchema | undefined, op: stri
 
 /** The schema's canonical spelling of `type`, or null when the class does not exist in it. */
 export function canonicalEntity(registry: SchemaRegistry, type: string): string | null {
-  const upper = type.toUpperCase();
-  return Object.keys(registry.entities).find((name) => name.toUpperCase() === upper) ?? null;
+  return getCanonicalEntityName(registry, type) ?? null;
 }
 
 /**

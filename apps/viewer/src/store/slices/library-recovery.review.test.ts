@@ -13,7 +13,8 @@ import { createLensSlice, buildInitialLenses, type LensSlice } from './lensSlice
 import { loadListDefinitions, saveListDefinitions } from '@/lib/lists/persistence';
 import { migrateSavedLens } from '@/lib/lens/migrate-saved-lens';
 import { useViewerStore } from '@/store';
-import { importArtifactLibraries } from '@/lib/storage/artifact-backup-import';
+import { createContentBackup } from '@/lib/storage/content-backup';
+import { currentListDefinitions, importArtifactLibraries } from '@/lib/storage/artifact-backup-import';
 const list = (id: string): ListDefinition => ({ id, name: id, entityTypes: [], columns: [{ id: 'Name', source: 'attribute', propertyName: 'Name' }], groups: [], createdAt: 1, updatedAt: 1 });
 const lens = (id: string): Lens => ({ id, name: id, rules: [] });
 afterEach(() => { mock.restoreAll(); localStorage.clear(); });
@@ -92,4 +93,47 @@ test('#7300 unrelated native Lens save retains the active ephemeral column Lens 
   assert.ok(state.getState().createLens(lens('saved')).ok);
   assert.ok(state.getState().getActiveLens(), 'native transient color owner remains usable');
   assert.deepEqual(buildInitialLenses().filter(row => !row.builtin).map(row => row.id), ['saved']);
+});
+
+for (const action of ['backup', 'unrelated-create'] as const) test(`#7300 native Lists ${action} preserves every valid duplicate-ID row`, () => {
+  localStorage.clear();
+  const originals = [{ ...list('shared'), name: 'First independent List' }, { ...list('shared'), name: 'Second independent List' }];
+  assert.ok(saveListDefinitions(originals));
+  const loaded = createStore<ListSlice>()(createListSlice);
+  assert.equal(loaded.getState().listDefinitions.length, 2, 'the existing native codec retains both individually valid rows');
+  useViewerStore.setState({ listDefinitions: loaded.getState().listDefinitions, listDefinitionSource: loaded.getState().listDefinitionSource });
+  if (action === 'backup') {
+    const rows = currentListDefinitions(true);
+    assert.deepEqual(rows.map(row => row.name), originals.map(row => row.name));
+    assert.throws(() => createContentBackup({ validation: [], comparison: [], document: [], lists: rows }), /Duplicate list IDs/, 'the existing native portable format refuses duplicate identities rather than exporting a falsely complete subset');
+    assert.deepEqual(loadListDefinitions().map(row => row.name), originals.map(row => row.name));
+  } else {
+    loaded.getState().addListDefinition(list('unrelated'));
+    assert.deepEqual(loadListDefinitions().map(row => row.name), [...originals.map(row => row.name), 'unrelated']);
+  }
+});
+
+test('#7300 native Lens creation retains both valid same-ID custom rows', () => {
+  localStorage.clear();
+  const originals = [{ ...lens('shared'), name: 'First Lens' }, { ...lens('shared'), name: 'Second Lens' }];
+  localStorage.setItem('ifc-lite-custom-lenses', JSON.stringify(originals));
+  const loaded = createStore<LensSlice>()(createLensSlice);
+  assert.equal(loaded.getState().savedLenses.filter(row => !row.builtin).length, 2);
+  assert.ok(loaded.getState().createLens(lens('unrelated')).ok);
+  assert.deepEqual(buildInitialLenses().filter(row => !row.builtin).map(row => row.name), ['First Lens', 'Second Lens', 'unrelated']);
+});
+test('#7300 exact native duplicate-ID List delete preserves unrelated rows and refuses a changed durable group', () => {
+  localStorage.clear();
+  const originals = [{ ...list('shared'), name: 'First' }, { ...list('shared'), name: 'Second' }, list('unrelated')];
+  assert.ok(saveListDefinitions(originals));
+  const loaded = createStore<ListSlice>()(createListSlice);
+  const repaired = [{ ...originals[0], name: 'Recovered first' }, ...originals.slice(1)];
+  assert.ok(saveListDefinitions(repaired));
+  loaded.getState().deleteListDefinition('shared');
+  assert.deepEqual(loadListDefinitions().map(row => row.name), repaired.map(row => row.name), 'a recovered non-final member cannot be silently deleted by a stale group');
+  assert.ok(loaded.getState().listError?.includes('changed independently'));
+  const fresh = createStore<ListSlice>()(createListSlice);
+  fresh.getState().deleteListDefinition('shared');
+  assert.equal(fresh.getState().listError, null);
+  assert.deepEqual(loadListDefinitions().map(row => row.id), ['unrelated'], 'the native ID-scoped delete still removes the exact complete captured group');
 });

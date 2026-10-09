@@ -13,7 +13,9 @@ import { getOrCreateMutationView } from '@/sdk/adapters/mutation-view';
 import { editedModelBytes } from '@/lib/export/edited-model-bytes';
 import { PropertiesPanel } from '@/components/viewer/PropertiesPanel';
 import { ZoneVolumeBreakdown } from '@/components/viewer/ZoneVolumeBreakdown';
-import { render, cleanup, type } from '@/test/render';
+import { render, cleanup, type, advance } from '@/test/render';
+import { MaterialTotalsPanel } from '@/components/viewer/properties/MaterialTotalsPanel';
+import { summarizeSelection } from '@/components/viewer/properties/selectionSummary';
 import { setGlobalRendererRef } from '@/hooks/useBCF';
 
 const original = useViewerStore.getState();
@@ -116,4 +118,46 @@ test('#7353 implicit occurrence and material measures remain raw when current ph
   assert.match(panel.textContent ?? '', /3\.125/);
   assert.doesNotMatch(panel.textContent ?? '', /7,?250\s*mm|7\.25\s*m\b|3,?125\s*mm|3\.125\s*m\b/,
     'neither SI labels nor override conversion certify unavailable implicit measures');
+  const summary = summarizeSelection([{ modelId: 'arch', expressId: x.f.id }],
+    () => ({ store: x.store, view: x.view, modelName: 'Native fixture' }), { LENGTHUNIT: 'mm' }, 'en');
+  const row = summary.properties.flatMap(group => group.rows).find(row => row.name === 'UnitWitnessLength');
+  assert.equal(row?.value, '7.25', 'shared selection/copy display preserves raw native scalar without a stale physical claim');
+  cleanup();
+  const material = render(<MaterialTotalsPanel materialId={15046} modelId="arch" />);
+  await advance(50);
+  assert.match(material.textContent ?? '', /UnitWitnessMaterialLength/);
+  assert.match(material.textContent ?? '', /3\.125/);
+  assert.doesNotMatch(material.textContent ?? '', /3,?125\s*mm|3\.125\s*m\b/,
+    'selected-material property card uses the same unavailable current unit coverage');
+});
+
+test('#7353 native explicit non-SI quantity unit and display override remain independent of unavailable project units', async t => {
+  const x = await nativeMeasures(t); if (!x) return;
+  x.view.setPositionalAttribute(x.project, 8, null);
+  const netId = x.store.entityIndex.byType.get('IFCQUANTITYVOLUME')?.find(id => x.store.getEntity(id)?.attributes[0] === 'NetWitnessVolume');
+  assert.ok(netId);
+  const unitId = x.store.getEntity(netId)?.attributes[2]; assert.equal(typeof unitId, 'number');
+  assert.ok(typeof unitId === 'number');
+  x.view.setPositionalAttribute(unitId, 2, '.CENTI.');
+  const exported = await parse(editedModelBytes(x.store, x.view));
+  const net = extractQuantitiesOnDemand(exported, x.f.id).flatMap(set => set.quantities).find(q => q.name === 'NetWitnessVolume'); assert.ok(net);
+  assert.equal(net.value, 10);
+  assert.equal(net.explicitUnit, 'cm³');
+  assert.equal(quantitySiScale(net, extractProjectUnits(exported.source, exported.entityIndex)), 0.01 ** 3);
+  // Adopt the independently authored non-SI native fixture; live occurrence Unit edits are tracked in #7379.
+  const model = useViewerStore.getState().models.get('arch'); assert.ok(model);
+  useViewerStore.setState({ models: new Map([['arch', { ...model, ifcDataStore: exported }]]), ifcDataStore: exported,
+    mutationViews: new Map(), storeEditors: new Map() });
+  const current = getOrCreateMutationView(useViewerStore, 'arch'); assert.ok(current);
+  current.setPositionalAttribute(x.project, 8, null);
+  useViewerStore.setState({ propertiesActiveTab: 'quantities', unitDisplayOverrides: {} });
+  let panel = render(<PropertiesPanel />); findWitness(panel);
+  assert.match(panel.textContent ?? '', /10 cm³/);
+  cleanup();
+  useViewerStore.setState({ unitDisplayOverrides: { VOLUMEUNIT: 'l' } });
+  panel = render(<PropertiesPanel />); findWitness(panel);
+  assert.match(panel.textContent ?? '', /0\.01 L/, 'existing converter uses the explicit native SI scale');
+  assert.match(panel.textContent ?? '', /UnitWitnessCount/);
+  assert.doesNotMatch(panel.textContent ?? '', /99 L|99 m³/, 'implicit raw quantity gains no physical claim');
+  assert.equal(net.value, 10, 'display override leaves the native quantity unchanged');
 });

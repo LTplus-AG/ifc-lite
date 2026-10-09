@@ -1031,11 +1031,10 @@ export function PropertiesPanel() {
   const foundAttributes = renderedAttributes.filter((attr) => matchesPropertySearch(attr.name, findQuery) || matchesPropertySearch(attr.value, findQuery));
   const foundStructure = renderedSpatialContainment?.filter((item) => matchesPropertySearch(item.label, findQuery) || matchesPropertySearch(item.value, findQuery));
   const foundZones = zoneMembership?.filter((item) => matchesPropertySearch(item.label, findQuery) || matchesPropertySearch(item.value, findQuery));
-  const foundOccurrence = filterPropertySets(renderedOccurrenceProperties, findQuery, projectUnits, unitDisplayOverrides);
-  const foundInherited = filterPropertySets(renderedInheritedTypeProperties, findQuery, projectUnits, unitDisplayOverrides);
-  const foundQuantities = quantityUnitContext.status === 'unavailable' ? []
-    : filterQuantitySets(renderedQuantities, findQuery, projectUnits, unitDisplayOverrides, locale);
-  const foundMaterialProperties = filterMaterialPropertyGroups(renderedMaterialProperties, findQuery, projectUnits, unitDisplayOverrides);
+  const foundOccurrence = filterPropertySets(renderedOccurrenceProperties, findQuery, projectUnits, unitDisplayOverrides, quantityUnitContext.status !== 'unavailable');
+  const foundInherited = filterPropertySets(renderedInheritedTypeProperties, findQuery, projectUnits, unitDisplayOverrides, quantityUnitContext.status !== 'unavailable');
+  const foundQuantities = filterQuantitySets(renderedQuantities, findQuery, projectUnits, unitDisplayOverrides, locale, quantityUnitContext.status !== 'unavailable');
+  const foundMaterialProperties = filterMaterialPropertyGroups(renderedMaterialProperties, findQuery, projectUnits, unitDisplayOverrides, quantityUnitContext.status !== 'unavailable');
   const foundAssociations = findAssociationAttributes({
     classifications: renderedClassifications, materials: renderedMaterialInfos,
     documents: renderedDocuments, query: findQuery, t, locale,
@@ -1542,7 +1541,7 @@ export function PropertiesPanel() {
                         typeEditScope={renderedIsTypeEntity ? renderedTypeEditImpact ?? undefined : undefined}
                         focusedPropKey={focusedPropKey}
                         searchQuery={findQuery} sectionScope="occurrence"
-                        projectUnits={renderedProjectUnits}
+                        projectUnits={renderedProjectUnits} projectUnitsAvailable={quantityUnitContext.status !== 'unavailable'}
                         unitDisplayOverrides={unitDisplayOverrides}
                       />
                     ))}
@@ -1570,7 +1569,7 @@ export function PropertiesPanel() {
                         typeEditScope={renderedTypeEditImpact?.mode === 'inherited' ? renderedTypeEditImpact : undefined}
                         focusedPropKey={focusedPropKey}
                         searchQuery={findQuery} sectionScope="inherited"
-                        projectUnits={renderedProjectUnits}
+                        projectUnits={renderedProjectUnits} projectUnitsAvailable={quantityUnitContext.status !== 'unavailable'}
                         unitDisplayOverrides={unitDisplayOverrides}
                       />
                     ))}
@@ -1618,7 +1617,7 @@ export function PropertiesPanel() {
                             key={`matpset-${group.materialId}-${pset.name}-${index}`}
                             pset={pset}
                             searchQuery={findQuery} sectionScope={`material:${group.materialId}`}
-                            projectUnits={renderedProjectUnits}
+                            projectUnits={renderedProjectUnits} projectUnitsAvailable={quantityUnitContext.status !== 'unavailable'}
                             unitDisplayOverrides={unitDisplayOverrides}
                           />
                         ))}
@@ -1690,12 +1689,13 @@ export function PropertiesPanel() {
             <div className="mb-3"><ExtrusionInspection enabled={propertiesActiveTab === 'quantities'} /></div>
             {quantityUnitContext.status === 'unavailable' ? (
               <output className="block text-sm text-muted-foreground">{t('zonesPanel.volumeBreakdown.quantityUnitsUnavailable', { reason: quantityUnitContext.reason ?? 'unverified current data' })}</output>
-            ) : foundQuantities.length === 0 ? (
+            ) : null}
+            {foundQuantities.length === 0 ? (
               findQuery ? null : <p className="text-sm text-zinc-500 dark:text-zinc-500 text-center py-8 font-mono">{t('properties.panel.noQuantities')}</p>
             ) : (
               <div className="space-y-3 w-full overflow-hidden">
                 {foundQuantities.map((qset: QuantitySet, index: number) => (
-                  <QuantitySetCard key={`${qset.name}-${index}`} qset={qset} projectUnits={renderedProjectUnits} unitDisplayOverrides={unitDisplayOverrides} searchQuery={findQuery} />
+                  <QuantitySetCard key={`${qset.name}-${index}`} qset={qset} projectUnits={renderedProjectUnits} projectUnitsAvailable={quantityUnitContext.status !== 'unavailable'} unitDisplayOverrides={unitDisplayOverrides} searchQuery={findQuery} />
                 ))}
               </div>
             )}
@@ -1949,7 +1949,7 @@ function EntityDataSection({
           <CollapsibleContent>
             <div className="p-2 pt-0 space-y-2">
               {properties.map((pset, index) => (
-                <PropertySetCard key={`${pset.name}-${index}`} pset={pset} projectUnits={projectUnits} unitDisplayOverrides={unitDisplayOverrides} />
+                <PropertySetCard key={`${pset.name}-${index}`} pset={pset} projectUnits={projectUnits} projectUnitsAvailable={quantityUnitContext.status !== 'unavailable'} unitDisplayOverrides={unitDisplayOverrides} />
               ))}
             </div>
           </CollapsibleContent>
@@ -1969,8 +1969,9 @@ function EntityDataSection({
             <div className="p-2 pt-0 space-y-2">
               {quantityUnitContext.status === 'unavailable' ? (
                 <output className="block text-xs text-muted-foreground">{t('zonesPanel.volumeBreakdown.quantityUnitsUnavailable', { reason: quantityUnitContext.reason ?? 'unverified current data' })}</output>
-              ) : quantities.map((qset, index) => (
-                <QuantitySetCard key={`${qset.name}-${index}`} qset={qset} projectUnits={projectUnits} unitDisplayOverrides={unitDisplayOverrides} />
+              ) : null}
+              {quantities.map((qset, index) => (
+                <QuantitySetCard key={`${qset.name}-${index}`} qset={qset} projectUnits={projectUnits} projectUnitsAvailable={quantityUnitContext.status !== 'unavailable'} unitDisplayOverrides={unitDisplayOverrides} />
               ))}
             </div>
           </CollapsibleContent>

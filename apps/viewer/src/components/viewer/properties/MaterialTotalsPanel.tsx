@@ -27,11 +27,11 @@ import {
   extractMaterialPropertiesForMaterialId,
   extractQuantitiesOnDemand,
   extractTypeQuantitiesOnDemand,
-  extractProjectUnits,
   ProjectUnits,
 } from '@ifc-lite/parser';
 import { QuantityType, RelationshipType } from '@ifc-lite/data';
 import { resolveQuantityDisplay } from '@/lib/units/display';
+import { useCurrentProjectUnits } from './useCurrentProjectUnits';
 import { PropertySetCard } from './PropertySetCard';
 import type { PropertySet } from './encodingUtils';
 import { useTranslation } from '@/i18n';
@@ -205,12 +205,9 @@ export function MaterialTotalsPanel({ materialId, modelId }: { materialId: numbe
     return extractMaterialPropertiesForMaterialId(selectedStore, materialId);
   }, [selectedStore, materialId]);
 
-  // The file's declared units, for rendering unit suffixes on material
-  // property values (issue #1573).
-  const projectUnits = useMemo(() => {
-    if (!selectedStore?.source?.length || !selectedStore?.entityIndex) return ProjectUnits.empty();
-    return extractProjectUnits(selectedStore.source, selectedStore.entityIndex);
-  }, [selectedStore]);
+  const currentView = useViewerStore(s => s.mutationViews.get(modelId));
+  const unitContext = useCurrentProjectUnits(models.get(modelId)?.ifcDataStore ?? ifcDataStore, currentView);
+  const projectUnits = unitContext.value ?? ProjectUnits.empty();
 
   // Aggregate quantities across all elements using a material of this name.
   const totals = useMemo<MaterialTotals>(() => {
@@ -388,7 +385,7 @@ export function MaterialTotalsPanel({ materialId, modelId }: { materialId: numbe
                     name: pset.name,
                     properties: pset.properties.map((p) => ({ name: p.name, value: p.value, isMutated: false, dataType: p.dataType })),
                   };
-                  return <PropertySetCard key={`${group.materialId}-${pset.name}-${index}`} pset={psetView} projectUnits={projectUnits} unitDisplayOverrides={unitDisplayOverrides} />;
+                  return <PropertySetCard key={`${group.materialId}-${pset.name}-${index}`} pset={psetView} projectUnits={projectUnits} projectUnitsAvailable={unitContext.status !== 'unavailable'} unitDisplayOverrides={unitDisplayOverrides} />;
                 }),
               )}
             </div>

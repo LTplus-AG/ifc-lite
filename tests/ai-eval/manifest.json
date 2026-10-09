@@ -1,7 +1,7 @@
 {
   "$schema": "./manifest.schema.json",
   "version": 1,
-  "updated": "2026-10-08",
+  "updated": "2026-10-09",
   "privacy": {
     "policy": "Only public sample models and repository fixtures are admitted. No client, project or personal data; no credentials in any manifest, recording, receipt or result. Reviewer ids are pseudonymous. Live results stay in the gitignored tests/ai-eval/results folder until a person reviews and promotes a recording.",
     "automatedScan": "check-ai-eval-manifest.mjs recomputes every committed fixture's SHA-256 and size, and refuses e-mail addresses, credential-like tokens and non-empty STEP author/organisation fields in it.",
@@ -112,8 +112,8 @@
       "id": "fzk-haus", "origin": "fixtures", "kind": "ifc",
       "path": "tests/models/ara3d/AC20-FZK-Haus.ifc",
       "sha256": "d42ab0dee01173106c16cd823b4614efe188fa15dd65195d95b9879bec59acc5", "size": 2526511, "schema": "IFC4",
-      "source": { "authoringTool": "ARCHICAD", "description": "KIT FZK-Haus reference house, the real ArchiCAD export already used by the Assistant IDS oracle test; STEP FILE_NAME author and organisation scrubbed, DATA bytes unchanged." },
-      "license": { "status": "unrecorded", "note": "Repository fixture from the ara3d corpus; record the publisher's terms before external publication of results." },
+      "source": { "authoringTool": "ARCHICAD", "description": "KIT FZK-Haus reference house, the real ArchiCAD export already used by the Assistant IDS oracle test; Evaluation fixture has scrubbed STEP FILE_NAME author and organisation fields; publisher DATA matches after CRLF-to-LF normalization, with different full-file bytes." },
+      "license": { "status": "recorded", "note": "KIT IFC Examples permits unrestricted use and requests the publication credit recorded in native/fzk-licence-provenance.json. Publisher terms: https://www.ifcwiki.org/index.php?title=KIT_IFC_Examples&oldid=552. The publisher download has identical DATA after CRLF-to-LF normalization; full-file fingerprints differ. See native/fzk-licence-provenance.json. These recorded terms do not assert human privacy or licence approval." },
       "privacy": { "automated": "not-fetched", "human": { "status": "pending", "reviewers": [] } }
     }
   ],

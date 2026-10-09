@@ -9,9 +9,8 @@ import { createStore } from 'zustand/vanilla';
 import type { ListDefinition } from '@ifc-lite/lists';
 import type { Lens } from '@ifc-lite/lens';
 import { createListSlice, type ListSlice } from './listSlice.js';
-import { createLensSlice, type LensSlice } from './lensSlice.js';
+import { createLensSlice, buildInitialLenses, type LensSlice } from './lensSlice.js';
 import { loadListDefinitions, saveListDefinitions } from '@/lib/lists/persistence';
-import { buildInitialLenses, readSavedLensSource } from '@/lib/lens/persistence';
 import { migrateSavedLens } from '@/lib/lens/migrate-saved-lens';
 import { useViewerStore } from '@/store';
 import { importArtifactLibraries } from '@/lib/storage/artifact-backup-import';
@@ -41,9 +40,7 @@ test('#7300 empty Lens IDs have the same unavailable migration contract before a
   const input = { ...lens(''), name: 'Legacy empty identity' };
   assert.equal(migrateSavedLens(input)?.id, undefined, 'the canonical pre-existing migration rejects an empty identity');
   localStorage.setItem('ifc-lite-custom-lenses', JSON.stringify([input]));
-  const source = readSavedLensSource();
-  assert.equal(source.phase, 'unreadable');
-  assert.deepEqual(source.rows, []);
+  assert.deepEqual(buildInitialLenses().filter(row => !row.builtin), [], 'the native startup reader cannot assign the missing migrated identity');
   assert.ok(localStorage.getItem('ifc-lite-custom-lenses')?.includes('Legacy empty identity'));
 });
 test('#7300 native List delete after a peer addition preserves the peer and intentional deletion', () => {

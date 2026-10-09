@@ -1,0 +1,12 @@
+{
+  "sourceCommit": "213c9c42db1984df382137f1bc5b9776fa49a0d0",
+  "qualifiedPrecommitHead": "b38cee4ef16f10e8c135776f9cfae5944a1c802f",
+  "qualifiedDirtySourceHashes": {
+    ".github/workflows/test.yml": "ec9b96a7d5a9db2be9c1ce893eaa38646e2253d099636b763b2a1817b6d6baed",
+    "scripts/ci-path-coverage-allowlist.txt": "0ddc797d66d130bb87a8d7c00cd227f546b4274e22334a7f0462e8bff9c3b559",
+    "scripts/check-ci-path-coverage.test.mjs": "6b764583857900a679269259bed7d5e016e9e55bd0c9841144875c0fcaa6dfcf"
+  },
+  "byteIdentityVerified": true,
+  "freshExactHeadCI": "Pending",
+  "historicalRootTypecheckScope": "Prior standalone qualification, not rerun or relabeled for this workflow change"
+}

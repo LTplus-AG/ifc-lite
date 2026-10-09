@@ -1,0 +1,19 @@
+{
+  "scope": "Actual original failure, not inverse proof",
+  "PR": 7221,
+  "targetHead": "fef2a3a5ac411973a4c1840dad2356bb6bb1719c",
+  "base": "c67484ed048a26ae339beb36196a0b2b124e943d",
+  "actualCheckout": "13e7ce383 (GitHub synthetic merge; exact full SHA not inferred from abbreviated checkout log)",
+  "actualCheckoutLog": "Merge fef2a3a5ac411973a4c1840dad2356bb6bb1719c into c67484ed048a26ae339beb36196a0b2b124e943d",
+  "originalBaseline": {
+    "controller": "2 passed, 5 skipped",
+    "job": "0 passed, 4 skipped"
+  },
+  "originalRevert": "Both files failed to import newly deleted modules; not assertion-red observation",
+  "verdict": "BASELINE-BROKEN, exit3",
+  "archive": "original-linux-observer-failure.log.gz",
+  "rawBytes": 351315,
+  "rawSHA256": "1fe2bf3b8cca97405205b7ed664a38246cbe8b403f8397f984f4199919970f8f",
+  "gzipBytes": 46795,
+  "gzipSHA256": "172151e9bb7e180946e5e42ddbdccf2f1aade5882dcdf776d95ec8d59e048410"
+}

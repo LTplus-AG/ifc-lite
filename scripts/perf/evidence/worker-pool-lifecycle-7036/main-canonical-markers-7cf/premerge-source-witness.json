@@ -1,0 +1,23 @@
+{
+  "beforeHead": "a06109a211069a6cfc3b1d99d0e845412563e4f1",
+  "frozenMain": "7cfad86f701f7912046b79f86e88e8cb12d8f4a8",
+  "standaloneSources": {
+    ".github/workflows/test.yml": "72b4c553f88f238f1da0054176f04b6ad25139cc9437c777c134023adb22fd7c",
+    "package.json": "6a0d6a988b088f2f27da041835b54c8703c5f83105cd284f565039f5d193248b",
+    "scripts/browser-ab-report.test.mjs": "22af6f3f3549957db83dfbe6d922e2e82f142f39bd2a7784af049ca9463e64cd",
+    "scripts/browser-metadata-readiness.test.mjs": "c8a409d5b00f1b91087b4843a4d334e87a5b443e2b7421a6b7e36addb7d3da0c",
+    "scripts/perf/browser-ab-report.mjs": "62ff7760b356796adcb21c9ca35078211a1b13f36cd9d29feb6ebab75bc2d1dd",
+    "scripts/perf/frame-gpu-chrome-lifecycle.test.mjs": "31f54ab8ddc537760676083bc408cce10b87461a1cb8ec41c7616d7fae8fd799",
+    "scripts/perf/frame-gpu-chrome.ts": "0af0660713e3ad39ee1ccd1c3d1d353240986d3ee8e381e168292b196cff8ddf",
+    "scripts/perf/frame-gpu-owned-profile.ps1": "c99c404ee7768b78da00aeb73d1471da46de0dd2503967c1457c7c0f215de7a3",
+    "scripts/perf/frame-gpu-owned-profile.test.mjs": "41eb0be49af9b943b9bdac5e46a27968ba9632b170161d6119d3bc4936895cb5",
+    "scripts/perf/tsconfig.frames.json": "1f8c02a50980c27ca30c8bfc66ab5829573d9d0cdf7f720c4dee60aee3235ea8",
+    "scripts/perf/worker-pool-lifecycle-invariants.mjs": "60f893959c3b3ae8530559dcd4c5ea4784830aea5ed4850de58cac11cd8dd2ed",
+    "scripts/perf/worker-pool-lifecycle-invariants.test.mjs": "2f0a59a57262efda83511890522720692c17a038dd150efb2abd9a11a7c40ed6",
+    "scripts/perf/worker-pool-lifecycle-schedule.fixture.json": "0c77eb9cef81d0f49a1d29c2cacb1d6a3660bb4b92e38fcc8b7df848c7228cf2",
+    "scripts/viewer-benchmark-span-metrics.test.mjs": "fcfa7c114155d4c3741c75090ac25f5077456a7fc47fe58395db4b3100f133fd",
+    "tests/benchmark/load-trace-metrics.ts": "2d572cfbb78a5889fee3bbfb04adc181ca6fbdc268347a3466af33b00feb7cd7",
+    "tests/benchmark/metadata-render-readiness.ts": "d5c9b3425029ff828c531e4ac0a10a69e661d0b951c9ee31653c90e293fb3460",
+    "tests/benchmark/viewer-benchmark-page.ts": "d32e6e728aa179cb3f8bfc158c9b222a4a4306071931b7f997478ab1d4b1ff8b"
+  }
+}

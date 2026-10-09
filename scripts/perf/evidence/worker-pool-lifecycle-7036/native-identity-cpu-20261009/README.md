@@ -1,0 +1,11 @@
+# Exact native process identity CPU qualification (#7221 / #7036)
+
+Windows CIM creation dates lose sub-microsecond precision; mixing them with native Job creation stamps can reject live owned processes or falsely certify their absence. `frame-gpu-process-identity.cs` now owns the exact native conversion used by Job preparation, snapshots, supervisor identity and the shared CPU fixture. Exact observation/retirement retains one process handle; unknown access/races and different creation stamps throw. Only actual missing-process lookup or a signaled exact handle proves retirement.
+
+The shared compiled CPU fixture validates durable PID and native creation identity before executing, launches an actual contained child, exits after two seconds and leaves the child sleeping for 60 seconds. It is named `chrome.exe` for the launcher’s process-name policy; it is not Chrome and certifies no browser, GPU or timing behavior. The earlier nested PowerShell child startup failure remains unexplained.
+
+Initial and restored runs each passed all 11 actual controls without skips. The test-only evidence correction subsequently passed both affected native controls, while the other nine control bodies remain byte-identical. Rounded matching produced two genuine assertion failures; the actual CIM inverse produced one exact-stamp failure. All seven final positive/inverse fixtures retain owner, protocol and independently observed exact native retirement receipts. EOF failure terminals do not emit an active-zero packet; none is claimed here. The original OS no-start proof inverse also produced two genuine failures.
+
+Plain root `pnpm typecheck` exited zero and audited all 3,761 test files; eight original gates, four touched receipt checks and the corrected license check passed. Reporter parsing and notice wording mistakes, original outputs, partial early inverse receipts and their subsequent correction remain archived. Header-only corrections preserve bodies byte-for-byte.
+
+`qualification.json` pins all nine final sources. `archive-index.json` distinguishes original and gzip SHA-256 values, and every archive round-trips to its recorded bytes. Original raw paths are relative to the source-preparation evidence directory. These controls are prerequisites; #7036 remains open pending full acceptance.

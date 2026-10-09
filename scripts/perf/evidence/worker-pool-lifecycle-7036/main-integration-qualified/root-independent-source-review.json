@@ -1,0 +1,9 @@
+{
+  "head": "7ca5c76875f9a50a19dda4e8eb6a331e1c80ebea",
+  "main": "c696805e543d934d8df47029813925d92bd4ff3f",
+  "readinessSourceFilesVerified": 5,
+  "rawArchivesVerified": 9,
+  "review": "Source-class point reads are necessary for original class identity after deletion/retyping; precise intent comments preserve the canonical overlay policy and alter no algorithm/allowance. Material marker is identical to prior reviewed6584 comment. Standalone pool-runtime absence verified.",
+  "fullQualification": "pending serialized slot",
+  "freshCI": "required after push"
+}

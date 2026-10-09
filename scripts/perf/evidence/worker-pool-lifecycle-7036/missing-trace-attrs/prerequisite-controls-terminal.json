@@ -1,0 +1,29 @@
+{
+  "command": [
+    "node",
+    "--test",
+    "--test-concurrency=1",
+    "scripts/browser-ab-report.test.mjs",
+    "scripts/browser-metadata-readiness.test.mjs",
+    "scripts/viewer-benchmark-span-metrics.test.mjs",
+    "scripts/perf/frame-gpu-chrome-lifecycle.test.mjs",
+    "scripts/perf/frame-gpu-owned-profile.test.mjs",
+    "scripts/perf/worker-pool-lifecycle-invariants.test.mjs"
+  ],
+  "exitCode": 0,
+  "startedUnix": 1791465211.368466,
+  "finishedUnix": 1791465223.560194,
+  "sourceBefore": {
+    "tests/benchmark/load-trace-metrics.ts": "ef52b9a9f5f387ce3d9a650faed1dfd060953147bd8945f77195c56b9f055316",
+    "scripts/viewer-benchmark-span-metrics.test.mjs": "11705bca5d904839b866b1cb5df7d3ea19e6ea8fb889f2a7cfa42f276cd7d529",
+    "scripts/perf/tsconfig.frames.json": "1f8c02a50980c27ca30c8bfc66ab5829573d9d0cdf7f720c4dee60aee3235ea8",
+    "package.json": "6a0d6a988b088f2f27da041835b54c8703c5f83105cd284f565039f5d193248b"
+  },
+  "sourceAfter": {
+    "tests/benchmark/load-trace-metrics.ts": "ef52b9a9f5f387ce3d9a650faed1dfd060953147bd8945f77195c56b9f055316",
+    "scripts/viewer-benchmark-span-metrics.test.mjs": "11705bca5d904839b866b1cb5df7d3ea19e6ea8fb889f2a7cfa42f276cd7d529",
+    "scripts/perf/tsconfig.frames.json": "1f8c02a50980c27ca30c8bfc66ab5829573d9d0cdf7f720c4dee60aee3235ea8",
+    "package.json": "6a0d6a988b088f2f27da041835b54c8703c5f83105cd284f565039f5d193248b"
+  },
+  "logSHA256": "9d8c99054804f966fbff0c59b77afdb5ef8d4b3394dc9c84df081243179115f7"
+}

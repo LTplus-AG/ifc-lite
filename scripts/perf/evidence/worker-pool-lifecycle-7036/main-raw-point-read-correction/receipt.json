@@ -1,0 +1,87 @@
+{
+  "qualification": "normal frozen-main integration and light source gates only; full current combined qualification pending",
+  "preIntegrationHead": "adaf7d4de1b718d32435e9e66d19a0997889a0f9",
+  "main": "c696805e543d934d8df47029813925d92bd4ff3f",
+  "normalMergeCommit": "3c3a27e7fb5e7225cfcacba98ce56c9903e9844f",
+  "branch": "perf/7036-harness-main-restack",
+  "readinessSourceWitness": [
+    {
+      "path": "scripts/browser-ab-report.test.mjs",
+      "sha256": "22af6f3f3549957db83dfbe6d922e2e82f142f39bd2a7784af049ca9463e64cd",
+      "unchangedFrom": "adaf7d4de1b718d32435e9e66d19a0997889a0f9"
+    },
+    {
+      "path": "scripts/perf/browser-ab-report.mjs",
+      "sha256": "62ff7760b356796adcb21c9ca35078211a1b13f36cd9d29feb6ebab75bc2d1dd",
+      "unchangedFrom": "adaf7d4de1b718d32435e9e66d19a0997889a0f9"
+    },
+    {
+      "path": "scripts/perf/worker-pool-lifecycle-invariants.mjs",
+      "sha256": "60f893959c3b3ae8530559dcd4c5ea4784830aea5ed4850de58cac11cd8dd2ed",
+      "unchangedFrom": "adaf7d4de1b718d32435e9e66d19a0997889a0f9"
+    },
+    {
+      "path": "scripts/perf/worker-pool-lifecycle-invariants.test.mjs",
+      "sha256": "2f0a59a57262efda83511890522720692c17a038dd150efb2abd9a11a7c40ed6",
+      "unchangedFrom": "adaf7d4de1b718d32435e9e66d19a0997889a0f9"
+    },
+    {
+      "path": "tests/benchmark/metadata-render-readiness.ts",
+      "sha256": "d5c9b3425029ff828c531e4ac0a10a69e661d0b951c9ee31653c90e293fb3460",
+      "unchangedFrom": "adaf7d4de1b718d32435e9e66d19a0997889a0f9"
+    }
+  ],
+  "materialMarkerCopiedExactFrom": "9982a24f69",
+  "classificationMarkerIntent": "source-class point lookup over effective changes preserves deletion/retype-away identification without querying live membership",
+  "lightGates": {
+    "rawAccess": 0,
+    "moduleSize": 0,
+    "testWiring": 0,
+    "MPL": 0,
+    "diffCheck": 0
+  },
+  "standaloneWitness": "No packages/geometry, useIfcLoader or wasm-prewarm carriage relative frozen main; standalone7180 source remains separate from7161 worker-pool implementation",
+  "archives": [
+    {
+      "path": "6584-node-job-113282708423-raw.log.gz",
+      "rawSha256": "c6b997d4730256dc6c47d5b36e32ebfdfd4d2e31220664040e53895edc1c646c"
+    },
+    {
+      "path": "7180-node-job-113282327647-raw.log.gz",
+      "rawSha256": "54514ab046dff01bdc6ef4ee2f60b2c52285cc636debf6ad370689a4b75993bc"
+    },
+    {
+      "path": "6584-node-job-113282708423-metadata.json.gz",
+      "rawSha256": "d9a087b14a13a9f930beae3e794673e099e45621d9ea33d2608c8fed187cb627"
+    },
+    {
+      "path": "7180-node-job-113282327647-metadata.json.gz",
+      "rawSha256": "4baecb40e247b6eeda5dd0c319f53ca26f9f0e0920908e7cbf9737ed1b87a99f"
+    },
+    {
+      "path": "6584-7180-node-raw-gate-independent-investigation-20261008.json.gz",
+      "rawSha256": "7ab5f0c1641ee77c4dbb080ab299bb2d6a0760c9a6ab3e420d47f54ce52b468a"
+    },
+    {
+      "path": "check-raw-entity-enumeration.mjs.log.gz",
+      "rawSha256": "90e5373784d1b13731daabd75e73393a719a3974d8510138cbf33439e389ea04"
+    },
+    {
+      "path": "check-module-size.mjs.log.gz",
+      "rawSha256": "599fe4df65cd9b10478aa9d0d7e573d252b85fce474ba36031f76984b1be6b5d"
+    },
+    {
+      "path": "check-test-wiring.mjs.log.gz",
+      "rawSha256": "0a95b0d39fbd8f2530cdd60f06bd456b489429fbbee4dd09a0be0935076acc2d"
+    },
+    {
+      "path": "add-license-headers.mjs.log.gz",
+      "rawSha256": "bb2577957920915e45a475bf20902ef312e22b1d5ae4b99745b21eb1ca79c0c4"
+    }
+  ],
+  "limits": [
+    "No new root Turbo tests/fulltypecheck run in this integration",
+    "No Chrome/native GPU or performance acceptance",
+    "No push or CI cancellation"
+  ]
+}

@@ -95,6 +95,10 @@ test('the REAL test.yml derives the lane names the REAL rollup publishes', () =>
     'Detect changes',
     'Build packages + WASM',
     'Changed tests observe production',
+    // #7221: required ordinary/native/POSIX observer legs are independently visible.
+    'Changed tests observe production (Linux)',
+    'Windows Job native CPU controls',
+    'Windows Job POSIX OS error controls',
     'Typecheck',
     'Lint',
     'Node tests',
@@ -127,7 +131,7 @@ test('the REAL test.yml derives the lane names the REAL rollup publishes', () =>
   ]) {
     assert.ok(names.includes(observed), `derived set is missing the observed lane "${observed}"`);
   }
-  assert.equal(names.length, 30);
+  assert.equal(names.length, 33);
 });
 
 test('FAIL CLOSED: an empty workflow file is NO_WORKFLOW_TEXT, not an empty lane set', () => {

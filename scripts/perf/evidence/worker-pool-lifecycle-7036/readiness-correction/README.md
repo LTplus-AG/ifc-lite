@@ -1,0 +1,7 @@
+Canonical readiness receipt correction for #7180
+
+Review found that zero/predating readiness was accepted despite later required trace milestones. The actual-production regression failed before the fix. Both reporters now use one positive/finite completion comparator; lifecycle bounds derive from actual parser/cache-store, geometry.streamComplete and scene.finalize end timestamps. Caller-reported zero metadata/stream metrics cannot bypass those bounds. Paired receipts also refuse.
+
+Readiness does not wait for later trace.finish. Actual waitForMetadataRenderReadiness ignores probe.ended; the loader may perform model bookkeeping/paint wait before finishing the root. A regression preserves a ready observation before that later root end. Initial overbound control logs are retained as historical and excluded; corrected endpoint controls pass62/62, and the plain root typecheck covers3725 package test files plus the permanent three-entry script programme. Bypassing the shared production comparator causes both selected tests to fail (including cold-report false exit0); byte-identical restoration passes both.
+
+Lifecycle readiness duration is trace-start-relative on the page performance clock. The unpublished future runner must capture the actual readiness poll/probe/canvas observation in that same epoch and clock; a later CDP timestamp cannot be relabeled as the original poll. That producer, full ordered payload certificate, native Chrome/GPU acceptance and complete lifetime containment remain outside this prerequisite qualification.

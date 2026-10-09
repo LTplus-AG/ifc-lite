@@ -41,6 +41,7 @@ import {
   INCONCLUSIVE,
   BASELINE_BROKEN,
 } from './revert-oracle.mjs';
+import { parseRevertOracleArgs } from './revert-oracle-args.mjs';
 import { ciExitCode } from './revert-oracle-ci.mjs';
 
 // ---------------------------------------------------------------------------
@@ -1213,4 +1214,39 @@ test('#4108 (still fixed): aggregate: EVERY package all-skipped is still ALL_SKI
 test('aggregate: zero packages is UNPARSEABLE, never a pass', () => {
   assert.equal(aggregate([]).kind, UNPARSEABLE);
   assert.equal(aggregate(undefined).kind, UNPARSEABLE);
+});
+
+// #7221: platform routing acts on the real classifier, including mixed/unknown inputs.
+test('#7221 mixed native and ordinary changes preserve every executable platform domain', () => {
+  const names = ['scripts/perf/frame-gpu-job.test.mjs', 'scripts/perf/frame-gpu-job-controller.test.mjs',
+    'packages/parser/src/material.test.ts', 'tools/unknown_test.go'];
+  const result = classifyDiff(names.map(path => ({ path, status: 'M' })));
+  assert.ok(result.platforms, 'Actual changed-test classification must declare platform ownership');
+  assert.deepEqual(result.platforms.linux.map(row => row.path), names.slice(2));
+  assert.deepEqual(result.platforms.windows.map(row => row.path), names.slice(0, 2));
+  assert.deepEqual(result.platforms.posix.map(row => row.path), [names[1]]);
+  assert.deepEqual([...new Set(Object.values(result.platforms).flat().map(row => row.path))].sort(), names.toSorted());
+});
+test('#7221 unknown near-name tests remain observable on Linux rather than disappearing', () => {
+  const names = ['scripts/perf/frame-gpu-job-extra.test.mjs', 'scripts/lib/new-platform.test.mjs'];
+  const result = classifyDiff(names.map(path => ({ path, status: 'A' })));
+  assert.ok(result.platforms, 'Actual changed-test classification must declare platform ownership');
+  assert.deepEqual(result.platforms.linux.map(row => row.path), names);
+  assert.deepEqual(result.platforms.windows, []);
+  assert.deepEqual(result.platforms.posix, []);
+});
+test('#7221 standalone Job and POSIX controller domains require their actual supported legs', () => {
+  const job = classifyDiff([{ path: 'scripts/perf/frame-gpu-job.test.mjs', status: 'A' }]);
+  assert.ok(job.platforms, 'Actual Job classification requires native platform ownership');
+  assert.equal(job.platforms.windows.length, 1); assert.equal(job.platforms.posix.length, 0);
+  const control = classifyDiff([{ path: 'scripts/perf/frame-gpu-job-controller.test.mjs', status: 'M' }]);
+  assert.equal(control.platforms.windows.length, 1); assert.equal(control.platforms.posix.length, 1);
+  assert.equal(control.platforms.linux.length, 0);
+});
+
+test('#7221 observer stage admission rejects an unknown domain instead of silently dropping tests', () => {
+  const fail = message => { throw new Error(message); };
+  assert.throws(() => parseRevertOracleArgs(['--platform', 'unsupported'], fail), /requires linux, windows, or posix/);
+  assert.equal(parseRevertOracleArgs(['--platform', 'windows', '--ci'], fail).platform, 'windows');
+  assert.equal(parseRevertOracleArgs([], fail).platform, null);
 });

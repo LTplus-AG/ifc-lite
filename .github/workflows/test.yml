@@ -129,6 +129,7 @@ jobs:
     outputs:
       rust: ${{ steps.all.outputs.rust || steps.filter.outputs.rust }}
       frontend: ${{ steps.all.outputs.frontend || steps.filter.outputs.frontend }}
+      windows_job: ${{ steps.all.outputs.windows_job || steps.filter.outputs.windows_job }}
       geometry: ${{ steps.all.outputs.geometry || steps.filter.outputs.geometry }}
       python: ${{ steps.all.outputs.python || steps.filter.outputs.python }}
       plato: ${{ steps.all.outputs.plato || steps.filter.outputs.plato }}
@@ -219,7 +220,7 @@ jobs:
       # PR to diff on merge_group.
       - if: github.event_name == 'merge_group'
         id: all
-        run: for k in rust frontend geometry python plato docs agents_md license_headers perf_ratchet; do echo "$k=true" >> "$GITHUB_OUTPUT"; done
+        run: for k in rust frontend windows_job geometry python plato docs agents_md license_headers perf_ratchet; do echo "$k=true" >> "$GITHUB_OUTPUT"; done
       - uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
         if: github.event_name != 'merge_group' && steps.noop.outputs.noop != 'true'
         id: filter
@@ -312,6 +313,14 @@ jobs:
               - '*.css'
               - '*.rs'
               - '*.py'
+            # Required native CPU qualification inputs; routing itself uses one classifier partition.
+            windows_job:
+              - '.github/workflows/test.yml'
+              - 'package.json'
+              - 'pnpm-lock.yaml'
+              - 'scripts/perf/**'
+              - 'scripts/lib/revert-oracle*.mjs'
+              - 'scripts/check-test-revert-oracle.mjs'
             frontend:
               # A changeset naming a package that does not exist fails the
               # RELEASE workflow, which only runs on main - so the Lint job has
@@ -675,8 +684,8 @@ jobs:
   # #3661: text review missed 10/10 independently confirmed defect cases even
   # after rubric retuning. This asks the executable question instead: do this
   # branch's changed tests fail when its production change is removed?
-  revert-oracle:
-    name: Changed tests observe production
+  revert-oracle-linux:
+    name: Changed tests observe production (Linux)
     needs: [changes, build]
     if: >-
       github.event_name == 'pull_request' &&
@@ -757,7 +766,100 @@ jobs:
           # Same as the viewer-e2e lane: GPU-dependent assertions skip on the
           # runner's SwiftShader device, and a skip never counts as observation.
           E2E_GPU_STRICT: '0'
-        run: node scripts/check-test-revert-oracle.mjs --base origin/main --ci --json
+        run: node scripts/check-test-revert-oracle.mjs --base origin/main --ci --json --platform linux
+
+  owned-job-native:
+    name: Windows Job native CPU controls
+    needs: [changes]
+    if: >-
+      github.event_name == 'pull_request' && needs.changes.outputs.windows_job == 'true' &&
+      !contains(github.event.pull_request.labels.*.name, 'revert-oracle-exempt')
+    runs-on: windows-2022
+    timeout-minutes: 20
+    steps:
+      - name: Materialize byte-stable native mutation subjects
+        shell: powershell
+        run: |
+          git config --global core.autocrlf false
+          git config --global core.eol lf
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          lfs: false
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Require nine actual Windows controls, surgical inverse and restored positives
+        timeout-minutes: 15
+        run: node scripts/perf/run-owned-job-ci.mjs --base origin/main --platform windows --output "${{ runner.temp }}/owned-job-windows"
+      - name: Preserve native source, original/inverse/restored and cleanup receipts
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: owned-job-windows-${{ github.run_id }}
+          path: ${{ runner.temp }}/owned-job-windows
+          if-no-files-found: error
+          retention-days: 14
+
+  owned-job-posix:
+    name: Windows Job POSIX OS error controls
+    needs: [changes]
+    if: >-
+      github.event_name == 'pull_request' && needs.changes.outputs.windows_job == 'true' &&
+      !contains(github.event.pull_request.labels.*.name, 'revert-oracle-exempt')
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          lfs: false
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Require two real POSIX no-start controls, inverse and restored positives
+        timeout-minutes: 8
+        run: node scripts/perf/run-owned-job-ci.mjs --base origin/main --platform posix --output "${{ runner.temp }}/owned-job-posix"
+      - name: Preserve POSIX source, original/inverse/restored and process receipts
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: owned-job-posix-${{ github.run_id }}
+          path: ${{ runner.temp }}/owned-job-posix
+          if-no-files-found: error
+          retention-days: 14
+
+  revert-oracle:
+    # Keep this identity in the required Build + WASM + Rust + Node aggregate.
+    name: Changed tests observe production
+    needs: [changes, revert-oracle-linux, owned-job-native, owned-job-posix]
+    if: >-
+      always() && github.event_name == 'pull_request' &&
+      (needs.changes.outputs.frontend == 'true' || needs.changes.outputs.rust == 'true') &&
+      !contains(github.event.pull_request.labels.*.name, 'revert-oracle-exempt')
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Require ordinary observer and every designated native platform
+        env:
+          LINUX_RESULT: ${{ needs.revert-oracle-linux.result }}
+          NATIVE_REQUIRED: ${{ needs.changes.outputs.windows_job }}
+          WINDOWS_RESULT: ${{ needs.owned-job-native.result }}
+          POSIX_RESULT: ${{ needs.owned-job-posix.result }}
+        run: |
+          test "$LINUX_RESULT" = success
+          if [ "$NATIVE_REQUIRED" = true ]; then
+            test "$WINDOWS_RESULT" = success
+            test "$POSIX_RESULT" = success
+          fi
 
   typecheck:
     name: Typecheck
@@ -2820,7 +2922,7 @@ jobs:
 
   test:
     name: Build + WASM + Rust + Node
-    needs: [changes, build, revert-oracle, typecheck, lint, node-tests, provenance-tests, viewer-tests, viewer-e2e, rust-tests, rust-full, rust-semver, geometry-census, csg-accept-gates, plato-check, docs-checks, docs-site, agents-md, license-headers, native-instructions, perf-ratchet]
+    needs: [changes, build, revert-oracle, revert-oracle-linux, owned-job-native, owned-job-posix, typecheck, lint, node-tests, provenance-tests, viewer-tests, viewer-e2e, rust-tests, rust-full, rust-semver, geometry-census, csg-accept-gates, plato-check, docs-checks, docs-site, agents-md, license-headers, native-instructions, perf-ratchet]
     # Preserve failed/skipped dependency judgement, but retire cancelled workflows (#7247).
     if: ${{ !cancelled() }}
     # Free runner — the gate just inspects upstream job results.
@@ -2857,6 +2959,9 @@ jobs:
             [changes]="${{ needs.changes.result }}"
             [build]="${{ needs.build.result }}"
             [revert-oracle]="${{ needs.revert-oracle.result }}"
+            [revert-oracle-linux]="${{ needs.revert-oracle-linux.result }}"
+            [owned-job-native]="${{ needs.owned-job-native.result }}"
+            [owned-job-posix]="${{ needs.owned-job-posix.result }}"
             [typecheck]="${{ needs.typecheck.result }}"
             [lint]="${{ needs.lint.result }}"
             [node-tests]="${{ needs.node-tests.result }}"

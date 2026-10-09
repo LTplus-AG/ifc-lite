@@ -5,7 +5,7 @@
 export function parseRevertOracleArgs(argv, fail) {
   const opts = {
     base: 'upstream/main', head: 'HEAD', only: [], tests: [],
-    mutation: null, json: false, ci: false, help: false,
+    mutation: null, platform: null, json: false, ci: false, help: false,
   };
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
@@ -19,6 +19,10 @@ export function parseRevertOracleArgs(argv, fail) {
     else if (arg === '--only') opts.only.push(next());
     else if (arg === '--test') opts.tests.push(next());
     else if (arg === '--mutation') opts.mutation = next();
+    else if (arg === '--platform') {
+      opts.platform = next();
+      if (!['linux', 'windows', 'posix'].includes(opts.platform)) fail('--platform requires linux, windows, or posix');
+    }
     else if (arg === '--root') next(); // consumed before the root is frozen
     else if (arg === '--json') opts.json = true;
     else if (arg === '--ci') opts.ci = true;

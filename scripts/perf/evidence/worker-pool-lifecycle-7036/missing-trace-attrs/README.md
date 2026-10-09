@@ -1,0 +1,1 @@
+Source-pinned correction for a JSON trace snapshot with absent attributes. The real reducer failed before correction and preserves fresh parser timing after correction. Raw inverse/restored logs and final 63 controls/full root typecheck are retained. Native acceptance remains unrun.

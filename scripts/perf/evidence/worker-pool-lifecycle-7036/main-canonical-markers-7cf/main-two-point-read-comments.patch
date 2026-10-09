@@ -1,0 +1,24 @@
+diff --git a/apps/viewer/src/components/viewer/properties/effective-classification-systems.ts b/apps/viewer/src/components/viewer/properties/effective-classification-systems.ts
+index e10c536d8f..77532ef690 100644
+--- a/apps/viewer/src/components/viewer/properties/effective-classification-systems.ts
++++ b/apps/viewer/src/components/viewer/properties/effective-classification-systems.ts
+@@ -24,6 +24,7 @@ export function hasClassificationEdits(
+   // Effective changes are current; append-only history would incorrectly
+   // report an unavailable edit after undo restored the source value.
+   return view.getEffectiveChanges().some(change => {
++    // @raw-entity-enumeration-ok Immutable indexed kind identifies a current effective edit when columns are sparse; current classification membership uses the effective reader.
+     const types = [store.entities.getTypeName(change.entityId), store.entityIndex.byId.get(change.entityId)?.type, view.getNewEntity(change.entityId)?.type, view.getEntityTypeMutation(change.entityId)?.newType];
+     return types.some(type => type !== undefined && CLASSIFICATION_TYPES.has(type.toUpperCase()));
+   });
+diff --git a/packages/parser/src/material-resolver.ts b/packages/parser/src/material-resolver.ts
+index 66c39d025a..bda1845848 100644
+--- a/packages/parser/src/material-resolver.ts
++++ b/packages/parser/src/material-resolver.ts
+@@ -88,6 +88,7 @@ export function extractAllMaterialsOnDemand(
+         if (!store.source?.length) {
+             const edits = view?.getEffectiveChanges?.().some(edit => {
+                 if (!['attribute', 'type', 'entity-deleted'].includes(edit.kind)) return false;
++                // @raw-entity-enumeration-ok Immutable source kind identifies a current effective edit; material membership and values come from the effective reader.
+                 const sourceType = store.entityIndex.byId.get(edit.entityId)?.type ?? store.deferredEntityIndex?.get(edit.entityId)?.type;
+                 return edit.entityId === id || Boolean(sourceType?.toUpperCase().startsWith('IFCMATERIAL'));
+             });

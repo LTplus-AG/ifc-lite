@@ -16,7 +16,12 @@ const repo = resolve(import.meta.dirname, '..');
 // Interpret workflow configuration and execute its shell steps. This is an
 // orchestration contract, not an assertion that a source-code string exists.
 const workflow = parse(readFileSync(join(repo, '.github/workflows/test.yml'), 'utf8'));
-const setup = workflow.jobs['revert-oracle'].steps.find(step => step.uses === './.github/actions/setup-revert-oracle');
+// #7221: the stable revert-oracle identity now aggregates platform observers;
+// fixture provisioning belongs to the executable Linux observer.
+const observer = workflow.jobs['revert-oracle-linux'];
+assert.ok(observer, 'the executable Linux oracle observer must exist');
+const setup = observer.steps.find(step => step.uses === './.github/actions/setup-revert-oracle');
+assert.ok(setup, 'the executable Linux oracle must provision canonical fixtures');
 const action = parse(readFileSync(join(repo, setup.uses, 'action.yml'), 'utf8'));
 const fixture = Buffer.from('ISO-10303-21;\n/* manifested oracle fixture */\nEND-ISO-10303-21;\n');
 const hash = createHash('sha256').update(fixture).digest('hex');

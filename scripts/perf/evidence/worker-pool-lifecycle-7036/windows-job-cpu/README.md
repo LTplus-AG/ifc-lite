@@ -1,0 +1,7 @@
+Windows Job primitive CPU controls for #7036
+
+The restored source passes four actual Windows CPU fixtures: failed pre-process startup preserves metadata, exclusive-name collision refuses without killing the original, a no-profile child remains contained after parent exit, and last-handle close terminates that child. Source/inverse receipts are pinned. Removing assignment while keeping membership verification refuses three newly created suspended roots; markers stay absent and actual CIM identities are no longer live. Removing kill-on-close makes child retirement fail; cleanup uses the captured exact process handle and does not turn failure into acceptance.
+
+Initial bootstrap/working-directory failures and the incorrect exact-one-child assumption remain archived. Missing-executable evidence is pre-process only; the assignment inverse separately exercises post-creation failed containment cleanup. These are CPU/Win32 controls, not Chrome compatibility or performance proof. Microsoft documents inherited membership for CreateProcess children but excludes Win32_Process.Create broker launches. No consumer has switched to this backend, and no universal external-process retirement is claimed.
+
+`receipt.json.gz` preserves the original qualification and historical paths. `archive-index.json` maps every original relative path to its gzip archive, original SHA-256 and archive SHA-256. Source snapshots and bulky fixture metadata remain exact archived evidence, separate from executable production sources. Fresh isolated stack qualification is recorded separately.

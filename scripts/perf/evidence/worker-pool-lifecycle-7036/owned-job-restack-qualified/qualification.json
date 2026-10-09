@@ -1,0 +1,29 @@
+{
+  "sourceHead": "4730edf575c91d417e812425444e1aef342857df",
+  "base": "9c1863219a0df115711fef4c1204a0a2b6d6fca0",
+  "controller": "3 actual pass,0fail,0skip",
+  "rootTypecheck": "3730/3730 across62packages plus shared4-entryprogramme,exit0",
+  "lightGates": {
+    "module-size": 0,
+    "test-wiring": 0,
+    "source-text": 0,
+    "mpl": 0,
+    "diff-check": 0,
+    "oxlint": 0
+  },
+  "sourcePins": {
+    "frame-gpu-job-controller.ts": "89f88ce9f8904f7f360e4ab275bf20c201fc16660339cba2c91778369cd43db6",
+    "frame-gpu-job-controller.test.mjs": "269b703c8843062144c1ef3737d689b3553ffe631abcc32d1d91735040642a67",
+    "frame-gpu-job-supervisor.ps1": "a67245b33cd75ccdebb59e5905988262252a424929a31156922ce9ff053e7a2f",
+    "frame-gpu-job-input.cs": "1d5b7467f26badd983a0dc1579da76df91b32f3d7e00c5b409f5e4ccadcd73f5",
+    "frame-gpu-job.cs": "b07cb6898534f5077507fa06a2a2f725be94f501752e6ee3f7e6e58373e4e8a6",
+    "frame-gpu-job.test.mjs": "ed12501ca8c3b52df565f4138d778536535abfc2f4bce238ea08b2c13e61e907"
+  },
+  "configSHA256": "361bf908e5c27bacf15ad7d70f15a0d0190d548ae324340c21351e127aa25730",
+  "scope": "Canonical Windows Job backend; actual owned CPU controls only",
+  "limitations": [
+    "No Chrome compatibility, native GPU, physical-session, timing or resident-memory acceptance",
+    "Historical inverse observations retain their original source context; fresh restack run has three production controls",
+    "No persistent worker-pool runtime, retained source observer or native runner carried in this stack"
+  ]
+}

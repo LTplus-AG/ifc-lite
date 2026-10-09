@@ -1,0 +1,31 @@
+{
+  "source": "4ebf52ad9a03880a13e6144765c4afaa0868e57b",
+  "fixtureOrigin": "scripts/perf/worker-pool-lifecycle-invariants.test.mjs row() and trace()",
+  "scope": "Direct synthetic receipt validator behavior only; no test suite, browser, native/hardware/performance run",
+  "results": [
+    {
+      "kind": "existing-valid-fixture",
+      "accepted": true,
+      "epochs": [
+        {
+          "loadId": "next",
+          "previousId": "prior"
+        }
+      ]
+    },
+    {
+      "kind": "duplicated-stale-epoch",
+      "accepted": true,
+      "epochs": [
+        {
+          "loadId": "next",
+          "previousId": "prior"
+        },
+        {
+          "loadId": "next",
+          "previousId": "prior"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,11 @@
+--- a/scripts/perf/frame-gpu-job.cs
++++ b/scripts/perf/frame-gpu-job.cs
+@@ -79,7 +79,7 @@
+     try {
+       if (Marshal.GetLastWin32Error() == AlreadyExists) throw new InvalidOperationException("Refuse existing job name");
+       ExtendedLimits limits = new ExtendedLimits();
+-      limits.Basic.Flags = 0;
++      limits.Basic.Flags = KillOnClose;
+       Require(SetInformationJobObject(job, 9, ref limits, (uint)Marshal.SizeOf(typeof(ExtendedLimits))), "Set kill-on-close, no breakaway");
+       StartupInfo startup = new StartupInfo(); startup.Size = (uint)Marshal.SizeOf(typeof(StartupInfo));
+       ProcessInfo process;

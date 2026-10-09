@@ -77,6 +77,19 @@ test('#7329 reviewed replacement preserves group and relation identities through
   assert.deepEqual(readGroupInStore(context, group), old);
   assert.throws(() => review.commit(), /already applied/);
 });
+test('#7329 existing unrelated overlay edits do not consume the reviewed Group delta budget', async () => {
+  const { dataStore, view, member, context } = await setup();
+  const unrelated = Array.from({ length: 201 }, (_, index) => addGroupToStore(context, { Name: `Existing group ${index}`, RelatedObjects: [] }));
+  const before = editedModelBytes(dataStore, view);
+  const review = prepareGroupReview(useViewerStore, proposal([member.expressId], [{ op: 'group.create', params: { Name: 'Reviewed new group', RelatedObjects: [member] } }]));
+  assert.equal(review.delta.length, 2, 'only the new Group and its membership relationship enter the reviewed delta');
+  await unchangedExports([editedModelBytes(dataStore, view)], [before]);
+  const receipt = commitReviewedGroup(useViewerStore, review, 'existing overlay acceptance');
+  const saved = await parseIfc(editedModelBytes(dataStore, view));
+  for (const group of unrelated) assert.equal(saved.entities.getGlobalId(group.expressId), group.GlobalId);
+  assert.equal(undoModelChanges(useViewerStore, receipt).ok, true);
+  await unchangedExports([editedModelBytes(dataStore, view)], [before]);
+});
 test('#7329 reviewed deletion rewrites incoming shared membership, keeps other members and supports one complete Undo', async () => {
   const { dataStore, view, member, context } = await setup();
   const group = addGroupToStore(context, { Name: 'Remove group', RelatedObjects: [member] });

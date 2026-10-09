@@ -45,12 +45,12 @@ export function prepareGroupReview(store: StoreApi<ViewerState>, input: GroupPro
     });
     const delta: GroupDelta[] = [];
     const ids = new Set(draft.getMutationView().getEffectiveChanges().map(change => change.entityId));
-    if (ids.size > 200) throw new Error('Complete Group change population exceeds its review budget');
     for (const expressId of [...ids].sort((a, b) => a - b)) {
       const before = effectiveMetadataRecord(lease.target.dataStore, expressId, lease.target.view);
       const after = effectiveMetadataRecord(lease.target.dataStore, expressId, draft.getMutationView());
       const record = (row: typeof before) => row ? { type: row.type, attributes: structuredClone(row.attributes) as unknown[] } : null;
       if (!sameReportEvidence(record(before), record(after))) delta.push({ expressId, before: record(before), after: record(after) });
+      if (delta.length > 200) throw new Error('Complete Group change population exceeds its review budget');
     }
     return { rows, delta };
   }).result;

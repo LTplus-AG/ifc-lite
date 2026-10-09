@@ -41,7 +41,7 @@ test('#7258 original native script Save and reload retain full code independentl
 });
 
 function choose(ui: HTMLElement, content: string, read?: () => Promise<string>) {
- const input = ui.querySelector<HTMLInputElement>('input[type="file"]'); assert.ok(input);
+ const input = ui.querySelector<HTMLInputElement>('input[type="file"][aria-label="Import script file"]'); assert.ok(input, 'native portable-script file admission is present');
  const file = new File([content], 'query.ifc-script.json', { type: 'application/json' });
  if (read) Object.defineProperty(file, 'text', { value: read });
  act(() => { Object.defineProperty(input, 'files', { configurable: true, value: [file] }); input.dispatchEvent(new window.Event('change', { bubbles: true })); });
@@ -119,4 +119,38 @@ test('#7258 other-tab replacement already present before file selection cannot b
  const newer=JSON.stringify({schemaVersion:1,scripts:[{...useViewerStore.getState().savedScripts[0],name:'Already newer other-tab source'}]}); localStorage.setItem('ifc-lite-scripts',newer);
  choose(ui,text); await waitFor(()=>!!ui.querySelector('output'),'native import terminal message');
  assert.equal(localStorage.getItem('ifc-lite-scripts'),newer,'import must not overwrite another tab with the stale in-memory library'); assert.equal(useViewerStore.getState().savedScripts.length,1);
+});
+
+test('#7258 a newer native file selection supersedes an outstanding read without importing its stale code', async () => {
+ const ui=mounted(); const text=await exported(ui); let release:((text:string)=>void)|undefined;
+ choose(ui,text,()=>new Promise(resolve=>{release=resolve;}));
+ const newer=JSON.parse(text); newer.script.name='Newer explicit file'; newer.script.code='console.log("new file only")';
+ choose(ui,JSON.stringify(newer)); await waitFor(()=>useViewerStore.getState().savedScripts.length===2,'newer native file import');
+ assert.ok(release); await act(async()=>{release(text);});
+ assert.deepEqual(loadSavedScripts().map(row=>row.name),['Original IFC query','Newer explicit file']);
+ assert.equal(useViewerStore.getState().savedScripts[1].code,newer.script.code);
+ assert.equal(useViewerStore.getState().scriptRunSeq,originalRunSequence(),'neither file import executes code');
+});
+
+test('#7258 the portable script remains source-neutral and explicitly runs against both currently loaded native IFC models', async () => {
+ const bytes=await readFile(new URL('../../../public/samples/building-architecture.ifc',import.meta.url));
+ const source=()=>new IfcParser().parseColumnar(bytes.buffer.slice(bytes.byteOffset,bytes.byteOffset+bytes.byteLength));
+ const [first,second]=await Promise.all([source(),source()]);
+ useViewerStore.setState(fixtureModels({...fixtureModel('first'),ifcDataStore:first},
+  {...fixtureModel('second',{idOffset:1_000_000}),ifcDataStore:second}));
+ const native=sdk.query().byType('IfcWall').toArray();
+ assert.equal(native.length,8,'two independently parsed SketchUp sources contain four walls each');
+ assert.deepEqual(new Set(native.map(row=>row.ref.modelId)),new Set(['first','second']));
+ const ui=mounted();const text=await exported(ui);const sequence=useViewerStore.getState().scriptRunSeq;
+ choose(ui,text);await waitFor(()=>useViewerStore.getState().savedScripts.length===2,'portable source-neutral file import');
+ assert.equal(useViewerStore.getState().scriptRunSeq,sequence);
+ const selector=ui.querySelector('button[aria-label="Select saved script"]');assert.ok(selector);
+ act(()=>selector.dispatchEvent(new window.PointerEvent('pointerdown',{bubbles:true,button:0,pointerType:'mouse'})));
+ await waitFor(()=>document.querySelectorAll('[role="menuitem"]').length>=2,'native saved-script selector');
+ const choices=[...document.querySelectorAll('[role="menuitem"]')].filter(row=>row.textContent?.trim()==='Original IFC query');assert.equal(choices.length,2);click(choices[1]);
+ const run=[...ui.querySelectorAll('button')].find(button=>button.textContent?.trim()==='Run');assert.ok(run);click(run);
+ await waitFor(()=>['success','error'].includes(useViewerStore.getState().scriptExecutionState),'native federated sandbox execution');
+ assert.equal(useViewerStore.getState().scriptExecutionState,'success',useViewerStore.getState().scriptLastError ?? 'native imported script execution');
+ assert.equal(useViewerStore.getState().scriptRunSeq,sequence+1);
+ assert.ok(useViewerStore.getState().scriptLastResult?.logs.some(row=>row.args.includes(8)),'explicit Run reads both current sources rather than binding the portable artifact to an original model');
 });

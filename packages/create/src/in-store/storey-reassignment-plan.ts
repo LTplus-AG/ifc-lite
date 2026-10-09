@@ -129,7 +129,13 @@ function planWithInventory(store: IfcDataStore, view: MutablePropertyView, selec
     for (const child of rel.children) { const n = indegree.get(child)! - 1; indegree.set(child, n); if (n === 0) topo.push(child); }
   }
   if (topo.length !== ids.size) fail('cyclic hosted or aggregate dependencies');
-  if (roots.some(id => !(incoming.get(id) ?? []).some(rel => rel.parent === sourceStoreyId))) fail('selected roots must belong directly to the declared source storey');
+  for (const id of roots) {
+    const spatialRoot = conformsTo(registry, reader.entity(id)?.type ?? '', 'IfcSpatialStructureElement');
+    if (!(incoming.get(id) ?? []).some(rel => rel.parent === sourceStoreyId &&
+      (rel.type === 'IFCRELCONTAINEDINSPATIALSTRUCTURE' || (spatialRoot && rel.type === 'IFCRELAGGREGATES')))) {
+      fail('selected roots must have a spatial owner directly in the declared source storey');
+    }
+  }
   const products = [...ids].sort((a, b) => a - b).map(expressId => {
     const entity = reader.entity(expressId) ?? fail(`missing product #${expressId}`);
     if (!conformsTo(registry, entity.type, 'IfcProduct') || ['IFCSITE', 'IFCBUILDING', 'IFCBUILDINGSTOREY', 'IFCGRID'].includes(entity.type.toUpperCase())) fail(`#${expressId} is not a supported movable product`);

@@ -78,6 +78,19 @@ for (const persisted of [false, true]) for (const millimetres of [false, true]) 
   });
 }
 
+for (const relationship of ['IfcRelNests', 'IfcRelAggregates']) it(`#7328 refuses ${relationship} as an ordinary product spatial owner (PR #7342)`, async () => {
+  const s = await fixture(), reader = new AnchorEntityReader(s.store, s.view);
+  for (const id of reader.ids('IFCRELCONTAINEDINSPATIALSTRUCTURE')) {
+    const rel = reader.entity(id)!;
+    if (Array.isArray(rel.attributes[4]) && rel.attributes[4].some(child => refId(child) === s.id)) s.view.deleteEntity(id);
+  }
+  s.editor.addEntity(relationship, [generateIfcGuid(), null, null, null, '#42', [`#${s.id}`]]);
+  const before = s.snapshot(), text = s.text();
+  expect(() => reassignElementsToStoreyInStore(s.store, s.editor, [s.id], 42, s.destination)).toThrow(/spatial owner/);
+  expect(s.snapshot()).toEqual(before);
+  expect(s.text()).toBe(text);
+});
+
 it('#7328 closes aggregate dependencies while preserving placement identities', async () => {
   const s = await fixture();
   const reader = new AnchorEntityReader(s.store, s.view), rootPlacement = refId(reader.entity(s.id)!.attributes[5])!;

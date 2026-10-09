@@ -116,6 +116,11 @@ export interface LensSlice {
   activateAutoColorFromColumn: (spec: AutoColorSpec, label: string) => void;
 }
 
+/** Match native deletion when a successful write follows a peer removal. */
+function savedLensState(rows: Lens[], activeId: string | null) {
+  return { savedLenses: rows, activeLensId: rows.some(row => row.id === activeId) ? activeId : null };
+}
+
 export const createLensSlice: StateCreator<LensSlice, [], [], LensSlice> = (set, get) => ({
   // Initial state — builtins (with user overrides applied) + custom lenses
   savedLenses: buildInitialLenses(),
@@ -135,14 +140,14 @@ export const createLensSlice: StateCreator<LensSlice, [], [], LensSlice> = (set,
   createLens: (lens) => {
     const next = [...get().savedLenses, lens];
     const result = saveLenses(next, get().savedLenses);
-    if (result.ok) set({ savedLenses: result.rows });
+    if (result.ok) set(savedLensState(result.rows, get().activeLensId));
     return result;
   },
 
   updateLens: (id, patch) => {
     const next = get().savedLenses.map(l => l.id === id ? { ...l, ...patch } : l);
     const result = saveLenses(next, get().savedLenses);
-    if (result.ok) set({ savedLenses: result.rows });
+    if (result.ok) set(savedLensState(result.rows, get().activeLensId));
     return result;
   },
 
@@ -153,10 +158,7 @@ export const createLensSlice: StateCreator<LensSlice, [], [], LensSlice> = (set,
     const next = state.savedLenses.filter(l => l.id !== id);
     const result = saveLenses(next, get().savedLenses);
     if (result.ok) {
-      set({
-        savedLenses: result.rows,
-        activeLensId: state.activeLensId === id ? null : state.activeLensId,
-      });
+      set(savedLensState(result.rows, get().activeLensId));
     }
     return result;
   },
@@ -171,7 +173,7 @@ export const createLensSlice: StateCreator<LensSlice, [], [], LensSlice> = (set,
     next.splice(index + 1, 0, copy);
     const result = saveLenses(next, get().savedLenses);
     if (!result.ok) return result;
-    set({ savedLenses: result.rows });
+    set(savedLensState(result.rows, get().activeLensId));
     return { ok: true, lens: copy };
   },
 
@@ -211,7 +213,7 @@ export const createLensSlice: StateCreator<LensSlice, [], [], LensSlice> = (set,
       (i) => reserveUniqueId(`lens-imported-${ts}-${i}`, taken),
     );
     const result = saveLenses(next, get().savedLenses);
-    if (result.ok) set({ savedLenses: result.rows });
+    if (result.ok) set(savedLensState(result.rows, get().activeLensId));
     return result;
   },
 

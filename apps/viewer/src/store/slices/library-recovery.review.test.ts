@@ -6,7 +6,9 @@ import '@/test/content-backup-fixture.js';
 import assert from 'node:assert/strict';
 import { afterEach, mock, test } from 'node:test';
 import { createStore } from 'zustand/vanilla';
-import type { ListDefinition } from '@ifc-lite/lists';
+import { executeList, type ListDefinition } from '@ifc-lite/lists';
+import { seedArtifactModels, ARCH } from '@/test/artifact-models-fixture';
+import { createListDataProvider } from '@/lib/lists/adapter';
 import type { Lens } from '@ifc-lite/lens';
 import { createListSlice, type ListSlice } from './listSlice.js';
 import { createLensSlice, buildInitialLenses, type LensSlice } from './lensSlice.js';
@@ -136,4 +138,64 @@ test('#7300 exact native duplicate-ID List delete preserves unrelated rows and r
   fresh.getState().deleteListDefinition('shared');
   assert.equal(fresh.getState().listError, null);
   assert.deepEqual(loadListDefinitions().map(row => row.id), ['unrelated'], 'the native ID-scoped delete still removes the exact complete captured group');
+});
+
+test('#7300 native peer deletion clears an active List and its real IFC result during unrelated successful CRUD', async () => {
+  localStorage.clear();
+  await seedArtifactModels({ federated: true });
+  const model = useViewerStore.getState().models.get(ARCH); assert.ok(model?.ifcDataStore);
+  const result = executeList(list('active-A'), createListDataProvider(model.ifcDataStore), ARCH);
+  assert.ok(result.rows.length > 0, 'real authored IFC data establishes a useful active native result');
+  assert.ok(saveListDefinitions([list('active-A'), list('edited-B')]));
+  const loaded = createStore<ListSlice>()(createListSlice);
+  loaded.getState().setActiveListId('active-A');
+  loaded.getState().setListResult(result);
+  const peer = createStore<ListSlice>()(createListSlice);
+  peer.getState().deleteListDefinition('active-A');
+  assert.deepEqual(loadListDefinitions().map(row => row.id), ['edited-B']);
+  loaded.getState().updateListDefinition('edited-B', { name: 'Updated B' });
+  assert.equal(loaded.getState().listError, null);
+  assert.equal(loadListDefinitions()[0].name, 'Updated B');
+  assert.equal(loaded.getState().activeListId, null);
+  assert.equal(loaded.getState().listResult, null);
+});
+test('#7300 native peer deletion clears an active Lens during unrelated successful CRUD', () => {
+  localStorage.clear();
+  const loaded = createStore<LensSlice>()(createLensSlice);
+  assert.ok(loaded.getState().createLens(lens('active-A')).ok);
+  assert.ok(loaded.getState().createLens(lens('edited-B')).ok);
+  loaded.getState().setActiveLens('active-A');
+  const peer = createStore<LensSlice>()(createLensSlice);
+  assert.ok(peer.getState().deleteLens('active-A').ok);
+  assert.ok(loaded.getState().updateLens('edited-B', { name: 'Updated B' }).ok);
+  assert.equal(buildInitialLenses().find(row => row.id === 'edited-B')?.name, 'Updated B');
+  assert.equal(loaded.getState().activeLensId, null);
+  assert.equal(loaded.getState().getActiveLens(), null);
+});
+
+test('#7300 peer removal retains an independently active List and its native IFC rows', async () => {
+  localStorage.clear();
+  await seedArtifactModels({ federated: true });
+  const model = useViewerStore.getState().models.get(ARCH); assert.ok(model?.ifcDataStore);
+  const result = executeList(list('active-B'), createListDataProvider(model.ifcDataStore), ARCH);
+  assert.ok(result.rows.length > 0);
+  assert.ok(saveListDefinitions([list('deleted-A'), list('active-B')]));
+  const loaded = createStore<ListSlice>()(createListSlice);
+  loaded.getState().setActiveListId('active-B'); loaded.getState().setListResult(result);
+  createStore<ListSlice>()(createListSlice).getState().deleteListDefinition('deleted-A');
+  loaded.getState().updateListDefinition('active-B', { name: 'Updated B' });
+  assert.equal(loaded.getState().activeListId, 'active-B');
+  assert.deepEqual(loaded.getState().listResult?.rows, result.rows);
+  assert.deepEqual(loadListDefinitions().map(row => row.id), ['active-B']);
+});
+test('#7300 peer removal retains an independently active Lens', () => {
+  localStorage.clear();
+  const loaded = createStore<LensSlice>()(createLensSlice);
+  assert.ok(loaded.getState().createLens(lens('deleted-A')).ok);
+  assert.ok(loaded.getState().createLens(lens('active-B')).ok);
+  loaded.getState().setActiveLens('active-B');
+  assert.ok(createStore<LensSlice>()(createLensSlice).getState().deleteLens('deleted-A').ok);
+  assert.ok(loaded.getState().updateLens('active-B', { name: 'Updated B' }).ok);
+  assert.equal(loaded.getState().activeLensId, 'active-B');
+  assert.equal(loaded.getState().getActiveLens()?.name, 'Updated B');
 });

@@ -47,6 +47,13 @@ export interface ListSlice {
   setPendingListDraft: (definition: ListDefinition | null) => void;
 }
 
+/** A successful fresh-source write also owns its native active/result pointers. */
+function savedListState(rows: ListDefinition[], activeId: string | null) {
+  return { listDefinitions: rows, listDefinitionSource: structuredClone(rows),
+    ...(activeId !== null && !rows.some(row => row.id === activeId)
+      ? { activeListId: null, listResult: null } : {}) };
+}
+
 export const createListSlice: StateCreator<ListSlice, [], [], ListSlice> = (set, get) => {
   const initial = loadListDefinitions();
   return {
@@ -65,7 +72,7 @@ export const createListSlice: StateCreator<ListSlice, [], [], ListSlice> = (set,
   setListDefinitions: (listDefinitions) => {
     const saved = saveListDefinitionsResult(listDefinitions);
     if (!saved.ok) { set({ listError: saved.message }); return false; }
-    set({ listDefinitions, listDefinitionSource: structuredClone(listDefinitions), listError: null });
+    set({ ...savedListState(saved.rows, get().activeListId), listError: null });
     return true;
   },
 
@@ -74,7 +81,7 @@ export const createListSlice: StateCreator<ListSlice, [], [], ListSlice> = (set,
     set({ listDefinitions: updated });
     const saved = saveListDefinitionsResult(updated, get().listDefinitionSource);
     set({ listError: saved.ok ? null : saved.message,
-      ...(saved.ok ? { listDefinitions: saved.rows, listDefinitionSource: structuredClone(saved.rows) } : {}) });
+      ...(saved.ok ? savedListState(saved.rows, get().activeListId) : {}) });
   },
 
   updateListDefinition: (id, updates) => {
@@ -84,7 +91,7 @@ export const createListSlice: StateCreator<ListSlice, [], [], ListSlice> = (set,
     set({ listDefinitions: updated });
     const saved = saveListDefinitionsResult(updated, get().listDefinitionSource);
     set({ listError: saved.ok ? null : saved.message,
-      ...(saved.ok ? { listDefinitions: saved.rows, listDefinitionSource: structuredClone(saved.rows) } : {}) });
+      ...(saved.ok ? savedListState(saved.rows, get().activeListId) : {}) });
   },
 
   deleteListDefinition: (id) => {
@@ -94,7 +101,7 @@ export const createListSlice: StateCreator<ListSlice, [], [], ListSlice> = (set,
     set({ listDefinitions: updated, activeListId, listResult });
     const saved = saveListDefinitionsResult(updated, get().listDefinitionSource);
     set({ listError: saved.ok ? null : saved.message,
-      ...(saved.ok ? { listDefinitions: saved.rows, listDefinitionSource: structuredClone(saved.rows) } : {}) });
+      ...(saved.ok ? savedListState(saved.rows, get().activeListId) : {}) });
   },
 
   setActiveListId: (activeListId) => set({ activeListId }),

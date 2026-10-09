@@ -289,5 +289,14 @@ for (const kind of ['validation-report', 'clash-report'] as const) test(`#7235 h
     assert.equal(await (kind === 'validation-report' ? current.removeValidationReport(id) : current.deleteSavedClashReport(id)), true);
   });
   assert.match(document.body.textContent ?? '', /This artifact is no longer available/, 'native successful deletion with a ready source genuinely confirms missing');
-  assert.equal(await openNativeLibraryArtifact(target, null), 'missing');
+  const other = kind === 'validation-report' ? createSavedClashReportsSlice : createValidationReportsSlice;
+  useViewerStore.setState(other(useViewerStore.setState, useViewerStore.getState, useViewerStore));
+  const otherDenied = mock.method(IDBDatabase.prototype, 'transaction', () => { throw new DOMException('Other native report library denied', 'SecurityError'); });
+  await act(async () => {
+    const current = useViewerStore.getState();
+    assert.equal(await (kind === 'validation-report' ? current.initializeSavedClashReports() : current.initializeValidationReports()), false);
+  });
+  assert.equal(nativeLibraryCatalogue(useViewerStore.getState(), profiles).find(group => group.family === 'reports')?.phase, 'unavailable');
+  assert.equal(await openNativeLibraryArtifact(target, null), 'missing', 'another unreadable report source cannot hide proven deletion in this ready native source');
+  otherDenied.mock.restore();
 });

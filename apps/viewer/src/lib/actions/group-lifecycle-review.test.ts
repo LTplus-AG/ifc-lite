@@ -5,6 +5,7 @@ import '@/test/setup-dom.js';
 import assert from 'node:assert/strict';
 import { afterEach, test } from 'node:test';
 import { RelationshipType } from '@ifc-lite/data';
+import { MutablePropertyView } from '@ifc-lite/mutations';
 import { addGroupToStore, readGroupInStore, readGroupEvidenceInStore } from '@ifc-lite/create';
 import { asSourceBytes } from '@ifc-lite/parser';
 import { useViewerStore } from '@/store';
@@ -111,4 +112,46 @@ test('#7329 changed source, selected approvals, current metadata, native graph o
   assert.deepEqual(editedModelBytes(dataStore, view), before);
   dataStore.source = asSourceBytes(new Uint8Array());
   assert.throws(() => prepareGroupReview(useViewerStore, current), /source/);
+});
+
+test('#7329 two real loaded sources keep identical local IDs source-owned, reject foreign membership and stale peer evidence, and Undo each graph once', async () => {
+  const { dataStore, view, member } = await setup(), peerId = 'peer';
+  const peerStore = await parseIfc(editedModelBytes(dataStore, view));
+  const peerView = new MutablePropertyView(peerStore.properties || null, peerId);
+  const ownModel = useViewerStore.getState().models.get(SAMPLE_MODEL)!;
+  useViewerStore.setState({
+    models: new Map([[SAMPLE_MODEL, ownModel], [peerId, { ...ownModel, id: peerId, idOffset: 1_000_000, ifcDataStore: peerStore }]]),
+    mutationViews: new Map([[SAMPLE_MODEL, view], [peerId, peerView]]),
+  });
+  const adapter = createStoreAdapter(useViewerStore);
+  assert.ok(adapter.addGroup); assert.ok(adapter.readGroup); assert.ok(adapter.updateGroup);
+  const local = { ...member, modelId: SAMPLE_MODEL }, foreign = { ...member, modelId: peerId };
+  const own = adapter.addGroup(SAMPLE_MODEL, { Name: 'First source group', RelatedObjects: [local] });
+  const peer = adapter.addGroup(peerId, { Name: 'Second source group', RelatedObjects: [foreign] });
+  const firstSaved = await parseIfc(editedModelBytes(dataStore, view));
+  const secondSaved = await parseIfc(editedModelBytes(peerStore, peerView));
+  assert.equal(firstSaved.entities.getName(own.expressId), 'First source group');
+  assert.equal(secondSaved.entities.getName(peer.expressId), 'Second source group');
+  assert.deepEqual(firstSaved.relationships.getRelated(own.expressId, RelationshipType.AssignsToGroup, 'forward'), [member.expressId]);
+  assert.deepEqual(secondSaved.relationships.getRelated(peer.expressId, RelationshipType.AssignsToGroup, 'forward'), [member.expressId]);
+  assert.notEqual(own.GlobalId, peer.GlobalId, 'independent native groups have independent Root ownership');
+  const before = [editedModelBytes(dataStore, view), editedModelBytes(peerStore, peerView)];
+  assert.throws(() => adapter.updateGroup!(adapter.readGroup!(own), { RelatedObjects: [foreign] }), /another source/);
+  assert.deepEqual([editedModelBytes(dataStore, view), editedModelBytes(peerStore, peerView)], before);
+  const review = prepareGroupReview(useViewerStore, proposal([member.expressId], [{ op: 'group.create', params: { Name: 'Stale draft', RelatedObjects: [member] } }]));
+  peerView.setAttribute(member.expressId, 'Description', 'Peer changed after review');
+  const changed = [editedModelBytes(dataStore, view), editedModelBytes(peerStore, peerView)];
+  assert.throws(() => review.commit(), /source population changed/);
+  assert.deepEqual([editedModelBytes(dataStore, view), editedModelBytes(peerStore, peerView)], changed);
+  useViewerStore.getState().undo(peerId);
+  const peerBytes = editedModelBytes(peerStore, peerView), undonePeer = await parseIfc(peerBytes);
+  assert.equal(undonePeer.entityIndex.byId.has(peer.expressId), false);
+  assert.equal(undonePeer.entities.getGlobalId(member.expressId), member.GlobalId);
+  assert.deepEqual(danglingReferences(new TextDecoder().decode(peerBytes)), []);
+  assert.equal(adapter.readGroup(own).Name, 'First source group', 'peer Undo preserves the other native graph');
+  useViewerStore.getState().undo(SAMPLE_MODEL);
+  const ownBytes = editedModelBytes(dataStore, view), undoneOwn = await parseIfc(ownBytes);
+  assert.equal(undoneOwn.entityIndex.byId.has(own.expressId), false);
+  assert.equal(undoneOwn.entities.getGlobalId(member.expressId), member.GlobalId);
+  assert.deepEqual(danglingReferences(new TextDecoder().decode(ownBytes)), []);
 });

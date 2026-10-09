@@ -15,7 +15,7 @@ export function curtainWallFrameAvailable(store: IfcDataStore, view: MutableProp
   if (!storeyPlanFrame(store, storey, view)) return false;
   const reader = new AnchorEntityReader(store, view ?? null);
   const source = new AnchorEntityReader(store, null);
-  const overlay = { readEntity: (id: number) => reader.entity(id) };
+  const overlay = { readEntity: (id: number) => reader.entity(id), getNewEntities: () => view?.getNewEntities() ?? [] };
   const chain = storeyPlacementChain(store, new EntityExtractor(store.source), overlay, storey, 256);
   if (!chain) return false;
   const sourceChain = storeyPlacementChain(store, new EntityExtractor(store.source), undefined, storey, 256);

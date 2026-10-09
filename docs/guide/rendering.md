@@ -90,11 +90,20 @@ CPU-bound scenes may see little improvement. The renderer's persistent
 it for subsequent full-quality or capture frames. Invalid frame caps are
 ignored, and a frame cap cannot raise the configured maximum.
 
+`renderer.renderWithResult(options)` shares `render()`'s implementation and
+returns `true` only when that call submits a new frame without a contained
+synchronous failure. It returns `false` when the device, viewport or context
+is unavailable, or rendering fails. The existing `render()` API still returns
+void. Submission is synchronous; it does not establish GPU completion,
+asynchronous validation or image quality.
+
 Viewer captures share the normal frame's appearance and clipping options,
 and render at the configured settled resolution. The capture owns its camera
 and drawing buffer through GPU completion, presentation, and image readback;
 the navigation loop resumes afterward. Rendering another frame during those
 asynchronous waits can replace the image being exported, even at DPR1.
+Captures reject a refused render before waiting for completion or reading the
+canvas, so an earlier frame cannot stand in for the requested capture.
 
 ## Appearance triangle mapping
 

@@ -63,7 +63,7 @@ const dataStore = {
 
 let submittedWork: Promise<void> = Promise.resolve();
 const renderer = {
-  render: () => {},
+  renderWithResult: () => true,
   requestRender: () => {},
   getGPUDevice: () => ({ queue: { onSubmittedWorkDone: () => submittedWork } }),
   getCamera: () => ({

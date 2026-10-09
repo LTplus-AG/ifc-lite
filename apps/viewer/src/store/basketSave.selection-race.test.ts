@@ -25,7 +25,7 @@ function ChartLinkProbe() {
 beforeEach(() => {
   const gate = new Promise<void>((resolve) => { releaseGpu = resolve; });
   const renderer = {
-    render: () => {},
+    renderWithResult: () => true,
     requestRender: () => {},
     getGPUDevice: () => ({ queue: { onSubmittedWorkDone: () => gate } }),
   } as unknown as Renderer;

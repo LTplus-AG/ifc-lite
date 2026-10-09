@@ -67,6 +67,7 @@ interface Harness {
     stats: {
         push: number;
         pop: number;
+        submissions: number;
         /** vertex buffer bound at slot 0 when each drawIndexed fired */
         draws: unknown[];
         createdBuffers: FakeBuffer[];
@@ -130,7 +131,7 @@ const TRANSPARENT_PIPELINE = { label: 'transparent' };
 const GHOST_PIPELINE = { label: 'ghost' };
 
 function makeHarness(): Harness {
-    const stats: Harness['stats'] = { push: 0, pop: 0, draws: [], createdBuffers: [], mapAsync: 0, writes: [], commands: [], passes: [], createdTextures: 0, textures: [], destroyedTextures: [], boundColorTables: [] };
+    const stats: Harness['stats'] = { push: 0, pop: 0, submissions: 0, draws: [], createdBuffers: [], mapAsync: 0, writes: [], commands: [], passes: [], createdTextures: 0, textures: [], destroyedTextures: [], boundColorTables: [] };
     const knobs: Harness['knobs'] = {
         textureMode: 'texture', encodeThrows: false, submitThrows: false, popRejects: false, gpuDead: false,
         deferMaps: false,
@@ -217,7 +218,7 @@ function makeHarness(): Harness {
         },
         writeTexture() { /* no-op */ },
         copyExternalImageToTexture() { /* no-op */ },
-        submit() { if (knobs.submitThrows) throw new Error('boom on submit'); },
+        submit() { if (knobs.submitThrows) throw new Error('boom on submit'); stats.submissions++; },
         onSubmittedWorkDone() { return Promise.resolve(); },
     };
     const fakeGpuDevice = new Proxy({} as Record<string | symbol, unknown>, {
@@ -370,6 +371,51 @@ function seedBatches(h: Harness): { grey: BatchedMesh; red: BatchedMesh } {
     const red = batches.find((b) => b.expressIds.includes(3))!;
     return { grey, red };
 }
+
+describe('canonical render submission result (#6709)', () => {
+    it('reports a new submitted frame while preserving render() void behavior', () => {
+        const h = makeHarness();
+        assert.strictEqual(h.renderer.renderWithResult({ visualEnhancement: { enabled: false } }), true);
+        assert.strictEqual(h.stats.submissions, 1, 'the actual render body reached queue.submit');
+        assert.strictEqual(h.renderer.render({ visualEnhancement: { enabled: false } }), undefined);
+        assert.strictEqual(h.stats.submissions, 2, 'the void API uses that same render body');
+    });
+
+    for (const failure of ['uninitialized', 'pipeline', 'collapsed', 'texture', 'encode', 'submit'] as const) {
+        it(`reports ${failure} refusal instead of claiming the previous submission`, async () => {
+            const h = makeHarness();
+            h.render();
+            assert.strictEqual(h.stats.submissions, 1, 'seed one genuine canonical submission');
+            if (failure === 'uninitialized') h.renderer['device'].destroy();
+            if (failure === 'pipeline') h.renderer['pipeline'] = null;
+            if (failure === 'collapsed') h.renderer.getCanvas().getBoundingClientRect = () => ({ width: 0, height: 0 } as DOMRect);
+            if (failure === 'texture') h.knobs.textureMode = 'null';
+            if (failure === 'encode') h.knobs.encodeThrows = true;
+            if (failure === 'submit') h.knobs.submitThrows = true;
+            const warn = mock.method(console, 'warn', () => {});
+            try {
+                assert.strictEqual(h.renderer.renderWithResult({ visualEnhancement: { enabled: false } }), false);
+                await h.settle();
+                assert.strictEqual(h.stats.submissions, 1, 'no new command buffer was submitted');
+                assert.strictEqual(h.stats.push, h.stats.pop, 'existing validation scope ownership is preserved');
+            } finally { warn.mock.restore(); }
+        });
+    }
+
+    it('contains pre-encoding restoration failure and recovers through the same path', () => {
+        const h = makeHarness();
+        const restore = mock.method(sceneOf(h), 'restoreAllEvicted', () => { throw new RangeError('controlled restoration failure'); });
+        const warn = mock.method(console, 'warn', () => {});
+        try {
+            assert.strictEqual(h.renderer.renderWithResult({ restoreEvictedForCapture: true }), false);
+            assert.strictEqual(h.stats.submissions, 0);
+            assert.strictEqual(h.renderer.getDiagnostics().errors, 1, 'the existing containment reports the error');
+            restore.mock.restore();
+            assert.strictEqual(h.renderer.renderWithResult({ visualEnhancement: { enabled: false } }), true);
+            assert.strictEqual(h.stats.submissions, 1);
+        } finally { restore.mock.restore(); warn.mock.restore(); }
+    });
+});
 
 describe('render() error-scope balance', () => {
     it('pops the scope on a null-current-texture frame', async () => {

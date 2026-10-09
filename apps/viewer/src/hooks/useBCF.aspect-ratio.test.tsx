@@ -61,7 +61,7 @@ let unregisterCapture: (() => void) | undefined;
 let duringGpuWait: (() => void) | null = null;
 
 const renderer = {
-  render: () => { renderedAspect = liveAspect; },
+  renderWithResult: () => { renderedAspect = liveAspect; return true; },
   requestRender: () => {},
   getCamera: () => ({
     getPosition: () => ({ x: 10, y: 5, z: 20 }),

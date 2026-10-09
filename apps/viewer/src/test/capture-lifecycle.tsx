@@ -79,8 +79,8 @@ export async function captureLifecycle(dpr: number): Promise<CaptureLifecycle> {
         camera: { ...renderer.getCamera().getPosition() }, submission: gpu.stats.submissions };
     },
   });
-  const originalRender = renderer.render.bind(renderer);
-  renderer.render = options => { lastOptions = options ?? {}; frames.push(lastOptions); return originalRender(options); };
+  const originalRender = renderer.renderWithResult.bind(renderer);
+  renderer.renderWithResult = options => { lastOptions = options ?? {}; frames.push(lastOptions); return originalRender(options); };
   const captures: CaptureObservation[] = [];
   canvas.toDataURL = () => {
     const observation = {

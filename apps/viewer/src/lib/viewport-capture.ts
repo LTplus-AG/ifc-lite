@@ -100,7 +100,10 @@ export function captureViewportFrame<T>(renderer: Renderer, request: CaptureRequ
     let restore: void | (() => void) = undefined;
     try {
       restore = request.prepare?.();
-      renderer.render(options);
+      if (!renderer.renderWithResult(options)) {
+        console.warn('[capture] Viewport render did not submit an owned frame');
+        return null;
+      }
       request.afterRender?.();
       const device = renderer.getGPUDevice();
       if (device && !await completion(device.queue.onSubmittedWorkDone(), signal)) return null;

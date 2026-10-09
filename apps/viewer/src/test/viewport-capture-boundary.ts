@@ -8,7 +8,7 @@ import { setGlobalRendererRef } from '@/hooks/useBCF';
 
 /** GPU-free boundary for mounted download tests; real loop ownership is covered separately (#6709). */
 export function installViewportCaptureBoundary(canvas: HTMLCanvasElement): () => void {
-  const renderer = { render: () => {}, requestRender: () => {}, getGPUDevice: () => null } as unknown as Renderer;
+  const renderer = { renderWithResult: () => true, requestRender: () => {}, getGPUDevice: () => null } as unknown as Renderer;
   setGlobalRendererRef({ current: renderer });
   const unregister = registerViewportCapture(renderer, canvas, () => ({}));
   return () => { unregister(); setGlobalRendererRef({ current: null }); };

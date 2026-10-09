@@ -104,6 +104,7 @@
             "modelName": "arch",
             "type": "IfcSlab",
             "name": "house - roof - slab right",
+            "nativeTrimExtendExpected": null,
             "attributes": {
               "Name": "house - roof - slab right",
               "Description": "A roof slab that's got it all covered",
@@ -143,6 +144,20 @@
               }
             ],
             "qsetCount": 1,
+            "nativeEdit": {
+              "units": "m",
+              "dimensionsStatus": "unavailable",
+              "dimensions": null,
+              "profileStatus": "unavailable",
+              "Profile": null
+            },
+            "nativeType": {
+              "status": "typed",
+              "expected": {
+                "GlobalId": "3n9C2OuJjE89DiYlOaoccO",
+                "Name": "house - roof - slab right"
+              }
+            },
             "structuralStatus": "available",
             "structural": null,
             "documentStatus": "available",

@@ -13,6 +13,7 @@
 
 import type { EntityRef } from './types.js';
 import { federationRegistry } from '@ifc-lite/renderer';
+import { effectiveMetadataRecord } from '@ifc-lite/parser';
 import { useViewerStore } from './index.js';
 
 /** Resolve a renderer/global ID against one consistent Viewer store snapshot. */
@@ -98,13 +99,22 @@ export function resolveEntityRefGlobalIdFromState(
     ? state.ifcDataStore
     : state.models.get(entityRef.modelId)?.ifcDataStore;
   const mutationView = state.mutationViews.get(entityRef.modelId);
-  const globalIdMutation = mutationView?.getAttributeMutationsForEntity(entityRef.expressId)
-    .find(mutation => mutation.name === 'GlobalId');
-  if (globalIdMutation) return globalIdMutation.value.length > 0 ? globalIdMutation.value : null;
-
-  const resolvedGlobalId = dataStore?.entities.getGlobalId(entityRef.expressId);
-  if (resolvedGlobalId) return resolvedGlobalId;
-
-  const overlayGlobalId = mutationView?.getNewEntity(entityRef.expressId)?.attributes[0];
-  return typeof overlayGlobalId === 'string' && overlayGlobalId.length > 0 ? overlayGlobalId : null;
+  // #7282: the canonical schema record owns named/positional precedence,
+  // current Root role and tombstones. Non-Root attribute 0 is never GlobalId.
+  if (!dataStore) return null;
+  // Immutable parsed columns already enforce the schema's Root-only identity
+  // contract. Source-only/cached identity reads need no graph hydration.
+  if (!mutationView) {
+    const identity = dataStore.entities.getGlobalId(entityRef.expressId);
+    return typeof identity === 'string' && identity.length > 0 ? identity : null;
+  }
+  const record = effectiveMetadataRecord(dataStore, entityRef.expressId, mutationView);
+  if (!record || record.names[0] !== 'GlobalId') return null;
+  const nativeIdentity = mutationView?.getNewEntity(entityRef.expressId)
+    || mutationView?.getPositionalMutationsForEntity(entityRef.expressId)?.has(0)
+    || mutationView?.getAttributeMutationsForEntity(entityRef.expressId).some(row => row.name === 'GlobalId');
+  // Cached source-free columns retain known immutable identities; missing
+  // graph attributes never make those names into current geometry evidence.
+  const globalId = nativeIdentity ? record.attributes[0] : dataStore.entities.getGlobalId(entityRef.expressId);
+  return typeof globalId === 'string' && globalId.length > 0 ? globalId : null;
 }

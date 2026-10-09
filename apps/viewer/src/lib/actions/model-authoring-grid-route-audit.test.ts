@@ -12,6 +12,7 @@ import { useViewerStore } from '@/store';
 import { addGridIn } from '@/store/slices/mutation-curtain-grid';
 import { addGridColumnIn } from '@/store/slices/mutation-grid-column';
 import { editedModelBytes } from '@/lib/export/edited-model-bytes';
+import { getMaxExpressId } from '@/hooks/ingest/viewerModelIngest';
 import { GROUND_STOREY, SAMPLE_MODEL, seedAuthoringSample, parseIfc, danglingReferences } from '@/test/authoring-sample-fixture';
 import { refId } from '../../../../../packages/create/src/in-store/host-geometry-frame.js';
 import { AnchorEntityReader } from '../../../../../packages/create/src/in-store/resolve-anchor.js';
@@ -43,6 +44,68 @@ async function nativeGrid() {
   assert.ok('expressId' in made, 'existing native grid builder is applicable to the actual SketchUp IFC storey');
   return { dataStore, view, storey, made };
 }
+
+for (const storage of ['live', 'saved'] as const) for (const route of ['attachment', 'rich'] as const) test(`#7304 ${storage} ${route} native nameless Grid evidence parses, applies a real bound column and undoes`, async () => {
+  const native = await nativeGrid(), made = native.made;
+  let { dataStore, view } = native;
+  useViewerStore.getState().storeEditors.get(SAMPLE_MODEL)!.setAttribute(made.expressId, 'Name', '$');
+  const saved = await parseIfc(editedModelBytes(dataStore, view));
+  assert.equal(new AnchorEntityReader(saved, null).entity(made.expressId)?.attributes[2], null,
+    'public native writer and independent STEP parsing prove the valid absent EXPRESS Name');
+  if (storage === 'saved') {
+    dataStore = saved;
+    view = new MutablePropertyView(saved.properties ?? null, SAMPLE_MODEL);
+    const model = useViewerStore.getState().models.get(SAMPLE_MODEL)!;
+    useViewerStore.setState({ models: new Map([[SAMPLE_MODEL, { ...model, ifcDataStore: saved, maxExpressId: getMaxExpressId(saved, []) }]]),
+      mutationViews: new Map([[SAMPLE_MODEL, view]]), storeEditors: new Map(), undoStacks: new Map(), redoStacks: new Map(), dirtyModels: new Set() });
+  }
+  const rendererId = useViewerStore.getState().toGlobalId(SAMPLE_MODEL, made.expressId);
+  useViewerStore.setState({ selectedEntityIds: new Set([rendererId]), selectedEntityId: rendererId,
+    selectedEntity: { modelId: SAMPLE_MODEL, expressId: made.expressId }, selectedEntities: [], selectedEntitiesSet: new Set() });
+  const row = route === 'attachment' ? captureSelectionGrounding(useViewerStore.getState()).elements[0]
+    : JSON.parse(captureEvidence('selection').payload).evidence.rows[0].data;
+  assert.ok(row, 'the canonical renderer identity resolves to the native Grid');
+  assert.equal(row.name, null); assert.equal(row.nativeGrid?.status, 'available');
+  const proposal = parseModelAuthoringBatch(batch([{ op: 'column.createOnGrid', ref: 'unnamed-grid-column',
+    storey: { globalId: GROUND_STOREY, modelId: SAMPLE_MODEL },
+    grid: { target: { globalId: row.globalId, modelId: row.modelId, ifcClass: row.type, name: row.name },
+      expected: row.nativeGrid.expected, IntersectingAxes: [made.build.uAxisIds[1], made.build.vAxisIds[1]] },
+    params: { Position: [6, 4, 0], Width: .4, Depth: .2, Height: 3 } }]));
+  const revision = view.getMutationRevision();
+  const preview = previewModelAuthoring(useViewerStore.getState(), proposal);
+  assert.equal(preview.rows[0].status, 'ready', preview.rows[0].issue ?? '');
+  assert.equal(view.getMutationRevision(), revision, 'nameless-grid preflight is read-only');
+  const outcome = commitModelAuthoring(useViewerStore, preview, new Set([0]), 'native nameless grid');
+  assert.ok(outcome.ok, outcome.ok ? '' : outcome.detail ?? outcome.reason);
+  const parsed = await parseIfc(editedModelBytes(dataStore, view)), read = new AnchorEntityReader(parsed, null);
+  const columnId = parsed.entities.getExpressIdByGlobalId(outcome.receipt.applied[0].globalId);
+  const local = read.entity(refId(read.entity(columnId)?.attributes[5])!)!;
+  const placement = read.entity(refId(local.attributes[0])!)!;
+  assert.equal(placement.type.toUpperCase(), 'IFCGRIDPLACEMENT');
+  assert.deepEqual(read.entity(refId(placement.attributes[0])!)?.attributes[0], [made.build.uAxisIds[1], made.build.vAxisIds[1]]);
+  assert.equal(read.entity(made.expressId)?.attributes[2], null, 'creation preserves the host Grid Name');
+  assert.deepEqual(undoModelChanges(useViewerStore, outcome.receipt), { ok: true });
+  const undone = await parseIfc(editedModelBytes(dataStore, view));
+  assert.equal(undone.entities.getExpressIdByGlobalId(outcome.receipt.applied[0].globalId), -1);
+  assert.equal(new AnchorEntityReader(undone, null).entity(made.expressId)?.attributes[2], null);
+  const operation = proposal.operations[0];
+  assert.equal(operation.op, 'column.createOnGrid');
+  if (operation.op !== 'column.createOnGrid' || !('target' in operation.grid)) throw new Error('native existing-grid proposal required');
+  const emptyInsteadOfAbsent = parseModelAuthoringBatch(batch([{ ...operation, grid: { ...operation.grid,
+    target: { ...operation.grid.target, name: '' } } }]));
+  const beforeRefusal = view.getMutationRevision();
+  assert.notEqual(previewModelAuthoring(useViewerStore.getState(), emptyInsteadOfAbsent).rows[0].status, 'ready',
+    'an explicit empty Name must not authorize a grid whose Name is absent');
+  assert.equal(view.getMutationRevision(), beforeRefusal);
+  useViewerStore.getState().storeEditors.get(SAMPLE_MODEL)!.setAttribute(made.expressId, 'Name', '');
+  const empty = await parseIfc(editedModelBytes(dataStore, view));
+  assert.equal(new AnchorEntityReader(empty, null).entity(made.expressId)?.attributes[2], '', 'native export preserves an explicit empty Name');
+  const emptyRow = route === 'attachment' ? captureSelectionGrounding(useViewerStore.getState()).elements[0]
+    : JSON.parse(captureEvidence('selection').payload).evidence.rows[0].data;
+  assert.equal(emptyRow.name, '', 'native transport preserves the actual empty Name instead of inventing absence');
+  const emptyReview = previewModelAuthoring(useViewerStore.getState(), emptyInsteadOfAbsent);
+  assert.equal(emptyReview.rows[0].status, 'ready', emptyReview.rows[0].issue ?? '');
+});
 
 test('P15A audit native grid and bound column preserve actual IFC relationships through export/reparse and Undo/Redo', async () => {
   const { dataStore, view, storey, made } = await nativeGrid();

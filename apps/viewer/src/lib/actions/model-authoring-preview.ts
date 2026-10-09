@@ -197,7 +197,9 @@ function resolve(ctx: Context, row: AuthoringRow): void {
         if (!uniqueSplitGuid(r.dataStore, r.editor, op.storey.globalId)) throw new Refusal('ambiguous-target', 'The native storey GlobalId is not unique');
         if (!nativeLengthUnitAvailable(r)) throw new Refusal('unsupported', 'The grid requires readable declared length units');
         if (op.op === 'column.createOnGrid') {
-          row.resolved.grid = element(ctx, 'ref' in op.grid ? { ref: op.grid.ref } : op.grid.target, row);
+          // Generic element labels use empty text when unnamed; the Grid's
+          // nullable native Name stays intact and is checked by its draft writer.
+          row.resolved.grid = element(ctx, 'ref' in op.grid ? { ref: op.grid.ref } : { ...op.grid.target, name: op.grid.target.name ?? '' }, row);
           if ('target' in op.grid && 'id' in row.resolved.grid) {
             if (!uniqueSplitGuid(r.dataStore, r.editor, op.grid.target.globalId)) throw new Refusal('ambiguous-target', 'The current grid GlobalId is not unique');
             if (!sameGridExpected(nativeGridExpected(r, row.resolved.grid.id, storey.expressId), op.grid.expected)) throw new Refusal('conflict', 'The native grid axes or current placement differ from the full expected snapshot');

@@ -14,6 +14,7 @@ import { nativeStructuralEvidence } from './structural-graph-evidence';
  */
 
 import { nativeGridEvidence, type NativeGridEvidence } from './native-grid-evidence';
+import { nativeGridName } from './model-authoring-grid-native';
 import { nativeAuthoringEvidence, type NativeAuthoringEvidence } from './native-authoring-evidence';
 import type { ViewerState } from '@/store';
 import { resolveEntityRefGlobalIdFromState } from '@/store/resolveEntityRef';
@@ -98,10 +99,11 @@ export function captureSelectionGrounding(state: GroundingState, limit = SELECTI
     const globalId = ref && store ? resolveEntityRefGlobalIdFromState({ models: state.models,
       mutationViews: state.mutationViews, ifcDataStore: null }, ref) : null;
     if (!ref || !store || !globalId || state.mutationViews?.get(ref.modelId)?.isDeleted(ref.expressId)) { unresolved++; continue; }
+    const gridName = nativeGridName(nativeTarget(ref.modelId), ref.expressId);
     elements.push({
       globalId, modelId: ref.modelId,
       type: effectiveSelectedClass(store, state.mutationViews.get(ref.modelId), ref.expressId) ?? 'unknown',
-      name: nativeRootName({ dataStore: store, view: state.mutationViews.get(ref.modelId) }, ref.expressId) || null,
+      name: gridName === undefined ? nativeRootName({ dataStore: store, view: state.mutationViews.get(ref.modelId) }, ref.expressId) || null : gridName,
       nativeEdit: nativeEditEvidence(nativeTarget(ref.modelId), ref.expressId),
       ...nativeAuthoringEvidence(nativeTarget(ref.modelId), ref.expressId),
       ...(() => { const nativeGrid = nativeGridEvidence(nativeTarget(ref.modelId), ref.expressId); return nativeGrid ? { nativeGrid } : {}; })(),

@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { addGridToStore, addColumnOnGridToStore, extractGridAxesForStorey, resolveSpatialAnchor } from '@ifc-lite/create';
-import type { IfcDataStore } from '@ifc-lite/parser';
+import { effectiveMetadataRecord, type IfcDataStore } from '@ifc-lite/parser';
 import type { StoreEditor } from '@ifc-lite/mutations';
 import { AnchorEntityReader } from '../../../../../packages/create/src/in-store/resolve-anchor.js';
 import { getModelLengthUnitScale } from '@/lib/length-unit-scale';
@@ -17,6 +17,14 @@ import { gridParamsInMetres, gridColumnParamsInMetres } from './model-authoring-
 import { uniqueSplitGuid } from './model-authoring-split';
 import { MAX_GRID_AXES } from '@/lib/commands/modeling/commands/grid-place-geometry';
 import type { ElementId } from './model-authoring-native';
+
+/** Preserve the canonical nullable Name pin, including explicit empty strings. */
+export function nativeGridName(target: Pick<ModelEditTarget, 'dataStore' | 'view'> | null, gridId: number): string | null | undefined {
+  const root = target && effectiveMetadataRecord(target.dataStore, gridId, target.view);
+  if (!root || root.type.toUpperCase() !== 'IFCGRID' || !(2 in root.attributes)) return undefined;
+  const name = root.attributes[2];
+  return name === null || typeof name === 'string' ? name : undefined;
+}
 
 /** Native source and effective membership must prove the entire selected grid, not merely readable neighbours. */
 export function nativeGridExpected(target: ModelEditTarget | null, gridId: number, storeyId: number): GridExpected | null {
@@ -71,7 +79,8 @@ export function gridBindingForDraft(store: IfcDataStore, draft: StoreEditor, op:
   if ('target' in op.grid) {
     const view = draft.getMutationView();
     const root = new AnchorEntityReader(store, view).entity(GridId);
-    if (!uniqueSplitGuid(store, draft, op.grid.target.globalId) || root?.attributes[0] !== op.grid.target.globalId || (root.attributes[2] ?? '') !== op.grid.target.name
+    const name = nativeGridName({ dataStore: store, view }, GridId);
+    if (!uniqueSplitGuid(store, draft, op.grid.target.globalId) || root?.attributes[0] !== op.grid.target.globalId || name !== op.grid.target.name
       || !sameGridExpected(nativeGridExpected({ modelId: op.grid.target.modelId ?? '', dataStore: store, view, editor: draft }, GridId, storeyId), op.grid.expected)) throw new Error('The current native grid identity, axes or placement changed before writing');
     return { GridId, IntersectingAxes: op.grid.IntersectingAxes };
   }

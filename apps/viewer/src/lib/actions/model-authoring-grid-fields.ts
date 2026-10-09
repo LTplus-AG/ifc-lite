@@ -17,7 +17,7 @@ export interface GridAxisExpected {
 }
 export interface GridExpected { axes: GridAxisExpected[]; frame: { o: [number, number, number]; x: [number, number, number]; y: [number, number, number]; z: [number, number, number] } }
 export type ReviewedGridBinding =
-  | { target: ExistingElement; expected: GridExpected; IntersectingAxes: [number, number] }
+  | { target: Omit<ExistingElement, 'name'> & { name: string | null }; expected: GridExpected; IntersectingAxes: [number, number] }
   | { ref: string; IntersectingAxes: [string, string] };
 export type ReviewedGridOp =
   | { op: 'grid.create'; ref: string; storey: StoreyTarget; params: GridInStoreParams }
@@ -110,7 +110,7 @@ export function parseGridBinding(value: unknown, earlierGrid: (ref: string) => b
   if (new Set(expected.axes.map(row => row.expressId)).size !== expected.axes.length) throw new Error(`${at}: native axis identities must be unique`);
   const ids = p.IntersectingAxes;
   if (!Array.isArray(ids) || ids.length !== 2 || ids[0] === ids[1] || ids.some(id => !Number.isSafeInteger(id) || !expected.axes.some(axis => axis.expressId === id))) throw new Error(`${at}: crossing must select two actual expected axes`);
-  return { target: { ...parseGridStorey(target, at), ifcClass: 'IfcGrid', name: nativeName(target.name, at) }, expected, IntersectingAxes: [ids[0], ids[1]] };
+  return { target: { ...parseGridStorey(target, at), ifcClass: 'IfcGrid', name: target.name === null ? null : nativeName(target.name, at) }, expected, IntersectingAxes: [ids[0], ids[1]] };
 }
 export function gridParamsInMetres(params: GridInStoreParams, units: AuthoringUnits): GridInStoreParams {
   const m = (n: number) => units === 'mm' ? n / 1000 : n;

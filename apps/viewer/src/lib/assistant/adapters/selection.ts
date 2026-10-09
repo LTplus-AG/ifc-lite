@@ -47,6 +47,7 @@ import { nativeReadTargets } from '@/lib/actions/model-authoring-read-target';
 
 import { nativeEditEvidence, nativeRootName } from '@/lib/actions/native-edit-evidence';
 import { nativeGridEvidence } from '@/lib/actions/native-grid-evidence';
+import { nativeGridName } from '@/lib/actions/model-authoring-grid-native';
 import { nativeTypeEvidence } from '@/lib/actions/native-type-evidence';
 import { nativeCostTransportEvidence } from '@/lib/actions/cost-graph-evidence';
 import type { ModelEditTarget } from '@/store/slices/mutation-modelling-records';
@@ -155,6 +156,7 @@ function elementRow(s: ViewerState, ref: EntityRef, source: ModelSource, rich: b
     })),
   }));
   const name = source.store ? nativeRootName({ dataStore: source.store, view: source.view }, ref.expressId) : data.attributes.get('Name');
+  const gridName = nativeGridName(nativeTarget, ref.expressId);
   return evidenceRow({
     kind: 'selected-element', modelId: ref.modelId,
     globalId: resolveEntityRefGlobalIdFromState(s, ref), expressId: ref.expressId,
@@ -162,7 +164,7 @@ function elementRow(s: ViewerState, ref: EntityRef, source: ModelSource, rich: b
   }, {
     modelName: source.name,
     type: effectiveSelectedClass(source.store, source.view, ref.expressId),
-    name: typeof name === 'string' && name.length > 0 ? bounded(name) : null,
+    name: gridName === undefined ? typeof name === 'string' && name.length > 0 ? bounded(name) : null : gridName === null ? null : bounded(gridName),
     ...nativeAuthoringEvidence(nativeTarget, ref.expressId, rich),
     ...(completeStructuralPin ? { nativeStructural: nativeStructuralTransportEvidence(nativeTarget, ref.expressId) } : {}),
     attributes, psets, psetCount: data.psets.length, quantities, qsetCount: data.qsets.length,

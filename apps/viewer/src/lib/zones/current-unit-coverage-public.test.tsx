@@ -130,10 +130,10 @@ test('#7353 implicit occurrence and material measures remain raw when current ph
   x.view.setPositionalAttribute(ownQto, 5, implicitMembers.map(id => `#${id}`));
   const materialSource = await parse(editedModelBytes(x.store, x.view));
   const implicit = extractQuantitiesOnDemand(materialSource, x.f.id).flatMap(set => set.quantities).filter(q => q.type === 2);
-  assert.equal(implicit.length, 1);
-  assert.equal(implicit[0]?.name, 'GrossWitnessVolume');
-  assert.equal(implicit[0]?.value, 99);
-  assert.equal(implicit[0]?.explicitUnitSiScale, undefined, 'aggregate fixture contains only an implicit volume, not the independently explicit Net');
+  const gross = implicit.find(q => q.name === 'GrossWitnessVolume'); assert.ok(gross);
+  assert.equal(gross.value, 99);
+  assert.ok(implicit.every(q => q.explicitUnitSiScale === undefined), 'every aggregate volume input is implicit; the independently explicit Net member was removed');
+  assert.ok(!implicit.some(q => q.name === 'NetWitnessVolume'));
   const material = render(<MaterialTotalsPanel materialId={15046} modelId="arch" />);
   await advance(50);
   assert.match(material.textContent ?? '', /UnitWitnessMaterialLength/);

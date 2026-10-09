@@ -80,7 +80,7 @@ it('7307 native clash impact opens its exact finding and selects its head-side c
  // descriptions remain distinct finding IDs; their documented ID order must
  // retain every native finding rather than selecting any member of the run.
  const equivalentRows = rows.filter(candidate => candidate.textContent === row.textContent);
- const ordered = matches.toSorted((a, b) => a.id.localeCompare(b.id));
+ const ordered = [...matches].sort((a, b) => a.id.localeCompare(b.id));
  assert.equal(equivalentRows.length, ordered.length, '#7338 every native finding with these exact endpoints has its own row');
  const matching = ordered[equivalentRows.indexOf(row)];
  assert.ok(matching);

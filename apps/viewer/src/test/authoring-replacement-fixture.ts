@@ -9,6 +9,7 @@ import assert from 'node:assert/strict';
 import { useViewerStore } from '@/store';
 import { LocalBackend } from '@/sdk/local-backend';
 import { configureMutationView } from '@/utils/configureMutationView';
+import { getMaxExpressId } from '@/hooks/ingest/viewerModelIngest';
 import { GROUND_STOREY,SAMPLE_MODEL,seedAuthoringSample,parseIfc } from './authoring-sample-fixture';
 import { editedModelBytes } from '@/lib/export/edited-model-bytes';
 export const replacementVariants:InStoreReplacementElement[]=[
@@ -30,8 +31,7 @@ export async function setupReplacementSource(element:InStoreReplacementElement){
  }};
  const made=add(element),saved=await parseIfc(editedModelBytes(dataStore,view)),savedView=new MutablePropertyView(saved.properties,SAMPLE_MODEL);configureMutationView(savedView,saved);
  const state=useViewerStore.getState(),model=state.models.get(SAMPLE_MODEL);assert.ok(model);
- // @raw-entity-enumeration-ok: independent saved source allocation watermark before any live edit view writes
- useViewerStore.setState({models:new Map([[SAMPLE_MODEL,{...model,ifcDataStore:saved,maxExpressId:Math.max(...saved.entityIndex.byId.keys())}]]),mutationViews:new Map([[SAMPLE_MODEL,savedView]]),storeEditors:new Map(),undoStacks:new Map(),redoStacks:new Map(),mutationBatchTags:new Map()});
+ useViewerStore.setState({models:new Map([[SAMPLE_MODEL,{...model,ifcDataStore:saved,maxExpressId:getMaxExpressId(saved,[])}]]),mutationViews:new Map([[SAMPLE_MODEL,savedView]]),storeEditors:new Map(),undoStacks:new Map(),redoStacks:new Map(),mutationBatchTags:new Map()});
  return {dataStore:saved,view:savedView,sdk,storey,made};
 }
 

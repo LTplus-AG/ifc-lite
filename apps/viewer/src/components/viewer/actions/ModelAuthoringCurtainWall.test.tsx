@@ -22,7 +22,7 @@ test('#7298 mounted native curtain review shows complete member/panel counts and
     {op:'curtainWall.create',ref:'first',storey:{globalId:GROUND_STOREY},params:{...params,Name:'Checked native curtain',MullionProfile:{Type:'Circle',Radius:.04}}},
     {op:'curtainWall.create',ref:'second',storey:{globalId:GROUND_STOREY},params:{...params,Name:'Excluded native curtain'}},
   ]}));const history=view.getMutations(),ui=render(<ModelAuthoringReview batch={batch} origin="native curtain review"/>);
-  assert.match(ui.textContent??'',/Create curtain wall/);assert.match(ui.textContent??'',/IfcMember=9/);assert.match(ui.textContent??'',/IfcPlate=4/);assert.match(ui.textContent??'',/live-edited storey placement chains are not drawn/);assert.match(ui.textContent??'',/No geometry preview is available for this edit/);assert.deepEqual(view.getMutations(),history);
+  assert.match(ui.textContent??'',/Create curtain wall/);assert.match(ui.textContent??'',/IfcMember=9/);assert.match(ui.textContent??'',/IfcPlate=4/);assert.match(ui.textContent??'',/changed live storey elevation are not drawn/);assert.match(ui.textContent??'',/No geometry preview is available for this edit/);assert.deepEqual(view.getMutations(),history);
   const checkboxes=[...ui.querySelectorAll<HTMLInputElement>('input[type="checkbox"]')];assert.equal(checkboxes.length,2);act(()=>checkboxes[1].click());
   const apply=[...ui.querySelectorAll('button')].find(button=>button.textContent==='Apply 1 operation');assert.ok(apply);click(apply);assert.match(ui.textContent??'',/Applied 1 change/);
   const bytes=editedModelBytes(dataStore,view);assert.deepEqual(danglingReferences(new TextDecoder().decode(bytes)),[]);const parsed=await parseIfc(bytes);

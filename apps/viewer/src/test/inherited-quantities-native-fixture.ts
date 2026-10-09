@@ -30,7 +30,7 @@ export async function inheritedSource(t: TestContext): Promise<NativeInheritedFi
  const owner = typeof ownerId === 'number' ? `#${ownerId}` : null;
  // Prepare authentic exported source ownership: keep the real wall/geometry but replace its quantity/type assignments.
  for (const kind of ['IFCRELDEFINESBYPROPERTIES', 'IFCRELDEFINESBYTYPE']) {
-  // @raw-entity-enumeration-ok: fixture enumerates its freshly parsed source assignments before authoring the export overlay.
+  // @raw-entity-enumeration-ok fixture enumerates its freshly parsed source assignments before authoring the export overlay.
   for (const id of f.store.entityIndex.byType.get(kind) ?? []) {
    const attrs = f.store.getEntity(id)?.attributes;
    const members = attrs?.[4];
@@ -104,7 +104,7 @@ export async function prepareQuantityRefusal(fixture: NativeQuantityFixture, kin
 
 export async function prepareProjectRefusal(fixture: NativeQuantityFixture, kind: 'unset-context' | 'deleted-project' | 'deleted-assignment' | 'unsupported-unit' | 'empty-assignment' | 'cyclic-unit' | 'oversized-dependencies') {
  const { f, store, view } = fixture;
-  // @raw-entity-enumeration-ok: fixture locates the original parsed project before applying the scenario mutation.
+  // @raw-entity-enumeration-ok fixture locates the original parsed project before applying the scenario mutation.
   const project = store.entityIndex.byType.get('IFCPROJECT')?.[0]; assert.ok(project);
   const assignment = store.getEntity(project)?.attributes[8]; assert.equal(typeof assignment, 'number');
   const members = store.getEntity(assignment as number)?.attributes[0]; assert.ok(Array.isArray(members));
@@ -166,9 +166,10 @@ export async function prepareQuantityUnitRefusal(fixture: NativeQuantityFixture,
   view.createQuantitySet(f.id, 'Native occurrence quantities', [{ name: 'NetVolume', value: 25, quantityType: QuantityType.Volume }]);
   const exported = await parse(editedModelBytes(store, view));
   assert.equal(net(extractQuantitiesOnDemand(exported, f.id)), 25, 'native export preserves the independent known occurrence basis');
-  // @raw-entity-enumeration-ok: independent reparse asserts the exported source omits the deleted unit, without a live view.
-  if (kind === 'deleted') assert.equal(exported.entityIndex.byId.has(unit), false, 'native exported unit is deleted');
-  else assert.ok(exported.getEntity(unit), 'refusal graph is present in the actual native export');
+  if (kind === 'deleted') {
+   // @raw-entity-enumeration-ok independent reparse asserts the exported source omits the deleted unit, without a live view.
+   assert.equal(exported.entityIndex.byId.has(unit), false, 'native exported unit is deleted');
+  } else assert.ok(exported.getEntity(unit), 'refusal graph is present in the actual native export');
   if (kind === 'oversized') assert.equal(extractTypeQuantitiesOnDemand(exported, f.id)?.quantities
    .flatMap(set => set.quantities).find(q => q.name === 'NetVolume')?.explicitUnitSiScale, 1,
    'independent source reparse resolves every supported factor before current capture enforces its read cap');
@@ -176,7 +177,7 @@ export async function prepareQuantityUnitRefusal(fixture: NativeQuantityFixture,
 
 export async function prepareNewProjectContext(fixture: NativeQuantityFixture) {
  const { f, store, view } = fixture;
- // @raw-entity-enumeration-ok: fixture locates the original parsed project before applying the scenario mutation.
+ // @raw-entity-enumeration-ok fixture locates the original parsed project before applying the scenario mutation.
  const project = store.entityIndex.byType.get('IFCPROJECT')?.[0]; assert.ok(project);
  const assignment = store.getEntity(project)?.attributes[8]; assert.equal(typeof assignment, 'number');
  const members = store.getEntity(assignment as number)?.attributes[0]; assert.ok(Array.isArray(members));
@@ -197,7 +198,7 @@ export async function prepareNewProjectContext(fixture: NativeQuantityFixture) {
 export async function prepareImplicitProjectUnit(fixture: NativeQuantityFixture) {
  const { f, store, a, view } = fixture;
  assert.equal(store.getEntity(a.volume)?.attributes[2], null, 'native type quantity inherits its project unit');
- // @raw-entity-enumeration-ok: fixture selects the original source SI unit before changing its prefix in the overlay.
+ // @raw-entity-enumeration-ok fixture selects the original source SI unit before changing its prefix in the overlay.
  const volumeUnit = (store.entityIndex.byType.get('IFCSIUNIT') ?? []).find(id =>
   String(store.getEntity(id)?.attributes[1]).replace(/\./g, '') === 'VOLUMEUNIT');
  assert.ok(volumeUnit, 'authentic AC20 source has an explicit project volume unit');

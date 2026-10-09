@@ -9,7 +9,7 @@ import type { MutablePropertyView } from '@ifc-lite/mutations';
 export function useCurrentProjectUnits(store: IfcDataStore | null, view: MutablePropertyView | undefined): CurrentProjectUnitResult {
   const revision = view?.getMutationRevision();
   return useMemo(() => {
-    if (!store?.source.length) return { status: 'available', reason: null, value: ProjectUnits.empty() };
+    if (!store) return { status: 'available', reason: null, value: ProjectUnits.empty() };
     return view ? readCurrentProjectUnits(store, view)
       : { status: 'available', reason: null, value: extractProjectUnits(store.source, store.entityIndex) };
   }, [store, view, revision]);

@@ -24,7 +24,9 @@ export function readCurrentProjectUnits(store: IfcDataStore, view: MetadataReadV
         const selected = projectId ?? projects[0];
         if (selected === undefined) {
             // A source with no project keeps the canonical undeclared-unit convention.
-            if (store.entityIndex.byType.get('IFCPROJECT')?.length) throw new ProjectUnitReadError('Native project unit context was deleted');
+            for (const _project of iterateEffectiveEntities(store, undefined, ['IfcProject'])) {
+                throw new ProjectUnitReadError('Native project unit context was deleted or retyped');
+            }
             return { status: 'available', reason: null, value: ProjectUnits.empty() };
         }
         if (!projects.includes(selected)) throw new ProjectUnitReadError('Native owning project is unavailable');

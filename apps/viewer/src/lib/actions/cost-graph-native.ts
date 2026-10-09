@@ -10,6 +10,7 @@ import { costRef, type CostOperation, type CostProposal, type CostRef } from './
 import type { CostSnapshot } from './cost-graph-evidence';
 import { uniqueSplitGuid } from './model-authoring-split';
 import { liveEntityConforms } from '@ifc-lite/create';
+import { effectiveMetadataRecord } from '@ifc-lite/parser';
 
 export interface CostWriteRow { index: number; expressId: number | null }
 /** Existing references must be present in the complete supplied native snapshot, never guessed IDs. */
@@ -57,6 +58,10 @@ export function writeCostOperations(state: Pick<ViewerState, 'models' | 'mutatio
       case 'cost.item.assign': expressId = write.assignToCostItem(modelId, resolved(operation.target!), operation.related!.map(resolved)).expressId; break;
       case 'cost.item.values': expressId = resolved(operation.target!); write.setCostItemValues(modelId, expressId, operation.related!.map(resolved)); break;
       case 'cost.remove': expressId = resolved(operation.target!); write.removeCostEntity(modelId, expressId, { detach: operation.detach }); break;
+    }
+    if (expressId !== null && liveEntityConforms(dataStore, expressId, 'IfcRoot', view)) {
+      const guid = effectiveMetadataRecord(dataStore, expressId, view)?.attributes[0];
+      if (typeof guid !== 'string' || !uniqueSplitGuid(dataStore, draft, guid)) throw new Error('The native Cost result has an ambiguous or unavailable Root identity');
     }
     if (operation.ref) {
       if (expressId === null) throw new Error('This native Cost operation returned no reference');

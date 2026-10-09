@@ -1,4 +1,4 @@
-/* This Source Code Form is subject to the Mozilla Public
+/* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import type { StoreApi } from 'zustand';
@@ -66,7 +66,9 @@ export function prepareCostReview(store: StoreApi<ViewerState>, input: CostPropo
   if (!preview.delta.length) throw new Error('The approved native operations make no change');
   // Fresh created GUIDs are native random identities, not a promised literal preview GUID.
   // Existing records, including every shared referrer/cascade target, are captured exactly.
+  const reviewSignature = JSON.stringify({ snapshot, approved: [...approved], delta: preview.delta });
   const validate = (initializing = false) => {
+    if (reviewSignature !== JSON.stringify({ snapshot, approved: [...approved], delta: preview.delta })) throw new Error('The reviewed Cost choices or native delta changed');
     if (signature !== JSON.stringify(proposal)) throw new Error('The reviewed Cost proposal changed');
     if (captured.length !== store.getState().models.size || captured.some(row => {
       const current = store.getState(), model = current.models.get(row.id);

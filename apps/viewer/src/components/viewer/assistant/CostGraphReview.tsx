@@ -45,7 +45,7 @@ export function CostGraphReview({ proposal, origin }: { proposal: CostProposal; 
     }
   };
   const apply = () => {
-    if (!review || stale || receipt) return;
+    if (!owner.current.mounted || owner.current.review !== review || !review || stale || receipt) return;
     try {
       owner.current.committing = true;
       const result = commitReviewedCost(useViewerStore, review, origin);

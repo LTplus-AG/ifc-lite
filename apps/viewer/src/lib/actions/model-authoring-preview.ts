@@ -1,7 +1,6 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
-
 /**
  * Preflight for a reviewed authoring batch: resolve every element, storey,
  * type and material; check the edit gate and each expected class, name, type,
@@ -10,7 +9,9 @@
  * pure snapshot (it writes nothing); commit re-runs it and refuses if
  * anything moved since.
  */
-
+import { readNativeReplacementExpected } from './model-authoring-replacement';
+import { authoringSlabOpeningGhost } from './model-authoring-slab-opening-ghost';
+import { verifySlabOpeningHost } from './model-authoring-slab-opening';
 import { stairRailingGhost } from './model-authoring-stair-railing-ghost';
 import { nativeStairEvidence, sameStairSnapshot } from './model-authoring-stair-lifecycle';
 import { stairPatchInMetres } from './model-authoring-stair-railing-fields';
@@ -18,15 +19,12 @@ import type { ViewerState } from '@/store';
 import { mutationDenial } from '@/store/mutation-permission';
 import { stairRailingRefusal } from '@/store/slices/mutation-stair-railing';
 import { materialsOf, typeOf } from '@/lib/commands/modeling/authored-kinds';
-import { buildStoreyWorkplane, elementStoreyId, isWorkplane } from '@/lib/commands/modeling/workplane';
-import { planElementTransform, type TransformRoot } from '@/lib/element-transform/plan';
-import { describeRefusal } from '@/lib/element-transform/commit';
 import { copiedProductsInStore, createCopyContext, productStoreyOrigin, liveEntityConforms } from '@ifc-lite/create';
 import { batchDigest } from './model-change-preview';
 import { isNewElement, toMetres, type AuthoringOp, type ElementTarget, type ExistingElement, type ModelAuthoringBatch } from './model-authoring';
 import { dryRunAuthoring, type ElementId } from './model-authoring-native';
 import {
-  authoringReader, className, conforms, deletionRefusal, materialNameOf, nameOf, placementAngle, typeNameOf, type AuthoringReader,
+  authoringReader, className, conforms, deletionRefusal, materialNameOf, nameOf, typeNameOf, type AuthoringReader,
 } from './model-authoring-read';
 import { captureAuthoringSources } from './model-authoring-sources';
 import { resolveGlobalId } from './resolve-global-id';
@@ -42,13 +40,12 @@ import { readSplitSnapshot, sameSplitSnapshot } from './model-authoring-split-st
 import { uniqueSplitGuid } from './model-authoring-split';
 import { authoringSplitMarker } from './model-authoring-split-ghost';
 import { authoringSizeGhost } from './model-authoring-size-ghost';
+import { reviewAlignment } from './model-authoring-align';
+import { reviewElementTransform } from './model-authoring-transform-review';
+import { AuthoringRefusal as Refusal } from './model-authoring-preview-refusal';
 
 import type { AuthoringRowStatus, AuthoringRow, ModelAuthoringPreview } from './model-authoring-preview-types';
 export type { AuthoringRowStatus, AuthoringBefore, AuthoringRow, ModelAuthoringPreview } from './model-authoring-preview-types';
-
-class Refusal extends Error {
-  constructor(readonly status: AuthoringRowStatus, message: string) { super(message); }
-}
 
 interface Context {
   state: ViewerState;
@@ -78,7 +75,7 @@ function existing(ctx: Context, target: ExistingElement, row: AuthoringRow): num
   join(row, modelId);
   const r = reader(ctx, modelId);
   if ((row.op.op.startsWith('stair.') || row.op.op.startsWith('railing.')) && !uniqueSplitGuid(r.dataStore, r.editor, target.globalId)) throw new Refusal('ambiguous-target', 'The native stair or railing target GlobalId is not unique in its owning model');
-  if ((row.op.op === 'element.split' || row.op.op === 'element.trimExtend' || row.op.op === 'type.detach') && !uniqueSplitGuid(r.dataStore, r.editor, target.globalId)) throw new Refusal('ambiguous-target', 'The native target GlobalId is not unique in its owning model');
+  if ((row.op.op === 'element.replace' || row.op.op === 'element.align' || (row.op.op === 'element.rotate' && !!row.op.pivot) || row.op.op === 'element.split' || row.op.op === 'element.trimExtend' || row.op.op === 'type.detach') && !uniqueSplitGuid(r.dataStore, r.editor, target.globalId)) throw new Refusal('ambiguous-target', 'The native target GlobalId is not unique in its owning model');
   const ifcClass = className(r, expressId);
   const name = nameOf(r, expressId);
   row.before.ifcClass = ifcClass;
@@ -102,19 +99,6 @@ function element(ctx: Context, target: ElementTarget, row: AuthoringRow): Elemen
   const model = ctx.rows[creator].modelId;
   if (model) join(row, model);
   return { ref: target.ref };
-}
-
-function transformRoot(ctx: Context, row: AuthoringRow, expressId: number): TransformRoot {
-  const r = reader(ctx, row.modelId!);
-  const plan = planElementTransform({ dataStore: r.dataStore, view: r.view, selected: [expressId],
-    storeyOf: (id) => elementStoreyId(ctx.state, r.modelId, id) });
-  if (plan.refused.length > 0) throw new Refusal('invalid', describeRefusal(plan.refused[0]));
-  const root = plan.roots.find((candidate) => candidate.expressId === expressId);
-  if (!root) throw new Refusal('invalid', 'The element moves with its host; move the host instead');
-  const plane = buildStoreyWorkplane(ctx.state, r.modelId, root.storeyId, 0);
-  if (!isWorkplane(plane)) throw new Refusal('unsupported', plane.refused);
-  row.before.origin = [...root.origin];
-  return root;
 }
 
 const near = (a: number, b: number, tolerance: number) => Math.abs(a - b) <= tolerance;
@@ -179,6 +163,10 @@ function resolve(ctx: Context, row: AuthoringRow): void {
       }
       return;
     }
+    case 'element.replace': {
+      row.resolved.target=row.expressId=existing(ctx,op.target,row);const r=reader(ctx,row.modelId!);readNativeReplacementExpected(r.dataStore,r.editor,row.expressId);
+      const storey=locate(ctx,op.storey);join(row,storey.modelId);row.resolved.storey=storey.expressId;row.before.storeyName=nameOf(r,storey.expressId);row.previewUnavailable=true;return;
+    }
     case 'stair.resize': case 'stair.delete': case 'railing.delete': case 'stair.replace': case 'railing.replace': {
       row.resolved.target=row.expressId=existing(ctx,op.target,row);
       const nativeRefusal=stairRailingRefusal(ctx.state,row.modelId!);if(nativeRefusal)throw new Refusal('unsupported',nativeRefusal);
@@ -239,10 +227,17 @@ function resolve(ctx: Context, row: AuthoringRow): void {
       if (refusal) throw new Refusal('unsupported', refusal);
       return;
     }
+    case 'element.align': {
+      const reference = existing(ctx, op.reference, row);
+      const targets = op.targets.map(target => existing(ctx, target, row));
+      row.expressId = reference;
+      row.resolved.alignment = { reference, targets, storeyId: 0 };
+      reviewAlignment(ctx.state, ctx.batch, row, reader(ctx, row.modelId!));
+      return;
+    }
     case 'element.move': case 'element.rotate': {
       row.resolved.target = row.expressId = existing(ctx, op.target, row);
-      const root = transformRoot(ctx, row, row.expressId);
-      return op.op === 'element.move' ? checkMove(ctx, op, root) : checkTurn(ctx, row, op, root);
+      return reviewElementTransform(ctx.state, reader(ctx, row.modelId!), ctx.batch, row);
     }
     case 'type.detach': {
       row.resolved.target = row.expressId = existing(ctx, op.target, row);
@@ -269,26 +264,14 @@ function resolve(ctx: Context, row: AuthoringRow): void {
     case 'hosted.create': {
       row.resolved.host = element(ctx, op.host, row);
       if ('id' in row.resolved.host) row.expressId = row.resolved.host.id;
+      if ('params' in op) {
+        if (row.expressId !== null) { const r = reader(ctx, row.modelId!);
+          try { row.before.split = verifySlabOpeningHost(ctx.batch, op, r.dataStore, r.editor, row.expressId, false); }
+          catch (error) { throw new Refusal('invalid', error instanceof Error ? error.message : String(error)); }
+        }
+      }
       return;
     }
-  }
-}
-
-function checkMove(ctx: Context, op: Extract<AuthoringOp, { op: 'element.move' }>, root: TransformRoot): void {
-  if (!op.from) return;
-  const from = op.from.map((v) => toMetres(ctx.batch, v));
-  if (!near(from[0], root.origin[0], 0.001) || !near(from[1], root.origin[1], 0.001)) {
-    throw new Refusal('conflict', `Expected the element at (${op.from.join(', ')}); it is elsewhere now`);
-  }
-}
-
-function checkTurn(ctx: Context, row: AuthoringRow, op: Extract<AuthoringOp, { op: 'element.rotate' }>, root: TransformRoot): void {
-  const angle = placementAngle(reader(ctx, row.modelId!), row.expressId!);
-  if (!root.upright || !angle?.turnable) throw new Refusal('invalid', 'Its placement has no explicit reference direction to turn');
-  const deg = angle.deg + (Math.atan2(root.parent.axis[1], root.parent.axis[0]) * 180) / Math.PI;
-  row.before.angleDeg = deg;
-  if (op.fromDeg !== undefined && !near(((op.fromDeg - deg) % 360 + 540) % 360 - 180, 0, 0.1)) {
-    throw new Refusal('conflict', `Expected the element turned ${op.fromDeg}°; it is at ${deg.toFixed(1)}° now`);
   }
 }
 
@@ -360,6 +343,7 @@ export function previewModelAuthoring(state: ViewerState, batch: ModelAuthoringB
   for (const row of ctx.rows) if (row.status === 'ready' && row.op.op === 'element.split') {
     row.previewUnavailable = authoringSplitMarker(state, batch, row, 0) === null;
   }
+  for(const row of ctx.rows)if(row.status==='ready'&&row.op.op==='hosted.create'&&'params' in row.op)row.previewUnavailable=!authoringSlabOpeningGhost(state,row,ctx.rows,0);
   for(const row of ctx.rows)if(row.status==='ready'&&['stair.create','railing.create','stair.replace','railing.replace'].includes(row.op.op))row.previewUnavailable=!stairRailingGhost(state,batch,row,0);
   const preview = { batch, rows: ctx.rows, mutationVersion: state.mutationVersion, digest: batchDigest(batch) };
   captureAuthoringSources(state, preview);
@@ -368,6 +352,12 @@ export function previewModelAuthoring(state: ViewerState, batch: ModelAuthoringB
 
 /** The builders decide what static checks cannot: dimensions, hosts, joins, schema support. */
 function nativeDryRun(ctx: Context, batch: ModelAuthoringBatch): void {
+  for (const row of ctx.rows) if (row.op.op === 'element.align' && row.modelId
+    && ctx.rows.some(other => other.index < row.index && other.modelId === row.modelId
+      && other.status === 'ready' && !new Set<string>(['type.detach', 'classification.add']).has(other.op.op))) {
+    row.status = 'unsupported';
+    row.issue = 'Apply earlier same-model geometry operations before preparing native Align bounds';
+  }
   const byModel = new Map<string, AuthoringRow[]>();
   for (const row of ctx.rows) if (row.status === 'ready' && row.modelId) byModel.set(row.modelId, [...(byModel.get(row.modelId) ?? []), row]);
   for (const [modelId, rows] of byModel) {

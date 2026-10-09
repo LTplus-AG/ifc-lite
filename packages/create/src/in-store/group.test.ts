@@ -1,9 +1,9 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { IfcParser } from '@ifc-lite/parser';
+import { IfcParser, effectiveMetadataRecord, type IfcDataStore } from '@ifc-lite/parser';
 import { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
 import { StepExporter } from '@ifc-lite/export';
 import { generateIfcGuid } from '@ifc-lite/encoding';
@@ -182,4 +182,41 @@ it('bounds total effective record work and reports refusal rather than a truncat
   expect(s.mutationView.peekNextExpressId()).toBe(next);
   expect(s.mutationView.getMutationRevision()).toBe(revision);
   expect(s.mutationView.getNewEntities()).toHaveLength(count);
+});
+
+const externalIfc4x3 = new URL('../../../../tests/models/ifc5/Railway_Railway_project_simple_IFC4X3.ifc', import.meta.url);
+const hasExternalIfc4x3 = existsSync(externalIfc4x3);
+if (!hasExternalIfc4x3) console.warn('skip: SierraSoft IFC4X3 group fixture missing — run `pnpm fixtures`');
+it.skipIf(!hasExternalIfc4x3)('preserves the complete SierraSoft IFC4X3_ADD2 railway graph across native Group replacement and removal #7329', async () => {
+  const bytes = readFileSync(externalIfc4x3);
+  const store = await new IfcParser().parseColumnar(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer, { disableWorkerScan: true });
+  expect(store.schemaVersion).toBe('IFC4X3');
+  expect(store.getEntity(21)?.type).toBe('IFCRAILWAY');
+  expect(store.getEntity(22)?.type).toBe('IFCALIGNMENT');
+  const mutationView = new MutablePropertyView(store.properties || null, 'sierra');
+  const context = { store, mutationView, ownerHistoryId: 2 };
+  const roots = [21, 22].map(expressId => {
+    const GlobalId = store.getEntity(expressId)?.attributes[0];
+    if (typeof GlobalId !== 'string') throw new Error('SierraSoft fixture Root identity is unreadable');
+    return { expressId, GlobalId };
+  });
+  const group = addGroupToStore(context, { Name: 'Reviewed railway population', RelatedObjects: roots });
+  const created = readGroupInStore(context, group), relation = created.memberships[0].relationship;
+  updateGroupInStore(context, created, { Name: 'Only the alignment', RelatedObjects: [roots[1]] });
+  const content = new StepExporter(store, mutationView).export({ schema: 'IFC4X3', applyMutations: true }).content;
+  const saved = await new IfcParser().parseColumnar(content.slice().buffer as ArrayBuffer, { disableWorkerScan: true });
+  expect(saved.entities.getName(group.expressId)).toBe('Only the alignment');
+  expect(saved.entities.getGlobalId(group.expressId)).toBe(group.GlobalId);
+  expect(saved.getEntity(relation.expressId)?.attributes[0]).toBe(relation.GlobalId);
+  expect(saved.relationships.getRelated(group.expressId, RelationshipType.AssignsToGroup, 'forward')).toEqual([22]);
+  roots.forEach(root => expect(saved.getEntity(root.expressId)?.attributes[0]).toBe(root.GlobalId));
+  removeGroupInStore(context, readGroupInStore(context, group));
+  const removed = new StepExporter(store, mutationView).export({ schema: 'IFC4X3', applyMutations: true }).content;
+  const restored = await new IfcParser().parseColumnar(removed.slice().buffer as ArrayBuffer, { disableWorkerScan: true });
+  expect(restored.entityIndex.byId.has(group.expressId)).toBe(false);
+  expect(restored.entityIndex.byId.has(relation.expressId)).toBe(false);
+  // @raw-entity-enumeration-ok these independent imported/exported sources have no overlays; every original record and file reference must survive lifecycle removal.
+  const records = (source: IfcDataStore) => [...source.entityIndex.byId.keys()].sort((a, b) => a - b)
+    .map(expressId => ({ expressId, ...effectiveMetadataRecord(source, expressId) }));
+  expect(records(restored)).toEqual(records(store));
 });

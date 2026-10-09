@@ -24,7 +24,7 @@ export const loadReportAdapter: EvidenceAdapter = {
         cleanLoads: reports.filter(report => report.isClean).length,
         limitations: 'Load diagnostics describe the original load, not validation of later edits. Affected entities are only those supplied by native diagnostics; missing diagnostics never mean clean.' },
       totalRows: reports.length,
-      availability: 'available',
+      availability: reports.length > 0 ? 'available' : 'unavailable',
       rows: reports.slice(0, limit),
     };
   },

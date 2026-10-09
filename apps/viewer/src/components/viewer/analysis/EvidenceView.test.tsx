@@ -68,9 +68,9 @@ test('missing native sources offer the matching native workflow rather than zero
     cleanup();
   }
   assert.equal(JSON.parse(captureEvidence('flow').payload).sourceAvailability, 'available');
-  // #7326: native scaffold capability is available without inventing a loaded report.
+  // #7326: capability remains in the summary while the absent load report is unavailable.
   const models = captureEvidence('loadReport'), payload = JSON.parse(models.payload);
-  assert.equal(payload.sourceAvailability, 'available');
+  assert.equal(payload.sourceAvailability, 'unavailable');
   assert.equal(payload.totalRows, 0); assert.equal(payload.evidence.summary.loadReportsAvailable, false);
   assert.equal(payload.evidence.summary.cleanLoads, 0);
   assert.equal(payload.evidence.summary.nativeNewIfc.existingModelFacts, false);

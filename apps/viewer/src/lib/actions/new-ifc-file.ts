@@ -29,7 +29,7 @@ export function parseNewIfcProposal(content: string): NewIfcProposal {
 }
 function workspace(state: ViewerState) { return [...state.models].map(([id, model]) => ({ id, model, store: model.ifcDataStore, source: model.ifcDataStore?.source, hash: model.sourceContentHash, fingerprint: model.sourceFingerprint, view: state.mutationViews.get(id), revision: state.mutationViews.get(id)?.getMutationRevision() })); }
 export async function prepareNewIfcFile(input: NewIfcProposal) {
-  const proposal = parseNewIfcProposal(JSON.stringify(input)), ownership = JSON.stringify(proposal), savedWorkspace = workspace(useViewerStore.getState());
+  const proposal = parseNewIfcProposal(JSON.stringify(input)), ownership = JSON.stringify(proposal), capturedState = useViewerStore.getState(), savedWorkspace = workspace(capturedState), savedLegacyStore = capturedState.ifcDataStore;
   const creator = new CreateNamespace().project(proposal.project); for (const storey of proposal.storeys) creator.addIfcBuildingStorey(storey);
   const result = creator.toIfc(), content = result.content, bytes = new TextEncoder().encode(content);
   const parsed = await new IfcParser().parseColumnar(bytes.buffer, { disableWorkerScan: true });
@@ -47,7 +47,7 @@ export async function prepareNewIfcFile(input: NewIfcProposal) {
       validate(); if (requested) throw new Error('This file load was already requested'); const state = useViewerStore.getState();
       if (state.loading) throw new Error('A native load is running; wait before requesting this file');
       if (state.dirtyModels.size || state.collabRoomId) throw new Error('Save or leave the current edited/shared session before requesting a replacement');
-      const current = workspace(state); if (savedWorkspace.length !== current.length || savedWorkspace.some((row, index) => Object.keys(row).some(key => row[key as keyof typeof row] !== current[index][key as keyof typeof row]))) throw new Error('The current workspace changed after file preparation; prepare again before replacement');
+      const current = workspace(state); if (state.ifcDataStore !== savedLegacyStore || savedWorkspace.length !== current.length || savedWorkspace.some((row, index) => Object.keys(row).some(key => row[key as keyof typeof row] !== current[index][key as keyof typeof row]))) throw new Error('The current workspace changed after file preparation; prepare again before replacement');
       createModelAdapter(useViewerStore).loadIfc(content, filename); requested = true;
     },
   };

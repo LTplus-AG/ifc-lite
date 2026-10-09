@@ -148,7 +148,7 @@ export function createRoomCommandBackend(resolve: RoomCommandModelResolver, prov
         if (attached) host.layouts.clearModel(modelId);
         modelStores.set(modelId, new WeakRef(model.store));
       }
-      if (op.action === 'autoAll') return await prepareAllStoreyRooms(model, op, provide, host, currentModel);
+      if (op.action === 'autoAll') return await prepareAllStoreyRooms(model, storeyId, op, provide, host, currentModel);
       const geometry = await provide(model, storeyId);
       if (geometry.unavailable) throw new Error(geometry.unavailable);
       currentModel();

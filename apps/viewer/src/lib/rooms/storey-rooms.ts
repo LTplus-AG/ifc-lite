@@ -149,17 +149,18 @@ export function storeyRoomGeometryIds(s: ViewerState, modelId: string, storeyId:
   return [...ids];
 }
 
-let wallsCache: { meshes: unknown; count: number; version: number; plane: Workplane; storeyId: number; walls: LocalWall[] } | null = null;
+let wallsCache: { modelId: string; store: unknown; view: unknown; revision: number | undefined; meshes: unknown; count: number; version: number; plane: Workplane; storeyId: number; walls: LocalWall[] } | null = null;
 
 /** The storey's walls in its storey-local frame (the last storey's are kept: a layer asks every frame). */
 export function storeyWalls(s: ViewerState, modelId: string, storeyId: number, plane: Workplane): LocalWall[] {
   const meshes = s.models.get(modelId)?.geometryResult?.meshes;
+  const store = s.models.get(modelId)?.ifcDataStore, view = s.mutationViews.get(modelId), revision = view?.getMutationRevision();
   const c = wallsCache;
-  if (c && c.meshes === meshes && c.count === (meshes?.length ?? 0) && c.version === s.mutationVersion && c.plane === plane && c.storeyId === storeyId) {
+  if (c && c.modelId === modelId && c.store === store && c.view === view && c.revision === revision && c.meshes === meshes && c.count === (meshes?.length ?? 0) && c.version === s.mutationVersion && c.plane === plane && c.storeyId === storeyId) {
     return c.walls;
   }
   const walls = deriveStoreyWalls(s, modelId, storeyId, plane);
-  wallsCache = { meshes, count: meshes?.length ?? 0, version: s.mutationVersion, plane, storeyId, walls };
+  wallsCache = { modelId, store, view, revision, meshes, count: meshes?.length ?? 0, version: s.mutationVersion, plane, storeyId, walls };
   return walls;
 }
 
@@ -208,6 +209,9 @@ export function storeySpaceFootprints(s: ViewerState, modelId: string, storeyId:
 }
 
 interface CacheEntry {
+  store: unknown;
+  view: unknown;
+  revision: number | undefined;
   meshes: readonly MeshData[] | undefined;
   meshCount: number;
   mutationVersion: number;
@@ -233,8 +237,9 @@ export function storeyRooms(s: ViewerState, modelId: string, storeyId: number, p
   if (!spaceWasmLoaded()) return { status: 'loading' };
   const meshes = s.models.get(modelId)?.geometryResult?.meshes;
   const head = undoHead(s, modelId);
+  const store = s.models.get(modelId)?.ifcDataStore, view = s.mutationViews.get(modelId), revision = view?.getMutationRevision();
   const c = cached;
-  if (c && c.meshes === meshes && c.meshCount === (meshes?.length ?? 0) && c.mutationVersion === s.mutationVersion
+  if (c && c.store === store && c.view === view && c.revision === revision && c.meshes === meshes && c.meshCount === (meshes?.length ?? 0) && c.mutationVersion === s.mutationVersion
     && c.head === head && c.layouts === layoutVersion() && c.plane === plane && c.storeyId === storeyId && c.modelId === modelId && c.weld === weld && c.minArea === minArea) {
     return c.result;
   }
@@ -246,7 +251,7 @@ export function storeyRooms(s: ViewerState, modelId: string, storeyId: number, p
       rooms: roomCandidatesFromFaces(layoutFaces(s, modelId, storeyId, weld, rects, minArea), storeyOccupancy(s, modelId, storeyId, plane), storeySpaces(s, modelId, storeyId)),
       walls: rects.length,
     };
-  cached = { meshes, meshCount: meshes?.length ?? 0, mutationVersion: s.mutationVersion, head, layouts: layoutVersion(), plane, storeyId, modelId, weld, minArea, result };
+  cached = { store, view, revision, meshes, meshCount: meshes?.length ?? 0, mutationVersion: s.mutationVersion, head, layouts: layoutVersion(), plane, storeyId, modelId, weld, minArea, result };
   return result;
 }
 

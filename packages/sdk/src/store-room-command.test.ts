@@ -9,7 +9,7 @@ import { MutablePropertyView, StoreEditor, recordCompoundMutation, undoRecordedM
 import { roomChainInStore } from '../../create/src/in-store/room-store.js';
 import { StepExporter } from '@ifc-lite/export';
 import { RoomLayoutCache, applyLayoutOp, readFaces, occupancyTest, existingSpaceFootprintEntriesByStorey, type RoomWallRect, type RoomPlateFactory } from '@ifc-lite/create';
-import { createRoomCommandBackend, type RoomGeometryProvider } from './store-room-command.js';
+import { createRoomCommandBackend, RoomCommandConflictError, type RoomGeometryProvider } from './store-room-command.js';
 
 const wasm = new URL('../../wasm/pkg/ifc-lite_bg.wasm', import.meta.url), available = existsSync(wasm);
 const sample = new URL('../../../apps/viewer/public/samples/hello-wall.ifc', import.meta.url);
@@ -420,4 +420,34 @@ it.skipIf(!available)('#7324 AutoAll distinguishes actual occupied native faces 
     const held=await f.backend.prepareRoomCommand('m',42,{action:'autoAll'});
     secondStorey(f.editor);expect(()=>held.commit()).toThrow(/changed/);held.dispose();
   } finally {f.backend.disposeRooms();}
+});
+
+
+it.skipIf(!available)('#7324 AutoAll refuses missing, wrong-type and deleted native anchors before geometry or writes', async () => {
+  let calls = 0;
+  const f = await setup(async () => { calls++; return { walls, factory }; });
+  try {
+    const graph = () => Array.from(new StepExporter(f.store, f.view).export({ schema: 'IFC4', applyMutations: true, timeStamp: '2026-10-09T00:00:00' }).content);
+    for (const anchor of [999999, 1222, 42]) {
+      if (anchor === 42) f.editor.removeEntity(anchor);
+      const before = structuredClone({ graph: graph(), journal: f.view.getMutations(), next: f.view.peekNextExpressId() });
+      await expect(f.backend.prepareRoomCommand('m', anchor, { action: 'autoAll' })).rejects.toThrow(/anchor.*storey/i);
+      expect(calls).toBe(0);
+      expect({ graph: graph(), journal: f.view.getMutations(), next: f.view.peekNextExpressId() }).toEqual(before);
+    }
+  } finally { f.backend.disposeRooms(); }
+});
+
+it.skipIf(!available)('#7324 AutoAll disposed, applied and changed-layout approvals expose native conflict errors', async () => {
+  const f = await setup();
+  try {
+    const disposed = await f.backend.prepareRoomCommand('m', 42, { action: 'autoAll' });
+    disposed.dispose(); expect(() => disposed.commit()).toThrow(RoomCommandConflictError);
+    const changed = await f.backend.prepareRoomCommand('m', 42, { action: 'autoAll' });
+    f.layouts.clearModel('m'); expect(() => changed.commit()).toThrow(RoomCommandConflictError); changed.dispose();
+    const applied = await f.backend.prepareRoomCommand('m', 42, { action: 'autoAll' });
+    applied.commit(); const journal = structuredClone(f.view.getMutations());
+    expect(() => applied.commit()).toThrow(RoomCommandConflictError);
+    expect(f.view.getMutations()).toEqual(journal); applied.dispose();
+  } finally { f.backend.disposeRooms(); }
 });

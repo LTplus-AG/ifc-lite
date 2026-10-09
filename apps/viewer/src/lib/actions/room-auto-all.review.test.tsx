@@ -18,7 +18,7 @@ import { MODEL, settle, nativeSdkMeshes, seedNativeSdkModel } from '@/test/nativ
 import { cleanup, click, render, waitFor } from '@/test/render';
 import { setRemeshClientFactory } from '@/lib/remesh/remesh-service';
 import { clearModelLayouts } from '@/lib/rooms/room-layout';
-import { storeySpaces, clearStoreyRoomsCache } from '@/lib/rooms/storey-rooms';
+import { storeySpaces, storeyWalls, storeyRooms, clearStoreyRoomsCache } from '@/lib/rooms/storey-rooms';
 import { modelEditTarget } from '@/store/slices/mutation-modelling-records';
 import { RoomCommandReview } from '@/components/viewer/assistant/RoomCommandReview';
 import { prepareRoomReview } from './room-review';
@@ -31,6 +31,8 @@ import { updateApiKeys } from '@/services/api-keys';
 import { attachmentsForSend } from '@/components/viewer/assistant/ComposerAttachments';
 import { ModelChangeProposal } from '@/components/viewer/assistant/ModelChangeProposal';
 import { nativeRoomRemeshGate } from '@/test/room-remesh-gate';
+import { buildStoreyWorkplane, isWorkplane } from '@/lib/commands/modeling/workplane';
+import { ensureSpaceWasm } from '@/lib/rooms/space-wasm';
 import { fixtureModel } from '@/test/store-fixture';
 const initial = useViewerStore.getState();
 const initialAssistant=useAssistant.getState(), originalFetch=globalThis.fetch, initialKeys=localStorage.getItem('ifc-lite:api-keys:v1');
@@ -228,4 +230,29 @@ it('#7324 first native AutoAll preparation preserves absent live view/editor map
     assert.equal(batches.size,1,'all actual IFC mutations belong to one native Undo step');assert.ok(!batches.has(undefined));
     useViewerStore.getState().undo(MODEL);assert.deepEqual(view.getEffectiveChanges(),[]);
   }finally{review.dispose();}
+});
+
+
+it('#7324 cached native room and wall populations refresh after direct removals without viewer history', async t => {
+  if (!ensureRoomWasm(t)) return;
+  const { view } = await population(false, false);
+  await ensureSpaceWasm();
+  const prepared = await prepareRoomReview(roomProposal({ action: 'autoAll' }), new AbortController().signal);
+  const created = prepared.commit().created; prepared.dispose(); await settle();
+  const state = useViewerStore.getState(), plane = buildStoreyWorkplane(state, MODEL, 42, 0);
+  assert.ok(isWorkplane(plane));
+  const occupied = storeyRooms(state, MODEL, 42, plane);
+  assert.equal(occupied.status, 'ready');
+  assert.ok(occupied.status === 'ready' && occupied.rooms.some(room => room.taken));
+  const beforeWalls = storeyWalls(state, MODEL, 42, plane).length;
+  const version = state.mutationVersion, editor = modelEditTarget(state, MODEL)!.editor;
+  for (const ref of created) assert.equal(editor.removeEntity(ref.expressId), true);
+  assert.equal(useViewerStore.getState().mutationVersion, version);
+  const free = storeyRooms(useViewerStore.getState(), MODEL, 42, plane);
+  assert.ok(free.status === 'ready' && free.rooms.some(room => !room.taken), 'the removed occupied space releases its cached native face');
+  const authoredWalls = view.getNewEntities().filter(row => row.type.toUpperCase() === 'IFCWALL');
+  assert.equal(authoredWalls.length, 4);
+  for (const wall of authoredWalls) assert.equal(editor.removeEntity(wall.expressId), true);
+  assert.equal(useViewerStore.getState().mutationVersion, version);
+  assert.equal(storeyWalls(useViewerStore.getState(), MODEL, 42, plane).length, beforeWalls - 4, 'deleted native walls cannot survive the cache');
 });

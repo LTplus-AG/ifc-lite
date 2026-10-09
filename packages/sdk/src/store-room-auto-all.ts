@@ -5,15 +5,17 @@
 import { effectiveStoreyIds, filterRoomFaces, roomCandidatesFromFaces, planRoomCreation, createRoomsInStore, occupancyTest, existingSpaceFootprintEntriesByStorey } from '@ifc-lite/create';
 import { StoreEditor } from '@ifc-lite/mutations';
 import type { CostStoreModelResolution } from './cost-store-backend.js';
+import { RoomCommandConflictError } from './store-room-command.js';
 import type { RoomCommand, RoomCommandHost, RoomCommandResult, RoomGeometryProvider, NativeRoomGeometry, PreparedRoomCommand } from './store-room-command.js';
 
 /** Same native planner and writer, one detached graph and one recorded approval (#7324). */
 export async function prepareAllStoreyRooms(
-  model: CostStoreModelResolution, command: RoomCommand, provide: RoomGeometryProvider,
+  model: CostStoreModelResolution, anchorStoreyId: number, command: RoomCommand, provide: RoomGeometryProvider,
   host: RoomCommandHost, currentModel: () => CostStoreModelResolution,
 ): Promise<PreparedRoomCommand> {
   if (!model.store.schemaVersion || !['IFC2X3','IFC4','IFC4X3'].includes(model.store.schemaVersion)) throw new Error('Complete AutoAll requires a supported known IFC schema');
   const ids = effectiveStoreyIds(model.store, model.mutationView).sort((a,b)=>a-b);
+  if (!ids.includes(anchorStoreyId)) throw new Error('AutoAll anchor must identify a live native IfcBuildingStorey');
   if (ids.length > 128) throw new Error('More than 128 storeys: complete AutoAll preparation is unavailable');
   const weld = command.weld ?? .05, minArea = command.minArea ?? .3;
   const existing = existingSpaceFootprintEntriesByStorey(model.store, model.mutationView);
@@ -51,10 +53,10 @@ export async function prepareAllStoreyRooms(
   const layout = host.layouts.version();
   let disposed = false, committed = false;
   const validate = () => {
-    if (disposed || committed) throw new Error('This AutoAll preparation is no longer available');
+    if (disposed || committed) throw new RoomCommandConflictError('This AutoAll preparation is no longer available');
     currentModel();
-    if (JSON.stringify(effectiveStoreyIds(model.store,model.mutationView).sort((a,b)=>a-b))!==JSON.stringify(ids)) throw new Error('The complete storey population changed');
-    if (host.layouts.version()!==layout) throw new Error('The native Room layout changed');
+    if (JSON.stringify(effectiveStoreyIds(model.store,model.mutationView).sort((a,b)=>a-b))!==JSON.stringify(ids)) throw new RoomCommandConflictError('The complete storey population changed');
+    if (host.layouts.version()!==layout) throw new RoomCommandConflictError('The native Room layout changed');
     for (const geometry of geometries) geometry.validate?.();
   };
   validate();

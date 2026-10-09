@@ -445,7 +445,7 @@ The route requires Edit mode and native edit permission. It refuses unavailable 
 
 ### Review Room AutoAll across current storeys
 
-A version1 `room.command` may explicitly request `command.action: "autoAll"` for its supplied `modelId`. The supplied storey Root anchors that model; native preparation enumerates every current storey in that model. It does not include other federated models. The existing explicit `m`/`mm` and `storey-local` Room settings apply to each storey, with lengths normalized once to native metres.
+A version 1 `room.command` may explicitly request `command.action: "autoAll"` for its supplied `modelId`. The supplied storey Root anchors that model; native preparation enumerates every current storey in that model. It does not include other federated models. The existing explicit `m`/`mm` and `storey-local` Room settings apply to each storey, with lengths normalized once to native metres.
 
 Prepare publishes complete per-storey coverage: ready, no walls, occupied, no eligible faces, or unavailable. Approval refuses unknown/unavailable coverage rather than applying only the known storeys. A successful nonempty action uses one native graph transaction and one Undo group. Empty/no-wall/fully occupied preparation has no IFC write or new Undo group. Source, direct mutation revision, native layout, geometry and model/storey frame changes invalidate held approvals. Cancellation releases preparation without applying it.
 

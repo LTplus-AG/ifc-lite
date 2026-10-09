@@ -80,7 +80,8 @@ const ids = (list: readonly MeshData[]) => list.map((m) => m.expressId);
 
 it('CPU copy bookkeeping allows discarded wrappers and released arrays to be collected (#6584)', () => {
   execFileSync(process.execPath, ['--expose-gc', '--import', 'tsx', '--import', './src/test/vite-module-hooks.mjs',
-    fileURLToPath(new URL('../../test/geometry-cpu-aliases-gc.ts', import.meta.url))], { timeout: 15_000 });
+    fileURLToPath(new URL('../../test/geometry-cpu-aliases-gc.ts', import.meta.url))],
+    { timeout: 15_000, cwd: fileURLToPath(new URL('../../../', import.meta.url)) });
 });
 
 it('streams a single model into the viewport in order, with its model index (#7021)', () => {

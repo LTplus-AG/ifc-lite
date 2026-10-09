@@ -197,12 +197,16 @@ in the manifest. The same-build control exposes timing variability, and the
 base/branch results do not establish a consistent broad speedup. All three models
 are ARCHICAD exports (20/21), not three independent authoring tools.
 
-The captured runner and static server are retained beside the data. Their paths
-identify the original frozen worktrees and local fixture catalog; adapt those
-paths to reproduce on another host. Start the server over the two frozen viewer
-distributions, then run `node chrome-cpu-capture.cjs`. The runner refuses to
-overwrite existing results, closes each owned browser, and stops after retaining
-an invalid sample. The initial attempt had an optional-render-stats observer
+The original capture runner and static server are preserved byte-for-byte in
+`chrome-cpu-capture.cjs.gz` and `chrome-cpu-static-server.py.gz`. They are historical
+source evidence, not current executable entry points: the original server bound
+all interfaces, and the software-browser capture required WebGPU. Their paths
+identify the original frozen worktrees and local fixture catalog.
+[Archive mappings](historical-source-integrity.json) retain the original manifest
+identities and both compressed and uncompressed hashes. Current validation uses
+the separately qualified canonical loader and mounted controls above. The original
+runner refused to overwrite results, closed each owned browser, and stopped after
+retaining an invalid sample. The initial attempt had an optional-render-stats observer
 ReferenceError; it is not a model failure or a valid timing sample, and is
 excluded from this independent complete schedule. No CI baseline was changed.
 

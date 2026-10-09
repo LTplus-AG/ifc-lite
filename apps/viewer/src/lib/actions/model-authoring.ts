@@ -41,6 +41,7 @@ import type { RailingInStoreParams, StairInStoreParams, StairDimensions, StairDi
 import type { ElementSizePatch } from '@/store/slices/mutation-element-size';
 import { parseCopyFields, type CopyFields, type ArrayFields } from './model-authoring-copy-fields';
 import { parseGlobalIdTarget, parseLength, parsePoint, parseRef, parseText, record, type LengthRange } from './model-authoring-fields';
+import { parseClassificationAdd, type ClassificationAddFields } from './model-authoring-classification';
 
 export const AUTHORING_CLASSES = ['IfcWall', 'IfcSlab', 'IfcRoof', 'IfcPlate', 'IfcColumn', 'IfcBeam', 'IfcMember', 'IfcSpace'] as const;
 export type AuthoringClass = typeof AUTHORING_CLASSES[number];
@@ -62,6 +63,7 @@ export interface AxisParams { start: Point3; end: Point3; thickness?: number; wi
 export interface BoxParams { position: Point3; width: number; depth: number; thickness?: number; height?: number }
 
 export type AuthoringOp =
+  | ({ op: 'classification.add'; target: ExistingElement } & ClassificationAddFields)
   | { op: 'curtainWall.create'; ref: string; storey: StoreyTarget; params: CurtainWallInStoreParams }
   | ReviewedGridOp
   | NativeReplacementOp
@@ -96,7 +98,7 @@ export type AuthoringOp =
   | { op: 'hosted.create'; ref?: string; kind: HostedKind; host: ElementTarget; name?: string; offset: number; sill: number; width: number; height: number };
 
 export type AuthoringOpName = AuthoringOp['op'];
-export const AUTHORING_OPS: readonly AuthoringOpName[] = ['curtainWall.create', 'grid.create', 'column.createOnGrid', 'stair.resize', 'stair.delete', 'railing.delete', 'stair.replace', 'railing.replace', 'stair.create', 'railing.create', 'element.create', 'element.replace', 'element.delete', 'element.split', 'element.resize', 'element.profile', 'element.trimExtend', 'element.move', 'element.rotate', 'element.align', 'element.copy', 'element.array',
+export const AUTHORING_OPS: readonly AuthoringOpName[] = ['curtainWall.create', 'grid.create', 'column.createOnGrid', 'stair.resize', 'stair.delete', 'railing.delete', 'stair.replace', 'railing.replace', 'stair.create', 'railing.create', 'element.create', 'element.replace', 'element.delete', 'element.split', 'element.resize', 'element.profile', 'element.trimExtend', 'element.move', 'element.rotate', 'element.align', 'element.copy', 'element.array', 'classification.add',
   'type.assign', 'type.detach', 'material.assign', 'material.layers', 'walls.join', 'hosted.create', 'hosted.edit'];
 
 export interface ModelAuthoringBatch {
@@ -200,6 +202,8 @@ function operation(value: unknown, index: number, units: AuthoringUnits, refs: M
     return op;
   };
   switch (value.op) {
+    case 'classification.add':
+      return { op: 'classification.add', target: existing(value.target, at), ...parseClassificationAdd(value, at) };
     case 'grid.create': return defineRef({ op: value.op, ref: parseRef(value.ref, at), storey: parseGridStorey(value.storey, `${at} storey`), params: parseGridParams(value.params, units, at) });
     case 'column.createOnGrid': return defineRef({ op: value.op, ref: parseRef(value.ref, at), storey: parseGridStorey(value.storey, `${at} storey`), params: parseGridColumnParams(value.params, units, at), grid: parseGridBinding(value.grid, ref => refs.get(ref)?.op === 'grid.create', `${at} grid`) });
     case 'element.replace': return defineRef(parseReplacementFields(value,existing(value.target,at),units,at));

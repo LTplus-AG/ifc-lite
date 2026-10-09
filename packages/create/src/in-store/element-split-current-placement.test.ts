@@ -24,6 +24,7 @@ for(const mode of ['named','positional'] as const)it.skipIf(!stairWasmAvailable)
  if(mode==='named')editor.setAttribute(local,'RelativePlacement',`#${axis.expressId}`);else editor.setPositionalAttribute(local,1,`#${axis.expressId}`);
  const before=await parse(exported(store,view));expect(before.getEntity(local)?.attributes[1]).toBe(axis.expressId);
  const result=splitElementInStore(store,editor,id,{kind:'slab',a:[24,-100],b:[24,100]});
+ if(result.leftId===undefined||result.rightId===undefined)throw new Error('The native split must return both slab identities');
  const after=await parse(exported(store,view)),empty=new MutablePropertyView(after.properties,'saved'),afterEditor=new StoreEditor(after,empty);
  const left=resolveSplitTarget(after,empty,afterEditor,result.leftId,anchor.lengthUnitScale),right=resolveSplitTarget(after,empty,afterEditor,result.rightId,anchor.lengthUnitScale);expect(left.ok&&right.ok).toBe(true);
  if(!left.ok||left.kind!=='slab'||!right.ok||right.kind!=='slab')throw new Error('Native slab split did not preserve both readable halves');

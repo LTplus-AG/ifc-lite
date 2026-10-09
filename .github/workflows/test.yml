@@ -836,7 +836,7 @@ jobs:
       - name: Check changeset-bump gate regressions
         run: node --test scripts/check-changeset-bump.test.mjs
 
-  # The viewer's own suite, split out of `node-tests` AND sharded eight ways.
+  # The viewer's own suite, split out of `node-tests` across sixteen shards.
   #
   # Measured, not guessed. Splitting it out of node-tests took that lane from
   # a 25:00 timeout to 5:32 SUCCESS, so everything except the viewer costs five
@@ -849,8 +849,8 @@ jobs:
   # 2:29, 2:01, 1:50 against a 25 minute cap, at FOUR shards over 521 files.
   # The suite had grown to 803 files by 2026-09-11 and the four shards were
   # measured at 5.6-8.2 min on hosted runners, on the frontend PR's critical
-  # path; EIGHT shards (CI redesign, step 4) halves the per-shard file count
-  # back to roughly the size the timings above were recorded at. Membership
+  # path; EIGHT shards (CI redesign, step 4) halved the per-shard file count
+  # then. The suite now needs sixteen shards (see #7360 below). Membership
   # is a hash of the path (below), so going 4 -> 8 reassigns files exactly
   # once and then stays stable.
   #
@@ -919,7 +919,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        shard: [0, 1, 2, 3, 4, 5, 6, 7]
+        # #7360 qualification: 2,180 files outgrew eight serial shards.
+        # Keep the 25-minute cap and run every path exactly once.
+        shard: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -973,7 +975,7 @@ jobs:
       # dropped or run twice (521 files split 130+131+130+130 at four).
       - run: pnpm --filter @ifc-lite/viewer run test
         env:
-          TEST_SHARDS: '8'
+          TEST_SHARDS: '16'
           TEST_SHARD: ${{ matrix.shard }}
 
   node-tests:

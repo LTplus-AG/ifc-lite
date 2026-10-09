@@ -13,7 +13,7 @@ import { getOrCreateMutationView } from '@/sdk/adapters/mutation-view';
 import { editedModelBytes } from '@/lib/export/edited-model-bytes';
 import { PropertiesPanel } from '@/components/viewer/PropertiesPanel';
 import { ZoneVolumeBreakdown } from '@/components/viewer/ZoneVolumeBreakdown';
-import { render, cleanup, type, advance } from '@/test/render';
+import { render, cleanup, type, waitFor } from '@/test/render';
 import { MaterialTotalsPanel } from '@/components/viewer/properties/MaterialTotalsPanel';
 import { summarizeSelection } from '@/components/viewer/properties/selectionSummary';
 import { setGlobalRendererRef } from '@/hooks/useBCF';
@@ -135,7 +135,8 @@ test('#7353 implicit occurrence and material measures remain raw when current ph
   assert.ok(implicit.every(q => q.explicitUnitSiScale === undefined), 'every aggregate volume input is implicit; the independently explicit Net member was removed');
   assert.ok(!implicit.some(q => q.name === 'NetWitnessVolume'));
   const material = render(<MaterialTotalsPanel materialId={15046} modelId="arch" />);
-  await advance(50);
+  await waitFor(() => (material.textContent ?? '').includes('UnitWitnessMaterialLength'),
+    'native selected-material export/reparse completes before display assertions');
   assert.match(material.textContent ?? '', /UnitWitnessMaterialLength/);
   assert.match(material.textContent ?? '', /3\.125/);
   assert.doesNotMatch(material.textContent ?? '', /3,?125\s*mm|3\.125\s*m\b/,
@@ -187,7 +188,8 @@ test('#7353 native single-model legacy material display follows its canonical cu
   useViewerStore.setState({ models: new Map(), ifcDataStore: x.store,
     mutationViews: new Map([['__legacy__', x.view]]), unitDisplayOverrides: { LENGTHUNIT: 'mm' } });
   const material = render(<MaterialTotalsPanel materialId={15046} modelId="legacy" />);
-  await advance(50);
+  await waitFor(() => (material.textContent ?? '').includes('UnitWitnessMaterialLength'),
+    'native selected-material export/reparse completes before display assertions');
   assert.match(material.textContent ?? '', /UnitWitnessMaterialLength/);
   assert.match(material.textContent ?? '', /3\.125/);
   assert.doesNotMatch(material.textContent ?? '', /3,?125\s*mm|3\.125\s*m\b/,

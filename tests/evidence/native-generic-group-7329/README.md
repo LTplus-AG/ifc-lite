@@ -99,3 +99,9 @@ then18 restored passes, zero skips. Earlier narrower proof counts remain
 historical. Raw logs and source SHA receipts accompany this correction.
 
 New-head proper root all-ten and isolated broad tests remain pending.
+
+The final18 class also repeats both runtime surgeries: mounted dispatch disabled
+gives17 passes/one actual UI assertion; reviewed native-write no-op gives15
+passes/three independent exported-graph assertions. Each exact source SHA
+restoration gives18 passes, zero skips. These receipts supersede the historical
+14-control surgical counts for the final transport class.

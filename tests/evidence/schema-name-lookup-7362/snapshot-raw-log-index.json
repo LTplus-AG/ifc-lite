@@ -1,0 +1,57 @@
+[
+  {
+    "rawPath": "/tmp/campaign-schema-name-snapshot-09161-build.log",
+    "compressed": "snapshot-campaign-schema-name-snapshot-09161-build.log.gz",
+    "sha256": "5c68ee469b3e75118b8039fdad26adbc63ba4ac66445f33985f1cec78367a515"
+  },
+  {
+    "rawPath": "/tmp/campaign-schema-name-snapshot-09161-native-controls.log",
+    "compressed": "snapshot-campaign-schema-name-snapshot-09161-native-controls.log.gz",
+    "sha256": "e1be43c25b0956584db9a04ba17d70fb8905e84f706c631808c92df801dbd7f1"
+  },
+  {
+    "rawPath": "/tmp/campaign-schema-name-snapshot-09161-api-update.log",
+    "compressed": "snapshot-campaign-schema-name-snapshot-09161-api-update.log.gz",
+    "sha256": "ad0660da324b3932f31e92034d23c90140403d04a3e6be062d4b72732ed01fd2"
+  },
+  {
+    "rawPath": "/tmp/campaign-schema-name-snapshot-09161-whole-main.log",
+    "compressed": "snapshot-campaign-schema-name-snapshot-09161-whole-main.log.gz",
+    "sha256": "b5fae082d4947d319fa8d6c494655eb906fd73fc06834253954902c1b9a3b960"
+  },
+  {
+    "rawPath": "/tmp/campaign-schema-name-snapshot-09161-whole-restored.log",
+    "compressed": "snapshot-campaign-schema-name-snapshot-09161-whole-restored.log.gz",
+    "sha256": "0fb261cd607c696ee9c761499e7f93d381b7ff87688562b32b6da029a90df0b9"
+  },
+  {
+    "rawPath": "/tmp/campaign-schema-name-snapshot-09161-whole-receipt.json",
+    "compressed": "snapshot-campaign-schema-name-snapshot-09161-whole-receipt.json.gz",
+    "sha256": "66770fc41bee678833d0426659314084d4ba8d12790dbcda25117fdc72b05d69"
+  },
+  {
+    "rawPath": "/tmp/campaign-group-original-profile-schema-caller-attribution.json",
+    "compressed": "snapshot-campaign-group-original-profile-schema-caller-attribution.json.gz",
+    "sha256": "ad12b321afb3a270bf479005d821967c96f51f9499615abf4a252bd59e2870c0"
+  },
+  {
+    "rawPath": "/tmp/campaign-group-composed-sierra-profile-summary.json",
+    "compressed": "snapshot-campaign-group-composed-sierra-profile-summary.json.gz",
+    "sha256": "746eeb1f53b331abb90909ee780daf0939fc447968acd53ad0f4a6ccdfeb3bfc"
+  },
+  {
+    "rawPath": "/tmp/campaign-group-composed-sierra-profile.log",
+    "compressed": "snapshot-campaign-group-composed-sierra-profile.log.gz",
+    "sha256": "d3cb42a91bfeeee3a943cd0b025551c8542d6ecf35adefea273190fa1e863237"
+  },
+  {
+    "rawPath": "/tmp/campaign-group-composed-sierra-profile/CPU.20261009.170754.23650.0.001.cpuprofile",
+    "compressed": "snapshot-CPU.20261009.170754.23650.0.001.cpuprofile.gz",
+    "sha256": "ec181473f8f5852e6d14477759f8c41b59e5eb5b9a5a85cce19bda2c55593ec2"
+  },
+  {
+    "rawPath": "/tmp/campaign-schema-name-lookup-7615-full-receipt.json",
+    "compressed": "snapshot-campaign-schema-name-lookup-7615-full-receipt.json.gz",
+    "sha256": "2ec83d28c8a3d725c68e1bcad15596f213d28ed8430193a105c066a0ea300faf"
+  }
+]

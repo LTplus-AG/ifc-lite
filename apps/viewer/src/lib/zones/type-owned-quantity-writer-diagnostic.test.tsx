@@ -361,6 +361,10 @@ for (const intent of ['incompatible-kind', 'same-kind', 'explicit-compatible'] a
   if (intent === 'incompatible-kind') {
    assert.ok(refusal instanceof Error, 'dimension-changing quantity must refuse incompatible retained native Unit');
    assert.match(refusal.message, /unit|dimension|measure/i);
+   current.removeQuantityMutation(a.type, 'Qto_WallBaseQuantities', 'NetVolume');
+   const restored = editedModelBytes(source, current);
+   await assertSameNativeIfcGraph(restored, sourceBytes);
+   if (process.env.CAMPAIGN_WRITER_EXPORT_PREFIX) await writeFile(`${process.env.CAMPAIGN_WRITER_EXPORT_PREFIX}-${intent}.ifc`, restored);
    return;
   }
   assert.equal(refusal, undefined); assert.ok(bytes);

@@ -873,3 +873,5 @@ canonical quantity decoding and unit resolution. Unreadable or unsupported
 current dependencies throw instead of returning a verified empty base. Current
 reads allow at most 256 definitions, 4,096 quantity references, 8,192 entity reads
 and 512 unit dependency reads. The two-argument source reader is unchanged.
+
+The optional current native view of `extractTypeEntityOwnQuantities` also reports `explicitUnitType` for resolved explicit quantity units. The type-owned writer uses this canonical IFC unit category to refuse a dimension-changing edit that would retain an incompatible native unit; the two-argument source-only output is unchanged.

@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { extractTypeEntityOwnQuantities, getInheritanceChainAcrossSchemas, type IfcEntity } from '@ifc-lite/parser';
+import { extractTypeEntityOwnQuantities, getInheritanceChainAcrossSchemas, getAttributeNamesForSchema, getAttributeTypeForSchema, measureUnit, type IfcEntity } from '@ifc-lite/parser';
 import type { Quantity, QuantitySet } from '@ifc-lite/data';
 import type { ExportPass, StepExportOptions } from './step-export-types.js';
 import { generateGlobalId, getTypeOwnedHasPropertySetIds, findUnitId, type PropertySetContext } from './step-property-set-readers.js';
@@ -21,6 +21,7 @@ export interface TypeQuantitySource {
   readonly members: readonly number[];
   readonly quantities?: readonly Quantity[];
   readonly unitSymbols?: ReadonlyMap<string, string | undefined>;
+  readonly unitTypes?: ReadonlyMap<string, string | undefined>;
 }
 
 /** Associate regenerated instances with their canonical source identity, not merely their name. */
@@ -77,7 +78,7 @@ export function collectTypeQuantitySources(
       if (qset.quantities.length === 0 && !opaque) continue;
     }
     activeSets.push(qset);
-    selected.push(source ? { ...source, quantities, unitSymbols: new Map(base?.quantities.map(q => [q.name, q.explicitUnit]) ?? []) } : undefined);
+    selected.push(source ? { ...source, quantities, unitSymbols: new Map(base?.quantities.map(q => [q.name, q.explicitUnit]) ?? []), unitTypes: new Map(base?.quantities.map(q => [q.name, q.explicitUnitType]) ?? []) } : undefined);
   }
   pass.typeOwnedQuantityIdsByEntity.set(entityId, replacements);
   pass.addedTypeOwnedQuantityIds.set(entityId, []);
@@ -118,6 +119,16 @@ export function generateTypeQuantityCopy(
     const targetType = quantityTypeToIfcType(quantity.type);
     if (!getInheritanceChainAcrossSchemas(entity.type).includes('IfcPhysicalSimpleQuantity')) {
       throw new Error(`Type quantity #${id} requires an explicit native entity edit`);
+    }
+    const retainedUnitType = name === null ? undefined : source.unitTypes?.get(name);
+    if (!mutation?.unitRemoved && retainedUnitType
+      && (mutation?.unit === undefined || mutation.unit === source.unitSymbols?.get(name ?? ''))) {
+      const valueAttribute = getAttributeNamesForSchema(targetType, pass.sourceSchema)[3];
+      const valueType = valueAttribute ? getAttributeTypeForSchema(targetType, valueAttribute, pass.sourceSchema) : undefined;
+      const expectedUnit = valueType ? measureUnit(valueType) : undefined;
+      if (!expectedUnit || expectedUnit.kind !== 'typed' || expectedUnit.unitType !== retainedUnitType) {
+        throw new Error(`Type quantity #${id} unit dimension is incompatible with ${targetType}`);
+      }
     }
     let copy = replaced(line, 3, toStepReal(quantity.value));
     // Omitted unit intent retains the native reference, including non-length units.

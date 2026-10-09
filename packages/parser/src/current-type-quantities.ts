@@ -12,7 +12,7 @@ import { resolveUnitByRef, measureUnit, type UnitEntityReader } from './project-
 import { readQuantitySetRecord, type QuantityEntityReader } from './quantity-collect.js';
 import { appendSetsFromSecondSource, setIdentityKey } from './property-set-merge.js';
 import type { TypeQuantityInfo } from './on-demand-extractors.js';
-import { inferMapUnitScaleFromLabel } from './map-unit-label.js';
+import { findSourceProjectLengthUnit, normalizeMapUnitName } from './source-project-length-unit.js';
 
 const MAX_RELATIONSHIPS = 65_536;
 const MAX_RELATION_REFERENCES = 262_144;
@@ -190,16 +190,12 @@ function readCurrent(store: IfcDataStore, entityId: number, view: MetadataReadVi
                     const attribute = getAttributeNamesForSchema(ifcType, store.schemaVersion)[3];
                     const measure = attribute ? getAttributeTypeForSchema(ifcType, attribute, store.schemaVersion) : undefined;
                     const expected = measure ? measureUnit(measure) : undefined;
-                    const scale = expected?.kind === 'typed' && expected.unitType === 'LENGTHUNIT'
-                        ? inferMapUnitScaleFromLabel(q.unit) : undefined;
-                    if (scale === undefined) throw new CurrentQuantityRefusal('Current quantity journal unit is unresolved');
-                    for (const row of iterateEffectiveEntities(store, view, ['IfcSIUnit', 'IfcConversionBasedUnit', 'IfcConversionBasedUnitWithOffset'])) {
-                        const resolved = resolveCurrentUnit(row.expressId);
-                        if (resolved?.unitType === 'LENGTHUNIT' && resolved.resolved.siScale === scale) {
-                            return { name: q.name, type: q.type, value: q.value,
-                                explicitUnit: resolved.resolved.symbol, explicitUnitSiScale: resolved.resolved.siScale };
-                        }
-                    }
+                    if (expected?.kind !== 'typed' || expected.unitType !== 'LENGTHUNIT') throw new CurrentQuantityRefusal('Current quantity journal unit is unresolved');
+                    const projectIds = [...iterateEffectiveEntities(store, view, ['IfcProject'])].map(row => row.expressId);
+                    const unitId = findSourceProjectLengthUnit(normalizeMapUnitName(q.unit), store, projectIds, id => view.isDeleted(id));
+                    const resolved = unitId === null ? null : resolveCurrentUnit(unitId);
+                    if (resolved?.unitType === 'LENGTHUNIT') return { name: q.name, type: q.type, value: q.value,
+                        explicitUnit: resolved.resolved.symbol, explicitUnitSiScale: resolved.resolved.siScale };
                     throw new CurrentQuantityRefusal('Current quantity journal native unit is unavailable');
                 }
                 if (original?.explicitUnit && q.unit === original.explicitUnit) {
@@ -212,7 +208,10 @@ function readCurrent(store: IfcDataStore, entityId: number, view: MetadataReadVi
                 return { name: q.name, type: q.type, value: q.value };
             }) };
         });
-        quantities.splice(0, quantities.length, ...quantities.filter(set => !names.has(set.name)), ...updated);
+        const replacements = new Map(updated.filter(set => set.globalId).map(set => [set.globalId, set]));
+        const existingGuids = new Set(quantities.map(set => set.globalId));
+        const ordered = quantities.flatMap(set => !names.has(set.name) ? [set] : replacements.has(set.globalId) ? [replacements.get(set.globalId)!] : []);
+        quantities.splice(0, quantities.length, ...ordered, ...updated.filter(set => !set.globalId || !existingGuids.has(set.globalId)));
     }
     const result = available(quantities.length ? { typeName: typeof type.attributes[2] === 'string' ? type.attributes[2] : type.type, typeId, quantities } : null);
     current.quantities.set(typeId, result);

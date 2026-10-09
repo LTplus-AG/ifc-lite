@@ -11,3 +11,7 @@ Preserve native quantity definition GlobalIds through canonical instance claimin
 The current native type-quantity reader includes the resolved explicit IFC unit category so type-owned exports refuse dimension changes that would retain an incompatible unit. Source-only output remains unchanged.
 
 Project supported history-nominated type quantity journal values through the canonical current reader before native export. Retain GUID-based instance claiming and native unit metadata, resolve supported length replacement labels through shared unit resolvers, and preserve explicit unit removal. Standalone skipped-history export nomination and source-only reads remain unchanged.
+
+Share source-project assigned length-unit eligibility and label normalization
+between current Type quantity reading and STEP export. Preserve existing
+GUID-owned quantity-set order when projecting tracked edits.

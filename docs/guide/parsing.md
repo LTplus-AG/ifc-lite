@@ -901,3 +901,14 @@ The Properties quantities tab currently lists occurrence-owned sets. Independent
 inherited Length sets are not added to that list by this writer repair; the
 canonical quantity reader and `QuantitySetCard` still preserve their physical
 unit metadata. The existing zone breakdown displays inherited volume bases.
+
+The Type quantity journal projection preserves native quantity-set order when
+replacing an existing GUID-owned set, so the live volume basis and saved model
+use the same first matching quantity. New definitions follow existing sets.
+
+`findSourceProjectLengthUnit` and `normalizeMapUnitName` share the STEP writer's
+replacement-unit eligibility with the current quantity reader. The resolver
+uses the first effective source `IfcProject`, its source `UnitsInContext`, and
+source assigned length units; deleted units, unassigned units, overlay-created
+units, and unsupported labels cannot provide a replacement reference. This
+keeps a refused export from appearing as an available current physical value.

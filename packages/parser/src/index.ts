@@ -394,3 +394,5 @@ export async function parseAuto(
 
   throw new Error('Unknown file format. Expected IFC (STEP) or IFCX (JSON).');
 }
+
+export { findSourceProjectLengthUnit, normalizeMapUnitName } from './source-project-length-unit.js';

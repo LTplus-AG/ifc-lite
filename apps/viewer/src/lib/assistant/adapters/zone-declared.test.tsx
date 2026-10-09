@@ -78,12 +78,14 @@ for (const source of ['selection', 'zones'] as const) {
     const view = getOrCreateMutationView(useViewerStore, 'arch'); assert.ok(view);
     replaceEvidence(captureEvidence(source));
     const netSet = f.quantities.find(set => set.quantities.some(q => q.name === 'NetVolume')); assert.ok(netSet);
-    view.setQuantity(f.id, netSet.name, 'NetVolume', 7, QuantityType.Volume);
+    const history = view.getMutationCount();
+    view.setQuantity(f.id, netSet.name, 'NetVolume', 7, QuantityType.Volume, undefined, true);
+    assert.equal(view.getMutationCount(), history, 'actual skipHistory edit retains the native journal');
     let dispatched = 0;
     globalThis.fetch = async () => { dispatched++; return new Response('data: [DONE]\n\n'); };
     assert.equal(await sendAssistant('Explain the declared zone volume shares', 'openai/gpt-free', '/api/chat'), false);
-    assert.equal(useAssistant.getState().error, 'stale-evidence');
     assert.equal(dispatched, 0, 'stale native quantities must not reach the provider');
+    assert.equal(useAssistant.getState().error, 'stale-evidence');
   });
 
   test(`#7220 ${source} captured declared shares refuse a native overlay revision without a store history bump`, async t => {
@@ -93,8 +95,10 @@ for (const source of ['selection', 'zones'] as const) {
     assert.equal(evidenceIsCurrent(snapshot), true);
     const version = useViewerStore.getState().mutationVersion;
     const revision = view.getMutationRevision();
+    const history = view.getMutationCount();
     const netSet = f.quantities.find(set => set.quantities.some(q => q.name === 'NetVolume')); assert.ok(netSet);
-    view.setQuantity(f.id, netSet.name, 'NetVolume', 7, QuantityType.Volume);
+    view.setQuantity(f.id, netSet.name, 'NetVolume', 7, QuantityType.Volume, undefined, true);
+    assert.equal(view.getMutationCount(), history, 'actual skipHistory edit retains the native journal');
     assert.equal(useViewerStore.getState().mutationVersion, version);
     assert.ok(view.getMutationRevision() > revision);
     const fresh = JSON.parse(captureEvidence(source).payload);

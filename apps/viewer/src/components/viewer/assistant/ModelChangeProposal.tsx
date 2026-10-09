@@ -8,15 +8,22 @@ import { parseModelChangeBatch, type ModelChangeBatch } from '@ifc-lite/ai/artif
 import { parseModelAuthoringBatch, type ModelAuthoringBatch } from '@/lib/actions/model-authoring';
 import { ModelChangeReview } from '../actions/ModelChangeReview';
 import { ModelAuthoringReview } from '../actions/ModelAuthoringReview';
+import { declaresRoomCommand, parseRoomProposal, type RoomProposal } from '@/lib/actions/room-command-proposal';
+import type { RoomReview } from '@/lib/actions/room-review';
+import { RoomCommandReview } from './RoomCommandReview';
 
-type Reviewable = { kind: 'changes'; batch: ModelChangeBatch } | { kind: 'authoring'; batch: ModelAuthoringBatch };
+type Reviewable = { kind: 'changes'; batch: ModelChangeBatch } | { kind: 'authoring'; batch: ModelAuthoringBatch } | { kind: 'room'; proposal: RoomProposal };
 
-/** The latest completed `model.changes` or `model.authoring` answer, reviewed natively below the conversation. Never applied by itself. */
-export function ModelChangeProposal() {
+/** Latest completed changes, authoring or async Room answer, reviewed natively and never applied by itself. */
+export function ModelChangeProposal({ onAttachRoom }: { onAttachRoom?: (review: RoomReview) => void } = {}) {
   const assistant = useAssistant();
   const reply = assistant.messages.at(-1);
   const content = reply?.role === 'assistant' && assistant.status !== 'streaming' ? reply.content : null;
   const reviewable = useMemo((): Reviewable | null => {
+    if (content && declaresRoomCommand(content)) {
+      try { return { kind: 'room', proposal: parseRoomProposal(content) }; }
+      catch (error) { console.warn('[Assistant] Room proposal is not reviewable', error); return null; }
+    }
     const kind = content ? /"kind"\s*:\s*"model\.(changes|authoring)"/.exec(content)?.[1] : undefined;
     if (!content || !kind) return null;
     try {
@@ -29,6 +36,7 @@ export function ModelChangeProposal() {
   }, [content]);
   if (!reviewable) return null;
   const origin = `assistant:${assistant.snapshot?.id ?? assistant.archived?.id ?? 'conversation'}:${assistant.messages.length}`;
+  if (reviewable.kind === 'room') return <RoomCommandReview key={origin} proposal={reviewable.proposal} origin={origin} onAttach={onAttachRoom} />;
   // Keyed by answer so a newer proposal starts a fresh review.
   return reviewable.kind === 'changes'
     ? <ModelChangeReview key={origin} batch={reviewable.batch} origin={origin} />

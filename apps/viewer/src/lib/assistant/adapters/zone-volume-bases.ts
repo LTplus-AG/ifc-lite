@@ -4,7 +4,7 @@
 
 import { RelationshipType } from '@ifc-lite/data';
 import { IfcQuery } from '@ifc-lite/query';
-import { extractProjectUnits, extractTypeQuantitiesOnDemand, ProjectUnits, type IfcDataStore } from '@ifc-lite/parser';
+import { extractProjectUnits, extractTypeQuantitiesOnDemand, readCurrentProjectUnits, readCurrentTypeQuantities, ProjectUnits, type CurrentProjectUnitResult, type IfcDataStore } from '@ifc-lite/parser';
 import type { ViewerState } from '@/store';
 import type { EntityRef } from '@/store/types';
 import { effectiveElementData } from '@/components/viewer/properties/effectiveElementData';
@@ -30,30 +30,47 @@ export function zoneQuantitySourceIdentity(s: ViewerState): unknown[] {
 /** Same occurrence-first inherited quantities and file VOLUMEUNIT as the
  * Properties card. Reading evidence must never create a mutation view. */
 export function zoneQuantitySources(s: ViewerState) {
-  const models = new Map<string, { store: IfcDataStore | null; query: IfcQuery | null; units: ProjectUnits }>();
+  const models = new Map<string, { store: IfcDataStore | null; query: IfcQuery | null; units: CurrentProjectUnitResult }>();
   return (ref: EntityRef) => {
     const legacy = ref.modelId === 'legacy' || ref.modelId === '__legacy__';
+    const view = s.mutationViews.get(legacy ? '__legacy__' : ref.modelId);
     let source = models.get(ref.modelId);
     if (!source) {
       const store = (s.models.get(ref.modelId)?.ifcDataStore ?? (legacy ? s.ifcDataStore : null)) as IfcDataStore | null;
-      source = { store, query: store ? new IfcQuery(store) : null,
-        units: store?.source?.length ? extractProjectUnits(store.source, store.entityIndex) : ProjectUnits.empty() };
+      let units: CurrentProjectUnitResult = { status: 'available', reason: null, value: ProjectUnits.empty() };
+      if (store?.source?.length) {
+        if (view) units = readCurrentProjectUnits(store, view);
+        else {
+          try { units = { status: 'available', reason: null, value: extractProjectUnits(store.source, store.entityIndex) }; }
+          catch (error) {
+            console.warn('[Assistant] Zone source project units are unreadable', error);
+            units = { status: 'unavailable', reason: 'Source project units are unreadable', value: null };
+          }
+        }
+      }
+      source = { store, query: store ? new IfcQuery(store) : null, units };
       models.set(ref.modelId, source);
     }
-    const own = effectiveElementData(ref.expressId, source.query,
-      s.mutationViews.get(legacy ? '__legacy__' : ref.modelId)).qsets;
+    const own = effectiveElementData(ref.expressId, source.query, view).qsets;
+    const current = source.store?.source?.length && view
+      ? readCurrentTypeQuantities(source.store, ref.expressId, view) : null;
     const quantities = withInheritedTypeQuantities(own, source.store, ref.expressId,
       RelationshipType.DefinesByType,
-      (store, id) => extractTypeQuantitiesOnDemand(store as IfcDataStore, id)?.quantities as QuantitySet[] | undefined);
-    return { quantities: [...quantities], scale: source.units.resolvedForUnitType('VOLUMEUNIT')?.siScale ?? 1,
-      status: source.store ? source.store.source?.length ? 'available' : 'unverified-without-source' : 'unavailable-model' };
+      (store, id) => (current ? current.value?.quantities
+        : extractTypeQuantitiesOnDemand(store as IfcDataStore, id)?.quantities) as QuantitySet[] | undefined);
+    return { quantities: [...quantities],
+      scale: source.units.status === 'available' ? source.units.value?.resolvedForUnitType('VOLUMEUNIT')?.siScale ?? 1 : null,
+      unitStatus: source.units.status, unitReason: source.units.reason,
+      reason: current?.reason ?? null,
+      status: !source.store ? 'unavailable-model' : !source.store.source?.length ? 'unverified-without-source'
+        : current?.status ?? 'available' };
   };
 }
 
 /** Cached native card facts only. Capture neither clips nor fills the cache.
  * Counts precede display bounds; overlap means shares must not be summed. */
 export function selectedZoneVolumeBreakdowns(
-  s: ViewerState, globalId: number, quantities: readonly QuantitySetLike[], scale: number,
+  s: ViewerState, globalId: number, quantities: readonly QuantitySetLike[], scale: number | null,
   setLimit: number, shareLimit: number,
 ) {
   const relevant = s.zoneSets.filter(set => s.zoneAssignments.get(globalId)?.[set.id]?.straddles);
@@ -61,7 +78,7 @@ export function selectedZoneVolumeBreakdowns(
   const zoneSets = relevant.slice(0, setLimit).map(set => {
     const cache = validEntry(s.zoneApportionment, set);
     const split = cache?.byElement.get(globalId);
-    if (split) volumeBases.push(...allBasisBreakdowns(split, declaredVolumeBases(quantities, scale)).map(basis => ({
+    if (split) volumeBases.push(...allBasisBreakdowns(split, scale === null ? [] : declaredVolumeBases(quantities, scale)).map(basis => ({
       ...basis, zoneSetId: set.id, shareCount: basis.shares.length, shares: basis.shares.slice(0, shareLimit),
       unit: 'm3', ratioNote: volumeBasisRatioNote(basis.basis),
     })));

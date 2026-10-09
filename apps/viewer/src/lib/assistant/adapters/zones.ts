@@ -108,20 +108,21 @@ export const zonesAdapter: EvidenceAdapter = {
         const facts = zoneFactsFor(globalId, assignment, names, BASIS, 1, [], proved, apportioned);
         const ref = resolveEntityRef(globalId);
         const source = quantitySource(ref);
-        const declared = declaredVolumeBases(source.quantities.filter(set => !set.name.startsWith(ZONE_QUANTITY_SET_NAME_PREFIX)), source.scale);
+        const declared = source.scale === null ? [] : declaredVolumeBases(source.quantities.filter(set => !set.name.startsWith(ZONE_QUANTITY_SET_NAME_PREFIX)), source.scale);
         const element = describeElement(globalId, modelNames);
         const basisRows = declared.map(basis => ({ basis: basis.basis,
           ratioNote: assignment.straddles ? volumeBasisRatioNote(basis.basis)
             : 'The declared total belongs to the home zone under the native whole-element assignment.',
           rows: zoneTableRows(element, zoneFactsFor(globalId, assignment, names, basis.basis,
-            source.scale, source.quantities, proved, apportioned), set.name, basis.basis) }));
+            source.scale ?? 1, source.quantities, proved, apportioned), set.name, basis.basis) }));
         for (const [index, row] of zoneTableRows(element, facts, set.name, BASIS).entries()) {
           if (rows.length >= limit) break;
           const unavailable = assignment.straddles && !apportioned ? SPLIT_NOT_COMPUTED : row.Unavailable;
           rows.push(evidenceRow({
             kind: 'zone-element', modelId: ref.modelId, globalId: row.GlobalId || null, expressId: row.ExpressId,
             unit: 'm3', status: row.VolumeM3 === null ? 'unmeasured' : 'measured',
-          }, { ...row, ZoneSetId: set.id, Unavailable: unavailable, DeclaredQuantityStatus: source.status,
+          }, { ...row, ZoneSetId: set.id, Unavailable: unavailable, DeclaredQuantityStatus: source.status, DeclaredQuantityReason: source.reason,
+            DeclaredUnitStatus: source.unitStatus, DeclaredUnitReason: source.unitReason,
             VolumeBases: basisRows.map(basis => ({ basis: basis.basis, ratioNote: basis.ratioNote,
               ...basis.rows[index],
               Unavailable: assignment.straddles && !apportioned ? SPLIT_NOT_COMPUTED : basis.rows[index].Unavailable })) }));

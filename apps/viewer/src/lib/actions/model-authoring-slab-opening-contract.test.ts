@@ -192,3 +192,13 @@ test('#7310 unreadable current native snapshot never attests a named placement r
  const current=readSplitSnapshot(saved,new StoreEditor(saved,savedView),f.id,'m'),ready=previewModelAuthoring(useViewerStore.getState(),f.batch([{...f.operation,expected:current}]));assert.equal(ready.rows[0].status,'ready',ready.rows[0].issue);
  const result=commitModelAuthoring(useViewerStore,ready,new Set([0]),'independently saved current frame');assert.ok(result.ok,result.ok?'':result.detail??result.reason);assert.equal(readHostOpeningExtents(await parseIfc(editedModelBytes(saved,savedView)),f.id).cuts.length,1);
 });
+
+test('#7310 a publicly deleted native slab refuses a previously reviewed opening without restoring the host',async()=>{
+ const f=await fixture(),batch=f.batch(),preview=previewModelAuthoring(useViewerStore.getState(),batch);
+ assert.equal(preview.rows[0].status,'ready',preview.rows[0].issue);
+ new StoreEditor(f.dataStore,f.view).removeEntity(f.id);
+ const saved=await parseIfc(editedModelBytes(f.dataStore,f.view));assert.equal(saved.getEntity(f.id),null,'independent STEP proves the native host removal');
+ const before=await graph(f.dataStore,f.view);assert.notEqual(previewModelAuthoring(useViewerStore.getState(),batch).rows[0].status,'ready');
+ assert.equal(commitModelAuthoring(useViewerStore,preview,new Set([0]),'removed slab host').ok,false);
+ assert.deepEqual(await graph(f.dataStore,f.view),before,'refusal cannot resurrect the native host or append a cut');
+});

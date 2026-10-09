@@ -53,10 +53,10 @@ function readSlabOpeningSnapshot(store: IfcDataStore, editor: StoreEditor, id: n
   const snapshot=readSplitSnapshot(store,editor,id,units),reader=new AnchorEntityReader(store,editor.getMutationView());
   const host=reader.entity(id),localId=refId(host?.attributes[5]),placement=localId===null?null:reader.entity(localId);
   const frame=placement?axis3d(reader,placement.attributes[1]):null;
-  const factor=getModelLengthUnitScale(store)*(units==='mm'?1000:1);
+  const scale=getModelLengthUnitScale(store),factor=units==='mm'?1000:1;
   if(!placement || placement.type.toUpperCase()!=='IFCLOCALPLACEMENT' || !frame
     || refId(placement.attributes[0])!==snapshot.placement.parent
-    || !sameSplitSnapshot({...frame,o:frame.o.map(v=>v*factor)},snapshot.placement.frame)){
+    || !sameSplitSnapshot({...frame,o:frame.o.map(v=>v*scale*factor)},snapshot.placement.frame)){
     throw new Error('Complete current native slab placement snapshot is unavailable; save/reload the native edits before proposing the cut');
   }
   return snapshot;

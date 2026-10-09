@@ -69,7 +69,9 @@ async function inspectorControl() {
     mutationViews: new Map([[SAMPLE_MODEL, parsedView]]), storeEditors: new Map() };
   const readTarget = readOnlyModelEditTarget(readState, SAMPLE_MODEL);
   assert.ok(readTarget);
-  assert.equal(readAuthoringSizeFromTarget(readTarget, target, 'wall')?.thickness, .3,
+  const size = readAuthoringSizeFromTarget(readTarget, target, 'wall');
+  assert.ok(size?.kind === 'wall', 'the native wall reader retains its wall discriminator');
+  assert.equal(size.thickness, .3,
     'the actual native wall body is resized to the layer total, in metres despite the IFC millimetre source');
   return { dataStore, view, target, globalId, layers };
 }
@@ -90,7 +92,7 @@ test('#7275 reviewed native layer assignment admits explicit ordered layers and 
         { LayerThickness: .1, Material: null }],
     }] }));
   const preview = previewModelAuthoring(state, batch);
-  assert.equal(preview.rows[0].status, 'ready', preview.rows[0].issue);
+  assert.equal(preview.rows[0].status, 'ready', preview.rows[0].issue ?? '');
   const result = commitModelAuthoring(useViewerStore, preview, new Set([0]), 'test');
   assert.ok(result.ok, result.ok ? '' : result.detail ?? result.reason);
   const parsed = await parseIfc(editedModelBytes(dataStore, view));
@@ -138,7 +140,7 @@ for (const attached of [false, true]) {
     let row: NativeRow;
     let evidence: NativeLayerEvidence;
     if (attached) {
-      const text = wire.messages.findLast(message => message.role === 'user')?.content;
+      const text = [...wire.messages].reverse().find(message => message.role === 'user')?.content;
       assert.ok(text);
       const elements: NativeRow[] = JSON.parse(text.split('\n').at(-1)!);
       row = elements[0];
@@ -164,7 +166,7 @@ for (const attached of [false, true]) {
         expected: evidence.expected, MaterialLayers: [{ LayerThickness: .15, Material: { create: { Name: 'Explicit provider material' } } },
           { LayerThickness: .2, Material: null }] }] }));
     const preview = previewModelAuthoring(useViewerStore.getState(), proposed);
-    assert.equal(preview.rows[0].status, 'ready', preview.rows[0].issue);
+    assert.equal(preview.rows[0].status, 'ready', preview.rows[0].issue ?? '');
     assert.ok(commitModelAuthoring(useViewerStore, preview, new Set([0]), 'test').ok);
     const parsed = await parseIfc(editedModelBytes(dataStore, view));
     const exported = layerSetOf({ dataStore: parsed, view: new MutablePropertyView(parsed.properties ?? null, SAMPLE_MODEL) }, target);
@@ -264,7 +266,7 @@ for (const units of ['m', 'mm'] as const) {
     const peerIds = expected.peers.map(peer => before.entities.getExpressIdByGlobalId(peer.globalId));
     const lease = view.prepareAtomic(() => undefined);
     const preview = previewModelAuthoring(state, layerBatch(expected, globalId, 'type', units));
-    assert.equal(preview.rows[0].status, 'ready', preview.rows[0].issue);
+    assert.equal(preview.rows[0].status, 'ready', preview.rows[0].issue ?? '');
     assert.equal(preview.rows[0].previewUnavailable, true);
     assert.doesNotThrow(lease.validate, 'type-layer preflight never changes the live draft identity or allocator');
     const result = commitModelAuthoring(useViewerStore, preview, new Set([0]), 'test');
@@ -291,7 +293,7 @@ test('#7275 native material rename conflicts with old expected fields and skip-h
   assert.ok(expected);
   const batch = layerBatch(expected, globalId, 'element');
   const preview = previewModelAuthoring(useViewerStore.getState(), batch);
-  assert.equal(preview.rows[0].status, 'ready', preview.rows[0].issue);
+  assert.equal(preview.rows[0].status, 'ready', preview.rows[0].issue ?? '');
   const mutationVersion = useViewerStore.getState().mutationVersion;
   view.setAttribute(layers.layers[0].materialId!, 'Name', 'Changed native material');
   assert.equal(useViewerStore.getState().mutationVersion, mutationVersion, 'actual direct native edit bypasses the viewer mutation counter');
@@ -306,7 +308,7 @@ test('#7275 a source replacement with matching root fields still invalidates old
   const state = useViewerStore.getState(), expected = transportedLayerEvidence(state, target).expected;
   assert.ok(expected);
   const preview = previewModelAuthoring(state, layerBatch(expected, globalId, 'element'));
-  assert.equal(preview.rows[0].status, 'ready', preview.rows[0].issue);
+  assert.equal(preview.rows[0].status, 'ready', preview.rows[0].issue ?? '');
   const replacement = await parseIfc(editedModelBytes(dataStore, view));
   const models = new Map(state.models), model = models.get(SAMPLE_MODEL)!;
   models.set(SAMPLE_MODEL, { ...model, ifcDataStore: replacement });
@@ -332,7 +334,7 @@ for (const ifcClass of ['IfcSlab', 'IfcRoof', 'IfcPlate'] as const) {
       operations: [{ op: 'material.layers', scope: 'element', target: { globalId, modelId: SAMPLE_MODEL, ifcClass, name: 'Native layered panel' }, expected,
         MaterialLayers: [{ LayerThickness: 350, Material: { modelId: SAMPLE_MODEL, expressId: 62, Name: 'concrete_reinforced_in-situ' } }] }] }));
     const preview = previewModelAuthoring(useViewerStore.getState(), batch);
-    assert.equal(preview.rows[0].status, 'ready', preview.rows[0].issue);
+    assert.equal(preview.rows[0].status, 'ready', preview.rows[0].issue ?? '');
     assert.equal(preview.rows[0].previewUnavailable, true, 'native panel layer assignment has no changed-body geometry prediction');
     assert.ok(commitModelAuthoring(useViewerStore, preview, new Set([0]), 'test').ok);
     const after = await parseIfc(editedModelBytes(dataStore, view));
@@ -359,7 +361,7 @@ test('#7275 native federation refuses ambiguous roots and foreign material owner
     MaterialLayers: [{ LayerThickness: .5, Material: { modelId: 'other', expressId: 62, Name: 'concrete_reinforced_in-situ' } }] })) }));
   assert.equal(previewModelAuthoring(useViewerStore.getState(), foreign).rows[0].status, 'conflict');
   const otherBefore = editedModelBytes(exported, other), preview = previewModelAuthoring(useViewerStore.getState(), batch);
-  assert.equal(preview.rows[0].status, 'ready', preview.rows[0].issue);
+  assert.equal(preview.rows[0].status, 'ready', preview.rows[0].issue ?? '');
   const result = commitModelAuthoring(useViewerStore, preview, new Set([0]), 'test');
   assert.ok(result.ok, result.ok ? '' : result.detail ?? result.reason);
   assert.equal(result.receipt.applied[0].modelId, SAMPLE_MODEL);
@@ -496,7 +498,7 @@ test('#7275 a non-root material Name matching the target RootGUID remains a vali
   assert.ok(op.op === 'material.layers');
   op.MaterialLayers[0].Material = { create: { Name: globalId } };
   const preview = previewModelAuthoring(useViewerStore.getState(), batch);
-  assert.equal(preview.rows[0].status, 'ready', preview.rows[0].issue);
+  assert.equal(preview.rows[0].status, 'ready', preview.rows[0].issue ?? '');
   assert.ok(commitModelAuthoring(useViewerStore, preview, new Set([0]), 'test').ok);
   const parsed = await parseIfc(editedModelBytes(dataStore, view));
   const current = layerSetOf({ dataStore: parsed, view: new MutablePropertyView(parsed.properties ?? null, SAMPLE_MODEL) }, target);

@@ -66,7 +66,7 @@ test('native exported peer replacement with the same GUID/Name cannot satisfy an
 test('native unique-peer layer population control previews purely and exports the type-layer change with Undo',async()=>{
  const f=await fixture(false),lease=f.view.prepareAtomic(()=>null);
  const batch=parseModelAuthoringBatch(JSON.stringify({version:1,kind:'model.authoring',title:'Native unique peer control',units:'m',frame:'storey-local',operations:[f.op]}));
- const preview=previewModelAuthoring(useViewerStore.getState(),batch);assert.equal(preview.rows[0].status,'ready',preview.rows[0].issue);assert.doesNotThrow(()=>lease.validate());
+ const preview=previewModelAuthoring(useViewerStore.getState(),batch);assert.equal(preview.rows[0].status,'ready',preview.rows[0].issue ?? '');assert.doesNotThrow(()=>lease.validate());
  const outcome=commitModelAuthoring(useViewerStore,preview,new Set([0]),'native control');assert.ok(outcome.ok,outcome.ok?'':outcome.detail??outcome.reason);
  const saved=await parseIfc(editedModelBytes(f.dataStore,f.view));
  assert.equal(layerSetOf({dataStore:saved,view:new MutablePropertyView(saved.properties ?? null,SAMPLE_MODEL)},f.typeId)?.layers[0].thickness,.4);

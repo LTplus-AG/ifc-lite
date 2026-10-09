@@ -85,7 +85,7 @@ test('#7275 actual WASM exported wall thickness matches the native reviewed draf
   { skip: !existsSync(wasm) && 'run pnpm build:wasm:fetch' }, async () => {
     const { dataStore, view, ids, batch } = await targets();
     const lease = view.prepareAtomic(() => undefined), preview = previewModelAuthoring(useViewerStore.getState(), batch);
-    assert.equal(preview.rows[0].status, 'ready', preview.rows[0].issue);
+    assert.equal(preview.rows[0].status, 'ready', preview.rows[0].issue ?? '');
     const ghosts = authoringGhosts(useViewerStore.getState(), preview);
     assert.equal(ghosts.length, 1);
     assert.doesNotThrow(lease.validate, 'native ghost generation publishes no model or allocator mutation');

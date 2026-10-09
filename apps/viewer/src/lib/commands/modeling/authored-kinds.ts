@@ -14,7 +14,7 @@
  */
 
 import { liveEntityConforms, readRelatedLists, fromNativeLength } from '@ifc-lite/create';
-import { iterateEffectiveEntityIds, type IfcAttributeValue, type MutablePropertyView } from '@ifc-lite/mutations';
+import { iterateEffectiveEntityIds, type MutablePropertyView } from '@ifc-lite/mutations';
 import { effectiveMetadataRecord, getAttributeNamesForSchema, getSchemaRegistryForVersion, type IfcDataStore } from '@ifc-lite/parser';
 import { effectiveListStringAttribute } from '@/lib/lists/effective-provider-entities';
 import { getModelLengthUnitScale } from '@/lib/length-unit-scale';
@@ -148,18 +148,18 @@ export function occurrencesOf(model: LiveModel, typeId: number): number[] {
 }
 
 /** Native layer metadata follows the same named/positional record used for STEP export (#7275). */
-function liveAttributes({ dataStore, view }: LiveModel, id: number): IfcAttributeValue[] | null {
-  const record = effectiveMetadataRecord(dataStore, id, view);
+function liveAttributes({ dataStore, view }: LiveModel, id: number): unknown[] | null {
+  const record = effectiveMetadataRecord(dataStore, id, view ?? undefined);
   return record?.attributes.length ? record.attributes : null;
 }
 
-function refId(value: IfcAttributeValue | undefined): number | null {
+function refId(value: unknown): number | null {
   if (typeof value === 'number' && Number.isSafeInteger(value) && value > 0) return value;
   const match = typeof value === 'string' ? /^#(\d+)$/.exec(value) : null;
   return match ? Number(match[1]) : null;
 }
 
-function real(value: IfcAttributeValue | undefined): number {
+function real(value: unknown): number {
   if (typeof value === 'number') return value;
   if (value && typeof value === 'object' && 'real' in value) return Number(value.real);
   return Number.NaN;

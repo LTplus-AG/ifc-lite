@@ -183,7 +183,7 @@ test('#7315 current native slab snapshot agrees after a named retarget without r
  assert.deepEqual(saved.getEntity(point.expressId)?.attributes[0],[22000,21000,3000]);
  const preview=previewModelAuthoring(useViewerStore.getState(),f.batch());
  assert.notEqual(preview.rows[0].status,'ready','an old native frame cannot authorize a current retargeted placement');
- const current=readSplitSnapshot(store,editor,f.id,'m');
+ const current=readSplitSnapshot(store,editor,f.id,'m');if(current.kind!=='slab')assert.fail('The actual native host must resolve as a slab');
  assert.deepEqual(current.chain.placementOrigin,[22,21,3]);
  assert.deepEqual(slabEvidence(f.id),{units:'m',status:'available',expected:current},'the unchanged guard accepts only the complete current frame');
  const before=await graph(store,view);assert.equal(commitModelAuthoring(useViewerStore,preview,new Set([0]),'old named frame').ok,false);assert.deepEqual(await graph(store,view),before);

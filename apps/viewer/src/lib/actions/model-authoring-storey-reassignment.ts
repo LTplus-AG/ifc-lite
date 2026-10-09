@@ -84,3 +84,13 @@ export function nativeStoreyReassignmentEvidence(target: ModelEditTarget | null,
   }
   return results.length ? results : null;
 }
+
+
+/** Reuse the viewer's canonical GlobalId resolution and model-join gate. */
+export function resolveReviewedStoreyReassignment(op: StoreyReassignmentOp,
+  existing: (target: ExistingElement) => number,
+  locate: (target: StoreyTarget) => { modelId: string; expressId: number }, join: (modelId: string) => void) {
+  const target = existing(op.target), source = locate(op.sourceStorey), destination = locate(op.destinationStorey);
+  join(source.modelId); join(destination.modelId);
+  return { target, reassignment: { source: source.expressId, destination: destination.expressId } };
+}

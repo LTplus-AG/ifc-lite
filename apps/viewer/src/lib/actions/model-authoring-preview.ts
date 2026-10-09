@@ -11,6 +11,7 @@
  */
 
 import { resolveReviewedLayers, LayerRefusal } from './model-authoring-layers';
+import { resolveReviewedStoreyReassignment } from './model-authoring-storey-reassignment';
 import { gridCreationGhost } from './model-authoring-grid-ghost';
 import { nativeGridExpected, sameGridExpected } from './model-authoring-grid-native';
 import { nativeLengthUnitAvailable } from './model-authoring-read-target';
@@ -140,14 +141,9 @@ function resolve(ctx: Context, row: AuthoringRow): void {
       if (!sameHostedEdit(row.before.hosted, op.expected)) throw new Refusal('conflict', 'The current native hosted binding, position or dimensions differ from the expected state');
       return;
     }
-    case 'element.reassignStorey': {
-      row.resolved.target = row.expressId = existing(ctx, op.target, row);
-      const source = locate(ctx, op.sourceStorey), destination = locate(ctx, op.destinationStorey);
-      join(row, source.modelId); join(row, destination.modelId);
-      row.resolved.reassignment = { source: source.expressId, destination: destination.expressId };
-      row.previewUnavailable = true;
-      return;
-    }
+    case 'element.reassignStorey':
+      Object.assign(row.resolved, resolveReviewedStoreyReassignment(op, target => existing(ctx, target, row), target => locate(ctx, target), modelId => join(row, modelId)));
+      row.expressId = row.resolved.target!; row.previewUnavailable = true; return;
     case 'element.split': {
       row.resolved.target = row.expressId = existing(ctx, op.target, row);
       const r = reader(ctx, row.modelId!);

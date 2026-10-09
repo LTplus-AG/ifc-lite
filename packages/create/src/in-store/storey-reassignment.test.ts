@@ -201,3 +201,18 @@ it.skipIf(!stairWasmAvailable)('#7328 canonical full 3D frames preserve native w
   const after = stairMeshBounds((await meshStairs(s.text())).get(s.id)!);
   for (const edge of ['min', 'max'] as const) for (let i = 0; i < 3; i++) expect(after[edge][i]).toBeCloseTo(before[edge][i], 5);
 });
+
+it('#7328 refuses finite input coordinates whose composed world frame overflows', async () => {
+  const s = await fixture(), reader = new AnchorEntityReader(s.store, s.view);
+  const sourcePlacement = refId(reader.entity(42)!.attributes[5])!;
+  const sourceAxis = refId(reader.entity(sourcePlacement)!.attributes[1])!;
+  const sourcePoint = refId(reader.entity(sourceAxis)!.attributes[0])!;
+  const productPlacement = refId(reader.entity(s.id)!.attributes[5])!;
+  const productAxis = refId(reader.entity(productPlacement)!.attributes[1])!;
+  const productPoint = refId(reader.entity(productAxis)!.attributes[0])!;
+  s.editor.setPositionalAttribute(sourcePoint, 0, [0, 1e308, 0]);
+  s.editor.setPositionalAttribute(productPoint, 0, [1e308, 0, 0]);
+  const before = s.snapshot();
+  expect(() => reassignElementsToStoreyInStore(s.store, s.editor, [s.id], 42, s.destination)).toThrow(/unreadable world placement/);
+  expect(s.snapshot()).toEqual(before);
+});

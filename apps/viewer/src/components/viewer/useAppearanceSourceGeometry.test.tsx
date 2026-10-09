@@ -99,6 +99,36 @@ it('uses current model indices after removal/readdition and input reordering (#6
   assert.equal(ui.textContent, `${newIndex}:1,${newIndex}:2,1:3`);
 });
 
+it('drops pruned geometry and adopts a replacement after a session reset (#6537)', () => {
+  const ui = mount();
+  act(() => useViewerStore.getState().pruneGeometryMeshes(new Set([1])));
+  assert.equal(ui.textContent, '0:2,1:3', 'a departed mesh is not retained as an appearance source');
+  act(() => useViewerStore.getState().clearAllModels());
+  assert.equal(ui.textContent, '');
+  act(() => useViewerStore.getState().upsertModel({ ...fixtureModel('b'), geometryResult: geometry([mesh(9)]) }));
+  assert.equal(ui.textContent, '0:9', 'the next session has no old source or ownership assignment');
+  act(() => useViewerStore.getState().upsertModel({ ...fixtureModel('a'), geometryResult: geometry([mesh(8)]) }));
+  assert.equal(ui.textContent, '0:9,1:8');
+});
+
+it('reads current frames after an in-place geometry content update (#6537)', () => {
+  mount();
+  const model = useViewerStore.getState().models.get('a')!;
+  const canonical = model.geometryResult!.meshes[0];
+  // Federation alignment/rebasing keeps the mesh objects and updates their
+  // fields, then publishes the canonical content-version notification.
+  act(() => {
+    canonical.origin = [100, 200, 300];
+    canonical.positions = new Float32Array([9, 0, 0, 10, 0, 0, 9, 1, 0]);
+    useViewerStore.getState().bumpGeometryContentVersion();
+  });
+  assert.deepEqual(sources[0].origin, [100, 200, 300]);
+  assert.equal(sources[0].positions, canonical.positions);
+  assert.equal(sources[0].positions[0], 9, 'an old wrapper must not keep the displaced buffer');
+  assert.equal(sources[0].modelIndex, 0);
+  assert.equal(sources[2].modelIndex, 1);
+});
+
 it('preserves canonical CPU release for a retained appearance list (#6537 / #6584)', () => {
   mount();
   const retained = sources.slice(), peerPositions = retained[2].positions;

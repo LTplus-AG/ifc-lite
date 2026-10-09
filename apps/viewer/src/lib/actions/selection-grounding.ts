@@ -46,7 +46,7 @@ const SELECTION_GROUNDING_LIMIT = 100;
 type GroundingState = ViewerState;
 const groundingOwners = new WeakMap<SelectionGrounding, {
   elements: string;
-  sources: Map<string, { store: unknown; view: unknown; hash: unknown; fingerprint: unknown; lease: NativeReadLease | null }>;
+  sources: Map<string, { store: unknown; view: unknown; hash: unknown; fingerprint: unknown; lease: NativeReadLease | null; zones: string }>;
 }>();
 
 /** Exact explicit captured population survives selection changes, never model replacement or native edits. */
@@ -57,6 +57,7 @@ export function selectionGroundingIsCurrent(grounding: SelectionGrounding, state
     const model = state.models.get(modelId);
     if (!model || model.ifcDataStore !== saved.store || state.mutationViews.get(modelId) !== saved.view
       || model.sourceContentHash !== saved.hash || model.sourceFingerprint !== saved.fingerprint) return false;
+    if (saved.zones !== JSON.stringify(nativeZoneEmissionEvidence(state as ViewerState, modelId))) return false;
     try { saved.lease?.validate(); } catch (error) {
       // Native optimistic snapshot refusal is expected after an edit; no write/recovery occurs.
       if (error instanceof Error) return false;
@@ -79,7 +80,7 @@ export function captureSelectionGrounding(state: GroundingState, limit = SELECTI
       const model = state.models.get(modelId);
       sources.set(modelId, { store: model?.ifcDataStore, view: state.mutationViews.get(modelId),
         hash: model?.sourceContentHash, fingerprint: model?.sourceFingerprint,
-        lease: readOnlyModelEditLease(state, modelId) });
+        lease: readOnlyModelEditLease(state, modelId), zones: JSON.stringify(nativeZoneEmissionEvidence(state, modelId)) });
     }
     return sources.get(modelId)?.lease?.target ?? null;
   };

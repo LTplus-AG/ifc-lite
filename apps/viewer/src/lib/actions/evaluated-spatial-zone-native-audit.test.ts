@@ -17,7 +17,9 @@ import { recordModellingEdit, modelEditTarget } from '@/store/slices/mutation-mo
 import { ensureWasm } from '@/test/scan-slab-fixture';
 import { seedZoneExport } from '@/test/zone-export-fixture';
 import { parseIfc, danglingReferences } from '@/test/authoring-sample-fixture';
-import { parseModelAuthoringBatch } from './model-authoring';
+import { parseZoneEmissionProposal } from './zone-emission-proposal';
+import { nativeZoneEmissionEvidence } from './zone-emission-evidence';
+import { prepareZoneEmission } from './zone-emission-review';
 const initial = useViewerStore.getState();
 afterEach(() => { setGlobalRendererRef({ current: null }); useViewerStore.setState(initial, true); });
 async function nativeEvaluation(t: TestContext) {
@@ -59,9 +61,13 @@ test('Campaign6812 evaluated SpatialZone native refusal preserves source and nat
     assert.equal(outcome.refusal, refusal); assert.deepEqual(editedModelBytes(f.store, f.view), before); assert.equal(useViewerStore.getState().undoStacks.get('bonsai')?.length, count);
   }
 });
-test('Campaign6812 existing genuine evaluated native SpatialZone result is missing from reviewed authoring admission', async t => {
+test('#7322 real evaluated native SpatialZone result reaches reviewed identity-only emission without invented membership', async t => {
   const f = await nativeEvaluation(t); if (!f) return;
   const native = recordModellingEdit(useViewerStore, 'bonsai', (_methods, draft) => emitSpatialZones(draft, f.store, f.zoneSet, f.members, {}, { view: draft.getMutationView(), storeyId: f.storeyId }), 'native emission witness');
   assert.equal(native.refusal, null); assert.equal((await parseIfc(editedModelBytes(f.store, f.view))).entityIndex.byType.get('IFCSPATIALZONE')?.length, 1);
-  assert.doesNotThrow(() => parseModelAuthoringBatch(JSON.stringify({ version: 1, kind: 'model.authoring', title: 'Review current evaluated zone set', units: 'm', frame: 'storey-local', operations: [{ op: 'zone.emit', modelId: 'bonsai', zoneSetId: f.zoneSet.id }] })), 'real evaluated native zone-set emission needs a reviewed route; no membership or geometry is supplied by the provider');
+  const model = useViewerStore.getState().models.get('bonsai')!; useViewerStore.setState({ models: new Map([['bonsai', { ...model, idOffset: 0, maxExpressId: Math.max(...f.store.entityIndex.byId.keys()) }]]) });
+  recomputeZoneAssignmentsNow();
+  const choice = nativeZoneEmissionEvidence(useViewerStore.getState(), 'bonsai').choices.find(row => row.status === 'available'); assert.ok(choice?.expected, JSON.stringify(choice));
+  const proposal = parseZoneEmissionProposal(JSON.stringify({ version: 1, kind: 'zones.emit', title: 'Review current evaluated zone set', modelId: 'bonsai', zoneSetId: f.zoneSet.id, storey: { GlobalId: choice.expected.storey.GlobalId, Name: choice.expected.storey.Name }, expected: choice.expected }));
+  assert.equal(prepareZoneEmission(useViewerStore, proposal).dry.outcome.zonesReplaced, 1);
 });

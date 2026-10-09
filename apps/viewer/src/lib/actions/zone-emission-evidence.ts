@@ -10,7 +10,7 @@ import { resolveEntityRefGlobalIdFromState } from '@/store/resolveEntityRef';
 import { collidesByName } from '@/hooks/useZoneWriteBack';
 import { resolveRenderFrame } from '@/hooks/useRenderFrameOffsets';
 import { zoneEmissionFrameFor } from '@/hooks/useZoneSpatialZones';
-import { zoneEvaluationIsCurrent } from '@/lib/zones/evaluation-owner';
+import { zoneEvaluationIsCurrent, currentZoneEvaluationIdentity } from '@/lib/zones/evaluation-owner';
 import { removeSpatialZones, type ZoneMembership } from '@/lib/zones/emit-spatial-zones';
 import { effectiveCostReferenceOccurrences } from '../../../../../packages/sdk/src/cost-reference-scan.js';
 import { readOnlyModelEditLease, nativeLengthUnitAvailable } from './model-authoring-read-target';
@@ -29,7 +29,7 @@ export function readZoneEmissionSnapshot(state: ViewerState, modelId: string, zo
   const identity = (expressId: number) => {
     const record = effectiveMetadataRecord(dataStore, expressId, view), GlobalId = resolveEntityRefGlobalIdFromState(state, { modelId, expressId });
     if (!record || !GlobalId || !/^[0-3][0-9A-Za-z_$]{21}$/.test(GlobalId) || !uniqueSplitGuid(dataStore, editor, GlobalId)) throw new Error('A native member or storey Root identity is missing or ambiguous');
-    return { expressId, GlobalId, Name: typeof record.attributes[2] === 'string' ? record.attributes[2] : '', type: record.type };
+    return { expressId, GlobalId, Name: typeof record.attributes[2] === 'string' ? record.attributes[2] : null, type: record.type };
   };
   const members: Array<ZoneMembership & ReturnType<typeof identity>> = [];
   for (const [globalId, rows] of state.zoneAssignments) {
@@ -51,7 +51,7 @@ export function readZoneEmissionSnapshot(state: ViewerState, modelId: string, zo
   }).result;
   // @raw-entity-enumeration-ok source SpatialZone bucket seeds imported-output candidates; the effective iterator applies current deletions/retypes before counting source-only outputs.
   const imported = [...iterateEffectiveEntities(dataStore, view, undefined, new Set(dataStore.entityIndex.byType.get('IFCSPATIALZONE') ?? []))].filter(row => row.type.toUpperCase() === 'IFCSPATIALZONE' && !view.getNewEntity(row.expressId)).length;
-  const expected = { modelId, zoneSetId, storey: identity(storeyId), set: structuredClone(set), members,
+  const expected = { modelId, zoneSetId, evaluationId: currentZoneEvaluationIdentity(state, initializingModel), storey: identity(storeyId), set: structuredClone(set), members,
     frame: zoneEmissionFrameFor(model, resolveRenderFrame(state.models, state.geometryResult)),
     rebased: model.federationAlignmentStatus === 'same-crs' || model.federationAlignmentStatus === 'reprojected',
     schema: anchor.schema, lengthUnitScale: anchor.lengthUnitScale, prior, importedSourceZonesRetained: imported };

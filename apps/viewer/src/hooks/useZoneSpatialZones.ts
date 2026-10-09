@@ -19,7 +19,7 @@
  * each model gets its OWN copy of the zones, referencing its own elements -
  * each converted out of the render frame by THAT model's own offsets, because
  * an unaligned model is drawn in its own local frame rather than the anchor's
- * (see {@link frameFor}).
+ * (see {@link zoneEmissionFrameFor}).
  *
  * A model that federation alignment RE-BASED is refused rather than emitted
  * into: its render coordinates undo to the anchor file's coordinate system, so
@@ -80,7 +80,7 @@ interface ModelContext {
   store: IfcDataStore;
   name: string;
   rebased: boolean;
-  /** THIS model's offsets, not the scene's. See {@link frameFor}. */
+  /** THIS model's offsets, not the scene's. See {@link zoneEmissionFrameFor}. */
   frame: RenderFrameOffsets;
 }
 
@@ -188,7 +188,7 @@ export function emitZoneSpatialZones(zoneSet: ZoneSet): ZoneEmitResult {
   const byModel = membersByModel(zoneSet);
 
   // The scene-wide frame, resolved by the readouts' own rule, is only the
-  // FALLBACK here: each model is written in its own frame (see `frameFor`).
+  // FALLBACK here: each model is written in its own frame (see `zoneEmissionFrameFor`).
   const scene = resolveRenderFrame(state.models, state.geometryResult);
 
   const contexts = new Map<string, ModelContext | null>();

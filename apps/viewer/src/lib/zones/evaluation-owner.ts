@@ -5,7 +5,7 @@ import type { ViewerState } from '@/store';
 import { getGlobalRenderer } from '@/hooks/useBCF';
 import type { ElementAABB } from './types';
 /** #7322: ownership of the actual native Scene evaluation, never inferred from a timestamp. */
-const owners = new WeakMap<ViewerState['zoneAssignments'], { signature: string; scene: unknown; bounds: string }>();
+const owners = new WeakMap<ViewerState['zoneAssignments'], { id: string; signature: string; scene: unknown; bounds: string }>();
 function signature(state: ViewerState) {
   return { sets: JSON.stringify(state.zoneSets), tick: state.geometryUpdateTick, geometry: state.geometryContentVersion,
     models: [...state.models].map(([id, model]) => ({ id, model, store: model.ifcDataStore, source: model.ifcDataStore?.source,
@@ -18,7 +18,7 @@ export function recordZoneEvaluationOwner(state: ViewerState, elements: ElementA
   if (elements.length > 10000 || state.zoneSets.length > 10) return;
   const current = signature(state);
   savedOwners.set(state.zoneAssignments, current);
-  owners.set(state.zoneAssignments, { signature: JSON.stringify([...state.zoneAssignments]), scene: getGlobalRenderer()?.getScene(), bounds: JSON.stringify(elements) });
+  owners.set(state.zoneAssignments, { id: crypto.randomUUID(), signature: JSON.stringify([...state.zoneAssignments]), scene: getGlobalRenderer()?.getScene(), bounds: JSON.stringify(elements) });
 }
 export function zoneEvaluationIsCurrent(state: ViewerState, initializingModel?: string): boolean {
   const owner = owners.get(state.zoneAssignments), saved = savedOwners.get(state.zoneAssignments);
@@ -37,4 +37,9 @@ export function zoneEvaluationIsCurrent(state: ViewerState, initializingModel?: 
     elements.push({ globalId, min: [bounds.min.x, bounds.min.y, bounds.min.z], max: [bounds.max.x, bounds.max.y, bounds.max.z] });
   }
   return JSON.stringify(elements) === owner.bounds;
+}
+
+/** Identity belongs to an actual completed native evaluation, not to equivalent later inputs. */
+export function currentZoneEvaluationIdentity(state: ViewerState, initializingModel?: string): string | null {
+  return zoneEvaluationIsCurrent(state, initializingModel) ? owners.get(state.zoneAssignments)?.id ?? null : null;
 }

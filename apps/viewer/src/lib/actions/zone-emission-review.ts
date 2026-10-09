@@ -14,6 +14,7 @@ import { readZoneEmissionSnapshot } from './zone-emission-evidence';
 import { parseZoneEmissionProposal, type ZoneEmissionProposal } from './zone-emission-proposal';
 import type { ModelChangeReceipt } from './model-change-commit';
 import { batchDigest } from './model-change-preview';
+import { sameReportEvidence } from '@/lib/flow/report-provenance';
 export function prepareZoneEmission(store: StoreApi<ViewerState>, input: ZoneEmissionProposal) {
   const proposal = parseZoneEmissionProposal(JSON.stringify(input)), state = store.getState();
   const deny = mutationDenial(state, proposal.modelId); if (deny) throw new Error(deny);
@@ -21,7 +22,7 @@ export function prepareZoneEmission(store: StoreApi<ViewerState>, input: ZoneEmi
   const ref = resolveGlobalId(state, { globalId: proposal.storey.GlobalId, modelId: proposal.modelId });
   if (!ref) throw new Error('Explicit current storey is unavailable or ambiguous');
   const snapshot = readZoneEmissionSnapshot(state, proposal.modelId, proposal.zoneSetId, ref.expressId);
-  if (snapshot.storey.Name !== proposal.storey.Name || JSON.stringify(proposal.expected) !== JSON.stringify(snapshot)) throw new Error('The complete current native zone-set evidence differs; attach again');
+  if (snapshot.storey.Name !== proposal.storey.Name || !sameReportEvidence(proposal.expected, snapshot)) throw new Error('The complete current native zone-set evidence differs; attach again');
   const dry = lease.target.view.prepareAtomic(view => {
     const draft = new StoreEditor(lease.target.dataStore, view), before = new Set(draft.getNewEntities().map(row => row.expressId));
     const outcome = emitSpatialZones(draft, lease.target.dataStore, snapshot.set, snapshot.members, snapshot.frame, { view, storeyId: ref.expressId, rebased: snapshot.rebased });

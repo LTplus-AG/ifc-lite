@@ -1,6 +1,7 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+import type { IfcAttributeValue } from '@ifc-lite/data';
 import { storeyPlanFrame } from '@ifc-lite/create';
 import { EntityExtractor, type IfcDataStore } from '@ifc-lite/parser';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
@@ -15,7 +16,11 @@ export function curtainWallFrameAvailable(store: IfcDataStore, view: MutableProp
   if (!storeyPlanFrame(store, storey, view)) return false;
   const reader = new AnchorEntityReader(store, view ?? null);
   const source = new AnchorEntityReader(store, null);
-  const overlay = { readEntity: (id: number) => reader.entity(id), getNewEntities: () => view?.getNewEntities() ?? [] };
+  const overlay = { getNewEntities: () => view?.getNewEntities() ?? [], readEntity: (id: number) => {
+    const record = reader.entity(id);
+    // Match the canonical storeyPlanFrame adapter: native fields are STEP values.
+    return record ? { type: record.type, attributes: record.attributes as IfcAttributeValue[] } : null;
+  } };
   const chain = storeyPlacementChain(store, new EntityExtractor(store.source), overlay, storey, 256);
   if (!chain) return false;
   const sourceChain = storeyPlacementChain(store, new EntityExtractor(store.source), undefined, storey, 256);

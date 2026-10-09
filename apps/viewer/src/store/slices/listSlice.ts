@@ -15,6 +15,8 @@ import type { VisibilityOwnership } from '../../lib/visibility/ownership.js';
 export interface ListSlice {
   // State
   listDefinitions: ListDefinition[];
+  /** Last successfully loaded/saved native rows, independent of unsaved edits. */
+  listDefinitionSource: ListDefinition[];
   activeListId: string | null;
   listResult: ListResult | null;
   listPanelVisible: boolean;
@@ -45,9 +47,12 @@ export interface ListSlice {
   setPendingListDraft: (definition: ListDefinition | null) => void;
 }
 
-export const createListSlice: StateCreator<ListSlice, [], [], ListSlice> = (set, get) => ({
+export const createListSlice: StateCreator<ListSlice, [], [], ListSlice> = (set, get) => {
+  const initial = loadListDefinitions();
+  return {
   // Initial state - load saved definitions
-  listDefinitions: loadListDefinitions(),
+  listDefinitions: initial,
+  listDefinitionSource: structuredClone(initial),
   activeListId: null,
   listResult: null,
   listPanelVisible: false,
@@ -59,14 +64,14 @@ export const createListSlice: StateCreator<ListSlice, [], [], ListSlice> = (set,
   // Actions
   setListDefinitions: (listDefinitions) => {
     if (!saveListDefinitions(listDefinitions)) return false;
-    set({ listDefinitions });
+    set({ listDefinitions, listDefinitionSource: structuredClone(listDefinitions) });
     return true;
   },
 
   addListDefinition: (definition) => {
     const updated = [...get().listDefinitions, definition];
     set({ listDefinitions: updated });
-    saveListDefinitions(updated);
+    if (saveListDefinitions(updated)) set({ listDefinitionSource: structuredClone(updated) });
   },
 
   updateListDefinition: (id, updates) => {
@@ -74,7 +79,7 @@ export const createListSlice: StateCreator<ListSlice, [], [], ListSlice> = (set,
       d.id === id ? { ...d, ...updates, updatedAt: Date.now() } : d
     );
     set({ listDefinitions: updated });
-    saveListDefinitions(updated);
+    if (saveListDefinitions(updated)) set({ listDefinitionSource: structuredClone(updated) });
   },
 
   deleteListDefinition: (id) => {
@@ -82,7 +87,7 @@ export const createListSlice: StateCreator<ListSlice, [], [], ListSlice> = (set,
     const activeListId = get().activeListId === id ? null : get().activeListId;
     const listResult = get().activeListId === id ? null : get().listResult;
     set({ listDefinitions: updated, activeListId, listResult });
-    saveListDefinitions(updated);
+    if (saveListDefinitions(updated)) set({ listDefinitionSource: structuredClone(updated) });
   },
 
   setActiveListId: (activeListId) => set({ activeListId }),
@@ -92,7 +97,8 @@ export const createListSlice: StateCreator<ListSlice, [], [], ListSlice> = (set,
   setListExecuting: (listExecuting) => set({ listExecuting }),
   setListError: (listError) => set({ listError }),
   setPendingListDraft: (pendingListDraft) => set({ pendingListDraft }),
-});
+  };
+};
 
 /**
  * What a session reset clears on the list slice.

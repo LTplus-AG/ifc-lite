@@ -8,7 +8,6 @@ import { sameReportEvidence } from '../flow/report-provenance.js';
 import { loadSavedFilters, saveFilter, __internal, type SavedFilterPreset } from '../search/saved-filters.js';
 import { loadListDefinitions } from '../lists/persistence.js';
 import { buildInitialLenses, AUTO_COLOR_FROM_LIST_ID } from '@/store/slices/lensSlice';
-import { encodeSavedLens, migrateSavedLens } from '../lens/migrate-saved-lens.js';
 import { encodeSavedList } from '../lists/saved-list-codec.js';
 import type { StandaloneArtifactLibraries } from './artifact-backup.js';
 
@@ -30,28 +29,30 @@ function copyName(name: string, index: number, limit = 200): string {
   const suffix = index === 1 ? ' (imported)' : ` (imported ${index})`;
   return name.slice(0, Math.max(1, limit - suffix.length)) + suffix;
 }
-/** Include newly durable peer-tab rows without overwriting a conflicting local draft. */
-function currentRows<T extends { id: string }>(saved: T[], local: T[], encode: (row: T) => unknown, kind: string): T[] {
-  const rows = new Map(saved.map(row => [row.id, row]));
-  for (const row of local) {
-    const durable = rows.get(row.id);
-    if (durable && !sameReportEvidence(encode(durable), encode(row))) {
-      throw new Error(`${kind} changed in another tab. Reload the library before backing up or importing.`);
-    }
-    if (!durable) rows.set(row.id, row);
-  }
-  return [...rows.values()];
-}
+/** Reconcile durable peers with genuine local edits against the last native save. */
 export function currentListDefinitions(): ListDefinition[] {
-  return currentRows(loadListDefinitions(), useViewerStore.getState().listDefinitions, encodeSavedList, 'Lists');
+  const state = useViewerStore.getState();
+  const saved = new Map(loadListDefinitions().map(row => [row.id, row]));
+  const local = new Map(state.listDefinitions.map(row => [row.id, row]));
+  const source = new Map(state.listDefinitionSource.map(row => [row.id, row]));
+  const equal = (a: ListDefinition | undefined, b: ListDefinition | undefined) =>
+    a === undefined || b === undefined ? a === b : sameReportEvidence(encodeSavedList(a), encodeSavedList(b));
+  for (const id of new Set([...source.keys(), ...local.keys()])) {
+    const previous = source.get(id), current = local.get(id), durable = saved.get(id);
+    // Unchanged session rows follow the peer's edit or deletion.
+    if (equal(previous, current)) continue;
+    if (!equal(previous, durable) && !equal(current, durable)) {
+      throw new Error('Lists changed in another tab. Reload the library before backing up or importing.');
+    }
+    if (current) saved.set(id, current);
+    else saved.delete(id);
+  }
+  return [...saved.values()];
 }
 export function currentLensDefinitions(): Lens[] {
-  return currentRows(buildInitialLenses(), useViewerStore.getState().savedLenses, row => {
-    const normalized = migrateSavedLens(encodeSavedLens(row));
-    if (!normalized) throw new Error('A saved Lens is unreadable. Export its original before refreshing the library.');
-    return normalized;
-  }, 'Lenses')
-    .filter(row => row.id !== AUTO_COLOR_FROM_LIST_ID);
+  // Native Lens CRUD updates memory only after a successful save, so there
+  // are no unsaved Lens rows to recover from a stale tab snapshot.
+  return buildInitialLenses().filter(row => row.id !== AUTO_COLOR_FROM_LIST_ID);
 }
 /** Filters use native names as identities; List/Lens provenance requires IDs. */
 function reusableFilter(rows: readonly SavedFilterPreset[], incoming: SavedFilterPreset): boolean {
@@ -128,7 +129,6 @@ export function importArtifactLibraries(incoming: StandaloneArtifactLibraries): 
   }
   if (incoming.lenses) {
     const state = useViewerStore.getState(), rows = currentLensDefinitions();
-    const copies = rows.filter(row => !state.savedLenses.some(local => local.id === row.id));
     let count = 0;
     const owners = identityOwners(incoming.lenses);
     for (const entry of incoming.lenses) {
@@ -137,9 +137,9 @@ export function importArtifactLibraries(incoming: StandaloneArtifactLibraries): 
       if (identity.existing) continue;
       const copy = { ...entry, id: identity.id,
         name: identity.name, builtin: false };
-      copies.push(copy); rows.push(copy); count++;
+      rows.push(copy); count++;
     }
-    if (incoming.lenses.length && !state.importLenses(copies).ok) {
+    if (incoming.lenses.length && !state.setSavedLenses(rows).ok) {
       outcome.failed.push('lenses'); outcome.pending.lenses = incoming.lenses;
     }
     else outcome.saved += count;

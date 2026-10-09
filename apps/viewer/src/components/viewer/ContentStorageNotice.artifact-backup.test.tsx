@@ -231,6 +231,80 @@ for (const action of ['download', 'import'] as const) test(`#7218 native ${actio
   } finally { download.mock.restore(); }
 });
 
+for (const operation of ['add', 'update', 'delete'] as const) test(`#7218 backup retains a genuine unsaved native List ${operation} after quota refusal`, async () => {
+  await seedArtifactModels({ federated: true });
+  await Promise.all([assistantLibrary.initialize(), useViewerStore.getState().initializeSavedClashReports()]);
+  const proposal = parseArtifactProposal(JSON.stringify({ version: 1, title: 'Native unsaved List', kind: 'list.proposal', ...entries[1].body }), 'list.proposal');
+  const preview = await previewArtifact(proposal, useViewerStore.getState()); assert.ok(preview.matched > 0);
+  if (preview.artifact.kind !== 'list.proposal') assert.fail('native List required');
+  const original = { ...preview.artifact.definition, id: 'native-unsaved-list', name: 'Saved original' };
+  assert.ok(useViewerStore.getState().setListDefinitions([original]));
+  const write = localStorage.setItem.bind(localStorage);
+  const denied = mock.method(localStorage, 'setItem', (key: string, value: string) => {
+    if (key === 'ifc-lite-lists') throw new DOMException('Native List draft quota', 'QuotaExceededError');
+    write(key, value);
+  });
+  const blobs: Blob[] = [];
+  const download = mock.method(URL, 'createObjectURL', (value: Blob | MediaSource) => { assert.ok(value instanceof Blob); blobs.push(value); return 'blob:unsaved-list-edit'; });
+  try {
+    const state = useViewerStore.getState();
+    if (operation === 'add') state.addListDefinition({ ...original, id: 'native-added-draft', name: 'Unsaved addition' });
+    else if (operation === 'update') state.updateListDefinition(original.id, { name: 'Unsaved update' });
+    else state.deleteListDefinition(original.id);
+    assert.equal(loadListDefinitions().find(row => row.id === original.id)?.name, original.name, 'the native write actually refused without changing the saved source');
+    const ui = render(<Notice />);
+    const button = [...ui.querySelectorAll('button')].find(node => node.textContent?.includes('Download library backup')); assert.ok(button);
+    await waitFor(() => !button.disabled, 'native draft export ready'); click(button);
+    await waitFor(() => blobs.length === 1, 'native refused List draft Download');
+    const rows = parseContentBackup(await blobs[0].text()).libraries.lists ?? [];
+    if (operation === 'add') assert.ok(rows.some(row => row.id === 'native-added-draft'), 'the genuine new draft is recoverable');
+    else if (operation === 'update') assert.equal(rows.find(row => row.id === original.id)?.name, 'Unsaved update', 'the genuine edited draft is recoverable');
+    else assert.ok(!rows.some(row => row.id === original.id), 'a genuine refused deletion does not restore the saved row in a backup');
+  } finally { denied.mock.restore(); download.mock.restore(); }
+});
+
+for (const kind of ['lists', 'lenses'] as const) for (const action of ['download', 'import'] as const) test(`#7218 native ${action} does not resurrect ${kind} deleted by another tab`, async () => {
+  await seedArtifactModels({ federated: true });
+  await Promise.all([assistantLibrary.initialize(), useViewerStore.getState().initializeSavedClashReports()]);
+  const entry = entries.find(row => row.key === kind); assert.ok(entry);
+  const proposal = parseArtifactProposal(JSON.stringify({ version: 1, title: 'Native peer deletion', kind: entry.kind, ...entry.body }), entry.kind);
+  const preview = await previewArtifact(proposal, useViewerStore.getState()); assert.ok(preview.matched > 0);
+  const artifact = preview.artifact;
+  assert.ok(artifact.kind === 'list.proposal' || artifact.kind === 'lens.proposal');
+  const source = artifact.kind === 'list.proposal' ? artifact.definition : artifact.lens;
+  const local = { ...source, id: 'native-peer-deleted-a', name: 'Peer deleted A' };
+  const incoming = { ...source, id: 'native-peer-import-c', name: 'Imported C' };
+  let wire: string;
+  if (artifact.kind === 'list.proposal') {
+    useViewerStore.getState().setListDefinitions([{ ...artifact.definition, ...local }]);
+    wire = await nativeBackupWire({ lists: [{ ...artifact.definition, ...incoming }] });
+    assert.ok(saveListDefinitions([]), 'peer native writer actually deletes the saved List');
+  } else {
+    assert.ok(useViewerStore.getState().setSavedLenses([{ ...artifact.lens, ...local }]).ok);
+    wire = await nativeBackupWire({ lenses: [{ ...artifact.lens, ...incoming }] });
+    assert.ok(createStore<LensSlice>()(createLensSlice).getState().deleteLens(local.id).ok, 'peer native writer actually deletes the saved Lens');
+  }
+  const fresh = () => kind === 'lists' ? loadListDefinitions() : createStore<LensSlice>()(createLensSlice).getState().savedLenses;
+  assert.ok(!fresh().some(row => row.id === local.id), 'the independent native read proves physical deletion');
+  const blobs: Blob[] = [];
+  const download = mock.method(URL, 'createObjectURL', (value: Blob | MediaSource) => { assert.ok(value instanceof Blob); blobs.push(value); return 'blob:peer-deletion'; });
+  const ui = render(<Notice />);
+  try {
+    if (action === 'download') {
+      const button = [...ui.querySelectorAll('button')].find(node => node.textContent?.includes('Download library backup')); assert.ok(button);
+      await waitFor(() => !button.disabled, 'native deletion-aware export ready'); click(button);
+      await waitFor(() => blobs.length === 1, 'native deletion-aware Download');
+      assert.ok(!parseContentBackup(await blobs[0].text()).libraries[kind]?.some(row => row.id === local.id), 'the actual backup does not present a deleted peer as an unsaved draft');
+    } else {
+      const input = ui.querySelector<HTMLInputElement>('input[type="file"]'); assert.ok(input);
+      Object.defineProperty(input, 'files', { value: [new File([wire], 'native-peer-deletion-import.json')], configurable: true });
+      await act(async () => { input.dispatchEvent(new Event('change', { bubbles: true })); });
+      await waitFor(() => fresh().some(row => row.id === incoming.id), 'explicit source artifact imported');
+      assert.ok(!fresh().some(row => row.id === local.id), 'an unrelated explicit import cannot restore a peer deletion');
+    }
+  } finally { download.mock.restore(); }
+});
+
 for (const entry of entries.filter(row => row.key === 'lists' || row.key === 'lenses')) {
   for (const peer of ['none', 'source', 'independent'] as const) test(`#7218 native backup preserves two distinct ${entry.key} identities with identical names and criteria${peer === 'source' ? ' beside an unchanged source peer' : peer === 'independent' ? ' beside an independently saved equal local peer' : ''}`, async () => {
     await seedArtifactModels({ federated: true });

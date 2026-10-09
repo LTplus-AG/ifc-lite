@@ -10,12 +10,13 @@
  */
 
 import { ENTITY_ATTRIBUTE_NAMES, LENS_PALETTE, type AutoColorSpec, type Lens, type LensRule } from '@ifc-lite/lens';
-import { onlyKeys, parseEnvelope, parseHexColor, record, requiredText, type ArtifactEnvelope } from './artifact-json';
+import { onlyKeys, parseEnvelope, parseNativeArtifactScope, parseHexColor, record, requiredText, type ArtifactEnvelope } from './artifact-json';
 import { parseProposalGroups } from './artifact-rules';
 
 export type LensDraft = Pick<Lens, 'name' | 'rules' | 'autoColor'>;
 
 export interface LensProposal extends ArtifactEnvelope {
+  scope?: import('./artifact-json').NativeArtifactScope;
   kind: 'lens.proposal';
   lens: LensDraft;
 }
@@ -56,13 +57,13 @@ function parseAutoColor(value: unknown): AutoColorSpec {
 }
 
 export function parseLensProposal(answer: string): LensProposal {
-  const { value, envelope } = parseEnvelope(answer, 'lens.proposal', ['lens']);
+  const { value, envelope } = parseEnvelope(answer, 'lens.proposal', ['lens', 'scope']);
   if (!record(value.lens)) throw new Error('A lens.proposal needs a "lens" object');
   const lens = value.lens;
   onlyKeys(lens, ['name', 'rules', 'autoColor'], 'The lens');
   const name = requiredText(lens.name, 'The lens "name"');
   if ((lens.rules === undefined) === (lens.autoColor === undefined)) throw new Error('A lens has either "rules" or "autoColor", not both and not neither');
-  if (lens.autoColor !== undefined) return { ...envelope, kind: 'lens.proposal', lens: { name, rules: [], autoColor: parseAutoColor(lens.autoColor) } };
+  if (lens.autoColor !== undefined) return { ...envelope, scope: parseNativeArtifactScope(value.scope), kind: 'lens.proposal', lens: { name, rules: [], autoColor: parseAutoColor(lens.autoColor) } };
   if (!Array.isArray(lens.rules) || lens.rules.length === 0 || lens.rules.length > LENS_RULE_LIMIT) throw new Error(`A lens needs 1 to ${LENS_RULE_LIMIT} rules`);
-  return { ...envelope, kind: 'lens.proposal', lens: { name, rules: lens.rules.map(parseRule) } };
+  return { ...envelope, scope: parseNativeArtifactScope(value.scope), kind: 'lens.proposal', lens: { name, rules: lens.rules.map(parseRule) } };
 }

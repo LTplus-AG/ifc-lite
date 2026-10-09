@@ -20,6 +20,7 @@ import type { Cell, Column, Table } from '@ifc-lite/flow';
 import { SCALAR_ITEM, SCALAR_LIST, TABLE_ITEM } from './ports.js';
 import type { FlowNodeDef } from './host.js';
 import { AI_CAPABILITY, AI_FEATURE, aiService, positiveInt, requestJson } from './ai-service.js';
+import { extractionSchema } from './ai-response-schemas.js';
 
 type FieldType = 'string' | 'number' | 'boolean';
 interface Field { readonly name: string; readonly type: FieldType; readonly description: string }
@@ -102,7 +103,8 @@ export const aiExtractNode: FlowNodeDef = {
       const batch = new Map<number, string>();
       for (let i = start; i < Math.min(start + batchSize, sendable); i++) batch.set(i, passages[i].slice(0, 8000));
       const data = [...batch].map(([i, t]) => JSON.stringify({ passage: i, text: t })).join('\n');
-      const reply = await requestJson(ctx, service, task, `<data>\n${data}\n</data>`, maxOutputTokens);
+      const reply = await requestJson(ctx, service, task, `<data>\n${data}\n</data>`, maxOutputTokens,
+        extractionSchema([...batch.keys()], fields), 'flow.ai.extract.v1');
       if (reply.kind === 'budget') { ctx.log('warn', `the AI budget ran out after ${requests} request(s)`); break; }
       requests += 1;
       sent += batch.size;

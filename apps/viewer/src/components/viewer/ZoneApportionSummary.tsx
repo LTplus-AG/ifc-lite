@@ -23,22 +23,63 @@ import { useViewerStore } from '@/store';
 import { useTranslation } from '@/i18n';
 import { useZoneApportionment, straddlerIdsFor } from '@/hooks/useZoneApportionment';
 import { coverageOf, validEntry, type ZoneSet } from '@/lib/zones';
+import { isAnalysisStale } from '@/hooks/useAnalysisStaleness';
+import { zoneResultSource } from '@/lib/zones/result-source';
+import { ResultCoverage, ResultSource, ResultView } from './result/ResultView';
+import { ResultState } from './result/ResultState';
+
+const EVIDENCE_SAMPLE_SIZE = 20;
 
 export function ZoneApportionSummary({ zoneSet }: { zoneSet: ZoneSet }) {
   const { t } = useTranslation();
   const cache = useViewerStore((s) => s.zoneApportionment);
   const assignments = useViewerStore((s) => s.zoneAssignments);
+  const mutationVersion = useViewerStore((s) => s.mutationVersion);
+  const geometryContentVersion = useViewerStore((s) => s.geometryContentVersion);
+  const models = useViewerStore((s) => s.models);
+  const modelPlacement = useViewerStore((s) => s.modelPlacement);
   const { computeSet } = useZoneApportionment();
 
   const entry = validEntry(cache, zoneSet);
   const coverage = coverageOf(entry);
+  const source = entry ? zoneResultSource(entry) : null;
+  const rows = source ? [...source.rows] : [];
+  const processed = entry ? entry.byElement.size + entry.refused.size : 0;
+  const unknownRows = rows.filter(([, row]) => !row || !row.legacy && !row.modelName).length;
+  const missingIdentity = rows.filter(([, row]) => row && (row.legacy || row.modelName) && !row.GlobalId).length;
+  const staleState = { mutationVersion, geometryContentVersion, models, modelPlacement };
+  const stale = Boolean(source && (isAnalysisStale(source.stamp, staleState)
+    || rows.some(([, row]) => row && isAnalysisStale(row.stamp, staleState))));
+  const sourceModels = [...new Map<string, { id: string; name: string }>(rows.flatMap(([, row]) => row?.legacy
+    ? [['legacy', { id: 'legacy', name: t('zonesPanel.apportionSummary.singleModel') }] as const]
+    : row?.modelId && row.modelName
+      ? [[JSON.stringify([row.modelId, row.modelName]), { id: JSON.stringify([row.modelId, row.modelName]), name: row.modelName }] as const] : [])).values()];
+  const sourceName = t('zonesPanel.apportionSummary.source', { name: source?.zoneSetName ?? zoneSet.name });
+  const unknownSource = !source || unknownRows > 0;
+  const incomplete = [
+    ...(!entry ? [t('zonesPanel.apportionSummary.notComputed')] : []),
+    ...(entry && unknownSource ? [t('zonesPanel.apportionSummary.sourceUnknown')] : []),
+    ...(stale ? [t('zonesPanel.apportionSummary.staleEvidence')] : []),
+    ...(source?.incremental ? [t('zonesPanel.apportionSummary.incremental')] : []),
+    ...(missingIdentity ? [t('zonesPanel.apportionSummary.identityUnknown', { count: missingIdentity })] : []),
+    ...(coverage.noGeometry ? [t('zonesPanel.apportionSummary.noGeometryClause', { count: coverage.noGeometry })] : []),
+    ...(coverage.unprovedSolid ? [t('zonesPanel.apportionSummary.unprovedSolidClause', { count: coverage.unprovedSolid })] : []),
+    ...(coverage.rescaledByAlignment ? [t('zonesPanel.apportionSummary.rescaledClause', { count: coverage.rescaledByAlignment })] : []),
+  ];
   // Recomputed off `assignments` so the count tracks v1's classification rather
   // than a stale snapshot — the same map the straddle flag itself comes from.
   void assignments;
   const straddlers = straddlerIdsFor(zoneSet.id).length;
 
   return (
-    <div className="space-y-1 rounded border-t pt-1.5">
+    <ResultView source={sourceName} className="space-y-1 rounded border-t pt-1.5"
+      header={<ResultSource source={sourceName} models={sourceModels}
+        population={entry ? t('zonesPanel.apportionSummary.cachedPopulation', { count: processed }) : undefined} />}
+      coverage={<ResultCoverage status={unknownSource ? 'uncertain' : stale ? 'stale'
+        : source?.incremental || missingIdentity || entry?.refused.size ? 'partial' : 'complete'}
+        counts={entry ? t('zonesPanel.apportionSummary.coverage', { apportioned: coverage.apportioned, processed })
+          : t('zonesPanel.apportionSummary.notComputed')} incomplete={incomplete} />}
+      actions={
       <Button
         variant="outline"
         size="sm"
@@ -58,8 +99,8 @@ export function ZoneApportionSummary({ zoneSet }: { zoneSet: ZoneSet }) {
       >
         <Scissors className="h-3 w-3 mr-1" />
         {t('zonesPanel.apportionSummary.splitVolumesButton', { count: straddlers })}
-      </Button>
-      {entry && (
+      </Button>}
+      summary={entry && (
         <p className="text-xs text-muted-foreground leading-snug">
           {t('zonesPanel.apportionSummary.splitSummary', {
             count: coverage.apportioned.toLocaleString(),
@@ -79,6 +120,21 @@ export function ZoneApportionSummary({ zoneSet }: { zoneSet: ZoneSet }) {
           )}
         </p>
       )}
-    </div>
+      rows={entry && source && !source.incremental && processed === 0
+        ? <ResultState kind="no-population" title={t('zonesPanel.apportionSummary.noEvaluatedStraddlers')} />
+        : entry && processed > 0 && coverage.apportioned === 0
+          ? <ResultState kind="partial" title={t('zonesPanel.apportionSummary.noProvedSplits')} /> : undefined}
+      evidence={rows.length > 0 ? <div className="space-y-1 text-2xs">
+        {rows.length > EVIDENCE_SAMPLE_SIZE && <p>{t('zonesPanel.apportionSummary.evidenceSample', {
+          shown: EVIDENCE_SAMPLE_SIZE, total: rows.length,
+        })}</p>}
+        <ul aria-label={t('zonesPanel.apportionSummary.evidence')} className="space-y-1">
+        {rows.slice(0, EVIDENCE_SAMPLE_SIZE).map(([id, row]) => <li key={id}>
+          {row?.legacy ? t('zonesPanel.apportionSummary.singleModel') : row?.modelName ?? t('zonesPanel.apportionSummary.unknownModel')}
+          {t('zonesPanel.apportionSummary.globalId', { value: row?.GlobalId ?? t('zonesPanel.apportionSummary.notAvailable') })}
+          {row?.IfcClass ? ` · ${row.IfcClass}` : ''}{row?.Name ? ` · ${row.Name}` : ''}
+        </li>)}
+        </ul>
+      </div> : undefined} />
   );
 }

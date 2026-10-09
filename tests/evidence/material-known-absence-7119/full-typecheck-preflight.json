@@ -1,0 +1,20 @@
+{
+  "head": "61bda95f21e16ce37ddced25ad0432943736a068",
+  "command": [
+    "pnpm",
+    "typecheck"
+  ],
+  "CARGO_BUILD_JOBS": "1",
+  "NODE_OPTIONS": "--max-old-space-size=6144",
+  "TURBO_CONCURRENCY": "1",
+  "sourceRuntimePins": {
+    "packages/parser/src/material-definitions.ts": "1a462d754a3d7117cfb19fed3b2a1feeef07f9a8ad9d863422cba23775d3d510",
+    "packages/parser/test/on-demand-classification-material.test.ts": "83123043c120ce23de6a9e4ab4622d384362294f17d9d629e6730b6f7f6db9ac",
+    "apps/viewer/src/lib/assistant/adapters/selection-materials.test.tsx": "d49b0983d1a40fffb2a248b283a9d6ff4b9fd1a66a6f125af2e07cfc88cb420c",
+    ".changeset/quiet-material-names.md": "8649798f31a12bcbcb8d334947235890d02acf6ec724c5a038d2ab7489f96e36",
+    "packages/wasm/pkg/ifc-lite_bg.wasm": "5606f31452779f749ed060b878ee77dbbf3dac7d8bf71b1f21a9a8865cf2ccd2",
+    "packages/wasm/pkg/ifc-lite.js": "0a281479eb65141ae75aeef987d331d44439741a0cae855f122e53e800311a39",
+    "packages/wasm/pkg/ifc-lite.d.ts": "54c9d0a52eb515e517d76726fefe5f6a63e553a81c1b10331a597965d14620f6"
+  },
+  "memory": "MemTotal:       49148052 kB\nMemFree:        16628340 kB\nMemAvailable:   42788720 kB\nBuffers:         4484460 kB\nCached:         17742788 kB\nSwapCached:        68800 kB\nActive:         17566600 kB\nInactive:        9237240 kB\nActive(anon):    1597044 kB\nInactive(anon):  3011656 kB\nActive(file):   15969556 kB\nInactive(file):  6225584 kB\nUnevictable:           0 kB\nMlocked:               0 kB\nSwapTotal:      12582912 kB\nSwapFree:        9981844 kB\nDirty:              4008 kB\nWriteback:             0 kB\nAnonPages:       4549340 kB\nMapped:           520404 kB\nShmem:             31656 kB\nKReclaimable:    4473540 kB\nSlab:            5008508 kB\nSReclaimable:    4473540 kB\nSUnreclaim:       534968 kB\nKernelStack:       28752 kB\nPageTables:       131040 kB\nSecPageTables:         0 kB\nNFS_Unstable:          0 kB\nBounce:                0 kB\nWritebackTmp:          0 kB\nCommitLimit:    37156936 kB\nCommitted_AS:   16400536 kB\nVmallocTotal:   34359738367 kB\nVmallocUsed:      187556 kB\nVmallocChunk:          0 kB\nPercpu:            11328 kB\nHardwareCorrupted:     0 kB\nAnonHugePages:      2048 kB\nShmemHugePages:        0 kB\nShmemPmdMapped:        0 kB\nFileHugePages:         0 kB\nFilePmdMapped:         0 kB\nUnaccepted:            0 kB\nHugePages_Total:       0\nHugePages_Free:        0\nHugePages_Rsvd:        0\nHugePages_Surp:        0\nHugepagesize:       2048 kB\nHugetlb:               0 kB\nDirectMap4k:       84992 kB\nDirectMap2M:    13361152 kB\nDirectMap1G:    45088768 kB\n"
+}

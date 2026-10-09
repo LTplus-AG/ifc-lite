@@ -14,7 +14,7 @@
  * own, so the only spend is what the root budget granted.
  */
 
-import { parseJsonOutput, type RequestOutcome, type RootBudgetLimits } from '@ifc-lite/ai';
+import { parseJsonOutput, type JsonResponseSchema, type RequestOutcome, type RootBudgetLimits } from '@ifc-lite/ai';
 import type { Table } from '@ifc-lite/flow';
 import { requireCapability } from './capability.js';
 import type { Ctx } from './host.js';
@@ -36,6 +36,9 @@ export interface FlowAiCall {
   /** Requested output ceiling for this request; the host clamps it to its route and the root budget. */
   readonly maxOutputTokens: number;
   readonly signal?: AbortSignal;
+  readonly outputSchema?: JsonResponseSchema;
+  /** Declared by the native node prompt producer; generic hosts may omit it. */
+  readonly promptVersion?: string;
 }
 
 export interface FlowAiService {
@@ -67,10 +70,12 @@ const SYSTEM_RULES = [
   'A table row has a host-assigned key and selected source columns inside values; values.key is source data, never the row identifier.',
 ].join('\n');
 
-export async function requestJson(ctx: Ctx, service: FlowAiService, task: string, prompt: string, maxOutputTokens: number): Promise<JsonReply> {
-  const outcome = await service.request({ system: `${SYSTEM_RULES}\n\n${task}`, prompt, maxOutputTokens, signal: ctx.signal });
+export async function requestJson(ctx: Ctx, service: FlowAiService, task: string, prompt: string, maxOutputTokens: number, outputSchema: JsonResponseSchema, promptVersion: string): Promise<JsonReply> {
+  const outcome = await service.request({ system: `${SYSTEM_RULES}\n\n${task}`, prompt, maxOutputTokens, signal: ctx.signal, outputSchema, promptVersion });
   switch (outcome.kind) {
-    case 'refused': return { kind: 'budget' };
+    case 'refused':
+      if (outcome.reason === 'unsupported-schema') throw new Error(outcome.message);
+      return { kind: 'budget' };
     case 'cancelled': throw new Error('aborted');
     case 'timeout': return { kind: 'failed', message: 'the model request timed out' };
     case 'error': return { kind: 'failed', message: `the model request failed: ${outcome.message}` };

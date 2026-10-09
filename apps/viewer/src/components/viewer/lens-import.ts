@@ -9,6 +9,15 @@
  * pinned without rendering the panel.
  */
 
+import type { Lens } from '@ifc-lite/lens';
+import { downloadFile } from '@/lib/export/download';
+import { encodeSavedLens, migrateSavedLens } from '@/lib/lens/migrate-saved-lens';
+
+/** Native JSON download uses the same guarded codec as browser storage (#7186). */
+export function exportLensFile(lenses: readonly Lens[]): void {
+  downloadFile(JSON.stringify(lenses.map(encodeSavedLens), null, 2), 'lenses.json', 'application/json');
+}
+
 /**
  * Read `file` as text, surfacing a failed read instead of leaving the
  * returned promise pending forever.
@@ -63,6 +72,12 @@ export async function importLensFile(
     return { ok: false, message: 'Could not read that file as lenses.' };
   }
 
-  const result = importLenses(Array.isArray(parsed) ? parsed : [parsed]);
+  const entries = Array.isArray(parsed) ? parsed : [parsed];
+  if (entries.some(entry => entry !== null && typeof entry === 'object'
+    && 'format' in entry && entry.format === 'ifc-lite-captured-lens'
+    && migrateSavedLens(entry) === null)) {
+    return { ok: false, message: 'The captured Lens population cannot be read. Open this file in a compatible viewer.' };
+  }
+  const result = importLenses(entries);
   return result.ok ? { ok: true } : { ok: false, message: result.message ?? 'Could not import lenses.' };
 }

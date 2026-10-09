@@ -1,0 +1,102 @@
+{
+  "observer": "tests",
+  "baseline": {
+    "kind": "pass",
+    "passed": 18,
+    "total": 18
+  },
+  "reverted": {
+    "kind": "assertion-failure",
+    "passed": 0,
+    "failed": 18,
+    "total": 18,
+    "evidence": []
+  },
+  "ledger": [
+    {
+      "file": "apps/viewer/src/hooks/symbolic-parse-outcomes.test.ts",
+      "role": "executable",
+      "runKey": "test:apps/viewer/src/hooks/symbolic-parse-outcomes.test.ts",
+      "adapter": "node-test",
+      "runner": {
+        "family": "node-test",
+        "command": [
+          "tsx",
+          "--import",
+          "./src/test/vite-module-hooks.mjs",
+          "--test-timeout=120000",
+          "--test-concurrency=1",
+          "--test",
+          "src/hooks/symbolic-parse-outcomes.test.ts"
+        ]
+      },
+      "features": [],
+      "attribution": "runtime-v8-file",
+      "baseline": {
+        "kind": "pass",
+        "passed": 18,
+        "failed": 0,
+        "total": 18,
+        "exitCode": 0,
+        "signal": null,
+        "toolchain": "node v24.21.0",
+        "attributed": true,
+        "files": [
+          "apps/viewer/src/hooks/symbolic-parse-outcomes.test.ts"
+        ],
+        "testIdentities": [],
+        "evidence": []
+      },
+      "reverted": {
+        "kind": "assertion-failure",
+        "passed": 0,
+        "failed": 18,
+        "total": 18,
+        "exitCode": 1,
+        "signal": null,
+        "toolchain": "node v24.21.0",
+        "attributed": true,
+        "files": [
+          "apps/viewer/src/hooks/symbolic-parse-outcomes.test.ts"
+        ],
+        "testIdentities": [],
+        "evidence": []
+      }
+    },
+    {
+      "file": "tests/e2e/symbolic-parse-outcomes.e2e.spec.ts",
+      "role": "deferred",
+      "reason": "Playwright spec not run: another changed test already observed the revert"
+    }
+  ],
+  "schemaVersion": 2,
+  "channel": "pull-request",
+  "verdict": "OBSERVED",
+  "exitCode": 0,
+  "reason": "reverting production turned an assertion RED in apps/viewer/src/hooks/symbolic-parse-outcomes.test.ts; that file has a green, attributable baseline.",
+  "base": "1ccb61c110d2c69dc9bc6a2c9bd40a1fd6037f67",
+  "head": "8f15d290c4e73860fa0bb405bd8d48f301cb6a94",
+  "production": [
+    "apps/viewer/src/hooks/symbolic-parse-cache.ts",
+    "apps/viewer/src/hooks/symbolic-parse-outcomes.ts",
+    "apps/viewer/src/hooks/symbolic-parse-source-key.ts",
+    "apps/viewer/src/lib/overlay-parse/index.ts",
+    "apps/viewer/src/store/createViewerActions.ts",
+    "apps/viewer/src/store/symbolic-parse-observer.ts",
+    "scripts/perf/evidence/symbolic-parse-outcomes-6537/manifest.json",
+    "scripts/perf/evidence/symbolic-parse-outcomes-6537/native-dist-provenance-2026-10-08.json",
+    "scripts/perf/evidence/symbolic-parse-outcomes-6537/native-e2e-2026-10-08.log",
+    "scripts/perf/evidence/symbolic-parse-outcomes-6537/replay.py",
+    "scripts/perf/symbolic-parse-census.mjs"
+  ],
+  "tests": [
+    "apps/viewer/src/hooks/symbolic-parse-outcomes.test.ts",
+    "tests/e2e/symbolic-parse-outcomes.e2e.spec.ts"
+  ],
+  "invocationId": "754b01f5-8ac9-4c2e-97f5-5faa50cada88",
+  "timing": {
+    "startedAt": "2026-10-08T07:07:49.497Z",
+    "finishedAt": "2026-10-08T07:08:26.290Z"
+  },
+  "restoration": "verified"
+}

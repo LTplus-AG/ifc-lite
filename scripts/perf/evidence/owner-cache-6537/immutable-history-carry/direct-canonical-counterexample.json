@@ -1,0 +1,30 @@
+{
+  "reviewedHead": "8785f72bf23cde156f8d818162afc17cf81df767",
+  "sourceSHA256": {
+    "apps/viewer/src/lib/geometry-cpu-buffers.ts": "bbd5a484ab119e3dcfa660839d3b452263dec0a321d8a4759826445c55c343d7",
+    "apps/viewer/src/lib/geometry-cpu-aliases.ts": "1d1fdc6c9ca491f6412b46dcd5919ba73ea7bed61caf573f79fff68beec79e82",
+    "apps/viewer/src/lib/released-mesh-provenance.ts": "e46a6232d903f5febfe0168a4e4355aaaac6c562396d91575a164a9a634fc5f8",
+    "apps/viewer/src/store/slices/dataSlice.ts": "1b011f386f29ad27d17b7a7f86338f1c5238a67d1c97f980e9d3ccbfb82c42cd",
+    "apps/viewer/src/hooks/ingest/federationPreAlignment.ts": "98e453e18b0e6ff8031e789ac9b956f52c652f1cd497ddf79a4ab1914939245b",
+    "apps/viewer/src/lib/model-placement/placed-geometry.ts": "db4b5c0a04c40d0c279fec32928c3ffa14bf81019e75a570616b5b02c22e3dc1"
+  },
+  "actualCanonicalCalls": [
+    "capturePreAlignment",
+    "placedMesh",
+    "restorePreAlignment",
+    "useViewerStore.updateMeshColors",
+    "useViewerStore.releaseGeometryMemory"
+  ],
+  "actualObservedResult": {
+    "sourceReplacedByRecolour": true,
+    "newSourcePositionsBytes": 0,
+    "retainedPositionsBytes": 36,
+    "retainedNormalsBytes": 36
+  },
+  "execution": {
+    "exitCode": 0,
+    "toolChunk": "87a16f",
+    "scope": "Direct canonical helper/store invariant, no native browser/performance measurement"
+  },
+  "excludedAttempt": "Root-cwd direct launch failed module alias resolution (668fe0); not behavioral evidence. Correct direct launch from apps/viewer module environment terminal0."
+}

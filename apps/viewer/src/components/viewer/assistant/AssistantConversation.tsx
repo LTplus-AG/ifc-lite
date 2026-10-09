@@ -16,6 +16,7 @@ import { parseFlowPatch } from '@/lib/assistant/flow-patch';
 import { parseFlowCreate } from '@/lib/assistant/flow-create-envelope';
 import { parseModelChangeBatch } from '@ifc-lite/ai/artifacts';
 import { parseModelAuthoringBatch } from '@/lib/actions/model-authoring';
+import { parseRoomProposal } from '@/lib/actions/room-command-proposal';
 import { parseSceneActions } from '@/lib/actions/scene-actions';
 import { parseTableMapping } from '@/lib/actions/table-mapping';
 import { checkProposalOf, type CheckDeclared } from '@/lib/check-authoring/proposal-summary';
@@ -28,21 +29,21 @@ import { ReceiptFooter } from './AssistantUsage';
 import { useTransientSurface } from './useTransientSurface';
 
 type Artifact = 'filter' | 'list' | 'lens' | 'chart';
-type Declared = 'clash' | 'flow' | 'flowCreate' | 'changes' | 'authoring' | 'scene' | 'mapping' | CheckDeclared | Artifact | 'semantic';
+type Declared = 'clash' | 'flow' | 'flowCreate' | 'changes' | 'authoring' | 'room' | 'scene' | 'mapping' | CheckDeclared | Artifact | 'semantic';
 type Proposal = { kind: 'clash'; groups: number; findings: number } | { kind: 'flow'; operations: number } | { kind: 'flowCreate'; nodes: number }
   | { kind: 'changes'; changes: number } | { kind: 'authoring'; operations: number } | { kind: 'scene'; actions: number }
   | { kind: 'mapping'; columns: number; key: string } | { kind: Artifact; parts: number } | { kind: 'invalid'; declared: Declared; reason: string }
   | { kind: 'checks'; declared: CheckDeclared; items: number; unsupported: number }
-  | { kind: 'semantic'; type: SemanticProposalKind; count: number };
+  | { kind: 'semantic'; type: SemanticProposalKind; count: number } | { kind: 'room' };
 const DECLARED: Record<string, Declared> = { 'clash.groups': 'clash', 'flow.patch': 'flow', 'flow.create': 'flowCreate', 'model.changes': 'changes',
-  'model.authoring': 'authoring', 'scene.actions': 'scene', 'table.mapping': 'mapping',
+  'model.authoring': 'authoring', 'room.command': 'room', 'scene.actions': 'scene', 'table.mapping': 'mapping',
   'filter.proposal': 'filter', 'list.proposal': 'list', 'lens.proposal': 'lens', 'chart.proposal': 'chart' };
 const PROPOSAL_TITLE = { clash: 'assistant.proposalClash', flow: 'assistant.proposalFlow', flowCreate: 'flowAssistant.proposalCreate', changes: 'assistant.proposalChanges',
-  authoring: 'assistant.proposalAuthoring', scene: 'sceneActions.proposal', mapping: 'assistant.proposalMapping',
+  authoring: 'assistant.proposalAuthoring', room: 'roomReview.proposal', scene: 'sceneActions.proposal', mapping: 'assistant.proposalMapping',
   ids: 'checkAuthoring.proposalIds', rules: 'checkAuthoring.proposalRules', document: 'checkAuthoring.proposalDocument',
   filter: 'assistantArtifacts.proposal.filter', list: 'assistantArtifacts.proposal.list',
   lens: 'assistantArtifacts.proposal.lens', chart: 'assistantArtifacts.proposal.chart', semantic: 'semanticAssist.proposalTitle' } as const;
-const PROPOSAL_ICON = { clash: Layers, flow: GitBranch, flowCreate: GitBranch, changes: PencilLine, authoring: Hammer, scene: Eye, mapping: Table2,
+const PROPOSAL_ICON = { clash: Layers, flow: GitBranch, flowCreate: GitBranch, changes: PencilLine, authoring: Hammer, room: Layers, scene: Eye, mapping: Table2,
   ids: ClipboardCheck, rules: ListChecks, document: FileText,
   filter: Filter, list: Table, lens: Palette, chart: BarChart3, semantic: Network } as const;
 const CHECK_SUMMARY = { ids: 'checkAuthoring.proposalIdsSummary', rules: 'checkAuthoring.proposalRulesSummary',
@@ -72,7 +73,7 @@ export function proposalOf(content: string): Proposal | null {
     try { return { kind: 'semantic', type: semantic, count: semanticProposalCount(parseSemanticProposal(content, semantic)) }; }
     catch (error) { return { kind: 'invalid', declared: 'semantic', reason: error instanceof Error ? error.message : String(error) }; }
   }
-  const kind = /"kind"\s*:\s*"(clash\.groups|flow\.patch|flow\.create|model\.changes|model\.authoring|scene\.actions|table\.mapping)"/.exec(content)?.[1] ?? artifact;
+  const kind = /"kind"\s*:\s*"(clash\.groups|flow\.patch|flow\.create|model\.changes|model\.authoring|room\.command|scene\.actions|table\.mapping)"/.exec(content)?.[1] ?? artifact;
   if (!kind) return null;
   try {
     if (artifact && kind === artifact) return { kind: ARTIFACT_OF[artifact], parts: artifactParts(parseArtifactProposal(content, artifact)) };
@@ -81,6 +82,7 @@ export function proposalOf(content: string): Proposal | null {
     if (kind === 'scene.actions') return { kind: 'scene', actions: parseSceneActions(content).actions.length };
     if (kind === 'model.changes') return { kind: 'changes', changes: parseModelChangeBatch(content).changes.length };
     if (kind === 'model.authoring') return { kind: 'authoring', operations: parseModelAuthoringBatch(content).operations.length };
+    if (kind === 'room.command') { parseRoomProposal(content); return { kind: 'room' }; }
     if (kind === 'table.mapping') {
       const mapping = parseTableMapping(content);
       return { kind: 'mapping', columns: mapping.columns.length, key: mapping.identity.key };
@@ -117,6 +119,7 @@ function ProposalCard({ content, proposal, onRepair }: { content: string; propos
         : proposal.kind === 'flow' ? t('assistant.proposalFlowSummary', { count: proposal.operations })
           : proposal.kind === 'flowCreate' ? t('flowAssistant.proposalCreateSummary', { count: proposal.nodes })
           : proposal.kind === 'authoring' ? t('assistant.proposalAuthoringSummary', { count: proposal.operations })
+          : proposal.kind === 'room' ? t('roomReview.summary')
           : proposal.kind === 'scene' ? t('sceneActions.proposalSummary', { count: proposal.actions })
           : proposal.kind === 'mapping' ? t('assistant.proposalMappingSummary', { count: proposal.columns, key: proposal.key })
           : proposal.kind === 'changes' ? t('assistant.proposalChangesSummary', { count: proposal.changes })

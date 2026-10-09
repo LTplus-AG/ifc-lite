@@ -785,3 +785,13 @@ worker transport preserves these fields when reconstructing a store.
 
 `computeTransformMatrix(MapConversion)` derives the canonical 4×4 matrix
 from the current conversion, including its optional axis scale factors.
+
+The classification readers accept an optional native mutation view: `extractClassificationsOnDemand(store, entityId, mutationView)` and `extractClassificationSystemsOnDemand(store, mutationView)`. Definitions, references and association/type memberships then use the effective IFC records, with the same named/positional attribute precedence as export. Model-local caches refresh at the overlay revision. Source-empty stores retain unresolved markers for source attributes they cannot reconstruct; complete authored records remain readable. Source association endpoint edits require the original source bytes: forwarded immutable memberships cannot reconstruct those live edits, so callers must refuse population claims for that case. An unresolved classification chain does not establish that an explicitly named system is absent.
+
+## Material occurrence precedence
+
+`extractAllMaterialsOnDemand(store, entityId, view)` returns every occurrence assignment, falling back to the entity's type only when the occurrence has none. The optional native mutation view applies current relationship retargeting, deletions, aliases, material edits and newly authored assignment shapes through the same effective readers used for STEP export.
+
+`extractMaterialPropertiesOnDemand(store, entityId, view, revision)` uses the same current assignments for generic material property groups. Named edits apply before positional edits, matching exported records. An unset layer `IsVentilated` remains undefined rather than becoming an explicit false value.
+
+`materialAssignmentsAvailable(store, entityId, view)` reports whether the supplied graph and current edits can prove the complete selected material membership. Source-empty transport without membership data, or with relevant edits to unavailable source relationship records, yields `false`; retained source markers and authored records do not establish a complete count. The Assistant reports null totals and unverified source markers in those cases.

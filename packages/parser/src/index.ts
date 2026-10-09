@@ -109,9 +109,9 @@ export {
   type MeshData as IfcxMeshData,
   type PointCloudExtraction,
 } from '@ifc-lite/ifcx';
-
 // New extractors with 100% schema coverage
 export { extractMaterials, getMaterialForElement, getMaterialNameForElement, type MaterialsData, type Material, type MaterialLayer, type MaterialLayerSet } from './material-extractor.js';
+export { materialAssignmentsAvailable } from './material-overlay.js';
 export { extractGeoreferencing, computeTransformMatrix, transformToWorld, transformToLocal, getCoordinateSystemDescription, computeAngleToGridNorth, type GeoreferenceInfo, type MapConversion, type ProjectedCRS } from './georef-extractor.js';
 export { extractClassifications, getClassificationsForElement, getClassificationCodeForElement, getClassificationPath, groupElementsByClassification, type ClassificationsData, type Classification, type ClassificationReference } from './classification-extractor.js';
 
@@ -222,10 +222,10 @@ export * from './types.js';
 // belong in a fix PR; it needs its own.
 export { getAttributeNames, getAttributeNamesAcrossSchemas, getAttributeNamesForSchema, getAttributeTypeForSchema, getAttributeNameAt, isKnownType, isInstantiable, isQueryableObjectType, normalizeIfcTypeName, resolveEntityNameAlias, getInheritanceChain as getInheritanceChainAcrossSchemas } from './ifc-schema.js';
 export { resolveEffectiveEntityRecord, type EffectiveEntityRecord, type EntityRecordEdits } from './effective-entity-record.js';
+export { effectiveMetadataRecord } from './effective-metadata-record.js';
 export { resolveEffectiveRelationshipOverlay, effectiveRelationshipEdges, type EffectiveRelationship, type EffectiveRelationshipOverlay, type RelationshipOverlayReader } from './effective-relationship-overlay.js';
 export { effectiveSpatialMemberIds, type EffectiveSpatialContext } from './effective-spatial-members.js';
 export { effectiveStoreyId } from './effective-storey.js';
-
 import type { IfcEntity, ParseResult } from './types.js';
 import { EntityIndexBuilder } from './entity-index.js';
 import { EntityExtractor } from './entity-extractor.js';

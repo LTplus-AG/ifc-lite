@@ -11,6 +11,8 @@
  * an older viewer prints and edits such a document as plain text.
  */
 import type { DocumentBlock, DocumentValidationError } from './types';
+import type { UsageReceipt } from '../llm/request-receipts';
+import { decodeUsageReceipt } from '../llm/receipt-codec';
 
 export type AiClaimStatus = 'supported' | 'unverifiable' | 'contradicted';
 
@@ -50,6 +52,8 @@ export interface AiReportRecord {
   language: string;
   model: string;
   conversationId: string;
+  /** Actual final-answer receipt; absent on older reports, never reconstructed from settings. */
+  generationReceipt?: UsageReceipt;
   /** 1 at generation; every applied evidence refresh adds one. */
   revision: number;
   evidence: AiReportEvidence;
@@ -114,6 +118,10 @@ export function validateAiReportRecord(value: unknown, errors: DocumentValidatio
   if (!isRecord(value) || value.version !== 1) { fail('expected an AI report record version 1'); return; }
   if (!isText(value.language, 35) || !value.language) fail('expected a language tag');
   if (!isText(value.model, 200) || !isText(value.conversationId, 200)) fail('expected model and conversation identity');
+  if (value.generationReceipt !== undefined) {
+    const receipt = decodeUsageReceipt(value.generationReceipt);
+    if (!receipt || receipt.model !== value.model || receipt.outcome !== 'completed') fail('expected the completed generation receipt for this model');
+  }
   if (!isCount(value.revision) || value.revision < 1) fail('expected a revision number');
   const evidence = value.evidence;
   if (!isRecord(evidence) || !isText(evidence.source, 100) || !isText(evidence.capturedAt, 50) || !isText(evidence.payload, 48_000)

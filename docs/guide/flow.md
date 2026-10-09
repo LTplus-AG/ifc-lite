@@ -331,6 +331,27 @@ files and no edits the same proposal can still be approved; any edit, undo
 or model change in between refuses the resume and asks for a new run. Graph
 writes before and after the pause are separate undo steps.
 
+All four AI node families attach a JSON response schema derived from their
+native output shape and selected constraints. Direct OpenAI requests use
+the API's [structured output format](https://developers.openai.com/api/docs/guides/structured-outputs),
+and direct Anthropic requests use
+[`output_config.format`](https://platform.claude.com/docs/en/build-with-claude/structured-outputs).
+The viewer refuses schemas exceeding Anthropic's documented 16 union parameters
+or 24 optional parameters before sending or reserving the request budget. For
+example, 17 nullable extraction fields or seven set-field proposal variants
+exceed the union limit; choose fewer fields or a different provider. The node
+reports this provider limitation rather than budget exhaustion or sent rows.
+Schema enums can include the selected row identifiers, labels and field names.
+Anthropic [caches schemas separately for up to 24 hours since last use](https://platform.claude.com/docs/en/build-with-claude/structured-outputs#data-retention);
+schema content therefore has different retention from message content.
+The hosted proxy remains parser-only because it advertises no upstream schema
+contract. A typed request's receipt records `outputFormat` as `json-schema` or
+`text`; it describes what was requested, not live model quality. Schema errors
+are not retried as unstructured text. Native citation, target, expected-value,
+allowed-value and source-span checks still run, and every proposal still pauses
+for review. Large citation inventories retain native membership validation
+without duplicating the entire inventory into a provider enum.
+
 In a real host the transitions go through `updateCheckpoint` with a durable
 store; the CLI's `flow run --checkpoint` / `flow review` / `flow resume`
 (see the [CLI guide](cli.md)) and the viewer's Flow
@@ -877,6 +898,72 @@ comparison recipes and historical evidence are separate optional inputs. Configu
 job targets and tag-reference mappings when a definition requires them. Enable
 the startup offer only after saving the configured workflow.
 
+#### Worked coordination report
+
+Start with the committed [SketchUp house IFC](https://raw.githubusercontent.com/LTplus-AG/ifc-lite/main/apps/viewer/public/samples/building-architecture.ifc)
+and the [Walls have names information rule set](https://raw.githubusercontent.com/LTplus-AG/ifc-lite/main/apps/viewer/src/lib/flow/examples/09-coordination-walls.rules.json).
+Save both files locally. This check applies to `IfcWall` and requires the native
+`Name` attribute to be present. The sample has four applicable walls; all four
+pass. This small check demonstrates the report pipeline, not project compliance.
+
+1. Open **Flow**, choose **Coordination session report** from the examples, and
+   switch to **Player**. Opening the example does not run it.
+2. In **Models**, choose the house `.ifc` file. In **Checks**, choose the supplied
+   `.rules.json` file. Leave **Comparison recipes** and **Completed comparison
+   reports** empty for this first run. Both Models and Checks are required in
+   the unchanged example, even if a model is already open in the viewer.
+3. Keep the default check targets to check all workflow models. The filename
+   tag rules match `*ARC*` and `*STR*`, ignoring case; adjust them for your naming
+   convention. An unmatched filename warns about tags and does not invalidate
+   this name check. Rules that refer to model tags need their explicit tag
+   mappings configured before running.
+4. Run the workflow. Review **Validation evidence**: one retained report with
+   four passing walls and no failures. Open **Open report document** to inspect
+   the saved **Coordination report**, then use **Download combined PDF**.
+   The document contains captured validation evidence; the PDF includes the
+   report title and the wall-name check. Saving or exporting the graph does not
+   include the selected local files; choose them again after reload.
+
+The shipped graph uses these native nodes and connections:
+
+| Node | Input and configuration | Output used by the next step |
+| --- | --- | --- |
+| `session.loadModels` (`load`) | Models file slot, or authored loaded-model selectors | `models` → tags |
+| `session.assignModelTags` (`tags`) | Loaded models and filename rules | `models` → validation and comparison |
+| `validation.runChecks` (`validation`) | Checks files; optional explicit jobs and targets | `reports` → document `validation` |
+| `comparison.runChecks` (`comparison`) | Optional comparison recipes | `reports` → document `comparisons` |
+| `report.importComparisons` (`history`) | Optional completed saved-comparison JSON | `reports` → document `historical` |
+| `report.buildDocument` (`document`) | Captured reports; optional template and mappings | `document` → PDF |
+| `report.exportPdf` (`pdf`) | The prepared native document | Downloadable session `artifact` |
+
+To reuse an already-loaded model, author a separate variation: remove the
+`load.files` Player input and set the load node's `selectors` to an exact filename
+selector (`{"kind":"filename","filename":"building-architecture.ifc"}`).
+Keep its `files` parameter empty and retain the required Checks input. Duplicate
+filenames are refused; use distinct file slots for ambiguous federation inputs.
+The native walkthrough test exercises this variation against the real IFC,
+the standard node registry, persisted validation evidence, a native document and
+the actual PDF exporter; it reads the generated PDF back with pdf.js. It does
+not measure browser geometry loading or replace the coordinator study.
+
+For custom templates, map each native report block to a check job. With the
+default file-derived jobs, the first supplied check here is
+`validation.files/checks:0:walls.rules.json` when that is its local filename.
+Renaming or reordering files changes this derived ID. Configure explicit jobs
+with stable IDs for a reusable template, and leave the result ID empty to include
+all reports produced by that job. Optional recipes rerun a comparison; optional
+historical reports embed existing evidence and do not run a comparison again.
+
+If a required file is missing, preflight refuses before publishing reports.
+Malformed definitions, missing grants, unresolved template mappings and unavailable
+host services also require fixing the setup. A quality failure is completed check
+evidence and can appear in a PDF; an evaluator error blocks dependent document
+and PDF steps. If models change during checks/export, start a new run against
+the current models. If browser storage refuses a save, keep the session open,
+retry saving, and download the available evidence before closing it. A completed
+PDF artifact can be downloaded again without rerunning checks while its session
+resource remains valid.
+
 Comparison recipes describe checks to rerun. Saved comparison JSON contains
 completed evidence for documents. A plain live Compare report is a different
 format: export from the Saved comparisons library for historical reuse.
@@ -899,7 +986,8 @@ provenance before the native report blocks. A custom template maps existing
 validation report or comparison table block IDs to enabled job IDs. A mapping
 without a result ID expands all results for that job into adjacent blocks, keeping
 the template's presentation. Required and incompatible mappings are rejected
-before model loading. Native document version 10 remains the portable format.
+before model loading. Native document version 13 is the current portable format;
+supported older documents migrate when opened, and newer formats are refused.
 Templates cannot use live validation tables or IDS/comparison charts, whose data
 belongs to the viewer's latest manual result. Use mapped report blocks for the
 workflow's captured evidence. Chart preparation failures produce PDF warnings.
@@ -931,3 +1019,5 @@ only `model.read` and `network.ai`. The current read scope and model allowlist
 still apply; the separate `resume_flow` requires current mutate authorization.
 MCP responses and checkpoint budgets include provider usage receipts without
 prompts, replies or credentials; receipt history survives subsequent pauses.
+
+Native `ai.classify`, `ai.extract`, `ai.summarize` and `ai.propose` producers declare their prompt version to viewer, CLI and MCP request hosts. The shared core records the actual dispatched output-token grant after route and resumed-root-budget clamping, effective parent deadline, safe terminal reason and versioned logical-input/output-text digests. Generic host calls without a declared prompt version remain unknown. These digests supplement generation audit metadata; they do not replace the graph, source or reviewed-proposal digests that authorize checkpoint continuation.

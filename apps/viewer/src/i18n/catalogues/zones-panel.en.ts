@@ -80,7 +80,7 @@ export const zonesPanelEn = {
   'zonesPanel.exportZoneError': 'Could not export {name}: {message}',
   'zonesPanel.exportNoBinding': 'The geometry engine in this build cannot split meshes',
   'zonesPanel.exportBusy': 'Another zone is still being cut. Wait for it to finish.',
-  'zonesPanel.exportNothingToExport': 'Nothing to export: no loaded geometry reaches this zone',
+  'zonesPanel.exportNothingToExport': 'Nothing to export: geometry is unavailable or its split was refused',
   'zonesPanel.exportGeometrySuccessPlain': 'Exported {whole} whole and {cut} cut element(s) in {elapsed}s',
   'zonesPanel.exportGeometrySuccessRefusedOnly':
     'Exported {whole} whole and {cut} cut element(s) in {elapsed}s, {refused} not cut (mesh not a proven closed solid, or the pieces did not add up)',
@@ -90,6 +90,22 @@ export const zonesPanelEn = {
     'Exported {whole} whole and {cut} cut element(s) in {elapsed}s, {refused} not cut (mesh not a proven closed solid, or the pieces did not add up), {noGeometry} with no loaded geometry',
 
   // ZoneApportionSummary
+  'zonesPanel.apportionSummary.globalId': ' · GlobalId: {value}',
+  'zonesPanel.apportionSummary.source': 'Volume splits · {name}',
+  'zonesPanel.apportionSummary.cachedPopulation': { one: '{count} cached entity outcome', other: '{count} cached entity outcomes' },
+  'zonesPanel.apportionSummary.coverage': '{apportioned} proved splits / {processed} cached entity outcomes',
+  'zonesPanel.apportionSummary.notComputed': 'No split result computed for this zone geometry',
+  'zonesPanel.apportionSummary.staleEvidence': 'Cached split evidence is older than the current model state',
+  'zonesPanel.apportionSummary.sourceUnknown': 'Cached source history is unavailable; current models do not establish its origin',
+  'zonesPanel.apportionSummary.incremental': 'Per-element cache updates do not establish complete whole-set coverage',
+  'zonesPanel.apportionSummary.identityUnknown': '{count} cached entity identities are unavailable',
+  'zonesPanel.apportionSummary.singleModel': 'Single-model source',
+  'zonesPanel.apportionSummary.unknownModel': 'Unknown model source',
+  'zonesPanel.apportionSummary.notAvailable': 'Not available',
+  'zonesPanel.apportionSummary.evidence': 'Cached split source entities',
+  'zonesPanel.apportionSummary.evidenceSample': 'Showing {shown} of {total} cached entity sources',
+  'zonesPanel.apportionSummary.noEvaluatedStraddlers': 'The evaluated pass had no boundary-crossing entities',
+  'zonesPanel.apportionSummary.noProvedSplits': 'Cached entities have no publishable split volumes; see the coverage reasons',
   'zonesPanel.apportionSummary.noStraddlersTitle': 'No element crosses a boundary in this set, so there is nothing to split',
   'zonesPanel.apportionSummary.splitTitle': {
     one: "Split the volume of {count} straddling element across this set's zones",

@@ -1464,7 +1464,11 @@ environment variables; a node that requires one the host lacks is reported as `u
 
 AI nodes (`ai.classify`, `ai.summarize`, `ai.extract`) run only when the environment names an
 OpenAI-compatible provider: `IFC_LITE_AI_MODEL` and `IFC_LITE_AI_API_KEY` (and optionally
-`IFC_LITE_AI_BASE_URL`, default OpenRouter). Without them the graph is refused before the model is
+`IFC_LITE_AI_BASE_URL`, default OpenRouter). `IFC_LITE_AI_STRUCTURED_OUTPUT=true`
+enables JSON Schema requests for a compatible upstream model; `false` disables
+them. Only the exact `https://api.openai.com/v1` endpoint defaults to enabled;
+other endpoints default to parser-only. These settings also apply to MCP.
+Without the required model and key the graph is refused before the model is
 opened. The key never appears in output or in a checkpoint.
 
 ```bash

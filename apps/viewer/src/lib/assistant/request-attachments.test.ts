@@ -45,11 +45,12 @@ test('an attached selection is sent as bounded GlobalId grounding and recorded i
   useViewerStore.setState(sceneModels());
   store().setSelectedEntityIds([101, 10_103]);
   const grounding = captureSelectionGrounding(store());
-  assert.deepEqual(grounding.elements.map(({ nativePlacement, nativeStructural: _nativeStructural, nativeEdit, nativeType, nativeReplacementExpected, nativeCost, nativeLayers, nativeSlabOpeningExpected, nativeStairExpected, nativeSplitExpected, nativeHostedExpected, nativeTrimExtendExpected, nativeAuthoringAvailability, nativeAuthoringUnits, nativeAuthoringRefusals, ...identity }) => {
+  assert.deepEqual(grounding.elements.map(({ nativeStoreyReassignments, nativePlacement, nativeStructural: _nativeStructural, nativeEdit, nativeType, nativeReplacementExpected, nativeCost, nativeLayers, nativeSlabOpeningExpected, nativeStairExpected, nativeSplitExpected, nativeHostedExpected, nativeTrimExtendExpected, nativeAuthoringAvailability, nativeAuthoringUnits, nativeAuthoringRefusals, ...identity }) => {
     assert.equal(nativeEdit.dimensionsStatus, 'unavailable', 'this identity-only fixture has no native geometry index');
     assert.deepEqual(nativeType, { status: 'unavailable', expected: null }, 'this identity-only fixture has no native type graph');
     assert.equal(nativeReplacementExpected, null, '#7320 identity-only fixtures cannot authorize native replacement');
     assert.equal(nativePlacement, null, 'identity-only fixtures cannot prove current placement');
+    assert.equal(nativeStoreyReassignments, null, '#7328 identity-only fixtures cannot authorize same-identity native storey reassignment');
     assert.deepEqual(nativeCost, { status: 'unavailable-source', recordCount: null, expected: null }, 'this identity-only fixture cannot prove a complete native Cost graph');
     assert.equal(nativeSlabOpeningExpected, null, 'identity-only fixtures cannot prove a slab host');
     assert.equal(nativeStairExpected, null, 'this identity-only fixture cannot prove native stair dimensions');

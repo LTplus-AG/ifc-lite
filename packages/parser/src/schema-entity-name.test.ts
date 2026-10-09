@@ -53,4 +53,15 @@ describe('canonical registry lookup #7362', () => {
     expect(name).toBe('IfcWall');
     expect(registry.entities[name!]).toBe(base.entities.IfcTask);
   });
+
+  it('reads replaced public schema attribute definitions immediately and restores the original definition', () => {
+    const registry = getSchemaRegistryForVersion('IFC4'), original = registry.entities.IfcTask;
+    expect(getAttributeTypeForSchema('IFCTASK', 'IsMilestone', 'IFC4')).toBe('IfcBoolean');
+    try {
+      registry.entities.IfcTask = { ...original, allAttributes: original.allAttributes.map(attribute =>
+        attribute.name === 'IsMilestone' ? { ...attribute, type: 'IfcLabel' } : attribute) };
+      expect(getAttributeTypeForSchema('ifctask', 'IsMilestone', 'IFC4')).toBe('IfcLabel');
+    } finally { registry.entities.IfcTask = original; }
+    expect(getAttributeTypeForSchema('IFCTASK', 'IsMilestone', 'IFC4')).toBe('IfcBoolean');
+  });
 });

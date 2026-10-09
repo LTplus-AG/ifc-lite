@@ -12,6 +12,7 @@ import { csvNodes } from './csv-nodes.js';
 import { documentsNodes } from './documents-nodes.js';
 import { elementNodes } from './element-nodes.js';
 import { httpRequestNode } from './http-request-node.js';
+import { idsNodes } from './ids-nodes.js';
 import type { FlowHost } from './host.js';
 import { modelNodes } from './model-nodes.js';
 import { openModelNode } from './open-model-node.js';
@@ -65,6 +66,7 @@ export function createStandardRegistry(): NodeRegistry<FlowHost> {
     scriptListNode,
     httpRequestNode,
     ...bcfNodes,
+    ...idsNodes,
     ...apsNodes,
     speckleReceiveNode,
     ...documentsNodes,

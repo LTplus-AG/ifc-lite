@@ -10,8 +10,11 @@ import { readExpectedHostedEdit, type ExpectedHostedEdit } from './model-authori
 import { authoringReachEvidenceFromTarget } from './model-authoring-reach';
 import { nativeStairEvidenceFromTarget } from './model-authoring-stair-lifecycle';
 
+import { nativePlacementFromTarget, type NativePlacement } from './model-authoring-placement';
+
 type Availability = 'available' | 'unavailable-target' | 'unavailable-unit' | 'unavailable-native-layout' | 'unavailable-projection';
 export interface NativeAuthoringEvidence {
+  nativePlacement?: NativePlacement | null;
   nativeSplitExpected: SplitSnapshot | null;
   nativeSlabOpeningExpected: SplitSnapshot | null;
   nativeHostedExpected: ExpectedHostedEdit | null;
@@ -27,6 +30,7 @@ export interface NativeAuthoringEvidence {
     hosted: Availability;
     trimExtend: Availability;
     stair: Availability;
+    placement?: Availability;
   };
 }
 
@@ -51,19 +55,21 @@ export function nativeAuthoringEvidence(target: ModelEditTarget | null, expressI
     trim = authoringReachEvidenceFromTarget(target, expressId);
     stair = nativeStairEvidenceFromTarget(target, expressId);
   }
-  const slab=nativeSlabOpeningEvidence(target,expressId);
-  return { nativeSlabOpeningExpected: slab.expected, nativeSplitExpected: split, nativeHostedExpected: hosted,
+  const placement = nativePlacementFromTarget(target, expressId);
+  const slab = nativeSlabOpeningEvidence(target, expressId);
+  return { nativePlacement: placement, nativeSlabOpeningExpected: slab.expected, nativeSplitExpected: split, nativeHostedExpected: hosted,
     nativeTrimExtendExpected: trim, nativeStairExpected: stair,
     nativeAuthoringUnits: { slabOpening: 'm', split: 'm', hosted: 'm', stair: 'm', trimExtend: 'verbatim-native-fields' },
     nativeAuthoringRefusals: refusals,
     nativeAuthoringAvailability: { slabOpening: slab.expected ? 'available' : unavailable, split: split ? 'available' : unavailable,
       hosted: hosted ? 'available' : unavailable, trimExtend: trim ? 'available' : unavailable,
-      stair: stair ? 'available' : unavailable } };
+      placement: placement ? 'available' : unavailable, stair: stair ? 'available' : unavailable } };
 }
 
 const snapshotFields = [
-  ['nativeSlabOpeningExpected', 'slabOpening'], ['nativeSplitExpected', 'split'], ['nativeHostedExpected', 'hosted'],
-  ['nativeTrimExtendExpected', 'trimExtend'], ['nativeStairExpected', 'stair'],
+  ['nativeSlabOpeningExpected', 'slabOpening'],
+  ['nativeSplitExpected', 'split'], ['nativeHostedExpected', 'hosted'],
+  ['nativeTrimExtendExpected', 'trimExtend'], ['nativeStairExpected', 'stair'], ['nativePlacement', 'placement'],
 ] as const;
 const record = (value: unknown): value is Record<string, unknown> =>
   value !== null && typeof value === 'object' && !Array.isArray(value);

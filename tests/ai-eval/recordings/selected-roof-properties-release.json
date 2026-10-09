@@ -104,6 +104,7 @@
             "modelName": "arch",
             "type": "IfcSlab",
             "name": "house - roof - slab right",
+            "nativePlacement": null,
             "nativeSlabOpeningExpected": null,
             "nativeSplitExpected": null,
             "nativeHostedExpected": null,
@@ -125,6 +126,7 @@
               "split": "unavailable-native-layout",
               "hosted": "unavailable-native-layout",
               "trimExtend": "unavailable-native-layout",
+              "placement": "unavailable-native-layout",
               "stair": "unavailable-native-layout"
             },
             "attributes": {

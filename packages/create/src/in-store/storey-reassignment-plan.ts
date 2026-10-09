@@ -107,7 +107,7 @@ export function planStoreyReassignment(
   if (roots.some(id => !(incoming.get(id) ?? []).some(rel => rel.parent === sourceStoreyId))) fail('selected roots must belong directly to the declared source storey');
   const products = [...ids].sort((a, b) => a - b).map(expressId => {
     const entity = reader.entity(expressId) ?? fail(`missing product #${expressId}`);
-    if (!conformsTo(registry, entity.type, 'IfcProduct') || ['IFCSITE', 'IFCBUILDING', 'IFCBUILDINGSTOREY'].includes(entity.type.toUpperCase())) fail(`#${expressId} is not a supported movable product`);
+    if (!conformsTo(registry, entity.type, 'IfcProduct') || ['IFCSITE', 'IFCBUILDING', 'IFCBUILDINGSTOREY', 'IFCGRID'].includes(entity.type.toUpperCase())) fail(`#${expressId} is not a supported movable product`);
     const guid = entity.attributes[0];
     const GlobalId = typeof guid === 'string' && /^[0-3][0-9A-Za-z_$]{21}$/.test(guid) ? guid : fail(`#${expressId} has no valid GlobalId`);
     const placementId = refId(entity.attributes[5]) ?? fail(`#${expressId} has no ObjectPlacement`);

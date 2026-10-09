@@ -4,13 +4,13 @@
 import '@/test/setup-dom.js';
 import 'fake-indexeddb/auto';
 import assert from 'node:assert/strict';
-import { readFile } from 'node:fs/promises';
+import { readFile, writeFile } from 'node:fs/promises';
 import { afterEach, test } from 'node:test';
 import { createElement, act } from 'react';
 import { StoreEditor } from '@ifc-lite/mutations';
 import { generateIfcGuid } from '@ifc-lite/encoding';
 import { EntityExtractor, effectiveMetadataRecord } from '@ifc-lite/parser';
-import { reassignElementsToStoreyInStore } from '@ifc-lite/create';
+import { planStoreyReassignment, reassignElementsToStoreyInStore } from '@ifc-lite/create';
 import { ensureRoomWasm } from '@/test/room-walls-fixture';
 import { MODEL, seedNativeSdkModel, settle, nativeSdkUndoDepth } from '@/test/native-sdk-model';
 import { getMaxExpressId } from '@/hooks/ingest/viewerModelIngest';
@@ -175,4 +175,15 @@ test('#7328 projected partial JSON parts cannot authorize reviewed reassignment'
   preserveNativeExpectedProjection(original,projected);
   assert.equal(projected.data.nativeStoreyReassignments,null);
   assert.equal(projected.data.nativeAuthoringAvailability.storeyReassignment,'unavailable-projection');
+});
+
+
+test('#7328 preserve an independently reparsed native envelope for unchanged-public-endpoint whole-owner probes', async t => {
+  if(!ensureRoomWasm(t))return;
+  const s=await setup(false,true), step=new TextDecoder().decode(s.bytesNow()), store=await parseIfc(new TextEncoder().encode(step));
+  const view=new (await import('@ifc-lite/mutations')).MutablePropertyView(store.properties,MODEL);
+  const expected=planStoreyReassignment(store,view,[s.id],42,s.destination);
+  const envelope=JSON.stringify({...s.batch(),operations:[{...s.operation,expected}]});
+  if(process.env.CAMPAIGN_STOREY_PUBLIC_ARTIFACT) await writeFile(process.env.CAMPAIGN_STOREY_PUBLIC_ARTIFACT,JSON.stringify({step,envelope,expressId:s.id,destinationId:s.destination},null,2));
+  assert.equal(store.entities.getGlobalId(s.id),s.row.globalId);
 });

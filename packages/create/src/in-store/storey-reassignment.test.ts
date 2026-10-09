@@ -12,6 +12,7 @@ import { AnchorEntityReader, resolveSpatialAnchor } from './resolve-anchor.js';
 import { placementInAncestor, refId } from './host-geometry-frame.js';
 import { reassignElementsToStoreyInStore } from './storey-reassignment.js';
 import { planStoreyReassignment } from './storey-reassignment-plan.js';
+import { addGridToStore } from './grid.js';
 import { addHostedElementInStore } from './hosted-element.js';
 import { effectiveStoreyId } from './edit/effective-storey.js';
 import { meshStairs, stairMeshBounds, stairWasmAvailable } from './__test__/stair-mesh.oracle.js';
@@ -214,5 +215,16 @@ it('#7328 refuses finite input coordinates whose composed world frame overflows'
   s.editor.setPositionalAttribute(productPoint, 0, [1e308, 0, 0]);
   const before = s.snapshot();
   expect(() => reassignElementsToStoreyInStore(s.store, s.editor, [s.id], 42, s.destination)).toThrow(/unreadable world placement/);
+  expect(s.snapshot()).toEqual(before);
+});
+
+
+it('#7328 refuses native grids whose implicit axis-bound product dependencies are outside this operation', async () => {
+  const s = await fixture();
+  const grid = addGridToStore(s.editor, resolveSpatialAnchor(s.store, 42, s.view), {
+    UAxes: [{ Tag: '1', Start: [0, 0], End: [0, 10] }], VAxes: [{ Tag: 'A', Start: [0, 0], End: [10, 0] }],
+  });
+  const before = s.snapshot();
+  expect(() => reassignElementsToStoreyInStore(s.store, s.editor, [grid.gridId], 42, s.destination)).toThrow(/not a supported movable product/);
   expect(s.snapshot()).toEqual(before);
 });

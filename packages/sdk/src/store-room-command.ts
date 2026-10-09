@@ -8,11 +8,13 @@ import {
   storeyFootprintFaceInStore, roomOutline, updateRoomOutlineInStore, applyLayoutOp, readFaces,
   syncRoomLayoutInStore, occupancyTest, existingSpaceFootprintEntriesByStorey,
   type RoomPlateFactory, type RoomWallRect, type SpaceFootprint, type RoomCandidate, type RoomBoundary,
-  type LayoutOp, type LayoutFace, type ElementSplitOptions,
+  type LayoutOp, type ElementSplitOptions,
 } from '@ifc-lite/create';
 import { StoreEditor } from '@ifc-lite/mutations';
 import type { CostStoreModelResolution } from './cost-store-backend.js';
 import type { EntityRef } from './types.js';
+
+type LayoutFace = ReturnType<typeof readFaces>[number];
 
 type GlobalIdScope = NonNullable<ElementSplitOptions['globalIdScopes']>[number];
 

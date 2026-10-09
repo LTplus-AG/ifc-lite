@@ -38,15 +38,13 @@ export function zoneQuantitySources(s: ViewerState) {
     if (!source) {
       const store = (s.models.get(ref.modelId)?.ifcDataStore ?? (legacy ? s.ifcDataStore : null)) as IfcDataStore | null;
       let units: CurrentProjectUnitResult = { status: 'available', reason: null, value: ProjectUnits.empty() };
-      if (store?.source?.length) {
-        if (view) units = readCurrentProjectUnits(store, view);
-        else {
+      if (store && view) units = readCurrentProjectUnits(store, view);
+      else if (store?.source?.length) {
           try { units = { status: 'available', reason: null, value: extractProjectUnits(store.source, store.entityIndex) }; }
           catch (error) {
             console.warn('[Assistant] Zone source project units are unreadable', error);
             units = { status: 'unavailable', reason: 'Source project units are unreadable', value: null };
           }
-        }
       }
       source = { store, query: store ? new IfcQuery(store) : null, units };
       models.set(ref.modelId, source);

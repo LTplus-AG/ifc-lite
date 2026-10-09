@@ -128,7 +128,7 @@ test('#7218 remounted native notice cannot race a delayed import and clear its r
   await seedArtifactModels({ federated: true });
   await Promise.all([assistantLibrary.initialize(), useViewerStore.getState().initializeSavedClashReports()]);
   const proposal = parseArtifactProposal(JSON.stringify({ version: 1, title: 'Native delayed import', kind: 'filter.proposal', ...entries[0].body }), 'filter.proposal');
-  const saved = await saveArtifact(proposal, useViewerStore.getState()); assert.ok(saved.ok);
+  const saved = await saveArtifact(proposal); assert.ok(saved.ok);
   const wire = await nativeBackupWire({ filters: loadSavedFilters() });
   clearSavedFilters();
   let release: (text: string) => void = () => { throw new Error('file read not started'); };

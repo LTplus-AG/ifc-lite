@@ -13,57 +13,34 @@
 
 import type { ViewerState } from '@/store';
 import { mutationDenial } from '@/store/mutation-permission';
-import { materialsOf } from '@/lib/commands/modeling/authored-kinds';
+import { materialsOf, typeOf } from '@/lib/commands/modeling/authored-kinds';
 import { buildStoreyWorkplane, elementStoreyId, isWorkplane } from '@/lib/commands/modeling/workplane';
 import { planElementTransform, type TransformRoot } from '@/lib/element-transform/plan';
 import { describeRefusal } from '@/lib/element-transform/commit';
 import { copiedProductsInStore, createCopyContext, productStoreyOrigin, liveEntityConforms } from '@ifc-lite/create';
-import type { RowStatus } from './model-change-preview';
 import { batchDigest } from './model-change-preview';
 import { isNewElement, toMetres, type AuthoringOp, type ElementTarget, type ExistingElement, type ModelAuthoringBatch } from './model-authoring';
-import { dryRunAuthoring, type ElementId, type ResolvedOp } from './model-authoring-native';
+import { dryRunAuthoring, type ElementId } from './model-authoring-native';
 import {
   authoringReader, className, conforms, deletionRefusal, materialNameOf, nameOf, placementAngle, typeNameOf, type AuthoringReader,
 } from './model-authoring-read';
 import { captureAuthoringSources } from './model-authoring-sources';
 import { resolveGlobalId } from './resolve-global-id';
+import { readElementProfileFromTarget } from '@/store/slices/mutation-element-profile';
+import { readAuthoringSizeFromTarget, sameNativeDimensions } from './model-authoring-size';
+import { verifyReachExpected, verifyReachStoreyFrame, reachBefore } from './model-authoring-reach';
+import { sizeInMetres } from './model-authoring-size-params';
+import { profileInMetres } from './model-authoring-shape-params';
+import { authoringHostedEditGhost } from './model-authoring-hosted-edit-ghost';
+import { hostedFillRefusal } from '@/store/slices/mutation-hosted-fill';
+import { readExpectedHostedEdit, sameHostedEdit } from './model-authoring-hosted-edit';
+import { readSplitSnapshot, sameSplitSnapshot } from './model-authoring-split-state';
+import { uniqueSplitGuid } from './model-authoring-split';
+import { authoringSplitMarker } from './model-authoring-split-ghost';
+import { authoringSizeGhost } from './model-authoring-size-ghost';
 
-/** P04's statuses plus `invalid` (a native builder or planner refused it) and `blocked` (it needs a row that is not ready). */
-export type AuthoringRowStatus = RowStatus | 'invalid' | 'blocked';
-
-/** What the element is now, for the before → after summary. */
-export interface AuthoringBefore {
-  ifcClass?: string;
-  name?: string;
-  storeyName?: string;
-  type?: string | null;
-  material?: string | null;
-  /** Placement origin in the storey, metres. */
-  origin?: [number, number];
-  angleDeg?: number;
-}
-
-export interface AuthoringRow {
-  index: number;
-  op: AuthoringOp;
-  status: AuthoringRowStatus;
-  modelId: string | null;
-  /** The existing element the operation acts on (the host for a hosted element), when it has one. */
-  expressId: number | null;
-  resolved: ResolvedOp;
-  before: AuthoringBefore;
-  /** Indices of the rows whose creations this one uses. */
-  dependsOn: number[];
-  /** Why the row is not ready: the native refusal, the expectation that failed, or the edit gate's reason. */
-  issue?: string;
-}
-
-export interface ModelAuthoringPreview {
-  batch: ModelAuthoringBatch;
-  rows: AuthoringRow[];
-  mutationVersion: number;
-  digest: string;
-}
+import type { AuthoringRowStatus, AuthoringRow, ModelAuthoringPreview } from './model-authoring-preview-types';
+export type { AuthoringRowStatus, AuthoringBefore, AuthoringRow, ModelAuthoringPreview } from './model-authoring-preview-types';
 
 class Refusal extends Error {
   constructor(readonly status: AuthoringRowStatus, message: string) { super(message); }
@@ -96,6 +73,7 @@ function existing(ctx: Context, target: ExistingElement, row: AuthoringRow): num
   const { modelId, expressId } = locate(ctx, target);
   join(row, modelId);
   const r = reader(ctx, modelId);
+  if ((row.op.op === 'element.split' || row.op.op === 'element.trimExtend' || row.op.op === 'type.detach') && !uniqueSplitGuid(r.dataStore, r.editor, target.globalId)) throw new Refusal('ambiguous-target', 'The native target GlobalId is not unique in its owning model');
   const ifcClass = className(r, expressId);
   const name = nameOf(r, expressId);
   row.before.ifcClass = ifcClass;
@@ -139,6 +117,63 @@ const near = (a: number, b: number, tolerance: number) => Math.abs(a - b) <= tol
 function resolve(ctx: Context, row: AuthoringRow): void {
   const { op } = row;
   switch (op.op) {
+    case 'element.trimExtend': {
+      row.resolved.target = row.expressId = existing(ctx, op.target, row);
+      const r = reader(ctx, row.modelId!);
+      try { verifyReachStoreyFrame(r.dataStore, r.view, row.expressId); }
+      catch (error) { throw new Refusal('unsupported', error instanceof Error ? error.message : String(error)); }
+      try { verifyReachExpected(r.dataStore, r.view, r.editor, row.expressId, op); }
+      catch (error) { throw new Refusal('conflict', error instanceof Error ? error.message : String(error)); }
+      row.before.reach = reachBefore(ctx.state, row.modelId!, row.expressId) ?? undefined;
+      if ('wall' in op.boundary) {
+        row.resolved.reachBoundary = element(ctx, op.boundary.wall, row);
+        if ('id' in row.resolved.reachBoundary) {
+          try { verifyReachStoreyFrame(r.dataStore, r.view, row.resolved.reachBoundary.id); }
+          catch (error) { throw new Refusal('unsupported', error instanceof Error ? error.message : String(error)); }
+        }
+      }
+      return;
+    }
+    case 'hosted.edit': {
+      row.resolved.target = row.expressId = existing(ctx, op.target, row);
+      const r = reader(ctx, row.modelId!);
+      const refusal = hostedFillRefusal(ctx.state, row.modelId!);
+      if (refusal) throw new Refusal('unsupported', refusal);
+      if (!uniqueSplitGuid(r.dataStore, r.editor, op.target.globalId)) throw new Refusal('ambiguous-target', 'The native hosted target GlobalId is not unique in its owning model');
+      try { row.before.hosted = readExpectedHostedEdit(r.dataStore, r.editor, row.expressId, ctx.batch.units); }
+      catch (error) { throw new Refusal('invalid', error instanceof Error ? error.message : String(error)); }
+      if (!sameHostedEdit(row.before.hosted, op.expected)) throw new Refusal('conflict', 'The current native hosted binding, position or dimensions differ from the expected state');
+      return;
+    }
+    case 'element.split': {
+      row.resolved.target = row.expressId = existing(ctx, op.target, row);
+      const r = reader(ctx, row.modelId!);
+      try { row.before.split = readSplitSnapshot(r.dataStore, r.editor, row.expressId, ctx.batch.units); }
+      catch (error) { throw new Refusal('invalid', error instanceof Error ? error.message : String(error)); }
+      if (!sameSplitSnapshot(row.before.split, op.expected)) throw new Refusal('conflict', 'The current native split shape, placement or provenance differs from the expected snapshot');
+      return;
+    }
+    case 'element.resize': case 'element.profile': {
+      row.resolved.target = row.expressId = existing(ctx, op.target, row);
+      const r = reader(ctx, row.modelId!);
+      if (op.op === 'element.resize') {
+        const current = readAuthoringSizeFromTarget(r, row.expressId, op.expected.kind);
+        if (!current) throw new Refusal('invalid', 'The native editor cannot read this target as the requested editable size kind');
+        row.before.size = current;
+        if (!sameNativeDimensions(current, sizeInMetres(op.expected, ctx.batch.units))) throw new Refusal('conflict', 'The current native dimensions differ from the expected dimensions');
+        const next = sizeInMetres(op.size, ctx.batch.units);
+        const currentValues = current as unknown as Record<string, unknown>;
+        if (Object.entries(next).filter(([, value]) => typeof value === 'number').every(([key, value]) =>
+          Math.abs(Number(currentValues[key]) - Number(value)) <= 1e-9)) throw new Refusal('unchanged', 'Already these dimensions');
+      } else {
+        const current = readElementProfileFromTarget(r, row.expressId);
+        if (!current) throw new Refusal('invalid', 'The native editor cannot read a supported centred extrusion section');
+        row.before.Profile = current;
+        if (!sameNativeDimensions(current, profileInMetres(op.expected, ctx.batch.units))) throw new Refusal('conflict', 'The current native section differs from the expected Profile');
+        if (sameNativeDimensions(current, profileInMetres(op.Profile, ctx.batch.units))) throw new Refusal('unchanged', 'Already this Profile');
+      }
+      return;
+    }
     case 'element.create': {
       const storey = locate(ctx, op.storey);
       join(row, storey.modelId);
@@ -190,6 +225,19 @@ function resolve(ctx: Context, row: AuthoringRow): void {
       row.resolved.target = row.expressId = existing(ctx, op.target, row);
       const root = transformRoot(ctx, row, row.expressId);
       return op.op === 'element.move' ? checkMove(ctx, op, root) : checkTurn(ctx, row, op, root);
+    }
+    case 'type.detach': {
+      row.resolved.target = row.expressId = existing(ctx, op.target, row);
+      const r = reader(ctx, row.modelId!);
+      const current = typeOf({ dataStore: r.dataStore, view: r.view }, row.expressId);
+      if (current === null) throw new Refusal('unchanged', 'The occurrence is already untyped');
+      if (!uniqueSplitGuid(r.dataStore, r.editor, op.expected.GlobalId)) throw new Refusal('ambiguous-target', 'The expected native type GlobalId is not unique in its owning model');
+      const expected = locate(ctx, { globalId: op.expected.GlobalId, modelId: row.modelId! });
+      if (expected.expressId !== current || nameOf(r, current) !== op.expected.Name) throw new Refusal('conflict', 'The occurrence has a different current type');
+      row.resolved.typeId = current;
+      row.before.type = nameOf(r, current);
+      row.previewUnavailable = true;
+      return;
     }
     case 'type.assign': case 'material.assign': {
       const subject = row.resolved.subject = element(ctx, op.target, row);
@@ -275,6 +323,25 @@ export function previewModelAuthoring(state: ViewerState, batch: ModelAuthoringB
     }
   }
   nativeDryRun(ctx, batch);
+  for (const row of ctx.rows) if (row.status === 'ready' && row.modelId && (row.op.op === 'element.resize' || row.op.op === 'element.profile' || row.op.op === 'element.trimExtend')) {
+    const boundary = row.op.op === 'element.trimExtend' ? row.resolved.reachBoundary : undefined;
+    // The whole native batch validates this boundary; the independent body draft
+    // cannot reproduce a preceding edit of the same existing wall (#7262).
+    if (boundary && 'id' in boundary && ctx.rows.some(previous => previous.index < row.index
+      && previous.status === 'ready' && previous.modelId === row.modelId && previous.expressId === boundary.id
+      && previous.op.op !== 'element.copy' && previous.op.op !== 'element.array')) {
+      row.previewUnavailable = true;
+      continue;
+    }
+    const ghost = authoringSizeGhost(state, batch, row, row.modelId, 0);
+    row.previewUnavailable = ghost.unavailable;
+    row.previewOmitted = ghost.omitted;
+    row.previewOuterBodyOnly = ghost.outerBodyOnly;
+  }
+  for (const row of ctx.rows) if (row.status === 'ready' && row.op.op === 'hosted.edit') row.previewUnavailable = authoringHostedEditGhost(state, batch, row, 0, ctx.rows) === null;
+  for (const row of ctx.rows) if (row.status === 'ready' && row.op.op === 'element.split') {
+    row.previewUnavailable = authoringSplitMarker(state, batch, row, 0) === null;
+  }
   const preview = { batch, rows: ctx.rows, mutationVersion: state.mutationVersion, digest: batchDigest(batch) };
   captureAuthoringSources(state, preview);
   return preview;
@@ -286,7 +353,7 @@ function nativeDryRun(ctx: Context, batch: ModelAuthoringBatch): void {
   for (const row of ctx.rows) if (row.status === 'ready' && row.modelId) byModel.set(row.modelId, [...(byModel.get(row.modelId) ?? []), row]);
   for (const [modelId, rows] of byModel) {
     const r = reader(ctx, modelId);
-    const refusals = dryRunAuthoring(batch, r.dataStore, r.view, modelId, rows.map(({ index, op, resolved }) => ({ index, op, resolved })));
+    const refusals = dryRunAuthoring(batch, r.dataStore, r.view, modelId, rows.map(({ index, op, resolved }) => ({ index, op, resolved })), { globalIdScopes: [...ctx.state.models].map(([id, model]) => ({ dataStore: model.ifcDataStore, view: ctx.state.mutationViews.get(id) })) });
     for (const row of rows) {
       const refusal = refusals.get(row.index);
       if (refusal === undefined) continue;

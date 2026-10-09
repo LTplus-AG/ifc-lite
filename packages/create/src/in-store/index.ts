@@ -4,6 +4,7 @@
 
 // In-store builders — emit elements into an existing parsed IfcDataStore
 // via a `StoreEditor` overlay (closes the merge-roundtrip gap from #592).
+export { linearProfileFrame } from './linear-profile-frame.js';
 export { addOrdinaryElementInStore, type OrdinaryInStoreElement } from './ordinary-element.js';
 export {
   addColumnToStore,

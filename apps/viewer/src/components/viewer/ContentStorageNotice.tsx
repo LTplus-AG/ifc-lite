@@ -12,7 +12,7 @@ import { reviewWorkspaceLibrary, useReviewWorkspaces } from '@/lib/review/worksp
 import { semanticReviewLibrary, useSemanticReviews } from '@/lib/semantic/assist/library';
 import { assistantRecipeLibrary, useAssistantRecipes } from '@/lib/assistant/reuse/recipe-library';
 import { assistantPreferencesLibrary, useAssistantPreferences } from '@/lib/assistant/reuse/preferences';
-import { useRef, useState } from 'react';
+import { useRef } from 'react';
 import { useTranslation, type TranslationKey } from '@/i18n';
 import { useViewerStore } from '@/store';
 import { useDialogs } from '@/components/ui/confirm-dialog';
@@ -27,7 +27,7 @@ import { stageContentDrafts } from '@/lib/storage/content-backup-drafts';
 import { loadSavedFilters } from '@/lib/search/saved-filters';
 import { encodeContentBackup } from '@/lib/storage/content-backup';
 import type { StandaloneArtifactLibraries } from '@/lib/storage/artifact-backup';
-import { importArtifactLibraries } from '@/lib/storage/artifact-backup-import';
+import { currentListDefinitions, importArtifactLibraries } from '@/lib/storage/artifact-backup-import';
 
 const messages = {
   quota: 'contentStorage.quota', unavailable: 'contentStorage.unavailable',
@@ -35,7 +35,7 @@ const messages = {
 } as const satisfies Record<string, TranslationKey>;
 const visibleLibraries = () => {
   const state = useViewerStore.getState();
-  return { filters: loadSavedFilters(), lists: state.listDefinitions, lenses: state.exportLenses(),
+  return { filters: loadSavedFilters(), lists: currentListDefinitions(), lenses: state.exportLenses(),
     validation: state.savedValidationReports, comparison: state.savedComparisons, document: state.documents, clashReports: state.savedClashReports,
     assistant: useAssistantLibrary.getState().entries, clashGroups: useClashGroupLibrary.getState().entries,
     bcfDrafts: useBcfDraftLibrary.getState().entries, bcfOutbox: useBcfOutbox.getState().entries,
@@ -66,8 +66,8 @@ export function ContentStorageNotice({ status, retry, restore }: {
   const preferencesLoading = useAssistantPreferences(s => s.status.phase === 'loading');
   const receiptsLoading = changeReceiptsLoading || groupReceiptsLoading || reviewsLoading || semanticReviewsLoading;
   const input = useRef<HTMLInputElement>(null);
-  const [busy, setBusy] = useState(false);
-  const busyNow = useRef(false);
+  const busy = useViewerStore(state => state.contentStorageActionBusy);
+  const busyNow = () => useViewerStore.getState().contentStorageActionBusy;
   const artifactsPending = useViewerStore(state => state.pendingStandaloneArtifactImport !== null);
   const pendingArtifacts = () => useViewerStore.getState().pendingStandaloneArtifactImport;
   const saveArtifacts = (libraries: StandaloneArtifactLibraries) => {
@@ -81,13 +81,13 @@ export function ContentStorageNotice({ status, retry, restore }: {
     : problem ? messages[problem] : status.phase === 'unavailable' ? 'contentStorage.unavailable'
       : states.includes('saving') ? 'contentStorage.saving' : states.length ? 'contentStorage.saved' : null;
   const run = async (work: () => Promise<void>) => {
-    if (busyNow.current) return;
-    busyNow.current = true; setBusy(true);
+    if (busyNow()) return;
+    useViewerStore.setState({ contentStorageActionBusy: true });
     try { await work(); }
     catch (error) {
       console.warn('[User content] Action failed', error);
       toast.error(t('contentStorage.failed', { message: error instanceof Error ? error.message : String(error) }));
-    } finally { busyNow.current = false; setBusy(false); }
+    } finally { useViewerStore.setState({ contentStorageActionBusy: false }); }
   };
   const backup = async () => {
     if (pendingArtifacts()) throw new Error(t('contentStorage.artifactsPending'));
@@ -183,7 +183,7 @@ export function ContentStorageNotice({ status, retry, restore }: {
         {problem && <Button size="sm" variant="outline" disabled={busy} onClick={() => void run(async () => {
           if (await confirmDialog({ description: t('contentStorage.restoreConfirm'), destructive: true })) await restore();
         })}>{t('contentStorage.restore')}</Button>}
-        <Button size="sm" variant="outline" disabled={busy || artifactsPending} onClick={() => { if (!busyNow.current && !pendingArtifacts()) input.current?.click(); }}>{t('contentStorage.import')}</Button>
+        <Button size="sm" variant="outline" disabled={busy || artifactsPending} onClick={() => { if (!busyNow() && !pendingArtifacts()) input.current?.click(); }}>{t('contentStorage.import')}</Button>
         <Button size="sm" variant="outline" disabled={busy} onClick={() => void run(async () => {
           const live = useViewerStore.getState();
           const saved = await Promise.all([assistantLibrary.retry(), clashGroupLibrary.retry(), bcfDraftLibrary.retry(), bcfOutboxLibrary.retry(), modelChangeLibrary.retry(), clashGroupApplicationLibrary.retry(), reviewWorkspaceLibrary.retry(), semanticReviewLibrary.retry(), assistantRecipeLibrary.retry(), assistantPreferencesLibrary.retry(), live.retryDocumentsSave(), live.retryValidationReportsSave(), live.retrySaveComparisons(), live.retrySaveClashReports(), retryContentDrafts()]);

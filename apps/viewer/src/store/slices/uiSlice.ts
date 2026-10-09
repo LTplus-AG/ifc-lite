@@ -115,6 +115,7 @@ export interface UISlice extends GeometryLoadSettingsState, GeometryLoadSettings
   pendingArtifactEditor: ArtifactEditorTarget | null;
   /** Unfinished native backup imports belong to the tab, across panel remounts. */
   pendingStandaloneArtifactImport: StandaloneArtifactLibraries | null;
+  contentStorageActionBusy: boolean;
   theme: ThemeMode;
   isMobile: boolean;
   hoverTooltipsEnabled: boolean;
@@ -206,6 +207,7 @@ export const createUISlice: StateCreator<UISlice & UICrossSliceState, [], [], UI
   pendingPropertyFocus: null,
   pendingArtifactEditor: null,
   pendingStandaloneArtifactImport: null,
+  contentStorageActionBusy: false,
   theme: UI_DEFAULTS.THEME,
   isMobile: false,
   hoverTooltipsEnabled: UI_DEFAULTS.HOVER_TOOLTIPS_ENABLED,

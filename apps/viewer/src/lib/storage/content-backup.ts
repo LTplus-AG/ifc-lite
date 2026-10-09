@@ -74,6 +74,9 @@ export function createContentBackup(libraries: ContentLibraries, status?: Record
       return [];
     });
   const artifactLibraries = decodeArtifactLibraries(encodeArtifactLibraries(copied));
+  for (const kind of ['filters', 'lists', 'lenses'] as const) {
+    if (!artifactLibraries[kind]?.length) delete artifactLibraries[kind];
+  }
   return { version: Object.keys(artifactLibraries).length ? 2 : 1, exportedAt: new Date().toISOString(), status, libraries: {
     ...artifactLibraries,
     validation: partition('validation', copied.validation, CONTENT_DEFINITIONS.validation.decode),

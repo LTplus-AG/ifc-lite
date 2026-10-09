@@ -195,7 +195,7 @@ test('#7311 current named/positional Cost record edits match actual STEP, then s
   const valueId = created.applied.find(row => row.op === 'cost.value.create')!.expressId!;
   const old = input([{ op: 'cost.remove', target: valueId, detach: true }]);
   const editor = useViewerStore.getState().storeEditors.get(SAMPLE_MODEL)!;
-  editor.setAttribute(valueId, 'Name', 'Current non-root amount', 'Supplied 42');
+  editor.setAttribute(valueId, 'Name', 'Current non-root amount');
   view.setPositionalAttribute(valueId, 2, { typed: { type: 'IfcMonetaryMeasure', value: 64 } });
   const source = new TextDecoder().decode(editedModelBytes(dataStore, view));
   assert.match(source, /IFCMONETARYMEASURE\(64\.\)/);

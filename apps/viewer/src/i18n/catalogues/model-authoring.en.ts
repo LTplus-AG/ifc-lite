@@ -52,7 +52,7 @@ export const modelAuthoringEn = {
   'modelAuthoring.newElement': 'new element "{ref}"',
   'modelAuthoring.notYet': '(not in the model)',
   'modelAuthoring.filletPreview': 'The preview shows sharp corners and omits {fields}. Applying writes the specified fillet radii.',
-  'modelAuthoring.stairRailingPreview': 'The command preview shows solid stair steps and square rail/post sections. A stair waist is omitted; Custom rail diameters, vertical rail segments and existing stair edit/removal bodies require a separate native preview. Replacement creates a new product record; GlobalId is fresh by default or explicitly supplied.',
+  'modelAuthoring.stairRailingPreview': 'The command preview shows solid stair steps and square rail/post sections. A stair waist is omitted. Custom rail diameters, vertical rail segments and existing stair edit/removal bodies require a separate native preview. Replacement creates a new product record; GlobalId is fresh by default or explicitly supplied.',
   'modelAuthoring.editPreviewUnavailable': 'No geometry preview is available for this edit. Review the dimensions before applying.',
   'modelAuthoring.outerBodyPreview': 'The preview shows the outer body; openings are not cut into the preview.',
   'modelAuthoring.createdOn': 'on {storey}: {dims}',

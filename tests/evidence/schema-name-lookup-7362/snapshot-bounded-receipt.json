@@ -1,0 +1,24 @@
+{
+  "sourceHead": "09161d09e61f9fc82b40701b2df7821255218217",
+  "apiAndWholeHead": "43a81c1ef732f433f9d0e7d84a8fd28158d7c062",
+  "rootBuildTasksPass": 15,
+  "nativeGroupPass": 17,
+  "sdkPass": 2,
+  "parserPass": 56,
+  "skips": 0,
+  "wholeActualMain": "2382cf4124315f027b2d33c21c1751cee33c5081",
+  "wholeBefore": {
+    "pass": 32,
+    "assertionFailures": 5,
+    "loaderErrors": 0
+  },
+  "wholeRestored": {
+    "pass": 37,
+    "exactSourceShaRestored": true
+  },
+  "fullNewSnapshotHead": "PENDING",
+  "historicalFullHead": "7615ca01b0fa47f2701a7193990c10e368b8b40d",
+  "historicalFullAllTenPass": true,
+  "originalDeadlineSnapshotCoverageAcceptance": "NOT YET PERFORMED",
+  "throughputVerdict": "NOT CLAIMED"
+}

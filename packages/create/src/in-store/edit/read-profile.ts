@@ -1,6 +1,7 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+import { getCanonicalEntityName } from '@ifc-lite/parser';
 
 /**
  * A profile entity read back as a `ProfileSection` (charter #6232, D2): the
@@ -60,7 +61,7 @@ export function sectionFromProfile(
   let declared: readonly string[] | undefined;
   if (schemaVersion === 'IFC2X3' || schemaVersion === 'IFC4' || schemaVersion === 'IFC4X3') {
     const registry = getSchemaRegistryForVersion(schemaVersion);
-    const name = Object.keys(registry.entities).find((entity) => entity.toUpperCase() === upper);
+    const name = getCanonicalEntityName(registry, upper);
     declared = name ? registry.entities[name].allAttributes?.map((attribute) => attribute.name) : undefined;
   } else if (schemaVersion === 'IFC5' && layout.type === 'Rectangle') {
     // IFCX adapts positional attributes using this same canonical name list.

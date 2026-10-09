@@ -786,3 +786,22 @@ The classification readers accept an optional native mutation view: `extractClas
 `extractMaterialPropertiesOnDemand(store, entityId, view, revision)` uses the same current assignments for generic material property groups. Named edits apply before positional edits, matching exported records. An unset layer `IsVentilated` remains undefined rather than becoming an explicit false value.
 
 `materialAssignmentsAvailable(store, entityId, view)` reports whether the supplied graph and current edits can prove the complete selected material membership. Source-empty transport without membership data, or with relevant edits to unavailable source relationship records, yields `false`; retained source markers and authored records do not establish a complete count. The Assistant reports null totals and unverified source markers in those cases.
+
+### Canonical names in a schema registry
+
+`getCanonicalEntityName(registry, type)` resolves an exact EXPRESS entity name from one schema registry, case-insensitively. It returns `undefined` for an unknown name. Registries remain mutable: adding, deleting or reordering entity keys updates the next lookup, and case-colliding keys retain the first own-key match. Definitions are read from the current registry rather than cached metadata.
+
+```ts
+import { getCanonicalEntityName, getSchemaRegistryForVersion } from '@ifc-lite/parser';
+const registry = getSchemaRegistryForVersion('IFC4X3');
+const entityName = getCanonicalEntityName(registry, 'IFCRAILWAY');
+```
+
+For a finite synchronous operation that resolves many records, `createSchemaEntityNameSnapshot(registry)` captures ordered entity keys once. Pass the snapshot as the optional final argument to `getCanonicalEntityName`, `getAttributeNamesForSchema`, or `resolveEffectiveEntityRecord`. Metadata definitions remain live; keys added or reordered after capture are observed by a fresh snapshot or a normal public lookup. A snapshot from another registry is ignored. Native Group operations create a fresh snapshot for each graph; they do not freeze the public registry.
+
+```ts
+import { createSchemaEntityNameSnapshot, getAttributeNamesForSchema, getSchemaRegistryForVersion } from '@ifc-lite/parser';
+const registry = getSchemaRegistryForVersion('IFC4X3');
+const names = createSchemaEntityNameSnapshot(registry);
+const attributes = getAttributeNamesForSchema('IFCRAILWAY', 'IFC4X3', names);
+```

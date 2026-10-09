@@ -3,8 +3,9 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { existsSync, readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { IfcParser, effectiveMetadataRecord, type IfcDataStore } from '@ifc-lite/parser';
-import { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
+import { IfcParser, effectiveMetadataRecord, getSchemaRegistryForVersion, type IfcDataStore } from '@ifc-lite/parser';
+import * as parserApi from '@ifc-lite/parser';
+import { MutablePropertyView, StoreEditor, recordCompoundMutation, undoRecordedMutationOperations } from '@ifc-lite/mutations';
 import { StepExporter } from '@ifc-lite/export';
 import { generateIfcGuid } from '@ifc-lite/encoding';
 import { RelationshipType } from '@ifc-lite/data';
@@ -45,6 +46,42 @@ async function reread(s: Awaited<ReturnType<typeof session>>) {
   const store = await new IfcParser().parseColumnar(content.slice().buffer as ArrayBuffer, { disableWorkerScan: true });
   return { store, mutationView: new MutablePropertyView(null, 'exported'), ownerHistoryId: null };
 }
+
+it('fresh native graphs observe registry edits between operations and preserve export after one compound Undo #7362', async () => {
+  const s = await session(), registry = getSchemaRegistryForVersion('IFC4');
+  const originalEntities = registry.entities;
+  const memberType = new AnchorEntityReader(s.store, s.mutationView).entity(s.member.expressId)?.type;
+  if (!memberType) throw new Error('Authentic member has no current IFC type');
+  const key = parserApi.getCanonicalEntityName?.(registry, memberType);
+  expect(key).toBeDefined();
+  if (!key) throw new Error('Authentic member is absent from IFC4');
+  const originalDefinition = originalEntities[key];
+  const group = addGroupToStore(s, { Name: 'Registry lifecycle', RelatedObjects: [s.member] });
+  const initial = readGroupInStore(s, group), before = await reread(s);
+  try {
+    registry.entities = { ...originalEntities };
+    // Existing canonical key wins over this later case-colliding extension.
+    registry.entities[key.toUpperCase()] = { ...originalDefinition, inheritanceChain: [key] };
+    expect(readGroupInStore(s, group)).toEqual(initial);
+    delete registry.entities[key];
+    registry.entities[key] = originalDefinition;
+    const unchanged = state(s);
+    expect(() => updateGroupInStore(s, initial, { Name: 'Must refuse', RelatedObjects: [s.member] })).toThrow(/invalid object definition/);
+    expect(state(s)).toBe(unchanged);
+    delete registry.entities[key.toUpperCase()];
+    expect(readGroupInStore(s, group)).toEqual(initial);
+    recordCompoundMutation(s.mutationView, draft => {
+      const context = { ...s, mutationView: draft };
+      updateGroupInStore(context, readGroupInStore(context, group), { Name: 'Changed', RelatedObjects: [] });
+    });
+    expect(readGroupInStore(await reread(s), group).Name).toBe('Changed');
+    expect(undoRecordedMutationOperations(s.mutationView, 1, () => { throw new Error('Group update must undo as one compound operation'); })).toBeGreaterThan(0);
+    const after = await reread(s);
+    expect(readGroupInStore(after, group)).toEqual(initial);
+    const records = (source: typeof before) => [...source.store.entityIndex.byId.keys()].sort((a, b) => a - b).map(expressId => ({ expressId, ...effectiveMetadataRecord(source.store, expressId) }));
+    expect(records(after)).toEqual(records(before));
+  } finally { registry.entities = originalEntities; }
+});
 
 describe.each(['IFC4', 'IFC4X3'] as const)('generic group native lifecycle #7329 %s', schema => {
   it('exports complete replacement, stable group/relation identities, and empty membership without an empty SET', async () => {

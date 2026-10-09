@@ -12,7 +12,7 @@
  *              → Location → IfcCartesianPoint → Coordinates [x, y, z]
  *
  * Reads honour the `StoreEditor` overlay (overlay-only entities,
- * positional-mutation overrides on top of source-buffer entities).
+ * named/positional mutations and current retypes on top of source-buffer entities for placement owners).
  * Writes go through `setPositionalAttribute` so they stack with
  * other overlay edits and participate in the standard undo path.
  *
@@ -69,11 +69,11 @@ function baseAttributes(dataStore: IfcDataStore, editor: Pick<StoreEditor, 'getN
 
 /** #7315: only native placement owners use current named/retyped fields.
  * The general body/profile reader retains its existing positional contract. */
-export function readPlacementAttributes(dataStore: IfcDataStore, view: MutablePropertyView, editor: StoreEditor, expressId: number): EntityAttrs | null {
+export function readPlacementAttributes(dataStore: IfcDataStore, view: MutablePropertyView, editor: Pick<StoreEditor, 'getNewEntity'> & Partial<Pick<StoreEditor, 'getEntityType'>>, expressId: number): EntityAttrs | null {
   if (view.isDeleted(expressId)) return null;
   const attributes = baseAttributes(dataStore, editor, expressId);
   if (!attributes) return null;
-  const type = editor.getNewEntity(expressId)?.type ?? dataStore.getEntity(expressId)?.type ?? editor.getEntityType(expressId);
+  const type = editor.getNewEntity(expressId)?.type ?? dataStore.getEntity(expressId)?.type ?? editor.getEntityType?.(expressId);
   if (!type) return null;
   return resolveEffectiveEntityRecord({ type, attributes }, {
     retype: view.getEntityTypeMutation(expressId)?.newType,

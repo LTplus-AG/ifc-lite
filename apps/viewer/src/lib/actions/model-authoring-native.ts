@@ -211,3 +211,84 @@ export function draftAuthoringOperation(batch: ModelAuthoringBatch, dataStore: I
         draftMethods(dataStore, modelId, draft), resolved.layers!, op, batch.units, readState);
       return;
     case 'element.replace': {const made=writeNativeReplacement(batch,dataStore,draft,resolved.target!,resolved.storey!,op);refs.set(op.ref,made.expressId);return;}
+    case 'stair.resize': case 'stair.delete': case 'railing.delete': case 'stair.replace': case 'railing.replace': {
+      const result=writeStairLifecycle(dataStore,draft,batch,op,resolved.target!,resolved.storey);
+      if('ref' in op && result.root!==undefined)refs.set(op.ref,result.root);return;
+    }
+    case 'stair.create': case 'railing.create': {
+      const made = writeStairCreation(dataStore, draft, batch, op, resolved.storey!);
+      refs.set(op.ref, made.expressId);return;
+    }
+    case 'type.detach':
+      writeNativeTypeDetach(op, dataStore, draft, resolved);
+      return;
+    case 'hosted.edit':
+      writeHostedEdit(batch, dataStore, draft, resolved.target!, op.expected, op.edit, op.target.globalId);
+      return;
+    case 'element.trimExtend':
+      resolved.reachPlan = writeAuthoringReach(batch, dataStore, draft, resolved.target!, op, resolved.reachBoundary, refs);
+      return;
+    case 'element.split':
+      resolved.splitEffects = writeNativeSplit(batch, op, dataStore, draft, resolved.target!, splitScopes);
+      return;
+    case 'element.resize': {
+      const outcome = draftElementSize(dataStore, draft, draftMethods(dataStore, modelId, draft), modelId, resolved.target!, sizeInMetres(op.size, batch.units));
+      if (!outcome.ok) throw new Error(outcome.reason);
+      return;
+    }
+    case 'element.profile': {
+      const outcome = writeElementProfile({ modelId, dataStore, view: draft.getMutationView(), editor: draft }, resolved.target!, profileInMetres(op.Profile, batch.units),
+        (updates) => { for (const update of updates) draft.setPositionalAttribute(update.entityId, update.index, update.value); });
+      if (!outcome.ok) throw new Error(outcome.reason);
+      return;
+    }
+    case 'grid.create': case 'column.createOnGrid': {
+      const id = writeGridCreation(dataStore, draft, batch, op, resolved.storey!, resolved.grid, refs);
+      refs.set(op.ref, id);
+      return;
+    }
+    case 'element.create': {
+      const storey = resolved.storey!;
+      const id = addOrdinaryElementInStore(draft, (d) => {
+        ensureStoreyPlacement(dataStore, d, storey);
+        return resolveSpatialAnchor(dataStore, storey, d.getMutationView());
+      }, authoredElementOf(batch, op));
+      refs.set(op.ref, id);
+      return;
+    }
+    case 'hosted.create': {
+      const host = idOf(resolved.host!, refs);
+      const created = 'params' in op ? writeSlabOpening(batch, op, dataStore, draft, host) : addHostedElementInStore(dataStore, draft, host, hostedSpecOf(batch, op));
+      if ('params' in op) resolved.slabOpening = readSlabOpeningPreview(dataStore, draft, host, created.openingId);
+      if (op.ref) refs.set(op.ref, created.expressId);
+      return;
+    }
+    case 'element.copy': case 'element.array': {
+      const copies = copyBatchInStore(dataStore, draft, [idOf(resolved.subject!, refs)], authoringCopyTransforms(batch, op, resolved.storey));
+      for (const [i, copy] of copies.entries()) refs.set(copyRefs(op)[i], copy.copyId);
+      return;
+    }
+    case 'element.delete':
+      if (!draft.removeEntity(resolved.target!)) throw new Error('The element could not be removed');
+      return;
+    case 'element.align': {
+      const a = resolved.alignment;
+      if (!a?.geometry) throw new Error('Prepare native Align geometry first');
+      alignElementsInStore({ dataStore, view: draft.getMutationView(), editor: draft },
+        { reference: a.reference, targets: a.targets, mode: op.mode }, a.geometry.boxes);
+      return;
+    }
+    case 'element.move': case 'element.rotate':
+      // Checked against the transform planner and placement chain in preview; nothing to stage.
+      return;
+    default:
+      writeRelation(draftMethods(dataStore, modelId, draft), modelId, op, resolved, refs);
+  }
+}
+
+function draftMethods(dataStore: IfcDataStore, modelId: string, draft: StoreEditor): ModellingMethods {
+  return createModellingStoreBackend(() => ({
+    modelId, store: dataStore, editor: draft, mutationView: draft.getMutationView(),
+    ownerHistoryId: resolveLiveOwnerHistoryId(dataStore, draft, draft.getMutationView()),
+  }));
+}

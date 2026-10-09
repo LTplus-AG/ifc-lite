@@ -574,3 +574,30 @@ test('#7275 native unset association target follows exported canonical empty-def
   assert.equal(evidence.status, 'available');
   assert.deepEqual(evidence.expected?.MaterialLayers, []);
 });
+
+// #7332: the canonical reader and authoring evidence must reject the same
+// wrong EXPRESS target without rejecting an optional, genuinely absent Material.
+test('#7275 native layer Material cannot reference a building in canonical reads', async () => {
+  const { dataStore, view, target } = await inspectorControl();
+  const before = layerSetOf({ dataStore, view }, target); assert.ok(before);
+  const saved = await parseIfc(editedModelBytes(dataStore, view));
+  const refs = effectiveMetadataRecord(saved, before.layerSetId)?.attributes[0];
+  assert.ok(Array.isArray(refs));
+  const layerId = Number(refs[0]);
+  const buildingId = saved.entityIndex.byType.get('IFCBUILDING')?.[0];
+  assert.ok(buildingId);
+  const editor = useViewerStore.getState().storeEditors.get(SAMPLE_MODEL); assert.ok(editor);
+  editor.setPositionalAttribute(layerId, 0, `#${buildingId}`);
+  const parsed = await parseIfc(editedModelBytes(dataStore, view));
+  assert.equal(effectiveMetadataRecord(parsed, layerId)?.attributes[0], buildingId);
+  assert.equal(effectiveMetadataRecord(parsed, buildingId)?.type, 'IfcBuilding');
+  assert.equal(transportedLayerEvidence(useViewerStore.getState(), target).status, 'unavailable');
+  assert.equal(layerSetOf({ dataStore, view }, target), null,
+    'canonical live read cannot expose a live IfcBuilding as an IfcMaterial');
+  assert.equal(layerSetOf({ dataStore: parsed, view: new MutablePropertyView(parsed.properties ?? null, SAMPLE_MODEL) }, target), null,
+    'independently reparsed native graph has the same refusal');
+  editor.setPositionalAttribute(layerId, 0, null);
+  const absent = layerSetOf({ dataStore, view }, target); assert.ok(absent);
+  assert.equal(absent.layers[0].materialId, null, 'optional absent Material remains a supported native layer');
+  assert.equal(transportedLayerEvidence(useViewerStore.getState(), target).status, 'available');
+});

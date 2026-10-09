@@ -184,6 +184,11 @@ it('bounds total effective record work and reports refusal rather than a truncat
   expect(s.mutationView.getNewEntities()).toHaveLength(count);
 });
 
+function danglingExportReferences(bytes: Uint8Array): number[] {
+  const step = new TextDecoder().decode(bytes).replace(/'(?:[^']|'')*'|\/\*[\s\S]*?\*\//g, '');
+  const defined = new Set([...step.matchAll(/^#(\d+)\s*=/gm)].map(match => Number(match[1])));
+  return [...new Set([...step.matchAll(/#(\d+)/g)].map(match => Number(match[1])).filter(id => !defined.has(id)))].sort((a, b) => a - b);
+}
 const externalIfc4x3 = new URL('../../../../tests/models/ifc5/Railway_Railway_project_simple_IFC4X3.ifc', import.meta.url);
 const hasExternalIfc4x3 = existsSync(externalIfc4x3);
 if (!hasExternalIfc4x3) console.warn('skip: SierraSoft IFC4X3 group fixture missing — run `pnpm fixtures`');
@@ -205,6 +210,7 @@ it.skipIf(!hasExternalIfc4x3)('preserves the complete SierraSoft IFC4X3_ADD2 rai
   updateGroupInStore(context, created, { Name: 'Only the alignment', RelatedObjects: [roots[1]] });
   const content = new StepExporter(store, mutationView).export({ schema: 'IFC4X3', applyMutations: true }).content;
   const saved = await new IfcParser().parseColumnar(content.slice().buffer as ArrayBuffer, { disableWorkerScan: true });
+  expect(danglingExportReferences(content)).toEqual([]);
   expect(saved.entities.getName(group.expressId)).toBe('Only the alignment');
   expect(saved.entities.getGlobalId(group.expressId)).toBe(group.GlobalId);
   expect(saved.getEntity(relation.expressId)?.attributes[0]).toBe(relation.GlobalId);
@@ -213,6 +219,7 @@ it.skipIf(!hasExternalIfc4x3)('preserves the complete SierraSoft IFC4X3_ADD2 rai
   removeGroupInStore(context, readGroupInStore(context, group));
   const removed = new StepExporter(store, mutationView).export({ schema: 'IFC4X3', applyMutations: true }).content;
   const restored = await new IfcParser().parseColumnar(removed.slice().buffer as ArrayBuffer, { disableWorkerScan: true });
+  expect(danglingExportReferences(removed)).toEqual([]);
   expect(restored.entityIndex.byId.has(group.expressId)).toBe(false);
   expect(restored.entityIndex.byId.has(relation.expressId)).toBe(false);
   // @raw-entity-enumeration-ok these independent imported/exported sources have no overlays; every original record and file reference must survive lifecycle removal.

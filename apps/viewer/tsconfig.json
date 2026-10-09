@@ -32,6 +32,7 @@
       "@ifc-lite/ifcx": ["../../packages/ifcx/src"],
       "@ifc-lite/create": ["../../packages/create/src"],
       "@ifc-lite/ids": ["../../packages/ids/src"],
+      "@ifc-lite/ids-authoring": ["../../packages/ids-authoring/src"],
       "@ifc-lite/encoding": ["../../packages/encoding/src"],
       "@ifc-lite/lists": ["../../packages/lists/src"],
       "@ifc-lite/rules": ["../../packages/rules/src"],

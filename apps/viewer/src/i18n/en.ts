@@ -77,6 +77,7 @@ import { documentMenuEn } from './catalogues/document-menu.en';
 import { drawingUnderlayEn } from './catalogues/drawing-underlay.en';
 import { hierarchyEn } from './catalogues/hierarchy.en';
 import { idsPanelEn } from './catalogues/ids-panel.en';
+import { idsStudioEn } from './catalogues/ids-studio.en';
 import { validationEditorEn } from './catalogues/validation-editor.en';
 import { validationPanelEn } from './catalogues/validation-panel.en';
 import { manualValidationEn } from './catalogues/manual-validation.en';
@@ -284,6 +285,7 @@ export const en = {
   ...scanToBimEn,
   ...sheetsPdfEn,
   ...spaceEnvelopeEn,
+  ...idsStudioEn,
 } as const;
 
 /** Strings that load with the panels that use them (see `registerEnglish`); their keys are typed here, their text is not in the eager bundle. */

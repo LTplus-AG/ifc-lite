@@ -26,8 +26,9 @@ import { BACKUP_DRAFT_PREFIX, draftRecoveryRows, forgetContentDrafts, mergeConte
   pendingContentDrafts, stageContentDrafts, type ContentDraftEvidence } from './content-backup-drafts.js';
 import { CONTENT_KINDS, CONTENT_POLICIES } from './content-kinds.js';
 import { CONTENT_DEFINITIONS, contentKindForLegacyKey } from './content-registry.js';
+import { decodeArtifactLibraries, encodeArtifactLibraries, type StandaloneArtifactLibraries } from './artifact-backup.js';
 
-export interface ContentLibraries {
+export interface ContentLibraries extends StandaloneArtifactLibraries {
   validation: SavedValidationReport[];
   comparison: SavedComparison[];
   document: DocumentSpec[];
@@ -52,7 +53,7 @@ export interface ContentLibraries {
   assistantPreferences?: AssistantPreferences[];
 }
 export interface ContentBackup {
-  version: 1;
+  version: 1 | 2;
   exportedAt: string;
   libraries: ContentLibraries;
   /** Item-level status records distinguish unsaved drafts from committed evidence. */
@@ -72,7 +73,12 @@ export function createContentBackup(libraries: ContentLibraries, status?: Record
       drafts.push({ kind, id: entry.id, raw });
       return [];
     });
-  return { version: 1, exportedAt: new Date().toISOString(), status, libraries: {
+  const artifactLibraries = decodeArtifactLibraries(encodeArtifactLibraries(copied));
+  for (const kind of ['filters', 'lists', 'lenses'] as const) {
+    if (!artifactLibraries[kind]?.length) delete artifactLibraries[kind];
+  }
+  return { version: Object.keys(artifactLibraries).length ? 2 : 1, exportedAt: new Date().toISOString(), status, libraries: {
+    ...artifactLibraries,
     validation: partition('validation', copied.validation, CONTENT_DEFINITIONS.validation.decode),
     comparison: partition('comparison', copied.comparison, CONTENT_DEFINITIONS.comparison.decode),
     document: partition('document', copied.document, CONTENT_DEFINITIONS.document.decode),
@@ -90,12 +96,21 @@ export function createContentBackup(libraries: ContentLibraries, status?: Record
   }, drafts: mergeContentDrafts(parseContentDrafts(preservedDrafts), pendingContentDrafts(), drafts) };
 }
 
+/** Guarded artifact rows remain portable; older whole-backup readers reject v2. */
+export function encodeContentBackup(backup: ContentBackup): Omit<ContentBackup, 'libraries'> & { libraries: Record<string, unknown> } {
+  return { ...backup, libraries: { ...backup.libraries, ...encodeArtifactLibraries(backup.libraries) } };
+}
+
 export function parseContentBackup(text: string): ContentBackup {
   const value: unknown = JSON.parse(text);
   if (!value || typeof value !== 'object') throw new Error('Invalid library backup');
   const backup = value as Record<string, unknown>;
-  if (backup.version !== 1 || !backup.libraries || typeof backup.libraries !== 'object') throw new Error('Unsupported library backup');
+  if ((backup.version !== 1 && backup.version !== 2) || !backup.libraries || typeof backup.libraries !== 'object') throw new Error('Unsupported library backup');
   const libraries = backup.libraries as Record<string, unknown>;
+  if (backup.version === 1 && ['filters', 'lists', 'lenses'].some(kind => Object.hasOwn(libraries, kind))) {
+    throw new Error('Standalone artifact libraries require backup version 2');
+  }
+  const artifacts = backup.version === 2 ? decodeArtifactLibraries(libraries) : {};
   const parse = <T extends { id: string }>(kind: string, decode: (value: unknown) => T | null): T[] => {
     const values = libraries[kind];
     if (!Array.isArray(values)) throw new Error(`Invalid ${kind} library`);
@@ -110,7 +125,8 @@ export function parseContentBackup(text: string): ContentBackup {
     }
     return entries;
   };
-  return { version: 1, exportedAt: typeof backup.exportedAt === 'string' ? backup.exportedAt : '', libraries: {
+  return { version: backup.version, exportedAt: typeof backup.exportedAt === 'string' ? backup.exportedAt : '', libraries: {
+    ...artifacts,
     validation: parse('validation', CONTENT_DEFINITIONS.validation.decode),
     comparison: parse('comparison', CONTENT_DEFINITIONS.comparison.decode),
     document: parse('document', CONTENT_DEFINITIONS.document.decode),
@@ -144,7 +160,7 @@ async function readImportRows(): Promise<ContentRow[]> {
 /** Preserve originals on conflicts; atomic commit and refusal use one canonical plan. */
 export async function importContentBackup(backup: ContentBackup, readVisible?: () => ContentLibraries, allowCommit = true,
   committed?: (rows: readonly ContentCommitReceipt[]) => void): Promise<number> {
-  const parsed = parseContentBackup(JSON.stringify(backup)), drafts = parsed.drafts ?? [];
+  const parsed = parseContentBackup(JSON.stringify(encodeContentBackup(backup))), drafts = parsed.drafts ?? [];
   stageContentDrafts(drafts);
   const prepared = await prepareContentImport(parsed.libraries), recovery = await draftRecoveryRows(drafts);
   let planned: ContentRow[] = [];

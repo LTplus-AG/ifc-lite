@@ -115,7 +115,7 @@ test('#7313 millimetre explicit nonzero pivot and negative angle agree with the 
   const proposal = parseModelAuthoringBatch(JSON.stringify({ version: 1, kind: 'model.authoring', title: 'Negative native pivot', units: 'mm', frame: 'storey-local',
     operations: [{ op:'element.rotate', target: { globalId:guid, modelId:SAMPLE_MODEL, ifcClass:'IfcWall', name:'Placement audit wall' },
       angleDeg:-45, pivot:[15000,5000], expected }] }));
-  const preview = previewModelAuthoring(useViewerStore.getState(), proposal); assert.equal(preview.rows[0].status, 'ready', preview.rows[0].issue);
+  const preview = previewModelAuthoring(useViewerStore.getState(), proposal); assert.equal(preview.rows[0].status, 'ready', preview.rows[0].issue ?? '');
   const result = commitModelAuthoring(useViewerStore, preview, new Set([0]), '#7313 native mm pivot'); assert.ok(result.ok);
   assert.deepEqual(await startOf(s), actual);
 });

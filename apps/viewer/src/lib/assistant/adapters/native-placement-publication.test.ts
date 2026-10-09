@@ -6,13 +6,14 @@ import 'fake-indexeddb/auto';
 import assert from 'node:assert/strict';
 import { afterEach, test } from 'node:test';
 import { IfcCreator, readWallJoinTarget } from '@ifc-lite/create';
-import { MutablePropertyView } from '@ifc-lite/mutations';
+import { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
 import { federationRegistry } from '@ifc-lite/renderer';
 import { useViewerStore } from '@/store';
 import { GROUND_STOREY, SAMPLE_MODEL, seedAuthoringSample, parseIfc } from '@/test/authoring-sample-fixture';
 import { editedModelBytes } from '@/lib/export/edited-model-bytes';
 import { getMaxExpressId } from '@/hooks/ingest/viewerModelIngest';
 import { captureSelectionGrounding } from '@/lib/actions/selection-grounding';
+import type { NativePlacement } from '@/lib/actions/model-authoring-placement';
 import { readOnlyModelEditLease } from '@/lib/actions/model-authoring-read-target';
 import { parseModelAuthoringBatch } from '@/lib/actions/model-authoring';
 import { previewModelAuthoring } from '@/lib/actions/model-authoring-preview';
@@ -104,3 +105,13 @@ for (const metres of [true, false]) for (const federation of [false, true]) for 
     assert.deepEqual(await start(), [10,10]);
   });
 }
+
+for(const metres of [true,false])test(`#7313 current named RelativePlacement is pinned in ${metres?'m':'mm'} after native STEP retarget`,async()=>{
+ const f=await fixture(metres,false),old=captureSelectionGrounding(state()).elements[0]?.nativePlacement,editor=new StoreEditor(f.selected,f.view),root=f.selected.getEntity(f.id);assert.ok(root);const placement=root.attributes[5];assert.equal(typeof placement,'number');const scale=metres?1:.001;f.view.setExpressIdWatermark(getMaxExpressId(f.selected,[]));
+ const point=editor.addEntity('IfcCartesianPoint',[[20/scale,10/scale,0]]),direction=editor.addEntity('IfcDirection',[[1,0,0]]),axis=editor.addEntity('IfcAxis2Placement3D',[`#${point.expressId}`,null,`#${direction.expressId}`]);editor.setAttribute(Number(placement),'RelativePlacement',`#${axis.expressId}`);
+ const saved=await parseIfc(editedModelBytes(f.selected,f.view)),native=readWallJoinTarget(saved,new MutablePropertyView(saved.properties,f.owner),f.id,scale);assert.ok(native);assert.deepEqual(native.wall.start.map(v=>Math.round(v*1e6)/1e6),[20,10],'public named edit independently exports the current native start');
+ const current=captureSelectionGrounding(state()).elements[0]?.nativePlacement;assert.ok(current&&!('layout'in current));assert.deepEqual(current.origin,[20,10],'current reviewed placement must match the independently exported native source');
+ const make=(expected:NativePlacement)=>parseModelAuthoringBatch(JSON.stringify({version:1,kind:'model.authoring',title:'Explicit current native pivot',units:metres?'m':'mm',frame:'storey-local',operations:[{op:'element.rotate',target:{modelId:f.owner,globalId:f.selected.entities.getGlobalId(f.id),ifcClass:'IfcWall',name:f.selected.entities.getName(f.id)},angleDeg:90,pivot:[0,0],expected}]}));assert.ok(old);assert.notEqual(previewModelAuthoring(state(),make(old)).rows[0].status,'ready','old pins must refuse the native current retarget');
+ const preview=previewModelAuthoring(state(),make(current));assert.equal(preview.rows[0].status,'ready',preview.rows[0].issue??'');const result=commitModelAuthoring(useViewerStore,preview,new Set([0]),'current native retarget');assert.ok(result.ok,result.ok?'':result.detail??result.reason);
+ const start=async()=>{const parsed=await parseIfc(editedModelBytes(f.selected,f.view)),read=readWallJoinTarget(parsed,new MutablePropertyView(parsed.properties,f.owner),f.id,scale);assert.ok(read);return read.wall.start.map(v=>Math.round(v*1e6)/1e6);};assert.deepEqual(await start(),[-10,20]);assert.ok(undoModelChanges(useViewerStore,result.receipt).ok);assert.deepEqual(await start(),[20,10]);
+});

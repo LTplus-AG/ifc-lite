@@ -1,0 +1,136 @@
+{
+  "date": "2026-10-08",
+  "issue": 6537,
+  "pullRequest": 6584,
+  "reviewComment": 4216487513,
+  "base": "43b3537051408aef41bf49f995ea87314703299d",
+  "rustTree": "1a1acc4260011c591fd8ce3c5387bb7c10b42f20",
+  "sources": {
+    "apps/viewer/src/lib/geometry-cpu-buffers.ts": {
+      "source": "/tmp/ifc-6584/apps/viewer/src/lib/geometry-cpu-buffers.ts",
+      "sha256": "1fbad7d1cd88975646600c54e8de095a109b1831af80ea6ba03978538027d49f",
+      "archive": "qualified-geometry-cpu-buffers.ts.gz"
+    },
+    "apps/viewer/src/lib/geometry-cpu-aliases.ts": {
+      "source": "/tmp/ifc-6584/apps/viewer/src/lib/geometry-cpu-aliases.ts",
+      "sha256": "24c70e620c0bd66cdd4ac35fe62a5e6602bff73f517cb347c13b28d62af9bbfb",
+      "archive": "qualified-geometry-cpu-aliases.ts.gz"
+    },
+    "apps/viewer/src/lib/geometry-cpu-release.ts": {
+      "source": "/tmp/ifc-6584/apps/viewer/src/lib/geometry-cpu-release.ts",
+      "sha256": "45464f755c522d8dc9818b41ab834da31b14b0ce9286415019c7dd675d98ea30",
+      "archive": "qualified-geometry-cpu-release.ts.gz"
+    },
+    "apps/viewer/src/lib/geometry-cpu-appearance.test.ts": {
+      "source": "/tmp/ifc-6584/apps/viewer/src/lib/geometry-cpu-appearance.test.ts",
+      "sha256": "c27f5ea2eb0971d16e22dba8636da5f3fd7060b65fea8ac4ce29db0ef68e8a8e",
+      "archive": "qualified-geometry-cpu-appearance.test.ts.gz"
+    },
+    "apps/viewer/src/test/geometry-cpu-aliases-gc.ts": {
+      "source": "/tmp/ifc-6584/apps/viewer/src/test/geometry-cpu-aliases-gc.ts",
+      "sha256": "6160ad0d324be52d4f7054c854a6d5f0f770b072c5e4a36cf74093a7eba24402",
+      "archive": "qualified-geometry-cpu-aliases-gc.ts.gz"
+    },
+    "apps/viewer/src/lib/released-mesh-provenance.ts": {
+      "source": "/tmp/ifc-6584/apps/viewer/src/lib/released-mesh-provenance.ts",
+      "sha256": "e46a6232d903f5febfe0168a4e4355aaaac6c562396d91575a164a9a634fc5f8",
+      "archive": "qualified-released-mesh-provenance.ts.gz"
+    }
+  },
+  "logs": {
+    "baseline-controls": {
+      "source": "/tmp/6584-appearance-alias-baseline-controls.log",
+      "sha256": "7f2458ff5610603fe0a7e5fa2b6a2b74c283b9cca16edcee6898b2b599072a21",
+      "archive": "baseline-controls.log.gz"
+    },
+    "baseline-corrected-controls": {
+      "source": "/tmp/6584-appearance-alias-baseline-corrected-controls.log",
+      "sha256": "cb73433d32473459cfc562423cacfa148ea6ae95773ba46debb89b00bfb88820",
+      "archive": "baseline-corrected-controls.log.gz"
+    },
+    "restored-controls": {
+      "source": "/tmp/6584-appearance-alias-restored-controls.log",
+      "sha256": "b2a8bd82d8b80035c2c30021bce4b06e685143b045b74449d844b49f7fa9610f",
+      "archive": "restored-controls.log.gz"
+    },
+    "four-negative-controls": {
+      "source": "/tmp/6584-appearance-alias-four-negative-controls.log",
+      "sha256": "873819faf37968d954fadc29160b58e92ecbc06533b54680db3329a543c0c31e",
+      "archive": "four-negative-controls.log.gz"
+    },
+    "final-broader-controls": {
+      "source": "/tmp/6584-appearance-alias-final-broader-controls.log",
+      "sha256": "8c55a713441414b592502ffbf0cdf3057b10196b2bd2736a190e32f86366ff20",
+      "archive": "final-broader-controls.log.gz"
+    },
+    "full-typecheck": {
+      "source": "/tmp/6584-appearance-alias-full-typecheck.log",
+      "sha256": "4c52424590608acd25506697fa7d46f4041b4ce6baf11a26b5b10656a3717078",
+      "archive": "full-typecheck.log.gz"
+    },
+    "module-size": {
+      "source": "/tmp/6584-appearance-alias-module-size.log",
+      "sha256": "99d17a5b5a02c7e25a1f92442a8488a792cf7ac6c317776da97b50553328e63f",
+      "archive": "module-size.log.gz"
+    },
+    "lint": {
+      "source": "/tmp/6584-appearance-alias-lint.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "archive": "lint.log.gz"
+    }
+  },
+  "independentReviews": [
+    {
+      "file": "6584-appearance-alias-independent-review-final-proposed-20261008.json",
+      "sha256": "536af015286a3d509d3554b8b7f96462d9f3c0b17587765a9e5cad47dc5cadf2"
+    },
+    {
+      "file": "6584-independent-gc-backing-review-20261008.json",
+      "sha256": "d366d7f98e28adf818828be9e64b4f9625ead9ed385106eda7c257a96a7e4e77"
+    }
+  ],
+  "runtimeSha256": {
+    "packages/wasm/pkg/ifc-lite.d.ts": "54c9d0a52eb515e517d76726fefe5f6a63e553a81c1b10331a597965d14620f6",
+    "packages/wasm/pkg/ifc-lite.js": "0a281479eb65141ae75aeef987d331d44439741a0cae855f122e53e800311a39",
+    "packages/wasm/pkg/ifc-lite_bg.wasm": "8b74229bbd4a991cbf1f32a8d52add195c5fdd333921f998b1c18eb713185143"
+  },
+  "results": {
+    "baselineCorrected": {
+      "exit": 1,
+      "assertionFailures": 2
+    },
+    "initialRestored": {
+      "exit": 0,
+      "pass": 24,
+      "skip": 0
+    },
+    "inverseFourControls": {
+      "exit": 1,
+      "pass": 0,
+      "assertionFailures": 4,
+      "skip": 0
+    },
+    "finalBroaderRootTurbo": {
+      "exit": 0,
+      "pass": 89,
+      "skip": 0,
+      "tasks": 54
+    },
+    "plainFullRootTypecheck": {
+      "exit": 0,
+      "tasks": 119,
+      "testFiles": 3714,
+      "packages": 62
+    },
+    "moduleSize": 0,
+    "oxlint": 0
+  },
+  "excluded": [
+    "baseline-controls: malformed forwarded test-name argument; process terminated143 before test execution"
+  ],
+  "scope": [
+    "Tests use actual splitMeshForStreaming and expandAppearanceCorners with canonical carryReleasedMesh registration and store release. Manual registration does not certify automatic Scene fragment registration.",
+    "GC proves original typed arrays and their backing ArrayBuffers collect while retained wrappers and independent geometry remain live.",
+    "No performance, OS peak-memory or end-to-end latency improvement is claimed."
+  ]
+}

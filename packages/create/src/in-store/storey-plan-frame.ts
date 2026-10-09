@@ -26,6 +26,10 @@
  */
 
 import { EntityExtractor, type IfcDataStore } from '@ifc-lite/parser';
+import type { IfcAttributeValue } from '@ifc-lite/data';
+import type { MutablePropertyView } from '@ifc-lite/mutations';
+import { AnchorEntityReader } from './resolve-anchor.js';
+import type { OverlayWallReader } from './placement-frame.js';
 import type { Vec2 } from './auto-space-detect.js';
 import { safeLengthUnitScale } from './length-unit-scale.js';
 import {
@@ -78,16 +82,25 @@ const IDENTITY_FRAME: StoreyPlanFrame = { origin: [0, 0], axisX: [1, 0] };
 export function storeyPlanFrame(
   store: IfcDataStore,
   storeyExpressId: number,
+  view?: MutablePropertyView | null,
 ): StoreyPlanFrame | null {
   if (!store.source) return null;
   const extractor = new EntityExtractor(store.source);
-  const storey = readEntity(store, extractor, undefined, storeyExpressId);
-  if (!storey) return null;
+  const reader = view ? new AnchorEntityReader(store, view) : null;
+  const overlay: OverlayWallReader | undefined = reader ? {
+    getNewEntities: () => [], readEntity: id => {
+      const record = reader.entity(id);
+      // Native StoreEditor fields are strings/IfcAttributeValue positional values.
+      return record ? { type: record.type, attributes: record.attributes as IfcAttributeValue[] } : null;
+    },
+  } : undefined;
+  const storey = readEntity(store, extractor, overlay, storeyExpressId);
+  if (!storey || (view && storey.type?.toUpperCase() !== 'IFCBUILDINGSTOREY')) return null;
   if (numericAttr(storey.attributes[5]) === null) return IDENTITY_FRAME; // ObjectPlacement
-  const chain = storeyPlacementChain(store, extractor, undefined, storeyExpressId);
+  const chain = storeyPlacementChain(store, extractor, overlay, storeyExpressId, view ? 256 : undefined);
   if (!chain || chain.size === 0) return null;
   for (const placementId of chain.keys()) {
-    if (!placementIsInPlan(store, extractor, placementId)) return null;
+    if (!placementIsInPlan(store, extractor, placementId, overlay)) return null;
   }
   // `hops === chain.size` composes every link, so the result is expressed in
   // the frame the topmost link's parent would be in — the world frame, PROVIDED
@@ -96,9 +109,9 @@ export function storeyPlanFrame(
   // malformed IFC ends with a link that still has a parent, and composing every
   // link then lands in no frame at all rather than the world. Refuse.
   const last = [...chain.keys()][chain.size - 1];
-  const lastPlacement = readEntity(store, extractor, undefined, last);
+  const lastPlacement = readEntity(store, extractor, overlay, last);
   if (lastPlacement && numericAttr(lastPlacement.attributes[0]) !== null) return null;
-  const frame = storeyFrameAboveBy(store, extractor, undefined, chain, chain.size);
+  const frame = storeyFrameAboveBy(store, extractor, overlay, chain, chain.size);
   if (!frame) return null;
   // A thrown or degenerate unit lookup is not a reason to author a space a
   // thousand times too far out: the origin below is a translation in file
@@ -153,17 +166,18 @@ function placementIsInPlan(
   store: IfcDataStore,
   extractor: EntityExtractor,
   placementId: number,
+  overlay?: OverlayWallReader,
 ): boolean {
-  const placement = readEntity(store, extractor, undefined, placementId);
+  const placement = readEntity(store, extractor, overlay, placementId);
   if (!placement) return true;
   const axisPlacementId = numericAttr(placement.attributes[1]); // RelativePlacement
   if (axisPlacementId === null) return true;
-  const axisPlacement = readEntity(store, extractor, undefined, axisPlacementId);
+  const axisPlacement = readEntity(store, extractor, overlay, axisPlacementId);
   if (!axisPlacement) return true;
   const axisId = numericAttr(axisPlacement.attributes[1]); // Axis
   if (axisId === null) return true; // absent: +Z by default, per IFC
   // Present from here on — any failure to read it is a refusal, not a default.
-  const axisDir = readEntity(store, extractor, undefined, axisId);
+  const axisDir = readEntity(store, extractor, overlay, axisId);
   if (!axisDir) return false;
   const v = readVec3(axisDir.attributes[0]);
   if (!v) return false;

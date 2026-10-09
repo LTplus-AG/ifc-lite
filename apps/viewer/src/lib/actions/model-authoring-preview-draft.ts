@@ -10,18 +10,9 @@ import { dryRunAuthoring } from './model-authoring-native';
 
 /** The builders decide what static checks cannot: dimensions, hosts, joins, schema support. */
 export function validateAuthoringDraft(state: ViewerState, batch: ModelAuthoringBatch, input: readonly AuthoringRow[], reader: (modelId: string) => AuthoringReader): void {
-  const byModel = new Map<string, AuthoringRow[]>();
-  for (const row of input) if (row.status === 'ready' && row.modelId) byModel.set(row.modelId, [...(byModel.get(row.modelId) ?? []), row]);
-  for (const [modelId, rows] of byModel) {
-    const r = reader(modelId);
-    const refusals = dryRunAuthoring(batch, r.dataStore, r.view, modelId, rows.map(({ index, op, resolved }) => ({ index, op, resolved })), { globalIdScopes: [...state.models].map(([id, model]) => ({ dataStore: model.ifcDataStore, view: state.mutationViews.get(id) })) });
-    for (const row of rows) {
-      const refusal = refusals.get(row.index);
-      if (refusal === undefined) continue;
-      const blocked = row.dependsOn.some((i) => refusals.has(i));
-      row.status = blocked ? 'blocked' : 'invalid';
-      row.issue = blocked ? 'It needs an element another row creates, which the model refused' : refusal;
-    }
+  for (const row of input) if (row.op.op === 'element.align' && row.modelId
+    && input.some(other => other.index < row.index && other.modelId === row.modelId
+      && other.status === 'ready' && !new Set<string>(['type.detach', 'classification.add']).has(other.op.op))) {
+    row.status = 'unsupported';
+    row.issue = 'Apply earlier same-model geometry operations before preparing native Align bounds';
   }
-}
-

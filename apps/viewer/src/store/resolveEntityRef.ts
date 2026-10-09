@@ -14,7 +14,6 @@
 import type { EntityRef } from './types.js';
 import { federationRegistry } from '@ifc-lite/renderer';
 import { effectiveMetadataRecord } from '@ifc-lite/parser';
-import { liveEntityConforms } from '@ifc-lite/create';
 import { useViewerStore } from './index.js';
 
 /** Resolve a renderer/global ID against one consistent Viewer store snapshot. */
@@ -100,11 +99,16 @@ export function resolveEntityRefGlobalIdFromState(
     ? state.ifcDataStore
     : state.models.get(entityRef.modelId)?.ifcDataStore;
   const mutationView = state.mutationViews.get(entityRef.modelId);
-  // #7282: current native Root metadata owns positional/named precedence,
-  // retypes and tombstones. A non-Root attribute 0 is never a GlobalId.
-  if (!dataStore || !liveEntityConforms(dataStore, entityRef.expressId, 'IfcRoot', mutationView)) return null;
-  const globalId = mutationView?.hasChanges(entityRef.expressId)
-    ? effectiveMetadataRecord(dataStore, entityRef.expressId, mutationView)?.attributes[0]
-    : dataStore.entities.getGlobalId(entityRef.expressId);
+  // #7282: the canonical schema record owns named/positional precedence,
+  // current Root role and tombstones. Non-Root attribute 0 is never GlobalId.
+  if (!dataStore) return null;
+  const record = effectiveMetadataRecord(dataStore, entityRef.expressId, mutationView);
+  if (!record || record.names[0] !== 'GlobalId') return null;
+  const nativeIdentity = mutationView?.getNewEntity(entityRef.expressId)
+    || mutationView?.getPositionalMutationsForEntity(entityRef.expressId)?.has(0)
+    || mutationView?.getAttributeMutationsForEntity(entityRef.expressId).some(row => row.name === 'GlobalId');
+  // Cached source-free columns retain known immutable identities; missing
+  // graph attributes never make those names into current geometry evidence.
+  const globalId = nativeIdentity ? record.attributes[0] : dataStore.entities.getGlobalId(entityRef.expressId);
   return typeof globalId === 'string' && globalId.length > 0 ? globalId : null;
 }

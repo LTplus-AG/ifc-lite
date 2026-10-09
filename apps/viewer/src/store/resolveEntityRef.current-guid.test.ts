@@ -6,6 +6,7 @@ import assert from 'node:assert/strict';
 import { afterEach, test } from 'node:test';
 import { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
 import { generateIfcGuid } from '@ifc-lite/encoding';
+import { EMPTY_SOURCE_BYTES } from '@ifc-lite/parser';
 import { useViewerStore } from './index';
 import { resolveEntityRefGlobalIdFromState } from './resolveEntityRef';
 import { BACK_WALL, SAMPLE_MODEL, parseIfc, seedAuthoringSample } from '@/test/authoring-sample-fixture';
@@ -46,4 +47,18 @@ test('#7282 forward identity refuses a native deleted Root despite its retained 
   const saved = await parseIfc(editedModelBytes(dataStore, view));
   assert.equal(saved.getEntity(id), null); assert.equal(dataStore.entities.getGlobalId(id), BACK_WALL);
   assert.equal(resolveEntityRefGlobalIdFromState(useViewerStore.getState(), { modelId: SAMPLE_MODEL, expressId: id }), null);
+});
+
+for (const nameEdited of [false, true]) test(`#7282 forward identity preserves a cached source-free ${nameEdited ? 'Name-edited' : 'unedited'} Root identity`, async () => {
+  const { dataStore, view } = await seedAuthoringSample(), id = dataStore.entities.getExpressIdByGlobalId(BACK_WALL);
+  if (nameEdited) {
+    new StoreEditor(dataStore, view).setAttribute(id, 'Name', 'Cached source-free Name');
+    const saved = await parseIfc(editedModelBytes(dataStore, view));
+    assert.equal(saved.entities.getName(id), 'Cached source-free Name'); assert.equal(saved.entities.getGlobalId(id), BACK_WALL);
+  }
+  const model = useViewerStore.getState().models.get(SAMPLE_MODEL)!;
+  const cached = { ...dataStore, source: EMPTY_SOURCE_BYTES };
+  useViewerStore.setState({ models: new Map([[SAMPLE_MODEL, { ...model, ifcDataStore: cached }]]) });
+  assert.equal(cached.entities.getGlobalId(id), BACK_WALL); assert.equal(cached.entities.getTypeName(id), 'IfcWall');
+  assert.equal(resolveEntityRefGlobalIdFromState(useViewerStore.getState(), { modelId: SAMPLE_MODEL, expressId: id }), BACK_WALL);
 });

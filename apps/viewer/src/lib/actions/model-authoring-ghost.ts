@@ -14,6 +14,7 @@
  * ghost; their row says what changes.
  */
 
+import { gridCreationGhost } from './model-authoring-grid-ghost';
 import { stairRailingGhost } from './model-authoring-stair-railing-ghost';
 import { linearProfileFrame } from '@ifc-lite/create';
 import { sectionGhostMesh } from '@/lib/profile-section/profile-outline';
@@ -53,7 +54,11 @@ function createGhost(state: ViewerState, batch: ModelAuthoringBatch, row: Author
   const op = row.op as Extract<AuthoringOp, { op: 'element.create' }>;
   const wp = plane(state, row.modelId!, row.resolved.storey ?? null);
   if (!wp) return null;
-  const element = authoredElementOf(batch, op);
+  return authoredCreationGhost(wp, authoredElementOf(batch, op), id);
+}
+
+/** One native authored shape preview constructor shared by ordinary and bound columns. */
+export function authoredCreationGhost(wp: Workplane, element: ReturnType<typeof authoredElementOf>, id: number): MeshData | null {
   if (element.kind === 'beam' || element.kind === 'member') {
     const p = element.params;
     const profile = 'Profile' in p ? p.Profile : { Type: 'Rectangle' as const, XDim: p.Width, YDim: p.Height };
@@ -152,6 +157,7 @@ export function authoringGhosts(state: ViewerState, preview: ModelAuthoringPrevi
     if (row.op.op === 'hosted.edit') { const mesh = authoringHostedEditGhost(state, preview.batch, row, id, preview.rows); if (mesh) meshes.push(mesh); continue; }
     if (row.op.op === 'element.split') { const mesh = authoringSplitMarker(state, preview.batch, row, id); if (mesh) meshes.push(mesh); continue; }
     switch (row.op.op) {
+      case 'grid.create': case 'column.createOnGrid': { const ghosts = gridCreationGhost(state, preview.batch, row, id); row.previewUnavailable = ghosts.length === 0; meshes.push(...ghosts); break; }
       case 'stair.create': case 'railing.create': case 'stair.replace': case 'railing.replace': {const mesh=stairRailingGhost(state,preview.batch,row,id);row.previewUnavailable=!mesh;if(mesh)meshes.push(mesh);break;}
       case 'element.create': { const mesh = createGhost(state, preview.batch, row, id); if (mesh) meshes.push(mesh); break; }
       case 'hosted.create': { const mesh = hostedGhost(state, preview.batch, preview, row, id); if (mesh) meshes.push(mesh); break; }

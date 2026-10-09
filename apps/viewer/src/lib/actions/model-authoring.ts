@@ -23,6 +23,8 @@
 import { parseExpectedHostedEdit, parseHostedEdit, type ExpectedHostedEdit } from './model-authoring-hosted-edit';
 import type { HostedElementEdit } from '@ifc-lite/create';
 import { parseShapeParams, parseProfileSectionParams, AUTHORING_OUTLINE_WORK_LIMIT, type ShapeParams } from './model-authoring-shape-params';
+import { MAX_GRID_AXES } from '@/lib/commands/modeling/commands/grid-place-geometry';
+import { parseGridParams, parseGridColumnParams, parseGridBinding, parseGridStorey, type ReviewedGridOp } from './model-authoring-grid-fields';
 import { parseReachFields, type ReachFields } from './model-authoring-reach-fields';
 import { parseSplitSnapshot, parseSplitCut, type SplitCut } from './model-authoring-split-params';
 import type { SplitSnapshot } from './model-authoring-split-state';
@@ -53,6 +55,7 @@ export interface AxisParams { start: Point3; end: Point3; thickness?: number; wi
 export interface BoxParams { position: Point3; width: number; depth: number; thickness?: number; height?: number }
 
 export type AuthoringOp =
+  | ReviewedGridOp
   | { op: 'stair.resize'; target: ExistingElement; expected: StairDimensions; size: StairDimensionEdit }
   | { op: 'stair.delete'; target: ExistingElement }
   | { op: 'railing.delete'; target: ExistingElement }
@@ -81,7 +84,7 @@ export type AuthoringOp =
   | { op: 'hosted.create'; ref?: string; kind: HostedKind; host: ElementTarget; name?: string; offset: number; sill: number; width: number; height: number };
 
 export type AuthoringOpName = AuthoringOp['op'];
-export const AUTHORING_OPS: readonly AuthoringOpName[] = ['stair.resize', 'stair.delete', 'railing.delete', 'stair.replace', 'railing.replace', 'stair.create', 'railing.create', 'element.create', 'element.delete', 'element.split', 'element.resize', 'element.profile', 'element.trimExtend', 'element.move', 'element.rotate', 'element.copy', 'element.array',
+export const AUTHORING_OPS: readonly AuthoringOpName[] = ['grid.create', 'column.createOnGrid', 'stair.resize', 'stair.delete', 'railing.delete', 'stair.replace', 'railing.replace', 'stair.create', 'railing.create', 'element.create', 'element.delete', 'element.split', 'element.resize', 'element.profile', 'element.trimExtend', 'element.move', 'element.rotate', 'element.copy', 'element.array',
   'type.assign', 'type.detach', 'material.assign', 'walls.join', 'hosted.create', 'hosted.edit'];
 
 export interface ModelAuthoringBatch {
@@ -185,6 +188,8 @@ function operation(value: unknown, index: number, units: AuthoringUnits, refs: M
     return op;
   };
   switch (value.op) {
+    case 'grid.create': return defineRef({ op: value.op, ref: parseRef(value.ref, at), storey: parseGridStorey(value.storey, `${at} storey`), params: parseGridParams(value.params, units, at) });
+    case 'column.createOnGrid': return defineRef({ op: value.op, ref: parseRef(value.ref, at), storey: parseGridStorey(value.storey, `${at} storey`), params: parseGridColumnParams(value.params, units, at), grid: parseGridBinding(value.grid, ref => refs.get(ref)?.op === 'grid.create', `${at} grid`) });
     case 'stair.resize': return {op:value.op,target:existing(value.target,at),expected:parseExpectedStair(value.expected,`${at} expected`),size:parseStairPatch(value.size,units,`${at} size`)};
     case 'stair.delete': case 'railing.delete': return {op:value.op,target:existing(value.target,at)};
     case 'stair.replace': return defineRef({op:value.op,target:existing(value.target,at),ref:parseRef(value.ref,at),storey:parseGlobalIdTarget(value.storey,`${at} storey`),params:parseStairRailingParams(value.params,'stair',units,at)});
@@ -317,6 +322,8 @@ export function parseModelAuthoringBatch(answer: string): ModelAuthoringBatch {
   const refs = new Map<string, AuthoringOp>();
   const units = value.units;
   const operations = value.operations.map((op, index) => operation(op, index, units, refs));
+  const gridAxes = operations.reduce((sum, op) => sum + (op.op === 'grid.create' ? op.params.UAxes.length + op.params.VAxes.length + (op.params.WAxes?.length ?? 0) : 0), 0);
+  if (gridAxes > MAX_GRID_AXES) throw new Error(`An authoring batch may create at most ${MAX_GRID_AXES} grid axes`);
   const splitTargets = operations.filter((op): op is Extract<AuthoringOp, { op: 'element.split' }> => op.op === 'element.split').map(op => `${op.target.modelId ?? ''}:${op.target.globalId}`);
   if (new Set(splitTargets).size !== splitTargets.length) throw new Error('Split targets must be unique; no targets are silently discarded');
   const splitWork = operations.reduce((sum, op) => sum + (op.op === 'element.split' && op.expected.kind === 'slab' ? op.expected.chain.footprint.length ** 2 : 0), 0);

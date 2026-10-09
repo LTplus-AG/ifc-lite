@@ -33,6 +33,7 @@ import { runTransaction } from '@/lib/commands/modeling/transaction';
 import type { AuthoringTransaction, CommitResult, ModelingCommand } from '@/lib/commands/modeling/types';
 import { buildStoreyWorkplane, isWorkplane } from '@/lib/commands/modeling/workplane';
 import { commitElementAlignment, commitElementTransform, planSelectionTransform } from '@/lib/element-transform/commit';
+import { writeReviewedStoreyReassignment } from './model-authoring-storey-reassignment';
 import { writeNativeSplit } from './model-authoring-split';
 import { recordModellingEdit, recordModellingCommit } from '@/store/slices/mutation-modelling-records';
 import { toMetres, type AuthoringOp, type ModelAuthoringBatch } from './model-authoring';
@@ -122,6 +123,11 @@ function writeRow(tx: AuthoringTransaction, batch: ModelAuthoringBatch, row: Aut
       written.moved = true;
       return [{ ...base, globalId: op.target.globalId, field: 'Trim/Extend', before: JSON.stringify(before.reach),
         after: JSON.stringify({ mode: result.op, end: result.end, lengthMetres: result.length, joined: result.joined }) }];
+    }
+    case 'element.reassignStorey': {
+      const result = recordModellingCommit(tx.api, modelId, (editor, store) => writeReviewedStoreyReassignment(store, editor, op, resolved.target!, resolved.reassignment!.source, resolved.reassignment!.destination), tx.batchId);
+      written.remesh.push(...result.products.map(product => product.expressId)); written.moved = true;
+      return [{ ...base, globalId: op.target.globalId, field: 'Storey', before: op.sourceStorey.globalId, after: op.destinationStorey.globalId }];
     }
     case 'element.split': {
       const scopes = [...tx.store.models].map(([id, model]) => ({ dataStore: model.ifcDataStore, view: tx.store.mutationViews.get(id) }));

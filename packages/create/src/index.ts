@@ -204,3 +204,6 @@ export { spaceMeshTriangles } from './in-store/room-space-meshes.js';
 
 export { ALIGN_MODES, alignsAlongU, planBoxOf, pickBox, edgeOf, alignShift, shiftBox, alignMoves, type AlignMode, type PlanBox } from './in-store/align-boxes.js';
 export { alignmentStoreyInStore, alignElementsInStore, type ElementAlignParams } from './in-store/element-align.js';
+
+export { planStoreyReassignment, type StoreyReassignmentPlan } from './in-store/storey-reassignment-plan.js';
+export { reassignElementsToStoreyInStore } from './in-store/storey-reassignment.js';

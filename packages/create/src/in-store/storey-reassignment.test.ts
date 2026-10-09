@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { readFile } from 'node:fs/promises';
-import { expect, it } from 'vitest';
+import { expect, it, vi } from 'vitest';
 import { generateIfcGuid } from '@ifc-lite/encoding';
 import { IfcParser, extractPropertiesOnDemand } from '@ifc-lite/parser';
 import { MutablePropertyView, StoreEditor, recordCompoundMutation, undoRecordedMutationOperations } from '@ifc-lite/mutations';
@@ -12,6 +12,7 @@ import { AnchorEntityReader, resolveSpatialAnchor } from './resolve-anchor.js';
 import { placementInAncestor, refId } from './host-geometry-frame.js';
 import { reassignElementsToStoreyInStore } from './storey-reassignment.js';
 import { planStoreyReassignment } from './storey-reassignment-plan.js';
+import { addHostedElementInStore } from './hosted-element.js';
 import { effectiveStoreyId } from './edit/effective-storey.js';
 import { meshStairs, stairMeshBounds, stairWasmAvailable } from './__test__/stair-mesh.oracle.js';
 
@@ -37,7 +38,7 @@ async function fixture(persisted = false, millimetres = false) {
   if (millimetres) {
     const reader = new AnchorEntityReader(store, view);
     for (const unit of reader.ids('IFCSIUNIT')) {
-      if (reader.entity(unit)?.attributes[1] === '.LENGTHUNIT.') editor.setPositionalAttribute(unit, 2, '.MILLI.');
+      if (String(reader.entity(unit)?.attributes[1]).replaceAll('.', '') === 'LENGTHUNIT') editor.setPositionalAttribute(unit, 2, '.MILLI.');
     }
   }
   const text = () => new TextDecoder().decode(new StepExporter(store, view).export({ schema: 'IFC4', applyMutations: true, timeStamp: '2026-10-03T00:00:00' }).content);
@@ -46,7 +47,7 @@ async function fixture(persisted = false, millimetres = false) {
     view = new MutablePropertyView(null, 'm'); editor = new StoreEditor(store, view);
     view.setOnDemandExtractor(id => extractPropertiesOnDemand(store, id));
   }
-  const snapshot = () => structuredClone({ entities: view.getNewEntities(), mutations: view.getMutations(), changes: view.getEffectiveChanges(), next: view.peekNextExpressId() });
+  const snapshot = () => structuredClone({ entities: [...view.getNewEntities()].sort((a, b) => a.expressId - b.expressId), mutations: view.getMutations(), changes: view.getEffectiveChanges(), next: view.peekNextExpressId() });
   return { store, view, editor, id, destination, destinationPlacement, text, snapshot };
 }
 
@@ -57,6 +58,7 @@ for (const persisted of [false, true]) for (const millimetres of [false, true]) 
     const original = reader.entity(s.id)!;
     const before = s.snapshot(), beforeText = s.text();
     const beforeBounds = stairMeshBounds((await meshStairs(beforeText)).get(s.id)!);
+    expect(beforeBounds.max[2] - beforeBounds.min[2]).toBeCloseTo(3, 5);
     const plan = planStoreyReassignment(s.store, s.view, [s.id], 42, s.destination);
     recordCompoundMutation(s.view, draftView => reassignElementsToStoreyInStore(s.store, new StoreEditor(s.store, draftView), [s.id], 42, s.destination, plan));
     expect(reader.entity(s.id)).toEqual(original);
@@ -115,3 +117,87 @@ for (const failure of ['duplicate selection', 'missing', 'wrong source', 'stale'
     expect(s.snapshot()).toEqual(before); expect(s.text()).toBe(text);
   });
 }
+
+it('#7328 refuses an explicit unreadable shared ancestor instead of cancelling a fabricated world frame', async () => {
+  const s = await fixture(), reader = new AnchorEntityReader(s.store, s.view);
+  const sourcePlacement = refId(reader.entity(42)!.attributes[5])!;
+  const axis = reader.entity(s.destinationPlacement)!.attributes[1] as string;
+  const malformed = s.editor.addEntity('IfcLocalPlacement', ['#0', axis]).expressId;
+  s.editor.setPositionalAttribute(sourcePlacement, 0, `#${malformed}`);
+  s.editor.setPositionalAttribute(s.destinationPlacement, 0, `#${malformed}`);
+  const before = s.snapshot();
+  expect(() => reassignElementsToStoreyInStore(s.store, s.editor, [s.id], 42, s.destination)).toThrow(/unreadable world placement/);
+  expect(s.snapshot()).toEqual(before);
+});
+
+
+it.skipIf(!stairWasmAvailable)('#7328 carries the complete native door/opening chain without changing identities, bindings or world mesh', async () => {
+  const s = await fixture();
+  const door = addHostedElementInStore(s.store, s.editor, s.id, { kind: 'door', params: { Offset: 2, Width: 1, Height: 2, Name: 'Native hosted door' } });
+  const reader = new AnchorEntityReader(s.store, s.view);
+  const ids = [s.id, door.openingId, door.expressId].sort((a, b) => a - b);
+  const records = ids.map(id => reader.entity(id));
+  const relationships = ['IFCRELVOIDSELEMENT', 'IFCRELFILLSELEMENT'].flatMap(type => [...reader.ids(type)].map(id => ({ id, record: reader.entity(id) })));
+  const beforeMeshes = await meshStairs(s.text()), before = s.snapshot();
+  const result = recordCompoundMutation(s.view, draft => reassignElementsToStoreyInStore(s.store, new StoreEditor(s.store, draft), [s.id, door.expressId], 42, s.destination));
+  expect(result.products.map(p => p.expressId)).toEqual(ids);
+  expect(ids.map(id => reader.entity(id))).toEqual(records);
+  expect(relationships.map(r => reader.entity(r.id))).toEqual(relationships.map(r => r.record));
+  const afterMeshes = await meshStairs(s.text());
+  for (const id of [s.id, door.expressId]) {
+    const a = stairMeshBounds(beforeMeshes.get(id)!), b = stairMeshBounds(afterMeshes.get(id)!);
+    for (const edge of ['min', 'max'] as const) for (let i = 0; i < 3; i++) expect(b[edge][i]).toBeCloseTo(a[edge][i], 5);
+  }
+  undoRecordedMutationOperations(s.view, 1, () => { throw new Error('one compound required'); });
+  expect({ ...s.snapshot(), next: before.next }).toEqual(before);
+});
+
+it('#7328 refuses detached hosted fillings and duplicate containment ownership atomically', async () => {
+  const s = await fixture();
+  const door = addHostedElementInStore(s.store, s.editor, s.id, { kind: 'door', params: { Offset: 2, Width: 1, Height: 2 } });
+  const before = s.snapshot();
+  expect(() => reassignElementsToStoreyInStore(s.store, s.editor, [door.expressId], 42, s.destination)).toThrow(/external host/);
+  expect(s.snapshot()).toEqual(before);
+  s.editor.addEntity('IfcRelContainedInSpatialStructure', [generateIfcGuid(), null, null, null, [`#${s.id}`], '#42']);
+  const duplicated = s.snapshot();
+  expect(() => reassignElementsToStoreyInStore(s.store, s.editor, [s.id], 42, s.destination)).toThrow(/duplicate spatial ownership/);
+  expect(s.snapshot()).toEqual(duplicated);
+});
+
+it('#7328 preserves spatial aggregation for native spaces and unrelated source membership', async () => {
+  const s = await fixture();
+  const space = addOrdinaryElementInStore(s.editor, resolveSpatialAnchor(s.store, 42, s.view), { kind: 'space', params: { Position: [20, 20, 0], Width: 4, Depth: 3, Height: 3 } });
+  const reader = new AnchorEntityReader(s.store, s.view);
+  const original = reader.entity(space);
+  reassignElementsToStoreyInStore(s.store, s.editor, [space], 42, s.destination);
+  expect(reader.entity(space)).toEqual(original);
+  expect(effectiveStoreyId(s.store, s.view, space)).toBe(s.destination);
+  expect(effectiveStoreyId(s.store, s.view, s.id)).toBe(42);
+  const destinationRelations = [...reader.ids('IFCRELAGGREGATES')].map(id => reader.entity(id)).filter(r => refId(r?.attributes[4]) === s.destination);
+  expect(destinationRelations.some(r => Array.isArray(r?.attributes[5]) && r.attributes[5].some(v => refId(v) === space))).toBe(true);
+});
+
+
+it('#7328 a genuine late GUID allocation failure rolls back placement writes, deleted memberships, journal and allocator', async () => {
+  const s = await fixture(), before = s.snapshot(), text = s.text();
+  const random = vi.spyOn(crypto, 'randomUUID').mockImplementation(() => { throw new Error('injected relationship GUID failure'); });
+  try {
+    expect(() => reassignElementsToStoreyInStore(s.store, s.editor, [s.id], 42, s.destination)).toThrow('injected relationship GUID failure');
+    expect(random).toHaveBeenCalledTimes(1);
+    expect(s.snapshot()).toEqual(before);
+    expect(s.text()).toBe(text);
+  } finally { random.mockRestore(); }
+});
+
+it.skipIf(!stairWasmAvailable)('#7328 canonical full 3D frames preserve native world geometry across tilted storeys', async () => {
+  const s = await fixture(), reader = new AnchorEntityReader(s.store, s.view);
+  for (const [placement, direction] of [[refId(reader.entity(42)!.attributes[5])!, [0, 1, 1]], [s.destinationPlacement, [1, 0, 1]]] as const) {
+    const axis = refId(reader.entity(placement)!.attributes[1])!;
+    const z = s.editor.addEntity('IfcDirection', [[...direction]]).expressId;
+    s.editor.setPositionalAttribute(axis, 1, `#${z}`);
+  }
+  const before = stairMeshBounds((await meshStairs(s.text())).get(s.id)!);
+  reassignElementsToStoreyInStore(s.store, s.editor, [s.id], 42, s.destination);
+  const after = stairMeshBounds((await meshStairs(s.text())).get(s.id)!);
+  for (const edge of ['min', 'max'] as const) for (let i = 0; i < 3; i++) expect(after[edge][i]).toBeCloseTo(before[edge][i], 5);
+});

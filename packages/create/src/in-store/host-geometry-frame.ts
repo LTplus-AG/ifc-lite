@@ -129,7 +129,10 @@ export function placementInAncestor(reader: GeometryEntityReader, placementId: n
     const own = axis3d(reader, axisId);
     if (!own) return null;
     frame = composeFrame(own, frame);
-    id = refId(placement.attributes[0]);
+    const parent = placement.attributes[0];
+    // #7328: an explicit unreadable parent is not an omitted world root.
+    if (parent !== null && parent !== undefined && refId(parent) === null) return null;
+    id = refId(parent);
   }
   return id === ancestorId ? frame : null;
 }

@@ -12,6 +12,7 @@
  * and `bim.store`'s modelling methods for joins, types and materials.
  */
 
+import { writeReviewedStoreyReassignment } from './model-authoring-storey-reassignment';
 import { writeNativeReplacement } from './model-authoring-replacement';
 import { slabOpeningSpec, writeSlabOpening, readSlabOpeningPreview } from './model-authoring-slab-opening';
 import { writeStairLifecycle, writeStairCreation } from './model-authoring-stair-lifecycle';
@@ -42,6 +43,7 @@ export interface ResolvedOp {
   alignment?: { reference: number; targets: number[]; storeyId: number; geometry?: import('./model-authoring-align').PreparedAlignment };
   slabOpening?: ReturnType<typeof readSlabOpeningPreview>;
   target?: number;
+  reassignment?: { source: number; destination: number };
   reachBoundary?: ElementId;
   reachPlan?: ReturnType<typeof import('@ifc-lite/create').trimExtendElementInStore>;
   splitEffects?: ReturnType<typeof import('@ifc-lite/create').splitElementsInStore>[number];
@@ -209,6 +211,9 @@ export function draftAuthoringOperation(batch: ModelAuthoringBatch, dataStore: I
       return;
     case 'element.trimExtend':
       resolved.reachPlan = writeAuthoringReach(batch, dataStore, draft, resolved.target!, op, resolved.reachBoundary, refs);
+      return;
+    case 'element.reassignStorey':
+      writeReviewedStoreyReassignment(dataStore, draft, op, resolved.target!, resolved.reassignment!.source, resolved.reassignment!.destination);
       return;
     case 'element.split':
       resolved.splitEffects = writeNativeSplit(batch, op, dataStore, draft, resolved.target!, splitScopes);

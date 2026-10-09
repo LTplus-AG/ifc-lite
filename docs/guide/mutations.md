@@ -986,3 +986,26 @@ layout unless an operation has materialized rooms in the graph.
 ### Detecting concurrent overlay edits
 
 `MutablePropertyView.getMutationRevision()` returns an O(1) invalidation token for the live overlay. Capture it before asynchronous preparation and compare it afterward together with the model and view identities. Canonical edits, history-free edits, Undo/Redo and atomic publications advance the token; a rejected detached draft does not change the live token. Conservative increments may invalidate unchanged geometry. The token is local to one view, is not serialized, and must not replace the recorded Undo head.
+
+
+### Same-identity storey reassignment
+
+`planStoreyReassignment(dataStore, view, selectedIds, sourceStoreyId, destinationStoreyId)` reads the complete effective product/dependency/placement state without writing. `reassignElementsToStoreyInStore(dataStore, editor, selectedIds, sourceStoreyId, destinationStoreyId, expected?)` commits that operation atomically. Both storeys and every product must belong to the supplied model. An expected plan refuses changed identities, membership, dependencies, metadata or frames.
+
+The operation preserves product EXPRESS IDs, GlobalIds, representation and metadata references, and world placement. It re-expresses existing local placements in the destination storey's canonical full 3D frame; dependent placement chains retain their original parent identities. Native coordinates remain in file units, so metre and millimetre models use the same operation without guessed scale factors. Hosted openings/fillings and aggregate/nested parts travel with their owning roots. Spaces retain spatial aggregation; physical products retain containment. Unrelated source members remain in place.
+
+```ts
+import type { IfcDataStore } from '@ifc-lite/parser';
+import { StoreEditor, recordCompoundMutation } from '@ifc-lite/mutations';
+import { planStoreyReassignment, reassignElementsToStoreyInStore } from '@ifc-lite/create';
+
+function reassignProducts(dataStore: IfcDataStore, editor: StoreEditor,
+  ids: number[], sourceStoreyId: number, destinationStoreyId: number) {
+  const view = editor.getMutationView();
+  const expected = planStoreyReassignment(dataStore, view, ids, sourceStoreyId, destinationStoreyId);
+  return recordCompoundMutation(view, draft => reassignElementsToStoreyInStore(
+    dataStore, new StoreEditor(dataStore, draft), ids, sourceStoreyId, destinationStoreyId, expected));
+}
+```
+
+Select 1–200 distinct roots; the complete dependency closure is bounded to 5,000 products and the effective relationship inventory to 2,000,000 references. Missing or duplicate identities/ownership, detached hosted or assembly children, cycles, shared placements, unsupported or unreadable world frames, and spatial roots such as sites/buildings/storeys refuse. IFC2X3 requires OwnerHistory; IFC4 and IFC4X3 allow it to be omitted. Grid-based product placements are unsupported; ordinary local placements may include translated, rotated or tilted frames. A refusal or late transaction failure preserves the graph, journal and allocation state. Recorded Undo restores the complete graph and journal; the native ID allocator remains monotonic after a successful operation.

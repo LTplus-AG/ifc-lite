@@ -32,6 +32,7 @@ function refs(value: unknown): number[] {
  * aggregate/nested parts and the complete host → opening → filling chain. */
 function relationships(reader: AnchorEntityReader): ReassignmentRelationship[] {
   const result: ReassignmentRelationship[] = [];
+  let work = 0;
   for (const type of ['IFCRELAGGREGATES', 'IFCRELNESTS', 'IFCRELVOIDSELEMENT', 'IFCRELFILLSELEMENT', 'IFCRELCONTAINEDINSPATIALSTRUCTURE']) {
     for (const id of reader.ids(type)) {
       const entity = reader.entity(id) ?? fail(`unreadable relationship #${id}`);
@@ -39,6 +40,9 @@ function relationships(reader: AnchorEntityReader): ReassignmentRelationship[] {
       const parentIndex = contained ? 5 : 4, listIndex = contained ? 4 : 5;
       const parent = refId(entity.attributes[parentIndex]) ?? fail(`unreadable parent of #${id}`);
       const singleton = type === 'IFCRELVOIDSELEMENT' || type === 'IFCRELFILLSELEMENT';
+      const rawChildren = entity.attributes[listIndex];
+      work += 1 + (Array.isArray(rawChildren) ? rawChildren.length : 1);
+      if (work > 2_000_000) fail('relationship inventory exceeds 2,000,000 references');
       const children = singleton ? [refId(entity.attributes[listIndex]) ?? fail(`unreadable child of #${id}`)] : refs(entity.attributes[listIndex]);
       result.push({ id, type, parent, children, listIndex, parentIndex });
     }
@@ -65,9 +69,10 @@ export function planStoreyReassignment(
   storeyPlacement(sourceStoreyId);
   const destinationPlacementId = storeyPlacement(destinationStoreyId);
   const allRelationships = relationships(reader), ids = new Set(selectedIds), queue = [...ids];
+  const outgoing = new Map<number, ReassignmentRelationship[]>();
+  for (const rel of allRelationships) { const edges = outgoing.get(rel.parent) ?? []; edges.push(rel); outgoing.set(rel.parent, edges); }
   for (let index = 0; index < queue.length; index++) {
-    for (const rel of allRelationships) {
-      if (rel.parent !== queue[index]) continue;
+    for (const rel of outgoing.get(queue[index]) ?? []) {
       for (const child of rel.children) {
         if (ids.has(child)) continue;
         if (ids.size >= 5_000) fail('dependency closure exceeds 5,000 products');
@@ -87,12 +92,15 @@ export function planStoreyReassignment(
     const spatial = (incoming.get(id) ?? []).filter(rel => rel.type === 'IFCRELCONTAINEDINSPATIALSTRUCTURE'
       || (rel.type === 'IFCRELAGGREGATES' && rel.parent === sourceStoreyId));
     if (spatial.length > 1) fail(`#${id} has duplicate spatial ownership`);
+    for (const family of [['IFCRELAGGREGATES', 'IFCRELNESTS'], ['IFCRELVOIDSELEMENT'], ['IFCRELFILLSELEMENT']]) {
+      if ((incoming.get(id) ?? []).filter(rel => family.includes(rel.type)).length > 1) fail(`#${id} has ambiguous dependency ownership`);
+    }
   }
   const ownedRelationships = allRelationships.filter(rel => ids.has(rel.parent) && rel.children.some(id => ids.has(id)));
   const indegree = new Map([...ids].map(id => [id, 0]));
   for (const rel of ownedRelationships) for (const child of rel.children) indegree.set(child, (indegree.get(child) ?? 0) + 1);
   const roots = [...ids].filter(id => indegree.get(id) === 0), topo = [...roots];
-  for (let i = 0; i < topo.length; i++) for (const rel of ownedRelationships) if (rel.parent === topo[i]) {
+  for (let i = 0; i < topo.length; i++) for (const rel of outgoing.get(topo[i]) ?? []) {
     for (const child of rel.children) { const n = indegree.get(child)! - 1; indegree.set(child, n); if (n === 0) topo.push(child); }
   }
   if (topo.length !== ids.size) fail('cyclic hosted or aggregate dependencies');
@@ -100,19 +108,23 @@ export function planStoreyReassignment(
   const products = [...ids].sort((a, b) => a - b).map(expressId => {
     const entity = reader.entity(expressId) ?? fail(`missing product #${expressId}`);
     if (!conformsTo(registry, entity.type, 'IfcProduct') || ['IFCSITE', 'IFCBUILDING', 'IFCBUILDINGSTOREY'].includes(entity.type.toUpperCase())) fail(`#${expressId} is not a supported movable product`);
-    const GlobalId = entity.attributes[0];
-    if (typeof GlobalId !== 'string' || !/^[0-3][0-9A-Za-z_$]{21}$/.test(GlobalId)) fail(`#${expressId} has no valid GlobalId`);
+    const guid = entity.attributes[0];
+    const GlobalId = typeof guid === 'string' && /^[0-3][0-9A-Za-z_$]{21}$/.test(guid) ? guid : fail(`#${expressId} has no valid GlobalId`);
     const placementId = refId(entity.attributes[5]) ?? fail(`#${expressId} has no ObjectPlacement`);
     const world = placementInAncestor(reader, placementId, null) ?? fail(`#${expressId} has an unreadable world placement`);
     return { expressId, GlobalId, type: entity.type, attributes: entity.attributes, placementId, world };
   });
-  const guids = new Set(products.map(product => product.GlobalId)), guidCounts = new Map<string, number>();
+  const storeyGuids = [sourceStoreyId, destinationStoreyId].map(id => {
+    const guid = reader.entity(id)?.attributes[0];
+    return typeof guid === 'string' && /^[0-3][0-9A-Za-z_$]{21}$/.test(guid) ? guid : fail(`storey #${id} has no valid GlobalId`);
+  });
+  const guids = new Set([...storeyGuids, ...products.map(product => product.GlobalId)]), guidCounts = new Map<string, number>();
   for (const { expressId } of iterateEffectiveEntityIds(store, view)) {
     const entity = reader.entity(expressId);
     const guid = entity?.attributes[0];
     if (entity && conformsTo(registry, entity.type, 'IfcRoot') && typeof guid === 'string' && guids.has(guid)) guidCounts.set(guid, (guidCounts.get(guid) ?? 0) + 1);
   }
-  if ([...guids].some(guid => guidCounts.get(guid) !== 1)) fail('ambiguous duplicate product GlobalId');
+  if (guids.size !== products.length + 2 || [...guids].some(guid => guidCounts.get(guid) !== 1)) fail('ambiguous duplicate product GlobalId');
   const placementIds = new Set(products.map(product => product.placementId));
   const placements = [...placementIds].filter(id => {
     const visited = new Set<number>(); let parent = refId(reader.entity(id)?.attributes[0]);

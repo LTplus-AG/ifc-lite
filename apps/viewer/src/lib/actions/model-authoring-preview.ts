@@ -139,6 +139,14 @@ function resolve(ctx: Context, row: AuthoringRow): void {
       if (!sameHostedEdit(row.before.hosted, op.expected)) throw new Refusal('conflict', 'The current native hosted binding, position or dimensions differ from the expected state');
       return;
     }
+    case 'element.reassignStorey': {
+      row.resolved.target = row.expressId = existing(ctx, op.target, row);
+      const source = locate(ctx, op.sourceStorey), destination = locate(ctx, op.destinationStorey);
+      join(row, source.modelId); join(row, destination.modelId);
+      row.resolved.reassignment = { source: source.expressId, destination: destination.expressId };
+      row.previewUnavailable = true;
+      return;
+    }
     case 'element.split': {
       row.resolved.target = row.expressId = existing(ctx, op.target, row);
       const r = reader(ctx, row.modelId!);

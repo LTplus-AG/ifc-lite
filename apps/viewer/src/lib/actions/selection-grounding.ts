@@ -77,12 +77,14 @@ export function captureSelectionGrounding(state: GroundingState, limit = SELECTI
   const readLimit = Math.max(0, Math.min(SELECTION_GROUNDING_LIMIT, Number.isFinite(limit) ? Math.trunc(limit) : SELECTION_GROUNDING_LIMIT));
   const elements: SelectionElement[] = [];
   const sources: NonNullable<ReturnType<typeof groundingOwners.get>>['sources'] = new Map();
+  const zoneTargets = new Map<string, ReturnType<typeof nativeZoneEmissionEvidence>>();
   const nativeTarget = (modelId: string) => {
     if (!sources.has(modelId)) {
       const model = state.models.get(modelId);
+      const zones = nativeZoneEmissionEvidence(state, modelId); zoneTargets.set(modelId, zones);
       sources.set(modelId, { store: model?.ifcDataStore, view: state.mutationViews.get(modelId),
         hash: model?.sourceContentHash, fingerprint: model?.sourceFingerprint,
-        lease: readOnlyModelEditLease(state, modelId), zones: JSON.stringify(nativeZoneEmissionEvidence(state, modelId)) });
+        lease: readOnlyModelEditLease(state, modelId), zones: JSON.stringify(zones) });
     }
     return sources.get(modelId)?.lease?.target ?? null;
   };
@@ -103,7 +105,7 @@ export function captureSelectionGrounding(state: GroundingState, limit = SELECTI
       nativeEdit: nativeEditEvidence(nativeTarget(ref.modelId), ref.expressId),
       ...nativeAuthoringEvidence(nativeTarget(ref.modelId), ref.expressId),
       nativeType: nativeTypeEvidence(state, nativeTarget(ref.modelId), ref.expressId),
-      nativeZoneEmission: nativeZoneEmissionEvidence(state, ref.modelId),
+      nativeZoneEmission: zoneTargets.get(ref.modelId)!,
       nativeCost: nativeCostEvidence(nativeTarget(ref.modelId), ref.expressId),
     });
   }

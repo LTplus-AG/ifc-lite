@@ -10,6 +10,7 @@ import { setValidationSourceChoice } from '@/lib/validation/validation-source-ch
 import { selectChangedEntity } from '@/lib/changes/select-changed-entity';
 import { compareImpactOf } from './compare-analysis-state';
 import { comparisonNavigationIsCurrent } from './comparison-navigation-lease';
+import type { CompareRef } from './buildFingerprints';
 import type { ChangedElementRef, CompareImpact, ImpactRow } from './impact';
 
 export interface ImpactNavigation {
@@ -21,6 +22,20 @@ export interface ImpactNavigation {
 
 export function captureImpactNavigation(captured: ViewerState, impact: CompareImpact): ImpactNavigation {
   const comparison = captured.compareResult;
+  // Index the immutable native diff once, instead of scanning its whole
+  // population for every visible changed-element chip.
+  const comparedRefs = new Map<string, CompareRef[]>();
+  const refKey = (side: ChangedElementRef['side'], modelId: string, guid: string) => JSON.stringify([side, modelId, guid]);
+  for (const entry of comparison?.diff.entries ?? []) for (const side of ['base', 'head'] as const) {
+    const element = side === 'base' ? entry.base : entry.head;
+    if (!element) continue;
+    const modelId = element.ref.modelId;
+    const guid = (comparison?.comparedStores?.get(modelId) ?? captured.models.get(modelId)?.ifcDataStore)
+      ?.entities.getGlobalId(element.ref.localId);
+    if (!guid) continue;
+    const key = refKey(side, modelId, guid);
+    comparedRefs.set(key, [...(comparedRefs.get(key) ?? []), element.ref]);
+  }
   const source = (state: ViewerState, row: ImpactRow): object | null | undefined => {
     switch (row.kind) {
       case 'clash': return state.clashResult;
@@ -55,12 +70,7 @@ export function captureImpactNavigation(captured: ViewerState, impact: CompareIm
     const modelId = changed.side === 'base' ? comparison.baseModelId : comparison.headModelId;
     // Pin the native diff ref, then confirm its current canonical Root identity.
     // A reused GlobalId at another express id must not revive the old row.
-    const refs = comparison.diff.entries.flatMap(entry => {
-      const element = changed.side === 'base' ? entry.base : entry.head;
-      return element && element.ref.modelId === modelId
-        && (comparison.comparedStores?.get(modelId) ?? captured.models.get(modelId)?.ifcDataStore)
-          ?.entities.getGlobalId(element.ref.localId) === changed.globalId ? [element.ref] : [];
-    });
+    const refs = comparedRefs.get(refKey(changed.side, modelId, changed.globalId)) ?? [];
     const resolved = resolveGlobalId(state, { modelId, globalId: changed.globalId });
     return refs.length === 1 && typeof resolved === 'object' && resolved.expressId === refs[0].localId ? resolved : null;
   };

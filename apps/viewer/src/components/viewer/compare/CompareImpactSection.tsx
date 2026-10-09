@@ -78,7 +78,7 @@ function RowView({ row, navigation }: { row: ImpactRow; navigation: ImpactNaviga
         {t('reviewWorkspace.open')}
       </button>
       <ChangedChips changed={changed} row={row} navigation={navigation} onUnavailable={() => setUnavailable(true)} />
-      {unavailable && <p role="status" className="text-2xs text-muted-foreground">{t('compareAnalysis.impact.navigationUnavailable')}</p>}
+      {unavailable && <output className="block text-2xs text-muted-foreground">{t('compareAnalysis.impact.navigationUnavailable')}</output>}
     </li>
   );
 }

@@ -233,7 +233,7 @@ it('7307 direct native overlay revision changes invalidate held and remounted ac
  view.setAttribute(id, 'Name', 'Native edited duct 7307', pair.head.ifcDataStore.entities.getName(id));
  assert.ok(view.getMutationRevision() > revision); assert.equal(useViewerStore.getState().mutationVersion, counter);
  act(() => click(held)); assert.equal(useViewerStore.getState().clashSelectedId, null);
- assert.match(row.querySelector('[role="status"]')?.textContent ?? '', /no longer identifies current native evidence/);
+ assert.match(row.querySelector('output')?.textContent ?? '', /no longer identifies current native evidence/);
  cleanup(); root = openImpact(); assert.equal(openButton(impactRow(root, PINS.clashAdded)).disabled, true);
 });
 it('7307 native preparations cannot bless inputs changed before completion/rediff', async t => {

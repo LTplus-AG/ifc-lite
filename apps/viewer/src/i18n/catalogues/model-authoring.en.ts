@@ -60,6 +60,8 @@ export const modelAuthoringEn = {
   'modelAuthoring.newElement': 'new element "{ref}"',
   'modelAuthoring.notYet': '(not in the model)',
   'modelAuthoring.filletPreview': 'The preview shows sharp corners and omits {fields}. Applying writes the specified fillet radii.',
+  'modelAuthoring.op.element.replace': 'Replace product',
+  'modelAuthoring.replacementPreview': 'Creates a new product record. The old type, material, properties and hosted elements are not transferred; shared old geometry/style leaves are retained. The preview shows the destination body only, not the removed body or dependency geometry. Native export and Undo are authoritative.',
   'modelAuthoring.stairRailingPreview': 'The command preview shows solid stair steps and square rail/post sections. A stair waist is omitted. Custom rail diameters, vertical rail segments and existing stair edit/removal bodies require a separate native preview. Replacement creates a new product record; GlobalId is fresh by default or explicitly supplied.',
   'modelAuthoring.editPreviewUnavailable': 'No geometry preview is available for this edit. Review the dimensions before applying.',
   'modelAuthoring.outerBodyPreview': 'The preview shows the outer body; openings are not cut into the preview.',

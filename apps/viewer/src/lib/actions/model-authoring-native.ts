@@ -12,6 +12,7 @@
  * and `bim.store`'s modelling methods for joins, types and materials.
  */
 
+import { writeNativeReplacement } from './model-authoring-replacement';
 import { slabOpeningSpec, writeSlabOpening, readSlabOpeningPreview } from './model-authoring-slab-opening';
 import { writeStairLifecycle, writeStairCreation } from './model-authoring-stair-lifecycle';
 import { uniqueSplitGuid, writeNativeSplit } from './model-authoring-split';
@@ -189,6 +190,7 @@ export function writeNativeTypeDetach(op: Extract<AuthoringOp, { op: 'type.detac
 export function draftAuthoringOperation(batch: ModelAuthoringBatch, dataStore: IfcDataStore, modelId: string, draft: StoreEditor, row: DryRunRow, refs: Map<string, number>, splitScopes?: Parameters<typeof import('@ifc-lite/create').splitElementsInStore>[3]): void {
   const { op, resolved } = row;
   switch (op.op) {
+    case 'element.replace': {const made=writeNativeReplacement(batch,dataStore,draft,resolved.target!,resolved.storey!,op);refs.set(op.ref,made.expressId);return;}
     case 'stair.resize': case 'stair.delete': case 'railing.delete': case 'stair.replace': case 'railing.replace': {
       const result=writeStairLifecycle(dataStore,draft,batch,op,resolved.target!,resolved.storey);
       if('ref' in op && result.root!==undefined)refs.set(op.ref,result.root);return;

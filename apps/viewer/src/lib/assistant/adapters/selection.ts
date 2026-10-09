@@ -162,7 +162,7 @@ function elementRow(s: ViewerState, ref: EntityRef, source: ModelSource, rich: b
     modelName: source.name,
     type: effectiveSelectedClass(source.store, source.view, ref.expressId),
     name: typeof name === 'string' && name.length > 0 ? bounded(name) : null,
-    ...nativeAuthoringEvidence(nativeTarget, ref.expressId),
+    ...nativeAuthoringEvidence(nativeTarget, ref.expressId, rich),
     ...(completeStructuralPin ? { nativeStructural: nativeStructuralTransportEvidence(nativeTarget, ref.expressId) } : {}),
     attributes, psets, psetCount: data.psets.length, quantities, qsetCount: data.qsets.length,
     nativeEdit: nativeEditEvidence(nativeTarget, ref.expressId),
@@ -257,8 +257,8 @@ export const selectionAdapter: EvidenceAdapter = {
     return {
       summary: {
         kind: 'selection', channel, selectionSize: refs.length, modelCount: byModel.size,
+        ...(!rich ? { nativeCostCapture: 'unavailable-selection-budget', nativeReplacementCapture: 'unavailable-selection-budget' } : {}),
         ...(sample.length !== 1 ? { nativeStructuralCapture: 'unavailable-selection-budget' } : {}),
-        ...(!rich ? { nativeCostCapture: 'unavailable-selection-budget' } : {}),
         byModel: [...byModel].map(([modelId, count]) => ({ modelId, name: sourceFor(modelId).name, count })),
         byClass: [...byClass].map(([type, count]) => ({ type, count })).sort((a, b) => b.count - a.count),
         perElementBounds: rich ? { sets: 16, valuesPerSet: 32, attributes: 32, classifications: 16, classificationPath: 16, relationships: 16, documents: 16 }

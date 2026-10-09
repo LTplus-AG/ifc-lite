@@ -10,7 +10,7 @@ import type { ModelAuthoringPreview } from './model-authoring-preview';
 interface Source { modelId: string; store: IfcDataStore | undefined; source: IfcDataStore['source'] | undefined; hash: string | undefined; view: MutablePropertyView | undefined; revision: number | undefined }
 const sources = new WeakMap<ModelAuthoringPreview, Source[]>();
 const needsSource = (preview: ModelAuthoringPreview) => preview.batch.operations.some(op =>
-  op.op === 'element.align' || (op.op === 'element.rotate' && !!op.pivot) || op.op === 'element.copy' || op.op === 'element.array'
+  op.op === 'element.replace' || op.op === 'element.align' || (op.op === 'element.rotate' && !!op.pivot) || op.op === 'element.copy' || op.op === 'element.array'
   || op.op === 'type.detach' || op.op === 'hosted.edit' || op.op === 'hosted.create' && 'params' in op || op.op === 'element.trimExtend'
   || op.op === 'element.split' || op.op.startsWith('stair.') || op.op.startsWith('railing.'));
 

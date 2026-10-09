@@ -7,7 +7,7 @@ import { afterEach, test } from 'node:test';
 import { RelationshipType } from '@ifc-lite/data';
 import { MutablePropertyView } from '@ifc-lite/mutations';
 import { addGroupToStore, readGroupInStore, readGroupEvidenceInStore } from '@ifc-lite/create';
-import { asSourceBytes } from '@ifc-lite/parser';
+import { asSourceBytes, effectiveMetadataRecord } from '@ifc-lite/parser';
 import { useViewerStore } from '@/store';
 import { createStoreAdapter } from '@/sdk/adapters/store-adapter';
 import { seedAuthoringSample, SAMPLE_MODEL, parseIfc, danglingReferences } from '@/test/authoring-sample-fixture';
@@ -25,6 +25,14 @@ async function setup() {
   const member = { expressId: 291, GlobalId: fixture.dataStore.entities.getGlobalId(291)! };
   const context = { store: fixture.dataStore, mutationView: fixture.view, ownerHistoryId: null };
   return { ...fixture, member, context };
+}
+async function semanticGraph(bytes: Uint8Array) {
+  const saved = await parseIfc(bytes);
+  // @raw-entity-enumeration-ok independently parsed export has no overlay; compare every native semantic record rather than generated header timestamps.
+  return [...saved.entityIndex.byId.keys()].sort((a, b) => a - b).map(expressId => ({ expressId, ...effectiveMetadataRecord(saved, expressId) }));
+}
+async function unchangedExports(actual: Uint8Array[], expected: Uint8Array[]) {
+  assert.deepEqual(await Promise.all(actual.map(semanticGraph)), await Promise.all(expected.map(semanticGraph)));
 }
 function proposal(selected: number[], operations: GroupOperation[]) {
   const target = readOnlyModelEditTarget(useViewerStore.getState(), SAMPLE_MODEL)!;
@@ -59,7 +67,7 @@ test('#7329 reviewed replacement preserves group and relation identities through
   const group = addGroupToStore(context, { Name: 'Before review', RelatedObjects: [member] });
   const old = readGroupInStore(context, group), before = editedModelBytes(dataStore, view), held = view.prepareAtomic(() => null);
   const review = prepareGroupReview(useViewerStore, proposal([group.expressId], [{ op: 'group.update', target: group, params: { Name: 'After review', RelatedObjects: [member] } }]));
-  held.validate(); assert.deepEqual(editedModelBytes(dataStore, view), before);
+  held.validate(); await unchangedExports([editedModelBytes(dataStore, view)], [before]);
   const receipt = commitReviewedGroup(useViewerStore, review, 'native group acceptance');
   assert.ok(decodeModelChangeReceipt(JSON.parse(JSON.stringify(receipt))));
   const bytes = editedModelBytes(dataStore, view), saved = await parseIfc(bytes);
@@ -94,10 +102,10 @@ test('#7329 changed source, selected approvals, current metadata, native graph o
   let review = prepareGroupReview(useViewerStore, proposal([member.expressId], [create]));
   view.setAttribute(member.expressId, 'Description', 'Unjournalled source change');
   let before = editedModelBytes(dataStore, view);
-  assert.throws(() => review.commit(), /changed/); assert.deepEqual(editedModelBytes(dataStore, view), before);
+  assert.throws(() => review.commit(), /changed/); await unchangedExports([editedModelBytes(dataStore, view)], [before]);
   review = prepareGroupReview(useViewerStore, proposal([member.expressId], [create]));
   review.delta[0].after!.attributes[2] = 'Changed preview';
-  assert.throws(() => review.commit(), /review changed/); assert.deepEqual(editedModelBytes(dataStore, view), before);
+  assert.throws(() => review.commit(), /review changed/); await unchangedExports([editedModelBytes(dataStore, view)], [before]);
   review = prepareGroupReview(useViewerStore, proposal([member.expressId], [create]));
   useViewerStore.setState({ editEnabled: false }); assert.throws(() => review.commit(), /Edit|read.only/i);
   useViewerStore.setState({ editEnabled: true });
@@ -109,7 +117,7 @@ test('#7329 changed source, selected approvals, current metadata, native graph o
   const current = proposal([member.expressId], [create]);
   current.expected.members[0].GlobalId = '0000000000000000000000';
   assert.throws(() => prepareGroupReview(useViewerStore, current), /differs/);
-  assert.deepEqual(editedModelBytes(dataStore, view), before);
+  await unchangedExports([editedModelBytes(dataStore, view)], [before]);
   dataStore.source = asSourceBytes(new Uint8Array());
   assert.throws(() => prepareGroupReview(useViewerStore, current), /source/);
 });
@@ -137,12 +145,12 @@ test('#7329 two real loaded sources keep identical local IDs source-owned, rejec
   assert.notEqual(own.GlobalId, peer.GlobalId, 'independent native groups have independent Root ownership');
   const before = [editedModelBytes(dataStore, view), editedModelBytes(peerStore, peerView)];
   assert.throws(() => adapter.updateGroup!(adapter.readGroup!(own), { RelatedObjects: [foreign] }), /another source/);
-  assert.deepEqual([editedModelBytes(dataStore, view), editedModelBytes(peerStore, peerView)], before);
+  await unchangedExports([editedModelBytes(dataStore, view), editedModelBytes(peerStore, peerView)], before);
   const review = prepareGroupReview(useViewerStore, proposal([member.expressId], [{ op: 'group.create', params: { Name: 'Stale draft', RelatedObjects: [member] } }]));
   peerView.setAttribute(member.expressId, 'Description', 'Peer changed after review');
   const changed = [editedModelBytes(dataStore, view), editedModelBytes(peerStore, peerView)];
   assert.throws(() => review.commit(), /source population changed/);
-  assert.deepEqual([editedModelBytes(dataStore, view), editedModelBytes(peerStore, peerView)], changed);
+  await unchangedExports([editedModelBytes(dataStore, view), editedModelBytes(peerStore, peerView)], changed);
   useViewerStore.getState().undo(peerId);
   const peerBytes = editedModelBytes(peerStore, peerView), undonePeer = await parseIfc(peerBytes);
   assert.equal(undonePeer.entityIndex.byId.has(peer.expressId), false);

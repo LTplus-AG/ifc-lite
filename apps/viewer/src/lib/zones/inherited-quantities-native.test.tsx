@@ -1,3 +1,6 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import '@/test/setup-dom.js';
 import assert from 'node:assert/strict';
 import { writeFile } from 'node:fs/promises';
@@ -20,7 +23,7 @@ import { setGlobalRendererRef } from '@/hooks/useBCF';
 import { assertSameNativeIfcGraph } from '@/test/native-ifc-graph';
 
 const original = useViewerStore.getState();
-afterEach(() => { cleanup(); setGlobalRendererRef(null); useViewerStore.setState(original, true); });
+afterEach(() => { cleanup(); setGlobalRendererRef({ current: null }); useViewerStore.setState(original, true); });
 const parse = (bytes: Uint8Array) => new IfcParser().parseColumnar(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength), { disableWorkerScan: true });
 const net = (sets: readonly { quantities: readonly { name: string; value: number }[] }[]) => sets.flatMap(set => [...set.quantities]).find(q => q.name === 'NetVolume')?.value;
 const native = async (store: IfcDataStore, view: MutablePropertyView, id: number) => net(extractTypeQuantitiesOnDemand(await parse(editedModelBytes(store, view)), id)?.quantities ?? []);
@@ -114,7 +117,7 @@ test('#7353 canonical inherited quantity card follows native edits and type reas
  detachedView.deleteEntity(relation);
  assert.equal(await native(store, detachedView, f.id), undefined, 'native export has no type after relationship deletion');
  assert.equal(extractTypeQuantitiesOnDemand(store, f.id, detachedView), null, 'deleted type assignments cannot be resurrected');
- const independentView = new MutablePropertyView(store.properties);
+ const independentView = new MutablePropertyView(store.properties, 'independent-native-model');
  independentView.setAttribute(a.volume, 'VolumeValue', '70');
  assert.equal(await native(store, independentView, f.id), 70, 'independent native model view exports its named edit');
  assert.equal(net(extractTypeQuantitiesOnDemand(store, f.id, independentView)?.quantities ?? []), 70, 'shared source does not share another view quantity cache');

@@ -180,7 +180,7 @@ test('#7220 unresolved native VOLUMEUNIT discloses the canonical SI default with
   const f = await seedDeclaredZoneWall(t); if (!f) return;
   const view = getOrCreateMutationView(useViewerStore, 'arch'); assert.ok(view);
   for (const id of f.store.entityIndex.byType.get('IFCUNITASSIGNMENT') ?? []) {
-    const refs = f.store.getEntity(id)?.attributes[0]; assert.ok(Array.isArray(refs));
+    const refs: unknown = f.store.getEntity(id)?.attributes[0]; assert.ok(Array.isArray(refs));
     view.setPositionalAttribute(id, 0, refs.filter(ref =>
       String(f.store.getEntity(Number(ref))?.attributes[1]).replaceAll('.', '') !== 'VOLUMEUNIT').map(ref => `#${ref}`));
   }

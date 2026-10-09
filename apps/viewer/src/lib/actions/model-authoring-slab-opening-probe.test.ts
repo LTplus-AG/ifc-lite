@@ -7,6 +7,8 @@ import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
 import { afterEach, test } from 'node:test';
 import { createBimContext } from '@ifc-lite/sdk';
+import { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
+import { configureMutationView } from '@/utils/configureMutationView';
 import { IfcAPI, initSync } from '@ifc-lite/wasm';
 import { readHostedFill, readHostOpeningExtents, resolveHostAnchor } from '@ifc-lite/create';
 import { useViewerStore } from '@/store';
@@ -111,4 +113,21 @@ for (const polygon of [false,true]) for (const units of ['m', 'mm'] as const) te
  assert.deepEqual(undoModelChanges(useViewerStore,outcome.receipt),{ok:true});
  assert.ok(Math.abs(meshVolume(editedModelBytes(dataStore,view),slab.expressId)-before)<.001,'one grouped Changes Undo restores the complete physical host');
  assert.equal(readHostOpeningExtents(await parseIfc(editedModelBytes(dataStore,view)),slab.expressId).cuts.length,0);
+});
+
+test('#7315 live named native slab retarget reviewed cut matches independently saved real WASM and grouped Undo',{skip:!existsSync(wasm)&&'run pnpm build:wasm:fetch'},async()=>{
+ const f=await nativeSlab(),store=await parseIfc(editedModelBytes(f.dataStore,f.view)),view=new MutablePropertyView(store.properties,SAMPLE_MODEL);configureMutationView(view,store);
+ const state=useViewerStore.getState(),model=state.models.get(SAMPLE_MODEL);assert.ok(model);
+ useViewerStore.setState({models:new Map([[SAMPLE_MODEL,{...model,ifcDataStore:store,maxExpressId:Math.max(...store.entityIndex.byId.keys())}]]),mutationViews:new Map([[SAMPLE_MODEL,view]]),storeEditors:new Map()});
+ const editor=new StoreEditor(store,view),id=f.slab.expressId,localId=Number(store.getEntity(id)?.attributes[5]),point=editor.addEntity('IfcCartesianPoint',[[22000,21000,3000]]),axis=editor.addEntity('IfcAxis2Placement3D',[`#${point.expressId}`,null,null]);
+ editor.setAttribute(localId,'RelativePlacement',`#${axis.expressId}`);
+ const beforeBytes=editedModelBytes(store,view),before=await parseIfc(beforeBytes);assert.equal(before.getEntity(localId)?.attributes[1],axis.expressId);
+ const expected=readSplitSnapshot(store,editor,id,'m');if(expected.kind!=='slab')assert.fail('The actual native host must resolve as a slab');assert.deepEqual(expected.chain.placementOrigin,[22,21,3]);
+ const batch=parseModelAuthoringBatch(JSON.stringify({version:1,kind:'model.authoring',title:'Current named slab native cut',units:'m',frame:'storey-local',operations:[{op:'hosted.create',kind:'opening',host:{modelId:SAMPLE_MODEL,globalId:before.entities.getGlobalId(id),ifcClass:'IfcSlab',name:before.entities.getName(id)},expected,params:{Position:[2,1],Width:1,Depth:.8}}]}));
+ const preview=previewModelAuthoring(useViewerStore.getState(),batch);assert.equal(preview.rows[0].status,'ready',preview.rows[0].issue??'');
+ const result=commitModelAuthoring(useViewerStore,preview,new Set([0]),'named current slab native cut');assert.ok(result.ok,result.ok?'':result.detail??result.reason);
+ const bytes=editedModelBytes(store,view),after=await parseIfc(bytes);assert.equal(after.getEntity(localId)?.attributes[1],axis.expressId);assert.equal(readHostOpeningExtents(after,id).cuts.length,1);
+ assert.ok(Math.abs(meshVolume(beforeBytes,id)-6)<.001);assert.ok(Math.abs(meshVolume(bytes,id)-5.8)<.001,'the actual current-location solid receives the native through cut');
+ assert.deepEqual(undoModelChanges(useViewerStore,result.receipt),{ok:true});assert.ok(Math.abs(meshVolume(editedModelBytes(store,view),id)-6)<.001);
+ const undone=await parseIfc(editedModelBytes(store,view));assert.equal(undone.getEntity(localId)?.attributes[1],axis.expressId);assert.equal(readHostOpeningExtents(undone,id).cuts.length,0);
 });

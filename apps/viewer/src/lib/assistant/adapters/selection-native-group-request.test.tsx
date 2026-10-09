@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 import { afterEach, test } from 'node:test';
 import { act } from 'react';
 import { RelationshipType } from '@ifc-lite/data';
-import { effectiveMetadataRecord, type IfcDataStore } from '@ifc-lite/parser';
+import { assertSameNativeIfcGraph } from '@/test/native-ifc-graph';
 import { useViewerStore } from '@/store';
 import { seedAuthoringSample, SAMPLE_MODEL, parseIfc, danglingReferences } from '@/test/authoring-sample-fixture';
 import { captureSelectionGrounding } from '@/lib/actions/selection-grounding';
@@ -33,10 +33,6 @@ function texts(value: unknown): string[] {
   if (typeof value === 'string') return [value];
   if (Array.isArray(value)) return value.flatMap(texts);
   return value && typeof value === 'object' ? Object.values(value).flatMap(texts) : [];
-}
-function sourceGraph(store: IfcDataStore) {
-  // @raw-entity-enumeration-ok independent exported source parses have no overlay; compare their complete semantic records, not STEP header formatting.
-  return [...store.entityIndex.byId.keys()].sort((a, b) => a - b).map(expressId => ({ expressId, ...effectiveMetadataRecord(store, expressId) }));
 }
 for (const attached of [false, true]) test(`#7329 actual ${attached ? 'explicit attachment' : 'rich selection'} request carries complete native Group identities and source ownership`, async () => {
   await selectedSource();
@@ -79,7 +75,7 @@ test('#7329 actual provider answer reaches mounted selective Group review, nativ
   act(() => boxes[1].click());
   const prepare = [...ui.querySelectorAll('button')].find(button => button.textContent === 'Review selected group changes');
   assert.ok(prepare, ui.textContent ?? ''); click(prepare);
-  assert.deepEqual(sourceGraph(await parseIfc(editedModelBytes(dataStore, view))), sourceGraph(await parseIfc(before)), 'native preview publishes no graph or history');
+  await assertSameNativeIfcGraph(editedModelBytes(dataStore, view), before, 'native preview publishes no graph or history');
   const apply = [...ui.querySelectorAll('button')].find(button => button.textContent === 'Apply 1 change');
   assert.ok(apply, ui.textContent ?? ''); assert.equal(apply.disabled, true);
   act(() => boxes[2].click()); assert.equal(apply.disabled, false); click(apply);
@@ -95,5 +91,5 @@ test('#7329 actual provider answer reaches mounted selective Group review, nativ
   assert.ok(undo); click(undo);
   const restoredBytes = editedModelBytes(dataStore, view);
   assert.deepEqual(danglingReferences(new TextDecoder().decode(restoredBytes)), []);
-  assert.deepEqual(sourceGraph(await parseIfc(restoredBytes)), sourceGraph(dataStore), 'one native Undo restores every original parsed record and removes the group subgraph');
+  await assertSameNativeIfcGraph(restoredBytes, before, 'one native Undo restores every original parsed record and removes the group subgraph');
 });

@@ -7,7 +7,8 @@ import { afterEach, test } from 'node:test';
 import { RelationshipType } from '@ifc-lite/data';
 import { MutablePropertyView } from '@ifc-lite/mutations';
 import { addGroupToStore, readGroupInStore, readGroupEvidenceInStore } from '@ifc-lite/create';
-import { asSourceBytes, effectiveMetadataRecord } from '@ifc-lite/parser';
+import { asSourceBytes } from '@ifc-lite/parser';
+import { assertSameNativeIfcGraph } from '@/test/native-ifc-graph';
 import { useViewerStore } from '@/store';
 import { createStoreAdapter } from '@/sdk/adapters/store-adapter';
 import { seedAuthoringSample, SAMPLE_MODEL, parseIfc, danglingReferences } from '@/test/authoring-sample-fixture';
@@ -26,13 +27,9 @@ async function setup() {
   const context = { store: fixture.dataStore, mutationView: fixture.view, ownerHistoryId: null };
   return { ...fixture, member, context };
 }
-async function semanticGraph(bytes: Uint8Array) {
-  const saved = await parseIfc(bytes);
-  // @raw-entity-enumeration-ok independently parsed export has no overlay; compare every native semantic record rather than generated header timestamps.
-  return [...saved.entityIndex.byId.keys()].sort((a, b) => a - b).map(expressId => ({ expressId, ...effectiveMetadataRecord(saved, expressId) }));
-}
 async function unchangedExports(actual: Uint8Array[], expected: Uint8Array[]) {
-  assert.deepEqual(await Promise.all(actual.map(semanticGraph)), await Promise.all(expected.map(semanticGraph)));
+  assert.equal(actual.length, expected.length);
+  await Promise.all(actual.map((bytes, index) => assertSameNativeIfcGraph(bytes, expected[index])));
 }
 function proposal(selected: number[], operations: GroupOperation[]) {
   const target = readOnlyModelEditTarget(useViewerStore.getState(), SAMPLE_MODEL)!;

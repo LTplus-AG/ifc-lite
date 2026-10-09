@@ -12,7 +12,7 @@ import { placementInAncestor, placementRelativeTo, refId, type Frame3 } from './
 
 const OP = 'reassignElementsToStoreyInStore';
 const fail = (message: string): never => { throw new Error(`${OP}: ${message}`); };
-export type ReassignmentRelationship = { id: number; type: string; parent: number; children: number[]; listIndex: number; parentIndex: number };
+export type ReassignmentRelationship = { id: number; type: string; parent: number; children: number[]; listIndex: number; parentIndex: number; attributes: readonly unknown[] };
 export type StoreyReassignmentPlan = {
   sourceStoreyId: number; destinationStoreyId: number; destinationPlacementId: number;
   products: { expressId: number; GlobalId: string; type: string; attributes: readonly unknown[]; placementId: number; world: Frame3 }[];
@@ -44,7 +44,7 @@ function relationships(reader: AnchorEntityReader): ReassignmentRelationship[] {
       work += 1 + (Array.isArray(rawChildren) ? rawChildren.length : 1);
       if (work > 2_000_000) fail('relationship inventory exceeds 2,000,000 references');
       const children = singleton ? [refId(entity.attributes[listIndex]) ?? fail(`unreadable child of #${id}`)] : refs(entity.attributes[listIndex]);
-      result.push({ id, type, parent, children, listIndex, parentIndex });
+      result.push({ id, type, parent, children, listIndex, parentIndex, attributes: entity.attributes });
     }
   }
   return result;

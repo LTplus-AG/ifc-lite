@@ -33,21 +33,22 @@ export function reassignElementsToStoreyInStore(
       draft.setPositionalAttribute(placement.expressId, 1, ref(axis));
     }
     const moved = new Set(plan.products.map(product => product.expressId));
-    // Keep unrelated membership and all host/aggregate relationships intact.
-    // Spaces retain spatial aggregation; physical products retain containment.
-    const destinationGroups = new Map<string, number[]>();
+    // Move each existing relationship independently. Exhausted source entries
+    // retain their own Root identity/metadata; partial entries split with a
+    // fresh identity and the original metadata rather than merging named groups.
     for (const membership of plan.sourceMemberships) {
       const remaining = membership.children.filter(id => !moved.has(id));
-      if (remaining.length) draft.setPositionalAttribute(membership.id, membership.listIndex, remaining.map(ref));
-      else if (!draft.removeEntity(membership.id)) throw new Error(`reassignElementsToStoreyInStore: cannot remove exhausted relationship #${membership.id}`);
-      const children = destinationGroups.get(membership.type) ?? [];
-      children.push(...membership.children.filter(id => moved.has(id))); destinationGroups.set(membership.type, children);
-    }
-    for (const [type, children] of destinationGroups) {
-      const metadata = type === 'IFCRELCONTAINEDINSPATIALSTRUCTURE'
-        ? [children.map(ref), ref(destinationStoreyId)]
-        : [ref(destinationStoreyId), children.map(ref)];
-      draft.addEntity(type, [generateIfcGuid(), ownerHistory === null ? null : ref(ownerHistory), null, null, ...metadata]);
+      if (!remaining.length) {
+        draft.setPositionalAttribute(membership.id, membership.parentIndex, ref(destinationStoreyId));
+        continue;
+      }
+      draft.setPositionalAttribute(membership.id, membership.listIndex, remaining.map(ref));
+      const attributes = [...membership.attributes] as Parameters<StoreEditor['addEntity']>[1];
+      attributes[0] = generateIfcGuid();
+      if (store.schemaVersion === 'IFC2X3' && attributes[1] == null) attributes[1] = ref(ownerHistory!);
+      attributes[membership.parentIndex] = ref(destinationStoreyId);
+      attributes[membership.listIndex] = membership.children.filter(id => moved.has(id)).map(ref);
+      draft.addEntity(membership.type, attributes);
     }
     return plan;
   });

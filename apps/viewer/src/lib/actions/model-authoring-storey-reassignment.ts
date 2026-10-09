@@ -31,7 +31,7 @@ function parseExpected(value: unknown, at: string): StoreyReassignmentPlan {
   const frame = (item: unknown) => record(item) && ['o', 'x', 'y', 'z'].every(key => Array.isArray(item[key])
     && item[key].length === 3 && item[key].every((n: unknown) => typeof n === 'number' && Number.isFinite(n)));
   const relationship = (item: unknown) => record(item) && id(item.id) && typeof item.type === 'string' && id(item.parent)
-    && Array.isArray(item.children) && item.children.length > 0 && item.children.every(id)
+    && Array.isArray(item.attributes) && Array.isArray(item.children) && item.children.length > 0 && item.children.every(id)
     && Number.isInteger(item.listIndex) && Number.isInteger(item.parentIndex);
   if (!record(value) || !finite(value, 0) || !id(value.sourceStoreyId) || !id(value.destinationStoreyId) || !id(value.destinationPlacementId)
     || !Array.isArray(value.products) || !value.products.length || value.products.length > 5_000 || !value.products.every(product => record(product) && id(product.expressId)
@@ -43,7 +43,7 @@ function parseExpected(value: unknown, at: string): StoreyReassignmentPlan {
   }
   const pin = value as unknown as StoreyReassignmentPlan;
   const frameOf = (f: StoreyReassignmentPlan['products'][number]['world']) => ({ o: f.o, x: f.x, y: f.y, z: f.z });
-  const relationOf = (r: StoreyReassignmentPlan['relationships'][number]) => ({ id: r.id, type: r.type, parent: r.parent, children: r.children, listIndex: r.listIndex, parentIndex: r.parentIndex });
+  const relationOf = (r: StoreyReassignmentPlan['relationships'][number]) => ({ id: r.id, type: r.type, parent: r.parent, children: r.children, listIndex: r.listIndex, parentIndex: r.parentIndex, attributes: r.attributes });
   return { sourceStoreyId: pin.sourceStoreyId, destinationStoreyId: pin.destinationStoreyId, destinationPlacementId: pin.destinationPlacementId,
     products: pin.products.map(p => ({ expressId: p.expressId, GlobalId: p.GlobalId, type: p.type, attributes: p.attributes, placementId: p.placementId, world: frameOf(p.world) })),
     placements: pin.placements.map(p => ({ expressId: p.expressId, relative: frameOf(p.relative) })),

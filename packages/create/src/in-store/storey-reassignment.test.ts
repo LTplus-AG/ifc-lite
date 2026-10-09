@@ -186,8 +186,12 @@ it('#7328 preserves spatial aggregation for native spaces and unrelated source m
 });
 
 
-it('#7328 a genuine late GUID allocation failure rolls back placement writes, deleted memberships, journal and allocator', async () => {
-  const s = await fixture(), before = s.snapshot(), text = s.text();
+it('#7328 a genuine late GUID allocation failure rolls back placement writes, partial memberships, journal and allocator', async () => {
+  const s = await fixture(), reader = new AnchorEntityReader(s.store, s.view);
+  const membership = [...reader.ids('IFCRELCONTAINEDINSPATIALSTRUCTURE')].find(id => (reader.entity(id)?.attributes[4] as unknown[])?.some(value => refId(value) === s.id))!;
+  const unrelated = s.editor.addEntity('IfcAnnotation', [generateIfcGuid(), null, 'Unmoved native annotation', null, null, null, null]).expressId;
+  s.editor.setPositionalAttribute(membership, 4, [`#${s.id}`, `#${unrelated}`]);
+  const before = s.snapshot(), text = s.text();
   const random = vi.spyOn(crypto, 'randomUUID').mockImplementation(() => { throw new Error('injected relationship GUID failure'); });
   try {
     expect(() => reassignElementsToStoreyInStore(s.store, s.editor, [s.id], 42, s.destination)).toThrow('injected relationship GUID failure');
@@ -266,4 +270,47 @@ it('#7328 destination candidates reuse one effective Root inventory and match in
   const mixed = planStoreyReassignmentCandidates(s.store, s.view, [s.id], 42, [s.destination, 99999999]);
   expect(mixed[0].plan).toEqual(independent[0]); expect(mixed[1].plan).toBeNull();
   expect(mixed[1].refusal).toMatch(/not a live IfcBuildingStorey/);
+});
+
+it('#7328 preserves distinct containment identities and metadata when moving whole and partial memberships', async () => {
+  const s = await fixture(), reader = new AnchorEntityReader(s.store, s.view);
+  const second = addOrdinaryElementInStore(s.editor, resolveSpatialAnchor(s.store, 42, s.view), { kind: 'wall', params: { Start: [0, 9, 0], End: [4, 9, 0], Thickness: .2, Height: 3 } });
+  const relationOf = (product: number) => [...reader.ids('IFCRELCONTAINEDINSPATIALSTRUCTURE')].find(id => (reader.entity(id)?.attributes[4] as unknown[])?.some(value => refId(value) === product))!;
+  const firstRelation = relationOf(s.id), secondRelation = relationOf(second);
+  expect(firstRelation).not.toBe(secondRelation);
+  for (const [id, name, description] of [[firstRelation, 'Zone A', 'Whole source membership'], [secondRelation, 'Zone B', 'Partial source membership']] as const) {
+    s.editor.setPositionalAttribute(id, 2, name); s.editor.setPositionalAttribute(id, 3, description);
+  }
+  const unrelated = s.editor.addEntity('IfcAnnotation', [generateIfcGuid(), null, 'Unmoved annotation', null, null, null, null]).expressId;
+  s.editor.setPositionalAttribute(secondRelation, 4, [`#${second}`, `#${unrelated}`]);
+  const first = reader.entity(firstRelation)!, originalSecond = reader.entity(secondRelation)!, before = s.snapshot();
+  recordCompoundMutation(s.view, draft => reassignElementsToStoreyInStore(s.store, new StoreEditor(s.store, draft), [s.id, second], 42, s.destination));
+  const destination = [...reader.ids('IFCRELCONTAINEDINSPATIALSTRUCTURE')].filter(id => refId(reader.entity(id)?.attributes[5]) === s.destination);
+  expect(destination).toHaveLength(2);
+  expect(reader.entity(firstRelation)?.attributes).toEqual([...first.attributes.slice(0, 5), `#${s.destination}`]);
+  const split = destination.find(id => id !== firstRelation)!;
+  expect(reader.entity(split)?.attributes.slice(1, 4)).toEqual(originalSecond.attributes.slice(1, 4));
+  expect(reader.entity(split)?.attributes[0]).not.toBe(originalSecond.attributes[0]);
+  expect(reader.entity(split)?.attributes[4]).toEqual([`#${second}`]);
+  expect(reader.entity(secondRelation)?.attributes).toEqual([...originalSecond.attributes.slice(0, 4), [`#${unrelated}`], '#42']);
+  const saved = await new IfcParser().parseColumnar(new TextEncoder().encode(s.text()).buffer, {disableWorkerScan: true});
+  const savedReader = new AnchorEntityReader(saved, null);
+  for (const id of [firstRelation, split]) {
+    const savedAttributes = savedReader.entity(id)!.attributes, liveAttributes = reader.entity(id)!.attributes;
+    expect(savedAttributes.slice(0, 4)).toEqual(liveAttributes.slice(0, 4));
+    expect((savedAttributes[4] as unknown[]).map(refId)).toEqual((liveAttributes[4] as unknown[]).map(refId));
+    expect(refId(savedAttributes[5])).toBe(refId(liveAttributes[5]));
+  }
+  undoRecordedMutationOperations(s.view, 1, () => { throw new Error('one compound required'); });
+  expect({...s.snapshot(), next: before.next}).toEqual(before);
+});
+
+it('#7328 complete relationship metadata pins refuse changed membership names before native writes', async () => {
+  const s = await fixture(), reader = new AnchorEntityReader(s.store, s.view);
+  const relation = [...reader.ids('IFCRELCONTAINEDINSPATIALSTRUCTURE')].find(id => (reader.entity(id)?.attributes[4] as unknown[])?.some(value => refId(value) === s.id))!;
+  const expected = planStoreyReassignment(s.store, s.view, [s.id], 42, s.destination);
+  s.editor.setPositionalAttribute(relation, 2, 'Membership changed after capture');
+  const before = s.snapshot(), text = s.text();
+  expect(() => reassignElementsToStoreyInStore(s.store, s.editor, [s.id], 42, s.destination, expected)).toThrow(/stale/);
+  expect(s.snapshot()).toEqual(before); expect(s.text()).toBe(text);
 });

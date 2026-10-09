@@ -1,0 +1,527 @@
+{
+  "issue": "https://github.com/LTplus-AG/ifc-lite/issues/7184",
+  "PR": "https://github.com/LTplus-AG/ifc-lite/pull/7249",
+  "sourceHead": "b74ed2cf4897c9920f04e11f8e863f722d284225",
+  "frozenCanonicalMain": "565dc3f523c69bc24ba94c8e4f491049fc4c6fb0",
+  "scope": "Test-only distinct real IFC parse -> mounted Measure selection quantity/localization regression. Canonical7255 label/unitfixture/catalogue fixes consumed unchanged. No production/API/capture/native/performance change.",
+  "sourcePinsBefore": [
+    {
+      "path": "apps/viewer/src/components/viewer/tools/Measure.i18n.test.tsx",
+      "sha256": "d38521da03c37cca7c5d1197357e6cf9b088656b283774baa7b8dff35d014176",
+      "canonicalMainSha256": "544903b9c19199781a92dba0a721e6011b12fbece590943deecf86be584412c6",
+      "equalsMain": false
+    },
+    {
+      "path": "apps/viewer/src/i18n/catalogues/measure.en.ts",
+      "sha256": "3e7ee7923fe1252fe658f9e2ef3bfdec3c1e3069587950cc8b6a0d1c17edb55e",
+      "canonicalMainSha256": "3e7ee7923fe1252fe658f9e2ef3bfdec3c1e3069587950cc8b6a0d1c17edb55e",
+      "equalsMain": true
+    },
+    {
+      "path": "apps/viewer/src/components/viewer/tools/QuantityResultView.tsx",
+      "sha256": "da0f9ec026bd385e3878552729d5eb76a3b87edab1475da1f4b074211a2186be",
+      "canonicalMainSha256": "da0f9ec026bd385e3878552729d5eb76a3b87edab1475da1f4b074211a2186be",
+      "equalsMain": true
+    },
+    {
+      "path": "apps/viewer/src/components/viewer/tools/measure-modes/quantities.ts",
+      "sha256": "6ce1de5c5509554cb530116b1c172d1eb992f8ca657d22524038e05fcd73f166",
+      "canonicalMainSha256": "6ce1de5c5509554cb530116b1c172d1eb992f8ca657d22524038e05fcd73f166",
+      "equalsMain": true
+    },
+    {
+      "path": "apps/viewer/src/test/scan-slab-fixture.ts",
+      "sha256": "7353da7c3177503f4ff282691dea00d9ea8d84de275bf5a3be275176f410256f",
+      "canonicalMainSha256": "7353da7c3177503f4ff282691dea00d9ea8d84de275bf5a3be275176f410256f",
+      "equalsMain": true
+    }
+  ],
+  "sourcePinsAfter": [
+    {
+      "path": "apps/viewer/src/components/viewer/tools/Measure.i18n.test.tsx",
+      "sha256": "d38521da03c37cca7c5d1197357e6cf9b088656b283774baa7b8dff35d014176"
+    },
+    {
+      "path": "apps/viewer/src/i18n/catalogues/measure.en.ts",
+      "sha256": "3e7ee7923fe1252fe658f9e2ef3bfdec3c1e3069587950cc8b6a0d1c17edb55e"
+    },
+    {
+      "path": "apps/viewer/src/components/viewer/tools/QuantityResultView.tsx",
+      "sha256": "da0f9ec026bd385e3878552729d5eb76a3b87edab1475da1f4b074211a2186be"
+    },
+    {
+      "path": "apps/viewer/src/components/viewer/tools/measure-modes/quantities.ts",
+      "sha256": "6ce1de5c5509554cb530116b1c172d1eb992f8ca657d22524038e05fcd73f166"
+    },
+    {
+      "path": "apps/viewer/src/test/scan-slab-fixture.ts",
+      "sha256": "7353da7c3177503f4ff282691dea00d9ea8d84de275bf5a3be275176f410256f"
+    },
+    {
+      "path": "pnpm-lock.yaml",
+      "sha256": "3baf933ea880bd57d30dc2416184777af7488835c2a7eeff94ff84e6841eb4e4",
+      "equalsCommittedHead": true
+    },
+    {
+      "path": "apps/viewer/package.json",
+      "sha256": "c0283a220a2eaceedf8e0955555fd0a52f7aa8b9d9b678f7c61e9c0fa3581631",
+      "equalsCommittedHead": true
+    },
+    {
+      "path": "packages/wasm/pkg/ifc-lite.d.ts",
+      "sha256": "54c9d0a52eb515e517d76726fefe5f6a63e553a81c1b10331a597965d14620f6",
+      "equalsCommittedHead": true
+    }
+  ],
+  "sourcePinsEqual": true,
+  "executedTests": {
+    "canonicalMainBaseline": {
+      "pass": 18,
+      "fail": 0,
+      "skip": 0,
+      "expected": "green; not inverse"
+    },
+    "candidate": {
+      "pass": 19,
+      "fail": 0,
+      "skip": 0
+    }
+  },
+  "fullRootTypecheck": {
+    "testFiles": 3751,
+    "packages": 62,
+    "viewerTestFiles": 2078,
+    "note": "Typechecked source files, not runtime test count"
+  },
+  "actualParserProof": "ensureWasm calls initSync with actual WASM bytes, then awaited IfcParser.parseColumnar on authored IFC4 fixture; non-skipped mounted Measure displays literal12 m\u00b2,1/2 Partial and livepseudo tokens. Small parse does not emit separate parser timings; no mocked parser/quantities.",
+  "wasmSkipBoundary": "Only integration case uses ensureWasm; canonical unitfixture/globalaudit retained byte-exact and remains active withoutWASM.",
+  "runtimePreparation": {
+    "sourceHead": "b62ad9dcd6623b8cc4ab531fd988ba710eb08b2a",
+    "rustTree": "1a1acc4260011c591fd8ce3c5387bb7c10b42f20",
+    "dtsByteEqual": true,
+    "runtimeCopiedExistingNotBuilt": [
+      {
+        "source": "/tmp/ifc-7186-visible-proposal-control/packages/wasm/pkg/ifc-lite.js",
+        "destination": "/tmp/ifc-7249-canonical-main565/packages/wasm/pkg/ifc-lite.js",
+        "sha256": "0a281479eb65141ae75aeef987d331d44439741a0cae855f122e53e800311a39"
+      },
+      {
+        "source": "/tmp/ifc-7186-visible-proposal-control/packages/wasm/pkg/ifc-lite_bg.wasm",
+        "destination": "/tmp/ifc-7249-canonical-main565/packages/wasm/pkg/ifc-lite_bg.wasm",
+        "sha256": "8b74229bbd4a991cbf1f32a8d52add195c5fdd333921f998b1c18eb713185143"
+      },
+      {
+        "source": "/tmp/ifc-7186-visible-proposal-control/packages/wasm/pkg/package.json",
+        "destination": "/tmp/ifc-7249-canonical-main565/packages/wasm/pkg/package.json",
+        "sha256": "10f68fc85e7a0c3f9cf57d1343f9909a5220c2711d98a454cc0b04b59a38cf45"
+      }
+    ]
+  },
+  "actualInTestRuntime": [
+    {
+      "side": "baseline",
+      "rows": 4,
+      "pairedPids": 2,
+      "actualHashes": {
+        "packages/wasm/pkg/ifc-lite_bg.wasm": "1548ae57020949abff44f96d2b9f23bc0864b2553c97db99abc14162e603e569",
+        "packages/wasm/pkg/ifc-lite.js": "0a281479eb65141ae75aeef987d331d44439741a0cae855f122e53e800311a39",
+        "packages/wasm/pkg/ifc-lite.d.ts": "54c9d0a52eb515e517d76726fefe5f6a63e553a81c1b10331a597965d14620f6"
+      },
+      "source": "qualification/baseline-runtime.jsonl"
+    },
+    {
+      "side": "candidate",
+      "rows": 4,
+      "pairedPids": 2,
+      "actualHashes": {
+        "packages/wasm/pkg/ifc-lite_bg.wasm": "1548ae57020949abff44f96d2b9f23bc0864b2553c97db99abc14162e603e569",
+        "packages/wasm/pkg/ifc-lite.js": "0a281479eb65141ae75aeef987d331d44439741a0cae855f122e53e800311a39",
+        "packages/wasm/pkg/ifc-lite.d.ts": "54c9d0a52eb515e517d76726fefe5f6a63e553a81c1b10331a597965d14620f6"
+      },
+      "source": "qualification/candidate-runtime.jsonl"
+    }
+  ],
+  "stages": [
+    {
+      "stage": "canonical-main-baseline",
+      "command": [
+        "pnpm",
+        "test",
+        "--filter=@ifc-lite/viewer",
+        "--env-mode=loose",
+        "--concurrency=1"
+      ],
+      "started": "2026-10-08T18:28:28.040359+00:00",
+      "runtimeBefore": {
+        "packages/wasm/pkg/ifc-lite_bg.wasm": "8b74229bbd4a991cbf1f32a8d52add195c5fdd333921f998b1c18eb713185143",
+        "packages/wasm/pkg/ifc-lite.js": "0a281479eb65141ae75aeef987d331d44439741a0cae855f122e53e800311a39",
+        "packages/wasm/pkg/ifc-lite.d.ts": "54c9d0a52eb515e517d76726fefe5f6a63e553a81c1b10331a597965d14620f6"
+      },
+      "exitCode": 0,
+      "ended": "2026-10-08T18:30:00.039172+00:00",
+      "runtimeAfter": {
+        "packages/wasm/pkg/ifc-lite_bg.wasm": "1548ae57020949abff44f96d2b9f23bc0864b2553c97db99abc14162e603e569",
+        "packages/wasm/pkg/ifc-lite.js": "0a281479eb65141ae75aeef987d331d44439741a0cae855f122e53e800311a39",
+        "packages/wasm/pkg/ifc-lite.d.ts": "54c9d0a52eb515e517d76726fefe5f6a63e553a81c1b10331a597965d14620f6"
+      },
+      "logSHA256": "1b9c51057aad5b3ab21ca5712444fcbab8ccdcd2132facbd1dc658db57c6ad29"
+    },
+    {
+      "stage": "candidate-integration",
+      "command": [
+        "pnpm",
+        "test",
+        "--filter=@ifc-lite/viewer",
+        "--env-mode=loose",
+        "--concurrency=1"
+      ],
+      "started": "2026-10-08T18:30:00.052485+00:00",
+      "runtimeBefore": {
+        "packages/wasm/pkg/ifc-lite_bg.wasm": "1548ae57020949abff44f96d2b9f23bc0864b2553c97db99abc14162e603e569",
+        "packages/wasm/pkg/ifc-lite.js": "0a281479eb65141ae75aeef987d331d44439741a0cae855f122e53e800311a39",
+        "packages/wasm/pkg/ifc-lite.d.ts": "54c9d0a52eb515e517d76726fefe5f6a63e553a81c1b10331a597965d14620f6"
+      },
+      "exitCode": 0,
+      "ended": "2026-10-08T18:31:33.137618+00:00",
+      "runtimeAfter": {
+        "packages/wasm/pkg/ifc-lite_bg.wasm": "1548ae57020949abff44f96d2b9f23bc0864b2553c97db99abc14162e603e569",
+        "packages/wasm/pkg/ifc-lite.js": "0a281479eb65141ae75aeef987d331d44439741a0cae855f122e53e800311a39",
+        "packages/wasm/pkg/ifc-lite.d.ts": "54c9d0a52eb515e517d76726fefe5f6a63e553a81c1b10331a597965d14620f6"
+      },
+      "logSHA256": "599261b47bd2187fa5f967d183899cb116aee7cc00ab3c6243e98946da908e6b"
+    },
+    {
+      "stage": "full-root-typecheck",
+      "command": [
+        "pnpm",
+        "typecheck"
+      ],
+      "started": "2026-10-08T18:31:33.143862+00:00",
+      "runtimeBefore": {
+        "packages/wasm/pkg/ifc-lite_bg.wasm": "1548ae57020949abff44f96d2b9f23bc0864b2553c97db99abc14162e603e569",
+        "packages/wasm/pkg/ifc-lite.js": "0a281479eb65141ae75aeef987d331d44439741a0cae855f122e53e800311a39",
+        "packages/wasm/pkg/ifc-lite.d.ts": "54c9d0a52eb515e517d76726fefe5f6a63e553a81c1b10331a597965d14620f6"
+      },
+      "exitCode": 0,
+      "ended": "2026-10-08T18:33:03.890363+00:00",
+      "runtimeAfter": {
+        "packages/wasm/pkg/ifc-lite_bg.wasm": "8b74229bbd4a991cbf1f32a8d52add195c5fdd333921f998b1c18eb713185143",
+        "packages/wasm/pkg/ifc-lite.js": "0a281479eb65141ae75aeef987d331d44439741a0cae855f122e53e800311a39",
+        "packages/wasm/pkg/ifc-lite.d.ts": "54c9d0a52eb515e517d76726fefe5f6a63e553a81c1b10331a597965d14620f6"
+      },
+      "logSHA256": "cc697d5b8c413449258a9556ba429ddf5a45bb999e9be1f03dd8544a0d6c2650"
+    },
+    {
+      "stage": "source-text",
+      "command": [
+        "node",
+        "scripts/check-source-text-assertions.mjs"
+      ],
+      "started": "2026-10-08T18:33:03.903151+00:00",
+      "runtimeBefore": {
+        "packages/wasm/pkg/ifc-lite_bg.wasm": "8b74229bbd4a991cbf1f32a8d52add195c5fdd333921f998b1c18eb713185143",
+        "packages/wasm/pkg/ifc-lite.js": "0a281479eb65141ae75aeef987d331d44439741a0cae855f122e53e800311a39",
+        "packages/wasm/pkg/ifc-lite.d.ts": "54c9d0a52eb515e517d76726fefe5f6a63e553a81c1b10331a597965d14620f6"
+      },
+      "exitCode": 0,
+      "ended": "2026-10-08T18:33:10.708294+00:00",
+      "runtimeAfter": {
+        "packages/wasm/pkg/ifc-lite_bg.wasm": "8b74229bbd4a991cbf1f32a8d52add195c5fdd333921f998b1c18eb713185143",
+        "packages/wasm/pkg/ifc-lite.js": "0a281479eb65141ae75aeef987d331d44439741a0cae855f122e53e800311a39",
+        "packages/wasm/pkg/ifc-lite.d.ts": "54c9d0a52eb515e517d76726fefe5f6a63e553a81c1b10331a597965d14620f6"
+      },
+      "logSHA256": "b707d8f67f3f9efcd72198a507fb492b20f7bdc461b3edeb40f5e1fe572a9501"
+    },
+    {
+      "stage": "wiring",
+      "command": [
+        "node",
+        "scripts/check-test-wiring.mjs"
+      ],
+      "started": "2026-10-08T18:33:10.715464+00:00",
+      "runtimeBefore": {
+        "packages/wasm/pkg/ifc-lite_bg.wasm": "8b74229bbd4a991cbf1f32a8d52add195c5fdd333921f998b1c18eb713185143",
+        "packages/wasm/pkg/ifc-lite.js": "0a281479eb65141ae75aeef987d331d44439741a0cae855f122e53e800311a39",
+        "packages/wasm/pkg/ifc-lite.d.ts": "54c9d0a52eb515e517d76726fefe5f6a63e553a81c1b10331a597965d14620f6"
+      },
+      "exitCode": 0,
+      "ended": "2026-10-08T18:33:11.028659+00:00",
+      "runtimeAfter": {
+        "packages/wasm/pkg/ifc-lite_bg.wasm": "8b74229bbd4a991cbf1f32a8d52add195c5fdd333921f998b1c18eb713185143",
+        "packages/wasm/pkg/ifc-lite.js": "0a281479eb65141ae75aeef987d331d44439741a0cae855f122e53e800311a39",
+        "packages/wasm/pkg/ifc-lite.d.ts": "54c9d0a52eb515e517d76726fefe5f6a63e553a81c1b10331a597965d14620f6"
+      },
+      "logSHA256": "41e9eb8de4eb493a9247c869033610dd424f4f7dd01c0d422f61bf691c9883a2"
+    },
+    {
+      "stage": "module",
+      "command": [
+        "node",
+        "scripts/check-module-size.mjs"
+      ],
+      "started": "2026-10-08T18:33:11.034902+00:00",
+      "runtimeBefore": {
+        "packages/wasm/pkg/ifc-lite_bg.wasm": "8b74229bbd4a991cbf1f32a8d52add195c5fdd333921f998b1c18eb713185143",
+        "packages/wasm/pkg/ifc-lite.js": "0a281479eb65141ae75aeef987d331d44439741a0cae855f122e53e800311a39",
+        "packages/wasm/pkg/ifc-lite.d.ts": "54c9d0a52eb515e517d76726fefe5f6a63e553a81c1b10331a597965d14620f6"
+      },
+      "exitCode": 0,
+      "ended": "2026-10-08T18:33:12.687419+00:00",
+      "runtimeAfter": {
+        "packages/wasm/pkg/ifc-lite_bg.wasm": "8b74229bbd4a991cbf1f32a8d52add195c5fdd333921f998b1c18eb713185143",
+        "packages/wasm/pkg/ifc-lite.js": "0a281479eb65141ae75aeef987d331d44439741a0cae855f122e53e800311a39",
+        "packages/wasm/pkg/ifc-lite.d.ts": "54c9d0a52eb515e517d76726fefe5f6a63e553a81c1b10331a597965d14620f6"
+      },
+      "logSHA256": "c8148df01ce87fe70c8ecf4b9c1efe478a89ab5e6094c92a5f073d47f34a6642"
+    },
+    {
+      "stage": "MPL",
+      "command": [
+        "node",
+        "scripts/add-license-headers.mjs",
+        "--check"
+      ],
+      "started": "2026-10-08T18:33:12.694000+00:00",
+      "runtimeBefore": {
+        "packages/wasm/pkg/ifc-lite_bg.wasm": "8b74229bbd4a991cbf1f32a8d52add195c5fdd333921f998b1c18eb713185143",
+        "packages/wasm/pkg/ifc-lite.js": "0a281479eb65141ae75aeef987d331d44439741a0cae855f122e53e800311a39",
+        "packages/wasm/pkg/ifc-lite.d.ts": "54c9d0a52eb515e517d76726fefe5f6a63e553a81c1b10331a597965d14620f6"
+      },
+      "exitCode": 0,
+      "ended": "2026-10-08T18:33:13.014830+00:00",
+      "runtimeAfter": {
+        "packages/wasm/pkg/ifc-lite_bg.wasm": "8b74229bbd4a991cbf1f32a8d52add195c5fdd333921f998b1c18eb713185143",
+        "packages/wasm/pkg/ifc-lite.js": "0a281479eb65141ae75aeef987d331d44439741a0cae855f122e53e800311a39",
+        "packages/wasm/pkg/ifc-lite.d.ts": "54c9d0a52eb515e517d76726fefe5f6a63e553a81c1b10331a597965d14620f6"
+      },
+      "logSHA256": "c81ccd760ababa376a32a6be4538cad0c3741eecf462b3e45cd7120babfceac5"
+    },
+    {
+      "stage": "raw",
+      "command": [
+        "node",
+        "scripts/check-raw-entity-enumeration.mjs"
+      ],
+      "started": "2026-10-08T18:33:13.021274+00:00",
+      "runtimeBefore": {
+        "packages/wasm/pkg/ifc-lite_bg.wasm": "8b74229bbd4a991cbf1f32a8d52add195c5fdd333921f998b1c18eb713185143",
+        "packages/wasm/pkg/ifc-lite.js": "0a281479eb65141ae75aeef987d331d44439741a0cae855f122e53e800311a39",
+        "packages/wasm/pkg/ifc-lite.d.ts": "54c9d0a52eb515e517d76726fefe5f6a63e553a81c1b10331a597965d14620f6"
+      },
+      "exitCode": 0,
+      "ended": "2026-10-08T18:33:16.797616+00:00",
+      "runtimeAfter": {
+        "packages/wasm/pkg/ifc-lite_bg.wasm": "8b74229bbd4a991cbf1f32a8d52add195c5fdd333921f998b1c18eb713185143",
+        "packages/wasm/pkg/ifc-lite.js": "0a281479eb65141ae75aeef987d331d44439741a0cae855f122e53e800311a39",
+        "packages/wasm/pkg/ifc-lite.d.ts": "54c9d0a52eb515e517d76726fefe5f6a63e553a81c1b10331a597965d14620f6"
+      },
+      "logSHA256": "79b537d5c8a74f531865e84e09b791db3b1be191078ca589135d249b4419532e"
+    },
+    {
+      "stage": "CI-path-coverage",
+      "command": [
+        "node",
+        "scripts/check-ci-path-coverage.mjs"
+      ],
+      "started": "2026-10-08T18:33:16.803810+00:00",
+      "runtimeBefore": {
+        "packages/wasm/pkg/ifc-lite_bg.wasm": "8b74229bbd4a991cbf1f32a8d52add195c5fdd333921f998b1c18eb713185143",
+        "packages/wasm/pkg/ifc-lite.js": "0a281479eb65141ae75aeef987d331d44439741a0cae855f122e53e800311a39",
+        "packages/wasm/pkg/ifc-lite.d.ts": "54c9d0a52eb515e517d76726fefe5f6a63e553a81c1b10331a597965d14620f6"
+      },
+      "exitCode": 0,
+      "ended": "2026-10-08T18:33:17.200776+00:00",
+      "runtimeAfter": {
+        "packages/wasm/pkg/ifc-lite_bg.wasm": "8b74229bbd4a991cbf1f32a8d52add195c5fdd333921f998b1c18eb713185143",
+        "packages/wasm/pkg/ifc-lite.js": "0a281479eb65141ae75aeef987d331d44439741a0cae855f122e53e800311a39",
+        "packages/wasm/pkg/ifc-lite.d.ts": "54c9d0a52eb515e517d76726fefe5f6a63e553a81c1b10331a597965d14620f6"
+      },
+      "logSHA256": "ea4d701abc84043e1dde874b36b0b8e16646d39f4020361ea400069651805129"
+    },
+    {
+      "stage": "touched-oxlint",
+      "command": [
+        "pnpm",
+        "exec",
+        "oxlint",
+        "apps/viewer/src/components/viewer/tools/Measure.i18n.test.tsx"
+      ],
+      "started": "2026-10-08T18:33:17.207019+00:00",
+      "runtimeBefore": {
+        "packages/wasm/pkg/ifc-lite_bg.wasm": "8b74229bbd4a991cbf1f32a8d52add195c5fdd333921f998b1c18eb713185143",
+        "packages/wasm/pkg/ifc-lite.js": "0a281479eb65141ae75aeef987d331d44439741a0cae855f122e53e800311a39",
+        "packages/wasm/pkg/ifc-lite.d.ts": "54c9d0a52eb515e517d76726fefe5f6a63e553a81c1b10331a597965d14620f6"
+      },
+      "exitCode": 0,
+      "ended": "2026-10-08T18:33:17.500479+00:00",
+      "runtimeAfter": {
+        "packages/wasm/pkg/ifc-lite_bg.wasm": "8b74229bbd4a991cbf1f32a8d52add195c5fdd333921f998b1c18eb713185143",
+        "packages/wasm/pkg/ifc-lite.js": "0a281479eb65141ae75aeef987d331d44439741a0cae855f122e53e800311a39",
+        "packages/wasm/pkg/ifc-lite.d.ts": "54c9d0a52eb515e517d76726fefe5f6a63e553a81c1b10331a597965d14620f6"
+      },
+      "logSHA256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "stage": "diff",
+      "command": [
+        "git",
+        "diff",
+        "--check",
+        "565dc3f523c69bc24ba94c8e4f491049fc4c6fb0",
+        "--",
+        "apps/viewer/src/components/viewer/tools/Measure.i18n.test.tsx"
+      ],
+      "started": "2026-10-08T18:33:17.506510+00:00",
+      "runtimeBefore": {
+        "packages/wasm/pkg/ifc-lite_bg.wasm": "8b74229bbd4a991cbf1f32a8d52add195c5fdd333921f998b1c18eb713185143",
+        "packages/wasm/pkg/ifc-lite.js": "0a281479eb65141ae75aeef987d331d44439741a0cae855f122e53e800311a39",
+        "packages/wasm/pkg/ifc-lite.d.ts": "54c9d0a52eb515e517d76726fefe5f6a63e553a81c1b10331a597965d14620f6"
+      },
+      "exitCode": 0,
+      "ended": "2026-10-08T18:33:17.741930+00:00",
+      "runtimeAfter": {
+        "packages/wasm/pkg/ifc-lite_bg.wasm": "8b74229bbd4a991cbf1f32a8d52add195c5fdd333921f998b1c18eb713185143",
+        "packages/wasm/pkg/ifc-lite.js": "0a281479eb65141ae75aeef987d331d44439741a0cae855f122e53e800311a39",
+        "packages/wasm/pkg/ifc-lite.d.ts": "54c9d0a52eb515e517d76726fefe5f6a63e553a81c1b10331a597965d14620f6"
+      },
+      "logSHA256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  ],
+  "historicalEvidence": "Existing tests/evidence/measure-localization-7184 qualification was based4b; its earlier baseline assertion failures and runs are historical, not currentmain565 inverse/evidence.",
+  "rawArchives": [
+    {
+      "originalPath": "/home/louistrue/.t3/artifacts/7249-canonical-main565-integration-20261008/offline-install.log",
+      "archivePath": "raw/offline-install.log.gz",
+      "originalBytes": 1730,
+      "originalSHA256": "59bf1eaa23fd87f1e9a1182f57a2740a54be884f2fbf3aa6790ce01c82c659ff",
+      "gzipBytes": 747,
+      "gzipSHA256": "a15f5ba3db3a09e2b84cfdf0ba8f10b15aace2825af3ec97a23c815b2be4152b"
+    },
+    {
+      "originalPath": "/home/louistrue/.t3/artifacts/7249-canonical-main565-integration-20261008/qualification/CI-path-coverage.log",
+      "archivePath": "raw/qualification/CI-path-coverage.log.gz",
+      "originalBytes": 155,
+      "originalSHA256": "ea4d701abc84043e1dde874b36b0b8e16646d39f4020361ea400069651805129",
+      "gzipBytes": 150,
+      "gzipSHA256": "b49e5bd68519b12264207fb9ae1720a391aaa0c5f6133335e8a48c3d90ec6ab6"
+    },
+    {
+      "originalPath": "/home/louistrue/.t3/artifacts/7249-canonical-main565-integration-20261008/qualification/MPL.log",
+      "archivePath": "raw/qualification/MPL.log.gz",
+      "originalBytes": 171,
+      "originalSHA256": "c81ccd760ababa376a32a6be4538cad0c3741eecf462b3e45cd7120babfceac5",
+      "gzipBytes": 156,
+      "gzipSHA256": "b787ed908e5524a3a59a7686604a9716864a4daa3dab012b07653283d013e980"
+    },
+    {
+      "originalPath": "/home/louistrue/.t3/artifacts/7249-canonical-main565-integration-20261008/qualification/candidate-integration.log",
+      "archivePath": "raw/qualification/candidate-integration.log.gz",
+      "originalBytes": 89537,
+      "originalSHA256": "599261b47bd2187fa5f967d183899cb116aee7cc00ab3c6243e98946da908e6b",
+      "gzipBytes": 18469,
+      "gzipSHA256": "d931221c4558b04b4cecea5fbded2e2454b21c07dbe92c7c0c2a464b6cbe1003"
+    },
+    {
+      "originalPath": "/home/louistrue/.t3/artifacts/7249-canonical-main565-integration-20261008/qualification/canonical-main-baseline.log",
+      "archivePath": "raw/qualification/canonical-main-baseline.log.gz",
+      "originalBytes": 89803,
+      "originalSHA256": "1b9c51057aad5b3ab21ca5712444fcbab8ccdcd2132facbd1dc658db57c6ad29",
+      "gzipBytes": 18331,
+      "gzipSHA256": "7dd083b5c3a6fcf7b71b95e26891e180f4ea5b72fcc07a0a67229e6d1cc8244e"
+    },
+    {
+      "originalPath": "/home/louistrue/.t3/artifacts/7249-canonical-main565-integration-20261008/qualification/diff.log",
+      "archivePath": "raw/qualification/diff.log.gz",
+      "originalBytes": 0,
+      "originalSHA256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "gzipBytes": 20,
+      "gzipSHA256": "9ceffb7310338057cfe71a4ae1e2c98d2c485d81cdef906532a801f457a38d64"
+    },
+    {
+      "originalPath": "/home/louistrue/.t3/artifacts/7249-canonical-main565-integration-20261008/qualification/full-root-typecheck.log",
+      "archivePath": "raw/qualification/full-root-typecheck.log.gz",
+      "originalBytes": 49558,
+      "originalSHA256": "cc697d5b8c413449258a9556ba429ddf5a45bb999e9be1f03dd8544a0d6c2650",
+      "gzipBytes": 7538,
+      "gzipSHA256": "c00c9160fc8e85949dbe7abd8566c5ddfb85b429df9ea96501196a5152f4097c"
+    },
+    {
+      "originalPath": "/home/louistrue/.t3/artifacts/7249-canonical-main565-integration-20261008/qualification/module.log",
+      "archivePath": "raw/qualification/module.log.gz",
+      "originalBytes": 12782,
+      "originalSHA256": "c8148df01ce87fe70c8ecf4b9c1efe478a89ab5e6094c92a5f073d47f34a6642",
+      "gzipBytes": 2151,
+      "gzipSHA256": "c5a44bc6c2a58798e15f0e96489533c325b3bfb0a0d1963a6a011c534e07856b"
+    },
+    {
+      "originalPath": "/home/louistrue/.t3/artifacts/7249-canonical-main565-integration-20261008/qualification/raw.log",
+      "archivePath": "raw/qualification/raw.log.gz",
+      "originalBytes": 46862,
+      "originalSHA256": "79b537d5c8a74f531865e84e09b791db3b1be191078ca589135d249b4419532e",
+      "gzipBytes": 10284,
+      "gzipSHA256": "9166d6c6897e412068cd19180813ee63c7c472c66354b5a1662af6472fe7e981"
+    },
+    {
+      "originalPath": "/home/louistrue/.t3/artifacts/7249-canonical-main565-integration-20261008/qualification/source-text.log",
+      "archivePath": "raw/qualification/source-text.log.gz",
+      "originalBytes": 30991,
+      "originalSHA256": "b707d8f67f3f9efcd72198a507fb492b20f7bdc461b3edeb40f5e1fe572a9501",
+      "gzipBytes": 3000,
+      "gzipSHA256": "5f85d8736583ef795a3c2483c30e475a946c6673c0766c1a0ca82db358da6233"
+    },
+    {
+      "originalPath": "/home/louistrue/.t3/artifacts/7249-canonical-main565-integration-20261008/qualification/touched-oxlint.log",
+      "archivePath": "raw/qualification/touched-oxlint.log.gz",
+      "originalBytes": 0,
+      "originalSHA256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "gzipBytes": 20,
+      "gzipSHA256": "9ceffb7310338057cfe71a4ae1e2c98d2c485d81cdef906532a801f457a38d64"
+    },
+    {
+      "originalPath": "/home/louistrue/.t3/artifacts/7249-canonical-main565-integration-20261008/qualification/wiring.log",
+      "archivePath": "raw/qualification/wiring.log.gz",
+      "originalBytes": 859,
+      "originalSHA256": "41e9eb8de4eb493a9247c869033610dd424f4f7dd01c0d422f61bf691c9883a2",
+      "gzipBytes": 395,
+      "gzipSHA256": "9ece3f3673214f173ee8ae717aeffef5da23dd44a8503ab3c48afdd4730ba8a4"
+    }
+  ],
+  "indexedFiles": [
+    {
+      "path": "source-preflight.json",
+      "bytes": 2626,
+      "sha256": "9d976cdff33b6badb2017140f08c265c07c0b78f9a23cfa19c6be80d049fdbee"
+    },
+    {
+      "path": "runtime-preparation.json",
+      "bytes": 1008,
+      "sha256": "422b0d62af7154a882f13634baddbb746f10b3a3c20dfea601f883ee0b7d29b6"
+    },
+    {
+      "path": "measure-integration.diff",
+      "bytes": 6817,
+      "sha256": "a3173b036c98e6e0ae723851320e5701d9927613c8af33abf4b15448ad01a742"
+    },
+    {
+      "path": "qualification/result.json",
+      "bytes": 12466,
+      "sha256": "ba57416f165399dd99c5992d89e01daa7b9cbf5920b2915c4dfcea988cf757c6"
+    },
+    {
+      "path": "qualification/restoration.json",
+      "bytes": 94,
+      "sha256": "70e370ce03912c64527d6b30f108f5ddfeacb4c9192ee621dfb4d4950bc52ffb"
+    },
+    {
+      "path": "qualification/baseline-runtime.jsonl",
+      "bytes": 2348,
+      "sha256": "6beceaa9d6a226498164c4987fe114389b1a7b678cefd9aa80fa63c8b4b5a4ea"
+    },
+    {
+      "path": "qualification/candidate-runtime.jsonl",
+      "bytes": 2348,
+      "sha256": "6731a5c138067c6423c97996dd055a7c05a7a102246df36343e6b5c59a10e243"
+    }
+  ],
+  "publication": "Held for parent independent archive verification; no push/body/merge."
+}

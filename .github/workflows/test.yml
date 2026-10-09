@@ -341,6 +341,9 @@ jobs:
               - 'examples/**'
               - 'packages/**'
               - 'tests/e2e/**'
+              # Perf tools consume benchmark helpers; the CI path-coverage mirror
+              # reads every tracked benchmark input, so all must trigger Node tests.
+              - 'tests/benchmark/**'
               - 'playwright.config.ts'
               # The relay handlers and their tests. `pnpm test:api` runs in this
               # job, so without these a PR touching ONLY the relay skips the one
@@ -2740,11 +2743,10 @@ jobs:
   perf-ratchet:
     name: Perf ratchet ceilings
     needs: [changes, build, native-instructions]
-    # `always()` because `native-instructions` is skipped on frontend-only
-    # changes, which would otherwise skip this job too. A FAILED measurement
-    # job skips the gate here and goes red in the aggregate instead.
+    # An explicit status predicate permits skipped native measurements and retires
+    # cancelled runs (#7247). Failed measurements remain red in the aggregate.
     if: >-
-      always() && needs.build.result == 'success'
+      !cancelled() && needs.build.result == 'success'
       && (needs.native-instructions.result == 'success' || needs.native-instructions.result == 'skipped')
       && (needs.changes.outputs.rust == 'true' || needs.changes.outputs.frontend == 'true' || needs.changes.outputs.perf_ratchet == 'true')
     runs-on: ubuntu-latest
@@ -2819,7 +2821,8 @@ jobs:
   test:
     name: Build + WASM + Rust + Node
     needs: [changes, build, revert-oracle, typecheck, lint, node-tests, provenance-tests, viewer-tests, viewer-e2e, rust-tests, rust-full, rust-semver, geometry-census, csg-accept-gates, plato-check, docs-checks, docs-site, agents-md, license-headers, native-instructions, perf-ratchet]
-    if: always()
+    # Preserve failed/skipped dependency judgement, but retire cancelled workflows (#7247).
+    if: ${{ !cancelled() }}
     # Free runner — the gate just inspects upstream job results.
     runs-on: ${{ (vars.SELF_HOSTED_CI == 'true' && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.draft == false && !contains(github.event.pull_request.labels.*.name, 'ci:hosted')))) && fromJSON('["self-hosted","linux","x64","ifclite"]') || 'ubuntu-latest' }}
     timeout-minutes: 5

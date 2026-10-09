@@ -524,29 +524,19 @@ export function PropertiesPanel() {
     return effectiveQuantitySets(mutationView, expressId, (baseId) => (baseId === expressId ? entityNode : modelQuery?.entity(baseId))?.quantities() ?? []);
   }, [entityNode, modelQuery, selectedEntity, mutationViews, mutationVersion]);
 
-  /**
-   * The occurrence's quantity sets followed by those it INHERITS from its
-   * `IfcTypeObject` (#1745/#1755), for the zone volume breakdown (#2508).
-   *
-   * Appended rather than merged in place, because `declaredVolumeBases` keeps
-   * the FIRST value it sees per basis: the occurrence therefore still wins for
-   * any basis it declares, and the type only fills a basis the occurrence is
-   * silent on. Without this, a door whose `NetVolume` lives only on its type —
-   * the common case for catalogue-driven exports — showed a mesh basis alone
-   * and looked like a file that declares nothing.
-   *
-   * Both parse paths are served: the on-demand extractor walks STEP source and
-   * returns `null` when there is none, which is every server-parsed store, so
-   * that path reads the prebuilt table keyed by the TYPE's express id — the
-   * same split `lib/lists/adapter.ts` makes.
-   */
+  /** Occurrence quantities remain first (#2508). Type assignments and native
+   * quantity attributes follow the current view, including direct revisions
+   * that do not publish mutationVersion (#7353). Source-free models retain
+   * the existing prebuilt type-table branch. */
+  const inheritedQuantityView = mutationViews.get(selectedEntity?.modelId === 'legacy' ? '__legacy__' : selectedEntity?.modelId ?? '__legacy__');
+  const inheritedQuantityRevision = inheritedQuantityView?.getMutationRevision();
   const quantitiesWithInheritedType = useMemo(() => withInheritedTypeQuantities(
     quantities,
     (model?.ifcDataStore ?? ifcDataStore) as IfcDataStore | null,
     selectedEntity?.expressId,
     RelationshipType.DefinesByType,
-    (store, id) => extractTypeQuantitiesOnDemand(store as IfcDataStore, id)?.quantities as QuantitySet[] | undefined,
-  ), [quantities, selectedEntity, model, ifcDataStore]);
+    (store, id) => extractTypeQuantitiesOnDemand(store as IfcDataStore, id, inheritedQuantityView)?.quantities as QuantitySet[] | undefined,
+  ), [quantities, selectedEntity, model, ifcDataStore, inheritedQuantityView, inheritedQuantityRevision, mutationVersion]);
 
   // Build attributes array for display - must be before early return to maintain hook order
   // Uses schema-aware extraction to show ALL string/enum attributes for the entity type.

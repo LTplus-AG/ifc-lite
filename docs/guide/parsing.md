@@ -786,3 +786,24 @@ The classification readers accept an optional native mutation view: `extractClas
 `extractMaterialPropertiesOnDemand(store, entityId, view, revision)` uses the same current assignments for generic material property groups. Named edits apply before positional edits, matching exported records. An unset layer `IsVentilated` remains undefined rather than becoming an explicit false value.
 
 `materialAssignmentsAvailable(store, entityId, view)` reports whether the supplied graph and current edits can prove the complete selected material membership. Source-empty transport without membership data, or with relevant edits to unavailable source relationship records, yields `false`; retained source markers and authored records do not establish a complete count. The Assistant reports null totals and unverified source markers in those cases.
+
+
+## Current inherited type quantities
+
+`extractTypeQuantitiesOnDemand(store, expressId)` reads the parsed source snapshot.
+Pass a native mutation view as the optional third argument to follow current
+`IfcRelDefinesByType` assignments and native type quantity attribute edits.
+The shared collector retains its existing quantity type, unit and numeric rules.
+Consumers still append type quantities after occurrence quantities so their own
+declared bases take precedence. Extraction does not write, export, or recompute
+geometry. Source-free stores retain the
+existing prebuilt quantity-table path in their consumers.
+
+```typescript
+import { extractTypeQuantitiesOnDemand, type IfcDataStore } from '@ifc-lite/parser';
+import type { MutablePropertyView } from '@ifc-lite/mutations';
+
+function currentTypeQuantities(store: IfcDataStore, expressId: number, view: MutablePropertyView) {
+  return extractTypeQuantitiesOnDemand(store, expressId, view)?.quantities ?? [];
+}
+```

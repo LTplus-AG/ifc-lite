@@ -128,7 +128,7 @@ test(alsoEditProperty
  view.setPositionalAttribute(a.qto, 3, 'Exact source set description');
  view.setPositionalAttribute(a.qto, 4, 'Exact source measurement method');
  view.setPositionalAttribute(a.qto, 5, [`#${a.volume}`, `#${complex}`]);
- const property = editor.addEntity('IfcPropertySingleValue', ['Unrelated property', null, { typed: 'IFCTEXT', value: 'Retain exact source value' }, null]).expressId;
+ const property = editor.addEntity('IfcPropertySingleValue', ['Unrelated property', null, { typed: { type: 'IfcText', value: 'Retain exact source value' } }, null]).expressId;
  const pset = editor.addEntity('IfcPropertySet', [generateIfcGuid(), typeof owner === 'number' ? `#${owner}` : null,
   'Qto_WallBaseQuantities', 'Same name as the quantity set', [`#${property}`]]).expressId;
  view.setPositionalAttribute(a.type, 5, [`#${pset}`, `#${a.qto}`]);

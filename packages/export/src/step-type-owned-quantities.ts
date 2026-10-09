@@ -75,7 +75,7 @@ export function collectTypeQuantitySources(
     }
     activeSets.push(qset);
     selected.push(source ? { ...source, unitSymbols: new Map(canonical.find(set => set.globalId === source.entity.attributes[0])
-      ?.quantities.map(quantity => [quantity.name, quantity.unit]) ?? []) } : undefined);
+      ?.quantities.map(quantity => [quantity.name, quantity.explicitUnit]) ?? []) } : undefined);
   }
   pass.typeOwnedQuantityIdsByEntity.set(entityId, replacements);
   pass.addedTypeOwnedQuantityIds.set(entityId, []);

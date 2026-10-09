@@ -3,18 +3,17 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { createWindowsCpuFixture, literal } from './frame-gpu-cpu-fixture.mjs';
+import { createWindowsCpuFixture, windowsCpuUnavailable, literal } from './frame-gpu-cpu-fixture.mjs';
 
 // #7036/#7221: actual Win32 Job APIs and exclusively owned compiled CPU fixtures.
 // No Chrome, renderer, GPU, or performance workload is launched by this test.
-const probe = spawnSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', '$PSVersionTable.PSVersion.Major'], { encoding: 'utf8', timeout: 10000 });
-const skip = probe.error || probe.status !== 0 ? 'Actual Windows Job execution unavailable; lifetime containment unqualified' : false;
+const skip = windowsCpuUnavailable();
 for (const mode of ['failed-start-receipt', 'existing-job-refusal', 'root-exit-orphan', 'kill-on-last-close']) {
-  test(`#7036 actual owned CPU Job contains children after parent exit (${mode})`, { skip, timeout: 45000 }, () => {
-    const { dir, win, executable, commandLine } = createWindowsCpuFixture('controller-orphan');
+  test(`#7036 actual owned CPU Job contains children after parent exit (${mode})`, { skip, timeout: 45000 }, context => {
+    const { dir, win, executable, commandLine } = createWindowsCpuFixture('controller-orphan', undefined, context);
     const marker = `${win}\\child.json`;
     const rootMarker = `${win}\\root.started`;
     const script = `$ErrorActionPreference='Stop'; Add-Type -Path @(${literal(win + '\\frame-gpu-job.cs')},${literal(win + '\\frame-gpu-process-identity.cs')});
@@ -75,7 +74,6 @@ finally {
     const rawReceipt = JSON.stringify({ mode, fixtureDirectory: dir, status: result.status, error: result.error?.message, stdout: result.stdout, stderr: result.stderr }, null, 2);
     writeFileSync(join(dir, 'receipt.json'), rawReceipt);
     const evidence = process.env.IFC_JOB_EVIDENCE_DIR;
-    if (evidence) { mkdirSync(evidence, { recursive: true }); writeFileSync(join(evidence, mode + '.json'), rawReceipt, { flag: 'wx' }); }
     assert.equal(result.status, 0, `Retained ${dir}: ${result.stderr}`);
     const receipt = JSON.parse(result.stdout.trim());
     assert.equal(receipt.ok, true, `Retained ${dir}: ${JSON.stringify(receipt)}`);
@@ -87,7 +85,7 @@ finally {
       assert.match(receipt.failedJobName, /^Local\\ifclite-failed-cpu-[a-f0-9]{32}$/);
       assert.ok([2, 3].includes(receipt.sourceNativeCode), JSON.stringify(receipt));
       assert.equal(receipt.markerAbsent, true);
-      rmSync(dir, { recursive: true, force: true });
+      if (!evidence) rmSync(dir, { recursive: true, force: true });
       return;
     }
     assert.equal(receipt.suspendedMarkerAbsent, true);
@@ -104,6 +102,6 @@ finally {
     assert.match(childIdentity.started, /^[1-9][0-9]+$/);
     assert.equal(receipt.childTerminated, true);
     if (mode !== 'kill-on-last-close') assert.deepEqual(receipt.activeAfterTerminate, []);
-    rmSync(dir, { recursive: true, force: true });
+    if (!evidence) rmSync(dir, { recursive: true, force: true });
   });
 }

@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -106,6 +106,11 @@ export function runPlan(plan, root, label, log = console.log) {
   let runnerArgs = recordsExecution
     ? [...command.prefix, '--test-reporter=tap', ...plan.runner.args]
     : [...command.prefix, ...plan.runner.args];
+  // #7221: each actual invocation has its own external native receipt scope.
+  const evidenceRoot = process.env.IFC_JOB_EVIDENCE_ROOT;
+  if (evidenceRoot) mkdirSync(evidenceRoot, { recursive: true });
+  const jobEvidenceDir = evidenceRoot && recordsExecution
+    ? mkdtempSync(join(evidenceRoot, `${label.replace(/[^a-zA-Z0-9_-]/g, '_')}-`)) : null;
   const spawnOptions = {
     cwd,
     encoding: 'utf8',
@@ -116,6 +121,7 @@ export function runPlan(plan, root, label, log = console.log) {
       CI: '1',
       FORCE_COLOR: '0',
       NO_COLOR: '1',
+      ...(jobEvidenceDir ? { IFC_JOB_EVIDENCE_DIR: jobEvidenceDir } : {}),
       ...(coverageDir ? { NODE_V8_COVERAGE: coverageDir } : {}),
     },
   };
@@ -167,6 +173,11 @@ export function runPlan(plan, root, label, log = console.log) {
     wheel?.cleanup();
   }
   if (!run) throw new Error(`runner did not produce a process result: ${executionEvidenceError ?? 'unknown error'}`);
+  plan.onOutput?.({ jobEvidenceDir, stdout: run.stdout ?? '', stderr: run.stderr ?? '', exitCode: run.status, signal: run.signal ?? null, spawnError: run.error?.message ?? null });
+  if (process.env.IFC_LITE_ORACLE_RAW_OUTPUT === '1') {
+    if (jobEvidenceDir) log(`  [${label}] actual fixture archive: ${jobEvidenceDir}`);
+    log(run.stdout ?? ''); log(run.stderr ?? '');
+  }
   const parsed = parseRunnerOutput({
     family: plan.runner.family,
     stdout: run.stdout ?? '',

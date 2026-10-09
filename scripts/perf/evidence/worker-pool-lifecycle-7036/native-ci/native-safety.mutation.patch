@@ -1,0 +1,21 @@
+--- a/scripts/perf/frame-gpu-process-identity.cs
++++ b/scripts/perf/frame-gpu-process-identity.cs
+@@ -42,6 +42,7 @@
+     using (process) {
+       IntPtr handle = process.Handle; // Retain this resource through kill + wait.
+       string started = Creation(handle);
++      if (expected != null && started != expected) throw new InvalidOperationException("Exact native process identity mismatch");
+       uint waited = WaitForSingleObject(handle, 0);
+       if (waited != 0 && waited != 258) throw new Win32Exception(Marshal.GetLastWin32Error(), "Observe exact process exit");
+       if (terminate && waited == 258) {
+--- a/scripts/perf/frame-gpu-job.cs
++++ b/scripts/perf/frame-gpu-job.cs
+@@ -79,7 +79,7 @@
+     try {
+       if (Marshal.GetLastWin32Error() == AlreadyExists) throw new InvalidOperationException("Refuse existing job name");
+       ExtendedLimits limits = new ExtendedLimits();
+-      limits.Basic.Flags = 0;
++      limits.Basic.Flags = KillOnClose;
+       Require(SetInformationJobObject(job, 9, ref limits, (uint)Marshal.SizeOf(typeof(ExtendedLimits))), "Set kill-on-close, no breakaway");
+       StartupInfo startup = new StartupInfo(); startup.Size = (uint)Marshal.SizeOf(typeof(StartupInfo));
+       ProcessInfo process;

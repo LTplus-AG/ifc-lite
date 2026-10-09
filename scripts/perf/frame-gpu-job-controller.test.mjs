@@ -6,17 +6,14 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, rmSync, readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { spawnSync } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
 import { tsImport } from 'tsx/esm/api';
-import { createWindowsCpuFixture, powershell, literal } from './frame-gpu-cpu-fixture.mjs';
+import { createWindowsCpuFixture, retainCpuFixture, windowsCpuUnavailable, powershell, literal } from './frame-gpu-cpu-fixture.mjs';
 const { launchOwnedJob, OwnedJobProtocolError } = await tsImport('./frame-gpu-job-controller.ts', import.meta.url);
-const probe = spawnSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command',
-  '[Diagnostics.Process]::GetCurrentProcess().MainModule.FileName'], { encoding: 'utf8', timeout: 10000 });
-const skip = probe.error || probe.status !== 0 ? 'Actual Windows Job protocol unavailable; containment unqualified' : false;
+const skip = windowsCpuUnavailable();
 
-function ownedFixture() {
-  const fixture = createWindowsCpuFixture('controller-orphan');
+function ownedFixture(context) {
+  const fixture = createWindowsCpuFixture('controller-orphan', undefined, context);
   const { dir, win } = fixture;
   const options = { token: randomBytes(16).toString('hex'), executable: fixture.executable, commandLine: fixture.commandLine,
     supervisorWin: win + '\\frame-gpu-job-supervisor.ps1', jobModuleWin: win + '\\frame-gpu-job.cs',
@@ -32,8 +29,8 @@ async function until(predicate, timeoutMs = 15000) {
   throw Error('Actual owned CPU fixture did not reach its asserted state');
 }
 
-test('#7036 actual Job protocol persists before resume and retires an orphan CPU child', { skip, timeout: 60000 }, async () => {
-  const { dir, options, observeExact } = ownedFixture();
+test('#7036 actual Job protocol persists before resume and retires an orphan CPU child', { skip, timeout: 60000 }, async context => {
+  const { dir, options, observeExact } = ownedFixture(context);
   let owner;
   const controller = await launchOwnedJob({ ...options, async persistPrepared(prepared) {
     assert.equal(existsSync(join(dir, 'root.started')), false, 'root is suspended before durable bookkeeping');
@@ -55,13 +52,13 @@ test('#7036 actual Job protocol persists before resume and retires an orphan CPU
       assert.ok(['exited', 'notFound'].includes(observeExact(identity).state), 'exact native identity proves root and child retirement');
     }
   } finally {
-    if (!disposed) await controller.dispose();
-    writeFileSync(join(dir, 'receipt.json'), JSON.stringify({ owner, packets: controller.receipts }, null, 2));
+    try { if (!disposed) await controller.dispose(); }
+    finally { writeFileSync(join(dir, 'receipt.json'), JSON.stringify({ owner, packets: controller.receipts }, null, 2)); }
   }
 });
 
-test('#7036 failed durable Job persistence never resumes the actual suspended CPU root', { skip, timeout: 45000 }, async () => {
-  const { dir, options, observeExact } = ownedFixture();
+test('#7036 failed durable Job persistence never resumes the actual suspended CPU root', { skip, timeout: 45000 }, async context => {
+  const { dir, options, observeExact } = ownedFixture(context);
   let owner;
   await assert.rejects(launchOwnedJob({ ...options, async persistPrepared(prepared) {
     owner = prepared;
@@ -75,8 +72,8 @@ test('#7036 failed durable Job persistence never resumes the actual suspended CP
   assert.ok(['exited', 'notFound'].includes(observation.state), 'failed persistence retires the exact observed suspended root');
 });
 
-test('#7036 actual terminal active-zero acknowledgement cannot hide failed supervisor exit', { skip, timeout: 60000 }, async () => {
-  const { dir, options } = ownedFixture();
+test('#7036 actual terminal active-zero acknowledgement cannot hide failed supervisor exit', { skip, timeout: 60000 }, async context => {
+  const { dir, options } = ownedFixture(context);
   // Execute the actual supervisor and kernel Job lifecycle, then inject a real
   // failing process exit AFTER its terminal acknowledgement. No canned packets.
   const supervisor = join(dir, 'frame-gpu-job-supervisor.ps1');
@@ -114,7 +111,7 @@ test('#7036 actual terminal active-zero acknowledgement cannot hide failed super
 // independent observers prove live identity and wrong-identity kill refusal.
 for (const action of ['observe', 'terminate']) {
   test(`#7221 native ${action} rejects one-tick forged identity and proves actual state`, { skip, timeout: 60000 }, async context => {
-    const fixture = ownedFixture();
+    const fixture = ownedFixture(context);
     context.diagnostic('Owned CPU fixture ' + fixture.dir);
     let owner;
     const observations = [];
@@ -179,8 +176,9 @@ for (const action of ['observe', 'terminate']) {
 // #7221/#7180: actual OS error events on the canonical supervisor spawn.
 // No Windows provider is required; no prepared packets or root can exist.
 for (const [code, errno] of [['ENOENT', -2], ['EACCES', -13]]) {
-  test(`#7221 actual supervisor ${code} records explicit no-start event and matched close`, { timeout: 30000 }, async () => {
+  test(`#7221 actual supervisor ${code} records explicit no-start event and matched close`, { skip: process.platform === 'win32' ? 'POSIX OS errno/permissions; required Linux lane executes this domain' : false, timeout: 30000 }, async context => {
     const dir = mkdtempSync(join(tmpdir(), 'ifc-job-no-start-'));
+    retainCpuFixture(context, dir, { domain: 'POSIX actual no-start', code, errno });
     const bin = join(dir, 'bin');mkdirSync(bin);
     if (code === 'EACCES') writeFileSync(join(bin, 'powershell.exe'), 'not executable', { mode: 0o644 });
     const before = process.env.PATH;process.env.PATH = bin;
@@ -191,6 +189,8 @@ for (const [code, errno] of [['ENOENT', -2], ['EACCES', -13]]) {
         requestMs: 1000, cleanupMs: 1000, lifetimeSeconds: 60,
         async persistPrepared() { assert.fail('A never-started supervisor cannot prepare a root'); },
       }), error => {
+        writeFileSync(join(dir, 'no-start-receipt.json'), JSON.stringify({ receipts: error.receipts, retirement: error.retirement,
+          supervisorNoStart: error.supervisorNoStart, errors: error.errors, error: String(error) }, null, 2));
         assert.ok(error instanceof OwnedJobProtocolError);
         assert.deepEqual(error.receipts, []);
         assert.deepEqual(error.retirement, { code: errno, signal: null });
@@ -199,6 +199,6 @@ for (const [code, errno] of [['ENOENT', -2], ['EACCES', -13]]) {
           && primary.code === code && primary.errno === errno && primary.syscall === 'spawn powershell.exe'), 'Primary actual native OS error remains inspectable');
         return true;
       });
-    } finally { process.env.PATH = before;rmSync(dir, { recursive: true }); }
+    } finally { process.env.PATH = before;if (!process.env.IFC_JOB_EVIDENCE_DIR) rmSync(dir, { recursive: true }); }
   });
 }

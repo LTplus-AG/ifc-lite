@@ -18,13 +18,8 @@
  * being guarded.
  *
  * WHAT IT DOES.
- *   1. Split `git diff <base>...<head>` into production / test / ignored files.
- *   2. Run the branch's own added-or-changed tests. They must be green
- *      (a red baseline proves nothing about the revert).
- *   3. Reverse-apply the production hunks only.
- *   4. Run the same tests again.
- *   5. Restore by FORWARD-applying the identical patch and prove the tree is
- *      byte-identical.
+ *   1. Classify the diff and run its own changed tests; baseline must be green.
+ *   2. Reverse production only, rerun, restore and prove byte identity.
  *
  * VERDICTS.
  *   OBSERVED      assertions went red -> the change is covered. Exit 0.
@@ -65,6 +60,7 @@
  *                       reverse-applied. Use it for sub-expression findings and
  *                       to escape an INCONCLUSIVE.
  *   --test <path>       restrict the tests that get run (repeatable)
+ *   --platform <stage>  canonical linux/windows/posix changed-test partition
  *   --root <dir>        repository to operate on (default: this script's repo).
  *                       Lets you point a version of the oracle you trust at a
  *                       checkout that predates it.
@@ -79,6 +75,7 @@ import { fileURLToPath } from 'node:url';
 import { tmpdir } from 'node:os';
 import { randomUUID } from 'node:crypto';
 import { cargoLockPatchPaths, normalizeRestoredPaths, partialCargoManifestSelection } from './lib/revert-oracle-cargo-lock.mjs';
+import { selectPlatformTests } from './lib/revert-oracle-platform.mjs';
 import { parseRevertOracleArgs } from './lib/revert-oracle-args.mjs';
 import { productionRevertPaths, unsupportedProductionRenames } from './lib/revert-oracle-paths.mjs';
 import {
@@ -257,7 +254,9 @@ if (opts.ci && isDependabotDependencyOnly(process.env.PR_AUTHOR_LOGIN, entries))
       'the normal build and test lanes provide the compatibility verdict.',
   );
 }
-const { production, test: testEntries, ignored, inert, warnings, cargoLockChanged } = classifyDiff(entries);
+const { production, test: allTestEntries, ignored, inert, warnings, cargoLockChanged } = classifyDiff(entries);
+const testEntries = selectPlatformTests(allTestEntries, opts.platform);
+if (opts.platform && allTestEntries.length > 0 && testEntries.length === 0 && opts.ci) notApplicable(`No changed tests in ${opts.platform}; assigned domains require their other platform stages.`);
 resultContext = {
   ...resultContext,
   production: production.map((entry) => entry.path),
@@ -377,6 +376,7 @@ if (observer === 'typecheck') {
 const partitioned = partitionRunnablePlans(plans, unassigned);
 plans = partitioned.runnable;
 const { gaps } = partitioned;
+if (opts.platform && gaps.length) die(EXIT_INCONCLUSIVE, 'Platform observer has uncovered executable inputs.', gaps.map(gap => `${gap.file}: ${gap.reason}`), { verdict: 'INCONCLUSIVE' });
 for (const gap of gaps) console.log(`  capability gap: ${gap.file}: ${gap.reason}`);
 for (const file of support) console.log(`  support: ${file} (not an independently executable test entrypoint)`);
 for (const p of plans) {
@@ -384,7 +384,6 @@ for (const p of plans) {
 }
 
 // --- build the revert patch -------------------------------------------------
-
 const tmp = mkdtempSync(join(tmpdir(), 'revert-oracle-'));
 patchPath = join(tmp, 'production.patch');
 let patchText;

@@ -34,13 +34,13 @@
  * synthetic fixtures (`revert-oracle.test.mjs`) without reverting anything.
  */
 
+import { partitionTestPlatforms } from './revert-oracle-platform.mjs';
 import { parsePython, PYTEST_MISSING_PATTERN } from './revert-oracle-python.mjs';
 import { ALL_SKIPPED, classifyExecuted, severityCandidates } from './revert-oracle-all-skipped.mjs';
 import { passVerdict } from './revert-oracle-pass-verdict.mjs';
 import { processResultGap } from './revert-oracle-process-result.mjs';
 import { isInertPath, isTestSupportPath } from './revert-oracle-inert.mjs';
 export { cargoRunner } from './revert-oracle-cargo.mjs';
-// ---------------------------------------------------------------------------
 // Diff classification
 // ---------------------------------------------------------------------------
 
@@ -106,7 +106,7 @@ export function classifyDiff(entries) {
         'as the code — expect INCONCLUSIVE and use --mutation for a surgical revert.',
     );
   }
-  return { production, test, ignored, inert, warnings, cargoLockChanged: entries.some((entry) => entry.path === 'Cargo.lock') };
+  return { production, test, platforms: partitionTestPlatforms(test), ignored, inert, warnings, cargoLockChanged: entries.some((entry) => entry.path === 'Cargo.lock') };
 }
 
 /** Parse `git diff --name-status -z`-free plain output. Renames carry two paths. */

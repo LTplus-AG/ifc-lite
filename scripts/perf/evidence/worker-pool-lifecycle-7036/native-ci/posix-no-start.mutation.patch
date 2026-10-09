@@ -1,0 +1,11 @@
+--- a/scripts/perf/frame-gpu-job-controller.ts
++++ b/scripts/perf/frame-gpu-job-controller.ts
+@@ -103,7 +103,7 @@
+   }
+   get noStartProof(): SupervisorNoStart | null {
+     if (this.spawned || this.child.pid !== undefined || this.receipts.length !== 0) this.noStart = null;
+-    return null;
++    return this.noStart;
+   }
+   async next(timeoutMs: number): Promise<Packet> {
+     const packet = this.packets.shift();

@@ -57,7 +57,7 @@ async function nativeMeasures(t: TestContext) {
   return { f, store, view: current, project };
 }
 function findWitness(panel: HTMLElement) {
-  const find = panel.querySelector<HTMLInputElement>('input[type="search"]'); assert.ok(find, 'mounted native Properties Find control');
+  const find = panel.querySelector<HTMLInputElement>('input[aria-label="Find properties"]'); assert.ok(find, 'mounted native Properties Find control');
   type(find, 'Witness');
 }
 

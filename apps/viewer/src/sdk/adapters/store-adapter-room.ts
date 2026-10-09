@@ -16,7 +16,7 @@ import { roomLayoutCache, undoHead } from '@/lib/rooms/room-layout';
 import { storeyWalls, storeySpaces, storeyOccupancy, storeyRoomGeometryIds } from '@/lib/rooms/storey-rooms';
 import { buildStoreyWorkplane } from '@/lib/commands/modeling/workplane';
 import { requestRemesh } from '@/lib/remesh/remesh-service';
-import { roomGeometryLease } from './store-adapter-room-geometry';
+import { missingRoomWallGeometry, roomGeometryLease } from './store-adapter-room-geometry';
 import { nativeLengthUnitAvailable, readOnlyModelEditTarget } from '@/lib/actions/model-authoring-read-target';
 
 type Methods = ReturnType<typeof createModellingStoreBackend>;
@@ -67,6 +67,8 @@ function createNativeRoomService(store: StoreApi) {
     const state = store.getState(), plane = buildStoreyWorkplane(state, model.modelId, storeyId, 0);
     if ('refused' in plane) return {walls:[],factory:SpacePlateHandle,unavailable:plane.refused};
     if (JSON.stringify([[0,0,0],[1,0,0],[0,1,0],[0,0,1]].map(point=>plane.localToRender(point as [number,number,number])))!==frameBefore) throw new Error('The native storey/model frame changed during Room preparation');
+    const missing = missingRoomWallGeometry(state,model.modelId,storeyId,plane);
+    if (missing) return {walls:[],factory:SpacePlateHandle,unavailable:missing};
     return { factory: SpacePlateHandle, validate:roomGeometryLease(store.getState,model.modelId,storeyId), walls: storeyWalls(state, model.modelId, storeyId, plane),
       spaces: storeySpaces(state, model.modelId, storeyId), occupied: storeyOccupancy(state, model.modelId, storeyId, plane) };
   }, {

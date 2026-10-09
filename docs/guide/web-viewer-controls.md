@@ -47,6 +47,10 @@ this browser and applies to every loaded model.
 Right-button fly remains available in every preset when camera controls are
 enabled. Shift + left drag pans in every preset and tool.
 
+## Zone volume results
+
+Each zone-set volume report states its cached processed entity outcomes and the native proved-split and refusal counts. Whole-set runs and incremental per-element cache updates have distinct coverage; cached counts describe the evaluated boundary-crossing entities. Missing geometry, unproved solids and volumes invalidated by federation alignment retain separate reasons. Captured model names and IFC `GlobalId` evidence stay with older rows through later updates and panel remounts; unknown cache history shows **Outcome unknown**, and older native revisions show **Stale**. Evidence samples show their displayed and total counts. The native split, authoring, writeback and export controls remain available in their existing locations.
+
 ## Alignment sections
 
 Open **Section → Alignment**, select the model and its `IfcAlignment`, then
@@ -209,6 +213,12 @@ Browse account projects and choose **Forma Data Management files** or **Data Exc
 
 The hosted service includes a Rust Forma proposal importer and a Windows Autodesk SDK Data Exchange exporter. Enable them with absolute executable paths in the service configuration. The details panel offers file/proposal version selection; whole-exchange IFC export supports the current version only. Generated resources remain disabled when their native importer is not configured. Configuration, deployment limits, current capabilities and the live-account verification checklist are in [Autodesk source setup](https://github.com/LTplus-AG/ifc-lite/blob/main/packages/source-autodesk/README.md) and [the session service guide](https://github.com/LTplus-AG/ifc-lite/blob/main/apps/autodesk-service/README.md).
 
+## Deviation result sources and coverage
+
+The BIM ↔ scan deviation result identifies the scan assets represented by its held distance readback. Its population counts scan points, with finite measured points shown separately from unmeasured and compute-limit-clipped points. The native summary, tolerance band, colour range, histogram and CSV retain their existing behavior. Source evidence lists captured scan GlobalIds and classes; loaded IFC models are not presented as scan sources.
+
+Incomplete point measurements or unavailable scan identity show Partial. A summary without recorded source provenance shows Outcome unknown. Missing readback statistics show Running while they are derived. No finite measured distances produce a partial readback state, rather than claiming no findings or an absent scan population. Captured source identity remains attached through native tolerance recounts and panel remounts.
+
 ## Layout migration and saved-artifact links
 
 When an older saved layout is upgraded, **Review your updated layout** lists renamed, added and unavailable panels. **Show changes** keeps that list scrollable so **Keep layout** and **Reset layout** remain reachable. Keep acknowledges the migrated layout; Reset uses the workspace's normal reset. Both retain unavailable extension placements, their anchors and hidden state, and the original stored layout in a local rollback backup. Importing a legacy layout also backs up the current layout before replacing it. If that backup cannot be written, the original stored layout is not overwritten. These controls are available on desktop and mobile.
@@ -220,3 +230,9 @@ Review controls remain visible on mobile and with a collapsed sidebar. Importing
 Panel links use `?panel=<panel id>`; retired panel IDs resolve to their current panel. Saved artifacts can be opened with `?conversation=<id>`, `?receipt=<id>` or `?bcfDraft=<id>`. These refer to saved Assistant conversations, reviewed model-change receipts and BCF draft batches in this browser's own library. A link does not transfer the artifact to another browser. Missing or unreadable artifacts open their owning panel with an explanation. Conflicting destinations and invalid IDs are refused.
 
 A saved conversation opens read-only, without turning its archived evidence into permission to act. Another archive can replace the displayed archive; an unsaved conversation or active request is preserved. Links created by the viewer omit collaboration room invites and tokens.
+
+### Portable saved scripts
+
+The native Script panel offers **Export saved script** and **Import script file**. Export includes the selected saved script's complete name, code and timestamps in a versioned `.ifc-script.json` file. Save editor changes first to include them. Import appends a new saved copy; it preserves the active editor and any unsaved changes. Open the copy in the script selector and press **Run** separately. Import never executes code or installs an extension.
+
+The reader accepts version 1 portable files and the original single native saved-script JSON record. It refuses unsupported versions, corrupt metadata, code over 100,000 characters and files over 1 MB. Unreadable, partially corrupt or future-version browser libraries are preserved rather than overwritten by import. Export your readable session scripts before repairing damaged storage. If the session library already differs from browser storage, export session scripts and reload before importing; import cannot overwrite another tab with a stale session. A storage refusal keeps the file available for explicit **Retry import into current library**. Changes to saved scripts or browser storage while the file is read revoke that import; retry intentionally appends to the current library without replacing an existing script. Pending reads are cancelled when the panel closes. Existing extension promotion, Flavor conversion and whole-library backup are separate routes.

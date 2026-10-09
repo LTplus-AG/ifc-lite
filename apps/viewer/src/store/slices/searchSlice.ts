@@ -65,7 +65,7 @@ export type SearchFieldFilter = MatchField | 'all';
 
 /** Which tab the advanced modal renders. Lets callers (e.g. the inline
  *  filter button) open straight to the Filter builder. */
-export type SearchModalTab = 'search' | 'filter';
+export type SearchModalTab = 'search' | 'filter' | 'libraries';
 
 /**
  * Tabular result from a Filter run. Flat snapshot so the modal can

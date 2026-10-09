@@ -1,6 +1,8 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+import { nativeStructuralTransportEvidence } from '@/lib/actions/structural-graph-evidence';
+
 
 /**
  * The current selection as evidence (#6833): each selected element's
@@ -16,6 +18,7 @@
  * total is over the whole selection.
  */
 
+import { nativeAuthoringEvidence } from '@/lib/actions/native-authoring-evidence';
 import { IfcQuery } from '@ifc-lite/query';
 import { extractClassificationsOnDemand, extractProjectUnits, materialAssignmentsAvailable, ProjectUnits, type IfcDataStore } from '@ifc-lite/parser';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
@@ -31,11 +34,24 @@ import { effectiveElementData } from '@/components/viewer/properties/effectiveEl
 import { classificationPopulationUnavailable } from '@/components/viewer/properties/effective-classification-systems';
 import { effectiveMaterials, effectiveMaterialProperties } from '@/components/viewer/properties/effectiveMaterials';
 import { materialEvidence } from './selection-materials';
+import { documentEvidence } from './selection-documents';
+import { structuralEvidence } from './selection-structural';
+import { effectiveStructuralData } from '@/components/viewer/properties/effectiveStructuralData';
+import { effectiveDocuments } from '@/components/viewer/properties/effectiveDocuments';
 import { classificationEvidence } from './selection-classifications';
 import { effectiveTypeProperties } from '@/components/viewer/properties/effectiveTypeProperties';
 import { effectiveSelectedClass } from '@/components/viewer/properties/effectiveSelectedClass';
 import { propertyDisplayValue } from '@/components/viewer/properties/propertyDisplayValue';
 import { evidenceRow, unavailableCapture, type EvidenceAdapter } from './types';
+import { nativeReadTargets } from '@/lib/actions/model-authoring-read-target';
+
+import { nativeEditEvidence, nativeRootName } from '@/lib/actions/native-edit-evidence';
+import { nativeGridEvidence } from '@/lib/actions/native-grid-evidence';
+import { nativeGridName } from '@/lib/actions/model-authoring-grid-native';
+import { nativeTypeEvidence } from '@/lib/actions/native-type-evidence';
+import { nativeLayerEvidence } from '@/lib/actions/native-layer-evidence';
+import { nativeCostTransportEvidence } from '@/lib/actions/cost-graph-evidence';
+import type { ModelEditTarget } from '@/store/slices/mutation-modelling-records';
 
 type Channel = 'storeys' | 'multi' | 'renderer-ids' | 'single';
 const VALUE_CHARS = 240;
@@ -102,7 +118,7 @@ function bounded(value: unknown): string | number | boolean | null {
   return text.length > VALUE_CHARS ? `${text.slice(0, VALUE_CHARS)}…` : text;
 }
 
-function elementRow(s: ViewerState, ref: EntityRef, source: ModelSource, rich: boolean) {
+function elementRow(s: ViewerState, ref: EntityRef, source: ModelSource, rich: boolean, nativeTarget: ModelEditTarget | null, completeStructuralPin: boolean) {
   const setLimit = rich ? 16 : 6;
   const relationshipLookupExpressId = source.view?.resolveBaseEntityId(ref.expressId) ?? ref.expressId;
   const nativeRelationships = source.store ? relationshipsForSelection(
@@ -111,6 +127,8 @@ function elementRow(s: ViewerState, ref: EntityRef, source: ModelSource, rich: b
   const relationshipsUnavailable = relationshipPopulationUnavailable(source.store, source.view);
   const valueLimit = rich ? 32 : 12;
   const data = effectiveElementData(ref.expressId, source.query, source.view);
+  const structuralData = source.store ? effectiveStructuralData(source.store, source.view) : null;
+  const { rows: documents, membershipUnavailable: documentsUnavailable } = effectiveDocuments(source.store, ref.expressId, source.view);
   const classifications = source.store ? extractClassificationsOnDemand(source.store, ref.expressId, source.view) : [];
   const classificationsUnavailable = classificationPopulationUnavailable(source.store, source.view);
   const materials = effectiveMaterials(source.store, ref.expressId, source.view);
@@ -138,7 +156,8 @@ function elementRow(s: ViewerState, ref: EntityRef, source: ModelSource, rich: b
       return [q.name, { value: display.converted ?? q.value, unit: display.unit ?? null }];
     })),
   }));
-  const name = data.attributes.get('Name');
+  const name = source.store ? nativeRootName({ dataStore: source.store, view: source.view }, ref.expressId) : data.attributes.get('Name');
+  const gridName = nativeGridName(nativeTarget, ref.expressId);
   return evidenceRow({
     kind: 'selected-element', modelId: ref.modelId,
     globalId: resolveEntityRefGlobalIdFromState(s, ref), expressId: ref.expressId,
@@ -146,8 +165,21 @@ function elementRow(s: ViewerState, ref: EntityRef, source: ModelSource, rich: b
   }, {
     modelName: source.name,
     type: effectiveSelectedClass(source.store, source.view, ref.expressId),
-    name: typeof name === 'string' && name.length > 0 ? bounded(name) : null,
+    name: gridName === undefined ? typeof name === 'string' && name.length > 0 ? bounded(name) : null : gridName === null ? null : bounded(gridName),
+    ...nativeAuthoringEvidence(nativeTarget, ref.expressId, rich),
+    ...(completeStructuralPin ? { nativeStructural: nativeStructuralTransportEvidence(nativeTarget, ref.expressId) } : {}),
     attributes, psets, psetCount: data.psets.length, quantities, qsetCount: data.qsets.length,
+    nativeEdit: nativeEditEvidence(nativeTarget, ref.expressId),
+    nativeType: nativeTypeEvidence(s, nativeTarget, ref.expressId),
+    nativeLayers: nativeLayerEvidence(s, nativeTarget, ref.expressId),
+    ...(() => { const nativeGrid = nativeGridEvidence(nativeTarget, ref.expressId); return nativeGrid ? { nativeGrid } : {}; })(),
+    ...(rich ? { nativeCost: nativeCostTransportEvidence(nativeTarget, ref.expressId) } : {}),
+    structuralStatus: !source.store ? 'unavailable' : source.store.source?.length ? 'available' : 'unavailable-source',
+    structural: structuralEvidence(structuralData, ref.expressId, typeof data.attributes.get('GlobalId') === 'string'
+      ? String(data.attributes.get('GlobalId')) : undefined, setLimit, valueLimit, source.units, source.store?.schemaVersion, Boolean(source.store?.source?.length)),
+    documentStatus: !source.store ? 'unavailable' : documentsUnavailable ? 'unavailable-source-membership' : 'available',
+    documentCount: !source.store || documentsUnavailable ? null : documents.length,
+    documents: documents.slice(0, setLimit).map(document => documentEvidence(document, source.store?.schemaVersion)),
     relationshipLookupExpressId,
     relationshipStatus: !source.store ? 'unavailable' : !relationshipsUnavailable ? 'available'
       : !source.store.relationships ? 'unavailable-membership' : 'unavailable-source-membership',
@@ -204,12 +236,20 @@ export const selectionAdapter: EvidenceAdapter = {
       : { status: { labelKey: 'assistantSources.selection.none' }, ready: false };
   },
   // Every selection action replaces one of these; edits are covered by the context stamp.
-  identity: s => [s.selectedEntities, s.selectedEntitiesSet, s.selectedEntityIds, s.selectedEntity, s.selectedEntityId],
+  identity: s => [s.selectedEntities, s.selectedEntitiesSet, s.selectedEntityIds, s.selectedEntity, s.selectedEntityId,
+    // #7282: native expected pins belong to these exact loaded sources/views,
+    // even when a replacement preserves the same GUIDs and analysis versions.
+    ...[...new Set((selectionRefs(s)?.refs ?? []).map(ref => ref.modelId))].flatMap(modelId => [
+      modelId, isLegacy(modelId) ? s.ifcDataStore : s.models.get(modelId)?.ifcDataStore,
+      s.mutationViews.get(isLegacy(modelId) ? '__legacy__' : modelId),
+    ]),
+  ],
   capture: (s, limit) => {
     const selection = selectionRefs(s);
     if (!selection || selection.refs.length === 0) return unavailableCapture();
     const { refs, channel } = selection;
     const sourceFor = sources(s);
+    const nativeTarget = nativeReadTargets(s);
     const byModel = new Map<string, number>();
     const byClass = new Map<string, number>();
     for (const ref of refs) {
@@ -223,15 +263,18 @@ export const selectionAdapter: EvidenceAdapter = {
     return {
       summary: {
         kind: 'selection', channel, selectionSize: refs.length, modelCount: byModel.size,
+        ...(!rich ? { nativeCostCapture: 'unavailable-selection-budget', nativeReplacementCapture: 'unavailable-selection-budget' } : {}),
+        ...(sample.length !== 1 ? { nativeStructuralCapture: 'unavailable-selection-budget' } : {}),
         byModel: [...byModel].map(([modelId, count]) => ({ modelId, name: sourceFor(modelId).name, count })),
         byClass: [...byClass].map(([type, count]) => ({ type, count })).sort((a, b) => b.count - a.count),
-        perElementBounds: rich ? { sets: 16, valuesPerSet: 32, attributes: 32, classifications: 16, classificationPath: 16, relationships: 16 }
-          : { sets: 6, valuesPerSet: 12, attributes: 12, classifications: 6, classificationPath: 6, relationships: 6 },
+        perElementBounds: rich ? { sets: 16, valuesPerSet: 32, attributes: 32, classifications: 16, classificationPath: 16, relationships: 16, documents: 16 }
+          : { sets: 6, valuesPerSet: 12, attributes: 12, classifications: 6, classificationPath: 6, relationships: 6, documents: 6 },
         units: 'Quantity values carry {value, unit} in the Properties panel display unit (project unit, or the display-unit override below); a null unit is undeclared. Property values are the panel display strings, with the unit inline when the measure declares one.',
         displayUnitOverrides: s.unitDisplayOverrides,
-        limitations: 'Includes edits; own-element status and native associated definitions use snapshot freshness. Sections use perElementBounds and full known counts. inheritedType has model/type GlobalId provenance; occurrence properties override same-named type values. Materials use occurrence-before-type precedence, LayerThickness metres, and panel display units for generic properties. Unverified fields are unknown. Missing membership inputs or unreadable live source edits make totals null/unavailable; source-free classification markers may describe the original source, not current membership. Unverified paths have unknown totals and bounded known ancestors. IFC2X3 uses ItemReference; other schemas use Identification. Missing systems stay unknown. Unverified material-property counts stay null; empty rows do not prove absence. Typed IFC2X3 scalar material-property subtypes are outside the generic-set reader. Relationships count exact native edges; alias rows identify their inherited lookup ID. Source-free edited graph rows are unverified source-origin evidence. Selection is sampled; byClass/byModel cover every selected element.',
+        limitations: 'Includes native edits; status covers own edits. Definitions/associations use snapshot freshness. Sections use perElementBounds and full known counts. inheritedType has model/type provenance; occurrence properties override same-named type values. Materials prefer occurrence over type; LayerThickness is metres; properties use panel units. IFC2X3 scalar material-property subtypes are outside the generic-set reader. Unverified fields remain unknown; missing membership inputs/unreadable source edits make totals null/unavailable. Source-free classification/document markers describe original source, not current assignments. Paths have bounded known ancestors; unverified path totals are null. Classification codes use schema-exact ItemReference/Identification; missing systems stay unknown. Relationships count exact native edges; aliases carry inherited lookup IDs. Edited source-free graph edges are unverified source-origin evidence. Unverified material-property counts stay null; empty rows do not prove absence. Documents have native model/target IDs and separate bounds. Empty samples do not prove absence. Selection is sampled; byClass/byModel cover every selected element.',
+        structuralLimitations: 'Structural rows match the native member card; counts cover resolved native records and units are declared source units only. Load/evidence bounds are explicit. Missing/duplicate native GUID targets are omitted with unknown resolved totals. Source-free original fields/totals are unknown; authored fields remain readable.',
       },
-      rows: sample.map(ref => elementRow(s, ref, sourceFor(ref.modelId), rich)),
+      rows: sample.map(ref => elementRow(s, ref, sourceFor(ref.modelId), rich, nativeTarget(ref.modelId), sample.length === 1)),
       totalRows: refs.length, availability: 'available',
     };
   },

@@ -1,0 +1,196 @@
+{
+  "qualifiedSourceCommit": "3ef9ff05db8030d4140e6a26f994b1eccf41ee16",
+  "executionHead": "287350ae266f1cb624b5bae4948063f13345a8fb",
+  "executionWorkingTree": "five source/test files dirty at exact recorded candidate hashes; committed without byte changes after qualification",
+  "sourceSHA256": {
+    "apps/viewer/src/lib/geometry-cpu-buffers.ts": "bbd5a484ab119e3dcfa660839d3b452263dec0a321d8a4759826445c55c343d7",
+    "apps/viewer/src/lib/geometry-cpu-aliases.ts": "1d1fdc6c9ca491f6412b46dcd5919ba73ea7bed61caf573f79fff68beec79e82",
+    "apps/viewer/src/lib/geometry-cpu-release.ts": "5dae8336db131705959353981a7c8220b5a65d4b65477f0e74abe4715620a567",
+    "apps/viewer/src/lib/geometry-cpu-appearance.test.ts": "b447e2f5f72487fe225edc905c0189dcedcabe445d8a6e40a1913de267f6654d",
+    "apps/viewer/src/test/geometry-cpu-aliases-gc.ts": "ee0e250d43c920470cd16299d97dc4ebc8104ebe6e845602117c78d2a6a16acc"
+  },
+  "runtimeFixtureObservation": {
+    "rustTree": "1a1acc4260011c591fd8ce3c5387bb7c10b42f20",
+    "observedAfterBroaderBeforeTypecheckTerminal": {
+      "packages/wasm/pkg/ifc-lite_bg.wasm": {
+        "sha256": "8b74229bbd4a991cbf1f32a8d52add195c5fdd333921f998b1c18eb713185143",
+        "sizeBytes": 9970066
+      },
+      "packages/wasm/pkg/ifc-lite.js": {
+        "sha256": "0a281479eb65141ae75aeef987d331d44439741a0cae855f122e53e800311a39",
+        "sizeBytes": 304051
+      },
+      "packages/wasm/pkg/ifc-lite.d.ts": {
+        "sha256": "54c9d0a52eb515e517d76726fefe5f6a63e553a81c1b10331a597965d14620f6",
+        "sizeBytes": 164165
+      },
+      "apps/viewer/public/samples/hello-wall.ifc": {
+        "sha256": "0ab20f4ea355ea9aa4fade7264b97ee9f9929addfa3961b2437c4381bd674014",
+        "sizeBytes": 79592
+      },
+      "apps/viewer/src/test/blank-ifc-loader-harness.tsx": {
+        "sha256": "5f6e2ebb2b23f707165da2927733868e4d4a81dbf3b504bc5dec2b0a32bb3570",
+        "sizeBytes": 6056
+      }
+    }
+  },
+  "bonsaiActualControl": {
+    "fixtureSha256": "0ab20f4ea355ea9aa4fade7264b97ee9f9929addfa3961b2437c4381bd674014",
+    "primaryGeometrySha256": "1d39b0af33fb671fda1b6602d55266726ed65f30ec66ab76c37d75f1f894c513",
+    "peerGeometrySha256": "1d39b0af33fb671fda1b6602d55266726ed65f30ec66ab76c37d75f1f894c513",
+    "primaryMeshes": 8,
+    "peerMeshes": 8,
+    "visiblePrimaryMeshes": 5,
+    "counts": [
+      {
+        "triangles": 68,
+        "vertices": 80
+      },
+      {
+        "triangles": 32,
+        "vertices": 48
+      },
+      {
+        "triangles": 12,
+        "vertices": 24
+      },
+      {
+        "triangles": 12,
+        "vertices": 24
+      },
+      {
+        "triangles": 32,
+        "vertices": 48
+      },
+      {
+        "triangles": 12,
+        "vertices": 24
+      },
+      {
+        "triangles": 12,
+        "vertices": 24
+      },
+      {
+        "triangles": 12,
+        "vertices": 24
+      }
+    ]
+  },
+  "results": {
+    "inverse": {
+      "exitCode": 1,
+      "pass": 4,
+      "fail": 1,
+      "skip": 0,
+      "assertion": "prior source positions cannot remain pinned by a registered copy; actual48 != expected0",
+      "productionHead": "287350ae266f1cb624b5bae4948063f13345a8fb"
+    },
+    "corrected": {
+      "exitCode": 0,
+      "pass": 5,
+      "fail": 0,
+      "skip": 0
+    },
+    "broader": {
+      "exitCode": 0,
+      "pass": 77,
+      "fail": 0,
+      "skip": 0,
+      "scope": "federated geometry, appearance buffers, dataSlice, appearance cache provenance, placement cache; includes actual backing-allocation GC and canonical Bonsai IFC primary/peer"
+    },
+    "plainFullRootTypecheck": {
+      "exitCode": 0,
+      "packageTestFiles": 3726,
+      "packages": 62
+    },
+    "moduleSize": 0,
+    "sourceTestGate": 0,
+    "testWiring": 0,
+    "touchedOxlint": 0
+  },
+  "archives": {
+    "root-turbo-inverse.log": {
+      "archive": "root-turbo-inverse.log.gz",
+      "rawSha256": "b3636554da53c9908e732c7de28857e0d39732b34401ed3f1e9019ff7eac984b",
+      "archiveSha256": "47d0645aaa34fb44a40c9f33399dc35004aa9d471d4f7708c33bbdecc22f525a"
+    },
+    "root-turbo-corrected.log": {
+      "archive": "root-turbo-corrected.log.gz",
+      "rawSha256": "c31c7db9b95145565a8502a17c0ef772c2975e49726f305499b7f3bea8861a51",
+      "archiveSha256": "c10da8a72eb861d444c97841922b2b088afd8f89830fc7aad6740d132daba83d"
+    },
+    "root-turbo-broader.log": {
+      "archive": "root-turbo-broader.log.gz",
+      "rawSha256": "96d1efbc4a85cc57d874203dc9f678169fb035aa5cddc9caac170f54b59c5935",
+      "archiveSha256": "a3b521daebefd58fd8e0cae1fcd77e6e07f9f544b5e256f9498df00dbfd3d160"
+    },
+    "plain-root-typecheck.log": {
+      "archive": "plain-root-typecheck.log.gz",
+      "rawSha256": "162bf0a3f71ea40cab67a16f629f9eafe7343aa971459cdffa22329eb7a42d59",
+      "archiveSha256": "4183cd9c2c171d808c79e7f0c4ae072804f4668e3f9b4e55e7ad0ea247004633"
+    },
+    "module-size.log": {
+      "archive": "module-size.log.gz",
+      "rawSha256": "540bb0322d95b2d8909355df5ed26f40310512e284e2e74d47e9f24b5571e01a",
+      "archiveSha256": "6f8f8ef7a3ed217a1d9eb4e3d54b67134186c6201bf0c30d23fe00cbced9149b"
+    },
+    "source-test-gate.log": {
+      "archive": "source-test-gate.log.gz",
+      "rawSha256": "f7c335a7e07f58b60547b678a329308deacfc115807428314308a5f47e06a5c5",
+      "archiveSha256": "5ebc2c5ff4fed05fae581e34435b88dfe3fad154fe3ac87763d6c4fbd1709484"
+    },
+    "wiring.log": {
+      "archive": "wiring.log.gz",
+      "rawSha256": "98a10385e08b01728c5beafad6abc4108f0096cb636594ec566c3f51a2950c30",
+      "archiveSha256": "15b34a6b5c7ff51cbcf9fa5707542d2a6b2fc540ddc13e73db4170356830d853"
+    },
+    "touched-lint.log": {
+      "archive": "touched-lint.log.gz",
+      "rawSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "archiveSha256": "9ceffb7310338057cfe71a4ae1e2c98d2c485d81cdef906532a801f457a38d64"
+    },
+    "qualified-geometry-cpu-buffers.ts": {
+      "archive": "qualified-geometry-cpu-buffers.ts.gz",
+      "rawSha256": "bbd5a484ab119e3dcfa660839d3b452263dec0a321d8a4759826445c55c343d7",
+      "archiveSha256": "8446aef1a481ebf5e68b1499354bd43a5b75e364038d154e3d21a6a70ecaa840"
+    },
+    "qualified-geometry-cpu-aliases.ts": {
+      "archive": "qualified-geometry-cpu-aliases.ts.gz",
+      "rawSha256": "1d1fdc6c9ca491f6412b46dcd5919ba73ea7bed61caf573f79fff68beec79e82",
+      "archiveSha256": "218b62ffeac261c384f20e4745affc4a6f036a61b3e88647ce22b05627e1e852"
+    },
+    "qualified-geometry-cpu-release.ts": {
+      "archive": "qualified-geometry-cpu-release.ts.gz",
+      "rawSha256": "5dae8336db131705959353981a7c8220b5a65d4b65477f0e74abe4715620a567",
+      "archiveSha256": "eb1075cbedb9d225b273d7748c5714d029ff53f53b66314dd8457fe265bda352"
+    },
+    "qualified-geometry-cpu-appearance.test.ts": {
+      "archive": "qualified-geometry-cpu-appearance.test.ts.gz",
+      "rawSha256": "b447e2f5f72487fe225edc905c0189dcedcabe445d8a6e40a1913de267f6654d",
+      "archiveSha256": "7a89ec2d93c105448fb64bc0d4ac71f2e6bceabebdc5be388070f9bd2769a86a"
+    },
+    "qualified-geometry-cpu-aliases-gc.ts": {
+      "archive": "qualified-geometry-cpu-aliases-gc.ts.gz",
+      "rawSha256": "ee0e250d43c920470cd16299d97dc4ebc8104ebe6e845602117c78d2a6a16acc",
+      "archiveSha256": "ccf9051c9c65460ef20da9bf5433d6571791140ce29050f2255a8bf44ec1841a"
+    },
+    "actual-claude-review.log": {
+      "archive": "actual-claude-review.log.gz",
+      "rawSha256": "b0c2147ca45090fc72d7a54ec8b6d8486cf91c95ad94fd9f3d41d087b38d49f1",
+      "archiveSha256": "90b270834b41985de40adb73832bf87274bd646135abfcdf0dd8d4a621a01318"
+    }
+  },
+  "additionalFileSHA256": {
+    "direct-canonical-counterexample.json": "5dda170fc3a991113829b2ded286f4cf607044229a92ad1ef7fab59221e21675",
+    "root-independent-source-review.json": "3c141cd0ec5cdf1772d5d7d6b454891530c51bb50d8f64fc5214b8f8d6e47014",
+    "actual-dropped-finding.json": "eacd5b59be95d9ea76677777aecde4155f093d75405ace3b2dc3a3b7629b989b",
+    "runtime-fixture-observation.json": "9cd42cf0be5893f4558d68e96d3e4d2e0fbc81970f3008422a5e7197873a5649"
+  },
+  "limits": [
+    "No native browser/GPU, speedup or OS resident memory claim.",
+    "No automatic registration of unregistered Scene fragments claim; canonical registered-copy scope remains.",
+    "Runtime/fixture hashes directly observed after broader run and reverified after typecheck.",
+    "Independent root review receipt preserves its pre-broader pending flags; terminal logs supply subsequent evidence.",
+    "New source/evidence commits await exact-head CI and parent final review; no push or merge by reviewer."
+  ]
+}

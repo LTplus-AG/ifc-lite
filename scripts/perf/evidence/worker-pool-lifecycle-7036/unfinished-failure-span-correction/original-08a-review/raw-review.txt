@@ -1,0 +1,36 @@
+{
+  "verdict": "findings",
+  "files_reviewed": [
+    "scripts/perf/evidence/worker-pool-lifecycle-7036/ae27-main-integration/qualification.json",
+    "scripts/perf/evidence/worker-pool-lifecycle-7036/canonical-2003002-integration/integration.json",
+    "scripts/perf/evidence/worker-pool-lifecycle-7036/canonical-2003002-integration/qualification.json",
+    "scripts/perf/evidence/worker-pool-lifecycle-7036/correction/independent-1-actual-plan-contract-acceptance.json",
+    "scripts/perf/evidence/worker-pool-lifecycle-7036/modern-probe-and-owned-fixture-correction/final-series-result.json",
+    "scripts/perf/evidence/worker-pool-lifecycle-7036/modern-probe-and-owned-fixture-correction/historical-first-fixture-phase/final-series-result.json",
+    "scripts/perf/evidence/worker-pool-lifecycle-7036/modern-probe-and-owned-fixture-correction/historical-first-fixture-phase/fixture-inverse-result.json",
+    "scripts/perf/evidence/worker-pool-lifecycle-7036/modern-probe-and-owned-fixture-correction/historical-first-fixture-phase/historical-readiness-phase/final-series-result.json",
+    "scripts/perf/evidence/worker-pool-lifecycle-7036/modern-probe-and-owned-fixture-correction/historical-first-fixture-phase/historical-readiness-phase/qualification.json",
+    "scripts/perf/evidence/worker-pool-lifecycle-7036/modern-probe-and-owned-fixture-correction/historical-first-fixture-phase/qualification.json",
+    "scripts/perf/evidence/worker-pool-lifecycle-7036/modern-probe-and-owned-fixture-correction/qualification.json",
+    "scripts/perf/evidence/worker-pool-lifecycle-7036/observed-owner-and-paired-workload-correction/current-cbd-independent-review-receipt.json",
+    "scripts/perf/evidence/worker-pool-lifecycle-7036/observed-owner-and-paired-workload-correction/qualification.json",
+    "scripts/perf/frame-gpu-chrome-lifecycle.test.mjs",
+    "scripts/perf/frame-gpu-chrome.ts",
+    "scripts/perf/worker-pool-lifecycle-invariants.mjs",
+    "scripts/perf/worker-pool-lifecycle-invariants.test.mjs"
+  ],
+  "riskiest_change": {
+    "path": "scripts/perf/worker-pool-lifecycle-invariants.mjs",
+    "quoted_line": "    if(span.end===null)continue;"
+  },
+  "findings": [
+    {
+      "path": "scripts/perf/worker-pool-lifecycle-invariants.mjs",
+      "line": 21,
+      "quote": "    if(span.end===null)continue;",
+      "body": "A snapshot with the three required completed spans and an unfinished `{name:'parser.failed',start:0,end:null}` drops its failure marker here before the failure check. `requireEpoch` accepts that snapshot, so a failed epoch can enter the lifecycle report.",
+      "class": "absence-reads-as-success"
+    }
+  ],
+  "end": "ifc-lite-review-v1"
+}

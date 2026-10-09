@@ -18,7 +18,7 @@
 
 import { encodeSavedLens } from '@/lib/lens/migrate-saved-lens';
 import { trackExportCompleted } from '@/lib/analytics';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Palette } from 'lucide-react';
 import type { Flavor, UnpackedFlavor } from '@ifc-lite/extensions';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -28,6 +28,7 @@ import { useDialogs } from '@/components/ui/confirm-dialog';
 import { downloadFile } from '@/lib/export/download';
 import { FlavorMergeDialog } from './FlavorMergeDialog';
 import { FlavorListView } from './FlavorListView';
+import { useFlavorDialogLibrary } from './useFlavorDialogLibrary';
 import { FlavorImportPreview } from './FlavorImportPreview';
 import { flavorFailure, flavorSwitchPartial } from './flavor-dialog-feedback';
 import { HelpHint } from './HelpHint';
@@ -46,31 +47,13 @@ export function FlavorDialog({ open, onClose }: FlavorDialogProps) {
   const { t, locale } = useTranslation();
   const { confirmDialog } = useDialogs();
   const host = useExtensionHost();
-  const [flavors, setFlavors] = useState<Flavor[]>([]);
-  const [activeId, setActiveId] = useState<string | undefined>();
+  const { flavors, activeId, phase, refresh } = useFlavorDialogLibrary(host, open);
   const [busy, setBusy] = useState(false);
   const [preview, setPreview] = useState<{ bytes: Uint8Array; unpacked: UnpackedFlavor } | null>(null);
   const [mergeTarget, setMergeTarget] = useState<Flavor | null>(null);
   const liveLensCount = useViewerStore((s) => s.savedLenses.length);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const failure = (operation: string, err: unknown) => flavorFailure(t, operation, err);
-
-  const refresh = useCallback(async () => {
-    const [list, active] = await Promise.all([
-      host.flavors.list(),
-      host.flavors.getActive(),
-    ]);
-    setFlavors(list);
-    setActiveId(active?.id);
-  }, [host]);
-
-  useEffect(() => {
-    if (!open) return;
-    void refresh();
-    return host.flavors.onChange(() => {
-      void refresh();
-    });
-  }, [open, host, refresh]);
 
   // When the dialog closes (or the preview is dismissed), zero the
   // preview bytes so a sensitive `.iflv` doesn't sit in memory longer
@@ -365,6 +348,7 @@ export function FlavorDialog({ open, onClose }: FlavorDialogProps) {
           <>
             <FlavorListView
               flavors={flavors}
+              readPhase={phase}
               activeId={activeId}
               busy={busy}
               liveLensCount={liveLensCount}

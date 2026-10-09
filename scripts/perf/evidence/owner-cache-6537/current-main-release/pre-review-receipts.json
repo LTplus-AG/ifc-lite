@@ -1,0 +1,65 @@
+{
+  "main": "e0053d137a79ab86d84567ed0246fe3767ff6681",
+  "integrationHead": "d748009504",
+  "historicalPRHead": "57e40aea9b1ed0f60a2cb0586d6632b4f03bec0c",
+  "scope": "Main/historical counterexamples and first candidate receipts; later count-marker and actual IFC controls require their own qualification.",
+  "runs": [
+    {
+      "log": "6584-main-counterexamples-focused.log.gz",
+      "sha256Uncompressed": "ec716bd122921e682751e95de371148021ee02dc3c9d62193bf867358b3a53e7",
+      "verdict": "13 tests: six existing controls pass, seven release controls fail; actual working main hook/data sources archived separately (integration HEAD alone is insufficient)."
+    },
+    {
+      "log": "6584-historical-revision-counterexamples.log.gz",
+      "sha256Uncompressed": "1577c7544dd138596eaf399f45a4351c8783e88d22644450bd754598a7fa0e9d",
+      "verdict": "13 tests: nine pass, four fail. Historical hook plus scoped canonical CPU-release call only; no full historical checkout claim."
+    },
+    {
+      "log": "6584-candidate-final-controls.log.gz",
+      "sha256Uncompressed": "4812d133a6bc2c30de8da5cbbe404e2efba80ade80130d74cf48ce077229de9d",
+      "verdict": "79 relevant tests pass before review count-marker change."
+    },
+    {
+      "log": "6584-full-typecheck.log.gz",
+      "sha256Uncompressed": "bf4ae5b0abdea83c38199d267f7580af18a8d9750d21a30d8a99e035993768eb",
+      "verdict": "3707/3707 test files typechecked before review count-marker/new IFC control change."
+    }
+  ],
+  "sources": [
+    {
+      "role": "main-hook",
+      "source": "main-hook.ts.gz",
+      "sha256": "cc0aec7fc05ec56ea6a93a5bbfd1c8d511d187f3eb060a71a3ffc649988fd372"
+    },
+    {
+      "role": "main-data",
+      "source": "main-data.ts.gz",
+      "sha256": "eab2794e019a5534a2b5d39de7aab094b35e45f0854310bff1ae5629c5f017bc"
+    },
+    {
+      "role": "historical-hook",
+      "source": "historical-hook.ts.gz",
+      "sha256": "3b7a0b53a3c9378877e65780476879b0cc47410291340d02645e1b0c8721d0ff"
+    },
+    {
+      "role": "review-count-negative-helper",
+      "source": "review-count-negative-helper.ts.gz",
+      "sha256": "50e3d143a1b624b34c79ce28b566087628ba041e12310bf1ca5f97a6a3baaa0c",
+      "note": "Reconstructed old per-field count fallback mechanism for the upcoming negative replacement-empty control; not an exact pre-review qualified-source receipt."
+    },
+    {
+      "role": "baseline-controls",
+      "gitRevision": "d748009504",
+      "path": "apps/viewer/src/components/viewer/useFederatedGeometry.streaming.test.tsx",
+      "source": "baseline-controls.ts.gz",
+      "sha256": "60236ed25f050199af2e64a0fd47d08540197f77b137148e7d4d5e6931190d11"
+    },
+    {
+      "role": "historical-cpu-release",
+      "gitRevision": "57e40aea9b",
+      "path": "apps/viewer/src/lib/geometry-cpu-release.ts",
+      "source": "historical-cpu-release.ts.gz",
+      "sha256": "34cefe22fee8eeceb2746f76e4e9261d11f412906800d760334a28309fc15e08"
+    }
+  ]
+}

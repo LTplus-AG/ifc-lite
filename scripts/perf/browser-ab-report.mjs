@@ -15,6 +15,8 @@
 //   node scripts/perf/browser-ab-report.mjs runs.jsonl --base A --branch B [--json out.json]
 
 import { readFileSync, writeFileSync } from 'fs';
+import { tsImport } from 'tsx/esm/api';
+const { observedReadinessFollowsCompletion } = await tsImport('../../tests/benchmark/metadata-render-readiness.ts', import.meta.url);
 
 const args = process.argv.slice(2);
 const jsonlPath = args.find((a) => !a.startsWith('--'));
@@ -136,9 +138,7 @@ for (const [fixture, sides] of byFixture) {
     continue;
   }
   const invalidReadiness = [...baseVals, ...branchVals].some(row =>
-    !Number.isFinite(row.metadataRenderReadyMs) || row.metadataRenderReadyMs <= 0 ||
-    !Number.isFinite(row.metadataCompleteMs) || !Number.isFinite(row.streamCompleteMs) ||
-    row.metadataRenderReadyMs < Math.max(row.metadataCompleteMs, row.streamCompleteMs));
+    !observedReadinessFollowsCompletion(row.metadataRenderReadyMs, [row.metadataCompleteMs, row.streamCompleteMs]));
   if (invalidReadiness) {
     lines.push('    ⚠️ missing/inconsistent observed metadata-render readiness; legacy app-total records are not comparable.');
     anyIncomparableFixture = true;

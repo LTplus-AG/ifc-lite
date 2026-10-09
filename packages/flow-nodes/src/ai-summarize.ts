@@ -49,7 +49,7 @@ export const aiSummarizeNode: FlowNodeDef = {
       'Every statement must rest on the cited rows; state only what the rows show.',
     ].join('\n');
     const reply = await requestJson(ctx, service, task, dataBlock(table, keys, sent, columns), positiveInt(p.maxOutputTokens, 'maxOutputTokens', 32_000),
-      summarySchema([...known]));
+      summarySchema([...known]), 'flow.ai.summarize.v1');
     const budgetStopped = reply.kind === 'budget';
     if (budgetStopped) ctx.log('warn', 'the AI budget ran out; all evidence rows remain not sent');
     if (reply.kind === 'failed') throw new Error(reply.message);

@@ -7,6 +7,7 @@
  */
 
 import type { StateCreator } from 'zustand';
+import type { StandaloneArtifactLibraries } from '@/lib/storage/artifact-backup.js';
 import {
   RIBBON_COLLAPSED_STORAGE_KEY,
   RIBBON_CONTEXTUAL_TABS_STORAGE_KEY,
@@ -112,6 +113,8 @@ export interface UISlice extends GeometryLoadSettingsState, GeometryLoadSettings
    *  the bSDD add flow and consumed by the Properties panel. Null when idle. */
   pendingPropertyFocus: PropertyFocusTarget | null;
   pendingArtifactEditor: ArtifactEditorTarget | null;
+  /** Unfinished native backup imports belong to the tab, across panel remounts. */
+  pendingStandaloneArtifactImport: StandaloneArtifactLibraries | null;
   theme: ThemeMode;
   isMobile: boolean;
   hoverTooltipsEnabled: boolean;
@@ -202,6 +205,7 @@ export const createUISlice: StateCreator<UISlice & UICrossSliceState, [], [], UI
   hierarchyMode: getInitialHierarchyMode(),
   pendingPropertyFocus: null,
   pendingArtifactEditor: null,
+  pendingStandaloneArtifactImport: null,
   theme: UI_DEFAULTS.THEME,
   isMobile: false,
   hoverTooltipsEnabled: UI_DEFAULTS.HOVER_TOOLTIPS_ENABLED,

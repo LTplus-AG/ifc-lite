@@ -68,12 +68,11 @@ export function ContentStorageNotice({ status, retry, restore }: {
   const input = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
   const busyNow = useRef(false);
-  const pendingArtifacts = useRef<StandaloneArtifactLibraries | null>(null);
-  const [artifactsPending, setArtifactsPending] = useState(false);
+  const artifactsPending = useViewerStore(state => state.pendingStandaloneArtifactImport !== null);
+  const pendingArtifacts = () => useViewerStore.getState().pendingStandaloneArtifactImport;
   const saveArtifacts = (libraries: StandaloneArtifactLibraries) => {
     const outcome = importArtifactLibraries(libraries);
-    pendingArtifacts.current = outcome.failed.length ? outcome.pending : null;
-    setArtifactsPending(outcome.failed.length > 0);
+    useViewerStore.setState({ pendingStandaloneArtifactImport: outcome.failed.length ? outcome.pending : null });
     return outcome;
   };
   const states = Object.values(status.items);
@@ -91,7 +90,7 @@ export function ContentStorageNotice({ status, retry, restore }: {
     } finally { busyNow.current = false; setBusy(false); }
   };
   const backup = async () => {
-    if (pendingArtifacts.current) throw new Error(t('contentStorage.artifactsPending'));
+    if (pendingArtifacts()) throw new Error(t('contentStorage.artifactsPending'));
     const state = useViewerStore.getState();
     const preserved = await readBackupDrafts();
     downloadFile(JSON.stringify(encodeContentBackup(createContentBackup(visibleLibraries(), {
@@ -109,7 +108,7 @@ export function ContentStorageNotice({ status, retry, restore }: {
     if (!preserved.complete) toast.info(t('contentStorage.draftReadUnavailable'));
   };
   const importFile = async (file: File) => {
-    if (pendingArtifacts.current) throw new Error(t('contentStorage.artifactsPending'));
+    if (pendingArtifacts()) throw new Error(t('contentStorage.artifactsPending'));
     const state = useViewerStore.getState();
     // Opening the clash report library loads its validator, which parsing a backup needs.
     const clashReportsReady = await state.initializeSavedClashReports();
@@ -142,8 +141,7 @@ export function ContentStorageNotice({ status, retry, restore }: {
       for (const entry of error.entries.document) state.stageDocument(entry);
       toast.error(t('contentStorage.importFailed'));
       const hasArtifacts = Boolean(parsed.libraries.filters?.length || parsed.libraries.lists?.length || parsed.libraries.lenses?.length);
-      pendingArtifacts.current = hasArtifacts ? parsed.libraries : null;
-      setArtifactsPending(hasArtifacts);
+      useViewerStore.setState({ pendingStandaloneArtifactImport: hasArtifacts ? parsed.libraries : null });
       if (drafts.length) toast.error(t('contentStorage.draftsUnsaved', { count: drafts.length }));
       return;
     }
@@ -178,12 +176,13 @@ export function ContentStorageNotice({ status, retry, restore }: {
         {problem && <Button size="sm" variant="outline" disabled={busy} onClick={() => void run(async () => {
           if (await confirmDialog({ description: t('contentStorage.restoreConfirm'), destructive: true })) await restore();
         })}>{t('contentStorage.restore')}</Button>}
-        <Button size="sm" variant="outline" disabled={busy || artifactsPending} onClick={() => { if (!busyNow.current && !pendingArtifacts.current) input.current?.click(); }}>{t('contentStorage.import')}</Button>
+        <Button size="sm" variant="outline" disabled={busy || artifactsPending} onClick={() => { if (!busyNow.current && !pendingArtifacts()) input.current?.click(); }}>{t('contentStorage.import')}</Button>
         <Button size="sm" variant="outline" disabled={busy} onClick={() => void run(async () => {
           const live = useViewerStore.getState();
           const saved = await Promise.all([assistantLibrary.retry(), clashGroupLibrary.retry(), bcfDraftLibrary.retry(), bcfOutboxLibrary.retry(), modelChangeLibrary.retry(), clashGroupApplicationLibrary.retry(), reviewWorkspaceLibrary.retry(), semanticReviewLibrary.retry(), assistantRecipeLibrary.retry(), assistantPreferencesLibrary.retry(), live.retryDocumentsSave(), live.retryValidationReportsSave(), live.retrySaveComparisons(), live.retrySaveClashReports(), retryContentDrafts()]);
           const identitiesSaved = await retryContentImports();
-          const artifacts = pendingArtifacts.current ? saveArtifacts(pendingArtifacts.current) : null;
+          const unfinished = pendingArtifacts();
+          const artifacts = unfinished ? saveArtifacts(unfinished) : null;
           if (saved.every(Boolean) && identitiesSaved && !artifacts?.failed.length) toast.success(t('contentStorage.saved'));
           else toast.error(t('contentStorage.someUnsaved'));
         })}>{t('contentStorage.retryAll')}</Button>

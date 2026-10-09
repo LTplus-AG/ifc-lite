@@ -67,7 +67,7 @@ export function nativeLayerEvidence(state: NativeReadState, target: ModelEditTar
     if (!target.dataStore.source.length && !target.view.getNewEntity(expressId)) return unavailable;
     const typeId = typeOf(target, expressId);
     const binding = nativeTypeEvidence(state, target, expressId);
-    const relations = readRelatedLists(target.dataStore, 'IfcRelAssociatesMaterial', target.view);
+    const relations = readRelatedLists(target.dataStore, 'IfcRelAssociatesMaterial', target.view, { includeMalformedRelatingTargets: true });
     const own = relations.filter(row => row.relatedIds.includes(expressId));
     const inherited = typeId === null ? [] : relations.filter(row => row.relatedIds.includes(typeId));
     const current = own.length ? own : inherited;
@@ -109,8 +109,9 @@ function readPopulation(target: ModelEditTarget, expressId: number,
   const unavailable = { assignmentCount, layerCount: null, truncated: false, value: null };
   const assignments: NativeLayerPopulation['assignments'] = [];
   for (const row of relations) {
+    if (row.relatingId === undefined) return unavailable;
     const record = effectiveMetadataRecord(target.dataStore, row.relatingId, target.view);
-    if (!record || !record.attributes.length) return unavailable;
+    if (!record || !record.attributes.length || !liveEntityConforms(target.dataStore, row.relatingId, 'IfcMaterialSelect', target.view)) return unavailable;
     assignments.push({ expressId: row.relatingId, ifcClass: record.type });
   }
   // The review contract describes one native definition; never choose among distinct associations.

@@ -278,6 +278,15 @@
               "status": "as-loaded",
               "psetCount": 0,
               "psets": []
+            },
+            "nativeCost": {
+              "status": "available",
+              "recordCount": 11,
+              "expectedJsonParts": [
+                "{\"modelId\":\"arch\",\"declaredUnits\":[{\"expressId\":15,\"Type\":\"IfcSIUnit\",\"UnitType\":\"LENGTHUNIT\",\"Prefix\":\"MILLI\",\"Name\":\"METRE\",\"Symbol\":\"mm\",\"Dimension\":\"length\",\"Scale\":\"0.001\"},{\"expressId\":16,\"Type\":\"IfcSIUnit\",\"UnitType\":\"AREAUNIT\",\"Name\":\"SQUARE_METRE\",\"Symbol\":\"m²\",\"Dimension\":\"area\",\"Scale\":\"1\"},{\"expressId\":17,\"Type\":\"IfcSIUnit\",\"UnitType\":\"VOLUMEUNIT\",\"Name\":\"CUBIC_METRE\",\"Symbol\":\"m³\",\"Dimension\":\"volume\",\"Scale\":\"1\"}],\"unitDiagnostics\":[],\"selected\":[425],\"graph\":{\"modelId\":\"arch\",\"source\":\"loaded-source\",\"SchemaVersion\":\"IFC4\",\"CostSchedules\":[],\"CostItems\":[],\"CostValues\":[],\"CostQuantities\":[],\"Units\":[],\"MeasuresWithUnit\":[],\"ProjectUnits\":{},\"Relationships\":[],\"Diagnostics\":[],\"HasCostData\":false},\"records\":[{\"expressId\":14,\"type\":\"IfcUnitAssignment\",\"attributes\":[[15,16,17]]},{\"expressId\":15,\"type\":\"IfcSIUnit\",\"attributes\":[\"*\",\".LENGTHUNIT.\",\".MILLI.\",\".METRE.\"]},{\"expressId\":16,\"type\":\"IfcSIUnit\",\"attributes\":[\"*\",\".AREAUNIT.\",null,\".SQUARE_METRE.\"]},{\"expressId\":17,\"",
+                "type\":\"IfcSIUnit\",\"attributes\":[\"*\",\".VOLUMEUNIT.\",null,\".CUBIC_METRE.\"]},{\"expressId\":18,\"type\":\"IfcProjectedCRS\",\"attributes\":[\"EPSG:32760\",\"EPSG:32760 - WGS 84 / UTM zone 60S\",\"WGS 84\",null,null,null,15]},{\"expressId\":404,\"type\":\"IfcRelAssociatesMaterial\",\"attributes\":[\"1Tyvz$43XCrgyBJnA9othY\",1,null,null,[395,425],405]},{\"expressId\":411,\"type\":\"IfcRelAggregates\",\"attributes\":[\"0CXsAjsVrFhhdIAzC5Vwj8\",1,\"house - roof container\",null,382,[395,425]]},{\"expressId\":424,\"type\":\"IfcRelDefinesByType\",\"attributes\":[\"2LggWrf0b8BBbNxz_kRjsN\",1,null,null,[425],423]},{\"expressId\":425,\"type\":\"IfcSlab\",\"attributes\":[\"12UVOn4wvAJPMUExKdZLb8\",1,\"house - roof - slab right\",\"A roof slab that's got it all covered\",\"roof\",436,445,\"454425.1027891.979946.932084.902511\",null]},{\"expressId\":430,\"type\":\"IfcRelDefinesByProperties\",\"attributes\":[\"3VqHNi6JD3E9HmoEYuXD7X\",1,null,null,[425],429]},{\"expressId\":435,\"type\":\"IfcRelDefinesByProperties\",\"attributes\":[\"0idWscfc57Hwo3gGjxt6Ra\",1,null,null,[425],434]}],\"",
+                "incoming\":[{\"target\":15,\"referrers\":[{\"expressId\":14,\"count\":1},{\"expressId\":18,\"count\":1}]},{\"target\":16,\"referrers\":[{\"expressId\":14,\"count\":1}]},{\"target\":17,\"referrers\":[{\"expressId\":14,\"count\":1}]},{\"target\":425,\"referrers\":[{\"expressId\":404,\"count\":1},{\"expressId\":411,\"count\":1},{\"expressId\":424,\"count\":1},{\"expressId\":430,\"count\":1},{\"expressId\":435,\"count\":1}]}]}"
+              ]
             }
           }
         }

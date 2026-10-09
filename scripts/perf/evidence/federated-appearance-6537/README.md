@@ -9,12 +9,21 @@ https://github.com/LTplus-AG/ifc-lite/issues/6537#issuecomment-6085363426.
 Baseline main: `2382cf4124315f027b2d33c21c1751cee33c5081`.
 Mounted baseline preparation: `d836deb651392b337d01bf791b67b56c1967652a`.
 Validated implementation: `57a963c0c55ae9909bc326cc6c86ecfbd31d201d`.
-Later publication adds documentation/evidence only.
+Publication `5639fb3724ede20f29e144859fa50e5aa90ccf1f` adds documentation/evidence only.
 Source, Git metadata and object alternate are on Linux; no shared checkout moved.
+
+Normal main integration `70cae534e9ad8c5f143b2e4d59f5c8c834ac2b3e` includes
+the shipped classification prerequisite #7361 and current main's sixteen viewer
+test shards. All three appearance implementation/test file hashes are unchanged.
+The local checks and runtime inventory below remain bound to the original
+validated source; they do not qualify the new integrated runtime. Fresh hosted
+CI is required. The declared measurement experiment retains the exact base
+`2382cf4124315f027b2d33c21c1751cee33c5081` and branch publication `5639fb37`
+pins separately; its setup-only conditional reservation follows #7109/#6711.
 
 ## Mechanism and preservation
 
-Every streamed publication clones the models map to notify subscribers. The
+Every store geometry-batch publication clones the models map to notify subscribers. The
 old multi-model appearance hook consequently walked all accumulated and peer
 meshes, built another list and created wrappers wherever ownership was unstamped.
 The canonical hook now stamps producer objects through `stampModelIndex` and
@@ -27,6 +36,9 @@ An earlier-model append still moves the retained suffix to preserve grouped
 order. This is counted as `viewer.appearanceSource.shiftedMeshes`: last-model
 appends cost O(models + new), earlier appends O(models + suffix + new).
 The visible cache's chronological GPU-upload prefix is a different contract.
+The canonical loader streams store batches only for primary loads; federated
+adds publish geometry atomically at completion. The fixed-batch replay below
+therefore diagnoses the hook defect independently of actual worker-load timing.
 
 ## Actual reproduction and corrected checks
 

@@ -831,3 +831,14 @@ function verifiedCurrentTypeQuantities(store: IfcDataStore, expressId: number, v
   return { status: result.status, reason: result.reason, quantities: result.value?.quantities ?? null };
 }
 ```
+
+### Source quantity sets owned by a type
+
+`extractTypeEntityOwnQuantities(store, typeExpressId)` reads a type object's source quantity sets directly, including `HasPropertySets`, with the same canonical quantity collection and definition-identity rules as `extractTypeQuantitiesOnDemand(store, occurrenceExpressId)`. It returns an empty array when the source type has no supported numeric quantities. Opaque physical quantity members remain in the native IFC graph; this numeric projection does not describe them. The reader leaves the source bytes unchanged.
+
+```typescript
+import { extractTypeEntityOwnQuantities } from '@ifc-lite/parser';
+
+const typeExpressId = 42; // The selected type object's model-local express ID.
+const typeQuantitySets = extractTypeEntityOwnQuantities(store, typeExpressId);
+```

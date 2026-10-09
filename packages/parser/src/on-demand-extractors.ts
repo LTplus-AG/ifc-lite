@@ -11,11 +11,9 @@
  */
 
 import { EntityExtractor } from './entity-extractor.js';
-import { extractCurrentTypeQuantities } from './current-type-quantities.js';
-import type { MetadataReadView } from './effective-metadata-record.js';
 import { RelationshipType, resolvedTypeName } from '@ifc-lite/data';
 import type { IfcDataStore } from './columnar-parser.js';
-import { readQuantitySet, type CollectedQuantity } from './quantity-collect.js';
+import type { CollectedQuantity } from './quantity-collect.js';
 import { appendSetsFromSecondSource, setIdentityKey } from './property-set-merge.js';
 import type { GeoreferenceInfo } from './georef-extractor.js';
 import { extractExactRelationshipEdges, type EntityRelationships } from './exact-relationship-edges.js';
@@ -268,103 +266,7 @@ export function extractTypeEntityOwnProperties(
 // Type Quantity Extraction
 // ============================================================================
 
-/**
- * Extract quantity sets (IfcElementQuantity) from a list of set IDs using the
- * entity index. The quantity counterpart of {@link extractPsetsFromIds}: it
- * skips anything that is not an IFCELEMENTQUANTITY (e.g. property sets that
- * share the HasPropertySets list on a type).
- */
-export function extractQsetsFromIds(
-    store: IfcDataStore,
-    extractor: EntityExtractor,
-    qsetIds: number[]
-): Array<{ name: string; globalId?: string; quantities: CollectedQuantity[] }> {
-    const result: Array<{ name: string; globalId?: string; quantities: CollectedQuantity[] }> = [];
-
-    for (const qsetId of qsetIds) {
-        // @raw-entity-enumeration-ok one requested quantity-set id is decoded from its source STEP span
-        const qsetRef = store.entityIndex.byId.get(qsetId);
-        if (!qsetRef) continue;
-
-        // Only extract IFCELEMENTQUANTITY entities (skip property sets etc.)
-        if (qsetRef.type.toUpperCase() !== 'IFCELEMENTQUANTITY') continue;
-
-        // A set that walks to zero quantities is dropped — see
-        // {@link readQuantitySet}. Here that also stops an empty set from one
-        // source suppressing a populated same-identity set from another, since
-        // `extractTypeQuantitiesOnDemand` still dedups NAMED sets by
-        // `(name, globalId)` identity (see {@link appendSetsFromSecondSource}).
-        const qset = readQuantitySet(store, extractor, qsetRef);
-        if (qset) result.push(qset);
-    }
-
-    return result;
-}
-
-/**
- * Extract type-level quantities for a single entity ON-DEMAND.
- * Finds the element's type via IfcRelDefinesByType, then extracts element
- * quantities from:
- * 1. The type entity's HasPropertySets attribute (index 5 on IfcTypeObject) —
- *    an IfcPropertySetDefinition list that may include IfcElementQuantity.
- * 2. The onDemandQuantityMap for the type entity (IFC4 IfcRelDefinesByProperties
- *    with an IfcElementQuantity targeting the type).
- * Returns null when the element has no type or the type carries no quantities.
- * The quantity counterpart of {@link extractTypePropertiesOnDemand}.
- */
-export function extractTypeQuantitiesOnDemand(
-    store: IfcDataStore,
-    entityId: number,
-    view?: MetadataReadView,
-): TypeQuantityInfo | null {
-    if (view && store.source?.length) return extractCurrentTypeQuantities(store, entityId, view);
-    if (!store.relationships) return null;
-
-    const typeIds = store.relationships.getRelated(entityId, RelationshipType.DefinesByType, 'inverse');
-    if (typeIds.length === 0) return null;
-
-    const typeId = typeIds[0];
-    // @raw-entity-enumeration-ok typeIds came from this selected entity's relationship lookup
-    const typeRef = store.entityIndex.byId.get(typeId);
-    if (!typeRef) return null;
-
-    if (!store.source?.length) return null;
-
-    const extractor = new EntityExtractor(store.source);
-
-    const typeEntity = extractor.extractEntity(typeRef);
-    const typeName = typeEntity && typeof typeEntity.attributes?.[2] === 'string'
-        ? typeEntity.attributes[2]
-        : typeRef.type;
-
-    const allQsets: Array<{ name: string; globalId?: string; quantities: CollectedQuantity[] }> = [];
-    const seenQsetKeys = new Set<string>();
-    const ownSetIds = new Set<number>();
-
-    // Source 1: HasPropertySets attribute on the type (index 5) — quantity sets
-    // live alongside property sets in this IfcPropertySetDefinition list.
-    if (typeEntity) {
-        const hasPropertySets = typeEntity.attributes?.[5];
-        if (Array.isArray(hasPropertySets)) {
-            for (const id of hasPropertySets) if (typeof id === 'number') ownSetIds.add(id);
-            for (const qset of extractQsetsFromIds(store, extractor, [...ownSetIds])) {
-                seenQsetKeys.add(setIdentityKey(qset));
-                allQsets.push(qset);
-            }
-        }
-    }
-
-    // Source 2: onDemandQuantityMap for the type entity (IFC4 IfcRelDefinesByProperties).
-    const typeQsetIds = store.onDemandQuantityMap?.get(typeId);
-    if (typeQsetIds && typeQsetIds.length > 0) {
-        appendSetsFromSecondSource(allQsets, ownSetIds, seenQsetKeys, typeQsetIds,
-            (ids) => extractQsetsFromIds(store, extractor, ids));
-    }
-
-    if (allQsets.length === 0) return null;
-
-    return { typeName, typeId, quantities: allQsets };
-}
+export { extractQsetsFromIds, extractTypeQuantitiesOnDemand, extractTypeEntityOwnQuantities } from './type-own-quantity-source.js';
 
 // ============================================================================
 // Document Extraction

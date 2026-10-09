@@ -1,0 +1,6 @@
+---
+"@ifc-lite/parser": minor
+"@ifc-lite/export": patch
+---
+
+Export default-history type-owned quantity edits through HasPropertySets instead of an invalid IfcRelDefinesByProperties type target. Reuse canonical source type quantity extraction and preserve raw untouched physical quantities, explicit native units, Formula, set metadata, unrelated definitions and shared owners with copy-on-write. Expose extractTypeEntityOwnQuantities for callers reading a type object directly; occurrence-facing and source-only reads retain their existing semantics.

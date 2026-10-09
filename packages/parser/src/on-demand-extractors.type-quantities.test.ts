@@ -31,6 +31,7 @@ import { describe, it, expect, beforeAll } from 'vitest';
 import { StepTokenizer } from './tokenizer.js';
 import { ColumnarParser } from './columnar-parser.js';
 import { extractTypeQuantitiesOnDemand } from './on-demand-extractors.js';
+import { extractTypeEntityOwnQuantities } from './type-own-quantity-source.js';
 import type { IfcDataStore } from './columnar-parser.js';
 
 // prettier-ignore
@@ -108,6 +109,16 @@ describe('extractTypeQuantitiesOnDemand: HasPropertySets + IfcRelDefinesByProper
         }
         const parser = new ColumnarParser();
         store = await parser.parseLite(source.buffer.slice(0), entityRefs, {});
+    });
+
+    it('#7355 reads a selected type directly without treating an occurrence as its own type', () => {
+        const distinct = extractTypeEntityOwnQuantities(store, 1010);
+        expect(distinct.map(set => set.globalId)).toEqual(['GID-A-00000000000001', 'GID-B-00000000000001']);
+        expect(distinct.flatMap(set => set.quantities.map(quantity => quantity.value))).toEqual([5, 7]);
+        expect(extractTypeEntityOwnQuantities(store, 2010).flatMap(set => set.quantities.map(quantity => quantity.value))).toEqual([9]);
+        expect(extractTypeEntityOwnQuantities(store, 3010).flatMap(set => set.quantities.map(quantity => quantity.value))).toEqual([3]);
+        expect(extractTypeEntityOwnQuantities(store, 1200)).toEqual([]);
+        expect(extractTypeEntityOwnQuantities(store, 999999)).toEqual([]);
     });
 
     it('keeps two distinct same-named type quantity sets separate (different GlobalId)', () => {

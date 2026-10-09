@@ -26,6 +26,7 @@ import { authoredEntityRefs, type EffectiveEntityIndex } from './effective-index
 import { HAS_PROPERTY_SETS_SLOT } from './type-owned-psets.js';
 import type { IfcSchemaVersion } from './schema-converter.js';
 import { firstWrittenOwnerHistoryRef } from './schema-converter-owner-history.js';
+import { nativeSetLine, decodeNativeSetLine } from './step-native-set-record.js';
 import type { SourceLineMutations } from './step-exporter.js';
 
 /**
@@ -199,6 +200,14 @@ export function getPropertyIdsInSet(ctx: PropertySetContext, psetId: number): nu
  * relation instead (#2012).
  */
 export function getTypeOwnedHasPropertySetIds(ctx: PropertySetContext, entityId: number, effective: EffectiveEntityIndex): number[] {
+  const named = ctx.mutationView?.getAttributeMutationsForEntity?.(entityId) ?? [];
+  const positional = ctx.mutationView?.getPositionalMutationsForEntity?.(entityId);
+  if (named.some(mutation => mutation.name === 'HasPropertySets') || positional?.has(HAS_PROPERTY_SETS_SLOT)) {
+    const schema = ctx.dataStore.schemaVersion;
+    const sourceSchema = schema === 'IFC2X3' || schema === 'IFC4X3' || schema === 'IFC5' ? schema : 'IFC4';
+    const line = nativeSetLine(ctx, entityId, sourceSchema, new Map(named.map(mutation => [mutation.name, mutation.value])));
+    return authoredEntityRefs(decodeNativeSetLine(line, entityId).attributes[HAS_PROPERTY_SETS_SLOT]);
+  }
   if (effective.isOverlayCreated(entityId)) {
     const authored = ctx.mutationView?.getNewEntity(entityId)?.attributes?.[HAS_PROPERTY_SETS_SLOT];
     return authoredEntityRefs(overlaySlotValue(ctx, entityId, HAS_PROPERTY_SETS_SLOT, authored));

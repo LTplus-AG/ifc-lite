@@ -12,6 +12,9 @@
  * and `bim.store`'s modelling methods for joins, types and materials.
  */
 
+import type { NativeReadState } from './model-authoring-read-target';
+import { writeReviewedLayers } from './model-authoring-layers';
+import type { ApplyLayersSpec } from '@/lib/authoring/material-layers';
 import { writeNativeReplacement } from './model-authoring-replacement';
 import { slabOpeningSpec, writeSlabOpening, readSlabOpeningPreview } from './model-authoring-slab-opening';
 import { writeStairLifecycle, writeStairCreation } from './model-authoring-stair-lifecycle';
@@ -39,6 +42,7 @@ export type ElementId = { id: number } | { ref: string };
 
 /** What preview resolved for an operation; the commit re-resolves and must find the same. */
 export interface ResolvedOp {
+  layers?: ApplyLayersSpec;
   alignment?: { reference: number; targets: number[]; storeyId: number; geometry?: import('./model-authoring-align').PreparedAlignment };
   slabOpening?: ReturnType<typeof readSlabOpeningPreview>;
   target?: number;
@@ -159,6 +163,7 @@ export function dryRunAuthoring(
   modelId: string,
   rows: readonly DryRunRow[],
   splitScopes?: Parameters<typeof import('@ifc-lite/create').splitElementsInStore>[3],
+  readState?: NativeReadState,
 ): Map<number, string> {
   const refusals = new Map<number, string>();
   if (rows.length === 0) return refusals;
@@ -167,7 +172,7 @@ export function dryRunAuthoring(
     const refs = new Map<string, number>();
     for (const row of rows) {
       try {
-        editor.runAtomic((draft) => draftAuthoringOperation(batch, dataStore, modelId, draft, row, refs, splitScopes));
+        editor.runAtomic((draft) => draftAuthoringOperation(batch, dataStore, modelId, draft, row, refs, splitScopes, readState));
       } catch (error) {
         refusals.set(row.index, error instanceof Error ? error.message : String(error));
       }
@@ -189,9 +194,14 @@ export function writeNativeTypeDetach(op: Extract<AuthoringOp, { op: 'type.detac
   detachFromType(draft, dataStore, [resolved.target!]);
 }
 
-export function draftAuthoringOperation(batch: ModelAuthoringBatch, dataStore: IfcDataStore, modelId: string, draft: StoreEditor, row: DryRunRow, refs: Map<string, number>, splitScopes?: Parameters<typeof import('@ifc-lite/create').splitElementsInStore>[3]): void {
+export function draftAuthoringOperation(batch: ModelAuthoringBatch, dataStore: IfcDataStore, modelId: string, draft: StoreEditor, row: DryRunRow, refs: Map<string, number>, splitScopes?: Parameters<typeof import('@ifc-lite/create').splitElementsInStore>[3], readState?: NativeReadState): void {
   const { op, resolved } = row;
   switch (op.op) {
+    case 'material.layers':
+      if (!readState) throw new Error('The native layer source context is unavailable');
+      writeReviewedLayers({ modelId, dataStore, view: draft.getMutationView(), editor: draft }, draft,
+        draftMethods(dataStore, modelId, draft), resolved.layers!, op, batch.units, readState);
+      return;
     case 'element.replace': {const made=writeNativeReplacement(batch,dataStore,draft,resolved.target!,resolved.storey!,op);refs.set(op.ref,made.expressId);return;}
     case 'stair.resize': case 'stair.delete': case 'railing.delete': case 'stair.replace': case 'railing.replace': {
       const result=writeStairLifecycle(dataStore,draft,batch,op,resolved.target!,resolved.storey);

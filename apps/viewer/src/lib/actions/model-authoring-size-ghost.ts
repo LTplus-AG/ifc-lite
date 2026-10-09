@@ -29,7 +29,7 @@ export function authoringSizeGhost(state: ViewerState, batch: ModelAuthoringBatc
   if (row.op.op === 'element.trimExtend' && row.resolved.reachBoundary && 'ref' in row.resolved.reachBoundary) return unavailable();
   return view.prepareAtomic((draftView) => {
     const editor = new StoreEditor(dataStore, draftView);
-    draftAuthoringOperation(batch, dataStore, modelId, editor, row, new Map());
+    draftAuthoringOperation(batch, dataStore, modelId, editor, row, new Map(), undefined, state);
     const draftState: ViewerState = { ...state, mutationViews: new Map([...state.mutationViews, [modelId, draftView]]),
       storeEditors: new Map([...state.storeEditors, [modelId, editor]]) };
     const expressId = row.resolved.target!;

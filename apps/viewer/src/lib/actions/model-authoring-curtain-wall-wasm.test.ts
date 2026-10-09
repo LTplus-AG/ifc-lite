@@ -5,6 +5,9 @@ import '@/test/setup-dom.js';
 import 'fake-indexeddb/auto';
 import assert from 'node:assert/strict';
 import { afterEach, test } from 'node:test';
+import { createStoreAdapter } from '@/sdk/adapters/store-adapter';
+import { MutablePropertyView } from '@ifc-lite/mutations';
+import { fixtureModels } from '@/test/store-fixture';
 import { RelationshipType } from '@ifc-lite/data';
 import { useViewerStore } from '@/store';
 import { editedModelBytes } from '@/lib/export/edited-model-bytes';
@@ -31,4 +34,22 @@ for(const variant of ['default','rotated-open','custom-section'] as const)test(`
   const nativeVolume=native.reduce((sum,mesh)=>sum+volume(mesh),0),ghostVolume=ghosts.reduce((sum,mesh)=>sum+volume({positions:Array.from(mesh.positions),indices:Array.from(mesh.indices)}),0);
   assert.ok(Math.abs(nativeVolume-ghostVolume)/nativeVolume<.002,`Actual native volume ${nativeVolume} matches actual command preview ${ghostVolume}`);
   for(let axis=0;axis<3;axis++){const coordinates=ghosts.flatMap(mesh=>Array.from(mesh.positions).filter((_v,i)=>i%3===axis));assert.ok(Math.abs(Math.min(...coordinates)-render.min[axis])<.001);assert.ok(Math.abs(Math.max(...coordinates)-render.max[axis])<.001);}
+});
+
+for(const frameKind of ['live','saved','saved-2D'] as const)test(`#7298 actual public ${frameKind} storey placement frame matches native curtain geometry or explicitly unavailable preview`,{skip:!stairWasmAvailable&&'run pnpm build:wasm:fetch'},async()=>{
+  const saved=frameKind!=='live',twoD=frameKind==='saved-2D';
+  await seedAuthoringSample();const get=useViewerStore.getState,api=createStoreAdapter(useViewerStore),source=get().models.get(SAMPLE_MODEL)!.ifcDataStore!,storey=source.entities.getExpressIdByGlobalId(GROUND_STOREY);
+  const point=api.addEntity(SAMPLE_MODEL,{type:'IfcCartesianPoint',attributes:[twoD?[15000,20000]:[15000,20000,5000]]}),z=api.addEntity(SAMPLE_MODEL,{type:'IfcDirection',attributes:[[0,0,1]]}),x=api.addEntity(SAMPLE_MODEL,{type:'IfcDirection',attributes:[twoD?[0,1]:[0,1,0]]}),axis=api.addEntity(SAMPLE_MODEL,{type:twoD?'IfcAxis2Placement2D':'IfcAxis2Placement3D',attributes:twoD?[`#${point.expressId}`,`#${x.expressId}`]:[`#${point.expressId}`,`#${z.expressId}`,`#${x.expressId}`]}),placement=api.addEntity(SAMPLE_MODEL,{type:'IfcLocalPlacement',attributes:[null,`#${axis.expressId}`]});
+  api.setPositionalAttribute({modelId:SAMPLE_MODEL,expressId:storey},5,`#${placement.expressId}`);api.setPositionalAttribute({modelId:SAMPLE_MODEL,expressId:storey},9,twoD?0:5000);
+  const exported=editedModelBytes(source,get().mutationViews.get(SAMPLE_MODEL)!),independent=await parseIfc(exported);assert.equal(independent.getEntity(storey)?.attributes[5],placement.expressId,'Independent native source retains the public edited storey placement');
+  if(saved){const model={...get().models.get(SAMPLE_MODEL)!,ifcDataStore:independent},view=new MutablePropertyView(independent.properties,SAMPLE_MODEL);useViewerStore.setState({...fixtureModels(model),mutationViews:new Map([[SAMPLE_MODEL,view]]),storeEditors:new Map(),undoStacks:new Map(),redoStacks:new Map()});}
+  const params={Start:[1,2,0],End:[5,2,0],Height:3,UGrid:2,VGrid:2},batch=parseModelAuthoringBatch(JSON.stringify({version:1,kind:'model.authoring',title:'Native storey frame',units:'m',frame:'storey-local',operations:[{op:'curtainWall.create',ref:'frame',storey:{modelId:SAMPLE_MODEL,globalId:GROUND_STOREY},params}]}));
+  const preview=previewModelAuthoring(get(),batch);assert.equal(preview.rows[0].status,'ready',preview.rows[0].issue);const ghosts=authoringGhosts(get(),preview);
+  const result=commitModelAuthoring(useViewerStore,preview,new Set([0]),'actual native rotated storey');assert.ok(result.ok,result.ok?'':result.detail??result.reason);
+  const edited=editedModelBytes(get().models.get(SAMPLE_MODEL)!.ifcDataStore!,get().mutationViews.get(SAMPLE_MODEL)!),parsed=await parseIfc(edited),root=parsed.entities.getExpressIdByGlobalId(result.receipt.applied[0].globalId),children=parsed.relationships.getRelated(root,RelationshipType.Aggregates,'forward'),meshes=await meshStairs(new TextDecoder().decode(edited)),native:StairMesh[]=[];
+  for(const child of children){const part=meshes.get(child);assert.ok(part?.length);native.push(...part);}
+  if(twoD){assert.equal(ghosts.length,0,'Native 3D products under an unverified 2D parent receive no invented matching ghost');assert.equal(preview.rows[0].previewUnavailable,true);assert.ok(native.reduce((sum,mesh)=>sum+volume(mesh),0)>0,'Canonical native output is observable, without an unsupported 2D frame accuracy claim');return;}
+  const bounds=stairMeshBounds(native);assert.ok(Math.abs(bounds.min[0]-12.925)<.001);assert.ok(Math.abs(bounds.min[1]-21)<.001);assert.ok(Math.abs(bounds.min[2]-(twoD?0:5))<.001,'Public native storey elevation and rotation are authoritative');
+  if(ghosts.length===0){assert.equal(preview.rows[0].previewUnavailable,true);assert.equal(saved,false,'Supported immutable native translated/rotated storey must retain its actual command preview');return;}
+  const render={min:[bounds.min[0],bounds.min[2],-bounds.max[1]],max:[bounds.max[0],bounds.max[2],-bounds.min[1]]};for(let axis=0;axis<3;axis++){const values=ghosts.flatMap(mesh=>Array.from(mesh.positions).filter((_v,i)=>i%3===axis));assert.ok(Math.abs(Math.min(...values)-render.min[axis])<.001,`Current native ${saved?'saved':'live'} storey min axis${axis}: ghost ${Math.min(...values)}, native ${render.min[axis]}`);assert.ok(Math.abs(Math.max(...values)-render.max[axis])<.001);}
 });

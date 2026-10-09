@@ -17,7 +17,7 @@ export const modelAuthoringEn = {
   'modelAuthoring.frame': 'Lengths in {units}, storey-local (Z up); rotation angles in degrees, counter-clockwise from above. Stair Direction is radians; native stair expected snapshots retain metre lengths.',
   'modelAuthoring.counts': '{ready} ready · {attention} need attention · {other} unchanged, blocked or unsupported',
   'modelAuthoring.op.curtainWall.create': 'Create curtain wall',
-  'modelAuthoring.curtainWallPreview': 'Native aggregate: mullions, transoms and panels. Preview is available only for matching rectangular member sections and the native 0.024 m panel thickness; other native sections or thicknesses are not drawn.',
+  'modelAuthoring.curtainWallPreview': 'Native aggregate: mullions, transoms and panels. Preview is available only for matching rectangular member sections and the native 0.024 m panel thickness; other native sections or thicknesses, unreadable source frames and live-edited storey placement chains are not drawn.',
   'modelAuthoring.op.stair.create': 'Create stair',
   'modelAuthoring.op.railing.create': 'Create railing',
   'modelAuthoring.op.stair.resize': 'Resize stair',

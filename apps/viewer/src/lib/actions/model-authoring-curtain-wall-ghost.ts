@@ -1,6 +1,7 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+import { curtainWallSourceFrameAvailable } from './model-authoring-curtain-wall-frame';
 import type { ViewerState } from '@/store';
 import type { MeshData } from '@ifc-lite/geometry';
 import { curtainWallLayout } from '@ifc-lite/create';
@@ -12,6 +13,8 @@ import type { AuthoringRow } from './model-authoring-preview';
 /** Reuse the actual native command's rectangular-section preview; refuse unsupported section detail honestly. */
 export function authoringCurtainWallGhost(state: ViewerState, batch: ModelAuthoringBatch, row: AuthoringRow, id: number): MeshData[] {
   if (row.op.op !== 'curtainWall.create' || row.modelId === null || row.resolved.storey === undefined) return [];
+  const store = state.models.get(row.modelId)?.ifcDataStore;
+  if (!store || !curtainWallSourceFrameAvailable(store, state.mutationViews.get(row.modelId), row.resolved.storey)) return [];
   const p = curtainWallParamsInMetres(row.op.params, batch.units);
   const mullion = p.MullionProfile ?? { Type: 'Rectangle' as const, XDim: .05, YDim: .15 };
   const transom = p.TransomProfile ?? mullion;

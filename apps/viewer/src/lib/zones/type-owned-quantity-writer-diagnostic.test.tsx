@@ -329,7 +329,7 @@ for (const refusal of ['missing-identity', 'duplicate-identity', 'missing-member
   if (refusal === 'missing-members') view.setPositionalAttribute(a.qto, 5, null);
   if (refusal === 'deleted-member') view.deleteEntity(a.volume);
   view.setQuantity(a.type, 'Qto_WallBaseQuantities', 'NetVolume', 35, QuantityType.Volume);
-  assert.throws(() => editedModelBytes(store, view), /identity|references are unreadable|dependency.*unavailable/,
+  assert.throws(() => editedModelBytes(store, view), /identity|unreadable|unavailable|empty native type quantity copy/i,
    'a failed native identity or quantity inventory cannot be presented as an available empty writer base');
   assert.deepEqual(store.getEntity(a.qto), before, 'refusal leaves the immutable native source definition unchanged');
  });

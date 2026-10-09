@@ -14,8 +14,10 @@ import type { StateCreator } from 'zustand';
 import type { Lens, LensRule, AutoColorSpec, AutoColorLegendEntry, DiscoveredLensData } from '@ifc-lite/lens';
 import { BUILTIN_LENSES } from '@ifc-lite/lens';
 import { duplicateLensConfig, reserveUniqueId } from '@/components/viewer/lens-editor-utils';
-import { encodeSavedLens, mergeImportedGroupLenses, migrateSavedLens } from '@/lib/lens/migrate-saved-lens';
-import { saveJson, type SaveResult } from '@/lib/storage/save-result';
+import { mergeImportedGroupLenses, migrateSavedLens } from '@/lib/lens/migrate-saved-lens';
+import type { SaveResult } from '@/lib/storage/save-result';
+import { AUTO_COLOR_FROM_LIST_ID, buildInitialLenses, saveLenses } from '@/lib/lens/persistence';
+export { AUTO_COLOR_FROM_LIST_ID, buildInitialLenses } from '@/lib/lens/persistence';
 import { defineSliceTeardown, notApplicable } from '../teardown.js';
 export type { Lens, LensRule, AutoColorSpec, AutoColorLegendEntry, DiscoveredLensData };
 export type { SaveResult };
@@ -24,91 +26,8 @@ export {
   AUTO_COLOR_SOURCES, ENTITY_ATTRIBUTE_NAMES,
 } from '@ifc-lite/lens';
 
-/** localStorage key for persisting custom lenses */
-const STORAGE_KEY = 'ifc-lite-custom-lenses';
-
-/** Ephemeral lens ID created when coloring from list column headers */
-export const AUTO_COLOR_FROM_LIST_ID = 'auto-color-from-list';
-
 /** Built-in lens IDs — used to detect overrides */
 const BUILTIN_IDS = new Set(BUILTIN_LENSES.map(l => l.id));
-
-/**
- * Load saved lenses from localStorage.
- * Returns both custom lenses and built-in overrides (user edits to builtin lenses).
- * Built-in overrides replace the default builtin when merging in initial state.
- */
-function loadSavedLenses(): { custom: Lens[]; builtinOverrides: Map<string, Lens> } {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return { custom: [], builtinOverrides: new Map() };
-    const parsed: unknown = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return { custom: [], builtinOverrides: new Map() };
-    const valid = parsed
-      .map(migrateSavedLens)
-      .filter((lens): lens is Lens => lens !== null && lens.id !== undefined);
-    const builtinOverrides = new Map<string, Lens>();
-    const custom: Lens[] = [];
-    for (const l of valid) {
-      if (BUILTIN_IDS.has(l.id)) {
-        builtinOverrides.set(l.id, { ...l, builtin: true });
-      } else {
-        custom.push(l);
-      }
-    }
-    return { custom, builtinOverrides };
-  } catch {
-    return { custom: [], builtinOverrides: new Map() };
-  }
-}
-
-/** What the save messages call the thing being persisted. */
-const SAVE_SUBJECT = 'lens changes';
-
-/**
- * Persist lenses to localStorage.
- * Saves custom lenses + any built-in lenses the user has edited (overrides).
- *
- * Returns a `SaveResult` rather than swallowing the failure: every CRUD action
- * below commits to the store only when the write actually landed, so the panel
- * can never show a lens that will be gone on reload.
- */
-function saveLenses(lenses: Lens[]): SaveResult {
-  let toStore: Lens[];
-  try {
-    // Save non-builtin custom lenses, but never the ephemeral
-    // "color from list column" lens — it is intentionally transient and must
-    // not be restored as a stray "Color by …" lens on reload.
-    const custom = lenses.filter(l => !l.builtin && l.id !== AUTO_COLOR_FROM_LIST_ID);
-    // Also save built-in lenses that differ from their defaults (user overrides)
-    const builtinOverrides = lenses.filter(l => {
-      if (!l.builtin) return false;
-      const original = BUILTIN_LENSES.find(b => b.id === l.id);
-      if (!original) return false;
-      // Has the user changed the name, rules, or auto-color spec? autoColor must
-      // be part of this check or an autoColor-only edit to an auto-color builtin
-      // (rules: []) imported via the JSON round-trip would be dropped on reload.
-      return l.name !== original.name ||
-        JSON.stringify(l.rules) !== JSON.stringify(original.rules) ||
-        JSON.stringify(l.autoColor) !== JSON.stringify(original.autoColor) || JSON.stringify(l.capturedScope) !== JSON.stringify(original.capturedScope);
-    });
-    toStore = [...custom, ...builtinOverrides];
-  } catch {
-    // The override check stringifies rules/autoColor, so a non-serializable
-    // lens fails here rather than in saveJson. Same class of failure.
-    return { ok: false, reason: 'serialize', message: `Could not save ${SAVE_SUBJECT}.` };
-  }
-  return saveJson(STORAGE_KEY, toStore.map(encodeSavedLens), SAVE_SUBJECT);
-}
-
-/** Build initial lens list: builtins (with overrides applied) + custom */
-export function buildInitialLenses(): Lens[] {
-  const { custom, builtinOverrides } = loadSavedLenses();
-  const builtins = BUILTIN_LENSES.map(l =>
-    builtinOverrides.has(l.id) ? builtinOverrides.get(l.id)! : { ...l },
-  );
-  return [...builtins, ...custom];
-}
 
 /** `duplicateLens` carries the new copy alongside the save outcome. */
 export type DuplicateLensResult =
@@ -197,6 +116,11 @@ export interface LensSlice {
   activateAutoColorFromColumn: (spec: AutoColorSpec, label: string) => void;
 }
 
+/** Match native deletion when a successful write follows a peer removal. */
+function savedLensState(rows: Lens[], activeId: string | null) {
+  return { savedLenses: rows, activeLensId: rows.some(row => row.id === activeId) ? activeId : null };
+}
+
 export const createLensSlice: StateCreator<LensSlice, [], [], LensSlice> = (set, get) => ({
   // Initial state — builtins (with user overrides applied) + custom lenses
   savedLenses: buildInitialLenses(),
@@ -215,15 +139,15 @@ export const createLensSlice: StateCreator<LensSlice, [], [], LensSlice> = (set,
   // Actions
   createLens: (lens) => {
     const next = [...get().savedLenses, lens];
-    const result = saveLenses(next);
-    if (result.ok) set({ savedLenses: next });
+    const result = saveLenses(next, get().savedLenses);
+    if (result.ok) set(savedLensState(result.rows, get().activeLensId));
     return result;
   },
 
   updateLens: (id, patch) => {
     const next = get().savedLenses.map(l => l.id === id ? { ...l, ...patch } : l);
-    const result = saveLenses(next);
-    if (result.ok) set({ savedLenses: next });
+    const result = saveLenses(next, get().savedLenses);
+    if (result.ok) set(savedLensState(result.rows, get().activeLensId));
     return result;
   },
 
@@ -232,12 +156,9 @@ export const createLensSlice: StateCreator<LensSlice, [], [], LensSlice> = (set,
     const lens = state.savedLenses.find(l => l.id === id);
     if (lens?.builtin) return { ok: true }; // built-ins are reset, never deleted
     const next = state.savedLenses.filter(l => l.id !== id);
-    const result = saveLenses(next);
+    const result = saveLenses(next, get().savedLenses);
     if (result.ok) {
-      set({
-        savedLenses: next,
-        activeLensId: state.activeLensId === id ? null : state.activeLensId,
-      });
+      set(savedLensState(result.rows, get().activeLensId));
     }
     return result;
   },
@@ -250,9 +171,9 @@ export const createLensSlice: StateCreator<LensSlice, [], [], LensSlice> = (set,
     const copy = duplicateLensConfig(state.savedLenses[index], () => reserveUniqueId(`lens-${Date.now()}`, taken));
     const next = [...state.savedLenses];
     next.splice(index + 1, 0, copy);
-    const result = saveLenses(next);
+    const result = saveLenses(next, get().savedLenses);
     if (!result.ok) return result;
-    set({ savedLenses: next });
+    set(savedLensState(result.rows, get().activeLensId));
     return { ok: true, lens: copy };
   },
 
@@ -291,8 +212,8 @@ export const createLensSlice: StateCreator<LensSlice, [], [], LensSlice> = (set,
       lenses,
       (i) => reserveUniqueId(`lens-imported-${ts}-${i}`, taken),
     );
-    const result = saveLenses(next);
-    if (result.ok) set({ savedLenses: next });
+    const result = saveLenses(next, get().savedLenses);
+    if (result.ok) set(savedLensState(result.rows, get().activeLensId));
     return result;
   },
 

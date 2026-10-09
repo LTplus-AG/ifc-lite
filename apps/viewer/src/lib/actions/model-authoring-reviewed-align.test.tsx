@@ -79,7 +79,7 @@ test('#7313 reviewed Align prepares actual Bonsai geometry, applies two differen
   assert.equal(previewModelAuthoring(useViewerStore.getState(), s.batch).rows[0].status, 'blocked');
   await prepareReviewedAlignments(useViewerStore.getState, s.batch);
   const preview = previewModelAuthoring(useViewerStore.getState(), s.batch);
-  assert.equal(preview.rows[0].status, 'ready', preview.rows[0].issue);
+  assert.equal(preview.rows[0].status, 'ready', preview.rows[0].issue ?? '');
   const result = commitModelAuthoring(useViewerStore, preview, new Set([0]), 'Native evidence');
   assert.ok(result.ok, result.ok ? '' : result.detail ?? result.reason);
   await settle();
@@ -238,7 +238,7 @@ test('#7313 federated native Align resolves colliding source GUIDs only in the c
   const native = state.models.get(s.owner)?.ifcDataStore; assert.ok(native);
   assert.equal(native.entities.getGlobalId(s.first.expressId), unrelated.ifcDataStore.entities.getGlobalId(s.first.expressId));
   await prepareReviewedAlignments(useViewerStore.getState, s.batch);
-  const preview = previewModelAuthoring(useViewerStore.getState(), s.batch); assert.equal(preview.rows[0].modelId, s.owner); assert.equal(preview.rows[0].status, 'ready', preview.rows[0].issue);
+  const preview = previewModelAuthoring(useViewerStore.getState(), s.batch); assert.equal(preview.rows[0].modelId, s.owner); assert.equal(preview.rows[0].status, 'ready', preview.rows[0].issue ?? '');
   const result = commitModelAuthoring(useViewerStore, preview, new Set([0]), '#7313 federated native'); assert.ok(result.ok, result.ok ? '' : result.detail ?? result.reason);
   await settle(s.owner);
   const reference = before.get(s.reference.expressId); assert.ok(reference);
@@ -319,7 +319,7 @@ for (const route of ['rich', 'attachment'] as const) test(`#7313 ${route} wire A
   const plane=buildStoreyWorkplane(useViewerStore.getState(),MODEL,42,0);assert.ok(isWorkplane(plane));
   const boxes=()=>storeyBoxes(useViewerStore.getState(),MODEL,42,plane), before=boxes(), beforeGraph=await graph();
   await prepareReviewedAlignments(useViewerStore.getState,batch);
-  const preview=previewModelAuthoring(useViewerStore.getState(),batch);assert.equal(preview.rows[0].status,'ready',preview.rows[0].issue);
+  const preview=previewModelAuthoring(useViewerStore.getState(),batch);assert.equal(preview.rows[0].status,'ready',preview.rows[0].issue ?? '');
   const result=commitModelAuthoring(useViewerStore,preview,new Set([0]),'#7313 native host carrier');assert.ok(result.ok,result.ok?'':result.detail??result.reason);
   await settle();
   assert.deepEqual(boxes().get(reference.expressId),before.get(reference.expressId));

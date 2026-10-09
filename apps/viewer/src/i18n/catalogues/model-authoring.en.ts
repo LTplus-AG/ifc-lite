@@ -18,6 +18,8 @@ export const modelAuthoringEn = {
   'modelAuthoring.rows': 'Proposed operations',
   'modelAuthoring.frame': 'Lengths in {units}, storey-local (Z up); rotation angles in degrees, counter-clockwise from above. Stair and grid Direction are radians; native stair expected snapshots retain metre lengths.',
   'modelAuthoring.counts': '{ready} ready · {attention} need attention · {other} unchanged, blocked or unsupported',
+  'modelAuthoring.op.curtainWall.create': 'Create curtain wall',
+  'modelAuthoring.curtainWallPreview': 'Native aggregate: mullions, transoms and panels. Preview is available only for matching rectangular member sections and the native 0.024 m panel thickness; other native sections or thicknesses, unreadable source frames and changed live storey elevation are not drawn.',
   'modelAuthoring.op.grid.create': 'Create grid',
   'modelAuthoring.op.column.createOnGrid': 'Create column on grid',
   'modelAuthoring.gridAxes': 'grid axes',

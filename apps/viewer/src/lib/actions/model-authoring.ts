@@ -21,6 +21,7 @@
  */
 
 import { parseLayerFields, type LayerFields } from './model-authoring-layer-params';
+import { parseSlabOpeningFields, type SlabOpeningCreate } from './model-authoring-slab-opening';
 import { parseExpectedHostedEdit, parseHostedEdit, type ExpectedHostedEdit } from './model-authoring-hosted-edit';
 import type { HostedElementEdit } from '@ifc-lite/create';
 import { parseShapeParams, parseProfileSectionParams, AUTHORING_OUTLINE_WORK_LIMIT, type ShapeParams } from './model-authoring-shape-params';
@@ -80,6 +81,7 @@ export type AuthoringOp =
   | { op: 'material.assign'; target: ElementTarget; expected?: string | null; material: { name: string; create: boolean } }
   | { op: 'walls.join'; walls: [ElementTarget, ElementTarget] }
   /** A door, window or opening in a host wall: `offset` from the wall's placement origin along it to the centre, `sill` above it. */
+  | SlabOpeningCreate
   | { op: 'hosted.create'; ref?: string; kind: HostedKind; host: ElementTarget; name?: string; offset: number; sill: number; width: number; height: number };
 
 export type AuthoringOpName = AuthoringOp['op'];
@@ -130,18 +132,18 @@ function element(value: unknown, at: string, refs: ReadonlyMap<string, Authoring
   return existing(value, at);
 }
 
-/** A wall by its expected class, or a wall an earlier `element.create` builds. */
-function isWall(target: ElementTarget, refs: ReadonlyMap<string, AuthoringOp>): boolean {
+/** Host family from its stated class or an earlier native creation/copy. */
+function isHostFamily(target: ElementTarget, refs: ReadonlyMap<string, AuthoringOp>, family: 'IfcWall' | 'IfcSlab' = 'IfcWall'): boolean {
   const visited = new Set<string>();
   while (isNewElement(target)) {
     if (visited.has(target.ref)) return false;
     visited.add(target.ref);
     const creator = refs.get(target.ref);
-    if (creator?.op === 'element.create') return creator.ifcClass === 'IfcWall';
+    if (creator?.op === 'element.create') return creator.ifcClass === family;
     if (creator?.op !== 'element.copy' && creator?.op !== 'element.array') return false;
     target = creator.target;
   }
-  return target.ifcClass.startsWith('IfcWall');
+  return target.ifcClass.startsWith(family);
 }
 
 function createParams(value: Record<string, unknown>, ifcClass: AuthoringClass, units: AuthoringUnits, at: string): AxisParams | BoxParams | ShapeParams {
@@ -288,13 +290,16 @@ function operation(value: unknown, index: number, units: AuthoringUnits, refs: M
     case 'walls.join': {
       if (!Array.isArray(value.walls) || value.walls.length !== 2) throw new Error(`${at} joins exactly two walls`);
       const walls = value.walls.map((wall, i) => element(wall, `${at} wall ${i + 1}`, refs)) as [ElementTarget, ElementTarget];
-      for (const wall of walls) if (!isWall(wall, refs)) throw new Error(`${at}: only walls are joined`);
+      for (const wall of walls) if (!isHostFamily(wall, refs)) throw new Error(`${at}: only walls are joined`);
       return { op: 'walls.join', walls };
     }
     case 'hosted.create': {
       if (!HOSTED_KINDS.includes(value.kind as HostedKind)) throw new Error(`${at}: kind must be door, window or opening`);
       const host = element(value.host, at, refs);
-      if (!isWall(host, refs)) throw new Error(`${at}: doors, windows and openings are hosted in walls only`);
+      if (isHostFamily(host, refs, 'IfcSlab')) return defineRef({ op: 'hosted.create', kind: 'opening', host,
+        ...(value.ref === undefined ? {} : { ref: parseRef(value.ref, at) }), ...(value.name === undefined ? {} : { name: parseText(value.name, `${at} name`) }),
+        ...parseSlabOpeningFields(value, host, units, at) });
+      if (!isHostFamily(host, refs)) throw new Error(`${at}: doors, windows and openings are hosted in walls only`);
       const length = (key: string, range: LengthRange) => parseLength(value[key], units, range, `${at} ${key}`);
       return defineRef({ op: 'hosted.create', ...(value.ref !== undefined ? { ref: parseRef(value.ref, at) } : {}), kind: value.kind as HostedKind, host,
         ...(value.name !== undefined ? { name: parseText(value.name, `${at} name`) } : {}),

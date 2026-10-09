@@ -123,6 +123,9 @@ export function authoringRowSummary(row: AuthoringRow, batch: ModelAuthoringBatc
     case 'walls.join':
       return { subject: `${ref(op.walls[0], t)} + ${ref(op.walls[1], t)}`, before: t('modelAuthoring.unjoined'), after: t('modelAuthoring.joined') };
     case 'hosted.create':
+      if ('params' in op) return { subject: ref(op.host, t), before: t('modelAuthoring.notYet'),
+        after: t('modelAuthoring.slabOpening', { position: point(op.params.Position), width: num(op.params.Width), depth: num(op.params.Depth), units, cutDepth: op.params.CutDepth === undefined ? t('modelAuthoring.slabOpeningDefaultDepth') : `${num(op.params.CutDepth)} ${units}` }),
+        previewNote: t(row.previewUnavailable ? 'modelAuthoring.slabOpeningLimits' : 'modelAuthoring.slabOpeningPreview') };
       return { subject: ref(op.host, t), before: t('modelAuthoring.notYet'),
         after: t(`modelAuthoring.hosted.${op.kind}`, { size: `${num(op.width)} × ${num(op.height)} ${units}`, offset: num(op.offset), sill: num(op.sill), units }) };
   }

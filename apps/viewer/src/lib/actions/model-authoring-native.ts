@@ -15,6 +15,7 @@
 import type { NativeReadState } from './model-authoring-read-target';
 import { writeReviewedLayers } from './model-authoring-layers';
 import type { ApplyLayersSpec } from '@/lib/authoring/material-layers';
+import { slabOpeningSpec, writeSlabOpening, readSlabOpeningPreview } from './model-authoring-slab-opening';
 import { writeStairLifecycle, writeStairCreation } from './model-authoring-stair-lifecycle';
 import { uniqueSplitGuid, writeNativeSplit } from './model-authoring-split';
 import { writeHostedEdit } from './model-authoring-hosted-edit';
@@ -40,6 +41,7 @@ export type ElementId = { id: number } | { ref: string };
 /** What preview resolved for an operation; the commit re-resolves and must find the same. */
 export interface ResolvedOp {
   layers?: ApplyLayersSpec;
+  slabOpening?: ReturnType<typeof readSlabOpeningPreview>;
   target?: number;
   reachBoundary?: ElementId;
   reachPlan?: ReturnType<typeof import('@ifc-lite/create').trimExtendElementInStore>;
@@ -93,6 +95,7 @@ export function authoredElementOf(batch: ModelAuthoringBatch, op: Create, global
 
 /** The hosted-element spec of a `hosted.create`, in metres. */
 export function hostedSpecOf(batch: ModelAuthoringBatch, op: Hosted, globalId?: string): HostedFillSpec {
+  if ('params' in op) return slabOpeningSpec(batch, op, globalId);
   const m = (v: number) => toMetres(batch, v);
   const common = { Offset: m(op.offset), Sill: m(op.sill), Width: m(op.width), Height: m(op.height),
     ...(op.name ? { Name: op.name } : {}), ...(globalId ? { GlobalId: globalId } : {}) };
@@ -236,7 +239,9 @@ export function draftAuthoringOperation(batch: ModelAuthoringBatch, dataStore: I
       return;
     }
     case 'hosted.create': {
-      const created = addHostedElementInStore(dataStore, draft, idOf(resolved.host!, refs), hostedSpecOf(batch, op));
+      const host = idOf(resolved.host!, refs);
+      const created = 'params' in op ? writeSlabOpening(batch, op, dataStore, draft, host) : addHostedElementInStore(dataStore, draft, host, hostedSpecOf(batch, op));
+      if ('params' in op) resolved.slabOpening = readSlabOpeningPreview(dataStore, draft, host, created.openingId);
       if (op.ref) refs.set(op.ref, created.expressId);
       return;
     }

@@ -102,7 +102,7 @@ function saveLenses(lenses: Lens[]): SaveResult {
 }
 
 /** Build initial lens list: builtins (with overrides applied) + custom */
-function buildInitialLenses(): Lens[] {
+export function buildInitialLenses(): Lens[] {
   const { custom, builtinOverrides } = loadSavedLenses();
   const builtins = BUILTIN_LENSES.map(l =>
     builtinOverrides.has(l.id) ? builtinOverrides.get(l.id)! : { ...l },

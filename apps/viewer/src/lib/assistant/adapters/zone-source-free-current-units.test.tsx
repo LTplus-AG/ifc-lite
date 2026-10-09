@@ -15,6 +15,7 @@ import { captureEvidence } from '@/lib/assistant/evidence';
 import { PropertiesPanel } from '@/components/viewer/PropertiesPanel';
 import { render, cleanup } from '@/test/render';
 import { setGlobalRendererRef } from '@/hooks/useBCF';
+import { getMaxExpressId } from '@/hooks/ingest/viewerModelIngest';
 
 const original = useViewerStore.getState();
 afterEach(() => { cleanup(); setGlobalRendererRef({ current: null }); useViewerStore.setState(original, true); });
@@ -54,7 +55,8 @@ for (const source of ['selection', 'zones'] as const) {
     editor.addEntity('IfcRelDefinesByProperties', [generateIfcGuid(), owner, null, null, [`#${f.id}`], `#${qto}`]);
     const store = await parse(editedModelBytes(f.store, draft));
     const model = useViewerStore.getState().models.get('arch'); assert.ok(model);
-    useViewerStore.setState({ models: new Map([['arch', { ...model, ifcDataStore: store }]]), ifcDataStore: store,
+    const currentModel = { ...model, ifcDataStore: store, maxExpressId: getMaxExpressId(store, model.geometryResult?.meshes ?? []) };
+    useViewerStore.setState({ models: new Map([['arch', currentModel]]), ifcDataStore: store,
       mutationViews: new Map(), storeEditors: new Map() });
     const view = getOrCreateMutationView(useViewerStore, 'arch'); assert.ok(view);
     const current = new StoreEditor(store, view);
@@ -80,7 +82,7 @@ for (const source of ['selection', 'zones'] as const) {
     const redo = useViewerStore.getState().redoStacks;
     const geometry = useViewerStore.getState().models.get('arch')?.geometryResult;
     const sourceFree = { ...store, source: EMPTY_SOURCE_BYTES };
-    useViewerStore.setState({ models: new Map([['arch', { ...model, ifcDataStore: sourceFree }]]), ifcDataStore: sourceFree,
+    useViewerStore.setState({ models: new Map([['arch', { ...currentModel, ifcDataStore: sourceFree }]]), ifcDataStore: sourceFree,
       propertiesActiveTab: 'quantities' });
     const panel = render(<PropertiesPanel />);
     assert.match(panel.textContent ?? '', /10 mm³/, 'Properties independently consults the surviving native unit view');

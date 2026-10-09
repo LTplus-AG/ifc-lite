@@ -1,0 +1,176 @@
+{
+  "publishedArtifacts": [
+    {
+      "source": "baseline-tests.log",
+      "published": "baseline-tests.log.gz",
+      "sourceBytes": 134692,
+      "sourceSha256": "69164ce8465d25b5d7f9a3df2f61f90c2447f35a0e147f16cedb47730a4f98d6",
+      "compressedBytes": 23115,
+      "compressedSha256": "b3c624f58f90768bf1ede48db9d72913d4db2f82e03ce08c2a6e76c7f49464d6"
+    },
+    {
+      "source": "corrected-viewer-tests.log",
+      "published": "corrected-viewer-tests.log.gz",
+      "sourceBytes": 168480,
+      "sourceSha256": "f049d1854e301a9d002941a8456862a32a18fa9c38fea9e8c63a66731cc69b7b",
+      "compressedBytes": 26020,
+      "compressedSha256": "1441dfb454e870e9957e6e6730a1e72d8ba61a161e7d66f52c0130b7e40edcaf"
+    },
+    {
+      "source": "corrected-renderer-tests.log",
+      "published": "corrected-renderer-tests.log.gz",
+      "sourceBytes": 307407,
+      "sourceSha256": "febee201ff954759bc53eb84a8647d33f6c863c0b0c4ff7cd80ad2374c89060c",
+      "compressedBytes": 74086,
+      "compressedSha256": "aea62a7df8ee8419f9f18fbdcddb79970127058076679b31005364e1ec8c39c6"
+    },
+    {
+      "source": "corrected-serial-root-typecheck.log",
+      "published": "corrected-serial-root-typecheck.log.gz",
+      "sourceBytes": 50116,
+      "sourceSha256": "d3d39479134e582753478e181a849b64084edb812c6cbab0b530f96ea943c4c7",
+      "compressedBytes": 7701,
+      "compressedSha256": "eb56d415fe432d8a5cd935d911d7b504cc7106eabbc78c4192560cd0c52fdf0e"
+    },
+    {
+      "source": "corrected-serial-root-typecheck-config-error.log",
+      "published": "corrected-serial-root-typecheck-config-error.log.gz",
+      "sourceBytes": 541,
+      "sourceSha256": "6548886c425eacaae95f6994e7de2192142e7c8ad36e84d70431e6e3a12d3ff0",
+      "compressedBytes": 353,
+      "compressedSha256": "8a60936737a30019be9987f60a8456964f7b66ea29759fbfb7c1f32ab48c45f9"
+    },
+    {
+      "source": "corrected-serial-root-typecheck-retry.log",
+      "published": "corrected-serial-root-typecheck-retry.log.gz",
+      "sourceBytes": 49988,
+      "sourceSha256": "494f67fa03f5f70ba348a3a1f02e51a04bba24a686c313b239dec86c8d291906",
+      "compressedBytes": 7351,
+      "compressedSha256": "5802696aa5dac2f492408bf5312b3e739ee371c8125d69e988a246b5cbbde69c"
+    },
+    {
+      "source": "corrected-module-size.log",
+      "published": "corrected-module-size.log.gz",
+      "sourceBytes": 12977,
+      "sourceSha256": "087ca8616b049afd966e944850efdcfb01965d3d0491a23d92b62572fb57a73c",
+      "compressedBytes": 2231,
+      "compressedSha256": "01fbc85437d70c5c6ef3f2758ce2ebbdad4d48b45da17ca17f12e6452869c524"
+    },
+    {
+      "source": "corrected-source-text-assertions.log",
+      "published": "corrected-source-text-assertions.log.gz",
+      "sourceBytes": 30991,
+      "sourceSha256": "7542133d6e62b018ae3454436c780a3b148729c406766a045788a452278447c9",
+      "compressedBytes": 2999,
+      "compressedSha256": "d2cc7de5cd21117e000a950f8f4ff6c3fb582b256e99caac8ad33e4d494a43f5"
+    },
+    {
+      "source": "corrected-test-wiring.log",
+      "published": "corrected-test-wiring.log.gz",
+      "sourceBytes": 859,
+      "sourceSha256": "66f560d0e9404cc05f97a08130f6602b359ae84e618822921437761f1fa0d785",
+      "compressedBytes": 394,
+      "compressedSha256": "7bba713fc51db966ac9068c4df9978655a02dd2c4e909d50431081d87f5f9f22"
+    },
+    {
+      "source": "corrected-touched-oxlint.log",
+      "published": "corrected-touched-oxlint.log.gz",
+      "sourceBytes": 0,
+      "sourceSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "compressedBytes": 20,
+      "compressedSha256": "9ceffb7310338057cfe71a4ae1e2c98d2c485d81cdef906532a801f457a38d64"
+    },
+    {
+      "source": "corrected-whitespace.log",
+      "published": "corrected-whitespace.log.gz",
+      "sourceBytes": 0,
+      "sourceSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "compressedBytes": 20,
+      "compressedSha256": "9ceffb7310338057cfe71a4ae1e2c98d2c485d81cdef906532a801f457a38d64"
+    },
+    {
+      "source": "baseline-consumed-runtime-files.json",
+      "published": "baseline-consumed-runtime-files.json.gz",
+      "sourceBytes": 1079387,
+      "sourceSha256": "f25fafc0d9d517ca3866575917de9b6037dfb7511eca0540efcdf2282eade9a7",
+      "compressedBytes": 186613,
+      "compressedSha256": "25ddddb64f6c69bc773f810feccae349e8b1b5d3cc0fa7c10caa4e25e83d2799"
+    },
+    {
+      "source": "corrected-consumed-runtime-files.json",
+      "published": "corrected-consumed-runtime-files.json.gz",
+      "sourceBytes": 1527277,
+      "sourceSha256": "765013b76ea15740f1f69f7643bfa0371cb47940aa84279fc2689aae72827833",
+      "compressedBytes": 204023,
+      "compressedSha256": "90f01dc07d82e45aa4b0a68d93d6fee6ae13e3408e94146221d7718049b61a6e"
+    },
+    {
+      "source": "baseline-results.json",
+      "published": "baseline-results.json",
+      "sourceBytes": 6491,
+      "sourceSha256": "c4e285450daea984b9a5bcccb86e005d29041f638edc704d983bf9a61ac73639"
+    },
+    {
+      "source": "corrected-results.json",
+      "published": "corrected-results.json",
+      "sourceBytes": 13718,
+      "sourceSha256": "6ff2573a3a5be3c6db42a201cc22275731437024c7cbf723c42eb4e6d3180a86"
+    },
+    {
+      "source": "corrected-source-receipt.json",
+      "published": "corrected-source-receipt.json",
+      "sourceBytes": 913,
+      "sourceSha256": "8b3148f0b9fa72f1c187b62c9876fc81f6d8fcba0f777c70fc2660716125567a"
+    },
+    {
+      "source": "corrected-cohort-release.json",
+      "published": "corrected-cohort-release.json",
+      "sourceBytes": 2956,
+      "sourceSha256": "4ff8d19bc2cd3f50d6aab82b82c11b7d1682de4488f8cd3824e12f71c4c87a35"
+    },
+    {
+      "source": "invalid-typecheck-retirement.json",
+      "published": "invalid-typecheck-retirement.json",
+      "sourceBytes": 602,
+      "sourceSha256": "8c0ca8988aa12af95e44798982b94a6720bf6c530c86854cd27fbd5b1d470730"
+    }
+  ],
+  "completeLocalInventories": [
+    {
+      "source": "baseline-runtime-before.json",
+      "sourceBytes": 25501276,
+      "sourceSha256": "bab2799d60adcead6a01d2d22ea6fb68876ba7d1277cbb27a81a52a5ad49bf4b",
+      "location": "/home/louistrue/.t3/artifacts/6537-load-pipeline-227af528/baseline-runtime-before.json",
+      "published": false,
+      "reason": "Complete prepared-tree inventory retained locally; actual consumed-file pre/post bindings are published compressed."
+    },
+    {
+      "source": "baseline-runtime-after.json",
+      "sourceBytes": 25501275,
+      "sourceSha256": "0dbf7dc3337d4f9190900e465bf9037cad5e7cfa6af2f808b79eecb98756c169",
+      "location": "/home/louistrue/.t3/artifacts/6537-load-pipeline-227af528/baseline-runtime-after.json",
+      "published": false,
+      "reason": "Complete prepared-tree inventory retained locally; actual consumed-file pre/post bindings are published compressed."
+    },
+    {
+      "source": "corrected-runtime-before.json",
+      "sourceBytes": 25502104,
+      "sourceSha256": "448213a7927db62d3267b38ffc85153ab5c7e8b13819874b61352f38d7412f7e",
+      "location": "/home/louistrue/.t3/artifacts/6537-load-pipeline-227af528/corrected-runtime-before.json",
+      "published": false,
+      "reason": "Complete prepared-tree inventory retained locally; actual consumed-file pre/post bindings are published compressed."
+    },
+    {
+      "source": "corrected-runtime-after.json",
+      "sourceBytes": 25502103,
+      "sourceSha256": "9faf9efec81e7678e75d95ea8e849a09e7862345725da0ef64f9117e1c4bd721",
+      "location": "/home/louistrue/.t3/artifacts/6537-load-pipeline-227af528/corrected-runtime-after.json",
+      "published": false,
+      "reason": "Complete prepared-tree inventory retained locally; actual consumed-file pre/post bindings are published compressed."
+    }
+  ],
+  "rawCoverageLocation": "/home/louistrue/.t3/artifacts/6537-load-pipeline-227af528/corrected-coverage",
+  "coverageStatus": "Raw V8 coverage retained locally; derived consumed-file URL bindings published.",
+  "archive": "/home/louistrue/.t3/artifacts/6537-load-pipeline-227af528",
+  "archiveManifest": "/home/louistrue/.t3/artifacts/6537-load-pipeline-227af528/SHA256SUMS"
+}

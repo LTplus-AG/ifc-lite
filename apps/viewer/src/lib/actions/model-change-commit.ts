@@ -26,7 +26,7 @@ import type { ReceiptValidation } from './validation-verdicts';
 
 export interface AppliedChange {
   index: number;
-  op: ModelChange['op'] | AuthoringOpName;
+  op: ModelChange['op'] | AuthoringOpName | 'room.command';
   globalId: string;
   modelId: string;
   /** Human-readable address of the value, e.g. `Pset_WallCommon.FireRating`. */
@@ -37,8 +37,8 @@ export interface AppliedChange {
 
 export interface ModelChangeReceipt {
   version: 1;
-  /** Absent on a `model.changes` receipt (P04); `model.authoring` for reviewed native authoring (P15A). */
-  kind?: 'model.authoring';
+  /** Absent on model.changes; other native reviewed producer kinds share the same durable receipt/Undo route. */
+  kind?: 'model.authoring' | 'room.command';
   id: string;
   title: string;
   digest: string;

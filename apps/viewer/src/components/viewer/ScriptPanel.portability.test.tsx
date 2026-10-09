@@ -76,7 +76,7 @@ test('#7258 another tab changing storage while File.text awaits revokes import w
  const ui = mounted(); const text = await exported(ui); let release: ((text:string)=>void) | undefined;
  choose(ui, text, () => new Promise(resolve => { release = resolve; }));
  const replacement = JSON.stringify({schemaVersion:1,scripts:[{...useViewerStore.getState().savedScripts[0], name:'Newer other-tab script'}]}); localStorage.setItem('ifc-lite-scripts',replacement);
- assert.ok(release); await act(async () => { release(text); }); await waitFor(() => !!ui.querySelector('output'), 'changed source refusal');
+ assert.ok(release); const releaseFile = release; await act(async () => { releaseFile(text); }); await waitFor(() => !!ui.querySelector('output'), 'changed source refusal');
  assert.match(ui.textContent ?? '', /Saved scripts changed/); assert.equal(localStorage.getItem('ifc-lite-scripts'),replacement); assert.equal(useViewerStore.getState().savedScripts.length,1);
 });
 test('#7258 imported saved copy executes only after native selector open and explicit Run against actual SketchUp IFC', async () => {
@@ -104,13 +104,13 @@ for (const [name, raw] of [['corrupt stored library','{broken'],['partly invalid
 });
 test('#7258 unmount during native file read cannot append a hidden imported script later', async () => {
  const ui = mounted(); const text = await exported(ui); const raw=localStorage.getItem('ifc-lite-scripts'); let release:((text:string)=>void)|undefined;
- choose(ui,text,()=>new Promise(resolve=>{release=resolve;})); cleanup(); assert.ok(release); await act(async()=>{release(text);});
+ choose(ui,text,()=>new Promise(resolve=>{release=resolve;})); cleanup(); assert.ok(release); const releaseFile = release; await act(async()=>{releaseFile(text);});
  assert.equal(localStorage.getItem('ifc-lite-scripts'),raw); assert.equal(useViewerStore.getState().savedScripts.length,1);
 });
 test('#7258 native rename during file read revokes import and preserves the actual newer saved record', async () => {
  const ui=mounted(); const text=await exported(ui); let release:((text:string)=>void)|undefined;
  choose(ui,text,()=>new Promise(resolve=>{release=resolve;})); act(()=>useViewerStore.getState().renameScript(useViewerStore.getState().savedScripts[0].id,'Newer native name'));
- const raw=localStorage.getItem('ifc-lite-scripts'); assert.ok(release); await act(async()=>{release(text);}); await waitFor(()=>!!ui.querySelector('output'),'native library freshness refusal');
+ const raw=localStorage.getItem('ifc-lite-scripts'); assert.ok(release); const releaseFile = release; await act(async()=>{releaseFile(text);}); await waitFor(()=>!!ui.querySelector('output'),'native library freshness refusal');
  assert.equal(localStorage.getItem('ifc-lite-scripts'),raw); assert.equal(loadSavedScripts()[0].name,'Newer native name'); assert.equal(useViewerStore.getState().savedScripts.length,1);
 });
 
@@ -126,7 +126,7 @@ test('#7258 a newer native file selection supersedes an outstanding read without
  choose(ui,text,()=>new Promise(resolve=>{release=resolve;}));
  const newer=JSON.parse(text); newer.script.name='Newer explicit file'; newer.script.code='console.log("new file only")';
  choose(ui,JSON.stringify(newer)); await waitFor(()=>useViewerStore.getState().savedScripts.length===2,'newer native file import');
- assert.ok(release); await act(async()=>{release(text);});
+ assert.ok(release); const releaseFile = release; await act(async()=>{releaseFile(text);});
  assert.deepEqual(loadSavedScripts().map(row=>row.name),['Original IFC query','Newer explicit file']);
  assert.equal(useViewerStore.getState().savedScripts[1].code,newer.script.code);
  assert.equal(useViewerStore.getState().scriptRunSeq,originalRunSequence(),'neither file import executes code');

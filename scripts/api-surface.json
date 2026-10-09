@@ -8457,6 +8457,7 @@
     "getAttributeNamesAcrossSchemas: function",
     "getAttributeNamesForSchema: function",
     "getAttributeTypeForSchema: function",
+    "getCanonicalEntityName: function",
     "getClassificationCodeForElement: function",
     "getClassificationPath: function",
     "getClassificationsForElement: function",

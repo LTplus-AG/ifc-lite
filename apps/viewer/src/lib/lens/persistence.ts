@@ -63,10 +63,10 @@ export function saveLenses(lenses: Lens[]): SaveResult {
 }
 
 /** Build initial lens list: builtins (with overrides applied) + custom */
-export function buildInitialLenses(): Lens[] {
+export function buildInitialLenses(source = readSavedLensSource()): Lens[] {
   const builtinOverrides = new Map<string, Lens>();
   const custom: Lens[] = [];
-  for (const lens of readSavedLensSource().rows) {
+  for (const lens of source.rows) {
     if (BUILTIN_IDS.has(lens.id)) builtinOverrides.set(lens.id, { ...lens, builtin: true });
     else custom.push(lens);
   }

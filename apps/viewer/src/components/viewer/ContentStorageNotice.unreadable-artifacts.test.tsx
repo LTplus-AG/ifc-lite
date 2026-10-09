@@ -150,3 +150,31 @@ for (const family of families) test(`#7300 native ${family.library} final write 
   }
   assert.equal(localStorage.getItem(family.key), replacement, 'final native write leaves the replacement actual source untouched');
 });
+
+for (const family of families) for (const fault of ['corrupt-json', 'read-denied'] as const) test(`#7300 native public Download refuses an incomplete ${family.library} ${fault} read`, async () => {
+  await seedArtifactModels({ federated: true });
+  await Promise.all([assistantLibrary.initialize(), useViewerStore.getState().initializeSavedClashReports()]);
+  const proposal = parseArtifactProposal(JSON.stringify({ version: 1, title: 'Native incomplete export', kind: family.kind, ...family.body }), family.kind);
+  const preview = await previewArtifact(proposal, useViewerStore.getState()); assert.ok(preview.matched > 0);
+  assert.ok(saveArtifact(preview.artifact).ok);
+  const read = localStorage.getItem.bind(localStorage), original = read(family.key); assert.ok(original);
+  const raw = fault === 'corrupt-json' ? `${original.slice(0, -1)} unfinished` : original;
+  localStorage.setItem(family.key, raw);
+  let reads = 0;
+  const observed = mock.method(localStorage, 'getItem', (key: string) => {
+    if (key === family.key) { reads++; if (fault === 'read-denied') throw new DOMException('Native export read denied', 'SecurityError'); }
+    return read(key);
+  });
+  const blobs: Blob[] = [];
+  const download = mock.method(URL, 'createObjectURL', (value: Blob | MediaSource) => { assert.ok(value instanceof Blob); blobs.push(value); return 'blob:incomplete-native-library'; });
+  try {
+    const ui = render(<Notice />);
+    const button = [...ui.querySelectorAll('button')].find(node => node.textContent?.includes('Download library backup')); assert.ok(button);
+    await waitFor(() => !button.disabled, 'native incomplete export widget ready');
+    await act(async () => { click(button); });
+    await waitFor(() => !useViewerStore.getState().contentStorageActionBusy, 'native incomplete export action finishes');
+    assert.ok(reads > 0, 'the actual public export attempted the native source read');
+    assert.equal(blobs.length, 0, 'unreadable or denied native content must not become an apparently complete empty backup');
+    assert.equal(read(family.key), raw, 'the entire original native source stays intact');
+  } finally { observed.mock.restore(); download.mock.restore(); }
+});

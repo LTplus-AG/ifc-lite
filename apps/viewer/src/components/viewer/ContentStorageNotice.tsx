@@ -33,9 +33,9 @@ const messages = {
   quota: 'contentStorage.quota', unavailable: 'contentStorage.unavailable',
   conflict: 'contentStorage.conflict', invalid: 'contentStorage.invalid',
 } as const satisfies Record<string, TranslationKey>;
-const visibleLibraries = () => {
+const visibleLibraries = (requireComplete = false) => {
   const state = useViewerStore.getState();
-  return { filters: loadSavedFilters(), lists: currentListDefinitions(), lenses: currentLensDefinitions(),
+  return { filters: loadSavedFilters(), lists: currentListDefinitions(requireComplete), lenses: currentLensDefinitions(requireComplete),
     validation: state.savedValidationReports, comparison: state.savedComparisons, document: state.documents, clashReports: state.savedClashReports,
     assistant: useAssistantLibrary.getState().entries, clashGroups: useClashGroupLibrary.getState().entries,
     bcfDrafts: useBcfDraftLibrary.getState().entries, bcfOutbox: useBcfOutbox.getState().entries,
@@ -93,7 +93,7 @@ export function ContentStorageNotice({ status, retry, restore }: {
     if (pendingArtifacts()) throw new Error(t('contentStorage.artifactsPending'));
     const state = useViewerStore.getState();
     const preserved = await readBackupDrafts();
-    downloadFile(JSON.stringify(encodeContentBackup(createContentBackup(visibleLibraries(), {
+    downloadFile(JSON.stringify(encodeContentBackup(createContentBackup(visibleLibraries(true), {
       validation: state.validationReportsStorage, comparison: state.savedComparisonsStorage, document: state.documentsStorage, assistant: useAssistantLibrary.getState().status,
       clashGroups: useClashGroupLibrary.getState().status, bcfDrafts: useBcfDraftLibrary.getState().status,
       bcfOutbox: useBcfOutbox.getState().status,

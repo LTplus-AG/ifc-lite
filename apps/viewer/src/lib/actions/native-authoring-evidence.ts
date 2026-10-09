@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { nativeSlabOpeningEvidence } from './model-authoring-slab-opening';
 import type { ModelEditTarget } from '@/store/slices/mutation-modelling-records';
 import { nativeLengthUnitAvailable } from './model-authoring-read-target';
 import { readSplitSnapshot, type SplitSnapshot } from './model-authoring-split-state';
@@ -12,14 +13,16 @@ import { nativeStairEvidenceFromTarget } from './model-authoring-stair-lifecycle
 type Availability = 'available' | 'unavailable-target' | 'unavailable-unit' | 'unavailable-native-layout' | 'unavailable-projection';
 export interface NativeAuthoringEvidence {
   nativeSplitExpected: SplitSnapshot | null;
+  nativeSlabOpeningExpected: SplitSnapshot | null;
   nativeHostedExpected: ExpectedHostedEdit | null;
   nativeTrimExtendExpected: ReturnType<typeof authoringReachEvidenceFromTarget>;
   nativeStairExpected: ReturnType<typeof nativeStairEvidenceFromTarget>;
-  nativeAuthoringUnits: { split: 'm'; hosted: 'm'; stair: 'm'; trimExtend: 'verbatim-native-fields' };
+  nativeAuthoringUnits: { slabOpening: 'm'; split: 'm'; hosted: 'm'; stair: 'm'; trimExtend: 'verbatim-native-fields' };
   nativeAuthoringRefusals: { split: string | null; hosted: string | null };
   /** Split/Hosted lengths are metres; Trim remains verbatim mixed native fields;
    * Stair follows the canonical SI dimension reader. No IDs are converted. */
   nativeAuthoringAvailability: {
+    slabOpening: Availability;
     split: Availability;
     hosted: Availability;
     trimExtend: Availability;
@@ -48,17 +51,18 @@ export function nativeAuthoringEvidence(target: ModelEditTarget | null, expressI
     trim = authoringReachEvidenceFromTarget(target, expressId);
     stair = nativeStairEvidenceFromTarget(target, expressId);
   }
-  return { nativeSplitExpected: split, nativeHostedExpected: hosted,
+  const slab=nativeSlabOpeningEvidence(target,expressId);
+  return { nativeSlabOpeningExpected: slab.expected, nativeSplitExpected: split, nativeHostedExpected: hosted,
     nativeTrimExtendExpected: trim, nativeStairExpected: stair,
-    nativeAuthoringUnits: { split: 'm', hosted: 'm', stair: 'm', trimExtend: 'verbatim-native-fields' },
+    nativeAuthoringUnits: { slabOpening: 'm', split: 'm', hosted: 'm', stair: 'm', trimExtend: 'verbatim-native-fields' },
     nativeAuthoringRefusals: refusals,
-    nativeAuthoringAvailability: { split: split ? 'available' : unavailable,
+    nativeAuthoringAvailability: { slabOpening: slab.expected ? 'available' : unavailable, split: split ? 'available' : unavailable,
       hosted: hosted ? 'available' : unavailable, trimExtend: trim ? 'available' : unavailable,
       stair: stair ? 'available' : unavailable } };
 }
 
 const snapshotFields = [
-  ['nativeSplitExpected', 'split'], ['nativeHostedExpected', 'hosted'],
+  ['nativeSlabOpeningExpected', 'slabOpening'], ['nativeSplitExpected', 'split'], ['nativeHostedExpected', 'hosted'],
   ['nativeTrimExtendExpected', 'trimExtend'], ['nativeStairExpected', 'stair'],
 ] as const;
 const record = (value: unknown): value is Record<string, unknown> =>

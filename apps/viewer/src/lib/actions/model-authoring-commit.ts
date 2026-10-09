@@ -34,6 +34,8 @@ import { undoBatch, type AppliedChange, type CommitOutcome, type ModelChangeRece
 import { commitElementSize } from '@/lib/element-size-commit';
 import { setElementProfile } from '@/store/slices/mutation-element-profile';
 import { writeStairLifecycle, writeStairCreation } from './model-authoring-stair-lifecycle';
+import { nativePlacementFromTarget } from './model-authoring-placement';
+import { readOnlyModelEditTarget } from './model-authoring-read-target';
 import { completeEntityRemoval } from '@/store/slices/mutation-mesh-stash';
 import { completeStairRailingGeometry } from '@/store/slices/mutation-stair-railing';
 import { writeAuthoringReach } from './model-authoring-reach';
@@ -176,11 +178,14 @@ function writeRow(tx: AuthoringTransaction, batch: ModelAuthoringBatch, row: Aut
       if (!a?.geometry) throw new Error('Native Align preparation is unavailable');
       const result = commitElementAlignment(tx, modelId, { reference: a.reference, targets: a.targets, mode: op.mode }, a.geometry.boxes, a.geometry.plane);
       written.remesh.push(...result.remesh); written.moved = true;
-      const moved = planSelectionTransform(tx.store, modelId, a.targets);
-      return op.targets.map((target, i) => ({ ...base, globalId: target.globalId, field: 'Placement',
-        before: fmt(batch, op.expected.targets[i].origin),
-        after: moved?.roots.find(root => root.expressId === a.targets[i])
-          ? fmt(batch, moved.roots.find(root => root.expressId === a.targets[i])!.origin) : `Carried with aligned host ${op.reference.globalId}` }));
+      const currentTarget = readOnlyModelEditTarget(tx.store, modelId);
+      return op.targets.map((target, i) => {
+        const current = nativePlacementFromTarget(currentTarget, a.targets[i]);
+        const prior = op.expected.targets[i];
+        return ({ ...base, globalId: target.globalId, field: 'Placement',
+        before: fmt(batch, 'origin' in prior ? prior.origin : prior.frame.o),
+        after: current ? fmt(batch, 'origin' in current ? current.origin : current.frame.o) : 'Native placement unavailable after Align' });
+      });
     }
     case 'element.move': case 'element.rotate': {
       const root = planSelectionTransform(tx.store, modelId, [resolved.target!])?.roots.find((r) => r.expressId === resolved.target);

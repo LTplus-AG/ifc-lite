@@ -8,6 +8,11 @@ import { afterEach, test } from 'node:test';
 import { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
 import { EMPTY_SOURCE_BYTES, extractProjectUnits } from '@ifc-lite/parser';
 import { readWallJoinTarget } from '@ifc-lite/create';
+import { generateIfcGuid } from '@ifc-lite/encoding';
+import { parseModelAuthoringBatch } from '@/lib/actions/model-authoring';
+import { previewModelAuthoring } from '@/lib/actions/model-authoring-preview';
+import { commitModelAuthoring } from '@/lib/actions/model-authoring-commit';
+import { undoModelChanges } from '@/lib/actions/model-change-commit';
 import { useViewerStore } from '@/store';
 import { GROUND_STOREY, SAMPLE_MODEL, parseIfc, seedAuthoringSample } from '@/test/authoring-sample-fixture';
 import { editedModelBytes } from '@/lib/export/edited-model-bytes';
@@ -131,9 +136,10 @@ test('#7282 removing the native source reports unavailable selection rather than
   await wall();s().removeModel(SAMPLE_MODEL);const snapshot=captureEvidence('selection'),payload=JSON.parse(snapshot.payload);assert.equal(payload.sourceAvailability,'unavailable');assert.equal(payload.evidence.rows.length,0);assert.equal(captureSelectionGrounding(s()).elements.length,0);
 });
 
-for (const replacement of ['source', 'view'] as const)
-test(`#7282 in-flight native ${replacement} replacement cancels owned transport and rejects a late answer`, async () => {
-  await wall();replaceEvidence(captureEvidence('selection'));
+for (const route of ['rich', 'attachment'] as const) for (const replacement of ['source', 'view'] as const)
+test(`#7282 in-flight ${route} native ${replacement} replacement cancels owned transport and rejects a late answer`, async () => {
+  await wall();replaceEvidence(captureEvidence(route === 'rich' ? 'selection' : 'loadReport'));
+  const grounding = route === 'attachment' ? captureSelectionGrounding(s()) : null;
   let release: ((response: Response) => void) | undefined;
   let started: (() => void) | undefined;
   const began = new Promise<void>(resolve => { started = resolve; });
@@ -144,7 +150,7 @@ test(`#7282 in-flight native ${replacement} replacement cancels owned transport 
     // reject a response delivered after the captured source authority changes.
     return new Promise<Response>(resolve => { release = resolve; });
   };
-  const sending = sendAssistant('Review captured native shape', 'openai/gpt-free', '/api/chat');await began;
+  const sending = sendAssistant('Review captured native shape', 'openai/gpt-free', '/api/chat', grounding ? attachmentsForSend({ selection: grounding, screenshot: null }) : {});await began;
   const source=s().models.get(SAMPLE_MODEL)!.ifcDataStore!;
   if(replacement==='source')s().updateModel(SAMPLE_MODEL,{ifcDataStore:await parseIfc(source.source.materialize())});
   else useViewerStore.setState({mutationViews:new Map([[SAMPLE_MODEL,new MutablePropertyView(source.properties,SAMPLE_MODEL)]])});
@@ -158,4 +164,53 @@ test('#7282 unrelated loaded source replacement preserves the selected native ca
   const peer=await parseIfc(source.source.materialize());useViewerStore.setState({models:new Map([[SAMPLE_MODEL,model],['unrelated',{...model,id:'unrelated',idOffset:1_000_000,ifcDataStore:peer}]])});
   replaceEvidence(captureEvidence('selection'));s().updateModel('unrelated',{ifcDataStore:await parseIfc(peer.source.materialize())});
   const calls=intercept();assert.equal(await sendAssistant('Review selected native shape','openai/gpt-free','/api/chat'),true);assert.equal(calls(),1);
+});
+
+
+for (const route of ['rich', 'attachment'] as const) for (const edit of ['named', 'positional'] as const)
+test(`#7282 ${route} ${edit} current native identity reaches wire, Apply and independent Undo reparse`, async () => {
+  const id = await wall(), store = s().models.get(SAMPLE_MODEL)!.ifcDataStore!, view = s().mutationViews.get(SAMPLE_MODEL)!;
+  const oldGuid = store.entities.getGlobalId(id), GlobalId = generateIfcGuid(), Name = 'Current reviewed native wall';
+  const editor = new StoreEditor(store, view);
+  if (edit === 'named') { editor.setAttribute(id, 'GlobalId', GlobalId); editor.setAttribute(id, 'Name', Name); }
+  else { editor.setPositionalAttribute(id, 0, GlobalId); editor.setPositionalAttribute(id, 2, Name); }
+  const before = await parseIfc(editedModelBytes(store, view));
+  assert.equal(before.entities.getGlobalId(id), GlobalId); assert.equal(before.entities.getName(id), Name);
+  assert.equal(before.entities.getExpressIdByGlobalId(oldGuid), -1);
+  const snapshot = captureEvidence(route === 'rich' ? 'selection' : 'loadReport'); replaceEvidence(snapshot);
+  const grounding = route === 'attachment' ? captureSelectionGrounding(s()) : null;
+  let calls = 0;
+  globalThis.fetch = async (_url, init) => {
+    calls++;
+    const wire = JSON.parse(String(init?.body));
+    let actual;
+    if (route === 'rich') {
+      const system = typeof wire.system === 'string' ? wire.system : wire.system.map((block: { text: string }) => block.text).join('\n');
+      const offset = system.indexOf(snapshot.payload); assert.ok(offset >= 0);
+      actual = JSON.parse(system.slice(offset, offset + snapshot.payload.length)).evidence.rows[0].data;
+    } else {
+      const user = wire.messages.filter((message: { role: string }) => message.role === 'user').at(-1);
+      actual = JSON.parse(user.content.split('\n').at(-1))[0];
+    }
+    assert.equal(actual.globalId, GlobalId); assert.equal(actual.name, Name); assert.equal(actual.type, 'IfcWall');
+    assert.ok(actual.nativeAuthoringAvailability); assert.equal(actual.nativeAuthoringAvailability.trimExtend, 'available');
+    const proposal = { version: 1, kind: 'model.authoring', title: 'Current identity trim', units: 'm', frame: 'storey-local', operations: [{
+      op: 'element.trimExtend', target: { modelId: actual.modelId, globalId: actual.globalId, ifcClass: actual.type, name: actual.name },
+      expected: actual.nativeTrimExtendExpected, mode: 'trim', click: [8, 5], boundary: { line: { a: [6, -10], b: [6, 10], tMin: 0, tMax: 1, reach: 10 } },
+    }] };
+    return new Response(`data: ${JSON.stringify({ choices: [{ delta: { content: JSON.stringify(proposal) }, finish_reason: 'stop' }] })}\n\n`);
+  };
+  assert.equal(await sendAssistant('Prepare current native trim', 'openai/gpt-free', '/api/chat', grounding ? attachmentsForSend({ selection: grounding, screenshot: null }) : {}), true, useAssistant.getState().error ?? '');
+  assert.equal(calls, 1);
+  const answer = useAssistant.getState().messages.at(-1)?.content; assert.ok(answer);
+  const preview = previewModelAuthoring(s(), parseModelAuthoringBatch(answer)); assert.equal(preview.rows[0].status, 'ready', preview.rows[0].issue);
+  const committed = commitModelAuthoring(useViewerStore, preview, new Set([0]), '#7282 current identity');
+  assert.ok(committed.ok, committed.ok ? '' : committed.detail ?? committed.reason);
+  const after = await parseIfc(editedModelBytes(store, view));
+  assert.equal(after.entities.getGlobalId(id), GlobalId); assert.equal(after.entities.getName(id), Name);
+  assert.deepEqual(readWallJoinTarget(after, new MutablePropertyView(after.properties, SAMPLE_MODEL), id, .001)?.wall.end, [6, 5]);
+  assert.ok(undoModelChanges(useViewerStore, committed.receipt).ok);
+  const undone = await parseIfc(editedModelBytes(store, view));
+  assert.equal(undone.entities.getGlobalId(id), GlobalId); assert.equal(undone.entities.getName(id), Name);
+  assert.deepEqual(readWallJoinTarget(undone, new MutablePropertyView(undone.properties, SAMPLE_MODEL), id, .001)?.wall.end, [8, 5]);
 });

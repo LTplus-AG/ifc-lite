@@ -3,7 +3,9 @@
 //! Geometry, relative placement chains and endpoint-local connections stay intact.
 
 use super::{preflight, writer, MapConversionNormalizationPlan, Record};
+use crate::step_text::attribute_of;
 use ifc_lite_core::{EntityDecoder, IfcType, MAX_PLACEMENT_DEPTH};
+use ifc_lite_geometry::GeometryRouter;
 use nalgebra::Matrix4;
 use std::collections::{BTreeSet, HashMap, HashSet};
 
@@ -130,6 +132,37 @@ pub(super) fn plan(
         plan.replacements
             .push(writer::replace(record, &[(1, format!("#{new_frame}"))])?);
     }
+    // Cesium ion evaluates IfcLinearPlacement in the world frame, ignoring a
+    // transformed PlacementRelTo root (live asset 6005950 put ~5,900 parts
+    // near map origin 0,0). Bake each reached linear placement into the
+    // IfcLocalPlacement rendering already composes: same ID and parent, its
+    // resolved curve or CartesianPosition frame (#7335).
+    let router = GeometryRouter::with_scale(unit);
+    let mut linear: Vec<_> = placements.keys().copied().collect();
+    linear.sort_unstable();
+    for id in linear {
+        let record = &records[*ids.get(&id).ok_or("placement record is absent")?];
+        if record.kind != IfcType::IfcLinearPlacement {
+            continue;
+        }
+        let placement = decoder
+            .decode_by_id(id)
+            .map_err(|error| error.to_string())?;
+        let local = Matrix4::from_column_slice(
+            &router
+                .resolve_linear_placement_local_strict(&placement, decoder)
+                .map_err(|error| error.to_string())?,
+        );
+        preflight::rigid_frame(&local, id)?;
+        let frame = output.frame(&local)?;
+        let parent = attribute_of(record.line, 0).ok_or("linear PlacementRelTo is invalid")?;
+        let parent = parent.trim();
+        plan.replacements.push(writer::retype(
+            record,
+            "IFCLOCALPLACEMENT",
+            format!("{parent},#{frame}"),
+        ));
+    }
     let mut edits = vec![
         (2, "0.".into()),
         (3, "0.".into()),
@@ -185,10 +218,9 @@ fn placement_root(
                     .map_err(|error| error.to_string())?;
                 preflight::axis(&frame, decoder)?;
             }
-            // The renderer composes PlacementRelTo * (curve sample or
-            // CartesianPosition), both expressed in the parent frame, so a
-            // rigid edit of the parent's root carries them exactly. Without a
-            // parent the basis curve is read in the untransformed world frame.
+            // Baked below into an IfcLocalPlacement relative to the same
+            // parent. Without a parent the basis curve is read in the
+            // untransformed world frame, which a root edit cannot carry.
             IfcType::IfcLinearPlacement if parent.is_some() => {}
             IfcType::IfcLinearPlacement => {
                 return Err(format!(

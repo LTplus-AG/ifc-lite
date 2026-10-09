@@ -385,9 +385,16 @@ pub(super) fn verify_source(source: &str, count: usize) {
         assert!(matches!(
             node.ifc_type,
             IfcType::IfcLocalPlacement
+                | IfcType::IfcLinearPlacement
                 | IfcType::IfcMapConversion
                 | IfcType::IfcGeometricRepresentationContext
         ));
+        if node.ifc_type == IfcType::IfcLinearPlacement {
+            // #7335: baked for Cesium ion under the same ID and parent.
+            let baked = after.decode_by_id(patch.express_id).unwrap();
+            assert_eq!(baked.ifc_type, IfcType::IfcLocalPlacement);
+            assert_eq!(baked.get_ref(0), node.get_ref(0));
+        }
     }
 }
 

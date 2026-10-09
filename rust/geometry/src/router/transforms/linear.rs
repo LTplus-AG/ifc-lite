@@ -47,14 +47,48 @@ impl GeometryRouter {
         // supplied one: it is the exact pre-computed placement. Sample the
         // curve only when no authored position exists (an `IfcGradientCurve`
         // is then evaluated with its vertical profile, see `gradient.rs`).
-        let local = match self.try_resolve_cartesian_position(placement, decoder) {
-            Some(m) => m,
-            None => self
-                .try_resolve_axis2_placement_linear(placement, decoder)
-                .unwrap_or_else(Matrix4::identity),
-        };
+        let local = self
+            .linear_placement_local(placement, decoder)
+            .unwrap_or_else(Matrix4::identity);
 
         Ok(PlacementWalk { transform: parent.transform * local, truncated: parent.truncated })
+    }
+
+    /// The frame an `IfcLinearPlacement` adds to its `PlacementRelTo`: the
+    /// authored `CartesianPosition`, else the sampled basis curve. File units.
+    fn linear_placement_local(
+        &self,
+        placement: &DecodedEntity,
+        decoder: &mut EntityDecoder,
+    ) -> Option<Matrix4<f64>> {
+        self.try_resolve_cartesian_position(placement, decoder)
+            .or_else(|| self.try_resolve_axis2_placement_linear(placement, decoder))
+    }
+
+    /// Strict column-major local frame of an `IfcLinearPlacement` relative to
+    /// its `PlacementRelTo`, exactly as rendering composes it, in file units.
+    /// Unlike rendering there is no identity fallback: a writer baking this
+    /// frame must refuse a placement it cannot resolve (#7335).
+    pub fn resolve_linear_placement_local_strict(
+        &self,
+        placement: &DecodedEntity,
+        decoder: &mut EntityDecoder,
+    ) -> Result<[f64; 16]> {
+        if placement.ifc_type != IfcType::IfcLinearPlacement {
+            return Err(crate::Error::geometry(format!(
+                "#{} is not an IfcLinearPlacement",
+                placement.id
+            )));
+        }
+        let local = self.linear_placement_local(placement, decoder).ok_or_else(|| {
+            crate::Error::geometry(format!(
+                "IfcLinearPlacement #{} cannot be resolved",
+                placement.id
+            ))
+        })?;
+        let mut result = [0.0; 16];
+        result.copy_from_slice(local.as_slice());
+        Ok(result)
     }
 
     /// Decode `IfcLinearPlacement.RelativePlacement` → sample the basis

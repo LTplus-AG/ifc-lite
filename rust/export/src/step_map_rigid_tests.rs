@@ -407,11 +407,19 @@ fn issue_7335_alignment_and_linear_placements_covary_with_their_placement_roots(
             "{sampled:?}"
         );
     }
-    // Only placement roots and the map change; linear placements, curves and
+    // Linear placements are baked into the local placements rendering
+    // composes, under their original IDs and parents (Cesium ion ignores a
+    // transformed PlacementRelTo for linear placements).
+    for (id, parent) in [(109, 100), (111, 30)] {
+        let placement = after.decode_by_id(id).unwrap();
+        assert_eq!(placement.ifc_type, IfcType::IfcLocalPlacement, "#{id}");
+        assert_eq!(placement.get_ref(0), Some(parent), "#{id}");
+    }
+    // Only placement roots, linear placements and the map change; curves and
     // representations keep their original records.
     let mut scanner = EntityScanner::new(&source);
     while let Some((id, _, start, end)) = scanner.next_entity() {
-        if [80, 100, 61, 10].contains(&id) {
+        if [80, 100, 109, 111, 61, 10].contains(&id) {
             continue;
         }
         assert!(

@@ -1,0 +1,4 @@
+exit: 2
+--- stdout
+--- stderr
+Error: unknown flag --jsno

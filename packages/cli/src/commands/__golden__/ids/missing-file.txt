@@ -1,0 +1,4 @@
+exit: 2
+--- stdout
+--- stderr
+Error: cannot read <fixtures>/does-not-exist.ids: ENOENT: no such file or directory, open '<fixtures>/does-not-exist.ids'

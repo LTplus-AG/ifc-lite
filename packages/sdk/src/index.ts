@@ -209,8 +209,8 @@ export { ExportNamespace } from './namespaces/export.js';
 export type { ExportCsvOptions, ExportStepOptions, ExportHbjsonOptions, ExportDfjsonOptions } from './namespaces/export.js';
 
 // IDS — full validation, facets, constraints, translation
-export { IDSNamespace } from './namespaces/ids.js';
-export type { IDSValidationSummary, IDSSupportedLocale, IDSValidateOptions } from './namespaces/ids.js';
+export { IDSNamespace, IDSAuthoringNamespace, IDSAuthoringDocument } from './namespaces/ids.js';
+export type { IDSValidationSummary, IDSSupportedLocale, IDSValidateOptions, IDSAuthoringApplyResult, IDSAuthoringLintOptions } from './namespaces/ids.js';
 
 // BCF — full collaboration: topics, viewpoints, comments, GUID, colors, IDS→BCF
 export {

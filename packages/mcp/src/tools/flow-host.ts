@@ -15,6 +15,7 @@ import type { Capability } from '@ifc-lite/extensions';
 import type { FlowHost } from '@ifc-lite/flow-nodes';
 import type { LoadedModel, ModelRegistry } from '../context.js';
 import { deriveModelId, loadIfcModelFromBytes } from '../loader.js';
+import { buildIdsAccessor } from './ids-accessor.js';
 
 /** `base`, or `base_2`, `base_3`, … — the first id the registry does not hold yet. */
 function freeModelId(registry: ModelRegistry, base: string): string {
@@ -46,6 +47,8 @@ export function createMcpFlowHost(initial: LoadedModel, registry: ModelRegistry,
         strings: model.store.strings ?? null,
       };
     },
+    // `ids.validate` reads the session's effective model, like `ids_validate`.
+    idsAccessor: () => buildIdsAccessor(active.store, active.backend.getOrCreateMutationView()),
     async openModel(bytes, name) {
       const loaded = await loadIfcModelFromBytes(bytes, name, freeModelId(registry, deriveModelId(name)));
       registry.add(loaded);

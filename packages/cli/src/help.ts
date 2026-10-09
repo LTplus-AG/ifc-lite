@@ -39,7 +39,13 @@ export function buildHelp(version: string): string {
                       [--no-rel-voids-element] [--no-rel-fills-element] [--no-rel-defines-by-type]
                       [--no-rel-associates-material] [--no-rel-aggregates] [--no-rel-nests]
                       [--connect-depth N] [--guid-map F] [--json]
-    ids       <file.ifc> <rules.ids>              Validate against IDS rules
+    ids       <file.ifc> <rules.ids>              Validate a model against IDS rules; audit, lint, format, diff and explain IDS files
+              audit <rules.ids> [--json]          IDS 1.0 conformance audit (exit 1 on errors)
+              lint <rules.ids> [--json] [--rules C,...] [--severity C=error|warning|info|off,...] [--fail-on error|warning|info|never]
+              fmt <rules.ids> [--check|--write]   Canonical formatting (--check exits 1 when the file would change)
+              diff <before.ids> <after.ids> [--json|--md]  Semantic diff (exit 1 when the documents differ)
+              explain <rules.ids> [--lang en|de|fr] [--md]  Plain-language rendering of every specification
+              subcommands exit 2 on a usage error, unreadable input, or a file this build cannot write without loss
     bcf       <create|list|add-comment>           Work with BCF collaboration files
     clash     <file.ifc> [--matrix] [--bcf F]      Detect geometric clashes between elements
     create    <type> [options] --out F             Create IFC elements (29 types)

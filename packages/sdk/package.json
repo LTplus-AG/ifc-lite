@@ -27,11 +27,13 @@
     "@ifc-lite/encoding": "workspace:^",
     "@ifc-lite/export": "workspace:^",
     "@ifc-lite/ids": "workspace:^",
+    "@ifc-lite/ids-authoring": "workspace:^",
     "@ifc-lite/lens": "workspace:^",
     "@ifc-lite/lists": "workspace:^",
     "@ifc-lite/mutations": "workspace:^",
     "@ifc-lite/parser": "workspace:^",
     "@ifc-lite/query": "workspace:^",
+    "@ifc-lite/rules": "workspace:^",
     "@ifc-lite/spatial": "workspace:^"
   },
   "devDependencies": {

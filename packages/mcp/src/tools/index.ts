@@ -20,6 +20,9 @@ import { layerReviewTools } from './layer-review.js';
 import { costTools } from './cost.js';
 import { structuralTools } from './structural.js';
 import { flowTools } from './flow.js';
+import { idsAuthoringTools } from './ids-authoring.js';
+import { idsAuthoringModelTools } from './ids-authoring-model.js';
+import { idsSchemaTools } from './ids-schema.js';
 
 /** Agent draft-layer family (06-agents.md): draft lifecycle + review loop. */
 export const layerTools = [...draftLayerTools, ...layerReviewTools];
@@ -43,6 +46,9 @@ export {
   costTools,
   structuralTools,
   flowTools,
+  idsAuthoringTools,
+  idsAuthoringModelTools,
+  idsSchemaTools,
 };
 export { resetLayerWorkspace, getLayerWorkspace, disposeLayerWorkspace } from './layer-store.js';
 
@@ -68,6 +74,9 @@ export function buildDefaultToolRegistry(): ToolRegistry {
   registry.registerAll(costTools);
   registry.registerAll(structuralTools);
   registry.registerAll(flowTools);
+  registry.registerAll(idsAuthoringTools);
+  registry.registerAll(idsAuthoringModelTools);
+  registry.registerAll(idsSchemaTools);
   registry.registerAll(layerTools);
   return registry;
 }

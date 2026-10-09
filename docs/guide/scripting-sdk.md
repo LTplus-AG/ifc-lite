@@ -19,7 +19,7 @@ The `bim` object (a `BimContext`) groups its capabilities into namespaces, plus 
 | `bim.clash` | Run clash rules and the discipline matrix |
 | `bim.cost` | Read and evaluate IFC 5D cost schedules, items, values, and quantities |
 | `bim.structural` | Read-only access to IFC structural analysis data (analysis models, members, connections, activities, load/result groups) |
-| `bim.ids` | IDS validation |
+| `bim.ids` | IDS validation; `bim.ids.authoring` opens, edits (through grounded operations), lints and writes IDS documents |
 | `bim.bcf` | BCF topics, comments, viewpoints |
 | `bim.files`, `bim.schedule`, `bim.spatial`, `bim.spaces`, `bim.drawing`, `bim.list`, `bim.bsdd`, `bim.events`, `bim.sandbox` | Supporting namespaces (file access, scheduling, spatial ops, space program, 2D drawings, entity tables, bSDD lookups, events, sandboxed sub-scripts) |
 
@@ -37,6 +37,42 @@ const storeys = bim.storeys();
 for (const s of storeys) {
   console.log(`${s.name}: ${bim.contains(s.ref).length} elements`);
 }
+```
+
+### Authoring IDS from a script
+
+`bim.ids.authoring` edits IDS documents with the typed operations and
+grounding gate that the IDS editor and the MCP `ids_apply_ops` tool use (see
+[IDS authoring](ids-authoring.md)). A batch that names an entity, property
+set or property the IFC schema does not have is refused as a whole. The
+result lists each problem with ranked candidates. Accepted batches can be
+undone.
+
+```ts
+declare const xml: string;
+const doc = await bim.ids.authoring.open(xml);
+const specId = doc.doc.nodes.specs[0].id;
+
+const res = doc.apply([
+  {
+    kind: 'facet.add',
+    opId: crypto.randomUUID(),
+    payload: {
+      specId,
+      section: 'requirements',
+      facetId: crypto.randomUUID(),
+      facet: {
+        type: 'property',
+        propertySet: { kind: 'equals', value: 'Pset_DoorCommon' },
+        baseName: { kind: 'equals', value: 'FireRatng' },
+      },
+    },
+  },
+]);
+if (!res.ok) console.log(res.errors[0].code, res.errors[0].candidates[0]?.value); // GATE-PROP-001 FireRating
+
+for (const d of doc.lint()) console.log(d.code, doc.pathOf(d.nodeId), d.message);
+const updated: string = doc.write(); // throws rather than drop content this build cannot write
 ```
 
 ## Explicit property declarations

@@ -978,6 +978,9 @@ importers:
       '@ifc-lite/ids':
         specifier: workspace:^
         version: link:../ids
+      '@ifc-lite/ids-authoring':
+        specifier: workspace:^
+        version: link:../ids-authoring
       '@ifc-lite/ifcx':
         specifier: workspace:^
         version: link:../ifcx
@@ -1380,6 +1383,12 @@ importers:
       '@ifc-lite/flow':
         specifier: workspace:^
         version: link:../flow
+      '@ifc-lite/ids':
+        specifier: workspace:^
+        version: link:../ids
+      '@ifc-lite/ids-authoring':
+        specifier: workspace:^
+        version: link:../ids-authoring
       '@ifc-lite/mutations':
         specifier: workspace:^
         version: link:../mutations
@@ -1487,6 +1496,9 @@ importers:
         specifier: ^0.8.3
         version: 0.8.3
     devDependencies:
+      '@ifc-lite/rules':
+        specifier: workspace:*
+        version: link:../rules
       '@types/node':
         specifier: ^26.6.2
         version: 26.6.2
@@ -1619,6 +1631,9 @@ importers:
       '@ifc-lite/ids':
         specifier: workspace:^
         version: link:../ids
+      '@ifc-lite/ids-authoring':
+        specifier: workspace:^
+        version: link:../ids-authoring
       '@ifc-lite/ifcx':
         specifier: workspace:^
         version: link:../ifcx
@@ -1931,6 +1946,9 @@ importers:
       '@ifc-lite/ids':
         specifier: workspace:^
         version: link:../ids
+      '@ifc-lite/ids-authoring':
+        specifier: workspace:^
+        version: link:../ids-authoring
       '@ifc-lite/lens':
         specifier: workspace:^
         version: link:../lens
@@ -1946,6 +1964,9 @@ importers:
       '@ifc-lite/query':
         specifier: workspace:^
         version: link:../query
+      '@ifc-lite/rules':
+        specifier: workspace:^
+        version: link:../rules
       '@ifc-lite/spatial':
         specifier: workspace:^
         version: link:../spatial

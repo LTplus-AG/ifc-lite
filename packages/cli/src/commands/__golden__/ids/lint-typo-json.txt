@@ -1,0 +1,50 @@
+exit: 1
+--- stdout
+{
+  "file": "<fixtures>/doors-typo.ids",
+  "counts": {
+    "error": 1,
+    "warning": 0,
+    "info": 3
+  },
+  "suppressed": 0,
+  "diagnostics": [
+    {
+      "code": "IDSL-PROP-001",
+      "severity": "error",
+      "path": "specifications[0].requirements[0].baseName",
+      "spec": "Fire rating on doors",
+      "message": "\"FireRatng\" is not a property of Pset_DoorCommon (IFC4)",
+      "fixable": true,
+      "docsUrl": "https://ifclite.dev/docs/guide/ids-lint/idsl-prop-001/"
+    },
+    {
+      "code": "IDSL-SPEC-008",
+      "severity": "info",
+      "path": "specifications[0]",
+      "spec": "Fire rating on doors",
+      "message": "\"Fire rating on doors\" has neither a description nor instructions for modellers",
+      "fixable": false,
+      "docsUrl": "https://ifclite.dev/docs/guide/ids-lint/idsl-spec-008/"
+    },
+    {
+      "code": "IDSL-ENT-003",
+      "severity": "info",
+      "path": "specifications[0].applicability[0].name",
+      "spec": "Fire rating on doors",
+      "message": "IfcDoor does not select its subtypes IfcDoorStandardCase",
+      "fixable": true,
+      "docsUrl": "https://ifclite.dev/docs/guide/ids-lint/idsl-ent-003/"
+    },
+    {
+      "code": "IDSL-VAL-006",
+      "severity": "info",
+      "path": "specifications[0].requirements[1].value",
+      "spec": "Fire rating on doors",
+      "message": "\"Door \" has surrounding whitespace or invisible characters",
+      "fixable": true,
+      "docsUrl": "https://ifclite.dev/docs/guide/ids-lint/idsl-val-006/"
+    }
+  ]
+}
+--- stderr

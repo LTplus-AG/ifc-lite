@@ -102,6 +102,7 @@ Tools are grouped by capability. Everything below is registered in the default t
 | Geometry | `geometry_bbox`, `geometry_volume`, `geometry_area`, `geometry_get` *(planned)*, `raycast` *(planned)* |
 | Clash | `clash_check`, `clash_matrix` |
 | Validation | `ids_validate`, `ids_explain`, `model_audit`, `gherkin_check` *(planned)* |
+| IDS authoring | `ids_audit`, `ids_lint`, `ids_read`, `ids_apply_ops`, `ids_write`, `ids_schema_search`, `ids_schema_entity`, `ids_schema_pset`, `ids_diff`, `ids_preview` *(planned)*, `ids_infer` *(planned)*, `ids_coverage` *(planned)*, `ids_test` *(planned)* |
 | Mutation | `entity_set_property`, `entity_delete_property`, `entity_set_attribute`, `entity_create`, `entity_delete`, `mutation_batch`, `mutation_undo`, `mutation_diff`, `model_save` |
 | Hosted modelling | `place_opening`, `place_door`, `place_window` |
 | Physical edits | `edit_hosted_element`, `edit_element_geometry`, `copy_elements`, `duplicate_element`, `array_elements` |
@@ -115,6 +116,44 @@ Tools are grouped by capability. Everything below is registered in the default t
 | Flow | `describe_flow`, `run_flow`, `propose_flow`, `resume_flow` |
 | Viewer | `viewer_ask`, `viewer_open`, `viewer_close`, `viewer_status`, `viewer_colorize`, `viewer_isolate`, `viewer_hide`, `viewer_show`, `viewer_reset`, `viewer_fly_to`, `viewer_set_section`, `viewer_clear_section`, `viewer_color_by_storey`, `viewer_color_by_property`, `viewer_get_selection`, `viewer_wait_for_selection`, `viewer_describe_selection` |
 | Draft layers & review | `create_draft_layer`, `draft_apply_ops`, `publish_layer`, `diff_layer`, `dry_run_merge`, `list_conflicts`, `request_review`, `add_review_feedback`, `get_review_feedback`, `add_review_topic`, `respond_to_review` |
+
+### IDS authoring
+
+The IDS authoring tools work on IDS documents and need no model. They are
+stateless: a document travels between calls as Studio JSON (the `doc` that
+`ids_read` and `ids_apply_ops` return), with a stable UUID for every
+specification, facet and constraint. Reading the same XML twice gives the
+same ids.
+
+`ids_apply_ops` is the only tool that changes a document. It takes typed
+operations (IDS ops vocabulary v1; the JSON Schema is part of the tool's
+input schema) and passes the whole batch through the grounding gate first:
+every op is validated, and every literal name is checked against the IFC
+schema tables (entities, predefined types, attributes, property sets,
+properties, enumeration values, data types). If one name is wrong, nothing
+is applied and the tool returns `INVALID_INPUT`. `details.issues` lists each
+problem with its gate code, path and ranked candidates, and the text says
+the same:
+
+```text
+The grounding gate refused the batch; nothing was applied.
+- GATE-PROP-001 at ops[2].payload.facet.baseName: … Did you mean: FireRating?
+```
+
+A typical loop: look names up with `ids_schema_search`, `ids_schema_entity` or
+`ids_schema_pset`. Build the document with `ids_apply_ops`, which also returns
+its lint diagnostics. Apply a diagnostic's quick fix by passing its `ops`
+back to `ids_apply_ops`. Finish with `ids_write`. `ids_write` reads its own
+XML back, audits it and refuses a document with audit errors, so Studio JSON
+edited by hand cannot get past the gate that way. It also returns the
+`studio.json` sidecar that keeps the node ids next to the XML.
+
+`ids_diff` compares two IDS revisions (`before_xml` / `before_path`,
+`after_xml` / `after_path`). It returns added, removed and changed entries,
+each with its XML path and one plain-language line. `ids_preview`,
+`ids_infer` and `ids_coverage` evaluate an IDS against a loaded model, and
+`ids_test` runs `.idsz` test suites. These four are declared with their
+final inputs but answer `UNSUPPORTED_OPERATION` until their engines ship.
 
 `join_walls` takes `a_express_id`, `b_express_id`, optional `model_id` and optional `options` (`Name`, `priority: 'a' | 'b'`, `tolerance` in metres and `priorities: { a?: number[]; b?: number[] }`). It uses `bim.store.joinWalls` and the canonical Model workspace core. Both walls must be straight and in the same placement frame. Unreadable hosted cuts, or an opening stranded by either joined end face, refuse atomically. One `mutation_undo` restores the complete earlier wall graph and any replaced relationship. The IFC export contains the join; headless geometry queries continue to read parsed geometry.
 

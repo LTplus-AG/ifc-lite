@@ -1,0 +1,18 @@
+exit: 1
+--- stdout
+
+  IDS lint: <fixtures>/doors-typo.ids
+
+  error   IDSL-PROP-001  specifications[0].requirements[0].baseName  "Fire rating on doors"
+            "FireRatng" is not a property of Pset_DoorCommon (IFC4) [fix available]
+  info    IDSL-SPEC-008  specifications[0]  "Fire rating on doors"
+            "Fire rating on doors" has neither a description nor instructions for modellers
+  info    IDSL-ENT-003   specifications[0].applicability[0].name  "Fire rating on doors"
+            IfcDoor does not select its subtypes IfcDoorStandardCase [fix available]
+  info    IDSL-VAL-006   specifications[0].requirements[1].value  "Fire rating on doors"
+            "Door " has surrounding whitespace or invisible characters [fix available]
+
+  1 error, 0 warnings, 3 info (3 fixable)
+  Result: FAIL
+
+--- stderr

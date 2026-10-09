@@ -1,0 +1,12 @@
+exit: 0
+--- stdout
+
+  IDS lint: <fixtures>/doors-clean.ids
+
+  info    IDSL-ENT-003   specifications[0].applicability[0].name  "Fire rating on doors"
+            IfcDoor does not select its subtypes IfcDoorStandardCase [fix available]
+
+  0 errors, 0 warnings, 1 info (1 fixable)
+  Result: PASS
+
+--- stderr

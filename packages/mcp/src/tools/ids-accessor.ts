@@ -12,6 +12,7 @@
 
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
+import type { IFCDataAccessor } from '@ifc-lite/ids';
 import { createDataAccessor } from '@ifc-lite/ids/bridge';
 
 /**
@@ -24,6 +25,6 @@ import { createDataAccessor } from '@ifc-lite/ids/bridge';
 export function buildIdsAccessor(
   store: IfcDataStore,
   mutationView?: MutablePropertyView | null
-): unknown {
+): IFCDataAccessor {
   return createDataAccessor(store, undefined, mutationView ?? undefined);
 }

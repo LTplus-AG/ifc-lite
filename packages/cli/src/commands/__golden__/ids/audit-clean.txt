@@ -1,0 +1,9 @@
+exit: 0
+--- stdout
+
+  IDS audit: <fixtures>/doors-clean.ids
+
+  0 errors, 0 warnings, 0 info
+  Result: PASS
+
+--- stderr

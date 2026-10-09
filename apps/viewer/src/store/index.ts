@@ -26,6 +26,7 @@ import { createSheetSlice, type SheetSlice } from './slices/sheetSlice.js';
 import { createBcfSlice, type BCFSlice } from './slices/bcfSlice.js';
 import { createIdsSlice, type IDSSlice } from './slices/idsSlice.js';
 import { createValidationDraftSlice, type ValidationDraftSlice } from './slices/validationDraftSlice.js';
+import { createIdsStudioSlice, type IdsStudioSlice } from './slices/idsStudioSlice.js';
 import { createManualValidationSlice, type ManualValidationSlice } from './slices/manualValidationSlice.js';
 import { createValidationReportsSlice, type ValidationReportsSlice } from './slices/validationReportsSlice.js';
 import { createExtensionsSlice, type ExtensionsSlice } from './slices/extensionsSlice.js';
@@ -97,6 +98,7 @@ export type { SheetState } from './slices/sheetSlice.js';
 export type { CollabSlice, CollabRole, CollabStatus, StartCollabOptions } from './slices/collabSlice.js';
 export type { BCFSlice, BCFSliceState } from './slices/bcfSlice.js';
 
+export type { IdsStudioSlice, IdsStudioView } from './slices/idsStudioSlice.js';
 export type { IDSSlice, IDSSliceState, IDSDisplayOptions, IDSFilterMode, IDSFocusMode } from './slices/idsSlice.js';
 
 // Re-export List / Chart / Flow / Document / Pinboard types
@@ -153,6 +155,7 @@ export type ViewerState = AppearanceSlice & LoadingSlice &
   SheetSlice &
   BCFSlice &
   IDSSlice &
+  IdsStudioSlice &
   ValidationDraftSlice &
   ManualValidationSlice &
   ValidationReportsSlice &
@@ -213,6 +216,7 @@ const createViewerStore = () => create<ViewerState>()(withStoreChurnCounters(wit
   ...createSheetSlice(...args),
   ...createBcfSlice(...args),
   ...createIdsSlice(...args),
+  ...createIdsStudioSlice(...args),
   ...createValidationDraftSlice(...args), ...createManualValidationSlice(...args),
   ...createValidationReportsSlice(...args),
   ...createListSlice(...args),

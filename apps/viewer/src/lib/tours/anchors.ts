@@ -48,6 +48,8 @@ export const TOUR_ANCHORS = {
   validationEntry: 'validation-entry',
   /** ValidationPanel authoring state's RuleSetEditor root (#5138). */
   ruleEditor: 'rule-editor',
+  /** IdsStudioPanel root, on both the empty state and an open document (IDS-030). */
+  idsStudioPanel: 'ids-studio-panel',
   /** ClashPanel "Detect all clashes" run button. */
   clashRun: 'clash-run',
   /** ClashPanel severity summary (only while a result exists). */

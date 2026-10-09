@@ -237,6 +237,9 @@ importers:
       '@ifc-lite/ids':
         specifier: workspace:^
         version: link:../../packages/ids
+      '@ifc-lite/ids-authoring':
+        specifier: workspace:^
+        version: link:../../packages/ids-authoring
       '@ifc-lite/ifcx':
         specifier: workspace:^
         version: link:../../packages/ifcx

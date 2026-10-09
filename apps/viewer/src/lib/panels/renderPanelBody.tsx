@@ -77,6 +77,12 @@ function ReviewPanelBody() {
   return <ChunkErrorBoundary label="Review panel"><Suspense fallback={null}><ReviewPanel /></Suspense></ChunkErrorBoundary>;
 }
 
+// Lazy: IDS Studio pulls in the authoring core, lint rules and CodeMirror (IDS-030).
+const IdsStudioPanel = lazy(() => import('@/components/viewer/ids-studio/IdsStudioPanel').then(m => ({ default: m.IdsStudioPanel })));
+function IdsStudioPanelBody() {
+  return <ChunkErrorBoundary label="IDS Studio panel"><Suspense fallback={null}><IdsStudioPanel /></Suspense></ChunkErrorBoundary>;
+}
+
 const AppearancePanel = lazy(() => import('@/components/viewer/appearance/AppearancePanel').then(m => ({ default: m.AppearancePanel })));
 
 // Each lazy panel needs its own stable host identity. Reusing the boundary
@@ -194,6 +200,7 @@ function panelBody(id: WorkspacePanelId, onClose: () => void): ReactNode {
     case 'model': return <ModelInspectorPanel onClose={onClose} />;
     case 'semantic': return <SemanticPanelBody />;
     case 'review': return <ReviewPanelBody />;
+    case 'idsStudio': return <IdsStudioPanelBody />;
     case 'changeSets': return <ChangeSetPanel onClose={onClose} />;
   }
 }

@@ -102,6 +102,7 @@ test('#7282 native projected polygon expected pin is removed whole while attachm
   assert.equal(expected.kind, 'slab'); assert.ok('footprint' in expected.chain && expected.chain.footprint.length > 100);
   const snapshot = captureEvidence('selection'), projected = JSON.parse(snapshot.payload).evidence.rows[0].data;
   assert.equal(projected.nativeSplitExpected, null, 'No truncated expected chain may authorize review');
+  assert.ok(projected.nativeAuthoringAvailability, 'Projection must disclose whole-pin availability');
   assert.equal(projected.nativeAuthoringAvailability.split, 'unavailable-projection'); assert.equal(snapshot.projectionTruncated, true);
   const attachment = captureSelectionGrounding(s()); assert.equal(attachment.elements.length, 1);
   assert.deepEqual(attachment.elements[0].nativeSplitExpected, expected, 'Full native pin is preserved on the unprojected explicit route');
@@ -114,7 +115,7 @@ test('#7282 source-free recorded units preserve readable native authored snapsho
   assert.equal(original.lengthUnitScale,.001);
   useViewerStore.setState({models:new Map([[SAMPLE_MODEL,{...model,ifcDataStore:{...original,source:EMPTY_SOURCE_BYTES}}]])});
   const actual=row(),attachment=captureSelectionGrounding(s()).elements[0];assert.ok(attachment);
-  for(const data of [actual,attachment]){assert.equal(data.nativeTrimExtendExpected.wall.height,3);assert.deepEqual(data.nativeTrimExtendExpected.wall.wall.end,[8,5]);assert.equal(data.nativeAuthoringAvailability.trimExtend,'available');assert.equal(data.nativeHostedExpected,null);assert.equal(data.nativeAuthoringAvailability.hosted,'unavailable-native-layout');assert.match(data.nativeAuthoringRefusals.hosted,/source|IFC/i);}
+  for(const data of [actual,attachment]){assert.ok(data.nativeTrimExtendExpected, 'Known native authored wall must publish its complete expected pin');assert.ok(data.nativeAuthoringAvailability, 'Native source availability is explicit');assert.equal(data.nativeTrimExtendExpected.wall.height,3);assert.deepEqual(data.nativeTrimExtendExpected.wall.wall.end,[8,5]);assert.equal(data.nativeAuthoringAvailability.trimExtend,'available');assert.equal(data.nativeHostedExpected,null);assert.equal(data.nativeAuthoringAvailability.hosted,'unavailable-native-layout');assert.match(data.nativeAuthoringRefusals.hosted,/source|IFC/i);}
 });
 
 test('#7282 genuine saved IFC with omitted project units refuses source fallback geometry assumptions', async () => {
@@ -154,9 +155,13 @@ test(`#7282 in-flight ${route} native ${replacement} replacement cancels owned t
   const source=s().models.get(SAMPLE_MODEL)!.ifcDataStore!;
   if(replacement==='source')s().updateModel(SAMPLE_MODEL,{ifcDataStore:await parseIfc(source.source.materialize())});
   else useViewerStore.setState({mutationViews:new Map([[SAMPLE_MODEL,new MutablePropertyView(source.properties,SAMPLE_MODEL)]])});
-  assert.ok(signal?.aborted,'Exact native source/view lease change aborts its active request');assert.ok(release);
+  const abortedBeforeLateAnswer = signal?.aborted; assert.ok(release);
+  // Settle this owned gate even when an inverse makes the abort assertion red.
+  // Capture its abort state BEFORE delivering the deliberately late response.
   release(new Response('data: {"choices":[{"delta":{"content":"LATE native answer"},"finish_reason":"stop"}]}\n\n'));
-  assert.equal(await sending,false);assert.equal(useAssistant.getState().messages.some(message=>message.content.includes('LATE native answer')),false);
+  const accepted = await sending;
+  assert.ok(abortedBeforeLateAnswer,'Exact native source/view lease change aborts its active request before the late answer');
+  assert.equal(accepted,false);assert.equal(useAssistant.getState().messages.some(message=>message.content.includes('LATE native answer')),false);
 });
 
 test('#7282 unrelated loaded source replacement preserves the selected native capture',async()=>{

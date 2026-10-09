@@ -9,6 +9,7 @@ import { IfcParser, extractTypeQuantitiesOnDemand, extractQuantitiesOnDemand, ex
 import { StoreEditor, MutablePropertyView } from '@ifc-lite/mutations';
 import { generateIfcGuid } from '@ifc-lite/encoding';
 import { QuantityType } from '@ifc-lite/data';
+import type { IfcAttributeValue } from '@ifc-lite/parser';
 import { useViewerStore } from '@/store';
 import { seedDeclaredZoneWall } from '@/test/zone-declared-fixture';
 import { getOrCreateMutationView } from '@/sdk/adapters/mutation-view';
@@ -17,6 +18,12 @@ import { PropertiesPanel } from '@/components/viewer/PropertiesPanel';
 import { render, cleanup } from '@/test/render';
 import { setGlobalRendererRef } from '@/hooks/useBCF';
 import { assertSameNativeIfcGraph } from '@/test/native-ifc-graph';
+
+const nativeIds = (values: readonly IfcAttributeValue[]) => values.map(value => {
+ assert.equal(typeof value, 'number', 'native reference collection contains numeric EXPRESS IDs');
+ assert.ok(typeof value === 'number');
+ return value;
+});
 
 const original = useViewerStore.getState();
 afterEach(() => { cleanup(); setGlobalRendererRef({ current: null }); useViewerStore.setState(original, true); });
@@ -95,7 +102,8 @@ for (const kind of ['type-default-history', 'occurrence-default-history', 'occur
    assert.equal(net(sets), 35, 'independent native export/reparse must retain the supported write');
   }
   if (kind === 'type-default-history') {
-   const owned = exported.getEntity(a.type)?.attributes[5]; assert.ok(Array.isArray(owned));
+   const rawOwned = exported.getEntity(a.type)?.attributes[5]; assert.ok(Array.isArray(rawOwned));
+   const owned = nativeIds(rawOwned);
    assert.ok(owned.some(id => exported.getEntity(id)?.type === 'IFCELEMENTQUANTITY'), 'the saved quantity belongs to HasPropertySets');
    for (const id of exported.entityIndex.byType.get('IFCRELDEFINESBYPROPERTIES') ?? []) {
     const members = exported.getEntity(id)?.attributes[4];
@@ -144,7 +152,8 @@ test(alsoEditProperty
  const bytes = editedModelBytes(source, current);
  const exported = await parse(bytes);
  assert.equal(net(extractTypeQuantitiesOnDemand(exported, f.id)?.quantities ?? []), 35);
- const owned = exported.getEntity(a.type)?.attributes[5]; assert.ok(Array.isArray(owned));
+ const rawOwned = exported.getEntity(a.type)?.attributes[5]; assert.ok(Array.isArray(rawOwned));
+   const owned = nativeIds(rawOwned);
  const propertySets = owned.filter(id => exported.getEntity(id)?.type === 'IFCPROPERTYSET');
  assert.equal(propertySets.length, 1, 'same-named property and quantity sets remain different native classes');
  if (alsoEditProperty) {
@@ -161,7 +170,8 @@ test(alsoEditProperty
  const replacement = exported.getEntity(replacementId); assert.ok(replacement);
  assert.equal(replacement.attributes[3], 'Exact source set description');
  assert.equal(replacement.attributes[4], 'Exact source measurement method');
- const members = replacement.attributes[5]; assert.ok(Array.isArray(members));
+ const rawMembers = replacement.attributes[5]; assert.ok(Array.isArray(rawMembers));
+ const members = nativeIds(rawMembers);
  assert.ok(members.includes(complex), 'opaque physical quantity retains its source atom identity');
  const volumeId = members.find(id => exported.getEntity(id)?.attributes[0] === 'NetVolume'); assert.ok(volumeId);
  const edited = exported.getEntity(volumeId); assert.ok(edited);
@@ -193,9 +203,11 @@ test('#7355 native pending type quantity edit uses HasPropertySets without a sou
  const type = editor.addEntity('IfcWallType', [generateIfcGuid(), null, 'Pending native type', null, null, [`#${qto}`], null, null, null, '.NOTDEFINED.']).expressId;
  view.setQuantity(type, 'Pending type quantities', 'NetVolume', 55, QuantityType.Volume);
  const exported = await parse(editedModelBytes(store, view));
- const owned = exported.getEntity(type)?.attributes[5]; assert.ok(Array.isArray(owned));
+ const rawOwned = exported.getEntity(type)?.attributes[5]; assert.ok(Array.isArray(rawOwned));
+ const owned = nativeIds(rawOwned);
  const currentQto = owned.find(id => exported.getEntity(id)?.type === 'IFCELEMENTQUANTITY'); assert.ok(currentQto);
- const members = exported.getEntity(currentQto)?.attributes[5]; assert.ok(Array.isArray(members));
+ const rawMembers = exported.getEntity(currentQto)?.attributes[5]; assert.ok(Array.isArray(rawMembers));
+ const members = nativeIds(rawMembers);
  const currentVolume = members.find(id => exported.getEntity(id)?.type === 'IFCQUANTITYVOLUME'); assert.ok(currentVolume);
  assert.deepEqual(exported.getEntity(currentVolume)?.attributes, ['NetVolume', 'Pending native metadata', null, 55, 'Pending native formula']);
  assert.equal(exported.getEntity(currentQto)?.attributes[4], 'Native method');
@@ -231,6 +243,7 @@ test('#7355 current native HasPropertySets reassignment preserves the other shar
  assert.deepEqual(exported.getEntity(b.qto)?.attributes, store.getEntity(b.qto)?.attributes,
   'the other current owner retains the original shared definition');
  assert.deepEqual(exported.getEntity(b.volume)?.attributes, store.getEntity(b.volume)?.attributes);
- const owned = exported.getEntity(a.type)?.attributes[5]; assert.ok(Array.isArray(owned));
+ const rawOwned = exported.getEntity(a.type)?.attributes[5]; assert.ok(Array.isArray(rawOwned));
+   const owned = nativeIds(rawOwned);
  assert.ok(!owned.includes(a.qto) && !owned.includes(b.qto), 'current type ownership is replaced from its native effective list');
 });

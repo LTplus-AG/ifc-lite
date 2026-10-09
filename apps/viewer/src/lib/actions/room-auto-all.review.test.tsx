@@ -22,7 +22,6 @@ import { storeySpaces, storeyWalls, storeyRooms, clearStoreyRoomsCache } from '@
 import { modelEditTarget } from '@/store/slices/mutation-modelling-records';
 import { RoomCommandReview } from '@/components/viewer/assistant/RoomCommandReview';
 import { prepareRoomReview } from './room-review';
-import { roomAutoAllEvidence } from './room-auto-all-evidence';
 import { nativeLengthUnitAvailable } from './model-authoring-read-target';
 import { roomChainInStore } from '../../../../../packages/create/src/in-store/room-store.js';
 import { useAssistant, replaceEvidence, cancelAssistant } from '@/lib/assistant/conversation';
@@ -281,8 +280,12 @@ it('#7324 no live native storeys publish unavailable AutoAll evidence rather tha
   const target = modelEditTarget(useViewerStore.getState(), MODEL)!;
   target.editor.removeEntity(42); target.editor.removeEntity(upper);
   assert.equal(nativeLengthUnitAvailable(target), true, 'the original native IFC length unit remains authoritative');
+  const wall = view.getNewEntities().find(row => row.type.toUpperCase() === 'IFCWALL');
+  assert.ok(wall, 'the independently authored native wall remains a live selection target');
+  useViewerStore.setState({ selectedEntityId: wall.expressId, selectedEntityIds: new Set([wall.expressId]), selectedEntity: { modelId: MODEL, expressId: wall.expressId } });
   const before = structuredClone({ changes: view.getEffectiveChanges(), revision: view.getMutationRevision(), next: view.peekNextExpressId() });
-  const evidence = roomAutoAllEvidence(target);
+  const evidence = captureSelectionGrounding(useViewerStore.getState()).elements[0]?.nativeRoomAutoAll;
+  assert.ok(evidence, 'complete native AutoAll coverage must be published through the existing selection producer');
   assert.equal(evidence.status, 'unavailable', 'an AutoAll anchor cannot exist without a live native storey');
   assert.deepEqual(evidence.storeys, []);
   assert.deepEqual({ changes: view.getEffectiveChanges(), revision: view.getMutationRevision(), next: view.peekNextExpressId() }, before);

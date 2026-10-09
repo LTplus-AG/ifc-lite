@@ -1,0 +1,324 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ids xmlns="http://standards.buildingsmart.org/IDS" xmlns:xs="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://standards.buildingsmart.org/IDS http://standards.buildingsmart.org/IDS/1.0/ids.xsd">
+  <info>
+    <title>Demo Elements requirements (generated from bSDD)</title>
+  </info>
+  <specifications>
+    <specification name="Wall (WAL)" ifcVersion="IFC4" identifier="WAL" description="Wall (synthetic fixture class).">
+      <applicability minOccurs="0" maxOccurs="unbounded">
+        <entity>
+          <name>
+            <simpleValue>IFCWALL</simpleValue>
+          </name>
+        </entity>
+        <classification>
+          <value>
+            <simpleValue>WAL</simpleValue>
+          </value>
+          <system>
+            <simpleValue>Demo Elements</simpleValue>
+          </system>
+        </classification>
+      </applicability>
+      <requirements>
+        <property dataType="IFCBOOLEAN" uri="https://identifier.example.org/uri/ifc-lite-test/demo/1.0/prop/LoadBearing" cardinality="required">
+          <propertySet>
+            <simpleValue>Demo_Wall</simpleValue>
+          </propertySet>
+          <baseName>
+            <simpleValue>LoadBearing</simpleValue>
+          </baseName>
+        </property>
+        <property dataType="IFCLABEL" uri="https://identifier.example.org/uri/ifc-lite-test/demo/1.0/prop/FireRating" cardinality="required">
+          <propertySet>
+            <simpleValue>Demo_Wall</simpleValue>
+          </propertySet>
+          <baseName>
+            <simpleValue>FireRating</simpleValue>
+          </baseName>
+          <value>
+            <xs:restriction base="xs:string">
+              <xs:enumeration value="EI30"/>
+              <xs:enumeration value="EI60"/>
+              <xs:enumeration value="EI90"/>
+            </xs:restriction>
+          </value>
+        </property>
+        <property dataType="IFCLENGTHMEASURE" uri="https://identifier.example.org/uri/ifc-lite-test/demo/1.0/prop/Thickness" cardinality="optional">
+          <propertySet>
+            <simpleValue>Demo_Wall</simpleValue>
+          </propertySet>
+          <baseName>
+            <simpleValue>Thickness</simpleValue>
+          </baseName>
+          <value>
+            <xs:restriction base="xs:double">
+              <xs:minInclusive value="0.05"/>
+              <xs:maxInclusive value="1"/>
+            </xs:restriction>
+          </value>
+        </property>
+      </requirements>
+    </specification>
+    <specification name="External wall (WAL-EXT)" ifcVersion="IFC4" identifier="WAL-EXT" description="External wall (synthetic fixture class).">
+      <applicability minOccurs="0" maxOccurs="unbounded">
+        <entity>
+          <name>
+            <simpleValue>IFCWALL</simpleValue>
+          </name>
+        </entity>
+        <classification>
+          <value>
+            <simpleValue>WAL-EXT</simpleValue>
+          </value>
+          <system>
+            <simpleValue>Demo Elements</simpleValue>
+          </system>
+        </classification>
+      </applicability>
+      <requirements>
+        <property dataType="IFCBOOLEAN" uri="https://identifier.example.org/uri/ifc-lite-test/demo/1.0/prop/LoadBearing" cardinality="optional">
+          <propertySet>
+            <simpleValue>Demo_Wall</simpleValue>
+          </propertySet>
+          <baseName>
+            <simpleValue>LoadBearing</simpleValue>
+          </baseName>
+        </property>
+        <property dataType="IFCLABEL" uri="https://identifier.example.org/uri/ifc-lite-test/demo/1.0/prop/FireRating" cardinality="required">
+          <propertySet>
+            <simpleValue>Demo_Wall</simpleValue>
+          </propertySet>
+          <baseName>
+            <simpleValue>FireRating</simpleValue>
+          </baseName>
+          <value>
+            <xs:restriction base="xs:string">
+              <xs:enumeration value="EI30"/>
+              <xs:enumeration value="EI60"/>
+              <xs:enumeration value="EI90"/>
+            </xs:restriction>
+          </value>
+        </property>
+        <property dataType="IFCLENGTHMEASURE" uri="https://identifier.example.org/uri/ifc-lite-test/demo/1.0/prop/Thickness" cardinality="optional">
+          <propertySet>
+            <simpleValue>Demo_Wall</simpleValue>
+          </propertySet>
+          <baseName>
+            <simpleValue>Thickness</simpleValue>
+          </baseName>
+          <value>
+            <xs:restriction base="xs:double">
+              <xs:minInclusive value="0.05"/>
+              <xs:maxInclusive value="1"/>
+            </xs:restriction>
+          </value>
+        </property>
+        <property dataType="IFCTHERMALTRANSMITTANCEMEASURE" uri="https://identifier.example.org/uri/ifc-lite-test/demo/1.0/prop/ThermalTransmittance" cardinality="required">
+          <propertySet>
+            <simpleValue>Demo_Wall</simpleValue>
+          </propertySet>
+          <baseName>
+            <simpleValue>ThermalTransmittance</simpleValue>
+          </baseName>
+          <value>
+            <xs:restriction base="xs:double">
+              <xs:maxInclusive value="0.3"/>
+            </xs:restriction>
+          </value>
+        </property>
+        <property dataType="IFCBOOLEAN" uri="https://identifier.buildingsmart.org/uri/buildingsmart/ifc/4.3/prop/IsExternal" cardinality="required">
+          <propertySet>
+            <simpleValue>Pset_WallCommon</simpleValue>
+          </propertySet>
+          <baseName>
+            <simpleValue>IsExternal</simpleValue>
+          </baseName>
+        </property>
+      </requirements>
+    </specification>
+    <specification name="Internal wall (WAL-INT)" ifcVersion="IFC4" identifier="WAL-INT" description="Internal wall (synthetic fixture class).">
+      <applicability minOccurs="0" maxOccurs="unbounded">
+        <entity>
+          <name>
+            <simpleValue>IFCWALL</simpleValue>
+          </name>
+        </entity>
+        <classification>
+          <value>
+            <simpleValue>WAL-INT</simpleValue>
+          </value>
+          <system>
+            <simpleValue>Demo Elements</simpleValue>
+          </system>
+        </classification>
+      </applicability>
+      <requirements>
+        <property dataType="IFCBOOLEAN" uri="https://identifier.example.org/uri/ifc-lite-test/demo/1.0/prop/LoadBearing" cardinality="required">
+          <propertySet>
+            <simpleValue>Demo_Wall</simpleValue>
+          </propertySet>
+          <baseName>
+            <simpleValue>LoadBearing</simpleValue>
+          </baseName>
+        </property>
+        <property dataType="IFCLABEL" uri="https://identifier.example.org/uri/ifc-lite-test/demo/1.0/prop/FireRating" cardinality="required">
+          <propertySet>
+            <simpleValue>Demo_Wall</simpleValue>
+          </propertySet>
+          <baseName>
+            <simpleValue>FireRating</simpleValue>
+          </baseName>
+          <value>
+            <xs:restriction base="xs:string">
+              <xs:enumeration value="EI30"/>
+              <xs:enumeration value="EI60"/>
+              <xs:enumeration value="EI90"/>
+            </xs:restriction>
+          </value>
+        </property>
+        <property dataType="IFCLENGTHMEASURE" uri="https://identifier.example.org/uri/ifc-lite-test/demo/1.0/prop/Thickness" cardinality="optional">
+          <propertySet>
+            <simpleValue>Demo_Wall</simpleValue>
+          </propertySet>
+          <baseName>
+            <simpleValue>Thickness</simpleValue>
+          </baseName>
+          <value>
+            <xs:restriction base="xs:double">
+              <xs:minInclusive value="0.05"/>
+              <xs:maxInclusive value="1"/>
+            </xs:restriction>
+          </value>
+        </property>
+      </requirements>
+    </specification>
+    <specification name="Door (DOR)" ifcVersion="IFC4" identifier="DOR" description="Door (synthetic fixture class).">
+      <applicability minOccurs="0" maxOccurs="unbounded">
+        <entity>
+          <name>
+            <simpleValue>IFCDOOR</simpleValue>
+          </name>
+        </entity>
+        <classification>
+          <value>
+            <simpleValue>DOR</simpleValue>
+          </value>
+          <system>
+            <simpleValue>Demo Elements</simpleValue>
+          </system>
+        </classification>
+      </applicability>
+      <requirements>
+        <property dataType="IFCBOOLEAN" uri="https://identifier.example.org/uri/ifc-lite-test/demo/1.0/prop/FireExit" cardinality="required">
+          <propertySet>
+            <simpleValue>Demo_Door</simpleValue>
+          </propertySet>
+          <baseName>
+            <simpleValue>FireExit</simpleValue>
+          </baseName>
+        </property>
+        <property dataType="IFCLENGTHMEASURE" uri="https://identifier.example.org/uri/ifc-lite-test/demo/1.0/prop/ClearWidth" cardinality="required">
+          <propertySet>
+            <simpleValue>Demo_Door</simpleValue>
+          </propertySet>
+          <baseName>
+            <simpleValue>ClearWidth</simpleValue>
+          </baseName>
+          <value>
+            <xs:restriction base="xs:double">
+              <xs:minInclusive value="0.8"/>
+            </xs:restriction>
+          </value>
+        </property>
+        <property dataType="IFCINTEGER" uri="https://identifier.example.org/uri/ifc-lite-test/demo/1.0/prop/LeafCount" cardinality="optional">
+          <propertySet>
+            <simpleValue>Demo_Door</simpleValue>
+          </propertySet>
+          <baseName>
+            <simpleValue>LeafCount</simpleValue>
+          </baseName>
+          <value>
+            <xs:restriction base="xs:integer">
+              <xs:minInclusive value="1"/>
+              <xs:maxInclusive value="2"/>
+            </xs:restriction>
+          </value>
+        </property>
+        <property dataType="IFCDATETIME" uri="https://identifier.example.org/uri/ifc-lite-test/demo/1.0/prop/InstallationDate" cardinality="optional">
+          <propertySet>
+            <simpleValue>Demo_Door</simpleValue>
+          </propertySet>
+          <baseName>
+            <simpleValue>InstallationDate</simpleValue>
+          </baseName>
+        </property>
+        <property dataType="IFCLABEL" uri="https://identifier.example.org/uri/ifc-lite-test/demo/1.0/prop/Grade" cardinality="optional">
+          <propertySet>
+            <simpleValue>Demo_Door</simpleValue>
+          </propertySet>
+          <baseName>
+            <simpleValue>Grade</simpleValue>
+          </baseName>
+          <value>
+            <xs:restriction base="xs:string">
+              <xs:pattern value="[A-C]"/>
+            </xs:restriction>
+          </value>
+        </property>
+        <property dataType="IFCLABEL" uri="https://identifier.example.org/uri/ifc-lite-test/demo/1.0/prop/Accessories" cardinality="optional">
+          <propertySet>
+            <simpleValue>Demo_Door</simpleValue>
+          </propertySet>
+          <baseName>
+            <simpleValue>Accessories</simpleValue>
+          </baseName>
+        </property>
+        <property dataType="IFCLABEL" uri="https://identifier.example.org/uri/ifc-lite-test/demo/1.0/prop/Manufacturer" cardinality="optional">
+          <propertySet>
+            <simpleValue>Project_Common</simpleValue>
+          </propertySet>
+          <baseName>
+            <simpleValue>Manufacturer</simpleValue>
+          </baseName>
+        </property>
+      </requirements>
+    </specification>
+    <specification name="Shading device (SHD)" ifcVersion="IFC4" identifier="SHD" description="Shading device (synthetic fixture class).">
+      <applicability minOccurs="0" maxOccurs="unbounded">
+        <entity>
+          <name>
+            <xs:restriction base="xs:string">
+              <xs:enumeration value="IFCSHADINGDEVICE"/>
+              <xs:enumeration value="IFCWINDOW"/>
+            </xs:restriction>
+          </name>
+        </entity>
+        <classification>
+          <value>
+            <simpleValue>SHD</simpleValue>
+          </value>
+          <system>
+            <simpleValue>Demo Elements</simpleValue>
+          </system>
+        </classification>
+      </applicability>
+      <requirements>
+        <property dataType="IFCREAL" uri="https://identifier.example.org/uri/ifc-lite-test/demo/1.0/prop/SolarFactor" cardinality="required">
+          <propertySet>
+            <simpleValue>Demo_Shading</simpleValue>
+          </propertySet>
+          <baseName>
+            <simpleValue>SolarFactor</simpleValue>
+          </baseName>
+          <value>
+            <xs:restriction base="xs:double">
+              <xs:minInclusive value="0"/>
+              <xs:maxInclusive value="1"/>
+            </xs:restriction>
+          </value>
+        </property>
+      </requirements>
+    </specification>
+  </specifications>
+</ids>

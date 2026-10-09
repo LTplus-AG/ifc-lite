@@ -78,7 +78,7 @@ const undoDepth = () => useViewerStore.getState().undoStacks.get(MODEL_ID)?.leng
 const near = (a: Vec2, b: Vec2) => Math.hypot(a[0] - b[0], a[1] - b[1]) < 1e-6;
 
 beforeEach(async () => {
-  await seedModelingSession();
+  await seedModelingSession({ roomGeometry: true });
   useViewerStore.setState({ snapEnabled: false, selectedEntityId: null, selectedEntityIds: new Set(), selectedEntity: null });
   assert.ok(useViewerStore.getState().enterModelWorkspace());
   FIT = entryFit();

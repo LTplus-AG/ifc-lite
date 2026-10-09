@@ -1,0 +1,42 @@
+{
+  "bounded-build.log": {
+    "file": "bounded-build.log.gz",
+    "sha256": "adefea6b7f293bd251b082b546596f9e16cff6c750989799cabe45611080e198"
+  },
+  "parser-public.log": {
+    "file": "parser-public.log.gz",
+    "sha256": "09c02e92889e6d53b568736ca91c19c7223fe572543a60599f53d6ec3f0c55ac"
+  },
+  "native-source-overlay-export.log": {
+    "file": "native-source-overlay-export.log.gz",
+    "sha256": "7fa63467cb8ea8591911e9999a3c7dd4d2e48a894af2dccf762d54f15474cb38"
+  },
+  "actual-main-whole.log": {
+    "file": "actual-main-whole.log.gz",
+    "sha256": "4db7cdfe58aee297110c1bbf6e8fbb2ecdf6d86fb918c9f25c5429188aa92fdc"
+  },
+  "exact-restored.log": {
+    "file": "exact-restored.log.gz",
+    "sha256": "98e9173014a62476056d3d387bdf8d266ff9d3a52114f90128d4a7b5a00692ce"
+  },
+  "api-update.log": {
+    "file": "api-update.log.gz",
+    "sha256": "ae6c4e88315814d2d5fbf0a8a6e1a6754b9177e0081d3d9773ffc3f7b4b77142"
+  },
+  "declaration-population.json": {
+    "file": "declaration-population.json.gz",
+    "sha256": "2ebbd1c89bd6abef53efb924317ee3228c7b8a18c07290a24e80c72bd0f3b5e6"
+  },
+  "worker-profile-summary.json": {
+    "file": "worker-profile-summary.json.gz",
+    "sha256": "3288bc30540d46de76f0a95b694f3dc54118c128510e02620b9a8f55b55a504b"
+  },
+  "composed-native-receipt.json": {
+    "file": "composed-native-receipt.json.gz",
+    "sha256": "df1b1e1e0289b410abd4f5e95fed53a9f7047d0c0f2bb29d6a64e59adda87b6a"
+  },
+  "composed-original-deadline-failure.log": {
+    "file": "composed-original-deadline-failure.log.gz",
+    "sha256": "dd8c11f5f411b3755f35dd2b3c0f22ef269574b9c0199a0d0339aaf2d43655d1"
+  }
+}

@@ -175,15 +175,7 @@ export { secondsToIso8601Duration } from './iso8601-duration.js';
 // import from here.
 export { deterministicGlobalId } from './deterministic-global-id.js';
 
-// Generated IFC4 schema (100% coverage - 776 entities, 397 types, 207 enums)
-export { SCHEMA_REGISTRY, getEntityMetadata, getAllAttributesForEntity, getInheritanceChainForEntity, isKnownEntity } from './generated/schema-registry.js';
-export {
-  getSchemaRegistryForVersion,
-  type SchemaVersionWithRegistry,
-  type SchemaRegistry,
-} from './generated/schema-registry-by-version.js';
-export type * from './generated/entities.js';
-export * from './generated/enums.js';
+export * from './schema-exports.js';
 
 // STEP serialization support for IFC export
 export {

@@ -14,6 +14,9 @@
  * ghost; their row says what changes.
  */
 
+import { replacementCreation } from './model-authoring-replacement';
+import { alignmentGhosts } from '@/lib/commands/modeling/align-ghosts';
+import { authoringSlabOpeningGhost } from './model-authoring-slab-opening-ghost';
 import { stairRailingGhost } from './model-authoring-stair-railing-ghost';
 import { linearProfileFrame } from '@ifc-lite/create';
 import { sectionGhostMesh } from '@/lib/profile-section/profile-outline';
@@ -102,6 +105,7 @@ function hostAxis(state: ViewerState, batch: ModelAuthoringBatch, preview: Model
 
 function hostedGhost(state: ViewerState, batch: ModelAuthoringBatch, preview: ModelAuthoringPreview, row: AuthoringRow, id: number): MeshData | null {
   const op = row.op as Extract<AuthoringOp, { op: 'hosted.create' }>;
+  if ('params' in op) return null; // Slab cutters never use the wall-only ghost.
   const host = hostAxis(state, batch, preview, row, row.resolved.host!);
   const wp = host ? plane(state, row.modelId!, host.storey) : null;
   if (!host || !wp) return null;
@@ -133,7 +137,7 @@ function transformGhosts(state: ViewerState, batch: ModelAuthoringBatch, row: Au
     return transformedGhosts(state, selection, { kind: 'move', from: origin, to: wp.localToRender([toMetres(batch, op.delta[0]), toMetres(batch, op.delta[1]), 0]) }, wp.plane.normal, id);
   }
   if (op.op === 'element.rotate') {
-    return transformedGhosts(state, selection, { kind: 'rotate', pivot: wp.localToRender([root.origin[0], root.origin[1], 0]), angle: (op.angleDeg * Math.PI) / 180 }, wp.plane.normal, id);
+    return transformedGhosts(state, selection, { kind: 'rotate', pivot: wp.localToRender(op.pivot ? [toMetres(batch, op.pivot[0]), toMetres(batch, op.pivot[1]), 0] : [root.origin[0], root.origin[1], 0]), angle: (op.angleDeg * Math.PI) / 180 }, wp.plane.normal, id);
   }
   return transformedGhosts(state, selection, { kind: 'move', from: origin, to: origin }, wp.plane.normal, id).map((mesh) => ({ ...mesh, color: DELETE_COLOR }));
 }
@@ -153,9 +157,19 @@ export function authoringGhosts(state: ViewerState, preview: ModelAuthoringPrevi
     if (row.op.op === 'element.split') { const mesh = authoringSplitMarker(state, preview.batch, row, id); if (mesh) meshes.push(mesh); continue; }
     switch (row.op.op) {
       case 'stair.create': case 'railing.create': case 'stair.replace': case 'railing.replace': {const mesh=stairRailingGhost(state,preview.batch,row,id);row.previewUnavailable=!mesh;if(mesh)meshes.push(mesh);break;}
+      case 'element.replace': {const creation=replacementCreation(row.op),created={...row,op:creation};const mesh=creation.op==='element.create'?createGhost(state,preview.batch,created,id):stairRailingGhost(state,preview.batch,created,id);row.previewUnavailable=!mesh;row.previewOuterBodyOnly=true;if(mesh)meshes.push(mesh);break;}
       case 'element.create': { const mesh = createGhost(state, preview.batch, row, id); if (mesh) meshes.push(mesh); break; }
-      case 'hosted.create': { const mesh = hostedGhost(state, preview.batch, preview, row, id); if (mesh) meshes.push(mesh); break; }
+      case 'hosted.create': { const mesh = 'params' in row.op ? authoringSlabOpeningGhost(state,row,preview.rows,id) : hostedGhost(state, preview.batch, preview, row, id); if (mesh) meshes.push(mesh); break; }
       case 'element.copy': case 'element.array': meshes.push(...authoringCopyGhosts(state, preview.batch, row, id)); break;
+      case 'element.align': {
+        const a = row.resolved.alignment;
+        if (a?.geometry) {
+          const target = authoringReader(state, row.modelId);
+          const plan = target ? planElementTransform({ ...target, selected: a.targets, storeyOf: () => a.storeyId }) : null;
+          meshes.push(...alignmentGhosts({ ...a, reference: a.reference, boxes: a.geometry.boxes, mode: row.op.mode, hover: null, carried: plan?.carried }, a.geometry.plane, id));
+        }
+        break;
+      }
       case 'element.move': case 'element.rotate': case 'element.delete': meshes.push(...transformGhosts(state, preview.batch, row, id)); break;
       default: break;
     }

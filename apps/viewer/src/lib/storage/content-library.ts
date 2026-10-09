@@ -120,6 +120,19 @@ export function createContentLibrary<T extends { id: string }>(definition: Conte
       dirty.set(id, value); status.items[id] = 'saving'; change(id, value);
     }
     const previous = queues.get(id) ?? Promise.resolve(true);
+    const deletionAllowed = (): boolean => {
+      if (!beforeWrite || beforeWrite()) return true;
+      // A newer native draft owns its own generation; never restore over it.
+      if (generations.get(id) === generation) {
+        const original = deletionGuards.get(id)?.original;
+        deletionGuards.delete(id);
+        if (dirty.get(id) === null) dirty.delete(id);
+        status.items[id] = 'conflict';
+        if (original && !read().some(entry => entry.id === id)) change(id, original);
+        else emit();
+      }
+      return false;
+    };
     const pending = previous.then(async (succeeded) => {
       if (!(await initialize()) || (!succeeded && queues.has(id))) {
         if (generations.get(id) === generation) {
@@ -129,18 +142,7 @@ export function createContentLibrary<T extends { id: string }>(definition: Conte
         return false;
       }
       if (beforeWrite && value === null) {
-        if (!beforeWrite()) {
-          // A newer native draft owns its own generation; never restore over it.
-          if (generations.get(id) === generation) {
-            const original = deletionGuards.get(id)?.original;
-            deletionGuards.delete(id);
-            if (dirty.get(id) === null) dirty.delete(id);
-            status.items[id] = 'conflict';
-            if (original && !read().some(entry => entry.id === id)) change(id, original);
-            else emit();
-          }
-          return false;
-        }
+        if (!deletionAllowed()) return false;
         dirty.set(id, value); change(id, value);
       }
       const expected = revisions.get(id) ?? 0;
@@ -153,6 +155,8 @@ export function createContentLibrary<T extends { id: string }>(definition: Conte
         else {
           const draft = dirty.get(id);
           if (draft === undefined) return false;
+          // #7245: an own receipt advances CAS, never deletion approval.
+          if (draft === null && !deletionAllowed()) return false;
           const latest = portableEntry(draft);
           if (draft !== null && !latest) { stage(id, draft, 'invalid'); return false; }
           result = await writeContent(definition.kind, id, latest, acknowledged);

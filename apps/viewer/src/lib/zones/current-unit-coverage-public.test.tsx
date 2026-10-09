@@ -123,6 +123,17 @@ test('#7353 implicit occurrence and material measures remain raw when current ph
   const row = summary.properties.flatMap(group => group.rows).find(row => row.name === 'UnitWitnessLength');
   assert.equal(row?.value, '7.25', 'shared selection/copy display preserves raw native scalar without a stale physical claim');
   cleanup();
+  const ownQto = x.store.entityIndex.byType.get('IFCELEMENTQUANTITY')?.find(id => x.store.getEntity(id)?.attributes[2] === 'UnitWitness quantities');
+  assert.ok(ownQto);
+  const members = x.store.getEntity(ownQto)?.attributes[5]; assert.ok(Array.isArray(members));
+  const implicitMembers = members.filter(id => typeof id === 'number' && x.store.getEntity(id)?.attributes[0] !== 'NetWitnessVolume');
+  x.view.setPositionalAttribute(ownQto, 5, implicitMembers.map(id => `#${id}`));
+  const materialSource = await parse(editedModelBytes(x.store, x.view));
+  const implicit = extractQuantitiesOnDemand(materialSource, x.f.id).flatMap(set => set.quantities).filter(q => q.type === 2);
+  assert.equal(implicit.length, 1);
+  assert.equal(implicit[0]?.name, 'GrossWitnessVolume');
+  assert.equal(implicit[0]?.value, 99);
+  assert.equal(implicit[0]?.explicitUnitSiScale, undefined, 'aggregate fixture contains only an implicit volume, not the independently explicit Net');
   const material = render(<MaterialTotalsPanel materialId={15046} modelId="arch" />);
   await advance(50);
   assert.match(material.textContent ?? '', /UnitWitnessMaterialLength/);

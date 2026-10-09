@@ -1,0 +1,14 @@
+{
+  "status": "CANONICAL_MAIN_INTEGRATED_UNQUALIFIED_NEW_HEAD",
+  "oldPublishedHead": "25ac58085cd55d7fe2b8225c5451ca0040de6ea2",
+  "newSourceHead": "b95389289601c8584efbffaa8136fbc09b0cde10",
+  "frozenCanonicalMain": "2003002f79e6a60ea25be2ec45ebe362ab3c1c8a",
+  "ownershipFourFilesUnchanged": {
+    "apps/viewer/src/lib/geometry-cpu-buffers.ts": "179c366fafb47848eca16936cbffd74be29291f4a72ad2ee13902edf128c869a",
+    "apps/viewer/src/lib/geometry-cpu-aliases.ts": "e3324e93cc4f6a3246273b7071aaf819011d882febb4c5acea28db00061bb072",
+    "apps/viewer/src/lib/geometry-cpu-appearance.test.ts": "824a285002697958f299e1145a1432cefe0dcd374ba5961d3a748b73ec25d640",
+    "apps/viewer/src/test/geometry-cpu-aliases-gc.ts": "c5496cfe067ce31e592d771c3993bd60535f830fefa7646c63853fd01ce5d8bf"
+  },
+  "scope": "Canonical7233 evidence-trigger and othermain changes consumed normalmerge; no local duplicate workflow/class fix",
+  "next": "actual104controls+plainfullrootTS+necessarylight/source/gate qualification after7180heavyrelease; fresh CI/rawreview required beforemerge"
+}

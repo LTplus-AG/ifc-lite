@@ -1,0 +1,18 @@
+{
+  "qualifiedSourceHead": "f98f3a8e0553d9169929dc84daff4800bb59227c",
+  "mainIntegrated": "c696805e543d934d8df47029813925d92bd4ff3f",
+  "mergeCommit": "7b10d9f235af95ff33c6a370241f02528f862829",
+  "candidateSourceSHA256": {
+    "apps/viewer/src/lib/geometry-cpu-buffers.ts": "179c366fafb47848eca16936cbffd74be29291f4a72ad2ee13902edf128c869a",
+    "apps/viewer/src/lib/geometry-cpu-aliases.ts": "e3324e93cc4f6a3246273b7071aaf819011d882febb4c5acea28db00061bb072",
+    "apps/viewer/src/lib/geometry-cpu-appearance.test.ts": "824a285002697958f299e1145a1432cefe0dcd374ba5961d3a748b73ec25d640",
+    "apps/viewer/src/test/geometry-cpu-aliases-gc.ts": "c5496cfe067ce31e592d771c3993bd60535f830fefa7646c63853fd01ce5d8bf"
+  },
+  "fixtureAdmission": {
+    "path": "tests/models/ara3d/AC20-FZK-Haus.ifc",
+    "source": "/tmp/ifc-shepherd-7024/tests/models/ara3d/AC20-FZK-Haus.ifc",
+    "manifestSha256": "d42ab0dee01173106c16cd823b4614efe188fa15dd65195d95b9879bec59acc5",
+    "sizeBytes": 2526511
+  },
+  "testPattern": "useFederatedGeometry|geometry-cpu-appearance|dataSlice.test|cache-provenance|placement-cache|effective-classification-systems|selection-materials"
+}

@@ -1,0 +1,25 @@
+{
+  "headSha": "8785f72bf23cde156f8d818162afc17cf81df767",
+  "verdict": "findings",
+  "findings": [],
+  "omitted": [],
+  "classPass": false,
+  "counts": {
+    "emitted": 1,
+    "surviving": 1,
+    "capped": 0,
+    "kept": 0,
+    "judgeInput": 1,
+    "dropped": 1
+  },
+  "warnings": [
+    "REANCHORED findings[0]: `line` 47 of `apps/viewer/src/lib/geometry-cpu-aliases.ts` moved to 45, the only added line whose text is the quote."
+  ],
+  "dedup": {
+    "ran": false,
+    "threshold": 0.7,
+    "dropped": [],
+    "note": "fewer than two findings; nothing to merge"
+  },
+  "judged": true
+}

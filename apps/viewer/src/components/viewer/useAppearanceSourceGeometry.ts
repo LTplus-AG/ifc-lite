@@ -7,6 +7,7 @@ import type { MeshData } from '@ifc-lite/geometry';
 import { perfCount, perfTally } from '@ifc-lite/load-trace';
 import type { FederatedModel } from '@/store';
 import { stampModelIndex } from '@/lib/model-placement/model-indices';
+import { carryReleasedMesh } from '@/lib/released-mesh-provenance';
 
 const NO_MESHES: MeshData[] = [];
 
@@ -36,7 +37,7 @@ export function useAppearanceSourceGeometry(
       const modelIndex = modelIdToIndex?.get(modelId) ?? 0;
       for (const mesh of model.geometryResult?.meshes ?? []) {
         if (mesh.modelIndex === modelIndex) sources.push(mesh);
-        else { sources.push({ ...mesh, modelIndex }); copies++; }
+        else { sources.push(carryReleasedMesh(mesh, { ...mesh, modelIndex })); copies++; }
       }
     }
     perfTally('viewer.appearanceSource', sources.length, 'meshes');

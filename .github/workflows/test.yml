@@ -779,7 +779,9 @@ jobs:
     steps:
       - name: Materialize byte-stable native mutation subjects
         shell: powershell
-        run: git config --global core.autocrlf false
+        run: |
+          git config --global core.autocrlf false
+          git config --global core.eol lf
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           lfs: false

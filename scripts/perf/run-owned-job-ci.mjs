@@ -45,8 +45,18 @@ const sourceNames = ['frame-gpu-process-identity.cs', 'frame-gpu-job.cs', 'frame
   'frame-gpu-job-controller.ts', 'frame-gpu-job.test.mjs', 'frame-gpu-job-controller.test.mjs'];
 const pins = Object.fromEntries([...sourceNames.map(name => 'scripts/perf/' + name), ...new Set(Object.values(mutations))].map(path =>
   [path, createHash('sha256').update(readFileSync(join(root, path))).digest('hex')]));
+// A clean Git status can conceal checkout newline conversion. Pin raw blob bytes.
+const sourceBlobComparisons = Object.entries(pins).map(([path, observedSha256]) => {
+  const blob = spawnSync('git', ['show', `${head}:${path}`], { cwd: root, timeout: 10000, maxBuffer: 16 * 1024 * 1024 });
+  return { path, observedSha256, blobSha256: blob.status === 0 ? createHash('sha256').update(blob.stdout).digest('hex') : null,
+    blobExitCode: blob.status, blobError: blob.error?.message ?? blob.stderr?.toString('utf8') ?? null };
+});
 record('admission.json', { head, base, stage, OS: process.platform, node: process.version, selected, paths, mutations, pins,
-  allChangedTests: classification.test.map(row => row.path), platforms: classification.platforms });
+  sourceBlobComparisons, allChangedTests: classification.test.map(row => row.path), platforms: classification.platforms });
+for (const row of sourceBlobComparisons) {
+  assert.equal(row.blobExitCode, 0, `Cannot read pinned HEAD blob ${row.path}: ${row.blobError}`);
+  assert.equal(row.observedSha256, row.blobSha256, `Actual pinned source differs from HEAD blob bytes: ${row.path}`);
+}
 process.env.IFC_JOB_EVIDENCE_ROOT = join(output, 'actual-fixtures');
 process.env.IFC_JOB_PLATFORM = stage;
 process.env.IFC_JOB_REQUIRE_NATIVE = stage === 'windows' ? '1' : '0';

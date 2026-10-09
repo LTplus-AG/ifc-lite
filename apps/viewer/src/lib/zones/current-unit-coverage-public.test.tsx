@@ -178,3 +178,18 @@ test('#7353 native explicit non-SI quantity unit and display override remain ind
   assert.doesNotMatch(panel.textContent ?? '', /99 L|99 m³/, 'implicit raw quantity gains no physical claim');
   assert.equal(net.value, 10, 'display override leaves the native quantity unchanged');
 });
+
+test('#7353 native single-model legacy material display follows its canonical current mutation view', async t => {
+  const x = await nativeMeasures(t); if (!x) return;
+  x.view.setPositionalAttribute(x.project, 8, null);
+  const exported = await parse(editedModelBytes(x.store, x.view));
+  assert.equal(exported.getEntity(x.project)?.attributes[8], null);
+  useViewerStore.setState({ models: new Map(), ifcDataStore: x.store,
+    mutationViews: new Map([['__legacy__', x.view]]), unitDisplayOverrides: { LENGTHUNIT: 'mm' } });
+  const material = render(<MaterialTotalsPanel materialId={15046} modelId="legacy" />);
+  await advance(50);
+  assert.match(material.textContent ?? '', /UnitWitnessMaterialLength/);
+  assert.match(material.textContent ?? '', /3\.125/);
+  assert.doesNotMatch(material.textContent ?? '', /3,?125\s*mm|3\.125\s*m\b/,
+    'single-model aliases use the current view rather than restoring the original source physical context');
+});

@@ -42,6 +42,7 @@ import { useViewerStore } from '@/store';
 import type { Lens, LensRule, AutoColorLegendEntry } from '@/store/slices/lensSlice';
 import { LensPanel, AutoColorEditor } from './LensPanel.js';
 import { LensRuleEditor } from './LensRuleEditor.js';
+import { saveLenses, readSavedLensSource } from '@/lib/lens/persistence.js';
 
 /**
  * Literal mirror of `lens-panel.en.ts` — deliberately NOT imported from the
@@ -254,12 +255,14 @@ const RESET = {
 } as Partial<ReturnType<typeof useViewerStore.getState>>;
 
 beforeEach(() => {
+  window.localStorage.removeItem('ifc-lite-custom-lenses');
   setLocale('en');
   useViewerStore.setState(RESET);
 });
 
 afterEach(() => {
   cleanup();
+  window.localStorage.removeItem('ifc-lite-custom-lenses');
   setLocale('en');
   useViewerStore.setState(RESET);
 });
@@ -280,15 +283,33 @@ describe('Lens panel localization (#4918)', () => {
     assert.equal(closes, 1);
   });
 
-  it('named lens-card icon actions preserve duplicate and delete behavior (#5811)', () => {
-    useViewerStore.setState({ savedLenses: [ruleLens([ifcRule()])] });
+  it('named lens-card icon actions preserve duplicate and delete behavior (#5811, #7340)', () => {
+    const original = ruleLens([ifcRule()]);
+    // The mounted CRUD fixture owns a real durable definition, not a row that
+    // the canonical reconciler correctly treats as already deleted by a peer.
+    assert.equal(saveLenses([original]).ok, true);
+    useViewerStore.setState({ savedLenses: [original] });
     const container = render(<LensPanel />);
 
     getByRole(container, 'button', { name: 'Edit lens' });
     act(() => getByRole(container, 'button', { name: 'Duplicate lens' }).click());
-    assert.equal(useViewerStore.getState().savedLenses.length, 2);
+    const custom = useViewerStore.getState().savedLenses.filter(lens => !lens.builtin);
+    assert.equal(custom.length, 2);
+    assert.ok(custom.some(lens => lens.id === original.id));
+    const copy = custom.find(lens => lens.id !== original.id);
+    assert.ok(copy);
+    assert.equal(copy.rules.length, original.rules.length);
+    assert.notEqual(copy.rules[0].id, original.rules[0].id);
+    assert.deepEqual(copy.rules[0].groups, original.rules[0].groups);
+    assert.equal(copy.rules[0].action, original.rules[0].action);
+    assert.equal(copy.rules[0].color, original.rules[0].color);
+    const builtinIds = useViewerStore.getState().savedLenses.filter(lens => lens.builtin).map(lens => lens.id);
+    assert.ok(builtinIds.length > 0);
+    // Duplicate opens the copy editor; the original is the remaining card.
     act(() => getByRole(container, 'button', { name: 'Delete lens' }).click());
-    assert.equal(useViewerStore.getState().savedLenses.length, 1);
+    assert.deepEqual(useViewerStore.getState().savedLenses.filter(lens => !lens.builtin).map(lens => lens.id), [copy.id]);
+    assert.deepEqual(readSavedLensSource().rows.map(lens => lens.id), [copy.id]);
+    assert.deepEqual(useViewerStore.getState().savedLenses.filter(lens => lens.builtin).map(lens => lens.id), builtinIds);
   });
 
   it('the literal LENS_PANEL_EN mirror stays in sync with lens-panel.en.ts, when that module is importable', async () => {
@@ -601,11 +622,13 @@ describe('Lens panel localization (#4918)', () => {
       ['complete', 'unfinished']);
   });
 
-  it('saves a configured Name rule from the shared editor (#5896)', () => {
+  it('saves a configured Name rule from the shared editor (#5896, #7340)', () => {
     const nameRule = ifcRule({ id: 'name-rule', groups: [{ combinator: 'AND', rules: [
       { kind: 'name', op: 'contains', value: 'Wall' },
     ] }] });
-    useViewerStore.setState({ savedLenses: [ruleLens([nameRule])] });
+    const original = ruleLens([nameRule]);
+    assert.equal(saveLenses([original]).ok, true);
+    useViewerStore.setState({ savedLenses: [original] });
     const container = render(<LensPanel />);
     const edit = container.querySelector<HTMLButtonElement>('button[aria-label="Edit lens"]');
     assert.ok(edit);
@@ -614,6 +637,9 @@ describe('Lens panel localization (#4918)', () => {
     assert.ok(save);
     assert.equal(save.disabled, false, 'a configured Name chip must remain saveable');
     act(() => save.dispatchEvent(new window.MouseEvent('click', { bubbles: true, cancelable: true })));
-    assert.deepEqual(useViewerStore.getState().savedLenses[0].rules[0].groups, nameRule.groups);
+    const saved = useViewerStore.getState().savedLenses.find(lens => lens.id === original.id);
+    assert.ok(saved);
+    assert.deepEqual(saved.rules[0].groups, nameRule.groups);
+    assert.deepEqual(readSavedLensSource().rows.find(lens => lens.id === original.id)?.rules[0].groups, nameRule.groups);
   });
 });

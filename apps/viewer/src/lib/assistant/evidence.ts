@@ -9,6 +9,7 @@ import type { AssistantSource } from './sources';
 import { adapterFor } from './adapters/registry';
 import { sameIdentity } from './adapters/types';
 import { evidenceJson, ROW_LIMIT, TEXT_LIMIT } from './projection';
+import { admitSelectionCosts, selectionCostBaseline } from './selection-cost-admission';
 
 export type { AssistantSource } from './sources';
 export { evidenceJson } from './projection';
@@ -41,7 +42,9 @@ export function captureEvidence(source: AssistantSource): EvidenceSnapshot {
   if (capture.rows.length > ROW_LIMIT || capture.rows.length > capture.totalRows) {
     throw new Error(`${source} adapter returned ${capture.rows.length} rows for a native total of ${capture.totalRows}`);
   }
-  const rows = capture.rows.map((data, index) => ({ citation: `E${index + 1}`, data }));
+  const competingCosts = source === 'selection' && capture.rows.length > 1;
+  const rows = capture.rows.map((data, index) => ({ citation: `E${index + 1}`,
+    data: competingCosts ? selectionCostBaseline(data) : data }));
   const totalRows = capture.totalRows;
   const models = [...s.models.values()].map(m => ({ id: m.id, name: m.name, fingerprint: m.sourceFingerprint }));
   let summaryProjection = evidenceJson(capture.summary);
@@ -79,13 +82,15 @@ export function captureEvidence(source: AssistantSource): EvidenceSnapshot {
   const snapshot = { id: crypto.randomUUID(), source, capturedAt: new Date().toISOString(), models,
     contextStamp: captureAnalysisStamp(true), reportStamp: adapter.reportStamp?.(s) ?? null, sourceIdentity: identity,
     totalRows, includedRows: projectedRows.length, projectionTruncated };
-  return { ...snapshot, payload: JSON.stringify({ source, capturedAt: snapshot.capturedAt, models: promptModels,
+  const serialize = (evidenceRows: unknown[]) => JSON.stringify({ source, capturedAt: snapshot.capturedAt, models: promptModels,
     totalModels: models.length, modelMetadataTruncated,
     sourceAvailability: capture.availability,
     reportProvenance: snapshot.reportStamp ? { mutationVersion: snapshot.reportStamp.mutationVersion,
       geometryContentVersion: snapshot.reportStamp.geometryContentVersion } : 'unknown',
     totalRows, includedRows: projectedRows.length, sampled: projectedRows.length < totalRows, projectionTruncated,
-    evidence: { summary: JSON.parse(summaryProjection.text), rows: projectedRows } }) };
+    evidence: { summary: JSON.parse(summaryProjection.text), rows: evidenceRows } });
+  if (competingCosts) admitSelectionCosts(capture.rows, projectedRows, serialize);
+  return { ...snapshot, payload: serialize(projectedRows) };
 }
 
 export function evidenceIsCurrent(snapshot: EvidenceSnapshot): boolean {

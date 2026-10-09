@@ -29,7 +29,8 @@ Actual root Turbo runs, under reservation `3b6a17dd-6965-4a8d-9c37-f0b58c87edf2`
   submission; the queued recovery assertion also fails. The two positives
   seed a canonical submission and prove deferred completion ordering.
 - Corrected: all 188 affected viewer tests pass; renderer has 2,058 passes and
-  two existing optional fixture skips. All 20 refusals have zero reads and
+  two existing skips: the opt-in 340 MB test and the real-WebGPU-adapter
+  control, unavailable in Node. All 20 refusals have zero reads and
   completion waits; camera metadata is also unreachable. Both DPR positives,
   queued recovery and the original six capture controls pass. The latter's
   assertion file is unchanged and now uses the fuller GPU-interface fixture.

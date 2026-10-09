@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import '@/test/setup-dom.js';
 import assert from 'node:assert/strict';
+import { assertSameNativeIfcGraph } from '@/test/native-ifc-graph';
 import { existsSync, readFileSync } from 'node:fs';
 import { IfcAPI, initSync } from '@ifc-lite/wasm';
 import { afterEach, test } from 'node:test';
@@ -142,7 +143,7 @@ test('#7267 exact type expectation, source revisions and edit permissions refuse
   const before = editedModelBytes(dataStore, view);
   const refused = commitModelAuthoring(useViewerStore, preview, new Set([0]), 'test');
   assert.equal(refused.ok, false, 'even a history-free native source edit revokes approval');
-  assert.deepEqual(editedModelBytes(dataStore, view), before);
+  await assertSameNativeIfcGraph(editedModelBytes(dataStore, view), before);
   useViewerStore.setState({ editEnabled: false });
   assert.equal(previewModelAuthoring(useViewerStore.getState(), batch).rows[0].status, 'denied');
 });
@@ -185,7 +186,7 @@ test('#7267 federation requires an explicit model for repeated IFC GlobalIds and
   const after = await exportedRelations(dataStore, view);
   assert.equal(after.relations.some(rel => rel.relatedIds.includes(target)), false);
   assert.ok(after.relations.some(rel => rel.relatingId === typeId && rel.relatedIds.includes(peer)));
-  assert.deepEqual(editedModelBytes(dataStore, other), otherBytes, 'the independently owned overlay remains unchanged');
+  await assertSameNativeIfcGraph(editedModelBytes(dataStore, other), otherBytes, 'the independently owned overlay remains unchanged');
 });
 
 

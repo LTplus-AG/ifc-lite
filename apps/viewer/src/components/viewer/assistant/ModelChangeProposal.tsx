@@ -1,6 +1,9 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+import { declaresStructuralGraph, parseStructuralProposal, type StructuralProposal } from '@/lib/actions/structural-graph-proposal';
+import { StructuralGraphReview } from './StructuralGraphReview';
+
 
 import { useMemo } from 'react';
 import { declaresZoneEmission, parseZoneEmissionProposal, type ZoneEmissionProposal } from '@/lib/actions/zone-emission-proposal';
@@ -15,8 +18,10 @@ import type { RoomReview } from '@/lib/actions/room-review';
 import { RoomCommandReview } from './RoomCommandReview';
 import { declaresCostGraph, parseCostProposal, type CostProposal } from '@/lib/actions/cost-graph-proposal';
 import { CostGraphReview } from './CostGraphReview';
+import { declaresNewIfc, parseNewIfcProposal, type NewIfcProposal } from '@/lib/actions/new-ifc-file';
+import { NewIfcFileReview } from './NewIfcFileReview';
 
-type Reviewable = { kind: 'zones'; proposal: ZoneEmissionProposal } | { kind: 'cost'; proposal: CostProposal } | { kind: 'changes'; batch: ModelChangeBatch } | { kind: 'authoring'; batch: ModelAuthoringBatch } | { kind: 'room'; proposal: RoomProposal };
+type Reviewable = { kind: 'zones'; proposal: ZoneEmissionProposal } | { kind: 'newIfc'; proposal: NewIfcProposal } | { kind: 'cost'; proposal: CostProposal } | { kind: 'structural'; proposal: StructuralProposal } | { kind: 'changes'; batch: ModelChangeBatch } | { kind: 'authoring'; batch: ModelAuthoringBatch } | { kind: 'room'; proposal: RoomProposal };
 
 /** Latest completed changes, authoring or async Room answer, reviewed natively and never applied by itself. */
 export function ModelChangeProposal({ onAttachRoom }: { onAttachRoom?: (review: RoomReview) => void } = {}) {
@@ -27,6 +32,14 @@ export function ModelChangeProposal({ onAttachRoom }: { onAttachRoom?: (review: 
     if (content && declaresZoneEmission(content)) {
       try { return { kind: 'zones', proposal: parseZoneEmissionProposal(content) }; }
       catch (error) { console.warn('[Assistant] Zone emission proposal is not reviewable', error); return null; }
+    }
+    if (content && declaresNewIfc(content)) {
+      try { return { kind: 'newIfc', proposal: parseNewIfcProposal(content) }; }
+      catch (error) { console.warn('[Assistant] Native new-file proposal is not reviewable', error); return null; }
+    }
+    if (content && declaresStructuralGraph(content)) {
+      try { return { kind: 'structural', proposal: parseStructuralProposal(content) }; }
+      catch (error) { console.warn('[Assistant] Structural proposal is not reviewable', error); return null; }
     }
     if (content && declaresCostGraph(content)) {
       try { return { kind: 'cost', proposal: parseCostProposal(content) }; }
@@ -49,6 +62,8 @@ export function ModelChangeProposal({ onAttachRoom }: { onAttachRoom?: (review: 
   if (!reviewable) return null;
   const origin = `assistant:${assistant.snapshot?.id ?? assistant.archived?.id ?? 'conversation'}:${assistant.messages.length}`;
   if (reviewable.kind === 'zones') return <ZoneEmissionReview key={origin} proposal={reviewable.proposal} origin={origin} />;
+  if (reviewable.kind === 'newIfc') return <NewIfcFileReview key={origin} proposal={reviewable.proposal} />;
+  if (reviewable.kind === 'structural') return <StructuralGraphReview key={origin} proposal={reviewable.proposal} origin={origin} />;
   if (reviewable.kind === 'cost') return <CostGraphReview key={origin} proposal={reviewable.proposal} origin={origin} />;
   if (reviewable.kind === 'room') return <RoomCommandReview key={origin} proposal={reviewable.proposal} origin={origin} onAttach={onAttachRoom} />;
   // Keyed by answer so a newer proposal starts a fresh review.

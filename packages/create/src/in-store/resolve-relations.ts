@@ -43,6 +43,7 @@ export function readRelatedLists(
   store: IfcDataStore,
   relType: 'IfcRelDefinesByType' | 'IfcRelAssociatesMaterial',
   view?: MutablePropertyView | null,
+  options?: { includeMalformedRelatingTargets?: boolean },
 ): ExistingRelatedList[] {
   const reader = new AnchorEntityReader(store, view);
   const lists: ExistingRelatedList[] = [];
@@ -50,8 +51,12 @@ export function readRelatedLists(
     const rel = reader.entity(relId);
     const related = rel?.attributes[4];
     const relatingId = refId(rel?.attributes[5]);
-    if (!Array.isArray(related) || relatingId === null) continue;
-    lists.push({ relId, relatingId, relatedIds: related.map(refId).filter((id): id is number => id !== null) });
+    if (!Array.isArray(related)) continue;
+    // Explicit IFC unset is no assignment. Strict consumers may inventory
+    // malformed targets without inventing a valid relating entity (#7332).
+    if (relatingId === null && (!options?.includeMalformedRelatingTargets || rel?.attributes[5] === null)) continue;
+    lists.push({ relId, ...(relatingId === null ? {} : { relatingId }),
+      relatedIds: related.map(refId).filter((id): id is number => id !== null) });
   }
   return lists;
 }

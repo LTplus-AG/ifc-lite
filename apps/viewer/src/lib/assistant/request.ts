@@ -1,6 +1,8 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+import { STRUCTURAL_GRAPH_GUIDANCE } from '@/lib/actions/structural-graph-proposal';
+
 
 import { resolveStreamRoute } from '@/lib/llm/byok-guard';
 import { LLM_PROXY_URL, runModelRequest } from '@/lib/llm/request-service';
@@ -25,6 +27,7 @@ import { generationLanguageInstruction } from './language';
 import { selectionGroundingIsCurrent, selectionGroundingText, type SelectionGrounding } from '@/lib/actions/selection-grounding';
 import { roomAttachmentText, roomGroundingIsCurrent, type RoomGrounding } from '@/lib/actions/room-review';
 import { ZONE_EMISSION_GUIDANCE } from '@/lib/actions/zone-emission-proposal';
+import { NEW_IFC_GUIDANCE } from '@/lib/actions/new-ifc-file';
 import { COST_GRAPH_GUIDANCE } from '@/lib/actions/cost-graph-proposal';
 import { ROOM_COMMAND_GUIDANCE } from '@/lib/actions/room-command-proposal';
 
@@ -134,7 +137,7 @@ export async function sendAssistant(prompt: string, model: string, proxyUrl: str
     // Corrections are proposals only: the user reviews each change before anything is applied.
     if (isReportSource(state.snapshot.source)) system = `${system}\n${MODEL_CHANGE_OUTPUT_GUIDANCE}\n${REPORT_CLAIMS_OUTPUT_GUIDANCE}`;
     // Scene actions are proposals too: nothing changes the view until the user applies them.
-    if (!isFlowSource(state.snapshot.source)) system = `${system}\n${SCENE_ACTION_OUTPUT_GUIDANCE}\n${ROOM_COMMAND_GUIDANCE}\n${ZONE_EMISSION_GUIDANCE}\n${COST_GRAPH_GUIDANCE}`;
+    if (!isFlowSource(state.snapshot.source)) system = `${system}\n${SCENE_ACTION_OUTPUT_GUIDANCE}\n${ROOM_COMMAND_GUIDANCE}\n${ZONE_EMISSION_GUIDANCE}\n${STRUCTURAL_GRAPH_GUIDANCE}\n${COST_GRAPH_GUIDANCE}\n${NEW_IFC_GUIDANCE}`;
     // IDS, information rules and report outlines are drafted from validation results or any loaded model (P07).
     if (state.snapshot.source === 'validation' || state.snapshot.source === 'loadReport') system = `${system}\n${CHECK_AUTHORING_GUIDANCE}`;
     // Filters, lists, lenses and charts (P13) are proposals reviewed against the loaded models; only a bounded schema digest is sent.

@@ -1,0 +1,74 @@
+{
+  "functionalControl": {
+    "exitCode": 0,
+    "pass": 1,
+    "fail": 0,
+    "skip": 0,
+    "sourceHead": "6e115f8c07074d08b1da9b5d4c59dec817c10847",
+    "sourceHeadAfter": "6e115f8c07074d08b1da9b5d4c59dec817c10847",
+    "actualBonsai": {
+      "fixtureSha256": "0ab20f4ea355ea9aa4fade7264b97ee9f9929addfa3961b2437c4381bd674014",
+      "primaryGeometrySha256": "1d39b0af33fb671fda1b6602d55266726ed65f30ec66ab76c37d75f1f894c513",
+      "peerGeometrySha256": "1d39b0af33fb671fda1b6602d55266726ed65f30ec66ab76c37d75f1f894c513",
+      "primaryMeshes": 8,
+      "peerMeshes": 8,
+      "visiblePrimaryMeshes": 5,
+      "counts": [
+        {
+          "triangles": 68,
+          "vertices": 80
+        },
+        {
+          "triangles": 32,
+          "vertices": 48
+        },
+        {
+          "triangles": 12,
+          "vertices": 24
+        },
+        {
+          "triangles": 12,
+          "vertices": 24
+        },
+        {
+          "triangles": 32,
+          "vertices": 48
+        },
+        {
+          "triangles": 12,
+          "vertices": 24
+        },
+        {
+          "triangles": 12,
+          "vertices": 24
+        },
+        {
+          "triangles": 12,
+          "vertices": 24
+        }
+      ]
+    }
+  },
+  "runtimeAdmission": {
+    "requestedWasm": "8b74229bbd4a991cbf1f32a8d52add195c5fdd333921f998b1c18eb713185143",
+    "preWasm": "8b74229bbd4a991cbf1f32a8d52add195c5fdd333921f998b1c18eb713185143",
+    "postWasm": "b335d9e2742a0f35db846b3a95f7b30152585ef2dd6e7abdc2328dae557dc1d0",
+    "runtime8bQualified": false,
+    "verdict": "REFUSED: loose root Turbo restored a different cached runtime before the functional test; actual passing control is not relabeled as8b."
+  },
+  "log": {
+    "archive": "root-turbo-bonsai.log.gz",
+    "rawSha256": "4637cc2f4579824a12f3c0b9261153c113a82109ab83053c61a8b0ce9100d93d",
+    "archiveSha256": "b330a875e22bb4bc873d9ab4f5b4b0e96505474c1e384168d4aed7552098ed85"
+  },
+  "receiptSHA256": {
+    "terminal-receipt.json": "6d7d2e2c639bdd7328a9ac3bcc0dcddd8f16e1511bac892ee82dfe4345755916",
+    "preflight.json": "2b29adf5192f7624f5c63c5dec6f01a91658128be573f5592d5b10541d42e832"
+  },
+  "limits": [
+    "Earlier78-control b335 receipt unchanged.",
+    "No native browser/GPU/performance claim.",
+    "No additional typecheck, fullsuite or forcedRustbuild.",
+    "Generated ignored runtime restoration does not alter committed source head."
+  ]
+}

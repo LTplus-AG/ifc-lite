@@ -20,19 +20,28 @@
  * counter-clockwise seen from above. Nothing here writes.
  */
 
+import { parseLayerFields, type LayerFields } from './model-authoring-layer-params';
+import { parseReplacementFields,type NativeReplacementOp } from './model-authoring-replacement-fields';
 import { parseSlabOpeningFields, type SlabOpeningCreate } from './model-authoring-slab-opening';
 import { parseExpectedHostedEdit, parseHostedEdit, type ExpectedHostedEdit } from './model-authoring-hosted-edit';
+import { parseNativePlacement, type NativePlacement } from './model-authoring-placement';
+import { parseAlignment, type AlignmentOp } from './model-authoring-align-fields';
 import type { HostedElementEdit } from '@ifc-lite/create';
 import { parseShapeParams, parseProfileSectionParams, AUTHORING_OUTLINE_WORK_LIMIT, type ShapeParams } from './model-authoring-shape-params';
+import { MAX_GRID_AXES } from '@/lib/commands/modeling/commands/grid-place-geometry';
+import { parseGridParams, parseGridColumnParams, parseGridBinding, parseGridStorey, type ReviewedGridOp } from './model-authoring-grid-fields';
 import { parseReachFields, type ReachFields } from './model-authoring-reach-fields';
 import { parseSplitSnapshot, parseSplitCut, type SplitCut } from './model-authoring-split-params';
 import type { SplitSnapshot } from './model-authoring-split-state';
 import { parseSizeParams, type ExpectedSize } from './model-authoring-size-params';
+import { parseCurtainWallParams, curtainWallPartWork, CURTAIN_WALL_PART_LIMIT } from './model-authoring-curtain-wall-fields';
+import type { CurtainWallInStoreParams } from '@ifc-lite/create';
 import { parseStairRailingParams, parseStairPatch, parseExpectedStair, railingPostWork, STAIR_RAILING_WORK_LIMIT } from './model-authoring-stair-railing-fields';
 import type { RailingInStoreParams, StairInStoreParams, StairDimensions, StairDimensionEdit, ProfileSection } from '@ifc-lite/create';
 import type { ElementSizePatch } from '@/store/slices/mutation-element-size';
 import { parseCopyFields, type CopyFields, type ArrayFields } from './model-authoring-copy-fields';
 import { parseGlobalIdTarget, parseLength, parsePoint, parseRef, parseText, record, type LengthRange } from './model-authoring-fields';
+import { parseClassificationAdd, type ClassificationAddFields } from './model-authoring-classification';
 
 export const AUTHORING_CLASSES = ['IfcWall', 'IfcSlab', 'IfcRoof', 'IfcPlate', 'IfcColumn', 'IfcBeam', 'IfcMember', 'IfcSpace'] as const;
 export type AuthoringClass = typeof AUTHORING_CLASSES[number];
@@ -54,6 +63,10 @@ export interface AxisParams { start: Point3; end: Point3; thickness?: number; wi
 export interface BoxParams { position: Point3; width: number; depth: number; thickness?: number; height?: number }
 
 export type AuthoringOp =
+  | ({ op: 'classification.add'; target: ExistingElement } & ClassificationAddFields)
+  | { op: 'curtainWall.create'; ref: string; storey: StoreyTarget; params: CurtainWallInStoreParams }
+  | ReviewedGridOp
+  | NativeReplacementOp
   | { op: 'stair.resize'; target: ExistingElement; expected: StairDimensions; size: StairDimensionEdit }
   | { op: 'stair.delete'; target: ExistingElement }
   | { op: 'railing.delete'; target: ExistingElement }
@@ -73,9 +86,11 @@ export type AuthoringOp =
   /** Horizontal move by a storey-local delta; `from` optionally pins today's placement origin [x, y] in the storey. */
   | { op: 'element.move'; target: ExistingElement; delta: [number, number]; from?: [number, number] }
   /** Turn about the element's own placement origin; `fromDeg` optionally pins today's angle. */
-  | { op: 'element.rotate'; target: ExistingElement; angleDeg: number; fromDeg?: number }
+  | { op: 'element.rotate'; target: ExistingElement; angleDeg: number; fromDeg?: number; pivot?: [number, number]; expected?: NativePlacement }
+  | AlignmentOp
   | { op: 'type.detach'; target: ExistingElement; expected: { GlobalId: string; Name: string } }
   | { op: 'type.assign'; target: ElementTarget; expected?: string | null; type: { globalId: string; name: string } | { create: { ifcClass: string; name: string } } }
+  | ({ op: 'material.layers'; target: ExistingElement } & LayerFields)
   | { op: 'material.assign'; target: ElementTarget; expected?: string | null; material: { name: string; create: boolean } }
   | { op: 'walls.join'; walls: [ElementTarget, ElementTarget] }
   /** A door, window or opening in a host wall: `offset` from the wall's placement origin along it to the centre, `sill` above it. */
@@ -83,8 +98,8 @@ export type AuthoringOp =
   | { op: 'hosted.create'; ref?: string; kind: HostedKind; host: ElementTarget; name?: string; offset: number; sill: number; width: number; height: number };
 
 export type AuthoringOpName = AuthoringOp['op'];
-export const AUTHORING_OPS: readonly AuthoringOpName[] = ['stair.resize', 'stair.delete', 'railing.delete', 'stair.replace', 'railing.replace', 'stair.create', 'railing.create', 'element.create', 'element.delete', 'element.split', 'element.resize', 'element.profile', 'element.trimExtend', 'element.move', 'element.rotate', 'element.copy', 'element.array',
-  'type.assign', 'type.detach', 'material.assign', 'walls.join', 'hosted.create', 'hosted.edit'];
+export const AUTHORING_OPS: readonly AuthoringOpName[] = ['curtainWall.create', 'grid.create', 'column.createOnGrid', 'stair.resize', 'stair.delete', 'railing.delete', 'stair.replace', 'railing.replace', 'stair.create', 'railing.create', 'element.create', 'element.replace', 'element.delete', 'element.split', 'element.resize', 'element.profile', 'element.trimExtend', 'element.move', 'element.rotate', 'element.align', 'element.copy', 'element.array', 'classification.add',
+  'type.assign', 'type.detach', 'material.assign', 'material.layers', 'walls.join', 'hosted.create', 'hosted.edit'];
 
 export interface ModelAuthoringBatch {
   version: 1;
@@ -137,14 +152,14 @@ function isHostFamily(target: ElementTarget, refs: ReadonlyMap<string, Authoring
     if (visited.has(target.ref)) return false;
     visited.add(target.ref);
     const creator = refs.get(target.ref);
-    if (creator?.op === 'element.create') return creator.ifcClass === family;
+    if (creator?.op === 'element.create' || creator?.op === 'element.replace') return creator.ifcClass === family;
     if (creator?.op !== 'element.copy' && creator?.op !== 'element.array') return false;
     target = creator.target;
   }
   return target.ifcClass.startsWith(family);
 }
 
-function createParams(value: Record<string, unknown>, ifcClass: AuthoringClass, units: AuthoringUnits, at: string): AxisParams | BoxParams | ShapeParams {
+export function createParams(value: Record<string, unknown>, ifcClass: AuthoringClass, units: AuthoringUnits, at: string): AxisParams | BoxParams | ShapeParams {
   const p = value.params;
   if (!record(p)) throw new Error(`${at} needs params`);
   const shape = parseShapeParams(p, ifcClass, units, at);
@@ -187,10 +202,19 @@ function operation(value: unknown, index: number, units: AuthoringUnits, refs: M
     return op;
   };
   switch (value.op) {
+    case 'classification.add':
+      return { op: 'classification.add', target: existing(value.target, at), ...parseClassificationAdd(value, at) };
+    case 'grid.create': return defineRef({ op: value.op, ref: parseRef(value.ref, at), storey: parseGridStorey(value.storey, `${at} storey`), params: parseGridParams(value.params, units, at) });
+    case 'column.createOnGrid': return defineRef({ op: value.op, ref: parseRef(value.ref, at), storey: parseGridStorey(value.storey, `${at} storey`), params: parseGridColumnParams(value.params, units, at), grid: parseGridBinding(value.grid, ref => refs.get(ref)?.op === 'grid.create', `${at} grid`) });
+    case 'element.replace': return defineRef(parseReplacementFields(value,existing(value.target,at),units,at));
     case 'stair.resize': return {op:value.op,target:existing(value.target,at),expected:parseExpectedStair(value.expected,`${at} expected`),size:parseStairPatch(value.size,units,`${at} size`)};
     case 'stair.delete': case 'railing.delete': return {op:value.op,target:existing(value.target,at)};
     case 'stair.replace': return defineRef({op:value.op,target:existing(value.target,at),ref:parseRef(value.ref,at),storey:parseGlobalIdTarget(value.storey,`${at} storey`),params:parseStairRailingParams(value.params,'stair',units,at)});
     case 'railing.replace': return defineRef({op:value.op,target:existing(value.target,at),ref:parseRef(value.ref,at),storey:parseGlobalIdTarget(value.storey,`${at} storey`),params:parseStairRailingParams(value.params,'railing',units,at)});
+    case 'curtainWall.create': {
+      if (Object.keys(value).some(key => !['op', 'ref', 'storey', 'params'].includes(key))) throw new Error(`${at}: unsupported curtain-wall operation field`);
+      return defineRef({ op: value.op, ref: parseRef(value.ref, at), storey: parseGlobalIdTarget(value.storey, `${at} storey`), params: parseCurtainWallParams(value.params, units, at) });
+    }
     case 'stair.create': return defineRef({ op: value.op, ref: parseRef(value.ref, at), storey: parseGlobalIdTarget(value.storey, `${at} storey`), params: parseStairRailingParams(value.params, 'stair', units, at) });
     case 'railing.create': return defineRef({ op: value.op, ref: parseRef(value.ref, at), storey: parseGlobalIdTarget(value.storey, `${at} storey`), params: parseStairRailingParams(value.params, 'railing', units, at) });
     case 'hosted.edit': {
@@ -257,8 +281,13 @@ function operation(value: unknown, index: number, units: AuthoringUnits, refs: M
       const angle = value.angleDeg;
       if (typeof angle !== 'number' || !Number.isFinite(angle) || angle === 0 || Math.abs(angle) > 360) throw new Error(`${at}: angleDeg must be a non-zero number of degrees within ±360`);
       if (value.fromDeg !== undefined && (typeof value.fromDeg !== 'number' || !Number.isFinite(value.fromDeg))) throw new Error(`${at}: fromDeg must be a number`);
-      return { op: 'element.rotate', target: existing(value.target, at), angleDeg: angle, ...(typeof value.fromDeg === 'number' ? { fromDeg: value.fromDeg } : {}) };
+      if (value.pivot !== undefined && (!Array.isArray(value.pivot) || value.pivot.length !== 2)) throw new Error(`${at}: pivot must be [x,y] in declared units`);
+      const pivot = Array.isArray(value.pivot) ? value.pivot.map((v, i) => parseLength(v, units, R.coordinate, `${at} pivot[${i}]`)) as [number, number] : undefined;
+      const expected = value.expected === undefined && !pivot ? undefined : parseNativePlacement(value.expected, `${at} expected`);
+      return { op: 'element.rotate', target: existing(value.target, at), angleDeg: angle, ...(typeof value.fromDeg === 'number' ? { fromDeg: value.fromDeg } : {}),
+        ...(pivot ? { pivot } : {}), ...(expected ? { expected } : {}) };
     }
+    case 'element.align': return parseAlignment(value, at, existing);
     case 'type.detach': {
       const expected = record(value.expected) ? value.expected : null;
       if (!expected || typeof expected.Name !== 'string' || expected.Name.length > 200) throw new Error(`${at}: expected must name the current type {GlobalId, Name}`);
@@ -276,6 +305,8 @@ function operation(value: unknown, index: number, units: AuthoringUnits, refs: M
       if (create && !/^Ifc[A-Za-z0-9]+Type$/.test(chosen.create!.ifcClass)) throw new Error(`${at}: a new type needs an Ifc…Type class`);
       return { op: 'type.assign', target, ...expectedName(value, target, at), type: chosen as Extract<AuthoringOp, { op: 'type.assign' }>['type'] };
     }
+    case 'material.layers':
+      return { op: 'material.layers', target: existing(value.target, at), ...parseLayerFields(value, units, at, existing) };
     case 'material.assign': {
       const target = element(value.target, at, refs);
       const material = record(value.material) ? value.material : null;
@@ -322,15 +353,19 @@ export function parseModelAuthoringBatch(answer: string): ModelAuthoringBatch {
   const refs = new Map<string, AuthoringOp>();
   const units = value.units;
   const operations = value.operations.map((op, index) => operation(op, index, units, refs));
+  const gridAxes = operations.reduce((sum, op) => sum + (op.op === 'grid.create' ? op.params.UAxes.length + op.params.VAxes.length + (op.params.WAxes?.length ?? 0) : 0), 0);
+  if (gridAxes > MAX_GRID_AXES) throw new Error(`An authoring batch may create at most ${MAX_GRID_AXES} grid axes`);
   const splitTargets = operations.filter((op): op is Extract<AuthoringOp, { op: 'element.split' }> => op.op === 'element.split').map(op => `${op.target.modelId ?? ''}:${op.target.globalId}`);
   if (new Set(splitTargets).size !== splitTargets.length) throw new Error('Split targets must be unique; no targets are silently discarded');
   const splitWork = operations.reduce((sum, op) => sum + (op.op === 'element.split' && op.expected.kind === 'slab' ? op.expected.chain.footprint.length ** 2 : 0), 0);
   if (splitWork > AUTHORING_OUTLINE_WORK_LIMIT) throw new Error(`Split preview work exceeds ${AUTHORING_OUTLINE_WORK_LIMIT} vertex-pair units; use a smaller explicit selection`);
+  const curtainWork = operations.reduce((sum, op) => sum + (op.op === 'curtainWall.create' ? curtainWallPartWork(op.params, units) : 0), 0);
+  if (curtainWork > CURTAIN_WALL_PART_LIMIT) throw new Error(`Curtain-wall batch exceeds ${CURTAIN_WALL_PART_LIMIT} native parts; use smaller explicit batches`);
   const stairRailingWork = operations.reduce((total, op) => total + (
-    op.op === 'stair.create' || op.op === 'stair.replace' ? op.params.NumberOfRisers
-      : op.op === 'railing.create' || op.op === 'railing.replace' ? railingPostWork(op.params.Path, op.params.PostSpacing) : 0), 0);
+    op.op === 'stair.create' || op.op === 'stair.replace' || op.op === 'element.replace' && op.ifcClass === 'IfcStair' ? op.params.NumberOfRisers
+      : op.op === 'railing.create' || op.op === 'railing.replace' || op.op === 'element.replace' && op.ifcClass === 'IfcRailing' ? railingPostWork(op.params.Path, op.params.PostSpacing) : 0), 0);
   if (stairRailingWork > STAIR_RAILING_WORK_LIMIT) throw new Error(`The native stair-step/railing-post work exceeds ${STAIR_RAILING_WORK_LIMIT}; split this proposal into smaller batches`);
-  const outlineWork = operations.reduce((sum, op) => sum + (op.op === 'element.create' && 'OuterCurve' in op.params ? op.params.OuterCurve.length ** 2 : 0), 0);
+  const outlineWork = operations.reduce((sum, op) => sum + ((op.op === 'element.create' || op.op === 'element.replace') && 'OuterCurve' in op.params ? op.params.OuterCurve.length ** 2 : 0), 0);
   if (outlineWork > AUTHORING_OUTLINE_WORK_LIMIT) throw new Error(`The polygon preview work exceeds ${AUTHORING_OUTLINE_WORK_LIMIT} vertex-pair units; split this proposal into smaller batches`);
   const copies = operations.reduce((total, op) => total + (op.op === 'element.array' ? op.count - 1 : op.op === 'element.copy' ? 1 : 0), 0);
   if (copies > MODEL_AUTHORING_LIMIT) throw new Error(`An authoring batch may create at most ${MODEL_AUTHORING_LIMIT} copy roots`);

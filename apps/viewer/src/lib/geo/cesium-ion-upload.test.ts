@@ -110,7 +110,8 @@ test('invalid upload filenames do not create assets (#6587)', async () => {
 });
 
 test('ion distinguishes request conflicts from authorization without echoing response bodies (#6587)', async () => {
-  for (const [status, reason] of [[401, 'authorization'], [403, 'authorization'], [409, 'conflict'],
+  // 404: a live read-only (assets:read) token is answered 404 on create (#7335).
+  for (const [status, reason] of [[401, 'authorization'], [403, 'authorization'], [404, 'authorization'], [409, 'conflict'],
     [402, 'capacity'], [413, 'capacity'], [429, 'rateLimit'], [503, 'service'], [400, 'request']] as const) {
     let uploaded = false;
     await assert.rejects(uploadToCesiumIon(input(), {

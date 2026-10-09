@@ -164,7 +164,7 @@ function elementRow(s: ViewerState, ref: EntityRef, source: ModelSource, rich: b
     attributes, psets, psetCount: data.psets.length, quantities, qsetCount: data.qsets.length,
     nativeEdit: nativeEditEvidence(nativeTarget, ref.expressId),
     nativeType: nativeTypeEvidence(s, nativeTarget, ref.expressId),
-    nativeCost: nativeCostTransportEvidence(nativeTarget, ref.expressId),
+    ...(rich ? { nativeCost: nativeCostTransportEvidence(nativeTarget, ref.expressId) } : {}),
     nativeRoomAutoAll: roomAutoAllEvidence(nativeTarget),
     structuralStatus: !source.store ? 'unavailable' : source.store.source?.length ? 'available' : 'unavailable-source',
     structural: structuralEvidence(structuralData, ref.expressId, typeof data.attributes.get('GlobalId') === 'string'
@@ -255,6 +255,7 @@ export const selectionAdapter: EvidenceAdapter = {
     return {
       summary: {
         kind: 'selection', channel, selectionSize: refs.length, modelCount: byModel.size,
+        ...(!rich ? { nativeCostCapture: 'unavailable-selection-budget' } : {}),
         byModel: [...byModel].map(([modelId, count]) => ({ modelId, name: sourceFor(modelId).name, count })),
         byClass: [...byClass].map(([type, count]) => ({ type, count })).sort((a, b) => b.count - a.count),
         perElementBounds: rich ? { sets: 16, valuesPerSet: 32, attributes: 32, classifications: 16, classificationPath: 16, relationships: 16, documents: 16 }

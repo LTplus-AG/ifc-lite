@@ -26,7 +26,7 @@
 import { CoordinateHandler, type MeshData } from '@ifc-lite/geometry';
 import { iterateEffectiveEntityIds } from '@ifc-lite/mutations';
 import { liveStoreyMembers } from '@/lib/visibility/storey-context';
-import { existingSpaceFootprintEntriesByStorey, type SpaceFootprint } from '@ifc-lite/create';
+import { existingSpaceFootprintEntriesByStorey, liveEntityConforms, type SpaceFootprint } from '@ifc-lite/create';
 import type { ViewerState } from '@/store';
 import { roomFramePlanOffsets, wallRectsFromMeshes } from '@/lib/wall-rects-from-meshes';
 import { spaceWasmLoaded } from '@/lib/rooms/space-wasm';
@@ -92,7 +92,9 @@ function liveMesh(s: ViewerState, modelId: string): (mesh: MeshData) => boolean 
   const view = s.mutationViews.get(modelId);
   return (mesh) => {
     const local = s.resolveGlobalIdFromModels(mesh.expressId);
-    return !(local && view?.isDeleted(local.expressId));
+    const store = s.models.get(modelId)?.ifcDataStore;
+    return !!local && local.modelId === modelId && !!store && !view?.isDeleted(local.expressId)
+      && (!mesh.ifcType || liveEntityConforms(store, local.expressId, mesh.ifcType, view));
   };
 }
 
@@ -187,14 +189,15 @@ export function storeyOccupancy(s: ViewerState, modelId: string, storeyId: numbe
   return occupancyTest(storeySpaceFootprints(s, modelId, storeyId), triangles);
 }
 
-let footprintCache: { store: unknown; version: number; byStorey: Map<number, SpaceFootprint[]> } | null = null;
+let footprintCache: { store: unknown; view: unknown; revision: number | undefined; version: number; byStorey: Map<number, SpaceFootprint[]> } | null = null;
 
 /** Existing IfcSpaces on the storey with their footprint rings, storey-local. */
 export function storeySpaces(s: ViewerState, modelId: string, storeyId: number): SpaceFootprint[] {
   const store = s.models.get(modelId)?.ifcDataStore;
   if (!store) return [];
-  if (footprintCache?.store !== store || footprintCache.version !== s.mutationVersion) {
-    footprintCache = { store, version: s.mutationVersion, byStorey: existingSpaceFootprintEntriesByStorey(store, s.mutationViews.get(modelId) ?? undefined) };
+  const view = s.mutationViews.get(modelId), revision = view?.getMutationRevision();
+  if (footprintCache?.store !== store || footprintCache.view !== view || footprintCache.revision !== revision || footprintCache.version !== s.mutationVersion) {
+    footprintCache = { store, view, revision, version: s.mutationVersion, byStorey: existingSpaceFootprintEntriesByStorey(store, view) };
   }
   return footprintCache.byStorey.get(storeyId) ?? [];
 }

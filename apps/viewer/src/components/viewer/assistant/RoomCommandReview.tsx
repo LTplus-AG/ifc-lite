@@ -96,7 +96,7 @@ export function RoomCommandReview({ proposal, origin, onAttach }: { proposal: Ro
         {planned.deleted.map(ref => <li key={`deleted:${ref.expressId}`}>{t('roomReview.deleteRoom', { name: review.snapshot.rooms.find(room => room.expressId === ref.expressId)?.Name || t('roomReview.unnamedRoom') })}</li>)}
       </ul>
       {planned.skipped.length > 0 && <p>{t('roomReview.skipped', { count: planned.skipped.length })}</p>}
-      {c.action === 'edit' && !planned.created.length && !planned.updated.length && !planned.deleted.length && <p>{t(c.action==='autoAll'?'roomReview.noChanges':'roomReview.sessionOnly')}</p>}
+      {(c.action === 'edit' || c.action === 'autoAll') && !planned.created.length && !planned.updated.length && !planned.deleted.length && <p>{t(c.action==='autoAll'?'roomReview.noChanges':'roomReview.sessionOnly')}</p>}
       {!applied && <label className="flex items-center gap-2"><input type="checkbox" checked={approved} onChange={event => setApproved(event.target.checked)} />{t('roomReview.approveAction')}</label>}
       {!applied && <Button size="sm" disabled={!approved || stale || !!review.snapshot.storeys?.some(row=>row.status==='unavailable')} onClick={apply}>{t('roomReview.apply')}</Button>}
       {onAttach && !applied && !stale && <Button size="sm" variant="outline" onClick={() => {

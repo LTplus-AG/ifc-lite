@@ -89,7 +89,7 @@ test('#7318 selective approval cannot reuse an unapproved owner, wrong SELECT re
 test('#7318 stale source, history-free native edits, proposal choices and permissions refuse before writes', async () => {
   const { dataStore, view, storey } = await setup();
   let review = prepareStructuralReview(useViewerStore, proposal(storey, [analysis('Supplied source check')]));
-  view.setAttribute(291, 'Description', 'New source state', true);
+  view.setAttribute(291, 'Description', 'New source state');
   assert.throws(() => review.commit(), /changed|differs/);
   review = prepareStructuralReview(useViewerStore, proposal(storey, [analysis('Supplied permission check')]));
   useViewerStore.setState({ editEnabled: false }); assert.throws(() => review.commit(), /Edit|permission|read.only/i);
@@ -120,7 +120,7 @@ test('#7318 changed named and positional source storey frames refuse creation af
     const operation: StructuralOperation = { op: 'structural.member.create', storey, params: { Name: 'Supplied current frame', Start: [0, 0, 0], End: [4, 0, 0] } };
     assert.ok(prepareStructuralReview(useViewerStore, proposal(storey, [operation])).delta.length);
     if (field === '@0') view.setPositionalAttribute(placement, 0, null);
-    else view.setAttribute(placement, field, '$', true);
+    else view.setAttribute(placement, field, '$');
     assert.equal((await parseIfc(editedModelBytes(dataStore, view))).getEntity(placement)?.attributes[0], null, 'actual native STEP/reparse confirms the current placement retarget before review refuses it');
     assert.throws(() => prepareStructuralReview(useViewerStore, proposal(storey, [operation])), /frame|placement/);
   }
@@ -159,7 +159,7 @@ test('#7318 invalid current Root identity and effective geometry-unit declaratio
   const { dataStore, view, storey } = await setup();
   const made = commitReviewedStructural(useViewerStore, prepareStructuralReview(useViewerStore, proposal(storey, [{ op: 'structural.group.create', params: { Name: 'Supplied existing group', ActionType: 'PERMANENT_G', ActionSource: 'DEAD_LOAD_G' } }])), 'existing group');
   const id = made.applied[0].expressId!;
-  view.setAttribute(id, 'GlobalId', 'invalid-guid', true);
+  view.setAttribute(id, 'GlobalId', 'invalid-guid');
   assert.equal(extractStructuralOnDemand(await parseIfc(editedModelBytes(dataStore, view))).loadGroups[0].globalId, 'invalid-guid', 'actual STEP preserves the malformed native identity before admission refusal');
   const current = readStructuralSnapshot(readOnlyModelEditTarget(useViewerStore.getState(), SAMPLE_MODEL)!, [storey]);
   assert.equal(current.records.find(record => record.expressId === id)?.attributes[0], 'invalid-guid', 'the complete current evidence must retain the authored native Root record proved in saved IFC');
@@ -167,6 +167,6 @@ test('#7318 invalid current Root identity and effective geometry-unit declaratio
   const units = readStructuralSnapshot(readOnlyModelEditTarget(useViewerStore.getState(), SAMPLE_MODEL)!, [storey]).records;
   const lengthUnit = units.find(row => row.type === 'IfcSIUnit' && String(row.attributes[1]).replaceAll('.', '') === 'LENGTHUNIT');
   assert.ok(lengthUnit);
-  view.setAttribute(lengthUnit.expressId, 'Prefix', '$', true);
+  view.setAttribute(lengthUnit.expressId, 'Prefix', '$');
   assert.throws(() => prepareStructuralReview(useViewerStore, proposal(storey, [{ op: 'structural.member.create', storey, params: { Name: 'No native unit guess', Start: [0, 0, 0], End: [4, 0, 0] } }])), /unit|scale/);
 });

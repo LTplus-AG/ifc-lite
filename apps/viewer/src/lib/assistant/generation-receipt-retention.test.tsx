@@ -183,7 +183,9 @@ test('#7242 provider usage absent and legacy turns/reports stay unknown rather t
 
 test('#7242 portable conversations reconstruct receipt metadata and exclude unknown private transport fields', async () => {
   const receipt = await answer(), draft = prepareReportDraft('Private-field exclusion');
-  const hostile = { ...receipt, provenance: { ...receipt.provenance, apiKey: 'PRIVATE_KEY', inputDigest: { ...receipt.provenance?.inputDigest, evidence: 'PRIVATE_EVIDENCE' } }, system: 'PRIVATE_PROMPT', reply: 'PRIVATE_REPLY', outputSchema: { SECRET: 'PRIVATE_SCHEMA' },
+  const provenance = receipt.provenance; assert.ok(provenance);
+  const inputDigest = provenance.inputDigest; assert.ok(inputDigest, 'the native producer supplies its actual logical input digest');
+  const hostile = { ...receipt, provenance: { ...provenance, apiKey: 'PRIVATE_KEY', inputDigest: { ...inputDigest, evidence: 'PRIVATE_EVIDENCE' } }, system: 'PRIVATE_PROMPT', reply: 'PRIVATE_REPLY', outputSchema: { SECRET: 'PRIVATE_SCHEMA' },
     evidence: 'PRIVATE_EVIDENCE', proxyUrl: 'https://private.test/endpoint', apiKey: 'PRIVATE_KEY', error: 'PRIVATE_ERROR' };
   const conversation = decodeConversation({ ...draft.source, messages: [draft.source.messages[0], { ...draft.source.messages[1], receipt: hostile }] });
   assert.ok(conversation); assert.deepEqual(conversation.messages.at(-1)?.receipt, receipt);
@@ -191,7 +193,9 @@ test('#7242 portable conversations reconstruct receipt metadata and exclude unkn
 
 test('#7242 native document decode/import/export independently exclude private receipt fields', async () => {
   const receipt = await answer(), draft = prepareReportDraft('Document private-field exclusion');
-  const hostile = { ...receipt, provenance: { ...receipt.provenance, apiKey: 'PRIVATE_KEY', inputDigest: { ...receipt.provenance?.inputDigest, evidence: 'PRIVATE_EVIDENCE' } }, system: 'PRIVATE_PROMPT', reply: 'PRIVATE_REPLY', outputSchema: { SECRET: 'PRIVATE_SCHEMA' },
+  const provenance = receipt.provenance; assert.ok(provenance);
+  const inputDigest = provenance.inputDigest; assert.ok(inputDigest, 'the native producer supplies its actual logical input digest');
+  const hostile = { ...receipt, provenance: { ...provenance, apiKey: 'PRIVATE_KEY', inputDigest: { ...inputDigest, evidence: 'PRIVATE_EVIDENCE' } }, system: 'PRIVATE_PROMPT', reply: 'PRIVATE_REPLY', outputSchema: { SECRET: 'PRIVATE_SCHEMA' },
     evidence: 'PRIVATE_EVIDENCE', proxyUrl: 'https://private.test/endpoint', apiKey: 'PRIVATE_KEY', error: 'PRIVATE_ERROR' };
   assert.ok(draft.document.aiReport);
   const raw = { ...draft.document, aiReport: { ...draft.document.aiReport, generationReceipt: hostile } };

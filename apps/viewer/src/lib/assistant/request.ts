@@ -26,6 +26,8 @@ import { ensureFlowAiNodes } from '../flow/runner';
 import { preferenceGuidance, preferencesFor, projectScope } from './reuse/preferences';
 import { generationLanguageInstruction } from './language';
 import { selectionGroundingIsCurrent, selectionGroundingText, type SelectionGrounding } from '@/lib/actions/selection-grounding';
+import { roomAttachmentText, roomGroundingIsCurrent, type RoomGrounding } from '@/lib/actions/room-review';
+import { ROOM_COMMAND_GUIDANCE } from '@/lib/actions/room-command-proposal';
 
 /** Output ceiling per Assistant answer; the route ceiling and root budget may lower it. */
 export const ASSISTANT_OUTPUT_TOKENS = 4096;
@@ -46,6 +48,9 @@ export interface AssistantAttachments {
   selection?: string;
   /** Native ownership sidecar for the explicitly attached snapshot; never sent or persisted. */
   selectionSnapshot?: SelectionGrounding;
+  rooms?: string;
+  /** Native evidence ownership only; no Room execution capability is transported or persisted. */
+  roomSnapshot?: RoomGrounding;
   /** Viewport screenshot as an image data URL; refused for models without image input. */
   screenshot?: string;
 }
@@ -66,9 +71,11 @@ export async function sendAssistant(prompt: string, model: string, proxyUrl: str
     useAssistant.setState({ error: 'stale-evidence', status: 'error' });
     return false;
   }
-  const attachmentCurrent = () => !attachments.selectionSnapshot || (
+  const attachmentCurrent = () => (!attachments.selectionSnapshot || (
     attachments.selection === selectionGroundingText(attachments.selectionSnapshot)
-    && selectionGroundingIsCurrent(attachments.selectionSnapshot, useViewerStore.getState()));
+    && selectionGroundingIsCurrent(attachments.selectionSnapshot, useViewerStore.getState())))
+    && (!attachments.rooms && !attachments.roomSnapshot || !!attachments.roomSnapshot && roomGroundingIsCurrent(attachments.roomSnapshot)
+      && attachments.rooms === roomAttachmentText(attachments.roomSnapshot));
   if (!attachmentCurrent()) {
     useAssistant.setState({ error: 'stale-evidence', status: 'error' });
     return false;
@@ -85,7 +92,7 @@ export async function sendAssistant(prompt: string, model: string, proxyUrl: str
     return false;
   }
   // The stored turn records what was attached; the image itself is sent once and never persisted.
-  const userText = [prompt.trim(), attachments.selection, attachments.screenshot ? '[Attached: current viewport screenshot]' : undefined]
+  const userText = [prompt.trim(), attachments.selection, attachments.rooms, attachments.screenshot ? '[Attached: current viewport screenshot]' : undefined]
     .filter(Boolean).join('\n\n');
   // Limit the complete conversation, rather than silently trimming away evidence.
   const messages: StreamMessage[] = [...state.messages.map(({ role, content }) => ({ role, content })), { role: 'user' as const, content: userText }];
@@ -129,7 +136,7 @@ export async function sendAssistant(prompt: string, model: string, proxyUrl: str
     // Corrections are proposals only: the user reviews each change before anything is applied.
     if (isReportSource(state.snapshot.source)) system = `${system}\n${MODEL_CHANGE_OUTPUT_GUIDANCE}\n${REPORT_CLAIMS_OUTPUT_GUIDANCE}`;
     // Scene actions are proposals too: nothing changes the view until the user applies them.
-    if (!isFlowSource(state.snapshot.source)) system = `${system}\n${SCENE_ACTION_OUTPUT_GUIDANCE}`;
+    if (!isFlowSource(state.snapshot.source)) system = `${system}\n${SCENE_ACTION_OUTPUT_GUIDANCE}\n${ROOM_COMMAND_GUIDANCE}`;
     // IDS, information rules and report outlines are drafted from validation results or any loaded model (P07).
     if (state.snapshot.source === 'validation' || state.snapshot.source === 'loadReport') system = `${system}\n${CHECK_AUTHORING_GUIDANCE}`;
     // Filters, lists, lenses and charts (P13) are proposals reviewed against the loaded models; only a bounded schema digest is sent.
@@ -151,7 +158,7 @@ export async function sendAssistant(prompt: string, model: string, proxyUrl: str
     if (attachments.screenshot) {
       messages[messages.length - 1] = { role: 'user', content: [{ type: 'image_url', image_url: { url: attachments.screenshot } }, { type: 'text', text: userText }] };
     }
-    const outcome = await runModelRequest({
+    const outcome = await runModelRequest({ promptVersion: 'viewer.assistant.v1',
       route, proxyUrl, messages, system, maxOutputTokens: Math.min(ASSISTANT_OUTPUT_TOKENS, preferences?.outputTokens ?? ASSISTANT_OUTPUT_TOKENS), budget, signal: controller.signal,
       timeoutMs: ASSISTANT_TIMEOUT_MS,
       outputSchema,

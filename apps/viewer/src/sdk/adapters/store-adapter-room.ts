@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { createRoomCommandBackend, type createModellingStoreBackend } from '@ifc-lite/sdk';
+import { createRoomCommandBackend, type createModellingStoreBackend, type PreparedRoomCommand, type RoomCommand } from '@ifc-lite/sdk';
 import { SpacePlateHandle } from '@ifc-lite/wasm';
 import type { StoreApi } from './types.js';
 import { normalizeMutationModelId } from './mutation-view.js';
@@ -19,8 +19,16 @@ import { requestRemesh } from '@/lib/remesh/remesh-service';
 
 type Methods = ReturnType<typeof createModellingStoreBackend>;
 
-/** The same native cache and displayed mesh workplane that the Room command uses. */
-export function roomMutationTracking(store: StoreApi): Pick<Methods, 'roomCommand'> {
+const services = new WeakMap<StoreApi, ReturnType<typeof createNativeRoomService>>();
+
+/** One preparation owner shared by native SDK actions and reviewed actions on this host. */
+function nativeRoomService(store: StoreApi) {
+  let service = services.get(store);
+  if (!service) { service = createNativeRoomService(store); services.set(store, service); }
+  return service;
+}
+
+function createNativeRoomService(store: StoreApi) {
   const resolve = (modelId: string) => {
     const denial = mutationDenial(store.getState(), modelId);
     if (denial) throw new Error(denial);
@@ -55,11 +63,12 @@ export function roomMutationTracking(store: StoreApi): Pick<Methods, 'roomComman
         write({ modelId, store: dataStore, editor, mutationView: editor.getMutationView(), ownerHistoryId: null })));
     },
   });
-  return {
-    async roomCommand(modelId, storeyId, command) {
-      const normalized = normalizeMutationModelId(store.getState(), modelId);
+  const prepare = async (modelId: string, storeyId: number, command: RoomCommand): Promise<PreparedRoomCommand> => {
+    const normalized = normalizeMutationModelId(store.getState(), modelId);
+    const prepared = await service.prepareRoomCommand(normalized, storeyId, command);
+    return { ...prepared, commit: () => {
       const undoBefore = store.getState().undoStacks.get(normalized)?.length ?? 0;
-      const result = await service.roomCommand(normalized, storeyId, command);
+      const result = prepared.commit();
       if (result.created.length || result.updated.length || result.deleted.length) {
         const setState = store.setState;
         if (!setState) throw new Error('Room editing requires a writable viewer store');
@@ -67,6 +76,22 @@ export function roomMutationTracking(store: StoreApi): Pick<Methods, 'roomComman
         completePhysicalEdit(store, normalized, undoBefore, [...result.created, ...result.updated].map(ref => ref.expressId));
       }
       return result;
+    } };
+  };
+  return { prepare,
+    async roomCommand(modelId: string, storeyId: number, command: RoomCommand) {
+      const prepared = await prepare(modelId, storeyId, command);
+      try { return prepared.commit(); } finally { prepared.dispose(); }
     },
   };
+}
+
+/** Same native planner, detached graph preview and synchronous approval seam as SDK Room. */
+export function prepareNativeRoomCommand(store: StoreApi, modelId: string, storeyId: number, command: RoomCommand): Promise<PreparedRoomCommand> {
+  return nativeRoomService(store).prepare(modelId, storeyId, command);
+}
+
+/** Native SDK methods keep their existing asynchronous execute-on-call contract. */
+export function roomMutationTracking(store: StoreApi): Pick<Methods, 'roomCommand'> {
+  return { roomCommand: nativeRoomService(store).roomCommand };
 }

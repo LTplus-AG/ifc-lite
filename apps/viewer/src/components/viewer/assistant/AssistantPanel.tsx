@@ -26,6 +26,8 @@ import { EvidenceSummary } from './EvidenceSummary';
 import { AssistantConversation } from './AssistantConversation';
 import { FreeQuotaNote } from './AssistantUsage';
 import { attachmentsForSend, ComposerAttachments, NO_ATTACHMENTS } from './ComposerAttachments';
+import { declaresRoomCommand } from '@/lib/actions/room-command-proposal';
+import { captureRoomGrounding } from '@/lib/actions/room-review';
 import { RecipeRunCard } from './RecipeRunCard';
 import { usePreferredModel } from '@/lib/assistant/reuse/preference-hooks';
 import { takeDraftPrompt, useRecipeRun } from '@/lib/assistant/reuse/recipe-run';
@@ -171,7 +173,9 @@ export function AssistantPanel() {
       {evidence?.source === 'clash' && <Suspense fallback={null}><ClashGroupReview /></Suspense>}
       {evidence && isFlowSource(evidence.source) && <Suspense fallback={null}><FlowProposalReview /></Suspense>}
       {evidence?.source === 'semantic' && <Suspense fallback={null}><SemanticProposalReview /></Suspense>}
-      {evidence && isReportSource(evidence.source) && <Suspense fallback={null}><ModelChangeProposal /></Suspense>}
+      {evidence && (isReportSource(evidence.source) || declaresRoomCommand(state.messages.at(-1)?.content ?? '')) && <Suspense fallback={null}>
+        <ModelChangeProposal onAttachRoom={review => setAttachments(current => ({ ...current, rooms: captureRoomGrounding(review) }))} />
+      </Suspense>}
       {(evidence?.source === 'validation' || evidence?.source === 'loadReport') && <Suspense fallback={null}><CheckAuthoringProposal /></Suspense>}
       {evidence && isReportSource(evidence.source) && <Suspense fallback={null}><ReportDraftReview /></Suspense>}
       {evidence && !isFlowSource(evidence.source) && <Suspense fallback={null}><SceneActionReview /></Suspense>}

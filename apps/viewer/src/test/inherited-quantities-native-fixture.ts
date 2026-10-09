@@ -16,7 +16,13 @@ export const parse = (bytes: Uint8Array) => new IfcParser().parseColumnar(bytes.
 export const net = (sets: readonly { quantities: readonly { name: string; value: number }[] }[]) => sets.flatMap(set => [...set.quantities]).find(q => q.name === 'NetVolume')?.value;
 export const native = async (store: IfcDataStore, view: MutablePropertyView, id: number) => net(extractTypeQuantitiesOnDemand(await parse(editedModelBytes(store, view)), id)?.quantities ?? []);
 
-export async function inheritedSource(t: TestContext) {
+type NativeTypeQuantityIds = { volume: number; type: number; qto: number };
+type NativeInheritedFixture = {
+ f: NonNullable<Awaited<ReturnType<typeof seedDeclaredZoneWall>>>; store: IfcDataStore;
+ a: NativeTypeQuantityIds; b: NativeTypeQuantityIds; relation: number; view: MutablePropertyView;
+};
+
+export async function inheritedSource(t: TestContext): Promise<NativeInheritedFixture | undefined> {
  const f = await seedDeclaredZoneWall(t); if (!f) return;
  const draft = getOrCreateMutationView(useViewerStore, 'arch'); assert.ok(draft);
  const editor = new StoreEditor(f.store, draft);

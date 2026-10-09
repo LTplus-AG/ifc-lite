@@ -338,3 +338,29 @@ for (const addReference of [false, true]) test(`#7245 own import receipt ${addRe
     assert.ok(aggregate(chart, bound.dataset).total > 0, 'the new native dependent still reads its saved comparison');
   }
 });
+
+test('#7245 closing the mounted native preview revokes an own-receipt CAS retry', async () => {
+  const report = await realComparison(); await dependents('compare', report.id);
+  const ui = previewFor(report); await settle();
+  const row = (await readContentRows('comparison')).find(entry => entry.id === report.id)!;
+  let ownCommit: Promise<void> | undefined;
+  const unsubscribe = useViewerStore.subscribe(state => {
+    if (ownCommit || state.savedComparisons.some(entry => entry.id === report.id)) return;
+    // The first approved guard has actually staged the native tombstone.
+    ownCommit = writeContentBatch([{ kind: 'comparison', id: report.id, payload: report, expected: row.revision }]).then(async result => {
+      assert.equal(result.ok, true);
+      if (!result.ok) throw new Error('Actual own comparison commit refused');
+      assert.equal(result.rows[0].revision, row.revision + 1);
+      cleanup(); // Actual mounted effect cleanup revokes the captured owner.
+      await useViewerStore.getState().refreshSavedComparisons(result.rows);
+    });
+  });
+  try {
+    click(button(ui, 'Delete report')!);
+    await waitFor(() => ownCommit !== undefined, 'actual native deletion stages before the competing own commit');
+    await ownCommit;
+    await waitFor(() => ['saved', 'conflict'].includes(useViewerStore.getState().savedComparisonsStorage.items[report.id]), 'native CAS operation reaches its result');
+    assert.equal((await readContentRows('comparison')).find(entry => entry.id === report.id)?.deleted, false, 'closed native preview cannot authorize the second CAS write');
+    assert.ok(useViewerStore.getState().savedComparisons.some(entry => entry.id === report.id), 'the original readable source is recovered');
+  } finally { unsubscribe(); }
+});

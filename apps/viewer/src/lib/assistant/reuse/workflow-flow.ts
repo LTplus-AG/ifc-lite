@@ -73,7 +73,7 @@ export async function proposeWorkflowFlow(intent: WorkflowIntent, signal: AbortS
   if (preferences?.maxRequests !== undefined && state.budget.requests >= preferences.maxRequests) {
     throw new Error('The project’s request budget is exhausted');
   }
-  const outcome = await runModelRequest({ route, proxyUrl: LLM_PROXY_URL, system,
+  const outcome = await runModelRequest({ promptVersion: 'viewer.workflow-create.v1', route, proxyUrl: LLM_PROXY_URL, system,
     messages: [{ role: 'user', content: JSON.stringify(intent) }], maxOutputTokens: Math.min(8000, preferences?.outputTokens ?? 8000),
     budget: state.budget, signal, timeoutMs: 120_000 });
   if (outcome.kind === 'refused') throw new Error('The conversation’s request or output budget is exhausted');

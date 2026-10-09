@@ -906,9 +906,14 @@ The Type quantity journal projection preserves native quantity-set order when
 replacing an existing GUID-owned set, so the live volume basis and saved model
 use the same first matching quantity. New definitions follow existing sets.
 
-`findSourceProjectLengthUnit` and `normalizeMapUnitName` share the STEP writer's
-replacement-unit eligibility with the current quantity reader. The resolver
-uses the first effective source `IfcProject`, its source `UnitsInContext`, and
-source assigned length units; deleted units, unassigned units, overlay-created
-units, and unsupported labels cannot provide a replacement reference. This
-keeps a refused export from appearing as an available current physical value.
+`findSourceProjectLengthUnit` and `normalizeMapUnitName` expose the STEP
+writer's existing replacement-unit eligibility to canonical reader consumers.
+The resolver uses the first effective source `IfcProject`, its source
+`UnitsInContext`, and source assigned length units. Deleted units, unassigned
+units, overlay-created units, and unsupported labels cannot supply a source
+replacement reference. Labels compare whole canonical unit names rather than
+substrings; the physical scale is retained.
+
+This lower layer shares the existing STEP writer resolver without changing
+its accepted replacement units. Type quantity journal projection consumes it
+in the subsequent fix for #7355.

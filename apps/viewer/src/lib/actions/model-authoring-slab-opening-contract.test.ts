@@ -172,7 +172,7 @@ test('#7310 a native nested host remains authorable with an explicitly unavailab
  const after=await parseIfc(editedModelBytes(f.dataStore,f.view));assert.equal(readHostOpeningExtents(after,f.id).cuts.length,1);assert.equal(after.getEntity(localId)?.attributes[0],parent.expressId,'native commit preserves the actual parent frame');
 });
 
-test('#7310 unreadable current native snapshot never attests a named placement retarget as the old frame',async()=>{
+test('#7315 current native slab snapshot agrees after a named retarget without removing the availability guard',async()=>{
  const f=await fixture(),store=f.saved,view=new MutablePropertyView(store.properties,SAMPLE_MODEL);configureMutationView(view,store);
  const state=useViewerStore.getState(),model=state.models.get(SAMPLE_MODEL);assert.ok(model);
  useViewerStore.setState({models:new Map([[SAMPLE_MODEL,{...model,ifcDataStore:store,maxExpressId:Math.max(...store.entityIndex.byId.keys())}]]),mutationViews:new Map([[SAMPLE_MODEL,view]]),storeEditors:new Map()});
@@ -183,14 +183,14 @@ test('#7310 unreadable current native snapshot never attests a named placement r
  assert.deepEqual(saved.getEntity(point.expressId)?.attributes[0],[22000,21000,3000]);
  const preview=previewModelAuthoring(useViewerStore.getState(),f.batch());
  assert.notEqual(preview.rows[0].status,'ready','an old native frame cannot authorize a current retargeted placement');
- assert.deepEqual(slabEvidence(f.id),{units:'m',status:'unavailable-native-layout',expected:null});
- const before=await graph(store,view);assert.equal(commitModelAuthoring(useViewerStore,preview,new Set([0]),'unavailable named frame').ok,false);assert.deepEqual(await graph(store,view),before);
- // Independently saving/reparsing supplies the inherited reader's actual
- // current native source. That source is supported without another resolver.
- const savedView=new MutablePropertyView(saved.properties,SAMPLE_MODEL);configureMutationView(savedView,saved);
- useViewerStore.setState({models:new Map([[SAMPLE_MODEL,{...model,ifcDataStore:saved,maxExpressId:Math.max(...saved.entityIndex.byId.keys())}]]),mutationViews:new Map([[SAMPLE_MODEL,savedView]]),storeEditors:new Map()});
- const current=readSplitSnapshot(saved,new StoreEditor(saved,savedView),f.id,'m'),ready=previewModelAuthoring(useViewerStore.getState(),f.batch([{...f.operation,expected:current}]));assert.equal(ready.rows[0].status,'ready',ready.rows[0].issue ?? '');
- const result=commitModelAuthoring(useViewerStore,ready,new Set([0]),'independently saved current frame');assert.ok(result.ok,result.ok?'':result.detail??result.reason);assert.equal(readHostOpeningExtents(await parseIfc(editedModelBytes(saved,savedView)),f.id).cuts.length,1);
+ const current=readSplitSnapshot(store,editor,f.id,'m');if(current.kind!=='slab')assert.fail('The actual native host must resolve as a slab');
+ assert.deepEqual(current.chain.placementOrigin,[22,21,3]);
+ assert.deepEqual(slabEvidence(f.id),{units:'m',status:'available',expected:current},'the unchanged guard accepts only the complete current frame');
+ const before=await graph(store,view);assert.equal(commitModelAuthoring(useViewerStore,preview,new Set([0]),'old named frame').ok,false);assert.deepEqual(await graph(store,view),before);
+ const ready=previewModelAuthoring(useViewerStore.getState(),f.batch([{...f.operation,expected:current}]));assert.equal(ready.rows[0].status,'ready',ready.rows[0].issue ?? '');
+ const result=commitModelAuthoring(useViewerStore,ready,new Set([0]),'current named frame');assert.ok(result.ok,result.ok?'':result.detail??result.reason);
+ const after=await parseIfc(editedModelBytes(store,view));assert.equal(readHostOpeningExtents(after,f.id).cuts.length,1);assert.equal(after.getEntity(localId)?.attributes[1],axis.expressId);
+ assert.deepEqual(undoModelChanges(useViewerStore,result.receipt),{ok:true});assert.deepEqual(await graph(store,view),before,'grouped Undo preserves the prior live named edit and removes the complete cut graph');
 });
 
 test('#7310 a publicly deleted native slab refuses a previously reviewed opening without restoring the host',async()=>{

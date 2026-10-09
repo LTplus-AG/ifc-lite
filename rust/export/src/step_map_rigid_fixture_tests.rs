@@ -157,70 +157,138 @@ fn issue_6692_real_house_and_minibim_all_product_frames_and_original_records_are
             !representatives.is_empty(),
             "real opening hosts must be sampled"
         );
-        for id in representatives {
-            let old = &before.elements[&id];
-            let new = &after.elements[&id];
-            assert_eq!(new.color, old.color);
-            assert_eq!(new.global_id, old.global_id);
-            assert_eq!(new.name, old.name);
-            let expected: Vec<_> = old
-                .vertices
-                .iter()
-                .map(|point| {
-                    let p = geo.local_to_map(point[0], point[1], point[2]);
-                    nalgebra::Vector3::new(p.0, p.1, p.2)
-                })
-                .collect();
-            let actual: Vec<_> = new
-                .vertices
-                .iter()
-                .map(|point| nalgebra::Vector3::from_column_slice(point))
-                .collect();
-            for (points, faces, target, target_faces) in [
-                (&expected, &old.faces, &actual, &new.faces),
-                (&actual, &new.faces, &expected, &old.faces),
-            ] {
-                let centroids = faces.iter().map(|face| {
-                    (points[face[0] as usize] + points[face[1] as usize] + points[face[2] as usize])
-                        / 3.
-                });
-                for point in points.iter().copied().chain(centroids) {
-                    let distance = target_faces
-                        .iter()
-                        .map(|face| {
-                            point_triangle_distance(
-                                point,
-                                target[face[0] as usize],
-                                target[face[1] as usize],
-                                target[face[2] as usize],
-                            )
-                        })
-                        .fold(f64::INFINITY, f64::min);
-                    assert!(
-                        distance < 0.001,
-                        "{} product {id}: physical surface distance {distance}",
-                        path
-                    );
-                }
+        assert_physical_surfaces(path, &before, &after, &geo, &representatives);
+    }
+}
+
+/// #7335: ACCA usBIM's public IFC4X3 bridge carries a rotated map conversion,
+/// three alignments and 1,101 IfcLinearPlacements. Every product frame, and the
+/// physical surface of linearly placed parts, must survive normalization.
+#[test]
+fn issue_7335_real_alignment_bridge_with_linear_placements_preserves_physical_frames() {
+    let path = "buildingsmart/Viadotto_Acerno.ifc";
+    let Some(bytes) = crate::test_support::fixture_opt(path) else {
+        return;
+    };
+    let source = String::from_utf8(bytes).expect("ACCA bridge fixture is UTF-8");
+    verify_source(&source, 7_051);
+    let plan = plan_map_conversion_normalization(source.as_bytes()).unwrap();
+    let output = apply_preserving_header(&source, &plan);
+    let before = super::tests::world_mesh(&source);
+    let after = super::tests::world_mesh(&output);
+    assert_eq!(
+        before.elements.keys().collect::<Vec<_>>(),
+        after.elements.keys().collect::<Vec<_>>(),
+        "real producer geometry ownership"
+    );
+    let mut decoder = EntityDecoder::new(&source);
+    let mut scanner = EntityScanner::new(&source);
+    let mut kinds = Vec::new();
+    let mut linear = Vec::new();
+    while let Some((id, kind, _, _)) = scanner.next_entity() {
+        let kind = IfcType::from_str(kind);
+        if kind.is_subtype_of(IfcType::IfcProduct) && before.elements.contains_key(&id) {
+            let product = decoder.decode_by_id(id).unwrap();
+            let placement = decoder.decode_by_id(product.get_ref(5).unwrap()).unwrap();
+            if placement.ifc_type == IfcType::IfcLinearPlacement {
+                linear.push(id);
             }
-            let area = |points: &[nalgebra::Vector3<f64>], faces: &[[u32; 3]]| {
-                faces
+        }
+        kinds.push((id, kind));
+    }
+    let geo = GeoRefExtractor::extract(&mut decoder, &kinds)
+        .unwrap()
+        .unwrap();
+    assert!(
+        geo.x_axis_ordinate.abs() > 0.5,
+        "the authored map is rotated"
+    );
+    assert!(linear.len() > 100, "linearly placed products are rendered");
+    // One linearly placed product per IFC type (railings, bearings, members,
+    // accessories), bounded in size: the surface oracle is brute force.
+    let mut types = std::collections::HashSet::new();
+    let sample: Vec<_> = linear
+        .iter()
+        .copied()
+        .filter(|id| before.elements[id].faces.len() <= 2_000)
+        .filter(|id| types.insert(before.elements[id].ifc_type.clone()))
+        .collect();
+    assert!(sample.len() >= 3, "{sample:?}");
+    assert_physical_surfaces(path, &before, &after, &geo, &sample);
+}
+
+/// Every sampled product's physical surface, mapped through the authored
+/// conversion before normalization, matches the normalized surface both ways.
+fn assert_physical_surfaces(
+    path: &str,
+    before: &ifc_lite_processing::GeometryDataExport,
+    after: &ifc_lite_processing::GeometryDataExport,
+    geo: &ifc_lite_core::GeoReference,
+    ids: &[u32],
+) {
+    for &id in ids {
+        let old = &before.elements[&id];
+        let new = &after.elements[&id];
+        assert_eq!(new.color, old.color);
+        assert_eq!(new.global_id, old.global_id);
+        assert_eq!(new.name, old.name);
+        let expected: Vec<_> = old
+            .vertices
+            .iter()
+            .map(|point| {
+                let p = geo.local_to_map(point[0], point[1], point[2]);
+                nalgebra::Vector3::new(p.0, p.1, p.2)
+            })
+            .collect();
+        let actual: Vec<_> = new
+            .vertices
+            .iter()
+            .map(|point| nalgebra::Vector3::from_column_slice(point))
+            .collect();
+        for (points, faces, target, target_faces) in [
+            (&expected, &old.faces, &actual, &new.faces),
+            (&actual, &new.faces, &expected, &old.faces),
+        ] {
+            let centroids = faces.iter().map(|face| {
+                (points[face[0] as usize] + points[face[1] as usize] + points[face[2] as usize])
+                    / 3.
+            });
+            for point in points.iter().copied().chain(centroids) {
+                let distance = target_faces
                     .iter()
                     .map(|face| {
-                        (points[face[1] as usize] - points[face[0] as usize])
-                            .cross(&(points[face[2] as usize] - points[face[0] as usize]))
-                            .norm()
-                            / 2.
+                        point_triangle_distance(
+                            point,
+                            target[face[0] as usize],
+                            target[face[1] as usize],
+                            target[face[2] as usize],
+                        )
                     })
-                    .sum::<f64>()
-            };
-            let old_area = area(&expected, &old.faces);
-            let new_area = area(&actual, &new.faces);
-            assert!(
-                (new_area - old_area).abs() < old_area.max(1.) * 0.001,
-                "physical surface area for {id}"
-            );
+                    .fold(f64::INFINITY, f64::min);
+                assert!(
+                    distance < 0.001,
+                    "{} product {id}: physical surface distance {distance}",
+                    path
+                );
+            }
         }
+        let area = |points: &[nalgebra::Vector3<f64>], faces: &[[u32; 3]]| {
+            faces
+                .iter()
+                .map(|face| {
+                    (points[face[1] as usize] - points[face[0] as usize])
+                        .cross(&(points[face[2] as usize] - points[face[0] as usize]))
+                        .norm()
+                        / 2.
+                })
+                .sum::<f64>()
+        };
+        let old_area = area(&expected, &old.faces);
+        let new_area = area(&actual, &new.faces);
+        assert!(
+            (new_area - old_area).abs() < old_area.max(1.) * 0.001,
+            "physical surface area for {id}"
+        );
     }
 }
 
@@ -317,9 +385,16 @@ pub(super) fn verify_source(source: &str, count: usize) {
         assert!(matches!(
             node.ifc_type,
             IfcType::IfcLocalPlacement
+                | IfcType::IfcLinearPlacement
                 | IfcType::IfcMapConversion
                 | IfcType::IfcGeometricRepresentationContext
         ));
+        if node.ifc_type == IfcType::IfcLinearPlacement {
+            // #7335: baked for Cesium ion under the same ID and parent.
+            let baked = after.decode_by_id(patch.express_id).unwrap();
+            assert_eq!(baked.ifc_type, IfcType::IfcLocalPlacement);
+            assert_eq!(baked.get_ref(0), node.get_ref(0));
+        }
     }
 }
 

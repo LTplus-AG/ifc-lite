@@ -66,6 +66,11 @@ pub(super) fn replace(record: &Record<'_>, edits: &[(usize, String)]) -> Result<
     Ok(MapConversionEntityPatch { express_id: record.id, line })
 }
 
+/// Replace a whole record under its original ID, e.g. to change its entity type.
+pub(super) fn retype(record: &Record<'_>, kind: &str, arguments: String) -> MapConversionEntityPatch {
+    MapConversionEntityPatch { express_id: record.id, line: format!("#{}={kind}({arguments});", record.id) }
+}
+
 pub(super) fn real(value: f64) -> Result<String, String> {
     if !value.is_finite() { return Err("non-finite STEP REAL".into()); }
     let text = value.to_string();

@@ -14,6 +14,8 @@ import { IfcTypeEnum, IfcTypeEnumFromString } from '@ifc-lite/data';
 import { ENTITY_ATTRIBUTES, type ColumnDefinition, type ListDefinition, type ListGrouping } from '@ifc-lite/lists';
 import { onlyKeys, parseEnvelope, parseNativeArtifactScope, record, requiredText, text, type ArtifactEnvelope } from './artifact-json';
 import { canonicalClasses, knownClassRefusal, parseProposalGroups } from './artifact-rules';
+import type { JsonResponseSchema } from '@ifc-lite/ai';
+import { profileLiteral, profileObject, profileTitle } from './response-profile-schema';
 
 export type ListDraft = Pick<ListDefinition, 'name' | 'description' | 'entityTypes' | 'groups' | 'columns' | 'sortBy' | 'grouping'>;
 
@@ -28,6 +30,20 @@ export interface ListProposal extends ArtifactEnvelope {
 export const COLUMN_LIMIT = 30;
 const COLUMN_SOURCES = ['attribute', 'property', 'quantity', 'material', 'classification', 'spatial', 'model'] as const;
 const SPATIAL_LEVELS = ['Container', 'Storey', 'Building', 'Site', 'Project'];
+
+/** #7234 concrete wall-measurement preset, owned beside its native parser. */
+export function wallListResponseProfile(area: { set: string; name: string }, rating: { set: string; name: string }): JsonResponseSchema {
+  const column = (id: string, source: 'quantity' | 'property', field: typeof area) => profileObject({
+    id: profileLiteral(id), source: profileLiteral(source), psetName: profileLiteral(field.set), propertyName: profileLiteral(field.name),
+  });
+  return { name: 'assistant_wall_measurement_list', schema: profileObject({
+    version: profileLiteral(1), kind: profileLiteral('list.proposal'), title: profileTitle,
+    list: profileObject({ name: profileTitle,
+      entityTypes: { type: 'array', items: profileLiteral('IfcWall'), minItems: 1, maxItems: 1 },
+      columns: { type: 'array', items: { anyOf: [column('area', 'quantity', area), column('fire-rating', 'property', rating)] }, minItems: 2, maxItems: 2 },
+    }),
+  }) };
+}
 
 function parseColumn(value: unknown, index: number, ids: Set<string>): ColumnDefinition {
   const at = `Column ${index + 1}`;

@@ -484,6 +484,9 @@ importers:
       '@webgpu/types':
         specifier: ^0.1.74
         version: 0.1.74
+      ajv:
+        specifier: ^8.17.1
+        version: 8.20.0
       fake-indexeddb:
         specifier: ^6.2.5
         version: 6.2.5

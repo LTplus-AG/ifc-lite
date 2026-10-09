@@ -1,7 +1,6 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
-
 /**
  * Preflight for a reviewed authoring batch: resolve every element, storey,
  * type and material; check the edit gate and each expected class, name, type,
@@ -10,7 +9,7 @@
  * pure snapshot (it writes nothing); commit re-runs it and refuses if
  * anything moved since.
  */
-
+import { readNativeReplacementExpected } from './model-authoring-replacement';
 import { authoringSlabOpeningGhost } from './model-authoring-slab-opening-ghost';
 import { verifySlabOpeningHost } from './model-authoring-slab-opening';
 import { stairRailingGhost } from './model-authoring-stair-railing-ghost';
@@ -76,7 +75,7 @@ function existing(ctx: Context, target: ExistingElement, row: AuthoringRow): num
   join(row, modelId);
   const r = reader(ctx, modelId);
   if ((row.op.op.startsWith('stair.') || row.op.op.startsWith('railing.')) && !uniqueSplitGuid(r.dataStore, r.editor, target.globalId)) throw new Refusal('ambiguous-target', 'The native stair or railing target GlobalId is not unique in its owning model');
-  if ((row.op.op === 'element.align' || (row.op.op === 'element.rotate' && !!row.op.pivot) || row.op.op === 'element.split' || row.op.op === 'element.trimExtend' || row.op.op === 'type.detach') && !uniqueSplitGuid(r.dataStore, r.editor, target.globalId)) throw new Refusal('ambiguous-target', 'The native target GlobalId is not unique in its owning model');
+  if ((row.op.op === 'element.replace' || row.op.op === 'element.align' || (row.op.op === 'element.rotate' && !!row.op.pivot) || row.op.op === 'element.split' || row.op.op === 'element.trimExtend' || row.op.op === 'type.detach') && !uniqueSplitGuid(r.dataStore, r.editor, target.globalId)) throw new Refusal('ambiguous-target', 'The native target GlobalId is not unique in its owning model');
   const ifcClass = className(r, expressId);
   const name = nameOf(r, expressId);
   row.before.ifcClass = ifcClass;
@@ -163,6 +162,10 @@ function resolve(ctx: Context, row: AuthoringRow): void {
         if (sameNativeDimensions(current, profileInMetres(op.Profile, ctx.batch.units))) throw new Refusal('unchanged', 'Already this Profile');
       }
       return;
+    }
+    case 'element.replace': {
+      row.resolved.target=row.expressId=existing(ctx,op.target,row);const r=reader(ctx,row.modelId!);readNativeReplacementExpected(r.dataStore,r.editor,row.expressId);
+      const storey=locate(ctx,op.storey);join(row,storey.modelId);row.resolved.storey=storey.expressId;row.before.storeyName=nameOf(r,storey.expressId);row.previewUnavailable=true;return;
     }
     case 'stair.resize': case 'stair.delete': case 'railing.delete': case 'stair.replace': case 'railing.replace': {
       row.resolved.target=row.expressId=existing(ctx,op.target,row);

@@ -14,6 +14,7 @@
  * ghost; their row says what changes.
  */
 
+import { replacementCreation } from './model-authoring-replacement';
 import { alignmentGhosts } from '@/lib/commands/modeling/align-ghosts';
 import { authoringSlabOpeningGhost } from './model-authoring-slab-opening-ghost';
 import { stairRailingGhost } from './model-authoring-stair-railing-ghost';
@@ -156,6 +157,7 @@ export function authoringGhosts(state: ViewerState, preview: ModelAuthoringPrevi
     if (row.op.op === 'element.split') { const mesh = authoringSplitMarker(state, preview.batch, row, id); if (mesh) meshes.push(mesh); continue; }
     switch (row.op.op) {
       case 'stair.create': case 'railing.create': case 'stair.replace': case 'railing.replace': {const mesh=stairRailingGhost(state,preview.batch,row,id);row.previewUnavailable=!mesh;if(mesh)meshes.push(mesh);break;}
+      case 'element.replace': {const creation=replacementCreation(row.op),created={...row,op:creation};const mesh=creation.op==='element.create'?createGhost(state,preview.batch,created,id):stairRailingGhost(state,preview.batch,created,id);row.previewUnavailable=!mesh;row.previewOuterBodyOnly=true;if(mesh)meshes.push(mesh);break;}
       case 'element.create': { const mesh = createGhost(state, preview.batch, row, id); if (mesh) meshes.push(mesh); break; }
       case 'hosted.create': { const mesh = 'params' in row.op ? authoringSlabOpeningGhost(state,row,preview.rows,id) : hostedGhost(state, preview.batch, preview, row, id); if (mesh) meshes.push(mesh); break; }
       case 'element.copy': case 'element.array': meshes.push(...authoringCopyGhosts(state, preview.batch, row, id)); break;

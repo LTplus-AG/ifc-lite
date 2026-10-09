@@ -2,7 +2,7 @@
 
 Single source of truth for progress. Update it in the campaign PR (`claude/stoic-cannon-6hceqo`) whenever a pitch PR changes state. Legend: ⬜ todo · 🟨 in progress · 🟦 in review (PR ready) · ✅ merged · ⏸ blocked.
 
-_Last updated: 2026-10-08 (session 1: P-04 + P-12 done as drafts; P-03/P-06/P-07 started)._
+_Last updated: 2026-10-09 (session 1 resumed after restart: five interrupted pitches preserved as WIP, see session log)._
 
 ## Pitches
 
@@ -12,15 +12,15 @@ Umbrella PR: #7143 (this tracker).
 |---|---|---|---|---|
 | P-01 Engine completeness | `claude/ids-studio-p01-engine` | #7171 | 🟨 | Draft PR: writer complete (307/307 round-trip), audit 27/27 invalid detected, 0/307 false positives, `it` locale. IDS-009 blocked, IDS-013 deferred; see worklog/P-01.md |
 | P-02 Authoring core | `claude/ids-studio-p02-authoring-core` | #7168 | 🟨 | Draft PR: IDS-015–026 done, IDS-027 partial; 173 tests green. Remaining ops (split/merge, `bulk.from*`, setVersion) + GATE-BSDD-001 still to do; see worklog/P-02.md |
-| P-03 Studio UI v1 | `claude/ids-studio-p03-studio-ui` | #7145 | 🟨 | Base P-04 (P-04 merged in); implementation running (session 1) |
+| P-03 Studio UI v1 | `claude/ids-studio-p03-studio-ui` | #7145 | ⏸ | Interrupted 2026-10-08 (usage limit). One UNVERIFIED WIP checkpoint e8aa7a81f (64 files). Needs checks, per-ID split, screenshots |
 | P-04 Lint | `claude/ids-studio-p04-lint` | #7144 | 🟨 | Draft PR (base P-02): IDS-046–054 done, 43 static rules, precision 600 findings / 0 FP (self-labelled), 269 tests, 11 mutations OBSERVED |
 | P-05 Model loop | `claude/ids-studio-p05-model-loop` | #7146 | ⬜ | Draft PR open (charter + work log); not started |
-| P-06 bSDD | `claude/ids-studio-p06-bsdd` | #7147 | 🟨 | Base P-04 (P-04 merged in); implementation running (session 1) |
-| P-07 Agent | `claude/ids-studio-p07-agent` | #7148 | 🟨 | Base P-04 (P-04 merged in); implementation running (session 1) |
+| P-06 bSDD | `claude/ids-studio-p06-bsdd` | #7147 | ⏸ | Interrupted. IDS-069–074 committed by agent (final checks unreported) + WIP evidence baca3552f. Needs checks, fixture licence confirmation |
+| P-07 Agent | `claude/ids-studio-p07-agent` | #7148 | ⏸ | Interrupted. One UNVERIFIED WIP checkpoint 7e18628c8 (91 files; deletes old check-authoring editor — verify supersession) |
 | P-08 Eval | `claude/ids-studio-p08-eval` | #7149 | 🟨 | E2 (307 cases), E4 (24), E5 (19), scorer done; self-check 307/307. Human review + runner pending |
 | P-09 Ingestion & documents | `claude/ids-studio-p09-ingestion` | #7150 | ⬜ | Draft PR open (charter + work log); not started |
-| P-10 Trust & teamwork | `claude/ids-studio-p10-trust` | #7151 | 🟨 | Base P-04 (P-04 merged in); implementation running (session 1) |
-| P-11 Headless | `claude/ids-studio-p11-headless` | #7152 | 🟨 | Base P-04 (P-04 merged in); implementation running (session 1) |
+| P-10 Trust & teamwork | `claude/ids-studio-p10-trust` | #7151 | ⏸ | Interrupted. IDS-104/106/107/108/110 committed; IDS-114 WIP d5b0b85e1 (UNVERIFIED); 105/109/111–113 not started |
+| P-11 Headless | `claude/ids-studio-p11-headless` | #7152 | ⏸ | Interrupted. IDS-115/116/118/119 committed; IDS-120/122 WIP a3e5f591f (UNVERIFIED); 117/121/123 not started |
 | P-12 Standards leadership | `claude/ids-studio-p12-standards` | #7153 | 🟨 | Draft PR (base P-01): IDS-124–126 done; 1.1 preview flag, engine-neutral conformance dashboard (334/334), 5 upstream drafts (not sent) |
 
 ## Backlog items
@@ -214,6 +214,7 @@ Umbrella PR: #7143 (this tracker).
 
 | Date | Session | Summary |
 |---|---|---|
+| 2026-10-09 | 1 | All five running pitch agents (P-03/06/07/10/11) stopped 2026-10-08 ~10:35 UTC on the account usage limit. Their unpushed commits and uncommitted work were pushed as-is; leftovers are single `wip(...) (UNVERIFIED)` commits. PR bodies updated with real partial scope and a "before building on this branch" checklist. **No agents are running.** Next session: verify each WIP before continuing (HANDOVER §4). Owner reconciliation thread on #7143 |
 | 2026-10-08 | 1 | `main` broken twice by #7124 (raw-entity gate + `serverDataModel` material test); evidence and patches on #7171. Found that stacked PRs get no CI lanes (HANDOVER §6). P-10/P-11 started on P-04 |
 | 2026-10-08 | 1 | P-04 lint done (#7144, 43 rules) and P-12 standards done (#7153, engine-neutral per ADR-014). P-02/P-08 revert-oracle evidence pushed; P-02 undo-coverage gap fixed. Main is red on `check-raw-entity-enumeration` (#7124), patch proposed on #7171. P-03/P-06/P-07 started on P-04 |
 | 2026-10-08 | 1 | P-01 pushed: draft PR #7171 (writer complete, audit 27/27, 0 false positives, `it`). **Merge-order note:** when #7171 merges, empty `AUDIT_FALSE_POSITIVES` in the P-08 E2 scorer (#7149) in the same step. P-04 started on top of P-02 |

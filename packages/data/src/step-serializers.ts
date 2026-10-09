@@ -194,6 +194,9 @@ export function escapeStepString(str: string): string {
   const escaped = str
     .replace(/\\/g, '\\\\')  // Backslash
     .replace(/'/g, "''");    // Single quote
+  // Most IFC names/identifiers need no directives. Keep the native string
+  // scans above and avoid rebuilding their printable ASCII result (#7363).
+  if (!/[^\x20-\x7E]/.test(escaped)) return escaped;
   // Directive encoding for everything outside 32-126, one character at a time.
   // Must run AFTER backslash-doubling above: the directive's own backslashes
   // are literal syntax the reader expects undoubled.

@@ -40,6 +40,17 @@ fan-out, memory bandwidth, GPU); a change in those still needs an end-to-end
 A/B (`ab.sh`, the browser rigs below), and a green ratchet is no evidence for it.
 
 
+## Printable ASCII STEP escaping (#7363)
+
+Campaign Group worker profiling attributed substantial work to rebuilding
+already escaped printable ASCII Names character by character. The canonical
+TypeScript escaper now returns its native quote/backslash replacement result
+when no control or non-ASCII directive is needed. Shared cross-language vectors
+and exact byte/roundtrip controls cover the unchanged directive path. This is
+a native authoring/export workload correction, not a browser model-load speed
+claim. A worker profile attributes work; isolated native acceptance under the
+original deadlines is still required before a qualification verdict.
+
 ## Workbench preset controls load on demand (#6926)
 
 The U03 preset controls initially exceeded the eager bundle allowance when

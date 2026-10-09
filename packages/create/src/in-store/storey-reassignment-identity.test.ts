@@ -7,11 +7,22 @@ import { generateIfcGuid } from '@ifc-lite/encoding';
 import { IfcParser, extractPropertiesOnDemand } from '@ifc-lite/parser';
 import { MutablePropertyView, StoreEditor, recordCompoundMutation, undoRecordedMutationOperations } from '@ifc-lite/mutations';
 import { StepExporter } from '@ifc-lite/export';
+import * as nativeCreate from '../index.js';
 import { addOrdinaryElementInStore } from './ordinary-element.js';
 import { AnchorEntityReader, resolveSpatialAnchor } from './resolve-anchor.js';
 import { refId } from './host-geometry-frame.js';
-import { planStoreyReassignment } from './storey-reassignment-plan.js';
-import { reassignElementsToStoreyInStore } from './storey-reassignment.js';
+
+// #7328 published native API contract plus the real IFC semantic cases below.
+// Existing index survives complete production rollback; no deleted private module
+// is imported and no missing capability is substituted with a fallback.
+function reassignElementsToStoreyInStore(...args: Parameters<typeof nativeCreate.reassignElementsToStoreyInStore>) {
+  expect(typeof nativeCreate.reassignElementsToStoreyInStore).toBe('function');
+  return nativeCreate.reassignElementsToStoreyInStore(...args);
+}
+function planStoreyReassignment(...args: Parameters<typeof nativeCreate.planStoreyReassignment>) {
+  expect(typeof nativeCreate.planStoreyReassignment).toBe('function');
+  return nativeCreate.planStoreyReassignment(...args);
+}
 
 async function fixture(persisted: boolean) {
   const bytes = await readFile(new URL('../../../../apps/viewer/public/samples/hello-wall.ifc', import.meta.url));

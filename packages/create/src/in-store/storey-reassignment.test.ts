@@ -7,15 +7,30 @@ import { generateIfcGuid } from '@ifc-lite/encoding';
 import { IfcParser, extractPropertiesOnDemand } from '@ifc-lite/parser';
 import { MutablePropertyView, StoreEditor, recordCompoundMutation, undoRecordedMutationOperations } from '@ifc-lite/mutations';
 import { StepExporter } from '@ifc-lite/export';
+import * as nativeCreate from '../index.js';
 import { addOrdinaryElementInStore } from './ordinary-element.js';
 import { AnchorEntityReader, resolveSpatialAnchor } from './resolve-anchor.js';
 import { placementInAncestor, refId } from './host-geometry-frame.js';
-import { reassignElementsToStoreyInStore } from './storey-reassignment.js';
-import { planStoreyReassignment, planStoreyReassignmentCandidates } from './storey-reassignment-plan.js';
 import { addGridToStore } from './grid.js';
 import { addHostedElementInStore } from './hosted-element.js';
 import { effectiveStoreyId } from './edit/effective-storey.js';
 import { meshStairs, stairMeshBounds, stairWasmAvailable } from './__test__/stair-mesh.oracle.js';
+
+// #7328 published native API contract plus the real IFC semantic cases below.
+// Existing index survives complete production rollback; no deleted private module
+// is imported and no missing capability is substituted with a fallback.
+function reassignElementsToStoreyInStore(...args: Parameters<typeof nativeCreate.reassignElementsToStoreyInStore>) {
+  expect(typeof nativeCreate.reassignElementsToStoreyInStore).toBe('function');
+  return nativeCreate.reassignElementsToStoreyInStore(...args);
+}
+function planStoreyReassignment(...args: Parameters<typeof nativeCreate.planStoreyReassignment>) {
+  expect(typeof nativeCreate.planStoreyReassignment).toBe('function');
+  return nativeCreate.planStoreyReassignment(...args);
+}
+function planStoreyReassignmentCandidates(...args: Parameters<typeof nativeCreate.planStoreyReassignmentCandidates>) {
+  expect(typeof nativeCreate.planStoreyReassignmentCandidates).toBe('function');
+  return nativeCreate.planStoreyReassignmentCandidates(...args);
+}
 
 async function fixture(persisted = false, millimetres = false) {
   const bytes = await readFile(new URL('../../../../apps/viewer/public/samples/hello-wall.ifc', import.meta.url));

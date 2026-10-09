@@ -139,10 +139,11 @@ export async function runModelRequest<Message, Route extends string>(
   let startedAt = Date.now();
   let id = `req-${startedAt}-${++receiptSequence}`;
   let outputFormat: OutputFormat | undefined;
+  let dispatchedOutputSchema = false;
   let provenance: RequestProvenance | undefined;
   const receiptFor = (outcome: UsageReceipt['outcome'], usage: TokenUsage | null): UsageReceipt<Route> => ({
     id, model, route, startedAt, finishedAt: Date.now(), outcome,
-    ...(request.outputSchema && outputFormat ? { outputFormat } : {}),
+    ...(dispatchedOutputSchema && outputFormat ? { outputFormat } : {}),
     ...(provenance ? { provenance } : {}),
     ...(usage ? { usageReported: true as const, ...usage } : { usageReported: false as const }),
   });
@@ -180,6 +181,9 @@ export async function runModelRequest<Message, Route extends string>(
           ...(typeof request.promptVersion === 'string' && /^[A-Za-z0-9][A-Za-z0-9._-]{0,199}$/.test(request.promptVersion) ? { promptVersion: request.promptVersion } : {}),
           ...('value' in inputDigest ? { inputDigest: { algorithm: 'sha256', referent: 'logical-input.v1', value: inputDigest.value } } : { inputDigestUnavailable: inputDigest.unavailable }),
         };
+        // Receipt policy follows the schema actually dispatched, never a
+        // later caller mutation or a schema omitted by explicit preparation.
+        dispatchedOutputSchema = Boolean(input.outputSchema);
         await request.transport({
           model,
           messages: input.messages,

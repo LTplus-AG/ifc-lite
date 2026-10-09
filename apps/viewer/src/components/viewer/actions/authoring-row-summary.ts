@@ -21,6 +21,7 @@ export interface RowSummary { subject: string; before: string; after: string; pr
 const num = (v: number) => String(Number(v.toFixed(3)));
 const point = (p: readonly number[]) => `(${p.map(num).join(', ')})`;
 const ref = (target: { ref: string } | { name: string }, t: T) => 'ref' in target ? t('modelAuthoring.newElement', { ref: target.ref }) : target.name || t('modelChanges.absent');
+const stairPatchDisplay=(expected:import('@ifc-lite/create').StairDimensions,units:string)=>({Width:expected.Width*(units==='mm'?1000:1),RiserHeight:expected.RiserHeight*(units==='mm'?1000:1),TreadLength:expected.TreadLength*(units==='mm'?1000:1),...(expected.WaistThickness===undefined?{}:{WaistThickness:expected.WaistThickness*(units==='mm'?1000:1)})});
 const fields = (value: object, factor = 1) => Object.entries(value).map(([key, entry]) => `${key}=${typeof entry === 'number' ? String(Number((entry * factor).toPrecision(12))) : String(entry)}`).join(', ');
 
 function dims(op: Extract<AuthoringOp, { op: 'element.create' }>, units: string): string {
@@ -49,6 +50,12 @@ export function authoringRowSummary(row: AuthoringRow, batch: ModelAuthoringBatc
         previewNote: t('modelAuthoring.classificationMetadataPreview') };
     case 'hosted.edit':
       return { subject: `${op.target.ifcClass} "${op.target.name}"`, before: `${fields({ Offset: op.expected.offset, Sill: op.expected.sill, ...(op.expected.size ?? {}) })} ${units}`, after: `${fields(op.edit)} ${units}`, previewNote: row.previewUnavailable ? t('modelAuthoring.editPreviewUnavailable') : t('modelAuthoring.hostedEditBoundsPreview') };
+    case 'element.trimExtend':
+      return { subject: `${op.target.ifcClass} "${op.target.name}"`, before: JSON.stringify(before.reach ?? op.expected.snapshot),
+        after: row.resolved.reachPlan ? t('modelAuthoring.trimExtendResult', { mode: row.resolved.reachPlan.op, end: row.resolved.reachPlan.end, length: num(fromMetres(row.resolved.reachPlan.length)), units, joined: row.resolved.reachPlan.joined ? t('modelAuthoring.joined') : '' }) : none,
+        previewNote: [row.resolved.reachPlan && row.resolved.reachPlan.walls.length > 1 ? t('modelAuthoring.reachNeighborPreview') : '', row.previewUnavailable ? t('modelAuthoring.editPreviewUnavailable') : '',
+          row.previewOuterBodyOnly ? t('modelAuthoring.outerBodyPreview') : '',
+          row.previewOmitted?.length ? t('modelAuthoring.filletPreview', { fields: row.previewOmitted.join(', ') }) : ''].filter(Boolean).join(' · ') || undefined };
     case 'element.split': {
       const cut = op.cut.kind === 'slab' ? `${point(op.cut.a)} → ${point(op.cut.b)} ${units}` : `${num(op.cut.distance)} ${units}`;
       const effects = row.resolved.splitEffects;
@@ -57,6 +64,10 @@ export function authoringRowSummary(row: AuthoringRow, batch: ModelAuthoringBatc
         after: t('modelAuthoring.splitResult', { cut, side: effects?.leftId === row.expressId ? 'left' : 'right' }),
         previewNote: `${row.previewUnavailable ? t('modelAuthoring.editPreviewUnavailable') : t('modelAuthoring.splitPreview')}${effects ? ` ${t('modelAuthoring.splitOpenings', effects.openings)}` : ''}` };
     }
+    case 'stair.resize': return {subject:`${op.target.ifcClass} ${op.target.name}`,before:`${fields({Width:op.expected.Width,RiserHeight:op.expected.RiserHeight,TreadLength:op.expected.TreadLength,...(op.expected.WaistThickness===undefined?{}:{WaistThickness:op.expected.WaistThickness})},units==='mm'?1000:1)} ${units}`,after:`${fields({...stairPatchDisplay(op.expected,units),...op.size})} ${units}`,previewNote:t('modelAuthoring.editPreviewUnavailable')};
+    case 'stair.delete': case 'railing.delete': return {subject:`${op.target.ifcClass} ${op.target.name}`,before:op.target.name,after:t('modelChanges.removed'),previewNote:t('modelAuthoring.editPreviewUnavailable')};
+    case 'stair.replace': case 'railing.replace': return {subject:`${op.target.ifcClass} ${op.target.name}`,before:op.target.globalId,after:`${op.op==='stair.replace'?'IfcStair':'IfcRailing'} ${JSON.stringify(op.params)} ${units}`,previewNote:t('modelAuthoring.stairRailingPreview')+(row.previewUnavailable?' '+t('modelAuthoring.editPreviewUnavailable'):'')};
+    case 'stair.create': case 'railing.create': return {subject:`${op.op==='stair.create'?'IfcStair':'IfcRailing'} ${op.params.Name??''}`,before:t('modelAuthoring.notYet'),after:t('modelAuthoring.createdOn',{storey:before.storeyName??op.storey.globalId,dims:`${JSON.stringify(op.params)} ${units}`} ),previewNote:t('modelAuthoring.stairRailingPreview')+(row.previewUnavailable?' '+t('modelAuthoring.editPreviewUnavailable'):'')};
     case 'element.resize': case 'element.profile': {
       const notes = [row.previewUnavailable ? t('modelAuthoring.editPreviewUnavailable') : '',
         row.previewOuterBodyOnly ? t('modelAuthoring.outerBodyPreview') : '',

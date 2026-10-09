@@ -16,6 +16,7 @@
  * total is over the whole selection.
  */
 
+import { authoringReachEvidenceFromTarget } from '@/lib/actions/model-authoring-reach';
 import { IfcQuery } from '@ifc-lite/query';
 import { extractClassificationsOnDemand, extractProjectUnits, materialAssignmentsAvailable, ProjectUnits, type IfcDataStore } from '@ifc-lite/parser';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
@@ -41,6 +42,7 @@ import { effectiveSelectedClass } from '@/components/viewer/properties/effective
 import { propertyDisplayValue } from '@/components/viewer/properties/propertyDisplayValue';
 import { evidenceRow, unavailableCapture, type EvidenceAdapter } from './types';
 import { nativeReadTargets } from '@/lib/actions/model-authoring-read-target';
+import { nativeStairEvidenceFromTarget } from '@/lib/actions/model-authoring-stair-lifecycle';
 import { nativeEditEvidence, nativeRootName } from '@/lib/actions/native-edit-evidence';
 import { nativeTypeEvidence } from '@/lib/actions/native-type-evidence';
 import type { ModelEditTarget } from '@/store/slices/mutation-modelling-records';
@@ -157,8 +159,10 @@ function elementRow(s: ViewerState, ref: EntityRef, source: ModelSource, rich: b
     modelName: source.name,
     type: effectiveSelectedClass(source.store, source.view, ref.expressId),
     name: typeof name === 'string' && name.length > 0 ? bounded(name) : null,
+    nativeTrimExtendExpected: authoringReachEvidenceFromTarget(nativeTarget, ref.expressId),
     attributes, psets, psetCount: data.psets.length, quantities, qsetCount: data.qsets.length,
     nativeEdit: nativeEditEvidence(nativeTarget, ref.expressId),
+    nativeStairExpected: nativeStairEvidenceFromTarget(nativeTarget,ref.expressId),
     nativeType: nativeTypeEvidence(s, nativeTarget, ref.expressId),
     structuralStatus: !source.store ? 'unavailable' : source.store.source?.length ? 'available' : 'unavailable-source',
     structural: structuralEvidence(structuralData, ref.expressId, typeof data.attributes.get('GlobalId') === 'string'

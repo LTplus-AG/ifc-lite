@@ -142,7 +142,7 @@ export async function sendAssistant(prompt: string, model: string, proxyUrl: str
     if (attachments.screenshot) {
       messages[messages.length - 1] = { role: 'user', content: [{ type: 'image_url', image_url: { url: attachments.screenshot } }, { type: 'text', text: userText }] };
     }
-    const outcome = await runModelRequest({
+    const outcome = await runModelRequest({ promptVersion: 'viewer.assistant.v1',
       route, proxyUrl, messages, system, maxOutputTokens: Math.min(ASSISTANT_OUTPUT_TOKENS, preferences?.outputTokens ?? ASSISTANT_OUTPUT_TOKENS), budget, signal: controller.signal,
       timeoutMs: ASSISTANT_TIMEOUT_MS,
       onChunk: chunk => { if (ownsRequest()) useAssistant.setState(s => ({ output: s.output + chunk })); },

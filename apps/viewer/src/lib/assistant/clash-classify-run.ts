@@ -95,7 +95,7 @@ export async function runClassification(options: ClassifyRunOptions): Promise<Cl
     if (!options.isCurrent()) { stale = true; result.status = 'not-run'; continue; }
     result.status = 'running';
     report();
-    const outcome = await runModelRequest({
+    const outcome = await runModelRequest({ promptVersion: 'viewer.clash-classify.v1',
       route: options.route, proxyUrl: options.proxyUrl, budget: options.budget, signal, timeoutMs: CLASSIFY_TIMEOUT_MS,
       maxOutputTokens: CLASSIFY_OUTPUT_TOKENS, system: `${SYSTEM}\n${CLASH_GROUP_OUTPUT_GUIDANCE}`,
       messages: [{ role: 'user', content: `Propose clash groups for chunk ${chunk.index + 1} of ${plan.chunks.length}. `

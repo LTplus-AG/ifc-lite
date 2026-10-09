@@ -55,6 +55,18 @@ test('#7322 actual native evaluation producer stays pure, prepared emission expo
   const undo = undoModelChanges(useViewerStore, receipt); assert.equal(undo.ok, true);
   assert.equal((await parseIfc(editedModelBytes(f.store, view))).entityIndex.byType.get('IFCSPATIALZONE')?.length ?? 0, 0);
 });
+test('#7322 a genuine exported native SpatialZone receipt cannot be imported as a Cost graph', async t => {
+  const f = await seed(t); if (!f) return;
+  const receipt = prepareZoneEmission(useViewerStore, proposal()).commit('explicit native SpatialZone approval');
+  const view = useViewerStore.getState().mutationViews.get('bonsai')!;
+  const saved = await parseIfc(editedModelBytes(f.store, view));
+  assert.equal(saved.entityIndex.byType.get('IFCSPATIALZONE')?.length, 1, 'the receipt originates from a genuine current native emission');
+  assert.ok(receipt.applied.some(row => row.op === 'zones.emit'));
+  assert.ok(decodeModelChangeReceipt(receipt), 'the original native receipt remains importable');
+  const before = structuredClone({ changes: view.getEffectiveChanges(), revision: view.getMutationRevision(), next: view.peekNextExpressId() });
+  assert.equal(decodeModelChangeReceipt({ ...receipt, kind: 'cost.graph' }), null, 'an emitted SpatialZone cannot acquire Cost receipt semantics');
+  assert.deepEqual({ changes: view.getEffectiveChanges(), revision: view.getMutationRevision(), next: view.peekNextExpressId() }, before, 'receipt decoding cannot mutate the native graph');
+});
 test('#7322 stale evaluation cannot be certified from old timing after same-ID set, assignments or native geometry change', async t => {
   const f = await seed(t); if (!f) return;
   const review = prepareZoneEmission(useViewerStore, proposal());

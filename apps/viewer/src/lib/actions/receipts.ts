@@ -58,7 +58,7 @@ export function decodeModelChangeReceipt(value: unknown): ModelChangeReceipt | n
   if (value.undoneAt !== undefined && typeof value.undoneAt !== 'string') return null;
   if (value.kind !== undefined && value.kind !== 'model.authoring' && value.kind !== 'room.command' && value.kind !== 'structural.graph' && value.kind !== 'cost.graph' && value.kind !== 'zones.emit') return null;
   if (value.applied.some(item => record(item) && STRUCTURAL_OPS.includes(item.op as typeof STRUCTURAL_OPS[number])) && value.kind !== 'structural.graph') return null;
-  if (value.applied.some(item => record(item) && item.op === 'zones.emit') && value.kind !== 'zones.emit' && value.kind !== 'cost.graph') return null;
+  if (value.applied.some(item => record(item) && item.op === 'zones.emit') && value.kind !== 'zones.emit') return null;
   if (value.validation !== undefined && !validation(value.validation)) return null;
   return structuredClone(value) as unknown as ModelChangeReceipt;
 }

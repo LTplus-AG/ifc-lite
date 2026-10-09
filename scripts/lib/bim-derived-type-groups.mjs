@@ -5,6 +5,12 @@
 /** Source-owned type groups emitted into the sandbox scripting declarations. */
 export const BIM_DERIVED_TYPE_GROUPS = [
   {
+    title: 'Generic group lifecycle types', namespace: 'BimGroup',
+    sources: ['packages/sdk/src/store-group-types.ts', 'packages/sdk/src/types.ts',
+      'packages/create/src/in-store/group.ts', 'packages/create/src/in-store/group-graph.ts'],
+    roots: ['GroupStoreIdentity', 'GroupStoreSnapshot', 'GroupStoreCreateParams', 'GroupStorePatch'],
+  },
+  {
     title: 'Modelling operation types', namespace: 'BimCreate',
     sources: [
       'packages/create/src/in-store/wall-join.ts', 'packages/create/src/in-store/wall-join-apply.ts',

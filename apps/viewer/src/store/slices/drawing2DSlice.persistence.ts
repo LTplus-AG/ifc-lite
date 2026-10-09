@@ -17,8 +17,8 @@
  * top of a DIFFERENT model.
  *
  * ## The scoping key
- * The key is the model's TRUE full-content hash
- * (`utils/sourceContentHash.ts`'s `computeFullSourceHashFromBlob`, SHA-256) —
+ * The key is the model's placement identity, a SHA-256 over every byte of
+ * the file (`hooks/drawingPersistenceKey.ts`, #7035; a bare SHA-256 before) —
  * NOT `@ifc-lite/cache`'s `source-fingerprint.ts`'s window-sampled fingerprint, which has a
  * proven blind spot (an edit between its sample windows is invisible to it)
  * safe only where an mtime guard and a full-hash revalidation still gate a

@@ -24,7 +24,8 @@ import { DASHBOARD_PRESETS, duplicateChart, modelOverviewDashboard, newChartSpec
 import { AssistantAction } from '@/components/viewer/assistant/AssistantAction';
 import { ChartCard } from './ChartCard';
 import { ChartEditor, type ClashRuleOption } from './ChartEditor';
-import { isSavedComparisonChart } from '@/lib/charts/comparison-source';
+import { useChartEditorRequest } from '../useArtifactEditorRequest';
+import { isRecordedChart } from '@/lib/charts/chart-source';
 import { DashboardGrid } from './DashboardGrid';
 import { DashboardMenu } from './DashboardMenu';
 import { ReportExportDialog } from './ReportExportDialog';
@@ -85,6 +86,7 @@ export function ChartsPanel({ renderer, reportSeams }: ChartsPanelProps) {
   const dashboard = useMemo(() => dashboards.find((d) => d.id === activeDashboardId) ?? null, [dashboards, activeDashboardId]);
   const scope = dashboard?.scope ?? { kind: 'all' as const };
   const [editing, setEditing] = useState<ChartSpec | null>(null);
+  const { version: editorRequestVersion, canSave } = useChartEditorRequest(setEditing, editing?.id);
   // Only SAVED charts decide which IFC fields the shared datasets carry. The
   // editor's draft binds to a synthesized column of its own (`editorColumns`),
   // so picking through fields never rebuilds every card's dataset (#4833).
@@ -109,7 +111,7 @@ export function ChartsPanel({ renderer, reportSeams }: ChartsPanelProps) {
   const [aggregations, setAggregations] = useState<Map<string, Aggregation | null>>(new Map());
   const chartIds = useMemo(() => dashboard?.charts.map((c) => c.id) ?? [], [dashboard]);
   const chartIdSet = useMemo(() => new Set(chartIds), [chartIds]);
-  const recordedChartIds = useMemo(() => new Set(dashboard?.charts.filter(isSavedComparisonChart).map((chart) => chart.id) ?? []), [dashboard]);
+  const recordedChartIds = useMemo(() => new Set(dashboard?.charts.filter(isRecordedChart).map((chart) => chart.id) ?? []), [dashboard]);
   const onAggregation = useCallback((spec: ChartSpec, aggregation: Aggregation | null) => {
     setAggregations((prev) => (prev.get(spec.id) === aggregation ? prev : new Map(prev).set(spec.id, aggregation)));
   }, []);
@@ -143,18 +145,18 @@ export function ChartsPanel({ renderer, reportSeams }: ChartsPanelProps) {
 
   const update = useCallback((next: DashboardSpec) => upsertDashboard(next), [upsertDashboard]);
   const saveChart = useCallback((spec: ChartSpec) => {
-    if (!dashboard) return;
+    if (!dashboard || !canSave(spec.id)) return;
     const exists = dashboard.charts.some((c) => c.id === spec.id);
     const previous = dashboard.charts.find((c) => c.id === spec.id);
     const fieldsOf = (chart: ChartSpec) => JSON.stringify([chart.elementField, chart.measureField].map((field) => field ? elementFieldColumnId(field) : null));
-    if (previous && (previous.source !== spec.source || previous.comparisonId !== spec.comparisonId || fieldsOf(previous) !== fieldsOf(spec)) && chartSliceSource === spec.id && chartSlice && chartSliceBuckets) {
+    if (previous && (previous.source !== spec.source || previous.comparisonId !== spec.comparisonId || previous.clashReportId !== spec.clashReportId || fieldsOf(previous) !== fieldsOf(spec)) && chartSliceSource === spec.id && chartSlice && chartSliceBuckets) {
       link.clearSelectionIfOwned(spec.id, chartSlice, chartSliceBuckets);
     }
     const charts = exists ? dashboard.charts.map((c) => (c.id === spec.id ? spec : c)) : [...dashboard.charts, spec];
     const layout = exists ? dashboard.layout : [...dashboard.layout, { chartId: spec.id, x: 0, y: dashboard.layout.length * 4, w: 6, h: 4 }];
     update({ ...dashboard, charts, layout });
     setEditing(null);
-  }, [chartSlice, chartSliceBuckets, chartSliceSource, dashboard, link, update]);
+  }, [chartSlice, chartSliceBuckets, chartSliceSource, dashboard, link, update, canSave]);
   const removeChart = useCallback((id: string) => {
     if (!dashboard) return;
     update({ ...dashboard, charts: dashboard.charts.filter((c) => c.id !== id), layout: dashboard.layout.filter((l) => l.chartId !== id) });
@@ -258,7 +260,7 @@ export function ChartsPanel({ renderer, reportSeams }: ChartsPanelProps) {
       {editing && (
         <div className="border-b border-border bg-muted/20">
           <ChartEditor
-            key={editing.id}
+            key={`${editing.id}:${editorRequestVersion}`}
             spec={editing}
             isNew={!dashboard?.charts.some((chart) => chart.id === editing.id)}
             datasets={datasets}

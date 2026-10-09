@@ -1,7 +1,10 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+import { structuralReviewEn } from './catalogues/structural-review.en';
 
+
+import { newIfcEn } from './catalogues/new-ifc.en';
 import type { LazyTranslationKey } from './lazy-catalogues';
 import { automationEditorEn } from './catalogues/automation-editor.en';
 import { spaceEnvelopeEn } from './catalogues/space-envelope.en';
@@ -12,6 +15,7 @@ import { flowStartupEn } from './catalogues/flow-startup.en';
 import { appearanceAssignmentListEn } from './catalogues/appearance-assignment-list.en';
 import { appearanceAssignmentMembersEn } from './catalogues/appearance-assignment-members.en';
 import { analysisPanelEn } from './catalogues/analysis-panel.en';
+import { capturedArtifactsEn } from './catalogues/captured-artifacts.en';
 import { resultViewEn } from './catalogues/result-view.en';
 import { activityTrayEn } from './catalogues/activity-tray.en';
 import type { reviewWorkspaceEn } from './catalogues/review-workspace.en';
@@ -41,6 +45,7 @@ import { assistantPackTablesEn } from './catalogues/assistant-pack-tables.en';
 import { assistantPackMeasureEn } from './catalogues/assistant-pack-measure.en';
 import { assistantPackAutomationEn } from './catalogues/assistant-pack-automation.en';
 import { chatByokEn } from './catalogues/chat-byok.en';
+import { costReviewEn } from './catalogues/cost-review.en';
 import { modelChangesEn } from './catalogues/model-changes.en';
 import { clashGroupApplyEn } from './catalogues/clash-group-apply.en';
 import { tableCorrectionsEn } from './catalogues/table-corrections.en';
@@ -51,6 +56,7 @@ import { assistantUsageEn } from './catalogues/assistant-usage.en';
 import { aiReportsEn } from './catalogues/ai-reports.en';
 import { flowAssistantEn } from './catalogues/flow-assistant.en';
 import { modelAuthoringEn } from './catalogues/model-authoring.en';
+import { roomReviewEn } from './catalogues/room-review.en';
 import { sceneActionsEn } from './catalogues/scene-actions.en';
 import { checkAuthoringEn } from './catalogues/check-authoring.en';
 import { assistantArtifactsEn } from './catalogues/assistant-artifacts.en';
@@ -146,11 +152,14 @@ import { zonesPanelEn } from './catalogues/zones-panel.en';
 
 /** English is assembled from feature catalogues so no locale becomes a monolith. */
 export const en = {
+  ...newIfcEn,
+  ...structuralReviewEn,
   ...semanticEn,
   ...semanticResultsEn,
   ...semanticIdentityEn,
   ...analysisPanelEn,
   ...resultViewEn,
+  ...capturedArtifactsEn,
   ...activityTrayEn,
   'reviewWorkspace.title': 'Review',
   ...panelNoModelEn,
@@ -249,6 +258,7 @@ export const en = {
   ...assistantPackAutomationEn,
   ...chatByokEn,
   ...modelChangesEn,
+  ...costReviewEn,
   ...clashGroupApplyEn,
   ...tableCorrectionsEn,
   ...assistantUsageEn,
@@ -258,6 +268,7 @@ export const en = {
   ...aiReportsEn,
   ...flowAssistantEn,
   ...modelAuthoringEn,
+  ...roomReviewEn,
   ...sceneActionsEn,
   ...checkAuthoringEn,
   ...assistantArtifactsEn,

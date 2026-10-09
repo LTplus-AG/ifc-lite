@@ -208,7 +208,7 @@ export interface FederatedEvaluateOptions extends Omit<EvaluateOptions, 'candida
  *  change what the run matches (the clash resolver relies on this, #4215). */
 export interface EvaluatorModel {
   id: string;
-  filterIdentity?: string;
+  filterIdentity?: string; sourceContentHash?: string;
   tagIds?: ReadonlySet<string>;
   store: IfcDataStore | null; mutationView?: MutablePropertyView; // #4946
   /** Host reader for `listCondition` rules (#6190): `@ifc-lite/lists`' `listConditionMatcher(provider)`. */
@@ -414,7 +414,7 @@ function evaluateOneEntity(
     return matCache;
   };
   const classFor = (): readonly ClassificationInfo[] => {
-    if (!classCache) classCache = extractClassificationsOnDemand(ctx.store, expressId);
+    if (!classCache) classCache = extractClassificationsOnDemand(ctx.store, expressId, ctx.mutationView);
     return classCache;
   };
   const attrsFor = (): AttrRows => {

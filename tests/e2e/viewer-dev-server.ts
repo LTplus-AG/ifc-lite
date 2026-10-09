@@ -32,9 +32,10 @@ export async function startViewerDevServer(label: string): Promise<ViewerDevServ
     finally { await rm(cacheDir, { recursive: true, force: true }); }
   };
   try {
-    server = await createServer({ root: join(ROOT, 'apps/viewer'), cacheDir, logLevel: 'error', server: { host: '127.0.0.1', port: 0 } });
-    await server.listen();
-    const url = server.resolvedUrls?.local[0] ?? '';
+    const created: Server = await createServer({ root: join(ROOT, 'apps/viewer'), cacheDir, logLevel: 'error', server: { host: '127.0.0.1', port: 0 } });
+    server = created;
+    await created.listen();
+    const url = created.resolvedUrls?.local[0] ?? '';
     if (!url) throw new Error(`${label} dev server did not expose its URL`);
     return { url, close };
   } catch (error) {

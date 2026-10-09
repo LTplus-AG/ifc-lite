@@ -7,7 +7,16 @@ It holds no provider client, no credentials and no UI state. A host brings its o
 - **Typed outcomes.** `runModelRequest` resolves to `completed`, `truncated`, `cancelled`, `timeout`, `error` or `refused`, never an exception, with an overall deadline and caller cancellation.
 - **Root budgets.** A `RootBudget` caps the requests and output tokens of one task end to end. Every retry, repair, chunk, Flow lane or resumed run reserves from the same root, so no loop can spend more than it allows. Budgets are plain data and can be persisted and restored (`restoreRootBudget`) without resetting what was spent.
 - **Usage receipts.** One receipt per request that reached the transport: model, route, times, outcome and the provider-reported token counts. Counts are never estimated; `usageReported: false` says the provider did not report them. A receipt never holds a prompt, a reply or a credential.
+- **Request provenance.** Dispatched receipts retain the actual granted output-token ceiling, effective parent deadline and a safe terminal-reason enum. `promptVersion` is an optional producer declaration; a generic host remains unknown. An explicit `prepareInput` producer callback serializes `{messages, system?, outputSchema?}` under the parent deadline. The core parses once and dispatches and digests that same owned JSON snapshot. Versioned SHA256 digests bind its sorted-key logical system/messages/schema and exact UTF8 completed output text. Caller model and route changes cannot retarget the dispatched receipt. They identify neither provider wire bytes nor native output artifacts. Generic custom transports without this explicit JSON boundary preserve their opaque inputs untouched and report `inputDigestUnavailable: 'opaque-input'`. No accessor/Proxy detection by reflection is attempted. Explicit serialization is a native producer action, not a metadata probe; a serialization/shape failure returns a request error without dispatch or provenance. JSON parsing/serialization is native request preparation, not bounded digest traversal. Logical digest traversal stops at 100,000 inspected values/fields or 4,000,000 UTF16 units and reports `digest-limit` without refusing the host request or hashing truncated input; this exceeds the viewer's 90,000-unit context plus 1,200,000-unit image limit. Unknown provider reasons become `unknown`; raw error text, endpoints and credentials are excluded. Legacy receipts omit provenance rather than reconstructing it.
 - **Bounded JSON output.** `parseJsonOutput` accepts one complete JSON value (optionally in a single ```json fence), bounded by size, depth and value count, and refuses truncated replies and prototype keys. It never extracts JSON from prose.
+- **Response schemas.** An optional `outputSchema: JsonResponseSchema` carries an actual JSON object contract to the transport. A transport that sends it reports `onOutputFormat('json-schema')`; a parser-only transport reports `text`. Typed-request receipts include the reported `outputFormat`, describing the outgoing protocol rather than promising model quality or validating evidence. It stays absent when cancellation prevents dispatch or the transport does not report its protocol. Receipts never contain the schema or its source identifiers. Unsupported schema requests fail without a hidden retry as text.
+
+A host that detects a documented provider limit before dispatch can return
+`{ kind: 'refused', reason: 'unsupported-schema', message }`. This outcome has
+no usage receipt and does not consume the root budget; it differs from budget
+exhaustion. Native Flow nodes report the limitation without claiming rows were
+sent. The viewer checks Anthropic's documented 16-union and 24-optional-parameter
+limits before reserving a request.
 
 ## Install
 
@@ -34,7 +43,9 @@ const transport: AiTransport<Message> = async (call) => {
 const budget = createRootBudget({ maxRequests: 6, maxOutputTokens: 8000 });
 const outcome = await runModelRequest({
   model: 'my-model', route: 'my-host', transport,
+  promptVersion: 'my-host.classification.v1',
   messages: [{ role: 'user', content: 'Classify this clash.' }],
+  prepareInput: () => JSON.stringify({ messages: [{ role: 'user', content: 'Classify this clash.' }] }),
   maxOutputTokens: 1024, routeCeiling: 8192, budget, timeoutMs: 60_000,
 }, { onReceipt: (receipt) => console.log(receipt.outcome, receipt.usageReported) });
 
@@ -69,3 +80,9 @@ the artifact validator. See the [Flow guide](../../docs/guide/flow.md).
 `chatCompletionsTransport` consumed by CLI and MCP Flow hosts. Both hosts route
 every call through `runModelRequest` with one persistable root pool; credentials
 remain host configuration. The request-core and artifact entries stay separate.
+
+`FlowAiConfig.structuredOutput` explicitly enables `response_format` for a
+compatible upstream. `flowAiConfig` reads `IFC_LITE_AI_STRUCTURED_OUTPUT=true`
+or `false`; the exact official OpenAI endpoint defaults to enabled, while
+arbitrary compatible endpoints, including the default OpenRouter endpoint,
+default to parser-only. Configure support for the actual upstream model.

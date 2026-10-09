@@ -38,6 +38,8 @@ import { useViewerStore } from '@/store';
 import type { ZoneSet } from '@/lib/zones';
 import { collectScopeTypes } from '@/lib/lists/scope-types';
 import { rebuildGrouping } from './list-table-utils';
+import { GroupingBody } from './ListGroupingBody';
+import { CapturedScopeControl } from '../result/CapturedScopeControl';
 import { Section, Chip } from './ListBuilder.parts';
 import { ListModelTagScopeEditor } from './ListModelTagScopeEditor';
 import { FilterGroupEditor, type FilterGroupEditorState } from '../FilterGroupEditor';
@@ -157,6 +159,7 @@ export function ListBuilder({ providers, stores, modelIds, initial, onSave, onCa
     initial?.unreadableConditions ?? [],
   );
   // Which federated models the list runs over, by model tag (#4215).
+  const [capturedScope, setCapturedScope] = useState(initial?.capturedScope);
   const [modelTagScope, setModelTagScope] = useState<ListModelTagScope | undefined>(initial?.modelTagScope);
   // Location zones remain available for quick-add columns.
   const zoneSets = useViewerStore((s) => s.zoneSets);
@@ -302,13 +305,13 @@ export function ListBuilder({ providers, stores, modelIds, initial, onSave, onCa
       entityTypes: Array.from(selectedTypes),
       // Preserve a filter-snapshot scope (set at creation; not edited here).
       expressIdsByModel: initial?.expressIdsByModel,
-      modelTagScope,
+      modelTagScope, capturedScope,
       groups: filterState.groups,
       unreadableConditions,
       columns,
       grouping,
     };
-  }, [initial, name, description, selectedTypes, modelTagScope, filterState.groups, unreadableConditions, columns, groupByColumnIds, sumColumnIds]);
+  }, [initial, name, description, selectedTypes, modelTagScope, capturedScope, filterState.groups, unreadableConditions, columns, groupByColumnIds, sumColumnIds]);
 
   const handleSave = useCallback(() => onSave(buildDefinition()), [buildDefinition, onSave]);
   const handleRun = useCallback(() => onExecute(buildDefinition()), [buildDefinition, onExecute]);
@@ -331,6 +334,7 @@ export function ListBuilder({ providers, stores, modelIds, initial, onSave, onCa
 
   return (
     <div className="flex-1 flex flex-col min-h-0">
+      <CapturedScopeControl scope={capturedScope} onChange={setCapturedScope} />
       <ScrollArea className="flex-1">
         <div className="px-3 py-3 space-y-5">
           {/* Identity */}
@@ -925,65 +929,3 @@ function PickerItem({
 // ============================================================================
 // Grouping & totals
 // ============================================================================
-
-function GroupingBody({
-  columns,
-  groupByColumnIds,
-  sumColumnIds,
-  onGroupLevelChange,
-  onToggleSum,
-}: {
-  columns: ColumnDefinition[];
-  /** Ordered group-by columns, outermost first (multi-criteria grouping #1790). */
-  groupByColumnIds: string[];
-  sumColumnIds: Set<string>;
-  onGroupLevelChange: (level: number, id: string) => void;
-  onToggleSum: (id: string) => void;
-}) {
-  const { t } = useTranslation();
-  // One select per active level, plus a trailing empty slot to add the next
-  // level (as long as ungrouped columns remain).
-  const levelSlots = groupByColumnIds.length < columns.length
-    ? [...groupByColumnIds, '']
-    : groupByColumnIds;
-  return (
-    <div className="space-y-3 rounded-md border border-border/60 bg-card p-2.5">
-      <div className="space-y-1.5">
-        {levelSlots.map((id, level) => (
-          <label key={level} className="flex items-center gap-2 text-xs">
-            <span className="w-16 shrink-0 text-muted-foreground">{level === 0 ? t('lists.builder.groupByLabel') : t('lists.builder.thenByLabel')}</span>
-            <select
-              value={id}
-              onChange={(e) => onGroupLevelChange(level, e.target.value)}
-              className="h-7 flex-1 rounded-md border border-border bg-background px-2 text-xs focus:outline-none focus:ring-1 focus:ring-ring"
-            >
-              <option value="">{level === 0 ? t('lists.builder.noneFlatList') : t('lists.builder.none')}</option>
-              {columns
-                .filter((c) => c.id === id || !groupByColumnIds.includes(c.id))
-                .map((c) => (
-                  <option key={c.id} value={c.id}>{c.label ?? c.propertyName}</option>
-                ))}
-            </select>
-          </label>
-        ))}
-        {groupByColumnIds.length > 0 && (
-          <div className="text-2xs text-muted-foreground">
-            {t('lists.builder.groupCountHint')}
-          </div>
-        )}
-      </div>
-      <div>
-        <div className="mb-1 text-2xs text-muted-foreground">
-          {t('lists.builder.totalsHint')}
-        </div>
-        <div className="flex flex-wrap gap-1.5">
-          {columns.map((c) => (
-            <Chip key={c.id} selected={sumColumnIds.has(c.id)} onClick={() => onToggleSum(c.id)}>
-              <span className="font-mono">{t('lists.builder.sumIcon')}</span> {c.label ?? c.propertyName}
-            </Chip>
-          ))}
-        </div>
-      </div>
-    </div>
-  );
-}

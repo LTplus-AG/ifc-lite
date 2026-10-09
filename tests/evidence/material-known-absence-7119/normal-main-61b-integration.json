@@ -1,0 +1,11 @@
+{
+  "base": "61bda95f21e16ce37ddced25ad0432943736a068",
+  "preservedStash": "9bc31648d825cc678addd2ce862a6196770e8e41",
+  "sourcePins": {
+    "packages/parser/src/material-definitions.ts": "1a462d754a3d7117cfb19fed3b2a1feeef07f9a8ad9d863422cba23775d3d510",
+    "packages/parser/test/on-demand-classification-material.test.ts": "83123043c120ce23de6a9e4ab4622d384362294f17d9d629e6730b6f7f6db9ac",
+    "apps/viewer/src/lib/assistant/adapters/selection-materials.test.tsx": "d49b0983d1a40fffb2a248b283a9d6ff4b9fd1a66a6f125af2e07cfc88cb420c",
+    ".changeset/quiet-material-names.md": "8649798f31a12bcbcb8d334947235890d02acf6ec724c5a038d2ab7489f96e36"
+  },
+  "canonicalHelper": "exact61b main helper with only added extractAllMaterialsOnDemand import and two7119 tests"
+}

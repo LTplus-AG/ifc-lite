@@ -31,10 +31,12 @@ import { countDeviationWithinTolerance, withToleranceShare } from '@/lib/point-c
 import { captureAnalysisStamp, type AnalysisStamp } from '@/hooks/useAnalysisStaleness';
 import { buildDeviationCsvReport } from '@/lib/analysis/export-csv';
 import { downloadFile } from '@/lib/export/download';
+import { beginActivity, finishActivity } from '@/lib/activity/activity-journal';
 import { trackExportCompleted } from '@/lib/analytics';
 import { deviationAssetIdentities } from '@/lib/point-cloud/deviation-asset-identity';
 import { cn } from '@/lib/utils';
-import { DeviationHistogramBars, DeviationSummary } from './DeviationStatistics';
+import { DeviationHistogramBars } from './DeviationStatistics';
+import { DeviationResultChrome } from './DeviationResultChrome';
 import { useDeviationStatisticsDerivation } from './useDeviationStatisticsDerivation';
 
 /** The compute pass pegs |d| here; the statistics count points at the peg. */
@@ -87,7 +89,7 @@ export function DeviationPanel({ triangleCount }: DeviationPanelProps) {
   // A placement change, model removal or device loss clears `computed`; drop
   // the copy too (4 B/point), and stop an export reading it.
   useEffect(() => {
-    if (!computed) setDistances(null);
+    if (!computed) { setDistances(null); setStats(null); }
   }, [computed]);
   useEffect(() => {
     const pending = exportRef.current;
@@ -134,6 +136,9 @@ export function DeviationPanel({ triangleCount }: DeviationPanelProps) {
     if (!computed || !distances || !statistics || running || exportRef.current) return;
     const controller = new AbortController();
     exportRef.current = { distances, controller };
+    let cancelledFromTray = false;
+    const job = beginActivity({ kind: 'export', title: 'activityTray.job.export', subject: 'CSV',
+      cancel: () => { if (exportRef.current?.controller === controller) { cancelledFromTray = true; controller.abort(); } } });
     setExporting(true);
     setError(null);
     setExportNotice(null);
@@ -142,6 +147,7 @@ export function DeviationPanel({ triangleCount }: DeviationPanelProps) {
     try {
       // The stored summaries; only the tolerance band is counted for the export.
       const within = await countDeviationWithinTolerance(distances, tolerance, { signal: controller.signal });
+      controller.signal.throwIfAborted();
       const summaries = statistics.assets.map((asset, i) => ({
         ...asset, statistics: withToleranceShare(asset.statistics, tolerance, within.assets[i] ?? 0) }));
       // The pooled row is a pass over every point, never a mean of the rows.
@@ -165,17 +171,23 @@ export function DeviationPanel({ triangleCount }: DeviationPanelProps) {
       if (report) {
         downloadFile(report.content, report.filename, 'text/csv;charset=utf-8');
         trackExportCompleted({ format: 'csv', surface: 'deviation_panel', row_count: report.rows });
+        finishActivity(job, 'completed');
       } else {
         // A COPC scan keeps only the nodes in view; with every node dropped
         // the run measured nothing, and an empty file would explain nothing.
-        setExportNotice(t('deviationPanel.exportNoPointsNotice'));
+        const notice = t('deviationPanel.exportNoPointsNotice');
+        setExportNotice(notice);
+        finishActivity(job, 'failed', { detail: notice });
       }
     } catch (err) {
+      finishActivity(job, controller.signal.aborted ? 'cancelled' : 'failed',
+        controller.signal.aborted ? {} : { detail: err instanceof Error ? err.message : String(err) });
+      if (cancelledFromTray) setExportNotice(t('deviationPanel.exportCancelledNotice'));
       setError(controller.signal.aborted
-        ? t('deviationPanel.resultsChangedError')
+        ? (cancelledFromTray ? null : t('deviationPanel.resultsChangedError'))
         : err instanceof Error ? err.message : String(err));
     } finally {
-      exportRef.current = null;
+      if (exportRef.current?.controller === controller) exportRef.current = null;
       setExporting(false);
     }
   }, [computed, distances, statistics, running, t, tolerance]);
@@ -297,7 +309,7 @@ export function DeviationPanel({ triangleCount }: DeviationPanelProps) {
       {error && (
         <span className="text-2xs text-destructive">{error}</span>
       )}
-      {stats && (
+      {computed && stats && (
         <div className="text-2xs text-muted-foreground">
           {t('deviationPanel.statsLine', {
             points: stats.points.toLocaleString(),
@@ -309,19 +321,17 @@ export function DeviationPanel({ triangleCount }: DeviationPanelProps) {
 
       {/* Always mounted: some screen readers only announce changes inside a live region that already exists. */}
       <output data-testid="deviation-export-notice" className="text-2xs text-muted-foreground">{exportNotice}</output>
-      {computed && distances && statistics && (
-        <button type="button" onClick={handleExport}
-          disabled={running || exporting}
-          className="text-xs px-2 py-1 rounded border border-border text-left hover:bg-accent">
-          {exporting ? t('deviationPanel.exportingCsv') : t('deviationPanel.exportCsv')}
-        </button>
-      )}
-
       {computed && (
-        <>
-          {/* Range slider: half-width in mm. Range from 1 mm to 1 m
-              (logarithmic feel via the millimetre conversion). */}
-          <label className="flex items-center gap-2 mt-1">
+        <DeviationResultChrome statistics={statistics} distancesPresent={distances !== null}
+          tolerance={tolerance} onToleranceChange={setTolerance}
+          actions={distances && statistics && (
+            <button type="button" onClick={handleExport}
+              disabled={running || exporting}
+              className="text-xs px-2 py-1 rounded border border-border text-left hover:bg-accent">
+              {exporting ? t('deviationPanel.exportingCsv') : t('deviationPanel.exportCsv')}
+            </button>
+          )}
+          filters={<label className="flex items-center gap-2 mt-1">
             <span className="text-2xs text-muted-foreground w-12 shrink-0">
               {t('deviationPanel.sliderValueLabel', { value: (halfRange * 1000).toFixed(halfRange < 0.01 ? 1 : 0) })}
             </span>
@@ -336,8 +346,7 @@ export function DeviationPanel({ triangleCount }: DeviationPanelProps) {
               title={t('deviationPanel.rangeSliderTitle')}
               aria-label={t('deviationPanel.rangeSliderAriaLabel')}
             />
-          </label>
-
+          </label>}>
           {distances && <DeviationHistogramBars distances={distances} center={centerOffset} halfRange={halfRange} />}
 
           {/* Legend: blue → white → red gradient with labelled endpoints. */}
@@ -352,15 +361,6 @@ export function DeviationPanel({ triangleCount }: DeviationPanelProps) {
             <span>{t('deviationPanel.legendMaxLabel', { value: (halfRange * 1000).toFixed(0) })}</span>
           </div>
 
-          {(statistics || distances) && (
-            <DeviationSummary
-              statistics={statistics}
-              tolerance={tolerance}
-              onToleranceChange={setTolerance}
-              toleranceEditable={distances !== null}
-            />
-          )}
-
           {colorMode !== 'deviation' && (
             <button
               type="button"
@@ -370,7 +370,7 @@ export function DeviationPanel({ triangleCount }: DeviationPanelProps) {
               {t('deviationPanel.switchToDeviationButton')}
             </button>
           )}
-        </>
+        </DeviationResultChrome>
       )}
     </div>
   );

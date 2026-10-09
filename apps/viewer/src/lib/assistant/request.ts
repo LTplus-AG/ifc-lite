@@ -1,6 +1,8 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+import { STRUCTURAL_GRAPH_GUIDANCE } from '@/lib/actions/structural-graph-proposal';
+
 
 import { resolveStreamRoute } from '@/lib/llm/byok-guard';
 import { LLM_PROXY_URL, runModelRequest } from '@/lib/llm/request-service';
@@ -22,6 +24,11 @@ import { useAssistant } from './conversation';
 import { ensureFlowAiNodes } from '../flow/runner';
 import { preferenceGuidance, preferencesFor, projectScope } from './reuse/preferences';
 import { generationLanguageInstruction } from './language';
+import { selectionGroundingIsCurrent, selectionGroundingText, type SelectionGrounding } from '@/lib/actions/selection-grounding';
+import { roomAttachmentText, roomGroundingIsCurrent, type RoomGrounding } from '@/lib/actions/room-review';
+import { NEW_IFC_GUIDANCE } from '@/lib/actions/new-ifc-file';
+import { COST_GRAPH_GUIDANCE } from '@/lib/actions/cost-graph-proposal';
+import { ROOM_COMMAND_GUIDANCE } from '@/lib/actions/room-command-proposal';
 
 /** Output ceiling per Assistant answer; the route ceiling and root budget may lower it. */
 export const ASSISTANT_OUTPUT_TOKENS = 4096;
@@ -40,6 +47,11 @@ const ASSISTANT_IMAGE_LIMIT = 1_200_000;
 export interface AssistantAttachments {
   /** Prompt block from `selectionGroundingText`. */
   selection?: string;
+  /** Native ownership sidecar for the explicitly attached snapshot; never sent or persisted. */
+  selectionSnapshot?: SelectionGrounding;
+  rooms?: string;
+  /** Native evidence ownership only; no Room execution capability is transported or persisted. */
+  roomSnapshot?: RoomGrounding;
   /** Viewport screenshot as an image data URL; refused for models without image input. */
   screenshot?: string;
 }
@@ -60,6 +72,15 @@ export async function sendAssistant(prompt: string, model: string, proxyUrl: str
     useAssistant.setState({ error: 'stale-evidence', status: 'error' });
     return false;
   }
+  const attachmentCurrent = () => (!attachments.selectionSnapshot || (
+    attachments.selection === selectionGroundingText(attachments.selectionSnapshot)
+    && selectionGroundingIsCurrent(attachments.selectionSnapshot, useViewerStore.getState())))
+    && (!attachments.rooms && !attachments.roomSnapshot || !!attachments.roomSnapshot && roomGroundingIsCurrent(attachments.roomSnapshot)
+      && attachments.rooms === roomAttachmentText(attachments.roomSnapshot));
+  if (!attachmentCurrent()) {
+    useAssistant.setState({ error: 'stale-evidence', status: 'error' });
+    return false;
+  }
   const route = resolveStreamRoute(model, getApiKeys());
   if (route.kind === 'missing-key') {
     useAssistant.setState({ error: 'missing-key', status: 'error' });
@@ -72,7 +93,7 @@ export async function sendAssistant(prompt: string, model: string, proxyUrl: str
     return false;
   }
   // The stored turn records what was attached; the image itself is sent once and never persisted.
-  const userText = [prompt.trim(), attachments.selection, attachments.screenshot ? '[Attached: current viewport screenshot]' : undefined]
+  const userText = [prompt.trim(), attachments.selection, attachments.rooms, attachments.screenshot ? '[Attached: current viewport screenshot]' : undefined]
     .filter(Boolean).join('\n\n');
   // Limit the complete conversation, rather than silently trimming away evidence.
   const messages: StreamMessage[] = [...state.messages.map(({ role, content }) => ({ role, content })), { role: 'user' as const, content: userText }];
@@ -90,13 +111,13 @@ export async function sendAssistant(prompt: string, model: string, proxyUrl: str
   const budget = state.budget;
   useAssistant.setState({ controller, status: 'streaming', error: null, output: '', pendingPrompt: prompt.trim() });
   const staleCheck = () => {
-    if (useAssistant.getState().controller === controller && !evidenceIsCurrent(state.snapshot!)) {
+    if (useAssistant.getState().controller === controller && (!evidenceIsCurrent(state.snapshot!) || !attachmentCurrent())) {
       controller.abort();
       useAssistant.setState({ controller: null, pendingPrompt: null, status: 'error', error: 'stale-evidence', output: '' });
     }
   };
   const unsubscribe = useViewerStore.subscribe(staleCheck);
-  // Sources whose native state lives outside the viewer store (Linked records) notify through their adapter.
+  // Native state outside the viewer store (Linked records, Data validation side) notifies through its adapter.
   const detachSource = adapterFor(state.snapshot.source).subscribe?.(staleCheck);
   const ownsRequest = () => useAssistant.getState().controller === controller && !controller.signal.aborted;
   const fail = (error: string) => {
@@ -115,13 +136,14 @@ export async function sendAssistant(prompt: string, model: string, proxyUrl: str
     // Corrections are proposals only: the user reviews each change before anything is applied.
     if (isReportSource(state.snapshot.source)) system = `${system}\n${MODEL_CHANGE_OUTPUT_GUIDANCE}\n${REPORT_CLAIMS_OUTPUT_GUIDANCE}`;
     // Scene actions are proposals too: nothing changes the view until the user applies them.
-    if (!isFlowSource(state.snapshot.source)) system = `${system}\n${SCENE_ACTION_OUTPUT_GUIDANCE}`;
+    if (!isFlowSource(state.snapshot.source)) system = `${system}\n${SCENE_ACTION_OUTPUT_GUIDANCE}\n${ROOM_COMMAND_GUIDANCE}\n${STRUCTURAL_GRAPH_GUIDANCE}\n${COST_GRAPH_GUIDANCE}\n${NEW_IFC_GUIDANCE}`;
     // IDS, information rules and report outlines are drafted from validation results or any loaded model (P07).
     if (state.snapshot.source === 'validation' || state.snapshot.source === 'loadReport') system = `${system}\n${CHECK_AUTHORING_GUIDANCE}`;
     // Filters, lists, lenses and charts (P13) are proposals reviewed against the loaded models; only a bounded schema digest is sent.
     if (!isFlowSource(state.snapshot.source)) {
       const guidance = await artifactGuidance(useViewerStore.getState(), controller.signal);
       if (!ownsRequest()) return false;
+      if (!attachmentCurrent()) { fail('stale-evidence'); return false; }
       system = `${system}\n${guidance}`;
     }
     system = `${system}\n${generationLanguageInstruction({ ...state.language, generation: options.generationLanguage ?? preferences?.language ?? state.language.generation })}`;
@@ -131,7 +153,7 @@ export async function sendAssistant(prompt: string, model: string, proxyUrl: str
     if (attachments.screenshot) {
       messages[messages.length - 1] = { role: 'user', content: [{ type: 'image_url', image_url: { url: attachments.screenshot } }, { type: 'text', text: userText }] };
     }
-    const outcome = await runModelRequest({
+    const outcome = await runModelRequest({ promptVersion: 'viewer.assistant.v1',
       route, proxyUrl, messages, system, maxOutputTokens: Math.min(ASSISTANT_OUTPUT_TOKENS, preferences?.outputTokens ?? ASSISTANT_OUTPUT_TOKENS), budget, signal: controller.signal,
       timeoutMs: ASSISTANT_TIMEOUT_MS,
       onChunk: chunk => { if (ownsRequest()) useAssistant.setState(s => ({ output: s.output + chunk })); },

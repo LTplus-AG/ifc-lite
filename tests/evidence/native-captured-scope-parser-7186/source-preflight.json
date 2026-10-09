@@ -1,0 +1,24 @@
+{
+  "base": "90cb5d7b28e7e2d1114e1fcc36f2bb38f3bdfff9",
+  "worktree": "/tmp/ifc-7186-visible-proposal-control",
+  "branch": "fix/7186-visible-proposal-control",
+  "issue": {
+    "number": 7186,
+    "state": "CLOSED",
+    "label": "ready",
+    "assignee": "louistrue",
+    "charter": "Native captured selected/visible populations across artifact types; this follow-up repairs stale parser regression only."
+  },
+  "sourcePins": {
+    "apps/viewer/src/lib/assistant/artifacts/artifact-proposals.test.ts": "0a60817c732e2294c2f091986e403844620c73caad6b73bab611a6439eaaa8f7",
+    "apps/viewer/src/lib/assistant/artifacts/artifact-json.ts": "87855b00ec92def985cfc1c5d379c7fef169ce6377f6f3cffd9507d5c1b79745",
+    "apps/viewer/src/lib/assistant/artifacts/filter-proposal.ts": "0c4fcd63c1b09cdbf89bfd417d306d6bddabd981e444d15d7469969fc3b86e61",
+    "apps/viewer/src/lib/assistant/artifacts/captured-artifact-scope.test.tsx": "dfbb75155d47eff4d082c9dcdb7194c03304dcc6277738361c6fab2595829902"
+  },
+  "changedFiles": [
+    "apps/viewer/src/lib/assistant/artifacts/artifact-proposals.test.ts"
+  ],
+  "testsStatus": "UNRUN; no dependencies installed",
+  "plan": "Root Turbo targeted artifact-proposals + existing captured-artifact-scope integration controls, after dependency/runtime/fixture preflight and CPU admission. Baseline test on current unchanged production must fail old visible-refusal assertion; corrected test passes declared selected/visible parser controls and retains unknown/invalid refusals. Appropriate root typecheck/light gates after observed results.",
+  "limits": "No new native population behavior, production/corpus change or actual renderer claim; existing capture tests use actual IFC identities with protocol mesh stubs for visibility."
+}

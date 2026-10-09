@@ -7,7 +7,8 @@ import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import { join, resolve } from 'node:path';
-import { pathToFileURL, fileURLToPath } from 'node:url';
+import { pathToFileURL } from 'node:url';
+import { isMainEntry } from '../lib/is-main-entry.mjs';
 
 const meshFields = [
   'expressId', 'ifcType', 'geometryClass', 'geometryItemId', 'materialId',
@@ -176,7 +177,7 @@ export async function diagnoseOpeningWork(modelPath, { cwd = process.cwd() } = {
   };
 }
 
-if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+if (isMainEntry(import.meta.url)) {
   if (process.argv.length !== 3) throw new Error('Usage: node opening-work-diagnostic.mjs <model.ifc>');
   const methods = ['log', 'info', 'warn', 'error', 'debug'];
   const originals = Object.fromEntries(methods.map(key => [key, console[key]]));

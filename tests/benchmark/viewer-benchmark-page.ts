@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { Page, ConsoleMessage } from '@playwright/test';
-import { READINESS_SPANS, waitForMetadataRenderReadiness, type LoadTraceProbe } from './metadata-render-readiness.js';
+import { READINESS_SPANS, probePageLoadTrace, waitForMetadataRenderReadiness, type LoadTraceProbe } from './metadata-render-readiness.js';
 import {
   compareSpanAndRegexMetrics,
   countersFromLoadTrace,
@@ -149,7 +149,7 @@ export class ViewerBenchmarkPage {
           (globalThis as unknown as { __IFC_LITE_BATCH_SIZING?: unknown }).__IFC_LITE_BATCH_SIZING = c;
         }, cfg);
         console.log(`[Benchmark] batch sizing override: ${batchSizingEnv}`);
-      } catch (e) {
+      } catch {
         console.warn(`[Benchmark] invalid VIEWER_BENCHMARK_BATCH_SIZING: ${batchSizingEnv}`);
       }
     }
@@ -165,7 +165,7 @@ export class ViewerBenchmarkPage {
           (globalThis as unknown as { __IFC_LITE_VISIBILITY_FILTER?: unknown }).__IFC_LITE_VISIBILITY_FILTER = c;
         }, f);
         console.log(`[Benchmark] visibility filter: ${visFilterEnv}`);
-      } catch (e) {
+      } catch {
         console.warn(`[Benchmark] invalid VIEWER_BENCHMARK_VISIBILITY_FILTER: ${visFilterEnv}`);
       }
     }
@@ -350,6 +350,18 @@ export class ViewerBenchmarkPage {
     }
   }
 
+  /**
+   * One cold sample as `scripts/perf/browser-cold-ab.mts` drives it: upload at
+   * once, then wait for metadata + geometry + renderer finalize + canvas. The
+   * cold A/B calls only this, so its tracing setup (`setup()`) and readiness
+   * logic (`waitForMetadataRenderReadiness`, with the console fallback for a
+   * base build that predates the spans) are this page's own, never a copy (#7032).
+   */
+  async loadUntilReady(filePath: string, timeoutMs: number) {
+    await this.loadFile(filePath, false);
+    await this.waitForCompletion(timeoutMs, true);
+  }
+
   async waitForCompletion(timeoutMs: number = 600000, requireMetadataRender = false) {
     if (requireMetadataRender) {
       this.loadEndTime = await waitForMetadataRenderReadiness({
@@ -478,20 +490,7 @@ export class ViewerBenchmarkPage {
   private async probeLoadTrace(): Promise<LoadTraceProbe | null> {
     try {
       return await this.page.evaluate(
-        ({ key, names }: { key: string; names: readonly string[] }) => {
-          type Span = { name: string; end: number | null; attrs?: Record<string, unknown> };
-          const api = (globalThis as unknown as Record<string, { latest?: () => { end: number | null; spans: Span[] } | null } | undefined>)[key];
-          const snapshot = api?.latest?.() ?? null;
-          if (!snapshot) return null;
-          const done: string[] = [];
-          const failed: string[] = [];
-          for (const span of snapshot.spans) {
-            if (span.end === null || !names.includes(span.name)) continue;
-            done.push(span.name);
-            if (span.attrs?.error === true) failed.push(span.name);
-          }
-          return { ended: snapshot.end !== null, done, failed };
-        },
+        probePageLoadTrace,
         { key: LOAD_TRACE_GLOBAL, names: READINESS_SPANS },
       );
     } catch (err) {
@@ -524,7 +523,7 @@ export class ViewerBenchmarkPage {
   private applySpanMetrics(appReportedTotalMs: number | null) {
     // The span root is the app's own total; compare it only with the app's own
     // total line, never with the Playwright-observed wall clock fallback.
-    const regex: Partial<Record<string, number | null>> = { ...this.metrics, totalWallClockMs: appReportedTotalMs };
+    const regex = { ...this.metrics, totalWallClockMs: appReportedTotalMs };
     const span = metricsFromLoadTrace(this.loadTrace);
     this.spanRegexDisagreements = compareSpanAndRegexMetrics(span, regex);
     for (const key of SPAN_METRIC_KEYS) {

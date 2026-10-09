@@ -53,6 +53,13 @@ const traced = createWorkerTraceHost({
 self.onmessage = (e) => { void traced(e.data, async () => { /* handle e.data */ }); };
 ```
 
+If a handler publishes a terminal event before it returns, call
+`traced.flush('shard.scan')` before that event. This completes open spans with that name
+and publishes it with pending counters before the main thread can terminate
+the worker. A plain `flush()` drains only already-completed spans; it cannot
+publish the handler's still-open span. Other in-flight spans remain open, and
+the handler's eventual return does not publish the completed span again.
+
 For phases inside one long handler, `createWorkerPhaseTrace` records spans
 the handler opens itself (`begin`/`end`, `span`, and `step` for sequential
 phases such as a parser's progress callback) and posts them on `flush()`. Call
@@ -105,7 +112,8 @@ perfTally('render.mergeGeometry', vertices, 'vertices');              // render.
   transfer from a clone) and SharedArrayBuffer bytes, per direction.
 - In a worker, `createWorkerTraceHost` switches the worker's registry on with
   tracing and posts its increments after every handler; `host.flush()` posts
-  them early when the main thread is about to terminate the worker.
+  them early when the main thread is about to terminate the worker. Pass the
+  completed span name when its handler has not yet returned.
 - `startFrameMonitor` observes `long-animation-frame` and `longtask`
   (feature-detected). `snapshot().mainThread` sums each type over the load
   window and attributes LoAF blocking time to the innermost main-thread span

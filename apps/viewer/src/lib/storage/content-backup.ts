@@ -9,6 +9,7 @@ import type { BcfPublication } from '../bcf-publication/outbox-types.js';
 import type { ModelChangeReceipt } from '../actions/model-change-commit.js';
 import type { ClashGroupApplication } from '../clash/group-applications.js';
 import type { ReviewWorkspace } from '../review/workspace.js';
+import type { SavedClashReport } from '../clash/saved-report-schema.js';
 import type { StoredSemanticReview } from '../semantic/assist/library.js';
 import type { AssistantRecipe } from '../assistant/reuse/recipe.js';
 import type { AssistantPreferences } from '../assistant/reuse/preferences.js';
@@ -25,8 +26,9 @@ import { BACKUP_DRAFT_PREFIX, draftRecoveryRows, forgetContentDrafts, mergeConte
   pendingContentDrafts, stageContentDrafts, type ContentDraftEvidence } from './content-backup-drafts.js';
 import { CONTENT_KINDS, CONTENT_POLICIES } from './content-kinds.js';
 import { CONTENT_DEFINITIONS, contentKindForLegacyKey } from './content-registry.js';
+import { decodeArtifactLibraries, encodeArtifactLibraries, type StandaloneArtifactLibraries } from './artifact-backup.js';
 
-export interface ContentLibraries {
+export interface ContentLibraries extends StandaloneArtifactLibraries {
   validation: SavedValidationReport[];
   comparison: SavedComparison[];
   document: DocumentSpec[];
@@ -42,6 +44,8 @@ export interface ContentLibraries {
   clashGroupApplications?: ClashGroupApplication[];
   /** Optional for backups written before coordination review decisions existed. */
   reviewWorkspaces?: ReviewWorkspace[];
+  /** Optional for backups written before saved clash reports existed. */
+  clashReports?: SavedClashReport[];
   /** Optional for backups written before reviewed semantic mappings/requirements existed. */
   semanticReviews?: StoredSemanticReview[];
   /** Optional for backups written before saved assistant recipes and project preferences existed. */
@@ -49,7 +53,7 @@ export interface ContentLibraries {
   assistantPreferences?: AssistantPreferences[];
 }
 export interface ContentBackup {
-  version: 1;
+  version: 1 | 2;
   exportedAt: string;
   libraries: ContentLibraries;
   /** Item-level status records distinguish unsaved drafts from committed evidence. */
@@ -69,7 +73,12 @@ export function createContentBackup(libraries: ContentLibraries, status?: Record
       drafts.push({ kind, id: entry.id, raw });
       return [];
     });
-  return { version: 1, exportedAt: new Date().toISOString(), status, libraries: {
+  const artifactLibraries = decodeArtifactLibraries(encodeArtifactLibraries(copied));
+  for (const kind of ['filters', 'lists', 'lenses'] as const) {
+    if (!artifactLibraries[kind]?.length) delete artifactLibraries[kind];
+  }
+  return { version: Object.keys(artifactLibraries).length ? 2 : 1, exportedAt: new Date().toISOString(), status, libraries: {
+    ...artifactLibraries,
     validation: partition('validation', copied.validation, CONTENT_DEFINITIONS.validation.decode),
     comparison: partition('comparison', copied.comparison, CONTENT_DEFINITIONS.comparison.decode),
     document: partition('document', copied.document, CONTENT_DEFINITIONS.document.decode),
@@ -80,18 +89,28 @@ export function createContentBackup(libraries: ContentLibraries, status?: Record
     ...(copied.modelChanges ? { modelChanges: partition('modelChanges', copied.modelChanges, CONTENT_DEFINITIONS.modelChanges.decode) } : {}),
     ...(copied.clashGroupApplications ? { clashGroupApplications: partition('clashGroupApplications', copied.clashGroupApplications, CONTENT_DEFINITIONS.clashGroupApplications.decode) } : {}),
     ...(copied.reviewWorkspaces ? { reviewWorkspaces: partition('reviewWorkspaces', copied.reviewWorkspaces, CONTENT_DEFINITIONS.reviewWorkspaces.decode) } : {}),
+    ...(copied.clashReports ? { clashReports: partition('clashReports', copied.clashReports, CONTENT_DEFINITIONS.clashReports.decode) } : {}),
     ...(copied.semanticReviews ? { semanticReviews: partition('semanticReviews', copied.semanticReviews, CONTENT_DEFINITIONS.semanticReviews.decode) } : {}),
     ...(copied.assistantRecipes ? { assistantRecipes: partition('assistantRecipes', copied.assistantRecipes, CONTENT_DEFINITIONS.assistantRecipes.decode) } : {}),
     ...(copied.assistantPreferences ? { assistantPreferences: partition('assistantPreferences', copied.assistantPreferences, CONTENT_DEFINITIONS.assistantPreferences.decode) } : {}),
   }, drafts: mergeContentDrafts(parseContentDrafts(preservedDrafts), pendingContentDrafts(), drafts) };
 }
 
+/** Guarded artifact rows remain portable; older whole-backup readers reject v2. */
+export function encodeContentBackup(backup: ContentBackup): Omit<ContentBackup, 'libraries'> & { libraries: Record<string, unknown> } {
+  return { ...backup, libraries: { ...backup.libraries, ...encodeArtifactLibraries(backup.libraries) } };
+}
+
 export function parseContentBackup(text: string): ContentBackup {
   const value: unknown = JSON.parse(text);
   if (!value || typeof value !== 'object') throw new Error('Invalid library backup');
   const backup = value as Record<string, unknown>;
-  if (backup.version !== 1 || !backup.libraries || typeof backup.libraries !== 'object') throw new Error('Unsupported library backup');
+  if ((backup.version !== 1 && backup.version !== 2) || !backup.libraries || typeof backup.libraries !== 'object') throw new Error('Unsupported library backup');
   const libraries = backup.libraries as Record<string, unknown>;
+  if (backup.version === 1 && ['filters', 'lists', 'lenses'].some(kind => Object.hasOwn(libraries, kind))) {
+    throw new Error('Standalone artifact libraries require backup version 2');
+  }
+  const artifacts = backup.version === 2 ? decodeArtifactLibraries(libraries) : {};
   const parse = <T extends { id: string }>(kind: string, decode: (value: unknown) => T | null): T[] => {
     const values = libraries[kind];
     if (!Array.isArray(values)) throw new Error(`Invalid ${kind} library`);
@@ -106,7 +125,8 @@ export function parseContentBackup(text: string): ContentBackup {
     }
     return entries;
   };
-  return { version: 1, exportedAt: typeof backup.exportedAt === 'string' ? backup.exportedAt : '', libraries: {
+  return { version: backup.version, exportedAt: typeof backup.exportedAt === 'string' ? backup.exportedAt : '', libraries: {
+    ...artifacts,
     validation: parse('validation', CONTENT_DEFINITIONS.validation.decode),
     comparison: parse('comparison', CONTENT_DEFINITIONS.comparison.decode),
     document: parse('document', CONTENT_DEFINITIONS.document.decode),
@@ -117,6 +137,7 @@ export function parseContentBackup(text: string): ContentBackup {
     ...(libraries.modelChanges !== undefined ? { modelChanges: parse('modelChanges', CONTENT_DEFINITIONS.modelChanges.decode) } : {}),
     ...(libraries.clashGroupApplications !== undefined ? { clashGroupApplications: parse('clashGroupApplications', CONTENT_DEFINITIONS.clashGroupApplications.decode) } : {}),
     ...(libraries.reviewWorkspaces !== undefined ? { reviewWorkspaces: parse('reviewWorkspaces', CONTENT_DEFINITIONS.reviewWorkspaces.decode) } : {}),
+    ...(libraries.clashReports !== undefined ? { clashReports: parse('clashReports', CONTENT_DEFINITIONS.clashReports.decode) } : {}),
     ...(libraries.semanticReviews !== undefined ? { semanticReviews: parse('semanticReviews', CONTENT_DEFINITIONS.semanticReviews.decode) } : {}),
     ...(libraries.assistantRecipes !== undefined ? { assistantRecipes: parse('assistantRecipes', CONTENT_DEFINITIONS.assistantRecipes.decode) } : {}),
     ...(libraries.assistantPreferences !== undefined ? { assistantPreferences: parse('assistantPreferences', CONTENT_DEFINITIONS.assistantPreferences.decode) } : {}),
@@ -139,7 +160,7 @@ async function readImportRows(): Promise<ContentRow[]> {
 /** Preserve originals on conflicts; atomic commit and refusal use one canonical plan. */
 export async function importContentBackup(backup: ContentBackup, readVisible?: () => ContentLibraries, allowCommit = true,
   committed?: (rows: readonly ContentCommitReceipt[]) => void): Promise<number> {
-  const parsed = parseContentBackup(JSON.stringify(backup)), drafts = parsed.drafts ?? [];
+  const parsed = parseContentBackup(JSON.stringify(encodeContentBackup(backup))), drafts = parsed.drafts ?? [];
   stageContentDrafts(drafts);
   const prepared = await prepareContentImport(parsed.libraries), recovery = await draftRecoveryRows(drafts);
   let planned: ContentRow[] = [];
@@ -173,6 +194,8 @@ export async function importContentBackup(backup: ContentBackup, readVisible?: (
       ...(parsed.libraries.modelChanges ? { modelChanges: [] } : {}),
       ...(parsed.libraries.clashGroupApplications ? { clashGroupApplications: [] } : {}),
       ...(parsed.libraries.reviewWorkspaces ? { reviewWorkspaces: [] } : {}),
+      ...(parsed.libraries.clashReports ? { clashReports: [] } : {}),
+
       ...(parsed.libraries.semanticReviews ? { semanticReviews: [] } : {}),
       ...(parsed.libraries.assistantRecipes ? { assistantRecipes: [] } : {}),
       ...(parsed.libraries.assistantPreferences ? { assistantPreferences: [] } : {}) };
@@ -187,6 +210,7 @@ export async function importContentBackup(backup: ContentBackup, readVisible?: (
       if (row.kind === 'modelChanges') { const entry = CONTENT_DEFINITIONS.modelChanges.decode(row.payload); if (entry) (entries.modelChanges ??= []).push(entry); }
       if (row.kind === 'clashGroupApplications') { const entry = CONTENT_DEFINITIONS.clashGroupApplications.decode(row.payload); if (entry) (entries.clashGroupApplications ??= []).push(entry); }
       if (row.kind === 'reviewWorkspaces') { const entry = CONTENT_DEFINITIONS.reviewWorkspaces.decode(row.payload); if (entry) (entries.reviewWorkspaces ??= []).push(entry); }
+      if (row.kind === 'clashReports') { const entry = CONTENT_DEFINITIONS.clashReports.decode(row.payload); if (entry) (entries.clashReports ??= []).push(entry); }
       if (row.kind === 'semanticReviews') { const entry = CONTENT_DEFINITIONS.semanticReviews.decode(row.payload); if (entry) (entries.semanticReviews ??= []).push(entry); }
       if (row.kind === 'assistantRecipes') { const entry = CONTENT_DEFINITIONS.assistantRecipes.decode(row.payload); if (entry) (entries.assistantRecipes ??= []).push(entry); }
       if (row.kind === 'assistantPreferences') { const entry = CONTENT_DEFINITIONS.assistantPreferences.decode(row.payload); if (entry) (entries.assistantPreferences ??= []).push(entry); }

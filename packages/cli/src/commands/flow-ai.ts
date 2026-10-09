@@ -30,7 +30,9 @@ export function createCliAiService(config: FlowAiConfig, budget: RootBudget = cr
     model: config.model,
     request: (call) => runModelRequest({
       model: config.model, route: 'cli', transport, budget, routeCeiling: ROUTE_CEILING, timeoutMs: TIMEOUT_MS,
-      messages: [call.prompt], system: call.system, maxOutputTokens: call.maxOutputTokens, signal: call.signal,
+      prepareInput: () => JSON.stringify({ messages: [call.prompt], system: call.system, outputSchema: call.outputSchema }),
+      messages: [call.prompt], system: call.system, promptVersion: call.promptVersion, maxOutputTokens: call.maxOutputTokens, signal: call.signal,
+      outputSchema: call.outputSchema,
     }),
   };
 }

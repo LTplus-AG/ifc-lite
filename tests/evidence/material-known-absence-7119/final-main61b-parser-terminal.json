@@ -1,0 +1,14 @@
+{
+  "command": [
+    "pnpm",
+    "test",
+    "--filter=@ifc-lite/parser",
+    "--env-mode=loose",
+    "--concurrency=1",
+    "--",
+    "on-demand-classification-material.test.ts"
+  ],
+  "exitCode": 0,
+  "startedUnix": 1791464756.3005266,
+  "finishedUnix": 1791464762.9059622
+}

@@ -8,6 +8,9 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { act } from 'react';
 import { IfcParser, type IfcDataStore } from '@ifc-lite/parser';
+import { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
+import { generateIfcGuid } from '@ifc-lite/encoding';
+import { editedModelBytes } from '@/lib/export/edited-model-bytes';
 import { findDuplicates, groupDuplicateSets, type ClashElement } from '@ifc-lite/clash';
 import { federationRegistry } from '@ifc-lite/renderer';
 import { render, cleanup } from '@/test/render';
@@ -128,7 +131,23 @@ test('duplicate evidence keeps native set totals beyond the row sample and repor
   const elements: ClashElement[] = [];
   const models: FederatedModel[] = [];
   for (const file of files) {
-    const store = await parse(file);
+    let store = await parse(file);
+    if (file === files[0]) {
+      // #7290: Root-only metadata is correct. Add explicit native authored
+      // walls to keep this >100-row sampling proof independent of non-root Names.
+      const sourceId = [...store.entities.expressId].find(id => store.entities.getTypeName(id) === 'IfcWall');
+      assert.ok(sourceId); const wall = store.getEntity(sourceId); assert.ok(wall);
+      const view = new MutablePropertyView(store.properties, file), editor = new StoreEditor(store, view);
+      const authored = Array.from({ length: 32 }, () => {
+        const GlobalId = generateIfcGuid();
+        return { ...editor.addEntity(wall.type, [GlobalId, ...wall.attributes.slice(1)]), GlobalId };
+      });
+      const bytes = editedModelBytes(store, view);
+      store = await new IfcParser().parseColumnar(bytes.buffer as ArrayBuffer, { disableWorkerScan: true });
+      for (const root of authored) assert.equal(store.entities.getGlobalId(root.expressId), root.GlobalId,
+        'independent STEP reparse retains each real authored IfcWall identity');
+      assert.equal(new Set(authored.map(root => root.GlobalId)).size, 32);
+    }
     let maxExpressId = 0;
     for (const id of store.entities.expressId) maxExpressId = Math.max(maxExpressId, id);
     const offset = federationRegistry.registerModel(file, maxExpressId);

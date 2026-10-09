@@ -16,6 +16,7 @@
  * rendered output and pass unmodified (the lift invariant).
  */
 
+import { CapturedScopeControl } from './result/CapturedScopeControl';
 import { useCallback, useState } from 'react';
 import { Plus, Trash2, X, Bookmark, Save } from 'lucide-react';
 import { useShallow } from 'zustand/react/shallow';
@@ -100,7 +101,7 @@ export function SearchModalFilterBuilder() {
     (updater: (prev: FilterGroupEditorState) => FilterGroupEditorState) => {
       const state = useViewerStore.getState();
       const next = updater({ groups: state.searchFilter.groups, activeGroup: state.searchFilterActiveGroup });
-      setSearchFilter({ groups: next.groups, limit: state.searchFilter.limit });
+      setSearchFilter({ ...state.searchFilter, groups: next.groups });
       setActiveFilterGroup(next.activeGroup);
     },
     [setSearchFilter, setActiveFilterGroup],
@@ -162,17 +163,18 @@ export function SearchModalFilterBuilder() {
     if (totalRules === 0) return;
     const name = await promptDialog({ description: t('searchModal.filterBuilder.saveFilterPrompt'), defaultValue: '' });
     if (!name) return;
-    const result = saveFilter(name, filter.groups);
+    const result = saveFilter(name, filter.groups, filter.capturedScope);
     setSavedPresets(result.presets);
     // A refused write used to return the in-memory catalog as though saved —
     // the user saw the filter and lost it next session (#2089).
     if (!result.persisted) {
       toast.error(t('searchModal.filterBuilder.saveFilterFailed'));
     }
-  }, [filter.groups, totalRules, t, promptDialog]);
+  }, [filter.groups, filter.capturedScope, totalRules, t, promptDialog]);
 
   const handleLoadPreset = useCallback((preset: SavedFilterPreset) => {
     setSearchFilter({
+      ...(preset.capturedScope ? { capturedScope: structuredClone(preset.capturedScope) } : {}),
       groups: preset.groups.map((g) => ({ rules: g.rules.map((r) => ({ ...r }) as FilterRule), combinator: g.combinator })),
       limit: filter.limit,
     });
@@ -189,6 +191,7 @@ export function SearchModalFilterBuilder() {
   return (
     <div className="flex flex-col">
       <SearchModalFilterSelector />
+      <CapturedScopeControl scope={filter.capturedScope} onChange={capturedScope => setSearchFilter({ ...useViewerStore.getState().searchFilter, capturedScope })} />
       <div className="flex flex-col gap-3 p-4">
         {/* ── Toolbar: Limit · promote-query · Presets · Save · Reset ── */}
         <div className="flex flex-wrap items-center gap-2 text-xs">

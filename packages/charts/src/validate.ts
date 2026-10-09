@@ -61,6 +61,10 @@ function validateChart(chart: unknown, path: string, errors: DashboardValidation
     if (typeof chart.comparisonId !== 'string' || chart.comparisonId.trim().length === 0) errors.push({ path: `${path}.comparisonId`, message: 'expected a non-empty saved comparison ID' });
     if (chart.source !== 'compare') errors.push({ path: `${path}.comparisonId`, message: 'comparisonId is only valid for the compare source' });
   }
+  if (chart.clashReportId !== undefined) {
+    if (typeof chart.clashReportId !== 'string' || chart.clashReportId.trim().length === 0) errors.push({ path: `${path}.clashReportId`, message: 'expected a non-empty saved clash report ID' });
+    if (chart.source !== 'clash') errors.push({ path: `${path}.clashReportId`, message: 'clashReportId is only valid for the clash source' });
+  }
   if (typeof chart.source !== 'string' || !SOURCES.has(chart.source)) errors.push({ path: `${path}.source`, message: `expected one of ${[...SOURCES].join(', ')}` });
   if (typeof chart.type !== 'string' || !TYPES.has(chart.type)) errors.push({ path: `${path}.type`, message: `expected one of ${[...TYPES].join(', ')}` });
   for (const key of ['elementField', 'measureField'] as const) {
@@ -147,6 +151,11 @@ function validateChart(chart: unknown, path: string, errors: DashboardValidation
       }
       if (typeof chart.source === 'string' && CHART_FILTER_NOT_APPLICABLE_SOURCES.has(chart.source as ChartSource)) {
         errors.push({ path: filterPath, message: 'a source filter is not applicable to bcf or compare' });
+      }
+      // A saved clash report (#6947) keeps no live element ids, so an element
+      // filter has nothing to match; `clashRule` is a row value and still narrows it.
+      if (chart.clashReportId !== undefined && (hasGroups || (typeof chart.filter.selector === 'string' && chart.filter.selector.length > 0))) {
+        errors.push({ path: filterPath, message: 'an element filter is not applicable to a saved clash report' });
       }
     }
   }

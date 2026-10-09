@@ -118,6 +118,7 @@ import { createRequire } from 'node:module';
 import { dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { checkCanonicalRustCodegen } from './lib/check-canonical-rust-codegen.mjs';
+import { isMainEntry } from './lib/is-main-entry.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const require = createRequire(import.meta.url);
@@ -360,7 +361,7 @@ function printResult(r) {
 }
 
 // Only run as a CLI when invoked directly, not when imported by the test file.
-const isMain = process.argv[1] && import.meta.url === `file://${process.argv[1]}`;
+const isMain = isMainEntry(import.meta.url);
 if (isMain) {
   console.log('ifc-lite: checking committed codegen output against a fresh regeneration');
   console.log('─'.repeat(72));

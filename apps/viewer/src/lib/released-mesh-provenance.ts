@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import type { MeshData } from '@ifc-lite/geometry';
+import { registerCpuMeshCopy } from './geometry-cpu-aliases';
 
 // The bounded-memory release callback runs after GPU upload. Retain only
 // identity, not the buffers it explicitly releases. Object lifetime is weak.
@@ -10,16 +11,21 @@ const nonempty = (mesh: MeshData) => mesh.indices.length >= 3 && mesh.positions.
 
 // Triangle/vertex counts the running geometryResult totals still include for a
 // released mesh, so removing it later subtracts what was added (#4874).
-const releasedCounts = new WeakMap<MeshData, MeshGeometryCounts>();
+// Field markers are the assigned zero-byte arrays, never the populated arrays.
+// Replacement empties must not inherit the previous geometry counts (#6584).
+type ReleasedCounts = MeshGeometryCounts & { positions?: Float32Array; indices?: Uint32Array };
+const releasedCounts = new WeakMap<MeshData, ReleasedCounts>();
 
 export interface MeshGeometryCounts { triangles: number; vertices: number }
 
-export function retainReleasedMeshProvenance(mesh: MeshData): void {
+export function retainReleasedMeshProvenance(
+  mesh: MeshData, cleared: { positions?: Float32Array; indices?: Uint32Array } = {},
+): void {
   if (nonempty(mesh)) released.set(mesh, { owner: mesh.expressId, item: mesh.geometryItemId });
   // Only a populated mesh has counts to retain: releasing an already-released
   // mesh must not overwrite them with zero.
   if (mesh.indices.length > 0 || mesh.positions.length > 0) {
-    releasedCounts.set(mesh, { triangles: mesh.indices.length / 3, vertices: mesh.positions.length / 3 });
+    releasedCounts.set(mesh, { ...releasedCounts.get(mesh), ...meshGeometryCounts(mesh), ...cleared });
   }
 }
 
@@ -29,6 +35,7 @@ export function retainReleasedMeshProvenance(mesh: MeshData): void {
  * empty but which the WeakMaps would not otherwise know. Returns `copy`.
  */
 export function carryReleasedMesh(source: MeshData, copy: MeshData): MeshData {
+  registerCpuMeshCopy(source, copy);
   const provenance = released.get(source);
   if (provenance) released.set(copy, provenance);
   const counts = releasedCounts.get(source);
@@ -38,10 +45,11 @@ export function carryReleasedMesh(source: MeshData, copy: MeshData): MeshData {
 
 /** Counts this mesh contributes to geometryResult totals, live or as retained at release. */
 export function meshGeometryCounts(mesh: MeshData): MeshGeometryCounts {
-  if (mesh.indices.length > 0 || mesh.positions.length > 0) {
-    return { triangles: mesh.indices.length / 3, vertices: mesh.positions.length / 3 };
-  }
-  return releasedCounts.get(mesh) ?? { triangles: 0, vertices: 0 };
+  const retained = releasedCounts.get(mesh);
+  return {
+    triangles: mesh.indices.length > 0 ? mesh.indices.length / 3 : retained?.indices === mesh.indices ? retained.triangles : 0,
+    vertices: mesh.positions.length > 0 ? mesh.positions.length / 3 : retained?.positions === mesh.positions ? retained.vertices : 0,
+  };
 }
 
 export function hasMeshGeometryProvenance(mesh: MeshData): boolean {

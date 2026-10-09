@@ -309,6 +309,17 @@ export async function saveDxfUnderlaysEntry(modelHash: string, dxfUnderlays: Dxf
 }
 
 /**
+ * Run one request against the underlay store and resolve with its result, or
+ * with `undefined` when IndexedDB is unavailable. Rejects on a failed request.
+ * For the legacy-key move (#7035), which lists the store's keys and removes an
+ * entry once its underlays are confirmed under the identity key.
+ */
+export async function requestDxfUnderlayStore<T>(mode: IDBTransactionMode, request: (store: IDBObjectStore) => IDBRequest<T>): Promise<T | undefined> {
+  const db = await openDatabase();
+  return db ? runStore<T>(db, mode, request) : undefined;
+}
+
+/**
  * Additive merge for the restore side: adds back any `saved` underlay whose
  * `id` is not already present in `existing`, and never removes or replaces
  * one already there. Returns `existing` BY REFERENCE (no new array, no

@@ -45,17 +45,32 @@ test('a model rule names loaded models; they stay names until the review resolve
   const proposal = parseFilterProposal(json({ version: 1, kind: 'filter.proposal', title: 'T', name: 'N',
     groups: [{ combinator: 'AND', rules: [{ kind: 'model', op: 'in', values: ['hello-wall.ifc'] }] }] }));
   assert.deepEqual(proposal.groups[0].rules[0], { kind: 'model', op: 'in', values: ['hello-wall.ifc'] });
-  assert.throws(() => parseListProposal(json({ version: 1, kind: 'list.proposal', title: 'T', scope: 'selected',
-    list: { name: 'L', columns: [{ id: 'a', source: 'attribute', propertyName: 'Name' }] } })), /list\.proposal runs over every loaded model/);
+  assert.throws(() => parseListProposal(json({ version: 1, kind: 'list.proposal', title: 'T', scope: 'unknown',
+    list: { name: 'L', columns: [{ id: 'a', source: 'attribute', propertyName: 'Name' }] } })), /scope must be all, selected, or visible/);
 });
+
+for (const scope of ['selected', 'visible'] as const) {
+  test(`#7186 filter proposals retain declared ${scope} scope for native population capture`, () => {
+    const proposal = parseFilterProposal(json({ version: 1, kind: 'filter.proposal', title: 'Scoped walls', name: 'Scoped walls',
+      scope, groups: [walls] }));
+    // Parsing preserves the requested mode; preview owns capture, its disclosed
+    // population and persistence (captured-artifact-scope.test.tsx).
+    assert.equal(proposal.scope, scope);
+    assert.equal(proposal.name, 'Scoped walls');
+    const [rule] = proposal.groups[0].rules;
+    assert.ok(rule.kind === 'ifcType' && rule.values.includes('IfcWall') && rule.values.includes('IfcWallStandardCase'),
+      'native scope must preserve the canonical wall rule and its subclasses');
+  });
+}
 
 test('filter proposals refuse with reasons a person can act on', () => {
   const refuse = (groups: unknown, pattern: RegExp, extra: Record<string, unknown> = {}) => assert.throws(
     () => parseFilterProposal(json({ version: 1, kind: 'filter.proposal', title: 'T', name: 'N', groups, ...extra })), pattern);
   refuse([{ combinator: 'AND', rules: [{ kind: 'ifcType', op: 'in', values: ['IfcWal'] }] }], /"IfcWal" is not an IFC class name/);
   refuse([{ combinator: 'AND', rules: [{ kind: 'modelTag', op: 'in', tagIds: ['t'] }] }], /Model tags are user-defined/);
-  // "Visible" and "selected" are runtime states a saved filter cannot hold; a proposal claiming one is refused, never broadened.
-  refuse([walls], /runs over every loaded model.*"visible" and "selected"/, { scope: 'visible' });
+  // #7186 allows explicit selected/visible capture; unknown modes still refuse
+  // rather than silently becoming an all-model population.
+  refuse([walls], /scope must be all, selected, or visible/, { scope: 'unknown' });
   refuse([{ combinator: 'AND', rules: [{ kind: 'name', op: 'matches', value: '^W' }] }], /"op" must be one of eq, ne, contains/);
   refuse([{ combinator: 'AND', rules: [{ kind: 'quantity', setName: 'Q', quantityName: 'A', op: 'gt', value: '10 m2' }] }], /finite number \(SI units/);
   // `Number('')` is 0: an empty or blank threshold is refused, never saved as a fabricated zero (#6914 review).
@@ -99,7 +114,7 @@ test('a lens proposal is either first-match rules or one auto-colour spec, never
   assert.throws(() => parseLensProposal(json({ version: 1, kind: 'lens.proposal', title: 'T', lens: { name: 'L', rules: [{ name: 'R', groups: [walls], action: 'colorize', color: 'red' }] } })), /#RRGGBB/);
 });
 
-test('a chart proposal charts model elements only, names fields by identity and resolves to a valid native ChartSpec', () => {
+test('an elements chart proposal names fields by identity and resolves to a valid native ChartSpec', () => {
   const proposal = parseChartProposal(json({ version: 1, kind: 'chart.proposal', title: 'Slab area by class', scope: 'visible', chart: {
     type: 'bar', dimension: 'IfcType', measure: { agg: 'sum' }, measureField: { kind: 'quantity', qsetName: 'Qto_SlabBaseQuantities', quantityName: 'NetArea' },
     filter: { groups: [walls] }, topN: 5 } }));
@@ -110,7 +125,7 @@ test('a chart proposal charts model elements only, names fields by identity and 
   assert.deepEqual(spec.measure, { agg: 'sum', column: elementFieldColumnId(binding) }, 'the summed column is the discovered binding, never the answer\'s');
   assert.throws(() => resolveChartSpec(proposal.chart, 'c1', () => ({ ...binding, valueKind: 'category' })), /not numeric in the loaded models/);
   const chart = (patch: Record<string, unknown>) => json({ version: 1, kind: 'chart.proposal', title: 'T', chart: { type: 'bar', dimension: 'Storey', measure: { agg: 'count' }, ...patch } });
-  assert.throws(() => parseChartProposal(chart({ source: 'clash' })), /chart model elements only/);
+  assert.throws(() => parseChartProposal(chart({ source: 'invented7106' })), /Unknown chart source/);
   assert.throws(() => parseChartProposal(chart({ measure: { agg: 'sum' } })), /names the summed field in "measureField"/);
   assert.throws(() => parseChartProposal(chart({ elementField: { kind: 'material' } })), /not both/);
   assert.throws(() => parseChartProposal(chart({ type: 'stackedBar' })), /needs "stackBy"/);

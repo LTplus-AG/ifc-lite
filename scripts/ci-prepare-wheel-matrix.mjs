@@ -2,7 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { copyFileSync, existsSync, mkdirSync, readdirSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { join } from 'node:path';
+import { isMainEntry } from './lib/is-main-entry.mjs';
 
 export const EXPECTED_WHEEL_ARTIFACTS = [
   'wheels-ubuntu-latest-x86_64',
@@ -44,7 +45,7 @@ export function prepareWheelMatrix(root) {
   }
 }
 
-if (process.argv[1] && resolve(process.argv[1]) === resolve(import.meta.filename)) {
+if (isMainEntry(import.meta.url)) {
   try {
     prepareWheelMatrix(process.cwd());
   } catch (error) {

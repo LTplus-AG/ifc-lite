@@ -64,6 +64,13 @@ The integration follows the [Cesium ion upload API](https://cesium.com/learn/ion
 and adapts the MPL-2.0 upload feature from
 [GeoBIM's published IFClite fork](https://github.com/christof2304/ifc-lite/releases/tag/geobim-2026-09-24).
 
+Cesium uploads can be cancelled from their dialog or the status-bar Activity
+tray. The tray records **Cancelled** after native work drains; any already
+created remote asset remains available for inspection. A later retry has its
+own cancellation authority. Deviation CSV exports also appear in Activity and
+can be cancelled before the file is downloaded. Writers without a native abort
+contract offer no Activity Cancel action.
+
 ### Placement acceptance evidence
 
 The catalogued `tests/models/buildingsmart/Infra-Bridge.ifc` is a real SketchUp
@@ -428,7 +435,20 @@ asked for a subset the entire model.
 With `includeQuantities`, each entity additionally carries `ifc:hasQuantitySets`
 (`ifc:IfcElementQuantity` nodes with typed `ifc:IfcQuantity...` entries).
 
+Document PDF exports appear in the status-bar Activity tray while the native
+writer runs. Their rows record completion, missing-content warnings or failure.
+The PDF writer has no native abort contract, so its row offers no Cancel action.
+
 ## CSV Export
+
+The web viewer’s entities, properties, quantities and spatial hierarchy CSV commands
+share the same handler across the ribbon, command palette and mobile toolbar.
+They export the active model with pending native edits applied. In a federation,
+the Activity subject and existing export toast state that other loaded models
+are excluded. Each invocation has its own Activity row; Completed follows browser
+publication and Failed records writer or publication errors. Exports can finish
+after their initiating controls close. The Rust CSV writer has no abort contract,
+so these rows offer no Cancel action. An unavailable source creates no job.
 
 Export tabular data for spreadsheet applications:
 

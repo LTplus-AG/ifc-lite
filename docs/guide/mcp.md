@@ -419,6 +419,24 @@ Domain errors come back inside the tool result with `isError: true` and a stable
 
 For a Tauri, Electron, or Node host, build a server and wire it to a transport directly. The public surface is exported from `@ifc-lite/mcp`:
 
+The `HttpTransport` constructor accepts `maxSessions` (default `1000`) and
+`sessionIdleMs` (default `30 * 60_000`). The limit includes sessions whose
+factory is still building. At capacity, a new `initialize` may reclaim the
+oldest session that has been idle for the window, has no request in flight or
+open event stream, and holds no unpublished layer drafts. A request settling
+or an event stream closing restarts the idle window. Reclamation happens only
+when admitting a new session; there is no timer sweep.
+
+If no safe session can be reclaimed, initialization returns HTTP `503` with
+`error: 'session-capacity'` and ends no session. A request for an unknown or
+reclaimed session returns HTTP `404` with `error: 'unknown-session'`; the
+client can initialize again without a `Mcp-Session-Id` header (an `initialize`
+that still carries the old id gets the same `404`). A request that
+requires a session but omits the header returns HTTP `400`. These capacity
+options are available to library callers; the CLI uses their defaults. The
+constructor throws a `RangeError` for a `maxSessions` that is not an integer of
+at least 1 or a `sessionIdleMs` that is not a finite number of at least 0.
+
 ```ts
 import {
   createMCPServer,

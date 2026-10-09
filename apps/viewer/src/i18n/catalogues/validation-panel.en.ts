@@ -122,7 +122,7 @@ export const validationPanelEn = {
   },
   'contentStorage.draftReadUnavailable': 'Archived draft evidence could not be read. This download contains the libraries and draft evidence currently available in this tab. Keep earlier backups too.',
   'contentStorage.importFailed': 'The backup was not saved. Its valid content remains in this tab. Use Retry all libraries to save the complete import, or download a backup before closing it.',
-  'contentStorage.artifactsPending': 'Some saved Filters, Lists or Lenses could not be saved. Keep the backup file and use Retry all libraries before closing this tab.',
+  'contentStorage.artifactsPending': 'Some saved Filters, Lists or Lenses could not be saved. Keep the backup file and use Retry all libraries before closing this tab. Further import and library download remain unavailable until these artifacts are saved.',
   'contentStorage.retryAll': 'Retry all libraries',
   'contentStorage.someUnsaved': 'Some content could not be saved. Keep this tab open and download a backup before closing it.',
   'contentStorage.recovery': 'Download preserved originals',

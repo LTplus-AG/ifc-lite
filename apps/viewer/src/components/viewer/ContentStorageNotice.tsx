@@ -67,6 +67,7 @@ export function ContentStorageNotice({ status, retry, restore }: {
   const receiptsLoading = changeReceiptsLoading || groupReceiptsLoading || reviewsLoading || semanticReviewsLoading;
   const input = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
+  const busyNow = useRef(false);
   const pendingArtifacts = useRef<StandaloneArtifactLibraries | null>(null);
   const [artifactsPending, setArtifactsPending] = useState(false);
   const saveArtifacts = (libraries: StandaloneArtifactLibraries) => {
@@ -81,14 +82,16 @@ export function ContentStorageNotice({ status, retry, restore }: {
     : problem ? messages[problem] : status.phase === 'unavailable' ? 'contentStorage.unavailable'
       : states.includes('saving') ? 'contentStorage.saving' : states.length ? 'contentStorage.saved' : null;
   const run = async (work: () => Promise<void>) => {
-    setBusy(true);
+    if (busyNow.current) return;
+    busyNow.current = true; setBusy(true);
     try { await work(); }
     catch (error) {
       console.warn('[User content] Action failed', error);
       toast.error(t('contentStorage.failed', { message: error instanceof Error ? error.message : String(error) }));
-    } finally { setBusy(false); }
+    } finally { busyNow.current = false; setBusy(false); }
   };
   const backup = async () => {
+    if (pendingArtifacts.current) throw new Error(t('contentStorage.artifactsPending'));
     const state = useViewerStore.getState();
     const preserved = await readBackupDrafts();
     downloadFile(JSON.stringify(encodeContentBackup(createContentBackup(visibleLibraries(), {
@@ -106,6 +109,7 @@ export function ContentStorageNotice({ status, retry, restore }: {
     if (!preserved.complete) toast.info(t('contentStorage.draftReadUnavailable'));
   };
   const importFile = async (file: File) => {
+    if (pendingArtifacts.current) throw new Error(t('contentStorage.artifactsPending'));
     const state = useViewerStore.getState();
     // Opening the clash report library loads its validator, which parsing a backup needs.
     const clashReportsReady = await state.initializeSavedClashReports();
@@ -137,8 +141,9 @@ export function ContentStorageNotice({ status, retry, restore }: {
       for (const entry of error.entries.bcfOutbox ?? []) bcfOutboxLibrary.stage(entry.id, entry);
       for (const entry of error.entries.document) state.stageDocument(entry);
       toast.error(t('contentStorage.importFailed'));
-      pendingArtifacts.current = parsed.libraries;
-      setArtifactsPending(Boolean(parsed.libraries.filters?.length || parsed.libraries.lists?.length || parsed.libraries.lenses?.length));
+      const hasArtifacts = Boolean(parsed.libraries.filters?.length || parsed.libraries.lists?.length || parsed.libraries.lenses?.length);
+      pendingArtifacts.current = hasArtifacts ? parsed.libraries : null;
+      setArtifactsPending(hasArtifacts);
       if (drafts.length) toast.error(t('contentStorage.draftsUnsaved', { count: drafts.length }));
       return;
     }
@@ -169,11 +174,11 @@ export function ContentStorageNotice({ status, retry, restore }: {
     <details>
       <summary className="cursor-pointer">{t('contentStorage.controls')}</summary>
       <div className="flex flex-wrap gap-1 py-1">
-        <Button size="sm" variant="outline" disabled={busy || librariesLoading || assistantLoading || clashGroupsLoading || bcfLoading || receiptsLoading || recipesLoading || preferencesLoading} onClick={() => void run(backup)}>{t('contentStorage.export')}</Button>
+        <Button size="sm" variant="outline" disabled={busy || artifactsPending || librariesLoading || assistantLoading || clashGroupsLoading || bcfLoading || receiptsLoading || recipesLoading || preferencesLoading} onClick={() => void run(backup)}>{t('contentStorage.export')}</Button>
         {problem && <Button size="sm" variant="outline" disabled={busy} onClick={() => void run(async () => {
           if (await confirmDialog({ description: t('contentStorage.restoreConfirm'), destructive: true })) await restore();
         })}>{t('contentStorage.restore')}</Button>}
-        <Button size="sm" variant="outline" disabled={busy} onClick={() => input.current?.click()}>{t('contentStorage.import')}</Button>
+        <Button size="sm" variant="outline" disabled={busy || artifactsPending} onClick={() => { if (!busyNow.current && !pendingArtifacts.current) input.current?.click(); }}>{t('contentStorage.import')}</Button>
         <Button size="sm" variant="outline" disabled={busy} onClick={() => void run(async () => {
           const live = useViewerStore.getState();
           const saved = await Promise.all([assistantLibrary.retry(), clashGroupLibrary.retry(), bcfDraftLibrary.retry(), bcfOutboxLibrary.retry(), modelChangeLibrary.retry(), clashGroupApplicationLibrary.retry(), reviewWorkspaceLibrary.retry(), semanticReviewLibrary.retry(), assistantRecipeLibrary.retry(), assistantPreferencesLibrary.retry(), live.retryDocumentsSave(), live.retryValidationReportsSave(), live.retrySaveComparisons(), live.retrySaveClashReports(), retryContentDrafts()]);

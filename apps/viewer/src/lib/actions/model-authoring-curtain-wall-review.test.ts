@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 import { afterEach, test } from 'node:test';
 import { DEFAULT_SECTIONS } from '@/lib/profile-section/profile-kinds';
 import { getAttributeNamesForSchema } from '@ifc-lite/parser';
-import { IfcCreator, curtainWallLayout } from '@ifc-lite/create';
+import { IfcCreator, curtainWallLayout, type CurtainWallInStoreParams } from '@ifc-lite/create';
 import { RelationshipType } from '@ifc-lite/data';
 import { EMPTY_SOURCE_BYTES, EntityExtractor } from '@ifc-lite/parser';
 import { MutablePropertyView, iterateEffectiveEntityIds } from '@ifc-lite/mutations';
@@ -30,7 +30,7 @@ import { authoringGhosts } from './model-authoring-ghost';
 const original = useViewerStore.getState(),originalAssistant=useAssistant.getState(),originalFetch=globalThis.fetch;
 afterEach(() => {cancelAssistant();useViewerStore.setState(original);useAssistant.setState(originalAssistant);globalThis.fetch=originalFetch;});
 const state = useViewerStore.getState;
-const base = { Start: [1,2,1], End: [5,2,1], Height: 3, UGrid: 2, VGrid: 2, Name: 'Reviewed native aggregate' };
+const base: CurtainWallInStoreParams = { Start: [1,2,1], End: [5,2,1], Height: 3, UGrid: 2, VGrid: 2, Name: 'Reviewed native aggregate' };
 const op = (params: unknown = base, modelId = SAMPLE_MODEL, globalId = GROUND_STOREY, ref = 'curtain') => ({ op: 'curtainWall.create', ref, storey: { modelId, globalId }, params });
 function batch(operations: unknown[], units: 'm'|'mm' = 'm') { return parseModelAuthoringBatch(JSON.stringify({ version: 1, kind: 'model.authoring', title: 'Native curtain aggregate', units, frame: 'storey-local', operations })); }
 async function exportGraph(bytes: Uint8Array) {
@@ -54,9 +54,9 @@ async function assertAggregate(guid: string, expectedMembers: number, expectedPa
 }
 for (const variant of ['default', 'explicit', 'section'] as const) test(`#7298 ${variant} native aggregate preview is pure and commit/export/full graph Undo retain all parts`, async () => {
   await seedAuthoringSample();
-  const params = variant==='default' ? base : variant==='explicit' ? { ...base, UGrid:[1,3], VGrid:[1], EdgeMembers:false } : { ...base, PanelThickness:.032, MullionProfile:{Type:'Circle',Radius:.04}, TransomProfile:{Type:'Rectangle',XDim:.06,YDim:.12} };
+  const params: CurtainWallInStoreParams = variant==='default' ? base : variant==='explicit' ? { ...base, UGrid:[1,3], VGrid:[1], EdgeMembers:false } : { ...base, PanelThickness:.032, MullionProfile:{Type:'Circle',Radius:.04}, TransomProfile:{Type:'Rectangle',XDim:.06,YDim:.12} };
   const view=state().mutationViews.get(SAMPLE_MODEL)!, lease=view.prepareAtomic(()=>null), source=bytes(), history=state().undoStacks, editors=state().storeEditors;
-  const preview=previewModelAuthoring(state(),batch([op(params)])); assert.equal(preview.rows[0].status,'ready',preview.rows[0].issue);
+  const preview=previewModelAuthoring(state(),batch([op(params)])); assert.equal(preview.rows[0].status,'ready',preview.rows[0].issue??'');
   assert.doesNotThrow(lease.validate,'Preview preserves the held real native source/allocator lease'); assert.equal(state().storeEditors,editors); assert.equal(state().undoStacks,history);
   assert.deepEqual(await exportGraph(bytes()),await exportGraph(source));
   assert.equal(preview.rows[0].previewUnavailable,variant==='section');
@@ -76,7 +76,7 @@ for (const Schema of ['IFC2X3','IFC4','IFC4X3'] as const) for (const units of ['
   useViewerStore.setState({...fixtureModels(model),mutationViews:new Map([[SAMPLE_MODEL,view]]),storeEditors:new Map(),undoStacks:new Map(),redoStacks:new Map()});
   const factor=units==='mm'?1000:1,params={...base,Start:base.Start.map(v=>v*factor),End:base.End.map(v=>v*factor),Height:base.Height*factor,UGrid:[factor,3*factor],VGrid:2};
   // Explicit offsets are lengths; the same VGrid=2 remains a dimensionless count.
-  const preview=previewModelAuthoring(state(),batch([op(params,SAMPLE_MODEL,parsed.entities.getGlobalId(storey))],units));assert.equal(preview.rows[0].status,'ready',preview.rows[0].issue);
+  const preview=previewModelAuthoring(state(),batch([op(params,SAMPLE_MODEL,parsed.entities.getGlobalId(storey))],units));assert.equal(preview.rows[0].status,'ready',preview.rows[0].issue??'');
   const result=commitModelAuthoring(useViewerStore,preview,new Set([0]),'native schema units');assert.ok(result.ok,result.ok?'':result.detail??result.reason);
   const proof=await assertAggregate(result.receipt.applied[0].globalId,13,6);assert.equal(proof.parsed.schemaVersion,Schema);
 });
@@ -85,7 +85,7 @@ test('#7298 federated ownership refuses unpinned reused storey GUID and writes o
   useViewerStore.setState({...fixtureModels(firstModel,{...firstModel,id:'second',idOffset:1_000_000,ifcDataStore:second}),mutationViews:new Map([[SAMPLE_MODEL,firstView],['second',secondView]])});
   const unpinned=op();delete (unpinned.storey as {modelId?:string}).modelId;
   assert.equal(previewModelAuthoring(state(),batch([unpinned])).rows[0].status,'ambiguous-target');
-  const before=bytes(),preview=previewModelAuthoring(state(),batch([op(base,'second')]));assert.equal(preview.rows[0].status,'ready',preview.rows[0].issue);
+  const before=bytes(),preview=previewModelAuthoring(state(),batch([op(base,'second')]));assert.equal(preview.rows[0].status,'ready',preview.rows[0].issue??'');
   const result=commitModelAuthoring(useViewerStore,preview,new Set([0]),'native second source');assert.ok(result.ok,result.ok?'':result.detail??result.reason);await assertAggregate(result.receipt.applied[0].globalId,9,4,'second');assert.deepEqual(await exportGraph(bytes()),await exportGraph(before));
 });
 test('#7298 native source replacement, real Root collision and missing source refuse without publishing aggregate records',async()=>{
@@ -115,11 +115,11 @@ test('#7298 actual assistant stream guidance admits native curtain params; expli
   const {dataStore}=await seedAuthoringSample();useViewerStore.setState({selectedEntity:{modelId:SAMPLE_MODEL,expressId:dataStore.entities.getExpressIdByGlobalId(GROUND_STOREY)},selectedEntityId:null,selectedEntities:[],selectedEntitiesSet:new Set(),selectedEntityIds:new Set()});replaceEvidence(captureEvidence('selection'));let calls=0;
   globalThis.fetch=async(_input,init)=>{calls++;const wire=JSON.parse(String(init?.body)),system=typeof wire.system==='string'?wire.system:wire.system.map((block:{text:string})=>block.text).join('\n');assert.match(system,/curtainWall.create/);assert.match(system,/UGrid\/VGrid/);const answer=JSON.stringify({version:1,kind:'model.authoring',title:'Streamed native curtain',units:'m',frame:'storey-local',operations:[op()]});return new Response(`data: ${JSON.stringify({choices:[{delta:{content:answer},finish_reason:'stop'}]})}\n\n`);};
   assert.equal(await sendAssistant('Prepare a curtain wall with these explicit source storey and dimensions','openai/gpt-free','/api/chat'),true,useAssistant.getState().error??'');assert.equal(calls,1);assert.equal(state().mutationViews.get(SAMPLE_MODEL)!.getNewEntities().length,0,'Transport never autoruns the native writer');
-  const answer=useAssistant.getState().messages.at(-1)?.content;assert.ok(answer);const preview=previewModelAuthoring(state(),parseModelAuthoringBatch(answer));assert.equal(preview.rows[0].status,'ready',preview.rows[0].issue);const result=commitModelAuthoring(useViewerStore,preview,new Set([0]),'native curtain stream');assert.ok(result.ok,result.ok?'':result.detail??result.reason);await assertAggregate(result.receipt.applied[0].globalId,9,4);
+  const answer=useAssistant.getState().messages.at(-1)?.content;assert.ok(answer);const preview=previewModelAuthoring(state(),parseModelAuthoringBatch(answer));assert.equal(preview.rows[0].status,'ready',preview.rows[0].issue??'');const result=commitModelAuthoring(useViewerStore,preview,new Set([0]),'native curtain stream');assert.ok(result.ok,result.ok?'':result.detail??result.reason);await assertAggregate(result.receipt.applied[0].globalId,9,4);
 });
 
 for (const [kind, section] of Object.entries(DEFAULT_SECTIONS)) test(`#7298 native ${kind} member sections export through the shared profile factory without an invented rectangular preview`,async()=>{
-  await seedAuthoringSample();const preview=previewModelAuthoring(state(),batch([op({...base,MullionProfile:section})]));assert.equal(preview.rows[0].status,'ready',preview.rows[0].issue);assert.equal(preview.rows[0].previewUnavailable,true);
+  await seedAuthoringSample();const preview=previewModelAuthoring(state(),batch([op({...base,MullionProfile:section})]));assert.equal(preview.rows[0].status,'ready',preview.rows[0].issue??'');assert.equal(preview.rows[0].previewUnavailable,true);
   const result=commitModelAuthoring(useViewerStore,preview,new Set([0]),'native section family');assert.ok(result.ok,result.ok?'':result.detail??result.reason);const proof=await assertAggregate(result.receipt.applied[0].globalId,9,4);
   const profiles=[...proof.parsed.entityIndex.byId.values()].filter(record=>record.type.endsWith('PROFILEDEF'));assert.ok(profiles.length>0);
   const nativeTypes:{[key:string]:string}={I:'IFCISHAPEPROFILEDEF',L:'IFCLSHAPEPROFILEDEF',T:'IFCTSHAPEPROFILEDEF',U:'IFCUSHAPEPROFILEDEF',C:'IFCCSHAPEPROFILEDEF',Circle:'IFCCIRCLEPROFILEDEF',RectangleHollow:'IFCRECTANGLEHOLLOWPROFILEDEF',CircleHollow:'IFCCIRCLEHOLLOWPROFILEDEF'};
@@ -128,7 +128,7 @@ for (const [kind, section] of Object.entries(DEFAULT_SECTIONS)) test(`#7298 nati
   for(const [name,value] of Object.entries(section))if(name!=='Type'){const slot=names.indexOf(name);assert.ok(slot>=0,`Exact native EXPRESS dimension ${name}`);assert.ok(Math.abs(Number(entity.attributes[slot])/1000-Number(value))<1e-9,'Native millimetre source retains the supplied metre section dimensions');}
 });
 test('#7298 explicit native empty/whitespace text is preserved and malformed GlobalId refuses unpublished creation',async()=>{
-  await seedAuthoringSample();const preview=previewModelAuthoring(state(),batch([op({...base,Name:'',Description:'  native description  ',ObjectType:'',Tag:'tag; native'})]));assert.equal(preview.rows[0].status,'ready',preview.rows[0].issue);
+  await seedAuthoringSample();const preview=previewModelAuthoring(state(),batch([op({...base,Name:'',Description:'  native description  ',ObjectType:'',Tag:'tag; native'})]));assert.equal(preview.rows[0].status,'ready',preview.rows[0].issue??'');
   const result=commitModelAuthoring(useViewerStore,preview,new Set([0]),'native metadata');assert.ok(result.ok,result.ok?'':result.detail??result.reason);const proof=await assertAggregate(result.receipt.applied[0].globalId,9,4),entity=proof.parsed.getEntity(proof.id);assert.ok(entity);const names=getAttributeNamesForSchema('IfcCurtainWall',proof.parsed.schemaVersion);
   for(const [key,value]of Object.entries({Name:'',Description:'  native description  ',ObjectType:'',Tag:'tag; native'}))assert.equal(entity.attributes[names.indexOf(key)],value);
   const view=state().mutationViews.get(SAMPLE_MODEL)!,lease=view.prepareAtomic(()=>null),before=await exportGraph(bytes()),invalid=previewModelAuthoring(state(),batch([op({...base,GlobalId:'invalid-native-guid'})]));assert.notEqual(invalid.rows[0].status,'ready');assert.match(invalid.rows[0].issue??'',/GlobalId|GUID/i);assert.doesNotThrow(lease.validate);assert.deepEqual(await exportGraph(bytes()),before);

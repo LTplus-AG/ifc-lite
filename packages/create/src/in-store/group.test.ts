@@ -171,3 +171,15 @@ it('complete replacement safely consolidates multiple owned assignments and reus
   expect(saved.store.entityIndex.byId.has(extra)).toBe(false);
   expect(saved.store.relationships.getRelated(group.expressId, RelationshipType.AssignsToGroup, 'forward')).toEqual([s.member.expressId]);
 });
+
+it('bounds total effective record work and reports refusal rather than a truncated success #7329', async () => {
+  const s = await session(), name = 'x'.repeat(2_000_000);
+  // Native overlay records model exporter-controlled breadth; each record is below the per-record bound.
+  for (let i = 0; i < 41; i++) s.editor.addEntity('IfcGroup', [generateIfcGuid(), null, name, null, null]);
+  const next = s.mutationView.peekNextExpressId(), revision = s.mutationView.getMutationRevision();
+  const count = s.mutationView.getNewEntities().length;
+  expect(() => addGroupToStore(s, { Name: 'Must not publish a partial certification', RelatedObjects: [] })).toThrow(/total record work budget/);
+  expect(s.mutationView.peekNextExpressId()).toBe(next);
+  expect(s.mutationView.getMutationRevision()).toBe(revision);
+  expect(s.mutationView.getNewEntities()).toHaveLength(count);
+});

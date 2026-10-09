@@ -9,7 +9,7 @@ import { AnchorEntityReader } from './resolve-anchor.js';
 import { conformsTo, schemaRegistry } from './schema-attributes.js';
 
 /** Explicit bounds on file-controlled input; refusal never returns a partial graph. */
-export const GROUP_GRAPH_LIMITS = { entities: 250_000, recordCharacters: 4_000_000, references: 2_000_000, members: 10_000 } as const;
+export const GROUP_GRAPH_LIMITS = { entities: 250_000, recordCharacters: 4_000_000, totalRecordCharacters: 80_000_000, references: 2_000_000, members: 10_000 } as const;
 
 export interface GroupRootIdentity { expressId: number; GlobalId: string }
 export interface GroupMembershipSnapshot {
@@ -61,6 +61,7 @@ export class GroupGraph {
     }
     const reader = new AnchorEntityReader(store, view);
     let referenceCount = 0;
+    let recordCharacters = 0;
     for (const { expressId } of iterateEffectiveEntityIds(store, view)) {
       if (this.entities.size >= GROUP_GRAPH_LIMITS.entities) throw new Error('Group graph entity budget exceeded');
       const entity = reader.entity(expressId);
@@ -77,6 +78,8 @@ export class GroupGraph {
         store.source.decodeUtf8(source.byteOffset, source.byteOffset + source.byteLength), source.type, store.schemaVersion) : null);
       if (!record || record.notWritten.length) throw new Error(`Group graph cannot certify exported entity #${expressId}`);
       if (record.text.length > GROUP_GRAPH_LIMITS.recordCharacters) throw new Error('Group graph record budget exceeded');
+      recordCharacters += record.text.length;
+      if (recordCharacters > GROUP_GRAPH_LIMITS.totalRecordCharacters) throw new Error('Group graph total record work budget exceeded');
       for (const target of references(record.text)) {
         if (++referenceCount > GROUP_GRAPH_LIMITS.references) throw new Error('Group graph reference budget exceeded');
         const ids = this.incoming.get(target) ?? new Set<number>(); ids.add(expressId); this.incoming.set(target, ids);

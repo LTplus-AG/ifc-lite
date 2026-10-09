@@ -60,8 +60,11 @@ import { useExportDialogOpenGuard } from '@/hooks/useExportDialogOpenGuard';
 import { useTranslation } from '@/i18n';
 import { beginActivity, discardActivity, finishActivity, updateActivity } from '@/lib/activity/activity-journal';
 
-/** What one export run produced, rendered as the result `<Alert>`. */
-export type ExportDialogShellResult = { message: string } & (
+/** What one export run produced, rendered as the result `<Alert>`.
+ * `warnings` are the exporter's own diagnostics, listed beneath it so a
+ * summary such as "2 warnings" never stands without its reasons (#7335).
+ */
+export type ExportDialogShellResult = { message: string; warnings?: readonly string[] } & (
   | { success: boolean; cancelled?: false }
   | { success: false; cancelled: true }
 );
@@ -120,7 +123,7 @@ export interface ExportDialogShellProps {
   optionsClassName?: string;
   /** Content before Cancel and Export, such as an editable filename. */
   footerLeading?: ReactNode | ((state: ExportDialogShellRenderState) => ReactNode);
-  /** Details below the result alert, such as export warnings. */
+  /** Details below the result alert and its warnings, such as an uploaded asset link. */
   resultDetails?: ReactNode;
   /** Notified whenever the shell's open state actually changes (see file header). */
   onOpenStateChange?: (open: boolean) => void;
@@ -198,7 +201,8 @@ export function ExportDialogShell({
       // `null`: the host reports the outcome itself (a hand-off), so the tray does not guess one.
       if (outcome === null) { discardActivity(job); return; }
       finishActivity(job, outcome.cancelled || cancellation?.signal.aborted ? 'cancelled' : outcome.success ? 'completed' : 'failed', outcome.success ? {} : { detail: outcome.message });
-      if (closeOnSuccess && outcome.success) {
+      // A success that carries warnings stays open so its reasons are seen.
+      if (closeOnSuccess && outcome.success && !outcome.warnings?.length) {
         setResult(null);
         setOpen(false);
       } else {
@@ -246,6 +250,18 @@ export function ExportDialogShell({
             <AlertDescription>{result.message}</AlertDescription>
           </Alert>
         )}
+        {result?.warnings?.length ? (
+          <details className="text-xs text-muted-foreground border rounded p-2">
+            <summary className="cursor-pointer select-none">
+              {t('geometryExport.shell.warningsSummary', { count: result.warnings.length })}
+            </summary>
+            <ul className="list-disc pl-4 mt-1 space-y-0.5 break-words">
+              {result.warnings.map((warning, index) => (
+                <li key={index}>{warning}</li>
+              ))}
+            </ul>
+          </details>
+        ) : null}
         {resultDetails}
       </div>
 

@@ -343,3 +343,135 @@ fn issue_6692_no_added_wrapper_preserves_depth_31_colors_and_reports_depth_cycle
         assert!(refused.replacements.is_empty() && refused.new_entities.is_empty());
     }
 }
+
+fn aligned_model(linear_parent: &str) -> String {
+    aligned_model_in(1., linear_parent)
+}
+
+/// Lengths are authored in project units: `unit` metres per unit.
+fn aligned_model_in(unit: f64, linear_parent: &str) -> String {
+    let length = |metres: f64| writer::real(metres / unit).unwrap();
+    with_entities(
+        &rigid_model(unit),
+        &format!("\
+#100=IFCLOCALPLACEMENT($,#11);\n\
+#101=IFCCARTESIANPOINT((0.,0.,0.));\n#102=IFCCARTESIANPOINT(({},{},0.));\n#103=IFCPOLYLINE((#101,#102));\n\
+#104=IFCSHAPEREPRESENTATION(#10,'Axis','Curve3D',(#103));\n#105=IFCPRODUCTDEFINITIONSHAPE($,$,(#104));\n\
+#106=IFCALIGNMENT('0M7tQ9Jbj1BAeHd7rqnDmU',$,'Alignment',$,$,#100,#105,$);\n\
+#107=IFCPOINTBYDISTANCEEXPRESSION(IFCLENGTHMEASURE({}),{},{},$,#103);\n#108=IFCAXIS2PLACEMENTLINEAR(#107,$,$);\n\
+#109=IFCLINEARPLACEMENT({linear_parent},#108,$);\n\
+#110=IFCREFERENT('0M7tQ9Jbj1BAeHd7rqnDmV',$,'Station',$,$,#109,$,.STATION.);\n\
+#111=IFCLINEARPLACEMENT(#30,#108,$);\n\
+#112=IFCREFERENT('0M7tQ9Jbj1BAeHd7rqnDmW',$,'Nested station',$,$,#111,$,.STATION.);",
+            length(10.), length(5.), length(4.), length(1.), length(0.5)),
+    )
+}
+
+#[test]
+fn issue_7335_alignment_and_linear_placements_covary_with_their_placement_roots() {
+    let source = aligned_model("#100");
+    let plan = plan_map_conversion_normalization(source.as_bytes()).unwrap();
+    assert!(plan.warnings.is_empty(), "{:?}", plan.warnings);
+    let output = apply(&source, &plan);
+    let mut before = EntityDecoder::new(&source);
+    let mut after = EntityDecoder::new(&output);
+    let router = GeometryRouter::with_scale(1.);
+    let geo = GeoRefExtractor::extract(
+        &mut before,
+        &[
+            (61, IfcType::IfcMapConversion),
+            (60, IfcType::IfcProjectedCRS),
+        ],
+    )
+    .unwrap()
+    .unwrap();
+    let map = Matrix4::from_column_slice(&geo.to_matrix());
+    for id in [106, 110, 112, 50] {
+        let product = before.decode_by_id(id).unwrap();
+        let old = Matrix4::from_column_slice(
+            &router
+                .resolve_scaled_placement_strict(&product, &mut before)
+                .unwrap(),
+        );
+        let product = after.decode_by_id(id).unwrap();
+        let new = Matrix4::from_column_slice(
+            &router
+                .resolve_scaled_placement_strict(&product, &mut after)
+                .unwrap(),
+        );
+        assert!((new - map * old).amax() < 1e-8, "product #{id}");
+    }
+    // The station is sampled from the curve (4 along, 1 lateral, 0.5 up),
+    // not an identity fallback.
+    let station = before.decode_by_id(110).unwrap();
+    let sampled = router
+        .resolve_scaled_placement_strict(&station, &mut before)
+        .unwrap();
+    let expected = [35. / 125f64.sqrt(), 30. / 125f64.sqrt(), 0.5];
+    for axis in 0..3 {
+        assert!(
+            (sampled[12 + axis] - expected[axis]).abs() < 1e-9,
+            "{sampled:?}"
+        );
+    }
+    // Linear placements are baked into the local placements rendering
+    // composes, under their original IDs and parents (Cesium ion ignores a
+    // transformed PlacementRelTo for linear placements).
+    for (id, parent) in [(109, 100), (111, 30)] {
+        let placement = after.decode_by_id(id).unwrap();
+        assert_eq!(placement.ifc_type, IfcType::IfcLocalPlacement, "#{id}");
+        assert_eq!(placement.get_ref(0), Some(parent), "#{id}");
+    }
+    // Only placement roots, linear placements and the map change; curves and
+    // representations keep their original records.
+    let mut scanner = EntityScanner::new(&source);
+    while let Some((id, _, start, end)) = scanner.next_entity() {
+        if [80, 100, 109, 111, 61, 10].contains(&id) {
+            continue;
+        }
+        assert!(
+            output.contains(&source[start..end]),
+            "original entity #{id} changed"
+        );
+    }
+}
+
+#[test]
+fn issue_7335_world_relative_linear_placement_refuses_without_partial_patches() {
+    let plan = plan_map_conversion_normalization(aligned_model("$").as_bytes()).unwrap();
+    assert_eq!(plan.warnings.len(), 1, "{:?}", plan.warnings);
+    assert!(
+        plan.warnings[0].contains("IfcLinearPlacement #109"),
+        "{:?}",
+        plan.warnings
+    );
+    assert!(plan.replacements.is_empty());
+    assert!(plan.new_entities.is_empty());
+}
+
+#[test]
+fn issue_7335_millimetre_project_bakes_linear_placements_in_file_units() {
+    // The same physical model authored in metres and in millimetres must
+    // normalize to the same physical product frames: a baked station 4 m
+    // along its curve must not become 4 mm (#7335 review).
+    let resolve = |unit: f64| {
+        let source = aligned_model_in(unit, "#100");
+        let plan = plan_map_conversion_normalization(source.as_bytes()).unwrap();
+        assert!(plan.warnings.is_empty(), "{:?}", plan.warnings);
+        let output = apply(&source, &plan);
+        let mut after = EntityDecoder::new(&output);
+        let router = GeometryRouter::with_scale(unit);
+        [106, 110, 112, 50].map(|id| {
+            let product = after.decode_by_id(id).unwrap();
+            Matrix4::from_column_slice(
+                &router
+                    .resolve_scaled_placement_strict(&product, &mut after)
+                    .unwrap(),
+            )
+        })
+    };
+    let (metre, milli) = (resolve(1.), resolve(0.001));
+    for (index, (m, mm)) in metre.iter().zip(&milli).enumerate() {
+        assert!((m - mm).amax() < 1e-6, "product {index}: {m} vs {mm}");
+    }
+}

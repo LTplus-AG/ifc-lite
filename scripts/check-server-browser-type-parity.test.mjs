@@ -24,7 +24,7 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, cpSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, cpSync, existsSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
@@ -231,7 +231,8 @@ test('RELATIONSHIPS: adding a type to BOTH sides keeps it passing', { skip: NEED
 function hierarchySchemaFixture(dir, src) {
   const path = join(dir, 'relationship-schema-slots.ts');
   writeFileSync(path, src);
-  cpSync(join(ROOT, 'packages/parser/src/schema-entity-name.ts'), join(dir, 'schema-entity-name.ts'));
+  const canonicalNames = join(ROOT, 'packages/parser/src/schema-entity-name.ts');
+  if (existsSync(canonicalNames)) cpSync(canonicalNames, join(dir, 'schema-entity-name.ts'));
   cpSync(join(ROOT, 'packages/parser/src/generated'), join(dir, 'generated'), { recursive: true });
   return path;
 }

@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { nativeReplacementEvidence } from './model-authoring-replacement';
 import { nativeSlabOpeningEvidence } from './model-authoring-slab-opening';
 import type { ModelEditTarget } from '@/store/slices/mutation-modelling-records';
 import { nativeLengthUnitAvailable } from './model-authoring-read-target';
@@ -14,17 +15,19 @@ import { nativePlacementFromTarget, type NativePlacement } from './model-authori
 
 type Availability = 'available' | 'unavailable-target' | 'unavailable-unit' | 'unavailable-native-layout' | 'unavailable-projection';
 export interface NativeAuthoringEvidence {
+  nativeReplacementExpected: ReturnType<typeof nativeReplacementEvidence>;
   nativePlacement?: NativePlacement | null;
   nativeSplitExpected: SplitSnapshot | null;
   nativeSlabOpeningExpected: SplitSnapshot | null;
   nativeHostedExpected: ExpectedHostedEdit | null;
   nativeTrimExtendExpected: ReturnType<typeof authoringReachEvidenceFromTarget>;
   nativeStairExpected: ReturnType<typeof nativeStairEvidenceFromTarget>;
-  nativeAuthoringUnits: { slabOpening: 'm'; split: 'm'; hosted: 'm'; stair: 'm'; trimExtend: 'verbatim-native-fields' };
+  nativeAuthoringUnits: { replacement: 'verbatim-native-fields'; slabOpening: 'm'; split: 'm'; hosted: 'm'; stair: 'm'; trimExtend: 'verbatim-native-fields' };
   nativeAuthoringRefusals: { split: string | null; hosted: string | null };
   /** Split/Hosted lengths are metres; Trim remains verbatim mixed native fields;
    * Stair follows the canonical SI dimension reader. No IDs are converted. */
   nativeAuthoringAvailability: {
+    replacement: Availability;
     slabOpening: Availability;
     split: Availability;
     hosted: Availability;
@@ -34,9 +37,17 @@ export interface NativeAuthoringEvidence {
   };
 }
 
+type CompactNativeAuthoringEvidence = Omit<NativeAuthoringEvidence,
+  'nativeReplacementExpected' | 'nativeAuthoringUnits' | 'nativeAuthoringAvailability'> & {
+  nativeAuthoringUnits: Omit<NativeAuthoringEvidence['nativeAuthoringUnits'], 'replacement'>;
+  nativeAuthoringAvailability: Omit<NativeAuthoringEvidence['nativeAuthoringAvailability'], 'replacement'>;
+};
+
 /** #7282: one pure native producer for selected rows and explicit attachments.
  * Reads the detached per-model target supplied by the capture owner. */
-export function nativeAuthoringEvidence(target: ModelEditTarget | null, expressId: number): NativeAuthoringEvidence {
+export function nativeAuthoringEvidence(target: ModelEditTarget | null, expressId: number): NativeAuthoringEvidence;
+export function nativeAuthoringEvidence(target: ModelEditTarget | null, expressId: number, includeReplacement: boolean): NativeAuthoringEvidence | CompactNativeAuthoringEvidence;
+export function nativeAuthoringEvidence(target: ModelEditTarget | null, expressId: number, includeReplacement = true): NativeAuthoringEvidence | CompactNativeAuthoringEvidence {
   const unavailable: Availability = !target ? 'unavailable-target'
     : !nativeLengthUnitAvailable(target) ? 'unavailable-unit' : 'unavailable-native-layout';
   const refusals: NativeAuthoringEvidence['nativeAuthoringRefusals'] = { split: null, hosted: null };
@@ -56,19 +67,27 @@ export function nativeAuthoringEvidence(target: ModelEditTarget | null, expressI
     stair = nativeStairEvidenceFromTarget(target, expressId);
   }
   const placement = nativePlacementFromTarget(target, expressId);
-  const slab = nativeSlabOpeningEvidence(target, expressId);
-  return { nativePlacement: placement, nativeSlabOpeningExpected: slab.expected, nativeSplitExpected: split, nativeHostedExpected: hosted,
+  const slab=nativeSlabOpeningEvidence(target,expressId),replacement=includeReplacement ? nativeReplacementEvidence(target,expressId) : null;
+  const evidence: NativeAuthoringEvidence = { nativePlacement: placement, nativeReplacementExpected: replacement, nativeSlabOpeningExpected: slab.expected, nativeSplitExpected: split, nativeHostedExpected: hosted,
     nativeTrimExtendExpected: trim, nativeStairExpected: stair,
-    nativeAuthoringUnits: { slabOpening: 'm', split: 'm', hosted: 'm', stair: 'm', trimExtend: 'verbatim-native-fields' },
+    nativeAuthoringUnits: { replacement: 'verbatim-native-fields', slabOpening: 'm', split: 'm', hosted: 'm', stair: 'm', trimExtend: 'verbatim-native-fields' },
     nativeAuthoringRefusals: refusals,
-    nativeAuthoringAvailability: { slabOpening: slab.expected ? 'available' : unavailable, split: split ? 'available' : unavailable,
+    nativeAuthoringAvailability: { replacement: replacement ? 'available' : unavailable, slabOpening: slab.expected ? 'available' : unavailable, split: split ? 'available' : unavailable,
       hosted: hosted ? 'available' : unavailable, trimExtend: trim ? 'available' : unavailable,
       placement: placement ? 'available' : unavailable, stair: stair ? 'available' : unavailable } };
+  if (includeReplacement) return evidence;
+  // #7320: compact summaries omit the complete pin and its repeated metadata.
+  // Rich capture and explicit attachments retain the authoritative full contract.
+  const { nativeReplacementExpected: _expected, nativeAuthoringUnits, nativeAuthoringAvailability, ...compact } = evidence;
+  const { replacement: _unit, ...units } = nativeAuthoringUnits;
+  const { replacement: _availability, ...availability } = nativeAuthoringAvailability;
+  return { ...compact, nativeAuthoringUnits: units, nativeAuthoringAvailability: availability };
 }
 
+
 const snapshotFields = [
-  ['nativeSlabOpeningExpected', 'slabOpening'],
-  ['nativeSplitExpected', 'split'], ['nativeHostedExpected', 'hosted'],
+  ['nativeReplacementExpected', 'replacement'],
+  ['nativeSlabOpeningExpected', 'slabOpening'], ['nativeSplitExpected', 'split'], ['nativeHostedExpected', 'hosted'],
   ['nativeTrimExtendExpected', 'trimExtend'], ['nativeStairExpected', 'stair'], ['nativePlacement', 'placement'],
 ] as const;
 const record = (value: unknown): value is Record<string, unknown> =>

@@ -34,6 +34,8 @@ import { axis3d } from './host-geometry-frame.js';
  * parsed) are included alongside the source walls.
  */
 export interface OverlayWallReader {
+  /** Authoritative effective metadata callback: null never falls back to source. */
+  readEntity?(expressId: number): { type?: string; attributes: IfcAttributeValue[] } | null;
   /** Iterate every overlay-created entity. */
   getNewEntities(): Iterable<{ expressId: number; type: string; attributes: IfcAttributeValue[] }>;
   /** Resolve a positional attribute (with mutations applied). */
@@ -103,6 +105,7 @@ export function storeyPlacementChain(
   extractor: EntityExtractor,
   overlay: OverlayWallReader | undefined,
   storeyId: number,
+  maxPlacements = Number.POSITIVE_INFINITY,
 ): Map<number, number> | null {
   const chain = new Map<number, number>();
   const storey = readEntity(store, extractor, overlay, storeyId);
@@ -110,6 +113,7 @@ export function storeyPlacementChain(
   let id = numericAttr(storey.attributes[5]); // ObjectPlacement
   if (id === null) return null;
   while (id !== null && !chain.has(id)) {
+    if (chain.size >= maxPlacements) return null;
     chain.set(id, chain.size);
     const placement = readEntity(store, extractor, overlay, id);
     if (!placement) break;
@@ -283,6 +287,7 @@ export function readEntity(
   overlay: OverlayWallReader | undefined,
   expressId: number,
 ): { type?: string; attributes: IfcAttributeValue[] } | null {
+  if (overlay?.readEntity) return overlay.readEntity(expressId);
   if (overlay?.isDeleted?.(expressId)) return null;
   // Source bytes provide the unchanged record; positional edits are applied
   // below so placement walks follow the current references (#5249).

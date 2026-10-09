@@ -34,6 +34,7 @@ export function missingRoomWallGeometry(state: ViewerState, modelId: string, sto
     if (effectiveStoreyId(store,expressId,options) === storeyId) required.add(expressId);
   }
   for (const mesh of model.geometryResult.meshes) {
+    if (mesh.ifcType !== 'IfcWall' && mesh.ifcType !== 'IfcWallStandardCase') continue;
     const ref = state.resolveGlobalIdFromModels(mesh.expressId);
     if (ref?.modelId !== modelId || !required.has(ref.expressId)) continue;
     if (mesh.positions.length >= 9 && mesh.positions.length % 3 === 0 && mesh.indices.length >= 3

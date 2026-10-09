@@ -4,7 +4,58 @@ Status: candidate held for qualification. These hardware runs prove a bounded
 mechanism and several correctness invariants; they do not establish a viewer
 hover speedup or satisfy every acceptance condition of #6881.
 
-## Current-main CPU qualification, 2026-10-09
+## Picker lifecycle CPU qualification, 2026-10-09
+
+Qualified source `674a44f4fba8b43ae85c7f2c4077d386b9f58060` normally integrates
+main `cae06a94985fd31dd9ab2c9a5b61cd4bb723ba8e`, including merged #7361.
+The classification assertion remains intact; no classification workaround was
+copied into this PR. The original hosted failure is retained in the earlier
+local reports. Current-head hosted CI and review still need their own verdict.
+
+Actual main and the integrated pre-repair candidate each fail 14 of 17 identical
+CPU lifecycle controls. Completed readbacks can escape after picker replacement
+(including clear/reinstall), and standalone picker teardown leaves overlapping
+transient buffers pending until promise delivery. The repair shares one pending
+readback owner between point and rectangle paths, releases each buffer once on
+teardown or finally, suppresses completed data after destruction, and captures
+the manager's picker-installation epoch. Redundant same-picker installation stays
+valid. Existing coordinate, RTE and mixed CPU rectangle camera policies remain.
+
+All 17 corrected lifecycle controls pass. Root Turbo renderer tests report
+2,075 passes, zero failures, two existing skips; all ten existing cleanup fault
+controls also pass. Ten diagnostic descriptor-ownership controls pass, including
+refusal to overwrite a later owner. These tests exercise application lifecycle
+invariants with supplied byte/map boundaries; they are **not native GPU or
+real-model picking acceptance**. The skips remain the opt-in memoization stress
+case and unavailable real WebGPU packed-origin readback in Node.
+
+Full serial root typecheck passes: 119 Turbo tasks, all 3,863 test files across
+62 packages in the audit, plus the frame-script postcheck. The actual native
+Turbo invocation and two-CPU affinity were inspected; both temporary package
+files were restored byte for byte. Root lint, source/API/changeset/license gates,
+and the committed-diff gates pass. The source change is inside the renderer's
+existing patch changeset; no public API was added. Picker's module budget falls
+to 706 lines.
+
+[Full CPU reports and controls](diagnostic-lifecycle-cpu-20261009.json.gz)
+include the actual baseline failures, complete root outputs, exact commands,
+source/runtime/model pins, corrected source, prepared GPU diagnostic modules,
+and owned cleanup receipt. Archive SHA-256:
+`641d60aea2bf827532df6c291bc5d726c591e4798435ba7b1ad80bf3639ea144`.
+Thirty recorded owned process identities are absent after the cohort; source
+checkouts are clean, no server/tab was started, and nothing foreign was retired.
+All previous evidence and the historical integration checkpoint are preserved.
+
+**NOT READY; keep draft.** Fresh base/candidate app and observer builds are
+required before the separately reserved native T3 GPU cohort. The current viewer
+output is stale and cannot be admitted as this source. Original fixed coordinates
+and RAF/map/navigation deadlines remain unchanged. Current real-model serial and
+overlap comparisons, edge/HiDPI/navigation/native teardown controls, a second
+fixture and federation remain unqualified. The mounted hover sequencing hypothesis
+is still source-only. Historical refusals and the unexplained XYZ pair remain;
+focused physical-browser performance is unavailable and unqualified.
+
+## Earlier main CPU qualification, 2026-10-09
 
 The isolated integration at `011a235d538d3cda5625e32c2d0a830f61dfcc9b`
 includes main `29a1648b3ea56a346012b65ab3b7e41ecd598e8f` and the existing

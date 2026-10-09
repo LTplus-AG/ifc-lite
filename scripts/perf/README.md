@@ -107,6 +107,17 @@ source gates. Current real-model comparisons, federation and focused physical
 performance remain held; CPU integration and cleanup qualification do not
 replace them. No browser or GPU cohort ran for the integration update.
 
+A subsequent normal main integration includes merged #7361 without copying its
+classification workaround. Identical actual-main and candidate CPU controls
+reproduce obsolete-picker results and delayed standalone teardown cleanup. One
+shared pending-readback owner and a picker-installation epoch repair that class;
+corrected root tests, full serial typecheck and source gates pass. Diagnostic
+method retirement also preserves later owners. These are lifecycle invariants,
+not native GPU acceptance. The current app/observer pair must be rebuilt and
+frozen before the separate T3 correctness session. Original coordinates,
+deadlines, refusals and the focused-performance hold remain.
+
+
 ## Prepass terminal trace publication (#6993)
 
 The host terminates the prepass worker on its completion event. Draining only

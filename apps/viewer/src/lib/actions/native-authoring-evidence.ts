@@ -33,9 +33,17 @@ export interface NativeAuthoringEvidence {
   };
 }
 
+type CompactNativeAuthoringEvidence = Omit<NativeAuthoringEvidence,
+  'nativeReplacementExpected' | 'nativeAuthoringUnits' | 'nativeAuthoringAvailability'> & {
+  nativeAuthoringUnits: Omit<NativeAuthoringEvidence['nativeAuthoringUnits'], 'replacement'>;
+  nativeAuthoringAvailability: Omit<NativeAuthoringEvidence['nativeAuthoringAvailability'], 'replacement'>;
+};
+
 /** #7282: one pure native producer for selected rows and explicit attachments.
  * Reads the detached per-model target supplied by the capture owner. */
-export function nativeAuthoringEvidence(target: ModelEditTarget | null, expressId: number): NativeAuthoringEvidence {
+export function nativeAuthoringEvidence(target: ModelEditTarget | null, expressId: number): NativeAuthoringEvidence;
+export function nativeAuthoringEvidence(target: ModelEditTarget | null, expressId: number, includeReplacement: boolean): NativeAuthoringEvidence | CompactNativeAuthoringEvidence;
+export function nativeAuthoringEvidence(target: ModelEditTarget | null, expressId: number, includeReplacement = true): NativeAuthoringEvidence | CompactNativeAuthoringEvidence {
   const unavailable: Availability = !target ? 'unavailable-target'
     : !nativeLengthUnitAvailable(target) ? 'unavailable-unit' : 'unavailable-native-layout';
   const refusals: NativeAuthoringEvidence['nativeAuthoringRefusals'] = { split: null, hosted: null };
@@ -54,15 +62,23 @@ export function nativeAuthoringEvidence(target: ModelEditTarget | null, expressI
     trim = authoringReachEvidenceFromTarget(target, expressId);
     stair = nativeStairEvidenceFromTarget(target, expressId);
   }
-  const slab=nativeSlabOpeningEvidence(target,expressId),replacement=nativeReplacementEvidence(target,expressId);
-  return { nativeReplacementExpected: replacement, nativeSlabOpeningExpected: slab.expected, nativeSplitExpected: split, nativeHostedExpected: hosted,
+  const slab=nativeSlabOpeningEvidence(target,expressId),replacement=includeReplacement ? nativeReplacementEvidence(target,expressId) : null;
+  const evidence: NativeAuthoringEvidence = { nativeReplacementExpected: replacement, nativeSlabOpeningExpected: slab.expected, nativeSplitExpected: split, nativeHostedExpected: hosted,
     nativeTrimExtendExpected: trim, nativeStairExpected: stair,
     nativeAuthoringUnits: { replacement: 'verbatim-native-fields', slabOpening: 'm', split: 'm', hosted: 'm', stair: 'm', trimExtend: 'verbatim-native-fields' },
     nativeAuthoringRefusals: refusals,
     nativeAuthoringAvailability: { replacement: replacement ? 'available' : unavailable, slabOpening: slab.expected ? 'available' : unavailable, split: split ? 'available' : unavailable,
       hosted: hosted ? 'available' : unavailable, trimExtend: trim ? 'available' : unavailable,
       stair: stair ? 'available' : unavailable } };
+  if (includeReplacement) return evidence;
+  // #7320: compact summaries omit the complete pin and its repeated metadata.
+  // Rich capture and explicit attachments retain the authoritative full contract.
+  const { nativeReplacementExpected: _expected, nativeAuthoringUnits, nativeAuthoringAvailability, ...compact } = evidence;
+  const { replacement: _unit, ...units } = nativeAuthoringUnits;
+  const { replacement: _availability, ...availability } = nativeAuthoringAvailability;
+  return { ...compact, nativeAuthoringUnits: units, nativeAuthoringAvailability: availability };
 }
+
 
 const snapshotFields = [
   ['nativeReplacementExpected', 'replacement'],

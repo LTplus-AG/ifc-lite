@@ -124,3 +124,22 @@ test('#7320 saved single-flight replacement refuses a stale removed-flight metad
  const before=await graph(editedModelBytes(saved,view)),preview=previewModelAuthoring(useViewerStore.getState(),batch);assert.notEqual(preview.rows[0].status,'ready','the native writer removes both products, so saved current flight metadata must be bound too');assert.deepEqual(await graph(editedModelBytes(saved,view)),before);
  const current=captureSelectionGrounding({...useViewerStore.getState(),selectedEntityIds:new Set([f.made.expressId]),selectedEntityId:f.made.expressId}).elements[0]?.nativeReplacementExpected;assert.ok(current);assert.equal(current.companions.length,1);assert.equal(current.companions[0].record.attributes[2],'Current independently saved native flight');const matching=parseModelAuthoringBatch(JSON.stringify({...batch,operations:[{...batch.operations[0],expected:current}]})),approved=previewModelAuthoring(useViewerStore.getState(),matching);assert.equal(approved.rows[0].status,'ready',approved.rows[0].issue??'');const result=commitModelAuthoring(useViewerStore,approved,new Set([0]),'current native Stair companion');assert.ok(result.ok,result.ok?'':result.detail??result.reason);assert.deepEqual(undoModelChanges(useViewerStore,result.receipt),{ok:true});assert.deepEqual(await graph(editedModelBytes(saved,view)),before);
 });
+
+
+test('#7320 compact native selection preserves metadata budget while explicit attachment retains complete replacement pins',async()=>{
+ const f=await fixture();
+ const ids=[f.made.expressId,...[...f.dataStore.entityIndex.byId.keys()].filter(id=>id!==f.made.expressId&&Boolean(f.dataStore.entities.getGlobalId(id))).slice(0,10)];
+ assert.equal(ids.length,11,'real parsed native roots supply the compact selection population');
+ useViewerStore.getState().setSelectedEntityIds(ids);
+ const compact=JSON.parse(captureEvidence('selection').payload).evidence;
+ assert.equal(compact.summary.nativeReplacementCapture,'unavailable-selection-budget');
+ const row=compact.rows.find((row:{data:{expressId:number}})=>row.data.expressId===f.made.expressId);assert.ok(row);
+ assert.equal('nativeReplacementExpected'in row.data,false);
+ assert.equal('replacement'in row.data.nativeAuthoringUnits,false);
+ assert.equal('replacement'in row.data.nativeAuthoringAvailability,false);
+ const explicit=captureSelectionGrounding({...useViewerStore.getState(),selectedEntityIds:new Set([f.made.expressId]),selectedEntityId:f.made.expressId}).elements[0];
+ assert.deepEqual(explicit?.nativeReplacementExpected,f.evidence.nativeReplacementExpected,'complete current parsed native pin survives explicit attachment');
+ useViewerStore.getState().setSelectedEntityIds([f.made.expressId]);
+ const rich=JSON.parse(captureEvidence('selection').payload).evidence.rows[0].data;
+ assert.deepEqual(rich.nativeReplacementExpected,f.evidence.nativeReplacementExpected,'rich transport retains the same complete pin');
+});

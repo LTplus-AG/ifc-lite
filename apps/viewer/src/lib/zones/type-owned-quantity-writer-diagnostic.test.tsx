@@ -246,3 +246,34 @@ test('#7355 current native HasPropertySets reassignment preserves the other shar
    const owned = nativeIds(rawOwned);
  assert.ok(!owned.includes(a.qto) && !owned.includes(b.qto), 'current type ownership is replaced from its native effective list');
 });
+
+for (const action of ['update', 'delete'] as const) {
+ test(`#7355 same-named native type quantity ${action} preserves the unclaimed definition identity`, async t => {
+  const fixture = await inheritedSource(t); if (!fixture) return;
+  const { store, a, b, f, view } = fixture;
+  view.setPositionalAttribute(a.type, 5, [`#${a.qto}`, `#${b.qto}`]);
+  const source = await parse(editedModelBytes(store, view));
+  const baseSets = extractTypeQuantitiesOnDemand(source, f.id)?.quantities ?? [];
+  assert.deepEqual(baseSets.map(set => set.quantities.map(q => q.value)), [[10], [30]]);
+  assert.equal(new Set(baseSets.map(set => set.globalId)).size, 2, 'the native definitions have distinct GlobalIds');
+  const current = new MutablePropertyView(source.properties, 'arch');
+  current.setQuantityExtractor(id => id === a.type ? baseSets.map(set => ({
+   name: set.name, globalId: set.globalId, quantities: set.quantities.map(quantity => ({
+    name: quantity.name, value: quantity.value, type: QuantityType.Volume,
+   })),
+  })) : []);
+  if (action === 'update') current.setQuantity(a.type, 'Qto_WallBaseQuantities', 'NetVolume', 35, QuantityType.Volume);
+  else current.deleteQuantity(a.type, 'Qto_WallBaseQuantities', 'NetVolume');
+  assert.deepEqual(current.getQuantitiesForEntity(a.type).map(set => set.quantities.map(q => q.value)),
+   action === 'update' ? [[35], [30]] : [[30]], 'the canonical instance-claiming overlay changes only the first definition');
+  const exported = await parse(editedModelBytes(source, current));
+  const rawOwned = exported.getEntity(a.type)?.attributes[5]; assert.ok(Array.isArray(rawOwned));
+  const owned = nativeIds(rawOwned);
+  assert.ok(owned.includes(b.qto), 'the unclaimed second native quantity definition keeps its EXPRESS ownership reference');
+  assert.deepEqual(exported.getEntity(b.qto), source.getEntity(b.qto), 'unclaimed native set GlobalId and full attributes remain unchanged');
+  assert.deepEqual(exported.getEntity(b.volume), source.getEntity(b.volume));
+  assert.deepEqual(exported.getEntity(b.type), source.getEntity(b.type), 'the other native owner keeps its original HasPropertySets');
+  assert.deepEqual(extractTypeQuantitiesOnDemand(exported, f.id)?.quantities.map(set => set.quantities.map(q => q.value)),
+   action === 'update' ? [[35], [30]] : [[30]], 'independent saved/reparsed quantity facts retain instance claims');
+ });
+}

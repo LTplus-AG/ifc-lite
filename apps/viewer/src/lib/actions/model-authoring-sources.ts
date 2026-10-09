@@ -11,7 +11,7 @@ interface Source { modelId: string; store: IfcDataStore | undefined; source: Ifc
 const sources = new WeakMap<ModelAuthoringPreview, Source[]>();
 const needsSource = (preview: ModelAuthoringPreview) => preview.batch.operations.some(op =>
   op.op === 'curtainWall.create' || op.op === 'material.layers' || op.op === 'element.reassignStorey' || op.op === 'grid.create' || op.op === 'column.createOnGrid' || op.op === 'element.replace' || op.op === 'element.align' || (op.op === 'element.rotate' && !!op.pivot) || op.op === 'element.copy' || op.op === 'element.array'
-  || op.op === 'type.detach' || op.op === 'hosted.edit' || op.op === 'hosted.create' && 'params' in op || op.op === 'element.trimExtend'
+  || op.op === 'classification.add' || op.op === 'type.detach' || op.op === 'hosted.edit' || op.op === 'hosted.create' && 'params' in op || op.op === 'element.trimExtend'
   || op.op === 'element.split' || op.op.startsWith('stair.') || op.op.startsWith('railing.'));
 
 /** Copy, split, Trim/Extend and hosted edit approval belong to these loaded sources, never to a later reload with matching names/ids. */

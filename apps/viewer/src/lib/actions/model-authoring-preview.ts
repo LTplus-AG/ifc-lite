@@ -10,16 +10,12 @@
  * anything moved since.
  */
 
-import { authoringCurtainWallGhost } from './model-authoring-curtain-wall-ghost';
 import { resolveReviewedLayers, LayerRefusal } from './model-authoring-layers';
 import { resolveReviewedStoreyReassignment } from './model-authoring-storey-reassignment';
-import { gridCreationGhost } from './model-authoring-grid-ghost';
 import { nativeGridExpected, sameGridExpected } from './model-authoring-grid-native';
 import { nativeLengthUnitAvailable } from './model-authoring-read-target';
 import { readNativeReplacementExpected } from './model-authoring-replacement';
-import { authoringSlabOpeningGhost } from './model-authoring-slab-opening-ghost';
 import { verifySlabOpeningHost } from './model-authoring-slab-opening';
-import { stairRailingGhost } from './model-authoring-stair-railing-ghost';
 import { nativeStairEvidence, sameStairSnapshot } from './model-authoring-stair-lifecycle';
 import { stairPatchInMetres } from './model-authoring-stair-railing-fields';
 import type { ViewerState } from '@/store';
@@ -34,6 +30,7 @@ import { validateAuthoringDraft } from './model-authoring-preview-draft';
 import {
   authoringReader, className, conforms, deletionRefusal, materialNameOf, nameOf, typeNameOf, type AuthoringReader,
 } from './model-authoring-read';
+import { updateAuthoringPreviewAvailability } from './model-authoring-preview-availability';
 import { captureAuthoringSources } from './model-authoring-sources';
 import { resolveGlobalId } from './resolve-global-id';
 import { readElementProfileFromTarget } from '@/store/slices/mutation-element-profile';
@@ -41,13 +38,11 @@ import { readAuthoringSizeFromTarget, sameNativeDimensions } from './model-autho
 import { verifyReachExpected, verifyReachStoreyFrame, reachBefore } from './model-authoring-reach';
 import { sizeInMetres } from './model-authoring-size-params';
 import { profileInMetres } from './model-authoring-shape-params';
-import { authoringHostedEditGhost } from './model-authoring-hosted-edit-ghost';
+import { validateClassificationAdd } from './model-authoring-classification';
 import { hostedFillRefusal } from '@/store/slices/mutation-hosted-fill';
 import { readExpectedHostedEdit, sameHostedEdit } from './model-authoring-hosted-edit';
 import { readSplitSnapshot, sameSplitSnapshot } from './model-authoring-split-state';
 import { uniqueSplitGuid } from './model-authoring-split';
-import { authoringSplitMarker } from './model-authoring-split-ghost';
-import { authoringSizeGhost } from './model-authoring-size-ghost';
 import { reviewAlignment } from './model-authoring-align';
 import { reviewElementTransform } from './model-authoring-transform-review';
 import { AuthoringRefusal as Refusal } from './model-authoring-preview-refusal';
@@ -83,7 +78,7 @@ function existing(ctx: Context, target: ExistingElement, row: AuthoringRow): num
   join(row, modelId);
   const r = reader(ctx, modelId);
   if ((row.op.op.startsWith('stair.') || row.op.op.startsWith('railing.')) && !uniqueSplitGuid(r.dataStore, r.editor, target.globalId)) throw new Refusal('ambiguous-target', 'The native stair or railing target GlobalId is not unique in its owning model');
-  if ((row.op.op === 'material.layers' || row.op.op === 'element.replace' || row.op.op === 'element.align' || (row.op.op === 'element.rotate' && !!row.op.pivot) || row.op.op === 'element.split' || row.op.op === 'element.trimExtend' || row.op.op === 'type.detach') && !uniqueSplitGuid(r.dataStore, r.editor, target.globalId)) throw new Refusal('ambiguous-target', 'The native target GlobalId is not unique in its owning model');
+  if ((row.op.op === 'material.layers' || row.op.op === 'element.replace' || row.op.op === 'element.align' || (row.op.op === 'element.rotate' && !!row.op.pivot) || row.op.op === 'element.split' || row.op.op === 'element.trimExtend' || row.op.op === 'type.detach' || row.op.op === 'classification.add') && !uniqueSplitGuid(r.dataStore, r.editor, target.globalId)) throw new Refusal('ambiguous-target', 'The native target GlobalId is not unique in its owning model');
   const ifcClass = className(r, expressId);
   const name = nameOf(r, expressId);
   row.before.ifcClass = ifcClass;
@@ -290,6 +285,10 @@ function resolve(ctx: Context, row: AuthoringRow): void {
       row.previewUnavailable = true;
       return;
     }
+    case 'classification.add':
+      row.resolved.target = row.expressId = existing(ctx, op.target, row);
+      validateClassificationAdd(op, reader(ctx, row.modelId!), row.expressId, message => { throw new Refusal('invalid', message); });
+      row.previewUnavailable = true; return;
     case 'type.assign': case 'material.assign': {
       const subject = row.resolved.subject = element(ctx, op.target, row);
       if ('id' in subject) row.expressId = subject.id;
@@ -362,29 +361,7 @@ export function previewModelAuthoring(state: ViewerState, batch: ModelAuthoringB
     }
   }
   validateAuthoringDraft(state, batch, ctx.rows, modelId => reader(ctx, modelId));
-  for (const row of ctx.rows) if (row.status === 'ready' && row.modelId && (row.op.op === 'element.resize' || row.op.op === 'element.profile' || row.op.op === 'element.trimExtend' || (row.op.op === 'material.layers' && row.op.scope === 'element' && row.resolved.layers?.kind === 'wall'))) {
-    const boundary = row.op.op === 'element.trimExtend' ? row.resolved.reachBoundary : undefined;
-    // The whole native batch validates this boundary; the independent body draft
-    // cannot reproduce a preceding edit of the same existing wall (#7262).
-    if (boundary && 'id' in boundary && ctx.rows.some(previous => previous.index < row.index
-      && previous.status === 'ready' && previous.modelId === row.modelId && previous.expressId === boundary.id
-      && previous.op.op !== 'element.copy' && previous.op.op !== 'element.array')) {
-      row.previewUnavailable = true;
-      continue;
-    }
-    const ghost = authoringSizeGhost(state, batch, row, row.modelId, 0);
-    row.previewUnavailable = ghost.unavailable;
-    row.previewOmitted = ghost.omitted;
-    row.previewOuterBodyOnly = ghost.outerBodyOnly;
-  }
-  for (const row of ctx.rows) if (row.status === 'ready' && row.op.op === 'hosted.edit') row.previewUnavailable = authoringHostedEditGhost(state, batch, row, 0, ctx.rows) === null;
-  for (const row of ctx.rows) if (row.status === 'ready' && row.op.op === 'element.split') {
-    row.previewUnavailable = authoringSplitMarker(state, batch, row, 0) === null;
-  }
-  for(const row of ctx.rows)if(row.status==='ready'&&row.op.op==='hosted.create'&&'params' in row.op)row.previewUnavailable=!authoringSlabOpeningGhost(state,row,ctx.rows,0);
-  for(const row of ctx.rows)if(row.status==='ready'&&['stair.create','railing.create','stair.replace','railing.replace'].includes(row.op.op))row.previewUnavailable=!stairRailingGhost(state,batch,row,0);
-  for (const row of ctx.rows) if (row.status === 'ready' && row.op.op === 'curtainWall.create') row.previewUnavailable = authoringCurtainWallGhost(state, batch, row, 0).length === 0;
-  for (const row of ctx.rows) if (row.status === 'ready' && (row.op.op === 'grid.create' || row.op.op === 'column.createOnGrid')) row.previewUnavailable = gridCreationGhost(state, batch, row, 0).length === 0;
+  updateAuthoringPreviewAvailability(state, batch, ctx.rows);
   const preview = { batch, rows: ctx.rows, mutationVersion: state.mutationVersion, digest: batchDigest(batch) };
   captureAuthoringSources(state, preview);
   return preview;

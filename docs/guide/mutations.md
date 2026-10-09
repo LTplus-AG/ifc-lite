@@ -987,6 +987,12 @@ layout unless an operation has materialized rooms in the graph.
 
 `MutablePropertyView.getMutationRevision()` returns an O(1) invalidation token for the live overlay. Capture it before asynchronous preparation and compare it afterward together with the model and view identities. Canonical edits, history-free edits, Undo/Redo and atomic publications advance the token; a rejected detached draft does not change the live token. Conservative increments may invalidate unchanged geometry. The token is local to one view, is not serialized, and must not replace the recorded Undo head.
 
+`readRelatedLists` normally returns valid relating references and excludes explicit
+IFC unset targets. For completeness-sensitive validation, its optional fourth
+argument `{ includeMalformedRelatingTargets: true }` also inventories owned
+relationships with an invalid or unavailable relating target; these rows omit
+`relatingId` and must be refused as unknown. Explicit unset remains excluded.
+
 
 ### Same-identity storey reassignment
 

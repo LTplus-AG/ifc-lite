@@ -116,7 +116,7 @@ export function authoringRowSummary(row: AuthoringRow, batch: ModelAuthoringBatc
       return { subject: ref(op.target, t), before: before.type ?? none,
         after: 'create' in op.type ? t('modelAuthoring.newType', { name: op.type.create.name, ifcClass: op.type.create.ifcClass }) : op.type.name };
     case 'material.layers': {
-      const describe = (layers: typeof op.MaterialLayers) => layers.map(layer => `${num(layer.LayerThickness)} ${units} · ${layer.Material === null ? none : 'create' in layer.Material ? t('modelAuthoring.newMaterial', { name: layer.Material.create.Name }) : `${layer.Material.Name || 'IfcMaterial'} #${layer.Material.expressId}`}`).join('; ');
+      const describe = (layers: typeof op.MaterialLayers) => layers.map(layer => `${String(layer.LayerThickness)} ${units} · ${layer.Material === null ? none : 'create' in layer.Material ? t('modelAuthoring.newMaterial', { name: layer.Material.create.Name }) : `${layer.Material.Name || 'IfcMaterial'} #${layer.Material.expressId}`}`).join('; ');
       const previous = op.scope === 'type' ? op.expected.typeLayers : op.expected;
       const existingLayers = previous?.MaterialLayers.length ? describe(previous.MaterialLayers) : previous?.assignments.length
         ? previous.assignments.map(assignment => `${assignment.ifcClass} #${assignment.expressId}`).join('; ') : none;

@@ -6,6 +6,7 @@
  * and no BCF component is resolved to a model by guessing its GlobalId. */
 import { useViewerStore, type ViewerState } from '@/store';
 import { resolveGlobalId } from '@/lib/actions/resolve-global-id';
+import { setValidationSourceChoice } from '@/lib/validation/validation-source-choice';
 import { selectChangedEntity } from '@/lib/changes/select-changed-entity';
 import { compareImpactOf } from './compare-analysis-state';
 import { comparisonNavigationIsCurrent } from './comparison-navigation-lease';
@@ -37,6 +38,7 @@ export function captureImpactNavigation(captured: ViewerState, impact: CompareIm
       || state.mutationVersion !== captured.mutationVersion
       || !comparisonNavigationIsCurrent(comparison, state)
       || (row.kind === 'clash' && state.clashRawResult !== captured.clashRawResult)
+      || (row.kind === 'validation' && state.validationSource !== captured.validationSource)
       || source(state, row) !== sourcePins.get(row) || !sourcePins.get(row)
       || (row.kind === 'list' && state.listDefinitions.find(def => def.id === row.listId) !== listDefinition)) return null;
     // Source objects can contain mutable topic maps. Check the exact native
@@ -72,6 +74,7 @@ export function captureImpactNavigation(captured: ViewerState, impact: CompareIm
         case 'validation': {
           const ref = target(row, row.changed, true);
           if (!ref || !selectChangedEntity(ref.modelId, ref.expressId)) return false;
+          setValidationSourceChoice(state.validationSource === 'rules' ? 'rules' : 'ids');
           state.setIdsActiveSpecification(row.specificationId);
           state.setIdsActiveEntity(ref);
           break;

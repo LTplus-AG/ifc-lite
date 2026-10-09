@@ -21,6 +21,7 @@ export function useCompareImpact() {
   const models = useViewerStore(s => s.models);
   const clashResult = useViewerStore(s => s.clashResult);
   const clashRawResult = useViewerStore(s => s.clashRawResult);
+  const validationSource = useViewerStore(s => s.validationSource);
   const idsValidationReport = useViewerStore(s => s.idsValidationReport);
   const listResult = useViewerStore(s => s.listResult);
   const listDefinitions = useViewerStore(s => s.listDefinitions);
@@ -35,6 +36,6 @@ export function useCompareImpact() {
       listDefinitions, activeListId, bcfProject, mutationVersion, geometryContentVersion, modelPlacement }, PANEL_IMPACT_ROWS);
     return impact ? { impact, navigation: captureImpactNavigation(useViewerStore.getState(), impact) } : null;
   },
-  [compareResult, models, clashResult, clashRawResult, idsValidationReport, listResult, listDefinitions, activeListId, bcfProject,
+  [compareResult, models, clashResult, clashRawResult, validationSource, idsValidationReport, listResult, listDefinitions, activeListId, bcfProject,
     mutationViews, mutationVersion, geometryContentVersion, modelPlacement]);
 }

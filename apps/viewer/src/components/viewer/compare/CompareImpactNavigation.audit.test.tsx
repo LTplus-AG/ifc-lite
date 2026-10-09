@@ -5,6 +5,7 @@ import '@/test/setup-dom.js';
 import { afterEach, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
+import { setValidationSourceChoice, useValidationSourceChoice } from '@/lib/validation/validation-source-choice';
 import { federationRegistry } from '@ifc-lite/renderer';
 import { useViewerStore } from '@/store';
 import { render, click, cleanup } from '@/test/render';
@@ -23,7 +24,7 @@ async function publishComparison(pair: RevisionPair) {
  const comparison = comparePreparedPair(built, { scope: 'both', excludedTypes: [], matchByContent: false });
  act(() => useViewerStore.setState({ compareResult: comparison })); return comparison;
 }
-afterEach(() => { cleanup(); useViewerStore.setState(initial, true); federationRegistry.clear(); });
+afterEach(() => { cleanup(); useViewerStore.setState(initial, true); federationRegistry.clear(); setValidationSourceChoice(null); });
 it('native revision-pair control selects the added duct in its owning head model', async t => {
  const pair = await revisionPair(t); if (!pair) return;
  useViewerStore.setState({ ...fixtureModels(pair.base, pair.head), compareResult: pair.compare });
@@ -99,8 +100,10 @@ it('7307 native validation, list aggregate and BCF topic open their actual owner
  addViewpointToTopic(topic, { guid: 'impact-native-view', components: { selection: [{ ifcGuid: PINS.deleted }] } });
  project.topics.set(topic.guid, topic);
  act(() => useViewerStore.setState({ idsValidationReport: report, listResult: list, listDefinitions: [definition], activeListId: definition.id, bcfProject: project }));
+ setValidationSourceChoice('manual');
  const root = openImpact();
  act(() => click(openButton(impactRow(root, 'Furniture navigation witness'))));
+ assert.equal(useValidationSourceChoice.getState().choice, 'ids', 'native validation owner switches from Manual to actual IDS evidence');
  assert.equal(useViewerStore.getState().sidebarActivePanel, 'validation');
  const failed = report.specificationResults.find(s => s.specification.name === 'Furniture navigation witness'); assert.ok(failed);
  assert.equal(useViewerStore.getState().idsActiveSpecificationId, failed.specification.id);
@@ -230,6 +233,7 @@ it('7307 direct native overlay revision changes invalidate held and remounted ac
  view.setAttribute(id, 'Name', 'Native edited duct 7307', pair.head.ifcDataStore.entities.getName(id));
  assert.ok(view.getMutationRevision() > revision); assert.equal(useViewerStore.getState().mutationVersion, counter);
  act(() => click(held)); assert.equal(useViewerStore.getState().clashSelectedId, null);
+ assert.match(row.querySelector('[role="status"]')?.textContent ?? '', /no longer identifies current native evidence/);
  cleanup(); root = openImpact(); assert.equal(openButton(impactRow(root, PINS.clashAdded)).disabled, true);
 });
 it('7307 native preparations cannot bless inputs changed before completion/rediff', async t => {
@@ -309,4 +313,24 @@ it('7307 held native list/BCF/validation links cannot open replacements or delet
   assert.equal(useViewerStore.getState().listPanelVisible, false);
   assert.equal(useViewerStore.getState().selectedEntity, null);
  }
+});
+it('7307 actual Information validation evidence opens Rules instead of remembered IDS/Manual side', async t => {
+ const pair = await revisionPair(t); if (!pair) return;
+ const { runRules } = await import('@/lib/compare/revision-pair.test-support');
+ const { Rule } = await import('@ifc-lite/rules');
+ useViewerStore.setState({ ...fixtureModels(pair.base, pair.head) }); await publishComparison(pair);
+ const report = stampAnalysisReport(await runRules(pair, 'A', { version: 1, name: 'Native information navigation', rules: [{
+  id: 'current-wall-name', name: 'Native walls are named',
+  applicability: { groups: [{ rules: [Rule.ifcType(['IfcWall'])], combinator: 'AND' }], authoredAs: 'chips' },
+  requirement: { kind: 'element', block: { groups: [{ rules: [Rule.attribute('Name', 'eq', 'never-authored-7307')], combinator: 'AND' }], authoredAs: 'chips' } },
+ }] }), captureAnalysisStamp(true));
+ act(() => useViewerStore.setState({ idsValidationReport: report, validationSource: 'rules' }));
+ setValidationSourceChoice('manual'); const root = openImpact(); const row = impactRow(root, 'Native walls are named');
+ act(() => click(openButton(row)));
+ assert.equal(useValidationSourceChoice.getState().choice, 'rules');
+ assert.equal(useViewerStore.getState().sidebarActivePanel, 'validation');
+ const active = useViewerStore.getState().idsActiveEntityId; assert.ok(active);
+ assert.equal(active.modelId, 'A');
+ assert.ok(report.specificationResults.some(spec => spec.entityResults.some(entity => !entity.passed
+  && entity.modelId === active.modelId && entity.expressId === active.expressId)));
 });

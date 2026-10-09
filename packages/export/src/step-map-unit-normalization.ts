@@ -7,6 +7,8 @@ import { readStepSlots, splitTopLevelListItems, type StepRecordSlots } from './s
 import { attrIndex, stepSourceSchema } from './subset-entity-reader.js';
 import { resolveExpressBase, toStepReal } from './step-serialization.js';
 import type { ExportPass } from './step-export-types.js';
+import { normalizeVerticalDatumToEgm2008, recordGeoreferencingEdit } from './step-vertical-datum-normalization.js';
+import type { StepCoordinateNormalizationOptions } from './step-coordinate-options.js';
 
 interface RecordEntry { id: number; index: number; record: StepRecordSlots }
 const ref = (token: string | undefined): number | undefined => token?.match(/^#([0-9]+)$/) ? Number(token.slice(1)) : undefined;
@@ -16,11 +18,17 @@ const real = (token: string | undefined): number => token !== undefined && /^[+-
 const definedTypes = new Map(Object.keys(SCHEMA_REGISTRY.types).map(name => [name.toUpperCase(), name]));
 const maps = new Set(['IFCMAPCONVERSION', 'IFCMAPCONVERSIONSCALED']);
 
+/** Opt-in coordinate metadata phases on the emitted model, before Rust planning. */
+export function normalizeCoordinateMetadata(pass: ExportPass, options: StepCoordinateNormalizationOptions, allocateId: () => number): void {
+  if (options.normalizeMapUnitsToMetres) normalizeMapUnitsToMetres(pass, allocateId);
+  if (options.normalizeVerticalDatumToEgm2008) normalizeVerticalDatumToEgm2008(pass);
+}
+
 /** Normalize the *emitted* model, after named/positional/created-entity edits.
  * Never rewrite a shared project unit. Each CRS and all its operations change
  * atomically; a refusal leaves that CRS byte-identical and is reported (#6587).
  */
-export function normalizeMapUnitsToMetres(pass: ExportPass, allocateId: () => number): void {
+function normalizeMapUnitsToMetres(pass: ExportPass, allocateId: () => number): void {
   const records = new Map<number, RecordEntry>();
   const operations = new Map<number, RecordEntry[]>();
   let unreadableOperation = false;
@@ -95,12 +103,7 @@ export function normalizeMapUnitsToMetres(pass: ExportPass, allocateId: () => nu
     replacements.set(crs, slots);
     for (const [entry, updated] of replacements) {
       pass.entities[entry.index] = `${entry.record.prefix}${updated.join(',')}${entry.record.suffix}`;
-      // Newly created entities already contribute to newEntityCount; source
-      // entities count once even if an earlier session edit changed them too.
-      if (!pass.effective.isOverlayCreated(entry.id) && pass.effective.has(entry.id)) {
-        pass.modifications.nominate(entry.id, 'georeferencing');
-        pass.modifications.recordEmitted(entry.id, 'georeferencing');
-      }
+      recordGeoreferencingEdit(pass, entry.id);
     }
   }
 }

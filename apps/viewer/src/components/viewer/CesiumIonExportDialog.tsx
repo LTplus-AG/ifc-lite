@@ -79,6 +79,7 @@ export function CesiumIonExportDialog({ trigger, upload = uploadToCesiumIon }: C
           schema,
           includeGeometry: true, applyMutations: true, visibleOnly: false,
           normalizeMapUnitsToMetres: normalizeCoordinates, normalizeMapGeometry: normalizeCoordinates,
+          normalizeVerticalDatumToEgm2008: normalizeCoordinates,
           georefMutations: state.georefMutations.get(selectedId) ?? undefined,
           application: 'ifc-lite', description: 'Exported from ifc-lite for Cesium ion',
           onProgress: () => abort.signal.throwIfAborted(),

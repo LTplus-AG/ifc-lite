@@ -74,3 +74,28 @@ unchanged five-second railway test and ten-second mapped-WASM hook deadlines.
 Those timeout failures remain recorded; no deadline or acceptance was relaxed.
 Broad rerun and new-head all-ten qualification require their actual terminal
 receipts and remain pending at this evidence commit.
+
+## Corrective complete-fact transport budget
+
+Group facts now share an aggregate escaped-JSON transport budget across all
+selected models, including the duplicated group/record fields and part overhead.
+The rich summary and explicit attachment carry either a complete snapshot or
+explicit unavailable-transport-budget with null facts. Optional complete Cost
+and Structural snapshots share a separate attachment budget; each whole pin
+can be unavailable-transport-budget, never partially sliced. Ordinary selected
+fields and the generic 90,000-character request guard remain unchanged.
+
+Real escaped-description Group records exceeding the request ceiling now reach
+both actual request paths with explicit unavailable facts. Two independently
+parsed loaded sources each fit standalone, but aggregate capture keeps the
+first complete source and refuses the second; both routes send successfully.
+Guidance requests a smaller selected population instead of repeating the same
+oversized attachment. Current controls: Group12 plus shared oracle6 =18 passes,
+zero skips. Removing the Group budget gives14 passes/four real assertions;
+removing the optional attachment budget gives17 passes/one real context-limit
+send assertion. Exact source SHA restoration gives18 passes. Current fe307
+five-public-entry whole proof gives11 genuine passes/seven real path assertions
+then18 restored passes, zero skips. Earlier narrower proof counts remain
+historical. Raw logs and source SHA receipts accompany this correction.
+
+New-head proper root all-ten and isolated broad tests remain pending.

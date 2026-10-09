@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { nativeStructuralEvidence } from './structural-graph-evidence';
-import { nativeGroupEvidence, type NativeGroupEvidence } from './group-lifecycle-evidence';
+import { groupTransportBudget, nativeGroupEvidence, type NativeGroupEvidence } from './group-lifecycle-evidence';
 
 
 /**
@@ -40,7 +40,7 @@ export interface SelectionElement extends NativeAuthoringEvidence {
   nativeType: NativeTypeEvidence;
   nativeLayers?: NativeLayerEvidence;
   nativeStairExpected: ReturnType<typeof nativeStairEvidenceFromTarget>;
-  nativeCost: CostEvidence;
+  nativeCost: CostEvidence | { status: 'unavailable-transport-budget'; recordCount: null; expected: null };
 }
 
 export interface SelectionGrounding {
@@ -125,10 +125,23 @@ export function captureSelectionGrounding(state: GroundingState, limit = SELECTI
   }
   const grounding = { capturedAt: new Date().toISOString(), total, elements, unresolved,
     truncated: elements.length + unresolved < total };
+  const groupBudget = groupTransportBudget();
   for (const modelId of new Set(elements.map(row => row.modelId))) {
     const rows = elements.filter(row => row.modelId === modelId);
     rows[0].nativeGroup = grounding.truncated || unresolved ? { status: 'unavailable-selection-budget', snapshot: null }
-      : nativeGroupEvidence(nativeTarget(modelId), groupPopulation.get(modelId)!);
+      : nativeGroupEvidence(nativeTarget(modelId), groupPopulation.get(modelId)!, groupBudget);
+  }
+  // Optional complete graph pins share the attachment envelope. They must not
+  // duplicate large selected Group records until the whole request cannot fit.
+  // Refuse each entire pin explicitly; never truncate its expected records.
+  let graphBudget = 12_000;
+  for (const row of elements) {
+    for (const key of ['nativeStructural', 'nativeCost'] as const) {
+      const evidence = row[key];
+      const cost = JSON.stringify(JSON.stringify(evidence)).length;
+      if (cost > graphBudget) row[key] = { status: 'unavailable-transport-budget', recordCount: null, expected: null };
+      else graphBudget -= cost;
+    }
   }
   groundingOwners.set(grounding, { elements: JSON.stringify(elements), sources });
   return grounding;

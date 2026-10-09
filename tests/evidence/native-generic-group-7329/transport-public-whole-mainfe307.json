@@ -1,0 +1,13 @@
+{
+  "base": "fe3070cfb18853dd857554615160806a607dbae2",
+  "boundary": "Actual public entrypoints; newly introduced private native/review helpers remain to execute genuine controls",
+  "baselineExit": 1,
+  "restoredExit": 0,
+  "restoredSha256": {
+    "apps/viewer/src/lib/actions/selection-grounding.ts": "3126108fcb446fc17ed9a8c4484a8eaa6da14f59c90642f67edbdcc3fb290017",
+    "apps/viewer/src/lib/assistant/adapters/selection.ts": "90f022940de6a44db715d07a0bd56a88f3483961cae3500ab3c0fd62fcccfba5",
+    "apps/viewer/src/lib/assistant/request.ts": "964a7159175cc2b21199820d36bd689e8f9e7b6e975bdfa4c7ffdb0754a2fdbc",
+    "apps/viewer/src/components/viewer/assistant/ModelChangeProposal.tsx": "a73bd2fa75a83fa5eb57af1677c7bdee4295e08cd0151079dcaff24676036473",
+    "apps/viewer/src/sdk/adapters/store-adapter.ts": "41218dd880f7d0d24cbe7571350c73f473a7e7d2590d314409a682c4a79bc11e"
+  }
+}

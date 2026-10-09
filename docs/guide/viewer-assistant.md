@@ -463,3 +463,9 @@ Unavailable or incomplete captured evidence requires a fresh attachment.
 Generic replacement refuses typed `RelatedObjectsType` assignments and
 semantically distinct assignment records instead of merging their meanings.
 Those groups can still be read and safely removed through native review.
+Complete Group facts share a transport budget across every selected model,
+including escaped JSON. Oversized facts are explicitly unavailable; select a
+smaller set of groups before capturing again. Reattaching the same oversized
+selection cannot repair that refusal. Optional complete Cost and Structural
+snapshots also share the attachment budget and are refused whole when necessary;
+unavailable snapshots do not establish an empty graph or permit an edit.

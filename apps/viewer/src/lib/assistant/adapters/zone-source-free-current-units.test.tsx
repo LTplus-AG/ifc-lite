@@ -40,17 +40,21 @@ for (const source of ['selection', 'zones'] as const) {
     const f = await seedDeclaredZoneWall(t); if (!f) return;
     const draft = getOrCreateMutationView(useViewerStore, 'arch'); assert.ok(draft);
     const editor = new StoreEditor(f.store, draft);
+    let removedQuantityRelationships = 0;
     // @raw-entity-enumeration-ok native fixture authoring removes only the real wall's source quantity relationships
     for (const id of f.store.entityIndex.byType.get('IFCRELDEFINESBYPROPERTIES') ?? []) {
       const attrs = f.store.getEntity(id)?.attributes;
       if (!Array.isArray(attrs?.[4]) || !attrs[4].includes(f.id) || typeof attrs[5] !== 'number'
-        || f.store.entities.getTypeName(attrs[5]) !== 'IfcElementQuantity') continue;
+        || f.store.getEntity(attrs[5])?.type.toUpperCase() !== 'IFCELEMENTQUANTITY') continue;
+      removedQuantityRelationships++;
       const others = attrs[4].filter(id => id !== f.id);
       if (others.length) draft.setPositionalAttribute(id, 4, others.map(id => `#${id}`)); else draft.deleteEntity(id);
     }
+    assert.ok(removedQuantityRelationships > 0, 'native setup removes the original occurrence quantity relationship');
     const ownerId = f.store.getEntity(f.id)?.attributes[1];
     const owner = typeof ownerId === 'number' ? `#${ownerId}` : null;
-    const q = editor.addEntity('IfcQuantityVolume', ['NetVolume', null, null, 10, null]).expressId;
+    const q = editor.addEntity('IfcQuantityVolume', f.store.schemaVersion === 'IFC2X3'
+      ? ['NetVolume', null, null, 10] : ['NetVolume', null, null, 10, null]).expressId;
     const qto = editor.addEntity('IfcElementQuantity', [generateIfcGuid(), owner, 'SourceFree quantities', null, null, [`#${q}`]]).expressId;
     editor.addEntity('IfcRelDefinesByProperties', [generateIfcGuid(), owner, null, null, [`#${f.id}`], `#${qto}`]);
     const store = await parse(editedModelBytes(f.store, draft));

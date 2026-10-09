@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { nativeStructuralTransportEvidence } from '@/lib/actions/structural-graph-evidence';
+import { nativeGroupTransportEvidence } from '@/lib/actions/group-lifecycle-evidence';
 
 
 /**
@@ -263,6 +264,9 @@ export const selectionAdapter: EvidenceAdapter = {
     return {
       summary: {
         kind: 'selection', channel, selectionSize: refs.length, modelCount: byModel.size,
+        nativeGroups: sample.length !== refs.length || sample.length > 100 ? [{ status: 'unavailable-selection-budget', expectedJsonParts: null }]
+          : [...byModel.keys()].map(modelId => ({ modelId,
+            ...nativeGroupTransportEvidence(nativeTarget(modelId), sample.filter(ref => ref.modelId === modelId).map(ref => ref.expressId)) })),
         ...(!rich ? { nativeCostCapture: 'unavailable-selection-budget', nativeReplacementCapture: 'unavailable-selection-budget' } : {}),
         ...(sample.length !== 1 ? { nativeStructuralCapture: 'unavailable-selection-budget' } : {}),
         byModel: [...byModel].map(([modelId, count]) => ({ modelId, name: sourceFor(modelId).name, count })),

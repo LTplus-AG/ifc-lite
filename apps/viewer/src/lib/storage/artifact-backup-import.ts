@@ -10,13 +10,12 @@ import type { StandaloneArtifactLibraries } from './artifact-backup.js';
 
 type Kind = keyof StandaloneArtifactLibraries;
 export interface ArtifactImportOutcome { saved: number; failed: Kind[] }
-interface ImportIdentityOwners<T> {
-  claimed: Set<T>;
+interface ImportIdentityOwners {
+  claimed: Set<string>;
   sourceIds: ReadonlySet<string>;
-  id: (row: T) => string;
 }
-function identityOwners<T extends { id: string }>(incoming: readonly T[]): ImportIdentityOwners<T> {
-  return { claimed: new Set<T>(), sourceIds: new Set(incoming.map(row => row.id)), id: row => row.id };
+function identityOwners(incoming: readonly { id: string }[]): ImportIdentityOwners {
+  return { claimed: new Set(), sourceIds: new Set(incoming.map(row => row.id)) };
 }
 function evidence(value: object): unknown {
   const { id: _id, name: _name, createdAt: _createdAt, updatedAt: _updatedAt, builtin: _builtin,
@@ -27,18 +26,34 @@ function copyName(name: string, index: number, limit = 200): string {
   const suffix = index === 1 ? ' (imported)' : ` (imported ${index})`;
   return name.slice(0, Math.max(1, limit - suffix.length)) + suffix;
 }
-/** Repeated native retries recognize an unchanged imported copy; edits are never overwritten. */
-function reusable<T extends { name: string }>(rows: readonly T[], incoming: T, limit = 200,
-  owners?: ImportIdentityOwners<T>): T | undefined {
-  const names = new Set([incoming.name, ...Array.from({ length: rows.length + 1 }, (_, index) => copyName(incoming.name, index + 1, limit))]);
-  const wanted = evidence(incoming);
-  const matches = (row: T) => !owners?.claimed.has(row)
-    && names.has(row.name) && sameReportEvidence(evidence(row), wanted);
-  if (!owners) return rows.find(matches);
-  // Native IDs remain distinct even for equal definitions. Reserve every
-  // incoming ID before considering independent copies from earlier retries.
-  const exact = rows.find(row => owners.id(row) === owners.id(incoming) && matches(row));
-  return exact ?? rows.find(row => !owners.sourceIds.has(owners.id(row)) && matches(row));
+/** Filters use native names as identities; List/Lens provenance requires IDs. */
+function reusableFilter(rows: readonly SavedFilterPreset[], incoming: SavedFilterPreset): boolean {
+  return rows.some(row => (row.name === incoming.name || Array.from({ length: rows.length + 1 },
+    (_, index) => copyName(incoming.name, index + 1, __internal.MAX_NAME_LEN)).includes(row.name))
+    && sameReportEvidence(evidence(row), evidence(incoming)));
+}
+/** Collision copies have deterministic native IDs. Only that exact source-ID
+ * lineage can be reused; equal independent local definitions remain independent. */
+function importIdentity<T extends { id: string; name: string }>(rows: readonly T[], incoming: T,
+  owners: ImportIdentityOwners): { id: string; existing: boolean } {
+  const matches = (row: T) => !owners.claimed.has(row.id)
+    && (row.name === incoming.name || Array.from({ length: rows.length + 1 },
+      (_, index) => copyName(incoming.name, index + 1)).includes(row.name))
+    && sameReportEvidence(evidence(row), evidence(incoming));
+  const original = rows.find(row => row.id === incoming.id);
+  if (!original && !owners.claimed.has(incoming.id)) return { id: incoming.id, existing: false };
+  if (original && matches(original)) return { id: original.id, existing: true };
+  // At most rows+incoming+claimed IDs are reserved, so one further candidate
+  // must be free. This also bounds adversarial source-ID collisions.
+  const bound = rows.length + owners.sourceIds.size + owners.claimed.size + 1;
+  for (let index = 1; index <= bound; index++) {
+    const id = `ifc-lite-backup:${index}:${incoming.id}`;
+    if (owners.sourceIds.has(id) || owners.claimed.has(id)) continue;
+    const row = rows.find(candidate => candidate.id === id);
+    if (!row) return { id, existing: false };
+    if (matches(row)) return { id, existing: true };
+  }
+  throw new Error('An independent imported artifact identity could not be allocated');
 }
 function uniqueName(rows: readonly { name: string }[], name: string, limit = 200): string {
   const names = new Set(rows.map(row => row.name.toLowerCase()));
@@ -54,7 +69,7 @@ export function importArtifactLibraries(incoming: StandaloneArtifactLibraries): 
   if (incoming.filters) {
     let rows = loadSavedFilters();
     for (const entry of incoming.filters) {
-      if (reusable<SavedFilterPreset>(rows, entry, __internal.MAX_NAME_LEN)) continue;
+      if (reusableFilter(rows, entry)) continue;
       if (rows.length >= __internal.MAX_ENTRIES) { outcome.failed.push('filters'); break; }
       const result = saveFilter(uniqueName(rows, entry.name, __internal.MAX_NAME_LEN), entry.groups, entry.capturedScope);
       if (!result.persisted) { outcome.failed.push('filters'); break; }
@@ -66,11 +81,12 @@ export function importArtifactLibraries(incoming: StandaloneArtifactLibraries): 
     const owners = identityOwners(incoming.lists);
     let count = 0;
     for (const entry of incoming.lists) {
-      const previous = reusable(rows, entry, 200, owners);
-      if (previous) { owners.claimed.add(previous); continue; }
-      const copy = { ...entry, id: rows.some(row => row.id === entry.id) ? crypto.randomUUID() : entry.id,
+      const identity = importIdentity(rows, entry, owners);
+      owners.claimed.add(identity.id);
+      if (identity.existing) continue;
+      const copy = { ...entry, id: identity.id,
         name: uniqueName(rows, entry.name) };
-      rows.push(copy); owners.claimed.add(copy); count++;
+      rows.push(copy); count++;
     }
     // List CRUD can retain an unsaved session draft after quota refusal. Equal
     // rows do not prove durability; the native save must confirm every retry.
@@ -81,11 +97,12 @@ export function importArtifactLibraries(incoming: StandaloneArtifactLibraries): 
     const state = useViewerStore.getState(), rows: Lens[] = [...state.savedLenses], copies: Lens[] = [];
     const owners = identityOwners(incoming.lenses);
     for (const entry of incoming.lenses) {
-      const previous = reusable(rows, entry, 200, owners);
-      if (previous) { owners.claimed.add(previous); continue; }
-      const copy = { ...entry, id: rows.some(row => row.id === entry.id) ? crypto.randomUUID() : entry.id,
+      const identity = importIdentity(rows, entry, owners);
+      owners.claimed.add(identity.id);
+      if (identity.existing) continue;
+      const copy = { ...entry, id: identity.id,
         name: uniqueName(rows, entry.name), builtin: false };
-      copies.push(copy); rows.push(copy); owners.claimed.add(copy);
+      copies.push(copy); rows.push(copy);
     }
     if (incoming.lenses.length && !state.importLenses(copies).ok) outcome.failed.push('lenses');
     else outcome.saved += copies.length;

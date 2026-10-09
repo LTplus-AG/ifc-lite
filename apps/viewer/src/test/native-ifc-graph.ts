@@ -23,5 +23,5 @@ async function nativeIfcGraph(bytes: Uint8Array) {
 
 export async function assertSameNativeIfcGraph(actual: Uint8Array, expected: Uint8Array, message?: string): Promise<void> {
   const [actualGraph, expectedGraph] = await Promise.all([nativeIfcGraph(actual), nativeIfcGraph(expected)]);
-  assert.deepEqual(actualGraph, expectedGraph, message);
+  assert.deepEqual(actualGraph, expectedGraph, message ?? 'Native IFC graph changed');
 }

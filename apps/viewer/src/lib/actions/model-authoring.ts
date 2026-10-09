@@ -21,6 +21,7 @@
  */
 
 import { parseStoreyReassignment, type StoreyReassignmentOp } from './model-authoring-storey-reassignment';
+import { parseLayerFields, type LayerFields } from './model-authoring-layer-params';
 import { parseReplacementFields,type NativeReplacementOp } from './model-authoring-replacement-fields';
 import { parseSlabOpeningFields, type SlabOpeningCreate } from './model-authoring-slab-opening';
 import { parseExpectedHostedEdit, parseHostedEdit, type ExpectedHostedEdit } from './model-authoring-hosted-edit';
@@ -86,6 +87,7 @@ export type AuthoringOp =
   | AlignmentOp
   | { op: 'type.detach'; target: ExistingElement; expected: { GlobalId: string; Name: string } }
   | { op: 'type.assign'; target: ElementTarget; expected?: string | null; type: { globalId: string; name: string } | { create: { ifcClass: string; name: string } } }
+  | ({ op: 'material.layers'; target: ExistingElement } & LayerFields)
   | { op: 'material.assign'; target: ElementTarget; expected?: string | null; material: { name: string; create: boolean } }
   | { op: 'walls.join'; walls: [ElementTarget, ElementTarget] }
   /** A door, window or opening in a host wall: `offset` from the wall's placement origin along it to the centre, `sill` above it. */
@@ -94,7 +96,7 @@ export type AuthoringOp =
 
 export type AuthoringOpName = AuthoringOp['op'];
 export const AUTHORING_OPS: readonly AuthoringOpName[] = ['element.reassignStorey', 'grid.create', 'column.createOnGrid', 'stair.resize', 'stair.delete', 'railing.delete', 'stair.replace', 'railing.replace', 'stair.create', 'railing.create', 'element.create', 'element.replace', 'element.delete', 'element.split', 'element.resize', 'element.profile', 'element.trimExtend', 'element.move', 'element.rotate', 'element.align', 'element.copy', 'element.array',
-  'type.assign', 'type.detach', 'material.assign', 'walls.join', 'hosted.create', 'hosted.edit'];
+  'type.assign', 'type.detach', 'material.assign', 'material.layers', 'walls.join', 'hosted.create', 'hosted.edit'];
 
 export interface ModelAuthoringBatch {
   version: 1;
@@ -295,6 +297,8 @@ function operation(value: unknown, index: number, units: AuthoringUnits, refs: M
       if (create && !/^Ifc[A-Za-z0-9]+Type$/.test(chosen.create!.ifcClass)) throw new Error(`${at}: a new type needs an Ifc…Type class`);
       return { op: 'type.assign', target, ...expectedName(value, target, at), type: chosen as Extract<AuthoringOp, { op: 'type.assign' }>['type'] };
     }
+    case 'material.layers':
+      return { op: 'material.layers', target: existing(value.target, at), ...parseLayerFields(value, units, at, existing) };
     case 'material.assign': {
       const target = element(value.target, at, refs);
       const material = record(value.material) ? value.material : null;

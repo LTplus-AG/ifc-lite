@@ -19,6 +19,12 @@
  * created list's default `name: 'Filter result'`.
  */
 export const scriptPanelEn = {
+  'scriptPanel.files.export': 'Export saved script',
+  'scriptPanel.files.import': 'Import script file',
+  'scriptPanel.files.retry': 'Retry import into current library',
+  'scriptPanel.files.imported': 'Imported a saved copy. Open it from the script selector; Run remains a separate action.',
+  'scriptPanel.files.savedOnly': 'Exported the saved version. Save editor changes first to include them.',
+  'scriptPanel.files.tooLarge': 'Script file is too large.',
   // Header
   'scriptPanel.header.defaultTitle': 'Script Editor',
   'scriptPanel.header.selectScriptAriaLabel': 'Select saved script',

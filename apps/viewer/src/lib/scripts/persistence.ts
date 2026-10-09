@@ -72,7 +72,7 @@ export function loadSavedScripts(): SavedScript[] {
   }
 }
 
-function isValidStoredScript(value: unknown): value is SavedScript {
+export function isValidStoredScript(value: unknown): value is SavedScript {
   if (!value || typeof value !== 'object') return false;
   const s = value as Record<string, unknown>;
   return (

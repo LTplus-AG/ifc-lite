@@ -11,6 +11,9 @@
  */
 
 import { authoringCurtainWallGhost } from './model-authoring-curtain-wall-ghost';
+import { gridCreationGhost } from './model-authoring-grid-ghost';
+import { nativeGridExpected, sameGridExpected } from './model-authoring-grid-native';
+import { nativeLengthUnitAvailable } from './model-authoring-read-target';
 import { readNativeReplacementExpected } from './model-authoring-replacement';
 import { authoringSlabOpeningGhost } from './model-authoring-slab-opening-ghost';
 import { verifySlabOpeningHost } from './model-authoring-slab-opening';
@@ -24,7 +27,8 @@ import { materialsOf, typeOf } from '@/lib/commands/modeling/authored-kinds';
 import { copiedProductsInStore, createCopyContext, productStoreyOrigin, liveEntityConforms } from '@ifc-lite/create';
 import { batchDigest } from './model-change-preview';
 import { isNewElement, toMetres, type AuthoringOp, type ElementTarget, type ExistingElement, type ModelAuthoringBatch } from './model-authoring';
-import { dryRunAuthoring, type ElementId } from './model-authoring-native';
+import { validateAuthoringDraft } from './model-authoring-preview-draft';
+import { type ElementId } from './model-authoring-native';
 import {
   authoringReader, className, conforms, deletionRefusal, materialNameOf, nameOf, typeNameOf, type AuthoringReader,
 } from './model-authoring-read';
@@ -181,6 +185,7 @@ function resolve(ctx: Context, row: AuthoringRow): void {
       row.previewUnavailable=true;return;
     }
     case 'curtainWall.create':
+    case 'grid.create': case 'column.createOnGrid':
     case 'stair.create': case 'railing.create':
     case 'element.create': {
       const storey = locate(ctx, op.storey);
@@ -191,6 +196,19 @@ function resolve(ctx: Context, row: AuthoringRow): void {
       if (!liveEntityConforms(r.dataStore, storey.expressId, 'IfcBuildingStorey', r.view)) throw new Refusal('conflict', `${op.storey.globalId} is not an IfcBuildingStorey`);
       row.resolved.storey = storey.expressId;
       row.before.storeyName = nameOf(r, storey.expressId);
+      if (op.op === 'grid.create' || op.op === 'column.createOnGrid') {
+        if (!uniqueSplitGuid(r.dataStore, r.editor, op.storey.globalId)) throw new Refusal('ambiguous-target', 'The native storey GlobalId is not unique');
+        if (!nativeLengthUnitAvailable(r)) throw new Refusal('unsupported', 'The grid requires readable declared length units');
+        if (op.op === 'column.createOnGrid') {
+          // Generic element labels use empty text when unnamed; the Grid's
+          // nullable native Name stays intact and is checked by its draft writer.
+          row.resolved.grid = element(ctx, 'ref' in op.grid ? { ref: op.grid.ref } : { ...op.grid.target, name: op.grid.target.name ?? '' }, row);
+          if ('target' in op.grid && 'id' in row.resolved.grid) {
+            if (!uniqueSplitGuid(r.dataStore, r.editor, op.grid.target.globalId)) throw new Refusal('ambiguous-target', 'The current grid GlobalId is not unique');
+            if (!sameGridExpected(nativeGridExpected(r, row.resolved.grid.id, storey.expressId), op.grid.expected)) throw new Refusal('conflict', 'The native grid axes or current placement differ from the full expected snapshot');
+          }
+        }
+      }
       return;
     }
     case 'element.copy': case 'element.array': {
@@ -327,7 +345,7 @@ export function previewModelAuthoring(state: ViewerState, batch: ModelAuthoringB
       row.issue = error.message;
     }
   }
-  nativeDryRun(ctx, batch);
+  validateAuthoringDraft(state, batch, ctx.rows, modelId => reader(ctx, modelId));
   for (const row of ctx.rows) if (row.status === 'ready' && row.modelId && (row.op.op === 'element.resize' || row.op.op === 'element.profile' || row.op.op === 'element.trimExtend')) {
     const boundary = row.op.op === 'element.trimExtend' ? row.resolved.reachBoundary : undefined;
     // The whole native batch validates this boundary; the independent body draft
@@ -350,32 +368,10 @@ export function previewModelAuthoring(state: ViewerState, batch: ModelAuthoringB
   for(const row of ctx.rows)if(row.status==='ready'&&row.op.op==='hosted.create'&&'params' in row.op)row.previewUnavailable=!authoringSlabOpeningGhost(state,row,ctx.rows,0);
   for(const row of ctx.rows)if(row.status==='ready'&&['stair.create','railing.create','stair.replace','railing.replace'].includes(row.op.op))row.previewUnavailable=!stairRailingGhost(state,batch,row,0);
   for (const row of ctx.rows) if (row.status === 'ready' && row.op.op === 'curtainWall.create') row.previewUnavailable = authoringCurtainWallGhost(state, batch, row, 0).length === 0;
+  for (const row of ctx.rows) if (row.status === 'ready' && (row.op.op === 'grid.create' || row.op.op === 'column.createOnGrid')) row.previewUnavailable = gridCreationGhost(state, batch, row, 0).length === 0;
   const preview = { batch, rows: ctx.rows, mutationVersion: state.mutationVersion, digest: batchDigest(batch) };
   captureAuthoringSources(state, preview);
   return preview;
-}
-
-/** The builders decide what static checks cannot: dimensions, hosts, joins, schema support. */
-function nativeDryRun(ctx: Context, batch: ModelAuthoringBatch): void {
-  for (const row of ctx.rows) if (row.op.op === 'element.align' && row.modelId
-    && ctx.rows.some(other => other.index < row.index && other.modelId === row.modelId
-      && other.status === 'ready' && !new Set<string>(['type.detach', 'classification.add']).has(other.op.op))) {
-    row.status = 'unsupported';
-    row.issue = 'Apply earlier same-model geometry operations before preparing native Align bounds';
-  }
-  const byModel = new Map<string, AuthoringRow[]>();
-  for (const row of ctx.rows) if (row.status === 'ready' && row.modelId) byModel.set(row.modelId, [...(byModel.get(row.modelId) ?? []), row]);
-  for (const [modelId, rows] of byModel) {
-    const r = reader(ctx, modelId);
-    const refusals = dryRunAuthoring(batch, r.dataStore, r.view, modelId, rows.map(({ index, op, resolved }) => ({ index, op, resolved })), { globalIdScopes: [...ctx.state.models].map(([id, model]) => ({ dataStore: model.ifcDataStore, view: ctx.state.mutationViews.get(id) })) });
-    for (const row of rows) {
-      const refusal = refusals.get(row.index);
-      if (refusal === undefined) continue;
-      const blocked = row.dependsOn.some((i) => refusals.has(i));
-      row.status = blocked ? 'blocked' : 'invalid';
-      row.issue = blocked ? 'It needs an element another row creates, which the model refused' : refusal;
-    }
-  }
 }
 
 export function authoringCounts(rows: readonly AuthoringRow[]): Record<AuthoringRowStatus, number> {

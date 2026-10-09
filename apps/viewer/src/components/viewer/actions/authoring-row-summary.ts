@@ -46,6 +46,10 @@ export function authoringRowSummary(row: AuthoringRow, batch: ModelAuthoringBatc
   const none = t('modelChanges.absent');
   const fromMetres = (v: number) => (units === 'mm' ? v * 1000 : v);
   switch (op.op) {
+    case 'grid.create': case 'column.createOnGrid': {
+      const omitted = op.op === 'column.createOnGrid' && 'Profile' in op.params ? sectionGhostOmissions(op.params.Profile) : [];
+      return { subject: `${op.op === 'grid.create' ? 'IfcGrid' : 'IfcColumn'} ${op.params.Name ?? ''}`, before: t('modelAuthoring.notYet'), after: t('modelAuthoring.createdOn', { storey: before.storeyName ?? op.storey.globalId, dims: op.op === 'grid.create' ? `${op.params.UAxes.length + op.params.VAxes.length + (op.params.WAxes?.length ?? 0)} ${t('modelAuthoring.gridAxes')}` : `${point(op.params.Position)} · ${num(op.params.Height)} ${units}` }), previewNote: [row.previewUnavailable ? t('modelAuthoring.editPreviewUnavailable') : t(op.op === 'grid.create' ? 'modelAuthoring.gridPreview' : 'modelAuthoring.gridColumnPreview'), omitted.length ? t('modelAuthoring.filletPreview', { fields: omitted.join(', ') }) : ''].filter(Boolean).join(' · ') };
+    }
     case 'hosted.edit':
       return { subject: `${op.target.ifcClass} "${op.target.name}"`, before: `${fields({ Offset: op.expected.offset, Sill: op.expected.sill, ...op.expected.size })} ${units}`, after: `${fields(op.edit)} ${units}`, previewNote: row.previewUnavailable ? t('modelAuthoring.editPreviewUnavailable') : t('modelAuthoring.hostedEditBoundsPreview') };
     case 'element.trimExtend':

@@ -15,6 +15,7 @@
  */
 
 import { authoringCurtainWallGhost } from './model-authoring-curtain-wall-ghost';
+import { gridCreationGhost } from './model-authoring-grid-ghost';
 import { replacementCreation } from './model-authoring-replacement';
 import { alignmentGhosts } from '@/lib/commands/modeling/align-ghosts';
 import { authoringSlabOpeningGhost } from './model-authoring-slab-opening-ghost';
@@ -57,7 +58,11 @@ function createGhost(state: ViewerState, batch: ModelAuthoringBatch, row: Author
   const op = row.op as Extract<AuthoringOp, { op: 'element.create' }>;
   const wp = plane(state, row.modelId!, row.resolved.storey ?? null);
   if (!wp) return null;
-  const element = authoredElementOf(batch, op);
+  return authoredCreationGhost(wp, authoredElementOf(batch, op), id);
+}
+
+/** One native authored shape preview constructor shared by ordinary and bound columns. */
+export function authoredCreationGhost(wp: Workplane, element: ReturnType<typeof authoredElementOf>, id: number): MeshData | null {
   if (element.kind === 'beam' || element.kind === 'member') {
     const p = element.params;
     const profile = 'Profile' in p ? p.Profile : { Type: 'Rectangle' as const, XDim: p.Width, YDim: p.Height };
@@ -158,6 +163,7 @@ export function authoringGhosts(state: ViewerState, preview: ModelAuthoringPrevi
     if (row.op.op === 'element.split') { const mesh = authoringSplitMarker(state, preview.batch, row, id); if (mesh) meshes.push(mesh); continue; }
     switch (row.op.op) {
       case 'curtainWall.create': meshes.push(...authoringCurtainWallGhost(state, preview.batch, row, id)); break;
+      case 'grid.create': case 'column.createOnGrid': { const ghosts = gridCreationGhost(state, preview.batch, row, id); row.previewUnavailable = ghosts.length === 0; meshes.push(...ghosts); break; }
       case 'stair.create': case 'railing.create': case 'stair.replace': case 'railing.replace': {const mesh=stairRailingGhost(state,preview.batch,row,id);row.previewUnavailable=!mesh;if(mesh)meshes.push(mesh);break;}
       case 'element.replace': {const creation=replacementCreation(row.op),created={...row,op:creation};const mesh=creation.op==='element.create'?createGhost(state,preview.batch,created,id):stairRailingGhost(state,preview.batch,created,id);row.previewUnavailable=!mesh;row.previewOuterBodyOnly=true;if(mesh)meshes.push(mesh);break;}
       case 'element.create': { const mesh = createGhost(state, preview.batch, row, id); if (mesh) meshes.push(mesh); break; }

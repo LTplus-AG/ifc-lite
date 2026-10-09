@@ -54,7 +54,8 @@ export interface BoxParams { position: Point3; width: number; depth: number; thi
 
 export type AuthoringOp =
   | { op: 'stair.resize'; target: ExistingElement; expected: StairDimensions; size: StairDimensionEdit }
-  | { op: 'stair.delete' | 'railing.delete'; target: ExistingElement }
+  | { op: 'stair.delete'; target: ExistingElement }
+  | { op: 'railing.delete'; target: ExistingElement }
   | { op: 'stair.replace'; target: ExistingElement; ref: string; storey: StoreyTarget; params: StairInStoreParams }
   | { op: 'railing.replace'; target: ExistingElement; ref: string; storey: StoreyTarget; params: RailingInStoreParams }
   | { op: 'stair.create'; ref: string; storey: StoreyTarget; params: StairInStoreParams }
@@ -184,6 +185,12 @@ function operation(value: unknown, index: number, units: AuthoringUnits, refs: M
     return op;
   };
   switch (value.op) {
+    case 'stair.resize': return {op:value.op,target:existing(value.target,at),expected:parseExpectedStair(value.expected,`${at} expected`),size:parseStairPatch(value.size,units,`${at} size`)};
+    case 'stair.delete': case 'railing.delete': return {op:value.op,target:existing(value.target,at)};
+    case 'stair.replace': return defineRef({op:value.op,target:existing(value.target,at),ref:parseRef(value.ref,at),storey:parseGlobalIdTarget(value.storey,`${at} storey`),params:parseStairRailingParams(value.params,'stair',units,at)});
+    case 'railing.replace': return defineRef({op:value.op,target:existing(value.target,at),ref:parseRef(value.ref,at),storey:parseGlobalIdTarget(value.storey,`${at} storey`),params:parseStairRailingParams(value.params,'railing',units,at)});
+    case 'stair.create': return defineRef({ op: value.op, ref: parseRef(value.ref, at), storey: parseGlobalIdTarget(value.storey, `${at} storey`), params: parseStairRailingParams(value.params, 'stair', units, at) });
+    case 'railing.create': return defineRef({ op: value.op, ref: parseRef(value.ref, at), storey: parseGlobalIdTarget(value.storey, `${at} storey`), params: parseStairRailingParams(value.params, 'railing', units, at) });
     case 'hosted.edit': {
       if (Object.keys(value).some(key => !['op', 'target', 'expected', 'edit'].includes(key))) throw new Error(`${at}: unsupported hosted edit field`);
       const target = existing(value.target, at);
@@ -192,12 +199,6 @@ function operation(value: unknown, index: number, units: AuthoringUnits, refs: M
     }
     case 'element.trimExtend':
       return { op: value.op, target: existing(value.target, at), ...parseReachFields(value, units, at, (v, name) => element(v, name, refs)) };
-    case 'stair.resize': return {op:value.op,target:existing(value.target,at),expected:parseExpectedStair(value.expected,`${at} expected`),size:parseStairPatch(value.size,units,`${at} size`)};
-    case 'stair.delete': case 'railing.delete': return {op:value.op,target:existing(value.target,at)};
-    case 'stair.replace': return defineRef({op:value.op,target:existing(value.target,at),ref:parseRef(value.ref,at),storey:parseGlobalIdTarget(value.storey,`${at} storey`),params:parseStairRailingParams(value.params,'stair',units,at)});
-    case 'railing.replace': return defineRef({op:value.op,target:existing(value.target,at),ref:parseRef(value.ref,at),storey:parseGlobalIdTarget(value.storey,`${at} storey`),params:parseStairRailingParams(value.params,'railing',units,at)});
-    case 'stair.create': return defineRef({ op: value.op, ref: parseRef(value.ref, at), storey: parseGlobalIdTarget(value.storey, `${at} storey`), params: parseStairRailingParams(value.params, 'stair', units, at) });
-    case 'railing.create': return defineRef({ op: value.op, ref: parseRef(value.ref, at), storey: parseGlobalIdTarget(value.storey, `${at} storey`), params: parseStairRailingParams(value.params, 'railing', units, at) });
     case 'element.split': {
       if (Object.keys(value).some(key => !['op', 'target', 'expected', 'cut'].includes(key))) throw new Error(`${at}: unsupported split field`);
       const expected = parseSplitSnapshot(value.expected, `${at} expected`), cut = parseSplitCut(value.cut, units, `${at} cut`);

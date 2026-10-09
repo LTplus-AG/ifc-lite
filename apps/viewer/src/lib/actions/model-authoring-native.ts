@@ -12,9 +12,9 @@
  * and `bim.store`'s modelling methods for joins, types and materials.
  */
 
-import { writeHostedEdit } from './model-authoring-hosted-edit';
 import { writeStairLifecycle, writeStairCreation } from './model-authoring-stair-lifecycle';
 import { uniqueSplitGuid, writeNativeSplit } from './model-authoring-split';
+import { writeHostedEdit } from './model-authoring-hosted-edit';
 import { profileInMetres } from './model-authoring-shape-params';
 import { StoreEditor } from '@ifc-lite/mutations';
 import type { IfcDataStore } from '@ifc-lite/parser';
@@ -185,6 +185,14 @@ export function writeNativeTypeDetach(op: Extract<AuthoringOp, { op: 'type.detac
 export function draftAuthoringOperation(batch: ModelAuthoringBatch, dataStore: IfcDataStore, modelId: string, draft: StoreEditor, row: DryRunRow, refs: Map<string, number>, splitScopes?: Parameters<typeof import('@ifc-lite/create').splitElementsInStore>[3]): void {
   const { op, resolved } = row;
   switch (op.op) {
+    case 'stair.resize': case 'stair.delete': case 'railing.delete': case 'stair.replace': case 'railing.replace': {
+      const result=writeStairLifecycle(dataStore,draft,batch,op,resolved.target!,resolved.storey);
+      if('ref' in op && result.root!==undefined)refs.set(op.ref,result.root);return;
+    }
+    case 'stair.create': case 'railing.create': {
+      const made = writeStairCreation(dataStore, draft, batch, op, resolved.storey!);
+      refs.set(op.ref, made.expressId);return;
+    }
     case 'type.detach':
       writeNativeTypeDetach(op, dataStore, draft, resolved);
       return;
@@ -194,14 +202,6 @@ export function draftAuthoringOperation(batch: ModelAuthoringBatch, dataStore: I
     case 'element.trimExtend':
       resolved.reachPlan = writeAuthoringReach(batch, dataStore, draft, resolved.target!, op, resolved.reachBoundary, refs);
       return;
-    case 'stair.resize': case 'stair.delete': case 'railing.delete': case 'stair.replace': case 'railing.replace': {
-      const result=writeStairLifecycle(dataStore,draft,batch,op,resolved.target!,resolved.storey);
-      if('ref' in op && result.root!==undefined)refs.set(op.ref,result.root);return;
-    }
-    case 'stair.create': case 'railing.create': {
-      const made = writeStairCreation(dataStore, draft, batch, op, resolved.storey!);
-      refs.set(op.ref, made.expressId);return;
-    }
     case 'element.split':
       resolved.splitEffects = writeNativeSplit(batch, op, dataStore, draft, resolved.target!, splitScopes);
       return;

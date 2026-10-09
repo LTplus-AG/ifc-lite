@@ -19,7 +19,7 @@ import { VERDICT_SPEC_LIMIT, type ReceiptValidation } from './validation-verdict
 const record = (value: unknown): value is Record<string, unknown> =>
   !!value && typeof value === 'object' && !Array.isArray(value);
 const scalar = (value: unknown) => value === null || ['string', 'number', 'boolean'].includes(typeof value);
-const OPS = new Set<string>(['property.set', 'property.delete', 'quantity.set', 'attribute.set', ...AUTHORING_OPS]);
+const OPS = new Set<string>(['property.set', 'property.delete', 'quantity.set', 'attribute.set', 'room.command', ...AUTHORING_OPS]);
 
 function applied(value: unknown): value is AppliedChange {
   return record(value) && Number.isInteger(value.index) && OPS.has(String(value.op)) && typeof value.globalId === 'string'
@@ -49,7 +49,7 @@ export function decodeModelChangeReceipt(value: unknown): ModelChangeReceipt | n
   if (!value.applied.every(applied)) return null;
   if (!value.skipped.every((skip) => record(skip) && Number.isInteger(skip.index) && typeof skip.status === 'string')) return null;
   if (value.undoneAt !== undefined && typeof value.undoneAt !== 'string') return null;
-  if (value.kind !== undefined && value.kind !== 'model.authoring') return null;
+  if (value.kind !== undefined && value.kind !== 'model.authoring' && value.kind !== 'room.command') return null;
   if (value.validation !== undefined && !validation(value.validation)) return null;
   return structuredClone(value) as unknown as ModelChangeReceipt;
 }

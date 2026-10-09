@@ -78,7 +78,7 @@ function existing(ctx: Context, target: ExistingElement, row: AuthoringRow): num
   join(row, modelId);
   const r = reader(ctx, modelId);
   if ((row.op.op.startsWith('stair.') || row.op.op.startsWith('railing.')) && !uniqueSplitGuid(r.dataStore, r.editor, target.globalId)) throw new Refusal('ambiguous-target', 'The native stair or railing target GlobalId is not unique in its owning model');
-  if ((row.op.op === 'element.split' || row.op.op === 'type.detach' || row.op.op === 'element.trimExtend') && !uniqueSplitGuid(r.dataStore, r.editor, target.globalId)) throw new Refusal('ambiguous-target', 'The native target GlobalId is not unique in its owning model');
+  if ((row.op.op === 'element.split' || row.op.op === 'element.trimExtend' || row.op.op === 'type.detach') && !uniqueSplitGuid(r.dataStore, r.editor, target.globalId)) throw new Refusal('ambiguous-target', 'The native target GlobalId is not unique in its owning model');
   const ifcClass = className(r, expressId);
   const name = nameOf(r, expressId);
   row.before.ifcClass = ifcClass;
@@ -148,7 +148,7 @@ function resolve(ctx: Context, row: AuthoringRow): void {
       try { row.before.hosted = readExpectedHostedEdit(r.dataStore, r.editor, row.expressId, ctx.batch.units); }
       catch (error) { throw new Refusal('invalid', error instanceof Error ? error.message : String(error)); }
       if (!sameHostedEdit(row.before.hosted, op.expected)) throw new Refusal('conflict', 'The current native hosted binding, position or dimensions differ from the expected state');
-      break;
+      return;
     }
     case 'element.split': {
       row.resolved.target = row.expressId = existing(ctx, op.target, row);

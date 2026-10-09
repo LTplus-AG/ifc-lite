@@ -180,6 +180,49 @@ In the Data Connector, **Suggest mapping** sends the table's headers, its first 
 
 The suggestion opens as an editable **Suggested table mapping** card. Unknown columns, a column mapped twice, two columns writing the same value, a written identity column and a unit on a non-numeric column block review. The card converts the first five rows live and shows each element's current and new value, so a wrong unit or column shows before anything else. **Review as changes** converts every row into the reviewed change batch described above. An assistant answer of kind `table.mapping` is recognised as a **Table mapping proposal**, but the Assistant has no table evidence source yet, so such a mapping can only be reviewed against rows in the Data Connector.
 
+## Reviewed native Room commands
+
+A `room.command` answer offers **Review rooms** for one explicitly identified
+loaded model and storey. **Prepare room preview** awaits the native Room geometry
+and creates a detached draft. Receiving an answer, preparing it and attaching its
+snapshot write no IFC rooms. The card shows the complete affected population,
+native contours, names, areas, heights and all creations, updates and deletions.
+
+Pick requires an explicit storey-local point. Auto approves **all captured untaken
+faces together**; declining the action leaves every room unchanged. Footprint
+creates one native storey outline and refuses overlap. Update names explicit
+current room GlobalIds and Names and shows unsupported/skipped rooms. Edit uses
+the native drag, split, remove or prune operation, with explicit coordinates and
+tolerance. Length units are `m` or `mm`, the frame is storey-local IFC Z-up, and
+minimum area is always square metres. All native settings must be supplied;
+missing settings, unavailable geometry and incomplete populations are refused.
+
+Approval belongs to that prepared graph and layout. Source replacement, edits,
+Undo, cancellation, another preparation or a changed native layout require a
+new preparation. Closing or replacing the review cancels its approval ownership;
+an already running remesh may finish without executing the Room action.
+**Apply Room action** uses the native recorder and one native Undo group. Its
+receipt joins **Changes → Reviewed changes**. **Undo this Room action** uses that
+actual batch; after reload the receipt records the action but cannot recreate
+session Undo history. A receipt storage failure reports that the native action
+already succeeded and leaves native Undo available.
+
+Before any IfcSpace has been materialized, a layout edit is session state only.
+The card states that IFC export does not preserve this retained layout; native
+Undo/Redo preserves it during the current session. This route adds no AutoAll,
+manual polygon creation, new-file builder, mixed synchronous authoring batch or
+sandbox script bridge.
+
+**Attach this room snapshot to the next message** explicitly shares the complete
+prepared native candidates, occupancy and current room identities/geometry in SI
+metres. The provider receives evidence, never a commit capability or native
+handle. A plain send collects no Room snapshot. A stale, altered or unowned
+attachment is refused before network dispatch. Preparing a storey that exceeds
+128 candidates or current rooms, 4,096 candidate contour vertices or the complete
+attachment size limit refuses the review rather than approving a sample.
+
+Room names and optional `ObjectType` retain the exact supplied IFC text, including leading/trailing spaces and empty values. Numeric inputs remain bounded and use their declared length units; `minArea` always uses square metres.
+
 ## Reviewed model authoring
 
 Ask the assistant to create, copy, array, delete, move, turn, trim, extend, type, join or place elements, for example with **Prepare a model authoring proposal for review:** on Load diagnostics. A valid answer appears as a **Model authoring proposal** with **Review model authoring** beneath it. The proposal declares its length unit (`m` or `mm`). All coordinates are storey-local, with Z up, and rotation angles are degrees counter-clockwise from above. The canonical stair `Direction` parameter is radians. The card repeats this, and a missing unit, another frame or an implausible length (such as a 200 m wall thickness) is refused before review. Existing elements are named by GlobalId with the class and name the proposal expects them to have; elements created earlier in the same proposal are named by a short reference.
@@ -325,6 +368,8 @@ viewer. This does not add standalone Filters, Lists, or Lenses to library backup
 Flavor Lens snapshots use the same guarded Lens envelope as native Lens JSON.
 
 Selected relationship evidence records exact IFC relationship IDs, EXPRESS types, direction and model-local endpoints. Derived groups, openings and connections are not counted again as extra edges. The evidence samples at most 16 edges per element for small selections, or 6 for larger selections, and records the full known edge count. Duplicate selections identify their inherited lookup Express ID and merge direct edges once. Missing source membership has an unknown total; source-free edited graph rows are unverified evidence from the original model. The native Properties panel shows the same availability warning. Such original edges do not authorize current spatial authoring.
+
+Dispatched generation receipts also record the actual output-token grant and parent deadline, a safe finish reason, and an explicitly declared producer prompt version (#7246). Versioned SHA256 digests identify finalized logical system/messages/schema and exact completed output text. They do not claim provider wire-byte identity or native artifact identity. Unknown legacy provenance stays unknown; saved receipt decoding reconstructs only these declared metadata fields and never retains raw prompts, replies, schemas, credentials or endpoints. Native viewer/headless JSON producers prepare one owned snapshot for both dispatch and digest under the parent deadline. Generic custom transports without this explicit boundary leave their opaque inputs untouched and mark the logical digest unavailable; metadata does not inspect getters or Proxy traps.
 
 Reviewed `element.split` proposals name an existing target and supply its complete canonical native split snapshot (`chain`, placement parent/frame and storey ID). Missing snapshots must be obtained from the native model, never inferred. A wall/linear cut states a distance from its native axis start; a slab-like cut states two plan points. Only dimensions use the batch’s metre/millimetre units; native IDs and directions retain their meanings. Review draws a cut marker, with an explicit unavailable-preview notice for unsupported placement projection, and reports native hosted-opening assignments. It does not show the resulting solids or attest structural engineering intent. Native splitting retains the larger piece’s identity, creates one derived identity and preserves the canonical metadata policy. Source replacement, overlay revisions and ambiguous same-model GlobalIds refuse stale approval. Explicit selection batches contain one row per target and undo as one grouped change.
 

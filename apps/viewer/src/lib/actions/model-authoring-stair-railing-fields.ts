@@ -1,7 +1,7 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
-import type { RailingInStoreParams, StairInStoreParams } from '@ifc-lite/create';
+import type { RailingInStoreParams, StairInStoreParams, StairDimensionEdit } from '@ifc-lite/create';
 import type { AuthoringUnits } from './model-authoring';
 import { parsePoint, parseText, record } from './model-authoring-fields';
 export type StairRailingParams = {
@@ -77,7 +77,7 @@ export function railingParamsInMetres(params: RailingInStoreParams, units: Autho
 export function parseStairPatch(value: unknown, units: AuthoringUnits, at: string): import('@ifc-lite/create').StairDimensionEdit {
     if (!record(value) || Object.keys(value).length === 0)
         throw new Error(`${at}: state a changed native stair dimension`);
-    const out: import('@ifc-lite/create').StairDimensionEdit = {};
+    const out: { -readonly [K in keyof StairDimensionEdit]: StairDimensionEdit[K] } = {};
     for (const key of Object.keys(value)) {
         if (!['Width', 'RiserHeight', 'TreadLength', 'WaistThickness'].includes(key))
             throw new Error(`${at}: unsupported native stair dimension ${key}`);

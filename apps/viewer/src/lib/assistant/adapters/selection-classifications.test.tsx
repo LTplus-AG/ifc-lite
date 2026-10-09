@@ -15,6 +15,9 @@ import { renderPanelBody } from '@/lib/panels/renderPanelBody';
 import { entityRefToString } from '@/store/entity-ref';
 import { useViewerStore } from '@/store';
 import { captureEvidence } from '../evidence';
+import { selectionAdapter } from './selection';
+import { nativeCostTransportEvidence } from '@/lib/actions/cost-graph-evidence';
+import { nativeReadTargets } from '@/lib/actions/model-authoring-read-target';
 
 const initial = useViewerStore.getState();
 afterEach(() => { cleanup(); useViewerStore.setState(initial, true); });
@@ -87,6 +90,32 @@ test('#7139 independent federation preserves model-local authored classification
   useViewerStore.setState({ selectedEntitiesSet: new Set(['a', 'b'].map(modelId => entityRefToString({ modelId, expressId: 20909 }))) });
   const file = await exportAndReparse('b', b);
   assert.equal(extractClassificationsOnDemand(file, 20909)[0].name, 'B ONLY');
+  // #7360: complete optional graph pins must not displace ordinary federation rows.
+  const snapshot = captureEvidence('selection');
+  assert.equal(snapshot.totalRows, 2);
+  assert.equal(snapshot.includedRows, 2);
+  const capture = selectionAdapter.capture(useViewerStore.getState(), 100);
+  const targets = nativeReadTargets(useViewerStore.getState());
+  for (const data of capture.rows) {
+    const row = data as { modelId: string; nativeCost: { status: string; recordCount: number | null; expectedJsonParts: string[] | null } };
+    assert.deepEqual(row.nativeCost, nativeCostTransportEvidence(targets(row.modelId), 20909),
+      'the adapter supplies the complete native graph; the canonical envelope owns admission');
+  }
+  const projectedRows = JSON.parse(snapshot.payload).evidence.rows as Array<{ data: {
+    modelId: string; nativeCost: { status: string; recordCount: number | null; expectedJsonParts: string[] | null };
+  } }>;
+  let refused = 0;
+  for (const { data: row } of projectedRows) {
+    if (row.nativeCost.status === 'unavailable-transport-budget') {
+      refused++;
+      assert.equal(row.nativeCost.recordCount, null);
+      assert.equal(row.nativeCost.expectedJsonParts, null);
+    } else {
+      assert.deepEqual(row.nativeCost, nativeCostTransportEvidence(targets(row.modelId), 20909),
+        'admitted native expected graph remains complete');
+    }
+  }
+  assert.ok(refused > 0, 'actual native optional graph must trigger explicit whole-pin refusal');
   const selected = rows();
   assert.ok(selected.every(row => Array.isArray(row.classifications)), 'each selected model must carry native classification evidence');
   assert.deepEqual(selected.map(row => [row.modelId, row.classifications[0].Name]), [['a', 'Allgemeines'], ['b', 'B ONLY']]);

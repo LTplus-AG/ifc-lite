@@ -224,7 +224,10 @@ test('#7328 a complete source membership exceeding 5000 entries still admits one
   const reader = new AnchorEntityReader(s.store, s.view);
   const membership = [...reader.ids('IFCRELCONTAINEDINSPATIALSTRUCTURE')].find(id => (reader.entity(id)?.attributes[4] as unknown[])?.includes(`#${s.id}`));
   assert.ok(membership); s.editor.setPositionalAttribute(membership, 4, siblings);
-  const pin = planStoreyReassignment(s.store, s.view, [s.id], 42, s.destination);
+  const captured = captureSelectionGrounding(useViewerStore.getState()).elements[0];
+  const candidate = captured?.nativeStoreyReassignments?.find(entry => entry.destinationStorey.globalId === s.operation.destinationStorey.globalId);
+  assert.ok(candidate, 'the existing public selection route captures the complete current large membership');
+  const pin = JSON.parse(candidate.expectedJsonParts.join('')) as import('@ifc-lite/create').StoreyReassignmentPlan;
   assert.equal(pin.products.length, 1); assert.equal(pin.sourceMemberships[0].children.length, 5001);
   const batch = parseModelAuthoringBatch(JSON.stringify({kind: 'model.authoring', version: 1, title: 'Complete large membership', units: 'm', frame: 'storey-local', operations: [{...s.operation, expected: pin}]}));
   const preview = previewModelAuthoring(useViewerStore.getState(), batch);

@@ -189,7 +189,7 @@ export function readLayerSet(model: LiveModel, layerSetId: number): LayerRow[] |
     const layerId = refId(ref);
     if (layerId === null || !liveEntityConforms(model.dataStore, layerId, 'IfcMaterialLayer', model.view)) return null;
     const layer = liveAttributes(model, layerId), thickness = real(layer?.[1]), materialId = refId(layer?.[0]);
-    if (!Number.isFinite(thickness) || layer?.[0] != null && materialId === null
+    if (!Number.isFinite(thickness) || layer?.[0] !== null && materialId === null
       || materialId !== null && !liveEntityConforms(model.dataStore, materialId, 'IfcMaterial', model.view)) return null;
     layers.push({ materialId, thickness: fromNativeLength(unit, thickness) });
   }

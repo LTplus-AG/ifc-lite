@@ -67,7 +67,7 @@ export function nativeLayerEvidence(state: NativeReadState, target: ModelEditTar
     if (!target.dataStore.source.length && !target.view.getNewEntity(expressId)) return unavailable;
     const typeId = typeOf(target, expressId);
     const binding = nativeTypeEvidence(state, target, expressId);
-    const relations = readRelatedLists(target.dataStore, 'IfcRelAssociatesMaterial', target.view);
+    const relations = readRelatedLists(target.dataStore, 'IfcRelAssociatesMaterial', target.view, { includeMalformedRelatingTargets: true });
     const own = relations.filter(row => row.relatedIds.includes(expressId));
     const inherited = typeId === null ? [] : relations.filter(row => row.relatedIds.includes(typeId));
     const current = own.length ? own : inherited;

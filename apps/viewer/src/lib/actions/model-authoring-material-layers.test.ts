@@ -12,7 +12,7 @@ import { MutablePropertyView } from '@ifc-lite/mutations';
 import { useViewerStore } from '@/store';
 import { applyMaterialLayers } from '@/components/viewer/model-inspector/inspector-edits';
 import { recordModellingEdit } from '@/store/slices/mutation-modelling-records';
-import { layerSetOf } from '@/lib/commands/modeling/authored-kinds';
+import { layerSetOf, readLayerSet } from '@/lib/commands/modeling/authored-kinds';
 import { editedModelBytes } from '@/lib/export/edited-model-bytes';
 import { BACK_WALL, FRONT_WALL_TYPE, GROUND_STOREY, SAMPLE_MODEL, parseIfc, seedAuthoringSample } from '@/test/authoring-sample-fixture';
 import { parseModelAuthoringBatch } from './model-authoring';
@@ -569,6 +569,8 @@ test('#7275 native unset association target follows exported canonical empty-def
   const evidence = transportedLayerEvidence(useViewerStore.getState(), target);
   assert.equal(readRelatedLists(reparsed, 'IfcRelAssociatesMaterial').filter(row => row.relatedIds.includes(target)).length, 0,
     'the native query excludes unset MaterialSelect targets from valid assignments');
+  assert.equal(readRelatedLists(reparsed, 'IfcRelAssociatesMaterial', undefined, { includeMalformedRelatingTargets: true })
+    .filter(row => row.relatedIds.includes(target)).length, 0, 'strict inventory also preserves explicit unset semantics');
   assert.equal(evidence.assignmentCount, 0);
   assert.equal(evidence.layerCount, 0);
   assert.equal(evidence.status, 'available');
@@ -600,4 +602,45 @@ test('#7275 native layer Material cannot reference a building in canonical reads
   const absent = layerSetOf({ dataStore, view }, target); assert.ok(absent);
   assert.equal(absent.layers[0].materialId, null, 'optional absent Material remains a supported native layer');
   assert.equal(transportedLayerEvidence(useViewerStore.getState(), target).status, 'available');
+});
+
+// #7332: invalid non-reference scalars are unknown, unlike an explicit IFC unset.
+test('#7332 malformed native RelatingMaterial scalar revokes complete layer evidence', async () => {
+  const { dataStore, view, target } = await inspectorControl();
+  const saved = await parseIfc(editedModelBytes(dataStore, view));
+  const association = [...saved.entityIndex.byType.get('IFCRELASSOCIATESMATERIAL') ?? []].find(id => {
+    const related = effectiveMetadataRecord(saved, id)?.attributes[4];
+    return Array.isArray(related) && related.includes(target);
+  });
+  assert.ok(association);
+  const editor = useViewerStore.getState().storeEditors.get(SAMPLE_MODEL); assert.ok(editor);
+  editor.setPositionalAttribute(association, 5, 'not a MaterialSelect reference');
+  const parsed = await parseIfc(editedModelBytes(dataStore, view));
+  const relation = effectiveMetadataRecord(parsed, association); assert.ok(relation);
+  assert.equal(relation.attributes[5], 'not a MaterialSelect reference');
+  assert.ok(Array.isArray(relation.attributes[4]) && relation.attributes[4].includes(target));
+  const ordinary = readRelatedLists(parsed, 'IfcRelAssociatesMaterial').filter(row => row.relatedIds.includes(target));
+  assert.equal(ordinary.length, 0, 'default valid-assignment reader retains its existing behavior');
+  const strict = readRelatedLists(parsed, 'IfcRelAssociatesMaterial', undefined, { includeMalformedRelatingTargets: true })
+    .filter(row => row.relatedIds.includes(target));
+  assert.equal(strict.length, 1, 'canonical strict inventory retains the actual malformed owned relation');
+  assert.equal(strict[0].relatingId, undefined);
+  const evidence = transportedLayerEvidence(useViewerStore.getState(), target);
+  assert.equal(evidence.status, 'unavailable');
+  assert.equal(evidence.expected, null);
+});
+
+test('#7332 source-empty thickness-only native layer cannot invent an unset Material', async () => {
+  const { dataStore } = await seedAuthoringSample();
+  const overlay = new MutablePropertyView(dataStore.properties ?? null, SAMPLE_MODEL);
+  const layer = overlay.createEntity('IfcMaterialLayer', []);
+  const set = overlay.createEntity('IfcMaterialLayerSet', [[`#${layer.expressId}`], 'Incomplete native layer']);
+  overlay.setPositionalAttribute(layer.expressId, 1, .25);
+  const sourceEmpty = { ...dataStore, source: EMPTY_SOURCE_BYTES, lengthUnitScale: 1 };
+  assert.equal(effectiveMetadataRecord(sourceEmpty, layer.expressId, overlay)?.attributes[0], undefined,
+    'a thickness-only native positional edit does not supply Material');
+  assert.equal(readLayerSet({ dataStore: sourceEmpty, view: overlay }, set.expressId), null);
+  overlay.setPositionalAttribute(layer.expressId, 0, null);
+  assert.deepEqual(readLayerSet({ dataStore: sourceEmpty, view: overlay }, set.expressId)?.map(row => row.materialId), [null],
+    'explicit native unset remains readable');
 });

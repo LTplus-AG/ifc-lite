@@ -5032,6 +5032,7 @@
     "planBoxOf: function",
     "planRoomCreation: function",
     "planStoreyReassignment: function",
+    "planStoreyReassignmentCandidates: function",
     "productStoreyOrigin: function",
     "profileSectionExtent: function",
     "profileSectionIfcClass: function",

@@ -50,15 +50,42 @@ function relationships(reader: AnchorEntityReader): ReassignmentRelationship[] {
   return result;
 }
 
-/** Read-only admission shared by native commit and reviewed transport. Frames
- * are in the model's native length unit: preserving them is unit-independent. */
-export function planStoreyReassignment(
-  store: IfcDataStore, view: MutablePropertyView, selectedIds: readonly number[], sourceStoreyId: number, destinationStoreyId: number,
-): StoreyReassignmentPlan {
+type Inventory = ReturnType<typeof planningInventory>;
+
+/** One ephemeral effective snapshot per synchronous planning request. Never
+ * reuse it across mutation revisions or native transactions. */
+function planningInventory(store: IfcDataStore, view: MutablePropertyView) {
+  class CachedReader extends AnchorEntityReader {
+    private readonly records = new Map<number, ReturnType<AnchorEntityReader['entity']>>();
+    override entity(id: number) {
+      if (!this.records.has(id)) this.records.set(id, super.entity(id));
+      return this.records.get(id) ?? null;
+    }
+  }
+  const reader = new CachedReader(store, view), registry = schemaRegistry(store.schemaVersion as SpatialAnchorSchema, OP);
+  const allRelationships = relationships(reader), outgoing = new Map<number, ReassignmentRelationship[]>();
+  const incomingById = new Map<number, ReassignmentRelationship[]>(), relationOrder = new Map<number, number>();
+  for (const [index, rel] of allRelationships.entries()) {
+    relationOrder.set(rel.id, index);
+    const edges = outgoing.get(rel.parent) ?? []; edges.push(rel); outgoing.set(rel.parent, edges);
+    for (const child of rel.children) {
+      const parents = incomingById.get(child) ?? []; parents.push(rel); incomingById.set(child, parents);
+    }
+  }
+  const rootTypes = Object.entries(registry.entities).filter(([name, entity]) => name === 'IfcRoot' || entity.inheritanceChain?.includes('IfcRoot')).map(([name]) => name.toUpperCase());
+  const guidCounts = new Map<string, number>();
+  for (const { expressId } of iterateEffectiveEntityIds(store, view, rootTypes)) {
+    const guid = reader.entity(expressId)?.attributes[0];
+    if (typeof guid === 'string') guidCounts.set(guid, (guidCounts.get(guid) ?? 0) + 1);
+  }
+  return { reader, registry, outgoing, incomingById, relationOrder, guidCounts, ownership: new Map<string, string | null>() };
+}
+
+function planWithInventory(store: IfcDataStore, view: MutablePropertyView, selectedIds: readonly number[], sourceStoreyId: number,
+  destinationStoreyId: number, inventory: Inventory): StoreyReassignmentPlan {
   if (!selectedIds.length || selectedIds.length > 200 || new Set(selectedIds).size !== selectedIds.length) fail('select 1–200 distinct products');
   if (sourceStoreyId === destinationStoreyId) fail('source and destination storeys must differ');
-  const reader = new AnchorEntityReader(store, view);
-  const registry = schemaRegistry(store.schemaVersion as SpatialAnchorSchema, OP);
+  const { reader, registry, outgoing, incomingById, relationOrder, guidCounts, ownership } = inventory;
   const storeyPlacement = (id: number) => {
     const entity = reader.entity(id);
     if (entity?.type.toUpperCase() !== 'IFCBUILDINGSTOREY') return fail(`#${id} is not a live IfcBuildingStorey in this model`);
@@ -68,9 +95,7 @@ export function planStoreyReassignment(
   };
   storeyPlacement(sourceStoreyId);
   const destinationPlacementId = storeyPlacement(destinationStoreyId);
-  const allRelationships = relationships(reader), ids = new Set(selectedIds), queue = [...ids];
-  const outgoing = new Map<number, ReassignmentRelationship[]>();
-  for (const rel of allRelationships) { const edges = outgoing.get(rel.parent) ?? []; edges.push(rel); outgoing.set(rel.parent, edges); }
+  const ids = new Set(selectedIds), queue = [...ids];
   for (let index = 0; index < queue.length; index++) {
     for (const rel of outgoing.get(queue[index]) ?? []) {
       for (const child of rel.children) {
@@ -81,8 +106,7 @@ export function planStoreyReassignment(
     }
   }
   const incoming = new Map<number, ReassignmentRelationship[]>();
-  for (const rel of allRelationships) for (const child of rel.children) {
-    if (!ids.has(child)) continue;
+  for (const child of ids) for (const rel of incomingById.get(child) ?? []) {
     const parents = incoming.get(child) ?? []; parents.push(rel); incoming.set(child, parents);
     if (!ids.has(rel.parent) && rel.parent !== sourceStoreyId) fail(`#${child} belongs to an external host, assembly or container #${rel.parent}`);
     if (rel.parent === sourceStoreyId && ['IFCRELVOIDSELEMENT', 'IFCRELFILLSELEMENT'].includes(rel.type)) fail('storey cannot own hosted dependencies');
@@ -97,7 +121,7 @@ export function planStoreyReassignment(
       if ((incoming.get(id) ?? []).filter(rel => family.includes(rel.type)).length > 1) fail(`#${id} has ambiguous dependency ownership`);
     }
   }
-  const ownedRelationships = allRelationships.filter(rel => ids.has(rel.parent) && rel.children.some(id => ids.has(id)));
+  const ownedRelationships = [...ids].flatMap(id => outgoing.get(id) ?? []).sort((a, b) => relationOrder.get(a.id)! - relationOrder.get(b.id)!);
   const indegree = new Map([...ids].map(id => [id, 0]));
   for (const rel of ownedRelationships) for (const child of rel.children) indegree.set(child, (indegree.get(child) ?? 0) + 1);
   const roots = [...ids].filter(id => indegree.get(id) === 0), topo = [...roots];
@@ -119,12 +143,7 @@ export function planStoreyReassignment(
     const guid = reader.entity(id)?.attributes[0];
     return typeof guid === 'string' && /^[0-3][0-9A-Za-z_$]{21}$/.test(guid) ? guid : fail(`storey #${id} has no valid GlobalId`);
   });
-  const guids = new Set([...storeyGuids, ...products.map(product => product.GlobalId)]), guidCounts = new Map<string, number>();
-  for (const { expressId } of iterateEffectiveEntityIds(store, view)) {
-    const entity = reader.entity(expressId);
-    const guid = entity?.attributes[0];
-    if (entity && conformsTo(registry, entity.type, 'IfcRoot') && typeof guid === 'string' && guids.has(guid)) guidCounts.set(guid, (guidCounts.get(guid) ?? 0) + 1);
-  }
+  const guids = new Set([...storeyGuids, ...products.map(product => product.GlobalId)]);
   if (guids.size !== products.length + 2 || [...guids].some(guid => guidCounts.get(guid) !== 1)) fail('ambiguous duplicate product GlobalId');
   const placementIds = new Set(products.map(product => product.placementId));
   const placements = [...placementIds].filter(id => {
@@ -146,8 +165,31 @@ export function planStoreyReassignment(
     const relative = placementRelativeTo(reader, expressId, destinationPlacementId) ?? fail(`cannot express placement #${expressId} in destination frame`);
     return { expressId, relative };
   });
-  const refusal = editOwnershipRefusal(store, view, placements.map(p => p.expressId), ids);
+  const ownershipKey = JSON.stringify([placements.map(p => p.expressId), products.map(p => p.expressId)]);
+  if (!ownership.has(ownershipKey)) ownership.set(ownershipKey, editOwnershipRefusal(store, view, placements.map(p => p.expressId), ids));
+  const refusal = ownership.get(ownershipKey);
   if (refusal) fail(refusal);
   return { sourceStoreyId, destinationStoreyId, destinationPlacementId, products, placements,
-    relationships: ownedRelationships, sourceMemberships: allRelationships.filter(rel => rel.parent === sourceStoreyId && rel.children.some(id => ids.has(id))) };
+    relationships: ownedRelationships, sourceMemberships: (outgoing.get(sourceStoreyId) ?? []).filter(rel => rel.children.some(id => ids.has(id))) };
+}
+
+/** Complete read-only admission for one destination. */
+export function planStoreyReassignment(store: IfcDataStore, view: MutablePropertyView, selectedIds: readonly number[],
+  sourceStoreyId: number, destinationStoreyId: number): StoreyReassignmentPlan {
+  return planWithInventory(store, view, selectedIds, sourceStoreyId, destinationStoreyId, planningInventory(store, view));
+}
+
+/** Selection capture shares one effective Root/relationship inventory across
+ * at most 20 destination candidates. Each refusal remains explicit. */
+export function planStoreyReassignmentCandidates(store: IfcDataStore, view: MutablePropertyView, selectedIds: readonly number[],
+  sourceStoreyId: number, destinationStoreyIds: readonly number[]) {
+  if (destinationStoreyIds.length > 20 || new Set(destinationStoreyIds).size !== destinationStoreyIds.length) fail('choose at most 20 distinct destination storeys');
+  const inventory = planningInventory(store, view);
+  return destinationStoreyIds.map(destinationStoreyId => {
+    try { return { destinationStoreyId, plan: planWithInventory(store, view, selectedIds, sourceStoreyId, destinationStoreyId, inventory), refusal: null }; }
+    catch (error) {
+      if (!(error instanceof Error)) throw error;
+      return { destinationStoreyId, plan: null, refusal: error.message };
+    }
+  });
 }

@@ -11,7 +11,7 @@ import { addOrdinaryElementInStore } from './ordinary-element.js';
 import { AnchorEntityReader, resolveSpatialAnchor } from './resolve-anchor.js';
 import { placementInAncestor, refId } from './host-geometry-frame.js';
 import { reassignElementsToStoreyInStore } from './storey-reassignment.js';
-import { planStoreyReassignment } from './storey-reassignment-plan.js';
+import { planStoreyReassignment, planStoreyReassignmentCandidates } from './storey-reassignment-plan.js';
 import { addGridToStore } from './grid.js';
 import { addHostedElementInStore } from './hosted-element.js';
 import { effectiveStoreyId } from './edit/effective-storey.js';
@@ -110,11 +110,18 @@ for (const failure of ['duplicate selection', 'missing', 'wrong source', 'stale'
       const entity = reader.entity(s.id)!;
       const attributes = [...entity.attributes] as Parameters<StoreEditor['addEntity']>[1];
       if (failure === 'shared placement') attributes[0] = generateIfcGuid();
+      if (failure === 'duplicate GlobalId') {
+        const point = s.editor.addEntity('IfcCartesianPoint', [[0, 0, 0]]).expressId;
+        const axis = s.editor.addEntity('IfcAxis2Placement3D', [`#${point}`, null, null]).expressId;
+        attributes[5] = `#${s.editor.addEntity('IfcLocalPlacement', [null, `#${axis}`]).expressId}`;
+      }
       s.editor.addEntity(entity.type, attributes);
     }
     if (failure === 'grid destination') s.editor.setEntityType(s.destinationPlacement, 'IfcGridPlacement');
     const before = s.snapshot(), text = s.text();
-    expect(() => reassignElementsToStoreyInStore(s.store, s.editor, ids, source, s.destination, expected)).toThrow();
+    const expectedMessage = failure === 'duplicate GlobalId' ? /duplicate product GlobalId/
+      : failure === 'shared placement' ? /shares/ : failure === 'stale' ? /stale/ : undefined;
+    expect(() => reassignElementsToStoreyInStore(s.store, s.editor, ids, source, s.destination, expected)).toThrow(expectedMessage);
     expect(s.snapshot()).toEqual(before); expect(s.text()).toBe(text);
   });
 }
@@ -235,4 +242,28 @@ for (const relation of ['IfcRelVoidsElement', 'IfcRelFillsElement']) it(`#7328 m
   const before = s.snapshot(), text = s.text();
   expect(() => reassignElementsToStoreyInStore(s.store, s.editor, [s.id], 42, s.destination)).toThrow(/storey cannot own hosted dependencies/);
   expect(s.snapshot()).toEqual(before); expect(s.text()).toBe(text);
+});
+
+it('#7328 destination candidates reuse one effective Root inventory and match independent native plans', async () => {
+  const s = await fixture(), reader = new AnchorEntityReader(s.store, s.view);
+  const destinationRecord = reader.entity(s.destination)!;
+  const destinations = [s.destination];
+  for (let i = 0; i < 4; i++) {
+    const attributes = [...destinationRecord.attributes] as Parameters<StoreEditor['addEntity']>[1];
+    attributes[0] = generateIfcGuid(); attributes[2] = `Destination ${i}`;
+    destinations.push(s.editor.addEntity('IfcBuildingStorey', attributes).expressId);
+  }
+  const before = s.snapshot(), text = s.text();
+  const extraction = vi.spyOn(s.view, 'getNewEntities');
+  const candidates = planStoreyReassignmentCandidates(s.store, s.view, [s.id], 42, destinations);
+  const batchScans = extraction.mock.calls.length; extraction.mockClear();
+  const independent = destinations.map(id => planStoreyReassignment(s.store, s.view, [s.id], 42, id));
+  const separateScans = extraction.mock.calls.length; extraction.mockRestore();
+  expect(candidates.map(candidate => candidate.plan)).toEqual(independent);
+  expect(candidates.every(candidate => candidate.refusal === null)).toBe(true);
+  expect(batchScans).toBeLessThan(separateScans);
+  expect(s.snapshot()).toEqual(before); expect(s.text()).toBe(text);
+  const mixed = planStoreyReassignmentCandidates(s.store, s.view, [s.id], 42, [s.destination, 99999999]);
+  expect(mixed[0].plan).toEqual(independent[0]); expect(mixed[1].plan).toBeNull();
+  expect(mixed[1].refusal).toMatch(/not a live IfcBuildingStorey/);
 });

@@ -7,6 +7,7 @@ import assert from 'node:assert/strict';
 import { readFile, writeFile } from 'node:fs/promises';
 import { afterEach, test } from 'node:test';
 import { createElement, act } from 'react';
+import { AnchorEntityReader } from '../../../../../packages/create/src/in-store/resolve-anchor';
 import { StoreEditor, MutablePropertyView } from '@ifc-lite/mutations';
 import { federationRegistry } from '@ifc-lite/renderer';
 import { toGlobalIdFromModels } from '@/store/globalId';
@@ -210,4 +211,24 @@ test('#7328 two real federated models with duplicate source/destination GlobalId
   assert.deepEqual(await graph(editedModelBytes(peer,peerView)),peerBefore);assert.equal(peerView.hasPendingChanges(),false);
   assert.deepEqual(undoModelChanges(useViewerStore,result.receipt),{ok:true});await settle(MODEL);
   assert.deepEqual(await graph(editedModelBytes(saved,ownView)),before);assert.deepEqual(await graph(editedModelBytes(peer,peerView)),peerBefore);
+});
+
+test('#7328 a complete source membership exceeding 5000 entries still admits one moved product', async t => {
+  if (!ensureRoomWasm(t)) return;
+  const s = await setup();
+  const siblings: string[] = [`#${s.id}`];
+  for (let i = 0; i < 5000; i++) siblings.push(`#${s.editor.addEntity('IfcAnnotation', [generateIfcGuid(), null, `Unmoved ${i}`, null, null, null, null]).expressId}`);
+  const reader = new AnchorEntityReader(s.store, s.view);
+  const membership = [...reader.ids('IFCRELCONTAINEDINSPATIALSTRUCTURE')].find(id => (reader.entity(id)?.attributes[4] as unknown[])?.includes(`#${s.id}`));
+  assert.ok(membership); s.editor.setPositionalAttribute(membership, 4, siblings);
+  const pin = planStoreyReassignment(s.store, s.view, [s.id], 42, s.destination);
+  assert.equal(pin.products.length, 1); assert.equal(pin.sourceMemberships[0].children.length, 5001);
+  const batch = parseModelAuthoringBatch(JSON.stringify({kind: 'model.authoring', version: 1, title: 'Complete large membership', units: 'm', frame: 'storey-local', operations: [{...s.operation, expected: pin}]}));
+  const preview = previewModelAuthoring(useViewerStore.getState(), batch);
+  assert.equal(preview.rows[0].status, 'ready', preview.rows[0].issue ?? '');
+  const before = await graph(s.bytesNow());
+  const result = commitModelAuthoring(useViewerStore, preview, new Set([0]), '#7328 complete large source membership');
+  assert.ok(result.ok, result.ok ? '' : result.detail ?? result.reason); await settle();
+  assert.deepEqual(undoModelChanges(useViewerStore, result.receipt), {ok: true}); await settle();
+  assert.deepEqual(await graph(s.bytesNow()), before);
 });

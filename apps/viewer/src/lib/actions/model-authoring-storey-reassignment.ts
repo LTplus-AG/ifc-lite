@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { effectiveStoreyId } from '../../../../../packages/create/src/in-store/edit/effective-storey';
 import { effectiveMetadataRecord } from '@ifc-lite/parser';
-import { effectiveStoreyIds, planStoreyReassignment, reassignElementsToStoreyInStore, type StoreyReassignmentPlan } from '@ifc-lite/create';
+import { effectiveStoreyIds, planStoreyReassignmentCandidates, reassignElementsToStoreyInStore, type StoreyReassignmentPlan } from '@ifc-lite/create';
 import type { StoreEditor } from '@ifc-lite/mutations';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { ModelEditTarget } from '@/store/slices/mutation-modelling-records';
@@ -24,7 +24,7 @@ function parseExpected(value: unknown, at: string): StoreyReassignmentPlan {
     if (++work > 200_000 || depth > 12) return false;
     if (item === null || typeof item === 'string' || typeof item === 'boolean') return true;
     if (typeof item === 'number') return Number.isFinite(item);
-    if (Array.isArray(item)) return item.length <= 5_000 && item.every(child => finite(child, depth + 1));
+    if (Array.isArray(item)) return item.length <= 200_000 && item.every(child => finite(child, depth + 1));
     return record(item) && Object.keys(item).length <= 30 && Object.values(item).every(child => finite(child, depth + 1));
   };
   const id = (item: unknown) => typeof item === 'number' && Number.isSafeInteger(item) && item > 0;
@@ -34,7 +34,7 @@ function parseExpected(value: unknown, at: string): StoreyReassignmentPlan {
     && Array.isArray(item.children) && item.children.length > 0 && item.children.every(id)
     && Number.isInteger(item.listIndex) && Number.isInteger(item.parentIndex);
   if (!record(value) || !finite(value, 0) || !id(value.sourceStoreyId) || !id(value.destinationStoreyId) || !id(value.destinationPlacementId)
-    || !Array.isArray(value.products) || !value.products.length || !value.products.every(product => record(product) && id(product.expressId)
+    || !Array.isArray(value.products) || !value.products.length || value.products.length > 5_000 || !value.products.every(product => record(product) && id(product.expressId)
       && typeof product.GlobalId === 'string' && typeof product.type === 'string' && Array.isArray(product.attributes) && id(product.placementId) && frame(product.world))
     || !Array.isArray(value.placements) || !value.placements.length || !value.placements.every(placement => record(placement) && id(placement.expressId) && frame(placement.relative))
     || !Array.isArray(value.relationships) || !value.relationships.every(relationship)
@@ -71,17 +71,17 @@ export function nativeStoreyReassignmentEvidence(target: ModelEditTarget | null,
   const storeys = effectiveStoreyIds(dataStore, view);
   if (source === undefined || storeys.length > 20) return null;
   const results: { sourceStorey: StoreyTarget; destinationStorey: StoreyTarget; expectedJsonParts: string[]; productCount: number }[] = [];
-  for (const from of [source]) for (const to of storeys) {
-    if (from === to) continue;
-    try {
-      const expected = planStoreyReassignment(dataStore, view, [expressId], from, to);
-      const sourceGuid = effectiveMetadataRecord(dataStore, from, view)?.attributes[0];
+  try {
+    const candidates = planStoreyReassignmentCandidates(dataStore, view, [expressId], source, storeys.filter(id => id !== source));
+    for (const { destinationStoreyId: to, plan: expected } of candidates) {
+      if (!expected) continue;
+      const sourceGuid = effectiveMetadataRecord(dataStore, source, view)?.attributes[0];
       const destinationGuid = effectiveMetadataRecord(dataStore, to, view)?.attributes[0];
       if (typeof sourceGuid !== 'string' || typeof destinationGuid !== 'string') continue;
       const json = JSON.stringify(expected), expectedJsonParts = Array.from({ length: Math.ceil(json.length / 1000) }, (_, i) => json.slice(i * 1000, (i + 1) * 1000));
       results.push({ sourceStorey: { modelId: target.modelId, globalId: sourceGuid }, destinationStorey: { modelId: target.modelId, globalId: destinationGuid }, expectedJsonParts, productCount: expected.products.length });
-    } catch (error) { if (!(error instanceof Error)) throw error; }
-  }
+    }
+  } catch (error) { if (!(error instanceof Error)) throw error; }
   return results.length ? results : null;
 }
 

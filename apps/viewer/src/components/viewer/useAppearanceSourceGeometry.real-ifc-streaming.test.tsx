@@ -73,66 +73,82 @@ function assertOrderedSources(): void {
   }
 }
 
+async function loadWithProbe(file: File, modelId?: string) {
+  let model: Awaited<ReturnType<typeof load>> | undefined;
+  // The shared harness enables editing after its own load act. Include that
+  // notification in this mounted probe's act scope, one load at a time.
+  await act(async () => { model = await load(file, modelId); });
+  assert.ok(model);
+  return model;
+}
+
 afterEach(() => { cleanup(); sources = []; indices = new Map(); modelIndices(new Map()); });
 
 for (const position of [0, 1] as const) {
   it(`visits only new real IFC appearance meshes when model ${position} appends (#6537 / #7021)`,
     { skip, timeout: 120_000 }, async context => {
-      const bytes = fixtures.map(path => readFileSync(path));
-      perfCounters.enable();
-      const beforeLoad = perfCounters.read();
-      const ui = render(<Probe />);
-      const initial = [
-        await load(new File([bytes[0]], 'AC20-FZK-Haus.ifc', { type: 'application/ifc' })),
-        await load(new File([bytes[1]], 'Snowdon-structural.ifc', { type: 'application/ifc' }), 'appearance-peer'),
-      ];
-      const loadDelta = diffCounters(perfCounters.read(), beforeLoad);
-      const state = useViewerStore.getState();
-      assert.equal(state.models.size, 2, 'both canonical loads remain in the federation');
-      const loaded = initial.map(model => {
-        const current = state.models.get(model.id);
-        assert.ok(current, 'read the current model after federation alignment');
-        return current;
-      });
-      const target = loaded[position];
-      assert.ok(target.geometryResult);
-      const complete = target.geometryResult.meshes.slice();
-      assert.ok(complete.length > 1, 'the actual engine supplies a nontrivial stream');
-      assert.ok(loaded[1 - position].geometryResult?.meshes.length,
-        'an independently loaded peer exercises the retained-prefix/suffix cost');
-      const originalIdentity = fingerprint(complete);
-      const previouslyStamped = complete.filter(mesh => mesh.modelIndex === indices.get(target.id)).length;
-      act(() => useViewerStore.getState().upsertModel({ ...target, preAlignment: undefined,
-        geometryResult: { ...target.geometryResult!, meshes: [], totalVertices: 0, totalTriangles: 0 },
-      }));
-      assertOrderedSources();
-      const before = perfCounters.read();
-      // A fixed batch schedule attributes repeated prefix work. This is an
-      // untimed mounted replay, not a browser worker-pool performance cohort.
-      const batchSize = Math.max(1, Math.ceil(complete.length / 16));
-      let batches = 0;
-      for (let offset = 0; offset < complete.length; offset += batchSize) {
-        const part = complete.slice(offset, offset + batchSize);
-        act(() => useViewerStore.getState().appendGeometryBatch(target.id, part, target.geometryResult!.coordinateInfo));
+      try {
+        const bytes = fixtures.map(path => readFileSync(path));
+        perfCounters.enable();
+        const beforeLoad = perfCounters.read();
+        const ui = render(<Probe />);
+        const initial = [
+          await loadWithProbe(new File([bytes[0]], 'AC20-FZK-Haus.ifc', { type: 'application/ifc' })),
+          await loadWithProbe(new File([bytes[1]], 'Snowdon-structural.ifc', { type: 'application/ifc' }), 'appearance-peer'),
+        ];
+        const loadDelta = diffCounters(perfCounters.read(), beforeLoad);
+        const state = useViewerStore.getState();
+        assert.equal(state.models.size, 2, 'both canonical loads remain in the federation');
+        const loaded = initial.map(model => {
+          const current = state.models.get(model.id);
+          assert.ok(current, 'read the current model after federation alignment');
+          return current;
+        });
+        const target = loaded[position];
+        assert.ok(target.geometryResult);
+        const complete = target.geometryResult.meshes.slice();
+        assert.ok(complete.length > 1, 'the actual engine supplies a nontrivial stream');
+        assert.ok(loaded[1 - position].geometryResult?.meshes.length,
+          'an independently loaded peer exercises the retained-prefix/suffix cost');
+        const originalIdentity = fingerprint(complete);
+        const previouslyStamped = complete.filter(mesh => mesh.modelIndex === indices.get(target.id)).length;
+        act(() => useViewerStore.getState().upsertModel({ ...target, preAlignment: undefined,
+          geometryResult: { ...target.geometryResult!, meshes: [], totalVertices: 0, totalTriangles: 0 },
+        }));
         assertOrderedSources();
-        assert.equal(Number(ui.textContent), sources.length, 'the mounted consumer observes every batch');
-        batches++;
-      }
-      assert.equal(fingerprint(complete), originalIdentity, 'replay does not alter canonical mesh output');
-      const delta = diffCounters(perfCounters.read(), before);
-      context.diagnostic(JSON.stringify({ kind: 'real-ifc-appearance-stream-attribution', position, batches, batchSize,
-        fixtures: bytes.map((data, i) => ({ name: fixtures[i].pathname.split('/').at(-1), bytes: data.length,
-          sha256: createHash('sha256').update(data).digest('hex') })),
-        models: loaded.map(model => ({ id: model.id, meshes: model.geometryResult?.meshes.length })),
-        replayMeshes: complete.length, previouslyStamped, replayGeometrySha256: originalIdentity,
-        counts: complete.reduce((sum, mesh) => {
-          const counts = meshGeometryCounts(mesh);
-          return { vertices: sum.vertices + counts.vertices, triangles: sum.triangles + counts.triangles };
-        }, { vertices: 0, triangles: 0 }), loadDelta, delta,
-        scope: 'Mounted canonical-output replay; no timing, GPU, whole-load memory or worker-pool acceptance.' }));
-      assert.equal(delta['viewer.appearanceSource.meshes'] ?? 0, complete.length,
-        'old peer and accumulated meshes must not be revisited on each append');
-      assert.equal(delta['viewer.appearanceSource.copies'] ?? 0, 0,
-        'renderer ownership must use canonical stamping rather than per-append wrapper copies');
+        const appearanceList = sources;
+        const before = perfCounters.read();
+        // A fixed batch schedule attributes repeated prefix work. This is an
+        // untimed mounted replay, not a browser worker-pool performance cohort.
+        const batchSize = Math.max(1, Math.ceil(complete.length / 16));
+        let batches = 0;
+        for (let offset = 0; offset < complete.length; offset += batchSize) {
+          const part = complete.slice(offset, offset + batchSize);
+          act(() => useViewerStore.getState().appendGeometryBatch(target.id, part, target.geometryResult!.coordinateInfo));
+          assertOrderedSources();
+          assert.equal(Number(ui.textContent), sources.length, 'the mounted consumer observes every batch');
+          batches++;
+        }
+        assert.equal(fingerprint(complete), originalIdentity, 'replay does not alter canonical mesh output');
+        const delta = diffCounters(perfCounters.read(), before);
+        context.diagnostic(JSON.stringify({ kind: 'real-ifc-appearance-stream-attribution', position, batches, batchSize,
+          fixtures: bytes.map((data, i) => ({ name: fixtures[i].pathname.split('/').at(-1), bytes: data.length,
+            sha256: createHash('sha256').update(data).digest('hex') })),
+          models: loaded.map(model => ({ id: model.id, meshes: model.geometryResult?.meshes.length })),
+          replayMeshes: complete.length, previouslyStamped, replayGeometrySha256: originalIdentity,
+          counts: complete.reduce((sum, mesh) => {
+            const counts = meshGeometryCounts(mesh);
+            return { vertices: sum.vertices + counts.vertices, triangles: sum.triangles + counts.triangles };
+          }, { vertices: 0, triangles: 0 }), loadDelta, delta,
+          scope: 'Mounted canonical-output replay; no timing, GPU, whole-load memory or worker-pool acceptance.' }));
+        assert.equal(delta['viewer.appearanceSource.meshes'] ?? 0, complete.length,
+          'old peer and accumulated meshes must not be revisited on each append');
+        assert.equal(delta['viewer.appearanceSource.copies'] ?? 0, 0,
+          'renderer ownership must use canonical stamping rather than per-append wrapper copies');
+        assert.equal(sources, appearanceList, 'same-array appends retain the combined list');
+        assert.equal(delta['viewer.appearanceSource.shiftedMeshes'] ?? 0,
+          position === 0 ? batches * loaded[1].geometryResult!.meshes.length : 0,
+          'earlier-model suffix movement is counted separately from new mesh work');
+      } finally { cleanup(); }
     });
 }

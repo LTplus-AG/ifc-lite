@@ -19,8 +19,25 @@ export interface CaptureObservation {
 
 const ref = <T,>(current: T) => ({ current });
 
+interface CaptureLifecycle {
+  renderer: Renderer;
+  canvas: HTMLCanvasElement;
+  params: UseAnimationLoopParams;
+  bcf: ReturnType<typeof useBCF>;
+  step: () => void;
+  captures: CaptureObservation[];
+  resizes: number[][];
+  frames: RenderOptions[];
+  readonly waits: number;
+  deferWork: () => void;
+  finishWork: () => void;
+  failWork: (error: Error) => void;
+  flush: () => Promise<void>;
+  dispose: () => Promise<void>;
+}
+
 /** Actual loop, renderer viewport/camera, BCF and screenshot paths; GPU/PNG boundaries only are controlled. */
-export async function captureLifecycle(dpr: number) {
+export async function captureLifecycle(dpr: number): Promise<CaptureLifecycle> {
   const savedRaf = globalThis.requestAnimationFrame;
   const savedCancel = globalThis.cancelAnimationFrame;
   const savedDateNow = Date.now;

@@ -42,12 +42,18 @@ for (const mixed of [false, true]) test(`#7324 native AutoAll refuses live conta
     .filter(row => native.view.getNewEntity(row.expressId)).map(row => row.expressId);
   const missing = mixed ? walls.slice(-4) : walls;
   assert.equal(missing.length, 4, 'four actual native authored walls retain their Root and containment');
+  const originalGuids = new Map(missing.map(id => {
+    const guid = effectiveMetadataRecord(native.store,id,native.view)?.attributes[0];
+    assert.equal(typeof guid,'string','actual live wall owns a native GlobalId before Representation removal');
+    return [id,guid] as const;
+  }));
   for (const id of missing) native.view.setPositionalAttribute(id, 6, null);
   const bytes = new StepExporter(native.store,native.view).export({ schema:'IFC4',applyMutations:true }).content;
   const reloaded = await seedNativeSdkModel(bytes);
   for (const id of missing) {
     const record = effectiveMetadataRecord(reloaded.store,id,reloaded.view); assert.ok(record);
     assert.equal(record.type.toUpperCase(),'IFCWALL');
+    assert.equal(record.attributes[0],originalGuids.get(id),'independent native export/reload retains the exact wall GlobalId');
     assert.equal(record.attributes[6],null,'independent native export/reload preserves the absent optional Representation');
   }
   const containment = [...iterateEffectiveEntities(reloaded.store,reloaded.view,['IfcRelContainedInSpatialStructure'])]

@@ -11,6 +11,7 @@
  * citations resolve by).
  */
 
+import { nativeAuthoringEvidence, type NativeAuthoringEvidence } from './native-authoring-evidence';
 import type { ViewerState } from '@/store';
 import { resolveEntityRefGlobalIdFromState } from '@/store/resolveEntityRef';
 import { effectiveSelectedClass } from '@/components/viewer/properties/effectiveSelectedClass';
@@ -18,9 +19,8 @@ import { readOnlyModelEditLease, type NativeReadLease } from './model-authoring-
 import { nativeEditEvidence, nativeRootName, type NativeEditEvidence } from './native-edit-evidence';
 import { nativeTypeEvidence, type NativeTypeEvidence } from './native-type-evidence';
 import { nativeCostEvidence, type CostEvidence } from './cost-graph-evidence';
-import { nativeStairEvidenceFromTarget } from './model-authoring-stair-lifecycle';
 
-export interface SelectionElement {
+export interface SelectionElement extends NativeAuthoringEvidence {
   globalId: string;
   modelId: string;
   /** IFC class, `IfcPascalCase`. */
@@ -29,7 +29,6 @@ export interface SelectionElement {
   nativeEdit: NativeEditEvidence;
   nativeType: NativeTypeEvidence;
   nativeCost: CostEvidence;
-  nativeStairExpected: ReturnType<typeof nativeStairEvidenceFromTarget>;
 }
 
 export interface SelectionGrounding {
@@ -99,9 +98,9 @@ export function captureSelectionGrounding(state: GroundingState, limit = SELECTI
       type: effectiveSelectedClass(store, state.mutationViews.get(ref.modelId), ref.expressId) ?? 'unknown',
       name: nativeRootName({ dataStore: store, view: state.mutationViews.get(ref.modelId) }, ref.expressId) || null,
       nativeEdit: nativeEditEvidence(nativeTarget(ref.modelId), ref.expressId),
+      ...nativeAuthoringEvidence(nativeTarget(ref.modelId), ref.expressId),
       nativeType: nativeTypeEvidence(state, nativeTarget(ref.modelId), ref.expressId),
       nativeCost: nativeCostEvidence(nativeTarget(ref.modelId), ref.expressId),
-      nativeStairExpected: nativeStairEvidenceFromTarget(nativeTarget(ref.modelId), ref.expressId),
     });
   }
   const grounding = { capturedAt: new Date().toISOString(), total, elements, unresolved,

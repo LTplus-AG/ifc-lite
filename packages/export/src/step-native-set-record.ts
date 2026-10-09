@@ -30,4 +30,3 @@ export function decodeNativeSetLine(line: string, id: number): IfcEntity {
   if (!entity) throw new Error(`Type quantity source #${id} cannot be decoded`);
   return entity;
 }
-

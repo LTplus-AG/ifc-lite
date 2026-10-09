@@ -23,6 +23,8 @@
 import { parseReplacementFields,type NativeReplacementOp } from './model-authoring-replacement-fields';
 import { parseSlabOpeningFields, type SlabOpeningCreate } from './model-authoring-slab-opening';
 import { parseExpectedHostedEdit, parseHostedEdit, type ExpectedHostedEdit } from './model-authoring-hosted-edit';
+import { parseNativePlacement, type NativePlacement } from './model-authoring-placement';
+import { parseAlignment, type AlignmentOp } from './model-authoring-align-fields';
 import type { HostedElementEdit } from '@ifc-lite/create';
 import { parseShapeParams, parseProfileSectionParams, AUTHORING_OUTLINE_WORK_LIMIT, type ShapeParams } from './model-authoring-shape-params';
 import { parseReachFields, type ReachFields } from './model-authoring-reach-fields';
@@ -75,7 +77,8 @@ export type AuthoringOp =
   /** Horizontal move by a storey-local delta; `from` optionally pins today's placement origin [x, y] in the storey. */
   | { op: 'element.move'; target: ExistingElement; delta: [number, number]; from?: [number, number] }
   /** Turn about the element's own placement origin; `fromDeg` optionally pins today's angle. */
-  | { op: 'element.rotate'; target: ExistingElement; angleDeg: number; fromDeg?: number }
+  | { op: 'element.rotate'; target: ExistingElement; angleDeg: number; fromDeg?: number; pivot?: [number, number]; expected?: NativePlacement }
+  | AlignmentOp
   | { op: 'type.detach'; target: ExistingElement; expected: { GlobalId: string; Name: string } }
   | { op: 'type.assign'; target: ElementTarget; expected?: string | null; type: { globalId: string; name: string } | { create: { ifcClass: string; name: string } } }
   | { op: 'material.assign'; target: ElementTarget; expected?: string | null; material: { name: string; create: boolean } }
@@ -85,7 +88,7 @@ export type AuthoringOp =
   | { op: 'hosted.create'; ref?: string; kind: HostedKind; host: ElementTarget; name?: string; offset: number; sill: number; width: number; height: number };
 
 export type AuthoringOpName = AuthoringOp['op'];
-export const AUTHORING_OPS: readonly AuthoringOpName[] = ['stair.resize', 'stair.delete', 'railing.delete', 'stair.replace', 'railing.replace', 'stair.create', 'railing.create', 'element.create', 'element.replace', 'element.delete', 'element.split', 'element.resize', 'element.profile', 'element.trimExtend', 'element.move', 'element.rotate', 'element.copy', 'element.array',
+export const AUTHORING_OPS: readonly AuthoringOpName[] = ['stair.resize', 'stair.delete', 'railing.delete', 'stair.replace', 'railing.replace', 'stair.create', 'railing.create', 'element.create', 'element.replace', 'element.delete', 'element.split', 'element.resize', 'element.profile', 'element.trimExtend', 'element.move', 'element.rotate', 'element.align', 'element.copy', 'element.array',
   'type.assign', 'type.detach', 'material.assign', 'walls.join', 'hosted.create', 'hosted.edit'];
 
 export interface ModelAuthoringBatch {
@@ -260,8 +263,13 @@ function operation(value: unknown, index: number, units: AuthoringUnits, refs: M
       const angle = value.angleDeg;
       if (typeof angle !== 'number' || !Number.isFinite(angle) || angle === 0 || Math.abs(angle) > 360) throw new Error(`${at}: angleDeg must be a non-zero number of degrees within ±360`);
       if (value.fromDeg !== undefined && (typeof value.fromDeg !== 'number' || !Number.isFinite(value.fromDeg))) throw new Error(`${at}: fromDeg must be a number`);
-      return { op: 'element.rotate', target: existing(value.target, at), angleDeg: angle, ...(typeof value.fromDeg === 'number' ? { fromDeg: value.fromDeg } : {}) };
+      if (value.pivot !== undefined && (!Array.isArray(value.pivot) || value.pivot.length !== 2)) throw new Error(`${at}: pivot must be [x,y] in declared units`);
+      const pivot = Array.isArray(value.pivot) ? value.pivot.map((v, i) => parseLength(v, units, R.coordinate, `${at} pivot[${i}]`)) as [number, number] : undefined;
+      const expected = value.expected === undefined && !pivot ? undefined : parseNativePlacement(value.expected, `${at} expected`);
+      return { op: 'element.rotate', target: existing(value.target, at), angleDeg: angle, ...(typeof value.fromDeg === 'number' ? { fromDeg: value.fromDeg } : {}),
+        ...(pivot ? { pivot } : {}), ...(expected ? { expected } : {}) };
     }
+    case 'element.align': return parseAlignment(value, at, existing);
     case 'type.detach': {
       const expected = record(value.expected) ? value.expected : null;
       if (!expected || typeof expected.Name !== 'string' || expected.Name.length > 200) throw new Error(`${at}: expected must name the current type {GlobalId, Name}`);

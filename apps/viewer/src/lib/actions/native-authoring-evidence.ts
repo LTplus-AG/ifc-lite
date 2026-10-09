@@ -11,9 +11,12 @@ import { readExpectedHostedEdit, type ExpectedHostedEdit } from './model-authori
 import { authoringReachEvidenceFromTarget } from './model-authoring-reach';
 import { nativeStairEvidenceFromTarget } from './model-authoring-stair-lifecycle';
 
+import { nativePlacementFromTarget, type NativePlacement } from './model-authoring-placement';
+
 type Availability = 'available' | 'unavailable-target' | 'unavailable-unit' | 'unavailable-native-layout' | 'unavailable-projection';
 export interface NativeAuthoringEvidence {
   nativeReplacementExpected: ReturnType<typeof nativeReplacementEvidence>;
+  nativePlacement?: NativePlacement | null;
   nativeSplitExpected: SplitSnapshot | null;
   nativeSlabOpeningExpected: SplitSnapshot | null;
   nativeHostedExpected: ExpectedHostedEdit | null;
@@ -30,6 +33,7 @@ export interface NativeAuthoringEvidence {
     hosted: Availability;
     trimExtend: Availability;
     stair: Availability;
+    placement?: Availability;
   };
 }
 
@@ -62,14 +66,15 @@ export function nativeAuthoringEvidence(target: ModelEditTarget | null, expressI
     trim = authoringReachEvidenceFromTarget(target, expressId);
     stair = nativeStairEvidenceFromTarget(target, expressId);
   }
+  const placement = nativePlacementFromTarget(target, expressId);
   const slab=nativeSlabOpeningEvidence(target,expressId),replacement=includeReplacement ? nativeReplacementEvidence(target,expressId) : null;
-  const evidence: NativeAuthoringEvidence = { nativeReplacementExpected: replacement, nativeSlabOpeningExpected: slab.expected, nativeSplitExpected: split, nativeHostedExpected: hosted,
+  const evidence: NativeAuthoringEvidence = { nativePlacement: placement, nativeReplacementExpected: replacement, nativeSlabOpeningExpected: slab.expected, nativeSplitExpected: split, nativeHostedExpected: hosted,
     nativeTrimExtendExpected: trim, nativeStairExpected: stair,
     nativeAuthoringUnits: { replacement: 'verbatim-native-fields', slabOpening: 'm', split: 'm', hosted: 'm', stair: 'm', trimExtend: 'verbatim-native-fields' },
     nativeAuthoringRefusals: refusals,
     nativeAuthoringAvailability: { replacement: replacement ? 'available' : unavailable, slabOpening: slab.expected ? 'available' : unavailable, split: split ? 'available' : unavailable,
       hosted: hosted ? 'available' : unavailable, trimExtend: trim ? 'available' : unavailable,
-      stair: stair ? 'available' : unavailable } };
+      placement: placement ? 'available' : unavailable, stair: stair ? 'available' : unavailable } };
   if (includeReplacement) return evidence;
   // #7320: compact summaries omit the complete pin and its repeated metadata.
   // Rich capture and explicit attachments retain the authoritative full contract.
@@ -83,7 +88,7 @@ export function nativeAuthoringEvidence(target: ModelEditTarget | null, expressI
 const snapshotFields = [
   ['nativeReplacementExpected', 'replacement'],
   ['nativeSlabOpeningExpected', 'slabOpening'], ['nativeSplitExpected', 'split'], ['nativeHostedExpected', 'hosted'],
-  ['nativeTrimExtendExpected', 'trimExtend'], ['nativeStairExpected', 'stair'],
+  ['nativeTrimExtendExpected', 'trimExtend'], ['nativeStairExpected', 'stair'], ['nativePlacement', 'placement'],
 ] as const;
 const record = (value: unknown): value is Record<string, unknown> =>
   value !== null && typeof value === 'object' && !Array.isArray(value);

@@ -96,9 +96,13 @@ export function authoringRowSummary(row: AuthoringRow, batch: ModelAuthoringBatc
       return { subject: `${op.target.ifcClass} "${op.target.name}"`, before: origin ? `${point(origin)} ${units}` : none,
         after: origin ? `${point([origin[0] + op.delta[0], origin[1] + op.delta[1]])} ${units}` : t('modelAuthoring.movedBy', { delta: `${point(op.delta)} ${units}` }) };
     }
+    case 'element.align':
+      return { subject: `${op.targets.length} → ${op.reference.name}`, before: 'Current native placement',
+        after: `${op.mode} alignment`, previewNote: t('modelAuthoring.alignBounds') };
     case 'element.rotate':
       return { subject: `${op.target.ifcClass} "${op.target.name}"`, before: before.angleDeg === undefined ? none : `${num(before.angleDeg)}°`,
-        after: before.angleDeg === undefined ? t('modelAuthoring.turnedBy', { angle: num(op.angleDeg) }) : `${num(before.angleDeg + op.angleDeg)}°` };
+        after: (before.angleDeg === undefined ? t('modelAuthoring.turnedBy', { angle: num(op.angleDeg) }) : `${num(before.angleDeg + op.angleDeg)}°`)
+          + (op.pivot ? ` @ ${point(op.pivot)} ${units}` : '') };
     case 'type.detach':
       return { subject: ref(op.target, t), before: before.type ?? none, after: none,
         previewNote: t('modelAuthoring.editPreviewUnavailable') };

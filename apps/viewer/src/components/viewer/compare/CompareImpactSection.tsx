@@ -13,6 +13,7 @@
 import { useTranslation } from '@/i18n';
 import { formatLocaleNumber } from '@/i18n';
 import { cn } from '@/lib/utils';
+import type { ImpactNavigation } from '@/lib/compare/impact-navigation';
 import type { ChangedElementRef, CompareImpact, ImpactRow, ImpactSource } from '@/lib/compare/impact';
 
 const SOURCES: readonly ImpactSource[] = ['clash', 'validation', 'list', 'bcf'];
@@ -22,21 +23,23 @@ const STATE_KEY = {
   modified: 'comparePanel.resultsList.stateChanged',
 } as const;
 
-function ChangedChips({ changed }: { changed: readonly ChangedElementRef[] }) {
+function ChangedChips({ changed, row, navigation }: { changed: readonly ChangedElementRef[]; row: ImpactRow; navigation: ImpactNavigation }) {
   const { t } = useTranslation();
   return (
     <span className="flex flex-wrap gap-1">
       {changed.map(c => (
-        <span key={`${c.side}:${c.globalId}`} className="rounded bg-muted px-1 text-2xs text-muted-foreground">
+        <button type="button" key={`${c.side}:${c.globalId}`} disabled={!navigation.canSelect(row, c)}
+          title={t(navigation.canSelect(row, c) ? 'reviewWorkspace.selectIn3d' : 'reviewWorkspace.selectIn3dNone')}
+          onClick={() => navigation.select(row, c)} className="rounded bg-muted px-1 text-2xs text-muted-foreground hover:bg-accent disabled:opacity-60 disabled:cursor-not-allowed">
           {t(c.side === 'base' ? 'compareAnalysis.side.base' : 'compareAnalysis.side.head')} · {c.ifcType.replace(/^Ifc/, '')}{' '}
           {c.globalId} · {t(STATE_KEY[c.state])}
-        </span>
+        </button>
       ))}
     </span>
   );
 }
 
-function RowView({ row }: { row: ImpactRow }) {
+function RowView({ row, navigation }: { row: ImpactRow; navigation: ImpactNavigation }) {
   const { t, locale } = useTranslation();
   const number = (value: number) => formatLocaleNumber(locale, value, { maximumFractionDigits: 3 });
   let title: string;
@@ -66,12 +69,16 @@ function RowView({ row }: { row: ImpactRow }) {
         <span className="text-muted-foreground">{t(`compareAnalysis.source.${row.kind}`)}: </span>{title}
       </div>
       {detail && <div className="text-2xs text-muted-foreground break-words">{detail}</div>}
-      <ChangedChips changed={changed} />
+      <button type="button" disabled={!navigation.canOpen(row)} onClick={() => navigation.open(row)}
+        className="text-2xs underline underline-offset-2 disabled:opacity-60 disabled:cursor-not-allowed">
+        {t('reviewWorkspace.open')}
+      </button>
+      <ChangedChips changed={changed} row={row} navigation={navigation} />
     </li>
   );
 }
 
-export function CompareImpactSection({ impact }: { impact: CompareImpact }) {
+export function CompareImpactSection({ impact, navigation }: { impact: CompareImpact; navigation: ImpactNavigation }) {
   const { t, locale } = useTranslation();
   const touched = SOURCES.reduce((sum, source) => sum + impact.totals[source], 0);
   return (
@@ -96,7 +103,7 @@ export function CompareImpactSection({ impact }: { impact: CompareImpact }) {
         <p className="text-muted-foreground">{t('compareAnalysis.impact.none')}</p>
       ) : (
         <ul className="space-y-1" aria-label={t('compareAnalysis.impact.title')}>
-          {impact.rows.map((row, index) => <RowView key={`${row.kind}-${index}`} row={row} />)}
+          {impact.rows.map((row, index) => <RowView key={`${row.kind}-${index}`} row={row} navigation={navigation} />)}
         </ul>
       )}
       {impact.rowsTruncated && (

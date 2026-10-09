@@ -34,6 +34,8 @@ import { parseReachFields, type ReachFields } from './model-authoring-reach-fiel
 import { parseSplitSnapshot, parseSplitCut, type SplitCut } from './model-authoring-split-params';
 import type { SplitSnapshot } from './model-authoring-split-state';
 import { parseSizeParams, type ExpectedSize } from './model-authoring-size-params';
+import { parseCurtainWallParams, curtainWallPartWork, CURTAIN_WALL_PART_LIMIT } from './model-authoring-curtain-wall-fields';
+import type { CurtainWallInStoreParams } from '@ifc-lite/create';
 import { parseStairRailingParams, parseStairPatch, parseExpectedStair, railingPostWork, STAIR_RAILING_WORK_LIMIT } from './model-authoring-stair-railing-fields';
 import type { RailingInStoreParams, StairInStoreParams, StairDimensions, StairDimensionEdit, ProfileSection } from '@ifc-lite/create';
 import type { ElementSizePatch } from '@/store/slices/mutation-element-size';
@@ -62,6 +64,7 @@ export interface BoxParams { position: Point3; width: number; depth: number; thi
 
 export type AuthoringOp =
   | ({ op: 'classification.add'; target: ExistingElement } & ClassificationAddFields)
+  | { op: 'curtainWall.create'; ref: string; storey: StoreyTarget; params: CurtainWallInStoreParams }
   | ReviewedGridOp
   | NativeReplacementOp
   | { op: 'stair.resize'; target: ExistingElement; expected: StairDimensions; size: StairDimensionEdit }
@@ -95,7 +98,7 @@ export type AuthoringOp =
   | { op: 'hosted.create'; ref?: string; kind: HostedKind; host: ElementTarget; name?: string; offset: number; sill: number; width: number; height: number };
 
 export type AuthoringOpName = AuthoringOp['op'];
-export const AUTHORING_OPS: readonly AuthoringOpName[] = ['grid.create', 'column.createOnGrid', 'stair.resize', 'stair.delete', 'railing.delete', 'stair.replace', 'railing.replace', 'stair.create', 'railing.create', 'element.create', 'element.replace', 'element.delete', 'element.split', 'element.resize', 'element.profile', 'element.trimExtend', 'element.move', 'element.rotate', 'element.align', 'element.copy', 'element.array', 'classification.add',
+export const AUTHORING_OPS: readonly AuthoringOpName[] = ['curtainWall.create', 'grid.create', 'column.createOnGrid', 'stair.resize', 'stair.delete', 'railing.delete', 'stair.replace', 'railing.replace', 'stair.create', 'railing.create', 'element.create', 'element.replace', 'element.delete', 'element.split', 'element.resize', 'element.profile', 'element.trimExtend', 'element.move', 'element.rotate', 'element.align', 'element.copy', 'element.array', 'classification.add',
   'type.assign', 'type.detach', 'material.assign', 'material.layers', 'walls.join', 'hosted.create', 'hosted.edit'];
 
 export interface ModelAuthoringBatch {
@@ -208,6 +211,10 @@ function operation(value: unknown, index: number, units: AuthoringUnits, refs: M
     case 'stair.delete': case 'railing.delete': return {op:value.op,target:existing(value.target,at)};
     case 'stair.replace': return defineRef({op:value.op,target:existing(value.target,at),ref:parseRef(value.ref,at),storey:parseGlobalIdTarget(value.storey,`${at} storey`),params:parseStairRailingParams(value.params,'stair',units,at)});
     case 'railing.replace': return defineRef({op:value.op,target:existing(value.target,at),ref:parseRef(value.ref,at),storey:parseGlobalIdTarget(value.storey,`${at} storey`),params:parseStairRailingParams(value.params,'railing',units,at)});
+    case 'curtainWall.create': {
+      if (Object.keys(value).some(key => !['op', 'ref', 'storey', 'params'].includes(key))) throw new Error(`${at}: unsupported curtain-wall operation field`);
+      return defineRef({ op: value.op, ref: parseRef(value.ref, at), storey: parseGlobalIdTarget(value.storey, `${at} storey`), params: parseCurtainWallParams(value.params, units, at) });
+    }
     case 'stair.create': return defineRef({ op: value.op, ref: parseRef(value.ref, at), storey: parseGlobalIdTarget(value.storey, `${at} storey`), params: parseStairRailingParams(value.params, 'stair', units, at) });
     case 'railing.create': return defineRef({ op: value.op, ref: parseRef(value.ref, at), storey: parseGlobalIdTarget(value.storey, `${at} storey`), params: parseStairRailingParams(value.params, 'railing', units, at) });
     case 'hosted.edit': {
@@ -352,6 +359,8 @@ export function parseModelAuthoringBatch(answer: string): ModelAuthoringBatch {
   if (new Set(splitTargets).size !== splitTargets.length) throw new Error('Split targets must be unique; no targets are silently discarded');
   const splitWork = operations.reduce((sum, op) => sum + (op.op === 'element.split' && op.expected.kind === 'slab' ? op.expected.chain.footprint.length ** 2 : 0), 0);
   if (splitWork > AUTHORING_OUTLINE_WORK_LIMIT) throw new Error(`Split preview work exceeds ${AUTHORING_OUTLINE_WORK_LIMIT} vertex-pair units; use a smaller explicit selection`);
+  const curtainWork = operations.reduce((sum, op) => sum + (op.op === 'curtainWall.create' ? curtainWallPartWork(op.params, units) : 0), 0);
+  if (curtainWork > CURTAIN_WALL_PART_LIMIT) throw new Error(`Curtain-wall batch exceeds ${CURTAIN_WALL_PART_LIMIT} native parts; use smaller explicit batches`);
   const stairRailingWork = operations.reduce((total, op) => total + (
     op.op === 'stair.create' || op.op === 'stair.replace' || op.op === 'element.replace' && op.ifcClass === 'IfcStair' ? op.params.NumberOfRisers
       : op.op === 'railing.create' || op.op === 'railing.replace' || op.op === 'element.replace' && op.ifcClass === 'IfcRailing' ? railingPostWork(op.params.Path, op.params.PostSpacing) : 0), 0);

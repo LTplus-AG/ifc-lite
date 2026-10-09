@@ -12,6 +12,7 @@
  * and `bim.store`'s modelling methods for joins, types and materials.
  */
 
+import { writeCurtainWallCreation } from './model-authoring-curtain-wall-native';
 import type { NativeReadState } from './model-authoring-read-target';
 import { writeReviewedLayers } from './model-authoring-layers';
 import type { ApplyLayersSpec } from '@/lib/authoring/material-layers';
@@ -215,6 +216,7 @@ export function draftAuthoringOperation(batch: ModelAuthoringBatch, dataStore: I
       const result=writeStairLifecycle(dataStore,draft,batch,op,resolved.target!,resolved.storey);
       if('ref' in op && result.root!==undefined)refs.set(op.ref,result.root);return;
     }
+    case 'curtainWall.create': { const made = writeCurtainWallCreation(dataStore, draft, batch, op, resolved.storey!); refs.set(op.ref, made.curtainWallId); return; }
     case 'stair.create': case 'railing.create': {
       const made = writeStairCreation(dataStore, draft, batch, op, resolved.storey!);
       refs.set(op.ref, made.expressId);return;

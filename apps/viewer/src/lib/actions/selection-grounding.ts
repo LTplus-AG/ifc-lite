@@ -13,6 +13,7 @@ import { nativeStructuralEvidence } from './structural-graph-evidence';
  * citations resolve by).
  */
 
+import { nativeZoneEmissionEvidence } from './zone-emission-evidence';
 import { nativeGridEvidence, type NativeGridEvidence } from './native-grid-evidence';
 import { nativeGridName } from './model-authoring-grid-native';
 import { nativeAuthoringEvidence, type NativeAuthoringEvidence } from './native-authoring-evidence';
@@ -27,6 +28,7 @@ import { nativeStairEvidenceFromTarget } from './model-authoring-stair-lifecycle
 import { nativeCostEvidence, type CostEvidence } from './cost-graph-evidence';
 
 export interface SelectionElement extends NativeAuthoringEvidence {
+  nativeZoneEmission: ReturnType<typeof nativeZoneEmissionEvidence>;
   nativeGrid?: NativeGridEvidence;
   globalId: string;
   modelId: string;
@@ -53,10 +55,10 @@ export interface SelectionGrounding {
 
 const SELECTION_GROUNDING_LIMIT = 100;
 
-type GroundingState = Pick<ViewerState, 'models' | 'selectedEntityIds' | 'selectedEntityId' | 'resolveGlobalIdFromModels' | 'mutationViews'>;
+type GroundingState = ViewerState;
 const groundingOwners = new WeakMap<SelectionGrounding, {
   elements: string;
-  sources: Map<string, { store: unknown; view: unknown; hash: unknown; fingerprint: unknown; lease: NativeReadLease | null }>;
+  sources: Map<string, { store: unknown; view: unknown; hash: unknown; fingerprint: unknown; lease: NativeReadLease | null; zones: string }>;
 }>();
 
 /** Exact explicit captured population survives selection changes, never model replacement or native edits. */
@@ -67,6 +69,7 @@ export function selectionGroundingIsCurrent(grounding: SelectionGrounding, state
     const model = state.models.get(modelId);
     if (!model || model.ifcDataStore !== saved.store || state.mutationViews.get(modelId) !== saved.view
       || model.sourceContentHash !== saved.hash || model.sourceFingerprint !== saved.fingerprint) return false;
+    if (saved.zones !== JSON.stringify(nativeZoneEmissionEvidence(state as ViewerState, modelId))) return false;
     try { saved.lease?.validate(); } catch (error) {
       // Native optimistic snapshot refusal is expected after an edit; no write/recovery occurs.
       if (error instanceof Error) return false;
@@ -84,12 +87,14 @@ export function captureSelectionGrounding(state: GroundingState, limit = SELECTI
   const readLimit = Math.max(0, Math.min(SELECTION_GROUNDING_LIMIT, Number.isFinite(limit) ? Math.trunc(limit) : SELECTION_GROUNDING_LIMIT));
   const elements: SelectionElement[] = [];
   const sources: NonNullable<ReturnType<typeof groundingOwners.get>>['sources'] = new Map();
+  const zoneTargets = new Map<string, ReturnType<typeof nativeZoneEmissionEvidence>>();
   const nativeTarget = (modelId: string) => {
     if (!sources.has(modelId)) {
       const model = state.models.get(modelId);
+      const zones = nativeZoneEmissionEvidence(state, modelId); zoneTargets.set(modelId, zones);
       sources.set(modelId, { store: model?.ifcDataStore, view: state.mutationViews.get(modelId),
         hash: model?.sourceContentHash, fingerprint: model?.sourceFingerprint,
-        lease: readOnlyModelEditLease(state, modelId) });
+        lease: readOnlyModelEditLease(state, modelId), zones: JSON.stringify(zones) });
     }
     return sources.get(modelId)?.lease?.target ?? null;
   };
@@ -113,6 +118,7 @@ export function captureSelectionGrounding(state: GroundingState, limit = SELECTI
       ...(() => { const nativeGrid = nativeGridEvidence(nativeTarget(ref.modelId), ref.expressId); return nativeGrid ? { nativeGrid } : {}; })(),
       nativeStructural: nativeStructuralEvidence(nativeTarget(ref.modelId), ref.expressId),
       nativeType: nativeTypeEvidence(state, nativeTarget(ref.modelId), ref.expressId),
+      nativeZoneEmission: zoneTargets.get(ref.modelId)!,
       nativeLayers: nativeLayerEvidence(state, nativeTarget(ref.modelId), ref.expressId),
       nativeStairExpected: nativeStairEvidenceFromTarget(nativeTarget(ref.modelId), ref.expressId),
       nativeCost: nativeCostEvidence(nativeTarget(ref.modelId), ref.expressId),

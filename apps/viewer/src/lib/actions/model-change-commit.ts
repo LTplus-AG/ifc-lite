@@ -28,7 +28,7 @@ import type { ReceiptValidation } from './validation-verdicts';
 
 export interface AppliedChange {
   index: number;
-  op: ModelChange['op'] | AuthoringOpName | 'room.command' | StructuralOpName | CostOpName;
+  op: ModelChange['op'] | AuthoringOpName | 'room.command' | StructuralOpName | CostOpName | 'zones.emit';
   /** Empty only for non-root Cost records, addressed by native expressId. */
   globalId: string;
   /** Exact native model-bound owner/relationship identity. */
@@ -43,7 +43,7 @@ export interface AppliedChange {
 export interface ModelChangeReceipt {
   version: 1;
   /** Absent on model.changes; other native reviewed producer kinds share the same durable receipt/Undo route. */
-  kind?: 'model.authoring' | 'room.command' | 'structural.graph' | 'cost.graph';
+  kind?: 'model.authoring' | 'room.command' | 'structural.graph' | 'cost.graph' | 'zones.emit';
   id: string;
   title: string;
   digest: string;

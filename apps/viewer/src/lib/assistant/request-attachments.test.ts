@@ -45,7 +45,7 @@ test('an attached selection is sent as bounded GlobalId grounding and recorded i
   useViewerStore.setState(sceneModels());
   store().setSelectedEntityIds([101, 10_103]);
   const grounding = captureSelectionGrounding(store());
-  assert.deepEqual(grounding.elements.map(({ nativePlacement, nativeStructural: _nativeStructural, nativeEdit, nativeType, nativeReplacementExpected, nativeCost, nativeLayers, nativeSlabOpeningExpected, nativeStairExpected, nativeSplitExpected, nativeHostedExpected, nativeTrimExtendExpected, nativeAuthoringAvailability, nativeAuthoringUnits, nativeAuthoringRefusals, ...identity }) => {
+  assert.deepEqual(grounding.elements.map(({ nativeZoneEmission: _nativeZoneEmission, nativePlacement, nativeStructural: _nativeStructural, nativeEdit, nativeType, nativeReplacementExpected, nativeCost, nativeLayers, nativeSlabOpeningExpected, nativeStairExpected, nativeSplitExpected, nativeHostedExpected, nativeTrimExtendExpected, nativeAuthoringAvailability, nativeAuthoringUnits, nativeAuthoringRefusals, ...identity }) => {
     assert.equal(nativeEdit.dimensionsStatus, 'unavailable', 'this identity-only fixture has no native geometry index');
     assert.deepEqual(nativeType, { status: 'unavailable', expected: null }, 'this identity-only fixture has no native type graph');
     assert.equal(nativeReplacementExpected, null, '#7320 identity-only fixtures cannot authorize native replacement');

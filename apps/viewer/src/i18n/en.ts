@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { structuralReviewEn } from './catalogues/structural-review.en';
 
+import { zoneEmissionEn } from './catalogues/zone-emission.en';
 
 import { newIfcEn } from './catalogues/new-ifc.en';
 import type { LazyTranslationKey } from './lazy-catalogues';
@@ -152,6 +153,7 @@ import { zonesPanelEn } from './catalogues/zones-panel.en';
 
 /** English is assembled from feature catalogues so no locale becomes a monolith. */
 export const en = {
+  ...zoneEmissionEn,
   ...newIfcEn,
   ...structuralReviewEn,
   ...semanticEn,

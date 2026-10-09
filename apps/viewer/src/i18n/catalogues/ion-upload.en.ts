@@ -15,7 +15,7 @@ export const ionUploadEn = {
   'ionUpload.accepted': 'Cesium ion accepted the upload and will tile it. Open the asset to check progress and placement.',
   'ionUpload.cancelled': 'Upload cancelled. Any asset already created remains in Cesium ion; you can remove it there.',
   'ionUpload.failed': '{phase} failed (HTTP {status}). {help}',
-  'ionUpload.failure.authorization': 'Check the token permissions and allowed URLs in Cesium ion before retrying.',
+  'ionUpload.failure.authorization': 'The token cannot create assets. Use a token with the assets:write scope (the default token only reads), and check its allowed URLs in Cesium ion.',
   'ionUpload.failure.conflict': 'Cesium ion rejected the upload request. If retrying fails, report this error with its HTTP status.',
   'ionUpload.failure.capacity': 'Check the account plan, storage allowance and upload size in Cesium ion before retrying.',
   'ionUpload.failure.rateLimit': 'Cesium ion is limiting requests. Wait before retrying.',

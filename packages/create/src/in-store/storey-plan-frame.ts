@@ -26,6 +26,7 @@
  */
 
 import { EntityExtractor, type IfcDataStore } from '@ifc-lite/parser';
+import type { IfcAttributeValue } from '@ifc-lite/data';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
 import { AnchorEntityReader } from './resolve-anchor.js';
 import type { OverlayWallReader } from './placement-frame.js';
@@ -87,10 +88,14 @@ export function storeyPlanFrame(
   const extractor = new EntityExtractor(store.source);
   const reader = view ? new AnchorEntityReader(store, view) : null;
   const overlay: OverlayWallReader | undefined = reader ? {
-    getNewEntities: () => [], readEntity: id => reader.entity(id),
+    getNewEntities: () => [], readEntity: id => {
+      const record = reader.entity(id);
+      // Native StoreEditor fields are strings/IfcAttributeValue positional values.
+      return record ? { type: record.type, attributes: record.attributes as IfcAttributeValue[] } : null;
+    },
   } : undefined;
   const storey = readEntity(store, extractor, overlay, storeyExpressId);
-  if (!storey) return null;
+  if (!storey || (view && storey.type?.toUpperCase() !== 'IFCBUILDINGSTOREY')) return null;
   if (numericAttr(storey.attributes[5]) === null) return IDENTITY_FRAME; // ObjectPlacement
   const chain = storeyPlacementChain(store, extractor, overlay, storeyExpressId, view ? 256 : undefined);
   if (!chain || chain.size === 0) return null;

@@ -4,6 +4,7 @@
 
 import type { IfcAttributeValue } from '@ifc-lite/data';
 import { getAttributeNamesForSchema, normalizeIfcTypeName } from './ifc-schema.js';
+import type { SchemaEntityNameSnapshot } from './schema-entity-name.js';
 
 /** The pending edits a read model must fold into one entity record. */
 export interface EntityRecordEdits {
@@ -34,9 +35,10 @@ export function retypedAttributes(
   effectiveType: string,
   targetNames: readonly string[],
   schemaVersion: string | undefined,
+  snapshot?: SchemaEntityNameSnapshot,
 ): unknown[] {
   if (effectiveType.toUpperCase() === sourceType.toUpperCase()) return [...attributes];
-  const sourceNames = getAttributeNamesForSchema(sourceType, schemaVersion);
+  const sourceNames = getAttributeNamesForSchema(sourceType, schemaVersion, snapshot);
   if (sourceNames.length === 0) return [...attributes];
   const byName = new Map(sourceNames.map((name, index) => [name, attributes[index]]));
   return targetNames.map((name) => byName.get(name) ?? null);
@@ -53,11 +55,12 @@ export function resolveEffectiveEntityRecord(
   entity: { type: string; attributes: readonly unknown[] },
   edits: EntityRecordEdits,
   schemaVersion: string | undefined,
+  snapshot?: SchemaEntityNameSnapshot,
 ): EffectiveEntityRecord {
   const type = edits.retype ? normalizeIfcTypeName(edits.retype) : entity.type;
-  const names = getAttributeNamesForSchema(type, schemaVersion);
+  const names = getAttributeNamesForSchema(type, schemaVersion, snapshot);
   const attributes = names.length > 0
-    ? retypedAttributes(entity.type, entity.attributes, type, names, schemaVersion)
+    ? retypedAttributes(entity.type, entity.attributes, type, names, schemaVersion, snapshot)
     : [...entity.attributes];
   for (const [name, value] of edits.named) {
     const index = names.indexOf(name);

@@ -4,7 +4,7 @@
 import { isValidIfcGuid } from '@ifc-lite/encoding';
 import { effectiveCreatedRecord, effectiveSourceRecord } from '@ifc-lite/export';
 import { iterateEffectiveEntityIds, type MutablePropertyView } from '@ifc-lite/mutations';
-import type { EffectiveEntityRecord, IfcDataStore } from '@ifc-lite/parser';
+import { createSchemaEntityNameSnapshot, type SchemaEntityNameSnapshot, type EffectiveEntityRecord, type IfcDataStore } from '@ifc-lite/parser';
 import { AnchorEntityReader } from './resolve-anchor.js';
 import { conformsTo, schemaRegistry } from './schema-attributes.js';
 
@@ -51,6 +51,7 @@ function references(text: string): number[] {
 }
 
 export class GroupGraph {
+  readonly schemaNames: SchemaEntityNameSnapshot;
   readonly entities = new Map<number, EffectiveEntityRecord>();
   readonly incoming = new Map<number, Set<number>>();
   private readonly roots = new Map<string, number[]>();
@@ -59,7 +60,8 @@ export class GroupGraph {
     if (store.schemaVersion !== 'IFC4' && store.schemaVersion !== 'IFC4X3') {
       throw new Error('Generic IfcGroup authoring requires a declared IFC4 or IFC4X3 model');
     }
-    const reader = new AnchorEntityReader(store, view);
+    this.schemaNames = createSchemaEntityNameSnapshot(schemaRegistry(store.schemaVersion, 'IfcGroup'));
+    const reader = new AnchorEntityReader(store, view, this.schemaNames);
     let referenceCount = 0;
     let recordCharacters = 0;
     for (const { expressId } of iterateEffectiveEntityIds(store, view)) {
@@ -114,7 +116,7 @@ export class GroupGraph {
     let totalMembers = 0;
     const registry = schemaRegistry(this.store.schemaVersion as 'IFC4' | 'IFC4X3', 'IfcGroup');
     for (const [id, row] of this.entities) {
-      if (!conformsTo(registry, row.type, 'IfcRelAssignsToGroup')) continue;
+      if (!conformsTo(registry, row.type, 'IfcRelAssignsToGroup', this.schemaNames)) continue;
       const relating = referenceId(row.attributes[row.names.indexOf('RelatingGroup')]);
       if (relating !== target.expressId) continue;
       if (row.type.toUpperCase() !== 'IFCRELASSIGNSTOGROUP') throw new Error('Group membership has specialized assignment semantics');
@@ -128,7 +130,7 @@ export class GroupGraph {
       if (totalMembers > GROUP_GRAPH_LIMITS.members) throw new Error('Complete group membership budget exceeded');
       for (const member of ids) {
         const type = this.entities.get(member!)?.type;
-        if (member === target.expressId || !type || !conformsTo(registry, type, 'IfcObjectDefinition')) throw new Error('Current group membership has an invalid object definition');
+        if (member === target.expressId || !type || !conformsTo(registry, type, 'IfcObjectDefinition', this.schemaNames)) throw new Error('Current group membership has an invalid object definition');
       }
       memberships.push({ relationship: this.root(id), RelatedObjects: ids.map(value => this.root(value!)) });
     }

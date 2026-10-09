@@ -12,7 +12,7 @@ import { createBCFProject, createBCFTopic } from '@ifc-lite/bcf';
 import { createBimContext } from '@ifc-lite/sdk';
 import { useViewerStore } from '@/store';
 import { ARCH, seedArtifactModels } from '@/test/artifact-models-fixture';
-import { cleanup, render, waitFor } from '@/test/render';
+import { cleanup, render, waitFor, click, type } from '@/test/render';
 import { createDataAccessor } from '@/hooks/ids/idsDataAccessor';
 import { blankDocument } from '@/lib/document/presets';
 import { validationReportSnapshot, newSavedReport } from '@/lib/validation/reports/history';
@@ -25,6 +25,15 @@ import { useLibraryFocus } from '@/lib/libraries/library-focus';
 import { SavedValidationReports } from './validation/SavedValidationReports';
 import { NativeLibrarySearch } from './libraries/NativeLibrarySearch';
 import { useValidationSourceChoice } from '@/lib/validation/validation-source-choice';
+import { prepareComparison, comparePreparedPair } from '@/lib/compare/run-comparison';
+import { snapshotComparison } from '@/lib/compare/savedComparisons';
+import { SavedComparisonLibrary } from './compare/SavedComparisonLibrary';
+import { mountClashPanel, detectCoincidentWalls, saveCurrentResultAs } from '@/test/clash-report-fixture';
+import { parseFlowDocument, validateFlowWiring } from '@ifc-lite/flow';
+import { createStandardRegistry } from '@ifc-lite/flow-nodes';
+import { aiNodes } from '@ifc-lite/flow-nodes/ai';
+import { flowExamples } from '@/lib/flow/examples';
+import { flowToJson, loadSavedFlows } from '@/lib/flow/persistence';
 import { createDocumentSlice } from '@/store/slices/documentSlice';
 import { registerLocale, setLocale } from '@/i18n';
 import { ExtensionHostService } from '@/services/extensions/host';
@@ -159,4 +168,74 @@ test('#7235 actual native document read refusal stays distinct from a confirmed 
   await waitFor(() => useViewerStore.getState().documentsStorage.phase === 'unavailable', 'actual document read refusal');
   assert.match(ui.querySelector('ul[aria-label="Native library availability"]')?.textContent ?? '', /Documents:.*unavailable/i);
   assert.equal(useViewerStore.getState().documents.length, 0);
+});
+
+
+test('#7235 independent native comparison/clash reports complete all eleven catalogue kinds without rerunning', async () => {
+  const { host, profiles } = await nativeLibraries();
+  await seedArtifactModels({ federated: true });
+  const state = useViewerStore.getState();
+  const baseModel = state.models.get('arch'), headModel = state.models.get('wall'); assert.ok(baseModel); assert.ok(headModel);
+  const prepared = await prepareComparison({ baseModel, headModel, getMutationView: () => null,
+    mutationVersion: state.mutationVersion, contentVersion: state.geometryContentVersion });
+  const compared = comparePreparedPair(prepared, { scope: 'data', excludedTypes: [], matchByContent: false });
+  assert.ok(compared.diff.entries.length > 0, 'actual SketchUp and Bonsai IFC comparison produces a completed native report');
+  const comparison = snapshotComparison(compared, state.models, 'Coordination native comparison');
+  assert.equal(await state.saveComparison(comparison), true);
+  mountClashPanel(); await detectCoincidentWalls(2, 2);
+  const clash = await saveCurrentResultAs('Coordination native clash');
+  assert.equal(clash.clashes.length, 1, 'actual native two-model coincident walls supply the immutable report');
+  const before = useViewerStore.getState();
+  const groups = nativeLibraryCatalogue(before, profiles);
+  assert.deepEqual(new Set(groups.flatMap(group => group.rows.map(row => row.kind))), new Set([
+    'check', 'validation-report', 'comparison-report', 'clash-report', 'topic', 'document', 'flow', 'script', 'list', 'lens', 'profile',
+  ]));
+  cleanup();
+  const ui = render(<NativeLibrarySearch onOpened={() => {}} />);
+  await finishNativeHydration();
+  type(ui.querySelector('input[aria-label="Search saved artifact names and types"]') as HTMLInputElement, 'Coordination native comparison');
+  const open = [...ui.querySelectorAll('button')].find(button => button.textContent === comparison.name); assert.ok(open); click(open);
+  await waitFor(() => useLibraryFocus.getState().target?.id === comparison.id, 'mounted catalogue opens exact native comparison');
+  cleanup(); const history = render(<SavedComparisonLibrary result={null} running={false} />);
+  await waitFor(() => !!history.querySelector(`option[value="${comparison.id}"]`), 'native comparison history loads');
+  const picker = history.querySelector<HTMLSelectElement>('select'); assert.ok(picker);
+  await waitFor(() => picker.value === comparison.id, 'native comparison picker consumes the exact catalogue owner');
+  const clashTarget = groups.flatMap(group => group.rows).find(row => row.kind === 'clash-report' && row.id === clash.id); assert.ok(clashTarget);
+  cleanup(); mountClashPanel();
+  await act(async () => { assert.equal(await openNativeLibraryArtifact(clashTarget, host), 'opened'); });
+  await waitFor(() => !!document.querySelector(`[data-clash-report="${clash.id}"]`), 'native clash report dialog opens exact saved entry');
+  const after = useViewerStore.getState();
+  assert.equal(after.clashRunSeq, before.clashRunSeq);
+  assert.strictEqual(after.clashResult, before.clashResult);
+  assert.strictEqual(after.models, before.models);
+  assert.deepEqual(after.selectedEntityIds, before.selectedEntityIds);
+  assert.deepEqual(after.hiddenEntities, before.hiddenEntities);
+  assert.equal(after.flowRunning, false); assert.equal(after.scriptExecutionState, 'idle');
+});
+
+test('#7235 portable native Flow examples keep their registered parameters through import, catalogue Open and export without Run', async () => {
+  await seedArtifactModels({ federated: true });
+  const registry = createStandardRegistry().registerAll(aiNodes);
+  const initialModels = useViewerStore.getState().models;
+  for (const example of flowExamples()) {
+    const portable = parseFlowDocument(flowToJson(example));
+    assert.deepEqual(validateFlowWiring(portable, registry), []);
+    for (const input of portable.inputs) {
+      const node = portable.nodes.find(entry => entry.id === input.nodeId); assert.ok(node);
+      const parameter = registry.get(node.type)?.params.find(entry => entry.name === input.param); assert.ok(parameter);
+    }
+    const state = useViewerStore.getState(); let id: string | null = null;
+    act(() => { id = state.importFlow(portable); state.closeFlow(); }); assert.ok(id);
+    const saved = loadSavedFlows().find(entry => entry.doc.id === id); assert.ok(saved);
+    const ui = render(<NativeLibrarySearch onOpened={() => {}} />);
+    await finishNativeHydration();
+    type(ui.querySelector('input[aria-label="Search saved artifact names and types"]') as HTMLInputElement, portable.name);
+    const button = [...ui.querySelectorAll('button')].find(entry => entry.textContent === portable.name); assert.ok(button); click(button);
+    await waitFor(() => useViewerStore.getState().flowDoc?.id === id, 'mounted catalogue opens imported native template');
+    const current = useViewerStore.getState(); assert.ok(current.flowDoc);
+    assert.deepEqual(parseFlowDocument(flowToJson(current.flowDoc)), saved.doc, 'canonical portable document survives the native library and editor boundary');
+    assert.equal(current.flowRunning, false); assert.equal(current.flowLastRun, null);
+    assert.strictEqual(current.models, initialModels);
+    cleanup();
+  }
 });

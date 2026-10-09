@@ -102,6 +102,12 @@ export function resolveEntityRefGlobalIdFromState(
   // #7282: the canonical schema record owns named/positional precedence,
   // current Root role and tombstones. Non-Root attribute 0 is never GlobalId.
   if (!dataStore) return null;
+  // Immutable parsed columns already enforce the schema's Root-only identity
+  // contract. Source-only/cached identity reads need no graph hydration.
+  if (!mutationView) {
+    const identity = dataStore.entities.getGlobalId(entityRef.expressId);
+    return typeof identity === 'string' && identity.length > 0 ? identity : null;
+  }
   const record = effectiveMetadataRecord(dataStore, entityRef.expressId, mutationView);
   if (!record || record.names[0] !== 'GlobalId') return null;
   const nativeIdentity = mutationView?.getNewEntity(entityRef.expressId)

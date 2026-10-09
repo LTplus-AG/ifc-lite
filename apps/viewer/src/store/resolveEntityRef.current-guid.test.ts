@@ -62,3 +62,20 @@ for (const nameEdited of [false, true]) test(`#7282 forward identity preserves a
   assert.equal(cached.entities.getGlobalId(id), BACK_WALL); assert.equal(cached.entities.getTypeName(id), 'IfcWall');
   assert.equal(resolveEntityRefGlobalIdFromState(useViewerStore.getState(), { modelId: SAMPLE_MODEL, expressId: id }), BACK_WALL);
 });
+
+
+for (const sourceFree of [false, true]) test(`#7282 immutable parsed ${sourceFree ? 'cached' : 'source'} columns retain only real Root identity without a mutation view`, async () => {
+  const { dataStore, view } = await seedAuthoringSample();
+  const material = new StoreEditor(dataStore, view).addEntity('IfcMaterial', ['Native non-Root material name', null, null]);
+  const saved = await parseIfc(editedModelBytes(dataStore, view));
+  const rootId = saved.entities.getExpressIdByGlobalId(BACK_WALL);
+  assert.equal(saved.getEntity(material.expressId)?.attributes[0], 'Native non-Root material name');
+  assert.equal(saved.entities.getGlobalId(material.expressId), '');
+  const model = useViewerStore.getState().models.get(SAMPLE_MODEL)!;
+  const current = sourceFree ? { ...saved, source: EMPTY_SOURCE_BYTES } : saved;
+  useViewerStore.setState({ models: new Map([[SAMPLE_MODEL, { ...model, ifcDataStore: current }]]), mutationViews: new Map() });
+  const held = useViewerStore.getState();
+  assert.equal(resolveEntityRefGlobalIdFromState(held, { modelId: SAMPLE_MODEL, expressId: rootId }), BACK_WALL);
+  assert.equal(resolveEntityRefGlobalIdFromState(held, { modelId: SAMPLE_MODEL, expressId: material.expressId }), null);
+  assert.equal(useViewerStore.getState(), held);
+});

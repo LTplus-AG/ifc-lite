@@ -2,16 +2,17 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { iterateEffectiveEntities, QuantityType } from '@ifc-lite/data';
+import { iterateEffectiveEntities, QuantityType, type QuantitySet } from '@ifc-lite/data';
 import type { IfcDataStore } from './columnar-parser.js';
 import { EntityExtractor } from './entity-extractor.js';
 import { effectiveMetadataRecord, type MetadataReadView } from './effective-metadata-record.js';
-import { getInheritanceChain } from './ifc-schema.js';
+import { getInheritanceChain, getAttributeNamesForSchema, getAttributeTypeForSchema } from './ifc-schema.js';
 import { QUANTITY_TYPE_MAP } from './columnar-parser-indexes.js';
-import { resolveUnitByRef, type UnitEntityReader } from './project-units.js';
+import { resolveUnitByRef, measureUnit, type UnitEntityReader } from './project-units.js';
 import { readQuantitySetRecord, type QuantityEntityReader } from './quantity-collect.js';
 import { appendSetsFromSecondSource, setIdentityKey } from './property-set-merge.js';
 import type { TypeQuantityInfo } from './on-demand-extractors.js';
+import { findSourceProjectLengthUnit, normalizeMapUnitName } from './source-project-length-unit.js';
 
 const MAX_RELATIONSHIPS = 65_536;
 const MAX_RELATION_REFERENCES = 262_144;
@@ -37,6 +38,13 @@ function refIds(value: unknown, max = MAX_RELATION_REFERENCES, required = false)
         throw new CurrentQuantityRefusal('Native quantity references are unreadable');
     }
     return value;
+}
+
+// Existing concrete views expose canonical quantity claims; partial metadata
+// providers retain their native-only contract. Export nomination is history-led.
+interface QuantityJournalView extends MetadataReadView {
+    getMutations?(): readonly { type: string; entityId: number; psetName?: string }[];
+    getQuantitiesForEntity?(entityId: number, baseProvider: (id: number) => QuantitySet[]): QuantitySet[];
 }
 
 interface CurrentInventory {
@@ -125,6 +133,7 @@ function readCurrent(store: IfcDataStore, entityId: number, view: MetadataReadVi
     const relatedDefinitions = current.sets.get(typeId) ?? [];
     if (definitions.length + relatedDefinitions.length > MAX_TYPE_DEFINITIONS) return unavailable('Native type quantity definitions exceed the read limit');
     const ownSetIds = new Set(definitions);
+    const explicitUnitTypes = new Map<string, string>();
     let quantityReferences = 0;
     const readSets = (ids: number[]) => ids.flatMap(id => {
         if (view.isDeleted(id)) return [];
@@ -148,11 +157,62 @@ function readCurrent(store: IfcDataStore, entityId: number, view: MetadataReadVi
                 || (quantity.attributes[3] < 0 && QUANTITY_TYPE_MAP[quantity.type.toUpperCase()] !== QuantityType.Number)) throw new CurrentQuantityRefusal('Native type quantity value is unavailable');
         }
         const set = readQuantitySetRecord(store, extractor, record, readEntity, resolveCurrentUnit);
+        if (set) for (const ref of refs) {
+            const quantity = readEntity(ref);
+            if (!quantity || typeof quantity.attributes[2] !== 'number') continue;
+            const unit = resolveCurrentUnit(quantity.attributes[2]);
+            if (unit?.unitType) explicitUnitTypes.set(JSON.stringify([set.globalId, quantity.attributes[0]]), unit.unitType);
+        }
         return set ? [set] : [];
     });
     const quantities = readSets([...ownSetIds]);
     const keys = new Set(quantities.map(setIdentityKey));
     appendSetsFromSecondSource(quantities, ownSetIds, keys, relatedDefinitions, readSets);
+    const journal = view as QuantityJournalView;
+    const names = new Set(journal.getMutations?.().filter(row => row.entityId === typeId &&
+        ['CREATE_QUANTITY', 'UPDATE_QUANTITY', 'DELETE_QUANTITY', 'DELETE_QUANTITY_SET'].includes(row.type))
+        .map(row => row.psetName).filter((name): name is string => typeof name === 'string') ?? []);
+    if (names.size && journal.getQuantitiesForEntity) {
+        const base = quantities.map(set => ({ name: set.name, globalId: set.globalId,
+            quantities: set.quantities.map(q => ({ name: q.name, type: q.type, value: q.value, unit: q.explicitUnit })) }));
+        const projected = journal.getQuantitiesForEntity(typeId, () => base);
+        const nativeByGuid = new Map(quantities.map(set => [set.globalId, set]));
+        if (nativeByGuid.size !== quantities.length) throw new CurrentQuantityRefusal('Native quantity definition identities are ambiguous');
+        const updated = projected.filter(set => names.has(set.name)).map(set => {
+            const native = set.globalId ? nativeByGuid.get(set.globalId) : undefined;
+            if (set.globalId && !native) throw new CurrentQuantityRefusal('Current quantity definition identity is unavailable');
+            return { name: set.name, globalId: set.globalId, quantities: set.quantities.map(q => {
+                if (!Number.isFinite(q.value) || (q.value < 0 && q.type !== QuantityType.Number)) throw new CurrentQuantityRefusal('Current quantity journal measure is unavailable');
+                const ifcType = Object.entries(QUANTITY_TYPE_MAP).find(([, kind]) => kind === q.type)?.[0];
+                if (!ifcType) throw new CurrentQuantityRefusal('Current quantity journal kind is unsupported');
+                const original = native?.quantities.find(value => value.name === q.name);
+                if (q.unit !== original?.explicitUnit && q.unit !== undefined) {
+                    const attribute = getAttributeNamesForSchema(ifcType, store.schemaVersion)[3];
+                    const measure = attribute ? getAttributeTypeForSchema(ifcType, attribute, store.schemaVersion) : undefined;
+                    const expected = measure ? measureUnit(measure) : undefined;
+                    if (expected?.kind !== 'typed' || expected.unitType !== 'LENGTHUNIT') throw new CurrentQuantityRefusal('Current quantity journal unit is unresolved');
+                    const projectIds = [...iterateEffectiveEntities(store, view, ['IfcProject'])].map(row => row.expressId);
+                    const unitId = findSourceProjectLengthUnit(normalizeMapUnitName(q.unit), store, projectIds, id => view.isDeleted(id));
+                    const resolved = unitId === null ? null : resolveCurrentUnit(unitId);
+                    if (resolved?.unitType === 'LENGTHUNIT') return { name: q.name, type: q.type, value: q.value,
+                        explicitUnit: resolved.resolved.symbol, explicitUnitSiScale: resolved.resolved.siScale };
+                    throw new CurrentQuantityRefusal('Current quantity journal native unit is unavailable');
+                }
+                if (original?.explicitUnit && q.unit === original.explicitUnit) {
+                    const attribute = getAttributeNamesForSchema(ifcType, store.schemaVersion)[3];
+                    const measure = attribute ? getAttributeTypeForSchema(ifcType, attribute, store.schemaVersion) : undefined;
+                    const expected = measure ? measureUnit(measure) : undefined;
+                    if (!expected || expected.kind !== 'typed' || expected.unitType !== explicitUnitTypes.get(JSON.stringify([set.globalId, q.name]))) throw new CurrentQuantityRefusal('Current quantity journal unit dimension is incompatible');
+                    return { ...original, type: q.type, value: q.value };
+                }
+                return { name: q.name, type: q.type, value: q.value };
+            }) };
+        });
+        const replacements = new Map(updated.filter(set => set.globalId).map(set => [set.globalId, set]));
+        const existingGuids = new Set(quantities.map(set => set.globalId));
+        const ordered = quantities.flatMap(set => !names.has(set.name) ? [set] : replacements.has(set.globalId) ? [replacements.get(set.globalId)!] : []);
+        quantities.splice(0, quantities.length, ...ordered, ...updated.filter(set => !set.globalId || !existingGuids.has(set.globalId)));
+    }
     const result = available(quantities.length ? { typeName: typeof type.attributes[2] === 'string' ? type.attributes[2] : type.type, typeId, quantities } : null);
     current.quantities.set(typeId, result);
     return result;

@@ -1,0 +1,17 @@
+---
+"@ifc-lite/parser": minor
+"@ifc-lite/export": patch
+"@ifc-lite/mutations": minor
+---
+
+Export default-history type-owned quantity edits through HasPropertySets instead of an invalid IfcRelDefinesByProperties type target. Reuse canonical source type quantity extraction and preserve raw untouched physical quantities, explicit native units, Formula, set metadata, unrelated definitions and shared owners with copy-on-write. Expose extractTypeEntityOwnQuantities for callers reading a type object directly; source-only reads retain their existing semantics.
+
+Preserve native quantity definition GlobalIds through canonical instance claiming. Add an opt-in empty-instance projection for native exporters so deleting a last numeric member removes only that definition ownership; ordinary quantity reads retain their default omission behavior.
+
+The current native type-quantity reader includes the resolved explicit IFC unit category so type-owned exports refuse dimension changes that would retain an incompatible unit. Source-only output remains unchanged.
+
+Project supported history-nominated type quantity journal values through the canonical current reader before native export. Retain GUID-based instance claiming and native unit metadata, resolve supported length replacement labels through shared unit resolvers, and preserve explicit unit removal. Standalone skipped-history export nomination and source-only reads remain unchanged.
+
+Share source-project assigned length-unit eligibility and label normalization
+between current Type quantity reading and STEP export. Preserve existing
+GUID-owned quantity-set order when projecting tracked edits.

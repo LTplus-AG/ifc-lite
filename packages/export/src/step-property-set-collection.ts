@@ -12,7 +12,7 @@
  */
 
 import type { IfcDataStore } from '@ifc-lite/parser';
-import { extractQuantitiesOnDemand } from '@ifc-lite/parser';
+import { extractQuantitiesOnDemand, extractTypeEntityOwnQuantities } from '@ifc-lite/parser';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
 import type { PropertySet, QuantitySet } from '@ifc-lite/data';
 import { isTypeClass } from './type-owned-psets.js';
@@ -28,6 +28,7 @@ import {
   unmodifiedSourceMembers,
 } from './step-pset-copy-on-write.js';
 import type { ExportPass, StepExportOptions } from './step-exporter.js';
+import { collectTypeQuantitySources } from './step-type-owned-quantities.js';
 
 /** The mutation groupings `export()` builds before the collection phase runs. */
 export interface PropertyMutationGroups {
@@ -252,7 +253,9 @@ export function collectPropertyAndQuantitySetMutations(
     } else if (!quantityView.hasQuantityBase()) {
       const box = { store: ctx.dataStore };
       exporterQuantityBase.set(quantityView, box);
-      quantityView.setQuantityExtractor((id: number) => extractQuantitiesOnDemand(box.store, id));
+      // @raw-entity-enumeration-ok immutable SOURCE quantity-base dispatch; current Type ownership is resolved separately with the mutation view below
+      quantityView.setQuantityExtractor((id: number) => isTypeClass(box.store.entityIndex.byId.get(id)?.type)
+        ? extractTypeEntityOwnQuantities(box.store, id) : extractQuantitiesOnDemand(box.store, id));
     }
   }
   for (const [entityId, qsetNames] of entityQuantMutations) {
@@ -278,12 +281,18 @@ export function collectPropertyAndQuantitySetMutations(
       pass.modifications.nominate(entityId, 'quantity-set');
     }
 
-    const allQsets = mutationView.getQuantitiesForEntity(entityId);
-    const relevantQsets = allQsets.filter((qset: QuantitySet) => qsetNames.has(qset.name));
+    const typeOwned = isTypeClass(pass.effective.typeOf(entityId));
+    const allQsets = typeOwned
+      ? mutationView.getQuantitiesForEntity(entityId, id => extractTypeEntityOwnQuantities(ctx.dataStore, id, mutationView).map(set => ({
+        name: set.name, globalId: set.globalId, quantities: set.quantities.map(q => ({ name: q.name, type: q.type, value: q.value, unit: q.explicitUnit })),
+      })), true)
+      : mutationView.getQuantitiesForEntity(entityId);
+    let relevantQsets = allQsets.filter((qset: QuantitySet) => qsetNames.has(qset.name));
 
-    if (relevantQsets.length > 0) {
-      pass.newQuantitySets.push({ entityId, qsets: relevantQsets });
-    }
+    const typeCopy = typeOwned
+      ? collectTypeQuantitySources(pass, ctx, entityId, relevantQsets, qsetNames, detachments) : undefined;
+    if (typeCopy) relevantQsets = typeCopy.qsets;
+    if (relevantQsets.length > 0) pass.newQuantitySets.push({ entityId, qsets: relevantQsets, sourceSets: typeCopy?.sourceSets });
 
     // The names this export is actually WRITING a replacement for. The
     // affected-name set is not the same thing: it comes from the session's
@@ -350,4 +359,10 @@ export function collectPropertyAndQuantitySetMutations(
   // known which of them still relate somebody else.
   detachments.settle(pass, ctx, { relatedByRel, relDefinesByEntity });
   retainReusedSourceMembers(pass);
+  // The native type copy may retain opaque members absent from the numeric projection.
+  for (const { sourceSets } of pass.newQuantitySets) {
+    for (const source of sourceSets ?? []) {
+      for (const id of source?.members ?? []) pass.skipPropertySetIds.delete(id);
+    }
+  }
 }

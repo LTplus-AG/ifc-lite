@@ -8449,6 +8449,7 @@
     "extractScheduleOnDemand: function",
     "extractStructuralOnDemand: function",
     "extractTypeEntityOwnProperties: function",
+    "extractTypeEntityOwnQuantities: function",
     "extractTypePropertiesOnDemand: function",
     "extractTypeQuantitiesOnDemand: function",
     "findSourceProjectLengthUnit: function",

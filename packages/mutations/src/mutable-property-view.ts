@@ -687,9 +687,11 @@ export class MutablePropertyView extends MutableOverlayState {
 
   /**
    * Get all quantity sets with mutations applied. The optional provider
-   * reads an external base store without changing this live view.
+   * reads an external base store without changing this live view. Native
+   * exporters may opt into empty instances to retain a deleted last member
+   * as an ownership removal; ordinary quantity displays omit them.
    */
-  getQuantitiesForEntity(entityId: number, baseProvider?: (baseId: number) => QuantitySet[]): QuantitySet[] {
+  getQuantitiesForEntity(entityId: number, baseProvider?: (baseId: number) => QuantitySet[], includeEmptyInstances = false): QuantitySet[] {
     const result: QuantitySet[] = [];
     const seenQsets = new Set<string>();
 
@@ -729,8 +731,8 @@ export class MutablePropertyView extends MutableOverlayState {
         }),
       );
 
-      if (mutatedQuantities.length > 0) {
-        result.push({ name: qset.name, quantities: mutatedQuantities });
+      if (mutatedQuantities.length > 0 || includeEmptyInstances) {
+        result.push({ name: qset.name, globalId: qset.globalId, quantities: mutatedQuantities });
       }
     }
 

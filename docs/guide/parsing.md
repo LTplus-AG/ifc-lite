@@ -863,6 +863,49 @@ function currentVolumeContext(store: IfcDataStore, view: MutablePropertyView) {
 }
 ```
 
+### Source quantity sets owned by a type
+
+`extractTypeEntityOwnQuantities(store, typeExpressId)` reads a type object's source quantity sets directly, including `HasPropertySets`, with the same canonical quantity collection and definition-identity rules as `extractTypeQuantitiesOnDemand(store, occurrenceExpressId)`. It returns an empty array when the source type has no supported numeric quantities. Opaque physical quantity members remain in the native IFC graph; this numeric projection does not describe them. The reader leaves the source bytes unchanged.
+
+```typescript
+import { extractTypeEntityOwnQuantities } from '@ifc-lite/parser';
+
+const typeExpressId = 42; // The selected type object's model-local express ID.
+const typeQuantitySets = extractTypeEntityOwnQuantities(store, typeExpressId);
+```
+
+The optional third argument to `extractTypeEntityOwnQuantities` is a native
+metadata view. It reads that type's current `HasPropertySets`, quantity atoms and
+explicit unit dependencies, including a pending type. This writer base shares
+canonical quantity decoding and unit resolution. Unreadable or unsupported
+current dependencies throw instead of returning a verified empty base. Current
+reads allow at most 256 definitions, 4,096 quantity references, 8,192 entity reads
+and 512 unit dependency reads. The two-argument source reader is unchanged.
+
+The optional current native view of `extractTypeEntityOwnQuantities` also reports `explicitUnitType` for resolved explicit quantity units. The type-owned writer uses this canonical IFC unit category to refuse a dimension-changing edit that would retain an incompatible native unit; the two-argument source-only output is unchanged.
+
+
+Current occurrence-facing type quantity reads also project canonical quantity-journal
+claims when the view exposes them and the export's mutation history nominates that
+type/set. A default-history type write is visible in the live reader and the
+Properties volume breakdown before export, with native definition identity and
+explicit-unit metadata retained. A tracked write followed by a `skipHistory`
+write reads the current overlay value. A standalone `skipHistory: true` quantity
+write with no history nomination retains the existing native export/read basis;
+this repair does not change that separate export-nomination contract. Source-only
+reads without a view remain unchanged. Unsupported unit intent, incompatible
+retained dimensions, or ambiguous definition identities report unavailable
+coverage rather than presenting a fabricated physical quantity.
+
+The Properties quantities tab currently lists occurrence-owned sets. Independently
+inherited Length sets are not added to that list by this writer repair; the
+canonical quantity reader and `QuantitySetCard` still preserve their physical
+unit metadata. The existing zone breakdown displays inherited volume bases.
+
+The Type quantity journal projection preserves native quantity-set order when
+replacing an existing GUID-owned set, so the live volume basis and saved model
+use the same first matching quantity. New definitions follow existing sets.
+
 `findSourceProjectLengthUnit` and `normalizeMapUnitName` expose the STEP
 writer's existing replacement-unit eligibility to canonical reader consumers.
 The resolver uses the first effective source `IfcProject`, its source

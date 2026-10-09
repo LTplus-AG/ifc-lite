@@ -36,6 +36,8 @@ import { nominateDeliveredInPlaceEdits } from './in-place-nomination.js';
 import { type PropertySetContext, getPropertySetName } from './step-property-set-readers.js';
 import { generatePropertySetEntities, generateQuantitySetEntities } from './step-property-set-generators.js';
 import type { ExportPass, SourceLineMutations, StepExportOptions } from './step-exporter.js';
+import { generateTypeQuantityCopy } from './step-type-owned-quantities.js';
+import type { ModificationKind } from './delta-modification-ledger.js';
 
 
 /**
@@ -43,10 +45,9 @@ import type { ExportPass, SourceLineMutations, StepExportOptions } from './step-
  * `pass.entities`, and point every affected type object's `HasPropertySets` at
  * the property sets this export just generated.
  *
- * Three loops, in the order `export()` ran them, and the order is load-bearing:
- * the rewrite reads `generatedTypeOwnedPsetIds` from the property-set loop, and
- * the caller flushes `pass.rewrittenEntityLines` — this function's output —
- * only after the quantity-set loop has run.
+ * Property and quantity generation both precede the shared type-object rewrite:
+ * HasPropertySets must name the replacement IDs from both generators (#7355).
+ * The caller flushes rewrittenEntityLines only after this function returns.
  */
 export function generatePropertyAndQuantitySetEntities(
   pass: ExportPass,
@@ -82,20 +83,54 @@ export function generatePropertyAndQuantitySetEntities(
     generatedTypeOwnedPsetIds.set(entityId, newEntities.generatedTypeOwnedPsetIds);
   }
 
+  // Type quantity generation precedes the shared HasPropertySets rewrite (#7355).
+  for (const { entityId, qsets, sourceSets } of pass.newQuantitySets) {
+    if (!pass.willBeEmitted(entityId)) continue;
+    const typeOwned = pass.typeOwnedQuantityIdsByEntity.has(entityId);
+    qsets.forEach((qset, index) => {
+      const source = sourceSets?.[index];
+      const generated = source
+        ? generateTypeQuantityCopy(pass, options, ctx, entityId, qset, source)
+        : generateQuantitySetEntities(ctx, entityId, [qset], pass.willBeEmitted, pass.effective, options.guidRandom, typeOwned);
+      pass.entities.push(...generated.lines);
+      pass.newEntityCount += generated.count;
+      if (generated.lines.length > 0) pass.modifications.recordEmitted(entityId, 'quantity-set');
+      if (typeOwned) {
+        const id = 'setId' in generated ? generated.setId : generated.generatedSetIds[0];
+        if (id !== undefined) {
+          if (source) pass.typeOwnedQuantityIdsByEntity.get(entityId)?.set(source.setId, id);
+          else pass.addedTypeOwnedQuantityIds.get(entityId)?.push(id);
+        }
+      }
+    });
+  }
+
   // Point every affected type object's HasPropertySets at the psets this
   // export generated. One loop, because a type whose affected psets produced
   // no replacement content (a deletion) needs exactly the same resolution
   // with an empty replacement map.
-  for (const [entityId, typeOwnedPsetNames] of pass.typeOwnedPsetNamesByEntity) {
+  const typeOwners = new Set([...pass.typeOwnedPsetNamesByEntity.keys(), ...pass.typeOwnedQuantityIdsByEntity.keys()]);
+  for (const entityId of typeOwners) {
+    const typeOwnedPsetNames = pass.typeOwnedPsetNamesByEntity.get(entityId) ?? new Set<string>();
+    const modificationKinds: ModificationKind[] = [];
+    if (pass.typeOwnedPsetNamesByEntity.has(entityId)) modificationKinds.push('property-set');
+    if (pass.typeOwnedQuantityIdsByEntity.has(entityId)) modificationKinds.push('quantity-set');
     // `entityId` here is a TYPE object rather than an element; `willBeEmitted`
     // resolves either the same way (#2030).
     if (!pass.willBeEmitted(entityId)) continue;
-    const resolved = resolveTypeOwnedPsetIds(
+    const propertyResolved = resolveTypeOwnedPsetIds(
       pass.typeOwnedPsetIdsByEntity.get(entityId) ?? [],
       typeOwnedPsetNames,
       generatedTypeOwnedPsetIds.get(entityId) ?? new Map(),
       (psetId) => getPropertySetName(ctx, psetId),
     );
+    const quantityReplacements = pass.typeOwnedQuantityIdsByEntity.get(entityId);
+    const resolved = propertyResolved.flatMap(id => {
+      if (!quantityReplacements?.has(id)) return [id];
+      const replacement = quantityReplacements.get(id);
+      return replacement === null || replacement === undefined ? [] : [replacement];
+    });
+    resolved.push(...(pass.addedTypeOwnedQuantityIds.get(entityId) ?? []));
     if (pass.effective.isOverlayCreated(entityId)) {
       // No source line to rewrite: the new-entities pass writes this record
       // from its authored payload, so the list rides in as a slot override.
@@ -161,7 +196,7 @@ export function generatePropertyAndQuantitySetEntities(
       // The line above IS the report, so the ledger must not add a second,
       // vaguer one blaming the delta format for a drop the format did not
       // cause.
-      pass.modifications.acknowledgeUndelivered(entityId, 'property-set');
+      for (const kind of modificationKinds) pass.modifications.acknowledgeUndelivered(entityId, kind);
       continue;
     }
     const { line, repointed } = rewriteTypeOwnedPsetLine(mutated.text, resolved);
@@ -185,7 +220,7 @@ export function generatePropertyAndQuantitySetEntities(
       // property-set edit that put this host in the loop; the rest of the
       // line delivers whichever in-place edits the pipeline applied to it.
       if (changed) {
-        pass.modifications.recordEmitted(entityId, 'property-set');
+        for (const kind of modificationKinds) pass.modifications.recordEmitted(entityId, kind);
         recordSourceLineDelivery(pass.modifications, entityId, mutated);
         // `rewrittenEntityIds` made the source-iteration pass skip this
         // host, so this line is the ONLY place a full export can see its
@@ -206,7 +241,7 @@ export function generatePropertyAndQuantitySetEntities(
     // the affected psets produced replacement content, the property-set pass
     // above has already recorded the emission, and an emission outranks an
     // acknowledgement.)
-    pass.modifications.acknowledgeUndelivered(entityId, 'property-set');
+    for (const kind of modificationKinds) pass.modifications.acknowledgeUndelivered(entityId, kind);
     // `line` is byte-for-byte what the source-iteration pass would have
     // written, so emit it wherever that pass would have run. Under
     // `deltaOnly` it does not run, and a line the mutation pipeline left
@@ -229,12 +264,5 @@ export function generatePropertyAndQuantitySetEntities(
     }
   }
 
-  // Generate new quantity entities for mutations
-  for (const { entityId, qsets } of pass.newQuantitySets) {
-    if (!pass.willBeEmitted(entityId)) continue;
-    const newEntities = generateQuantitySetEntities(ctx, entityId, qsets, pass.willBeEmitted, pass.effective, options.guidRandom);
-    pass.entities.push(...newEntities.lines);
-    pass.newEntityCount += newEntities.count;
-    if (newEntities.lines.length > 0) pass.modifications.recordEmitted(entityId, 'quantity-set');
-  }
+
 }

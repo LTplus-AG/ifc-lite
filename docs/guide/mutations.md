@@ -994,3 +994,12 @@ relating slot is malformed or missing; these rows omit `relatingId` and must be
 refused as unknown. A reference to a missing entity retains its `relatingId`, so
 consumers must separately validate that the target exists and conforms to the
 required IFC type. Explicit unset remains excluded.
+
+`view.getQuantitiesForEntity(entityId, baseProvider?, includeEmptyInstances?)`
+retains a known source quantity-set `globalId` while applying canonical instance
+claims to same-named sets. Ordinary reads omit instances whose last numeric
+member was deleted. A native exporter can pass `true` as the third argument to
+retain those empty instances long enough to remove only their native ownership
+reference. The optional base provider can supply current native quantity sets
+without changing the view's installed source provider. This does not change the
+name-based mutation API or spread an edit across other same-named definitions.

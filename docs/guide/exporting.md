@@ -1157,3 +1157,9 @@ compression, external resources, mirrored repeat and UV sets beyond
 `TEXCOORD_0` stop import with a diagnostic rather than produce an untextured
 success. Images use the existing inventory limits (32 MiB per encoded image,
 8192 px maximum edge, 16 megapixels per image).
+
+### Editing quantity sets owned by a type
+
+Default-history `MutablePropertyView.setQuantity` edits on an `IfcTypeObject` subtype save the replacement `IfcElementQuantity` in the type's `HasPropertySets`. A type is never placed in `IfcRelDefinesByProperties.RelatedObjects`. When another type shares the original definition, it retains that definition. Untouched physical quantity members retain their native IDs and attributes, including complex quantities; edited scalar members retain their source description, native unit reference and Formula when those fields were not edited. Unrelated property sets, including one with the same name as a quantity set, keep their ownership. Ordinary occurrence quantity edits continue to use `IfcRelDefinesByProperties`.
+
+Type-owned quantity edits preserve an existing explicit native unit when no replacement or removal is requested. A change of quantity dimension refuses export when that retained unit is incompatible with the new IFC measure type. Explicit unit removal remains intentional; compatible same-dimension edits preserve the native unit.

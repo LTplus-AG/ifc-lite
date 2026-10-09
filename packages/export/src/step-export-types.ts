@@ -35,6 +35,7 @@ import type { Ifc2x3SlotFill } from './schema-converter-ifc2x3-slots.js';
 import type { Ifc4SlotCheck } from './schema-converter-ifc4-slots.js';
 import type { EnumReconciliation } from './schema-converter-enums.js';
 import type { StepCoordinateNormalizationOptions, StepGeoreferencingOptions } from './step-coordinate-options.js';
+import type { TypeQuantitySource } from './step-type-owned-quantities.js';
 
 /** Options for STEP export */
 export interface StepExportOptions extends StepCoordinateNormalizationOptions, StepGeoreferencingOptions {
@@ -357,7 +358,9 @@ export interface ExportPass {
   readonly modifiedEntities: Set<number>;
   readonly modifiedAttributes: Map<number, Map<string, string>>;
   readonly newPropertySets: Array<{ entityId: number; psets: PropertySet[]; sourceMembers?: ReadonlyMap<string, ReadonlyMap<string, number>> }>; // set → property → reusable source atom (#5794)
-  readonly newQuantitySets: Array<{ entityId: number; qsets: QuantitySet[] }>;
+  readonly newQuantitySets: Array<{ entityId: number; qsets: QuantitySet[]; sourceSets?: readonly (TypeQuantitySource | undefined)[] }>;
+  readonly typeOwnedQuantityIdsByEntity: Map<number, Map<number, number | null>>;
+  readonly addedTypeOwnedQuantityIds: Map<number, number[]>;
   readonly typeOwnedPsetNamesByEntity: Map<number, Set<string>>;
   readonly typeOwnedPsetIdsByEntity: Map<number, number[]>;
   readonly rewrittenEntityIds: Set<number>;

@@ -47,7 +47,7 @@ export function authoringRowSummary(row: AuthoringRow, batch: ModelAuthoringBatc
   const fromMetres = (v: number) => (units === 'mm' ? v * 1000 : v);
   switch (op.op) {
     case 'hosted.edit':
-      return { subject: `${op.target.ifcClass} "${op.target.name}"`, before: `${fields({ Offset: op.expected.offset, Sill: op.expected.sill, ...(op.expected.size ?? {}) })} ${units}`, after: `${fields(op.edit)} ${units}`, previewNote: row.previewUnavailable ? t('modelAuthoring.editPreviewUnavailable') : t('modelAuthoring.hostedEditBoundsPreview') };
+      return { subject: `${op.target.ifcClass} "${op.target.name}"`, before: `${fields({ Offset: op.expected.offset, Sill: op.expected.sill, ...op.expected.size })} ${units}`, after: `${fields(op.edit)} ${units}`, previewNote: row.previewUnavailable ? t('modelAuthoring.editPreviewUnavailable') : t('modelAuthoring.hostedEditBoundsPreview') };
     case 'element.trimExtend':
       return { subject: `${op.target.ifcClass} "${op.target.name}"`, before: JSON.stringify(before.reach ?? op.expected.snapshot),
         after: row.resolved.reachPlan ? t('modelAuthoring.trimExtendResult', { mode: row.resolved.reachPlan.op, end: row.resolved.reachPlan.end, length: num(fromMetres(row.resolved.reachPlan.length)), units, joined: row.resolved.reachPlan.joined ? t('modelAuthoring.joined') : '' }) : none,

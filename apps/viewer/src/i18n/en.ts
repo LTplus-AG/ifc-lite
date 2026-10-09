@@ -44,6 +44,7 @@ import { assistantPackTablesEn } from './catalogues/assistant-pack-tables.en';
 import { assistantPackMeasureEn } from './catalogues/assistant-pack-measure.en';
 import { assistantPackAutomationEn } from './catalogues/assistant-pack-automation.en';
 import { chatByokEn } from './catalogues/chat-byok.en';
+import { costReviewEn } from './catalogues/cost-review.en';
 import { modelChangesEn } from './catalogues/model-changes.en';
 import { clashGroupApplyEn } from './catalogues/clash-group-apply.en';
 import { tableCorrectionsEn } from './catalogues/table-corrections.en';
@@ -255,6 +256,7 @@ export const en = {
   ...assistantPackAutomationEn,
   ...chatByokEn,
   ...modelChangesEn,
+  ...costReviewEn,
   ...clashGroupApplyEn,
   ...tableCorrectionsEn,
   ...assistantUsageEn,

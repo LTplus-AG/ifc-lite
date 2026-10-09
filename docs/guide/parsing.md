@@ -883,3 +883,21 @@ reads allow at most 256 definitions, 4,096 quantity references, 8,192 entity rea
 and 512 unit dependency reads. The two-argument source reader is unchanged.
 
 The optional current native view of `extractTypeEntityOwnQuantities` also reports `explicitUnitType` for resolved explicit quantity units. The type-owned writer uses this canonical IFC unit category to refuse a dimension-changing edit that would retain an incompatible native unit; the two-argument source-only output is unchanged.
+
+
+Current occurrence-facing type quantity reads also project canonical quantity-journal
+claims when the view exposes them and the export's mutation history nominates that
+type/set. A default-history type write is visible in the live reader and the
+Properties volume breakdown before export, with native definition identity and
+explicit-unit metadata retained. A tracked write followed by a `skipHistory`
+write reads the current overlay value. A standalone `skipHistory: true` quantity
+write with no history nomination retains the existing native export/read basis;
+this repair does not change that separate export-nomination contract. Source-only
+reads without a view remain unchanged. Unsupported unit intent, incompatible
+retained dimensions, or ambiguous definition identities report unavailable
+coverage rather than presenting a fabricated physical quantity.
+
+The Properties quantities tab currently lists occurrence-owned sets. Independently
+inherited Length sets are not added to that list by this writer repair; the
+canonical quantity reader and `QuantitySetCard` still preserve their physical
+unit metadata. The existing zone breakdown displays inherited volume bases.

@@ -111,7 +111,8 @@ test('#7282 native projected polygon expected pin is removed whole while attachm
 
 
 test('#7282 source-free recorded units preserve readable native authored snapshot without claiming hosted source availability', async () => {
-  const id = await wall(false),model = s().models.get(SAMPLE_MODEL)!,original = model.ifcDataStore!;
+  await wall(false);
+  const model = s().models.get(SAMPLE_MODEL)!,original = model.ifcDataStore!;
   assert.equal(original.lengthUnitScale,.001);
   useViewerStore.setState({models:new Map([[SAMPLE_MODEL,{...model,ifcDataStore:{...original,source:EMPTY_SOURCE_BYTES}}]])});
   const actual=row(),attachment=captureSelectionGrounding(s()).elements[0];assert.ok(attachment);

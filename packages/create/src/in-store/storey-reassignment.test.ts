@@ -228,3 +228,11 @@ it('#7328 refuses native grids whose implicit axis-bound product dependencies ar
   expect(() => reassignElementsToStoreyInStore(s.store, s.editor, [grid.gridId], 42, s.destination)).toThrow(/not a supported movable product/);
   expect(s.snapshot()).toEqual(before);
 });
+
+for (const relation of ['IfcRelVoidsElement', 'IfcRelFillsElement']) it(`#7328 malformed ${relation} cannot make a storey a hosted dependency owner`, async () => {
+  const s = await fixture();
+  s.editor.addEntity(relation, [generateIfcGuid(), null, null, null, '#42', `#${s.id}`]);
+  const before = s.snapshot(), text = s.text();
+  expect(() => reassignElementsToStoreyInStore(s.store, s.editor, [s.id], 42, s.destination)).toThrow(/storey cannot own hosted dependencies/);
+  expect(s.snapshot()).toEqual(before); expect(s.text()).toBe(text);
+});

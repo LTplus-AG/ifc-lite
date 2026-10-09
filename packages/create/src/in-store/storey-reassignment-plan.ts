@@ -85,6 +85,7 @@ export function planStoreyReassignment(
     if (!ids.has(child)) continue;
     const parents = incoming.get(child) ?? []; parents.push(rel); incoming.set(child, parents);
     if (!ids.has(rel.parent) && rel.parent !== sourceStoreyId) fail(`#${child} belongs to an external host, assembly or container #${rel.parent}`);
+    if (rel.parent === sourceStoreyId && ['IFCRELVOIDSELEMENT', 'IFCRELFILLSELEMENT'].includes(rel.type)) fail('storey cannot own hosted dependencies');
   }
   // Each direct spatial owner is unique; host and aggregate ownership may
   // coexist with containment but never be silently detached.

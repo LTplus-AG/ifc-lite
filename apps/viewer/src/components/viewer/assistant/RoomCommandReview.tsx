@@ -70,6 +70,7 @@ export function RoomCommandReview({ proposal, origin, onAttach }: { proposal: Ro
   };
   const c = proposal.command;
   const planned = review?.prepared.result;
+  const coverageUnavailable = !!review?.snapshot.storeys?.some(row => row.status === 'unavailable');
   return <section aria-label={t('roomReview.title')} className="mx-3 my-2 rounded border border-border p-3 text-xs space-y-2">
     <h3 className="font-medium">{proposal.title}</h3>
     <p>{t(`roomReview.action.${c.action}`)} · {proposal.storey.Name || t('roomReview.unnamedStorey')}</p>
@@ -83,7 +84,7 @@ export function RoomCommandReview({ proposal, origin, onAttach }: { proposal: Ro
     {preparing && <Button size="sm" variant="ghost" onClick={() => { owner.current.sequence++; owner.current.controller?.abort(); setPreparing(false); }}>{t('roomReview.cancel')}</Button>}
     {review && planned && <>
       <output className="block">{t(c.action==='autoAll'?'roomReview.populationAll':'roomReview.population', { candidates: review.snapshot.candidateCount, rooms: review.snapshot.roomCount })}</output>
-      <p>{t('roomReview.planned', { created: planned.created.length, updated: planned.updated.length, deleted: planned.deleted.length, skipped: planned.skipped.length })}</p>
+      {coverageUnavailable ? <p>{t('roomReview.coverageIncomplete')}</p> : <p>{t('roomReview.planned', { created: planned.created.length, updated: planned.updated.length, deleted: planned.deleted.length, skipped: planned.skipped.length })}</p>}
       {review.snapshot.storeys && <ul>
         {review.snapshot.storeys.map(row=><li key={row.expressId}>
           {row.Name || t('roomReview.unnamedStorey')} · #{row.expressId}: {t(`roomReview.coverage.${row.status}`)}
@@ -96,7 +97,7 @@ export function RoomCommandReview({ proposal, origin, onAttach }: { proposal: Ro
         {planned.deleted.map(ref => <li key={`deleted:${ref.expressId}`}>{t('roomReview.deleteRoom', { name: review.snapshot.rooms.find(room => room.expressId === ref.expressId)?.Name || t('roomReview.unnamedRoom') })}</li>)}
       </ul>
       {planned.skipped.length > 0 && <p>{t('roomReview.skipped', { count: planned.skipped.length })}</p>}
-      {(c.action === 'edit' || c.action === 'autoAll') && !planned.created.length && !planned.updated.length && !planned.deleted.length && <p>{t(c.action==='autoAll'?'roomReview.noChanges':'roomReview.sessionOnly')}</p>}
+      {!coverageUnavailable && (c.action === 'edit' || c.action === 'autoAll') && !planned.created.length && !planned.updated.length && !planned.deleted.length && <p>{t(c.action==='autoAll'?'roomReview.noChanges':'roomReview.sessionOnly')}</p>}
       {!applied && <label className="flex items-center gap-2"><input type="checkbox" checked={approved} onChange={event => setApproved(event.target.checked)} />{t('roomReview.approveAction')}</label>}
       {!applied && <Button size="sm" disabled={!approved || stale || !!review.snapshot.storeys?.some(row=>row.status==='unavailable')} onClick={apply}>{t('roomReview.apply')}</Button>}
       {onAttach && !applied && !stale && <Button size="sm" variant="outline" onClick={() => {

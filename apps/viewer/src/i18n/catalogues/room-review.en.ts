@@ -30,6 +30,7 @@ export const roomReviewEn = {
   'roomReview.preparing': 'Preparing current rooms…',
   'roomReview.cancel': 'Cancel preparation',
   'roomReview.populationAll': '{candidates} known native candidates · {rooms} existing rooms across the listed storeys',
+  'roomReview.coverageIncomplete': 'Coverage is unavailable; no partial changes can be approved.',
   'roomReview.noChanges': 'No IFC rooms or session layout changes are planned. Approval creates no native Undo group.',
   'roomReview.population': '{candidates} native candidates · {rooms} existing rooms in this storey',
   'roomReview.planned': 'Create {created} · update {updated} · delete {deleted} · skip {skipped}',

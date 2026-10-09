@@ -3,10 +3,8 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { effectiveMetadataRecord } from '@ifc-lite/parser';
-import { iterateEffectiveEntityIds } from '@ifc-lite/mutations';
-import { liveEntityConforms } from '@ifc-lite/create';
+import { effectiveRoomIdsByStorey, liveEntityConforms } from '@ifc-lite/create';
 import type { PreparedRoomCommand, RoomCommandResult } from '@ifc-lite/sdk';
-import { effectiveStoreyId } from '../../../../../packages/create/src/in-store/edit/effective-storey.js';
 import { roomChainInStore } from '../../../../../packages/create/src/in-store/room-store.js';
 import { useViewerStore, type ViewerState } from '@/store';
 import { prepareNativeRoomCommand } from '@/sdk/adapters/store-adapter-room';
@@ -72,21 +70,17 @@ function roomPopulations(state: ViewerState, modelId: string, storeyIds: readonl
   const { dataStore: store, view, editor } = reader;
   const changed = new Set(view.getEffectiveChanges().map(change => change.entityId));
   const populations = new Map(storeyIds.map(id => [id, [] as RoomIdentity[]]));
-  let scanned = 0;
-  for (const { expressId } of iterateEffectiveEntityIds(store, view)) {
-    if (++scanned > 200000) throw new Error('The loaded model is too large for a complete reviewed Room population');
-    if (!liveEntityConforms(store, expressId, 'IfcSpace', view)) continue;
-    const owner = effectiveStoreyId(store, view, expressId);
-    const rows = owner === undefined ? undefined : populations.get(owner);
-    if (!rows) continue;
-    if (rows.length >= 128) throw new Error('More than 128 rooms belong to this storey; a complete review is unavailable');
-    const GlobalId = changed.has(expressId) || view.getNewEntity(expressId)
-      ? effectiveMetadataRecord(store, expressId, view)?.attributes[0] : store.entities.getGlobalId(expressId);
-    if (typeof GlobalId !== 'string' || !GlobalId || !uniqueSplitGuid(store, editor, GlobalId)) throw new Error('A current room has an unavailable or ambiguous native identity');
-    const native = roomChainInStore(store, editor, expressId);
-    rows.push({ expressId, GlobalId, Name: nativeRootName(reader, expressId), supported: native.ok,
-      outline: native.ok ? structuredClone(native.chain.footprint) : null,
-      height: native.ok ? native.chain.thickness : null, z: native.ok ? native.chain.baseElevation : null });
+  for (const [owner, ids] of effectiveRoomIdsByStorey(store, view, storeyIds)) {
+    const rows = populations.get(owner)!;
+    for (const expressId of ids) {
+      const GlobalId = changed.has(expressId) || view.getNewEntity(expressId)
+        ? effectiveMetadataRecord(store, expressId, view)?.attributes[0] : store.entities.getGlobalId(expressId);
+      if (typeof GlobalId !== 'string' || !GlobalId || !uniqueSplitGuid(store, editor, GlobalId)) throw new Error('A current room has an unavailable or ambiguous native identity');
+      const native = roomChainInStore(store, editor, expressId);
+      rows.push({ expressId, GlobalId, Name: nativeRootName(reader, expressId), supported: native.ok,
+        outline: native.ok ? structuredClone(native.chain.footprint) : null,
+        height: native.ok ? native.chain.thickness : null, z: native.ok ? native.chain.baseElevation : null });
+    }
   }
   for (const rows of populations.values()) rows.sort((a,b)=>a.expressId-b.expressId);
   return populations;

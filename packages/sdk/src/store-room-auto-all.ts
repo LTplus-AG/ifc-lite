@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { effectiveStoreyIds, filterRoomFaces, roomCandidatesFromFaces, planRoomCreation, createRoomsInStore, occupancyTest, existingSpaceFootprintEntriesByStorey } from '@ifc-lite/create';
+import { effectiveRoomIdsByStorey, effectiveStoreyIds, filterRoomFaces, roomCandidatesFromFaces, planRoomCreation, createRoomsInStore, occupancyTest, existingSpaceFootprintEntriesByStorey } from '@ifc-lite/create';
 import { StoreEditor } from '@ifc-lite/mutations';
 import type { CostStoreModelResolution } from './cost-store-backend.js';
 import { RoomCommandConflictError } from './store-room-command.js';
@@ -19,22 +19,24 @@ export async function prepareAllStoreyRooms(
   if (ids.length > 128) throw new Error('More than 128 storeys: complete AutoAll preparation is unavailable');
   const weld = command.weld ?? .05, minArea = command.minArea ?? .3;
   const existing = existingSpaceFootprintEntriesByStorey(model.store, model.mutationView);
+  const populations = effectiveRoomIdsByStorey(model.store, model.mutationView, ids);
   const rows: NonNullable<RoomCommandResult['storeys']>[number][] = [];
   const plans = new Map<number, ReturnType<typeof planRoomCreation>>();
   const geometries: NativeRoomGeometry[] = [];
   for (const storeyId of ids) {
+    const roomCount = populations.get(storeyId)?.length ?? 0;
     command.signal?.throwIfAborted();
     const geometry = await provide(model, storeyId);
     currentModel();
     geometries.push(geometry);
     if (geometry.unavailable) {
-      rows.push({ storeyId, status:'unavailable', reason:geometry.unavailable, roomCount:null, candidates:[], created:[] });
+      rows.push({ storeyId, status:'unavailable', reason:geometry.unavailable, roomCount, candidates:[], created:[] });
       continue;
     }
     geometry.validate?.();
     const spaces = geometry.spaces ?? existing.get(storeyId) ?? [];
     if (geometry.walls.length === 0) {
-      rows.push({storeyId,status:'noWalls',roomCount:spaces.length,candidates:[],created:[]});
+      rows.push({storeyId,status:'noWalls',roomCount,candidates:[],created:[]});
       continue;
     }
     const occupied = geometry.occupied ?? occupancyTest(spaces.map(space=>space.footprint),[]);
@@ -45,10 +47,10 @@ export async function prepareAllStoreyRooms(
     if (population.length>128 || population.reduce((n,face)=>n+face.centre.length+face.inner.length+face.outer.length,0)>4096) throw new Error('Complete AutoAll native candidates exceed the review population limit');
     if (population.some(face=>!Number.isFinite(face.grossArea) || !Number.isFinite(face.netArea) || [...face.centre,...face.inner,...face.outer].some(point=>point.some(value=>!Number.isFinite(value))))) throw new Error('Native AutoAll contours/areas are unavailable');
     const prepared = planRoomCreation(candidates,{action:'auto',boundary:command.boundary ?? 'inner',height:command.height ?? 3,z:command.z ?? 0,
-      existingCount:spaces.length,namePattern:command.namePattern ?? 'Room {n}',
+      existingCount:roomCount,namePattern:command.namePattern ?? 'Room {n}',
       ...(command.PredefinedType!==undefined?{PredefinedType:command.PredefinedType}:{}), ...(command.ObjectType!==undefined?{ObjectType:command.ObjectType}:{})});
     plans.set(storeyId,prepared);
-    rows.push({storeyId,status:prepared.length?'ready':candidates.length?'occupied':'noFaces',roomCount:spaces.length,candidates:structuredClone(candidates),created:[]});
+    rows.push({storeyId,status:prepared.length?'ready':candidates.length?'occupied':'noFaces',roomCount,candidates:structuredClone(candidates),created:[]});
   }
   const layout = host.layouts.version();
   let disposed = false, committed = false;
@@ -56,6 +58,7 @@ export async function prepareAllStoreyRooms(
     if (disposed || committed) throw new RoomCommandConflictError('This AutoAll preparation is no longer available');
     currentModel();
     if (JSON.stringify(effectiveStoreyIds(model.store,model.mutationView).sort((a,b)=>a-b))!==JSON.stringify(ids)) throw new RoomCommandConflictError('The complete storey population changed');
+    if (JSON.stringify([...effectiveRoomIdsByStorey(model.store,model.mutationView,ids)]) !== JSON.stringify([...populations])) throw new RoomCommandConflictError('The complete native room population changed');
     if (host.layouts.version()!==layout) throw new RoomCommandConflictError('The native Room layout changed');
     for (const geometry of geometries) geometry.validate?.();
   };

@@ -256,3 +256,19 @@ it('#7324 cached native room and wall populations refresh after direct removals 
   assert.equal(useViewerStore.getState().mutationVersion, version);
   assert.equal(storeyWalls(useViewerStore.getState(), MODEL, 42, plane).length, beforeWalls - 4, 'deleted native walls cannot survive the cache');
 });
+
+
+it('#7324 unavailable storeys never announce an empty AutoAll plan', async t => {
+  if (!ensureRoomWasm(t)) return;
+  const { view } = await population();
+  const state = useViewerStore.getState(), model = state.models.get(MODEL)!;
+  useViewerStore.setState({ models: new Map(state.models).set(MODEL, { ...model, geometryResult: null }), geometryResult: null });
+  const proposal = roomProposal({ action: 'autoAll' }), before = structuredClone(view.getEffectiveChanges());
+  const ui = render(<RoomCommandReview proposal={proposal} origin="incomplete-auto-all" />);
+  const button = [...ui.querySelectorAll('button')].find(row => row.textContent === 'Prepare room preview');
+  assert.ok(button); click(button);
+  await waitFor(() => !!ui.querySelector('input[type="checkbox"]'), 'mixed native coverage review');
+  assert.ok(!ui.textContent?.includes('No IFC rooms or session layout changes are planned.'), 'unavailable coverage is not an empty plan');
+  assert.ok(ui.textContent?.includes('Coverage is unavailable'), ui.textContent ?? '');
+  assert.deepEqual(view.getEffectiveChanges(), before);
+});

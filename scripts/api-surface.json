@@ -5004,6 +5004,7 @@
     "edgeOf: function",
     "editHostedElementInStore: function",
     "editStairDimensionsInStore: function",
+    "effectiveRoomIdsByStorey: function",
     "effectiveStoreyElevation: function",
     "effectiveStoreyIds: function",
     "emitProfileSection: function",

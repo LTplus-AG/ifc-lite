@@ -7,6 +7,7 @@ import { beforeAll, expect, it } from 'vitest';
 import { IfcParser } from '@ifc-lite/parser';
 import { MutablePropertyView, StoreEditor, recordCompoundMutation, undoRecordedMutationOperations } from '@ifc-lite/mutations';
 import { roomChainInStore } from '../../create/src/in-store/room-store.js';
+import { generateIfcGuid } from '@ifc-lite/encoding';
 import { StepExporter } from '@ifc-lite/export';
 import { RoomLayoutCache, applyLayoutOp, readFaces, occupancyTest, existingSpaceFootprintEntriesByStorey, type RoomWallRect, type RoomPlateFactory } from '@ifc-lite/create';
 import { createRoomCommandBackend, RoomCommandConflictError, type RoomGeometryProvider } from './store-room-command.js';
@@ -449,5 +450,18 @@ it.skipIf(!available)('#7324 AutoAll disposed, applied and changed-layout approv
     applied.commit(); const journal = structuredClone(f.view.getMutations());
     expect(() => applied.commit()).toThrow(RoomCommandConflictError);
     expect(f.view.getMutations()).toEqual(journal); applied.dispose();
+  } finally { f.backend.disposeRooms(); }
+});
+
+
+it.skipIf(!available)('#7324 AutoAll counts unsupported live spaces independently of readable footprints', async () => {
+  const f = await setup(async (_model, id) => ({ walls: id === 42 ? walls : [], factory }));
+  try {
+    const upper = secondStorey(f.editor);
+    const space = f.editor.addEntity('IfcSpace', [generateIfcGuid(), null, 'Unsupported native room', null, null, null, null, null, '.ELEMENT.', '.NOTDEFINED.', null]).expressId;
+    f.editor.addEntity('IfcRelAggregates', [generateIfcGuid(), null, null, null, `#${upper}`, [`#${space}`]]);
+    const prepared = await f.backend.prepareRoomCommand('m', 42, { action: 'autoAll' });
+    expect(prepared.result.storeys?.find(row => row.storeyId === upper)).toMatchObject({ status: 'noWalls', roomCount: 1 });
+    prepared.dispose();
   } finally { f.backend.disposeRooms(); }
 });

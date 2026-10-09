@@ -14,7 +14,7 @@ import { generateIfcGuid } from '@ifc-lite/encoding';
 import { useViewerStore } from '@/store';
 import { ensureRoomWasm } from '@/test/room-walls-fixture';
 import { seedReviewedRoom, roomProposal, roomEnvelope } from '@/test/reviewed-room-fixture';
-import { MODEL, settle, nativeSdkMeshes } from '@/test/native-sdk-model';
+import { MODEL, settle, nativeSdkMeshes, seedNativeSdkModel } from '@/test/native-sdk-model';
 import { cleanup, click, render, waitFor } from '@/test/render';
 import { setRemeshClientFactory } from '@/lib/remesh/remesh-service';
 import { clearModelLayouts } from '@/lib/rooms/room-layout';
@@ -206,4 +206,26 @@ it('#7324 source-free missing-unit native population is unavailable and preparat
   assert.equal(selection.elements[0].nativeRoomAutoAll?.status,'unavailable');assert.deepEqual(selection.elements[0].nativeRoomAutoAll?.storeys,[]);
   assert.equal(useViewerStore.getState().storeEditors,editors,'native evidence does not initialize live writer maps');
   await assert.rejects(prepareRoomReview(proposal,new AbortController().signal),/unit|source|identity/i);assert.deepEqual(view.getEffectiveChanges(),before);
+});
+
+it('#7324 first native AutoAll preparation preserves absent live view/editor maps; explicit approval initializes one owned graph',async t=>{
+  if(!ensureRoomWasm(t))return;
+  const native=await population(),bytes=new StepExporter(native.store,native.view).export({schema:'IFC4',applyMutations:true}).content;
+  const loaded=await seedNativeSdkModel(bytes),state=useViewerStore.getState(),model=state.models.get(MODEL)!;
+  // Native fixtureModel omits parse-range metadata; a real loader supplies it.
+  useViewerStore.setState({models:new Map(state.models).set(MODEL,{...model,maxExpressId:Math.max(...loaded.store.entityIndex.byId.keys())}),mutationViews:new Map(),storeEditors:new Map()});
+  const before=useViewerStore.getState(),views=before.mutationViews,editors=before.storeEditors;
+  const review=await prepareRoomReview(roomProposal({action:'autoAll'}),new AbortController().signal);
+  try{
+    assert.equal(review.prepared.result.created.length,2,'real saved-source walls are remeshed before native preparation');
+    assert.equal(useViewerStore.getState().mutationViews,views,'first read cannot register a temporary native view');
+    assert.equal(useViewerStore.getState().storeEditors,editors,'first read cannot register or watermark a live writer');
+    assert.equal(useViewerStore.getState().undoStacks.get(MODEL)?.length??0,0);
+    assert.equal(review.commit().created.length,2);
+    const committed=useViewerStore.getState(),view=committed.mutationViews.get(MODEL);assert.ok(view);
+    const records=committed.undoStacks.get(MODEL)??[];assert.ok(records.length>0);
+    const batches=new Set(records.map(record=>committed.mutationBatchTags.get(record.id)));
+    assert.equal(batches.size,1,'all actual IFC mutations belong to one native Undo step');assert.ok(!batches.has(undefined));
+    useViewerStore.getState().undo(MODEL);assert.deepEqual(view.getEffectiveChanges(),[]);
+  }finally{review.dispose();}
 });

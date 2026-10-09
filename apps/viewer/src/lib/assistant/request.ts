@@ -1,7 +1,8 @@
-import { STRUCTURAL_GRAPH_GUIDANCE } from '@/lib/actions/structural-graph-proposal';
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+import { STRUCTURAL_GRAPH_GUIDANCE } from '@/lib/actions/structural-graph-proposal';
+
 
 import { resolveStreamRoute } from '@/lib/llm/byok-guard';
 import { LLM_PROXY_URL, runModelRequest } from '@/lib/llm/request-service';

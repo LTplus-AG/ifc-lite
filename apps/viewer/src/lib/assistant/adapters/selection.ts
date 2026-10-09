@@ -1,7 +1,8 @@
-import { nativeStructuralTransportEvidence } from '@/lib/actions/structural-graph-evidence';
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+import { nativeStructuralTransportEvidence } from '@/lib/actions/structural-graph-evidence';
+
 
 /**
  * The current selection as evidence (#6833): each selected element's

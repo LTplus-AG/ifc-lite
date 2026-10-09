@@ -1,7 +1,8 @@
-import { structuralReviewEn } from './catalogues/structural-review.en';
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+import { structuralReviewEn } from './catalogues/structural-review.en';
+
 
 import type { LazyTranslationKey } from './lazy-catalogues';
 import { automationEditorEn } from './catalogues/automation-editor.en';

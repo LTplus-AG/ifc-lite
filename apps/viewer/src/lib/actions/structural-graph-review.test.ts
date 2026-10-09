@@ -111,16 +111,18 @@ test('#7318 absent source and missing native-measure acknowledgement cannot cert
   assert.throws(() => prepareStructuralReview(useViewerStore, input), /source/);
   dataStore.source = source;
 });
-test('#7318 changed named or positional source storey frame refuses native geometry creation, while unchanged source remains supported', async () => {
-  const { dataStore, view, storey } = await setup();
-  const source = effectiveMetadataRecord(dataStore, storey, view)!;
-  const placement = Number(String(source.attributes[5]).replace('#', ''));
-  assert.ok(placement > 0);
-  const operation: StructuralOperation = { op: 'structural.member.create', storey, params: { Name: 'Supplied current frame', Start: [0, 0, 0], End: [4, 0, 0] } };
-  const review = prepareStructuralReview(useViewerStore, proposal(storey, [operation]));
-  assert.ok(review.delta.length);
-  view.setAttribute(placement, 'PlacementRelTo', '$', true);
-  assert.throws(() => prepareStructuralReview(useViewerStore, proposal(storey, [operation])), /frame|placement/);
+test('#7318 changed named and positional source storey frames refuse creation after independent IFC export control', async () => {
+  for (const field of ['PlacementRelTo', '@0']) {
+    const { dataStore, view, storey } = await setup();
+    const source = effectiveMetadataRecord(dataStore, storey, view)!;
+    const placement = Number(String(source.attributes[5]).replace('#', ''));
+    assert.ok(placement > 0);
+    const operation: StructuralOperation = { op: 'structural.member.create', storey, params: { Name: 'Supplied current frame', Start: [0, 0, 0], End: [4, 0, 0] } };
+    assert.ok(prepareStructuralReview(useViewerStore, proposal(storey, [operation])).delta.length);
+    view.setAttribute(placement, field, '$', true);
+    assert.equal((await parseIfc(editedModelBytes(dataStore, view))).getEntity(placement)?.attributes[0], null, 'actual native STEP/reparse confirms the current placement retarget before review refuses it');
+    assert.throws(() => prepareStructuralReview(useViewerStore, proposal(storey, [operation])), /frame|placement/);
+  }
 });
 test('#7318 native schema/enum/SELECT and coordinate/load invariants preserve source bytes when supplied values are invalid', async () => {
   const { dataStore, view, storey } = await setup(), before = editedModelBytes(dataStore, view);

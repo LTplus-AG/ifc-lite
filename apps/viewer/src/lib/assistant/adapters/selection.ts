@@ -49,6 +49,7 @@ import { nativeEditEvidence, nativeRootName } from '@/lib/actions/native-edit-ev
 import { nativeGridEvidence } from '@/lib/actions/native-grid-evidence';
 import { nativeGridName } from '@/lib/actions/model-authoring-grid-native';
 import { nativeTypeEvidence } from '@/lib/actions/native-type-evidence';
+import { nativeLayerEvidence } from '@/lib/actions/native-layer-evidence';
 import { nativeCostTransportEvidence } from '@/lib/actions/cost-graph-evidence';
 import { roomAutoAllEvidence } from '@/lib/actions/room-auto-all-evidence';
 import type { ModelEditTarget } from '@/store/slices/mutation-modelling-records';
@@ -171,6 +172,7 @@ function elementRow(s: ViewerState, ref: EntityRef, source: ModelSource, rich: b
     attributes, psets, psetCount: data.psets.length, quantities, qsetCount: data.qsets.length,
     nativeEdit: nativeEditEvidence(nativeTarget, ref.expressId),
     nativeType: nativeTypeEvidence(s, nativeTarget, ref.expressId),
+    nativeLayers: nativeLayerEvidence(s, nativeTarget, ref.expressId),
     ...(() => { const nativeGrid = nativeGridEvidence(nativeTarget, ref.expressId); return nativeGrid ? { nativeGrid } : {}; })(),
     ...(rich ? { nativeCost: nativeCostTransportEvidence(nativeTarget, ref.expressId) } : {}),
     ...(rich ? { nativeRoomAutoAll: roomAutoAllEvidence(nativeTarget) } : {}),

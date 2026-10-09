@@ -22,6 +22,8 @@ import { effectiveSelectedClass } from '@/components/viewer/properties/effective
 import { readOnlyModelEditLease, type NativeReadLease } from './model-authoring-read-target';
 import { nativeEditEvidence, nativeRootName, type NativeEditEvidence } from './native-edit-evidence';
 import { nativeTypeEvidence, type NativeTypeEvidence } from './native-type-evidence';
+import { nativeLayerEvidence, type NativeLayerEvidence } from './native-layer-evidence';
+import { nativeStairEvidenceFromTarget } from './model-authoring-stair-lifecycle';
 import { nativeCostEvidence, type CostEvidence } from './cost-graph-evidence';
 import { roomAutoAllEvidence, type RoomAutoAllEvidence } from './room-auto-all-evidence';
 
@@ -35,6 +37,8 @@ export interface SelectionElement extends NativeAuthoringEvidence {
   nativeStructural: ReturnType<typeof nativeStructuralEvidence>;
   nativeEdit: NativeEditEvidence;
   nativeType: NativeTypeEvidence;
+  nativeLayers?: NativeLayerEvidence;
+  nativeStairExpected: ReturnType<typeof nativeStairEvidenceFromTarget>;
   nativeCost: CostEvidence;
   /** Absent on historical selection snapshots; current native capture always publishes it. */
   nativeRoomAutoAll?: RoomAutoAllEvidence;
@@ -112,6 +116,8 @@ export function captureSelectionGrounding(state: GroundingState, limit = SELECTI
       ...(() => { const nativeGrid = nativeGridEvidence(nativeTarget(ref.modelId), ref.expressId); return nativeGrid ? { nativeGrid } : {}; })(),
       nativeStructural: nativeStructuralEvidence(nativeTarget(ref.modelId), ref.expressId),
       nativeType: nativeTypeEvidence(state, nativeTarget(ref.modelId), ref.expressId),
+      nativeLayers: nativeLayerEvidence(state, nativeTarget(ref.modelId), ref.expressId),
+      nativeStairExpected: nativeStairEvidenceFromTarget(nativeTarget(ref.modelId), ref.expressId),
       nativeCost: nativeCostEvidence(nativeTarget(ref.modelId), ref.expressId),
       nativeRoomAutoAll: roomAutoAllEvidence(nativeTarget(ref.modelId)),
     });

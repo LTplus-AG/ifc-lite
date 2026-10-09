@@ -213,7 +213,7 @@ for (const entry of entries) test(`#7218 native library download includes the sa
   } finally { download.mock.restore(); }
 });
 
-for (const memoryPeer of [false, true]) test(`#7218 native import preserves a refused List save and retries without duplicating the other libraries${memoryPeer ? ' beside a matching unsaved native draft' : ''}`, async () => {
+for (const filterCollision of [false, true]) for (const memoryPeer of [false, true]) test(`#7218 native import preserves a refused List save and retries without duplicating the other libraries${memoryPeer ? ' beside a matching unsaved native draft' : ''}${filterCollision ? ' after a conflicting Filter was already saved' : ''}`, async () => {
   await seedArtifactModels({ federated: true });
   await Promise.all([assistantLibrary.initialize(), useViewerStore.getState().initializeSavedClashReports()]);
   for (const entry of entries) {
@@ -222,9 +222,12 @@ for (const memoryPeer of [false, true]) test(`#7218 native import preserves a re
     assert.ok(preview.matched > 0);
     assert.ok(saveArtifact(preview.artifact).ok);
   }
+  const sourceFilter = loadSavedFilters()[0]; assert.ok(sourceFilter);
+  let completedFilterNames: string[] = [];
   const state = useViewerStore.getState();
   const text = await nativeBackupWire({ filters: loadSavedFilters(), lists: loadListDefinitions(), lenses: state.exportLenses() });
   clearSavedFilters(); state.setListDefinitions([]); assert.deepEqual(loadListDefinitions(), []); assert.ok(state.setSavedLenses([]).ok);
+  if (filterCollision) assert.ok(saveFilter(sourceFilter.name, [{ combinator: 'AND', rules: [{ kind: 'ifcType', op: 'in', values: ['IfcSlab'] }] }]).persisted);
   const ui = render(<Notice />);
   const input = ui.querySelector<HTMLInputElement>('input[type="file"]'); assert.ok(input);
   Object.defineProperty(input, 'files', { value: [new File([text], 'quota-library-backup.json')], configurable: true });
@@ -238,7 +241,8 @@ for (const memoryPeer of [false, true]) test(`#7218 native import preserves a re
     await waitFor(() => [...ui.querySelectorAll('[role="alert"]')].some(node => node.textContent?.includes('Some saved Filters')), 'native partial-save warning remains visible');
     assert.deepEqual(loadListDefinitions(), []);
     assert.deepEqual(useViewerStore.getState().listDefinitions, [], 'a refused durable save cannot enter the visible library');
-    assert.equal(loadSavedFilters().length, 1);
+    assert.equal(loadSavedFilters().length, 1 + Number(filterCollision));
+    completedFilterNames = loadSavedFilters().map(row => row.name);
     assert.equal(createStore<LensSlice>()(createLensSlice).getState().savedLenses.filter(row => row.name === 'Backup actual wall colors').length, 1);
     const legacy = JSON.parse(text); legacy.version = 1;
     delete legacy.libraries.filters; delete legacy.libraries.lists; delete legacy.libraries.lenses;
@@ -257,6 +261,7 @@ for (const memoryPeer of [false, true]) test(`#7218 native import preserves a re
       click(retry);
       await waitFor(() => !retry.disabled, 'the blocked retry finishes');
       assert.ok(ui.textContent?.includes('Some saved Filters'), 'a matching in-memory List must not certify the refused backup save');
+      assert.deepEqual(loadSavedFilters().map(row => row.name), completedFilterNames, 'Retry of a still-refused library must not re-import a Filter already saved by the same pending operation');
     }
   } finally { denied.mock.restore(); }
   const retry = [...ui.querySelectorAll('button')].find(node => node.textContent?.includes('Retry all libraries')); assert.ok(retry);
@@ -264,7 +269,7 @@ for (const memoryPeer of [false, true]) test(`#7218 native import preserves a re
   click(retry);
   await waitFor(() => loadListDefinitions().length === 1, 'native Retry all libraries commits the refused List');
   await waitFor(() => !ui.textContent?.includes('Some saved Filters'), 'the pending warning clears only after the retry saves');
-  assert.equal(loadSavedFilters().length, 1);
+  assert.deepEqual(loadSavedFilters().map(row => row.name), completedFilterNames, 'Completing a pending native import must retry only unfinished rows, preserving the already durable conflicting Filter copy');
   assert.equal(createStore<LensSlice>()(createLensSlice).getState().savedLenses.filter(row => row.name === 'Backup actual wall colors').length, 1);
   const { pairs } = prepareListProviders(useViewerStore.getState(), resolveRenderFrame(state.models, state.geometryResult));
   assert.ok((await runListFederated(loadListDefinitions()[0], pairs, useViewerStore.getState(), { evaluatorModels: evaluatorModelsFromState(useViewerStore.getState()) })).rows.length > 0);
@@ -395,6 +400,46 @@ for (const entry of entries) for (const collision of [false, true]) test(`#7218 
       lenses: createStore<LensSlice>()(createLensSlice).getState().savedLenses.map(row => row.id) }, identities,
       'an unchanged native identity retry retains the independent copy identities');
   }
+});
+
+test('#7218 Retry preserves a conflicting Filter already saved before a later Filter quota refusal', async () => {
+  await seedArtifactModels({ federated: true });
+  const entry = entries[0];
+  const proposal = parseArtifactProposal(JSON.stringify({ version: 1, title: 'Native partial Filter retry', kind: entry.kind, ...entry.body }), entry.kind);
+  const preview = await previewArtifact(proposal, useViewerStore.getState());
+  assert.ok(preview.matched > 0, 'the real IFC engine establishes the backed-up population');
+  assert.ok(saveArtifact(preview.artifact).ok);
+  const first = loadSavedFilters()[0]; assert.ok(first);
+  assert.ok(saveFilter('Backup second actual walls', first.groups, first.capturedScope).persisted);
+  const wire = await nativeBackupWire({ filters: loadSavedFilters() });
+  clearSavedFilters();
+  assert.ok(saveFilter(first.name, [{ combinator: 'AND', rules: [{ kind: 'ifcType', op: 'in', values: ['IfcSlab'] }] }]).persisted);
+  const ui = render(<Notice />);
+  const retry = [...ui.querySelectorAll('button')].find(node => node.textContent?.includes('Retry all libraries')); assert.ok(retry);
+  await waitFor(() => !retry.disabled, 'native libraries finish loading before import');
+  const input = ui.querySelector<HTMLInputElement>('input[type="file"]'); assert.ok(input);
+  Object.defineProperty(input, 'files', { value: [new File([wire], 'partial-filter-backup.json')], configurable: true });
+  const original = localStorage.setItem.bind(localStorage);
+  let writes = 0;
+  const denied = mock.method(localStorage, 'setItem', (key: string, value: string) => {
+    if (key === 'ifc-lite:search:saved-filters' && ++writes > 1) throw new DOMException('Native second Filter quota', 'QuotaExceededError');
+    original(key, value);
+  });
+  let completed: ReturnType<typeof loadSavedFilters> = [];
+  try {
+    await act(async () => { input.dispatchEvent(new Event('change', { bubbles: true })); });
+    await waitFor(() => !retry.disabled && ui.textContent?.includes('Some saved Filters') === true, 'the second Filter remains pending');
+    completed = loadSavedFilters();
+    assert.equal(completed.length, 2, 'the original local Filter and the first imported copy are durable');
+    click(retry); await waitFor(() => !retry.disabled, 'the still-refused retry finishes');
+    assert.deepEqual(loadSavedFilters(), completed, 'a partial Filter retry must preserve completed native entries');
+  } finally { denied.mock.restore(); }
+  click(retry);
+  await waitFor(() => !retry.disabled && !ui.textContent?.includes('Some saved Filters'), 'Retry saves only the unfinished Filter');
+  const rows = loadSavedFilters();
+  assert.equal(rows.length, 3, 'one independent original, one completed collision copy, and one retried Filter');
+  for (const row of completed) assert.deepEqual(rows.find(candidate => candidate.name === row.name), row);
+  assert.ok(rows.some(row => row.name === 'Backup second actual walls'));
 });
 
 test('#7218 refused native Filter import cannot produce an incomplete successful download', async () => {

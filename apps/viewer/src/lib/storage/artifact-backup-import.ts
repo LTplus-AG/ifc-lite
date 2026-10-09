@@ -9,7 +9,7 @@ import { loadSavedFilters, saveFilter, __internal, type SavedFilterPreset } from
 import type { StandaloneArtifactLibraries } from './artifact-backup.js';
 
 type Kind = keyof StandaloneArtifactLibraries;
-export interface ArtifactImportOutcome { saved: number; failed: Kind[] }
+export interface ArtifactImportOutcome { saved: number; failed: Kind[]; pending: StandaloneArtifactLibraries }
 interface ImportIdentityOwners {
   claimed: Set<string>;
   sourceIds: ReadonlySet<string>;
@@ -64,14 +64,18 @@ function uniqueName(rows: readonly { name: string }[], name: string, limit = 200
   throw new Error('An independent imported artifact name could not be allocated');
 }
 export function importArtifactLibraries(incoming: StandaloneArtifactLibraries): ArtifactImportOutcome {
-  const outcome: ArtifactImportOutcome = { saved: 0, failed: [] };
+  const outcome: ArtifactImportOutcome = { saved: 0, failed: [], pending: {} };
   if (incoming.filters) {
     let rows = loadSavedFilters();
-    for (const entry of incoming.filters) {
+    for (const [index, entry] of incoming.filters.entries()) {
       if (reusableFilter(rows, entry)) continue;
-      if (rows.length >= __internal.MAX_ENTRIES) { outcome.failed.push('filters'); break; }
+      if (rows.length >= __internal.MAX_ENTRIES) {
+        outcome.failed.push('filters'); outcome.pending.filters = incoming.filters.slice(index); break;
+      }
       const result = saveFilter(uniqueName(rows, entry.name, __internal.MAX_NAME_LEN), entry.groups, entry.capturedScope);
-      if (!result.persisted) { outcome.failed.push('filters'); break; }
+      if (!result.persisted) {
+        outcome.failed.push('filters'); outcome.pending.filters = incoming.filters.slice(index); break;
+      }
       rows = result.presets; outcome.saved++;
     }
   }
@@ -89,7 +93,9 @@ export function importArtifactLibraries(incoming: StandaloneArtifactLibraries): 
     }
     // List CRUD can retain an unsaved session draft after quota refusal. Equal
     // rows do not prove durability; the native save must confirm every retry.
-    if (incoming.lists.length && !state.setListDefinitions(rows)) outcome.failed.push('lists');
+    if (incoming.lists.length && !state.setListDefinitions(rows)) {
+      outcome.failed.push('lists'); outcome.pending.lists = incoming.lists;
+    }
     else outcome.saved += count;
   }
   if (incoming.lenses) {
@@ -103,7 +109,9 @@ export function importArtifactLibraries(incoming: StandaloneArtifactLibraries): 
         name: identity.name, builtin: false };
       copies.push(copy); rows.push(copy);
     }
-    if (copies.length && !state.importLenses(copies).ok) outcome.failed.push('lenses');
+    if (copies.length && !state.importLenses(copies).ok) {
+      outcome.failed.push('lenses'); outcome.pending.lenses = incoming.lenses;
+    }
     else outcome.saved += copies.length;
   }
   return outcome;

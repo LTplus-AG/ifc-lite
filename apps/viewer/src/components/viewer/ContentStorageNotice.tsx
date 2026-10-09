@@ -72,7 +72,7 @@ export function ContentStorageNotice({ status, retry, restore }: {
   const [artifactsPending, setArtifactsPending] = useState(false);
   const saveArtifacts = (libraries: StandaloneArtifactLibraries) => {
     const outcome = importArtifactLibraries(libraries);
-    pendingArtifacts.current = outcome.failed.length ? libraries : null;
+    pendingArtifacts.current = outcome.failed.length ? outcome.pending : null;
     setArtifactsPending(outcome.failed.length > 0);
     return outcome;
   };

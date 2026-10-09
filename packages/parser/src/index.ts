@@ -182,7 +182,7 @@ export {
   type SchemaVersionWithRegistry,
   type SchemaRegistry,
 } from './generated/schema-registry-by-version.js';
-export { getCanonicalEntityName } from './schema-entity-name.js';
+export { getCanonicalEntityName, createSchemaEntityNameSnapshot, type SchemaEntityNameSnapshot } from './schema-entity-name.js';
 export type * from './generated/entities.js';
 export * from './generated/enums.js';
 

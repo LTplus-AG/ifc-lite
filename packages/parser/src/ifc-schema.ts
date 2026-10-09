@@ -1,7 +1,7 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
-import { getCanonicalEntityName } from './schema-entity-name.js';
+import { getCanonicalEntityName, type SchemaEntityNameSnapshot } from './schema-entity-name.js';
 
 /**
  * IFC Schema accessors — thin wrappers over the generated schema registry.
@@ -179,11 +179,11 @@ export function getAttributeNamesAcrossSchemas(type: string): string[] {
 }
 
 /** Attribute names in one model schema, falling back to the bundled union. */
-export function getAttributeNamesForSchema(type: string, schema: string | undefined): string[] {
+export function getAttributeNamesForSchema(type: string, schema: string | undefined, snapshot?: SchemaEntityNameSnapshot): string[] {
     const normalized = schema?.toUpperCase().replace(/[^A-Z0-9]/g, '');
     if (normalized === 'IFC2X3' || normalized === 'IFC4' || normalized === 'IFC4X3') {
         const registry = getSchemaRegistryForVersion(normalized);
-        const canonical = getCanonicalEntityName(registry, type);
+        const canonical = getCanonicalEntityName(registry, type, snapshot);
         const attributes = canonical ? registry.entities[canonical]?.allAttributes : undefined;
         if (attributes) return attributes.map(attribute => attribute.name);
     }

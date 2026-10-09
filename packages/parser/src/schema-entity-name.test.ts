@@ -67,4 +67,36 @@ describe('canonical registry lookup #7362', () => {
     } finally { registry.entities.IfcTask = original; }
     expect(getAttributeTypeForSchema('IFCTASK', 'IsMilestone', 'IFC4')).toBe('IfcBoolean');
   });
+
+  it('captures ordered keys for one operation while fresh snapshots and public calls observe extensions #7362', () => {
+    const base = getSchemaRegistryForVersion('IFC4');
+    const registry: SchemaRegistry = { ...base, entities: { IfcWall: base.entities.IfcWall } };
+    const first = parserApi.createSchemaEntityNameSnapshot?.(registry);
+    expect(first).toBeDefined();
+    registry.entities.IFCWALL = base.entities.IfcTask;
+    expect(first?.resolve('IFCWALL')).toBe('IfcWall');
+    delete registry.entities.IfcWall;
+    registry.entities.IfcWall = base.entities.IfcWall;
+    registry.entities.IfcTask = base.entities.IfcTask;
+    expect(first?.resolve('IFCTASK')).toBeUndefined();
+    expect(first?.resolve('IFCWALL')).toBe('IfcWall');
+    const next = parserApi.createSchemaEntityNameSnapshot?.(registry);
+    expect(next?.resolve('IFCTASK')).toBe('IfcTask');
+    expect(next?.resolve('IFCWALL')).toBe('IFCWALL');
+    expect(getCanonicalEntityName(registry, 'IFCWALL')).toBe('IFCWALL');
+  });
+
+  it('reads current definition values through captured names and ignores snapshots of another schema #7362', () => {
+    const registry = getSchemaRegistryForVersion('IFC4'), original = registry.entities.IfcWall;
+    const snapshot = parserApi.createSchemaEntityNameSnapshot?.(registry);
+    expect(snapshot).toBeDefined();
+    expect(getAttributeNamesForSchema('IFCWALL', 'IFC4', snapshot)).not.toContain('IsMilestone');
+    try {
+      registry.entities.IfcWall = registry.entities.IfcTask;
+      expect(getAttributeNamesForSchema('IFCWALL', 'IFC4', snapshot)).toContain('IsMilestone');
+    } finally { registry.entities.IfcWall = original; }
+    expect(getAttributeNamesForSchema('IFCWALL', 'IFC4', snapshot)).not.toContain('IsMilestone');
+    expect(parserApi.getCanonicalEntityName?.(getSchemaRegistryForVersion('IFC4X3'), 'IFCRAILWAY', snapshot)).toBe('IfcRailway');
+    expect(getAttributeNamesForSchema('IFCRAILWAY', 'IFC4X3', snapshot)).toContain('PredefinedType');
+  });
 });

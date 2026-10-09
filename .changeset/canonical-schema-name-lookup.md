@@ -3,4 +3,4 @@
 '@ifc-lite/create': patch
 ---
 
-Share canonical schema entity-name lookup while preserving mutable registry extensions, ordered first matches, and schema-specific metadata.
+Share canonical schema entity-name lookup and explicit operation snapshots for native Group graphs while preserving mutable public registries, ordered first matches, and current schema-specific metadata.

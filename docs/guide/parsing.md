@@ -796,3 +796,12 @@ import { getCanonicalEntityName, getSchemaRegistryForVersion } from '@ifc-lite/p
 const registry = getSchemaRegistryForVersion('IFC4X3');
 const entityName = getCanonicalEntityName(registry, 'IFCRAILWAY');
 ```
+
+For a finite synchronous operation that resolves many records, `createSchemaEntityNameSnapshot(registry)` captures ordered entity keys once. Pass the snapshot as the optional final argument to `getCanonicalEntityName`, `getAttributeNamesForSchema`, or `resolveEffectiveEntityRecord`. Metadata definitions remain live; keys added or reordered after capture are observed by a fresh snapshot or a normal public lookup. A snapshot from another registry is ignored. Native Group operations create a fresh snapshot for each graph; they do not freeze the public registry.
+
+```ts
+import { createSchemaEntityNameSnapshot, getAttributeNamesForSchema, getSchemaRegistryForVersion } from '@ifc-lite/parser';
+const registry = getSchemaRegistryForVersion('IFC4X3');
+const names = createSchemaEntityNameSnapshot(registry);
+const attributes = getAttributeNamesForSchema('IFCRAILWAY', 'IFC4X3', names);
+```

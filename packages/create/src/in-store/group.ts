@@ -42,7 +42,7 @@ function members(graph: GroupGraph, values: readonly GroupRootIdentity[], groupI
   const ids = values.map(value => {
     if (!value || !Number.isSafeInteger(value.expressId) || typeof value.GlobalId !== 'string') throw new Error('Group member identity is missing');
     const root = graph.root(value.expressId, value.GlobalId);
-    if (!conformsTo(registry, graph.entities.get(root.expressId)!.type, 'IfcObjectDefinition')) {
+    if (!conformsTo(registry, graph.entities.get(root.expressId)!.type, 'IfcObjectDefinition', graph.schemaNames)) {
       throw new Error('Group membership requires an IfcObjectDefinition');
     }
     if (root.expressId === groupId) throw new Error('IfcGroup cannot assign itself');
@@ -144,7 +144,7 @@ export function removeGroupInStore(context: GroupStoreContext, expected: GroupSn
       const relating = referenceId(entity.attributes[6]);
       if (relating === null) throw new Error('Incoming group membership has an unreadable owner');
       graph.root(relating);
-      if (!conformsTo(schemaRegistry(graph.store.schemaVersion as 'IFC4' | 'IFC4X3', 'IfcGroup'), graph.entities.get(relating)!.type, 'IfcGroup')) throw new Error('Incoming membership owner is not an IfcGroup');
+      if (!conformsTo(schemaRegistry(graph.store.schemaVersion as 'IFC4' | 'IFC4X3', 'IfcGroup'), graph.entities.get(relating)!.type, 'IfcGroup', graph.schemaNames)) throw new Error('Incoming membership owner is not an IfcGroup');
       graph.root(id);
       const raw = entity.attributes[4];
       if (!Array.isArray(raw) || raw.length > GROUP_GRAPH_LIMITS.members) throw new Error('Incoming group membership is incomplete');
@@ -152,7 +152,7 @@ export function removeGroupInStore(context: GroupStoreContext, expected: GroupSn
       if (ids.some(value => value === null) || new Set(ids).size !== ids.length || !ids.includes(current.expressId)) throw new Error('Incoming group membership is unreadable');
       ids.forEach(value => {
         const member = graph.root(value!);
-        if (!conformsTo(schemaRegistry(graph.store.schemaVersion as 'IFC4' | 'IFC4X3', 'IfcGroup'), graph.entities.get(member.expressId)!.type, 'IfcObjectDefinition')) {
+        if (!conformsTo(schemaRegistry(graph.store.schemaVersion as 'IFC4' | 'IFC4X3', 'IfcGroup'), graph.entities.get(member.expressId)!.type, 'IfcObjectDefinition', graph.schemaNames)) {
           throw new Error('Incoming group membership has an invalid object definition');
         }
       });

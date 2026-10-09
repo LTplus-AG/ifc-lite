@@ -119,6 +119,24 @@ test('#7235 same-id native IDS replacement during audit cannot focus the superse
   assert.match(useViewerStore.getState().idsDocument?.info.title ?? '', /Replacement native document/);
 });
 
+for (const newerChoice of [false, true]) test(`#7235 refused IDS Open restores only its owned source choice (newer IDS choice: ${newerChoice})`, async () => {
+  const target = savedCheck();
+  setValidationSourceChoice('manual');
+  const opening = openNativeLibraryArtifact(target, null);
+  assert.equal(useViewerStore.getState().idsAuditing, true, 'real native audit is pending');
+  const ownedChoice = useValidationSourceChoice.getState();
+  const replacement = idsXml.replace('An empty IfcLabel', 'Replacement native document');
+  assert.equal(useViewerStore.getState().addValidationDefinition({ kind: 'ids', xml: replacement,
+    document: parseIDS(replacement) }, target.id), true);
+  if (newerChoice) setValidationSourceChoice('ids');
+  const laterChoice = useValidationSourceChoice.getState();
+  if (newerChoice) assert.notStrictEqual(laterChoice, ownedChoice);
+  assert.equal(await opening, 'changed');
+  assert.equal(useValidationSourceChoice.getState().choice, newerChoice ? 'ids' : 'manual');
+  if (newerChoice) assert.strictEqual(useValidationSourceChoice.getState(), laterChoice, 'refusal preserves a newer same-valued IDS choice');
+  assert.equal(useLibraryFocus.getState().target, null);
+});
+
 function nativeHost() {
   return new ExtensionHostService({ sdk: createBimContext({ transport: {
     send: () => Promise.reject(new Error('opening profiles must not execute SDK calls')),

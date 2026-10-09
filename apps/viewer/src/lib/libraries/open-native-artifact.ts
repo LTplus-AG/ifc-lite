@@ -63,6 +63,7 @@ export async function openNativeLibraryArtifact(target: LibraryArtifact, host: E
       if (!definition) return 'missing';
       if (definition.kind === 'ids') {
         const owner = beginDefinitionImport(useViewerStore, 'ids');
+        const previousChoice = useValidationSourceChoice.getState();
         setValidationSourceChoice('ids');
         const choice = useValidationSourceChoice.getState();
         const loading = loadIdsContent(useViewerStore, definition.xml, definition.id, owner);
@@ -71,7 +72,10 @@ export async function openNativeLibraryArtifact(target: LibraryArtifact, host: E
         const current = useViewerStore.getState();
         const saved = current.validationDefinitions.entries.find(entry => entry.id === target.id);
         if (!wanted() || !owner.wanted() || useValidationSourceChoice.getState() !== choice
-          || current.idsDocument !== document || saved?.kind !== 'ids' || saved.xml !== definition.xml) return 'changed';
+          || current.idsDocument !== document || saved?.kind !== 'ids' || saved.xml !== definition.xml) {
+          if (useValidationSourceChoice.getState() === choice) setValidationSourceChoice(previousChoice.choice);
+          return 'changed';
+        }
       } else state.selectValidationDefinition(definition.id);
       if (useViewerStore.getState().validationDefinitions.active[definition.kind] !== target.id) return 'unavailable';
       if (definition.kind !== 'ids') setValidationSourceChoice(definition.kind);

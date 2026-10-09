@@ -25,7 +25,8 @@ import { describeRefusal } from '@/lib/element-transform/commit';
 import { copiedProductsInStore, createCopyContext, productStoreyOrigin, liveEntityConforms } from '@ifc-lite/create';
 import { batchDigest } from './model-change-preview';
 import { isNewElement, toMetres, type AuthoringOp, type ElementTarget, type ExistingElement, type ModelAuthoringBatch } from './model-authoring';
-import { dryRunAuthoring, type ElementId } from './model-authoring-native';
+import type { ElementId } from './model-authoring-native';
+import { validateAuthoringDraft } from './model-authoring-preview-draft';
 import {
   authoringReader, className, conforms, deletionRefusal, materialNameOf, nameOf, placementAngle, typeNameOf, type AuthoringReader,
 } from './model-authoring-read';
@@ -352,7 +353,7 @@ export function previewModelAuthoring(state: ViewerState, batch: ModelAuthoringB
       row.issue = error.message;
     }
   }
-  nativeDryRun(ctx, batch);
+  validateAuthoringDraft(state, batch, ctx.rows, modelId => reader(ctx, modelId));
   for (const row of ctx.rows) if (row.status === 'ready' && row.modelId && (row.op.op === 'element.resize' || row.op.op === 'element.profile' || row.op.op === 'element.trimExtend' || (row.op.op === 'material.layers' && row.op.scope === 'element' && row.resolved.layers?.kind === 'wall'))) {
     const boundary = row.op.op === 'element.trimExtend' ? row.resolved.reachBoundary : undefined;
     // The whole native batch validates this boundary; the independent body draft
@@ -378,22 +379,6 @@ export function previewModelAuthoring(state: ViewerState, batch: ModelAuthoringB
   return preview;
 }
 
-/** The builders decide what static checks cannot: dimensions, hosts, joins, schema support. */
-function nativeDryRun(ctx: Context, batch: ModelAuthoringBatch): void {
-  const byModel = new Map<string, AuthoringRow[]>();
-  for (const row of ctx.rows) if (row.status === 'ready' && row.modelId) byModel.set(row.modelId, [...(byModel.get(row.modelId) ?? []), row]);
-  for (const [modelId, rows] of byModel) {
-    const r = reader(ctx, modelId);
-    const refusals = dryRunAuthoring(batch, r.dataStore, r.view, modelId, rows.map(({ index, op, resolved }) => ({ index, op, resolved })), { globalIdScopes: [...ctx.state.models].map(([id, model]) => ({ dataStore: model.ifcDataStore, view: ctx.state.mutationViews.get(id) })) }, ctx.state);
-    for (const row of rows) {
-      const refusal = refusals.get(row.index);
-      if (refusal === undefined) continue;
-      const blocked = row.dependsOn.some((i) => refusals.has(i));
-      row.status = blocked ? 'blocked' : 'invalid';
-      row.issue = blocked ? 'It needs an element another row creates, which the model refused' : refusal;
-    }
-  }
-}
 
 export function authoringCounts(rows: readonly AuthoringRow[]): Record<AuthoringRowStatus, number> {
   const counts: Record<AuthoringRowStatus, number> = { ready: 0, unchanged: 0, conflict: 0, 'missing-target': 0, 'ambiguous-target': 0,

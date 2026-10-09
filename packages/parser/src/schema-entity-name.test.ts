@@ -3,8 +3,9 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { describe, expect, it } from 'vitest';
 import { getSchemaRegistryForVersion, type SchemaRegistry } from './generated/schema-registry-by-version.js';
-import { getCanonicalEntityName } from './schema-entity-name.js';
+import * as parserApi from './index.js';
 import { getAttributeNamesForSchema, getAttributeTypeForSchema } from './ifc-schema.js';
+const getCanonicalEntityName = (registry: SchemaRegistry, type: string) => parserApi.getCanonicalEntityName?.(registry, type);
 
 describe('canonical registry lookup #7362', () => {
   it('matches every real schema key and preserves unknown/schema boundaries', () => {

@@ -11,7 +11,8 @@
  */
 
 import type { StoreEditor } from '@ifc-lite/mutations';
-import { RelationshipType } from '@ifc-lite/data';
+import { edgeSurvives, RelationshipType } from '@ifc-lite/data';
+import { effectiveMutationRelationships } from '@/sdk/adapters/query-overlay-relations';
 import { liveEntityConforms, liveEntityType, readRelatedLists } from '@ifc-lite/create';
 import { remeshContextRoots } from '@ifc-lite/export';
 import type { ViewerState } from '@/store';
@@ -75,11 +76,31 @@ const DELETABLE = ['IfcWall', 'IfcSlab', 'IfcRoof', 'IfcPlate', 'IfcColumn', 'If
   'IfcCovering', 'IfcFurnishingElement', 'IfcBuildingElementProxy'];
 
 /** Why deleting the element would break the model (dependents, unsupported class), or null. */
-export function deletionRefusal(reader: AuthoringReader, expressId: number): string | null {
-  if (!DELETABLE.some((ifcClass) => conforms(reader, expressId, ifcClass))) {
+export function deletionRefusal(reader: AuthoringReader, expressId: number, extraClass?: 'IfcRailing'): string | null {
+  if (!DELETABLE.some((ifcClass) => conforms(reader, expressId, ifcClass)) && !(extraClass && conforms(reader, expressId, extraClass))) {
     return `${className(reader, expressId)} is not deleted by reviewed authoring (supported: ${DELETABLE.join(', ')})`;
   }
-  const parts = reader.dataStore.relationships?.getRelated(expressId, RelationshipType.Aggregates, 'forward') ?? [];
+  if (extraClass === 'IfcRailing') {
+    const overlay = effectiveMutationRelationships(reader.dataStore, reader.view);
+    const superseded = (id: number) => reader.view.isDeleted(id) || overlay.supersededSourceIds.has(id);
+    const isAssembly = (type: RelationshipType) => type === RelationshipType.Aggregates || type === RelationshipType.Nests;
+    for (const direction of ['forward', 'inverse'] as const) {
+      for (const edge of reader.dataStore.relationships?.[direction].getEdges(expressId) ?? []) {
+        if (isAssembly(edge.type) && edgeSurvives(edge, superseded) && !reader.view.isDeleted(edge.target)) {
+          return 'It belongs to a live assembly; deleting it would change its parts or parent';
+        }
+      }
+    }
+    for (const relation of overlay.relationships) {
+      if (!['IFCRELAGGREGATES', 'IFCRELNESTS'].includes(relation.relationshipType.toUpperCase())) continue;
+      const related = relation.relating.includes(expressId) ? relation.related
+        : relation.related.includes(expressId) ? relation.relating : [];
+      if (related.some(id => !reader.view.isDeleted(id))) {
+        return 'It belongs to a live assembly; deleting it would change its parts or parent';
+      }
+    }
+  }
+  const parts = extraClass === 'IfcRailing' ? [] : reader.dataStore.relationships?.getRelated(expressId, RelationshipType.Aggregates, 'forward') ?? [];
   if (parts.some((id) => !reader.view.isDeleted(id))) return 'It is an assembly of other elements; deleting it would orphan its parts';
   if (conforms(reader, expressId, 'IfcDoor') || conforms(reader, expressId, 'IfcWindow')) return null;
   const openings = [...remeshContextRoots(reader.dataStore, reader.view, new Set([expressId]))]

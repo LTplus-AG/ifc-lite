@@ -151,6 +151,7 @@
               "profileStatus": "unavailable",
               "Profile": null
             },
+            "nativeStairExpected": null,
             "nativeType": {
               "status": "typed",
               "expected": {

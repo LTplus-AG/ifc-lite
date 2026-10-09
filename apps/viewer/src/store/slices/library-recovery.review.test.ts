@@ -9,7 +9,7 @@ import { createStore } from 'zustand/vanilla';
 import { executeList, type ListDefinition } from '@ifc-lite/lists';
 import { seedArtifactModels, ARCH } from '@/test/artifact-models-fixture';
 import { createListDataProvider } from '@/lib/lists/adapter';
-import type { Lens } from '@ifc-lite/lens';
+import { BUILTIN_LENSES, type Lens } from '@ifc-lite/lens';
 import { createListSlice, type ListSlice } from './listSlice.js';
 import { createLensSlice, buildInitialLenses, type LensSlice } from './lensSlice.js';
 import { loadListDefinitions, saveListDefinitions } from '@/lib/lists/persistence';
@@ -198,4 +198,17 @@ test('#7300 peer removal retains an independently active Lens', () => {
   assert.ok(loaded.getState().updateLens('active-B', { name: 'Updated B' }).ok);
   assert.equal(loaded.getState().activeLensId, 'active-B');
   assert.equal(loaded.getState().getActiveLens()?.name, 'Updated B');
+});
+
+for (const phase of ['startup', 'unrelated-create'] as const) test(`#7300 native built-in Lens duplicate overrides retain every source row during ${phase}`, () => {
+  const builtin = BUILTIN_LENSES.find(row => row.rules.length > 0);
+  assert.ok(builtin, 'the shipped native catalogue provides a rule-based Lens');
+  const originals = [{ ...builtin, name: 'First native override' }, { ...builtin, name: 'Second native override', rules: [] }];
+  localStorage.setItem('ifc-lite-custom-lenses', JSON.stringify(originals));
+  assert.ok(originals.every(row => migrateSavedLens(row)?.id === builtin.id), 'both source definitions satisfy the existing native migration contract');
+  const loaded = createStore<LensSlice>()(createLensSlice);
+  if (phase === 'unrelated-create') assert.ok(loaded.getState().createLens(lens('unrelated-native-override')).ok);
+  const stored = JSON.parse(localStorage.getItem('ifc-lite-custom-lenses') ?? '[]') as Lens[];
+  if (phase === 'unrelated-create') assert.deepEqual(stored.filter(row => row.id === builtin.id).map(row => row.name), originals.map(row => row.name), 'unrelated successful native CRUD must retain both durable overrides');
+  assert.deepEqual(buildInitialLenses().filter(row => row.id === builtin.id).map(row => row.name), originals.map(row => row.name), 'native startup must not hide one individually readable override');
 });

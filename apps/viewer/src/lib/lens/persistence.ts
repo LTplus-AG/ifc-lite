@@ -77,14 +77,17 @@ export function saveLenses(lenses: Lens[], baseline?: readonly Lens[]): Exclude<
 
 /** Build initial lens list: builtins (with overrides applied) + custom */
 export function buildInitialLenses(source = readSavedLensSource()): Lens[] {
-  const builtinOverrides = new Map<string, Lens>();
+  const builtinOverrides = new Map<string, Lens[]>();
   const custom: Lens[] = [];
   for (const lens of source.rows) {
-    if (BUILTIN_IDS.has(lens.id)) builtinOverrides.set(lens.id, { ...lens, builtin: true });
-    else custom.push(lens);
+    if (BUILTIN_IDS.has(lens.id)) {
+      const overrides = builtinOverrides.get(lens.id) ?? [];
+      overrides.push({ ...lens, builtin: true });
+      builtinOverrides.set(lens.id, overrides);
+    } else custom.push(lens);
   }
-  const builtins = BUILTIN_LENSES.map(l =>
-    builtinOverrides.has(l.id) ? builtinOverrides.get(l.id)! : { ...l },
+  const builtins = BUILTIN_LENSES.flatMap(l =>
+    builtinOverrides.get(l.id) ?? [{ ...l }],
   );
   return [...builtins, ...custom];
 }

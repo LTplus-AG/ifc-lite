@@ -334,3 +334,44 @@ for (const refusal of ['missing-identity', 'duplicate-identity', 'missing-member
   assert.deepEqual(store.getEntity(a.qto), before, 'refusal leaves the immutable native source definition unchanged');
  });
 }
+
+for (const intent of ['incompatible-kind', 'same-kind', 'explicit-compatible'] as const) {
+ test(`#7355 native type quantity ${intent} preserves coherent explicit unit ownership`, async t => {
+  const fixture = await inheritedSource(t); if (!fixture) return;
+  const { store, a, view, f } = fixture;
+  const editor = new StoreEditor(store, view);
+  const unit = editor.addEntity('IfcSIUnit', [null, '.VOLUMEUNIT.', null, '.CUBIC_METRE.']).expressId;
+  view.setPositionalAttribute(a.volume, 2, `#${unit}`);
+  const sourceBytes = editedModelBytes(store, view);
+  const source = await parse(sourceBytes);
+  const model = useViewerStore.getState().models.get('arch'); assert.ok(model);
+  useViewerStore.setState({ models: new Map([['arch', { ...model, ifcDataStore: source }]]), ifcDataStore: source,
+   mutationViews: new Map(), storeEditors: new Map() });
+  const current = getOrCreateMutationView(useViewerStore, 'arch'); assert.ok(current);
+  current.setQuantity(a.type, 'Qto_WallBaseQuantities', 'NetVolume', 35,
+   intent === 'incompatible-kind' ? QuantityType.Area : QuantityType.Volume,
+   intent === 'explicit-compatible' ? 'm³' : undefined);
+  let bytes: Uint8Array | undefined;
+  let refusal: unknown;
+  try { bytes = editedModelBytes(source, current); } catch (error) { refusal = error; }
+  if (process.env.CAMPAIGN_WRITER_EXPORT_PREFIX) {
+   await writeFile(`${process.env.CAMPAIGN_WRITER_EXPORT_PREFIX}-${intent}.before.ifc`, sourceBytes);
+   if (bytes) await writeFile(`${process.env.CAMPAIGN_WRITER_EXPORT_PREFIX}-${intent}.ifc`, bytes);
+  }
+  if (intent === 'incompatible-kind') {
+   assert.ok(refusal instanceof Error, 'dimension-changing quantity must refuse incompatible retained native Unit');
+   assert.match(refusal.message, /unit|dimension|measure/i);
+   return;
+  }
+  assert.equal(refusal, undefined); assert.ok(bytes);
+  const exported = await parse(bytes);
+  assert.equal(net(extractTypeQuantitiesOnDemand(exported, f.id)?.quantities ?? []), 35);
+  const owned = exported.getEntity(a.type)?.attributes[5]; assert.ok(Array.isArray(owned));
+  const qto = nativeIds(owned).map(id => exported.getEntity(id)).find(node => node?.type === 'IFCELEMENTQUANTITY'); assert.ok(qto);
+  const members = qto.attributes[5]; assert.ok(Array.isArray(members));
+  const quantity = exported.getEntity(nativeIds(members)[0]); assert.ok(quantity);
+  assert.equal(quantity.type, 'IFCQUANTITYVOLUME');
+  assert.equal(quantity.attributes[2], unit, 'compatible intent preserves native explicit Unit');
+  assert.deepEqual(exported.getEntity(unit)?.attributes, source.getEntity(unit)?.attributes);
+ });
+}

@@ -65,3 +65,314 @@ export interface BoxParams { position: Point3; width: number; depth: number; thi
 export type AuthoringOp =
   | StoreyReassignmentOp
   | { op: 'curtainWall.create'; ref: string; storey: StoreyTarget; params: CurtainWallInStoreParams }
+  | ReviewedGridOp
+  | NativeReplacementOp
+  | { op: 'stair.resize'; target: ExistingElement; expected: StairDimensions; size: StairDimensionEdit }
+  | { op: 'stair.delete'; target: ExistingElement }
+  | { op: 'railing.delete'; target: ExistingElement }
+  | { op: 'stair.replace'; target: ExistingElement; ref: string; storey: StoreyTarget; params: StairInStoreParams }
+  | { op: 'railing.replace'; target: ExistingElement; ref: string; storey: StoreyTarget; params: RailingInStoreParams }
+  | { op: 'stair.create'; ref: string; storey: StoreyTarget; params: StairInStoreParams }
+  | { op: 'railing.create'; ref: string; storey: StoreyTarget; params: RailingInStoreParams }
+  | { op: 'element.create'; ref: string; ifcClass: AuthoringClass; storey: StoreyTarget; name: string; params: AxisParams | BoxParams | ShapeParams }
+  | { op: 'element.split'; target: ExistingElement; expected: SplitSnapshot; cut: SplitCut }
+  | ({ op: 'element.copy'; target: ElementTarget; ref: string } & CopyFields)
+  | ({ op: 'element.array'; target: ElementTarget; refs: string[] } & ArrayFields)
+  | { op: 'hosted.edit'; target: ExistingElement; expected: ExpectedHostedEdit; edit: HostedElementEdit }
+  | ({ op: 'element.trimExtend'; target: ExistingElement } & ReachFields)
+  | { op: 'element.delete'; target: ExistingElement }
+  | { op: 'element.resize'; target: ExistingElement; expected: ExpectedSize; size: ElementSizePatch }
+  | { op: 'element.profile'; target: ExistingElement; expected: ProfileSection; Profile: ProfileSection }
+  /** Horizontal move by a storey-local delta; `from` optionally pins today's placement origin [x, y] in the storey. */
+  | { op: 'element.move'; target: ExistingElement; delta: [number, number]; from?: [number, number] }
+  /** Turn about the element's own placement origin; `fromDeg` optionally pins today's angle. */
+  | { op: 'element.rotate'; target: ExistingElement; angleDeg: number; fromDeg?: number; pivot?: [number, number]; expected?: NativePlacement }
+  | AlignmentOp
+  | { op: 'type.detach'; target: ExistingElement; expected: { GlobalId: string; Name: string } }
+  | { op: 'type.assign'; target: ElementTarget; expected?: string | null; type: { globalId: string; name: string } | { create: { ifcClass: string; name: string } } }
+  | ({ op: 'material.layers'; target: ExistingElement } & LayerFields)
+  | { op: 'material.assign'; target: ElementTarget; expected?: string | null; material: { name: string; create: boolean } }
+  | { op: 'walls.join'; walls: [ElementTarget, ElementTarget] }
+  /** A door, window or opening in a host wall: `offset` from the wall's placement origin along it to the centre, `sill` above it. */
+  | SlabOpeningCreate
+  | { op: 'hosted.create'; ref?: string; kind: HostedKind; host: ElementTarget; name?: string; offset: number; sill: number; width: number; height: number };
+
+export type AuthoringOpName = AuthoringOp['op'];
+export const AUTHORING_OPS: readonly AuthoringOpName[] = ['curtainWall.create', 'element.reassignStorey', 'grid.create', 'column.createOnGrid', 'stair.resize', 'stair.delete', 'railing.delete', 'stair.replace', 'railing.replace', 'stair.create', 'railing.create', 'element.create', 'element.replace', 'element.delete', 'element.split', 'element.resize', 'element.profile', 'element.trimExtend', 'element.move', 'element.rotate', 'element.align', 'element.copy', 'element.array',
+  'type.assign', 'type.detach', 'material.assign', 'material.layers', 'walls.join', 'hosted.create', 'hosted.edit'];
+
+export interface ModelAuthoringBatch {
+  version: 1;
+  kind: 'model.authoring';
+  title: string;
+  rationale?: string;
+  units: AuthoringUnits;
+  frame: 'storey-local';
+  operations: AuthoringOp[];
+}
+
+export const MODEL_AUTHORING_LIMIT = 200;
+
+/** Builder-plausible ranges, metres. A value outside one is usually a unit mistake, so the message says so. */
+const R = {
+  coordinate: { min: -10_000, max: 10_000, signed: true },
+  thickness: { min: 0.01, max: 5 },
+  section: { min: 0.01, max: 10 },
+  height: { min: 0.1, max: 200 },
+  extent: { min: 0.05, max: 1_000 },
+  fill: { min: 0.05, max: 20 },
+  offset: { min: -1_000, max: 1_000, signed: true },
+  sill: { min: -20, max: 200, signed: true },
+  delta: { min: -1_000, max: 1_000, signed: true },
+} satisfies Record<string, LengthRange>;
+
+export const isNewElement = (target: ElementTarget): target is NewElement => 'ref' in target;
+
+function existing(value: unknown, at: string): ExistingElement {
+  const target = parseGlobalIdTarget(value, at);
+  if (!record(value)) throw new Error(`${at} is not an object`);
+  if (typeof value.ifcClass !== 'string' || !/^Ifc[A-Za-z0-9]+$/.test(value.ifcClass)) throw new Error(`${at} must state the element's expected ifcClass`);
+  if (typeof value.name !== 'string' || value.name.length > 200) throw new Error(`${at} must state the element's expected name ("" when unnamed)`);
+  return { ...target, ifcClass: value.ifcClass, name: value.name };
+}
+
+function element(value: unknown, at: string, refs: ReadonlyMap<string, AuthoringOp>): ElementTarget {
+  if (record(value) && 'ref' in value) {
+    const ref = parseRef(value.ref, at);
+    if (!refs.has(ref)) throw new Error(`${at} refers to "${ref}", which no earlier operation creates`);
+    return { ref };
+  }
+  return existing(value, at);
+}
+
+/** Host family from its stated class or an earlier native creation/copy. */
+function isHostFamily(target: ElementTarget, refs: ReadonlyMap<string, AuthoringOp>, family: 'IfcWall' | 'IfcSlab' = 'IfcWall'): boolean {
+  const visited = new Set<string>();
+  while (isNewElement(target)) {
+    if (visited.has(target.ref)) return false;
+    visited.add(target.ref);
+    const creator = refs.get(target.ref);
+    if (creator?.op === 'element.create' || creator?.op === 'element.replace') return creator.ifcClass === family;
+    if (creator?.op !== 'element.copy' && creator?.op !== 'element.array') return false;
+    target = creator.target;
+  }
+  return target.ifcClass.startsWith(family);
+}
+
+export function createParams(value: Record<string, unknown>, ifcClass: AuthoringClass, units: AuthoringUnits, at: string): AxisParams | BoxParams | ShapeParams {
+  const p = value.params;
+  if (!record(p)) throw new Error(`${at} needs params`);
+  const shape = parseShapeParams(p, ifcClass, units, at);
+  if (shape) return shape;
+  const length = (key: string, range: LengthRange) => parseLength(p[key], units, range, `${at} ${key}`);
+  if (ifcClass === 'IfcWall' || ifcClass === 'IfcBeam' || ifcClass === 'IfcMember') {
+    const start = parsePoint(p.start, units, R.coordinate, `${at} start`);
+    const end = parsePoint(p.end, units, R.coordinate, `${at} end`);
+    const factor = units === 'mm' ? 0.001 : 1;
+    if (Math.hypot(end[0] - start[0], end[1] - start[1], end[2] - start[2]) * factor < 0.05) throw new Error(`${at} is shorter than 0.05 m`);
+    if (ifcClass === 'IfcWall' && Math.abs(end[2] - start[2]) * factor > 1e-9) throw new Error(`${at}: a wall's start and end must share one height`);
+    return ifcClass === 'IfcWall'
+      ? { start, end, thickness: length('thickness', R.thickness), height: length('height', R.height) }
+      : { start, end, width: length('width', R.section), height: length('height', R.section) };
+  }
+  const position = parsePoint(p.position, units, R.coordinate, `${at} position`);
+  if (ifcClass === 'IfcColumn') return { position, width: length('width', R.section), depth: length('depth', R.section), height: length('height', R.height) };
+  const box = { position, width: length('width', R.extent), depth: length('depth', R.extent) };
+  return ifcClass === 'IfcSpace' ? { ...box, height: length('height', R.height) } : { ...box, thickness: length('thickness', R.thickness) };
+}
+
+function expectedName(value: Record<string, unknown>, target: ElementTarget, at: string): { expected?: string | null } {
+  if (isNewElement(target)) {
+    if (value.expected !== undefined) throw new Error(`${at}: an element created in this batch has no current value to expect`);
+    return {};
+  }
+  if (!Object.hasOwn(value, 'expected') || (value.expected !== null && typeof value.expected !== 'string')) {
+    throw new Error(`${at} must state the expected current name (null when none)`);
+  }
+  return { expected: value.expected as string | null };
+}
+
+function operation(value: unknown, index: number, units: AuthoringUnits, refs: Map<string, AuthoringOp>): AuthoringOp {
+  const at = `Operation ${index + 1}`;
+  if (!record(value)) throw new Error(`${at} is not an object`);
+  const defineRef = (op: AuthoringOp & { ref?: string }) => {
+    if (op.ref === undefined) return op;
+    if (refs.has(op.ref)) throw new Error(`${at} reuses ref "${op.ref}"`);
+    refs.set(op.ref, op);
+    return op;
+  };
+  switch (value.op) {
+    case 'grid.create': return defineRef({ op: value.op, ref: parseRef(value.ref, at), storey: parseGridStorey(value.storey, `${at} storey`), params: parseGridParams(value.params, units, at) });
+    case 'column.createOnGrid': return defineRef({ op: value.op, ref: parseRef(value.ref, at), storey: parseGridStorey(value.storey, `${at} storey`), params: parseGridColumnParams(value.params, units, at), grid: parseGridBinding(value.grid, ref => refs.get(ref)?.op === 'grid.create', `${at} grid`) });
+    case 'element.reassignStorey': return parseStoreyReassignment(value, existing(value.target, at), at);
+    case 'element.replace': return defineRef(parseReplacementFields(value,existing(value.target,at),units,at));
+    case 'stair.resize': return {op:value.op,target:existing(value.target,at),expected:parseExpectedStair(value.expected,`${at} expected`),size:parseStairPatch(value.size,units,`${at} size`)};
+    case 'stair.delete': case 'railing.delete': return {op:value.op,target:existing(value.target,at)};
+    case 'stair.replace': return defineRef({op:value.op,target:existing(value.target,at),ref:parseRef(value.ref,at),storey:parseGlobalIdTarget(value.storey,`${at} storey`),params:parseStairRailingParams(value.params,'stair',units,at)});
+    case 'railing.replace': return defineRef({op:value.op,target:existing(value.target,at),ref:parseRef(value.ref,at),storey:parseGlobalIdTarget(value.storey,`${at} storey`),params:parseStairRailingParams(value.params,'railing',units,at)});
+    case 'curtainWall.create': {
+      if (Object.keys(value).some(key => !['op', 'ref', 'storey', 'params'].includes(key))) throw new Error(`${at}: unsupported curtain-wall operation field`);
+      return defineRef({ op: value.op, ref: parseRef(value.ref, at), storey: parseGlobalIdTarget(value.storey, `${at} storey`), params: parseCurtainWallParams(value.params, units, at) });
+    }
+    case 'stair.create': return defineRef({ op: value.op, ref: parseRef(value.ref, at), storey: parseGlobalIdTarget(value.storey, `${at} storey`), params: parseStairRailingParams(value.params, 'stair', units, at) });
+    case 'railing.create': return defineRef({ op: value.op, ref: parseRef(value.ref, at), storey: parseGlobalIdTarget(value.storey, `${at} storey`), params: parseStairRailingParams(value.params, 'railing', units, at) });
+    case 'hosted.edit': {
+      if (Object.keys(value).some(key => !['op', 'target', 'expected', 'edit'].includes(key))) throw new Error(`${at}: unsupported hosted edit field`);
+      const target = existing(value.target, at);
+      if (!['IfcDoor', 'IfcWindow', 'IfcOpeningElement', 'IfcOpeningStandardCase'].includes(target.ifcClass)) throw new Error(`${at}: hosted.edit requires a native door, window or opening occurrence`);
+      return { op: value.op, target, expected: parseExpectedHostedEdit(value.expected, units, `${at} expected`), edit: parseHostedEdit(value.edit, units, `${at} edit`) };
+    }
+    case 'element.trimExtend':
+      return { op: value.op, target: existing(value.target, at), ...parseReachFields(value, units, at, (v, name) => element(v, name, refs)) };
+    case 'element.split': {
+      if (Object.keys(value).some(key => !['op', 'target', 'expected', 'cut'].includes(key))) throw new Error(`${at}: unsupported split field`);
+      const expected = parseSplitSnapshot(value.expected, `${at} expected`), cut = parseSplitCut(value.cut, units, `${at} cut`);
+      if (expected.kind !== cut.kind) throw new Error(`${at}: the native snapshot kind and cut kind must agree`);
+      return { op: value.op, target: existing(value.target, at), expected, cut };
+    }
+    case 'element.resize': {
+      const expected = parseSizeParams(value.expected, units, `${at} expected`, true);
+      const size = parseSizeParams(value.size, units, `${at} size`, false);
+      if (expected.kind !== size.kind) throw new Error(`${at}: expected and changed native size kinds must match`);
+      return { op: value.op, target: existing(value.target, at), expected, size };
+    }
+    case 'element.profile':
+      return { op: value.op, target: existing(value.target, at), expected: parseProfileSectionParams(value.expected, units, `${at} expected`), Profile: parseProfileSectionParams(value.Profile, units, `${at} Profile`) };
+    case 'element.create': {
+      if (!AUTHORING_CLASSES.includes(value.ifcClass as AuthoringClass)) {
+        throw new Error(`${at}: ifcClass must be one of ${AUTHORING_CLASSES.join(', ')}; other classes are not authored by the viewer`);
+      }
+      const ifcClass = value.ifcClass as AuthoringClass;
+      return defineRef({ op: 'element.create', ref: parseRef(value.ref, at), ifcClass, storey: parseGlobalIdTarget(value.storey, `${at} storey`),
+        name: parseText(value.name, `${at} name`), params: createParams(value, ifcClass, units, at) });
+    }
+    case 'element.copy': {
+      const target = element(value.target, at, refs);
+      const fields = parseCopyFields(value, units, at, false);
+      return defineRef({ ...fields, op: 'element.copy', target, ref: parseRef(value.ref, at) });
+    }
+    case 'element.array': {
+      const target = element(value.target, at, refs);
+      const fields = parseCopyFields(value, units, at, true);
+      if (!Array.isArray(value.refs) || value.refs.length !== fields.count - 1) throw new Error(`${at}: refs must name each of the count - 1 copies`);
+      const names = value.refs.map(name => parseRef(name, at));
+      const op: AuthoringOp = { ...fields, op: 'element.array', target, refs: names };
+      for (const name of names) {
+        if (refs.has(name)) throw new Error(`${at} reuses ref "${name}"`);
+        refs.set(name, op);
+      }
+      return op;
+    }
+    case 'element.delete':
+      return { op: 'element.delete', target: existing(value.target, at) };
+    case 'element.move': {
+      if (!Array.isArray(value.delta) || value.delta.length !== 2) {
+        throw new Error(`${at}: delta must be [dx, dy]; vertical moves are not supported`);
+      }
+      const delta = value.delta.map((d, i) => parseLength(d, units, R.delta, `${at} delta[${i}]`)) as [number, number];
+      if (value.from !== undefined && (!Array.isArray(value.from) || value.from.length !== 2)) throw new Error(`${at}: from must be [x, y] in ${units}`);
+      const from = Array.isArray(value.from) ? value.from.map((v, i) => parseLength(v, units, R.coordinate, `${at} from[${i}]`)) as [number, number] : undefined;
+      if (Math.hypot(...delta) * (units === 'mm' ? 0.001 : 1) < 1e-4) throw new Error(`${at} moves by nothing`);
+      return { op: 'element.move', target: existing(value.target, at), delta,
+        ...(from ? { from } : {}) };
+    }
+    case 'element.rotate': {
+      const angle = value.angleDeg;
+      if (typeof angle !== 'number' || !Number.isFinite(angle) || angle === 0 || Math.abs(angle) > 360) throw new Error(`${at}: angleDeg must be a non-zero number of degrees within ±360`);
+      if (value.fromDeg !== undefined && (typeof value.fromDeg !== 'number' || !Number.isFinite(value.fromDeg))) throw new Error(`${at}: fromDeg must be a number`);
+      if (value.pivot !== undefined && (!Array.isArray(value.pivot) || value.pivot.length !== 2)) throw new Error(`${at}: pivot must be [x,y] in declared units`);
+      const pivot = Array.isArray(value.pivot) ? value.pivot.map((v, i) => parseLength(v, units, R.coordinate, `${at} pivot[${i}]`)) as [number, number] : undefined;
+      const expected = value.expected === undefined && !pivot ? undefined : parseNativePlacement(value.expected, `${at} expected`);
+      return { op: 'element.rotate', target: existing(value.target, at), angleDeg: angle, ...(typeof value.fromDeg === 'number' ? { fromDeg: value.fromDeg } : {}),
+        ...(pivot ? { pivot } : {}), ...(expected ? { expected } : {}) };
+    }
+    case 'element.align': return parseAlignment(value, at, existing);
+    case 'type.detach': {
+      const expected = record(value.expected) ? value.expected : null;
+      if (!expected || typeof expected.Name !== 'string' || expected.Name.length > 200) throw new Error(`${at}: expected must name the current type {GlobalId, Name}`);
+      const GlobalId = parseGlobalIdTarget({ globalId: expected.GlobalId }, `${at} expected type`).globalId;
+      return { op: 'type.detach', target: existing(value.target, at), expected: { GlobalId, Name: expected.Name } };
+    }
+    case 'type.assign': {
+      const target = element(value.target, at, refs);
+      const type = record(value.type) ? value.type : null;
+      if (!type) throw new Error(`${at} needs a type`);
+      const create = record(type.create) ? type.create : null;
+      const chosen = create
+        ? { create: { ifcClass: parseText(create.ifcClass, `${at} type class`), name: parseText(create.name, `${at} type name`) } }
+        : { globalId: parseGlobalIdTarget(type, `${at} type`).globalId, name: parseText(type.name, `${at} type name`) };
+      if (create && !/^Ifc[A-Za-z0-9]+Type$/.test(chosen.create!.ifcClass)) throw new Error(`${at}: a new type needs an Ifc…Type class`);
+      return { op: 'type.assign', target, ...expectedName(value, target, at), type: chosen as Extract<AuthoringOp, { op: 'type.assign' }>['type'] };
+    }
+    case 'material.layers':
+      return { op: 'material.layers', target: existing(value.target, at), ...parseLayerFields(value, units, at, existing) };
+    case 'material.assign': {
+      const target = element(value.target, at, refs);
+      const material = record(value.material) ? value.material : null;
+      if (!material || (material.create !== undefined && typeof material.create !== 'boolean')) throw new Error(`${at} needs a material {name, create}`);
+      return { op: 'material.assign', target, ...expectedName(value, target, at),
+        material: { name: parseText(material.name, `${at} material name`), create: material.create === true } };
+    }
+    case 'walls.join': {
+      if (!Array.isArray(value.walls) || value.walls.length !== 2) throw new Error(`${at} joins exactly two walls`);
+      const walls = value.walls.map((wall, i) => element(wall, `${at} wall ${i + 1}`, refs)) as [ElementTarget, ElementTarget];
+      for (const wall of walls) if (!isHostFamily(wall, refs)) throw new Error(`${at}: only walls are joined`);
+      return { op: 'walls.join', walls };
+    }
+    case 'hosted.create': {
+      if (!HOSTED_KINDS.includes(value.kind as HostedKind)) throw new Error(`${at}: kind must be door, window or opening`);
+      const host = element(value.host, at, refs);
+      if (isHostFamily(host, refs, 'IfcSlab')) return defineRef({ op: 'hosted.create', kind: 'opening', host,
+        ...(value.ref === undefined ? {} : { ref: parseRef(value.ref, at) }), ...(value.name === undefined ? {} : { name: parseText(value.name, `${at} name`) }),
+        ...parseSlabOpeningFields(value, host, units, at) });
+      if (!isHostFamily(host, refs)) throw new Error(`${at}: doors, windows and openings are hosted in walls only`);
+      const length = (key: string, range: LengthRange) => parseLength(value[key], units, range, `${at} ${key}`);
+      return defineRef({ op: 'hosted.create', ...(value.ref !== undefined ? { ref: parseRef(value.ref, at) } : {}), kind: value.kind as HostedKind, host,
+        ...(value.name !== undefined ? { name: parseText(value.name, `${at} name`) } : {}),
+        offset: length('offset', R.offset), sill: length('sill', R.sill), width: length('width', R.fill), height: length('height', R.fill) });
+    }
+    default:
+      throw new Error(`${at} has an unsupported operation; supported: ${AUTHORING_OPS.join(', ')}`);
+  }
+}
+
+/** Strict, bounded parse of a complete JSON answer (optionally fenced). Throws with a reason a person can act on. */
+export function parseModelAuthoringBatch(answer: string): ModelAuthoringBatch {
+  if (answer.length > 400_000) throw new Error('The authoring batch exceeds the text limit');
+  const trimmed = answer.trim();
+  const fenced = /^```(?:json)?\s*\n([\s\S]*?)\n```$/.exec(trimmed);
+  const value: unknown = JSON.parse(fenced ? fenced[1] : trimmed);
+  if (!record(value) || value.version !== 1 || value.kind !== 'model.authoring') throw new Error('Not a model authoring batch');
+  const title = parseText(value.title, 'The batch title');
+  if (value.rationale !== undefined && (typeof value.rationale !== 'string' || value.rationale.length > 2000)) throw new Error('The rationale must be text');
+  if (value.units !== 'm' && value.units !== 'mm') throw new Error('An authoring batch must declare "units": "m" or "mm"');
+  if (value.frame !== 'storey-local') throw new Error('An authoring batch must declare "frame": "storey-local"; other frames are refused');
+  if (!Array.isArray(value.operations) || value.operations.length === 0) throw new Error('An authoring batch needs at least one operation');
+  if (value.operations.length > MODEL_AUTHORING_LIMIT) throw new Error(`An authoring batch may hold at most ${MODEL_AUTHORING_LIMIT} operations`);
+  const refs = new Map<string, AuthoringOp>();
+  const units = value.units;
+  const operations = value.operations.map((op, index) => operation(op, index, units, refs));
+  const gridAxes = operations.reduce((sum, op) => sum + (op.op === 'grid.create' ? op.params.UAxes.length + op.params.VAxes.length + (op.params.WAxes?.length ?? 0) : 0), 0);
+  if (gridAxes > MAX_GRID_AXES) throw new Error(`An authoring batch may create at most ${MAX_GRID_AXES} grid axes`);
+  const splitTargets = operations.filter((op): op is Extract<AuthoringOp, { op: 'element.split' }> => op.op === 'element.split').map(op => `${op.target.modelId ?? ''}:${op.target.globalId}`);
+  if (new Set(splitTargets).size !== splitTargets.length) throw new Error('Split targets must be unique; no targets are silently discarded');
+  const splitWork = operations.reduce((sum, op) => sum + (op.op === 'element.split' && op.expected.kind === 'slab' ? op.expected.chain.footprint.length ** 2 : 0), 0);
+  if (splitWork > AUTHORING_OUTLINE_WORK_LIMIT) throw new Error(`Split preview work exceeds ${AUTHORING_OUTLINE_WORK_LIMIT} vertex-pair units; use a smaller explicit selection`);
+  const curtainWork = operations.reduce((sum, op) => sum + (op.op === 'curtainWall.create' ? curtainWallPartWork(op.params, units) : 0), 0);
+  if (curtainWork > CURTAIN_WALL_PART_LIMIT) throw new Error(`Curtain-wall batch exceeds ${CURTAIN_WALL_PART_LIMIT} native parts; use smaller explicit batches`);
+  const stairRailingWork = operations.reduce((total, op) => total + (
+    op.op === 'stair.create' || op.op === 'stair.replace' || op.op === 'element.replace' && op.ifcClass === 'IfcStair' ? op.params.NumberOfRisers
+      : op.op === 'railing.create' || op.op === 'railing.replace' || op.op === 'element.replace' && op.ifcClass === 'IfcRailing' ? railingPostWork(op.params.Path, op.params.PostSpacing) : 0), 0);
+  if (stairRailingWork > STAIR_RAILING_WORK_LIMIT) throw new Error(`The native stair-step/railing-post work exceeds ${STAIR_RAILING_WORK_LIMIT}; split this proposal into smaller batches`);
+  const outlineWork = operations.reduce((sum, op) => sum + ((op.op === 'element.create' || op.op === 'element.replace') && 'OuterCurve' in op.params ? op.params.OuterCurve.length ** 2 : 0), 0);
+  if (outlineWork > AUTHORING_OUTLINE_WORK_LIMIT) throw new Error(`The polygon preview work exceeds ${AUTHORING_OUTLINE_WORK_LIMIT} vertex-pair units; split this proposal into smaller batches`);
+  const copies = operations.reduce((total, op) => total + (op.op === 'element.array' ? op.count - 1 : op.op === 'element.copy' ? 1 : 0), 0);
+  if (copies > MODEL_AUTHORING_LIMIT) throw new Error(`An authoring batch may create at most ${MODEL_AUTHORING_LIMIT} copy roots`);
+  return { version: 1, kind: 'model.authoring', title, ...(typeof value.rationale === 'string' ? { rationale: value.rationale } : {}),
+    units, frame: 'storey-local', operations };
+}
+
+/** A length of `batch` in metres. */
+export const toMetres = (batch: Pick<ModelAuthoringBatch, 'units'>, value: number): number => batch.units === 'mm' ? value / 1000 : value;
+export const pointToMetres = (batch: Pick<ModelAuthoringBatch, 'units'>, point: readonly number[]): Point3 =>
+  [toMetres(batch, point[0]), toMetres(batch, point[1]), toMetres(batch, point[2])];

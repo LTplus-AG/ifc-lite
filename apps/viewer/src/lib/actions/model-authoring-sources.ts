@@ -11,3 +11,24 @@ interface Source { modelId: string; store: IfcDataStore | undefined; source: Ifc
 const sources = new WeakMap<ModelAuthoringPreview, Source[]>();
 const needsSource = (preview: ModelAuthoringPreview) => preview.batch.operations.some(op =>
   op.op === 'curtainWall.create' || op.op === 'material.layers' || op.op === 'element.reassignStorey' || op.op === 'grid.create' || op.op === 'column.createOnGrid' || op.op === 'element.replace' || op.op === 'element.align' || (op.op === 'element.rotate' && !!op.pivot) || op.op === 'element.copy' || op.op === 'element.array'
+  || op.op === 'type.detach' || op.op === 'hosted.edit' || op.op === 'hosted.create' && 'params' in op || op.op === 'element.trimExtend'
+  || op.op === 'element.split' || op.op.startsWith('stair.') || op.op.startsWith('railing.'));
+
+/** Copy, split, Trim/Extend and hosted edit approval belong to these loaded sources, never to a later reload with matching names/ids. */
+export function captureAuthoringSources(state: ViewerState, preview: ModelAuthoringPreview): void {
+  if (!needsSource(preview)) return;
+  sources.set(preview, [...state.models].map(([modelId, model]) => ({
+    modelId, store: model.ifcDataStore ?? undefined, source: model.ifcDataStore?.source,
+    hash: model.sourceContentHash, view: state.mutationViews.get(modelId), revision: state.mutationViews.get(modelId)?.getMutationRevision(),
+  })));
+}
+export function authoringSourcesAreCurrent(state: ViewerState, preview: ModelAuthoringPreview): boolean {
+  if (!needsSource(preview)) return true;
+  const captured = sources.get(preview);
+  return !!captured && captured.length === state.models.size && captured.every(source => {
+    const model = state.models.get(source.modelId);
+    return !!model && (model.ifcDataStore ?? undefined) === source.store && model.ifcDataStore?.source === source.source
+      && model.sourceContentHash === source.hash && state.mutationViews.get(source.modelId) === source.view
+      && state.mutationViews.get(source.modelId)?.getMutationRevision() === source.revision;
+  });
+}

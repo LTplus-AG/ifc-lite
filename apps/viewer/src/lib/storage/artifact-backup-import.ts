@@ -109,7 +109,7 @@ export function importArtifactLibraries(incoming: StandaloneArtifactLibraries): 
         name: identity.name, builtin: false };
       copies.push(copy); rows.push(copy);
     }
-    if (copies.length && !state.importLenses(copies).ok) {
+    if (incoming.lenses.length && !state.importLenses(copies).ok) {
       outcome.failed.push('lenses'); outcome.pending.lenses = incoming.lenses;
     }
     else outcome.saved += copies.length;

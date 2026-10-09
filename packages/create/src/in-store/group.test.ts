@@ -12,7 +12,8 @@ import { RelationshipType } from '@ifc-lite/data';
 import { IfcCreator } from '../ifc-creator.js';
 import { AnchorEntityReader } from './resolve-anchor.js';
 import { addGroupToStore, readGroupInStore, updateGroupInStore, removeGroupInStore } from './group.js';
-import { GROUP_GRAPH_LIMITS, groupRecordReferences } from './group-graph.js';
+import { GROUP_GRAPH_LIMITS } from './group-graph.js';
+import * as groupGraphApi from './group-graph.js';
 
 async function session(schema: 'IFC4' | 'IFC4X3' = 'IFC4') {
   let bytes: Uint8Array;
@@ -181,13 +182,13 @@ it('does not confuse quoted STEP-looking metadata with an incoming dependency #7
 it('scans real references after escaped strings and comments without treating their contents as dependencies #7329', () => {
   // The STEP lexical invariant is independent of a parser accepting malformed input.
   const record = "#99=IFCRELASSIGNSTOGROUP('Owner''s #123 /* text */',/* '#456 */#7,$,'#890',(#11,#12),$,#13);";
-  expect(groupRecordReferences(record)).toEqual([7, 11, 12, 13]);
-  expect(groupRecordReferences("#99=IFCGROUP('" + 'x'.repeat(2_000_000) + "''#999',$,#17);" )).toEqual([17]);
+  expect(groupGraphApi.groupRecordReferences?.(record)).toEqual([7, 11, 12, 13]);
+  expect(groupGraphApi.groupRecordReferences?.("#99=IFCGROUP('" + 'x'.repeat(2_000_000) + "''#999',$,#17);" )).toEqual([17]);
 });
 
 it('refuses unterminated quoted or comment spans and invalid real references instead of certifying truncated dependencies #7329', () => {
   for (const record of ["#99=IFCGROUP('never closes,#17);", "#99=IFCGROUP(/* never closes #17);", "#99=IFCGROUP('escaped''", "#99=IFCGROUP($,#);", "#99=IFCGROUP($,#0);", "#99=IFCGROUP($,#9007199254740992);"]) {
-    expect(() => groupRecordReferences(record)).toThrow(/unterminated|unreadable reference|invalid reference/);
+    expect(() => groupGraphApi.groupRecordReferences?.(record)).toThrow(/unterminated|unreadable reference|invalid reference/);
   }
 });
 

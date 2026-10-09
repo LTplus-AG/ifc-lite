@@ -29,7 +29,8 @@ test(`#7315 real native ${mode} ${slot} retarget snapshot agrees with independen
  const f=await fixture(),old=readSplitSnapshot(f.store,f.editor,f.id,'m');
  const point=f.editor.addEntity('IfcCartesianPoint',[[22000,21000,3000]]),direction=f.editor.addEntity('IfcDirection',[[1,0,0]]),axis=f.editor.addEntity('IfcAxis2Placement3D',[`#${point.expressId}`,null,`#${direction.expressId}`]);
  const target=slot==='RelativePlacement'?f.localId:f.id;
- const reference=slot==='RelativePlacement'?axis.expressId:f.editor.addEntity('IfcLocalPlacement',[f.store.getEntity(f.localId)?.attributes[0],`#${axis.expressId}`]).expressId;
+ const placement=f.store.getEntity(f.localId);assert.ok(placement);const parent=placement.attributes[0];if(parent===undefined)assert.fail('The actual native placement must expose its parent field');
+ const reference=slot==='RelativePlacement'?axis.expressId:f.editor.addEntity('IfcLocalPlacement',[parent,`#${axis.expressId}`]).expressId;
  if(mode==='named')f.editor.setAttribute(target,slot,`#${reference}`);else f.editor.setPositionalAttribute(target,slot==='RelativePlacement'?1:5,`#${reference}`);
  const saved=await parseIfc(editedModelBytes(f.store,f.view)),savedEditor=new StoreEditor(saved,new MutablePropertyView(saved.properties,SAMPLE_MODEL));
  assert.equal(Number(saved.getEntity(target)?.attributes[slot==='RelativePlacement'?1:5]),reference,'public STEP export proves the exact native reference edit');
@@ -92,7 +93,7 @@ for(const unit of ['metre','millimetre'] as const)for(const declared of ['m','mm
  const target={modelId:MODEL_ID,globalId:native.entities.getGlobalId(made.expressId),ifcClass:'IfcSlab',name:'Bound native frame'},cut={kind:'slab',a:[24*k,-100*k],b:[24*k,100*k]};
  const batch=(snapshot:typeof expected)=>parseModelAuthoringBatch(JSON.stringify({version:1,kind:'model.authoring',title:'Current native source pin',units:declared,frame:'storey-local',operations:[{op:'element.split',target,expected:snapshot,cut}]}));
  const before=view.getMutationCount(),stale=previewModelAuthoring(useViewerStore.getState(),batch(old));assert.notEqual(stale.rows[0].status,'ready','the old placement cannot authorize a native cut after the public named edit');
- const current=previewModelAuthoring(useViewerStore.getState(),batch(expected));assert.equal(current.rows[0].status,'ready',current.rows[0].issue);assert.equal(view.getMutationCount(),before,'native reviewed source capture stays unpublished');
+ const current=previewModelAuthoring(useViewerStore.getState(),batch(expected));assert.equal(current.rows[0].status,'ready',current.rows[0].issue??'');assert.equal(view.getMutationCount(),before,'native reviewed source capture stays unpublished');
 });
 
 test('#7315 source-free original placement remains unreadable even with a retained native getter',async()=>{

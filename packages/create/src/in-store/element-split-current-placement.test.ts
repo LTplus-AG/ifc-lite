@@ -19,13 +19,15 @@ function volume(meshes:StairMesh[]){let result=0;for(const {positions:p,indices:
 for(const mode of ['named','positional'] as const)it.skipIf(!stairWasmAvailable)(`#7315 native ${mode} source slab retarget commits real cut geometry at the current origin`,async()=>{
  let store=await parse(await readFile(sample)),view=new MutablePropertyView(store.properties,'native'),editor=new StoreEditor(store,view);
  const storey=store.entities.getExpressIdByGlobalId(storeyGuid),anchor=resolveSpatialAnchor(store,storey,view),id=addSlabToStore(editor,anchor,{Position:[20,20,3],Width:6,Depth:4,Thickness:.25,Name:'Actual native retarget'}).slabId;
+ const scale=anchor.lengthUnitScale;if(scale===undefined||!Number.isFinite(scale)||scale<=0)throw new Error('The actual source must provide a positive native length unit scale');
  store=await parse(exported(store,view));view=new MutablePropertyView(store.properties,'native');editor=new StoreEditor(store,view);
  const local=Number(store.getEntity(id)?.attributes[5]),point=editor.addEntity('IfcCartesianPoint',[[22000,21000,3000]]),axis=editor.addEntity('IfcAxis2Placement3D',[`#${point.expressId}`,null,null]);
  if(mode==='named')editor.setAttribute(local,'RelativePlacement',`#${axis.expressId}`);else editor.setPositionalAttribute(local,1,`#${axis.expressId}`);
  const before=await parse(exported(store,view));expect(before.getEntity(local)?.attributes[1]).toBe(axis.expressId);
  const result=splitElementInStore(store,editor,id,{kind:'slab',a:[24,-100],b:[24,100]});
+ if(result.leftId===undefined||result.rightId===undefined)throw new Error('The native split must return both slab identities');
  const after=await parse(exported(store,view)),empty=new MutablePropertyView(after.properties,'saved'),afterEditor=new StoreEditor(after,empty);
- const left=resolveSplitTarget(after,empty,afterEditor,result.leftId,anchor.lengthUnitScale),right=resolveSplitTarget(after,empty,afterEditor,result.rightId,anchor.lengthUnitScale);expect(left.ok&&right.ok).toBe(true);
+ const left=resolveSplitTarget(after,empty,afterEditor,result.leftId,scale),right=resolveSplitTarget(after,empty,afterEditor,result.rightId,scale);expect(left.ok&&right.ok).toBe(true);
  if(!left.ok||left.kind!=='slab'||!right.ok||right.kind!=='slab')throw new Error('Native slab split did not preserve both readable halves');
  const vertices=[...left.chain.footprint,...right.chain.footprint];expect(Math.min(...vertices.map(p=>p[0]))).toBeCloseTo(22,8);expect(Math.max(...vertices.map(p=>p[0]))).toBeCloseTo(28,8);expect(Math.min(...vertices.map(p=>p[1]))).toBeCloseTo(21,8);expect(Math.max(...vertices.map(p=>p[1]))).toBeCloseTo(25,8);
  const originalMeshes=(await meshProducts(new TextDecoder().decode(exported(before,new MutablePropertyView(before.properties,'saved'))))).get(id);expect(originalMeshes?.length).toBeGreaterThan(0);

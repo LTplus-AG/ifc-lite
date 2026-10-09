@@ -122,7 +122,7 @@ test('#7315 live named native slab retarget reviewed cut matches independently s
  const editor=new StoreEditor(store,view),id=f.slab.expressId,localId=Number(store.getEntity(id)?.attributes[5]),point=editor.addEntity('IfcCartesianPoint',[[22000,21000,3000]]),axis=editor.addEntity('IfcAxis2Placement3D',[`#${point.expressId}`,null,null]);
  editor.setAttribute(localId,'RelativePlacement',`#${axis.expressId}`);
  const beforeBytes=editedModelBytes(store,view),before=await parseIfc(beforeBytes);assert.equal(before.getEntity(localId)?.attributes[1],axis.expressId);
- const expected=readSplitSnapshot(store,editor,id,'m');assert.deepEqual(expected.chain.placementOrigin,[22,21,3]);
+ const expected=readSplitSnapshot(store,editor,id,'m');if(expected.kind!=='slab')assert.fail('The actual native host must resolve as a slab');assert.deepEqual(expected.chain.placementOrigin,[22,21,3]);
  const batch=parseModelAuthoringBatch(JSON.stringify({version:1,kind:'model.authoring',title:'Current named slab native cut',units:'m',frame:'storey-local',operations:[{op:'hosted.create',kind:'opening',host:{modelId:SAMPLE_MODEL,globalId:before.entities.getGlobalId(id),ifcClass:'IfcSlab',name:before.entities.getName(id)},expected,params:{Position:[2,1],Width:1,Depth:.8}}]}));
  const preview=previewModelAuthoring(useViewerStore.getState(),batch);assert.equal(preview.rows[0].status,'ready',preview.rows[0].issue??'');
  const result=commitModelAuthoring(useViewerStore,preview,new Set([0]),'named current slab native cut');assert.ok(result.ok,result.ok?'':result.detail??result.reason);

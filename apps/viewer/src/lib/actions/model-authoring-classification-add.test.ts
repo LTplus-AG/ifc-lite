@@ -9,6 +9,7 @@ import { MutablePropertyView } from '@ifc-lite/mutations';
 import { useViewerStore } from '@/store';
 import { addClassificationAssociation } from '@/lib/authoring/associations';
 import { editedModelBytes } from '@/lib/export/edited-model-bytes';
+import { assertNativeIfcGraphEqual } from '@/test/native-ifc-graph';
 import { BACK_WALL, BACK_WALL_NAME, GROUND_STOREY, SAMPLE_MODEL, parseIfc, seedAuthoringSample } from '@/test/authoring-sample-fixture';
 import { parseModelAuthoringBatch, type ModelAuthoringBatch } from './model-authoring';
 import { previewModelAuthoring } from './model-authoring-preview';
@@ -75,7 +76,7 @@ test('#7271 reviewed classification preserves existing metadata through native e
   const lease = view.prepareAtomic(() => null);
   const preview = previewModelAuthoring(state, reviewedAdd());
   assert.equal(preview.rows[0].status, 'ready', preview.rows[0].issue);
-  assert.deepEqual(editedModelBytes(dataStore, view), before);
+  await assertNativeIfcGraphEqual(editedModelBytes(dataStore, view), before);
   assert.equal(useViewerStore.getState().undoStacks, state.undoStacks);
   assert.equal(useViewerStore.getState().dirtyModels, state.dirtyModels);
   assert.doesNotThrow(() => lease.validate(), 'preview must leave the native allocator watermark unchanged');
@@ -109,14 +110,14 @@ test('#7271 classification metadata preflight refuses stale identity, wrong sche
     const preview = previewModelAuthoring(useViewerStore.getState(), batch);
     assert.notEqual(preview.rows[0].status, 'ready');
     assert.equal(commitModelAuthoring(useViewerStore, preview, new Set([0]), 'test').ok, false);
-    assert.deepEqual(editedModelBytes(dataStore, view), before);
+    await assertNativeIfcGraphEqual(editedModelBytes(dataStore, view), before);
   }
   const preview = previewModelAuthoring(useViewerStore.getState(), valid);
   assert.equal(preview.rows[0].status, 'ready');
   useViewerStore.getState().storeEditors.get(SAMPLE_MODEL)!.setPositionalAttribute(target, 4, 'Changed without history');
   const changed = editedModelBytes(dataStore, view);
   assert.deepEqual(commitModelAuthoring(useViewerStore, preview, new Set([0]), 'test'), { ok: false, reason: 'stale' });
-  assert.deepEqual(editedModelBytes(dataStore, view), changed);
+  await assertNativeIfcGraphEqual(editedModelBytes(dataStore, view), changed);
 });
 
 test('#7271 classification contract rejects unknown fields, contradictory code spellings and unbounded text', () => {
@@ -149,7 +150,7 @@ test('#7271 federated classification addition requires an explicit owner and pre
   assert.equal(outcome.receipt.applied[0].modelId, SAMPLE_MODEL);
   const exported = await parseIfc(editedModelBytes(dataStore, view));
   assert.deepEqual(extractClassificationsOnDemand(exported, target).map(row => row.identification).sort(), ['WALL-001', 'WALL-002']);
-  assert.deepEqual(editedModelBytes(dataStore, other), otherBytes);
+  await assertNativeIfcGraphEqual(editedModelBytes(dataStore, other), otherBytes);
 });
 
 test('#7271 reviewed Add reuses an independently exported source system with its current Name', async () => {
@@ -186,7 +187,7 @@ for (const ownerHistory of [true, false]) {
     if (!ownerHistory) {
       assert.notEqual(preview.rows[0].status, 'ready');
       assert.equal(commitModelAuthoring(useViewerStore, preview, new Set([0]), 'test').ok, false);
-      assert.deepEqual(editedModelBytes(source, view), before);
+      await assertNativeIfcGraphEqual(editedModelBytes(source, view), before);
       return;
     }
     assert.equal(preview.rows[0].status, 'ready', preview.rows[0].issue);

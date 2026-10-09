@@ -280,10 +280,14 @@ export function collectPropertyAndQuantitySetMutations(
       pass.modifications.nominate(entityId, 'quantity-set');
     }
 
-    const allQsets = mutationView.getQuantitiesForEntity(entityId);
+    const typeOwned = isTypeClass(pass.effective.typeOf(entityId));
+    const allQsets = typeOwned
+      ? mutationView.getQuantitiesForEntity(entityId, id => extractTypeEntityOwnQuantities(ctx.dataStore, id, mutationView).map(set => ({
+        name: set.name, globalId: set.globalId, quantities: set.quantities.map(q => ({ name: q.name, type: q.type, value: q.value, unit: q.explicitUnit })),
+      })), true)
+      : mutationView.getQuantitiesForEntity(entityId);
     let relevantQsets = allQsets.filter((qset: QuantitySet) => qsetNames.has(qset.name));
 
-    const typeOwned = isTypeClass(pass.effective.typeOf(entityId));
     const typeCopy = typeOwned
       ? collectTypeQuantitySources(pass, ctx, entityId, relevantQsets, qsetNames, detachments) : undefined;
     if (typeCopy) relevantQsets = typeCopy.qsets;

@@ -231,20 +231,51 @@ test('#7355 installed type quantity base preserves native Undo graph and Redo va
  assert.equal(net(extractTypeQuantitiesOnDemand(store, f.id)?.quantities ?? []), 10, 'source-only data remains the original native snapshot');
 });
 
-test('#7355 current native HasPropertySets reassignment preserves the other shared owner', async t => {
+test('#7355 current native HasPropertySets reassignment preserves raw metadata and unrelated shared owners', async t => {
  const fixture = await inheritedSource(t); if (!fixture) return;
  const { f, store, a, b, view } = fixture;
- view.setPositionalAttribute(a.type, 5, [`#${b.qto}`]);
- view.setQuantity(a.type, 'Qto_WallBaseQuantities', 'NetVolume', 35, QuantityType.Volume);
- const exported = await parse(editedModelBytes(store, view));
+ const editor = new StoreEditor(store, view);
+ const unit = editor.addEntity('IfcSIUnit', ['*', '.VOLUMEUNIT.', null, '.CUBIC_METRE.']).expressId;
+ const property = editor.addEntity('IfcPropertySingleValue', ['Keep native property', null,
+  { typed: { type: 'IfcText', value: 'Unrelated exact value' } }, null]).expressId;
+ const pset = editor.addEntity('IfcPropertySet', [generateIfcGuid(), null, 'Unrelated native type property', null, [`#${property}`]]).expressId;
+ view.setPositionalAttribute(a.type, 5, [`#${a.qto}`, `#${pset}`]);
+ view.setPositionalAttribute(b.qto, 3, 'Current source description');
+ view.setPositionalAttribute(b.qto, 4, 'Current source method');
+ view.setPositionalAttribute(b.volume, 1, 'Current source quantity description');
+ view.setPositionalAttribute(b.volume, 2, `#${unit}`);
+ view.setPositionalAttribute(b.volume, 4, 'Current source formula');
+ const before = editedModelBytes(store, view);
+ const source = await parse(before);
+ const current = new MutablePropertyView(source.properties, 'arch');
+ current.setPositionalAttribute(a.type, 5, [`#${b.qto}`, `#${pset}`]);
+ current.setQuantity(a.type, 'Qto_WallBaseQuantities', 'NetVolume', 35, QuantityType.Volume);
+ const bytes = editedModelBytes(source, current);
+ const exported = await parse(bytes);
  assert.equal(net(extractTypeQuantitiesOnDemand(exported, f.id)?.quantities ?? []), 35);
- assert.deepEqual(exported.getEntity(b.type)?.attributes, store.getEntity(b.type)?.attributes);
- assert.deepEqual(exported.getEntity(b.qto)?.attributes, store.getEntity(b.qto)?.attributes,
-  'the other current owner retains the original shared definition');
- assert.deepEqual(exported.getEntity(b.volume)?.attributes, store.getEntity(b.volume)?.attributes);
  const rawOwned = exported.getEntity(a.type)?.attributes[5]; assert.ok(Array.isArray(rawOwned));
-   const owned = nativeIds(rawOwned);
- assert.ok(!owned.includes(a.qto) && !owned.includes(b.qto), 'current type ownership is replaced from its native effective list');
+ const owned = nativeIds(rawOwned);
+ assert.ok(owned.includes(pset), 'the unrelated native property set retains its original ownership');
+ assert.ok(!owned.includes(a.qto) && !owned.includes(b.qto), 'current ownership replaces the current source quantity definition');
+ const qtoId = owned.find(id => exported.getEntity(id)?.type === 'IFCELEMENTQUANTITY'); assert.ok(qtoId);
+ const qto = exported.getEntity(qtoId); assert.ok(qto);
+ assert.deepEqual(qto.attributes.slice(2, 5), ['Qto_WallBaseQuantities', 'Current source description', 'Current source method']);
+ const rawMembers = qto.attributes[5]; assert.ok(Array.isArray(rawMembers));
+ const members = nativeIds(rawMembers); assert.equal(members.length, 1);
+ assert.deepEqual(exported.getEntity(members[0])?.attributes,
+  ['NetVolume', 'Current source quantity description', unit, 35, 'Current source formula']);
+ // @raw-entity-enumeration-ok compare every original native source atom; only the edited type's ownership list changes.
+ for (const id of source.entityIndex.byId.keys()) {
+  const beforeEntity = source.getEntity(id), afterEntity = exported.getEntity(id); assert.ok(beforeEntity); assert.ok(afterEntity);
+  assert.equal(afterEntity.type, beforeEntity.type);
+  const attrs = [...afterEntity.attributes];
+  if (id === a.type) attrs[5] = beforeEntity.attributes[5];
+  assert.deepEqual(attrs, beforeEntity.attributes, `unrelated native source #${id} changed`);
+ }
+ if (process.env.CAMPAIGN_WRITER_EXPORT_PREFIX) {
+  await writeFile(`${process.env.CAMPAIGN_WRITER_EXPORT_PREFIX}-current-reassignment.before.ifc`, before);
+  await writeFile(`${process.env.CAMPAIGN_WRITER_EXPORT_PREFIX}-current-reassignment.ifc`, bytes);
+ }
 });
 
 for (const action of ['update', 'delete'] as const) {
@@ -252,7 +283,8 @@ for (const action of ['update', 'delete'] as const) {
   const fixture = await inheritedSource(t); if (!fixture) return;
   const { store, a, b, f, view } = fixture;
   view.setPositionalAttribute(a.type, 5, [`#${a.qto}`, `#${b.qto}`]);
-  const source = await parse(editedModelBytes(store, view));
+  const sourceBytes = editedModelBytes(store, view);
+  const source = await parse(sourceBytes);
   const baseSets = extractTypeQuantitiesOnDemand(source, f.id)?.quantities ?? [];
   assert.deepEqual(baseSets.map(set => set.quantities.map(q => q.value)), [[10], [30]]);
   assert.equal(new Set(baseSets.map(set => set.globalId)).size, 2, 'the native definitions have distinct GlobalIds');
@@ -266,7 +298,12 @@ for (const action of ['update', 'delete'] as const) {
   else current.deleteQuantity(a.type, 'Qto_WallBaseQuantities', 'NetVolume');
   assert.deepEqual(current.getQuantitiesForEntity(a.type).map(set => set.quantities.map(q => q.value)),
    action === 'update' ? [[35], [30]] : [[30]], 'the canonical instance-claiming overlay changes only the first definition');
-  const exported = await parse(editedModelBytes(source, current));
+  const bytes = editedModelBytes(source, current);
+  const exported = await parse(bytes);
+  if (process.env.CAMPAIGN_WRITER_EXPORT_PREFIX) {
+   await writeFile(`${process.env.CAMPAIGN_WRITER_EXPORT_PREFIX}-same-name-${action}.before.ifc`, sourceBytes);
+   await writeFile(`${process.env.CAMPAIGN_WRITER_EXPORT_PREFIX}-same-name-${action}.ifc`, bytes);
+  }
   const rawOwned = exported.getEntity(a.type)?.attributes[5]; assert.ok(Array.isArray(rawOwned));
   const owned = nativeIds(rawOwned);
   assert.ok(owned.includes(b.qto), 'the unclaimed second native quantity definition keeps its EXPRESS ownership reference');
@@ -275,5 +312,25 @@ for (const action of ['update', 'delete'] as const) {
   assert.deepEqual(exported.getEntity(b.type), source.getEntity(b.type), 'the other native owner keeps its original HasPropertySets');
   assert.deepEqual(extractTypeQuantitiesOnDemand(exported, f.id)?.quantities.map(set => set.quantities.map(q => q.value)),
    action === 'update' ? [[35], [30]] : [[30]], 'independent saved/reparsed quantity facts retain instance claims');
+ });
+}
+
+for (const refusal of ['missing-identity', 'duplicate-identity', 'missing-members', 'deleted-member'] as const) {
+ test(`#7355 current native type quantity ${refusal} refuses an unverified ownership rewrite`, async t => {
+  const fixture = await inheritedSource(t); if (!fixture) return;
+  const { store, a, b, view } = fixture;
+  const before = store.getEntity(a.qto); assert.ok(before);
+  if (refusal === 'missing-identity') view.setPositionalAttribute(a.qto, 0, null);
+  if (refusal === 'duplicate-identity') {
+   const guid = before.attributes[0]; assert.equal(typeof guid, 'string'); assert.ok(typeof guid === 'string');
+   view.setPositionalAttribute(b.qto, 0, guid);
+   view.setPositionalAttribute(a.type, 5, [`#${a.qto}`, `#${b.qto}`]);
+  }
+  if (refusal === 'missing-members') view.setPositionalAttribute(a.qto, 5, null);
+  if (refusal === 'deleted-member') view.deleteEntity(a.volume);
+  view.setQuantity(a.type, 'Qto_WallBaseQuantities', 'NetVolume', 35, QuantityType.Volume);
+  assert.throws(() => editedModelBytes(store, view), /identity|references are unreadable|dependency.*unavailable/,
+   'a failed native identity or quantity inventory cannot be presented as an available empty writer base');
+  assert.deepEqual(store.getEntity(a.qto), before, 'refusal leaves the immutable native source definition unchanged');
  });
 }

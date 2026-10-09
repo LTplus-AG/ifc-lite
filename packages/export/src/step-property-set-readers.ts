@@ -206,7 +206,12 @@ export function getTypeOwnedHasPropertySetIds(ctx: PropertySetContext, entityId:
     const schema = ctx.dataStore.schemaVersion;
     const sourceSchema = schema === 'IFC2X3' || schema === 'IFC4X3' || schema === 'IFC5' ? schema : 'IFC4';
     const line = nativeSetLine(ctx, entityId, sourceSchema, new Map(named.map(mutation => [mutation.name, mutation.value])));
-    return authoredEntityRefs(decodeNativeSetLine(line, entityId).attributes[HAS_PROPERTY_SETS_SLOT]);
+    const ids = decodeNativeSetLine(line, entityId).attributes[HAS_PROPERTY_SETS_SLOT];
+    if (ids === null) return [];
+    if (!Array.isArray(ids) || ids.some(id => typeof id !== 'number' || !Number.isSafeInteger(id) || id <= 0)) {
+      throw new Error('Current native HasPropertySets references are unreadable');
+    }
+    return ids.filter((id): id is number => typeof id === 'number');
   }
   if (effective.isOverlayCreated(entityId)) {
     const authored = ctx.mutationView?.getNewEntity(entityId)?.attributes?.[HAS_PROPERTY_SETS_SLOT];

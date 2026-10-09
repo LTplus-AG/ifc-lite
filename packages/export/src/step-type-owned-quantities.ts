@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { extractTypeEntityOwnQuantities, getInheritanceChainAcrossSchemas, type IfcEntity } from '@ifc-lite/parser';
-import type { QuantitySet } from '@ifc-lite/data';
+import type { Quantity, QuantitySet } from '@ifc-lite/data';
 import type { ExportPass, StepExportOptions } from './step-export-types.js';
 import { generateGlobalId, getTypeOwnedHasPropertySetIds, findUnitId, type PropertySetContext } from './step-property-set-readers.js';
 import type { SharedSetDetachments } from './step-pset-copy-on-write.js';
@@ -19,6 +19,7 @@ export interface TypeQuantitySource {
   readonly line: string;
   readonly entity: IfcEntity;
   readonly members: readonly number[];
+  readonly quantities?: readonly Quantity[];
   readonly unitSymbols?: ReadonlyMap<string, string | undefined>;
 }
 
@@ -49,33 +50,34 @@ export function collectTypeQuantitySources(
       detachments.withholdTypeOwned(id, entityId);
     }
   }
-  const canonical = extractTypeEntityOwnQuantities(ctx.dataStore, entityId);
-  const available = new Map<string, TypeQuantitySource[]>();
-  for (const [name, sources] of raw) {
-    const identities = new Set(canonical.filter(set => set.name === name).map(set => set.globalId));
-    const projected = sources.filter(source => identities.has(String(source.entity.attributes[0])));
-    available.set(name, projected.length ? projected : sources);
+  const canonical = extractTypeEntityOwnQuantities(ctx.dataStore, entityId, ctx.mutationView ?? undefined);
+  const byGuid = new Map<string, TypeQuantitySource>();
+  for (const sources of raw.values()) for (const source of sources) {
+    const guid = source.entity.attributes[0];
+    if (typeof guid !== 'string' || !guid || byGuid.has(guid)) throw new Error('Native type quantity definition identity is missing or ambiguous');
+    byGuid.set(guid, source);
   }
   const selected: Array<TypeQuantitySource | undefined> = [];
   const activeSets: QuantitySet[] = [];
+  const seen = new Set<string>();
   for (const qset of qsets) {
-    const source = available.get(qset.name)?.shift();
-    const view = ctx.mutationView;
-    const memberNames = source?.members.map(id => {
-      const line = nativeSetLine(ctx, id, pass.sourceSchema, pass.modifiedAttributes.get(id), pass.warnings);
-      return decodeNativeSetLine(line, id).attributes[0];
-    }) ?? [];
-    const active = typeof view?.getQuantityMutation !== 'function' || [...qset.quantities.map(q => q.name), ...memberNames]
-      .some(name => typeof name === 'string' && view.getQuantityMutation(entityId, qset.name, name) !== undefined);
-    // Append-only history still names an undone edit; no current override means no copy.
-    if (!active) continue;
+    const source = qset.globalId ? byGuid.get(qset.globalId) : undefined;
+    if (qset.globalId && (!source || seen.has(qset.globalId))) throw new Error(`Projected type quantity identity ${qset.globalId} is missing or ambiguous among ${[...byGuid.keys()].join(',')}`);
+    if (!source && raw.has(qset.name)) throw new Error('Projected type quantity identity cannot be associated with its native definition');
+    if (qset.globalId) seen.add(qset.globalId);
+    const base = canonical.find(set => set.globalId === qset.globalId);
+    const quantities = base?.quantities.map(q => ({ name: q.name, type: q.type, value: q.value, unit: q.explicitUnit })) ?? [];
+    if (source && JSON.stringify(quantities) === JSON.stringify(qset.quantities.map(q => ({ name: q.name, type: q.type, value: q.value, unit: q.unit })))) continue;
     if (source) {
       replacements.set(source.setId, null);
       detachments.withholdTypeOwned(source.setId, entityId);
+      // Removing the last numeric member drops only this instance's ownership;
+      // opaque native members still require a retained copied definition.
+      const opaque = source.members.some(id => !getInheritanceChainAcrossSchemas(pass.effective.typeOf(id) ?? '').includes('IfcPhysicalSimpleQuantity'));
+      if (qset.quantities.length === 0 && !opaque) continue;
     }
     activeSets.push(qset);
-    selected.push(source ? { ...source, unitSymbols: new Map(canonical.find(set => set.globalId === source.entity.attributes[0])
-      ?.quantities.map(quantity => [quantity.name, quantity.explicitUnit]) ?? []) } : undefined);
+    selected.push(source ? { ...source, quantities, unitSymbols: new Map(base?.quantities.map(q => [q.name, q.explicitUnit]) ?? []) } : undefined);
   }
   pass.typeOwnedQuantityIdsByEntity.set(entityId, replacements);
   pass.addedTypeOwnedQuantityIds.set(entityId, []);
@@ -103,22 +105,24 @@ export function generateTypeQuantityCopy(
     const line = nativeSetLine(ctx, id, pass.sourceSchema, pass.modifiedAttributes.get(id), pass.warnings);
     const entity = decodeNativeSetLine(line, id);
     const name = typeof entity.attributes[0] === 'string' ? entity.attributes[0] : null;
-    const mutation = name === null || usedNames.has(name) ? undefined
-      : ctx.mutationView?.getQuantityMutation(entityId, qset.name, name);
+    const first = name !== null && !usedNames.has(name);
     if (name !== null) usedNames.add(name);
-    if (mutation?.operation === 'DELETE') continue;
-    if (name !== null) remaining.delete(name);
-    if (!mutation) { memberIds.push(id); continue; }
     const quantity = name === null ? undefined : qset.quantities.find(q => q.name === name);
-    if (!quantity) continue;
+    const base = name === null ? undefined : source.quantities?.find(q => q.name === name);
+    const simple = getInheritanceChainAcrossSchemas(entity.type).includes('IfcPhysicalSimpleQuantity');
+    if (simple && first && base && !quantity) continue;
+    if (name !== null) remaining.delete(name);
+    const changed = first && quantity && (!base || quantity.type !== base.type || quantity.value !== base.value || quantity.unit !== base.unit);
+    if (!changed || !quantity) { memberIds.push(id); continue; }
+    const mutation = ctx.mutationView?.getQuantityMutation(entityId, qset.name, quantity.name);
     const targetType = quantityTypeToIfcType(quantity.type);
     if (!getInheritanceChainAcrossSchemas(entity.type).includes('IfcPhysicalSimpleQuantity')) {
       throw new Error(`Type quantity #${id} requires an explicit native entity edit`);
     }
     let copy = replaced(line, 3, toStepReal(quantity.value));
     // Omitted unit intent retains the native reference, including non-length units.
-    if (mutation.unitRemoved) copy = replaced(copy, 2, '$');
-    else if (mutation.unit !== undefined) {
+    if (mutation?.unitRemoved) copy = replaced(copy, 2, '$');
+    else if (mutation?.unit !== undefined) {
       if (name === null || mutation.unit !== source.unitSymbols?.get(name)) {
         const unitId = targetType === 'IFCQUANTITYLENGTH' ? findUnitId(ctx, mutation.unit, pass.effective) : null;
         if (unitId === null) throw new Error(`Type quantity #${id} unit edit cannot resolve a native reference`);

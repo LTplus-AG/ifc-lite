@@ -865,3 +865,11 @@ import { extractTypeEntityOwnQuantities } from '@ifc-lite/parser';
 const typeExpressId = 42; // The selected type object's model-local express ID.
 const typeQuantitySets = extractTypeEntityOwnQuantities(store, typeExpressId);
 ```
+
+The optional third argument to `extractTypeEntityOwnQuantities` is a native
+metadata view. It reads that type's current `HasPropertySets`, quantity atoms and
+explicit unit dependencies, including a pending type. This writer base shares
+canonical quantity decoding and unit resolution. Unreadable or unsupported
+current dependencies throw instead of returning a verified empty base. Current
+reads allow at most 256 definitions, 4,096 quantity references, 8,192 entity reads
+and 512 unit dependency reads. The two-argument source reader is unchanged.

@@ -4,13 +4,15 @@
 
 import { EntityExtractor } from './entity-extractor.js';
 import { extractCurrentTypeQuantities } from './current-type-quantities.js';
-import type { MetadataReadView } from './effective-metadata-record.js';
+import { effectiveMetadataRecord, type MetadataReadView } from './effective-metadata-record.js';
 import { RelationshipType } from '@ifc-lite/data';
 import type { IfcDataStore } from './columnar-parser.js';
-import { readQuantitySet, type CollectedQuantity } from './quantity-collect.js';
+import { readQuantitySet, readQuantitySetRecord, type CollectedQuantity, type QuantityEntityReader } from './quantity-collect.js';
 import { appendSetsFromSecondSource, setIdentityKey } from './property-set-merge.js';
 import type { TypeQuantityInfo } from './on-demand-extractors.js';
 import { getInheritanceChain } from './ifc-schema.js';
+import { resolveUnitByRef } from './project-units.js';
+import { positionalMetadataValue } from './metadata-edit-value.js';
 
 /**
  * Extract quantity sets (IfcElementQuantity) from a list of set IDs using the
@@ -82,7 +84,9 @@ export function extractTypeQuantitiesOnDemand(
 export function extractTypeEntityOwnQuantities(
     store: IfcDataStore,
     typeId: number,
+    view?: MetadataReadView,
 ): Array<{ name: string; globalId?: string; quantities: CollectedQuantity[] }> {
+    if (view) return currentTypeOwnQuantities(store, typeId, view);
     // @raw-entity-enumeration-ok point lookup for the caller's selected source type
     const typeRef = store.entityIndex.byId.get(typeId);
     if (!typeRef || !store.source?.length || !getInheritanceChain(typeRef.type).includes('IfcTypeObject')) return [];
@@ -113,4 +117,67 @@ export function extractTypeEntityOwnQuantities(
     }
 
     return allQsets;
+}
+
+/** Native writer bases use canonical quantity decoding without losing opaque source atoms. */
+function currentTypeOwnQuantities(store: IfcDataStore, typeId: number, view: MetadataReadView) {
+    let reads = 0;
+    const read: QuantityEntityReader = id => {
+        if (++reads > 8192) throw new Error('Current type quantity entity reads exceed the limit');
+        const record = effectiveMetadataRecord(store, id, view);
+        if (!record) throw new Error(`Current type quantity dependency #${id} is unavailable`);
+        const attributes = record.attributes.map(value => {
+            if (!Array.isArray(value)) return value;
+            if (value.length > 4096) throw new Error('Current type quantity attribute references exceed the limit');
+            return value.map(positionalMetadataValue);
+        });
+        return { ...record, attributes, expressId: id };
+    };
+    const refs = (value: unknown, max: number, optional = false): number[] => {
+        if (optional && value === null) return [];
+        if (!Array.isArray(value) || value.length > max || (!optional && value.length === 0)
+            || value.some(id => typeof id !== 'number' || !Number.isSafeInteger(id) || id <= 0)) {
+            throw new Error('Current type quantity references are unreadable or exceed the limit');
+        }
+        return value;
+    };
+    const type = read(typeId);
+    if (!type || !getInheritanceChain(type.type).includes('IfcTypeObject')) throw new Error('Current quantity owner is not an available IfcTypeObject');
+    const definitions = refs(type.attributes[5], 256, true);
+    const extractor = new EntityExtractor(store.source);
+    let unitReads = 0;
+    const units = new Map<number, ReturnType<typeof resolveUnitByRef>>();
+    const resolveUnit = (id: number) => {
+        if (units.has(id)) return units.get(id)!;
+        const unit = resolveUnitByRef(extractor, store.entityIndex, id, unitId => {
+            if (++unitReads > 512) throw new Error('Current type quantity unit reads exceed the limit');
+            return read(unitId);
+        });
+        if (!unit || !Number.isFinite(unit.resolved.siScale) || unit.resolved.siScale <= 0) throw new Error('Current type quantity explicit unit is unavailable');
+        units.set(id, unit);
+        return unit;
+    };
+    let references = 0;
+    const result: Array<{ name: string; globalId?: string; quantities: CollectedQuantity[] }> = [];
+    for (const id of definitions) {
+        const set = read(id);
+        if (!set) throw new Error('Current type quantity definition is unavailable');
+        if (set.type.toUpperCase() !== 'IFCELEMENTQUANTITY') {
+            if (getInheritanceChain(set.type).includes('IfcPropertySetDefinition')) continue;
+            throw new Error('Current type definition is not an IfcPropertySetDefinition');
+        }
+        const members = refs(set.attributes[5], 4096 - references); references += members.length;
+        for (const member of members) {
+            const quantity = read(member);
+            if (!quantity || !getInheritanceChain(quantity.type).includes('IfcPhysicalQuantity')) throw new Error('Current type physical quantity is unavailable');
+            if (getInheritanceChain(quantity.type).includes('IfcPhysicalSimpleQuantity')) {
+                const unit = quantity.attributes[2];
+                if (unit !== null && (typeof unit !== 'number' || !Number.isSafeInteger(unit) || unit <= 0)) throw new Error('Current type quantity unit reference is unreadable');
+                if (typeof quantity.attributes[3] !== 'number' || !Number.isFinite(quantity.attributes[3])) throw new Error('Current type quantity measure is unreadable');
+            }
+        }
+        const decoded = readQuantitySetRecord(store, extractor, set, read, resolveUnit);
+        if (decoded) result.push(decoded);
+    }
+    return result;
 }

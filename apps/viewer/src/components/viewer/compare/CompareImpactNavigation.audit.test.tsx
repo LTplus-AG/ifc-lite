@@ -172,7 +172,7 @@ it('7307 native current GUID edit/deletion and removed model cannot revive an ol
   const root = openImpact(); const row = impactRow(root, PINS.clashAdded);
   const chip = [...row.querySelectorAll('button')].find(b => b.textContent?.includes(PINS.clashAdded)); assert.ok(chip);
   const id = pair.head.ifcDataStore.entities.getExpressIdByGlobalId(PINS.clashAdded);
-  const view = new MutablePropertyView();
+  const view = new MutablePropertyView(pair.head.ifcDataStore.properties, pair.head.id);
   if (edit === 'guid') view.setAttribute(id, 'GlobalId', '0current7307guidNativeX', PINS.clashAdded);
   if (edit === 'delete') view.deleteEntity(id);
   act(() => {

@@ -10,47 +10,38 @@ import { trackExportCompleted } from '@/lib/analytics';
 import { type ListDefinition } from '@ifc-lite/lists';
 import { downloadFile, sanitizeFilename } from '../export/download.js';
 
+import { reconcileLibraryRows, LibraryRowsConflict } from '../storage/reconcile-library-rows.js';
+import { readLocalLibrary, saveLocalLibrary, localLibraryWriteRefusal } from '../storage/local-library-source.js';
+import type { SaveResult } from '../storage/save-result.js';
 import { decodeSavedList, encodeSavedList } from './saved-list-codec.js';
 
 const STORAGE_KEY = 'ifc-lite-lists';
 
+export function readListLibrarySource() {
+  return readLocalLibrary(STORAGE_KEY, value => decodeSavedList(value));
+}
+
 export function loadListDefinitions(): ListDefinition[] {
+  return readListLibrarySource().rows;
+}
+
+export function saveListDefinitionsResult(definitions: ListDefinition[], baseline?: readonly ListDefinition[]): Exclude<SaveResult, { ok: true }> | { ok: true; rows: ListDefinition[] } {
+  const source = readListLibrarySource();
+  const refusal = localLibraryWriteRefusal(source, 'Lists');
+  if (refusal) return refusal;
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return [];
-    const parsed: unknown = JSON.parse(raw);
-    // A hand-edited or half-written entry can be valid JSON that isn't an
-    // array (an object, a stray number, `null`...). `listSlice` spreads this
-    // result (`[...listDefinitions, def]`) on the very first list the user
-    // creates, so anything non-array here throws "is not iterable" and
-    // bricks the List panel at boot instead of just starting empty.
-    if (!Array.isArray(parsed)) return [];
-    return parsed.flatMap((definition: unknown) => {
-      if (typeof definition !== 'object' || definition === null || Array.isArray(definition)) {
-        console.warn('[Lists] Skipping a malformed saved list entry');
-        return [];
-      }
-      try {
-        return [decodeSavedList(definition)];
-      } catch (error) {
-        console.warn('[Lists] Skipping a saved list that could not be migrated', error);
-        return [];
-      }
-    });
+    const rows = baseline ? reconcileLibraryRows(source.rows, baseline, definitions, row => encodeSavedList(decodeSavedList(encodeSavedList(row)))) : definitions;
+    const saved = saveLocalLibrary(STORAGE_KEY, rows.map(encodeSavedList), source, 'Lists');
+    return saved.ok ? { ok: true, rows } : saved;
   } catch (error) {
-    console.warn('[Lists] Failed to read list definitions from localStorage', error);
-    return [];
+    if (error instanceof LibraryRowsConflict) return { ok: false, reason: 'unavailable', message: error.message };
+    console.warn('[Lists] Failed to serialize list definitions', error);
+    return { ok: false, reason: 'serialize', message: 'Could not save List changes.' };
   }
 }
 
 export function saveListDefinitions(definitions: ListDefinition[]): boolean {
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(definitions.map(encodeSavedList)));
-    return true;
-  } catch (error) {
-    console.warn('[Lists] Failed to save list definitions to localStorage', error);
-    return false;
-  }
+  return saveListDefinitionsResult(definitions).ok;
 }
 
 export function exportListDefinition(definition: ListDefinition): void {

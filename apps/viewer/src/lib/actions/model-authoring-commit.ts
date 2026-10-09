@@ -1,6 +1,12 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+import { addGridIn } from '@/store/slices/mutation-curtain-grid';
+import { addGridColumnIn } from '@/store/slices/mutation-grid-column';
+import { gridBindingForDraft } from './model-authoring-grid-native';
+import { gridParamsInMetres, gridColumnParamsInMetres } from './model-authoring-grid-fields';
+import { authoringReader } from './model-authoring-read';
+
 
 /**
  * Commit of an approved, previewed authoring batch: per model ONE modeling
@@ -135,6 +141,19 @@ function writeRow(tx: AuthoringTransaction, batch: ModelAuthoringBatch, row: Aut
       return [{ ...base, globalId: op.target.globalId, field: op.op === 'element.resize' ? 'Dimensions' : 'Profile',
         before: JSON.stringify(op.expected),
         after: JSON.stringify(op.op === 'element.resize' ? op.size : op.Profile) }];
+    }
+    case 'grid.create': case 'column.createOnGrid': {
+      const r = authoringReader(tx.api.getState(), modelId);
+      if (!r) throw new Error('The native grid model is unavailable');
+      const out = op.op === 'grid.create'
+        ? addGridIn(tx.api, modelId, resolved.storey!, gridParamsInMetres(op.params, batch.units))
+        : addGridColumnIn(tx.api, modelId, resolved.storey!, gridColumnParamsInMetres(op.params, batch.units), gridBindingForDraft(r.dataStore, r.editor, op, resolved.grid!, ids, resolved.storey!));
+      if ('error' in out) throw new Error(out.error);
+      const globalId = tx.api.getState().mutationViews.get(modelId)?.getNewEntity(out.expressId)?.attributes[0];
+      if (typeof globalId !== 'string') throw new Error('The created native grid product has no GlobalId');
+      ids.set(op.ref, out.expressId); refs.set(op.ref, globalId); written.created.push(out.expressId);
+      if (op.op === 'column.createOnGrid') written.remesh.push(out.expressId);
+      return [{ ...base, globalId, field: op.op === 'grid.create' ? 'IfcGrid' : 'IfcColumn', before: null, after: op.params.Name ?? null }];
     }
     case 'element.create': {
       const globalId = generateIfcGuid();

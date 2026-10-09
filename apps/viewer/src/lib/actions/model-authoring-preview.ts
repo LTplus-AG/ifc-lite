@@ -11,6 +11,9 @@
  */
 
 import { resolveReviewedLayers, LayerRefusal } from './model-authoring-layers';
+import { gridCreationGhost } from './model-authoring-grid-ghost';
+import { nativeGridExpected, sameGridExpected } from './model-authoring-grid-native';
+import { nativeLengthUnitAvailable } from './model-authoring-read-target';
 import { readNativeReplacementExpected } from './model-authoring-replacement';
 import { authoringSlabOpeningGhost } from './model-authoring-slab-opening-ghost';
 import { verifySlabOpeningHost } from './model-authoring-slab-opening';
@@ -181,6 +184,7 @@ function resolve(ctx: Context, row: AuthoringRow): void {
       if('storey' in op){const storey=locate(ctx,op.storey);join(row,storey.modelId);if(!liveEntityConforms(r.dataStore,storey.expressId,'IfcBuildingStorey',r.view))throw new Refusal('conflict','Replacement target is not an IfcBuildingStorey');row.resolved.storey=storey.expressId;row.before.storeyName=nameOf(r,storey.expressId);}
       row.previewUnavailable=true;return;
     }
+    case 'grid.create': case 'column.createOnGrid':
     case 'stair.create': case 'railing.create':
     case 'element.create': {
       const storey = locate(ctx, op.storey);
@@ -190,6 +194,19 @@ function resolve(ctx: Context, row: AuthoringRow): void {
       if (!liveEntityConforms(r.dataStore, storey.expressId, 'IfcBuildingStorey', r.view)) throw new Refusal('conflict', `${op.storey.globalId} is not an IfcBuildingStorey`);
       row.resolved.storey = storey.expressId;
       row.before.storeyName = nameOf(r, storey.expressId);
+      if (op.op === 'grid.create' || op.op === 'column.createOnGrid') {
+        if (!uniqueSplitGuid(r.dataStore, r.editor, op.storey.globalId)) throw new Refusal('ambiguous-target', 'The native storey GlobalId is not unique');
+        if (!nativeLengthUnitAvailable(r)) throw new Refusal('unsupported', 'The grid requires readable declared length units');
+        if (op.op === 'column.createOnGrid') {
+          // Generic element labels use empty text when unnamed; the Grid's
+          // nullable native Name stays intact and is checked by its draft writer.
+          row.resolved.grid = element(ctx, 'ref' in op.grid ? { ref: op.grid.ref } : { ...op.grid.target, name: op.grid.target.name ?? '' }, row);
+          if ('target' in op.grid && 'id' in row.resolved.grid) {
+            if (!uniqueSplitGuid(r.dataStore, r.editor, op.grid.target.globalId)) throw new Refusal('ambiguous-target', 'The current grid GlobalId is not unique');
+            if (!sameGridExpected(nativeGridExpected(r, row.resolved.grid.id, storey.expressId), op.grid.expected)) throw new Refusal('conflict', 'The native grid axes or current placement differ from the full expected snapshot');
+          }
+        }
+      }
       return;
     }
     case 'element.copy': case 'element.array': {
@@ -359,6 +376,7 @@ export function previewModelAuthoring(state: ViewerState, batch: ModelAuthoringB
   }
   for(const row of ctx.rows)if(row.status==='ready'&&row.op.op==='hosted.create'&&'params' in row.op)row.previewUnavailable=!authoringSlabOpeningGhost(state,row,ctx.rows,0);
   for(const row of ctx.rows)if(row.status==='ready'&&['stair.create','railing.create','stair.replace','railing.replace'].includes(row.op.op))row.previewUnavailable=!stairRailingGhost(state,batch,row,0);
+  for (const row of ctx.rows) if (row.status === 'ready' && (row.op.op === 'grid.create' || row.op.op === 'column.createOnGrid')) row.previewUnavailable = gridCreationGhost(state, batch, row, 0).length === 0;
   const preview = { batch, rows: ctx.rows, mutationVersion: state.mutationVersion, digest: batchDigest(batch) };
   captureAuthoringSources(state, preview);
   return preview;

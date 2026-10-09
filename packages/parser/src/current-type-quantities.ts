@@ -27,8 +27,11 @@ export interface CurrentTypeQuantityResult {
 const available = (value: TypeQuantityInfo | null): CurrentTypeQuantityResult => ({ status: 'available', reason: null, value });
 const unavailable = (reason: string): CurrentTypeQuantityResult => ({ status: 'unavailable', reason, value: null });
 class CurrentQuantityRefusal extends Error {}
-function refIds(value: unknown, max = MAX_RELATION_REFERENCES): number[] {
-    if (value === null) return [];
+function refIds(value: unknown, max = MAX_RELATION_REFERENCES, required = false): number[] {
+    if (value === null || (Array.isArray(value) && value.length === 0)) {
+        if (required) throw new CurrentQuantityRefusal('Native required quantity references are unreadable');
+        return [];
+    }
     if (Array.isArray(value) && value.length > max) throw new CurrentQuantityRefusal('Native quantity references exceed the read limit');
     if (!Array.isArray(value) || value.some(id => typeof id !== 'number' || !Number.isSafeInteger(id) || id <= 0)) {
         throw new CurrentQuantityRefusal('Native quantity references are unreadable');
@@ -59,8 +62,7 @@ function inventory(store: IfcDataStore, view: MetadataReadView): CurrentInventor
         const record = effectiveMetadataRecord(store, row.expressId, view);
         if (!record) throw new CurrentQuantityRefusal('Native type relationship is unreadable');
         const target = record.attributes[5];
-        if (record.attributes[4] === null) throw new CurrentQuantityRefusal('Native type relationship required members are unreadable');
-        const members = refIds(record.attributes[4]);
+        const members = refIds(record.attributes[4], MAX_RELATION_REFERENCES, true);
         referenceCount += members.length;
         if (referenceCount > MAX_RELATION_REFERENCES) throw new CurrentQuantityRefusal('Native type relationship references exceed the read limit');
         if (typeof target !== 'number' || !Number.isSafeInteger(target) || target <= 0) throw new CurrentQuantityRefusal('Native type relationship target is unreadable');
@@ -132,7 +134,7 @@ function readCurrent(store: IfcDataStore, entityId: number, view: MetadataReadVi
             if (getInheritanceChain(record.type).includes('IfcPropertySetDefinition')) return [];
             throw new CurrentQuantityRefusal('Native type quantity definition is unsupported');
         }
-        const refs = refIds(record.attributes[5], MAX_QUANTITY_REFERENCES - quantityReferences);
+        const refs = refIds(record.attributes[5], MAX_QUANTITY_REFERENCES - quantityReferences, true);
         quantityReferences += refs.length;
         if (quantityReferences > MAX_QUANTITY_REFERENCES) throw new CurrentQuantityRefusal('Native type quantity references exceed the read limit');
         for (const ref of refs) {

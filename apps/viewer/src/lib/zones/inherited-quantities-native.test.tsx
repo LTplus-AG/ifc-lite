@@ -367,3 +367,38 @@ for (const field of ['RelatingType', 'RelatedObjects'] as const) {
   assert.doesNotMatch(panel.textContent ?? '', /netNetVolume10 m³/, 'malformed current ownership cannot resurrect the immutable source basis');
  });
 }
+
+for (const members of [null, []] as const) {
+ test(`#7353 ${members === null ? 'null' : 'empty'} required native IfcElementQuantity.Quantities reports unavailable`, async t => {
+  const fixture = await inheritedSource(t); if (!fixture) return;
+  const { f, store, a, view } = fixture;
+  view.setPositionalAttribute(a.qto, 5, members === null ? null : []);
+  const exported = await parse(editedModelBytes(store, view));
+  assert.deepEqual(exported.getEntity(a.qto)?.attributes[5], members, 'independent native export contains the malformed required collection');
+  const current = readCurrentTypeQuantities(store, f.id, view);
+  assert.equal(current.status, 'unavailable', 'malformed required quantity members cannot certify empty inherited facts');
+  assert.equal(current.value, null); assert.ok(current.reason);
+  assert.match(render(<PropertiesPanel />).textContent ?? '', /Inherited type quantities are unavailable/);
+ });
+}
+test('#7353 empty required native IfcRelDefinesByType.RelatedObjects reports unavailable', async t => {
+ const fixture = await inheritedSource(t); if (!fixture) return;
+ const { f, store, relation, view } = fixture;
+ view.setPositionalAttribute(relation, 4, []);
+ assert.deepEqual((await parse(editedModelBytes(store, view))).getEntity(relation)?.attributes[4], []);
+ assert.equal(readCurrentTypeQuantities(store, f.id, view).status, 'unavailable');
+ assert.match(render(<PropertiesPanel />).textContent ?? '', /Inherited type quantities are unavailable/);
+});
+test('#7353 optional native IfcTypeObject.HasPropertySets null remains verified empty coverage', async t => {
+ const fixture = await inheritedSource(t); if (!fixture) return;
+ const { f, store, a, view } = fixture;
+ view.setPositionalAttribute(a.type, 5, null);
+ const exported = await parse(editedModelBytes(store, view));
+ assert.equal(exported.getEntity(a.type)?.attributes[5], null);
+ assert.equal(net(extractTypeQuantitiesOnDemand(exported, f.id)?.quantities ?? []), undefined);
+ const current = readCurrentTypeQuantities(store, f.id, view);
+ assert.equal(current.status, 'available'); assert.equal(current.value, null);
+ const panel = render(<PropertiesPanel />);
+ assert.doesNotMatch(panel.textContent ?? '', /Inherited type quantities are unavailable/);
+ assert.doesNotMatch(panel.textContent ?? '', /netNetVolume10 m³/);
+});

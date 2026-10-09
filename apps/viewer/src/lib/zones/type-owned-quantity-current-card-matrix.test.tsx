@@ -170,3 +170,47 @@ for (const explicitIntent of [false, true]) test(`#7355 supported explicit Volum
   assert.equal(native.value, 35); assert.equal(native.explicitUnitSiScale, 1);
   assert.match(render(<PropertiesPanel />).textContent ?? '', /netNetVolume35 m³/);
 });
+
+for (const overlayUnit of [false, true]) test(`#7355 current unit replacement refuses native unassigned unit overlay=${overlayUnit}`, async t => {
+  const f = await inheritedSource(t); if (!f) return;
+  const editor = new StoreEditor(f.store, f.view);
+  const metre = editor.addEntity('IfcSIUnit', ['*', '.LENGTHUNIT.', null, '.METRE.']).expressId;
+  if (!overlayUnit) editor.addEntity('IfcSIUnit', ['*', '.LENGTHUNIT.', '.MILLI.', '.METRE.']);
+  f.view.setEntityType(f.a.volume, 'IfcQuantityLength');
+  f.view.setPositionalAttribute(f.a.volume, 2, `#${metre}`);
+  f.view.setPositionalAttribute(f.a.volume, 3, 10);
+  const source = await parse(editedModelBytes(f.store, f.view));
+  const model = useViewerStore.getState().models.get('arch'); assert.ok(model);
+  useViewerStore.setState({ models: new Map([['arch', { ...model, ifcDataStore: source }]]), ifcDataStore: source, mutationViews: new Map(), storeEditors: new Map() });
+  const current = getOrCreateMutationView(useViewerStore, 'arch'); assert.ok(current);
+  if (overlayUnit) new StoreEditor(source, current).addEntity('IfcSIUnit', ['*', '.LENGTHUNIT.', '.MILLI.', '.METRE.']);
+  current.setQuantity(f.a.type, 'Qto_WallBaseQuantities', 'NetVolume', 35, QuantityType.Length, 'MILLIMETRE');
+  const read = readCurrentTypeQuantities(source, f.f.id, current);
+  assert.throws(() => editedModelBytes(source, current), /unit/i, 'native writer refuses replacement outside its source project assignment');
+  console.log('WRITER_UNASSIGNED_UNIT_CURRENT_BEFORE', JSON.stringify({ overlayUnit, read }));
+  assert.equal(read.status, 'unavailable', 'unsupported native replacement cannot be shown as current available physical facts');
+});
+
+test('#7355 distinct named Type sets preserve native precedence after editing the first set', async t => {
+  const f = await inheritedSource(t); if (!f) return;
+  const editor = new StoreEditor(f.store, f.view);
+  const quantity = editor.addEntity('IfcQuantityVolume', ['NetVolume', null, null, 30, null]).expressId;
+  const guid = generateIfcGuid();
+  const second = editor.addEntity('IfcElementQuantity', [guid, null, 'Qto_SecondVolume', null, null, [`#${quantity}`]]).expressId;
+  f.view.setPositionalAttribute(f.a.type, 5, [`#${f.a.qto}`, `#${second}`]);
+  const source = await parse(editedModelBytes(f.store, f.view));
+  const model = useViewerStore.getState().models.get('arch'); assert.ok(model);
+  useViewerStore.setState({ models: new Map([['arch', { ...model, ifcDataStore: source }]]), ifcDataStore: source, mutationViews: new Map(), storeEditors: new Map() });
+  const current = getOrCreateMutationView(useViewerStore, 'arch'); assert.ok(current);
+  current.setQuantity(f.a.type, 'Qto_WallBaseQuantities', 'NetVolume', 35, QuantityType.Volume);
+  const read = readCurrentTypeQuantities(source, f.f.id, current);
+  const native = extractTypeQuantitiesOnDemand(await parse(editedModelBytes(source, current)), f.f.id)?.quantities ?? [];
+  useViewerStore.setState({ propertiesActiveTab: 'quantities', unitDisplayOverrides: {} });
+  const card = render(<PropertiesPanel />).textContent;
+  console.log('WRITER_DISTINCT_SET_PRECEDENCE_BEFORE', JSON.stringify({ read, native, card }));
+  assert.equal(read.status, 'available');
+  assert.deepEqual(native.map(set => set.name), ['Qto_WallBaseQuantities', 'Qto_SecondVolume']);
+  assert.equal(native[1].globalId, guid);
+  assert.deepEqual(read.value?.quantities.map(set => set.name), native.map(set => set.name), 'current canonical order preserves independent native first-set precedence');
+  assert.match(card ?? '', /netNetVolume35 m³/);
+});

@@ -1,0 +1,13 @@
+{
+  "command": [
+    "pnpm",
+    "install",
+    "--offline",
+    "--frozen-lockfile",
+    "--ignore-scripts"
+  ],
+  "exitCode": 0,
+  "started": "2026-10-08T17:52:34.970675+00:00",
+  "ended": "2026-10-08T17:52:37.674999+00:00",
+  "logSHA256": "27246ef95c0f684957122663c5d26a40ee9503e1cec0cf6fa37c3146d1be302d"
+}

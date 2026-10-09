@@ -1,7 +1,6 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
-
 /**
  * Preflight for a reviewed authoring batch: resolve every element, storey,
  * type and material; check the edit gate and each expected class, name, type,
@@ -11,63 +10,50 @@
  * anything moved since.
  */
 
+import { authoringCurtainWallGhost } from './model-authoring-curtain-wall-ghost';
+import { resolveReviewedLayers, LayerRefusal } from './model-authoring-layers';
+import { gridCreationGhost } from './model-authoring-grid-ghost';
+import { nativeGridExpected, sameGridExpected } from './model-authoring-grid-native';
+import { nativeLengthUnitAvailable } from './model-authoring-read-target';
+import { readNativeReplacementExpected } from './model-authoring-replacement';
+import { authoringSlabOpeningGhost } from './model-authoring-slab-opening-ghost';
+import { verifySlabOpeningHost } from './model-authoring-slab-opening';
+import { stairRailingGhost } from './model-authoring-stair-railing-ghost';
+import { nativeStairEvidence, sameStairSnapshot } from './model-authoring-stair-lifecycle';
+import { stairPatchInMetres } from './model-authoring-stair-railing-fields';
 import type { ViewerState } from '@/store';
 import { mutationDenial } from '@/store/mutation-permission';
-import { materialsOf } from '@/lib/commands/modeling/authored-kinds';
-import { buildStoreyWorkplane, elementStoreyId, isWorkplane } from '@/lib/commands/modeling/workplane';
-import { planElementTransform, type TransformRoot } from '@/lib/element-transform/plan';
-import { describeRefusal } from '@/lib/element-transform/commit';
+import { stairRailingRefusal } from '@/store/slices/mutation-stair-railing';
+import { materialsOf, typeOf } from '@/lib/commands/modeling/authored-kinds';
 import { copiedProductsInStore, createCopyContext, productStoreyOrigin, liveEntityConforms } from '@ifc-lite/create';
-import type { RowStatus } from './model-change-preview';
 import { batchDigest } from './model-change-preview';
 import { isNewElement, toMetres, type AuthoringOp, type ElementTarget, type ExistingElement, type ModelAuthoringBatch } from './model-authoring';
-import { dryRunAuthoring, type ElementId, type ResolvedOp } from './model-authoring-native';
+import type { ElementId } from './model-authoring-native';
+import { validateAuthoringDraft } from './model-authoring-preview-draft';
 import {
-  authoringReader, className, conforms, deletionRefusal, materialNameOf, nameOf, placementAngle, typeNameOf, type AuthoringReader,
+  authoringReader, className, conforms, deletionRefusal, materialNameOf, nameOf, typeNameOf, type AuthoringReader,
 } from './model-authoring-read';
 import { captureAuthoringSources } from './model-authoring-sources';
 import { resolveGlobalId } from './resolve-global-id';
+import { readElementProfileFromTarget } from '@/store/slices/mutation-element-profile';
+import { readAuthoringSizeFromTarget, sameNativeDimensions } from './model-authoring-size';
+import { verifyReachExpected, verifyReachStoreyFrame, reachBefore } from './model-authoring-reach';
+import { sizeInMetres } from './model-authoring-size-params';
+import { profileInMetres } from './model-authoring-shape-params';
+import { validateClassificationAdd } from './model-authoring-classification';
+import { authoringHostedEditGhost } from './model-authoring-hosted-edit-ghost';
+import { hostedFillRefusal } from '@/store/slices/mutation-hosted-fill';
+import { readExpectedHostedEdit, sameHostedEdit } from './model-authoring-hosted-edit';
+import { readSplitSnapshot, sameSplitSnapshot } from './model-authoring-split-state';
+import { uniqueSplitGuid } from './model-authoring-split';
+import { authoringSplitMarker } from './model-authoring-split-ghost';
+import { authoringSizeGhost } from './model-authoring-size-ghost';
+import { reviewAlignment } from './model-authoring-align';
+import { reviewElementTransform } from './model-authoring-transform-review';
+import { AuthoringRefusal as Refusal } from './model-authoring-preview-refusal';
 
-/** P04's statuses plus `invalid` (a native builder or planner refused it) and `blocked` (it needs a row that is not ready). */
-export type AuthoringRowStatus = RowStatus | 'invalid' | 'blocked';
-
-/** What the element is now, for the before → after summary. */
-export interface AuthoringBefore {
-  ifcClass?: string;
-  name?: string;
-  storeyName?: string;
-  type?: string | null;
-  material?: string | null;
-  /** Placement origin in the storey, metres. */
-  origin?: [number, number];
-  angleDeg?: number;
-}
-
-export interface AuthoringRow {
-  index: number;
-  op: AuthoringOp;
-  status: AuthoringRowStatus;
-  modelId: string | null;
-  /** The existing element the operation acts on (the host for a hosted element), when it has one. */
-  expressId: number | null;
-  resolved: ResolvedOp;
-  before: AuthoringBefore;
-  /** Indices of the rows whose creations this one uses. */
-  dependsOn: number[];
-  /** Why the row is not ready: the native refusal, the expectation that failed, or the edit gate's reason. */
-  issue?: string;
-}
-
-export interface ModelAuthoringPreview {
-  batch: ModelAuthoringBatch;
-  rows: AuthoringRow[];
-  mutationVersion: number;
-  digest: string;
-}
-
-class Refusal extends Error {
-  constructor(readonly status: AuthoringRowStatus, message: string) { super(message); }
-}
+import type { AuthoringRowStatus, AuthoringRow, ModelAuthoringPreview } from './model-authoring-preview-types';
+export type { AuthoringRowStatus, AuthoringBefore, AuthoringRow, ModelAuthoringPreview } from './model-authoring-preview-types';
 
 interface Context {
   state: ViewerState;
@@ -96,6 +82,8 @@ function existing(ctx: Context, target: ExistingElement, row: AuthoringRow): num
   const { modelId, expressId } = locate(ctx, target);
   join(row, modelId);
   const r = reader(ctx, modelId);
+  if ((row.op.op.startsWith('stair.') || row.op.op.startsWith('railing.')) && !uniqueSplitGuid(r.dataStore, r.editor, target.globalId)) throw new Refusal('ambiguous-target', 'The native stair or railing target GlobalId is not unique in its owning model');
+  if ((row.op.op === 'material.layers' || row.op.op === 'element.replace' || row.op.op === 'element.align' || (row.op.op === 'element.rotate' && !!row.op.pivot) || row.op.op === 'element.split' || row.op.op === 'element.trimExtend' || row.op.op === 'type.detach' || row.op.op === 'classification.add') && !uniqueSplitGuid(r.dataStore, r.editor, target.globalId)) throw new Refusal('ambiguous-target', 'The native target GlobalId is not unique in its owning model');
   const ifcClass = className(r, expressId);
   const name = nameOf(r, expressId);
   row.before.ifcClass = ifcClass;
@@ -121,31 +109,108 @@ function element(ctx: Context, target: ElementTarget, row: AuthoringRow): Elemen
   return { ref: target.ref };
 }
 
-function transformRoot(ctx: Context, row: AuthoringRow, expressId: number): TransformRoot {
-  const r = reader(ctx, row.modelId!);
-  const plan = planElementTransform({ dataStore: r.dataStore, view: r.view, selected: [expressId],
-    storeyOf: (id) => elementStoreyId(ctx.state, r.modelId, id) });
-  if (plan.refused.length > 0) throw new Refusal('invalid', describeRefusal(plan.refused[0]));
-  const root = plan.roots.find((candidate) => candidate.expressId === expressId);
-  if (!root) throw new Refusal('invalid', 'The element moves with its host; move the host instead');
-  const plane = buildStoreyWorkplane(ctx.state, r.modelId, root.storeyId, 0);
-  if (!isWorkplane(plane)) throw new Refusal('unsupported', plane.refused);
-  row.before.origin = [...root.origin];
-  return root;
-}
-
 const near = (a: number, b: number, tolerance: number) => Math.abs(a - b) <= tolerance;
 
 function resolve(ctx: Context, row: AuthoringRow): void {
   const { op } = row;
   switch (op.op) {
+    case 'element.trimExtend': {
+      row.resolved.target = row.expressId = existing(ctx, op.target, row);
+      const r = reader(ctx, row.modelId!);
+      try { verifyReachStoreyFrame(r.dataStore, r.view, row.expressId); }
+      catch (error) { throw new Refusal('unsupported', error instanceof Error ? error.message : String(error)); }
+      try { verifyReachExpected(r.dataStore, r.view, r.editor, row.expressId, op); }
+      catch (error) { throw new Refusal('conflict', error instanceof Error ? error.message : String(error)); }
+      row.before.reach = reachBefore(ctx.state, row.modelId!, row.expressId) ?? undefined;
+      if ('wall' in op.boundary) {
+        row.resolved.reachBoundary = element(ctx, op.boundary.wall, row);
+        if ('id' in row.resolved.reachBoundary) {
+          try { verifyReachStoreyFrame(r.dataStore, r.view, row.resolved.reachBoundary.id); }
+          catch (error) { throw new Refusal('unsupported', error instanceof Error ? error.message : String(error)); }
+        }
+      }
+      return;
+    }
+    case 'hosted.edit': {
+      row.resolved.target = row.expressId = existing(ctx, op.target, row);
+      const r = reader(ctx, row.modelId!);
+      const refusal = hostedFillRefusal(ctx.state, row.modelId!);
+      if (refusal) throw new Refusal('unsupported', refusal);
+      if (!uniqueSplitGuid(r.dataStore, r.editor, op.target.globalId)) throw new Refusal('ambiguous-target', 'The native hosted target GlobalId is not unique in its owning model');
+      try { row.before.hosted = readExpectedHostedEdit(r.dataStore, r.editor, row.expressId, ctx.batch.units); }
+      catch (error) { throw new Refusal('invalid', error instanceof Error ? error.message : String(error)); }
+      if (!sameHostedEdit(row.before.hosted, op.expected)) throw new Refusal('conflict', 'The current native hosted binding, position or dimensions differ from the expected state');
+      return;
+    }
+    case 'element.split': {
+      row.resolved.target = row.expressId = existing(ctx, op.target, row);
+      const r = reader(ctx, row.modelId!);
+      try { row.before.split = readSplitSnapshot(r.dataStore, r.editor, row.expressId, ctx.batch.units); }
+      catch (error) { throw new Refusal('invalid', error instanceof Error ? error.message : String(error)); }
+      if (!sameSplitSnapshot(row.before.split, op.expected)) throw new Refusal('conflict', 'The current native split shape, placement or provenance differs from the expected snapshot');
+      return;
+    }
+    case 'element.resize': case 'element.profile': {
+      row.resolved.target = row.expressId = existing(ctx, op.target, row);
+      const r = reader(ctx, row.modelId!);
+      if (op.op === 'element.resize') {
+        const current = readAuthoringSizeFromTarget(r, row.expressId, op.expected.kind);
+        if (!current) throw new Refusal('invalid', 'The native editor cannot read this target as the requested editable size kind');
+        row.before.size = current;
+        if (!sameNativeDimensions(current, sizeInMetres(op.expected, ctx.batch.units))) throw new Refusal('conflict', 'The current native dimensions differ from the expected dimensions');
+        const next = sizeInMetres(op.size, ctx.batch.units);
+        const currentValues = current as unknown as Record<string, unknown>;
+        if (Object.entries(next).filter(([, value]) => typeof value === 'number').every(([key, value]) =>
+          Math.abs(Number(currentValues[key]) - Number(value)) <= 1e-9)) throw new Refusal('unchanged', 'Already these dimensions');
+      } else {
+        const current = readElementProfileFromTarget(r, row.expressId);
+        if (!current) throw new Refusal('invalid', 'The native editor cannot read a supported centred extrusion section');
+        row.before.Profile = current;
+        if (!sameNativeDimensions(current, profileInMetres(op.expected, ctx.batch.units))) throw new Refusal('conflict', 'The current native section differs from the expected Profile');
+        if (sameNativeDimensions(current, profileInMetres(op.Profile, ctx.batch.units))) throw new Refusal('unchanged', 'Already this Profile');
+      }
+      return;
+    }
+    case 'element.replace': {
+      row.resolved.target=row.expressId=existing(ctx,op.target,row);const r=reader(ctx,row.modelId!);readNativeReplacementExpected(r.dataStore,r.editor,row.expressId);
+      const storey=locate(ctx,op.storey);join(row,storey.modelId);row.resolved.storey=storey.expressId;row.before.storeyName=nameOf(r,storey.expressId);row.previewUnavailable=true;return;
+    }
+    case 'stair.resize': case 'stair.delete': case 'railing.delete': case 'stair.replace': case 'railing.replace': {
+      row.resolved.target=row.expressId=existing(ctx,op.target,row);
+      const nativeRefusal=stairRailingRefusal(ctx.state,row.modelId!);if(nativeRefusal)throw new Refusal('unsupported',nativeRefusal);
+      const r=reader(ctx,row.modelId!);
+      if(!conforms(r,row.expressId,'IfcStair')&&!conforms(r,row.expressId,'IfcRailing')&&!(op.op==='stair.resize'&&conforms(r,row.expressId,'IfcStairFlight')))throw new Refusal('unsupported','This lifecycle target must be a native stair or railing');
+      if(op.op==='stair.resize'){const current=nativeStairEvidence(ctx.state,row.modelId!,row.expressId);if(!current)throw new Refusal('unsupported','The native editor cannot read a supported single stepped flight with known length units');if(!sameStairSnapshot(current,op.expected))throw new Refusal('conflict','The current native stair snapshot differs from expected');const patch=stairPatchInMetres(op.size,ctx.batch.units);if(Object.entries(patch).every(([key,value])=>Math.abs(current[key as keyof typeof patch]!-value)<=1e-9))throw new Refusal('unchanged','Already these stair dimensions');}
+      if(op.op==='railing.delete'){if(!conforms(r,row.expressId,'IfcRailing'))throw new Refusal('unsupported','Railing removal requires an IfcRailing');const refusal=deletionRefusal(r,row.expressId,'IfcRailing');if(refusal)throw new Refusal('unsupported',refusal);}
+      if(op.op==='stair.delete'&&!conforms(r,row.expressId,'IfcStair'))throw new Refusal('unsupported','Stair assembly removal requires an IfcStair root');
+      if('storey' in op){const storey=locate(ctx,op.storey);join(row,storey.modelId);if(!liveEntityConforms(r.dataStore,storey.expressId,'IfcBuildingStorey',r.view))throw new Refusal('conflict','Replacement target is not an IfcBuildingStorey');row.resolved.storey=storey.expressId;row.before.storeyName=nameOf(r,storey.expressId);}
+      row.previewUnavailable=true;return;
+    }
+    case 'curtainWall.create':
+    case 'grid.create': case 'column.createOnGrid':
+    case 'stair.create': case 'railing.create':
     case 'element.create': {
       const storey = locate(ctx, op.storey);
       join(row, storey.modelId);
+      if(op.op==='curtainWall.create'){const data=ctx.state.models.get(storey.modelId)?.ifcDataStore;if(!data?.source.byteLength||String(data.schemaVersion).toUpperCase()==='IFC5')throw new Refusal('unsupported','Curtain walls require a native IFC2X3, IFC4 or IFC4X3 source');}
+      if(op.op==='stair.create'||op.op==='railing.create'){const nativeRefusal=stairRailingRefusal(ctx.state,storey.modelId);if(nativeRefusal)throw new Refusal('unsupported',nativeRefusal);}
       const r = reader(ctx, storey.modelId);
       if (!liveEntityConforms(r.dataStore, storey.expressId, 'IfcBuildingStorey', r.view)) throw new Refusal('conflict', `${op.storey.globalId} is not an IfcBuildingStorey`);
       row.resolved.storey = storey.expressId;
       row.before.storeyName = nameOf(r, storey.expressId);
+      if (op.op === 'grid.create' || op.op === 'column.createOnGrid') {
+        if (!uniqueSplitGuid(r.dataStore, r.editor, op.storey.globalId)) throw new Refusal('ambiguous-target', 'The native storey GlobalId is not unique');
+        if (!nativeLengthUnitAvailable(r)) throw new Refusal('unsupported', 'The grid requires readable declared length units');
+        if (op.op === 'column.createOnGrid') {
+          // Generic element labels use empty text when unnamed; the Grid's
+          // nullable native Name stays intact and is checked by its draft writer.
+          row.resolved.grid = element(ctx, 'ref' in op.grid ? { ref: op.grid.ref } : { ...op.grid.target, name: op.grid.target.name ?? '' }, row);
+          if ('target' in op.grid && 'id' in row.resolved.grid) {
+            if (!uniqueSplitGuid(r.dataStore, r.editor, op.grid.target.globalId)) throw new Refusal('ambiguous-target', 'The current grid GlobalId is not unique');
+            if (!sameGridExpected(nativeGridExpected(r, row.resolved.grid.id, storey.expressId), op.grid.expected)) throw new Refusal('conflict', 'The native grid axes or current placement differ from the full expected snapshot');
+          }
+        }
+      }
       return;
     }
     case 'element.copy': case 'element.array': {
@@ -186,11 +251,46 @@ function resolve(ctx: Context, row: AuthoringRow): void {
       if (refusal) throw new Refusal('unsupported', refusal);
       return;
     }
+    case 'element.align': {
+      const reference = existing(ctx, op.reference, row);
+      const targets = op.targets.map(target => existing(ctx, target, row));
+      row.expressId = reference;
+      row.resolved.alignment = { reference, targets, storeyId: 0 };
+      reviewAlignment(ctx.state, ctx.batch, row, reader(ctx, row.modelId!));
+      return;
+    }
     case 'element.move': case 'element.rotate': {
       row.resolved.target = row.expressId = existing(ctx, op.target, row);
-      const root = transformRoot(ctx, row, row.expressId);
-      return op.op === 'element.move' ? checkMove(ctx, op, root) : checkTurn(ctx, row, op, root);
+      return reviewElementTransform(ctx.state, reader(ctx, row.modelId!), ctx.batch, row);
     }
+    case 'material.layers': {
+      row.resolved.target = row.expressId = existing(ctx, op.target, row);
+      try {
+        row.resolved.layers = resolveReviewedLayers(ctx.state, reader(ctx, row.modelId!), row.expressId, op, ctx.batch.units);
+      } catch (error) {
+        if (error instanceof LayerRefusal) throw new Refusal(error.status, error.message);
+        throw error;
+      }
+      row.previewUnavailable = true;
+      return;
+    }
+    case 'type.detach': {
+      row.resolved.target = row.expressId = existing(ctx, op.target, row);
+      const r = reader(ctx, row.modelId!);
+      const current = typeOf({ dataStore: r.dataStore, view: r.view }, row.expressId);
+      if (current === null) throw new Refusal('unchanged', 'The occurrence is already untyped');
+      if (!uniqueSplitGuid(r.dataStore, r.editor, op.expected.GlobalId)) throw new Refusal('ambiguous-target', 'The expected native type GlobalId is not unique in its owning model');
+      const expected = locate(ctx, { globalId: op.expected.GlobalId, modelId: row.modelId! });
+      if (expected.expressId !== current || nameOf(r, current) !== op.expected.Name) throw new Refusal('conflict', 'The occurrence has a different current type');
+      row.resolved.typeId = current;
+      row.before.type = nameOf(r, current);
+      row.previewUnavailable = true;
+      return;
+    }
+    case 'classification.add':
+      row.resolved.target = row.expressId = existing(ctx, op.target, row);
+      validateClassificationAdd(op, reader(ctx, row.modelId!), row.expressId, message => { throw new Refusal('invalid', message); });
+      row.previewUnavailable = true; return;
     case 'type.assign': case 'material.assign': {
       const subject = row.resolved.subject = element(ctx, op.target, row);
       if ('id' in subject) row.expressId = subject.id;
@@ -203,26 +303,14 @@ function resolve(ctx: Context, row: AuthoringRow): void {
     case 'hosted.create': {
       row.resolved.host = element(ctx, op.host, row);
       if ('id' in row.resolved.host) row.expressId = row.resolved.host.id;
+      if ('params' in op) {
+        if (row.expressId !== null) { const r = reader(ctx, row.modelId!);
+          try { row.before.split = verifySlabOpeningHost(ctx.batch, op, r.dataStore, r.editor, row.expressId, false); }
+          catch (error) { throw new Refusal('invalid', error instanceof Error ? error.message : String(error)); }
+        }
+      }
       return;
     }
-  }
-}
-
-function checkMove(ctx: Context, op: Extract<AuthoringOp, { op: 'element.move' }>, root: TransformRoot): void {
-  if (!op.from) return;
-  const from = op.from.map((v) => toMetres(ctx.batch, v));
-  if (!near(from[0], root.origin[0], 0.001) || !near(from[1], root.origin[1], 0.001)) {
-    throw new Refusal('conflict', `Expected the element at (${op.from.join(', ')}); it is elsewhere now`);
-  }
-}
-
-function checkTurn(ctx: Context, row: AuthoringRow, op: Extract<AuthoringOp, { op: 'element.rotate' }>, root: TransformRoot): void {
-  const angle = placementAngle(reader(ctx, row.modelId!), row.expressId!);
-  if (!root.upright || !angle?.turnable) throw new Refusal('invalid', 'Its placement has no explicit reference direction to turn');
-  const deg = angle.deg + (Math.atan2(root.parent.axis[1], root.parent.axis[0]) * 180) / Math.PI;
-  row.before.angleDeg = deg;
-  if (op.fromDeg !== undefined && !near(((op.fromDeg - deg) % 360 + 540) % 360 - 180, 0, 0.1)) {
-    throw new Refusal('conflict', `Expected the element turned ${op.fromDeg}°; it is at ${deg.toFixed(1)}° now`);
   }
 }
 
@@ -274,28 +362,35 @@ export function previewModelAuthoring(state: ViewerState, batch: ModelAuthoringB
       row.issue = error.message;
     }
   }
-  nativeDryRun(ctx, batch);
+  validateAuthoringDraft(state, batch, ctx.rows, modelId => reader(ctx, modelId));
+  for (const row of ctx.rows) if (row.status === 'ready' && row.modelId && (row.op.op === 'element.resize' || row.op.op === 'element.profile' || row.op.op === 'element.trimExtend' || (row.op.op === 'material.layers' && row.op.scope === 'element' && row.resolved.layers?.kind === 'wall'))) {
+    const boundary = row.op.op === 'element.trimExtend' ? row.resolved.reachBoundary : undefined;
+    // The whole native batch validates this boundary; the independent body draft
+    // cannot reproduce a preceding edit of the same existing wall (#7262).
+    if (boundary && 'id' in boundary && ctx.rows.some(previous => previous.index < row.index
+      && previous.status === 'ready' && previous.modelId === row.modelId && previous.expressId === boundary.id
+      && previous.op.op !== 'element.copy' && previous.op.op !== 'element.array')) {
+      row.previewUnavailable = true;
+      continue;
+    }
+    const ghost = authoringSizeGhost(state, batch, row, row.modelId, 0);
+    row.previewUnavailable = ghost.unavailable;
+    row.previewOmitted = ghost.omitted;
+    row.previewOuterBodyOnly = ghost.outerBodyOnly;
+  }
+  for (const row of ctx.rows) if (row.status === 'ready' && row.op.op === 'hosted.edit') row.previewUnavailable = authoringHostedEditGhost(state, batch, row, 0, ctx.rows) === null;
+  for (const row of ctx.rows) if (row.status === 'ready' && row.op.op === 'element.split') {
+    row.previewUnavailable = authoringSplitMarker(state, batch, row, 0) === null;
+  }
+  for(const row of ctx.rows)if(row.status==='ready'&&row.op.op==='hosted.create'&&'params' in row.op)row.previewUnavailable=!authoringSlabOpeningGhost(state,row,ctx.rows,0);
+  for(const row of ctx.rows)if(row.status==='ready'&&['stair.create','railing.create','stair.replace','railing.replace'].includes(row.op.op))row.previewUnavailable=!stairRailingGhost(state,batch,row,0);
+  for (const row of ctx.rows) if (row.status === 'ready' && row.op.op === 'curtainWall.create') row.previewUnavailable = authoringCurtainWallGhost(state, batch, row, 0).length === 0;
+  for (const row of ctx.rows) if (row.status === 'ready' && (row.op.op === 'grid.create' || row.op.op === 'column.createOnGrid')) row.previewUnavailable = gridCreationGhost(state, batch, row, 0).length === 0;
   const preview = { batch, rows: ctx.rows, mutationVersion: state.mutationVersion, digest: batchDigest(batch) };
   captureAuthoringSources(state, preview);
   return preview;
 }
 
-/** The builders decide what static checks cannot: dimensions, hosts, joins, schema support. */
-function nativeDryRun(ctx: Context, batch: ModelAuthoringBatch): void {
-  const byModel = new Map<string, AuthoringRow[]>();
-  for (const row of ctx.rows) if (row.status === 'ready' && row.modelId) byModel.set(row.modelId, [...(byModel.get(row.modelId) ?? []), row]);
-  for (const [modelId, rows] of byModel) {
-    const r = reader(ctx, modelId);
-    const refusals = dryRunAuthoring(batch, r.dataStore, r.view, modelId, rows.map(({ index, op, resolved }) => ({ index, op, resolved })));
-    for (const row of rows) {
-      const refusal = refusals.get(row.index);
-      if (refusal === undefined) continue;
-      const blocked = row.dependsOn.some((i) => refusals.has(i));
-      row.status = blocked ? 'blocked' : 'invalid';
-      row.issue = blocked ? 'It needs an element another row creates, which the model refused' : refusal;
-    }
-  }
-}
 
 export function authoringCounts(rows: readonly AuthoringRow[]): Record<AuthoringRowStatus, number> {
   const counts: Record<AuthoringRowStatus, number> = { ready: 0, unchanged: 0, conflict: 0, 'missing-target': 0, 'ambiguous-target': 0,

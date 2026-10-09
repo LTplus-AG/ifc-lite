@@ -948,7 +948,7 @@ and `edit` (with a `drag`, `split`, `remove` or `prune` layout operation).
 `deleted` and `skipped` references and form one logical Undo batch. Supplied
 footprint placement remains available through `addSpace`.
 
-Settings use metres: `weld`, `minArea`, `height`, `z` and optional edit
+Settings use metres: `weld`, `height`, `z` and optional edit
 `tolerance`; `boundary` is `inner`, `center` or `outer`. `namePattern`,
 `PredefinedType` and `ObjectType` control created room metadata. The runtime
 requires the WASM geometry package. The command refuses if its model changes
@@ -961,6 +961,36 @@ For append-only authoring, `view.getMutationCount()` captures the current journa
 
 Native Room SDK preparation raises `RoomCommandConflictError` when another Room command owns preparation or the model changes before commit. Callers may retry against current state. Abort signals retain their cancellation reason; no Room commit is published after cancellation.
 
+Hosts that use `createRoomCommandBackend` can call its asynchronous
+`prepareRoomCommand(modelId, storeyExpressId, command)` before asking for
+approval. The returned `PreparedRoomCommand` exposes a detached native
+`preview` model and the planned `result`. For an edit, `layoutAfter` contains
+the detached post-edit native faces, including a layout-only cut with no
+materialized IfcSpace. The existing `result.candidates` keeps its pre-edit
+candidate meaning; hosts show `layoutAfter` to review the approved new layout.
+Preparation changes no live IFC
+graph or Undo history. `validate()` checks the captured model and source-byte
+facade identity, overlay,
+history and retained layout. `commit()` applies the whole captured action
+synchronously through the host recorder, once. Auto approves every captured
+untaken face; this interface does not offer per-room subset approval.
+Always call `dispose()` in a `finally` block or when abandoning a review so
+an uncommitted duplicate native plate is freed. A newer preparation on the
+same backend/model supersedes an older approval. Native queries may refresh
+geometry and the retained cache, but do not write IFC graph changes.
+
+`minArea` uses square metres. Layout-only edits before any IfcSpace exists
+remain session Undo state; exporting IFC does not serialize that retained
+layout unless an operation has materialized rooms in the graph.
+
 ### Detecting concurrent overlay edits
 
 `MutablePropertyView.getMutationRevision()` returns an O(1) invalidation token for the live overlay. Capture it before asynchronous preparation and compare it afterward together with the model and view identities. Canonical edits, history-free edits, Undo/Redo and atomic publications advance the token; a rejected detached draft does not change the live token. Conservative increments may invalidate unchanged geometry. The token is local to one view, is not serialized, and must not replace the recorded Undo head.
+
+`readRelatedLists` normally returns syntactically valid relating references and
+excludes explicit IFC unset targets. Its optional fourth argument
+`{ includeMalformedRelatingTargets: true }` also inventories relationships whose
+relating slot is malformed or missing; these rows omit `relatingId` and must be
+refused as unknown. A reference to a missing entity retains its `relatingId`, so
+consumers must separately validate that the target exists and conforms to the
+required IFC type. Explicit unset remains excluded.

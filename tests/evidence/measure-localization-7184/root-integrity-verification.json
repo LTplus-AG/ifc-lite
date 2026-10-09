@@ -1,0 +1,15 @@
+{
+  "time": "2026-10-08T17:23:59.704182+00:00",
+  "rawGzipPairsVerified": 28,
+  "liveSourcePins": 2,
+  "actualFocusedGreen": 18,
+  "actualRestoredGreen": 18,
+  "actualBaselineFail": 2,
+  "typecheckedTestFiles": 3739,
+  "packages": 62,
+  "gates": 6,
+  "actualTestRuntime": "1548ae57020949abff44f96d2b9f23bc0864b2553c97db99abc14162e603e569",
+  "typecheckRuntimeIsSeparate": "8b74229bbd4a991cbf1f32a8d52add195c5fdd333921f998b1c18eb713185143",
+  "scope": "Localization control correction; no quantity producer change/native assembly claim",
+  "publicationVerified": false
+}

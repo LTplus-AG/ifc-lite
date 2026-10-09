@@ -31,7 +31,7 @@ import { inheritedSource, parse, net } from '@/test/inherited-quantities-native-
 for (const kind of ['oversized', 'unsupported', 'malformed-value', 'negative-volume'] as const) {
  test(`#7353 ${kind} native type quantities preserve own bases with explicit unavailable coverage`, async t => {
   const fixture = await inheritedSource(t); if (!fixture) return;
-  const { f, store, a, view } = fixture;
+  const { f, store, view } = fixture;
   await prepareQuantityRefusal(fixture, kind);
   const revision = view.getMutationRevision();
   const result = readCurrentTypeQuantities(store, f.id, view);
@@ -76,7 +76,7 @@ test('#7353 current inherited quantity implicit project Unit agrees with native 
 
 test('#7353 current project unit assignment follows newly allocated native context and preserves own basis', async t => {
  const fixture = await inheritedSource(t); if (!fixture) return;
- const { f, store, view } = fixture;
+ const { store, view } = fixture;
  const { nativeUnits } = await prepareNewProjectContext(fixture);
  assert.deepEqual(readCurrentProjectUnits(store, view).value?.resolvedForUnitType('VOLUMEUNIT'), nativeUnits.resolvedForUnitType('VOLUMEUNIT'));
  assert.equal(extractProjectUnits(store.source, store.entityIndex).resolvedForUnitType('VOLUMEUNIT')?.symbol, 'm³',
@@ -86,7 +86,7 @@ test('#7353 current project unit assignment follows newly allocated native conte
 for (const kind of ['unset-context', 'deleted-project', 'deleted-assignment', 'unsupported-unit', 'empty-assignment', 'cyclic-unit', 'oversized-dependencies'] as const) {
  test(`#7353 ${kind} current project context reports unknown instead of a false own quantity basis`, async t => {
   const fixture = await inheritedSource(t); if (!fixture) return;
-  const { f, store, view } = fixture;
+  const { store, view } = fixture;
   await prepareProjectRefusal(fixture, kind);
   const revision = view.getMutationRevision();
   const current = readCurrentProjectUnits(store, view);
@@ -101,7 +101,7 @@ for (const kind of ['unset-context', 'deleted-project', 'deleted-assignment', 'u
 for (const kind of ['deleted', 'unsupported', 'cyclic', 'oversized'] as const) {
  test(`#7353 ${kind} native quantity Unit dependency refuses unknown coverage without crashing the card`, async t => {
   const fixture = await inheritedSource(t); if (!fixture) return;
-  const { f, store, a, view } = fixture;
+  const { f, store, view } = fixture;
   await prepareQuantityUnitRefusal(fixture, kind);
   const revision = view.getMutationRevision();
   const result = readCurrentTypeQuantities(store, f.id, view);

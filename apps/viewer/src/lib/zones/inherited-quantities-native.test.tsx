@@ -5,7 +5,7 @@ import '@/test/setup-dom.js';
 import assert from 'node:assert/strict';
 import { writeFile } from 'node:fs/promises';
 import { afterEach, test } from 'node:test';
-import { extractProjectUnits, extractTypeQuantitiesOnDemand, extractQuantitiesOnDemand, type IfcDataStore } from '@ifc-lite/parser';
+import { extractProjectUnits, extractTypeQuantitiesOnDemand, type IfcDataStore } from '@ifc-lite/parser';
 import { IfcQuery } from '@ifc-lite/query';
 import { StoreEditor, MutablePropertyView } from '@ifc-lite/mutations';
 import { RelationshipType, QuantityType } from '@ifc-lite/data';
@@ -98,7 +98,7 @@ test('#7353 canonical inherited quantity card follows native edits and type reas
 for (const kind of ['oversized', 'unsupported', 'malformed-value', 'negative-volume'] as const) {
  test(`#7353 ${kind} native type quantities preserve own bases with explicit unavailable coverage`, async t => {
   const fixture = await inheritedSource(t); if (!fixture) return;
-  const { f, store, a, view } = fixture;
+  const { f, store, view } = fixture;
   await prepareQuantityRefusal(fixture, kind);
   const revision = view.getMutationRevision();
   assert.equal(extractTypeQuantitiesOnDemand(store, f.id, view), null, 'nullable current API does not fall back to original source10');
@@ -142,8 +142,8 @@ test('#7353 current inherited quantity implicit project Unit agrees with native 
 
 test('#7353 current project unit assignment follows newly allocated native context and preserves own basis', async t => {
  const fixture = await inheritedSource(t); if (!fixture) return;
- const { f, store, view } = fixture;
- const { nativeUnits } = await prepareNewProjectContext(fixture);
+ const { store } = fixture;
+ await prepareNewProjectContext(fixture);
  const panel = render(<PropertiesPanel />);
  assert.match(panel.textContent ?? '', /netNetVolume25 cm³/, 'own implicit basis uses the current native context');
  assert.doesNotMatch(panel.textContent ?? '', /netNetVolume25 m³/);
@@ -154,7 +154,7 @@ test('#7353 current project unit assignment follows newly allocated native conte
 for (const kind of ['unset-context', 'deleted-project', 'deleted-assignment', 'unsupported-unit', 'empty-assignment', 'cyclic-unit', 'oversized-dependencies'] as const) {
  test(`#7353 ${kind} current project context reports unknown instead of a false own quantity basis`, async t => {
   const fixture = await inheritedSource(t); if (!fixture) return;
-  const { f, store, view } = fixture;
+  const { view } = fixture;
   await prepareProjectRefusal(fixture, kind);
   const revision = view.getMutationRevision();
   const panel = render(<PropertiesPanel />);
@@ -168,7 +168,7 @@ for (const kind of ['unset-context', 'deleted-project', 'deleted-assignment', 'u
 for (const kind of ['deleted', 'unsupported', 'cyclic', 'oversized'] as const) {
  test(`#7353 ${kind} native quantity Unit dependency refuses unknown coverage without crashing the card`, async t => {
   const fixture = await inheritedSource(t); if (!fixture) return;
-  const { f, store, a, view } = fixture;
+  const { f, store, view } = fixture;
   await prepareQuantityUnitRefusal(fixture, kind);
   const revision = view.getMutationRevision();
   assert.equal(extractTypeQuantitiesOnDemand(store, f.id, view), null, 'unknown units cannot use a stale source scale or default SI');
@@ -199,7 +199,7 @@ for (const field of ['RelatingType', 'RelatedObjects'] as const) {
 for (const members of [null, []] as const) {
  test(`#7353 ${members === null ? 'null' : 'empty'} required native IfcElementQuantity.Quantities reports unavailable`, async t => {
   const fixture = await inheritedSource(t); if (!fixture) return;
-  const { f, store, a, view } = fixture;
+  const { store, a, view } = fixture;
   view.setPositionalAttribute(a.qto, 5, members === null ? null : []);
   const exported = await parse(editedModelBytes(store, view));
   assert.deepEqual(exported.getEntity(a.qto)?.attributes[5], members, 'independent native export contains the malformed required collection');
@@ -208,7 +208,7 @@ for (const members of [null, []] as const) {
 }
 test('#7353 empty required native IfcRelDefinesByType.RelatedObjects reports unavailable', async t => {
  const fixture = await inheritedSource(t); if (!fixture) return;
- const { f, store, relation, view } = fixture;
+ const { store, relation, view } = fixture;
  view.setPositionalAttribute(relation, 4, []);
  assert.deepEqual((await parse(editedModelBytes(store, view))).getEntity(relation)?.attributes[4], []);
  assert.match(render(<PropertiesPanel />).textContent ?? '', /Inherited type quantities are unavailable/);

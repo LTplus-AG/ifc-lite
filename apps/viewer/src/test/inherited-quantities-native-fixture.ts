@@ -102,7 +102,7 @@ export async function prepareQuantityRefusal(fixture: NativeQuantityFixture, kin
 }
 
 export async function prepareProjectRefusal(fixture: NativeQuantityFixture, kind: 'unset-context' | 'deleted-project' | 'deleted-assignment' | 'unsupported-unit' | 'empty-assignment' | 'cyclic-unit' | 'oversized-dependencies') {
- const { f, store, a, view } = fixture;
+ const { f, store, view } = fixture;
   const project = store.entityIndex.byType.get('IFCPROJECT')?.[0]; assert.ok(project);
   const assignment = store.getEntity(project)?.attributes[8]; assert.equal(typeof assignment, 'number');
   const members = store.getEntity(assignment as number)?.attributes[0]; assert.ok(Array.isArray(members));

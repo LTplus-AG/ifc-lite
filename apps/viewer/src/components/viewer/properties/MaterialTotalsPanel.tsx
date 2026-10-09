@@ -31,6 +31,7 @@ import {
 } from '@ifc-lite/parser';
 import { QuantityType, RelationshipType } from '@ifc-lite/data';
 import { resolveQuantityDisplay } from '@/lib/units/display';
+import { normalizeMutationModelId } from '@/sdk/adapters/mutation-view';
 import { useCurrentProjectUnits } from './useCurrentProjectUnits';
 import { PropertySetCard } from './PropertySetCard';
 import type { PropertySet } from './encodingUtils';
@@ -206,7 +207,7 @@ export function MaterialTotalsPanel({ materialId, modelId }: { materialId: numbe
     return extractMaterialPropertiesForMaterialId(selectedStore, materialId);
   }, [selectedStore, materialId]);
 
-  const currentView = useViewerStore(s => s.mutationViews.get(modelId));
+  const currentView = useViewerStore(s => s.mutationViews.get(normalizeMutationModelId(s, modelId)));
   const unitContext = useCurrentProjectUnits(models.get(modelId)?.ifcDataStore ?? ifcDataStore, currentView);
   const projectUnits = unitContext.value ?? ProjectUnits.empty();
 

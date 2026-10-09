@@ -40,8 +40,8 @@ test('#7310 mounted native slab review discloses no fit and the native cutter bo
 test('#7310 both real selection transports carry the same complete current native slab snapshot',async()=>{
  const {dataStore}=await seedAuthoringSample(),made=useViewerStore.getState().addSlab(SAMPLE_MODEL,dataStore.entities.getExpressIdByGlobalId(GROUND_STOREY),{Position:[20,20,3],Width:6,Depth:4,Thickness:.25,Name:'Attached native slab'});assert.ok('expressId' in made,'error' in made?made.error:'');
  useViewerStore.getState().setSelectedEntityIds([made.expressId]);const state=useViewerStore.getState(),attached=captureSelectionGrounding(state);
- assert.equal(attached.elements.length,1);assert.ok(attached.elements[0].nativeSlabOpening,'the shipping attachment includes the native slab snapshot');assert.equal(attached.elements[0].nativeSlabOpening.status,'available');
+ assert.equal(attached.elements.length,1);assert.ok(attached.elements[0].nativeSlabOpeningExpected,'the shipping attachment includes the native slab snapshot');assert.equal(attached.elements[0].nativeAuthoringAvailability.slabOpening,'available');
  const evidence=selectionAdapter.capture(state,10),reader=authoringReader(state,SAMPLE_MODEL);assert.ok(reader);
- assert.deepEqual(attached.elements[0].nativeSlabOpening.expected,readSplitSnapshot(dataStore,reader.editor,made.expressId,'m'));
- assert.deepEqual(evidence.rows?.[0]?.nativeSlabOpening,attached.elements[0].nativeSlabOpening,'attachment and evidence adapter use one authoritative native reader');
+ assert.deepEqual(attached.elements[0].nativeSlabOpeningExpected,readSplitSnapshot(dataStore,reader.editor,made.expressId,'m'));
+ assert.deepEqual(evidence.rows?.[0]?.nativeSlabOpeningExpected,attached.elements[0].nativeSlabOpeningExpected,'attachment and evidence adapter use one authoritative native reader');
 });

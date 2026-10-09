@@ -20,7 +20,7 @@ import { draftAuthoringOperation } from './model-authoring-native';
 import { readAuthoringSizeFromTarget } from './model-authoring-size';
 import { readSplitSnapshot } from './model-authoring-split-state';
 import { captureSelectionGrounding } from './selection-grounding';
-function slabEvidence(id:number){const row=captureSelectionGrounding({...useViewerStore.getState(),selectedEntityIds:new Set([id]),selectedEntityId:id}).elements[0];assert.ok(row,'the native selected host resolves');return row.nativeSlabOpening;}
+function slabEvidence(id:number){const row=captureSelectionGrounding({...useViewerStore.getState(),selectedEntityIds:new Set([id]),selectedEntityId:id}).elements[0];assert.ok(row,'the native selected host resolves');return {units:row.nativeAuthoringUnits.slabOpening,status:row.nativeAuthoringAvailability.slabOpening,expected:row.nativeSlabOpeningExpected};}
 const initial=useViewerStore.getState();
 afterEach(()=>useViewerStore.setState(initial));
 async function fixture(polygon=false) {
@@ -72,7 +72,7 @@ test('#7310 valid source-empty transport refuses both current slab evidence and 
  const f=await fixture(),state=useViewerStore.getState(),model=state.models.get(SAMPLE_MODEL);assert.ok(model);
  useViewerStore.setState({models:new Map([[SAMPLE_MODEL,{...model,ifcDataStore:{...f.dataStore,source:EMPTY_SOURCE_BYTES}}]])});
  const reader=authoringReader(useViewerStore.getState(),SAMPLE_MODEL);assert.ok(reader);
- assert.deepEqual(slabEvidence(f.id),{units:'m',status:'unavailable',expected:null});
+ assert.deepEqual(slabEvidence(f.id),{units:'m',status:'unavailable-native-layout',expected:null});
  const before=await graph(f.dataStore,f.view),preview=previewModelAuthoring(useViewerStore.getState(),f.batch());
  assert.notEqual(preview.rows[0].status,'ready');assert.match(preview.rows[0].issue??'',/source|IFC/i);
  assert.equal(commitModelAuthoring(useViewerStore,preview,new Set([0]),'missing slab source').ok,false);
@@ -103,7 +103,7 @@ test('#7310 genuine duplicate slab Root GlobalId refuses evidence, preview and d
  const f=await fixture(),editor=new StoreEditor(f.dataStore,f.view),record=f.view.getNewEntity(f.id);assert.ok(record);
  const duplicate=editor.addEntity('IfcSlab',record.attributes);const saved=await parseIfc(editedModelBytes(f.dataStore,f.view));
  assert.equal(saved.getEntity(duplicate.expressId)?.attributes[0],f.host.globalId,'independent STEP proves the genuine Root collision');
- const r=authoringReader(useViewerStore.getState(),SAMPLE_MODEL);assert.ok(r);assert.equal(slabEvidence(f.id).status,'unavailable');
+ const r=authoringReader(useViewerStore.getState(),SAMPLE_MODEL);assert.ok(r);assert.equal(slabEvidence(f.id).status,'unavailable-native-layout');
  const before=await graph(f.dataStore,f.view),batch=f.batch(),op=batch.operations[0];assert.ok(op.op==='hosted.create'&&'params' in op);
  assert.notEqual(previewModelAuthoring(useViewerStore.getState(),batch).rows[0].status,'ready');
  assert.throws(()=>editor.runAtomic(draft=>draftAuthoringOperation(batch,f.dataStore,SAMPLE_MODEL,draft,{index:0,op,resolved:{host:{id:f.id}}},new Map())),/GlobalId is not unique/);
@@ -183,7 +183,7 @@ test('#7310 unreadable current native snapshot never attests a named placement r
  assert.deepEqual(saved.getEntity(point.expressId)?.attributes[0],[22000,21000,3000]);
  const preview=previewModelAuthoring(useViewerStore.getState(),f.batch());
  assert.notEqual(preview.rows[0].status,'ready','an old native frame cannot authorize a current retargeted placement');
- assert.deepEqual(slabEvidence(f.id),{units:'m',status:'unavailable',expected:null});
+ assert.deepEqual(slabEvidence(f.id),{units:'m',status:'unavailable-native-layout',expected:null});
  const before=await graph(store,view);assert.equal(commitModelAuthoring(useViewerStore,preview,new Set([0]),'unavailable named frame').ok,false);assert.deepEqual(await graph(store,view),before);
  // Independently saving/reparsing supplies the inherited reader's actual
  // current native source. That source is supported without another resolver.

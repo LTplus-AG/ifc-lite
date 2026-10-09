@@ -195,6 +195,9 @@
             "qsetCount": 1,
             "zoneVolumeBreakdowns": {
               "quantityStatus": "available",
+              "quantityReason": null,
+              "unitStatus": "available",
+              "unitReason": null,
               "zoneSetCount": 0,
               "zoneSets": [],
               "volumeBases": []

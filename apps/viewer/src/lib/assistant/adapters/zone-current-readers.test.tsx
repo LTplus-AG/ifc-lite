@@ -13,6 +13,7 @@ import { seedDeclaredZoneWall } from '@/test/zone-declared-fixture';
 import { editedModelBytes } from '@/lib/export/edited-model-bytes';
 import { captureEvidence } from '@/lib/assistant/evidence';
 import { setGlobalRendererRef } from '@/hooks/useBCF';
+import { assertSiVolume } from '@/test/native-quantity-assertions';
 
 const parse = (bytes: Uint8Array) => new IfcParser().parseColumnar(
   bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength), { disableWorkerScan: true });
@@ -71,19 +72,19 @@ for (const source of ['selection', 'zones'] as const) {
   test(`#7220 ${source} follows current native HasPropertySets values and type reassignment`, async t => {
     const x = await inheritedWall(t); if (!x) return;
     const cache = useViewerStore.getState().zoneApportionment;
-    assert.equal(capture(source).value('net'), 10);
+    assertSiVolume(capture(source).value('net'), 10, 'the captured native type quantity equals its authored source value');
     x.view.setPositionalAttribute(x.a.quantity, 3, 20);
     const exported = await parse(editedModelBytes(x.store, x.view));
     const native = extractTypeQuantitiesOnDemand(exported, x.f.id)?.quantities.flatMap(set => set.quantities).find(q => q.name === 'NetVolume');
     assert.ok(native);
     assert.equal(native.value, 20, 'independent native export sees the edited authored type value');
-    assert.equal(capture(source).value('net'), native.value);
+    assertSiVolume(capture(source).value('net'), native.value, 'captured current type quantity agrees with independent native export');
     x.view.setPositionalAttribute(x.relation, 5, `#${x.b.type}`);
     const reassigned = await parse(editedModelBytes(x.store, x.view));
     const actual = extractTypeQuantitiesOnDemand(reassigned, x.f.id)?.quantities.flatMap(set => set.quantities).find(q => q.name === 'NetVolume');
     assert.ok(actual);
     assert.equal(actual.value, 30);
-    assert.equal(capture(source).value('net'), actual.value);
+    assertSiVolume(capture(source).value('net'), actual.value, 'captured reassigned type quantity agrees with independent native export');
     assert.equal(useViewerStore.getState().zoneApportionment, cache, 'capture retains native SI geometry cache');
   });
   test(`#7220 ${source} current project units scale declared magnitude without rescaling native SI mesh`, async t => {
@@ -98,7 +99,7 @@ for (const source of ['selection', 'zones'] as const) {
     assert.ok(scale !== undefined);
     assert.equal(scale, 1e-9, 'independent native IFC declares cubic millimetres');
     const after = capture(source);
-    assert.equal(after.value('net'), 10 * scale);
+    assertSiVolume(after.value('net'), 10 * scale, 'captured current units agree with the independently exported SI scale');
     assert.equal(after.mesh, before.mesh, 'mesh basis stays in native SI, separate from authored quantities');
     assert.equal(after.unitStatus, 'available');
   });

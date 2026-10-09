@@ -16,6 +16,7 @@ import { PropertiesPanel } from '@/components/viewer/PropertiesPanel';
 import { render, cleanup } from '@/test/render';
 import { setGlobalRendererRef } from '@/hooks/useBCF';
 import { getMaxExpressId } from '@/hooks/ingest/viewerModelIngest';
+import { assertSiVolume } from '@/test/native-quantity-assertions';
 
 const original = useViewerStore.getState();
 afterEach(() => { cleanup(); setGlobalRendererRef({ current: null }); useViewerStore.setState(original, true); });
@@ -25,13 +26,6 @@ interface Basis { basis: string; totalM3?: number; ElementVolumeM3?: number }
 interface Row {
   zoneVolumeBreakdowns?: { unitStatus: string; volumeBases: Basis[] };
   DeclaredUnitStatus?: string; VolumeBases?: Basis[]; ElementVolumeM3?: number;
-}
-function sameSiVolume(actual: number | undefined, expected: number, message: string) {
-  assert.ok(actual !== undefined && Number.isFinite(actual), message);
-  // Native unit readers use algebraically equivalent prefix powers whose
-  // floating point rounding may differ by a few ULPs after volume scaling.
-  assert.ok(Math.abs(actual - expected) <= 8 * Number.EPSILON * Math.max(Math.abs(actual), Math.abs(expected)),
-    `${message}: ${actual} versus ${expected}`);
 }
 function read(source: 'selection' | 'zones') {
   const payload = JSON.parse(captureEvidence(source).payload) as { evidence: { rows: Array<{ data: Row }> } };
@@ -84,7 +78,7 @@ for (const source of ['selection', 'zones'] as const) {
     assert.ok(native); assert.equal(native.value, 10);
     assert.equal(native.explicitUnitSiScale, undefined, 'the occurrence quantity uses its Project units');
     const before = read(source); assert.ok(before.mesh !== undefined, 'real kernel SI mesh evidence is present');
-    sameSiVolume(before.net, native.value * scale, 'source-backed capture agrees with the independent native export');
+    assertSiVolume(before.net, native.value * scale, 'source-backed capture agrees with the independent native export');
     const cache = useViewerStore.getState().zoneApportionment;
     const cacheEntry = cache.get(f.zoneSet.id);
     const revision = view.getMutationRevision();
@@ -99,7 +93,7 @@ for (const source of ['selection', 'zones'] as const) {
     assert.match(panel.textContent ?? '', /10 mm³/, 'Properties independently consults the surviving native unit view');
     const after = read(source);
     assert.equal(after.unitStatus, 'available');
-    sameSiVolume(after.net, native.value * scale, 'source release cannot certify the raw value as cubic metres');
+    assertSiVolume(after.net, native.value * scale, 'source release cannot certify the raw value as cubic metres');
     assert.equal(after.mesh, before.mesh, 'native geometry remains SI');
     assert.equal(useViewerStore.getState().zoneApportionment, cache, 'capture leaves apportionment cache intact');
     assert.equal(useViewerStore.getState().zoneApportionment.get(f.zoneSet.id), cacheEntry);

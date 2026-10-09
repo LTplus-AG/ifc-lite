@@ -16,6 +16,7 @@ export function nativeSetLine(ctx: PropertySetContext, id: number, sourceSchema:
     ? `#${id}=${created.type.toUpperCase()}(${serializeEntityArgs(created.type, created.attributes, sourceSchema)});`
     : entityLineText(ctx, id);
   if (original === null) throw new Error(`Type quantity source #${id} is unreadable`);
+  // @raw-entity-enumeration-ok original source type for canonical mutation serialization; created records use their authored type above
   return applySourceLineMutationsReported(ctx.applySourceLineMutations, warnings, id,
     original, created?.type ?? ctx.dataStore.entityIndex.byId.get(id)?.type ?? '', attributeMutations,
     sourceSchema, ctx.mutationView !== null).text;

@@ -253,6 +253,7 @@ export function collectPropertyAndQuantitySetMutations(
     } else if (!quantityView.hasQuantityBase()) {
       const box = { store: ctx.dataStore };
       exporterQuantityBase.set(quantityView, box);
+      // @raw-entity-enumeration-ok immutable SOURCE quantity-base dispatch; current Type ownership is resolved separately with the mutation view below
       quantityView.setQuantityExtractor((id: number) => isTypeClass(box.store.entityIndex.byId.get(id)?.type)
         ? extractTypeEntityOwnQuantities(box.store, id) : extractQuantitiesOnDemand(box.store, id));
     }

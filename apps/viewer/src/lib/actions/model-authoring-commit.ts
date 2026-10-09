@@ -37,9 +37,6 @@ import { writeStairLifecycle, writeStairCreation } from './model-authoring-stair
 import { completeEntityRemoval } from '@/store/slices/mutation-mesh-stash';
 import { completeStairRailingGeometry } from '@/store/slices/mutation-stair-railing';
 import { writeAuthoringReach } from './model-authoring-reach';
-import { writeStairLifecycle, writeStairCreation } from './model-authoring-stair-lifecycle';
-import { completeEntityRemoval } from '@/store/slices/mutation-mesh-stash';
-import { completeStairRailingGeometry } from '@/store/slices/mutation-stair-railing';
 import { sizeInMetres } from './model-authoring-size-params';
 import { profileInMetres } from './model-authoring-shape-params';
 
@@ -114,24 +111,6 @@ function writeRow(tx: AuthoringTransaction, batch: ModelAuthoringBatch, row: Aut
       written.moved = true;
       return [{ ...base, globalId: op.target.globalId, field: 'Trim/Extend', before: JSON.stringify(before.reach),
         after: JSON.stringify({ mode: result.op, end: result.end, lengthMetres: result.length, joined: result.joined }) }];
-    }
-    case 'stair.resize': case 'stair.delete': case 'railing.delete': case 'stair.replace': case 'railing.replace': {
-      const dataStore=tx.store.models.get(modelId)?.ifcDataStore;if(!dataStore)throw new Error('The native lifecycle source is unavailable');
-      const result=recordModellingEdit(tx.api,modelId,(_methods,editor)=>writeStairLifecycle(dataStore,editor,batch,op,resolved.target!,resolved.storey),tx.batchId);
-      for(const id of result.deleted)completeEntityRemoval(tx.api.getState,tx.api.setState,modelId,id,tx.api.getState().removedNewEntities.get(`${modelId}:${id}`));
-      written.created.push(...result.created);written.deleted.push(...result.deleted);written.remesh.push(...result.remesh);
-      if('ref' in op&&result.root!==undefined){const view=tx.api.getState().mutationViews.get(modelId),made=view?.getNewEntity(result.root),gid=made?.attributes[0];if(typeof gid!=='string')throw new Error('The native replacement has no GlobalId');ids.set(op.ref,result.root);refs.set(op.ref,gid);completeStairRailingGeometry(tx.api,modelId,resolved.storey!,{expressId:result.root,...(result.created.length>1?{flightId:result.created[1]}:{})},op.op==='stair.replace'?'IFCSTAIR':'IFCRAILING',tx.batchId,false);return [{...base,globalId:gid,field:op.op==='stair.replace'?'IfcStair':'IfcRailing',before:op.target.globalId,after:op.params.Name??null}];}
-      return [{...base,globalId:op.target.globalId,field:op.op==='stair.resize'?'Dimensions':op.target.ifcClass,before:op.op==='stair.resize'?JSON.stringify(op.expected):op.target.name,after:op.op==='stair.resize'?JSON.stringify(op.size):null}];
-    }
-    case 'stair.create': case 'railing.create': {
-      const source = tx.store.models.get(modelId)?.ifcDataStore;
-      if (!source) throw new Error('The native creation source is unavailable');
-      const out = recordModellingEdit(tx.api, modelId, (_methods, editor) => writeStairCreation(source, editor, batch, op, resolved.storey!), tx.batchId);
-      const globalId = tx.api.getState().mutationViews.get(modelId)?.getNewEntity(out.expressId)?.attributes[0];
-      if (typeof globalId !== 'string') throw new Error('The native product has no GlobalId');
-      completeStairRailingGeometry(tx.api, modelId, resolved.storey!, out, op.op === 'stair.create' ? 'IFCSTAIR' : 'IFCRAILING', tx.batchId, false);
-      ids.set(op.ref,out.expressId);refs.set(op.ref,globalId);written.created.push(out.expressId,...(out.flightId===undefined?[]:[out.flightId]));written.remesh.push(out.flightId??out.expressId);
-      return [{...base,globalId,field:op.op==='stair.create'?'IfcStair':'IfcRailing',before:null,after:op.params.Name??null}];
     }
     case 'element.split': {
       const scopes = [...tx.store.models].map(([id, model]) => ({ dataStore: model.ifcDataStore, view: tx.store.mutationViews.get(id) }));

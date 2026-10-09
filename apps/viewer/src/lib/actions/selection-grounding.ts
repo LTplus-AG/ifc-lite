@@ -18,7 +18,6 @@ import { effectiveSelectedClass } from '@/components/viewer/properties/effective
 import { readOnlyModelEditLease, type NativeReadLease } from './model-authoring-read-target';
 import { nativeEditEvidence, nativeRootName, type NativeEditEvidence } from './native-edit-evidence';
 import { nativeTypeEvidence, type NativeTypeEvidence } from './native-type-evidence';
-import { nativeStairEvidenceFromTarget } from './model-authoring-stair-lifecycle';
 
 export interface SelectionElement extends NativeAuthoringEvidence {
   globalId: string;
@@ -28,7 +27,6 @@ export interface SelectionElement extends NativeAuthoringEvidence {
   name: string | null;
   nativeEdit: NativeEditEvidence;
   nativeType: NativeTypeEvidence;
-  nativeStairExpected: ReturnType<typeof nativeStairEvidenceFromTarget>;
 }
 
 export interface SelectionGrounding {
@@ -100,7 +98,6 @@ export function captureSelectionGrounding(state: GroundingState, limit = SELECTI
       nativeEdit: nativeEditEvidence(nativeTarget(ref.modelId), ref.expressId),
       ...nativeAuthoringEvidence(nativeTarget(ref.modelId), ref.expressId),
       nativeType: nativeTypeEvidence(state, nativeTarget(ref.modelId), ref.expressId),
-      nativeStairExpected: nativeStairEvidenceFromTarget(nativeTarget(ref.modelId), ref.expressId),
     });
   }
   const grounding = { capturedAt: new Date().toISOString(), total, elements, unresolved,

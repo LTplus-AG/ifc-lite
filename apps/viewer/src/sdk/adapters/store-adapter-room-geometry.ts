@@ -20,11 +20,14 @@ export function missingRoomWallGeometry(state: ViewerState, modelId: string, sto
   const view = state.mutationViews.get(modelId);
   const required = new Set(storeyRoomGeometryIds(state,modelId,storeyId,plane)
     .filter(id => liveEntityConforms(store,id,'IfcWall',view)));
-  const options = view ? {
-    relationships: effectiveMutationRelationships(store,view),
-    isDeleted: (id: number) => view.isDeleted(id),
-    typeName: (id: number) => effectiveContextType(store,view,id),
-  } : undefined;
+  // Even without edits, source containment may name a storey absent from the
+  // displayed hierarchy. Read canonical source edges, never infer emptiness.
+  const options = {
+    relationships: view ? effectiveMutationRelationships(store,view)
+      : {relationships:[],supersededSourceIds:new Set<number>()},
+    isDeleted: (id: number) => view?.isDeleted(id) ?? false,
+    typeName: (id: number) => effectiveContextType(store,view ?? null,id),
+  };
   let count = 0;
   for (const {expressId} of iterateEffectiveEntityIds(store,view,['IfcWall','IfcWallStandardCase'])) {
     if (++count > 200000) return 'The loaded model is too large for complete native wall coverage';

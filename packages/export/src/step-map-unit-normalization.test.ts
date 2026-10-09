@@ -139,6 +139,18 @@ describe('opt-in emitted map-unit normalization (#6587)', () => {
     expect(attrs(refused.store, 38)).toEqual(attrs(ambiguous, 38));
   });
 
+  it('reads units written with spaces after commas, as ACCA usBIM emits them (#7335)', async () => {
+    const spaced = (text: string) => text.replace(/,(?=\S)/g, ', ');
+    // Metre project with omitted MapUnit: already metres, nothing to refuse.
+    const metre = spaced(body.replace('.MILLI.', '$').replace('$,$,$,#2);', '$,$,$,$);'));
+    const plain = await exported(await parse(file(metre)));
+    expect(plain.result.stats.warnings).toEqual([]);
+    const input = await parse(file(spaced(body)));
+    const normalized = await exported(input);
+    expect(normalized.result.stats.warnings).toEqual([]);
+    expectPhysicalMapEqual(attrs(input, 38), attrs(normalized.store, 38), 0.001);
+  });
+
   it('refuses unsupported consumers atomically without changing the shared CRS', async () => {
     const input = await parse(file(body + '#39=IFCRIGIDOPERATION(#10,#37,IFCLENGTHMEASURE(1.),IFCLENGTHMEASURE(2.),3.);', 'IFC4X3'));
     const { result, store } = await exported(input);

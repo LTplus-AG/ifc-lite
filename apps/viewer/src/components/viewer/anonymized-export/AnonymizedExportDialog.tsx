@@ -27,10 +27,10 @@
  */
 
 import type { ExportSurface } from '@/lib/analytics-export-events';
-import { useCallback, useLayoutEffect, useRef, useState } from 'react';
+import { useCallback, useState } from 'react';
 import { EyeOff, Download } from 'lucide-react';
 import { Spinner } from '@/components/ui/spinner';
-import type { AnonymizeResult, RelatedEntityOptions } from '@ifc-lite/export';
+import type { RelatedEntityOptions } from '@ifc-lite/export';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
@@ -105,18 +105,6 @@ export function AnonymizedExportDialog({ surface, trigger }: AnonymizedExportDia
     includedIds: set.includedIds,
   });
 
-  const [lastResult, setLastResult] = useState<AnonymizeResult | null>(null);
-
-  // Warning details are specific to anonymization; the shell clears its own
-  // success/error result on every open transition through either entry point.
-  const wasOpenRef = useRef(open);
-  useLayoutEffect(() => {
-    if (open && !wasOpenRef.current) {
-      setLastResult(null);
-    }
-    wasOpenRef.current = open;
-  }, [open]);
-
   // ONE DECISION, TWO CONTROLS (#3351). "Property sets -> Anonymize" only ever
   // cleared `HasPropertySets` on type classes, so a pset pulled in by the
   // `IfcRelDefinesByProperties` walk survived with its values while the label
@@ -149,7 +137,6 @@ export function AnonymizedExportDialog({ surface, trigger }: AnonymizedExportDia
     if (!set.targetModelId || set.includedIds.size === 0) {
       return { success: false, message: t('anonymizedExport.dialog.modelDataUnavailableError') };
     }
-    setLastResult(null);
     try {
       const dataStore = await ensureModelExportReady(set.targetModelId);
       if (!dataStore) throw new Error(t('anonymizedExport.dialog.modelDataUnavailableError'));
@@ -159,7 +146,6 @@ export function AnonymizedExportDialog({ surface, trigger }: AnonymizedExportDia
         includedIds: set.includedIds,
         options: toAnonymizeOptions(toggles),
       });
-      setLastResult(result);
       const warningCount = result.stats.warnings.length;
       const msg = warningCount > 0
         ? t('anonymizedExport.dialog.exportedEntitiesWithWarnings', { count: result.stats.entityCount, warnings: warningCount })
@@ -189,7 +175,7 @@ export function AnonymizedExportDialog({ surface, trigger }: AnonymizedExportDia
         anonymize_georeferencing: toggles.georeferencing,
         anonymize_currency: toggles.currency,
       });
-      return { success: true, message: msg };
+      return { success: true, message: msg, warnings: result.stats.warnings };
     } catch (error) {
       const msg = t('anonymizedExport.dialog.exportFailedMessage', {
         message: error instanceof Error ? error.message : t('anonymizedExport.dialog.unknownError'),
@@ -242,18 +228,6 @@ export function AnonymizedExportDialog({ surface, trigger }: AnonymizedExportDia
             {t('anonymizedExport.dialog.ifcExtensionSuffix')}
           </span>
         </div>
-      )}
-      resultDetails={lastResult && lastResult.stats.warnings.length > 0 && (
-        <details className="text-xs text-muted-foreground border rounded p-2">
-          <summary className="cursor-pointer select-none">
-            {t('anonymizedExport.dialog.warningsSummary', { count: lastResult.stats.warnings.length })}
-          </summary>
-          <ul className="list-disc pl-4 mt-1 space-y-0.5">
-            {lastResult.stats.warnings.map((warning, index) => (
-              <li key={index}>{warning}</li>
-            ))}
-          </ul>
-        </details>
       )}
     >
       {({ isExporting }) => (

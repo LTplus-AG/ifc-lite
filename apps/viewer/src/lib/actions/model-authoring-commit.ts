@@ -33,6 +33,8 @@ import { previewModelAuthoring, type AuthoringRow, type ModelAuthoringPreview } 
 import { undoBatch, type AppliedChange, type CommitOutcome, type ModelChangeReceipt } from './model-change-commit';
 import { commitElementSize } from '@/lib/element-size-commit';
 import { setElementProfile } from '@/store/slices/mutation-element-profile';
+import { writeCurtainWallCreation } from './model-authoring-curtain-wall-native';
+import { completeCurtainWallHierarchy } from '@/store/slices/mutation-curtain-grid';
 import { writeStairLifecycle, writeStairCreation } from './model-authoring-stair-lifecycle';
 import { completeEntityRemoval } from '@/store/slices/mutation-mesh-stash';
 import { completeStairRailingGeometry } from '@/store/slices/mutation-stair-railing';
@@ -84,6 +86,17 @@ function writeRow(tx: AuthoringTransaction, batch: ModelAuthoringBatch, row: Aut
       written.created.push(...result.created);written.deleted.push(...result.deleted);written.remesh.push(...result.remesh);
       if('ref' in op&&result.root!==undefined){const view=tx.api.getState().mutationViews.get(modelId),made=view?.getNewEntity(result.root),gid=made?.attributes[0];if(typeof gid!=='string')throw new Error('The native replacement has no GlobalId');ids.set(op.ref,result.root);refs.set(op.ref,gid);completeStairRailingGeometry(tx.api,modelId,resolved.storey!,{expressId:result.root,...(result.created.length>1?{flightId:result.created[1]}:{})},op.op==='stair.replace'?'IFCSTAIR':'IFCRAILING',tx.batchId,false);return [{...base,globalId:gid,field:op.op==='stair.replace'?'IfcStair':'IfcRailing',before:op.target.globalId,after:op.params.Name??null}];}
       return [{...base,globalId:op.target.globalId,field:op.op==='stair.resize'?'Dimensions':op.target.ifcClass,before:op.op==='stair.resize'?JSON.stringify(op.expected):op.target.name,after:op.op==='stair.resize'?JSON.stringify(op.size):null}];
+    }
+    case 'curtainWall.create': {
+      const source = tx.store.models.get(modelId)?.ifcDataStore;
+      if (!source) throw new Error('The native curtain-wall source is unavailable');
+      const out = recordModellingEdit(tx.api, modelId, (_methods, editor) => writeCurtainWallCreation(source, editor, batch, op, resolved.storey!), tx.batchId);
+      const globalId = tx.api.getState().mutationViews.get(modelId)?.getNewEntity(out.curtainWallId)?.attributes[0];
+      if (typeof globalId !== 'string') throw new Error('The native curtain wall has no GlobalId');
+      completeCurtainWallHierarchy(tx.api, modelId, resolved.storey!, out);
+      const all = [out.curtainWallId, ...out.mullionIds, ...out.transomIds, ...out.panelIds];
+      ids.set(op.ref, out.curtainWallId); refs.set(op.ref, globalId); written.created.push(...all); written.remesh.push(...all);
+      return [{ ...base, globalId, field: 'IfcCurtainWall', before: null, after: JSON.stringify({ Name: op.params.Name ?? 'Curtain Wall', IfcMember: out.mullionIds.length + out.transomIds.length, IfcPlate: out.panelIds.length }) }];
     }
     case 'stair.create': case 'railing.create': {
       const source = tx.store.models.get(modelId)?.ifcDataStore;

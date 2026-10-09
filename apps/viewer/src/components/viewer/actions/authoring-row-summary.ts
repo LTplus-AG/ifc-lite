@@ -8,6 +8,8 @@
  * around them come from the catalogue.
  */
 
+import { curtainWallLayout } from '@ifc-lite/create';
+import { curtainWallParamsInMetres } from '@/lib/actions/model-authoring-curtain-wall-fields';
 import { sectionGhostOmissions } from '@/lib/profile-section/profile-outline';
 import type { TranslationKey, TranslationParameters } from '@/i18n';
 import type { AuthoringOp, ModelAuthoringBatch } from '@/lib/actions/model-authoring';
@@ -63,6 +65,12 @@ export function authoringRowSummary(row: AuthoringRow, batch: ModelAuthoringBatc
     case 'stair.resize': return {subject:`${op.target.ifcClass} ${op.target.name}`,before:`${fields({Width:op.expected.Width,RiserHeight:op.expected.RiserHeight,TreadLength:op.expected.TreadLength,...(op.expected.WaistThickness===undefined?{}:{WaistThickness:op.expected.WaistThickness})},units==='mm'?1000:1)} ${units}`,after:`${fields({...stairPatchDisplay(op.expected,units),...op.size})} ${units}`,previewNote:t('modelAuthoring.editPreviewUnavailable')};
     case 'stair.delete': case 'railing.delete': return {subject:`${op.target.ifcClass} ${op.target.name}`,before:op.target.name,after:t('modelChanges.removed'),previewNote:t('modelAuthoring.editPreviewUnavailable')};
     case 'stair.replace': case 'railing.replace': return {subject:`${op.target.ifcClass} ${op.target.name}`,before:op.target.globalId,after:`${op.op==='stair.replace'?'IfcStair':'IfcRailing'} ${JSON.stringify(op.params)} ${units}`,previewNote:t('modelAuthoring.stairRailingPreview')+(row.previewUnavailable?' '+t('modelAuthoring.editPreviewUnavailable'):'')};
+    case 'curtainWall.create': {
+      const layout = curtainWallLayout(curtainWallParamsInMetres(op.params, batch.units));
+      return { subject: `IfcCurtainWall ${op.params.Name ?? 'Curtain Wall'}`, before: t('modelAuthoring.notYet'),
+        after: t('modelAuthoring.createdOn', { storey: before.storeyName ?? op.storey.globalId, dims: `${JSON.stringify(op.params)} ${units} · IfcMember=${layout.mullions.length + layout.transoms.length} · IfcPlate=${layout.panels.length}` }),
+        previewNote: t('modelAuthoring.curtainWallPreview') + (row.previewUnavailable ? ' ' + t('modelAuthoring.editPreviewUnavailable') : '') };
+    }
     case 'stair.create': case 'railing.create': return {subject:`${op.op==='stair.create'?'IfcStair':'IfcRailing'} ${op.params.Name??''}`,before:t('modelAuthoring.notYet'),after:t('modelAuthoring.createdOn',{storey:before.storeyName??op.storey.globalId,dims:`${JSON.stringify(op.params)} ${units}`} ),previewNote:t('modelAuthoring.stairRailingPreview')+(row.previewUnavailable?' '+t('modelAuthoring.editPreviewUnavailable'):'')};
     case 'element.resize': case 'element.profile': {
       const notes = [row.previewUnavailable ? t('modelAuthoring.editPreviewUnavailable') : '',

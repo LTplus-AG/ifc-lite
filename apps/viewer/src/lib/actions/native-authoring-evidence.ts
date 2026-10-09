@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { nativeReplacementEvidence } from './model-authoring-replacement';
 import { nativeSlabOpeningEvidence } from './model-authoring-slab-opening';
 import type { ModelEditTarget } from '@/store/slices/mutation-modelling-records';
 import { nativeLengthUnitAvailable } from './model-authoring-read-target';
@@ -12,16 +13,18 @@ import { nativeStairEvidenceFromTarget } from './model-authoring-stair-lifecycle
 
 type Availability = 'available' | 'unavailable-target' | 'unavailable-unit' | 'unavailable-native-layout' | 'unavailable-projection';
 export interface NativeAuthoringEvidence {
+  nativeReplacementExpected: ReturnType<typeof nativeReplacementEvidence>;
   nativeSplitExpected: SplitSnapshot | null;
   nativeSlabOpeningExpected: SplitSnapshot | null;
   nativeHostedExpected: ExpectedHostedEdit | null;
   nativeTrimExtendExpected: ReturnType<typeof authoringReachEvidenceFromTarget>;
   nativeStairExpected: ReturnType<typeof nativeStairEvidenceFromTarget>;
-  nativeAuthoringUnits: { slabOpening: 'm'; split: 'm'; hosted: 'm'; stair: 'm'; trimExtend: 'verbatim-native-fields' };
+  nativeAuthoringUnits: { replacement: 'verbatim-native-fields'; slabOpening: 'm'; split: 'm'; hosted: 'm'; stair: 'm'; trimExtend: 'verbatim-native-fields' };
   nativeAuthoringRefusals: { split: string | null; hosted: string | null };
   /** Split/Hosted lengths are metres; Trim remains verbatim mixed native fields;
    * Stair follows the canonical SI dimension reader. No IDs are converted. */
   nativeAuthoringAvailability: {
+    replacement: Availability;
     slabOpening: Availability;
     split: Availability;
     hosted: Availability;
@@ -51,17 +54,18 @@ export function nativeAuthoringEvidence(target: ModelEditTarget | null, expressI
     trim = authoringReachEvidenceFromTarget(target, expressId);
     stair = nativeStairEvidenceFromTarget(target, expressId);
   }
-  const slab=nativeSlabOpeningEvidence(target,expressId);
-  return { nativeSlabOpeningExpected: slab.expected, nativeSplitExpected: split, nativeHostedExpected: hosted,
+  const slab=nativeSlabOpeningEvidence(target,expressId),replacement=nativeReplacementEvidence(target,expressId);
+  return { nativeReplacementExpected: replacement, nativeSlabOpeningExpected: slab.expected, nativeSplitExpected: split, nativeHostedExpected: hosted,
     nativeTrimExtendExpected: trim, nativeStairExpected: stair,
-    nativeAuthoringUnits: { slabOpening: 'm', split: 'm', hosted: 'm', stair: 'm', trimExtend: 'verbatim-native-fields' },
+    nativeAuthoringUnits: { replacement: 'verbatim-native-fields', slabOpening: 'm', split: 'm', hosted: 'm', stair: 'm', trimExtend: 'verbatim-native-fields' },
     nativeAuthoringRefusals: refusals,
-    nativeAuthoringAvailability: { slabOpening: slab.expected ? 'available' : unavailable, split: split ? 'available' : unavailable,
+    nativeAuthoringAvailability: { replacement: replacement ? 'available' : unavailable, slabOpening: slab.expected ? 'available' : unavailable, split: split ? 'available' : unavailable,
       hosted: hosted ? 'available' : unavailable, trimExtend: trim ? 'available' : unavailable,
       stair: stair ? 'available' : unavailable } };
 }
 
 const snapshotFields = [
+  ['nativeReplacementExpected', 'replacement'],
   ['nativeSlabOpeningExpected', 'slabOpening'], ['nativeSplitExpected', 'split'], ['nativeHostedExpected', 'hosted'],
   ['nativeTrimExtendExpected', 'trimExtend'], ['nativeStairExpected', 'stair'],
 ] as const;

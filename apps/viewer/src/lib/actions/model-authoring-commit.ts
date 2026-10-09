@@ -13,6 +13,7 @@
  * and `undoModelChanges` serve both producers.
  */
 
+import { commitNativeReplacement } from './model-authoring-replacement-commit';
 import { writeSlabOpening } from './model-authoring-slab-opening';
 import type { StoreApi } from 'zustand';
 import { generateIfcGuid } from '@ifc-lite/encoding';
@@ -78,6 +79,7 @@ function writeRow(tx: AuthoringTransaction, batch: ModelAuthoringBatch, row: Aut
   const base = { index: row.index, op: op.op, modelId };
   const targetGid = 'target' in op && !('ref' in op.target) ? op.target.globalId : undefined;
   switch (op.op) {
+    case 'element.replace': return commitNativeReplacement(tx,batch,row,refs,ids,written);
     case 'stair.resize': case 'stair.delete': case 'railing.delete': case 'stair.replace': case 'railing.replace': {
       const dataStore=tx.store.models.get(modelId)?.ifcDataStore;if(!dataStore)throw new Error('The native lifecycle source is unavailable');
       const result=recordModellingEdit(tx.api,modelId,(_methods,editor)=>writeStairLifecycle(dataStore,editor,batch,op,resolved.target!,resolved.storey),tx.batchId);

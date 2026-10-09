@@ -171,8 +171,9 @@ function formatTotal(
   quantityType: number,
   projectUnits: ProjectUnits,
   overrides: Record<string, string>,
+  projectUnitsAvailable: boolean,
 ): string {
-  const disp = resolveQuantityDisplay(value, quantityType, projectUnits, overrides);
+  const disp = resolveQuantityDisplay(value, quantityType, projectUnits, overrides, undefined, projectUnitsAvailable);
   const shown = disp.converted ?? value;
   const formatted = formatMaterialNumber(locale, shown);
   return disp.unit ? `${formatted} ${disp.unit}` : formatted;
@@ -329,13 +330,13 @@ export function MaterialTotalsPanel({ materialId, modelId }: { materialId: numbe
             <div className="divide-y divide-amber-100 dark:divide-amber-900/30">
               <TotalRow label={t('properties.materialTotals.elements')} value={formatLocaleNumber(locale, totals.elementCount)} />
               {totals.hasVolume && (
-                <TotalRow label={t('properties.materialTotals.volume')} value={formatTotal(locale, totals.volume, QuantityType.Volume, projectUnits, unitDisplayOverrides)} />
+                <TotalRow label={t('properties.materialTotals.volume')} value={formatTotal(locale, totals.volume, QuantityType.Volume, projectUnits, unitDisplayOverrides, unitContext.status !== 'unavailable')} />
               )}
               {totals.hasArea && (
-                <TotalRow label={t('properties.materialTotals.area')} value={formatTotal(locale, totals.area, QuantityType.Area, projectUnits, unitDisplayOverrides)} />
+                <TotalRow label={t('properties.materialTotals.area')} value={formatTotal(locale, totals.area, QuantityType.Area, projectUnits, unitDisplayOverrides, unitContext.status !== 'unavailable')} />
               )}
               {totals.hasWeight && (
-                <TotalRow label={t('properties.materialTotals.weight')} value={formatTotal(locale, totals.weight, QuantityType.Weight, projectUnits, unitDisplayOverrides)} />
+                <TotalRow label={t('properties.materialTotals.weight')} value={formatTotal(locale, totals.weight, QuantityType.Weight, projectUnits, unitDisplayOverrides, unitContext.status !== 'unavailable')} />
               )}
             </div>
             {totals.elementCount > 0 && !totals.hasVolume && (

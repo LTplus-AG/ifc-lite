@@ -13,13 +13,15 @@
  */
 
 import { writeCurtainWallCreation } from './model-authoring-curtain-wall-native';
+import { writeNativeReplacement } from './model-authoring-replacement';
+import { slabOpeningSpec, writeSlabOpening, readSlabOpeningPreview } from './model-authoring-slab-opening';
 import { writeStairLifecycle, writeStairCreation } from './model-authoring-stair-lifecycle';
 import { uniqueSplitGuid, writeNativeSplit } from './model-authoring-split';
 import { writeHostedEdit } from './model-authoring-hosted-edit';
 import { profileInMetres } from './model-authoring-shape-params';
 import { StoreEditor } from '@ifc-lite/mutations';
 import type { IfcDataStore } from '@ifc-lite/parser';
-import { copyBatchInStore, addHostedElementInStore, addOrdinaryElementInStore, resolveSpatialAnchor, type OrdinaryInStoreElement } from '@ifc-lite/create';
+import { alignElementsInStore, copyBatchInStore, addHostedElementInStore, addOrdinaryElementInStore, resolveSpatialAnchor, type OrdinaryInStoreElement } from '@ifc-lite/create';
 import { createModellingStoreBackend, resolveLiveOwnerHistoryId } from '@ifc-lite/sdk';
 import { ensureStoreyPlacement } from '@/store/slices/storeyPlacement';
 import type { HostedFillSpec } from '@/store/slices/mutation-hosted-fill';
@@ -37,6 +39,8 @@ export type ElementId = { id: number } | { ref: string };
 
 /** What preview resolved for an operation; the commit re-resolves and must find the same. */
 export interface ResolvedOp {
+  alignment?: { reference: number; targets: number[]; storeyId: number; geometry?: import('./model-authoring-align').PreparedAlignment };
+  slabOpening?: ReturnType<typeof readSlabOpeningPreview>;
   target?: number;
   reachBoundary?: ElementId;
   reachPlan?: ReturnType<typeof import('@ifc-lite/create').trimExtendElementInStore>;
@@ -90,6 +94,7 @@ export function authoredElementOf(batch: ModelAuthoringBatch, op: Create, global
 
 /** The hosted-element spec of a `hosted.create`, in metres. */
 export function hostedSpecOf(batch: ModelAuthoringBatch, op: Hosted, globalId?: string): HostedFillSpec {
+  if ('params' in op) return slabOpeningSpec(batch, op, globalId);
   const m = (v: number) => toMetres(batch, v);
   const common = { Offset: m(op.offset), Sill: m(op.sill), Width: m(op.width), Height: m(op.height),
     ...(op.name ? { Name: op.name } : {}), ...(globalId ? { GlobalId: globalId } : {}) };
@@ -186,6 +191,7 @@ export function writeNativeTypeDetach(op: Extract<AuthoringOp, { op: 'type.detac
 export function draftAuthoringOperation(batch: ModelAuthoringBatch, dataStore: IfcDataStore, modelId: string, draft: StoreEditor, row: DryRunRow, refs: Map<string, number>, splitScopes?: Parameters<typeof import('@ifc-lite/create').splitElementsInStore>[3]): void {
   const { op, resolved } = row;
   switch (op.op) {
+    case 'element.replace': {const made=writeNativeReplacement(batch,dataStore,draft,resolved.target!,resolved.storey!,op);refs.set(op.ref,made.expressId);return;}
     case 'stair.resize': case 'stair.delete': case 'railing.delete': case 'stair.replace': case 'railing.replace': {
       const result=writeStairLifecycle(dataStore,draft,batch,op,resolved.target!,resolved.storey);
       if('ref' in op && result.root!==undefined)refs.set(op.ref,result.root);return;
@@ -228,7 +234,9 @@ export function draftAuthoringOperation(batch: ModelAuthoringBatch, dataStore: I
       return;
     }
     case 'hosted.create': {
-      const created = addHostedElementInStore(dataStore, draft, idOf(resolved.host!, refs), hostedSpecOf(batch, op));
+      const host = idOf(resolved.host!, refs);
+      const created = 'params' in op ? writeSlabOpening(batch, op, dataStore, draft, host) : addHostedElementInStore(dataStore, draft, host, hostedSpecOf(batch, op));
+      if ('params' in op) resolved.slabOpening = readSlabOpeningPreview(dataStore, draft, host, created.openingId);
       if (op.ref) refs.set(op.ref, created.expressId);
       return;
     }
@@ -240,6 +248,13 @@ export function draftAuthoringOperation(batch: ModelAuthoringBatch, dataStore: I
     case 'element.delete':
       if (!draft.removeEntity(resolved.target!)) throw new Error('The element could not be removed');
       return;
+    case 'element.align': {
+      const a = resolved.alignment;
+      if (!a?.geometry) throw new Error('Prepare native Align geometry first');
+      alignElementsInStore({ dataStore, view: draft.getMutationView(), editor: draft },
+        { reference: a.reference, targets: a.targets, mode: op.mode }, a.geometry.boxes);
+      return;
+    }
     case 'element.move': case 'element.rotate':
       // Checked against the transform planner and placement chain in preview; nothing to stage.
       return;

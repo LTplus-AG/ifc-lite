@@ -15,7 +15,9 @@ import { getOrCreateMutationView } from '@/sdk/adapters/mutation-view';
 import { QuantityType } from '@ifc-lite/data';
 import { fixtureModel } from '@/test/store-fixture';
 import { evidenceIsCurrent } from '@/lib/assistant/evidence';
-import { EMPTY_SOURCE_BYTES } from '@ifc-lite/parser';
+import { EMPTY_SOURCE_BYTES, IfcParser, extractProjectUnits } from '@ifc-lite/parser';
+import { editedModelBytes } from '@/lib/export/edited-model-bytes';
+import { resolveQuantityDisplay } from '@/lib/units/display';
 import { recomputeZoneAssignmentsNow } from '@/hooks/useZoneAssignmentSync';
 import { computeZoneApportionmentForElement } from '@/hooks/useZoneApportionment';
 import { cancelAssistant, replaceEvidence, useAssistant } from '../conversation';
@@ -171,4 +173,31 @@ test('#7220 known native zone-set population precedes the selected display bound
   assert.equal(split.zoneSetCount, 17);
   assert.equal(split.zoneSets.length, payload.evidence.summary.perElementBounds.zoneSets);
   assert.equal(split.zoneSets.length, 16);
+});
+
+
+test('#7220 unresolved native VOLUMEUNIT discloses the canonical SI default without claiming a declared conversion', async t => {
+  const f = await seedDeclaredZoneWall(t); if (!f) return;
+  const view = getOrCreateMutationView(useViewerStore, 'arch'); assert.ok(view);
+  for (const id of f.store.entityIndex.byType.get('IFCUNITASSIGNMENT') ?? []) {
+    const refs = f.store.getEntity(id)?.attributes[0]; assert.ok(Array.isArray(refs));
+    view.setPositionalAttribute(id, 0, refs.filter(ref =>
+      String(f.store.getEntity(Number(ref))?.attributes[1]).replaceAll('.', '') !== 'VOLUMEUNIT').map(ref => `#${ref}`));
+  }
+  const bytes = editedModelBytes(f.store, view);
+  const store = await new IfcParser().parseColumnar(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength), { disableWorkerScan: true });
+  const units = extractProjectUnits(store.source, store.entityIndex);
+  assert.equal(units.resolvedForUnitType('VOLUMEUNIT'), undefined, 'independent native reparse confirms no declared volume unit');
+  const model = useViewerStore.getState().models.get('arch'); assert.ok(model);
+  useViewerStore.setState({ models: new Map([['arch', { ...model, ifcDataStore: store }]]), ifcDataStore: store,
+    mutationViews: new Map(), storeEditors: new Map() });
+  assert.equal(resolveQuantityDisplay(2.49624, QuantityType.Volume, units, {}).unit, 'm³', 'the existing native card uses its SI-default convention');
+  for (const source of ['selection', 'zones'] as const) {
+    const payload = JSON.parse(captureEvidence(source).payload);
+    const limitation = source === 'selection' ? payload.evidence.summary.zoneVolumeUnits : payload.evidence.summary.limitations;
+    assert.match(limitation, /VOLUMEUNIT is unresolved/);
+    assert.match(limitation, /scale-1 SI default/);
+    assert.match(limitation, /do(?:es)? not prove a declared file unit or a measured conversion/);
+    assert.equal(payload.projectionTruncated, false, 'the honest unit convention remains within existing evidence bounds');
+  }
 });

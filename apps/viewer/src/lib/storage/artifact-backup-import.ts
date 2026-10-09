@@ -87,7 +87,7 @@ export function importArtifactLibraries(incoming: StandaloneArtifactLibraries): 
         name: uniqueName(rows, entry.name), builtin: false };
       copies.push(copy); rows.push(copy); owners.claimed.add(copy);
     }
-    if (copies.length && !state.importLenses(copies).ok) outcome.failed.push('lenses');
+    if (incoming.lenses.length && !state.importLenses(copies).ok) outcome.failed.push('lenses');
     else outcome.saved += copies.length;
   }
   return outcome;

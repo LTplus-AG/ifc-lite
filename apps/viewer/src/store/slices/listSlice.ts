@@ -8,7 +8,7 @@
 
 import type { StateCreator } from 'zustand';
 import type { ListDefinition, ListResult } from '@ifc-lite/lists';
-import { loadListDefinitions, saveListDefinitions } from '../../lib/lists/persistence.js';
+import { loadListDefinitions, saveListDefinitionsResult } from '../../lib/lists/persistence.js';
 import { defineSliceTeardown } from '../teardown.js';
 import type { VisibilityOwnership } from '../../lib/visibility/ownership.js';
 
@@ -58,15 +58,17 @@ export const createListSlice: StateCreator<ListSlice, [], [], ListSlice> = (set,
 
   // Actions
   setListDefinitions: (listDefinitions) => {
-    if (!saveListDefinitions(listDefinitions)) return false;
-    set({ listDefinitions });
+    const saved = saveListDefinitionsResult(listDefinitions);
+    if (!saved.ok) { set({ listError: saved.message }); return false; }
+    set({ listDefinitions, listError: null });
     return true;
   },
 
   addListDefinition: (definition) => {
     const updated = [...get().listDefinitions, definition];
     set({ listDefinitions: updated });
-    saveListDefinitions(updated);
+    const saved = saveListDefinitionsResult(updated);
+    set({ listError: saved.ok ? null : saved.message });
   },
 
   updateListDefinition: (id, updates) => {
@@ -74,7 +76,8 @@ export const createListSlice: StateCreator<ListSlice, [], [], ListSlice> = (set,
       d.id === id ? { ...d, ...updates, updatedAt: Date.now() } : d
     );
     set({ listDefinitions: updated });
-    saveListDefinitions(updated);
+    const saved = saveListDefinitionsResult(updated);
+    set({ listError: saved.ok ? null : saved.message });
   },
 
   deleteListDefinition: (id) => {
@@ -82,7 +85,8 @@ export const createListSlice: StateCreator<ListSlice, [], [], ListSlice> = (set,
     const activeListId = get().activeListId === id ? null : get().activeListId;
     const listResult = get().activeListId === id ? null : get().listResult;
     set({ listDefinitions: updated, activeListId, listResult });
-    saveListDefinitions(updated);
+    const saved = saveListDefinitionsResult(updated);
+    set({ listError: saved.ok ? null : saved.message });
   },
 
   setActiveListId: (activeListId) => set({ activeListId }),

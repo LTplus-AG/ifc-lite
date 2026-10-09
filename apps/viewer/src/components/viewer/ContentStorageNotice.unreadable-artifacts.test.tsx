@@ -64,7 +64,7 @@ for (const family of families) for (const bucket of states) test(`#7300 native b
     // Actual native startup loaders determine the new session's known rows.
     if (family.library === 'lists') {
       const loaded = createStore<ListSlice>()(createListSlice).getState();
-      useViewerStore.setState({ listDefinitions: loaded.listDefinitions });
+      useViewerStore.setState({ listDefinitions: loaded.listDefinitions, listDefinitionSource: loaded.listDefinitionSource });
       assert.equal(loaded.listDefinitions.length, bucket === 'readable' || bucket === 'mixed-future' ? 1 : 0);
     } else {
       const loaded = createStore<LensSlice>()(createLensSlice).getState();

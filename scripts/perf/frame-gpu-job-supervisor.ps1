@@ -19,11 +19,13 @@ function Emit($record){[Console]::WriteLine(($record|ConvertTo-Json -Depth 8 -Co
 $job=$null;$disposed=$false;$resumed=$false;$failure=$null
 $clock=[Diagnostics.Stopwatch]::StartNew()
 try {
- Add-Type -Path $JobModule
+ # Companion identity source is resolved once by the owning Job backend.
+ $identityModule=Join-Path (Split-Path -Parent $JobModule) 'frame-gpu-process-identity.cs'
+ Add-Type -Path @($JobModule,$identityModule)
  Add-Type -Path $InputModule
  $job=[IfcOwnedJob]::new(('Local\ifclite-owned-'+$Token),$Executable,$CommandLine,$null,$CleanupMs)
  $self=[Diagnostics.Process]::GetCurrentProcess()
- try {$supervisorCreated=$self.StartTime.ToUniversalTime().Ticks.ToString()}finally{$self.Dispose()}
+ try {$supervisorCreated=[IfcProcessIdentity]::Creation($self.Handle)}finally{$self.Dispose()}
  # Root remains suspended until the caller acknowledges durable owner bookkeeping.
  Emit @{event='prepared';jobName=$job.Name;rootPid=$job.RootId;rootCreated=$job.RootCreated;supervisorPid=$PID;supervisorCreated=$supervisorCreated}
  $controlInput=[IfcJobInput]::new()

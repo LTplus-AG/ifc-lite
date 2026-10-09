@@ -1,0 +1,85 @@
+{
+  "status": "qualified-cpu-only-root-publication-review-pending",
+  "sourcePins": {
+    "scripts/perf/frame-gpu-process-identity.cs": {
+      "sha256": "02bd217212fd1d512fd45d08abeeac0f364abf7b3307d5f8aaf95f69a131d503",
+      "bytes": 3864
+    },
+    "scripts/perf/frame-gpu-cpu-fixture.cs": {
+      "sha256": "eefac421147b805c2f9f582e2600e68f74ec84d87157d7e7776b08c0e7635187",
+      "bytes": 4043
+    },
+    "scripts/perf/frame-gpu-cpu-fixture.mjs": {
+      "sha256": "21b6861860780a68bafdb1234a5decef2b4b4df5fd63ecc2243645e1e1c95bde",
+      "bytes": 2776
+    },
+    "scripts/perf/frame-gpu-job.cs": {
+      "sha256": "99bd3010fb31c191ca7c7e3c4c772b24df0ff0aa00caf2954c41de6ad1d9163a",
+      "bytes": 11257
+    },
+    "scripts/perf/frame-gpu-job-input.cs": {
+      "sha256": "1d5b7467f26badd983a0dc1579da76df91b32f3d7e00c5b409f5e4ccadcd73f5",
+      "bytes": 1253
+    },
+    "scripts/perf/frame-gpu-job-supervisor.ps1": {
+      "sha256": "3884a78f3e1f8fc051c96f906cd6075a85a1a67a9c46575ad9f3b4292f06e2e8",
+      "bytes": 3814
+    },
+    "scripts/perf/frame-gpu-job-controller.ts": {
+      "sha256": "52f3cba9863587b29a3b5a9081bd4f772649cf4e53f7bf96ee2bf94d9a311943",
+      "bytes": 11076
+    },
+    "scripts/perf/frame-gpu-job-controller.test.mjs": {
+      "sha256": "d48439075613c2e139484ee8a49491e0bad3ac947b1001fb764d1b150b996666",
+      "bytes": 12917
+    },
+    "scripts/perf/frame-gpu-job.test.mjs": {
+      "sha256": "82d73368601a09334d118b218209115de363cb45744bb377558c0eec8a820eb3",
+      "bytes": 7817
+    }
+  },
+  "archivePairs": 161,
+  "archiveIndexSha256": "83bcd6566a1d912c3a83db08ec25d2f0684d1bfd8ac47d3e0184a642810044d0",
+  "initialControls": {
+    "pass": 11,
+    "fail": 0,
+    "skip": 0
+  },
+  "restoredControlsBeforeReceiptFix": {
+    "pass": 11,
+    "fail": 0,
+    "skip": 0
+  },
+  "testOnlyReceiptFix": {
+    "affected2PositiveAndRestoredPass": true,
+    "otherNineBodiesByteIdentical": true,
+    "roundedInverseFailures": 2,
+    "cimInverseFailures": 1,
+    "actualInverseAndPositiveFixtureReceipts": 7,
+    "eachExactNativeRootNotFound": true,
+    "noFailureBranchActiveZeroPacketClaim": true
+  },
+  "originalNoStartInverseFailures": 2,
+  "rootTypecheck": {
+    "exit": 0,
+    "testFileCoverage": 3761,
+    "argumentPolicy": "plain pnpm typecheck; TURBO_CONCURRENCY=1; no appended flags"
+  },
+  "boundedGates": {
+    "initialEight": 0,
+    "receiptFour": 0,
+    "correctedLicense": 0
+  },
+  "preservedCorrections": [
+    "Initial actual11 exit0 emitted spec reporter; orchestration parser exit1, corrected without rerunning initial.",
+    "Initial license gate exit1; canonical leading notice fixed in new helper, verified new C# notices already correct; production/test bodies byte-identical after comment.",
+    "Initial native negative retirement receipts partial; subsequent finally-receipt controls prove exact owned retirement."
+  ],
+  "scope": [
+    "Actual kernel Job + compiled CPU fixture; executable name chrome.exe only matches policy, not browser.",
+    "Native creation identity has one GetProcessTimes conversion home; no CIM rounding or tolerance.",
+    "Old nested PowerShell child startup cause remains unproved.",
+    "No Chrome/GPU/timing/performance acceptance; broad issue7036 staysopen.",
+    "No publication/merge performed; root mustreview actual evidence."
+  ]
+}

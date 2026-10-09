@@ -52,7 +52,6 @@ public sealed class IfcOwnedJob : IDisposable {
     public IntPtr Process, Thread;
     public uint ProcessId, ThreadId;
   }
-  [StructLayout(LayoutKind.Sequential)] struct FileTime { public uint Low, High; }
   [DllImport("kernel32.dll", CharSet=CharSet.Unicode, SetLastError=true)] static extern IntPtr CreateJobObject(IntPtr security, string name);
   [DllImport("kernel32.dll", CharSet=CharSet.Unicode, SetLastError=true)] static extern IntPtr OpenJobObject(uint access, bool inherit, string name);
   [DllImport("kernel32.dll", SetLastError=true)] static extern bool SetInformationJobObject(IntPtr job, int info, ref ExtendedLimits limits, uint size);
@@ -63,20 +62,12 @@ public sealed class IfcOwnedJob : IDisposable {
   [DllImport("kernel32.dll", SetLastError=true)] static extern uint ResumeThread(IntPtr thread);
   [DllImport("kernel32.dll", SetLastError=true)] static extern bool TerminateJobObject(IntPtr job, uint code);
   [DllImport("kernel32.dll", SetLastError=true)] static extern bool TerminateProcess(IntPtr process, uint code);
-  [DllImport("kernel32.dll", SetLastError=true)] static extern bool GetProcessTimes(IntPtr process, out FileTime creation, out FileTime exit, out FileTime kernel, out FileTime user);
   [DllImport("kernel32.dll", SetLastError=true)] static extern IntPtr OpenProcess(uint access, bool inherit, uint pid);
   [DllImport("kernel32.dll", SetLastError=true)] static extern bool CloseHandle(IntPtr handle);
   [DllImport("kernel32.dll", SetLastError=true)] static extern uint WaitForSingleObject(IntPtr handle, uint timeout);
   static void Require(bool success, string operation) {
     if (!success) throw new Win32Exception(Marshal.GetLastWin32Error(), operation);
   }
-  static string Creation(IntPtr process) {
-    FileTime created, exited, kernel, user;
-    Require(GetProcessTimes(process, out created, out exited, out kernel, out user), "GetProcessTimes");
-    long raw = ((long)created.High << 32) | created.Low;
-    return DateTime.FromFileTimeUtc(raw).Ticks.ToString(System.Globalization.CultureInfo.InvariantCulture);
-  }
-
   // Caller persists profile/token/job/root metadata BEFORE Resume. The root cannot
   // execute before successful assignment. No breakaway or sandbox-disabling flags.
   public IfcOwnedJob(string name, string exe, string commandLine, string cwd, int failureCleanupMs) {
@@ -94,7 +85,7 @@ public sealed class IfcOwnedJob : IDisposable {
       ProcessInfo process;
       Require(CreateProcess(exe, new StringBuilder(commandLine), IntPtr.Zero, IntPtr.Zero, false, Suspended, IntPtr.Zero, String.IsNullOrWhiteSpace(cwd) ? null : cwd, ref startup, out process), "Create suspended root");
       root = process.Process; thread = process.Thread; RootId = process.ProcessId;
-      RootCreated = Creation(root);
+      RootCreated = IfcProcessIdentity.Creation(root);
       Require(AssignProcessToJobObject(job, root), "Assign suspended root");
       bool member;
       Require(IsProcessInJob(root, job, out member), "Verify root containment");
@@ -179,7 +170,7 @@ public sealed class IfcOwnedJob : IDisposable {
         try {
           bool member; Require(IsProcessInJob(process, handle, out member), "Verify active job PID ownership");
           if (!member) throw new InvalidOperationException("Active job PID reused or departed");
-          identities.Add(new Identity { pid = id, started = Creation(process) });
+          identities.Add(new Identity { pid = id, started = IfcProcessIdentity.Creation(process) });
         } finally { Require(CloseHandle(process), "Close process observation handle"); }
       }
       return identities.ToArray();

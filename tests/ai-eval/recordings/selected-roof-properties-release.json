@@ -106,6 +106,7 @@
             "modelName": "arch",
             "type": "IfcSlab",
             "name": "house - roof - slab right",
+            "nativeTrimExtendExpected": null,
             "attributes": {
               "Name": "house - roof - slab right",
               "Description": "A roof slab that's got it all covered",
@@ -131,7 +132,7 @@
                 "quantities": {
                   "NetVolume": {
                     "value": 9.36350799647189,
-                    "unit": "m³"
+                    "unit": "m\u00b3"
                   },
                   "Depth": {
                     "value": 300.0000000000386,
@@ -139,7 +140,7 @@
                   },
                   "NetArea": {
                     "value": 31.211693321568944,
-                    "unit": "m²"
+                    "unit": "m\u00b2"
                   }
                 }
               }
@@ -150,6 +151,20 @@
               "zoneSetCount": 0,
               "zoneSets": [],
               "volumeBases": []
+            },
+            "nativeEdit": {
+              "units": "m",
+              "dimensionsStatus": "unavailable",
+              "dimensions": null,
+              "profileStatus": "unavailable",
+              "Profile": null
+            },
+            "nativeType": {
+              "status": "typed",
+              "expected": {
+                "GlobalId": "3n9C2OuJjE89DiYlOaoccO",
+                "Name": "house - roof - slab right"
+              }
             },
             "structuralStatus": "available",
             "structural": null,

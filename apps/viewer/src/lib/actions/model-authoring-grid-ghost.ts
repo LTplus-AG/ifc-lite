@@ -20,10 +20,10 @@ export function gridCreationGhost(state: ViewerState, batch: ModelAuthoringBatch
   const r = authoringReader(state, row.modelId);
   if (!r) return [];
   const storey = row.resolved.storey;
-  // buildStoreyWorkplane currently reads the saved placement plan. Do not draw it
-  // as the live native edit frame when effective placement edits differ (#7304).
+  // Native grid ghost geometry is qualified against the saved placement plan.
+  // Keep its explicit limitation when the canonical current frame differs (#7304).
   const saved = storeyAuthoringFrame(r.dataStore, storey, undefined);
-  const current = storeyAuthoringFrame(r.dataStore, storey, r.view);
+  const current = storeyAuthoringFrame(r.dataStore, storey, undefined, r.view);
   if (JSON.stringify(saved) !== JSON.stringify(current)) return [];
   const plane = buildStoreyWorkplane(state, row.modelId, storey, 0);
   if (!isWorkplane(plane)) return [];

@@ -145,7 +145,7 @@ test('#7304 both explicit selection and rich native sources expose exact grid-ax
       expected: attached.nativeGrid!.expected, IntersectingAxes: [made.build.uAxisIds[1], made.build.vAxisIds[1]] },
     params: { Position: [6, 4, 0], Width: .4, Depth: .2, Height: 3, Name: 'Captured native crossing' } }]));
   const preview = previewModelAuthoring(useViewerStore.getState(), proposal);
-  assert.equal(preview.rows[0].status, 'ready', preview.rows[0].issue);
+  assert.equal(preview.rows[0].status, 'ready', preview.rows[0].issue ?? '');
   assert.equal(view.getMutationRevision(), revision, 'both producer routes and preflight preserve the native live view');
 });
 
@@ -181,7 +181,7 @@ test('#7304 explicit model ownership preserves the other federated source and gr
   assert.doesNotThrow(() => parseModelAuthoringBatch(batch([{ ...operation, params: { ...params, ...many } }])));
   assert.throws(() => parseModelAuthoringBatch(batch([{ ...operation, params: { ...params, ...many } }, { ...operation, ref: 'over-bound' }])), /200/);
   const preview = previewModelAuthoring(useViewerStore.getState(), parseModelAuthoringBatch(batch([operation])));
-  assert.equal(preview.rows[0].modelId, 'b'); assert.equal(preview.rows[0].status, 'ready', preview.rows[0].issue);
+  assert.equal(preview.rows[0].modelId, 'b'); assert.equal(preview.rows[0].status, 'ready', preview.rows[0].issue ?? '');
   const result = commitModelAuthoring(useViewerStore, preview, new Set([0]), 'explicit federated grid'); assert.ok(result.ok);
   assert.equal(va.getNewEntities().length, 0); assert.equal(va.getMutationRevision(), 0);
   const exported = await parseIfc(editedModelBytes(second, vb));
@@ -228,7 +228,7 @@ for (const change of ['axis-tag', 'axis-endpoint', 'source-replacement'] as cons
   const proposal = parseModelAuthoringBatch(batch([{ op: 'column.createOnGrid', ref: 'stale-grid-column',
     storey: { globalId: GROUND_STOREY, modelId: SAMPLE_MODEL }, grid: { target: { globalId: root.attributes[0], modelId: SAMPLE_MODEL, ifcClass: 'IfcGrid', name: root.attributes[2] },
       expected, IntersectingAxes: [made.build.uAxisIds[1], made.build.vAxisIds[1]] }, params: { Position: [6, 4, 0], Width: .4, Depth: .2, Height: 3 } }]));
-  const preview = previewModelAuthoring(useViewerStore.getState(), proposal); assert.equal(preview.rows[0].status, 'ready', preview.rows[0].issue);
+  const preview = previewModelAuthoring(useViewerStore.getState(), proposal); assert.equal(preview.rows[0].status, 'ready', preview.rows[0].issue ?? '');
   const beforeRevision = view.getMutationRevision();
   if (change === 'source-replacement') {
     const replacement = await parseIfc(dataStore.source.materialize());
@@ -283,7 +283,7 @@ for (const mode of ['attached', 'rich-source'] as const) test(`#7304 real provid
   assert.equal(calls, 1);
   const answer = useAssistant.getState().messages.at(-1)?.content; assert.ok(answer);
   const preview = previewModelAuthoring(useViewerStore.getState(), parseModelAuthoringBatch(answer));
-  assert.equal(preview.rows[0].status, 'ready', preview.rows[0].issue);
+  assert.equal(preview.rows[0].status, 'ready', preview.rows[0].issue ?? '');
   const result = commitModelAuthoring(useViewerStore, preview, new Set([0]), 'actual transported grid');
   assert.ok(result.ok, result.ok ? '' : result.detail ?? result.reason);
   const parsed = await parseIfc(editedModelBytes(dataStore, view));

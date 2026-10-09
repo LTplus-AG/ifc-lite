@@ -21,7 +21,7 @@ import { describeElement } from '@/hooks/useZoneTableExport';
 import { zoneFactsFor } from '@/hooks/zoneFacts';
 import { gatherProvedVolumes } from '@/hooks/useZoneApportionment';
 import { evidenceRow, unavailableCapture, type EvidenceAdapter } from './types';
-import { zoneQuantitySources } from './zone-volume-bases';
+import { zoneQuantitySources, zoneQuantitySourceIdentity } from './zone-volume-bases';
 import { declaredVolumeBases, volumeBasisRatioNote, ZONE_QUANTITY_SET_NAME_PREFIX } from '@/lib/zones';
 
 const BASIS = 'mesh' as const;
@@ -83,7 +83,7 @@ export const zonesAdapter: EvidenceAdapter = {
     return { status: { labelKey: 'assistantSources.zones.ready', params: { count: s.zoneSets.length } }, ready: true };
   },
   // Zone sets, the assignment and the apportionment cache are each replaced, never mutated.
-  identity: s => [s.zoneSets, s.zoneAssignments, s.zoneApportionment],
+  identity: s => [s.zoneSets, s.zoneAssignments, s.zoneApportionment, ...zoneQuantitySourceIdentity(s)],
   capture: (s, limit) => {
     if (!assignmentsComputed(s)) return unavailableCapture();
     const modelNames = new Map([...s.models].map(([id, model]) => [id, model.name ?? id]));

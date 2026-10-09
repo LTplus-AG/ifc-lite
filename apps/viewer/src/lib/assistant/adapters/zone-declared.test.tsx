@@ -18,8 +18,12 @@ import { evidenceIsCurrent } from '@/lib/assistant/evidence';
 import { EMPTY_SOURCE_BYTES } from '@ifc-lite/parser';
 import { recomputeZoneAssignmentsNow } from '@/hooks/useZoneAssignmentSync';
 import { computeZoneApportionmentForElement } from '@/hooks/useZoneApportionment';
+import { cancelAssistant, replaceEvidence, useAssistant } from '../conversation';
+import { sendAssistant } from '../request';
 
-afterEach(() => { cleanup(); setGlobalRendererRef({ current: null }); useViewerStore.getState().clearAllModels(); });
+const assistant = useAssistant.getState(), originalFetch = globalThis.fetch;
+afterEach(() => { cleanup(); cancelAssistant(); useAssistant.setState(assistant, true); globalThis.fetch = originalFetch;
+  setGlobalRendererRef({ current: null }); useViewerStore.getState().clearAllModels(); });
 test('#7220 native declared zone shares are available to selected evidence', async t => {
   const f = await seedDeclaredZoneWall(t); if (!f) return;
   const bases = allBasisBreakdowns(f.apportionment, declaredVolumeBases(f.quantities, 1));
@@ -67,6 +71,53 @@ test('#7220 live declared edits retain the cached mesh split and native occurren
   assert.deepEqual(captured.find((row: { basis: string }) => row.basis === 'net').shares, native.find(row => row.basis === 'net')!.shares);
   assert.equal(useViewerStore.getState().zoneApportionment, cache, 'read-only evidence retains the actual native split cache');
 });
+
+for (const source of ['selection', 'zones'] as const) {
+  test(`#7220 ${source} real send refuses stale declared shares before provider dispatch`, async t => {
+    const f = await seedDeclaredZoneWall(t); if (!f) return;
+    const view = getOrCreateMutationView(useViewerStore, 'arch'); assert.ok(view);
+    replaceEvidence(captureEvidence(source));
+    const netSet = f.quantities.find(set => set.quantities.some(q => q.name === 'NetVolume')); assert.ok(netSet);
+    view.setQuantity(f.id, netSet.name, 'NetVolume', 7, QuantityType.Volume);
+    let dispatched = 0;
+    globalThis.fetch = async () => { dispatched++; return new Response('data: [DONE]\n\n'); };
+    assert.equal(await sendAssistant('Explain the declared zone volume shares', 'openai/gpt-free', '/api/chat'), false);
+    assert.equal(useAssistant.getState().error, 'stale-evidence');
+    assert.equal(dispatched, 0, 'stale native quantities must not reach the provider');
+  });
+
+  test(`#7220 ${source} captured declared shares refuse a native overlay revision without a store history bump`, async t => {
+    const f = await seedDeclaredZoneWall(t); if (!f) return;
+    const view = getOrCreateMutationView(useViewerStore, 'arch'); assert.ok(view);
+    const snapshot = captureEvidence(source);
+    assert.equal(evidenceIsCurrent(snapshot), true);
+    const version = useViewerStore.getState().mutationVersion;
+    const revision = view.getMutationRevision();
+    const netSet = f.quantities.find(set => set.quantities.some(q => q.name === 'NetVolume')); assert.ok(netSet);
+    view.setQuantity(f.id, netSet.name, 'NetVolume', 7, QuantityType.Volume);
+    assert.equal(useViewerStore.getState().mutationVersion, version);
+    assert.ok(view.getMutationRevision() > revision);
+    const fresh = JSON.parse(captureEvidence(source).payload);
+    const bases = source === 'selection' ? fresh.evidence.rows[0].data.zoneVolumeBreakdowns.volumeBases
+      : fresh.evidence.rows[0].data.VolumeBases;
+    const nativeTotal = bases.find((row: { basis: string }) => row.basis === 'net')[source === 'selection' ? 'totalM3' : 'ElementVolumeM3'];
+    assert.ok(Math.abs(nativeTotal - 7) < 1e-9, 'native fractional apportionment retains the current declared total');
+    assert.equal(evidenceIsCurrent(snapshot), false, 'frozen shares still use the prior native declared total');
+  });
+
+  test(`#7220 ${source} captured declared shares refuse same-identity source replacement`, async t => {
+    const f = await seedDeclaredZoneWall(t); if (!f) return;
+    const snapshot = captureEvidence(source);
+    const model = useViewerStore.getState().models.get('arch'); assert.ok(model);
+    const sourceFree = { ...f.store, source: EMPTY_SOURCE_BYTES };
+    useViewerStore.setState({ models: new Map([['arch', { ...model, ifcDataStore: sourceFree }]]), ifcDataStore: sourceFree });
+    const fresh = JSON.parse(captureEvidence(source).payload);
+    const status = source === 'selection' ? fresh.evidence.rows[0].data.zoneVolumeBreakdowns.quantityStatus
+      : fresh.evidence.rows[0].data.DeclaredQuantityStatus;
+    assert.equal(status, 'unverified-without-source');
+    assert.equal(evidenceIsCurrent(snapshot), false, 'the same public model identity no longer proves the captured quantity source');
+  });
+}
 
 test('#7220 changed zone geometry refuses late selected splits and invalidates captured evidence', async t => {
   const f = await seedDeclaredZoneWall(t); if (!f) return;

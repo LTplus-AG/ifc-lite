@@ -38,7 +38,7 @@ import { structuralEvidence } from './selection-structural';
 import { effectiveStructuralData } from '@/components/viewer/properties/effectiveStructuralData';
 import { effectiveDocuments } from '@/components/viewer/properties/effectiveDocuments';
 import { classificationEvidence } from './selection-classifications';
-import { selectedZoneVolumeBreakdowns, zoneQuantitySources } from './zone-volume-bases';
+import { selectedZoneVolumeBreakdowns, zoneQuantitySources, zoneQuantitySourceIdentity } from './zone-volume-bases';
 import { effectiveTypeProperties } from '@/components/viewer/properties/effectiveTypeProperties';
 import { effectiveSelectedClass } from '@/components/viewer/properties/effectiveSelectedClass';
 import { propertyDisplayValue } from '@/components/viewer/properties/propertyDisplayValue';
@@ -230,9 +230,9 @@ export const selectionAdapter: EvidenceAdapter = {
     return size > 0 ? { status: { labelKey: 'assistantSources.selection.ready', params: { count: size } }, ready: true }
       : { status: { labelKey: 'assistantSources.selection.none' }, ready: false };
   },
-  // Every selection action replaces one of these; edits are covered by the context stamp.
+  // Selection/cache references and exact native declared-quantity source revisions.
   identity: s => [s.selectedEntities, s.selectedEntitiesSet, s.selectedEntityIds, s.selectedEntity, s.selectedEntityId,
-    s.zoneSets, s.zoneAssignments, s.zoneApportionment],
+    s.zoneSets, s.zoneAssignments, s.zoneApportionment, ...zoneQuantitySourceIdentity(s)],
   capture: (s, limit) => {
     const selection = selectionRefs(s);
     if (!selection || selection.refs.length === 0) return unavailableCapture();

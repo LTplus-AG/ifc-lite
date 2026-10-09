@@ -12,6 +12,21 @@ import type { QuantitySet } from '@/components/viewer/properties/encodingUtils';
 import { withInheritedTypeQuantities } from '@/lib/zones/inherited-quantities';
 import { allBasisBreakdowns, declaredVolumeBases, validEntry, volumeBasisRatioNote, type QuantitySetLike } from '@/lib/zones';
 
+/** Declared shares belong to these exact native sources and overlay revisions,
+ * including edits that do not publish a viewer mutationVersion. This walks
+ * loaded sources only, never their elements, quantities or geometry. */
+export function zoneQuantitySourceIdentity(s: ViewerState): unknown[] {
+  const identity: unknown[] = [];
+  for (const [modelId, model] of s.models) {
+    const view = s.mutationViews.get(modelId);
+    identity.push(modelId, model.ifcDataStore, model.ifcDataStore?.source,
+      model.sourceContentHash, view, view?.getMutationRevision());
+  }
+  const legacyView = s.mutationViews.get('__legacy__');
+  identity.push(s.ifcDataStore, s.ifcDataStore?.source, legacyView, legacyView?.getMutationRevision());
+  return identity;
+}
+
 /** Same occurrence-first inherited quantities and file VOLUMEUNIT as the
  * Properties card. Reading evidence must never create a mutation view. */
 export function zoneQuantitySources(s: ViewerState) {

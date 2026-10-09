@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import '@/test/setup-dom.js';
 import assert from 'node:assert/strict';
+import { assertSameNativeIfcGraph } from '@/test/native-ifc-graph';
 import { afterEach, test } from 'node:test';
 import { createCostBackend } from '@ifc-lite/sdk';
 import { StoreEditor } from '@ifc-lite/mutations';
@@ -49,7 +50,7 @@ test('#7311 all nine native supplied Cost routes retain typed amounts/declared u
   assert.equal(editors.size, 0, 'read-only preparation must not cache a live editor');
   assert.equal(view.getMutationRevision(), revision, 'detached graph preview must not alter the live allocator or metadata');
   assert.equal(useViewerStore.getState().undoStacks.get(SAMPLE_MODEL)?.length ?? 0, baselineHistory);
-  assert.deepEqual(editedModelBytes(dataStore, view), before);
+  await assertSameNativeIfcGraph(editedModelBytes(dataStore, view), before);
   const receipt = commitReviewedCost(useViewerStore, review, 'real supplied fixture');
   assert.deepEqual(decodeModelChangeReceipt(JSON.parse(JSON.stringify(receipt))), receipt, 'native receipt is portable and preserves real non-root expressIds');
   const valueReceipt = receipt.applied.find(row => row.op === 'cost.value.create')!;
@@ -80,7 +81,7 @@ test('#7311 selective approval refuses missing earlier refs and unrelated/unreco
   const original = input();
   const altered = { ...original, operations: [{ op: 'cost.item.assign' as const, target: 999999, related: [291] }] };
   assert.throws(() => prepareCostReview(useViewerStore, altered), /was not captured/);
-  assert.deepEqual(editedModelBytes(dataStore, view), baseline);
+  await assertSameNativeIfcGraph(editedModelBytes(dataStore, view), baseline);
   const review = prepareCostReview(useViewerStore, input(), new Set([0]));
   const receipt = commitReviewedCost(useViewerStore, review, 'only explicit schedule approved');
   assert.equal(receipt.applied.length, 1);
@@ -183,7 +184,7 @@ test('#7311 federation keeps supplied native Cost writes and history within the 
   const primaryBytes = editedModelBytes(dataStore, view);
   const receipt = commitReviewedCost(useViewerStore, prepareCostReview(useViewerStore, proposal), 'explicit federation model');
   assert.equal(receipt.batches[0].modelId, modelId);
-  assert.deepEqual(editedModelBytes(dataStore, view), primaryBytes);
+  await assertSameNativeIfcGraph(editedModelBytes(dataStore, view), primaryBytes);
   assert.equal(useViewerStore.getState().undoStacks.get(SAMPLE_MODEL)?.length ?? 0, 0);
   const parsed = await parseIfc(editedModelBytes(second, useViewerStore.getState().mutationViews.get(modelId)!));
   assert.equal(createCostBackend(() => ({ modelId, store: parsed })).data().CostSchedules[0].Name, 'Only secondary schedule');
@@ -239,7 +240,7 @@ test('#7311 native permission and same-model Root GlobalId ambiguity refuse Cost
   const baseline = editedModelBytes(dataStore, view);
   useViewerStore.setState({ editEnabled: false });
   assert.throws(() => review.commit(), /Edit mode/);
-  assert.deepEqual(editedModelBytes(dataStore, view), baseline);
+  await assertSameNativeIfcGraph(editedModelBytes(dataStore, view), baseline);
 });
 test('#7311 malformed current Root identity cannot authorize a native Cost assignment', async () => {
   const { dataStore, view } = await seedAuthoringSample();

@@ -33,13 +33,19 @@ const selected = classification.platforms[stage].map(row => row.path);
 const paths = stage === 'windows'
   ? ['scripts/perf/frame-gpu-job.test.mjs', 'scripts/perf/frame-gpu-job-controller.test.mjs']
   : ['scripts/perf/frame-gpu-job-controller.test.mjs'];
-const mutation = `scripts/perf/evidence/worker-pool-lifecycle-7036/native-ci/${stage === 'windows' ? 'native-safety' : 'posix-no-start'}.mutation.patch`;
+const nativeSubjects = {
+  'scripts/perf/frame-gpu-job.test.mjs': 'native-kill-on-close',
+  'scripts/perf/frame-gpu-job-controller.test.mjs': 'native-exact-identity',
+};
+const mutations = Object.fromEntries(paths.map(file => [file,
+  `scripts/perf/evidence/worker-pool-lifecycle-7036/native-ci/${stage === 'posix' ? 'posix-no-start' : nativeSubjects[file]}.mutation.patch`]));
+assert.ok(selected.every(file => Object.hasOwn(mutations, file)), 'Changed native subject requires its own safe mutation');
 const sourceNames = ['frame-gpu-process-identity.cs', 'frame-gpu-job.cs', 'frame-gpu-job-input.cs',
   'frame-gpu-job-supervisor.ps1', 'frame-gpu-cpu-fixture.cs', 'frame-gpu-cpu-fixture.mjs',
   'frame-gpu-job-controller.ts', 'frame-gpu-job.test.mjs', 'frame-gpu-job-controller.test.mjs'];
-const pins = Object.fromEntries([...sourceNames.map(name => 'scripts/perf/' + name), mutation].map(path =>
+const pins = Object.fromEntries([...sourceNames.map(name => 'scripts/perf/' + name), ...new Set(Object.values(mutations))].map(path =>
   [path, createHash('sha256').update(readFileSync(join(root, path))).digest('hex')]));
-record('admission.json', { head, base, stage, OS: process.platform, node: process.version, selected, paths, mutation, pins,
+record('admission.json', { head, base, stage, OS: process.platform, node: process.version, selected, paths, mutations, pins,
   allChangedTests: classification.test.map(row => row.path), platforms: classification.platforms });
 process.env.IFC_JOB_EVIDENCE_ROOT = join(output, 'actual-fixtures');
 process.env.IFC_JOB_PLATFORM = stage;
@@ -67,11 +73,12 @@ try {
   baseline = positive('original');
   assert.equal(git('status', '--porcelain'), '', 'Positive fixtures must leave clean source');
   for (const [index, file] of selected.entries()) {
+    const mutation = mutations[file];
     const oracle = spawnSync(process.execPath, ['scripts/check-test-revert-oracle.mjs', '--base', base, '--ci', '--json',
       '--platform', stage, '--test', file, '--mutation', mutation], { cwd: root, encoding: 'utf8', timeout: 600000,
       maxBuffer: 32 * 1024 * 1024, env: { ...process.env, IFC_LITE_ORACLE_RAW_OUTPUT: '1' } });
     record(`oracle-${index}-stdout.log`, oracle.stdout ?? ''); record(`oracle-${index}-stderr.log`, oracle.stderr ?? '');
-    record(`oracle-${index}-terminal.json`, { file, exitCode: oracle.status, signal: oracle.signal, spawnError: oracle.error?.message ?? null });
+    record(`oracle-${index}-terminal.json`, { file, mutation, exitCode: oracle.status, signal: oracle.signal, spawnError: oracle.error?.message ?? null });
     assert.equal(oracle.status, 0, oracle.error?.message ?? oracle.stderr); assert.equal(oracle.signal, null);
     // Transport the canonical result; do not reconstruct its ledger/verdict from status.
     const at = oracle.stdout.lastIndexOf('\n{\n');

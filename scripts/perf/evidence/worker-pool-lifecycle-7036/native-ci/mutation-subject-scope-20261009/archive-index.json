@@ -1,0 +1,12 @@
+{
+  "entries": [
+    {
+      "rawPath": "prior-combined-native-safety.mutation.patch",
+      "gzipPath": "prior-combined-native-safety.mutation.patch.gz",
+      "rawSha256": "3e933c39f3b4e186e96ee48eb30cc69a29ba64c5bfd6d31e4b0a06e28bcfa549",
+      "gzipSha256": "34f02d8b8d719ec9ba6f3ffcc4a020a2ca87114d92c95819206ccb33be4d69c3",
+      "rawBytes": 1240,
+      "gzipBytes": 587
+    }
+  ]
+}

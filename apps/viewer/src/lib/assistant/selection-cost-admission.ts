@@ -10,7 +10,8 @@ const record = (value: unknown): value is Record<string, unknown> =>
 
 /** #7360: reserve ordinary selection facts before projecting optional Cost graphs. */
 export function selectionCostBaseline(data: unknown): unknown {
-  return record(data) && 'nativeCost' in data ? { ...data, nativeCost: refusal } : data;
+  return record(data) && record(data.nativeCost) && data.nativeCost.status === 'available'
+    ? { ...data, nativeCost: refusal } : data;
 }
 
 /** Admit whole Cost pins only after the otherwise-fitting cited rows are fixed.
@@ -26,6 +27,7 @@ export function admitSelectionCosts(originalRows: readonly unknown[], projectedR
     const projected = projectedRows[index];
     if (!record(original) || !('nativeCost' in original) || !record(projected) || !record(projected.data)) continue;
     const pin = original.nativeCost;
+    if (!record(pin) || pin.status !== 'available') continue;
     const cost = JSON.stringify(JSON.stringify(pin)).length;
     if (cost > remaining) continue;
     const projectedPin = JSON.parse(evidenceJson(pin).text) as unknown;

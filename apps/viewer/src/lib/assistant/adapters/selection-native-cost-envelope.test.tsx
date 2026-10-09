@@ -169,3 +169,41 @@ test('#7360 competing real escaped Cost pins refuse a whole graph and preserve a
   assert.equal(actual.evidence.rows.filter(row => row.data.nativeCost.status === 'unavailable-transport-budget').length, 1);
   assertPins(actual); await verifyNativeClassifications(f, actual);
 });
+
+
+test('#7360 producer-unavailable Cost reason survives an earlier admitted native pin exhausting optional allowance', async () => {
+  const f = await fixture(); f.setValues(1);
+  f.view.setAttribute(f.schedule, 'Name', 'Legal native schedule');
+  // Real incoming references exceed the complete native record population only
+  // for the second wall. This is deliberate unavailable-input fault injection,
+  // not a claim that an over-limit graph is available.
+  for (let index = 0; index < 201; index++) f.view.createEntity('IfcRelAssociatesDocument',
+    [String(1000 + index).padStart(22, '0'), null, null, null, [`#${f.ids[1]}`], '#36']);
+  const native = (id: number) => nativeCostTransportEvidence(nativeReadTargets(useViewerStore.getState())(SAMPLE_MODEL), id);
+  const unavailable = native(f.ids[1]);
+  assert.equal(unavailable.status, 'unavailable-complete-graph');
+  const unavailableCost = JSON.stringify(JSON.stringify(unavailable)).length;
+  // Calibrate a schema-valid IfcText Description, keeping Name within IfcLabel.
+  let low = 0, high = 6000, first: ReturnType<typeof native> | undefined;
+  while (low <= high) {
+    const middle = Math.floor((low + high) / 2);
+    f.view.setAttribute(f.schedule, 'Description', 'd'.repeat(middle));
+    const pin = native(f.ids[0]); assert.equal(pin.status, 'available');
+    const cost = JSON.stringify(JSON.stringify(pin)).length;
+    if (cost <= 12000) { first = pin; low = middle + 1; } else high = middle - 1;
+  }
+  assert.ok(first); f.view.setAttribute(f.schedule, 'Description', 'd'.repeat(high));
+  first = native(f.ids[0]);
+  const firstCost = JSON.stringify(JSON.stringify(first)).length;
+  assert.ok(firstCost <= 12000 && 12000 - firstCost < unavailableCost,
+    `Actual optional allowance must exclude the later unavailable marker: ${firstCost}, ${unavailableCost}`);
+  const actual = capture(); assert.equal(actual.includedRows, 2);
+  assert.deepEqual(actual.evidence.rows[0].data.nativeCost, first, 'first actual native pin remains admitted');
+  assert.deepEqual(actual.evidence.rows[1].data.nativeCost, unavailable,
+    'producer unavailability must retain exact reason/count/parts without optional allowance');
+  useViewerStore.setState({ selectedEntities: [...f.ids].reverse().map(expressId => ({ modelId: SAMPLE_MODEL, expressId })) });
+  const reversed = capture(); assert.equal(reversed.includedRows, 2);
+  assert.deepEqual(reversed.evidence.rows[0].data.nativeCost, unavailable);
+  assert.deepEqual(reversed.evidence.rows[1].data.nativeCost, first,
+    'earlier producer unavailability must not charge the optional allowance of a later available graph');
+});

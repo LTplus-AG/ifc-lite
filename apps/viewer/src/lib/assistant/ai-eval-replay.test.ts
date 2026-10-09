@@ -28,7 +28,7 @@ const RECORDED_KINDS: readonly ProposalKind[] = ['clash.groups', 'flow.patch', '
 /** Every proposal kind the conversation classifies, by its declared \`kind\` (recordings may name any of them). */
 const KIND: Record<string, string> = { clash: 'clash.groups', flow: 'flow.patch', changes: 'model.changes', authoring: 'model.authoring',
   scene: 'scene.actions', mapping: 'table.mapping', filter: 'filter.proposal', list: 'list.proposal', lens: 'lens.proposal',
-  chart: 'chart.proposal', ids: 'ids.specifications', rules: 'rules.proposal', document: 'document.outline' } satisfies Record<string, string>;
+  chart: 'chart.proposal', rules: 'rules.proposal', document: 'document.outline' } satisfies Record<string, string>;
 const recordings = loadRecordings();
 
 /** Every field named in `expected` must equal the same field of `actual` (subset comparison). */

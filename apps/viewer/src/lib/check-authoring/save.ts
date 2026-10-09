@@ -14,7 +14,7 @@ import { useViewerStore } from '@/store';
 import { downloadFile, sanitizeFilename } from '../export/download';
 import { setValidationSourceChoice } from '../validation/validation-source-choice';
 import { isDryRunCurrent, type DryRun } from './dry-run';
-import { isAuditOf, type IdsDraft } from './ids-proposal';
+import { isAuditOf, type IdsDraft } from './ids-draft';
 import { ruleSetForSave, type RulesProposal } from './rules-proposal';
 import type { DocumentDraft } from './document-outline';
 
@@ -75,7 +75,7 @@ export async function saveDocumentDraft(draft: DocumentDraft): Promise<boolean> 
 export function exportIdsDraft(draft: IdsDraft, issues: readonly IDSAuditIssue[] | null): void {
   if (!draft.xml || auditBlocks(issues)) throw new Error('Resolve the native IDS audit errors before exporting.');
   if (auditStale(draft, issues)) throw new Error('The native IDS audit was run on an earlier draft. Audit this draft before exporting.');
-  downloadFile(draft.xml, `${sanitizeFilename(draft.proposal.title, { fallback: 'ids' })}.ids`, 'application/xml');
+  downloadFile(draft.xml, `${sanitizeFilename(draft.title, { fallback: 'ids' })}.ids`, 'application/xml');
 }
 
 /** Handoff: the saved definition becomes the panel's active one, on the matching side (this clears the shown report). */

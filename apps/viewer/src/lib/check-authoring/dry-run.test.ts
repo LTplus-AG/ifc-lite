@@ -11,9 +11,8 @@ import { useViewerStore, type FederatedModel } from '@/store';
 import { createDataAccessor } from '@/hooks/ids/idsDataAccessor';
 import { evaluatorModelsFromState } from '@/lib/model-tags/evaluator-models';
 import { SAMPLE_MODEL, seedAuthoringSample, parseIfc } from '@/test/authoring-sample-fixture';
-import { SAMPLE_IDS_PROPOSAL, SAMPLE_RULES_PROPOSAL, json } from '@/test/check-authoring-fixture';
+import { SAMPLE_RULES_PROPOSAL, json, sampleIdsDraft } from '@/test/check-authoring-fixture';
 import { fixtureModel } from '@/test/store-fixture';
-import { buildIdsDraft, parseIdsProposal } from './ids-proposal';
 import { parseRulesProposal } from './rules-proposal';
 import { dryRunIds, dryRunRules, isDryRunCurrent } from './dry-run';
 
@@ -33,7 +32,7 @@ const runCounts = (checks: Array<{ applicable: number; passed: number; failed: n
 // #6915: dry-run counts are the native validator's own, on one model and summed over a federation.
 test('IDS dry-run counts equal the native validator on the committed sample, at 1 and N models', async () => {
   await seedAuthoringSample({ editEnabled: false });
-  const draft = buildIdsDraft(parseIdsProposal(json(SAMPLE_IDS_PROPOSAL)));
+  const draft = sampleIdsDraft();
   const direct = await directCounts(draft.document, SAMPLE_MODEL);
   const run = await dryRunIds(draft.document);
   assert.deepEqual(runCounts(run.checks), direct);
@@ -55,7 +54,7 @@ test('IDS dry-run counts equal the native validator on the committed sample, at 
 
 test('a dry run authorises saving only for the same draft on unchanged models', async () => {
   await seedAuthoringSample({ editEnabled: false });
-  const draft = buildIdsDraft(parseIdsProposal(json(SAMPLE_IDS_PROPOSAL)));
+  const draft = sampleIdsDraft();
   const run = await dryRunIds(draft.document);
   assert.equal(isDryRunCurrent(run, draft.document), true);
   const edited = { ...draft.document, specifications: draft.document.specifications.map((spec, i) => i === 0 ? { ...spec, name: 'Renamed' } : spec) };
@@ -67,7 +66,7 @@ test('a dry run authorises saving only for the same draft on unchanged models', 
 // #6915 review: a run where no loaded model had parsed data checked nothing, and must not authorise a save.
 test('a dry run with no parsed model is refused, and a run that checked nothing never authorises saving', async () => {
   await seedAuthoringSample({ editEnabled: false });
-  const draft = buildIdsDraft(parseIdsProposal(json(SAMPLE_IDS_PROPOSAL)));
+  const draft = sampleIdsDraft();
   const rules = parseRulesProposal(json(SAMPLE_RULES_PROPOSAL));
   const run = await dryRunIds(draft.document);
   assert.equal(isDryRunCurrent({ ...run, checkedModels: [] }, draft.document), false, 'an empty run is not a dry run');
@@ -78,8 +77,8 @@ test('a dry run with no parsed model is refused, and a run that checked nothing 
 
 test('a specification nothing applies to is reported as an empty population', async () => {
   await seedAuthoringSample({ editEnabled: false });
-  const draft = buildIdsDraft(parseIdsProposal(json({ ...SAMPLE_IDS_PROPOSAL, specifications: [{ name: 'Ramps', cardinality: 'optional',
-    applicability: [{ type: 'entity', name: 'IFCRAMP' }], requirements: [{ type: 'attribute', name: 'Name' }] }] })));
+  const draft = sampleIdsDraft(undefined, [], [{ name: 'Ramps', cardinality: 'optional',
+    applicability: [{ type: 'entity', name: { kind: 'equals', value: 'IFCRAMP' } }], requirements: [{ type: 'attribute', name: { kind: 'equals', value: 'Name' } }] }]);
   const [check] = (await dryRunIds(draft.document)).checks;
   assert.deepEqual(runCounts([check]), [{ applicable: 0, passed: 0, failed: 0 }]);
 });
@@ -106,12 +105,14 @@ test('IDS dry run on AC20-FZK-Haus equals the native validator', async context =
   }
   const store = await parseIfc(Uint8Array.from(bytes));
   useViewerStore.setState({ models: new Map([['archicad', { ...fixtureModel('archicad'), ifcDataStore: store } as FederatedModel]]), activeModelId: 'archicad' });
-  const draft = buildIdsDraft(parseIdsProposal(json({ version: 1, kind: 'ids.specifications', title: 'AC20 walls', specifications: [
-    { name: 'External walls are flagged', applicability: [{ type: 'entity', name: 'IFCWALLSTANDARDCASE' }],
-      requirements: [{ type: 'property', propertySet: 'Pset_WallCommon', baseName: 'IsExternal', dataType: 'IFCBOOLEAN', value: true }] },
-    { name: 'Slabs are at least 200 mm thick', applicability: [{ type: 'entity', name: 'IFCSLAB' }],
-      requirements: [{ type: 'property', propertySet: 'Qto_SlabBaseQuantities', baseName: 'Width', dataType: 'IFCLENGTHMEASURE', unit: 'mm', value: { type: 'bounds', minInclusive: 200 } }] },
-  ] })));
+  const eq = (value: string | boolean) => ({ kind: 'equals' as const, value });
+  const draft = sampleIdsDraft('AC20 walls', [], [
+    { name: 'External walls are flagged', applicability: [{ type: 'entity', name: eq('IFCWALLSTANDARDCASE') }],
+      requirements: [{ type: 'property', propertySet: eq('Pset_WallCommon'), baseName: eq('IsExternal'), dataType: eq('IFCBOOLEAN'), value: eq(true) }] },
+    { name: 'Slabs are at least 200 mm thick', applicability: [{ type: 'entity', name: eq('IFCSLAB') }],
+      requirements: [{ type: 'property', propertySet: eq('Qto_SlabBaseQuantities'), baseName: eq('Width'), dataType: eq('IFCLENGTHMEASURE'),
+        value: { kind: 'range', min: 200, minInclusive: true, unit: 'mm' } }] },
+  ]);
   const run = await dryRunIds(draft.document);
   assert.deepEqual(runCounts(run.checks), await directCounts(draft.document, 'archicad'));
   assert.ok(run.checks[0].applicable > 0 && run.checks[1].applicable > 0, 'both checks select real ArchiCAD elements');

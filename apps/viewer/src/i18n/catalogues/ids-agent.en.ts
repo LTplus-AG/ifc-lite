@@ -1,0 +1,53 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
+import type { TranslationValue } from '../types';
+
+/** The IDS agent in the Assistant (IDS Studio P-07): `components/viewer/assistant/IdsAgent*.tsx`. */
+export const idsAgentEn = {
+  'idsAgent.title': 'Draft IDS with tools',
+  'idsAgent.intro': 'The agent looks every IFC name up, changes a draft only through checked operations, and shows you each change before anything is kept. Write the requirements in the message box, then start.',
+  'idsAgent.start': 'Draft IDS from the message',
+  'idsAgent.needsPrompt': 'Write the requirements in the message box first.',
+  'idsAgent.cancel': 'Stop the agent',
+  'idsAgent.running': 'Working…',
+  'idsAgent.again': 'Start over',
+  'idsAgent.error.missing-model': 'Choose a model for the Assistant first.',
+  'idsAgent.error.missing-key': 'Add your API key for this model in the key settings.',
+  'idsAgent.error.needs-key': 'Drafting IDS with tools needs your own Anthropic or OpenAI key: the hosted free models cannot call tools.',
+  'idsAgent.error.other': 'The agent could not run: {reason}',
+  'idsAgent.question': 'The agent needs a decision',
+  'idsAgent.dismiss': 'None of these',
+  'idsAgent.status.completed': 'Finished.',
+  'idsAgent.status.stopped': 'Stopped early: {reason}',
+  'idsAgent.summary': 'Summary from the agent',
+  'idsAgent.changes': 'Proposed changes',
+  'idsAgent.noChanges': 'The agent proposed no change.',
+  'idsAgent.change.added': 'New specification',
+  'idsAgent.change.changed': 'Changed specification',
+  'idsAgent.change.removed': 'Removed specification',
+  'idsAgent.keepSpec': 'Keep every change to {name}',
+  'idsAgent.keepBatch': 'Keep: {label}',
+  'idsAgent.ops': { one: '{count} operation', other: '{count} operations' },
+  'idsAgent.source': 'Source: “{quote}”',
+  'idsAgent.preview': '{applicable} elements in the loaded models match',
+  'idsAgent.diagnostics': { one: '{count} lint finding', other: '{count} lint findings' },
+  'idsAgent.unresolved': 'Not expressible in IDS',
+  'idsAgent.unresolvedItem': '{statement} ({category}: {reason})',
+  'idsAgent.questions': 'Decisions you made',
+  'idsAgent.answer': '{question} → {answer}',
+  'idsAgent.answerDismissed': '{question} → no choice',
+  'idsAgent.selected': '{selected} of {total} changes kept',
+  'idsAgent.accept': 'Use the kept changes',
+  'idsAgent.rejected': { one: '{count} kept change no longer applies and was left out.', other: '{count} kept changes no longer apply and were left out.' },
+  'idsAgent.receipt': '{model} · {requests} requests · {input} input and {output} output tokens',
+  'idsAgent.receiptIncomplete': '{model} · {requests} requests · at least {input} input and {output} output tokens (not every request reported usage)',
+  'idsAgent.sent': 'What was sent',
+  'idsAgent.sentIntro': 'Everything below left your browser for {model}, request by request. Earlier messages are resent with each request because the provider keeps no conversation.',
+  'idsAgent.sentModelData': 'Data from your loaded models was sent (counts, class statistics or capped values).',
+  'idsAgent.sentNoModelData': 'No data from your loaded models was sent.',
+  'idsAgent.sentRequest': 'Request {index} · resent {resent} earlier messages',
+  'idsAgent.sentEntry': '{label} ({chars} characters)',
+  'idsAgent.sentDigest': 'Payload digest {digest}',
+} as const satisfies Record<string, TranslationValue>;

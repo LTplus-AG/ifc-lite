@@ -61,7 +61,7 @@ export {
   type TemplateOp,
 } from './ops/types.js';
 export { OP_KINDS, validateOp, getOpJsonSchema, type OpValidation } from './ops/schema.js';
-export type { SchemaError } from './ops/json-schema-lite.js';
+export { validateJson, type JsonSchema, type SchemaError } from './ops/json-schema-lite.js';
 export { normaliseValue, facetFromDraft, DraftError } from './ops/draft.js';
 
 // Reducer (IDS-019)

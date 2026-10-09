@@ -7,13 +7,12 @@ import 'fake-indexeddb/auto';
 import assert from 'node:assert/strict';
 import { afterEach, test } from 'node:test';
 import { act } from 'react';
-import { render, click, cleanup, type, waitFor } from '@/test/render';
+import { render, click, cleanup, waitFor } from '@/test/render';
 import { useViewerStore } from '@/store';
 import { SAMPLE_MODEL, seedAuthoringSample } from '@/test/authoring-sample-fixture';
-import { SAMPLE_IDS_PROPOSAL, SAMPLE_RULES_PROPOSAL, json } from '@/test/check-authoring-fixture';
+import { SAMPLE_RULES_PROPOSAL, json } from '@/test/check-authoring-fixture';
 import { captureEvidence } from '@/lib/assistant/evidence';
 import { replaceEvidence, useAssistant, cancelAssistant } from '@/lib/assistant/conversation';
-import { loadDefinitionLibrary } from '@/lib/validation/definition-library';
 import { useValidationSourceChoice } from '@/lib/validation/validation-source-choice';
 import { AssistantPanel } from './AssistantPanel';
 
@@ -32,83 +31,6 @@ const button = (root: HTMLElement, name: RegExp) => {
   assert.ok(found, `button ${name}`);
   return found;
 };
-
-// #6915: answer → proposal card → native audit → dry run → save → native handoff, never saved by itself.
-test('an IDS answer is audited, dry-run on the loaded model, edited inline and saved only after review', async () => {
-  await seedAuthoringSample({ editEnabled: false });
-  replaceEvidence(captureEvidence('loadReport'));
-  answer(json({ ...SAMPLE_IDS_PROPOSAL, unsupported: [{ text: 'Doors swing outwards on escape routes', reason: 'opening direction is geometry' }] }));
-  const ui = render(<AssistantPanel />);
-  await waitFor(() => !!ui.querySelector('section[aria-label="Review IDS draft"]'), 'the IDS review card mounts');
-  assert.match(ui.textContent ?? '', /IDS draft/);
-  assert.match(ui.textContent ?? '', /3 specifications · 1 requirement not checkable/);
-  const review = ui.querySelector<HTMLElement>('section[aria-label="Review IDS draft"]')!;
-  await waitFor(() => /Native IDS audit: 0 errors/.test(review.textContent ?? ''), 'the native audit finishes clean');
-  assert.match(review.textContent ?? '', /Doors swing outwards on escape routes/, 'the unsupported requirement is shown');
-  assert.equal(button(review, /Save to IDS library/).disabled, true, 'saving needs a dry run');
-  assert.equal(loadDefinitionLibrary().library.entries.length, 0);
-
-  click(button(review, /Dry run on loaded models/));
-  await waitFor(() => !!review.querySelector('section[aria-label="Dry-run results"]'), 'dry-run results appear');
-  const results = review.querySelector<HTMLElement>('section[aria-label="Dry-run results"]')!;
-  assert.match(results.textContent ?? '', /Dry run on 1 model/);
-  assert.match(results.textContent ?? '', /\d+ applicable · \d+ passed · [1-9]\d* failed/);
-  click(button(results, /^Show .* in the model$/));
-  const selected = useViewerStore.getState().selectedEntity;
-  assert.equal(selected?.modelId, SAMPLE_MODEL, 'a failing sample resolves in the live model');
-  assert.equal(button(review, /Save to IDS library/).disabled, false);
-
-  type(review.querySelector<HTMLInputElement>('#ids-draft-spec-0-name')!, 'Spaces carry a name');
-  assert.match(review.textContent ?? '', /changed after this dry run/);
-  assert.equal(button(review, /Save to IDS library/).disabled, true, 'an inline edit needs a new dry run');
-  click(button(review, /Dry run on loaded models/));
-  await waitFor(() => !button(review, /Save to IDS library/).disabled, 'the edited draft dry-runs');
-  click(button(review, /Save to IDS library/));
-  assert.match(review.textContent ?? '', /Saved to the Data validation IDS library/);
-  const [entry] = loadDefinitionLibrary().library.entries;
-  assert.ok(entry && entry.kind === 'ids');
-  assert.equal(entry.document.specifications[0].name, 'Spaces carry a name');
-  assert.match(entry.document.info.description ?? '', /Doors swing outwards/);
-  assert.equal(useViewerStore.getState().validationDefinitions.active.ids, null, 'saving does not switch the active IDS');
-  click(button(review, /Open in Data validation/));
-  assert.equal(useViewerStore.getState().validationDefinitions.active.ids, entry.id, 'opening it does');
-  assert.equal(useValidationSourceChoice.getState().choice, 'ids');
-});
-
-// #6915 review: 2400 mm is stored as 2.4 (IDS is SI); the review shows the conversion and labels the SI value it edits.
-test('a value authored in a declared unit shows its SI conversion, and the edited value is labelled and read back in SI', async () => {
-  await seedAuthoringSample({ editEnabled: false });
-  replaceEvidence(captureEvidence('loadReport'));
-  answer(json({ version: 1, kind: 'ids.specifications', title: 'Doors', specifications: [{ name: 'Doors are wide', applicability: [{ type: 'entity', name: 'IFCDOOR' }],
-    requirements: [{ type: 'property', propertySet: 'Qto_DoorBaseQuantities', baseName: 'Width', dataType: 'IFCLENGTHMEASURE', unit: 'mm', value: 2400 }] }] }));
-  const ui = render(<AssistantPanel />);
-  await waitFor(() => !!ui.querySelector('section[aria-label="Review IDS draft"]'), 'the IDS review card mounts');
-  const review = ui.querySelector<HTMLElement>('section[aria-label="Review IDS draft"]')!;
-  assert.match(review.textContent ?? '', /Authored in mm, stored in SI: 2400 mm → 2\.4 m/);
-  const field = review.querySelector<HTMLInputElement>('#ids-draft-spec-0-req-0-value')!;
-  assert.equal(field.value, '2.4');
-  assert.equal(review.querySelector('label[for="ids-draft-spec-0-req-0-value"]')?.textContent, 'Required value (m)');
-  type(field, '3');
-  assert.match(review.textContent ?? '', /3000 mm → 3 m/, 'an edit is read back in the declared unit');
-});
-
-// #6915 review: an audit that could not run is not a clean audit.
-test('an IDS audit that fails to run blocks saving and export, and stays shown after a dry run', async () => {
-  await seedAuthoringSample({ editEnabled: false });
-  const { IdsDraftReview } = await import('../check-authoring/IdsDraftReview');
-  const { parseIdsProposal } = await import('@/lib/check-authoring/ids-proposal');
-  const ui = render(<IdsDraftReview initial={parseIdsProposal(json(SAMPLE_IDS_PROPOSAL))} audit={() => Promise.reject(new Error('schema data failed to load'))} />);
-  const review = ui.querySelector<HTMLElement>('section[aria-label="Review IDS draft"]')!;
-  await waitFor(() => /audit could not run/.test(review.textContent ?? ''), 'the audit failure is shown');
-  assert.doesNotMatch(review.textContent ?? '', /0 errors/);
-  assert.match(review.textContent ?? '', /schema data failed to load/);
-  assert.equal(button(review, /Export \.ids/).disabled, true);
-  click(button(review, /Dry run on loaded models/));
-  await waitFor(() => !!review.querySelector('section[aria-label="Dry-run results"]'), 'the dry run completes');
-  assert.equal(button(review, /Save to IDS library/).disabled, true, 'a current dry run does not unblock an audit that never ran');
-  assert.equal(button(review, /Export \.ids/).disabled, true);
-  assert.match(review.textContent ?? '', /audit could not run/, 'the failure is not cleared by the dry run');
-});
 
 test('a rules answer is dry-run through the native engine and opens in the rule editor after saving', async () => {
   await seedAuthoringSample({ editEnabled: false });
@@ -130,9 +52,23 @@ test('a rules answer is dry-run through the native engine and opens in the rule 
 test('a malformed check proposal is a refused card with its reason, never a review', async () => {
   await seedAuthoringSample({ editEnabled: false });
   replaceEvidence(captureEvidence('loadReport'));
-  answer(json({ ...SAMPLE_IDS_PROPOSAL, specifications: [{ name: 'Walls', applicability: [], requirements: [{ type: 'attribute', name: 'Name' }] }] }));
+  const malformed = json({ ...SAMPLE_RULES_PROPOSAL, ruleSet: { ...SAMPLE_RULES_PROPOSAL.ruleSet, rules: 'none' } });
+  const { parseRulesProposal } = await import('@/lib/check-authoring/rules-proposal');
+  const reason = (() => { try { parseRulesProposal(malformed); return ''; } catch (error) { return error instanceof Error ? error.message : String(error); } })();
+  assert.ok(reason, 'the parser refuses the proposal');
+  answer(malformed);
   const ui = render(<AssistantPanel />);
-  await waitFor(() => /applicability must list 1 to 20 facets/.test(ui.textContent ?? ''), 'the refusal reason is shown');
+  await waitFor(() => (ui.textContent ?? '').includes(reason), 'the refusal reason is shown');
+  assert.equal(ui.querySelector('section[aria-label="Review information rules"]'), null);
+});
+
+// IDS-085: an IDS answer written as JSON is no longer a proposal kind; IDS drafts come from the IDS agent.
+test('a JSON IDS answer is not offered for review; the IDS agent card is', async () => {
+  await seedAuthoringSample({ editEnabled: false });
+  replaceEvidence(captureEvidence('loadReport'));
+  answer(json({ version: 1, kind: 'ids.specifications', title: 'Doors', specifications: [] }));
+  const ui = render(<AssistantPanel />);
+  await waitFor(() => !!ui.querySelector('section[aria-label="Draft IDS with tools"]'), 'the IDS agent card mounts');
   assert.equal(ui.querySelector('section[aria-label="Review IDS draft"]'), null);
 });
 

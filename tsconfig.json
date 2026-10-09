@@ -121,6 +121,18 @@
       "@ifc-lite/ids-authoring/*": [
         "packages/ids-authoring/dist/*"
       ],
+      "@ifc-lite/ids-agent": [
+        "packages/ids-agent/dist/index.d.ts"
+      ],
+      "@ifc-lite/ids-agent/anthropic": [
+        "packages/ids-agent/dist/providers/anthropic.d.ts"
+      ],
+      "@ifc-lite/ids-agent/openai": [
+        "packages/ids-agent/dist/providers/openai.d.ts"
+      ],
+      "@ifc-lite/ids-agent/testing": [
+        "packages/ids-agent/dist/testing/index.d.ts"
+      ],
       "@ifc-lite/lists": [
         "packages/lists/dist/index.d.ts"
       ],

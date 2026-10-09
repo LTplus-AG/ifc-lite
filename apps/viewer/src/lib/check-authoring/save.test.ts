@@ -10,11 +10,11 @@ import { parseIDS } from '@ifc-lite/ids';
 import { parseRuleSetFile } from '@ifc-lite/rules';
 import { useViewerStore } from '@/store';
 import { seedAuthoringSample } from '@/test/authoring-sample-fixture';
-import { SAMPLE_IDS_PROPOSAL, SAMPLE_RULES_PROPOSAL, json } from '@/test/check-authoring-fixture';
+import { SAMPLE_IDS_SPECS, SAMPLE_RULES_PROPOSAL, json, sampleIdsDraft } from '@/test/check-authoring-fixture';
 import { loadDefinitionLibrary } from '../validation/definition-library';
 import { useValidationSourceChoice } from '../validation/validation-source-choice';
 import { loadDocuments } from '../document/persistence';
-import { auditIdsDraft, buildIdsDraft, parseIdsProposal } from './ids-proposal';
+import { auditIdsDraft } from './ids-draft';
 import { parseRulesProposal } from './rules-proposal';
 import { parseDocumentOutline, prepareDocumentDraft } from './document-outline';
 import { dryRunIds, dryRunRules } from './dry-run';
@@ -23,12 +23,10 @@ import { exportIdsDraft, openDefinition, saveDocumentDraft, saveIdsDraft, saveRu
 const initial = useViewerStore.getState();
 afterEach(() => { useViewerStore.setState(initial, true); localStorage.clear(); useValidationSourceChoice.setState({ choice: null }); });
 
-const IDS_WITH_UNSUPPORTED = { ...SAMPLE_IDS_PROPOSAL, unsupported: [{ text: 'Spaces have daylight', reason: 'needs a daylight simulation', relatesTo: 'Spaces are named' }] };
-
 // #6915: saved drafts reopen through the native library parsers with their unsupported requirements.
 test('an audited, dry-run IDS draft saves into the native library and reopens with its unsupported requirements', async () => {
   await seedAuthoringSample({ editEnabled: false });
-  const draft = buildIdsDraft(parseIdsProposal(json(IDS_WITH_UNSUPPORTED)));
+  const draft = sampleIdsDraft(undefined, [{ text: 'Spaces have daylight', reason: 'needs a daylight simulation', relatesTo: 'Spaces are named' }]);
   const issues = await auditIdsDraft(draft);
   assert.throws(() => saveIdsDraft(draft, issues, null), /Dry-run the draft/);
   assert.throws(() => saveIdsDraft(draft, null, null), /audit errors/);
@@ -39,9 +37,9 @@ test('an audited, dry-run IDS draft saves into the native library and reopens wi
   const entry = reopened.library.entries.find(candidate => candidate.id === saved.id);
   assert.ok(entry && entry.kind === 'ids');
   assert.equal(entry.xml, draft.xml, 'the exact reviewed XML is stored');
-  assert.deepEqual(entry.document.specifications.map(spec => spec.name), SAMPLE_IDS_PROPOSAL.specifications.map(spec => spec.name));
+  assert.deepEqual(entry.document.specifications.map(spec => spec.name), SAMPLE_IDS_SPECS.map(spec => spec.name));
   assert.match(entry.document.info.description ?? '', /Spaces have daylight \(needs a daylight simulation; Spaces are named\)/);
-  assert.match(parseIDS(entry.xml).specifications[0].instructions ?? '', /Spaces have daylight/);
+  assert.match(parseIDS(entry.xml).info.description ?? '', /Spaces have daylight/);
   assert.equal(reopened.library.active.ids, null, 'saving adds the entry without switching to it');
   openDefinition('ids', saved.id);
   assert.equal(loadDefinitionLibrary().library.active.ids, saved.id);
@@ -52,8 +50,8 @@ test('an audited, dry-run IDS draft saves into the native library and reopens wi
 // #6915 review: audit issues and a dry run must describe the XML being saved, not an earlier draft.
 test('saving an IDS draft refuses an audit or dry run that describes a different draft', async () => {
   await seedAuthoringSample({ editEnabled: false });
-  const draft = buildIdsDraft(parseIdsProposal(json(SAMPLE_IDS_PROPOSAL)));
-  const earlier = buildIdsDraft(parseIdsProposal(json({ ...SAMPLE_IDS_PROPOSAL, title: 'Earlier draft' })));
+  const draft = sampleIdsDraft();
+  const earlier = sampleIdsDraft('Earlier draft');
   const issues = await auditIdsDraft(draft);
   const earlierIssues = await auditIdsDraft(earlier);
   const run = await dryRunIds(draft.document);
@@ -69,14 +67,14 @@ test('saving an IDS draft refuses an audit or dry run that describes a different
 // #6915 review: the report a conversation was built on survives saving the drafts drafted from it.
 test('saving IDS and rules drafts keeps the shown validation report and the active definitions', async () => {
   await seedAuthoringSample({ editEnabled: false });
-  const draft = buildIdsDraft(parseIdsProposal(json(SAMPLE_IDS_PROPOSAL)));
+  const draft = sampleIdsDraft();
   const { runIdsCheck } = await import('../validation/run-ids-check');
   const state = useViewerStore.getState();
   assert.ok(state.addValidationDefinition({ kind: 'ids', xml: draft.xml, document: draft.document }), 'an IDS the user already works with');
   const previous = useViewerStore.getState().validationDefinitions.active.ids;
   const { report } = await runIdsCheck({ document: draft.document, modelId: 'arch', dataStore: state.models.get('arch')!.ifcDataStore!, locale: 'en', models: state.models });
   useViewerStore.setState({ idsValidationReport: report, validationRuleSetEditing: false });
-  const renamed = buildIdsDraft(parseIdsProposal(json({ ...SAMPLE_IDS_PROPOSAL, title: 'Drafted IDS' })));
+  const renamed = sampleIdsDraft('Drafted IDS');
   const savedIds = saveIdsDraft(renamed, await auditIdsDraft(renamed), await dryRunIds(renamed.document));
   const rules = parseRulesProposal(json(SAMPLE_RULES_PROPOSAL));
   const savedRules = saveRulesDraft(rules, await dryRunRules(rules.ruleSet));
@@ -114,7 +112,7 @@ test('dry-run rules save as a native rule set that reopens in the rule editor', 
 
 test('an outline saves as a new native document bound to the live report; a replaced report needs a new draft', async () => {
   await seedAuthoringSample({ editEnabled: false });
-  const draft = buildIdsDraft(parseIdsProposal(json(SAMPLE_IDS_PROPOSAL)));
+  const draft = sampleIdsDraft();
   const { runIdsCheck } = await import('../validation/run-ids-check');
   const state = useViewerStore.getState();
   const { report } = await runIdsCheck({ document: draft.document, modelId: 'arch', dataStore: state.models.get('arch')!.ifcDataStore!, locale: 'en', models: state.models });

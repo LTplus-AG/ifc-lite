@@ -3,14 +3,13 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { declaredCheckKind } from './proposal-json';
-import { parseIdsProposal } from './ids-proposal';
 import { parseRulesProposal } from './rules-proposal';
 import { parseDocumentOutline } from './document-outline';
 
-export type CheckDeclared = 'ids' | 'rules' | 'document';
+export type CheckDeclared = 'rules' | 'document';
 export interface CheckProposalSummary { declared: CheckDeclared; items: number; unsupported: number }
 
-const DECLARED = { 'ids.specifications': 'ids', 'rules.proposal': 'rules', 'document.outline': 'document' } as const;
+const DECLARED = { 'rules.proposal': 'rules', 'document.outline': 'document' } as const;
 
 /**
  * The conversation card's summary of a check-authoring answer: null for any
@@ -21,10 +20,6 @@ export function checkProposalOf(content: string): { declared: CheckDeclared; sum
   if (!kind) return null;
   const declared = DECLARED[kind];
   return { declared, summary: () => {
-    if (kind === 'ids.specifications') {
-      const proposal = parseIdsProposal(content);
-      return { declared, items: proposal.document.specifications.length, unsupported: proposal.unsupported.length };
-    }
     if (kind === 'rules.proposal') {
       const proposal = parseRulesProposal(content);
       return { declared, items: proposal.ruleSet.rules.length, unsupported: proposal.unsupported.length };

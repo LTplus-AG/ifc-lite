@@ -14,15 +14,18 @@ import { createContentLibrary, initialContentStatus, type ContentStatus } from '
 import type { ContentDefinition } from '../storage/content-migration';
 import type { AppliedChange, ModelChangeReceipt } from './model-change-commit';
 import { AUTHORING_OPS } from './model-authoring';
+import { COST_OPS } from './cost-graph-proposal';
 import { VERDICT_SPEC_LIMIT, type ReceiptValidation } from './validation-verdicts';
 
 const record = (value: unknown): value is Record<string, unknown> =>
   !!value && typeof value === 'object' && !Array.isArray(value);
 const scalar = (value: unknown) => value === null || ['string', 'number', 'boolean'].includes(typeof value);
-const OPS = new Set<string>(['property.set', 'property.delete', 'quantity.set', 'attribute.set', 'room.command', ...AUTHORING_OPS]);
+const OPS = new Set<string>(['property.set', 'property.delete', 'quantity.set', 'attribute.set', 'room.command', ...AUTHORING_OPS, ...COST_OPS]);
 
 function applied(value: unknown): value is AppliedChange {
   return record(value) && Number.isInteger(value.index) && OPS.has(String(value.op)) && typeof value.globalId === 'string'
+    && (value.expressId === undefined || Number.isSafeInteger(value.expressId) && (value.expressId as number) > 0)
+    && (!COST_OPS.includes(value.op as typeof COST_OPS[number]) || Number.isSafeInteger(value.expressId))
     && typeof value.modelId === 'string' && typeof value.field === 'string' && scalar(value.before) && scalar(value.after);
 }
 
@@ -47,9 +50,10 @@ export function decodeModelChangeReceipt(value: unknown): ModelChangeReceipt | n
     || value.applied.length > 1000 || value.skipped.length > 1000) return null;
   if (!value.batches.every((batch) => record(batch) && typeof batch.modelId === 'string' && typeof batch.batchId === 'string')) return null;
   if (!value.applied.every(applied)) return null;
+  if (value.applied.some(row => COST_OPS.includes(row.op as typeof COST_OPS[number])) && value.kind !== 'cost.graph') return null;
   if (!value.skipped.every((skip) => record(skip) && Number.isInteger(skip.index) && typeof skip.status === 'string')) return null;
   if (value.undoneAt !== undefined && typeof value.undoneAt !== 'string') return null;
-  if (value.kind !== undefined && value.kind !== 'model.authoring' && value.kind !== 'room.command') return null;
+  if (value.kind !== undefined && value.kind !== 'model.authoring' && value.kind !== 'room.command' && value.kind !== 'cost.graph') return null;
   if (value.validation !== undefined && !validation(value.validation)) return null;
   return structuredClone(value) as unknown as ModelChangeReceipt;
 }

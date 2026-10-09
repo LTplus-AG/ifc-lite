@@ -39,9 +39,10 @@ export function readNativeReplacementExpected(store:IfcDataStore,editor:StoreEdi
  const associations=(kind:'IfcRelDefinesByType'|'IfcRelAssociatesMaterial',subject=id)=>{
   const rows=readRelatedLists(store,kind,view).filter(row=>row.relatedIds.includes(subject));
   if(rows.length>256)throw new Error('Native replacement association population exceeds256; no memberships are omitted');
-  return rows.map(row=>{const record=effectiveMetadataRecord(store,row.relatingId,view);if(!record)throw new Error('A current native replacement association is unreadable');
+  return rows.map(row=>{if(row.relatingId===undefined)throw new Error('A current native replacement association target is unavailable');
+   const record=effectiveMetadataRecord(store,row.relatingId,view);if(!record)throw new Error('A current native replacement association is unreadable');
    if(kind==='IfcRelDefinesByType'&&(typeof record.attributes[0]!=='string'||!uniqueSplitGuid(store,editor,record.attributes[0])))throw new Error('Current native replacement type identity is ambiguous');
-   return {expressId:row.relatingId,record,relationshipId:row.relId,relatedIds:row.relatedIds};});
+   return {expressId:row.relatingId,record,relationshipId:row.relId,relatedIds:[...row.relatedIds]};});
  };
  let shape:NativeReplacementExpected['shape'];
  const stair=readStairDimensions(store,id,view);

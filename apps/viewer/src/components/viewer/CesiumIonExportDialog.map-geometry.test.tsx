@@ -99,10 +99,13 @@ test('mounted ion upload refuses unsupported edited map scale before network tra
   view.setAttribute(38, 'Scale', '-1', '0.9996');
   let transfers = 0;
   begin(source, view, async () => { transfers++; return { assetId: 42 }; });
-  await waitFor(() => transfers > 0 || document.body.textContent?.includes('IFC preparation reported') === true,
+  await waitFor(() => transfers > 0 || document.body.textContent?.includes('nothing was uploaded') === true,
     'mounted dialog neither reported its warning nor completed transport');
   assert.equal(transfers, 0, 'a refused map normalization must never reach upload transport');
-  assert.ok(document.body.textContent?.includes('IFC preparation reported'), 'canonical warning is reported');
+  // The exporter's own reasons are listed, not only their count (#7335).
+  const reasons = [...document.querySelectorAll('details li')].map(node => node.textContent ?? '');
+  assert.ok(reasons.length > 0, 'refusal reasons are listed');
+  assert.ok(reasons.some(reason => /normaliz/i.test(reason) && /scale/i.test(reason)), `exporter reason shown: ${reasons.join(' | ')}`);
   assert.equal(attrs(source, 38)[7], 0.9996, 'source remains authored');
   assert.deepEqual(view.getAttributeMutationsForEntity(38), [{ name: 'Scale', value: '-1' }]);
 });

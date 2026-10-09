@@ -39,7 +39,10 @@ pub(super) fn validate(
                     AttributeValue::EntityRef(id) if placements.contains_key(id) => {
                         let allowed = direct
                             && ((record.kind.is_subtype_of(IfcType::IfcProduct) && slot == 5)
-                                || (record.kind == IfcType::IfcLocalPlacement && slot == 0));
+                                || (matches!(
+                                    record.kind,
+                                    IfcType::IfcLocalPlacement | IfcType::IfcLinearPlacement
+                                ) && slot == 0));
                         if !allowed {
                             return Err(format!(
                                 "placement #{id} is referenced by unsupported {} #{} slot {slot}",

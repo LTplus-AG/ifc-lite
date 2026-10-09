@@ -1,0 +1,406 @@
+{
+  "status": "LOCAL_QUALIFIED_UNPUSHED",
+  "sourceHead": "9a281d33ce2691931b24eaa28de0a6c358acdb63",
+  "frozenMain": "ae27edc77b596700595ce0fc13f03e416af179c2",
+  "controls": {
+    "exitCode": 0,
+    "pass": 104,
+    "fail": 0,
+    "skip": 0,
+    "sourcePinnedReceipt": "controls-result.json.gz",
+    "actualBonsai": {
+      "fixtureSha256": "0ab20f4ea355ea9aa4fade7264b97ee9f9929addfa3961b2437c4381bd674014",
+      "primaryGeometrySha256": "1d39b0af33fb671fda1b6602d55266726ed65f30ec66ab76c37d75f1f894c513",
+      "peerGeometrySha256": "1d39b0af33fb671fda1b6602d55266726ed65f30ec66ab76c37d75f1f894c513",
+      "primaryMeshes": 8,
+      "peerMeshes": 8,
+      "visiblePrimaryMeshes": 5,
+      "counts": [
+        {
+          "triangles": 68,
+          "vertices": 80
+        },
+        {
+          "triangles": 32,
+          "vertices": 48
+        },
+        {
+          "triangles": 12,
+          "vertices": 24
+        },
+        {
+          "triangles": 12,
+          "vertices": 24
+        },
+        {
+          "triangles": 32,
+          "vertices": 48
+        },
+        {
+          "triangles": 12,
+          "vertices": 24
+        },
+        {
+          "triangles": 12,
+          "vertices": 24
+        },
+        {
+          "triangles": 12,
+          "vertices": 24
+        }
+      ]
+    },
+    "actualGc": "CPU copy bookkeeping allows discarded wrappers and released arrays to be collected (#6584) passed"
+  },
+  "plainFullRootTypecheck": {
+    "exitCode": 0,
+    "testFiles": 3737,
+    "packages": 62,
+    "viewerTestFiles": 2065,
+    "receipt": "full-root-typecheck-result.json.gz"
+  },
+  "lightGates": [
+    {
+      "name": "raw",
+      "command": [
+        "node",
+        "scripts/check-raw-entity-enumeration.mjs"
+      ],
+      "exitCode": 0
+    },
+    {
+      "name": "module",
+      "command": [
+        "node",
+        "scripts/check-module-size.mjs"
+      ],
+      "exitCode": 0
+    },
+    {
+      "name": "wiring",
+      "command": [
+        "node",
+        "scripts/check-test-wiring.mjs"
+      ],
+      "exitCode": 0
+    },
+    {
+      "name": "source-text",
+      "command": [
+        "node",
+        "scripts/check-source-text-assertions.mjs"
+      ],
+      "exitCode": 0
+    },
+    {
+      "name": "changesets",
+      "command": [
+        "node",
+        "scripts/check-changesets.mjs"
+      ],
+      "exitCode": 0
+    },
+    {
+      "name": "MPL",
+      "command": [
+        "node",
+        "scripts/add-license-headers.mjs",
+        "--check"
+      ],
+      "exitCode": 0
+    },
+    {
+      "name": "touched-oxlint",
+      "command": [
+        "pnpm",
+        "exec",
+        "oxlint",
+        "apps/viewer/src/lib/geometry-cpu-buffers.ts",
+        "apps/viewer/src/lib/geometry-cpu-aliases.ts",
+        "apps/viewer/src/lib/geometry-cpu-appearance.test.ts",
+        "apps/viewer/src/test/geometry-cpu-aliases-gc.ts"
+      ],
+      "exitCode": 0
+    },
+    {
+      "name": "diff",
+      "command": [
+        "git",
+        "diff",
+        "--check"
+      ],
+      "exitCode": 0
+    }
+  ],
+  "ownershipSourceHashes": {
+    "apps/viewer/src/lib/geometry-cpu-buffers.ts": "179c366fafb47848eca16936cbffd74be29291f4a72ad2ee13902edf128c869a",
+    "apps/viewer/src/lib/geometry-cpu-aliases.ts": "e3324e93cc4f6a3246273b7071aaf819011d882febb4c5acea28db00061bb072",
+    "apps/viewer/src/lib/geometry-cpu-appearance.test.ts": "824a285002697958f299e1145a1432cefe0dcd374ba5961d3a748b73ec25d640",
+    "apps/viewer/src/test/geometry-cpu-aliases-gc.ts": "c5496cfe067ce31e592d771c3993bd60535f830fefa7646c63853fd01ce5d8bf"
+  },
+  "runtimePhases": {
+    "preControls": {
+      "apps/viewer/src/lib/geometry-cpu-buffers.ts": {
+        "sha256": "179c366fafb47848eca16936cbffd74be29291f4a72ad2ee13902edf128c869a",
+        "sizeBytes": 3145
+      },
+      "apps/viewer/src/lib/geometry-cpu-aliases.ts": {
+        "sha256": "e3324e93cc4f6a3246273b7071aaf819011d882febb4c5acea28db00061bb072",
+        "sizeBytes": 2669
+      },
+      "apps/viewer/src/lib/geometry-cpu-appearance.test.ts": {
+        "sha256": "824a285002697958f299e1145a1432cefe0dcd374ba5961d3a748b73ec25d640",
+        "sizeBytes": 10517
+      },
+      "apps/viewer/src/test/geometry-cpu-aliases-gc.ts": {
+        "sha256": "c5496cfe067ce31e592d771c3993bd60535f830fefa7646c63853fd01ce5d8bf",
+        "sizeBytes": 4132
+      },
+      "apps/viewer/public/samples/hello-wall.ifc": {
+        "sha256": "0ab20f4ea355ea9aa4fade7264b97ee9f9929addfa3961b2437c4381bd674014",
+        "sizeBytes": 79592
+      },
+      "tests/models/ara3d/AC20-FZK-Haus.ifc": {
+        "sha256": "d42ab0dee01173106c16cd823b4614efe188fa15dd65195d95b9879bec59acc5",
+        "sizeBytes": 2526511
+      },
+      "packages/wasm/pkg/ifc-lite_bg.wasm": {
+        "sha256": "8b74229bbd4a991cbf1f32a8d52add195c5fdd333921f998b1c18eb713185143",
+        "sizeBytes": 9970066
+      },
+      "packages/wasm/pkg/ifc-lite.js": {
+        "sha256": "0a281479eb65141ae75aeef987d331d44439741a0cae855f122e53e800311a39",
+        "sizeBytes": 304051
+      },
+      "packages/wasm/pkg/ifc-lite.d.ts": {
+        "sha256": "54c9d0a52eb515e517d76726fefe5f6a63e553a81c1b10331a597965d14620f6",
+        "sizeBytes": 164165
+      }
+    },
+    "actualTestProcessRows": 20,
+    "actualTestProcessWasmHashes": [
+      "b335d9e2742a0f35db846b3a95f7b30152585ef2dd6e7abdc2328dae557dc1d0"
+    ],
+    "postControls": {
+      "apps/viewer/src/lib/geometry-cpu-buffers.ts": {
+        "sha256": "179c366fafb47848eca16936cbffd74be29291f4a72ad2ee13902edf128c869a",
+        "sizeBytes": 3145
+      },
+      "apps/viewer/src/lib/geometry-cpu-aliases.ts": {
+        "sha256": "e3324e93cc4f6a3246273b7071aaf819011d882febb4c5acea28db00061bb072",
+        "sizeBytes": 2669
+      },
+      "apps/viewer/src/lib/geometry-cpu-appearance.test.ts": {
+        "sha256": "824a285002697958f299e1145a1432cefe0dcd374ba5961d3a748b73ec25d640",
+        "sizeBytes": 10517
+      },
+      "apps/viewer/src/test/geometry-cpu-aliases-gc.ts": {
+        "sha256": "c5496cfe067ce31e592d771c3993bd60535f830fefa7646c63853fd01ce5d8bf",
+        "sizeBytes": 4132
+      },
+      "apps/viewer/public/samples/hello-wall.ifc": {
+        "sha256": "0ab20f4ea355ea9aa4fade7264b97ee9f9929addfa3961b2437c4381bd674014",
+        "sizeBytes": 79592
+      },
+      "tests/models/ara3d/AC20-FZK-Haus.ifc": {
+        "sha256": "d42ab0dee01173106c16cd823b4614efe188fa15dd65195d95b9879bec59acc5",
+        "sizeBytes": 2526511
+      },
+      "packages/wasm/pkg/ifc-lite_bg.wasm": {
+        "sha256": "b335d9e2742a0f35db846b3a95f7b30152585ef2dd6e7abdc2328dae557dc1d0",
+        "sizeBytes": 9970066
+      },
+      "packages/wasm/pkg/ifc-lite.js": {
+        "sha256": "0a281479eb65141ae75aeef987d331d44439741a0cae855f122e53e800311a39",
+        "sizeBytes": 304051
+      },
+      "packages/wasm/pkg/ifc-lite.d.ts": {
+        "sha256": "54c9d0a52eb515e517d76726fefe5f6a63e553a81c1b10331a597965d14620f6",
+        "sizeBytes": 164165
+      }
+    },
+    "postTypecheck": {
+      "apps/viewer/src/lib/geometry-cpu-buffers.ts": {
+        "sha256": "179c366fafb47848eca16936cbffd74be29291f4a72ad2ee13902edf128c869a",
+        "sizeBytes": 3145
+      },
+      "apps/viewer/src/lib/geometry-cpu-aliases.ts": {
+        "sha256": "e3324e93cc4f6a3246273b7071aaf819011d882febb4c5acea28db00061bb072",
+        "sizeBytes": 2669
+      },
+      "apps/viewer/src/lib/geometry-cpu-appearance.test.ts": {
+        "sha256": "824a285002697958f299e1145a1432cefe0dcd374ba5961d3a748b73ec25d640",
+        "sizeBytes": 10517
+      },
+      "apps/viewer/src/test/geometry-cpu-aliases-gc.ts": {
+        "sha256": "c5496cfe067ce31e592d771c3993bd60535f830fefa7646c63853fd01ce5d8bf",
+        "sizeBytes": 4132
+      },
+      "apps/viewer/public/samples/hello-wall.ifc": {
+        "sha256": "0ab20f4ea355ea9aa4fade7264b97ee9f9929addfa3961b2437c4381bd674014",
+        "sizeBytes": 79592
+      },
+      "tests/models/ara3d/AC20-FZK-Haus.ifc": {
+        "sha256": "d42ab0dee01173106c16cd823b4614efe188fa15dd65195d95b9879bec59acc5",
+        "sizeBytes": 2526511
+      },
+      "packages/wasm/pkg/ifc-lite_bg.wasm": {
+        "sha256": "8b74229bbd4a991cbf1f32a8d52add195c5fdd333921f998b1c18eb713185143",
+        "sizeBytes": 9970066
+      },
+      "packages/wasm/pkg/ifc-lite.js": {
+        "sha256": "0a281479eb65141ae75aeef987d331d44439741a0cae855f122e53e800311a39",
+        "sizeBytes": 304051
+      },
+      "packages/wasm/pkg/ifc-lite.d.ts": {
+        "sha256": "54c9d0a52eb515e517d76726fefe5f6a63e553a81c1b10331a597965d14620f6",
+        "sizeBytes": 164165
+      }
+    }
+  },
+  "rustTree": "1a1acc4260011c591fd8ce3c5387bb7c10b42f20",
+  "archives": [
+    {
+      "path": "controls-pre.json",
+      "sha256": "20cab70bfece5fb17d5ef2b8bcf60e55c1a9c46a61ff2cd8fbf98ee99fa07cb6",
+      "bytes": 1948,
+      "gzipPath": "controls-pre.json.gz",
+      "gzipSha256": "8bd12e4bd15b404ec7a590d7a6f693101479f82045deeda311546b41f843c0d5",
+      "gzipBytes": 917
+    },
+    {
+      "path": "controls-result.json",
+      "sha256": "22a260a28ba3ee6605cffcefa35a5d0a8d148c6f6bedbf0f1f6fee08f22fd610",
+      "bytes": 3506,
+      "gzipPath": "controls-result.json.gz",
+      "gzipSha256": "37341629907b61e452f3e9f3407008a9ce86049b9a9ae2a50ef7fb5169925bb5",
+      "gzipBytes": 1006
+    },
+    {
+      "path": "controls-runtime.jsonl",
+      "sha256": "dde334e91be11127e5094bd8e6333342da117ccd579f3c41855c74cadec17af0",
+      "bytes": 10132,
+      "gzipPath": "controls-runtime.jsonl.gz",
+      "gzipSha256": "a07a445b8cc644eef6b9b3c302f07ea6ea1b6838dff30a5891800d578f4ed644",
+      "gzipBytes": 763
+    },
+    {
+      "path": "controls.log",
+      "sha256": "7fee7259594a877199897e7e90ca33fcf264dbcd39ada15c46c260f16c4463dc",
+      "bytes": 113707,
+      "gzipPath": "controls.log.gz",
+      "gzipSha256": "3165fa1c286587f782d585c22cb05209638d2473800466ebeeff74d4236db8fc",
+      "gzipBytes": 23917
+    },
+    {
+      "path": "full-root-typecheck-pre.json",
+      "sha256": "20af4834a6cbb2d97ad3306c8ac4645715898d1962bd53d843c8a1789d2fe4ca",
+      "bytes": 1741,
+      "gzipPath": "full-root-typecheck-pre.json.gz",
+      "gzipSha256": "0321d73bc1e682e9ec8ce48607a30215632dfc2a03f4fb8aee574b15a636e1c8",
+      "gzipBytes": 820
+    },
+    {
+      "path": "full-root-typecheck-result.json",
+      "sha256": "4a1a0ed5db65242b84969f28d6b99b9ba9f87f76c96cc102ad37e10e72f6f936",
+      "bytes": 1608,
+      "gzipPath": "full-root-typecheck-result.json.gz",
+      "gzipSha256": "65aa77e91d6a77a0ccc95a6523c6ffbbb514527498ddc5eb05a3b523623d1691",
+      "gzipBytes": 719
+    },
+    {
+      "path": "full-root-typecheck.log",
+      "sha256": "2c9c2a6eeb495c7d3c92278b0dc441d9368d41725c0573e4e83d273a96083a76",
+      "bytes": 49908,
+      "gzipPath": "full-root-typecheck.log.gz",
+      "gzipSha256": "bd8533b3e1f82a8f990079021cf1be16f4180b0d8d2c52d68e98ea81969aa6ed",
+      "gzipBytes": 7493
+    },
+    {
+      "path": "light-MPL.log",
+      "sha256": "aeacc7be102589e5166446771bd53992b47a612a1763838901a238e4bdc0dd98",
+      "bytes": 171,
+      "gzipPath": "light-MPL.log.gz",
+      "gzipSha256": "247d2e0b56565fa8c08aea34808fd1830915756300eed7db20b39163929d1ce4",
+      "gzipBytes": 157
+    },
+    {
+      "path": "light-changesets.log",
+      "sha256": "761e9297a45347297fdf2e5c1f189d3db0000c7905a2f147f14f5c71719a6bf1",
+      "bytes": 56,
+      "gzipPath": "light-changesets.log.gz",
+      "gzipSha256": "6cf3e074cc31366c0753ae5b443e57fff4831d574dab4a87e69ce26ea2be2e8e",
+      "gzipBytes": 72
+    },
+    {
+      "path": "light-diff.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0,
+      "gzipPath": "light-diff.log.gz",
+      "gzipSha256": "9ceffb7310338057cfe71a4ae1e2c98d2c485d81cdef906532a801f457a38d64",
+      "gzipBytes": 20
+    },
+    {
+      "path": "light-module.log",
+      "sha256": "d0b84374b3f9dea73cbc4e1984ab5e222aed21e9f95a3426f2007f79bb85d3ae",
+      "bytes": 13046,
+      "gzipPath": "light-module.log.gz",
+      "gzipSha256": "24cd7c1b35097447b007cb20125fa4c1b313c5b22a5a1c76d2ccabcd0779a087",
+      "gzipBytes": 2170
+    },
+    {
+      "path": "light-raw.log",
+      "sha256": "cfa47922aa626509296d5d41550a2e1ca11bd8a94111a08bc8e741a771411c71",
+      "bytes": 46755,
+      "gzipPath": "light-raw.log.gz",
+      "gzipSha256": "63432612bc211d40e4283fc6fc97a498ab6fbdb361a71afdf743c5319f970238",
+      "gzipBytes": 10250
+    },
+    {
+      "path": "light-results.json",
+      "sha256": "4395fe499dd945905d51f5a8afdb96a7756f2c43e569cc232eeb563cc68a160a",
+      "bytes": 1258,
+      "gzipPath": "light-results.json.gz",
+      "gzipSha256": "e19af5f69793dd6080be12d8142cd47a3e0c342a4c8be4246b7a740bc7064781",
+      "gzipBytes": 316
+    },
+    {
+      "path": "light-source-text.log",
+      "sha256": "ee329820f17e12dfc3564a111642f592e25af5b9aac48ccce7f110753916795e",
+      "bytes": 30991,
+      "gzipPath": "light-source-text.log.gz",
+      "gzipSha256": "d39b192c6d376cf8a85447584f7114ce5b6dedc6d7a17194629e567746f8e13c",
+      "gzipBytes": 3000
+    },
+    {
+      "path": "light-touched-oxlint.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0,
+      "gzipPath": "light-touched-oxlint.log.gz",
+      "gzipSha256": "9ceffb7310338057cfe71a4ae1e2c98d2c485d81cdef906532a801f457a38d64",
+      "gzipBytes": 20
+    },
+    {
+      "path": "light-wiring.log",
+      "sha256": "98a10385e08b01728c5beafad6abc4108f0096cb636594ec566c3f51a2950c30",
+      "bytes": 859,
+      "gzipPath": "light-wiring.log.gz",
+      "gzipSha256": "15b34a6b5c7ff51cbcf9fa5707542d2a6b2fc540ddc13e73db4170356830d853",
+      "gzipBytes": 394
+    },
+    {
+      "path": "offline-install.log",
+      "sha256": "fd521d37b14e86168064311e335309ae9ca500f2d58316bf3ad1a297e51b0162",
+      "bytes": 437,
+      "gzipPath": "offline-install.log.gz",
+      "gzipSha256": "8b5d0af35632f32661cf48fea27b419f0a37171a47cf27f18d5c9255913133b3",
+      "gzipBytes": 319
+    }
+  ],
+  "claimBoundary": "Registered alias release/weak historical ownership functional qualification only. No automatic Scene-fragment alias registration, OS resident memory, native performance, speed or issue closure claim. Prior104/full3730 remains historical; current104/full3737 are pinned9a source.",
+  "pending": [
+    "parent source/archive verification",
+    "evidence-only commit then parent push decision",
+    "fresh exact-head required CI and accountable raw review before merge"
+  ]
+}

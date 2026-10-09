@@ -12,14 +12,20 @@
  * and `bim.store`'s modelling methods for joins, types and materials.
  */
 
+import type { NativeReadState } from './model-authoring-read-target';
+import { writeReviewedLayers } from './model-authoring-layers';
+import type { ApplyLayersSpec } from '@/lib/authoring/material-layers';
+import { writeNativeReplacement } from './model-authoring-replacement';
+import { slabOpeningSpec, writeSlabOpening, readSlabOpeningPreview } from './model-authoring-slab-opening';
 import { writeStairLifecycle, writeStairCreation } from './model-authoring-stair-lifecycle';
 import { uniqueSplitGuid, writeNativeSplit } from './model-authoring-split';
 import { writeHostedEdit } from './model-authoring-hosted-edit';
 import { profileInMetres } from './model-authoring-shape-params';
 import { StoreEditor } from '@ifc-lite/mutations';
 import type { IfcDataStore } from '@ifc-lite/parser';
-import { copyBatchInStore, addHostedElementInStore, addOrdinaryElementInStore, resolveSpatialAnchor, type OrdinaryInStoreElement } from '@ifc-lite/create';
+import { alignElementsInStore, copyBatchInStore, addHostedElementInStore, addOrdinaryElementInStore, resolveSpatialAnchor, type OrdinaryInStoreElement } from '@ifc-lite/create';
 import { createModellingStoreBackend, resolveLiveOwnerHistoryId } from '@ifc-lite/sdk';
+import { writeGridCreation } from './model-authoring-grid-native';
 import { ensureStoreyPlacement } from '@/store/slices/storeyPlacement';
 import type { HostedFillSpec } from '@/store/slices/mutation-hosted-fill';
 import { detachFromType, type ModellingMethods } from '@/store/slices/mutation-modelling-records';
@@ -36,6 +42,9 @@ export type ElementId = { id: number } | { ref: string };
 
 /** What preview resolved for an operation; the commit re-resolves and must find the same. */
 export interface ResolvedOp {
+  layers?: ApplyLayersSpec;
+  alignment?: { reference: number; targets: number[]; storeyId: number; geometry?: import('./model-authoring-align').PreparedAlignment };
+  slabOpening?: ReturnType<typeof readSlabOpeningPreview>;
   target?: number;
   reachBoundary?: ElementId;
   reachPlan?: ReturnType<typeof import('@ifc-lite/create').trimExtendElementInStore>;
@@ -43,6 +52,7 @@ export interface ResolvedOp {
   /** The element a type or material is assigned to. */
   subject?: ElementId;
   storey?: number;
+  grid?: ElementId;
   host?: ElementId;
   walls?: [ElementId, ElementId];
   /** Existing type / material to relate, or null to create the one the operation names. */
@@ -89,6 +99,7 @@ export function authoredElementOf(batch: ModelAuthoringBatch, op: Create, global
 
 /** The hosted-element spec of a `hosted.create`, in metres. */
 export function hostedSpecOf(batch: ModelAuthoringBatch, op: Hosted, globalId?: string): HostedFillSpec {
+  if ('params' in op) return slabOpeningSpec(batch, op, globalId);
   const m = (v: number) => toMetres(batch, v);
   const common = { Offset: m(op.offset), Sill: m(op.sill), Width: m(op.width), Height: m(op.height),
     ...(op.name ? { Name: op.name } : {}), ...(globalId ? { GlobalId: globalId } : {}) };
@@ -152,6 +163,7 @@ export function dryRunAuthoring(
   modelId: string,
   rows: readonly DryRunRow[],
   splitScopes?: Parameters<typeof import('@ifc-lite/create').splitElementsInStore>[3],
+  readState?: NativeReadState,
 ): Map<number, string> {
   const refusals = new Map<number, string>();
   if (rows.length === 0) return refusals;
@@ -160,7 +172,7 @@ export function dryRunAuthoring(
     const refs = new Map<string, number>();
     for (const row of rows) {
       try {
-        editor.runAtomic((draft) => draftAuthoringOperation(batch, dataStore, modelId, draft, row, refs, splitScopes));
+        editor.runAtomic((draft) => draftAuthoringOperation(batch, dataStore, modelId, draft, row, refs, splitScopes, readState));
       } catch (error) {
         refusals.set(row.index, error instanceof Error ? error.message : String(error));
       }
@@ -182,9 +194,15 @@ export function writeNativeTypeDetach(op: Extract<AuthoringOp, { op: 'type.detac
   detachFromType(draft, dataStore, [resolved.target!]);
 }
 
-export function draftAuthoringOperation(batch: ModelAuthoringBatch, dataStore: IfcDataStore, modelId: string, draft: StoreEditor, row: DryRunRow, refs: Map<string, number>, splitScopes?: Parameters<typeof import('@ifc-lite/create').splitElementsInStore>[3]): void {
+export function draftAuthoringOperation(batch: ModelAuthoringBatch, dataStore: IfcDataStore, modelId: string, draft: StoreEditor, row: DryRunRow, refs: Map<string, number>, splitScopes?: Parameters<typeof import('@ifc-lite/create').splitElementsInStore>[3], readState?: NativeReadState): void {
   const { op, resolved } = row;
   switch (op.op) {
+    case 'material.layers':
+      if (!readState) throw new Error('The native layer source context is unavailable');
+      writeReviewedLayers({ modelId, dataStore, view: draft.getMutationView(), editor: draft }, draft,
+        draftMethods(dataStore, modelId, draft), resolved.layers!, op, batch.units, readState);
+      return;
+    case 'element.replace': {const made=writeNativeReplacement(batch,dataStore,draft,resolved.target!,resolved.storey!,op);refs.set(op.ref,made.expressId);return;}
     case 'stair.resize': case 'stair.delete': case 'railing.delete': case 'stair.replace': case 'railing.replace': {
       const result=writeStairLifecycle(dataStore,draft,batch,op,resolved.target!,resolved.storey);
       if('ref' in op && result.root!==undefined)refs.set(op.ref,result.root);return;
@@ -216,6 +234,11 @@ export function draftAuthoringOperation(batch: ModelAuthoringBatch, dataStore: I
       if (!outcome.ok) throw new Error(outcome.reason);
       return;
     }
+    case 'grid.create': case 'column.createOnGrid': {
+      const id = writeGridCreation(dataStore, draft, batch, op, resolved.storey!, resolved.grid, refs);
+      refs.set(op.ref, id);
+      return;
+    }
     case 'element.create': {
       const storey = resolved.storey!;
       const id = addOrdinaryElementInStore(draft, (d) => {
@@ -226,7 +249,9 @@ export function draftAuthoringOperation(batch: ModelAuthoringBatch, dataStore: I
       return;
     }
     case 'hosted.create': {
-      const created = addHostedElementInStore(dataStore, draft, idOf(resolved.host!, refs), hostedSpecOf(batch, op));
+      const host = idOf(resolved.host!, refs);
+      const created = 'params' in op ? writeSlabOpening(batch, op, dataStore, draft, host) : addHostedElementInStore(dataStore, draft, host, hostedSpecOf(batch, op));
+      if ('params' in op) resolved.slabOpening = readSlabOpeningPreview(dataStore, draft, host, created.openingId);
       if (op.ref) refs.set(op.ref, created.expressId);
       return;
     }
@@ -238,6 +263,13 @@ export function draftAuthoringOperation(batch: ModelAuthoringBatch, dataStore: I
     case 'element.delete':
       if (!draft.removeEntity(resolved.target!)) throw new Error('The element could not be removed');
       return;
+    case 'element.align': {
+      const a = resolved.alignment;
+      if (!a?.geometry) throw new Error('Prepare native Align geometry first');
+      alignElementsInStore({ dataStore, view: draft.getMutationView(), editor: draft },
+        { reference: a.reference, targets: a.targets, mode: op.mode }, a.geometry.boxes);
+      return;
+    }
     case 'element.move': case 'element.rotate':
       // Checked against the transform planner and placement chain in preview; nothing to stage.
       return;

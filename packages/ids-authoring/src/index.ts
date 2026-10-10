@@ -119,3 +119,28 @@ export { reidentify, type ReidentifyReport, type ReidentifyOptions, type MatchSt
 
 // Plain-language rendering (IDS-027)
 export { describeFacet } from './render/describe.js';
+
+// Lint engine (IDS-046)
+export { createLintContext } from './lint/context.js';
+export { createLinter, lintDocument, lintDocsUrl, type Linter, type LinterOptions } from './lint/engine.js';
+export { checkQuickFix } from './lint/fix.js';
+export { LINT_RULES } from './lint/rules/index.js';
+export { explainXsdPattern, type PatternExplanation } from './lint/rules/xsd-regex.js';
+export type {
+  Diagnostic,
+  DocumentRule,
+  FacetView,
+  Finding,
+  LintArea,
+  LintContext,
+  LintOptions,
+  LintResult,
+  LintRule,
+  LintRuleMeta,
+  LintSeverity,
+  QuickFix,
+  RuleInput,
+  SpecRule,
+  SpecView,
+  SuppressedDiagnostic,
+} from './lint/types.js';

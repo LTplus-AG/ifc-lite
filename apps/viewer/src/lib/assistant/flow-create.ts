@@ -61,7 +61,8 @@ export function buildCreatedFlow(request: FlowCreateRequest): FlowDocument {
   const edges: FlowEdge[] = request.edges.map(edge => ({ from: edge.from, to: edge.to }));
   const outputs: FlowOutput[] = (request.outputs ?? []).map(output => ({ ...output }));
   const draft = newFlowDocument(request.name.trim());
-  let doc: FlowDocument = { ...draft, ...(request.description?.trim() ? { description: request.description.trim() } : {}), nodes, edges, outputs };
+  let doc: FlowDocument = { ...draft, ...(request.description?.trim() ? { description: request.description.trim() } : {}), nodes, edges, outputs,
+    inputs: request.inputs ?? [] };
   doc = { ...doc, capabilities: requiredCapabilities(doc, registry) };
   validateProposedGraph(doc);
   const depth = new Map<string, number>();

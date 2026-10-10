@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import '@/test/setup-dom.js';
 import { refuseContentWrites } from '@/test/content-fixture.js';
-import { test } from 'node:test';
+import { mock, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
 import { useViewerStore } from '@/store';
@@ -98,4 +98,51 @@ test('#7245 Keep recovers an actual mounted native clash report after quota-refu
   assert.deepEqual(durable.payload, JSON.parse(JSON.stringify(report)));
   assert.equal(useViewerStore.getState().models, beforeModels);
   assert.equal(useViewerStore.getState().mutationVersion, beforeVersion);
+});
+
+function refuseNativeRecoveryReads() {
+  const original = IDBDatabase.prototype.transaction;
+  return mock.method(IDBDatabase.prototype, 'transaction', function (this: IDBDatabase,
+    stores: string | string[], mode?: IDBTransactionMode, options?: IDBTransactionOptions) {
+    if (mode === 'readonly') throw new DOMException('Actual cancellation recovery read refusal', 'UnknownError');
+    return original.call(this, stores, mode, options);
+  });
+}
+
+test('#7245 quota Keep retains read-only recovery after actual database read failure until explicit Retry', async () => {
+  const { report, ui } = await refusedNativeDeletion();
+  const refused = refuseNativeRecoveryReads();
+  try {
+    click(button(ui, 'Keep')!);
+    await waitFor(() => useViewerStore.getState().savedComparisonsStorage.items[report.id] === 'unavailable', 'actual native recovery read fails');
+    assert.equal(useViewerStore.getState().savedComparisons.some(entry => entry.id === report.id), false, 'failed read cannot fabricate the original as authoritative');
+  } finally { refused.mock.restore(); }
+  assert.equal(await useViewerStore.getState().retrySaveComparisons(), true, 'Retry reads the one revoked source instead of deleting it');
+  assert.ok(useViewerStore.getState().savedComparisons.some(entry => entry.id === report.id));
+  const durable = (await readContentRows('comparison')).find(entry => entry.id === report.id);
+  assert.ok(durable && !durable.deleted); assert.deepEqual(durable.payload, JSON.parse(JSON.stringify(report)));
+});
+
+test('#7245 direct native revocation inside an always-true approval callback blocks the queued write', async () => {
+  const report = await realComparison();
+  const original = (await readContentRows('comparison')).find(entry => entry.id === report.id); assert.ok(original);
+  let revokeOnCheck = false, cancellation: Promise<boolean> | undefined;
+  const guard = () => {
+    if (revokeOnCheck) {
+      revokeOnCheck = false;
+      cancellation = useViewerStore.getState().cancelSavedComparisonDeletion(report.id, guard);
+    }
+    return true;
+  };
+  const writes = refuseContentWrites();
+  try { assert.equal(await useViewerStore.getState().deleteSavedComparison(report.id, guard), false); }
+  finally { writes.mock.restore(); }
+  assert.equal(useViewerStore.getState().savedComparisonsStorage.items[report.id], 'quota');
+  revokeOnCheck = true;
+  assert.equal(await useViewerStore.getState().retrySaveComparisons(), false, 'revocation wins even though the approval callback returns true');
+  assert.ok(cancellation, 'the actual queued native pre-write guard requested revocation');
+  assert.equal(await cancellation, true);
+  const durable = (await readContentRows('comparison')).find(entry => entry.id === report.id);
+  assert.ok(durable && !durable.deleted); assert.equal(durable.revision, original.revision, 'revocation prevents the actual native write');
+  assert.deepEqual(durable.payload, JSON.parse(JSON.stringify(report)));
 });

@@ -527,7 +527,7 @@ for (const owner of ['source', 'destination'] as const) test(`#7328 public revie
   const result = commitModelAuthoring(useViewerStore, preview, new Set([0]), 'duplicate native storey');
   assert.equal(result.ok, false, 'canonical native preparation/commit must refuse duplicate identity');
   assert.deepEqual(await graph(s.bytesNow()), before);
-  assert.equal(s.view.getMutationRevision(), revision); assert.equal(nativeSdkUndoDepth(), depth);
+  assert.equal(s.view.getMutationRevision(), revision, 'refusal preserves the native mutation revision'); assert.equal(nativeSdkUndoDepth(), depth, 'refusal preserves native Undo depth');
 });
 
 test('#7328 native near-text-limit pin distinguishes public batch overhead from actual request refusal', async t => {
@@ -546,6 +546,7 @@ test('#7328 native near-text-limit pin distinguishes public batch overhead from 
   const answer = JSON.stringify({ kind: 'model.authoring', version: 1, title: 'Native complete metadata', units: 'm', frame: 'storey-local', operations: [{ ...s.operation, expected }] });
   assert.ok(pinLength < 400_000); assert.ok(answer.length > 400_000);
   assert.throws(() => parseModelAuthoringBatch(answer), /text limit/);
+  await settle();
   const grounding = captureSelectionGrounding(useViewerStore.getState());
   const candidate = grounding.elements[0].nativeStoreyReassignments?.find(item => item.destinationStorey.globalId === s.operation.destinationStorey.globalId);
   t.diagnostic(`actual native pin=${pinLength}; full batch=${answer.length}; captured candidate=${Boolean(candidate)}; availability=${JSON.stringify(grounding.elements[0].nativeAuthoringAvailability)}`);

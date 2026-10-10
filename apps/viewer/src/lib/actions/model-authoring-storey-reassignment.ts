@@ -83,8 +83,6 @@ export function parseStoreyReassignment(value: Record<string, unknown>, target: 
   const destinationStorey = parseGlobalIdTarget(value.destinationStorey, `${at} destinationStorey`);
   if (!target.modelId || sourceStorey.modelId !== target.modelId || destinationStorey.modelId !== target.modelId) throw new Error(`${at}: declare the same owning modelId for product and both storeys`);
   const operation: StoreyReassignmentOp = { op: 'element.reassignStorey', target, sourceStorey, destinationStorey, expected: parseExpected(value.expected, `${at} expected`) };
-  const refusal = completeBatchRefusal(operation);
-  if (refusal) throw new Error(`${at}: ${refusal}; the complete reassignment batch exceeds the text limit`);
   return operation;
 }
 

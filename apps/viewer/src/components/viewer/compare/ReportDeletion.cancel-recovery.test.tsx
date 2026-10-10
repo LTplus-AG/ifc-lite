@@ -10,6 +10,7 @@ import { useViewerStore } from '@/store';
 import { click, render, waitFor } from '@/test/render';
 import { readContentRows, writeContent } from '@/lib/storage/content-database';
 import { SavedComparisonLibrary } from './SavedComparisonLibrary';
+import { detectCoincidentWalls, mountClashPanel, saveCurrentResultAs } from '@/test/clash-report-fixture';
 import { button, realComparison, setupReportDeletionFixtures } from '@/test/report-deletion-fixture';
 
 setupReportDeletionFixtures();
@@ -65,4 +66,36 @@ test('#7245 quota Cancel recovery cannot overwrite a newer durable native replac
   assert.ok(durable && !durable.deleted); assert.deepEqual(durable.payload, JSON.parse(JSON.stringify(replacement)));
   const current = useViewerStore.getState().savedComparisons.find(entry => entry.id === report.id);
   if (current) assert.deepEqual(JSON.parse(JSON.stringify(current)), JSON.parse(JSON.stringify(replacement)), 'Cancel cannot resurrect a cloned stale original as the authoritative current source');
+});
+
+
+test('#7245 Keep recovers an actual mounted native clash report after quota-refused deletion without Retry or reload', async () => {
+  mountClashPanel(); await detectCoincidentWalls(2);
+  const report = await saveCurrentResultAs('Native clash quota Keep recovery');
+  assert.equal(report.clashes.length, 1, 'actual parsed native walls produce the stored clash');
+  const row = document.body.querySelector(`[data-clash-report="${report.id}"]`); assert.ok(row);
+  const remove = button(row, 'Delete'); assert.ok(remove); click(remove);
+  await waitFor(() => button(row, 'Delete report')?.disabled === false, 'actual native preview becomes ready');
+  const beforeModels = useViewerStore.getState().models;
+  const beforeVersion = useViewerStore.getState().mutationVersion;
+  const refused = refuseContentWrites();
+  try {
+    click(button(row, 'Delete report')!);
+    await waitFor(() => useViewerStore.getState().savedClashReportsStorage.items[report.id] === 'quota', 'actual database refuses the own tombstone');
+    await waitFor(() => button(row, 'Keep')?.disabled === false, 'quota failure completes before Keep');
+    const durable = (await readContentRows('clashReports')).find(entry => entry.id === report.id);
+    assert.ok(durable && !durable.deleted);
+    assert.deepEqual(durable.payload, JSON.parse(JSON.stringify(report)));
+    assert.equal(useViewerStore.getState().savedClashReports.some(entry => entry.id === report.id), false, 'own staged tombstone is genuinely pending');
+  } finally { refused.mock.restore(); }
+  click(button(row, 'Keep')!);
+  await waitFor(() => document.body.querySelector('[data-report-deletion-preview]') === null, 'Keep closes the actual mounted preview');
+  await waitFor(() => useViewerStore.getState().savedClashReports.some(entry => entry.id === report.id), 'Keep recovers the native clash source without Retry or reload');
+  assert.deepEqual(useViewerStore.getState().savedClashReports.find(entry => entry.id === report.id), report);
+  assert.ok(document.body.querySelector(`[data-clash-report="${report.id}"]`), 'recovered native report is immediately visible');
+  const durable = (await readContentRows('clashReports')).find(entry => entry.id === report.id);
+  assert.ok(durable && !durable.deleted);
+  assert.deepEqual(durable.payload, JSON.parse(JSON.stringify(report)));
+  assert.equal(useViewerStore.getState().models, beforeModels);
+  assert.equal(useViewerStore.getState().mutationVersion, beforeVersion);
 });

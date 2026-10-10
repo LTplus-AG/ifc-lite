@@ -39,8 +39,8 @@ export function extractEntityAttributesOnDemand(
     entityId: number
 ): { globalId: string; name: string; description: string; objectType: string; tag: string; longName: string } {
     const empty = { globalId: '', name: '', description: '', objectType: '', tag: '', longName: '' };
-    // @raw-entity-enumeration-ok on-demand extraction needs this entity's source byte range, not a live entity enumeration
-    const ref = store.entityIndex.byId.get(entityId);
+    // Primary index, then the deferred one: same lookup as every other on-demand read (#7405 review).
+    const ref = getEntityRefFromStore(store, entityId);
     if (!ref) return empty;
 
     const extractor = new EntityExtractor(store.source);

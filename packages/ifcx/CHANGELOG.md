@@ -1,5 +1,18 @@
 # @ifc-lite/ifcx
 
+## 4.4.0
+
+### Minor Changes
+
+- [#6824](https://github.com/LTplus-AG/ifc-lite/pull/6824) [`7c00fad`](https://github.com/LTplus-AG/ifc-lite/commit/7c00fadaf7bb702f8fe3d9a98541bd1d3db2d3b2) Thanks [@louistrue](https://github.com/louistrue)! - Extend source contracts with resource kinds, artifact filenames, availability reasons, preparation progress, provider file filters and cancellable sign-in. OAuth callback waits accept an AbortSignal and release channel resources on cancellation. Preserve optional projected IFCX placement in parse results.
+
+### Patch Changes
+
+- Updated dependencies [[`8f8fe3b`](https://github.com/LTplus-AG/ifc-lite/commit/8f8fe3b126f25201ebfd338f355eb3787e7ad908), [`2cb6753`](https://github.com/LTplus-AG/ifc-lite/commit/2cb67534655cefd18da735e375a0bd91a4cefe8a), [`9e5487b`](https://github.com/LTplus-AG/ifc-lite/commit/9e5487b56ca55a66b325bf3666371efe0c4166ad), [`6a6714b`](https://github.com/LTplus-AG/ifc-lite/commit/6a6714b4e95f25ef43013be354a2ff62674ff07a), [`b92dd05`](https://github.com/LTplus-AG/ifc-lite/commit/b92dd05495094a47c4a68eb1137a3a1906fc65cc), [`fd1f8f5`](https://github.com/LTplus-AG/ifc-lite/commit/fd1f8f52fabbde0ecee4d6a5c15635293ff1a15e), [`73070c2`](https://github.com/LTplus-AG/ifc-lite/commit/73070c2d67c2a0507e6bc5492c090f2df3736881), [`2e2f65a`](https://github.com/LTplus-AG/ifc-lite/commit/2e2f65a66e1375ef6cc52b8a310526de1a36e1a0), [`b92dd05`](https://github.com/LTplus-AG/ifc-lite/commit/b92dd05495094a47c4a68eb1137a3a1906fc65cc)]:
+  - @ifc-lite/mutations@3.2.0
+  - @ifc-lite/pointcloud@0.12.0
+  - @ifc-lite/data@6.2.0
+
 ## 4.3.0
 
 ### Minor Changes

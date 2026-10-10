@@ -1,5 +1,12 @@
 # @ifc-lite/documents-api
 
+## 0.2.1
+
+### Patch Changes
+
+- Updated dependencies [[`351ea6d`](https://github.com/LTplus-AG/ifc-lite/commit/351ea6d2de55c1121dcced1e6c36b22888707f66)]:
+  - @ifc-lite/opencde-foundation@0.3.0
+
 ## 0.2.0
 
 ### Minor Changes

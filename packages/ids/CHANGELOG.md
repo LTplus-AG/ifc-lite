@@ -1,5 +1,22 @@
 # @ifc-lite/ids
 
+## 3.3.0
+
+### Minor Changes
+
+- [#7411](https://github.com/LTplus-AG/ifc-lite/pull/7411) [`25a8f4c`](https://github.com/LTplus-AG/ifc-lite/commit/25a8f4c7f4dd7633cf5b082ab77525c054022dcd) Thanks [@louistrue](https://github.com/louistrue)! - IDS restriction bounds (`xs:minInclusive`, `xs:maxInclusive`, `xs:minExclusive`, `xs:maxExclusive`) are now read and compared by the restriction's `@base` instead of with `parseFloat` ([#7399](https://github.com/LTplus-AG/ifc-lite/issues/7399)). A date range such as `[2024-01-01, 2024-03-31]` no longer collapses to `[2024, 2024]` and passes `2024-12-31`, and a malformed bound such as `"6,5"` under `xs:double` is no longer read as `6`.
+  
+  - Numeric bases accept a bound only when its whole text is in the base's lexical space (`xs:integer` and its derivations take no fraction). Values are compared only when their whole text is numeric, so `"5 m"` or `"2024-01-01"` no longer meet a numeric bound by their prefix.
+  - `xs:date`, `xs:dateTime` and `xs:time` bounds compare as points on the time line, normalised to UTC, with XSD's ±14:00 rule for a value without a time zone. `xs:duration` bounds use XSD's partial order. Where XSD leaves a pair unordered, the value is not accepted. These bounds are exposed on the new `IDSBoundsConstraint.temporalBounds` field as their lexical text; the numeric `min*`/`max*` fields stay unset for them.
+  - A bound outside its base's lexical space fails the restriction closed, and the audit reports it as `E_RESTRICTION_FACET_UNPARSEABLE`, naming the base. Length and digit-count facets are read as whole non-negative integers too. The audit also flags inverted date, time and duration bounds.
+  - `@ifc-lite/rules`: `writeIdsXml` writes date, time and duration bounds back as written, and `idsToRuleSet` refuses them with a named reason.
+
+### Patch Changes
+
+- Updated dependencies [[`ee2b091`](https://github.com/LTplus-AG/ifc-lite/commit/ee2b0918c7b82be6c36f49f70dee346e0fe85aad), [`eec7de9`](https://github.com/LTplus-AG/ifc-lite/commit/eec7de970a21a12ef4d09eaed382f45f7210772a), [`7f55425`](https://github.com/LTplus-AG/ifc-lite/commit/7f554255ca96f812c9d65cf2507d46980fe604c6), [`272ebd8`](https://github.com/LTplus-AG/ifc-lite/commit/272ebd8615d038dc20dd8aec4e3bb88d1acf9fa7), [`8b81320`](https://github.com/LTplus-AG/ifc-lite/commit/8b813203997c0b3b21cc724c4f820ad83b9b4cf3), [`5047fcf`](https://github.com/LTplus-AG/ifc-lite/commit/5047fcfb5d5e18b062dbcd77f95523036bac55b9), [`07318f2`](https://github.com/LTplus-AG/ifc-lite/commit/07318f213ad9362528b694e60cf6c058d5adf722), [`be7fb60`](https://github.com/LTplus-AG/ifc-lite/commit/be7fb6006ce8be46436a69d6fa611d11043f03ed), [`fd1f8f5`](https://github.com/LTplus-AG/ifc-lite/commit/fd1f8f52fabbde0ecee4d6a5c15635293ff1a15e), [`2499fdb`](https://github.com/LTplus-AG/ifc-lite/commit/2499fdb249eeffea22fa01c2f0fb12defe812e4a), [`fcad301`](https://github.com/LTplus-AG/ifc-lite/commit/fcad3010976b42d5de194d8018486c4d178d0ddf), [`cba05ef`](https://github.com/LTplus-AG/ifc-lite/commit/cba05ef735316ee8415610d520a76ea4873f2b3d), [`5047fcf`](https://github.com/LTplus-AG/ifc-lite/commit/5047fcfb5d5e18b062dbcd77f95523036bac55b9), [`1bb0fe3`](https://github.com/LTplus-AG/ifc-lite/commit/1bb0fe34c8fc46acef6e51f3792f274e1e5be1b9), [`99aabe5`](https://github.com/LTplus-AG/ifc-lite/commit/99aabe5204988f807b0447c7ffda05d1176b187a), [`295a243`](https://github.com/LTplus-AG/ifc-lite/commit/295a2439e533af87a838ee2f252d87da19755890), [`6b11848`](https://github.com/LTplus-AG/ifc-lite/commit/6b118483a8f3b7c32744071a620cb7055ec87f77)]:
+  - @ifc-lite/parser@9.3.0
+  - @ifc-lite/data@6.2.0
+
 ## 3.2.0
 
 ### Minor Changes

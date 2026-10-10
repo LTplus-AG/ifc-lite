@@ -1,5 +1,13 @@
 # @ifc-lite/pointcloud
 
+## 0.12.0
+
+### Minor Changes
+
+- [#6875](https://github.com/LTplus-AG/ifc-lite/pull/6875) [`2cb6753`](https://github.com/LTplus-AG/ifc-lite/commit/2cb67534655cefd18da735e375a0bd91a4cefe8a) Thanks [@louistrue](https://github.com/louistrue)! - Add renderer-agnostic view-dependent LOD selection for point octrees ([#6869](https://github.com/LTplus-AG/ifc-lite/issues/6869)). `selectLod` frustum-culls, refines the node with the largest projected screen span first while it exceeds a pixel threshold and the node cap allows, and water-fills the point budget across the selection with per-node stride hints. `LodPacer` sizes a fast first pass to a time budget from a learned read rate (asymmetric EMA with outlier clipping), `shouldReplacePass` only replaces what is on screen with a better pass, and `createCopcLodTree` presents a partially loaded COPC hierarchy as LOD nodes.
+
+- [#6874](https://github.com/LTplus-AG/ifc-lite/pull/6874) [`9e5487b`](https://github.com/LTplus-AG/ifc-lite/commit/9e5487b56ca55a66b325bf3666371efe0c4166ad) Thanks [@louistrue](https://github.com/louistrue)! - Read COPC (cloud-optimized point cloud) files node by node ([#6869](https://github.com/LTplus-AG/ifc-lite/issues/6869)). `HttpRangeSource` reads a remote file through HTTP Range requests (refusing servers that ignore `Range`, and working when CORS hides `Content-Range`); `openCopcWorkerReader` parses the LAS 1.4 header, the `copc`/`info` VLR and the hierarchy pages, and decodes individual octree nodes with laz-perf's `ChunkDecoder` in the decode worker through the existing LAS point-record decoder and origin-offset handling. The hierarchy page walk is iterative and bounded against malicious files.
+
 ## 0.11.0
 
 ### Minor Changes

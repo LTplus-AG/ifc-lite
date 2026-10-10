@@ -50,15 +50,25 @@ pub(super) fn prepare_prism(op: &OpeningType, host: &Mesh) -> Option<PrismFrame>
             // dispatch too (#7024); retain the original f64 bounds when no
             // corner qualifies. A changed box may no longer be rectangular,
             // so detect its actual prism instead of rebuilding its AABB.
-            let local = GeometryRouter::make_box_mesh(
-                nalgebra::Point3::from(lo), nalgebra::Point3::from(hi),
-            );
-            let before = local.positions.clone();
-            let mut reconciled =
-                crate::router::voids::synthesis::host_vertices::reconcile_with_host_vertices(
-                    local, host, nalgebra::Vector3::from(d),
-                );
-            if reconciled.positions != before {
+            // Analytic preparation only reads positions and topology. Eight
+            // shared corners suffice; a renderable box's face normals and 24
+            // duplicated vertices are unused work here (#7024).
+            let mut reconciled = Mesh::new();
+            reconciled.positions = Vec::with_capacity(24);
+            for ci in 0..8 {
+                for k in 0..3 {
+                    let coordinate = if ci & (1 << k) == 0 { lo[k] } else { hi[k] };
+                    reconciled.positions.push(coordinate as f32);
+                }
+            }
+            reconciled.indices = vec![
+                0, 2, 3, 0, 3, 1, 4, 5, 7, 4, 7, 6,
+                0, 1, 5, 0, 5, 4, 2, 6, 7, 2, 7, 3,
+                0, 4, 6, 0, 6, 2, 1, 3, 7, 1, 7, 5,
+            ];
+            if crate::router::voids::synthesis::host_vertices::reconcile_positions_with_host_vertices(
+                &mut reconciled, host, nalgebra::Vector3::from(d),
+            ) {
                 reconciled.origin = origin;
                 return prepare_prism(
                     &OpeningType::NonRectangular(reconciled, *mn, *mx, Some(nalgebra::Vector3::from(d))),
@@ -130,20 +140,15 @@ pub(super) fn prepare_prism(op: &OpeningType, host: &Mesh) -> Option<PrismFrame>
                 OpeningType::NonRectangular(_, _, _, Some(d)) => *d,
                 _ => opening_mesh_thinnest_axis_dir(m),
             };
-            let local = crate::router::voids::translate_cutter_mesh(m, origin);
-            let positions_before = local.positions.clone();
-            let mut reconciled =
-                crate::router::voids::synthesis::host_vertices::reconcile_with_host_vertices(
-                    local,
+            let mut reconciled = crate::router::voids::translate_cutter_mesh(m, origin);
+            let changed =
+                crate::router::voids::synthesis::host_vertices::reconcile_positions_with_host_vertices(
+                    &mut reconciled,
                     host,
                     dir.try_normalize(crate::router::voids::NORMALIZE_EPSILON)?,
                 );
             reconciled.origin = origin;
-            let m = if reconciled.positions == positions_before {
-                m
-            } else {
-                &reconciled
-            };
+            let m = if changed { &reconciled } else { m };
             // Host-local f64 verts (cutter origin folded, host origin removed).
             let o = m.origin;
             let vc = m.positions.len() / 3;

@@ -250,7 +250,7 @@ const MAX_WELD_PASSES: usize = 4;
 /// census run) can measure whether the promotion fires at all rather than
 /// inferring it from an unchanged golden.
 pub(crate) fn promote_cutter_verts_onto_host_faces(cutter: &mut [Tri], host: &[Tri]) -> usize {
-    promote(cutter, host, false)
+    promote::<false>(cutter, host)
 }
 
 /// The SUBTRACT form of [`promote_cutter_verts_onto_host_faces`]: the same
@@ -263,10 +263,10 @@ pub(crate) fn promote_cutter_verts_onto_host_faces(cutter: &mut [Tri], host: &[T
 /// of an `IfcBooleanResult` DIFFERENCE (`ClippingProcessor::subtract_operand`
 /// says why): this form is for opening cutters.
 pub(crate) fn promote_subtract_cutter_onto_host_faces(cutter: &mut [Tri], host: &[Tri]) -> usize {
-    promote(cutter, host, true)
+    promote::<true>(cutter, host)
 }
 
-fn promote(cutter: &mut [Tri], host: &[Tri], keep_incidence: bool) -> usize {
+fn promote<const KEEP_INCIDENCE: bool>(cutter: &mut [Tri], host: &[Tri]) -> usize {
     if cutter.is_empty() || host.is_empty() {
         return 0;
     }
@@ -293,7 +293,7 @@ fn promote(cutter: &mut [Tri], host: &[Tri], keep_incidence: bool) -> usize {
             for (i, f) in faces.iter().enumerate() {
                 let d = f.raw_offset(v);
                 if d == 0.0 {
-                    on.push(i);
+                    if KEEP_INCIDENCE { on.push(i); }
                     continue; // already exactly on this plane
                 }
                 let d2 = (d * d) / f.nn;
@@ -320,7 +320,7 @@ fn promote(cutter: &mut [Tri], host: &[Tri], keep_incidence: bool) -> usize {
             // that sees it.
             if let Some((_, f)) = best {
                 if let Some(w) = exact_on_plane_weld(*v, faces[f].t) {
-                    if keep_incidence && guard.refuses(&w, f, &on) {
+                    if KEEP_INCIDENCE && guard.refuses(&w, f, &on) {
                         continue; // #6940
                     }
                     if w != *v {

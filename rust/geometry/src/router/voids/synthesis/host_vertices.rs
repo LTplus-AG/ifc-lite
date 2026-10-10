@@ -135,6 +135,18 @@ pub(in crate::router::voids) fn reconcile_with_host_vertices(
     host: &Mesh,
     depth: Vector3<f64>,
 ) -> Mesh {
+    reconcile_positions_with_host_vertices(&mut cutter, host, depth);
+    cutter
+}
+
+/// Reconcile in place and report whether any stored coordinate changed. This
+/// avoids cloning and comparing every position just to select the f64 prism
+/// input on the overwhelmingly common unchanged path (#7024).
+pub(in crate::router::voids) fn reconcile_positions_with_host_vertices(
+    cutter: &mut Mesh,
+    host: &Mesh,
+    depth: Vector3<f64>,
+) -> bool {
     // `abs() <= ..` is false for NaN, so a non-finite cutter bails too. So
     // does a non-finite axis: it would find no depth edge and so switch that
     // rule off while vertices still moved.
@@ -142,7 +154,7 @@ pub(in crate::router::voids) fn reconcile_with_host_vertices(
         || !cutter.positions.iter().all(|v| v.abs() <= MAX_KEYED_COORD)
         || !depth.iter().all(|v| v.is_finite())
     {
-        return cutter;
+        return false;
     }
     // Only host vertices within a step of the cutter's box can match. The
     // cheap f32 reject comes first (two steps wide, so f32 rounding of the
@@ -171,7 +183,7 @@ pub(in crate::router::voids) fn reconcile_with_host_vertices(
         }
     }
     if host_at.is_empty() {
-        return cutter;
+        return false;
     }
     // Each distinct cutter position's host vertex: itself when it already is
     // one, else the nearest within a step, ties to the smallest position.
@@ -210,12 +222,12 @@ pub(in crate::router::voids) fn reconcile_with_host_vertices(
         .filter(|(c, h)| c != h && claims[h] == 1)
         .collect();
     if moves.is_empty() {
-        return cutter;
+        return false;
     }
     // A cutter edge along `depth` moves as a whole or not at all: both ends
     // by the same offset. Dropping a move can strand its neighbour along the
     // next depth edge, hence the loop; it only ever removes moves.
-    let edges = depth_edges(&cutter, depth);
+    let edges = depth_edges(cutter, depth);
     loop {
         let offset = |c: &Cell| {
             moves
@@ -235,12 +247,15 @@ pub(in crate::router::voids) fn reconcile_with_host_vertices(
             moves.remove(c);
         });
     }
+    let mut changed = false;
     for p in cutter.positions.chunks_exact_mut(3) {
         if let Some(h) = moves.get(&cell(p)) {
-            p.copy_from_slice(&host_at[h]);
+            let target = &host_at[h];
+            changed |= p != target;
+            p.copy_from_slice(target);
         }
     }
-    cutter
+    changed
 }
 
 #[cfg(test)]

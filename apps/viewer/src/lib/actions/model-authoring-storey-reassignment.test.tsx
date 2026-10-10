@@ -576,7 +576,7 @@ for (const owner of ['sourceStorey', 'destinationStorey'] as const) test(`#7328 
   assert.deepEqual(op.expected[owner], s.operation.expected[owner]);
   const saved = await parseIfc(s.bytesNow());
   assert.equal(saved.getEntity(op.expected[owner].expressId)?.attributes[0], op.expected[owner].GlobalId);
-  for (const invalid of [null, { ...op.expected[owner], GlobalId: 'invalid' }, { ...op.expected[owner], expressId: op.expected[owner].expressId + 1 }]) {
+  for (const invalid of [undefined, null, { ...op.expected[owner], GlobalId: 'invalid' }, { ...op.expected[owner], expressId: op.expected[owner].expressId + 1 }]) {
     const expected = { ...s.operation.expected, [owner]: invalid };
     assert.throws(() => parseModelAuthoringBatch(JSON.stringify({ ...batch, operations: [{ ...s.operation, expected }] })), /unavailable-native-pin-shape/);
   }

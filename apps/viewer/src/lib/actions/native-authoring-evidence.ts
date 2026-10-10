@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { nativeStoreyReassignmentEvidence, type StoreyPinRefusal } from './model-authoring-storey-reassignment';
 import { nativeReplacementEvidence } from './model-authoring-replacement';
 import { nativeSlabOpeningEvidence } from './model-authoring-slab-opening';
 import type { ModelEditTarget } from '@/store/slices/mutation-modelling-records';
@@ -13,8 +14,9 @@ import { nativeStairEvidenceFromTarget } from './model-authoring-stair-lifecycle
 
 import { nativePlacementFromTarget, type NativePlacement } from './model-authoring-placement';
 
-type Availability = 'available' | 'unavailable-target' | 'unavailable-unit' | 'unavailable-native-layout' | 'unavailable-projection';
+type Availability = 'available' | 'unavailable-target' | 'unavailable-unit' | 'unavailable-native-layout' | 'unavailable-projection' | 'unavailable-transport-budget' | StoreyPinRefusal;
 export interface NativeAuthoringEvidence {
+  nativeStoreyReassignments: ReturnType<typeof nativeStoreyReassignmentEvidence>;
   nativeReplacementExpected: ReturnType<typeof nativeReplacementEvidence>;
   nativePlacement?: NativePlacement | null;
   nativeSplitExpected: SplitSnapshot | null;
@@ -22,11 +24,12 @@ export interface NativeAuthoringEvidence {
   nativeHostedExpected: ExpectedHostedEdit | null;
   nativeTrimExtendExpected: ReturnType<typeof authoringReachEvidenceFromTarget>;
   nativeStairExpected: ReturnType<typeof nativeStairEvidenceFromTarget>;
-  nativeAuthoringUnits: { replacement: 'verbatim-native-fields'; slabOpening: 'm'; split: 'm'; hosted: 'm'; stair: 'm'; trimExtend: 'verbatim-native-fields' };
+  nativeAuthoringUnits: { storeyReassignment: 'verbatim-native-fields'; replacement: 'verbatim-native-fields'; slabOpening: 'm'; split: 'm'; hosted: 'm'; stair: 'm'; trimExtend: 'verbatim-native-fields' };
   nativeAuthoringRefusals: { split: string | null; hosted: string | null };
   /** Split/Hosted lengths are metres; Trim remains verbatim mixed native fields;
    * Stair follows the canonical SI dimension reader. No IDs are converted. */
   nativeAuthoringAvailability: {
+    storeyReassignment: Availability;
     replacement: Availability;
     slabOpening: Availability;
     split: Availability;
@@ -38,9 +41,9 @@ export interface NativeAuthoringEvidence {
 }
 
 type CompactNativeAuthoringEvidence = Omit<NativeAuthoringEvidence,
-  'nativeReplacementExpected' | 'nativeAuthoringUnits' | 'nativeAuthoringAvailability'> & {
-  nativeAuthoringUnits: Omit<NativeAuthoringEvidence['nativeAuthoringUnits'], 'replacement'>;
-  nativeAuthoringAvailability: Omit<NativeAuthoringEvidence['nativeAuthoringAvailability'], 'replacement'>;
+  'nativeStoreyReassignments' | 'nativeReplacementExpected' | 'nativeAuthoringUnits' | 'nativeAuthoringAvailability'> & {
+  nativeAuthoringUnits: Omit<NativeAuthoringEvidence['nativeAuthoringUnits'], 'replacement' | 'storeyReassignment'>;
+  nativeAuthoringAvailability: Omit<NativeAuthoringEvidence['nativeAuthoringAvailability'], 'replacement' | 'storeyReassignment'>;
 };
 
 /** #7282: one pure native producer for selected rows and explicit attachments.
@@ -68,24 +71,27 @@ export function nativeAuthoringEvidence(target: ModelEditTarget | null, expressI
   }
   const placement = nativePlacementFromTarget(target, expressId);
   const slab=nativeSlabOpeningEvidence(target,expressId),replacement=includeReplacement ? nativeReplacementEvidence(target,expressId) : null;
-  const evidence: NativeAuthoringEvidence = { nativePlacement: placement, nativeReplacementExpected: replacement, nativeSlabOpeningExpected: slab.expected, nativeSplitExpected: split, nativeHostedExpected: hosted,
+  let storeyRefusal: StoreyPinRefusal | null = null;
+  const reassignment = includeReplacement ? nativeStoreyReassignmentEvidence(target, expressId, reason => { storeyRefusal = reason; }) : null;
+  const evidence: NativeAuthoringEvidence = { nativeStoreyReassignments: reassignment, nativePlacement: placement, nativeReplacementExpected: replacement, nativeSlabOpeningExpected: slab.expected, nativeSplitExpected: split, nativeHostedExpected: hosted,
     nativeTrimExtendExpected: trim, nativeStairExpected: stair,
-    nativeAuthoringUnits: { replacement: 'verbatim-native-fields', slabOpening: 'm', split: 'm', hosted: 'm', stair: 'm', trimExtend: 'verbatim-native-fields' },
+    nativeAuthoringUnits: { storeyReassignment: 'verbatim-native-fields', replacement: 'verbatim-native-fields', slabOpening: 'm', split: 'm', hosted: 'm', stair: 'm', trimExtend: 'verbatim-native-fields' },
     nativeAuthoringRefusals: refusals,
-    nativeAuthoringAvailability: { replacement: replacement ? 'available' : unavailable, slabOpening: slab.expected ? 'available' : unavailable, split: split ? 'available' : unavailable,
+    nativeAuthoringAvailability: { storeyReassignment: reassignment ? 'available' : storeyRefusal ?? unavailable, replacement: replacement ? 'available' : unavailable, slabOpening: slab.expected ? 'available' : unavailable, split: split ? 'available' : unavailable,
       hosted: hosted ? 'available' : unavailable, trimExtend: trim ? 'available' : unavailable,
       placement: placement ? 'available' : unavailable, stair: stair ? 'available' : unavailable } };
   if (includeReplacement) return evidence;
   // #7320: compact summaries omit the complete pin and its repeated metadata.
   // Rich capture and explicit attachments retain the authoritative full contract.
-  const { nativeReplacementExpected: _expected, nativeAuthoringUnits, nativeAuthoringAvailability, ...compact } = evidence;
-  const { replacement: _unit, ...units } = nativeAuthoringUnits;
-  const { replacement: _availability, ...availability } = nativeAuthoringAvailability;
+  const { nativeStoreyReassignments: _reassignments, nativeReplacementExpected: _expected, nativeAuthoringUnits, nativeAuthoringAvailability, ...compact } = evidence;
+  const { storeyReassignment: _reassignmentUnit, replacement: _unit, ...units } = nativeAuthoringUnits;
+  const { storeyReassignment: _reassignmentAvailability, replacement: _availability, ...availability } = nativeAuthoringAvailability;
   return { ...compact, nativeAuthoringUnits: units, nativeAuthoringAvailability: availability };
 }
 
 
 const snapshotFields = [
+  ['nativeStoreyReassignments', 'storeyReassignment'],
   ['nativeReplacementExpected', 'replacement'],
   ['nativeSlabOpeningExpected', 'slabOpening'], ['nativeSplitExpected', 'split'], ['nativeHostedExpected', 'hosted'],
   ['nativeTrimExtendExpected', 'trimExtend'], ['nativeStairExpected', 'stair'], ['nativePlacement', 'placement'],

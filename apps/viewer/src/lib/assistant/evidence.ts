@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { admitNativePins, nativePinBaseline } from '@/lib/actions/native-pin-transport';
 import { preserveNativeExpectedProjection } from '@/lib/actions/native-authoring-evidence';
 import { useViewerStore } from '@/store';
 import { captureAnalysisStamp, isAnalysisStale, type AnalysisStamp } from '@/hooks/useAnalysisStaleness';
@@ -44,7 +45,7 @@ export function captureEvidence(source: AssistantSource): EvidenceSnapshot {
   }
   const competingCosts = source === 'selection' && capture.rows.length > 1;
   const rows = capture.rows.map((data, index) => ({ citation: `E${index + 1}`,
-    data: competingCosts ? selectionCostBaseline(data) : data }));
+    data: source === 'selection' ? nativePinBaseline(competingCosts ? selectionCostBaseline(data) : data, ['nativeStoreyReassignments']) : data }));
   const totalRows = capture.totalRows;
   const models = [...s.models.values()].map(m => ({ id: m.id, name: m.name, fingerprint: m.sourceFingerprint }));
   let summaryProjection = evidenceJson(capture.summary);
@@ -90,6 +91,13 @@ export function captureEvidence(source: AssistantSource): EvidenceSnapshot {
     totalRows, includedRows: projectedRows.length, sampled: projectedRows.length < totalRows, projectionTruncated,
     evidence: { summary: JSON.parse(summaryProjection.text), rows: evidenceRows } });
   if (competingCosts) admitSelectionCosts(capture.rows, projectedRows, serialize);
+  if (source === 'selection') {
+    const data = projectedRows.map(row => typeof row === 'object' && row !== null && 'data' in row ? row.data : null);
+    const wrap = (values: unknown[]) => projectedRows.map((row, index) => typeof row === 'object' && row !== null ? { ...row, data: values[index] } : row);
+    admitNativePins(capture.rows, data, values => serialize(wrap(values)).length, TEXT_LIMIT,
+      pin => JSON.parse(evidenceJson(pin).text) as unknown, ['nativeStoreyReassignments']);
+    projectedRows.splice(0, projectedRows.length, ...wrap(data));
+  }
   return { ...snapshot, payload: serialize(projectedRows) };
 }
 

@@ -147,7 +147,9 @@ it('reports an oversized effective native record before publishing any group edi
   const before = state(s);
   expect(() => addGroupToStore(s, { Name: 'Must not publish', RelatedObjects: [] })).toThrow(/record budget/);
   expect(state(s)).toBe(before);
-});
+  // A 4 M character record through effective record serialization is GC-bound:
+  // 1-2 s locally, past vitest's 5 s default on a shared CI runner (#7366).
+}, 60_000);
 
 it('a first refused operation preserves the fresh live allocator as well as its graph #7329', async () => {
   const { store } = await session();

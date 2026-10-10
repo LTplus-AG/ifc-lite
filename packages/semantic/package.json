@@ -31,7 +31,7 @@
   },
   "devDependencies": {
     "typescript": "^6.0.3",
-    "vitest": "^5.0.2",
+    "vitest": "^5.0.3",
     "@types/jsonld": "^1.5.15",
     "@types/n3": "^1.26.1",
     "@types/node": "^26.6.2"

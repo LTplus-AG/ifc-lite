@@ -24,7 +24,7 @@ Source: `louistrue/IDS-LLM-Service`, single squashed commit cd68fe8 (2025-12-17)
 | `minExclusive` silently becomes `simpleValue` (">" written as "=") | `lib/ids-xml.ts` L51–56 | XML comes only from the conformance-tested `writeIdsXml`. Writer oracle tests (`ids-export-oracle.test.ts`) extended to every restriction kind |
 | No cardinality, no spec necessity, wrong `partOf` shape | `lib/ids-xml.ts` | Same as above, plus the round-trip invariant: `parse(write(doc)) ≡ doc` property test |
 | Wrong `predefinedType` (`EXTERNAL` on IfcWall) | RAG examples | Gate checks the enumeration per entity per version. Lint rule `IDSL-PDT-001` |
-| Quantity set used as a property set | `IfcSpace → Qto_SpaceBaseQuantities` | Gate distinguishes Pset/Qto kinds. Lint `IDSL-QTO-001` |
+| Quantity-set and property-set semantics conflated | `IfcSpace → Qto_SpaceBaseQuantities` | IDS property facets can target quantities. Planned lint `IDSL-PSET-003` warns only about non-measure dataTypes or string-valued quantity constraints; it does not reject every Qto facet. Reserved Qto grounding still needs qualified per-version quantity tables (ADR-003, IDS-009). |
 | `IFCTEXT` forced onto numeric values | `baseline-patches.ts` | dataType inferred from the schema property definition, never defaulted |
 | Property facets forcibly moved out of applicability | `relocatePropertyFacetsFromApplicabilityToRequirements` | No silent structural rewrites. Lint *suggests*, the user decides |
 | One spec per request, ≤3 requirements | zod schemas | No artificial caps. Budget is enforced per run, not per spec |

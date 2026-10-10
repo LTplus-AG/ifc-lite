@@ -10,15 +10,12 @@
  * anything moved since.
  */
 
-import { authoringCurtainWallGhost } from './model-authoring-curtain-wall-ghost';
 import { resolveReviewedLayers, LayerRefusal } from './model-authoring-layers';
-import { gridCreationGhost } from './model-authoring-grid-ghost';
+import { resolveReviewedStoreyReassignment } from './model-authoring-storey-reassignment';
 import { nativeGridExpected, sameGridExpected } from './model-authoring-grid-native';
 import { nativeLengthUnitAvailable } from './model-authoring-read-target';
 import { readNativeReplacementExpected } from './model-authoring-replacement';
-import { authoringSlabOpeningGhost } from './model-authoring-slab-opening-ghost';
 import { verifySlabOpeningHost } from './model-authoring-slab-opening';
-import { stairRailingGhost } from './model-authoring-stair-railing-ghost';
 import { nativeStairEvidence, sameStairSnapshot } from './model-authoring-stair-lifecycle';
 import { stairPatchInMetres } from './model-authoring-stair-railing-fields';
 import type { ViewerState } from '@/store';
@@ -33,6 +30,7 @@ import { validateAuthoringDraft } from './model-authoring-preview-draft';
 import {
   authoringReader, className, conforms, deletionRefusal, materialNameOf, nameOf, typeNameOf, type AuthoringReader,
 } from './model-authoring-read';
+import { updateAuthoringPreviewAvailability } from './model-authoring-preview-availability';
 import { captureAuthoringSources } from './model-authoring-sources';
 import { resolveGlobalId } from './resolve-global-id';
 import { readElementProfileFromTarget } from '@/store/slices/mutation-element-profile';
@@ -41,13 +39,10 @@ import { verifyReachExpected, verifyReachStoreyFrame, reachBefore } from './mode
 import { sizeInMetres } from './model-authoring-size-params';
 import { profileInMetres } from './model-authoring-shape-params';
 import { validateClassificationAdd } from './model-authoring-classification';
-import { authoringHostedEditGhost } from './model-authoring-hosted-edit-ghost';
 import { hostedFillRefusal } from '@/store/slices/mutation-hosted-fill';
 import { readExpectedHostedEdit, sameHostedEdit } from './model-authoring-hosted-edit';
 import { readSplitSnapshot, sameSplitSnapshot } from './model-authoring-split-state';
 import { uniqueSplitGuid } from './model-authoring-split';
-import { authoringSplitMarker } from './model-authoring-split-ghost';
-import { authoringSizeGhost } from './model-authoring-size-ghost';
 import { reviewAlignment } from './model-authoring-align';
 import { reviewElementTransform } from './model-authoring-transform-review';
 import { AuthoringRefusal as Refusal } from './model-authoring-preview-refusal';
@@ -142,6 +137,9 @@ function resolve(ctx: Context, row: AuthoringRow): void {
       if (!sameHostedEdit(row.before.hosted, op.expected)) throw new Refusal('conflict', 'The current native hosted binding, position or dimensions differ from the expected state');
       return;
     }
+    case 'element.reassignStorey':
+      Object.assign(row.resolved, resolveReviewedStoreyReassignment(op, target => existing(ctx, target, row), target => locate(ctx, target), modelId => join(row, modelId)));
+      row.expressId = row.resolved.target!; row.previewUnavailable = true; return;
     case 'element.split': {
       row.resolved.target = row.expressId = existing(ctx, op.target, row);
       const r = reader(ctx, row.modelId!);
@@ -363,29 +361,7 @@ export function previewModelAuthoring(state: ViewerState, batch: ModelAuthoringB
     }
   }
   validateAuthoringDraft(state, batch, ctx.rows, modelId => reader(ctx, modelId));
-  for (const row of ctx.rows) if (row.status === 'ready' && row.modelId && (row.op.op === 'element.resize' || row.op.op === 'element.profile' || row.op.op === 'element.trimExtend' || (row.op.op === 'material.layers' && row.op.scope === 'element' && row.resolved.layers?.kind === 'wall'))) {
-    const boundary = row.op.op === 'element.trimExtend' ? row.resolved.reachBoundary : undefined;
-    // The whole native batch validates this boundary; the independent body draft
-    // cannot reproduce a preceding edit of the same existing wall (#7262).
-    if (boundary && 'id' in boundary && ctx.rows.some(previous => previous.index < row.index
-      && previous.status === 'ready' && previous.modelId === row.modelId && previous.expressId === boundary.id
-      && previous.op.op !== 'element.copy' && previous.op.op !== 'element.array')) {
-      row.previewUnavailable = true;
-      continue;
-    }
-    const ghost = authoringSizeGhost(state, batch, row, row.modelId, 0);
-    row.previewUnavailable = ghost.unavailable;
-    row.previewOmitted = ghost.omitted;
-    row.previewOuterBodyOnly = ghost.outerBodyOnly;
-  }
-  for (const row of ctx.rows) if (row.status === 'ready' && row.op.op === 'hosted.edit') row.previewUnavailable = authoringHostedEditGhost(state, batch, row, 0, ctx.rows) === null;
-  for (const row of ctx.rows) if (row.status === 'ready' && row.op.op === 'element.split') {
-    row.previewUnavailable = authoringSplitMarker(state, batch, row, 0) === null;
-  }
-  for(const row of ctx.rows)if(row.status==='ready'&&row.op.op==='hosted.create'&&'params' in row.op)row.previewUnavailable=!authoringSlabOpeningGhost(state,row,ctx.rows,0);
-  for(const row of ctx.rows)if(row.status==='ready'&&['stair.create','railing.create','stair.replace','railing.replace'].includes(row.op.op))row.previewUnavailable=!stairRailingGhost(state,batch,row,0);
-  for (const row of ctx.rows) if (row.status === 'ready' && row.op.op === 'curtainWall.create') row.previewUnavailable = authoringCurtainWallGhost(state, batch, row, 0).length === 0;
-  for (const row of ctx.rows) if (row.status === 'ready' && (row.op.op === 'grid.create' || row.op.op === 'column.createOnGrid')) row.previewUnavailable = gridCreationGhost(state, batch, row, 0).length === 0;
+  updateAuthoringPreviewAvailability(state, batch, ctx.rows);
   const preview = { batch, rows: ctx.rows, mutationVersion: state.mutationVersion, digest: batchDigest(batch) };
   captureAuthoringSources(state, preview);
   return preview;

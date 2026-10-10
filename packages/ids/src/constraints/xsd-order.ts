@@ -59,19 +59,28 @@ export function boundOrderOf(base: string | undefined): BoundOrder {
   return localName(base) === 'duration' ? 'duration' : 'numeric';
 }
 
+/** The bases whose value space includes the infinities (`+INF`, `-INF`). */
+const INFINITE_LOCALS = new Set(['double', 'float']);
+
 /**
  * A bound or value under a numeric base: the number its WHOLE text denotes,
  * or `undefined`. `xs:integer` and its derivations reject a fraction; every
- * other base takes the `xs:double` lexical space. `NaN` is a lexeme of
- * `xs:double` but orders nothing, so it is not a usable bound either.
- * Surrounding whitespace is collapsed, as XSD does for every numeric type.
+ * other base takes the `xs:double` lexical space, except that only
+ * `xs:double` and `xs:float` have infinities — `+INF` under `xs:decimal`,
+ * `xs:string` or no base is not a number (PR #7411 review). `NaN` is a
+ * lexeme of `xs:double` but orders nothing, so it is not a usable bound
+ * either. Surrounding whitespace is collapsed, as XSD does for every
+ * numeric type.
  */
 export function readNumeric(raw: string, base: string | undefined): number | undefined {
   const text = raw.trim();
-  const integer = INTEGER_LOCALS.has(localName(base));
+  const local = localName(base);
+  const integer = INTEGER_LOCALS.has(local);
   if (!isValidLexicalForXsType(text, integer ? 'xs:integer' : 'xs:double')) return undefined;
-  if (text === '+INF') return Infinity;
-  if (text === '-INF') return -Infinity;
+  if (text === '+INF' || text === '-INF') {
+    if (!INFINITE_LOCALS.has(local)) return undefined;
+    return text === '+INF' ? Infinity : -Infinity;
+  }
   if (!isWhollyNumeric(text)) return undefined;
   const n = Number(text);
   return Number.isFinite(n) ? n : undefined;

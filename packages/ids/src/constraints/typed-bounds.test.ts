@@ -159,6 +159,34 @@ describe('#7399 — numeric bases read a bound only in their lexical space', () 
     expect(boundsOf('xs:double', '<xs:maxInclusive value="+INF"/>').maxInclusive).toBe(Infinity);
   });
 
+  // PR #7411 review: the infinities are lexemes of xs:double and xs:float
+  // only. xs:decimal, xs:integer and every integer derivation have no
+  // infinity, so "+INF" there must fail closed, not accept every number.
+  it.each([
+    ['xs:decimal', '+INF'], ['xs:decimal', '-INF'], ['xs:decimal', 'INF'], ['xs:decimal', 'NaN'],
+    ['xs:integer', '+INF'], ['xs:integer', '-INF'], ['xs:integer', 'NaN'],
+    ['xs:nonNegativeInteger', '+INF'], ['xs:long', '-INF'], ['xs:unsignedByte', '+INF'],
+    ['xs:string', '+INF'], ['xs:double', 'INF'], ['xs:double', 'NaN'], ['xs:float', 'NaN'],
+  ])('under %s, the bound "%s" is unparseable and fails closed', (base, raw) => {
+    const c = boundsOf(base, `<xs:maxInclusive value="${raw}"/>`);
+    expect(c.maxInclusive).toBeUndefined();
+    expect(c.unparseableFacets).toEqual([{ facet: 'maxInclusive', rawValue: raw }]);
+    expect(matchConstraint(c, 1)).toBe(false);
+    expect(matchConstraint(c, -1e300)).toBe(false);
+  });
+
+  it('xs:double and xs:float keep their infinities', () => {
+    expect(boundsOf('xs:double', '<xs:minInclusive value="-INF"/>').minInclusive).toBe(-Infinity);
+    expect(boundsOf('xs:float', '<xs:maxInclusive value="+INF"/>').maxInclusive).toBe(Infinity);
+  });
+
+  it('the audit flags an infinite bound under xs:decimal', async () => {
+    const { issues } = await auditIDSDocument(idsWith('xs:decimal', '<xs:maxInclusive value="+INF"/>'));
+    const flagged = issues.filter((i) => i.code === 'E_RESTRICTION_FACET_UNPARSEABLE');
+    expect(flagged).toHaveLength(1);
+    expect(flagged[0].message).toContain('xs:decimal');
+  });
+
   it('a value that is not wholly numeric no longer satisfies a numeric bound by its prefix', () => {
     const c = range('xs:double', '0', '10');
     expect(matchConstraint(c, '5')).toBe(true);

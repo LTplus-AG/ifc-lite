@@ -11,6 +11,7 @@ import { useViewerStore } from '@/store';
 import { getOrCreateMutationView } from '@/sdk/adapters/mutation-view';
 import { getMaxExpressId } from '@/hooks/ingest/viewerModelIngest';
 import { contextFor, quantitySetsFor } from '@/hooks/zoneFacts';
+import type { ZoneVolumeShare } from './apportionment';
 import { buildZoneTable, exportZoneTable } from '@/hooks/useZoneTableExport';
 import { ZoneVolumeBreakdown } from '@/components/viewer/ZoneVolumeBreakdown';
 import { editedModelBytes } from '@/lib/export/edited-model-bytes';
@@ -165,7 +166,7 @@ async function assertTableAndCsv(x: NonNullable<Awaited<ReturnType<typeof explic
   for (const row of rows) {
     assert.equal(row.Quantity, x.quantityName); assert.equal(row.ExpressId, x.f.id); assert.equal(row.Unavailable, '');
     assert.ok(row.ElementVolumeM3 !== null && Math.abs(row.ElementVolumeM3 - expectedM3) < Math.max(1e-20, expectedM3 * 1e-12));
-    const share = x.f.apportionment.shares.find(share => share.zoneName === row.Zone); assert.ok(share);
+    const share: ZoneVolumeShare | undefined = x.f.apportionment.shares.find(candidate => candidate.zoneName === row.Zone); assert.ok(share);
     assert.ok(row.VolumeM3 !== null && Math.abs(row.VolumeM3 - share.fraction * expectedM3) < Math.max(1e-20, expectedM3 * 1e-12));
   }
   const downloads: Uint8Array[] = [];
@@ -231,7 +232,7 @@ for (const occurrence of [true, false]) {
       assert.equal(row.ExpressId, x.f.id); assert.equal(row.Quantity, x.quantityName); assert.equal(row.Unavailable, '');
       assert.ok(row.VolumeM3 !== null && row.Fraction !== null && row.ElementVolumeM3 !== null);
       assert.ok(Math.abs(row.ElementVolumeM3 - 1e-8) < 1e-20, 'member Unit wins over project cubic metres');
-      const share = x.f.apportionment.shares.find(share => share.zoneName === row.Zone); assert.ok(share);
+      const share: ZoneVolumeShare | undefined = x.f.apportionment.shares.find(candidate => candidate.zoneName === row.Zone); assert.ok(share);
       assert.ok(Math.abs(row.VolumeM3 - share.fraction * 1e-8) < 1e-20, 'native mesh fraction apportions independently known SI amount');
       assert.ok(Math.abs(row.Fraction - share.fraction) < 1e-12);
     }

@@ -49,13 +49,18 @@ therefore diagnoses the hook defect independently of actual worker-load timing.
 
 ## Actual reproduction and corrected checks
 
-Both tests mount the real visible-federation hook before the appearance hook,
-matching parent/child ownership order, then load actual Archicad FZK and
-Autodesk Snowdon structural IFCs through the canonical loader/WASM. They replay
-the produced meshes through the actual store append action in 16 fixed batches.
+`useAppearanceSourceGeometry.real-ifc-streaming.test.tsx` mounts the real
+visible-federation hook before the appearance hook, matching parent/child
+ownership order, then loads actual Archicad FZK and Autodesk Snowdon structural
+IFCs through the canonical loader/WASM. Its two cases replay the produced meshes
+through the actual store append action in 16 fixed batches.
 Every batch checks complete ordered geometry/appearance/frame data, owner indices
 and borrowed CPU arrays. This is an untimed canonical-output replay, not an
 independent geometry oracle or actual browser Worker-pool sample.
+
+`useAppearanceSourceGeometry.test.tsx` mounts only the appearance hook and uses
+synthetic triangle meshes for seven lifecycle, order and ownership controls.
+It does not load the IFC fixtures or exercise the visible-federation hook.
 
 | Replayed model | Meshes | Appearance visits, base → branch | Wrapper copies, base → branch | Branch suffix moves |
 | --- | ---: | ---: | ---: | ---: |

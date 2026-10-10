@@ -192,7 +192,7 @@ test('#7328 preserve an independently reparsed native envelope for unchanged-pub
   assert.ok(candidate,'reparsed native source exposes a complete pin through the existing public selection route');
   const expected=JSON.parse(candidate.expectedJsonParts.join('')) as import('@ifc-lite/create').StoreyReassignmentPlan;
   const envelope=JSON.stringify({...s.batch(),operations:[{...s.operation,expected}]});
-  if(process.env.CAMPAIGN_STOREY_PUBLIC_ARTIFACT) await writeFile(process.env.CAMPAIGN_STOREY_PUBLIC_ARTIFACT,JSON.stringify({step,envelope,expressId:s.id,destinationId:s.destination},null,2));
+  if(process.env.CAMPAIGN_STOREY_CAPTURE_ARTIFACT) await writeFile(process.env.CAMPAIGN_STOREY_CAPTURE_ARTIFACT,JSON.stringify({step,envelope,expressId:s.id,destinationId:s.destination},null,2));
   assert.equal(store.entities.getGlobalId(s.id),s.row.globalId);
 });
 

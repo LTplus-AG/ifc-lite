@@ -21,7 +21,7 @@ import { undoModelChanges } from './model-change-commit';
 const original = useViewerStore.getState();
 afterEach(() => { setRemeshClientFactory(null); useViewerStore.setState(original, true); });
 const artifact = process.env.CAMPAIGN_STOREY_PUBLIC_ARTIFACT;
-const fixtureOptions = { skip: artifact ? false : 'Native inverse fixture absent: capture it with CAMPAIGN_STOREY_PUBLIC_ARTIFACT through the root reviewed reassignment test' };
+const fixtureOptions = { skip: artifact ? false : 'Native inverse fixture absent: capture with CAMPAIGN_STOREY_CAPTURE_ARTIFACT through the root reviewed reassignment test, then supply the immutable path as CAMPAIGN_STOREY_PUBLIC_ARTIFACT' };
 async function load() {
   assert.ok(artifact);
   const captured = JSON.parse(await readFile(artifact, 'utf8')) as { step: string; envelope: string; expressId: number; destinationId: number };

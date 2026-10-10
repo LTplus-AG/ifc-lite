@@ -440,3 +440,62 @@ test('#7376 unknown write target preserves earlier native quantity-unit refusal 
   const exported = await parse(editedModelBytes(x.store, x.view));
   assert.equal(extractQuantitiesOnDemand(exported, x.f.id).find(q => q.name === zoneQuantitySetName(x.f.zoneSet.name, 'gross')), undefined);
 });
+
+
+for (const scenario of ['later-net', 'first-gross', 'owned-unqualified'] as const) {
+  test(`#7376 native unit notice follows selected first basis rather than ${scenario} member inventory`, async t => {
+    const x = await explicitFixture(t, true); if (!x) return;
+    const editor = new StoreEditor(x.store, x.view);
+    const unsupported = editor.addEntity('IfcSIUnit', ['*', '.LENGTHUNIT.', '.MILLI.', '.METRE.']).expressId;
+    let affected: number;
+    if (scenario === 'owned-unqualified') {
+      affected = editor.addEntity('IfcQuantityVolume', x.store.schemaVersion === 'IFC2X3'
+        ? ['OwnedUnitWitness', null, `#${unsupported}`, 7]
+        : ['OwnedUnitWitness', null, `#${unsupported}`, 7, null]).expressId;
+      const ownerId = x.store.getEntity(x.f.id)?.attributes[1];
+      const owner = typeof ownerId === 'number' ? `#${ownerId}` : null;
+      const qto = editor.addEntity('IfcElementQuantity', [generateIfcGuid(), owner,
+        zoneQuantitySetName(x.f.zoneSet.name, 'mesh'), null, null, [`#${affected}`]]).expressId;
+      editor.addEntity('IfcRelDefinesByProperties', [generateIfcGuid(), owner, null, null, [`#${x.f.id}`], `#${qto}`]);
+    } else {
+      // @raw-entity-enumeration-ok immutable native source locates the authored occurrence witness member before publishing the changed source.
+      const candidates = x.store.entityIndex.byType.get('IFCQUANTITYVOLUME') ?? [];
+      const id = candidates.find(id => x.store.getEntity(id)?.attributes[0] ===
+        (scenario === 'later-net' ? 'NetLaterVolume' : 'GrossImplicitVolume'));
+      assert.ok(id); affected = id;
+      x.view.setPositionalAttribute(affected, 2, `#${unsupported}`);
+    }
+    const source = await parse(editedModelBytes(x.store, x.view));
+    assert.equal(source.getEntity(affected)?.attributes[2], unsupported, 'independent native export preserves the actual dimensionally incompatible member Unit');
+    const nativeSets = extractQuantitiesOnDemand(source, x.f.id);
+    const nativeMembers = nativeSets.flatMap(set => set.quantities);
+    const firstNet = nativeMembers.find(q => q.name === 'NetExplicitVolume'); assert.ok(firstNet);
+    assert.equal(firstNet.value, 10); assert.equal(firstNet.explicitUnitSiScale, 1e-9);
+    const bad = nativeMembers.find(q => q.name === (scenario === 'later-net' ? 'NetLaterVolume'
+      : scenario === 'first-gross' ? 'GrossImplicitVolume' : 'OwnedUnitWitness')); assert.ok(bad);
+    assert.equal(bad.explicitUnitUnresolved, true, 'canonical native collector reports unsupported volume dimension');
+    if (scenario === 'later-net') {
+      assert.ok(nativeMembers.indexOf(firstNet) < nativeMembers.indexOf(bad), 'the valid native Net member claims its basis before the incompatible duplicate');
+    }
+    const model = useViewerStore.getState().models.get('arch'); assert.ok(model);
+    useViewerStore.setState({ models: new Map([['arch', { ...model, ifcDataStore: source,
+      maxExpressId: getMaxExpressId(source, model.geometryResult?.meshes ?? [], model.geometryResult?.pointClouds ?? []) }]]),
+      ifcDataStore: source, mutationViews: new Map(), storeEditors: new Map() });
+    const view = getOrCreateMutationView(useViewerStore, 'arch'); assert.ok(view);
+    const before = editedModelBytes(source, view), revision = view.getMutationRevision();
+    const panel = render(<ZoneVolumeBreakdown zoneSet={x.f.zoneSet} globalId={x.f.id}
+      quantitySets={nativeSets} projectUnits={extractProjectUnits(source.source, source.entityIndex)}
+      unitDisplayOverrides={{ VOLUMEUNIT: 'cm3' }} />);
+    const label = [...panel.querySelectorAll('span')].find(span => span.textContent === 'NetExplicitVolume'); assert.ok(label);
+    assert.match(label.parentElement?.textContent ?? '', /0[.,]01\s*cm³/, 'the physically valid first native Net row remains available');
+    if (scenario === 'first-gross') {
+      assert.match(panel.textContent ?? '', /Explicit native quantity Unit cannot be resolved/,
+        'an unresolved first member on a distinct basis retains its unavailable-unit notice');
+    } else {
+      assert.doesNotMatch(panel.textContent ?? '', /Explicit native quantity Unit cannot be resolved/,
+        'later duplicate or owned writeback members cannot make the selected native basis falsely unavailable');
+    }
+    assert.equal(view.getMutationRevision(), revision);
+    await assertSameNativeIfcGraph(before, editedModelBytes(source, view));
+  });
+}

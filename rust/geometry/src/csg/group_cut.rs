@@ -160,7 +160,7 @@ impl ClippingProcessor {
             let chunk_tris: usize = chunk.iter().map(|c| c.triangle_count()).sum();
             record_csg_op(0, current.triangle_count(), chunk_tris);
             crate::kernel::budget::begin();
-            let (raw, conforming, miss) = subtract_many_with_conformity(current, chunk, retain_miss);
+            let (raw, conforming, miss) = subtract_many_with_conformity(current, chunk, true, retain_miss);
             if crate::kernel::budget::tripped() {
                 // Escalation budget exceeded (#1109): the partial arrangement
                 // is discarded whatever the kernel made of it (deterministic).

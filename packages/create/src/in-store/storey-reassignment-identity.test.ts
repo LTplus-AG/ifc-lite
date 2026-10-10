@@ -92,3 +92,28 @@ for (const persisted of [false, true]) it(`#7328 a material Name equal to a reta
   undoRecordedMutationOperations(s.view, 1, () => { throw new Error('One native reassignment compound required'); });
   expect({ ...s.snapshot(), next: before.next }).toEqual(before); expect(s.text()).toBe(text);
 });
+
+// PR #7386 review: a unique valid replacement storey identity is still stale.
+for (const persisted of [false, true]) for (const owner of ['source', 'destination'] as const) {
+  it(`#7328 captured ${owner} storey GlobalId replacement refuses without writes or stealing Undo, persisted=${persisted}`, async () => {
+    const s = await fixture(persisted);
+    const expected = planStoreyReassignment(s.store, s.view, [s.ids[0]], 42, s.destination);
+    const storeyId = owner === 'source' ? 42 : s.destination;
+    const originalGuid = s.reader.entity(storeyId)!.attributes[0];
+    const replacementGuid = generateIfcGuid();
+    expect(replacementGuid).not.toBe(originalGuid);
+    recordCompoundMutation(s.view, draft => new StoreEditor(s.store, draft).setPositionalAttribute(storeyId, 0, replacementGuid));
+    const before = s.snapshot(), text = s.text(), revision = s.view.getMutationRevision();
+    const saved = await s.parse(new TextEncoder().encode(text).buffer);
+    expect(saved.getEntity(storeyId)?.attributes[0]).toBe(replacementGuid);
+    expect(saved.getEntity(s.ids[0])?.attributes[0]).toBe(s.reader.entity(s.ids[0])!.attributes[0]);
+    expect(() => recordCompoundMutation(s.view, draft => reassignElementsToStoreyInStore(
+      s.store, new StoreEditor(s.store, draft), [s.ids[0]], 42, s.destination, expected))).toThrow(/stale/);
+    expect(s.view.getMutationRevision()).toBe(revision);
+    expect(s.snapshot()).toEqual(before);
+    expect(s.text()).toBe(text);
+    undoRecordedMutationOperations(s.view, 1, () => { throw new Error('The storey identity edit must remain next'); });
+    const restored = await s.parse(new TextEncoder().encode(s.text()).buffer);
+    expect(restored.getEntity(storeyId)?.attributes[0]).toBe(originalGuid);
+  });
+}

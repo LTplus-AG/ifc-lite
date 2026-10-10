@@ -4,8 +4,8 @@
 import '@/test/setup-dom.js';
 import assert from 'node:assert/strict';
 import { afterEach, test, type TestContext } from 'node:test';
-import { EMPTY_SOURCE_BYTES, extractProjectUnits, extractQuantitiesOnDemand, extractTypeQuantitiesOnDemand } from '@ifc-lite/parser';
-import { StoreEditor, type IfcAttributeValue } from '@ifc-lite/mutations';
+import { extractProjectUnits, extractQuantitiesOnDemand, extractTypeQuantitiesOnDemand } from '@ifc-lite/parser';
+import { StoreEditor } from '@ifc-lite/mutations';
 import { generateIfcGuid } from '@ifc-lite/encoding';
 import { useViewerStore } from '@/store';
 import { getOrCreateMutationView } from '@/sdk/adapters/mutation-view';

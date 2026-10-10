@@ -53,6 +53,8 @@ Each zone-set volume report states its cached processed entity outcomes and the 
 
 Declared volume totals use each quantity’s explicit native unit before project units, consistently in Properties, zone tables and CSV exports. A present unresolved or dimensionally incompatible unit leaves that physical basis unavailable; it does not inherit project cubic metres or promote a later inherited total. Independently resolved explicit units remain usable when project units are unavailable. Mesh volume stays in SI and is unchanged by declared quantity display units.
 
+Zone writeback requires a readable current project volume unit for physical quantity output. If that target unit is unavailable, readable explicitly unit-bearing totals remain available in cards, tables and CSV, but writeback records a refusal and zone labels without physical quantities. Rewriting also removes that zone set’s earlier owned physical quantities, so they cannot survive as stale unitless totals.
+
 ## Alignment sections
 
 Open **Section → Alignment**, select the model and its `IfcAlignment`, then

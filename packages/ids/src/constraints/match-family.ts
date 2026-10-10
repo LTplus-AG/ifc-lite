@@ -34,7 +34,7 @@ import {
   isBooleanLiteral,
 } from './comparators.js';
 import { isNumericXsdBase, isBooleanXsdBase } from './xsd-cast.js';
-import { translateXsdRegex, SUBTRACTION_UNSUPPORTED_REASON } from './xsd-regex.js';
+import { translateXsdRegex } from './xsd-regex.js';
 import { matchDigitFacets } from './digit-facets.js';
 import { assertGuardedRegexPattern, UnsafeRegexPatternError } from '@ifc-lite/regex-guard';
 
@@ -167,6 +167,7 @@ const PATTERN_REGEX_CACHE = new WeakMap<
   { cs?: RegExp | null; ci?: RegExp | null }
 >();
 
+/** The cached whole-value `RegExp` for `constraint`, or null if it cannot compile. */
 function compilePatternRegex(
   constraint: IDSPatternConstraint,
   caseInsensitive: boolean
@@ -185,6 +186,7 @@ function compilePatternRegex(
   return regex;
 }
 
+/** Compile one XSD pattern for whole-value matching; throws when it cannot be evaluated. */
 function buildPatternRegex(
   xsdPattern: string,
   caseInsensitive: boolean
@@ -198,21 +200,19 @@ function buildPatternRegex(
   // `validateSpecification`, which turns the thrown error into a
   // failed specification result.
   assertGuardedRegexPattern(xsdPattern);
-  // Shared XSD → JS translation: `\i`/`\c`/`\d`/`\w` (and their
-  // negations) map to Unicode property escapes, and verbatim `\p{…}`
-  // classes pass through — both require the `u` flag for full fidelity.
-  // XSD character-class subtraction (`[a-z-[aeiou]]`) is translated
-  // exactly (a negative lookahead, see `translateSubtraction`). One that
-  // cannot be delimited is refused rather than approximated: dropping the
-  // exclusion would make the pattern accept exactly the values it was
-  // written to exclude (#5183). `UnsafeRegexPatternError` becomes a failed
-  // specification result in `validateSpecification`, never a silent pass.
-  // Other unsupported constructs (an unrepresentable `\p{…}` block escape,
-  // a negated class escape inside `[ … ]`) keep their permissive
-  // any-character placeholder: they over-match rather than invert intent,
-  // and the coherence auditor flags them.
+  // Shared XSD → JS translation (XML Schema Part 2 Appendix F, see
+  // `xsd-regex.ts`): multi-char escapes, `\p{Is…}` blocks, class
+  // subtraction and negated escapes inside classes are translated exactly,
+  // and `^` / `$` are literals. The result requires the `u` flag.
+  // A construct with no exact translation (an unknown block or property
+  // name, an escape XSD does not define, an undelimitable subtraction) is
+  // refused rather than approximated: an any-character placeholder passed
+  // every value silently (#7400), and dropping a subtraction's exclusion
+  // accepted exactly the values it was written to exclude (#5183).
+  // `UnsafeRegexPatternError` becomes a failed specification result in
+  // `validateSpecification`, never a silent pass.
   const { pattern, supported, reason } = translateXsdRegex(xsdPattern);
-  if (!supported && reason === SUBTRACTION_UNSUPPORTED_REASON) {
+  if (!supported) {
     throw new UnsafeRegexPatternError(xsdPattern, reason);
   }
   // IDS patterns must match the entire lexical value. Wrapping in a
@@ -225,8 +225,12 @@ function buildPatternRegex(
     return new RegExp(anchored, caseInsensitive ? 'iu' : 'u');
   } catch {
     // Some patterns are valid under JS's lenient (Annex-B) dialect but
-    // rejected under `u`. Retry without it so plain patterns keep
-    // matching; this loses `\p{…}` fidelity for that one pattern only.
+    // rejected under `u` (a lone `{` or `]`). Retry without it so plain
+    // patterns keep matching — but only when the translation emitted no
+    // `\p{…}` / `\P{…}` / `\u{…}`: without `u` those silently mean the
+    // literal text `p{L}` or a repeated `u`, which made e.g. `\p{L}+…`
+    // fail every value instead of reporting the bad pattern (#7400).
+    if (/\\[pPu]\{/.test(pattern)) return null;
     try {
       return new RegExp(anchored, caseInsensitive ? 'i' : '');
     } catch {

@@ -49,6 +49,15 @@ placement without `PlacementRelTo` is refused. Other supported uniform scales us
 representations under stricter ownership checks. These transformations preserve
 physical map coordinates, project units, properties and authored shape data.
 Ordinary IFC downloads retain their original coordinate representation.
+Cesium ion applies a geoid only for vertical CRS codes it recognises, such as
+`EPSG:3855` (EGM2008 height), and treats other heights as ellipsoidal. A
+recognized `VerticalDatum` name (`EVRS2007` or `EGM2008`, including an
+optional `height` suffix and parenthesized `WGS84`/`WGS 1984`) is uploaded as
+`EPSG:3855`, which places sea-level heights on Cesium terrain to within the
+named datum's offset from EGM2008 (typically decimetres). Explicit EPSG codes
+and ellipsoidal datum names are uploaded as authored. Unrecognized names,
+including local project-zero datums, are preserved; this compatibility option
+does not infer a geoid height from arbitrary free text.
 Cesium ion currently tiles `IfcSectionedSolidHorizontal` sweeps (for example
 girders and pavement along an alignment) without their full alignment
 geometry, with or without this compatibility export. IFC2X3

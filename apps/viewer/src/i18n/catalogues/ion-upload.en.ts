@@ -33,7 +33,7 @@ export const ionUploadEn = {
   'ionUpload.token': 'Cesium ion token (assets:write)',
   'ionUpload.tokenHelp': 'Use a separate token with assets:write permission. It is kept in memory until this dialog closes, and is never saved or sent to analytics.',
   'ionUpload.createToken': 'Create a token',
-  'ionUpload.placement': 'The upload preserves your IFC georeferencing. After tiling, verify location, orientation and elevation in Cesium ion. For models without georeferencing, set their location there.',
+  'ionUpload.placement': 'The upload preserves your IFC georeferencing. Recognized EVRS2007 or EGM2008 vertical datum names are uploaded as EGM2008 sea-level height. Other datum text is preserved. After tiling, verify location, orientation and elevation in Cesium ion. For models without georeferencing, set their location there.',
   'ionUpload.phase.serialize': 'Preparing edited IFC…',
   'ionUpload.phase.create': 'Creating asset…',
   'ionUpload.phase.upload': 'Uploading IFC…',

@@ -20,6 +20,14 @@ export interface StepCoordinateNormalizationOptions {
    * Default: preserve. Requires full geometry in the unchanged source schema.
    */
   normalizeMapGeometry?: boolean;
+  /**
+   * Write recognized EVRS2007 or EGM2008 IfcProjectedCRS.VerticalDatum names
+   * as 'EPSG:3855' (EGM2008 height), the geoid Cesium ion applies. Explicit
+   * EPSG codes, ellipsoidal names and unrecognized datum text are preserved;
+   * heights are never rewritten. Default false. Requires a full export to
+   * the source schema.
+   */
+  normalizeVerticalDatumToEgm2008?: boolean;
 }
 
 /** Authored coordinate-system edits applied before compatibility phases. */

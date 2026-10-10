@@ -15,15 +15,18 @@ import { allBasisBreakdowns, declaredVolumeBases, validEntry, volumeBasisRatioNo
 /** Declared shares belong to these exact native sources and overlay revisions,
  * including edits that do not publish a viewer mutationVersion. This walks
  * loaded sources only, never their elements, quantities or geometry. */
-export function zoneQuantitySourceIdentity(s: ViewerState): unknown[] {
+export function zoneQuantitySourceIdentity(s: ViewerState, modelIds?: ReadonlySet<string>): unknown[] {
   const identity: unknown[] = [];
   for (const [modelId, model] of s.models) {
+    if (modelIds && !modelIds.has(modelId)) continue;
     const view = s.mutationViews.get(modelId);
     identity.push(modelId, model.ifcDataStore, model.ifcDataStore?.source,
       model.sourceContentHash, view, view?.getMutationRevision());
   }
-  const legacyView = s.mutationViews.get('__legacy__');
-  identity.push(s.ifcDataStore, s.ifcDataStore?.source, legacyView, legacyView?.getMutationRevision());
+  if (!modelIds || modelIds.has('legacy') || modelIds.has('__legacy__')) {
+    const legacyView = s.mutationViews.get('__legacy__');
+    identity.push(s.ifcDataStore, s.ifcDataStore?.source, legacyView, legacyView?.getMutationRevision());
+  }
   return identity;
 }
 

@@ -160,7 +160,9 @@ function elementRow(s: ViewerState, ref: EntityRef, source: ModelSource, rich: b
     })),
   }));
   const name = source.store ? nativeRootName({ dataStore: source.store, view: source.view }, ref.expressId) : data.attributes.get('Name');
-  const zoneQuantities = quantitySource(ref);
+  const globalId = toGlobalIdForRef(s.models, ref);
+  const hasZoneBreakdown = s.zoneSets.some(set => s.zoneAssignments.get(globalId)?.[set.id]?.straddles);
+  const zoneQuantities = hasZoneBreakdown ? quantitySource(ref) : null;
   const gridName = nativeGridName(nativeTarget, ref.expressId);
   return evidenceRow({
     kind: 'selected-element', modelId: ref.modelId,
@@ -173,10 +175,10 @@ function elementRow(s: ViewerState, ref: EntityRef, source: ModelSource, rich: b
     ...nativeAuthoringEvidence(nativeTarget, ref.expressId, rich),
     ...(completeStructuralPin ? { nativeStructural: nativeStructuralTransportEvidence(nativeTarget, ref.expressId) } : {}),
     attributes, psets, psetCount: data.psets.length, quantities, qsetCount: data.qsets.length,
-    zoneVolumeBreakdowns: { quantityStatus: zoneQuantities.status, quantityReason: zoneQuantities.reason,
+    ...(zoneQuantities ? { zoneVolumeBreakdowns: { quantityStatus: zoneQuantities.status, quantityReason: zoneQuantities.reason,
       unitStatus: zoneQuantities.unitStatus, unitReason: zoneQuantities.unitReason,
-      ...selectedZoneVolumeBreakdowns(s, toGlobalIdForRef(s.models, ref),
-        zoneQuantities.quantities, zoneQuantities.scale, setLimit, valueLimit) },
+      ...selectedZoneVolumeBreakdowns(s, globalId,
+        zoneQuantities.quantities, zoneQuantities.scale, setLimit, valueLimit) } } : {}),
     nativeEdit: nativeEditEvidence(nativeTarget, ref.expressId),
     nativeType: nativeTypeEvidence(s, nativeTarget, ref.expressId),
     nativeLayers: nativeLayerEvidence(s, nativeTarget, ref.expressId),
@@ -245,7 +247,7 @@ export const selectionAdapter: EvidenceAdapter = {
   },
   // Every selection action replaces one of these; edits are covered by the context stamp.
   identity: s => [s.selectedEntities, s.selectedEntitiesSet, s.selectedEntityIds, s.selectedEntity, s.selectedEntityId,
-    s.zoneSets, s.zoneAssignments, s.zoneApportionment, ...zoneQuantitySourceIdentity(s),
+    s.zoneSets, s.zoneAssignments, s.zoneApportionment, ...zoneQuantitySourceIdentity(s, new Set((selectionRefs(s)?.refs ?? []).map(ref => ref.modelId))),
     // #7282: native expected pins belong to these exact loaded sources/views,
     // even when a replacement preserves the same GUIDs and analysis versions.
     ...[...new Set((selectionRefs(s)?.refs ?? []).map(ref => ref.modelId))].flatMap(modelId => [
@@ -259,6 +261,7 @@ export const selectionAdapter: EvidenceAdapter = {
     const { refs, channel } = selection;
     const sourceFor = sources(s);
     const quantitySource = zoneQuantitySources(s);
+    const hasZoneBreakdowns = refs.some(ref => s.zoneSets.some(set => s.zoneAssignments.get(toGlobalIdForRef(s.models, ref))?.[set.id]?.straddles));
     const nativeTarget = nativeReadTargets(s);
     const byModel = new Map<string, number>();
     const byClass = new Map<string, number>();
@@ -277,9 +280,9 @@ export const selectionAdapter: EvidenceAdapter = {
         ...(sample.length !== 1 ? { nativeStructuralCapture: 'unavailable-selection-budget' } : {}),
         byModel: [...byModel].map(([modelId, count]) => ({ modelId, name: sourceFor(modelId).name, count })),
         byClass: [...byClass].map(([type, count]) => ({ type, count })).sort((a, b) => b.count - a.count),
-        perElementBounds: rich ? { sets: 16, valuesPerSet: 32, attributes: 32, classifications: 16, classificationPath: 16, relationships: 16, documents: 16, zoneSets: 16, sharesPerVolumeBasis: 32 }
-          : { sets: 6, valuesPerSet: 12, attributes: 12, classifications: 6, classificationPath: 6, relationships: 6, documents: 6, zoneSets: 6, sharesPerVolumeBasis: 12 },
-        zoneVolumeUnits: 'When project VOLUMEUNIT is unresolved, zone volume breakdowns use the existing Properties scale-1 SI default; m3 labels do not prove a declared file unit or a measured conversion.',
+        perElementBounds: rich ? { sets: 16, valuesPerSet: 32, attributes: 32, classifications: 16, classificationPath: 16, relationships: 16, documents: 16, ...(hasZoneBreakdowns ? { zoneSets: 16, sharesPerVolumeBasis: 32 } : {}) }
+          : { sets: 6, valuesPerSet: 12, attributes: 12, classifications: 6, classificationPath: 6, relationships: 6, documents: 6, ...(hasZoneBreakdowns ? { zoneSets: 6, sharesPerVolumeBasis: 12 } : {}) },
+        ...(hasZoneBreakdowns ? { zoneVolumeUnits: 'When project VOLUMEUNIT is unresolved, zone volume breakdowns use the existing Properties scale-1 SI default; m3 labels do not prove a declared file unit or a measured conversion.' } : {}),
         units: 'Quantity values carry {value, unit} in the Properties panel display unit (project unit, or the display-unit override below); a null unit is undeclared. Property values are the panel display strings, with the unit inline when the measure declares one.',
         displayUnitOverrides: s.unitDisplayOverrides,
         limitations: 'Includes native edits; status covers own edits. Definitions/associations use snapshot freshness. Sections use perElementBounds and full known counts. inheritedType has model/type provenance; occurrence properties override same-named type values. Materials prefer occurrence over type; LayerThickness is metres; properties use panel units. IFC2X3 scalar material-property subtypes are outside the generic-set reader. Unverified fields remain unknown; missing membership inputs/unreadable source edits make totals null/unavailable. Source-free classification/document markers describe original source, not current assignments. Paths have bounded known ancestors; unverified path totals are null. Classification codes use schema-exact ItemReference/Identification; missing systems stay unknown. Relationships count exact native edges; aliases carry inherited lookup IDs. Edited source-free graph edges are unverified source-origin evidence. Unverified material-property counts stay null; empty rows do not prove absence. Documents have native model/target IDs and separate bounds. Empty samples do not prove absence. Selection is sampled; byClass/byModel cover every selected element.',

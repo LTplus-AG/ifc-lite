@@ -107,7 +107,7 @@ test('#7376 unsupported native explicit member unit cannot fall back to project 
   assert.ok(![...panel.querySelectorAll('span')].some(span => span.textContent === x.quantityName),
     'unsupported explicit member cannot produce a physical NetVolume basis');
   const rows = buildZoneTable(x.f.zoneSet, 'net'); assert.equal(rows.length, 2);
-  for (const row of rows) { assert.equal(row.VolumeM3, null); assert.match(row.Unavailable, /inherited native quantities are unavailable/); assert.doesNotMatch(row.Unavailable, /declares no/); }
+  for (const row of rows) { assert.equal(row.VolumeM3, null); assert.match(row.Unavailable, /unit is unavailable/); assert.doesNotMatch(row.Unavailable, /declares no/); }
   const mesh = buildZoneTable(x.f.zoneSet, 'mesh');
   for (const row of mesh) assert.ok(row.ElementVolumeM3 !== null && Math.abs(row.ElementVolumeM3 - x.f.apportionment.wholeVolumeM3)
     <= Math.max(1e-12, x.f.apportionment.wholeVolumeM3 * 1e-12));
@@ -494,6 +494,64 @@ for (const scenario of ['later-net', 'first-gross', 'owned-unqualified'] as cons
     } else {
       assert.doesNotMatch(panel.textContent ?? '', /Explicit native quantity Unit cannot be resolved/,
         'later duplicate or owned writeback members cannot make the selected native basis falsely unavailable');
+    }
+    assert.equal(view.getMutationRevision(), revision);
+    await assertSameNativeIfcGraph(before, editedModelBytes(source, view));
+  });
+}
+
+
+for (const scenario of ['distinct-gross', 'later-net'] as const) {
+  test(`#7376 inherited valid first Net survives an incompatible ${scenario} member without false physical availability`, async t => {
+    const x = await explicitFixture(t, false); if (!x) return;
+    const editor = new StoreEditor(x.store, x.view);
+    const wrongUnit = editor.addEntity('IfcSIUnit', ['*', '.LENGTHUNIT.', '.MILLI.', '.METRE.']).expressId;
+    const memberName = scenario === 'distinct-gross' ? 'GrossInvalidVolume' : 'NetLaterInvalidVolume';
+    const badId = editor.addEntity('IfcQuantityVolume', x.store.schemaVersion === 'IFC2X3'
+      ? [memberName, null, `#${wrongUnit}`, 999]
+      : [memberName, null, `#${wrongUnit}`, 999, null]).expressId;
+    x.view.setPositionalAttribute(x.a.qto, 5, [`#${x.quantityId}`, `#${badId}`]);
+    // Publish authentic parsed references before current-reader observations.
+    // The incompatible dimension is deliberate; neither member is claimed to
+    // have an EXPRESS-valid Volume Unit merely because STEP reparses it.
+    const source = await parse(editedModelBytes(x.store, x.view));
+    assert.deepEqual(source.getEntity(x.a.qto)?.attributes[5], [x.quantityId, badId]);
+    assert.equal(source.getEntity(x.quantityId)?.attributes[2], x.unit);
+    assert.equal(source.getEntity(badId)?.attributes[2], wrongUnit);
+    assert.deepEqual(source.getEntity(wrongUnit)?.attributes.slice(1), ['.LENGTHUNIT.', '.MILLI.', '.METRE.']);
+    const oracle = extractTypeQuantitiesOnDemand(source, x.f.id); assert.ok(oracle);
+    const oracleMembers = oracle.quantities.flatMap(set => set.quantities);
+    assert.deepEqual(oracleMembers.map(q => [q.name, q.value]), [['NetVolume', 10], [memberName, 999]]);
+    assert.equal(oracleMembers[0].explicitUnitSiScale, 1e-9);
+    assert.equal(oracleMembers[1].explicitUnitUnresolved, true, 'native collector retains the member-specific dimensional refusal');
+    const model = useViewerStore.getState().models.get('arch'); assert.ok(model);
+    useViewerStore.setState({ models: new Map([['arch', { ...model, ifcDataStore: source,
+      maxExpressId: getMaxExpressId(source, model.geometryResult?.meshes ?? [], model.geometryResult?.pointClouds ?? []) }]]),
+      ifcDataStore: source, mutationViews: new Map(), storeEditors: new Map() });
+    const view = getOrCreateMutationView(useViewerStore, 'arch'); assert.ok(view);
+    const before = editedModelBytes(source, view), revision = view.getMutationRevision();
+    const current = extractTypeQuantitiesOnDemand(source, x.f.id, view);
+    assert.ok(current, 'a successfully inventoried mixed native set retains independently valid member metadata');
+    const members = current.quantities.flatMap(set => set.quantities);
+    assert.deepEqual(members.map(q => [q.name, q.value]), [['NetVolume', 10], [memberName, 999]]);
+    assert.equal(members[0].explicitUnitSiScale, 1e-9);
+    assert.equal(members[1].explicitUnitUnresolved, true);
+    const context = contextFor('arch', new Map()); assert.ok(context);
+    const panel = render(<ZoneVolumeBreakdown zoneSet={x.f.zoneSet} globalId={x.f.id}
+      quantitySets={quantitySetsFor(context, x.f.id)} projectUnits={extractProjectUnits(source.source, source.entityIndex)}
+      unitDisplayOverrides={{ VOLUMEUNIT: 'cm3' }} />);
+    const label = [...panel.querySelectorAll('span')].find(span => span.textContent === 'NetVolume'); assert.ok(label);
+    assert.match(label.parentElement?.textContent ?? '', /0[.,]01\s*cm³/);
+    const netRows = buildZoneTable(x.f.zoneSet, 'net'); assert.equal(netRows.length, 2);
+    for (const row of netRows) {
+      assert.ok(row.ElementVolumeM3 !== null && Math.abs(row.ElementVolumeM3 - 1e-8) < 1e-20);
+    }
+    if (scenario === 'distinct-gross') {
+      assert.match(panel.textContent ?? '', /Explicit native quantity Unit cannot be resolved/);
+      const gross = buildZoneTable(x.f.zoneSet, 'gross'); assert.equal(gross.length, 2);
+      for (const row of gross) { assert.equal(row.ElementVolumeM3, null); assert.match(row.Unavailable, /unit is unavailable/); }
+    } else {
+      assert.doesNotMatch(panel.textContent ?? '', /Explicit native quantity Unit cannot be resolved/);
     }
     assert.equal(view.getMutationRevision(), revision);
     await assertSameNativeIfcGraph(before, editedModelBytes(source, view));

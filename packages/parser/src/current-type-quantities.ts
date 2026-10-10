@@ -148,9 +148,8 @@ function readCurrent(store: IfcDataStore, entityId: number, view: MetadataReadVi
                 || (quantity.attributes[3] < 0 && QUANTITY_TYPE_MAP[quantity.type.toUpperCase()] !== QuantityType.Number)) throw new CurrentQuantityRefusal('Native type quantity value is unavailable');
         }
         const set = readQuantitySetRecord(store, extractor, record, readEntity, resolveCurrentUnit);
-        if (set?.quantities.some(quantity => quantity.explicitUnitUnresolved)) {
-            throw new CurrentQuantityRefusal('Native quantity unit is unresolved or dimensionally unsupported');
-        }
+        // Complete native inventory can retain member-specific unit refusals.
+        // Physical consumers reject that member without erasing valid siblings (#7376).
         return set ? [set] : [];
     });
     const quantities = readSets([...ownSetIds]);

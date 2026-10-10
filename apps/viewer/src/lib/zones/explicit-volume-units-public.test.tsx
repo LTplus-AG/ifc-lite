@@ -104,7 +104,7 @@ test('#7376 unsupported native explicit member unit cannot fall back to project 
   assert.ok(![...panel.querySelectorAll('span')].some(span => span.textContent === x.quantityName),
     'unsupported explicit member cannot produce a physical NetVolume basis');
   const rows = buildZoneTable(x.f.zoneSet, 'net'); assert.equal(rows.length, 2);
-  for (const row of rows) { assert.equal(row.VolumeM3, null); assert.match(row.Unavailable, /unit is unavailable/); assert.doesNotMatch(row.Unavailable, /declares no/); }
+  for (const row of rows) { assert.equal(row.VolumeM3, null); assert.match(row.Unavailable, /inherited native quantities are unavailable/); assert.doesNotMatch(row.Unavailable, /declares no/); }
   const mesh = buildZoneTable(x.f.zoneSet, 'mesh');
   for (const row of mesh) assert.ok(row.ElementVolumeM3 !== null && Math.abs(row.ElementVolumeM3 - x.f.apportionment.wholeVolumeM3)
     <= Math.max(1e-12, x.f.apportionment.wholeVolumeM3 * 1e-12));

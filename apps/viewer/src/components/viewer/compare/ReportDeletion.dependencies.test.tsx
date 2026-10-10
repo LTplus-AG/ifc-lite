@@ -212,6 +212,10 @@ test('#7245 native preview unmount revokes a queued confirmation before its actu
 test('#7245 revoked native confirmation explains changed references without reporting a fictitious storage outage', async () => {
   const report = await realComparison(); await dependents('compare', report.id);
   const ui = render(<><SavedComparisonLibrary result={null} running={false} /><Toaster /></>);
+  // Earlier storage-error controls deliberately leave global persistent toasts.
+  // Dismiss those through the actual mounted notification UI before this action.
+  for (const dismiss of ui.querySelectorAll<HTMLButtonElement>('[data-toast-seq] button[aria-label]')) click(dismiss);
+  assert.equal(latestToast(ui), '', 'no earlier notification can be mistaken for this confirmation result');
   const picker = ui.querySelector('select'); assert.ok(picker);
   act(() => { picker.value = report.id; picker.dispatchEvent(new window.Event('change', { bubbles: true })); });
   click(button(ui, 'Delete saved comparison')!); await settle();

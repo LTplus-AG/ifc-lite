@@ -17,7 +17,7 @@
  */
 
 import { MutablePropertyView } from '@ifc-lite/mutations';
-import { readCurrentProjectUnits, readCurrentTypeQuantities, type IfcDataStore } from '@ifc-lite/parser';
+import { readCurrentProjectUnits, readCurrentTypeQuantities, type IfcDataStore, type TypeQuantityInfo } from '@ifc-lite/parser';
 import { useViewerStore } from '@/store';
 import { resolveEntityRef } from '@/store/resolveEntityRef';
 import { configureMutationView } from '@/utils/configureMutationView';
@@ -87,7 +87,12 @@ export function contextFor(modelId: string, cache: Map<string, ModelContext | nu
  * uses), and a NetVolume the user corrected this session is the number they
  * expect to see apportioned.
  */
-export function quantitySetsWithStatusFor(context: ModelContext, expressId: number) {
+type NativeQuantitySets = Array<ReturnType<MutablePropertyView['getQuantitiesForEntity']>[number]
+  | TypeQuantityInfo['quantities'][number]>;
+
+export function quantitySetsWithStatusFor(context: ModelContext, expressId: number): {
+  quantitySets: NativeQuantitySets; inheritedUnavailable: boolean;
+} {
   const own = context.view.getQuantitiesForEntity(expressId);
   const inherited = context.store
     ? readCurrentTypeQuantities(context.store, expressId, context.view) : null;
@@ -99,7 +104,7 @@ export function quantitySetsWithStatusFor(context: ModelContext, expressId: numb
   return { quantitySets: quantities, inheritedUnavailable: inherited?.status === 'unavailable' };
 }
 
-export function quantitySetsFor(context: ModelContext, expressId: number) {
+export function quantitySetsFor(context: ModelContext, expressId: number): NativeQuantitySets {
   return quantitySetsWithStatusFor(context, expressId).quantitySets;
 }
 

@@ -124,6 +124,11 @@ blocked. Only literal names are grounded.
 
 ## Sidecar, bundles, re-identification
 
+`parseSidecar` checks the node index and the metadata structures consumed by the
+authoring core before attachment. Malformed same-format data throws with its
+field path; `readIdsz` uses the same check for bundled `studio.json`. Valid
+metadata, extension fields and opaque later-pitch payloads remain intact.
+
 - `createSidecar(doc, xml)` and `attachSidecar(parsed, sidecar, { previous })`
   persist node ids and `meta` next to the XML, never inside it.
 - `writeIdsz` and `readIdsz` build a plain zip containing `ids.xml`,

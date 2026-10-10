@@ -10,7 +10,7 @@ import type { EntityRef } from '@/store/types';
 import { effectiveElementData } from '@/components/viewer/properties/effectiveElementData';
 import type { QuantitySet } from '@/components/viewer/properties/encodingUtils';
 import { withInheritedTypeQuantities } from '@/lib/zones/inherited-quantities';
-import { allBasisBreakdowns, declaredVolumeBases, validEntry, volumeBasisRatioNote, type QuantitySetLike } from '@/lib/zones';
+import { allBasisBreakdowns, declaredVolumeBases, ZONE_QUANTITY_SET_NAME_PREFIX, validEntry, volumeBasisRatioNote, type QuantitySetLike } from '@/lib/zones';
 
 /** Declared shares belong to these exact native sources and overlay revisions,
  * including edits that do not publish a viewer mutationVersion. This walks
@@ -59,7 +59,7 @@ export function zoneQuantitySources(s: ViewerState) {
       RelationshipType.DefinesByType,
       (store, id) => (current ? current.value?.quantities
         : extractTypeQuantitiesOnDemand(store as IfcDataStore, id)?.quantities) as QuantitySet[] | undefined);
-    return { quantities: [...quantities],
+    return { quantities: quantities.filter(set => !set.name.startsWith(ZONE_QUANTITY_SET_NAME_PREFIX)),
       scale: source.units.status === 'available' ? source.units.value?.resolvedForUnitType('VOLUMEUNIT')?.siScale ?? 1 : null,
       unitStatus: source.units.status, unitReason: source.units.reason,
       reason: current?.reason ?? null,

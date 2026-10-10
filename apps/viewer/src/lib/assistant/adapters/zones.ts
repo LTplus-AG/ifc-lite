@@ -22,7 +22,7 @@ import { zoneFactsFor } from '@/hooks/zoneFacts';
 import { gatherProvedVolumes } from '@/hooks/useZoneApportionment';
 import { evidenceRow, unavailableCapture, type EvidenceAdapter } from './types';
 import { zoneQuantitySources, zoneQuantitySourceIdentity } from './zone-volume-bases';
-import { declaredVolumeBases, volumeBasisRatioNote, ZONE_QUANTITY_SET_NAME_PREFIX } from '@/lib/zones';
+import { declaredVolumeBases, volumeBasisRatioNote } from '@/lib/zones';
 
 const BASIS = 'mesh' as const;
 const SPLIT_NOT_COMPUTED = 'straddler split not computed for the current zones (run the zone volume split in the Zones panel)';
@@ -108,7 +108,7 @@ export const zonesAdapter: EvidenceAdapter = {
         const facts = zoneFactsFor(globalId, assignment, names, BASIS, 1, [], proved, apportioned);
         const ref = resolveEntityRef(globalId);
         const source = quantitySource(ref);
-        const declared = source.scale === null ? [] : declaredVolumeBases(source.quantities.filter(set => !set.name.startsWith(ZONE_QUANTITY_SET_NAME_PREFIX)), source.scale);
+        const declared = source.scale === null ? [] : declaredVolumeBases(source.quantities, source.scale);
         const element = describeElement(globalId, modelNames);
         const basisRows = declared.map(basis => ({ basis: basis.basis,
           ratioNote: assignment.straddles ? volumeBasisRatioNote(basis.basis)

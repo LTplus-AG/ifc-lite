@@ -20,7 +20,7 @@ import { nativeStructuralTransportEvidence } from '@/lib/actions/structural-grap
 
 import { nativeAuthoringEvidence } from '@/lib/actions/native-authoring-evidence';
 import { IfcQuery } from '@ifc-lite/query';
-import { extractClassificationsOnDemand, extractProjectUnits, materialAssignmentsAvailable, ProjectUnits, type IfcDataStore } from '@ifc-lite/parser';
+import { extractClassificationsOnDemand, extractProjectUnits, readCurrentProjectUnits, materialAssignmentsAvailable, ProjectUnits, type IfcDataStore } from '@ifc-lite/parser';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
 import { useViewerStore, type ViewerState } from '@/store';
 import { createQueryAdapter } from '@/sdk/adapters/query-adapter';
@@ -94,7 +94,7 @@ function selectionRefs(s: ViewerState): { channel: Channel; refs: EntityRef[] } 
 
 const isLegacy = (modelId: string) => modelId === 'legacy' || modelId === '__legacy__';
 
-interface ModelSource { store: IfcDataStore | null; view: MutablePropertyView | undefined; query: IfcQuery | null; units: ProjectUnits; name: string }
+interface ModelSource { store: IfcDataStore | null; view: MutablePropertyView | undefined; query: IfcQuery | null; units: ProjectUnits; unitsAvailable: boolean; name: string }
 
 function sources(s: ViewerState) {
   const cache = new Map<string, ModelSource>();
@@ -103,10 +103,14 @@ function sources(s: ViewerState) {
     if (cached) return cached;
     const model = isLegacy(modelId) ? undefined : s.models.get(modelId);
     const store = (model?.ifcDataStore ?? (isLegacy(modelId) ? s.ifcDataStore : null)) as IfcDataStore | null;
+    const view = s.mutationViews.get(isLegacy(modelId) ? '__legacy__' : modelId) ?? undefined;
+    const currentUnits = store && view ? readCurrentProjectUnits(store, view) : null;
     const source = {
-      store, view: s.mutationViews.get(isLegacy(modelId) ? '__legacy__' : modelId) ?? undefined,
+      store, view,
       query: store ? new IfcQuery(store) : null,
-      units: store?.source?.length && store.entityIndex ? extractProjectUnits(store.source, store.entityIndex) : ProjectUnits.empty(),
+      units: currentUnits ? currentUnits.value ?? ProjectUnits.empty()
+        : store?.source?.length && store.entityIndex ? extractProjectUnits(store.source, store.entityIndex) : ProjectUnits.empty(),
+      unitsAvailable: !currentUnits || currentUnits.status === 'available',
       name: model?.name ?? modelId,
     };
     cache.set(modelId, source);
@@ -149,13 +153,13 @@ function elementRow(s: ViewerState, ref: EntityRef, source: ModelSource, rich: b
   const psets = data.psets.slice(0, setLimit).map(pset => ({
     name: pset.name, propertyCount: pset.properties.length,
     properties: Object.fromEntries(pset.properties.slice(0, valueLimit)
-      .map(prop => [prop.name, bounded(propertyDisplayValue(prop, source.units, s.unitDisplayOverrides).full)])),
+      .map(prop => [prop.name, bounded(propertyDisplayValue(prop, source.units, s.unitDisplayOverrides, source.unitsAvailable).full)])),
   }));
   const quantities = data.qsets.slice(0, setLimit).map(qset => ({
     name: qset.name, quantityCount: qset.quantities.length,
     quantities: Object.fromEntries(qset.quantities.slice(0, valueLimit).map(q => {
       if (!Number.isFinite(q.value)) return [q.name, { value: null, unit: null }];
-      const display = resolveQuantityDisplay(q.value, q.type, source.units, s.unitDisplayOverrides);
+      const display = resolveQuantityDisplay(q.value, q.type, source.units, s.unitDisplayOverrides, q, source.unitsAvailable);
       // A null unit is undeclared, never assumed.
       return [q.name, { value: display.converted ?? q.value, unit: display.unit ?? null }];
     })),
@@ -220,7 +224,7 @@ function elementRow(s: ViewerState, ref: EntityRef, source: ModelSource, rich: b
       psets: group.psets.slice(0, setLimit).map(pset => ({
         name: pset.name, propertyCount: materialPropertiesVerified ? pset.properties.length : null,
         properties: Object.fromEntries(pset.properties.slice(0, valueLimit)
-          .map(prop => [prop.name, bounded(propertyDisplayValue(prop, source.units, s.unitDisplayOverrides).full)])),
+          .map(prop => [prop.name, bounded(propertyDisplayValue(prop, source.units, s.unitDisplayOverrides, source.unitsAvailable).full)])),
       })),
     })),
     inheritedType: inherited ? {
@@ -232,7 +236,7 @@ function elementRow(s: ViewerState, ref: EntityRef, source: ModelSource, rich: b
       psets: inherited.psets.slice(0, setLimit).map(pset => ({
         name: pset.name, propertyCount: pset.properties.length,
         properties: Object.fromEntries(pset.properties.slice(0, valueLimit)
-          .map(prop => [prop.name, bounded(propertyDisplayValue(prop, source.units, s.unitDisplayOverrides).full)])),
+          .map(prop => [prop.name, bounded(propertyDisplayValue(prop, source.units, s.unitDisplayOverrides, source.unitsAvailable).full)])),
       })),
     } : null,
   });

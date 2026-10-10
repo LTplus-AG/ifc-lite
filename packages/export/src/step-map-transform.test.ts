@@ -322,7 +322,9 @@ describe.skipIf(!wasmAvailable)('real canonical WASM export planning (#6587)', (
     try {
       const base = new StepExporter(store).export({ ...options, normalizeMapUnitsToMetres: true });
       const refused = await new StepExporter(store).exportAsync({ ...options, normalizeMapUnitsToMetres: true, normalizeMapGeometry: true });
-      expect(refused.stats.warnings.some(warning => warning.includes('not a supported 3D Body'))).toBe(true);
+      // #7359 carries curve-only non-Body representations; an 'Axis' holding a
+      // solid still refuses, now naming the item it cannot carry.
+      expect(refused.stats.warnings.some(warning => warning.includes('is neither a Body nor curve geometry (IfcExtrudedAreaSolid #'))).toBe(true);
       expect(refused.content).toEqual(base.content);
       expect(refused.stats.modifiedEntityCount).toBe(base.stats.modifiedEntityCount);
       expect(refused.stats.newEntityCount).toBe(base.stats.newEntityCount);

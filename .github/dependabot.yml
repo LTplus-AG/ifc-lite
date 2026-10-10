@@ -38,6 +38,24 @@ updates:
       # output is verified stable for this repo.
       - dependency-name: "vite"
         update-types: ["version-update:semver-major"]
+      # pdfjs-dist is pinned exactly because PDF vector decoding is
+      # qualified against one decoder build: the version string is
+      # checked in apps/viewer/src/lib/appearance/pdf/vector-adapter.ts,
+      # rust/processing/src/pdf_vector/mod.rs and
+      # rust/wasm-bindings/src/api/pdf_vector.rs, so any bump fails those
+      # checks. Moving it is a qualified upgrade done by hand (see #7391),
+      # including security fixes.
+      - dependency-name: "pdfjs-dist"
+      # The 1.2.0 dialog and 1.3.0 tooltip minors changed behaviour the
+      # viewer depends on: dialog broke the HelpHint popovers in
+      # extensions-panels-chrome.i18n.test.tsx, tooltip broke the
+      # aria-describedby wiring in icon-button.test.tsx (see #7391).
+      # Patch releases on the current minors still flow; lift these once
+      # the viewer is adapted to the new minors.
+      - dependency-name: "@radix-ui/react-dialog"
+        versions: [">=1.2.0"]
+      - dependency-name: "@radix-ui/react-tooltip"
+        versions: [">=1.3.0"]
 
   - package-ecosystem: cargo
     directory: /

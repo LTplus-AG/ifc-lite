@@ -108,6 +108,29 @@ describe('prohibited specification element results (#7403)', () => {
     expect(reason).not.toMatch(/\{\w+\}/);
   });
 
+  it('re-reads a specification edited in place between runs (#7412 review)', async () => {
+    // The viewer's IDS editor mutates specifications in place and re-runs
+    // validation on the same document, so nothing may outlive a run.
+    const store = await new IfcParser().parseColumnar(new TextEncoder().encode(IFC).buffer, { disableWorkerScan: true });
+    const accessor = createDataAccessor(store);
+    const document = parseIDS(ids());
+    const run = async () => (await validateIDS(document, accessor,
+      { modelId: 'probe', schemaVersion: 'IFC4', entityCount: store.entityCount })).specificationResults[0];
+    const summarize = (r: Awaited<ReturnType<typeof run>>) => r.entityResults.map((e) => [
+      e.entityName, e.passed, e.requirementResults.map((c) => `${c.requirement.optionality} ${c.facetType} ${c.status} ${c.actualValue}`),
+    ]);
+
+    expect(summarize(await run())).toEqual([['W-1', false, ['prohibited entity fail IfcWall']]]);
+
+    const spec = document.specifications[0];
+    spec.requirements.push({ id: 'req-added', facet: { type: 'attribute', name: { type: 'simpleValue', value: 'Name' } }, optionality: 'required' });
+    spec.applicability.facets[0] = { type: 'entity', name: { type: 'simpleValue', value: 'IFCSLAB' } };
+
+    expect(summarize(await run())).toEqual([
+      ['S-1', false, ['required attribute pass S-1', 'prohibited entity fail IfcSlab']],
+    ]);
+  });
+
   it('control: a prohibited specification with no matches still passes', async () => {
     const report = await validate(ids().replace('IFCWALL', 'IFCDOOR'));
     const result = report.specificationResults[0];

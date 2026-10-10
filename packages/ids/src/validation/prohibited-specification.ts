@@ -25,21 +25,19 @@ import type { IDSRequirement, IDSSpecification } from '../types.js';
 /** Requirement id of the synthetic prohibition check; distinct from the parser's `req-N`. */
 const PROHIBITED_APPLICABILITY_REQUIREMENT_ID = 'applicability-prohibited';
 
-// Keyed by specification so each spec reuses ONE requirement object: the
-// validator's description cache is keyed by requirement identity.
-const cache = new WeakMap<IDSSpecification, readonly IDSRequirement[]>();
-
-/** The requirements to evaluate per applicable element of `spec`. */
+/**
+ * The requirements to evaluate per applicable element of `spec`, read from the
+ * spec as it is NOW. Deliberately uncached: callers (the viewer's IDS editor)
+ * mutate specifications in place between runs, so a cache keyed by the spec
+ * object would replay a stale check list. The validator calls this once per
+ * specification per run and reuses the result for every element, which keeps
+ * the synthetic requirement's identity stable for its description cache.
+ */
 export function requirementsToCheck(spec: IDSSpecification): readonly IDSRequirement[] {
   const facet = spec.applicability.facets[0];
   if (spec.maxOccurs !== 0 || !facet) return spec.requirements;
-  let requirements = cache.get(spec);
-  if (!requirements) {
-    requirements = [
-      ...spec.requirements,
-      { id: PROHIBITED_APPLICABILITY_REQUIREMENT_ID, facet, optionality: 'prohibited' },
-    ];
-    cache.set(spec, requirements);
-  }
-  return requirements;
+  return [
+    ...spec.requirements,
+    { id: PROHIBITED_APPLICABILITY_REQUIREMENT_ID, facet, optionality: 'prohibited' },
+  ];
 }

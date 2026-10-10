@@ -329,8 +329,8 @@ async function validateSpecification(
   const idsToCheck = maxEntities
     ? applicableIds.slice(0, maxEntities)
     : applicableIds;
-
-  // Phase 2: Check requirements for each applicable entity
+  // Phase 2: per-entity checks, built per run (specs are edited in place between runs).
+  const checks = requirementsToCheck(spec);
   const entityResults: IDSEntityResult[] = [];
   const totalEntities = idsToCheck.length;
 
@@ -348,7 +348,7 @@ async function validateSpecification(
     if ((i & 31) === 0) await maybeYield();
 
     const entityResult = validateEntityRequirements(
-      spec,
+      spec, checks,
       expressId,
       modelId,
       accessor,
@@ -527,7 +527,7 @@ async function findApplicableEntities(
  * Validate requirements for a single entity
  */
 function validateEntityRequirements(
-  spec: IDSSpecification,
+  spec: IDSSpecification, checks: readonly IDSRequirement[],
   expressId: number,
   modelId: string,
   accessor: IFCDataAccessor,
@@ -538,7 +538,7 @@ function validateEntityRequirements(
   let allPassed = true;
 
   // A prohibited specification adds a failing check per element (#7403).
-  for (const requirement of requirementsToCheck(spec)) {
+  for (const requirement of checks) {
     const result = checkRequirement(requirement, expressId, accessor, descriptionCache, translator);
     requirementResults.push(result);
     if (result.status === 'fail') allPassed = false;

@@ -60,6 +60,7 @@ export interface ElementFamilyReader {
 export function createElementFamilyReader(
   provider: ListDataProvider,
   definingTypeId: (expressId: number) => number,
+  sourceProvider: ListDataProvider,
   mutationView?: MutablePropertyView,
 ): ElementFamilyReader {
   const occurrenceQsets = new Map<number, QuantitySet[]>();
@@ -124,8 +125,9 @@ export function createElementFamilyReader(
   const explicitScaleFor = (id: number, found: FoundQuantity, qsetName: string): number | undefined => {
     const own = explicitQuantityScale(found.quantity);
     const owner = found.fromType ? definingTypeId(id) : id;
+    if (mutationView?.getQuantityMutation(owner, qsetName, found.quantity.name)?.unitRemoved) return undefined;
     if (own !== undefined || found.quantity.unit || !mutationView?.hasChanges(owner)) return own;
-    const baseSets = found.fromType ? provider.getTypeQuantitySets?.(id) ?? [] : provider.getQuantitySets(id);
+    const baseSets = found.fromType ? sourceProvider.getTypeQuantitySets?.(id) ?? [] : sourceProvider.getQuantitySets(id);
     const base = findQuantityInSets(baseSets, qsetName, found.quantity.name);
     return base ? explicitQuantityScale(base) : undefined;
   };

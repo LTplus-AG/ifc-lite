@@ -11,6 +11,8 @@
  */
 
 import { EntityExtractor } from './entity-extractor.js';
+import { extractCurrentTypeQuantities } from './current-type-quantities.js';
+import type { MetadataReadView } from './effective-metadata-record.js';
 import { RelationshipType, resolvedTypeName } from '@ifc-lite/data';
 import type { IfcDataStore } from './columnar-parser.js';
 import { readQuantitySet, type CollectedQuantity } from './quantity-collect.js';
@@ -60,19 +62,7 @@ export interface TypeQuantityInfo {
     quantities: Array<{ name: string; globalId?: string; quantities: CollectedQuantity[] }>;
 }
 
-/**
- * Structured document info from IFC document references.
- */
-export interface DocumentInfo {
-    name?: string;
-    description?: string;
-    location?: string;
-    identification?: string;
-    purpose?: string;
-    intendedUse?: string;
-    revision?: string;
-    confidentiality?: string;
-}
+export { extractDocumentsOnDemand, type DocumentInfo } from './document-resolver.js';
 
 export type { GeoreferenceInfo as GeorefInfo };
 
@@ -324,8 +314,10 @@ export function extractQsetsFromIds(
  */
 export function extractTypeQuantitiesOnDemand(
     store: IfcDataStore,
-    entityId: number
+    entityId: number,
+    view?: MetadataReadView,
 ): TypeQuantityInfo | null {
+    if (view && store.source?.length) return extractCurrentTypeQuantities(store, entityId, view);
     if (!store.relationships) return null;
 
     const typeIds = store.relationships.getRelated(entityId, RelationshipType.DefinesByType, 'inverse');
@@ -385,107 +377,6 @@ export function extractTypeQuantitiesOnDemand(
  * Also checks type-level documents via IfcRelDefinesByType.
  * Returns an array of document info objects.
  */
-export function extractDocumentsOnDemand(
-    store: IfcDataStore,
-    entityId: number
-): DocumentInfo[] {
-    let docRefIds: number[] | undefined;
-
-    if (store.onDemandDocumentMap) {
-        docRefIds = store.onDemandDocumentMap.get(entityId);
-    } else if (store.relationships) {
-        const related = store.relationships.getRelated(entityId, RelationshipType.AssociatesDocument, 'inverse');
-        if (related.length > 0) docRefIds = related;
-    }
-
-    // Also check type-level documents via IfcRelDefinesByType
-    if (store.relationships) {
-        const typeIds = store.relationships.getRelated(entityId, RelationshipType.DefinesByType, 'inverse');
-        for (const typeId of typeIds) {
-            let typeDocRefs: number[] | undefined;
-            if (store.onDemandDocumentMap) {
-                typeDocRefs = store.onDemandDocumentMap.get(typeId);
-            } else {
-                const related = store.relationships.getRelated(typeId, RelationshipType.AssociatesDocument, 'inverse');
-                if (related.length > 0) typeDocRefs = related;
-            }
-            if (typeDocRefs && typeDocRefs.length > 0) {
-                docRefIds = docRefIds ? [...docRefIds, ...typeDocRefs] : [...typeDocRefs];
-            }
-        }
-    }
-
-    if (!docRefIds || docRefIds.length === 0) return [];
-    if (!store.source?.length) return [];
-
-    const extractor = new EntityExtractor(store.source);
-    const results: DocumentInfo[] = [];
-
-    for (const docId of docRefIds) {
-        // @raw-entity-enumeration-ok one relationship-selected document id is decoded from its source STEP span
-        const docRef = store.entityIndex.byId.get(docId);
-        if (!docRef) continue;
-
-        const docEntity = extractor.extractEntity(docRef);
-        if (!docEntity) continue;
-
-        const typeUpper = docEntity.type.toUpperCase();
-        const attrs = docEntity.attributes || [];
-
-        if (typeUpper === 'IFCDOCUMENTREFERENCE') {
-            // IFC4: [Location, Identification, Name, Description, ReferencedDocument]
-            // IFC2X3: [Location, ItemReference, Name]
-            const info: DocumentInfo = {
-                location: typeof attrs[0] === 'string' ? attrs[0] : undefined,
-                identification: typeof attrs[1] === 'string' ? attrs[1] : undefined,
-                name: typeof attrs[2] === 'string' ? attrs[2] : undefined,
-                description: typeof attrs[3] === 'string' ? attrs[3] : undefined,
-            };
-
-            // Walk to IfcDocumentInformation if ReferencedDocument is set (IFC4 attr[4])
-            if (typeof attrs[4] === 'number') {
-                // @raw-entity-enumeration-ok follow this document's one ReferencedDocument source id
-                const docInfoRef = store.entityIndex.byId.get(attrs[4]);
-                if (docInfoRef) {
-                    const docInfoEntity = extractor.extractEntity(docInfoRef);
-                    if (docInfoEntity && docInfoEntity.type.toUpperCase() === 'IFCDOCUMENTINFORMATION') {
-                        const ia = docInfoEntity.attributes || [];
-                        // IfcDocumentInformation: [Identification, Name, Description, Location, Purpose, IntendedUse, Scope, Revision, ...]
-                        if (!info.identification && typeof ia[0] === 'string') info.identification = ia[0];
-                        if (!info.name && typeof ia[1] === 'string') info.name = ia[1];
-                        if (!info.description && typeof ia[2] === 'string') info.description = ia[2];
-                        if (!info.location && typeof ia[3] === 'string') info.location = ia[3];
-                        if (typeof ia[4] === 'string') info.purpose = ia[4];
-                        if (typeof ia[5] === 'string') info.intendedUse = ia[5];
-                        if (typeof ia[7] === 'string') info.revision = ia[7];
-                    }
-                }
-            }
-
-            if (info.name || info.location || info.identification) {
-                results.push(info);
-            }
-        } else if (typeUpper === 'IFCDOCUMENTINFORMATION') {
-            // Direct IfcDocumentInformation (less common)
-            const info: DocumentInfo = {
-                identification: typeof attrs[0] === 'string' ? attrs[0] : undefined,
-                name: typeof attrs[1] === 'string' ? attrs[1] : undefined,
-                description: typeof attrs[2] === 'string' ? attrs[2] : undefined,
-                location: typeof attrs[3] === 'string' ? attrs[3] : undefined,
-                purpose: typeof attrs[4] === 'string' ? attrs[4] : undefined,
-                intendedUse: typeof attrs[5] === 'string' ? attrs[5] : undefined,
-                revision: typeof attrs[7] === 'string' ? attrs[7] : undefined,
-            };
-
-            if (info.name || info.location || info.identification) {
-                results.push(info);
-            }
-        }
-    }
-
-    return results;
-}
-
 // ============================================================================
 // Relationship Extraction
 // ============================================================================

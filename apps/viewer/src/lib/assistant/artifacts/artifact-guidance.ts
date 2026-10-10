@@ -39,11 +39,13 @@ export const ARTIFACT_OUTPUT_GUIDANCE =
   + '(attribute names Name, GlobalId, Class, Type, Description, ObjectType, PredefinedType, Tag; spatial propertyName Storey, Building, Site, Project or Container). '
   + 'F = {"kind":"quantity","qsetName","quantityName"}, {"kind":"property","psetName","propertyName"}, {"kind":"attribute","attributeName"}, '
   + '{"kind":"material"}, {"kind":"type"}, {"kind":"classification"} or {"kind":"spatial","level":"Building"}. '
-  + 'Filters, lists and lenses run over every loaded model; "this model" is a model rule. They have no "scope": visible and selected '
-  + 'are not filter criteria (only a chart scope may be visible or basket), so say that instead of proposing a broader filter. '
+  + 'Filters, lists and lenses default to all loaded models; "this model" is a model rule. Their optional top-level "scope" is '
+  + '"all", "selected", or "visible": selected/visible capture the native population once when review starts and still intersect the normal criteria. '
+  + 'Never invent captured members or file identities; the viewer resolves them locally. Charts use their own all/visible/basket dashboard scope. '
   + 'When a request needs what these rules cannot express (a relation between two elements, a distance, a value computed from '
   + 'several fields), answer in prose: say what is unsupported and offer the closest supported proposal; never approximate it silently. '
   + 'Use only class, set, property and model names from the model schema below, exactly as spelled; '
+  + 'Explicit classification systems must use an exact system listed below. Omit system (or use empty text) only for a deliberate native any-system query; never invent a system for a missing-classification check. '
   + 'when the wanted one is missing or ambiguous, say so and name the closest listed ones instead of inventing. '
   + 'The user reviews the matched population, units and denominators before anything is saved.';
 
@@ -71,11 +73,13 @@ export function schemaDigest(index: ModelSchemaIndex): string {
   const fields = byCount([...index.fields.values()]);
   const properties = fields.filter((f) => f.kind === 'property').map((f) => `${f.set}.${f.name} ${f.count}`);
   const quantities = fields.filter((f) => f.kind === 'quantity').map((f) => `${f.set}.${f.name} ${f.count}`);
+  const systems = fields.filter((f) => f.kind === 'classification').map((f) => f.name);
   const head = `Model schema (exact names; numbers are elements carrying them${index.partial ? '; counts cover the first scanned elements of large models' : ''}).`;
-  // Five lines joined by four newlines; every section is bounded, the model list too.
-  const budget = DIGEST_LIMIT - head.length - 4;
+  // Six lines joined by five newlines; every section is bounded, the model list too.
+  const budget = DIGEST_LIMIT - head.length - 5;
   return [head, joinBounded('Models', models, Math.floor(budget * 0.15)), joinBounded('Classes', classes, Math.floor(budget * 0.2)),
-    joinBounded('Properties', properties, Math.floor(budget * 0.4)), joinBounded('Quantities', quantities, Math.floor(budget * 0.25))].join('\n');
+    joinBounded('Properties', properties, Math.floor(budget * 0.35)), joinBounded('Quantities', quantities, Math.floor(budget * 0.2)),
+    joinBounded('Classification systems', systems, Math.floor(budget * 0.1))].join('\n');
 }
 
 export async function artifactGuidance(state: Pick<ViewerState, 'models' | 'mutationViews' | 'mutationVersion'>, signal?: AbortSignal): Promise<string> {

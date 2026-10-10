@@ -17,7 +17,7 @@
  */
 
 import {
-  parseFilterRules,
+  isCapturedEntityScope, parseFilterRules, type CapturedEntityScope,
   type Combinator,
   type FilterRule,
 } from '@ifc-lite/rules';
@@ -50,6 +50,7 @@ const MAX_NAME_LEN = 80;
 const SCHEMA_VERSION = 2;
 
 export interface SavedFilterPreset {
+  capturedScope?: CapturedEntityScope;
   name: string;
   /** Every OR'd group (#4904). Length 1 for a union-free preset — every
    *  preset saved before this change, and the common case since. */
@@ -81,15 +82,18 @@ interface StorageLike {
   removeItem(key: string): void;
 }
 
-function safeStorage(): StorageLike | null {
+function safeStorage(forWrite = true): StorageLike | null {
   try {
     const ls = (globalThis as typeof globalThis & { localStorage?: StorageLike }).localStorage;
     if (!ls) return null;
-    const probe = `${STORAGE_KEY}:__probe__`;
-    ls.setItem(probe, '1');
-    ls.removeItem(probe);
+    if (forWrite) {
+      const probe = `${STORAGE_KEY}:__probe__`;
+      ls.setItem(probe, '1');
+      ls.removeItem(probe);
+    }
     return ls;
-  } catch {
+  } catch (error) {
+    console.warn('[ifc-lite] Browser storage is unavailable for saved filters.', error);
     return null;
   }
 }
@@ -108,6 +112,8 @@ let catalogUnwritable = false;
  *  RULE inside it is silently dropped by `parseFilterRules`, unchanged
  *  pre-#4904 behaviour that stays for the implicit-single-group case. */
 function readGroups(o: Record<string, unknown>): FilterGroup[] | null {
+  if (o.schemaVersion === 3) return isCapturedEntityScope(o.capturedScope) ? parseFilterGroups(o.groups) : null;
+  if (o.capturedScope !== undefined) return null;
   // `schemaVersion` ABSENT means v1 (the pre-#4904 shape). PRESENT but not a
   // number (`"2"`, `null`, …) is corruption, not "no version" — review (PR
   // #4987) caught that coercing a non-number to v1 silently read a v2
@@ -130,8 +136,29 @@ function readGroups(o: Record<string, unknown>): FilterGroup[] | null {
   return parseFilterGroups(o.groups);
 }
 
+/** One native codec for persistent catalog rows and library backups (#7218). */
+export function decodeSavedFilter(value: unknown): SavedFilterPreset | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const row = value as Record<string, unknown>;
+  const name = typeof row.name === 'string' ? row.name.trim() : '';
+  if (!name || name.length > MAX_NAME_LEN) return null;
+  const groups = readGroups(row);
+  return groups ? normalizeSavedFilter(row, name, groups) : null;
+}
+function normalizeSavedFilter(row: Record<string, unknown>, name: string, groups: FilterGroup[]): SavedFilterPreset {
+  return { name, groups, combinator: groups[0]?.combinator ?? 'AND', rules: groups[0]?.rules ?? [],
+    updatedAt: typeof row.updatedAt === 'number' ? row.updatedAt : Date.now(),
+    ...(isCapturedEntityScope(row.capturedScope) ? { capturedScope: structuredClone(row.capturedScope) } : {}) };
+}
+export function encodeSavedFilter(preset: SavedFilterPreset): unknown {
+  return { name: preset.name, schemaVersion: preset.capturedScope ? 3 : SCHEMA_VERSION, groups: preset.groups,
+    ...(preset.groups.length === 1 && !preset.capturedScope ? { combinator: preset.groups[0].combinator, rules: preset.groups[0].rules } : {}),
+    ...(preset.capturedScope ? { capturedScope: preset.capturedScope } : {}), updatedAt: preset.updatedAt };
+}
+
 function readRaw(validate?: (preset: unknown) => unknown): SavedFilterPreset[] {
-  const ls = safeStorage();
+  // A full quota can refuse writes while every persisted row remains readable.
+  const ls = safeStorage(false);
   if (!ls) return [];
   catalogUnwritable = false;
   const raw = ls.getItem(STORAGE_KEY);
@@ -180,14 +207,7 @@ function readRaw(validate?: (preset: unknown) => unknown): SavedFilterPreset[] {
         );
         continue;
       }
-      const updatedAt = typeof o.updatedAt === 'number' ? o.updatedAt : Date.now();
-      const preset: SavedFilterPreset = {
-        name,
-        groups,
-        combinator: groups[0]?.combinator ?? 'AND',
-        rules: groups[0]?.rules ?? [],
-        updatedAt,
-      };
+      const preset = normalizeSavedFilter(o, name, groups);
 
       // `validate` runs against the RAW JSON, unchanged from before #4904 —
       // NOT the normalized `preset` above. `ownAppearanceQuery` (the one
@@ -252,13 +272,7 @@ function writeRaw(list: SavedFilterPreset[]): boolean {
     // the first OR-branch, and a reader taking that as the whole filter would
     // silently narrow a `+` union rather than fail to read it — see
     // `SCHEMA_VERSION`'s doc comment.
-    const onDisk = list.map((p) => ({
-      name: p.name,
-      schemaVersion: SCHEMA_VERSION,
-      groups: p.groups,
-      ...(p.groups.length === 1 ? { combinator: p.groups[0].combinator, rules: p.groups[0].rules } : {}),
-      updatedAt: p.updatedAt,
-    }));
+    const onDisk = list.map(encodeSavedFilter);
     ls.setItem(STORAGE_KEY, JSON.stringify(onDisk));
     return true;
   } catch (err) {
@@ -282,7 +296,8 @@ export function loadSavedFilters(validate?: (preset: unknown) => unknown): Saved
  * resulting full catalog (sorted) so callers can refresh UI without a
  * second read.
  */
-export function saveFilter(name: string, groups: readonly FilterGroup[]): SavedFilterMutation {
+export function saveFilter(name: string, groups: readonly FilterGroup[], capturedScope?: CapturedEntityScope): SavedFilterMutation {
+  if (capturedScope !== undefined && !isCapturedEntityScope(capturedScope)) throw new Error('The captured filter population is malformed. Capture its elements again.');
   const trimmed = name.trim();
   // Rejected name: nothing was asked of storage, so nothing is unpersisted.
   if (!trimmed || trimmed.length > MAX_NAME_LEN) return { presets: loadSavedFilters(), persisted: true };
@@ -297,6 +312,7 @@ export function saveFilter(name: string, groups: readonly FilterGroup[]): SavedF
   const existing = readRaw();
   const idx = existing.findIndex((p) => p.name.toLowerCase() === trimmed.toLowerCase());
   const preset: SavedFilterPreset = {
+    ...(capturedScope ? { capturedScope: structuredClone(capturedScope) } : {}),
     name: trimmed,
     groups: savedGroups,
     combinator: savedGroups[0]?.combinator ?? 'AND',

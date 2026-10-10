@@ -11,6 +11,7 @@
  */
 
 import type { CellValue, ColumnDefinition } from '@ifc-lite/lists';
+import type { CapturedEntityScope } from '@ifc-lite/rules';
 import type { ViewerState } from '@/store';
 import { prepareListProviders } from '@/lib/lists/prepare-providers';
 import { runListFederated } from '@/lib/lists/run-list';
@@ -29,8 +30,8 @@ function cellText(value: CellValue, unit: string | null): string {
   return String(value);
 }
 
-export async function previewList(proposal: ListProposal, state: ViewerState, signal?: AbortSignal): Promise<ArtifactPreview> {
-  const definition = toListDefinition(proposal.list, crypto.randomUUID(), Date.now());
+export async function previewList(proposal: ListProposal, state: ViewerState, signal?: AbortSignal, capturedScope?: CapturedEntityScope): Promise<ArtifactPreview> {
+  const definition = { ...toListDefinition(proposal.list, crypto.randomUUID(), Date.now()), ...(capturedScope ? { capturedScope } : {}) };
   const { pairs, modelUnits } = prepareListProviders(state, resolveRenderFrame(state.models, state.geometryResult));
   const result = await runListFederated(definition, pairs, state, { evaluatorModels: evaluatorModelsFromState(state), signal });
   const units = resolveListColumnUnits(result.columns, modelUnits, state.unitDisplayOverrides);

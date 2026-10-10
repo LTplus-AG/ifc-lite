@@ -17,7 +17,9 @@ const baseInfo = (): CoordinateInfo => ({
 function encode(info: CoordinateInfo): ArrayBuffer {
   const writer = new BufferWriter(128);
   writeCoordinateInfo(writer, info);
-  return writer.build();
+  // These historical v20 inputs omit both v24 scalars: remove their two
+  // absence flags to retain the original wire layout and corruption offsets.
+  return writer.build().slice(0, -2);
 }
 
 describe('v20 exact WASM RTC frame metadata (#4799)', () => {

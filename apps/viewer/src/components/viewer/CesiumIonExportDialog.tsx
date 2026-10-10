@@ -17,7 +17,7 @@ import { modelExportFilename } from '@/lib/export/download';
 import { IonUploadError, ionAssetUrl, uploadToCesiumIon, type IonUploadPhase } from '@/lib/geo/cesium-ion-upload';
 import { listExportModels, resolveExportModel } from './export-model-selection';
 import { preferredExportModelId } from './export-model-default';
-import { ExportDialogShell } from './ExportDialogShell';
+import { ExportDialogShell, type ExportDialogShellActivity, type ExportDialogShellResult } from './ExportDialogShell';
 
 export interface CesiumIonExportDialogProps {
   trigger?: React.ReactNode;
@@ -53,9 +53,10 @@ export function CesiumIonExportDialog({ trigger, upload = uploadToCesiumIon }: C
   }, []);
   const selected = resolveExportModel(models, selectedId, legacyStore, legacyGeometry);
 
-  async function onUpload() {
+  async function onUpload(activity: ExportDialogShellActivity): Promise<ExportDialogShellResult> {
     const abort = new AbortController();
     controller.current = abort;
+    activity.registerCancellation(abort);
     setAssetId(undefined);
     setPhase('serialize');
     let exportedAssetName = '';
@@ -89,7 +90,8 @@ export function CesiumIonExportDialog({ trigger, upload = uploadToCesiumIon }: C
       });
       abort.signal.throwIfAborted();
       if (result.stats.warnings.length) {
-        return { success: false, message: t('ionUpload.exportWarnings', { count: result.stats.warnings.length }) };
+        return { success: false, message: t('ionUpload.exportWarnings', { count: result.stats.warnings.length }),
+          warnings: result.stats.warnings };
       }
       if (result.resources.exportResources().resources.size) {
         return { success: false, message: t('ionUpload.texturesUnsupported') };
@@ -100,20 +102,21 @@ export function CesiumIonExportDialog({ trigger, upload = uploadToCesiumIon }: C
         bytes: typeof result.content === 'string' ? new TextEncoder().encode(result.content) : result.content,
         signal: abort.signal, onPhase: next => { if (mounted.current) setPhase(next); },
       });
+      abort.signal.throwIfAborted();
       if (mounted.current) { setAssetId(response.assetId); setAssetName(response.name ?? exportedAssetName); }
       return { success: true, message: t('ionUpload.accepted') };
     } catch (error) {
       if (mounted.current && error instanceof IonUploadError) {
         setAssetId(error.assetId); setAssetName(exportedAssetName);
       }
-      if (abort.signal.aborted) return { success: false, message: t('ionUpload.cancelled') };
+      if (abort.signal.aborted) return { success: false, cancelled: true, message: t('ionUpload.cancelled') };
       // Serialization errors can contain model content; show a safe explanation.
       return { success: false, message: error instanceof IonUploadError
         ? t('ionUpload.failed', { phase: t(`ionUpload.phase.${error.phase}`), status: error.status ?? '—',
           help: t(`ionUpload.failure.${error.reason}`) })
         : t('ionUpload.serializationFailed') };
     } finally {
-      controller.current = null;
+      if (controller.current === abort) controller.current = null;
       if (mounted.current) setPhase(undefined);
     }
   }

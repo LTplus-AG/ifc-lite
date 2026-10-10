@@ -1153,16 +1153,18 @@ export class MutablePropertyView extends MutableOverlayState {
     // STEP exporter upper-cases at write time — but `NewEntity.type` no
     // longer mangles `IfcColumn` into `IFCCOLUMN` for downstream consumers.
     const expressId = ++this.nextAllocatedId;
+    const creationId = generateMutationId();
     const entity: NewEntity = {
       expressId,
       type: type.trim(),
       attributes: attributes.slice(),
+      creationId,
     };
     this.newEntities.set(expressId, entity);
     this.markOverlayChanged();
 
     this.mutationHistory.push({
-      id: generateMutationId(),
+      id: creationId,
       type: 'CREATE_ENTITY',
       timestamp: Date.now(),
       modelId: this.modelId,

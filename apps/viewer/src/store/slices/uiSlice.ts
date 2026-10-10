@@ -7,6 +7,7 @@
  */
 
 import type { StateCreator } from 'zustand';
+import type { StandaloneArtifactLibraries } from '@/lib/storage/artifact-backup.js';
 import {
   RIBBON_COLLAPSED_STORAGE_KEY,
   RIBBON_CONTEXTUAL_TABS_STORAGE_KEY,
@@ -47,6 +48,11 @@ export interface PropertyFocusTarget {
   psetName: string;
   propName: string;
 }
+
+/** Transient saved identities, resolved by the native editor at consumption (#7167). */
+export type ArtifactEditorTarget =
+  | { kind: 'lens'; id: string }
+  | { kind: 'chart'; id: string; dashboardId: string };
 
 /**
  * Tools that require edit mode to function. Entering one flips
@@ -106,6 +112,10 @@ export interface UISlice extends GeometryLoadSettingsState, GeometryLoadSettings
   /** One-shot "scroll to + highlight + edit this property" request, armed by
    *  the bSDD add flow and consumed by the Properties panel. Null when idle. */
   pendingPropertyFocus: PropertyFocusTarget | null;
+  pendingArtifactEditor: ArtifactEditorTarget | null;
+  /** Unfinished native backup imports belong to the tab, across panel remounts. */
+  pendingStandaloneArtifactImport: StandaloneArtifactLibraries | null;
+  contentStorageActionBusy: boolean;
   theme: ThemeMode;
   isMobile: boolean;
   hoverTooltipsEnabled: boolean;
@@ -147,6 +157,7 @@ export interface UISlice extends GeometryLoadSettingsState, GeometryLoadSettings
   setHierarchyMode: (mode: HierarchyMode) => void;
   /** Arm (or clear, with null) the one-shot property-focus request. */
   setPendingPropertyFocus: (focus: PropertyFocusTarget | null) => void;
+  setPendingArtifactEditor: (target: ArtifactEditorTarget | null) => void;
   setTheme: (theme: ThemeMode) => void;
   toggleTheme: () => void;
   /** Shift+click secret: toggle colorful mode on/off */
@@ -194,6 +205,9 @@ export const createUISlice: StateCreator<UISlice & UICrossSliceState, [], [], UI
   propertiesActiveTab: 'properties',
   hierarchyMode: getInitialHierarchyMode(),
   pendingPropertyFocus: null,
+  pendingArtifactEditor: null,
+  pendingStandaloneArtifactImport: null,
+  contentStorageActionBusy: false,
   theme: UI_DEFAULTS.THEME,
   isMobile: false,
   hoverTooltipsEnabled: UI_DEFAULTS.HOVER_TOOLTIPS_ENABLED,
@@ -285,6 +299,7 @@ export const createUISlice: StateCreator<UISlice & UICrossSliceState, [], [], UI
   },
 
   setPendingPropertyFocus: (pendingPropertyFocus) => set({ pendingPropertyFocus }),
+  setPendingArtifactEditor: (pendingArtifactEditor) => set({ pendingArtifactEditor }),
 
   setTheme: (theme) => {
     applyThemeClasses(theme);

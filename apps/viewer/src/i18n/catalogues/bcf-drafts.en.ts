@@ -81,6 +81,7 @@ export const bcfDraftsEn = {
   'bcfDrafts.archive.imported': { one: 'Imported {count} draft batch', other: 'Imported {count} draft batches' },
   'bcfDrafts.archive.unmapped': { one: '{count} topic had no readable clash mapping and was imported without findings.', other: '{count} topics had no readable clash mapping and were imported without findings.' },
   'bcfDrafts.archive.failed': 'The archive could not be imported.',
+  'bcfDrafts.archive.exportFailed': 'The archive could not be exported.',
 
   'bcfDrafts.publish.region': 'Publish to the BCF server',
   'bcfDrafts.publish.notConnected': 'Connect to a BCF server (cloud button) to publish this batch.',

@@ -35,7 +35,7 @@ const QUOTA_ERROR_NAMES = new Set(['QuotaExceededError', 'NS_ERROR_DOM_QUOTA_REA
  * `subject` names what was being saved, in plural-verb form — it is spliced
  * into the user-facing message ("… — lens changes were not saved.").
  */
-export function saveJson(key: string, value: unknown, subject: string): SaveResult {
+export function saveJson(key: string, value: unknown, subject: string, beforeWrite?: () => SaveResult): SaveResult {
   let payload: string | undefined;
   try {
     payload = JSON.stringify(value);
@@ -51,6 +51,8 @@ export function saveJson(key: string, value: unknown, subject: string): SaveResu
   if (payload === undefined) {
     return { ok: false, reason: 'serialize', message: `Could not save ${subject}.` };
   }
+  const allowed = beforeWrite?.();
+  if (allowed && !allowed.ok) return allowed;
   try {
     localStorage.setItem(key, payload);
     return { ok: true };

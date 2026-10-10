@@ -15,8 +15,11 @@
  */
 
 import { reserveRequest, settleRequest, type RootBudget } from './budget.js';
-import type { UsageReceipt } from './receipt.js';
+import type { RequestProvenance, UsageReceipt } from './receipt.js';
+import { logicalInputDigest, textDigest } from './request-digest.js';
+import { prepareInput } from './request-input.js';
 import type { TokenUsage } from './usage.js';
+import type { JsonResponseSchema, OutputFormat } from './response-schema.js';
 
 /**
  * What a transport is asked to do. Every piece of output goes through
@@ -28,6 +31,9 @@ export interface TransportCall<Message> {
   readonly model: string;
   readonly messages: readonly Message[];
   readonly system?: string;
+  readonly outputSchema?: JsonResponseSchema;
+  /** Transport reports the format it actually places on the outgoing request. */
+  onOutputFormat?(format: OutputFormat): void;
   /** Already clamped to the route ceiling and the root budget's remainder. */
   readonly maxOutputTokens: number;
   readonly signal: AbortSignal;
@@ -51,6 +57,14 @@ export interface ModelRequest<Message, Route extends string = string> {
   readonly transport: AiTransport<Message>;
   readonly messages: readonly Message[];
   readonly system?: string;
+  readonly outputSchema?: JsonResponseSchema;
+  /** Explicit native JSON producer: serialize {messages, system?, outputSchema?} once.
+   * Preparation runs under the parent deadline. The core dispatches the parsed snapshot
+   * and digests that same data. Without this boundary, opaque messages remain untouched
+   * and their logical digest stays unknown. Serialization must be owned by the producer. */
+  readonly prepareInput?: () => string;
+  /** A bounded producer-owned prompt version. Generic hosts may leave it unknown. */
+  readonly promptVersion?: string;
   /** Requested output ceiling; clamped to `routeCeiling` and the root budget. */
   readonly maxOutputTokens: number;
   /** The hard output ceiling the route enforces. */
@@ -72,7 +86,9 @@ export type RequestOutcome<Route extends string = string> =
   | { kind: 'timeout'; receipt: UsageReceipt<Route> }
   | { kind: 'error'; code: 'empty-output' | 'request-failed'; message: string; receipt: UsageReceipt<Route> }
   /** Nothing was sent: the task's root budget has no request or output left. */
-  | { kind: 'refused'; reason: 'budget-exhausted' };
+  | { kind: 'refused'; reason: 'budget-exhausted' }
+  /** The host knows the response contract exceeds its provider's limits; nothing was sent. */
+  | { kind: 'refused'; reason: 'unsupported-schema'; message: string };
 
 /** A request the core has just handed to its transport. */
 export interface RequestStart<Route extends string = string> {
@@ -99,6 +115,11 @@ export interface RequestHooks<Route extends string> {
 }
 
 const TRUNCATION_REASONS = new Set(['length', 'max_tokens']);
+const FINISH_REASONS = new Set<RequestProvenance['finishReason']>(['stop', 'length', 'max_tokens', 'end_turn', 'stop_sequence', 'tool_calls', 'function_call', 'content_filter', 'refusal', 'pause_turn']);
+function safeFinishReason(reason: string | null): RequestProvenance['finishReason'] {
+  for (const known of FINISH_REASONS) if (reason === known) return known;
+  return 'unknown';
+}
 
 let receiptSequence = 0;
 
@@ -114,11 +135,16 @@ export async function runModelRequest<Message, Route extends string>(
   request: ModelRequest<Message, Route>,
   hooks: RequestHooks<Route> = {},
 ): Promise<RequestOutcome<Route>> {
-  const { budget, signal } = request;
+  const { budget, signal, model, route } = request;
   let startedAt = Date.now();
   let id = `req-${startedAt}-${++receiptSequence}`;
+  let outputFormat: OutputFormat | undefined;
+  let dispatchedOutputSchema = false;
+  let provenance: RequestProvenance | undefined;
   const receiptFor = (outcome: UsageReceipt['outcome'], usage: TokenUsage | null): UsageReceipt<Route> => ({
-    id, model: request.model, route: request.route, startedAt, finishedAt: Date.now(), outcome,
+    id, model, route, startedAt, finishedAt: Date.now(), outcome,
+    ...(dispatchedOutputSchema && outputFormat ? { outputFormat } : {}),
+    ...(provenance ? { provenance } : {}),
     ...(usage ? { usageReported: true as const, ...usage } : { usageReported: false as const }),
   });
   // A caller that cancels before dispatch gets a typed outcome without a request, and no receipt is logged.
@@ -126,29 +152,54 @@ export async function runModelRequest<Message, Route extends string>(
   const grant = reserveRequest(budget, Math.min(request.maxOutputTokens, request.routeCeiling));
   if (!grant) return { kind: 'refused', reason: 'budget-exhausted' };
 
+  // Match setTimeout's effective Node/browser range, including invalid/overflow delays.
+  const timeoutMs = Number.isFinite(request.timeoutMs) && request.timeoutMs >= 1 && request.timeoutMs <= 2_147_483_647 ? Math.trunc(request.timeoutMs) : 1;
+
   startedAt = Date.now();
   id = `req-${startedAt}-${receiptSequence}`;
   const controller = new AbortController();
   let timedOut = false;
   const abortFromCaller = () => controller.abort(signal?.reason);
   signal?.addEventListener('abort', abortFromCaller, { once: true });
-  const deadline = setTimeout(() => { timedOut = true; controller.abort(new Error('request-timeout')); }, request.timeoutMs);
+  const deadlineAt = performance.now() + timeoutMs;
+  const deadline = setTimeout(() => { timedOut = true; controller.abort(new Error('request-timeout')); }, timeoutMs);
 
   const seen: Seen = { streamed: false, finishReason: null, text: null, failure: null, usage: null };
   try {
-    hooks.onStart?.({ id, model: request.model, route: request.route, startedAt, cancel: () => controller.abort() });
-    if (!controller.signal.aborted) await request.transport({
-      model: request.model,
-      messages: request.messages,
-      system: request.system,
-      maxOutputTokens: grant.maxOutputTokens,
-      signal: controller.signal,
-      onChunk: text => { seen.streamed = true; request.onChunk?.(text); },
-      onFinishReason: reason => { seen.finishReason = reason; },
-      onComplete: text => { seen.text = text; },
-      onError: error => { seen.failure ??= error; },
-      onTokenUsage: reported => { seen.usage = reported; },
-    });
+    hooks.onStart?.({ id, model, route, startedAt, cancel: () => controller.abort() });
+    if (!controller.signal.aborted) {
+      const serializeInput = request.prepareInput;
+      const input = serializeInput ? prepareInput<Message>(serializeInput())
+        : { messages: request.messages, system: request.system, outputSchema: request.outputSchema };
+      const inputDigest = serializeInput
+        ? logicalInputDigest({ version: 'ifc-lite.ai.logical-input.v1', ...input })
+        : { unavailable: 'opaque-input' as const };
+      if (performance.now() >= deadlineAt) { timedOut = true; controller.abort(new Error('request-timeout')); }
+      if (!controller.signal.aborted) {
+        provenance = {
+          contractVersion: 'ifc-lite.ai.request.v1', grantedOutputTokens: grant.maxOutputTokens, timeoutMs, finishReason: 'unknown',
+          ...(typeof request.promptVersion === 'string' && /^[A-Za-z0-9][A-Za-z0-9._-]{0,199}$/.test(request.promptVersion) ? { promptVersion: request.promptVersion } : {}),
+          ...('value' in inputDigest ? { inputDigest: { algorithm: 'sha256', referent: 'logical-input.v1', value: inputDigest.value } } : { inputDigestUnavailable: inputDigest.unavailable }),
+        };
+        // Receipt policy follows the schema actually dispatched, never a
+        // later caller mutation or a schema omitted by explicit preparation.
+        dispatchedOutputSchema = Boolean(input.outputSchema);
+        await request.transport({
+          model,
+          messages: input.messages,
+          system: input.system,
+          outputSchema: input.outputSchema,
+          onOutputFormat: format => { outputFormat = format; },
+          maxOutputTokens: grant.maxOutputTokens,
+          signal: controller.signal,
+          onChunk: text => { seen.streamed = true; request.onChunk?.(text); },
+          onFinishReason: reason => { seen.finishReason = reason; },
+          onComplete: text => { seen.text = text; },
+          onError: error => { seen.failure ??= error; },
+          onTokenUsage: reported => { seen.usage = reported; },
+        });
+      }
+    }
   } catch (error) {
     seen.failure ??= error instanceof Error ? error : new Error(String(error));
   } finally {
@@ -157,8 +208,12 @@ export async function runModelRequest<Message, Route extends string>(
   }
 
   const { usage, failure, text, finishReason } = seen;
+  if (provenance) provenance.finishReason = safeFinishReason(finishReason);
   settleRequest(budget, grant, usage ? usage.outputTokens : seen.streamed ? null : 0);
   const finish = (outcome: UsageReceipt['outcome']): UsageReceipt<Route> => {
+    if (provenance && text !== null && (outcome === 'completed' || outcome === 'truncated')) {
+      provenance.outputTextDigest = { algorithm: 'sha256', referent: 'output-text.utf8.v1', value: textDigest(text) };
+    }
     const receipt = receiptFor(outcome, usage);
     hooks.onReceipt?.(receipt);
     return receipt;

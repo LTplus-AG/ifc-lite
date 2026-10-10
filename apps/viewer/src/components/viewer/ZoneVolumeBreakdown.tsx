@@ -30,6 +30,8 @@ import {
   volumeBasisRatioNote,
   VOLUME_BASIS_LEGEND,
   declaredVolumeBases,
+  ZONE_QUANTITY_SET_NAME_PREFIX,
+  type VolumeBasis,
   type BasisBreakdown,
   type QuantitySetLike,
 } from '@/lib/zones';
@@ -55,6 +57,8 @@ interface Props {
   quantitySets: readonly QuantitySetLike[];
   projectUnits: ProjectUnits;
   unitDisplayOverrides: Record<string, string>;
+  inheritedQuantityCoverage?: { status: 'available' | 'unavailable'; reason: string | null };
+  quantityUnitCoverage?: { status: 'available' | 'unavailable'; reason: string | null };
 }
 
 /** Render a cubic-metre value in the file's declared volume unit (or the user's
@@ -112,7 +116,7 @@ function BasisRows({ breakdown, format }: { breakdown: BasisBreakdown; format: (
   );
 }
 
-export function ZoneVolumeBreakdown({ zoneSet, globalId, quantitySets, projectUnits, unitDisplayOverrides }: Props) {
+export function ZoneVolumeBreakdown({ zoneSet, globalId, quantitySets, projectUnits, unitDisplayOverrides, inheritedQuantityCoverage, quantityUnitCoverage }: Props) {
   const { t } = useTranslation();
   const cache = useViewerStore((s) => s.zoneApportionment);
   const { computeElement } = useZoneApportionment();
@@ -130,16 +134,28 @@ export function ZoneVolumeBreakdown({ zoneSet, globalId, quantitySets, projectUn
   const apportionment = entry?.byElement.get(globalId) ?? null;
   const cachedRefusal = entry?.refused.get(globalId) ?? null;
 
-  const breakdowns = useMemo(() => {
-    if (!apportionment) return null;
-    return allBasisBreakdowns(apportionment, declaredVolumeBases(quantitySets, volume.siScale));
-  }, [apportionment, quantitySets, volume.siScale]);
+  const { breakdowns, unresolvedMemberUnit } = useMemo(() => {
+    const unresolvedBasisNames = new Set<Exclude<VolumeBasis, 'mesh'>>();
+    // The same canonical traversal chooses physical rows and unavailable-unit
+    // notices. Previous zone output never claims a native declared basis.
+    const declared = declaredVolumeBases(quantitySets.filter(set => !set.name.startsWith(ZONE_QUANTITY_SET_NAME_PREFIX)),
+      quantityUnitCoverage?.status === 'unavailable' ? null : volume.siScale, unresolvedBasisNames);
+    return { breakdowns: apportionment ? allBasisBreakdowns(apportionment, declared) : null,
+      unresolvedMemberUnit: unresolvedBasisNames.size > 0 };
+  }, [apportionment, quantitySets, volume.siScale, quantityUnitCoverage?.status]);
 
   const reason = cachedRefusal ?? refusal;
+  const inheritedUnavailable = inheritedQuantityCoverage?.status === 'unavailable'
+    ? <output className="block px-3 py-2 text-xs text-muted-foreground">{t('zonesPanel.volumeBreakdown.inheritedUnavailable', { reason: inheritedQuantityCoverage.reason ?? 'unverified current data' })}</output> : null;
+
+  const unitsUnavailable = quantityUnitCoverage?.status === 'unavailable' || unresolvedMemberUnit
+    ? <output className="block px-3 py-2 text-xs text-muted-foreground">{t('zonesPanel.volumeBreakdown.quantityUnitsUnavailable', { reason: unresolvedMemberUnit ? 'Explicit native quantity Unit cannot be resolved' : quantityUnitCoverage?.reason ?? 'unverified current data' })}</output> : null;
 
   if (!apportionment) {
     return (
       <div className="px-3 py-2 space-y-1">
+        {inheritedUnavailable}
+        {unitsUnavailable}
         {reason === 'no-geometry' && (
           <p className="text-xs text-muted-foreground flex items-center gap-1.5">
             <TriangleAlert className="h-3.5 w-3.5" /> {t('zonesPanel.volumeBreakdown.noGeometryMessage')}
@@ -185,6 +201,8 @@ export function ZoneVolumeBreakdown({ zoneSet, globalId, quantitySets, projectUn
 
   return (
     <div className="border-t">
+      {inheritedUnavailable}
+      {unitsUnavailable}
       {apportionment.overlapping && (
         <p className="px-3 pt-2 text-2xs text-amber-600 flex items-center gap-1.5">
           <TriangleAlert className="h-3.5 w-3.5" />

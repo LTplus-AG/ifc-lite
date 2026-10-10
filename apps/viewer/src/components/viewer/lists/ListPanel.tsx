@@ -23,7 +23,8 @@ import {
 } from '@/lib/lists';
 import type { ListDefinition, ListGrouping } from '@/lib/lists';
 import { runListFederated } from '@/lib/lists/run-list';
-import { carryListRun, recordListRun } from '@/lib/lists/run-provenance';
+import { captureListRunModels, carryListRun, listResultGrouping, listRunDefinition, recordListRun } from '@/lib/lists/run-provenance';
+import { beginActivity, finishActivity } from '@/lib/activity/activity-journal';
 import { captureAnalysisStamp } from '@/hooks/useAnalysisStaleness';
 import { AssistantAction } from '@/components/viewer/assistant/AssistantAction';
 import { evaluatorModelsFromState } from '@/lib/model-tags/evaluator-models';
@@ -79,6 +80,10 @@ export function ListPanel() {
     listRunRef.current?.abort();
     const controller = new AbortController();
     listRunRef.current = controller;
+    const job = beginActivity({ kind: 'check', title: 'activityTray.job.list', panel: 'lists', subject: definition.name,
+      cancel: () => controller.abort() });
+    let outcome: 'completed' | 'failed' | 'cancelled' = 'cancelled';
+    let detail: string | undefined;
 
     setListExecuting(true);
     setListError(null);
@@ -92,27 +97,32 @@ export function ListPanel() {
         const state = useViewerStore.getState();
         // Stamped at run start, so an edit landing mid-run leaves the result stale (#6833).
         const stamp = captureAnalysisStamp();
+        const runModels = captureListRunModels(definition, modelProviderPairs, state, t('lists.resultChrome.loadedModel'));
         const result = await runListFederated(definition, modelProviderPairs, state, {
           evaluatorModels: evaluatorModelsFromState(state), signal: controller.signal,
         });
         if (controller.signal.aborted) return;
-        setListResult(recordListRun(result, definition, stamp));
+        setListResult(recordListRun(result, definition, stamp, runModels));
         setView('results');
+        outcome = 'completed';
       } catch (err) {
         if (controller.signal.aborted) return;
         // Must be user-visible, not just logged (#4317) — e.g. a name-pattern
         // column compileNameMatcher's ReDoS guard rejects. `view` stays put
         // (never reaches 'results'), so the error box renders over it.
         console.error('[Lists] Execution failed:', err);
-        setListError(err instanceof Error ? err.message : String(err));
+        detail = err instanceof Error ? err.message : String(err);
+        outcome = 'failed';
+        setListError(detail);
       } finally {
+        finishActivity(job, controller.signal.aborted ? 'cancelled' : outcome, detail ? { detail } : {});
         if (listRunRef.current === controller) {
           listRunRef.current = null;
           setListExecuting(false);
         }
       }
     })(); });
-  }, [hasData, modelProviderPairs, setActiveListId, setListResult, setListExecuting, setListError]);
+  }, [hasData, modelProviderPairs, setActiveListId, setListResult, setListExecuting, setListError, t]);
 
   const handleCreateNew = useCallback(() => {
     setEditingList(null);
@@ -277,8 +287,8 @@ export function ListPanel() {
       {view === 'results' && listResult && (
         <ListResultsTable
           result={listResult}
-          listName={editingList?.name}
-          grouping={editingList?.grouping}
+          listName={listRunDefinition(listResult)?.name}
+          grouping={listResultGrouping(listResult)}
           onGroupingChange={handleGroupingFromTable}
           modelUnits={modelUnits}
         />

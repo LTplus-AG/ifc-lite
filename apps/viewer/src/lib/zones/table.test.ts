@@ -222,3 +222,16 @@ describe('toColumns', () => {
     assert.deepEqual(columns.VolumeM3, [2, 3]);
   });
 });
+
+for (const refusal of ['declared-unit-unavailable', 'declared-quantity-unavailable'] as const) {
+  it(`#7376 ${refusal} survives exported table/CSV without claiming native quantity absence`, () => {
+    const rows = zoneTableRows(ELEMENT, { ...STRADDLER, shares: [], refusal }, 'Takt areas', 'net');
+    assert.equal(rows.length, 2);
+    for (const row of rows) {
+      assert.equal(row.VolumeM3, null); assert.equal(row.ElementVolumeM3, null);
+      assert.match(row.Unavailable, /unavailable/); assert.doesNotMatch(row.Unavailable, /declares no/);
+    }
+    const csv = toCsv(rows);
+    assert.match(csv, /unavailable/); assert.doesNotMatch(csv, /declares no/);
+  });
+}

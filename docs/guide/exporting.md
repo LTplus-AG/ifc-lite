@@ -42,14 +42,20 @@ IFC4 and IFC4X3 uploads use the canonical compatibility exporter after applying
 edits. It normalizes map units to metres. When the physical scale is one, supported
 map rotation and translation move into the original root `IfcLocalPlacement`
 frames; child placements, representations, openings and fills retain their
-original relationships. Other supported uniform scales use mapped Body
+original relationships. Cesium ion evaluates `IfcLinearPlacement` without a
+transformed `PlacementRelTo`, so each linear placement is written as the
+equivalent `IfcLocalPlacement` (same parent, its resolved curve frame); a linear
+placement without `PlacementRelTo` is refused. Other supported uniform scales use mapped Body
 representations under stricter ownership checks. These transformations preserve
 physical map coordinates, project units, properties and authored shape data.
-Ordinary IFC downloads retain their original coordinate representation. IFC2X3
+Ordinary IFC downloads retain their original coordinate representation.
+Cesium ion currently tiles `IfcSectionedSolidHorizontal` sweeps (for example
+girders and pavement along an alignment) without their full alignment
+geometry, with or without this compatibility export. IFC2X3
 uploads keep their source schema and edits without an implicit upgrade.
 
 Unsupported coordinate consumers, ambiguous units or export warnings stop the
-upload before network transfer. For a model without georeferencing, set its
+upload before network transfer, and the dialog lists each reason. For a model without georeferencing, set its
 location in Cesium ion. No undocumented heading or placement override is sent.
 A successful upload starts tiling; follow the asset link to check its progress.
 
@@ -63,6 +69,13 @@ retain their images.
 The integration follows the [Cesium ion upload API](https://cesium.com/learn/ion/ion-upload-rest/)
 and adapts the MPL-2.0 upload feature from
 [GeoBIM's published IFClite fork](https://github.com/christof2304/ifc-lite/releases/tag/geobim-2026-09-24).
+
+Cesium uploads can be cancelled from their dialog or the status-bar Activity
+tray. The tray records **Cancelled** after native work drains; any already
+created remote asset remains available for inspection. A later retry has its
+own cancellation authority. Deviation CSV exports also appear in Activity and
+can be cancelled before the file is downloaded. Writers without a native abort
+contract offer no Activity Cancel action.
 
 ### Placement acceptance evidence
 
@@ -428,7 +441,20 @@ asked for a subset the entire model.
 With `includeQuantities`, each entity additionally carries `ifc:hasQuantitySets`
 (`ifc:IfcElementQuantity` nodes with typed `ifc:IfcQuantity...` entries).
 
+Document PDF exports appear in the status-bar Activity tray while the native
+writer runs. Their rows record completion, missing-content warnings or failure.
+The PDF writer has no native abort contract, so its row offers no Cancel action.
+
 ## CSV Export
+
+The web viewer’s entities, properties, quantities and spatial hierarchy CSV commands
+share the same handler across the ribbon, command palette and mobile toolbar.
+They export the active model with pending native edits applied. In a federation,
+the Activity subject and existing export toast state that other loaded models
+are excluded. Each invocation has its own Activity row; Completed follows browser
+publication and Failed records writer or publication errors. Exports can finish
+after their initiating controls close. The Rust CSV writer has no abort contract,
+so these rows offer no Cancel action. An unavailable source creates no job.
 
 Export tabular data for spreadsheet applications:
 

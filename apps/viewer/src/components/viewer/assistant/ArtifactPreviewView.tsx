@@ -4,6 +4,9 @@
 
 /** The native engine's answer to an artifact proposal: population per model, denominators, legend or buckets, sample rows. */
 
+import { CapturedScopeSummary } from '../result/CapturedScopeControl';
+import { artifactCapturedScope } from '@/lib/assistant/artifacts/preview-shared';
+
 import type { ChartSource } from '@ifc-lite/charts';
 import { formatLocaleNumber, useTranslation, type TranslationKey } from '@/i18n';
 import type { ArtifactPreview } from '@/lib/assistant/artifacts/artifact-preview';
@@ -16,7 +19,9 @@ export function ArtifactPreviewView({ preview }: { preview: ArtifactPreview }) {
   const number = (value: number) => formatLocaleNumber(locale, Number(value.toPrecision(6)), { maximumFractionDigits: 3 });
   const analysis = preview.rowSource !== undefined && preview.rowSource !== 'elements';
   const valued = preview.buckets.some((bucket) => bucket.value !== undefined && bucket.value !== bucket.count);
+  const capturedScope = artifactCapturedScope(preview.artifact);
   return <div className="space-y-2">
+    {capturedScope && <CapturedScopeSummary scope={capturedScope} />}
     <p className="font-medium">{t(analysis ? 'assistantArtifacts.analysisRows' : 'assistantArtifacts.matched', { count: preview.matched })}</p>
     {analysis && <p className="text-muted-foreground">{t('assistantArtifacts.analysisSource', { source: t(SOURCE_TITLES[preview.rowSource ?? 'elements']) })}</p>}
     {analysis && preview.unlinkedRows !== undefined && preview.unlinkedRows > 0 && <p className="text-muted-foreground">{t('assistantArtifacts.analysisUnlinked', { count: preview.unlinkedRows })}</p>}

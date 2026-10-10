@@ -7,9 +7,10 @@ import { beforeAll, expect, it } from 'vitest';
 import { IfcParser } from '@ifc-lite/parser';
 import { MutablePropertyView, StoreEditor, recordCompoundMutation, undoRecordedMutationOperations } from '@ifc-lite/mutations';
 import { roomChainInStore } from '../../create/src/in-store/room-store.js';
+import { generateIfcGuid } from '@ifc-lite/encoding';
 import { StepExporter } from '@ifc-lite/export';
 import { RoomLayoutCache, applyLayoutOp, readFaces, occupancyTest, existingSpaceFootprintEntriesByStorey, type RoomWallRect, type RoomPlateFactory } from '@ifc-lite/create';
-import { createRoomCommandBackend, type RoomGeometryProvider } from './store-room-command.js';
+import { createRoomCommandBackend, RoomCommandConflictError, type RoomGeometryProvider } from './store-room-command.js';
 
 const wasm = new URL('../../wasm/pkg/ifc-lite_bg.wasm', import.meta.url), available = existsSync(wasm);
 const sample = new URL('../../../apps/viewer/public/samples/hello-wall.ifc', import.meta.url);
@@ -26,8 +27,9 @@ const walls: RoomWallRect[] = [
   [[20,19.9],[24,19.9],[24,20.1],[20,20.1]], [[23.9,20],[24.1,20],[24.1,23],[23.9,23]],
   [[20,22.9],[24,22.9],[24,23.1],[20,23.1]], [[19.9,20],[20.1,20],[20.1,23],[19.9,23]],
 ].map(corners => ({ corners: corners as [number, number][], centreline: [corners[0] as [number, number], corners[1] as [number, number]], thickness: .2 }));
-async function setup(provider?: RoomGeometryProvider) {
-  const bytes = readFileSync(sample);
+async function setup(provider?: RoomGeometryProvider, millimetres = false) {
+  const original = readFileSync(sample);
+  const bytes = millimetres ? Buffer.from(original.toString().replace(/\.LENGTHUNIT\.,\$,\.METRE\./g,'.LENGTHUNIT.,.MILLI.,.METRE.')) : original;
   const store = await new IfcParser().parseColumnar(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength), { disableWorkerScan: true });
   const view = new MutablePropertyView(null, 'm'), editor = new StoreEditor(store, view);
   let model = { modelId: 'm', store, editor, mutationView: view, ownerHistoryId: null };
@@ -308,4 +310,175 @@ it.skipIf(!available)('#6232 / #6759 rejected detached draft preserves live toke
     release();
     expect((await pending).created).toHaveLength(1);
   } finally { release(); backend.disposeRooms(); }
+});
+
+function secondStorey(editor: StoreEditor, fileUnitsPerMetre = 1): number {
+  const p = editor.addEntity('IfcCartesianPoint', [[0,0,3*fileUnitsPerMetre]]).expressId;
+  const a = editor.addEntity('IfcAxis2Placement3D', [`#${p}`,null,null]).expressId;
+  const placement = editor.addEntity('IfcLocalPlacement', [null,`#${a}`]).expressId;
+  const id = editor.addEntity('IfcBuildingStorey', ['0Storey000000000000005',null,'Upper',null,null,`#${placement}`,null,null,'.ELEMENT.',3*fileUnitsPerMetre]).expressId;
+  editor.setPositionalAttribute(60,5,['#42',`#${id}`]);
+  return id;
+}
+
+it.skipIf(!available)('#7324 AutoAll prepares all native storeys without writes and commits real spaces in one recorded Undo operation', async () => {
+  const {store,view,editor,backend} = await setup();
+  const upper = secondStorey(editor);
+  const before = structuredClone({ records:editor.getNewEntities(),journal:view.getMutations() });
+  try {
+    const preparing = backend.prepareRoomCommand('m',42,{action:'autoAll'});
+    await expect(preparing).resolves.toBeDefined();
+    const prepared = await preparing;
+    expect({records:editor.getNewEntities(),journal:view.getMutations()}).toEqual(before);
+    expect(prepared.result.storeys?.map(row=>[row.storeyId,row.status,row.created.length])).toEqual([[42,'ready',1],[upper,'ready',1]]);
+    const committed = prepared.commit();
+    expect(committed.created).toHaveLength(2);
+    const bytes = new StepExporter(store,view).export({schema:'IFC4',applyMutations:true}).content;
+    const parsed = await new IfcParser().parseColumnar(bytes.slice().buffer as ArrayBuffer,{disableWorkerScan:true});
+    for (const ref of committed.created) expect(parsed.entities.getTypeName(ref.expressId)).toBe('IfcSpace');
+    undoRecordedMutationOperations(view,1,()=>{throw new Error('A recorded AutoAll group was required');});
+    expect({records:editor.getNewEntities(),journal:view.getMutations()}).toEqual(before);
+    prepared.dispose();
+  } finally {backend.disposeRooms();}
+});
+
+it.skipIf(!available)('#7324 AutoAll discloses unavailable storeys and refuses partial writes; noWalls is an honest empty result', async () => {
+  const {view,editor,backend} = await setup(async (_model,id)=>({walls:id===42?walls:[],factory,...(id!==42?{unavailable:'Untrusted native storey frame'}:{})}));
+  secondStorey(editor);
+  const before = structuredClone({records:editor.getNewEntities(),journal:view.getMutations()});
+  try {
+    const preparing = backend.prepareRoomCommand('m',42,{action:'autoAll'});
+    await expect(preparing).resolves.toBeDefined();
+    const prepared = await preparing;
+    expect(prepared.result.storeys?.map(row=>row.status)).toEqual(['ready','unavailable']);
+    expect(prepared.result.created).toHaveLength(0);
+    expect(()=>prepared.commit()).toThrow(/unavailable/);
+    expect({records:editor.getNewEntities(),journal:view.getMutations()}).toEqual(before);
+    prepared.dispose();
+  } finally {backend.disposeRooms();}
+  const empty = await setup(async()=>({walls:[],factory}));
+  try {
+    const beforeEmpty = structuredClone(empty.view.getMutations());
+    const prepared = await empty.backend.prepareRoomCommand('m',42,{action:'autoAll'});
+    expect(prepared.result.storeys?.[0].status).toBe('noWalls');
+    expect(prepared.commit().created).toHaveLength(0);
+    expect(empty.view.getMutations()).toEqual(beforeEmpty);
+    prepared.dispose();
+  } finally {empty.backend.disposeRooms();}
+});
+
+it.skipIf(!available)('#7324 AutoAll detects direct native edits across storey awaits and abort/held geometry leases without writes', async () => {
+  let release!:()=>void;
+  const gate=new Promise<void>(resolve=>{release=resolve;});
+  const f=await setup(async(_model,id)=>{if(id!==42)await gate;return{walls,factory};});
+  secondStorey(f.editor);
+  try {
+    const pending=f.backend.prepareRoomCommand('m',42,{action:'autoAll'});
+    await Promise.resolve(); await Promise.resolve();
+    f.view.setPositionalAttribute(42,2,'Changed during native geometry',true);
+    const current=structuredClone(f.view.getMutations());
+    release(); await expect(pending).rejects.toThrow(/changed/);
+    expect(f.view.getMutations()).toEqual(current);
+  } finally {release();f.backend.disposeRooms();}
+  let geometryCurrent=true;
+  const h=await setup(async()=>({walls,factory,validate:()=>{if(!geometryCurrent)throw new Error('Native mesh ownership changed');}}));
+  try {
+    const prepared=await h.backend.prepareRoomCommand('m',42,{action:'autoAll'});
+    geometryCurrent=false;expect(()=>prepared.commit()).toThrow(/mesh ownership/);prepared.dispose();
+    geometryCurrent=true;
+    const controller=new AbortController();
+    const cancelled=await h.backend.prepareRoomCommand('m',42,{action:'autoAll',signal:controller.signal});
+    controller.abort();expect(()=>cancelled.commit()).toThrow();cancelled.dispose();
+    expect(h.view.getNewEntities().some(e=>e.type.toUpperCase()==='IFCSPACE')).toBe(false);
+  } finally {h.backend.disposeRooms();}
+});
+
+for (const mm of [false,true]) it.skipIf(!available)(`#7324 native AutoAll independent export retains SI dimensions on ${mm?'millimetre':'metre'} source units`, async () => {
+  const f=await setup(undefined,mm);
+  try {
+    secondStorey(f.editor,mm?1000:1);
+    const prepared=await f.backend.prepareRoomCommand('m',42,{action:'autoAll',height:3});
+    const result=prepared.commit();prepared.dispose();
+    const bytes=new StepExporter(f.store,f.view).export({schema:'IFC4',applyMutations:true}).content;
+    const parsed=await new IfcParser().parseColumnar(bytes.slice().buffer as ArrayBuffer,{disableWorkerScan:true});
+    const reader=new StoreEditor(parsed,new MutablePropertyView(null,'m'));
+    for (const ref of result.created) {
+      const shape=roomChainInStore(parsed,reader,ref.expressId);
+      expect(shape).toMatchObject({ok:true});
+      if (shape.ok) {expect(shape.chain.thickness).toBeCloseTo(3);expect(Math.max(...shape.chain.footprint.map(p=>p[0]))).toBeCloseTo(23.9);}
+    }
+  } finally {f.backend.disposeRooms();}
+});
+
+it.skipIf(!available)('#7324 AutoAll distinguishes actual occupied native faces and rejects changed held storey population', async () => {
+  const f=await setup();
+  try {
+    const first=await f.backend.prepareRoomCommand('m',42,{action:'autoAll'});first.commit();first.dispose();
+    const journal=structuredClone(f.view.getMutations());
+    const occupied=await f.backend.prepareRoomCommand('m',42,{action:'autoAll'});
+    expect(occupied.result.storeys?.[0].status).toBe('occupied');
+    expect(occupied.commit().created).toHaveLength(0);occupied.dispose();expect(f.view.getMutations()).toEqual(journal);
+    const held=await f.backend.prepareRoomCommand('m',42,{action:'autoAll'});
+    secondStorey(f.editor);expect(()=>held.commit()).toThrow(/changed/);held.dispose();
+  } finally {f.backend.disposeRooms();}
+});
+
+
+it.skipIf(!available)('#7324 AutoAll refuses missing, wrong-type and deleted native anchors before geometry or writes', async () => {
+  let calls = 0;
+  const f = await setup(async () => { calls++; return { walls, factory }; });
+  try {
+    const graph = () => Array.from(new StepExporter(f.store, f.view).export({ schema: 'IFC4', applyMutations: true, timeStamp: '2026-10-09T00:00:00' }).content);
+    for (const anchor of [999999, 1222, 42]) {
+      if (anchor === 42) f.editor.removeEntity(anchor);
+      const before = structuredClone({ graph: graph(), journal: f.view.getMutations(), next: f.view.peekNextExpressId() });
+      await expect(f.backend.prepareRoomCommand('m', anchor, { action: 'autoAll' })).rejects.toThrow(/anchor.*storey/i);
+      expect(calls).toBe(0);
+      expect({ graph: graph(), journal: f.view.getMutations(), next: f.view.peekNextExpressId() }).toEqual(before);
+    }
+  } finally { f.backend.disposeRooms(); }
+});
+
+it.skipIf(!available)('#7324 AutoAll disposed, applied and changed-layout approvals expose native conflict errors', async () => {
+  const f = await setup();
+  try {
+    const disposed = await f.backend.prepareRoomCommand('m', 42, { action: 'autoAll' });
+    disposed.dispose(); expect(() => disposed.commit()).toThrow(RoomCommandConflictError);
+    const changed = await f.backend.prepareRoomCommand('m', 42, { action: 'autoAll' });
+    f.layouts.clearModel('m'); expect(() => changed.commit()).toThrow(RoomCommandConflictError); changed.dispose();
+    const applied = await f.backend.prepareRoomCommand('m', 42, { action: 'autoAll' });
+    applied.commit(); const journal = structuredClone(f.view.getMutations());
+    expect(() => applied.commit()).toThrow(RoomCommandConflictError);
+    expect(f.view.getMutations()).toEqual(journal); applied.dispose();
+  } finally { f.backend.disposeRooms(); }
+});
+
+
+it.skipIf(!available)('#7324 AutoAll counts unsupported live spaces independently of readable footprints', async () => {
+  const f = await setup(async (_model, id) => ({ walls: id === 42 ? walls : [], factory }));
+  try {
+    const upper = secondStorey(f.editor);
+    const space = f.editor.addEntity('IfcSpace', [generateIfcGuid(), null, 'Unsupported native room', null, null, null, null, null, '.ELEMENT.', '.NOTDEFINED.', null]).expressId;
+    f.editor.addEntity('IfcRelAggregates', [generateIfcGuid(), null, null, null, `#${upper}`, [`#${space}`]]);
+    const prepared = await f.backend.prepareRoomCommand('m', 42, { action: 'autoAll' });
+    expect(prepared.result.storeys?.find(row => row.storeyId === upper)).toMatchObject({ status: 'noWalls', roomCount: 1 });
+    prepared.dispose();
+  } finally { f.backend.disposeRooms(); }
+});
+
+for (const action of ['query', 'autoAll'] as const) it.skipIf(!available)(`#7324 ${action} refuses an explicitly unavailable empty reason without native writes`, async () => {
+  const { store, view, backend } = await setup(async () => ({ walls: [], factory, unavailable: '' }));
+  const graph = () => Array.from(new StepExporter(store, view).export({ schema: 'IFC4', applyMutations: true, timeStamp: '2026-10-03T00:00:00' }).content);
+  const before = structuredClone({ graph: graph(), journal: view.getMutations(), revision: view.getMutationRevision(), next: view.peekNextExpressId() });
+  try {
+    if (action === 'query') await expect(backend.roomCommand('m', 42, { action })).rejects.toThrow(/unavailable/i);
+    else {
+      const prepared = await backend.prepareRoomCommand('m', 42, { action });
+      expect(prepared.result.storeys?.map(row => row.status)).toEqual(['unavailable']);
+      expect(prepared.result.created).toHaveLength(0);
+      expect(() => prepared.commit()).toThrow(/unavailable/i);
+      prepared.dispose();
+    }
+    expect({ graph: graph(), journal: view.getMutations(), revision: view.getMutationRevision(), next: view.peekNextExpressId() }).toEqual(before);
+  } finally { backend.disposeRooms(); }
 });

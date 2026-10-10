@@ -1,0 +1,8 @@
+{
+  "qualificationSHA256": "6720da25bf2e3c67982f916331b91f5db1611c7be1f8c818276f0c327f058be5",
+  "rawPairsVerified": 12,
+  "indexedFilesVerified": 7,
+  "liveSourcePinsVerified": 8,
+  "allStagesExitZero": true,
+  "scope": "Independent byte and raw terminal validation; baseline expected green, candidate additional real parsed Measure integration."
+}

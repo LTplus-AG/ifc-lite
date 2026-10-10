@@ -1,0 +1,24 @@
+{
+  "headSha": "287350ae266f1cb624b5bae4948063f13345a8fb",
+  "verdict": "findings",
+  "findings": [
+    {
+      "path": "apps/viewer/src/lib/geometry-cpu-release.ts",
+      "line": 16,
+      "quote": "    const buffers = meshCpuBuffers(mesh);",
+      "body": "If a federated source mesh is copied into a retained viewport wrapper and its `positions` field is then reassigned in place before bounded release, this set contains only the new position buffer. The wrapper still holds the original buffer, but `sharesCpuBuffer` leaves that field untouched, so releasing the source does not free the retained CPU geometry.",
+      "class": "partial-state-clear"
+    }
+  ],
+  "omitted": [],
+  "classPass": false,
+  "counts": {
+    "emitted": 1,
+    "surviving": 1,
+    "capped": 0,
+    "kept": 1
+  },
+  "warnings": [
+    "REANCHORED findings[0]: `line` 17 of `apps/viewer/src/lib/geometry-cpu-release.ts` moved to 16, the only added line whose text is the quote."
+  ]
+}

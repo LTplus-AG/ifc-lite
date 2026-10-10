@@ -1,0 +1,24 @@
+{
+  "headSha": "8785f72bf23cde156f8d818162afc17cf81df767",
+  "verdict": "findings",
+  "findings": [
+    {
+      "path": "apps/viewer/src/lib/geometry-cpu-aliases.ts",
+      "line": 45,
+      "quote": "  rememberCpuMeshBuffers(copy, copyBuffers);",
+      "body": "If `placedMesh(source)` retains the original positions, `restorePreAlignment` replaces the source arrays, and `updateMeshColors` then copies that source before release, the new copy records only the replacement buffers. `releaseGeometryMemory` releases that copy, so its buffer membership does not include the original positions still held by the placed mesh; the earlier CPU allocation remains live.",
+      "class": "partial-state-clear"
+    }
+  ],
+  "omitted": [],
+  "classPass": false,
+  "counts": {
+    "emitted": 1,
+    "surviving": 1,
+    "capped": 0,
+    "kept": 1
+  },
+  "warnings": [
+    "REANCHORED findings[0]: `line` 47 of `apps/viewer/src/lib/geometry-cpu-aliases.ts` moved to 45, the only added line whose text is the quote."
+  ]
+}

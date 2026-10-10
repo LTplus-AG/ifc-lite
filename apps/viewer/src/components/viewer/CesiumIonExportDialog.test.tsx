@@ -5,6 +5,7 @@
 import '@/test/setup-dom.js';
 import { before, afterEach, test, mock } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
 import { act } from 'react';
 import { IfcParser } from '@ifc-lite/parser';
 import { MutablePropertyView } from '@ifc-lite/mutations';
@@ -17,11 +18,13 @@ import { CesiumIonExportDialog } from './CesiumIonExportDialog';
 import { initializeIonExportWasm } from './CesiumIonExportDialog.wasm.test-support';
 
 before(initializeIonExportWasm);
-import { IonUploadError, type IonUploadInput } from '@/lib/geo/cesium-ion-upload';
+import { IonUploadError, uploadToCesiumIon, type IonUploadInput } from '@/lib/geo/cesium-ion-upload';
 
+import { activityCanceller, useActivityJournal } from '@/lib/activity/activity-journal';
+import { ActivityTrayList } from './activity/ActivityTrayList';
 import { modelAppearanceAssets } from '@/lib/appearance/model-assets';
 
-afterEach(() => { cleanup(); mock.restoreAll(); });
+afterEach(() => { cleanup(); mock.restoreAll(); useActivityJournal.setState({ jobs: [] }); });
 const button = (text: string) => [...document.querySelectorAll('button')].find(node => node.textContent?.trim() === text)!;
 
 test('ion dialog defaults to active IFC, uploads edited bytes, and forgets write token on close (#6587)', async () => {
@@ -86,9 +89,13 @@ test('ion Cancel upload aborts the active request and exposes the partial asset 
   click(button('Upload'));
   await waitFor(() => !!started, 'upload did not start');
   assert.equal(button('Close').disabled, true);
+  const job = useActivityJournal.getState().jobs.at(-1)!;
+  assert.ok(activityCanceller(job.id), '#7121 native Cancel is also available in Activity');
   click(button('Cancel upload'));
   await waitFor(() => !!document.body.textContent?.includes('Upload cancelled'), 'cancellation was not reported');
   assert.equal(started!.signal.aborted, true);
+  assert.equal(useActivityJournal.getState().jobs.find(row => row.id === job.id)?.outcome, 'cancelled', '#7121 panel abort is Cancelled');
+  assert.equal(activityCanceller(job.id), null);
   assert.ok(document.querySelector('a[href="https://ion.cesium.com/assets/77"]'));
   assert.equal(button('Upload').disabled, false, 'the user can retry after cancellation');
 });
@@ -107,7 +114,7 @@ test('ion shows request rejection without blaming token permissions and supports
   click(button('Upload'));
   await waitFor(() => !!document.body.textContent?.includes('HTTP 409'), 'request rejection was not reported');
   assert.ok(document.body.textContent?.includes('Cesium ion rejected the upload request'));
-  assert.ok(!document.body.textContent?.includes('Check the token permissions'));
+  assert.ok(!document.body.textContent?.includes('cannot create assets'));
   assert.equal(button('Upload').disabled, false);
   click(button('Upload'));
   await waitFor(() => !!document.querySelector('a[href="https://ion.cesium.com/assets/88"]'), 'retry asset link missing');
@@ -164,4 +171,55 @@ test('ion partial recovery names the invocation-resolved export despite model ch
   });
   await waitFor(() => !!document.querySelector('a[href="https://ion.cesium.com/assets/101"]'), 'partial asset link missing');
   assert.equal(document.querySelector('a[href="https://ion.cesium.com/assets/101"]')?.textContent?.trim(), 'View exported in Cesium ion');
+});
+
+// #7121: network/S3 boundaries are controlled; IFC serialization, the uploader,
+// its post-upload abort checkpoint, and Activity's mounted action are native.
+test('ion Activity Cancel drains native upload and an old callback cannot abort retry (#7121)', async () => {
+  useActivityJournal.setState({ jobs: [] });
+  const authored = await readFile(new URL('../../../public/samples/building-architecture.ifc', import.meta.url));
+  const dataStore = await new IfcParser().parseColumnar(authored.slice().buffer as ArrayBuffer, { disableWorkerScan: true });
+  const model = { ...fixtureModel('tray.ifc'), ifcDataStore: dataStore, schemaVersion: 'IFC4' as const };
+  useViewerStore.setState({ ...fixtureModels(model), mutationViews: new Map(), georefMutations: new Map(),
+    scheduleData: null, scheduleIsEdited: false, scheduleSourceModelId: null });
+  const sent: Array<{ signal: AbortSignal; bytes: Uint8Array; settle: () => void }> = [];
+  let completed = 0;
+  const fetchImpl: typeof fetch = async (url) => {
+    if (String(url).endsWith('/uploadComplete')) { completed++; return new Response('{}'); }
+    return new Response(JSON.stringify({ assetMetadata: { id: 901 },
+      uploadLocation: { bucket: 'test', prefix: 'native/', accessKey: 'test', secretAccessKey: 'test', sessionToken: 'test' },
+      onComplete: { url: 'https://api.cesium.com/v1/assets/901/uploadComplete', method: 'POST', fields: {} } }));
+  };
+  render(<><CesiumIonExportDialog surface="ribbon" upload={input => uploadToCesiumIon(input, { fetchImpl,
+    putObject: ({ signal, bytes }) => new Promise<void>(settle => sent.push({ signal, bytes, settle })),
+  })} /><ActivityTrayList /></>);
+  click(button('Upload to Cesium ion'));
+  type(document.querySelector<HTMLInputElement>('#ion-token')!, 'private-test-token');
+  click(button('Upload'));
+  await waitFor(() => sent.length === 1, 'native upload entered S3 boundary');
+  const parsed = await new IfcParser().parseColumnar(sent[0].bytes.slice().buffer as ArrayBuffer, { disableWorkerScan: true });
+  const wall = dataStore.entityIndex.byType.get('IFCWALL')?.[0];
+  assert.ok(wall);
+  assert.equal(parsed.entities.getGlobalId(wall), dataStore.entities.getGlobalId(wall), 'authored wall identity survives serialization');
+  const first = useActivityJournal.getState().jobs.at(-1)!;
+  const oldCancel = activityCanceller(first.id);
+  assert.ok(oldCancel);
+  const trayCancel = document.querySelector<HTMLButtonElement>('button[aria-label="Cancel Export"]');
+  assert.ok(trayCancel, 'mounted Activity offers native cancellation');
+  click(trayCancel);
+  assert.equal(sent[0].signal.aborted, true);
+  assert.equal(button('Close').disabled, true, 'non-abortable external transport drains before retry');
+  await act(async () => sent[0].settle());
+  await waitFor(() => useActivityJournal.getState().jobs[0]?.outcome === 'cancelled', 'native cancellation settled');
+  assert.equal(completed, 0, 'native checkpoint suppresses late upload completion');
+  assert.equal(activityCanceller(first.id), null);
+  assert.ok(document.querySelector('a[href="https://ion.cesium.com/assets/901"]'), 'partial remote asset remains visible');
+  click(button('Upload'));
+  await waitFor(() => sent.length === 2, 'retry entered native upload');
+  oldCancel();
+  assert.equal(sent[1].signal.aborted, false, 'old invocation cannot abort retry');
+  await act(async () => sent[1].settle());
+  await waitFor(() => useActivityJournal.getState().jobs.at(-1)?.outcome === 'completed', 'retry completed');
+  assert.equal(completed, 1);
+  assert.equal(activityCanceller(useActivityJournal.getState().jobs.at(-1)!.id), null);
 });

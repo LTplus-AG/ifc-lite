@@ -88,6 +88,21 @@ call sites and `useViewerStore` subscriptions on the viewport, properties,
 hierarchy and streaming paths statically (minified component names make a
 runtime fiber census unattributable, and mounted counts move with UI state).
 
+## Prepass terminal trace publication (#6993)
+
+The host terminates the prepass worker on its completion event. Draining only
+finished spans at that point preserved counters but lost the active scan
+span, whose handler had not returned. The worker now completes that named
+span before publishing completion, using the shared trace host. Behavioral
+controls observe the scan and counters before the terminal event, preserve
+unrelated in-flight spans, and reject duplicate publication on handler return.
+Verdict: diagnostic correctness, with no model-load speed claim. The disabled
+trace returns before scanning active spans, and geometry production is
+unchanged. Lesson: flush-before-termination must close the work represented
+by the terminal event; a drain alone cannot preserve an open span. Other M2b
+transfer, interaction, deterministic-upload and device-loss obligations remain
+open.
+
 ## Worker warm-up candidate held (#7036)
 
 The resumed [cold-load captures](evidence/worker-warmup-7036/README.md) show
@@ -3720,3 +3735,22 @@ extracting a module can increase shared imports even when its entry chunk shrink
 ### Viewer preferences editor imports (P20, #6924)
 
 A hook used by the Assistant must live separately from the optional preferences editor: importing the hook from the editor makes its dynamic import ineffective. Keep the live project/model hook in a small module and load the form through its native lazy boundary. The combined production measurement showed no meaningful size improvement from the hook split. The remaining content-library registration and recipe run state still participate in startup; keep the split for the lazy editor boundary, without claiming a bundle reduction.
+
+## Federated CPU alias release correctness (#6584, #6537)
+
+Main's single-model array stamping supersedes the old general owner-cache
+prototype, whose measurements remain historical. Current-main mounted controls
+still reproduce CPU buffers stranded in retained federation copies, including
+an earlier immutable recolour that array-revision refresh misses. Canonical
+release now follows weak aliases at the existing shallow-copy/provenance seam,
+clearing only shared fields and preserving independent updates, retained counts,
+GPU content version and the global streaming prefix.
+
+The [retained controls and earlier negative measurements](evidence/owner-cache-6537/README.md)
+prove reference removal and collectability; they do not measure OS peak memory
+or establish a current end-to-end speedup. Lesson: invalidate shared CPU owners
+at release rather than repairing only the current rendering cache.
+
+Follow-up review of the bounded CPU release fix found that canonical frame restoration replaces source allocations before release, leaving prior registered copies alive. The release helper now remembers historical source allocation identities weakly and clears them alongside current shared fields while preserving independent replacements. Actual frame-restore regression and backing-allocation collection controls qualify this correction; no native speed or resident-memory improvement is claimed. See `evidence/owner-cache-6537/source-frame-replacement/`.
+
+A second bounded-release follow-up showed that immutable recolouring after frame restoration also needs to carry historical ownership. Flat pruned weak snapshots now transfer only across complete shared allocation domains; snapshots remain independent so derived replacements cannot pollute original ownership. Actual canonical recolour regressions and collection controls qualify this correction. The evidence retains the separate WASM identities observed before and after Turbo typecheck rather than relabeling a functional run. See `evidence/owner-cache-6537/immutable-history-carry/`; no native performance claim is made.

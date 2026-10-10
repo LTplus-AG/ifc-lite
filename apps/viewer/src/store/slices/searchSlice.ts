@@ -23,7 +23,7 @@
 import type { StateCreator } from 'zustand';
 import type { Tier1Index } from '@/lib/search/tier1-index';
 import type { SearchResult, MatchField } from '@/lib/search/tier0-scan';
-import type { FilterRule } from '@ifc-lite/rules';
+import type { CapturedEntityScope, FilterRule } from '@ifc-lite/rules';
 import { emptyFilterGroup, type FilterGroup } from '@ifc-lite/rules';
 import type { FilterSchema, PsetQtoSchema, FilterValueSchema } from '@/lib/search/filter-schema';
 import type { IfcDataStore } from '@ifc-lite/parser';
@@ -65,7 +65,7 @@ export type SearchFieldFilter = MatchField | 'all';
 
 /** Which tab the advanced modal renders. Lets callers (e.g. the inline
  *  filter button) open straight to the Filter builder. */
-export type SearchModalTab = 'search' | 'filter';
+export type SearchModalTab = 'search' | 'filter' | 'libraries';
 
 /**
  * Tabular result from a Filter run. Flat snapshot so the modal can
@@ -88,6 +88,7 @@ export interface SearchFilterResult {
  * group" button in the builder, appends another group; groups OR together.
  */
 export interface SearchFilterStateValue {
+  capturedScope?: CapturedEntityScope;
   groups: FilterGroup[];
   /** Result cap. `0` = no cap (evaluator's internal default applies). */
   limit: number;

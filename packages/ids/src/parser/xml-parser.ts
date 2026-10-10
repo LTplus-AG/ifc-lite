@@ -457,19 +457,15 @@ function parsePartOfFacet(el: Element): IDSPartOfFacet {
   return facet;
 }
 
+/** The `ids.xsd` `relations` tokens (what IDS 1.0 files and `writeIdsXml` carry), then the lenient PascalCase spellings. */
+const RECOGNISED_PARTOF_RELATIONS = new Set([
+  'IFCRELAGGREGATES', 'IFCRELASSIGNSTOGROUP', 'IFCRELCONTAINEDINSPATIALSTRUCTURE', 'IFCRELNESTS', 'IFCRELVOIDSELEMENT IFCRELFILLSELEMENT',
+  'IfcRelAggregates', 'IfcRelContainedInSpatialStructure', 'IfcRelNests', 'IfcRelVoidsElement', 'IfcRelFillsElement',
+  'IfcRelAssignsToGroup', 'IfcRelVoidsElement IfcRelFillsElement',
+]);
+
 function isRecognisedPartOfRelation(relation: string): boolean {
-  switch (relation) {
-    case 'IfcRelAggregates':
-    case 'IfcRelContainedInSpatialStructure':
-    case 'IfcRelNests':
-    case 'IfcRelVoidsElement':
-    case 'IfcRelFillsElement':
-    case 'IfcRelAssignsToGroup':
-    case 'IfcRelVoidsElement IfcRelFillsElement':
-      return true;
-    default:
-      return false;
-  }
+  return RECOGNISED_PARTOF_RELATIONS.has(relation);
 }
 
 /**

@@ -103,8 +103,8 @@ function collect(): CorpusCase[] {
       // not encode. Skipping it silently is how a case stops being run.
       expect(expectation, `unrecognised corpus prefix: ${name}`).not.toBeNull();
       cases.push({
-        // Separators normalised to `/` because the id is matched against
-        // `AUDIT_UNDETECTED` by string. Defensive rather than a live fix: the
+        // Separators normalised to `/` because the id is matched by string
+        // (test names here, the eval datasets outside). Defensive rather than a live fix: the
         // corpus is one directory deep, so the relative path is a single
         // segment containing no separator at all and Windows produces the same
         // id today. It stops mattering only while that stays true. The paths
@@ -140,11 +140,11 @@ describe('buildingSMART IDS conformance corpus', () => {
     expect(counted).toEqual(EXPECTED);
   });
 
-  it('builds ids in the shape the allowlist is written in', () => {
-    // The allowlist is matched by string, so the id FORMAT is part of the
-    // contract rather than cosmetic. What this can actually catch is a corpus
-    // update that nests a directory or introduces a new prefix, either of
-    // which would make `AUDIT_UNDETECTED` entries miss silently. It does NOT
+  it('builds ids in the <group>/<prefix>-<name> shape', () => {
+    // Ids are matched by string (case lists in the eval datasets), so the id
+    // FORMAT is part of the contract rather than cosmetic. What this can
+    // actually catch is a corpus update that nests a directory or introduces
+    // a new prefix, either of which would make such lists miss silently. It does NOT
     // pin the separator normalisation above: with a single-segment relative
     // path there is no separator to normalise, so that line is a no-op on
     // every platform today and no single-platform test can observe it.
@@ -174,90 +174,56 @@ describe('buildingSMART IDS conformance corpus', () => {
         expect(report.specificationResults.map((r) => r.status)).toEqual([c.expectation]);
       });
     }
+
+    // A pass-/fail- IDS is conforming by definition, so the audit must not
+    // report an error on any of them (IDS-008b). Eighteen did: user-defined
+    // predefined types, the IFC2X3 occurrence/type mapping table, and a
+    // classification on a material. Warnings stay allowed.
+    it('every conforming IDS audits without errors', async () => {
+      const flagged: string[] = [];
+      for (const c of CASES.filter((x) => x.expectation !== 'invalid')) {
+        const report = await auditIDSDocument(readFileSync(c.idsPath, 'utf8'));
+        const errors = report.issues.filter((issue) => issue.severity === 'error');
+        if (errors.length > 0) flagged.push(`${c.id}: ${errors.map((e) => e.code).join(', ')}`);
+      }
+      expect(flagged).toEqual([]);
+    }, 120_000);
   });
 
 /**
- * `invalid-` cases the audit does not detect yet. Each is an IDS-level validity
- * rule this package has not implemented (mostly the typed-value spellings: a
- * boolean that must be lowercase, an integer that must not carry a decimal, an
- * entity name that must be uppercase).
+ * Every `invalid-` case is rejected by the audit with at least one ERROR.
  *
- * The list may only SHRINK. A case that starts being detected FAILS here until
- * it is removed, so the list cannot quietly go stale and re-hide a regression
- * the way an ignore-list would. Being on it is a claim that gets re-tested on
- * every run, not an exemption from testing.
+ * Until P-01 (IDS-004…008) this block carried an `AUDIT_UNDETECTED`
+ * allowlist of 21 cases the audit missed; it shrank family by family (typed
+ * property literals, attribute value types, entity requirements, the
+ * prohibited-specification and IFC2X3 predefined-type rules) and was deleted
+ * once empty, so a regression now fails the case by name instead of being
+ * re-listed.
  *
- * These are not silently passing: `validateIDS` reports `fail` for all 21,
- * because the model does not satisfy a specification the IDS should never have
- * been able to express. That is a defensible answer to a different question,
- * which is why they are audited here rather than validated.
+ * `validateIDS` would report `fail` for each, because the model does not
+ * satisfy a specification the IDS should never have been able to express.
+ * That is a defensible answer to a different question, which is why they are
+ * audited here rather than validated.
  */
-const AUDIT_UNDETECTED = new Set([
-  'attribute/invalid-booleans_must_be_specified_as_lowercase_strings_2_3',
-  'attribute/invalid-integers_cannot_be_expressed_as_floating_point_numbers_2_2',
-  'attribute/invalid-only_specifically_formatted_numbers_are_allowed_1_4',
-  'attribute/invalid-only_specifically_formatted_numbers_are_allowed_2_4',
-  'attribute/invalid-specifying_a_float_when_the_value_is_an_integer_is_invalid',
-  'attribute/invalid-value_checks_always_fail_for_lists',
-  'entity/invalid-an_entity_not_matching_the_specified_class_should_fail',
-  'entity/invalid-entities_can_be_specified_as_a_xsd_regex_pattern_1_2',
-  'entity/invalid-entities_can_be_specified_as_an_enumeration_3_3',
-  'entity/invalid-entities_must_be_specified_as_uppercase_strings',
-  'entity/invalid-subclasses_are_not_considered_as_matching',
-  'ids/invalid-prohibited_specifications_invalid_if_requirements_are_specified',
-  'partof/invalid-a_group_predefined_type_must_match_exactly_1_2',
-  'property/invalid-booleans_must_be_specified_as_lowercase_strings_3_3',
-  'property/invalid-integer_values_are_checked_using_type_casting_4_4',
-  'property/invalid-integer_values_cannot_be_stored_with_decimal_2_4',
-  'property/invalid-integer_values_cannot_be_stored_with_decimal_3_4',
-  'property/invalid-only_specifically_formatted_numbers_are_allowed_1_4',
-  'property/invalid-only_specifically_formatted_numbers_are_allowed_2_4',
-  'restriction/invalid-patterns_always_fail_on_any_number',
-  'restriction/invalid-patterns_only_work_on_strings_and_nothing_else',
-]);
-
-/**
- * How many `invalid-` cases the audit DOES catch, measured at runtime.
- *
- * Recorded as a number rather than derived from the set above, because a count
- * taken from the allowlist it is meant to bound is circular and always passes.
- * This one moves if detection regresses OR if the allowlist grows, and both
- * should be a deliberate, visible diff.
- */
-const AUDIT_DETECTS = 6;
+const AUDIT_DETECTS = EXPECTED.invalid;
 
   describe('invalid-: is the IDS DOCUMENT itself non-conforming', () => {
-    it('every allowlisted case is a real corpus file', () => {
-      // A typo in the list above would otherwise silently exempt nothing while
-      // looking like it exempts something.
-      const ids = new Set(CASES.map((c) => c.id));
-      expect([...AUDIT_UNDETECTED].filter((id) => !ids.has(id))).toEqual([]);
-    });
-
-    it(`the audit detects ${AUDIT_DETECTS} of them today`, async () => {
+    it(`the audit rejects all ${AUDIT_DETECTS} of them`, async () => {
       let detected = 0;
       for (const c of CASES.filter((x) => x.expectation === 'invalid')) {
         const report = await auditIDSDocument(readFileSync(c.idsPath, 'utf8'));
-        if (report.issues.length > 0) detected++;
+        if (report.issues.some((issue) => issue.severity === 'error')) detected++;
       }
       expect(detected).toBe(AUDIT_DETECTS);
     });
 
     for (const c of CASES.filter((x) => x.expectation === 'invalid')) {
-      const known = AUDIT_UNDETECTED.has(c.id);
-      it(`${c.id} ${known ? '(not detected yet)' : 'is rejected by the audit'}`, async () => {
+      it(`${c.id} is rejected by the audit`, async () => {
         const report = await auditIDSDocument(readFileSync(c.idsPath, 'utf8'));
-        if (known) {
-          expect(
-            report.issues.length,
-            `${c.id} is now detected: delete it from AUDIT_UNDETECTED`,
-          ).toBe(0);
-          return;
-        }
-        // At least one issue, and the document is not reported as clean. Both,
-        // because `status` and `issues` are separately derived and a harness
-        // asserting only one of them would not notice the other going quiet.
-        expect(report.issues.length).toBeGreaterThan(0);
+        // An error, and the document is not reported as valid. Both, because
+        // `status` and `issues` are separately derived and a harness asserting
+        // only one of them would not notice the other going quiet.
+        expect(report.issues.filter((issue) => issue.severity === 'error').length).toBeGreaterThan(0);
         expect(report.status).not.toBe('valid');
       });
     }

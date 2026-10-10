@@ -109,11 +109,15 @@ describe('auditIDSDocument — IFC schema cross-checks', () => {
     expect(codes(r.issues)).toContain('E_IFC_ENTITY_UNKNOWN');
   });
 
+  // The entity's enum has no USERDEFINED, so only its listed values are valid.
+  // IfcWall would accept any value: a USERDEFINED-capable predefined type is
+  // matched against ObjectType (IDS-008b; corpus entity/pass-a_predefined_
+  // type_may_specify_a_user_defined_object_type).
   it('flags an invalid predefined type for a known entity', async () => {
-    const xml = wrap(`<specification name="Bogus pdt" ifcVersion="IFC4">
+    const xml = wrap(`<specification name="Bogus pdt" ifcVersion="IFC4X3_ADD2">
       <applicability>
         <entity>
-          <name><simpleValue>IFCWALL</simpleValue></name>
+          <name><simpleValue>IFCALIGNMENTCANTSEGMENT</simpleValue></name>
           <predefinedType><simpleValue>NOT_A_REAL_PDT</simpleValue></predefinedType>
         </entity>
       </applicability>

@@ -10,8 +10,7 @@
  * and exported is exactly what `parseIDS` sees. Nothing here runs or saves.
  */
 
-import { auditIDSDocument, parseIDS, type IDSAuditIssue, type IDSDocument, type IDSRequirement, type IDSSpecification, type IFCVersion } from '@ifc-lite/ids';
-import { writeIdsXml } from '@ifc-lite/rules';
+import { auditIDSDocument, parseIDS, writeIdsXml, type IDSAuditIssue, type IDSDocument, type IDSRequirement, type IDSSpecification, type IFCVersion } from '@ifc-lite/ids';
 import { isRecord, onlyKeys, optionalText, parseProposalEnvelope, parseUnsupported, requiredText, TEXT_LIMIT, unsupportedNote, type UnsupportedRequirement } from './proposal-json';
 import { parseApplicability, parseFacet, parseOptionality } from './ids-facets';
 

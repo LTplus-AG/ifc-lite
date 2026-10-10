@@ -40,7 +40,10 @@ import type {
 } from '../../types.js';
 import type { IDSAuditIssue, IDSAuditOptions } from '../types.js';
 import { assertGuardedRegexPattern, UnsafeRegexPatternError } from '@ifc-lite/regex-guard';
-import { checkDataTypeMatch, checkRestrictionBase } from './datatype-check.js';
+import { checkDataTypeMatch, checkRestrictionBase, checkSimpleValueLexical } from './datatype-check.js';
+import { rowForAlias, rowsForOccurrence } from '../../facets/ifc2x3-type-mapping.js';
+import { auditAttributeValueType } from './attribute-value.js';
+import { auditEntityNameCase, auditEntityRequirement } from './entity-requirement.js';
 
 export async function runIfcSchemaAudit(
   doc: IDSDocument,
@@ -135,6 +138,9 @@ async function auditSpec(
       applicabilityEntity,
       issues
     );
+    if (req.facet.type === 'entity') {
+      await auditEntityRequirement(req.facet, applicabilityEntity, version, resolveEntityCandidates, `${basePath}.requirements[${ri}]`, issues);
+    }
   }
 }
 
@@ -179,6 +185,13 @@ async function auditFacet(
   }
 }
 
+/** IFC4 `IfcResourceObjectSelect` members, plus `IfcPropertyDefinition` (the other half of `IfcDefinitionSelect`). */
+const CLASSIFIABLE_RESOURCES = [
+  'IfcPropertyDefinition', 'IfcActorRole', 'IfcAppliedValue', 'IfcApproval', 'IfcConstraint', 'IfcContextDependentUnit',
+  'IfcConversionBasedUnit', 'IfcExternalInformation', 'IfcMaterialDefinition', 'IfcPhysicalQuantity', 'IfcProfileDef',
+  'IfcPropertyAbstraction', 'IfcTimeSeries',
+];
+
 /**
  * Classification facets bind via `IfcRelAssociatesClassification`,
  * which only accepts subtypes of `IfcObjectDefinition` (IFC4+) or
@@ -198,7 +211,15 @@ async function auditClassificationFacet(
   if (!entityName) return;
   // IFC4 / IFC4X3 use IfcObjectDefinition; IFC2X3 uses IfcRoot.
   const expected = version === 'IFC2X3' ? 'IfcRoot' : 'IfcObjectDefinition';
-  const ok = await isEntitySubtypeOf(version, entityName, expected);
+  // IFC4+ also classifies resources (e.g. an IfcMaterial) through
+  // IfcExternalReferenceRelationship, whose RelatedResourceObjects is
+  // IfcResourceObjectSelect (corpus: classification/pass-non_rooted_
+  // resources_that_have_external_classification_references_should_also_pass).
+  const roots = version === 'IFC2X3' ? [expected] : [expected, ...CLASSIFIABLE_RESOURCES];
+  let ok = false;
+  for (const root of roots) {
+    if (await isEntitySubtypeOf(version, entityName, root)) { ok = true; break; }
+  }
   if (!ok) {
     issues.push({
       severity: 'error',
@@ -243,6 +264,7 @@ async function auditEntityFacet(
   path: string,
   issues: IDSAuditIssue[]
 ): Promise<void> {
+  auditEntityNameCase(facet, path, issues);
   if (facet.name.type !== 'simpleValue') {
     // Pattern / enumeration / bounds: cross-check is impossible without
     // resolving every match, so we skip — a regex like `IFC.*` is valid.
@@ -251,7 +273,11 @@ async function auditEntityFacet(
   const name = facet.name.value;
   if (!name) return;
 
-  const entity = await findEntity(version, name);
+  // IFC2X3 has no IfcAirTerminal & co.: the IDS occurrence/type mapping
+  // table lets a facet name the IFC4 class, matched through its IFC2X3
+  // type object, whose predefined types are then the ones that apply.
+  const mapped = version === 'IFC2X3' ? rowForAlias(name.toUpperCase()) : undefined;
+  const entity = await findEntity(version, mapped ? mapped.typeEntity : name);
   if (!entity) {
     issues.push({
       severity: 'error',
@@ -263,15 +289,44 @@ async function auditEntityFacet(
     });
     return;
   }
-  if (facet.predefinedType && entity.predefinedTypes.length > 0) {
-    checkPredefinedType(
-      facet.predefinedType,
-      entity,
-      version,
-      `${path}.predefinedType`,
-      issues
-    );
+  await auditPredefinedType(facet, entity, version, `${path}.predefinedType`, issues);
+}
+
+/**
+ * A predefinedType constraint needs a PredefinedType somewhere IDS looks
+ * for one (IDS-008): on the entity, or on its type object (IFC2X3 IfcWall
+ * has none, IfcWallType does). IFC2X3's IfcInventory has neither (only
+ * `InventoryType`), so a predefinedType on it can never match (corpus:
+ * partof/invalid-a_group_predefined_type_must_match_exactly_1_2, listing
+ * IFC2X3 and IFC4). Generic IFC2X3 occurrences typed through the IDS
+ * mapping table (IfcFlowTerminal, …) are left alone.
+ */
+async function auditPredefinedType(
+  facet: IDSEntityFacet,
+  entity: IfcEntityInfo,
+  version: IfcSchemaVersion,
+  path: string,
+  issues: IDSAuditIssue[]
+): Promise<void> {
+  if (!facet.predefinedType) return;
+  if (entity.predefinedTypes.length > 0) {
+    checkPredefinedType(facet.predefinedType, entity, version, path, issues);
+    return;
   }
+  const typeObject = await findEntity(version, `${entity.name}Type`);
+  if (typeObject && typeObject.predefinedTypes.length > 0) {
+    checkPredefinedType(facet.predefinedType, typeObject, version, path, issues);
+    return;
+  }
+  if (typeObject || rowsForOccurrence(entity.name.toUpperCase()).length > 0) return;
+  issues.push({
+    severity: 'error',
+    code: 'E_IFC_PREDEF_TYPE_INVALID',
+    message: `${entity.name} has no PredefinedType in ${version}, so a predefinedType constraint on it can never match`,
+    path,
+    facetType: 'entity',
+    detail: { entity: entity.name, version },
+  });
 }
 
 function checkPredefinedType(
@@ -281,8 +336,13 @@ function checkPredefinedType(
   path: string,
   issues: IDSAuditIssue[]
 ): void {
+  // A USERDEFINED-capable enum accepts any value: IDS matches it against
+  // ObjectType / ElementType / ProcessType when PredefinedType is
+  // USERDEFINED (corpus: entity/pass-a_predefined_type_may_specify_a_user_
+  // defined_*_type, pass-restrictions_can_be_specified_for_the_predefined_type_*).
+  const userDefined = entity.predefinedTypes.includes('USERDEFINED');
   const valid = (v: string): boolean =>
-    entity.predefinedTypes.includes(v.toUpperCase());
+    userDefined || entity.predefinedTypes.includes(v.toUpperCase());
   switch (c.type) {
     case 'simpleValue': {
       const v = c.value;
@@ -334,6 +394,7 @@ function checkPredefinedType(
         });
         break;
       }
+      if (userDefined) break;
       // If the pattern compiles, test each known predefined type to be
       // sure at least one matches. Otherwise warn (pattern syntax check
       // already produces W_REGEX_UNVERIFIED).
@@ -359,6 +420,10 @@ function checkPredefinedType(
       // Bounds make no sense on a predefined-type enum — XSD audit will
       // already have flagged the structural mismatch indirectly.
       break;
+  }
+  // Conjunctive siblings (IDS-010) must hold too, so each is checked like the primary.
+  if (c.type !== 'simpleValue') {
+    c.and?.forEach((sibling, i) => checkPredefinedType(sibling, entity, version, `${path}.and[${i}]`, issues));
   }
 }
 
@@ -395,6 +460,7 @@ async function auditPropertyFacet(
           `${path}.value`,
           issues
         );
+        checkSimpleValueLexical(facet.value, found.backingType, dt, `${path}.value`, 'property', issues);
       }
     }
   }
@@ -636,14 +702,15 @@ async function auditAttributeFacet(
 ): Promise<void> {
   if (!applicabilityEntity) return; // Can't cross-check without an entity.
   if (applicabilityEntity.name.type !== 'simpleValue') return;
-  if (facet.name.type !== 'simpleValue') return;
-
   const entityName = applicabilityEntity.name.value;
-  const attrName = facet.name.value;
-  if (!entityName || !attrName) return;
-
+  if (!entityName) return;
   const chain = await getInheritanceChain(version, entityName);
   if (chain.length === 0) return; // Unknown entity already flagged.
+  auditAttributeValueType(facet, version, chain, path, issues);
+
+  if (facet.name.type !== 'simpleValue') return;
+  const attrName = facet.name.value;
+  if (!attrName) return;
 
   if (!chainHasAttribute(chain, attrName)) {
     issues.push({
@@ -763,6 +830,7 @@ async function auditPartOfFacet(
         },
       });
     }
+    await auditPredefinedType(facet.entity, entity, version, `${path}.entity.predefinedType`, issues);
   }
   // The applicability entity (the "thing we're filtering on") must be a
   // subtype of the relation's `member` constraint, e.g. an

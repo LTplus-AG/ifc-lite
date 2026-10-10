@@ -997,7 +997,7 @@ function auditIDSDocument(/* ... */): IDSAuditReport;
 function auditIDSStructure(/* ... */): IDSAuditReport;
 
 // Report localisation
-function createTranslationService(locale: 'en' | 'de' | 'fr'): TranslationService;
+function createTranslationService(locale: 'en' | 'de' | 'fr' | 'it'): TranslationService;
 ```
 
 ---

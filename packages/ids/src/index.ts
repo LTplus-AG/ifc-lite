@@ -9,7 +9,7 @@
  * - IDS XML parsing
  * - All facet types (Entity, Attribute, Property, Classification, Material, PartOf)
  * - All constraint types (Simple, Pattern, Enumeration, Bounds)
- * - Multi-language translation (EN, DE, FR)
+ * - Multi-language translation (EN, DE, FR, IT)
  * - Human-readable validation reports
  */
 
@@ -91,6 +91,14 @@ export type {
 // ============================================================================
 
 export { parseIDS, IDSParseError } from './parser/xml-parser.js';
+
+// ============================================================================
+// Writer
+// ============================================================================
+
+// The one IDS 1.0 writer (ADR-005): `@ifc-lite/rules`' `ruleSetToIds` and the
+// viewer's reviewed IDS drafts serialise through it.
+export { writeIdsXml, type IdsXmlFormat } from './writer/index.js';
 
 // ============================================================================
 // Material bridge

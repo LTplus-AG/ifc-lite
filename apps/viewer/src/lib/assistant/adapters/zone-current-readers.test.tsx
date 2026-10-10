@@ -131,7 +131,7 @@ for (const source of ['selection', 'zones'] as const) {
 }
 
 // #7220 / review4236197016: no source type edge may gate current native inheritance.
-test('#7220 selection and Zones inherit an overlay-added native type when source has no type relationship', async t => {
+for (const sourceType of [false, true]) test(`#7220 selection and Zones inherit ${sourceType ? 'a source type' : 'an overlay type'} through an overlay-added relationship absent from source`, async t => {
   const f = await seedDeclaredZoneWall(t); if (!f) return;
   const removal = getOrCreateMutationView(useViewerStore, 'arch'); assert.ok(removal);
   const ownerId = f.store.getEntity(f.id)?.attributes[1];
@@ -145,6 +145,16 @@ test('#7220 selection and Zones inherit an overlay-added native type when source
       if (others.length) removal.setPositionalAttribute(id, 4, others.map(id => `#${id}`)); else removal.deleteEntity(id);
     }
   }
+  const preparation = new StoreEditor(f.store, removal);
+  const addType = (editor: StoreEditor): number => {
+  const quantity = editor.addEntity('IfcQuantityVolume', f.store.schemaVersion === 'IFC2X3'
+    ? ['NetVolume', null, null, 10] : ['NetVolume', null, null, 10, null]).expressId;
+  const qto = editor.addEntity('IfcElementQuantity', [generateIfcGuid(), owner, 'Qto_WallBaseQuantities', null, null, [`#${quantity}`]]).expressId;
+  const type = editor.addEntity('IfcWallType', [generateIfcGuid(), owner, 'Overlay native wall type', null, null,
+    [`#${qto}`], null, null, null, '.NOTDEFINED.']).expressId;
+    return type;
+  };
+  const sourceTypeId = sourceType ? addType(preparation) : null;
   const store = await parse(editedModelBytes(f.store, removal));
   assert.deepEqual(store.relationships.getRelated(f.id, RelationshipType.DefinesByType, 'inverse'), [],
     'independent native reload starts with no source DefinesByType relationship');
@@ -157,19 +167,15 @@ test('#7220 selection and Zones inherit an overlay-added native type when source
   assert.deepEqual(useViewerStore.getState().resolveGlobalIdFromModels(f.id), { modelId: 'arch', expressId: f.id });
   const view = getOrCreateMutationView(useViewerStore, 'arch'); assert.ok(view);
   const editor = new StoreEditor(store, view);
-  const quantity = editor.addEntity('IfcQuantityVolume', store.schemaVersion === 'IFC2X3'
-    ? ['NetVolume', null, null, 10] : ['NetVolume', null, null, 10, null]).expressId;
-  const qto = editor.addEntity('IfcElementQuantity', [generateIfcGuid(), owner, 'Qto_WallBaseQuantities', null, null, [`#${quantity}`]]).expressId;
-  const type = editor.addEntity('IfcWallType', [generateIfcGuid(), owner, 'Overlay native wall type', null, null,
-    [`#${qto}`], null, null, null, '.NOTDEFINED.']).expressId;
+  const type = sourceTypeId ?? addType(editor);
   editor.addEntity('IfcRelDefinesByType', [generateIfcGuid(), owner, null, null, [`#${f.id}`], `#${type}`]);
   const current = readCurrentTypeQuantities(store, f.id, view);
-  assert.equal(current.status, 'available', 'canonical current native reader recognizes the overlay-added relationship');
-  const authored = current.value?.quantities.flatMap(set => set.quantities).find(q => q.name === 'NetVolume');
-  assert.ok(authored); assert.equal(authored.value, 10);
   const exported = await parse(editedModelBytes(store, view));
   const native = extractTypeQuantitiesOnDemand(exported, f.id)?.quantities.flatMap(set => set.quantities).find(q => q.name === 'NetVolume');
-  assert.ok(native); assert.equal(native.value, authored.value, 'independent native export resolves the new relationship and type quantity');
+  assert.ok(native); assert.equal(native.value, 10, 'independent native export resolves the new relationship and type quantity');
+  assert.equal(current.status, 'available', `canonical current reader recognizes the overlay-added relationship: ${current.reason}`);
+  const authored = current.value?.quantities.flatMap(set => set.quantities).find(q => q.name === 'NetVolume');
+  assert.ok(authored); assert.equal(authored.value, native.value);
   const scale = extractProjectUnits(exported.source, exported.entityIndex).resolvedForUnitType('VOLUMEUNIT')?.siScale ?? 1;
   const revision = view.getMutationRevision(), changes = view.getEffectiveChanges().length;
   const cache = useViewerStore.getState().zoneApportionment;

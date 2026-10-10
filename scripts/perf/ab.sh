@@ -134,7 +134,7 @@ cleanup() {
 trap cleanup EXIT
 echo "ab.sh: building base perf_probe @ $BASE_SHA in a throwaway worktree…" >&2
 BASE_BIN="$TMP_ROOT/perf_probe-base"
-"$ROOT/scripts/perf/build-at-ref.sh" --ref "$BASE_REF" --out "$BASE_BIN" --worktree-root "$TMP_ROOT"
+bash "$ROOT/scripts/perf/build-at-ref.sh" --ref "$BASE_REF" --out "$BASE_BIN" --worktree-root "$TMP_ROOT"
 
 if [ ! -x "$BASE_BIN" ] || [ ! -x "$BRANCH_BIN" ]; then
   echo "ab.sh: a probe binary is missing — build failed above." >&2

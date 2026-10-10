@@ -56,7 +56,9 @@ test('#7245 native revision CAS refuses a replacement invisible to the preview a
   assert.equal((await writeContent('comparison', report.id, { ...report, name: 'Other tab replacement' }, row.revision)).ok, true);
   // The old native session still owns its old report pointer. Only the real async storage CAS sees the replacement.
   assert.equal(useViewerStore.getState().savedComparisons.find(entry => entry.id === report.id), report);
-  click(button(ui, 'Delete report')!);
+  const confirmDelete = button(ui, 'Delete report');
+  assert.ok(confirmDelete, 'the mounted reviewed report exposes its Delete report action');
+  click(confirmDelete);
   await waitFor(() => useViewerStore.getState().savedComparisonsStorage.items[report.id] === 'conflict', 'native deletion reports revision conflict');
   const persisted = (await readContentRows('comparison')).find(entry => entry.id === report.id); assert.ok(persisted && !persisted.deleted);
   assert.equal((persisted.payload as { name: string }).name, 'Other tab replacement');
@@ -66,7 +68,9 @@ test('#7245 actual storage quota refusal preserves durable report and native Ret
   const report = await realComparison(); const ui = previewFor(report); await settle();
   const refused = refuseContentWrites();
   try {
-    click(button(ui, 'Delete report')!);
+    const confirmDelete = button(ui, 'Delete report');
+    assert.ok(confirmDelete, 'the mounted reviewed report exposes its Delete report action');
+    click(confirmDelete);
     await waitFor(() => useViewerStore.getState().savedComparisonsStorage.items[report.id] === 'quota', 'native deletion refuses quota');
     assert.equal((await readContentRows('comparison')).find(row => row.id === report.id)?.deleted, false);
   } finally { refused.mock.restore(); }
@@ -166,7 +170,9 @@ test('#7245 references changed after confirmation but before native queued commi
   const report = await realComparison(); await dependents('compare', report.id);
   const ui = previewFor(report); await settle();
   const dashboard = useViewerStore.getState().dashboards[0];
-  click(button(ui, 'Delete report')!);
+  const confirmDelete = button(ui, 'Delete report');
+  assert.ok(confirmDelete, 'the mounted reviewed report exposes its Delete report action');
+  click(confirmDelete);
   // Native deletion has staged its tombstone, but the queued persistence promise has not committed.
   act(() => useViewerStore.getState().upsertDashboard({ ...dashboard, charts: [...dashboard.charts,
     { ...dashboard.charts[0], id: 'later-dependent-chart', title: 'New dependency after confirmation' }] }));
@@ -180,7 +186,9 @@ test('#7245 a refused quota tombstone rechecks changed dependencies on native Re
   const ui = previewFor(report); await settle();
   const refused = refuseContentWrites();
   try {
-    click(button(ui, 'Delete report')!);
+    const confirmDelete = button(ui, 'Delete report');
+    assert.ok(confirmDelete, 'the mounted reviewed report exposes its Delete report action');
+    click(confirmDelete);
     await waitFor(() => useViewerStore.getState().savedComparisonsStorage.items[report.id] === 'quota', 'native guarded deletion refuses quota');
   } finally { refused.mock.restore(); }
   const dashboard = useViewerStore.getState().dashboards[0];
@@ -191,7 +199,9 @@ test('#7245 a refused quota tombstone rechecks changed dependencies on native Re
 });
 test('#7245 revoked queued deletion preserves a newer native same-ID rename draft', async () => {
   const report = await realComparison(); const ui = previewFor(report); await settle();
-  click(button(ui, 'Delete report')!);
+  const confirmDelete = button(ui, 'Delete report');
+  assert.ok(confirmDelete, 'the mounted reviewed report exposes its Delete report action');
+  click(confirmDelete);
   let renamed: Promise<boolean> = Promise.resolve(false);
   act(() => { renamed = useViewerStore.getState().renameSavedComparison(report.id, 'Newer native rename draft'); });
   await renamed;
@@ -203,7 +213,9 @@ test('#7245 revoked queued deletion preserves a newer native same-ID rename draf
 });
 test('#7245 native preview unmount revokes a queued confirmation before its actual storage write', async () => {
   const report = await realComparison(); const ui = previewFor(report); await settle();
-  click(button(ui, 'Delete report')!); cleanup();
+  const confirmDelete = button(ui, 'Delete report');
+  assert.ok(confirmDelete, 'the mounted reviewed report exposes its Delete report action');
+  click(confirmDelete); cleanup();
   await waitFor(() => useViewerStore.getState().savedComparisonsStorage.items[report.id] !== 'saving', 'native queued deletion observes lost preview owner');
   assert.equal((await readContentRows('comparison')).find(row => row.id === report.id)?.deleted, false);
   assert.ok(useViewerStore.getState().savedComparisons.some(row => row.id === report.id));
@@ -220,7 +232,9 @@ test('#7245 revoked native confirmation explains changed references without repo
   act(() => { picker.value = report.id; picker.dispatchEvent(new window.Event('change', { bubbles: true })); });
   click(button(ui, 'Delete saved comparison')!); await settle();
   const dashboard = useViewerStore.getState().dashboards[0];
-  click(button(ui, 'Delete report')!);
+  const confirmDelete = button(ui, 'Delete report');
+  assert.ok(confirmDelete, 'the mounted reviewed report exposes its Delete report action');
+  click(confirmDelete);
   act(() => useViewerStore.getState().upsertDashboard({ ...dashboard, name: 'Changed just before native write' }));
   await waitFor(() => useViewerStore.getState().savedComparisonsStorage.items[report.id] !== 'saving', 'revoked native request finishes');
   await settle();
@@ -234,7 +248,9 @@ test('#7245 closing a quota-refused native preview revokes its retained deletion
   const ui = previewFor(report); await settle();
   const refused = refuseContentWrites();
   try {
-    click(button(ui, 'Delete report')!);
+    const confirmDelete = button(ui, 'Delete report');
+    assert.ok(confirmDelete, 'the mounted reviewed report exposes its Delete report action');
+    click(confirmDelete);
     await waitFor(() => useViewerStore.getState().savedComparisonsStorage.items[report.id] === 'quota', 'native deletion actually stages a refused quota tombstone');
     assert.equal((await readContentRows('comparison')).find(row => row.id === report.id)?.deleted, false, 'durable native source survives actual quota refusal');
   } finally { refused.mock.restore(); }
@@ -265,7 +281,9 @@ for (const addReference of [false, true]) test(`#7245 own import receipt ${addRe
     });
   });
   try {
-    click(button(ui, 'Delete report')!);
+    const confirmDelete = button(ui, 'Delete report');
+    assert.ok(confirmDelete, 'the mounted reviewed report exposes its Delete report action');
+    click(confirmDelete);
     await waitFor(() => ownCommit !== undefined, 'actual public deletion stages before the own native commit');
     await ownCommit;
     await waitFor(() => ['saved', 'conflict'].includes(useViewerStore.getState().savedComparisonsStorage.items[report.id]), 'native second CAS write resolves');
@@ -297,7 +315,9 @@ test('#7245 closing the mounted native preview revokes an own-receipt CAS retry'
     });
   });
   try {
-    click(button(ui, 'Delete report')!);
+    const confirmDelete = button(ui, 'Delete report');
+    assert.ok(confirmDelete, 'the mounted reviewed report exposes its Delete report action');
+    click(confirmDelete);
     await waitFor(() => ownCommit !== undefined, 'actual native deletion stages before the competing own commit');
     await ownCommit;
     await waitFor(() => ['saved', 'conflict'].includes(useViewerStore.getState().savedComparisonsStorage.items[report.id]), 'native CAS operation reaches its result');
@@ -323,7 +343,9 @@ test('#7245 a renamed actual own-receipt replacement revokes staged native delet
     });
   });
   try {
-    click(button(ui, 'Delete report')!);
+    const confirmDelete = button(ui, 'Delete report');
+    assert.ok(confirmDelete, 'the mounted reviewed report exposes its Delete report action');
+    click(confirmDelete);
     await waitFor(() => ownCommit !== undefined, 'actual native deletion stages before the competing own commit');
     await ownCommit;
     await waitFor(() => ['saved', 'conflict'].includes(useViewerStore.getState().savedComparisonsStorage.items[report.id]), 'native CAS operation reaches its result');

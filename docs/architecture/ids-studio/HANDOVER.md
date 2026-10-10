@@ -14,7 +14,7 @@ A clean-room rewrite of IDS authoring in ifc-lite: an IDS Studio inside the view
 | Per-pitch engineering log (decisions, gotchas, what's next) | [`worklog/P-xx.md`](worklog/) — each lives on its pitch branch until merged | Append an entry at the end of every working session |
 | Backlog definitions (scope, acceptance, evidence) | [`05-delivery/03-backlog.md`](05-delivery/03-backlog.md) | IDs are stable; never renumber |
 | Owner decisions | [`README.md` → Decisions](README.md#decisions-resolved-by-the-owner-2026-10-08) | Add D9, D10… with date |
-| Private material (tool landscape, launch FAQ, go-to-market) | Owner's private plan package (not in this repo) | ADR-014 — never commit vendor or client names |
+| Private material (tool landscape, launch FAQ, go-to-market) | Owner's private plan package (not in this repo) | ADR-014 — never commit commercial counterparty names or private strategy |
 
 ## 3. Branches and PRs
 All PRs are **drafts** until their pitch's "Done means" (in its pitch file) is met and evidence is attached.
@@ -44,7 +44,7 @@ All PRs are **drafts** until their pitch's "Done means" (in its pitch file) is m
 1. Pick the next unblocked backlog item for the pitch (`STATUS.md`). Mark it `in progress` with your name or session.
 2. Read the item's row in the backlog, the pitch file and the relevant architecture section.
 3. Implement it on the pitch branch, following [AGENTS.md](https://github.com/LTplus-AG/ifc-lite/blob/main/AGENTS.md):
-   - MPL header on new files;
+   - MPL header on new source files in the extension scope defined by `scripts/lib/license-header.mjs` (Markdown is outside that header gate);
    - no `as any`, `@ts-ignore` or silent `catch {}`;
    - modules ≤ ~400 lines;
    - tests with an oracle where one exists (see [`05-delivery/02-test-and-eval-strategy.md`](05-delivery/02-test-and-eval-strategy.md));

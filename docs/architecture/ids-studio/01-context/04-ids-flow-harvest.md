@@ -22,6 +22,5 @@ ids-flow (`louistrue/ids-flow`, package `idsedit`, AGPL-3.0, Next.js 15 + @xyflo
 - Likely bug: applicability facets with restrictions are dropped on export (`groupNodesBySpecification`). Unverified.
 - No facet groups; sessionStorage-only persistence; manual `takeSnapshot()` undo; two lockfiles; build ignores type errors.
 
-## idsedit.com — decision D1
-Options: (a) redirect to ifc-lite Studio; (b) keep running with an "Open in ifc-lite Studio" CTA; (c) archive.
-Recommendation: **(b) now, (a) at Studio public launch.** The domain has SEO value and users; make it the Studio landing page.
+## Existing editor — decision D1
+The existing editor remains separate from the Studio architecture. Its domain, migration and launch strategy are recorded in the owner’s private plan package (ADR-014). This public harvest note authorizes neither a redirect nor code relicensing.

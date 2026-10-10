@@ -72,11 +72,11 @@ Most IDS tools have to build their IDS engine from scratch; we already own a con
 - Repository default: a PR closes a `ready` issue and sweeps need a charter. The recorded D8 exception for this campaign uses approved backlog IDs in PR bodies; maintainer escape-label admission still applies. One defect class per PR and stacks above ~1,500 changed lines remain.
 - User-visible claims need evidence: a real model from a real authoring tool, an oracle run or a screenshot.
 - No `as any` / `@ts-ignore` / silent `catch {}`; production modules ≤ ~400 lines (enforced).
-- New features ship tests; MPL-2.0 header on every new file; changesets + `pnpm api-surface:update` for published API.
+- New features ship tests; MPL-2.0 header on new source files in the extension scope defined by `scripts/lib/license-header.mjs` (Markdown is outside that header gate); changesets + `pnpm api-surface:update` for published API.
 - Docs updated in the same PR; snippets typechecked; generated doc regions.
 - Supersede means delete. No legacy fallback paths.
 - Exact IFC EXPRESS names everywhere; never invent aliases.
-- Public repo: no client/partner/vendor names in code, docs, commits or PRs.
+- Public repo: no client, customer, prospect or partner organisation names, commercial relationships or private strategy in code, docs, commits or PRs. Published technology/framework references are distinct from commercial counterparties (AGENTS.md).
 
 ## 9. Engine gaps the plan must close
 | Gap | Backlog |

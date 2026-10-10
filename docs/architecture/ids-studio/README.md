@@ -5,7 +5,7 @@
 
 **One sentence:** the only IDS tool that knows your model, the IFC schema and bSDD at the same time, so every requirement you write is grounded, previewed in 3D, explained, tested, and AI-draftable without hallucination.
 
-> **Public subset.** ifc-lite is public (AGENTS.md → "This repository is public"). The tool landscape, launch FAQ and go-to-market material are kept in the owner's private plan package (ADR-014). Everything here names no vendors or clients.
+> **Public subset.** ifc-lite is public (AGENTS.md → "This repository is public"). The tool landscape, launch FAQ and go-to-market material are kept in the owner's private plan package (ADR-014). Public material omits commercial counterparties and private launch strategy. References to published technologies and planning frameworks do not describe a commercial relationship.
 >
 > **Taking over?** Start with [`HANDOVER.md`](HANDOVER.md), then [`STATUS.md`](STATUS.md).
 
@@ -17,10 +17,10 @@ This plan combines four well-established frameworks, each used for what it is be
 
 | Layer | Framework | Why this one | Where |
 |---|---|---|---|
-| **Why / what** | **Working Backwards** (Amazon PR/FAQ) | Forces a customer-visible definition of "done" before any architecture. | private plan package |
+| **Why / what** | **Working Backwards** (PR/FAQ) | Forces a customer-visible definition of "done" before any architecture. | private plan package |
 | **Product** | **Jobs-to-be-Done + PRD** with numbered requirements (FR/NFR) | Every feature traces to a job a real persona has; every requirement traces to a backlog item and a test. | `02-product/` |
 | **How** | **arc42-lite + C4 diagrams + ADRs** (Michael Nygard format) | Architecture decisions are recorded once with their reasoning and alternatives, so they are not re-litigated per PR. | `03-architecture/`, `04-decisions/` |
-| **When** | **Shape Up** (Basecamp): fixed-time *appetites*, shaped *pitches* with rabbit holes and no-gos, 6-week cycles + 2-week cooldowns | Uses bounded backlog scopes in PR bodies under the recorded D8 campaign exemption, while retaining one defect class per PR and stacked PRs above ~1,500 lines. | `05-delivery/` |
+| **When** | **Shape Up**: fixed-time *appetites*, shaped *pitches* with rabbit holes and no-gos, 6-week cycles + 2-week cooldowns | Uses bounded backlog scopes in PR bodies under the recorded D8 campaign exemption, while retaining one defect class per PR and stacked PRs above ~1,500 lines. | `05-delivery/` |
 | **Measure** | **OKRs** with a North-Star metric + **RAID** log | Ambition stated as measurable targets; risks owned. | `05-delivery/04-metrics-okrs.md`, `05-delivery/05-raid.md` |
 
 Traceability chain: **PR/FAQ claim → Job (J-x) → Requirement (FR-x) → Pitch (P-x) → Backlog item (IDS-xxx) → Test / Eval → OKR**.
@@ -48,7 +48,7 @@ Traceability chain: **PR/FAQ claim → Job (J-x) → Requirement (FR-x) → Pitc
 | 4 | [`04-decisions/`](04-decisions/) | ADR-001 … ADR-014 |
 | 5 | [`05-delivery/01-roadmap.md`](05-delivery/01-roadmap.md) | Cycles, appetites, parallel tracks, milestones |
 | 5 | [`05-delivery/pitches/`](05-delivery/pitches/) | Shape Up pitches P-01 … P-12 |
-| 5 | [`05-delivery/03-backlog.md`](05-delivery/03-backlog.md) | 123 PR-sized items (no issues needed: owner exemption, see HANDOVER) |
+| 5 | [`05-delivery/03-backlog.md`](05-delivery/03-backlog.md) | 124 PR-sized items (no issues needed: owner exemption, see HANDOVER) |
 | 5 | [`05-delivery/02-test-and-eval-strategy.md`](05-delivery/02-test-and-eval-strategy.md) | Oracles, corpora, AI evals, real-model evidence |
 | 5 | [`05-delivery/04-metrics-okrs.md`](05-delivery/04-metrics-okrs.md) | North star, OKRs, targets vs. published baselines |
 | 5 | [`05-delivery/05-raid.md`](05-delivery/05-raid.md) | Risks, assumptions, issues, dependencies |
@@ -83,7 +83,7 @@ What's missing is the authoring product.
 
 | # | Decision | Resolution |
 |---|---|---|
-| D1 | idsedit.com / ids-flow future | Keep running with an "Open in ifc-lite IDS Studio" link now; redirect at Studio launch |
+| D1 | Existing editor future | Domain, migration and launch strategy remain in the owner’s private plan package (ADR-014); this public plan does not authorize a redirect |
 | D2 | AI provider policy | Claude-first (`claude-opus-5-5`), provider-neutral seam kept; other providers only if they pass the eval gate |
 | D3 | Free-tier AI budget | Same quotas and proxy path as the existing viewer chat/assistant (`lib/llm/usage-quota.ts`) |
 | D4 | External IDS benchmark licence | Unknown. Treat as unusable for publishing until clarified; build our own gold set (IDS-088) regardless |

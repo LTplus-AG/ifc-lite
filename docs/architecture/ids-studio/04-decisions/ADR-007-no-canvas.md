@@ -18,4 +18,4 @@ Accepted (owner decision, 2026-10-08).
 
 ## Consequences
 - **+** Smaller scope; faster to excellent; familiar to Excel-native users.
-- **−** Users who liked the graph metaphor lose it. idsedit.com remains available (decision D1).
+- **−** Users who liked the graph metaphor lose it. The existing editor remains separate; its migration and launch strategy are private (D1, ADR-014).

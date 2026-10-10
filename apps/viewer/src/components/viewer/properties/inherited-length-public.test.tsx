@@ -193,5 +193,7 @@ test('#7382 malformed current native inherited LengthValue cannot retain stale p
   assert.doesNotMatch(ui.textContent ?? '', /No quantities/, 'unavailable coverage is not verified absence');
   assert.equal(x.current.getMutationRevision(), revision);
   assert.deepEqual(x.current.getEffectiveChanges(), changes);
-  await assertSameNativeIfcGraph(editedModelBytes(x.source, x.current), before);
+  await act(async () => {
+    await assertSameNativeIfcGraph(editedModelBytes(x.source, x.current), before);
+  });
 });

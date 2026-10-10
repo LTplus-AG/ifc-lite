@@ -2,6 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { ProjectUnits, quantitySiScale } from '@ifc-lite/parser';
+
 /**
  * WHICH volume an apportionment apportions (issue #2508 design questions 2 and
  * 3), following the convention #2199 settled: the tool never decides, it
@@ -100,6 +102,9 @@ export interface QuantityLike {
   name: string;
   type: number;
   value: number;
+  /** Canonical member Unit metadata, retained by both native quantity readers. */
+  explicitUnitSiScale?: number;
+  explicitUnitUnresolved?: true;
 }
 
 /** The minimum a quantity SET has to expose. */
@@ -121,7 +126,8 @@ export interface DeclaredVolume {
 /**
  * Every declared volume quantity on an element, one per basis, normalised to SI.
  *
- * `volumeSiScale` is the file's own VOLUMEUNIT scale from `ProjectUnits`
+ * An explicit native member Unit wins through `quantitySiScale`;
+ * `volumeSiScale` is the fallback file VOLUMEUNIT scale from `ProjectUnits`
  * (`resolvedForUnitType('VOLUMEUNIT').siScale`) — the canonical resolver, never
  * a hand-rolled `1e-9`. It matters: `building-architecture.ifc` declares
  * millimetre LENGTH alongside cubic-metre VOLUME, so deriving one from the
@@ -133,9 +139,9 @@ export interface DeclaredVolume {
  */
 export function declaredVolumeBases(
   quantitySets: readonly QuantitySetLike[],
-  volumeSiScale: number,
+  volumeSiScale: number | null,
 ): DeclaredVolume[] {
-  const scale = Number.isFinite(volumeSiScale) && volumeSiScale > 0 ? volumeSiScale : 1;
+  const projectScale = volumeSiScale === null ? null : Number.isFinite(volumeSiScale) && volumeSiScale > 0 ? volumeSiScale : 1;
   const out: DeclaredVolume[] = [];
   const seen = new Set<string>();
   for (const qset of quantitySets) {
@@ -144,8 +150,16 @@ export function declaredVolumeBases(
       if (!Number.isFinite(q.value)) continue;
       const basis = volumeBasisFromQuantityName(q.name);
       if (seen.has(basis)) continue;
+      // A present but unreadable native unit still owns this first basis.
+      // Do not promote a later occurrence or inherited total over it.
+      if (q.explicitUnitUnresolved) { seen.add(basis); continue; }
+      const scale = q.explicitUnitSiScale === undefined ? projectScale
+        : quantitySiScale(q, ProjectUnits.empty());
+      if (scale === null || !Number.isFinite(scale) || scale <= 0) continue;
+      const valueM3 = q.value * scale;
+      if (!Number.isFinite(valueM3)) continue;
       seen.add(basis);
-      out.push({ basis, quantityName: q.name, valueM3: q.value * scale });
+      out.push({ basis, quantityName: q.name, valueM3 });
     }
   }
   return out;

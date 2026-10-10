@@ -148,6 +148,9 @@ function readCurrent(store: IfcDataStore, entityId: number, view: MetadataReadVi
                 || (quantity.attributes[3] < 0 && QUANTITY_TYPE_MAP[quantity.type.toUpperCase()] !== QuantityType.Number)) throw new CurrentQuantityRefusal('Native type quantity value is unavailable');
         }
         const set = readQuantitySetRecord(store, extractor, record, readEntity, resolveCurrentUnit);
+        if (set?.quantities.some(quantity => quantity.explicitUnitUnresolved)) {
+            throw new CurrentQuantityRefusal('Native quantity unit is unresolved or dimensionally unsupported');
+        }
         return set ? [set] : [];
     });
     const quantities = readSets([...ownSetIds]);

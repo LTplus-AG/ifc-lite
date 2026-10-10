@@ -51,6 +51,8 @@ enabled. Shift + left drag pans in every preset and tool.
 
 Each zone-set volume report states its cached processed entity outcomes and the native proved-split and refusal counts. Whole-set runs and incremental per-element cache updates have distinct coverage; cached counts describe the evaluated boundary-crossing entities. Missing geometry, unproved solids and volumes invalidated by federation alignment retain separate reasons. Captured model names and IFC `GlobalId` evidence stay with older rows through later updates and panel remounts; unknown cache history shows **Outcome unknown**, and older native revisions show **Stale**. Evidence samples show their displayed and total counts. The native split, authoring, writeback and export controls remain available in their existing locations.
 
+Declared volume totals use each quantity’s explicit native unit before project units, consistently in Properties, zone tables and CSV exports. A present unresolved or dimensionally incompatible unit leaves that physical basis unavailable; it does not inherit project cubic metres or promote a later inherited total. Independently resolved explicit units remain usable when project units are unavailable. Mesh volume stays in SI and is unchanged by declared quantity display units.
+
 ## Alignment sections
 
 Open **Section → Alignment**, select the model and its `IfcAlignment`, then

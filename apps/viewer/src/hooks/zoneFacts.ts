@@ -17,7 +17,7 @@
  */
 
 import { MutablePropertyView } from '@ifc-lite/mutations';
-import { extractProjectUnits, type IfcDataStore } from '@ifc-lite/parser';
+import { readCurrentProjectUnits, readCurrentTypeQuantities, type IfcDataStore } from '@ifc-lite/parser';
 import { useViewerStore } from '@/store';
 import { resolveEntityRef } from '@/store/resolveEntityRef';
 import { configureMutationView } from '@/utils/configureMutationView';
@@ -37,12 +37,17 @@ export interface ModelContext {
   view: MutablePropertyView;
   volumeSiScale: number;
   store: IfcDataStore | null;
+  /** Missing context must not supply a scale for implicit declared quantities. */
+  declaredUnitsAvailable?: boolean;
 }
 
-function volumeScaleOf(store: IfcDataStore | null): number {
-  if (!store || !(store.source?.length > 0)) return 1;
-  const scale = extractProjectUnits(store.source, store.entityIndex).resolvedForUnitType('VOLUMEUNIT')?.siScale;
-  return Number.isFinite(scale) && (scale ?? 0) > 0 ? (scale as number) : 1;
+function volumeScaleOf(store: IfcDataStore | null, view: MutablePropertyView) {
+  if (!store) return { scale: 1, available: false };
+  const current = readCurrentProjectUnits(store, view);
+  const unit = current.status === 'available' ? current.value?.unitForMeasure('IfcVolumeMeasure') : null;
+  const scale = unit?.siScale;
+  return Number.isFinite(scale) && (scale ?? 0) > 0
+    ? { scale: scale!, available: true } : { scale: 1, available: false };
 }
 
 /** Get-or-create a model's overlay. Write-back is often the FIRST thing in a
@@ -64,7 +69,8 @@ export function contextFor(modelId: string, cache: Map<string, ModelContext | nu
     configureMutationView(view, store);
     state.registerMutationView(modelId, view);
   }
-  const context: ModelContext = { view, volumeSiScale: volumeScaleOf(store), store };
+  const units = volumeScaleOf(store, view);
+  const context: ModelContext = { view, volumeSiScale: units.scale, declaredUnitsAvailable: units.available, store };
   cache.set(modelId, context);
   return context;
 }
@@ -80,7 +86,20 @@ export function contextFor(modelId: string, cache: Map<string, ModelContext | nu
  * expect to see apportioned.
  */
 export function quantitySetsFor(context: ModelContext, expressId: number) {
-  return context.view.getQuantitiesForEntity(expressId);
+  const own = context.view.getQuantitiesForEntity(expressId);
+  const inherited = context.store
+    ? readCurrentTypeQuantities(context.store, expressId, context.view) : null;
+  // Refused inherited data never replaces a native occurrence quantity.
+  const quantities = inherited?.status === 'available' && inherited.value?.quantities.length
+    ? [...own, ...inherited.value.quantities] : own;
+  // Explicit member metadata remains independently physical without a project
+  // assignment. A missing context must not relabel implicit raw values as SI.
+  return context.declaredUnitsAvailable === false
+    ? quantities.map(set => ({ ...set, quantities: set.quantities.filter(q =>
+      ('explicitUnitUnresolved' in q && q.explicitUnitUnresolved === true) ||
+      'explicitUnitSiScale' in q && typeof q.explicitUnitSiScale === 'number'
+        && Number.isFinite(q.explicitUnitSiScale) && q.explicitUnitSiScale > 0) }))
+    : quantities;
 }
 
 /** Resolve the whole-element total on `basis`, plus the quantity name it came

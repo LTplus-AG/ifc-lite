@@ -45,7 +45,7 @@ const KNOWN_REFUSALS: ReadonlySet<string> = new Set([
 ]);
 import { resolveQuantityDisplay, formatConverted, QUANTITY_TYPE_UNIT } from '@/lib/units/display';
 import { VOLUME_QUANTITY_TYPE } from '@/lib/zones';
-import { quantitySiScale, type ProjectUnits } from '@ifc-lite/parser';
+import type { ProjectUnits } from '@ifc-lite/parser';
 
 interface Props {
   zoneSet: ZoneSet;
@@ -134,22 +134,19 @@ export function ZoneVolumeBreakdown({ zoneSet, globalId, quantitySets, projectUn
 
   const breakdowns = useMemo(() => {
     if (!apportionment) return null;
-    if (quantityUnitCoverage?.status !== 'unavailable') {
-      return allBasisBreakdowns(apportionment, declaredVolumeBases(quantitySets, volume.siScale));
-    }
-    // An independently resolved member Unit remains physical without project context.
-    const explicitSets = quantitySets.map(set => ({ ...set, quantities: set.quantities.flatMap(q => {
-      if (!('explicitUnitSiScale' in q) || typeof q.explicitUnitSiScale !== 'number') return [];
-      return [{ ...q, value: q.value * quantitySiScale({ ...q, explicitUnitSiScale: q.explicitUnitSiScale }, projectUnits) }];
-    }) }));
-    return allBasisBreakdowns(apportionment, declaredVolumeBases(explicitSets, 1));
+    // One shared member-before-project conversion; explicit quantities remain
+    // independently physical when the project assignment is unavailable.
+    return allBasisBreakdowns(apportionment, declaredVolumeBases(quantitySets,
+      quantityUnitCoverage?.status === 'unavailable' ? null : volume.siScale));
   }, [apportionment, quantitySets, volume.siScale, projectUnits, quantityUnitCoverage?.status]);
 
   const reason = cachedRefusal ?? refusal;
   const inheritedUnavailable = inheritedQuantityCoverage?.status === 'unavailable'
     ? <output className="block px-3 py-2 text-xs text-muted-foreground">{t('zonesPanel.volumeBreakdown.inheritedUnavailable', { reason: inheritedQuantityCoverage.reason ?? 'unverified current data' })}</output> : null;
-  const unitsUnavailable = quantityUnitCoverage?.status === 'unavailable'
-    ? <output className="block px-3 py-2 text-xs text-muted-foreground">{t('zonesPanel.volumeBreakdown.quantityUnitsUnavailable', { reason: quantityUnitCoverage.reason ?? 'unverified current data' })}</output> : null;
+  const unresolvedMemberUnit = quantitySets.some(set => set.quantities.some(quantity =>
+    quantity.type === VOLUME_QUANTITY_TYPE && quantity.explicitUnitUnresolved));
+  const unitsUnavailable = quantityUnitCoverage?.status === 'unavailable' || unresolvedMemberUnit
+    ? <output className="block px-3 py-2 text-xs text-muted-foreground">{t('zonesPanel.volumeBreakdown.quantityUnitsUnavailable', { reason: unresolvedMemberUnit ? 'Explicit native quantity Unit cannot be resolved' : quantityUnitCoverage?.reason ?? 'unverified current data' })}</output> : null;
 
   if (!apportionment) {
     return (

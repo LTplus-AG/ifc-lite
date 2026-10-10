@@ -17,6 +17,9 @@ import { render, cleanup } from '@/test/render';
 import { setGlobalRendererRef } from '@/hooks/useBCF';
 import { getMaxExpressId } from '@/hooks/ingest/viewerModelIngest';
 import { assertSiVolume } from '@/test/native-quantity-assertions';
+import { applyZoneWriteBack } from '@/hooks/useZoneWriteBack';
+import { computeZoneApportionmentForElement } from '@/hooks/useZoneApportionment';
+import { ZONE_QUANTITY_SET_NAME_PREFIX } from '@/lib/zones';
 
 const original = useViewerStore.getState();
 afterEach(() => { cleanup(); setGlobalRendererRef({ current: null }); useViewerStore.setState(original, true); });
@@ -92,6 +95,15 @@ for (const source of ['selection', 'zones'] as const) {
     const panel = render(<PropertiesPanel />);
     assert.match(panel.textContent ?? '', /10 mm³/, 'Properties independently consults the surviving native unit view');
     const after = read(source);
+    if (source === 'selection') {
+      const selected = JSON.parse(captureEvidence('selection').payload).evidence.rows[0].data;
+      const ordinary = selected.quantities.flatMap((set: { quantities: Record<string, { value: number; unit: string | null }> }) =>
+        Object.entries(set.quantities)).find(([name]: [string, { value: number; unit: string | null }]) => name === 'NetVolume');
+      assert.ok(ordinary, '#7220 ordinary native quantity remains present beside Zone evidence');
+      assert.equal(ordinary[1].value, native.value);
+      assert.equal(ordinary[1].unit, 'mm³', '#7220 the same selected wall cannot publish current mm³ as ordinary m³');
+      assertSiVolume(ordinary[1].value * scale, after.net, '#7220 ordinary quantity and declared Zone basis describe the same physical magnitude');
+    }
     assert.equal(after.unitStatus, 'available');
     assertSiVolume(after.net, native.value * scale, 'source release cannot certify the raw value as cubic metres');
     assert.equal(after.mesh, before.mesh, 'native geometry remains SI');
@@ -105,3 +117,49 @@ for (const source of ['selection', 'zones'] as const) {
     assert.equal(useViewerStore.getState().mutationViews.get('arch'), view, 'capture neither replaces nor creates a view');
   });
 }
+
+// #7220: actual canonical writeback values are per-zone shares, not a new whole-element basis.
+test('#7220 selection and Zones exclude native zone writeback quantities from whole-element declared bases', async t => {
+  const f = await seedDeclaredZoneWall(t); if (!f) return;
+  const view = getOrCreateMutationView(useViewerStore, 'arch'); assert.ok(view);
+  let removed = 0;
+  // @raw-entity-enumeration-ok native fixture removes the selected wall's original quantity associations before canonical Zone writeback
+  for (const id of f.store.entityIndex.byType.get('IFCRELDEFINESBYPROPERTIES') ?? []) {
+    const attrs = f.store.getEntity(id)?.attributes;
+    if (!Array.isArray(attrs?.[4]) || !attrs[4].includes(f.id) || typeof attrs[5] !== 'number'
+      || f.store.getEntity(attrs[5])?.type.toUpperCase() !== 'IFCELEMENTQUANTITY') continue;
+    removed++;
+    const others = attrs[4].filter(id => id !== f.id);
+    if (others.length) view.setPositionalAttribute(id, 4, others.map(id => `#${id}`)); else view.deleteEntity(id);
+  }
+  assert.ok(removed > 0, 'setup removes actual native occurrence quantity associations');
+  useViewerStore.setState({ editEnabled: true });
+  const written = applyZoneWriteBack(f.zoneSet, 'mesh');
+  assert.equal(written.blocked, null); assert.equal(written.summary.written, 1);
+  const exported = await parse(editedModelBytes(f.store, view));
+  const qsets = extractQuantitiesOnDemand(exported, f.id);
+  assert.ok(qsets.length > 0 && qsets.every(set => set.name.startsWith(ZONE_QUANTITY_SET_NAME_PREFIX)),
+    'independent STEP readback contains only the canonical per-zone writeback quantity sets');
+  const scale = extractProjectUnits(exported.source, exported.entityIndex).resolvedForUnitType('VOLUMEUNIT')?.siScale ?? 1;
+  assertSiVolume(qsets.flatMap(set => set.quantities).reduce((n, quantity) => n + quantity.value * scale, 0),
+    f.apportionment.wholeVolumeM3, 'actual per-zone native writeback reconciles to the kernel whole volume');
+  const model = useViewerStore.getState().models.get('arch'); assert.ok(model);
+  useViewerStore.setState({ models: new Map([['arch', { ...model, ifcDataStore: exported,
+    maxExpressId: getMaxExpressId(exported, model.geometryResult?.meshes ?? []) }]]), ifcDataStore: exported,
+    mutationViews: new Map(), storeEditors: new Map() });
+  assert.deepEqual(useViewerStore.getState().resolveGlobalIdFromModels(f.id), { modelId: 'arch', expressId: f.id });
+  assert.ok(computeZoneApportionmentForElement(f.zoneSet, f.id).apportionment, 'native split is freshly computed for the reparsed owner');
+  const beforeVersion = useViewerStore.getState().mutationVersion;
+  const beforeViews = useViewerStore.getState().mutationViews;
+  const selected = JSON.parse(captureEvidence('selection').payload).evidence.rows[0].data;
+  assert.ok(selected.quantities.some((set: { name: string }) => set.name.startsWith(ZONE_QUANTITY_SET_NAME_PREFIX)),
+    'ordinary quantities retain the actual writeback facts');
+  assert.deepEqual(selected.zoneVolumeBreakdowns.volumeBases.map((basis: { basis: string }) => basis.basis), ['mesh'],
+    'per-zone shares must not be split again as whole-element declared volume');
+  const zones = JSON.parse(captureEvidence('zones').payload).evidence.rows;
+  assert.equal(zones.length, 2);
+  assert.ok(zones.every((row: { data: { VolumeBases: unknown[] } }) => row.data.VolumeBases.length === 0),
+    'both public captures exclude the same canonical writeback sets');
+  assert.equal(useViewerStore.getState().mutationVersion, beforeVersion);
+  assert.equal(useViewerStore.getState().mutationViews, beforeViews, 'capture creates no native mutation view');
+});

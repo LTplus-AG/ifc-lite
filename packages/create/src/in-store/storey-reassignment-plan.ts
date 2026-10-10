@@ -14,6 +14,7 @@ const OP = 'reassignElementsToStoreyInStore';
 const fail = (message: string): never => { throw new Error(`${OP}: ${message}`); };
 export type ReassignmentRelationship = { id: number; type: string; parent: number; children: number[]; listIndex: number; parentIndex: number; attributes: readonly unknown[] };
 export type StoreyReassignmentPlan = {
+  sourceStorey: { expressId: number; GlobalId: string }; destinationStorey: { expressId: number; GlobalId: string };
   sourceStoreyId: number; destinationStoreyId: number; destinationPlacementId: number;
   products: { expressId: number; GlobalId: string; type: string; attributes: readonly unknown[]; placementId: number; world: Frame3 }[];
   placements: { expressId: number; relative: Frame3 }[];
@@ -182,7 +183,9 @@ function planWithInventory(store: IfcDataStore, view: MutablePropertyView, selec
   if (!ownership.has(ownershipKey)) ownership.set(ownershipKey, editOwnershipRefusal(store, view, placements.map(p => p.expressId), ids));
   const refusal = ownership.get(ownershipKey);
   if (refusal) fail(refusal);
-  return { sourceStoreyId, destinationStoreyId, destinationPlacementId, products, placements,
+  return { sourceStorey: { expressId: sourceStoreyId, GlobalId: storeyGuids[0] },
+    destinationStorey: { expressId: destinationStoreyId, GlobalId: storeyGuids[1] },
+    sourceStoreyId, destinationStoreyId, destinationPlacementId, products, placements,
     relationships: ownedRelationships, sourceMemberships };
 }
 

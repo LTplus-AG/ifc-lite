@@ -331,6 +331,18 @@
                 "incoming\":[{\"target\":15,\"referrers\":[{\"expressId\":14,\"count\":1},{\"expressId\":18,\"count\":1}]},{\"target\":16,\"referrers\":[{\"expressId\":14,\"count\":1}]},{\"target\":17,\"referrers\":[{\"expressId\":14,\"count\":1}]},{\"target\":425,\"referrers\":[{\"expressId\":404,\"count\":1},{\"expressId\":411,\"count\":1},{\"expressId\":424,\"count\":1},{\"expressId\":430,\"count\":1},{\"expressId\":435,\"count\":1}]}]}"
               ]
             },
+            "nativeRoomAutoAll": {
+              "scope": "all-current-storeys-in-one-explicit-model",
+              "requiresNativePreparation": true,
+              "status": "available",
+              "storeys": [
+                {
+                  "expressId": 43,
+                  "GlobalId": "1Ano2ZUxnEIvVQ_beukl8b",
+                  "Name": "00 groundfloor"
+                }
+              ]
+            },
             "nativeStructural": {
               "status": "available",
               "recordCount": 48,

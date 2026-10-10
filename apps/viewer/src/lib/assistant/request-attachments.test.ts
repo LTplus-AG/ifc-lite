@@ -45,7 +45,8 @@ test('an attached selection is sent as bounded GlobalId grounding and recorded i
   useViewerStore.setState(sceneModels());
   store().setSelectedEntityIds([101, 10_103]);
   const grounding = captureSelectionGrounding(store());
-  assert.deepEqual(grounding.elements.map(({ nativePlacement, nativeStructural: _nativeStructural, nativeEdit, nativeType, nativeReplacementExpected, nativeCost, nativeLayers, nativeSlabOpeningExpected, nativeStairExpected, nativeSplitExpected, nativeHostedExpected, nativeTrimExtendExpected, nativeAuthoringAvailability, nativeAuthoringUnits, nativeAuthoringRefusals, ...identity }) => {
+  assert.deepEqual(grounding.elements.map(({ nativePlacement, nativeStructural: _nativeStructural, nativeRoomAutoAll, nativeEdit, nativeType, nativeReplacementExpected, nativeCost, nativeLayers, nativeSlabOpeningExpected, nativeStairExpected, nativeSplitExpected, nativeHostedExpected, nativeTrimExtendExpected, nativeAuthoringAvailability, nativeAuthoringUnits, nativeAuthoringRefusals, ...identity }) => {
+    assert.deepEqual(nativeRoomAutoAll, { status: 'unavailable', reason: 'Current editable IFC source/index/length unit is unavailable', requiresNativePreparation: true, scope: 'all-current-storeys-in-one-explicit-model', storeys: [] }, '#7324 identity-only fixtures cannot authorize AutoAll native room preparation');
     assert.equal(nativeEdit.dimensionsStatus, 'unavailable', 'this identity-only fixture has no native geometry index');
     assert.deepEqual(nativeType, { status: 'unavailable', expected: null }, 'this identity-only fixture has no native type graph');
     assert.equal(nativeReplacementExpected, null, '#7320 identity-only fixtures cannot authorize native replacement');

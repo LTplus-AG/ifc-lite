@@ -124,11 +124,25 @@ export interface IDSBoundsConstraint {
    */
   and?: readonly IDSConstraint[];
   /**
-   * Facets whose `<xs:*Inclusive|Exclusive|Digits>` element was PRESENT
-   * in the source `<xs:restriction>` but whose `@value` could not be
-   * parsed as the expected number (`parseFloat`/`parseInt` failed, or a
-   * digit-count facet came out negative) — e.g. a typo'd `"6O"` (letter
-   * O) or the European decimal `"6,5"`. Distinct from a facet that was
+   * The bound facets of an `xs:date` / `xs:dateTime` / `xs:time` /
+   * `xs:duration` restriction, as their validated lexical text. Those
+   * value spaces are not numbers, so the numeric `min*` / `max*` fields
+   * above stay unset for them and the bounds live here instead, compared
+   * in the base's own order (#7399).
+   */
+  temporalBounds?: {
+    minInclusive?: string;
+    maxInclusive?: string;
+    minExclusive?: string;
+    maxExclusive?: string;
+  };
+  /**
+   * Facets whose `<xs:*Inclusive|Exclusive|Length|Digits>` element was
+   * PRESENT in the source `<xs:restriction>` but whose `@value` is not in
+   * the lexical space the facet requires: for a min/max bound, the
+   * restriction `@base`'s (#7399); for a length or digit-count facet, a
+   * non-negative integer — e.g. a typo'd `"6O"` (letter O), the European
+   * decimal `"6,5"`, or `"2024-13-01"` under `xs:date`. Distinct from a facet that was
    * never present at all: the corresponding numeric field above is
    * `undefined` in BOTH cases, but only this list distinguishes "no
    * such constraint" from "the author tried to constrain this and

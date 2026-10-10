@@ -5,13 +5,18 @@
 import { RelationshipType } from '@ifc-lite/data';
 import { IfcQuery } from '@ifc-lite/query';
 import { extractTypeQuantitiesOnDemand, readCurrentTypeQuantities, type CurrentProjectUnitResult, type IfcDataStore } from '@ifc-lite/parser';
+import { zoneFactsFor } from '@/hooks/zoneFacts';
+import type { ProvedVolumes } from '@/hooks/useZoneApportionment';
 import type { ViewerState } from '@/store';
 import { currentProjectUnitContext } from '@/lib/units/current-project-unit-context';
 import type { EntityRef } from '@/store/types';
 import { effectiveElementData } from '@/components/viewer/properties/effectiveElementData';
 import type { QuantitySet } from '@/components/viewer/properties/encodingUtils';
 import { withInheritedTypeQuantities } from '@/lib/zones/inherited-quantities';
-import { allBasisBreakdowns, declaredVolumeBases, ZONE_QUANTITY_SET_NAME_PREFIX, validEntry, volumeBasisRatioNote, type QuantitySetLike } from '@/lib/zones';
+import { allBasisBreakdowns, declaredVolumeBases, ZONE_QUANTITY_SET_NAME_PREFIX, validEntry, volumeBasisRatioNote } from '@/lib/zones';
+
+/** Shared public unit convention; unresolved declared units and unavailable context are distinct. */
+export const ZONE_VOLUME_UNIT_LIMITATIONS = 'When the project context is available but its VOLUMEUNIT is unresolved, implicit declared bases retain the existing Properties card scale-1 SI default; an m3 label does not prove a declared file unit or a measured conversion. When the current project unit context is unavailable, this evidence withholds declared bases, including explicit bases. With available project context, an independently resolved explicit native Unit retains its measured SI conversion; an unresolved explicit Unit is reported as unavailable rather than given a scale-1 default.';
 
 /** Declared shares belong to these exact native sources and overlay revisions,
  * including edits that do not publish a viewer mutationVersion. This walks
@@ -46,40 +51,64 @@ export function zoneQuantitySources(s: ViewerState) {
       models.set(ref.modelId, source);
     }
     const own = effectiveElementData(ref.expressId, source.query, view).qsets;
-    const current = source.store?.source?.length && view
+    const current = source.store && view
       ? readCurrentTypeQuantities(source.store, ref.expressId, view) : null;
-    const quantities = withInheritedTypeQuantities(own, source.store, ref.expressId,
-      RelationshipType.DefinesByType,
-      (store, id) => (current ? current.value?.quantities
-        : extractTypeQuantitiesOnDemand(store as IfcDataStore, id)?.quantities) as QuantitySet[] | undefined);
-    return { quantities: quantities.filter(set => !set.name.startsWith(ZONE_QUANTITY_SET_NAME_PREFIX)),
-      scale: source.units.status === 'available' ? source.units.value?.resolvedForUnitType('VOLUMEUNIT')?.siScale ?? 1 : null,
-      unitStatus: source.units.status, unitReason: source.units.reason,
+    const quantities = current
+      ? current.status === 'available' && current.value?.quantities.length
+        ? [...own, ...current.value.quantities] : own
+      : withInheritedTypeQuantities(own, source.store, ref.expressId,
+        RelationshipType.DefinesByType,
+        (store, id) => extractTypeQuantitiesOnDemand(store as IfcDataStore, id)?.quantities as QuantitySet[] | undefined);
+    const nativeQuantities = quantities.filter(set => !set.name.startsWith(ZONE_QUANTITY_SET_NAME_PREFIX));
+    const scale = source.units.status === 'available' ? source.units.value?.resolvedForUnitType('VOLUMEUNIT')?.siScale ?? 1 : null;
+    const unresolvedBases = new Set<'net' | 'gross' | 'unqualified'>();
+    declaredVolumeBases(nativeQuantities, scale, unresolvedBases);
+    return { quantities: nativeQuantities, scale,
+      unitStatus: unresolvedBases.size ? 'unavailable' : source.units.status,
+      unitReason: unresolvedBases.size ? 'Native quantity basis Unit cannot be resolved' : source.units.reason,
       reason: current?.reason ?? null,
-      status: !source.store ? 'unavailable-model' : !source.store.source?.length ? 'unverified-without-source'
-        : current?.status ?? 'available' };
+      // A verified empty type assignment does not certify source-free occurrence quantities.
+      status: !source.store ? 'unavailable-model' : current?.status === 'unavailable' ? 'unavailable'
+        : !source.store.source?.length && !current?.value?.quantities.length
+          ? 'unverified-without-source' : 'available' };
   };
 }
 
-/** Cached native card facts only. Capture neither clips nor fills the cache.
+/** Native whole-element facts and cached splits. Capture neither clips nor fills the cache.
  * Counts precede display bounds; overlap means shares must not be summed. */
 export function selectedZoneVolumeBreakdowns(
-  s: ViewerState, globalId: number, quantities: readonly QuantitySetLike[], scale: number | null,
-  setLimit: number, shareLimit: number,
+  s: ViewerState, globalId: number, quantities: ReturnType<ReturnType<typeof zoneQuantitySources>>['quantities'], scale: number | null,
+  setLimit: number, shareLimit: number, provedVolumes: () => ProvedVolumes,
 ) {
-  const relevant = s.zoneSets.filter(set => s.zoneAssignments.get(globalId)?.[set.id]?.straddles);
+  const relevant = s.zoneSets.filter(set => (s.zoneAssignments.get(globalId)?.[set.id]?.touchedZoneIds.length ?? 0) > 0);
   const volumeBases: Array<ReturnType<typeof allBasisBreakdowns>[number] & { zoneSetId: string; shareCount: number; unit: string; ratioNote: string | null }> = [];
   const zoneSets = relevant.slice(0, setLimit).map(set => {
     const cache = validEntry(s.zoneApportionment, set);
-    const split = cache?.byElement.get(globalId);
+    const assignment = s.zoneAssignments.get(globalId)![set.id];
+    const split = assignment.straddles ? cache?.byElement.get(globalId) : undefined;
+    let wholeRefusal: ReturnType<typeof zoneFactsFor>['refusal'] = null;
+    if (!assignment.straddles) {
+      const names = new Map(set.zones.map(zone => [zone.id, zone.name]));
+      const declared = scale === null ? [] : declaredVolumeBases(quantities, scale);
+      for (const basis of ['mesh' as const, ...declared.map(value => value.basis)]) {
+        const facts = zoneFactsFor(globalId, assignment, names, basis, scale, [...quantities], provedVolumes(), cache);
+        if (basis === 'mesh') wholeRefusal = facts.refusal;
+        if (facts.refusal) continue;
+        const totalM3 = facts.shares.reduce((total, share) => total + share.valueM3, facts.outsideM3);
+        volumeBases.push({ basis, quantityName: facts.quantityName, totalM3,
+          shares: facts.shares.slice(0, shareLimit).map(share => ({ ...share, fraction: totalM3 === 0 ? 1 : share.valueM3 / totalM3 })),
+          outsideM3: facts.outsideM3, zoneSetId: set.id, shareCount: facts.shares.length, unit: 'm3',
+          ratioNote: basis === 'mesh' ? null : 'The declared total belongs to the home zone under the native whole-element assignment.' });
+      }
+    }
     if (split) volumeBases.push(...allBasisBreakdowns(split, scale === null ? [] : declaredVolumeBases(quantities, scale)).map(basis => ({
       ...basis, zoneSetId: set.id, shareCount: basis.shares.length, shares: basis.shares.slice(0, shareLimit),
       unit: 'm3', ratioNote: volumeBasisRatioNote(basis.basis),
     })));
     return { zoneSetId: set.id, name: set.name,
-      status: split ? 'cached' : cache?.refused.has(globalId) ? 'refused' : 'split-not-computed',
-      refusal: cache?.refused.get(globalId) ?? null,
-      overlapping: split?.overlapping ?? null,
+      status: !assignment.straddles ? wholeRefusal ? 'refused' : 'whole-element' : split ? 'cached' : cache?.refused.has(globalId) ? 'refused' : 'split-not-computed',
+      refusal: !assignment.straddles ? wholeRefusal : cache?.refused.get(globalId) ?? null,
+      overlapping: !assignment.straddles ? false : split?.overlapping ?? null,
     };
   });
   return { zoneSetCount: relevant.length, zoneSets, volumeBases };

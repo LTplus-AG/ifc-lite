@@ -606,5 +606,16 @@ test('#7328 actual parser-valid short-title native batch is not rejected by prod
   assert.equal(saved.getEntity(relation.id)?.attributes[3], description);
   const answer = serialize();
   assert.ok(answer.length <= 400_000 && answer.length > 399_980, 'real native batch reaches the unchanged parser boundary');
-  assert.doesNotThrow(() => parseModelAuthoringBatch(answer), 'outer parser must use the actual submitted title and bytes, not a longer producer template');
+  assert.doesNotThrow(() => parseModelAuthoringBatch(answer), 'outer parser must use the actual submitted title and characters, not a longer producer template');
+  // #7328 / review r4236316339: producer admission must preserve this same
+  // independently exported native candidate, even at the minimal title boundary.
+  await settle();
+  const revision = s.view.getMutationRevision(), depth = nativeSdkUndoDepth();
+  const grounding = captureSelectionGrounding(useViewerStore.getState()), row = grounding.elements[0];
+  assert.ok(row);
+  assert.equal(row.nativeAuthoringAvailability.storeyReassignment, 'available');
+  const candidate = row.nativeStoreyReassignments?.find(item => item.destinationStorey.globalId === s.operation.destinationStorey.globalId);
+  assert.ok(candidate, 'public capture must offer the complete parser-valid native pin');
+  assert.deepEqual(JSON.parse(candidate.expectedJsonParts.join('')), expected);
+  assert.equal(s.view.getMutationRevision(), revision); assert.equal(nativeSdkUndoDepth(), depth);
 });

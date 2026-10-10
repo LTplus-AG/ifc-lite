@@ -103,7 +103,7 @@ export function nativeStoreyReassignmentEvidence(target: ModelEditTarget | null,
   const results: { sourceStorey: StoreyTarget; destinationStorey: StoreyTarget; expectedJsonParts: string[]; productCount: number }[] = [];
   try {
     const candidates = planStoreyReassignmentCandidates(dataStore, view, [expressId], source, storeys.filter(id => id !== source));
-    for (const { destinationStoreyId: to, plan: expected } of candidates) {
+    for (const { plan: expected } of candidates) {
       if (!expected) continue;
       const refusal = expectedPinRefusal(expected);
       if (refusal) { onRefusal?.(refusal); continue; }

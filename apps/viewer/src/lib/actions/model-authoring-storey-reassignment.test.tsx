@@ -567,3 +567,25 @@ test('#7328 native near-text-limit pin distinguishes public batch overhead from 
   assert.equal(requested, true);
   if (candidate) assert.doesNotThrow(() => parseModelAuthoringBatch(answer), 'advertised complete pin must fit the public full batch');
 });
+
+for (const owner of ['sourceStorey', 'destinationStorey'] as const) test(`#7328 public expected pin preserves and validates canonical ${owner} identity`, async t => {
+  if (!ensureRoomWasm(t)) return;
+  const s = await setup(), batch = s.batch(), op = batch.operations[0];
+  assert.equal(op.op, 'element.reassignStorey');
+  if (op.op !== 'element.reassignStorey') throw new Error('Native reassignment operation required');
+  assert.deepEqual(op.expected[owner], s.operation.expected[owner]);
+  const saved = await parseIfc(s.bytesNow());
+  assert.equal(saved.getEntity(op.expected[owner].expressId)?.attributes[0], op.expected[owner].GlobalId);
+  for (const invalid of [null, { ...op.expected[owner], GlobalId: 'invalid' }, { ...op.expected[owner], expressId: op.expected[owner].expressId + 1 }]) {
+    const expected = { ...s.operation.expected, [owner]: invalid };
+    assert.throws(() => parseModelAuthoringBatch(JSON.stringify({ ...batch, operations: [{ ...s.operation, expected }] })), /unavailable-native-pin-shape/);
+  }
+  const preview = previewModelAuthoring(useViewerStore.getState(), batch);
+  assert.equal(preview.rows[0].status, 'ready');
+  s.editor.setPositionalAttribute(op.expected[owner].expressId, 0, generateIfcGuid());
+  const before = await graph(s.bytesNow()), revision = s.view.getMutationRevision(), depth = nativeSdkUndoDepth();
+  const result = commitModelAuthoring(useViewerStore, preview, new Set([0]), 'changed reviewed storey identity');
+  assert.equal(result.ok, false);
+  assert.deepEqual(await graph(s.bytesNow()), before);
+  assert.equal(s.view.getMutationRevision(), revision); assert.equal(nativeSdkUndoDepth(), depth);
+});

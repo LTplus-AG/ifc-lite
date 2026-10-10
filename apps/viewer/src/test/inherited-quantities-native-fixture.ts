@@ -4,8 +4,8 @@
 import assert from 'node:assert/strict';
 import type { TestContext } from 'node:test';
 import { IfcParser, extractProjectUnits, extractQuantitiesOnDemand, extractTypeQuantitiesOnDemand, type IfcDataStore } from '@ifc-lite/parser';
-import { StoreEditor, MutablePropertyView } from '@ifc-lite/mutations';
-import { QuantityType } from '@ifc-lite/data';
+import { StoreEditor, MutablePropertyView, type IfcAttributeValue } from '@ifc-lite/mutations';
+import { QuantityType, iterateEffectiveEntities } from '@ifc-lite/data';
 import { generateIfcGuid } from '@ifc-lite/encoding';
 import { useViewerStore } from '@/store';
 import { seedDeclaredZoneWall } from '@/test/zone-declared-fixture';
@@ -232,4 +232,74 @@ export async function prepareImplicitProjectUnit(fixture: NativeQuantityFixture)
   'independent native project context now declares cubic millimetres');
  assert.equal(net(extractTypeQuantitiesOnDemand(exported, f.id)?.quantities ?? []), 10);
  return { nativeUnits };
+}
+
+/** Test-only complete native inventory for a source-free current metadata view.
+ * Export ground truth must be captured before this materialization; dirty-Qto
+ * export fidelity is the separately scoped writer contract, not proved here. */
+export function materializeSourceFreeQuantityFixture(
+  store: IfcDataStore, view: MutablePropertyView,
+  seedReferenceSlots: ReadonlyMap<number, ReadonlySet<number>>, additionalUnitIds: readonly number[],
+): void {
+  // @raw-entity-enumeration-ok fixture identifies its parsed native Project/units before creating the source-free scenario.
+  const project = store.entityIndex.byType.get('IFCPROJECT')?.[0]; assert.ok(project);
+  const assignment = store.getEntity(project)?.attributes[8]; assert.ok(typeof assignment === 'number');
+  const unitIds = store.getEntity(assignment)?.attributes[0]; assert.ok(Array.isArray(unitIds));
+  // Parsed reference slots contain numeric EXPRESS IDs. Positional edits
+  // must author canonical #id STEP references, not integer quantity values.
+  // The closed fixture names exact native reference slots; value slot3 stays10.
+  const referenceSlots = new Map<number, ReadonlySet<number>>(seedReferenceSlots);
+  referenceSlots.set(project, new Set([1, 7, 8]));
+  referenceSlots.set(assignment, new Set([0]));
+  // Current native readers verify the complete DefinesByType/Properties inventory.
+  // Preserve every actual parsed relationship, not just this selected wall's row.
+  const inventoryIds: number[] = [];
+  for (const row of iterateEffectiveEntities(store, undefined, ['IfcRelDefinesByType', 'IfcRelDefinesByProperties'])) {
+    assert.ok(inventoryIds.length < 20000, 'closed native relationship fixture stays within reader inventory bound');
+    const record = store.getEntity(row.expressId); assert.ok(record);
+    assert.equal(record.attributes.length, 6, 'native Defines relationship has exact inherited EXPRESS fields');
+    assert.ok(Array.isArray(record.attributes[4]) && typeof record.attributes[5] === 'number');
+    inventoryIds.push(row.expressId); referenceSlots.set(row.expressId, new Set([1, 4, 5]));
+  }
+
+  const reference = (value: unknown): IfcAttributeValue => {
+    if (value === null || value === '*') return value;
+    if (Array.isArray(value)) return value.map(reference);
+    assert.ok(typeof value === 'number' && Number.isInteger(value) && store.getEntity(value),
+      'every authored reference identifies a real exported native record');
+    return `#${value}`;
+  };
+  // Native FZK angle units include ConversionBasedUnit -> MeasureWithUnit -> SIUnit,
+  // plus Dimensions. Traverse only exact EXPRESS reference slots, never scalars.
+  const unitReferenceSlots = new Map<string, readonly number[]>([
+    ['IFCSIUNIT', [0]], ['IFCCONVERSIONBASEDUNIT', [0, 3]],
+    ['IFCMEASUREWITHUNIT', [1]], ['IFCDIMENSIONALEXPONENTS', []], ['IFCMONETARYUNIT', []],
+    ['IFCDERIVEDUNIT', [0]], ['IFCDERIVEDUNITELEMENT', [0]],
+  ]);
+  const unitGraph = new Set<number>();
+  const pendingUnits: unknown[] = [...additionalUnitIds, ...unitIds];
+  while (pendingUnits.length) {
+    assert.ok(unitGraph.size + pendingUnits.length <= 64, 'closed native unit fixture graph remains bounded');
+    const id = pendingUnits.pop(); assert.ok(typeof id === 'number' && Number.isInteger(id));
+    if (unitGraph.has(id)) continue;
+    const entity = store.getEntity(id); assert.ok(entity);
+    const slots = unitReferenceSlots.get(entity.type.toUpperCase()); assert.ok(slots,
+      `native unit graph uses an examined EXPRESS entity shape: ${entity.type}`);
+    unitGraph.add(id); referenceSlots.set(id, new Set(slots));
+    for (const index of slots) {
+      const value: unknown = entity.attributes[index];
+      if (value === null || value === '*') continue;
+      const references: unknown[] = Array.isArray(value) ? value : [value];
+      for (const referenceId of references) {
+        assert.ok(typeof referenceId === 'number' && Number.isInteger(referenceId) && store.getEntity(referenceId));
+        pendingUnits.push(referenceId);
+      }
+    }
+  }
+  const ids = [...new Set([...seedReferenceSlots.keys(), project, assignment, ...unitGraph, ...inventoryIds])];
+  for (const id of ids) {
+    assert.ok(typeof id === 'number'); const entity = store.getEntity(id); assert.ok(entity);
+    entity.attributes.forEach((value, index) => view.setPositionalAttribute(id, index,
+      referenceSlots.get(id)?.has(index) ? reference(value) : value));
+  }
 }

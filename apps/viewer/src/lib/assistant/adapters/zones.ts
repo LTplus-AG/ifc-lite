@@ -21,7 +21,7 @@ import { describeElement } from '@/hooks/useZoneTableExport';
 import { zoneFactsFor } from '@/hooks/zoneFacts';
 import { gatherProvedVolumes } from '@/hooks/useZoneApportionment';
 import { evidenceRow, unavailableCapture, type EvidenceAdapter } from './types';
-import { zoneQuantitySources, zoneQuantitySourceIdentity } from './zone-volume-bases';
+import { zoneQuantitySources, zoneQuantitySourceIdentity, ZONE_VOLUME_UNIT_LIMITATIONS } from './zone-volume-bases';
 import { declaredVolumeBases, volumeBasisRatioNote } from '@/lib/zones';
 
 const BASIS = 'mesh' as const;
@@ -140,7 +140,7 @@ export const zonesAdapter: EvidenceAdapter = {
         assignment: s.zoneAssignmentTiming ? { elementCount: s.zoneAssignmentTiming.elementCount,
           computedAt: new Date(s.zoneAssignmentTiming.computedAt).toISOString() } : null,
         units: { VolumeM3: 'm3', ElementVolumeM3: 'm3', Fraction: 'ratio 0..1 of the element volume' },
-        limitations: 'One row per (element, zone) pair on the mesh basis, with separately named declared net/gross/unqualified VolumeBases when available. Declared straddler magnitudes use fractions measured on the as-built mesh, then applied to the declared total. No declared basis entry means none was read, not proof of absence when DeclaredQuantityStatus is unverified. Elements reaching no zone are not rows. A null VolumeM3 is unmeasured with its reason, never zero. Straddler splits come only from a split already computed for the current zones; capture never runs the split. assignedCount is per zone set, so an element in several sets counts once per set. When the project VOLUMEUNIT is unresolved, volume bases retain the existing Properties card scale-1 SI default; an m3 label does not prove a declared file unit or a measured conversion.',
+        limitations: 'One row per (element, zone) pair on the mesh basis, with separately named declared net/gross/unqualified VolumeBases when available. Declared straddler magnitudes use fractions measured on the as-built mesh, then applied to the declared total. No declared basis entry means none was read, not proof of absence when DeclaredQuantityStatus is unverified. Elements reaching no zone are not rows. A null VolumeM3 is unmeasured with its reason, never zero. Straddler splits come only from a split already computed for the current zones; capture never runs the split. assignedCount is per zone set, so an element in several sets counts once per set. ' + ZONE_VOLUME_UNIT_LIMITATIONS,
       },
       rows, totalRows, availability: 'available',
     };

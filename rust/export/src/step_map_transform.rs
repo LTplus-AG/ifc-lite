@@ -172,7 +172,3 @@ mod rigid_tests;
 #[cfg(test)]
 #[path = "step_map_rigid_fixture_tests.rs"]
 mod rigid_fixture_tests;
-
-#[cfg(test)]
-#[path = "step_map_scaled_alignment_tests.rs"]
-mod scaled_alignment_tests;

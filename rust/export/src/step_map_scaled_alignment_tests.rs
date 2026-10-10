@@ -3,10 +3,10 @@
 //! Product placements become fresh roots, so linear chains are resolved once
 //! (strictly) and then bypassed; every representation, `Axis` curves
 //! included, is carried through the same uniformly scaled mapped wrapper.
-use super::rigid_fixture_tests::{apply_preserving_header, assert_mapped_surfaces, assert_physical_surfaces};
-use super::rigid_tests::{aligned_entities, with_entities};
-use super::tests::{apply, model, world_mesh};
-use super::*;
+use super::super::rigid_fixture_tests::{apply_preserving_header, assert_mapped_surfaces, assert_physical_surfaces};
+use super::super::rigid_tests::{aligned_entities, with_entities};
+use super::{apply, model, world_mesh};
+use super::super::*;
 
 /// Wall #50 gains a 2D `Axis` curve in an `Axis` subcontext; #130 is an
 /// alignment event annotation (as ACCA writes them) linearly placed along

@@ -331,3 +331,8 @@ fn issue_6587_public_bridge_deck_uses_the_same_canonical_normalization() {
     assert!((xmin - 545779.8812945185).abs() < 0.001);
     assert!((xmax - 546005.6070590066).abs() < 0.001);
 }
+
+// #7359: declared here, not in the production module, so reverting the
+// production files keeps these tests compiling (revert oracle).
+#[path = "step_map_scaled_alignment_tests.rs"]
+mod scaled_alignment;

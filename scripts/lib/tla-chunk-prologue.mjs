@@ -21,13 +21,14 @@
  * verdict either way. Searching the whole chunk for fingerprints can be fooled
  * in both directions; the prologue cannot.
  *
- * Two pieces are skipped on the way in because they are not the plugin's
+ * Two kinds of code are skipped on the way in because they are not the plugin's
  * printing, or are only quotes:
  *   * Vite's `const __vite__mapDeps=...` preload line, prepended after the
  *     plugin ran, always minified;
- *   * leading `import ... from "./x.js";` statements, whose specifier is the
+ *   * leading imports and `export ... from "./x.js";` declarations, whose
+ *     specifier is the
  *     only string in them (kept, with the specifier blanked, since SWC prints
- *     the import clause too: `import { a as b } from` vs `import{a as b}from`).
+ *     the declaration clause too: `import { a as b } from` vs `import{a as b}from`).
  * The prologue then normally runs into the plugin's own wrapper
  * (`let __tla=Promise.all([`, `(async()=>{`), so it is the plugin's output
  * that is being judged.
@@ -44,7 +45,10 @@
  */
 
 const MAP_DEPS = /^const __vite__mapDeps=[^\n]*\n/;
-const LEADING_IMPORT = /^\s*import\s*(?:[\w$*{}\s,]*?\s*from\s*)?(["'])[^"'\n]*\1\s*;?/;
+// Recognise only unquoted binding clauses and plain module specifiers. Escapes,
+// comments and string-named exports stay opaque rather than letting
+// their contents contribute punctuation to a minification verdict (#7377).
+const LEADING_MODULE_DECLARATION = /^\s*(?:import\s*(?:[\w$*{}\s,]*?\s*from\s*)?|export\s*(?:\{[\w$\s,]*\}|\*\s*(?:as\s+[\w$]+\s*)?)\s*from\s*)("[^"\\\r\n]*"|'[^'\\\r\n]*')\s*;?/;
 const PUNCTUATION = /[=,{}();:[\]]/g;
 const PUNCTUATION_BESIDE_WHITESPACE = /[=,{}();:[\]][ \t\n]|[ \t][=,{}();:[\]]/;
 export const MIN_PUNCTUATION = 8;
@@ -53,8 +57,8 @@ export const MIN_PUNCTUATION = 8;
 export function prologue(text) {
   let rest = text.replace(MAP_DEPS, '');
   let code = '';
-  for (let m = rest.match(LEADING_IMPORT); m; m = rest.match(LEADING_IMPORT)) {
-    code += m[0].replace(/(["'])[^"'\n]*\1/, '""');
+  for (let m = rest.match(LEADING_MODULE_DECLARATION); m; m = rest.match(LEADING_MODULE_DECLARATION)) {
+    code += m[0].replace(m[1], '""');
     rest = rest.slice(m[0].length);
   }
   const literal = rest.search(/['"`/]/);

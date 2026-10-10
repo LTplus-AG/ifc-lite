@@ -233,7 +233,7 @@ already succeeded and leaves native Undo available.
 
 Before any IfcSpace has been materialized, a layout edit is session state only.
 The card states that IFC export does not preserve this retained layout; native
-Undo/Redo preserves it during the current session. This route adds no AutoAll,
+Undo/Redo preserves it during the current session. This route adds no
 manual polygon creation, new-file builder, mixed synchronous authoring batch or
 sandbox script bridge.
 
@@ -447,6 +447,14 @@ Review the selected operations and inspect the complete native created, modified
 
 The route requires Edit mode and native edit permission. It refuses unavailable sources, ambiguous rooted identities, stale snapshots, unsupported native schema/units/SELECTs, cycles, unsafe shared-reference removal and unapproved dependencies. It is non-geometric and does not create a viewport ghost. The bounded route does not establish human evaluation, fixture approval or coordinator-study acceptance.
 
+### Review Room AutoAll across current storeys
+
+A version 1 `room.command` may explicitly request `command.action: "autoAll"` for its supplied `modelId`. The supplied storey Root anchors that model; native preparation enumerates every current storey in that model. It does not include other federated models. The existing explicit `m`/`mm` and `storey-local` Room settings apply to each storey, with lengths normalized once to native metres.
+
+Prepare publishes complete per-storey coverage: ready, no walls, occupied, no eligible faces, or unavailable. A successful native remesh does not prove complete wall coverage: live contained walls with missing or unusable geometry make that storey unavailable. A genuinely wall-free storey remains no walls. Existing room counts include unsupported native room shapes. Unavailable coverage is shown as incomplete, with no approvable partial changes; it never announces an empty plan. Approval refuses unknown/unavailable coverage rather than applying only the known storeys. A successful nonempty action uses one native graph transaction and one Undo group. Empty/no-wall/fully occupied preparation has no IFC write or new Undo group. Source, direct mutation revision, native layout, geometry and model/storey frame changes invalidate held approvals. Cancellation releases preparation without applying it.
+
+Room contours stay in each owning storey's local frame; the combined AutoAll card lists each owner and complete contours instead of overlaying different storeys into one plan. Selection and explicit selection attachments publish only current storey identities and the requirement for native preparation, never guessed candidates. Compact large selections omit the repeated storey population and disclose `nativeRoomAutoAllCapture: "unavailable-selection-budget"`; use a rich smaller selection or an explicit attachment for complete current storey identities. Explicit prepared Room attachments carry the actual complete snapshot. Native solver/exporter diagnostics and unsupported current frames retain their existing boundaries.
+
 ## New native IFC scaffold
 
 With **Models and new IFC files**, an empty viewer can discuss the native new-file capability without claiming loaded-model facts. Supply the project Name, Schema (`IFC4` or `IFC4X3`), LengthUnit (`METRE` or `MILLIMETRE`), and each storey's Name and Elevation. Elevations use those file units. Optional Description, Author, Organization and Currency remain supplied values; currency is omitted when absent. FOOT and unsupported schemas refuse.
@@ -456,3 +464,16 @@ A reviewed `ifc.create` answer creates only a standalone project scaffold. **Pre
 **Request viewer load (replace session)** dispatches the native File request to the existing primary load owner. It refuses a busy, edited, shared or changed workspace. The request does not confirm loading: follow native Activity and Load reports for the actual outcome. File publication and session replacement have no model-edit Undo. Browser loading acceptance and human evaluation remain separate from native scaffold evidence.
 
 Comparison’s **Impact on other analyses** rows offer **Open original** for the current native clash, failed IDS element/specification, list aggregate or BCF topic. Changed-element chips select the exact compared base or head model in 3D; opening a BCF topic does not guess a model from its component GUIDs. A list opens its recorded aggregate without claiming its unstamped result is current. Links require source ownership recorded by the native comparison producer. Imported/manual comparisons, replaced model sources, direct overlay edits, stale or replaced findings and removed elements keep readable facts but cannot acquire navigation authority by mounting the panel; refresh the comparison and analysis when a link is unavailable.
+
+
+### Reassign an existing product to another storey
+
+A reviewed `element.reassignStorey` proposal changes a product's storey while preserving its identity and world position. It names the existing target, source storey and destination storey with the same explicit owning `modelId`. Complete hosted opening/filling and aggregate/nested dependencies travel with the root. Distinct named membership relationships retain their metadata and remain distinct at the destination. Detached children, ambiguous identities/ownership, shared or unreadable placements and dependency cycles refuse. Sites, buildings, storeys and grids cannot be moved by this operation.
+
+Rich selected-element evidence and **Attach selection** supply matching `nativeStoreyReassignments` candidates. Each candidate pins both storeys in `expected.sourceStorey` and `expected.destinationStorey` as `{ expressId, GlobalId }` records, counts the complete product population, and carries bounded `expectedJsonParts`. Join every part and parse the resulting JSON for the operation's complete `expected` value; those native fields remain unchanged even when the batch uses millimetres. A model with more than 20 storeys, a projected/partial pin, or a complete minimal one-operation batch with a one-character title exceeding the existing text limit supplies no usable candidate. Changing either storey GlobalId invalidates the reviewed pin; incomplete older pins are refused. Missing state must be obtained from current evidence rather than guessed. Existing target names use an empty string when absent; the native expected attributes preserve the exact absent or empty Name.
+
+Review shows the source/destination identities and complete dependency count. World geometry stays fixed, so the card discloses the absence of a displaced geometry preview. Apply revalidates the loaded source, overlay revision and native state, records grouped Undo and refreshes the affected products using canonical remeshing. Export/reparse retains their GlobalIds and EXPRESS IDs. The proposal does not establish structural-engineering suitability.
+
+Complete storey reassignment pins are bounded to 200,000 submitted values and 12 nesting levels. The 5,000-product bound applies to the moved dependency closure; a complete source relationship may contain more unchanged members. Selection capture shares one effective Root/relationship inventory across destination candidates.
+
+Complete optional Storey, Structural and Cost pins share the request envelope. After ordinary facts and all guidance are reserved, generation admits each unchanged whole pin only when the complete serialized messages and system text fit the existing 90,000-character limit. A refused pin reports `unavailable-transport-budget`; its complete expected state is omitted, while ordinary identities, citations and metadata remain. Captured source attachments stay unchanged for stale-state validation; the saved user turn records the projected text actually sent. This transport boundary does not reduce direct native planner or writer capabilities, and a pin larger than 12,000 characters remains usable when the full request fits. Oversized conversation history or ordinary context can still refuse the request.

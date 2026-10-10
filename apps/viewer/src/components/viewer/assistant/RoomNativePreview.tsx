@@ -8,6 +8,7 @@ import { nativeRootName } from '@/lib/actions/native-edit-evidence';
 import type { RoomReview } from '@/lib/actions/room-review';
 import { useTranslation } from '@/i18n';
 import { effectiveMetadataRecord } from '@ifc-lite/parser';
+import { effectiveStoreyId } from '../../../../../../packages/create/src/in-store/edit/effective-storey.js';
 
 /** Read the detached native writer's actual polygons; no inferred room shape or extra solver. */
 export function RoomNativePreview({ review }: { review: RoomReview }) {
@@ -20,7 +21,7 @@ export function RoomNativePreview({ review }: { review: RoomReview }) {
     if (!read.ok) throw new Error('The detached native Room preview has an unsupported written polygon');
     const record = effectiveMetadataRecord(native.dataStore, ref.expressId, native.view);
     const attribute = (name: string) => record?.attributes[record.names.indexOf(name)] ?? null;
-    return { id: ref.expressId, name: nativeRootName(native, ref.expressId), outline: read.chain.footprint,
+    return { storeyId: effectiveStoreyId(native.dataStore,native.view,ref.expressId), id: ref.expressId, name: nativeRootName(native, ref.expressId), outline: read.chain.footprint,
       height: read.chain.thickness, z: read.chain.baseElevation, area: polygonArea(read.chain.footprint),
       PredefinedType: attribute('PredefinedType'), ObjectType: attribute('ObjectType') };
   });
@@ -42,7 +43,7 @@ export function RoomNativePreview({ review }: { review: RoomReview }) {
     {command.action === 'edit' && <p>{operationDescription} {' '}{t('roomReview.tolerance', { tolerance: command.tolerance ?? .01 })}</p>}
     {/* Native vector contours need SVG image semantics; an HTML img cannot contain these polygons. */}
     {/* eslint-disable-next-line jsx-a11y/prefer-tag-over-role */}
-    {points.length > 0 && <svg role="img" aria-label={t('roomReview.plan')} className="w-full h-40 border border-border rounded"
+    {command.action !== 'autoAll' && points.length > 0 && <svg role="img" aria-label={t('roomReview.plan')} className="w-full h-40 border border-border rounded"
       viewBox={`${minX - margin} ${-minY - height - margin} ${width + margin * 2} ${height + margin * 2}`}>
       <title>{t('roomReview.plan')}</title>
       {shapes.map((outline, i) => <polygon key={i} points={outline.map(([x, y]) => `${x},${-y}`).join(' ')}
@@ -50,6 +51,7 @@ export function RoomNativePreview({ review }: { review: RoomReview }) {
     </svg>}
     <ul className="max-h-48 overflow-auto list-disc pl-4">
       {rows.map(row => <li key={row.id}>{row.name || t('roomReview.unnamedRoom')}
+        {review.snapshot.storeys && <p>{t('roomReview.storeyOwner', {name:review.snapshot.storeys.find(storey=>storey.expressId===row.storeyId)?.Name ?? String(row.storeyId)})}</p>}
         <p>{t('roomReview.geometry', { area: Number(row.area.toFixed(4)), height: row.height, z: row.z })}</p>
         <p>{t('roomReview.PredefinedType')}: {String(row.PredefinedType ?? '—')} · {t('roomReview.ObjectType')}: {String(row.ObjectType ?? '—')}</p>
         <details><summary>{t('roomReview.contour')}</summary><pre className="whitespace-pre-wrap break-words">{JSON.stringify(row.outline)}</pre></details>

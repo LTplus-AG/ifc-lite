@@ -45,8 +45,17 @@ frames; child placements, representations, openings and fills retain their
 original relationships. Cesium ion evaluates `IfcLinearPlacement` without a
 transformed `PlacementRelTo`, so each linear placement is written as the
 equivalent `IfcLocalPlacement` (same parent, its resolved curve frame); a linear
-placement without `PlacementRelTo` is refused. Other supported uniform scales use mapped Body
-representations under stricter ownership checks. These transformations preserve
+placement without `PlacementRelTo` is refused. Other supported uniform scales (for
+example the UTM 0.9996) give every product a fresh root placement and wrap its
+representations in a uniformly scaled mapped representation, under stricter
+ownership checks. Linear placements are resolved for that root and then
+bypassed, with or without `PlacementRelTo`. Besides Body geometry, curve-only
+representations such as an alignment's `Axis` or a `FootPrint` are carried
+through scaled; other non-Body representations are refused. Alignment layout
+parameters (segment lengths and start points) are not rewritten, so tools that
+rebuild an alignment from them rather than from its `Axis` curve are off by the
+map scale factor (0.04% at 0.9996). Type geometry that no occurrence
+instantiates is refused on this path. These transformations preserve
 physical map coordinates, project units, properties and authored shape data.
 Ordinary IFC downloads retain their original coordinate representation.
 Cesium ion currently tiles `IfcSectionedSolidHorizontal` sweeps (for example

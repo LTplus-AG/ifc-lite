@@ -120,9 +120,10 @@ pub fn plan_map_conversion_normalization(content: &[u8]) -> Result<MapConversion
         let mut output = writer::Writer::new(&records)?;
         let inverse_scale = Matrix4::new_nonuniform_scaling(&nalgebra::Vector3::repeat(1.0 / scale));
         let mut shapes = BTreeMap::new();
+        let mut validated = std::collections::HashSet::new();
         for record in records.iter().filter(|record| record.kind.is_subtype_of(IfcType::IfcProduct)) {
             let product = decoder.decode_by_id(record.id).map_err(|error| error.to_string())?;
-            preflight::placement(&product, &mut decoder)?;
+            preflight::placement(&product, &router, &mut validated, &mut decoder)?;
             let matrix = router.resolve_scaled_placement_strict(&product, &mut decoder)
                 .map_err(|error| error.to_string())?;
             let mut placement = Matrix4::from_column_slice(&matrix);
@@ -171,3 +172,7 @@ mod rigid_tests;
 #[cfg(test)]
 #[path = "step_map_rigid_fixture_tests.rs"]
 mod rigid_fixture_tests;
+
+#[cfg(test)]
+#[path = "step_map_scaled_alignment_tests.rs"]
+mod scaled_alignment_tests;

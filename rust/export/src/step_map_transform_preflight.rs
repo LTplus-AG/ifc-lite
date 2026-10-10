@@ -4,6 +4,7 @@
 
 use std::collections::{HashMap, HashSet};
 use ifc_lite_core::{AttributeValue, DecodedEntity, EntityDecoder, IfcType, MAX_PLACEMENT_DEPTH};
+use ifc_lite_geometry::GeometryRouter;
 use nalgebra::{Matrix4, Vector3};
 use super::Record;
 
@@ -76,10 +77,11 @@ pub(super) fn model(records: &[Record<'_>], context: u32, decoder: &mut EntityDe
     let mut used_representations = HashSet::new();
     for record in records {
         let kind = &record.kind;
-        if kind.is_subtype_of(IfcType::IfcAnnotation) || kind.is_subtype_of(IfcType::IfcAlignment)
-            || kind.is_subtype_of(IfcType::IfcStructuralItem) || kind.is_subtype_of(IfcType::IfcConnectionGeometry)
+        // Alignments, annotations and linear placements are ordinary products
+        // and placements here: every product gets a fresh root frame (#7359).
+        if kind.is_subtype_of(IfcType::IfcStructuralItem) || kind.is_subtype_of(IfcType::IfcConnectionGeometry)
             || matches!(kind, IfcType::IfcShapeAspect | IfcType::IfcRelVoidsElement | IfcType::IfcRelFillsElement |
-                IfcType::IfcGrid | IfcType::IfcGridPlacement | IfcType::IfcLinearPlacement) {
+                IfcType::IfcGrid | IfcType::IfcGridPlacement) {
             return Err(format!("{} #{} has coordinate consumers not supported by body normalization", kind.name(), record.id));
         }
         if *kind == IfcType::IfcProductDefinitionShape {
@@ -186,8 +188,8 @@ pub(super) fn body_mapped_sources(roots: &HashSet<u32>, context: u32, decoder: &
 
 fn representation(id: u32, context: u32, decoder: &mut EntityDecoder) -> Result<(), String> {
     let rep = decoder.decode_by_id(id).map_err(|error| error.to_string())?;
-    if rep.ifc_type != IfcType::IfcShapeRepresentation || rep.get_string(1) != Some("Body") {
-        return Err(format!("representation #{id} is not a supported 3D Body shape"));
+    if rep.ifc_type != IfcType::IfcShapeRepresentation {
+        return Err(format!("representation #{id} is not an IfcShapeRepresentation"));
     }
     let mut current = rep.get_ref(0).ok_or("representation has no ContextOfItems")?;
     let mut seen = HashSet::new();
@@ -201,27 +203,66 @@ fn representation(id: u32, context: u32, decoder: &mut EntityDecoder) -> Result<
         }
         current = node.get_ref(6).ok_or("subcontext has no ParentContext")?;
     }
-    let items = rep.get_refs(3).filter(|items| !items.is_empty()).ok_or("body representation has no Items")?;
-    for item in items { decoder.decode_by_id(item).map_err(|error| error.to_string())?; }
+    let items = rep.get_refs(3).filter(|items| !items.is_empty()).ok_or("representation has no Items")?;
+    // The scaled wrapper is covariant for any item, but it reads as
+    // `MappedRepresentation`, which renderers classify as body geometry. A
+    // non-Body representation is carried only when it is curve or point
+    // geometry (alignment `Axis`, `FootPrint`), which renders no surface
+    // before or after wrapping (#7359); annotation fills, boxes and other
+    // surfaces stay refused rather than silently start rendering.
+    let body = rep.get_string(1) == Some("Body");
+    for item in items {
+        let item = decoder.decode_by_id(item).map_err(|error| error.to_string())?;
+        if !body && !curve_geometry(&item, decoder)? {
+            return Err(format!("representation #{id} is neither a Body nor curve geometry ({} #{})", item.ifc_type.name(), item.id));
+        }
+    }
     Ok(())
 }
 
-pub(super) fn placement(product: &DecodedEntity, decoder: &mut EntityDecoder) -> Result<(), String> {
+/// Curves, curve segments and points; a curve set only when every member is
+/// one of those (a single attribute list, so the check is bounded).
+fn curve_geometry(item: &DecodedEntity, decoder: &mut EntityDecoder) -> Result<bool, String> {
+    let primitive = |kind: &IfcType| kind.is_subtype_of(IfcType::IfcCurve)
+        || kind.is_subtype_of(IfcType::IfcSegment) || kind.is_subtype_of(IfcType::IfcPoint);
+    if primitive(&item.ifc_type) { return Ok(true); }
+    if item.ifc_type != IfcType::IfcGeometricCurveSet { return Ok(false); }
+    for element in item.get_refs(0).ok_or("GeometricCurveSet Elements is invalid")? {
+        let element = decoder.decode_by_id(element).map_err(|error| error.to_string())?;
+        if !primitive(&element.ifc_type) { return Ok(false); }
+    }
+    Ok(true)
+}
+
+/// Validates a product's placement chain. `validated` memoizes whole verified
+/// suffixes (a placement is recorded only once its root is reached), so
+/// shared parents and their linear curve samples are checked once.
+pub(super) fn placement(product: &DecodedEntity, router: &GeometryRouter, validated: &mut HashSet<u32>, decoder: &mut EntityDecoder) -> Result<(), String> {
     let Some(attr) = product.get(5).filter(|attr| !attr.is_null()) else { return Ok(()) };
     let mut current = attr.as_entity_ref().ok_or("ObjectPlacement is not a reference")?;
-    let mut seen = HashSet::new();
-    loop {
-        if seen.len() >= MAX_PLACEMENT_DEPTH || !seen.insert(current) {
+    let mut seen = Vec::new();
+    while !validated.contains(&current) {
+        if seen.len() >= MAX_PLACEMENT_DEPTH || seen.contains(&current) {
             return Err(format!("product #{} placement chain is cyclic or too deep", product.id));
         }
+        seen.push(current);
         let placement = decoder.decode_by_id(current).map_err(|error| error.to_string())?;
-        if placement.ifc_type != IfcType::IfcLocalPlacement {
-            return Err(format!("ObjectPlacement #{current} is not an IfcLocalPlacement"));
+        match placement.ifc_type {
+            IfcType::IfcLocalPlacement => axis(&required(&placement, 1, decoder)?, decoder)?,
+            // The product's fresh root frame is composed through the whole
+            // chain, so a linear placement, with or without PlacementRelTo,
+            // is evaluated once and then bypassed (#7359). Refuse where
+            // rendering would silently fall back to an identity frame.
+            IfcType::IfcLinearPlacement => {
+                router.resolve_linear_placement_local_strict(&placement, decoder).map_err(|error| error.to_string())?;
+            }
+            _ => return Err(format!("ObjectPlacement #{current} is not an IfcLocalPlacement or IfcLinearPlacement")),
         }
-        axis(&required(&placement, 1, decoder)?, decoder)?;
-        let Some(parent) = placement.get(0).filter(|attr| !attr.is_null()) else { return Ok(()) };
+        let Some(parent) = placement.get(0).filter(|attr| !attr.is_null()) else { break };
         current = parent.as_entity_ref().ok_or("PlacementRelTo is not a reference")?;
     }
+    validated.extend(seen);
+    Ok(())
 }
 
 pub(super) fn axis(frame: &DecodedEntity, decoder: &mut EntityDecoder) -> Result<(), String> {

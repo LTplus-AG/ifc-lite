@@ -325,3 +325,17 @@ The frozen candidate compilation source is `deba56e275242aed9282b02ceedebf8e0b7a
 Fresh-tab setup refused before any server, model load or native phase. Existing
 owned blank-tab inspection succeeded; failed fresh-tab/client side effects remain
 unverified. Current native picking and focused physical performance remain held.
+
+### Combined main CI provenance, 2026-10-10
+
+Campaign root authorized #7389 as the combined same-issue draft against main,
+while preserving #7109. Normal integration of main `95535c6fc` produced
+`7ee5360c9` with no overlapping changed files or conflict resolutions. The first
+retarget Test run actually checked out `62e78da1b`, whose first parent was the
+old feature base `5bec01db2`. Its tree matches the integrated source, but its
+base-dependent gates do not establish current-main qualification. The exact
+[provenance record](./combined-main-ci-provenance-20261010.json) preserves both
+synthetic merge identities and log hashes. A normal evidence-only commit
+requests fresh CI against the established main base. Native GPU, federation
+and focused physical performance remain unqualified; frozen browser runtimes
+still represent the earlier compilation. All historical refusals remain intact.

@@ -191,7 +191,7 @@ export const ZONE_PROPERTY_NAMES = {
  *   correct and their sum is not, which is fine in a panel that says so and not
  *   fine in a quantity set, where a reader will add the rows up.
  */
-export type WriteBackRefusal = ApportionmentRefusal | 'no-declared-quantity' | 'declared-unit-unavailable' | 'declared-quantity-unavailable' | 'overlapping-zones';
+export type WriteBackRefusal = ApportionmentRefusal | 'no-declared-quantity' | 'declared-unit-unavailable' | 'declared-quantity-unavailable' | 'writeback-unit-unavailable' | 'overlapping-zones';
 
 /** One sentence per refusal, written INTO the file rather than left to the
  *  viewer. Whoever opens the export next does not have the zone panel. */
@@ -200,6 +200,8 @@ const REFUSAL_TEXT: Record<WriteBackRefusal, string> = {
   'unproved-solid': 'Its mesh is not a proven closed solid, so no volume can be stated for it.',
   'rescaled-by-alignment':
     'Federation alignment rescaled this element\'s model, so its proved volume does not describe the geometry that was split.',
+  'writeback-unit-unavailable':
+    'The current project volume unit is unavailable, so physical quantities cannot be written without an ambiguous unit.',
   'declared-unit-unavailable':
     'The native quantity is present but its physical unit is unavailable, so no volume was written for it.',
   'declared-quantity-unavailable':

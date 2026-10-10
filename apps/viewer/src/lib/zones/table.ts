@@ -89,6 +89,7 @@ export interface ZoneTableElement {
 export function refusalText(refusal: WriteBackRefusal): string {
   switch (refusal) {
     case 'no-geometry': return 'no geometry loaded for this element';
+    case 'writeback-unit-unavailable': return 'the target project volume unit is unavailable for physical writeback';
     case 'declared-unit-unavailable': return 'the native quantity is present but its physical unit is unavailable';
     case 'declared-quantity-unavailable': return 'current inherited native quantities are unavailable';
     case 'no-declared-quantity': return 'the model declares no quantity on this basis';

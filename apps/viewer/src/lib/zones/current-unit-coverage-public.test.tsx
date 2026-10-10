@@ -10,6 +10,7 @@ import { generateIfcGuid } from '@ifc-lite/encoding';
 import { useViewerStore } from '@/store';
 import { seedDeclaredZoneWall } from '@/test/zone-declared-fixture';
 import { getOrCreateMutationView } from '@/sdk/adapters/mutation-view';
+import { getMaxExpressId } from '@/hooks/ingest/viewerModelIngest';
 import { editedModelBytes } from '@/lib/export/edited-model-bytes';
 import { PropertiesPanel } from '@/components/viewer/PropertiesPanel';
 import { ZoneVolumeBreakdown } from '@/components/viewer/ZoneVolumeBreakdown';
@@ -31,7 +32,7 @@ async function nativeMeasures(t: TestContext) {
   for (const relation of f.store.entityIndex.byType.get('IFCRELDEFINESBYPROPERTIES') ?? []) {
     const attributes = f.store.getEntity(relation)?.attributes;
     if (!Array.isArray(attributes?.[4]) || !attributes[4].includes(f.id) || typeof attributes[5] !== 'number'
-      || f.store.entities.getTypeName(attributes[5]) !== 'IfcElementQuantity') continue;
+      || f.store.getEntity(attributes[5])?.type.toUpperCase() !== 'IFCELEMENTQUANTITY') continue;
     const others = attributes[4].filter(id => id !== f.id);
     if (others.length) view.setPositionalAttribute(relation, 4, others.map(id => `#${id}`)); else view.deleteEntity(relation);
   }
@@ -51,8 +52,13 @@ async function nativeMeasures(t: TestContext) {
     { typed: { type: 'IfcLengthMeasure', value: 3.125 } }, null]).expressId;
   editor.addEntity('IfcMaterialProperties', ['UnitWitness material', null, [`#${materialProperty}`], '#15046']);
   const store = await parse(editedModelBytes(f.store, view));
+  const nativeQuantities = extractQuantitiesOnDemand(store, f.id).flatMap(set => set.quantities);
+  assert.equal(nativeQuantities.find(q => q.name.startsWith('Net'))?.name, 'NetWitnessVolume',
+    'independent native occurrence extraction selects the authored explicit witness first');
+  assert.equal(nativeQuantities.find(q => q.name === 'NetWitnessVolume')?.value, 10);
+  assert.deepEqual(store.getEntity(qto)?.attributes[5], [net, gross, count], 'native witness qto owns the exact authored members');
   const model = useViewerStore.getState().models.get('arch'); assert.ok(model);
-  useViewerStore.setState({ models: new Map([['arch', { ...model, ifcDataStore: store }]]), ifcDataStore: store,
+  useViewerStore.setState({ models: new Map([['arch', { ...model, ifcDataStore: store, maxExpressId: getMaxExpressId(store, model.geometryResult?.meshes ?? [], model.geometryResult?.pointClouds ?? []) }]]), ifcDataStore: store,
     mutationViews: new Map(), storeEditors: new Map() });
   const current = getOrCreateMutationView(useViewerStore, 'arch'); assert.ok(current);
   const project = store.entityIndex.byType.get('IFCPROJECT')?.[0]; assert.ok(project);

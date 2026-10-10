@@ -10,9 +10,9 @@ import { generateIfcGuid } from '@ifc-lite/encoding';
 import { useViewerStore } from '@/store';
 import { getOrCreateMutationView } from '@/sdk/adapters/mutation-view';
 import { getMaxExpressId } from '@/hooks/ingest/viewerModelIngest';
-import { contextFor, quantitySetsFor } from '@/hooks/zoneFacts';
+import { contextFor, quantitySetsFor, gatherZoneFacts } from '@/hooks/zoneFacts';
 import { applyZoneWriteBack } from '@/hooks/useZoneWriteBack';
-import { zoneQuantitySetName } from './writeback';
+import { zoneQuantitySetName, zonePropertySetName, ZONE_PROPERTY_NAMES } from './writeback';
 import type { ZoneVolumeShare } from './apportionment';
 import { buildZoneTable, exportZoneTable } from '@/hooks/useZoneTableExport';
 import { ZoneVolumeBreakdown } from '@/components/viewer/ZoneVolumeBreakdown';
@@ -359,4 +359,84 @@ test('#7376 explicit native volume remains readable but unknown project units ca
   assert.equal(result.summary.withVolumes, 0); assert.ok(result.summary.refused > 0);
   assert.equal(restored.getEntity(x.quantityId)?.attributes[2], x.unit);
   assert.equal(restored.getEntity(x.quantityId)?.attributes[3], 10);
+});
+
+
+for (const prefix of [null, '.MILLI.'] as const) {
+  test(`#7376 known native project ${prefix ?? 'cubic metre'} target preserves physical zone writeback on reparse`, async t => {
+    const x = await explicitFixture(t, true); if (!x) return;
+    useViewerStore.setState({ editEnabled: true });
+    // @raw-entity-enumeration-ok fixture identifies a native Project and its unit assignment.
+    const project = x.store.entityIndex.byType.get('IFCPROJECT')?.[0]; assert.ok(project);
+    const assignment = x.store.getEntity(project)?.attributes[8]; assert.equal(typeof assignment, 'number');
+    const members = x.store.getEntity(assignment as number)?.attributes[0]; assert.ok(Array.isArray(members));
+    const unit = members.find(id => typeof id === 'number' && x.store.getEntity(id)?.attributes[1] === '.VOLUMEUNIT.');
+    assert.equal(typeof unit, 'number'); x.view.setPositionalAttribute(unit as number, 2, prefix);
+    const result = applyZoneWriteBack(x.f.zoneSet, 'net');
+    assert.equal(result.blocked, null, 'public write permission is genuinely enabled');
+    assert.equal(result.summary.withVolumes, 1); assert.equal(result.summary.refused, 0);
+    const exported = await parse(editedModelBytes(x.store, x.view));
+    const units = extractProjectUnits(exported.source, exported.entityIndex);
+    assert.equal(units.resolvedForUnitType('VOLUMEUNIT')?.siScale, prefix === null ? 1 : 1e-9);
+    const set = extractQuantitiesOnDemand(exported, x.f.id).find(q => q.name === zoneQuantitySetName(x.f.zoneSet.name, 'net'));
+    assert.ok(set);
+    const physical = set.quantities.reduce((sum, q) => sum + q.value * quantitySiScale(q, units), 0);
+    assert.ok(Math.abs(physical - 1e-8) < 1e-20, 'actual exported native target-unit quantities conserve explicit physical volume');
+    assert.equal(exported.getEntity(x.quantityId)?.attributes[3], 10);
+    assert.equal(exported.getEntity(x.quantityId)?.attributes[2], x.unit);
+  });
+}
+
+test('#7376 unknown native writeback target removes its previously owned quantities but retains safe zone labels', async t => {
+  const x = await explicitFixture(t, true); if (!x) return;
+    useViewerStore.setState({ editEnabled: true });
+  assert.equal(applyZoneWriteBack(x.f.zoneSet, 'net').summary.withVolumes, 1);
+  const name = zoneQuantitySetName(x.f.zoneSet.name, 'net');
+  assert.ok(extractQuantitiesOnDemand(await parse(editedModelBytes(x.store, x.view)), x.f.id).some(q => q.name === name));
+  // @raw-entity-enumeration-ok fixture identifies its native Project before removing the target unit context.
+  const project = x.store.entityIndex.byType.get('IFCPROJECT')?.[0]; assert.ok(project);
+  x.view.setPositionalAttribute(project, 8, null);
+  const result = applyZoneWriteBack(x.f.zoneSet, 'net');
+  assert.equal(result.blocked, null, 'public write permission is genuinely enabled');
+  assert.equal(result.summary.withVolumes, 0); assert.equal(result.summary.refused, 1);
+  const exported = await parse(editedModelBytes(x.store, x.view));
+  assert.equal(extractQuantitiesOnDemand(exported, x.f.id).find(q => q.name === name), undefined,
+    'refused replacement sweeps only its existing owned physical qset');
+  const pset = x.view.getForEntity(x.f.id).find(p => p.name === zonePropertySetName(x.f.zoneSet.name)); assert.ok(pset);
+  assert.equal(pset.properties.find(p => p.name === ZONE_PROPERTY_NAMES.zoneSetId)?.value, x.f.zoneSet.id);
+  assert.match(String(pset.properties.find(p => p.name === ZONE_PROPERTY_NAMES.volumeUnavailable)?.value), /project volume unit.*unavailable/);
+  assert.equal(exported.getEntity(x.quantityId)?.attributes[2], x.unit);
+});
+
+test('#7376 native mesh split also refuses unitless physical writeback when its target context is unknown', async t => {
+  const x = await explicitFixture(t, true); if (!x) return;
+    useViewerStore.setState({ editEnabled: true });
+  const before = gatherZoneFacts(x.f.zoneSet, 'mesh').find(row => row.expressId === x.f.id); assert.ok(before);
+  assert.equal(before.facts.refusal, null, 'real native kernel/apportionment supplies a proved mesh split');
+  // @raw-entity-enumeration-ok fixture identifies its native Project before removing target units.
+  const project = x.store.entityIndex.byType.get('IFCPROJECT')?.[0]; assert.ok(project);
+  x.view.setPositionalAttribute(project, 8, null);
+  const result = applyZoneWriteBack(x.f.zoneSet, 'mesh');
+  assert.equal(result.blocked, null, 'public write permission is genuinely enabled');
+  assert.equal(result.summary.withVolumes, 0); assert.equal(result.summary.refused, 1);
+  const exported = await parse(editedModelBytes(x.store, x.view));
+  assert.equal(extractQuantitiesOnDemand(exported, x.f.id).find(q => q.name === zoneQuantitySetName(x.f.zoneSet.name, 'mesh')), undefined);
+});
+
+test('#7376 unknown write target preserves earlier native quantity-unit refusal priority', async t => {
+  const x = await explicitFixture(t, true); if (!x) return;
+    useViewerStore.setState({ editEnabled: true });
+  // @raw-entity-enumeration-ok fixture identifies its native Project before removing target units.
+  const project = x.store.entityIndex.byType.get('IFCPROJECT')?.[0]; assert.ok(project);
+  x.view.setPositionalAttribute(project, 8, null);
+  const before = gatherZoneFacts(x.f.zoneSet, 'gross').find(row => row.expressId === x.f.id); assert.ok(before);
+  assert.equal(before.facts.refusal, 'declared-unit-unavailable', 'the first native gross quantity has no independently explicit physical unit');
+  const result = applyZoneWriteBack(x.f.zoneSet, 'gross');
+  assert.equal(result.blocked, null, 'public write permission is genuinely enabled');
+  assert.equal(result.summary.withVolumes, 0); assert.equal(result.summary.refused, 1);
+  const pset = x.view.getForEntity(x.f.id).find(p => p.name === zonePropertySetName(x.f.zoneSet.name)); assert.ok(pset);
+  assert.match(String(pset.properties.find(p => p.name === ZONE_PROPERTY_NAMES.volumeUnavailable)?.value), /native quantity.*physical unit.*unavailable/);
+  assert.doesNotMatch(String(pset.properties.find(p => p.name === ZONE_PROPERTY_NAMES.volumeUnavailable)?.value), /project volume unit/);
+  const exported = await parse(editedModelBytes(x.store, x.view));
+  assert.equal(extractQuantitiesOnDemand(exported, x.f.id).find(q => q.name === zoneQuantitySetName(x.f.zoneSet.name, 'gross')), undefined);
 });

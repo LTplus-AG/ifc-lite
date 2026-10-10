@@ -213,7 +213,13 @@ export function applyZoneWriteBack(zoneSet: ZoneSet, basis: VolumeBasis): ZoneWr
     const quantityRead = quantitySetsWithStatusFor(context, ref.expressId);
     const qsets = quantityRead.quantitySets;
     const facts = zoneFactsFor(globalId, assignment, zoneNameById, basis, context.declaredUnitsAvailable === false ? null : context.volumeSiScale, qsets, proved, apportioned, quantityRead.inheritedUnavailable);
-    const built = buildElementWriteBack(facts, {
+    // Read-only explicit quantities can remain physical without project units,
+    // but a new unitless IfcQuantityVolume needs a known target project scale.
+    // Preserve any earlier geometry/quantity refusal and the safe label/sweep path.
+    const writeFacts: typeof facts = context.declaredUnitsAvailable === false && facts.refusal === null
+      ? { ...facts, shares: [], outsideM3: 0, refusal: 'writeback-unit-unavailable' }
+      : facts;
+    const built = buildElementWriteBack(writeFacts, {
       zoneSetName: zoneSet.name,
       zoneSetId: zoneSet.id,
       basis,

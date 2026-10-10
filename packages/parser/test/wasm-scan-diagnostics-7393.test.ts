@@ -89,6 +89,20 @@ describe('scan refusals reach onDiagnostic on every scan path (#7393)', () => {
     expect([...store.entityIndex.byId.keys()].sort((a, b) => a - b)).toEqual([1, 3]);
   });
 
+  it('an empty wasm result falls through to the tokenizer, which still prints its own warnings', async () => {
+    // Rust never ran a scan whose result was used here, so nothing else has
+    // put these refusals on the console: the tokenizer must, once each.
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    const { store, diagnostics } = await parseCollecting({ scanEntitiesFastBytes: () => [] });
+
+    expectRefusalsReported(diagnostics);
+    expect([...store.entityIndex.byId.keys()].sort((a, b) => a - b)).toEqual([1, 3]);
+    const printed = warn.mock.calls.map((args) => String(args[0]));
+    expect(printed.filter((line) => line.includes(SKIPPED))).toHaveLength(1);
+    expect(printed.filter((line) => line.includes(DROPPED))).toHaveLength(1);
+  });
+
   it.skipIf(!WASM_BUILT)('real WASM scan path reports the same refusals through onDiagnostic', async () => {
     const wasmApi = await loadRealWasmScan();
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});

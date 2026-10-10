@@ -198,6 +198,7 @@ async function scanEntities(
   }
 
   if (processed === 0) {
+    scanPath = 'tokenizer'; // an empty worker/wasm result fell through: this scan's counts, not Rust's console (#7393)
     const tokenizer = new StepTokenizer(uint8Buffer);
     const yieldInterval = 5000;
     const estimatedTotalEntities = Math.max(fileSizeMB * 13500, 10000);

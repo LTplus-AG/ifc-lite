@@ -1034,6 +1034,8 @@ export function PropertiesPanel() {
   const foundOccurrence = filterPropertySets(renderedOccurrenceProperties, findQuery, projectUnits, unitDisplayOverrides, quantityUnitContext.status !== 'unavailable');
   const foundInherited = filterPropertySets(renderedInheritedTypeProperties, findQuery, projectUnits, unitDisplayOverrides, quantityUnitContext.status !== 'unavailable');
   const foundQuantities = filterQuantitySets(renderedQuantities, findQuery, projectUnits, unitDisplayOverrides, locale, quantityUnitContext.status !== 'unavailable');
+  // Own sets remain the canonical prefix; identical names do not identify ownership (#7382).
+  const foundInheritedQuantities = filterQuantitySets(renderedQuantitiesWithInheritedType.slice(renderedQuantities.length), findQuery, projectUnits, unitDisplayOverrides, locale, quantityUnitContext.status !== 'unavailable');
   const foundMaterialProperties = filterMaterialPropertyGroups(renderedMaterialProperties, findQuery, projectUnits, unitDisplayOverrides, quantityUnitContext.status !== 'unavailable');
   const foundAssociations = findAssociationAttributes({
     classifications: renderedClassifications, materials: renderedMaterialInfos,
@@ -1049,9 +1051,9 @@ export function PropertiesPanel() {
   // Switch tabs when the only search hits live on the other Properties tab.
   useEffect(() => {
     if (!findQuery) return;
-    const next = searchTabForHits(propertiesActiveTab, foundQuantities.length > 0, hasPropertyHits);
+    const next = searchTabForHits(propertiesActiveTab, foundQuantities.length + foundInheritedQuantities.length > 0, hasPropertyHits);
     if (next) setPropertiesActiveTab(next);
-  }, [findQuery, propertiesActiveTab, foundQuantities.length, hasPropertyHits, setPropertiesActiveTab]);
+  }, [findQuery, propertiesActiveTab, foundQuantities.length, foundInheritedQuantities.length, hasPropertyHits, setPropertiesActiveTab]);
   // Sets the element only inherits: adding to one overrides it here, carrying the type's properties (#5966).
   const inheritedFrom = useMemo(() => renderedTypeProperties && !isTypeEntity ? {
     typeId: renderedTypeProperties.typeId, typeName: renderedTypeProperties.typeName,
@@ -1326,7 +1328,7 @@ export function PropertiesPanel() {
         )}
       </div>
 
-      <PropertyFindBox value={find} onChange={setFind} hasMatches={hasPropertyHits || foundQuantities.length > 0} />
+      <PropertyFindBox value={find} onChange={setFind} hasMatches={hasPropertyHits || foundQuantities.length + foundInheritedQuantities.length > 0} />
 
       {/* IFC Attributes */}
       {foundAttributes.length > 0 && (
@@ -1690,13 +1692,22 @@ export function PropertiesPanel() {
             {quantityUnitContext.status === 'unavailable' ? (
               <output className="block text-sm text-muted-foreground">{t('zonesPanel.volumeBreakdown.quantityUnitsUnavailable', { reason: quantityUnitContext.reason ?? 'unverified current data' })}</output>
             ) : null}
-            {foundQuantities.length === 0 ? (
-              findQuery ? null : <p className="text-sm text-zinc-500 dark:text-zinc-500 text-center py-8 font-mono">{t('properties.panel.noQuantities')}</p>
+            {inheritedTypeQuantities.status === 'unavailable' ? (
+              <output className="block text-sm text-muted-foreground">{t('zonesPanel.volumeBreakdown.inheritedUnavailable', { reason: inheritedTypeQuantities.reason ?? 'unverified current data' })}</output>
+            ) : null}
+            {foundQuantities.length + foundInheritedQuantities.length === 0 ? (
+              findQuery || inheritedTypeQuantities.status === 'unavailable' ? null : <p className="text-sm text-zinc-500 dark:text-zinc-500 text-center py-8 font-mono">{t('properties.panel.noQuantities')}</p>
             ) : (
               <div className="space-y-3 w-full overflow-hidden">
-                {foundQuantities.map((qset: QuantitySet, index: number) => (
-                  <QuantitySetCard key={`${qset.name}-${index}`} qset={qset} projectUnits={renderedProjectUnits} projectUnitsAvailable={quantityUnitContext.status !== 'unavailable'} unitDisplayOverrides={unitDisplayOverrides} searchQuery={findQuery} />
-                ))}
+                {[{ scope: 'occurrence', sets: foundQuantities, heading: 'properties.panel.occurrenceQuantitiesHeading' as const },
+                  { scope: 'type', sets: foundInheritedQuantities, heading: 'properties.panel.typeQuantitiesHeading' as const }].map(({ scope, sets, heading }) => sets.length > 0 ? (
+                  <section key={scope} aria-label={t(heading)} className="space-y-3">
+                    <h3 className="text-sm font-medium">{t(heading)}</h3>
+                    {sets.map((qset: QuantitySet, index: number) => (
+                      <QuantitySetCard key={`${scope}-${qset.name}-${index}`} qset={qset} projectUnits={renderedProjectUnits} projectUnitsAvailable={quantityUnitContext.status !== 'unavailable'} unitDisplayOverrides={unitDisplayOverrides} searchQuery={findQuery} />
+                    ))}
+                  </section>
+                ) : null)}
               </div>
             )}
           </TabsContent>

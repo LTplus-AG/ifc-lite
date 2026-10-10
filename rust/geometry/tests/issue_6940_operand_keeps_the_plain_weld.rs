@@ -19,7 +19,7 @@ fn open_edges(m: &Mesh) -> usize {
     type P = (i64, i64, i64);
     let q = |i: u32| {
         let p = &m.positions[i as usize * 3..i as usize * 3 + 3];
-        let r = |v: f32| (v as f64 / ifc_lite_geometry::kernel::mesh_bridge::SNAP_GRID).round() as i64;
+        let r = |v: f32| (v as f64 / G).round() as i64;
         (r(p[0]), r(p[1]), r(p[2]))
     };
     let mut e: HashMap<(P, P), (u32, u32)> = HashMap::new();

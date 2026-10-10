@@ -63,6 +63,10 @@ use ifc_lite_processing::{process_geometry, MeshData};
 use rustc_hash::FxHashMap;
 use std::collections::HashMap;
 
+// Stated oracle invariant (#6940): one kernel snap step is exactly 1/65536 m.
+// Integration tests do not reach into crate-private implementation constants.
+const KERNEL_GRID: f64 = 1.0 / 65536.0;
+
 const FIXTURE: &str = "tests/models/georeferencer/MiniBIM-3.1-DO_01_VORM.ifc";
 
 /// The slabs every one of whose openings fills a hole of its own profile.
@@ -83,7 +87,7 @@ fn require_fixtures() -> bool {
 }
 
 /// Undirected edges not used exactly once in each direction, vertices welded
-/// at 1 mm: 0 iff the triangles close consistently wound. Collapsed triangles
+/// at the 1/65536 m kernel grid: 0 iff the triangles close consistently wound. Collapsed triangles
 /// are skipped, as the watertightness census skips them.
 fn open_edges(triangles: &[[[i64; 3]; 3]]) -> usize {
     let mut edges: HashMap<([i64; 3], [i64; 3]), (u32, u32)> = HashMap::new();
@@ -131,7 +135,7 @@ fn world_triangles<'a>(meshes: impl Iterator<Item = &'a MeshData>) -> Vec<[[i64;
         let key = |i: u32| {
             let b = i as usize * 3;
             [0, 1, 2]
-                .map(|k| ((mesh.positions[b + k] as f64 + mesh.origin[k]) / ifc_lite_geometry::kernel::mesh_bridge::SNAP_GRID).round() as i64)
+                .map(|k| ((mesh.positions[b + k] as f64 + mesh.origin[k]) / KERNEL_GRID).round() as i64)
         };
         triangles.extend(
             mesh.indices

@@ -102,6 +102,8 @@ for (const source of ['selection', 'zones'] as const) {
       assert.ok(ordinary, '#7220 ordinary native quantity remains present beside Zone evidence');
       assert.equal(ordinary[1].value, native.value);
       assert.equal(ordinary[1].unit, 'mm³', '#7220 the same selected wall cannot publish current mm³ as ordinary m³');
+      assert.equal(typeof after.net, 'number', '#7220 the declared native NetVolume basis is available');
+      assert.ok(after.net !== undefined);
       assertSiVolume(ordinary[1].value * scale, after.net, '#7220 ordinary quantity and declared Zone basis describe the same physical magnitude');
     }
     assert.equal(after.unitStatus, 'available');

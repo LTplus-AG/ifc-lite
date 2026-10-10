@@ -14,9 +14,10 @@ describe('translateXsdRegex', () => {
   });
 
   it('translates \\i, \\c and their negations', () => {
-    expect(translateXsdRegex('\\i').pattern).toContain('\\p{L}');
-    expect(translateXsdRegex('\\I').pattern).toContain('[^\\p{L}');
-    expect(translateXsdRegex('\\c').pattern).toContain('\\p{L}');
+    // XML 1.0 Fifth Edition NameStartChar / NameChar ranges.
+    expect(translateXsdRegex('\\i').pattern).toMatch(/^\[:A-Z_a-z/);
+    expect(translateXsdRegex('\\I').pattern).toMatch(/^\[\^:A-Z_a-z/);
+    expect(translateXsdRegex('\\c').pattern).toContain('0-9');
     expect(translateXsdRegex('\\C').pattern).toContain('[^');
   });
 
@@ -47,7 +48,7 @@ describe('translateXsdRegex', () => {
     // `[\w]` must not become the invalid nested class `[[\p{L}\p{Nd}]]`.
     expect(translateXsdRegex('[\\w]').pattern).toBe('[^\\p{P}\\p{Z}\\p{C}]');
     expect(translateXsdRegex('[\\d]').pattern).toBe('[\\p{Nd}]');
-    expect(translateXsdRegex('[\\i]').pattern).toBe('[\\p{L}_:]');
+    expect(translateXsdRegex('[\\i]').pattern).toBe(translateXsdRegex('\\i').pattern);
     // Each result compiles under the `u` flag.
     for (const p of ['[\\w]', '[\\d]', '[\\i]']) {
       const r = translateXsdRegex(p);

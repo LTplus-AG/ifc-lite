@@ -32,6 +32,19 @@ describe('XSD regex: negated multi-char escapes inside a class (#7400)', () => {
     expect(m('[\\C]', '-')).toBe(false);
   });
 
+  it('\\i and \\c are exactly the XML NameStartChar / NameChar productions', () => {
+    // U+200C is a NameStartChar outside \p{L}; U+00D7 is a letter-adjacent
+    // symbol excluded from both productions; U+10000 is in the astral range.
+    expect(m('\\i', '‌')).toBe(true);
+    expect(m('[\\I]', '‌')).toBe(false);
+    expect(m('[\\C]', '‌')).toBe(false);
+    expect(m('\\i', '×')).toBe(false);
+    expect(m('\\c', '×')).toBe(false);
+    expect(m('\\i', '\u{10000}')).toBe(true);
+    expect(m('\\c', '·')).toBe(true);
+    expect(m('\\i', '·')).toBe(false);
+  });
+
   it('[\\S] excludes exactly the four XSD whitespace characters', () => {
     expect(m('[\\S]+', 'a b')).toBe(true);
     expect(m('[\\S]', ' ')).toBe(false);

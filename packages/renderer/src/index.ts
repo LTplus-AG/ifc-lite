@@ -1473,9 +1473,6 @@ export class Renderer {
         });
     }
 
-    /**
-     * Render frame
-     */
     /** Get diagnostic info for mobile debugging */
     getDiagnostics(): {
         calls: number; skips: number; errors: number; lastError: string;
@@ -1536,8 +1533,11 @@ export class Renderer {
         return ok;
     }
 
+    /** Draw a frame through the shared submission path, preserving the void API. */
+    render(options: RenderOptions = {}): void { this.renderWithResult(options); }
+
     /**
-     * Draw one frame.
+     * Draw one frame; true only when it submits without a contained synchronous failure (#6709).
      *
      * Never throws, so callers never need to guard this call to keep their
      * animation loop alive.
@@ -1556,31 +1556,28 @@ export class Renderer {
      *    carries on. Once enough such frames have degraded without recovering,
      *    `onPersistentRenderDegradation` fires once.
      *
-     * SCOPE: `renderFrame()` has two try/catch regions — this outer one (canvas
-     * resize, context setup, evicted-batch restore) and an inner one opened
-     * after the swap-chain texture is acquired, covering encoder work through
-     * `submit`. Until #2417 only the outer one discriminated, so a device that
-     * died after `getCurrentTexture()` succeeded degraded quietly forever with
-     * no latch and no toast. Both now run the same policy; the encode catch
-     * additionally balances the frame's validation error scope before doing so.
+     * Frame setup and encoding through `submit` share `containFrameThrow`
+     * (#2417); the encode catch also balances the validation error scope.
+     * Submission is synchronous, distinct from GPU completion/validation.
      */
-    render(options: RenderOptions = {}): void {
+    renderWithResult(options: RenderOptions = {}): boolean {
         this._renderCallCount++;
         // A lost device leaves every pipeline/buffer dead; rendering would only
         // emit a stream of validation errors. Stay quiet until re-init.
         if (this.deviceLost) {
             this._renderSkipCount++; cancelRendererColorFrame(this);
-            return;
+            return false;
         }
         try {
             this.frameContainedThrow = false;
-            this.renderFrame(options);
+            const submitted = this.renderFrame(options);
             // Only a frame that actually got through resets the run. A frame
             // the ENCODE catch contained returns here normally (that catch is
             // inside renderFrame), so "did not throw" is not the same question
             // as "did not fail" — see `frameContainedThrow`.
             if (!this.frameContainedThrow) this.consecutiveDegradedFrames = 0;
             retryRendererColorFrame(this, () => this.requestRender());
+            return submitted;
         } catch (error) {
             // Safari (26.5) reports device loss SYNCHRONOUSLY: a call against a
             // dead device throws `InvalidStateError` instead of — or long
@@ -1595,24 +1592,25 @@ export class Renderer {
             // host down with us".
             this._renderSkipCount++;
             this.containFrameThrow(error, 'frame'); cancelRendererColorFrame(this);
+            return false;
         }
     }
 
     /**
-     * The frame body. Throws on a synchronously-dead GPU device; `render()`
-     * owns the containment. Private for that reason — call `render()`.
+     * The frame body. Throws on a synchronously-dead GPU device;
+     * `renderWithResult()` owns containment for both public render methods.
      */
-    private renderFrame(options: RenderOptions): void {
+    private renderFrame(options: RenderOptions): boolean {
         if (!this.device.isInitialized() || !this.pipeline) {
             this._renderSkipCount++;
-            return;
+            return false;
         }
 
         // Drawing buffer = the element's device-pixel size (capped ratio, clamped
         // to the GPU's max texture dimension); see computeDrawingBufferSize (#5383).
-        const measured = measureDrawingBuffer(this.canvas, this.device.getMaxTextureDimension(), this.maxPixelRatio);
+        const measured = measureDrawingBuffer(this.canvas, this.device.getMaxTextureDimension(), this.maxPixelRatio, options.maxPixelRatio);
         // Skip rendering while the canvas is collapsed or too small.
-        if (!measured || measured.height < 10) { this._renderSkipCount++; return; }
+        if (!measured || measured.height < 10) { this._renderSkipCount++; return false; }
         const { width, height } = measured;
         this.pixelRatio = measured.pixelRatio;
 
@@ -1629,12 +1627,12 @@ export class Renderer {
         }
 
         // Skip rendering if canvas is invalid
-        if (this.canvas.width === 0 || this.canvas.height === 0) { this._renderSkipCount++; return; }
+        if (this.canvas.width === 0 || this.canvas.height === 0) { this._renderSkipCount++; return false; }
 
         // Ensure context is valid before rendering (handles HMR, focus changes, etc.)
         if (!this.device.ensureContext()) {
             this._renderSkipCount++;
-            return; // Skip this frame, context will be ready next frame
+            return false; // Skip this frame, context will be ready next frame
         }
 
         const device = this.device.getDevice();
@@ -1845,7 +1843,7 @@ export class Renderer {
                 errorScopePushed = false;
                 this.drainErrorScope(device);
             }
-            return; // Skip this frame, context will be reconfigured next frame
+            return false; // Skip this frame, context will be reconfigured next frame
         }
         let colorCapture: RendererColorFrameCapture | null = null;
         let colorReadback: ReturnType<typeof encodeRendererColorFrameCapture> | null = null;
@@ -3131,6 +3129,7 @@ export class Renderer {
                 errorScopePushed = false;
                 this.drainErrorScope(device);
             }
+            return true;
         } catch (error) {
             discardRendererColorFrameReadback(colorReadback);
             // Balance the validation scope if we threw before popping it above —
@@ -3167,7 +3166,7 @@ export class Renderer {
             // host memory, and that throws a `RangeError` — which is exactly why
             // the discriminator keys on the TYPE and not on "a frame threw".
             this.containFrameThrow(error, 'encode');
-            cancelRendererColorFrame(this);
+            cancelRendererColorFrame(this); return false;
         }
     }
 

@@ -329,6 +329,8 @@ export interface RenderOptions {
   terrainClipY?: number;
   // Optional visual effects for better subelement readability
   visualEnhancement?: VisualEnhancementOptions;
+  /** Frame-local resolution cap; cannot exceed the persistent renderer cap. */
+  maxPixelRatio?: number;
   // Streaming state
   isStreaming?: boolean;          // If true, skip expensive operations like picker
   // True during rapid camera movement (zoom, orbit, pan, animations).

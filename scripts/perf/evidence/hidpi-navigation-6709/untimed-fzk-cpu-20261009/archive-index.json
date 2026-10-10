@@ -1,0 +1,625 @@
+{
+  "scope": "Prepared repository evidence only, no commit/push/newtest/browser",
+  "sourceCandidate": "7b11d5797355cf60e9d9caedd97cfc9799126e45",
+  "base": "4b4e0e5ccca5c2c11fe7809d2cdea57de810b430",
+  "issue": "Refs #6709; no closure acceptance",
+  "nativeStatus": "ACTUAL_UNTIMED_FZK_CPU_DOMAIN_EQUAL",
+  "manifestDigest": "29f134d62306b9f076185d1fe4d1fa014c1d4cd510f301314a0c2e551db92746",
+  "counts": {
+    "sourceMeshes": 275,
+    "placedMeshes": 245,
+    "triangles": 32852,
+    "vertices": 56698
+  },
+  "controlsSummary": "7pass0skip; exactsemanticguardinverse6pass1actualassertionfailure; restored7pass0skip",
+  "files": [
+    {
+      "path": "native/base-capture.json.gz",
+      "sourceArtifact": "/home/louistrue/.t3/artifacts/6709-owner-domain-v2-run-20261009/base-native-capture.json",
+      "rawBytes": 9096027,
+      "rawSHA256": "40e921f2fc17b2920eeea490a669f5593daea48b8ebbab016841663ef1a77c8f",
+      "storedBytes": 802724,
+      "storedSHA256": "63921a712b7846d3029940ccabedb764fcce3d02739fa9b60a62863939d03904",
+      "encoding": "original-lossless-browser-gzip",
+      "sourceCompressedArtifact": "/home/louistrue/.t3/artifacts/6709-owner-domain-v2-run-20261009/base-native-capture.json.gz"
+    },
+    {
+      "path": "native/base-v2-manifest.json.gz",
+      "sourceArtifact": "/home/louistrue/.t3/artifacts/6709-owner-domain-v2-run-20261009/base-v2-manifest.json",
+      "rawBytes": 6114,
+      "rawSHA256": "741049b94fc8d9f7d709cf4e6c444185e948ed979f54c7e1700d44ff415b768a",
+      "storedBytes": 1887,
+      "storedSHA256": "a5662c6d598aa36547cc011eeb3907384e26d585e4a215bda5cba99c85c37d4f",
+      "encoding": "gzip"
+    },
+    {
+      "path": "native/base-http-admission.json.gz",
+      "sourceArtifact": "/home/louistrue/.t3/artifacts/6709-owner-domain-v2-run-20261009/base-http-admission.json",
+      "rawBytes": 3164,
+      "rawSHA256": "6b99c4724d673edf982c696ee4548980784ba13cfdcae160c350db9f6d332956",
+      "storedBytes": 1228,
+      "storedSHA256": "771b4a8e74d8570c465e3dff4dbf81ad07e947de47bd20a17b60576678c9cc20",
+      "encoding": "gzip"
+    },
+    {
+      "path": "native/base-owned-server.json.gz",
+      "sourceArtifact": "/home/louistrue/.t3/artifacts/6709-owner-domain-v2-run-20261009/base-owned-server.json",
+      "rawBytes": 796,
+      "rawSHA256": "ab419cca1946d77f7039b212a3cc257c1bd47932c03361716b3a7bf50a9b882b",
+      "storedBytes": 431,
+      "storedSHA256": "360e9233ec75c1c067b052179563dc11b688656b7dddd3d5ee999b736db0e60e",
+      "encoding": "gzip"
+    },
+    {
+      "path": "native/base-diagnostic-retirement.json.gz",
+      "sourceArtifact": "/home/louistrue/.t3/artifacts/6709-owner-domain-v2-run-20261009/base-diagnostic-retirement.json",
+      "rawBytes": 435,
+      "rawSHA256": "ce50ea6116b2a8c64c7163e11bb01ca98670fc5b37c011f4e830e800787429e1",
+      "storedBytes": 254,
+      "storedSHA256": "06c36315719dedac09a1592eb7f4598473c692f8938a0b4bdf148789593aaf26",
+      "encoding": "gzip"
+    },
+    {
+      "path": "native/base-retirement.json.gz",
+      "sourceArtifact": "/home/louistrue/.t3/artifacts/6709-owner-domain-v2-run-20261009/base-retirement.json",
+      "rawBytes": 340,
+      "rawSHA256": "5ae72a704c7fac401e9b2b67405e96a1372b2d8c96137b494ce536c014350925",
+      "storedBytes": 269,
+      "storedSHA256": "80dbd1971b26a69e4cb97b3a2ee8da549fa08734ae590625962eb05382ec1f35",
+      "encoding": "gzip"
+    },
+    {
+      "path": "native/base-server.stdout.log.gz",
+      "sourceArtifact": "/home/louistrue/.t3/artifacts/6709-owner-domain-v2-run-20261009/base-server.stdout.log",
+      "rawBytes": 831,
+      "rawSHA256": "2f5c4405b66d3fd91510d8028943affb6e5c6ce4d7996527f91de398da8c20e9",
+      "storedBytes": 449,
+      "storedSHA256": "8221e3613edb240acc3a5a13e72bafca4a2d80349094eddcab4690b153563503",
+      "encoding": "gzip"
+    },
+    {
+      "path": "native/base-server.stderr.log.gz",
+      "sourceArtifact": "/home/louistrue/.t3/artifacts/6709-owner-domain-v2-run-20261009/base-server.stderr.log",
+      "rawBytes": 28000,
+      "rawSHA256": "d346532f9ecdcdc9802ad6d2a3214e2d8bf13c94fca57bb5acf05aecac515df4",
+      "storedBytes": 4122,
+      "storedSHA256": "fbe35ceb22d1e8ac6366aa3d4a730f1c2884ab1f6bae72c93ede7a30c9626d61",
+      "encoding": "gzip"
+    },
+    {
+      "path": "native/candidate-capture.json.gz",
+      "sourceArtifact": "/home/louistrue/.t3/artifacts/6709-owner-domain-v2-run-20261009/candidate-native-capture.json",
+      "rawBytes": 9095903,
+      "rawSHA256": "4bec6904944c90656824edd3523e8af6388578d972d2a09fc5d2253698d50e02",
+      "storedBytes": 802677,
+      "storedSHA256": "84c8a798ae848f2c4e2a797a9fb5cae99cfd835d2058388ab05b82a07d8b7d01",
+      "encoding": "original-lossless-browser-gzip",
+      "sourceCompressedArtifact": "/home/louistrue/.t3/artifacts/6709-owner-domain-v2-run-20261009/candidate-native-capture.json.gz"
+    },
+    {
+      "path": "native/candidate-v2-manifest.json.gz",
+      "sourceArtifact": "/home/louistrue/.t3/artifacts/6709-owner-domain-v2-run-20261009/candidate-v2-manifest.json",
+      "rawBytes": 6160,
+      "rawSHA256": "8987f06019988c2f2148ef5077327fa2d7f264944ac5ecce52aef7e3ad3dca42",
+      "storedBytes": 1882,
+      "storedSHA256": "4da87509ad178b7bcd8122ba494540809e38af50194ed5b3d476fc0e2af7b596",
+      "encoding": "gzip"
+    },
+    {
+      "path": "native/candidate-http-admission.json.gz",
+      "sourceArtifact": "/home/louistrue/.t3/artifacts/6709-owner-domain-v2-run-20261009/candidate-http-admission.json",
+      "rawBytes": 3164,
+      "rawSHA256": "4fa57a865dfcfdca6085ca7cdfba8205f91e2c7d83a86f46301f23bcac3c41f0",
+      "storedBytes": 1221,
+      "storedSHA256": "d4605f6f69dfc4cc1fa7b7dfd1e2c72ab39f0591f872a5213b40234646259fa2",
+      "encoding": "gzip"
+    },
+    {
+      "path": "native/candidate-owned-server.json.gz",
+      "sourceArtifact": "/home/louistrue/.t3/artifacts/6709-owner-domain-v2-run-20261009/candidate-owned-server.json",
+      "rawBytes": 809,
+      "rawSHA256": "cf2373ef75b799c5ab62f988ecba9216e0c709bfdd674aacc2d6dc82c3b9b606",
+      "storedBytes": 434,
+      "storedSHA256": "42071ddb59f6d675ae4a6bc121cc4f53fda25b40ca65c1a85c3c31c7675e13e3",
+      "encoding": "gzip"
+    },
+    {
+      "path": "native/candidate-diagnostic-retirement.json.gz",
+      "sourceArtifact": "/home/louistrue/.t3/artifacts/6709-owner-domain-v2-run-20261009/candidate-diagnostic-retirement.json",
+      "rawBytes": 435,
+      "rawSHA256": "4393f0a3b211609c1181110cdeaabd9ca7d00e7385f50402cfb7ab27be384709",
+      "storedBytes": 254,
+      "storedSHA256": "1a2aad9a01875fc1816b98e25d79e2c182cfed063a3b58f35f7bb4539389e9b0",
+      "encoding": "gzip"
+    },
+    {
+      "path": "native/candidate-retirement.json.gz",
+      "sourceArtifact": "/home/louistrue/.t3/artifacts/6709-owner-domain-v2-run-20261009/candidate-retirement.json",
+      "rawBytes": 343,
+      "rawSHA256": "470d4fb858c1ccc288f0a52bacebea41f3a0615d8088826cdd519571147418a8",
+      "storedBytes": 269,
+      "storedSHA256": "d4cd170d3cbea9969bbe766ac7f551ff3cabcf36442a841937f8233bc1b716a6",
+      "encoding": "gzip"
+    },
+    {
+      "path": "native/candidate-server.stdout.log.gz",
+      "sourceArtifact": "/home/louistrue/.t3/artifacts/6709-owner-domain-v2-run-20261009/candidate-server.stdout.log",
+      "rawBytes": 840,
+      "rawSHA256": "997c421a2fd0a449e3a870d7e6f076f45ebaae58a4b44508423530d6342787a5",
+      "storedBytes": 449,
+      "storedSHA256": "d5b7dbd5e60e96baad0ff4f4c30483bd3e5ac700e2d6618889326adb2a8f49a5",
+      "encoding": "gzip"
+    },
+    {
+      "path": "native/candidate-server.stderr.log.gz",
+      "sourceArtifact": "/home/louistrue/.t3/artifacts/6709-owner-domain-v2-run-20261009/candidate-server.stderr.log",
+      "rawBytes": 28085,
+      "rawSHA256": "e3350d6ad4d436acec8b9fe8db145bc75a80a215d09c6af65fa64e7e498994ed",
+      "storedBytes": 4163,
+      "storedSHA256": "d17088d5355a164f779189efed0e10be4153750f5ac8aca2b90ceccbe0d3b221",
+      "encoding": "gzip"
+    },
+    {
+      "path": "root-strict-pair-receipt.json",
+      "sourceArtifact": "/home/louistrue/.t3/artifacts/6709-owner-domain-v2-run-20261009/root-strict-pair-receipt.json",
+      "rawBytes": 3519,
+      "rawSHA256": "053a3bbe3c39f67480f045c3c989c47fbfa24afa833450011c7d8f918bf4b827",
+      "storedBytes": 3519,
+      "storedSHA256": "053a3bbe3c39f67480f045c3c989c47fbfa24afa833450011c7d8f918bf4b827",
+      "encoding": "raw"
+    },
+    {
+      "path": "provenance/actual-runtime-observation.json.gz",
+      "sourceArtifact": "/home/louistrue/.t3/artifacts/6709-owner-domain-v2-run-20261009/actual-runtime-observation.json",
+      "rawBytes": 521,
+      "rawSHA256": "685a72e857784bc3abe4d9c41fee3c5ab0e31637a6132c442d0a6274da84be6b",
+      "storedBytes": 338,
+      "storedSHA256": "b6220b21a85e9671d63115ccc24c3be65beea457f291c31a7cdc99da0b2f205e",
+      "encoding": "gzip"
+    },
+    {
+      "path": "provenance/root-v2-admission.json.gz",
+      "sourceArtifact": "/home/louistrue/.t3/artifacts/6709-owner-domain-v2-run-20261009/root-v2-admission.json",
+      "rawBytes": 323,
+      "rawSHA256": "dc0e4126827e269bfab818bc8c4666c4822ab0f2760352b501592ca75dd3b975",
+      "storedBytes": 234,
+      "storedSHA256": "6219dd8fde5f208f2c1a5f8245cb62b30b20101e9c9216024eab4d513962c665",
+      "encoding": "gzip"
+    },
+    {
+      "path": "provenance/transport-preparation-receipt.json.gz",
+      "sourceArtifact": "/home/louistrue/.t3/artifacts/6709-owner-domain-v2-run-20261009/transport-preparation-receipt.json",
+      "rawBytes": 641393,
+      "rawSHA256": "543bc2e094aef4ccd63810441ba5cf5df160e1caf6ef3dada99054ccdf75dab7",
+      "storedBytes": 118883,
+      "storedSHA256": "048fdabd7c3ed5ce9cb8ce63ca1e5f188d210e7b51068530e74306be425abb41",
+      "encoding": "gzip"
+    },
+    {
+      "path": "provenance/corrected-finite-v2-pair-plan.json.gz",
+      "sourceArtifact": "/home/louistrue/.t3/artifacts/6709-owner-domain-v2-run-20261009/corrected-finite-v2-pair-plan.json",
+      "rawBytes": 27172,
+      "rawSHA256": "45271987c9871dc07fcc258fdc7c81bb637e6008e99dde6eea3224912d5117e1",
+      "storedBytes": 7473,
+      "storedSHA256": "4bff5dd20ebb3928666333a3b8610ca53edcbf3f0fb09002289eefeddce1890c",
+      "encoding": "gzip"
+    },
+    {
+      "path": "provenance/transport-contract.json.gz",
+      "sourceArtifact": "/home/louistrue/.t3/artifacts/6709-owner-domain-v2-run-20261009/transport-contract.json",
+      "rawBytes": 714451,
+      "rawSHA256": "9da6eb72746842af608ceef31bf102e7b03750c7827982a974b0c9e20dfff2e6",
+      "storedBytes": 126605,
+      "storedSHA256": "d267fa3a1e1135e77aff5dceaed2444b4deb94d8dc1d95e0a546316425d80110",
+      "encoding": "gzip"
+    },
+    {
+      "path": "provenance/geometry-identity.mjs.gz",
+      "sourceArtifact": "/home/louistrue/.t3/artifacts/6709-owner-domain-v2-run-20261009/geometry-identity.mjs",
+      "rawBytes": 11312,
+      "rawSHA256": "82dcf89365bc46cc37d24f4668f03543be27692ecf7963af0c2589018bb4bae0",
+      "storedBytes": 3566,
+      "storedSHA256": "9727746bc80043f35b16bd175783683734f011545fb925de3206e8674926c447",
+      "encoding": "gzip"
+    },
+    {
+      "path": "provenance/serve-pinned.py.gz",
+      "sourceArtifact": "/home/louistrue/.t3/artifacts/6709-owner-domain-v2-run-20261009/serve-pinned.py",
+      "rawBytes": 4978,
+      "rawSHA256": "edcf70382ce9842c9e3ccb167a60414ff2e1dd738ecad793a1fa8aa55718dcd5",
+      "storedBytes": 1905,
+      "storedSHA256": "ec6f95b66dc06f6d76b824c3fc50cca9fdd648017edaa6af2c7c0b0f00afa522",
+      "encoding": "gzip"
+    },
+    {
+      "path": "provenance/retire-owned.py.gz",
+      "sourceArtifact": "/home/louistrue/.t3/artifacts/6709-owner-domain-v2-run-20261009/retire-owned.py",
+      "rawBytes": 2519,
+      "rawSHA256": "4b189c1ae89750e618b5965ece7d1d2c522425be46ad1d6a06a3412e71358263",
+      "storedBytes": 1172,
+      "storedSHA256": "12111500c5fe46784e955a76ee8f119d6885cb92a25c847c2bdacdb2f658282e",
+      "encoding": "gzip"
+    },
+    {
+      "path": "controls/owner-domain-controls.mts.gz",
+      "sourceArtifact": "/home/louistrue/.t3/artifacts/6709-owner-domain-proposal-20261009/owner-domain-controls.mts",
+      "rawBytes": 6379,
+      "rawSHA256": "c46ec2f2de330257aa2fcae392d9ad828bd66ab7bea6c2903750318d03b46f27",
+      "storedBytes": 2230,
+      "storedSHA256": "86ffff02bfe58e9b572d3b0cdabebdb96019708dc7b6f198ded1b2993bbc3c8c",
+      "encoding": "gzip"
+    },
+    {
+      "path": "controls/proposed-geometry-identity.mjs.gz",
+      "sourceArtifact": "/home/louistrue/.t3/artifacts/6709-owner-domain-proposal-20261009/proposed-geometry-identity.mjs",
+      "rawBytes": 11312,
+      "rawSHA256": "82dcf89365bc46cc37d24f4668f03543be27692ecf7963af0c2589018bb4bae0",
+      "storedBytes": 3566,
+      "storedSHA256": "9727746bc80043f35b16bd175783683734f011545fb925de3206e8674926c447",
+      "encoding": "gzip"
+    },
+    {
+      "path": "controls/original-geometry-identity.mjs.gz",
+      "sourceArtifact": "/home/louistrue/.t3/artifacts/6709-owner-domain-proposal-20261009/original-geometry-identity.mjs",
+      "rawBytes": 9871,
+      "rawSHA256": "fd2f3e094955b397e4a21c3660cf5fbad6728db92a33d63dc315537ca3aaee45",
+      "storedBytes": 3197,
+      "storedSHA256": "59193a79b842f250a753f1857a672fcda4c66c626663bfc52a5b7963ceff2ee7",
+      "encoding": "gzip"
+    },
+    {
+      "path": "controls/inverse-geometry-identity.mjs.gz",
+      "sourceArtifact": "/home/louistrue/.t3/artifacts/6709-owner-domain-proposal-20261009/inverse-geometry-identity.mjs",
+      "rawBytes": 11141,
+      "rawSHA256": "54156495faac504bd686f0027c1be24b483f33ae6bd7dfe9bc4dc8df3fbbb8c1",
+      "storedBytes": 3530,
+      "storedSHA256": "08ba3fd2cfe17f3006308cae41f4785efddc315290b24dea287d9b4ddb49d7eb",
+      "encoding": "gzip"
+    },
+    {
+      "path": "controls/proposal.diff.gz",
+      "sourceArtifact": "/home/louistrue/.t3/artifacts/6709-owner-domain-proposal-20261009/proposal.diff",
+      "rawBytes": 5192,
+      "rawSHA256": "1c303c7aed24f12cbcf0475c5c079c5e9b2cc03f23f3ce7ada2869d7fe40e86d",
+      "storedBytes": 1706,
+      "storedSHA256": "13c9e2f4cb2391ea9341798c8038d7fd2c96f07b9dcb50253730b589171818a6",
+      "encoding": "gzip"
+    },
+    {
+      "path": "controls/proposal-and-qualification-plan.json.gz",
+      "sourceArtifact": "/home/louistrue/.t3/artifacts/6709-owner-domain-proposal-20261009/proposal-and-qualification-plan.json",
+      "rawBytes": 5201,
+      "rawSHA256": "cd83167bb643a9945214806b9d91543390969a3511f4ffe05c1af55cd80c25a6",
+      "storedBytes": 2384,
+      "storedSHA256": "7d75c9771ffd03f1b9931fba6ce4f325ae6bb94930566e10f0e68f9b5566c4de",
+      "encoding": "gzip"
+    },
+    {
+      "path": "controls/source-only-tsconfig.json.gz",
+      "sourceArtifact": "/home/louistrue/.t3/artifacts/6709-owner-domain-proposal-20261009/source-only-tsconfig.json",
+      "rawBytes": 7769,
+      "rawSHA256": "15efd7d89e08dff1834d828b3dbb710be0823504fc636d4d4d7b0ddea9fcea9d",
+      "storedBytes": 919,
+      "storedSHA256": "de381ecea7373ae8843db4687144361f7f3016ed31a2eaa4f5607fb4fe390c4c",
+      "encoding": "gzip"
+    },
+    {
+      "path": "controls/trace-sources.mjs.gz",
+      "sourceArtifact": "/home/louistrue/.t3/artifacts/6709-owner-domain-proposal-20261009/trace-sources.mjs",
+      "rawBytes": 653,
+      "rawSHA256": "5b09a7884ceaf8181d04479f6450ab5efa70fe6f565d5f05f44a64c3819ab036",
+      "storedBytes": 378,
+      "storedSHA256": "b79ef0f6c69b2fcdb3e6585434906e77303a5ce407834b66649578f425af83e9",
+      "encoding": "gzip"
+    },
+    {
+      "path": "controls/setup-missing-zustand.log.gz",
+      "sourceArtifact": "/home/louistrue/.t3/artifacts/6709-owner-domain-proposal-20261009/setup-missing-zustand.log",
+      "rawBytes": 1934,
+      "rawSHA256": "6c627eb8a8b52823a9316407c2634bd3886485edd0c6d6d4c7c2a044b94caf53",
+      "storedBytes": 645,
+      "storedSHA256": "05c6450d1adbe50cd195f4a0ba59d0e92d6aa8388ed507a8c55847c48bc9430c",
+      "encoding": "gzip"
+    },
+    {
+      "path": "controls/focused-controls.log.gz",
+      "sourceArtifact": "/home/louistrue/.t3/artifacts/6709-owner-domain-proposal-20261009/focused-controls.log",
+      "rawBytes": 1159,
+      "rawSHA256": "2f917d21d357dee7aacb5a80c732bdb8cb2965d7ef92376938c674bd2810ef39",
+      "storedBytes": 679,
+      "storedSHA256": "7676755fec1a7c6dbd5bd26956f76bb6d00351e6d706dbcfd8fc42ec75f907bb",
+      "encoding": "gzip"
+    },
+    {
+      "path": "controls/inverse-controls.log.gz",
+      "sourceArtifact": "/home/louistrue/.t3/artifacts/6709-owner-domain-proposal-20261009/inverse-controls.log",
+      "rawBytes": 2148,
+      "rawSHA256": "c9084aa9a95cc05a5d7d98a8c8e2f41e46ffdd785e1a5cd9c531d63bc8b1c126",
+      "storedBytes": 1044,
+      "storedSHA256": "f6d016bd8a0f2c9afdfd3d1c637f383f3f1c9a7e90c0e1ba9adccc72715ff1ad",
+      "encoding": "gzip"
+    },
+    {
+      "path": "controls/restored-controls.log.gz",
+      "sourceArtifact": "/home/louistrue/.t3/artifacts/6709-owner-domain-proposal-20261009/restored-controls.log",
+      "rawBytes": 1158,
+      "rawSHA256": "316daa82f27ddcbb547280cd43ba96c48c91c5e4872d0c68af16ba60451c977a",
+      "storedBytes": 680,
+      "storedSHA256": "c57a97259f5d895180f81ba46bf8bd3f933a3ce08c31e6af84acd2bc13b4a993",
+      "encoding": "gzip"
+    },
+    {
+      "path": "controls/source-only-inverse.log.gz",
+      "sourceArtifact": "/home/louistrue/.t3/artifacts/6709-owner-domain-proposal-20261009/source-only-inverse.log",
+      "rawBytes": 2148,
+      "rawSHA256": "c3ecc8214a367d64077724e7c54095d7de0a649947fc056e021cb16ee8429ee4",
+      "storedBytes": 1042,
+      "storedSHA256": "32ba4415450dd9366bf8b935c9fa70743f01ba06e5a3e7efcf8fb778183f4f70",
+      "encoding": "gzip"
+    },
+    {
+      "path": "controls/source-only-restored.log.gz",
+      "sourceArtifact": "/home/louistrue/.t3/artifacts/6709-owner-domain-proposal-20261009/source-only-restored.log",
+      "rawBytes": 1158,
+      "rawSHA256": "5ba01bcfc87742b9a61b0e0a5d1d24ae5f5f674c1e09da979bd8b7575099b155",
+      "storedBytes": 681,
+      "storedSHA256": "01067304b203aa944c8805bf234230148e8aface0cfcfacadbca96f0c2506faa",
+      "encoding": "gzip"
+    },
+    {
+      "path": "controls/final-inverse.log.gz",
+      "sourceArtifact": "/home/louistrue/.t3/artifacts/6709-owner-domain-proposal-20261009/final-inverse.log",
+      "rawBytes": 2147,
+      "rawSHA256": "6759c7e5200858f9ef9cc3a1f576a9be6a1c99a887e1bd5d617d49837a039c57",
+      "storedBytes": 1043,
+      "storedSHA256": "260504ff2e2c2719b147b4e2aefd8aa7b9049d3fe5784b3f4c7631bba9bc1517",
+      "encoding": "gzip"
+    },
+    {
+      "path": "controls/final-restored.log.gz",
+      "sourceArtifact": "/home/louistrue/.t3/artifacts/6709-owner-domain-proposal-20261009/final-restored.log",
+      "rawBytes": 1158,
+      "rawSHA256": "f9db1fceadcd476172b978de17ef8ca21f0799ea988dc412e3142773a5b0296d",
+      "storedBytes": 678,
+      "storedSHA256": "f8b78352c5f3782c91e444bd397d9630c25b68d73229e0c4ccaf7248242bc30c",
+      "encoding": "gzip"
+    },
+    {
+      "path": "controls/proposed-geometry-identity.mjs.syntax.log.gz",
+      "sourceArtifact": "/home/louistrue/.t3/artifacts/6709-owner-domain-proposal-20261009/proposed-geometry-identity.mjs.syntax.log",
+      "rawBytes": 0,
+      "rawSHA256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "storedBytes": 20,
+      "storedSHA256": "9ceffb7310338057cfe71a4ae1e2c98d2c485d81cdef906532a801f457a38d64",
+      "encoding": "gzip"
+    },
+    {
+      "path": "controls/trace-sources.mjs.syntax.log.gz",
+      "sourceArtifact": "/home/louistrue/.t3/artifacts/6709-owner-domain-proposal-20261009/trace-sources.mjs.syntax.log",
+      "rawBytes": 0,
+      "rawSHA256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "storedBytes": 20,
+      "storedSHA256": "9ceffb7310338057cfe71a4ae1e2c98d2c485d81cdef906532a801f457a38d64",
+      "encoding": "gzip"
+    },
+    {
+      "path": "controls/owner-domain-controls.mts.syntax.log.gz",
+      "sourceArtifact": "/home/louistrue/.t3/artifacts/6709-owner-domain-proposal-20261009/owner-domain-controls.mts.syntax.log",
+      "rawBytes": 0,
+      "rawSHA256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "storedBytes": 20,
+      "storedSHA256": "9ceffb7310338057cfe71a4ae1e2c98d2c485d81cdef906532a801f457a38d64",
+      "encoding": "gzip"
+    },
+    {
+      "path": "prior-refusal-and-preparation/base-native-observation.json.gz",
+      "sourceArtifact": "/home/louistrue/.t3/artifacts/6709-untimed-pair-recovery-20261009/base-native-observation.json",
+      "rawBytes": 38373,
+      "rawSHA256": "c43d48686c0e6c85c0cdeda09afc00b7b2355fbb8ff4c285319ea92753295628",
+      "storedBytes": 5724,
+      "storedSHA256": "ca378464eb22ac70f013e8ecab2d6a9d2fabb9217499657c86a73e7e721ada44",
+      "encoding": "gzip"
+    },
+    {
+      "path": "prior-refusal-and-preparation/base-owner-refusal-diagnostic.json.gz",
+      "sourceArtifact": "/home/louistrue/.t3/artifacts/6709-untimed-pair-recovery-20261009/base-owner-refusal-diagnostic.json",
+      "rawBytes": 2195,
+      "rawSHA256": "bddd1516d6af3db4683f385cb17253d654eb5c55296b5b031397b61034125b3d",
+      "storedBytes": 854,
+      "storedSHA256": "f26011eeecb380736873db14177a9abc753e3763eef86290d3ab147d604646f2",
+      "encoding": "gzip"
+    },
+    {
+      "path": "prior-refusal-and-preparation/discrepancy.json.gz",
+      "sourceArtifact": "/home/louistrue/.t3/artifacts/6709-untimed-pair-recovery-20261009/discrepancy.json",
+      "rawBytes": 1194,
+      "rawSHA256": "133787cdcc258047dc638e5adb1eed7201cfbf0dee0f22b360b4a0c0e1569dbd",
+      "storedBytes": 420,
+      "storedSHA256": "532f310620422ed5a4dad7fa0ebc7e323ce9a61daf89aa1c6aa190872329caf6",
+      "encoding": "gzip"
+    },
+    {
+      "path": "prior-refusal-and-preparation/original-plan.json.gz",
+      "sourceArtifact": "/home/louistrue/.t3/artifacts/6709-untimed-pair-recovery-20261009/original-plan.json",
+      "rawBytes": 13082,
+      "rawSHA256": "3225540cb423866f574d1c798eadacd46af914a03e6de012940c9183851d8c80",
+      "storedBytes": 5024,
+      "storedSHA256": "ac6bcad31f88b32d52cad2684217be1294f43db00d6cc8dbb4095ee9960342c1",
+      "encoding": "gzip"
+    },
+    {
+      "path": "prior-refusal-and-preparation/self-consistency-receipt.json.gz",
+      "sourceArtifact": "/home/louistrue/.t3/artifacts/6709-untimed-pair-recovery-20261009/self-consistency-receipt.json",
+      "rawBytes": 10436,
+      "rawSHA256": "2791e78b13b46356a66a6dfcd368a0d6f3b6647e095f827e406971ab3f131bdf",
+      "storedBytes": 2088,
+      "storedSHA256": "84fbba4200c2b27a2dd4a9ba505b3e5aabdfd969e1404c96b556a32c747be088",
+      "encoding": "gzip"
+    },
+    {
+      "path": "prior-build/qualification.json.gz",
+      "sourceArtifact": "/home/louistrue/.t3/artifacts/6709-current-7b11-execution-plan-20261008/qualified-archive/qualification.json",
+      "rawBytes": 69198,
+      "rawSHA256": "2edcae089e31d47e2bdacc4ec473e98be91bcc2be1d8b9f7d394899d3beaf8d9",
+      "storedBytes": 7642,
+      "storedSHA256": "932496428b8eaabde09fca8044392344779ae47c6b23d9181f450e17b2ffea8e",
+      "encoding": "gzip"
+    },
+    {
+      "path": "prior-build/raw/missing-prerequisite-qualification/API-surface.log.gz",
+      "sourceArtifact": "/home/louistrue/.t3/artifacts/6709-current-7b11-execution-plan-20261008/qualified-archive/raw/missing-prerequisite-qualification/API-surface.log.gz",
+      "rawBytes": 82,
+      "rawSHA256": "49272cc776d6faab942dd321f016ad81c3020082b750b7eaebf1bfddf336c4bc",
+      "storedBytes": 88,
+      "storedSHA256": "b8030addd9808f52db9cbbdf4a4b73c79f89ceeae9479caa4eb435d8429407b2",
+      "encoding": "gzip"
+    },
+    {
+      "path": "prior-build/raw/missing-prerequisite-qualification/CI-path-coverage.log.gz",
+      "sourceArtifact": "/home/louistrue/.t3/artifacts/6709-current-7b11-execution-plan-20261008/qualified-archive/raw/missing-prerequisite-qualification/CI-path-coverage.log.gz",
+      "rawBytes": 155,
+      "rawSHA256": "ea4d701abc84043e1dde874b36b0b8e16646d39f4020361ea400069651805129",
+      "storedBytes": 150,
+      "storedSHA256": "b49e5bd68519b12264207fb9ae1720a391aaa0c5f6133335e8a48c3d90ec6ab6",
+      "encoding": "gzip"
+    },
+    {
+      "path": "prior-build/raw/missing-prerequisite-qualification/changesets.log.gz",
+      "sourceArtifact": "/home/louistrue/.t3/artifacts/6709-current-7b11-execution-plan-20261008/qualified-archive/raw/missing-prerequisite-qualification/changesets.log.gz",
+      "rawBytes": 56,
+      "rawSHA256": "acc6039913096f5e71f7f34ae3d81b7833058148be6bf1d7c29305e6af214c9f",
+      "storedBytes": 72,
+      "storedSHA256": "9f6e634433857607d34f4d14143c0a444bd309e52792bc6c5180b28fe29414ed",
+      "encoding": "gzip"
+    },
+    {
+      "path": "prior-build/raw/missing-prerequisite-qualification/diff.log.gz",
+      "sourceArtifact": "/home/louistrue/.t3/artifacts/6709-current-7b11-execution-plan-20261008/qualified-archive/raw/missing-prerequisite-qualification/diff.log.gz",
+      "rawBytes": 0,
+      "rawSHA256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "storedBytes": 20,
+      "storedSHA256": "9ceffb7310338057cfe71a4ae1e2c98d2c485d81cdef906532a801f457a38d64",
+      "encoding": "gzip"
+    },
+    {
+      "path": "prior-build/raw/missing-prerequisite-qualification/five-root-nonforce-build.log.gz",
+      "sourceArtifact": "/home/louistrue/.t3/artifacts/6709-current-7b11-execution-plan-20261008/qualified-archive/raw/missing-prerequisite-qualification/five-root-nonforce-build.log.gz",
+      "rawBytes": 24933,
+      "rawSHA256": "731d1e8f19eae1448165a0cfb746a6fc22cdc73d88f9d7e210ce51ae693e4d3f",
+      "storedBytes": 4810,
+      "storedSHA256": "98c2cbf8ab6481c75e9a32832c66a9bd63a6cae2a2616fe8d70244a75777dffb",
+      "encoding": "gzip"
+    },
+    {
+      "path": "prior-build/raw/qualification/forced-root-candidate-build.log.gz",
+      "sourceArtifact": "/home/louistrue/.t3/artifacts/6709-current-7b11-execution-plan-20261008/qualified-archive/raw/qualification/forced-root-candidate-build.log.gz",
+      "rawBytes": 96159,
+      "rawSHA256": "d6b09ce01c0e815ea0107945161f1b94fc7498d1b8fabab2a151c71c4dffbc84",
+      "storedBytes": 18456,
+      "storedSHA256": "8eda1ffa153c94323163a650c269541eac99709eb74bdbbffc57216887042b16",
+      "encoding": "gzip"
+    },
+    {
+      "path": "prior-build/raw/qualification/full-renderer-controls.log.gz",
+      "sourceArtifact": "/home/louistrue/.t3/artifacts/6709-current-7b11-execution-plan-20261008/qualified-archive/raw/qualification/full-renderer-controls.log.gz",
+      "rawBytes": 307823,
+      "rawSHA256": "f685b87792d13eef39ae62619b36842353213e1937c2af9593e1d7b95429e4e8",
+      "storedBytes": 74699,
+      "storedSHA256": "3890132c27f005dcb9beb1fe05849271958d08a5bcf759638a26615151aa3a5c",
+      "encoding": "gzip"
+    },
+    {
+      "path": "prior-build/raw/qualification/light-1.log.gz",
+      "sourceArtifact": "/home/louistrue/.t3/artifacts/6709-current-7b11-execution-plan-20261008/qualified-archive/raw/qualification/light-1.log.gz",
+      "rawBytes": 30991,
+      "rawSHA256": "2163cf4b83bf83a49f5206afc25f09f284baa1c470090c83d409dd2386ff5342",
+      "storedBytes": 3000,
+      "storedSHA256": "be9e9f83beb73a35268cbe2aed57c24565eaa195410a7e0e6278baa75d6c43ae",
+      "encoding": "gzip"
+    },
+    {
+      "path": "prior-build/raw/qualification/light-2.log.gz",
+      "sourceArtifact": "/home/louistrue/.t3/artifacts/6709-current-7b11-execution-plan-20261008/qualified-archive/raw/qualification/light-2.log.gz",
+      "rawBytes": 859,
+      "rawSHA256": "41e9eb8de4eb493a9247c869033610dd424f4f7dd01c0d422f61bf691c9883a2",
+      "storedBytes": 395,
+      "storedSHA256": "9ece3f3673214f173ee8ae717aeffef5da23dd44a8503ab3c48afdd4730ba8a4",
+      "encoding": "gzip"
+    },
+    {
+      "path": "prior-build/raw/qualification/light-3.log.gz",
+      "sourceArtifact": "/home/louistrue/.t3/artifacts/6709-current-7b11-execution-plan-20261008/qualified-archive/raw/qualification/light-3.log.gz",
+      "rawBytes": 12921,
+      "rawSHA256": "2599cd8401ee8a3472088a48f6f5a722472e26ae4c6e89289dfc698dc45b6d82",
+      "storedBytes": 2161,
+      "storedSHA256": "03d6d99b42c6a5f77b22073e46db3a8b6806d319d6490b55dfd59ed979e7ed54",
+      "encoding": "gzip"
+    },
+    {
+      "path": "prior-build/raw/qualification/light-4.log.gz",
+      "sourceArtifact": "/home/louistrue/.t3/artifacts/6709-current-7b11-execution-plan-20261008/qualified-archive/raw/qualification/light-4.log.gz",
+      "rawBytes": 171,
+      "rawSHA256": "5cfbf7c15c1224c64c1778d127cc78e6733d3e98289a7141583a9b61a2f6cbab",
+      "storedBytes": 154,
+      "storedSHA256": "04f6bb12ce34e52c8f890a73322f51675285d87623f4eb77b07a89e7935aa627",
+      "encoding": "gzip"
+    },
+    {
+      "path": "prior-build/raw/qualification/light-5.log.gz",
+      "sourceArtifact": "/home/louistrue/.t3/artifacts/6709-current-7b11-execution-plan-20261008/qualified-archive/raw/qualification/light-5.log.gz",
+      "rawBytes": 529,
+      "rawSHA256": "573eda9e9a644e8f655d1482b17f049bdd0155887dd34662dc033405a250bdca",
+      "storedBytes": 238,
+      "storedSHA256": "d49e30eafbb7ab4dac879531dacf232d3eeb7d09599ef9635d6abefb4d6f583e",
+      "encoding": "gzip"
+    },
+    {
+      "path": "prior-build/raw/qualification/offline-install.log.gz",
+      "sourceArtifact": "/home/louistrue/.t3/artifacts/6709-current-7b11-execution-plan-20261008/qualified-archive/raw/qualification/offline-install.log.gz",
+      "rawBytes": 1756,
+      "rawSHA256": "0e1618411ca6391a66ce2e8fadf44ed32907f28e7825f34db7694833a9707a74",
+      "storedBytes": 747,
+      "storedSHA256": "6aba56a3549b8ae98b653e12af709f91e90715340c6028c173350ea0d502ae27",
+      "encoding": "gzip"
+    },
+    {
+      "path": "prior-build/raw/qualification/plain-full-root-typecheck.log.gz",
+      "sourceArtifact": "/home/louistrue/.t3/artifacts/6709-current-7b11-execution-plan-20261008/qualified-archive/raw/qualification/plain-full-root-typecheck.log.gz",
+      "rawBytes": 49034,
+      "rawSHA256": "f278157bf614ecfa4cd4365196043e22dd2f7124d5be6d6b98ad6c13b245f361",
+      "storedBytes": 7499,
+      "storedSHA256": "0e0a9037d929dbe950a40cf60f5ff93a2d0df873a6a6a763f08489929e41ff81",
+      "encoding": "gzip"
+    },
+    {
+      "path": "prior-build/raw/qualification/viewer-motion-controls.log.gz",
+      "sourceArtifact": "/home/louistrue/.t3/artifacts/6709-current-7b11-execution-plan-20261008/qualified-archive/raw/qualification/viewer-motion-controls.log.gz",
+      "rawBytes": 98081,
+      "rawSHA256": "893dc89c9e684be8070d5606386ce09bef443dfcb641228ec9ee8ed62459cc53",
+      "storedBytes": 19386,
+      "storedSHA256": "5a07e13571c74f3b862e127e5049d2eb24c367199ba3b4b53cc1061a8d3a757a",
+      "encoding": "gzip"
+    }
+  ],
+  "sourceIndex": {
+    "path": "controls/consumed-source-index.json.gz",
+    "rawSHA256": "eed04e5eb0f2816d9e60260ffe0fcbdecbd7f8b9c57f1b6178c9cbd08920530a",
+    "storedSHA256": "3d52a547982248fbd7cc6bd1408e60ea04a6ddbc2fb1f24f2816c6b268465e5d",
+    "sourceBodiesNotCopied": true
+  },
+  "rootReceiptSHA256": "053a3bbe3c39f67480f045c3c989c47fbfa24afa833450011c7d8f918bf4b827",
+  "generatedFiles": [
+    {
+      "path": "README.md",
+      "rawBytes": 5050,
+      "rawSHA256": "9ba47e5df43f02e8aa55989fca6d8530d938d1622a2f200645137b4b6c460198",
+      "encoding": "raw"
+    },
+    {
+      "path": "controls/qualification-summary.json",
+      "rawBytes": 3103,
+      "rawSHA256": "fd685894e3f14c253bc525119273fd107193bf076f5a3fdebcbd7158ff1f4633",
+      "encoding": "raw"
+    }
+  ]
+}

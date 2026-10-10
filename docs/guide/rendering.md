@@ -82,6 +82,29 @@ function animate() {
 animate();
 ```
 
+The viewer renders navigation frames at CSS resolution and restores HiDPI
+sharpness when movement settles. This reduces fill work on dense displays;
+CPU-bound scenes may see little improvement. The renderer's persistent
+`setMaxPixelRatio(ratio)` preference remains the upper bound. Pass
+`maxPixelRatio: 1` to `render()` for a single reduced-resolution frame; omit
+it for subsequent full-quality or capture frames. Invalid frame caps are
+ignored, and a frame cap cannot raise the configured maximum.
+
+`renderer.renderWithResult(options)` shares `render()`'s implementation and
+returns `true` only when that call submits a new frame without a contained
+synchronous failure. It returns `false` when the device, viewport or context
+is unavailable, or rendering fails. The existing `render()` API still returns
+void. Submission is synchronous; it does not establish GPU completion,
+asynchronous validation or image quality.
+
+Viewer captures share the normal frame's appearance and clipping options,
+and render at the configured settled resolution. The capture owns its camera
+and drawing buffer through GPU completion, presentation, and image readback;
+the navigation loop resumes afterward. Rendering another frame during those
+asynchronous waits can replace the image being exported, even at DPR1.
+Captures reject a refused render before waiting for completion or reading the
+canvas, so an earlier frame cannot stand in for the requested capture.
+
 ## Appearance triangle mapping
 
 `expandAppearanceCorners(mesh, sourceIndices, cornerUvs, targetIndices, targetCornerNormals, targetVertexCount)` binds
@@ -707,6 +730,7 @@ interface RenderOptions {
   clearColor?: [number, number, number, number];
 
   // Performance
+  maxPixelRatio?: number;           // This frame only, bounded by the configured cap
   enableDepthTest?: boolean;        // deprecated: declared but never read
   enableFrustumCulling?: boolean;
   spatialIndex?: SpatialIndex;

@@ -12,8 +12,10 @@ import { render, cleanup } from '@/test/render.js';
 import { useChart3DLink } from '@/components/viewer/charts/useChart3DLink.js';
 import { useViewerStore } from './index.js';
 import { saveBasketViewWithThumbnailFromStore } from './basketSave.js';
+import { registerViewportCapture } from '@/lib/viewport-capture';
 
 let releaseGpu: () => void;
+let unregisterCapture: (() => void) | undefined;
 
 function ChartLinkProbe() {
   useChart3DLink();
@@ -23,6 +25,8 @@ function ChartLinkProbe() {
 beforeEach(() => {
   const gate = new Promise<void>((resolve) => { releaseGpu = resolve; });
   const renderer = {
+    renderWithResult: () => true,
+    requestRender: () => {},
     getGPUDevice: () => ({ queue: { onSubmittedWorkDone: () => gate } }),
   } as unknown as Renderer;
   setGlobalRendererRef({ current: renderer } as RefObject<Renderer | null>);
@@ -30,6 +34,7 @@ beforeEach(() => {
   canvas.dataset.viewport = 'main';
   canvas.toDataURL = () => 'data:image/png;base64,AA==';
   document.body.appendChild(canvas);
+  unregisterCapture = registerViewportCapture(renderer, canvas, () => ({}));
   useViewerStore.setState((state) => {
     const visibilityRevision = state.visibilityRevision + 1;
     const ids = new Set([44, 45]);
@@ -54,6 +59,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  unregisterCapture?.(); unregisterCapture = undefined;
   document.querySelectorAll('canvas[data-viewport="main"]').forEach((canvas) => canvas.remove());
   setGlobalRendererRef({ current: null });
   cleanup();

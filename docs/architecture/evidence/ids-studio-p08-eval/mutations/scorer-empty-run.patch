@@ -1,0 +1,13 @@
+diff --git a/scripts/ai-eval/ids/e2-scorer.mjs b/scripts/ai-eval/ids/e2-scorer.mjs
+index 881a2dd98..ffeb6eb61 100644
+--- a/scripts/ai-eval/ids/e2-scorer.mjs
++++ b/scripts/ai-eval/ids/e2-scorer.mjs
+@@ -120,7 +120,7 @@ export function summariseE2(scores) {
+     cases: scores.length,
+     agreed,
+     // No cases is not perfect agreement: an empty run reports null.
+-    agreement: scores.length ? agreed / scores.length : 1,
++    agreement: scores.length ? agreed / scores.length : null,
+     byExpected: { pass: bucket('pass'), fail: bucket('fail') },
+     unscorable: scores.filter(score => score.verdict === null).length,
+     audit: {

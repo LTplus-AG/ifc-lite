@@ -5,7 +5,7 @@ import '@/test/setup-dom.js';
 import assert from 'node:assert/strict';
 import { afterEach, test, type TestContext } from 'node:test';
 import { EMPTY_SOURCE_BYTES, extractProjectUnits, extractQuantitiesOnDemand, extractTypeQuantitiesOnDemand } from '@ifc-lite/parser';
-import { StoreEditor } from '@ifc-lite/mutations';
+import { StoreEditor, type IfcAttributeValue } from '@ifc-lite/mutations';
 import { generateIfcGuid } from '@ifc-lite/encoding';
 import { useViewerStore } from '@/store';
 import { getOrCreateMutationView } from '@/sdk/adapters/mutation-view';
@@ -190,7 +190,9 @@ for (const remove of [false, true]) {
     assert.equal(exported.getEntity(x.quantityId)?.attributes[2], replacement);
     const native = extractTypeQuantitiesOnDemand(exported, x.f.id)?.quantities.flatMap(set => set.quantities).find(q => q.name === x.quantityName);
     assert.ok(native); assert.equal(native.value, 10);
-    assert.equal(native.explicitUnitSiScale, remove ? undefined : 1e-6);
+    if (remove) assert.equal(native.explicitUnitSiScale, undefined);
+    else assert.ok(native.explicitUnitSiScale !== undefined && Math.abs(native.explicitUnitSiScale - 1e-6) < 1e-20,
+      'canonical centimetre-cubed scaling differs only within floating-point roundoff');
     const expectedM3 = remove ? 10 : 1e-5;
     assert.equal(extractProjectUnits(exported.source, exported.entityIndex).resolvedForUnitType('VOLUMEUNIT')?.siScale, 1);
     const before = editedModelBytes(x.store, x.view), revision = x.view.getMutationRevision();
@@ -207,20 +209,46 @@ for (const remove of [false, true]) {
 
 test('#7376 source-free native Type explicit unit survives through actual current view in mounted card/table/CSV', async t => {
   const x = await explicitFixture(t, false); if (!x) return;
+  const exported = await parse(editedModelBytes(x.store, x.view));
+  assert.equal(exported.getEntity(x.quantityId)?.attributes[2], x.unit, 'independently exported source retains quantity Unit before metadata materialization');
+  assert.equal(exported.getEntity(x.quantityId)?.attributes[3], 10, 'quantity scalar was never converted to a reference');
+  assert.deepEqual(exported.getEntity(x.a.qto)?.attributes[5], x.store.getEntity(x.a.qto)?.attributes[5]);
+  assert.deepEqual(exported.getEntity(x.relation)?.attributes[4], x.store.getEntity(x.relation)?.attributes[4]);
+  assert.equal(exported.getEntity(x.relation)?.attributes[5], x.a.type);
+  const native = extractTypeQuantitiesOnDemand(exported, x.f.id)?.quantities.flatMap(set => set.quantities).find(q => q.name === x.quantityName);
+  assert.equal(native?.explicitUnitSiScale, 1e-9);
   // Supply actual authored/reparsed native attributes through the current view.
   // No accessor replacement or fabricated quantity result is installed.
   // @raw-entity-enumeration-ok fixture identifies its parsed native Project/units before creating the source-free scenario.
   const project = x.store.entityIndex.byType.get('IFCPROJECT')?.[0]; assert.ok(project);
   const assignment = x.store.getEntity(project)?.attributes[8]; assert.ok(typeof assignment === 'number');
   const unitIds = x.store.getEntity(assignment)?.attributes[0]; assert.ok(Array.isArray(unitIds));
+  // Parsed reference slots contain numeric EXPRESS IDs. Positional edits
+  // must author canonical #id STEP references, not integer quantity values.
+  // The closed fixture names exact native reference slots; value slot3 stays10.
+  const referenceSlots = new Map<number, ReadonlySet<number>>([
+    [x.a.type, new Set([1, 5, 6])], [x.a.qto, new Set([1, 5])],
+    [x.a.volume, new Set([2])], [x.relation, new Set([1, 4, 5])],
+    [project, new Set([1, 7, 8])], [assignment, new Set([0])],
+  ]);
+  const reference = (value: unknown): IfcAttributeValue => {
+    if (value === null || value === '*') return value;
+    if (Array.isArray(value)) return value.map(reference);
+    assert.ok(typeof value === 'number' && Number.isInteger(value) && x.store.getEntity(value),
+      'every authored reference identifies a real exported native record');
+    return `#${value}`;
+  };
   const ids = [x.a.type, x.a.qto, x.a.volume, x.relation, x.unit, project, assignment, ...unitIds];
   for (const id of ids) {
     assert.ok(typeof id === 'number'); const entity = x.store.getEntity(id); assert.ok(entity);
-    entity.attributes.forEach((value, index) => x.view.setPositionalAttribute(id, index, value));
+    if (id === x.unit || unitIds.includes(id)) assert.equal(entity.type.toUpperCase(), 'IFCSIUNIT',
+      'this manifest fixture owns native SI units, not an unexamined conversion graph');
+    entity.attributes.forEach((value, index) => x.view.setPositionalAttribute(id, index,
+      referenceSlots.get(id)?.has(index) ? reference(value) : value));
   }
-  const exported = await parse(editedModelBytes(x.store, x.view));
-  const native = extractTypeQuantitiesOnDemand(exported, x.f.id)?.quantities.flatMap(set => set.quantities).find(q => q.name === x.quantityName);
-  assert.equal(native?.explicitUnitSiScale, 1e-9);
+  assert.equal(x.view.getPositionalMutationsForEntity(x.quantityId)?.get(2), `#${x.unit}`);
+  assert.equal(x.view.getPositionalMutationsForEntity(x.quantityId)?.get(3), 10);
+  const materializedChanges = x.view.getEffectiveChanges();
   const before = editedModelBytes(x.store, x.view), revision = x.view.getMutationRevision();
   const model = useViewerStore.getState().models.get('arch'); assert.ok(model);
   const sourceFree = { ...x.store, source: EMPTY_SOURCE_BYTES };
@@ -232,6 +260,9 @@ test('#7376 source-free native Type explicit unit survives through actual curren
   assert.match(label.parentElement?.textContent ?? '', /0[.,]01\s*cm³/);
   await assertTableAndCsv(x, 1e-8);
   assert.equal(x.view.getMutationRevision(), revision);
+  assert.deepEqual(x.view.getEffectiveChanges(), materializedChanges);
+  assert.equal(x.view.getPositionalMutationsForEntity(x.quantityId)?.get(2), `#${x.unit}`);
+  assert.equal(x.view.getPositionalMutationsForEntity(x.quantityId)?.get(3), 10);
   await assertSameNativeIfcGraph(editedModelBytes(x.store, x.view), before);
 });
 
@@ -285,3 +316,53 @@ for (const occurrence of [true, false]) {
     await assertSameNativeIfcGraph(editedModelBytes(x.store, x.view), before, 'card/table/CSV read leaves every native record unchanged');
   });
 }
+
+
+test('#7376 unavailable project context retains the first implicit occurrence basis instead of promoting a later explicit native quantity', async t => {
+  const x = await explicitFixture(t, true); if (!x) return;
+  x.view.setPositionalAttribute(x.quantityId, 2, null);
+  // Author/reparse the implicit occurrence before reading; this does not claim
+  // that live own-quantity Unit metadata edits (#7379) have been implemented.
+  const source = await parse(editedModelBytes(x.store, x.view));
+  assert.equal(source.getEntity(x.quantityId)?.attributes[2], null);
+  assert.equal(source.getEntity(x.quantityId)?.attributes[3], 10);
+  const model = useViewerStore.getState().models.get('arch'); assert.ok(model);
+  useViewerStore.setState({ models: new Map([['arch', { ...model, ifcDataStore: source,
+    maxExpressId: getMaxExpressId(source, model.geometryResult?.meshes ?? []) }]]), ifcDataStore: source,
+    mutationViews: new Map(), storeEditors: new Map() });
+  const view = getOrCreateMutationView(useViewerStore, 'arch'); assert.ok(view);
+  // @raw-entity-enumeration-ok fixture identifies the parsed native Project before removing its current assignment.
+  const project = source.entityIndex.byType.get('IFCPROJECT')?.[0]; assert.ok(project);
+  view.setPositionalAttribute(project, 8, null);
+  const exported = await parse(editedModelBytes(source, view));
+  assert.equal(exported.getEntity(project)?.attributes[8], null);
+  const own = extractQuantitiesOnDemand(exported, x.f.id).flatMap(set => set.quantities);
+  const first = own.find(q => q.name === 'NetExplicitVolume'); assert.ok(first);
+  assert.equal(first.value, 10); assert.equal(first.explicitUnitSiScale, undefined);
+  const later = own.find(q => q.name === 'NetLaterVolume'); assert.ok(later);
+  assert.equal(later.value, 999); assert.equal(later.explicitUnitSiScale, 1e-9);
+  const inherited = extractTypeQuantitiesOnDemand(exported, x.f.id)?.quantities.flatMap(set => set.quantities).find(q => q.name === 'NetVolume');
+  assert.equal(inherited?.value, 30); assert.equal(inherited?.explicitUnitSiScale, 1e-9);
+  const before = editedModelBytes(source, view), revision = view.getMutationRevision();
+  const context = contextFor('arch', new Map()); assert.ok(context);
+  const quantities = quantitySetsFor(context, x.f.id);
+  assert.deepEqual(quantities.flatMap(set => set.quantities).filter(q => q.name.startsWith('Net')).map(q => q.value), [10, 999, 30],
+    'unavailable physical context does not erase native first-basis ownership');
+  const panel = render(<ZoneVolumeBreakdown zoneSet={x.f.zoneSet} globalId={x.f.id} quantitySets={quantities}
+    projectUnits={extractProjectUnits(exported.source, exported.entityIndex)} unitDisplayOverrides={{}}
+    quantityUnitCoverage={{ status: 'unavailable', reason: 'Native UnitsInContext was unset' }} />);
+  assert.ok(![...panel.querySelectorAll('span')].some(span => ['NetExplicitVolume', 'NetLaterVolume', 'NetVolume'].includes(span.textContent ?? '')),
+    'neither a later own nor inherited explicit amount certifies the unavailable first occurrence basis');
+  const rows = buildZoneTable(x.f.zoneSet, 'net'); assert.equal(rows.length, 2);
+  for (const row of rows) { assert.equal(row.VolumeM3, null); assert.equal(row.ElementVolumeM3, null); assert.ok(row.Unavailable.length > 0); }
+  const downloads: Uint8Array[] = [];
+  const result = await exportZoneTable(x.f.zoneSet, 'net', 'csv', bytes => downloads.push(bytes));
+  assert.equal(result.unmeasured, 2); assert.equal(downloads.length, 1);
+  const [header, ...body] = csvRows(new TextDecoder().decode(downloads[0])); assert.equal(body.length, 2);
+  for (const row of body) {
+    assert.equal(row[header.indexOf('VolumeM3')], ''); assert.equal(row[header.indexOf('ElementVolumeM3')], '');
+    assert.ok(row[header.indexOf('Unavailable')].length > 0);
+  }
+  assert.equal(view.getMutationRevision(), revision);
+  await assertSameNativeIfcGraph(editedModelBytes(source, view), before);
+});

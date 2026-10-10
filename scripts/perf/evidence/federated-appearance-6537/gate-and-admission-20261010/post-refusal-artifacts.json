@@ -1,0 +1,36 @@
+{
+  "base": {
+    "sourceHead": "2382cf4124315f027b2d33c21c1751cee33c5081",
+    "artifacts": [
+      {
+        "path": "/home/louistrue/wt/6537-ab-base-v2-227af528/packages/wasm/pkg/ifc-lite_bg.wasm",
+        "sha256": "9f18a87fba742ddb1ca61a246b8ec76ea69f03c81aea6d47ff066815e7d95bdf"
+      },
+      {
+        "path": "/home/louistrue/wt/6537-ab-base-v2-227af528/target/profiling/examples/perf_probe",
+        "sha256": "1c366fd195a13437bbd52b555a84c90c3c4d4162a4df7ad59a88b6c6217ec235"
+      },
+      {
+        "path": "/home/louistrue/wt/6537-ab-base-v2-227af528/apps/viewer/dist/assets/ifc-lite_bg-CNZG7n-7.wasm",
+        "sha256": "9f18a87fba742ddb1ca61a246b8ec76ea69f03c81aea6d47ff066815e7d95bdf"
+      }
+    ]
+  },
+  "branch": {
+    "sourceHead": "5639fb3724ede20f29e144859fa50e5aa90ccf1f",
+    "artifacts": [
+      {
+        "path": "/home/louistrue/wt/6537-ab-branch-v2-227af528/packages/wasm/pkg/ifc-lite_bg.wasm",
+        "sha256": "e1577bf8318ba1b1f972cdfe13a973acb1a40484f174cd9513a4513a3ec35fb5"
+      },
+      {
+        "path": "/home/louistrue/wt/6537-ab-branch-v2-227af528/target/profiling/examples/perf_probe",
+        "sha256": "411c556dc3e0e3d61ec435ece10683c8643bc633251b3a78e166a061879f3f79"
+      },
+      {
+        "path": "/home/louistrue/wt/6537-ab-branch-v2-227af528/apps/viewer/dist/assets/ifc-lite_bg-Bz_oSzMV.wasm",
+        "sha256": "e1577bf8318ba1b1f972cdfe13a973acb1a40484f174cd9513a4513a3ec35fb5"
+      }
+    ]
+  }
+}

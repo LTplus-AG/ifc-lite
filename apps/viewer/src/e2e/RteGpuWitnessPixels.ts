@@ -15,14 +15,19 @@ async function screenshotImage(dataUrl: string): Promise<ImageBitmap> {
  * Keeping the sample outside the renderer also makes the report inspectable
  * from a Playwright artifact on the machine that owns the hardware adapter.
  */
-export async function screenshotPixel(dataUrl: string | null, x: number, y: number): Promise<Rgba | null> {
+export async function screenshotPixel(
+  dataUrl: string | null, x: number, y: number,
+  cssViewport?: { width: number; height: number },
+): Promise<Rgba | null> {
   if (!dataUrl) return null;
   const bitmap = await screenshotImage(dataUrl);
   const probe = new OffscreenCanvas(bitmap.width, bitmap.height);
   const context = probe.getContext('2d');
   if (!context) throw new Error('2D screenshot probe context is unavailable.');
   context.drawImage(bitmap, 0, 0);
-  const pixel = context.getImageData(x, y, 1, 1).data;
+  const sampleX = Math.floor(x * bitmap.width / (cssViewport?.width ?? bitmap.width));
+  const sampleY = Math.floor(y * bitmap.height / (cssViewport?.height ?? bitmap.height));
+  const pixel = context.getImageData(sampleX, sampleY, 1, 1).data;
   bitmap.close();
   return [pixel[0], pixel[1], pixel[2], pixel[3]];
 }

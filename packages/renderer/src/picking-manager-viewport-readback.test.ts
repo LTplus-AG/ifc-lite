@@ -64,7 +64,7 @@ function readbackFixture(path: PickPath) {
     }));
   }
   return {
-    camera, css, canvas, submissions,
+    camera, css, canvas, submissions, manager, picker,
     begin: () => path === 'point' ? manager.pick(50, 40) : manager.pickRect(10, 10, 90, 70),
     finish: () => {
       if (path === 'point') pointReadback.resolve({ expressId: BOX_ID, modelIndex: 0 });
@@ -157,4 +157,36 @@ describe('viewport validity after a failed asynchronous point rectangle (#6882)'
     assert.deepEqual(await pending, new Set([BOX_ID]));
     assert.equal(warning.mock.callCount(), 1);
   });
+});
+
+// #6881 lifecycle: completed data from an obsolete picker must not escape the
+// real manager after teardown/replacement, even with identical camera/viewport.
+for (const path of ['point', 'gpu-rectangle', 'cpu-box-and-points'] as const) {
+  for (const transition of ['clear', 'replace', 'clear-and-restore'] as const) {
+    it(`rejects ${path} after picker ${transition} (#6881 lifecycle)`, async () => {
+      const h = readbackFixture(path);
+      const pending = h.begin();
+      assert.equal(h.submissions.length, 1);
+      h.manager.setPicker(transition === 'replace' ? { ...h.picker } as never : null);
+      if (transition === 'clear-and-restore') h.manager.setPicker(h.picker as never);
+      h.finish();
+      assert.deepEqual(await pending, path === 'point' ? null : new Set());
+    });
+  }
+  it(`retains ${path} when the same picker is redundantly installed (#6881 lifecycle)`, async () => {
+    const h = readbackFixture(path);
+    const pending = h.begin();
+    h.manager.setPicker(h.picker as never);
+    h.finish();
+    assert.deepEqual(await pending, path === 'point' ? { expressId: BOX_ID, modelIndex: 0 }
+      : new Set(path === 'cpu-box-and-points' ? [BOX_ID, POINT_ID] : [BOX_ID]));
+  });
+}
+it('rejects captured CPU box hits on failed obsolete picker (#6881 lifecycle)', async t => {
+  t.mock.method(console, 'warn', () => {});
+  const h = readbackFixture('cpu-box-and-points');
+  const pending = h.begin();
+  h.manager.setPicker(null);
+  h.fail();
+  assert.deepEqual(await pending, new Set());
 });

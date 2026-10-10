@@ -233,7 +233,7 @@ already succeeded and leaves native Undo available.
 
 Before any IfcSpace has been materialized, a layout edit is session state only.
 The card states that IFC export does not preserve this retained layout; native
-Undo/Redo preserves it during the current session. This route adds no AutoAll,
+Undo/Redo preserves it during the current session. This route adds no
 manual polygon creation, new-file builder, mixed synchronous authoring batch or
 sandbox script bridge.
 
@@ -446,6 +446,14 @@ A separate `cost.graph` proposal supports the existing schedule, item, value, qu
 Review the selected operations and inspect the complete native created, modified and deleted records, including changed shared references and cascades. Apply runs the same canonical SDK cost backend in one native edit group, preserving IFC export and Undo/Redo. Created GlobalIds are assigned at Apply. Non-root values and quantities have no GlobalId: their receipts retain the actual model-bound expressId instead. Receipts use the existing reviewed-change library and can be backed up; edit history remains session state, so a receipt after reload does not recreate Undo history. A failed receipt save is reported separately from the applied native edit.
 
 The route requires Edit mode and native edit permission. It refuses unavailable sources, ambiguous rooted identities, stale snapshots, unsupported native schema/units/SELECTs, cycles, unsafe shared-reference removal and unapproved dependencies. It is non-geometric and does not create a viewport ghost. The bounded route does not establish human evaluation, fixture approval or coordinator-study acceptance.
+
+### Review Room AutoAll across current storeys
+
+A version 1 `room.command` may explicitly request `command.action: "autoAll"` for its supplied `modelId`. The supplied storey Root anchors that model; native preparation enumerates every current storey in that model. It does not include other federated models. The existing explicit `m`/`mm` and `storey-local` Room settings apply to each storey, with lengths normalized once to native metres.
+
+Prepare publishes complete per-storey coverage: ready, no walls, occupied, no eligible faces, or unavailable. A successful native remesh does not prove complete wall coverage: live contained walls with missing or unusable geometry make that storey unavailable. A genuinely wall-free storey remains no walls. Existing room counts include unsupported native room shapes. Unavailable coverage is shown as incomplete, with no approvable partial changes; it never announces an empty plan. Approval refuses unknown/unavailable coverage rather than applying only the known storeys. A successful nonempty action uses one native graph transaction and one Undo group. Empty/no-wall/fully occupied preparation has no IFC write or new Undo group. Source, direct mutation revision, native layout, geometry and model/storey frame changes invalidate held approvals. Cancellation releases preparation without applying it.
+
+Room contours stay in each owning storey's local frame; the combined AutoAll card lists each owner and complete contours instead of overlaying different storeys into one plan. Selection and explicit selection attachments publish only current storey identities and the requirement for native preparation, never guessed candidates. Compact large selections omit the repeated storey population and disclose `nativeRoomAutoAllCapture: "unavailable-selection-budget"`; use a rich smaller selection or an explicit attachment for complete current storey identities. Explicit prepared Room attachments carry the actual complete snapshot. Native solver/exporter diagnostics and unsupported current frames retain their existing boundaries.
 
 ## New native IFC scaffold
 

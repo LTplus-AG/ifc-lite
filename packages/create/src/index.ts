@@ -200,6 +200,7 @@ export { wallRectsFromMeshes, roomFrameToModelWorld, roomFramePlanOffsets } from
 export { floorToFloorHeight } from './in-store/room-floor-height.js';
 export { effectiveStoreyElevation } from './in-store/room-storey-elevation.js';
 export { effectiveStoreyIds } from './in-store/edit/effective-storeys.js';
+export { effectiveRoomIdsByStorey } from './in-store/room-population.js';
 export { spaceMeshTriangles } from './in-store/room-space-meshes.js';
 
 export { ALIGN_MODES, alignsAlongU, planBoxOf, pickBox, edgeOf, alignShift, shiftBox, alignMoves, type AlignMode, type PlanBox } from './in-store/align-boxes.js';

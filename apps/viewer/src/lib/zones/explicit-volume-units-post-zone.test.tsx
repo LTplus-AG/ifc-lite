@@ -64,6 +64,23 @@ function assertEvidenceUnavailable(expectedMeshM3: number, expectedGrossM3: numb
   }
 }
 
+test('#7376 unavailable current project context keeps explicitly resolvable native volume but retains independent evidence', async t => {
+  const x = await explicitFixture(t, true); if (!x) return;
+  // @raw-entity-enumeration-ok fixture identifies the original native Project before unsetting its current assignment.
+  const project = x.store.entityIndex.byType.get('IFCPROJECT')?.[0]; assert.ok(project);
+  x.view.setPositionalAttribute(project, 8, null);
+  const exported = await parse(editedModelBytes(x.store, x.view));
+  assert.equal(exported.getEntity(project)?.attributes[8], null, 'independent native export contains unavailable UnitsInContext');
+  assert.equal(exported.getEntity(x.quantityId)?.attributes[2], x.unit);
+  const explicit = extractQuantitiesOnDemand(exported, x.f.id).flatMap(set => set.quantities).find(q => q.name === x.quantityName);
+  assert.equal(explicit?.explicitUnitSiScale, 1e-9, 'explicit member remains independently resolved');
+  const before = editedModelBytes(x.store, x.view), revision = x.view.getMutationRevision();
+  assertEvidenceNet(1e-8);
+  assert.equal(x.view.getMutationRevision(), revision);
+  await assertSameNativeIfcGraph(editedModelBytes(x.store, x.view), before);
+});
+
+
 test('#7376 unsupported first occurrence volume unit refuses the basis instead of falling through to later own or valid inherited quantity through post-zone selected evidence', async t => {
   const x = await explicitFixture(t, true); if (!x) return;
   const wrong = new StoreEditor(x.store, x.view).addEntity('IfcSIUnit', ['*', '.LENGTHUNIT.', '.MILLI.', '.METRE.']).expressId;

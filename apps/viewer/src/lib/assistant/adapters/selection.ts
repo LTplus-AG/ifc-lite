@@ -178,7 +178,8 @@ function elementRow(s: ViewerState, ref: EntityRef, source: ModelSource, rich: b
     ...(zoneQuantities ? { zoneVolumeBreakdowns: { quantityStatus: zoneQuantities.status, quantityReason: zoneQuantities.reason,
       unitStatus: zoneQuantities.unitStatus, unitReason: zoneQuantities.unitReason,
       ...selectedZoneVolumeBreakdowns(s, globalId,
-        zoneQuantities.quantities, zoneQuantities.scale, setLimit, valueLimit) } } : {}),
+        zoneQuantities.quantities, zoneQuantities.scale, setLimit, valueLimit) } }
+      : s.zoneSets.length > 0 ? { zoneVolumeBreakdowns: { zoneSetCount: 0, zoneSets: [], volumeBases: [] } } : {}),
     nativeEdit: nativeEditEvidence(nativeTarget, ref.expressId),
     nativeType: nativeTypeEvidence(s, nativeTarget, ref.expressId),
     nativeLayers: nativeLayerEvidence(s, nativeTarget, ref.expressId),

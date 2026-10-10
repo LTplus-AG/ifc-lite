@@ -162,6 +162,8 @@ function readCurrent(store: IfcDataStore, entityId: number, view: MetadataReadVi
         const attributes = [...record.attributes];
         attributes[5] = refs;
         const set = readQuantitySetRecord(store, extractor, { ...record, attributes }, readEntity, resolveCurrentUnit);
+        // Complete native inventory can retain member-specific unit refusals.
+        // Physical consumers reject that member without erasing valid siblings (#7376).
         return set ? [set] : [];
     });
     const quantities = readSets([...ownSetIds]);

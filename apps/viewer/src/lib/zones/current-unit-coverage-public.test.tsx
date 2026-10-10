@@ -4,7 +4,7 @@
 import '@/test/setup-dom.js';
 import assert from 'node:assert/strict';
 import { afterEach, test, type TestContext } from 'node:test';
-import { EMPTY_SOURCE_BYTES, IfcParser, extractProjectUnits, extractQuantitiesOnDemand, quantitySiScale } from '@ifc-lite/parser';
+import { EMPTY_SOURCE_BYTES, IfcParser, extractProjectUnits, extractQuantitiesOnDemand, extractTypeQuantitiesOnDemand, buildMaterialUsageIndex, quantitySiScale } from '@ifc-lite/parser';
 import { StoreEditor } from '@ifc-lite/mutations';
 import { generateIfcGuid } from '@ifc-lite/encoding';
 import { useViewerStore } from '@/store';
@@ -140,6 +140,33 @@ test('#7353 implicit occurrence and material measures remain raw when current ph
   assert.equal(gross.value, 99);
   assert.ok(implicit.every(q => q.explicitUnitSiScale === undefined), 'every aggregate volume input is implicit; the independently explicit Net member was removed');
   assert.ok(!implicit.some(q => q.name === 'NetWitnessVolume'));
+  assert.deepEqual(implicit.map(q => ({ name: q.name, value: q.value })), [{ name: 'GrossWitnessVolume', value: 99 }],
+    'independent native wall now contributes the authored implicit gross witness, with no original Net basis');
+  const nativeMaterialName = materialSource.getEntity(15046)?.attributes[0];
+  assert.equal(typeof nativeMaterialName, 'string');
+  let nativeRawTotal = 0;
+  let witnessWeight = 0;
+  for (const usage of buildMaterialUsageIndex(materialSource).values()) {
+    if (usage.name !== nativeMaterialName) continue;
+    for (const { entityId, weight } of usage.entries) {
+      assert.ok(Number.isFinite(weight) && weight > 0, 'native material allocation has a positive finite weight');
+      const own = extractQuantitiesOnDemand(materialSource, entityId);
+      const sets = own.some(set => set.quantities.length > 0) ? own
+        : extractTypeQuantitiesOnDemand(materialSource, entityId)?.quantities ?? [];
+      const volumes = sets.flatMap(set => set.quantities).filter(q => q.type === 2);
+      const named = new Map(volumes.map(q => [q.name.toLowerCase(), q.value]));
+      const nativeValue = named.get('netvolume') ?? named.get('grossvolume') ?? named.get('volume')
+        ?? named.get([...named.keys()].sort()[0] ?? '');
+      if (nativeValue === undefined) continue;
+      assert.ok(Number.isFinite(nativeValue), 'independently reparsed native aggregate inputs are finite');
+      nativeRawTotal += nativeValue * weight;
+      if (entityId === x.f.id) { assert.equal(nativeValue, 99); witnessWeight += weight; }
+    }
+  }
+  assert.ok(witnessWeight > 0, 'the actual selected material includes the authored wall contribution');
+  assert.ok(nativeRawTotal >= 1 && nativeRawTotal < 1000, 'native fixture aggregate is in the two-decimal raw presentation range');
+  const expectedNativeRaw = new Intl.NumberFormat('en', { maximumFractionDigits: 2 }).format(nativeRawTotal);
+
   const material = render(<MaterialTotalsPanel materialId={15046} modelId="arch" />);
   await waitFor(() => (material.textContent ?? '').includes('UnitWitnessMaterialLength'),
     'native selected-material export/reparse completes before display assertions');
@@ -150,7 +177,7 @@ test('#7353 implicit occurrence and material measures remain raw when current ph
   const volumeLabel = [...material.querySelectorAll('span')].find(span => span.textContent === 'Volume');
   assert.ok(volumeLabel, 'real native selected material has aggregated occurrence volume');
   const total = volumeLabel.nextElementSibling; assert.ok(total);
-  assert.equal(total.textContent, '54.48', 'unit-context refusal preserves the measured native fixture raw aggregate instead of hiding it');
+  assert.equal(total.textContent, expectedNativeRaw, 'unit-context refusal preserves the independently reparsed native weighted raw aggregate instead of hiding or converting it');
   assert.doesNotMatch(total.textContent ?? '', /[A-Za-z²³]/,
     'unavailable aggregate context preserves a raw total without a physical suffix or override conversion');
 });

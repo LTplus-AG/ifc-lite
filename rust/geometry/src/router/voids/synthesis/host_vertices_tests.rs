@@ -359,3 +359,19 @@ fn issue_6940_an_opening_one_step_off_a_hole_corner_leaves_the_slab_closed() {
         }
     }
 }
+
+/// #7024: same-cell reservations and unmatched corners leave stored f32 values
+/// untouched; a later neighbouring match must still keep the reservation.
+#[test]
+fn issue_7024_unchanged_reconciliation_preserves_subgrid_positions() {
+    let host = [[1.0, 2.0, 3.0]];
+    let same = [1.0 - g(1) * 0.45, 2.0, 3.0];
+    let far = [8.0, 9.0, 10.0];
+    let mut cutter = points(&[same, same, far]);
+    let before = cutter.positions.clone();
+    assert!(!super::reconcile_positions_with_host_vertices(&mut cutter, &points(&host), Vector3::z()));
+    assert_eq!(cutter.positions, before);
+    let near = [1.0 + g(1), 2.0, 3.0];
+    assert_eq!(reconciled(&[same, near], &host), [same, near],
+        "the same-cell reservation prevents collapsing a neighbouring corner");
+}

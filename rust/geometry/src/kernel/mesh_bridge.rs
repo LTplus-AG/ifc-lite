@@ -219,13 +219,13 @@ impl BatchSubtract {
 /// previous cut's seams. Component order is the caller's (deterministic).
 /// See [`BatchSubtract`] for the three outcomes.
 pub fn subtract_many(host: &Mesh, cutters: &[&Mesh]) -> BatchSubtract {
-    subtract_many_with_conformity(host, cutters, false).0
+    subtract_many_with_conformity(host, cutters, false, false).0
 }
 
 /// Keep the provenance of an unchanged batch for the void router (#6516).
 /// A volume-checked nonconforming miss must retain the sequential fallback.
 pub(crate) fn subtract_many_with_conformity(
-    host: &Mesh, cutters: &[&Mesh], retain_conforming_miss: bool,
+    host: &Mesh, cutters: &[&Mesh], opening: bool, retain_conforming_miss: bool,
 ) -> (BatchSubtract, bool, Option<Mesh>) {
     #[cfg(feature = "csg_capture")]
     crate::csg_capture::record_many(host, cutters);
@@ -234,7 +234,11 @@ pub(crate) fn subtract_many_with_conformity(
         .iter()
         .map(|m| {
             let mut c = mesh_to_tris(m);
-            promote_subtract_cutter_onto_host_faces(&mut c, &h);
+            if opening {
+                promote_subtract_cutter_onto_host_faces(&mut c, &h);
+            } else {
+                promote_cutter_verts_onto_host_faces(&mut c, &h);
+            }
             orient_outward(c)
         })
         .collect();

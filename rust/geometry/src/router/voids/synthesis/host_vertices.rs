@@ -188,6 +188,7 @@ pub(in crate::router::voids) fn reconcile_positions_with_host_vertices(
     // Each distinct cutter position's host vertex: itself when it already is
     // one, else the nearest within a step, ties to the smallest position.
     let mut target: FxHashMap<Cell, Cell> = FxHashMap::default();
+    let mut has_move = false;
     for p in cutter.positions.chunks_exact(3) {
         let c = cell(p);
         if target.contains_key(&c) {
@@ -209,8 +210,14 @@ pub(in crate::router::voids) fn reconcile_positions_with_host_vertices(
             }
         }
         if let Some((_, h)) = best {
+            has_move = true;
             target.insert(c, h);
         }
+    }
+    // Same-cell matches are reservations, not moves. With no neighbouring
+    // target, claims and depth-edge pruning cannot change any position (#7024).
+    if !has_move {
+        return false;
     }
     let mut claims: FxHashMap<Cell, u32> = FxHashMap::default();
     target

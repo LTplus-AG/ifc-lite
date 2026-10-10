@@ -13,13 +13,13 @@
 use ifc_lite_geometry::{extrude_profile, ClippingProcessor, Mesh, Point2, Profile2D};
 use std::collections::HashMap;
 
-/// Directed-edge balance on a 1 mm position snap: every undirected edge must be
+/// Directed-edge balance on the 1/65536 m kernel grid: every undirected edge must be
 /// used exactly once in each direction. Returns the number of edges that are not.
 fn open_edges(m: &Mesh) -> usize {
     type P = (i64, i64, i64);
     let q = |i: u32| {
         let p = &m.positions[i as usize * 3..i as usize * 3 + 3];
-        let r = |v: f32| (v as f64 * 1.0e3).round() as i64;
+        let r = |v: f32| (v as f64 / ifc_lite_geometry::kernel::mesh_bridge::SNAP_GRID).round() as i64;
         (r(p[0]), r(p[1]), r(p[2]))
     };
     let mut e: HashMap<(P, P), (u32, u32)> = HashMap::new();

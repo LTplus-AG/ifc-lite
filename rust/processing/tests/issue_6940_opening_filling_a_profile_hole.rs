@@ -123,7 +123,7 @@ fn fixture() -> Option<Vec<u8>> {
     }
 }
 
-/// One element's triangles on a 1 mm grid of WORLD positions (the per-mesh
+/// One element's triangles on the 1/65536 m kernel grid of WORLD positions (the per-mesh
 /// origin folded in), over every mesh it produced.
 fn world_triangles<'a>(meshes: impl Iterator<Item = &'a MeshData>) -> Vec<[[i64; 3]; 3]> {
     let mut triangles = Vec::new();
@@ -131,7 +131,7 @@ fn world_triangles<'a>(meshes: impl Iterator<Item = &'a MeshData>) -> Vec<[[i64;
         let key = |i: u32| {
             let b = i as usize * 3;
             [0, 1, 2]
-                .map(|k| ((mesh.positions[b + k] as f64 + mesh.origin[k]) * 1e3).round() as i64)
+                .map(|k| ((mesh.positions[b + k] as f64 + mesh.origin[k]) / ifc_lite_geometry::kernel::mesh_bridge::SNAP_GRID).round() as i64)
         };
         triangles.extend(
             mesh.indices

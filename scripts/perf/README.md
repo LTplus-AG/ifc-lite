@@ -3650,7 +3650,7 @@ the end-to-end cost.
 The original native rounds on the busy machine, including further S_Office
 rounds with reversed median ordering, do not establish a stable timing effect
 or its cause. Detailed raw timing observations remain in PR #7024 rather than
-being duplicated here. Fresh final-source native A/B on a dedicated idle
+being duplicated here. Historical native A/B at geometry head `276a36e1c710a63d1ed9105e15a7ee5d90514fa2` on a dedicated idle
 runner puts unchanged-output controls within their measured spread. Ordered
 geometry-payload hashes match for FZK, ISSUE_129 and Holter; MiniBIM output
 changes intentionally, so its shorter runtime is not an optimization claim.
@@ -3658,10 +3658,11 @@ The deterministic instruction counter does identify a small additional FZK
 cost above the existing ratchet tolerance. That check remains failing; the
 ceiling has not been raised.
 
-Three final-source browser worker-pool comparisons retained every sample and
+Three historical browser worker-pool comparisons of that geometry head retained every sample and
 all failed: ANGLE on ARM, Vulkan/SwiftShader on ARM, and the same Vulkan flags
-on x86. Each loses a WebGPU instance before geometry upload in at least one
-sample; failures occur on both base and candidate across those runs. Adapter
+on x86. The ARM runs lost WebGPU instances before geometry upload. The x86 run
+retained an incomplete baseline ISSUE_129 timeout; that timeout does not
+establish GPU loss. Failures occur on both base and candidate across the runs. Adapter
 preflight alone passes and is insufficient. The browser performance verdict
 is unqualified, not neutral or faster. PR #7024 carries the complete source
 provenance and artifacts; #7164 tracks investigation of the GPU failure on
@@ -3675,9 +3676,19 @@ paths now use that reconciliation, including axis-aligned bounds. Bounds that
 move are checked as an actual prism rather than replaced with a new AABB;
 unchanged bounds retain their original f64 precision. General public kernel
 subtraction keeps its pre-existing operand weld; only opening-specific entry
-points select the guard. The correction passes all synthetic cases
-and leaves the full real-fixture census identical to this PR's prior golden;
-no further bless was needed.
+points select the guard. At the historical geometry head above, the correction passed the synthetic
+cases and retained the full real-fixture census against the prior golden;
+no further bless was needed. These runs do not qualify the takeover source.
+
+The `a4c5b0b9` takeover's hosted PR merge `802b027a` still failed the
+unchanged geometry instruction ceiling; total instructions were within their
+separate allowance. A source-only continuation restores the plain weld for
+public batched subtraction and avoids constructing claim/move maps when corner
+reconciliation finds no neighbouring target. It strengthens the remaining
+1 mm closure oracles to kernel-grid precision. These changes are unmeasured
+and untested pending a fresh bounded cohort; no ratchet or worker-pool verdict
+is inferred. Final-source functional, corpus, WASM and worker-pool acceptance
+remain required.
 
 Output. The first four fixtures kept their mesh, vertex and triangle counts
 and their ordered mesh FNV-1a64 on every run of both sides (`c4d504b83ff698ea`,

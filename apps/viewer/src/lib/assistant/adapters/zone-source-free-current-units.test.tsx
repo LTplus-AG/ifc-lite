@@ -156,6 +156,7 @@ test('#7220 selection and Zones exclude native zone writeback quantities from wh
   const selected = JSON.parse(captureEvidence('selection').payload).evidence.rows[0].data;
   assert.ok(selected.quantities.some((set: { name: string }) => set.name.startsWith(ZONE_QUANTITY_SET_NAME_PREFIX)),
     'ordinary quantities retain the actual writeback facts');
+  assert.ok(selected.zoneVolumeBreakdowns, 'public selected evidence must expose native mesh basis coverage before writeback exclusion is read');
   assert.deepEqual(selected.zoneVolumeBreakdowns.volumeBases.map((basis: { basis: string }) => basis.basis), ['mesh'],
     'per-zone shares must not be split again as whole-element declared volume');
   const zones = JSON.parse(captureEvidence('zones').payload).evidence.rows;

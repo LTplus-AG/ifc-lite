@@ -23,6 +23,8 @@ import { resolveEntityRef } from '@/store/resolveEntityRef';
 import { configureMutationView } from '@/utils/configureMutationView';
 import {
   declaredVolumeBases,
+  volumeBasisFromQuantityName,
+  VOLUME_QUANTITY_TYPE,
   validEntry,
   ZONE_QUANTITY_SET_NAME_PREFIX,
   type ElementZoneFacts,
@@ -85,28 +87,27 @@ export function contextFor(modelId: string, cache: Map<string, ModelContext | nu
  * uses), and a NetVolume the user corrected this session is the number they
  * expect to see apportioned.
  */
-export function quantitySetsFor(context: ModelContext, expressId: number) {
+export function quantitySetsWithStatusFor(context: ModelContext, expressId: number) {
   const own = context.view.getQuantitiesForEntity(expressId);
   const inherited = context.store
     ? readCurrentTypeQuantities(context.store, expressId, context.view) : null;
   // Refused inherited data never replaces a native occurrence quantity.
   const quantities = inherited?.status === 'available' && inherited.value?.quantities.length
     ? [...own, ...inherited.value.quantities] : own;
-  // Explicit member metadata remains independently physical without a project
-  // assignment. A missing context must not relabel implicit raw values as SI.
-  return context.declaredUnitsAvailable === false
-    ? quantities.map(set => ({ ...set, quantities: set.quantities.filter(q =>
-      ('explicitUnitUnresolved' in q && q.explicitUnitUnresolved === true) ||
-      'explicitUnitSiScale' in q && typeof q.explicitUnitSiScale === 'number'
-        && Number.isFinite(q.explicitUnitSiScale) && q.explicitUnitSiScale > 0) }))
-    : quantities;
+  // Preserve raw occurrence-first order even when project units are unknown.
+  // The nullable declared-unit context controls physical interpretation later.
+  return { quantitySets: quantities, inheritedUnavailable: inherited?.status === 'unavailable' };
+}
+
+export function quantitySetsFor(context: ModelContext, expressId: number) {
+  return quantitySetsWithStatusFor(context, expressId).quantitySets;
 }
 
 /** Resolve the whole-element total on `basis`, plus the quantity name it came
- *  from. `null` total means the file declares nothing on that basis. */
+ *  from. `null` means no physical total is available on that basis. */
 export function declaredTotal(
   qsets: ReturnType<typeof quantitySetsFor>,
-  volumeSiScale: number,
+  volumeSiScale: number | null,
   basis: Exclude<VolumeBasis, 'mesh'>,
 ): { totalM3: number; quantityName: string } | null {
   // A previous run's OWN output is excluded before anything is read off it.
@@ -141,13 +142,21 @@ export function resolveVolumes(
   homeZoneId: string | null,
   basis: VolumeBasis,
   qsets: ReturnType<typeof quantitySetsFor>,
-  volumeSiScale: number,
+  volumeSiScale: number | null,
   proved: ProvedVolumes,
   apportioned: ReturnType<typeof validEntry>,
+  inheritedUnavailable = false,
 ): VolumeResolution {
   const declared = basis === 'mesh' ? null : declaredTotal(qsets, volumeSiScale, basis);
   if (basis !== 'mesh' && !declared) {
-    return { shares: [], outsideM3: 0, refusal: 'no-declared-quantity', quantityName: null };
+    const first = qsets.filter(set => !set.name.startsWith(ZONE_QUANTITY_SET_NAME_PREFIX))
+      .flatMap(set => set.quantities).find(quantity => quantity.type === VOLUME_QUANTITY_TYPE
+        && Number.isFinite(quantity.value) && volumeBasisFromQuantityName(quantity.name) === basis);
+    const unitUnavailable = first && (('explicitUnitUnresolved' in first && first.explicitUnitUnresolved === true)
+      || (!('explicitUnitSiScale' in first) || first.explicitUnitSiScale === undefined) && volumeSiScale === null);
+    const refusal = unitUnavailable ? 'declared-unit-unavailable'
+      : inheritedUnavailable ? 'declared-quantity-unavailable' : 'no-declared-quantity';
+    return { shares: [], outsideM3: 0, refusal, quantityName: first?.name ?? null };
   }
   const quantityName = declared?.quantityName ?? null;
 
@@ -229,8 +238,9 @@ export function gatherZoneFacts(zoneSet: ZoneSet, basis: VolumeBasis): ZoneFacts
     const ref = resolveEntityRef(globalId);
     const context = contextFor(ref.modelId, contexts);
     if (!context) continue;
-    const qsets = quantitySetsFor(context, ref.expressId);
-    const facts = zoneFactsFor(globalId, assignment, zoneNameById, basis, context.volumeSiScale, qsets, proved, apportioned);
+    const quantityRead = quantitySetsWithStatusFor(context, ref.expressId);
+    const qsets = quantityRead.quantitySets;
+    const facts = zoneFactsFor(globalId, assignment, zoneNameById, basis, context.declaredUnitsAvailable === false ? null : context.volumeSiScale, qsets, proved, apportioned, quantityRead.inheritedUnavailable);
     rows.push({
       globalId,
       modelId: ref.modelId,
@@ -249,10 +259,11 @@ export function zoneFactsFor(
   assignment: { zoneId: string | null; zoneName: string | null; straddles: boolean; touchedZoneIds: string[] },
   zoneNameById: ReadonlyMap<string, string>,
   basis: VolumeBasis,
-  volumeSiScale: number,
+  volumeSiScale: number | null,
   qsets: ReturnType<typeof quantitySetsFor>,
   proved: ProvedVolumes,
   apportioned: ReturnType<typeof validEntry>,
+  inheritedUnavailable = false,
 ): ElementZoneFacts {
   const volumes = resolveVolumes(
     globalId,
@@ -264,6 +275,7 @@ export function zoneFactsFor(
     volumeSiScale,
     proved,
     apportioned,
+    inheritedUnavailable,
   );
   return {
     globalId,

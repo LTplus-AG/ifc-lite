@@ -191,7 +191,7 @@ export const ZONE_PROPERTY_NAMES = {
  *   correct and their sum is not, which is fine in a panel that says so and not
  *   fine in a quantity set, where a reader will add the rows up.
  */
-export type WriteBackRefusal = ApportionmentRefusal | 'no-declared-quantity' | 'overlapping-zones';
+export type WriteBackRefusal = ApportionmentRefusal | 'no-declared-quantity' | 'declared-unit-unavailable' | 'declared-quantity-unavailable' | 'overlapping-zones';
 
 /** One sentence per refusal, written INTO the file rather than left to the
  *  viewer. Whoever opens the export next does not have the zone panel. */
@@ -200,6 +200,10 @@ const REFUSAL_TEXT: Record<WriteBackRefusal, string> = {
   'unproved-solid': 'Its mesh is not a proven closed solid, so no volume can be stated for it.',
   'rescaled-by-alignment':
     'Federation alignment rescaled this element\'s model, so its proved volume does not describe the geometry that was split.',
+  'declared-unit-unavailable':
+    'The native quantity is present but its physical unit is unavailable, so no volume was written for it.',
+  'declared-quantity-unavailable':
+    'Current inherited native quantities are unavailable, so absence of a declared volume cannot be established.',
   'no-declared-quantity':
     'This element declares no volume quantity on the requested basis, so no volume was written for it.',
   'overlapping-zones':

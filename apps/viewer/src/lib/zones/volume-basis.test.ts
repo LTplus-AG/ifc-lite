@@ -117,6 +117,11 @@ describe('zones/volume-basis', () => {
       ] }, { name: 'Inherited', quantities: [
         { name: 'NetVolume', type: VOLUME, value: 30, explicitUnitSiScale: 1e-9 },
       ] }], 1), [], 'unresolved first native basis must not promote a later inherited total');
+      assert.deepStrictEqual(declaredVolumeBases([{ name: 'Own', quantities: [
+        { name: 'NetVolume', type: VOLUME, value: 10 },
+      ] }, { name: 'Inherited', quantities: [
+        { name: 'NetVolume', type: VOLUME, value: 30, explicitUnitSiScale: 1e-9 },
+      ] }], null), [], 'unknown project context preserves the first implicit native basis slot');
     });
 
     it('a non-positive or non-finite unit scale falls back to SI rather than zeroing every volume', () => {

@@ -155,7 +155,10 @@ export function declaredVolumeBases(
       if (q.explicitUnitUnresolved) { seen.add(basis); continue; }
       const scale = q.explicitUnitSiScale === undefined ? projectScale
         : quantitySiScale(q, ProjectUnits.empty());
-      if (scale === null || !Number.isFinite(scale) || scale <= 0) continue;
+      // An omitted member Unit uses project context. Unknown context cannot
+      // promote a later inherited basis over the first native raw quantity.
+      if (scale === null) { seen.add(basis); continue; }
+      if (!Number.isFinite(scale) || scale <= 0) continue;
       const valueM3 = q.value * scale;
       if (!Number.isFinite(valueM3)) continue;
       seen.add(basis);

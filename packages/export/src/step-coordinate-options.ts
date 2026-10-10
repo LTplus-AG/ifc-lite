@@ -21,10 +21,11 @@ export interface StepCoordinateNormalizationOptions {
    */
   normalizeMapGeometry?: boolean;
   /**
-   * Write a free-text IfcProjectedCRS.VerticalDatum naming a sea-level datum
+   * Write recognized EVRS2007 or EGM2008 IfcProjectedCRS.VerticalDatum names
    * as 'EPSG:3855' (EGM2008 height), the geoid Cesium ion applies. Explicit
-   * EPSG codes and ellipsoidal datum names are preserved; heights are never
-   * rewritten. Default false. Requires a full export to the source schema.
+   * EPSG codes, ellipsoidal names and unrecognized datum text are preserved;
+   * heights are never rewritten. Default false. Requires a full export to
+   * the source schema.
    */
   normalizeVerticalDatumToEgm2008?: boolean;
 }

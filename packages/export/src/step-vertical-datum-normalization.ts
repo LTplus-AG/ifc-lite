@@ -9,9 +9,9 @@ import type { ExportPass } from './step-export-types.js';
 /** EGM2008 height: the global geoid model Cesium ion was observed to apply. */
 const EGM2008_HEIGHT = 'EPSG:3855';
 
-// Names of geodetic (ellipsoidal) datums: their heights need no geoid.
-const ELLIPSOIDAL = /ellipso|wgs\s*-?\s*84|grs\s*-?\s*80|etrs\s*-?\s*89|itrf/i;
-const EPSG_CODE = /^\s*EPSG\s*:\s*\d+\s*$/i;
+// Admit recognized vertical datum names, never arbitrary project-zero text or
+// a horizontal datum token embedded in a vertical datum description (#7356).
+const SEA_LEVEL_DATUM = /^(?:EVRS\s*2007|EGM\s*2008)(?:\s+height)?(?:\s*\(WGS\s*(?:84|1984)\))?$/i;
 
 /** Count an emitted georeferencing edit once in the export's modification ledger. */
 export function recordGeoreferencingEdit(pass: ExportPass, id: number): void {
@@ -24,15 +24,15 @@ export function recordGeoreferencingEdit(pass: ExportPass, id: number): void {
 }
 
 /**
- * Write a free-text `IfcProjectedCRS.VerticalDatum` that names a sea-level
+ * Write a recognized `IfcProjectedCRS.VerticalDatum` that names a sea-level
  * datum (e.g. 'EVRS2007') as EGM2008 height on the *emitted* model (#7356).
  *
  * Cesium ion applies a geoid only for vertical CRS codes it has a model for:
  * live uploads shifted heights by the local EGM2008 separation for
  * 'EPSG:3855', and not at all for 'EVRS2007', 'EPSG:5621' or a compound
  * name, which left a sea-level model one geoid separation (48 m) too low.
- * Explicit EPSG codes are the author's statement and stay as written, as do
- * ellipsoidal datum names. The authored datum's own offset from EGM2008
+ * Only EVRS2007 and EGM2008 names are admitted. Explicit EPSG codes,
+ * ellipsoidal names and unrecognized text stay as authored. The authored datum's own offset from EGM2008
  * (typically decimetres) remains; heights themselves are never rewritten.
  */
 export function normalizeVerticalDatumToEgm2008(pass: ExportPass): void {
@@ -45,7 +45,7 @@ export function normalizeVerticalDatumToEgm2008(pass: ExportPass): void {
     const record = readStepSlots(line);
     const token = record?.slots[slot]?.trim();
     const text = token && /^'.*'$/s.test(token) ? token.slice(1, -1) : undefined;
-    if (!record || !text?.trim() || EPSG_CODE.test(text) || ELLIPSOIDAL.test(text)) continue;
+    if (!record || !text || !SEA_LEVEL_DATUM.test(text.trim())) continue;
     const slots = record.slots.map(value => value.trim());
     slots[slot] = `'${EGM2008_HEIGHT}'`;
     pass.entities[index] = `${record.prefix}${slots.join(',')}${record.suffix}`;

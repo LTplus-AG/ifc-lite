@@ -50,11 +50,26 @@ describe('opt-in vertical datum normalization for Cesium ion (#7356)', () => {
     }
   });
 
-  it('preserves explicit EPSG codes, ellipsoidal datums and an omitted datum', async () => {
-    for (const datum of ["'EPSG:5621'", "'epsg: 5703'", "'WGS84 ellipsoid'", "'ETRS89'", "'GRS 80'", "''", '$']) {
+  it('preserves explicit codes, ellipsoidal and unrecognized names, and omitted datums #7356', async () => {
+    for (const datum of ["'EPSG:5621'", "'epsg: 5703'", "'WGS84 ellipsoid'", "'WGS 1984'", "'WGS1984 ellipsoid'", "'Local project zero'", "'Unrecognized datum'", "'EVRS2007 local project zero'", "'ETRS89'", "'GRS 80'", "''", '$']) {
       const { input, result, output } = await exported(datum);
       expect(attrs(output, 37), datum).toEqual(attrs(input, 37));
       expect(result.stats.modifiedEntityCount, datum).toBe(0);
+    }
+  });
+
+  it('recognizes a named geoid height despite an embedded horizontal datum #7356', async () => {
+    for (const schema of ['IFC4X3_ADD2', 'IFC4']) {
+      for (const datum of ["'EGM2008'", "'EGM2008 (WGS84)'", "'EGM2008 height (WGS84)'"]) {
+        const { input, result, output } = await exported(datum, true, schema);
+        const before = attrs(input, 37), after = attrs(output, 37);
+        expect(after[3], datum).toBe('EPSG:3855');
+        expect([...after.slice(0, 3), ...after.slice(4)]).toEqual([...before.slice(0, 3), ...before.slice(4)]);
+        expect(attrs(output, 38)).toEqual(attrs(input, 38));
+        expect(result.stats.modifiedEntityCount, datum).toBe(1);
+        const ordinary = await exported(datum, false, schema);
+        expect(attrs(ordinary.output, 37), datum).toEqual(attrs(ordinary.input, 37));
+      }
     }
   });
 

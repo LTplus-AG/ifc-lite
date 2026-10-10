@@ -46,16 +46,19 @@ updates:
       # checks. Moving it is a qualified upgrade done by hand (see #7391),
       # including security fixes.
       - dependency-name: "pdfjs-dist"
-      # The 1.2.0 dialog and 1.3.0 tooltip minors changed behaviour the
-      # viewer depends on: dialog broke the HelpHint popovers in
-      # extensions-panels-chrome.i18n.test.tsx, tooltip broke the
-      # aria-describedby wiring in icon-button.test.tsx (see #7391).
-      # Patch releases on the current minors still flow; lift these once
-      # the viewer is adapted to the new minors.
-      - dependency-name: "@radix-ui/react-dialog"
-        versions: [">=1.2.0"]
-      - dependency-name: "@radix-ui/react-tooltip"
-        versions: [">=1.3.0"]
+      # Radix primitives move as one set, by hand. Every @radix-ui package
+      # pins its shared internals (dismissable-layer, focus-scope, portal,
+      # presence, popper, ...) to exact versions, and react-popover is
+      # pinned at 1.1.23 by patches/@radix-ui__react-popover@1.1.23.patch.
+      # Bumping only some of them installs two copies of those internals,
+      # and layers from different copies cannot see each other: Escape in
+      # a Select closed its parent Dialog, a nested modal never released
+      # its lock, and an ActivityTray test hung (#7391; DataConnector.i18n,
+      # DocumentMenu.popout and ActivityTray tests). The 1.2.0 dialog and
+      # 1.3.0 tooltip minors also changed behaviour the viewer relies on
+      # (HelpHint popovers, IconButton aria-describedby). Upgrade the whole
+      # family together, with the popover patch rebased, in a hand-made PR.
+      - dependency-name: "@radix-ui/*"
 
   - package-ecosystem: cargo
     directory: /

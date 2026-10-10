@@ -31,7 +31,7 @@
     "@ifc-lite/encoding": "workspace:^"
   },
   "devDependencies": {
-    "@types/node": "^26.6.2",
+    "@types/node": "^26.6.4",
     "esbuild": "^0.28.1",
     "proj4": "^2.22.0",
     "typescript": "^6.0.3",

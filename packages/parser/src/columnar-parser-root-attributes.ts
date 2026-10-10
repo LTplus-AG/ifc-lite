@@ -13,7 +13,7 @@
  */
 
 import { EntityExtractor } from './entity-extractor.js';
-import { getAttributeNames, getAttributeNamesAcrossSchemas } from './ifc-schema.js';
+import { getAttributeNames, getAttributeNamesAcrossSchemas, getAttributeNamesForSchema } from './ifc-schema.js';
 import { getSchemaRegistryForVersion, type SchemaRegistry, type SchemaVersionWithRegistry } from './generated/schema-registry-by-version.js';
 import { SKIP_DISPLAY_ATTRS } from './columnar-parser-indexes.js';
 import type { EntityRef } from './types.js';
@@ -29,26 +29,40 @@ export function getEntityRefFromStore(store: IfcDataStore, expressId: number): E
  * Extract entity attributes on-demand from source buffer.
  * Returns globalId, name, description, objectType, tag mapped by schema name
  * (see {@link extractRootAttributesFromEntity}), so the result stays correct
- * for entity types whose attribute order differs from the IfcElement layout.
+ * for entity types whose attribute order differs from the IfcElement layout,
+ * plus `longName` resolved in the model's own schema (IfcZone declares
+ * LongName only from IFC4 on, so an IFC2X3 zone reads '').
  * This is used for entities that weren't fully parsed during initial load.
  */
 export function extractEntityAttributesOnDemand(
     store: IfcDataStore,
     entityId: number
-): { globalId: string; name: string; description: string; objectType: string; tag: string } {
+): { globalId: string; name: string; description: string; objectType: string; tag: string; longName: string } {
+    const empty = { globalId: '', name: '', description: '', objectType: '', tag: '', longName: '' };
     // @raw-entity-enumeration-ok on-demand extraction needs this entity's source byte range, not a live entity enumeration
     const ref = store.entityIndex.byId.get(entityId);
-    if (!ref) {
-        return { globalId: '', name: '', description: '', objectType: '', tag: '' };
-    }
+    if (!ref) return empty;
 
     const extractor = new EntityExtractor(store.source);
     const entity = extractor.extractEntity(ref);
-    if (!entity) {
-        return { globalId: '', name: '', description: '', objectType: '', tag: '' };
-    }
+    if (!entity) return empty;
 
-    return extractRootAttributesFromEntity(entity);
+    const longNameIdx = longNameIndexFor(entity.type, store.schemaVersion);
+    const rawLongName = longNameIdx >= 0 ? (entity.attributes || [])[longNameIdx] : undefined;
+    return { ...extractRootAttributesFromEntity(entity), longName: typeof rawLongName === 'string' ? rawLongName : '' };
+}
+
+// `getAttributeNamesForSchema` scans the registry per call; memoise the LongName
+// slot per (schema, STEP type) since list columns read it once per row (#7385).
+const longNameIndexCache = new Map<string, number>();
+function longNameIndexFor(type: string, schemaVersion: string | undefined): number {
+    const key = `${schemaVersion ?? ''}|${type}`;
+    let idx = longNameIndexCache.get(key);
+    if (idx === undefined) {
+        idx = getAttributeNamesForSchema(type, schemaVersion).indexOf('LongName');
+        longNameIndexCache.set(key, idx);
+    }
+    return idx;
 }
 
 /**

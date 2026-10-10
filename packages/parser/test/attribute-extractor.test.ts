@@ -201,4 +201,21 @@ describe('Entity Attribute Extraction', () => {
     expect(attrs.objectType).toBe('Foo Type');
     expect(attrs.tag).toBe('Foo Tag');
   });
+
+  // #7385: LongName resolves in the model's own schema; IfcZone only declares it from IFC4.
+  it.each([
+    ['IFC2X3', "#7=IFCSPACE('2RSCzLOBz4FAK$_wE8VckM',$,'2',$,$,$,$,'Buero',.ELEMENT.,.INTERNAL.,$);", 'Buero'],
+    ['IFC4', "#7=IFCZONE('2RSCzLOBz4FAK$_wE8VckM',$,'Z1',$,$,'Zone long');", 'Zone long'],
+    ['IFC2X3', "#7=IFCZONE('2RSCzLOBz4FAK$_wE8VckM',$,'Z1',$,$);", ''],
+    ['IFC4', "#7=IFCWALL('2RSCzLOBz4FAK$_wE8VckM',$,'W',$,$,$,$,'Tag',$);", ''],
+  ])('reads %s LongName from %s', (schemaVersion, line, expected) => {
+    const source = new TextEncoder().encode(line);
+    const type = line.slice(line.indexOf('=') + 1, line.indexOf('('));
+    const store = {
+      source,
+      schemaVersion,
+      entityIndex: { byId: new Map([[7, { expressId: 7, type, byteOffset: 0, byteLength: source.length, lineNumber: 1 }]]) },
+    } as unknown as IfcDataStore;
+    expect(extractEntityAttributesOnDemand(store, 7).longName).toBe(expected);
+  });
 });

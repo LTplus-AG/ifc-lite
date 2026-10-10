@@ -30,6 +30,8 @@ import {
   volumeBasisRatioNote,
   VOLUME_BASIS_LEGEND,
   declaredVolumeBases,
+  ZONE_QUANTITY_SET_NAME_PREFIX,
+  type VolumeBasis,
   type BasisBreakdown,
   type QuantitySetLike,
 } from '@/lib/zones';
@@ -132,19 +134,20 @@ export function ZoneVolumeBreakdown({ zoneSet, globalId, quantitySets, projectUn
   const apportionment = entry?.byElement.get(globalId) ?? null;
   const cachedRefusal = entry?.refused.get(globalId) ?? null;
 
-  const breakdowns = useMemo(() => {
-    if (!apportionment) return null;
-    // One shared member-before-project conversion; explicit quantities remain
-    // independently physical when the project assignment is unavailable.
-    return allBasisBreakdowns(apportionment, declaredVolumeBases(quantitySets,
-      quantityUnitCoverage?.status === 'unavailable' ? null : volume.siScale));
-  }, [apportionment, quantitySets, volume.siScale, projectUnits, quantityUnitCoverage?.status]);
+  const { breakdowns, unresolvedMemberUnit } = useMemo(() => {
+    const unresolvedBasisNames = new Set<Exclude<VolumeBasis, 'mesh'>>();
+    // The same canonical traversal chooses physical rows and unavailable-unit
+    // notices. Previous zone output never claims a native declared basis.
+    const declared = declaredVolumeBases(quantitySets.filter(set => !set.name.startsWith(ZONE_QUANTITY_SET_NAME_PREFIX)),
+      quantityUnitCoverage?.status === 'unavailable' ? null : volume.siScale, unresolvedBasisNames);
+    return { breakdowns: apportionment ? allBasisBreakdowns(apportionment, declared) : null,
+      unresolvedMemberUnit: unresolvedBasisNames.size > 0 };
+  }, [apportionment, quantitySets, volume.siScale, quantityUnitCoverage?.status]);
 
   const reason = cachedRefusal ?? refusal;
   const inheritedUnavailable = inheritedQuantityCoverage?.status === 'unavailable'
     ? <output className="block px-3 py-2 text-xs text-muted-foreground">{t('zonesPanel.volumeBreakdown.inheritedUnavailable', { reason: inheritedQuantityCoverage.reason ?? 'unverified current data' })}</output> : null;
-  const unresolvedMemberUnit = quantitySets.some(set => set.quantities.some(quantity =>
-    quantity.type === VOLUME_QUANTITY_TYPE && quantity.explicitUnitUnresolved));
+
   const unitsUnavailable = quantityUnitCoverage?.status === 'unavailable' || unresolvedMemberUnit
     ? <output className="block px-3 py-2 text-xs text-muted-foreground">{t('zonesPanel.volumeBreakdown.quantityUnitsUnavailable', { reason: unresolvedMemberUnit ? 'Explicit native quantity Unit cannot be resolved' : quantityUnitCoverage?.reason ?? 'unverified current data' })}</output> : null;
 

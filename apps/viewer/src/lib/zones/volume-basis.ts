@@ -140,6 +140,7 @@ export interface DeclaredVolume {
 export function declaredVolumeBases(
   quantitySets: readonly QuantitySetLike[],
   volumeSiScale: number | null,
+  unresolvedBasisNames?: Set<Exclude<VolumeBasis, 'mesh'>>,
 ): DeclaredVolume[] {
   const projectScale = volumeSiScale === null ? null : Number.isFinite(volumeSiScale) && volumeSiScale > 0 ? volumeSiScale : 1;
   const out: DeclaredVolume[] = [];
@@ -152,7 +153,9 @@ export function declaredVolumeBases(
       if (seen.has(basis)) continue;
       // A present but unreadable native unit still owns this first basis.
       // Do not promote a later occurrence or inherited total over it.
-      if (q.explicitUnitUnresolved) { seen.add(basis); continue; }
+      if (q.explicitUnitUnresolved) {
+        seen.add(basis); unresolvedBasisNames?.add(basis); continue;
+      }
       const scale = q.explicitUnitSiScale === undefined ? projectScale
         : quantitySiScale(q, ProjectUnits.empty());
       // An omitted member Unit uses project context. Unknown context cannot

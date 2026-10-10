@@ -33,6 +33,10 @@ An embed with camera controls disabled does not fly or navigate. Right-button
 fly is the viewer's established behavior (#4868); it takes priority over the
 ordinary right-button pan mapping used when fly is unavailable.
 
+## Properties quantities
+
+The selected element’s Quantities tab shows occurrence quantities first and inherited type quantities in a separate section, including Length, Area and Volume. Search and copy use the displayed physical value and unit. A readable explicit member unit remains usable when the current project unit context is unavailable; implicit values retain their raw amount without an assumed unit. Unreadable inherited coverage displays its reason.
+
 ## Navigation presets
 
 Choose a preset in **Settings → Display → Navigation**. The choice is saved in

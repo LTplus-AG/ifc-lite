@@ -121,6 +121,10 @@ export interface ListDataProvider {
   /** IFC `PredefinedType` enum token (e.g. "FLOOR", "FLOORING"), or '' when
    *  the element has none. Used by the `PredefinedType` attribute column. */
   getEntityPredefinedType?(expressId: number): string;
+  /** IFC `LongName` (e.g. an IfcSpace's room name "Schlafzimmer" next to its
+   *  number "4" in `Name`), or '' when the class declares no LongName or it is
+   *  unset. Used by the `LongName` attribute column (issue #7385). */
+  getEntityLongName?(expressId: number): string;
   /**
    * Discover EVERY property set / property and quantity set / quantity in
    * the model — complete and independent of entity-type selection — so the

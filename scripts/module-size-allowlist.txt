@@ -127,7 +127,7 @@
    462 apps/viewer/src/lib/geo/precision-grids.ts
    726 apps/viewer/src/lib/geo/reproject.ts
    621 apps/viewer/src/lib/ifc4-pset-definitions.ts
-   419 apps/viewer/src/lib/lists/adapter.ts
+   417 apps/viewer/src/lib/lists/adapter.ts
    445 apps/viewer/src/lib/llm/script-diagnostics.ts
    991 apps/viewer/src/lib/llm/script-edit-ops.ts
   1141 apps/viewer/src/lib/llm/script-preflight.ts
@@ -229,7 +229,7 @@
    773 packages/ids/src/validation/validator.ts
    468 packages/ifcx/src/federated-composition.ts
    704 packages/ifcx/src/index.ts
-   772 packages/lists/src/engine.ts
+   749 packages/lists/src/engine.ts
    479 packages/mcp/src/backend-query.ts
    544 packages/mcp/src/server.ts
    470 packages/mcp/src/tools/layer-review.ts

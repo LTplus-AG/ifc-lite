@@ -2,7 +2,6 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { effectiveStoreyId } from '../../../../../packages/create/src/in-store/edit/effective-storey';
-import { effectiveMetadataRecord } from '@ifc-lite/parser';
 import { effectiveStoreyIds, planStoreyReassignmentCandidates, reassignElementsToStoreyInStore, type StoreyReassignmentPlan } from '@ifc-lite/create';
 import type { StoreEditor } from '@ifc-lite/mutations';
 import type { IfcDataStore } from '@ifc-lite/parser';
@@ -34,12 +33,15 @@ function expectedPinRefusal(value: unknown): StoreyPinRefusal | null {
     for (let i = children.length - 1; i >= 0; i--) pending.push({ value: children[i], depth: item.depth + 1 });
   }
   const id = (item: unknown) => typeof item === 'number' && Number.isSafeInteger(item) && item > 0;
+  const storey = (item: unknown, expressId: unknown) => record(item) && item.expressId === expressId && id(item.expressId)
+    && typeof item.GlobalId === 'string' && /^[0-3][0-9A-Za-z_$]{21}$/.test(item.GlobalId);
   const frame = (item: unknown) => record(item) && ['o', 'x', 'y', 'z'].every(key => Array.isArray(item[key])
     && item[key].length === 3 && item[key].every((n: unknown) => typeof n === 'number' && Number.isFinite(n)));
   const relationship = (item: unknown) => record(item) && id(item.id) && typeof item.type === 'string' && id(item.parent)
     && Array.isArray(item.attributes) && Array.isArray(item.children) && item.children.length > 0 && item.children.every(id)
     && Number.isInteger(item.listIndex) && Number.isInteger(item.parentIndex);
   if (!record(value) || !id(value.sourceStoreyId) || !id(value.destinationStoreyId) || !id(value.destinationPlacementId)
+    || !storey(value.sourceStorey, value.sourceStoreyId) || !storey(value.destinationStorey, value.destinationStoreyId)
     || !Array.isArray(value.products) || !value.products.length || value.products.length > 5_000 || !value.products.every(product => record(product) && id(product.expressId)
       && typeof product.GlobalId === 'string' && typeof product.type === 'string' && Array.isArray(product.attributes) && id(product.placementId) && frame(product.world))
     || !Array.isArray(value.placements) || !value.placements.length || !value.placements.every(placement => record(placement) && id(placement.expressId) && frame(placement.relative))
@@ -59,10 +61,20 @@ function parseExpected(value: unknown, at: string): StoreyReassignmentPlan {
   const pin = value as unknown as StoreyReassignmentPlan;
   const frameOf = (f: StoreyReassignmentPlan['products'][number]['world']) => ({ o: f.o, x: f.x, y: f.y, z: f.z });
   const relationOf = (r: StoreyReassignmentPlan['relationships'][number]) => ({ id: r.id, type: r.type, parent: r.parent, children: r.children, listIndex: r.listIndex, parentIndex: r.parentIndex, attributes: r.attributes });
-  return { sourceStoreyId: pin.sourceStoreyId, destinationStoreyId: pin.destinationStoreyId, destinationPlacementId: pin.destinationPlacementId,
+  return { sourceStorey: { expressId: pin.sourceStorey.expressId, GlobalId: pin.sourceStorey.GlobalId },
+    destinationStorey: { expressId: pin.destinationStorey.expressId, GlobalId: pin.destinationStorey.GlobalId },
+    sourceStoreyId: pin.sourceStoreyId, destinationStoreyId: pin.destinationStoreyId, destinationPlacementId: pin.destinationPlacementId,
     products: pin.products.map(p => ({ expressId: p.expressId, GlobalId: p.GlobalId, type: p.type, attributes: p.attributes, placementId: p.placementId, world: frameOf(p.world) })),
     placements: pin.placements.map(p => ({ expressId: p.expressId, relative: frameOf(p.relative) })),
     relationships: pin.relationships.map(relationOf), sourceMemberships: pin.sourceMemberships.map(relationOf) };
+}
+
+/** Measure a complete supported one-operation batch, not a detached expected pin.
+ * Extra rationale, titles and other operations remain subject to the outer parser. */
+function completeBatchRefusal(operation: StoreyReassignmentOp): StoreyPinRefusal | null {
+  return JSON.stringify({ kind: 'model.authoring', version: 1, title: 'Native storey reassignment',
+    units: 'm', frame: 'storey-local', operations: [operation] }).length > MODEL_AUTHORING_TEXT_LIMIT
+    ? 'unavailable-native-pin-text-budget' : null;
 }
 
 export function parseStoreyReassignment(value: Record<string, unknown>, target: ExistingElement, at: string): StoreyReassignmentOp {
@@ -70,7 +82,10 @@ export function parseStoreyReassignment(value: Record<string, unknown>, target: 
   const sourceStorey = parseGlobalIdTarget(value.sourceStorey, `${at} sourceStorey`);
   const destinationStorey = parseGlobalIdTarget(value.destinationStorey, `${at} destinationStorey`);
   if (!target.modelId || sourceStorey.modelId !== target.modelId || destinationStorey.modelId !== target.modelId) throw new Error(`${at}: declare the same owning modelId for product and both storeys`);
-  return { op: 'element.reassignStorey', target, sourceStorey, destinationStorey, expected: parseExpected(value.expected, `${at} expected`) };
+  const operation: StoreyReassignmentOp = { op: 'element.reassignStorey', target, sourceStorey, destinationStorey, expected: parseExpected(value.expected, `${at} expected`) };
+  const refusal = completeBatchRefusal(operation);
+  if (refusal) throw new Error(`${at}: ${refusal}; the complete reassignment batch exceeds the text limit`);
+  return operation;
 }
 
 export function writeReviewedStoreyReassignment(store: IfcDataStore, editor: StoreEditor, op: StoreyReassignmentOp, product: number, source: number, destination: number) {
@@ -92,11 +107,18 @@ export function nativeStoreyReassignmentEvidence(target: ModelEditTarget | null,
       if (!expected) continue;
       const refusal = expectedPinRefusal(expected);
       if (refusal) { onRefusal?.(refusal); continue; }
-      const sourceGuid = effectiveMetadataRecord(dataStore, source, view)?.attributes[0];
-      const destinationGuid = effectiveMetadataRecord(dataStore, to, view)?.attributes[0];
-      if (typeof sourceGuid !== 'string' || typeof destinationGuid !== 'string') continue;
+      const sourceStorey = { modelId: target.modelId, globalId: expected.sourceStorey.GlobalId };
+      const destinationStorey = { modelId: target.modelId, globalId: expected.destinationStorey.GlobalId };
+      const product = expected.products.find(item => item.expressId === expressId);
+      if (!product) continue;
+      const operation: StoreyReassignmentOp = { op: 'element.reassignStorey',
+        target: { modelId: target.modelId, globalId: product.GlobalId, ifcClass: product.type,
+          name: typeof product.attributes[2] === 'string' ? product.attributes[2] : '' },
+        sourceStorey, destinationStorey, expected };
+      const batchRefusal = completeBatchRefusal(operation);
+      if (batchRefusal) { onRefusal?.(batchRefusal); continue; }
       const json = JSON.stringify(expected), expectedJsonParts = Array.from({ length: Math.ceil(json.length / 1000) }, (_, i) => json.slice(i * 1000, (i + 1) * 1000));
-      results.push({ sourceStorey: { modelId: target.modelId, globalId: sourceGuid }, destinationStorey: { modelId: target.modelId, globalId: destinationGuid }, expectedJsonParts, productCount: expected.products.length });
+      results.push({ sourceStorey, destinationStorey, expectedJsonParts, productCount: expected.products.length });
     }
   } catch (error) { if (!(error instanceof Error)) throw error; }
   return results.length ? results : null;

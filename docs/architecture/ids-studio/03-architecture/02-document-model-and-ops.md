@@ -88,7 +88,7 @@ interface Op<K extends string, P> { kind: K; opId: Uuid; payload: P; }
 | `spec.setCardinality` | `{ specId, cardinality }` → maps to minOccurs/maxOccurs |
 | `spec.setIfcVersions` | `{ specId, versions }` |
 | `spec.split` | `{ specId, byFacetIds: Uuid[], newSpecId }` (move requirements to a new spec with the same applicability) |
-| `spec.merge` | `{ intoSpecId, fromSpecId }` (only if applicability is identical; the gate checks) |
+| `spec.merge` | `{ intoSpecId, fromSpecId }` (only if applicability, the `ifcVersions` set, and `minOccurs`/`maxOccurs` are identical, including omitted bounds; the gate refuses an incompatible merge and preserves both distinct specs) |
 
 ### 3.3 Facets
 | Op | Payload |

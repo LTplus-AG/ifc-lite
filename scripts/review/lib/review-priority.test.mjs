@@ -121,7 +121,9 @@ test('tiers reuse the revert-oracle taxonomy, with archived evidence matched fir
     'rust/core/tests/parse.rs': 'test',
     'docs/guide/viewer.md': 'docs-config',
     '.changeset/bright-meshes-arrive.md': 'docs-config',
-    '.github/workflows/test.yml': 'docs-config',
+    '.github/workflows/test.yml': 'production',
+    '.github/actions/setup-wasm-build/action.yml': 'production',
+    '.github/ISSUE_TEMPLATE/bug.md': 'docs-config',
     'scripts/perf/README.md': 'docs-config',
     'scripts/perf/evidence/owner-cache-6537/qualification.json': 'evidence',
     'docs/architecture/evidence/pdf-vector-state/control-request.json': 'evidence',
@@ -169,6 +171,26 @@ test('the admitted set is independent of candidate order, and an equal-size tie 
   for (const r of results) assert.deepEqual(r, results[0]);
   assert.deepEqual(results[0].kept, ['packages/a/B.ts', 'packages/a/c.test.ts', 'scripts/perf/evidence/e.json']);
   assert.deepEqual(results[0].omitted, ['packages/a/a.ts']);
+});
+
+test('a workflow file is reviewed before tests and evidence when the room is short', () => {
+  // CI-only PRs are common here; a workflow is executable code, not config.
+  // Three 200,000-byte files and room for only one: the tier alone decides,
+  // and as docs-config the workflow would lose its place to the test.
+  const mk = (path, bytes) => ({ path, patch: 'w'.repeat(bytes) });
+  const { kept, omitted } = fitFilesToPrompt(
+    [
+      mk('scripts/perf/evidence/run/result.json', 200_000),
+      mk('scripts/review/run-reviewer.test.mjs', 200_000),
+      mk('.github/workflows/claude-review.yml', 200_000),
+    ],
+    [],
+  );
+  assert.deepEqual(kept.map((k) => k.path), ['.github/workflows/claude-review.yml']);
+  assert.deepEqual(omitted.map((o) => o.path), [
+    'scripts/perf/evidence/run/result.json',
+    'scripts/review/run-reviewer.test.mjs',
+  ]);
 });
 
 test('greedy across tiers: a production file too big for the room does not block later tiers', () => {

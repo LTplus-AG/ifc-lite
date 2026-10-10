@@ -14,7 +14,8 @@
  * FOR were omitted. The review reported zero findings over a diff whose
  * production half it never saw.
  *
- * THE POLICY: production source first, then tests, then docs/config, then
+ * THE POLICY: production source (including `.github/workflows` and
+ * `.github/actions`) first, then tests, then docs/config, then
  * archived evidence last. Within a tier the old rule still holds -- largest
  * first, ties on path by code-point order (not `localeCompare`, whose result
  * depends on the host's ICU locale) -- so two runs of one head agree. Greedy
@@ -46,11 +47,20 @@ export const REVIEW_TIERS = Object.freeze(['production', 'test', 'docs-config', 
 const ARCHIVED_EVIDENCE_RE = /(^|\/)evidence\//;
 
 /**
+ * Workflows and composite actions are EXECUTABLE CI code, and many PRs here
+ * touch nothing else. The revert oracle ignores `.github/` because no test can
+ * observe it; that is a statement about testability, not about whether the
+ * code needs reading, so for review they rank with production.
+ */
+const CI_CODE_RE = /^\.github\/(workflows|actions)\//;
+
+/**
  * @param {string} path repo-relative
  * @returns {'production'|'test'|'docs-config'|'evidence'}
  */
 export function reviewTier(path) {
   if (ARCHIVED_EVIDENCE_RE.test(path)) return 'evidence';
+  if (CI_CODE_RE.test(path)) return 'production';
   const kind = classifyPath(path);
   if (kind === 'production' || kind === 'test') return kind;
   return 'docs-config';

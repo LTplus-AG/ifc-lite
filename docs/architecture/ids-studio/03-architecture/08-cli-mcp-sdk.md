@@ -19,7 +19,9 @@ Principle 9: anything the UI can do, headless can do. All commands call the same
 | `ifc-lite ids infer <model> --select "<selector>"` | Infer specs from elements (IfcOpenShell selector syntax via `packages/query`) | `--threshold --out` | 0 |
 | `ifc-lite ids draft --from <file\|text>` | AI draft | `--model --effort --budget --non-interactive --out` | 0; 2 if unresolved > 0 with `--strict` |
 | `ifc-lite ids edit <rules.ids> "<instruction>"` | AI edit | same | 0 |
-| `ifc-lite ids bsdd <dictionaryUri> --classes …` | Dictionary → IDS | `--inherit --required-only` | 0 |
+| `ifc-lite ids bsdd <dictionaryUri> --classes …` | Dictionary → IDS (planned) | `--inherit`; conditional `--required-only` target below | 0 |
+
+The planned `--required-only` scope is unavailable with the current `BsddClassProperty` shape: it has no required/optional metadata. CLI, MCP and SDK authoring must share the [bSDD mapping prerequisite](05-bsdd.md): a qualified typed SDK/API extension with recorded payload fixtures before offering this filter. Missing metadata cannot supply a required/optional default. This table is a target design, not a claim that these authoring commands or the conditional flag are implemented.
 
 The CLI help text is the source of the generated table in `docs/guide/cli.md` (AGENTS.md), so docs are updated in the same PR.
 

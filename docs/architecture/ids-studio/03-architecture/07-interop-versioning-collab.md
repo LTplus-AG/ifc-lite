@@ -47,15 +47,16 @@ interface TestCase {
   id: Uuid; name: string;
   fixture: { kind: 'synthetic'; recipe: FixtureRecipe } | { kind: 'snapshot'; ifcRef: string; entityRefs: string[] } | { kind: 'file'; path: string };
   expect: 'pass' | 'fail' | 'notApplicable';
-  expectFailureOn?: Uuid[]; // which requirement facets should fail
+  expectFailureOn?: Uuid[]; // requirement failures only; omitted for spec-cardinality failures
 }
 ```
 
 **Synthetic generation** (`@ifc-lite/ids-testgen`, using `@ifc-lite/create`):
-- **Pass fixture:** the minimal IFC containing one element satisfying all applicability facets and all requirements. The entity is the first concrete entity; psets/properties get the required values; enumerations take the first value; ranges take the midpoint; patterns take a generated matching string (from the regex synthesiser in reverse, i.e. a string generator for XSD patterns); classification references and materials are created.
-- **Fail fixtures:** one per requirement facet, mutating exactly that requirement (missing property, wrong value, wrong dataType, prohibited present).
-- **Not-applicable fixture:** violates the first applicability facet.
-- Then *validate the fixtures with our own validator*. If the expected verdict doesn't hold, the spec is **untestable or contradictory**, which is a lint finding in itself (SPEC-002/003) ✚.
+- **Required/optional spec pass fixture:** the minimal IFC containing an applicable element satisfying all requirements, with the applicable count satisfying the spec cardinality. The entity is the first concrete entity; psets/properties get the required values; enumerations take the first value; ranges take the midpoint; patterns take a generated matching string (from the regex synthesiser in reverse, i.e. a string generator for XSD patterns); classification references and materials are created.
+- **Required/optional spec requirement-failure fixtures:** mutate one requirement at a time (missing property, wrong value, wrong dataType, prohibited requirement present), while retaining applicability and a valid applicable count. Assert the intended requirement failure, not only the overall verdict. If the requirement cannot be independently violated under the applicability constraints, report that limitation rather than claiming a mutation control.
+- **Prohibited spec fixtures:** pass with zero applicability matches; fail with at least one match, independently of requirements, which are ignored. Omit `expectFailureOn` for this spec-cardinality failure. CARD-003 can warn about ignored requirements without making the prohibited-spec fixture recipe untestable.
+- **Zero-match fixture:** construct no applicability matches where feasible, then derive the expected verdict from spec cardinality: prohibited passes, required fails, and optional/unbounded uses the canonical validator's applicable-count result. Do not label every zero-match case `notApplicable`.
+- Then *validate the fixtures with our own validator*. An unexpected verdict first reports a generator, oracle or unsupported-recipe mismatch; it does not establish a contradictory spec. SPEC-002/003 require independent evidence of contradictory requirements/applicability. A valid prohibited spec is not rejected because a requirement-mutation recipe is inapplicable.
 - **Limits:** `@ifc-lite/create` emits IFC4. IFC2X3/IFC4X3 fixtures need writer support or a schema-conversion step (IDS-112). Some facets (partOf with complex relations) start as `unsupported` cases, clearly labelled.
 
 **Snapshot fixtures:** "pin this element as a test case" extracts a minimal IFC subset (element + relevant relationships, psets, type, classification, material, spatial parents) from a real model, using the existing export/subset capability where available (IDS-113).

@@ -4,7 +4,7 @@
 - The writer refuses length/digit and conjunctive restrictions that the model can represent. Studio would either lose data or crash on export.
 - The audit misses 21 of the 27 invalid corpus files, so "valid by construction" can't yet be claimed against the standard's own tests.
 - The writer lives in `rules`, away from the types it serialises.
-- IFC2X3/IFC4 have no Qto tables, so a gate would reject valid quantity names.
+- IFC2X3/IFC4 quantity tables are missing. The published P-02 gate accepts reserved `Qto_` names without verification when a version has no quantity table; nonexistent names can therefore pass unverified (ADR-003, IDS-009).
 
 **Appetite.** 6 weeks, Track A.
 
@@ -12,7 +12,7 @@
 - Make the writer total (all `IDSConstraint` shapes) and move it into `@ifc-lite/ids` (ADR-005).
 - Classify the undetected invalid cases into families; fix one family per PR until `AUDIT_UNDETECTED` is empty.
 - Audit conjunctive siblings.
-- Generate Qto tables.
+- Generate and qualify Qto tables, preserving existing Pset rows; verify known quantity names are accepted and nonexistent reserved names are rejected per version once tables are available. Reserved names cannot use a custom override.
 - Add canonical formatting.
 - Add a property-based round trip.
 - Add a CI oracle against the official audit CLI.

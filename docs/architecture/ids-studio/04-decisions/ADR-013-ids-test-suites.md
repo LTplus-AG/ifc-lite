@@ -6,8 +6,8 @@
 - `@ifc-lite/create` can emit IFC4 with elements, psets, quantities, materials and classifications.
 
 ## Decision
-- Each spec can carry a TestSuite: synthetic pass, fail-per-requirement and not-applicable fixtures, plus snapshot fixtures from real models.
-- Fixtures are validated by our own validator on generation. A mismatch between expected and actual verdict is reported as a spec defect.
+- Each spec can carry a TestSuite: synthetic fixtures following [spec-cardinality semantics](../03-architecture/07-interop-versioning-collab.md), plus snapshot fixtures from real models. Required/optional specs can have independently failing requirement fixtures; prohibited specs pass with zero applicability matches and fail with one or more, regardless of ignored requirements. Zero-match outcomes follow the canonical validator, not a universal not-applicable recipe.
+- Fixtures are validated by our own validator on generation, including the intended requirement or cardinality failure. A mismatch reports a generator/oracle or unsupported-recipe issue first; it is not automatically a spec defect or proof of contradiction.
 - Tests are runnable in the UI and CLI (JUnit) and shipped in the `.idsz` bundle.
 
 ## Consequences

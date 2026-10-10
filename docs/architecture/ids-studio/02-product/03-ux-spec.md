@@ -79,7 +79,7 @@ Columns:
 - Actions: fix value, relax spec (pattern), open BCF.
 
 ### F6 — Test suite & sign-off
-1. Spec ⋯ → **Generate tests** → creates a minimal passing IFC and one failing IFC per requirement facet (synthetic), plus optional "pin current selection as fixture".
+1. Spec ⋯ → **Generate tests** → uses the [cardinality-aware fixture recipes](../03-architecture/07-interop-versioning-collab.md): required/optional specs get a passing fixture and independently failing requirement fixtures where generable; prohibited specs get zero-match pass and matching-element fail fixtures without requirement mutations. Unsupported recipes are labelled, not treated as proof of a contradictory spec. Optional "pin current selection as fixture" adds a real-model case.
 2. Run tests → green. Revision → **Request sign-off** → reviewer approves → rev 13 released (hash).
 3. Export bundle (`.idsz`): `ids.xml` + Studio metadata in `studio.json` + optional `appendix.pdf` and `fixtures/*`, using the P-02 bundle contract. Sign-off and UI export wiring remain P-10 acceptance work.
 

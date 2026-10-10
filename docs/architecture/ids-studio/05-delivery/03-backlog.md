@@ -21,7 +21,7 @@ Issue text must stay vendor-neutral (ADR-014).
 | IDS-006 | Audit family 2 (restriction base / dataType compatibility) | ids | M | 004 | same |
 | IDS-007 | Audit family 3 (cardinality / occurs placement) | ids | M | 004 | same |
 | IDS-008 | Audit family 4 (remaining) → `AUDIT_UNDETECTED` empty | ids | M | 004 | List empty; test asserts length 0 |
-| IDS-009 | Qto tables for IFC2X3 and IFC4 in `@ifc-lite/data` generator | data | M | – | Regenerated tables; counts documented; gate stops rejecting valid Qto names |
+| IDS-009 | Qto tables for IFC2X3 and IFC4 in `@ifc-lite/data` generator | data | M | – | Regenerated/qualified IFC2X3 and IFC4 tables with counts; per-version controls accept known valid Qto names and reject nonexistent reserved Qto names. Closes current unverified acceptance when quantity tables are absent (ADR-003); no custom override |
 | IDS-010 | Audit inspects conjunctive siblings (`and[]`), not only the primary family | ids | S | – | Fixtures with a bad sibling regex/bound |
 | IDS-011 | Italian (`it`) locale for IDS translations | ids | S | – | Catalogue complete; snapshot tests |
 | IDS-012 | Canonical formatting options in writer (`fmt`) + golden files | ids | S | 003 | Golden tests; idempotence test |

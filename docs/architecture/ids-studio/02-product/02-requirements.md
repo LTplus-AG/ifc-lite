@@ -19,6 +19,8 @@ Each FR traces to jobs (J-x) and pitches (P-x). Acceptance criteria are written 
 | FR-A09 | Studio metadata (IDs, provenance, comments, tests, revisions) is stored in a sidecar (`studio.json` inside an `.idsz` bundle, per P-02 `SIDECAR_FILENAME`) or the library, never in IDS XML | M | β | — | P-02 | Exported XML byte-identical with/without sidecar |
 | FR-A10 | Canonical formatting (`fmt`): stable element order, indentation and namespace prefixes so diffs are minimal | S | β | J9,J12 | P-01 | Golden tests |
 
+FR-A04 is the target grounding contract. The published P-02 checkpoint leaves reserved `Qto_` names unverified for versions without quantity-set tables; IDS-009 must qualify those tables and positive/negative gate controls before this target is met for those versions (ADR-003). This does not permit a reserved-name custom override.
+
 ## B. Studio UI
 
 | ID | Requirement | Pri | Rel | Jobs | Pitch |

@@ -69,10 +69,10 @@ function parseExpected(value: unknown, at: string): StoreyReassignmentPlan {
     relationships: pin.relationships.map(relationOf), sourceMemberships: pin.sourceMemberships.map(relationOf) };
 }
 
-/** Measure a complete supported one-operation batch, not a detached expected pin.
+/** Measure the minimal complete one-operation batch with a nonempty title.
  * Extra rationale, titles and other operations remain subject to the outer parser. */
 function completeBatchRefusal(operation: StoreyReassignmentOp): StoreyPinRefusal | null {
-  return JSON.stringify({ kind: 'model.authoring', version: 1, title: 'Native storey reassignment',
+  return JSON.stringify({ kind: 'model.authoring', version: 1, title: 'N',
     units: 'm', frame: 'storey-local', operations: [operation] }).length > MODEL_AUTHORING_TEXT_LIMIT
     ? 'unavailable-native-pin-text-budget' : null;
 }

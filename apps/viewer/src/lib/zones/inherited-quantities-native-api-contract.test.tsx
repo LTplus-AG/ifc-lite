@@ -101,8 +101,7 @@ for (const kind of ['unset-context', 'deleted-project', 'deleted-assignment', 'u
 for (const kind of ['deleted', 'unsupported', 'cyclic', 'oversized'] as const) {
  test(`#7353 ${kind} native quantity Unit dependency refuses unknown coverage without crashing the card`, async t => {
   const fixture = await inheritedSource(t); if (!fixture) return;
-  const { f, store, view } = fixture;
-  await prepareQuantityUnitRefusal(fixture, kind);
+  const { f, store, view } = await prepareQuantityUnitRefusal(fixture, kind);
   const revision = view.getMutationRevision();
   const result = readCurrentTypeQuantities(store, f.id, view);
   assert.equal(result.status, 'unavailable'); assert.equal(result.value, null); assert.ok(result.reason);

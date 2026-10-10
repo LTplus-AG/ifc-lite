@@ -146,6 +146,7 @@ function isEmptyConstraint(c: IDSConstraint): boolean {
         c.maxInclusive === undefined &&
         c.minExclusive === undefined &&
         c.maxExclusive === undefined &&
+        c.temporalBounds === undefined &&
         c.length === undefined &&
         c.minLength === undefined &&
         c.maxLength === undefined

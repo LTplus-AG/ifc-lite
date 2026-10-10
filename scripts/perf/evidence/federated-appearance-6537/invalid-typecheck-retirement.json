@@ -1,0 +1,9 @@
+{
+  "at": "2026-10-09T16:29:36.795828+00:00",
+  "status": "INVALID_ARGUMENT_FORWARDING_RUN_ALREADY_EXITED_NATURALLY",
+  "reason": "pnpm root script appends flags to final tsc, not Turbo; serial requirement not met; no typecheck acceptance claimed.",
+  "ownedProcesses": [],
+  "sourceHead": "57a963c0c55ae9909bc326cc6c86ecfbd31d201d",
+  "log": "/home/louistrue/.t3/artifacts/6537-load-pipeline-227af528/corrected-serial-root-typecheck.log",
+  "retirement": "Inspection found zero remaining owned descendants; no signal was sent and no process killed. Run exited with final tsc unknown-option errors."
+}

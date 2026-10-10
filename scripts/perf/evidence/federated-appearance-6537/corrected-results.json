@@ -1,0 +1,332 @@
+{
+  "at": "2026-10-09T16:36:32.540549+00:00",
+  "head": "57a963c0c55ae9909bc326cc6c86ecfbd31d201d",
+  "receipts": [
+    {
+      "stage": "module-size",
+      "command": "node scripts/check-module-size.mjs --base 2382cf4124315f027b2d33c21c1751cee33c5081",
+      "head": "57a963c0c55ae9909bc326cc6c86ecfbd31d201d",
+      "startedAt": "2026-10-09T16:36:09.059121+00:00",
+      "reservationId": "380ecaee-b2cd-4d3e-b91a-9a0d09365160",
+      "log": "/home/louistrue/.t3/artifacts/6537-load-pipeline-227af528/corrected-module-size.log",
+      "exitCode": 0,
+      "finishedAt": "2026-10-09T16:36:09.640102+00:00"
+    },
+    {
+      "stage": "prerequisite-build",
+      "command": "CARGO_BUILD_JOBS=2 NODE_OPTIONS=--max-old-space-size=8192 pnpm build --filter=@ifc-lite/viewer --env-mode=loose --concurrency=1",
+      "head": "57a963c0c55ae9909bc326cc6c86ecfbd31d201d",
+      "startedAt": "2026-10-09T16:03:01.190034+00:00",
+      "reservationId": "380ecaee-b2cd-4d3e-b91a-9a0d09365160",
+      "log": "/home/louistrue/.t3/artifacts/6537-load-pipeline-227af528/corrected-prerequisite-build.log",
+      "exitCode": 0,
+      "finishedAt": "2026-10-09T16:04:11.742930+00:00"
+    },
+    {
+      "stage": "renderer-tests",
+      "command": "CARGO_BUILD_JOBS=2 NODE_OPTIONS=--max-old-space-size=8192 taskset -c 0,1 pnpm test --filter=@ifc-lite/renderer --env-mode=loose --concurrency=1",
+      "head": "57a963c0c55ae9909bc326cc6c86ecfbd31d201d",
+      "startedAt": "2026-10-09T16:07:36.589084+00:00",
+      "reservationId": "380ecaee-b2cd-4d3e-b91a-9a0d09365160",
+      "log": "/home/louistrue/.t3/artifacts/6537-load-pipeline-227af528/corrected-renderer-tests.log",
+      "exitCode": 0,
+      "finishedAt": "2026-10-09T16:27:23.132364+00:00"
+    },
+    {
+      "stage": "serial-root-typecheck-config-error",
+      "command": "CARGO_BUILD_JOBS=2 NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck",
+      "head": "57a963c0c55ae9909bc326cc6c86ecfbd31d201d",
+      "reservationId": "380ecaee-b2cd-4d3e-b91a-9a0d09365160",
+      "startedAt": "2026-10-09T16:30:23.212933+00:00",
+      "log": "/home/louistrue/.t3/artifacts/6537-load-pipeline-227af528/corrected-serial-root-typecheck-config-error.log",
+      "temporaryConfig": {
+        "path": "turbo.json",
+        "concurrency": 1,
+        "originalSha256": "495ac9b0b6122204bce07060d87c69608db550c53f92ab446a43acfc7017c7f2",
+        "executedSha256": "dbbbc00715e070b9372ed89a7f727e4a9656db355ba74cc0830b7948643cff5f"
+      },
+      "reason": "Root compound script requires Turbo concurrency set in configuration, not flags appended to pnpm typecheck.",
+      "exitCode": 1,
+      "temporaryConfigRestored": true,
+      "finishedAt": "2026-10-09T16:30:23.425230+00:00"
+    },
+    {
+      "stage": "serial-root-typecheck",
+      "command": "CARGO_BUILD_JOBS=2 NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck --env-mode=loose --concurrency=1",
+      "head": "57a963c0c55ae9909bc326cc6c86ecfbd31d201d",
+      "startedAt": "2026-10-09T16:27:39.612689+00:00",
+      "reservationId": "380ecaee-b2cd-4d3e-b91a-9a0d09365160",
+      "log": "/home/louistrue/.t3/artifacts/6537-load-pipeline-227af528/corrected-serial-root-typecheck.log",
+      "exitCode": 1,
+      "finishedAt": "2026-10-09T16:29:29.490225+00:00"
+    },
+    {
+      "stage": "serial-root-typecheck-retry",
+      "command": "CARGO_BUILD_JOBS=2 NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck",
+      "head": "57a963c0c55ae9909bc326cc6c86ecfbd31d201d",
+      "reservationId": "380ecaee-b2cd-4d3e-b91a-9a0d09365160",
+      "startedAt": "2026-10-09T16:30:50.811849+00:00",
+      "log": "/home/louistrue/.t3/artifacts/6537-load-pipeline-227af528/corrected-serial-root-typecheck-retry.log",
+      "temporaryConfig": {
+        "path": "turbo.json",
+        "concurrency": 1,
+        "originalSha256": "495ac9b0b6122204bce07060d87c69608db550c53f92ab446a43acfc7017c7f2",
+        "executedSha256": "a24c1011ce0dcbdfe73f74f52cf70ea5158e630deb208314c97052edaa9ba4c4"
+      },
+      "reason": "Root compound script requires Turbo concurrency set in configuration, not flags appended to pnpm typecheck.",
+      "exitCode": 0,
+      "temporaryConfigRestored": true,
+      "finishedAt": "2026-10-09T16:35:28.764252+00:00"
+    },
+    {
+      "stage": "source-text-assertions",
+      "command": "node scripts/check-source-text-assertions.mjs",
+      "head": "57a963c0c55ae9909bc326cc6c86ecfbd31d201d",
+      "startedAt": "2026-10-09T16:36:10.098135+00:00",
+      "reservationId": "380ecaee-b2cd-4d3e-b91a-9a0d09365160",
+      "log": "/home/louistrue/.t3/artifacts/6537-load-pipeline-227af528/corrected-source-text-assertions.log",
+      "exitCode": 0,
+      "finishedAt": "2026-10-09T16:36:15.589834+00:00"
+    },
+    {
+      "stage": "test-wiring",
+      "command": "node scripts/check-test-wiring.mjs",
+      "head": "57a963c0c55ae9909bc326cc6c86ecfbd31d201d",
+      "startedAt": "2026-10-09T16:36:21.358194+00:00",
+      "reservationId": "380ecaee-b2cd-4d3e-b91a-9a0d09365160",
+      "log": "/home/louistrue/.t3/artifacts/6537-load-pipeline-227af528/corrected-test-wiring.log",
+      "exitCode": 0,
+      "finishedAt": "2026-10-09T16:36:22.008964+00:00"
+    },
+    {
+      "stage": "touched-oxlint",
+      "command": "pnpm exec oxlint apps/viewer/src/components/viewer/useAppearanceSourceGeometry.ts apps/viewer/src/components/viewer/useAppearanceSourceGeometry.test.tsx apps/viewer/src/components/viewer/useAppearanceSourceGeometry.real-ifc-streaming.test.tsx",
+      "head": "57a963c0c55ae9909bc326cc6c86ecfbd31d201d",
+      "startedAt": "2026-10-09T16:36:22.476975+00:00",
+      "reservationId": "380ecaee-b2cd-4d3e-b91a-9a0d09365160",
+      "log": "/home/louistrue/.t3/artifacts/6537-load-pipeline-227af528/corrected-touched-oxlint.log",
+      "exitCode": 0,
+      "finishedAt": "2026-10-09T16:36:23.096035+00:00"
+    },
+    {
+      "stage": "viewer-tests",
+      "command": "TEST_PATTERN='useAppearanceSourceGeometry|useFederatedGeometry|useGeometryStreaming' NODE_V8_COVERAGE=/home/louistrue/.t3/artifacts/6537-load-pipeline-227af528/corrected-coverage CARGO_BUILD_JOBS=2 NODE_OPTIONS=--max-old-space-size=8192 pnpm test --filter=@ifc-lite/viewer --env-mode=loose --concurrency=1",
+      "head": "57a963c0c55ae9909bc326cc6c86ecfbd31d201d",
+      "startedAt": "2026-10-09T16:04:39.140396+00:00",
+      "reservationId": "380ecaee-b2cd-4d3e-b91a-9a0d09365160",
+      "log": "/home/louistrue/.t3/artifacts/6537-load-pipeline-227af528/corrected-viewer-tests.log",
+      "exitCode": 0,
+      "finishedAt": "2026-10-09T16:07:05.529158+00:00"
+    },
+    {
+      "stage": "whitespace",
+      "command": "git diff --check 2382cf4124315f027b2d33c21c1751cee33c5081...HEAD",
+      "head": "57a963c0c55ae9909bc326cc6c86ecfbd31d201d",
+      "startedAt": "2026-10-09T16:36:23.562601+00:00",
+      "reservationId": "380ecaee-b2cd-4d3e-b91a-9a0d09365160",
+      "log": "/home/louistrue/.t3/artifacts/6537-load-pipeline-227af528/corrected-whitespace.log",
+      "exitCode": 0,
+      "finishedAt": "2026-10-09T16:36:23.950380+00:00"
+    }
+  ],
+  "testStats": {
+    "viewer-tests": {
+      "tests": 53,
+      "pass": 53,
+      "fail": 0,
+      "skipped": 0,
+      "cancelled": 0,
+      "todo": 0,
+      "actWarnings": 14
+    },
+    "renderer-tests": {
+      "tests": 2049,
+      "pass": 2047,
+      "fail": 0,
+      "skipped": 2,
+      "cancelled": 0,
+      "todo": 0,
+      "actWarnings": 0
+    }
+  },
+  "realFixtureAttribution": [
+    {
+      "kind": "real-ifc-appearance-stream-attribution",
+      "position": 0,
+      "batches": 16,
+      "batchSize": 20,
+      "fixtures": [
+        {
+          "name": "AC20-FZK-Haus.ifc",
+          "bytes": 2526511,
+          "sha256": "d42ab0dee01173106c16cd823b4614efe188fa15dd65195d95b9879bec59acc5"
+        },
+        {
+          "name": "01_Snowdon_Towers_Sample_Structural(1).ifc",
+          "bytes": 8714606,
+          "sha256": "fab102eb5f9152bc7053d7e4920a8b75d0d34683c834078f0735c88308eb00a4"
+        }
+      ],
+      "models": [
+        {
+          "id": "28c008b8-318b-4377-b1bb-bfa7ca58dd05",
+          "meshes": 317
+        },
+        {
+          "id": "appearance-peer",
+          "meshes": 17380
+        }
+      ],
+      "replayMeshes": 317,
+      "previouslyStamped": 317,
+      "replayGeometrySha256": "5d1e234daf3c043f838c8f924a995a38244835852033851fb90913bed8b6f3e5",
+      "counts": {
+        "vertices": 57706,
+        "triangles": 33356
+      },
+      "loadDelta": {
+        "store.setState": 88,
+        "store.notifications": 169,
+        "hash.fullSource.count": 2,
+        "hash.fullSource.bytes": 11241117,
+        "viewer.modelIndexStamp.count": 3,
+        "viewer.modelIndexStamp.meshes": 17697,
+        "viewer.modelIndexRespread.count": 2,
+        "viewer.modelIndexRespread.meshes": 17697,
+        "viewer.appearanceSource.count": 1,
+        "viewer.appearanceSource.meshes": 17697
+      },
+      "delta": {
+        "store.setState": 16,
+        "store.notifications": 16,
+        "viewer.modelIndexStamp.count": 16,
+        "viewer.modelIndexStamp.meshes": 317,
+        "viewer.modelIndexRespread.count": 16,
+        "viewer.modelIndexRespread.meshes": 317,
+        "viewer.appearanceSource.count": 16,
+        "viewer.appearanceSource.meshes": 317,
+        "viewer.appearanceSource.shiftedMeshes": 278080
+      },
+      "scope": "Mounted canonical-output replay; no timing, GPU, whole-load memory or worker-pool acceptance."
+    },
+    {
+      "kind": "real-ifc-appearance-stream-attribution",
+      "position": 1,
+      "batches": 16,
+      "batchSize": 1087,
+      "fixtures": [
+        {
+          "name": "AC20-FZK-Haus.ifc",
+          "bytes": 2526511,
+          "sha256": "d42ab0dee01173106c16cd823b4614efe188fa15dd65195d95b9879bec59acc5"
+        },
+        {
+          "name": "01_Snowdon_Towers_Sample_Structural(1).ifc",
+          "bytes": 8714606,
+          "sha256": "fab102eb5f9152bc7053d7e4920a8b75d0d34683c834078f0735c88308eb00a4"
+        }
+      ],
+      "models": [
+        {
+          "id": "3c0c052e-7fc6-4cf8-ba10-16dc0e313066",
+          "meshes": 317
+        },
+        {
+          "id": "appearance-peer",
+          "meshes": 17380
+        }
+      ],
+      "replayMeshes": 17380,
+      "previouslyStamped": 17380,
+      "replayGeometrySha256": "b98d73822d956fb74e76725be0566b57428a91309ce9aa93ac5086ef9f168b59",
+      "counts": {
+        "vertices": 1005848,
+        "triangles": 865980
+      },
+      "loadDelta": {
+        "store.setState": 87,
+        "store.notifications": 515,
+        "hash.fullSource.count": 2,
+        "hash.fullSource.bytes": 11241117,
+        "viewer.modelIndexStamp.count": 3,
+        "viewer.modelIndexStamp.meshes": 17697,
+        "viewer.modelIndexRespread.count": 2,
+        "viewer.modelIndexRespread.meshes": 17697,
+        "viewer.appearanceSource.count": 1,
+        "viewer.appearanceSource.meshes": 17697
+      },
+      "delta": {
+        "store.setState": 16,
+        "store.notifications": 80,
+        "viewer.modelIndexStamp.count": 16,
+        "viewer.modelIndexStamp.meshes": 17380,
+        "viewer.modelIndexRespread.count": 16,
+        "viewer.modelIndexRespread.meshes": 17380,
+        "viewer.appearanceSource.count": 16,
+        "viewer.appearanceSource.meshes": 17380
+      },
+      "scope": "Mounted canonical-output replay; no timing, GPU, whole-load memory or worker-pool acceptance."
+    }
+  ],
+  "baseBranchStructuralComparison": [
+    {
+      "position": 0,
+      "meshes": 317,
+      "baseVisits": 280797,
+      "branchVisits": 317,
+      "baseWrappers": 278080,
+      "branchWrappers": 0,
+      "branchSuffixMoves": 278080,
+      "fixtureIdentity": true,
+      "orderedGeometryIdentity": true,
+      "countsIdentity": true
+    },
+    {
+      "position": 1,
+      "meshes": 17380,
+      "baseVisits": 152892,
+      "branchVisits": 17380,
+      "baseWrappers": 147820,
+      "branchWrappers": 0,
+      "branchSuffixMoves": 0,
+      "fixtureIdentity": true,
+      "orderedGeometryIdentity": true,
+      "countsIdentity": true
+    }
+  ],
+  "runtimeInventoryChanges": [],
+  "consumedFileUrls": 3370,
+  "frozenConsumedFileUrls": 3370,
+  "unfrozenConsumedUrls": [],
+  "wasmSha256Before": "f42d62ea549c36e69fe30eee14e619d26547a0cddfb6a27678ab39a0c995cc89",
+  "wasmSha256After": "f42d62ea549c36e69fe30eee14e619d26547a0cddfb6a27678ab39a0c995cc89",
+  "scope": "Untimed mounted canonical-output replay, release/streaming controls, renderer tests, serial root typecheck and source gates. No worker-pool/timing/GPU/whole-load-memory acceptance.",
+  "status": "CORRECTED_STRUCTURAL_FIX_VALIDATED_PERFORMANCE_HELD",
+  "acceptedStages": [
+    "prerequisite-build",
+    "viewer-tests",
+    "renderer-tests",
+    "serial-root-typecheck-retry",
+    "module-size",
+    "source-text-assertions",
+    "test-wiring",
+    "touched-oxlint",
+    "whitespace"
+  ],
+  "invalidAttempts": [
+    "serial-root-typecheck: flags forwarded to final tsc; Turbo was not serial; not accepted",
+    "serial-root-typecheck-config-error: numeric concurrency refused before any task; not accepted"
+  ],
+  "rendererSkipCriteria": [
+    "opt-in >2^24 vertex allocation guard: IFC_LITE_HEAVY_TESTS=1, ~340MB",
+    "real WGSL execution/readback: no WebGPU adapter in Node"
+  ],
+  "harnessWarnings": "14 broad-suite React act warnings outside the new appearance tests, plus Node DOM/RAF logging. Raw output preserved; no warning suppression or browser/GPU acceptance.",
+  "endToEndWorkerPoolStatus": "NOT_RUN",
+  "fiveInterleavedPhaseTimingsStatus": "NOT_RUN",
+  "focusedPhysicalGPUStatus": "UNAVAILABLE_NOT_ACCEPTED",
+  "rustChecks": "Not applicable: no Rust source changes",
+  "finalWasmSha256": "f42d62ea549c36e69fe30eee14e619d26547a0cddfb6a27678ab39a0c995cc89",
+  "sourceTreeClean": true,
+  "temporaryTurboConfigRestored": true
+}

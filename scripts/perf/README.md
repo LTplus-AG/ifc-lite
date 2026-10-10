@@ -151,6 +151,21 @@ build the appearance list in O(total) on every `models` change.
 least stable upstream producer. Count the visits (`viewer.filterScan`)
 instead of trusting the "incremental" comment.
 
+## Federated appearance-source rebuilding candidate (#6537 / #7021)
+
+**Draft; end-to-end performance held.** The
+[real FZK/Snowdon mounted controls](evidence/federated-appearance-6537/README.md)
+demonstrate repeated accumulated/peer mesh visits and ownership wrapper copies
+in the remaining multi-model appearance list. Canonical producer stamping and
+a retained ordered list remove that repeated source work; replacement, content,
+visibility, removal/readdition and CPU-release controls pass with unchanged
+ordered geometry. Earlier-model appends still move suffix references to retain
+model order, counted separately. No load-time or peak-memory improvement is
+accepted: actual worker-pool federation A/B and focused GPU acceptance remain
+outstanding. Lesson: borrowing producer objects removes wrapper allocation,
+but grouped ordering still has a movement cost; qualify the real federation
+journey instead of a single-model cold load.
+
 ## Frame-time rigs (#6960)
 
 Two rigs measure viewer frames; neither is a PR gate. Both inject the same

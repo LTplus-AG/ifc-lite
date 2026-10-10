@@ -1,0 +1,184 @@
+{
+  "at": "2026-10-09T15:29:12.731705+00:00",
+  "head": "d836deb651392b337d01bf791b67b56c1967652a",
+  "base": "2382cf4124315f027b2d33c21c1751cee33c5081",
+  "buildExit": 0,
+  "buildTasks": 53,
+  "testsExit": 1,
+  "tests": 9,
+  "passed": 6,
+  "failedEfficiencyGuards": 3,
+  "skipped": 0,
+  "realFixtureAttribution": [
+    {
+      "kind": "real-ifc-appearance-stream-attribution",
+      "position": 0,
+      "batches": 16,
+      "batchSize": 20,
+      "fixtures": [
+        {
+          "name": "AC20-FZK-Haus.ifc",
+          "bytes": 2526511,
+          "sha256": "d42ab0dee01173106c16cd823b4614efe188fa15dd65195d95b9879bec59acc5"
+        },
+        {
+          "name": "01_Snowdon_Towers_Sample_Structural(1).ifc",
+          "bytes": 8714606,
+          "sha256": "fab102eb5f9152bc7053d7e4920a8b75d0d34683c834078f0735c88308eb00a4"
+        }
+      ],
+      "models": [
+        {
+          "id": "cf7c39e8-7302-4af9-a5b2-a9d8b3ff3adf",
+          "meshes": 317
+        },
+        {
+          "id": "appearance-peer",
+          "meshes": 17380
+        }
+      ],
+      "replayMeshes": 317,
+      "previouslyStamped": 317,
+      "replayGeometrySha256": "5d1e234daf3c043f838c8f924a995a38244835852033851fb90913bed8b6f3e5",
+      "counts": {
+        "vertices": 57706,
+        "triangles": 33356
+      },
+      "loadDelta": {
+        "viewer.appearanceSource.count": 2,
+        "viewer.appearanceSource.meshes": 17697,
+        "viewer.appearanceSource.copies": 17380,
+        "store.setState": 88,
+        "store.notifications": 169,
+        "hash.fullSource.count": 2,
+        "hash.fullSource.bytes": 11241117,
+        "viewer.modelIndexStamp.count": 2,
+        "viewer.modelIndexStamp.meshes": 317,
+        "viewer.modelIndexRespread.count": 2,
+        "viewer.modelIndexRespread.meshes": 17697
+      },
+      "delta": {
+        "viewer.appearanceSource.count": 16,
+        "viewer.appearanceSource.meshes": 280797,
+        "viewer.appearanceSource.copies": 278080,
+        "store.setState": 16,
+        "store.notifications": 16,
+        "viewer.modelIndexRespread.count": 16,
+        "viewer.modelIndexRespread.meshes": 317
+      },
+      "scope": "Mounted canonical-output replay; no timing, GPU, whole-load memory or worker-pool acceptance."
+    },
+    {
+      "kind": "real-ifc-appearance-stream-attribution",
+      "position": 1,
+      "batches": 16,
+      "batchSize": 1087,
+      "fixtures": [
+        {
+          "name": "AC20-FZK-Haus.ifc",
+          "bytes": 2526511,
+          "sha256": "d42ab0dee01173106c16cd823b4614efe188fa15dd65195d95b9879bec59acc5"
+        },
+        {
+          "name": "01_Snowdon_Towers_Sample_Structural(1).ifc",
+          "bytes": 8714606,
+          "sha256": "fab102eb5f9152bc7053d7e4920a8b75d0d34683c834078f0735c88308eb00a4"
+        }
+      ],
+      "models": [
+        {
+          "id": "e6302457-cb48-4ab9-ac10-1f3a3723629b",
+          "meshes": 317
+        },
+        {
+          "id": "appearance-peer",
+          "meshes": 17380
+        }
+      ],
+      "replayMeshes": 17380,
+      "previouslyStamped": 0,
+      "replayGeometrySha256": "b98d73822d956fb74e76725be0566b57428a91309ce9aa93ac5086ef9f168b59",
+      "counts": {
+        "vertices": 1005848,
+        "triangles": 865980
+      },
+      "loadDelta": {
+        "viewer.appearanceSource.count": 2,
+        "viewer.appearanceSource.meshes": 17697,
+        "viewer.appearanceSource.copies": 17380,
+        "store.setState": 88,
+        "store.notifications": 521,
+        "hash.fullSource.count": 2,
+        "hash.fullSource.bytes": 11241117,
+        "viewer.modelIndexStamp.count": 2,
+        "viewer.modelIndexStamp.meshes": 317,
+        "viewer.modelIndexRespread.count": 2,
+        "viewer.modelIndexRespread.meshes": 17697
+      },
+      "delta": {
+        "viewer.appearanceSource.count": 16,
+        "viewer.appearanceSource.meshes": 152892,
+        "viewer.appearanceSource.copies": 147820,
+        "store.setState": 16,
+        "store.notifications": 80,
+        "viewer.modelIndexRespread.count": 16,
+        "viewer.modelIndexRespread.meshes": 17380
+      },
+      "scope": "Mounted canonical-output replay; no timing, GPU, whole-load memory or worker-pool acceptance."
+    }
+  ],
+  "runtimeInventoryChanges": [],
+  "consumedFileUrls": 3342,
+  "frozenConsumedFileUrls": 3338,
+  "unfrozenConsumedUrls": [
+    {
+      "path": "/home/louistrue/.nvm/versions/node/v24.21.0/lib/node_modules/corepack/dist/pnpm.js",
+      "preSha256": null,
+      "postSha256": null,
+      "frozen": false
+    },
+    {
+      "path": "/home/louistrue/.nvm/versions/node/v24.21.0/lib/node_modules/corepack/dist/lib/corepack.cjs",
+      "preSha256": null,
+      "postSha256": null,
+      "frozen": false
+    },
+    {
+      "path": "/home/louistrue/.cache/node/corepack/v1/pnpm/10.8.1/bin/pnpm.cjs",
+      "preSha256": null,
+      "postSha256": null,
+      "frozen": false
+    },
+    {
+      "path": "/home/louistrue/.cache/node/corepack/v1/pnpm/10.8.1/dist/pnpm.cjs",
+      "preSha256": null,
+      "postSha256": null,
+      "frozen": false
+    }
+  ],
+  "wasmSha256": "f42d62ea549c36e69fe30eee14e619d26547a0cddfb6a27678ab39a0c995cc89",
+  "scope": "Untimed mounted canonical-output replay with actual WASM fixtures; geometry/order/owner invariants passed before efficiency failures; not worker-pool or GPU or elapsed-time or whole-memory acceptance",
+  "harnessWarnings": "React act warnings occurred around helper edit-enable/teardown while the probe was mounted. They did not cause the three assertions; fix the test lifecycle before corrected validation and retain original log.",
+  "postRunOrchestratorHashes": [
+    {
+      "path": "/home/louistrue/.nvm/versions/node/v24.21.0/lib/node_modules/corepack/dist/pnpm.js",
+      "sha256": "7c2a67995976b5b592b611d8b236e3b0633bd654fb49aedd96c6eb7ce04c9cbb",
+      "frozenBeforeAfter": false
+    },
+    {
+      "path": "/home/louistrue/.nvm/versions/node/v24.21.0/lib/node_modules/corepack/dist/lib/corepack.cjs",
+      "sha256": "abd6f0e7b4e2af310243e202fd908ea64cda545786222f0a3d3f62426e8ad66e",
+      "frozenBeforeAfter": false
+    },
+    {
+      "path": "/home/louistrue/.cache/node/corepack/v1/pnpm/10.8.1/bin/pnpm.cjs",
+      "sha256": "b276da51dc8ca5b0d3ee3371695b50fc8b3244b281b091c63a3f082a88dadeb9",
+      "frozenBeforeAfter": false
+    },
+    {
+      "path": "/home/louistrue/.cache/node/corepack/v1/pnpm/10.8.1/dist/pnpm.cjs",
+      "sha256": "38b144e9bb195de5dda3441936ce9b1463c68f7b3ea435b05bf3ceb7f1c51c5e",
+      "frozenBeforeAfter": false
+    }
+  ]
+}

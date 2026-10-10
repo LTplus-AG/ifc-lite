@@ -46,7 +46,7 @@ export function pointOf(reader: GeometryEntityReader, ref: unknown, type = 'IFCC
 
 export function unit(v: Vec3): Vec3 | null {
   const len = Math.hypot(v[0], v[1], v[2]);
-  return len > 1e-12 ? [v[0] / len, v[1] / len, v[2] / len] : null;
+  return Number.isFinite(len) && len > 1e-12 ? [v[0] / len, v[1] / len, v[2] / len] : null;
 }
 
 /** IfcAxis2Placement2D: Position is optional on a profile; Location is required. */
@@ -90,6 +90,8 @@ export function applyFrame(f: Frame3, p: Vec3): Vec3 {
   ];
 }
 
+const finiteFrame = (frame: Frame3): boolean => [frame.o, frame.x, frame.y, frame.z].every(v => v.every(Number.isFinite));
+
 const IDENTITY_FRAME3: Frame3 = { o: [0, 0, 0], x: [1, 0, 0], y: [0, 1, 0], z: [0, 0, 1] };
 
 export function transformBounds(bounds: HostBounds, frame: Frame3): HostBounds {
@@ -129,7 +131,11 @@ export function placementInAncestor(reader: GeometryEntityReader, placementId: n
     const own = axis3d(reader, axisId);
     if (!own) return null;
     frame = composeFrame(own, frame);
-    id = refId(placement.attributes[0]);
+    if (!finiteFrame(frame)) return null;
+    const parent = placement.attributes[0];
+    // #7328: an explicit unreadable parent is not an omitted world root.
+    if (parent !== null && parent !== undefined && refId(parent) === null) return null;
+    id = refId(parent);
   }
   return id === ancestorId ? frame : null;
 }
@@ -162,7 +168,9 @@ export function placementRelativeTo(reader: GeometryEntityReader, placementId: n
   if (id === undefined || (id === null && !referenceReachesRoot)) return null;
   const own = placementInAncestor(reader, placementId, id);
   const reference = placementInAncestor(reader, referenceId, id);
-  return own && reference ? composeFrame(inverseFrame(reference), own) : null;
+  if (!own || !reference) return null;
+  const relative = composeFrame(inverseFrame(reference), own);
+  return finiteFrame(relative) ? relative : null;
 }
 
 /** Subcontexts inherit CoordinateSpaceDimension from ParentContext. */

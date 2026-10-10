@@ -97,6 +97,33 @@ Primary metrics captured in the current benchmark log format:
 - **entityScanMs**: Fast entity scanning time
 - **dataModelParseMs**: Data model parse time
 
+Each result JSON also carries two #6993 blocks:
+
+- **`gpuHealth`**: whether the sample lost its WebGPU device. `contaminated`
+  is true when the renderer's device was lost (`gpu.deviceLost`, or the
+  renderer's `[WebGPU] Device lost` line with any reason but `destroyed`) or
+  re-created (`gpu.devices` above 1, the recovery path that re-uploads the
+  scene). The counters are session totals, so a loss before the load window
+  opens counts too. `benchmark:check` excludes a contaminated sample instead
+  of comparing it, `update-benchmark-baseline.mjs` never records one, and the
+  cold A/B (`scripts/perf/browser-cold-ab.mts`) records it as a failed sample.
+  Uncaptured errors and Dawn `Instance reference no longer exists` lines are
+  kept as evidence only: on WSL SwiftShader every sample logs one from a
+  pipeline probe on an already-destroyed device while the renderer's device
+  keeps rendering.
+- **`interactionCommits`**: React commits caused by one hierarchy-row select,
+  one pointer move onto the viewport centre and opening the Lists panel, each
+  measured from a quiet page to the next quiet point after every timing has
+  been taken. These counts repeat exactly between runs; per-load
+  `react.commits` does not.
+
+On WSL SwiftShader the loss is intermittent: FZK-Haus lost its device
+(`A valid external Instance reference no longer exists`, the #7164 message) in
+7 of 9 fresh-page loads on 2026-10-10 (3 of 4 benchmark runs), Snowdon in none
+of 4. Refusing WebGL in the page (FZK shows a WebGL minimap) still lost it in
+1 of 4, so the minimap is not the whole cause. The root cause is not
+established; the flag is what keeps such samples out of medians and baselines.
+
 ## Geometry Correctness Validation
 
 The benchmark suite includes mesh count validation to detect geometry regressions:

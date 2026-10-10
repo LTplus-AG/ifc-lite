@@ -32,8 +32,14 @@ describe('GPU and merge counters (#6957)', () => {
   it('is the identity while counters are off', () => {
     const { device } = fakeDevice();
     const createBuffer = device.createBuffer;
+    let listened = 0;
+    let lostRead = 0;
+    Object.defineProperty(device, 'lost', { get: () => { lostRead++; return new Promise(() => {}); } });
+    Object.assign(device, { addEventListener: () => { listened++; } });
     assert.strictEqual(meterGpuDevice(device), device);
     assert.strictEqual(device.createBuffer, createBuffer);
+    assert.strictEqual(listened + lostRead, 0, '#6993: no device-health listener outside trace mode');
+    assert.deepStrictEqual(perfCounters.read(), {}, 'nothing counted while off');
   });
 
   it('counts buffer creations, mapped uploads and writes, keeping uniform writes apart', () => {
@@ -54,6 +60,32 @@ describe('GPU and merge counters (#6957)', () => {
       'gpu.mappedUploadBytes': 1024,
       'gpu.writeBytes': 80,
       'gpu.uniformWriteBytes': 64,
+    });
+  });
+
+  it('#6993 counts devices, non-teardown losses and uncaptured errors per device', async () => {
+    perfCounters.enable();
+    const before = perfCounters.read();
+    const devices = ['unknown', 'destroyed'].map((reason) => {
+      const { device } = fakeDevice();
+      let settle!: (info: { message: string; reason: string }) => void;
+      const listeners: Array<() => void> = [];
+      Object.assign(device, {
+        lost: new Promise((resolve) => { settle = resolve; }),
+        addEventListener: (type: string, listener: () => void) => { if (type === 'uncapturederror') listeners.push(listener); },
+      });
+      meterGpuDevice(device);
+      return { lose: () => settle({ message: 'gone', reason }), error: () => listeners.forEach((l) => l()) };
+    });
+    devices[0].error();
+    devices[0].error();
+    devices[0].lose(); // a real loss (SwiftShader reports 'unknown')
+    devices[1].lose(); // teardown: `device.destroy()` settles `lost` with 'destroyed'
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.deepStrictEqual(diffCounters(perfCounters.read(), before), {
+      'gpu.devices': 2,
+      'gpu.deviceLost': 1,
+      'gpu.uncapturedErrors': 2,
     });
   });
 

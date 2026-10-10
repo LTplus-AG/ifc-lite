@@ -47,7 +47,7 @@ const ALL_METRICS = {
   totalWallClockMs: 100,
 };
 
-function benchTree({ current, baseline, baselineKey = 'x.ifc' }) {
+function benchTree({ current, baseline, baselineKey = 'x.ifc', extra = {} }) {
   const dir = mkdtempSync(join(tmpdir(), 'bench-'));
   mkdirSync(join(dir, 'scripts'), { recursive: true });
   mkdirSync(join(dir, 'tests', 'benchmark', 'benchmark-results'), { recursive: true });
@@ -57,7 +57,7 @@ function benchTree({ current, baseline, baselineKey = 'x.ifc' }) {
   );
   writeFileSync(
     join(dir, 'tests', 'benchmark', 'benchmark-results', 'viewer-x.json'),
-    JSON.stringify({ file: 'x.ifc', metrics: current }),
+    JSON.stringify({ file: 'x.ifc', metrics: current, ...extra }),
   );
   writeFileSync(
     join(dir, 'tests', 'benchmark', 'baseline.json'),
@@ -271,6 +271,51 @@ test('benchmark: the MARKDOWN refuses a verdict too, not just the console', () =
       /✅ No threshold regressions detected/,
       'the PR comment must not claim a clean run the console just refused',
     );
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+const LOST_GPU = { gpuHealth: { contaminated: true, reasons: ['GPU device lost 1x'] } };
+
+test('benchmark #6993: a sample that lost its GPU device is excluded, not compared as a regression', () => {
+  // 3x slower on every metric: compared, this would be six regressions. The
+  // sample re-uploaded onto a replacement device, so it measured another load.
+  const slow = Object.fromEntries(Object.keys(ALL_METRICS).map((k) => [k, 300]));
+  const dir = benchTree({ current: slow, baseline: ALL_METRICS, extra: LOST_GPU });
+  const md = join(dir, 'report.md');
+  try {
+    writeFileSync(
+      join(dir, 'tests', 'benchmark', 'benchmark-results', 'viewer-y.json'),
+      JSON.stringify({ file: 'y.ifc', metrics: ALL_METRICS, gpuHealth: { contaminated: false, reasons: [] } }),
+    );
+    const baseline = JSON.parse(readFileSync(join(dir, 'tests', 'benchmark', 'baseline.json'), 'utf-8'));
+    baseline['y.ifc'] = baseline['x.ifc'];
+    writeFileSync(join(dir, 'tests', 'benchmark', 'baseline.json'), JSON.stringify(baseline));
+    const res = spawnSync(
+      process.execPath,
+      [join(dir, 'scripts', 'check-benchmark-regression.js'), '--markdown', md],
+      { encoding: 'utf-8', cwd: dir },
+    );
+    const out = `${res.stdout ?? ''}${res.stderr ?? ''}`;
+    assert.equal(res.status, 0, `no clean model regressed, so even non-advisory passes:\n${out}`);
+    assert.doesNotMatch(out, /regression\(s\)/);
+    assert.match(out, /EXCLUDED: GPU device lost 1x/);
+    const report = readFileSync(md, 'utf-8');
+    assert.match(report, /1 of 2 model\(s\) lost their GPU device/);
+    assert.doesNotMatch(report, /✅ No threshold regressions detected/, 'an excluded sample is not a clean bill of health');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('benchmark #6993: when every sample lost its GPU device there is no verdict', () => {
+  const dir = benchTree({ current: ALL_METRICS, baseline: ALL_METRICS, extra: LOST_GPU });
+  try {
+    const { code, out } = runBench(dir);
+    assert.equal(code, 1, out);
+    assert.match(out, /lost their GPU device mid-sample and no clean sample remains/);
+    assert.doesNotMatch(out, /NOT ONE had a baseline entry/, 'the baseline existed; the sample was the problem');
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

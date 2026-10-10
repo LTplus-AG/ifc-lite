@@ -73,8 +73,12 @@ const pct = (cur, base) => (base > 0 ? ((cur - base) / base) * 100 : null);
 const fmt = (n) => (n == null ? '—' : n.toFixed(0));
 const sign = (n) => (n == null ? '' : n >= 0 ? '+' : '');
 
-const failedRows = allRows.filter((r) => r.ok === false);
-const rows = allRows.filter((r) => r.ok !== false);
+// #6993: a sample that lost its GPU device is a failure whatever it measured.
+// Rows written before the harness enforced that still carry `gpuHealth`.
+const lostGpu = (r) => r.gpuHealth?.contaminated === true;
+const failedRows = allRows.filter((r) => r.ok === false || lostGpu(r));
+const rows = allRows.filter((r) => r.ok !== false && !lostGpu(r));
+const deviceLossRows = failedRows.filter(lostGpu);
 
 const byFixture = new Map();
 for (const r of rows) {
@@ -89,7 +93,7 @@ for (const r of rows) {
 }
 
 const coverage = 'Observed metadata/geometry/renderer logs plus canvas allocation (100ms polling); search, cache-tail memory, properties, picking and Firefox unqualified.';
-const report = { coverage, base: baseLabel, branch: branchLabel, failures: failedRows.length, fixtures: [] };
+const report = { coverage, base: baseLabel, branch: branchLabel, failures: failedRows.length, deviceLossFailures: deviceLossRows.length, fixtures: [] };
 let anyRealChange = false;
 let anyFingerprintDrift = false;
 let anyTooNoisy = false;
@@ -105,7 +109,13 @@ const lines = [coverage];
 lines.push(`\nbrowser cold-load A/B  base=${baseLabel}  branch=${branchLabel}`);
 if (failedRows.length > 0) {
   lines.push(`\n⚠️  ${failedRows.length} sample(s) FAILED and were excluded from the stats below (evidence archived under scripts/perf/.browser-cold-ab-results/FAILED-*):`);
-  for (const f of failedRows) lines.push(`   - ${f.side}/${f.fixture}/round${f.round}: ${f.error ?? 'unknown error'}`);
+  for (const f of failedRows) {
+    const gpu = lostGpu(f) ? `  [GPU device lost: ${f.gpuHealth.reasons.join('; ')}]` : '';
+    lines.push(`   - ${f.side}/${f.fixture}/round${f.round}: ${f.error ?? 'unknown error'}${gpu}`);
+  }
+  if (deviceLossRows.length > 0) {
+    lines.push(`   ${deviceLossRows.length} of these lost their GPU device mid-sample (#6993); a device-lost sample is never averaged.`);
+  }
 }
 
 for (const [fixture, sides] of byFixture) {

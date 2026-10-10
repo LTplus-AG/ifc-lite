@@ -19,10 +19,20 @@ const UNIFORM = 0x40;
  *   gpu.uniformWriteBytes       `writeBuffer` bytes into uniform buffers; per frame, so
  *                               timing-dependent, kept apart from the structural counts
  *
+ * and the device's health (#6993), so a benchmark sample can tell a load that
+ * lost its device (and re-uploaded everything onto a replacement) from a
+ * clean one instead of averaging the two:
+ *
+ *   gpu.devices                 devices metered; above 1 the renderer re-created its
+ *                               device (the loss-recovery path), re-uploading the scene
+ *   gpu.deviceLost              `device.lost` settled for any reason but `destroyed`
+ *   gpu.uncapturedErrors        `uncapturederror` events (validation / out-of-memory)
+ *
  * Counters off: returns the device untouched.
  */
 export function meterGpuDevice(device: GPUDevice): GPUDevice {
   if (!perfCounters.enabled) return device;
+  meterDeviceHealth(device);
   const createBuffer = device.createBuffer.bind(device);
   device.createBuffer = (descriptor: GPUBufferDescriptor) => {
     perfCount('gpu.buffers');
@@ -40,4 +50,17 @@ export function meterGpuDevice(device: GPUDevice): GPUDevice {
     writeBuffer(buffer, offset, data, dataOffset, size);
   }) as GPUQueue['writeBuffer'];
   return device;
+}
+
+/** See `meterGpuDevice`. Listens beside the renderer's own handlers, never replacing them. */
+function meterDeviceHealth(device: GPUDevice): void {
+  perfCount('gpu.devices');
+  // Both are optional on test doubles and older runtimes.
+  const lost = (device as { lost?: Promise<{ reason?: string }> }).lost;
+  void lost?.then((info) => {
+    if ((info.reason ?? 'unknown') !== 'destroyed') perfCount('gpu.deviceLost');
+  });
+  if (typeof device.addEventListener === 'function') {
+    device.addEventListener('uncapturederror', () => perfCount('gpu.uncapturedErrors'));
+  }
 }

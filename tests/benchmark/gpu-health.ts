@@ -1,0 +1,118 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
+/**
+ * Per-sample GPU device health (#6993, folding in #7164).
+ *
+ * Under SwiftShader (CI, WSL, the ARM/x86 qualification runners) Chromium can
+ * lose the WebGPU device, or the Dawn instance behind it, mid-load. The
+ * renderer then re-creates its device and re-uploads the whole scene, so the
+ * sample measured a different load. Such a sample is flagged `contaminated`
+ * and consumers keep it out of every median, baseline and verdict instead of
+ * averaging it with clean ones.
+ *
+ * Two independent witnesses, so a base build that predates the counters is
+ * still classified:
+ *   - the viewer's session counters (`gpu.devices`, `gpu.deviceLost`,
+ *     `gpu.uncapturedErrors`, see packages/renderer/src/gpu-counters.ts), read
+ *     from `__IFC_LITE_LOAD_TRACE__.sessionCounters()`: totals since boot, so a
+ *     loss before the load window opens is still seen;
+ *   - the console lines the renderer and Chromium print for the same events.
+ * Both see one loss once, so each count is the larger of the two, never the sum.
+ *
+ * Uncaptured errors and Dawn "Instance reference no longer exists" errors are
+ * reported but do not by themselves contaminate a sample. Measured on WSL
+ * SwiftShader (FZK, Snowdon): every sample logs one, from a pipeline probe on
+ * a device already destroyed before the load, while the renderer's own device
+ * lives on and renders. Only the renderer losing its device, or re-creating
+ * it, changes the work the sample measured.
+ */
+
+export interface GpuHealth {
+  /** True when this sample must not be averaged with clean samples. */
+  contaminated: boolean;
+  /** Human-readable causes, empty when clean. */
+  reasons: string[];
+  /** `device.lost` settlements for any reason but `destroyed`. */
+  deviceLost: number;
+  /** Lines where Chromium/Dawn reported the WebGPU instance gone (#7164); evidence, not a verdict. */
+  instanceErrors: number;
+  /** Devices the renderer created; null when the build exposes no counters. */
+  devicesCreated: number | null;
+  uncapturedErrors: number;
+  /** Which witnesses were available. */
+  source: 'counters+console' | 'console';
+  /** The matching console lines, capped, for the evidence trail. */
+  events: string[];
+}
+
+const DEVICE_LOST = /\[WebGPU\] Device lost:.*\(reason: ([\w-]+)\)/;
+const INSTANCE_LOST = /valid external Instance reference no longer exists/i;
+const UNCAPTURED = /\[WebGPU\] Uncaptured error:/;
+const MAX_EVENTS = 20;
+
+export function gpuHealthFrom(
+  consoleLogs: readonly string[],
+  sessionCounters: Readonly<Record<string, number>> | null,
+): GpuHealth {
+  let consoleLost = 0;
+  let instanceErrors = 0;
+  let consoleUncaptured = 0;
+  const events: string[] = [];
+  for (const line of consoleLogs) {
+    const lost = DEVICE_LOST.exec(line);
+    const isLoss = lost !== null && lost[1] !== 'destroyed';
+    // The renderer's own loss line may quote the same message; count that event once.
+    const isInstance = lost === null && INSTANCE_LOST.test(line);
+    const isUncaptured = UNCAPTURED.test(line);
+    if (isLoss) consoleLost++;
+    if (isInstance) instanceErrors++;
+    if (isUncaptured) consoleUncaptured++;
+    if ((isLoss || isInstance || isUncaptured) && events.length < MAX_EVENTS) events.push(line.slice(0, 300));
+  }
+  const counter = (name: string) => sessionCounters?.[name] ?? 0;
+  const deviceLost = Math.max(consoleLost, counter('gpu.deviceLost'));
+  const uncapturedErrors = Math.max(consoleUncaptured, counter('gpu.uncapturedErrors'));
+  const devicesCreated = sessionCounters ? counter('gpu.devices') : null;
+
+  const reasons: string[] = [];
+  if (deviceLost > 0) reasons.push(`GPU device lost ${deviceLost}x`);
+  if (devicesCreated !== null && devicesCreated > 1) reasons.push(`renderer re-created its GPU device (${devicesCreated} devices): scene re-uploaded`);
+  return {
+    contaminated: reasons.length > 0,
+    reasons,
+    deviceLost,
+    instanceErrors,
+    devicesCreated,
+    uncapturedErrors,
+    source: sessionCounters ? 'counters+console' : 'console',
+    events,
+  };
+}
+
+/** Where the viewer publishes its trace API under `?perfTrace=1`. */
+const LOAD_TRACE_GLOBAL = '__IFC_LITE_LOAD_TRACE__';
+
+/** The one Playwright `Page` method this needs, so tests can pass a stub. */
+export interface EvaluatingPage {
+  evaluate<R, A>(fn: (arg: A) => R | Promise<R>, arg: A): Promise<R>;
+}
+
+/** Session counter totals, or null when the build exposes none (tracing off, or a pre-#6993 base). */
+export async function readSessionCounters(page: EvaluatingPage): Promise<Record<string, number> | null> {
+  try {
+    return await page.evaluate((key: string) => {
+      const api = (globalThis as Record<string, unknown>)[key] as { sessionCounters?: () => Record<string, number> } | undefined;
+      return typeof api?.sessionCounters === 'function' ? api.sessionCounters() : null;
+    }, LOAD_TRACE_GLOBAL);
+  } catch (error) {
+    // A crashed page or lost context cannot answer; the console witness still can.
+    console.warn('[Benchmark] could not read session counters', error);
+    return null;
+  }
+}
+
+export async function readGpuHealth(page: EvaluatingPage, consoleLogs: readonly string[]): Promise<GpuHealth> {
+  return gpuHealthFrom(consoleLogs, await readSessionCounters(page));
+}

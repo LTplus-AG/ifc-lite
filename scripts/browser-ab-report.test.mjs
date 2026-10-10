@@ -193,3 +193,21 @@ test('#3978 an entirely unavailable optional metric is omitted without invalidat
   assert.doesNotMatch(result.out, /spatial-ready|insufficient paired samples/);
   assert.match(result.out, /VERDICT: no metric moved/);
 });
+
+test('#6993 a sample recorded ok but GPU-device-lost is excluded and invalidates the run, never averaged', () => {
+  // A legacy row (written before the harness turned GPU loss into a failure)
+  // that lost its device and re-uploaded: 10x slower, recorded as ok.
+  const rows = [];
+  for (let round = 1; round <= 5; round++) {
+    rows.push(sample({ side: 'A', fixture: 'f', round }), sample({ side: 'B', fixture: 'f', round }));
+  }
+  const lost = { ...sample({ side: 'B', fixture: 'f', round: 3 }), gpuHealth: { contaminated: true, reasons: ['GPU device lost 1x'] } };
+  for (const key of Object.keys(METRICS)) lost[key] *= 10;
+  rows[5] = lost;
+  const r = run(rows);
+  assert.notEqual(r.code, 0, r.out);
+  assert.match(r.out, /B\/f\/round3: .*\[GPU device lost: GPU device lost 1x\]/);
+  assert.match(r.out, /1 of these lost their GPU device mid-sample/);
+  assert.match(r.out, /\(5 A sample\(s\), 4 B sample\(s\)\)/, 'the device-lost sample is not among the averaged ones');
+  assert.doesNotMatch(r.out, /⛔/, 'the 10x sample must not register as a regression');
+});

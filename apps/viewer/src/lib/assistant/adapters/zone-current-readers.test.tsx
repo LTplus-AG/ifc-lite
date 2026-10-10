@@ -147,11 +147,11 @@ for (const sourceType of [false, true]) test(`#7220 selection and Zones inherit 
   }
   const preparation = new StoreEditor(f.store, removal);
   const addType = (editor: StoreEditor): number => {
-  const quantity = editor.addEntity('IfcQuantityVolume', f.store.schemaVersion === 'IFC2X3'
-    ? ['NetVolume', null, null, 10] : ['NetVolume', null, null, 10, null]).expressId;
-  const qto = editor.addEntity('IfcElementQuantity', [generateIfcGuid(), owner, 'Qto_WallBaseQuantities', null, null, [`#${quantity}`]]).expressId;
-  const type = editor.addEntity('IfcWallType', [generateIfcGuid(), owner, 'Overlay native wall type', null, null,
-    [`#${qto}`], null, null, null, '.NOTDEFINED.']).expressId;
+    const quantity = editor.addEntity('IfcQuantityVolume', f.store.schemaVersion === 'IFC2X3'
+      ? ['NetVolume', null, null, 10] : ['NetVolume', null, null, 10, null]).expressId;
+    const qto = editor.addEntity('IfcElementQuantity', [generateIfcGuid(), owner, 'Qto_WallBaseQuantities', null, null, [`#${quantity}`]]).expressId;
+    const type = editor.addEntity('IfcWallType', [generateIfcGuid(), owner, 'Overlay native wall type', null, null,
+      [`#${qto}`], null, null, null, '.NOTDEFINED.']).expressId;
     return type;
   };
   const sourceTypeId = sourceType ? addType(preparation) : null;
@@ -189,4 +189,23 @@ for (const sourceType of [false, true]) test(`#7220 selection and Zones inherit 
   assert.equal(view.getMutationRevision(), revision);
   assert.equal(view.getEffectiveChanges().length, changes);
   assert.equal(useViewerStore.getState().zoneApportionment, cache);
+});
+
+for (const mixed of [false, true]) test(`#7220 malformed ${mixed ? 'mixed' : 'suffix'} native reference list refuses the whole current quantity graph`, async t => {
+  const x = await inheritedWall(t); if (!x) return;
+  assert.equal(readCurrentTypeQuantities(x.store, x.f.id, x.view).status, 'available');
+  const invalid = `#${x.a.quantity}junk`;
+  x.view.setPositionalAttribute(x.a.qto, 5, mixed ? [`#${x.a.quantity}`, invalid] : [invalid]);
+  const revision = x.view.getMutationRevision(), changes = x.view.getEffectiveChanges().length;
+  const current = readCurrentTypeQuantities(x.store, x.f.id, x.view);
+  assert.equal(current.status, 'unavailable');
+  assert.equal(current.reason, 'Native quantity references are unreadable');
+  assert.equal(current.value, null, 'no partial valid member escapes the refusal');
+  for (const source of ['selection', 'zones'] as const) {
+    const evidence = capture(source);
+    assert.equal(evidence.quantityStatus, 'unavailable');
+    assert.equal(evidence.value('net'), undefined, 'malformed overlay never resurrects the source NetVolume10');
+  }
+  assert.equal(x.view.getMutationRevision(), revision);
+  assert.equal(x.view.getEffectiveChanges().length, changes);
 });

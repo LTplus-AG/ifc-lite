@@ -1,0 +1,130 @@
+{
+  "at": "2026-10-10T07:15:33.729818+00:00",
+  "sourceHead": "23ea207ac0a90a894d6e1969144c706a86f8e602",
+  "sourceFixUnchanged": true,
+  "knipVerdict": "FAIL_FINDINGS_RETAINED",
+  "rootAdjudication": "Measurement eligibility only; global Knip failure retained; no baseline analyzer equivalence or readiness approval",
+  "measurementVerdict": "RESOURCE_REFUSED_NO_NATIVE_BROWSER_OR_MODEL_EXECUTION",
+  "files": [
+    {
+      "file": "knip-stdout.log.gz",
+      "bytes": 34807,
+      "sha256": "e5f1f966869d9569cfb3cdbdb6dffe6e0ae48c700cc00ee874a42c2d150d58a6",
+      "rawBytes": 205486,
+      "rawSha256": "3e32d2607c2bc3dddb883718cc6e02f6927f3b0074507df758d15b30a4e48490",
+      "localSource": "/home/louistrue/.t3/artifacts/6537-load-pipeline-227af528/removal-gate-c633133c-20261010/stdout.log",
+      "gzip": true
+    },
+    {
+      "file": "knip-stderr.log.gz",
+      "bytes": 264,
+      "sha256": "8225da87ed87e3c965e00939d005530f654374db58a23be1b3fc42de48c0afae",
+      "rawBytes": 1297,
+      "rawSha256": "813ccc7b7f08f019455b16bc2831a158ab6693f360bbcedfd4299373258b6f84",
+      "localSource": "/home/louistrue/.t3/artifacts/6537-load-pipeline-227af528/removal-gate-c633133c-20261010/stderr.log",
+      "gzip": true
+    },
+    {
+      "file": "knip-result.json",
+      "bytes": 1321,
+      "sha256": "a23dc6b552be1d8ab58e98a8ed914ebc277f33198ac1d3fcf445b3519c51f59f",
+      "rawBytes": 1321,
+      "rawSha256": "a23dc6b552be1d8ab58e98a8ed914ebc277f33198ac1d3fcf445b3519c51f59f",
+      "localSource": "/home/louistrue/.t3/artifacts/6537-load-pipeline-227af528/removal-gate-c633133c-20261010/result.json",
+      "gzip": false
+    },
+    {
+      "file": "knip-release.json",
+      "bytes": 1554,
+      "sha256": "3a41322425cf8880a8e0977ef17cbf4eb4baec73afa3275131883a28684c685c",
+      "rawBytes": 1554,
+      "rawSha256": "3a41322425cf8880a8e0977ef17cbf4eb4baec73afa3275131883a28684c685c",
+      "localSource": "/home/louistrue/.t3/artifacts/6537-load-pipeline-227af528/removal-gate-c633133c-20261010/release.json",
+      "gzip": false
+    },
+    {
+      "file": "root-adjudication.json",
+      "bytes": 3270,
+      "sha256": "d7be7f788d803efe542c2138268522cd338847afe356197e25ece04899b9cf39",
+      "rawBytes": 3270,
+      "rawSha256": "d7be7f788d803efe542c2138268522cd338847afe356197e25ece04899b9cf39",
+      "localSource": "/home/louistrue/.t3/artifacts/6537-load-pipeline-227af528/removal-gate-c633133c-20261010/independent-root-adjudication.json",
+      "gzip": false
+    },
+    {
+      "file": "source-tools-inventory.json.gz",
+      "bytes": 853144,
+      "sha256": "2a19fc76bf0748b1a68167107beb731f62a3b6b2a5726b36bef1fba6a4f97382",
+      "rawBytes": 2511037,
+      "rawSha256": "1c811cdfb3e314947d22b1a3656cb213c769ee441043cae20b840847166d709d",
+      "localSource": "/home/louistrue/.t3/artifacts/6537-load-pipeline-227af528/removal-gate-c633133c-20261010/source-tools-before.json",
+      "gzip": true
+    },
+    {
+      "file": "root-finding-file-map.json.gz",
+      "bytes": 43531,
+      "sha256": "a1b8a9a01713877cfb6ffaa3aae1404ed6b04d90077b94313cb103d15a43746e",
+      "rawBytes": 476362,
+      "rawSha256": "14ad76c538cc64e54a20eabf5f1839832b053a4c81516f9f7bba8dcb971b4447",
+      "localSource": "/home/louistrue/.t3/artifacts/6537-load-pipeline-227af528/removal-gate-c633133c-20261010/independent-finding-file-map.json",
+      "gzip": true
+    },
+    {
+      "file": "root-baseline-blob-proof.json.gz",
+      "bytes": 40979,
+      "sha256": "da45d50f5155e7f09159f7726b2505bd4bdfb8a30f356df69b14fef09aadeb94",
+      "rawBytes": 211895,
+      "rawSha256": "1f637d608b37ecb8722e27923118ff1190dd5536e076f398462a71dcc4f6eb37",
+      "localSource": "/home/louistrue/.t3/artifacts/6537-load-pipeline-227af528/removal-gate-c633133c-20261010/independent-baseline-blob-proof.json",
+      "gzip": true
+    },
+    {
+      "file": "frozen-closure.json",
+      "bytes": 3101,
+      "sha256": "90932af554becaa0b8483b13ba43b55e71787271d0af7f0e2a4ba4f6672cce98",
+      "rawBytes": 3101,
+      "rawSha256": "90932af554becaa0b8483b13ba43b55e71787271d0af7f0e2a4ba4f6672cce98",
+      "localSource": "/home/louistrue/.t3/artifacts/6537-load-pipeline-227af528/measurement-524aec28-20261010/pre-execution-frozen-closure.json",
+      "gzip": false
+    },
+    {
+      "file": "post-refusal-artifacts.json",
+      "bytes": 1451,
+      "sha256": "533d720c12bd783afe6d31eb26bf5b00b8cc054ade1835e9c8dd29b6f6799996",
+      "rawBytes": 1451,
+      "rawSha256": "533d720c12bd783afe6d31eb26bf5b00b8cc054ade1835e9c8dd29b6f6799996",
+      "localSource": "/home/louistrue/.t3/artifacts/6537-load-pipeline-227af528/measurement-524aec28-20261010/post-refusal-artifacts.json",
+      "gzip": false
+    },
+    {
+      "file": "measurement-release.json",
+      "bytes": 2576,
+      "sha256": "47e9245d9c7bcb1c4ea7f7f9609a775601b3b10bdd93f5e79f69f04fb3219bb7",
+      "rawBytes": 2576,
+      "rawSha256": "47e9245d9c7bcb1c4ea7f7f9609a775601b3b10bdd93f5e79f69f04fb3219bb7",
+      "localSource": "/home/louistrue/.t3/artifacts/6537-load-pipeline-227af528/measurement-524aec28-20261010/cohort-release.json",
+      "gzip": false
+    },
+    {
+      "file": "resource-samples.json.gz",
+      "bytes": 2093,
+      "sha256": "477a9548f8eed943565059ccbb7c48670569e72a7a601253f72295f3cee74853",
+      "rawBytes": 14077,
+      "rawSha256": "5ce00d1680df84cdf70fa2d47cd3d824e50b3334da9e163ff88f22102e35b1b8",
+      "gzip": true,
+      "projection": true
+    }
+  ],
+  "sourceToolsAfterRawSha256": "1c811cdfb3e314947d22b1a3656cb213c769ee441043cae20b840847166d709d",
+  "rawResourceArchive": "/home/louistrue/.t3/artifacts/6537-load-pipeline-227af528/measurement-524aec28-20261010/resources-initial",
+  "hostProcessesNotPublished": "Raw process/query/ownership evidence remains preserved in local archive; numeric samples above are a declared projection",
+  "rootReplies": {
+    "grants": "https://github.com/LTplus-AG/ifc-lite/pull/7369#issuecomment-6094264500",
+    "adjudication": "https://github.com/LTplus-AG/ifc-lite/pull/7369#issuecomment-6094905619",
+    "resourceRefusal": "https://github.com/LTplus-AG/ifc-lite/pull/7369#issuecomment-6094985305"
+  },
+  "executionSourceHashes": {
+    "removalRunner": "2ca767516630c10b98cf6c80346b8ec89e9acc20eb7a320c81699b253f4bb28e",
+    "resourceCollector": "a8de45f6b8cb6f7fa7c250931b237437e6ffa92ef3428f700b344c2fabb13beb"
+  }
+}

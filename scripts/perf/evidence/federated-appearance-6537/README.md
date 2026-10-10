@@ -17,9 +17,16 @@ the shipped classification prerequisite #7361 and current main's sixteen viewer
 test shards. All three appearance implementation/test file hashes are unchanged.
 The local checks and runtime inventory below remain bound to the original
 validated source; they do not qualify the new integrated runtime. Fresh hosted
-CI is required. The declared measurement experiment retains the exact base
+CI results for the integrated source are recorded below. The declared experiment retains the exact base
 `2382cf4124315f027b2d33c21c1751cee33c5081` and branch publication `5639fb37`
 pins separately; its setup-only conditional reservation follows #7109/#6711.
+
+Fresh integrated-source hosted Test run 37983892828 passed at `23ea207a`,
+including all sixteen viewer shards, typecheck, lint, Node tests and both E2E
+smoke jobs. The later [removal gate and measurement admission](gate-and-admission-20261010/README.md)
+retain the actual Knip failure, independent root scope adjudication and failed
+host-idle reading. Both phases explicitly released; no timing/model run began.
+These documentation/artifact updates do not alter the qualified source bytes.
 
 ## Mechanism and preservation
 
@@ -120,6 +127,6 @@ identity and suffix movement recorded. Retain every failed/incomplete sample.
 
 Focused physical GPU acceptance is unavailable. An unfocused run, skipped
 criterion, missing fixture, local hardware advantage or mounted replay cannot
-replace it. Future builds/full checks/timings need a separate reservation after
-the current #7109/#6709 queue and verified idle host conditions. The draft
+replace it. Future builds/full checks/timings need their own root reservation
+and actual idle host conditions; the refused measurement grant is released. The draft
 remains held, and the broad charter stays open.

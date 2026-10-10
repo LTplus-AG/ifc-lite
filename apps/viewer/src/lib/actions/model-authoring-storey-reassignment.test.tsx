@@ -512,7 +512,10 @@ for (const owner of ['source', 'destination'] as const) test(`#7328 public revie
   if (!ensureRoomWasm(t)) return;
   const s = await setup(), batch = s.batch();
   const storeyId = owner === 'source' ? 42 : s.destination;
-  const attributes = [...effectiveMetadataRecord(s.store, storeyId, s.view)!.attributes];
+  const attributes = effectiveMetadataRecord(s.store, storeyId, s.view)!.attributes.map(value => {
+    assert.ok(value === null || typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean', 'IfcBuildingStorey attributes are scalar');
+    return value;
+  });
   const point = s.editor.addEntity('IfcCartesianPoint', [[50, 0, 0]]).expressId;
   const axis = s.editor.addEntity('IfcAxis2Placement3D', [`#${point}`, null, null]).expressId;
   attributes[5] = `#${s.editor.addEntity('IfcLocalPlacement', [null, `#${axis}`]).expressId}`;

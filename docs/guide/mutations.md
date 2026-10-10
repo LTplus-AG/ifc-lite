@@ -942,11 +942,13 @@ must implement a method before its namespace can execute it.
 `await bim.store.roomCommand(modelId, storeyExpressId, command)` derives rooms
 from current native wall meshes. It shares the viewer's native layout cache,
 occupancy checks, supported space footprint reader and IFC writer. Actions are
-`query`, `auto`, `pick` (with `point`), `footprint`, `update` (with `expressIds`),
+`query`, `auto`, `autoAll`, `pick` (with `point`), `footprint`, `update` (with `expressIds`),
 and `edit` (with a `drag`, `split`, `remove` or `prune` layout operation).
 `query` returns candidates without writing. Writes return `created`, `updated`,
 `deleted` and `skipped` references and form one logical Undo batch. Supplied
 footprint placement remains available through `addSpace`.
+
+`autoAll` enumerates every current storey in the explicitly chosen model (the supplied storey ID is its anchor), prepares one detached native graph and commits one recorded action. Its `storeys` result contains each native storey ID, coverage status, candidate population, existing room count and created references. Existing room counts include all live owned `IfcSpace` entities, including unsupported or absent geometry. `effectiveRoomIdsByStorey(store, mutationView, storeyIds)` supplies the same complete bounded native population to SDK preparation and Viewer review; footprint readability only controls geometry planning. `unavailable` coverage refuses the entire commit; `noWalls`, `occupied` and `noFaces` are known no-write storey outcomes. Empty results create no Undo group. This never runs across other federated models. Complete preparation refuses above 128 storeys, 128 candidates or 4096 contour vertices rather than truncating an all-storey claim. Hosts can supply `NativeRoomGeometry.validate` to pin actual mesh/frame inputs across asynchronous preparation and held approval.
 
 Settings use metres: `weld`, `height`, `z` and optional edit
 `tolerance`; `boundary` is `inner`, `center` or `outer`. `namePattern`,

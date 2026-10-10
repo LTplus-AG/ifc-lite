@@ -131,6 +131,30 @@ describe('prohibited specification element results (#7403)', () => {
     ]);
   });
 
+  it('gives each element a prohibited check and reason when the specification has no applicability facets (#7412 review)', async () => {
+    // Invalid IDS (applicability must name a facet), but a document built in
+    // code can say it, and the validator must stay coherent: every element is
+    // applicable, so every element fails, each with a reason to show.
+    const document = parseIDS(ids());
+    document.specifications[0].applicability.facets = [];
+    const store = await new IfcParser().parseColumnar(new TextEncoder().encode(IFC).buffer, { disableWorkerScan: true });
+    const report = await validateIDS(document, createDataAccessor(store),
+      { modelId: 'probe', schemaVersion: 'IFC4', entityCount: store.entityCount },
+      { translator: createTranslationService('en') });
+    const result = report.specificationResults[0];
+    const elements = result.entityResults.filter((e) => e.entityName === 'W-1' || e.entityName === 'S-1');
+    expect(elements.map((e) => e.entityName).sort()).toEqual(['S-1', 'W-1']);
+    expect(result.passedCount).toBe(0);
+    expect(result.failedCount).toBe(result.applicableCount);
+    for (const element of result.entityResults) {
+      expect(element.passed).toBe(false);
+      const checks = element.requirementResults;
+      expect(checks.map((c) => [c.requirement.optionality, c.status])).toEqual([['prohibited', 'fail']]);
+      expect(checks[0].failureReason).toContain(element.entityType);
+      expect(checks[0].failureReason).not.toMatch(/\{\w+\}/);
+    }
+  });
+
   it('control: a prohibited specification with no matches still passes', async () => {
     const report = await validate(ids().replace('IFCWALL', 'IFCDOOR'));
     const result = report.specificationResults[0];

@@ -15,15 +15,21 @@
  * `prohibited` requirement. An applicable element satisfies that facet by
  * definition, so the existing prohibited-requirement path in
  * `checkRequirement` fails it and words the failure with the
- * `failures.prohibited` message. A specification with no applicability
- * facets gets no synthetic check; the validator still fails its elements
- * through `maxOccurs === 0` directly.
+ * `failures.prohibited` message.
+ *
+ * A specification with no applicability facets (invalid IDS, but a document
+ * built in code can say it) applies to every entity, so its check is an
+ * entity facet matching any IFC class: each element still fails with a
+ * reason naming its own class.
  */
 
-import type { IDSRequirement, IDSSpecification } from '../types.js';
+import type { IDSEntityFacet, IDSRequirement, IDSSpecification } from '../types.js';
 
 /** Requirement id of the synthetic prohibition check; distinct from the parser's `req-N`. */
 const PROHIBITED_APPLICABILITY_REQUIREMENT_ID = 'applicability-prohibited';
+
+/** "Any IFC class": what an applicability with no facets selects. Matched case-insensitively. */
+const ANY_ENTITY_FACET: IDSEntityFacet = { type: 'entity', name: { type: 'pattern', pattern: 'IFC.*' } };
 
 /**
  * The requirements to evaluate per applicable element of `spec`, read from the
@@ -34,8 +40,8 @@ const PROHIBITED_APPLICABILITY_REQUIREMENT_ID = 'applicability-prohibited';
  * the synthetic requirement's identity stable for its description cache.
  */
 export function requirementsToCheck(spec: IDSSpecification): readonly IDSRequirement[] {
-  const facet = spec.applicability.facets[0];
-  if (spec.maxOccurs !== 0 || !facet) return spec.requirements;
+  if (spec.maxOccurs !== 0) return spec.requirements;
+  const facet = spec.applicability.facets[0] ?? ANY_ENTITY_FACET;
   return [
     ...spec.requirements,
     { id: PROHIBITED_APPLICABILITY_REQUIREMENT_ID, facet, optionality: 'prohibited' },

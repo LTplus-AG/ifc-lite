@@ -54,6 +54,19 @@ describe('XSD regex: negated multi-char escapes inside a class (#7400)', () => {
     expect(m('[^\\W\\D]', 'x')).toBe(false);
   });
 
+  it('a literal ^ beside a complemented escape stays literal (review on #7410)', () => {
+    // [\w^] = word characters plus caret.
+    expect(m('[\\w^]+', 'a^b')).toBe(true);
+    expect(m('[\\w^]', '-')).toBe(false);
+    // [^^\w] = neither caret nor a word character.
+    expect(m('[^^\\w]', '-')).toBe(true);
+    expect(m('[^^\\w]', '^')).toBe(false);
+    expect(m('[^^\\w]', 'a')).toBe(false);
+    // [a^\W] = a, caret, or a non-word character.
+    expect(m('[a^\\W]+', 'a^-')).toBe(true);
+    expect(m('[a^\\W]', 'b')).toBe(false);
+  });
+
   it('composes with class subtraction', () => {
     expect(m('[\\w-[a]]+', 'bc')).toBe(true);
     expect(m('[\\w-[a]]', 'a')).toBe(false);
@@ -174,6 +187,24 @@ describe('XSD regex: constructs that cannot be evaluated are refused, not approx
     expect(r.reason).toMatch(/IsNoSuchBlock/);
     expect(() => m('\\p{IsNoSuchBlock}+', 'abc')).toThrow(UnsafeRegexPatternError);
     expect(() => m('[a\\p{IsNoSuchBlock}]', 'a')).toThrow(/IsNoSuchBlock/);
+  });
+
+  it('a JS-only Unicode property is not an XSD category and is refused (review on #7410)', () => {
+    for (const p of ['\\p{Emoji}', '\\P{Emoji}', '[a\\p{Emoji}]', '[^\\P{Emoji}]', '\\p{Script=Latin}', '\\p{Greek}', '\\p{Cs}']) {
+      const r = translateXsdRegex(p);
+      expect(r.supported, p).toBe(false);
+      expect(r.reason, p).toMatch(/not an XSD/);
+    }
+    expect(() => m('\\p{Emoji}', '\u{1F600}')).toThrow(UnsafeRegexPatternError);
+    expect(() => m('[a\\p{Emoji}]', 'a')).toThrow(/Emoji/);
+  });
+
+  it('every Appendix F category escape is accepted, positive and negated', () => {
+    const cats = 'L Lu Ll Lt Lm Lo M Mn Mc Me N Nd Nl No P Pc Pd Ps Pe Pi Pf Po Z Zs Zl Zp S Sm Sc Sk So C Cc Cf Co Cn';
+    for (const c of cats.split(' ')) {
+      expect(translateXsdRegex(`\\p{${c}}[\\P{${c}}]`).supported, c).toBe(true);
+    }
+    expect(m('\\p{Lu}\\P{Lu}', 'Ab')).toBe(true);
   });
 
   it('an escape XSD does not define is reported', () => {

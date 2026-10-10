@@ -30,7 +30,9 @@
  *    case is the complement.
  *  - `\p{IsBlock}` / `\P{IsBlock}` name a Unicode block (Appendix F.1.1),
  *    translated to its code-point range(s) (`xsd-regex-blocks.ts`).
- *    Category escapes (`\p{Lu}`) pass through: JS knows the same names.
+ *    The Appendix F category escapes (`\p{Lu}`, `\P{Nd}`) pass through:
+ *    JS knows the same names. Any other property name JS would accept
+ *    (`\p{Emoji}`, `\p{Script=Latin}`) is not XSD and is unsupported.
  *  - Class subtraction `[a-z-[aeiou]]` is translated exactly to a negative
  *    lookahead (`translateSubtraction`).
  *
@@ -201,8 +203,12 @@ function readEscape(pattern: string, i: number): Escape {
       }
       return { kind: 'set', set: { members, negated: next === 'P' }, length };
     }
-    if (!isJsUnicodeProperty(next, name)) {
-      return { kind: 'error', reason: `Unicode property \\${next}{${name}} has no JS equivalent`, length };
+    if (!XSD_CATEGORIES.has(name)) {
+      return {
+        kind: 'error',
+        reason: `\\${next}{${name}} is not an XSD category or block escape`,
+        length,
+      };
     }
     return { kind: 'set', set: { members: m[0], negated: false, bare: true }, length };
   }
@@ -237,7 +243,10 @@ function translateClass(pattern: string, from: number, to: number, flag: (r: str
   while (j < to) {
     const ch = pattern.charAt(j);
     if (ch !== '\\') {
-      positive += ch;
+      // A literal `^` is escaped: `positive` is re-wrapped in fresh
+      // brackets below, where a leading `^` would turn into JS negation
+      // (`[\w^]` must not become `[^]`; review on #7410).
+      positive += ch === '^' ? '\\^' : ch;
       j++;
       continue;
     }
@@ -283,6 +292,7 @@ interface ClassSpan {
   end: number;
 }
 
+/** Delimit the class opening at `pattern[start] === '['`, see `ClassSpan`. */
 function scanClass(pattern: string, start: number): ClassSpan | undefined {
   let j = start + 1;
   while (j < pattern.length) {
@@ -320,16 +330,12 @@ function translateSubtraction(pattern: string, span: ClassSpan, flag: (r: string
 }
 
 /**
- * Whether JS's Unicode regex dialect recognises the property name in a
- * `\p{name}` / `\P{name}` escape. Delegates to the engine itself rather
- * than maintaining a name list; XSD category names (`L`, `Nd`, …) compile.
+ * The category escapes XML Schema Part 2 Appendix F defines (`\p{Lu}` …).
+ * XSD has no `Cs`. JS accepts many more property names (`Emoji`,
+ * `Script=Latin`, `Greek`), but they are not XSD and must not be passed
+ * through as supported (review on #7410). Each of these is a valid JS
+ * General_Category value with the same meaning.
  */
-function isJsUnicodeProperty(pOrP: string, name: string): boolean {
-  try {
-    // eslint-disable-next-line no-new
-    new RegExp(`\\${pOrP}{${name}}`, 'u');
-    return true;
-  } catch {
-    return false;
-  }
-}
+const XSD_CATEGORIES = new Set(
+  'L Lu Ll Lt Lm Lo M Mn Mc Me N Nd Nl No P Pc Pd Ps Pe Pi Pf Po Z Zs Zl Zp S Sm Sc Sk So C Cc Cf Co Cn'.split(' '),
+);

@@ -167,6 +167,7 @@ const PATTERN_REGEX_CACHE = new WeakMap<
   { cs?: RegExp | null; ci?: RegExp | null }
 >();
 
+/** The cached whole-value `RegExp` for `constraint`, or null if it cannot compile. */
 function compilePatternRegex(
   constraint: IDSPatternConstraint,
   caseInsensitive: boolean
@@ -185,6 +186,7 @@ function compilePatternRegex(
   return regex;
 }
 
+/** Compile one XSD pattern for whole-value matching; throws when it cannot be evaluated. */
 function buildPatternRegex(
   xsdPattern: string,
   caseInsensitive: boolean

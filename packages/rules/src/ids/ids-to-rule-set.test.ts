@@ -191,8 +191,10 @@ describe('idsToRuleSet — blocks what has no rule equivalent, with the reason (
     ['classification code', spec('<classification cardinality="required"><value><simpleValue>Ss_25</simpleValue></value></classification>'), /classification code check/],
     ['entity in requirements', spec('<entity><name><simpleValue>IFCWALL</simpleValue></name></entity>'), /entity facet in the requirements/],
     ['no requirements', `<specification name="S" ifcVersion="IFC4">${WALLS}</specification>`, /without requirements/],
-    ['untranslatable XSD regex', spec(property('<value><xs:restriction base="xs:string"><xs:pattern value="\\p{IsBasicLatin}+"/></xs:restriction></value>')),
-      /IsBasicLatin/],
+    // `\p{IsBasicLatin}` is translated exactly since #7400; a block XML
+    // Schema does not define still has no rule equivalent.
+    ['untranslatable XSD regex', spec(property('<value><xs:restriction base="xs:string"><xs:pattern value="\\p{IsNoSuchBlock}+"/></xs:restriction></value>')),
+      /IsNoSuchBlock/],
   ];
 
   for (const [label, specXml, reason] of cases) {

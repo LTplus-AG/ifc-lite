@@ -22,7 +22,7 @@ export function commitReviewedRoom(review: RoomReview, origin: string) {
     applied: [{ index: 0, op: 'room.command', globalId: review.snapshot.storey.GlobalId, modelId,
       field: `Room ${review.proposal.command.action}`, before: JSON.stringify({ rooms: review.snapshot.roomCount, candidates: review.snapshot.candidateCount }),
       after: JSON.stringify({ created: result.created.length, updated: result.updated.length, deleted: result.deleted.length,
-        skipped: result.skipped.length, sessionOnly: result.created.length + result.updated.length + result.deleted.length === 0 }) }],
+        skipped: result.skipped.length, sessionOnly: !!review.prepared.layoutAfter && result.created.length + result.updated.length + result.deleted.length === 0 }) }],
     skipped: result.skipped.map((_, index) => ({ index, status: 'blocked' })),
   };
   return { result, receipt };

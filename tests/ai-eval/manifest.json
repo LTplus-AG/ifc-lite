@@ -1,7 +1,7 @@
 {
   "$schema": "./manifest.schema.json",
   "version": 1,
-  "updated": "2026-10-08",
+  "updated": "2026-10-09",
   "privacy": {
     "policy": "Only public sample models and repository fixtures are admitted. No client, project or personal data; no credentials in any manifest, recording, receipt or result. Reviewer ids are pseudonymous. Live results stay in the gitignored tests/ai-eval/results folder until a person reviews and promotes a recording.",
     "automatedScan": "check-ai-eval-manifest.mjs recomputes every committed fixture's SHA-256 and size, and refuses e-mail addresses, credential-like tokens and non-empty STEP author/organisation fields in it.",
@@ -78,8 +78,8 @@
       "id": "sample-architecture", "origin": "committed", "kind": "ifc",
       "path": "apps/viewer/public/samples/building-architecture.ifc",
       "sha256": "3ff9b10bd00c7b96dded51e7ca5a6b69efbea38b049adcdd05fcd247de7e70d5", "size": 225635, "schema": "IFC4",
-      "source": { "authoringTool": "SketchUp 2024 (24.0.594), IFC-manager for SketchUp 5.3.3", "description": "Small house with walls, slabs, roof, spaces, furniture and wall types; the viewer demo sample." },
-      "license": { "status": "unrecorded", "note": "Committed viewer sample; redistribution terms are not recorded in the repository. Record them before external publication of results." },
+      "source": { "authoringTool": "SketchUp 2024 (24.0.594), IFC-manager for SketchUp 5.3.3", "description": "Small house with walls, slabs, roof, spaces, furniture and wall types; the viewer demo sample. Exact bytes match the immutable buildingSMART Certification-datasets download recorded in native/sketchup-licence-provenance.json." },
+      "license": { "status": "recorded", "spdx": "CC-BY-4.0", "note": "Exact bytes match the buildingSMART Certification-datasets publisher revision and its CC BY 4.0 dataset terms. Publication credit and immutable download/license fingerprints are recorded in native/sketchup-licence-provenance.json. This does not assert human privacy or licence approval." },
       "privacy": { "automated": "pass", "human": { "status": "pending", "reviewers": [] } }
     },
     {
@@ -88,7 +88,7 @@
       "sha256": "0dfb7152db0a845747d2f35ee5ba9ba3772744072cb23040353c469c2a05f366", "size": 226971, "schema": "IFC4",
       "source": { "authoringTool": "SketchUp 2024 (24.0.594), IFC-manager for SketchUp 5.3.3", "description": "Revision B of the sample: one property edit, one moved wall, one deletion and an added duct that hits a wall.",
         "derivedFrom": "sample-architecture", "derivation": "tools/demo-kit/derive-variants.mts" },
-      "license": { "status": "unrecorded", "note": "Derived from the committed viewer sample; same unrecorded redistribution terms." },
+      "license": { "status": "recorded", "spdx": "CC-BY-4.0", "note": "Repository-derived revision of the CC BY 4.0 buildingSMART sample. Credit the original publisher and identify the changes recorded in native/sketchup-licence-provenance.json; this is not a separate publisher export or a completed human approval." },
       "privacy": { "automated": "pass", "human": { "status": "pending", "reviewers": [] } }
     },
     {
@@ -112,8 +112,8 @@
       "id": "fzk-haus", "origin": "fixtures", "kind": "ifc",
       "path": "tests/models/ara3d/AC20-FZK-Haus.ifc",
       "sha256": "d42ab0dee01173106c16cd823b4614efe188fa15dd65195d95b9879bec59acc5", "size": 2526511, "schema": "IFC4",
-      "source": { "authoringTool": "ARCHICAD", "description": "KIT FZK-Haus reference house, the real ArchiCAD export already used by the Assistant IDS oracle test; STEP FILE_NAME author and organisation scrubbed, DATA bytes unchanged." },
-      "license": { "status": "unrecorded", "note": "Repository fixture from the ara3d corpus; record the publisher's terms before external publication of results." },
+      "source": { "authoringTool": "ARCHICAD", "description": "KIT FZK-Haus reference house, the real ArchiCAD export already used by the Assistant IDS oracle test; Evaluation fixture has scrubbed STEP FILE_NAME author and organisation fields; publisher DATA matches after CRLF-to-LF normalization, with different full-file bytes." },
+      "license": { "status": "recorded", "note": "KIT IFC Examples permits unrestricted use and requests the publication credit recorded in native/fzk-licence-provenance.json. Publisher terms: https://www.ifcwiki.org/index.php?title=KIT_IFC_Examples&oldid=552. The publisher download has identical DATA after CRLF-to-LF normalization; full-file fingerprints differ. See native/fzk-licence-provenance.json. These recorded terms do not assert human privacy or licence approval." },
       "privacy": { "automated": "not-fetched", "human": { "status": "pending", "reviewers": [] } }
     }
   ],

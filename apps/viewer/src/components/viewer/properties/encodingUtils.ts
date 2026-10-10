@@ -37,5 +37,5 @@ export interface PropertySet {
 
 export interface QuantitySet {
   name: string;
-  quantities: Array<{ name: string; value: number; type: number }>;
+  quantities: ReturnType<typeof import('@ifc-lite/parser').extractQuantitiesOnDemand>[number]['quantities'];
 }

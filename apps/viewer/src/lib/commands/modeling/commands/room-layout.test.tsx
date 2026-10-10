@@ -67,7 +67,7 @@ const box = (x0: number, y0: number, x1: number, y1: number) => corners([[x0, y0
 const PARTITIONED: Wall[] = [...BOX, [[4, 0], [4, 5]]];
 
 beforeEach(async () => {
-  await seedModelingSession();
+  await seedModelingSession({ roomGeometry: true });
   clearStoreyRoomsCache();
 });
 let restoreRemesh: () => void = () => {};
@@ -315,7 +315,7 @@ describe('room.place corner weld and leak diagnostics (#6232 A4b)', () => {
 
 describe('room.place in a millimetre model (#6232 A4b, footprint helper scale)', () => {
   it('the rooms Auto wrote read back where they are: a second Auto makes none, and a drag reshapes them', async (t) => {
-    await seedModelingSession({ unit: 'millimetre' });
+    await seedModelingSession({ unit: 'millimetre', roomGeometry: true });
     clearStoreyRoomsCache();
     if (!(await start(t))) return;
     await auto();

@@ -58,7 +58,7 @@ import { computeZoneApportionmentNow, gatherProvedVolumes } from './useZoneAppor
 // The numbers themselves come from ONE place, shared with the table export:
 // two producers of a per-zone volume is exactly the disagreement #2508's
 // verification bar exists to prevent.
-import { contextFor, quantitySetsFor, zoneFactsFor, type ModelContext } from './zoneFacts.js';
+import { contextFor, quantitySetsFor, quantitySetsWithStatusFor, zoneFactsFor, type ModelContext } from './zoneFacts.js';
 
 /** This command skips unavailable IFC models and reports only files it wrote. */
 function writableContextFor(modelId: string, cache: Map<string, ModelContext | null>): ModelContext | null {
@@ -210,9 +210,16 @@ export function applyZoneWriteBack(zoneSet: ZoneSet, basis: VolumeBasis): ZoneWr
     // ONE read of the entity's quantity sets per element, serving both the
     // declared basis and the stale-zone-qset sweep below. Each read is an
     // on-demand extraction, so asking twice would double the run's cost.
-    const qsets = quantitySetsFor(context, ref.expressId);
-    const facts = zoneFactsFor(globalId, assignment, zoneNameById, basis, context.volumeSiScale, qsets, proved, apportioned);
-    const built = buildElementWriteBack(facts, {
+    const quantityRead = quantitySetsWithStatusFor(context, ref.expressId);
+    const qsets = quantityRead.quantitySets;
+    const facts = zoneFactsFor(globalId, assignment, zoneNameById, basis, context.declaredUnitsAvailable === false ? null : context.volumeSiScale, qsets, proved, apportioned, quantityRead.inheritedUnavailable);
+    // Read-only explicit quantities can remain physical without project units,
+    // but a new unitless IfcQuantityVolume needs a known target project scale.
+    // Preserve any earlier geometry/quantity refusal and the safe label/sweep path.
+    const writeFacts: typeof facts = context.declaredUnitsAvailable === false && facts.refusal === null
+      ? { ...facts, shares: [], outsideM3: 0, refusal: 'writeback-unit-unavailable' }
+      : facts;
+    const built = buildElementWriteBack(writeFacts, {
       zoneSetName: zoneSet.name,
       zoneSetId: zoneSet.id,
       basis,

@@ -20,8 +20,9 @@ import { nativeStructuralTransportEvidence } from '@/lib/actions/structural-grap
 
 import { nativeAuthoringEvidence } from '@/lib/actions/native-authoring-evidence';
 import { IfcQuery } from '@ifc-lite/query';
-import { extractClassificationsOnDemand, extractProjectUnits, readCurrentProjectUnits, materialAssignmentsAvailable, ProjectUnits, type IfcDataStore } from '@ifc-lite/parser';
+import { extractClassificationsOnDemand, materialAssignmentsAvailable, ProjectUnits, type IfcDataStore } from '@ifc-lite/parser';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
+import { currentProjectUnitContext } from '@/lib/units/current-project-unit-context';
 import { useViewerStore, type ViewerState } from '@/store';
 import { createQueryAdapter } from '@/sdk/adapters/query-adapter';
 import { relationshipsForSelection } from '@/components/viewer/properties/merge-relationship-data';
@@ -104,13 +105,12 @@ function sources(s: ViewerState) {
     const model = isLegacy(modelId) ? undefined : s.models.get(modelId);
     const store = (model?.ifcDataStore ?? (isLegacy(modelId) ? s.ifcDataStore : null)) as IfcDataStore | null;
     const view = s.mutationViews.get(isLegacy(modelId) ? '__legacy__' : modelId) ?? undefined;
-    const currentUnits = store && view ? readCurrentProjectUnits(store, view) : null;
+    const currentUnits = currentProjectUnitContext(store, view);
     const source = {
       store, view,
       query: store ? new IfcQuery(store) : null,
-      units: currentUnits ? currentUnits.value ?? ProjectUnits.empty()
-        : store?.source?.length && store.entityIndex ? extractProjectUnits(store.source, store.entityIndex) : ProjectUnits.empty(),
-      unitsAvailable: !currentUnits || currentUnits.status === 'available',
+      units: currentUnits.value ?? ProjectUnits.empty(),
+      unitsAvailable: currentUnits.status === 'available',
       name: model?.name ?? modelId,
     };
     cache.set(modelId, source);

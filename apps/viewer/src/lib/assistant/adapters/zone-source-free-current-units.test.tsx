@@ -228,18 +228,25 @@ for (const route of ['selection', 'zones', 'properties'] as const) {
     const version = useViewerStore.getState().mutationVersion;
     const after = read(route === 'zones' ? 'zones' : 'selection');
     assert.equal(after.mesh, sourceBacked.mesh, 'the native cached SI mesh survives release without rescaling');
+    assert.equal(useViewerStore.getState().zoneApportionment, cache);
+    assert.equal(useViewerStore.getState().mutationViews, views);
+    assert.equal(useViewerStore.getState().mutationViews.size, 0, 'capture does not manufacture a native edit view');
+    assert.equal(useViewerStore.getState().mutationVersion, version);
     if (route === 'properties') {
       const panel = render(<PropertiesPanel />);
       assert.match(panel.textContent ?? '', /Current quantity units are unavailable/,
         'the mounted native card must report absent unit context even without remaining quantities');
       assert.doesNotMatch(panel.textContent ?? '', /10 m³/, 'no manufactured SI quantity label');
+      // The real panel may create its canonical empty view; it performs no native writes.
+      for (const mountedView of useViewerStore.getState().mutationViews.values()) {
+        assert.equal(mountedView.getMutationRevision(), 0);
+        assert.equal(mountedView.getEffectiveChanges().length, 0);
+      }
+      assert.equal(useViewerStore.getState().mutationVersion, version);
+      assert.equal(useViewerStore.getState().zoneApportionment, cache);
     } else {
       assert.equal(after.unitStatus, 'unavailable', 'absent native source and view cannot certify an available SI context');
       assert.equal(after.net, undefined, 'missing context cannot publish a declared SI basis');
     }
-    assert.equal(useViewerStore.getState().zoneApportionment, cache);
-    assert.equal(useViewerStore.getState().mutationViews, views);
-    assert.equal(useViewerStore.getState().mutationViews.size, 0, 'capture does not manufacture a native edit view');
-    assert.equal(useViewerStore.getState().mutationVersion, version);
   });
 }

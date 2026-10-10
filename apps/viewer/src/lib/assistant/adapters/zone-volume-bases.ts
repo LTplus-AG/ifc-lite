@@ -4,8 +4,9 @@
 
 import { RelationshipType } from '@ifc-lite/data';
 import { IfcQuery } from '@ifc-lite/query';
-import { extractProjectUnits, extractTypeQuantitiesOnDemand, readCurrentProjectUnits, readCurrentTypeQuantities, ProjectUnits, type CurrentProjectUnitResult, type IfcDataStore } from '@ifc-lite/parser';
+import { extractTypeQuantitiesOnDemand, readCurrentTypeQuantities, type CurrentProjectUnitResult, type IfcDataStore } from '@ifc-lite/parser';
 import type { ViewerState } from '@/store';
+import { currentProjectUnitContext } from '@/lib/units/current-project-unit-context';
 import type { EntityRef } from '@/store/types';
 import { effectiveElementData } from '@/components/viewer/properties/effectiveElementData';
 import type { QuantitySet } from '@/components/viewer/properties/encodingUtils';
@@ -40,15 +41,7 @@ export function zoneQuantitySources(s: ViewerState) {
     let source = models.get(ref.modelId);
     if (!source) {
       const store = (s.models.get(ref.modelId)?.ifcDataStore ?? (legacy ? s.ifcDataStore : null)) as IfcDataStore | null;
-      let units: CurrentProjectUnitResult = { status: 'available', reason: null, value: ProjectUnits.empty() };
-      if (store && view) units = readCurrentProjectUnits(store, view);
-      else if (store?.source?.length) {
-        try { units = { status: 'available', reason: null, value: extractProjectUnits(store.source, store.entityIndex) }; }
-        catch (error) {
-          console.warn('[Assistant] Zone source project units are unreadable', error);
-          units = { status: 'unavailable', reason: 'Source project units are unreadable', value: null };
-        }
-      }
+      const units = currentProjectUnitContext(store, view);
       source = { store, query: store ? new IfcQuery(store) : null, units };
       models.set(ref.modelId, source);
     }

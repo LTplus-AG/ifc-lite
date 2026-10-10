@@ -186,3 +186,24 @@ it('a failed trailing readback clears current hover without an unhandled rejecti
   assert.equal(useViewerStore.getState().hoverState.entityId, null);
   assert.equal(warn.mock.calls.length, 1);
 });
+
+// Mounted application ownership only: no native focus, map, or device-loss acceptance.
+it('generic blur retires trailing and in-flight hover without a command press (#6881, #7389 review)', async t => {
+  t.mock.timers.enable({ apis: ['Date', 'setTimeout'], now: 1000 });
+  const p = probe(t, 50); p.move(); await p.finish(0, hit(101));
+  assert.equal(p.params.activeToolRef.current, 'select', 'no modeling command press exists');
+  act(() => { t.mock.timers.tick(10); p.canvas.dispatchEvent(mousePointer('pointermove', 0, 620, 330, { buttons: 0 })); });
+  act(() => { window.dispatchEvent(new Event('blur')); });
+  const afterBlurEntity = useViewerStore.getState().hoverState.entityId;
+  act(() => { t.mock.timers.tick(40); });
+  const afterTrailingPickCount = p.calls.length;
+  // Drain an incorrectly dispatched pre-repair operation so the before run also cleans up.
+  if (p.calls.length > 1) await p.finish(1, hit(202));
+  const next = p.calls.length; p.move();
+  assert.equal(p.calls.length, next + 1, 'the mounted listener reaches an in-flight renderer boundary');
+  act(() => { window.dispatchEvent(new Event('blur')); });
+  await p.finish(next, hit(303));
+  assert.deepEqual({ afterBlurEntity, afterTrailingPickCount,
+    afterLateReadbackEntity: useViewerStore.getState().hoverState.entityId },
+  { afterBlurEntity: null, afterTrailingPickCount: 1, afterLateReadbackEntity: null });
+});

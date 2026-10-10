@@ -754,7 +754,11 @@ export function useMouseControls(params: UseMouseControlsParams): void {
       if (!commandPress.hasPress() || commandPress.cancel(e)) handleMouseLeave();
     };
     const handleLostPointerCapture = (e: PointerEvent) => { if (commandPress.cancel(e)) handleMouseLeave(); };
-    const handleWindowBlur = () => { if (commandPress.cancel()) handleMouseLeave(); };
+    const handleWindowBlur = () => {
+      hoverPicker.cancel();
+      clearHover();
+      if (commandPress.cancel()) handleMouseLeave();
+    };
 
     const handleContextMenu = async (e: MouseEvent) => {
       // macOS/Linux fire this on PRESS, mid-fly; hold it until release (pointerup replays a plain click).

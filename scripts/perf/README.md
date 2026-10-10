@@ -117,6 +117,15 @@ not native GPU acceptance. The current app/observer pair must be rebuilt and
 frozen before the separate T3 correctness session. Original coordinates,
 deadlines, refusals and the focused-performance hold remain.
 
+Mounted base and original-draft hover controls also reproduce stale hits and
+misses after newer input, pointer exit/cancel, unmount and ownership changes.
+The [CPU hover archive](evidence/bounded-depth-readback-6881/hover-ownership-cpu-20261010.json.gz)
+retains those inverses and the corrected shared viewport validity contract.
+Selection and hover retain independent request generations. The diagnostic
+recorder now retains resolved IFC identity and source provenance; serialization
+controls do not establish native picked identities. No additional performance
+claim follows from either repair.
+
 
 ## Prepass terminal trace publication (#6993)
 

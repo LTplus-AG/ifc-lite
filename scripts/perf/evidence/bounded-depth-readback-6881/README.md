@@ -310,3 +310,10 @@ same tab, then evaluate timed out after 15 seconds and open explicitly reported
 that no automation host was available and instructed against retrying. The failure
 is retained; no replacement software GPU measurement was made. Real federated
 viewer hover and a second public model remain unqualified. Keep the PR in draft.
+
+The [mounted hover ownership CPU archive](hover-ownership-cpu-20261010.json.gz)
+retains identical base/candidate controls, all inverse failures, typecheck and
+lint failures/corrections, exact root commands and observer-provenance controls.
+The stale hover repair shares selection's validity snapshot and uses separate
+request generations. These supplied renderer responses qualify application
+ownership only. Native geometry/picking and focused performance remain required.

@@ -332,7 +332,9 @@ test('#7376 explicit native volume remains readable but unknown project units ca
   const table = buildZoneTable(x.f.zoneSet, 'net'); assert.equal(table.length, 2);
   for (const row of table) assert.ok(row.ElementVolumeM3 !== null && Math.abs(row.ElementVolumeM3 - physical) < 1e-20,
     'read-only table retains independently resolvable explicit volume');
+  useViewerStore.setState({ editEnabled: true });
   const result = applyZoneWriteBack(x.f.zoneSet, 'net');
+  assert.equal(result.blocked, null, 'native writeback exercises the permitted public mutation path');
   const written = await parse(editedModelBytes(x.store, x.view));
   assert.equal(written.getEntity(x.quantityId)?.attributes[2], x.unit);
   assert.equal(written.getEntity(x.quantityId)?.attributes[3], 10, 'writeback must not alter the original native member');

@@ -20,7 +20,7 @@ This plan combines four well-established frameworks, each used for what it is be
 | **Why / what** | **Working Backwards** (Amazon PR/FAQ) | Forces a customer-visible definition of "done" before any architecture. | private plan package |
 | **Product** | **Jobs-to-be-Done + PRD** with numbered requirements (FR/NFR) | Every feature traces to a job a real persona has; every requirement traces to a backlog item and a test. | `02-product/` |
 | **How** | **arc42-lite + C4 diagrams + ADRs** (Michael Nygard format) | Architecture decisions are recorded once with their reasoning and alternatives, so they are not re-litigated per PR. | `03-architecture/`, `04-decisions/` |
-| **When** | **Shape Up** (Basecamp): fixed-time *appetites*, shaped *pitches* with rabbit holes and no-gos, 6-week cycles + 2-week cooldowns | Matches ifc-lite's "one defect class per PR, ≤1,500 lines, issue labelled `ready`" workflow: a pitch becomes a GitHub issue charter; scopes become stacked PRs. | `05-delivery/` |
+| **When** | **Shape Up** (Basecamp): fixed-time *appetites*, shaped *pitches* with rabbit holes and no-gos, 6-week cycles + 2-week cooldowns | Uses bounded backlog scopes in PR bodies under the recorded D8 campaign exemption, while retaining one defect class per PR and stacked PRs above ~1,500 lines. | `05-delivery/` |
 | **Measure** | **OKRs** with a North-Star metric + **RAID** log | Ambition stated as measurable targets; risks owned. | `05-delivery/04-metrics-okrs.md`, `05-delivery/05-raid.md` |
 
 Traceability chain: **PR/FAQ claim → Job (J-x) → Requirement (FR-x) → Pitch (P-x) → Backlog item (IDS-xxx) → Test / Eval → OKR**.

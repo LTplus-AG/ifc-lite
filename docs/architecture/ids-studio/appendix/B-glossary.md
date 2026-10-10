@@ -18,7 +18,7 @@
 | **Coverage lens** | 3D colouring by how many specs apply to each element |
 | **Proposal** | AI output: grouped op batches with sources, previews and diagnostics, awaiting review |
 | **Unresolved requirement** | A source statement IDS can't express, recorded with category and reason |
-| **Sidecar** | `studio.json`: Studio metadata outside the IDS XML |
+| **Sidecar** | `studio.json`: Studio metadata outside IDS XML; canonical entry name in an `.idsz` bundle (P-02 `SIDECAR_FILENAME`) |
 | **`.idsz` bundle** | Zip of IDS + sidecar + fixtures + appendix |
 | **Test suite** | Per-spec fixtures (synthetic or snapshot) with expected verdicts |
 | **Corpus** | buildingSMART's official IDS test cases (IDS + IFC + expected result) |

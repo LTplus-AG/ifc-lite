@@ -8,7 +8,7 @@ Each FR traces to jobs (J-x) and pitches (P-x). Acceptance criteria are written 
 
 | ID | Requirement | Pri | Rel | Jobs | Pitch | Acceptance |
 |---|---|---|---|---|---|---|
-| FR-A01 | Studio represents any IDS 1.0 document losslessly, including info/metadata, all six facets in applicability and requirements, all restriction kinds (simple, pattern, enumeration, bounds, length, minLength, maxLength, totalDigits, fractionDigits) and **multiple restriction facets per value** | M | β | J3,J16 | P-01,P-02 | `parse→model→write→parse` is identity on all 334 corpus files + fuzzed docs |
+| FR-A01 | Studio represents any IDS 1.0 document losslessly, including info/metadata, all six facets in applicability and requirements, all restriction kinds (simple, pattern, enumeration, bounds, length, minLength, maxLength, totalDigits, fractionDigits) and **multiple restriction facets per value** | M | β | J3,J16 | P-01,P-02 | Target: `parse→model→canonical serialization→parse` identity on all 334 corpus files + fuzzed docs. This internal writer fidelity check is separate from user export admission; invalid cases must retain diagnostics and be rejected by FR-A06. Unsupported forms retain source + explicit diagnostics until lossless coverage is implemented and qualified |
 | FR-A02 | Every node (document, spec, facet, value) has a stable ID that survives edits, reorders and save/load | M | β | J9,J11 | P-02 | IDs stable across 1,000 random op sequences; persisted in sidecar |
 | FR-A03 | All mutations go through typed, invertible operations; undo/redo is unlimited within a session and persisted per document | M | β | J9 | P-02 | Property test: `apply(op); apply(inverse(op))` ≡ original |
 | FR-A04 | Grounding gate: an op that references a standard IFC entity, predefined type, attribute, pset (`Pset_`/`Qto_`), property, enumeration value or data type that doesn't exist for the spec's IFC version(s) is rejected with ranked candidates | M | β | J3,J14 | P-02 | Gate tests per name kind × version; candidate ranking test |
@@ -16,7 +16,7 @@ Each FR traces to jobs (J-x) and pitches (P-x). Acceptance criteria are written 
 | FR-A06 | Export produces IDS 1.0 XML that passes Studio audit **and** the official buildingSMART audit tool | M | β | J1 | P-01 | CI job runs `ids-audit-tool` on exported corpus + generated docs |
 | FR-A07 | Import IDS 1.0 and 0.9.7; 0.9.7 is upgraded with a list of changes | M | β | J16 | P-03 | Corpus + 0.9.7 fixtures |
 | FR-A08 | Multi-version specs (e.g. `IFC2X3 IFC4`) are supported; pickers show the intersection, lints flag version-specific names | S | β | J3 | P-02 | Tests |
-| FR-A09 | Studio metadata (IDs, provenance, comments, tests, revisions) is stored in a sidecar (`.idsstudio.json`) or the library, never in IDS XML | M | β | — | P-02 | Exported XML byte-identical with/without sidecar |
+| FR-A09 | Studio metadata (IDs, provenance, comments, tests, revisions) is stored in a sidecar (`studio.json` inside an `.idsz` bundle, per P-02 `SIDECAR_FILENAME`) or the library, never in IDS XML | M | β | — | P-02 | Exported XML byte-identical with/without sidecar |
 | FR-A10 | Canonical formatting (`fmt`): stable element order, indentation and namespace prefixes so diffs are minimal | S | β | J9,J12 | P-01 | Golden tests |
 
 ## B. Studio UI

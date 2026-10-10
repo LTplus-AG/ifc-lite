@@ -135,7 +135,7 @@ The [2026-10-10 recovery plan](RECOVERY.md) pins the preserved heads, dependency
 | ID | Title | State | PR / commit |
 |---|---|---|---|
 | IDS-075 | Scaffold `@ifc-lite/ids-agent`; tool-calling adapter on `packages/ai` (Anthropic first, OpenAI second) | ⬜ | |
-| IDS-076 | Tool registry generated from zod; schema read tools | ⬜ | |
+| IDS-076 | Tool registry uses canonical runtime JSON Schemas; schema read tools | ⬜ | |
 | IDS-077 | Act tools: `apply_ops` on sandbox fork, `lint`, `apply_fix`, `mark_unresolved`, `undo` | ⬜ | |
 | IDS-078 | Model tools via worker bridge (stats, count, distinct, infer, coverage) | ⬜ | |
 | IDS-079 | bSDD tools | ⬜ | |
@@ -194,9 +194,9 @@ The [2026-10-10 recovery plan](RECOVERY.md) pins the preserved heads, dependency
 
 | ID | Title | State | PR / commit |
 |---|---|---|---|
-| IDS-115 | CLI `ids audit|lint|fmt` | ⬜ | |
-| IDS-116 | CLI `ids diff|convert|explain|preview|coverage` | ⬜ | |
-| IDS-117 | CLI `ids test|infer|draft|edit|bsdd` | ⬜ | |
+| IDS-115 | CLI `ids audit\|lint\|fmt` | ⬜ | |
+| IDS-116 | CLI `ids diff\|convert\|explain\|preview\|coverage` | ⬜ | |
+| IDS-117 | CLI `ids test\|infer\|draft\|edit\|bsdd` | ⬜ | |
 | IDS-118 | MCP batch 1: `ids_audit`, `ids_lint`, `ids_read`, `ids_apply_ops`, `ids_write`, `ids_schema_*` | ⬜ | |
 | IDS-119 | MCP batch 2: `ids_preview`, `ids_infer`, `ids_coverage`, `ids_diff`, `ids_test` | ⬜ | |
 | IDS-120 | SDK `bim.ids.authoring` | ⬜ | |

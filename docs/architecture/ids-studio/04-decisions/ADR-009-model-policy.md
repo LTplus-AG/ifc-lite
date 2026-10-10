@@ -7,7 +7,7 @@
 ## Decision
 - Default model: `claude-opus-5-5`, with adaptive thinking and effort per mode, strict tools, prompt caching, task budgets and server-side refusal fallbacks (details in `03-architecture/06-ai-agent.md` §3).
 - The provider-neutral interface stays in `packages/ai`.
-- A model or provider is offered for a mode only if it passes that mode's eval gate (E2/E3 executable agreement within 3 pts of the default, audit pass 100%).
+- Initial availability of a model or provider for a mode requires that mode's eval gate (E2/E3 executable agreement within 3 pts of the default, audit pass 100%). Updating an already released prompt/model configuration also requires the separate ≤1 pt regression gate against that configuration's preceding release (`06-ai-agent.md` §9); meeting the availability threshold does not waive it. These are planned acceptance gates, not evidence any provider is currently qualified.
 - Decision D2 can override.
 
 ## Consequences

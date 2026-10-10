@@ -1,7 +1,7 @@
 # Architecture Decision Records
 
 Format: Michael Nygard ADR (Context, Decision, Consequences, Alternatives). Status values: Proposed, Accepted, Superseded.
-All ADRs are **Proposed** until the maintainer accepts them in the charter issue for P-01/P-02. The ADRs name no vendors or clients, so they can be copied to `docs/architecture/decisions/` in the public repo.
+All ADRs are **Proposed** until the maintainer accepts them in the campaign PR/decision record under D8 (no charter issue prerequisite). The ADRs name no vendors or clients, so they can be copied to `docs/architecture/decisions/` in the public repo.
 
 | ADR | Title | Status |
 |---|---|---|

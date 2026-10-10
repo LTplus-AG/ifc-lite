@@ -7,7 +7,7 @@ No standalone IDS editor can do this, and checkers can't do it at authoring time
 **Definition:** for spec S with applicability facets `f1…fn` in display order, the funnel is `|E0|, |E0∩f1|, |E0∩f1∩f2|, …` where `E0` is all elements of the models whose schema matches `S.ifcVersions`.
 
 **Algorithm:**
-1. **Order:** keep the user's order for display. Compute in the validator's broadphase order (first filterable facet, typically the entity, via `entityIndex.byType`), then re-project counts to the display order. Each prefix intersection is a set of expressIds per model (`Uint32Array`, sorted).
+1. **Order:** keep the user's order and compute each displayed prefix against `E0` using only the facets in that prefix. Reordering evaluation within a prefix is allowed when it preserves that prefix's intersection; a later displayed facet must not prefilter an earlier stage. For example, if a property facet precedes `IfcWall`, its stage still counts matching doors. The final applicable set can reuse the validator's broadphase order, but final-set counts cannot be re-projected into prefix counts. Each intersection is a set of expressIds per model (`Uint32Array`, sorted).
 2. **Index reuse:** the `ApplicabilityPropertyIndex` (inverted pset/property/value index) is built once per model set and overlay version, then reused across edits. Property facets with literal names hit the index. Pattern names fall back to scanning the current candidate set.
 3. **Incremental:** cache stage results keyed by `(modelSetHash, facetSignature prefix)`. Editing facet k invalidates stages ≥ k only.
 4. **Progressive:** for large sets use `yieldEveryMs`. Report `≥ n · counting` while scanning. For > 2M candidates, optionally sample (`maxEntities`) and show `~n ± ci`.
@@ -63,7 +63,7 @@ interface Step { facetId: Uuid; ok: boolean; expected: string; actual: ActualVal
 - Huge selections: sample P to 5k elements and report it.
 
 ## 4. Coverage lens (FR-D06)
-- For all loaded models compute `coverage(e) = #specs whose applicability includes e` (incremental with the funnel cache: union of final stages).
+- For all loaded models compute `coverage(e) = sum_S 1[e ∈ applicable(S)]`, keyed by model + expressId. Keep each spec's final applicability set from the funnel cache and count one membership per spec; an element matching two specs has coverage 2. On a spec edit, subtract its old memberships and add its new memberships. The union of the final sets answers only whether coverage is nonzero; it cannot supply the count.
 - Lens colours: 0 = red ("ungoverned"), 1 = light, ≥2 = darker; overlapping specs with conflicting requirements = purple (lint SPEC-006 evidence).
 - Panel: "Ungoverned by class" table (e.g. `IfcFlowSegment 4,210`, `IfcCovering 980`), each row offering "Draft requirements for these" (to infer, or to the agent with context).
 - Registers as an ifc-lite **lens** (reusing `packages/lens`), so it shows up next to existing lenses.
@@ -81,5 +81,5 @@ interface Step { facetId: Uuid; ok: boolean; expected: string; actual: ActualVal
 main → worker: setModels(modelSetHash) | setDoc(docHash, specs delta) | preview(specIds, opts) | explain(specId, ref) | infer(selection, opts) | coverage() | distinct(...)
 worker → main: progress(specId, stage, partialCount) | previewResult(...) | ...
 ```
-- Reuses `workers/idsValidation.worker.ts` infrastructure (extended rather than duplicated).
-- Cancellation via generation counters. A stale result is never applied.
+- **Planned P-05 session lifecycle:** extend the existing `idsValidation.worker.ts` client/protocol rather than add a second worker path. The current `runValidationInWorker` creates and terminates one worker per validation request; it does not implement this stateful protocol. The proposed Studio owner keeps one session for the current model/document context, initializes it with the loaded models' existing source envelopes and overlay snapshots plus the document, and waits for initialization acknowledgments before dependent commands. Hashes identify the snapshots; hashes alone do not populate worker state.
+- Model/document/overlay changes invalidate the affected state and advance the generation before more commands run. Cancelled or obsolete command results are discarded. Closing the Studio session or unloading its model context terminates the owned worker and releases retained state. P-05 must qualify initialization, replacement, cancellation, stale-result rejection and teardown before claiming session support or performance.

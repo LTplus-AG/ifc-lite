@@ -69,7 +69,7 @@ Most IDS tools have to build their IDS engine from scratch; we already own a con
 - `packages/mcp` (`ids_validate`, `ids_explain`, `model_audit`), `packages/cli` (`ids`, `delivery`, `bsdd`), `packages/sdk` (`bim.ids.*`).
 
 ## 8. Conventions that shape the plan (from AGENTS.md)
-- PR closes an issue labelled `ready`; one defect class per PR; stack PRs above ~1,500 changed lines; sweeps need a charter issue.
+- Repository default: a PR closes a `ready` issue and sweeps need a charter. The recorded D8 exception for this campaign uses approved backlog IDs in PR bodies; maintainer escape-label admission still applies. One defect class per PR and stacks above ~1,500 changed lines remain.
 - User-visible claims need evidence: a real model from a real authoring tool, an oracle run or a screenshot.
 - No `as any` / `@ts-ignore` / silent `catch {}`; production modules ≤ ~400 lines (enforced).
 - New features ship tests; MPL-2.0 header on every new file; changesets + `pnpm api-surface:update` for published API.

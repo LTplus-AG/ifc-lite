@@ -8,7 +8,7 @@
 ## Decision
 - A single versioned op vocabulary (`02-document-model-and-ops.md` §3) with a pure reducer and exact inverses.
 - Compound ops expand to primitives.
-- JSON Schemas for AI tools are generated from the zod source of the op types.
+- Operation tool definitions use `getOpJsonSchema()` from `@ifc-lite/ids-authoring`; runtime `validateOp` interprets that same JSON Schema before the gate and reducer. The P-02 implementation supersedes the original zod proposal (see `03-architecture/02-document-model-and-ops.md` §8–9); consumers must not introduce a duplicate operation schema.
 - Transactions group ops into one history entry.
 
 ## Consequences

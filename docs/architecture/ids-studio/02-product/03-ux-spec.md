@@ -81,7 +81,7 @@ Columns:
 ### F6 — Test suite & sign-off
 1. Spec ⋯ → **Generate tests** → creates a minimal passing IFC and one failing IFC per requirement facet (synthetic), plus optional "pin current selection as fixture".
 2. Run tests → green. Revision → **Request sign-off** → reviewer approves → rev 13 released (hash).
-3. Export bundle: IDS + PDF appendix + test fixtures zip.
+3. Export bundle (`.idsz`): `ids.xml` + Studio metadata in `studio.json` + optional `appendix.pdf` and `fixtures/*`, using the P-02 bundle contract. Sign-off and UI export wiring remain P-10 acceptance work.
 
 ### F7 — Diff two versions
 Library → select rev 12 and rev 13 → **Compare**. Side-by-side outline with changed facets highlighted, plus a plain-language changelog ("Doors: FireRating now required (was optional); +2 specs; −1 spec"). The changelog can be exported to the PDF appendix.

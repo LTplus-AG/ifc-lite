@@ -75,16 +75,16 @@ interface Op<K extends string, P> { kind: K; opId: Uuid; payload: P; }
 ### 3.1 Document
 | Op | Payload | Notes |
 |---|---|---|
-| `doc.setInfo` | `{ field: 'title'|'copyright'|'version'|'description'|'author'|'date'|'purpose'|'milestone', value: string|null }` | `author` validated as email (XSD) |
+| `doc.setInfo` | `{ field: 'title'\|'copyright'\|'version'\|'description'\|'author'\|'date'\|'purpose'\|'milestone', value: string\|null }` | `author` validated as email (XSD) |
 
 ### 3.2 Specification
 | Op | Payload |
 |---|---|
-| `spec.add` | `{ specId, index?, name, ifcVersions, description?, instructions?, identifier?, cardinality?: 'required'|'optional'|'prohibited' }` |
+| `spec.add` | `{ specId, index?, name, ifcVersions, description?, instructions?, identifier?, cardinality?: 'required'\|'optional'\|'prohibited' }` |
 | `spec.remove` | `{ specId }` |
 | `spec.duplicate` | `{ specId, newSpecId, nameSuffix? }` |
 | `spec.move` | `{ specId, toIndex }` |
-| `spec.set` | `{ specId, field: 'name'|'description'|'instructions'|'identifier', value }` |
+| `spec.set` | `{ specId, field: 'name'\|'description'\|'instructions'\|'identifier', value }` |
 | `spec.setCardinality` | `{ specId, cardinality }` → maps to minOccurs/maxOccurs |
 | `spec.setIfcVersions` | `{ specId, versions }` |
 | `spec.split` | `{ specId, byFacetIds: Uuid[], newSpecId }` (move requirements to a new spec with the same applicability) |
@@ -93,14 +93,14 @@ interface Op<K extends string, P> { kind: K; opId: Uuid; payload: P; }
 ### 3.3 Facets
 | Op | Payload |
 |---|---|
-| `facet.add` | `{ specId, section: 'applicability'|'requirements', facetId, index?, facet: FacetDraft, optionality?, description?, instructions? }` |
+| `facet.add` | `{ specId, section: 'applicability'\|'requirements', facetId, index?, facet: FacetDraft, optionality?, description?, instructions? }` |
 | `facet.remove` | `{ facetId }` |
 | `facet.move` | `{ facetId, toSpecId?, toSection?, toIndex }` (moving between sections is allowed; the gate checks semantics, e.g. no cardinality in applicability) |
 | `facet.replace` | `{ facetId, facet: FacetDraft }` |
-| `facet.setField` | `{ facetId, field: FacetFieldName, value: ConstraintDraft | null }`. FacetFieldName ∈ entity.name, entity.predefinedType, attribute.name, attribute.value, property.propertySet, property.baseName, property.dataType, property.value, classification.system, classification.value, material.value, partOf.entity.name, partOf.entity.predefinedType, plus `uri` where IDS allows it |
+| `facet.setField` | `{ facetId, field: FacetFieldName, value: ConstraintDraft \| null }`. FacetFieldName ∈ entity.name, entity.predefinedType, attribute.name, attribute.value, property.propertySet, property.baseName, property.dataType, property.value, classification.system, classification.value, material.value, partOf.entity.name, partOf.entity.predefinedType, plus `uri` where IDS allows it |
 | `facet.setRelation` | `{ facetId, relation: PartOfRelation }` |
 | `requirement.setOptionality` | `{ facetId, optionality }` |
-| `requirement.set` | `{ facetId, field: 'description'|'instructions', value }` |
+| `requirement.set` | `{ facetId, field: 'description'\|'instructions', value }` |
 
 ### 3.4 Values (constraints)
 `ConstraintDraft` is the AI- and UI-friendly authoring form, normalised by the reducer into `IDSConstraint`:

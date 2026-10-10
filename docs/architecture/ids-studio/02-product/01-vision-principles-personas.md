@@ -13,7 +13,7 @@ It rewards correctness and grounding, not just volume.
 
 ## Product principles (tie-breakers for every design decision)
 
-1. **Valid by construction.** Invalid IDS cannot be exported. Every write goes through the grounding gate and the conformance-tested writer. Warnings are allowed; schema errors are not.
+1. **Valid by construction.** Invalid IDS cannot be exported. Every authored change goes through the grounding gate; user export goes through the conformance-tested writer and export audit. Internal serialization for import/round-trip diagnostics does not authorize export of an invalid document (FR-A01/FR-A06). Warnings are allowed; schema errors are not.
 2. **Show, don't tell.** Every specification shows what it matches *now*: counts, funnel, 3D. Every facet shows its plain-language meaning beside its technical form.
 3. **One document, one vocabulary.** UI, AI, import, CLI and MCP all change the document through the same typed operations. There is no second path.
 4. **AI proposes, humans dispose.** The assistant produces reviewable op batches with sources and previews. It never saves on its own, and never invents names (the gate makes that structural).

@@ -7,7 +7,7 @@
 **Solution.**
 - `@ifc-lite/ids-authoring` containing:
   - `StudioDocument` with stable UUIDs;
-  - the op vocabulary v1 (zod → JSON Schema) with a pure reducer and exact inverses;
+  - the op vocabulary v1 (one JSON Schema shared by runtime validation and tool export) with a pure reducer and exact inverses;
   - compound ops;
   - the grounding gate with candidate ranking;
   - history and transactions;

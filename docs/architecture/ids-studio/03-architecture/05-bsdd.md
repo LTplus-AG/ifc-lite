@@ -22,15 +22,15 @@ For each selected class property:
 | bSDD field | IDS mapping |
 |---|---|
 | `propertySet` | `propertySet` (if absent: a project pset name the user picks; custom-declared) |
-| `name` / `code` | `baseName` (IFC-standard properties from the IFC dictionary keep the exact EXPRESS name) |
+| `name` | `baseName` (IFC-standard properties from the IFC dictionary keep the exact EXPRESS name); `BsddClassProperty` does not currently expose a property `code` |
 | `dataType` (String, Real, Integer, Boolean, Time, Character…) | IFC dataType via a mapping table, refined by `propertyValueKind` and units (e.g. Real + unit `m` → IFCLENGTHMEASURE) |
-| `allowedValues[]` | `oneOf` (values by `code`; labels shown in the UI) |
-| `minInclusive/maxInclusive/pattern` | `range` / `pattern` |
+| `allowedValues[]` | `oneOf` using each entry's `value`; retain optional `uri` and `description` as source/display metadata, not replacement values |
+| `minInclusive/maxInclusive/pattern` (not in the current SDK shape) | Future mapping requires a qualified API/SDK extension with recorded payload fixtures; no range/pattern is inferred from missing fields |
 | `units` | SI conversion note; lint UNIT-001 cross-check |
 | `uri` | property facet `uri` attribute |
-| `isRequired` (class property) | `required` vs `optional` cardinality default |
+| `isRequired` (not in the current SDK shape) | Future mapping requires a qualified API/SDK extension; current inputs cannot establish a required/optional default |
 
-The mapping table lives in `ids-authoring/bsdd-mapping.ts` with tests per bSDD data type. Unknown mappings fall back to no dataType, plus info lint PROP-003.
+The mapping plan is bounded by `BsddClassProperty` in `packages/sdk/src/namespaces/bsdd.ts`. Unsupported source fields need a typed SDK/API extension and recorded-fixture qualification in P-06 before use; no requirement or constraint may be invented from their absence. The mapping table is planned in `ids-authoring/bsdd-mapping.ts` with tests per bSDD data type. Unknown mappings fall back to no dataType, plus info lint PROP-003.
 
 ### 2.3 Dictionary → IDS (FR-E04)
 - Choose a dictionary (+ version) → tree of classes (with parent/child) → multi-select → options:

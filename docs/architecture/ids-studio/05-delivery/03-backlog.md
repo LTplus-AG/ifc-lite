@@ -1,9 +1,9 @@
 # Backlog: issue-ready items
 
-Each row is sized to be **one GitHub issue → one PR** (or a stack of PRs if it is L), following ifc-lite's AGENTS.md:
+Each row is sized to be **one backlog scope → one PR** (or a stack if it is L). The recorded D8 campaign exemption uses backlog IDs in PR bodies instead of GitHub issues; other AGENTS.md guardrails remain:
 - one defect class per PR;
 - ≤ ~1,500 changed lines per PR, otherwise stack;
-- an issue labelled `ready` before work starts;
+- record the approved backlog scope in the PR body; only the maintainer applies the repository's escape label when needed;
 - user-visible claims need evidence (a real model, an oracle run or a screenshot).
 
 **Size:** S < 300 changed lines · M 300–800 · L 800–1,500 (stack beyond).
@@ -33,7 +33,7 @@ Issue text must stay vendor-neutral (ADR-014).
 |---|---|---|---|---|---|
 | IDS-015 | Scaffold `@ifc-lite/ids-authoring` (README, MPL headers, changeset, api-surface) | ids-authoring | S | – | CI green, README check passes |
 | IDS-016 | `StudioDocument` + `NodeIndex` (UUIDv7) + import from `IDSDocument` | ids-authoring | M | 015 | Invariant tests (one Uuid per node) |
-| IDS-017 | Op schema v1 (zod): document + spec ops | ids-authoring | M | 016 | JSON Schema generation test |
+| IDS-017 | Op schema v1 (shared JSON Schema): document + spec ops | ids-authoring | M | 016 | JSON Schema generation test |
 | IDS-018 | Facet + value ops; `ConstraintDraft` → `IDSConstraint` normalisation (units → SI) | ids-authoring | L | 017 | Table tests per draft kind |
 | IDS-019 | Reducer with exact inverses + property tests (apply∘inverse = id) | ids-authoring | M | 018 | fast-check 10k sequences |
 | IDS-020 | Compound ops (`bulk.*`) expansion | ids-authoring | M | 019 | Each compound op undone in one step |
@@ -110,7 +110,7 @@ Issue text must stay vendor-neutral (ADR-014).
 | ID | Title | Pkg | Size | Dep | Acceptance / evidence |
 |---|---|---|---|---|---|
 | IDS-075 | Scaffold `@ifc-lite/ids-agent`; tool-calling adapter on `packages/ai` (Anthropic first, OpenAI second) | ids-agent, ai | M | 017 | Recorded tool-call round-trip tests |
-| IDS-076 | Tool registry generated from zod; schema read tools | ids-agent | M | 075 | Tests |
+| IDS-076 | Tool registry uses canonical runtime JSON Schemas; schema read tools | ids-agent | M | 075 | Tests |
 | IDS-077 | Act tools: `apply_ops` on sandbox fork, `lint`, `apply_fix`, `mark_unresolved`, `undo` | ids-agent | M | 076, 046 | Tests |
 | IDS-078 | Model tools via worker bridge (stats, count, distinct, infer, coverage) | ids-agent, viewer | M | 077, 056 | Tests |
 | IDS-079 | bSDD tools | ids-agent | S | 076 | Recorded responses |
@@ -165,9 +165,9 @@ Issue text must stay vendor-neutral (ADR-014).
 ## P-11 — Headless everywhere (incremental; Cycles 4–6)
 | ID | Title | Pkg | Size | Dep | Acceptance / evidence |
 |---|---|---|---|---|---|
-| IDS-115 | CLI `ids audit|lint|fmt` | cli | M | 046, 012 | Docs table regenerated |
-| IDS-116 | CLI `ids diff|convert|explain|preview|coverage` | cli | M | 104, 096, 056 | Same |
-| IDS-117 | CLI `ids test|infer|draft|edit|bsdd` | cli | M | 110, 062, 083, 072 | Same |
+| IDS-115 | CLI `ids audit\|lint\|fmt` | cli | M | 046, 012 | Docs table regenerated |
+| IDS-116 | CLI `ids diff\|convert\|explain\|preview\|coverage` | cli | M | 104, 096, 056 | Same |
+| IDS-117 | CLI `ids test\|infer\|draft\|edit\|bsdd` | cli | M | 110, 062, 083, 072 | Same |
 | IDS-118 | MCP batch 1: `ids_audit`, `ids_lint`, `ids_read`, `ids_apply_ops`, `ids_write`, `ids_schema_*` | mcp | M | 046 | MCP docs |
 | IDS-119 | MCP batch 2: `ids_preview`, `ids_infer`, `ids_coverage`, `ids_diff`, `ids_test` | mcp | M | 118 | Same |
 | IDS-120 | SDK `bim.ids.authoring` | sdk | M | 019 | Typechecked doc snippets |
@@ -182,4 +182,4 @@ Issue text must stay vendor-neutral (ADR-014).
 | IDS-125 | Conformance dashboard: our engine vs other open engines on the corpus (+ official audit) | scripts, landing | M | 013 | Public page |
 | IDS-126 | Upstream contributions: ambiguity notes and lint catalogue references on standard issues | — | S | 054 | Links |
 
-**Total: 123 items** (IDS-001…IDS-126, with IDS-028/029 reserved for spill-over).
+**Total: 124 items** (IDS-001…IDS-126, with IDS-028/029 reserved for spill-over).

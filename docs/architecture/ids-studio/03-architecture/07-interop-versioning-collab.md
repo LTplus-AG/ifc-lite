@@ -21,9 +21,9 @@
 - Multi-language: one column per language, or one document per language.
 
 ## 2. Revisions and sign-off (FR-G06)
-- **Revision** = immutable snapshot `{ revId, parentRevId, hash(sha256 of canonical XML + sidecar-normative fields), label: draft|review|released, author, at, message }`.
+- **Planned revision** = immutable snapshot `{ revId, parentRevId, parentHash, hash, label: draft|review|released, author, at, message }`. P-10 must define a canonical digest payload containing the XML, normative sidecar fields, parent revision ID/hash and integrity-sensitive revision metadata (label, author, timestamp, message). Exclude the digest field itself; fix field encoding/order in the contract and test mutations of each covered field.
 - **Sign-off** = `{ revId, by, role, at, statement }`. Released revisions are read-only, and further edits branch to a new draft.
-- Storage: IndexedDB library (local). With the collaboration server: synced. The hash chain makes tampering evident.
+- Storage plan: IndexedDB library (local); synchronization belongs to P-10. A content hash alone does not authenticate history links. The planned chain can detect changes relative to a trusted head, but an attacker able to rewrite the whole local store can recompute it; deliberate tampering is detectable only against a trusted head/signature anchored outside that store. This guarantee remains unimplemented/unqualified until P-10 defines the anchor and passes integrity controls.
 - The definition library migration imports today's localStorage entries (raw XML, max 100) as rev 1 drafts, then deletes the old store (supersede means delete).
 
 ## 3. Diff and merge (FR-G04, FR-G05)

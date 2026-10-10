@@ -3,9 +3,9 @@
 ## Rules of the game
 - **Cycle** = 6 weeks of build + 2 weeks of cooldown (bug fixes, docs, evidence, small polish, shaping the next pitches). Eight weeks per cycle.
 - **Appetite** is a fixed time budget per pitch. When it runs out, scope is cut, not time extended (Shape Up's circuit breaker). Unfinished work is re-shaped and re-pitched at the betting table. It is never silently rolled over.
-- **Betting table** at the start of each cycle: the maintainer bets on pitches. Each bet becomes a charter issue (AGENTS.md "a sweep needs a charter") listing backlog items, which get the `ready` label.
+- **Betting table** at the start of each cycle: the maintainer bets on pitches. Under the recorded D8 campaign exemption, each bet lists its bounded backlog IDs in pitch PR bodies instead of creating charter issues or requiring `ready` labels. The maintainer applies the repository's escape label when needed; this plan does not bypass the queue gate in code.
 - **Tracks** run in parallel, because work is largely agent-executed. Each track has one accountable human submitter (AGENTS.md accountability rule).
-- **Hill charts:** each pitch reports "figuring it out" vs "making it happen" per scope in its charter issue weekly.
+- **Hill charts:** each pitch reports "figuring it out" vs "making it happen" per backlog scope in its pitch PR weekly.
 
 ## Tracks
 | Track | Focus | Pitches |

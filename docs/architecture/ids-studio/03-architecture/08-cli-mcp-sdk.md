@@ -12,12 +12,12 @@ Principle 9: anything the UI can do, headless can do. All commands call the same
 | `ifc-lite ids fmt <rules.ids>` | Canonical formatting | `--check --write` | 1 if `--check` fails |
 | `ifc-lite ids diff <a> <b>` | Semantic diff | `--json --md` | 1 if different |
 | `ifc-lite ids convert <in> <out>` | xlsx/csv/yaml/json/idsz ⇄ ids | `--mapping m.json --sheet` | 1 on row errors |
-| `ifc-lite ids explain <rules.ids>` | Plain-language rendering | `--lang en|de|fr|it --md` | 0 |
+| `ifc-lite ids explain <rules.ids>` | Plain-language rendering | `--lang en\|de\|fr\|it --md` | 0 |
 | `ifc-lite ids preview <rules.ids> <model…>` | Funnel counts per spec | `--json` | 0 |
 | `ifc-lite ids coverage <rules.ids> <model…>` | Ungoverned classes | `--json` | 0 |
 | `ifc-lite ids test <doc.idsz>` | Run IDS test suites | `--junit out.xml --generate` | 1 on failures |
 | `ifc-lite ids infer <model> --select "<selector>"` | Infer specs from elements (IfcOpenShell selector syntax via `packages/query`) | `--threshold --out` | 0 |
-| `ifc-lite ids draft --from <file|text>` | AI draft | `--model --effort --budget --non-interactive --out` | 0; 2 if unresolved > 0 with `--strict` |
+| `ifc-lite ids draft --from <file\|text>` | AI draft | `--model --effort --budget --non-interactive --out` | 0; 2 if unresolved > 0 with `--strict` |
 | `ifc-lite ids edit <rules.ids> "<instruction>"` | AI edit | same | 0 |
 | `ifc-lite ids bsdd <dictionaryUri> --classes …` | Dictionary → IDS | `--inherit --required-only` | 0 |
 

@@ -17,15 +17,17 @@
 | Setting | Value | Why |
 |---|---|---|
 | Model | `claude-opus-5-5` (default for all modes) | Current default Opus; 1M context; best tool use. Other models are allowed only if they pass the eval gate (§9) |
-| Thinking | adaptive (always on for this model; `display: "summarized"` shown in a collapsible "reasoning" strip, or `"updates"` for progress notes) | Visible progress for long Draft runs |
+| Thinking | adaptive (always on for this model; `display: "summarized"` shown in a collapsible "reasoning" strip, or `"updates"` for progress notes, requiring the `thinking-display-updates-2026-08-18` beta header on the planned Claude API request) | Visible progress for long Draft runs |
 | Effort | Draft/Review: `high`; Edit/Repair/Translate: `medium`; Explain: `low` | Effort is the cost/quality lever; tuned by eval |
 | Tools | Client tools with `strict: true`; `tool_choice: auto` (forced tool choice is not supported on this model) | Schema-valid tool inputs |
-| Streaming | On, with `eager_input_streaming: true` on tools. Parsed tool inputs are re-validated with zod before execution | Long op batches stream; truncated input is caught |
+| Streaming | On, with `eager_input_streaming: true` on tools. Parsed tool inputs are re-validated against their canonical runtime schema before execution (`validateOp` for operations) | Long op batches stream; truncated input is caught |
 | Caching | Stable prefix: tool definitions → system prompt (frozen) → schema "orientation card". Volatile content (document snapshot, model stats) goes after the last breakpoint | ~90% cheaper repeated runs; `cache_read_input_tokens` monitored |
 | Task budget | `output_config.task_budget` (beta `task-budgets-2026-03-13`) per mode, e.g. Draft 120k tokens | The agent paces itself and finishes cleanly |
 | Refusals | Server-side `fallbacks: "default"` (beta `server-side-fallback-2026-07-01`) on the Claude API; always check `stop_reason` | Robustness |
 | Documents | PDFs as `document` blocks (base64 or Files API) with `citations: {enabled: true}` for traceability (citations are incompatible with `output_config.format`, which we don't use) | Source spans come free with page locations |
 | Batch | Message Batches API for nightly evals and bulk dictionary drafting (50% cost) | Eval economics |
+
+The updates-mode header requirement is documented by [Anthropic's thinking API guide](https://platform.claude.com/docs/en/build-with-claude/thinking#controlling-thinking-display). This request configuration is a P-07 target; it does not demonstrate adapter support or admit a provider.
 
 The provider-neutral seam stays (`packages/ai`). OpenAI BYOK remains selectable for modes where it passes the eval gate. Each provider adapter maps the same tool registry.
 
@@ -59,7 +61,7 @@ sequenceDiagram
 - Every run records a **receipt**: model, tokens, cost, tool calls and a payload digest (reusing `lib/llm/request-receipts.ts`). The privacy view shows the exact payload sent (FR-F08).
 
 ## 5. Tool registry (v1)
-All tool schemas are **generated from zod**, and the op union schema comes from the reducer types (no drift).
+Operation tool schemas reuse **`getOpJsonSchema()` from `@ifc-lite/ids-authoring`**, the same JSON Schema interpreted by `validateOp` before the grounding gate and reducer (see `02-document-model-and-ops.md` §8–9 and ADR-002). Tool wrappers must reference that contract rather than reproduce its op union in zod or a second schema. Each non-operation tool likewise owns one input schema used for both its exported tool definition and runtime validation; wiring and parity are P-07 acceptance work, not a completed implementation claim.
 
 ### Read / ground
 | Tool | Input | Output (abridged) |
@@ -75,7 +77,7 @@ All tool schemas are **generated from zod**, and the op union schema comes from 
 | `model.distinct_values` | `{ entity?, pset, property, limit }` | values + counts (capped; strings truncated) |
 | `model.infer` | `{ selectionRef or query, threshold }` | `InferenceResult` (see `04-model-loop.md`) |
 | `model.coverage` | `{ }` | ungoverned classes by count |
-| `ids.read` | `{ specIds?, view: 'summary'|'full'|'plain' }` | the current sandbox doc (compact JSON or plain language) |
+| `ids.read` | `{ specIds?, view: 'summary'\|'full'\|'plain' }` | the current sandbox doc (compact JSON or plain language) |
 | `source.read` | `{ docRef, range }` | text chunk with span IDs (for DOCX/XLSX/TXT; PDFs go natively as documents) |
 
 ### Act
@@ -153,9 +155,9 @@ Prompts are tuned against the eval set (§9), never by intuition alone. Text wri
 - A full run happens per release.
 - Results are written to `tests/ai-eval/ids/scores.json` and to the public benchmark page.
 
-**Gate for shipping a prompt or model change:** no regression > 1 pt on E2/E3 executable agreement, audit pass = 100%, cost within NFR-11.
+**Gate for updating an already released prompt/model configuration:** no regression > 1 pt on E2/E3 executable agreement against its preceding released configuration, audit pass = 100%, cost within NFR-11. ADR-009 separately governs initial availability of a model/provider for a mode: within 3 pts of that mode's default and audit pass = 100%. Passing the availability comparison does not waive the update-regression gate when replacing an already released configuration; the two thresholds and their baselines are unchanged. Neither gate is qualified by this plan.
 
 ## 10. Safety and privacy
-- Model content that is sent: counts, capped distinct values, schema and bSDD snippets, the IDS. Never geometry, never file names in analytics. Users can disable model context entirely.
+- Planned provider payload inventory: counts, capped distinct values, schema and bSDD snippets, the IDS, and explicitly selected source content from §8: PDF document blocks, DOCX text/spans read by tools, spreadsheet headers, up to 20 sample rows and column statistics. Never geometry, never file names in analytics. Users can disable model context entirely; that control does not by itself exclude an attachment they choose to send. The payload preview and receipt must disclose every selected source payload before ingestion is qualified; this plan grants no new data-transfer authority.
 - Prompt injection: document and IFC strings are wrapped as data. Tools cannot reach the network except bSDD lookups. The agent cannot save, export or publish, because those require a user click.
 - Free tier: proxy quotas (existing `usage-quota.ts`); BYOK keys stay in the browser (existing `byok-guard.ts`).

@@ -18,13 +18,24 @@ import { entityRefToString } from '@/store/entity-ref';
 import { useViewerStore } from '@/store';
 import { captureEvidence } from '../evidence';
 
+
+// #7220 diagnostic: measure the actual unchanged canonical envelope, never a size estimate.
+function measuredSelectionEvidence() {
+  const snapshot = captureEvidence('selection');
+  console.log('ZONE_SELECTION_ENVELOPE', JSON.stringify({ textLength: snapshot.payload.length,
+    utf8Bytes: Buffer.byteLength(snapshot.payload), includedRows: snapshot.includedRows,
+    totalRows: snapshot.totalRows, projectionTruncated: snapshot.projectionTruncated }));
+  assert.ok(snapshot.payload.length <= 48_000, 'existing canonical selection envelope bound');
+  return snapshot;
+}
+
 const initial = useViewerStore.getState();
 afterEach(() => { cleanup(); useViewerStore.setState(initial, true); });
 const sample = async () => parseStep(await readFile(new URL('../../../../public/samples/building-architecture.ifc', import.meta.url), 'utf8'));
 interface Edge { relationshipId: number; relationshipType: string; direction: 'forward' | 'inverse';
   verification: string; entity: { modelId: string; expressId: number; Name: string | null; type: string | null } }
 interface Row { modelId: string; relationshipStatus: string; relationshipCount: number | null; relationships: Edge[] }
-const rows = (): Row[] => JSON.parse(captureEvidence('selection').payload).evidence.rows.map((row: { data: Row }) => row.data);
+const rows = (): Row[] => JSON.parse(measuredSelectionEvidence().payload).evidence.rows.map((row: { data: Row }) => row.data);
 const native = (modelId: string, expressId: number) => relationshipsForSelection(
   createQueryAdapter(useViewerStore).relationships, { modelId, expressId }, expressId);
 

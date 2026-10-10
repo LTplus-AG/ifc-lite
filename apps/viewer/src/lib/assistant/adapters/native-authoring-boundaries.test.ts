@@ -46,7 +46,7 @@ async function wall(saved = true) {
     selectedEntityIds: new Set([id]), selectedEntities: [], selectedEntitiesSet: new Set() });
   return id;
 }
-function row() { return JSON.parse(captureEvidence('selection').payload).evidence.rows[0].data; }
+function row() { return JSON.parse(measuredSelectionEvidence().payload).evidence.rows[0].data; }
 function intercept() {
   let calls = 0;
   globalThis.fetch = async () => { calls++; return new Response('data: {"choices":[{"delta":{"content":"Review"},"finish_reason":"stop"}]}\n\n'); };
@@ -100,7 +100,7 @@ test('#7282 native projected polygon expected pin is removed whole while attachm
   const lease = readOnlyModelEditLease(s(), SAMPLE_MODEL); assert.ok(lease);
   const expected = readSplitSnapshot(lease.target.dataStore, lease.target.editor, made.expressId, 'm');
   assert.equal(expected.kind, 'slab'); assert.ok('footprint' in expected.chain && expected.chain.footprint.length > 100);
-  const snapshot = captureEvidence('selection'), projected = JSON.parse(snapshot.payload).evidence.rows[0].data;
+  const snapshot = measuredSelectionEvidence(), projected = JSON.parse(snapshot.payload).evidence.rows[0].data;
   assert.equal(projected.nativeSplitExpected, null, 'No truncated expected chain may authorize review');
   assert.ok(projected.nativeAuthoringAvailability, 'Projection must disclose whole-pin availability');
   assert.equal(projected.nativeSlabOpeningExpected, null, '#7310 a partial slab opening snapshot never remains authorizable');
@@ -139,7 +139,7 @@ test('#7282 real imported mesh is unavailable for shape edits while #7320 native
 
 
 test('#7282 removing the native source reports unavailable selection rather than a usable expected pin', async () => {
-  await wall();s().removeModel(SAMPLE_MODEL);const snapshot=captureEvidence('selection'),payload=JSON.parse(snapshot.payload);assert.equal(payload.sourceAvailability,'unavailable');assert.equal(payload.evidence.rows.length,0);assert.equal(captureSelectionGrounding(s()).elements.length,0);
+  await wall();s().removeModel(SAMPLE_MODEL);const snapshot=measuredSelectionEvidence(),payload=JSON.parse(snapshot.payload);assert.equal(payload.sourceAvailability,'unavailable');assert.equal(payload.evidence.rows.length,0);assert.equal(captureSelectionGrounding(s()).elements.length,0);
 });
 
 for (const route of ['rich', 'attachment'] as const) for (const replacement of ['source', 'view'] as const)
@@ -172,7 +172,7 @@ test(`#7282 in-flight ${route} native ${replacement} replacement cancels owned t
 test('#7282 unrelated loaded source replacement preserves the selected native capture',async()=>{
   await wall();const model=s().models.get(SAMPLE_MODEL)!,source=model.ifcDataStore!;
   const peer=await parseIfc(source.source.materialize());useViewerStore.setState({models:new Map([[SAMPLE_MODEL,model],['unrelated',{...model,id:'unrelated',idOffset:1_000_000,ifcDataStore:peer}]])});
-  replaceEvidence(captureEvidence('selection'));s().updateModel('unrelated',{ifcDataStore:await parseIfc(peer.source.materialize())});
+  replaceEvidence(measuredSelectionEvidence());s().updateModel('unrelated',{ifcDataStore:await parseIfc(peer.source.materialize())});
   const calls=intercept();assert.equal(await sendAssistant('Review selected native shape','openai/gpt-free','/api/chat'),true);assert.equal(calls(),1);
 });
 
@@ -224,3 +224,13 @@ test(`#7282 ${route} ${edit} current native identity reaches wire, Apply and ind
   assert.equal(undone.entities.getGlobalId(id), GlobalId); assert.equal(undone.entities.getName(id), Name);
   assert.deepEqual(readWallJoinTarget(undone, new MutablePropertyView(undone.properties, SAMPLE_MODEL), id, .001)?.wall.end, [8, 5]);
 });
+
+// #7220 diagnostic: measure the actual unchanged canonical envelope, never a size estimate.
+function measuredSelectionEvidence() {
+  const snapshot = captureEvidence('selection');
+  console.log('ZONE_SELECTION_ENVELOPE', JSON.stringify({ textLength: snapshot.payload.length,
+    utf8Bytes: Buffer.byteLength(snapshot.payload), includedRows: snapshot.includedRows,
+    totalRows: snapshot.totalRows, projectionTruncated: snapshot.projectionTruncated }));
+  assert.ok(snapshot.payload.length <= 48_000, 'existing canonical selection envelope bound');
+  return snapshot;
+}

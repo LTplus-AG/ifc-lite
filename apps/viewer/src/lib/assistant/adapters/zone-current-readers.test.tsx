@@ -4,8 +4,10 @@
 import '@/test/setup-dom.js';
 import { afterEach, test, type TestContext } from 'node:test';
 import assert from 'node:assert/strict';
-import { IfcParser, extractProjectUnits, extractTypeQuantitiesOnDemand } from '@ifc-lite/parser';
+import { IfcParser, extractProjectUnits, extractTypeQuantitiesOnDemand, extractQuantitiesOnDemand, readCurrentTypeQuantities } from '@ifc-lite/parser';
 import { StoreEditor } from '@ifc-lite/mutations';
+import { RelationshipType } from '@ifc-lite/data';
+import { getMaxExpressId } from '@/hooks/ingest/viewerModelIngest';
 import { generateIfcGuid } from '@ifc-lite/encoding';
 import { useViewerStore } from '@/store';
 import { getOrCreateMutationView } from '@/sdk/adapters/mutation-view';
@@ -127,3 +129,58 @@ for (const source of ['selection', 'zones'] as const) {
     assert.ok(evidence.mesh !== undefined);
   });
 }
+
+// #7220 / review4236197016: no source type edge may gate current native inheritance.
+test('#7220 selection and Zones inherit an overlay-added native type when source has no type relationship', async t => {
+  const f = await seedDeclaredZoneWall(t); if (!f) return;
+  const removal = getOrCreateMutationView(useViewerStore, 'arch'); assert.ok(removal);
+  const ownerId = f.store.getEntity(f.id)?.attributes[1];
+  const owner = typeof ownerId === 'number' ? `#${ownerId}` : null;
+  for (const kind of ['IFCRELDEFINESBYPROPERTIES', 'IFCRELDEFINESBYTYPE']) {
+    // @raw-entity-enumeration-ok native fixture detaches only parsed relationships containing this wall before independent reload
+    for (const id of f.store.entityIndex.byType.get(kind) ?? []) {
+      const members = f.store.getEntity(id)?.attributes[4];
+      if (!Array.isArray(members) || !members.includes(f.id)) continue;
+      const others = members.filter(id => id !== f.id);
+      if (others.length) removal.setPositionalAttribute(id, 4, others.map(id => `#${id}`)); else removal.deleteEntity(id);
+    }
+  }
+  const store = await parse(editedModelBytes(f.store, removal));
+  assert.deepEqual(store.relationships.getRelated(f.id, RelationshipType.DefinesByType, 'inverse'), [],
+    'independent native reload starts with no source DefinesByType relationship');
+  assert.equal(extractTypeQuantitiesOnDemand(store, f.id), null);
+  assert.equal(extractQuantitiesOnDemand(store, f.id).length, 0, 'occurrence quantities cannot mask native inheritance');
+  const model = useViewerStore.getState().models.get('arch'); assert.ok(model);
+  useViewerStore.setState({ models: new Map([['arch', { ...model, ifcDataStore: store,
+    maxExpressId: getMaxExpressId(store, model.geometryResult?.meshes ?? []) }]]), ifcDataStore: store,
+    mutationViews: new Map(), storeEditors: new Map() });
+  assert.deepEqual(useViewerStore.getState().resolveGlobalIdFromModels(f.id), { modelId: 'arch', expressId: f.id });
+  const view = getOrCreateMutationView(useViewerStore, 'arch'); assert.ok(view);
+  const editor = new StoreEditor(store, view);
+  const quantity = editor.addEntity('IfcQuantityVolume', store.schemaVersion === 'IFC2X3'
+    ? ['NetVolume', null, null, 10] : ['NetVolume', null, null, 10, null]).expressId;
+  const qto = editor.addEntity('IfcElementQuantity', [generateIfcGuid(), owner, 'Qto_WallBaseQuantities', null, null, [`#${quantity}`]]).expressId;
+  const type = editor.addEntity('IfcWallType', [generateIfcGuid(), owner, 'Overlay native wall type', null, null,
+    [`#${qto}`], null, null, null, '.NOTDEFINED.']).expressId;
+  editor.addEntity('IfcRelDefinesByType', [generateIfcGuid(), owner, null, null, [`#${f.id}`], `#${type}`]);
+  const current = readCurrentTypeQuantities(store, f.id, view);
+  assert.equal(current.status, 'available', 'canonical current native reader recognizes the overlay-added relationship');
+  const authored = current.value?.quantities.flatMap(set => set.quantities).find(q => q.name === 'NetVolume');
+  assert.ok(authored); assert.equal(authored.value, 10);
+  const exported = await parse(editedModelBytes(store, view));
+  const native = extractTypeQuantitiesOnDemand(exported, f.id)?.quantities.flatMap(set => set.quantities).find(q => q.name === 'NetVolume');
+  assert.ok(native); assert.equal(native.value, authored.value, 'independent native export resolves the new relationship and type quantity');
+  const scale = extractProjectUnits(exported.source, exported.entityIndex).resolvedForUnitType('VOLUMEUNIT')?.siScale ?? 1;
+  const revision = view.getMutationRevision(), changes = view.getEffectiveChanges().length;
+  const cache = useViewerStore.getState().zoneApportionment;
+  for (const source of ['selection', 'zones'] as const) {
+    const evidence = capture(source);
+    assert.equal(evidence.quantityStatus, 'available');
+    assertSiVolume(evidence.value('net'), native.value * scale, `${source} publishes the current native type basis without a source type edge`);
+  }
+  assert.deepEqual(store.relationships.getRelated(f.id, RelationshipType.DefinesByType, 'inverse'), [],
+    'capture neither mutates nor fabricates the original source relationship table');
+  assert.equal(view.getMutationRevision(), revision);
+  assert.equal(view.getEffectiveChanges().length, changes);
+  assert.equal(useViewerStore.getState().zoneApportionment, cache);
+});

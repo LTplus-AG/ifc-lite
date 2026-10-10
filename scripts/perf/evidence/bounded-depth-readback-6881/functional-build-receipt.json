@@ -1,0 +1,17 @@
+{
+  "baseCommit": "e60ed32ee7",
+  "candidateCommit": "4366bf016d",
+  "comparison": "Identical corrected witness, exact archived base renderer vs candidate renderer. Functional only; density1and2 inputoverrides; nativeDPR1.5. No throughput/model-load claim.",
+  "wasmSha256": "51b0b336fceec2078175b46bc2b30bd62c66eb5a9338db9e7a70e22f9459f0a0",
+  "rustTree": "1a1acc4260011c591fd8ce3c5387bb7c10b42f20",
+  "sourceHashes": {
+    "apps/viewer/src/e2e/RteGpuWitness.tsx": "04e18aa3f22f9c52f37b1e434c964d3547ce1616ceaec7b93b9ed4e48a4637c6",
+    "apps/viewer/src/e2e/RteGpuWitnessPixels.ts": "215f5b49a1d273086d41686a0dc3d61d1e6c4340005515e3b17b9db4fd866926",
+    "apps/viewer/src/e2e/RteGpuWitnessFixtures.ts": "8a0ee9b8f2c4f8d66ff23f462f5f7bcd468e5dbdc7344cbfff02e02573de8f7b",
+    "packages/renderer/src/picker.ts": "df6b1e157e6185f50674640f5940dc8a558db2f738c96510d37989cb25aabc41",
+    "packages/renderer/src/picker-depth-sample.ts": "f9ac5a3bf640c5a7645828505bd0032d24b2cef7e7325fdaff46fca464ac6f71",
+    "tests/e2e/pick-depth-readback-6881.manual.mjs": "2d6f21395c7f4d4d07da6ff1853550fe60ba6b7b4945ba3fe9ece4e99a482214"
+  },
+  "candidateBundleSha256": "f35a40eecbd6b8346d636204cd3b867bcff5ae529c52ec039acaca1209c2a7fd",
+  "baseBundleSha256": "80e4df0444237cb30c59fa40267fba3002ddfb9514265811fa0ca51346070f68"
+}

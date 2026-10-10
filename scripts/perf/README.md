@@ -88,6 +88,36 @@ call sites and `useViewerStore` subscriptions on the viewport, properties,
 hierarchy and streaming paths statically (minified component names make a
 runtime fiber census unattributable, and mounted counts move with UI state).
 
+## GPU point-pick depth candidate held (#6881)
+
+The [same-submission GPU oracles](evidence/bounded-depth-readback-6881/README.md)
+qualify single-texel extraction against a full-depth copy on hardware, including
+concurrent maps and target replacement. Production family, ID/item/model and georeferenced world-coordinate controls
+match the original renderer, and device destruction retires pending picks. The candidate shares ID/depth staging and keeps per-pick inputs immutable.
+Four complete interleaved cold public-model viewer pairs retain unchanged geometry and hit provenance, reduced mapped bytes, and mixed interaction timings. One pair has unresolved world-coordinate differences without camera/frame receipts; a fifth attempt lost the native browser. Real federated viewer qualification is outstanding. No speedup or shipping verdict is accepted. Lesson: a bounded readback and exact
+GPU sample establish neither complete picking parity nor interaction throughput.
+
+Independent Linux qualification adopted the existing readback cleanup repair;
+inverse fault controls demonstrate the ownership defects and the repaired paths
+release their buffers. Source-matched base/candidate viewer runtimes were built
+and pinned. T3 navigation refused before the declared model phase, with the
+earlier RAF refusal preserved. The subsequent current-main integration passed
+root renderer tests, full serial root typecheck with both postchecks, lint and
+source gates. Current real-model comparisons, federation and focused physical
+performance remain held; CPU integration and cleanup qualification do not
+replace them. No browser or GPU cohort ran for the integration update.
+
+A subsequent normal main integration includes merged #7361 without copying its
+classification workaround. Identical actual-main and candidate CPU controls
+reproduce obsolete-picker results and delayed standalone teardown cleanup. One
+shared pending-readback owner and a picker-installation epoch repair that class;
+corrected root tests, full serial typecheck and source gates pass. Diagnostic
+method retirement also preserves later owners. These are lifecycle invariants,
+not native GPU acceptance. The current app/observer pair must be rebuilt and
+frozen before the separate T3 correctness session. Original coordinates,
+deadlines, refusals and the focused-performance hold remain.
+
+
 ## Prepass terminal trace publication (#6993)
 
 The host terminates the prepass worker on its completion event. Draining only

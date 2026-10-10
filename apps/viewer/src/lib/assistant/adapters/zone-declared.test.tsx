@@ -68,7 +68,9 @@ test('#7220 live declared edits retain the cached mesh split and native occurren
   const netSet = f.quantities.find(set => set.quantities.some(q => q.name === 'NetVolume')); assert.ok(netSet);
   view.setQuantity(f.id, netSet.name, 'NetVolume', 7, QuantityType.Volume);
   const native = allBasisBreakdowns(f.apportionment, declaredVolumeBases(view.getQuantitiesForEntity(f.id), 1));
-  const captured = JSON.parse(captureEvidence('selection').payload).evidence.rows[0].data.zoneVolumeBreakdowns.volumeBases;
+  const breakdown = JSON.parse(captureEvidence('selection').payload).evidence.rows[0].data.zoneVolumeBreakdowns;
+  assert.ok(breakdown, 'public selected evidence must expose the current native declared basis before its magnitude is read');
+  const captured = breakdown.volumeBases;
   assert.equal(captured.find((row: { basis: string }) => row.basis === 'net').totalM3, 7);
   assert.deepEqual(captured.find((row: { basis: string }) => row.basis === 'net').shares, native.find(row => row.basis === 'net')!.shares);
   assert.equal(useViewerStore.getState().zoneApportionment, cache, 'read-only evidence retains the actual native split cache');
@@ -104,8 +106,10 @@ for (const source of ['selection', 'zones'] as const) {
     assert.equal(useViewerStore.getState().mutationVersion, version);
     assert.ok(view.getMutationRevision() > revision);
     const fresh = JSON.parse(captureEvidence(source).payload);
+    if (source === 'selection') assert.ok(fresh.evidence.rows[0].data.zoneVolumeBreakdowns, 'public selected evidence must retain the current native declared breakdown');
     const bases = source === 'selection' ? fresh.evidence.rows[0].data.zoneVolumeBreakdowns.volumeBases
       : fresh.evidence.rows[0].data.VolumeBases;
+    assert.ok(bases, 'public evidence must expose current native declared bases before their magnitudes are read');
     const nativeTotal = bases.find((row: { basis: string }) => row.basis === 'net')[source === 'selection' ? 'totalM3' : 'ElementVolumeM3'];
     assert.ok(Math.abs(nativeTotal - 7) < 1e-9, 'native fractional apportionment retains the current declared total');
     assert.equal(evidenceIsCurrent(snapshot), false, 'frozen shares still use the prior native declared total');
@@ -118,6 +122,7 @@ for (const source of ['selection', 'zones'] as const) {
     const sourceFree = { ...f.store, source: EMPTY_SOURCE_BYTES };
     useViewerStore.setState({ models: new Map([['arch', { ...model, ifcDataStore: sourceFree }]]), ifcDataStore: sourceFree });
     const fresh = JSON.parse(captureEvidence(source).payload);
+    if (source === 'selection') assert.ok(fresh.evidence.rows[0].data.zoneVolumeBreakdowns, 'public selected evidence must expose declared-source coverage after native source replacement');
     const status = source === 'selection' ? fresh.evidence.rows[0].data.zoneVolumeBreakdowns.quantityStatus
       : fresh.evidence.rows[0].data.DeclaredQuantityStatus;
     assert.equal(status, 'unverified-without-source');
@@ -132,6 +137,7 @@ test('#7220 changed zone geometry refuses late selected splits and invalidates c
   useViewerStore.setState({ zoneSets: [{ ...f.zoneSet, zones: f.zoneSet.zones.map(zone => ({ ...zone, size: [zone.size[0] + 1, zone.size[1], zone.size[2]] as [number, number, number] })) }] });
   assert.equal(evidenceIsCurrent(snapshot), false);
   const split = JSON.parse(captureEvidence('selection').payload).evidence.rows[0].data.zoneVolumeBreakdowns;
+  assert.ok(split, 'public selected evidence must expose native declared-basis coverage before its fields are read');
   assert.equal(split.zoneSets[0].status, 'split-not-computed'); assert.deepEqual(split.volumeBases, []);
   const rows = JSON.parse(captureEvidence('zones').payload).evidence.rows;
   assert.ok(rows.every((row: { data: { VolumeBases: Array<{ VolumeM3: number | null; Unavailable: string }> } }) => row.data.VolumeBases.every(basis => basis.VolumeM3 === null && /split not computed/.test(basis.Unavailable))));
@@ -144,6 +150,7 @@ test('#7220 federated selection retains model-local declared quantities and excl
   useViewerStore.setState({ models: new Map([['arch', model], ['other', { ...fixtureModel('other', { idOffset: 1_000_000 }), ifcDataStore: f.store }]]),
     selectedEntity: { modelId: 'other', expressId: f.id } });
   const other = JSON.parse(captureEvidence('selection').payload).evidence.rows[0].data.zoneVolumeBreakdowns;
+  assert.ok(other, 'public selected evidence must expose native declared-basis coverage before its fields are read');
   assert.equal(other.zoneSetCount, 0, 'same express ID in another model must not acquire the first model split');
   useViewerStore.setState({ selectedEntity: { modelId: 'arch', expressId: f.id } });
   assert.equal(JSON.parse(captureEvidence('selection').payload).evidence.rows[0].data.zoneVolumeBreakdowns.zoneSetCount, 1);
@@ -155,6 +162,7 @@ test('#7220 missing original source retains unverified quantity status rather th
   const sourceFree = { ...f.store, source: EMPTY_SOURCE_BYTES };
   useViewerStore.setState({ models: new Map([['arch', { ...model, ifcDataStore: sourceFree }]]), ifcDataStore: sourceFree });
   const split = JSON.parse(captureEvidence('selection').payload).evidence.rows[0].data.zoneVolumeBreakdowns;
+  assert.ok(split, 'public selected evidence must expose native declared-basis coverage before its fields are read');
   assert.equal(split.quantityStatus, 'unverified-without-source');
   assert.equal(split.zoneSets[0].status, 'cached', 'existing native mesh evidence remains separate from declared-source availability');
   assert.equal(split.volumeBases[0].basis, 'mesh');
@@ -170,6 +178,7 @@ test('#7220 known native zone-set population precedes the selected display bound
   for (const set of sets) assert.ok(computeZoneApportionmentForElement(set, f.id).apportionment);
   const payload = JSON.parse(captureEvidence('selection').payload);
   const split = payload.evidence.rows[0].data.zoneVolumeBreakdowns;
+  assert.ok(split, 'public selected evidence must expose native declared-basis coverage before its fields are read');
   assert.equal(split.zoneSetCount, 17);
   assert.equal(split.zoneSets.length, payload.evidence.summary.perElementBounds.zoneSets);
   assert.equal(split.zoneSets.length, 16);

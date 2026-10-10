@@ -728,18 +728,18 @@ ${facets}
     expect(matchConstraint(bounds, 123456)).toBe(false);
   });
 
-  it('the European decimal comma parses via parseFloat leniency (documented, not this fix)', () => {
-    // `parseFloat` stops at the first invalid character rather than
-    // failing outright, so "60,0" (meant as 60.0) reads as the number
-    // `60` — not `unparseableFacets`. This is a real but separate
-    // misparsing hazard (a European "6,5" would silently become `6`);
-    // it is out of scope for the fail-closed fix here, which only
-    // covers values `parseFloat`/`parseInt` reject outright.
+  it('the European decimal comma is unparseable, not read as its integer part (#7399)', () => {
+    // `parseFloat` stopped at the comma, so "60,0" (meant as 60.0) read
+    // as 60 and a "6,5" silently became 6. A bound is now read only when
+    // its whole text is in the base's lexical space, so the comma fails
+    // the restriction closed like any other malformed bound.
     const bounds = boundsOf(idsWith('              <xs:minInclusive value="60,0"/>'));
-    expect(bounds.minInclusive).toBe(60);
-    expect(bounds.unparseableFacets).toBeUndefined();
+    expect(bounds.minInclusive).toBeUndefined();
+    expect(bounds.unparseableFacets).toEqual([
+      { facet: 'minInclusive', rawValue: '60,0' },
+    ]);
     expect(matchConstraint(bounds, 0)).toBe(false);
-    expect(matchConstraint(bounds, 60)).toBe(true);
+    expect(matchConstraint(bounds, 60)).toBe(false);
   });
 
   it('a legitimately absent facet is unaffected — no unparseableFacets, still unbounded on that side', () => {

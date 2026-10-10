@@ -17,6 +17,7 @@ import { editedModelBytes } from '@/lib/export/edited-model-bytes';
 import { getOrCreateMutationView } from '@/sdk/adapters/mutation-view';
 import { getMaxExpressId } from '@/hooks/ingest/viewerModelIngest';
 import { setGlobalRendererRef } from '@/hooks/useBCF';
+import { assertSameNativeIfcGraph } from '@/test/native-ifc-graph';
 
 const initial = useViewerStore.getState();
 afterEach(() => {
@@ -170,4 +171,27 @@ test('#7382 federated native owner and same-id source swaps refresh inherited Le
   act(() => useViewerStore.setState({ models: new Map([['arch', { ...model, ifcDataStore: replacement,
     maxExpressId: second.maxExpressId }], ['second', second]]), ifcDataStore: replacement, mutationViews: new Map(), storeEditors: new Map() }));
   assert.equal(quantityRow(ui, 'NetVolume').querySelector('span.font-mono')?.textContent, '77 m', 'selected same-id source replacement cannot retain the former inherited value');
+});
+
+test('#7382 malformed current native inherited LengthValue cannot retain stale physical display', async t => {
+  const x = await nativeLength(t); if (!x) return;
+  x.current.setPositionalAttribute(x.a.volume, 3, 'not-a-number');
+  const saved = await parse(editedModelBytes(x.source, x.current));
+  assert.equal(saved.getEntity(x.a.volume)?.attributes[3], 'not-a-number',
+    'independent native export retains the deliberately malformed scalar');
+  const read = readCurrentTypeQuantities(x.source, x.f.id, x.current);
+  assert.equal(read.status, 'unavailable');
+  assert.match(read.reason ?? '', /quantity value is unavailable/);
+  const before = editedModelBytes(x.source, x.current);
+  const revision = x.current.getMutationRevision();
+  const changes = x.current.getEffectiveChanges();
+  const ui = render(<PropertiesPanel />);
+  assert.ok(!Array.from(ui.querySelectorAll('span')).some(span => span.textContent === '10 m'),
+    'malformed current value cannot publish stale source Length physical amount');
+  assert.match(ui.textContent ?? '', /Inherited type quantities are unavailable/);
+  assert.match(ui.textContent ?? '', /quantity value is unavailable/);
+  assert.doesNotMatch(ui.textContent ?? '', /No quantities/, 'unavailable coverage is not verified absence');
+  assert.equal(x.current.getMutationRevision(), revision);
+  assert.deepEqual(x.current.getEffectiveChanges(), changes);
+  await assertSameNativeIfcGraph(editedModelBytes(x.source, x.current), before);
 });

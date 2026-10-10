@@ -85,11 +85,8 @@
           "classifications": 16,
           "classificationPath": 16,
           "relationships": 16,
-          "documents": 16,
-          "zoneSets": 16,
-          "sharesPerVolumeBasis": 32
+          "documents": 16
         },
-        "zoneVolumeUnits": "When project VOLUMEUNIT is unresolved, zone volume breakdowns use the existing Properties scale-1 SI default; m3 labels do not prove a declared file unit or a measured conversion.",
         "units": "Quantity values carry {value, unit} in the Properties panel display unit (project unit, or the display-unit override below); a null unit is undeclared. Property values are the panel display strings, with the unit inline when the measure declares one.",
         "displayUnitOverrides": {},
         "limitations": "Includes native edits; status covers own edits. Definitions/associations use snapshot freshness. Sections use perElementBounds and full known counts. inheritedType has model/type provenance; occurrence properties override same-named type values. Materials prefer occurrence over type; LayerThickness is metres; properties use panel units. IFC2X3 scalar material-property subtypes are outside the generic-set reader. Unverified fields remain unknown; missing membership inputs/unreadable source edits make totals null/unavailable. Source-free classification/document markers describe original source, not current assignments. Paths have bounded known ancestors; unverified path totals are null. Classification codes use schema-exact ItemReference/Identification; missing systems stay unknown. Relationships count exact native edges; aliases carry inherited lookup IDs. Edited source-free graph edges are unverified source-origin evidence. Unverified material-property counts stay null; empty rows do not prove absence. Documents have native model/target IDs and separate bounds. Empty samples do not prove absence. Selection is sampled; byClass/byModel cover every selected element.",
@@ -193,15 +190,6 @@
               }
             ],
             "qsetCount": 1,
-            "zoneVolumeBreakdowns": {
-              "quantityStatus": "available",
-              "quantityReason": null,
-              "unitStatus": "available",
-              "unitReason": null,
-              "zoneSetCount": 0,
-              "zoneSets": [],
-              "volumeBases": []
-            },
             "nativeEdit": {
               "units": "m",
               "dimensionsStatus": "unavailable",

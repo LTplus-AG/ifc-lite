@@ -589,3 +589,19 @@ for (const owner of ['sourceStorey', 'destinationStorey'] as const) test(`#7328 
   assert.deepEqual(await graph(s.bytesNow()), before);
   assert.equal(s.view.getMutationRevision(), revision); assert.equal(nativeSdkUndoDepth(), depth);
 });
+
+test('#7328 actual parser-valid short-title native batch is not rejected by producer template overhead', async t => {
+  if (!ensureRoomWasm(t)) return;
+  const s = await setup();
+  let expected = nativeCreate.planStoreyReassignment(s.store, s.view, [s.id], 42, s.destination);
+  const serialize = () => JSON.stringify({ kind: 'model.authoring', version: 1, title: 'N', units: 'm', frame: 'storey-local', operations: [{ ...s.operation, expected }] });
+  const relation = expected.sourceMemberships[0]; assert.ok(relation);
+  const description = 'S'.repeat(399_995 - serialize().length - 2);
+  s.editor.setPositionalAttribute(relation.id, 3, description);
+  expected = nativeCreate.planStoreyReassignment(s.store, s.view, [s.id], 42, s.destination);
+  const saved = await parseIfc(s.bytesNow());
+  assert.equal(saved.getEntity(relation.id)?.attributes[3], description);
+  const answer = serialize();
+  assert.ok(answer.length <= 400_000 && answer.length > 399_980, 'real native batch reaches the unchanged parser boundary');
+  assert.doesNotThrow(() => parseModelAuthoringBatch(answer), 'outer parser must use the actual submitted title and bytes, not a longer producer template');
+});

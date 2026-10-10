@@ -507,3 +507,64 @@ test('#7328 transported pins retain model ownership across two native models wit
   assert.deepEqual(await graph(editedModelBytes(own, ownView)), graphs[0]);
   assert.deepEqual(await graph(editedModelBytes(peer, peerView)), graphs[1]);
 });
+
+for (const owner of ['source', 'destination'] as const) test(`#7328 public review refuses duplicate ${owner} storey identity before approval`, async t => {
+  if (!ensureRoomWasm(t)) return;
+  const s = await setup(), batch = s.batch();
+  const storeyId = owner === 'source' ? 42 : s.destination;
+  const attributes = [...effectiveMetadataRecord(s.store, storeyId, s.view)!.attributes];
+  const point = s.editor.addEntity('IfcCartesianPoint', [[50, 0, 0]]).expressId;
+  const axis = s.editor.addEntity('IfcAxis2Placement3D', [`#${point}`, null, null]).expressId;
+  attributes[5] = `#${s.editor.addEntity('IfcLocalPlacement', [null, `#${axis}`]).expressId}`;
+  const duplicate = s.editor.addEntity('IfcBuildingStorey', attributes).expressId;
+  const saved = await parseIfc(s.bytesNow());
+  assert.equal(saved.getEntity(duplicate)?.attributes[0], saved.getEntity(storeyId)?.attributes[0]);
+  const before = await graph(s.bytesNow()), revision = s.view.getMutationRevision(), depth = nativeSdkUndoDepth();
+  const preview = previewModelAuthoring(useViewerStore.getState(), batch);
+  await t.test('public preparation refuses the ambiguous owning-model storey', () => {
+    assert.notEqual(preview.rows[0].status, 'ready', 'duplicate storey identity must not be offered for approval');
+  });
+  const result = commitModelAuthoring(useViewerStore, preview, new Set([0]), 'duplicate native storey');
+  assert.equal(result.ok, false, 'canonical native preparation/commit must refuse duplicate identity');
+  assert.deepEqual(await graph(s.bytesNow()), before);
+  assert.equal(s.view.getMutationRevision(), revision); assert.equal(nativeSdkUndoDepth(), depth);
+});
+
+test('#7328 native near-text-limit pin distinguishes public batch overhead from actual request refusal', async t => {
+  if (!ensureRoomWasm(t)) return;
+  const s = await setup();
+  assert.equal(typeof nativeCreate.planStoreyReassignment, 'function');
+  let expected = nativeCreate.planStoreyReassignment(s.store, s.view, [s.id], 42, s.destination);
+  const relation = expected.sourceMemberships[0]; assert.ok(relation);
+  // IfcRoot.Description is unbounded IfcText, not a 255-character IfcLabel.
+  // Author actual IFC metadata; do not pad or alter the captured JSON pin.
+  s.editor.setPositionalAttribute(relation.id, 3, 'N'.repeat(399_900 - JSON.stringify(expected).length - 2));
+  expected = nativeCreate.planStoreyReassignment(s.store, s.view, [s.id], 42, s.destination);
+  const saved = await parseIfc(s.bytesNow());
+  assert.equal(saved.getEntity(relation.id)?.attributes[3], effectiveMetadataRecord(s.store, relation.id, s.view)!.attributes[3]);
+  const pinLength = JSON.stringify(expected).length;
+  const answer = JSON.stringify({ kind: 'model.authoring', version: 1, title: 'Native complete metadata', units: 'm', frame: 'storey-local', operations: [{ ...s.operation, expected }] });
+  assert.ok(pinLength < 400_000); assert.ok(answer.length > 400_000);
+  assert.throws(() => parseModelAuthoringBatch(answer), /text limit/);
+  const grounding = captureSelectionGrounding(useViewerStore.getState());
+  const candidate = grounding.elements[0].nativeStoreyReassignments?.find(item => item.destinationStorey.globalId === s.operation.destinationStorey.globalId);
+  t.diagnostic(`actual native pin=${pinLength}; full batch=${answer.length}; captured candidate=${Boolean(candidate)}; availability=${JSON.stringify(grounding.elements[0].nativeAuthoringAvailability)}`);
+  if (candidate) await t.test('an advertised complete candidate fits the public full-batch parser', () => {
+    assert.doesNotThrow(() => parseModelAuthoringBatch(answer));
+  });
+  replaceEvidence(captureEvidence('selection'));
+  let requested = false;
+  globalThis.fetch = async (_url, init) => {
+    const wire = JSON.parse(String(init?.body));
+    assert.ok(JSON.stringify(wire.messages).length + wire.system.length <= 90_000);
+    const user = wire.messages.filter((message: { role: string }) => message.role === 'user').at(-1);
+    const sent: typeof grounding.elements = JSON.parse(user.content.split('\n').at(-1));
+    assert.equal(sent[0].modelId, MODEL); assert.equal(sent[0].globalId, grounding.elements[0].globalId);
+    assert.notEqual(sent[0].nativeAuthoringAvailability.storeyReassignment, 'available');
+    assert.equal(sent[0].nativeStoreyReassignments, null);
+    requested = true;
+    return new Response(`data: ${JSON.stringify({ choices: [{ delta: { content: 'Native unavailable metadata received.' }, finish_reason: 'stop' }] })}\n\n`);
+  };
+  assert.equal(await sendAssistant('Explain this current native selection', 'openai/gpt-free', '/api/chat', attachmentsForSend({ selection: grounding, screenshot: null })), true, useAssistant.getState().error ?? '');
+  assert.equal(requested, true);
+});

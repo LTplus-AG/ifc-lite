@@ -185,6 +185,11 @@ a recorded zero recovery count survives a cache hit, while missing values
 remain unknown. Reading older entries leaves these fields absent; the
 viewer’s versioned cache key rebuilds older entries once.
 
+Format v25 also keeps the optional per-mesh `shadingColor`, `localBounds`
+(pre-placement object-space AABB) and `localToWorld` (placement matrix), so
+a cache hit carries the same values as the fresh load. Older entries read
+these fields as absent; nothing is inferred from `origin` or chunk bounds.
+
 ### Exact extrusion source definitions
 
 `GeometryProcessor.extractExtrusionDefinitions` returns the authored

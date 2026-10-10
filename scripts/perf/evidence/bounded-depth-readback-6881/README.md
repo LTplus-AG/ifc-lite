@@ -317,3 +317,11 @@ lint failures/corrections, exact root commands and observer-provenance controls.
 The stale hover repair shares selection's validity snapshot and uses separate
 request generations. These supplied renderer responses qualify application
 ownership only. Native geometry/picking and focused performance remain required.
+
+The [fresh runtime and T3 refusal archive](runtime-browser-refusal-20261010.json.gz)
+contains full source/runtime/served-byte manifests, source-matched observer inputs,
+build logs, tooling recovery and exact CPU/GPU reservation cleanup/release receipts.
+The frozen candidate compilation source is `deba56e275242aed9282b02ceedebf8e0b7a861a`.
+Fresh-tab setup refused before any server, model load or native phase. Existing
+owned blank-tab inspection succeeded; failed fresh-tab/client side effects remain
+unverified. Current native picking and focused physical performance remain held.

@@ -218,4 +218,23 @@ describe('Entity Attribute Extraction', () => {
     } as unknown as IfcDataStore;
     expect(extractEntityAttributesOnDemand(store, 7).longName).toBe(expected);
   });
+
+  // #7405 review: a source-backed record that only the deferred index knows
+  // must resolve like getEntityRefFromStore does, for LongName and the root attributes alike.
+  it('reads an entity found only in the deferred index', () => {
+    const line = "#9=IFCSPACE('2RSCzLOBz4FAK$_wE8VckM',$,'4','Room desc',$,$,$,'Schlafzimmer',.ELEMENT.,$,$);";
+    const source = new TextEncoder().encode(line);
+    const ref = { expressId: 9, type: 'IFCSPACE', byteOffset: 0, byteLength: source.length, lineNumber: 1 };
+    const store = {
+      source,
+      schemaVersion: 'IFC4',
+      entityIndex: { byId: new Map() },
+      deferredEntityIndex: new Map([[9, ref]]),
+    } as unknown as IfcDataStore;
+    const attrs = extractEntityAttributesOnDemand(store, 9);
+    expect(attrs.longName).toBe('Schlafzimmer');
+    expect(attrs.name).toBe('4');
+    expect(attrs.description).toBe('Room desc');
+    expect(attrs.globalId).toBe('2RSCzLOBz4FAK$_wE8VckM');
+  });
 });

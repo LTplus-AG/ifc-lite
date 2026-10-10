@@ -1,0 +1,13 @@
+diff --git a/packages/ids-authoring/src/ops/json-schema-lite.ts b/packages/ids-authoring/src/ops/json-schema-lite.ts
+index f60887abe..015ca3005 100644
+--- a/packages/ids-authoring/src/ops/json-schema-lite.ts
++++ b/packages/ids-authoring/src/ops/json-schema-lite.ts
+@@ -79,7 +79,7 @@ export function validateJson(
+       return [{ path, message: `expected ${types.join(' | ')}, got ${typeOf(value)}` }];
+     }
+   }
+-  if (typeof value === 'number' && Number.isNaN(value)) {
++  if (typeof value === 'number' && !Number.isFinite(value)) {
+     return [{ path, message: 'expected a finite number' }];
+   }
+   if (schema.const !== undefined && value !== schema.const) {

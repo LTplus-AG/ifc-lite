@@ -1,0 +1,210 @@
+{
+  "facet-patch-loses-raw-relation": {
+    "verdict": "OBSERVED",
+    "exitCode": 0,
+    "reason": "reverting production turned an assertion RED in packages/ids-authoring/src/reducer/apply.test.ts; that file has a green, attributable baseline.",
+    "base": "51dc46793237427db42b12c01ab9073069c515df",
+    "head": "96e03a7272c7e2f312c1cf784309207d0f38d921",
+    "production": [
+      "packages/ids-authoring/src/reducer/facet-ops.ts"
+    ],
+    "tests": [
+      "packages/ids-authoring/src/reducer/apply.test.ts"
+    ]
+  },
+  "gate-entity-enum-not-grounded": {
+    "verdict": "OBSERVED",
+    "exitCode": 0,
+    "reason": "reverting production turned an assertion RED in packages/ids-authoring/src/gate/gate-entity.test.ts; that file has a green, attributable baseline.",
+    "base": "51dc46793237427db42b12c01ab9073069c515df",
+    "head": "96e03a7272c7e2f312c1cf784309207d0f38d921",
+    "production": [
+      "packages/ids-authoring/src/gate/grounding.ts"
+    ],
+    "tests": [
+      "packages/ids-authoring/src/gate/gate-entity.test.ts"
+    ]
+  },
+  "gate-exclusive-range-empty": {
+    "verdict": "OBSERVED",
+    "exitCode": 0,
+    "reason": "reverting production turned an assertion RED in packages/ids-authoring/src/gate/gate-structural.test.ts; that file has a green, attributable baseline.",
+    "base": "51dc46793237427db42b12c01ab9073069c515df",
+    "head": "96e03a7272c7e2f312c1cf784309207d0f38d921",
+    "production": [
+      "packages/ids-authoring/src/gate/values.ts"
+    ],
+    "tests": [
+      "packages/ids-authoring/src/gate/gate-structural.test.ts"
+    ]
+  },
+  "gate-pdt-userdefined-undeclared": {
+    "verdict": "OBSERVED",
+    "exitCode": 0,
+    "reason": "reverting production turned an assertion RED in packages/ids-authoring/src/gate/gate-entity.test.ts; that file has a green, attributable baseline.",
+    "base": "51dc46793237427db42b12c01ab9073069c515df",
+    "head": "96e03a7272c7e2f312c1cf784309207d0f38d921",
+    "production": [
+      "packages/ids-authoring/src/gate/grounding.ts"
+    ],
+    "tests": [
+      "packages/ids-authoring/src/gate/gate-entity.test.ts"
+    ]
+  },
+  "gate-pset-qto-never-verified": {
+    "verdict": "OBSERVED",
+    "exitCode": 0,
+    "reason": "reverting production turned an assertion RED in packages/ids-authoring/src/gate/gate-pset.test.ts; that file has a green, attributable baseline.",
+    "base": "51dc46793237427db42b12c01ab9073069c515df",
+    "head": "96e03a7272c7e2f312c1cf784309207d0f38d921",
+    "production": [
+      "packages/ids-authoring/src/gate/grounding-pset.ts"
+    ],
+    "tests": [
+      "packages/ids-authoring/src/gate/gate-pset.test.ts"
+    ]
+  },
+  "gate-redos-guard-skipped": {
+    "verdict": "OBSERVED",
+    "exitCode": 0,
+    "reason": "reverting production turned an assertion RED in packages/ids-authoring/src/gate/gate-structural.test.ts; that file has a green, attributable baseline.",
+    "base": "51dc46793237427db42b12c01ab9073069c515df",
+    "head": "96e03a7272c7e2f312c1cf784309207d0f38d921",
+    "production": [
+      "packages/ids-authoring/src/gate/values.ts"
+    ],
+    "tests": [
+      "packages/ids-authoring/src/gate/gate-structural.test.ts"
+    ]
+  },
+  "history-commit-keeps-redo": {
+    "verdict": "OBSERVED",
+    "exitCode": 0,
+    "reason": "reverting production turned an assertion RED in packages/ids-authoring/src/history/history.test.ts; that file has a green, attributable baseline.",
+    "base": "51dc46793237427db42b12c01ab9073069c515df",
+    "head": "96e03a7272c7e2f312c1cf784309207d0f38d921",
+    "production": [
+      "packages/ids-authoring/src/history/history.ts"
+    ],
+    "tests": [
+      "packages/ids-authoring/src/history/history.test.ts"
+    ]
+  },
+  "reducer-inverse-drops-cardinality-raw": {
+    "verdict": "OBSERVED",
+    "exitCode": 0,
+    "reason": "reverting production turned an assertion RED in packages/ids-authoring/src/reducer/apply.test.ts; that file has a green, attributable baseline.",
+    "base": "51dc46793237427db42b12c01ab9073069c515df",
+    "head": "96e03a7272c7e2f312c1cf784309207d0f38d921",
+    "production": [
+      "packages/ids-authoring/src/reducer/facet-ops.ts"
+    ],
+    "tests": [
+      "packages/ids-authoring/src/reducer/apply.test.ts"
+    ]
+  },
+  "reducer-inverse-drops-description": {
+    "verdict": "OBSERVED",
+    "exitCode": 0,
+    "reason": "reverting production turned an assertion RED in packages/ids-authoring/src/reducer/apply.test.ts; that file has a green, attributable baseline.",
+    "base": "51dc46793237427db42b12c01ab9073069c515df",
+    "head": "385ad04ba8ec755b6544b360339a5458853fc8f8",
+    "production": [
+      "packages/ids-authoring/src/reducer/facet-ops.ts"
+    ],
+    "tests": [
+      "packages/ids-authoring/src/reducer/apply.test.ts"
+    ]
+  },
+  "reducer-inverse-drops-instructions": {
+    "verdict": "OBSERVED",
+    "exitCode": 0,
+    "reason": "reverting production turned an assertion RED in packages/ids-authoring/src/reducer/apply.test.ts; that file has a green, attributable baseline.",
+    "base": "51dc46793237427db42b12c01ab9073069c515df",
+    "head": "385ad04ba8ec755b6544b360339a5458853fc8f8",
+    "production": [
+      "packages/ids-authoring/src/reducer/facet-ops.ts"
+    ],
+    "tests": [
+      "packages/ids-authoring/src/reducer/apply.test.ts"
+    ]
+  },
+  "reidentify-empty-identifier-matches": {
+    "verdict": "OBSERVED",
+    "exitCode": 0,
+    "reason": "reverting production turned an assertion RED in packages/ids-authoring/src/match/reidentify.test.ts; that file has a green, attributable baseline.",
+    "base": "51dc46793237427db42b12c01ab9073069c515df",
+    "head": "96e03a7272c7e2f312c1cf784309207d0f38d921",
+    "production": [
+      "packages/ids-authoring/src/match/reidentify.ts"
+    ],
+    "tests": [
+      "packages/ids-authoring/src/match/reidentify.test.ts"
+    ]
+  },
+  "rename-property-ignores-scope": {
+    "verdict": "OBSERVED",
+    "exitCode": 0,
+    "reason": "reverting production turned an assertion RED in packages/ids-authoring/src/compound/expand.test.ts; that file has a green, attributable baseline.",
+    "base": "51dc46793237427db42b12c01ab9073069c515df",
+    "head": "96e03a7272c7e2f312c1cf784309207d0f38d921",
+    "production": [
+      "packages/ids-authoring/src/compound/expand.ts"
+    ],
+    "tests": [
+      "packages/ids-authoring/src/compound/expand.test.ts"
+    ]
+  },
+  "schema-accepts-infinity": {
+    "verdict": "OBSERVED",
+    "exitCode": 0,
+    "reason": "reverting production turned an assertion RED in packages/ids-authoring/src/ops/schema.test.ts; that file has a green, attributable baseline.",
+    "base": "51dc46793237427db42b12c01ab9073069c515df",
+    "head": "96e03a7272c7e2f312c1cf784309207d0f38d921",
+    "production": [
+      "packages/ids-authoring/src/ops/json-schema-lite.ts"
+    ],
+    "tests": [
+      "packages/ids-authoring/src/ops/schema.test.ts"
+    ]
+  },
+  "sidecar-attach-ignores-fingerprint": {
+    "verdict": "OBSERVED",
+    "exitCode": 0,
+    "reason": "reverting production turned an assertion RED in packages/ids-authoring/src/sidecar/sidecar.test.ts; that file has a green, attributable baseline.",
+    "base": "51dc46793237427db42b12c01ab9073069c515df",
+    "head": "96e03a7272c7e2f312c1cf784309207d0f38d921",
+    "production": [
+      "packages/ids-authoring/src/sidecar/sidecar.ts"
+    ],
+    "tests": [
+      "packages/ids-authoring/src/sidecar/sidecar.test.ts"
+    ]
+  },
+  "units-mm-factor-inverted": {
+    "verdict": "OBSERVED",
+    "exitCode": 0,
+    "reason": "reverting production turned an assertion RED in packages/ids-authoring/src/ops/draft.test.ts; that file has a green, attributable baseline.",
+    "base": "51dc46793237427db42b12c01ab9073069c515df",
+    "head": "96e03a7272c7e2f312c1cf784309207d0f38d921",
+    "production": [
+      "packages/ids-authoring/src/ops/units.ts"
+    ],
+    "tests": [
+      "packages/ids-authoring/src/ops/draft.test.ts"
+    ]
+  },
+  "uuidv7-same-ms-reseeds": {
+    "verdict": "OBSERVED",
+    "exitCode": 0,
+    "reason": "reverting production turned an assertion RED in packages/ids-authoring/src/uuid.test.ts; that file has a green, attributable baseline.",
+    "base": "51dc46793237427db42b12c01ab9073069c515df",
+    "head": "96e03a7272c7e2f312c1cf784309207d0f38d921",
+    "production": [
+      "packages/ids-authoring/src/uuid.ts"
+    ],
+    "tests": [
+      "packages/ids-authoring/src/uuid.test.ts"
+    ]
+  }
+}

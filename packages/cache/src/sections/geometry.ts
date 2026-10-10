@@ -9,6 +9,7 @@
 import type { MeshData } from '@ifc-lite/geometry';
 import { BufferWriter, BufferReader } from '../utils/buffer-utils.js';
 import { writeProvenance, readProvenance, provenanceByteLength, type AppearanceSourcePool } from './appearance-provenance.js';
+import { meshMetadataByteLength, readMeshMetadata, writeMeshMetadata } from './mesh-metadata.js';
 
 /**
  * Validate + filter meshes (detached buffers / size mismatches / absurd
@@ -51,7 +52,8 @@ export function validateMeshes(meshes: MeshData[]): {
 
 /**
  * One current-version per-mesh record inside a v13+ chunk. Version 19
- * appends optional canonical appearance provenance after geometry arrays.
+ * appends optional canonical appearance provenance after geometry arrays,
+ * v22 the finish trailer, and v25 the optional metadata trailer (#7350).
  */
 export function writeMeshRecord(writer: BufferWriter, mesh: MeshData, pool?: AppearanceSourcePool): void {
   writer.writeUint32(mesh.expressId);
@@ -109,6 +111,7 @@ export function writeMeshRecord(writer: BufferWriter, mesh: MeshData, pool?: App
   writer.writeTypedArray(mesh.indices);
   writeProvenance(writer, mesh, pool);
   writeFinish(writer, mesh);
+  writeMeshMetadata(writer, mesh);
 }
 
 /** Bytes of the v22 finish trailer every mesh record ends with. */
@@ -142,6 +145,7 @@ export function meshRecordByteLength(mesh: MeshData, pool?: AppearanceSourcePool
     8 +                    // geometryItemId + materialId u32x2 (v14+)
     24 +                   // origin f64x3
     MESH_FINISH_BYTES +    // finish metallic + roughness f32x2 (v22+)
+    meshMetadataByteLength(mesh) + // optional shading/local metadata (v25+)
     mesh.positions.byteLength + mesh.normals.byteLength + mesh.indices.byteLength + provenanceByteLength(mesh, pool)
   );
 }
@@ -291,5 +295,6 @@ export function readMeshRecord(reader: BufferReader, version: number, meshIndex:
   };
   if (version >= 19) readProvenance(reader, mesh, pool);
   if (version >= 22) readFinish(reader, mesh);
+  if (version >= 25) readMeshMetadata(reader, mesh);
   return mesh;
 }

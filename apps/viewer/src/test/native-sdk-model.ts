@@ -14,6 +14,7 @@ import { applyRemeshConfig, remeshOnApi, styleWireOnApi } from '../../../../pack
 import { useViewerStore } from '@/store';
 import { toGlobalIdFromModels } from '@/store/globalId';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture';
+import { getMaxExpressId } from '@/hooks/ingest/viewerModelIngest';
 import { setRemeshClientFactory, requestRemesh } from '@/lib/remesh/remesh-service';
 import { createStoreAdapter } from '@/sdk/adapters/store-adapter.js';
 
@@ -32,7 +33,7 @@ export async function seedNativeSdkModel(sourceBytes?: Uint8Array) {
   const bounds = new CoordinateHandler().calculateBounds(loaded.meshes);
   const geometry: GeometryResult = { meshes: loaded.meshes, totalTriangles: loaded.meshes.reduce((n, mesh) => n + mesh.indices.length / 3, 0), totalVertices: loaded.meshes.reduce((n, mesh) => n + mesh.positions.length / 3, 0), coordinateInfo: { wasmRtcFrame: frame, originShift: { x: 0, y: 0, z: 0 }, originalBounds: bounds, shiftedBounds: bounds, hasLargeCoordinates: false } };
   useViewerStore.setState({
-    ...fixtureModels({ ...fixtureModel(MODEL), ifcDataStore: store, geometryResult: geometry }),
+    ...fixtureModels({ ...fixtureModel(MODEL), ifcDataStore: store, geometryResult: geometry, maxExpressId: getMaxExpressId(store, loaded.meshes) }),
     geometryResult: geometry, editEnabled: true, collabRoomId: null, canCollabEdit: () => true,
     mutationViews: new Map([[MODEL, new MutablePropertyView(store.properties ?? null, MODEL)]]),
     storeEditors: new Map(), undoStacks: new Map(), redoStacks: new Map(), mutationBatchTags: new Map(),

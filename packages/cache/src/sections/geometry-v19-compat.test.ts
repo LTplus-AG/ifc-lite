@@ -7,6 +7,7 @@ import type { CoordinateInfo, MeshData } from '@ifc-lite/geometry';
 import { BufferWriter } from '../utils/buffer-utils.js';
 import { readGeometryV13 } from './geometry-chunks.js';
 import { MESH_FINISH_BYTES, meshRecordByteLength, writeMeshRecord } from './geometry.js';
+import { MESH_METADATA_ABSENT_BYTES } from './mesh-metadata.js';
 
 const point = { x: 0, y: 0, z: 0 };
 
@@ -34,8 +35,9 @@ function genuineV19GeometrySection(mesh: MeshData, info: CoordinateInfo): ArrayB
   const record = new BufferWriter();
   writeMeshRecord(record, mesh);
   expect(record.position).toBe(meshRecordByteLength(mesh));
-  // A genuine v19 record ends before the v22 finish trailer.
-  const recordBytes = new Uint8Array(record.build()).subarray(0, meshRecordByteLength(mesh) - MESH_FINISH_BYTES);
+  // A genuine v19 record ends before the v22 finish and v25 metadata trailers.
+  const recordBytes = new Uint8Array(record.build())
+    .subarray(0, meshRecordByteLength(mesh) - MESH_FINISH_BYTES - MESH_METADATA_ABSENT_BYTES);
 
   const head = new BufferWriter();
   head.writeUint32(1); // mesh count

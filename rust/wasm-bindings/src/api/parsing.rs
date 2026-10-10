@@ -13,6 +13,11 @@ impl IfcAPI {
     /// Fast entity scanning using SIMD-accelerated Rust scanner
     /// Returns array of entity references for data model parsing
     /// Much faster than TypeScript byte-by-byte scanning (5-10x speedup)
+    ///
+    /// The returned array also carries two own properties describing what the
+    /// scan refused (#7393): `oversizedIdCount` (records skipped because their
+    /// express id does not fit u32, #3395) and `malformedRecordCount` (0 or 1:
+    /// whether a record was dropped for having no terminating `;`, #3695).
     #[wasm_bindgen(js_name = scanEntitiesFast)]
     pub fn scan_entities_fast(&self, content: &str) -> JsValue {
         Self::scan_entities_fast_inner(content.as_bytes())
@@ -21,6 +26,9 @@ impl IfcAPI {
     /// Fast entity scanning from raw bytes (avoids TextDecoder.decode on JS side).
     /// Accepts Uint8Array directly — saves ~2-5s for 487MB files by skipping
     /// JS string creation and UTF-16→UTF-8 conversion.
+    ///
+    /// Carries the same `oversizedIdCount` / `malformedRecordCount` array
+    /// properties as `scanEntitiesFast` (#7393).
     #[wasm_bindgen(js_name = scanEntitiesFastBytes)]
     pub fn scan_entities_fast_bytes(&self, data: &[u8]) -> JsValue {
         Self::scan_entities_fast_inner(data)
@@ -83,12 +91,28 @@ impl IfcAPI {
         // `EntityScanResult.malformedRecordCount`. Either way `refs` can come
         // back quietly short, so say it: the message and its destination are
         // core's (the module's `init` bound the sink to the browser console).
-        ifc_lite_core::report_scan_diagnostics(
-            scanner.skipped_oversized_ids(),
-            scanner.malformed_record_start().is_some(),
-        );
+        let oversized_id_count = scanner.skipped_oversized_ids();
+        let malformed_record_found = scanner.malformed_record_start().is_some();
+        ifc_lite_core::report_scan_diagnostics(oversized_id_count, malformed_record_found);
 
-        to_value(&refs).unwrap_or_else(|_| js_sys::Array::new().into())
+        // The console line above reaches a human, not the caller. Hand the
+        // two numbers back too, so `@ifc-lite/parser` can route them through
+        // `onDiagnostic` exactly as its TypeScript tokenizer does (#7393).
+        // Set as own properties of the returned array rather than wrapping it
+        // in an object, so every existing caller that expects an array keeps
+        // working; two property writes per scan, nothing per record.
+        let out = to_value(&refs).unwrap_or_else(|_| js_sys::Array::new().into());
+        let _ = js_sys::Reflect::set(
+            &out,
+            &JsValue::from_str("oversizedIdCount"),
+            &JsValue::from_f64(oversized_id_count as f64),
+        );
+        let _ = js_sys::Reflect::set(
+            &out,
+            &JsValue::from_str("malformedRecordCount"),
+            &JsValue::from_f64(if malformed_record_found { 1.0 } else { 0.0 }),
+        );
+        out
     }
 
     /// Fast geometry-only entity scanning

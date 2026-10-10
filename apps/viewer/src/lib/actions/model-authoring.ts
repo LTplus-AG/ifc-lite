@@ -20,6 +20,7 @@
  * counter-clockwise seen from above. Nothing here writes.
  */
 
+import { parseStoreyReassignment, type StoreyReassignmentOp } from './model-authoring-storey-reassignment';
 import { parseLayerFields, type LayerFields } from './model-authoring-layer-params';
 import { parseReplacementFields,type NativeReplacementOp } from './model-authoring-replacement-fields';
 import { parseSlabOpeningFields, type SlabOpeningCreate } from './model-authoring-slab-opening';
@@ -40,7 +41,7 @@ import { parseStairRailingParams, parseStairPatch, parseExpectedStair, railingPo
 import type { RailingInStoreParams, StairInStoreParams, StairDimensions, StairDimensionEdit, ProfileSection } from '@ifc-lite/create';
 import type { ElementSizePatch } from '@/store/slices/mutation-element-size';
 import { parseCopyFields, type CopyFields, type ArrayFields } from './model-authoring-copy-fields';
-import { parseGlobalIdTarget, parseLength, parsePoint, parseRef, parseText, record, type LengthRange } from './model-authoring-fields';
+import { MODEL_AUTHORING_TEXT_LIMIT, parseGlobalIdTarget, parseLength, parsePoint, parseRef, parseText, record, type LengthRange } from './model-authoring-fields';
 import { parseClassificationAdd, type ClassificationAddFields } from './model-authoring-classification';
 
 export const AUTHORING_CLASSES = ['IfcWall', 'IfcSlab', 'IfcRoof', 'IfcPlate', 'IfcColumn', 'IfcBeam', 'IfcMember', 'IfcSpace'] as const;
@@ -63,6 +64,7 @@ export interface AxisParams { start: Point3; end: Point3; thickness?: number; wi
 export interface BoxParams { position: Point3; width: number; depth: number; thickness?: number; height?: number }
 
 export type AuthoringOp =
+  | StoreyReassignmentOp
   | ({ op: 'classification.add'; target: ExistingElement } & ClassificationAddFields)
   | { op: 'curtainWall.create'; ref: string; storey: StoreyTarget; params: CurtainWallInStoreParams }
   | ReviewedGridOp
@@ -98,7 +100,7 @@ export type AuthoringOp =
   | { op: 'hosted.create'; ref?: string; kind: HostedKind; host: ElementTarget; name?: string; offset: number; sill: number; width: number; height: number };
 
 export type AuthoringOpName = AuthoringOp['op'];
-export const AUTHORING_OPS: readonly AuthoringOpName[] = ['curtainWall.create', 'grid.create', 'column.createOnGrid', 'stair.resize', 'stair.delete', 'railing.delete', 'stair.replace', 'railing.replace', 'stair.create', 'railing.create', 'element.create', 'element.replace', 'element.delete', 'element.split', 'element.resize', 'element.profile', 'element.trimExtend', 'element.move', 'element.rotate', 'element.align', 'element.copy', 'element.array', 'classification.add',
+export const AUTHORING_OPS: readonly AuthoringOpName[] = ['curtainWall.create', 'element.reassignStorey', 'grid.create', 'column.createOnGrid', 'stair.resize', 'stair.delete', 'railing.delete', 'stair.replace', 'railing.replace', 'stair.create', 'railing.create', 'element.create', 'element.replace', 'element.delete', 'element.split', 'element.resize', 'element.profile', 'element.trimExtend', 'element.move', 'element.rotate', 'element.align', 'element.copy', 'element.array', 'classification.add',
   'type.assign', 'type.detach', 'material.assign', 'material.layers', 'walls.join', 'hosted.create', 'hosted.edit'];
 
 export interface ModelAuthoringBatch {
@@ -206,6 +208,7 @@ function operation(value: unknown, index: number, units: AuthoringUnits, refs: M
       return { op: 'classification.add', target: existing(value.target, at), ...parseClassificationAdd(value, at) };
     case 'grid.create': return defineRef({ op: value.op, ref: parseRef(value.ref, at), storey: parseGridStorey(value.storey, `${at} storey`), params: parseGridParams(value.params, units, at) });
     case 'column.createOnGrid': return defineRef({ op: value.op, ref: parseRef(value.ref, at), storey: parseGridStorey(value.storey, `${at} storey`), params: parseGridColumnParams(value.params, units, at), grid: parseGridBinding(value.grid, ref => refs.get(ref)?.op === 'grid.create', `${at} grid`) });
+    case 'element.reassignStorey': return parseStoreyReassignment(value, existing(value.target, at), at);
     case 'element.replace': return defineRef(parseReplacementFields(value,existing(value.target,at),units,at));
     case 'stair.resize': return {op:value.op,target:existing(value.target,at),expected:parseExpectedStair(value.expected,`${at} expected`),size:parseStairPatch(value.size,units,`${at} size`)};
     case 'stair.delete': case 'railing.delete': return {op:value.op,target:existing(value.target,at)};
@@ -339,7 +342,7 @@ function operation(value: unknown, index: number, units: AuthoringUnits, refs: M
 
 /** Strict, bounded parse of a complete JSON answer (optionally fenced). Throws with a reason a person can act on. */
 export function parseModelAuthoringBatch(answer: string): ModelAuthoringBatch {
-  if (answer.length > 400_000) throw new Error('The authoring batch exceeds the text limit');
+  if (answer.length > MODEL_AUTHORING_TEXT_LIMIT) throw new Error('The authoring batch exceeds the text limit');
   const trimmed = answer.trim();
   const fenced = /^```(?:json)?\s*\n([\s\S]*?)\n```$/.exec(trimmed);
   const value: unknown = JSON.parse(fenced ? fenced[1] : trimmed);

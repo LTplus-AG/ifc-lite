@@ -35,6 +35,7 @@ export interface PropertySetCardProps {
   /** The file's declared units, for rendering a unit suffix next to measure
    *  values (issue #1573). */
   projectUnits: ProjectUnits;
+  projectUnitsAvailable?: boolean;
   /** Per-unit-type display-unit overrides (issue #1573 proposal 2) when a
    *  property's measure type maps to an overridden unit kind, its value
    *  renders CONVERTED into that unit instead of the file's raw value.
@@ -44,7 +45,7 @@ export interface PropertySetCardProps {
   sectionScope?: string;
 }
 
-export function PropertySetCard({ pset, modelId, entityId, enableEditing, isTypeProperty, typeEditScope, focusedPropKey, projectUnits, unitDisplayOverrides, searchQuery, sectionScope = 'default' }: PropertySetCardProps) {
+export function PropertySetCard({ pset, modelId, entityId, enableEditing, isTypeProperty, typeEditScope, focusedPropKey, projectUnits, projectUnitsAvailable = true, unitDisplayOverrides, searchQuery, sectionScope = 'default' }: PropertySetCardProps) {
   const { t } = useTranslation();
   // Check if any property in this set is mutated
   const hasMutations = pset.properties.some(p => p.isMutated);
@@ -111,7 +112,7 @@ export function PropertySetCard({ pset, modelId, entityId, enableEditing, isType
       <CollapsibleContent>
         <div className="border-t-2 border-zinc-200 dark:border-zinc-800 divide-y divide-zinc-100 dark:divide-zinc-900">
           {pset.properties.map((prop: { name: string; value: unknown; isMutated?: boolean; type?: number; dataType?: string }, index: number) => {
-            const display = propertyDisplayValue(prop, projectUnits, unitDisplayOverrides ?? {});
+            const display = propertyDisplayValue(prop, projectUnits, unitDisplayOverrides ?? {}, projectUnitsAvailable);
             const { parsed, unit } = display;
             // Names render VERBATIM: the parse path already decoded them (see
             // the note on `parsePropertyValue`), and decoding a second time

@@ -24,6 +24,8 @@ import {
   countDecimalDigits,
 } from './digit-facets.js';
 import { isStrictNumericLiteral } from './comparators.js';
+import { numericValueOf } from './match-bounds.js';
+import { compareOrdered, isOrderedValue } from './xsd-order.js';
 
 /**
  * Cap enumeration rendering. These strings are embedded in per-entity
@@ -99,17 +101,18 @@ function getBoundsMismatchReason(
     const facets = formatUnparseableFacets(constraint.unparseableFacets);
     return (
       `this xs:restriction is malformed and cannot be evaluated: ` +
-      `${facets} did not parse as a number — fix the IDS specification ` +
+      `${facets} ${notReadableAs(constraint)} — fix the IDS specification ` +
       `(every value is being rejected until it is corrected, not just "${actualValue}")`
     );
   }
 
-  const num =
-    typeof actualValue === 'number'
-      ? actualValue
-      : parseFloat(String(actualValue));
+  if (constraint.temporalBounds !== undefined) {
+    return getTemporalBoundsMismatchReason(constraint, actualValue);
+  }
 
-  if (isNaN(num)) {
+  const num = numericValueOf(actualValue);
+
+  if (num === undefined) {
     return `"${actualValue}" is not a valid number`;
   }
 
@@ -158,6 +161,45 @@ function getBoundsMismatchReason(
   }
 
   return `${num} ${violations.join(' and ')}`;
+}
+
+/**
+ * Why malformed facets could not be read: a min/max bound against the
+ * restriction base it failed (#7399), a length or digit count as a
+ * non-negative integer.
+ */
+function notReadableAs(constraint: IDSBoundsConstraint): string {
+  const facets = constraint.unparseableFacets ?? [];
+  if (!facets.every((f) => /^(min|max)(In|Ex)clusive$/.test(f.facet))) {
+    return 'could not be read (a bound must be a value of the restriction base, a length or digit count a non-negative integer)';
+  }
+  return constraint.base
+    ? `is not a valid ${constraint.base} value`
+    : 'did not parse as a number';
+}
+
+function getTemporalBoundsMismatchReason(
+  constraint: IDSBoundsConstraint,
+  actualValue: string | number | boolean
+): string {
+  const t = constraint.temporalBounds ?? {};
+  if (typeof actualValue !== 'string' || !isOrderedValue(actualValue, constraint.base)) {
+    return `"${actualValue}" is not a valid ${constraint.base ?? 'date, time or duration'} value`;
+  }
+  const violations: string[] = [];
+  const check = (bound: string | undefined, op: string, ok: (c: -1 | 0 | 1) => boolean): void => {
+    if (bound === undefined) return;
+    const c = compareOrdered(actualValue, bound, constraint.base);
+    // XSD leaves some pairs unordered — a zone-less time within 14 hours
+    // of a zoned bound, `P366D` against `P1Y` — and those are not accepted.
+    if (c === undefined) violations.push(`cannot be ordered against ${bound}`);
+    else if (!ok(c)) violations.push(`must be ${op} ${bound}`);
+  };
+  check(t.minInclusive, '>=', (c) => c >= 0);
+  check(t.maxInclusive, '<=', (c) => c <= 0);
+  check(t.minExclusive, '>', (c) => c > 0);
+  check(t.maxExclusive, '<', (c) => c < 0);
+  return `${actualValue} ${violations.join(' and ')}`;
 }
 
 /**
@@ -217,32 +259,36 @@ function formatBounds(constraint: IDSBoundsConstraint): string {
   // fail-closed behaviour `matchBounds` actually enforces.
   if (constraint.unparseableFacets !== undefined && constraint.unparseableFacets.length > 0) {
     const facets = formatUnparseableFacets(constraint.unparseableFacets);
-    return `a value satisfying the xs:restriction — currently unparseable: ${facets} did not parse as a number`;
+    return `a value satisfying the xs:restriction — currently unparseable: ${facets} ${notReadableAs(constraint)}`;
   }
 
   const parts: string[] = [];
+  // Date, time and duration bounds are kept as their lexemes; numeric
+  // ones as numbers. A constraint carries one kind or the other.
+  const t = constraint.temporalBounds;
+  const minInclusive = t?.minInclusive ?? constraint.minInclusive;
+  const maxInclusive = t?.maxInclusive ?? constraint.maxInclusive;
+  const minExclusive = t?.minExclusive ?? constraint.minExclusive;
+  const maxExclusive = t?.maxExclusive ?? constraint.maxExclusive;
 
-  if (
-    constraint.minInclusive !== undefined &&
-    constraint.maxInclusive !== undefined
-  ) {
-    return `between ${constraint.minInclusive} and ${constraint.maxInclusive}`;
+  if (minInclusive !== undefined && maxInclusive !== undefined) {
+    return `between ${minInclusive} and ${maxInclusive}`;
   }
 
-  if (constraint.minInclusive !== undefined) {
-    parts.push(`>= ${constraint.minInclusive}`);
+  if (minInclusive !== undefined) {
+    parts.push(`>= ${minInclusive}`);
   }
 
-  if (constraint.maxInclusive !== undefined) {
-    parts.push(`<= ${constraint.maxInclusive}`);
+  if (maxInclusive !== undefined) {
+    parts.push(`<= ${maxInclusive}`);
   }
 
-  if (constraint.minExclusive !== undefined) {
-    parts.push(`> ${constraint.minExclusive}`);
+  if (minExclusive !== undefined) {
+    parts.push(`> ${minExclusive}`);
   }
 
-  if (constraint.maxExclusive !== undefined) {
-    parts.push(`< ${constraint.maxExclusive}`);
+  if (maxExclusive !== undefined) {
+    parts.push(`< ${maxExclusive}`);
   }
 
   if (constraint.totalDigits !== undefined) {

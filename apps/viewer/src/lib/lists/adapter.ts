@@ -8,7 +8,7 @@
  *
  * Handles on-demand property/quantity extraction via WASM when needed.
  * Also handles on-demand attribute extraction for Description, ObjectType,
- * and Tag which are not stored during the fast initial parse.
+ * Tag and LongName which are not stored during the fast initial parse.
  */
 
 import type { IfcDataStore } from '@ifc-lite/parser';
@@ -53,10 +53,11 @@ export function createListDataProvider(
   zoneContext?: ZoneListContext,
   view?: MutablePropertyView,
 ): ListDataProvider {
-  // Cache for on-demand attribute extraction (description, objectType, tag)
+  // Cache for on-demand attribute extraction (description, objectType, tag, longName)
   // These are not stored during initial parse to keep load times fast,
   // but are needed for list display. Cache avoids re-parsing per column.
-  const attrCache = new Map<number, { description: string; objectType: string; tag: string }>();
+  type OnDemandAttrs = { description: string; objectType: string; tag: string; longName: string };
+  const attrCache = new Map<number, OnDemandAttrs>();
 
   // Lazily materialised list of every non-empty express id — used for
   // class-less list targeting. Cached because the provider outlives a run.
@@ -66,18 +67,18 @@ export function createListDataProvider(
   const stringAttr = (id: number, name: string, base: () => string) =>
     effectiveListStringAttribute(store, view, id, name, base);
 
-  function getOnDemandAttrs(id: number): { description: string; objectType: string; tag: string } {
+  function getOnDemandAttrs(id: number): OnDemandAttrs {
     const cached = attrCache.get(id);
     if (cached) return cached;
 
     if (store.source?.length > 0 && store.entityIndex) {
       const attrs = extractEntityAttributesOnDemand(store, id);
-      const result = { description: attrs.description, objectType: attrs.objectType, tag: attrs.tag };
+      const result = { description: attrs.description, objectType: attrs.objectType, tag: attrs.tag, longName: attrs.longName };
       attrCache.set(id, result);
       return result;
     }
 
-    const empty = { description: '', objectType: '', tag: '' };
+    const empty = { description: '', objectType: '', tag: '', longName: '' };
     attrCache.set(id, empty);
     return empty;
   }
@@ -218,6 +219,8 @@ export function createListDataProvider(
     getEntityDescription: (id) => stringAttr(id, 'Description', () => store.entities.getDescription(id) || getOnDemandAttrs(id).description),
     getEntityObjectType: (id) => stringAttr(id, 'ObjectType', () => store.entities.getObjectType(id) || getOnDemandAttrs(id).objectType),
     getEntityPredefinedType: (id) => stringAttr(id, 'PredefinedType', () => getPredefinedTypeFor(id)),
+    // Source-gated like Description: server-parsed stores carry no LongName column yet.
+    getEntityLongName: (id) => stringAttr(id, 'LongName', () => getOnDemandAttrs(id).longName),
     getEntityTag: (id) => stringAttr(id, 'Tag', () => store.entities.getTag?.(id) || getOnDemandAttrs(id).tag),
     getEntityTypeName: (id) => view ? effectiveListTypeName(store, view, id) : exactTypeName(store.entities, id), // declared class, not coalesced (#3325)
 

@@ -25,6 +25,7 @@ import { nativeTypeEvidence, type NativeTypeEvidence } from './native-type-evide
 import { nativeLayerEvidence, type NativeLayerEvidence } from './native-layer-evidence';
 import { nativeStairEvidenceFromTarget } from './model-authoring-stair-lifecycle';
 import { nativeCostEvidence, type CostEvidence } from './cost-graph-evidence';
+import { roomAutoAllEvidence, type RoomAutoAllEvidence } from './room-auto-all-evidence';
 
 export interface SelectionElement extends NativeAuthoringEvidence {
   nativeGrid?: NativeGridEvidence;
@@ -39,6 +40,8 @@ export interface SelectionElement extends NativeAuthoringEvidence {
   nativeLayers?: NativeLayerEvidence;
   nativeStairExpected: ReturnType<typeof nativeStairEvidenceFromTarget>;
   nativeCost: CostEvidence;
+  /** Absent on historical selection snapshots; current native capture always publishes it. */
+  nativeRoomAutoAll?: RoomAutoAllEvidence;
 }
 
 export interface SelectionGrounding {
@@ -116,6 +119,7 @@ export function captureSelectionGrounding(state: GroundingState, limit = SELECTI
       nativeLayers: nativeLayerEvidence(state, nativeTarget(ref.modelId), ref.expressId),
       nativeStairExpected: nativeStairEvidenceFromTarget(nativeTarget(ref.modelId), ref.expressId),
       nativeCost: nativeCostEvidence(nativeTarget(ref.modelId), ref.expressId),
+      nativeRoomAutoAll: roomAutoAllEvidence(nativeTarget(ref.modelId)),
     });
   }
   const grounding = { capturedAt: new Date().toISOString(), total, elements, unresolved,

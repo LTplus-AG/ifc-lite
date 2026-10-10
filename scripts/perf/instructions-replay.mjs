@@ -181,7 +181,7 @@ async function buildSide(side, work) {
     args.push('--patch', patchFile);
   }
   console.error(`replay: building ${side.ref}${side.patch ? ` + ${basename(side.patch)}` : ''} ...`);
-  const r = await run(join(HERE, 'build-at-ref.sh'), args, { cwd: ROOT });
+  const r = await run('bash', [join(HERE, 'build-at-ref.sh'), ...args], { cwd: ROOT });
   if (r.status !== 0) {
     const text = existsSync(log) ? readFileSync(log, 'utf8') : r.stderr;
     return { error: `build failed at ${side.ref}`, log: tail(text) };

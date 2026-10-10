@@ -16,6 +16,7 @@ import type { RemeshRequest } from '@ifc-lite/geometry/remesh';
 import { applyRemeshConfig, remeshOnApi, styleWireOnApi } from '../../../../../packages/geometry/src/remesh/remesh-core.js';
 import { useViewerStore } from '@/store';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture';
+import { getMaxExpressId } from '@/hooks/ingest/viewerModelIngest';
 import { ensureRoomWasm } from '@/test/room-walls-fixture';
 import { clearModelLayouts } from '@/lib/rooms/room-layout';
 import { clearStoreyRoomsCache } from '@/lib/rooms/storey-rooms';
@@ -42,12 +43,17 @@ async function seed() {
   const bounds = new CoordinateHandler().calculateBounds(loaded.meshes);
   const geometry: GeometryResult = { meshes: loaded.meshes, totalTriangles: loaded.meshes.reduce((n, mesh) => n + mesh.indices.length / 3, 0), totalVertices: loaded.meshes.reduce((n, mesh) => n + mesh.positions.length / 3, 0), coordinateInfo: { wasmRtcFrame: frame, originShift: { x: 0, y: 0, z: 0 }, originalBounds: bounds, shiftedBounds: bounds, hasLargeCoordinates: false } };
   useViewerStore.setState({
-    ...fixtureModels({ ...fixtureModel(MODEL), ifcDataStore: store, geometryResult: geometry }),
+    ...fixtureModels({ ...fixtureModel(MODEL), ifcDataStore: store, geometryResult: geometry, maxExpressId: getMaxExpressId(store, loaded.meshes) }),
     geometryResult: geometry, editEnabled: true, collabRoomId: null, canCollabEdit: () => true,
     mutationViews: new Map([[MODEL, new MutablePropertyView(store.properties ?? null, MODEL)]]),
     storeEditors: new Map(), undoStacks: new Map(), redoStacks: new Map(), mutationBatchTags: new Map(),
     removedNewEntities: new Map(), removedMeshes: new Map(), pendingMeshRemovals: null, pendingMeshEdits: null, mutationVersion: 0,
   });
+  // #7324: mirror canonical loader ownership before Room coverage resolves source walls.
+  assert.equal(store.entities.getTypeName(1222), 'IfcWall');
+  assert.ok(loaded.meshes.some(mesh => mesh.expressId === 1222), 'the actual source wall has native geometry');
+  for (const mesh of loaded.meshes) assert.deepEqual(useViewerStore.getState().resolveGlobalIdFromModels(mesh.expressId),
+    { modelId: MODEL, expressId: mesh.expressId }, 'canonical ownership resolves every actual source mesh');
   requests.length = 0;
   setRemeshClientFactory(async next => {
     applyRemeshConfig(api, next);

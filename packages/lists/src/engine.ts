@@ -14,6 +14,7 @@ import { resolveSourceSet } from './source-set.js';
 import { compileNameMatcher } from './name-pattern.js';
 import { getWorldCoordinateValue, extractGeometryColumnValue } from './geometry-column.js';
 import { withAggregateInheritance } from './condition-inherit.js';
+import { getAttributeValue } from './entity-attributes.js';
 import type {
   ListDataProvider,
   ListDefinition,
@@ -582,30 +583,6 @@ function uniqueJoin(values: string[]): string {
 // ============================================================================
 // Value Accessors
 // ============================================================================
-
-function getAttributeValue(entityId: number, attrName: string, provider: ListDataProvider): CellValue {
-  switch (attrName) {
-    case 'Name':
-      return provider.getEntityName(entityId) || null;
-    case 'GlobalId':
-      return provider.getEntityGlobalId(entityId) || null;
-    case 'Class':
-      return provider.getEntityTypeName(entityId) || null;
-    case 'Type':
-      // The element's IfcTypeProduct name (issue #1754).
-      return provider.getEntityDefiningTypeName?.(entityId) || null;
-    case 'Description':
-      return provider.getEntityDescription(entityId) || null;
-    case 'ObjectType':
-      return provider.getEntityObjectType(entityId) || null;
-    case 'PredefinedType':
-      return provider.getEntityPredefinedType?.(entityId) || null;
-    case 'Tag':
-      return provider.getEntityTag(entityId) || null;
-    default:
-      return null;
-  }
-}
 
 function getPropertyValue(
   entityId: number,

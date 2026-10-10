@@ -25,7 +25,7 @@ import '@/lib/commands/modeling/builtin';
 
 let restoreRemesh = () => {};
 beforeEach(async () => {
-  await seedModelingSession();
+  await seedModelingSession({ roomGeometry: true });
   useViewerStore.setState({ navigationPreset: 'default', interactionMode: 'all' });
   clearStoreyRoomsCache();
   restoreRemesh = setRequestRemesh(() => {});

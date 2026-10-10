@@ -101,8 +101,8 @@ permissions:
 # Force JavaScript actions onto Node 24. GitHub deprecated Node 20 for
 # actions in late 2025 and will flip the default in June 2026. Setting
 # this opts us in early so the deprecation warning doesn't show up on
-# every run, and it covers actions like jetli/wasm-pack-action that
-# haven't shipped a Node-24-native release yet.
+# every run, and it covers any third-party action that hasn't shipped a
+# Node-24-native release yet.
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
   # Recorded-provider browser journeys (including the revert oracle) need a
@@ -705,7 +705,7 @@ jobs:
       # lane, but make its formatter dependency explicit rather than relying
       # on a runner image incidental.
       - name: Install Rust formatter for codegen freshness
-        uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # master 2026-05
+        uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f # master 2026-05
         with:
           toolchain: stable
           components: rustfmt
@@ -2601,7 +2601,7 @@ jobs:
       # high enough: >=1.93.0 needed, got 1.93.0-nightly"). The gate invokes it
       # as `cargo +stable semver-checks`, so this only has to exist.
       - name: Install stable Rust
-        uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # master 2026-05
+        uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f # master 2026-05
         with:
           toolchain: stable
 

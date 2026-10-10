@@ -22,6 +22,7 @@ export function SavedComparisonLibrary({ result, running }: { result: CompareRes
   useEffect(() => { void useViewerStore.getState().initializeSavedComparisons(); }, []);
   const stale = useAnalysisStaleness(analysisStampOf(result));
   const saved = useViewerStore((s) => s.savedComparisons);
+  const storage = useViewerStore((s) => s.savedComparisonsStorage);
   const models = useViewerStore((s) => s.models);
   const mutationVersion = useViewerStore((s) => s.mutationVersion);
   const save = useViewerStore((s) => s.saveComparison);
@@ -29,13 +30,18 @@ export function SavedComparisonLibrary({ result, running }: { result: CompareRes
   const [name, setName] = useState('');
   const [selectedId, setSelectedId] = useState('');
   const [renamed, setRenamed] = useState('');
-  const [confirming, setConfirming] = useState(false);
+  const [confirming, setConfirming] = useState<SavedComparison | null>(null);
+  useEffect(() => {
+    if (confirming && !saved.some(report => report.id === confirming.id) && storage.items[confirming.id] === 'saved') {
+      setConfirming(null); setSelectedId('');
+    }
+  }, [confirming, saved, storage.items]);
   const requested = useSavedComparisonFocus(s => s.record);
   const consumed = useRef<typeof requested>(null);
   useEffect(() => {
     const entry = saved.find(item => item.id === requested?.comparisonId);
     if (entry && requested !== consumed.current) {
-      consumed.current = requested; setConfirming(false); setSelectedId(entry.id); setRenamed(entry.name);
+      consumed.current = requested; setConfirming(null); setSelectedId(entry.id); setRenamed(entry.name);
     }
   }, [requested, saved]);
   const selected = saved.find((c) => c.id === selectedId);
@@ -55,7 +61,7 @@ export function SavedComparisonLibrary({ result, running }: { result: CompareRes
     if (!canSave || !result) return;
     const snapshot = snapshotComparison(result, models, name);
     persisted(await save(snapshot));
-    setConfirming(false);
+    setConfirming(null);
     setSelectedId(snapshot.id);
     setRenamed(snapshot.name);
     setName('');
@@ -75,7 +81,7 @@ export function SavedComparisonLibrary({ result, running }: { result: CompareRes
       </div>
       <label className="flex items-center gap-2">{t('comparePanel.saved.pick')}
         <select className="min-w-0 flex-1 rounded border bg-background px-2 py-1" value={selected?.id ?? ''} onChange={(e) => {
-          setConfirming(false); setSelectedId(e.target.value); setRenamed(saved.find((c) => c.id === e.target.value)?.name ?? '');
+          setConfirming(null); setSelectedId(e.target.value); setRenamed(saved.find((c) => c.id === e.target.value)?.name ?? '');
         }}>
           <option value="">{t('comparePanel.saved.placeholder', { count: saved.length })}</option>
           {saved.map((c) => <option key={c.id} value={c.id}>{c.name} — {c.report.baseModel} → {c.report.headModel}</option>)}
@@ -88,10 +94,8 @@ export function SavedComparisonLibrary({ result, running }: { result: CompareRes
           <Button size="sm" variant="outline" disabled={!renamed.trim()} onClick={() => void rename(selected.id, renamed).then(persisted)}>{t('comparePanel.saved.rename')}</Button>
           <Button size="sm" variant="outline" onClick={() => download(selected, 'csv')}>CSV</Button>
           <Button size="sm" variant="outline" onClick={() => download(selected, 'json')}>JSON</Button>
-          <Button size="sm" variant="outline" onClick={() => setConfirming(true)}>{t('comparePanel.saved.delete')}</Button>
+          <Button size="sm" variant="outline" onClick={() => setConfirming(selected)}>{t('comparePanel.saved.delete')}</Button>
         </div>
-        {confirming && <ReportDeletionPreview key={selected.id} source={{ kind: 'compare', id: selected.id }} report={selected}
-          onCancel={() => setConfirming(false)} onDeleted={() => { setConfirming(false); setSelectedId(''); }} storageFailed={() => persisted(false)} />}
         <p className="text-muted-foreground">{t('comparePanel.saved.hint', { count: selected.report.rows.length })}</p>
         <div className="max-h-48 overflow-auto">
           <table className="w-full text-left"><thead><tr><th>{t('document.table.column.globalId')}</th><th>{t('document.table.column.name')}</th><th>IfcType</th><th>{t('comparePanel.saved.change')}</th></tr></thead>
@@ -99,6 +103,9 @@ export function SavedComparisonLibrary({ result, running }: { result: CompareRes
           </table>
         </div>
       </>}
+      {/* A staged tombstone must not unmount the captured confirmation owner. */}
+      {confirming && <ReportDeletionPreview key={confirming.id} source={{ kind: 'compare', id: confirming.id }} report={confirming}
+        onCancel={() => setConfirming(null)} onDeleted={() => { setConfirming(null); setSelectedId(''); }} storageFailed={() => persisted(false)} />}
     </section>
   );
 }

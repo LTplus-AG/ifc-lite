@@ -165,3 +165,81 @@ test('#7220 selection and Zones exclude native zone writeback quantities from wh
   assert.equal(useViewerStore.getState().mutationVersion, beforeVersion);
   assert.equal(useViewerStore.getState().mutationViews, beforeViews, 'capture creates no native mutation view');
 });
+
+// #7220: STEP lazy quantities do not materialize into a retained table when warmed.
+// This witnesses false unit availability after source release, not a fabricated retained-value conversion.
+for (const route of ['selection', 'zones', 'properties'] as const) {
+  test(`#7220 ${route} source-free no-view native unit context is explicitly unavailable`, async t => {
+    const f = await seedDeclaredZoneWall(t); if (!f) return;
+    const draft = getOrCreateMutationView(useViewerStore, 'arch'); assert.ok(draft);
+    const editor = new StoreEditor(f.store, draft);
+    let removedQuantityRelationships = 0;
+    // @raw-entity-enumeration-ok native fixture authoring removes only the real wall's source quantity relationships
+    for (const id of f.store.entityIndex.byType.get('IFCRELDEFINESBYPROPERTIES') ?? []) {
+      const attrs = f.store.getEntity(id)?.attributes;
+      if (!Array.isArray(attrs?.[4]) || !attrs[4].includes(f.id) || typeof attrs[5] !== 'number'
+        || f.store.getEntity(attrs[5])?.type.toUpperCase() !== 'IFCELEMENTQUANTITY') continue;
+      removedQuantityRelationships++;
+      const others = attrs[4].filter(id => id !== f.id);
+      if (others.length) draft.setPositionalAttribute(id, 4, others.map(id => `#${id}`)); else draft.deleteEntity(id);
+    }
+    assert.ok(removedQuantityRelationships > 0, 'native setup removes the original occurrence quantity relationship');
+    const ownerId = f.store.getEntity(f.id)?.attributes[1];
+    const owner = typeof ownerId === 'number' ? `#${ownerId}` : null;
+    const q = editor.addEntity('IfcQuantityVolume', f.store.schemaVersion === 'IFC2X3'
+      ? ['NetVolume', null, null, 10] : ['NetVolume', null, null, 10, null]).expressId;
+    const qto = editor.addEntity('IfcElementQuantity', [generateIfcGuid(), owner, 'SourceFree quantities', null, null, [`#${q}`]]).expressId;
+    editor.addEntity('IfcRelDefinesByProperties', [generateIfcGuid(), owner, null, null, [`#${f.id}`], `#${qto}`]);
+    const store = await parse(editedModelBytes(f.store, draft));
+    const model = useViewerStore.getState().models.get('arch'); assert.ok(model);
+    const currentModel = { ...model, ifcDataStore: store, maxExpressId: getMaxExpressId(store, model.geometryResult?.meshes ?? []) };
+    useViewerStore.setState({ models: new Map([['arch', currentModel]]), ifcDataStore: store,
+      mutationViews: new Map(), storeEditors: new Map() });
+    const view = getOrCreateMutationView(useViewerStore, 'arch'); assert.ok(view);
+    const current = new StoreEditor(store, view);
+    const volume = current.addEntity('IfcSIUnit', ['*', '.VOLUMEUNIT.', '.MILLI.', '.CUBIC_METRE.']).expressId;
+    const assignment = current.addEntity('IfcUnitAssignment', [[`#${volume}`]]).expressId;
+    // @raw-entity-enumeration-ok native fixture authoring selects the source Project before any Project edits
+    const project = store.entityIndex.byType.get('IFCPROJECT')?.[0]; assert.ok(project);
+    view.setPositionalAttribute(project, 8, `#${assignment}`);
+    const exported = await parse(editedModelBytes(store, view));
+    const scale = extractProjectUnits(exported.source, exported.entityIndex).resolvedForUnitType('VOLUMEUNIT')?.siScale;
+    assert.equal(scale, 1e-9, 'independent native export declares cubic millimetres');
+    assert.ok(scale !== undefined);
+    const native = extractQuantitiesOnDemand(exported, f.id).flatMap(set => set.quantities).find(q => q.name === 'NetVolume');
+    assert.ok(native); assert.equal(native.value, 10);
+    assert.equal(native.explicitUnitSiScale, undefined, 'the occurrence quantity uses its Project units');
+    const reparsedModel = { ...currentModel, ifcDataStore: exported,
+      maxExpressId: getMaxExpressId(exported, model.geometryResult?.meshes ?? []) };
+    useViewerStore.setState({ models: new Map([['arch', reparsedModel]]), ifcDataStore: exported,
+      mutationViews: new Map(), storeEditors: new Map(), propertiesActiveTab: 'quantities' });
+    assert.equal(useViewerStore.getState().mutationViews.size, 0, 'native export is reloaded without an edit view');
+    const warm = exported.getQuantities(f.id).flatMap(set => set.quantities).find(q => q.name === 'NetVolume');
+    assert.ok(warm); assert.equal(warm.value, 10, 'the real source-backed native getter is warmed');
+    const sourceBacked = read(route === 'zones' ? 'zones' : 'selection');
+    assertSiVolume(sourceBacked.net, native.value * scale, 'intact no-view native capture agrees with independent mm³ export');
+    const retained = exported.quantities.getForEntity(f.id);
+    const sourceFree = { ...exported, source: EMPTY_SOURCE_BYTES };
+    useViewerStore.setState({ models: new Map([['arch', { ...reparsedModel, ifcDataStore: sourceFree }]]), ifcDataStore: sourceFree });
+    assert.deepEqual(sourceFree.getQuantities(f.id), retained,
+      'remaining quantities come from the actual native precomputed table; warming invents no retained values');
+    const cache = useViewerStore.getState().zoneApportionment;
+    const views = useViewerStore.getState().mutationViews;
+    const version = useViewerStore.getState().mutationVersion;
+    const after = read(route === 'zones' ? 'zones' : 'selection');
+    assert.equal(after.mesh, sourceBacked.mesh, 'the native cached SI mesh survives release without rescaling');
+    if (route === 'properties') {
+      const panel = render(<PropertiesPanel />);
+      assert.match(panel.textContent ?? '', /Current quantity units are unavailable/,
+        'the mounted native card must report absent unit context even without remaining quantities');
+      assert.doesNotMatch(panel.textContent ?? '', /10 m³/, 'no manufactured SI quantity label');
+    } else {
+      assert.equal(after.unitStatus, 'unavailable', 'absent native source and view cannot certify an available SI context');
+      assert.equal(after.net, undefined, 'missing context cannot publish a declared SI basis');
+    }
+    assert.equal(useViewerStore.getState().zoneApportionment, cache);
+    assert.equal(useViewerStore.getState().mutationViews, views);
+    assert.equal(useViewerStore.getState().mutationViews.size, 0, 'capture does not manufacture a native edit view');
+    assert.equal(useViewerStore.getState().mutationVersion, version);
+  });
+}

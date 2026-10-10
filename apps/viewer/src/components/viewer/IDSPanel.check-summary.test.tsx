@@ -132,7 +132,12 @@ it('keeps cardinality failure distinct from passing requirement checks (#6551)',
   assert.equal(report.summary.failedSpecifications, 1);
   assert.equal(report.summary.overallPassRate, 0);
   assert.match(ui.textContent ?? '', /0\/1 Specifications Passed/);
-  assert.match(ui.textContent ?? '', /4\/4 checks passed \(100%\)/);
+  // The declared requirements still pass on both walls (4 checks), but each
+  // wall is a match of a prohibited specification, so each also fails one
+  // prohibition check and the walls themselves fail (#7403).
+  assert.equal(report.summary.totalEntitiesFailed, 2);
+  assert.match(ui.textContent ?? '', /2\/2 requirements passed/);
+  assert.match(ui.textContent ?? '', /4\/6 checks passed \(66%\)/);
 });
 
 it('counts optional absence and prohibited matches using the validator verdicts (#6551)', async () => {

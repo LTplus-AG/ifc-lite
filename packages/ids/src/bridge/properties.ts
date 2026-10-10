@@ -13,7 +13,7 @@ import {
   mergeInheritedPropertySets,
   getAttributeTypeForSchema,
 } from '@ifc-lite/parser';
-import { RelationshipType } from '@ifc-lite/data';
+import { RelationshipType, exactTypeName } from '@ifc-lite/data';
 
 import type { PropertySetInfo } from '../types.js';
 import { idsDataTypeForProperty, idsDataTypeForQuantity } from './data-types.js';
@@ -242,7 +242,7 @@ function appendMaterialOwnPropertySets(
  * this one caller needs a raw type check ahead of the accessor existing.
  */
 function resolveEntityTypeName(store: IfcDataStore, expressId: number): string | undefined {
-  const fromTable = store.entities?.getTypeName?.(expressId);
+  const fromTable = store.entities ? exactTypeName(store.entities, expressId) : undefined;
   if (fromTable && fromTable !== 'Unknown') return fromTable;
   // @raw-entity-enumeration-ok point lookup for one source record to guard the parsed material-owned-property projection; this helper projects source property sets and is not a live candidate/type enumeration
   const entry = store.entityIndex?.byId?.get(expressId);

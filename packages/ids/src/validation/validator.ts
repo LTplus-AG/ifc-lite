@@ -29,6 +29,7 @@ import { ApplicabilityPropertyIndex } from './property-index.js';
 import { UnsafeRegexPatternError } from '@ifc-lite/regex-guard';
 import { formatFailureReason, formatRequirementDescription } from './format-failure-reason.js';
 import { boundedPassRate } from './pass-rate.js';
+import { requirementsToCheck } from './prohibited-specification.js';
 import { BoundedCache } from '../bounded-cache.js';
 export { formatFailureReason } from './format-failure-reason.js';
 
@@ -536,13 +537,11 @@ function validateEntityRequirements(
   const requirementResults: IDSRequirementResult[] = [];
   let allPassed = true;
 
-  for (const requirement of spec.requirements) {
+  // A prohibited specification adds a failing check per element (#7403).
+  for (const requirement of requirementsToCheck(spec)) {
     const result = checkRequirement(requirement, expressId, accessor, descriptionCache, translator);
     requirementResults.push(result);
-
-    if (result.status === 'fail') {
-      allPassed = false;
-    }
+    if (result.status === 'fail') allPassed = false;
   }
 
   return {
@@ -551,7 +550,7 @@ function validateEntityRequirements(
     entityType: accessor.getEntityType(expressId) || 'Unknown',
     entityName: accessor.getEntityName(expressId),
     globalId: accessor.getGlobalId(expressId),
-    passed: allPassed,
+    passed: allPassed && spec.maxOccurs !== 0,
     requirementResults,
   };
 }
@@ -645,7 +644,7 @@ function checkRequirement(
       if (status === 'fail') {
         failureReason = translator
           ? translator.t('failures.prohibited', {
-              field: facetResult.actualValue || 'value',
+              field: requirement.facet.type, actual: facetResult.actualValue ?? '?',
             })
           : `Prohibited: found ${facetResult.actualValue}`;
       }

@@ -49,7 +49,8 @@ placement without `PlacementRelTo` is refused. Other supported uniform scales (f
 example the UTM 0.9996) give every product a fresh root placement and wrap its
 representations in a uniformly scaled mapped representation, under stricter
 ownership checks. Linear placements are resolved for that root and then
-bypassed, with or without `PlacementRelTo`. Besides Body geometry, curve-only
+bypassed, with or without `PlacementRelTo`; one whose `IfcAxis2PlacementLinear`
+sets `Axis` or `RefDirection` is refused. Besides Body geometry, curve-only
 representations such as an alignment's `Axis` or a `FootPrint` are carried
 through scaled; other non-Body representations are refused. Alignment layout
 parameters (segment lengths and start points) are not rewritten, so tools that
@@ -607,24 +608,33 @@ IFC4/IFC4X3 `North2D` constraint. Malformed metadata is refused atomically;
 the ordinary edited IFC content is retained without normalization patches.
 
 Non-unit uniform physical scale uses absolute logical product placements and
-scaled `IfcMappedItem` Body representations. Both paths preserve physical map
-coordinates, logical placement origins, GUIDs, properties and authored units.
-The remaining coordinate operation retains only project-to-metre conversion.
-Exactly neutral rotation/physical scale preserves the original operation and
-geometry; machine-epsilon sine roundoff with exact neutral cosine/scale also
-remains untouched.
+scaled `IfcMappedItem` representations: Body geometry, plus curve-only
+representations such as an alignment's `Axis` or a `FootPrint`. Both paths
+preserve physical map coordinates, logical placement origins, GUIDs, properties
+and authored units. The remaining coordinate operation retains only
+project-to-metre conversion. Exactly neutral rotation/physical scale preserves
+the original operation and geometry; machine-epsilon sine roundoff with exact
+neutral cosine/scale also remains untouched.
 
 Both paths require one map conversion, one project, SI metre-based project units,
-validated local 3D placements and identity 3D engineering contexts. The rigid
-path also accepts identity 3D sibling contexts explicitly declared by that same
+validated `IfcLocalPlacement` or `IfcLinearPlacement` chains and identity 3D
+engineering contexts. Alignments and linear placements are supported on both
+paths. The rigid path writes each reached linear placement as the equivalent
+`IfcLocalPlacement` and refuses one without `PlacementRelTo`. The scaled path
+composes the product's world frame through the chain, so it accepts linear
+placements with or without a parent. It refuses one it cannot resolve, and one
+whose `IfcAxis2PlacementLinear` sets `Axis` or `RefDirection`. The rigid path
+also accepts identity 3D sibling contexts explicitly declared by that same
 project, preserving the common Model/Plan engineering frame. Foreign contexts,
 unknown placement or connection-geometry consumers, malformed metadata and
-alignment/grid/structural consumers refuse atomically with explanatory warnings.
+grid/structural consumers refuse atomically with explanatory warnings.
 Represented products without placements are refused.
 
-The scaled Body path additionally requires unambiguous Body ownership and type
-maps reachable from actual products. It refuses voids/fills, annotations and
-other coordinate consumers it cannot preserve. Its added wrapper requires fewer
+The scaled path additionally requires unambiguous representation ownership and
+type maps reachable from actual products. It carries annotations, but refuses
+voids/fills, shape aspects, non-Body representations with surface items (for
+example annotation fills or bounding boxes) and other coordinate consumers it
+cannot preserve. Its added wrapper requires fewer
 than 31 existing mapped levels. The rigid path adds no wrapper: 31 mapped levels
 can retain their original per-leaf styles; cycles, excessive depth and reference
 work are still refused. Nonuniform scale remains unsupported.

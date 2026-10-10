@@ -254,6 +254,15 @@ pub(super) fn placement(product: &DecodedEntity, router: &GeometryRouter, valida
             // is evaluated once and then bypassed (#7359). Refuse where
             // rendering would silently fall back to an identity frame.
             IfcType::IfcLinearPlacement => {
+                // The resolver orients the frame from the curve tangent only;
+                // an authored Axis/RefDirection rotation would be dropped.
+                if let Some(relative) = placement.get_ref(1) {
+                    let relative = decoder.decode_by_id(relative).map_err(|error| error.to_string())?;
+                    if relative.ifc_type == IfcType::IfcAxis2PlacementLinear
+                        && (1..=2).any(|slot| relative.get(slot).is_some_and(|attr| !attr.is_null())) {
+                        return Err(format!("IfcLinearPlacement #{current} sets Axis or RefDirection on IfcAxis2PlacementLinear #{}, which placement resolution does not apply", relative.id));
+                    }
+                }
                 router.resolve_linear_placement_local_strict(&placement, decoder).map_err(|error| error.to_string())?;
             }
             _ => return Err(format!("ObjectPlacement #{current} is not an IfcLocalPlacement or IfcLinearPlacement")),

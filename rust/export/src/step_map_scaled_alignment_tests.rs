@@ -133,6 +133,12 @@ fn issue_7359_unresolvable_linear_placement_and_foreign_context_still_refuse_ato
         (source.replace("#120=IFCGEOMETRICREPRESENTATIONSUBCONTEXT('Axis','Model',*,*,*,*,#10,$,.MODEL_VIEW.,$)",
             "#120=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Plan',2,1.E-5,#136,$);\n#136=IFCAXIS2PLACEMENT2D(#121,$)"), "another map context"),
         (with_entities(&source, "#140=IFCGRIDPLACEMENT($,$);"), "IfcGridPlacement"),
+        // The resolver orients linear frames from the curve tangent only: an
+        // authored Axis or RefDirection must refuse, not be silently dropped.
+        (source.replace("#108=IFCAXIS2PLACEMENTLINEAR(#107,$,$)", "#108=IFCAXIS2PLACEMENTLINEAR(#107,#43,$)"),
+            "IfcLinearPlacement #109 sets Axis or RefDirection on IfcAxis2PlacementLinear #108"),
+        (source.replace("#108=IFCAXIS2PLACEMENTLINEAR(#107,$,$)", "#108=IFCAXIS2PLACEMENTLINEAR(#107,$,#24)"),
+            "IfcLinearPlacement #109 sets Axis or RefDirection on IfcAxis2PlacementLinear #108"),
         // A curve set is carried only when every member is a curve or point.
         (curve_set(&source, "#123,#138"), "neither a Body nor curve geometry (IfcGeometricCurveSet #137)"),
         (with_entities(&source.replace("'Axis','Curve2D',(#123))", "'Axis','Curve2D',(#123,#138))"), "#138=IFCPLANE(#11);"),
@@ -153,15 +159,17 @@ fn curve_set(source: &str, members: &str) -> String {
         &format!("#137=IFCGEOMETRICCURVESET(({members}));\n#138=IFCPLANE(#11);"))
 }
 
-/// Wrapped curve representations never start rendering, and every rendered
-/// product keeps its surface: the same triangles, or for large tessellated
-/// surfaces (ACCA's terrain and earthworks) a few sliver triangles that the
-/// mesher's degenerate filter resolves differently at scaled coordinates, with
-/// the physical area unchanged. The one difference in rendered products:
-/// ifc-lite draws an `IfcAlignment` as a ribbon sampled from a curve item
-/// directly in its `Axis` representation (`alignment_axis::locate_axis_curve`);
+/// Proves, for every rendered product except `IfcAlignment` ribbons: the
+/// same set of rendered products; every `after` vertex lies within 1 mm of a
+/// `before` vertex mapped by `expect`, and every mapped `before` vertex within
+/// 1 mm of an `after` vertex; and the same triangle count, or for large
+/// tessellated surfaces (ACCA's terrain and earthworks, whose sliver triangles
+/// the mesher's degenerate filter resolves differently at scaled coordinates)
+/// at most 1% fewer or more triangles with the physical area within 1e-6.
+/// Excluded: ifc-lite draws an `IfcAlignment` as a ribbon sampled from a curve
+/// item directly in its `Axis` representation (`alignment_axis::locate_axis_curve`);
 /// behind the scaled wrapper that item is an `IfcMappedItem`, so the ribbon
-/// is absent.
+/// is absent and must be absent.
 fn assert_same_meshes_except_alignment_ribbons(
     before: &ifc_lite_processing::GeometryDataExport,
     after: &ifc_lite_processing::GeometryDataExport,
@@ -174,12 +182,51 @@ fn assert_same_meshes_except_alignment_ribbons(
     }).sum::<f64>();
     for id in &expected {
         let (old, new) = (&before.elements[id], &after.elements[id]);
+        let mapped: Vec<_> = old.vertices.iter().map(&expect).collect();
+        let actual: Vec<_> = new.vertices.iter().map(|point| nalgebra::Vector3::from_column_slice(point)).collect();
+        assert_points_within(*id, &mapped, &actual, 0.001);
+        assert_points_within(*id, &actual, &mapped, 0.001);
         if old.faces.len() == new.faces.len() { continue; }
         assert!(old.faces.len().abs_diff(new.faces.len()) * 100 <= old.faces.len(), "#{id}: {} -> {} faces", old.faces.len(), new.faces.len());
-        let old_area = area(&old.vertices.iter().map(&expect).collect::<Vec<_>>(), &old.faces);
-        let new_area = area(&new.vertices.iter().map(|point| nalgebra::Vector3::from_column_slice(point)).collect::<Vec<_>>(), &new.faces);
+        let (old_area, new_area) = (area(&mapped, &old.faces), area(&actual, &new.faces));
         assert!((old_area - new_area).abs() <= old_area * 1e-6, "#{id}: physical area {old_area} -> {new_area}");
     }
+}
+
+/// Every point of `points` lies within `tolerance` of some point of `targets`
+/// (hash grid of `tolerance`-sized cells, so whole real models stay linear).
+fn assert_points_within(id: u32, points: &[nalgebra::Vector3<f64>], targets: &[nalgebra::Vector3<f64>], tolerance: f64) {
+    let cell = |point: &nalgebra::Vector3<f64>| point.map(|value| (value / tolerance).floor() as i64);
+    let mut grid: HashMap<nalgebra::Vector3<i64>, Vec<usize>> = HashMap::new();
+    for (index, target) in targets.iter().enumerate() { grid.entry(cell(target)).or_default().push(index); }
+    for point in points {
+        let home = cell(point);
+        let near = (-1..=1).flat_map(|x| (-1..=1).flat_map(move |y| (-1..=1).map(move |z| nalgebra::Vector3::new(x, y, z))))
+            .filter_map(|offset| grid.get(&(home + offset)))
+            .flatten()
+            .any(|&index| (targets[index] - point).norm() <= tolerance);
+        assert!(near, "#{id}: vertex {point} has no counterpart within {tolerance} m");
+    }
+}
+
+/// The geometry check has teeth: one vertex of a product whose triangle count
+/// is unchanged, moved 5 mm, fails it.
+#[test]
+#[should_panic(expected = "has no counterpart within 0.001 m")]
+fn issue_7359_mesh_comparison_rejects_a_displaced_vertex_with_unchanged_faces() {
+    let source = scaled_aligned_model(1., "#100");
+    let plan = plan_map_conversion_normalization(source.as_bytes()).unwrap();
+    let mut before_decoder = EntityDecoder::new(&source);
+    let geo = GeoRefExtractor::extract(&mut before_decoder, &[(61, IfcType::IfcMapConversion), (60, IfcType::IfcProjectedCRS)]).unwrap().unwrap();
+    let before = world_mesh(&source);
+    let mut after = world_mesh(&apply(&source, &plan));
+    let wall = after.elements.get_mut(&50).unwrap();
+    assert_eq!(wall.faces.len(), before.elements[&50].faces.len());
+    wall.vertices[0][0] += 0.005;
+    assert_same_meshes_except_alignment_ribbons(&before, &after, |point| {
+        let p = geo.local_to_map(point[0], point[1], point[2]);
+        nalgebra::Vector3::new(p.0, p.1, p.2)
+    });
 }
 
 /// Replace one attribute of one entity, keeping every other source byte.

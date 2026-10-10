@@ -1,0 +1,5 @@
+---
+"@ifc-lite/ids": patch
+---
+
+IDS `xs:pattern` facets now follow XML Schema regex rules for four constructs that gave wrong results. A negated escape inside a class (`[\W]`, `[\I]`, `[\C]`, `[\S]`) and Unicode block escapes (`\p{IsBasicLatin}` and every other block XML Schema names) are now evaluated exactly. Before, they matched any character, so every value passed. `\-` is a literal hyphen, and `^` and `$` are literal characters because XML Schema patterns have no anchors. A `^` at the very start and a `$` at the very end are still read as anchors, so the common `^.*$` keeps working. Before, `\p{L}+\-1` and `US$?` failed every value. `\w`, `\s` and `.` now match exactly what XML Schema defines. `\w` now also covers symbols and combining marks, and `\s` no longer covers non-breaking or other Unicode spaces. A pattern that still cannot be evaluated exactly, such as an unknown block name or an escape XML Schema does not define, now fails its specification with a message naming the construct instead of passing every value silently.

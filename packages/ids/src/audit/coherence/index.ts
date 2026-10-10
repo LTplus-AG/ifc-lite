@@ -288,10 +288,10 @@ function checkBounds(
  * Validate `pattern` against XSD regex semantics by translating XSD-only
  * escape codes to JS regex equivalents (cf. upstream `XmlRegex.cs`).
  *
- * Translation handles `\i`/`\c`/`\d`/`\w` and their negations via
- * Unicode property escapes (compiled with the `u` flag), and char-class
- * subtraction (`[a-z-[aeiou]]`) as a negative lookahead. A construct that
- * can only be approximated surfaces as `W_REGEX_UNVERIFIED`. Any remaining syntactic errors are real
+ * Translation follows XML Schema Part 2 Appendix F (multi-char and block
+ * escapes, char-class subtraction, literal `^` / `$`; see
+ * `constraints/xsd-regex.ts`). A construct with no exact translation, which
+ * validation refuses, surfaces as `W_REGEX_UNVERIFIED`. Any remaining syntactic errors are real
  * authoring mistakes and surface as `E_RESTRICTION_EMPTY` (upstream
  * Report 109).
  */
@@ -320,7 +320,7 @@ function checkPattern(
   issues.push({
     severity: 'warning',
     code: 'W_REGEX_UNVERIFIED',
-    message: `xs:pattern uses XSD-specific syntax not verifiable in JS: ${result.reason}`,
+    message: `xs:pattern cannot be evaluated exactly, so validation will refuse it: ${result.reason}`,
     path,
     facetType,
     detail: { pattern },

@@ -175,11 +175,12 @@ describe('matchConstraint — pattern', () => {
     expect(matchConstraint(pat('[\\i][\\c]*'), 'Name_1')).toBe(true);
   });
 
-  it('does not reject valid values for XSD block escapes JS cannot model', () => {
-    // `\p{IsBasicLatin}` has no JS equivalent; approximate permissively
-    // (as the legacy `.` did) rather than failing every value.
+  it('evaluates XSD block escapes exactly (#7400)', () => {
+    // `\p{IsBasicLatin}` is U+0000..U+007F: it used to be an any-character
+    // placeholder that passed every value.
     expect(matchConstraint(pat('\\p{IsBasicLatin}+'), 'A')).toBe(true);
     expect(matchConstraint(pat('\\p{IsBasicLatin}+'), 'Hello')).toBe(true);
+    expect(matchConstraint(pat('\\p{IsBasicLatin}+'), 'ā')).toBe(false);
   });
 
   it('evaluates XSD character-class subtraction exactly instead of dropping the exclusion (#5183)', () => {

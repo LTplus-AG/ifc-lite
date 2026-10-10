@@ -4,6 +4,7 @@
 
 import { iterateEffectiveEntities, QuantityType } from '@ifc-lite/data';
 import type { IfcDataStore } from './columnar-parser.js';
+import { getReference } from './attribute-helpers.js';
 import { EntityExtractor } from './entity-extractor.js';
 import { effectiveMetadataRecord, type MetadataReadView } from './effective-metadata-record.js';
 import { getInheritanceChain } from './ifc-schema.js';
@@ -33,10 +34,19 @@ function refIds(value: unknown, max = MAX_RELATION_REFERENCES, required = false)
         return [];
     }
     if (Array.isArray(value) && value.length > max) throw new CurrentQuantityRefusal('Native quantity references exceed the read limit');
-    if (!Array.isArray(value) || value.some(id => typeof id !== 'number' || !Number.isSafeInteger(id) || id <= 0)) {
-        throw new CurrentQuantityRefusal('Native quantity references are unreadable');
+    if (!Array.isArray(value)) throw new CurrentQuantityRefusal('Native quantity references are unreadable');
+    const ids: number[] = [];
+    for (const valueId of value) {
+        // Only schema reference lists admit public StoreEditor '#id' tokens.
+        // Reject partial tokens before the shared reference decoder is called.
+        const id = typeof valueId === 'number' ? valueId
+            : typeof valueId === 'string' && /^#\d+$/.test(valueId) ? getReference(valueId) : undefined;
+        if (id === undefined || !Number.isSafeInteger(id) || id <= 0) {
+            throw new CurrentQuantityRefusal('Native quantity references are unreadable');
+        }
+        ids.push(id);
     }
-    return value;
+    return ids;
 }
 
 interface CurrentInventory {
@@ -147,7 +157,11 @@ function readCurrent(store: IfcDataStore, entityId: number, view: MetadataReadVi
             if (typeof quantity.attributes[3] !== 'number' || !Number.isFinite(quantity.attributes[3])
                 || (quantity.attributes[3] < 0 && QUANTITY_TYPE_MAP[quantity.type.toUpperCase()] !== QuantityType.Number)) throw new CurrentQuantityRefusal('Native type quantity value is unavailable');
         }
-        const set = readQuantitySetRecord(store, extractor, record, readEntity, resolveCurrentUnit);
+        // The collector consumes parsed numeric reference lists; normalize only
+        // this already validated schema slot, without changing native metadata.
+        const attributes = [...record.attributes];
+        attributes[5] = refs;
+        const set = readQuantitySetRecord(store, extractor, { ...record, attributes }, readEntity, resolveCurrentUnit);
         // Complete native inventory can retain member-specific unit refusals.
         // Physical consumers reject that member without erasing valid siblings (#7376).
         return set ? [set] : [];

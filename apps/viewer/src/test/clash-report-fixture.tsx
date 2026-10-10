@@ -115,6 +115,7 @@ export async function deleteSavedReport(report: SavedClashReport): Promise<void>
   assert.match(row.textContent ?? '', /will show it as unavailable/, 'deleting warns that bound charts lose their source');
   const confirm = [...row.querySelectorAll('button')].find((button) => button.textContent === 'Delete report');
   assert.ok(confirm);
+  await waitFor(() => !confirm.disabled, 'the native dependency preview is ready for confirmation (#7245)');
   click(confirm);
   await waitFor(() => !savedClashReports().some((entry) => entry.id === report.id)
     && useViewerStore.getState().savedClashReportsStorage.items[report.id] === 'saved', 'the deletion is written');

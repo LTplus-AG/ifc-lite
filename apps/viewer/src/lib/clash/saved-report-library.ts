@@ -19,7 +19,7 @@ export { isSavedClashReport };
 
 /** The controller `createContentLibrary` returns, as far as these actions use it. */
 interface Controller {
-  put: (id: string, value: SavedClashReport | null) => Promise<boolean>;
+  put: (id: string, value: SavedClashReport | null, beforeWrite?: () => boolean) => Promise<boolean>;
   stage: (id: string, entry: SavedClashReport | null) => void;
 }
 
@@ -27,7 +27,7 @@ export interface ClashReportActions {
   save: (report: SavedClashReport) => Promise<boolean>;
   stage: (report: SavedClashReport) => void;
   rename: (id: string, name: string) => Promise<boolean>;
-  remove: (id: string) => Promise<boolean>;
+  remove: (id: string, beforeWrite?: () => boolean) => Promise<boolean>;
 }
 
 export function clashReportActions(library: Controller, reports: () => readonly SavedClashReport[],
@@ -51,6 +51,6 @@ export function clashReportActions(library: Controller, reports: () => readonly 
       const renamed = entry && { ...entry, name: name.trim() };
       return renamed && isSavedClashReport(renamed) ? library.put(id, renamed) : Promise.resolve(false);
     },
-    remove: (id) => library.put(id, null),
+    remove: (id, beforeWrite) => library.put(id, null, beforeWrite),
   };
 }

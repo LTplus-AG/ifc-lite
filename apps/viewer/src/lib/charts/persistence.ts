@@ -14,25 +14,31 @@ import { downloadFile, sanitizeFilename } from '../export/download.js';
 
 const STORAGE_KEY = 'ifc-lite-dashboards';
 
-export function loadDashboards(): DashboardSpec[] {
+export interface DashboardRead { entries: DashboardSpec[]; unavailable: boolean; omitted: number }
+
+/** Preserve read uncertainty for dependency previews; fallback arrays cannot certify an empty library. */
+export function readDashboards(): DashboardRead {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return [];
+    if (!raw) return { entries: [], unavailable: false, omitted: 0 };
     const parsed: unknown = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return [];
+    if (!Array.isArray(parsed)) return { entries: [], unavailable: true, omitted: 0 };
     const kept: DashboardSpec[] = [];
+    let omitted = 0;
     for (const entry of parsed) {
       const migrated = migrateDashboardSpec(entry);
       const errors = validateDashboardSpec(migrated);
       if (errors.length === 0) kept.push(migrated as DashboardSpec);
-      else console.warn('[Charts] Dropping an invalid saved dashboard', errors);
+      else { omitted++; console.warn('[Charts] Dropping an invalid saved dashboard', errors); }
     }
-    return kept;
+    return { entries: kept, unavailable: false, omitted };
   } catch (err) {
     console.warn('[Charts] Failed to load saved dashboards', err);
-    return [];
+    return { entries: [], unavailable: true, omitted: 0 };
   }
 }
+
+export function loadDashboards(): DashboardSpec[] { return readDashboards().entries; }
 
 export function saveDashboards(dashboards: readonly DashboardSpec[]): void {
   try {

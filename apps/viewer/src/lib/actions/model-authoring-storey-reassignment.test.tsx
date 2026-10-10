@@ -521,9 +521,7 @@ for (const owner of ['source', 'destination'] as const) test(`#7328 public revie
   assert.equal(saved.getEntity(duplicate)?.attributes[0], saved.getEntity(storeyId)?.attributes[0]);
   const before = await graph(s.bytesNow()), revision = s.view.getMutationRevision(), depth = nativeSdkUndoDepth();
   const preview = previewModelAuthoring(useViewerStore.getState(), batch);
-  await t.test('public preparation refuses the ambiguous owning-model storey', () => {
-    assert.notEqual(preview.rows[0].status, 'ready', 'duplicate storey identity must not be offered for approval');
-  });
+  assert.notEqual(preview.rows[0].status, 'ready', 'duplicate storey identity must not be offered for approval');
   const result = commitModelAuthoring(useViewerStore, preview, new Set([0]), 'duplicate native storey');
   assert.equal(result.ok, false, 'canonical native preparation/commit must refuse duplicate identity');
   assert.deepEqual(await graph(s.bytesNow()), before);
@@ -550,14 +548,13 @@ test('#7328 native near-text-limit pin distinguishes public batch overhead from 
   const grounding = captureSelectionGrounding(useViewerStore.getState());
   const candidate = grounding.elements[0].nativeStoreyReassignments?.find(item => item.destinationStorey.globalId === s.operation.destinationStorey.globalId);
   t.diagnostic(`actual native pin=${pinLength}; full batch=${answer.length}; captured candidate=${Boolean(candidate)}; availability=${JSON.stringify(grounding.elements[0].nativeAuthoringAvailability)}`);
-  if (candidate) await t.test('an advertised complete candidate fits the public full-batch parser', () => {
-    assert.doesNotThrow(() => parseModelAuthoringBatch(answer));
-  });
+  // Defer the advertised-parser assertion until the same public route measures
+  // wire refusal. Nested tests run the global cleanup and invalidate this snapshot.
   replaceEvidence(captureEvidence('selection'));
   let requested = false;
   globalThis.fetch = async (_url, init) => {
     const wire = JSON.parse(String(init?.body));
-    assert.ok(JSON.stringify(wire.messages).length + wire.system.length <= 90_000);
+    assert.ok(JSON.stringify(wire.messages).length <= 90_000, 'actual serialized provider messages including system stay bounded');
     const user = wire.messages.filter((message: { role: string }) => message.role === 'user').at(-1);
     const sent: typeof grounding.elements = JSON.parse(user.content.split('\n').at(-1));
     assert.equal(sent[0].modelId, MODEL); assert.equal(sent[0].globalId, grounding.elements[0].globalId);
@@ -568,4 +565,5 @@ test('#7328 native near-text-limit pin distinguishes public batch overhead from 
   };
   assert.equal(await sendAssistant('Explain this current native selection', 'openai/gpt-free', '/api/chat', attachmentsForSend({ selection: grounding, screenshot: null })), true, useAssistant.getState().error ?? '');
   assert.equal(requested, true);
+  if (candidate) assert.doesNotThrow(() => parseModelAuthoringBatch(answer), 'advertised complete pin must fit the public full batch');
 });

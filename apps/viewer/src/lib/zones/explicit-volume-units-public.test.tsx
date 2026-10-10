@@ -4,13 +4,15 @@
 import '@/test/setup-dom.js';
 import assert from 'node:assert/strict';
 import { afterEach, test, type TestContext } from 'node:test';
-import { extractProjectUnits, extractQuantitiesOnDemand, extractTypeQuantitiesOnDemand } from '@ifc-lite/parser';
+import { extractProjectUnits, extractQuantitiesOnDemand, extractTypeQuantitiesOnDemand, quantitySiScale } from '@ifc-lite/parser';
 import { StoreEditor } from '@ifc-lite/mutations';
 import { generateIfcGuid } from '@ifc-lite/encoding';
 import { useViewerStore } from '@/store';
 import { getOrCreateMutationView } from '@/sdk/adapters/mutation-view';
 import { getMaxExpressId } from '@/hooks/ingest/viewerModelIngest';
 import { contextFor, quantitySetsFor } from '@/hooks/zoneFacts';
+import { applyZoneWriteBack } from '@/hooks/useZoneWriteBack';
+import { zoneQuantitySetName } from './writeback';
 import type { ZoneVolumeShare } from './apportionment';
 import { buildZoneTable, exportZoneTable } from '@/hooks/useZoneTableExport';
 import { ZoneVolumeBreakdown } from '@/components/viewer/ZoneVolumeBreakdown';
@@ -308,4 +310,51 @@ test('#7376 unavailable project context retains the first implicit occurrence ba
   }
   assert.equal(view.getMutationRevision(), revision);
   await assertSameNativeIfcGraph(editedModelBytes(source, view), before);
+});
+
+
+test('#7376 explicit native volume remains readable but unknown project units cannot produce ambiguous unitless writeback', async t => {
+  const x = await explicitFixture(t, true); if (!x) return;
+  // @raw-entity-enumeration-ok native fixture locates its parsed Project before applying current unit mutations.
+  const project = x.store.entityIndex.byType.get('IFCPROJECT')?.[0]; assert.ok(project);
+  const assignment = x.store.getEntity(project)?.attributes[8]; assert.equal(typeof assignment, 'number');
+  const members = x.store.getEntity(assignment as number)?.attributes[0]; assert.ok(Array.isArray(members));
+  const projectVolume = members.find(id => typeof id === 'number' && x.store.getEntity(id)?.type.toUpperCase() === 'IFCSIUNIT'
+    && x.store.getEntity(id)?.attributes[1] === '.VOLUMEUNIT.');
+  assert.equal(typeof projectVolume, 'number', 'real native project has a volume SI unit');
+  x.view.setPositionalAttribute(project, 8, null);
+  const unknown = await parse(editedModelBytes(x.store, x.view));
+  assert.equal(unknown.getEntity(project)?.attributes[8], null);
+  const explicit = extractQuantitiesOnDemand(unknown, x.f.id).flatMap(set => set.quantities).find(q => q.name === x.quantityName);
+  assert.ok(explicit); assert.equal(explicit.explicitUnitSiScale, 1e-9); assert.equal(explicit.value, 10);
+  const physical = explicit.value * quantitySiScale(explicit, extractProjectUnits(unknown.source, unknown.entityIndex));
+  assert.ok(Math.abs(physical - 1e-8) < 1e-20, 'independent native explicit member defines the physical ground truth');
+  const table = buildZoneTable(x.f.zoneSet, 'net'); assert.equal(table.length, 2);
+  for (const row of table) assert.ok(row.ElementVolumeM3 !== null && Math.abs(row.ElementVolumeM3 - physical) < 1e-20,
+    'read-only table retains independently resolvable explicit volume');
+  const result = applyZoneWriteBack(x.f.zoneSet, 'net');
+  const written = await parse(editedModelBytes(x.store, x.view));
+  assert.equal(written.getEntity(x.quantityId)?.attributes[2], x.unit);
+  assert.equal(written.getEntity(x.quantityId)?.attributes[3], 10, 'writeback must not alter the original native member');
+  const name = zoneQuantitySetName(x.f.zoneSet.name, 'net');
+  const writtenSet = extractQuantitiesOnDemand(written, x.f.id).find(set => set.name === name);
+  // Restore a genuine project volume context after the attempted write. Any
+  // persisted unitless output must remain physically correct under that context.
+  x.view.setPositionalAttribute(project, 8, `#${assignment}`);
+  x.view.setPositionalAttribute(projectVolume as number, 2, '.MILLI.');
+  const restored = await parse(editedModelBytes(x.store, x.view));
+  const restoredUnits = extractProjectUnits(restored.source, restored.entityIndex);
+  assert.equal(restoredUnits.resolvedForUnitType('VOLUMEUNIT')?.siScale, 1e-9);
+  const restoredSet = extractQuantitiesOnDemand(restored, x.f.id).find(set => set.name === name);
+  if (writtenSet) {
+    assert.ok(restoredSet, 'native output survives the independently exported project reassignment');
+    const writtenPhysical = restoredSet.quantities.reduce((sum, quantity) => sum + quantity.value * quantitySiScale(quantity, restoredUnits), 0);
+    assert.ok(Math.abs(writtenPhysical - physical) < 1e-20,
+      `native writeback changed physical volume: ${writtenPhysical} instead of ${physical}`);
+  }
+  assert.equal(writtenSet, undefined, 'unknown target unit context must refuse physical writeback rather than emit unitless quantities');
+  assert.equal(restoredSet, undefined);
+  assert.equal(result.summary.withVolumes, 0); assert.ok(result.summary.refused > 0);
+  assert.equal(restored.getEntity(x.quantityId)?.attributes[2], x.unit);
+  assert.equal(restored.getEntity(x.quantityId)?.attributes[3], 10);
 });

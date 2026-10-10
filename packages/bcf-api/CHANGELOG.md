@@ -1,5 +1,16 @@
 # @ifc-lite/bcf-api
 
+## 0.3.0
+
+### Minor Changes
+
+- [#6911](https://github.com/LTplus-AG/ifc-lite/pull/6911) [`351ea6d`](https://github.com/LTplus-AG/ifc-lite/commit/351ea6d2de55c1121dcced1e6c36b22888707f66) Thanks [@louistrue](https://github.com/louistrue)! - OpenCDE requests accept an `AbortSignal`, a `timeoutMs` limit and extra headers ([#6896](https://github.com/LTplus-AG/ifc-lite/issues/6896)): `FoundationRequestOptions` and `HttpRequestOptions` gain `signal`, `timeoutMs` and (for the former) `headers`, and an already-aborted signal is refused before `fetch` is called. `BcfApiClient`'s read and write methods take an optional trailing `BcfRequestOptions`. A request rejected after dispatch still has an unknown server outcome; callers must reconcile before resending a write. New `topicToApiWrite` and `viewpointToApi` map `@ifc-lite/bcf` topics and viewpoints to BCF API request bodies (client-owned fields only; `default_visibility` is always written because BCF API defaults it to `false`).
+
+### Patch Changes
+
+- Updated dependencies [[`351ea6d`](https://github.com/LTplus-AG/ifc-lite/commit/351ea6d2de55c1121dcced1e6c36b22888707f66)]:
+  - @ifc-lite/opencde-foundation@0.3.0
+
 ## 0.2.4
 
 ### Patch Changes

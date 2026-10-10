@@ -1,5 +1,30 @@
 # @ifc-lite/sandbox
 
+## 2.11.0
+
+### Minor Changes
+
+- [#6761](https://github.com/LTplus-AG/ifc-lite/pull/6761) [`b2a5fb2`](https://github.com/LTplus-AG/ifc-lite/commit/b2a5fb2b97290bb39d2d36be81dd416c15c6a849) Thanks [@louistrue](https://github.com/louistrue)! - Expose native mesh alignment through one shared atomic planner for viewer, SDK, sandbox and MCP.
+
+- [#6645](https://github.com/LTplus-AG/ifc-lite/pull/6645) [`09745f0`](https://github.com/LTplus-AG/ifc-lite/commit/09745f0f3bb99ac07802ae061f13df92e865683f) Thanks [@louistrue](https://github.com/louistrue)! - Add shared semantic datasets, profile validation, read-only SPARQL providers, portable workspaces and model revision identity strategies. Expose the canonical capability-gated network implementation through a lightweight sandbox/network entry point.
+
+- [#6786](https://github.com/LTplus-AG/ifc-lite/pull/6786) [`f04a972`](https://github.com/LTplus-AG/ifc-lite/commit/f04a97289d3130a1d7dc9df056c8b9c5b6d25791) Thanks [@louistrue](https://github.com/louistrue)! - Support explicit authorization for exact literal loopback HTTP origins in shared networking and semantic providers, CLI queries and fixed relay upstreams. Preserve HTTPS defaults, exact host grants, redirect denial and request limits. The viewer local grant is ephemeral and cancels pending retrievals when revoked; portable local endpoint settings never restore authority.
+
+- [#7345](https://github.com/LTplus-AG/ifc-lite/pull/7345) [`fe3070c`](https://github.com/LTplus-AG/ifc-lite/commit/fe3070cfb18853dd857554615160806a607dbae2) Thanks [@louistrue](https://github.com/louistrue)! - Add source- and Root-pinned generic IfcGroup creation, complete membership
+  replacement, and safe removal through one canonical native graph owner. SDK,
+  CLI and sandbox hosts share the same lifecycle; the viewer records one Undo.
+
+- [#6801](https://github.com/LTplus-AG/ifc-lite/pull/6801) [`1bb0fe3`](https://github.com/LTplus-AG/ifc-lite/commit/1bb0fe34c8fc46acef6e51f3792f274e1e5be1b9) Thanks [@louistrue](https://github.com/louistrue)! - Read tasks' output products from `IfcRelAssignsToProduct` ([#6749](https://github.com/LTplus-AG/ifc-lite/issues/6749)). buildingSMART's construction-scheduling examples link each `IfcTask` to the product it builds this way: the task goes in `RelatedObjects` and the product in `RelatingProduct`. Before this change only `IfcRelAssignsToProcess` inputs were read, so these schedules reached the Gantt with no products. Each task now has `outputProductExpressIds` / `outputProductGlobalIds`, kept separate from the input lists. `taskProductExpressIds` / `taskProductGlobalIds` return inputs and outputs together. The 4D animation, Gantt ↔ 3D selection, the Properties schedule card, charts and product unassign all use both lists. Edited exports write outputs back as `IfcRelAssignsToProduct` and remove the original relation. Cost items assigned to the same product are kept. In sandbox scripts, outputs appear as `OutputProductExpressIds` / `OutputProductGlobalIds`.
+
+### Patch Changes
+
+- [#6760](https://github.com/LTplus-AG/ifc-lite/pull/6760) [`b92dd05`](https://github.com/LTplus-AG/ifc-lite/commit/b92dd05495094a47c4a68eb1137a3a1906fc65cc) Thanks [@louistrue](https://github.com/louistrue)! - Accept canonical parameterized column, beam and member profiles through the sandbox store bridge.
+
+- [#6676](https://github.com/LTplus-AG/ifc-lite/pull/6676) [`29e1088`](https://github.com/LTplus-AG/ifc-lite/commit/29e1088dda6777f7086bd122208ce7bda8db1d89) Thanks [@louistrue](https://github.com/louistrue)! - Expose canonical parameterised column, beam and member sections and column RefDirection in SDK types; preserve rectangular interfaces and existing runtime validation.
+- Updated dependencies [[`3f681d9`](https://github.com/LTplus-AG/ifc-lite/commit/3f681d952dc2bae1dc715210354cf2705b1edac0), [`b4899b0`](https://github.com/LTplus-AG/ifc-lite/commit/b4899b017f037ad629ee2b8a5fa34cdf56e8af72), [`06c45b2`](https://github.com/LTplus-AG/ifc-lite/commit/06c45b21a478f62c5ea8c89a0a8dd0c09fc43e69), [`b2a5fb2`](https://github.com/LTplus-AG/ifc-lite/commit/b2a5fb2b97290bb39d2d36be81dd416c15c6a849), [`7d33d8c`](https://github.com/LTplus-AG/ifc-lite/commit/7d33d8cd6917c6a0df5d1b3e6aca741e554c8ba7), [`0e2f612`](https://github.com/LTplus-AG/ifc-lite/commit/0e2f612fe205f08ab10314abd95f0319dba2cba5), [`09745f0`](https://github.com/LTplus-AG/ifc-lite/commit/09745f0f3bb99ac07802ae061f13df92e865683f), [`29e1088`](https://github.com/LTplus-AG/ifc-lite/commit/29e1088dda6777f7086bd122208ce7bda8db1d89), [`1dacd47`](https://github.com/LTplus-AG/ifc-lite/commit/1dacd47008744f1f9de48ab20aa4d871c4572ee7), [`2e2f65a`](https://github.com/LTplus-AG/ifc-lite/commit/2e2f65a66e1375ef6cc52b8a310526de1a36e1a0), [`1dacd47`](https://github.com/LTplus-AG/ifc-lite/commit/1dacd47008744f1f9de48ab20aa4d871c4572ee7), [`8a0a03a`](https://github.com/LTplus-AG/ifc-lite/commit/8a0a03a4f9e4ca9cfae457493f0eb50268052ecb), [`73070c2`](https://github.com/LTplus-AG/ifc-lite/commit/73070c2d67c2a0507e6bc5492c090f2df3736881), [`73070c2`](https://github.com/LTplus-AG/ifc-lite/commit/73070c2d67c2a0507e6bc5492c090f2df3736881), [`2e2f65a`](https://github.com/LTplus-AG/ifc-lite/commit/2e2f65a66e1375ef6cc52b8a310526de1a36e1a0), [`fe3070c`](https://github.com/LTplus-AG/ifc-lite/commit/fe3070cfb18853dd857554615160806a607dbae2), [`1bb0fe3`](https://github.com/LTplus-AG/ifc-lite/commit/1bb0fe34c8fc46acef6e51f3792f274e1e5be1b9), [`525cfba`](https://github.com/LTplus-AG/ifc-lite/commit/525cfba75d3e124d3dae51134cb43a87c258a8d9)]:
+  - @ifc-lite/sdk@9.1.0
+  - @ifc-lite/extensions@0.11.0
+
 ## 2.10.0
 
 ### Minor Changes

@@ -1,5 +1,19 @@
 # @ifc-lite/cache
 
+## 3.7.1
+
+### Patch Changes
+
+- [#7406](https://github.com/LTplus-AG/ifc-lite/pull/7406) [`6ea7f47`](https://github.com/LTplus-AG/ifc-lite/commit/6ea7f4708d18cd0e92a732860c98d4b68de63284) Thanks [@louistrue](https://github.com/louistrue)! - Keep each mesh's optional `shadingColor`, pre-placement `localBounds` and `localToWorld` in binary geometry caches, so a cache hit carries the same values as a fresh load. Bump the cache format to v25; older entries remain readable with these fields absent and nothing is inferred.
+
+- [#6991](https://github.com/LTplus-AG/ifc-lite/pull/6991) [`8b81320`](https://github.com/LTplus-AG/ifc-lite/commit/8b813203997c0b3b21cc724c4f820ad83b9b4cf3) Thanks [@louistrue](https://github.com/louistrue)! - Main-thread health and structural counters ([#6957](https://github.com/LTplus-AG/ifc-lite/issues/6957)), all off unless load tracing is on (`?perfTrace=1`, benchmark runs). `@ifc-lite/load-trace` adds a realm-wide counter registry (`perfCounters`, `perfCount`, `perfTally`, `countCopy`) whose per-load deltas, plus every counter a worker posts back, land on `LoadTraceSnapshot.counters` / `.workerCounters`; a `long-animation-frame` / `longtask` monitor (`startFrameMonitor`) summarised per load and per innermost span as `.mainThread`; `accountWorkerMessages`, one wrapper counting a worker's messages, estimated structured-clone bytes, transferred and shared bytes per direction; and `meterTypedArrayArgs`, which counts the typed-array bytes handed to a wasm API object. The geometry pool, parser, scan and cache-compression workers go through that wrapper, geometry workers meter their wasm ingress and flush counters before the pre-pass worker is terminated, the renderer counts GPU buffer creations, uploaded bytes, `mergeGeometry` calls and finalize rebuilds, and the viewer counts store writes and notifications, full source copies and the per-append model-index re-spread. With tracing off each call site is one boolean test and every wrapper returns its target unchanged.
+
+- [#7297](https://github.com/LTplus-AG/ifc-lite/pull/7297) [`a18cb4d`](https://github.com/LTplus-AG/ifc-lite/commit/a18cb4d77b73478de0918a0466f6c93116a3f4c5) Thanks [@louistrue](https://github.com/louistrue)! - Preserve optional coordinate recovery counts and length-unit scales in binary geometry caches, including defined zero values. Bump the cache format to v24; older coordinate metadata remains readable without inferring absent fields.
+- Updated dependencies [[`62634ad`](https://github.com/LTplus-AG/ifc-lite/commit/62634ada5a9738590f0546ae4157ec04f8ab9aa3), [`91337ca`](https://github.com/LTplus-AG/ifc-lite/commit/91337cad6306d88b7ad1256b0f637039a19e9573), [`4dce848`](https://github.com/LTplus-AG/ifc-lite/commit/4dce848d025f78ae9394276a7124205aba879dde), [`272ebd8`](https://github.com/LTplus-AG/ifc-lite/commit/272ebd8615d038dc20dd8aec4e3bb88d1acf9fa7), [`8b81320`](https://github.com/LTplus-AG/ifc-lite/commit/8b813203997c0b3b21cc724c4f820ad83b9b4cf3), [`fd1f8f5`](https://github.com/LTplus-AG/ifc-lite/commit/fd1f8f52fabbde0ecee4d6a5c15635293ff1a15e), [`8570465`](https://github.com/LTplus-AG/ifc-lite/commit/8570465acd2f68ef9b6f6e180d86af4636f52454), [`6364658`](https://github.com/LTplus-AG/ifc-lite/commit/6364658991cbdce5070cdde97e4cdf42a074acf7), [`ae15f9d`](https://github.com/LTplus-AG/ifc-lite/commit/ae15f9dbd01459690e8551ec8ccc62cec94e4f59), [`2a3a7d6`](https://github.com/LTplus-AG/ifc-lite/commit/2a3a7d633a6c9b49c1fa1f58f398c78d90982657), [`17e3f19`](https://github.com/LTplus-AG/ifc-lite/commit/17e3f195f52586529539c3cb9bef844dcd82b5fa), [`04e8c67`](https://github.com/LTplus-AG/ifc-lite/commit/04e8c6752778a444628507478b381ad920979fa6), [`2278072`](https://github.com/LTplus-AG/ifc-lite/commit/2278072a762255f0fb2a2d5131167c2ead7af344)]:
+  - @ifc-lite/load-trace@0.2.0
+  - @ifc-lite/geometry@7.8.0
+  - @ifc-lite/data@6.2.0
+
 ## 3.7.0
 
 ### Minor Changes

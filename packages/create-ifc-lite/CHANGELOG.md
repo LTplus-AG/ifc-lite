@@ -1,5 +1,11 @@
 # create-ifc-lite
 
+## 1.15.1
+
+### Patch Changes
+
+- [#7080](https://github.com/LTplus-AG/ifc-lite/pull/7080) [`5682fa2`](https://github.com/LTplus-AG/ifc-lite/commit/5682fa28a422454b5e10a40c2b59a79cdff6ca7d) Thanks [@louistrue](https://github.com/louistrue)! - Use the canonical scrubbed FZK fixture in the Babylon.js and Three.js starter download links.
+
 ## 1.15.0
 
 ### Minor Changes

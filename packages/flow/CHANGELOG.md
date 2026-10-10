@@ -1,5 +1,13 @@
 # @ifc-lite/flow
 
+## 0.6.0
+
+### Minor Changes
+
+- [#7038](https://github.com/LTplus-AG/ifc-lite/pull/7038) [`a11f9c6`](https://github.com/LTplus-AG/ifc-lite/commit/a11f9c6cbbff770b19edc013c67e1816517aebcb) Thanks [@louistrue](https://github.com/louistrue)! - Reviewed pause/resume for Flow runs ([#6923](https://github.com/LTplus-AG/ifc-lite/issues/6923)). A node may declare `review: 'required'`; a run stops downstream of its proposal (`NodeStatus` `review` and `paused`, `RunResult.review`) and continues with `RunOptions.resume`, which restores completed nodes (`restored`) without executing them again. Portable review checkpoints in the new `@ifc-lite/flow/checkpoint` entry (`createCheckpoint`, `resumeOutputs`, `checkpointProposal`, `graphDigest`) and their lifecycle: `approveCheckpoint` by proposal digest, `rejectCheckpoint`, `claimCheckpoint` with graph and source digest checks, `finishCheckpoint`, `recoverCheckpoint`, `parseCheckpoint`, and compare-and-swap `updateCheckpoint` over a `CheckpointStore`. `RunResult` gains the required `review` list. `topologicalOrder` and `FlowCycleError` moved to their own module; the package exports are unchanged.
+
+- [#7083](https://github.com/LTplus-AG/ifc-lite/pull/7083) [`4b17e29`](https://github.com/LTplus-AG/ifc-lite/commit/4b17e29c730cb04a4012ed871139b70eb640f191) Thanks [@louistrue](https://github.com/louistrue)! - Enable explicitly configured AI Flow runs in MCP with durable pending artifacts and a separate digest-approved `resume_flow` call. Continuations recheck graph, native effective model state, current scope and the original root budget, then consume one disk CAS claim. Share the existing compatible provider transport and file checkpoint store with the CLI through separate package entries.
+
 ## 0.5.0
 
 ### Minor Changes

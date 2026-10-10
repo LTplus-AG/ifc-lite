@@ -1,5 +1,36 @@
 # @ifc-lite/collab-server
 
+## 0.9.0
+
+### Minor Changes
+
+- [#6704](https://github.com/LTplus-AG/ifc-lite/pull/6704) [`9d07c95`](https://github.com/LTplus-AG/ifc-lite/commit/9d07c9521aa28827087d73959ba5087d974a6d19) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Malformed percent-escapes and unparseable request targets no longer escape as a bare `URIError` or `TypeError`. The collab server answers a request target `new URL` rejects with 400 instead of 500, closes a websocket with a malformed room path with 4400 instead of 1011, and the blob-GC scan reads each room log by its file name instead of decoding the name into a room id (a log with a malformed name is read, or named in the abort message, instead of stopping the sweep with `URI malformed`). The MCP entity resource answers a malformed GlobalId as "no such entity", and the Speckle URL parser refuses it with its named "no usable id" error, and the semantic relay's HTTPS listener answers an unparseable request target with 400 instead of 500.
+  
+  Add `FilePersistence.loadLogFile(file, requireComplete?)` for reading an enumerated log by its actual path. Blob GC requires complete framing and refuses incomplete frame bodies or trailing partial headers, while ordinary room loads retain complete-prefix recovery.
+
+- [#6671](https://github.com/LTplus-AG/ifc-lite/pull/6671) [`605bdcb`](https://github.com/LTplus-AG/ifc-lite/commit/605bdcb146c8df166044aeeb85e241c03d11f41a) Thanks [@BIMvoice](https://github.com/BIMvoice)! - A fresh-room claim whose room is never created no longer has to hold its slot in the claim allowance forever ([#6581](https://github.com/LTplus-AG/ifc-lite/issues/6581)).
+  
+  The new `claimsPendingUntilJoin` option of `createAccessControl` turns this on, and the CLI server sets it. With it, a first-touch claim stays pending until the room's first authenticated join through `serverOptions.authenticate`, and that join is admitted only once the confirmation is written to disk. A pending claim can be handed back with the new `POST /collab/release` route. The route needs an admin token minted for that claim, frees the slot and revokes every token minted for the claim. A pending claim that nobody releases expires once all of its tokens have expired. A room that was joined, or has a room log on disk, is never released or expired.
+  
+  Bounds and checks that come with pending claims:
+  
+  - Up to 4 tokens can be minted for a pending claim, and those mints pay the same per-IP budget as a fresh claim.
+  - A release is refused with 503 when it would take the deny-list past `maxRevocationsForRelease` live entries (default 1024). The claim is then kept and expires on its own.
+  - The token and release routes refuse room ids holding an unpaired UTF-16 surrogate.
+  - If the data-dir check for a room log cannot answer, the claim is treated as in use.
+  
+  Without the option, every claim is permanent from its first mint (as before), claims an earlier run left pending are confirmed at load, and the release route answers 409.
+  
+  New exports: `handleReleaseRequest`, `ReleaseEndpointOptions` and `ReleaseResult`. Also new: the `releaseEndpoint` option of `startCollabServer`, the `now`, `claimsPendingUntilJoin` and `maxRevocationsForRelease` options of `createAccessControl`, and a `mint` (`{ jti, exp }`) field in the token route's `authorize` context. `access-control.json` gains a `pendingClaims` field. Pending rooms are also kept in `claimedRooms`, so an older server reading the file treats them as claimed. A file written before this change loads every claim as confirmed.
+  
+  The viewer's Share dialog releases the claim when creating the room fails after the admin token was minted, for example because the model's metadata became invalid during the token request or the session never came up. Against a server without the route, or one that refuses the release, nothing else changes.
+
+### Patch Changes
+
+- [#7016](https://github.com/LTplus-AG/ifc-lite/pull/7016) [`2cd236b`](https://github.com/LTplus-AG/ifc-lite/commit/2cd236b3403e8378943b6ed07a196eaca348b9d2) Thanks [@BIMvoice](https://github.com/BIMvoice)! - A client that sends its first frame while the room is still loading no longer loses it. y-websocket sends sync step 1 as soon as the socket opens; on a cold room the server attached its message listener only after authentication and the room's log read, so the frame was dropped and the client stayed unsynced. The listener is now attached first and frames are held (at most 64 frames and 1 MiB, then the socket closes with 1009 and the `rejects` metric counts reason `hydration-buffer`) until the peer is registered. A peer that disconnects during the load is also no longer registered as a ghost peer.
+- Updated dependencies [[`7c00fad`](https://github.com/LTplus-AG/ifc-lite/commit/7c00fadaf7bb702f8fe3d9a98541bd1d3db2d3b2)]:
+  - @ifc-lite/ifcx@4.4.0
+
 ## 0.8.1
 
 ### Patch Changes

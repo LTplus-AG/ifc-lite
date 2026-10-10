@@ -1,5 +1,16 @@
 # @ifc-lite/drawing-2d
 
+## 4.2.0
+
+### Minor Changes
+
+- [#6884](https://github.com/LTplus-AG/ifc-lite/pull/6884) [`34c33ab`](https://github.com/LTplus-AG/ifc-lite/commit/34c33ab7a9cf539ad5878be89b7a8afd69aab514) Thanks [@louistrue](https://github.com/louistrue)! - `exportToDXF` accepts `polylineLayers`: extra polylines written on their own named layers through the same `coordinateTransform` as the drawing (used for the viewer's traced scan outline, [#6871](https://github.com/LTplus-AG/ifc-lite/issues/6871)).
+
+### Patch Changes
+
+- Updated dependencies [[`62634ad`](https://github.com/LTplus-AG/ifc-lite/commit/62634ada5a9738590f0546ae4157ec04f8ab9aa3), [`91337ca`](https://github.com/LTplus-AG/ifc-lite/commit/91337cad6306d88b7ad1256b0f637039a19e9573), [`4dce848`](https://github.com/LTplus-AG/ifc-lite/commit/4dce848d025f78ae9394276a7124205aba879dde), [`8b81320`](https://github.com/LTplus-AG/ifc-lite/commit/8b813203997c0b3b21cc724c4f820ad83b9b4cf3), [`fd1f8f5`](https://github.com/LTplus-AG/ifc-lite/commit/fd1f8f52fabbde0ecee4d6a5c15635293ff1a15e), [`8570465`](https://github.com/LTplus-AG/ifc-lite/commit/8570465acd2f68ef9b6f6e180d86af4636f52454), [`6364658`](https://github.com/LTplus-AG/ifc-lite/commit/6364658991cbdce5070cdde97e4cdf42a074acf7), [`ae15f9d`](https://github.com/LTplus-AG/ifc-lite/commit/ae15f9dbd01459690e8551ec8ccc62cec94e4f59), [`2a3a7d6`](https://github.com/LTplus-AG/ifc-lite/commit/2a3a7d633a6c9b49c1fa1f58f398c78d90982657), [`17e3f19`](https://github.com/LTplus-AG/ifc-lite/commit/17e3f195f52586529539c3cb9bef844dcd82b5fa), [`04e8c67`](https://github.com/LTplus-AG/ifc-lite/commit/04e8c6752778a444628507478b381ad920979fa6), [`2278072`](https://github.com/LTplus-AG/ifc-lite/commit/2278072a762255f0fb2a2d5131167c2ead7af344)]:
+  - @ifc-lite/geometry@7.8.0
+
 ## 4.1.0
 
 ### Minor Changes

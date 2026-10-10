@@ -1,5 +1,22 @@
 # @ifc-lite/charts
 
+## 0.9.0
+
+### Minor Changes
+
+- [#7042](https://github.com/LTplus-AG/ifc-lite/pull/7042) [`30fef5a`](https://github.com/LTplus-AG/ifc-lite/commit/30fef5a0ebc0a66b6a74d6e6070a696481e5f80a) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Save a clash result as a named report and choose, per chart, between the current result and one saved report. Open **Saved clash reports** in the Clash panel header to save, rename or delete reports; in the chart editor a clash chart picks **Current result** or a report under **Clash report**. A chart bound to a report keeps its results when another check runs, so two charts can show two runs side by side. Reports are kept in the browser's saved content library, survive a reload, and are part of the library backup and its import. A chart of a saved report says when the run was partial, when the model changed before it was saved, how many clashes the exclusion rules were hiding, and when the loaded model is another revision; its rows never select or frame elements of the loaded model. A chart whose report was deleted shows **Saved clash report unavailable** and offers **Choose a source**, and never shows the current result in its place. Existing clash charts are unchanged and keep reading the current result.
+  
+  `ChartSpec.clashReportId` is the new optional binding. Validation rejects an empty ID, a binding on a source other than `clash`, and an element filter beside it.
+
+- [#6647](https://github.com/LTplus-AG/ifc-lite/pull/6647) [`768c462`](https://github.com/LTplus-AG/ifc-lite/commit/768c46262180cd06d0d46f8b5ba67f77713f4012) Thanks [@louistrue](https://github.com/louistrue)! - Bind comparison charts to completed saved reports with persistent per-chart choices, shared preview/PDF resolution, explicit missing dependencies, and safe recorded-data selection and snapshot behavior. Separate informative recorded-source captions from PDF failure diagnostics through optional error identities, preserving older message-only callers.
+
+### Patch Changes
+
+- Updated dependencies [[`25a8f4c`](https://github.com/LTplus-AG/ifc-lite/commit/25a8f4c7f4dd7633cf5b082ab77525c054022dcd), [`83c9f35`](https://github.com/LTplus-AG/ifc-lite/commit/83c9f3516acfe895c98cffd13f0f4410bc44b30b), [`6a6714b`](https://github.com/LTplus-AG/ifc-lite/commit/6a6714b4e95f25ef43013be354a2ff62674ff07a), [`fd1f8f5`](https://github.com/LTplus-AG/ifc-lite/commit/fd1f8f52fabbde0ecee4d6a5c15635293ff1a15e), [`b13a060`](https://github.com/LTplus-AG/ifc-lite/commit/b13a0603dbdca1b660db0626b3ffaed6b57a1da5), [`295a243`](https://github.com/LTplus-AG/ifc-lite/commit/295a2439e533af87a838ee2f252d87da19755890)]:
+  - @ifc-lite/rules@0.7.0
+  - @ifc-lite/lens@2.2.0
+  - @ifc-lite/data@6.2.0
+
 ## 0.8.0
 
 ### Minor Changes

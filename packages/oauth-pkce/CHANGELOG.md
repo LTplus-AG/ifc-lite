@@ -1,5 +1,11 @@
 # @ifc-lite/oauth-pkce
 
+## 0.3.0
+
+### Minor Changes
+
+- [#6824](https://github.com/LTplus-AG/ifc-lite/pull/6824) [`7c00fad`](https://github.com/LTplus-AG/ifc-lite/commit/7c00fadaf7bb702f8fe3d9a98541bd1d3db2d3b2) Thanks [@louistrue](https://github.com/louistrue)! - Extend source contracts with resource kinds, artifact filenames, availability reasons, preparation progress, provider file filters and cancellable sign-in. OAuth callback waits accept an AbortSignal and release channel resources on cancellation. Preserve optional projected IFCX placement in parse results.
+
 ## 0.2.0
 
 ### Minor Changes

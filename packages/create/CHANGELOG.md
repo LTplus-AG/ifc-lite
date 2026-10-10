@@ -1,5 +1,101 @@
 # @ifc-lite/create
 
+## 5.0.0
+
+### Major Changes
+
+- [#6646](https://github.com/LTplus-AG/ifc-lite/pull/6646) [`3474bb6`](https://github.com/LTplus-AG/ifc-lite/commit/3474bb6e8be907d6bd1fa58652addf5728bfdee7) Thanks [@louistrue](https://github.com/louistrue)! - Validate persisted grid intersections against one live owning grid before emitting IFC records. File-backed axes now require the paired source store read context as the fourth argument to gridIntersectionPlacement; mixed or ambiguous grid owners, same-row axes, deleted axes, and invalid grid placement references refuse. Generic emission preserves valid curved and radial axes. Overlay-only grids remain supported without a source context.
+  
+  Add addColumnOnGridToStore to emit columns bound to persistent IfcGridPlacement graphs. The linear binding consumer revalidates the crossing, native units, height and section heading atomically before emitting the whole graph.
+
+### Minor Changes
+
+- [#6753](https://github.com/LTplus-AG/ifc-lite/pull/6753) [`982e622`](https://github.com/LTplus-AG/ifc-lite/commit/982e6223df02269a76582e6a4b81c665dad2532a) Thanks [@louistrue](https://github.com/louistrue)! - Share atomic selection copying and the viewer array placement planner with loaded-model consumers. Bound carried-product work independently of the existing root count, traverse assemblies without call-stack recursion, and refuse unsupported parent placement frames before accepting projected movement.
+
+- [#7219](https://github.com/LTplus-AG/ifc-lite/pull/7219) [`08b2a8e`](https://github.com/LTplus-AG/ifc-lite/commit/08b2a8e4874398884e6a1cf0cb2834c6b2cbc999) Thanks [@louistrue](https://github.com/louistrue)! - Expose the shared native linear profile frame consumed by beam/member builders and reviewed viewer section ghosts.
+
+- [#7332](https://github.com/LTplus-AG/ifc-lite/pull/7332) [`0974706`](https://github.com/LTplus-AG/ifc-lite/commit/097470699749b6ebe6494ec280a59eb5882874e2) Thanks [@louistrue](https://github.com/louistrue)! - Allow completeness-sensitive relationship reads to inventory malformed relating targets without changing default assignment or explicit-unset semantics.
+
+- [#6759](https://github.com/LTplus-AG/ifc-lite/pull/6759) [`73070c2`](https://github.com/LTplus-AG/ifc-lite/commit/73070c2d67c2a0507e6bc5492c090f2df3736881) Thanks [@louistrue](https://github.com/louistrue)! - Expose canonical native mesh and storey-frame adapters consumed by the MCP Room geometry provider.
+
+- [#6761](https://github.com/LTplus-AG/ifc-lite/pull/6761) [`b2a5fb2`](https://github.com/LTplus-AG/ifc-lite/commit/b2a5fb2b97290bb39d2d36be81dd416c15c6a849) Thanks [@louistrue](https://github.com/louistrue)! - Expose native mesh alignment through one shared atomic planner for viewer, SDK, sandbox and MCP.
+
+- [#6666](https://github.com/LTplus-AG/ifc-lite/pull/6666) [`7d33d8c`](https://github.com/LTplus-AG/ifc-lite/commit/7d33d8cd6917c6a0df5d1b3e6aca741e554c8ba7) Thanks [@louistrue](https://github.com/louistrue)! - Share atomic loaded-model creation for the existing eight ordinary builders across viewer, SDK and the MCP headless backend. Public MCP flows can create the four kinds exposed by existing element-spec nodes: wall, column, beam and slab, with complete recorded undo. Late creation refusals retain all prior records and leave no helper entities. Preserve existing placement and owner-history defaults, and include the IFC2X3 slab PredefinedType attribute in saved records.
+
+- [#6758](https://github.com/LTplus-AG/ifc-lite/pull/6758) [`2e2f65a`](https://github.com/LTplus-AG/ifc-lite/commit/2e2f65a66e1375ef6cc52b8a310526de1a36e1a0) Thanks [@louistrue](https://github.com/louistrue)! - Expose shared native Room planning and atomic command operations to SDK hosts. Await asynchronous SDK channel results before structured cloning, and share the viewer's native layout cache and Undo history. Room Update rejects malformed wire ID lists, including sparse arrays, before model resolution or native preparation. Responses that cannot be structured-cloned now return the canonical error envelope instead of leaving channel requests to time out.
+
+- [#7325](https://github.com/LTplus-AG/ifc-lite/pull/7325) [`1dacd47`](https://github.com/LTplus-AG/ifc-lite/commit/1dacd47008744f1f9de48ab20aa4d871c4572ee7) Thanks [@louistrue](https://github.com/louistrue)! - Share complete current native room populations between AutoAll preparation and review, including spaces without readable geometry. Keep unavailable coverage distinct from an empty plan.
+
+- [#6710](https://github.com/LTplus-AG/ifc-lite/pull/6710) [`8a0a03a`](https://github.com/LTplus-AG/ifc-lite/commit/8a0a03a4f9e4ca9cfae457493f0eb50268052ecb) Thanks [@louistrue](https://github.com/louistrue)! - Add optional SDK and loaded-model MCP stair and railing authoring, with atomic tracked replacement and unique stair assembly removal. Reuse canonical builders and retain prior model work when creation or ownership checks refuse a replacement.
+
+- [#7386](https://github.com/LTplus-AG/ifc-lite/pull/7386) [`faf3084`](https://github.com/LTplus-AG/ifc-lite/commit/faf3084dbd0f40a0dafa49bb06c55f8c1be40a7f) Thanks [@louistrue](https://github.com/louistrue)! - Add transactional same-identity storey reassignment with canonical world-frame preservation and explicit dependency/ownership admission. Expected plans pin both storey EXPRESS IDs and GlobalIds so reviewed identity replacements refuse without writes.
+
+- [#7345](https://github.com/LTplus-AG/ifc-lite/pull/7345) [`fe3070c`](https://github.com/LTplus-AG/ifc-lite/commit/fe3070cfb18853dd857554615160806a607dbae2) Thanks [@louistrue](https://github.com/louistrue)! - Add source- and Root-pinned generic IfcGroup creation, complete membership
+  replacement, and safe removal through one canonical native graph owner. SDK,
+  CLI and sandbox hosts share the same lifecycle; the viewer records one Undo.
+
+- [#6757](https://github.com/LTplus-AG/ifc-lite/pull/6757) [`525cfba`](https://github.com/LTplus-AG/ifc-lite/commit/525cfba75d3e124d3dae51134cb43a87c258a8d9) Thanks [@louistrue](https://github.com/louistrue)! - Expose atomic loaded-model Copy, Array, Move, Rotate, Size, Wall Endpoints, Split and Trim/Extend through the canonical viewer cores and public MCP tools.
+
+### Patch Changes
+
+- [#6744](https://github.com/LTplus-AG/ifc-lite/pull/6744) [`036f227`](https://github.com/LTplus-AG/ifc-lite/commit/036f227605f10d686c8300b1fb5bd95db350df0a) Thanks [@louistrue](https://github.com/louistrue)! - Share canonical IFC placement, unit, profile and storey readers with the viewer to prepare command parity for [#6232](https://github.com/LTplus-AG/ifc-lite/issues/6232).
+
+- [#7308](https://github.com/LTplus-AG/ifc-lite/pull/7308) [`9aa09ce`](https://github.com/LTplus-AG/ifc-lite/commit/9aa09cedcea3b146e7b91922bf07603d440e0f5c) Thanks [@louistrue](https://github.com/louistrue)! - Read current storey plan frames through canonical effective metadata when a mutation view is supplied. Preserve source-only reads; live workplanes and authored fallback previews refuse unreadable or oversized placement chains instead of using stale source coordinates.
+
+- [#6745](https://github.com/LTplus-AG/ifc-lite/pull/6745) [`5d3e14f`](https://github.com/LTplus-AG/ifc-lite/commit/5d3e14febefe47f9967efdbb130a6a236c64110f) Thanks [@louistrue](https://github.com/louistrue)! - Share canonical wall readers and hosted opening refit helpers with the viewer for [#6232](https://github.com/LTplus-AG/ifc-lite/issues/6232).
+  
+  Hosted resize planners report safe refusal when canonical unit conversion overflows, preserving their outcome contracts without writing invalid geometry.
+
+- [#6747](https://github.com/LTplus-AG/ifc-lite/pull/6747) [`c61932d`](https://github.com/LTplus-AG/ifc-lite/commit/c61932d4a9d85efe1b0f817a5274a115f0571ee3) Thanks [@louistrue](https://github.com/louistrue)! - Share canonical slab, split eligibility, metadata and identity helpers with the viewer for [#6232](https://github.com/LTplus-AG/ifc-lite/issues/6232).
+
+- [#6748](https://github.com/LTplus-AG/ifc-lite/pull/6748) [`a352a79`](https://github.com/LTplus-AG/ifc-lite/commit/a352a79ee372def56f79d0a331aaacfc896a95a9) Thanks [@louistrue](https://github.com/louistrue)! - Share effective affected-product and ownership planning for canonical viewer transforms ([#6232](https://github.com/LTplus-AG/ifc-lite/issues/6232)).
+  
+  Recognize IfcOpeningStandardCase through canonical IFC type classification when expanding shape-edit remesh dependencies, including overlay creations and retypes.
+
+- [#6751](https://github.com/LTplus-AG/ifc-lite/pull/6751) [`155404e`](https://github.com/LTplus-AG/ifc-lite/commit/155404e8d9aff9be723f8e74612aded08018ab49) Thanks [@louistrue](https://github.com/louistrue)! - Share atomic identity-preserving wall, linear and slab splitting with the viewer, including metadata and hosted cuts ([#6232](https://github.com/LTplus-AG/ifc-lite/issues/6232)). Preserve the effective placement parent and section basis when splitting columns, beams and members, including tilted axes and section roll. Encode source metadata memberships as IFC references on export and retain existing same-name target property/quantity sets.
+
+- [#6672](https://github.com/LTplus-AG/ifc-lite/pull/6672) [`90163b6`](https://github.com/LTplus-AG/ifc-lite/commit/90163b66a472635d8ee314db4cd430fde0eb324a) Thanks [@louistrue](https://github.com/louistrue)! - Support the six existing type/material SDK methods on loaded MCP models through the shared schema-aware factory, with one public Undo operation per call and live IFC2X3 owner-history resolution.
+  
+  Validate every material layer and layer-set schema field before creating helpers, so late unsupported attributes leave the overlay, journal and allocator unchanged. Metre dimensions, schema declarations and existing SDK anchor policies are retained.
+
+- [#6752](https://github.com/LTplus-AG/ifc-lite/pull/6752) [`0256886`](https://github.com/LTplus-AG/ifc-lite/commit/0256886c10ec0a1dd81eded6f8e6f57914727d68) Thanks [@louistrue](https://github.com/louistrue)! - Share strict trim and extend planning and atomic commits with the viewer, preserving hosted cuts and wall joins ([#6232](https://github.com/LTplus-AG/ifc-lite/issues/6232)).
+
+- [#6748](https://github.com/LTplus-AG/ifc-lite/pull/6748) [`a352a79`](https://github.com/LTplus-AG/ifc-lite/commit/a352a79ee372def56f79d0a331aaacfc896a95a9) Thanks [@louistrue](https://github.com/louistrue)! - Refuse non-finite derived transform coordinates and unit-converted lengths atomically while preserving representable large conversions.
+
+- [#7253](https://github.com/LTplus-AG/ifc-lite/pull/7253) [`93b69a1`](https://github.com/LTplus-AG/ifc-lite/commit/93b69a18804887bd0f187847af1a39f612a96e4d) Thanks [@louistrue](https://github.com/louistrue)! - Preserve effective live and edited source property and quantity sets when native split and copy create sibling products. Keep generated same-name metadata authoritative and use current overlays so deleted or undone sets are not resurrected. Bound aggregate metadata cloning work with an explicit atomic refusal.
+
+- [#6746](https://github.com/LTplus-AG/ifc-lite/pull/6746) [`3eb0418`](https://github.com/LTplus-AG/ifc-lite/commit/3eb041838ce4a55e74dc50db212124be6458e421) Thanks [@louistrue](https://github.com/louistrue)! - Share canonical linear element and slab frame geometry readers with the viewer for [#6232](https://github.com/LTplus-AG/ifc-lite/issues/6232).
+  
+  Refuse finite linear-axis components whose magnitude cannot be represented, preserving the unit-axis contract used by split geometry. Large representable axes remain supported.
+
+- [#7185](https://github.com/LTplus-AG/ifc-lite/pull/7185) [`f43d101`](https://github.com/LTplus-AG/ifc-lite/commit/f43d101f55d5312bc8ab3b0483899d18e19d3500) Thanks [@louistrue](https://github.com/louistrue)! - Prevent native effective relationship reads on source-empty transported models from recovering source records through a retained byte-reader closure. Suppress indexed superseded source relationships for native spatial authoring instead of trusting their original graph endpoints. Complete authored relationships remain readable; read-only viewer rows explicitly distinguish original source evidence from unavailable current membership.
+
+- [#6778](https://github.com/LTplus-AG/ifc-lite/pull/6778) [`85a7a14`](https://github.com/LTplus-AG/ifc-lite/commit/85a7a14f2d7dfba9373d57540bef570a3adac918) Thanks [@louistrue](https://github.com/louistrue)! - Preserve the existing placement parent when splitting joined walls, retaining native geometry and join relations in nested or absolute frames.
+
+- [#6756](https://github.com/LTplus-AG/ifc-lite/pull/6756) [`b3a9913`](https://github.com/LTplus-AG/ifc-lite/commit/b3a991363d5b5f79cec77901a1ff870635214a95) Thanks [@louistrue](https://github.com/louistrue)! - Share atomic Room creation, outline updates and native layout split/merge writes with the viewer. Preserve source identity and metadata, and refuse shared source solids before rewriting geometry.
+
+- [#6755](https://github.com/LTplus-AG/ifc-lite/pull/6755) [`c1a4ede`](https://github.com/LTplus-AG/ifc-lite/commit/c1a4ede360aeab837709b9731940092e1c42d962) Thanks [@louistrue](https://github.com/louistrue)! - Share the viewer’s native Room wall mesh decoder, footprint and storey frame helpers without a second headless geometry algorithm.
+
+- [#6754](https://github.com/LTplus-AG/ifc-lite/pull/6754) [`778bc74`](https://github.com/LTplus-AG/ifc-lite/commit/778bc74ce22572346ed54e3891bb2ad0689e7774) Thanks [@louistrue](https://github.com/louistrue)! - Share native Room layout, candidate and occupancy policy with the viewer, retaining its history-aware edited layouts.
+
+- [#7305](https://github.com/LTplus-AG/ifc-lite/pull/7305) [`2ea1c5d`](https://github.com/LTplus-AG/ifc-lite/commit/2ea1c5d9c708b5fcbd065e938d72769df3e3483a) Thanks [@louistrue](https://github.com/louistrue)! - Read native grid axis tags and curves through the same effective named/positional entity reader as grid-bound column creation, preserving lightweight positional-only overlay readers.
+
+- [#6761](https://github.com/LTplus-AG/ifc-lite/pull/6761) [`b2a5fb2`](https://github.com/LTplus-AG/ifc-lite/commit/b2a5fb2b97290bb39d2d36be81dd416c15c6a849) Thanks [@louistrue](https://github.com/louistrue)! - Allow stationary Align targets to retain joined or hosted references while preserving selected endpoint constraints.
+
+- [#7317](https://github.com/LTplus-AG/ifc-lite/pull/7317) [`c373aef`](https://github.com/LTplus-AG/ifc-lite/commit/c373aef5680a2fafc8b270c0040ed97aeeaa5838) Thanks [@louistrue](https://github.com/louistrue)! - Read current named and positional native placement references through one canonical effective metadata reader for split snapshots and writers. Preserve source-reader callbacks, reject deleted or cyclic placement leaves, and keep native placement directions consistent with full expected geometry.
+
+- [#6710](https://github.com/LTplus-AG/ifc-lite/pull/6710) [`8a0a03a`](https://github.com/LTplus-AG/ifc-lite/commit/8a0a03a4f9e4ca9cfae457493f0eb50268052ecb) Thanks [@louistrue](https://github.com/louistrue)! - Refuse unsupported product classes and ordinary aggregate roots before atomic element replacement prepares placement or changes the source graph.
+
+- [#7316](https://github.com/LTplus-AG/ifc-lite/pull/7316) [`f445a8e`](https://github.com/LTplus-AG/ifc-lite/commit/f445a8eb625428e0fb25dac938f7453b5f74e333) Thanks [@louistrue](https://github.com/louistrue)! - Reuse the canonical current placement read for native transform planning and reviewed placement evidence, including carried hosted members, without changing carrier writes. Native frame planning consumes the shared effective placement reader, including current named references and positional precedence.
+
+- [#6750](https://github.com/LTplus-AG/ifc-lite/pull/6750) [`3a6219b`](https://github.com/LTplus-AG/ifc-lite/commit/3a6219b5ce66df70f272e770b7cedf5041c91ad4) Thanks [@louistrue](https://github.com/louistrue)! - Share strict wall and element dimension writers, hosted cut refits and endpoint edits with the viewer ([#6232](https://github.com/LTplus-AG/ifc-lite/issues/6232)).
+- Updated dependencies [[`8f8fe3b`](https://github.com/LTplus-AG/ifc-lite/commit/8f8fe3b126f25201ebfd338f355eb3787e7ad908), [`6a6714b`](https://github.com/LTplus-AG/ifc-lite/commit/6a6714b4e95f25ef43013be354a2ff62674ff07a), [`62634ad`](https://github.com/LTplus-AG/ifc-lite/commit/62634ada5a9738590f0546ae4157ec04f8ab9aa3), [`91337ca`](https://github.com/LTplus-AG/ifc-lite/commit/91337cad6306d88b7ad1256b0f637039a19e9573), [`ee2b091`](https://github.com/LTplus-AG/ifc-lite/commit/ee2b0918c7b82be6c36f49f70dee346e0fe85aad), [`a352a79`](https://github.com/LTplus-AG/ifc-lite/commit/a352a79ee372def56f79d0a331aaacfc896a95a9), [`eec7de9`](https://github.com/LTplus-AG/ifc-lite/commit/eec7de970a21a12ef4d09eaed382f45f7210772a), [`29a1648`](https://github.com/LTplus-AG/ifc-lite/commit/29a1648b3ea56a346012b65ab3b7e41ecd598e8f), [`09745f0`](https://github.com/LTplus-AG/ifc-lite/commit/09745f0f3bb99ac07802ae061f13df92e865683f), [`7f55425`](https://github.com/LTplus-AG/ifc-lite/commit/7f554255ca96f812c9d65cf2507d46980fe604c6), [`4dce848`](https://github.com/LTplus-AG/ifc-lite/commit/4dce848d025f78ae9394276a7124205aba879dde), [`272ebd8`](https://github.com/LTplus-AG/ifc-lite/commit/272ebd8615d038dc20dd8aec4e3bb88d1acf9fa7), [`8b81320`](https://github.com/LTplus-AG/ifc-lite/commit/8b813203997c0b3b21cc724c4f820ad83b9b4cf3), [`5047fcf`](https://github.com/LTplus-AG/ifc-lite/commit/5047fcfb5d5e18b062dbcd77f95523036bac55b9), [`07318f2`](https://github.com/LTplus-AG/ifc-lite/commit/07318f213ad9362528b694e60cf6c058d5adf722), [`b92dd05`](https://github.com/LTplus-AG/ifc-lite/commit/b92dd05495094a47c4a68eb1137a3a1906fc65cc), [`be7fb60`](https://github.com/LTplus-AG/ifc-lite/commit/be7fb6006ce8be46436a69d6fa611d11043f03ed), [`fd1f8f5`](https://github.com/LTplus-AG/ifc-lite/commit/fd1f8f52fabbde0ecee4d6a5c15635293ff1a15e), [`2499fdb`](https://github.com/LTplus-AG/ifc-lite/commit/2499fdb249eeffea22fa01c2f0fb12defe812e4a), [`8570465`](https://github.com/LTplus-AG/ifc-lite/commit/8570465acd2f68ef9b6f6e180d86af4636f52454), [`fcad301`](https://github.com/LTplus-AG/ifc-lite/commit/fcad3010976b42d5de194d8018486c4d178d0ddf), [`5a40ad8`](https://github.com/LTplus-AG/ifc-lite/commit/5a40ad89723df2dca70248c5caaba6d402ffc762), [`73070c2`](https://github.com/LTplus-AG/ifc-lite/commit/73070c2d67c2a0507e6bc5492c090f2df3736881), [`2e2f65a`](https://github.com/LTplus-AG/ifc-lite/commit/2e2f65a66e1375ef6cc52b8a310526de1a36e1a0), [`6364658`](https://github.com/LTplus-AG/ifc-lite/commit/6364658991cbdce5070cdde97e4cdf42a074acf7), [`ae15f9d`](https://github.com/LTplus-AG/ifc-lite/commit/ae15f9dbd01459690e8551ec8ccc62cec94e4f59), [`2a3a7d6`](https://github.com/LTplus-AG/ifc-lite/commit/2a3a7d633a6c9b49c1fa1f58f398c78d90982657), [`17e3f19`](https://github.com/LTplus-AG/ifc-lite/commit/17e3f195f52586529539c3cb9bef844dcd82b5fa), [`3474bb6`](https://github.com/LTplus-AG/ifc-lite/commit/3474bb6e8be907d6bd1fa58652addf5728bfdee7), [`cba05ef`](https://github.com/LTplus-AG/ifc-lite/commit/cba05ef735316ee8415610d520a76ea4873f2b3d), [`04e8c67`](https://github.com/LTplus-AG/ifc-lite/commit/04e8c6752778a444628507478b381ad920979fa6), [`5047fcf`](https://github.com/LTplus-AG/ifc-lite/commit/5047fcfb5d5e18b062dbcd77f95523036bac55b9), [`1bb0fe3`](https://github.com/LTplus-AG/ifc-lite/commit/1bb0fe34c8fc46acef6e51f3792f274e1e5be1b9), [`99aabe5`](https://github.com/LTplus-AG/ifc-lite/commit/99aabe5204988f807b0447c7ffda05d1176b187a), [`295a243`](https://github.com/LTplus-AG/ifc-lite/commit/295a2439e533af87a838ee2f252d87da19755890), [`b92dd05`](https://github.com/LTplus-AG/ifc-lite/commit/b92dd05495094a47c4a68eb1137a3a1906fc65cc), [`2278072`](https://github.com/LTplus-AG/ifc-lite/commit/2278072a762255f0fb2a2d5131167c2ead7af344), [`6b11848`](https://github.com/LTplus-AG/ifc-lite/commit/6b118483a8f3b7c32744071a620cb7055ec87f77)]:
+  - @ifc-lite/mutations@3.2.0
+  - @ifc-lite/geometry@7.8.0
+  - @ifc-lite/parser@9.3.0
+  - @ifc-lite/export@4.10.0
+  - @ifc-lite/data@6.2.0
+
 ## 4.0.0
 
 ### Major Changes

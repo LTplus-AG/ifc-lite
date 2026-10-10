@@ -1,5 +1,11 @@
 # @ifc-lite/data
 
+## 6.2.0
+
+### Minor Changes
+
+- [#6971](https://github.com/LTplus-AG/ifc-lite/pull/6971) [`fd1f8f5`](https://github.com/LTplus-AG/ifc-lite/commit/fd1f8f52fabbde0ecee4d6a5c15635293ff1a15e) Thanks [@louistrue](https://github.com/louistrue)! - Central perf-flag registry ([#6962](https://github.com/LTplus-AG/ifc-lite/issues/6962)). Every runtime perf toggle is declared once in the viewer's `PERF_FLAGS` registry with an owner, a removal condition and its bindings. The existing `__IFC_LITE_*` globals, URL params and sticky keys keep working unchanged; each global-backed flag also accepts a `?perf.<id>=` URL param when the global is unset (for example `?perf.chunks=0`). `@ifc-lite/data` adds the shared `readPerfFlagRaw` reader and `@ifc-lite/geometry` exports `GEOMETRY_PERF_FLAG_BINDINGS`, the bindings of the three flags its host thread reads.
+
 ## 6.1.0
 
 ### Minor Changes

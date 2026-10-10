@@ -152,30 +152,9 @@ export async function runDeviceLossOracle() {
 // Exercise the existing complete renderer witness with real framebuffer density
 // controls. These override the density input; the adapter remains actual hardware.
 import { runWitness } from '../../apps/viewer/src/e2e/RteGpuWitness.tsx';
+import { runRendererDensityControls } from '../../scripts/perf/renderer-density-admission.mjs';
 export async function runRendererDensityOracle() {
-    const descriptor = Object.getOwnPropertyDescriptor(window, 'devicePixelRatio');
-    const nativeDevicePixelRatio = window.devicePixelRatio;
-    const reports = [];
-    const depthCopies = [];
-    try {
-        for (const density of [1, 1.5, 2]) {
-            Object.defineProperty(window, 'devicePixelRatio', { configurable: true, value: density });
-            const canvas = document.createElement('canvas');
-            canvas.width = 640;
-            canvas.height = 480;
-            canvas.style.cssText = 'display:block;width:640px;height:480px';
-            document.body.append(canvas);
-            try { reports.push({ density, report: await runWitness(canvas, renderer => observeDepthCopies(renderer, depthCopies, density)) }); }
-            finally { canvas.remove(); }
-        }
-    } finally {
-        if (descriptor) Object.defineProperty(window, 'devicePixelRatio', descriptor);
-        else delete window.devicePixelRatio;
-    }
-    const sameRenderDepth = await Promise.all(depthCopies);
-    if (sameRenderDepth.some(sample => sample.actual !== sample.oracle))
-        throw new Error('A production renderer pick differs from its same-render full-depth copy');
-    return { nativeDevicePixelRatio, reports, sameRenderDepth };
+    return runRendererDensityControls({ window, document, runWitness, observeDepthCopies });
 }
 
 /** Test instrumentation only: append a full-copy oracle to each real pick. */
@@ -206,13 +185,17 @@ function observeDepthCopies(renderer, samples, density) {
             return bytes;
         };
         // The caller submits before this microtask maps the independent oracle.
-        samples.push(Promise.resolve().then(async () => {
+        const operation = Promise.resolve().then(async () => {
             try {
                 await full.mapAsync(GPUMapMode.READ);
                 sample.oracle = new Uint32Array(full.getMappedRange(), y * stride + x * 4, 1)[0];
                 return sample;
             } finally { full.destroy(); }
-        }));
+        });
+        // A failed witness can destroy the device before the controller joins
+        // this map. Retain the original rejection for the report and drain.
+        operation.catch(error => console.warn('[Depth oracle] native map failed:', error));
+        samples.push(operation);
         return resources;
     };
 }

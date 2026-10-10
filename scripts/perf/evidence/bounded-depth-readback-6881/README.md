@@ -280,7 +280,7 @@ memory pressure. Neither attempt is accepted timing evidence. Both corrected-har
 `public-ifc-hover-ab.json.gz` retains four complete alternating-order pairs and
 the fifth pair's failed browser attempt. `public-ifc-hover-expressions.json`
 contains the exact evaluated setup, readiness and pointer-handler probes. Each
-complete session used a fresh document, cleared IndexedDB, uploaded the same
+complete session used a fresh document, requested IndexedDB deletion, uploaded the same
 public FZK fixture through its file input, and waited for parser completion,
 geometry completion, scene finalization and an allocated viewport. No adapter
 request preceded the upload. Native DPR was 1.5. Each of nine predeclared pointer
@@ -339,3 +339,23 @@ synthetic merge identities and log hashes. A normal evidence-only commit
 requests fresh CI against the established main base. Native GPU, federation
 and focused physical performance remain unqualified; frozen browser runtimes
 still represent the earlier compilation. All historical refusals remain intact.
+
+### Review of historical admission, 2026-10-10
+
+The exact archived hover setup resolves its database-deletion promise on
+`onblocked` and `onerror` as well as success. It therefore does **not** certify
+completed deletion or a cold load. The expression, reports and archives remain
+unchanged as historical records; their cold-reset provenance is unverified.
+Future comparisons use the canonical load seam and require actual cold-WASM
+load/cache-tier certificates; an attempted database reset is not admission.
+No user or foreign database is deleted to repair this historical claim.
+
+The live renderer density oracle now refuses a skipped/failed witness and
+requires all three passed hardware reports plus nine complete matching depth
+samples per density. Its maps are joined on failure too. The two density-only
+archives contain no depth samples and cannot establish depth-oracle acceptance;
+the separate same-render archive contains 27 matching samples. CI report
+admission controls use these preserved records and negative variants. They are
+CPU validation of report completeness, not new native execution. Controlled
+density overrides remain raster invariants, not physical HiDPI/federation or
+focused performance acceptance. The full native #6881 qualification stays held.

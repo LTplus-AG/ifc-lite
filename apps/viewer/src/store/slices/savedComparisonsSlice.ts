@@ -20,6 +20,7 @@ export interface SavedComparisonsSlice {
   stageComparison: (comparison: SavedComparison) => void;
   renameSavedComparison: (id: string, name: string) => Promise<boolean>;
   deleteSavedComparison: (id: string, beforeWrite?: () => boolean) => Promise<boolean>;
+  cancelSavedComparisonDeletion: (id: string, beforeWrite: () => boolean) => Promise<boolean>;
 }
 
 export const createSavedComparisonsSlice: StateCreator<SavedComparisonsSlice, [], [], SavedComparisonsSlice> = (set, get) => {
@@ -31,6 +32,7 @@ export const createSavedComparisonsSlice: StateCreator<SavedComparisonsSlice, []
     initializeSavedComparisons: library.initialize, refreshSavedComparisons: library.refresh,
     restoreSavedComparisons: library.restore,
     retrySaveComparisons: library.retry,
+    cancelSavedComparisonDeletion: library.cancelDeletion,
     stageComparison: entry => { if (isSavedComparison(entry)) library.stage(entry.id, entry); },
     saveComparison: comparison => {
       if (!isSavedComparison(comparison)) { console.warn('[Comparisons] Refusing invalid evidence'); return Promise.resolve(false); }

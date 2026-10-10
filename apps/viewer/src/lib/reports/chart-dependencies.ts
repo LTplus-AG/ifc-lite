@@ -22,17 +22,22 @@ const pointsTo = (chart: ChartSpec, source: ReportSource) => chart.source === so
 /** Only executable chart references; embedded report snapshots are independent historical evidence. */
 export function reportChartDependencies(state: ViewerState, source: ReportSource): ChartDependencyPreview {
   const persisted = readDashboards();
-  const dashboards = new Map(persisted.entries.map(entry => [entry.id, entry]));
-  // Visible native session edits win over their durable version; no shadow library is created.
-  for (const entry of state.dashboards) dashboards.set(entry.id, entry);
-  const all: ChartDependency[] = [];
-  for (const dashboard of dashboards.values()) for (const chart of dashboard.charts) {
-    if (pointsTo(chart, source)) all.push({ key: JSON.stringify(['dashboard', dashboard.id, chart.id]), family: 'dashboard', name: dashboard.name, chart: chart.title });
+  // Another tab's durable version and this tab's unsaved version can each
+  // contain executable references. Neither version can erase the other.
+  const references = new Map<string, ChartDependency>();
+  const observations = new Set<string>();
+  const add = (dependency: ChartDependency) => {
+    references.set(dependency.key, dependency);
+    observations.add(JSON.stringify(dependency));
+  };
+  for (const dashboard of [...persisted.entries, ...state.dashboards]) for (const chart of dashboard.charts) {
+    if (pointsTo(chart, source)) add({ key: JSON.stringify(['dashboard', dashboard.id, chart.id]), family: 'dashboard', name: dashboard.name, chart: chart.title });
   }
   for (const document of state.documents) for (const block of document.blocks) {
-    if (block.kind === 'chart' && pointsTo(block.chart, source)) all.push({ key: JSON.stringify(['document', document.id, block.id]), family: 'document', name: document.name, chart: block.chart.title });
+    if (block.kind === 'chart' && pointsTo(block.chart, source)) add({ key: JSON.stringify(['document', document.id, block.id]), family: 'document', name: document.name, chart: block.chart.title });
   }
+  const all = [...references.values()];
   all.sort((a, b) => a.key.localeCompare(b.key));
   const coverage = { documentPhase: state.documentsStorage.phase, documentsRecovered: state.documentsStorage.recovered, dashboardsUnavailable: persisted.unavailable, omittedDashboards: persisted.omitted };
-  return { ...coverage, entries: all.slice(0, DEPENDENCY_DISPLAY_LIMIT), total: all.length, signature: JSON.stringify([all, coverage]) };
+  return { ...coverage, entries: all.slice(0, DEPENDENCY_DISPLAY_LIMIT), total: all.length, signature: JSON.stringify([all, coverage, [...observations].sort()]) };
 }

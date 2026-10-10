@@ -30,6 +30,8 @@ export function createContentLibrary<T extends { id: string }>(definition: Conte
   const generations = new Map<string, number>();
   // Optional native deletion authority stays with refused tombstones for explicit Retry.
   const deletionGuards = new Map<string, { check: () => boolean; original: T | undefined; replacement?: T }>();
+  // Revoked deletions retain recovery evidence, never writable tombstones or approval.
+  const cancelledDeletions = new Map<string, { generation: number; original: T | undefined }>();
   let editGeneration = 0;
   const emit = () => publish(read(), { ...status, items: copyItemStatus(status.items) });
   const change = (id: string, entry: T | null) => {
@@ -88,6 +90,7 @@ export function createContentLibrary<T extends { id: string }>(definition: Conte
   };
   const stage = (id: string, entry: T | null, reason: ContentFailure = 'unavailable'): void => {
     editGeneration++;
+    cancelledDeletions.delete(id);
     deletionGuards.delete(id);
     if (!revisions.has(id)) revisions.set(id, 0);
     generations.set(id, (generations.get(id) ?? 0) + 1);
@@ -108,6 +111,7 @@ export function createContentLibrary<T extends { id: string }>(definition: Conte
     const entry = portableEntry(value);
     if (value !== null && !entry) { stage(id, value, 'invalid'); return Promise.resolve(false); }
     editGeneration++;
+    cancelledDeletions.delete(id);
     if (!revisions.has(id)) revisions.set(id, 0);
     const generation = (generations.get(id) ?? 0) + 1;
     generations.set(id, generation);
@@ -123,9 +127,13 @@ export function createContentLibrary<T extends { id: string }>(definition: Conte
     const previous = queues.get(id) ?? Promise.resolve(true);
     const deletionAllowed = (): boolean => {
       const authority = deletionGuards.get(id);
+      if (beforeWrite && (!authority || authority.check !== beforeWrite || generations.get(id) !== generation)) return false;
       // Restore the actual own-import replacement before checking source identity.
       if (authority?.replacement && generations.get(id) === generation) change(id, authority.replacement);
-      if ((!beforeWrite || beforeWrite()) && !authority?.replacement) return true;
+      const permitted = !beforeWrite || beforeWrite();
+      // The callback can synchronously revoke itself or stage a newer draft.
+      if (permitted && !authority?.replacement && (!beforeWrite
+        || (deletionGuards.get(id) === authority && generations.get(id) === generation))) return true;
       // A newer native draft owns its own generation; never restore over it.
       if (generations.get(id) === generation) {
         const original = authority?.replacement ?? authority?.original;
@@ -178,10 +186,48 @@ export function createContentLibrary<T extends { id: string }>(definition: Conte
     void pending.finally(() => { if (queues.get(id) === pending) queues.delete(id); });
     return pending;
   };
+  const recoverCancelledDeletion = async (id: string, generation: number): Promise<boolean> => {
+    const recovery = cancelledDeletions.get(id);
+    if (!recovery || recovery.generation !== generation) return false;
+    try {
+      await queues.get(id);
+      const rows = await readContentRows(definition.kind);
+      // A newer local draft or owner always wins over this asynchronous read.
+      if (cancelledDeletions.get(id) !== recovery || generations.get(id) !== generation
+        || dirty.has(id) || deletionGuards.has(id)) return false;
+      const row = rows.find(entry => entry.id === id);
+      if (row && row.revision < (revisions.get(id) ?? 0)) return false;
+      const entry = row && !row.deleted ? definition.decode(row.payload) : null;
+      if (row && !row.deleted && !entry) throw new Error('Cancelled deletion source is unreadable');
+      if (row) revisions.set(id, row.revision);
+      cancelledDeletions.delete(id);
+      status.items[id] = 'saved'; change(id, entry);
+      return true;
+    } catch (error) {
+      const reason = contentFailure(error);
+      if (cancelledDeletions.get(id) === recovery && generations.get(id) === generation) {
+        status.items[id] = reason; emit();
+      }
+      return false;
+    }
+  };
+  // Revoke only this mounted review's tombstone; never flush unrelated drafts.
+  const cancelDeletion = (id: string, check: () => boolean): Promise<boolean> => {
+    const authority = deletionGuards.get(id);
+    if (!authority || authority.check !== check || dirty.get(id) !== null) return Promise.resolve(false);
+    const generation = (generations.get(id) ?? 0) + 1;
+    generations.set(id, generation); editGeneration++;
+    cancelledDeletions.set(id, { generation, original: authority.replacement ?? authority.original });
+    deletionGuards.delete(id); dirty.delete(id);
+    return recoverCancelledDeletion(id, generation);
+  };
   const retry = async (): Promise<boolean> => {
     await Promise.all(queues.values());
     if (!(await initialize())) return false;
-    const results = await Promise.all([...dirty].map(([id, entry]) => put(id, entry, deletionGuards.get(id)?.check)));
+    const results = await Promise.all([
+      ...[...cancelledDeletions].map(([id, recovery]) => recoverCancelledDeletion(id, recovery.generation)),
+      ...[...dirty].map(([id, entry]) => put(id, entry, deletionGuards.get(id)?.check)),
+    ]);
     return results.every(Boolean);
   };
   const refresh = async (committed: readonly ContentCommitReceipt[] = []): Promise<boolean> => {
@@ -224,11 +270,11 @@ export function createContentLibrary<T extends { id: string }>(definition: Conte
       }
       // The confirmation covers existing drafts, never edits made while reading.
       if (editGeneration !== requestedAt) return false;
-      dirty.clear(); revisions.clear(); deletionGuards.clear();
+      dirty.clear(); revisions.clear(); deletionGuards.clear(); cancelledDeletions.clear();
       for (const row of rows) revisions.set(row.id, row.revision);
       status = { ...status, phase: 'ready', items: copyItemStatus() }; publish(entries, status);
       return true;
     } catch (error) { contentFailure(error); return false; }
   };
-  return { initialize, put, retry, refresh, stage, restore };
+  return { initialize, put, retry, refresh, stage, restore, cancelDeletion };
 }

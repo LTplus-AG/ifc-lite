@@ -20,7 +20,7 @@ export interface DashboardRead { entries: DashboardSpec[]; unavailable: boolean;
 export function readDashboards(): DashboardRead {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return { entries: [], unavailable: false, omitted: 0 };
+    if (raw === null) return { entries: [], unavailable: false, omitted: 0 };
     const parsed: unknown = JSON.parse(raw);
     if (!Array.isArray(parsed)) return { entries: [], unavailable: true, omitted: 0 };
     const kept: DashboardSpec[] = [];

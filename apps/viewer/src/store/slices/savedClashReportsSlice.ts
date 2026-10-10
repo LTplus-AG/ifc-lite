@@ -23,6 +23,7 @@ export interface SavedClashReportsSlice {
   stageClashReport: (report: SavedClashReport) => Promise<void>;
   renameSavedClashReport: (id: string, name: string) => Promise<boolean>;
   deleteSavedClashReport: (id: string, beforeWrite?: () => boolean) => Promise<boolean>;
+  cancelSavedClashReportDeletion: (id: string, beforeWrite: () => boolean) => Promise<boolean>;
 }
 
 /** `load` fetches the rules; a test passes one that fails, as a chunk the browser cannot fetch does. */
@@ -41,6 +42,7 @@ export const savedClashReportsSlice = (load: typeof loadClashReportLibrary = loa
     refreshSavedClashReports: (committed) => actions().then((rules) => !!rules && library.refresh(committed)),
     restoreSavedClashReports: () => actions().then((rules) => !!rules && library.restore()),
     retrySaveClashReports: () => actions().then((rules) => !!rules && library.retry()),
+    cancelSavedClashReportDeletion: library.cancelDeletion,
     saveClashReport: (report) => actions().then((rules) => !!rules && rules.save(report)),
     stageClashReport: (report) => actions().then((rules) => rules?.stage(report)),
     renameSavedClashReport: (id, name) => actions().then((rules) => !!rules && rules.rename(id, name)),

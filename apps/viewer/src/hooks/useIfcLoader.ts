@@ -30,6 +30,7 @@ import { loadTracer, nextPaintOrTimeout } from '../lib/perf/loadTrace.js';
 import { countCopy } from '@ifc-lite/load-trace'; // #6957 full source-copy counters
 import {
   GeometryProcessor,
+  compileSharedWasmModule,
   geometryAabbAt,
   geometryVolumeAt,
   getGeometryStreamWatchdogMs as getGeometryStreamWatchdogMsImpl,
@@ -1464,6 +1465,7 @@ export function useIfcLoader() {
           const worker = new WorkerParser();
           workerParserInstance = worker;
           return worker.parseColumnar(sharedSource, {
+            wasmModulePromise: compileSharedWasmModule(),
             signal: metadataAbort.signal,
             trace, // #6979: parser-worker phase spans
             sourceFingerprint,

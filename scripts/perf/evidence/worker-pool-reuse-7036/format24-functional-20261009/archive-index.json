@@ -1,0 +1,1284 @@
+{
+  "scope": "Partial functional evidence: visiblePASS32+ignoredentry, hiddenREFUSAL, CPU2428at346, fresh saved-report35 matcher agreement,81sourcecheckpoint and actual root119task typecheck; no rendered viewer/native/performance qualification",
+  "preservedOriginalArchive": {
+    "sha256": "05fc919cfb0406fc99991213a06e6231e4ba9727d84fd8afabfce3b0e7cc6ac2",
+    "manifestSha256": "1b7158b569aaf2e02fb8f06bce67dfdb76a27a25b84d84290b5a6aa4e31812f9"
+  },
+  "files": [
+    {
+      "path": "integrated-cpu-qualification.json.gz",
+      "sourceArtifact": "/home/louistrue/.t3/artifacts/7036-format24-source-audit-20261009/terminal-browser-evidence-20261009/integrated-cpu-qualification.json",
+      "relation": "immutable120-terminal-snapshot",
+      "rawBytes": 25520,
+      "rawSha256": "1615469775e3e74cdfa8180a6cd84598cb366b2ad44dd2f912ea962b6e5a7897",
+      "gzipBytes": 4783,
+      "gzipSha256": "a3914bcc2f0fe98716dbcc1d49cf43a845db3234c38043100751ff07f0bbecef"
+    },
+    {
+      "path": "shared-validator-source-preparation/admission-asset-copy.json.gz",
+      "sourceArtifact": "/home/louistrue/.t3/artifacts/7036-format24-source-audit-20261009/terminal-browser-evidence-20261009/shared-validator-source-preparation/admission-asset-copy.json",
+      "relation": "immutable120-terminal-snapshot",
+      "rawBytes": 2090,
+      "rawSha256": "47762d365ba2d62c8d695ba9d969fafb2ea61866b6948d391598063c9b769fd8",
+      "gzipBytes": 683,
+      "gzipSha256": "2f7ffece74a90ec0e5d18f393c3c5763fb1937a89dce032c84096a795dae7cee"
+    },
+    {
+      "path": "shared-validator-source-preparation/admission-install.log.gz",
+      "sourceArtifact": "/home/louistrue/.t3/artifacts/7036-format24-source-audit-20261009/terminal-browser-evidence-20261009/shared-validator-source-preparation/admission-install.log",
+      "relation": "immutable120-terminal-snapshot",
+      "rawBytes": 1888,
+      "rawSha256": "813737f84bc97c527fcd2927c404774f47a29e9d66db22534ae0638af2200a4c",
+      "gzipBytes": 762,
+      "gzipSha256": "6dc44afa396a32b994d610d617fbb1028c9637230a1bdba0384b74a43ebca95f"
+    },
+    {
+      "path": "shared-validator-source-preparation/after-prerequisite-build-pins.json.gz",
+      "sourceArtifact": "/home/louistrue/.t3/artifacts/7036-format24-source-audit-20261009/terminal-browser-evidence-20261009/shared-validator-source-preparation/after-prerequisite-build-pins.json",
+      "relation": "immutable120-terminal-snapshot",
+      "rawBytes": 14310,
+      "rawSha256": "b9c1d707bf8816e1644dbb9932ba3037a1427cf0a69f0768fcbc6d51478c6b98",
+      "gzipBytes": 4459,
+      "gzipSha256": "e3f4173ab7d0d0eb8e5b0422c0d3b2a9f5a5f2a571ce9ec42cfd96b4d1ff24f8"
+    },
+    {
+      "path": "shared-validator-source-preparation/audit-late-runtime-closure.mjs.gz",
+      "sourceArtifact": "/home/louistrue/.t3/artifacts/7036-format24-source-audit-20261009/terminal-browser-evidence-20261009/shared-validator-source-preparation/audit-late-runtime-closure.mjs",
+      "relation": "immutable120-terminal-snapshot",
+      "rawBytes": 4250,
+      "rawSha256": "f4c238f7b43f7380657686ef1fd4c1a7aeb2e44c5fa8d451cc2596b084e1198a",
+      "gzipBytes": 1813,
+      "gzipSha256": "6454ba5e712679c99039072ef6c4bfebaa8d2dc9f5ade912d83c3c54f6d48d37"
+    },
+    {
+      "path": "shared-validator-source-preparation/before-late-build-pins.json.gz",
+      "sourceArtifact": "/home/louistrue/.t3/artifacts/7036-format24-source-audit-20261009/terminal-browser-evidence-20261009/shared-validator-source-preparation/before-late-build-pins.json",
+      "relation": "immutable120-terminal-snapshot",
+      "rawBytes": 3853,
+      "rawSha256": "e5c865d24b28464cf72cce027c9351f98e1c264f79ea2666a9c6ff393dcddcee",
+      "gzipBytes": 1450,
+      "gzipSha256": "8c5ad47169fc94a88eeda5c790f7e5b5bbc827e0fc3b851b6001e859660e3e36"
+    },
+    {
+      "path": "shared-validator-source-preparation/before-node-pins.json.gz",
+      "sourceArtifact": "/home/louistrue/.t3/artifacts/7036-format24-source-audit-20261009/terminal-browser-evidence-20261009/shared-validator-source-preparation/before-node-pins.json",
+      "relation": "immutable120-terminal-snapshot",
+      "rawBytes": 5640,
+      "rawSha256": "7d1ed5427b5d095b6f784b68c169efcd941a6175cdb03a2fdd8af0ae34bafac8",
+      "gzipBytes": 1599,
+      "gzipSha256": "9e56621902eb090b36d5a384311a0094582eda6d76d259e6b94d471da9f0d4d8"
+    },
+    {
+      "path": "shared-validator-source-preparation/before-prerequisite-build-pins.json.gz",
+      "sourceArtifact": "/home/louistrue/.t3/artifacts/7036-format24-source-audit-20261009/terminal-browser-evidence-20261009/shared-validator-source-preparation/before-prerequisite-build-pins.json",
+      "relation": "immutable120-terminal-snapshot",
+      "rawBytes": 3826,
+      "rawSha256": "d4d9b33a2dde57feb30e2eebb7c23b683ce109244583e805b76c7b48f3a5ad2c",
+      "gzipBytes": 1420,
+      "gzipSha256": "8caadd10d3f047f3e582db28549d3d2ddcec04ad6700f795e31bec30ef61641a"
+    },
+    {
+      "path": "shared-validator-source-preparation/canonical-stable-entry-proposal-receipt.json.gz",
+      "sourceArtifact": "/home/louistrue/.t3/artifacts/7036-format24-source-audit-20261009/terminal-browser-evidence-20261009/shared-validator-source-preparation/canonical-stable-entry-proposal-receipt.json",
+      "relation": "immutable120-terminal-snapshot",
+      "rawBytes": 5665,
+      "rawSha256": "3c46d9541e79af23e7fd29829807a915d3511c7807b226c10fec57e616ea69be",
+      "gzipBytes": 1714,
+      "gzipSha256": "32bc1cf2192cfccb17e5b24ff0eccba2f0a911c302fd6b99645f5fb9fdb55025"
+    },
+    {
+      "path": "shared-validator-source-preparation/canonical-stable-entry-proposed.diff.gz",
+      "sourceArtifact": "/home/louistrue/.t3/artifacts/7036-format24-source-audit-20261009/terminal-browser-evidence-20261009/shared-validator-source-preparation/canonical-stable-entry-proposed.diff",
+      "relation": "immutable120-terminal-snapshot",
+      "rawBytes": 1991,
+      "rawSha256": "bc946195f1a9ef5ea82517d27d2e2a39ae23d5ef806c1b40718cd4c46af97b9c",
+      "gzipBytes": 768,
+      "gzipSha256": "549dcd1fa06c3c1a644a452a60f8c3c83bd9eecf3d366bcfbe92fd7f29addf4c"
+    },
+    {
+      "path": "shared-validator-source-preparation/canonical-stable-entry-qualification-plan.md.gz",
+      "sourceArtifact": "/home/louistrue/.t3/artifacts/7036-format24-source-audit-20261009/terminal-browser-evidence-20261009/shared-validator-source-preparation/canonical-stable-entry-qualification-plan.md",
+      "relation": "immutable120-terminal-snapshot",
+      "rawBytes": 6973,
+      "rawSha256": "d0b892e682121309c3a67d0c78bdfb77bf917b2ee3482315c1ad4c76d9603f45",
+      "gzipBytes": 3257,
+      "gzipSha256": "7717ec489c8186813fa43761575c6f44bf4a95a65ef3f2f728017f8090c99ae5"
+    },
+    {
+      "path": "shared-validator-source-preparation/complete-source.diff.gz",
+      "sourceArtifact": "/home/louistrue/.t3/artifacts/7036-format24-source-audit-20261009/terminal-browser-evidence-20261009/shared-validator-source-preparation/complete-source.diff",
+      "relation": "immutable120-terminal-snapshot",
+      "rawBytes": 10869,
+      "rawSha256": "8a1e3a0ea9fffd2a9ebd891f79bafe297d048f3c8812e0a456d5391a40b9af47",
+      "gzipBytes": 3124,
+      "gzipSha256": "6c8cbfd8ad9ffce9ffe6bf38e300d2a4a960714cec05c0f918c024d2c51f8e42"
+    },
+    {
+      "path": "shared-validator-source-preparation/corrected-admission-source-receipt.json.gz",
+      "sourceArtifact": "/home/louistrue/.t3/artifacts/7036-format24-source-audit-20261009/terminal-browser-evidence-20261009/shared-validator-source-preparation/corrected-admission-source-receipt.json",
+      "relation": "immutable120-terminal-snapshot",
+      "rawBytes": 1991,
+      "rawSha256": "9ffff26967841de044a57391835f787cfcf4cad8b6a667a7357ea4d1e84d747b",
+      "gzipBytes": 993,
+      "gzipSha256": "936933a202ad438c2850998e1d1fbcaeee74b1115bb99cf7cbf74b619cd77a29"
+    },
+    {
+      "path": "shared-validator-source-preparation/late-build-actual-tsc-env.json.gz",
+      "sourceArtifact": "/home/louistrue/.t3/artifacts/7036-format24-source-audit-20261009/terminal-browser-evidence-20261009/shared-validator-source-preparation/late-build-actual-tsc-env.json",
+      "relation": "immutable120-terminal-snapshot",
+      "rawBytes": 1084,
+      "rawSha256": "59292b45c9a10cf6684e3ba2f3772d0cfa96cd1a62e7f6e2b26a140a77c56660",
+      "gzipBytes": 399,
+      "gzipSha256": "7f8af6a94c5ca191fd600e4b35a3c2402adcaff38a1d8dd7192251845bdee483"
+    },
+    {
+      "path": "shared-validator-source-preparation/late-build-command.json.gz",
+      "sourceArtifact": "/home/louistrue/.t3/artifacts/7036-format24-source-audit-20261009/terminal-browser-evidence-20261009/shared-validator-source-preparation/late-build-command.json",
+      "relation": "immutable120-terminal-snapshot",
+      "rawBytes": 1103,
+      "rawSha256": "f89dc7dcc8151783eadf44173ca8b362dd8bd0e99a249d608b2c1c7b994df92f",
+      "gzipBytes": 439,
+      "gzipSha256": "2de684150ec79fb24a1afc228e6c07c12364ae3c51b6a84c0efbb994155fe713"
+    },
+    {
+      "path": "shared-validator-source-preparation/late-build-terminal.json.gz",
+      "sourceArtifact": "/home/louistrue/.t3/artifacts/7036-format24-source-audit-20261009/terminal-browser-evidence-20261009/shared-validator-source-preparation/late-build-terminal.json",
+      "relation": "immutable120-terminal-snapshot",
+      "rawBytes": 30,
+      "rawSha256": "9dc861bad3b55d5b2f7fecff5fd490990eeea7535a12995bea51d303252827e6",
+      "gzipBytes": 49,
+      "gzipSha256": "89a57b30cb26e5c1c28b8f50be3a93fcf757ef3881f2e3570e866c457ed87a7c"
+    },
+    {
+      "path": "shared-validator-source-preparation/late-generated-output-pins.json.gz",
+      "sourceArtifact": "/home/louistrue/.t3/artifacts/7036-format24-source-audit-20261009/terminal-browser-evidence-20261009/shared-validator-source-preparation/late-generated-output-pins.json",
+      "relation": "immutable120-terminal-snapshot",
+      "rawBytes": 1098965,
+      "rawSha256": "9a4075bb49f344445728d98859755a81745be5120d51e76a3c1723d3e9003288",
+      "gzipBytes": 323400,
+      "gzipSha256": "810ddfa59ddeb93c648b5b7ec0afa58a9bef1ce27c3a689f854203449a84f6ef"
+    },
+    {
+      "path": "shared-validator-source-preparation/late-prerequisite-build.log.gz",
+      "sourceArtifact": "/home/louistrue/.t3/artifacts/7036-format24-source-audit-20261009/terminal-browser-evidence-20261009/shared-validator-source-preparation/late-prerequisite-build.log",
+      "relation": "immutable120-terminal-snapshot",
+      "rawBytes": 18335,
+      "rawSha256": "ffc0a7f6f00b578eef898fbcd5b7e5badcda18c671a6ea9862bafb95ed92f155",
+      "gzipBytes": 3223,
+      "gzipSha256": "9f984470a29275010f34f974ddb9b65bda3b4521a146ff6c606fff5b99a9f9b1"
+    },
+    {
+      "path": "shared-validator-source-preparation/late-prerequisite-qualification.json.gz",
+      "sourceArtifact": "/home/louistrue/.t3/artifacts/7036-format24-source-audit-20261009/terminal-browser-evidence-20261009/shared-validator-source-preparation/late-prerequisite-qualification.json",
+      "relation": "immutable120-terminal-snapshot",
+      "rawBytes": 6129,
+      "rawSha256": "438cff4c330149b34ffa3f5cdcc394e8c6f81154af1359b6350e491dc740a567",
+      "gzipBytes": 2420,
+      "gzipSha256": "5851af44bc1cfc92a5d93b4181a52f0a3f9fb3b70a5d0baaeb2a72ed5d565311"
+    },
+    {
+      "path": "shared-validator-source-preparation/late-prerequisites-root-turbo-dry.log.gz",
+      "sourceArtifact": "/home/louistrue/.t3/artifacts/7036-format24-source-audit-20261009/terminal-browser-evidence-20261009/shared-validator-source-preparation/late-prerequisites-root-turbo-dry.log",
+      "relation": "immutable120-terminal-snapshot",
+      "rawBytes": 658644,
+      "rawSha256": "79561a2af04ab53ac7321de2f8c9c2eba465289c005011e419f114a7bdb2e6be",
+      "gzipBytes": 187250,
+      "gzipSha256": "a929d2b98c5332b0ce305e70d797b532b4ade53e8cc198c81cc0701e7dad69d2"
+    },
+    {
+      "path": "shared-validator-source-preparation/late-prerequisites-root-turbo-plan.json.gz",
+      "sourceArtifact": "/home/louistrue/.t3/artifacts/7036-format24-source-audit-20261009/terminal-browser-evidence-20261009/shared-validator-source-preparation/late-prerequisites-root-turbo-plan.json",
+      "relation": "immutable120-terminal-snapshot",
+      "rawBytes": 13033,
+      "rawSha256": "e4262de4c61ae30d28c7be22c46a9bdcd490b0df4ce3ccf6218b9955f834db2f",
+      "gzipBytes": 1350,
+      "gzipSha256": "ced1fa57d98ec3871e8c3ba018c7a36ccda32a83b3a013a71c81bcad0ca71425"
+    },
+    {
+      "path": "shared-validator-source-preparation/late-runtime-closure-summary.json.gz",
+      "sourceArtifact": "/home/louistrue/.t3/artifacts/7036-format24-source-audit-20261009/terminal-browser-evidence-20261009/shared-validator-source-preparation/late-runtime-closure-summary.json",
+      "relation": "immutable120-terminal-snapshot",
+      "rawBytes": 1437,
+      "rawSha256": "38e83528c2821233dedafedf66dfcdd66701fce029dd92277f483383e192ccb2",
+      "gzipBytes": 361,
+      "gzipSha256": "dd13dfa88ad8df87281a1c88199f8393f2f5b606634481d92b0b8ae2b7f57d75"
+    },
+    {
+      "path": "shared-validator-source-preparation/late-runtime-closure.json.gz",
+      "sourceArtifact": "/home/louistrue/.t3/artifacts/7036-format24-source-audit-20261009/terminal-browser-evidence-20261009/shared-validator-source-preparation/late-runtime-closure.json",
+      "relation": "immutable120-terminal-snapshot",
+      "rawBytes": 292187,
+      "rawSha256": "37b515a212aa549eb60d47bfde04a06897bd2f5be52131ff4409d646a74e9156",
+      "gzipBytes": 38578,
+      "gzipSha256": "df83e3a8fb6d19ca3d5b191774d25f14b1d7a9156db4b6850bee3a5e2e480ab3"
+    },
+    {
+      "path": "shared-validator-source-preparation/module-size-explicit-base-gate.log.gz",
+      "sourceArtifact": "/home/louistrue/.t3/artifacts/7036-format24-source-audit-20261009/terminal-browser-evidence-20261009/shared-validator-source-preparation/module-size-explicit-base-gate.log",
+      "relation": "immutable120-terminal-snapshot",
+      "rawBytes": 13115,
+      "rawSha256": "5b5107b3ca3a57c050fee69f88f1c47e5d9f911b28d9a498aada913b7f1eac6b",
+      "gzipBytes": 2317,
+      "gzipSha256": "85301398c941347d064881e874c79bf9ad7517ca86cf932980bb2d539b763338"
+    },
+    {
+      "path": "shared-validator-source-preparation/module-size-gate.log.gz",
+      "sourceArtifact": "/home/louistrue/.t3/artifacts/7036-format24-source-audit-20261009/terminal-browser-evidence-20261009/shared-validator-source-preparation/module-size-gate.log",
+      "relation": "immutable120-terminal-snapshot",
+      "rawBytes": 13006,
+      "rawSha256": "09f6c12eff7a2da40b75f97011139cf13cfc5b747f99f30d2703b8bd359831ae",
+      "gzipBytes": 2344,
+      "gzipSha256": "fe944e75dd0252144231485f8b741b27b5557612d2ebb04bb041ca86ffaebae0"
+    },
+    {
+      "path": "shared-validator-source-preparation/node-fresh-visible-matcher-option.mts.gz",
+      "sourceArtifact": "/home/louistrue/.t3/artifacts/7036-format24-source-audit-20261009/terminal-browser-evidence-20261009/shared-validator-source-preparation/node-fresh-visible-matcher-option.mts",
+      "relation": "immutable120-terminal-snapshot",
+      "rawBytes": 7886,
+      "rawSha256": "1929f5df0c1f73221eb2d08b3026d49ca0483413534d09eaacd230f4aed6e25e",
+      "gzipBytes": 2602,
+      "gzipSha256": "a2ebbd2b716340a9b0f5349cecbeb6b6b28833660ca41ab8f27e57c138dd4c9b"
+    },
+    {
+      "path": "shared-validator-source-preparation/node-matcher-qualification.mts.gz",
+      "sourceArtifact": "/home/louistrue/.t3/artifacts/7036-format24-source-audit-20261009/terminal-browser-evidence-20261009/shared-validator-source-preparation/node-matcher-qualification.mts",
+      "relation": "immutable120-terminal-snapshot",
+      "rawBytes": 8317,
+      "rawSha256": "ead3b10cab04ca8ba1f5252976c4e2351dd8896d74c0f41553a164f60d2118ee",
+      "gzipBytes": 2773,
+      "gzipSha256": "ed1bb4c2a9326f62fa268591a06f75102f26a7285137a3ab5ab1bc9c788cf823"
+    },
+    {
+      "path": "shared-validator-source-preparation/node-matcher-results.json.gz",
+      "sourceArtifact": "/home/louistrue/.t3/artifacts/7036-format24-source-audit-20261009/terminal-browser-evidence-20261009/shared-validator-source-preparation/node-matcher-results.json",
+      "relation": "immutable120-terminal-snapshot",
+      "rawBytes": 106178,
+      "rawSha256": "0fe6ddf84cce0a827d15eae618ab8ae4bdfc811ffa79a5f03087daf4bb3dac66",
+      "gzipBytes": 5315,
+      "gzipSha256": "641d8a3e1076605fb80359ac59ec24891c5cdb37e0e29fc8d0947e7152ae5abb"
+    },
+    {
+      "path": "shared-validator-source-preparation/node-matcher.log.gz",
+      "sourceArtifact": "/home/louistrue/.t3/artifacts/7036-format24-source-audit-20261009/terminal-browser-evidence-20261009/shared-validator-source-preparation/node-matcher.log",
+      "relation": "immutable120-terminal-snapshot",
+      "rawBytes": 49,
+      "rawSha256": "1d224e643fdf8c485f724aa5bc5a682fefe78a3fae0851c2442eafe61456e91b",
+      "gzipBytes": 63,
+      "gzipSha256": "c0c4bbc711f9f6bafeef1e70abcf093e29f39576bcb249135ec11013e21f7334"
+    },
+    {
+      "path": "shared-validator-source-preparation/node-only-qualification-plan.md.gz",
+      "sourceArtifact": "/home/louistrue/.t3/artifacts/7036-format24-source-audit-20261009/terminal-browser-evidence-20261009/shared-validator-source-preparation/node-only-qualification-plan.md",
+      "relation": "immutable120-terminal-snapshot",
+      "rawBytes": 2559,
+      "rawSha256": "dbb9e28393e038a9399d02121ac604e92736d3bdeeca642fdb73137bde683e10",
+      "gzipBytes": 1351,
+      "gzipSha256": "e4f434bbdd3d1718c37a69697d85eff1b8328f0a1036a13c85daf0cab77ffe76"
+    },
+    {
+      "path": "shared-validator-source-preparation/node-qualification-receipt.json.gz",
+      "sourceArtifact": "/home/louistrue/.t3/artifacts/7036-format24-source-audit-20261009/terminal-browser-evidence-20261009/shared-validator-source-preparation/node-qualification-receipt.json",
+      "relation": "immutable120-terminal-snapshot",
+      "rawBytes": 1006,
+      "rawSha256": "6c3c66d3fa9d01317e8ea787fc9280e312289e1ba57b8a4f06f912bf543f5b80",
+      "gzipBytes": 600,
+      "gzipSha256": "8020443af360d5eec14862f77fc3f4950a873cb0d406f65109b860645a870fd6"
+    },
+    {
+      "path": "shared-validator-source-preparation/private-vite-launch-v2.mjs.gz",
+      "sourceArtifact": "/home/louistrue/.t3/artifacts/7036-format24-source-audit-20261009/terminal-browser-evidence-20261009/shared-validator-source-preparation/private-vite-launch-v2.mjs",
+      "relation": "immutable120-terminal-snapshot",
+      "rawBytes": 2597,
+      "rawSha256": "06b3eafa2d325fed9147ef33a6c4c86a63dd89aabfb1e5dee625467b4df120af",
+      "gzipBytes": 1094,
+      "gzipSha256": "61847917b41b73ac7a8a7434255ebdd7ad3614cd0a8568c93df86212a6275745"
+    },
+    {
+      "path": "shared-validator-source-preparation/private-vite-launch-v3.mjs.gz",
+      "sourceArtifact": "/home/louistrue/.t3/artifacts/7036-format24-source-audit-20261009/terminal-browser-evidence-20261009/shared-validator-source-preparation/private-vite-launch-v3.mjs",
+      "relation": "immutable120-terminal-snapshot",
+      "rawBytes": 4113,
+      "rawSha256": "1c828e671d5582db0bbdd4359757b751d65b9f878fb6ae202516c875056cfd00",
+      "gzipBytes": 1512,
+      "gzipSha256": "dd2c227c3595c43acab962d78524c3911a6d1535efec098dc0c0f78c91ef1176"
+    },
+    {
+      "path": "shared-validator-source-preparation/private-vite-launch.mts.gz",
+      "sourceArtifact": "/home/louistrue/.t3/artifacts/7036-format24-source-audit-20261009/terminal-browser-evidence-20261009/shared-validator-source-preparation/private-vite-launch.mts",
+      "relation": "immutable120-terminal-snapshot",
+      "rawBytes": 1096,
+      "rawSha256": "844e685589d382822a6969b27c25de6632b459ec2a359cebfcc6f7579f5ff504",
+      "gzipBytes": 573,
+      "gzipSha256": "f6e3cbeb02ee69c4bbec3fac9f749cb31949400ec4497f164c8f34b303cd361a"
+    },
+    {
+      "path": "shared-validator-source-preparation/root-t3-admission-refusal-20261009.json.gz",
+      "sourceArtifact": "/home/louistrue/.t3/artifacts/7036-format24-source-audit-20261009/terminal-browser-evidence-20261009/shared-validator-source-preparation/root-t3-admission-refusal-20261009.json",
+      "relation": "immutable120-terminal-snapshot",
+      "rawBytes": 917,
+      "rawSha256": "487b3fa62154ee07efa0d819f7d09d61c77962bf974f29801432a7be5e2c1a37",
+      "gzipBytes": 545,
+      "gzipSha256": "b979cc3d0f3e252a1e819cae578586a84759f7637c1f5bf9d40123f881a929d7"
+    },
+    {
+      "path": "shared-validator-source-preparation/root-t3-v2-actual-refusal.json.gz",
+      "sourceArtifact": "/home/louistrue/.t3/artifacts/7036-format24-source-audit-20261009/terminal-browser-evidence-20261009/shared-validator-source-preparation/root-t3-v2-actual-refusal.json",
+      "relation": "immutable120-terminal-snapshot",
+      "rawBytes": 2165,
+      "rawSha256": "479e8b6e1995c2908902f7070b27349275d8426e5e07986603d5c0fba8dc3b82",
+      "gzipBytes": 913,
+      "gzipSha256": "6b418dfcaee05e6cf90b5f629d0af6ba2b1aca661d315f688e0f8efdedbf9b3b"
+    },
+    {
+      "path": "shared-validator-source-preparation/root-v2-owned-cache-cleanup.json.gz",
+      "sourceArtifact": "/home/louistrue/.t3/artifacts/7036-format24-source-audit-20261009/terminal-browser-evidence-20261009/shared-validator-source-preparation/root-v2-owned-cache-cleanup.json",
+      "relation": "immutable120-terminal-snapshot",
+      "rawBytes": 245,
+      "rawSha256": "2f9a8ea9d2eea3f046fcdc9b23484bd40f725f7355d4f4f61c17dec016c5cb70",
+      "gzipBytes": 189,
+      "gzipSha256": "ef5953012a198af0345165bf48f53f3edff96a7a2229bb7af37f264bac30cea8"
+    },
+    {
+      "path": "shared-validator-source-preparation/runtime-prerequisite-build.log.gz",
+      "sourceArtifact": "/home/louistrue/.t3/artifacts/7036-format24-source-audit-20261009/terminal-browser-evidence-20261009/shared-validator-source-preparation/runtime-prerequisite-build.log",
+      "relation": "immutable120-terminal-snapshot",
+      "rawBytes": 1104,
+      "rawSha256": "c69e13a8d534168e1ccac6be7add937e94a2cb01408a8cf3d1e5fc92f09411eb",
+      "gzipBytes": 396,
+      "gzipSha256": "2700170a1b469dda33db887731557d691fe59880fd5904dfe826a2dd61726f1a"
+    },
+    {
+      "path": "shared-validator-source-preparation/runtime-prerequisite-concurrency1-dry.log.gz",
+      "sourceArtifact": "/home/louistrue/.t3/artifacts/7036-format24-source-audit-20261009/terminal-browser-evidence-20261009/shared-validator-source-preparation/runtime-prerequisite-concurrency1-dry.log",
+      "relation": "immutable120-terminal-snapshot",
+      "rawBytes": 141677,
+      "rawSha256": "b040770a1240bbf6d11f45de822977421a0b017cfb43ca158c4002ff885d363d",
+      "gzipBytes": 50284,
+      "gzipSha256": "2e3c54327e5dfc14075e59b90b5ff20323fb03c148ee5fb4431ed8c7513d65c0"
+    },
+    {
+      "path": "shared-validator-source-preparation/runtime-prerequisite-qualification.json.gz",
+      "sourceArtifact": "/home/louistrue/.t3/artifacts/7036-format24-source-audit-20261009/terminal-browser-evidence-20261009/shared-validator-source-preparation/runtime-prerequisite-qualification.json",
+      "relation": "immutable120-terminal-snapshot",
+      "rawBytes": 1218,
+      "rawSha256": "71e659dda2b49d0ce68faa9f4aa85f1b8b2d1618f8cf8e515a179b83c0985b89",
+      "gzipBytes": 710,
+      "gzipSha256": "a1e62342e4bcfccea028e0d76026a595099f8a388d9195cb926d865a9af2efea"
+    },
+    {
+      "path": "shared-validator-source-preparation/runtime-prerequisite-root-turbo-dry.log.gz",
+      "sourceArtifact": "/home/louistrue/.t3/artifacts/7036-format24-source-audit-20261009/terminal-browser-evidence-20261009/shared-validator-source-preparation/runtime-prerequisite-root-turbo-dry.log",
+      "relation": "immutable120-terminal-snapshot",
+      "rawBytes": 141565,
+      "rawSha256": "7093195178f1121230633581c9fc732c76ef05e0848e3fd28648fd70eb198b21",
+      "gzipBytes": 50232,
+      "gzipSha256": "d98938f1bd1e3c5f139a3d39a0a63589b17403dcab99b5125af844d9cc6847d0"
+    },
+    {
+      "path": "shared-validator-source-preparation/set-effective-source.diff.gz",
+      "sourceArtifact": "/home/louistrue/.t3/artifacts/7036-format24-source-audit-20261009/terminal-browser-evidence-20261009/shared-validator-source-preparation/set-effective-source.diff",
+      "relation": "immutable120-terminal-snapshot",
+      "rawBytes": 10869,
+      "rawSha256": "8a1e3a0ea9fffd2a9ebd891f79bafe297d048f3c8812e0a456d5391a40b9af47",
+      "gzipBytes": 3124,
+      "gzipSha256": "6c8cbfd8ad9ffce9ffe6bf38e300d2a4a960714cec05c0f918c024d2c51f8e42"
+    },
+    {
+      "path": "shared-validator-source-preparation/shutdown-source-evidence.json.gz",
+      "sourceArtifact": "/home/louistrue/.t3/artifacts/7036-format24-source-audit-20261009/terminal-browser-evidence-20261009/shared-validator-source-preparation/shutdown-source-evidence.json",
+      "relation": "immutable120-terminal-snapshot",
+      "rawBytes": 2522,
+      "rawSha256": "19eeffeb66892c9b5822eb4d8a3ca3908c94273963669b0e026bf6c3636b8262",
+      "gzipBytes": 1243,
+      "gzipSha256": "ccff369ae0b364a8d46c5a477b5bd21c944f71c8432e94d1a32bfb4404669e3b"
+    },
+    {
+      "path": "shared-validator-source-preparation/source-receipt.json.gz",
+      "sourceArtifact": "/home/louistrue/.t3/artifacts/7036-format24-source-audit-20261009/terminal-browser-evidence-20261009/shared-validator-source-preparation/source-receipt.json",
+      "relation": "immutable120-terminal-snapshot",
+      "rawBytes": 5765,
+      "rawSha256": "91a3d673407ef6ca1b1d8cf51a0385aa5e6883243014bc8b235b903eff5e9470",
+      "gzipBytes": 1684,
+      "gzipSha256": "d07f9aed87ef9f1fe761e14f1949471e7d7193a93dceb45771da485d213c1aad"
+    },
+    {
+      "path": "shared-validator-source-preparation/source-text-gate.log.gz",
+      "sourceArtifact": "/home/louistrue/.t3/artifacts/7036-format24-source-audit-20261009/terminal-browser-evidence-20261009/shared-validator-source-preparation/source-text-gate.log",
+      "relation": "immutable120-terminal-snapshot",
+      "rawBytes": 31246,
+      "rawSha256": "73c0802e9bf21591e79494a9ed8af0f4e8affbe672aac1cd279c57d3c6f146f1",
+      "gzipBytes": 3192,
+      "gzipSha256": "a28eaea41b35702b6739d9b1daf6fb6bd8608cf15ec3911a22ab20a4077b122f"
+    },
+    {
+      "path": "shared-validator-source-preparation/staged-checkpoint.diff.gz",
+      "sourceArtifact": "/home/louistrue/.t3/artifacts/7036-format24-source-audit-20261009/terminal-browser-evidence-20261009/shared-validator-source-preparation/staged-checkpoint.diff",
+      "relation": "immutable120-terminal-snapshot",
+      "rawBytes": 10869,
+      "rawSha256": "6c9975eed0e0c866d07faaa6650e80b8e032700dfc69ee07348ff717b4f51be0",
+      "gzipBytes": 3122,
+      "gzipSha256": "df497883083236a4a248d6a3818e5dbae95139c0f08367b340678bfe97fdff39"
+    },
+    {
+      "path": "shared-validator-source-preparation/static-runtime-import-audit.json.gz",
+      "sourceArtifact": "/home/louistrue/.t3/artifacts/7036-format24-source-audit-20261009/terminal-browser-evidence-20261009/shared-validator-source-preparation/static-runtime-import-audit.json",
+      "relation": "immutable120-terminal-snapshot",
+      "rawBytes": 1138,
+      "rawSha256": "ed3a83393ac8780609224cfcb499f0a3ee7d1bea16fcda93f17ba194194696d4",
+      "gzipBytes": 375,
+      "gzipSha256": "b92936a0cfcd35330cacdc6ceaa125d949adc002f00eac39ba3d8bea25218294"
+    },
+    {
+      "path": "shared-validator-source-preparation/t3-admission-bundle.json.gz",
+      "sourceArtifact": "/home/louistrue/.t3/artifacts/7036-format24-source-audit-20261009/terminal-browser-evidence-20261009/shared-validator-source-preparation/t3-admission-bundle.json",
+      "relation": "immutable120-terminal-snapshot",
+      "rawBytes": 6737,
+      "rawSha256": "d27cb033feef2963c7bdeb8dc55db39f7ff862fc8773485beb932ae93f12a068",
+      "gzipBytes": 2386,
+      "gzipSha256": "3091a86e1afc159bad6c61b9fd6f6661999e6fc5a04d96f44d112766d9a20841"
+    },
+    {
+      "path": "shared-validator-source-preparation/t3-admission-ready-bundle.json.gz",
+      "sourceArtifact": "/home/louistrue/.t3/artifacts/7036-format24-source-audit-20261009/terminal-browser-evidence-20261009/shared-validator-source-preparation/t3-admission-ready-bundle.json",
+      "relation": "immutable120-terminal-snapshot",
+      "rawBytes": 6864,
+      "rawSha256": "ca33bddab6f195c31b009dfe7a61a85b19fb687344f6eb7f84e3a5628667a605",
+      "gzipBytes": 2455,
+      "gzipSha256": "8456c2dfc28a243988cc5f45a6c1ab41ecfda27783b2b9c42b3aaf34d83e10da"
+    },
+    {
+      "path": "shared-validator-source-preparation/t3-corrected-admission-proposal.json.gz",
+      "sourceArtifact": "/home/louistrue/.t3/artifacts/7036-format24-source-audit-20261009/terminal-browser-evidence-20261009/shared-validator-source-preparation/t3-corrected-admission-proposal.json",
+      "relation": "immutable120-terminal-snapshot",
+      "rawBytes": 10037,
+      "rawSha256": "6b47fc6f65beb01338cf8748cb216c7789662ebe25b2f0f080cd44c315cc6b78",
+      "gzipBytes": 3751,
+      "gzipSha256": "5b62c2488e6a945c04381da5d12738fdd562867443850775f6b5f98bda81efa5"
+    },
+    {
+      "path": "shared-validator-source-preparation/t3-preparation-receipt.json.gz",
+      "sourceArtifact": "/home/louistrue/.t3/artifacts/7036-format24-source-audit-20261009/terminal-browser-evidence-20261009/shared-validator-source-preparation/t3-preparation-receipt.json",
+      "relation": "immutable120-terminal-snapshot",
+      "rawBytes": 9548,
+      "rawSha256": "571dee26c6274ada2e653e068b21bb28fd8ae3a18c96154ca3582390388f3432",
+      "gzipBytes": 3079,
+      "gzipSha256": "047866488090a1a0beebb2f264cef18f99b280f0b1bbd24d169bcedeaa7f7e2f"
+    },
+    {
+      "path": "shared-validator-source-preparation/t3-v3-control-settlement-proposal.json.gz",
+      "sourceArtifact": "/home/louistrue/.t3/artifacts/7036-format24-source-audit-20261009/terminal-browser-evidence-20261009/shared-validator-source-preparation/t3-v3-control-settlement-proposal.json",
+      "relation": "immutable120-terminal-snapshot",
+      "rawBytes": 29820,
+      "rawSha256": "d0fc1c459c2c4f2f544c1a2afa31d2bdad465c989e5ce24fbe672a547cb594f2",
+      "gzipBytes": 7161,
+      "gzipSha256": "d02f9cd258ca2e61feea6bc60d1d7f6308c7ad054e264dff25601fd5010d5c93"
+    },
+    {
+      "path": "shared-validator-source-preparation/terminal-browser-qualification-report.md.gz",
+      "sourceArtifact": "/home/louistrue/.t3/artifacts/7036-format24-source-audit-20261009/terminal-browser-evidence-20261009/shared-validator-source-preparation/terminal-browser-qualification-report.md",
+      "relation": "immutable120-terminal-snapshot",
+      "rawBytes": 5365,
+      "rawSha256": "00044e063e8a9926a304d8e1bd30205f1471c11f5b8cedcd52ad147e7c7f0b6a",
+      "gzipBytes": 2742,
+      "gzipSha256": "cb7012a87df023660438d995250e2390daad6498e3c446f828fd840bfca41d13"
+    },
+    {
+      "path": "shared-validator-source-preparation/terminal-source-asset-verification.json.gz",
+      "sourceArtifact": "/home/louistrue/.t3/artifacts/7036-format24-source-audit-20261009/terminal-browser-evidence-20261009/shared-validator-source-preparation/terminal-source-asset-verification.json",
+      "relation": "immutable120-terminal-snapshot",
+      "rawBytes": 4607,
+      "rawSha256": "a9eb44e0146e0d56cc043bec7247e534d31827287c2e4b3218465cc6e5ae3b80",
+      "gzipBytes": 1565,
+      "gzipSha256": "671ee5f1f5e4f6d01d9219b410406a81f42e8216af9a5be56742ed9e0b856723"
+    },
+    {
+      "path": "shared-validator-source-preparation/test-wiring-gate.log.gz",
+      "sourceArtifact": "/home/louistrue/.t3/artifacts/7036-format24-source-audit-20261009/terminal-browser-evidence-20261009/shared-validator-source-preparation/test-wiring-gate.log",
+      "relation": "immutable120-terminal-snapshot",
+      "rawBytes": 859,
+      "rawSha256": "66f560d0e9404cc05f97a08130f6602b359ae84e618822921437761f1fa0d785",
+      "gzipBytes": 394,
+      "gzipSha256": "a388c39965b1ca8f4c0b7ed313556aaa7975c03bd780cf0705c832f8a52c1048"
+    },
+    {
+      "path": "shared-validator-source-preparation/v3-hidden-actual-refusal.json.gz",
+      "sourceArtifact": "/home/louistrue/.t3/artifacts/7036-format24-source-audit-20261009/terminal-browser-evidence-20261009/shared-validator-source-preparation/v3-hidden-actual-refusal.json",
+      "relation": "immutable120-terminal-snapshot",
+      "rawBytes": 3961,
+      "rawSha256": "00948e1d990db13adfb9574fc742dc6efb380137dbd619d7bf526855d19475fc",
+      "gzipBytes": 1541,
+      "gzipSha256": "6b2357868d5e3b3cecafaff8f2c499f1b56148aa674eeffeeb008ca6886d88c2"
+    },
+    {
+      "path": "shared-validator-source-preparation/v3-hidden-setup-metadata.json.gz",
+      "sourceArtifact": "/home/louistrue/.t3/artifacts/7036-format24-source-audit-20261009/terminal-browser-evidence-20261009/shared-validator-source-preparation/v3-hidden-setup-metadata.json",
+      "relation": "immutable120-terminal-snapshot",
+      "rawBytes": 709,
+      "rawSha256": "c740628a3e793531c99d766c4a7d5c780c2b10716c716acc8a9b52dfa673f7cd",
+      "gzipBytes": 251,
+      "gzipSha256": "dd9c92b90769228629168aa00cc4d7009713ad88e639d7ed44723410dc89e2e9"
+    },
+    {
+      "path": "shared-validator-source-preparation/v3-hidden.control.json.gz",
+      "sourceArtifact": "/home/louistrue/.t3/artifacts/7036-format24-source-audit-20261009/terminal-browser-evidence-20261009/shared-validator-source-preparation/v3-hidden.control.json",
+      "relation": "immutable120-terminal-snapshot",
+      "rawBytes": 139,
+      "rawSha256": "ef24aabbac6f2d5d8b1a769be2520b254fbc6d389f4afcc0b911439bc1b5f6b6",
+      "gzipBytes": 134,
+      "gzipSha256": "a8143e761c3817cf0e7497fba1fe9a308142de9e852e7e311daf268110f7fa9e"
+    },
+    {
+      "path": "shared-validator-source-preparation/v3-hidden.lifecycle.jsonl.gz",
+      "sourceArtifact": "/home/louistrue/.t3/artifacts/7036-format24-source-audit-20261009/terminal-browser-evidence-20261009/shared-validator-source-preparation/v3-hidden.lifecycle.jsonl",
+      "relation": "immutable120-terminal-snapshot",
+      "rawBytes": 4623,
+      "rawSha256": "d8942de25eb14e48b7a929c0aaf90d3554b14ca719756b854108fabfdf7b10ef",
+      "gzipBytes": 510,
+      "gzipSha256": "b90990033b3c8687de1bbeed8615f50597a0f907b1dbad2895d0d9f0bcdf6586"
+    },
+    {
+      "path": "shared-validator-source-preparation/v3-hidden.stdout-stderr.log.gz",
+      "sourceArtifact": "/home/louistrue/.t3/artifacts/7036-format24-source-audit-20261009/terminal-browser-evidence-20261009/shared-validator-source-preparation/v3-hidden.stdout-stderr.log",
+      "relation": "immutable120-terminal-snapshot",
+      "rawBytes": 20911,
+      "rawSha256": "f552c9af9511ae578845bc478d3f8197d3314addea9a96d2953f9a785024d66d",
+      "gzipBytes": 3262,
+      "gzipSha256": "4adfc2ba2a94d52b7a7e7fd95bb67801de0cd7ef44f5584f0a74c39146c6c22c"
+    },
+    {
+      "path": "shared-validator-source-preparation/v3-smoke.control.json.gz",
+      "sourceArtifact": "/home/louistrue/.t3/artifacts/7036-format24-source-audit-20261009/terminal-browser-evidence-20261009/shared-validator-source-preparation/v3-smoke.control.json",
+      "relation": "immutable120-terminal-snapshot",
+      "rawBytes": 138,
+      "rawSha256": "2f209c1572443d611013fcde00da2fb541377dba3de9c6ea4be3d429faa4701e",
+      "gzipBytes": 133,
+      "gzipSha256": "7940fc498d4b7d14658ab2bb20a0e4c05aea8af17babacaf0bdbf99ee4b19041"
+    },
+    {
+      "path": "shared-validator-source-preparation/v3-smoke.lifecycle.jsonl.gz",
+      "sourceArtifact": "/home/louistrue/.t3/artifacts/7036-format24-source-audit-20261009/terminal-browser-evidence-20261009/shared-validator-source-preparation/v3-smoke.lifecycle.jsonl",
+      "relation": "immutable120-terminal-snapshot",
+      "rawBytes": 4596,
+      "rawSha256": "e2d9dd032c9dd6d6b96264072856e3f4f18fb48e49930b96124e6ae78d64cbba",
+      "gzipBytes": 514,
+      "gzipSha256": "17e5e867ddd39576ac6be8572c56ccec7200ccc1269ee8dd2efc8d41cd088597"
+    },
+    {
+      "path": "shared-validator-source-preparation/v3-smoke.stdout-stderr.log.gz",
+      "sourceArtifact": "/home/louistrue/.t3/artifacts/7036-format24-source-audit-20261009/terminal-browser-evidence-20261009/shared-validator-source-preparation/v3-smoke.stdout-stderr.log",
+      "relation": "immutable120-terminal-snapshot",
+      "rawBytes": 20879,
+      "rawSha256": "96cee9d75d7b8afa03d7a2f1645cedc81f9718fdd1dbff36cbbd79bbaf3c6824",
+      "gzipBytes": 3259,
+      "gzipSha256": "5de4f578cd521819a8d7d01f6fdf063a2623abc20ec1be79447637486e1e7fa1"
+    },
+    {
+      "path": "shared-validator-source-preparation/v3-visible-actual-receipt.json.gz",
+      "sourceArtifact": "/home/louistrue/.t3/artifacts/7036-format24-source-audit-20261009/terminal-browser-evidence-20261009/shared-validator-source-preparation/v3-visible-actual-receipt.json",
+      "relation": "immutable120-terminal-snapshot",
+      "rawBytes": 4596,
+      "rawSha256": "52d373401f7c3b85508d09aefb707833edd7ce012d791c9250b566e6970bed03",
+      "gzipBytes": 1831,
+      "gzipSha256": "c5b03059d8a3b24c7bb374d14be4894b09cb19c7c2606bc68e55af489bc99f74"
+    },
+    {
+      "path": "shared-validator-source-preparation/v3-visible-actual-report.json.gz",
+      "sourceArtifact": "/home/louistrue/.t3/artifacts/7036-format24-source-audit-20261009/terminal-browser-evidence-20261009/shared-validator-source-preparation/v3-visible-actual-report.json",
+      "relation": "immutable120-terminal-snapshot",
+      "rawBytes": 25367,
+      "rawSha256": "ccd063d95c83597fc3e0bd8f3eb423946c8c93297dabba2bec5a8ab0387938dc",
+      "gzipBytes": 5299,
+      "gzipSha256": "e7969098ff8227c27b105894b85da014d682f89ed8398012c6ee0384f55faa2d"
+    },
+    {
+      "path": "shared-validator-source-preparation/v3-visible-setup-metadata.json.gz",
+      "sourceArtifact": "/home/louistrue/.t3/artifacts/7036-format24-source-audit-20261009/terminal-browser-evidence-20261009/shared-validator-source-preparation/v3-visible-setup-metadata.json",
+      "relation": "immutable120-terminal-snapshot",
+      "rawBytes": 706,
+      "rawSha256": "da4e520586fbeccfc2e2604d4c400f1ae205b94b3fcfa93881bceceac868f62c",
+      "gzipBytes": 252,
+      "gzipSha256": "485d5c69f7c01b76cf4b1d382e2f0bf9088cd1064c0bc0f3f28478fe74a30df6"
+    },
+    {
+      "path": "shared-validator-source-preparation/v3-visible.control.json.gz",
+      "sourceArtifact": "/home/louistrue/.t3/artifacts/7036-format24-source-audit-20261009/terminal-browser-evidence-20261009/shared-validator-source-preparation/v3-visible.control.json",
+      "relation": "immutable120-terminal-snapshot",
+      "rawBytes": 138,
+      "rawSha256": "17ded67ad550cee023567ffafb2d9cf826d4785fba9a943e5f8742ba2755c25f",
+      "gzipBytes": 133,
+      "gzipSha256": "bb16cdaea081d394fca34d99fcd84e8ac592359aa2673d751e6bc091411218ad"
+    },
+    {
+      "path": "shared-validator-source-preparation/v3-visible.lifecycle.jsonl.gz",
+      "sourceArtifact": "/home/louistrue/.t3/artifacts/7036-format24-source-audit-20261009/terminal-browser-evidence-20261009/shared-validator-source-preparation/v3-visible.lifecycle.jsonl",
+      "relation": "immutable120-terminal-snapshot",
+      "rawBytes": 4626,
+      "rawSha256": "2f571f3e2afc08dc3a5c10cbe5b0324fccba19bf67d49a039aa398141f7a6d66",
+      "gzipBytes": 511,
+      "gzipSha256": "6eef9a8814f5447277d5cb8e69e2fa05c7b89525c43979e9b8c3b73f283440be"
+    },
+    {
+      "path": "shared-validator-source-preparation/v3-visible.stdout-stderr.log.gz",
+      "sourceArtifact": "/home/louistrue/.t3/artifacts/7036-format24-source-audit-20261009/terminal-browser-evidence-20261009/shared-validator-source-preparation/v3-visible.stdout-stderr.log",
+      "relation": "immutable120-terminal-snapshot",
+      "rawBytes": 20909,
+      "rawSha256": "e3e236ebcef625a9ac409f352a6fd04c7d87bde30de1587e6fa9911273ce3468",
+      "gzipBytes": 3256,
+      "gzipSha256": "b43246e082678369b53f38006dc6ad5ea6adb83a252c424078c4dabae540a5bf"
+    },
+    {
+      "path": "shared-validator-source-preparation/vite-config-dependency-audit.json.gz",
+      "sourceArtifact": "/home/louistrue/.t3/artifacts/7036-format24-source-audit-20261009/terminal-browser-evidence-20261009/shared-validator-source-preparation/vite-config-dependency-audit.json",
+      "relation": "immutable120-terminal-snapshot",
+      "rawBytes": 901,
+      "rawSha256": "80767783cd33d3834392df99abdf257379fb06c60ecc2b0e6ffec5279daba0a2",
+      "gzipBytes": 382,
+      "gzipSha256": "64c4b97c0f76ab12600883fbc04cc549adc998963172cfa33472c0cc2871b660"
+    },
+    {
+      "path": "shared-validator-source-preparation/wasm-free-path-preflight-actualconditional.log.gz",
+      "sourceArtifact": "/home/louistrue/.t3/artifacts/7036-format24-source-audit-20261009/terminal-browser-evidence-20261009/shared-validator-source-preparation/wasm-free-path-preflight-actualconditional.log",
+      "relation": "immutable120-terminal-snapshot",
+      "rawBytes": 326,
+      "rawSha256": "b0ebdb80fe4f7be2fa34c8a3ccd2b0afdc06280b79a7e4009ade62c226ce4bf0",
+      "gzipBytes": 244,
+      "gzipSha256": "a44997a53b8ea9465d8c717af5cf2f8340d827088af047407565362058e30184"
+    },
+    {
+      "path": "shared-validator-source-preparation/wasm-free-path-preflight.log.gz",
+      "sourceArtifact": "/home/louistrue/.t3/artifacts/7036-format24-source-audit-20261009/terminal-browser-evidence-20261009/shared-validator-source-preparation/wasm-free-path-preflight.log",
+      "relation": "immutable120-terminal-snapshot",
+      "rawBytes": 299,
+      "rawSha256": "ac8b3b41d55f2358fdfa19c5dc88c7fcee872a3ca1dc71cff7aea9112a3dc4ad",
+      "gzipBytes": 231,
+      "gzipSha256": "5332839b9ec78cbdae302dc02cc30ecbda20d940e89679b0994fcc80c6513f28"
+    },
+    {
+      "path": "shared-validator-source-preparation/witness-import-side-effect-source-audit.json.gz",
+      "sourceArtifact": "/home/louistrue/.t3/artifacts/7036-format24-source-audit-20261009/terminal-browser-evidence-20261009/shared-validator-source-preparation/witness-import-side-effect-source-audit.json",
+      "relation": "immutable120-terminal-snapshot",
+      "rawBytes": 25169,
+      "rawSha256": "3f4378f44d4c4624247046c1d64c2f815a00c779f139fb437050c75949c59801",
+      "gzipBytes": 4445,
+      "gzipSha256": "872af297744d7b6385fe896854f16fbc6e14f53acfda6a3f63820764c7df65cb"
+    },
+    {
+      "path": "source-integration-merge.diff.gz",
+      "sourceArtifact": "/home/louistrue/.t3/artifacts/7036-format24-source-audit-20261009/terminal-browser-evidence-20261009/source-integration-merge.diff",
+      "relation": "immutable120-terminal-snapshot",
+      "rawBytes": 7654,
+      "rawSha256": "0a7d5539fb8b80e75a37b38e43758791fa01d19bfe3c1313e84b67c007a235e2",
+      "gzipBytes": 1111,
+      "gzipSha256": "af273d57c11d46ae1d749179efce64dc117fb85c6e432f458339e4f09ac2c81f"
+    },
+    {
+      "path": "source-integration-receipt.json.gz",
+      "sourceArtifact": "/home/louistrue/.t3/artifacts/7036-format24-source-audit-20261009/terminal-browser-evidence-20261009/source-integration-receipt.json",
+      "relation": "immutable120-terminal-snapshot",
+      "rawBytes": 22706,
+      "rawSha256": "95b741f3586b0c68933cca7aa78b917fa92d715ae8c1c94fc93db3359723d67f",
+      "gzipBytes": 4159,
+      "gzipSha256": "929738f5990c2edf5a530cd6a550121efcb3c490942541a870e9e96b27a27a50"
+    },
+    {
+      "path": "source-integration-vs-main.diff.gz",
+      "sourceArtifact": "/home/louistrue/.t3/artifacts/7036-format24-source-audit-20261009/terminal-browser-evidence-20261009/source-integration-vs-main.diff",
+      "relation": "immutable120-terminal-snapshot",
+      "rawBytes": 136681,
+      "rawSha256": "faad1162ec05e3adda16e16fc53b4a2e179c112e1e38352d5c6628a1927e4d13",
+      "gzipBytes": 37146,
+      "gzipSha256": "fe84c4faa578789843e089c9ad56d039e57b6b34f98f52234b72d8ed438d1f85"
+    },
+    {
+      "path": "strict-localbounds-diagnostic/actual-mismatch.json.gz",
+      "sourceArtifact": "/home/louistrue/.t3/artifacts/7036-format24-source-audit-20261009/terminal-browser-evidence-20261009/strict-localbounds-diagnostic/actual-mismatch.json",
+      "relation": "immutable120-terminal-snapshot",
+      "rawBytes": 985,
+      "rawSha256": "6d93a3c825ba7f4b8d32fe0420331bcd41b88982004cc5c3c5cef1ac6d07b1ad",
+      "gzipBytes": 281,
+      "gzipSha256": "bfef3a123417404cadc82cf510124ebb6a2c57d6ab4efbddf4b69b2a12d90c84"
+    },
+    {
+      "path": "strict-localbounds-diagnostic/before-pins.json.gz",
+      "sourceArtifact": "/home/louistrue/.t3/artifacts/7036-format24-source-audit-20261009/terminal-browser-evidence-20261009/strict-localbounds-diagnostic/before-pins.json",
+      "relation": "immutable120-terminal-snapshot",
+      "rawBytes": 9650,
+      "rawSha256": "89a527000bbeee2b063ba5756a69c20acd5921493df7ea863646ad283373ee76",
+      "gzipBytes": 3319,
+      "gzipSha256": "fd7a5cd6e75c6d6f3070158a41649a5eb09a4bf005c346c36ceb90913c7c83e5"
+    },
+    {
+      "path": "strict-localbounds-diagnostic/qualification.json.gz",
+      "sourceArtifact": "/home/louistrue/.t3/artifacts/7036-format24-source-audit-20261009/terminal-browser-evidence-20261009/strict-localbounds-diagnostic/qualification.json",
+      "relation": "immutable120-terminal-snapshot",
+      "rawBytes": 17606,
+      "rawSha256": "f25fe7d0f829f0a400f050434bf9b051fdee7e696abae3db967d31dd000aafd3",
+      "gzipBytes": 4245,
+      "gzipSha256": "bfbfccc8e5a4a32397fabfd67431c93f2d430fe5c864174b49d1532016b0fce5"
+    },
+    {
+      "path": "strict-localbounds-diagnostic/source-change.json.gz",
+      "sourceArtifact": "/home/louistrue/.t3/artifacts/7036-format24-source-audit-20261009/terminal-browser-evidence-20261009/strict-localbounds-diagnostic/source-change.json",
+      "relation": "immutable120-terminal-snapshot",
+      "rawBytes": 598,
+      "rawSha256": "b37ac04d26d3b3629b589715252338c9fb52c698633e2f60651ae060969107b2",
+      "gzipBytes": 421,
+      "gzipSha256": "318213958c505bd63b4debed37d001932ae0e1c57c0c6aed36a7883dc66fdc4d"
+    },
+    {
+      "path": "strict-localbounds-diagnostic/strict-route.log.gz",
+      "sourceArtifact": "/home/louistrue/.t3/artifacts/7036-format24-source-audit-20261009/terminal-browser-evidence-20261009/strict-localbounds-diagnostic/strict-route.log",
+      "relation": "immutable120-terminal-snapshot",
+      "rawBytes": 101056,
+      "rawSha256": "18bf20a1559074734b7c0bdc02f69e68a6fe6f84a12671503193e51ad248623d",
+      "gzipBytes": 20609,
+      "gzipSha256": "f126b2bcd2b9860c1c220163c5936caf4d94bd1ee7215c5f91e716367fe82689"
+    },
+    {
+      "path": "strict-localbounds-diagnostic/turbo-effective.json.gz",
+      "sourceArtifact": "/home/louistrue/.t3/artifacts/7036-format24-source-audit-20261009/terminal-browser-evidence-20261009/strict-localbounds-diagnostic/turbo-effective.json",
+      "relation": "immutable120-terminal-snapshot",
+      "rawBytes": 2281,
+      "rawSha256": "66e1d4f1845a503ea85aadfafc246607de6c15b6302a175030cda475ac6b4169",
+      "gzipBytes": 803,
+      "gzipSha256": "82aa93997a1989fe36232ee0eee47a149152054d0f6826f8de8cb7b58af38b2b"
+    },
+    {
+      "path": "strict-localbounds-diagnostic/turbo-env.diff.gz",
+      "sourceArtifact": "/home/louistrue/.t3/artifacts/7036-format24-source-audit-20261009/terminal-browser-evidence-20261009/strict-localbounds-diagnostic/turbo-env.diff",
+      "relation": "immutable120-terminal-snapshot",
+      "rawBytes": 346,
+      "rawSha256": "6b90983188f7f55db51d48fa4c9a116b7a6c41fe12fd8227727d2532710a28fb",
+      "gzipBytes": 225,
+      "gzipSha256": "a4a4ce5c615a444e8f5d10d884db95aff9fc0f3f6df9847026084196d5d43b17"
+    },
+    {
+      "path": "strict-localbounds-diagnostic/turbo-original.json.gz",
+      "sourceArtifact": "/home/louistrue/.t3/artifacts/7036-format24-source-audit-20261009/terminal-browser-evidence-20261009/strict-localbounds-diagnostic/turbo-original.json",
+      "relation": "immutable120-terminal-snapshot",
+      "rawBytes": 2237,
+      "rawSha256": "495ac9b0b6122204bce07060d87c69608db550c53f92ab446a43acfc7017c7f2",
+      "gzipBytes": 785,
+      "gzipSha256": "2c97040928bf7c8791379d74103b8e659e0b71decf0d23aea13bc0fa85e16ea5"
+    },
+    {
+      "path": "strict-oracle-source-integration.json.gz",
+      "sourceArtifact": "/home/louistrue/.t3/artifacts/7036-format24-source-audit-20261009/terminal-browser-evidence-20261009/strict-oracle-source-integration.json",
+      "relation": "immutable120-terminal-snapshot",
+      "rawBytes": 5314,
+      "rawSha256": "e50ce45c6e93b3128c91e6c8aad2a44cecfcd82fd4630ffe0171211281a8f80e",
+      "gzipBytes": 1788,
+      "gzipSha256": "93b5247540c0b37fb1fb07343018cd73b6a9d3152147e0419be0fba13cf14a0a"
+    },
+    {
+      "path": "strict-qualification/before-pins.json.gz",
+      "sourceArtifact": "/home/louistrue/.t3/artifacts/7036-format24-source-audit-20261009/terminal-browser-evidence-20261009/strict-qualification/before-pins.json",
+      "relation": "immutable120-terminal-snapshot",
+      "rawBytes": 9650,
+      "rawSha256": "575f2010d7fddad4e2c1b17f764f3c9eb186b55b4c29ca9c72d80ea6ed6c4c5d",
+      "gzipBytes": 3318,
+      "gzipSha256": "d06573c6f2c08cd0295a292caa100605b193c3d89547537234ca2ae622977be6"
+    },
+    {
+      "path": "strict-qualification/local-bounds-source-diagnosis.md.gz",
+      "sourceArtifact": "/home/louistrue/.t3/artifacts/7036-format24-source-audit-20261009/terminal-browser-evidence-20261009/strict-qualification/local-bounds-source-diagnosis.md",
+      "relation": "immutable120-terminal-snapshot",
+      "rawBytes": 5212,
+      "rawSha256": "39a6c7afafdb2a78536ea3d2ad0bc69d1b9c2a41ab23e590b30363dc722e0985",
+      "gzipBytes": 2414,
+      "gzipSha256": "616c9f09c2285720b350179cb3293b017e8f5002a29985537db5ca568aa91ccf"
+    },
+    {
+      "path": "strict-qualification/observer-controls.log.gz",
+      "sourceArtifact": "/home/louistrue/.t3/artifacts/7036-format24-source-audit-20261009/terminal-browser-evidence-20261009/strict-qualification/observer-controls.log",
+      "relation": "immutable120-terminal-snapshot",
+      "rawBytes": 113882,
+      "rawSha256": "98616e813e985034bfdeeddd5da9db4d9bdfadf7791aa52b186aee62fe452154",
+      "gzipBytes": 20754,
+      "gzipSha256": "e34e51b51e5cf2f5fb6a529f6f27d3119965e55c23dc4073b742791d775b050d"
+    },
+    {
+      "path": "strict-qualification/qualification.json.gz",
+      "sourceArtifact": "/home/louistrue/.t3/artifacts/7036-format24-source-audit-20261009/terminal-browser-evidence-20261009/strict-qualification/qualification.json",
+      "relation": "immutable120-terminal-snapshot",
+      "rawBytes": 22552,
+      "rawSha256": "05874eafcb0b0ac0226e76e3c71d3268c97458337f2f7e1cbf2b25a88cd15269",
+      "gzipBytes": 5020,
+      "gzipSha256": "26f8603a92c2f05099e161a01af7ca261d4a226f2e234007635c59b56c5c594b"
+    },
+    {
+      "path": "strict-qualification/root-qualification-verification.json.gz",
+      "sourceArtifact": "/home/louistrue/.t3/artifacts/7036-format24-source-audit-20261009/terminal-browser-evidence-20261009/strict-qualification/root-qualification-verification.json",
+      "relation": "immutable120-terminal-snapshot",
+      "rawBytes": 281,
+      "rawSha256": "1fc3d8030dfe4ff025244cc2ce31f531be4908b26f042dcc523fc4a32d589f77",
+      "gzipBytes": 219,
+      "gzipSha256": "b0b4a6b644788068003bd8f94d52b3dae98e6219b986ba5cc3944c56ae343b9e"
+    },
+    {
+      "path": "strict-qualification/strict-route.log.gz",
+      "sourceArtifact": "/home/louistrue/.t3/artifacts/7036-format24-source-audit-20261009/terminal-browser-evidence-20261009/strict-qualification/strict-route.log",
+      "relation": "immutable120-terminal-snapshot",
+      "rawBytes": 100550,
+      "rawSha256": "e5416a03f97f2534c83173b8db148d39dfb4ae318ae904035280ab49289d7a9e",
+      "gzipBytes": 20465,
+      "gzipSha256": "11417b2d8494aaff20bd86543b6bc11bccdf75a87370a347b7c5061be90dffdb"
+    },
+    {
+      "path": "strict-qualification/turbo-effective.json.gz",
+      "sourceArtifact": "/home/louistrue/.t3/artifacts/7036-format24-source-audit-20261009/terminal-browser-evidence-20261009/strict-qualification/turbo-effective.json",
+      "relation": "immutable120-terminal-snapshot",
+      "rawBytes": 2281,
+      "rawSha256": "66e1d4f1845a503ea85aadfafc246607de6c15b6302a175030cda475ac6b4169",
+      "gzipBytes": 803,
+      "gzipSha256": "82aa93997a1989fe36232ee0eee47a149152054d0f6826f8de8cb7b58af38b2b"
+    },
+    {
+      "path": "strict-qualification/turbo-env.diff.gz",
+      "sourceArtifact": "/home/louistrue/.t3/artifacts/7036-format24-source-audit-20261009/terminal-browser-evidence-20261009/strict-qualification/turbo-env.diff",
+      "relation": "immutable120-terminal-snapshot",
+      "rawBytes": 346,
+      "rawSha256": "6b90983188f7f55db51d48fa4c9a116b7a6c41fe12fd8227727d2532710a28fb",
+      "gzipBytes": 225,
+      "gzipSha256": "a4a4ce5c615a444e8f5d10d884db95aff9fc0f3f6df9847026084196d5d43b17"
+    },
+    {
+      "path": "strict-qualification/turbo-original.json.gz",
+      "sourceArtifact": "/home/louistrue/.t3/artifacts/7036-format24-source-audit-20261009/terminal-browser-evidence-20261009/strict-qualification/turbo-original.json",
+      "relation": "immutable120-terminal-snapshot",
+      "rawBytes": 2237,
+      "rawSha256": "495ac9b0b6122204bce07060d87c69608db550c53f92ab446a43acfc7017c7f2",
+      "gzipBytes": 785,
+      "gzipSha256": "2c97040928bf7c8791379d74103b8e659e0b71decf0d23aea13bc0fa85e16ea5"
+    },
+    {
+      "path": "strict-qualification/typecheck.log.gz",
+      "sourceArtifact": "/home/louistrue/.t3/artifacts/7036-format24-source-audit-20261009/terminal-browser-evidence-20261009/strict-qualification/typecheck.log",
+      "relation": "immutable120-terminal-snapshot",
+      "rawBytes": 50972,
+      "rawSha256": "023472173fd4c77dc8c39732b7d6d5c908525200ef501e923164c755fc24f94a",
+      "gzipBytes": 7447,
+      "gzipSha256": "00bc54d211a2bb1aadf0efdc16376f487500a5becf135def5f97e25da924f7af"
+    },
+    {
+      "path": "worker-cpu-qualification/before-source-fixture-pins.json.gz",
+      "sourceArtifact": "/home/louistrue/.t3/artifacts/7036-format24-source-audit-20261009/terminal-browser-evidence-20261009/worker-cpu-qualification/before-source-fixture-pins.json",
+      "relation": "immutable120-terminal-snapshot",
+      "rawBytes": 7534,
+      "rawSha256": "abe1f3a09a69176083338b112dd5c59140b0c919d807a6140d5755af2d021b9c",
+      "gzipBytes": 2620,
+      "gzipSha256": "4b7cf7c6dc0f2571d1aa3de698ceb431e4e752020d1d357b881b002a3e30d73d"
+    },
+    {
+      "path": "worker-cpu-qualification/before-test-runtime.json.gz",
+      "sourceArtifact": "/home/louistrue/.t3/artifacts/7036-format24-source-audit-20261009/terminal-browser-evidence-20261009/worker-cpu-qualification/before-test-runtime.json",
+      "relation": "immutable120-terminal-snapshot",
+      "rawBytes": 393,
+      "rawSha256": "5aeb0857928761071a0f372756be047b197916346658cce3c3f746edb0b79da8",
+      "gzipBytes": 241,
+      "gzipSha256": "c2c492c1152020a2aca9924b89ebde11ea85762a858493d0840f36f60bf0b441"
+    },
+    {
+      "path": "worker-cpu-qualification/corrected-before-pins.json.gz",
+      "sourceArtifact": "/home/louistrue/.t3/artifacts/7036-format24-source-audit-20261009/terminal-browser-evidence-20261009/worker-cpu-qualification/corrected-before-pins.json",
+      "relation": "immutable120-terminal-snapshot",
+      "rawBytes": 7912,
+      "rawSha256": "10ce012d0588eaf43dbd501f82c2690dbd81a88e4e7b6b5de4401d0d98ed9288",
+      "gzipBytes": 2746,
+      "gzipSha256": "6e4e34ff12cfbeae33cc783b6afaf09d3f865dd8fbe6b60fe4fc76678aa70be1"
+    },
+    {
+      "path": "worker-cpu-qualification/corrected-run-proposal.json.gz",
+      "sourceArtifact": "/home/louistrue/.t3/artifacts/7036-format24-source-audit-20261009/terminal-browser-evidence-20261009/worker-cpu-qualification/corrected-run-proposal.json",
+      "relation": "immutable120-terminal-snapshot",
+      "rawBytes": 1909,
+      "rawSha256": "32623fb13b9c07c19ee91a097bf2f02687f3e840912f7c3363fef8215c0d6d92",
+      "gzipBytes": 767,
+      "gzipSha256": "e110bb41e9168f974169cc59d6167dea234fa6459958eebdc1f49d831f5f3e3f"
+    },
+    {
+      "path": "worker-cpu-qualification/corrected-test-resource-env-during.json.gz",
+      "sourceArtifact": "/home/louistrue/.t3/artifacts/7036-format24-source-audit-20261009/terminal-browser-evidence-20261009/worker-cpu-qualification/corrected-test-resource-env-during.json",
+      "relation": "immutable120-terminal-snapshot",
+      "rawBytes": 1985,
+      "rawSha256": "a048bcfc14887dfbbfd3a6eaf2f6b8cf72a828bb05de12e3d13c952fad65e7a8",
+      "gzipBytes": 496,
+      "gzipSha256": "b37d93b7c80a681cceb7d9e725fbf46531787358e6326670085660c1b006bc57"
+    },
+    {
+      "path": "worker-cpu-qualification/corrected-test-resource-env.json.gz",
+      "sourceArtifact": "/home/louistrue/.t3/artifacts/7036-format24-source-audit-20261009/terminal-browser-evidence-20261009/worker-cpu-qualification/corrected-test-resource-env.json",
+      "relation": "immutable120-terminal-snapshot",
+      "rawBytes": 2584,
+      "rawSha256": "c182ef314a2725ed7274e0cddafee1c81cef1eb752c68ebe065c0f83ea24a7d4",
+      "gzipBytes": 871,
+      "gzipSha256": "722c4eff238ef8423791d0a0b07e9a0efd00d757ec7bdd9844caa330c0f7cb13"
+    },
+    {
+      "path": "worker-cpu-qualification/fixture-copy.json.gz",
+      "sourceArtifact": "/home/louistrue/.t3/artifacts/7036-format24-source-audit-20261009/terminal-browser-evidence-20261009/worker-cpu-qualification/fixture-copy.json",
+      "relation": "immutable120-terminal-snapshot",
+      "rawBytes": 567,
+      "rawSha256": "58025210d808a2ceb3ac9a9ccd87929ceaebda92fb37036e446ee89956a52862",
+      "gzipBytes": 298,
+      "gzipSha256": "2ea15c648323d8c19ce1b6225f45044f7135261e4a64fb45d765777dacda7881"
+    },
+    {
+      "path": "worker-cpu-qualification/fresh-build-resource-env.json.gz",
+      "sourceArtifact": "/home/louistrue/.t3/artifacts/7036-format24-source-audit-20261009/terminal-browser-evidence-20261009/worker-cpu-qualification/fresh-build-resource-env.json",
+      "relation": "immutable120-terminal-snapshot",
+      "rawBytes": 665,
+      "rawSha256": "c55c8e896dcd0cfaab8aba716d9816e50305a53140bb458d1cfead5427b0d23b",
+      "gzipBytes": 245,
+      "gzipSha256": "995999c563d41a58e1b591afcfa2695d313fcf52fabcfa85b20e1a686d82aa21"
+    },
+    {
+      "path": "worker-cpu-qualification/install.log.gz",
+      "sourceArtifact": "/home/louistrue/.t3/artifacts/7036-format24-source-audit-20261009/terminal-browser-evidence-20261009/worker-cpu-qualification/install.log",
+      "relation": "immutable120-terminal-snapshot",
+      "rawBytes": 3625,
+      "rawSha256": "eed8a711e7c341ef745c0b99789d03adbd8ac589dc9bf7d0806549ddfea8ad58",
+      "gzipBytes": 987,
+      "gzipSha256": "d631ce002ab6f6635170bb02de52b23c75033ce1a8bc43adb7925203015b2798"
+    },
+    {
+      "path": "worker-cpu-qualification/qualification.json.gz",
+      "sourceArtifact": "/home/louistrue/.t3/artifacts/7036-format24-source-audit-20261009/terminal-browser-evidence-20261009/worker-cpu-qualification/qualification.json",
+      "relation": "immutable120-terminal-snapshot",
+      "rawBytes": 17242,
+      "rawSha256": "d56d8325097fa8c167f06a093fdebde4c23ac47a7c0042e852245ef495796e78",
+      "gzipBytes": 4401,
+      "gzipSha256": "78b348267975851d6e76d2e02786933e3418434ec5c3aeb471630780ef61cd64"
+    },
+    {
+      "path": "worker-cpu-qualification/root-test-dry.json.gz",
+      "sourceArtifact": "/home/louistrue/.t3/artifacts/7036-format24-source-audit-20261009/terminal-browser-evidence-20261009/worker-cpu-qualification/root-test-dry.json",
+      "relation": "immutable120-terminal-snapshot",
+      "rawBytes": 285869,
+      "rawSha256": "20e2a0bf260783d4a621ea33be04a0a21f7050bb39494f74bded6aee9e799e3f",
+      "gzipBytes": 81099,
+      "gzipSha256": "356a46c8dd18b5c3b6e25eb3dd8ed867dbda37fc704389aa0eaeb3aecb43e61d"
+    },
+    {
+      "path": "worker-cpu-qualification/root-test-dry.stderr.gz",
+      "sourceArtifact": "/home/louistrue/.t3/artifacts/7036-format24-source-audit-20261009/terminal-browser-evidence-20261009/worker-cpu-qualification/root-test-dry.stderr",
+      "relation": "immutable120-terminal-snapshot",
+      "rawBytes": 0,
+      "rawSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "gzipBytes": 20,
+      "gzipSha256": "ac73670af3abed54ac6fb4695131f4099be9fbe39d6076c5d0264a6bbdae9d83"
+    },
+    {
+      "path": "worker-cpu-qualification/root-verification.json.gz",
+      "sourceArtifact": "/home/louistrue/.t3/artifacts/7036-format24-source-audit-20261009/terminal-browser-evidence-20261009/worker-cpu-qualification/root-verification.json",
+      "relation": "immutable120-terminal-snapshot",
+      "rawBytes": 236,
+      "rawSha256": "6cfa4fb57339badfbe939b27d65381b274e062b7d082a0665a3ed0e9ed3057b0",
+      "gzipBytes": 194,
+      "gzipSha256": "a707e7e451bb560eeadcd4cd7567dbd7b7fa56609211bf52676a0c1401911de6"
+    },
+    {
+      "path": "worker-cpu-qualification/setup-refusal.json.gz",
+      "sourceArtifact": "/home/louistrue/.t3/artifacts/7036-format24-source-audit-20261009/terminal-browser-evidence-20261009/worker-cpu-qualification/setup-refusal.json",
+      "relation": "immutable120-terminal-snapshot",
+      "rawBytes": 13543,
+      "rawSha256": "33fc1255aecbc66c65d1723119f2c76641151b6894f7f1be3dc48576ba5ece2b",
+      "gzipBytes": 3352,
+      "gzipSha256": "0f7cb59c0f285d65b60016b9f0e8595b4872bff1bce5b95f2452671fedadbc0a"
+    },
+    {
+      "path": "worker-cpu-qualification/test-resource-env.json.gz",
+      "sourceArtifact": "/home/louistrue/.t3/artifacts/7036-format24-source-audit-20261009/terminal-browser-evidence-20261009/worker-cpu-qualification/test-resource-env.json",
+      "relation": "immutable120-terminal-snapshot",
+      "rawBytes": 3,
+      "rawSha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+      "gzipBytes": 23,
+      "gzipSha256": "029ac1ef2bb96aa9fa0166f8f60604b79b92f7fb5cd41a374f80171306cf1b52"
+    },
+    {
+      "path": "worker-cpu-qualification/tests-corrected.log.gz",
+      "sourceArtifact": "/home/louistrue/.t3/artifacts/7036-format24-source-audit-20261009/terminal-browser-evidence-20261009/worker-cpu-qualification/tests-corrected.log",
+      "relation": "immutable120-terminal-snapshot",
+      "rawBytes": 585643,
+      "rawSha256": "60319c94f48898d2134f5bf27df175e0b88e1129bb3b9eee28aed65a3b8a60da",
+      "gzipBytes": 37614,
+      "gzipSha256": "879c0093a15463461dc39c043e19b51b31bc84f064eab85e672f68df05b91c98"
+    },
+    {
+      "path": "worker-cpu-qualification/tests.log.gz",
+      "sourceArtifact": "/home/louistrue/.t3/artifacts/7036-format24-source-audit-20261009/terminal-browser-evidence-20261009/worker-cpu-qualification/tests.log",
+      "relation": "immutable120-terminal-snapshot",
+      "rawBytes": 6926,
+      "rawSha256": "86867dd124de3dbafeb184a2c2ad3e0d49bf8873194df5dc2071cd956fb90bbd",
+      "gzipBytes": 1894,
+      "gzipSha256": "ac5c1f00acd602bb1b9df8e2c88ee6f622bb3e5a71adc4ea562664e70301c684"
+    },
+    {
+      "path": "worker-cpu-qualification/turbo-effective.json.gz",
+      "sourceArtifact": "/home/louistrue/.t3/artifacts/7036-format24-source-audit-20261009/terminal-browser-evidence-20261009/worker-cpu-qualification/turbo-effective.json",
+      "relation": "immutable120-terminal-snapshot",
+      "rawBytes": 2261,
+      "rawSha256": "df86fa5f58020225ec40abce5e1f104788b8cad5e30d1561b303f2f341017ee7",
+      "gzipBytes": 795,
+      "gzipSha256": "1097338db2f489ab3fa49904145708544eaa4a6439382d72daa232464162b9c6"
+    },
+    {
+      "path": "worker-cpu-qualification/turbo-env.diff.gz",
+      "sourceArtifact": "/home/louistrue/.t3/artifacts/7036-format24-source-audit-20261009/terminal-browser-evidence-20261009/worker-cpu-qualification/turbo-env.diff",
+      "relation": "immutable120-terminal-snapshot",
+      "rawBytes": 325,
+      "rawSha256": "f207043f8123a13bfdd7e4a25b4dcec6f3aecf9b3df3f1845727851b3b64eaa0",
+      "gzipBytes": 217,
+      "gzipSha256": "6d86947ca0c91d7eb05c7e1041728b58970a11f3c3fe09b7fa93d0ed3471be62"
+    },
+    {
+      "path": "worker-cpu-qualification/turbo-original.json.gz",
+      "sourceArtifact": "/home/louistrue/.t3/artifacts/7036-format24-source-audit-20261009/terminal-browser-evidence-20261009/worker-cpu-qualification/turbo-original.json",
+      "relation": "immutable120-terminal-snapshot",
+      "rawBytes": 2237,
+      "rawSha256": "495ac9b0b6122204bce07060d87c69608db550c53f92ab446a43acfc7017c7f2",
+      "gzipBytes": 785,
+      "gzipSha256": "2c97040928bf7c8791379d74103b8e659e0b71decf0d23aea13bc0fa85e16ea5"
+    },
+    {
+      "path": "worker-cpu-qualification/vitest-installed-help.txt.gz",
+      "sourceArtifact": "/home/louistrue/.t3/artifacts/7036-format24-source-audit-20261009/terminal-browser-evidence-20261009/worker-cpu-qualification/vitest-installed-help.txt",
+      "relation": "immutable120-terminal-snapshot",
+      "rawBytes": 9917,
+      "rawSha256": "435709b1a0cb115c5de3fd71a84c458b0ff002aba7663db6a5cd806b984a3c91",
+      "gzipBytes": 3114,
+      "gzipSha256": "ecf7fe926e359bd5dc0a7e617050c1c0acf920351b615230990605f45ba0ea2f"
+    },
+    {
+      "path": "worker-cpu-qualification/wasm-build-fresh.log.gz",
+      "sourceArtifact": "/home/louistrue/.t3/artifacts/7036-format24-source-audit-20261009/terminal-browser-evidence-20261009/worker-cpu-qualification/wasm-build-fresh.log",
+      "relation": "immutable120-terminal-snapshot",
+      "rawBytes": 10559,
+      "rawSha256": "ccd849c99c3d863a0b4cb24ff0b291dd7ace489722c2320dca85c1bef37d29cc",
+      "gzipBytes": 2228,
+      "gzipSha256": "21e44d56675d12c190da19e48cfab96419bbd78ff080646d16949e487c00bdaa"
+    },
+    {
+      "path": "worker-cpu-qualification/wasm-build.log.gz",
+      "sourceArtifact": "/home/louistrue/.t3/artifacts/7036-format24-source-audit-20261009/terminal-browser-evidence-20261009/worker-cpu-qualification/wasm-build.log",
+      "relation": "immutable120-terminal-snapshot",
+      "rawBytes": 10636,
+      "rawSha256": "2ff462a35cf75f0f31dd1ecd3ede16b011a778f0438b688d42d267542719a730",
+      "gzipBytes": 2256,
+      "gzipSha256": "43427116ec2775c8c1c645c5a429940cc74f535b02e262a16426cc2ffc97a117"
+    },
+    {
+      "path": "private81-followup/node-fresh-visible-matcher-results.json.gz",
+      "sourceArtifact": "/home/louistrue/.t3/artifacts/7036-format24-source-audit-20261009/shared-validator-source-preparation/node-fresh-visible-matcher-results.json",
+      "relation": "post-snapshot-private81-and-fresh-matcher",
+      "rawBytes": 107959,
+      "rawSha256": "ebe715bacdadd8d41d49f83e89bcccb3dff4e09886a8fa942aeb8ec0328a420b",
+      "gzipBytes": 5373,
+      "gzipSha256": "6dcc651aafec00ddeb4bc1cf6b070b4318aec755238872e8a4c570b8a0375a73"
+    },
+    {
+      "path": "private81-followup/node-fresh-visible-matcher-receipt.json.gz",
+      "sourceArtifact": "/home/louistrue/.t3/artifacts/7036-format24-source-audit-20261009/shared-validator-source-preparation/node-fresh-visible-matcher-receipt.json",
+      "relation": "post-snapshot-private81-and-fresh-matcher",
+      "rawBytes": 2239,
+      "rawSha256": "bd91dd6c2a414cdda44cf5b6fbcdb8367316cff544f203b75e50ae06465764bb",
+      "gzipBytes": 907,
+      "gzipSha256": "5a595489ffc0d7f2b5d9c1c2ead6af8baa73a3a52603f059973ab8d62a44a94f"
+    },
+    {
+      "path": "private81-followup/node-fresh-visible-matcher.log.gz",
+      "sourceArtifact": "/home/louistrue/.t3/artifacts/7036-format24-source-audit-20261009/shared-validator-source-preparation/node-fresh-visible-matcher.log",
+      "relation": "post-snapshot-private81-and-fresh-matcher",
+      "rawBytes": 49,
+      "rawSha256": "1d224e643fdf8c485f724aa5bc5a682fefe78a3fae0851c2442eafe61456e91b",
+      "gzipBytes": 63,
+      "gzipSha256": "c0c4bbc711f9f6bafeef1e70abcf093e29f39576bcb249135ec11013e21f7334"
+    },
+    {
+      "path": "private81-followup/terminal-archive-independent-verification.json.gz",
+      "sourceArtifact": "/home/louistrue/.t3/artifacts/7036-format24-source-audit-20261009/shared-validator-source-preparation/terminal-archive-independent-verification.json",
+      "relation": "post-snapshot-private81-and-fresh-matcher",
+      "rawBytes": 341,
+      "rawSha256": "e6e006c02b787720dda4d41861f3f867b66239e985b46d2ba58aa8f30c022853",
+      "gzipBytes": 257,
+      "gzipSha256": "d627f4d03ff7a8ca703731081003ff1a4c46896cc50db5b0d98f39379ab28239"
+    },
+    {
+      "path": "private81-followup/canonical-entry-private-checkpoint-receipt.json.gz",
+      "sourceArtifact": "/home/louistrue/.t3/artifacts/7036-format24-source-audit-20261009/shared-validator-source-preparation/canonical-entry-private-checkpoint-receipt.json",
+      "relation": "post-snapshot-private81-and-fresh-matcher",
+      "rawBytes": 6496,
+      "rawSha256": "bea248ab069ffe9e6917e31f9abdb4ab2f510824f8095f6396b6ad5ac14792da",
+      "gzipBytes": 2257,
+      "gzipSha256": "46e78731e986e00d3d18edf1b7c5fc5a8514966ef4d5d8b07ac69d07a15ac7b7"
+    },
+    {
+      "path": "private81-followup/canonical-entry-staged-full.diff.gz",
+      "sourceArtifact": "/home/louistrue/.t3/artifacts/7036-format24-source-audit-20261009/shared-validator-source-preparation/canonical-entry-staged-full.diff",
+      "relation": "post-snapshot-private81-and-fresh-matcher",
+      "rawBytes": 2587,
+      "rawSha256": "ba3544fd9024f162825190512367f40e6a58823d1c56a240d15043595dc33eec",
+      "gzipBytes": 978,
+      "gzipSha256": "ea84df1f7da87a5ee61ab8835fe843bf80fddaa20916749aed3f903d59f10464"
+    },
+    {
+      "path": "private81-followup/canonical-entry-source-assertion-gate.log.gz",
+      "sourceArtifact": "/home/louistrue/.t3/artifacts/7036-format24-source-audit-20261009/shared-validator-source-preparation/canonical-entry-source-assertion-gate.log",
+      "relation": "post-snapshot-private81-and-fresh-matcher",
+      "rawBytes": 31246,
+      "rawSha256": "73c0802e9bf21591e79494a9ed8af0f4e8affbe672aac1cd279c57d3c6f146f1",
+      "gzipBytes": 3192,
+      "gzipSha256": "a28eaea41b35702b6739d9b1daf6fb6bd8608cf15ec3911a22ab20a4077b122f"
+    },
+    {
+      "path": "private81-followup/canonical-entry-test-wiring-gate.log.gz",
+      "sourceArtifact": "/home/louistrue/.t3/artifacts/7036-format24-source-audit-20261009/shared-validator-source-preparation/canonical-entry-test-wiring-gate.log",
+      "relation": "post-snapshot-private81-and-fresh-matcher",
+      "rawBytes": 859,
+      "rawSha256": "66f560d0e9404cc05f97a08130f6602b359ae84e618822921437761f1fa0d785",
+      "gzipBytes": 394,
+      "gzipSha256": "a388c39965b1ca8f4c0b7ed313556aaa7975c03bd780cf0705c832f8a52c1048"
+    },
+    {
+      "path": "private81-followup/canonical-entry-module-size-gate.log.gz",
+      "sourceArtifact": "/home/louistrue/.t3/artifacts/7036-format24-source-audit-20261009/shared-validator-source-preparation/canonical-entry-module-size-gate.log",
+      "relation": "post-snapshot-private81-and-fresh-matcher",
+      "rawBytes": 13115,
+      "rawSha256": "6589fc8fe2d663f5fb3f6080e33b2ba1ee4313709c65c5035ec361ac27ac3939",
+      "gzipBytes": 2318,
+      "gzipSha256": "055034cce8d526ef073511cb56cb6a13692e87f903e0b2c959167b1b36990850"
+    },
+    {
+      "path": "private81-root-typecheck/actual-owned-root-processes.json.gz",
+      "sourceArtifact": "/home/louistrue/.t3/artifacts/7036-format24-source-audit-20261009/shared-validator-source-preparation/private81-root-typecheck/actual-owned-root-processes.json",
+      "relation": "Actual private81 bounded root typecheck; workspace scope only",
+      "rawBytes": 3059,
+      "rawSha256": "cbd42f0273e1ff7dde96f1decfdc6153fc717fd73896fb323ae25dac907c04f9",
+      "gzipBytes": 576,
+      "gzipSha256": "59076e6fd15490cb41d830e397ecbc97827fbfc7b42e6792ebf6e4fc8b24bf2c"
+    },
+    {
+      "path": "private81-root-typecheck/actual-tsc-child-env.json.gz",
+      "sourceArtifact": "/home/louistrue/.t3/artifacts/7036-format24-source-audit-20261009/shared-validator-source-preparation/private81-root-typecheck/actual-tsc-child-env.json",
+      "relation": "Actual private81 bounded root typecheck; workspace scope only",
+      "rawBytes": 702,
+      "rawSha256": "f460c65b10bdbbe271b417577da3450f0e6b75e3d6892a8a06d8937085ff3cb6",
+      "gzipBytes": 290,
+      "gzipSha256": "7f2d45bbfe8e8b766e52b1ba05eda2b53f54defe10f4ec1ba2bbb0a44088d5fd"
+    },
+    {
+      "path": "private81-root-typecheck/before-pins.json.gz",
+      "sourceArtifact": "/home/louistrue/.t3/artifacts/7036-format24-source-audit-20261009/shared-validator-source-preparation/private81-root-typecheck/before-pins.json",
+      "relation": "Actual private81 bounded root typecheck; workspace scope only",
+      "rawBytes": 4296,
+      "rawSha256": "fed3086fd31af4ca0138d5547f8d2cf8218eb39dbb9fda222b5d901a6ca8d2a5",
+      "gzipBytes": 1577,
+      "gzipSha256": "d18904d0d42b9d016d76b4382fee640cb5dca79cfffbd2ebae699a21f6aa8272"
+    },
+    {
+      "path": "private81-root-typecheck/command.json.gz",
+      "sourceArtifact": "/home/louistrue/.t3/artifacts/7036-format24-source-audit-20261009/shared-validator-source-preparation/private81-root-typecheck/command.json",
+      "relation": "Actual private81 bounded root typecheck; workspace scope only",
+      "rawBytes": 540,
+      "rawSha256": "27a1849acfc75a36e3b89f728f57593f84cc5d437dec2ee3c8772781edfd8216",
+      "gzipBytes": 406,
+      "gzipSha256": "41423ec9927823315803226cb7142de44b4cd9ee60d9b991b09e9de6a2250915"
+    },
+    {
+      "path": "private81-root-typecheck/path-preflight.log.gz",
+      "sourceArtifact": "/home/louistrue/.t3/artifacts/7036-format24-source-audit-20261009/shared-validator-source-preparation/private81-root-typecheck/path-preflight.log",
+      "relation": "Actual private81 bounded root typecheck; workspace scope only",
+      "rawBytes": 125,
+      "rawSha256": "acf77384f2acd5920ec13201fa4833fc1a730e4cf54d9d2c787e48fddf1a7729",
+      "gzipBytes": 119,
+      "gzipSha256": "def7f3faf80ad23e4d3bb4beb71a5ecb5e29c02b2436f0f3e4e54e094db56f6e"
+    },
+    {
+      "path": "private81-root-typecheck/qualification.json.gz",
+      "sourceArtifact": "/home/louistrue/.t3/artifacts/7036-format24-source-audit-20261009/shared-validator-source-preparation/private81-root-typecheck/qualification.json",
+      "relation": "Actual private81 bounded root typecheck; workspace scope only",
+      "rawBytes": 10781,
+      "rawSha256": "7ffb7e5840b296e14b9883c6da93dd2754c4c023a146f0b643ec8c10f11f64f6",
+      "gzipBytes": 2987,
+      "gzipSha256": "ba31089719669486a6d461476f88f0d561903715b693d6bc66a0446b33c8a23c"
+    },
+    {
+      "path": "private81-root-typecheck/receipt-preparation-refusal.json.gz",
+      "sourceArtifact": "/home/louistrue/.t3/artifacts/7036-format24-source-audit-20261009/shared-validator-source-preparation/private81-root-typecheck/receipt-preparation-refusal.json",
+      "relation": "Actual private81 bounded root typecheck; workspace scope only",
+      "rawBytes": 259,
+      "rawSha256": "c4aeba5a4ecd69680a66a8223f500a4ecbdd900b1b94498882b57bf9d0604f92",
+      "gzipBytes": 192,
+      "gzipSha256": "30a2efa849eb7e273a74e9c01d7c1c47289b68bcf60b4c9a1137a436e4eb1cd5"
+    },
+    {
+      "path": "private81-root-typecheck/root-typecheck.log.gz",
+      "sourceArtifact": "/home/louistrue/.t3/artifacts/7036-format24-source-audit-20261009/shared-validator-source-preparation/private81-root-typecheck/root-typecheck.log",
+      "relation": "Actual private81 bounded root typecheck; workspace scope only",
+      "rawBytes": 51527,
+      "rawSha256": "18a1e3e9fa7c605c36255630ceebc4e739e0a640a3286b7f65ef65cf8d0bce3f",
+      "gzipBytes": 7187,
+      "gzipSha256": "ab0a0e95cabe3ec86a571bdfea8a2135795df2065ad9ed7aa77bab7878eafcf5"
+    },
+    {
+      "path": "private81-root-typecheck/run-root-typecheck.bash.gz",
+      "sourceArtifact": "/home/louistrue/.t3/artifacts/7036-format24-source-audit-20261009/shared-validator-source-preparation/private81-root-typecheck/run-root-typecheck.bash",
+      "relation": "Actual private81 bounded root typecheck; workspace scope only",
+      "rawBytes": 475,
+      "rawSha256": "3775d174a0b5f1fb9579f310bc39715be3ebc631fa39f2cfab256012211c6b8b",
+      "gzipBytes": 345,
+      "gzipSha256": "fc7028a16de92f7b6146ac2acb089bb1ef4475c69d29b63aacb275c8558beaf8"
+    },
+    {
+      "path": "private81-root-typecheck/turbo-dry-plan.json.gz",
+      "sourceArtifact": "/home/louistrue/.t3/artifacts/7036-format24-source-audit-20261009/shared-validator-source-preparation/private81-root-typecheck/turbo-dry-plan.json",
+      "relation": "Actual private81 bounded root typecheck; workspace scope only",
+      "rawBytes": 1835095,
+      "rawSha256": "86e8ec3949b1aa32951cbe4fb71d7f6d00919a3a00aea07855c12708ce36f1d6",
+      "gzipBytes": 471283,
+      "gzipSha256": "f27e10a4ea2680f083dfbbd1a2b68830341c47aa444884bda0d1d417db17ebd7"
+    },
+    {
+      "path": "private81-root-typecheck/turbo-dry-plan.stderr.gz",
+      "sourceArtifact": "/home/louistrue/.t3/artifacts/7036-format24-source-audit-20261009/shared-validator-source-preparation/private81-root-typecheck/turbo-dry-plan.stderr",
+      "relation": "Actual private81 bounded root typecheck; workspace scope only",
+      "rawBytes": 0,
+      "rawSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "gzipBytes": 20,
+      "gzipSha256": "ac73670af3abed54ac6fb4695131f4099be9fbe39d6076c5d0264a6bbdae9d83"
+    }
+  ],
+  "privateRedSourceExcludedFromPublication": [
+    {
+      "path": "strict-localbounds-diagnostic/diagnostic-only.diff.gz",
+      "sourceArtifact": "/home/louistrue/.t3/artifacts/7036-format24-source-audit-20261009/terminal-browser-evidence-20261009/strict-localbounds-diagnostic/diagnostic-only.diff",
+      "relation": "immutable120-terminal-snapshot",
+      "rawBytes": 757,
+      "rawSha256": "aec1815068e8324c53d390d44d76150233888327699c11634f0be090eae1b3ef",
+      "gzipBytes": 367,
+      "gzipSha256": "f31e445afc9723135408a88dc3f7bd869a70fcac0e1f6de751f6f93558acec59"
+    },
+    {
+      "path": "strict-localbounds-diagnostic/oracle-original.ts.gz",
+      "sourceArtifact": "/home/louistrue/.t3/artifacts/7036-format24-source-audit-20261009/terminal-browser-evidence-20261009/strict-localbounds-diagnostic/oracle-original.ts",
+      "relation": "immutable120-terminal-snapshot",
+      "rawBytes": 7103,
+      "rawSha256": "cc834ee322f26537f7c5ba37bde63f3e6d742af72ed7aebd544da288f021c315",
+      "gzipBytes": 2509,
+      "gzipSha256": "7fb23ab7fe78be0ff609781cc1a81d7f069edee561c0dc6c75f324983dfc8108"
+    }
+  ],
+  "privateRedSourcePreservation": "Complete immutable120 archive retained locally unchanged; selected red oracle source/diff remain unpublished. Refusal/result/pins preserved.",
+  "candidateSourceHead": "81f4ee5563c6eeb2811c0f2fb0f8bcf5a4f879e6",
+  "qualificationResult": {
+    "rootTypecheckExit": 0,
+    "successfulTasks": 119,
+    "dryTasks": 120,
+    "commandlessDryTask": "@ifc-lite/wasm#typecheck=<NONEXISTENT>",
+    "workspaceTestProgramFiles": 3849,
+    "workspacePackages": 62,
+    "e2eStaticTypesCovered": false,
+    "new81BrowserRun": false,
+    "hiddenCaseSupportedT3": false
+  }
+}

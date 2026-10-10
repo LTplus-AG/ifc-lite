@@ -100,6 +100,8 @@ export interface WorkerTraceHostOptions {
 export type WorkerTraceHost = ((data: unknown, run: () => Promise<void>) => Promise<void>) & {
   /** Drain finished work; optionally finish all open spans with the given name before a terminal event. */
   flush(completedSpan?: string): void;
+  /** End this load epoch before admitting the worker to another lease. */
+  reset(): void;
 };
 
 export function createWorkerTraceHost(options: WorkerTraceHostOptions): WorkerTraceHost {
@@ -133,8 +135,10 @@ export function createWorkerTraceHost(options: WorkerTraceHostOptions): WorkerTr
     try {
       await run();
     } finally {
-      if (traced) rec.end(token);
-      flush(rec);
+      if (recorder === rec) {
+        if (traced) rec.end(token);
+        flush(rec);
+      }
     }
   };
   return Object.assign(host, {
@@ -143,6 +147,7 @@ export function createWorkerTraceHost(options: WorkerTraceHostOptions): WorkerTr
       if (completedSpan !== undefined) recorder.endNamed(completedSpan);
       flush(recorder);
     },
+    reset: () => { recorder = null; seenOnce.clear(); counters.reset(); },
   });
 }
 

@@ -2,21 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-/**
- * Prewarmed workers (#7036): a host spawns a load's workers when the load is
- * requested (beside the file read) and `processParallel` leases them instead
- * of spawning. These tests drive the real pipeline against a fake worker that
- * speaks the pre-pass and stream protocols, and pin the contract:
- *   - a load whose workers were prewarmed spawns none (the creation guard);
- *   - a prewarmed worker gets this load's own init and toggles;
- *   - every leased worker is terminated by its load, on success, failure and
- *     abort alike: none is ever handed to a second load;
- *   - idle prewarmed workers are bounded (count and booked bytes), dropped by
- *     a large load that did not lease them, and terminated after a long idle.
- *
- * The pool is reached through `geometry-parallel.js` (an existing module), so
- * a revert that removes it fails these tests on an assertion, not on import.
- */
+/** #7036: drive the real controller and pool through completion, reset, repeat, failure and abort. */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as parallel from './geometry-parallel.js';
@@ -34,6 +20,7 @@ type PoolCtor = new (options?: Record<string, unknown>) => {
 const MB = 1024 * 1024;
 
 interface FakeOptions {
+  heapBytes?: number;
   /** Post an `error` instead of a batch for every stream-chunk. */
   failChunks?: boolean;
   /** Never answer stream-chunk (a load that has to be aborted). */
@@ -63,6 +50,7 @@ class FakeWorker {
     this.received.push(msg);
     if (this.terminated || this.blocked) return;
     switch (msg.type) {
+      case 'init': this.post({ type: 'ready', wasmHeapBytes: 9 * MB }); return;
       case 'prepass-streaming': {
         const ev = (event: Msg) => this.post({ type: 'prepass-stream', event });
         ev({ type: 'meta', unitScale: 1, rtcOffset: new Float64Array([0, 0, 0]), needsShift: false });
@@ -88,6 +76,9 @@ class FakeWorker {
       case 'stream-end':
         this.post({ type: 'memory', wasmHeapBytes: 20 * MB, meshBytes: 0 });
         this.post({ type: 'complete', totalMeshes: 0 });
+        return;
+      case 'pool-reset':
+        this.post({ type: 'pool-reset-done', token: msg.token, wasmHeapBytes: this.opts.heapBytes ?? 20 * MB });
         return;
       default:
     }
@@ -146,46 +137,67 @@ describe('processParallel with prewarmed workers (#7036)', () => {
     const pool = new (poolCtor())();
     expect(pool.prewarm(3, '', init)).toBe(3); // 2 geometry + 1 pre-pass
     expect(spawned()).toBe(3);
+    await settle();
     const events = await drain(load(pool));
     expect(spawned()).toBe(3); // the creation guard: zero spawns on this load's path
     expect(pool.stats().leasedWarm).toBe(3);
-    expect(pool.stats().idle).toBe(0);
+    expect(pool.stats().idle).toBe(3);
     expect(meshTotal(events)).toBe(2);
   });
 
   it('leases what is prewarmed and spawns the rest', async () => {
     const pool = new (poolCtor())();
     pool.prewarm(1, '', init);
+    await settle();
     await drain(load(pool));
     expect(spawned()).toBe(3);
     expect(pool.stats().leasedWarm).toBe(1);
   });
 
-  it('sends a prewarmed worker this load\'s own init and toggles (federated: instancing off)', async () => {
+  it('replays load settings on an initialized lease without reinitializing its engine (federated)', async () => {
     const pool = new (poolCtor())();
     pool.prewarm(3, '', (w) => (w as FakeWorker).postMessage({ type: 'init', prewarm: true }));
+    await settle();
     await drain(load(pool, { enableInstancing: false }));
     const geometryWorkers = FakeWorker.all.filter((w) => w.received.some((m) => m.type === 'stream-start'));
     expect(geometryWorkers).toHaveLength(2);
     for (const w of geometryWorkers) {
       const types = w.received.map((m) => m.type);
-      const loadInit = w.received.findIndex((m) => m.type === 'init' && !m.prewarm);
-      expect(loadInit).toBeGreaterThan(0);
-      expect(loadInit).toBeLessThan(types.indexOf('stream-start'));
+      expect(types.filter(type => type === 'init')).toHaveLength(1);
+      expect(types.indexOf('set-instancing-enabled')).toBeLessThan(types.indexOf('stream-start'));
       expect(w.received.find((m) => m.type === 'set-instancing-enabled')?.enabled).toBe(false);
     }
   });
 
-  it('terminates every leased worker when its load ends, so no worker serves two loads', async () => {
+  it('reuses reset workers across two loads with changed settings and no repeated engine init', async () => {
     const pool = new (poolCtor())();
     pool.prewarm(3, '', init);
-    await drain(load(pool));
-    await settle();
-    expect(FakeWorker.all.every((w) => w.terminated)).toBe(true);
-    await drain(load(pool));
-    expect(spawned()).toBe(6); // the second load gets fresh workers, never the first load's
-    const streamStarts = FakeWorker.all.map((w) => w.received.filter((m) => m.type === 'stream-start').length);
-    expect(Math.max(...streamStarts)).toBe(1);
+    await drain(load(pool, { enableInstancing: false, mergeLayers: true, skipSmallCuts: true }));
+    expect(FakeWorker.all.every(w => !w.terminated)).toBe(true);
+    const events = await drain(load(pool));
+    expect(spawned()).toBe(3);
+    expect(meshTotal(events)).toBe(2);
+    for (const worker of FakeWorker.all) {
+      expect(worker.received.filter(m => m.type === 'init')).toHaveLength(1);
+      expect(worker.received.filter(m => m.type === 'pool-reset')).toHaveLength(2);
+    }
+    const geometry = FakeWorker.all.filter(w => w.received.some(m => m.type === 'stream-start'));
+    for (const worker of geometry) {
+      expect(worker.received.filter(m => m.type === 'set-instancing-enabled').map(m => m.enabled)).toEqual([false, true]);
+      expect(worker.received.filter(m => m.type === 'set-merge-layers').map(m => m.enabled)).toEqual([true, false]);
+      expect(worker.received.filter(m => m.type === 'set-skip-small-cuts').map(m => m.enabled)).toEqual([true, false]);
+    }
+    pool.drain();
+  });
+
+  it('terminates unknown and oversized heaps rather than returning them', async () => {
+    for (const heapBytes of [0, 65 * MB]) {
+      fakeOptions.heapBytes = heapBytes;
+      const pool = new (poolCtor())();
+      await drain(load(pool));
+      expect(pool.stats().idle).toBe(0);
+      expect(FakeWorker.all.every(w => w.terminated)).toBe(true);
+    }
   });
 
   it('terminates the leased workers of a failed load', async () => {
@@ -197,6 +209,14 @@ describe('processParallel with prewarmed workers (#7036)', () => {
     await settle();
     expect(FakeWorker.all.every((w) => w.terminated)).toBe(true);
     expect(pool.stats().idle).toBe(0);
+  });
+
+  it('#7036 terminates workers when a consumer abandons the stream after its first batch', async () => {
+    const pool = new (poolCtor())();
+    const gen = load(pool);
+    for await (const event of gen) if (event.type === 'batch') break;
+    expect(pool.stats().idle).toBe(0);
+    expect(FakeWorker.all.every(worker => worker.terminated)).toBe(true);
   });
 
   it('terminates the leased workers of an aborted load', async () => {
@@ -234,24 +254,26 @@ describe('processParallel with prewarmed workers (#7036)', () => {
     await drain(big, 5_000);
     expect(spawned()).toBe(4);
     expect(pool.stats().idle).toBe(0);
-    expect(FakeWorker.all.every((w) => w.terminated)).toBe(true);
+    expect(FakeWorker.all.every(w => w.terminated)).toBe(true);
   });
 
-  it('#7048 repeated prewarm requests cannot extend unused workers beyond their expiry', () => {
+  it('#7048 repeated prewarm requests cannot extend unused workers beyond their expiry', async () => {
     vi.useFakeTimers();
     const pool = new (poolCtor())({ limits: { idleReleaseMs: 60_000 } });
-    expect(pool.prewarm(2, 'engine', () => {})).toBe(2);
+    expect(pool.prewarm(2, 'engine', init)).toBe(2);
+    await Promise.resolve();
     vi.advanceTimersByTime(50_000);
-    expect(pool.prewarm(2, 'engine', () => {})).toBe(0);
+    expect(pool.prewarm(2, 'engine', init)).toBe(0);
     vi.advanceTimersByTime(10_000);
     expect(pool.stats().idle).toBe(0);
     expect(FakeWorker.all.every(worker => worker.terminated)).toBe(true);
   });
 
-  it('terminates idle prewarmed workers after a long idle, and those for another engine binary', () => {
+  it('terminates idle prewarmed workers after a long idle, and those for another engine binary', async () => {
     vi.useFakeTimers();
     const pool = new (poolCtor())({ limits: { idleReleaseMs: 60_000 } });
     pool.prewarm(2, '', init);
+    await Promise.resolve();
     vi.advanceTimersByTime(59_000);
     expect(pool.stats().idle).toBe(2);
     vi.advanceTimersByTime(2_000);

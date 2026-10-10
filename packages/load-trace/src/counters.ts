@@ -19,6 +19,8 @@ export type CounterValues = Record<string, number>;
 export interface PerfCounterRegistry {
   readonly enabled: boolean;
   enable(): void;
+  /** End a worker load epoch and discard its retained counters. */
+  reset(): void;
   add(name: string, n?: number): void;
   /** Copy of every counter's running total. */
   read(): CounterValues;
@@ -33,6 +35,7 @@ export function createPerfCounters(): PerfCounterRegistry {
   return {
     get enabled() { return enabled; },
     enable() { enabled = true; },
+    reset() { enabled = false; totals.clear(); pending.clear(); },
     add(name, n = 1) {
       if (!enabled) return;
       totals.set(name, (totals.get(name) ?? 0) + n);

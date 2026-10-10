@@ -57,6 +57,7 @@ export { type StallPhase, type StallPhaseHandle } from './stall-phase.js';
 // opened so the download overlaps think time instead of blocking first
 // geometry. The host app decides when (idle / intent) and affordability.
 export { prewarmSharedWasmModule } from './wasm-shared-module.js';
+export { compileSharedWasmModule } from './wasm-shared-module.js'; // parser host shares the canonical engine module (#7036)
 export { prewarmGeometryWorkers, releaseWarmGeometryWorkers, warmGeometryWorkerPoolStats } from './warm-pool.js'; // #7036
 export { prewarmMainThreadEngine } from './main-engine-init.js';
 export type { GeometryWorkerPoolStats } from './geometry-worker-pool.js';

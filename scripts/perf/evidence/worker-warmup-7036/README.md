@@ -1,13 +1,14 @@
 # Worker warm-up candidate (#7036)
 
 This preserves the original session's completed immediate and settled cold-load
-captures. The candidate starts engine initialization and creates fresh geometry
-workers while the file is read. Used workers are still terminated after each
-load; persistent reuse was rejected by the original session for retained memory.
+captures. The historical candidate started engine initialization and created fresh geometry
+workers while the file was read. Used workers were terminated after each
+load; that original retention experiment did not implement the later serialized
+reset and measured-admission mechanism.
 
 **Verdict: held for further measurement.** Worker initialization moves earlier,
 but first-visible and total-load results are mixed. Earlier worker readiness
-alone does not establish a user-visible speedup. Issue #7036 remains open. The candidate now defaults off and is enabled only
+alone does not establish a user-visible speedup. Issue #7036 remains open. The experiment defaults off and is enabled only
 with `?perf.warmPool=1` (or its documented global override). The preserved
 frozen-bundle captures predate this rollout guard.
 
@@ -18,9 +19,11 @@ Raw records are [`f-immediate.jsonl`](f-immediate.jsonl) and
 witness. The inherited captures have no retained JavaScript build manifest,
 device-health witness or proof that the machine was otherwise idle.
 
-The original batch continues under `flock /tmp/ifclite-perf.lock` from
-`/tmp/7036-rig/run-all.sh`, using frozen bundles in `/tmp/7036-dist-base` and
-`/tmp/7036-dist-branch`. Its repeat/federated stage overlapped local validation
+The original batch stalled for over 16 hours and was stopped during takeover
+on October 8, 2026. Its controller receipt and incomplete repeat records are
+preserved in `/home/louistrue/.t3/artifacts/7036-stalled-run-20261008`; they
+do not establish a completed run. It used frozen bundles in
+`/tmp/7036-dist-base` and `/tmp/7036-dist-branch`. Its repeat/federated stage overlapped local validation
 builds during takeover, so those rows must be retained as contaminated evidence
 and repeated on an idle machine. The large-file and cache-hit stages have not
 completed at this checkpoint.
@@ -34,8 +37,8 @@ Before accepting the candidate:
   evidence, and idle/peak memory as well as first-visible and total-load time.
 - Verify fresh-worker disposal, cancellation, failure recovery and bounded idle
   memory through the existing behavior tests.
-- Resolve the issue's persistent-reuse requirement explicitly: this candidate
-  only overlaps fresh worker creation and does not eliminate repeat-load spawn.
+- Qualify the persistent reset/reuse follow-up independently. These historical
+  captures only overlap fresh creation and do not prove repeat-load reuse.
 - Complete the campaign's review and rollout requirements before enabling or
   merging a user-visible optimization.
 

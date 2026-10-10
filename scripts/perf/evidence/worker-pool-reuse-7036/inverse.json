@@ -1,0 +1,15 @@
+{
+  "scope": "Actual CPU/WASM lifecycle oracle; not rendered viewer federation, real-GPU timing, or resident-memory acceptance",
+  "comparedWith": "corrected.json",
+  "rawReceiptSha256": "458e809c493cc3a18bc05ca653b80f31fdd21f6f5c1bf43a3521688a8d28d6ce",
+  "fixtureHashesIdentical": true,
+  "wasmSha256Identical": true,
+  "changedSourceSha256": {
+    "packages/geometry/src/geometry-parallel.ts": "3999a5c0245180cf90a2776794da85c40331be268f2eb2aaa19a8ba0602d41a7"
+  },
+  "changedReportFields": {
+    "spawnedAfterRepeat": 4,
+    "finalIdleBytes": 0
+  },
+  "unchangedOutputReports": true
+}

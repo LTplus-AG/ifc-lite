@@ -833,9 +833,12 @@ The meshes come back in the same frame and units as the load, so they can replac
 
 ## Experimental initialization overlap
 
-The warm-up candidate is opt-in with `?perf.warmPool=1`. It starts fresh
-geometry and prepass workers alongside a file read; its end-to-end performance
-verdict remains pending. It does not retain used workers across loads.
+The warm-up candidate is opt-in with `?perf.warmPool=1`. The existing idle
+boot scheduler prepares one geometry instance and one pre-pass instance on
+affordable connections. A file request prepares any additional workers required
+by the canonical worker-count policy; its end-to-end performance
+verdict remains pending. Completed workers may serve another load only after
+a serialized reset frees their model state and acknowledges a measured heap.
 
 Custom browser hosts can call `prewarmMainThreadEngine()` when a load is
 requested. It starts initialization without waiting; the normal loader joins
@@ -843,10 +846,30 @@ the same in-flight attempt and retries after a failure.
 `prewarmGeometryWorkers({ fileSizeMB, workerCountOverride, wasmUrl })` returns
 the number of fresh workers started, or zero when the flag is disabled, workers
 are unavailable, or compilation fails. It uses the existing memory-capped
-worker-count plan. Parallel processing leases and terminates those workers.
+worker-count plan. Parallel processing leases workers exclusively. Successful
+loads return reset workers; failures, cancellation, and abandoned generators
+terminate them. A worker with an unknown heap or a WASM heap above 64 MiB is
+recycled, and idle workers together stay within a 144 MiB booked ceiling.
 
 `releaseWarmGeometryWorkers(reason)` terminates idle workers and returns their
-count; it does not cancel an active load. Unused workers expire after sixty
+count; it does not cancel an active load. Hidden tabs and memory-pressure
+notifications drain idle workers, and already hidden documents admit no
+speculative workers. Unused workers expire after sixty
 seconds. `warmGeometryWorkerPoolStats()` returns `GeometryWorkerPoolStats`, or
-null before a pool exists. `idleBytes` is booked memory using an estimate per
-fresh worker, rather than a measurement of actual process memory.
+null before a pool exists. `spawned` counts creation; `prewarmed` counts measured
+initialization acknowledgements admitted to idle. Workers still initializing
+are not idle, and a load may take their queued initialization without spawning
+or initializing a second instance. `idleBytes` combines each admitted worker's
+measured WASM heap with 7 MiB of estimated worker overhead. Pending initializations
+reserve a 16 MiB booking until their acknowledgement, exposed separately as
+`warming` and `warmingReservedBytes`; unknown or oversized heaps
+are rejected before idle admission.
+It is not a measurement of actual process memory.
+
+Browser hosts can pass `wasmModulePromise: compileSharedWasmModule(wasmUrl)`
+to `WorkerParser.parseColumnar` from `@ifc-lite/parser/browser`. This joins
+the canonical per-binary compile while the parser starts immediately. A
+request-tagged control message delivers the module after compilation. The
+parser awaits it only for its own scan; a successful pre-pass index handoff
+avoids both the wait and scanner initialization. Cancellation settles immediately
+while compilation is pending. An already compiled `wasmModule` is also accepted.

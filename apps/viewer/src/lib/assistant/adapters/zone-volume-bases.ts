@@ -16,7 +16,7 @@ import { withInheritedTypeQuantities } from '@/lib/zones/inherited-quantities';
 import { allBasisBreakdowns, declaredVolumeBases, ZONE_QUANTITY_SET_NAME_PREFIX, validEntry, volumeBasisRatioNote } from '@/lib/zones';
 
 /** Shared public unit convention; unresolved declared units and unavailable context are distinct. */
-export const ZONE_VOLUME_UNIT_LIMITATIONS = 'When the project context is available but its VOLUMEUNIT is unresolved, implicit declared bases retain the existing Properties card scale-1 SI default; an m3 label does not prove a declared file unit or a measured conversion. When the current project unit context is unavailable, this evidence withholds declared bases, including explicit bases. With available project context, an independently resolved explicit native Unit retains its measured SI conversion; an unresolved explicit Unit is reported as unavailable rather than given a scale-1 default.';
+export const ZONE_VOLUME_UNIT_LIMITATIONS = 'When the project context is available but its VOLUMEUNIT is unresolved, implicit declared bases retain the existing Properties card scale-1 SI default; an m3 label does not prove a declared file unit or a measured conversion. When the current project unit context is unavailable, implicit declared bases are withheld. A basis with an independently resolved explicit native Unit retains its measured SI conversion; an unresolved explicit Unit is reported as unavailable rather than given a scale-1 default.';
 
 /** Declared shares belong to these exact native sources and overlay revisions,
  * including edits that do not publish a viewer mutationVersion. This walks
@@ -89,7 +89,7 @@ export function selectedZoneVolumeBreakdowns(
     let wholeRefusal: ReturnType<typeof zoneFactsFor>['refusal'] = null;
     if (!assignment.straddles) {
       const names = new Map(set.zones.map(zone => [zone.id, zone.name]));
-      const declared = scale === null ? [] : declaredVolumeBases(quantities, scale);
+      const declared = declaredVolumeBases(quantities, scale);
       for (const basis of ['mesh' as const, ...declared.map(value => value.basis)]) {
         const facts = zoneFactsFor(globalId, assignment, names, basis, scale, [...quantities], provedVolumes(), cache);
         if (basis === 'mesh') wholeRefusal = facts.refusal;
@@ -101,7 +101,7 @@ export function selectedZoneVolumeBreakdowns(
           ratioNote: basis === 'mesh' ? null : 'The declared total belongs to the home zone under the native whole-element assignment.' });
       }
     }
-    if (split) volumeBases.push(...allBasisBreakdowns(split, scale === null ? [] : declaredVolumeBases(quantities, scale)).map(basis => ({
+    if (split) volumeBases.push(...allBasisBreakdowns(split, declaredVolumeBases(quantities, scale)).map(basis => ({
       ...basis, zoneSetId: set.id, shareCount: basis.shares.length, shares: basis.shares.slice(0, shareLimit),
       unit: 'm3', ratioNote: volumeBasisRatioNote(basis.basis),
     })));

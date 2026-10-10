@@ -108,7 +108,7 @@ export const zonesAdapter: EvidenceAdapter = {
         const facts = zoneFactsFor(globalId, assignment, names, BASIS, 1, [], proved, apportioned);
         const ref = resolveEntityRef(globalId);
         const source = quantitySource(ref);
-        const declared = source.scale === null ? [] : declaredVolumeBases(source.quantities, source.scale);
+        const declared = declaredVolumeBases(source.quantities, source.scale);
         const element = describeElement(globalId, modelNames);
         const basisRows = declared.map(basis => ({ basis: basis.basis,
           ratioNote: assignment.straddles ? volumeBasisRatioNote(basis.basis)

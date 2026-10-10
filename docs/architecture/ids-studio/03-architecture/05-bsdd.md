@@ -36,7 +36,7 @@ The mapping plan is bounded by `BsddClassProperty` in `packages/sdk/src/namespac
 - Choose a dictionary (+ version) → tree of classes (with parent/child) → multi-select → options:
   - one spec per class, or one spec per related IFC entity with classification enumeration
   - include inherited properties from parent classes (bSDD class hierarchy) ✚, which existing converters lack
-  - property scope: required only / all
+  - property scope: all; "required only" remains unavailable until a qualified typed SDK/API extension supplies required/optional metadata with recorded payload fixtures (see §2.2). Missing metadata cannot classify a property as required or optional.
   - spec cardinality default
 - Preview: number of specs and facets, lint summary, and (if a model is loaded) funnel counts per spec.
 - Apply as one `bulk.fromBsddClass` transaction.

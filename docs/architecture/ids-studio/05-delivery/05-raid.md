@@ -7,7 +7,7 @@
 | R-02 | Op vocabulary churn breaks the agent and persisted histories | M | M | `opsVersion` + migrations; tool schemas generated from types; freeze v1 at end of C1 | Track A |
 | R-03 | Agent quality below targets | M | H | Eval-first (P-08 in C1); tool design over prompt tricks; circuit breaker cuts modes from beta | Track C |
 | R-04 | LLM cost too high for the free tier | M | M | Caching, effort per mode, budgets, quotas; BYOK default for heavy use | Track C |
-| R-05 | Gate rejects legitimate names due to schema-table gaps | M | H | Fill Qto tables (IDS-009); "use as custom" escape hatch with warning; telemetry on `gate_rejected{code}` | Track A |
+| R-05 | Missing quantity-set tables leave reserved `Qto_` grounding unverified | M | H | Fill and qualify IFC2X3/IFC4 quantity-set tables (IDS-009). The published P-02 gate leaves `Qto_` names unverified when that version has no quantity-set table; acceptance is not proof the name exists. Keep this limitation explicit; reserved names cannot use a custom override (FR-A05, ADR-003). | Track A |
 | R-06 | Lint false positives erode trust | M | H | Precision ≥ 95% gate; demote uncertain rules to info; suppressions with reasons | Track A |
 | R-07 | Spec ambiguity: our interpretation differs from other tools | H | M | Lint explains both readings; conformance dashboard; upstream issues; follow the corpus where it decides | Track A |
 | R-08 | Another tool ships bSDD + AI + live check first | M | M | Model loop + test suites are hard to copy; ship beta at month 6; public benchmark | Owner |

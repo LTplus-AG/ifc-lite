@@ -88,7 +88,7 @@ Operation tool schemas reuse **`getOpJsonSchema()` from `@ifc-lite/ids-authoring
 | `ids.lint` | `{ specIds? }` | `Diagnostic[]` (with quick fixes the agent can apply by `fixId`) |
 | `ids.apply_fix` | `{ diagnosticId, fixIndex }` | as `apply_ops` |
 | `ids.mark_unresolved` | `{ span, category, reason }` | — |
-| `ids.ask_user` | `{ question, choices: [{label, ops, rationale}] (2–4) }` | the user's choice (UI) or the first choice (headless with `--non-interactive`) |
+| `ids.ask_user` | `{ question, choices: [{label, ops, rationale}] (2–4) }` | the user's explicit choice (UI); headless `--non-interactive` returns the unresolved clarification and alternatives without choosing or applying an op batch (FR-F04) |
 | `ids.regex` | `{ describe?: string, pattern?: string, examples?: {match[], nomatch[]} }` | pattern + explanation + test results (deterministic synthesiser first; model fallback) |
 
 **Why so many read tools?** Each is cheap and precise, so the model asks instead of guessing. Lookup results are small (abridged cards). The schema "orientation card" in the cached prefix teaches *how* IFC is organised (occurrence vs type, psets vs qtos, SI units, IDS facet semantics), but contains **no lists of names**.

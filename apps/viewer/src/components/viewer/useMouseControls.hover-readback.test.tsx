@@ -16,8 +16,10 @@ import { mousePointer, mountMouseControls, cleanupMouseControls } from '@/test/m
 const hit = (expressId: number): PickResult => ({ expressId, modelIndex: 0, worldXYZ: { x: 1, y: 2, z: 3 } });
 function deferred() {
   let finish: ((value: PickResult | null) => void) | undefined;
-  const promise = new Promise<PickResult | null>(resolve => { finish = resolve; });
-  return { promise, resolve(value: PickResult | null) { assert.ok(finish); finish(value); } };
+  let fail: ((error: Error) => void) | undefined;
+  const promise = new Promise<PickResult | null>((resolve, reject) => { finish = resolve; fail = reject; });
+  return { promise, resolve(value: PickResult | null) { assert.ok(finish); finish(value); },
+    reject(error: Error) { assert.ok(fail); fail(error); } };
 }
 
 beforeEach(() => {
@@ -26,11 +28,11 @@ beforeEach(() => {
 });
 afterEach(() => { cleanupMouseControls(); useViewerStore.getState().clearHover(); });
 
-function probe(t: TestContext) {
+function probe(t: TestContext, hoverThrottleMs = 0) {
   const calls: Array<ReturnType<typeof deferred>> = [];
   const options = { isStreaming: false, hiddenIds: new Set<number>(), isolatedIds: null } satisfies PickOptions;
   const ui = mountMouseControls({
-    hoverTooltipsEnabledRef: { current: true }, hoverThrottleMs: 0,
+    hoverTooltipsEnabledRef: { current: true }, hoverThrottleMs,
     setHoverState: state => useViewerStore.getState().setHoverState(state),
     clearHover: () => useViewerStore.getState().clearHover(),
     getPickOptions: () => options,
@@ -87,15 +89,78 @@ for (const loss of ['leave', 'cancel', 'unmount'] as const) {
 }
 
 it('throttled pointer movement retires the old position (#6881 hover)', async t => {
-  const q = probe(t); q.move();
-  // A far-future last-check value guarantees the second event is throttled even
-  // with the probe's zero throttle; no wall-clock sleep or deadline extension.
-  q.params.lastHoverCheckRef.current = Number.MAX_SAFE_INTEGER;
-  act(() => { q.canvas.dispatchEvent(mousePointer('pointermove', 0, 620, 330, { buttons: 0 })); });
+  t.mock.timers.enable({ apis: ['Date', 'setTimeout'], now: 1000 });
+  const q = probe(t, 50); q.move();
+  act(() => { t.mock.timers.tick(10); q.canvas.dispatchEvent(mousePointer('pointermove', 0, 620, 330, { buttons: 0 })); });
   assert.equal(q.calls.length, 1);
   await q.finish(0, hit(101));
   assert.equal(useViewerStore.getState().hoverState.entityId, null);
 });
+
+it('the final throttled pointer position gets a trailing mounted pick (#6881, #7389 review)', async t => {
+  t.mock.timers.enable({ apis: ['Date', 'setTimeout'], now: 1000 });
+  const p = probe(t, 50); p.move();
+  act(() => { t.mock.timers.tick(10); p.canvas.dispatchEvent(mousePointer('pointermove', 0, 620, 380, { buttons: 0 })); });
+  await p.finish(0, hit(101));
+  assert.equal(useViewerStore.getState().hoverState.entityId, null);
+  act(() => { t.mock.timers.tick(39); });
+  assert.equal(p.calls.length, 1, 'the original throttle interval remains bounded');
+  act(() => { t.mock.timers.tick(1); });
+  assert.equal(p.calls.length, 2, 'stopping the pointer must not starve its replacement pick');
+  assert.deepEqual(p.pick.mock.calls[1].arguments.slice(0, 2), [600, 350]);
+  await p.finish(1, hit(202));
+  assert.equal(useViewerStore.getState().hoverState.entityId, 202);
+  assert.equal(useViewerStore.getState().hoverState.screenX, 620);
+  assert.equal(useViewerStore.getState().hoverState.screenY, 380);
+});
+
+it('a pointer burst coalesces to its newest trailing position (#6881, #7389 review)', async t => {
+  t.mock.timers.enable({ apis: ['Date', 'setTimeout'], now: 1000 });
+  const p = probe(t, 50); p.move();
+  for (const x of [520, 620, 720]) {
+    act(() => { t.mock.timers.tick(10); p.canvas.dispatchEvent(mousePointer('pointermove', 0, x, 330, { buttons: 0 })); });
+  }
+  act(() => { t.mock.timers.tick(20); });
+  assert.equal(p.calls.length, 2, 'one leading and one latest trailing pick');
+  assert.deepEqual(p.pick.mock.calls[1].arguments.slice(0, 2), [700, 300]);
+  await p.finish(1, hit(202));
+  await p.finish(0, null);
+  assert.equal(useViewerStore.getState().hoverState.entityId, 202);
+  assert.equal(useViewerStore.getState().hoverState.screenX, 720);
+});
+
+for (const loss of ['leave', 'down', 'cancel', 'unmount'] as const) {
+  it(`pending trailing hover is canceled by ${loss} (#6881, #7389 review)`, async t => {
+    t.mock.timers.enable({ apis: ['Date', 'setTimeout'], now: 1000 });
+    const p = probe(t, 50); p.move();
+    act(() => { t.mock.timers.tick(10); p.canvas.dispatchEvent(mousePointer('pointermove', 0, 620, 330, { buttons: 0 })); });
+    if (loss === 'unmount') cleanupMouseControls();
+    else act(() => { p.canvas.dispatchEvent(loss === 'leave' ? new MouseEvent('mouseleave')
+      : mousePointer(loss === 'down' ? 'pointerdown' : 'pointercancel', 0, 620, 330, { buttons: loss === 'down' ? 1 : 0 })); });
+    act(() => { t.mock.timers.tick(100); });
+    assert.equal(p.calls.length, 1, 'retired timers must not launch a renderer pick');
+    await p.finish(0, hit(101));
+    assert.equal(useViewerStore.getState().hoverState.entityId, null);
+  });
+}
+
+for (const change of ['disabled', 'tool', 'renderer', 'camera', 'bounds'] as const) {
+  it(`pending trailing hover refuses changed ${change} ownership (#6881, #7389 review)`, async t => {
+    t.mock.timers.enable({ apis: ['Date', 'setTimeout'], now: 1000 });
+    const p = probe(t, 50); p.move();
+    act(() => { t.mock.timers.tick(10); p.canvas.dispatchEvent(mousePointer('pointermove', 0, 620, 330, { buttons: 0 })); });
+    if (change === 'disabled') p.params.hoverTooltipsEnabledRef.current = false;
+    if (change === 'tool') p.params.activeToolRef.current = 'section';
+    if (change === 'renderer') p.params.rendererRef.current = null;
+    if (change === 'camera') p.camera.setPosition(1, 2, 3);
+    if (change === 'bounds') p.canvas.getBoundingClientRect = () => ({ left: 30, top: 30, width: 800, height: 600,
+      right: 830, bottom: 630, x: 30, y: 30, toJSON: () => ({}) });
+    act(() => { t.mock.timers.tick(100); });
+    assert.equal(p.calls.length, 1, 'validity is checked before deferred GPU work begins');
+    await p.finish(0, hit(101));
+    assert.equal(useViewerStore.getState().hoverState.entityId, null);
+  });
+}
 
 for (const change of ['disabled', 'tool', 'renderer'] as const) {
   it(`late hover cannot survive ${change} ownership change (#6881 hover)`, async t => {
@@ -107,3 +172,17 @@ for (const change of ['disabled', 'tool', 'renderer'] as const) {
     assert.equal(useViewerStore.getState().hoverState.entityId, null);
   });
 }
+
+// A rejected renderer operation is an application failure boundary, not native device-loss proof.
+it('a failed trailing readback clears current hover without an unhandled rejection (#6881, #7389 review)', async t => {
+  t.mock.timers.enable({ apis: ['Date', 'setTimeout'], now: 1000 });
+  const warn = t.mock.method(console, 'warn', () => {});
+  const p = probe(t, 50); p.move(); await p.finish(0, hit(101));
+  assert.equal(useViewerStore.getState().hoverState.entityId, 101);
+  act(() => { t.mock.timers.tick(10); p.canvas.dispatchEvent(mousePointer('pointermove', 0, 620, 330, { buttons: 0 })); });
+  act(() => { t.mock.timers.tick(40); });
+  assert.equal(p.calls.length, 2);
+  await act(async () => { p.calls[1].reject(new Error('renderer readback unavailable')); await Promise.resolve(); });
+  assert.equal(useViewerStore.getState().hoverState.entityId, null);
+  assert.equal(warn.mock.calls.length, 1);
+});

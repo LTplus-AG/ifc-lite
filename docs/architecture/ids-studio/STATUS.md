@@ -2,11 +2,13 @@
 
 Single source of truth for progress. Update it in the campaign PR (`claude/stoic-cannon-6hceqo`) whenever a pitch PR changes state. Legend: ⬜ todo · 🟨 in progress · 🟦 in review (PR ready) · ✅ merged · ⏸ blocked.
 
-_Last updated: 2026-10-09 (session 1 resumed after restart: five interrupted pitches preserved as WIP, see session log)._
+_Last updated: 2026-10-10 (recovery order prepared under maintainer instruction; implementation qualification remains pending)._
 
 ## Pitches
 
 Umbrella PR: #7143 (this tracker).
+
+The [2026-10-10 recovery plan](RECOVERY.md) pins the preserved heads, dependency order, bounded verification steps and cross-pitch contracts. Preparation can continue during other campaign measurements; heavy execution requires the shared reservation. Pitch acceptance below is unchanged.
 
 | Pitch | Branch | PR | State | Notes |
 |---|---|---|---|---|

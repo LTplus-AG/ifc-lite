@@ -2,6 +2,8 @@
 
 Read this first if you are picking the campaign up from someone else (human or agent). It tells you where everything is, how work is organised, and how to continue without asking anyone.
 
+The [2026-10-10 recovery plan](RECOVERY.md) gives the preserved source heads and the next qualification order. It distinguishes preparation, source qualification, hosted CI and actual feature acceptance.
+
 ## 1. What the campaign is
 A clean-room rewrite of IDS authoring in ifc-lite: an IDS Studio inside the viewer that is grounded in the IFC schema, bSDD and loaded models, plus an AI agent, CLI, MCP and SDK surfaces. The *why* and *what* are in [`README.md`](README.md); the *how* is in [`03-architecture/`](03-architecture/) and the ADRs in [`04-decisions/`](04-decisions/).
 

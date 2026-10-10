@@ -879,3 +879,11 @@ Pass current effective `IfcProject` ids as `projectIds`, excluding deleted or
 retyped projects with the canonical `iterateEffectiveEntities` inventory. The
 `isDeleted` callback filters assignment and unit references; it does not filter
 the project inventory supplied by the caller.
+
+
+Declared quantity units take precedence over project units. The canonical
+`quantitySiScale` uses a resolved member `Unit` before the project assignment.
+If an explicit native unit is present but cannot be resolved, the collected
+quantity retains `explicitUnitUnresolved: true`; its scale is unavailable
+(`NaN`), rather than silently inheriting a project scale. Consumers must not
+publish that raw value as a physical SI measurement.

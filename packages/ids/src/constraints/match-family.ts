@@ -23,7 +23,6 @@ import type {
   IDSSimpleValue,
   IDSPatternConstraint,
   IDSEnumerationConstraint,
-  IDSBoundsConstraint,
 } from '../types.js';
 
 import {
@@ -35,7 +34,7 @@ import {
 } from './comparators.js';
 import { isNumericXsdBase, isBooleanXsdBase } from './xsd-cast.js';
 import { translateXsdRegex, SUBTRACTION_UNSUPPORTED_REASON } from './xsd-regex.js';
-import { matchDigitFacets } from './digit-facets.js';
+import { matchBounds } from './match-bounds.js';
 import { assertGuardedRegexPattern, UnsafeRegexPatternError } from '@ifc-lite/regex-guard';
 
 /** Tolerance for the bounds matcher's exclusive comparators. */
@@ -301,94 +300,4 @@ function matchEnumeration(
     if (booleanResult !== undefined) return booleanResult;
     return false;
   });
-}
-
-/**
- * Match against numeric bounds
- */
-function matchBounds(
-  constraint: IDSBoundsConstraint,
-  actualValue: string | number | boolean
-): boolean {
-  // A facet element was present in the source `<xs:restriction>` but
-  // its `@value` could not be parsed (typo, wrong decimal separator, a
-  // negative digit-count facet, …). `parseRestriction` dropped it to
-  // `undefined` the same as a facet that was never present at all —
-  // which would otherwise make this an unconditional pass (an
-  // all-`undefined` bounds constraint satisfies every numeric value).
-  // Fail closed instead: we cannot verify compliance against a
-  // restriction we could not fully parse, so no value passes until the
-  // IDS is corrected. See `getBoundsMismatchReason` for the
-  // author-facing explanation and `audit/coherence` for the
-  // corresponding lint diagnostic.
-  if (constraint.unparseableFacets !== undefined && constraint.unparseableFacets.length > 0) {
-    return false;
-  }
-
-  // String-length facets (xs:length / xs:minLength / xs:maxLength)
-  // operate on the textual length, not on numeric magnitude. When any
-  // of them are present, evaluate the length constraints first.
-  if (
-    constraint.length !== undefined ||
-    constraint.minLength !== undefined ||
-    constraint.maxLength !== undefined
-  ) {
-    const str = String(actualValue);
-    if (constraint.length !== undefined && str.length !== constraint.length) {
-      return false;
-    }
-    if (constraint.minLength !== undefined && str.length < constraint.minLength) {
-      return false;
-    }
-    if (constraint.maxLength !== undefined && str.length > constraint.maxLength) {
-      return false;
-    }
-    // Length-only restrictions don't impose numeric bounds; if the
-    // constraint also carries min/max/totalDigits/fractionDigits we
-    // fall through to the numeric check below (rare in practice).
-    if (
-      constraint.minInclusive === undefined &&
-      constraint.maxInclusive === undefined &&
-      constraint.minExclusive === undefined &&
-      constraint.maxExclusive === undefined &&
-      constraint.totalDigits === undefined &&
-      constraint.fractionDigits === undefined
-    ) {
-      return true;
-    }
-  }
-
-  const num =
-    typeof actualValue === 'number'
-      ? actualValue
-      : parseFloat(String(actualValue));
-
-  if (isNaN(num)) return false;
-
-  if (
-    constraint.minInclusive !== undefined &&
-    num < constraint.minInclusive
-  ) {
-    return false;
-  }
-
-  if (
-    constraint.maxInclusive !== undefined &&
-    num > constraint.maxInclusive
-  ) {
-    return false;
-  }
-
-  if (constraint.minExclusive !== undefined && num <= constraint.minExclusive) {
-    return false;
-  }
-
-  if (constraint.maxExclusive !== undefined && num >= constraint.maxExclusive) {
-    return false;
-  }
-
-  const digitsOk = matchDigitFacets(constraint, actualValue);
-  if (digitsOk === false) return false;
-
-  return true;
 }

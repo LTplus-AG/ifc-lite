@@ -186,6 +186,8 @@ describe('idsToRuleSet — blocks what has no rule equivalent, with the reason (
     ['attribute name pattern', spec('<attribute cardinality="required"><name><xs:restriction base="xs:string"><xs:pattern value="Desc.*"/></xs:restriction></name></attribute>'),
       /attribute name given as a pattern restriction/],
     ['length restriction', spec(property('<value><xs:restriction base="xs:string"><xs:minLength value="3"/></xs:restriction></value>')), /length and digit restrictions/],
+    // #7399: a date bound is no longer read as its year, so it has no numeric rule to become.
+    ['date bound', spec(property('<value><xs:restriction base="xs:date"><xs:minInclusive value="2024-01-01"/></xs:restriction></value>')), /date, time or duration bound/],
     ['classification code', spec('<classification cardinality="required"><value><simpleValue>Ss_25</simpleValue></value></classification>'), /classification code check/],
     ['entity in requirements', spec('<entity><name><simpleValue>IFCWALL</simpleValue></name></entity>'), /entity facet in the requirements/],
     ['no requirements', `<specification name="S" ifcVersion="IFC4">${WALLS}</specification>`, /without requirements/],

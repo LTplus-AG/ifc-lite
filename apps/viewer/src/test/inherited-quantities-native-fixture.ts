@@ -10,6 +10,7 @@ import { generateIfcGuid } from '@ifc-lite/encoding';
 import { useViewerStore } from '@/store';
 import { seedDeclaredZoneWall } from '@/test/zone-declared-fixture';
 import { getOrCreateMutationView } from '@/sdk/adapters/mutation-view';
+import { getMaxExpressId } from '@/hooks/ingest/viewerModelIngest';
 import { editedModelBytes } from '@/lib/export/edited-model-bytes';
 
 export const parse = (bytes: Uint8Array) => new IfcParser().parseColumnar(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength), { disableWorkerScan: true });
@@ -147,6 +148,29 @@ export async function prepareQuantityUnitRefusal(fixture: NativeQuantityFixture,
  const { f, store, a, view } = fixture;
   const editor = new StoreEditor(store, view);
   const si = () => editor.addEntity('IfcSIUnit', ['*', '.VOLUMEUNIT.', null, '.CUBIC_METRE.']).expressId;
+  if (kind === 'oversized') {
+   const units = Array.from({ length: 513 }, si);
+   view.setPositionalAttribute(a.volume, 2, `#${units[0]}`);
+   const quantities = [a.volume, ...units.slice(1).map((unit, index) => editor.addEntity('IfcQuantityVolume',
+    store.schemaVersion === 'IFC2X3' ? [`UnitReadWitness${index}`, null, `#${unit}`, 1]
+      : [`UnitReadWitness${index}`, null, `#${unit}`, 1, null]).expressId)];
+   view.setPositionalAttribute(a.qto, 5, quantities.map(id => `#${id}`));
+   view.createQuantitySet(f.id, 'Native occurrence quantities', [{ name: 'NetVolume', value: 25, quantityType: QuantityType.Volume }]);
+   const exported = await parse(editedModelBytes(store, view));
+   assert.deepEqual(exported.getEntity(a.qto)?.attributes[5], quantities, 'native qto preserves all 513 distinct quantity references');
+   const nativeQuantities = extractTypeQuantitiesOnDemand(exported, f.id)?.quantities.flatMap(set => set.quantities);
+   assert.ok(nativeQuantities); assert.equal(nativeQuantities.length, 513);
+   assert.equal(nativeQuantities[0]?.name, 'NetVolume'); assert.equal(nativeQuantities[0]?.value, 10);
+   for (const quantity of nativeQuantities) assert.equal(quantity.explicitUnitSiScale, 1, 'every native member has a supported explicit cubic-metre unit');
+   for (const unit of units) assert.deepEqual(exported.getEntity(unit)?.attributes.slice(1), ['.VOLUMEUNIT.', null, '.CUBIC_METRE.']);
+   assert.equal(new Set(units).size, 513, '513 unique unit dependencies exceed the unchanged 512 current-unit read cap');
+   assert.equal(net(extractQuantitiesOnDemand(exported, f.id)), 25);
+   const model = useViewerStore.getState().models.get('arch'); assert.ok(model);
+   useViewerStore.setState({ models: new Map([['arch', { ...model, ifcDataStore: exported, maxExpressId: getMaxExpressId(exported, model.geometryResult?.meshes ?? [], model.geometryResult?.pointClouds ?? []) }]]), ifcDataStore: exported,
+    mutationViews: new Map(), storeEditors: new Map() });
+   const current = getOrCreateMutationView(useViewerStore, 'arch'); assert.ok(current);
+   return { ...fixture, store: exported, view: current };
+  }
   let unit: number;
   if (kind === 'unsupported') {
    const dimensions = editor.addEntity('IfcDimensionalExponents', [3, 0, 0, 0, 0, 0, 0]).expressId;
@@ -154,12 +178,11 @@ export async function prepareQuantityUnitRefusal(fixture: NativeQuantityFixture,
   } else if (kind === 'deleted') {
    unit = si(); view.deleteEntity(unit);
   } else {
-   // The cycle is deliberately malformed. The large graph has supported,
-   // schema-shaped length factors: one cubic factor and neutral zero powers.
+   // This cycle is deliberately malformed; it is not a valid-graph cap witness.
    unit = editor.addEntity('IfcDerivedUnit', [[], '.USERDEFINED.', 'Native volume']).expressId;
-   const component = kind === 'cyclic' ? unit : editor.addEntity('IfcSIUnit', ['*', '.LENGTHUNIT.', null, '.METRE.']).expressId;
-   const elements = Array.from({ length: kind === 'cyclic' ? 1 : 513 }, (_, index) =>
-    editor.addEntity('IfcDerivedUnitElement', [`#${component}`, kind === 'cyclic' ? 1 : index === 0 ? 3 : 0]).expressId);
+   const component = unit;
+   const elements = Array.from({ length: 1 }, () =>
+    editor.addEntity('IfcDerivedUnitElement', [`#${component}`, 1]).expressId);
    view.setPositionalAttribute(unit, 0, elements.map(id => `#${id}`));
   }
   view.setPositionalAttribute(a.volume, 2, `#${unit}`);
@@ -170,9 +193,7 @@ export async function prepareQuantityUnitRefusal(fixture: NativeQuantityFixture,
    // @raw-entity-enumeration-ok independent reparse asserts the exported source omits the deleted unit, without a live view.
    assert.equal(exported.entityIndex.byId.has(unit), false, 'native exported unit is deleted');
   } else assert.ok(exported.getEntity(unit), 'refusal graph is present in the actual native export');
-  if (kind === 'oversized') assert.equal(extractTypeQuantitiesOnDemand(exported, f.id)?.quantities
-   .flatMap(set => set.quantities).find(q => q.name === 'NetVolume')?.explicitUnitSiScale, 1,
-   'independent source reparse resolves every supported factor before current capture enforces its read cap');
+  return fixture;
 }
 
 export async function prepareNewProjectContext(fixture: NativeQuantityFixture) {

@@ -21,8 +21,8 @@ export function snapshotFrom<Message extends ReviewMessage>(sources: readonly Fi
   for (const source of sources) {
     try {
       const result = source.collect(models);
-      runs.push(...result.runs);
-      findings.push(...result.findings);
+      for (const run of result.runs) runs.push(run);
+      for (const finding of result.findings) findings.push(finding);
     } catch (error) {
       onFailure?.(source.kind, error);
       failed.push({ source: source.kind, message: error instanceof Error ? error.message : String(error) });

@@ -17,7 +17,7 @@ import type { SourceText } from './source-texts';
 import type { Passage, SpanCheck } from './spans';
 
 export type RequirementTarget = 'ids' | 'geometry' | 'manual' | 'unresolved';
-export type UnresolvedReason = 'span' | 'source-missing' | 'source-changed' | 'property' | 'operator' | 'value' | 'unit' | 'native';
+export type UnresolvedReason = 'span' | 'source-missing' | 'source-changed' | 'scope' | 'property' | 'operator' | 'value' | 'unit' | 'native';
 
 /** The attached text a verified span quotes, as it is now: its id, title and content revision. */
 export interface SourceRevision { source: string; title: string; revision: string; characters: number }
@@ -30,7 +30,7 @@ export interface ClassifiedRequirement {
   reason?: UnresolvedReason;
   /** The native validator's own refusal, for `native`. */
   detail?: string;
-  /** Set once the span verified against an unchanged source. */
+  /** Set whenever the span verified against an unchanged source, whatever the target. */
   source?: SourceRevision;
 }
 
@@ -79,15 +79,20 @@ const GEOMETRY_OPERATORS = new Set(['equals', 'notEquals', 'atLeast', 'atMost'])
 
 /** Shape-level target; the native validators still have the last word (see `requirement-dispatch.ts`). */
 export function classifyRequirement(requirement: ExtractedRequirement, check: SpanCheck, source: SourceRevision | 'source-missing' | 'source-changed'): ClassifiedRequirement {
-  const unresolved = (reason: UnresolvedReason): ClassifiedRequirement => ({ requirement, check, target: 'unresolved', reason });
-  if (check.status !== 'verified') return unresolved('span');
-  if (typeof source === 'string') return unresolved(source);
+  if (check.status !== 'verified') return { requirement, check, target: 'unresolved', reason: 'span' };
+  if (typeof source === 'string') return { requirement, check, target: 'unresolved', reason: source };
+  // From here the span verified against an unchanged source: every outcome keeps that provenance.
+  const unresolved = (reason: UnresolvedReason): ClassifiedRequirement => ({ requirement, check, target: 'unresolved', reason, source });
   const resolved = (target: RequirementTarget): ClassifiedRequirement => ({ requirement, check, target, source });
   const { appliesTo, property, value, unit } = requirement;
   // Nothing names what to check on which elements: a person checks it, from the document.
   if (!appliesTo?.ifcClass || !property) return resolved('manual');
+  // A linked-data class narrows the IFC class; checking the whole IFC class would widen the requirement.
+  if (appliesTo.ontologyClass !== undefined) return unresolved('scope');
   const target = propertyTarget(property);
   if (!target) return unresolved('property');
+  // A stated value with no comparison (or "exists") is never reduced to an existence check that drops it.
+  if (value !== undefined && (requirement.operator === undefined || requirement.operator === 'exists')) return unresolved('value');
   const operator = requirement.operator ?? 'exists';
   if (target.kind === 'property' && target.set.startsWith('Qto_') && GEOMETRY_OPERATORS.has(operator)) {
     if (typeof value !== 'number') return unresolved('value');

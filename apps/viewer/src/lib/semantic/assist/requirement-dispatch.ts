@@ -14,6 +14,7 @@
  * survives saving, export and reload. Nothing runs or saves here.
  */
 
+import type { IFCVersion } from '@ifc-lite/ids';
 import { parseIdsProposal, type IdsProposal } from '@/lib/check-authoring/ids-proposal';
 import { parseRulesProposal, type RulesProposal } from '@/lib/check-authoring/rules-proposal';
 import { parseDocumentOutline, type DocumentOutline } from '@/lib/check-authoring/document-outline';
@@ -38,6 +39,7 @@ const UNRESOLVED_NOTE: Record<UnresolvedReason, string> = {
   span: 'its source quote does not match the attached text',
   'source-missing': 'its source text is no longer attached',
   'source-changed': 'its source text changed after the assistant read it',
+  scope: 'it applies to a linked-data class, which a check on the whole IFC class would widen',
   property: 'the property is not named as PropertySet.Property or an IFC attribute',
   operator: 'no native check expresses this comparison',
   value: 'the value does not fit the comparison',
@@ -89,8 +91,8 @@ function geometryRule(requirement: ExtractedRequirement, source: SourceRevision)
       op: NUMERIC[requirement.operator as keyof typeof NUMERIC], value: Number((requirement.value * factor).toPrecision(12)), valueUnit: 'si' }]) } };
 }
 
-const idsAnswer = (title: string, specifications: unknown[]) =>
-  JSON.stringify({ version: 1, kind: 'ids.specifications', title, ifcVersions: ['IFC4'], specifications });
+const idsAnswer = (title: string, specifications: unknown[], ifcVersions: readonly IFCVersion[] = ['IFC4']) =>
+  JSON.stringify({ version: 1, kind: 'ids.specifications', title, ifcVersions, specifications });
 const rulesAnswer = (title: string, rules: unknown[]) =>
   JSON.stringify({ version: 1, kind: 'rules.proposal', title, ruleSet: { version: 1, name: title, rules } });
 
@@ -107,7 +109,7 @@ export function qualifyRequirements(review: RequirementReview, passages: readonl
       else parseRulesProposal(rulesAnswer('Check', [geometryRule(requirement, classified.source)]));
       return classified;
     } catch (error) {
-      return { requirement, check, target: 'unresolved', reason: 'native', detail: message(error) };
+      return { requirement, check, target: 'unresolved', reason: 'native', detail: message(error), source: classified.source };
     }
   });
 }
@@ -120,9 +122,16 @@ export interface NativeDrafts {
   refused: Array<{ target: 'ids' | 'geometry' | 'manual'; detail: string }>;
 }
 
+/** Where an item without a verified source claims to come from, labelled as unverified. */
+function citedNote(requirement: ExtractedRequirement): string {
+  const { span } = requirement;
+  return `Cited from ${span.source}, characters ${span.start}-${span.end}: "${span.quote}" (not verified against the attached text).`;
+}
+
 function documentItem(row: ClassifiedRequirement): { text: string; reason: string } {
   const { requirement } = row;
-  const text = clip(`${requirement.id}: ${requirement.statement}${row.source ? `\n${provenanceNote(requirement, row.source)}` : ''}`, 2000);
+  const origin = row.source ? provenanceNote(requirement, row.source) : citedNote(requirement);
+  const text = clip(`${requirement.id}: ${requirement.statement}\n${origin}`, 2000);
   if (row.target === 'manual') return { text, reason: 'Manual requirement: check it by inspection; no automatic result is recorded' };
   return { text, reason: clip(`Unresolved: ${UNRESOLVED_NOTE[row.reason ?? 'native']}${row.detail ? ` (${row.detail})` : ''}`, 500) };
 }
@@ -133,7 +142,8 @@ function documentItem(row: ClassifiedRequirement): { text: string; reason: strin
  * document as "not checked" items with their provenance, never with a
  * pass/fail result.
  */
-export function prepareNativeDrafts(proposal: SemanticRequirementProposal, classified: readonly ClassifiedRequirement[], excluded: ReadonlySet<string>): NativeDrafts {
+export function prepareNativeDrafts(proposal: SemanticRequirementProposal, classified: readonly ClassifiedRequirement[], excluded: ReadonlySet<string>,
+  ifcVersions: readonly IFCVersion[] = ['IFC4']): NativeDrafts {
   const included = classified.filter(row => !excluded.has(row.requirement.id));
   const refused: NativeDrafts['refused'] = [];
   const attempt = <T>(target: NativeDrafts['refused'][number]['target'], build: () => T): T | null => {
@@ -143,7 +153,7 @@ export function prepareNativeDrafts(proposal: SemanticRequirementProposal, class
   const idsRows = included.filter(row => row.target === 'ids' && row.source);
   const ruleRows = included.filter(row => row.target === 'geometry' && row.source);
   const documentRows = included.filter(row => row.target === 'manual' || row.target === 'unresolved');
-  const ids = idsRows.length ? attempt('ids', () => parseIdsProposal(idsAnswer(proposal.title, idsRows.map(row => idsSpecification(row.requirement, row.source!))))) : null;
+  const ids = idsRows.length ? attempt('ids', () => parseIdsProposal(idsAnswer(proposal.title, idsRows.map(row => idsSpecification(row.requirement, row.source!)), ifcVersions))) : null;
   const rules = ruleRows.length ? attempt('geometry', () => parseRulesProposal(rulesAnswer(proposal.title, ruleRows.map(row => geometryRule(row.requirement, row.source!))))) : null;
   const unsupported = [...documentRows.map(documentItem),
     ...proposal.unsupported.map(item => ({ text: item.text, reason: clip(`Not extracted as a requirement: ${item.reason}`, 500) }))];

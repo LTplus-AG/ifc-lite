@@ -10,14 +10,16 @@
  * is dispatched automatically.
  */
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Button } from '@/components/ui/button';
+import type { IFCVersion } from '@ifc-lite/ids';
 import { useTranslation, type TranslationKey } from '@/i18n';
+import { useViewerStore } from '@/store';
 import type { SemanticRequirementProposal } from '@/lib/semantic/assist/requirement-proposal';
 import type { RequirementReview } from '@/lib/semantic/assist/requirement-review';
 import { prepareNativeDrafts, qualifyRequirements, type NativeDrafts } from '@/lib/semantic/assist/requirement-dispatch';
-import type { ClassifiedRequirement, UnresolvedReason } from '@/lib/semantic/assist/requirement-targets';
-import { useSemanticSourceTexts } from '@/lib/semantic/assist/source-texts';
+import { sourceRevisionOf, type ClassifiedRequirement, type UnresolvedReason } from '@/lib/semantic/assist/requirement-targets';
+import { useSemanticSourceTexts, type SourceText } from '@/lib/semantic/assist/source-texts';
 import type { Passage } from '@/lib/semantic/assist/spans';
 import { IdsDraftReview } from '../check-authoring/IdsDraftReview';
 import { RulesDraftReview } from '../check-authoring/RulesDraftReview';
@@ -25,7 +27,7 @@ import { DocumentOutlineReview } from '../check-authoring/DocumentOutlineReview'
 
 const UNRESOLVED: Record<Exclude<UnresolvedReason, 'native'>, TranslationKey> = {
   span: 'semanticAssist.unresolvedSpan', 'source-missing': 'semanticAssist.unresolvedSourceMissing',
-  'source-changed': 'semanticAssist.unresolvedSourceChanged', property: 'semanticAssist.unresolvedProperty',
+  'source-changed': 'semanticAssist.unresolvedSourceChanged', scope: 'semanticAssist.unresolvedScope', property: 'semanticAssist.unresolvedProperty',
   operator: 'semanticAssist.unresolvedOperator', value: 'semanticAssist.unresolvedValue', unit: 'semanticAssist.unresolvedUnit',
 };
 const TARGET: Record<'ids' | 'geometry' | 'manual', TranslationKey> = {
@@ -43,23 +45,49 @@ function TargetLabel({ row }: { row: ClassifiedRequirement }) {
     {' '}{t('semanticAssist.unresolvedListed')}</span>;
 }
 
-/** The revision each dispatched requirement was prepared from; a draft is withdrawn once any of them no longer holds. */
-const revisions = (rows: readonly ClassifiedRequirement[]) =>
-  new Map(rows.map(row => [row.requirement.id, row.source ? `${row.source.source}:${row.source.revision}` : null]));
+/**
+ * The state of every source the drafts cite (included requirements and the
+ * listed unsupported items), whether or not its span verified: a draft is
+ * withdrawn once any of them reads differently.
+ */
+function citedSources(proposal: SemanticRequirementProposal, included: readonly ClassifiedRequirement[], passages: readonly Passage[], sources: readonly SourceText[]): string {
+  const ids = new Set([...included.map(row => row.requirement.span.source), ...proposal.unsupported.flatMap(item => item.span ? [item.span.source] : [])]);
+  return [...ids].sort().map(id => {
+    const state = sourceRevisionOf(id, passages, sources);
+    return `${id}:${typeof state === 'string' ? state : state.revision}`;
+  }).join('|');
+}
+
+/** IDS versions of the loaded IFC models (IFC5 has no IDS version); IFC4 when none is loaded. */
+function loadedIfcVersions(models: ReadonlyMap<string, { schemaVersion: string }>): IFCVersion[] {
+  const versions = new Set<IFCVersion>();
+  for (const { schemaVersion } of models.values()) {
+    if (schemaVersion === 'IFC2X3' || schemaVersion === 'IFC4') versions.add(schemaVersion);
+    else if (schemaVersion === 'IFC4X3') versions.add('IFC4X3_ADD2');
+  }
+  return versions.size ? [...versions] : ['IFC4'];
+}
 
 export function RequirementDispatch({ proposal, review, passages }: { proposal: SemanticRequirementProposal; review: RequirementReview; passages: readonly Passage[] }) {
   const { t } = useTranslation();
   const sources = useSemanticSourceTexts(s => s.sources);
   const classified = useMemo(() => qualifyRequirements(review, passages, sources), [review, passages, sources]);
   const [excluded, setExcluded] = useState<ReadonlySet<string>>(new Set());
-  const [prepared, setPrepared] = useState<{ drafts: NativeDrafts; from: Map<string, string | null>; included: string[] } | null>(null);
-  // Re-checked on every render: a source changed or detached after preparing withdraws the unsaved drafts.
-  const now = revisions(classified);
-  const stale = prepared !== null && prepared.included.some(id => prepared.from.get(id) !== now.get(id));
+  const [prepared, setPrepared] = useState<{ drafts: NativeDrafts; cited: string; included: ClassifiedRequirement[] } | null>(null);
+  const [withdrawn, setWithdrawn] = useState(false);
+  // Re-checked on every render: a cited source changed or detached after preparing withdraws the unsaved drafts.
+  const stale = prepared !== null && citedSources(proposal, prepared.included, passages, sources) !== prepared.cited;
+  useEffect(() => {
+    // Withdrawn drafts are gone for good: the reviewer prepares them again from the current classification.
+    if (stale) { setPrepared(null); setWithdrawn(true); }
+  }, [stale]);
   const prepare = () => {
-    const drafts = prepareNativeDrafts(proposal, classified, excluded);
-    setPrepared({ drafts, from: revisions(classified), included: classified.map(row => row.requirement.id).filter(id => !excluded.has(id)) });
+    const included = classified.filter(row => !excluded.has(row.requirement.id));
+    const drafts = prepareNativeDrafts(proposal, classified, excluded, loadedIfcVersions(useViewerStore.getState().models));
+    setPrepared({ drafts, cited: citedSources(proposal, included, passages, sources), included });
+    setWithdrawn(false);
   };
+  const active = prepared !== null && !stale ? prepared : null;
   const included = classified.length - excluded.size;
   return <section aria-label={t('semanticAssist.dispatchTitle')} className="space-y-1.5 rounded border border-border p-1.5">
     <p className="font-medium">{t('semanticAssist.dispatchTitle')}</p>
@@ -67,7 +95,7 @@ export function RequirementDispatch({ proposal, review, passages }: { proposal: 
     <ul className="space-y-1">{classified.map(row => {
       const id = row.requirement.id;
       return <li key={id} className="flex items-start gap-1.5">
-        <input type="checkbox" id={`dispatch-${id}`} className="mt-0.5" checked={!excluded.has(id)} disabled={prepared !== null}
+        <input type="checkbox" id={`dispatch-${id}`} className="mt-0.5" checked={!excluded.has(id)} disabled={active !== null}
           aria-label={t('semanticAssist.include', { id })}
           onChange={event => setExcluded(previous => {
             const next = new Set(previous);
@@ -77,17 +105,17 @@ export function RequirementDispatch({ proposal, review, passages }: { proposal: 
         <label htmlFor={`dispatch-${id}`} className="break-words"><span className="font-mono font-semibold">{id}</span> <TargetLabel row={row} /></label>
       </li>;
     })}</ul>
-    {!prepared && <Button size="sm" variant="outline" className="h-7" disabled={!passages.length || (included === 0 && !proposal.unsupported.length)}
+    {withdrawn && <p role="alert" className="rounded border border-amber-500/40 bg-amber-500/10 p-2">{t('semanticAssist.draftsWithdrawn')}</p>}
+    {!active && <Button size="sm" variant="outline" className="h-7" disabled={!passages.length || (included === 0 && !proposal.unsupported.length)}
       onClick={prepare}>{t('semanticAssist.prepareDrafts')}</Button>}
-    {prepared && stale && <p role="alert" className="rounded border border-amber-500/40 bg-amber-500/10 p-2">{t('semanticAssist.draftsWithdrawn')}</p>}
-    {prepared && !stale && <>
+    {active && <>
       <p aria-live="polite" className="text-muted-foreground">{t('semanticAssist.draftsPrepared')}</p>
-      {prepared.drafts.refused.map(({ target, detail }) => <p key={target} role="alert" className="rounded border border-destructive/40 bg-destructive/10 p-2 text-destructive break-words">
+      {active.drafts.refused.map(({ target, detail }) => <p key={target} role="alert" className="rounded border border-destructive/40 bg-destructive/10 p-2 text-destructive break-words">
         {t(REFUSED[target], { detail })}</p>)}
-      {prepared.drafts.ids && <IdsDraftReview initial={prepared.drafts.ids} />}
-      {prepared.drafts.rules && <RulesDraftReview initial={prepared.drafts.rules} />}
+      {active.drafts.ids && <IdsDraftReview initial={active.drafts.ids} />}
+      {active.drafts.rules && <RulesDraftReview initial={active.drafts.rules} />}
       {/* No validation report backs these drafts: the outline holds only text and not-checked items. */}
-      {prepared.drafts.document && <DocumentOutlineReview initial={prepared.drafts.document} evidence={null} />}
+      {active.drafts.document && <DocumentOutlineReview initial={active.drafts.document} evidence={null} />}
     </>}
   </section>;
 }

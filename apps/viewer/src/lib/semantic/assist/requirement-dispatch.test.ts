@@ -37,14 +37,53 @@ test('#7375 each requirement gets one explicit target, or the reason it has none
     door('H', { property: 'Name', operator: 'matches', value: 'D-[0-9]+' }, 'D-[0-9]+'),
     door('I', { property: 'Name', operator: 'equals', value: 'D-1', unit: 'mm' }),
     door('J', { property: 'Qto_DoorBaseQuantities.Width', operator: 'atMost', value: 2, unit: 'furlong' }, 'at least 900 mm'),
+    { ...door('K', { property: 'Pset_DoorCommon.FireRating', operator: 'exists' }), appliesTo: { ifcClass: 'IfcDoor', ontologyClass: 'https://example.org/FireDoor' } },
   ]);
   assert.deepEqual(rows.map(row => [row.requirement.id, row.target, row.reason ?? null]), [
     ['A', 'ids', null], ['B', 'geometry', null], ['C', 'unresolved', 'unit'], ['D', 'unresolved', 'property'],
     ['E', 'unresolved', 'operator'], ['F', 'unresolved', 'span'], ['G', 'manual', null], ['H', 'ids', null],
-    ['I', 'unresolved', 'unit'], ['J', 'unresolved', 'unit'],
+    ['I', 'unresolved', 'unit'], ['J', 'unresolved', 'unit'], ['K', 'unresolved', 'scope'],
   ]);
   assert.deepEqual(rows[0].source, { source: 'S1', title: 'Spec', revision: textRevision(TEXT), characters: TEXT.length });
   assert.equal(rows[5].source, undefined, 'an unverified span never claims a source revision');
+  for (const index of [2, 3, 4, 8, 9, 10]) assert.deepEqual(rows[index].source, rows[0].source, `unresolved ${rows[index].requirement.id} keeps its verified source`);
+});
+
+test('#7375 a stated value is never weakened to an existence check', () => {
+  const { proposal, rows } = qualify([
+    door('A', { property: 'Pset_DoorCommon.FireRating', value: 'EI30' }),
+    door('B', { property: 'Pset_DoorCommon.FireRating', operator: 'exists', value: 'EI30' }),
+    door('C', { property: 'Qto_DoorBaseQuantities.Width', value: 900, unit: 'mm' }, 'at least 900 mm'),
+    door('D', { property: 'Qto_DoorBaseQuantities.Width', operator: 'exists', value: 900, unit: 'mm' }, 'at least 900 mm'),
+    door('E', { property: 'Pset_DoorCommon.FireRating', operator: 'exists' }),
+  ]);
+  assert.deepEqual(rows.map(row => [row.requirement.id, row.target, row.reason ?? null]), [
+    ['A', 'unresolved', 'value'], ['B', 'unresolved', 'value'], ['C', 'unresolved', 'value'], ['D', 'unresolved', 'value'], ['E', 'ids', null],
+  ]);
+  const drafts = prepareNativeDrafts(proposal, rows, new Set());
+  assert.deepEqual(drafts.ids?.document.specifications.map(spec => spec.name), ['E: Statement E'], 'only the true existence requirement becomes IDS');
+  assert.equal(drafts.rules, null);
+  assert.equal(drafts.document?.unsupported.length, 4, 'the value-carrying ones stay listed as not checked');
+});
+
+test('#7375 every document item keeps its source passage: verified with its revision, unverified labelled as such', () => {
+  const { proposal, rows } = qualify([
+    door('E', { property: 'Pset_DoorCommon.FireRating', operator: 'notEquals', value: 'EI30' }),
+    door('B', { property: 'Name', operator: 'matches', value: 'D-\\q[0-9]+' }, 'D-[0-9]+'),
+    door('F', { property: 'Pset_DoorCommon.FireRating', operator: 'equals', value: 'EI30', span: { ...span('rated EI30'), start: 0, end: 10 } }),
+  ]);
+  assert.equal(rows[1].reason, 'native');
+  assert.deepEqual(rows[1].source, rows[0].source, 'a native refusal keeps the verified source');
+  const items = prepareNativeDrafts(proposal, rows, new Set()).document!.unsupported.map(item => item.text);
+  const revision = `revision ${textRevision(TEXT)}, ${TEXT.length} characters`;
+  assert.equal(items[0], `E: Statement E\nSource requirement E from S1 "Spec" (${revision}), characters ${TEXT.indexOf('rated EI30')}-${TEXT.indexOf('rated EI30') + 10}: "rated EI30".`);
+  assert.match(items[1], new RegExp(`^B: Statement B\\nSource requirement B from S1 "Spec" \\(${revision}\\)`));
+  assert.equal(items[2], 'F: Statement F\nCited from S1, characters 0-10: "rated EI30" (not verified against the attached text).');
+});
+
+test('#7375 the IDS draft targets the IFC versions it is given', () => {
+  const { proposal, rows } = qualify([door('A', { property: 'Pset_DoorCommon.FireRating', operator: 'equals', value: 'EI30' })]);
+  assert.deepEqual(prepareNativeDrafts(proposal, rows, new Set(), ['IFC2X3', 'IFC4X3_ADD2']).ids?.document.specifications[0].ifcVersions, ['IFC2X3', 'IFC4X3_ADD2']);
 });
 
 test('#7375 the native validator refuses a requirement individually, without blocking the others', () => {

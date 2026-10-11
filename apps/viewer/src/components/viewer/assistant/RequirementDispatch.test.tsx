@@ -179,6 +179,44 @@ test('#7375 a changed or missing source refuses dispatch and withdraws unsaved d
   assert.match(dispatch.textContent ?? '', /R1 No native check: the source text is no longer attached/);
 });
 
+test('#7375 after withdrawal the reviewer can prepare the drafts again from the current source', async () => {
+  await converse();
+  const ui = render(<SemanticProposalReview />);
+  const dispatch = card(ui, 'Native checks and documents')!;
+  click(button(dispatch, /Prepare native drafts/));
+  assert.ok(card(ui, 'Review information rules'));
+  // Re-attach the same wording under the same id with one extra trailing passage: the frozen passages still read the same.
+  const changed = `${SPEC}\n\n3.6 Added later.`;
+  act(() => { detachSourceText('S1'); attachSourceText('Employer information requirements', changed); });
+  assert.match(dispatch.textContent ?? '', /source text changed after the drafts were prepared/);
+  assert.equal(dispatch.querySelector<HTMLInputElement>('input[aria-label="Include R2 in the native drafts"]')!.disabled, false, 'targets can be changed again');
+  click(button(dispatch, /Prepare native drafts/));
+  const rules = card(ui, 'Review information rules');
+  assert.ok(rules, 'the drafts are prepared again');
+  assert.doesNotMatch(dispatch.textContent ?? '', /source text changed after the drafts were prepared/);
+  click(button(rules, /Dry run on loaded models/));
+  await waitFor(() => !button(rules, /Save as rule set/).disabled, 'the re-prepared rule draft dry-runs');
+  click(button(rules, /Save as rule set/));
+  const [entry] = loadDefinitionLibrary().library.entries;
+  assert.ok(entry?.kind === 'rules');
+  assert.match(entry.file.rules[0].description ?? '', new RegExp(`revision ${xxhash64Hex(new TextEncoder().encode(changed))}, ${changed.length} characters`),
+    'the re-prepared record cites the source as it is now');
+});
+
+test('#7375 a document draft of only unresolved requirements is withdrawn too when their source changes', async () => {
+  await converse();
+  const ui = render(<SemanticProposalReview />);
+  const dispatch = card(ui, 'Native checks and documents')!;
+  for (const id of ['R1', 'R2', 'R3', 'R5']) click(dispatch.querySelector<HTMLInputElement>(`input[aria-label="Include ${id} in the native drafts"]`)!);
+  click(button(dispatch, /Prepare native drafts/));
+  const outline = card(ui, 'Review report outline')!;
+  assert.match(outline.textContent ?? '', new RegExp(`R4: Wall finishes are not red\\s*Source requirement R4 from S1 .*revision ${REVISION}`),
+    'the unresolved item keeps its verified passage and revision');
+  act(() => { detachSourceText('S1'); attachSourceText('Employer information requirements', SPEC.replace('Red', 'Blue')); });
+  assert.equal(card(ui, 'Review report outline'), null, 'the outdated document draft can no longer be saved');
+  assert.match(dispatch.textContent ?? '', /source text changed after the drafts were prepared/);
+});
+
 test('#7375 a source detached before dispatch leaves only not-checked items', async () => {
   await converse();
   act(() => detachSourceText('S1'));

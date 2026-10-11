@@ -107,6 +107,7 @@ const semanticMessageShape = {
   "unresolvedSpan": [],
   "unresolvedSourceMissing": [],
   "unresolvedSourceChanged": [],
+  "unresolvedScope": [],
   "unresolvedProperty": [],
   "unresolvedOperator": [],
   "unresolvedValue": [],

@@ -2,14 +2,14 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import type { PickOptions, PickResult, Renderer } from '@ifc-lite/renderer';
-import { useViewerStore, type ViewerState } from '@/store';
+import { useViewerStore } from '@/store';
 import { referenceFrameStatus } from '@/lib/appearance/reference-runtime/frame.js';
 import { pickLandXmlOverlayLine } from './landXmlOverlayPick.js';
+import { captureViewportPick, invalidateViewportPick } from './viewportPickOwnership.js';
 
-const requests = new WeakMap<HTMLCanvasElement, number>();
 const touchClicks = new WeakMap<HTMLCanvasElement, { time: number; x: number; y: number }>();
 export function invalidateSelectionPick(canvas: HTMLCanvasElement): void {
-  requests.set(canvas, (requests.get(canvas) ?? 0) + 1);
+  invalidateViewportPick(canvas, 'selection');
 }
 export function markTouchSelection(canvas: HTMLCanvasElement, x: number, y: number): void {
   touchClicks.set(canvas, { time: Date.now(), x, y });
@@ -24,11 +24,6 @@ export function isTouchSelectionClick(canvas: HTMLCanvasElement, event: MouseEve
   touchClicks.delete(canvas);
   return pointer.sourceCapabilities?.firesTouchEvents !== false;
 }
-function sceneStamp(state: ViewerState): readonly unknown[] {
-  return [state.models, state.geometryResult, state.geometryUpdateTick, state.mutationVersion,
-    state.referenceRevision, state.modelPlacement, state.sectionPlane, state.hiddenEntities,
-    state.isolatedEntities, state.ghostExceptEntities, state.activeTool];
-}
 
 /** Normal Select only. Keep reference strings outside the IFC pick/ID pipeline. */
 export async function selectViewportTarget(options: {
@@ -40,22 +35,10 @@ export async function selectViewportTarget(options: {
   onIfc: (pick: PickResult | null) => void;
   onReference?: () => void;
 }): Promise<void> {
-  const { canvas, renderer, x, y } = options;
-  invalidateSelectionPick(canvas);
-  const request = requests.get(canvas);
-  const camera = renderer.getCamera();
-  const matrix = Array.from(camera.getViewProjMatrix().m);
-  const before = useViewerStore.getState(), stamp = sceneStamp(before);
-  const pickOptions = options.getPickOptions();
-  const rect = canvas.getBoundingClientRect();
-  const current = () => {
-    const next = options.getPickOptions(), bounds = canvas.getBoundingClientRect();
-    return requests.get(canvas) === request && options.getTool() === 'select'
-      && matrix.every((value, index) => value === camera.getViewProjMatrix().m[index])
-      && sceneStamp(useViewerStore.getState()).every((value, index) => Object.is(value, stamp[index]))
-      && next.isStreaming === pickOptions.isStreaming && next.hiddenIds === pickOptions.hiddenIds && next.isolatedIds === pickOptions.isolatedIds
-      && bounds.left === rect.left && bounds.top === rect.top && bounds.width === rect.width && bounds.height === rect.height;
-  };
+  const { renderer, x, y } = options;
+  const { before, pickOptions, rect, camera, current } = captureViewportPick({
+    ...options, channel: 'selection', isOwnerCurrent: () => options.getTool() === 'select',
+  });
   if ([...before.appearanceReferences.values()].some(reference => reference.visible && !reference.locked && reference.opacity > 0 && referenceFrameStatus(reference, before) === 'ready')) {
     const hit = await renderer.getReferenceImages().pick(x, y, pickOptions);
     if (!current()) return;

@@ -108,13 +108,23 @@ export function addGroupToStore(context: GroupStoreContext, params: GroupInStore
   });
 }
 
-/** Preserve group identity and reuse its first exact relationship; empty membership removes all own relations. */
+/** Preserve group identity; reuse/consolidate only semantically compatible untyped assignments. */
 export function updateGroupInStore(context: GroupStoreContext, expected: GroupSnapshot, patch: GroupInStorePatch): GroupRootIdentity {
   return atomicGroupEdit(context, editor => {
     const graph = new GroupGraph(context.store, editor.getMutationView());
     const current = unchanged(graph, expected);
     text(patch.Name, 'Name'); text(patch.Description, 'Description'); text(patch.ObjectType, 'ObjectType');
     const ids = members(graph, patch.RelatedObjects, current.expressId);
+    // A complete member list supplies no PRODUCT/PROCESS/etc. partition. Never
+    // reinterpret typed assignments, nor erase distinct relationship metadata.
+    const semantics = current.memberships.map(row => {
+      const attributes = graph.entities.get(row.relationship.expressId)!.attributes;
+      if (attributes[5] !== null && attributes[5] !== undefined) {
+        throw new Error('Generic group replacement cannot rewrite typed RelatedObjectsType assignments');
+      }
+      return JSON.stringify([attributes[1], attributes[2], attributes[3], attributes[5], attributes[6]]);
+    });
+    if (new Set(semantics).size > 1) throw new Error('Generic group replacement cannot consolidate distinct assignment semantics');
     const keep = ids.length ? current.memberships[0]?.relationship.expressId : undefined;
     const removed = new Set(current.memberships.map(row => row.relationship.expressId).filter(id => id !== keep));
     protectRelationships(graph, removed);

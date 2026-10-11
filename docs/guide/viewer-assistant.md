@@ -497,3 +497,30 @@ Review shows the source/destination identities and complete dependency count. Wo
 Complete storey reassignment pins are bounded to 200,000 submitted values and 12 nesting levels. The 5,000-product bound applies to the moved dependency closure; a complete source relationship may contain more unchanged members. Selection capture shares one effective Root/relationship inventory across destination candidates.
 
 Complete optional Storey, Structural and Cost pins share the request envelope. After ordinary facts and all guidance are reserved, generation admits each unchanged whole pin only when the complete serialized messages and system text fit the existing 90,000-character limit. A refused pin reports `unavailable-transport-budget`; its complete expected state is omitted, while ordinary identities, citations and metadata remain. Captured source attachments stay unchanged for stale-state validation; the saved user turn records the projected text actually sent. This transport boundary does not reduce direct native planner or writer capabilities, and a pin larger than 12,000 characters remains usable when the full request fits. Oversized conversation history or ordinary context can still refuse the request.
+
+## Generic group changes
+
+The Assistant can propose `group.lifecycle` from an explicitly attached
+selection or selection evidence. Review group names, complete membership and
+shared references, choose operations, prepare the native changes, and explicitly
+Apply. Updates preserve group identity and replace the entire membership list;
+removing a group keeps its members and other memberships. The edit has one Undo.
+Unavailable or incomplete captured evidence requires a fresh attachment.
+Generic replacement refuses typed `RelatedObjectsType` assignments and
+semantically distinct assignment records instead of merging their meanings.
+Those groups can still be read and safely removed through native review.
+Selection evidence and attachments read the complete whole-model Group graph
+only when the selection includes an exact IfcGroup or a current member of one.
+Other selections carry bounded `scope: "no-group-context"` facts (the selected
+identities), read from the model's group assignments without the whole graph,
+so that read grows with the number of group assignments. They support only
+creating a new group, and review still checks the complete graph before Apply.
+Models above the 250,000-entity graph budget are refused on both paths before
+any record is decoded.
+Complete Group facts share a transport budget across every selected model,
+including escaped JSON. Oversized facts are explicitly unavailable; select a
+smaller set of groups before capturing again. Reattaching the same oversized
+selection cannot repair that refusal. In rich selection evidence, Group facts
+and their status are added only after the cited element rows; if not even the
+status fits, `nativeGroups` is absent. Unavailable or absent Group facts do not
+establish an empty graph or permit an edit.

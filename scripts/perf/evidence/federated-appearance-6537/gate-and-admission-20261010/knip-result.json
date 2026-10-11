@@ -1,0 +1,28 @@
+{
+  "reservationId": "c633133c-3844-44da-95e1-fd9e6d54a58b",
+  "at": "2026-10-10T06:55:35.211053+00:00",
+  "state": "running",
+  "sourceHead": "23ea207ac0a90a894d6e1969144c706a86f8e602",
+  "pid": 12925,
+  "processStartTicks": "7970854",
+  "exitCode": 1,
+  "verdict": "FAIL_FINDINGS_RETAINED",
+  "sourceToolsUnchanged": true,
+  "ownedSessionBeforeCleanup": [],
+  "remainingOwnedSession": [],
+  "endedAt": "2026-10-10T06:56:00.796226+00:00",
+  "durationSeconds": 25.588433853001334,
+  "remainingCheckoutProcesses": [],
+  "serversStarted": [],
+  "browsersStarted": [],
+  "processesKilled": "Only owned gate PGID if timeout/error; foreign processes untouched",
+  "evidenceHashes": {
+    "stdout.log": "3e32d2607c2bc3dddb883718cc6e02f6927f3b0074507df758d15b30a4e48490",
+    "running.json": "03087c18f239fe42517e65236322f9794bf2fffb68e846746a258d65e49c1a7a",
+    "command.json": "29c6119d1fb859e85dde1949cf0f7f45e85dcd3838d07c95005a0a20a4e8c34a",
+    "admission.json": "9b24810b0feca61480ba9d63f42083c2f8bd189ddb3b48cb8910b376a83b01cb",
+    "stderr.log": "813ccc7b7f08f019455b16bc2831a158ab6693f360bbcedfd4299373258b6f84",
+    "source-tools-after.json": "1c811cdfb3e314947d22b1a3656cb213c769ee441043cae20b840847166d709d",
+    "source-tools-before.json": "1c811cdfb3e314947d22b1a3656cb213c769ee441043cae20b840847166d709d"
+  }
+}

@@ -246,26 +246,14 @@ export function jsRegexToIdsPattern(regex: JsRegex): RegexConversion {
 /**
  * Translate an IDS pattern into the rule operand that accepts the same
  * values: a `/^(?:…)$/u` literal (the `u` flag because XSD's `\d`, `\i`,
- * `\c` and `\w` translate to Unicode property escapes). XSD's `^` and `$`
- * are ordinary characters, so they are escaped first.
+ * `\c` and `\w` translate to Unicode property escapes). The pattern goes
+ * through the IDS checker's own translator unchanged, so `^` and `$` read
+ * exactly as the checker reads them: literal characters, except that a
+ * pattern-initial `^` and pattern-final `$` are redundant anchors and drop
+ * (`^US$` accepts `US`, `US$?` accepts `US` or `US$`).
  */
 export function idsPatternToJsRegex(xsd: string): RegexConversion {
-  let literalAnchors = '';
-  let inClass = false;
-  let classStart = false;
-  for (let i = 0; i < xsd.length; i++) {
-    const ch = xsd[i];
-    if (ch === '\\') { literalAnchors += ch + (xsd[i + 1] ?? ''); i++; classStart = false; continue; }
-    if (inClass) {
-      if (ch === ']' && !classStart) inClass = false;
-      classStart = false;
-      literalAnchors += ch;
-      continue;
-    }
-    if (ch === '[') { inClass = true; classStart = true; literalAnchors += ch; continue; }
-    literalAnchors += ch === '^' || ch === '$' ? `\\${ch}` : ch;
-  }
-  const translated = translateXsdRegex(literalAnchors);
+  const translated = translateXsdRegex(xsd);
   if (!translated.supported) return { ok: false, reason: translated.reason };
   const source = `^(?:${translated.pattern})$`;
   try {

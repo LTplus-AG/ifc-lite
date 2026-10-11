@@ -85,6 +85,14 @@ describe('viewer-embed workspace dependencies', () => {
           'resolve in the production deploy only. Add the entries above and run ' +
           '`pnpm install --lockfile-only`.',
     ).toEqual([]);
+
+    // A name alone is insufficient: Turbo/Vercel needs the same workspace
+    // edge, not an external version that bypasses the sibling build (#5208).
+    const embedDependencies = manifest('apps/viewer-embed/package.json').dependencies ?? {};
+    for (const name of workspaceDeps(manifest('apps/viewer/package.json'))) {
+      expect(embedDependencies[name], `${name} must retain the viewer's workspace build edge`)
+        .toMatch(/^workspace:/);
+    }
   });
 
   it('may hold dependencies the viewer does not', () => {

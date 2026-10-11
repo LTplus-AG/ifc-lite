@@ -52,6 +52,17 @@ describe('comment ops', () => {
     expect(undo(state).doc).toEqual(doc);
   });
 
+  it('undoes a resolve and a reopen on their own, back to the previous flag', () => {
+    const { opened, threadId } = setup();
+    const flag = (d: typeof opened) => Object.values(d.meta.comments).flat().find((t) => t.id === threadId)?.resolved;
+    const resolved = commit(createStudioState(opened), [op('meta.comment.resolve', { threadId, resolved: true })]).state;
+    expect(flag(resolved.doc)).toBe(true);
+    expect(flag(undo(resolved).doc)).toBe(false);
+    const reopened = commit(resolved, [op('meta.comment.resolve', { threadId, resolved: false })]).state;
+    expect(flag(reopened.doc)).toBe(false);
+    expect(flag(undo(reopened).doc)).toBe(true);
+  });
+
   it('refuses a thread on an unknown node, and a second opening comment removal', async () => {
     const ctx = await createGateContext();
     const { opened, threadId } = setup();

@@ -154,7 +154,7 @@ jobs:
         with:
           python-version: "3.12"
       - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 22
       - name: Fetch fixture corpus
@@ -193,7 +193,7 @@ jobs:
           exit $fail
       - name: Upload diff reports
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v4
         with:
           name: ifcopenshell-parity-reports
           path: /tmp/reports/
@@ -204,9 +204,10 @@ jobs:
     if: github.event_name == 'pull_request' || github.event_name == 'merge_group'
     # x64, unlike `quick`/`full` above: those only need maturin/Python
     # wheels (fine on the arm runner), but this job needs the WASM
-    # toolchain (`./.github/actions/setup-wasm-build`, pinned
-    # jetli/wasm-pack-action@v0.15.0), which is only validated against
-    # x64 — the same runner test.yml's own WASM build job uses.
+    # toolchain (`./.github/actions/setup-wasm-build`). That action now
+    # installs the host-arch wasm-pack (#7137), but a full source WASM
+    # build has not been qualified on arm here, so this stays on the same
+    # x64 runner test.yml's own WASM build job uses.
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -249,7 +250,7 @@ jobs:
       - if: steps.filter.outputs.cost == 'true'
         uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
       - if: steps.filter.outputs.cost == 'true'
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 22
           cache: pnpm
@@ -298,7 +299,7 @@ jobs:
         with:
           cache-prefix: cost-parity-full
       - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 22
           cache: pnpm

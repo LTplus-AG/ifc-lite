@@ -237,6 +237,57 @@ export function toRaw(
   return baseSIValue / scale;
 }
 
+/**
+ * Measure types whose own-unit conversion is NOT a pure scale: a
+ * temperature unit (°C, °F) needs an offset as well, and a currency is not
+ * an SI quantity at all. These keep their raw value until the bridge models
+ * offsets (#7395 follow-up).
+ */
+const NON_SCALAR_OWN_UNIT_MEASURES = new Set([
+  'IFCTHERMODYNAMICTEMPERATUREMEASURE',
+  'IFCMONETARYMEASURE',
+]);
+
+/**
+ * Convert a value whose property or quantity declares its OWN `Unit` into
+ * SI. IFC uses that `Unit` precisely to let one value depart from the
+ * project's unit assignment, so the project factor must not be applied to
+ * it (#7395). `siScale` is the parser's resolved SI factor of that unit
+ * (`unitSiScale` / `explicitUnitSiScale`); `undefined` means the unit is
+ * present but could not be read. Such a value is neither in the project
+ * unit nor convertible, so it is returned raw rather than silently
+ * rescaled by the project factor.
+ *
+ * Only numeric values of a `*MEASURE` dataType move; an untyped or
+ * non-measure value, or a non-scalar measure
+ * ({@link NON_SCALAR_OWN_UNIT_MEASURES}), stays as written.
+ */
+export function applyOwnUnitConversion(
+  rawValue: string | number | boolean | null,
+  rawValues: string[] | undefined,
+  dataType: string | undefined,
+  siScale: number | undefined
+): { value: string | number | boolean | null; values: string[] | undefined } {
+  const upper = dataType ? dataType.toUpperCase() : '';
+  const scalable =
+    upper.endsWith('MEASURE') && !NON_SCALAR_OWN_UNIT_MEASURES.has(upper);
+  if (!scalable || siScale === undefined || !Number.isFinite(siScale) || siScale === 1) {
+    return { value: rawValue, values: rawValues };
+  }
+  const convertNum = (v: unknown): number | null => {
+    const n = typeof v === 'number' ? v : parseFloat(String(v));
+    return Number.isFinite(n) ? n * siScale : null;
+  };
+  const c = typeof rawValue === 'boolean' || rawValue === null ? null : convertNum(rawValue);
+  const values = Array.isArray(rawValues)
+    ? rawValues.map((v) => {
+        const cv = convertNum(v);
+        return cv == null ? String(v) : String(cv);
+      })
+    : rawValues;
+  return { value: c == null ? rawValue : c, values };
+}
+
 export function applyUnitConversion(
   rawValue: string | number | boolean | null,
   rawValues: string[] | undefined,

@@ -67,7 +67,7 @@ export function collectAllPropertySets(
 
   appendInstancePropertySets(store, expressId, scale, measureScales, own);
   appendQuantitySets(store, expressId, scale, measureScales, own);
-  appendPredefinedPropertySets(store, expressId, own);
+  appendPredefinedPropertySets(store, expressId, scale, measureScales, own);
   appendMaterialOwnPropertySets(store, expressId, scale, measureScales, own);
 
   // Merged per property, not per set — see `mergeInheritedPropertySets`.
@@ -77,7 +77,7 @@ export function collectAllPropertySets(
   );
 
   if (out.length === 0) {
-    appendTypeEntityOwnProperties(store, expressId, out);
+    appendTypeEntityOwnProperties(store, expressId, scale, measureScales, out);
   }
   return out;
 }
@@ -156,6 +156,8 @@ function appendQuantitySets(
 function appendPredefinedPropertySets(
   store: IfcDataStore,
   expressId: number,
+  scale: number | undefined,
+  measureScales: MeasureScales,
   out: PropertySetInfo[]
 ): void {
   const psetIds =
@@ -187,14 +189,18 @@ function appendPredefinedPropertySets(
           a.value !== undefined &&
           a.value !== ''
       )
-      .map((a) => ({
-        name: a.name,
-        value: a.value,
+      .map((a) => {
         // The attribute's declared EXPRESS type is its dataType (PanelOperation
         // → IFCDOORPANELOPERATIONENUM). Unknown to the schema means unknown, and
         // a dataType check fails rather than passing unchecked (#5224).
-        dataType: getAttributeTypeForSchema(tu, a.name, store.schemaVersion)?.toUpperCase(),
-      }));
+        const dataType = getAttributeTypeForSchema(tu, a.name, store.schemaVersion)?.toUpperCase();
+        // A length/area/volume attribute (LiningDepth) is in the project's
+        // units like any other measure, so it is converted to base SI (#7395).
+        const value = typeof a.value === 'number'
+          ? applyUnitConversion(a.value, undefined, dataType, scale, measureScales).value
+          : a.value;
+        return { name: a.name, value, dataType };
+      });
     if (properties.length > 0) out.push({ name: psetNameAttr, properties });
   }
 }
@@ -297,23 +303,18 @@ function typePropertySetsFromTable(
 function appendTypeEntityOwnProperties(
   store: IfcDataStore,
   expressId: number,
+  scale: number | undefined,
+  measureScales: MeasureScales,
   out: PropertySetInfo[]
 ): void {
   const typePsets = extractTypeEntityOwnProperties(store, expressId);
   if (typePsets.length === 0) return;
   for (const pset of typePsets) {
+    // The same projection, base-SI conversion included, as the sets an
+    // occurrence inherits from this type (#7395).
     out.push({
       name: pset.name,
-      properties: (pset.properties || []).map((p) => ({
-        name: p.name,
-        value: Array.isArray(p.value)
-          ? JSON.stringify(p.value)
-          : (p.value as string | number | boolean | null),
-        ...idsDataTypeOf(p as RawProp),
-        ...(Array.isArray(p.values) && p.values.length > 0
-          ? { values: p.values }
-          : {}),
-      })),
+      properties: (pset.properties || []).map((p) => projectProperty(p as RawProp, scale, measureScales)),
     });
   }
 }

@@ -180,4 +180,15 @@ describe('partOf without a relation follows every part-of relation (#7401)', () 
     };
     expect(checkPartOfFacet(facet, 32, accessor).passed).toBe(true);
   });
+
+  it('treats an empty relation as an invalid relation, not as an omitted one', async () => {
+    const text = ids(spec('empty', '<partOf relation=""><entity><name><simpleValue>IFCCURTAINWALL</simpleValue></name></entity></partOf>'));
+    const facet = parseIDS(text).specifications[0].requirements[0].facet;
+    expect(facet).not.toHaveProperty('anyRelation');
+    expect(facet).toMatchObject({ type: 'partOf', rawRelation: '' });
+    const report = await auditIDSDocument(text);
+    expect(report.issues.map((i) => i.code)).toContain('E_IFC_PARTOF_RELATION');
+    // Not widened to every relation: the aggregated mullion is not contained in the curtain wall.
+    expect((await verdicts(text))['empty']).toEqual({ Mullion: false, Loose: false });
+  });
 });

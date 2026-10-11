@@ -446,10 +446,10 @@ function parsePartOfFacet(el: Element): IDSPartOfFacet {
     relation,
     entity: entityEl ? parseEntityFacet(entityEl) : undefined,
   };
-  // An unrecognised relation keeps its source string so the auditor can
-  // flag it; a missing one means any part-of relation (IDS 1.0, #7401).
-  if (!relationAttrRaw) facet.anyRelation = true;
-  else if (!isRecognisedPartOfRelation(relationAttr)) facet.rawRelation = relationAttrRaw;
+  // Only an ABSENT relation means any part-of relation (IDS 1.0, #7401);
+  // an unrecognised one, empty included, keeps its source for the auditor.
+  if (relationAttrRaw === null) facet.anyRelation = true;
+  else if (!isRecognisedPartOfRelation(relationAttrRaw)) facet.rawRelation = relationAttrRaw;
   return facet;
 }
 

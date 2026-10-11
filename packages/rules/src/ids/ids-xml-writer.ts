@@ -189,8 +189,13 @@ function writeFacet(xml: XmlLines, facet: IDSFacet, cardinality: string | undefi
       // an ancestor's Name, not its class). The XSD requires the related
       // entity, so a partOf without one is refused rather than written invalid.
       if (!facet.entity) throw new Error('writeIdsXml: a partOf facet needs its related entity');
-      // No relation means any part-of relation (#7401), so it stays unwritten.
-      xml.open('partOf', { relation: facet.anyRelation ? undefined : relationToken(facet.relation), cardinality, instructions });
+      // No relation means any part-of relation (#7401), so it stays unwritten;
+      // an unrecognised one is written as read, for the auditor to flag.
+      xml.open('partOf', {
+        relation: facet.anyRelation ? undefined : facet.rawRelation ?? relationToken(facet.relation),
+        cardinality,
+        instructions,
+      });
       writeEntity(xml, facet.entity);
       xml.close('partOf');
       return;

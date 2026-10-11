@@ -191,7 +191,7 @@ function elementRow(s: ViewerState, ref: EntityRef, source: ModelSource, rich: b
     ...nativeAuthoringEvidence(nativeTarget, ref.expressId, rich),
     ...(completeStructuralPin ? { nativeStructural: nativeStructuralTransportEvidence(nativeTarget, ref.expressId) } : {}),
     attributes, psets, psetCount: data.psets.length, quantities, qsetCount: data.quantityStatus === 'available' ? data.qsets.length : null,
-    quantityStatus: data.quantityStatus, quantityReason: data.quantityReason,
+    ...(data.quantityStatus === 'unavailable' ? { quantityStatus: data.quantityStatus, quantityReason: data.quantityReason } : {}),
     ...(zoneQuantities ? { zoneVolumeBreakdowns: { quantityStatus: zoneQuantities.status, quantityReason: zoneQuantities.reason,
       unitStatus: zoneQuantities.unitStatus, unitReason: zoneQuantities.unitReason,
       ...selectedZoneVolumeBreakdowns(s, globalId,

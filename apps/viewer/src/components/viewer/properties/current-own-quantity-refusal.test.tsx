@@ -24,6 +24,7 @@ import { createQueryAdapter } from '@/sdk/adapters/query-adapter';
 import { SelectionSummaryPanel } from './SelectionSummaryPanel';
 import { entityRefToString } from '@/store/entity-ref';
 import { zoneQuantitySources } from '@/lib/assistant/adapters/zone-volume-bases';
+import { selectionAdapter } from '@/lib/assistant/adapters/selection';
 
 const initial = useViewerStore.getState();
 afterEach(() => {
@@ -130,6 +131,13 @@ for (const failure of ['sets', 'members', 'unreadable-members', 'unit-budget', '
         assert.match(evidence.reason ?? '', /Native occurrence/);
         assert.deepEqual(evidence.quantities, [], 'explicit unavailable evidence does not promote conflicting inherited defaults');
         assert.equal(evidence.scale, null, 'unknown quantity inventory cannot produce a physical basis');
+        useViewerStore.setState({ selectedEntitiesSet: new Set([entityRefToString({ modelId: 'arch', expressId: fixture.id })]) });
+        const selected = selectionAdapter.capture(useViewerStore.getState(), 1).rows[0];
+        assert.ok(selected && typeof selected === 'object');
+        assert.equal(Reflect.get(selected, 'quantityStatus'), 'unavailable');
+        assert.match(String(Reflect.get(selected, 'quantityReason')), /Native occurrence/);
+        assert.equal(Reflect.get(selected, 'qsetCount'), null,
+          'real selected evidence keeps unknown quantity coverage explicit without claiming a verified empty count');
       } else if (consumer === 'zone-table') {
         const rows = buildZoneTable(fixture.zoneSet, 'net');
         const own = rows.filter(row => row.ExpressId === fixture.id);

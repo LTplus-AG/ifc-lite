@@ -73,8 +73,10 @@ describe('corpus acceptance', () => {
       }
     }
     expect(wrongful).toEqual([]);
-    // partOf predefined types are user-defined values in these corpus cases (the audit does not check them).
-    expect(userDefined.sort()).toEqual(['BUNNY', 'BURROW', 'LITTERBOX', 'SLABRADOR', 'WARREN', 'WATERBOTTLE']);
+    // User-defined (ObjectType) predefined types in these corpus cases: the audit
+    // accepts them on entities that allow USERDEFINED and does not check partOf
+    // ones; the gate asks for an explicit declaration instead.
+    expect([...new Set(userDefined)].sort()).toEqual(['BUNNY', 'BURROW', 'LITTERBOX', 'SLABRADOR', 'TASKY', 'WALDO', 'WARREN', 'WATERBOTTLE', 'X']);
     expect(checkedFacets).toBeGreaterThan(300);
     expect(literalNames).toBeGreaterThan(400);
   }, 120_000);

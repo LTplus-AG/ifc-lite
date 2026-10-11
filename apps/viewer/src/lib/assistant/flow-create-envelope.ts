@@ -4,8 +4,9 @@
 
 /** Strict `flow.create` envelope; registry checks live in `flow-create.ts` (#6919). */
 
-import type { Lacing, TrackingMode } from '@ifc-lite/flow';
+import type { FlowInput, Lacing, TrackingMode } from '@ifc-lite/flow';
 import { isBoundedFlowJson } from './flow-patch';
+import { assertBoundedPlayerInputs } from './flow-create-inputs';
 
 export interface FlowCreateRequest {
   version: 1; kind: 'flow.create'; name: string; description?: string;
@@ -13,6 +14,7 @@ export interface FlowCreateRequest {
     lacing?: Lacing; tracking?: TrackingMode; trackingKey?: string }>;
   edges: Array<{ from: [string, string]; to: [string, string] }>;
   outputs?: Array<{ nodeId: string; port: string; label: string }>;
+  inputs?: readonly FlowInput[];
 }
 const ID = /^[A-Za-z][A-Za-z0-9_-]{0,63}$/;
 const LACINGS = ['shortest', 'longest', 'cross'];
@@ -29,7 +31,7 @@ export function parseFlowCreate(input: string): FlowCreateRequest {
   const trimmed = input.trim();
   const fenced = /^```(?:json)?\s*\n([\s\S]*?)\n```$/.exec(trimmed);
   const raw: unknown = JSON.parse(fenced ? fenced[1] : trimmed);
-  if (!isBoundedFlowJson(raw) || !record(raw) || !only(raw, ['version', 'kind', 'name', 'description', 'nodes', 'edges', 'outputs'], ['version', 'kind', 'name', 'nodes', 'edges'])
+  if (!isBoundedFlowJson(raw) || !record(raw) || !only(raw, ['version', 'kind', 'name', 'description', 'nodes', 'edges', 'outputs', 'inputs'], ['version', 'kind', 'name', 'nodes', 'edges'])
     || raw.version !== 1 || raw.kind !== 'flow.create' || !text(raw.name, 120) || (raw.description !== undefined && typeof raw.description !== 'string')
     || (typeof raw.description === 'string' && raw.description.length > 2000)
     || !Array.isArray(raw.nodes) || !raw.nodes.length || raw.nodes.length > 60 || !Array.isArray(raw.edges) || raw.edges.length > 120
@@ -49,6 +51,6 @@ export function parseFlowCreate(input: string): FlowCreateRequest {
       throw new Error('Invalid Flow create output');
     }
   }
+  if (raw.inputs !== undefined) assertBoundedPlayerInputs(raw.inputs);
   return raw as unknown as FlowCreateRequest;
 }
-

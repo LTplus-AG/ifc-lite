@@ -1,0 +1,4 @@
+exit: 2
+--- stdout
+--- stderr
+Error: cannot format <fixtures>/doors-unwritable.ids without loss: writeIdsXml: title contains control character U+0001, which XML 1.0 cannot carry

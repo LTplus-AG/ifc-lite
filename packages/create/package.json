@@ -1,6 +1,6 @@
 {
   "name": "@ifc-lite/create",
-  "version": "4.0.0",
+  "version": "5.0.0",
   "description": "IFC creation from scratch \u2014 walls, slabs, beams, columns, stairs, roofs with geometry, properties and quantities",
   "type": "module",
   "main": "./dist/index.js",
@@ -29,7 +29,7 @@
   "devDependencies": {
     "@ifc-lite/wasm": "workspace:^",
     "typescript": "^6.0.3",
-    "vitest": "^5.0.2"
+    "vitest": "^5.0.3"
   },
   "license": "MPL-2.0",
   "author": "Louis True",

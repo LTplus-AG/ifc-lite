@@ -65,9 +65,10 @@ export function resolveFieldColumnUnit(
 }
 
 /** A source unit for an explicit symbol: its parsed scale, or a curated alternative's when only the symbol is known. */
-function explicitSourceUnit(unitType: string, symbol: string, siScale: number | undefined): LinearUnit | undefined {
+function explicitSourceUnit(unitType: string, symbol: string, siScale: number | undefined, siOffset?: number): LinearUnit | undefined {
   const curated = alternativesForUnitType(unitType).find((option) => option.symbol === symbol);
-  if (siScale !== undefined) return { scale: siScale, offset: curated?.offset ?? 0 };
+  // The unit's own resolved offset (°F) wins over a curated symbol's.
+  if (siScale !== undefined) return { scale: siScale, offset: siOffset ?? curated?.offset ?? 0 };
   return curated ? { scale: curated.scale, offset: curated.offset ?? 0 } : undefined;
 }
 
@@ -133,7 +134,7 @@ export function resolveFieldCell(cell: ResolvedElementFieldValue, context: Field
   if (!columnUnit || !target) return UNSUPPORTED;
   if (cell.unit !== undefined || cell.unitSiScale !== undefined) {
     // A quantity's explicit Unit arrives as a scale alone; a property's as symbol plus scale.
-    const source = explicitSourceUnit(kind.unitType, cell.unit ?? '', cell.unitSiScale);
+    const source = explicitSourceUnit(kind.unitType, cell.unit ?? '', cell.unitSiScale, cell.unitSiOffset);
     return source ? { value: convertValue(cell.value, source, target), status: 'value' } : UNSUPPORTED;
   }
   if (!hasSourceUnit(projectUnits, kind.unitType)) return UNSUPPORTED;

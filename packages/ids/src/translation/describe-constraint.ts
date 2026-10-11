@@ -87,31 +87,31 @@ function describeBounds(
   translations: Translations
 ): string {
   const t = translations.constraints.bounds;
+  // Date, time and duration bounds are kept as lexemes (#7399).
+  const tb = constraint.temporalBounds;
+  const minInclusive = tb?.minInclusive ?? constraint.minInclusive;
+  const maxInclusive = tb?.maxInclusive ?? constraint.maxInclusive;
+  const minExclusive = tb?.minExclusive ?? constraint.minExclusive;
+  const maxExclusive = tb?.maxExclusive ?? constraint.maxExclusive;
 
-  if (
-    constraint.minInclusive !== undefined &&
-    constraint.maxInclusive !== undefined
-  ) {
-    return interpolate(t.between, {
-      min: constraint.minInclusive,
-      max: constraint.maxInclusive,
-    });
+  if (minInclusive !== undefined && maxInclusive !== undefined) {
+    return interpolate(t.between, { min: minInclusive, max: maxInclusive });
   }
 
-  if (constraint.minInclusive !== undefined) {
-    return interpolate(t.atLeast, { min: constraint.minInclusive });
+  if (minInclusive !== undefined) {
+    return interpolate(t.atLeast, { min: minInclusive });
   }
 
-  if (constraint.maxInclusive !== undefined) {
-    return interpolate(t.atMost, { max: constraint.maxInclusive });
+  if (maxInclusive !== undefined) {
+    return interpolate(t.atMost, { max: maxInclusive });
   }
 
-  if (constraint.minExclusive !== undefined) {
-    return interpolate(t.greaterThan, { min: constraint.minExclusive });
+  if (minExclusive !== undefined) {
+    return interpolate(t.greaterThan, { min: minExclusive });
   }
 
-  if (constraint.maxExclusive !== undefined) {
-    return interpolate(t.lessThan, { max: constraint.maxExclusive });
+  if (maxExclusive !== undefined) {
+    return interpolate(t.lessThan, { max: maxExclusive });
   }
 
   return 'any value';

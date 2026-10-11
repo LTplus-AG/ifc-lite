@@ -1,0 +1,156 @@
+{
+  "engine-cache-identity": {
+    "verdict": "OBSERVED",
+    "exitCode": 0,
+    "reason": "reverting production turned an assertion RED in packages/ids-authoring/src/lint/engine.test.ts; that file has a green, attributable baseline.",
+    "base": "96e03a7272c7e2f312c1cf784309207d0f38d921",
+    "head": "ca71d464a2af5da6d78867c494992244d022096c",
+    "production": [
+      "packages/ids-authoring/src/lint/engine.ts"
+    ],
+    "tests": [
+      "packages/ids-authoring/src/lint/engine.test.ts"
+    ],
+    "restoration": "verified"
+  },
+  "ent001-abstract": {
+    "verdict": "OBSERVED",
+    "exitCode": 0,
+    "reason": "reverting production turned an assertion RED in packages/ids-authoring/src/lint/rules/entity.test.ts; that file has a green, attributable baseline.",
+    "base": "96e03a7272c7e2f312c1cf784309207d0f38d921",
+    "head": "ca71d464a2af5da6d78867c494992244d022096c",
+    "production": [
+      "packages/ids-authoring/src/lint/rules/entity.ts"
+    ],
+    "tests": [
+      "packages/ids-authoring/src/lint/rules/entity.test.ts"
+    ],
+    "restoration": "verified"
+  },
+  "fix-gate-filter": {
+    "verdict": "OBSERVED",
+    "exitCode": 0,
+    "reason": "reverting production turned an assertion RED in packages/ids-authoring/src/lint/rules/entity.test.ts; that file has a green, attributable baseline.",
+    "base": "96e03a7272c7e2f312c1cf784309207d0f38d921",
+    "head": "ca71d464a2af5da6d78867c494992244d022096c",
+    "production": [
+      "packages/ids-authoring/src/lint/rules/util.ts"
+    ],
+    "tests": [
+      "packages/ids-authoring/src/lint/rules/entity.test.ts"
+    ],
+    "restoration": "verified"
+  },
+  "fix-ids-variant": {
+    "verdict": "OBSERVED",
+    "exitCode": 0,
+    "reason": "reverting production turned an assertion RED in packages/ids-authoring/src/lint/engine.test.ts; that file has a green, attributable baseline.",
+    "base": "96e03a7272c7e2f312c1cf784309207d0f38d921",
+    "head": "ca71d464a2af5da6d78867c494992244d022096c",
+    "production": [
+      "packages/ids-authoring/src/lint/fix.ts"
+    ],
+    "tests": [
+      "packages/ids-authoring/src/lint/engine.test.ts"
+    ],
+    "restoration": "verified"
+  },
+  "pdt-userdefined-severity": {
+    "verdict": "OBSERVED",
+    "exitCode": 0,
+    "reason": "reverting production turned an assertion RED in packages/ids-authoring/src/lint/rules/entity.test.ts; that file has a green, attributable baseline.",
+    "base": "96e03a7272c7e2f312c1cf784309207d0f38d921",
+    "head": "ca71d464a2af5da6d78867c494992244d022096c",
+    "production": [
+      "packages/ids-authoring/src/lint/rules/pdt-att.ts"
+    ],
+    "tests": [
+      "packages/ids-authoring/src/lint/rules/entity.test.ts"
+    ],
+    "restoration": "verified"
+  },
+  "regex003-portable": {
+    "verdict": "OBSERVED",
+    "exitCode": 0,
+    "reason": "reverting production turned an assertion RED in packages/ids-authoring/src/lint/rules/regex.test.ts; that file has a green, attributable baseline.",
+    "base": "96e03a7272c7e2f312c1cf784309207d0f38d921",
+    "head": "ca71d464a2af5da6d78867c494992244d022096c",
+    "production": [
+      "packages/ids-authoring/src/lint/rules/regex.ts"
+    ],
+    "tests": [
+      "packages/ids-authoring/src/lint/rules/regex.test.ts"
+    ],
+    "restoration": "verified"
+  },
+  "solver-open-bounds": {
+    "verdict": "OBSERVED",
+    "exitCode": 0,
+    "reason": "reverting production turned an assertion RED in packages/ids-authoring/src/lint/solver/solver.test.ts; that file has a green, attributable baseline.",
+    "base": "96e03a7272c7e2f312c1cf784309207d0f38d921",
+    "head": "ca71d464a2af5da6d78867c494992244d022096c",
+    "production": [
+      "packages/ids-authoring/src/lint/solver/solver.ts"
+    ],
+    "tests": [
+      "packages/ids-authoring/src/lint/solver/solver.test.ts"
+    ],
+    "restoration": "verified"
+  },
+  "solver-pattern-disjoint": {
+    "verdict": "OBSERVED",
+    "exitCode": 0,
+    "reason": "reverting production turned an assertion RED in packages/ids-authoring/src/lint/rules/card-spec.test.ts; that file has a green, attributable baseline.",
+    "base": "96e03a7272c7e2f312c1cf784309207d0f38d921",
+    "head": "ca71d464a2af5da6d78867c494992244d022096c",
+    "production": [
+      "packages/ids-authoring/src/lint/solver/solver.ts"
+    ],
+    "tests": [
+      "packages/ids-authoring/src/lint/rules/card-spec.test.ts"
+    ],
+    "restoration": "verified"
+  },
+  "suppress-ancestor-spec": {
+    "verdict": "OBSERVED",
+    "exitCode": 0,
+    "reason": "reverting production turned an assertion RED in packages/ids-authoring/src/lint/engine.test.ts; that file has a green, attributable baseline.",
+    "base": "96e03a7272c7e2f312c1cf784309207d0f38d921",
+    "head": "ca71d464a2af5da6d78867c494992244d022096c",
+    "production": [
+      "packages/ids-authoring/src/lint/suppress.ts"
+    ],
+    "tests": [
+      "packages/ids-authoring/src/lint/engine.test.ts"
+    ],
+    "restoration": "verified"
+  },
+  "suppress-reason-required": {
+    "verdict": "OBSERVED",
+    "exitCode": 0,
+    "reason": "reverting production turned an assertion RED in packages/ids-authoring/src/lint/engine.test.ts; that file has a green, attributable baseline.",
+    "base": "96e03a7272c7e2f312c1cf784309207d0f38d921",
+    "head": "ca71d464a2af5da6d78867c494992244d022096c",
+    "production": [
+      "packages/ids-authoring/src/lint/suppress.ts"
+    ],
+    "tests": [
+      "packages/ids-authoring/src/lint/engine.test.ts"
+    ],
+    "restoration": "verified"
+  },
+  "val005-lexical": {
+    "verdict": "OBSERVED",
+    "exitCode": 0,
+    "reason": "reverting production turned an assertion RED in packages/ids-authoring/src/lint/rules/values.test.ts; that file has a green, attributable baseline.",
+    "base": "96e03a7272c7e2f312c1cf784309207d0f38d921",
+    "head": "ca71d464a2af5da6d78867c494992244d022096c",
+    "production": [
+      "packages/ids-authoring/src/lint/rules/values.ts"
+    ],
+    "tests": [
+      "packages/ids-authoring/src/lint/rules/values.test.ts"
+    ],
+    "restoration": "verified"
+  }
+}

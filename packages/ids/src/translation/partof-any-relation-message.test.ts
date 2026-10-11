@@ -35,6 +35,7 @@ describe('partOf without a relation, translated (#7401)', () => {
     ['en', 'part of', 'contained in'],
     ['de', 'Teil von', 'enthalten in'],
     ['fr', 'rattaché à', 'contenu dans'],
+    ['it', 'parte di', 'contenuto in'],
   ] as const)('%s names any relation, not containment', (locale, word, containment) => {
     const t = createTranslationService(locale);
     const described = t.describeFacet(facet, 'requirement');

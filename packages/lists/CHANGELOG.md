@@ -1,5 +1,21 @@
 # @ifc-lite/lists
 
+## 3.1.0
+
+### Minor Changes
+
+- [#7405](https://github.com/LTplus-AG/ifc-lite/pull/7405) [`7f55425`](https://github.com/LTplus-AG/ifc-lite/commit/7f554255ca96f812c9d65cf2507d46980fe604c6) Thanks [@louistrue](https://github.com/louistrue)! - Lists can show and filter on the IFC `LongName` attribute, so a room schedule can put each IfcSpace's room name next to its number. The column works for every class that declares `LongName` (IfcSite, IfcBuilding, IfcBuildingStorey, IfcSpace, IfcProject and, from IFC4, IfcZone and the spatial zones and systems) and is empty for classes without it. The "Space Areas" and "Zones & Systems" presets now include it.
+  
+  `@ifc-lite/lists`: `ENTITY_ATTRIBUTES` gains `LongName`, and `ListDataProvider` gains the optional `getEntityLongName`. `@ifc-lite/parser`: `extractEntityAttributesOnDemand` also returns `longName`, read at the attribute position of the model's own schema.
+
+- [#7189](https://github.com/LTplus-AG/ifc-lite/pull/7189) [`6a6714b`](https://github.com/LTplus-AG/ifc-lite/commit/6a6714b4e95f25ef43013be354a2ff62674ff07a) Thanks [@louistrue](https://github.com/louistrue)! - Add a durable captured entity population contract with full source identity and authored creation provenance. Resolve every member before native evaluation; Lists intersect the captured population with their source criteria and manual and automatic Lens evaluations restrict their complete native populations. Providers unable to resolve a saved scope refuse rather than evaluating every entity.
+
+### Patch Changes
+
+- Updated dependencies [[`fd30c8f`](https://github.com/LTplus-AG/ifc-lite/commit/fd30c8fac106ad06bae5869169377165ebfc8216), [`25a8f4c`](https://github.com/LTplus-AG/ifc-lite/commit/25a8f4c7f4dd7633cf5b082ab77525c054022dcd), [`83c9f35`](https://github.com/LTplus-AG/ifc-lite/commit/83c9f3516acfe895c98cffd13f0f4410bc44b30b), [`3ef81ad`](https://github.com/LTplus-AG/ifc-lite/commit/3ef81ad36db5a63f066ff1447bea8172c1c19f73), [`6a6714b`](https://github.com/LTplus-AG/ifc-lite/commit/6a6714b4e95f25ef43013be354a2ff62674ff07a), [`fd1f8f5`](https://github.com/LTplus-AG/ifc-lite/commit/fd1f8f52fabbde0ecee4d6a5c15635293ff1a15e), [`884eea2`](https://github.com/LTplus-AG/ifc-lite/commit/884eea296a54e3af744b9faa618b4fdb3e4da321), [`16514f2`](https://github.com/LTplus-AG/ifc-lite/commit/16514f2b3046f7b3a4900eea0db1ac47d82ff896), [`3ef81ad`](https://github.com/LTplus-AG/ifc-lite/commit/3ef81ad36db5a63f066ff1447bea8172c1c19f73), [`b13a060`](https://github.com/LTplus-AG/ifc-lite/commit/b13a0603dbdca1b660db0626b3ffaed6b57a1da5), [`295a243`](https://github.com/LTplus-AG/ifc-lite/commit/295a2439e533af87a838ee2f252d87da19755890)]:
+  - @ifc-lite/rules@0.7.0
+  - @ifc-lite/data@6.2.0
+
 ## 3.0.1
 
 ### Patch Changes

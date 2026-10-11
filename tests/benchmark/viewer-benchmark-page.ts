@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { Page, ConsoleMessage } from '@playwright/test';
-import { READINESS_SPANS, probePageLoadTrace, waitForMetadataRenderReadiness, type LoadTraceProbe } from './metadata-render-readiness.js';
+import { probeMetadataRenderTrace, waitForMetadataRenderReadiness, type LoadTraceProbe } from './metadata-render-readiness.js';
 import {
   compareSpanAndRegexMetrics,
   countersFromLoadTrace,
@@ -488,15 +488,7 @@ export class ViewerBenchmarkPage {
    * exposes no trace yet (or at all: a viewer built before #6977).
    */
   private async probeLoadTrace(): Promise<LoadTraceProbe | null> {
-    try {
-      return await this.page.evaluate(
-        probePageLoadTrace,
-        { key: LOAD_TRACE_GLOBAL, names: READINESS_SPANS },
-      );
-    } catch (err) {
-      console.warn('[Benchmark] could not probe the load trace', err);
-      return null;
-    }
+    return probeMetadataRenderTrace(this.page);
   }
 
   /** Pull the latest load's span tree out of the page (null when tracing is unavailable). */

@@ -33,6 +33,7 @@ import type { PointerGesture } from './pointerGesture.js';
 import { resolveNavigationPointerGesture, resolveWheelNavigation } from '@/lib/navigation/presets.js';
 import { handleMeasureTap, ignoreTouchPointers, setMeasureTapHandler } from './touchRouting.js';
 import { invalidateSelectionPick } from './referenceSelection.js';
+import { createHoverPicker } from './hoverPicker.js';
 import { routeCommandPointer } from './commandPointer.js';
 import { createCommandPressController } from './commandPress.js';
 import { handleSelectionClick, handleContextMenu as handleContextMenuSelection } from './selectionHandlers.js';
@@ -276,6 +277,13 @@ export function useMouseControls(params: UseMouseControlsParams): void {
     const camera = renderer.getCamera();
     const mouseState = mouseStateRef.current;
     let pointerGesture: PointerGesture = 'orbit';
+    const hoverPicker = createHoverPicker({
+      owner: { canvas, renderer, getTool: () => activeToolRef.current, getPickOptions,
+        isOwnerCurrent: () => rendererRef.current === renderer && hoverTooltipsEnabledRef.current && !mouseState.isDragging },
+      lastCheck: lastHoverCheckRef, throttleMs: hoverThrottleMs, clear: clearHover,
+      commit: (result, position) => setHoverState({ entityId: result.expressId,
+        screenX: position.clientX, screenY: position.clientY, worldXYZ: result.worldXYZ, modelIndex: result.modelIndex }),
+    });
 
     // Build shared context for extracted handler functions
     const ctx: MouseHandlerContext = {
@@ -450,6 +458,7 @@ export function useMouseControls(params: UseMouseControlsParams): void {
     // Uses pointer events + setPointerCapture so pointerup always fires,
     // even when the pointer leaves the canvas (e.g. dragging across panels).
     const handleMouseDown = async (e: PointerEvent) => {
+      hoverPicker.cancel();
       commandPress.cancel();
       orbitPivotStore.end();
       invalidateSelectionPick(canvas);
@@ -556,8 +565,9 @@ export function useMouseControls(params: UseMouseControlsParams): void {
         canvas.style.cursor = 'grabbing';
       }
     };
-
     const handleMouseMove = async (e: PointerEvent) => {
+      // New input retires the old position even when this event is throttled.
+      hoverPicker.cancel();
       const rect = canvas.getBoundingClientRect();
       const x = e.clientX - rect.left;
       const y = e.clientY - rect.top;
@@ -641,23 +651,7 @@ export function useMouseControls(params: UseMouseControlsParams): void {
         // Clear hover while dragging
         clearHover();
       } else if (hoverTooltipsEnabledRef.current) {
-        // Hover detection (throttled) - only if tooltips are enabled
-        const now = Date.now();
-        if (now - lastHoverCheckRef.current > hoverThrottleMs) {
-          lastHoverCheckRef.current = now;
-          // Uses visibility filtering so hidden elements don't show hover tooltips
-          const pickResult = await renderer.pick(x, y, getPickOptions());
-          if (pickResult) {
-            setHoverState({
-              entityId: pickResult.expressId,
-              screenX: e.clientX,
-              screenY: e.clientY,
-              worldXYZ: pickResult.worldXYZ, modelIndex: pickResult.modelIndex,
-            });
-          } else {
-            clearHover();
-          }
-        }
+        hoverPicker.schedule({ x, y, clientX: e.clientX, clientY: e.clientY });
       }
     };
 
@@ -733,6 +727,7 @@ export function useMouseControls(params: UseMouseControlsParams): void {
     };
 
     const handleMouseLeave = () => {
+      hoverPicker.cancel();
       if (commandPress.captured()) return; // Captured command presses may finish outside the canvas.
       commandPress.cancel(); // Capture can be refused; leaving must then abandon the press.
       orbitPivotStore.end();
@@ -759,7 +754,11 @@ export function useMouseControls(params: UseMouseControlsParams): void {
       if (!commandPress.hasPress() || commandPress.cancel(e)) handleMouseLeave();
     };
     const handleLostPointerCapture = (e: PointerEvent) => { if (commandPress.cancel(e)) handleMouseLeave(); };
-    const handleWindowBlur = () => { if (commandPress.cancel()) handleMouseLeave(); };
+    const handleWindowBlur = () => {
+      hoverPicker.cancel();
+      clearHover();
+      if (commandPress.cancel()) handleMouseLeave();
+    };
 
     const handleContextMenu = async (e: MouseEvent) => {
       // macOS/Linux fire this on PRESS, mid-fly; hold it until release (pointerup replays a plain click).
@@ -845,6 +844,7 @@ export function useMouseControls(params: UseMouseControlsParams): void {
     return () => {
       orbitPivotStore.end();
       invalidateSelectionPick(canvas);
+      hoverPicker.dispose();
       setMeasureTapHandler(canvas, null);
       canvas.removeEventListener('pointerdown', onPointerDown);
       canvas.removeEventListener('pointermove', onPointerMove);

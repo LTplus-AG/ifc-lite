@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Authored internally for the IDS lint corpus (MPL-2.0). A first draft of a fire-safety IDS with typical authoring mistakes. -->
+<ids xmlns="http://standards.buildingsmart.org/IDS" xmlns:xs="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <info>
+    <title>Fire safety (draft)</title>
+    <author>Fire engineer</author>
+    <date>08.10.2026</date>
+  </info>
+  <specifications>
+    <specification name="Fire rating of load-bearing elements" ifcVersion="IFC4" description="All load-bearing building elements carry a fire rating.">
+      <applicability minOccurs="0" maxOccurs="unbounded">
+        <entity><name><simpleValue>IFCBUILDINGELEMENT</simpleValue></name></entity>
+      </applicability>
+      <requirements>
+        <property><propertySet><simpleValue>Pset_WallCommon</simpleValue></propertySet><baseName><simpleValue>FireRating</simpleValue></baseName><value><simpleValue>EI60, EI90</simpleValue></value></property>
+      </requirements>
+    </specification>
+    <specification name="Fire doors" ifcVersion="IFC4" description="Fire doors carry a rating code.">
+      <applicability minOccurs="0" maxOccurs="unbounded">
+        <entity><name><simpleValue>IFCDOOR</simpleValue></name></entity>
+      </applicability>
+      <requirements>
+        <property><propertySet><simpleValue>Pset_DoorCommon</simpleValue></propertySet><baseName><simpleValue>FireRating</simpleValue></baseName><value><xs:restriction base="xs:string"><xs:pattern value="^EI[0-9]+$"/></xs:restriction></value></property>
+        <property dataType="IFCBOOLEAN"><propertySet><simpleValue>Pset_DoorCommon</simpleValue></propertySet><baseName><simpleValue>FireExit</simpleValue></baseName><value><simpleValue>TRUE</simpleValue></value></property>
+      </requirements>
+    </specification>
+    <specification name="Door height" ifcVersion="IFC4" description="Clear door height.">
+      <applicability minOccurs="0" maxOccurs="unbounded">
+        <entity><name><simpleValue>IFCDOOR</simpleValue></name></entity>
+      </applicability>
+      <requirements>
+        <property dataType="IFCPOSITIVELENGTHMEASURE"><propertySet><simpleValue>Qto_DoorBaseQuantities</simpleValue></propertySet><baseName><simpleValue>Height</simpleValue></baseName><value><xs:restriction base="xs:double"><xs:minInclusive value="2100"/></xs:restriction></value></property>
+      </requirements>
+    </specification>
+  </specifications>
+</ids>

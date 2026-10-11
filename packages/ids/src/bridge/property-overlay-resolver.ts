@@ -6,8 +6,16 @@ import { type IfcDataStore } from '@ifc-lite/parser';
 
 import type { PropertySetInfo } from '../types.js';
 
+import { fromSi, isIdentity, toSi } from './measure-conversion.js';
 import { collectAllPropertySets } from './properties.js';
-import { resolveEntityMeasureScales, toBaseSI } from './units.js';
+import { copyOwnUnit, ownUnitOf } from './project-property.js';
+import {
+  ownUnitConversionFor,
+  resolveEntityMeasureScales,
+  toBaseSI,
+  toRaw,
+  type EntityMeasureScales,
+} from './units.js';
 
 /**
  * One pending, in-memory correction to a property value, applied on top
@@ -90,7 +98,11 @@ export function resolveEffectivePropertySets(
   // base projection's cached/shared objects are never touched.
   const result = base.map((pset) => ({
     ...pset,
-    properties: pset.properties.map((p) => ({ ...p })),
+    properties: pset.properties.map((p) => {
+      const copy = { ...p };
+      copyOwnUnit(p, copy);
+      return copy;
+    }),
   }));
 
   // The overlay's raw values (a `PropertyOverride.value` mirrors whatever
@@ -153,10 +165,14 @@ export function resolveEffectivePropertySets(
       // scale: a non-measure property (IFCLABEL, boolean, identifier)
       // has no scale and passes through untouched.
       const existing = targetSet.properties[idx];
-      targetSet.properties[idx] = {
+      const replacement = {
         ...existing,
-        value: toBaseSI(override.value, existing.dataType, scales),
+        value: existingToBaseSI(existing, override.value, scales),
       };
+      // Keep its own Unit so a later override of the same property in this
+      // array converts in that unit too.
+      copyOwnUnit(existing, replacement);
+      targetSet.properties[idx] = replacement;
     } else if (matchingSets.length > 0) {
       // No same-named set carries this property yet — a PROPERTY_MISSING
       // correction (#3943): the property is being CREATED, not updated, so
@@ -203,4 +219,55 @@ export function resolveEffectivePropertySets(
   }
 
   return result;
+}
+
+type ProjectedProperty = PropertySetInfo['properties'][number];
+
+/**
+ * An override of an EXISTING property is written in that property's raw
+ * frame: its own `Unit` when it declares one (#7395), else the project's.
+ */
+function existingToBaseSI(
+  existing: ProjectedProperty,
+  value: PropertyOverride['value'],
+  scales: EntityMeasureScales
+): PropertyOverride['value'] {
+  const own = ownUnitOf(existing);
+  if (!own) return toBaseSI(value, existing.dataType, scales);
+  const c = ownUnitConversionFor(existing.dataType, own.siScale, own.symbol, own.siOffset);
+  return typeof value === 'number' && !isIdentity(c) ? toSi(value, c!) : value;
+}
+
+/**
+ * The inverse of what {@link resolveEffectivePropertySets} applies to an
+ * override: convert a base-SI value (an IDS literal, or a correction typed to
+ * satisfy one) into the raw frame `psetName`.`propName` on `expressId` is
+ * stored in — the property's own `Unit` when it declares one, else the
+ * project unit for `dataType` (or, when omitted, the property's own
+ * dataType). A property the entity does not carry yet takes the project
+ * unit, matching how a created override is read back.
+ */
+export function propertyValueToRaw(
+  store: IfcDataStore,
+  expressId: number,
+  psetName: string,
+  propName: string,
+  dataType: string | undefined,
+  value: string | number | boolean
+): string | number | boolean {
+  const psetLower = psetName.toLowerCase();
+  const propLower = propName.toLowerCase();
+  let existing: ProjectedProperty | undefined;
+  for (const pset of collectAllPropertySets(store, expressId)) {
+    if (pset.name.toLowerCase() !== psetLower) continue;
+    existing = pset.properties.find((p) => p.name.toLowerCase() === propLower);
+    if (existing) break;
+  }
+  const effectiveType = dataType ?? existing?.dataType;
+  const own = existing && ownUnitOf(existing);
+  if (own) {
+    const c = ownUnitConversionFor(effectiveType, own.siScale, own.symbol, own.siOffset);
+    return typeof value === 'number' && !isIdentity(c) ? fromSi(value, c!) : value;
+  }
+  return toRaw(value, effectiveType, resolveEntityMeasureScales(store, expressId)) as string | number | boolean;
 }

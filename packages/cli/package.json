@@ -1,6 +1,6 @@
 {
   "name": "@ifc-lite/cli",
-  "version": "0.38.2",
+  "version": "0.39.0",
   "description": "CLI toolkit for IFC files \u2014 query, validate, export, create, and script BIM data",
   "type": "module",
   "bin": {
@@ -40,6 +40,7 @@
     "@ifc-lite/flow-nodes": "workspace:^",
     "@ifc-lite/geometry": "workspace:^",
     "@ifc-lite/ids": "workspace:^",
+    "@ifc-lite/ids-authoring": "workspace:^",
     "@ifc-lite/ifcx": "workspace:^",
     "@ifc-lite/mcp": "workspace:^",
     "@ifc-lite/merge": "workspace:^",
@@ -54,9 +55,9 @@
     "@ifc-lite/wasm": "workspace:^"
   },
   "devDependencies": {
-    "@types/node": "^26.6.2",
+    "@types/node": "^26.6.4",
     "typescript": "^6.0.3",
-    "vitest": "^5.0.2"
+    "vitest": "^5.0.3"
   },
   "engines": {
     "node": ">=18.0.0"

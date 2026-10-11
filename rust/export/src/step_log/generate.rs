@@ -128,9 +128,19 @@ fn qset_lines(pass: &mut Pass<'_, '_>, host: u32, qsets: &[QSet]) -> Vec<String>
         let mut refs = Vec::new();
         for q in &qset.quantities {
             let id = pass.allocate();
+            let entity = quantity_entity(q.ty);
+            // Formula was added in IFC4; the canonical schema registry also
+            // drives the TypeScript writer (#7378).
+            let formula = if ifc_lite_core::attribute_names_for_schema(pass.schema, entity)
+                .unwrap_or_else(|| ifc_lite_core::IfcType::from_str(entity).attribute_names())
+                .contains(&"Formula")
+            {
+                ",$"
+            } else {
+                ""
+            };
             lines.push(format!(
-                "#{id}={}('{}',$,$,{},$);",
-                quantity_entity(q.ty),
+                "#{id}={entity}('{}',$,$,{}{formula});",
                 escape(&q.name),
                 to_step_real(q.value)
             ));

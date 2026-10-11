@@ -1,6 +1,6 @@
 {
   "name": "@ifc-lite/lens",
-  "version": "2.1.0",
+  "version": "2.2.0",
   "description": "Rule-based 3D filtering and colorization for IFC models",
   "type": "module",
   "main": "./dist/index.js",
@@ -24,7 +24,7 @@
   "devDependencies": {
     "@ifc-lite/data": "workspace:^",
     "typescript": "^6.0.3",
-    "vitest": "^5.0.2"
+    "vitest": "^5.0.3"
   },
   "license": "MPL-2.0",
   "author": "Louis True",

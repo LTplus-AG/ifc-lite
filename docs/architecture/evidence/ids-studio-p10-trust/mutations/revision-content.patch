@@ -1,0 +1,13 @@
+diff --git b/packages/ids-authoring/src/revision/verify.ts a/packages/ids-authoring/src/revision/verify.ts
+index 1b4470e17..66027e0e8 100644
+--- b/packages/ids-authoring/src/revision/verify.ts
++++ a/packages/ids-authoring/src/revision/verify.ts
+@@ -48,7 +48,7 @@ export function verifyRevisionLog(log: RevisionLog): RevisionVerification {
+     const at = { revId: r.revId };
+     if (r.docId !== log.docId || r.snapshot.docId !== log.docId) problems.push({ ...at, code: 'REV-DOC-001', message: 'revision belongs to another document' });
+     if (revisionHash(r) !== r.hash) problems.push({ ...at, code: 'REV-HASH-001', message: 'revision record does not match its hash' });
+-    if (false) problems.push({ ...at, code: 'REV-CONTENT-001', message: 'revision content does not match its content hash' });
++    if (contentHash(r.snapshot) !== r.contentHash) problems.push({ ...at, code: 'REV-CONTENT-001', message: 'revision content does not match its content hash' });
+     if (r.parentRevId === undefined) {
+       if (i > 0 || r.parentHash !== undefined) problems.push({ ...at, code: 'REV-CHAIN-001', message: 'only the first revision may have no parent' });
+       return;

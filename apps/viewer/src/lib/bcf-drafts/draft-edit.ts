@@ -60,7 +60,9 @@ export async function splitDraftTopic(batch: DraftBatch, guid: string, identitie
   const kept = topic.members.filter(member => !identities.has(findingIdentity(member)));
   if (moved.length === 0 || kept.length === 0) return { ok: false, reason: 'empty-split' };
   const original = await reframe(batch, { ...topic, members: kept, description: memberSummary(kept) });
-  const split = await reframe(batch, { ...topic, guid: crypto.randomUUID(), title: (title?.trim() || `${topic.title} (split)`).slice(0, DRAFT_LIMITS.title),
+  // Only clash members move; reviewed source findings stay with the original topic, so each keeps one owner.
+  const { sourceFindings: _stays, ...movable } = topic;
+  const split = await reframe(batch, { ...movable, guid: crypto.randomUUID(), title: (title?.trim() || `${topic.title} (split)`).slice(0, DRAFT_LIMITS.title),
     description: memberSummary(moved), members: moved, comments: [] });
   return commit(batch, batch.topics.flatMap(item => item.guid === guid ? [original, split] : [item]));
 }
@@ -75,8 +77,9 @@ export async function mergeDraftTopics(batch: DraftBatch, guids: readonly string
   if (chosen.length < 2) return { ok: false, reason: 'merge-needs-two' };
   const [target, ...absorbed] = chosen;
   const members = chosen.flatMap(topic => topic.members);
+  const sourceFindings = chosen.some(topic => topic.sourceFindings) ? chosen.flatMap(topic => topic.sourceFindings ?? []) : undefined;
   const merged = await reframe(batch, { ...target, members, description: memberSummary(members),
-    comments: chosen.flatMap(topic => topic.comments) });
+    comments: chosen.flatMap(topic => topic.comments), ...(sourceFindings ? { sourceFindings } : {}) });
   const removed = new Set(absorbed.map(topic => topic.guid));
   return commit(batch, batch.topics.flatMap(topic => removed.has(topic.guid) ? [] : topic.guid === target.guid ? [merged] : [topic]));
 }

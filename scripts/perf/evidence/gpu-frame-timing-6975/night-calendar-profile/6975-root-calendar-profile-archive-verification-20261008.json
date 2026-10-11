@@ -1,0 +1,69 @@
+{
+  "checked_at": "2026-10-08T09:32:56.947083+00:00",
+  "receipt": "/tmp/ifc-6975-nightly/scripts/perf/evidence/gpu-frame-timing-6975/night-calendar-profile/qualified-source.json",
+  "rows": [
+    {
+      "path": "scripts/perf/frame-gpu-night-history.ts",
+      "working_match": true,
+      "archived_match": true
+    },
+    {
+      "path": "scripts/perf/frame-gpu-night-history.test.ts",
+      "working_match": true,
+      "archived_match": true
+    },
+    {
+      "path": "scripts/perf/frame-gpu-night-history.test.mjs",
+      "working_match": true,
+      "archived_match": true
+    },
+    {
+      "path": "scripts/perf/frame-gpu-night-profile.ts",
+      "working_match": true,
+      "archived_match": true
+    },
+    {
+      "path": "scripts/perf/frame-gpu-night-profile.test.ts",
+      "working_match": true,
+      "archived_match": true
+    },
+    {
+      "path": "scripts/perf/tsconfig.frames.json",
+      "working_match": true,
+      "archived_match": true
+    },
+    {
+      "log": "calendar-profile-controls",
+      "archived_match": true
+    },
+    {
+      "log": "calendar-profile-final-controls",
+      "archived_match": true
+    },
+    {
+      "log": "calendar-older-receipt-inverse",
+      "archived_match": true
+    },
+    {
+      "log": "calendar-older-receipt-real-inverse",
+      "archived_match": true
+    },
+    {
+      "log": "calendar-profile-real-restored",
+      "archived_match": true
+    },
+    {
+      "log": "full-root-typecheck",
+      "archived_match": true
+    },
+    {
+      "log": "offline-install",
+      "archived_match": true
+    }
+  ],
+  "scope": [
+    "No browser/native GPU/nightly run or scheduled task installed. These are synthetic calendar invariants and actual temporary-checkout/file drift controls only.",
+    "calendarReady permits review of seven raw artifacts; it neither establishes physical/GPU admission nor produces a threshold.",
+    "Current separately drafted Chrome lifecycle modules were typechecked in this snapshot only; ownership/cleanup/native behavior is unqualified and not covered by this calendar-profile receipt."
+  ]
+}

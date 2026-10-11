@@ -60,7 +60,7 @@ describe('complete CoordinateInfo cache transport (#7239)', () => {
       meshes: [], totalVertices: 0, totalTriangles: 0, coordinateInfo: capturedInfo,
     }, source);
     const reader = new BinaryCacheReader();
-    expect(reader.readHeader(cache).version).toBe(24);
+    expect(reader.readHeader(cache).version).toBe(25);
     expect(reader.validate(cache, source)).toBe(true);
     expect((await reader.read(cache)).geometry?.coordinateInfo).toEqual(capturedInfo);
   });

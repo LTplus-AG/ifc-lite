@@ -1,0 +1,69 @@
+{
+  "at": "2026-10-10T07:03:43.853413+00:00",
+  "sides": {
+    "base": {
+      "sourceHead": "2382cf4124315f027b2d33c21c1751cee33c5081",
+      "manifestSha256": "f59cdc3b65cdffb099e991eaccce8013a3ee29b447d001c1ee19b2066b9827d7",
+      "checkedFiles": 96647,
+      "checkedDirectoryAliases": 3222,
+      "mismatches": [],
+      "artifacts": {
+        "wasm": {
+          "path": "/home/louistrue/wt/6537-ab-base-v2-227af528/packages/wasm/pkg/ifc-lite_bg.wasm",
+          "sha256": "9f18a87fba742ddb1ca61a246b8ec76ea69f03c81aea6d47ff066815e7d95bdf",
+          "expected": "9f18a87fba742ddb1ca61a246b8ec76ea69f03c81aea6d47ff066815e7d95bdf"
+        },
+        "native": {
+          "path": "/home/louistrue/wt/6537-ab-base-v2-227af528/target/profiling/examples/perf_probe",
+          "sha256": "1c366fd195a13437bbd52b555a84c90c3c4d4162a4df7ad59a88b6c6217ec235",
+          "expected": "1c366fd195a13437bbd52b555a84c90c3c4d4162a4df7ad59a88b6c6217ec235"
+        },
+        "servedWasm": {
+          "path": "/home/louistrue/wt/6537-ab-base-v2-227af528/apps/viewer/dist/assets/ifc-lite_bg-CNZG7n-7.wasm",
+          "sha256": "9f18a87fba742ddb1ca61a246b8ec76ea69f03c81aea6d47ff066815e7d95bdf"
+        }
+      },
+      "sourceWasmtimeVerifiedNewerThanRust": true
+    },
+    "branch": {
+      "sourceHead": "5639fb3724ede20f29e144859fa50e5aa90ccf1f",
+      "manifestSha256": "c9866072adcca7dc278271449dcfc219ba67399f5e199dfaeeb658cebb93637b",
+      "checkedFiles": 96669,
+      "checkedDirectoryAliases": 3222,
+      "mismatches": [],
+      "artifacts": {
+        "wasm": {
+          "path": "/home/louistrue/wt/6537-ab-branch-v2-227af528/packages/wasm/pkg/ifc-lite_bg.wasm",
+          "sha256": "e1577bf8318ba1b1f972cdfe13a973acb1a40484f174cd9513a4513a3ec35fb5",
+          "expected": "e1577bf8318ba1b1f972cdfe13a973acb1a40484f174cd9513a4513a3ec35fb5"
+        },
+        "native": {
+          "path": "/home/louistrue/wt/6537-ab-branch-v2-227af528/target/profiling/examples/perf_probe",
+          "sha256": "411c556dc3e0e3d61ec435ece10683c8643bc633251b3a78e166a061879f3f79",
+          "expected": "411c556dc3e0e3d61ec435ece10683c8643bc633251b3a78e166a061879f3f79"
+        },
+        "servedWasm": {
+          "path": "/home/louistrue/wt/6537-ab-branch-v2-227af528/apps/viewer/dist/assets/ifc-lite_bg-Bz_oSzMV.wasm",
+          "sha256": "e1577bf8318ba1b1f972cdfe13a973acb1a40484f174cd9513a4513a3ec35fb5"
+        }
+      },
+      "sourceWasmtimeVerifiedNewerThanRust": true
+    }
+  },
+  "mismatches": [],
+  "fixtures": [
+    {
+      "path": "/home/louistrue/wt/6537-load-pipeline-227af528/tests/models/ara3d/AC20-FZK-Haus.ifc",
+      "sha256": "d42ab0dee01173106c16cd823b4614efe188fa15dd65195d95b9879bec59acc5",
+      "bytes": 2526511
+    },
+    {
+      "path": "/home/louistrue/wt/6537-load-pipeline-227af528/tests/models/various/01_Snowdon_Towers_Sample_Structural(1).ifc",
+      "sha256": "fab102eb5f9152bc7053d7e4920a8b75d0d34683c834078f0735c88308eb00a4",
+      "bytes": 8714606
+    }
+  ],
+  "endedAt": "2026-10-10T07:04:28.769346+00:00",
+  "seconds": 44.92250850200071,
+  "verdict": "FROZEN_CLOSURE_MATCH"
+}

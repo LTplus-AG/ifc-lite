@@ -281,15 +281,29 @@ describe('a rewritten type-object line keeps the entity’s other edits', () => 
     const text = new TextDecoder().decode(result.content);
     const line = lineFor(text, WALL_TYPE_ID);
 
-    // The regenerated pset is referenced, not orphaned…
-    const generated = /IFCPROPERTYSET\('[^']*',\$,'Pset_TypeOwned'/.exec(text);
-    expect(generated).not.toBeNull();
-    const generatedId = /^#(\d+)=/m.exec(
-      text.slice(text.lastIndexOf('\n', generated!.index) + 1),
-    )![1];
-    expect(line).toContain(`(#${generatedId})`);
-    // …and the source pset it replaced is gone.
-    expect(line).not.toContain('(#30)');
+    // #7355 current ownership: resolve the actual owned definition after export/reparse: a retained
+    // unowned source set with the same Name is not the regenerated instance.
+    const saved = await new IfcParser().parseColumnar(toArrayBuffer(result.content), { disableWorkerScan: true });
+    const refs = saved.getEntity(WALL_TYPE_ID)?.attributes[5];
+    expect(Array.isArray(refs)).toBe(true);
+    if (!Array.isArray(refs)) throw new Error('Saved type ownership is unreadable');
+    expect(refs).toHaveLength(1);
+    const owned = refs[0];
+    expect(typeof owned).toBe('number');
+    if (typeof owned !== 'number') throw new Error('Saved type ownership reference is unreadable');
+    expect(owned).not.toBe(30);
+    expect(saved.getEntity(30)?.attributes).toEqual(store.getEntity(30)?.attributes);
+    expect(saved.getEntity(30)?.type).toBe(store.getEntity(30)?.type);
+    const pset = saved.getEntity(owned);
+    expect(pset?.type).toBe('IFCPROPERTYSET');
+    expect(pset?.attributes[2]).toBe('Pset_TypeOwned');
+    expect(line).toContain(`(#${owned})`);
+    const members = pset?.attributes[4];
+    expect(Array.isArray(members)).toBe(true);
+    if (!Array.isArray(members) || typeof members[0] !== 'number') throw new Error('Saved property members are unreadable');
+    expect(saved.getEntity(members[0])?.attributes[0]).toBe('Foo');
+    expect(saved.getEntity(members[0])?.attributes[2]).toEqual(['IFCTEXT', 'new']);
+
   });
 
   // ── every kind at once ─────────────────────────────────────────────────────

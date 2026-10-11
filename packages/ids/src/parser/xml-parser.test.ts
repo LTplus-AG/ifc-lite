@@ -728,18 +728,18 @@ ${facets}
     expect(matchConstraint(bounds, 123456)).toBe(false);
   });
 
-  it('the European decimal comma parses via parseFloat leniency (documented, not this fix)', () => {
-    // `parseFloat` stops at the first invalid character rather than
-    // failing outright, so "60,0" (meant as 60.0) reads as the number
-    // `60` — not `unparseableFacets`. This is a real but separate
-    // misparsing hazard (a European "6,5" would silently become `6`);
-    // it is out of scope for the fail-closed fix here, which only
-    // covers values `parseFloat`/`parseInt` reject outright.
+  it('the European decimal comma is unparseable, not read as its integer part (#7399)', () => {
+    // `parseFloat` stopped at the comma, so "60,0" (meant as 60.0) read
+    // as 60 and a "6,5" silently became 6. A bound is now read only when
+    // its whole text is in the base's lexical space, so the comma fails
+    // the restriction closed like any other malformed bound.
     const bounds = boundsOf(idsWith('              <xs:minInclusive value="60,0"/>'));
-    expect(bounds.minInclusive).toBe(60);
-    expect(bounds.unparseableFacets).toBeUndefined();
+    expect(bounds.minInclusive).toBeUndefined();
+    expect(bounds.unparseableFacets).toEqual([
+      { facet: 'minInclusive', rawValue: '60,0' },
+    ]);
     expect(matchConstraint(bounds, 0)).toBe(false);
-    expect(matchConstraint(bounds, 60)).toBe(true);
+    expect(matchConstraint(bounds, 60)).toBe(false);
   });
 
   it('a legitimately absent facet is unaffected — no unparseableFacets, still unbounded on that side', () => {
@@ -761,5 +761,43 @@ ${facets}
     expect(matchConstraint(bounds, 0)).toBe(false);
     expect(matchConstraint(bounds, 60)).toBe(true);
     expect(matchConstraint(bounds, 61)).toBe(true);
+  });
+});
+
+describe('parseIDS: the facet @uri attribute (bSDD references)', () => {
+  const xml = `<?xml version="1.0" encoding="utf-8"?>
+<ids xmlns="http://standards.buildingsmart.org/IDS" xmlns:xs="http://www.w3.org/2001/XMLSchema">
+  <info><title>uri</title></info>
+  <specifications>
+    <specification name="s" ifcVersion="IFC4">
+      <applicability><entity><name><simpleValue>IFCWALL</simpleValue></name></entity></applicability>
+      <requirements>
+        <property dataType="IFCLABEL" uri="https://identifier.buildingsmart.org/uri/example/demo/1.0/prop/FireRating" cardinality="required">
+          <propertySet><simpleValue>Pset_WallCommon</simpleValue></propertySet>
+          <baseName><simpleValue>FireRating</simpleValue></baseName>
+        </property>
+        <classification uri=" https://identifier.buildingsmart.org/uri/example/demo/1.0/class/EW " cardinality="required">
+          <value><simpleValue>EW</simpleValue></value>
+          <system><simpleValue>Demo</simpleValue></system>
+        </classification>
+        <material uri="" cardinality="optional"><value><simpleValue>Concrete</simpleValue></value></material>
+      </requirements>
+    </specification>
+  </specifications>
+</ids>`;
+
+  it('keeps a trimmed uri on property and classification facets and drops a blank one', () => {
+    const [property, classification, material] = parseIDS(xml).specifications[0].requirements.map((r) => r.facet);
+    expect(property).toMatchObject({ type: 'property', uri: 'https://identifier.buildingsmart.org/uri/example/demo/1.0/prop/FireRating' });
+    expect(classification).toMatchObject({ type: 'classification', uri: 'https://identifier.buildingsmart.org/uri/example/demo/1.0/class/EW' });
+    expect(material.type).toBe('material');
+    expect('uri' in material).toBe(false);
+  });
+
+  it('leaves an applicability @uri (IDS 1.1) to the preview pass', () => {
+    const inApplicability = xml.replace('<applicability><entity><name><simpleValue>IFCWALL</simpleValue></name></entity></applicability>',
+      '<applicability><entity><name><simpleValue>IFCWALL</simpleValue></name></entity><classification uri="https://example.org/c/EW"><system><simpleValue>Demo</simpleValue></system></classification></applicability>');
+    expect(parseIDS(inApplicability).specifications[0].applicability.facets[1]).not.toHaveProperty('uri');
+    expect(parseIDS(inApplicability, { preview: { ids11: true } }).specifications[0].applicability.facets[1]).toMatchObject({ uri: 'https://example.org/c/EW' });
   });
 });

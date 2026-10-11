@@ -28,7 +28,13 @@ export interface AnalysisStamp {
 const reportStamps = new WeakMap<object, AnalysisStamp>();
 
 export function captureAnalysisStamp(includePlacement = false): AnalysisStamp {
-  const state = useViewerStore.getState();
+  return analysisStampFrom(useViewerStore.getState(), includePlacement);
+}
+
+type StampSource = Pick<ReturnType<typeof useViewerStore.getState>, 'mutationVersion' | 'geometryContentVersion' | 'models' | 'modelPlacement'>;
+
+/** The stamp a run started now would carry, read from the given state. */
+export function analysisStampFrom(state: StampSource, includePlacement = false): AnalysisStamp {
   return {
     mutationVersion: state.mutationVersion,
     geometryContentVersion: state.geometryContentVersion,

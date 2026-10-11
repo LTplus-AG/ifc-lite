@@ -11,6 +11,7 @@
 
 import type { BCFViewpoint } from '@ifc-lite/bcf';
 import type { ClashSeverity } from '@ifc-lite/clash';
+import type { FindingEvidence, FindingSourceKind, RunGapCode } from '../review/types.js';
 
 export interface DraftElement {
   /** Durable element key (IFC GlobalId / prim path). */
@@ -47,6 +48,50 @@ export type DraftOrigin =
   /** A coordination review card (P18); `card` is the digest of the card's durable identity. */
   | { kind: 'review'; card: string };
 
+/**
+ * How a reviewed card finding that is not a clash member relates to its topic
+ * (#7373). `included`: current evidence the topic was drafted from.
+ * `historical`: saved evidence, described but never counted as current.
+ * `not-in-live-run`: a current clash finding whose clash is no longer in the
+ * live run, so it could not become a member. `record`: a coordination record
+ * (grouping receipt) whose native status stays authoritative.
+ */
+export type DraftSourceMembership = 'included' | 'historical' | 'not-in-live-run' | 'record';
+export const DRAFT_SOURCE_MEMBERSHIPS: readonly DraftSourceMembership[] = ['included', 'historical', 'not-in-live-run', 'record'];
+
+/** The native run that owned a source finding, exactly as that run reported itself. */
+export interface DraftSourceRun {
+  id: string;
+  source: FindingSourceKind;
+  temporal: 'current' | 'historical';
+  label: string;
+  /** Null when the native run records no time: its revision is unknown, never assumed current. */
+  capturedAt: string | null;
+  /** The run evaluated its whole population; `gaps` say why not. */
+  complete: boolean;
+  gaps: RunGapCode[];
+  /** Durable model names the run evaluated. */
+  models: string[];
+}
+
+/**
+ * One reviewed finding of a topic's card other than its clash members (#7373),
+ * frozen when the topic was drafted. `id` is the review finding id
+ * (unique per review snapshot) and `evidence` the exact native row, so the source
+ * finding and the run that owned it survive save, reload and archive
+ * roundtrips without being re-derived from the title, description or GlobalIds.
+ */
+export interface DraftSourceFinding {
+  id: string;
+  lineage: string;
+  source: FindingSourceKind;
+  /** Native status, verbatim. */
+  nativeStatus: string;
+  membership: DraftSourceMembership;
+  run: DraftSourceRun;
+  evidence: FindingEvidence;
+}
+
 export interface DraftComment {
   id: string;
   text: string;
@@ -66,6 +111,11 @@ export interface DraftTopic {
   assignedTo?: string;
   origin: DraftOrigin;
   members: DraftFinding[];
+  /**
+   * Review topics only: every card finding that is not a clash member, with its
+   * membership. Absent on clash, selection and plain archive topics.
+   */
+  sourceFindings?: DraftSourceFinding[];
   /** Built through the clash BCF bridge; never carries snapshot bytes. */
   viewpoint?: BCFViewpoint;
   comments: DraftComment[];

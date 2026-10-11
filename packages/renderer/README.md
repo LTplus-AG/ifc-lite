@@ -28,6 +28,27 @@ renderer.requestRender();
 
 `loadGeometry()` accepts a `GeometryResult` from `@ifc-lite/geometry` or a raw `MeshData[]`. The renderer keeps geometry in GPU buffers; subsequent `requestRender()` calls coalesce into a single frame.
 
+## Inspect GPU pass timing
+
+Timestamp queries are opt-in. Enable them before rendering, then read resolved
+samples after frames have submitted:
+
+```typescript
+renderer.setGpuFrameTiming(true);
+renderer.render();
+const timing = renderer.getGpuFrameTiming();
+console.log(timing.mode, timing.frames);
+```
+
+`gpu-queries` samples report each render pass in milliseconds. `unsupported`
+means the actual device lacks timestamp queries; no CPU or queue-completion
+value is substituted. Readback is asynchronous, so the first snapshot can be
+empty. Frames arriving during a pending map are skipped, and the bounded sample
+history reports overwritten frames. Errors and resource epochs identify invalid
+or interrupted captures. Device loss clears old samples before observers run;
+recovery preserves the opt-in setting and starts a new epoch. Disable with
+`renderer.setGpuFrameTiming(false)` to release the timing resources.
+
 ## Recover from GPU device loss
 
 ```typescript

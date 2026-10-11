@@ -1,0 +1,13 @@
+diff --git b/packages/ids-authoring/src/reducer/comment-ops.ts a/packages/ids-authoring/src/reducer/comment-ops.ts
+index 678f00d2f..1a30d4d96 100644
+--- b/packages/ids-authoring/src/reducer/comment-ops.ts
++++ a/packages/ids-authoring/src/reducer/comment-ops.ts
+@@ -94,7 +94,7 @@ export function applyCommentResolve(doc: StudioDocument, op: MetaCommentResolveO
+   const site = requireThread(doc, op.payload.threadId);
+   return {
+     doc: setThread(doc, site, { ...site.thread, resolved: op.payload.resolved }),
+-    inverse: [inv(op, 0, 'meta.comment.resolve', { threadId: op.payload.threadId, resolved: op.payload.resolved })],
++    inverse: [inv(op, 0, 'meta.comment.resolve', { threadId: op.payload.threadId, resolved: site.thread.resolved })],
+     touched: [site.nodeId],
+   };
+ }

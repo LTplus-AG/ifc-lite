@@ -2,7 +2,9 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { structuralReviewEn } from './catalogues/structural-review.en';
+import { groupReviewEn } from './catalogues/group-review.en';
 
+import { zoneEmissionEn } from './catalogues/zone-emission.en';
 
 import { newIfcEn } from './catalogues/new-ifc.en';
 import type { LazyTranslationKey } from './lazy-catalogues';
@@ -59,6 +61,7 @@ import { modelAuthoringEn } from './catalogues/model-authoring.en';
 import { roomReviewEn } from './catalogues/room-review.en';
 import { sceneActionsEn } from './catalogues/scene-actions.en';
 import { checkAuthoringEn } from './catalogues/check-authoring.en';
+import { idsAgentEn } from './catalogues/ids-agent.en';
 import { assistantArtifactsEn } from './catalogues/assistant-artifacts.en';
 import type { TranslationValue } from './types';
 import type { semanticAssistEn } from './catalogues/semantic-assist.en';
@@ -83,6 +86,7 @@ import { documentMenuEn } from './catalogues/document-menu.en';
 import { drawingUnderlayEn } from './catalogues/drawing-underlay.en';
 import { hierarchyEn } from './catalogues/hierarchy.en';
 import { idsPanelEn } from './catalogues/ids-panel.en';
+import { idsStudioEn } from './catalogues/ids-studio.en';
 import { validationEditorEn } from './catalogues/validation-editor.en';
 import { validationPanelEn } from './catalogues/validation-panel.en';
 import { manualValidationEn } from './catalogues/manual-validation.en';
@@ -152,8 +156,10 @@ import { zonesPanelEn } from './catalogues/zones-panel.en';
 
 /** English is assembled from feature catalogues so no locale becomes a monolith. */
 export const en = {
+  ...zoneEmissionEn,
   ...newIfcEn,
   ...structuralReviewEn,
+  ...groupReviewEn,
   ...semanticEn,
   ...semanticResultsEn,
   ...semanticIdentityEn,
@@ -271,6 +277,7 @@ export const en = {
   ...roomReviewEn,
   ...sceneActionsEn,
   ...checkAuthoringEn,
+  ...idsAgentEn,
   ...assistantArtifactsEn,
   ...clashPanelEn,
   ...clashToolsEn,
@@ -295,6 +302,7 @@ export const en = {
   ...scanToBimEn,
   ...sheetsPdfEn,
   ...spaceEnvelopeEn,
+  ...idsStudioEn,
 } as const;
 
 /** Strings that load with the panels that use them (see `registerEnglish`); their keys are typed here, their text is not in the eager bundle. */

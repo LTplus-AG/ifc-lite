@@ -1,0 +1,112 @@
+{
+  "issue": 6975,
+  "date": "2026-10-08",
+  "base": "62bc268382255a65c7eeaaa9268898bafe201fec",
+  "sources": {
+    "scripts/perf/frame-gpu-night-history.ts": {
+      "sha256": "89c8b66809280b059197143fb43ddc4e9e511ce83d0d96bd7b885a82a2308214",
+      "archive": "qualified-frame-gpu-night-history.ts.gz"
+    },
+    "scripts/perf/frame-gpu-night-history.test.ts": {
+      "sha256": "6c743fc64565461f171335fa6fb0629a799c5d72c4f24f74c5dda316a6e9d221",
+      "archive": "qualified-frame-gpu-night-history.test.ts.gz"
+    },
+    "scripts/perf/frame-gpu-night-history.test.mjs": {
+      "sha256": "660f1858c34a1e6911066a65c444e756a122adf483a427ff83dd0414fd4324ac",
+      "archive": "qualified-frame-gpu-night-history.test.mjs.gz"
+    },
+    "scripts/perf/frame-gpu-night-profile.ts": {
+      "sha256": "319deed3c36e1f308ab435d5a95ab0a72bcd0dd493ff7c80199854d43b8ffc99",
+      "archive": "qualified-frame-gpu-night-profile.ts.gz"
+    },
+    "scripts/perf/frame-gpu-night-profile.test.ts": {
+      "sha256": "28e4f246cbb1c7116f77ca10dfc235537f2ca6bc9a3b57d2b5009f8903566925",
+      "archive": "qualified-frame-gpu-night-profile.test.ts.gz"
+    },
+    "scripts/perf/tsconfig.frames.json": {
+      "sha256": "76fc6fb5431f0fcb7032be35f47579b84357ed4a84cb8386480fc6606c8f55c4",
+      "archive": "qualified-tsconfig.frames.json.gz"
+    }
+  },
+  "logs": {
+    "calendar-profile-controls": {
+      "sha256": "7398d3722723728e5c5de1670f029ca9f458f5761a71be0470e6acebcafe4a26",
+      "archive": "calendar-profile-controls.log.gz"
+    },
+    "calendar-profile-final-controls": {
+      "sha256": "f1b56aaa9d15213dd7524d7bd7fcce98e7d91e6cb3464a569a01a5f5ff52fbe5",
+      "archive": "calendar-profile-final-controls.log.gz"
+    },
+    "calendar-older-receipt-inverse": {
+      "sha256": "a4dfb684a68e914fc6eed8281e5c2d0119522cf1e59110d0520965e7d72e46e0",
+      "archive": "calendar-older-receipt-inverse.log.gz"
+    },
+    "calendar-older-receipt-real-inverse": {
+      "sha256": "dc12f9219798a30fda80587fabd0c4785b5831af913e25ddf040efaf8eb42c3d",
+      "archive": "calendar-older-receipt-real-inverse.log.gz"
+    },
+    "calendar-profile-real-restored": {
+      "sha256": "c637a73550ced1f9ae08d08ca914ab08f7804f61db0da8ccab7edf342fb51443",
+      "archive": "calendar-profile-real-restored.log.gz"
+    },
+    "full-root-typecheck": {
+      "sha256": "e2aa61d225cea729d27c68821896ecdcebb68cfd6875c77f05daccc41a444e39",
+      "archive": "full-root-typecheck.log.gz"
+    },
+    "offline-install": {
+      "sha256": "a9931904546c2dfba85a36ee2461955190cff4e5e3ff067eccdc6e79a1ecc327",
+      "archive": "offline-install.log.gz"
+    }
+  },
+  "reviewInverseSha256": "d36edfbb550d4dccc6de4423e0a6b796f4770e7b9f4a90915492efdb9b84dedf",
+  "results": {
+    "actualCorrectedControls": {
+      "exit": 0,
+      "innerPass": 8,
+      "innerFail": 0,
+      "innerSkip": 0,
+      "wrapperPass": 1
+    },
+    "olderNightReuseInverse": {
+      "exit": 1,
+      "innerPass": 7,
+      "innerAssertionFailures": 1
+    },
+    "plainRootFullTypecheck": {
+      "session": 85209,
+      "exit": 0,
+      "repositoryTestFiles": 3713,
+      "packages": 62,
+      "permanentScriptProgramme": "scripts/perf/tsconfig.frames.json"
+    }
+  },
+  "excluded": [
+    "calendar-profile-controls, calendar-profile-final-controls and calendar-older-receipt-inverse: inherited NODE_TEST_CONTEXT suppressed all inner TS tests; wrapper status0 was not behavior evidence."
+  ],
+  "holds": [
+    "No browser/native GPU/nightly run or scheduled task installed. These are synthetic calendar invariants and actual temporary-checkout/file drift controls only.",
+    "calendarReady permits review of seven raw artifacts; it neither establishes physical/GPU admission nor produces a threshold.",
+    "Current separately drafted Chrome lifecycle modules were typechecked in this snapshot only; ownership/cleanup/native behavior is unqualified and not covered by this calendar-profile receipt.",
+    "The bounded calendar/profile PR restores the unchanged base launcher. The root typecheck log records the qualified six calendar/profile sources plus the separately archived typecheck-only lifecycle drafts; fresh exact-head CI remains required."
+  ],
+  "typecheckOnlyLifecycleSources": {
+    "scripts/perf/frame-gpu-chrome.ts": {
+      "sha256": "b99a0c477366d05b488ecadfbbb0a1b1eb00ef559f9341844782acc13bd68ea0",
+      "archive": "typecheck-only-frame-gpu-chrome.ts.gz",
+      "behaviorQualified": false
+    },
+    "scripts/perf/frame-gpu-chrome-owner.ts": {
+      "sha256": "5cc1e96919955e1183939acd3f0ee073466c9cbf32dde404cf271e2f529eb8de",
+      "archive": "typecheck-only-frame-gpu-chrome-owner.ts.gz",
+      "behaviorQualified": false
+    }
+  },
+  "rootArchiveVerification": {
+    "file": "6975-root-calendar-profile-archive-verification-20261008.json",
+    "sha256": "e48e646fdf952dd348dff137412381697e29e502de8ace1e5190e001ffb0dd6a"
+  },
+  "independentReview": {
+    "file": "6975-independent-calendar-profile-review-20261008.json",
+    "sha256": "0663bac1927f5fde59f992ecc187fa37fae365cdac905da43913f1265ad17177"
+  }
+}

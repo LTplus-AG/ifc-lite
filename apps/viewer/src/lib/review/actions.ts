@@ -20,21 +20,24 @@ import { currentReviewWorkspace, useReviewWorkspaces } from './workspace';
 export interface SavedCardDrafts extends CardDraftResult {
   saved: boolean;
   /**
-   * The durable draft codec refused the batch, so retrying cannot save it: `too-many` when the batch or one
-   * topic holds more topics or findings than a draft allows, else `field-limit` (a value beyond its limit).
+   * The durable draft codec refused the batch, so retrying cannot save it: `topic-too-many` when one topic
+   * (one card) holds more findings than a topic allows, which drafting fewer cards cannot fix; `too-many` when
+   * the batch holds more topics than a draft allows; else `field-limit` (a value beyond its limit).
    */
-  invalid?: 'too-many' | 'field-limit';
+  invalid?: 'topic-too-many' | 'too-many' | 'field-limit';
 }
 
 function refusal(batch: DraftBatch): NonNullable<SavedCardDrafts['invalid']> {
-  return batch.topics.length > DRAFT_LIMITS.topics || batch.topics.some(topic => topic.members.length > DRAFT_LIMITS.members
-    || (topic.sourceFindings?.length ?? 0) > DRAFT_LIMITS.members) ? 'too-many' : 'field-limit';
+  if (batch.topics.some(topic => topic.members.length > DRAFT_LIMITS.members
+    || (topic.sourceFindings?.length ?? 0) > DRAFT_LIMITS.members)) return 'topic-too-many';
+  return batch.topics.length > DRAFT_LIMITS.topics ? 'too-many' : 'field-limit';
 }
 
 /** The translated note for a draft result: a refusal names its reason instead of suggesting a retry. */
 export function cardDraftNoteKey(result: SavedCardDrafts) {
   if (!result.batch) return 'reviewWorkspace.actions.draftNone' as const;
   if (result.saved) return 'reviewWorkspace.actions.draftSaved' as const;
+  if (result.invalid === 'topic-too-many') return 'reviewWorkspace.actions.draftTopicTooMany' as const;
   if (result.invalid === 'too-many') return 'reviewWorkspace.actions.draftTooMany' as const;
   if (result.invalid === 'field-limit') return 'reviewWorkspace.actions.draftFieldLimit' as const;
   return 'reviewWorkspace.actions.draftUnsaved' as const;

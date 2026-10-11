@@ -183,6 +183,20 @@ test('a clash-only review topic whose origin line no longer reads keeps every cl
   }
 });
 
+test('a clash-only topic declaring no source findings is not reported as losing any, even beside a stray source line', async () => {
+  const batch = await clashReview(false);
+  const project = await readBCF(await (await exportDraftArchive(batch, 'a@example.test')).arrayBuffer());
+  const edited = project.topics.get(batch.topics[0].guid)!;
+  edited.description = `${edited.description!.replace(/\norigin: [^\n]+/, `\norigin: ${BROKEN_ORIGINS[1]}`)}`
+    + `\nsources: 0 0000000000000000\ns: ${encodeURIComponent(JSON.stringify({ id: 'stray' }))}`;
+  const imported = await importDraftArchive(await (await writeBCF(project)).arrayBuffer());
+  assert.equal(imported.damaged, 0);
+  assert.equal(imported.droppedFindings, 0, 'zero declared findings: none was lost');
+  const [topic] = imported.batches.flatMap(entry => entry.topics);
+  assert.deepEqual(topic.members, batch.topics[0].members);
+  assert.deepEqual(topic.origin, { kind: 'archive' });
+});
+
 test('a review topic with source findings and a broken origin keeps its members, drops its findings and is reported damaged', async () => {
   const batch = await clashReview(true);
   for (const origin of BROKEN_ORIGINS) {

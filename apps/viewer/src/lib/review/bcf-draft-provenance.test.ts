@@ -216,6 +216,17 @@ test('#7373 a batch the strict codec refuses names its reason, never a retry or 
   assert.equal(many.invalid, 'too-many');
   assert.equal(cardDraftNoteKey(many), 'reviewWorkspace.actions.draftTooMany');
   assert.match(reviewWorkspaceEn['reviewWorkspace.actions.draftTooMany'].other, /fewer cards/);
+  // One card with more findings than one topic holds: drafting fewer cards cannot fix it, so the note never says so.
+  const crowded = Array.from({ length: 2_001 }, (_, at) => finding(`W0-${at}`, 'validation', [element('W0', 'arch.ifc', 'm1')], { nativeStatus: 'failed',
+    evidence: { kind: 'validation', specificationId: `s${at}`, modelId: 'm1', expressId: 1 } }));
+  const oneCard = buildCards(crowded, models).cards;
+  assert.equal(oneCard.length, 1);
+  const overflow = await draftTopicsFromCards('Round', oneCard);
+  assert.equal(overflow.batch?.topics.length, 1);
+  assert.equal(overflow.saved, false);
+  assert.equal(overflow.invalid, 'topic-too-many');
+  assert.equal(cardDraftNoteKey(overflow), 'reviewWorkspace.actions.draftTopicTooMany');
+  assert.doesNotMatch(reviewWorkspaceEn['reviewWorkspace.actions.draftTopicTooMany'].one, /fewer cards/);
   const saved = await draftTopicsFromCards('Round', buildCards([failed('W1')], models).cards);
   assert.equal(saved.saved, true);
   assert.equal(saved.invalid, undefined);

@@ -97,7 +97,11 @@ function topicFields(topic: BCFTopic): Pick<DraftTopic, 'title' | 'topicType' | 
  * half-way, with a `DraftArchiveError` naming the conflict.
  */
 export async function importDraftArchive(data: ArrayBuffer, now = new Date()): Promise<DraftArchiveImport> {
-  const project = await readBCF(data);
+  // The reader keys topics by GUID and keeps only the first of two markups sharing one, reporting the other as a
+  // warning; that archive holds one topic GUID twice and is refused like an exported batch would be.
+  let duplicateTopic = false;
+  const project = await readBCF(data, { onWarning: message => { if (message.startsWith('Duplicate topic Guid ')) duplicateTopic = true; } });
+  if (duplicateTopic) throw new DraftArchiveError('topic');
   const at = now.toISOString();
   const mapped = new Map<string, { name: string; source: DraftSource; topics: DraftTopic[] }>();
   const plain: DraftTopic[] = [];

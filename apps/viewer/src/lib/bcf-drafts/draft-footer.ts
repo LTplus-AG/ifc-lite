@@ -140,7 +140,8 @@ export function parseDraftFooter(description: string | undefined): ParsedFooter 
     if (parsed.origin?.kind !== 'review') {
       // A topic carrying review provenance is never re-labelled as a selection or group topic: it degrades to archive.
       parsed.origin = { kind: 'archive' };
-      if (Number(declared[1]) > 0 || sourceLines.length > 0) parsed.droppedSourceFindings = true;
+      // Only declared findings count: stray `s:` lines beside `sources: 0` are no reviewed finding lost.
+      if (Number(declared[1]) > 0) parsed.droppedSourceFindings = true;
       return parsed;
     }
     const findings = sourceLines.map(line => decodeSourceFinding(json(line)));

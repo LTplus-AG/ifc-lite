@@ -283,6 +283,7 @@ const reviewMessageShape = {
   "actions.reportName": ["date"],
   "actions.draftSaved": ["count"],
   "actions.draftUnsaved": [],
+  "actions.draftTopicTooMany": ["count"],
   "actions.draftTooMany": ["count"],
   "actions.draftFieldLimit": ["count"],
   "actions.draftNone": [],

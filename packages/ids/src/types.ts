@@ -181,13 +181,10 @@ export interface IDSPartOfFacet {
   type: 'partOf';
   /** Relationship type (normalised; defaults to `IfcRelContainedInSpatialStructure` when unrecognised). */
   relation: PartOfRelation;
-  /**
-   * The relation string as it appeared in the XML, before normalisation.
-   * Set when the original value didn't map to a recognised
-   * {@link PartOfRelation}. The auditor uses this to flag invalid
-   * relation names.
-   */
+  /** The XML relation string when it is not a recognised {@link PartOfRelation}; the auditor flags it. */
   rawRelation?: string;
+  /** No `relation` in the XML: any part-of relation counts, recursively (IDS 1.0, #7401); `relation` then holds the containment default. */
+  anyRelation?: boolean;
   /** Optional entity constraint for the related parent */
   entity?: IDSEntityFacet;
 }

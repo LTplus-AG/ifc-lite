@@ -780,7 +780,11 @@ async function auditPartOfFacet(
   const probe = facet.rawRelation ?? facet.relation;
   const probeUpper = probe.toUpperCase();
   const relation = relations.find((r) => r.relation === probeUpper);
-  if (!relation) {
+  // No relation (IDS 1.0, #7401): any part-of relation qualifies, so an
+  // entity or member passes when one of them admits it.
+  const candidates = facet.anyRelation ? relations : relation ? [relation] : [];
+  const relationLabel = facet.anyRelation ? 'any partOf relation' : facet.relation;
+  if (candidates.length === 0) {
     issues.push({
       severity: 'error',
       code: 'E_IFC_PARTOF_RELATION',
@@ -813,19 +817,19 @@ async function auditPartOfFacet(
     // partOf entity to be a subtype of the relation's `owner`. Apply
     // that too — it's the most useful signal for catching e.g.
     // "IFCRELCONTAINEDINSPATIALSTRUCTURE on an IfcWindow" mistakes.
-    const ownerName = relation.owner;
-    const ok = await isEntitySubtypeOf(version, entity.name, ownerName);
+    const ownerName = [...new Set(candidates.map((r) => r.owner))].join('" or "');
+    const ok = await anySubtypeOf(version, entity.name, candidates.map((r) => r.owner));
     if (!ok) {
       issues.push({
         severity: 'error',
         code: 'E_IFC_PARTOF_ENTITY',
-        message: `partOf @entity "${entity.name}" is not a subtype of "${ownerName}" required by ${facet.relation} (${version})`,
+        message: `partOf @entity "${entity.name}" is not a subtype of "${ownerName}" required by ${relationLabel} (${version})`,
         path: `${path}.entity.name`,
         facetType: 'partOf',
         detail: {
           value: entity.name,
           required: ownerName,
-          relation: facet.relation,
+          relation: relationLabel,
           version,
         },
       });
@@ -842,21 +846,33 @@ async function auditPartOfFacet(
     applicabilityEntity.name.value
   ) {
     const appName = applicabilityEntity.name.value;
-    const memberOk = await isEntitySubtypeOf(version, appName, relation.member);
+    const memberName = [...new Set(candidates.map((r) => r.member))].join('" or "');
+    const memberOk = await anySubtypeOf(version, appName, candidates.map((r) => r.member));
     if (!memberOk) {
       issues.push({
         severity: 'error',
         code: 'E_IFC_PARTOF_ENTITY',
-        message: `applicability entity "${appName}" cannot be the member of ${facet.relation}; ${facet.relation} requires the member to be a subtype of "${relation.member}" (${version})`,
+        message: `applicability entity "${appName}" cannot be the member of ${relationLabel}; ${relationLabel} requires the member to be a subtype of "${memberName}" (${version})`,
         path: `${path}.relation`,
         facetType: 'partOf',
         detail: {
           applicability: appName,
-          required: relation.member,
-          relation: facet.relation,
+          required: memberName,
+          relation: relationLabel,
           version,
         },
       });
     }
   }
+}
+
+async function anySubtypeOf(
+  version: IfcSchemaVersion,
+  name: string,
+  supertypes: readonly string[]
+): Promise<boolean> {
+  for (const supertype of supertypes) {
+    if (await isEntitySubtypeOf(version, name, supertype)) return true;
+  }
+  return false;
 }

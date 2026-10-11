@@ -100,15 +100,19 @@ export function captureEvidence(source: AssistantSource): EvidenceSnapshot {
       pin => JSON.parse(evidenceJson(pin).text) as unknown, ['nativeStoreyReassignments']);
     projectedRows.splice(0, projectedRows.length, ...wrap(data));
     // Complete Group facts never displace cited rows; admit whole pins last.
-    if (!summaryProjection.truncated) summary = admitSelectionGroups(capture.summary, summary, candidate => {
-      const text = evidenceJson(candidate).text;
-      if (text.length > 24_000 || text !== JSON.stringify(candidate)) return false;
-      const previous = summary; summary = candidate;
-      const fits = serialize(projectedRows).length <= TEXT_LIMIT;
-      summary = previous; return fits;
-    });
+    if (!summaryProjection.truncated) {
+      const admitted = admitSelectionGroups(capture.summary, summary, candidate => {
+        const text = evidenceJson(candidate).text;
+        if (text.length > 24_000 || text !== JSON.stringify(candidate)) return false;
+        const previous = summary; summary = candidate;
+        const fits = serialize(projectedRows).length <= TEXT_LIMIT;
+        summary = previous; return fits;
+      });
+      // Omitted Group status is visible as a truncated projection, never as silence.
+      summary = admitted.summary; projectionTruncated ||= admitted.omitted;
+    }
   }
-  return { ...snapshot, payload: serialize(projectedRows) };
+  return { ...snapshot, projectionTruncated, payload: serialize(projectedRows) };
 }
 
 export function evidenceIsCurrent(snapshot: EvidenceSnapshot): boolean {

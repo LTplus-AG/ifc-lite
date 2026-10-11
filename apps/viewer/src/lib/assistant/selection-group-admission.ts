@@ -21,15 +21,16 @@ export function selectionGroupBaseline(summary: unknown): unknown {
 
 /** Admit the status entries, then each unchanged whole Group pin, only while the
  * complete envelope still fits. A refused pin stays explicitly unavailable; when
- * not even the status entries fit, `nativeGroups` stays absent (no facts sent). */
+ * not even the status entries fit, `nativeGroups` stays absent and `omitted`
+ * tells the caller to mark the projection truncated. */
 export function admitSelectionGroups(original: unknown, baseline: unknown,
-  fits: (summary: unknown) => boolean): unknown {
-  if (!record(original) || !Array.isArray(original.nativeGroups) || !record(baseline)) return baseline;
+  fits: (summary: unknown) => boolean): { summary: unknown; omitted: boolean } {
+  if (!record(original) || !Array.isArray(original.nativeGroups) || !record(baseline)) return { summary: baseline, omitted: false };
   // Keep the adapter's key order so the sent summary reads as captured.
   const place = (nativeGroups: unknown[]) => Object.fromEntries(Object.keys(original)
     .filter(key => key === 'nativeGroups' || key in baseline).map(key => [key, key === 'nativeGroups' ? nativeGroups : baseline[key]]));
   let groups = original.nativeGroups.map(refused);
-  if (!fits(place(groups))) return baseline;
+  if (!fits(place(groups))) return { summary: baseline, omitted: true };
   original.nativeGroups.forEach((entry, index) => {
     if (!offered(entry)) return;
     // A shortened or redacted fact list is unusable; keep the explicit refusal.
@@ -37,5 +38,5 @@ export function admitSelectionGroups(original: unknown, baseline: unknown,
     const candidate = groups.map((row, i) => i === index ? entry : row);
     if (fits(place(candidate))) groups = candidate;
   });
-  return place(groups);
+  return { summary: place(groups), omitted: false };
 }

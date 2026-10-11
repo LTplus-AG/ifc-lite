@@ -58,6 +58,22 @@ export function groupRecordReferences(text: string): number[] {
   return refs;
 }
 
+/**
+ * The graph's whole-model entity budget without decoding a record (#7346). The
+ * parsed type buckets plus overlay creations bound the live population from
+ * above, so only a model near the budget walks the canonical iterator.
+ */
+export function assertGroupEntityBudget(store: IfcDataStore, view: MutablePropertyView, limit: number = GROUP_GRAPH_LIMITS.entities): void {
+  let bound = view.getNewEntities().length;
+  // @raw-entity-enumeration-ok bucket sizes only bound the live population; the canonical iterator decides
+  for (const ids of store.entityIndex.byType.values()) bound += ids.length;
+  if (bound <= limit) return;
+  let count = 0;
+  for (const _entity of iterateEffectiveEntityIds(store, view)) {
+    if (++count > limit) throw new Error('Group graph entity budget exceeded');
+  }
+}
+
 export class GroupGraph {
   readonly schemaNames: SchemaEntityNameSnapshot;
   readonly entities = new Map<number, EffectiveEntityRecord>();
@@ -82,8 +98,10 @@ export class GroupGraph {
       if (record.text.length > this.limits.recordCharacters) throw new Error('Group graph record budget exceeded');
       return record;
     };
-    // Refuse whole-model budgets from index metadata before decoding any record:
+    // Refuse the entity budget from the live iterator before decoding any record:
     // a refusal is the same answer, without seconds of main-thread decoding (#7346).
+    // A source record whose byte length exceeds the record budget is decoded once to
+    // measure its export text; overlay growth is measured in the main pass below.
     const ids: number[] = [];
     for (const { expressId } of iterateEffectiveEntityIds(store, view)) {
       if (ids.length >= this.limits.entities) throw new Error('Group graph entity budget exceeded');

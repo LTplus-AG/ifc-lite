@@ -5,7 +5,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { IfcParser, effectiveMetadataRecord, getSchemaRegistryForVersion, type IfcDataStore } from '@ifc-lite/parser';
 import * as parserApi from '@ifc-lite/parser';
-import { MutablePropertyView, StoreEditor, recordCompoundMutation, undoRecordedMutationOperations } from '@ifc-lite/mutations';
+import { MutablePropertyView, StoreEditor, iterateEffectiveEntityIds, recordCompoundMutation, undoRecordedMutationOperations } from '@ifc-lite/mutations';
 import { StepExporter } from '@ifc-lite/export';
 import { generateIfcGuid } from '@ifc-lite/encoding';
 import { RelationshipType } from '@ifc-lite/data';
@@ -416,4 +416,18 @@ it('publishes bounded create-only facts outside exact IfcGroup context, from typ
   const saved = await reread(s);
   expect(readGroupCreateEvidenceInStore(saved, [s.member.expressId])).toBeNull();
   expect(readGroupCreateEvidenceInStore(saved, [storey])).not.toBeNull();
+  // A weighted assignment subtype to an exact IfcGroup is group context too.
+  const weighted = addGroupToStore(s, { Name: 'Weighted', RelatedObjects: [] });
+  s.editor.addEntity('IfcRelAssignsToGroupByFactor', [generateIfcGuid(), null, null, null, [`#${storey}`], null, `#${weighted.expressId}`, 0.5]);
+  expect(readGroupCreateEvidenceInStore(s, [storey])).toBeNull();
+});
+
+it('refuses create-only facts over the graph entity budget that review could never read #7346', async () => {
+  const s = await session();
+  const live = [...iterateEffectiveEntityIds(s.store, s.mutationView)].length;
+  expect(readGroupCreateEvidenceInStore(s, [s.member.expressId], live)?.scope).toBe('no-group-context');
+  expect(() => readGroupCreateEvidenceInStore(s, [s.member.expressId], live - 1)).toThrow(/entity budget/);
+  // An overlay creation counts against the same budget.
+  s.editor.addEntity('IfcGroup', [generateIfcGuid(), null, 'Extra', null, null]);
+  expect(() => readGroupCreateEvidenceInStore(s, [s.member.expressId], live)).toThrow(/entity budget/);
 });

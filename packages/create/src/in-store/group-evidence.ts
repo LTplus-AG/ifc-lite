@@ -6,7 +6,7 @@ import { conformsTo, schemaRegistry } from './schema-attributes.js';
 import { iterateEffectiveEntityIds } from '@ifc-lite/mutations';
 import { createSchemaEntityNameSnapshot } from '@ifc-lite/parser';
 import { AnchorEntityReader } from './resolve-anchor.js';
-import { GroupGraph, referenceId, type GroupRootIdentity, type GroupSnapshot } from './group-graph.js';
+import { assertGroupEntityBudget, GROUP_GRAPH_LIMITS, GroupGraph, referenceId, type GroupRootIdentity, type GroupSnapshot } from './group-graph.js';
 import type { GroupStoreContext } from './group.js';
 
 export interface GroupNativeEvidence {
@@ -74,13 +74,18 @@ export interface GroupCreateEvidence {
 
 /**
  * Index-seeded alternative to the whole-model graph: decodes only the selected
- * roots and the IfcRelAssignsToGroup type buckets. Returns null when the
- * selection touches an exact generic IfcGroup, or when a decoded assignment
- * is unreadable, so the complete owner gives the answer or its own refusal.
+ * roots and every IfcRelAssignsToGroup (so its cost scales with the model's
+ * group-assignment count). Throws over the graph's entity budget, which review
+ * could never read. Returns null when the selection touches an exact generic
+ * IfcGroup, or when a decoded assignment is unreadable, so the complete owner
+ * gives the answer or its own refusal.
  */
-export function readGroupCreateEvidenceInStore(context: GroupStoreContext, selected: readonly number[]): GroupCreateEvidence | null {
+export function readGroupCreateEvidenceInStore(context: GroupStoreContext, selected: readonly number[],
+  entityLimit: number = GROUP_GRAPH_LIMITS.entities): GroupCreateEvidence | null {
   const { contentKey, source } = selectionSource(context, selected);
   if (context.store.schemaVersion !== 'IFC4' && context.store.schemaVersion !== 'IFC4X3') return null;
+  // Review must read the complete graph, so a model over its budget is refused here, not after a round trip.
+  assertGroupEntityBudget(context.store, context.mutationView, entityLimit);
   const registry = schemaRegistry(context.store.schemaVersion, 'IfcGroup'), names = createSchemaEntityNameSnapshot(registry);
   const reader = new AnchorEntityReader(context.store, context.mutationView, names);
   const wanted = new Set(selected), members: GroupRootIdentity[] = [];

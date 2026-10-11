@@ -30,6 +30,8 @@ export interface RawProp {
   unit?: string;
   /** SI factor of `unit`, only when it resolved. */
   unitSiScale?: number;
+  /** Additive SI offset of `unit` (°F), when it has one. */
+  unitSiOffset?: number;
 }
 
 type ProjectedProperty = PropertySetInfo['properties'][number];
@@ -38,6 +40,7 @@ type ProjectedProperty = PropertySetInfo['properties'][number];
 export interface OwnUnit {
   symbol: string;
   siScale: number | undefined;
+  siOffset?: number;
 }
 
 /**
@@ -86,7 +89,7 @@ export function projectProperty(p: RawProp, scales: EntityMeasureScales): Projec
   const baseValues = hasMultiValue ? (p.values as string[]) : undefined;
   const converted =
     p.unit !== undefined
-      ? applyOwnUnitConversion(baseValue, baseValues, dataType, p.unitSiScale, p.unit, p.valueDataTypes)
+      ? applyOwnUnitConversion(baseValue, baseValues, dataType, p.unitSiScale, p.unit, p.valueDataTypes, p.unitSiOffset)
       : applyUnitConversion(baseValue, baseValues, dataType, scales.length, scales, p.valueDataTypes);
   const out: ProjectedProperty = {
     name: p.name,
@@ -94,6 +97,6 @@ export function projectProperty(p: RawProp, scales: EntityMeasureScales): Projec
     ...types,
     ...(converted.values ? { values: converted.values } : {}),
   };
-  if (p.unit !== undefined) ownUnits.set(out, { symbol: p.unit, siScale: p.unitSiScale });
+  if (p.unit !== undefined) ownUnits.set(out, { symbol: p.unit, siScale: p.unitSiScale, siOffset: p.unitSiOffset });
   return out;
 }

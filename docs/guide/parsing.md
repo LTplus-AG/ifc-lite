@@ -774,6 +774,16 @@ fact before scanning STEP bytes. An absent field retains ordinary source
 extraction; `null` explicitly records that no georeference was supplied. The
 worker transport preserves these fields when reconstructing a store.
 
+`IfcDataStore.lengthUnitSource` says where `lengthUnitScale` came from:
+`'declared'` when the first `IFCPROJECT`'s `IFCUNITASSIGNMENT` declares a
+`LENGTHUNIT` that resolves, and `'default'` when the scale is the unconfirmed
+`1.0` (metres) assumed otherwise, for example with no `IFCPROJECT`, no
+`UnitsInContext` or no `LENGTHUNIT`. A defaulted unit is also reported once per
+parse through `onDiagnostic`, as a line starting with `units: `. A caller that
+compares lengths, areas or volumes, such as an IDS check, can use it to
+qualify or withhold a result. The worker transport carries the field; it is
+absent on stores not parsed from STEP here.
+
 `computeTransformMatrix(MapConversion)` derives the canonical 4×4 matrix
 from the current conversion, including its optional axis scale factors.
 

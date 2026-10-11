@@ -34,7 +34,7 @@ export type { AttributeExtractor } from './effective-changes.js';
 export type PropertyExtractor = (entityId: number) => Array<{
   name: string;
   globalId?: string;
-  properties: Array<{ name: string; type: number; value: unknown; values?: string[]; unit?: string; unitSiScale?: number; dataType?: string; structure?: Property['structure'] }>;
+  properties: Array<{ name: string; type: number; value: unknown; values?: string[]; unit?: string; unitSiScale?: number; unitSiOffset?: number; dataType?: string; structure?: Property['structure'] }>;
 }>;
 
 /**
@@ -212,6 +212,7 @@ export class MutablePropertyView extends MutableOverlayState {
           ...(prop.structure ? { structure: prop.structure } : {}),
           ...(prop.unit ? { unit: prop.unit } : {}),
           ...(prop.unitSiScale !== undefined ? { unitSiScale: prop.unitSiScale } : {}),
+          ...(prop.unitSiOffset !== undefined ? { unitSiOffset: prop.unitSiOffset } : {}),
           dataType: prop.dataType,
         })),
       }));
@@ -267,6 +268,7 @@ export class MutablePropertyView extends MutableOverlayState {
           // An edit that names its own unit replaces the explicit scale too;
           // one that keeps the property's unit keeps its scale.
           ...((mutation.unit === undefined || mutation.unit === prop.unit) && prop.unitSiScale !== undefined ? { unitSiScale: prop.unitSiScale } : {}),
+          ...((mutation.unit === undefined || mutation.unit === prop.unit) && prop.unitSiOffset !== undefined ? { unitSiOffset: prop.unitSiOffset } : {}),
           dataType: mutation.dataType ?? prop.dataType,
         }),
         prop => prop,

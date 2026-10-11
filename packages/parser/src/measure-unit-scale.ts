@@ -25,6 +25,8 @@ import type { ProjectUnits } from './project-units.js';
  * project-scoped unit (a label, an identifier, a dimensionless ratio) resolves
  * no unit and passes through unscaled, same as a value with no `dataType` at
  * all — this function is a no-op for every property it should not touch.
+ * A unit with an additive SI offset (`IfcConversionBasedUnitWithOffset`, °F)
+ * applies it too, so 68 °F scales to 293.15 K.
  */
 export function scaleMeasureValue(
   value: unknown,
@@ -33,7 +35,9 @@ export function scaleMeasureValue(
 ): unknown {
   if (typeof value !== 'number' || !dataType) return value;
   const unit = projectUnits.unitForMeasure(dataType);
-  return unit && unit.siScale !== 1 ? value * unit.siScale : value;
+  if (!unit) return value;
+  if (unit.siOffset !== undefined) return value * unit.siScale + unit.siOffset;
+  return unit.siScale !== 1 ? value * unit.siScale : value;
 }
 
 /**

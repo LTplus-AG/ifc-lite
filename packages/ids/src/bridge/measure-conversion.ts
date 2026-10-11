@@ -18,7 +18,8 @@
 
 import { measureUnit, type ProjectUnits } from '@ifc-lite/parser';
 
-/** `si = raw * scale + offset`. The offset is non-zero only for Celsius. */
+/** `si = raw * scale + offset`. The offset is non-zero only for a temperature
+ *  in Celsius or in a unit with an offset (Fahrenheit). */
 export interface SiConversion {
   scale: number;
   offset: number;
@@ -49,18 +50,20 @@ function isTemperature(dataType: string): boolean {
 }
 
 /**
- * The conversion for a value in a unit with SI factor `siScale` and display
- * `symbol`. A temperature is only convertible from kelvin or Celsius: any
- * other temperature unit (Fahrenheit, Rankine) needs an offset IFC carries
- * only on `IfcConversionBasedUnitWithOffset`, which is not resolved, so it
+ * The conversion for a value in a unit with SI factor `siScale`, display
+ * `symbol` and, for an `IfcConversionBasedUnitWithOffset`, additive SI
+ * offset `siOffset` (68 °F is 293.15 K). Without an offset a temperature is
+ * only convertible from kelvin or Celsius: any other temperature unit
  * stays as written rather than being scaled without its offset.
  */
 export function unitConversion(
   dataType: string,
   siScale: number | undefined,
-  symbol: string | undefined
+  symbol: string | undefined,
+  siOffset?: number
 ): SiConversion | undefined {
   if (siScale === undefined || !Number.isFinite(siScale) || siScale <= 0) return undefined;
+  if (siOffset !== undefined) return Number.isFinite(siOffset) ? { scale: siScale, offset: siOffset } : undefined;
   if (!isTemperature(dataType)) return { scale: siScale, offset: 0 };
   if (symbol === 'K') return { scale: siScale, offset: 0 };
   if (symbol === '°C') return { scale: siScale, offset: CELSIUS_OFFSET_K };
@@ -87,7 +90,7 @@ export function projectUnitConversion(
   const ownUnresolved = !own && units?.unitForMeasure(dataType) === null;
   const declared = own ?? (ownUnresolved ? undefined : fallbackUnits?.resolvedForUnitType(m.unitType));
   if (!declared) return undefined;
-  return unitConversion(dataType, declared.siScale, declared.symbol);
+  return unitConversion(dataType, declared.siScale, declared.symbol, declared.siOffset);
 }
 
 export function isIdentity(c: SiConversion | undefined): boolean {

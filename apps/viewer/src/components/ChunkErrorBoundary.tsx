@@ -50,6 +50,7 @@ const CHUNK_LABEL_KEYS = {
   'Assistant panel': 'assistant.title',
   'Point cloud panel': 'pointCloudPanel.title',
   'Review panel': 'reviewWorkspace.title',
+  'IDS Studio panel': 'idsStudio.title',
   'Script panel': 'scriptPanel.header.defaultTitle',
   'Flow panel': 'viewerShell.chunkLabel.flowPanel',
   'Drawing panel': 'viewerShell.chunkLabel.drawingPanel',

@@ -164,12 +164,17 @@ export function resolveEntityMeasureScales(
       // A measure outside the length family still takes the owner's own
       // declared unit (a project may declare grams without a LENGTHUNIT);
       // only one the owner leaves undeclared takes the file-wide unit.
-      // An owner's own AREAUNIT/VOLUMEUNIT still wins over the file-wide one.
+      // An owner's own AREAUNIT/VOLUMEUNIT still wins over the file-wide one,
+      // and one it declares but cannot resolve leaves the value unconverted
+      // (scale 1), as projectUnitConversion does for other measures.
       const fileWide = fallback();
+      const ownScale = (unitType: string, measure: string, fileWideScale: number | undefined) =>
+        units.resolvedForUnitType(unitType)?.siScale ??
+        (units.unitForMeasure(measure) === null ? 1 : fileWideScale);
       scales = {
         ...fileWide,
-        area: units.resolvedForUnitType('AREAUNIT')?.siScale ?? fileWide.area,
-        volume: units.resolvedForUnitType('VOLUMEUNIT')?.siScale ?? fileWide.volume,
+        area: ownScale('AREAUNIT', 'IFCAREAMEASURE', fileWide.area),
+        volume: ownScale('VOLUMEUNIT', 'IFCVOLUMEMEASURE', fileWide.volume),
         units,
         fallbackUnits: fileWide.units,
       };

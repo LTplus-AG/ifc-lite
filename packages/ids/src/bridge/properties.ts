@@ -15,7 +15,7 @@ import { RelationshipType, exactTypeName } from '@ifc-lite/data';
 
 import type { PropertySetInfo } from '../types.js';
 import { idsDataTypeForQuantity } from './data-types.js';
-import { appendPredefinedPropertySets } from './predefined-property-sets.js';
+import { appendPredefinedPropertySets, typePredefinedPropertySets } from './predefined-property-sets.js';
 import { projectProperty, type RawProp } from './project-property.js';
 import { resolveEntityMeasureScales, type EntityMeasureScales } from './units.js';
 
@@ -29,7 +29,8 @@ import { resolveEntityMeasureScales, type EntityMeasureScales } from './units.js
  *      IfcRelDefinesByProperties).
  *   2. Predefined property sets (IfcDoorPanelProperties etc.) where
  *      the entity's schema-defined attributes act as property names.
- *   3. Inherited property sets from `IfcRelDefinesByType`.
+ *   3. Inherited property sets from `IfcRelDefinesByType`, predefined
+ *      ones on the type included.
  *
  * Measure-typed properties are converted to base SI units per the
  * ENTITY'S OWN OWNING `IFCPROJECT`'s declared units — see
@@ -209,10 +210,16 @@ function inheritedPropertySets(
     extractTypePropertiesOnDemand(store, expressId)?.properties ??
     typePropertySetsFromTable(store, expressId);
 
-  return inheritedPsets.map((pset) => ({
+  const inherited: PropertySetInfo[] = inheritedPsets.map((pset) => ({
     name: pset.name,
     properties: (pset.properties || []).map((p) => projectProperty(p as RawProp, scales)),
   }));
+  // The type's predefined property sets (IfcDoorLiningProperties, ...) are
+  // inherited the same way (#7395).
+  for (const pset of typePredefinedPropertySets(store, expressId, scales)) {
+    if (!inherited.some((p) => p.name === pset.name)) inherited.push(pset);
+  }
+  return inherited;
 }
 
 /** Type-inherited property sets for server-parsed stores: resolve the element's

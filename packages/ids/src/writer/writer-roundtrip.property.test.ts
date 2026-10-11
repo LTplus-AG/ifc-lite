@@ -68,8 +68,16 @@ function number(g: Gen): number {
   return g.bool(0.7) ? g.pick(NUMBERS) : (g.next() - 0.5) * 10 ** g.int(-10, 12);
 }
 
+/** A bound in the lexical space of `base` (#7399): integer bases take no fraction. */
+function boundFor(g: Gen, base: string): number {
+  const n = number(g);
+  return base === 'xs:integer' ? Math.trunc(n) || 0 : n;
+}
+/** Date bounds are kept as lexemes on `temporalBounds` (#7399). */
+const DATES = ['2024-01-01', '1999-12-31Z', '2024-02-29+05:30', '0001-01-01'];
+
 function restriction(g: Gen): IDSConstraint {
-  const base = g.pick(['xs:string', 'xs:double', 'xs:decimal', 'xs:integer', 'xs:boolean']);
+  const base = g.pick(['xs:string', 'xs:double', 'xs:decimal', 'xs:integer', 'xs:boolean', 'xs:date']);
   const families: Exclude<IDSConstraint, { type: 'simpleValue' }>[] = [];
   const kinds = { pattern: g.bool(0.4), enumeration: g.bool(0.4), bounds: g.bool(0.5) };
   if (!kinds.pattern && !kinds.enumeration && !kinds.bounds) kinds[g.pick(['pattern', 'enumeration', 'bounds'] as const)] = true;
@@ -78,12 +86,17 @@ function restriction(g: Gen): IDSConstraint {
   if (kinds.bounds) {
     const bounds: Extract<IDSConstraint, { type: 'bounds' }> = { type: 'bounds', base };
     for (const facet of ['minInclusive', 'minExclusive', 'maxInclusive', 'maxExclusive'] as const) {
-      if (g.bool(0.3)) bounds[facet] = number(g);
+      if (!g.bool(0.3)) continue;
+      if (base === 'xs:date') (bounds.temporalBounds ??= {})[facet] = g.pick(DATES);
+      else bounds[facet] = boundFor(g, base);
     }
     for (const facet of ['length', 'minLength', 'maxLength', 'totalDigits', 'fractionDigits'] as const) {
       if (g.bool(0.2)) bounds[facet] = g.int(0, 40);
     }
-    if (Object.keys(bounds).length === 2) bounds.maxInclusive = number(g);
+    if (Object.keys(bounds).length === 2) {
+      if (base === 'xs:date') bounds.temporalBounds = { maxInclusive: g.pick(DATES) };
+      else bounds.maxInclusive = boundFor(g, base);
+    }
     families.push(bounds);
   }
   const [primary, ...rest] = families;
@@ -175,6 +188,7 @@ describe('parse ∘ write = id on generated documents (IDS-014)', () => {
       if (c.and?.length) seen.add('and');
       if (c.type === 'bounds' && (c.length ?? c.minLength ?? c.maxLength) !== undefined) seen.add('length');
       if (c.type === 'bounds' && (c.totalDigits ?? c.fractionDigits) !== undefined) seen.add('digits');
+      if (c.type === 'bounds' && c.temporalBounds !== undefined) seen.add('temporal');
       for (const sibling of c.and ?? []) visit(sibling);
     };
     for (let i = 0; i < 500; i++) {
@@ -186,6 +200,6 @@ describe('parse ∘ write = id on generated documents (IDS-014)', () => {
         }
       }
     }
-    expect([...seen].sort()).toEqual(['and', 'bounds', 'digits', 'enumeration', 'length', 'pattern', 'simpleValue']);
+    expect([...seen].sort()).toEqual(['and', 'bounds', 'digits', 'enumeration', 'length', 'pattern', 'simpleValue', 'temporal']);
   });
 });

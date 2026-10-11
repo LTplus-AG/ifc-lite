@@ -154,3 +154,9 @@ The limit that remains: the sweep only touches entities THIS SESSION created.
 Zones from a re-imported earlier export are left alone and would be duplicated,
 which is what keeps a later run from gutting a model that already contains
 zones.
+
+## Native export activity
+
+Zone GLB and quantity CSV/Parquet publication enter the Activity journal after their native preflight. A missing binding, absent zone, busy geometry worker or table with no members does not create a successful export record. Geometry keeps its existing exclusive background lease after the panel closes and reports per-element progress. No available geometry records Failed; a published GLB with refused or missing geometry records Partial with native counts.
+
+Quantity files keep their actual unavailable-reason columns, with unmeasured rows reported as Partial. Parquet-to-Arrow fallback keeps the extension matching the bytes. Native writer and download errors record Failed and retain existing panel feedback. These writers have no abort contract, so Activity offers no Cancel.

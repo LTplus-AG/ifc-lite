@@ -10,6 +10,7 @@
  * block by block, to replace them; deleted generated blocks are not restored.
  */
 
+import { reportTextFor } from './report-text';
 import type { TranslationKey } from '@/i18n/en';
 import { aiBlockOrigin, type AiClaimStatus, type AiReportRecord } from '../document/ai-report-types';
 import { validateDocumentSpec, type DocumentBlock, type DocumentSpec, type TextBlock } from '../document/types';
@@ -114,12 +115,11 @@ export function planReportRefresh(document: DocumentSpec, snapshot: EvidenceSnap
       includedRows: snapshot.includedRows, projectionTruncated: snapshot.projectionTruncated },
     claims: record.claims.map((claim, index) => ({ ...claim, status: presentations[index].claim.status })) };
   const count = (kind: FactChange['kind']) => claims.filter(claim => claim.changes.some(change => change.kind === kind)).length;
-  const refreshSummary = `Evidence refreshed: captured ${snapshot.capturedAt} (revision ${updated.revision}; previous capture ${record.evidence.capturedAt}). `
-    + `Claims re-checked: ${claims.length}; with changed values: ${count('changed')}; with missing values: ${count('missing')}`
-    + (partial ? `; outside the captured sample: ${count('unsampled')}. ` : '. ')
-    + (modelsChanged ? 'The loaded models differ from those the report was drafted against; claims were re-checked against the loaded models. ' : '')
-    + 'Narrative citations were matched to their native rows; narrative prose outside the typed claims was not re-checked. '
-    + 'Human-edited text was kept unless replaced during review.';
+  const t = reportTextFor(record.language);
+  const refreshSummary = t('refreshSummary', { capturedAt: snapshot.capturedAt, revision: updated.revision,
+    previousAt: record.evidence.capturedAt, claims: claims.length, changed: count('changed'), missing: count('missing') })
+    + (partial ? t('refreshUnsampled', { count: count('unsampled') }) : '') + '. '
+    + (modelsChanged ? t('refreshModelsChanged') : '') + t('refreshProse') + t('refreshHuman');
   const regenerated = buildReportBlocks({ title: document.name, record: updated, claims: presentations, refreshSummary, current: now,
     tables: document.blocks.filter(block => block.kind === 'table'),
     proseCitations: [...new Set([...record.narrative.matchAll(/\bE\d+\b/g)].map(match => match[0]))] });

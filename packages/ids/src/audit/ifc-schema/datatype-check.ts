@@ -12,7 +12,7 @@
 import type { IfcPropertyInfo } from '@ifc-lite/data';
 import type { IDSConstraint } from '../../types.js';
 import type { IDSAuditIssue } from '../types.js';
-import { isValidLexicalForXsType } from '../coherence/index.js';
+import { isValidLexicalForXsType } from '../../constraints/xsd-lexical.js';
 
 export function checkDataTypeMatch(
   prop: IfcPropertyInfo,

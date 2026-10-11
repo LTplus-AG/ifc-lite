@@ -14,21 +14,19 @@
 
 import { useCallback, useMemo, useRef, useState } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
-import { ArrowUp, ArrowDown, Search, Eye, EyeOff, Download, ChevronDown, FileText, FileSpreadsheet, FileType } from 'lucide-react';
-import { Input } from '@/components/ui/input';
-import { IconButton } from '@/components/ui/icon-button';
-import { EmptyState } from '@/components/ui/empty-state';
-import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from '@/components/ui/dropdown-menu';
+import { ArrowUp, ArrowDown, ChevronDown } from 'lucide-react';
 import { useViewerStore } from '@/store';
 import { groupingColumnIds, type ListResult, type ListRow, type ColumnDefinition, type ListGrouping } from '@ifc-lite/lists';
 import type { ProjectUnits } from '@ifc-lite/parser';
-import { exportList, buildExportModel, EXPORT_LABELS, type ExportFormat } from '@/lib/lists/export';
+import { exportList, buildExportModel, type ExportFormat } from '@/lib/lists/export';
 import { resolveListColumnUnits } from '@/lib/units/list-column-units';
 import { toast } from '@/components/ui/toast';
 import { cn } from '@/lib/utils';
 import { columnToAutoColor } from '@/lib/lists/columnToAutoColor';
 import { AUTO_COLOR_FROM_LIST_ID } from '@/store/slices/lensSlice';
 import { useTranslation } from '@/i18n/useTranslation'; import { ColumnHeaderMenu } from './ColumnHeaderMenu'; import { formatLocaleCount } from './formatLocaleCount';
+import { ListResultChrome, ListResultEmptyState } from './ListResultChrome';
+import { ListResultsFilters, ListResultsExports } from './ListResultsControls';
 import { ListGroupingBar } from './ListGroupingBar';
 import { ListScheduleTable } from './ListScheduleTable';
 import { ListGroupHeaderRow } from './ListGroupHeaderRow';
@@ -258,48 +256,10 @@ export function ListResultsTable({ result, listName, grouping, onGroupingChange,
     [scheduleMode, scheduleRows, items]);
   const selection = useListRowSelection(selectionLines, scheduleMode ? 'schedule' : 'nested');
   return (
-    <div className="flex-1 flex flex-col min-h-0">
-      {/* Search / actions */}
-      <div className="flex items-center gap-2 px-3 py-1.5 border-b">
-        <Search className="h-3.5 w-3.5 text-muted-foreground" />
-        <Input aria-label={t('lists.resultsTable.filterInputLabel')}
-          placeholder={t('lists.resultsTable.filterPlaceholder')}
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          className="h-7 text-xs border-0 shadow-none focus-visible:ring-0 px-0"
-        />
-        <span className="text-xs text-muted-foreground whitespace-nowrap">
-          {(searchQuery || filterByVisibility) ? t('lists.resultsTable.rowCountOfTotal', { count: sortedRows.length, countDisplay: formatLocaleCount(sortedRows.length, locale), total: formatLocaleCount(result.rows.length, locale) }) : t('lists.resultsTable.rowCount', { count: sortedRows.length, countDisplay: formatLocaleCount(sortedRows.length, locale) })}
-        </span>
-        <IconButton
-          label={filterByVisibility ? t('lists.resultsTable.showingVisibleOnly') : t('lists.resultsTable.showingAllObjects')}
-          size="icon-sm"
-          className={cn('h-6 w-6 shrink-0', filterByVisibility && 'text-primary')}
-          aria-pressed={filterByVisibility}
-          onClick={() => setFilterByVisibility((p) => !p)}
-        >
-          {filterByVisibility ? <Eye className="h-3.5 w-3.5" /> : <EyeOff className="h-3.5 w-3.5" />}
-        </IconButton>
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <IconButton label={t('lists.resultsTable.exportAriaLabel')} tooltip={t('lists.resultsTable.exportEllipsis')} size="icon-sm" className="h-6 w-6 shrink-0">
-              <Download className="h-3.5 w-3.5" />
-            </IconButton>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-44">
-            <DropdownMenuItem className="gap-2 text-xs" onClick={() => handleExport('csv')}>
-              <FileText className="h-3.5 w-3.5" /> {EXPORT_LABELS.csv}
-            </DropdownMenuItem>
-            <DropdownMenuItem className="gap-2 text-xs" onClick={() => handleExport('xlsx')}>
-              <FileSpreadsheet className="h-3.5 w-3.5" /> {EXPORT_LABELS.xlsx}
-            </DropdownMenuItem>
-            <DropdownMenuItem className="gap-2 text-xs" onClick={() => handleExport('pdf')}>
-              <FileType className="h-3.5 w-3.5" /> {EXPORT_LABELS.pdf}
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      </div>
-
+    <ListResultChrome result={result} visibleCount={sortedRows.length}
+      filters={<ListResultsFilters searchQuery={searchQuery} onSearch={setSearchQuery} visibleOnly={filterByVisibility}
+        onToggleVisible={() => setFilterByVisibility(value => !value)} count={sortedRows.length} total={result.rows.length} />}
+      actions={<ListResultsExports onExport={handleExport} />}>
       {/* Grouping / totals control strip */}
       {(isGrouped || showSumRow) && onGroupingChange && (
         <ListGroupingBar
@@ -318,6 +278,7 @@ export function ListResultsTable({ result, listName, grouping, onGroupingChange,
 
       {/* Table */}
       <div ref={parentRef} className="flex-1 overflow-auto min-h-0">
+      {sortedRows.length === 0 && <ListResultEmptyState result={result} />}
       {scheduleMode ? (
         <ListScheduleTable
           scheduleRows={scheduleRows}
@@ -391,7 +352,6 @@ export function ListResultsTable({ result, listName, grouping, onGroupingChange,
             })}
           </div>
           {/* Virtualized rows / group headers */}
-          {sortedRows.length === 0 && <EmptyState icon={<FileSpreadsheet className="size-8" />} title={t('lists.resultsTable.noRows')} />}
           <div style={{ height: `${virtualizer.getTotalSize()}px`, width: '100%', position: 'relative' }}>
             {virtualizer.getVirtualItems().map((vRow) => {
               const item = items[vRow.index];
@@ -462,6 +422,6 @@ export function ListResultsTable({ result, listName, grouping, onGroupingChange,
         </div>
       )}
       </div>
-    </div>
+    </ListResultChrome>
   );
 }

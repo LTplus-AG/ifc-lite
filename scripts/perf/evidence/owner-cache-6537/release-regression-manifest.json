@@ -1,0 +1,147 @@
+{
+  "sourceHead": "ffa087d031df2f48d57fd216aa8d00b783dfd8c4",
+  "baseHead": "3e2779997ae165c36f6939419f9229debc73c163",
+  "sourceHashes": {
+    "apps/viewer/src/components/viewer/useFederatedGeometry.ts": "3b7a0b53a3c9378877e65780476879b0cc47410291340d02645e1b0c8721d0ff",
+    "apps/viewer/src/lib/geometry-cpu-release.ts": "34cefe22fee8eeceb2746f76e4e9261d11f412906800d760334a28309fc15e08",
+    "apps/viewer/src/store/slices/dataSlice.ts": "4e372ec81e1b0b247156def6e14f344c5434588693d98995e5a6a745e1d555dc",
+    "apps/viewer/src/components/viewer/useFederatedGeometry.streaming.test.tsx": "f4d19c1c8f82d945f16e667ab97e6ea234e479f46cac1ac738bdb80afe683a39"
+  },
+  "records": [
+    {
+      "bytes": 6086,
+      "name": "6537-release-append-typed-red.log",
+      "sha256": "98a3ba01d55badc5e5b43403c9fd38dbdb43ccd7e454f3294243227b9fa66685"
+    },
+    {
+      "bytes": 8631,
+      "name": "6537-release-append-order-red.log",
+      "sha256": "8f87b3b75b9d22c01c832448ec29b2fe05617d46c266e0a2e985418d567a4312"
+    },
+    {
+      "bytes": 7949,
+      "name": "6537-release-replacement-alias-typed-red.log",
+      "sha256": "b5af2d6abac6e838c84b598796e984b28f87e79d95f6f7a6528c702425d2dd79"
+    },
+    {
+      "bytes": 2999,
+      "name": "6537-release-all-aliases-green.log",
+      "sha256": "9f0b71f8f8fa77ed8a8d761fafa29871b868ca0524878600be0290ed734ed2b8"
+    },
+    {
+      "bytes": 111169,
+      "name": "6537-owner-foreground-build.log",
+      "sha256": "a739de16b00f307bf0eef647f75413c954bd82a84f6f4538d8e8569c64c3e425"
+    },
+    {
+      "bytes": 55182,
+      "name": "6537-owner-foreground-typecheck.log",
+      "sha256": "fad407b30ccdbef6bcea7aa1b341f0cc43c660be15a7e64d3ebc94ecb2e27fdd"
+    },
+    {
+      "bytes": 3001,
+      "name": "6537-foreground-final-streaming.log",
+      "sha256": "fc93a4e48cfd8308552b63d68fec45c9a659257ac3a2548ca69206343efbfc05"
+    },
+    {
+      "bytes": 1697,
+      "name": "6537-foreground-final-federated.log",
+      "sha256": "9d1e24dfe738b47889f123829093c84ec2a3d0e4d0057b1104912ecc73a6eda4"
+    },
+    {
+      "bytes": 3738,
+      "name": "6537-foreground-final-translation.log",
+      "sha256": "97dc25950018c1024a3591f858547abc394cb59f71265ed24975e1229ddc7916"
+    },
+    {
+      "bytes": 7411,
+      "name": "6537-foreground-final-data-slice.log",
+      "sha256": "99746610305474c41b789007a001266b48792d4ed6881e6f8a54c6637404d2fd"
+    },
+    {
+      "bytes": 2010,
+      "name": "6537-foreground-final-memory.log",
+      "sha256": "9c0271102add4013150a0bc8ffe7e3312a1da9fe30d646da6e140c9c146d2b25"
+    },
+    {
+      "name": "6537-foreground-gate-0.log",
+      "bytes": 180063,
+      "sha256": "2a03beb7bb886303c2a0123ccb81459d98e9b18c49b371e88b150259d19d7148"
+    },
+    {
+      "name": "6537-foreground-gate-1.log",
+      "bytes": 82,
+      "sha256": "2e471ed94fe38275aa9ec988b7e8aaa1eed1fa5cb2220b0c42e553f6562fe5b1"
+    },
+    {
+      "name": "6537-foreground-gate-2.log",
+      "bytes": 11990,
+      "sha256": "4d6b145916fbc24910ea14605aed691ce3e83cafe2fb211ac170ffa54a3339cd"
+    },
+    {
+      "name": "6537-foreground-gate-3.log",
+      "bytes": 30223,
+      "sha256": "ecc2c522f03e3921c814b6d6176a830e7e21a7ec16115e22b658980eb5089443"
+    },
+    {
+      "name": "6537-foreground-gate-4.log",
+      "bytes": 859,
+      "sha256": "dd879f3c9f2a4500cbcf7a04a6d608bca9339beef25e311acb6e358ea6de3eb8"
+    },
+    {
+      "name": "6537-foreground-gate-5.log",
+      "bytes": 208,
+      "sha256": "a029953d05ea6aa441d592cd724b0c5fb3e712a81f0c234ae6d6a3ec23d581d9"
+    },
+    {
+      "name": "6537-foreground-gate-6.log",
+      "bytes": 235,
+      "sha256": "deb2197e8c8abe577c56fb0c34441f94f372e2ab48dcb43ec6b46bedf9720af2"
+    }
+  ],
+  "regressionStages": [
+    {
+      "name": "batched release and append",
+      "pass": 9,
+      "fail": 2,
+      "skip": 0
+    },
+    {
+      "name": "global-prefix order and retained aliases",
+      "pass": 9,
+      "fail": 2,
+      "skip": 0
+    },
+    {
+      "name": "replacement, recolor and clear retained aliases",
+      "pass": 11,
+      "fail": 3,
+      "skip": 0
+    }
+  ],
+  "finalCacheTests": {
+    "pass": 14,
+    "fail": 0,
+    "skip": 0
+  },
+  "integratedSelectedTests": {
+    "pass": 83,
+    "fail": 0,
+    "skip": 0
+  },
+  "typecheckTasks": 109,
+  "typecheckedTestFiles": 3174,
+  "buildTasks": 61,
+  "independentReview": "Read-only final source review found no new canonical-release counterexample; it did not run tests or claim performance.",
+  "gates": {
+    "lintFiles": 7932,
+    "lintErrors": 0,
+    "existingUnrelatedWarnings": 2,
+    "apiExports": 9142,
+    "moduleSize": "pass",
+    "sourceTextAssertions": "pass",
+    "testWiring": "pass",
+    "docsGenerated": "pass",
+    "docsSamples": "pass"
+  }
+}

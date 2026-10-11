@@ -7,6 +7,7 @@ import type { MeshData, CoordinateInfo, GeometryResult } from '@ifc-lite/geometr
 import type { FederatedModel } from '@/store';
 import { perfTally } from '@ifc-lite/load-trace';
 import { geometryWithModelIndex } from '@/lib/model-placement/model-indices';
+import { carryReleasedMesh } from '@/lib/released-mesh-provenance';
 
 const ZERO_VEC3 = { x: 0, y: 0, z: 0 };
 const DEFAULT_COORDINATE_INFO: CoordinateInfo = {
@@ -137,7 +138,7 @@ export function useFederatedGeometry(storeModels: ReadonlyMap<string, FederatedM
             continue;
           }
           for (const mesh of modelGeometry.meshes) {
-            rebuilt.push({ ...mesh, modelIndex });
+            rebuilt.push(carryReleasedMesh(mesh, { ...mesh, modelIndex }));
           }
           perfTally('viewer.modelIndexRespread', modelGeometry.meshes.length, 'meshes');
           mergedLengthsRef.current.set(modelId, modelGeometry.meshes.length);
@@ -152,7 +153,7 @@ export function useFederatedGeometry(storeModels: ReadonlyMap<string, FederatedM
           const nextMeshes = model.visible ? (modelGeometry?.meshes ?? []) : [];
           for (let i = previousLength; i < nextMeshes.length; i++) {
             const mesh = nextMeshes[i];
-            mergedCacheRef.current.push({ ...mesh, modelIndex });
+            mergedCacheRef.current.push(carryReleasedMesh(mesh, { ...mesh, modelIndex }));
           }
           if (nextMeshes.length > previousLength) {
             perfTally('viewer.modelIndexRespread', nextMeshes.length - previousLength, 'meshes');

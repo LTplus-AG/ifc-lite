@@ -79,6 +79,14 @@ function writeBounds(xml: XmlLines, constraint: Extract<IDSConstraint, { type: '
     ['xs:maxInclusive', constraint.maxInclusive],
     ['xs:maxExclusive', constraint.maxExclusive],
   ];
+  // Date, time and duration bounds are kept as their validated lexemes, not numbers (#7399).
+  const temporal = constraint.temporalBounds;
+  const temporalBounds: Array<[string, string | undefined]> = [
+    ['xs:minInclusive', temporal?.minInclusive],
+    ['xs:minExclusive', temporal?.minExclusive],
+    ['xs:maxInclusive', temporal?.maxInclusive],
+    ['xs:maxExclusive', temporal?.maxExclusive],
+  ];
   const counts: Array<[string, number | undefined]> = [
     ['xs:length', constraint.length],
     ['xs:minLength', constraint.minLength],
@@ -87,9 +95,12 @@ function writeBounds(xml: XmlLines, constraint: Extract<IDSConstraint, { type: '
     ['xs:fractionDigits', constraint.fractionDigits],
   ];
   // With no facet the restriction would be empty, which reads back as an empty enumeration.
-  if ([...bounds, ...counts].every(([, value]) => value === undefined)) refuse('bounds restrictions without any facet');
+  if ([...bounds, ...temporalBounds, ...counts].every(([, value]) => value === undefined)) refuse('bounds restrictions without any facet');
   for (const [facet, value] of bounds) {
     if (value !== undefined) xml.empty(facet, { value: boundLexical(facet, value, base) });
+  }
+  for (const [facet, value] of temporalBounds) {
+    if (value !== undefined) xml.empty(facet, { value });
   }
   for (const [facet, value] of counts) {
     if (value !== undefined) xml.empty(facet, { value: countLexical(facet, value) });

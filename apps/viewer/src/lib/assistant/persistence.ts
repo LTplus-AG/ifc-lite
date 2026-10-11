@@ -6,9 +6,10 @@ import type { ContentDefinition } from '../storage/content-migration';
 import type { AssistantSource } from './evidence';
 import { isAssistantSource } from './sources';
 import type { UsageReceipt } from '../llm/request-receipts';
+import { decodeUsageReceipt } from '../llm/receipt-codec';
 import { decodeConversationLanguage, type ConversationLanguage } from './language';
 
-/** `receipt` is session-only: `decodeConversation` never saves or revives it. */
+/** Optional actual generation metadata; older portable turns leave it unknown. */
 export interface AssistantMessage { role: 'user' | 'assistant'; content: string; model?: string; receipt?: UsageReceipt }
 export interface SavedConversation {
   version: 1;
@@ -51,7 +52,11 @@ export function decodeConversation(value: unknown): SavedConversation | null {
     const role = index % 2 === 0 ? 'user' : 'assistant';
     if (m.role !== role || !string(m.content, role === 'user' ? 8000 : 32_000)
       || (role === 'assistant' && !string(m.model, 200)) || (role === 'user' && m.model !== undefined)) return null;
-    messages.push({ role, content: m.content, ...(role === 'assistant' ? { model: m.model as string } : {}) });
+    const receipt = m.receipt === undefined ? undefined : decodeUsageReceipt(m.receipt);
+    if (m.receipt !== undefined && (!receipt || role !== 'assistant' || receipt.model !== m.model
+      || (receipt.outcome !== 'completed' && receipt.outcome !== 'truncated'))) return null;
+    messages.push({ role, content: m.content, ...(role === 'assistant' ? { model: m.model as string } : {}),
+      ...(receipt ? { receipt } : {}) });
   }
   if (JSON.stringify(messages).length + e.payload.length > 150_000) return null;
   const language = decodeConversationLanguage(item.language);

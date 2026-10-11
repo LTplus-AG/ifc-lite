@@ -40,6 +40,7 @@ import { spawnSync } from 'node:child_process';
 // so it is reusable outside `playwright test` — tsx transpiles the .ts import
 // the same way it transpiles this file.
 import { ViewerBenchmarkPage } from '../../tests/benchmark/viewer-benchmark-page.ts';
+import { readGpuHealth } from '../../tests/benchmark/gpu-health.ts';
 
 const __dirname = fileURLToPath(new URL('.', import.meta.url));
 const ROOT = resolve(__dirname, '../..');
@@ -226,6 +227,12 @@ for (let iter = 1; iter <= ITERS; iter++) {
           throw new Error('load did not reach streamCompleteMs / produced 0 meshes');
         }
         record = { ...record, ok: true, ...metrics };
+        // #6993/#7164: a sample that lost its GPU device (or re-created it and
+        // re-uploaded the scene) measured a different load. It is a failed
+        // sample with its cause named, never a timing averaged with clean ones.
+        const gpuHealth = await raceWithTimeout(readGpuHealth(page, bp.getConsoleLogs()), CLOSE_TIMEOUT_MS, 'gpu health');
+        record.gpuHealth = gpuHealth;
+        if (gpuHealth.contaminated) throw new Error(`GPU device lost during sample (${gpuHealth.reasons.join('; ')})`);
         // Adapter diagnostics run AFTER readiness so a slow request cannot give
         // renderer initialization a head start before the load clock (#7032).
         // A software adapter (SwiftShader: the only WebGPU headless Chromium has in
@@ -253,6 +260,11 @@ for (let iter = 1; iter <= ITERS; iter++) {
         // is exactly the shape that hid #3975's renderer SIGILLs.
         const message = err instanceof Error ? err.message : String(err);
         record = { ...record, ok: false, error: message };
+        // A load that never became ready may have lost its device first (#7164): name it.
+        if (!record.gpuHealth && page && bp) {
+          record.gpuHealth = await raceWithTimeout(readGpuHealth(page, bp.getConsoleLogs()), CLOSE_TIMEOUT_MS, 'gpu health')
+            .catch((healthError) => ({ error: String(healthError) }));
+        }
         const failBase = join(RESULTS_DIR, `FAILED-${label}-${browserFixtureKey(fixture.name)}-r${iter}-${Date.now()}`);
         try {
           await page?.screenshot({ path: `${failBase}.png`, fullPage: false });

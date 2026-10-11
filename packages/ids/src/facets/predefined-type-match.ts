@@ -21,9 +21,14 @@
  *     `USERDEFINED`, `NOTDEFINED`, …).
  *  2. Only when that raw token is `USERDEFINED`, fall back to the
  *     user-defined name (`ObjectType`/`ElementType`/`ProcessType`).
- *  3. When no raw token is reported at all (legacy accessors that do not
- *     implement `getPredefinedTypeRaw`), compare against the
- *     user-defined name directly.
+ *  3. When no raw token is reported at all, compare against the
+ *     resolved name directly. This serves accessors that do not
+ *     implement `getPredefinedTypeRaw` and report the already-resolved
+ *     predefined type through `getObjectType` alone. It is NOT an
+ *     `ObjectType` fallback: an accessor must return `undefined` from
+ *     `getObjectType` for an entity with no predefined type, so an
+ *     unset or `NOTDEFINED` PredefinedType never matches a custom
+ *     literal through a stray `ObjectType` (IDS 1.0; #7394).
  *
  * Both comparisons are CASE-SENSITIVE: enum tokens are uppercase by the
  * IFC schema and the IDS literal must match them exactly, and the corpus

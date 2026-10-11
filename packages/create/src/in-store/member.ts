@@ -13,8 +13,8 @@
  */
 
 import type { StoreEditor } from '@ifc-lite/mutations';
-import { vecCross, vecNorm, assertFinitePoint3 } from '../ifc-creator-math.js';
-import type { Point3D } from '../types.js';
+import { assertFinitePoint3 } from '../ifc-creator-math.js';
+import { linearProfileFrame } from './linear-profile-frame.js';
 import { toNativeLength, toNativePoint3, type SpatialAnchor } from './anchor.js';
 import {
   emitBodyRepresentation,
@@ -58,10 +58,6 @@ export interface MemberBuildResult {
   relContainedId: number;
 }
 
-function computeRefDirection(axis: Point3D): Point3D {
-  const up: Point3D = Math.abs(axis[2]) < 0.9 ? [0, 0, 1] : [1, 0, 0];
-  return vecNorm(vecCross(up, axis));
-}
 
 export function addMemberToStore(
   editor: StoreEditor,
@@ -85,8 +81,7 @@ export function addMemberToStore(
     throw new Error('addMemberToStore: Start and End must be distinct points');
   }
   const section = linearSection(anchor, params, 'addMemberToStore');
-  const dir: Point3D = vecNorm([dx, dy, dz]);
-  const refDir = computeRefDirection(dir);
+  const { along: dir, u: refDir } = linearProfileFrame(start, end);
 
   const placementId = emitLocalPlacement(editor, anchor.storeyPlacementId, start, dir, refDir);
   const profileId = section.Profile

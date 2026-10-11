@@ -4,9 +4,13 @@
 
 | Default severity | Kind | Scope | Quick fix |
 |---|---|---|---|
-| info | static | specification | yes |
+| info (opt-in) | static | specification | yes |
 
 An applicability entity matches only that exact class. Concrete subtypes (IfcWallStandardCase and IfcWallElementedCase for IfcWall in IFC4, IfcSlabStandardCase for IfcSlab, …) are not selected unless listed. This is often intended, but frequently it is not.
+
+## Enabling
+
+This rule is off by default. Enable it in the linter config, at its default severity or another one: `createLinter(ctx, { severity: { 'IDSL-ENT-003': 'info' } })`. Naming it in `rules` also enables it.
 
 ## Example
 

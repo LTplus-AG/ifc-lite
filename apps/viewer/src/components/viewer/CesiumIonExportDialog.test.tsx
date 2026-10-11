@@ -114,7 +114,7 @@ test('ion shows request rejection without blaming token permissions and supports
   click(button('Upload'));
   await waitFor(() => !!document.body.textContent?.includes('HTTP 409'), 'request rejection was not reported');
   assert.ok(document.body.textContent?.includes('Cesium ion rejected the upload request'));
-  assert.ok(!document.body.textContent?.includes('Check the token permissions'));
+  assert.ok(!document.body.textContent?.includes('cannot create assets'));
   assert.equal(button('Upload').disabled, false);
   click(button('Upload'));
   await waitFor(() => !!document.querySelector('a[href="https://ion.cesium.com/assets/88"]'), 'retry asset link missing');

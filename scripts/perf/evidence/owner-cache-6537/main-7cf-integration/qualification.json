@@ -1,0 +1,159 @@
+{
+  "sourceHead": "74c4ff38d304724ec8605e30f5b10f1736a6b5b0",
+  "previousHead": "86fdb84e928ab56efc7f45db0d9b888a18f9aa5a",
+  "integratedMain": "7cfad86f701f7912046b79f86e88e8cb12d8f4a8",
+  "mergeKind": "Normal two-parent merge; only marker-file conflicts resolved to exact frozen-main bytes. Prior rerere resolutions explicitly overwritten.",
+  "sourceSHA256": {
+    "apps/viewer/src/lib/geometry-cpu-buffers.ts": "179c366fafb47848eca16936cbffd74be29291f4a72ad2ee13902edf128c869a",
+    "apps/viewer/src/lib/geometry-cpu-aliases.ts": "e3324e93cc4f6a3246273b7071aaf819011d882febb4c5acea28db00061bb072",
+    "apps/viewer/src/lib/geometry-cpu-appearance.test.ts": "824a285002697958f299e1145a1432cefe0dcd374ba5961d3a748b73ec25d640",
+    "apps/viewer/src/test/geometry-cpu-aliases-gc.ts": "c5496cfe067ce31e592d771c3993bd60535f830fefa7646c63853fd01ce5d8bf",
+    "apps/viewer/src/components/viewer/properties/effective-classification-systems.ts": "02866420f2c54132c75db8ad74365488c85da21310e9df9ea5c5710262eef99e",
+    "packages/parser/src/material-resolver.ts": "b547f3039e489f9d2de7730894341dc36b0eeea17e65bd1090c2aa199f88b888"
+  },
+  "ownershipSourceSHA256Unchanged": {
+    "apps/viewer/src/lib/geometry-cpu-buffers.ts": "179c366fafb47848eca16936cbffd74be29291f4a72ad2ee13902edf128c869a",
+    "apps/viewer/src/lib/geometry-cpu-aliases.ts": "e3324e93cc4f6a3246273b7071aaf819011d882febb4c5acea28db00061bb072",
+    "apps/viewer/src/lib/geometry-cpu-appearance.test.ts": "824a285002697958f299e1145a1432cefe0dcd374ba5961d3a748b73ec25d640",
+    "apps/viewer/src/test/geometry-cpu-aliases-gc.ts": "c5496cfe067ce31e592d771c3993bd60535f830fefa7646c63853fd01ce5d8bf"
+  },
+  "lightGates": {
+    "raw": {
+      "command": [
+        "node",
+        "scripts/check-raw-entity-enumeration.mjs"
+      ],
+      "exitCode": 0
+    },
+    "module": {
+      "command": [
+        "node",
+        "scripts/check-module-size.mjs"
+      ],
+      "exitCode": 0
+    },
+    "mpl": {
+      "command": [
+        "node",
+        "scripts/add-license-headers.mjs",
+        "--check"
+      ],
+      "exitCode": 0
+    },
+    "wiring": {
+      "command": [
+        "node",
+        "scripts/check-test-wiring.mjs"
+      ],
+      "exitCode": 0
+    }
+  },
+  "diffAndConflictChecks": {
+    "pr-diff-check": {
+      "command": [
+        "git",
+        "diff",
+        "--check",
+        "7cfad86f701f7912046b79f86e88e8cb12d8f4a8",
+        "74c4ff38d304724ec8605e30f5b10f1736a6b5b0"
+      ],
+      "exitCode": 0
+    },
+    "resolution-diff-check": {
+      "command": [
+        "git",
+        "diff",
+        "--check",
+        "86fdb84e928ab56efc7f45db0d9b888a18f9aa5a",
+        "74c4ff38d304724ec8605e30f5b10f1736a6b5b0",
+        "--",
+        "apps/viewer/src/components/viewer/properties/effective-classification-systems.ts",
+        "packages/parser/src/material-resolver.ts"
+      ],
+      "exitCode": 0
+    },
+    "inherited-main-diff-check": {
+      "command": [
+        "git",
+        "diff",
+        "--check",
+        "86fdb84e928ab56efc7f45db0d9b888a18f9aa5a",
+        "74c4ff38d304724ec8605e30f5b10f1736a6b5b0"
+      ],
+      "exitCode": 2
+    },
+    "merge-conflict-witness": {
+      "command": [
+        "git",
+        "merge-tree",
+        "--write-tree",
+        "86fdb84e928ab56efc7f45db0d9b888a18f9aa5a",
+        "7cfad86f701f7912046b79f86e88e8cb12d8f4a8"
+      ],
+      "exitCode": 1
+    }
+  },
+  "inheritedWhitespace": "Full integration diff-check reports only main changeset brown-stars-wash.md line4 extra blank line at EOF. Exact main bytes preserved; PR diff and marker-resolution diff pass.",
+  "functionalQualification": {
+    "status": "No new functional tests or full typecheck run on this merge",
+    "historicalSourceHead": "f98f3a8e0553d9169929dc84daff4800bb59227c",
+    "historicalControls": 104,
+    "historicalTypecheckedTestFiles": 3730,
+    "receipt": "../main-c696-integration/qualification.json",
+    "finalExactHeadCI": "Pending; historical results are not relabeled to this integration"
+  },
+  "scopeLimits": [
+    "Registered-copy CPU release only; no automatic Scene fragment registration claim",
+    "No native, speed, OS-resident-memory or new runtime qualification claim"
+  ],
+  "archives": {
+    "inherited-main-diff-check.log": {
+      "archive": "inherited-main-diff-check.log.gz",
+      "rawSha256": "2e84ee06fc71d89f879f441c039bf8de2e67eaca5b3bd7eb35a761b44cc95ff7",
+      "archiveSha256": "5e9752e55d9ebe5ff5be94084148b37fb5bf2d979d2790d7bbf0c94345bc6b58"
+    },
+    "light-results.json": {
+      "file": "light-results.json",
+      "sha256": "3f0647870f292af3924f4c2148f4bec7588a8ca173086018408a90df2b6bb32a"
+    },
+    "merge-conflict-witness.log": {
+      "archive": "merge-conflict-witness.log.gz",
+      "rawSha256": "4cf235f0d0ff3bbb7ccfe2ab17760bf2dabd7142c18626daba4ea3afac456bba",
+      "archiveSha256": "b71f7c452c44f7419c07ca8cc1ce19cbc120c7c0b04ad929f890588eebe46db7"
+    },
+    "module.log": {
+      "archive": "module.log.gz",
+      "rawSha256": "4a1b83a1adc123325e4c48aff6bd5b21758ed5cad9bfb92eb54baa1d2f6d99c6",
+      "archiveSha256": "eed1b3e57f3e2de6c905b338aa46c9b0889a5173d1d2eaa58c3aa355c912f571"
+    },
+    "mpl.log": {
+      "archive": "mpl.log.gz",
+      "rawSha256": "ed64f4e44aab972837a86ada9bb35ffa7f16dfe91834579e2d596e5213141646",
+      "archiveSha256": "7fdc427aa32cd6af3ae656ef0167214ef449548a4502907b86ef997dbd18213d"
+    },
+    "pr-diff-check.log": {
+      "archive": "pr-diff-check.log.gz",
+      "rawSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "archiveSha256": "9ceffb7310338057cfe71a4ae1e2c98d2c485d81cdef906532a801f457a38d64"
+    },
+    "pre-merge-source-witness.json": {
+      "file": "pre-merge-source-witness.json",
+      "sha256": "e69f287290da884b594433ffd8d59da3b67a2c28c8e461c0f80e00907656c0a4"
+    },
+    "raw.log": {
+      "archive": "raw.log.gz",
+      "rawSha256": "6566d5192bec653d14d79d4ec240be876bee03bab9be492e8fbaf3bc3177c34b",
+      "archiveSha256": "b40f462c628cab4b858c9bb1ee44d7f804f279c13b2334a968fd767ac02427c8"
+    },
+    "resolution-diff-check.log": {
+      "archive": "resolution-diff-check.log.gz",
+      "rawSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "archiveSha256": "9ceffb7310338057cfe71a4ae1e2c98d2c485d81cdef906532a801f457a38d64"
+    },
+    "wiring.log": {
+      "archive": "wiring.log.gz",
+      "rawSha256": "98a10385e08b01728c5beafad6abc4108f0096cb636594ec566c3f51a2950c30",
+      "archiveSha256": "15b34a6b5c7ff51cbcf9fa5707542d2a6b2fc540ddc13e73db4170356830d853"
+    }
+  }
+}

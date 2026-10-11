@@ -294,7 +294,7 @@ export function extractStructuralOnDemand(
       appliedCondition:
         conditionId === undefined
           ? undefined
-          : extractBoundaryCondition(extractor, store, conditionId),
+          : extractBoundaryCondition(extractor, store, conditionId, view ? id => readRaw(id, effectiveTypeById.get(id) ?? store.entities.getTypeName(id)) : undefined),
       memberGlobalIds: membersOfConnection.get(e.expressId) ?? [],
       activityGlobalIds: activitiesOfItem.get(e.expressId) ?? [],
       analysisModelGlobalIds: modelsOf(e.expressId),
@@ -313,7 +313,7 @@ export function extractStructuralOnDemand(
       globalOrLocal: asEnum(readAttr(e.type, e.attrs, 'GlobalOrLocal')),
       destabilizingLoad: asBoolean(readAttr(e.type, e.attrs, 'DestabilizingLoad')),
       appliedLoad:
-        loadId === undefined ? undefined : extractStructuralLoad(extractor, store, loadId),
+        loadId === undefined ? undefined : extractStructuralLoad(extractor, store, loadId, view ? id => readRaw(id, effectiveTypeById.get(id) ?? store.entities.getTypeName(id)) : undefined),
       appliesToGlobalId: itemOfActivity.get(e.expressId),
       groupGlobalIds: groupsOfObject.get(e.expressId) ?? [],
     };

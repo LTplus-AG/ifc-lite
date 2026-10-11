@@ -1,0 +1,235 @@
+{
+  "scope": "Canonical first-file viewer CPU worker-stream and metadata; no GPU/render/cache-tail readiness",
+  "records": [
+    {
+      "name": "00-AA-ac20-A1.json",
+      "sha256": "17066a32c03d95b721be2126261f471608069fc29be7ece03ce3d10d0619669e",
+      "bytes": 7822
+    },
+    {
+      "name": "01-AA-ac20-A2.json",
+      "sha256": "d15a64d4530e5754efd5641205afce30181bf84057de47f7d2b6b67b432b5c1d",
+      "bytes": 7817
+    },
+    {
+      "name": "02-AA-ac20-A2.json",
+      "sha256": "d92f827500a1e2b0e834c084c4bd70e99761fe89a9d5951d176a7265d2bbc243",
+      "bytes": 8755
+    },
+    {
+      "name": "03-AA-ac20-A1.json",
+      "sha256": "8d8d53ba2c41b85a1641f46cebf4e4da22d71b494b585dd82e5071432582dd46",
+      "bytes": 8752
+    },
+    {
+      "name": "04-AA-ac20-A1.json",
+      "sha256": "04b4f9029398f4b1aa4ffff2ccedc4a0dd18ce6a540fe06e29f3a71aa3cd36a1",
+      "bytes": 8765
+    },
+    {
+      "name": "05-AA-ac20-A2.json",
+      "sha256": "f5eb188b3f4af1eeb3333395213d16ac88b01f63b3c205d702bc4f1ef9926cd5",
+      "bytes": 7823
+    },
+    {
+      "name": "06-AA-ac20-A2.json",
+      "sha256": "c30d7de08ae4b02d3c537c71814870cf72adbc4900367c6645e873e4300b1be0",
+      "bytes": 7829
+    },
+    {
+      "name": "07-AA-ac20-A1.json",
+      "sha256": "6bcae6300a22a9e928385a512ef7795046742c3176542e0c6c5cd2dd09cc58b2",
+      "bytes": 8750
+    },
+    {
+      "name": "08-AA-ac20-A1.json",
+      "sha256": "f4c162945d8627b39b88e481a394969ed9465821db095eb84bbc8e10cbff7553",
+      "bytes": 8755
+    },
+    {
+      "name": "09-AA-ac20-A2.json",
+      "sha256": "f7bbe36cd128ffffd6e9f7cee0e34e22e1a77633d6249a8af0a9e0b6076864cb",
+      "bytes": 8767
+    },
+    {
+      "name": "10-AB-ac20-base.json",
+      "sha256": "da80e684085a6e188163e196f39ed0702840d7b4c84f04a29329bcb6cb936c0f",
+      "bytes": 7680
+    },
+    {
+      "name": "11-AB-ac20-branch.json",
+      "sha256": "c76c67c3ebfce0f961b5d52e4bd2f9fbd306115f1a5c595ed652d14ed1c51659",
+      "bytes": 8768
+    },
+    {
+      "name": "12-AB-ac20-branch.json",
+      "sha256": "19c1cf4e48e91cbf2e3878c4d2b543b7b81b05168a425545f9f8a8296542a423",
+      "bytes": 7841
+    },
+    {
+      "name": "13-AB-ac20-base.json",
+      "sha256": "a544ec3e879d159729deca8e8b220fa3ce7203e06bac2f5d90b31331147e1c00",
+      "bytes": 7678
+    },
+    {
+      "name": "14-AB-ac20-base.json",
+      "sha256": "e79a76426e8ca91ff92a02877883e15345219528d177b997d87cf6c0156b06ab",
+      "bytes": 9114
+    },
+    {
+      "name": "15-AB-ac20-branch.json",
+      "sha256": "7fa9a54c1816b659b95035621f5f6ab3ca099463b8173284020249361201f8da",
+      "bytes": 8762
+    },
+    {
+      "name": "16-AB-ac20-branch.json",
+      "sha256": "58e4d6a5524a129cce320c9936d98ea996e659243e78680eb6b54f750cc5f2c7",
+      "bytes": 7831
+    },
+    {
+      "name": "17-AB-ac20-base.json",
+      "sha256": "3ac2da4e1dc9c89bfe35c69da37b8ce5d427b392901b39ba717c9e7c2bf347be",
+      "bytes": 7821
+    },
+    {
+      "name": "18-AB-ac20-base.json",
+      "sha256": "c6820901f4415898bff90c5125bf1b9d9dc33aa77a30d26e0209de033e2e5f7c",
+      "bytes": 7790
+    },
+    {
+      "name": "19-AB-ac20-branch.json",
+      "sha256": "a697597f38e7f952b57a8d8f7749a50d54ebe6b31b70d5daa5fe219298dcd091",
+      "bytes": 7806
+    },
+    {
+      "name": "20-AB-holter-base.json",
+      "sha256": "fd3c4a9b82b4d80f6fe86152cf6be896cd416a0a9c6579953672f2fe0b7b8815",
+      "bytes": 15371
+    },
+    {
+      "name": "21-AB-holter-branch.json",
+      "sha256": "13f7e41e50c971ffd1da3fd0679144768296391f1add5bfb7a89985599c1b941",
+      "bytes": 15388
+    },
+    {
+      "name": "22-AB-holter-branch.json",
+      "sha256": "2f925482988097d11883ac95cbf9f47b28cd99f2b02c6c63ec6d9dd2da97bdc3",
+      "bytes": 16140
+    },
+    {
+      "name": "23-AB-holter-base.json",
+      "sha256": "9bccc06e0aed20d4a5c46cf8b43f4661f0b8b29b3f5f1fe5ae7fe20246683384",
+      "bytes": 15364
+    },
+    {
+      "name": "24-AB-holter-base.json",
+      "sha256": "898880c3426ccc862c65dacee53009493935d5b12eb0abc65bff7d22d6e946b6",
+      "bytes": 16143
+    },
+    {
+      "name": "25-AB-holter-branch.json",
+      "sha256": "1968b2a898211793fd46aa6c5080626cb6c38ec55ba2aa21a0db893a3d120992",
+      "bytes": 16338
+    },
+    {
+      "name": "26-AB-holter-branch.json",
+      "sha256": "68993c80e3adffc947243b9607842176c845be6d35dd0e3e6177cadb6178637e",
+      "bytes": 16338
+    },
+    {
+      "name": "27-AB-holter-base.json",
+      "sha256": "cc9974562b6998718b3c61e6b50a7a84c6464467ae87ff8d661eaf0a168c6ee8",
+      "bytes": 16161
+    },
+    {
+      "name": "28-AB-holter-base.json",
+      "sha256": "d8673033e09e5f3497fae8b2390ff3b1434a5c2c9d0ed99c9ab9b3ff4501def2",
+      "bytes": 15373
+    },
+    {
+      "name": "29-AB-holter-branch.json",
+      "sha256": "94a7ad00b3795e04fe1675458c657b9c46eae6703fcca17ec7d982ec7133215a",
+      "bytes": 15402
+    },
+    {
+      "name": "30-AB-os1-base.json",
+      "sha256": "1672ba74699c72890d9c50e4df439e6506022890695eb59bc8b29aabfe2475e5",
+      "bytes": 17929
+    },
+    {
+      "name": "31-AB-os1-branch.json",
+      "sha256": "8ab135e9cb3b70d66d5bc4b92b48afc906e3d275ebe79ecbd14603634e44a014",
+      "bytes": 18687
+    },
+    {
+      "name": "32-AB-os1-branch.json",
+      "sha256": "8de3c54b0b0c3209a531df269f4bcc8276498ab2cb0972527052b309be2d8218",
+      "bytes": 17937
+    },
+    {
+      "name": "33-AB-os1-base.json",
+      "sha256": "22927012e6bf9ec39b5920b5edadea0216b1e9e35b6678328eb460ee94fafe7f",
+      "bytes": 18258
+    },
+    {
+      "name": "34-AB-os1-base.json",
+      "sha256": "5a5b1938178771fd4ff38aca9c9d896d3321e71182138e3d029e60a9541136e7",
+      "bytes": 18165
+    },
+    {
+      "name": "35-AB-os1-branch.json",
+      "sha256": "dc53b86effb0d7e4ca07ed99570e45c32e22f88e48077f0db8c0839e435701cd",
+      "bytes": 16643
+    },
+    {
+      "name": "36-AB-os1-branch.json",
+      "sha256": "66c113b8fb8eb404c26531f98ebf26105b7953eb8cf4c6d608361a9da2671d78",
+      "bytes": 16844
+    },
+    {
+      "name": "37-AB-os1-base.json",
+      "sha256": "ea4a14e4ce0bffc21a8b2466f3f91865a46c4e6f4340818a63acdd27250aae37",
+      "bytes": 17968
+    },
+    {
+      "name": "38-AB-os1-base.json",
+      "sha256": "2b13e26ed4c7419f5f6c7d1861a5caf48ebc910635e20b5c75bac94c46528b5d",
+      "bytes": 17956
+    },
+    {
+      "name": "39-AB-os1-branch.json",
+      "sha256": "38bdc5e5805de6fc30de8b570bc6f623fce4ce5fc732c177b201a2aa39494fc0",
+      "bytes": 18646
+    },
+    {
+      "name": "schedule.json",
+      "sha256": "8b65b4e44ce4e400cc18705679272db8ed94d5702d1eaad493a0c17e5df5a3a2",
+      "bytes": 5243
+    },
+    {
+      "name": "summary.json",
+      "sha256": "4b941ba37513eb4a2b16296d4db127da776d56d65c54b54799df58eeef62a05d",
+      "bytes": 19529
+    }
+  ],
+  "sampleCount": 40,
+  "sameBuildAAPairs": 5,
+  "ABPairsPerModel": 5,
+  "sources": {
+    "base": "3e2779997ae165c36f6939419f9229debc73c163",
+    "branch": "ffa087d031df2f48d57fd216aa8d00b783dfd8c4"
+  },
+  "runtimeSha256": "9646cc889c7a5148a2a97a6b90fa4349869840aea0065bd382b3a4e3bcfd3034",
+  "geometryWorkerSha256": "a74b53c7b21bf81e861c70668458004aadf0814d5839c0beb9df5c6eaada12d2",
+  "browser": "Google Chrome 153; Google SwiftShader fallback",
+  "authoringTools": "All three are GRAPHISOFT ARCHICAD20/21; not three independent exporters",
+  "excludedAttempt": "Prior observer ReferenceError for optional global render-stats lookup; retained separately, no model/performance inference",
+  "qualifiedAppReady": false,
+  "excludedAttemptArtifact": "chrome-cpu-excluded-attempt.json.gz",
+  "captureArtifacts": {
+    "chrome-cpu-capture.cjs": "c0e174e6c875ec2a0d5e8ef8dda873df773604a3a09579290de5b7d9650c6895",
+    "chrome-cpu-static-server.py": "34dcb5537a7efad81866f753bca0bc90dbe4ab185557d089bea1fc737a2b8adf",
+    "chrome-cpu-controls.json.gz": "49443d1fd5dcd0952a4795cf68960a1dc8f1fb205ec751750b193c02a26b538f",
+    "chrome-cpu-excluded-attempt.json.gz": "a4bb362fc36413fe047a97e06c9eeb0a1c2f7ff6c95853a2b7dc9390ccfe3f80"
+  }
+}

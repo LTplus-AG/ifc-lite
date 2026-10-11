@@ -6,7 +6,7 @@
 import type { ListModelTagScope } from './model-tag-scope.js';
 import type { DiscoveredColumns } from './result-types.js';
 import type { IfcTypeEnum, PropertySet, QuantitySet } from '@ifc-lite/data';
-import type { FilterGroup, ListConditionOperator, ListConditionSource } from '@ifc-lite/rules';
+import type { CapturedEntityScope, FilterGroup, ListConditionOperator, ListConditionSource } from '@ifc-lite/rules';
 
 // ============================================================================
 // Data Provider Interface
@@ -33,6 +33,8 @@ import type { FilterGroup, ListConditionOperator, ListConditionSource } from '@i
  * ```
  */
 export interface ListDataProvider {
+  /** Resolve pinned membership to this model's local ids; required for scoped definitions. */
+  resolveCapturedScope?(scope: CapturedEntityScope, modelId: string): ReadonlySet<number>;
   /** Get all entity IDs matching the given IFC type */
   getEntitiesByType(type: IfcTypeEnum): number[];
 
@@ -119,6 +121,10 @@ export interface ListDataProvider {
   /** IFC `PredefinedType` enum token (e.g. "FLOOR", "FLOORING"), or '' when
    *  the element has none. Used by the `PredefinedType` attribute column. */
   getEntityPredefinedType?(expressId: number): string;
+  /** IFC `LongName` (e.g. an IfcSpace's room name "Schlafzimmer" next to its
+   *  number "4" in `Name`), or '' when the class declares no LongName or it is
+   *  unset. Used by the `LongName` attribute column (issue #7385). */
+  getEntityLongName?(expressId: number): string;
   /**
    * Discover EVERY property set / property and quantity set / quantity in
    * the model — complete and independent of entity-type selection — so the
@@ -196,6 +202,8 @@ export interface ListDefinition {
    * snapshots don't over-select when local express IDs collide across files.
    */
   expressIdsByModel?: Record<string, number[]>;
+  /** Durable captured population, intersected with the list's existing source criteria. */
+  capturedScope?: CapturedEntityScope;
 
   /** Optional MODEL scope by model tag (#4215, `model-tag-scope.ts`); absent = every model. */
   modelTagScope?: ListModelTagScope;

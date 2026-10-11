@@ -45,6 +45,8 @@ export interface FindingRun {
 
 export type RunGapCode = 'truncated' | 'stale' | 'check-error' | 'sets-truncated' | 'partial-source' | 'geometry-unavailable'
   | 'placement-only' | 'excluded-classes';
+export const RUN_GAP_CODES: readonly RunGapCode[] = ['truncated', 'stale', 'check-error', 'sets-truncated', 'partial-source',
+  'geometry-unavailable', 'placement-only', 'excluded-classes'];
 export interface RunGap { code: RunGapCode; detail?: string }
 
 /** An element a finding refers to, as the native source names it. */

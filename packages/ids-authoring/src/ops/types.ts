@@ -25,7 +25,7 @@ import type {
   RequirementOptionality,
 } from '@ifc-lite/ids';
 import type { FacetFieldName } from '../document/fields.js';
-import type { CustomPsetDecl, FacetNodes, Section, SpecNodes, UserDefinedTypeDecl } from '../document/types.js';
+import type { CustomPsetDecl, FacetNodes, Section, SpecNodes, Suppression, UserDefinedTypeDecl } from '../document/types.js';
 import type { Uuid } from '../uuid.js';
 
 export const OPS_VERSION = 1;
@@ -220,6 +220,19 @@ export type MetaDeclarePsetOp = Op<'meta.custom.declarePset', { decl: CustomPset
 export type MetaRemovePsetOp = Op<'meta.custom.removePset', { name: string }>;
 export type MetaDeclareUserDefinedTypeOp = Op<'meta.custom.declareUserDefinedType', UserDefinedTypeDecl & { index?: number }>;
 export type MetaRemoveUserDefinedTypeOp = Op<'meta.custom.removeUserDefinedType', UserDefinedTypeDecl>;
+/**
+ * Silence a lint rule on a node and everything below it
+ * (`meta.suppressions[nodeId]`). `suppression.rule` is a full code
+ * (`IDSL-SPEC-008`) or a wildcard (`IDSL-SPEC-*`); the reason is required.
+ * A suppression of the same rule on the same node is replaced in place.
+ */
+export type MetaSuppressOp = Op<'meta.suppress', { nodeId: Uuid; suppression: Suppression; index?: number }>;
+/**
+ * Remove the suppression of `rule` from `nodeId`. `keepEmpty` is a
+ * fidelity flag used by inverses: it keeps an empty list on the node
+ * instead of dropping the key, so undo restores the sidecar exactly.
+ */
+export type MetaUnsuppressOp = Op<'meta.unsuppress', { nodeId: Uuid; rule: string; keepEmpty?: boolean }>;
 
 // ---------------------------------------------------------------------------
 // Compound ops (expand to primitives)
@@ -277,7 +290,9 @@ export type PrimitiveOp =
   | MetaDeclarePsetOp
   | MetaRemovePsetOp
   | MetaDeclareUserDefinedTypeOp
-  | MetaRemoveUserDefinedTypeOp;
+  | MetaRemoveUserDefinedTypeOp
+  | MetaSuppressOp
+  | MetaUnsuppressOp;
 
 export type CompoundOp = BulkRenamePropertyOp | BulkRetargetEntityOp | BulkApplyTemplateOp;
 

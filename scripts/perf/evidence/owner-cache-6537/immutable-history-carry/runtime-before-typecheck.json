@@ -1,0 +1,67 @@
+{
+  "rustTree": "1a1acc4260011c591fd8ce3c5387bb7c10b42f20",
+  "observedAfterBroaderBeforeTypecheck": {
+    "packages/wasm/pkg/ifc-lite_bg.wasm": {
+      "sha256": "b335d9e2742a0f35db846b3a95f7b30152585ef2dd6e7abdc2328dae557dc1d0",
+      "sizeBytes": 9970066
+    },
+    "packages/wasm/pkg/ifc-lite.js": {
+      "sha256": "0a281479eb65141ae75aeef987d331d44439741a0cae855f122e53e800311a39",
+      "sizeBytes": 304051
+    },
+    "packages/wasm/pkg/ifc-lite.d.ts": {
+      "sha256": "54c9d0a52eb515e517d76726fefe5f6a63e553a81c1b10331a597965d14620f6",
+      "sizeBytes": 164165
+    },
+    "apps/viewer/public/samples/hello-wall.ifc": {
+      "sha256": "0ab20f4ea355ea9aa4fade7264b97ee9f9929addfa3961b2437c4381bd674014",
+      "sizeBytes": 79592
+    },
+    "apps/viewer/src/test/blank-ifc-loader-harness.tsx": {
+      "sha256": "5f6e2ebb2b23f707165da2927733868e4d4a81dbf3b504bc5dec2b0a32bb3570",
+      "sizeBytes": 6056
+    }
+  },
+  "actualBonsaiControl": {
+    "fixtureSha256": "0ab20f4ea355ea9aa4fade7264b97ee9f9929addfa3961b2437c4381bd674014",
+    "primaryGeometrySha256": "1d39b0af33fb671fda1b6602d55266726ed65f30ec66ab76c37d75f1f894c513",
+    "peerGeometrySha256": "1d39b0af33fb671fda1b6602d55266726ed65f30ec66ab76c37d75f1f894c513",
+    "primaryMeshes": 8,
+    "peerMeshes": 8,
+    "visiblePrimaryMeshes": 5,
+    "counts": [
+      {
+        "triangles": 68,
+        "vertices": 80
+      },
+      {
+        "triangles": 32,
+        "vertices": 48
+      },
+      {
+        "triangles": 12,
+        "vertices": 24
+      },
+      {
+        "triangles": 12,
+        "vertices": 24
+      },
+      {
+        "triangles": 32,
+        "vertices": 48
+      },
+      {
+        "triangles": 12,
+        "vertices": 24
+      },
+      {
+        "triangles": 12,
+        "vertices": 24
+      },
+      {
+        "triangles": 12,
+        "vertices": 24
+      }
+    ]
+  }
+}

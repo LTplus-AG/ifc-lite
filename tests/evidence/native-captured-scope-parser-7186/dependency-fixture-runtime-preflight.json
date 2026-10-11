@@ -1,0 +1,51 @@
+{
+  "head": "90cb5d7b28e7e2d1114e1fcc36f2bb38f3bdfff9",
+  "rustTree": "1a1acc4260011c591fd8ce3c5387bb7c10b42f20",
+  "files": [
+    {
+      "path": "pnpm-lock.yaml",
+      "exists": true,
+      "bytes": 400913,
+      "sha256": "3baf933ea880bd57d30dc2416184777af7488835c2a7eeff94ff84e6841eb4e4"
+    },
+    {
+      "path": "apps/viewer/public/samples/building-architecture.ifc",
+      "exists": true,
+      "bytes": 225635,
+      "sha256": "3ff9b10bd00c7b96dded51e7ca5a6b69efbea38b049adcdd05fcd247de7e70d5"
+    },
+    {
+      "path": "apps/viewer/public/samples/hello-wall.ifc",
+      "exists": true,
+      "bytes": 79592,
+      "sha256": "0ab20f4ea355ea9aa4fade7264b97ee9f9929addfa3961b2437c4381bd674014"
+    },
+    {
+      "path": "apps/viewer/src/test/artifact-models-fixture.ts",
+      "exists": true,
+      "bytes": 2794,
+      "sha256": "e22a3f540b5f06d2c65a547df97a12584f547cfaeaae3fce10aeb70d2c606f29"
+    },
+    {
+      "path": "packages/wasm/pkg/ifc-lite.d.ts",
+      "exists": true,
+      "bytes": 164165,
+      "sha256": "54c9d0a52eb515e517d76726fefe5f6a63e553a81c1b10331a597965d14620f6"
+    },
+    {
+      "path": "packages/wasm/pkg/ifc-lite_bg.wasm",
+      "exists": false,
+      "bytes": null,
+      "sha256": null
+    },
+    {
+      "path": "packages/wasm/pkg/ifc-lite.js",
+      "exists": false,
+      "bytes": null,
+      "sha256": null
+    }
+  ],
+  "actualInstall": "frozen-offline-install-result.json",
+  "installWarnings": "package bins reference not-yet-built dist; root Turbo owns builds before tests",
+  "scope": "Real committed SketchUp architecture +hello-wall parser sources; visibility protocol mesh stubs, notgeometryrendering"
+}

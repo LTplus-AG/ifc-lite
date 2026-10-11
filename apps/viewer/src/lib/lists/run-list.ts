@@ -20,7 +20,7 @@ import type { IfcDataStore } from '@ifc-lite/parser';
 import type { ListDataProvider, ListDefinition, ListResult } from '@ifc-lite/lists';
 import { executeList, listConditionMatcher, summariseListRows } from '@ifc-lite/lists';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
-import { evaluateFilterGroupsFederated, type EvaluatorModel } from '@ifc-lite/rules';
+import { evaluateFilterGroupsFederated, resolveCapturedEntityScope, type EvaluatorModel } from '@ifc-lite/rules';
 import { mergeResultColumns } from './merge-result-columns.js';
 import { scopeModelPairs, type ListModelTagState } from './model-tag-scope.js';
 
@@ -49,6 +49,7 @@ export async function runListFederated(
   // The list's model tag scope (#4215) decides which providers run; an
   // unresolved or empty scope throws its reason.
   const scoped = scopeModelPairs(definition, pairs, state);
+  const captured = definition.capturedScope ? resolveCapturedEntityScope(definition.capturedScope, options.evaluatorModels ?? []) : undefined;
   let parts: ListResult[];
   let scanDuration: number;
   {
@@ -63,7 +64,7 @@ export async function runListFederated(
     // scope only. Rules groups stay authoritative even when the user clears every rule.
     const candidates = new Map(scoped.map(({ modelId, provider }) => [modelId, executeList({
       ...definition, groups: [], legacyConditions: [], columns: [], grouping: undefined, sortBy: undefined,
-    }, provider, modelId).rows.map(({ entityId }) => entityId)] as const));
+    }, provider, modelId, captured?.get(modelId)).rows.map(({ entityId }) => entityId)] as const));
     const hasRules = definition.groups.some((group) => group.rules.length > 0);
     const matchedByModel = new Map<string, Set<number>>();
     if (hasRules) {
@@ -90,7 +91,7 @@ export async function runListFederated(
     parts = scoped.map(({ modelId, provider }) => executeList({
       ...definition, groups: [], legacyConditions: [],
       expressIdsByModel: { [modelId]: (candidates.get(modelId) ?? []).filter((id) => !hasRules || matchedByModel.get(modelId)?.has(id)) },
-    }, provider, modelId));
+    }, provider, modelId, captured?.get(modelId)));
     // Include the Rules scan in the user-visible execution time below.
     scanDuration = performance.now() - start;
   }

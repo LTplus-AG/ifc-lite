@@ -1,0 +1,15 @@
+{
+  "qualificationSHA256": "f74f83d98ae201a4905b684b215aa618ca31fe777e37406b1b0d09bbdae09411",
+  "archivePairsVerified": 25,
+  "sourcesVerified": 3,
+  "actualOldBlindSpot": "21pass0fail",
+  "actualNewInverse": "20pass1 genuineERR_ASSERTION4vs5",
+  "actualRestored": "21pass0fail0skip",
+  "actualTestRuntimeRecords": 12,
+  "canonicalProductionHelperExactMain": true,
+  "fullRootFiles": 3735,
+  "packages": 62,
+  "verifierCorrection": "initial verifier expected TAP labels; actual local Node reporter uses \u2139 and spacedTOTAL; source/results unchanged",
+  "scope": "test-only knownissue oracle gap correction; no production behavior/perf orissue closureclaim",
+  "timestamp": "2026-10-08T14:24:34.138783+00:00"
+}

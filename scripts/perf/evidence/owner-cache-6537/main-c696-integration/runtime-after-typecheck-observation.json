@@ -1,0 +1,22 @@
+{
+  "packages/wasm/pkg/ifc-lite_bg.wasm": {
+    "sha256": "8b74229bbd4a991cbf1f32a8d52add195c5fdd333921f998b1c18eb713185143",
+    "sizeBytes": 9970066
+  },
+  "packages/wasm/pkg/ifc-lite.js": {
+    "sha256": "0a281479eb65141ae75aeef987d331d44439741a0cae855f122e53e800311a39",
+    "sizeBytes": 304051
+  },
+  "packages/wasm/pkg/ifc-lite.d.ts": {
+    "sha256": "54c9d0a52eb515e517d76726fefe5f6a63e553a81c1b10331a597965d14620f6",
+    "sizeBytes": 164165
+  },
+  "apps/viewer/public/samples/hello-wall.ifc": {
+    "sha256": "0ab20f4ea355ea9aa4fade7264b97ee9f9929addfa3961b2437c4381bd674014",
+    "sizeBytes": 79592
+  },
+  "tests/models/ara3d/AC20-FZK-Haus.ifc": {
+    "sha256": "d42ab0dee01173106c16cd823b4614efe188fa15dd65195d95b9879bec59acc5",
+    "sizeBytes": 2526511
+  }
+}

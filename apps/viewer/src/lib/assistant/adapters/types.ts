@@ -39,9 +39,21 @@ export interface AdapterReadiness {
   status: TranslatableMessage;
   /** A native result exists and can be attached now. */
   ready: boolean;
-  /** The picker can run the native producer in place (clash only today). */
-  runnable?: boolean;
   running?: boolean;
+}
+
+/** Existing Assistant actions; command IDs come from the native panel registry (#7160). */
+export interface SourceActionDescriptors {
+  open: { panel: WorkspacePanelId; commandId: string | null; requires: readonly ['workspace-panel-host'] };
+  discuss: { requires: readonly ['evidence']; unavailableKey: TranslationKey };
+  run: { kind: 'native'; producer: 'clash'; requires: readonly ['native-clash-host', 'clash-geometry', 'clash-idle'] }
+    | { kind: 'panel-controls'; reasonKey: TranslationKey };
+}
+export type SourceActionAdapter = EvidenceAdapter & { actions: SourceActionDescriptors };
+export interface SourceActionAvailability {
+  open: boolean;
+  discuss: boolean;
+  run: { available: boolean; reasonKey: TranslationKey | null };
 }
 
 export type CaptureAvailability = 'available' | 'unavailable';

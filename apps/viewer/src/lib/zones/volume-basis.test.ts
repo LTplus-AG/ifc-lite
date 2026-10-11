@@ -102,6 +102,28 @@ describe('zones/volume-basis', () => {
       assert.deepStrictEqual(declaredVolumeBases(sets, 1), []);
     });
 
+    it('#7376 resolved member units override project scale and unresolved explicit units cannot fall back', () => {
+      const sets = [{ name: 'Q', quantities: [{ name: 'NetVolume', type: VOLUME, value: 10, explicitUnitSiScale: 1e-9 }] }];
+      assert.ok(Math.abs(declaredVolumeBases(sets, 1)[0]!.valueM3 - 1e-8) < 1e-23);
+      assert.ok(Math.abs(declaredVolumeBases(sets, null)[0]!.valueM3 - 1e-8) < 1e-23);
+      assert.deepStrictEqual(declaredVolumeBases([{ name: 'Q', quantities: [
+        { name: 'NetVolume', type: VOLUME, value: 10, explicitUnitUnresolved: true },
+      ] }], 1), []);
+      assert.deepStrictEqual(declaredVolumeBases([{ name: 'Q', quantities: [
+        { name: 'NetVolume', type: VOLUME, value: 10 },
+      ] }], null), []);
+      assert.deepStrictEqual(declaredVolumeBases([{ name: 'Own', quantities: [
+        { name: 'NetVolume', type: VOLUME, value: 10, explicitUnitUnresolved: true },
+      ] }, { name: 'Inherited', quantities: [
+        { name: 'NetVolume', type: VOLUME, value: 30, explicitUnitSiScale: 1e-9 },
+      ] }], 1), [], 'unresolved first native basis must not promote a later inherited total');
+      assert.deepStrictEqual(declaredVolumeBases([{ name: 'Own', quantities: [
+        { name: 'NetVolume', type: VOLUME, value: 10 },
+      ] }, { name: 'Inherited', quantities: [
+        { name: 'NetVolume', type: VOLUME, value: 30, explicitUnitSiScale: 1e-9 },
+      ] }], null), [], 'unknown project context preserves the first implicit native basis slot');
+    });
+
     it('a non-positive or non-finite unit scale falls back to SI rather than zeroing every volume', () => {
       const sets = [{ name: 'Q', quantities: [{ name: 'NetVolume', type: VOLUME, value: 4.23 }] }];
       assert.strictEqual(declaredVolumeBases(sets, 0)[0]!.valueM3, 4.23);

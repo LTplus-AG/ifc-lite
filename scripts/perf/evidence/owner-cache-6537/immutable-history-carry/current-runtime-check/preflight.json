@@ -1,0 +1,14 @@
+{
+  "sourceHead": "6e115f8c07074d08b1da9b5d4c59dec817c10847",
+  "expectedWasm": "8b74229bbd4a991cbf1f32a8d52add195c5fdd333921f998b1c18eb713185143",
+  "preWasmSha256": "8b74229bbd4a991cbf1f32a8d52add195c5fdd333921f998b1c18eb713185143",
+  "startUtc": "2026-10-08T11:20:10.501299+00:00",
+  "command": [
+    "pnpm",
+    "test",
+    "--filter=@ifc-lite/viewer",
+    "--env-mode=loose",
+    "--concurrency=1"
+  ],
+  "testPattern": "useFederatedGeometry.real-ifc-release.test"
+}

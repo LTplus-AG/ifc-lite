@@ -36,6 +36,7 @@ import { createCostAdapter } from './cost-adapter.js';
 import { withCostMutationTracking } from './store-adapter-cost.js';
 import { withStructuralMutationTracking } from './store-adapter-structural.js';
 import { withModellingMutationTracking } from './store-adapter-modelling.js';
+import { createTrackedGroupBackend } from './store-adapter-group.js';
 import { getMutationViewForModel, getOrCreateMutationView, isLegacyMutationRef, normalizeMutationModelId } from './mutation-view.js';
 import { attributeNamesForStore, referenceAttributeSlotsForStore } from '@/lib/collab/schema-attribute-names.js';
 import type { AuthoredElement } from '../../store/slices/mutationSlice.js';
@@ -353,5 +354,6 @@ export function createStoreAdapter(store: StoreApi): StoreBackendMethods {
     // Openings and hosted doors/windows (#6232): same resolver, gate and room
     // mirroring; see `store-adapter-modelling.ts` for the undo policy.
     ...withModellingMutationTracking(createModellingStoreBackend(resolveStoreModel), store, resolveEditorAndStore),
+    ...createTrackedGroupBackend(store, resolveStoreModel),
   };
 }

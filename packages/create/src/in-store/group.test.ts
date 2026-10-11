@@ -430,4 +430,9 @@ it('refuses create-only facts over the graph entity budget that review could nev
   // An overlay creation counts against the same budget.
   s.editor.addEntity('IfcGroup', [generateIfcGuid(), null, 'Extra', null, null]);
   expect(() => readGroupCreateEvidenceInStore(s, [s.member.expressId], live)).toThrow(/entity budget/);
+  // An overlay deletion drops the live count, though the parsed buckets still hold it.
+  const storey = new AnchorEntityReader(s.store, s.mutationView).firstId('IFCBUILDINGSTOREY')!;
+  expect(s.mutationView.deleteEntity(storey)).toBe(true);
+  expect(readGroupCreateEvidenceInStore(s, [s.member.expressId], live)?.scope).toBe('no-group-context');
+  expect(() => readGroupCreateEvidenceInStore(s, [s.member.expressId], live - 1)).toThrow(/entity budget/);
 });

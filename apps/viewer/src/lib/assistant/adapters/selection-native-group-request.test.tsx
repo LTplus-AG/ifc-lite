@@ -21,6 +21,9 @@ import { ModelChangeProposal } from '@/components/viewer/assistant/ModelChangePr
 import { editedModelBytes } from '@/lib/export/edited-model-bytes';
 import { modelChangeLibrary } from '@/lib/actions/receipts';
 import { render, click, cleanup } from '@/test/render';
+import { fixtureModel } from '@/test/store-fixture';
+import { entityRefToString } from '@/store/entity-ref';
+import { TEXT_LIMIT } from '../projection';
 import { captureEvidence } from '../evidence';
 import { cancelAssistant, replaceEvidence, useAssistant } from '../conversation';
 import { sendAssistant } from '../request';
@@ -193,4 +196,34 @@ test('#7329 actual provider answer reaches mounted selective Group review, nativ
   const restoredBytes = editedModelBytes(dataStore, view);
   assert.deepEqual(danglingReferences(new TextDecoder().decode(restoredBytes)), []);
   await assertSameNativeIfcGraph(restoredBytes, before, 'one native Undo restores every original parsed record and removes the group subgraph');
+});
+
+test('#7346 rich selection that cannot fit even the Group status omits it visibly as a truncated projection', async () => {
+  const { dataStore } = await selectedSource();
+  const products = [...dataStore.entityIndex.byType].filter(([type]) => /^IFC(WALL|SLAB|WINDOW|DOOR|ROOF|MEMBER|COVERING|RAILING|STAIR|SPACE)/.test(type)).flatMap(([, ids]) => ids);
+  const select = (ids: number[]) => { useViewerStore.getState().setSelectedEntityIds(ids);
+    useViewerStore.setState({ selectedEntitiesSet: new Set(ids.map(expressId => entityRefToString({ modelId: SAMPLE_MODEL, expressId }))) }); };
+  // A complete, untruncated capture whose cited rows leave less than a row of room.
+  let capture: { payload: string } | undefined;
+  for (let count = 1; count <= products.length && !capture; count++) {
+    select(products.slice(0, count));
+    const candidate = captureEvidence('selection'), payload = JSON.parse(candidate.payload);
+    if (!payload.projectionTruncated && payload.includedRows === payload.totalRows && payload.evidence.summary.nativeGroups
+      && TEXT_LIMIT - candidate.payload.length >= 100 && TEXT_LIMIT - candidate.payload.length < 1000) capture = candidate;
+  }
+  assert.ok(capture, 'no complete selection capture lands within one row of the envelope');
+  // An unselected loaded model's name grows the envelope one character at a time:
+  // exactly one past the limit with the Group status entries, inside it without them.
+  const filler = (name: string) => useViewerStore.setState({ models: new Map([...useViewerStore.getState().models].filter(([id]) => id !== 'filler')
+    .concat([['filler', { ...fixtureModel('filler'), name }]])) });
+  filler('');
+  const padded = captureEvidence('selection');
+  assert.ok(JSON.parse(padded.payload).evidence.summary.nativeGroups, 'the empty filler leaves room for the Group status');
+  filler('x'.repeat(TEXT_LIMIT - padded.payload.length + 1));
+  const omitted = captureEvidence('selection'), payload = JSON.parse(omitted.payload);
+  assert.equal(payload.evidence.summary.nativeGroups, undefined);
+  assert.equal(payload.includedRows, payload.totalRows); assert.equal(payload.modelMetadataTruncated, false);
+  assert.ok(payload.evidence.rows.every((row: Record<string, unknown>) => !row.rowProjectionTruncated));
+  assert.equal(payload.projectionTruncated, true, 'only the omitted Group status can truncate this projection');
+  assert.equal(omitted.projectionTruncated, true);
 });

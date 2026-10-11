@@ -126,6 +126,62 @@ interface BimFileAttachment {
   hasTextContent: boolean;
 }
 
+// ── Generic group lifecycle types ─────────────────────────────────────
+//
+// Extracted by the generator from the sources below — these declarations are
+// the engine's own text, not a copy maintained in the generator:
+//   packages/sdk/src/store-group-types.ts
+//   packages/sdk/src/types.ts
+//   packages/create/src/in-store/group.ts
+//   packages/create/src/in-store/group-graph.ts
+
+declare namespace BimGroup {
+  /** A current Root identity belonging to one explicit loaded source. */
+  export type GroupStoreIdentity = EntityRef & GroupRootIdentity;
+
+  export type GroupStoreSnapshot = GroupSnapshot & { modelId: string };
+
+  export type GroupStoreCreateParams = Omit<GroupInStoreParams, 'RelatedObjects'> & { RelatedObjects: readonly GroupStoreIdentity[] };
+
+  export type GroupStorePatch = Omit<GroupInStorePatch, 'RelatedObjects'> & { RelatedObjects: readonly GroupStoreIdentity[] };
+
+  /** Reference to a specific entity within a federated model set */
+  export interface EntityRef {
+    modelId: string;
+    expressId: number;
+  }
+
+  export interface GroupRootIdentity { expressId: number; GlobalId: string }
+
+  export interface GroupSnapshot extends GroupRootIdentity {
+    Name: string | null;
+    Description: string | null;
+    ObjectType: string | null;
+    memberships: GroupMembershipSnapshot[];
+  }
+
+  export interface GroupInStoreParams {
+    Name: string;
+    Description?: string | null;
+    ObjectType?: string | null;
+    GlobalId?: string;
+    RelatedObjects: readonly GroupRootIdentity[];
+  }
+
+  export interface GroupInStorePatch {
+    Name?: string | null;
+    Description?: string | null;
+    ObjectType?: string | null;
+    /** Entire intended membership, never an implicit append or subtraction. */
+    RelatedObjects: readonly GroupRootIdentity[];
+  }
+
+  export interface GroupMembershipSnapshot {
+    relationship: GroupRootIdentity;
+    RelatedObjects: GroupRootIdentity[];
+  }
+}
+
 // ── Modelling operation types ─────────────────────────────────────────
 //
 // Extracted by the generator from the sources below — these declarations are
@@ -1055,6 +1111,14 @@ declare const bim: {
     setCostItemValues(modelId: string, itemExpressId: number, valueExpressIds: number[]): void;
     /** Safely remove an IfcCostSchedule, IfcCostItem, or IfcCostValue from a parsed model. */
     removeCostEntity(modelId: string, expressId: number, options?: { detach?: boolean }): void;
+    /** Read the current exact IfcGroup and complete membership from its loaded source. */
+    readGroup(target: BimGroup.GroupStoreIdentity): BimGroup.GroupStoreSnapshot;
+    /** Create an exact IfcGroup with explicit source-pinned RelatedObjects in one native edit. */
+    addGroup(modelId: string, params: BimGroup.GroupStoreCreateParams): BimGroup.GroupStoreIdentity;
+    /** Preserve current group identity and replace its entire membership after verifying a complete current snapshot. */
+    updateGroup(expected: BimGroup.GroupStoreSnapshot, patch: BimGroup.GroupStorePatch): BimGroup.GroupStoreIdentity;
+    /** Remove an exact IfcGroup and its membership edges while preserving members; protected dependencies refuse the edit. */
+    removeGroup(expected: BimGroup.GroupStoreSnapshot): void;
   };
   /** Lens visualization */
   lens: {

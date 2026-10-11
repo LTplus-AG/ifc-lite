@@ -57,8 +57,8 @@ describe('changelog', () => {
     expect(texts.filter((t) => t.includes('changed from required to optional'))).toHaveLength(1);
   });
 
-  it('gives every change of 300 corpus revisions a sentence in en, de and fr', () => {
-    const locales: SupportedLocale[] = ['en', 'de', 'fr'];
+  it('gives every change of 300 corpus revisions a sentence in en, de, fr and it', () => {
+    const locales: SupportedLocale[] = ['en', 'de', 'fr', 'it'];
     let lines = 0;
     for (let seq = 0; seq < 300; seq++) {
       const a = corpusDocument(seq);
@@ -91,11 +91,12 @@ describe('changelog', () => {
     expect(changelogMarkdown(diffDocuments(doc, doc))).toBe('# Changes\n\n');
   });
 
-  it('speaks German and French', () => {
+  it('speaks German, French and Italian', () => {
     const { doc, reqId } = doorsDocument();
     const next = apply(doc, [op('requirement.setOptionality', { facetId: reqId, optionality: 'required' })]).doc;
     const diff = diffDocuments(doc, next);
     expect(changelog(diff, { locale: 'de' })[0].text).toBe('Doors: FireRating (Pset_DoorCommon) geändert von optional zu erforderlich');
     expect(changelog(diff, { locale: 'fr' })[0].text).toBe('Doors: FireRating (Pset_DoorCommon) modifié de facultatif à obligatoire');
+    expect(changelog(diff, { locale: 'it' })[0].text).toBe('Doors: FireRating (Pset_DoorCommon) modificato da facoltativo a obbligatorio');
   });
 });

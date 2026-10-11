@@ -72,6 +72,8 @@ const EXAMPLES: Record<OpKind, StudioOp['payload']> = {
   'meta.test.remove': { testId: F },
   'meta.test.restore': { specId: S, index: 0, testCase: { id: F, name: 'x', fixture: { kind: 'file', path: 'fixtures/x.ifc' }, expect: 'pass' } },
   'meta.test.setExpectation': { testId: F, expect: 'pass', expectFailureOn: null },
+  'meta.suppress': { nodeId: S, suppression: { rule: 'IDSL-SPEC-008', reason: 'Reviewed', by: 'a@example.com', at: '2026-10-11T00:00:00Z' }, index: 0 },
+  'meta.unsuppress': { nodeId: S, rule: 'IDSL-SPEC-008' },
   'bulk.renameProperty': { fromPset: 'Pset_WallCommon', fromName: 'Fire', toPset: 'Pset_WallCommon', toName: 'FireRating' },
   'bulk.retargetEntity': { from: 'IfcWallStandardCase', to: 'IfcWall', scope: [S] },
   'bulk.applyTemplate': {

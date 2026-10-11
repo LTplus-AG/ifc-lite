@@ -122,6 +122,8 @@ export const ENT_003: SpecRule = {
   scope: 'spec',
   kind: 'static',
   defaultSeverity: 'info',
+  // Owner decision (#7144): fires on every IfcWall/IfcSlab in an IFC4 spec.
+  optIn: true,
   title: 'Entity has subtypes the author may also mean',
   rationale:
     'An applicability entity matches only that exact class. Concrete subtypes (IfcWallStandardCase and IfcWallElementedCase for IfcWall in IFC4, IfcSlabStandardCase for IfcSlab, …) are not selected unless listed. This is often intended, but frequently it is not.',

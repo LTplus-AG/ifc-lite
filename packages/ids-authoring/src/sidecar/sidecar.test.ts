@@ -25,10 +25,11 @@ describe('studio.json sidecar', () => {
     }
   });
 
-  it('keeps docId and meta but mints fresh ids when the XML changed elsewhere', () => {
+  it('keeps docId and meta but mints fresh ids when the XML changed elsewhere and there is no snapshot', () => {
     const { xml } = corpus.find((c) => c.ids.specifications.length > 0)!;
     const doc = fromIdsDocument(parseIDS(xml));
-    const sidecar = createSidecar(doc, xml);
+    const sidecar = createSidecar(doc, xml, { snapshot: false });
+    expect(sidecar.snapshot).toBeUndefined();
     const edited = parseIDS(xml.replace(/name="([^"]*)"/, 'name="$1 (rev B)"'));
     expect(fingerprintIds(edited)).not.toBe(sidecar.idsFingerprint);
     const { doc: back, binding } = attachSidecar(edited, sidecar);

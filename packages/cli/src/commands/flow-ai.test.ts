@@ -4,6 +4,8 @@
 
 /** #7132: a real native IFC population reaches a schema-constrained host request and review. */
 import { afterEach, expect, it, vi } from 'vitest';
+import { createHash } from 'node:crypto';
+import { restoreRootBudget, type UsageReceipt } from '@ifc-lite/ai';
 import { fileURLToPath } from 'node:url';
 import { NodeRegistry, runFlow, type FlowDocument, type NodeDef, type Table } from '@ifc-lite/flow';
 import { aiNodes, AI_FEATURE } from '@ifc-lite/flow-nodes/ai';
@@ -21,7 +23,7 @@ it('forwards the native classification schema without sending unselected IFC att
   expect(walls).toHaveLength(4);
   const table: Table = { key: 'key', columns: [{ name: 'key', type: 'identifier' }, { name: 'Type', type: 'label' }, { name: 'Private', type: 'text' }],
     rows: walls.map(wall => ({ key: String(wall.ref.expressId), Type: wall.type, Private: 'DO-NOT-SEND' })) };
-  const sent: Record<string, unknown>[] = [];
+  const sent: Record<string, unknown>[] = [], receipts: UsageReceipt[] = [], outputTexts: string[] = [];
   vi.spyOn(globalThis, 'fetch').mockImplementation(async (_input, init) => {
     const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
     sent.push(body);
@@ -29,9 +31,18 @@ it('forwards the native classification schema without sending unselected IFC att
     const block = /<data>\n([\s\S]*)\n<\/data>/.exec(messages.at(-1)!.content);
     if (!block) throw new Error('Missing evidence block');
     const items = block[1].split('\n').map(line => ({ key: (JSON.parse(line) as { key: string }).key, label: 'wall', evidence: ['Type'] }));
-    return new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify({ items }) }, finish_reason: 'stop' }] }));
+    const text = JSON.stringify({ items }); outputTexts.push(text);
+    return new Response(JSON.stringify({ choices: [{ message: { content: text }, finish_reason: 'stop' }], usage: { prompt_tokens: 11, completion_tokens: 3 } }));
   });
-  const ai = createCliAiService({ model: 'configured-model', apiKey: 'test', baseUrl: 'https://example.invalid', structuredOutput: true });
+  // #7246 the actual CLI host must carry producer metadata and the resumed native grant.
+  const budget = restoreRootBudget({ maxRequests: 3, maxOutputTokens: 100, requests: 1, outputTokens: 63 });
+  if (!budget) throw new Error('Expected valid resumed budget');
+  const native = createCliAiService({ model: 'configured-model', apiKey: 'test', baseUrl: 'https://example.invalid', structuredOutput: true }, budget);
+  const ai: typeof native = { ...native, request: async call => {
+    const outcome = await native.request(call);
+    if (outcome.kind !== 'refused') receipts.push(outcome.receipt);
+    return outcome;
+  } };
   const source: NodeDef<FlowHost> = { type: 'test.nativeWalls', title: 'Native walls', category: 'test', capabilities: [], params: [], inputs: [],
     outputs: [{ name: 'table', type: { kind: 'table', access: 'item' } }], run: () => ({ table }) };
   const graph: FlowDocument = { flowVersion: 2, id: 'typed-native-walls', name: 'Typed native walls', capabilities: ['network.ai'], inputs: [], outputs: [],
@@ -44,6 +55,15 @@ it('forwards the native classification schema without sending unselected IFC att
   const result = await runFlow(graph, { registry: new NodeRegistry<FlowHost>().registerAll([source, ...aiNodes]),
     features: { ...features, backend: new Set([...features.backend, AI_FEATURE]) }, host: { bim, ai, grants: grants.value, networkGrants: grants.value } });
   expect(result.ok).toBe(true);
+  expect(sent[0].max_tokens).toBe(37);
+  expect(receipts).toHaveLength(1);
+  expect(receipts[0]).toMatchObject({ usageReported: true, inputTokens: 11, outputTokens: 3, provenance: {
+    promptVersion: 'flow.ai.classify.v1', grantedOutputTokens: 37, timeoutMs: 120_000, finishReason: 'stop',
+    outputTextDigest: { referent: 'output-text.utf8.v1', value: createHash('sha256').update(outputTexts[0], 'utf8').digest('hex') },
+  } });
+  expect(JSON.stringify(receipts)).not.toContain('example.invalid');
+  expect(budget.requests).toBe(2);
+  expect(budget.outputTokens).toBe(66);
   expect(result.review).toEqual(['classify']);
   const output = result.outputs.get('classify')?.get('table');
   if (output?.kind !== 'item') throw new Error('Missing native classification result');

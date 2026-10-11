@@ -138,7 +138,7 @@ export function readSubject(subject: Subject, ctx: ReadSubjectContext): SubjectV
       return readMeasureSubject(subject, store, expressId, ctx.mutationView);
     case 'classification': {
       const sys = subject.system?.trim().toLowerCase();
-      const refs = extractClassificationsOnDemand(store, expressId).filter(
+      const refs = extractClassificationsOnDemand(store, expressId, ctx.mutationView).filter(
         (r) => !r.unresolved && (!sys || (r.system ?? '').toLowerCase() === sys),
       );
       // BOTH the code AND the name per ref, not one-or-the-other — review

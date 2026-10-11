@@ -25,6 +25,7 @@ import { activeModelName, downloadFile, modelExportFilename, normalizeExtension 
 import { useTranslation } from '@/i18n';
 import { trackExportCompleted } from '@/lib/analytics';
 import type { ExportSurface } from '@/lib/analytics-export-events';
+import { recordActivity } from '@/lib/activity/activity-journal';
 
 /** One installed exporter, as the export surfaces render it. */
 export interface ExtensionExporter {
@@ -67,13 +68,16 @@ export function useExtensionExporters(surface: ExportSurface) {
     const { extensionId, payload } = exporter;
     setRunningKey(key);
     try {
-      const output = await host.runExporter(payload.id, extensionId);
-      // Like every one-click export, the file is named for the active model.
-      downloadFile(
-        output.data,
-        modelExportFilename(activeModelName(useViewerStore.getState()), payload.extension),
-        payload.mimeType || 'application/octet-stream',
-      );
+      await recordActivity({ kind: 'export', title: 'activityTray.job.extensionExport',
+        subject: `${payload.name} · ${extensionId}` }, async () => {
+        const output = await host.runExporter(payload.id, extensionId);
+        // Like every one-click export, the file is named for the active model.
+        downloadFile(
+          output.data,
+          modelExportFilename(activeModelName(useViewerStore.getState()), payload.extension),
+          payload.mimeType || 'application/octet-stream',
+        );
+      });
       trackExportCompleted({ format: 'extension', surface });
       toast.success(t('exportCommands.extension.exportedToast', { name: payload.name }));
     } catch (err) {

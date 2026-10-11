@@ -759,6 +759,8 @@ Mutation types cover properties (`CREATE/UPDATE/DELETE_PROPERTY`, `CREATE/DELETE
 
 Build valid IFC4 STEP files programmatically, or add elements into an already-parsed model.
 
+`storeyPlanFrame(store, storeyExpressId, mutationView)` reads the current native placement chain when a view is supplied, including named/positional edits and authored records. Omit the view for source-only reads. Live unreadable, tilted, cyclic or over-256-placement chains return `null`; preview callers must disclose unavailable geometry. Origins remain metres and directions remain dimensionless.
+
 ### IfcCreator
 
 ```typescript
@@ -996,7 +998,7 @@ function auditIDSDocument(/* ... */): IDSAuditReport;
 function auditIDSStructure(/* ... */): IDSAuditReport;
 
 // Report localisation
-function createTranslationService(locale: 'en' | 'de' | 'fr'): TranslationService;
+function createTranslationService(locale: 'en' | 'de' | 'fr' | 'it'): TranslationService;
 ```
 
 ---

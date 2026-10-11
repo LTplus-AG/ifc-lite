@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import type { GeometryResult, MeshData } from '@ifc-lite/geometry';
 import { toRenderTranslation, type Translation } from './translation.js';
+import { carryReleasedMesh } from '../released-mesh-provenance.js';
 
 export function placedMesh(mesh: MeshData, translation: Translation): MeshData {
   const delta = toRenderTranslation(translation);
@@ -19,7 +20,7 @@ export function placedMesh(mesh: MeshData, translation: Translation): MeshData {
       min: [box.min[0] + delta[0], box.min[1] + delta[1], box.min[2] + delta[2]],
       max: [box.max[0] + delta[0], box.max[1] + delta[1], box.max[2] + delta[2]] };
   }
-  return placed;
+  return carryReleasedMesh(mesh, placed);
 }
 
 // A source realignment replaces coordinateInfo while rewriting vertex buffers.

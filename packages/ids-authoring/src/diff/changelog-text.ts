@@ -129,7 +129,36 @@ const fr: ChangelogCatalogue = {
   relation: 'relation',
 };
 
-const CATALOGUES: Record<SupportedLocale, ChangelogCatalogue> = { en, de, fr };
+const it: ChangelogCatalogue = {
+  section: { applicability: 'applicabilità', requirements: 'requisito' },
+  optionality: { required: 'obbligatorio', optional: 'facoltativo', prohibited: 'vietato' },
+  cardinality: { required: 'obbligatoria', optional: 'facoltativa', prohibited: 'vietata' },
+  info: { title: 'Titolo', copyright: 'Copyright', version: 'Versione', description: 'Descrizione', author: 'Autore', date: 'Data', purpose: 'Scopo', milestone: 'Milestone' },
+  specField: { description: 'descrizione', instructions: 'istruzioni', identifier: 'identificativo', ifcVersions: 'versioni IFC', ifcVersionRaw: 'testo della versione IFC', minOccurs: 'occorrenze minime', maxOccurs: 'occorrenze massime', applicabilityCardinality: "cardinalità dell'applicabilità" },
+  reqField: { cardinalityRaw: 'cardinalità', description: 'descrizione', instructions: 'istruzioni' },
+  none: 'nessuno',
+  changed: (w, f, t) => `${w} modificato da ${f} a ${t}`,
+  set: (w, t) => `${w} impostato su ${t}`,
+  removedValue: (w, f) => `${w} rimosso (era ${f})`,
+  specAdded: (n) => `Specifica «${n}» aggiunta`,
+  specRemoved: (n) => `Specifica «${n}» rimossa`,
+  specMoved: (n, f, t) => `Specifica «${n}» spostata dalla posizione ${f} alla ${t}`,
+  specRenamed: (f, t) => `Specifica «${f}» rinominata in «${t}»`,
+  specCardinality: (n, f, t) => `Specifica «${n}» modificata da ${f} a ${t}`,
+  facetAdded: (s, t) => `${s} aggiunto: ${t}`,
+  facetRemoved: (s, t) => `${s} rimosso: ${t}`,
+  facetMoved: (t, f, to) => `«${t}» spostato da ${f} a ${to}`,
+  facetReplaced: (f, t) => `«${f}» sostituito da «${t}»`,
+  position: (n) => `posizione ${n}`,
+  inSpec: (s, sec) => `${sec} di «${s}»`,
+  psetDeclared: (n) => `Set di proprietà personalizzato ${n} dichiarato`,
+  psetRemoved: (n) => `Set di proprietà personalizzato ${n} non più dichiarato`,
+  udtDeclared: (e, v) => `Tipo definito dall'utente ${v} dichiarato per ${e}`,
+  udtRemoved: (e, v) => `Tipo definito dall'utente ${v} non più dichiarato per ${e}`,
+  relation: 'relazione',
+};
+
+const CATALOGUES: Record<SupportedLocale, ChangelogCatalogue> = { en, de, fr, it };
 
 export function catalogue(locale: SupportedLocale): ChangelogCatalogue {
   return CATALOGUES[locale] ?? en;

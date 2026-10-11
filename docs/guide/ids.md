@@ -102,6 +102,8 @@ IDS supports six facet types for defining applicability and requirements:
 | **Material** | Match by material name | `Concrete C30/37` |
 | **PartOf** | Match by spatial containment | `IfcBuildingStorey "Level 1"` |
 
+Material lists whose `IfcMaterial.Name` is explicitly unset (`$` in STEP) retain the known material as `Material #<expressId>`. This is distinct from an unreadable or invalid referenced material: IDS keeps those results uncertain instead of treating them as a definite name mismatch.
+
 ## Constraint Types
 
 Each facet can use different constraint types to match values:
@@ -121,7 +123,7 @@ Validation reports can be generated in multiple languages:
 import { createTranslationService } from '@ifc-lite/ids';
 
 const t = createTranslationService('de'); // German
-// Or: 'en' (English, default), 'fr' (French)
+// Or: 'en' (English, default), 'fr' (French), 'it' (Italian)
 
 // Pass it to validateIDS to translate the report:
 const report = await validateIDS(idsDocument, accessor, modelInfo, { translator: t });
@@ -139,6 +141,23 @@ const auditReport = await auditIDSDocument(idsXml);
 ```
 
 Use `auditIDSStructure(idsDocument)` to audit an already-parsed document.
+
+Against the vendored buildingSMART IDS corpus, the audit reports an error on
+all 27 `invalid-` cases and on none of the 307 pass and fail cases. Among
+other things it checks:
+
+- values against their type: a property value against its `dataType`, an
+  attribute value against the attribute's type on the applicability entity
+  (`FALSE`, `42.0` for an integer and `42,3` are all rejected), and a
+  restriction's base against either;
+- entity names: upper case (`IFCWALL`, not `IfcWall`), and an entity
+  requirement that no applicable class can satisfy (entity facets match the
+  exact class, not subclasses);
+- predefined types: any value is accepted when the enum has `USERDEFINED`
+  (it is matched against `ObjectType`), IFC2X3 occurrences use their type
+  object's enum, and an entity with no PredefinedType rejects one;
+- every facet of a conjunctive restriction (`and`), not only the first;
+- a prohibited specification (`maxOccurs="0"`) with requirements.
 
 The audit checks that an IDS is valid IDS 1.0. To check that it means what you intend (abstract entities that match nothing, `^` in XSD patterns, millimetres where metres are expected, requirements that can never fail or never pass), lint it with `@ifc-lite/ids-authoring`; see [IDS lint rules](ids-lint/index.md).
 
@@ -270,25 +289,120 @@ In the viewer, the Data validation panel's Information validation side has
 **Export as IDS** next to **Save**. Both show what was converted and every
 refused rule or specification with its reasons.
 
-`writeIdsXml` is the IDS 1.0 writer behind both the export and the viewer's
-assistant-drafted IDS. It writes entity, attribute, property (with `dataType`),
-classification, material and partOf facets, requirement cardinality and
-`instructions`, and simple, pattern, enumeration and numeric-bound values.
-Length and digit restrictions, and conjunctive restriction facets, are refused
-with an error instead of being written as a weaker check. Line breaks and tabs
-in attributes such as `instructions` are written as character references, so
-they read back unchanged; a control character XML cannot carry is refused with
-the element or attribute it is in. Every pass/fail case
-of the vendored buildingSMART IDS corpus that it writes reads back with the
-same specifications and verdicts.
+The export writes its IDS through `writeIdsXml` from `@ifc-lite/ids` (see
+[Writing IDS documents](#writing-ids-documents)).
+
+## Writing IDS documents
+
+`writeIdsXml` (in `@ifc-lite/ids`) is the IDS 1.0 writer behind the rule-set
+export and the viewer's assistant-drafted IDS. It writes the `info` block,
+entity, attribute, property (with `dataType`), classification, material and
+partOf facets, requirement cardinality and `instructions`, and every
+constraint the parser produces: simple values, patterns, enumerations,
+numeric bounds, length and digit restrictions (`xs:length`, `xs:minLength`,
+`xs:maxLength`, `xs:totalDigits`, `xs:fractionDigits`) and conjunctive
+restrictions (a pattern, an enumeration and bounds in one `xs:restriction`).
+Bounds on `xs:decimal` and the integer bases are written without an exponent.
+
+What has no valid IDS 1.0 form is refused with an error naming it, never
+written as a weaker check: unparseable bounds, two patterns or two
+enumerations in one conjunction (XSD would OR them), conjunctive facets with
+different bases, and a bounds restriction without any facet. Line breaks and
+tabs in attributes such as `instructions` are written as character
+references, so they read back unchanged; a control character XML cannot carry
+is refused with the element or attribute it is in. Every pass/fail case of the
+vendored buildingSMART IDS corpus reads back with the same specifications and
+verdicts.
 
 ```typescript
-import { parseIDS } from '@ifc-lite/ids';
-import { writeIdsXml } from '@ifc-lite/rules';
+import { parseIDS, writeIdsXml } from '@ifc-lite/ids';
 
 declare const idsXml: string;
 const rewritten = writeIdsXml(parseIDS(idsXml));
+// Canonical layout: tab indents, CRLF, applicability facets in ids.xsd order.
+const canonical = writeIdsXml(parseIDS(idsXml), { canonical: true, indent: '\t', newline: '\r\n' });
 ```
+
+The optional second argument (`IdsXmlFormat`) changes layout and order only,
+never meaning: `indent` (spaces, 0 to 8, or `'\t'`; default 2 spaces),
+`newline` (`'\n'` or `'\r\n'`) and `canonical`. Canonical output writes
+applicability facets in the `ids.xsd` sequence (entity, partOf,
+classification, attribute, property, material) and `ifcVersion` tokens in
+schema order without duplicates, so two documents with the same checks write
+the same bytes; requirements keep their authored order. Writing is
+idempotent: `writeIdsXml(parseIDS(xml), fmt)` returns `xml` for any `xml` it
+wrote with the same `fmt`. `IFC4X3` is written as the IDS 1.0 token
+`IFC4X3_ADD2`, which reads back as `IFC4X3`; a `partOf` relation of voids or
+fills alone is refused, since IDS 1.0 only has the combined
+`IFCRELVOIDSELEMENT IFCRELFILLSELEMENT`.
+
+## IDS 1.1 preview (unstable)
+
+!!! warning "Preview"
+    IDS 1.1 is not released. The features below are **candidates** from the
+    buildingSMART IDS 1.1 milestone. They are off unless you pass
+    `preview: { ids11: true }`, and they will change or disappear when
+    upstream decides. A document that uses them is not valid IDS 1.0.
+
+Pass the flag to every entry point that should see the candidates:
+`parseIDS(xml, { preview })`, `writeIdsXml(doc, fmt, { preview })`,
+`validateIDS(doc, accessor, modelInfo, { preview })` and
+`auditIDSDocument(xml, { preview })`. Without it, nothing changes: the parser
+ignores the 1.1 attributes and elements, the audit reports them as IDS 1.0
+errors, and every buildingSMART IDS 1.0 corpus file writes byte for byte the
+same with the flag on as off. A document that does use a 1.1 feature is
+never quietly downgraded: the writer and the validator throw
+`IDS11PreviewRequiredError` when it reaches them without the flag.
+
+| Feature | Upstream | What the preview does |
+|---|---|---|
+| `uri` on property, classification and material facets in applicability | IDS #188, #251 (merged on the upstream 1.1 branch) | Read and written; informational, never checked against a model |
+| `instructions` on applicability facets | IDS #154 (open proposal) | Read and written. Requirement instructions stay on the requirement, as in 1.0 |
+| Attribute, property, classification and material facets nested in `partOf` | IDS #379, draft PR #380 | The related element must match the entity **and** every nested facet. Exactly one related entity is required |
+| Specification identifiers should be unique | IDS #339 (resolved as documentation) | The preview audit warns on a duplicate (`W_IDS11_IDENTIFIER_DUPLICATE`) |
+| Equality tolerance: inclusive bounds, rounded to 15 decimals | IDS #418 (open) | Simple values and enumerations compare with `v ∓ (abs(v)·1e-6 + 1e-6)`, bounds rounded half-to-even to 15 decimal places, ends included. Ranges never use tolerance |
+
+The audit with the flag reports each use as `I_IDS11_PREVIEW_FEATURE` (an
+`info` issue naming the upstream issue), so a report always says which parts
+are preview. The writer marks preview output with an XML comment and the
+schema location `http://standards.buildingsmart.org/IDS/1.1/ids.xsd`, which
+buildingSMART has not published yet.
+
+```typescript
+import {
+  parseIDS, writeIdsXml, validateIDS, auditIDSDocument, findIds11Features,
+} from '@ifc-lite/ids';
+
+declare const idsXml: string;
+const preview = { ids11: true };
+
+const doc = parseIDS(idsXml, { preview });
+for (const use of findIds11Features(doc)) console.log(use.feature, use.path);
+
+const audit = await auditIDSDocument(idsXml, { preview });
+const report = await validateIDS(doc, accessor, { modelId: 'model', schemaVersion: 'IFC4', entityCount: 0 }, { preview });
+const xml = writeIdsXml(doc, {}, { preview });
+```
+
+The nested partOf facet expresses a case IDS 1.0 cannot: "the spaces of the
+storey named `01` must be named `01-…`" (#379). The partOf finds the storey,
+and the nested attribute facet is a condition on that storey:
+
+```xml
+<partOf relation="IFCRELAGGREGATES">
+  <entity><name><simpleValue>IFCBUILDINGSTOREY</simpleValue></name></entity>
+  <attribute>
+    <name><simpleValue>Name</simpleValue></name>
+    <value><simpleValue>01</simpleValue></value>
+  </attribute>
+</partOf>
+```
+
+Where upstream is undecided the preview takes the most conservative reading:
+for example the extra `partOf` relation of #247 (`IfcRelSpaceBoundary`) and
+the inverse partOf of #200 are not modelled, and translations of names and
+descriptions (#154) have no XML form until upstream gives them one. The
+decisions are recorded in the IDS Studio P-12 work log.
 
 ## Viewer Integration
 

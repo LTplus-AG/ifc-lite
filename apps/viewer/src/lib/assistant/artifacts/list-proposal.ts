@@ -12,12 +12,15 @@
 
 import { IfcTypeEnum, IfcTypeEnumFromString } from '@ifc-lite/data';
 import { ENTITY_ATTRIBUTES, type ColumnDefinition, type ListDefinition, type ListGrouping } from '@ifc-lite/lists';
-import { onlyKeys, parseEnvelope, record, requiredText, text, type ArtifactEnvelope } from './artifact-json';
+import { onlyKeys, parseEnvelope, parseNativeArtifactScope, record, requiredText, text, type ArtifactEnvelope } from './artifact-json';
 import { canonicalClasses, knownClassRefusal, parseProposalGroups } from './artifact-rules';
+import type { JsonResponseSchema } from '@ifc-lite/ai';
+import { profileLiteral, profileObject, profileTitle } from './response-profile-schema';
 
 export type ListDraft = Pick<ListDefinition, 'name' | 'description' | 'entityTypes' | 'groups' | 'columns' | 'sortBy' | 'grouping'>;
 
 export interface ListProposal extends ArtifactEnvelope {
+  scope?: import('./artifact-json').NativeArtifactScope;
   kind: 'list.proposal';
   /** The classes as proposed, before subclass expansion; for review text. */
   classes: string[];
@@ -27,6 +30,22 @@ export interface ListProposal extends ArtifactEnvelope {
 export const COLUMN_LIMIT = 30;
 const COLUMN_SOURCES = ['attribute', 'property', 'quantity', 'material', 'classification', 'spatial', 'model'] as const;
 const SPATIAL_LEVELS = ['Container', 'Storey', 'Building', 'Site', 'Project'];
+
+/** #7234 concrete wall-measurement preset, owned beside its native parser. */
+export function wallListResponseProfile(area: { set: string; name: string }, rating: { set: string; name: string }): JsonResponseSchema | null {
+  // Match the native parseColumn text boundary without rewriting authored names.
+  if ([area.set, area.name, rating.set, rating.name].some(value => !text(value) || value.trim() !== value)) return null;
+  const column = (id: string, source: 'quantity' | 'property', field: typeof area) => profileObject({
+    id: profileLiteral(id), source: profileLiteral(source), psetName: profileLiteral(field.set), propertyName: profileLiteral(field.name),
+  });
+  return { name: 'assistant_wall_measurement_list', schema: profileObject({
+    version: profileLiteral(1), kind: profileLiteral('list.proposal'), title: profileTitle,
+    list: profileObject({ name: profileTitle,
+      entityTypes: { type: 'array', items: profileLiteral('IfcWall'), minItems: 1, maxItems: 1 },
+      columns: { type: 'array', items: { anyOf: [column('area', 'quantity', area), column('fire-rating', 'property', rating)] }, minItems: 2, maxItems: 2 },
+    }),
+  }) };
+}
 
 function parseColumn(value: unknown, index: number, ids: Set<string>): ColumnDefinition {
   const at = `Column ${index + 1}`;
@@ -74,7 +93,7 @@ function parseGrouping(value: unknown, ids: ReadonlySet<string>): ListGrouping |
 }
 
 export function parseListProposal(answer: string): ListProposal {
-  const { value, envelope } = parseEnvelope(answer, 'list.proposal', ['list']);
+  const { value, envelope } = parseEnvelope(answer, 'list.proposal', ['list', 'scope']);
   if (!record(value.list)) throw new Error('A list.proposal needs a "list" object');
   const list = value.list;
   onlyKeys(list, ['name', 'description', 'entityTypes', 'groups', 'columns', 'sortBy', 'grouping'], 'The list');
@@ -100,7 +119,7 @@ export function parseListProposal(answer: string): ListProposal {
     sortBy = { columnId: list.sortBy.columnId as string, direction: list.sortBy.direction };
   }
   const grouping = parseGrouping(list.grouping, ids);
-  return { ...envelope, kind: 'list.proposal', classes: classes as string[], list: {
+  return { ...envelope, scope: parseNativeArtifactScope(value.scope), kind: 'list.proposal', classes: classes as string[], list: {
     name, ...(typeof list.description === 'string' ? { description: list.description } : {}), entityTypes,
     groups: parseProposalGroups(list.groups, 'The list', { allowEmpty: true }), columns,
     ...(sortBy ? { sortBy } : {}), ...(grouping ? { grouping } : {}),

@@ -1,0 +1,66 @@
+{
+  "base": "3e2779997ae165c36f6939419f9229debc73c163",
+  "branchProductionSource": "ffa087d031df2f48d57fd216aa8d00b783dfd8c4",
+  "status": "One real fresh-tab AC20 pair only; incomplete series, no speed verdict.",
+  "failedAttempts": "Preparation RPC failures before any model load are diagnostic records, never timing samples. No O-S1 fresh-tab sample exists.",
+  "summary": {
+    "base": {
+      "samples": 1,
+      "finalMs": 2173.7150000333786,
+      "geometry": {
+        "retainedFullPositionsNormalsIndicesAppearanceFNV32": "62abde08",
+        "retainedMeshes": 317,
+        "retainedTriangles": 33356,
+        "retainedVertices": 57706,
+        "totalTriangles": 33356,
+        "totalVertices": 57706
+      },
+      "tabId": "tab_e"
+    },
+    "branch": {
+      "samples": 1,
+      "finalMs": 2177.1549999713898,
+      "geometry": {
+        "retainedFullPositionsNormalsIndicesAppearanceFNV32": "62abde08",
+        "retainedMeshes": 317,
+        "retainedTriangles": 33356,
+        "retainedVertices": 57706,
+        "totalTriangles": 33356,
+        "totalVertices": 57706
+      },
+      "tabId": "tab_f"
+    }
+  },
+  "records": [
+    {
+      "name": "6537-foreground-fresh-ab-ac20-base-1.json",
+      "bytes": 8338,
+      "sha256": "2a6d879d88bb88b551ff5767b4a0912caa014f1e26eb5315cdf32a1033643d57"
+    },
+    {
+      "name": "6537-foreground-fresh-ab-ac20-branch-1.json",
+      "bytes": 8375,
+      "sha256": "cfea5cdd4c047ef38b3b0af15878791379b1f8893a703585117e1294093f3ac5"
+    },
+    {
+      "name": "6537-fresh-tab-bootstrap-retry.json",
+      "bytes": 427,
+      "sha256": "25317233a8664a1024e9ddb15566fa8fd4bf5e1bed08874bec208ba111929c53"
+    },
+    {
+      "name": "6537-fresh-tab-native-client-reconnect.json",
+      "bytes": 491,
+      "sha256": "ba5e56b7ad8d65d8c8d6ed0a23c6717fc4d4e656a7c249af36e8fe951ba292bb"
+    },
+    {
+      "name": "6537-fresh-tab-native-client-second-failure.json",
+      "bytes": 466,
+      "sha256": "0e853d85d12b66c29b4f4c2547fddfc488a414f49c5c21a333fdee6c6ff4ab42"
+    },
+    {
+      "name": "6537-fresh-tab-current-protocol.json",
+      "bytes": 9744,
+      "sha256": "5580bd5be7af1d6d0042212fdb4cb6178c97317dea2169810f3393a0de1058a0"
+    }
+  ]
+}

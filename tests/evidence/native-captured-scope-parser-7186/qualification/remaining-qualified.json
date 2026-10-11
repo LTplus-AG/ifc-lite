@@ -1,0 +1,220 @@
+{
+  "head": "90cb5d7b28e7e2d1114e1fcc36f2bb38f3bdfff9",
+  "rustTree": "1a1acc4260011c591fd8ce3c5387bb7c10b42f20",
+  "sourcePins": {
+    "apps/viewer/src/lib/assistant/artifacts/artifact-proposals.test.ts": "0a60817c732e2294c2f091986e403844620c73caad6b73bab611a6439eaaa8f7",
+    "apps/viewer/src/lib/assistant/artifacts/artifact-json.ts": "87855b00ec92def985cfc1c5d379c7fef169ce6377f6f3cffd9507d5c1b79745",
+    "apps/viewer/src/lib/assistant/artifacts/filter-proposal.ts": "0c4fcd63c1b09cdbf89bfd417d306d6bddabd981e444d15d7469969fc3b86e61",
+    "apps/viewer/src/lib/assistant/artifacts/captured-artifact-scope.test.tsx": "dfbb75155d47eff4d082c9dcdb7194c03304dcc6277738361c6fab2595829902",
+    "pnpm-lock.yaml": "3baf933ea880bd57d30dc2416184777af7488835c2a7eeff94ff84e6841eb4e4",
+    "apps/viewer/public/samples/building-architecture.ifc": "3ff9b10bd00c7b96dded51e7ca5a6b69efbea38b049adcdd05fcd247de7e70d5",
+    "apps/viewer/public/samples/hello-wall.ifc": "0ab20f4ea355ea9aa4fade7264b97ee9f9929addfa3961b2437c4381bd674014",
+    "apps/viewer/src/test/artifact-models-fixture.ts": "e22a3f540b5f06d2c65a547df97a12584f547cfaeaae3fce10aeb70d2c606f29"
+  },
+  "stages": [
+    {
+      "stage": "full-root-typecheck",
+      "command": [
+        "pnpm",
+        "typecheck"
+      ],
+      "started": "2026-10-08T17:58:07.592565+00:00",
+      "runtimeBefore": {
+        "packages/wasm/pkg/ifc-lite_bg.wasm": "1548ae57020949abff44f96d2b9f23bc0864b2553c97db99abc14162e603e569",
+        "packages/wasm/pkg/ifc-lite.js": "0a281479eb65141ae75aeef987d331d44439741a0cae855f122e53e800311a39",
+        "packages/wasm/pkg/ifc-lite.d.ts": "54c9d0a52eb515e517d76726fefe5f6a63e553a81c1b10331a597965d14620f6"
+      },
+      "exitCode": 0,
+      "ended": "2026-10-08T17:59:17.235078+00:00",
+      "runtimeAfter": {
+        "packages/wasm/pkg/ifc-lite_bg.wasm": "8b74229bbd4a991cbf1f32a8d52add195c5fdd333921f998b1c18eb713185143",
+        "packages/wasm/pkg/ifc-lite.js": "0a281479eb65141ae75aeef987d331d44439741a0cae855f122e53e800311a39",
+        "packages/wasm/pkg/ifc-lite.d.ts": "54c9d0a52eb515e517d76726fefe5f6a63e553a81c1b10331a597965d14620f6"
+      },
+      "logSHA256": "a06a2a0e558a099c1a31f592accfb79dee4e40a7b00f14b6e0066e5ec3faa16c"
+    },
+    {
+      "stage": "source-text",
+      "command": [
+        "node",
+        "scripts/check-source-text-assertions.mjs"
+      ],
+      "started": "2026-10-08T17:59:17.243880+00:00",
+      "runtimeBefore": {
+        "packages/wasm/pkg/ifc-lite_bg.wasm": "8b74229bbd4a991cbf1f32a8d52add195c5fdd333921f998b1c18eb713185143",
+        "packages/wasm/pkg/ifc-lite.js": "0a281479eb65141ae75aeef987d331d44439741a0cae855f122e53e800311a39",
+        "packages/wasm/pkg/ifc-lite.d.ts": "54c9d0a52eb515e517d76726fefe5f6a63e553a81c1b10331a597965d14620f6"
+      },
+      "exitCode": 0,
+      "ended": "2026-10-08T17:59:23.893737+00:00",
+      "runtimeAfter": {
+        "packages/wasm/pkg/ifc-lite_bg.wasm": "8b74229bbd4a991cbf1f32a8d52add195c5fdd333921f998b1c18eb713185143",
+        "packages/wasm/pkg/ifc-lite.js": "0a281479eb65141ae75aeef987d331d44439741a0cae855f122e53e800311a39",
+        "packages/wasm/pkg/ifc-lite.d.ts": "54c9d0a52eb515e517d76726fefe5f6a63e553a81c1b10331a597965d14620f6"
+      },
+      "logSHA256": "be006bc98e7ac417a7480462b155bbb8538e1d2394ab01916b27be3d8950355c"
+    },
+    {
+      "stage": "wiring",
+      "command": [
+        "node",
+        "scripts/check-test-wiring.mjs"
+      ],
+      "started": "2026-10-08T17:59:23.899647+00:00",
+      "runtimeBefore": {
+        "packages/wasm/pkg/ifc-lite_bg.wasm": "8b74229bbd4a991cbf1f32a8d52add195c5fdd333921f998b1c18eb713185143",
+        "packages/wasm/pkg/ifc-lite.js": "0a281479eb65141ae75aeef987d331d44439741a0cae855f122e53e800311a39",
+        "packages/wasm/pkg/ifc-lite.d.ts": "54c9d0a52eb515e517d76726fefe5f6a63e553a81c1b10331a597965d14620f6"
+      },
+      "exitCode": 0,
+      "ended": "2026-10-08T17:59:24.203286+00:00",
+      "runtimeAfter": {
+        "packages/wasm/pkg/ifc-lite_bg.wasm": "8b74229bbd4a991cbf1f32a8d52add195c5fdd333921f998b1c18eb713185143",
+        "packages/wasm/pkg/ifc-lite.js": "0a281479eb65141ae75aeef987d331d44439741a0cae855f122e53e800311a39",
+        "packages/wasm/pkg/ifc-lite.d.ts": "54c9d0a52eb515e517d76726fefe5f6a63e553a81c1b10331a597965d14620f6"
+      },
+      "logSHA256": "41e9eb8de4eb493a9247c869033610dd424f4f7dd01c0d422f61bf691c9883a2"
+    },
+    {
+      "stage": "module",
+      "command": [
+        "node",
+        "scripts/check-module-size.mjs"
+      ],
+      "started": "2026-10-08T17:59:24.209223+00:00",
+      "runtimeBefore": {
+        "packages/wasm/pkg/ifc-lite_bg.wasm": "8b74229bbd4a991cbf1f32a8d52add195c5fdd333921f998b1c18eb713185143",
+        "packages/wasm/pkg/ifc-lite.js": "0a281479eb65141ae75aeef987d331d44439741a0cae855f122e53e800311a39",
+        "packages/wasm/pkg/ifc-lite.d.ts": "54c9d0a52eb515e517d76726fefe5f6a63e553a81c1b10331a597965d14620f6"
+      },
+      "exitCode": 0,
+      "ended": "2026-10-08T17:59:25.495167+00:00",
+      "runtimeAfter": {
+        "packages/wasm/pkg/ifc-lite_bg.wasm": "8b74229bbd4a991cbf1f32a8d52add195c5fdd333921f998b1c18eb713185143",
+        "packages/wasm/pkg/ifc-lite.js": "0a281479eb65141ae75aeef987d331d44439741a0cae855f122e53e800311a39",
+        "packages/wasm/pkg/ifc-lite.d.ts": "54c9d0a52eb515e517d76726fefe5f6a63e553a81c1b10331a597965d14620f6"
+      },
+      "logSHA256": "52cc319a88cffdc2b0debdcd79691115a6fd8654ab52bbdca9f1fb5a1b265b64"
+    },
+    {
+      "stage": "MPL",
+      "command": [
+        "node",
+        "scripts/add-license-headers.mjs",
+        "--check"
+      ],
+      "started": "2026-10-08T17:59:25.501067+00:00",
+      "runtimeBefore": {
+        "packages/wasm/pkg/ifc-lite_bg.wasm": "8b74229bbd4a991cbf1f32a8d52add195c5fdd333921f998b1c18eb713185143",
+        "packages/wasm/pkg/ifc-lite.js": "0a281479eb65141ae75aeef987d331d44439741a0cae855f122e53e800311a39",
+        "packages/wasm/pkg/ifc-lite.d.ts": "54c9d0a52eb515e517d76726fefe5f6a63e553a81c1b10331a597965d14620f6"
+      },
+      "exitCode": 0,
+      "ended": "2026-10-08T17:59:25.782513+00:00",
+      "runtimeAfter": {
+        "packages/wasm/pkg/ifc-lite_bg.wasm": "8b74229bbd4a991cbf1f32a8d52add195c5fdd333921f998b1c18eb713185143",
+        "packages/wasm/pkg/ifc-lite.js": "0a281479eb65141ae75aeef987d331d44439741a0cae855f122e53e800311a39",
+        "packages/wasm/pkg/ifc-lite.d.ts": "54c9d0a52eb515e517d76726fefe5f6a63e553a81c1b10331a597965d14620f6"
+      },
+      "logSHA256": "88e70321bdd3d8e5eba5c4f7e31d24df63f1844e884c93a56a3b374ffbb6716b"
+    },
+    {
+      "stage": "raw",
+      "command": [
+        "node",
+        "scripts/check-raw-entity-enumeration.mjs"
+      ],
+      "started": "2026-10-08T17:59:25.788241+00:00",
+      "runtimeBefore": {
+        "packages/wasm/pkg/ifc-lite_bg.wasm": "8b74229bbd4a991cbf1f32a8d52add195c5fdd333921f998b1c18eb713185143",
+        "packages/wasm/pkg/ifc-lite.js": "0a281479eb65141ae75aeef987d331d44439741a0cae855f122e53e800311a39",
+        "packages/wasm/pkg/ifc-lite.d.ts": "54c9d0a52eb515e517d76726fefe5f6a63e553a81c1b10331a597965d14620f6"
+      },
+      "exitCode": 0,
+      "ended": "2026-10-08T17:59:29.527038+00:00",
+      "runtimeAfter": {
+        "packages/wasm/pkg/ifc-lite_bg.wasm": "8b74229bbd4a991cbf1f32a8d52add195c5fdd333921f998b1c18eb713185143",
+        "packages/wasm/pkg/ifc-lite.js": "0a281479eb65141ae75aeef987d331d44439741a0cae855f122e53e800311a39",
+        "packages/wasm/pkg/ifc-lite.d.ts": "54c9d0a52eb515e517d76726fefe5f6a63e553a81c1b10331a597965d14620f6"
+      },
+      "logSHA256": "2840127529b7e4273acb42888d522374724cbac031745c50a077996be8f3ce9d"
+    },
+    {
+      "stage": "CI-path-coverage",
+      "command": [
+        "node",
+        "scripts/check-ci-path-coverage.mjs"
+      ],
+      "started": "2026-10-08T17:59:29.532670+00:00",
+      "runtimeBefore": {
+        "packages/wasm/pkg/ifc-lite_bg.wasm": "8b74229bbd4a991cbf1f32a8d52add195c5fdd333921f998b1c18eb713185143",
+        "packages/wasm/pkg/ifc-lite.js": "0a281479eb65141ae75aeef987d331d44439741a0cae855f122e53e800311a39",
+        "packages/wasm/pkg/ifc-lite.d.ts": "54c9d0a52eb515e517d76726fefe5f6a63e553a81c1b10331a597965d14620f6"
+      },
+      "exitCode": 0,
+      "ended": "2026-10-08T17:59:29.916629+00:00",
+      "runtimeAfter": {
+        "packages/wasm/pkg/ifc-lite_bg.wasm": "8b74229bbd4a991cbf1f32a8d52add195c5fdd333921f998b1c18eb713185143",
+        "packages/wasm/pkg/ifc-lite.js": "0a281479eb65141ae75aeef987d331d44439741a0cae855f122e53e800311a39",
+        "packages/wasm/pkg/ifc-lite.d.ts": "54c9d0a52eb515e517d76726fefe5f6a63e553a81c1b10331a597965d14620f6"
+      },
+      "logSHA256": "ea4d701abc84043e1dde874b36b0b8e16646d39f4020361ea400069651805129"
+    },
+    {
+      "stage": "touched-oxlint",
+      "command": [
+        "pnpm",
+        "exec",
+        "oxlint",
+        "apps/viewer/src/lib/assistant/artifacts/artifact-proposals.test.ts"
+      ],
+      "started": "2026-10-08T17:59:29.922214+00:00",
+      "runtimeBefore": {
+        "packages/wasm/pkg/ifc-lite_bg.wasm": "8b74229bbd4a991cbf1f32a8d52add195c5fdd333921f998b1c18eb713185143",
+        "packages/wasm/pkg/ifc-lite.js": "0a281479eb65141ae75aeef987d331d44439741a0cae855f122e53e800311a39",
+        "packages/wasm/pkg/ifc-lite.d.ts": "54c9d0a52eb515e517d76726fefe5f6a63e553a81c1b10331a597965d14620f6"
+      },
+      "exitCode": 0,
+      "ended": "2026-10-08T17:59:30.224345+00:00",
+      "runtimeAfter": {
+        "packages/wasm/pkg/ifc-lite_bg.wasm": "8b74229bbd4a991cbf1f32a8d52add195c5fdd333921f998b1c18eb713185143",
+        "packages/wasm/pkg/ifc-lite.js": "0a281479eb65141ae75aeef987d331d44439741a0cae855f122e53e800311a39",
+        "packages/wasm/pkg/ifc-lite.d.ts": "54c9d0a52eb515e517d76726fefe5f6a63e553a81c1b10331a597965d14620f6"
+      },
+      "logSHA256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "stage": "diff",
+      "command": [
+        "git",
+        "diff",
+        "--check"
+      ],
+      "started": "2026-10-08T17:59:30.229977+00:00",
+      "runtimeBefore": {
+        "packages/wasm/pkg/ifc-lite_bg.wasm": "8b74229bbd4a991cbf1f32a8d52add195c5fdd333921f998b1c18eb713185143",
+        "packages/wasm/pkg/ifc-lite.js": "0a281479eb65141ae75aeef987d331d44439741a0cae855f122e53e800311a39",
+        "packages/wasm/pkg/ifc-lite.d.ts": "54c9d0a52eb515e517d76726fefe5f6a63e553a81c1b10331a597965d14620f6"
+      },
+      "exitCode": 0,
+      "ended": "2026-10-08T17:59:30.356464+00:00",
+      "runtimeAfter": {
+        "packages/wasm/pkg/ifc-lite_bg.wasm": "8b74229bbd4a991cbf1f32a8d52add195c5fdd333921f998b1c18eb713185143",
+        "packages/wasm/pkg/ifc-lite.js": "0a281479eb65141ae75aeef987d331d44439741a0cae855f122e53e800311a39",
+        "packages/wasm/pkg/ifc-lite.d.ts": "54c9d0a52eb515e517d76726fefe5f6a63e553a81c1b10331a597965d14620f6"
+      },
+      "logSHA256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  ],
+  "scope": "One test-only scope fidelity correction; actual committed IFC parser/captured-visibility protocol, no geometry or native browser claim.",
+  "sourcePinsAfter": {
+    "apps/viewer/src/lib/assistant/artifacts/artifact-proposals.test.ts": "0a60817c732e2294c2f091986e403844620c73caad6b73bab611a6439eaaa8f7",
+    "apps/viewer/src/lib/assistant/artifacts/artifact-json.ts": "87855b00ec92def985cfc1c5d379c7fef169ce6377f6f3cffd9507d5c1b79745",
+    "apps/viewer/src/lib/assistant/artifacts/filter-proposal.ts": "0c4fcd63c1b09cdbf89bfd417d306d6bddabd981e444d15d7469969fc3b86e61",
+    "apps/viewer/src/lib/assistant/artifacts/captured-artifact-scope.test.tsx": "dfbb75155d47eff4d082c9dcdb7194c03304dcc6277738361c6fab2595829902",
+    "pnpm-lock.yaml": "3baf933ea880bd57d30dc2416184777af7488835c2a7eeff94ff84e6841eb4e4",
+    "apps/viewer/public/samples/building-architecture.ifc": "3ff9b10bd00c7b96dded51e7ca5a6b69efbea38b049adcdd05fcd247de7e70d5",
+    "apps/viewer/public/samples/hello-wall.ifc": "0ab20f4ea355ea9aa4fade7264b97ee9f9929addfa3961b2437c4381bd674014",
+    "apps/viewer/src/test/artifact-models-fixture.ts": "e22a3f540b5f06d2c65a547df97a12584f547cfaeaae3fce10aeb70d2c606f29"
+  }
+}

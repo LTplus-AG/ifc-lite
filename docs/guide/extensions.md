@@ -48,6 +48,10 @@ Any way you'd run a built-in command works for extensions:
 - **Keybinding** — if the extension declares one
 - **Context menu** — right-click on an entity / canvas surfaces contributed items the extension declared with a matching `when` clause
 
+### Run an extension exporter
+
+Installed exporters appear alongside the built-in formats in Export controls and the Command Palette. Activity names the exporter and its owning extension, and stays running until its output is published for download. Closing the surface keeps the job visible. A handler or download failure marks that job Failed and retains the native error notification. These exports currently cannot be cancelled.
+
 ### Enable, disable, uninstall
 
 In the Extensions panel each row has:

@@ -29,6 +29,7 @@ import {
   applyCommentRestoreThread,
 } from './comment-ops.js';
 import { OpApplyError } from './edit.js';
+import { applySuppress, applyUnsuppress } from './meta-ops.js';
 import { applyTestAdd, applyTestRemove, applyTestRestore, applyTestSetExpectation } from './test-ops.js';
 import {
   applyFacetAdd,
@@ -146,6 +147,10 @@ export function applyPrimitive(doc: StudioDocument, op: PrimitiveOp): StepResult
       return applyTestRestore(doc, op);
     case 'meta.test.setExpectation':
       return applyTestSetExpectation(doc, op);
+    case 'meta.suppress':
+      return applySuppress(doc, op);
+    case 'meta.unsuppress':
+      return applyUnsuppress(doc, op);
   }
 }
 

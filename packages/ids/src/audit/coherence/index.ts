@@ -18,8 +18,8 @@ import type {
   IDSSpecification,
 } from '../../types.js';
 import type { IDSAuditIssue } from '../types.js';
-import { XSD_NUMERIC_SPECIALS } from '../../constraints/xsd-cast.js';
-import { isValidXsdDateTimeLiteral, isXsdDateTimeBase } from '../../constraints/xsd-datetime.js';
+import { isValidLexicalForXsType } from '../../constraints/xsd-lexical.js';
+import { compareOrdered } from '../../constraints/xsd-order.js';
 import { compileXsdRegex } from './regex.js';
 import { auditRequirementCardinality } from './cardinality.js';
 
@@ -71,6 +71,20 @@ function auditSpec(
       message: `minOccurs (${min}) is greater than maxOccurs (${max})`,
       path: `${path}.minOccurs`,
       detail: { min: min, max: max },
+    });
+  }
+
+  // A prohibited specification (maxOccurs="0") says "no element may be
+  // applicable"; requirements on elements that must not exist are
+  // meaningless, and the IDS corpus treats them as invalid (IDS-008;
+  // ids/invalid-prohibited_specifications_invalid_if_requirements_are_specified).
+  if (max === 0 && spec.requirements.length > 0) {
+    issues.push({
+      severity: 'error',
+      code: 'E_CARDINALITY_INVALID',
+      message: `a prohibited specification (maxOccurs="0") cannot have requirements; it has ${spec.requirements.length}`,
+      path: `${path}.requirements`,
+      detail: { requirements: spec.requirements.length },
     });
   }
 
@@ -198,6 +212,12 @@ function check(
       // which we already do in the XSD audit.
       break;
   }
+  // XSD facets in one restriction are conjunctive (IDS-010): a malformed
+  // regex or an inverted bound in a sibling family is as fatal as in the
+  // primary one, so each sibling gets the same checks.
+  if (c.type !== 'simpleValue') {
+    c.and?.forEach((sibling, i) => check(sibling, `${path}.and[${i}]`, issues, facetType));
+  }
 }
 
 function checkBounds(
@@ -220,6 +240,21 @@ function checkBounds(
       path,
       facetType,
       detail: { min: lo, max: hi },
+    });
+  }
+  // Date, time and duration bounds order in their base's own value space
+  // (#7399); an unordered pair (`P1Y` vs `P365D`) is not reported.
+  const t = c.temporalBounds;
+  const tLo = t?.minInclusive ?? t?.minExclusive;
+  const tHi = t?.maxInclusive ?? t?.maxExclusive;
+  if (tLo !== undefined && tHi !== undefined && compareOrdered(tLo, tHi, c.base) === 1) {
+    issues.push({
+      severity: 'error',
+      code: 'E_RESTRICTION_RANGE',
+      message: `xs:restriction bounds inverted: lower (${tLo}) > upper (${tHi})`,
+      path,
+      facetType,
+      detail: { min: tLo, max: tHi },
     });
   }
   if (
@@ -253,7 +288,7 @@ function checkBounds(
       issues.push({
         severity: 'error',
         code: 'E_RESTRICTION_FACET_UNPARSEABLE',
-        message: `xs:${f.facet} @value="${f.rawValue}" could not be parsed as a number — this facet is dropped and, until fixed, the whole restriction rejects every value (it does not fall back to unbounded)`,
+        message: `xs:${f.facet} @value="${f.rawValue}" ${unparseableReason(f.facet, c.base)} — this facet is dropped and, until fixed, the whole restriction rejects every value (it does not fall back to unbounded)`,
         path,
         facetType,
         detail: { facet: f.facet, rawValue: f.rawValue },
@@ -270,14 +305,17 @@ function checkBounds(
     c.minExclusive === undefined &&
     c.maxInclusive === undefined &&
     c.maxExclusive === undefined &&
+    c.temporalBounds === undefined &&
     c.length === undefined &&
     c.minLength === undefined &&
-    c.maxLength === undefined;
+    c.maxLength === undefined &&
+    c.totalDigits === undefined &&
+    c.fractionDigits === undefined;
   if (empty) {
     issues.push({
       severity: 'error',
       code: 'E_RESTRICTION_EMPTY',
-      message: 'xs:restriction has no min/max bounds or length facets',
+      message: 'xs:restriction has no min/max bounds, length or digit facets',
       path,
       facetType,
     });
@@ -285,13 +323,25 @@ function checkBounds(
 }
 
 /**
+ * Why a facet's `@value` was not read: a min/max bound must be in the
+ * lexical space of the restriction's `@base` (#7399), a length or digit
+ * count is a non-negative integer.
+ */
+function unparseableReason(facet: string, base: string | undefined): string {
+  if (!/^(min|max)(In|Ex)clusive$/.test(facet)) return 'is not a non-negative integer';
+  return base
+    ? `is not a valid value for xs:restriction @base="${base}"`
+    : 'could not be parsed as a number';
+}
+
+/**
  * Validate `pattern` against XSD regex semantics by translating XSD-only
  * escape codes to JS regex equivalents (cf. upstream `XmlRegex.cs`).
  *
- * Translation handles `\i`/`\c`/`\d`/`\w` and their negations via
- * Unicode property escapes (compiled with the `u` flag), and char-class
- * subtraction (`[a-z-[aeiou]]`) as a negative lookahead. A construct that
- * can only be approximated surfaces as `W_REGEX_UNVERIFIED`. Any remaining syntactic errors are real
+ * Translation follows XML Schema Part 2 Appendix F (multi-char and block
+ * escapes, char-class subtraction, literal `^` / `$`; see
+ * `constraints/xsd-regex.ts`). A construct with no exact translation, which
+ * validation refuses, surfaces as `W_REGEX_UNVERIFIED`. Any remaining syntactic errors are real
  * authoring mistakes and surface as `E_RESTRICTION_EMPTY` (upstream
  * Report 109).
  */
@@ -320,43 +370,9 @@ function checkPattern(
   issues.push({
     severity: 'warning',
     code: 'W_REGEX_UNVERIFIED',
-    message: `xs:pattern uses XSD-specific syntax not verifiable in JS: ${result.reason}`,
+    message: `xs:pattern cannot be evaluated exactly, so validation will refuse it: ${result.reason}`,
     path,
     facetType,
     detail: { pattern },
   });
-}
-
-/**
- * Validate that `value` matches the lexical space of the supplied XSD
- * primitive base. Mirrors upstream `XsTypes.IsValid` (see the table, and the
- * date family it hands off); flags `<xs:enumeration value="12,0"/>` under
- * `<xs:restriction base="xs:double">`.
- */
-const XS_VALUE_REGEX: Record<string, RegExp> = {
-  // Upstream `XmlRegex.cs`, except the mantissa: `[0-9]*(?:\.[0-9]*)?` not
-  // `[0-9]*\.?[0-9]*`, whose two adjacent digit runs make a failing lexeme
-  // retry every split (quadratic, #3113). Same language, one parse/prefix.
-  'xs:integer': /^[+-]?(\d+)$/,
-  'xs:double': /^([-+]?[0-9]*(?:\.[0-9]*)?([eE][-+]?[0-9]+)?|NaN|\+INF|-INF)$/,
-  'xs:float': /^([-+]?[0-9]*(?:\.[0-9]*)?([eE][-+]?[0-9]+)?|NaN|\+INF|-INF)$/,
-  'xs:decimal': /^([-+]?[0-9]*(?:\.[0-9]*)?([eE][-+]?[0-9]+)?|NaN|\+INF|-INF)$/,
-  'xs:boolean': /^(true|false|0|1)$/,
-  // The date family is absent on purpose: its value space is a calendar, not a
-  // digit-run shape, so it goes through `isValidXsdDateTimeLiteral` (#3721).
-  'xs:duration': /^[-+]?P(\d+Y)?(\d+M)?(\d+D)?(T(\d+H)?(\d+M)?(\d+S)?)?$/,
-};
-
-export function isValidLexicalForXsType(value: string, base: string): boolean {
-  if (isXsdDateTimeBase(base)) return isValidXsdDateTimeLiteral(value, base);
-  const rx = XS_VALUE_REGEX[base];
-  if (!rx) return true; // base we don't recognise → don't fabricate errors
-  if (base === 'xs:double' || base === 'xs:float' || base === 'xs:decimal') {
-    // Digit required in the MANTISSA, specials exempt (#3336). Testing the
-    // whole lexeme accepted 'e5' on the exponent's digit and rejected the
-    // digitless specials, which is how this and `literalCastsUnder` disagreed.
-    const bare = !XSD_NUMERIC_SPECIALS.has(value);
-    if (bare && !/[0-9]/.test(value.split(/[eE]/)[0])) return false;
-  }
-  return rx.test(value);
 }

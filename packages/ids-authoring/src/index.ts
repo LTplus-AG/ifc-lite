@@ -109,7 +109,10 @@ export {
   fingerprintIds,
   SIDECAR_FILENAME,
   SIDECAR_FORMAT,
+  SIDECAR_SNAPSHOT_VERSION,
   type StudioSidecar,
+  type SidecarSnapshot,
+  type CreateSidecarOptions,
   type AttachResult,
   type AttachOptions,
 } from './sidecar/sidecar.js';

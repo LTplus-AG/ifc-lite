@@ -23,6 +23,7 @@
 
 import type { IDSDocument } from '@ifc-lite/ids';
 import type { Uuid } from '../uuid.js';
+import type { TestSuite } from '../testing/types.js';
 import type { FacetFieldName } from './fields.js';
 
 /** Version of the sidecar / document format. */
@@ -151,15 +152,16 @@ export interface RevisionInfo {
 
 /**
  * Studio-only metadata, persisted as the `studio.json` sidecar. Collections
- * owned by later pitches (tests, mappings, unresolved requirements) are
- * kept as opaque JSON until their owners define them.
+ * owned by later pitches (mappings, unresolved requirements) are kept as
+ * opaque JSON until their owners define them.
  */
 export interface StudioMeta {
   provenance: Record<Uuid, Provenance[]>;
   sources: Record<Uuid, SourceSpan[]>;
   comments: Record<Uuid, CommentThread[]>;
   suppressions: Record<Uuid, Suppression[]>;
-  tests: Record<Uuid, unknown>;
+  /** IDS test suites per specification id (`meta.test.*` ops). */
+  tests: Record<Uuid, TestSuite>;
   mappings: unknown[];
   revision: RevisionInfo;
   unresolved: unknown[];

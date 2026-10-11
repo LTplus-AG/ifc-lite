@@ -20,6 +20,7 @@ import { fromIdsDocument } from '../document/from-ids.js';
 import { verifyNodeIndex } from '../document/node-index.js';
 import { STUDIO_SCHEMA_VERSION, type NodeIndex, type StudioDocument, type StudioMeta } from '../document/types.js';
 import { reidentify, type ReidentifyReport } from '../match/reidentify.js';
+import { canonicalJson } from '../canonical-json.js';
 import { fnv1a64, uuidv7, type Uuid } from '../uuid.js';
 import { validateSidecarShape } from './sidecar-schema.js';
 
@@ -65,18 +66,6 @@ export interface CreateSidecarOptions {
   snapshot?: boolean;
 }
 
-/** Canonical JSON: sorted keys, `undefined` dropped. */
-function canonical(value: unknown): string {
-  if (Array.isArray(value)) return `[${value.map(canonical).join(',')}]`;
-  if (value && typeof value === 'object') {
-    const entries = Object.entries(value)
-      .filter(([, v]) => v !== undefined)
-      .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
-    return `{${entries.map(([k, v]) => `${JSON.stringify(k)}:${canonical(v)}`).join(',')}}`;
-  }
-  return JSON.stringify(value);
-}
-
 /**
  * Fingerprint of IDS content, independent of node ids (specification and
  * requirement `id`s are positional after a parse and UUIDs inside Studio).
@@ -90,7 +79,7 @@ export function fingerprintIds(ids: IDSDocument): string {
       requirements: s.requirements.map((r) => ({ ...r, id: undefined })),
     })),
   };
-  return fnv1a64(canonical(stripped)).toString(16).padStart(16, '0');
+  return fnv1a64(canonicalJson(stripped)).toString(16).padStart(16, '0');
 }
 
 /**

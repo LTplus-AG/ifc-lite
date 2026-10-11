@@ -233,6 +233,9 @@ importers:
       '@ifc-lite/ids':
         specifier: workspace:^
         version: link:../../packages/ids
+      '@ifc-lite/ids-authoring':
+        specifier: workspace:^
+        version: link:../../packages/ids-authoring
       '@ifc-lite/ifcx':
         specifier: workspace:^
         version: link:../../packages/ifcx
@@ -1498,6 +1501,9 @@ importers:
         specifier: ^0.8.3
         version: 0.8.3
     devDependencies:
+      '@ifc-lite/parser':
+        specifier: workspace:*
+        version: link:../parser
       '@types/node':
         specifier: ^26.6.4
         version: 26.6.5

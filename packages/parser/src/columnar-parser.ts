@@ -826,6 +826,7 @@ export {
     extractTypePropertiesOnDemand,
     extractTypeEntityOwnProperties,
     extractTypeQuantitiesOnDemand,
+    extractTypeEntityOwnQuantities,
     extractDocumentsOnDemand,
     extractRelationshipsOnDemand,
     extractExactRelatedIds,

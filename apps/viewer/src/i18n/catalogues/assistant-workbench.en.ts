@@ -15,6 +15,8 @@ export const assistantWorkbenchEn = {
   'layoutPresets.paletteLabel': 'Layout presets…',
   'layoutPresets.coordinator.title': 'Coordinator review',
   'layoutPresets.coordinator.description': 'Clash detection docked above BCF topics; Data validation, Compare and the Assistant first on the rail.',
+  'layoutPresets.idsStudio.title': 'IDS authoring',
+  'layoutPresets.idsStudio.description': 'IDS Studio docked above Data validation, with the Assistant first on the rail.',
   'layoutPresets.preview': 'Preview',
   'layoutPresets.previewLabel': 'Preview {preset}',
   'layoutPresets.apply': 'Apply',

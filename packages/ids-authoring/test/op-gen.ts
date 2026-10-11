@@ -114,7 +114,7 @@ export function randomOp(rng: Rng, doc: StudioDocument, newId: () => string): St
   const all = facets(doc);
   const spec = specs.length ? pick(rng, specs) : undefined;
   const f = all.length ? pick(rng, all) : undefined;
-  switch (int(rng, 38)) {
+  switch (int(rng, 45)) {
     case 0:
       return { kind: 'doc.setInfo', opId, payload: { field: pick(rng, ['title', 'author', 'purpose'] as InfoField[]), value: pick(rng, WORDS) } };
     case 21:
@@ -232,18 +232,45 @@ export function randomOp(rng: Rng, doc: StudioDocument, newId: () => string): St
       return declared.length ? { kind: 'meta.custom.removeUserDefinedType', opId, payload: { ...pick(rng, declared) } } : undefined;
     }
     case 34: {
-      const t = f?.facet.type;
-      if (f?.section !== 'requirements' || (t !== 'property' && t !== 'classification' && t !== 'material')) return undefined;
-      return { kind: 'facet.setUri', opId, payload: { facetId: f.facetId, uri: rng() < 0.3 ? null : pick(rng, URIS) } };
+      // Comments go on any live node, the document included.
+      const nodes = [doc.nodes.document, ...specs.map((s) => s.id), ...all.map((x) => x.facetId)];
+      return { kind: 'meta.comment.add', opId, payload: { nodeId: pick(rng, nodes), threadId: newId(), author: pick(rng, ['Ana', 'Ben']), at: '2026-10-08T09:00:00Z', text: pick(rng, WORDS) } };
     }
-    case 35: {
-      if (!spec && rng() < 0.5) return undefined;
-      const cls = { uri: URIS[0], code: pick(rng, ['EW', 'IW']), name: 'Wall', dictionaryUri: 'https://identifier.buildingsmart.org/uri/example/demo/1.0', dictionaryName: 'Demo', relatedIfcEntities: [{ entity: pick(rng, ['IfcWall', 'IfcDoor']) }] };
-      const target = spec && rng() < 0.5 ? { specId: spec.id } : { newSpec: { specId: newId(), name: 'Bsdd', ifcVersions: [pick(rng, VERSIONS)] } };
-      const section = (): Section => (rng() < 0.5 ? 'applicability' : 'requirements');
-      return { kind: 'bulk.fromBsddClass', opId, payload: { classes: [cls], target, classification: { section: section() }, ...(rng() < 0.5 ? { entity: { section: 'applicability' as const } } : {}) } };
+    case 35:
+    case 36:
+    case 37: {
+      const threads = Object.values(doc.meta.comments).flat();
+      if (!threads.length) return undefined;
+      const thread = pick(rng, threads);
+      const r = rng();
+      if (r < 0.4) return { kind: 'meta.comment.reply', opId, payload: { threadId: thread.id, author: 'Ben', at: '2026-10-08T10:00:00Z', text: pick(rng, WORDS) } };
+      if (r < 0.7) return { kind: 'meta.comment.resolve', opId, payload: { threadId: thread.id, resolved: !thread.resolved } };
+      if (r < 0.85 && thread.comments.length > 1) return { kind: 'meta.comment.removeReply', opId, payload: { threadId: thread.id } };
+      return { kind: 'meta.comment.removeThread', opId, payload: { threadId: thread.id } };
     }
-    case 36: {
+    case 38: {
+      if (!spec) return undefined;
+      const req = spec.requirements.length ? pick(rng, spec.requirements).id : undefined;
+      const fixture = rng() < 0.5 || !req
+        ? { kind: 'file' as const, path: `fixtures/${pick(rng, WORDS)}.ifc` }
+        : { kind: 'synthetic' as const, recipe: { generator: 'ids-testgen/1' as const, ifcVersion: pick(rng, VERSIONS), variant: { kind: 'fail' as const, requirementId: req } } };
+      const failOn = fixture.kind === 'synthetic' && req ? [req] : undefined;
+      return {
+        kind: 'meta.test.add',
+        opId,
+        payload: { specId: spec.id, testCase: { id: newId(), name: pick(rng, WORDS), fixture, expect: failOn ? 'fail' : 'pass', ...(failOn ? { expectFailureOn: failOn } : {}) } },
+      };
+    }
+    case 39:
+    case 40: {
+      const cases = Object.values(doc.meta.tests).flatMap((t) => t.cases);
+      if (!cases.length) return undefined;
+      const c = pick(rng, cases);
+      if (rng() < 0.4) return { kind: 'meta.test.remove', opId, payload: { testId: c.id } };
+      const expect = pick(rng, ['pass', 'fail', 'notApplicable'] as const);
+      return { kind: 'meta.test.setExpectation', opId, payload: { testId: c.id, expect, expectFailureOn: expect === 'fail' && rng() < 0.5 ? [c.id] : null } };
+    }
+    case 41: {
       // Suppressions may sit on any node, including constraints and the document.
       const nodes = allNodeIds(doc);
       const rule = pick(rng, ['IDSL-SPEC-008', 'IDSL-ENT-003', 'IDSL-ENT-*', 'IDSL-*']);
@@ -256,11 +283,23 @@ export function randomOp(rng: Rng, doc: StudioDocument, newId: () => string): St
         payload: { nodeId, suppression: { rule, reason: pick(rng, WORDS), at: '2026-10-11T00:00:00Z' }, ...(index === undefined ? {} : { index }) },
       };
     }
-    case 37: {
+    case 42: {
       const entries = Object.entries(doc.meta.suppressions).filter(([, l]) => l.length > 0);
       if (!entries.length) return undefined;
       const [nodeId, list] = pick(rng, entries);
       return { kind: 'meta.unsuppress', opId, payload: { nodeId, rule: pick(rng, list).rule } };
+    }
+    case 43: {
+      const t = f?.facet.type;
+      if (f?.section !== 'requirements' || (t !== 'property' && t !== 'classification' && t !== 'material')) return undefined;
+      return { kind: 'facet.setUri', opId, payload: { facetId: f.facetId, uri: rng() < 0.3 ? null : pick(rng, URIS) } };
+    }
+    case 44: {
+      if (!spec && rng() < 0.5) return undefined;
+      const cls = { uri: URIS[0], code: pick(rng, ['EW', 'IW']), name: 'Wall', dictionaryUri: 'https://identifier.buildingsmart.org/uri/example/demo/1.0', dictionaryName: 'Demo', relatedIfcEntities: [{ entity: pick(rng, ['IfcWall', 'IfcDoor']) }] };
+      const target = spec && rng() < 0.5 ? { specId: spec.id } : { newSpec: { specId: newId(), name: 'Bsdd', ifcVersions: [pick(rng, VERSIONS)] } };
+      const section = (): Section => (rng() < 0.5 ? 'applicability' : 'requirements');
+      return { kind: 'bulk.fromBsddClass', opId, payload: { classes: [cls], target, classification: { section: section() }, ...(rng() < 0.5 ? { entity: { section: 'applicability' as const } } : {}) } };
     }
     case 20:
       return { kind: 'meta.custom.declarePset', opId, payload: { decl: { name: pick(rng, ['Acme_A', 'Acme_B', 'Acme_C']), properties: rng() < 0.5 ? [{ name: 'Code' }] : undefined } } };

@@ -60,7 +60,7 @@ export function checkPartOfParentFacets(
         actual: result.failure?.actual ?? result.actualValue,
         expected: result.failure?.expected ?? result.expectedValue,
         context: {
-          relation: facet.relation,
+          relation: facet.anyRelation ? 'part of' : facet.relation,
           parentId: String(parent.expressId),
           nestedFacet: nested.type,
           nestedFailure: result.failure?.type ?? 'unknown',

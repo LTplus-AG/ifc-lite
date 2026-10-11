@@ -4,6 +4,8 @@
 
 /** #7091: bounded immutable failure evidence; runtime ids never travel with a saved report. */
 import type { ValidationReport } from '@ifc-lite/ids';
+import { xxhash64Hex } from '@ifc-lite/cache';
+import { failingSignature, validationSourceDigest, validationSpecificationDigest } from '../../compare/run-reconcile-validation';
 import type { ReportModelScope } from '../../document/report-provenance';
 import type { DocumentValidationError } from '../../document/types';
 
@@ -12,8 +14,11 @@ const SOURCE_ROW_LIMIT = 50_000;
 const ROW_BYTE_LIMIT = 8_192;
 const TOTAL_BYTE_LIMIT = 1_048_576;
 const TEXT_LIMIT = 1_024;
-const EVIDENCE_FIELDS = new Set(['version', 'rows', 'observed', 'omitted', 'gaps']);
-const ROW_FIELDS = new Set(['id', 'specificationId', 'GlobalId', 'modelName', 'modelFingerprint', 'ifcType', 'Name', 'title', 'nativeStatus', 'detail']);
+const CHECK_LIMIT = 1_024;
+const DEFINITION_BYTE_LIMIT = 131_072;
+const DIGEST = /^xxh64:[0-9a-f]{16}$/;
+const EVIDENCE_FIELDS = new Set(['version', 'rows', 'observed', 'omitted', 'gaps', 'definition']);
+const ROW_FIELDS = new Set(['id', 'specificationId', 'GlobalId', 'modelName', 'modelFingerprint', 'ifcType', 'Name', 'title', 'nativeStatus', 'detail', 'signature']);
 const evaluatedElements = new WeakMap<ValidationReport, SavedValidationElements>();
 
 export interface SavedValidationElement {
@@ -28,6 +33,15 @@ export interface SavedValidationElement {
   title: string;
   nativeStatus: 'failed' | 'warning';
   detail: string[];
+  /** #7371: digest of the failed requirements and actual values, independent of message language. */
+  signature?: string;
+}
+/** #7371: exactly what the native run checked, as the run reconciler compares it. */
+export interface SavedValidationDefinition {
+  /** Digest of the whole IDS document or rule-set content. */
+  source: string;
+  /** Digest of each check (specification, plus rule content for rules), by native specification id. */
+  checks: Array<{ id: string; digest: string }>;
 }
 export interface SavedValidationElements {
   version: 1;
@@ -38,6 +52,34 @@ export interface SavedValidationElements {
   omitted: number;
   /** Native source coverage and snapshot-limit disclosures, never inferred resolution. */
   gaps: string[];
+  /** Absent in snapshots saved before #7371 or when the run's content was not recorded: such rows cannot be re-examined. */
+  definition?: SavedValidationDefinition;
+}
+
+/** Portable digest of native definition text; equal text always yields an equal digest. */
+export function evidenceDigest(text: string): string {
+  return `xxh64:${xxhash64Hex(new TextEncoder().encode(text))}`;
+}
+
+/** The checked definition of a native report; null when unknown, ambiguous or beyond portable bounds. */
+export function validationDefinition(report: ValidationReport): SavedValidationDefinition | null {
+  const source = validationSourceDigest(report);
+  const ids = report.specificationResults.map(spec => spec.specification.id);
+  if (source === null || ids.length > CHECK_LIMIT || new Set(ids).size !== ids.length || !ids.every(id => text(id))) return null;
+  const definition = { source: evidenceDigest(source),
+    checks: report.specificationResults.map(spec => ({ id: spec.specification.id, digest: evidenceDigest(validationSpecificationDigest(report, spec)) })) };
+  return new TextEncoder().encode(JSON.stringify(definition)).byteLength <= DEFINITION_BYTE_LIMIT ? definition : null;
+}
+
+const digest = (value: unknown): value is string => typeof value === 'string' && DIGEST.test(value);
+function validDefinition(value: unknown): boolean {
+  if (value === undefined) return true;
+  if (!record(value) || Object.keys(value).some(key => key !== 'source' && key !== 'checks') || !digest(value.source)
+    || !Array.isArray(value.checks) || value.checks.length > CHECK_LIMIT
+    || new TextEncoder().encode(JSON.stringify(value)).byteLength > DEFINITION_BYTE_LIMIT) return false;
+  const checks: unknown[] = value.checks;
+  return checks.every(check => record(check) && Object.keys(check).length === 2 && text(check.id) && digest(check.digest))
+    && new Set(checks.map(check => (check as { id: string }).id)).size === checks.length;
 }
 
 const record = (value: unknown): value is Record<string, unknown> => !!value && typeof value === 'object' && !Array.isArray(value);
@@ -49,7 +91,7 @@ function validRow(value: unknown): value is SavedValidationElement {
     || !text(value.ifcType, 200) || (value.Name !== undefined && (typeof value.Name !== 'string' || value.Name.length > TEXT_LIMIT))
     || typeof value.title !== 'string' || value.title.length > TEXT_LIMIT
     || (value.nativeStatus !== 'failed' && value.nativeStatus !== 'warning') || !Array.isArray(value.detail)
-    || value.detail.length > 8 || !value.detail.every(line => text(line))) return false;
+    || value.detail.length > 8 || !value.detail.every(line => text(line)) || (value.signature !== undefined && !digest(value.signature))) return false;
   return new TextEncoder().encode(JSON.stringify(value)).byteLength <= ROW_BYTE_LIMIT;
 }
 
@@ -57,7 +99,7 @@ export function validateSavedValidationElements(value: unknown, at: string, erro
   if (!record(value) || Object.keys(value).some(key => !EVIDENCE_FIELDS.has(key)) || value.version !== 1 || !Array.isArray(value.rows) || value.rows.length > SAVED_ELEMENT_LIMIT
     || !count(value.observed) || !count(value.omitted) || value.observed !== value.rows.length + value.omitted
     || !Array.isArray(value.gaps) || value.gaps.length > 16 || !value.gaps.every(gap => text(gap))
-    || !value.rows.every(validRow) || new Set(value.rows.map(row => row.id)).size !== value.rows.length
+    || !value.rows.every(validRow) || !validDefinition(value.definition) || new Set(value.rows.map(row => row.id)).size !== value.rows.length
     || new TextEncoder().encode(JSON.stringify(value)).byteLength > TOTAL_BYTE_LIMIT) {
     errors.push({ path: at, message: 'expected bounded version-1 saved validation element evidence' });
   }
@@ -70,7 +112,10 @@ export function captureValidationElements(report: ValidationReport, scopes?: rea
   const names = new Map(report.modelInfo.map((model, index) => [model.modelId, scopes?.[index]]));
   const rows: SavedValidationElement[] = [];
   const gaps = new Set<string>();
-  let scanned = 0, observed = 0, omitted = 0, retainedBytes = 0;
+  const definition = validationDefinition(report);
+  if (!definition) gaps.add('The native check definition was not recorded; saved rows cannot be re-examined');
+  // The definition travels inside the same bounded evidence, so its bytes are reserved first.
+  let scanned = 0, observed = 0, omitted = 0, retainedBytes = definition ? new TextEncoder().encode(JSON.stringify(definition)).byteLength : 0;
   outer: for (const spec of report.specificationResults) {
     if (spec.error) gaps.add('The native source contains an unevaluable check');
     if (spec.passedCount + spec.failedCount < spec.applicableCount) gaps.add('The native evaluated element count is smaller than its applicable population');
@@ -102,7 +147,8 @@ export function captureValidationElements(report: ValidationReport, scopes?: rea
       const row: SavedValidationElement = { id: `failure-${ordinal}`, specificationId: spec.specification.id,
         GlobalId: entity.globalId || globalIdOf?.(entity.modelId, entity.expressId) || null, modelName, ...(scope?.fingerprint ? { modelFingerprint: scope.fingerprint } : {}),
         ifcType: entity.entityType, ...(entity.entityName !== undefined ? { Name: entity.entityName } : {}),
-        title: spec.specification.name, nativeStatus: spec.specification.severity === 'warning' ? 'warning' : 'failed', detail };
+        title: spec.specification.name, nativeStatus: spec.specification.severity === 'warning' ? 'warning' : 'failed', detail,
+        signature: evidenceDigest(failingSignature(entity)) };
       if (!row.GlobalId || !modelName) gaps.add('Some saved rows lack durable element or model identity');
       const bytes = !oversized && validRow(row) ? new TextEncoder().encode(JSON.stringify(row)).byteLength : Infinity;
       if (rows.length >= SAVED_ELEMENT_LIMIT || retainedBytes + bytes > TOTAL_BYTE_LIMIT - 16_384) {
@@ -111,7 +157,7 @@ export function captureValidationElements(report: ValidationReport, scopes?: rea
     }
     if (failures !== spec.failedCount) gaps.add('Native failure counts and retained entity rows differ');
   }
-  return { version: 1, rows, observed, omitted, gaps: [...gaps] };
+  return { version: 1, rows, observed, omitted, gaps: [...gaps], ...(definition ? { definition } : {}) };
 }
 
 /** Resolve missing identities once against the evaluated stores, never a later scene. */

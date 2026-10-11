@@ -395,14 +395,19 @@ export interface IFCDataAccessor {
   /** Get entity description by express ID */
   getDescription(expressId: number): string | undefined;
   /**
-   * Get entity object type (predefined type) by express ID.
+   * Get the entity's predefined type, as the IDS entity facet reads it,
+   * by express ID. Despite the name this is NOT the IFC `ObjectType`
+   * attribute (the attribute facet reads that through `getAttribute`).
    *
-   * Per IDS spec, when the IFC `PredefinedType` is `USERDEFINED` the
+   * Per IDS 1.0, when the IFC `PredefinedType` is `USERDEFINED` the
    * predefined-type comparison shifts to the user-defined name in the
    * adjacent `ObjectType` / `ElementType` slot. Implementations MAY
    * substitute that name here, but MUST also surface the raw enum value
    * via `getPredefinedTypeRaw` so the validator can disambiguate
-   * literal `USERDEFINED` matches from user-name matches.
+   * literal `USERDEFINED` matches from user-name matches. They MUST
+   * return `undefined` when the entity has no predefined type: an
+   * unset or `NOTDEFINED` PredefinedType does not fall back to the
+   * `ObjectType`.
    */
   getObjectType(expressId: number): string | undefined;
   /**

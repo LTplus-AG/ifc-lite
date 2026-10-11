@@ -41,6 +41,7 @@ export function projectTypeQuantityEdits(
   for (const { relId, psetId } of relationships) {
     if (ownIds.has(psetId)) continue;
     const currentQuantitySet = !pass.effective.isDeleted(psetId) && pass.effective.typeOf(psetId) === 'IFCELEMENTQUANTITY';
+    // @raw-entity-enumeration-ok original source type detects a related quantity set retyped/deleted in the effective view, so the unsupported edit cannot bypass refusal
     if (!currentQuantitySet && ctx.dataStore.entityIndex.byId.get(psetId)?.type !== 'IFCELEMENTQUANTITY') continue;
     const native = decodeNativeSetLine(nativeSetLine(ctx, psetId, pass.sourceSchema,
       pass.modifiedAttributes.get(psetId), pass.warnings), psetId);
@@ -61,6 +62,7 @@ export function projectTypeQuantityEdits(
       || nativeMembers.some(id => typeof id !== 'number' || pass.effective.isDeleted(id) || nativeEditIds.has(id))) {
       throw new Error('Relationship-attached Type quantity edits are unsupported');
     }
+    // @raw-entity-enumeration-ok original unit type complements the effective type when an active edit retypes a source unit away from its schema family; both bases trigger refusal
     if (source.quantities.some(quantity => quantity.explicitUnit !== undefined)
       && [...nativeEditIds].some(id => [
         pass.effective.typeOf(id), ctx.dataStore.entityIndex.byId.get(id)?.type,

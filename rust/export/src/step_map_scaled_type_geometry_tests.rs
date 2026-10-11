@@ -9,12 +9,13 @@ use super::{apply, model, world_mesh};
 use super::super::*;
 
 /// The scaled wall model plus an `IfcBuildingElementProxyType` #172 whose map
-/// #171 (origin #175: offset and tilted) holds the wall's extrusion; no
+/// #171 (origin #175: tilted, and offset far enough that scaling inside
+/// rather than outside it moves points by ~9 mm) holds the wall's extrusion; no
 /// product instantiates it. `extra` adds entities.
 fn typed_model(extra: &str) -> String {
     with_entities(&model(1., true), &format!("\
 #170=IFCSHAPEREPRESENTATION(#10,'Body','SweptSolid',(#42));\n\
-#175=IFCAXIS2PLACEMENT3D(#176,#23,#24);\n#176=IFCCARTESIANPOINT((2.,1.,0.5));\n\
+#175=IFCAXIS2PLACEMENT3D(#176,#23,#24);\n#176=IFCCARTESIANPOINT((200.,100.,50.));\n\
 #171=IFCREPRESENTATIONMAP(#175,#170);\n\
 #172=IFCBUILDINGELEMENTPROXYTYPE('0M7tQ9Jbj1BAeHd7rqnDmS',$,'Type',$,$,$,(#171),$,$,.NOTDEFINED.);\n\
 #174=IFCCARTESIANTRANSFORMATIONOPERATOR3D($,$,#12,1.,$);{extra}"))

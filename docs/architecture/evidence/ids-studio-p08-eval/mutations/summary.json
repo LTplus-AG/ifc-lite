@@ -41,6 +41,20 @@
     ],
     "restoration": "verified"
   },
+  "e4-scorer-correct-rule": {
+    "verdict": "OBSERVED",
+    "exitCode": 0,
+    "reason": "reverting production turned an assertion RED in scripts/ai-eval/ids/e4-scorer.test.mjs; that file has a green, attributable baseline.",
+    "base": "f969bbac58501b8a09ba3475151a6445146728fc",
+    "head": "1285fb5923739faf97a3807719f6abed87c53ed1",
+    "production": [
+      "scripts/ai-eval/ids/e4-scorer.mjs"
+    ],
+    "tests": [
+      "scripts/ai-eval/ids/e4-scorer.test.mjs"
+    ],
+    "restoration": "verified"
+  },
   "e5-behaviour": {
     "verdict": "OBSERVED",
     "exitCode": 0,
@@ -94,6 +108,34 @@
     ],
     "tests": [
       "scripts/ai-eval/ids/e2-scorer.test.mjs"
+    ],
+    "restoration": "verified"
+  },
+  "splits-group-union": {
+    "verdict": "OBSERVED",
+    "exitCode": 0,
+    "reason": "reverting production turned an assertion RED in scripts/ai-eval/ids/e2-dataset.test.mjs; that file has a green, attributable baseline.",
+    "base": "f969bbac58501b8a09ba3475151a6445146728fc",
+    "head": "1285fb5923739faf97a3807719f6abed87c53ed1",
+    "production": [
+      "scripts/ai-eval/ids/e2-splits.mjs"
+    ],
+    "tests": [
+      "scripts/ai-eval/ids/e2-dataset.test.mjs"
+    ],
+    "restoration": "verified"
+  },
+  "splits-leak-check": {
+    "verdict": "OBSERVED",
+    "exitCode": 0,
+    "reason": "reverting production turned an assertion RED in scripts/ai-eval/ids/e2-dataset.test.mjs; that file has a green, attributable baseline.",
+    "base": "f969bbac58501b8a09ba3475151a6445146728fc",
+    "head": "1285fb5923739faf97a3807719f6abed87c53ed1",
+    "production": [
+      "scripts/ai-eval/ids/e2-splits.mjs"
+    ],
+    "tests": [
+      "scripts/ai-eval/ids/e2-dataset.test.mjs"
     ],
     "restoration": "verified"
   }

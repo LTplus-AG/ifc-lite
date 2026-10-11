@@ -4,9 +4,9 @@
 
 # IDS Studio P-08 eval: surgical mutation evidence
 
-All four production modules in this PR are new files (`scripts/ai-eval/ids/*.mjs`). The CI revert oracle (`Changed tests observe production`) reverts production by deleting them. Their tests then fail to load (`ERR_MODULE_NOT_FOUND`), so no assertion runs and the oracle reports `REVERT-BROKE-BUILD` / INCONCLUSIVE. That is expected for a PR that only adds modules. Following the oracle's own advice (`DECLARE A --mutation`), each behavioural decision below was checked with a surgical mutation instead.
+All six production modules in this PR are new files (`scripts/ai-eval/ids/*.mjs`). The CI revert oracle (`Changed tests observe production`) reverts production by deleting them. Their tests then fail to load (`ERR_MODULE_NOT_FOUND`), so no assertion runs and the oracle reports `REVERT-BROKE-BUILD` / INCONCLUSIVE. That is expected for a PR that only adds modules. Following the oracle's own advice (`DECLARE A --mutation`), each behavioural decision below was checked with a surgical mutation instead.
 
-Each patch is written mutant→fixed (the orientation of `git diff base...head`), and the oracle reverse-applies it. Captured at head `208cd431a` against `origin/main`. Every run ended `OBSERVED` (exit 0) with restoration verified. The full result records are in `summary.json`.
+Each patch is written mutant→fixed (the orientation of `git diff base...head`), and the oracle reverse-applies it. The first seven rows were captured at head `208cd431a` against `origin/main`; the last three rows were captured at head `1285fb592` against `origin/main` `f969bbac5`. Every run ended `OBSERVED` (exit 0) with restoration verified. The full result records are in `summary.json`.
 
 | Patch | Module | Mutation | Test that went red |
 |---|---|---|---|
@@ -17,6 +17,9 @@ Each patch is written mutant→fixed (the orientation of `git diff base...head`)
 | `e4-noop-edit.patch` | `e4-e5-datasets.mjs` | an E4 edit that changes nothing is no longer reported | `e4-e5-datasets.test.mjs` |
 | `e5-behaviour.patch` | `e4-e5-datasets.mjs` | the wrong behaviour for an E5 category is no longer reported | `e4-e5-datasets.test.mjs` |
 | `e5-invented-name.patch` | `e4-e5-datasets.mjs` | an "invented" name that exists in the schema is no longer reported | `e4-e5-datasets.test.mjs` |
+| `splits-leak-check.patch` | `e2-splits.mjs` | a split group whose cases sit in two splits is no longer reported | `e2-dataset.test.mjs` |
+| `splits-group-union.patch` | `e2-splits.mjs` | cases from the same corpus test or with the same description are no longer grouped | `e2-dataset.test.mjs` |
+| `e4-scorer-correct-rule.patch` | `e4-scorer.mjs` | any candidate that differs from the input counts as correct, instead of only one equal to the expected IDS | `e4-scorer.test.mjs` |
 
 `packages.mjs` only loads the built workspace packages. Every test imports through it, so any break in it fails every test at load. It carries no behavioural decision to mutate.
 

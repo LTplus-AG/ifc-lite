@@ -147,6 +147,12 @@ function readCurrent(store: IfcDataStore, entityId: number, view: MetadataReadVi
             if (getInheritanceChain(record.type).includes('IfcPropertySetDefinition')) return [];
             throw new CurrentQuantityRefusal('Native type quantity definition is unsupported');
         }
+        if (!ownSetIds.has(id) && typeof record.attributes[2] === 'string'
+            && names.has(record.attributes[2])) {
+            // Relationship-only Type sets remain readable, but the native writer
+            // does not migrate their ownership into HasPropertySets (#7378).
+            throw new CurrentQuantityRefusal('Relationship-attached Type quantity edits are unsupported');
+        }
         // Admission concerns the native definition, including sets with no numeric
         // projection (complex-only quantities). An edited set still needs identity.
         if (journal.getQuantitiesForEntity && typeof record.attributes[2] === 'string'

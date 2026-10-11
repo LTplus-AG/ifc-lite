@@ -5,7 +5,7 @@ import '@/test/setup-dom.js';
 import assert from 'node:assert/strict';
 import { afterEach, test } from 'node:test';
 import { writeFile } from 'node:fs/promises';
-import { readCurrentTypeQuantities, extractTypeQuantitiesOnDemand, extractQuantitiesOnDemand, extractProjectUnits, quantitySiScale } from '@ifc-lite/parser';
+import { readCurrentTypeQuantities, extractTypeQuantitiesOnDemand, extractTypeEntityOwnQuantities, extractQuantitiesOnDemand, extractProjectUnits, quantitySiScale } from '@ifc-lite/parser';
 import { QuantityType } from '@ifc-lite/data';
 import { StoreEditor } from '@ifc-lite/mutations';
 import { generateIfcGuid } from '@ifc-lite/encoding';
@@ -349,4 +349,34 @@ test('#7355 unrelated native sets without GlobalIds survive a GUID-owned Type ed
   for (const id of untouched) assert.deepEqual(saved.getEntity(id)?.attributes, source.getEntity(id)?.attributes,
     'unaffected native definitions do not acquire or require fabricated writer identities');
   assert.deepEqual(current.value?.quantities.filter(set => set.name.startsWith('Unchanged quantities')).map(set => set.quantities[0]?.value), [12, 24]);
+});
+
+test('#7378 relationship-only Type quantity remains readable but refuses tracked ownership rewrite', async t => {
+  const f = await inheritedSource(t); if (!f) return;
+  const editor = new StoreEditor(f.store, f.view);
+  f.view.setPositionalAttribute(f.a.type, 5, []);
+  const relation = editor.addEntity('IfcRelDefinesByProperties', [generateIfcGuid(), null, null, null,
+    [`#${f.a.type}`], `#${f.a.qto}`]).expressId;
+  const source = await parse(editedModelBytes(f.store, f.view));
+  assert.deepEqual(source.getEntity(f.a.type)?.attributes[5], []);
+  assert.equal(source.getEntity(relation)?.attributes[5], f.a.qto);
+  assert.equal(net(extractTypeQuantitiesOnDemand(source, f.f.id)?.quantities ?? []), 10);
+  const model = useViewerStore.getState().models.get('arch'); assert.ok(model);
+  useViewerStore.setState({ models: new Map([['arch', { ...model, ifcDataStore: source }]]),
+    ifcDataStore: source, mutationViews: new Map(), storeEditors: new Map() });
+  const view = getOrCreateMutationView(useViewerStore, 'arch'); assert.ok(view);
+  view.setQuantityExtractor(id => extractTypeEntityOwnQuantities(source, id).map(set => ({
+    name: set.name, globalId: set.globalId,
+    quantities: set.quantities.map(q => ({ name: q.name, type: q.type, value: q.value, unit: q.explicitUnit })),
+  })));
+  assert.equal(readCurrentTypeQuantities(source, f.f.id, view).status, 'available');
+  assert.equal(net(extractTypeQuantitiesOnDemand(await parse(editedModelBytes(source, view)), f.f.id)?.quantities ?? []), 10);
+  view.setQuantity(f.a.type, 'Qto_WallBaseQuantities', 'NetVolume', 35, QuantityType.Volume);
+  const current = readCurrentTypeQuantities(source, f.f.id, view);
+  assert.equal(current.status, 'unavailable');
+  assert.equal(current.value, null);
+  assert.match(current.reason ?? '', /Relationship-attached Type quantity edits are unsupported/);
+  assert.throws(() => editedModelBytes(source, view), /Relationship-attached Type quantity edits are unsupported/);
+  assert.equal(source.getEntity(f.a.volume)?.attributes[3], 10);
+  assert.equal(source.getEntity(relation)?.attributes[5], f.a.qto);
 });

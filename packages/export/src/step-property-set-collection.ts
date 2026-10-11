@@ -29,6 +29,7 @@ import {
 } from './step-pset-copy-on-write.js';
 import type { ExportPass, StepExportOptions } from './step-exporter.js';
 import { collectTypeQuantitySources } from './step-type-owned-quantities.js';
+import { nativeSetLine, decodeNativeSetLine } from './step-native-set-record.js';
 
 /** The mutation groupings `export()` builds before the collection phase runs. */
 export interface PropertyMutationGroups {
@@ -282,6 +283,20 @@ export function collectPropertyAndQuantitySetMutations(
     }
 
     const typeOwned = isTypeClass(pass.effective.typeOf(entityId));
+    if (typeOwned) {
+      const ownIds = new Set(getTypeOwnedHasPropertySetIds(ctx, entityId, pass.effective));
+      for (const { psetId } of relDefinesByEntity.get(entityId) ?? []) {
+        if (ownIds.has(psetId) || pass.effective.isDeleted(psetId)
+          || pass.effective.typeOf(psetId) !== 'IFCELEMENTQUANTITY') continue;
+        const native = decodeNativeSetLine(nativeSetLine(ctx, psetId, pass.sourceSchema,
+          pass.modifiedAttributes.get(psetId), pass.warnings), psetId);
+        const name = native.attributes[2];
+        if (typeof name !== 'string') throw new Error('Native relationship-attached Type quantity name is unavailable');
+        if (qsetNames.has(name)) {
+          throw new Error('Relationship-attached Type quantity edits are unsupported');
+        }
+      }
+    }
     const allQsets = typeOwned
       ? mutationView.getQuantitiesForEntity(entityId, id => extractTypeEntityOwnQuantities(ctx.dataStore, id, mutationView).map(set => ({
         name: set.name, globalId: set.globalId, quantities: set.quantities.map(q => ({ name: q.name, type: q.type, value: q.value, unit: q.explicitUnit })),

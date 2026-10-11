@@ -40,13 +40,15 @@ export function resolveElement(element: FindingElement, models: readonly ReviewM
   if (hits.length === 0) return { state: 'missing' };
   if (hits.length > 1) return { state: 'ambiguous', modelNames: hits.map(hit => hit.model.name) };
   const [{ model, expressId }] = hits;
-  // The durable key is the model name; two loaded models sharing it cannot be told apart later.
+  // Legacy name-based card keys cannot distinguish two loaded models with the same name.
+  // A name and GlobalId match does not prove the same source bytes or revision.
   const sameName = models.filter(other => other.name === model.name);
   if (sameName.length > 1) return { state: 'ambiguous', modelNames: sameName.map(other => other.name) };
   return { state: 'resolved', modelId: model.id, modelName: model.name, expressId };
 }
 
-/** Durable element key: model name plus GlobalId. Stable across reloads of the same file. */
+/** Legacy name-based display/navigation key, stable only while name and GlobalId stay unchanged.
+ * It does not prove source identity or revision equality across sessions. */
 export function elementKey(modelName: string, globalId: string): string {
   return `${modelName}\u001f${globalId}`;
 }

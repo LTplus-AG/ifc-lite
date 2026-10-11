@@ -441,3 +441,21 @@ test('#7378 IFC4 occurrence quantity export shares the target IFC2X3 conversion 
   .find(entity => entity?.attributes[0] === 'ConvertedVolume'); assert.ok(atom);
  assert.deepEqual(atom.attributes, ['ConvertedVolume', null, null, 35], 'occurrence quantities reach the IFC2X3 four-slot layout');
 });
+
+test('#7378 IFC2X3 occurrence quantity export pads the target IFC4 Formula slot', async t => {
+ const f = await inheritedSource(t); if (!f) return;
+ const source = await parse(new StepExporter(f.store).export({ schema: 'IFC2X3', includeGeometry: true, includeQuantities: true }).content);
+ assert.equal(source.schemaVersion, 'IFC2X3');
+ const view = new MutablePropertyView(source.properties, 'arch');
+ const name = 'Upgraded occurrence quantities';
+ view.setQuantity(f.f.id, name, 'UpgradedVolume', 35, QuantityType.Volume);
+ const saved = await parse(new StepExporter(source, view).export({ schema: 'IFC4', applyMutations: true,
+  includeGeometry: true, includeQuantities: true }).content);
+ assert.equal(saved.schemaVersion, 'IFC4');
+ const quantity = extractQuantitiesOnDemand(saved, f.f.id).find(set => set.name === name)
+  ?.quantities.find(q => q.name === 'UpgradedVolume'); assert.ok(quantity);
+ assert.equal(quantity.value, 35);
+ const atom = (saved.entityIndex.byType.get('IFCQUANTITYVOLUME') ?? []).map(id => saved.getEntity(id))
+  .find(entity => entity?.attributes[0] === 'UpgradedVolume'); assert.ok(atom);
+ assert.deepEqual(atom.attributes, ['UpgradedVolume', null, null, 35, null], 'IFC2X3-generated occurrence quantities gain the IFC4 Formula slot');
+});

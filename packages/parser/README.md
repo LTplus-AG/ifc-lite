@@ -103,6 +103,12 @@ const classifications = extractClassificationsOnDemand(store, wallId);
 //   [{ system: 'Uniclass 2015', identification: 'Pr_60_10_32', name: 'External walls', ... }]
 ```
 
+Current occurrence quantity reads with a native mutation view throw
+`OccurrenceQuantityReadError` when their complete inventory cannot be read within
+the 256-set / 4,096-member bounds, or a member list is unreadable. Report this as
+unavailable coverage instead of treating it as an empty inventory. Source-only
+two-argument reads retain their existing behavior.
+
 ## Georeferencing
 
 ```typescript

@@ -8797,6 +8797,7 @@
     "MaterialUsage: interface",
     "MaterialsData: interface",
     "MeasureUnit: type",
+    "OccurrenceQuantityReadError: class",
     "ParseOptions: interface",
     "ParseResult: interface",
     "PathIndex: class (type-only)",

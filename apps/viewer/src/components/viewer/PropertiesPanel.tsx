@@ -20,6 +20,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { useViewerStore } from '@/store';
 import { mutationDenialKey, mutationPermission } from '@/store/mutation-permission';
 import { effectiveQuantitySets } from './properties/effectiveSets';
+import { readOccurrenceQuantityResult } from './properties/readOccurrenceQuantityResult';
 import { useSelectAssembly } from './properties/useSelectAssembly';
 import { toGlobalIdFromModels } from '@/store/globalId';
 import { useIfc } from '@/hooks/useIfc';
@@ -513,21 +514,19 @@ export function PropertiesPanel() {
     return result;
   }, [entityNode, selectedEntity, mutationViews, mutationVersion, isTypeEntity, activeDataStore, ifcDataStore]);
 
-  const quantities: QuantitySet[] = useMemo(() => {
-    let modelId = selectedEntity?.modelId;
+  const occurrenceQuantities = useMemo(() => readOccurrenceQuantityResult(() => {
+    const modelId = selectedEntity?.modelId === 'legacy' ? '__legacy__' : selectedEntity?.modelId;
     const expressId = selectedEntity?.expressId;
-
-    if (modelId === 'legacy') modelId = '__legacy__';
-
     // The view's answer holds even when empty (a deleted last qset stays deleted).
     const mutationView = modelId ? mutationViews.get(modelId) : null;
     if (!expressId) return entityNode?.quantities() ?? [];
     return effectiveQuantitySets(mutationView, expressId, (baseId) => (baseId === expressId ? entityNode : modelQuery?.entity(baseId))?.quantities() ?? []);
-  }, [entityNode, modelQuery, selectedEntity, mutationViews, mutationVersion]);
+  }), [entityNode, modelQuery, selectedEntity, mutationViews, mutationVersion]);
+  const quantities = occurrenceQuantities.quantities;
 
   const inheritedTypeQuantities = useInheritedTypeQuantities(quantities,
     (model?.ifcDataStore ?? ifcDataStore) as IfcDataStore | null, selectedEntity?.expressId,
-    mutationViews.get(selectedEntity?.modelId === 'legacy' ? '__legacy__' : selectedEntity?.modelId ?? '__legacy__'));
+    mutationViews.get(selectedEntity?.modelId === 'legacy' ? '__legacy__' : selectedEntity?.modelId ?? '__legacy__'), occurrenceQuantities.status);
 
   // Build attributes array for display - must be before early return to maintain hook order
   // Uses schema-aware extraction to show ALL string/enum attributes for the entity type.
@@ -1687,6 +1686,7 @@ export function PropertiesPanel() {
             )}
           </TabsContent>
           <TabsContent value="quantities" className="m-0 p-3 overflow-hidden">
+            {occurrenceQuantities.status === 'unavailable' ? <output className="block text-sm text-muted-foreground">{t('properties.panel.occurrenceUnavailable', { reason: occurrenceQuantities.reason ?? '' })}</output> : null}
             <div className="mb-3"><SweptDiskInspection enabled={propertiesActiveTab === 'quantities'} /></div>
             <div className="mb-3"><ExtrusionInspection enabled={propertiesActiveTab === 'quantities'} /></div>
             {quantityUnitContext.status === 'unavailable' ? (
@@ -1696,7 +1696,7 @@ export function PropertiesPanel() {
               <output className="block text-sm text-muted-foreground">{t('zonesPanel.volumeBreakdown.inheritedUnavailable', { reason: inheritedTypeQuantities.reason ?? 'unverified current data' })}</output>
             ) : null}
             {foundQuantities.length + foundInheritedQuantities.length === 0 ? (
-              findQuery || inheritedTypeQuantities.status === 'unavailable' ? null : <p className="text-sm text-zinc-500 dark:text-zinc-500 text-center py-8 font-mono">{t('properties.panel.noQuantities')}</p>
+              findQuery || occurrenceQuantities.status === 'unavailable' || inheritedTypeQuantities.status === 'unavailable' ? null : <p className="text-sm text-zinc-500 dark:text-zinc-500 text-center py-8 font-mono">{t('properties.panel.noQuantities')}</p>
             ) : (
               <div className="space-y-3 w-full overflow-hidden">
                 {[{ scope: 'occurrence', sets: foundQuantities, heading: 'properties.panel.occurrenceQuantitiesHeading' as const },

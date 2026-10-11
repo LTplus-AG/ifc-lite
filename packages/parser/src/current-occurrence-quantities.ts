@@ -8,6 +8,7 @@ import { getEntityRefFromStore } from './columnar-parser-root-attributes.js';
 import { effectiveMetadataRecord, type MetadataReadView } from './effective-metadata-record.js';
 import { resolveUnitByRef, type UnitEntityReader } from './project-units.js';
 import { readQuantitySet, readQuantitySetRecord, type QuantityEntityReader, type CollectedQuantity } from './quantity-collect.js';
+import { OccurrenceQuantityReadError } from './occurrence-quantity-read-error.js';
 
 const MAX_SETS = 256;
 const MAX_MEMBERS = 4_096;
@@ -31,8 +32,7 @@ export function readOccurrenceQuantities(
         });
     }
     if (qsetIds.length > MAX_SETS) {
-        console.warn('[occurrence quantities] Native quantity sets exceed the read limit');
-        return [];
+        throw new OccurrenceQuantityReadError('Native occurrence quantity sets exceed the read limit');
     }
     const extractor = new EntityExtractor(store.source);
     const readEntity: QuantityEntityReader = id => {
@@ -68,8 +68,7 @@ export function readOccurrenceQuantities(
         if (!record || record.type.toUpperCase() !== 'IFCELEMENTQUANTITY') continue;
         const refs = record.attributes[5];
         if (!Array.isArray(refs) || (members += refs.length) > MAX_MEMBERS) {
-            console.warn('[occurrence quantities] Native quantity members are unreadable or exceed the read limit');
-            return [];
+            throw new OccurrenceQuantityReadError('Native occurrence quantity members are unreadable or exceed the read limit');
         }
         const set = readQuantitySetRecord(store, extractor, record, readEntity, resolveUnit);
         if (set) result.push(set);

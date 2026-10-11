@@ -36,6 +36,13 @@ export interface GpuHealth {
   reasons: string[];
   /** `device.lost` settlements for any reason but `destroyed`. */
   deviceLost: number;
+  /**
+   * True when `deviceLost` may undercount: it merges log sites (one loss is
+   * printed by up to three of them), so two distinct losses printed only at
+   * different sites read as one. False only when the `gpu.deviceLost` counter
+   * agrees with every site that reported. Contamination is unaffected.
+   */
+  deviceLostIsLowerBound: boolean;
   /** Lines where Chromium/Dawn reported the WebGPU instance gone (#7164); evidence, not a verdict. */
   instanceErrors: number;
   /** Devices the renderer created; null when the build exposes no counters. */
@@ -98,16 +105,19 @@ export function gpuHealthFrom(
   const consoleLost = Math.max(0, ...lossesBySite.values());
   const counter = (name: string) => sessionCounters?.[name] ?? 0;
   const deviceLost = Math.max(consoleLost, counter('gpu.deviceLost'));
+  const deviceLostIsLowerBound = deviceLost > 0 &&
+    (sessionCounters === null || [...lossesBySite.values()].some((n) => n !== counter('gpu.deviceLost')));
   const uncapturedErrors = Math.max(consoleUncaptured, counter('gpu.uncapturedErrors'));
   const devicesCreated = sessionCounters ? counter('gpu.devices') : null;
 
   const reasons: string[] = [];
-  if (deviceLost > 0) reasons.push(`GPU device lost ${deviceLost}x`);
+  if (deviceLost > 0) reasons.push(`GPU device lost ${deviceLostIsLowerBound ? '≥' : ''}${deviceLost}x`);
   if (devicesCreated !== null && devicesCreated > 1) reasons.push(`renderer re-created its GPU device (${devicesCreated} devices): scene re-uploaded`);
   return {
     contaminated: reasons.length > 0,
     reasons,
     deviceLost,
+    deviceLostIsLowerBound,
     instanceErrors,
     devicesCreated,
     uncapturedErrors,

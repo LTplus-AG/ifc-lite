@@ -156,3 +156,17 @@ test('#6993 drift guard: WebGPUDevice\'s device.lost line is classified; its des
   assert.ok(destroyed.some((l) => l.includes('Device lost')), 'guard: no teardown line printed');
   assert.equal(gpuHealthFrom(destroyed, null).contaminated, false, destroyed.join('\n'));
 });
+
+test('#6993 review: a log-derived loss count is labelled a lower bound; a counter that agrees with every site is exact', () => {
+  // Two DISTINCT losses, each printed at a different site only (a sync loss via
+  // handleDeviceLost, then an async device.lost): logs alone cannot tell them
+  // from one loss printed twice, so the count is ">= 1", not "1".
+  const twoSites = [LOSS_LINES['Renderer.handleDeviceLost'], LOSS_LINES['WebGPUDevice.lost']];
+  const fromLogs = gpuHealthFrom(twoSites, null);
+  assert.equal(fromLogs.contaminated, true);
+  assert.equal(fromLogs.deviceLostIsLowerBound, true);
+  assert.match(fromLogs.reasons[0], /GPU device lost ≥1x/);
+  const counted = gpuHealthFrom([LOSS_LINES['WebGPUDevice.lost'], LOSS_LINES['Renderer.handleDeviceLost']], { 'gpu.devices': 2, 'gpu.deviceLost': 1 });
+  assert.equal(counted.deviceLostIsLowerBound, false);
+  assert.match(counted.reasons[0], /GPU device lost 1x/);
+});

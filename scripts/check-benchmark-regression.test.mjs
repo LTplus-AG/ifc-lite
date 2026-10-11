@@ -302,7 +302,7 @@ test('benchmark #6993: a sample that lost its GPU device is excluded, not compar
     assert.doesNotMatch(out, /regression\(s\)/);
     assert.match(out, /EXCLUDED: GPU device lost 1x/);
     const report = readFileSync(md, 'utf-8');
-    assert.match(report, /Partial verdict: 1 of 2 model\(s\) lost their GPU device/);
+    assert.match(report, /Partial verdict: 1 of 2 model\(s\) compared\. NOT compared: 1 of 2 model\(s\) lost their GPU device/);
     assert.doesNotMatch(report, /✅ No threshold regressions detected/, 'an excluded sample is not a clean bill of health');
   } finally {
     rmSync(dir, { recursive: true, force: true });
@@ -370,7 +370,33 @@ test('benchmark #6993: a GPU-lost model stays visible at the top even when the h
     assert.equal(res.status, 0, `${res.stdout}${res.stderr}`);
     const head = readFileSync(md, 'utf-8').split('### ')[0];
     assert.match(head, /exceeded the regression threshold/);
-    assert.match(head, /Also: 1 of 2 model\(s\) lost their GPU device/);
+    assert.match(head, /Also NOT compared: 1 of 2 model\(s\) lost their GPU device/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('benchmark #6993 review: GPU-lost + clean + renamed — the headline names BOTH not-compared models, never "the rest" as compared', () => {
+  // x.ifc lost its GPU, y.ifc is clean with a baseline, RENAMED.ifc has none.
+  const dir = benchTree({ current: ALL_METRICS, baseline: ALL_METRICS, extra: LOST_GPU });
+  const md = join(dir, 'report.md');
+  try {
+    const results = join(dir, 'tests', 'benchmark', 'benchmark-results');
+    writeFileSync(join(results, 'viewer-y.json'), JSON.stringify({ file: 'y.ifc', metrics: ALL_METRICS }));
+    writeFileSync(join(results, 'viewer-z.json'), JSON.stringify({ file: 'RENAMED.ifc', metrics: ALL_METRICS }));
+    const baseline = JSON.parse(readFileSync(join(dir, 'tests', 'benchmark', 'baseline.json'), 'utf-8'));
+    baseline['y.ifc'] = baseline['x.ifc'];
+    writeFileSync(join(dir, 'tests', 'benchmark', 'baseline.json'), JSON.stringify(baseline));
+    const res = spawnSync(process.execPath, [join(dir, 'scripts', 'check-benchmark-regression.js'), '--advisory', '--markdown', md], { encoding: 'utf-8', cwd: dir });
+    const out = `${res.stdout ?? ''}${res.stderr ?? ''}`;
+    assert.equal(res.status, 0, out);
+    const head = readFileSync(md, 'utf-8').split('### ')[0];
+    assert.match(head, /Partial verdict: 1 of 3 model\(s\) compared/);
+    assert.match(head, /1 of 3 model\(s\) lost their GPU device/);
+    assert.match(head, /1 of 3 model\(s\) had NO baseline entry/);
+    assert.doesNotMatch(head, /among the rest|✅/, 'the headline must not imply the renamed model was compared');
+    assert.match(out, /Partial verdict: 1 of 3 model\(s\) compared/);
+    assert.match(out, /1 of 3 model\(s\) had NO baseline entry/);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

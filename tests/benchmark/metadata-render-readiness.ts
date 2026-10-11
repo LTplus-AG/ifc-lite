@@ -7,6 +7,19 @@
  * the page (`ViewerBenchmarkPage.probeLoadTrace`) so a poll returns a few
  * names instead of the whole span tree.
  */
+import type { Page } from '@playwright/test';
+
+/** Shared trace probe for full-viewer load and frame rigs (#6975). It uses the
+ * canonical fail-closed page callback, so failures are never filtered (#7180). */
+export async function probeMetadataRenderTrace(page: Page): Promise<LoadTraceProbe | null> {
+  try {
+    return await page.evaluate(probePageLoadTrace, { key: '__IFC_LITE_LOAD_TRACE__', names: [...READINESS_SPANS] });
+  } catch (error) {
+    console.warn('[Benchmark] could not probe the load trace', error);
+    return null;
+  }
+}
+
 export interface LoadTraceProbe {
   /** The load's root span ended (`trace.finish`, the app's own end of load). */
   ended: boolean;

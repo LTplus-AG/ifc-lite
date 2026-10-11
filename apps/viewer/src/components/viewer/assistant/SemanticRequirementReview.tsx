@@ -11,6 +11,7 @@ import { saveSemanticReview, semanticReviewLibrary, useSemanticReviews } from '@
 import type { Passage } from '@/lib/semantic/assist/spans';
 import { ContentStorageNotice } from '../ContentStorageNotice';
 import { ReviewFrame, SpanQuote } from './SemanticReviewParts';
+import { RequirementDispatch } from './RequirementDispatch';
 
 function structured(requirement: ExtractedRequirement): string {
   const value = Array.isArray(requirement.value) ? requirement.value.join(', ') : requirement.value;
@@ -48,6 +49,7 @@ export function SemanticRequirementReview({ proposal, origin, passages }: { prop
         {item.span && check && <SpanQuote span={item.span} check={check} />}
       </li>)}</ol>
     </div>}
+    <RequirementDispatch proposal={proposal} review={review} passages={passages} />
     <Button size="sm" className="h-7" disabled={saved} onClick={() => void save()}>{t('semanticAssist.requirementsSave')}</Button>
     {saved && <p aria-live="polite" className="rounded border border-emerald-500/40 bg-emerald-500/10 p-2">{t('semanticAssist.saved')}</p>}
     {error && <p role="alert" className="rounded border border-destructive/40 bg-destructive/10 p-2 text-destructive">{error}</p>}

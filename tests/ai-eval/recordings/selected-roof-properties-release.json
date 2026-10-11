@@ -98,6 +98,16 @@
           "omittedLabelGroups": 0,
           "labelGroupMeaning": "Exact native system/code text grouped separately per model/schema, not unique IFC identities. elements counts requested refs carrying each label once; referenceRows retains native repeated entries. Null labels are unknown. Complete status describes membership coverage, not complete system/code attributes. Omitted groups remain outside the displayed distribution."
         },
+        "nativeGroups": [
+          {
+            "modelId": "arch",
+            "status": "available",
+            "expectedJsonParts": [
+              "{\"source\":{\"contentKey\":\"37163-93a54f81\",\"byteLength\":225635},\"selected\":[425],\"members\":[{\"expressId\":425,\"GlobalId\":\"12UVOn4wvAJPMUExKdZLb8\"}],\"groups\":[],\"records\":[{\"expressId\":404,\"type\":\"IFCRELASSOCIATESMATERIAL\",\"attributes\":[\"1Tyvz$43XCrgyBJnA9othY\",1,null,null,[395,425],405]},{\"expressId\":411,\"type\":\"IFCRELAGGREGATES\",\"attributes\":[\"0CXsAjsVrFhhdIAzC5Vwj8\",1,\"house - roof container\",null,382,[395,425]]},{\"expressId\":424,\"type\":\"IFCRELDEFINESBYTYPE\",\"attributes\":[\"2LggWrf0b8BBbNxz_kRjsN\",1,null,null,[425],423]},{\"expressId\":425,\"type\":\"IFCSLAB\",\"attributes\":[\"12UVOn4wvAJPMUExKdZLb8\",1,\"house - roof - slab right\",\"A roof slab that's got it all covered\",\"roof\",436,445,\"454425.1027891.979946.932084.902511\",null]},{\"expressId\":430,\"type\":\"IFCRELDEFINESBYPROPERTIES\",\"attributes\":[\"3VqHNi6JD3E9HmoEYuXD7X\",1,null,null,[425],429]},{\"expressId\":435,\"type\":\"IFCRELDEFINESBYPROPERTIES\",\"attributes\":[\"0idWscfc57Hwo3gGjxt6Ra\",1,null,null,[425],434]}],\"incoming\":[{\"target\":425,\"referrers\":[40",
+              "4,411,424,430,435]}]}"
+            ]
+          }
+        ],
         "byModel": [
           {
             "modelId": "arch",

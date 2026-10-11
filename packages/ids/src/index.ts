@@ -33,6 +33,7 @@ export type {
   IDSEntityFacet,
   IDSAttributeFacet,
   IDSPropertyFacet,
+  IDSFacetUri,
   IDSClassificationFacet,
   IDSMaterialFacet,
   IDSPartOfFacet,

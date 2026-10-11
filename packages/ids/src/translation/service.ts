@@ -104,8 +104,6 @@ class IDSTranslationServiceImpl implements TranslationService {
     facet: IDSFacet,
     context: 'applicability' | 'requirement'
   ): string {
-    const t = this.translations;
-
     switch (facet.type) {
       case 'entity':
         return this.describeEntityFacet(facet, context);

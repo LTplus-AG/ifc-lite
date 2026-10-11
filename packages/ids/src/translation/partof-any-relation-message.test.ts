@@ -18,7 +18,7 @@ const facet: IDSPartOfFacet = {
   type: 'partOf',
   relation: 'IfcRelContainedInSpatialStructure',
   anyRelation: true,
-  entity: { name: { type: 'simpleValue', value: 'IFCBUILDINGSTOREY' } },
+  entity: { type: 'entity', name: { type: 'simpleValue', value: 'IFCBUILDINGSTOREY' } },
 };
 
 const accessor = createMockAccessor([{ expressId: 1, type: 'IfcWall' }]);

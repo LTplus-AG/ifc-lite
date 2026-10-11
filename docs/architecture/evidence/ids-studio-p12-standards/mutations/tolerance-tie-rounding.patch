@@ -1,0 +1,13 @@
+diff --git b/packages/ids/src/preview/tolerance.ts a/packages/ids/src/preview/tolerance.ts
+index 21682ccfb..aea50073b 100644
+--- b/packages/ids/src/preview/tolerance.ts
++++ a/packages/ids/src/preview/tolerance.ts
+@@ -46,7 +46,7 @@ export function roundHalfEven(x: number, decimals: number): number {
+   else if (rest[0] === '5') {
+     const exactTie = /^0*$/.test(rest.slice(1));
+     const last = Number((intPart + kept).slice(-1));
+-    roundUp = true;
++    roundUp = !exactTie || last % 2 === 1;
+   }
+   // Increment on the decimal digits (BigInt), so the only binary rounding
+   // is the final `Number(...)` of the already-rounded decimal string.

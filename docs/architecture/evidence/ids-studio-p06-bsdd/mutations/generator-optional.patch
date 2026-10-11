@@ -1,0 +1,13 @@
+diff --git b/packages/ids-authoring/src/bsdd/generator.ts a/packages/ids-authoring/src/bsdd/generator.ts
+index 8db5eff0b..2d1fa8821 100644
+--- b/packages/ids-authoring/src/bsdd/generator.ts
++++ a/packages/ids-authoring/src/bsdd/generator.ts
+@@ -144,7 +144,7 @@ export function planDictionaryIds(input: DictionaryIdsInput): DictionaryIdsPlan
+             specId,
+             name,
+             ifcVersions: versions,
+-            cardinality: options.cardinality ?? 'required',
++            cardinality: options.cardinality ?? 'optional',
+             ...(g.classes.length === 1 ? { identifier: first.code } : {}),
+             ...(g.classes.length === 1 && classes.get(first.uri)?.definition ? { description: classes.get(first.uri)?.definition } : {}),
+           },

@@ -233,6 +233,9 @@ importers:
       '@ifc-lite/ids':
         specifier: workspace:^
         version: link:../../packages/ids
+      '@ifc-lite/ids-authoring':
+        specifier: workspace:^
+        version: link:../../packages/ids-authoring
       '@ifc-lite/ifcx':
         specifier: workspace:^
         version: link:../../packages/ifcx
@@ -480,6 +483,9 @@ importers:
       '@webgpu/types':
         specifier: ^0.1.74
         version: 0.1.74
+      ajv:
+        specifier: ^8.17.1
+        version: 8.20.0
       fake-indexeddb:
         specifier: ^6.2.5
         version: 6.2.5
@@ -977,6 +983,9 @@ importers:
       '@ifc-lite/ids':
         specifier: workspace:^
         version: link:../ids
+      '@ifc-lite/ids-authoring':
+        specifier: workspace:^
+        version: link:../ids-authoring
       '@ifc-lite/ifcx':
         specifier: workspace:^
         version: link:../ifcx
@@ -1379,6 +1388,12 @@ importers:
       '@ifc-lite/flow':
         specifier: workspace:^
         version: link:../flow
+      '@ifc-lite/ids':
+        specifier: workspace:^
+        version: link:../ids
+      '@ifc-lite/ids-authoring':
+        specifier: workspace:^
+        version: link:../ids-authoring
       '@ifc-lite/mutations':
         specifier: workspace:^
         version: link:../mutations
@@ -1470,6 +1485,37 @@ importers:
       xmllint-wasm:
         specifier: 5.3.0
         version: 5.3.0(@types/node@26.6.5)
+
+  packages/ids-authoring:
+    dependencies:
+      '@ifc-lite/data':
+        specifier: workspace:*
+        version: link:../data
+      '@ifc-lite/ids':
+        specifier: workspace:*
+        version: link:../ids
+      '@ifc-lite/regex-guard':
+        specifier: workspace:*
+        version: link:../regex-guard
+      fflate:
+        specifier: ^0.8.3
+        version: 0.8.3
+    devDependencies:
+      '@ifc-lite/parser':
+        specifier: workspace:*
+        version: link:../parser
+      '@types/node':
+        specifier: ^26.6.4
+        version: 26.6.5
+      fake-indexeddb:
+        specifier: ^6.2.5
+        version: 6.2.5
+      typescript:
+        specifier: ^6.0.3
+        version: 6.0.3
+      vitest:
+        specifier: ^5.0.3
+        version: 5.0.3(@edge-runtime/vm@3.2.0)(@types/node@26.6.5)(happy-dom@20.14.5)(vite@8.3.3(@types/node@26.6.5)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1))
 
   packages/ifcx:
     dependencies:
@@ -1593,6 +1639,9 @@ importers:
       '@ifc-lite/ids':
         specifier: workspace:^
         version: link:../ids
+      '@ifc-lite/ids-authoring':
+        specifier: workspace:^
+        version: link:../ids-authoring
       '@ifc-lite/ifcx':
         specifier: workspace:^
         version: link:../ifcx
@@ -1905,6 +1954,9 @@ importers:
       '@ifc-lite/ids':
         specifier: workspace:^
         version: link:../ids
+      '@ifc-lite/ids-authoring':
+        specifier: workspace:^
+        version: link:../ids-authoring
       '@ifc-lite/lens':
         specifier: workspace:^
         version: link:../lens

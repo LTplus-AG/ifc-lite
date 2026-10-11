@@ -25,4 +25,5 @@ export type {
 } from './data-accessor.js';
 export { narrowSchemaVersion } from './schema-version.js';
 export { resolveEntityMeasureScales, toRaw } from './units.js';
+export { propertyValueToRaw } from './property-overlay-resolver.js';
 export type { EntityMeasureScales } from './units.js';

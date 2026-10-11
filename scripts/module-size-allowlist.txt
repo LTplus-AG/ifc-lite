@@ -221,7 +221,7 @@
   1536 packages/geometry/src/index.ts
    730 packages/geometry/src/native-bridge.ts
    904 packages/ids/src/audit/ifc-schema/index.ts
-   566 packages/ids/src/audit/structural/index.ts
+   411 packages/ids/src/audit/structural/index.ts
    445 packages/ids/src/facets/property-facet.ts
    597 packages/ids/src/parser/xml-parser.ts
    628 packages/ids/src/translation/service.ts
@@ -240,7 +240,7 @@
    558 packages/mutations/src/csv-connector.ts
   1879 packages/mutations/src/mutable-property-view.ts
    422 packages/oauth-pkce/src/token-manager.ts
-   858 packages/parser/src/columnar-parser.ts
+   856 packages/parser/src/columnar-parser.ts
    467 packages/parser/src/compact-entity-index.ts
    530 packages/parser/src/data-store-transport.ts
    835 packages/parser/src/material-resolver.ts

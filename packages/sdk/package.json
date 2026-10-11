@@ -27,6 +27,7 @@
     "@ifc-lite/encoding": "workspace:^",
     "@ifc-lite/export": "workspace:^",
     "@ifc-lite/ids": "workspace:^",
+    "@ifc-lite/ids-authoring": "workspace:^",
     "@ifc-lite/lens": "workspace:^",
     "@ifc-lite/lists": "workspace:^",
     "@ifc-lite/mutations": "workspace:^",

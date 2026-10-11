@@ -1,6 +1,7 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+import { gatherProvedVolumes, type ProvedVolumes } from '@/hooks/useZoneApportionment';
 import { nativeStructuralTransportEvidence } from '@/lib/actions/structural-graph-evidence';
 
 
@@ -18,6 +19,7 @@ import { nativeStructuralTransportEvidence } from '@/lib/actions/structural-grap
  * total is over the whole selection.
  */
 
+import { nativeZoneEmissionTransport } from '@/lib/actions/zone-emission-evidence';
 import { nativeAuthoringEvidence } from '@/lib/actions/native-authoring-evidence';
 import { IfcQuery } from '@ifc-lite/query';
 import { extractClassificationsOnDemand, materialAssignmentsAvailable, ProjectUnits, type ClassificationInfo, type IfcDataStore } from '@ifc-lite/parser';
@@ -41,7 +43,7 @@ import { structuralEvidence } from './selection-structural';
 import { effectiveStructuralData } from '@/components/viewer/properties/effectiveStructuralData';
 import { effectiveDocuments } from '@/components/viewer/properties/effectiveDocuments';
 import { classificationEvidence } from './selection-classifications';
-import { selectedZoneVolumeBreakdowns, zoneQuantitySources, zoneQuantitySourceIdentity } from './zone-volume-bases';
+import { selectedZoneVolumeBreakdowns, zoneQuantitySources, zoneQuantitySourceIdentity, ZONE_VOLUME_UNIT_LIMITATIONS } from './zone-volume-bases';
 import { selectedClassificationPopulation } from './selection-classification-population';
 import { effectiveTypeProperties } from '@/components/viewer/properties/effectiveTypeProperties';
 import { effectiveSelectedClass } from '@/components/viewer/properties/effectiveSelectedClass';
@@ -134,7 +136,7 @@ function bounded(value: unknown): string | number | boolean | null {
 }
 
 function elementRow(s: ViewerState, ref: EntityRef, source: ModelSource, rich: boolean,
-  nativeTarget: ModelEditTarget | null, completeStructuralPin: boolean, quantitySource: ReturnType<typeof zoneQuantitySources>) {
+  nativeTarget: ModelEditTarget | null, completeStructuralPin: boolean, quantitySource: ReturnType<typeof zoneQuantitySources>, provedVolumes: () => ProvedVolumes, zones: ReturnType<typeof nativeZoneEmissionTransport>) {
   const setLimit = rich ? 16 : 6;
   const relationshipLookupExpressId = source.view?.resolveBaseEntityId(ref.expressId) ?? ref.expressId;
   const nativeRelationships = source.store ? relationshipsForSelection(
@@ -174,7 +176,7 @@ function elementRow(s: ViewerState, ref: EntityRef, source: ModelSource, rich: b
   }));
   const name = source.store ? nativeRootName({ dataStore: source.store, view: source.view }, ref.expressId) : data.attributes.get('Name');
   const globalId = toGlobalIdForRef(s.models, ref);
-  const hasZoneBreakdown = s.zoneSets.some(set => s.zoneAssignments.get(globalId)?.[set.id]?.straddles);
+  const hasZoneBreakdown = s.zoneSets.some(set => s.zoneAssignments.get(globalId)?.[set.id]?.touchedZoneIds.length);
   const zoneQuantities = hasZoneBreakdown ? quantitySource(ref) : null;
   const gridName = nativeGridName(nativeTarget, ref.expressId);
   return evidenceRow({
@@ -191,10 +193,11 @@ function elementRow(s: ViewerState, ref: EntityRef, source: ModelSource, rich: b
     ...(zoneQuantities ? { zoneVolumeBreakdowns: { quantityStatus: zoneQuantities.status, quantityReason: zoneQuantities.reason,
       unitStatus: zoneQuantities.unitStatus, unitReason: zoneQuantities.unitReason,
       ...selectedZoneVolumeBreakdowns(s, globalId,
-        zoneQuantities.quantities, zoneQuantities.scale, setLimit, valueLimit) } }
+        zoneQuantities.quantities, zoneQuantities.scale, setLimit, valueLimit, provedVolumes) } }
       : s.zoneSets.length > 0 ? { zoneVolumeBreakdowns: { zoneSetCount: 0, zoneSets: [], volumeBases: [] } } : {}),
     nativeEdit: nativeEditEvidence(nativeTarget, ref.expressId),
     nativeType: nativeTypeEvidence(s, nativeTarget, ref.expressId),
+    nativeZoneEmission: zones,
     nativeLayers: nativeLayerEvidence(s, nativeTarget, ref.expressId),
     ...(() => { const nativeGrid = nativeGridEvidence(nativeTarget, ref.expressId); return nativeGrid ? { nativeGrid } : {}; })(),
     ...(rich ? { nativeCost: nativeCostTransportEvidence(nativeTarget, ref.expressId) } : {}),
@@ -276,8 +279,15 @@ export const selectionAdapter: EvidenceAdapter = {
     const { refs, channel } = selection;
     const sourceFor = sources(s);
     const quantitySource = zoneQuantitySources(s);
-    const hasZoneBreakdowns = refs.some(ref => s.zoneSets.some(set => s.zoneAssignments.get(toGlobalIdForRef(s.models, ref))?.[set.id]?.straddles));
+    let proved: ProvedVolumes | undefined;
+    const provedVolumes = () => proved ??= gatherProvedVolumes();
+    const hasZoneBreakdowns = refs.some(ref => s.zoneSets.some(set => s.zoneAssignments.get(toGlobalIdForRef(s.models, ref))?.[set.id]?.touchedZoneIds.length));
     const nativeTarget = nativeReadTargets(s);
+    const zoneTargets = new Map<string, ReturnType<typeof nativeZoneEmissionTransport>>();
+    const zonesFor = (modelId: string) => {
+      if (!zoneTargets.has(modelId)) zoneTargets.set(modelId, nativeZoneEmissionTransport(s, modelId));
+      return zoneTargets.get(modelId)!;
+    };
     const byModel = new Map<string, number>();
     const byClass = new Map<string, number>();
     for (const ref of refs) {
@@ -298,13 +308,13 @@ export const selectionAdapter: EvidenceAdapter = {
         byClass: [...byClass].map(([type, count]) => ({ type, count })).sort((a, b) => b.count - a.count),
         perElementBounds: rich ? { sets: 16, valuesPerSet: 32, attributes: 32, classifications: 16, classificationPath: 16, relationships: 16, documents: 16, ...(hasZoneBreakdowns ? { zoneSets: 16, sharesPerVolumeBasis: 32 } : {}) }
           : { sets: 6, valuesPerSet: 12, attributes: 12, classifications: 6, classificationPath: 6, relationships: 6, documents: 6, ...(hasZoneBreakdowns ? { zoneSets: 6, sharesPerVolumeBasis: 12 } : {}) },
-        ...(hasZoneBreakdowns ? { zoneVolumeUnits: 'When project VOLUMEUNIT is unresolved, zone volume breakdowns use the existing Properties scale-1 SI default; m3 labels do not prove a declared file unit or a measured conversion.' } : {}),
+        ...(hasZoneBreakdowns ? { zoneVolumeUnits: ZONE_VOLUME_UNIT_LIMITATIONS } : {}),
         units: 'Quantity values carry {value, unit} in the Properties panel display unit (project unit, or the display-unit override below); a null unit is undeclared. Property values are the panel display strings, with the unit inline when the measure declares one.',
         displayUnitOverrides: s.unitDisplayOverrides,
         limitations: 'Includes native edits; status covers own edits. Definitions/associations use snapshot freshness. Sections use perElementBounds and full known counts. inheritedType has model/type provenance; occurrence properties override same-named type values. Materials prefer occurrence over type; LayerThickness is metres; properties use panel units. IFC2X3 scalar material-property subtypes are outside the generic-set reader. Unverified fields remain unknown; missing membership inputs/unreadable source edits make totals null/unavailable. Source-free classification/document markers describe original source, not current assignments. Paths have bounded known ancestors; unverified path totals are null. Classification codes use schema-exact ItemReference/Identification; missing systems stay unknown. Relationships count exact native edges; aliases carry inherited lookup IDs. Edited source-free graph edges are unverified source-origin evidence. Unverified material-property counts stay null; empty rows do not prove absence. Documents have native model/target IDs and separate bounds. Empty samples do not prove absence. Selection is sampled; byClass/byModel cover every selected element.',
         structuralLimitations: 'Structural rows match the native member card; counts cover resolved native records and units are declared source units only. Load/evidence bounds are explicit. Missing/duplicate native GUID targets are omitted with unknown resolved totals. Source-free original fields/totals are unknown; authored fields remain readable.',
       },
-      rows: sample.map(ref => elementRow(s, ref, sourceFor(ref.modelId), rich, nativeTarget(ref.modelId), sample.length === 1, quantitySource)),
+      rows: sample.map(ref => elementRow(s, ref, sourceFor(ref.modelId), rich, nativeTarget(ref.modelId), sample.length === 1, quantitySource, provedVolumes, zonesFor(ref.modelId))),
       totalRows: refs.length, availability: 'available',
     };
   },

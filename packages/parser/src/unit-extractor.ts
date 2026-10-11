@@ -14,8 +14,10 @@ import { EntityExtractor } from './entity-extractor.js';
 import type { IfcSourceBytes } from './source-bytes.js';
 import { resolveOwningIfcProjectId, type RelatedLookup } from './owning-project.js';
 import { extractProjectUnits } from './project-units.js';
+import { declared, defaulted, unknownUnitMessage, type ResolvedLengthUnit } from './length-unit-source.js';
 
 export { resolveOwningIfcProjectId, type RelatedLookup } from './owning-project.js';
+export type { LengthUnitSource, ResolvedLengthUnit } from './length-unit-source.js';
 
 /**
  * SI Prefix multipliers, keyed by the members of the `IfcSIPrefix` EXPRESS
@@ -94,7 +96,7 @@ const warnedEntityIndexes = new WeakSet<object>();
 function warnUnknownUnit(entityIndex: object, reason: string): void {
   if (warnedEntityIndexes.has(entityIndex)) return;
   warnedEntityIndexes.add(entityIndex);
-  console.warn(`[UnitExtractor] ${reason}, defaulting to meters (unconfirmed — see issue #2104)`);
+  console.warn(`[UnitExtractor] ${unknownUnitMessage(reason)}`);
 }
 
 /**
@@ -125,44 +127,58 @@ export function extractLengthUnitScale(
   entityIndex: { byId: { get(expressId: number): EntityRef | undefined }; byType: Map<string, number[]> },
   projectId?: number
 ): number {
+  return resolveLengthUnit(source, entityIndex, projectId).scale;
+}
+
+/**
+ * {@link extractLengthUnitScale} plus where the scale came from (#7395, see
+ * `LengthUnitSource`). A defaulted unit warns to the console once per
+ * `entityIndex`, as before, and is also sent to `onDiagnostic` when given.
+ */
+export function resolveLengthUnit(
+  source: Uint8Array | IfcSourceBytes,
+  entityIndex: { byId: { get(expressId: number): EntityRef | undefined }; byType: Map<string, number[]> },
+  projectId?: number,
+  onDiagnostic?: (message: string) => void
+): ResolvedLengthUnit {
   // Find IFCPROJECT
   // @raw-entity-enumeration-ok source parser selects the file's IfcProject to establish its declared units
   const projectIds = entityIndex.byType.get('IFCPROJECT') || [];
   const resolvedProjectId = projectId ?? projectIds[0];
-  if (resolvedProjectId === undefined) {
-    warnUnknownUnit(entityIndex, 'No IFCPROJECT found');
-    return 1.0;
+  const resolved = resolvedProjectId === undefined
+    ? defaulted('No IFCPROJECT found')
+    : resolveLengthUnitForProjectId(resolvedProjectId, source, entityIndex);
+  if (resolved.reason !== undefined) {
+    warnUnknownUnit(entityIndex, resolved.reason);
+    onDiagnostic?.(`units: ${unknownUnitMessage(resolved.reason)}`);
   }
-
-  return extractLengthUnitScaleForProjectId(resolvedProjectId, source, entityIndex);
+  return resolved;
 }
 
 /**
- * Same resolution as {@link extractLengthUnitScale}, but for an EXPLICIT
+ * Same resolution as {@link resolveLengthUnit}, but for an EXPLICIT
  * `IFCPROJECT` id rather than always the first one found. Factored out so
  * {@link resolveEntityLengthUnitScale} and other {@link resolveOwningIfcProjectId}
  * callers can resolve the scale of a specific project in a multi-project
  * file (a {@link MergedExporter} federated output — see that module)
  * without duplicating the unit-chain walk.
  */
-function extractLengthUnitScaleForProjectId(
+function resolveLengthUnitForProjectId(
   projectId: number,
   source: Uint8Array | IfcSourceBytes,
   entityIndex: { byId: { get(expressId: number): EntityRef | undefined }; byType: Map<string, number[]> }
-): number {
+): ResolvedLengthUnit {
   const extractor = new EntityExtractor(source);
 
   // @raw-entity-enumeration-ok dereference the parsed IfcProject before reading UnitsInContext
   const projectRef = entityIndex.byId.get(projectId);
   if (!projectRef) {
-    warnUnknownUnit(entityIndex, 'IFCPROJECT reference could not be resolved');
-    return 1.0;
+    return defaulted('IFCPROJECT reference could not be resolved');
   }
 
   const projectEntity = extractor.extractEntity(projectRef);
   if (!projectEntity) {
-    warnUnknownUnit(entityIndex, 'IFCPROJECT entity could not be read');
-    return 1.0;
+    return defaulted('IFCPROJECT entity could not be read');
   }
 
   // IFCPROJECT attributes:
@@ -172,35 +188,30 @@ function extractLengthUnitScaleForProjectId(
   const unitsRef = attrs[8];
 
   if (typeof unitsRef !== 'number') {
-    warnUnknownUnit(entityIndex, 'No UnitsInContext reference');
-    return 1.0;
+    return defaulted('No UnitsInContext reference');
   }
 
   // Resolve IFCUNITASSIGNMENT
   // @raw-entity-enumeration-ok follow the source IfcUnitAssignment reference
   const unitAssignmentRef = entityIndex.byId.get(unitsRef);
   if (!unitAssignmentRef) {
-    warnUnknownUnit(entityIndex, 'UnitsInContext reference could not be resolved');
-    return 1.0;
+    return defaulted('UnitsInContext reference could not be resolved');
   }
 
   const unitAssignment = extractor.extractEntity(unitAssignmentRef);
   if (!unitAssignment || unitAssignment.type.toUpperCase() !== 'IFCUNITASSIGNMENT') {
-    warnUnknownUnit(entityIndex, 'UnitsInContext did not resolve to an IFCUNITASSIGNMENT');
-    return 1.0;
+    return defaulted('UnitsInContext did not resolve to an IFCUNITASSIGNMENT');
   }
 
   // Guard against missing attributes
   if (!unitAssignment.attributes || !Array.isArray(unitAssignment.attributes)) {
-    warnUnknownUnit(entityIndex, 'IFCUNITASSIGNMENT has no readable attributes');
-    return 1.0;
+    return defaulted('IFCUNITASSIGNMENT has no readable attributes');
   }
 
   // IFCUNITASSIGNMENT has a single attribute: Units (list of references)
   const unitsList = unitAssignment.attributes[0];
   if (!Array.isArray(unitsList)) {
-    warnUnknownUnit(entityIndex, 'IFCUNITASSIGNMENT.Units is not a list');
-    return 1.0;
+    return defaulted('IFCUNITASSIGNMENT.Units is not a list');
   }
 
   // Search for length unit
@@ -233,7 +244,7 @@ function extractLengthUnitScaleForProjectId(
 
       if (prefix === null || prefix === undefined || prefix === '$') {
         // No prefix = base meters
-        return 1.0;
+        return declared(1.0);
       }
 
       // Clean up enum value (remove dots)
@@ -243,11 +254,10 @@ function extractLengthUnitScaleForProjectId(
 
       const multiplier = SI_PREFIX_MULTIPLIERS[prefixStr];
       if (multiplier !== undefined) {
-        return multiplier;
+        return declared(multiplier);
       }
 
-      warnUnknownUnit(entityIndex, `Unrecognized SI prefix "${prefixStr}"`);
-      return 1.0;
+      return defaulted(`Unrecognized SI prefix "${prefixStr}"`);
     }
 
     // Handle IFCCONVERSIONBASEDUNIT (imperial units)
@@ -266,7 +276,7 @@ function extractLengthUnitScaleForProjectId(
         const nameUpper = unitName.toUpperCase();
         const knownFactor = CONVERSION_BASED_UNIT_FACTORS[nameUpper];
         if (knownFactor !== undefined) {
-          return knownFactor;
+          return declared(knownFactor);
         }
       }
 
@@ -326,7 +336,7 @@ function extractLengthUnitScaleForProjectId(
                 }
               }
 
-              return conversionValue * unitComponentScale;
+              return declared(conversionValue * unitComponentScale);
             }
           }
         }
@@ -335,8 +345,7 @@ function extractLengthUnitScaleForProjectId(
   }
 
   // No length unit found, default to meters
-  warnUnknownUnit(entityIndex, 'No LENGTHUNIT found in IFCUNITASSIGNMENT');
-  return 1.0;
+  return defaulted('No LENGTHUNIT found in IFCUNITASSIGNMENT');
 }
 
 /**

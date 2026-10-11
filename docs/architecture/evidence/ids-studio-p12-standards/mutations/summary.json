@@ -1,0 +1,189 @@
+{
+  "whole-diff (no --mutation)": {
+    "verdict": "OBSERVED",
+    "exitCode": 0,
+    "reason": "reverting production turned an assertion RED in packages/ids/src/__corpus__/proposed-cases.test.ts; that file has a green, attributable baseline.",
+    "base": "4e36dfc588f55e15b3c2095023c1b2aa8e53dd18",
+    "head": "a311d32f615947d08dec0e9edb06a2b67759f903",
+    "restoration": "verified",
+    "production": 34,
+    "tests": [
+      "packages/ids/src/__corpus__/proposed-cases.test.ts",
+      "packages/ids/src/preview/ids11-corpus.test.ts",
+      "packages/ids/src/preview/ids11-model.test.ts",
+      "packages/ids/src/preview/ids11-preview.test.ts",
+      "packages/ids/src/preview/tolerance.test.ts",
+      "scripts/ids-conformance/lib/adapters/adapters.test.mjs",
+      "scripts/ids-conformance/lib/matrix.test.mjs",
+      "scripts/ids-conformance/lib/report.test.mjs"
+    ]
+  },
+  "tolerance-tie-rounding": {
+    "verdict": "OBSERVED",
+    "exitCode": 0,
+    "reason": "reverting production turned an assertion RED in packages/ids/src/preview/tolerance.test.ts; that file has a green, attributable baseline.",
+    "base": "4e36dfc588f55e15b3c2095023c1b2aa8e53dd18",
+    "head": "6ad957c961aa31f49ec9fd9479bdda3b2d9b5fbe",
+    "production": [
+      "packages/ids/src/preview/tolerance.ts"
+    ],
+    "tests": [
+      "packages/ids/src/preview/tolerance.test.ts"
+    ],
+    "restoration": "verified"
+  },
+  "features-nested-partof": {
+    "verdict": "OBSERVED",
+    "exitCode": 0,
+    "reason": "reverting production turned an assertion RED in packages/ids/src/preview/ids11-preview.test.ts; that file has a green, attributable baseline.",
+    "base": "4e36dfc588f55e15b3c2095023c1b2aa8e53dd18",
+    "head": "6ad957c961aa31f49ec9fd9479bdda3b2d9b5fbe",
+    "production": [
+      "packages/ids/src/preview/features.ts"
+    ],
+    "tests": [
+      "packages/ids/src/preview/ids11-preview.test.ts"
+    ],
+    "restoration": "verified"
+  },
+  "parse-applicability-uri": {
+    "verdict": "OBSERVED",
+    "exitCode": 0,
+    "reason": "reverting production turned an assertion RED in packages/ids/src/preview/ids11-preview.test.ts; that file has a green, attributable baseline.",
+    "base": "4e36dfc588f55e15b3c2095023c1b2aa8e53dd18",
+    "head": "6ad957c961aa31f49ec9fd9479bdda3b2d9b5fbe",
+    "production": [
+      "packages/ids/src/preview/parse-ids11.ts"
+    ],
+    "tests": [
+      "packages/ids/src/preview/ids11-preview.test.ts"
+    ],
+    "restoration": "verified"
+  },
+  "partof-nested-ignored": {
+    "verdict": "OBSERVED",
+    "exitCode": 0,
+    "reason": "reverting production turned an assertion RED in packages/ids/src/preview/ids11-preview.test.ts; that file has a green, attributable baseline.",
+    "base": "4e36dfc588f55e15b3c2095023c1b2aa8e53dd18",
+    "head": "6ad957c961aa31f49ec9fd9479bdda3b2d9b5fbe",
+    "production": [
+      "packages/ids/src/preview/partof-nested.ts"
+    ],
+    "tests": [
+      "packages/ids/src/preview/ids11-preview.test.ts"
+    ],
+    "restoration": "verified"
+  },
+  "audit-duplicate-identifier": {
+    "verdict": "OBSERVED",
+    "exitCode": 0,
+    "reason": "reverting production turned an assertion RED in packages/ids/src/preview/ids11-preview.test.ts; that file has a green, attributable baseline.",
+    "base": "4e36dfc588f55e15b3c2095023c1b2aa8e53dd18",
+    "head": "6ad957c961aa31f49ec9fd9479bdda3b2d9b5fbe",
+    "production": [
+      "packages/ids/src/preview/audit.ts"
+    ],
+    "tests": [
+      "packages/ids/src/preview/ids11-preview.test.ts"
+    ],
+    "restoration": "verified"
+  },
+  "shapes-applicability-uri": {
+    "verdict": "OBSERVED",
+    "exitCode": 0,
+    "reason": "reverting production turned an assertion RED in packages/ids/src/preview/ids11-preview.test.ts; that file has a green, attributable baseline.",
+    "base": "4e36dfc588f55e15b3c2095023c1b2aa8e53dd18",
+    "head": "6ad957c961aa31f49ec9fd9479bdda3b2d9b5fbe",
+    "production": [
+      "packages/ids/src/audit/structural/shapes.ts"
+    ],
+    "tests": [
+      "packages/ids/src/preview/ids11-preview.test.ts"
+    ],
+    "restoration": "verified"
+  },
+  "matrix-invalid-agreement": {
+    "verdict": "OBSERVED",
+    "exitCode": 0,
+    "reason": "reverting production turned an assertion RED in scripts/ids-conformance/lib/matrix.test.mjs; that file has a green, attributable baseline.",
+    "base": "4e36dfc588f55e15b3c2095023c1b2aa8e53dd18",
+    "head": "6ad957c961aa31f49ec9fd9479bdda3b2d9b5fbe",
+    "production": [
+      "scripts/ids-conformance/lib/matrix.mjs"
+    ],
+    "tests": [
+      "scripts/ids-conformance/lib/matrix.test.mjs"
+    ],
+    "restoration": "verified"
+  },
+  "corpus-unknown-prefix": {
+    "verdict": "OBSERVED",
+    "exitCode": 0,
+    "reason": "reverting production turned an assertion RED in scripts/ids-conformance/lib/matrix.test.mjs; that file has a green, attributable baseline.",
+    "base": "4e36dfc588f55e15b3c2095023c1b2aa8e53dd18",
+    "head": "6ad957c961aa31f49ec9fd9479bdda3b2d9b5fbe",
+    "production": [
+      "scripts/ids-conformance/lib/corpus.mjs"
+    ],
+    "tests": [
+      "scripts/ids-conformance/lib/matrix.test.mjs"
+    ],
+    "restoration": "verified"
+  },
+  "report-error-not-counted": {
+    "verdict": "OBSERVED",
+    "exitCode": 0,
+    "reason": "reverting production turned an assertion RED in scripts/ids-conformance/lib/report.test.mjs; that file has a green, attributable baseline.",
+    "base": "4e36dfc588f55e15b3c2095023c1b2aa8e53dd18",
+    "head": "6ad957c961aa31f49ec9fd9479bdda3b2d9b5fbe",
+    "production": [
+      "scripts/ids-conformance/lib/report.mjs"
+    ],
+    "tests": [
+      "scripts/ids-conformance/lib/report.test.mjs"
+    ],
+    "restoration": "verified"
+  },
+  "command-verdict-allowed": {
+    "verdict": "OBSERVED",
+    "exitCode": 0,
+    "reason": "reverting production turned an assertion RED in scripts/ids-conformance/lib/adapters/adapters.test.mjs; that file has a green, attributable baseline.",
+    "base": "4e36dfc588f55e15b3c2095023c1b2aa8e53dd18",
+    "head": "4deb06279b5cb12dd0732049d3b074581d4ca41a",
+    "production": [
+      "scripts/ids-conformance/lib/adapters/command.mjs"
+    ],
+    "tests": [
+      "scripts/ids-conformance/lib/adapters/adapters.test.mjs"
+    ],
+    "restoration": "verified"
+  },
+  "ifc-lite-audit-verdict": {
+    "verdict": "OBSERVED",
+    "exitCode": 0,
+    "reason": "reverting production turned an assertion RED in scripts/ids-conformance/run.test.mjs; that file has a green, attributable baseline.",
+    "base": "4e36dfc588f55e15b3c2095023c1b2aa8e53dd18",
+    "head": "6ad957c961aa31f49ec9fd9479bdda3b2d9b5fbe",
+    "production": [
+      "scripts/ids-conformance/lib/adapters/ifc-lite.mjs"
+    ],
+    "tests": [
+      "scripts/ids-conformance/run.test.mjs"
+    ],
+    "restoration": "verified"
+  },
+  "run-unknown-argument": {
+    "verdict": "OBSERVED",
+    "exitCode": 0,
+    "reason": "reverting production turned an assertion RED in scripts/ids-conformance/run.test.mjs; that file has a green, attributable baseline.",
+    "base": "4e36dfc588f55e15b3c2095023c1b2aa8e53dd18",
+    "head": "4deb06279b5cb12dd0732049d3b074581d4ca41a",
+    "production": [
+      "scripts/ids-conformance/run.mjs"
+    ],
+    "tests": [
+      "scripts/ids-conformance/run.test.mjs"
+    ],
+    "restoration": "verified"
+  }
+}

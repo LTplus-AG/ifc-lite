@@ -15,13 +15,15 @@
  */
 
 import type { ViewerState } from '@/store';
+import { nativeZoneEmissionTransport } from '@/lib/actions/zone-emission-evidence';
+import { currentZoneEvaluationIdentity } from '@/lib/zones/evaluation-owner';
 import { resolveEntityRef } from '@/store/resolveEntityRef';
 import { coverageOf, validEntry, volumeBasisLabel, zoneSetRevision, zoneTableRows, type ZoneSet } from '@/lib/zones';
 import { describeElement } from '@/hooks/useZoneTableExport';
 import { zoneFactsFor } from '@/hooks/zoneFacts';
 import { gatherProvedVolumes } from '@/hooks/useZoneApportionment';
 import { evidenceRow, unavailableCapture, type EvidenceAdapter } from './types';
-import { zoneQuantitySources, zoneQuantitySourceIdentity } from './zone-volume-bases';
+import { zoneQuantitySources, zoneQuantitySourceIdentity, ZONE_VOLUME_UNIT_LIMITATIONS } from './zone-volume-bases';
 import { declaredVolumeBases, volumeBasisRatioNote } from '@/lib/zones';
 
 const BASIS = 'mesh' as const;
@@ -83,7 +85,7 @@ export const zonesAdapter: EvidenceAdapter = {
     return { status: { labelKey: 'assistantSources.zones.ready', params: { count: s.zoneSets.length } }, ready: true };
   },
   // Zone sets, the assignment and the apportionment cache are each replaced, never mutated.
-  identity: s => [s.zoneSets, s.zoneAssignments, s.zoneApportionment, ...zoneQuantitySourceIdentity(s)],
+  identity: s => [s.zoneSets, s.zoneAssignments, s.zoneApportionment, ...zoneQuantitySourceIdentity(s), currentZoneEvaluationIdentity(s)],
   capture: (s, limit) => {
     if (!assignmentsComputed(s)) return unavailableCapture();
     const modelNames = new Map([...s.models].map(([id, model]) => [id, model.name ?? id]));
@@ -137,10 +139,11 @@ export const zonesAdapter: EvidenceAdapter = {
         // Null as soon as one set has no current split: a partial sum would read as complete.
         refusedCount: sets.every(set => set.refusedCount !== null) ? sets.reduce((n, set) => n + (set.refusedCount ?? 0), 0) : null,
         zoneSets: sets,
+        nativeZoneEmission: s.models.size <= 10 ? [...s.models.keys()].map(modelId => ({ modelId, ...nativeZoneEmissionTransport(s, modelId) })) : { status: 'unavailable-model-limit', count: s.models.size },
         assignment: s.zoneAssignmentTiming ? { elementCount: s.zoneAssignmentTiming.elementCount,
           computedAt: new Date(s.zoneAssignmentTiming.computedAt).toISOString() } : null,
         units: { VolumeM3: 'm3', ElementVolumeM3: 'm3', Fraction: 'ratio 0..1 of the element volume' },
-        limitations: 'One row per (element, zone) pair on the mesh basis, with separately named declared net/gross/unqualified VolumeBases when available. Declared straddler magnitudes use fractions measured on the as-built mesh, then applied to the declared total. No declared basis entry means none was read, not proof of absence when DeclaredQuantityStatus is unverified. Elements reaching no zone are not rows. A null VolumeM3 is unmeasured with its reason, never zero. Straddler splits come only from a split already computed for the current zones; capture never runs the split. assignedCount is per zone set, so an element in several sets counts once per set. When the project VOLUMEUNIT is unresolved, volume bases retain the existing Properties card scale-1 SI default; an m3 label does not prove a declared file unit or a measured conversion.',
+        limitations: 'One row per (element, zone) pair on the mesh basis, with separately named declared net/gross/unqualified VolumeBases when available. Declared straddler magnitudes use fractions measured on the as-built mesh, then applied to the declared total. No declared basis entry means none was read, not proof of absence when DeclaredQuantityStatus is unverified. Elements reaching no zone are not rows. A null VolumeM3 is unmeasured with its reason, never zero. Straddler splits come only from a split already computed for the current zones; capture never runs the split. assignedCount is per zone set, so an element in several sets counts once per set. ' + ZONE_VOLUME_UNIT_LIMITATIONS,
       },
       rows, totalRows, availability: 'available',
     };

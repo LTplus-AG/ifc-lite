@@ -42,6 +42,9 @@ describe('jsRegexToIdsPattern (#5225)', () => {
     ['\\/tmp\\/', '', ['/tmp/', 'tmp']],
     ['[\\d.]+m', '', ['3.5m', 'm']],
     ['^(?:REI60|REI90)$', 'u', ['REI60', 'REI90', 'REI120', 'xREI60']],
+    // JS `.` excludes U+2028/U+2029 as well as CR and LF; XSD `.` does not.
+    ['^a.b$', '', ['axb', 'a\u2028b', 'a\u2029b', 'a\nb', 'a\rb']],
+    ['^[.].+$', 'u', ['.x', '.\u2028', '.\u2029', '.\n', 'x\u2028']],
   ];
   for (const [source, flags, samples] of same) {
     it(`/${source}/${flags} accepts the same values as its IDS pattern`, () => {
@@ -113,6 +116,14 @@ describe('idsPatternToJsRegex (#5225)', () => {
       }
     });
   }
+
+  it('imports XSD . as matching U+2028 and U+2029 but not CR or LF', () => {
+    const converted = idsPatternToJsRegex('a.b');
+    assert.ok(converted.ok);
+    const js = new RegExp(/^\/(.*)\/u$/.exec(converted.pattern)![1], 'u');
+    for (const sample of ['a\u2028b', 'a\u2029b', 'axb']) assert.equal(js.test(sample), true, JSON.stringify(sample));
+    for (const sample of ['a\nb', 'a\rb']) assert.equal(js.test(sample), false, JSON.stringify(sample));
+  });
 
   it('imports ^US$ as a rule accepting US, not the literal ^US$', () => {
     const converted = idsPatternToJsRegex('^US$');

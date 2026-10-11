@@ -44,7 +44,7 @@ function tableAttributeValue(store: IfcDataStore, expressId: number, name: strin
 }
 
 /** A read with the provenance the dataset needs to convert it: the property's explicit unit and declared measure. */
-export type ResolvedElementFieldValue = NormalizedElementFieldValue & { unit?: string; unitSiScale?: number; dataType?: string };
+export type ResolvedElementFieldValue = NormalizedElementFieldValue & { unit?: string; unitSiScale?: number; unitSiOffset?: number; dataType?: string };
 
 export interface ElementFieldReader {
   read(expressId: number, binding: ElementFieldBinding): CellValue;
@@ -176,6 +176,7 @@ export function createElementFieldReader(store: IfcDataStore, mutationView?: Mut
     const provenance = {
       ...(property?.unit ? { unit: property.unit } : {}),
       ...(property?.unitSiScale !== undefined ? { unitSiScale: property.unitSiScale } : {}),
+      ...(property?.unitSiOffset !== undefined ? { unitSiOffset: property.unitSiOffset } : {}),
       ...(property?.dataType ? { dataType: property.dataType } : {}),
     };
     if (property?.values) {

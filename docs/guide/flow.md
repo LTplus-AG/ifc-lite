@@ -90,6 +90,14 @@ Restructuring is a small, complete set of nodes: `core.groupBy`,
 
 The full document is `apps/viewer/src/lib/flow/examples/05-fire-rating-audit.flow.json` — the panel’s example 5, which the CLI test runs end to end.
 
+Assistant new-graph proposals can declare explicit native Player `inputs` bound to
+existing node parameters. Review shows their labels, bindings, kinds, enum choices
+and file slots before creating a saved graph. Save, JSON export and import retain
+these declarations. Choose values in Player, then use its separate Run action;
+creation does not run the graph, infer inputs from script text or bypass native
+preflight and capability grants. Proposals allow at most 100 inputs, enum choices
+per input and file slots, within the overall proposal size limit.
+
 ## Spreadsheet connectors
 
 `table.readCsv` / `table.writeCsv` and `table.readXlsx` / `table.writeXlsx`

@@ -2,81 +2,71 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { type IfcDataStore, extractAllEntityAttributes } from '@ifc-lite/parser';
+import type { IfcDataStore } from '@ifc-lite/parser';
 import { RelationshipType } from '@ifc-lite/data';
 
-/**
- * Resolve the raw `PredefinedType` enum token (e.g. `USERDEFINED`,
- * `NOTDEFINED`, `BEAM`) for an entity, walking through
- * `IfcRelDefinesByType` if the instance has none of its own.
- *
- * Returns `undefined` when neither the instance nor its defining type
- * carry a predefined-type slot.
- */
-export function resolveRawPredefinedType(
-  store: IfcDataStore,
-  expressId: number
-): string | undefined {
-  const allAttrs = extractAllEntityAttributes(store, expressId);
-  const pdt = allAttrs.find((a) => a.name === 'PredefinedType');
-  const pdtValue =
-    typeof pdt?.value === 'string' && pdt.value ? pdt.value : undefined;
-  if (pdtValue && pdtValue !== 'NOTDEFINED') return pdtValue;
+type EntityAttributes = ReadonlyArray<{
+  name: string;
+  value: string | number | boolean;
+}>;
 
-  // Inherit from the defining type (IfcRelDefinesByType).
-  const typeIds =
-    store.relationships?.getRelated?.(
-      expressId,
-      RelationshipType.DefinesByType,
-      'inverse'
-    ) || [];
-  for (const typeId of typeIds) {
-    const typeAttrs = extractAllEntityAttributes(store, typeId);
-    const typePdt = typeAttrs.find((a) => a.name === 'PredefinedType');
-    const typeVal =
-      typeof typePdt?.value === 'string' && typePdt.value
-        ? typePdt.value
-        : undefined;
-    if (typeVal && typeVal !== 'NOTDEFINED') return typeVal;
+/**
+ * An entity's predefined type as the IDS 1.0 entity facet reads it.
+ *
+ * `raw` is the `PredefinedType` enum token (`BEAM`, `USERDEFINED`,
+ * `NOTDEFINED`, …) of whichever entity defines it — the type object or
+ * the occurrence. `userDefined` is that SAME entity's user-defined name
+ * (`ElementType` / `ObjectType` / `ProcessType` / `ResourceType`), and is
+ * only ever set when `raw` is `USERDEFINED`.
+ */
+export interface ResolvedPredefinedType {
+  readonly raw: string | undefined;
+  readonly userDefined: string | undefined;
+}
+
+const NONE: ResolvedPredefinedType = { raw: undefined, userDefined: undefined };
+
+/** The user-defined name slot, in the order the IFC classes declare it. */
+const USER_DEFINED_SLOTS = ['ElementType', 'ObjectType', 'ProcessType', 'ResourceType'];
+
+function stringAttr(attrs: EntityAttributes, name: string): string | undefined {
+  const value = attrs.find((a) => a.name === name)?.value;
+  return typeof value === 'string' && value ? value : undefined;
+}
+
+function fromEntity(attrs: EntityAttributes, raw: string): ResolvedPredefinedType {
+  if (raw !== 'USERDEFINED') return { raw, userDefined: undefined };
+  for (const slot of USER_DEFINED_SLOTS) {
+    const name = stringAttr(attrs, slot);
+    if (name) return { raw, userDefined: name };
   }
-  return pdtValue;
+  return { raw, userDefined: undefined };
 }
 
 /**
- * Resolve the IDS-side "object type" — either the predefined enum
- * value, or (when `USERDEFINED`) the user-defined name from the
- * adjacent `ElementType` / `ObjectType` / `ProcessType` /
- * `ResourceType` slot. Walks `IfcRelDefinesByType` if the instance
- * carries neither.
+ * Resolve an entity's predefined type by the IDS 1.0 rule (User Manual,
+ * entity facet, "The logic for the identification of predefinedType"):
+ *
+ *  1. If a type object related through `IfcRelDefinesByType` carries a
+ *     `PredefinedType` (anything but unset or `NOTDEFINED`), it defines
+ *     the predefined type — `USERDEFINED` reads the type's
+ *     `ElementType` (or `ProcessType` / `ResourceType`).
+ *  2. Otherwise the occurrence's own `PredefinedType` applies —
+ *     `USERDEFINED` reads its `ObjectType`.
+ *  3. Otherwise the entity has no predefined type.
+ *
+ * The user-defined name is consulted ONLY for `USERDEFINED`: an
+ * occurrence whose `PredefinedType` is unset or `NOTDEFINED` does not
+ * acquire one from a stray `ObjectType` (#7394).
+ *
+ * `attributesOf` is the accessor's (cached, overlay-aware) attribute
+ * reader, so a resolution costs no extra re-parse.
  */
-export function resolveObjectType(
+export function resolvePredefinedType(
   store: IfcDataStore,
   expressId: number,
-  fallbackObjectType: () => string | undefined
-): string | undefined {
-  const allAttrs = extractAllEntityAttributes(store, expressId);
-  const pdt = allAttrs.find((a) => a.name === 'PredefinedType');
-  const pdtValue = pdt?.value;
-
-  if (
-    typeof pdtValue === 'string' &&
-    pdtValue &&
-    pdtValue !== 'NOTDEFINED' &&
-    pdtValue !== 'USERDEFINED'
-  ) {
-    return pdtValue;
-  }
-
-  const userSlot =
-    allAttrs.find((a) => a.name === 'ElementType') ||
-    allAttrs.find((a) => a.name === 'ObjectType') ||
-    allAttrs.find((a) => a.name === 'ProcessType') ||
-    allAttrs.find((a) => a.name === 'ResourceType');
-  if (userSlot && typeof userSlot.value === 'string' && userSlot.value) {
-    return userSlot.value;
-  }
-
-  // Inherit from defining type when the instance has neither.
+  attributesOf: (expressId: number) => EntityAttributes
+): ResolvedPredefinedType {
   const typeIds =
     store.relationships?.getRelated?.(
       expressId,
@@ -84,32 +74,12 @@ export function resolveObjectType(
       'inverse'
     ) || [];
   for (const typeId of typeIds) {
-    const typeAttrs = extractAllEntityAttributes(store, typeId);
-    const typePdt = typeAttrs.find((a) => a.name === 'PredefinedType');
-    const typePdtValue = typePdt?.value;
-    if (
-      typeof typePdtValue === 'string' &&
-      typePdtValue &&
-      typePdtValue !== 'NOTDEFINED' &&
-      typePdtValue !== 'USERDEFINED'
-    ) {
-      return typePdtValue;
-    }
-    const typeUserSlot =
-      typeAttrs.find((a) => a.name === 'ElementType') ||
-      typeAttrs.find((a) => a.name === 'ObjectType') ||
-      typeAttrs.find((a) => a.name === 'ProcessType') ||
-      typeAttrs.find((a) => a.name === 'ResourceType');
-    if (
-      typeUserSlot &&
-      typeof typeUserSlot.value === 'string' &&
-      typeUserSlot.value
-    ) {
-      return typeUserSlot.value;
-    }
+    const typeAttrs = attributesOf(typeId);
+    const typeRaw = stringAttr(typeAttrs, 'PredefinedType');
+    if (typeRaw && typeRaw !== 'NOTDEFINED') return fromEntity(typeAttrs, typeRaw);
   }
 
-  const fallback = fallbackObjectType();
-  if (fallback) return fallback;
-  return typeof pdtValue === 'string' && pdtValue ? pdtValue : undefined;
+  const attrs = attributesOf(expressId);
+  const raw = stringAttr(attrs, 'PredefinedType');
+  return raw ? fromEntity(attrs, raw) : NONE;
 }

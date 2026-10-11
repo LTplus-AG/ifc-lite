@@ -103,5 +103,7 @@ export const compareAnalysisEn = {
   'compareAnalysis.bind.modelMissing': '{model} is not open.',
   'compareAnalysis.bind.modelReplaced': '{model} is open, but as a different version of the file.',
   'compareAnalysis.bind.modelAmbiguous': '{model} matches more than one open model.',
+  'compareAnalysis.bind.frameChanged': 'The models have been realigned to a different coordinate frame since the run.',
+  'compareAnalysis.bind.modelSetChanged': 'A different number of models is open than when the run was made ({before} then, {open} now). Open the same models to reopen it.',
   'compareAnalysis.bind.modelMoved': '{model} has been moved since the run.',
 } as const satisfies Record<string, TranslationValue>;

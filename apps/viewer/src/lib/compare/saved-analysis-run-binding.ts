@@ -35,8 +35,8 @@ type BindingState = Pick<ViewerState, 'models' | 'mutationVersion' | 'geometryCo
 
 /** Why a capture cannot be saved; `model` names the model a run could never be matched to again. */
 export type SaveRefusal = { reason: 'modelClosed' | 'empty' } | { reason: 'sourceUnknown'; model: string };
-export type BindRefusalCode = 'runEdited' | 'modelEdited' | 'sourceUnknown' | 'modelMissing' | 'modelReplaced' | 'modelAmbiguous' | 'modelMoved';
-export interface BindRefusal { code: BindRefusalCode; model?: string }
+export type BindRefusalCode = 'runEdited' | 'frameChanged' | 'modelSetChanged' | 'modelEdited' | 'sourceUnknown' | 'modelMissing' | 'modelReplaced' | 'modelAmbiguous' | 'modelMoved';
+export interface BindRefusal { code: BindRefusalCode; model?: string; before?: number; open?: number }
 
 const distanceOf = (value: number): SavedDistance =>
   Number.isFinite(value) ? value : Number.isNaN(value) ? 'NaN' : value > 0 ? 'Infinity' : '-Infinity';
@@ -97,6 +97,7 @@ export function portableAnalysisRun(run: CapturedRun, state: BindingState, now =
     // Nothing changed since a current run, so today's unsaved edits are the ones it saw; otherwise that is unknown.
     edited: freshness === 'current' ? ids.some(id => state.hasChanges(id)) : null,
     placementRecorded: stamp?.placement !== undefined,
+    frame: stamp?.placement ? { realignedFrameKey: stamp.realignedFrameKey ?? null, openModels: stamp.placement.size } : null,
   };
   if (run.kind === 'clash') {
     // A renderer id is offset by the model's load position; the express id inside it is the file's own.
@@ -137,10 +138,16 @@ function sameSource(saved: SavedRunModel, open: { sourceFingerprint?: string; so
 }
 
 /** Resolve each saved model to one open model, or every reason it cannot be. */
-export function bindSavedModels(saved: Pick<SavedAnalysisRun, 'models' | 'edited' | 'placementRecorded'>, state: BindingState):
+export function bindSavedModels(saved: Pick<SavedAnalysisRun, 'models' | 'edited' | 'placementRecorded' | 'frame'>, state: BindingState):
   { ok: true; ids: Map<string, string> } | { ok: false; refusals: BindRefusal[] } {
   const refusals: BindRefusal[] = [];
   if (saved.edited) refusals.push({ code: 'runEdited' });
+  // In its session a placement-stamped run goes stale when the realignment or the open-model set changes
+  // (`isAnalysisStale`); a reopened run gets a fresh stamp, so either difference refuses here instead.
+  if (saved.frame) {
+    if ((state.modelPlacement.realignedFrameKey ?? null) !== saved.frame.realignedFrameKey) refusals.push({ code: 'frameChanged' });
+    if (state.models.size !== saved.frame.openModels) refusals.push({ code: 'modelSetChanged', before: saved.frame.openModels, open: state.models.size });
+  }
   const ids = new Map<string, string>();
   const claimed = new Map<string, string>();
   for (const model of saved.models) {

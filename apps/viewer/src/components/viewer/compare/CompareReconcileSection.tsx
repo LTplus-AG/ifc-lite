@@ -13,7 +13,7 @@
  * can be saved and reopened in a later session (#7370).
  */
 
-import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { IconButton } from '@/components/ui/icon-button';
@@ -68,6 +68,8 @@ export function CompareReconcileSection({ result }: { result: CompareResult }) {
   const [kind, setKind] = useState<RunKind>('clash');
   const [picked, setPicked] = useState<{ base?: string; head?: string }>({});
   const [saveMessage, setSaveMessage] = useState<{ key: SaveMessage; model?: string } | null>(null);
+  // Bumped when the analysis kind changes: a save still running reports only to the view it started in.
+  const saveView = useRef(0);
 
   useEffect(() => {
     const outcome = stored?.comparison === result ? stored.outcome : null;
@@ -101,19 +103,21 @@ export function CompareReconcileSection({ result }: { result: CompareResult }) {
   const save = async () => {
     const head = runs.find(r => r.id === headId);
     if (!head) return;
+    const view = saveView.current;
+    const report = (message: { key: SaveMessage; model?: string } | null) => { if (saveView.current === view) setSaveMessage(message); };
     let binding: Awaited<ReturnType<typeof loadBinding>>;
     try { binding = await loadBinding(); }
-    catch (error) { console.warn('[Compare] Saved-run code could not be loaded', error); setSaveMessage({ key: 'saveFailed' }); return; }
+    catch (error) { console.warn('[Compare] Saved-run code could not be loaded', error); report({ key: 'saveFailed' }); return; }
     // Read the models only once the code is here: they may have changed while it loaded.
     const portable = binding.portableAnalysisRun(head, useViewerStore.getState());
     if (!portable.ok) {
-      setSaveMessage(portable.reason === 'sourceUnknown'
+      report(portable.reason === 'sourceUnknown'
         ? { key: 'saveSourceUnknown', model: portable.model || t('compareAnalysis.reconcile.unnamedModel') }
         : { key: portable.reason === 'modelClosed' ? 'saveModelClosed' : 'saveEmpty' });
       return;
     }
-    setSaveMessage(null);
-    void saveAnalysisRun(portable.saved).then(saved => setSaveMessage({ key: saved ? 'saved' : 'saveFailed' }));
+    report(null);
+    void saveAnalysisRun(portable.saved).then(saved => report({ key: saved ? 'saved' : 'saveFailed' }));
   };
 
   const reconcile = () => {
@@ -126,7 +130,7 @@ export function CompareReconcileSection({ result }: { result: CompareResult }) {
   return (
     <div className="space-y-2 text-xs">
       <SegmentedControl size="sm" label={t('compareAnalysis.reconcile.kindLabel')} value={kind}
-        onValueChange={value => { setKind(value); setPicked({}); setSaveMessage(null); }}
+        onValueChange={value => { setKind(value); setPicked({}); saveView.current++; setSaveMessage(null); }}
         options={[{ value: 'clash', label: t('compareAnalysis.reconcile.kind.clash') },
           { value: 'validation', label: t('compareAnalysis.reconcile.kind.validation') }]} />
       <div className="flex flex-wrap items-center gap-2">

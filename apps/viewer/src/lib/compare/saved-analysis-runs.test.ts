@@ -21,7 +21,7 @@ import type { ClashRule } from '@ifc-lite/clash';
 import { StepExporter } from '@ifc-lite/export';
 import { IfcParser } from '@ifc-lite/parser';
 import type { ViewerState } from '@/store';
-import { analysisStampFrom } from '@/hooks/useAnalysisStaleness';
+import { analysisStampFrom, isAnalysisStale } from '@/hooks/useAnalysisStaleness';
 import { emptyPlacementState } from '@/lib/model-placement/state';
 import { computeFullSourceHash } from '@/utils/sourceContentHash';
 import { reconcileContextOf } from './compare-analysis-state';
@@ -205,14 +205,14 @@ describe('saved analysis runs reconcile across sessions (#7370)', () => {
 
     // Only rev-b open: A is not open at all.
     const onlyB: State = { ...state, models: new Map([...state.models].filter(([id]) => id === 'B')) };
-    assert.deepEqual(refusals(onlyB), [`modelMissing:${A}`]);
+    assert.deepEqual(refusals(onlyB), ['modelSetChanged:', `modelMissing:${A}`]);
     // A file named like A, but rev-b's bytes: another revision of the file, never silently bound.
     const replaced: State = { ...state, models: new Map([...state.models].map(([id, m]) =>
       [id, id === 'A' ? { ...m, sourceContentHash: state.models.get('B')!.sourceContentHash } : m])) };
     assert.deepEqual(refusals(replaced), [`modelReplaced:${A}`, `modelAmbiguous:${B}`]);
     // Two open copies of rev-b: neither is the run's model.
     const twice: State = { ...state, models: new Map([...state.models, ['B-copy', { ...state.models.get('B')!, id: 'B-copy' }]]) };
-    assert.deepEqual(refusals(twice), [`modelAmbiguous:${B}`]);
+    assert.deepEqual(refusals(twice), ['modelSetChanged:', `modelAmbiguous:${B}`]);
     // No recorded source identity: unknown historical metadata stays unavailable.
     const unrecorded = { ...saved, models: saved.models.map(m => ({ key: m.key, name: m.name, ...(m.placement ? { placement: m.placement } : {}) })) };
     assert.deepEqual(refusals(state, unrecorded), [`sourceUnknown:${A}`, `sourceUnknown:${B}`]);
@@ -241,6 +241,54 @@ describe('saved analysis runs reconcile across sessions (#7370)', () => {
     assert.deepEqual(portableAnalysisRun(run, anonymous), { ok: false, reason: 'sourceUnknown', model: pair.head.name });
   });
 
+  it('a clash run stays as stale as its session would call it: another realignment frame or open-model set refuses', async t => {
+    const pair = await revisionPair(t); if (!pair) return;
+    const base = await session(pair);
+    // The workspace was explicitly realigned when the run was made (`commitRealignmentFrame`).
+    const realigned: State = { ...base, modelPlacement: { ...base.modelPlacement, realignedFrameKey: 'crs:EPSG:2056' } };
+    const run = capture(realigned, { kind: 'clash', result: await runClash(pair, ['A'], { rules: RULES }) }, ['A']);
+    const portable = portableAnalysisRun(run, realigned);
+    assert.ok(portable.ok && portable.saved.freshness === 'current');
+    assert.deepEqual(portable.saved.frame, { realignedFrameKey: 'crs:EPSG:2056', openModels: 2 });
+    const saved = decodeSavedAnalysisRun(JSON.parse(JSON.stringify(portable.saved)))!;
+    const codes = (into: State) => { const bound = bindSavedAnalysisRun(saved, into); return bound.ok ? [] : bound.refusals.map(r => r.code); };
+    assert.deepEqual(codes(realigned), [], 'the same frame and models bind');
+
+    // Another frame: the session capture is stale there, so the saved run must not come back current.
+    assert.equal(isAnalysisStale(run.stamp, base), true);
+    assert.deepEqual(codes(base), ['frameChanged']);
+    // B, which the run did not examine, closed after Save: stale in session, refused on reopen.
+    const withoutB: State = { ...realigned, models: new Map([...realigned.models].filter(([id]) => id === 'A')) };
+    assert.equal(isAnalysisStale(run.stamp, withoutB), true);
+    const refused = bindSavedAnalysisRun(saved, withoutB);
+    assert.ok(!refused.ok);
+    assert.deepEqual(refused.refusals, [{ code: 'modelSetChanged', before: 2, open: 1 }]);
+  });
+
+  it('element refs survive a different load position: express ids are stored, renderer ids rebuilt from the bound model', async t => {
+    const pair = await revisionPair(t); if (!pair) return;
+    const plain = await session(pair);
+    const result = await runClash(pair, ['A', 'B'], { rules: RULES });
+    // B loaded second, its renderer ids shifted by its federation offset as the viewer shifts them.
+    const offset = (state: State, id: string, by: number): State => ({ ...state, models: new Map([...state.models].map(([key, m]) =>
+      [key, key === id ? { ...m, idOffset: by } : m])) });
+    const shifted = { ...result, clashes: result.clashes.map(c => ({ ...c,
+      a: c.a.model === 'B' ? { ...c.a, ref: c.a.ref + 50_000 } : c.a, b: c.b.model === 'B' ? { ...c.b, ref: c.b.ref + 50_000 } : c.b })) };
+    const before = offset(plain, 'B', 50_000);
+    const { saved, bound } = roundTrip(capture(before, { kind: 'clash', result: shifted }, ['A', 'B']), before, offset(plain, 'B', 7));
+    assert.ok(saved.kind === 'clash' && bound.ok && bound.run.kind === 'clash');
+    const keyOfB = saved.models.find(m => m.name === pair.head.name)!.key;
+    let checked = 0;
+    for (const [i, clash] of saved.result.clashes.entries()) for (const side of ['a', 'b'] as const) {
+      const ref = clash[side];
+      if (ref.model !== keyOfB || ref.key.startsWith('expressid:')) continue;
+      assert.equal(pair.head.ifcDataStore.entities.getGlobalId(ref.expressId), ref.key.split(':')[0], 'the stored id is the file\'s own');
+      assert.equal(bound.run.result.clashes[i][side].ref, ref.expressId + 7, 'rebuilt at the new offset');
+      checked++;
+    }
+    assert.ok(checked > 0);
+  });
+
   it('a capture whose model was closed cannot be saved; the stored payload is strict', async t => {
     const pair = await revisionPair(t); if (!pair) return;
     const state = await session(pair);
@@ -258,6 +306,7 @@ describe('saved analysis runs reconcile across sessions (#7370)', () => {
     assert.equal(tampered(v => { v.result.rulesRun[0].membersA = ['1']; }), null, 'renderer member ids are never stored');
     assert.equal(tampered(v => { v.result.clashes[0].distance = null; }), null, 'a lost distance is refused, not read as 0');
     assert.equal(tampered(v => { v.freshness = 'fresh'; }), null);
+    assert.equal(tampered(v => { v.frame = null; }), null, 'a placement-stamped run without its frame is refused');
     assert.equal(tampered(v => { v.models.push({ ...v.models[0] }); }), null, 'duplicate join keys are refused');
   });
 });

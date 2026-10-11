@@ -64,6 +64,11 @@ interface SavedAnalysisRunBase {
   edited: boolean | null;
   /** The run's stamp recorded each model's placement (clash runs do). */
   placementRecorded: boolean;
+  /**
+   * The placement frame of a placement-stamped run, exactly what makes such a run stale in its session:
+   * the committed realignment (`realignedFrameKey`) and how many models were open. Null without placement.
+   */
+  frame: { realignedFrameKey: string | null; openModels: number } | null;
 }
 
 export type SavedAnalysisRun =
@@ -163,10 +168,14 @@ function isRuleSet(v: unknown): v is SavedRuleSetContent {
     && v.rules.every(entry => Array.isArray(entry) && entry.length === 2 && anyText(entry[0]) && anyText(entry[1]));
 }
 
+const isFrame = (v: unknown): boolean => record(v) && (v.realignedFrameKey === null || text(v.realignedFrameKey))
+  && count(v.openModels) && v.openModels > 0;
+
 /** Strict: one invalid row refuses the whole run rather than reconciling a subset of it as if it were the run. */
 export function decodeSavedAnalysisRun(v: unknown): SavedAnalysisRun | null {
   if (!record(v) || v.version !== 1 || !text(v.id, false, 200) || !date(v.capturedAt) || !date(v.savedAt)) return null;
   if (!oneOf(v.freshness, ['current', 'stale', 'unknown']) || !(v.edited === null || bool(v.edited)) || !bool(v.placementRecorded)) return null;
+  if (v.placementRecorded ? !isFrame(v.frame) : v.frame !== null) return null;
   if (!list(v.models, SAVED_RUN_LIMITS.models, isModel)) return null;
   const keys = new Set((v.models as SavedRunModel[]).map(model => model.key));
   if (keys.size !== v.models.length) return null;

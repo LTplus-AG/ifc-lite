@@ -21,7 +21,7 @@ import { act } from 'react';
 import { useViewerStore } from '@/store';
 import { render, click, cleanup, waitFor } from '@/test/render';
 import { clearContentDatabase, refuseContentWrites } from '@/test/content-fixture';
-import { revisionPair, runClash, type RevisionPair } from '@/lib/compare/revision-pair.test-support';
+import { revisionPair, runClash, runIds, type RevisionPair } from '@/lib/compare/revision-pair.test-support';
 import { captureAnalysisStamp, stampAnalysisReport } from '@/hooks/useAnalysisStaleness';
 import { computeFullSourceHash } from '@/utils/sourceContentHash';
 import { readContentRows } from '@/lib/storage/content-database';
@@ -222,6 +222,48 @@ describe('saved runs for reconciliation (#7370)', () => {
     assert.deepEqual([base.value, head.value], [saved.id, live.id], 'the saved run is the base, the current capture the head');
     act(() => click(button(root, /^Reconcile$/)));
     assert.ok(root.querySelector('output'), 'the pair reconciles');
+  });
+
+  it('Save reads the models once its code has loaded: a model closed meanwhile refuses the save', async t => {
+    const pair = await revisionPair(t);
+    if (!pair) return;
+    await open(pair, 'A', 'B');
+    await publishClash(pair);
+    const root = mount(pair);
+    act(() => click(button(root, /Capture current run/)));
+    const save = button(root, /Save head run/);
+    const { useSavedAnalysisRuns } = await savedRuns();
+    // Click, then close A before the save code resolves (a dynamic import always settles later).
+    act(() => {
+      click(save);
+      useViewerStore.setState({ models: new Map([...useViewerStore.getState().models].filter(([id]) => id === 'B')) });
+    });
+    await waitFor(() => /A model this run examined is no longer open/.test(root.textContent ?? ''), 'refusal');
+    assert.deepEqual(useSavedAnalysisRuns.getState().entries, []);
+  });
+
+  it('a save still running when the analysis kind changes reports nothing to the other kind', async t => {
+    const pair = await revisionPair(t);
+    if (!pair) return;
+    const idsReport = await runIds(pair, 'B');
+    await open(pair, 'A', 'B');
+    await publishClash(pair);
+    const root = mount(pair);
+    act(() => click(button(root, /Capture current run/)));
+    const save = button(root, /Save head run/);
+    const { useSavedAnalysisRuns } = await savedRuns();
+    // The validation view has a run of its own, so a misdirected message would be on screen there.
+    act(() => { useViewerStore.getState().addCompareRunCapture({ kind: 'validation', id: 'validation-run', capturedAt: '2026-10-11T08:00:00.000Z',
+      modelIds: ['B'], stamp: null, report: idsReport }); });
+    const validation = [...root.querySelectorAll<HTMLInputElement>('input[type="radio"]')].find(input => input.value === 'validation');
+    assert.ok(validation);
+    act(() => { click(save); click(validation); });
+    await waitFor(() => { const [entry] = useSavedAnalysisRuns.getState().entries;
+      return !!entry && useSavedAnalysisRuns.getState().status.items[entry.id] === 'saved'; }, 'save committed');
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 20)); });
+    assert.equal(validation.checked, true);
+    assert.ok(button(root, /Save head run/), 'the validation view shows its own head run');
+    assert.doesNotMatch(root.textContent ?? '', /Saved\. You can reopen|could not be saved/, 'the clash save is not reported under Validation');
   });
 
   it('a refused write says the run is not stored yet; a retry stores it', async t => {

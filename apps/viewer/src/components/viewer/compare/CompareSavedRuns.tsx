@@ -22,6 +22,7 @@ import type { RunKind } from '@/lib/compare/run-reconcile-types';
 
 const REFUSALS = {
   runEdited: 'compareAnalysis.bind.runEdited', modelEdited: 'compareAnalysis.bind.modelEdited',
+  frameChanged: 'compareAnalysis.bind.frameChanged', modelSetChanged: 'compareAnalysis.bind.modelSetChanged',
   sourceUnknown: 'compareAnalysis.bind.sourceUnknown', modelMissing: 'compareAnalysis.bind.modelMissing',
   modelReplaced: 'compareAnalysis.bind.modelReplaced', modelAmbiguous: 'compareAnalysis.bind.modelAmbiguous',
   modelMoved: 'compareAnalysis.bind.modelMoved',
@@ -75,7 +76,7 @@ export function CompareSavedRuns({ kind, onReopen }: { kind: RunKind; onReopen: 
                   <p>{t('compareAnalysis.reconcile.reopenRefused')}</p>
                   <ul className="list-disc pl-4">
                     {refused.refusals.map((refusal, index) => (
-                      <li key={`${refusal.code}-${index}`}>{t(REFUSALS[refusal.code], { model: refusal.model ?? '' })}</li>
+                      <li key={`${refusal.code}-${index}`}>{t(REFUSALS[refusal.code], { model: refusal.model ?? '', before: refusal.before ?? 0, open: refusal.open ?? 0 })}</li>
                     ))}
                   </ul>
                 </div>

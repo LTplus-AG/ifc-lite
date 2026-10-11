@@ -5,6 +5,7 @@
 import './setup-dom.js';
 import 'fake-indexeddb/auto';
 import { beforeEach, mock } from 'node:test';
+import assert from 'node:assert/strict';
 import { act } from 'react';
 import { useViewerStore } from '@/store';
 import { clashGroupLibrary, useClashGroupLibrary, DEFAULT_GROUP_WORKSPACE } from '@/lib/clash/group-workspace';
@@ -75,8 +76,11 @@ beforeEach(async () => {
     await clashGroupLibrary.restore();
     await Promise.all([bcfDraftLibrary.restore(), bcfOutboxLibrary.restore(), modelChangeLibrary.restore(), clashGroupApplicationLibrary.restore(), reviewWorkspaceLibrary.restore(), semanticReviewLibrary.restore(), assistantRecipeLibrary.restore(), assistantPreferencesLibrary.restore()]);
     // Every other loaded library (saved analysis runs, #7370) through the controller registry, never by importing
-    // it: a namespace read keeps this fixture loadable where that registry is absent.
-    await contentLibraries.restoreContentLibraries?.();
+    // it. The namespace read keeps this fixture loadable without the registry, and the check then fails each
+    // test by name instead of silently leaving a library holding the previous test's entries.
+    const restoreAll: (() => Promise<boolean[]>) | undefined = (contentLibraries as Partial<typeof contentLibraries>).restoreContentLibraries;
+    assert.equal(typeof restoreAll, 'function', 'content-library must export restoreContentLibraries for this fixture');
+    await restoreAll!();
     useClashGroupLibrary.setState({ activeId: DEFAULT_GROUP_WORKSPACE });
     useViewerStore.setState({
       ...createDocumentSlice(useViewerStore.setState, useViewerStore.getState, useViewerStore),

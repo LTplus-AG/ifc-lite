@@ -189,6 +189,15 @@ export const PERF_FLAGS = [
     bindings: { urlParam: 'perfMem' },
   },
   {
+    id: 'gpuFrameTiming',
+    kind: 'kill-switch',
+    owner: '@louistrue',
+    removalCondition: 'Keep while physical-display GPU nightlies require opt-in timestamp queries; delete with that measurement lane (#6975).',
+    introducedAt: '2026-10-08',
+    default: false,
+    bindings: { global: '__IFC_LITE_GPU_FRAME_TIMING', urlParam: 'perf.gpuFrameTiming' },
+  },
+  {
     id: 'perfTrace',
     kind: 'kill-switch',
     owner: '@louistrue',

@@ -16,8 +16,8 @@
  * and a declared metre that must stay silent.
  */
 
-import { afterEach, describe, expect, it, vi } from 'vitest';
-import { IfcParser } from '../src/index.js';
+import { afterEach, describe, expect, expectTypeOf, it, vi } from 'vitest';
+import { IfcParser, type IfcDataStore, type LengthUnitSource } from '../src/index.js';
 import { fromTransport, toTransport } from '../src/data-store-transport.js';
 
 function source(data: string[]): ArrayBuffer {
@@ -106,5 +106,10 @@ describe('a defaulted project length unit is reported through onDiagnostic (#739
       expect(restored.lengthUnitSource).toBe(expected);
       expect(restored.lengthUnitScale).toBe(store.lengthUnitScale);
     }
+  });
+
+  it('exports LengthUnitSource from the package index, typing IfcDataStore.lengthUnitSource', () => {
+    expectTypeOf<LengthUnitSource>().toEqualTypeOf<'declared' | 'default'>();
+    expectTypeOf<IfcDataStore['lengthUnitSource']>().toEqualTypeOf<LengthUnitSource | undefined>();
   });
 });

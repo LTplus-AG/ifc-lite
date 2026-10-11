@@ -134,7 +134,7 @@ export interface IfcDataStore extends IfcStoreBase {
 
     /** Project length-unit scale to SI metres, avoiding repeat unit-graph parsing. */
     lengthUnitScale?: number;
-    /** Whether `lengthUnitScale` was declared or the assumed metre (#7395); absent when not parsed from STEP here. */
+    /** Whether `lengthUnitScale` was declared by the first IFCPROJECT or is the assumed metre (#7395); absent when not parsed from STEP here. */
     lengthUnitSource?: LengthUnitSource;
     /** Immutable pre-extracted georeferencing for stores without STEP resource rows. */
     georeferencing?: GeoreferenceInfo | null;

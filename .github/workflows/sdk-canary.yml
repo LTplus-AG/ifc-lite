@@ -47,6 +47,7 @@ on:
       - 'packages/flow-nodes/**'
       - 'packages/geometry/**'
       - 'packages/ids/**'
+      - 'packages/ids-authoring/**'
       - 'packages/ifcx/**'
       - 'packages/lens/**'
       - 'packages/lists/**'

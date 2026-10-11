@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { structuralReviewEn } from './catalogues/structural-review.en';
+import { groupReviewEn } from './catalogues/group-review.en';
 
 import { zoneEmissionEn } from './catalogues/zone-emission.en';
 
@@ -60,6 +61,7 @@ import { modelAuthoringEn } from './catalogues/model-authoring.en';
 import { roomReviewEn } from './catalogues/room-review.en';
 import { sceneActionsEn } from './catalogues/scene-actions.en';
 import { checkAuthoringEn } from './catalogues/check-authoring.en';
+import { idsAgentEn } from './catalogues/ids-agent.en';
 import { assistantArtifactsEn } from './catalogues/assistant-artifacts.en';
 import type { TranslationValue } from './types';
 import type { semanticAssistEn } from './catalogues/semantic-assist.en';
@@ -157,6 +159,7 @@ export const en = {
   ...zoneEmissionEn,
   ...newIfcEn,
   ...structuralReviewEn,
+  ...groupReviewEn,
   ...semanticEn,
   ...semanticResultsEn,
   ...semanticIdentityEn,
@@ -274,6 +277,7 @@ export const en = {
   ...roomReviewEn,
   ...sceneActionsEn,
   ...checkAuthoringEn,
+  ...idsAgentEn,
   ...assistantArtifactsEn,
   ...clashPanelEn,
   ...clashToolsEn,

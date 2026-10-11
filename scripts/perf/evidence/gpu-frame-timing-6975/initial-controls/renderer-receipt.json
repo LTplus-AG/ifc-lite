@@ -1,0 +1,28 @@
+{
+  "base": "7acd7e1d1dc30432fe59cde8aa9b8753f77b4013",
+  "rustTree": "1a1acc4260011c591fd8ce3c5387bb7c10b42f20",
+  "sources": {
+    ".changeset/sweet-wombats-wear.md": "3d470805ff6c1bb207348832b73de3e437d5292b59f44c353794b439b4e15c37",
+    "apps/viewer/src/lib/perf/flags.ts": "d63adcd7ae2d9bf44d0817e8adfecb9a2ed18d2af39db98485fb87a51ac58413",
+    "apps/viewer/src/lib/viewport-debug-hooks.ts": "64ab1ec98565e70ea751dd8e19d369ac495da4fc1e072a3a7d23f8e3c34f6345",
+    "docs/guide/performance.md": "689af84a1453632a5dafd30399efd56dad829cb974e7b192b86d945d172f108a",
+    "packages/renderer/README.md": "29574b67fc8db8b1d35a6a190eb93595cc78d8a933c245af6243f3226c4fd2d8",
+    "packages/renderer/src/ao-pass.ts": "80434f5d552b2ff4be8450f7b985a0be58a504da3df3b3fe8a3eb74952ebafa8",
+    "packages/renderer/src/edge-pass.ts": "f238bf8bd07dcf08cd3834d4164fdc90f84c45d7d189db4efe9f8697174f57a0",
+    "packages/renderer/src/edl-pass.ts": "821209856bd245995d1fbe4db5fd41414d14a6c95cd56a2b47aed5663c6743d5",
+    "packages/renderer/src/frame-timing-gpu.ts": "6be3b8384a4e3eec6c200c9d607a3cbf53511d80f40f48351d9aa665991caea6",
+    "packages/renderer/src/frame-timing-lifetime.test.ts": "42526b003c8f64b776a3bbe7c811d129b5503dfdfc9884bd7007a777d25ac9df",
+    "packages/renderer/src/index.ts": "3d80ce591c01785c1d1949b94090894e698d931625e226934e3db686594b8fb6",
+    "packages/renderer/src/renderer-device-loss-latch.test.ts": "d1b507b5baff7210f6abfc12c14606b5854a5d6ad1c54f4f358b577939d4fd6e",
+    "packages/renderer/src/renderer-frame-timing.ts": "4738aa2c0c0a1119e0fa6addc4d28c9760211f04b505b2c28e6fd7a2d3157af3",
+    "packages/renderer/src/selection-mask-pass.ts": "855f48f94fbd93be0ae63263a98afb5d5a187e6d7b01ad1fd32cbb539203bf03",
+    "packages/renderer/src/shadow-pass.ts": "9442d2fcb13c4f22693dff218061ad12a5e1b2f4712d873ed99270e5431dd017",
+    "packages/renderer/src/test/frame-timing-device.ts": "5ee1ca8076b2e9af6adee6abd06b666b8e72bf4a10b904a608de2cb49b735717",
+    "scripts/perf/frame-gpu-rig.mts": "6caedc311ee0a225e9807e84b8878c61abe44eabb1334ceaa76339a19d46b216",
+    "scripts/perf/frame-gpu-session.ts": "d49e16860f2be6175ac44a7e06182daa9ce8131884478fb0ac2c3a1492266648",
+    "scripts/perf/frame-gpu-timestamps.ts": "de700a1beecf2d93b93c3314e8d6371789b61d4d1069c7eef44fb00c6188b808",
+    "tests/benchmark/metadata-render-readiness.ts": "d77de4b188148ed8000a028196f75af4248bb5906cce156d5ad13840aff5a7b7",
+    "tests/benchmark/viewer-benchmark-page.ts": "569944fe0824d702152284e8c857508905d387ef29ddab7a27c4d9ec79b7bf54"
+  },
+  "status": "initial source controls only; no native GPU, M4 ceiling, scheduler, or nightly qualification"
+}

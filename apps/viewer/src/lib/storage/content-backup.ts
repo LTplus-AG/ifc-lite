@@ -15,6 +15,7 @@ import type { AssistantRecipe } from '../assistant/reuse/recipe.js';
 import type { AssistantPreferences } from '../assistant/reuse/preferences.js';
 import type { SavedValidationReport } from '../validation/reports/history.js';
 import type { SavedComparison } from '../compare/savedComparisonSchema.js';
+import type { SavedAnalysisRun } from '../compare/saved-analysis-run-schema.js';
 import type { DocumentSpec } from '../document/types.js';
 import { contentTransaction, transactionDone, requestValue, type ContentRow, type MigrationRow, type RecoveryRow } from './content-database.js';
 import type { ContentCommitReceipt } from './content-library.js';
@@ -51,6 +52,8 @@ export interface ContentLibraries extends StandaloneArtifactLibraries {
   /** Optional for backups written before saved assistant recipes and project preferences existed. */
   assistantRecipes?: AssistantRecipe[];
   assistantPreferences?: AssistantPreferences[];
+  /** Optional for backups written before saved analysis runs for reconciliation existed. */
+  analysisRuns?: SavedAnalysisRun[];
 }
 export interface ContentBackup {
   version: 1 | 2;
@@ -93,6 +96,7 @@ export function createContentBackup(libraries: ContentLibraries, status?: Record
     ...(copied.semanticReviews ? { semanticReviews: partition('semanticReviews', copied.semanticReviews, CONTENT_DEFINITIONS.semanticReviews.decode) } : {}),
     ...(copied.assistantRecipes ? { assistantRecipes: partition('assistantRecipes', copied.assistantRecipes, CONTENT_DEFINITIONS.assistantRecipes.decode) } : {}),
     ...(copied.assistantPreferences ? { assistantPreferences: partition('assistantPreferences', copied.assistantPreferences, CONTENT_DEFINITIONS.assistantPreferences.decode) } : {}),
+    ...(copied.analysisRuns ? { analysisRuns: partition('analysisRuns', copied.analysisRuns, CONTENT_DEFINITIONS.analysisRuns.decode) } : {}),
   }, drafts: mergeContentDrafts(parseContentDrafts(preservedDrafts), pendingContentDrafts(), drafts) };
 }
 
@@ -141,6 +145,7 @@ export function parseContentBackup(text: string): ContentBackup {
     ...(libraries.semanticReviews !== undefined ? { semanticReviews: parse('semanticReviews', CONTENT_DEFINITIONS.semanticReviews.decode) } : {}),
     ...(libraries.assistantRecipes !== undefined ? { assistantRecipes: parse('assistantRecipes', CONTENT_DEFINITIONS.assistantRecipes.decode) } : {}),
     ...(libraries.assistantPreferences !== undefined ? { assistantPreferences: parse('assistantPreferences', CONTENT_DEFINITIONS.assistantPreferences.decode) } : {}),
+    ...(libraries.analysisRuns !== undefined ? { analysisRuns: parse('analysisRuns', CONTENT_DEFINITIONS.analysisRuns.decode) } : {}),
   }, drafts: parseContentDrafts(backup.drafts) };
 }
 
@@ -198,7 +203,8 @@ export async function importContentBackup(backup: ContentBackup, readVisible?: (
 
       ...(parsed.libraries.semanticReviews ? { semanticReviews: [] } : {}),
       ...(parsed.libraries.assistantRecipes ? { assistantRecipes: [] } : {}),
-      ...(parsed.libraries.assistantPreferences ? { assistantPreferences: [] } : {}) };
+      ...(parsed.libraries.assistantPreferences ? { assistantPreferences: [] } : {}),
+      ...(parsed.libraries.analysisRuns ? { analysisRuns: [] } : {}) };
     for (const row of planned) {
       // Keep newer edits to an already-staged identity. Reimport is not an undo.
       const current = visible?.[row.kind]?.find(entry => entry.id === row.id);
@@ -214,6 +220,7 @@ export async function importContentBackup(backup: ContentBackup, readVisible?: (
       if (row.kind === 'semanticReviews') { const entry = CONTENT_DEFINITIONS.semanticReviews.decode(row.payload); if (entry) (entries.semanticReviews ??= []).push(entry); }
       if (row.kind === 'assistantRecipes') { const entry = CONTENT_DEFINITIONS.assistantRecipes.decode(row.payload); if (entry) (entries.assistantRecipes ??= []).push(entry); }
       if (row.kind === 'assistantPreferences') { const entry = CONTENT_DEFINITIONS.assistantPreferences.decode(row.payload); if (entry) (entries.assistantPreferences ??= []).push(entry); }
+      if (row.kind === 'analysisRuns') { const entry = CONTENT_DEFINITIONS.analysisRuns.decode(row.payload); if (entry) (entries.analysisRuns ??= []).push(entry); }
       if (row.kind === 'document') { const entry = CONTENT_DEFINITIONS.document.decode(row.payload); if (entry) entries.document.push(entry); }
       if (row.kind === 'comparison') { const entry = CONTENT_DEFINITIONS.comparison.decode(row.payload); if (entry) entries.comparison.push(entry); }
       if (row.kind === 'validation') { const entry = CONTENT_DEFINITIONS.validation.decode(row.payload); if (entry) entries.validation.push(entry); }

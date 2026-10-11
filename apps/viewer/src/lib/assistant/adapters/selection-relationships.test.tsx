@@ -284,4 +284,7 @@ test('#7179 large actual native selection bounds each incident edge sample to si
   useViewerStore.setState({ selectedEntitiesSet: new Set(selected.map(expressId => entityRefToString({ modelId: 'large', expressId }))) });
   const captured = rows(); assert.equal(captured.length, 12);
   assert.equal(captured[0].relationshipCount, baseline + 20); assert.equal(captured[0].relationships.length, 6);
+  // #7329: the optional complete Group pin is refused whole rather than displacing cited rows.
+  assert.deepEqual(JSON.parse(captureEvidence('selection').payload).evidence.summary.nativeGroups,
+    [{ modelId: 'large', status: 'unavailable-transport-budget', expectedJsonParts: null }]);
 });

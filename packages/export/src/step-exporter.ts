@@ -26,7 +26,7 @@ import {
 } from './step-property-set-readers.js';
 import { type GeorefContext } from './step-georeferencing.js';
 import { collectModifications, type CollectionContext } from './step-collection.js';
-import { normalizeMapUnitsToMetres } from './step-map-unit-normalization.js';
+import { normalizeCoordinateMetadata } from './step-map-unit-normalization.js';
 import { normalizeMapGeometry } from './step-map-transform.js';
 import { reportStepExportProgress } from './step-export-progress.js';
 import { assembleExportResult } from './step-header.js';
@@ -194,10 +194,11 @@ export class StepExporter {
     // edits — everything `pass` needs before the omission predicates below,
     // and before the output passes that consume them, can run (#2475, the
     // collection block).
-    if (options.normalizeMapUnitsToMetres && (options.deltaOnly || converting || (schema !== 'IFC4' && schema !== 'IFC4X3'))) {
-      throw new Error('Map-unit normalization requires a full export to the source IFC4 or IFC4X3 schema.');
+    const notFullSourceExport = options.deltaOnly || converting || (schema !== 'IFC4' && schema !== 'IFC4X3');
+    if (notFullSourceExport && (options.normalizeMapUnitsToMetres || options.normalizeVerticalDatumToEgm2008)) {
+      throw new Error('Map-unit and vertical datum normalization require a full export to the source IFC4 or IFC4X3 schema.');
     }
-    if (options.normalizeMapGeometry && (options.deltaOnly || converting || excludeGeometry || (schema !== 'IFC4' && schema !== 'IFC4X3'))) {
+    if (options.normalizeMapGeometry && (notFullSourceExport || excludeGeometry)) {
       throw new Error('Map geometry normalization requires a full geometry export to the source IFC4 or IFC4X3 schema.');
     }
     collectModifications(pass, options, applyMutations, this.collectionContext());
@@ -255,8 +256,8 @@ export class StepExporter {
       buildOverlayEntitiesContext(this.mutationView),
     );
 
-    // Complete map-unit adaptation before optional Rust planning and assembly.
-    if (options.normalizeMapUnitsToMetres) normalizeMapUnitsToMetres(pass, () => this.nextExpressId++);
+    // Complete map metadata adaptation before optional Rust planning and assembly.
+    normalizeCoordinateMetadata(pass, options, () => this.nextExpressId++);
     return { pass };
   }
 

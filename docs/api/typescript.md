@@ -139,6 +139,8 @@ interface IfcDataStore extends IfcStoreBase {
   parseTime: number;
   // Length unit scale to metres (e.g. 0.001 for mm files)
   lengthUnitScale?: number;
+  // 'declared' if the project declares its length unit, 'default' if metres are assumed
+  lengthUnitSource?: 'declared' | 'default';
 
   // On-demand lookup maps: entityId -> related expressIds
   onDemandPropertyMap?: Map<number, number[]>;

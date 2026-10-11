@@ -13,7 +13,7 @@ import type { GeoreferenceInfo } from './georef-extractor.js';
 import type { EntityRef } from './types.js';
 import { SpatialHierarchyBuilder } from './spatial-hierarchy-builder.js';
 import { EntityExtractor } from './entity-extractor.js';
-import { extractLengthUnitScale } from './unit-extractor.js';
+import { resolveLengthUnit, type LengthUnitSource } from './unit-extractor.js';
 import { extractPsetsFromIds } from './on-demand-extractors.js'; import type { ExtractedProperty } from './property-value-parser.js';
 import { readQuantitySet, type CollectedQuantity } from './quantity-collect.js';
 import { prepareColumnarEntities, type ColumnarEntityInput } from './columnar-entity-preparation.js';
@@ -134,6 +134,8 @@ export interface IfcDataStore extends IfcStoreBase {
 
     /** Project length-unit scale to SI metres, avoiding repeat unit-graph parsing. */
     lengthUnitScale?: number;
+    /** Whether `lengthUnitScale` was declared or the assumed metre (#7395); absent when not parsed from STEP here. */
+    lengthUnitSource?: LengthUnitSource;
     /** Immutable pre-extracted georeferencing for stores without STEP resource rows. */
     georeferencing?: GeoreferenceInfo | null;
 }
@@ -494,7 +496,7 @@ export async function parseColumnarInput(
 
         // === EXTRACT LENGTH UNIT SCALE ===
         options.onProgress?.({ phase: 'extracting units', percent: 85 });
-        const lengthUnitScale = extractLengthUnitScale(uint8Buffer, entityIndex);
+        const { scale: lengthUnitScale, source: lengthUnitSource } = resolveLengthUnit(uint8Buffer, entityIndex, undefined, emitDiagnostic); // #7395
 
         // === BUILD SPATIAL HIERARCHY ===
         options.onProgress?.({ phase: 'building hierarchy', percent: 90 });
@@ -548,6 +550,7 @@ export async function parseColumnarInput(
             relationships: hierarchyRelGraph,
             spatialHierarchy,
             lengthUnitScale,
+            lengthUnitSource,
             getEntity(expressId) { return entitySource.getEntity(expressId); },
             getEntitiesByType(typeName) { return entitySource.getEntitiesByType(typeName); },
             getProperties(expressId) { return this.properties.getForEntity(expressId); },

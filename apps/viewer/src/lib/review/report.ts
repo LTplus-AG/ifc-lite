@@ -15,6 +15,7 @@ import { freshBlockId, freshDocumentId } from '../document/persistence';
 import { DOCUMENT_VERSION, validateDocumentSpec, type DocumentSpec, type TextBlock } from '../document/types';
 import { cardTitle } from './bcf-draft';
 import type { CoordinationCard, ReviewTotals } from './cards';
+import { findingLines } from './finding-text';
 import { decisionFor, type ReviewWorkspace } from './workspace';
 
 const STATE_TEXT: Record<CoordinationCard['state'], string> = {
@@ -44,7 +45,7 @@ export function reviewDocument(name: string, cards: readonly CoordinationCard[],
     ].filter(Boolean).join('\n')));
     blocks.push(text('body', card.findings.map(finding => `• [${finding.source}${finding.run.temporal === 'historical' ? ', historical' : ''}: ${finding.run.label}`
       + `${finding.run.complete ? '' : ', incomplete run'}] ${finding.title} — native status ${finding.nativeStatus || 'n/a'}`
-      + (finding.detail.length ? `\n  ${finding.detail.slice(0, 3).join('\n  ')}` : '')).join('\n')));
+      + (findingLines(finding).length ? `\n  ${findingLines(finding).slice(0, 3).join('\n  ')}` : '')).join('\n')));
   }
   const document: DocumentSpec = { version: DOCUMENT_VERSION, id: freshDocumentId(), name: title,
     page: { size: 'A4', orientation: 'portrait' }, blocks };

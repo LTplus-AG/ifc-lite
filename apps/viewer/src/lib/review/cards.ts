@@ -62,7 +62,7 @@ export interface ReviewTotals {
   topics: number;
 }
 
-const ANALYSIS_CURRENT = new Set(['observed', 'new', 'persistent']);
+const ANALYSIS_CURRENT = new Set(['observed', 'new', 'persistent', 'changed']);
 
 function cardState(findings: readonly ReviewFinding[]): CardState {
   if (findings.some(finding => finding.source !== 'bcf' && ANALYSIS_CURRENT.has(finding.lifecycle))) return 'current';

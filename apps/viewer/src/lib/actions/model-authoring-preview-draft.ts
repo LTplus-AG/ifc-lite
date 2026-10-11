@@ -20,7 +20,7 @@ export function validateAuthoringDraft(state: ViewerState, batch: ModelAuthoring
   for (const row of input) if (row.status === 'ready' && row.modelId) byModel.set(row.modelId, [...(byModel.get(row.modelId) ?? []), row]);
   for (const [modelId, rows] of byModel) {
     const r = reader(modelId);
-    const refusals = dryRunAuthoring(batch, r.dataStore, r.view, modelId, rows.map(({ index, op, resolved }) => ({ index, op, resolved })), { globalIdScopes: [...state.models].map(([id, model]) => ({ dataStore: model.ifcDataStore, view: state.mutationViews.get(id) })) });
+    const refusals = dryRunAuthoring(batch, r.dataStore, r.view, modelId, rows.map(({ index, op, resolved }) => ({ index, op, resolved })), { globalIdScopes: [...state.models].map(([id, model]) => ({ dataStore: model.ifcDataStore, view: state.mutationViews.get(id) })) }, state);
     for (const row of rows) {
       const refusal = refusals.get(row.index);
       if (refusal === undefined) continue;

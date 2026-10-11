@@ -36,6 +36,7 @@ import { AssistantPlacementMenu, AssistantReturnButton } from './AssistantPlacem
 import { GenerationLanguagePicker } from './GenerationLanguagePicker';
 import { TransientSurface } from './TransientSurface';
 import { setAssistantDraft, useAssistantDraft } from '@/lib/assistant/composer-draft';
+import type { ArtifactPreset } from '@/lib/assistant/artifacts/artifact-preset';
 
 const FlowProposalReview = lazy(() => import('./FlowProposalReview').then(m => ({ default: m.FlowProposalReview })));
 const ReportDraftReview = lazy(() => import('./ReportDraftReview').then(m => ({ default: m.ReportDraftReview })));
@@ -58,6 +59,10 @@ export function AssistantPanel() {
   const stale = useViewerStore(() => state.snapshot ? !evidenceIsCurrent(state.snapshot) : true);
   // Held outside the panel so a draft survives the narrow-layout sheet and host switches.
   const prompt = useAssistantDraft(s => s.text);
+  useEffect(() => {
+    const draft = useAssistantDraft.getState();
+    if (draft.intent && draft.intent.evidenceId !== state.snapshot?.id) useAssistantDraft.setState({ intent: null });
+  }, [state.snapshot?.id]);
   const [keysOpen, setKeysOpen] = useState(false);
   const [libraryOpen, setLibraryOpen] = useState(false);
   const [picking, setPicking] = useState(false);
@@ -99,7 +104,10 @@ export function AssistantPanel() {
     // Attachments go with this one message only, and only because the user attached them. A sent message
     // clears them and counts the send, so a capture still running then is dropped (one that landed meanwhile
     // is cleared with the rest); a refused send keeps the attachments, and a late capture, for the retry.
-    void sendAssistant(text, model, ASSISTANT_PROXY_URL, attachmentsForSend(attachments)).then(success => {
+    const draft = useAssistantDraft.getState();
+    const intent = draft.intent;
+    const artifactPreset = draft.text === text && intent && intent.evidenceId === state.snapshot?.id ? intent.preset : undefined;
+    void sendAssistant(text, model, ASSISTANT_PROXY_URL, attachmentsForSend(attachments), { artifactPreset }).then(success => {
       if (!success) return;
       if (useAssistantDraft.getState().text === text) setAssistantDraft('');
       setAttachments(NO_ATTACHMENTS);
@@ -107,7 +115,10 @@ export function AssistantPanel() {
     });
   };
   const refresh = () => { if (evidence) replaceEvidence(captureEvidence(evidence.source)); };
-  const suggest = (text: string) => { setAssistantDraft(text); promptRef.current?.focus(); };
+  const suggest = (text: string, preset?: ArtifactPreset) => {
+    setAssistantDraft(text, preset && state.snapshot ? { preset, evidenceId: state.snapshot.id } : null);
+    promptRef.current?.focus();
+  };
   const attach = async (source: AssistantSource) => {
     if (state.messages.length && !await confirmDialog({ description: t('assistant.switchConfirm') })) return;
     replaceEvidence(captureEvidence(source));

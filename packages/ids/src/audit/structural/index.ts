@@ -16,6 +16,13 @@
  */
 
 import type { IDSAuditIssue } from '../types.js';
+import {
+  type ElementShape,
+  SHAPE_IDS, SHAPE_INFO, SHAPE_SPECIFICATIONS, SHAPE_SPECIFICATION, SHAPE_APPLICABILITY,
+  SHAPE_REQUIREMENTS, SHAPE_IDS_VALUE, SHAPE_SIMPLE_VALUE, SHAPE_XS_RESTRICTION, SHAPE_XS_FACET,
+  XS_RESTRICTION_FACETS, shapeInRequirements, facetBaseShape, ids11FacetShape, IDS11_PARTOF_NESTED,
+  type FacetContext,
+} from './shapes.js';
 
 const XS_NS = 'http://www.w3.org/2001/XMLSchema';
 
@@ -23,199 +30,6 @@ const XS_NS = 'http://www.w3.org/2001/XMLSchema';
 // they're not specific to any IDS element but XML allows them anywhere.
 const TOLERATED_GLOBAL_ATTR_PREFIXES = new Set(['xmlns', 'xsi', 'xml']);
 
-/**
- * Element shape — the union of attributes and child-element local-names
- * the IDS XSD permits at this position. `attrs` lists the unprefixed
- * names; presence of any other (non-tolerated) attribute is an error.
- */
-interface ElementShape {
-  /** Allowed attribute local-names. */
-  attrs: readonly string[];
-  /** Required attribute local-names (subset of `attrs`). */
-  requiredAttrs?: readonly string[];
-  /** Allowed child element local-names. */
-  children: readonly string[];
-  /** Children allowed only as bare text content (no nested elements). */
-  textOnly?: boolean;
-  /** Allowed XSD-namespaced child local-names (e.g. `xs:restriction`). */
-  xsChildren?: readonly string[];
-}
-
-const SHAPE_IDS: ElementShape = {
-  attrs: [],
-  children: ['info', 'specifications'],
-};
-
-const SHAPE_INFO: ElementShape = {
-  attrs: [],
-  children: [
-    'title',
-    'copyright',
-    'version',
-    'description',
-    'author',
-    'date',
-    'purpose',
-    'milestone',
-  ],
-};
-
-const SHAPE_SPECIFICATIONS: ElementShape = {
-  attrs: [],
-  children: ['specification'],
-};
-
-const SHAPE_SPECIFICATION: ElementShape = {
-  attrs: ['name', 'ifcVersion', 'identifier', 'description', 'instructions'],
-  requiredAttrs: ['name', 'ifcVersion'],
-  children: ['applicability', 'requirements'],
-};
-
-const SHAPE_APPLICABILITY: ElementShape = {
-  // The XSD attaches the xs:occurs attribute group → minOccurs, maxOccurs.
-  attrs: ['minOccurs', 'maxOccurs'],
-  children: [
-    'entity',
-    'partOf',
-    'classification',
-    'attribute',
-    'property',
-    'material',
-  ],
-};
-
-const SHAPE_REQUIREMENTS: ElementShape = {
-  attrs: ['description'],
-  children: [
-    'entity',
-    'partOf',
-    'classification',
-    'attribute',
-    'property',
-    'material',
-  ],
-};
-
-// Per-facet shapes in *applicability* context (no cardinality / uri /
-// instructions) vs *requirements* context (extension types per XSD).
-
-const SHAPE_ENTITY_BODY: ElementShape = {
-  attrs: [],
-  children: ['name', 'predefinedType'],
-};
-const SHAPE_ATTRIBUTE_BODY: ElementShape = {
-  attrs: [],
-  children: ['name', 'value'],
-};
-const SHAPE_CLASSIFICATION_BODY: ElementShape = {
-  attrs: [],
-  children: ['value', 'system'],
-};
-const SHAPE_PARTOF_BODY: ElementShape = {
-  attrs: ['relation'],
-  children: ['entity'],
-};
-const SHAPE_PROPERTY_BODY: ElementShape = {
-  attrs: ['dataType'],
-  children: ['propertySet', 'baseName', 'value'],
-};
-const SHAPE_MATERIAL_BODY: ElementShape = {
-  attrs: [],
-  children: ['value'],
-};
-
-// In *requirements* context, the schema extends each facet with
-// cardinality / instructions / uri (and entity gets just instructions).
-function shapeInRequirements(facetTag: string): ElementShape {
-  const base = facetBaseShape(facetTag);
-  switch (facetTag.toLowerCase()) {
-    case 'entity':
-      return { ...base, attrs: [...base.attrs, 'instructions'] };
-    case 'partof':
-      return {
-        ...base,
-        attrs: [...base.attrs, 'cardinality', 'instructions'],
-      };
-    case 'attribute':
-      return {
-        ...base,
-        attrs: [...base.attrs, 'cardinality', 'instructions'],
-      };
-    case 'classification':
-    case 'property':
-    case 'material':
-      return {
-        ...base,
-        attrs: [...base.attrs, 'cardinality', 'instructions', 'uri'],
-      };
-    default:
-      return base;
-  }
-}
-
-function facetBaseShape(tag: string): ElementShape {
-  // Tags arrive lowercased from `localName.toLowerCase()`. Match
-  // case-insensitively so `partof` resolves to the partOf shape.
-  switch (tag.toLowerCase()) {
-    case 'entity':
-      return SHAPE_ENTITY_BODY;
-    case 'attribute':
-      return SHAPE_ATTRIBUTE_BODY;
-    case 'classification':
-      return SHAPE_CLASSIFICATION_BODY;
-    case 'partof':
-      return SHAPE_PARTOF_BODY;
-    case 'property':
-      return SHAPE_PROPERTY_BODY;
-    case 'material':
-      return SHAPE_MATERIAL_BODY;
-    default:
-      return { attrs: [], children: [] };
-  }
-}
-
-// idsValue (used for <name>, <value>, <baseName>, <propertySet>,
-// <system>, <predefinedType>): choice of simpleValue OR xs:restriction.
-const SHAPE_IDS_VALUE: ElementShape = {
-  attrs: [],
-  children: ['simpleValue'],
-  xsChildren: ['restriction'],
-};
-
-const SHAPE_SIMPLE_VALUE: ElementShape = {
-  attrs: [],
-  children: [],
-  textOnly: true,
-};
-
-// xs:restriction child facets the IDS XSD admits.
-const XS_RESTRICTION_FACETS = [
-  'enumeration',
-  'pattern',
-  'minInclusive',
-  'maxInclusive',
-  'minExclusive',
-  'maxExclusive',
-  'length',
-  'minLength',
-  'maxLength',
-  'totalDigits',
-  'fractionDigits',
-  'whiteSpace',
-];
-
-const SHAPE_XS_RESTRICTION: ElementShape = {
-  attrs: ['base'],
-  children: [],
-  xsChildren: XS_RESTRICTION_FACETS,
-};
-
-// Each xs:enumeration/xs:pattern/etc carries a `value` attribute.
-const SHAPE_XS_FACET: ElementShape = {
-  attrs: ['value'],
-  children: [],
-  textOnly: true,
-};
 
 /**
  * Walks the parsed XML root and emits issues for any element/attribute
@@ -225,7 +39,9 @@ const SHAPE_XS_FACET: ElementShape = {
  * stripped during parsing).
  */
 export async function runStructuralAudit(
-  xml: string | ArrayBuffer
+  xml: string | ArrayBuffer,
+  /** IDS 1.1 PREVIEW: admit the 1.1 candidate shapes (see `ids11FacetShape`). */
+  ids11 = false
 ): Promise<IDSAuditIssue[]> {
   const issues: IDSAuditIssue[] = [];
   const xmlString =
@@ -244,7 +60,7 @@ export async function runStructuralAudit(
   const root = doc.documentElement;
   if (!root || (root.localName ?? '').toLowerCase() !== 'ids') return issues;
 
-  walkIds(root, issues);
+  walkIds(root, issues, ids11);
   return issues;
 }
 
@@ -276,13 +92,13 @@ function getParser(): Promise<{
   return parserPromise;
 }
 
-function walkIds(el: Element, issues: IDSAuditIssue[]): void {
+function walkIds(el: Element, issues: IDSAuditIssue[], ids11: boolean): void {
   checkShape(el, SHAPE_IDS, 'ids', issues);
   for (const child of childElements(el)) {
     const ln = (child.localName ?? '').toLowerCase();
     if (ln === 'info') walkInfo(child, 'ids.info', issues);
     else if (ln === 'specifications')
-      walkSpecifications(child, 'ids.specifications', issues);
+      walkSpecifications(child, 'ids.specifications', issues, ids11);
   }
 }
 
@@ -298,29 +114,31 @@ function walkInfo(
 function walkSpecifications(
   el: Element,
   path: string,
-  issues: IDSAuditIssue[]
+  issues: IDSAuditIssue[],
+  ids11: boolean
 ): void {
   checkShape(el, SHAPE_SPECIFICATIONS, path, issues);
   let i = 0;
   for (const child of childElements(el)) {
     const ln = (child.localName ?? '').toLowerCase();
     if (ln === 'specification')
-      walkSpecification(child, `${path}.specification[${i++}]`, issues);
+      walkSpecification(child, `${path}.specification[${i++}]`, issues, ids11);
   }
 }
 
 function walkSpecification(
   el: Element,
   path: string,
-  issues: IDSAuditIssue[]
+  issues: IDSAuditIssue[],
+  ids11: boolean
 ): void {
   checkShape(el, SHAPE_SPECIFICATION, path, issues);
   for (const child of childElements(el)) {
     const ln = (child.localName ?? '').toLowerCase();
     if (ln === 'applicability')
-      walkFacetContainer(child, `${path}.applicability`, false, issues);
+      walkFacetContainer(child, `${path}.applicability`, false, issues, ids11);
     else if (ln === 'requirements')
-      walkFacetContainer(child, `${path}.requirements`, true, issues);
+      walkFacetContainer(child, `${path}.requirements`, true, issues, ids11);
   }
 }
 
@@ -328,7 +146,8 @@ function walkFacetContainer(
   el: Element,
   path: string,
   isRequirements: boolean,
-  issues: IDSAuditIssue[]
+  issues: IDSAuditIssue[],
+  ids11: boolean
 ): void {
   checkShape(
     el,
@@ -339,7 +158,7 @@ function walkFacetContainer(
   let i = 0;
   for (const child of childElements(el)) {
     const ln = (child.localName ?? '').toLowerCase();
-    walkFacet(child, ln, `${path}.facets[${i++}]`, isRequirements, issues);
+    walkFacet(child, ln, `${path}.facets[${i++}]`, isRequirements ? 'requirement' : 'applicability', issues, ids11);
   }
 }
 
@@ -347,30 +166,56 @@ function walkFacet(
   el: Element,
   tag: string,
   path: string,
-  inRequirements: boolean,
-  issues: IDSAuditIssue[]
+  context: FacetContext,
+  issues: IDSAuditIssue[],
+  ids11: boolean
 ): void {
-  const shape = inRequirements
-    ? shapeInRequirements(tag)
-    : facetBaseShape(tag);
+  let shape: ElementShape;
+  if (ids11) shape = ids11FacetShape(tag, context);
+  else shape = context === 'requirement' ? shapeInRequirements(tag) : facetBaseShape(tag);
   checkShape(el, shape, path, issues);
+  if (ids11 && tag === 'partof') checkPartOfEntityCount(el, path, issues);
   for (const child of childElements(el)) {
     const ln = (child.localName ?? '').toLowerCase();
-    walkIdsValueOrFacet(child, ln, `${path}.${ln}`, inRequirements, issues);
+    walkIdsValueOrFacet(child, ln, `${path}.${ln}`, tag === 'partof', issues, ids11);
   }
+}
+
+/**
+ * IDS 1.1 PREVIEW: #380 turns partOf's `xs:sequence` into an unbounded
+ * `xs:choice`, which no longer pins the related entity to one. #379 says
+ * "at least one entity"; the conservative reading taken here is exactly one,
+ * because several conjunctive entity facets on one related element are
+ * never satisfiable for distinct classes.
+ */
+function checkPartOfEntityCount(el: Element, path: string, issues: IDSAuditIssue[]): void {
+  const entities = childElements(el).filter((c) => (c.localName ?? '').toLowerCase() === 'entity').length;
+  if (entities === 1) return;
+  issues.push({
+    severity: 'error',
+    code: 'E_XSD_STRUCTURE',
+    message: `<partOf> needs exactly one <entity> (IDS 1.1 preview reading of #379/#380), found ${entities}`,
+    path,
+    detail: { element: 'partOf', entities },
+  });
 }
 
 function walkIdsValueOrFacet(
   el: Element,
   tag: string,
   path: string,
-  inRequirements: boolean,
-  issues: IDSAuditIssue[]
+  inPartOf: boolean,
+  issues: IDSAuditIssue[],
+  ids11: boolean
 ): void {
+  if (ids11 && inPartOf && (IDS11_PARTOF_NESTED as readonly string[]).includes(tag)) {
+    walkFacet(el, tag, path, 'nested', issues, ids11);
+    return;
+  }
   switch (tag) {
     case 'entity':
       // `partOf > entity` is a nested entity facet (applicability shape).
-      walkFacet(el, 'entity', path, false, issues);
+      walkFacet(el, 'entity', path, 'nested', issues, false);
       return;
     case 'name':
     case 'value':

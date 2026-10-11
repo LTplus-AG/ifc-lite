@@ -6,6 +6,8 @@ import type { TranslationValue } from '../types';
 
 /** Reviewed native authoring (viewer AI P15A): `components/viewer/actions/ModelAuthoringReview.tsx`, assistant proposals. */
 export const modelAuthoringEn = {
+  'modelAuthoring.op.element.reassignStorey': 'Reassign storey',
+  'modelAuthoring.reassignmentPreview': 'Move {count} products with their complete hosted and aggregate dependencies. Existing identities and world placement stay fixed; no displaced geometry preview.',
   'modelAuthoring.reachNeighborPreview': 'The preview shows the target body; adjoining wall updates are not drawn. Applying uses the native joined-wall writer.',
   'modelAuthoring.trimExtendResult': '{mode} {end} · length {length} {units} {joined}',
   'modelAuthoring.splitResult': 'Split at {cut}; the {side} piece keeps the existing identity and one new piece is created',
@@ -16,6 +18,8 @@ export const modelAuthoringEn = {
   'modelAuthoring.rows': 'Proposed operations',
   'modelAuthoring.frame': 'Lengths in {units}, storey-local (Z up); rotation angles in degrees, counter-clockwise from above. Stair and grid Direction are radians; native stair expected snapshots retain metre lengths.',
   'modelAuthoring.counts': '{ready} ready · {attention} need attention · {other} unchanged, blocked or unsupported',
+  'modelAuthoring.op.curtainWall.create': 'Create curtain wall',
+  'modelAuthoring.curtainWallPreview': 'Native aggregate: mullions, transoms and panels. Preview is available only for matching rectangular member sections and the native 0.024 m panel thickness; other native sections or thicknesses, unreadable source frames and changed live storey elevation are not drawn.',
   'modelAuthoring.op.grid.create': 'Create grid',
   'modelAuthoring.op.column.createOnGrid': 'Create column on grid',
   'modelAuthoring.gridAxes': 'grid axes',
@@ -50,7 +54,14 @@ export const modelAuthoringEn = {
   'modelAuthoring.alignBounds': 'Preview shows native bounds only, not the element solid.',
   'modelAuthoring.op.type.assign': 'Assign type',
   'modelAuthoring.op.type.detach': 'Detach type',
+  'modelAuthoring.op.material.layers': 'Assign material layers',
+  'modelAuthoring.layersTypeNote': 'Assign to type "{type}" and its {count} current occurrences: {peers}. Occurrence dimensions remain unchanged. This is a material assignment, not an engineering check.',
+  'modelAuthoring.layersWallNote': 'Assign to this wall and resize its native body to the layer total. Native host and wall-layout refusals still apply. This is not an engineering check.',
+  'modelAuthoring.layersElementNote': 'Assign to this element. Body dimensions remain unchanged; no changed-body preview is available. This is not an engineering check.',
   'modelAuthoring.op.material.assign': 'Assign material',
+  'modelAuthoring.op.classification.add': 'Add classification',
+  'modelAuthoring.classificationExistingRetained': 'Existing classifications retained',
+  'modelAuthoring.classificationMetadataPreview': 'This adds classification metadata; there is no geometric preview',
   'modelAuthoring.op.walls.join': 'Join walls',
   'modelAuthoring.op.hosted.edit': 'Edit hosted occurrence',
   'modelAuthoring.hostedEditBoundsPreview': 'Preview shows the opening bounds only; filling geometry, styles and detailed cut shapes are authoritative at native commit.',

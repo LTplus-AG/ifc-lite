@@ -209,8 +209,8 @@ export { ExportNamespace } from './namespaces/export.js';
 export type { ExportCsvOptions, ExportStepOptions, ExportHbjsonOptions, ExportDfjsonOptions } from './namespaces/export.js';
 
 // IDS — full validation, facets, constraints, translation
-export { IDSNamespace } from './namespaces/ids.js';
-export type { IDSValidationSummary, IDSSupportedLocale, IDSValidateOptions } from './namespaces/ids.js';
+export { IDSNamespace, IDSAuthoringNamespace, IDSAuthoringDocument } from './namespaces/ids.js';
+export type { IDSValidationSummary, IDSSupportedLocale, IDSValidateOptions, IDSAuthoringApplyResult, IDSAuthoringLintOptions } from './namespaces/ids.js';
 
 // BCF — full collaboration: topics, viewpoints, comments, GUID, colors, IDS→BCF
 export {
@@ -244,15 +244,8 @@ export { CostNamespace } from './namespaces/cost.js';
 export { createCostBackend } from './cost-backend.js';
 export { createEffectiveRecordOverlay } from './effective-record-overlay.js';
 export type { CostModelResolver, ResolvedCostModel } from './cost-backend.js';
-export { createCostStoreBackend } from './cost-store-backend.js';
+export * from './store-authoring-exports.js';
 export { resolveLiveOwnerHistoryId } from './cost-owner-history.js';
-export { createStructuralStoreBackend, type StructuralStoreModelResolver } from './store-structural-backend.js';
-export type { CostStoreModelResolution, CostStoreModelResolver } from './cost-store-backend.js';
-export type { CostStoreBackendMethods } from './store-cost-types.js';
-export type { StructuralStoreBackendMethods } from './store-structural-types.js';
-export { createModellingStoreBackend, type ModellingStoreModelResolver } from './store-modelling-backend.js';
-export { createOrdinaryStoreBackend, type OrdinaryStoreBackendMethods } from './store-ordinary-backend.js';
-export type { ModellingStoreBackendMethods } from './store-modelling-types.js';
 
 // Clash — geometric interference detection over caller-provided ClashElement[]
 export { ClashNamespace } from './namespaces/clash.js';

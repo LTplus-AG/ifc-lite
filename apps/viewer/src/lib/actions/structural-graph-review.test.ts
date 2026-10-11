@@ -4,6 +4,7 @@
 import '@/test/setup-dom.js';
 import 'fake-indexeddb/auto';
 import assert from 'node:assert/strict';
+import { assertSameNativeIfcGraph } from '@/test/native-ifc-graph';
 import { afterEach, test } from 'node:test';
 import { asSourceBytes, effectiveMetadataRecord, extractStructuralOnDemand } from '@ifc-lite/parser';
 import { useViewerStore } from '@/store';
@@ -45,7 +46,7 @@ test('#7318 all nine reviewed native factories export supplied graph, load zero,
   const before = editedModelBytes(dataStore, view), history = useViewerStore.getState().undoStacks.get(SAMPLE_MODEL)?.length;
   const review = prepareStructuralReview(useViewerStore, proposal(storey, full(storey)));
   held.validate();
-  assert.deepEqual(editedModelBytes(dataStore, view), before);
+  await assertSameNativeIfcGraph(editedModelBytes(dataStore, view), before);
   assert.equal(useViewerStore.getState().undoStacks.get(SAMPLE_MODEL)?.length, history);
   assert.equal(useViewerStore.getState().storeEditors.size, 0, 'native preparation does not allocate a live editor');
   const receipt = commitReviewedStructural(useViewerStore, review, 'native audit');
@@ -86,7 +87,9 @@ test('#7318 selective approval cannot reuse an unapproved owner, wrong SELECT re
   assert.equal(extractStructuralOnDemand(await parseIfc(editedModelBytes(dataStore, view))).loadGroups.length, 0);
   assert.equal((await parseIfc(editedModelBytes(dataStore, view))).entities.getGlobalId(291), dataStore.entities.getGlobalId(291));
 });
-test('#7318 stale source, history-free native edits, proposal choices and permissions refuse before writes', async () => {
+test('#7318 stale source, history-free native edits, proposal choices and permissions refuse before writes', async (t) => {
+  // #7347: Date-only clock crosses FILE_NAME export seconds; real scheduling stays live.
+  t.mock.timers.enable({ apis: ['Date'], now: new Date('2026-10-09T12:00:00Z') });
   const { dataStore, view, storey } = await setup();
   let review = prepareStructuralReview(useViewerStore, proposal(storey, [analysis('Supplied source check')]));
   view.setAttribute(291, 'Description', 'New source state');
@@ -97,10 +100,11 @@ test('#7318 stale source, history-free native edits, proposal choices and permis
   review = prepareStructuralReview(useViewerStore, proposal(storey, [analysis('Supplied choice check')]));
   review.delta[0].after!.attributes[2] = 'Changed after review'; assert.throws(() => review.commit(), /choices|delta changed/);
   const before = editedModelBytes(dataStore, view);
+  t.mock.timers.tick(1000);
   review = prepareStructuralReview(useViewerStore, proposal(storey, [analysis('Supplied replacement check')]));
   const model = useViewerStore.getState().models.get(SAMPLE_MODEL)!;
   useViewerStore.setState({ models: new Map([[SAMPLE_MODEL, { ...model }]]) });
-  assert.throws(() => review.commit(), /source|changed/); assert.deepEqual(editedModelBytes(dataStore, view), before);
+  assert.throws(() => review.commit(), /source|changed/); await assertSameNativeIfcGraph(editedModelBytes(dataStore, view), before);
 });
 test('#7318 absent source and missing native-measure acknowledgement cannot certify or authorize a complete analytical graph', async () => {
   const { dataStore, storey } = await setup(), input = proposal(storey, [analysis('Native measure check')]);
@@ -131,7 +135,7 @@ test('#7318 native schema/enum/SELECT and coordinate/load invariants preserve so
     { op: 'structural.analysis.create', params: { Name: 'Bad enum', PredefinedType: 'INVENTED' } },
     { op: 'structural.pointAction.create', params: { Name: 'Missing supplied load' } },
     { op: 'structural.member.create', storey, params: { Name: 'Zero length', Start: [0, 0, 0], End: [0, 0, 0] } },
-  ] as StructuralOperation[]) { assert.throws(() => prepareStructuralReview(useViewerStore, proposal(storey, [operation])), /enumeration|component|distinct/); assert.deepEqual(editedModelBytes(dataStore, view), before); }
+  ] as StructuralOperation[]) { assert.throws(() => prepareStructuralReview(useViewerStore, proposal(storey, [operation])), /enumeration|component|distinct/); await assertSameNativeIfcGraph(editedModelBytes(dataStore, view), before); }
   const input = proposal(storey, [analysis('Unsupported schema')]);
   dataStore.schemaVersion = 'IFC2X3'; assert.throws(() => prepareStructuralReview(useViewerStore, input), /schema|differs/);
 });
@@ -153,7 +157,7 @@ test('#7318 federation binds native graph creation/history solely to the explici
   const before = editedModelBytes(dataStore, view), receipt = commitReviewedStructural(useViewerStore, prepareStructuralReview(useViewerStore, proposal(storey, [analysis('Secondary supplied owner')], id)), 'federated explicit Apply');
   assert.equal(receipt.batches[0].modelId, id);
   assert.equal(extractStructuralOnDemand(await parseIfc(editedModelBytes(second, useViewerStore.getState().mutationViews.get(id)!))).analysisModels[0].name, 'Secondary supplied owner');
-  assert.deepEqual(editedModelBytes(dataStore, view), before); assert.equal(useViewerStore.getState().undoStacks.get(SAMPLE_MODEL)?.length, undefined);
+  await assertSameNativeIfcGraph(editedModelBytes(dataStore, view), before); assert.equal(useViewerStore.getState().undoStacks.get(SAMPLE_MODEL)?.length, undefined);
 });
 test('#7318 invalid current Root identity and effective geometry-unit declaration changes refuse binding without invented identities or units', async () => {
   const { dataStore, view, storey } = await setup();

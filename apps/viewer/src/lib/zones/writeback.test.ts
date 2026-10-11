@@ -280,3 +280,14 @@ describe('zone write-back: run summary', () => {
     });
   });
 });
+
+for (const refusal of ['declared-unit-unavailable', 'declared-quantity-unavailable'] as const) {
+  it(`#7376 ${refusal} exports an honest refusal property and no fabricated physical quantity`, () => {
+    const result = buildElementWriteBack(straddler({ shares: [], refusal }), {
+      zoneSetName: 'Sections', zoneSetId: 'set-1', basis: 'net', volumeSiScale: 1,
+    });
+    assert.ok(result); assert.equal(result.qsetName, null); assert.equal(result.quantities.length, 0);
+    const reason = String(propValue(result, ZONE_PROPERTY_NAMES.volumeUnavailable));
+    assert.match(reason, /unavailable/); assert.doesNotMatch(reason, /declares no/);
+  });
+}

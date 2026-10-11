@@ -215,4 +215,30 @@ describe('ExportDialogShell (#5848)', () => {
     click(trigger());
     assert.match(document.body.textContent ?? '', new RegExp(expected.replace('.', '\\.')));
   });
+
+  it('lists every exporter warning with the result, and a reopen clears them (#7335)', async () => {
+    const warnings = ['Map geometry normalization refused: first reason.', 'Map units preserved: second reason.'];
+    mountShell(async () => ({ success: false, message: 'Preparation reported 2 problems.', warnings }));
+    click(trigger());
+    click(button('Export'));
+    await waitFor(() => alerts().length === 1, 'the refused run must show its error');
+    const listed = () => [...document.body.querySelectorAll('details li')].map((node) => node.textContent);
+    assert.deepEqual(listed(), warnings, 'each reason is listed, not only the count');
+    assert.match(document.body.querySelector('details summary')?.textContent ?? '', /^2 warnings$/);
+
+    await act(async () => {
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+    });
+    click(trigger());
+    assert.deepEqual(listed(), [], 'a reopened dialog must not list the previous run\'s warnings');
+  });
+
+  it('closeOnSuccess keeps a success with warnings open so they are seen (#7335)', async () => {
+    mountShell(async () => ({ success: true, message: 'it worked', warnings: ['one caveat'] }), undefined, { closeOnSuccess: true });
+    click(trigger());
+    click(button('Export'));
+    await waitFor(() => alerts().length === 1, 'a success with warnings must show its result');
+    assert.ok(dialogIsOpen());
+    assert.deepEqual([...document.body.querySelectorAll('details li')].map((node) => node.textContent), ['one caveat']);
+  });
 });

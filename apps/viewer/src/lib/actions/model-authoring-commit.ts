@@ -22,6 +22,7 @@ import { authoringReader } from './model-authoring-read';
 import { commitNativeReplacement } from './model-authoring-replacement-commit';
 import { writeSlabOpening } from './model-authoring-slab-opening';
 import type { StoreApi } from 'zustand';
+import { writeReviewedLayers } from './model-authoring-layers';
 import { generateIfcGuid } from '@ifc-lite/encoding';
 import type { ViewerState } from '@/store';
 import { copyElements } from '@/lib/commands/modeling/copy-elements';
@@ -33,6 +34,7 @@ import { runTransaction } from '@/lib/commands/modeling/transaction';
 import type { AuthoringTransaction, CommitResult, ModelingCommand } from '@/lib/commands/modeling/types';
 import { buildStoreyWorkplane, isWorkplane } from '@/lib/commands/modeling/workplane';
 import { commitElementAlignment, commitElementTransform, planSelectionTransform } from '@/lib/element-transform/commit';
+import { writeReviewedStoreyReassignment } from './model-authoring-storey-reassignment';
 import { writeNativeSplit } from './model-authoring-split';
 import { recordModellingEdit, recordModellingCommit } from '@/store/slices/mutation-modelling-records';
 import { toMetres, type AuthoringOp, type ModelAuthoringBatch } from './model-authoring';
@@ -41,6 +43,8 @@ import { previewModelAuthoring, type AuthoringRow, type ModelAuthoringPreview } 
 import { undoBatch, type AppliedChange, type CommitOutcome, type ModelChangeReceipt } from './model-change-commit';
 import { commitElementSize } from '@/lib/element-size-commit';
 import { setElementProfile } from '@/store/slices/mutation-element-profile';
+import { writeCurtainWallCreation } from './model-authoring-curtain-wall-native';
+import { completeCurtainWallHierarchy } from '@/store/slices/mutation-curtain-grid';
 import { writeStairLifecycle, writeStairCreation } from './model-authoring-stair-lifecycle';
 import { nativePlacementFromTarget } from './model-authoring-placement';
 import { readOnlyModelEditTarget } from './model-authoring-read-target';
@@ -49,6 +53,9 @@ import { completeStairRailingGeometry } from '@/store/slices/mutation-stair-rail
 import { writeAuthoringReach } from './model-authoring-reach';
 import { sizeInMetres } from './model-authoring-size-params';
 import { profileInMetres } from './model-authoring-shape-params';
+import { addClassificationInDraft } from '@/lib/authoring/associations';
+import { classificationInput, classificationLabel } from './model-authoring-classification';
+import { resolveEnglish } from '@/i18n/registry';
 
 /** Rows that will be written: approved, ready, and every creation they use is written too. */
 export function writableRows(preview: ModelAuthoringPreview, approved: ReadonlySet<number>): AuthoringRow[] {
@@ -87,6 +94,15 @@ function writeRow(tx: AuthoringTransaction, batch: ModelAuthoringBatch, row: Aut
   const base = { index: row.index, op: op.op, modelId };
   const targetGid = 'target' in op && !('ref' in op.target) ? op.target.globalId : undefined;
   switch (op.op) {
+    case 'classification.add': {
+      const dataStore = tx.store.models.get(modelId)?.ifcDataStore;
+      if (!dataStore) throw new Error('The native model source is unavailable');
+      recordModellingEdit(tx.api, modelId, (_methods, draft) => {
+        const outcome = addClassificationInDraft(dataStore, draft, resolved.target!, classificationInput(op, dataStore.schemaVersion));
+        if (!outcome.ok) throw new Error(resolveEnglish(outcome.reasonKey));
+      }, tx.batchId);
+      return [{ ...base, globalId: op.target.globalId, field: 'Classification', before: null, after: classificationLabel(op) }];
+    }
     case 'element.replace': return commitNativeReplacement(tx,batch,row,refs,ids,written);
     case 'stair.resize': case 'stair.delete': case 'railing.delete': case 'stair.replace': case 'railing.replace': {
       const dataStore=tx.store.models.get(modelId)?.ifcDataStore;if(!dataStore)throw new Error('The native lifecycle source is unavailable');
@@ -95,6 +111,17 @@ function writeRow(tx: AuthoringTransaction, batch: ModelAuthoringBatch, row: Aut
       written.created.push(...result.created);written.deleted.push(...result.deleted);written.remesh.push(...result.remesh);
       if('ref' in op&&result.root!==undefined){const view=tx.api.getState().mutationViews.get(modelId),made=view?.getNewEntity(result.root),gid=made?.attributes[0];if(typeof gid!=='string')throw new Error('The native replacement has no GlobalId');ids.set(op.ref,result.root);refs.set(op.ref,gid);completeStairRailingGeometry(tx.api,modelId,resolved.storey!,{expressId:result.root,...(result.created.length>1?{flightId:result.created[1]}:{})},op.op==='stair.replace'?'IFCSTAIR':'IFCRAILING',tx.batchId,false);return [{...base,globalId:gid,field:op.op==='stair.replace'?'IfcStair':'IfcRailing',before:op.target.globalId,after:op.params.Name??null}];}
       return [{...base,globalId:op.target.globalId,field:op.op==='stair.resize'?'Dimensions':op.target.ifcClass,before:op.op==='stair.resize'?JSON.stringify(op.expected):op.target.name,after:op.op==='stair.resize'?JSON.stringify(op.size):null}];
+    }
+    case 'curtainWall.create': {
+      const source = tx.store.models.get(modelId)?.ifcDataStore;
+      if (!source) throw new Error('The native curtain-wall source is unavailable');
+      const out = recordModellingEdit(tx.api, modelId, (_methods, editor) => writeCurtainWallCreation(source, editor, batch, op, resolved.storey!), tx.batchId);
+      const globalId = tx.api.getState().mutationViews.get(modelId)?.getNewEntity(out.curtainWallId)?.attributes[0];
+      if (typeof globalId !== 'string') throw new Error('The native curtain wall has no GlobalId');
+      completeCurtainWallHierarchy(tx.api, modelId, resolved.storey!, out);
+      const all = [out.curtainWallId, ...out.mullionIds, ...out.transomIds, ...out.panelIds];
+      ids.set(op.ref, out.curtainWallId); refs.set(op.ref, globalId); written.created.push(...all); written.remesh.push(...all);
+      return [{ ...base, globalId, field: 'IfcCurtainWall', before: null, after: JSON.stringify({ Name: op.params.Name ?? 'Curtain Wall', IfcMember: out.mullionIds.length + out.transomIds.length, IfcPlate: out.panelIds.length }) }];
     }
     case 'stair.create': case 'railing.create': {
       const source = tx.store.models.get(modelId)?.ifcDataStore;
@@ -122,6 +149,11 @@ function writeRow(tx: AuthoringTransaction, batch: ModelAuthoringBatch, row: Aut
       written.moved = true;
       return [{ ...base, globalId: op.target.globalId, field: 'Trim/Extend', before: JSON.stringify(before.reach),
         after: JSON.stringify({ mode: result.op, end: result.end, lengthMetres: result.length, joined: result.joined }) }];
+    }
+    case 'element.reassignStorey': {
+      const result = recordModellingCommit(tx.api, modelId, (editor, store) => writeReviewedStoreyReassignment(store, editor, op, resolved.target!, resolved.reassignment!.source, resolved.reassignment!.destination), tx.batchId);
+      written.remesh.push(...result.products.map(product => product.expressId)); written.moved = true;
+      return [{ ...base, globalId: op.target.globalId, field: 'Storey', before: op.sourceStorey.globalId, after: op.destinationStorey.globalId }];
     }
     case 'element.split': {
       const scopes = [...tx.store.models].map(([id, model]) => ({ dataStore: model.ifcDataStore, view: tx.store.mutationViews.get(id) }));
@@ -185,6 +217,15 @@ function writeRow(tx: AuthoringTransaction, batch: ModelAuthoringBatch, row: Aut
         ids.set(ref, id); refs.set(ref, globalId);
         return { ...base, globalId, field: entity.type, before: null, after: typeof entity.attributes[2] === 'string' ? entity.attributes[2] : null };
       });
+    }
+    case 'material.layers': {
+      const dataStore = tx.store.models.get(modelId)?.ifcDataStore;
+      if (!dataStore) throw new Error('The native model source is unavailable');
+      const changed = recordModellingEdit(tx.api, modelId, (methods, draft) => writeReviewedLayers(
+        { modelId, dataStore, view: draft.getMutationView(), editor: draft }, draft, methods, resolved.layers!, op, batch.units, tx.store), tx.batchId);
+      written.remesh.push(...changed);
+      return [{ ...base, globalId: op.target.globalId, field: 'MaterialLayers', before: JSON.stringify(op.expected),
+        after: JSON.stringify({ scope: op.scope, MaterialLayers: op.MaterialLayers }) }];
     }
     case 'type.detach': {
       const dataStore = tx.store.models.get(modelId)?.ifcDataStore;

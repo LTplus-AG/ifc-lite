@@ -8,10 +8,13 @@
  * around them come from the catalogue.
  */
 
+import { curtainWallLayout } from '@ifc-lite/create';
+import { curtainWallParamsInMetres } from '@/lib/actions/model-authoring-curtain-wall-fields';
 import { sectionGhostOmissions } from '@/lib/profile-section/profile-outline';
 import type { TranslationKey, TranslationParameters } from '@/i18n';
 import type { AuthoringOp, ModelAuthoringBatch } from '@/lib/actions/model-authoring';
 import type { AuthoringRow } from '@/lib/actions/model-authoring-preview';
+import { classificationLabel } from '@/lib/actions/model-authoring-classification';
 
 type T = (key: TranslationKey, params?: TranslationParameters) => string;
 
@@ -44,6 +47,9 @@ export function authoringRowSummary(row: AuthoringRow, batch: ModelAuthoringBatc
   const none = t('modelChanges.absent');
   const fromMetres = (v: number) => (units === 'mm' ? v * 1000 : v);
   switch (op.op) {
+    case 'classification.add':
+      return { subject: ref(op.target, t), before: t('modelAuthoring.classificationExistingRetained'), after: classificationLabel(op),
+        previewNote: t('modelAuthoring.classificationMetadataPreview') };
     case 'grid.create': case 'column.createOnGrid': {
       const omitted = op.op === 'column.createOnGrid' && 'Profile' in op.params ? sectionGhostOmissions(op.params.Profile) : [];
       return { subject: `${op.op === 'grid.create' ? 'IfcGrid' : 'IfcColumn'} ${op.params.Name ?? ''}`, before: t('modelAuthoring.notYet'), after: t('modelAuthoring.createdOn', { storey: before.storeyName ?? op.storey.globalId, dims: op.op === 'grid.create' ? `${op.params.UAxes.length + op.params.VAxes.length + (op.params.WAxes?.length ?? 0)} ${t('modelAuthoring.gridAxes')}` : `${point(op.params.Position)} · ${num(op.params.Height)} ${units}` }), previewNote: [row.previewUnavailable ? t('modelAuthoring.editPreviewUnavailable') : t(op.op === 'grid.create' ? 'modelAuthoring.gridPreview' : 'modelAuthoring.gridColumnPreview'), omitted.length ? t('modelAuthoring.filletPreview', { fields: omitted.join(', ') }) : ''].filter(Boolean).join(' · ') };
@@ -56,6 +62,8 @@ export function authoringRowSummary(row: AuthoringRow, batch: ModelAuthoringBatc
         previewNote: [row.resolved.reachPlan && row.resolved.reachPlan.walls.length > 1 ? t('modelAuthoring.reachNeighborPreview') : '', row.previewUnavailable ? t('modelAuthoring.editPreviewUnavailable') : '',
           row.previewOuterBodyOnly ? t('modelAuthoring.outerBodyPreview') : '',
           row.previewOmitted?.length ? t('modelAuthoring.filletPreview', { fields: row.previewOmitted.join(', ') }) : ''].filter(Boolean).join(' · ') || undefined };
+    case 'element.reassignStorey':
+      return { subject: `${op.target.ifcClass} ${op.target.name}`, before: op.sourceStorey.globalId, after: op.destinationStorey.globalId, previewNote: t('modelAuthoring.reassignmentPreview', { count: op.expected.products.length }) };
     case 'element.split': {
       const cut = op.cut.kind === 'slab' ? `${point(op.cut.a)} → ${point(op.cut.b)} ${units}` : `${num(op.cut.distance)} ${units}`;
       const effects = row.resolved.splitEffects;
@@ -68,6 +76,12 @@ export function authoringRowSummary(row: AuthoringRow, batch: ModelAuthoringBatc
     case 'stair.resize': return {subject:`${op.target.ifcClass} ${op.target.name}`,before:`${fields({Width:op.expected.Width,RiserHeight:op.expected.RiserHeight,TreadLength:op.expected.TreadLength,...(op.expected.WaistThickness===undefined?{}:{WaistThickness:op.expected.WaistThickness})},units==='mm'?1000:1)} ${units}`,after:`${fields({...stairPatchDisplay(op.expected,units),...op.size})} ${units}`,previewNote:t('modelAuthoring.editPreviewUnavailable')};
     case 'stair.delete': case 'railing.delete': return {subject:`${op.target.ifcClass} ${op.target.name}`,before:op.target.name,after:t('modelChanges.removed'),previewNote:t('modelAuthoring.editPreviewUnavailable')};
     case 'stair.replace': case 'railing.replace': return {subject:`${op.target.ifcClass} ${op.target.name}`,before:op.target.globalId,after:`${op.op==='stair.replace'?'IfcStair':'IfcRailing'} ${JSON.stringify(op.params)} ${units}`,previewNote:t('modelAuthoring.stairRailingPreview')+(row.previewUnavailable?' '+t('modelAuthoring.editPreviewUnavailable'):'')};
+    case 'curtainWall.create': {
+      const layout = curtainWallLayout(curtainWallParamsInMetres(op.params, batch.units));
+      return { subject: `IfcCurtainWall ${op.params.Name ?? 'Curtain Wall'}`, before: t('modelAuthoring.notYet'),
+        after: t('modelAuthoring.createdOn', { storey: before.storeyName ?? op.storey.globalId, dims: `${JSON.stringify(op.params)} ${units} · IfcMember=${layout.mullions.length + layout.transoms.length} · IfcPlate=${layout.panels.length}` }),
+        previewNote: t('modelAuthoring.curtainWallPreview') + (row.previewUnavailable ? ' ' + t('modelAuthoring.editPreviewUnavailable') : '') };
+    }
     case 'stair.create': case 'railing.create': return {subject:`${op.op==='stair.create'?'IfcStair':'IfcRailing'} ${op.params.Name??''}`,before:t('modelAuthoring.notYet'),after:t('modelAuthoring.createdOn',{storey:before.storeyName??op.storey.globalId,dims:`${JSON.stringify(op.params)} ${units}`} ),previewNote:t('modelAuthoring.stairRailingPreview')+(row.previewUnavailable?' '+t('modelAuthoring.editPreviewUnavailable'):'')};
     case 'element.resize': case 'element.profile': {
       const notes = [row.previewUnavailable ? t('modelAuthoring.editPreviewUnavailable') : '',
@@ -113,6 +127,19 @@ export function authoringRowSummary(row: AuthoringRow, batch: ModelAuthoringBatc
     case 'type.assign':
       return { subject: ref(op.target, t), before: before.type ?? none,
         after: 'create' in op.type ? t('modelAuthoring.newType', { name: op.type.create.name, ifcClass: op.type.create.ifcClass }) : op.type.name };
+    case 'material.layers': {
+      const describe = (layers: typeof op.MaterialLayers) => layers.map(layer => `${String(layer.LayerThickness)} ${units} · ${layer.Material === null ? none : 'create' in layer.Material ? t('modelAuthoring.newMaterial', { name: layer.Material.create.Name }) : `${layer.Material.Name || 'IfcMaterial'} #${layer.Material.expressId}`}`).join('; ');
+      const previous = op.scope === 'type' ? op.expected.typeLayers : op.expected;
+      const existingLayers = previous?.MaterialLayers.length ? describe(previous.MaterialLayers) : previous?.assignments.length
+        ? previous.assignments.map(assignment => `${assignment.ifcClass} #${assignment.expressId}`).join('; ') : none;
+      const detail = [row.previewUnavailable ? t('modelAuthoring.editPreviewUnavailable') : '',
+        row.previewOuterBodyOnly ? t('modelAuthoring.outerBodyPreview') : '',
+        row.previewOmitted?.length ? t('modelAuthoring.filletPreview', { fields: row.previewOmitted.join(', ') }) : ''].filter(Boolean).join(' ');
+      return { subject: ref(op.target, t), before: existingLayers, after: describe(op.MaterialLayers),
+        previewNote: (op.scope === 'type' ? t('modelAuthoring.layersTypeNote', { type: op.expected.type?.Name ?? none,
+          count: op.expected.peers?.length ?? 0, peers: op.expected.peers?.map(peer => peer.name || peer.globalId).join(', ') ?? none })
+          : t(row.resolved.layers?.kind === 'wall' ? 'modelAuthoring.layersWallNote' : 'modelAuthoring.layersElementNote')) + (detail ? ` ${detail}` : '') };
+    }
     case 'material.assign':
       return { subject: ref(op.target, t), before: before.material ?? none,
         after: row.resolved.materialId === null ? t('modelAuthoring.newMaterial', { name: op.material.name }) : op.material.name };

@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import '@/test/setup-dom.js';
 import assert from 'node:assert/strict';
+import { assertSameNativeIfcGraph } from '@/test/native-ifc-graph';
 import { afterEach, test } from 'node:test';
 import { createStructuralStoreBackend } from '@ifc-lite/sdk';
 import { extractStructuralOnDemand } from '@ifc-lite/parser';
@@ -81,7 +82,7 @@ test('Campaign6812 existing supplied native StructuralAnalysisModel should admit
   const bytes = editedModelBytes(target.dataStore, target.view), history = state.undoStacks.get(SAMPLE_MODEL)?.length;
   const review = prepareStructuralReview(useViewerStore, proposal);
   assert.ok(review.delta.some(row => row.after?.type === 'IfcStructuralAnalysisModel'));
-  assert.deepEqual(editedModelBytes(target.dataStore, target.view), bytes);
+  await assertSameNativeIfcGraph(editedModelBytes(target.dataStore, target.view), bytes);
   assert.equal(useViewerStore.getState().undoStacks.get(SAMPLE_MODEL)?.length, history);
   review.commit();
   assert.ok(extractStructuralOnDemand(await parseIfc(editedModelBytes(target.dataStore, useViewerStore.getState().mutationViews.get(SAMPLE_MODEL)!))).analysisModels.some(row => row.name === 'Reviewed supplied analytical graph'));
@@ -99,7 +100,7 @@ test('Campaign6812 canonical Structural refusals preserve source and grouped his
       if (invalid === 'empty-membership') return write.assignToStructuralGroup(SAMPLE_MODEL, storey, []);
       return write.addStructuralAnalysisModel(SAMPLE_MODEL, { PredefinedType: 'USERDEFINED' });
     }, 'supplied-invalid-structural'), /component|distinct|non-empty|ObjectType/);
-    assert.deepEqual(editedModelBytes(dataStore, view), before);
+    await assertSameNativeIfcGraph(editedModelBytes(dataStore, view), before);
     assert.equal(useViewerStore.getState().undoStacks.get(SAMPLE_MODEL)?.length, history);
   }
 });

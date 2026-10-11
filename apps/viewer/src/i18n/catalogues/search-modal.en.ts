@@ -39,7 +39,7 @@ export const searchModalEn = {
   'searchModal.library.family.scripts': 'Scripts',
   'searchModal.library.family.lists': 'Lists',
   'searchModal.library.family.lenses': 'Lenses',
-  'searchModal.library.family.profiles': 'Profiles (Flavors)',
+  'searchModal.library.family.profiles': 'Profiles',
   'searchModal.library.phase.ready': '{count} available',
   'searchModal.library.phase.loading': 'Loading · {count} currently available',
   'searchModal.library.phase.unavailable': 'Library unavailable · {count} currently available',

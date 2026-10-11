@@ -1,0 +1,22 @@
+exit: 0
+--- stdout
+
+  Door fire ratings (rev B)
+  Every door states its fire rating.
+
+  Fire rating on all doors (required, IFC4)
+    Doors carry a fire rating.
+    Applies to:
+    - Elements of type "IFCDOOR"
+    Requires:
+    - Optional: Property ""Pset_DoorCommon"."FireRating"" must exist
+    - Attribute ""Name"" must exist
+    Instructions: Fill Pset_DoorCommon.FireRating.
+
+  Windows carry a thermal transmittance (optional, IFC4)
+    Applies to:
+    - Elements of type "IFCWINDOW"
+    Requires:
+    - Property ""Pset_WindowCommon"."ThermalTransmittance"" must exist
+
+--- stderr

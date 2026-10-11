@@ -12,6 +12,11 @@
  * and `bim.store`'s modelling methods for joins, types and materials.
  */
 
+import { writeReviewedStoreyReassignment } from './model-authoring-storey-reassignment';
+import { writeCurtainWallCreation } from './model-authoring-curtain-wall-native';
+import type { NativeReadState } from './model-authoring-read-target';
+import { writeReviewedLayers } from './model-authoring-layers';
+import type { ApplyLayersSpec } from '@/lib/authoring/material-layers';
 import { writeNativeReplacement } from './model-authoring-replacement';
 import { slabOpeningSpec, writeSlabOpening, readSlabOpeningPreview } from './model-authoring-slab-opening';
 import { writeStairLifecycle, writeStairCreation } from './model-authoring-stair-lifecycle';
@@ -31,6 +36,9 @@ import { draftElementSize } from '@/lib/element-size-commit';
 import { writeElementProfile } from '@/store/slices/mutation-element-profile';
 import { writeAuthoringReach } from './model-authoring-reach';
 import { sizeInMetres } from './model-authoring-size-params';
+import { addClassificationInDraft } from '@/lib/authoring/associations';
+import { classificationInput } from './model-authoring-classification';
+import { resolveEnglish } from '@/i18n/registry';
 import { authoringCopyTransforms, copyRefs } from './model-authoring-copy';
 import { pointToMetres, toMetres, type AuthoringOp, type AxisParams, type BoxParams, type ModelAuthoringBatch } from './model-authoring';
 
@@ -39,9 +47,11 @@ export type ElementId = { id: number } | { ref: string };
 
 /** What preview resolved for an operation; the commit re-resolves and must find the same. */
 export interface ResolvedOp {
+  layers?: ApplyLayersSpec;
   alignment?: { reference: number; targets: number[]; storeyId: number; geometry?: import('./model-authoring-align').PreparedAlignment };
   slabOpening?: ReturnType<typeof readSlabOpeningPreview>;
   target?: number;
+  reassignment?: { source: number; destination: number };
   reachBoundary?: ElementId;
   reachPlan?: ReturnType<typeof import('@ifc-lite/create').trimExtendElementInStore>;
   splitEffects?: ReturnType<typeof import('@ifc-lite/create').splitElementsInStore>[number];
@@ -159,6 +169,7 @@ export function dryRunAuthoring(
   modelId: string,
   rows: readonly DryRunRow[],
   splitScopes?: Parameters<typeof import('@ifc-lite/create').splitElementsInStore>[3],
+  readState?: NativeReadState,
 ): Map<number, string> {
   const refusals = new Map<number, string>();
   if (rows.length === 0) return refusals;
@@ -167,7 +178,7 @@ export function dryRunAuthoring(
     const refs = new Map<string, number>();
     for (const row of rows) {
       try {
-        editor.runAtomic((draft) => draftAuthoringOperation(batch, dataStore, modelId, draft, row, refs, splitScopes));
+        editor.runAtomic((draft) => draftAuthoringOperation(batch, dataStore, modelId, draft, row, refs, splitScopes, readState));
       } catch (error) {
         refusals.set(row.index, error instanceof Error ? error.message : String(error));
       }
@@ -189,14 +200,25 @@ export function writeNativeTypeDetach(op: Extract<AuthoringOp, { op: 'type.detac
   detachFromType(draft, dataStore, [resolved.target!]);
 }
 
-export function draftAuthoringOperation(batch: ModelAuthoringBatch, dataStore: IfcDataStore, modelId: string, draft: StoreEditor, row: DryRunRow, refs: Map<string, number>, splitScopes?: Parameters<typeof import('@ifc-lite/create').splitElementsInStore>[3]): void {
+export function draftAuthoringOperation(batch: ModelAuthoringBatch, dataStore: IfcDataStore, modelId: string, draft: StoreEditor, row: DryRunRow, refs: Map<string, number>, splitScopes?: Parameters<typeof import('@ifc-lite/create').splitElementsInStore>[3], readState?: NativeReadState): void {
   const { op, resolved } = row;
   switch (op.op) {
+    case 'classification.add': {
+      const outcome = addClassificationInDraft(dataStore, draft, resolved.target!, classificationInput(op, dataStore.schemaVersion));
+      if (!outcome.ok) throw new Error(resolveEnglish(outcome.reasonKey));
+      return;
+    }
+    case 'material.layers':
+      if (!readState) throw new Error('The native layer source context is unavailable');
+      writeReviewedLayers({ modelId, dataStore, view: draft.getMutationView(), editor: draft }, draft,
+        draftMethods(dataStore, modelId, draft), resolved.layers!, op, batch.units, readState);
+      return;
     case 'element.replace': {const made=writeNativeReplacement(batch,dataStore,draft,resolved.target!,resolved.storey!,op);refs.set(op.ref,made.expressId);return;}
     case 'stair.resize': case 'stair.delete': case 'railing.delete': case 'stair.replace': case 'railing.replace': {
       const result=writeStairLifecycle(dataStore,draft,batch,op,resolved.target!,resolved.storey);
       if('ref' in op && result.root!==undefined)refs.set(op.ref,result.root);return;
     }
+    case 'curtainWall.create': { const made = writeCurtainWallCreation(dataStore, draft, batch, op, resolved.storey!); refs.set(op.ref, made.curtainWallId); return; }
     case 'stair.create': case 'railing.create': {
       const made = writeStairCreation(dataStore, draft, batch, op, resolved.storey!);
       refs.set(op.ref, made.expressId);return;
@@ -209,6 +231,9 @@ export function draftAuthoringOperation(batch: ModelAuthoringBatch, dataStore: I
       return;
     case 'element.trimExtend':
       resolved.reachPlan = writeAuthoringReach(batch, dataStore, draft, resolved.target!, op, resolved.reachBoundary, refs);
+      return;
+    case 'element.reassignStorey':
+      writeReviewedStoreyReassignment(dataStore, draft, op, resolved.target!, resolved.reassignment!.source, resolved.reassignment!.destination);
       return;
     case 'element.split':
       resolved.splitEffects = writeNativeSplit(batch, op, dataStore, draft, resolved.target!, splitScopes);

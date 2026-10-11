@@ -14,12 +14,12 @@
  * for these types encodes every one of those bounds except day-in-month, which
  * it states as an assertion because no regex can express it.
  *
- * Three places decide the same question — the coherence audit's
- * `xs:restriction @base` check, the facets' strict-cast gate, and (through the
- * first) the `info/date` conformance check in `audit/xsd/index.ts` — so the
- * calendar lives here once instead of in a regex table per caller. Two files
- * import this module; the third consumer arrives through
- * `isValidLexicalForXsType`, which is why the count is not the import count.
+ * Several places decide the same question — the coherence audit's
+ * `xs:restriction @base` check and the `info/date` conformance check in
+ * `audit/xsd/index.ts` (both through `isValidLexicalForXsType` in
+ * `xsd-lexical.ts`), the facets' strict-cast gate, and the bound reader in
+ * `xsd-order.ts` (#7399) — so the calendar lives here once instead of in a
+ * regex table per caller.
  */
 
 /** Hour 24 is end-of-day, so any fractional seconds on it must be zero. */

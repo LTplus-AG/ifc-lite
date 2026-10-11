@@ -45,6 +45,8 @@ export const fr = {
     IfcRelFillsElement: 'remplissant',
     'IfcRelVoidsElement IfcRelFillsElement': 'relié via une ouverture à',
   },
+  /** A partOf without a relation: any partOf relation, followed recursively (#7401). */
+  anyRelation: 'rattaché à',
 
   // ============================================================================
   // Constraint Descriptions

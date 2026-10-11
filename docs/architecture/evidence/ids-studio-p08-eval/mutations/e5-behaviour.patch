@@ -1,0 +1,13 @@
+diff --git a/scripts/ai-eval/ids/e4-e5-datasets.mjs b/scripts/ai-eval/ids/e4-e5-datasets.mjs
+index 55439e595..b550d5300 100644
+--- a/scripts/ai-eval/ids/e4-e5-datasets.mjs
++++ b/scripts/ai-eval/ids/e4-e5-datasets.mjs
+@@ -154,7 +154,7 @@ export async function e5DatasetErrors(cases, schema) {
+     if (!input || !E5_INPUT_KINDS.has(input.kind) || typeof input.text !== 'string' || !input.text.trim()) {
+       errors.push(`${at}: input needs a kind (${[...E5_INPUT_KINDS].join('/')}) and non-empty text`);
+     }
+-    if (!expected) {
++    if (!expected || expected.behaviour !== behaviour) {
+       errors.push(`${at}: a ${record.category} case expects behaviour ${behaviour}`);
+       continue;
+     }

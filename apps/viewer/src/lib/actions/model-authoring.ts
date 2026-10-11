@@ -20,6 +20,8 @@
  * counter-clockwise seen from above. Nothing here writes.
  */
 
+import { parseStoreyReassignment, type StoreyReassignmentOp } from './model-authoring-storey-reassignment';
+import { parseLayerFields, type LayerFields } from './model-authoring-layer-params';
 import { parseReplacementFields,type NativeReplacementOp } from './model-authoring-replacement-fields';
 import { parseSlabOpeningFields, type SlabOpeningCreate } from './model-authoring-slab-opening';
 import { parseExpectedHostedEdit, parseHostedEdit, type ExpectedHostedEdit } from './model-authoring-hosted-edit';
@@ -33,11 +35,14 @@ import { parseReachFields, type ReachFields } from './model-authoring-reach-fiel
 import { parseSplitSnapshot, parseSplitCut, type SplitCut } from './model-authoring-split-params';
 import type { SplitSnapshot } from './model-authoring-split-state';
 import { parseSizeParams, type ExpectedSize } from './model-authoring-size-params';
+import { parseCurtainWallParams, curtainWallPartWork, CURTAIN_WALL_PART_LIMIT } from './model-authoring-curtain-wall-fields';
+import type { CurtainWallInStoreParams } from '@ifc-lite/create';
 import { parseStairRailingParams, parseStairPatch, parseExpectedStair, railingPostWork, STAIR_RAILING_WORK_LIMIT } from './model-authoring-stair-railing-fields';
 import type { RailingInStoreParams, StairInStoreParams, StairDimensions, StairDimensionEdit, ProfileSection } from '@ifc-lite/create';
 import type { ElementSizePatch } from '@/store/slices/mutation-element-size';
 import { parseCopyFields, type CopyFields, type ArrayFields } from './model-authoring-copy-fields';
-import { parseGlobalIdTarget, parseLength, parsePoint, parseRef, parseText, record, type LengthRange } from './model-authoring-fields';
+import { MODEL_AUTHORING_TEXT_LIMIT, parseGlobalIdTarget, parseLength, parsePoint, parseRef, parseText, record, type LengthRange } from './model-authoring-fields';
+import { parseClassificationAdd, type ClassificationAddFields } from './model-authoring-classification';
 
 export const AUTHORING_CLASSES = ['IfcWall', 'IfcSlab', 'IfcRoof', 'IfcPlate', 'IfcColumn', 'IfcBeam', 'IfcMember', 'IfcSpace'] as const;
 export type AuthoringClass = typeof AUTHORING_CLASSES[number];
@@ -59,6 +64,9 @@ export interface AxisParams { start: Point3; end: Point3; thickness?: number; wi
 export interface BoxParams { position: Point3; width: number; depth: number; thickness?: number; height?: number }
 
 export type AuthoringOp =
+  | StoreyReassignmentOp
+  | ({ op: 'classification.add'; target: ExistingElement } & ClassificationAddFields)
+  | { op: 'curtainWall.create'; ref: string; storey: StoreyTarget; params: CurtainWallInStoreParams }
   | ReviewedGridOp
   | NativeReplacementOp
   | { op: 'stair.resize'; target: ExistingElement; expected: StairDimensions; size: StairDimensionEdit }
@@ -84,6 +92,7 @@ export type AuthoringOp =
   | AlignmentOp
   | { op: 'type.detach'; target: ExistingElement; expected: { GlobalId: string; Name: string } }
   | { op: 'type.assign'; target: ElementTarget; expected?: string | null; type: { globalId: string; name: string } | { create: { ifcClass: string; name: string } } }
+  | ({ op: 'material.layers'; target: ExistingElement } & LayerFields)
   | { op: 'material.assign'; target: ElementTarget; expected?: string | null; material: { name: string; create: boolean } }
   | { op: 'walls.join'; walls: [ElementTarget, ElementTarget] }
   /** A door, window or opening in a host wall: `offset` from the wall's placement origin along it to the centre, `sill` above it. */
@@ -91,8 +100,8 @@ export type AuthoringOp =
   | { op: 'hosted.create'; ref?: string; kind: HostedKind; host: ElementTarget; name?: string; offset: number; sill: number; width: number; height: number };
 
 export type AuthoringOpName = AuthoringOp['op'];
-export const AUTHORING_OPS: readonly AuthoringOpName[] = ['grid.create', 'column.createOnGrid', 'stair.resize', 'stair.delete', 'railing.delete', 'stair.replace', 'railing.replace', 'stair.create', 'railing.create', 'element.create', 'element.replace', 'element.delete', 'element.split', 'element.resize', 'element.profile', 'element.trimExtend', 'element.move', 'element.rotate', 'element.align', 'element.copy', 'element.array',
-  'type.assign', 'type.detach', 'material.assign', 'walls.join', 'hosted.create', 'hosted.edit'];
+export const AUTHORING_OPS: readonly AuthoringOpName[] = ['curtainWall.create', 'element.reassignStorey', 'grid.create', 'column.createOnGrid', 'stair.resize', 'stair.delete', 'railing.delete', 'stair.replace', 'railing.replace', 'stair.create', 'railing.create', 'element.create', 'element.replace', 'element.delete', 'element.split', 'element.resize', 'element.profile', 'element.trimExtend', 'element.move', 'element.rotate', 'element.align', 'element.copy', 'element.array', 'classification.add',
+  'type.assign', 'type.detach', 'material.assign', 'material.layers', 'walls.join', 'hosted.create', 'hosted.edit'];
 
 export interface ModelAuthoringBatch {
   version: 1;
@@ -195,13 +204,20 @@ function operation(value: unknown, index: number, units: AuthoringUnits, refs: M
     return op;
   };
   switch (value.op) {
+    case 'classification.add':
+      return { op: 'classification.add', target: existing(value.target, at), ...parseClassificationAdd(value, at) };
     case 'grid.create': return defineRef({ op: value.op, ref: parseRef(value.ref, at), storey: parseGridStorey(value.storey, `${at} storey`), params: parseGridParams(value.params, units, at) });
     case 'column.createOnGrid': return defineRef({ op: value.op, ref: parseRef(value.ref, at), storey: parseGridStorey(value.storey, `${at} storey`), params: parseGridColumnParams(value.params, units, at), grid: parseGridBinding(value.grid, ref => refs.get(ref)?.op === 'grid.create', `${at} grid`) });
+    case 'element.reassignStorey': return parseStoreyReassignment(value, existing(value.target, at), at);
     case 'element.replace': return defineRef(parseReplacementFields(value,existing(value.target,at),units,at));
     case 'stair.resize': return {op:value.op,target:existing(value.target,at),expected:parseExpectedStair(value.expected,`${at} expected`),size:parseStairPatch(value.size,units,`${at} size`)};
     case 'stair.delete': case 'railing.delete': return {op:value.op,target:existing(value.target,at)};
     case 'stair.replace': return defineRef({op:value.op,target:existing(value.target,at),ref:parseRef(value.ref,at),storey:parseGlobalIdTarget(value.storey,`${at} storey`),params:parseStairRailingParams(value.params,'stair',units,at)});
     case 'railing.replace': return defineRef({op:value.op,target:existing(value.target,at),ref:parseRef(value.ref,at),storey:parseGlobalIdTarget(value.storey,`${at} storey`),params:parseStairRailingParams(value.params,'railing',units,at)});
+    case 'curtainWall.create': {
+      if (Object.keys(value).some(key => !['op', 'ref', 'storey', 'params'].includes(key))) throw new Error(`${at}: unsupported curtain-wall operation field`);
+      return defineRef({ op: value.op, ref: parseRef(value.ref, at), storey: parseGlobalIdTarget(value.storey, `${at} storey`), params: parseCurtainWallParams(value.params, units, at) });
+    }
     case 'stair.create': return defineRef({ op: value.op, ref: parseRef(value.ref, at), storey: parseGlobalIdTarget(value.storey, `${at} storey`), params: parseStairRailingParams(value.params, 'stair', units, at) });
     case 'railing.create': return defineRef({ op: value.op, ref: parseRef(value.ref, at), storey: parseGlobalIdTarget(value.storey, `${at} storey`), params: parseStairRailingParams(value.params, 'railing', units, at) });
     case 'hosted.edit': {
@@ -292,6 +308,8 @@ function operation(value: unknown, index: number, units: AuthoringUnits, refs: M
       if (create && !/^Ifc[A-Za-z0-9]+Type$/.test(chosen.create!.ifcClass)) throw new Error(`${at}: a new type needs an Ifc…Type class`);
       return { op: 'type.assign', target, ...expectedName(value, target, at), type: chosen as Extract<AuthoringOp, { op: 'type.assign' }>['type'] };
     }
+    case 'material.layers':
+      return { op: 'material.layers', target: existing(value.target, at), ...parseLayerFields(value, units, at, existing) };
     case 'material.assign': {
       const target = element(value.target, at, refs);
       const material = record(value.material) ? value.material : null;
@@ -324,7 +342,7 @@ function operation(value: unknown, index: number, units: AuthoringUnits, refs: M
 
 /** Strict, bounded parse of a complete JSON answer (optionally fenced). Throws with a reason a person can act on. */
 export function parseModelAuthoringBatch(answer: string): ModelAuthoringBatch {
-  if (answer.length > 400_000) throw new Error('The authoring batch exceeds the text limit');
+  if (answer.length > MODEL_AUTHORING_TEXT_LIMIT) throw new Error('The authoring batch exceeds the text limit');
   const trimmed = answer.trim();
   const fenced = /^```(?:json)?\s*\n([\s\S]*?)\n```$/.exec(trimmed);
   const value: unknown = JSON.parse(fenced ? fenced[1] : trimmed);
@@ -344,6 +362,8 @@ export function parseModelAuthoringBatch(answer: string): ModelAuthoringBatch {
   if (new Set(splitTargets).size !== splitTargets.length) throw new Error('Split targets must be unique; no targets are silently discarded');
   const splitWork = operations.reduce((sum, op) => sum + (op.op === 'element.split' && op.expected.kind === 'slab' ? op.expected.chain.footprint.length ** 2 : 0), 0);
   if (splitWork > AUTHORING_OUTLINE_WORK_LIMIT) throw new Error(`Split preview work exceeds ${AUTHORING_OUTLINE_WORK_LIMIT} vertex-pair units; use a smaller explicit selection`);
+  const curtainWork = operations.reduce((sum, op) => sum + (op.op === 'curtainWall.create' ? curtainWallPartWork(op.params, units) : 0), 0);
+  if (curtainWork > CURTAIN_WALL_PART_LIMIT) throw new Error(`Curtain-wall batch exceeds ${CURTAIN_WALL_PART_LIMIT} native parts; use smaller explicit batches`);
   const stairRailingWork = operations.reduce((total, op) => total + (
     op.op === 'stair.create' || op.op === 'stair.replace' || op.op === 'element.replace' && op.ifcClass === 'IfcStair' ? op.params.NumberOfRisers
       : op.op === 'railing.create' || op.op === 'railing.replace' || op.op === 'element.replace' && op.ifcClass === 'IfcRailing' ? railingPostWork(op.params.Path, op.params.PostSpacing) : 0), 0);

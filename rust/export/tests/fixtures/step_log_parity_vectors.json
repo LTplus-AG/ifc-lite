@@ -2298,7 +2298,7 @@
     "#27=IFCRELDEFINESBYPROPERTIES('<GUID>',#6,$,$,(#11),#26);",
     "#28=IFCPROPERTYSINGLEVALUE('FireRating',$,IFCLABEL('EI60'),$);",
     "#29=IFCPROPERTYSET('<GUID>',#5,'Pset_DoorCommon',$,(#28));",
-    "#30=IFCQUANTITYLENGTH('Length',$,$,6.,$);",
+    "#30=IFCQUANTITYLENGTH('Length',$,$,6.);",
     "#31=IFCELEMENTQUANTITY('<GUID>',#6,'BaseQuantities',$,$,(#30));",
     "#32=IFCRELDEFINESBYPROPERTIES('<GUID>',#6,$,$,(#11),#31);",
     "#20=IFCDOORSTYLE('2kL3m4N5o6P7q8R9s0T1uV',#5,'Door style',$,$,(#29),$,$,.SINGLE_SWING_LEFT.,.WOOD.,.F.,.F.);",

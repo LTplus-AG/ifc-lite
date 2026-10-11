@@ -89,9 +89,7 @@ export function addCurtainWallIn(
   const partIds = [...built.mullionIds, ...built.transomIds, ...built.panelIds];
   // The curtain wall is the storey's element; its parts join it so Solo and
   // isolation of the storey see them, and undo and redo keep the rows in step.
-  listInStorey(store, modelId, storeyId, built.curtainWallId, 'IFCCURTAINWALL');
-  for (const id of [...built.mullionIds, ...built.transomIds]) listInStorey(store, modelId, storeyId, id, PART_TYPE.member);
-  for (const id of built.panelIds) listInStorey(store, modelId, storeyId, id, PART_TYPE.plate);
+  completeCurtainWallHierarchy(store, modelId, storeyId, built);
   return { expressId: built.curtainWallId, partIds, build: built };
 }
 
@@ -105,4 +103,11 @@ export function addGridIn(
   if ('error' in built) return built;
   listInStorey(store, modelId, storeyId, built.gridId, 'IFCGRID');
   return { expressId: built.gridId, build: built };
+}
+
+/** Publish the same complete native aggregate hierarchy for SDK and reviewed transactions. */
+export function completeCurtainWallHierarchy(store: ModellingStore, modelId: string, storeyId: number, built: CurtainWallBuildResult): void {
+  listInStorey(store, modelId, storeyId, built.curtainWallId, 'IFCCURTAINWALL');
+  for (const id of [...built.mullionIds, ...built.transomIds]) listInStorey(store, modelId, storeyId, id, PART_TYPE.member);
+  for (const id of built.panelIds) listInStorey(store, modelId, storeyId, id, PART_TYPE.plate);
 }

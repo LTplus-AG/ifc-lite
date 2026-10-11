@@ -382,3 +382,14 @@ test('#7375 without attached passages the requirements and unsupported items sti
   assert.match(outline, /A strategy report is delivered/);
   assert.match(outline, /R3: A fire-safety strategy report/);
 });
+
+test('#7375 with an IFC4 and an IFC5 model loaded the IDS draft says which model it does not check', async () => {
+  await converse();
+  const { models } = useViewerStore.getState();
+  const [[id, model]] = [...models];
+  useViewerStore.setState({ models: new Map([...models, [`${id}-ifc5`, { ...model, id: `${id}-ifc5`, schemaVersion: 'IFC5' as const }]]) });
+  const ui = await mount();
+  click(button(card(ui, 'Native checks and documents')!, /Prepare native drafts/));
+  assert.ok(card(ui, 'Review IDS draft'), 'the IFC4 model is still checked');
+  assert.match(ui.textContent ?? '', /The IDS draft does not check 1 loaded model: IDS has no version for its IFC schema/);
+});

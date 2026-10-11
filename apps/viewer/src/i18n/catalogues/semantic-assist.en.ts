@@ -95,6 +95,10 @@ export const semanticAssistEn = {
   'semanticAssist.prepareDrafts': 'Prepare native drafts',
   'semanticAssist.draftsPrepared': 'Drafts prepared. Review, dry-run and save each one below. Excluded requirements stay only in this review.',
   'semanticAssist.refusedIds': 'The IDS draft was refused: {detail}',
+  'semanticAssist.idsSkipsModels': {
+    one: 'The IDS draft does not check {count} loaded model: IDS has no version for its IFC schema (e.g. IFC5).',
+    other: 'The IDS draft does not check {count} loaded models: IDS has no version for their IFC schema (e.g. IFC5).',
+  },
   'semanticAssist.refusedGeometry': 'The information rule draft was refused: {detail}',
   'semanticAssist.refusedManual': 'The document draft was refused: {detail}',
   'semanticAssist.draftsWithdrawn': 'An attached source text, the requirements or the IFC versions of the loaded models changed after the drafts were prepared, so the unsaved drafts were withdrawn. Anything already saved is unchanged. Prepare the drafts again.',

@@ -123,6 +123,7 @@ const semanticMessageShape = {
   "prepareDrafts": [],
   "draftsPrepared": [],
   "refusedIds": ["detail"],
+  "idsSkipsModels": ["count"],
   "refusedGeometry": ["detail"],
   "refusedManual": ["detail"],
   "draftsWithdrawn": [],

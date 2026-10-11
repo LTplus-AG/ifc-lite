@@ -62,18 +62,24 @@ function citedSources(proposal: SemanticRequirementProposal, included: readonly 
   }).join('|');
 }
 
-/** IDS versions of the loaded IFC models; IFC4 when none is loaded, none when only IFC5 models are (IDS has no IFC5 version). */
-function loadedIfcVersions(models: ReadonlyMap<string, { schemaVersion?: string; ifcDataStore?: { schemaVersion?: string } | null }>): IFCVersion[] {
-  if (models.size === 0) return ['IFC4'];
+/**
+ * IDS versions of the loaded IFC models; IFC4 when none is loaded, none when only IFC5 models are (IDS has no IFC5 version).
+ * `unchecked` counts the loaded models an IDS draft cannot target (IFC5, or no known version), so a mixed load says so.
+ */
+function loadedIfcVersions(models: ReadonlyMap<string, { schemaVersion?: string; ifcDataStore?: { schemaVersion?: string } | null }>):
+  { versions: IFCVersion[]; unchecked: number } {
+  if (models.size === 0) return { versions: ['IFC4'], unchecked: 0 };
   const versions = new Set<IFCVersion>();
+  let unchecked = 0;
   for (const model of models.values()) {
     const schemaVersion = model.schemaVersion ?? model.ifcDataStore?.schemaVersion;
     if (schemaVersion === 'IFC2X3' || schemaVersion === 'IFC4') versions.add(schemaVersion);
     // A model record says IFC4X3; the IDS spelling is accepted too, so no IFC4X3 model is ever left untargeted.
     else if (schemaVersion === 'IFC4X3' || schemaVersion === 'IFC4X3_ADD2') versions.add('IFC4X3_ADD2');
+    else unchecked += 1;
   }
   // Sorted, so the same set of versions in another load order is the same target.
-  return [...versions].sort();
+  return { versions: [...versions].sort(), unchecked };
 }
 
 export function RequirementDispatch({ proposal, review, passages, loadSchema = loadSchemaMeasures }: {
@@ -93,7 +99,8 @@ export function RequirementDispatch({ proposal, review, passages, loadSchema = l
   }, [loadSchema]);
   // The IFC versions an IDS draft would target decide which declared types the values are checked as.
   const models = useViewerStore(s => s.models);
-  const ifcVersions = useMemo(() => loadedIfcVersions(models), [models]);
+  const loaded = useMemo(() => loadedIfcVersions(models), [models]);
+  const ifcVersions = loaded.versions;
   const classified = useMemo(() => schema ? qualifyRequirements(review, passages, sources, schema, ifcVersions) : [], [review, passages, sources, schema, ifcVersions]);
   // Exclusions belong to the proposal they were made on: a replacement that reuses an id for another requirement starts included.
   const [exclusion, setExclusion] = useState<{ proposal: SemanticRequirementProposal; ids: ReadonlySet<string> }>(() => ({ proposal, ids: new Set() }));
@@ -150,6 +157,9 @@ export function RequirementDispatch({ proposal, review, passages, loadSchema = l
       <p aria-live="polite" className="text-muted-foreground">{t('semanticAssist.draftsPrepared')}</p>
       {active.drafts.refused.map(({ target, detail }) => <p key={target} role="alert" className="rounded border border-destructive/40 bg-destructive/10 p-2 text-destructive break-words">
         {t(REFUSED[target], { detail })}</p>)}
+      {/* A mixed load: the IDS draft checks the models of the versions it targets and says which it cannot. */}
+      {active.drafts.ids && loaded.unchecked > 0 && <p role="alert" className="rounded border border-amber-500/40 bg-amber-500/10 p-2">
+        {t('semanticAssist.idsSkipsModels', { count: loaded.unchecked })}</p>}
       {active.drafts.ids && <IdsDraftReview initial={active.drafts.ids} />}
       {active.drafts.rules && <RulesDraftReview initial={active.drafts.rules} />}
       {/* No validation report backs these drafts: the outline holds only text and not-checked items. */}

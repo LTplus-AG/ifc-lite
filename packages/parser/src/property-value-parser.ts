@@ -44,6 +44,13 @@ export interface ParsedIfcPropertyValue {
     structure?: 'enumerated' | 'bounded' | 'list' | 'table' | 'reference' | 'complex';
     /** `IfcComplexProperty` only: each nested property, by its own `Name`, decoded the same way (#5475). */
     members?: ExtractedProperty[];
+    /**
+     * The IFC type of each entry of `values`, index for index (`undefined` for
+     * an untyped member). Set only when the members do not share one
+     * `dataType` (a table, or a list mixing types), so a consumer converting
+     * units can treat each member by its own measure (#7395).
+     */
+    valueDataTypes?: Array<string | undefined>;
 }
 
 /** One property as the on-demand extractors return it: the parsed value
@@ -52,6 +59,8 @@ export interface ExtractedProperty extends ParsedIfcPropertyValue {
     name: string;
     unit?: string;
     unitSiScale?: number;
+    /** Additive SI offset of `unit` (°F), when it has one. */
+    unitSiOffset?: number;
 }
 
 /** The IFC type every typed member of a list shares, or `undefined` when a
@@ -65,6 +74,26 @@ function sharedMemberType(members: unknown[]): string | undefined {
         shared = t;
     }
     return shared;
+}
+
+/** The display string and IFC type of each member, dropping null members
+ *  from both together so the two arrays stay index-aligned. */
+function memberValues(members: unknown[]): { values: string[]; types: Array<string | undefined> } {
+    const values: string[] = [];
+    const types: Array<string | undefined> = [];
+    for (const m of members) {
+        const typed = Array.isArray(m) && m.length === 2;
+        const v = typed ? String(m[1]) : String(m);
+        if (v === 'null' || v === 'undefined') continue;
+        values.push(v);
+        types.push(typed ? String(m[0]).toUpperCase() : undefined);
+    }
+    return { values, types };
+}
+
+/** `valueDataTypes` for members without a shared `dataType`, when any member is typed. */
+function memberTypesExtra(dataType: string | undefined, types: Array<string | undefined>): { valueDataTypes?: Array<string | undefined> } {
+    return !dataType && types.some((t) => t !== undefined) ? { valueDataTypes: types } : {};
 }
 
 /** Public mutation write markers and parsed STEP values share one decoder
@@ -98,16 +127,14 @@ export function parsePropertyValue(propEntity: IfcEntity): ParsedIfcPropertyValu
             // [Name, Description, EnumerationValues (list), EnumerationReference]
             const enumValues = attrs[2];
             if (Array.isArray(enumValues)) {
-                const values = enumValues.map(v => {
-                    if (Array.isArray(v) && v.length === 2) return String(v[1]); // Typed value
-                    return String(v);
-                }).filter(v => v !== 'null' && v !== 'undefined');
+                const { values, types } = memberValues(enumValues);
                 // Surface the raw value list separately so IDS facet
                 // checks can iterate "any matching value passes". The
                 // joined display string remains the primary `value`
                 // for visualisation/property-table consumers.
                 const dataType = sharedMemberType(enumValues);
-                return { type: 0, value: values.join(', ') || null, values, structure: 'enumerated', ...(dataType ? { dataType } : {}) };
+                return { type: 0, value: values.join(', ') || null, values, structure: 'enumerated',
+                    ...(dataType ? { dataType } : {}), ...memberTypesExtra(dataType, types) };
             }
             return { type: 0, value: null };
         }
@@ -156,12 +183,10 @@ export function parsePropertyValue(propEntity: IfcEntity): ParsedIfcPropertyValu
             // [Name, Description, ListValues (list), Unit]
             const listValues = attrs[2];
             if (Array.isArray(listValues)) {
-                const values = listValues.map(v => {
-                    if (Array.isArray(v) && v.length === 2) return String(v[1]);
-                    return String(v);
-                }).filter(v => v !== 'null' && v !== 'undefined');
+                const { values, types } = memberValues(listValues);
                 const dataType = sharedMemberType(listValues);
-                return { type: 0, value: values.join(', ') || null, values, structure: 'list', ...(dataType ? { dataType } : {}) };
+                return { type: 0, value: values.join(', ') || null, values, structure: 'list',
+                    ...(dataType ? { dataType } : {}), ...memberTypesExtra(dataType, types) };
             }
             return { type: 0, value: null };
         }
@@ -175,14 +200,7 @@ export function parsePropertyValue(propEntity: IfcEntity): ParsedIfcPropertyValu
                 // Surface both defining and defined values as candidate
                 // matches — IDS table-value checks pass when ANY entry
                 // matches the constraint (per upstream ifctester).
-                const stringify = (v: unknown): string => {
-                    if (Array.isArray(v) && v.length === 2) return String(v[1]);
-                    return String(v);
-                };
-                const values = [
-                    ...definingValues.map(stringify),
-                    ...definedValues.map(stringify),
-                ].filter(v => v !== 'null' && v !== 'undefined');
+                const { values, types } = memberValues([...definingValues, ...definedValues]);
                 // Tables mix types per column (label / length / …), so
                 // there is no single dataType. Say so explicitly: an IDS
                 // dataType check then falls through to a value match
@@ -195,6 +213,7 @@ export function parsePropertyValue(propEntity: IfcEntity): ParsedIfcPropertyValu
                     values,
                     dataTypeMixed: true,
                     structure: 'table',
+                    ...memberTypesExtra(undefined, types),
                 };
             }
             return { type: 0, value: null };
@@ -299,6 +318,7 @@ export function copyParsedExtras(entry: ExtractedProperty, parsed: ParsedIfcProp
     if (parsed.dataTypeMixed) entry.dataTypeMixed = true;
     if (parsed.structure) entry.structure = parsed.structure;
     if (parsed.members) entry.members = parsed.members;
+    if (parsed.valueDataTypes) entry.valueDataTypes = parsed.valueDataTypes;
 }
 
 /** Dispatch a pset member to {@link resolveComplexPropertyValue} for

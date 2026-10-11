@@ -5,8 +5,7 @@
 import '@/test/setup-dom.js';
 import test, { afterEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { parseIDS, type IDSDocument } from '@ifc-lite/ids';
-import { writeIdsXml } from '@ifc-lite/rules';
+import { parseIDS, writeIdsXml, type IDSDocument } from '@ifc-lite/ids';
 import { PropertyValueType } from '@ifc-lite/data';
 import { useViewerStore } from '@/store';
 import { SAMPLE_MODEL, seedAuthoringSample } from '@/test/authoring-sample-fixture';

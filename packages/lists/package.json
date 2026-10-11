@@ -1,6 +1,6 @@
 {
   "name": "@ifc-lite/lists",
-  "version": "3.0.1",
+  "version": "3.1.0",
   "description": "Configurable property tables and schedules from IFC data for IFC-Lite",
   "type": "module",
   "main": "./dist/index.js",
@@ -27,7 +27,7 @@
   "devDependencies": {
     "csv-parse": "7.0.3",
     "typescript": "^6.0.3",
-    "vitest": "^5.0.2"
+    "vitest": "^5.0.3"
   },
   "license": "MPL-2.0",
   "author": "Louis True",

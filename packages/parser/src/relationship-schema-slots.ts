@@ -1,6 +1,7 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+import { getCanonicalEntityName } from './schema-entity-name.js';
 
 /**
  * Schema-derived relationship attribute slots (#4205).
@@ -174,7 +175,7 @@ export function getRelationshipSlotPlan(
         : VERSIONS;
     for (const version of versions) {
         const registry = getSchemaRegistryForVersion(version);
-        const canonical = Object.keys(registry.entities).find(n => n.toUpperCase() === typeUpper);
+        const canonical = getCanonicalEntityName(registry, typeUpper);
         if (!canonical) continue;
         plan = computeSlotPlan(registry, canonical);
         if (plan) break;

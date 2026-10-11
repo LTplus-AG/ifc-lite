@@ -1,6 +1,6 @@
 {
   "name": "@ifc-lite/cloud-service",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "type": "module",
   "description": "Session-bound hosted Dropbox and Microsoft read gateway",
@@ -16,9 +16,9 @@
     "@ifc-lite/plugin-api": "workspace:^"
   },
   "devDependencies": {
-    "@types/node": "^26.6.2",
+    "@types/node": "^26.6.4",
     "typescript": "^6.0.3",
-    "vitest": "^5.0.2",
+    "vitest": "^5.0.3",
     "tsx": "^4.23.15"
   }
 }

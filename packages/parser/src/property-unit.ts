@@ -22,6 +22,8 @@ import { measureUnit, resolveUnitByRef } from './project-units.js';
 export interface ExplicitPropertyUnit {
   symbol: string;
   siScale?: number;
+  /** Additive SI offset of an `IfcConversionBasedUnitWithOffset` (°F). */
+  siOffset?: number;
 }
 
 /** Resolve the optional explicit Unit attribute shared by IFC property values. */
@@ -52,5 +54,7 @@ export function resolvePropertyUnit(
     || (measure.kind === 'typed' && entry.unitType === measure.unitType)
     || (measure.kind === 'monetary' && entry.monetary)
     || measure.kind === 'dimensionless';
-  return entry && compatible ? { symbol: entry.resolved.symbol, siScale: entry.resolved.siScale } : { symbol: `#${unitRef}` };
+  if (!entry || !compatible) return { symbol: `#${unitRef}` };
+  const { symbol, siScale, siOffset } = entry.resolved;
+  return siOffset !== undefined ? { symbol, siScale, siOffset } : { symbol, siScale };
 }

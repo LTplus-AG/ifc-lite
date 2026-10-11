@@ -12,6 +12,8 @@
  */
 
 import { isWhollyNumeric } from '@ifc-lite/encoding';
+import type { IDS11ToleranceRule } from '../preview/types.js';
+import { equalsWithIds11Tolerance } from '../preview/tolerance.js';
 
 /**
  * Whether an IDS literal could ever match through `compareNumeric` —
@@ -76,7 +78,9 @@ export function numericEpsilon(castValue: number, actual?: number): number {
  */
 export function compareNumeric(
   expected: string,
-  actual: string | number | boolean
+  actual: string | number | boolean,
+  /** IDS 1.1 PREVIEW (#418) rule from the constraint; unset is the IDS 1.0 comparison. */
+  toleranceRule?: IDS11ToleranceRule
 ): boolean | undefined {
   const actualStr = String(actual);
   const expectedIsNumeric = isWhollyNumeric(expected);
@@ -88,6 +92,7 @@ export function compareNumeric(
   const actualNum = typeof actual === 'number' ? actual : parseFloat(actualStr);
   if (Number.isNaN(expectedNum) || Number.isNaN(actualNum)) return undefined;
 
+  if (toleranceRule === 'ids11-418') return equalsWithIds11Tolerance(expectedNum, actualNum);
   return Math.abs(expectedNum - actualNum) <= numericEpsilon(expectedNum, actualNum);
 }
 

@@ -19,6 +19,8 @@ import { parseProposalGroups } from './artifact-rules';
 import { isAnalysisChartSource, parseAnalysisChart, resolveAnalysisChartSpec } from './analysis-chart';
 import type { ChartSource } from '@ifc-lite/charts';
 import type { FilterGroup } from '@ifc-lite/rules';
+import type { JsonResponseSchema } from '@ifc-lite/ai';
+import { profileLiteral, profileObject, profileTitle } from './response-profile-schema';
 
 type Identity<T> = T extends unknown ? Omit<T, 'valueKind' | 'unit' | 'dataType'> : never;
 /** A field named by identity; its reading comes from the loaded models. */
@@ -49,6 +51,16 @@ export interface ChartProposal extends ArtifactEnvelope {
 const TYPES = ['bar', 'stackedBar', 'pie', 'treemap', 'histogram', 'elementCount'] as const;
 const BUILT_IN: readonly string[] = Object.values(ELEMENT_COLUMNS);
 const SPATIAL_LEVELS = ['Container', 'Building', 'Site', 'Project'] as const;
+
+/** #7234 concrete count-by-class preset. Other definitions keep their parser. */
+export function classCountResponseProfile(): JsonResponseSchema {
+  return { name: 'assistant_ifc_class_count_chart', schema: profileObject({
+    version: profileLiteral(1), kind: profileLiteral('chart.proposal'), title: profileTitle, scope: profileLiteral('all'),
+    chart: profileObject({ type: profileLiteral(TYPES[0]), dimension: profileLiteral(ELEMENT_COLUMNS.ifcType),
+      measure: profileObject({ agg: profileLiteral('count') }),
+    }),
+  }) };
+}
 
 export function parseFieldIdentity(value: unknown, at: string): FieldIdentity {
   if (!record(value)) throw new Error(`${at} is not an object`);

@@ -129,7 +129,7 @@ export function formatRequirementDescription(requirement: IDSRequirement): strin
       break;
 
     case 'partOf': {
-      const relName = facet.relation.replace('IfcRel', '').toLowerCase();
+      const relName = facet.anyRelation ? 'part of' : facet.relation.replace('IfcRel', '').toLowerCase();
       if (facet.entity) {
         desc = `Must be ${relName} ${formatConstraint(facet.entity.name)}`;
       } else {

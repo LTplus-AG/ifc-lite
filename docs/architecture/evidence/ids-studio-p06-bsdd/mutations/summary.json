@@ -1,0 +1,86 @@
+{
+  "bsdd002-system": {
+    "verdict": "OBSERVED",
+    "exitCode": 0,
+    "reason": "reverting production turned an assertion RED in packages/ids-authoring/src/lint/rules/bsdd.test.ts; that file has a green, attributable baseline.",
+    "base": "80fd736916285476416086647a321f0b4531812e",
+    "head": "9fdcc68de3714a6da10e5e15a6e572d92e19654b",
+    "production": [
+      "packages/ids-authoring/src/lint/rules/bsdd.ts"
+    ],
+    "tests": [
+      "packages/ids-authoring/src/lint/rules/bsdd.test.ts"
+    ],
+    "restoration": "verified"
+  },
+  "cache-ttl": {
+    "verdict": "OBSERVED",
+    "exitCode": 0,
+    "reason": "reverting production turned an assertion RED in packages/ids-authoring/src/bsdd/offline.test.ts; that file has a green, attributable baseline.",
+    "base": "80fd736916285476416086647a321f0b4531812e",
+    "head": "9fdcc68de3714a6da10e5e15a6e572d92e19654b",
+    "production": [
+      "packages/ids-authoring/src/bsdd/cache.ts"
+    ],
+    "tests": [
+      "packages/ids-authoring/src/bsdd/offline.test.ts"
+    ],
+    "restoration": "verified"
+  },
+  "gate-inactive-warning": {
+    "verdict": "OBSERVED",
+    "exitCode": 0,
+    "reason": "reverting production turned an assertion RED in packages/ids-authoring/src/gate/gate-uri.test.ts; that file has a green, attributable baseline.",
+    "base": "80fd736916285476416086647a321f0b4531812e",
+    "head": "9fdcc68de3714a6da10e5e15a6e572d92e19654b",
+    "production": [
+      "packages/ids-authoring/src/gate/bsdd.ts"
+    ],
+    "tests": [
+      "packages/ids-authoring/src/gate/gate-uri.test.ts"
+    ],
+    "restoration": "verified"
+  },
+  "generator-optional": {
+    "verdict": "OBSERVED",
+    "exitCode": 0,
+    "reason": "reverting production turned an assertion RED in packages/ids-authoring/src/bsdd/generator.test.ts; that file has a green, attributable baseline.",
+    "base": "80fd736916285476416086647a321f0b4531812e",
+    "head": "9fdcc68de3714a6da10e5e15a6e572d92e19654b",
+    "production": [
+      "packages/ids-authoring/src/bsdd/generator.ts"
+    ],
+    "tests": [
+      "packages/ids-authoring/src/bsdd/generator.test.ts"
+    ],
+    "restoration": "verified"
+  },
+  "mapping-boolean": {
+    "verdict": "OBSERVED",
+    "exitCode": 0,
+    "reason": "reverting production turned an assertion RED in packages/ids-authoring/src/bsdd/mapping.test.ts; that file has a green, attributable baseline.",
+    "base": "80fd736916285476416086647a321f0b4531812e",
+    "head": "9fdcc68de3714a6da10e5e15a6e572d92e19654b",
+    "production": [
+      "packages/ids-authoring/src/bsdd/mapping.ts"
+    ],
+    "tests": [
+      "packages/ids-authoring/src/bsdd/mapping.test.ts"
+    ],
+    "restoration": "verified"
+  },
+  "parser-uri-requirements-only": {
+    "verdict": "OBSERVED",
+    "exitCode": 0,
+    "reason": "reverting production turned an assertion RED in packages/ids/src/parser/xml-parser.test.ts; that file has a green, attributable baseline.",
+    "base": "80fd736916285476416086647a321f0b4531812e",
+    "head": "9fdcc68de3714a6da10e5e15a6e572d92e19654b",
+    "production": [
+      "packages/ids/src/parser/xml-parser.ts"
+    ],
+    "tests": [
+      "packages/ids/src/parser/xml-parser.test.ts"
+    ],
+    "restoration": "verified"
+  }
+}

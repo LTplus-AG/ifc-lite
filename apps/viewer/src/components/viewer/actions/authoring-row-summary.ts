@@ -62,6 +62,8 @@ export function authoringRowSummary(row: AuthoringRow, batch: ModelAuthoringBatc
         previewNote: [row.resolved.reachPlan && row.resolved.reachPlan.walls.length > 1 ? t('modelAuthoring.reachNeighborPreview') : '', row.previewUnavailable ? t('modelAuthoring.editPreviewUnavailable') : '',
           row.previewOuterBodyOnly ? t('modelAuthoring.outerBodyPreview') : '',
           row.previewOmitted?.length ? t('modelAuthoring.filletPreview', { fields: row.previewOmitted.join(', ') }) : ''].filter(Boolean).join(' · ') || undefined };
+    case 'element.reassignStorey':
+      return { subject: `${op.target.ifcClass} ${op.target.name}`, before: op.sourceStorey.globalId, after: op.destinationStorey.globalId, previewNote: t('modelAuthoring.reassignmentPreview', { count: op.expected.products.length }) };
     case 'element.split': {
       const cut = op.cut.kind === 'slab' ? `${point(op.cut.a)} → ${point(op.cut.b)} ${units}` : `${num(op.cut.distance)} ${units}`;
       const effects = row.resolved.splitEffects;

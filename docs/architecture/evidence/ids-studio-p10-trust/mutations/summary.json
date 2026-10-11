@@ -1,0 +1,114 @@
+{
+  "comment-resolve-inverse": {
+    "verdict": "OBSERVED",
+    "exitCode": 0,
+    "reason": "reverting production turned an assertion RED in packages/ids-authoring/src/comments/comments.test.ts; that file has a green, attributable baseline.",
+    "base": "2a08aeb4a1d903e565835d45f7d0bd359823f0a4",
+    "head": "65b6c8ae114e57b1e9381bb0b576f0946bb497f1",
+    "production": [
+      "packages/ids-authoring/src/reducer/comment-ops.ts"
+    ],
+    "tests": [
+      "packages/ids-authoring/src/comments/comments.test.ts"
+    ],
+    "restoration": "verified"
+  },
+  "diff-uri": {
+    "verdict": "OBSERVED",
+    "exitCode": 0,
+    "reason": "reverting production turned an assertion RED in packages/ids-authoring/src/diff/changelog.test.ts; that file has a green, attributable baseline.",
+    "base": "2a08aeb4a1d903e565835d45f7d0bd359823f0a4",
+    "head": "65b6c8ae114e57b1e9381bb0b576f0946bb497f1",
+    "production": [
+      "packages/ids-authoring/src/diff/compare.ts"
+    ],
+    "tests": [
+      "packages/ids-authoring/src/diff/changelog.test.ts"
+    ],
+    "restoration": "verified"
+  },
+  "junit-failures": {
+    "verdict": "OBSERVED",
+    "exitCode": 0,
+    "reason": "reverting production turned an assertion RED in packages/ids-authoring/src/testing/runner.test.ts; that file has a green, attributable baseline.",
+    "base": "2a08aeb4a1d903e565835d45f7d0bd359823f0a4",
+    "head": "65b6c8ae114e57b1e9381bb0b576f0946bb497f1",
+    "production": [
+      "packages/ids-authoring/src/testing/junit.ts"
+    ],
+    "tests": [
+      "packages/ids-authoring/src/testing/runner.test.ts"
+    ],
+    "restoration": "verified"
+  },
+  "merge-sidecar-theirs": {
+    "verdict": "OBSERVED",
+    "exitCode": 0,
+    "reason": "reverting production turned an assertion RED in packages/ids-authoring/src/merge/merge.test.ts; that file has a green, attributable baseline.",
+    "base": "2a08aeb4a1d903e565835d45f7d0bd359823f0a4",
+    "head": "65b6c8ae114e57b1e9381bb0b576f0946bb497f1",
+    "production": [
+      "packages/ids-authoring/src/merge/sidecar.ts"
+    ],
+    "tests": [
+      "packages/ids-authoring/src/merge/merge.test.ts"
+    ],
+    "restoration": "verified"
+  },
+  "revision-chain": {
+    "verdict": "OBSERVED",
+    "exitCode": 0,
+    "reason": "reverting production turned an assertion RED in packages/ids-authoring/src/revision/revision.test.ts; that file has a green, attributable baseline.",
+    "base": "2a08aeb4a1d903e565835d45f7d0bd359823f0a4",
+    "head": "65b6c8ae114e57b1e9381bb0b576f0946bb497f1",
+    "production": [
+      "packages/ids-authoring/src/revision/verify.ts"
+    ],
+    "tests": [
+      "packages/ids-authoring/src/revision/revision.test.ts"
+    ],
+    "restoration": "verified"
+  },
+  "revision-content": {
+    "verdict": "OBSERVED",
+    "exitCode": 0,
+    "reason": "reverting production turned an assertion RED in packages/ids-authoring/src/revision/revision.test.ts; that file has a green, attributable baseline.",
+    "base": "2a08aeb4a1d903e565835d45f7d0bd359823f0a4",
+    "head": "65b6c8ae114e57b1e9381bb0b576f0946bb497f1",
+    "production": [
+      "packages/ids-authoring/src/revision/verify.ts"
+    ],
+    "tests": [
+      "packages/ids-authoring/src/revision/revision.test.ts"
+    ],
+    "restoration": "verified"
+  },
+  "xsd-examples-verify": {
+    "verdict": "OBSERVED",
+    "exitCode": 0,
+    "reason": "reverting production turned an assertion RED in packages/ids/src/constraints/xsd-examples.test.ts; that file has a green, attributable baseline.",
+    "base": "2a08aeb4a1d903e565835d45f7d0bd359823f0a4",
+    "head": "65b6c8ae114e57b1e9381bb0b576f0946bb497f1",
+    "production": [
+      "packages/ids/src/constraints/xsd-examples.ts"
+    ],
+    "tests": [
+      "packages/ids/src/constraints/xsd-examples.test.ts"
+    ],
+    "restoration": "verified"
+  },
+  "xsd-noncapturing-group": {
+    "verdict": "OBSERVED",
+    "exitCode": 0,
+    "reason": "reverting production turned an assertion RED in packages/ids/src/constraints/xsd-examples.test.ts; that file has a green, attributable baseline.",
+    "base": "2a08aeb4a1d903e565835d45f7d0bd359823f0a4",
+    "head": "65b6c8ae114e57b1e9381bb0b576f0946bb497f1",
+    "production": [
+      "packages/ids/src/constraints/xsd-regex-ast.ts"
+    ],
+    "tests": [
+      "packages/ids/src/constraints/xsd-examples.test.ts"
+    ],
+    "restoration": "verified"
+  }
+}

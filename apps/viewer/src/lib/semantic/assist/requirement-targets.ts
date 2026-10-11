@@ -177,13 +177,18 @@ function measuredType(target: { set: string; name: string }, unit: string, schem
   return siUnitOf(declared) === siUnitOf(stated.dataType) ? { unit: stated.unit, dataType: declared } : 'dimension';
 }
 
-/** A value with no unit on a declared measure is ambiguous (model units); a boolean is checked as the declared boolean type. */
+/**
+ * A value with no unit on a declared measure is ambiguous (model units); a boolean is checked as the declared
+ * boolean type, and a declared boolean accepts only booleans (a logical also UNKNOWN), never a number or text.
+ */
 function plainType(target: { set: string; name: string }, value: unknown, schema: SchemaMeasures, versions: readonly IFCVersion[]): Typed | null | UnresolvedReason {
   const values = Array.isArray(value) ? value : [value];
   if (!STANDARD_SET.test(target.set)) return values.some(item => typeof item === 'boolean') ? { dataType: 'IFCBOOLEAN' } : null;
   const declared = declaredType(target, schema, versions);
   if (declared === 'version') return declared;
   const type = declared === 'unknown' ? null : declared;
+  if (type === 'IFCBOOLEAN' && values.some(item => typeof item !== 'boolean')) return 'value';
+  if (type === 'IFCLOGICAL' && values.some(item => typeof item !== 'boolean' && item !== 'UNKNOWN')) return 'value';
   if (type && dimensioned(type) && values.some(item => typeof item === 'number' || (typeof item === 'string' && NUMERIC_TEXT.test(item)))) return 'unit';
   if (values.some(item => typeof item === 'boolean')) {
     if (type === null) return 'unknown';

@@ -180,9 +180,10 @@ export function bindSavedModels(saved: Pick<SavedAnalysisRun, 'models' | 'edited
     claimed.set(id, model.key);
     // Unsaved edits mean the open model no longer is the file its source identity names.
     if (state.hasChanges(id)) { refusals.push({ code: 'modelEdited', model: model.name }); continue; }
-    if (saved.placementRecorded && model.placement) {
+    if (saved.placementRecorded) {
       const rotation = placementFor(state.modelPlacement, id).rotation;
-      if (!equalTranslation(model.placement.translation, displayedTranslation(state.modelPlacement, id))
+      // A placement-stamped run without a model's placement cannot show the model has not moved.
+      if (!model.placement || !equalTranslation(model.placement.translation, displayedTranslation(state.modelPlacement, id))
         || model.placement.angle !== rotation.angle || !equalTranslation(model.placement.pivot, rotation.pivot)) {
         refusals.push({ code: 'modelMoved', model: model.name });
         continue;

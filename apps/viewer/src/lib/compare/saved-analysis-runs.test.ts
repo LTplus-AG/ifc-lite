@@ -322,6 +322,11 @@ describe('saved analysis runs reconcile across sessions (#7370)', () => {
     assert.equal(tampered(v => { v.result.clashes[0].distance = null; }), null, 'a lost distance is refused, not read as 0');
     assert.equal(tampered(v => { v.freshness = 'fresh'; }), null);
     assert.equal(tampered(v => { v.frame = null; }), null, 'a placement-stamped run without its frame is refused');
+    assert.equal(tampered(v => { delete v.models[0].placement; }), null, 'a placement-stamped run without a model\'s placement is refused');
     assert.equal(tampered(v => { v.models.push({ ...v.models[0] }); }), null, 'duplicate join keys are refused');
+    // Bound directly (never decoded), a model without its placement still cannot come back as unmoved.
+    const { placement: _omitted, ...unplaced } = portable.saved.models[0];
+    const bound = bindSavedAnalysisRun({ ...portable.saved, models: [unplaced, ...portable.saved.models.slice(1)] }, state);
+    assert.ok(!bound.ok && bound.refusals.some(refusal => refusal.code === 'modelMoved' && refusal.model === unplaced.name));
   });
 });

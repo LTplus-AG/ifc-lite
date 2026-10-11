@@ -223,10 +223,13 @@ test('#7375 a value without its unit, or of the wrong type, never reaches an IDS
     door('C', { appliesTo: { ifcClass: 'IfcWall' }, property: 'Pset_WallCommon.FireRating', operator: 'equals', value: true }, quoted),
     door('D', { appliesTo: { ifcClass: 'IfcArbitraryClosedProfileDef' }, property: 'Pset_ProfileArbitraryDoubleT.FlangeChamfer', operator: 'atLeast', value: 5, unit: 'mm' }, quoted),
     door('E', { appliesTo: { ifcClass: 'IfcWall' }, property: 'Acme_Wall.Checked', operator: 'equals', value: true }, quoted),
+    // A declared boolean compared with a number or text: the value does not fit, so it never becomes an untyped IDS check.
+    door('F', { appliesTo: { ifcClass: 'IfcWall' }, property: 'Pset_WallCommon.IsExternal', operator: 'equals', value: 1 }, quoted),
+    door('G', { appliesTo: { ifcClass: 'IfcWall' }, property: 'Pset_WallCommon.IsExternal', operator: 'oneOf', value: ['yes', 'no'] }, quoted),
   ]);
   assert.deepEqual(rows.map(row => [row.requirement.id, row.target, row.reason ?? null, row.typed?.dataType ?? null]), [
     ['A', 'unresolved', 'unit', null], ['B', 'ids', null, 'IFCBOOLEAN'], ['C', 'unresolved', 'value', null],
-    ['D', 'unresolved', 'measure', null], ['E', 'ids', null, 'IFCBOOLEAN'],
+    ['D', 'unresolved', 'measure', null], ['E', 'ids', null, 'IFCBOOLEAN'], ['F', 'unresolved', 'value', null], ['G', 'unresolved', 'value', null],
   ]);
 });
 

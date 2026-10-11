@@ -181,6 +181,8 @@ export function decodeSavedAnalysisRun(v: unknown): SavedAnalysisRun | null {
   if (!list(v.models, SAVED_RUN_LIMITS.models, isModel)) return null;
   const keys = new Set((v.models as SavedRunModel[]).map(model => model.key));
   if (keys.size !== v.models.length) return null;
+  // A placement-stamped run recorded where every model sat: one without its placement could never be checked for a move.
+  if (v.placementRecorded && (v.models as SavedRunModel[]).some(model => model.placement === undefined)) return null;
   // A frame model is one the run did not examine: its key never names a run model, and no two share one.
   const others = isFrame(v.frame) ? v.frame.others : [];
   if (new Set([...keys, ...others.map(other => other.key)]).size !== keys.size + others.length) return null;

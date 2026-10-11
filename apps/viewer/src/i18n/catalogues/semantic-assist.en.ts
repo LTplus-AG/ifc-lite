@@ -72,7 +72,7 @@ export const semanticAssistEn = {
   'semanticAssist.requirementsNoSources': 'No attached text passages were in this conversation, so no quote can be verified.',
   'semanticAssist.requirementsSave': 'Save requirements with their verification',
   'semanticAssist.dispatchTitle': 'Native checks and documents',
-  'semanticAssist.dispatchHint': 'Each requirement goes to the native tool that can check it. Nothing is created until you prepare the drafts; each draft is then checked, dry-run on the loaded models and saved in its own review below.',
+  'semanticAssist.dispatchHint': 'Each requirement goes to the native tool that can check it. Nothing is created until you prepare the drafts. Each IDS and rule draft is then checked, dry-run on the loaded models and saved in its own review below; the document draft only lists what has no automatic check, for review by hand, and records no result.',
   'semanticAssist.targetIds': 'IDS check',
   'semanticAssist.targetGeometry': 'Information rule on a model quantity',
   'semanticAssist.targetManual': 'Manual check, listed in a document',

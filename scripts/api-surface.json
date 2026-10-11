@@ -8780,6 +8780,7 @@
     "IfcxNode: interface",
     "IfcxParseResult: interface",
     "LayerStack: class (type-only)",
+    "LengthUnitSource: type",
     "MapConversion: interface",
     "Material: interface",
     "MaterialConstituentInfo: interface",

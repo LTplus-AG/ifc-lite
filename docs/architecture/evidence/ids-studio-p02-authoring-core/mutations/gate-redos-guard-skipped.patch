@@ -1,0 +1,13 @@
+diff --git a/packages/ids-authoring/src/gate/values.ts b/packages/ids-authoring/src/gate/values.ts
+index 72e6663d0..cedd5128f 100644
+--- a/packages/ids-authoring/src/gate/values.ts
++++ b/packages/ids-authoring/src/gate/values.ts
+@@ -45,7 +45,7 @@ function literalOk(base: string | undefined, value: string): boolean {
+ export function checkPattern(pattern: string): ValueProblem[] {
+   if (pattern === '') return [{ code: 'GATE-VAL-003', message: 'pattern is empty' }];
+   try {
+-    void assertGuardedRegexPattern;
++    assertGuardedRegexPattern(pattern);
+   } catch (err) {
+     const reason = err instanceof UnsafeRegexPatternError ? err.reason : String(err);
+     return [{ code: 'GATE-VAL-004', message: `pattern "${pattern}" is rejected by the ReDoS guard: ${reason}` }];

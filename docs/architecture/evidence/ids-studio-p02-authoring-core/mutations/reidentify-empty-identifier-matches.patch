@@ -1,0 +1,13 @@
+diff --git a/packages/ids-authoring/src/match/reidentify.ts b/packages/ids-authoring/src/match/reidentify.ts
+index bb39df9ea..fefa541f6 100644
+--- a/packages/ids-authoring/src/match/reidentify.ts
++++ b/packages/ids-authoring/src/match/reidentify.ts
+@@ -171,7 +171,7 @@ export function reidentify(
+   const prevSpecs = previous.ids.specifications;
+   const report: ReidentifyReport = { specs: { matched: [], added: [], removed: [] }, facets: { matched: 0, added: 0, removed: 0 } };
+   const { pairs, usedPrev } = cascade<IDSSpecification, IDSSpecification, MatchStep>(prevSpecs, incoming.specifications, [
+-    ['identifier', (a, b) => (a.identifier === b.identifier ? 1 : 0)],
++    ['identifier', (a, b) => (a.identifier && a.identifier === b.identifier ? 1 : 0)],
+     ['signature', (a, b) => (a.name === b.name && applicabilitySignature(a) === applicabilitySignature(b) ? 1 : 0)],
+     ['similarity', (a, b) => {
+       const s = specSimilarity(a, b);

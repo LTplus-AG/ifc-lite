@@ -161,6 +161,14 @@ export {
 
 export { boundedPassRate, passRateBand, type PassRateBand } from './validation/pass-rate.js';
 
+// IFC2X3 occurrence/type mapping table (IfcAirTerminal -> IfcFlowTerminal +
+// IfcAirTerminalType): shared with `@ifc-lite/ids-authoring`'s gate so an
+// authored IFC2X3 facet accepts the same aliases the audit and checker do.
+export {
+  rowForAlias as ifc2x3TypeMappingForAlias,
+  type Ifc2x3TypeMappingRow,
+} from './facets/ifc2x3-type-mapping.js';
+
 // ============================================================================
 // Constraints
 // ============================================================================
@@ -174,6 +182,11 @@ export {
 // The one XSD-regex -> JS-regex translator, shared with `@ifc-lite/rules`'
 // IDS import (#5225) so an imported pattern means what the checker reads.
 export { translateXsdRegex, type TranslateResult } from './constraints/xsd-regex.js';
+
+// IFC4 class names an IFC2X3 entity facet may use through buildingSMART's
+// occurrence/type mapping table, so authoring tools (`@ifc-lite/ids-authoring`
+// lint) do not report them as missing from IFC2X3.
+export { IFC2X3_MAPPED_ALIASES } from './facets/ifc2x3-type-mapping.js';
 
 // ============================================================================
 // Audit (IDS document correctness)

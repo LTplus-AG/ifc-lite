@@ -106,7 +106,9 @@ export function installViewportDebugHooks(
 ): void {
   const host = globalThis as Record<string, unknown>;
   const timingFlag = readPerfFlag('gpuFrameTiming');
-  renderer.setGpuFrameTiming(timingFlag === true || timingFlag === 1 || timingFlag === '1');
+  // Opt-in only: a renderer starts with timing off, so the default install
+  // still just stores the renderer (#5895 witness contract).
+  if (timingFlag === true || timingFlag === 1 || timingFlag === '1') renderer.setGpuFrameTiming(true);
   host.__ifc_lite_render_stats__ = () => ({
     gpuTiming: renderer.getGpuFrameTiming(),
     adapter: renderer.getAdapterInfo(),

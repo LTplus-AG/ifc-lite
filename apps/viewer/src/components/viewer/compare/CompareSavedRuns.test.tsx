@@ -286,4 +286,32 @@ describe('saved runs for reconciliation (#7370)', () => {
     assert.equal((await readContentRows('analysisRuns')).length, 1);
     assert.doesNotMatch(root.textContent ?? '', /Not stored in this browser yet/);
   });
+
+  it('saving again while the first write is still running reports that write\'s outcome, never success ahead of it', async t => {
+    const pair = await revisionPair(t);
+    if (!pair) return;
+    await open(pair, 'A', 'B');
+    await publishClash(pair);
+    const root = mount(pair);
+    act(() => click(button(root, /Capture current run/)));
+    const [capture] = useViewerStore.getState().compareRunCaptures;
+    const { portableAnalysisRun } = await import('@/lib/compare/saved-analysis-run-binding');
+    const portable = portableAnalysisRun(capture, useViewerStore.getState());
+    assert.ok(portable.ok);
+    const { saveAnalysisRun, useSavedAnalysisRuns } = await savedRuns();
+    const refused = refuseContentWrites();
+    try {
+      let first!: Promise<boolean>, second!: Promise<boolean>;
+      await act(async () => {
+        first = saveAnalysisRun(portable.saved);
+        assert.equal(useSavedAnalysisRuns.getState().status.items[portable.saved.id], 'saving');
+        second = saveAnalysisRun(portable.saved);
+        assert.deepEqual(await Promise.all([first, second]), [false, false]);
+      });
+    } finally { refused.mock.restore(); }
+    assert.deepEqual(await readContentRows('analysisRuns'), []);
+    // Once the store accepts writes, a third save retries and commits.
+    await act(async () => { assert.equal(await saveAnalysisRun(portable.saved), true); });
+    assert.equal((await readContentRows('analysisRuns')).length, 1);
+  });
 });

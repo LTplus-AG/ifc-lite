@@ -22,7 +22,7 @@ import { StepExporter } from '@ifc-lite/export';
 import { IfcParser } from '@ifc-lite/parser';
 import type { ViewerState } from '@/store';
 import { analysisStampFrom, isAnalysisStale } from '@/hooks/useAnalysisStaleness';
-import { emptyPlacementState } from '@/lib/model-placement/state';
+import { emptyPlacementState, placementFor } from '@/lib/model-placement/state';
 import { computeFullSourceHash } from '@/utils/sourceContentHash';
 import { reconcileContextOf } from './compare-analysis-state';
 import { reconcileRuns } from './run-reconcile';
@@ -249,7 +249,10 @@ describe('saved analysis runs reconcile across sessions (#7370)', () => {
     const run = capture(realigned, { kind: 'clash', result: await runClash(pair, ['A'], { rules: RULES }) }, ['A']);
     const portable = portableAnalysisRun(run, realigned);
     assert.ok(portable.ok && portable.saved.freshness === 'current');
-    assert.deepEqual(portable.saved.frame, { realignedFrameKey: 'crs:EPSG:2056', openModels: 2 });
+    assert.ok(portable.ok && portable.saved.frame);
+    assert.equal(portable.saved.frame.realignedFrameKey, 'crs:EPSG:2056');
+    assert.equal(portable.saved.frame.openModels, 2);
+    assert.deepEqual(portable.saved.frame.others.map(other => other.name), [pair.head.name], 'B, open but not examined, is part of the frame');
     const saved = decodeSavedAnalysisRun(JSON.parse(JSON.stringify(portable.saved)))!;
     const codes = (into: State) => { const bound = bindSavedAnalysisRun(saved, into); return bound.ok ? [] : bound.refusals.map(r => r.code); };
     assert.deepEqual(codes(realigned), [], 'the same frame and models bind');
@@ -262,7 +265,19 @@ describe('saved analysis runs reconcile across sessions (#7370)', () => {
     assert.equal(isAnalysisStale(run.stamp, withoutB), true);
     const refused = bindSavedAnalysisRun(saved, withoutB);
     assert.ok(!refused.ok);
-    assert.deepEqual(refused.refusals, [{ code: 'modelSetChanged', before: 2, open: 1 }]);
+    assert.deepEqual(refused.refusals, [{ code: 'modelSetChanged', before: 2, open: 1 }, { code: 'modelMissing', model: pair.head.name }]);
+
+    // B replaced by another file in the same frame (same count): stale in session, so the reopen refuses too.
+    const hash = await sourceHashes();
+    const withC: State = { ...realigned, models: new Map([...realigned.models].map(([id, m]) =>
+      [id === 'B' ? 'C' : id, id === 'B' ? { ...m, id: 'C', name: 'Other model', sourceContentHash: `${hash.B}-other` } : m])) };
+    assert.equal(isAnalysisStale(run.stamp, withC), true);
+    assert.deepEqual(codes(withC), ['modelMissing']);
+    // B moved after Save: stale in session, refused on reopen.
+    const moved: State = { ...realigned, modelPlacement: { ...realigned.modelPlacement,
+      placements: new Map([['B', { ...placementFor(realigned.modelPlacement, 'B'), translation: [5, 0, 0] }]]) } };
+    assert.equal(isAnalysisStale(run.stamp, moved), true);
+    assert.deepEqual(codes(moved), ['modelMoved']);
   });
 
   it('element refs survive a different load position: express ids are stored, renderer ids rebuilt from the bound model', async t => {

@@ -25,6 +25,20 @@ export const analysisRunLibrary = createContentLibrary(analysisRunsContent,
   () => useSavedAnalysisRuns.getState().entries,
   (entries, status) => useSavedAnalysisRuns.setState({ entries, status }));
 
+/** Resolves once the write of `id` in flight settles: true only when it was committed. */
+function settled(id: string): Promise<boolean> {
+  return new Promise(resolve => {
+    let unsubscribe = () => {};
+    const check = (state: ContentStatus['items'][string] | undefined) => {
+      if (state === 'saving') return false;
+      unsubscribe(); resolve(state === undefined || state === 'saved');
+      return true;
+    };
+    unsubscribe = useSavedAnalysisRuns.subscribe(next => { check(next.status.items[id]); });
+    check(useSavedAnalysisRuns.getState().status.items[id]);
+  });
+}
+
 /** Save a run once. Evidence is immutable: a run already saved under its id is left as it is. */
 export function saveAnalysisRun(run: SavedAnalysisRun): Promise<boolean> {
   const { entries, status } = useSavedAnalysisRuns.getState();
@@ -32,8 +46,9 @@ export function saveAnalysisRun(run: SavedAnalysisRun): Promise<boolean> {
   if (!existing) return analysisRunLibrary.put(run.id, run);
   // Saving again retries a refused write of the evidence already held, never replaces it.
   const state = status.items[existing.id];
-  return state === undefined || state === 'saved' || state === 'saving'
-    ? Promise.resolve(true) : analysisRunLibrary.put(existing.id, existing);
+  // A write still in flight answers for this save too: success is reported only once it commits.
+  if (state === 'saving') return settled(existing.id);
+  return state === undefined || state === 'saved' ? Promise.resolve(true) : analysisRunLibrary.put(existing.id, existing);
 }
 
 export function deleteSavedAnalysisRun(id: string): Promise<boolean> {

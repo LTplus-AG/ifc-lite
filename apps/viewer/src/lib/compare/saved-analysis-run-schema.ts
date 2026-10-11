@@ -66,9 +66,10 @@ interface SavedAnalysisRunBase {
   placementRecorded: boolean;
   /**
    * The placement frame of a placement-stamped run, exactly what makes such a run stale in its session:
-   * the committed realignment (`realignedFrameKey`) and how many models were open. Null without placement.
+   * the committed realignment (`realignedFrameKey`), how many models were open, and each open model the run
+   * did not examine (`others`, with its source identity and placement). Null without placement.
    */
-  frame: { realignedFrameKey: string | null; openModels: number } | null;
+  frame: { realignedFrameKey: string | null; openModels: number; others: SavedRunModel[] } | null;
 }
 
 export type SavedAnalysisRun =
@@ -168,8 +169,9 @@ function isRuleSet(v: unknown): v is SavedRuleSetContent {
     && v.rules.every(entry => Array.isArray(entry) && entry.length === 2 && anyText(entry[0]) && anyText(entry[1]));
 }
 
-const isFrame = (v: unknown): boolean => record(v) && (v.realignedFrameKey === null || text(v.realignedFrameKey))
-  && count(v.openModels) && v.openModels > 0;
+const isFrame = (v: unknown): v is NonNullable<SavedAnalysisRunBase['frame']> => record(v)
+  && (v.realignedFrameKey === null || text(v.realignedFrameKey)) && count(v.openModels) && v.openModels > 0
+  && list(v.others, SAVED_RUN_LIMITS.models, other => isModel(other) && other.placement !== undefined);
 
 /** Strict: one invalid row refuses the whole run rather than reconciling a subset of it as if it were the run. */
 export function decodeSavedAnalysisRun(v: unknown): SavedAnalysisRun | null {
@@ -179,6 +181,9 @@ export function decodeSavedAnalysisRun(v: unknown): SavedAnalysisRun | null {
   if (!list(v.models, SAVED_RUN_LIMITS.models, isModel)) return null;
   const keys = new Set((v.models as SavedRunModel[]).map(model => model.key));
   if (keys.size !== v.models.length) return null;
+  // A frame model is one the run did not examine: its key never names a run model, and no two share one.
+  const others = isFrame(v.frame) ? v.frame.others : [];
+  if (new Set([...keys, ...others.map(other => other.key)]).size !== keys.size + others.length) return null;
   if (v.examined !== null && !list(v.examined, SAVED_RUN_LIMITS.models, key => typeof key === 'string' && keys.has(key))) return null;
   if (v.kind === 'clash') return isClashResult(v.result, keys) ? v as unknown as SavedAnalysisRun : null;
   if (v.kind === 'validation') {

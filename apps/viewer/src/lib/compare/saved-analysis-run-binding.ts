@@ -10,6 +10,9 @@
  * model's name and source identities, taken from the run's own stamp when it
  * has one (the identity at run start) and otherwise from the open model.
  *
+ * A placement-stamped run also records every other model open in its frame,
+ * so reopening it checks those the way its session would.
+ *
  * Binding resolves each saved model to exactly one open model with the same
  * source content, and refuses, naming every problem, when a model is not
  * open, is open as another version of the file, matches more than one open
@@ -75,20 +78,33 @@ export function portableAnalysisRun(run: CapturedRun, state: BindingState, now =
   const keyOf = new Map(ids.map((id, index) => [id, `m${index}`]));
   const key = (id: string) => keyOf.get(id)!;
   const stamp = run.stamp;
-  const models: SavedRunModel[] = [];
-  for (const id of ids) {
+  const portableModel = (id: string, modelKey: string): SavedRunModel | SaveRefusal => {
     const recorded = stamp?.placement?.get(id), open = state.models.get(id);
     // Without the run's own record or the open model, nothing says which file the run examined.
     const identity = recorded ?? open;
-    if (!identity) return { ok: false, reason: 'modelClosed' };
+    if (!identity) return { reason: 'modelClosed' };
     const name = identity.name?.trim() ? identity.name : open?.name?.trim() ? open.name : '';
     // A run that could never be matched to its file again is refused now, not saved and refused on every reopen.
-    if (!identity.sourceFingerprint && !identity.sourceContentHash || !name) return { ok: false, reason: 'sourceUnknown', model: name };
-    models.push({ key: key(id), name,
+    if (!identity.sourceFingerprint && !identity.sourceContentHash || !name) return { reason: 'sourceUnknown', model: name };
+    return { key: modelKey, name,
       ...(identity.sourceFingerprint ? { sourceFingerprint: identity.sourceFingerprint } : {}),
       ...(identity.sourceContentHash ? { sourceContentHash: identity.sourceContentHash } : {}),
       ...(recorded ? { placement: { translation: [...recorded.translation] as [number, number, number], angle: recorded.angle,
-        pivot: [...recorded.pivot] as [number, number, number] } } : {}) });
+        pivot: [...recorded.pivot] as [number, number, number] } } : {}) };
+  };
+  const models: SavedRunModel[] = [];
+  for (const id of ids) {
+    const model = portableModel(id, key(id));
+    if ('reason' in model) return { ok: false, ...model };
+    models.push(model);
+  }
+  // Every other model open when a placement-stamped run started is part of its frame: its session goes stale
+  // when any of them closes, is replaced or moves (`isAnalysisStale`), so each is recorded to be checked on reopen.
+  const others: SavedRunModel[] = [];
+  for (const id of [...stamp?.placement?.keys() ?? []].filter(id => !keyOf.has(id)).sort()) {
+    const model = portableModel(id, `f${others.length}`);
+    if ('reason' in model) return { ok: false, ...model };
+    others.push(model);
   }
   const freshness = stamp === null ? 'unknown' as const : isAnalysisStale(stamp, state) ? 'stale' as const : 'current' as const;
   const base = {
@@ -97,7 +113,7 @@ export function portableAnalysisRun(run: CapturedRun, state: BindingState, now =
     // Nothing changed since a current run, so today's unsaved edits are the ones it saw; otherwise that is unknown.
     edited: freshness === 'current' ? ids.some(id => state.hasChanges(id)) : null,
     placementRecorded: stamp?.placement !== undefined,
-    frame: stamp?.placement ? { realignedFrameKey: stamp.realignedFrameKey ?? null, openModels: stamp.placement.size } : null,
+    frame: stamp?.placement ? { realignedFrameKey: stamp.realignedFrameKey ?? null, openModels: stamp.placement.size, others } : null,
   };
   if (run.kind === 'clash') {
     // A renderer id is offset by the model's load position; the express id inside it is the file's own.
@@ -150,7 +166,8 @@ export function bindSavedModels(saved: Pick<SavedAnalysisRun, 'models' | 'edited
   }
   const ids = new Map<string, string>();
   const claimed = new Map<string, string>();
-  for (const model of saved.models) {
+  // The frame's other models are bound like the examined ones (same file, open once, unedited, unmoved), never used by the run.
+  for (const model of [...saved.models, ...saved.frame?.others ?? []]) {
     if (!model.sourceContentHash && !model.sourceFingerprint) { refusals.push({ code: 'sourceUnknown', model: model.name }); continue; }
     const matches = [...state.models].filter(([, open]) => sameSource(model, open)).map(([id]) => id);
     if (matches.length === 0) {

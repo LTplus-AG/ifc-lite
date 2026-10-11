@@ -28,6 +28,7 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { isMainEntry } from '../lib/is-main-entry.mjs';
 import { discoverCorpus } from './lib/corpus.mjs';
 import { buildMatrix } from './lib/matrix.mjs';
 import { renderMarkdown, replaceRegion } from './lib/report.mjs';
@@ -89,7 +90,7 @@ async function main() {
   process.exit(0);
 }
 
-if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
+if (isMainEntry(import.meta.url)) {
   main().catch((err) => {
     console.error(err instanceof Error ? err.stack : err);
     process.exit(1);

@@ -21,6 +21,7 @@
 import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { isMainEntry } from '../lib/is-main-entry.mjs';
 
 const REPO = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const OUT = join(REPO, 'docs/architecture/ids-studio/upstream/proposed-corpus-cases');
@@ -136,7 +137,7 @@ async function main() {
   console.log(`wrote ${CASES.length} proposed cases to ${OUT}`);
 }
 
-if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
+if (isMainEntry(import.meta.url)) {
   main().catch((err) => {
     console.error(err instanceof Error ? err.message : err);
     process.exit(1);

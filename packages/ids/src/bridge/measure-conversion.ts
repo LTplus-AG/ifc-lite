@@ -81,7 +81,11 @@ export function projectUnitConversion(
   if (!dataType || (!units && !fallbackUnits) || lengthFamilyKind(dataType)) return undefined;
   const m = measureUnit(dataType);
   if (!m || m.kind !== 'typed') return undefined;
-  const declared = units?.resolvedForUnitType(m.unitType) ?? fallbackUnits?.resolvedForUnitType(m.unitType);
+  // A unit the owner declares but could not resolve (`unitForMeasure` null)
+  // stays unconverted: the file-wide unit answers only an undeclared type.
+  const own = units?.resolvedForUnitType(m.unitType);
+  const ownUnresolved = !own && units?.unitForMeasure(dataType) === null;
+  const declared = own ?? (ownUnresolved ? undefined : fallbackUnits?.resolvedForUnitType(m.unitType));
   if (!declared) return undefined;
   return unitConversion(dataType, declared.siScale, declared.symbol);
 }

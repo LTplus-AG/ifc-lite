@@ -193,7 +193,9 @@ describe('untyped list and table members (#7395, case 5)', () => {
   });
 
   it('converts the measure member of a mixed list and leaves the label', async () => {
-    expect((await prop(7, 'Mixed', 'Offsets'))?.values).toEqual(['x', '0.5']);
+    const offsets = await prop(7, 'Mixed', 'Offsets');
+    expect(offsets?.values).toEqual(['x', '0.5']);
+    expect(offsets?.value).toBe('x, 0.5');
   });
 
   it('keeps every member of a converted list in its display value', async () => {

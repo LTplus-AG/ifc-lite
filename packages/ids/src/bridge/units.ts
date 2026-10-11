@@ -278,6 +278,17 @@ export function ownUnitConversionFor(
   return unitConversion(upper, siScale, symbol);
 }
 
+/**
+ * A list's display value is its members joined by the parser; rebuild it from
+ * the converted members so it matches them.
+ */
+function listDisplayValue(
+  rawValue: string | number | boolean | null,
+  values: string[]
+): string | number | boolean | null {
+  return typeof rawValue === 'string' ? values.join(', ') : rawValue;
+}
+
 function convertAll(
   rawValue: string | number | boolean | null,
   rawValues: string[] | undefined,
@@ -290,10 +301,8 @@ function convertAll(
         return cm == null ? String(m) : String(cm);
       })
     : rawValues;
-  // A list's display value is its members joined by the parser; rebuild it
-  // from the converted members rather than reading only the first.
   if (values && values.length > 1 && typeof rawValue === 'string') {
-    return { value: values.join(', '), values };
+    return { value: listDisplayValue(rawValue, values), values };
   }
   const v = typeof rawValue === 'boolean' || rawValue === null ? null : convertNumeric(rawValue, c!);
   return { value: v == null ? rawValue : v, values };
@@ -316,10 +325,8 @@ export function applyOwnUnitConversion(
 ): { value: string | number | boolean | null; values: string[] | undefined } {
   // A mixed list has no shared dataType; convert each member by its own type.
   if (!dataType && Array.isArray(rawValues) && rawValues.length > 0 && valueDataTypes?.length === rawValues.length) {
-    return {
-      value: rawValue,
-      values: convertTypedMembers(rawValues, valueDataTypes, (t) => ownUnitConversionFor(t, siScale, symbol)),
-    };
+    const values = convertTypedMembers(rawValues, valueDataTypes, (t) => ownUnitConversionFor(t, siScale, symbol));
+    return { value: listDisplayValue(rawValue, values), values };
   }
   return convertAll(rawValue, rawValues, ownUnitConversionFor(dataType, siScale, symbol));
 }
@@ -346,10 +353,8 @@ export function applyUnitConversion(
   }
 
   if (valueDataTypes && valueDataTypes.length === rawValues!.length) {
-    return {
-      value: rawValue,
-      values: convertTypedMembers(rawValues!, valueDataTypes, (t) => measureConversionFor(t, scales)),
-    };
+    const values = convertTypedMembers(rawValues!, valueDataTypes, (t) => measureConversionFor(t, scales));
+    return { value: listDisplayValue(rawValue, values), values };
   }
 
   if (!scale || scale === 1) {

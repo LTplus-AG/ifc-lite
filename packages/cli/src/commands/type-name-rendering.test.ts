@@ -72,7 +72,10 @@ describe('info renders canonical IFC EXPRESS names', () => {
     expect(out).toContain('IfcWallStandardCase');
     const offender = RAW_STEP_CLASS.exec(out);
     expect(offender?.[0], `info --json printed a raw STEP class name`).toBeUndefined();
-  });
+    // The first test in the file pays the cold dynamic import of the whole
+    // `info` command graph; on shared CI runners that alone has exceeded
+    // vitest's 5 s default (main run on 9639ce16, cli type-name-rendering:66).
+  }, 30_000);
 
   it('uses canonical names in the human report too', async () => {
     const out = await withModel(async (modelPath) => {

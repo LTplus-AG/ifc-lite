@@ -186,7 +186,7 @@ export function IDSCorrectionDialog({
         // Convert the user-typed, IDS-facing (base-SI) value into the raw
         // frame the model stores — see idsCorrectionScale.ts for why.
         const dataType = existing?.dataType || activeRequirement.facetDataType;
-        value = scaleCorrectionForWrite(dataStore, expressId, dataType, value);
+        value = scaleCorrectionForWrite(dataStore, expressId, activeRequirement.target, dataType, value);
 
         const result = applyPropertyCorrection(
           {

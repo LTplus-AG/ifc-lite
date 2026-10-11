@@ -10,6 +10,7 @@
 
 import { auditIDSDocument, parseIDS } from '@ifc-lite/ids';
 import { writeIdsXml } from '@ifc-lite/rules';
+import { readFileSync } from 'node:fs';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { DEMO, demoClass, demoSource } from '../../test/bsdd/replay.js';
 import { counterIds } from '../../test/corpus.js';
@@ -144,5 +145,15 @@ describe('preview and apply', () => {
     const reread = parseIDS(xml);
     expect(reread.specifications.map((s) => s.requirements.length)).toEqual(preview.result.ids.specifications.map((s) => s.requirements.length));
     expect(reread.specifications[1].requirements.find((r) => r.facet.type === 'property' && r.facet.uri)?.facet).toMatchObject({ uri: expect.stringContaining('/prop/') });
+  });
+
+  // The committed evidence file is exactly what the generator writes for the recorded dictionary.
+  it('reproduces the committed evidence IDS byte for byte, and that file is audit-clean', async () => {
+    const evidence = readFileSync(new URL('../../../../docs/architecture/evidence/ids-studio-p06-bsdd/generated-demo-dictionary.ids', import.meta.url), 'utf8');
+    const doc = createStudioDocument({ title: 'Demo Elements requirements (generated from bSDD)', newId: counterIds(0xd0e) });
+    const preview = previewDictionaryIds(doc, plan({ fallbackPropertySet: 'Project_Common' }), lint);
+    if (!preview.result) throw new Error(JSON.stringify(preview.gate.issues));
+    expect(writeIdsXml(preview.result.ids)).toBe(evidence);
+    expect((await auditIDSDocument(evidence)).issues.filter((i) => i.severity === 'error')).toEqual([]);
   });
 });

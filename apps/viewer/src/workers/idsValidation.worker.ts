@@ -27,6 +27,7 @@ import {
   type IDSDocument,
   type IDSValidationReport,
   type ValidationProgress,
+  type SupportedLocale,
 } from '@ifc-lite/ids';
 import { createDataAccessor } from '@ifc-lite/ids/bridge';
 
@@ -46,7 +47,7 @@ export interface IdsWorkerRequest {
   document: IDSDocument;
   schemaVersion: string;
   modelId: string;
-  locale: 'en' | 'de' | 'fr';
+  locale: SupportedLocale;
   includePassingEntities: boolean;
   /**
    * The model's pending, not-yet-exported property edits, as plain clonable

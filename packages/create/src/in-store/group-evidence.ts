@@ -27,7 +27,7 @@ export function readGroupEvidenceInStore(context: GroupStoreContext, selected: r
   const roots = new Set<number>();
   for (const id of selected) {
     const identity = graph.root(id), row = graph.entities.get(id)!;
-    if (!conformsTo(registry, row.type, 'IfcObjectDefinition')) throw new Error('Captured group member is not an IfcObjectDefinition');
+    if (!conformsTo(registry, row.type, 'IfcObjectDefinition', graph.schemaNames)) throw new Error('Captured group member is not an IfcObjectDefinition');
     members.push(identity); roots.add(id);
     if (row.type.toUpperCase() === 'IFCGROUP') {
       const snapshot = graph.snapshot(identity); groups.push(snapshot);

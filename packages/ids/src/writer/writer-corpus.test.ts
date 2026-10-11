@@ -18,11 +18,16 @@ import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { IfcParser } from '@ifc-lite/parser';
-import { auditIDSDocument, parseIDS, validateIDS, type IDSDocument } from '@ifc-lite/ids';
-import { createDataAccessor } from '@ifc-lite/ids/bridge';
-import { writeIdsXml } from './ids-xml-writer.js';
+import assert from 'node:assert/strict';
+import type { IDSConstraint, IDSDocument } from '../types.js';
+import { parseIDS } from '../parser/xml-parser.js';
+import { validateIDS } from '../validation/validator.js';
+import { auditIDSDocument } from '../audit/index.js';
+import { matchConstraint } from '../constraints/index.js';
+import { createDataAccessor } from '../bridge/index.js';
+import { writeIdsXml } from './index.js';
 
-const CORPUS = join(dirname(fileURLToPath(import.meta.url)), '../../../ids/src/__corpus__/buildingsmart-ids');
+const CORPUS = join(dirname(fileURLToPath(import.meta.url)), '../__corpus__/buildingsmart-ids');
 
 function cases(): Array<{ id: string; ids: string; ifc: string }> {
   const out: Array<{ id: string; ids: string; ifc: string }> = [];
@@ -80,10 +85,9 @@ describe('writeIdsXml round-trips the buildingSMART IDS corpus (#6915)', () => {
     }
     expect(disagreements).toEqual([]);
     // Pinned so a writer that starts refusing more (or silently accepting less) is visible:
-    // only the six xs:length / xs:minLength / xs:maxLength cases have no XML here.
-    expect(written).toBe(301);
-    expect(refused).toHaveLength(6);
-    expect(refused.every((id) => /^restriction\/(pass|fail)-(max_and_min_)?length_checks/.test(id))).toBe(true);
+    // since IDS-001 the six xs:length / xs:minLength / xs:maxLength cases are written too.
+    expect(refused).toEqual([]);
+    expect(written).toBe(307);
   }, 120_000);
 
   it('dataType, partOf and requirement instructions survive and pass the native audit', async () => {
@@ -99,15 +103,90 @@ describe('writeIdsXml round-trips the buildingSMART IDS corpus (#6915)', () => {
     }] };
     const xml = writeIdsXml(doc);
     const reread = parseIDS(xml);
-    // The XSD's relation token is upper case; the parser echoes it as `rawRelation` beside the normalised name.
-    expect(reread.specifications[0].applicability.facets[1]).toMatchObject(doc.specifications[0].applicability.facets[1]);
+    // The XSD's relation token is upper case; the parser recognises it, so no `rawRelation` echo is left behind.
+    expect(reread.specifications[0].applicability.facets[1]).toEqual(doc.specifications[0].applicability.facets[1]);
+    expect(reread.specifications[0].applicability.facets[1]).not.toHaveProperty('rawRelation');
+    const voidsAlone = { ...doc, specifications: [{ ...doc.specifications[0], applicability: { facets: [
+      { type: 'partOf' as const, relation: 'IfcRelVoidsElement' as const, entity: { type: 'entity' as const, name: { type: 'simpleValue' as const, value: 'IFCWALL' } } },
+    ] } }] };
+    expect(() => writeIdsXml(voidsAlone)).toThrow(/IfcRelVoidsElement on its own is not supported/);
     expect(reread.specifications[0].requirements[0].instructions).toBe('Record the rating from the fire strategy.');
     expect(reread.specifications[0].requirements[0].facet).toEqual(doc.specifications[0].requirements[0].facet);
     const audit = await auditIDSDocument(xml);
     expect(audit.issues.filter((issue) => issue.severity === 'error')).toEqual([]);
     expect(() => writeIdsXml({ ...doc, specifications: [{ ...doc.specifications[0], requirements: [{ id: 'r', optionality: 'required',
-      facet: { type: 'attribute', name: { type: 'simpleValue', value: 'Name' }, value: { type: 'bounds', maxLength: 4 } } }] }] }))
-      .toThrow(/length or digit bounds are not supported/);
+      facet: { type: 'attribute', name: { type: 'simpleValue', value: 'Name' }, value: { type: 'bounds', unparseableFacets: [{ facet: 'minInclusive', rawValue: '6,5' }] } } }] }] }))
+      .toThrow(/unparseable bound facets are not supported/);
+  });
+
+  // IDS-001: string-length restrictions are written on every facet that carries a value.
+  it('writes xs:length / xs:minLength / xs:maxLength on every value-carrying facet and reads them back', async () => {
+    const lengths = { type: 'bounds', base: 'xs:string', minLength: 2, maxLength: 8 } as const;
+    const exact = { type: 'bounds', base: 'xs:string', length: 4 } as const;
+    const name = (value: string) => ({ type: 'simpleValue', value }) as const;
+    const facets: IDSDocument['specifications'][number]['requirements'][number]['facet'][] = [
+      { type: 'attribute', name: name('Name'), value: lengths },
+      { type: 'property', propertySet: name('Pset_WallCommon'), baseName: name('Reference'), dataType: name('IFCIDENTIFIER'), value: exact },
+      { type: 'classification', system: name('Uniclass'), value: lengths },
+      { type: 'material', value: exact },
+    ];
+    const doc: IDSDocument = { info: { title: 'Lengths' }, specifications: [{
+      id: 's', name: 'Walls', ifcVersions: ['IFC4'], minOccurs: 1, maxOccurs: 'unbounded',
+      applicability: { facets: [{ type: 'entity', name: name('IFCWALL') }] },
+      requirements: facets.map((facet, i) => ({ id: `r${i}`, optionality: 'required', facet })),
+    }] };
+    const xml = writeIdsXml(doc);
+    expect(xml).toContain('<xs:minLength value="2"/>');
+    expect(xml).toContain('<xs:length value="4"/>');
+    const reread = parseIDS(xml);
+    expect(reread.specifications[0].requirements.map((r) => r.facet)).toEqual(facets);
+    const audit = await auditIDSDocument(xml);
+    expect(audit.issues.filter((issue) => issue.severity === 'error')).toEqual([]);
+    // A count that is not an xs:nonNegativeInteger is refused rather than written invalid.
+    const bad = { ...doc, specifications: [{ ...doc.specifications[0], requirements: [{ id: 'r', optionality: 'required' as const,
+      facet: { type: 'attribute' as const, name: name('Name'), value: { type: 'bounds' as const, maxLength: -1 } } }] }] };
+    expect(() => writeIdsXml(bad)).toThrow(/xs:maxLength must be a non-negative integer/);
+  });
+
+  // IDS-002: digit counts and conjunctive (`and`) restrictions are written as one xs:restriction.
+  it('writes xs:totalDigits / xs:fractionDigits and conjunctive restrictions, and reads them back', async () => {
+    const name = (value: string) => ({ type: 'simpleValue', value }) as const;
+    const values: IDSConstraint[] = [
+      { type: 'bounds', base: 'xs:decimal', totalDigits: 5, fractionDigits: 2 },
+      { type: 'bounds', base: 'xs:decimal', minInclusive: 0.0000001, maxExclusive: 1e21, fractionDigits: 9 },
+      { type: 'pattern', base: 'xs:string', pattern: '[A-Z]{2}[0-9]+', and: [{ type: 'bounds', base: 'xs:string', minLength: 3, maxLength: 6 }] },
+      { type: 'enumeration', base: 'xs:string', values: ['EI60', 'EI90', 'EI120'], and: [{ type: 'bounds', base: 'xs:string', maxLength: 4 }] },
+      { type: 'pattern', base: 'xs:double', pattern: '[0-9.]+', and: [
+        { type: 'enumeration', base: 'xs:double', values: ['1.5', '2.5'] },
+        { type: 'bounds', base: 'xs:double', minInclusive: 1, maxInclusive: 2 },
+      ] },
+    ];
+    const doc: IDSDocument = { info: { title: 'Digits and conjunctions' }, specifications: [{
+      id: 's', name: 'Walls', ifcVersions: ['IFC4'], minOccurs: 1, maxOccurs: 'unbounded',
+      applicability: { facets: [{ type: 'entity', name: name('IFCWALL') }] },
+      requirements: values.map((value, i) => ({ id: `r${i}`, optionality: 'required', facet: { type: 'attribute', name: name('Name'), value } })),
+    }] };
+    const xml = writeIdsXml(doc);
+    // xs:decimal has no exponent in its lexical space: the bound is written in plain digits.
+    expect(xml).toContain('<xs:minInclusive value="0.0000001"/>');
+    expect(xml).toContain('<xs:maxExclusive value="1000000000000000000000"/>');
+    const reread = parseIDS(xml);
+    expect(reread.specifications[0].requirements.map((r) => r.facet)).toEqual(doc.specifications[0].requirements.map((r) => r.facet));
+    // The conjunction still means both: 'EI120' is an allowed value but longer than 4 characters.
+    const constraint = reread.specifications[0].requirements[3].facet;
+    assert.ok(constraint.type === 'attribute' && constraint.value);
+    expect(matchConstraint(constraint.value, 'EI90')).toBe(true);
+    expect(matchConstraint(constraint.value, 'EI120')).toBe(false);
+
+    const refusal = (value: IDSConstraint) => () => writeIdsXml({ ...doc, specifications: [{ ...doc.specifications[0], requirements: [{ id: 'r',
+      optionality: 'required', facet: { type: 'attribute', name: name('Name'), value } }] }] });
+    // XSD ORs sibling patterns, so two pattern families cannot share one restriction.
+    expect(refusal({ type: 'pattern', pattern: 'A.*', and: [{ type: 'pattern', pattern: '.*B' }] })).toThrow(/two pattern families/);
+    expect(refusal({ type: 'pattern', base: 'xs:string', pattern: 'A', and: [{ type: 'bounds', base: 'xs:double', minInclusive: 1 }] }))
+      .toThrow(/different bases/);
+    expect(refusal({ type: 'bounds', base: 'xs:double' })).toThrow(/bounds restrictions without any facet/);
+    expect(refusal({ type: 'bounds', fractionDigits: 1.5 })).toThrow(/xs:fractionDigits must be a non-negative integer/);
+    expect(refusal({ type: 'bounds', maxInclusive: Number.POSITIVE_INFINITY })).toThrow(/xs:maxInclusive must be a finite number/);
   });
 
   // #7401: a partOf without a relation means any part-of relation; writing containment would narrow it.

@@ -6487,6 +6487,7 @@
     "geometryAabbAt: function",
     "geometryVolumeAt: function",
     "getGeometryStreamWatchdogMs: function",
+    "getWarmGeometryWorkerPool: function",
     "isNoRenderGeometryError: function",
     "isTauri: function",
     "isWasmAssetUnavailableError: function",

@@ -161,15 +161,16 @@ export async function* processParallel(
     new Uint8Array(sharedBuffer).set(countCopy('source.geometrySab', buffer));
   }
 
-  // N independent WASM-instance workers, each running
-  // `geometry.worker.ts` (one `@ifc-lite/wasm` instance per worker).
-  // #6957: `accountWorkerMessages` counts each pool's messages per direction (identity when counters are off).
-  // #7036: lease the workers a host prewarmed when this load was requested
-  // (spawned beside the file read); spawn the rest. Either way a worker serves
-  // this load only and is terminated by it, exactly as before.
+  // Lease bounded idle instances; failed or abandoned loads terminate their workers (#7036).
   const pool = options?.workerPool ?? null, poolKey = options?.wasmUrls?.wasm ?? '';
-  const acquireWorker = (role: 'geometry' | 'prepass', thread: string): Worker => enableWorkerTrace(
-    pool ? pool.acquire(role, poolKey).worker : accountWorkerMessages(spawnGeometryWorker(), role), trace, thread);
+  const initializedWorkers = new WeakSet<Worker>();
+  let loadCompleted = false;
+  const acquireWorker = (role: 'geometry' | 'prepass', thread: string): Worker => {
+    const lease = pool?.acquire(role, poolKey);
+    const worker = lease?.worker ?? accountWorkerMessages(spawnGeometryWorker(), role);
+    if (lease?.prewarmed || lease?.initializationQueued) initializedWorkers.add(worker);
+    return enableWorkerTrace(worker, trace, thread);
+  };
   const makeGeometryWorker = () => acquireWorker('geometry', `geom-${tracedWorkers++}`);
   const makePrepassWorker = () => acquireWorker('prepass', 'prepass');
 
@@ -453,7 +454,7 @@ export async function* processParallel(
         // with what consumers actually rendered.
         diagnostics = mergeGeometryDiagnostics(diagnostics, msg.diagnostics);
         workersCompleted++;
-        worker.terminate();
+        if (!pool) worker.terminate();
         wake();
         return;
       }
@@ -528,7 +529,7 @@ export async function* processParallel(
     workerSetup.push(setup);
     for (const w of workers) setup(w);
   };
-  const postInitMessages = (worker: Worker) => postGeometryWorkerInit(worker, options, sharedWasmModule);
+  const postInitMessages = (worker: Worker) => postGeometryWorkerInit(worker, options, sharedWasmModule, initializedWorkers.has(worker));
   workerSetup.push(postInitMessages);
   // This loop runs BEFORE the try/finally below (which owns teardown for the
   // rest of the pipeline), so it needs its own: `postInitMessages` can throw
@@ -1094,19 +1095,10 @@ export async function* processParallel(
     onLiveness: () => { eventQueue.push({ type: 'progress', phase: 'workers' }); wake(); },
     onFailed: (error) => { workerError ??= error; wake(); },
   }, hungJobTimeoutMs);
-  // Forward the consumer-supplied wasm URL to the pre-pass worker so it
-  // doesn't fall back to wasm-bindgen's `import.meta.url` default. The
-  // pre-pass worker uses the same `geometry.worker.ts` bundle and the
-  // legacy (non-threaded) wasm, so `wasmUrls.wasm` is the right key.
-  // Skipped entirely when no URL was provided — keeps Vite/webpack
-  // consumers on the bundler-native resolution path.
-  // The pre-pass worker runs the same bundle + legacy wasm, so give it the ONE
-  // shared compiled module too (else it independently compiles the binary, the
-  // 4th/5th parallel compile that fed the cold-start stagger). Falls back to the
-  // explicit URL, then to wasm-bindgen's `import.meta.url` default.
-  if (sharedWasmModule) {
+  // Initialized leases keep their engine; new workers use the canonical compiled module.
+  if (!initializedWorkers.has(prepassWorker) && sharedWasmModule) {
     prepassWorker.postMessage({ type: 'init', wasmModule: sharedWasmModule });
-  } else if (options?.wasmUrls?.wasm) {
+  } else if (!initializedWorkers.has(prepassWorker) && options?.wasmUrls?.wasm) {
     prepassWorker.postMessage({ type: 'init', wasmUrl: options.wasmUrls.wasm });
   }
   let chunkArrivals = 0;
@@ -1358,11 +1350,7 @@ export async function* processParallel(
     wake();
   };
 
-  // Track when the pre-pass worker finishes by listening for either a
-  // synthesized "complete" event from the Rust side OR a worker exit. The
-  // Rust side currently doesn't post anything after `complete` (it returns
-  // from JS), so we close the worker via terminate-on-complete in the host.
-  // After we see the Rust `complete` event we can sendStreamEnd.
+  // Complete is emitted inside Rust's callback; pooled reuse waits for FIFO reset acknowledgement.
   const onPrepassComplete = () => {
     prepassDone = true;
     gateTracker.markPrepassDone();
@@ -1380,7 +1368,7 @@ export async function* processParallel(
         sendStreamEnd();
       }
     }
-    prepassWorker.terminate();
+    if (!pool) prepassWorker.terminate();
     wake();
   };
 
@@ -1485,9 +1473,7 @@ export async function* processParallel(
     // `complete`. Workers were pre-spawned with `init` so they need an
     // explicit terminate to exit.
     if (prepassDone && !streamStartSentToWorkers && prepassJobsTotal === 0) {
-      for (const w of workers) {
-        terminateWorkerQuietly(w, 'process worker');
-      }
+      loadCompleted = true;
       const coordinateInfo = coordinator.getFinalCoordinateInfo();
       yield { type: 'complete', totalMeshes: 0, coordinateInfo };
       return;
@@ -1520,6 +1506,7 @@ export async function* processParallel(
     );
   }
   const skippedReport = skippedHungElements.report();
+  loadCompleted = true;
   yield {
     type: 'complete',
     totalMeshes,
@@ -1539,9 +1526,11 @@ export async function* processParallel(
     }
     stopHungJobMonitor();
     options?.signal?.removeEventListener('abort', onAbort);
-    for (const w of workers) {
-      terminateWorkerQuietly(w, 'process worker');
+    if (pool && loadCompleted && !aborted && !workerError && !prepassError) {
+      await Promise.all([...workers, prepassWorker].map((worker) => pool.release(worker, options?.signal)));
+    } else {
+      for (const w of workers) terminateWorkerQuietly(w, 'process worker');
+      terminateWorkerQuietly(prepassWorker, 'pre-pass worker');
     }
-    terminateWorkerQuietly(prepassWorker, 'pre-pass worker');
   }
 }

@@ -261,3 +261,33 @@ joined neighbours follow. Stale geometry, unavailable native geometry, unsafe
 shared placements, incompatible hosted/joined shifts, or a reference that would
 move with a target refuse without partial IFC writes. Supply the owning model
 ID when federated; lengths are IFC storey-local metres.
+
+### Generic groups
+
+`bim.store.addGroup`, `readGroup`, `updateGroup`, and `removeGroup` author exact
+`IfcGroup` records in IFC4/IFC4X3. Each member pins its owning `modelId`, native
+`expressId`, and current `GlobalId`. Pass the complete intended `RelatedObjects`
+list on every create/update; an explicit `[]` clears membership. An update or
+delete also requires the complete current snapshot returned by `readGroup`.
+
+```ts
+import type { BimContext, GroupStoreIdentity } from '@ifc-lite/sdk';
+
+function createInspectionGroup(bim: BimContext, member: GroupStoreIdentity) {
+  const group = bim.store.addGroup(member.modelId, {
+    Name: 'Inspection group', RelatedObjects: [member],
+  });
+  const expected = bim.store.readGroup(group);
+  bim.store.updateGroup(expected, {
+    Description: 'Ready for inspection', RelatedObjects: [member],
+  });
+  return group;
+}
+```
+
+Updates preserve the group and reuse an existing exact membership relationship.
+Deleting a group preserves its member objects and other group memberships;
+shared incoming memberships are rewritten safely. Other incoming dependencies,
+ambiguous/deleted identities, specialized assignment semantics, and exceeded
+graph budgets refuse the whole edit. The viewer records one native Undo batch.
+Specialized Structural groups retain their separate authoring methods.

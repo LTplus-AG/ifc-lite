@@ -1,0 +1,74 @@
+{
+  "headBeforeCorrection": "2cd4d883339b3483abd3ec3e57fdabfa39ba7757",
+  "scope": "Only unused catch bindings removed; existing warnings unchanged. No changes to callback/waiter/test semantics.",
+  "priorQualificationSha256": "41c6464e7a598429589ec8eea67f2d217fc106db481b68578107853acbcca8a8",
+  "priorRootVerification": "../root-verification.json",
+  "finalSourcePins": [
+    {
+      "path": "tests/benchmark/metadata-render-readiness.ts",
+      "beforeSha256": "097e02c88d8a7487fe7d943e22b24e44d883c6e24326132f487a2eae0727f116",
+      "afterSha256": "cd680148638e191f6ee353b3bbc4f1bd0030d302658d3538adffb2af440743c0"
+    },
+    {
+      "path": "tests/benchmark/viewer-benchmark-page.ts",
+      "beforeSha256": "d32e6e728aa179cb3f8bfc158c9b222a4a4306071931b7f997478ab1d4b1ff8b",
+      "afterSha256": "cb97ac629091d4b11416cfa96251e78e91db31ed4000e5c3557f7b3575b9aacd"
+    },
+    {
+      "path": "scripts/browser-metadata-readiness.test.mjs",
+      "beforeSha256": "c50aeab278373bdbc90234ad6adb25845e8fd7f4aa56d5cdcd566673739446b9",
+      "afterSha256": "08c5176e58a50901f90f59bcdbcc8594cd5c8a2f37e925f0b46d6fa1c075dfa5"
+    }
+  ],
+  "toolSession": 39192,
+  "results": {
+    "rootTypecheck": {
+      "exitCode": 0,
+      "auditedTestFiles": 3739,
+      "auditedPackages": 62,
+      "permanentProgramme": "scripts/perf/tsconfig.frames.json",
+      "packageChecks": "Turbo cache replay; actual final audit + permanent script programme completed"
+    },
+    "touchedOxlint": {
+      "exitCode": 0,
+      "warnings": 0
+    },
+    "diff": {
+      "exitCode": 0
+    }
+  },
+  "runs": {
+    "full-root-typecheck": {
+      "command": [
+        "pnpm",
+        "typecheck"
+      ],
+      "exitCode": 0,
+      "elapsedSeconds": 6.478726863861084
+    },
+    "diff": {
+      "command": [
+        "git",
+        "diff",
+        "--check"
+      ],
+      "exitCode": 0,
+      "elapsedSeconds": 0.27812790870666504
+    },
+    "touched-oxlint": {
+      "command": [
+        "pnpm",
+        "exec",
+        "oxlint",
+        "tests/benchmark/metadata-render-readiness.ts",
+        "tests/benchmark/viewer-benchmark-page.ts",
+        "scripts/browser-metadata-readiness.test.mjs"
+      ],
+      "exitCode": 0,
+      "elapsedSeconds": 0.3083677291870117
+    }
+  },
+  "evidenceCorrection": "Historical41c cache return locator1229 was off by one; actual current2cd cache branch return is useIfcLoader.ts1230. The control-flow/fallback evidence is unchanged. Historical qualification is not rewritten.",
+  "scopeLimits": "Prior22/control inverse/restored qualification retained separately; no repeated runtime tests for binding-only cleanup. No actual browser execution/native GPU/performance acceptance.",
+  "archiveManifest": "archive-manifest.json"
+}

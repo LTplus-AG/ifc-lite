@@ -9,70 +9,46 @@
 import { describe, it, expect } from 'vitest';
 import { extractClassificationsOnDemand, extractMaterialsOnDemand } from '../src/columnar-parser.js';
 import type { IfcDataStore } from '../src/columnar-parser.js';
-import type { EntityRef } from '../src/types.js';
+import { IfcParser } from '../src/index.js';
 
 /**
- * Helper: build a minimal IfcDataStore from STEP lines.
- * Each line should be a STEP entity like: #10=IFCMATERIAL('Concrete',$,$);
+ * Parse real STEP entities and assignment relationships through the native load
+ * path (#7208). A source/index/maps-only cast omits required IfcDataStore methods.
  */
-function buildStoreFromStep(
+async function buildStoreFromStep(
   lines: string[],
   classificationMap?: Map<number, number[]>,
   materialMap?: Map<number, number>
-): IfcDataStore {
-  // Join lines and encode
-  const text = lines.join('\n');
-  const source = new TextEncoder().encode(text);
-
-  // Parse entity refs from the lines
-  const byId = new Map<number, EntityRef>();
-  const byType = new Map<string, number[]>();
-
-  let offset = 0;
-  for (const line of lines) {
-    const match = line.match(/^#(\d+)\s*=\s*(\w+)\(/);
-    if (match) {
-      const expressId = parseInt(match[1], 10);
-      const rawType = match[2];
-
-      // Build proper type name (e.g., IFCMATERIAL -> IfcMaterial)
-      const type = rawType;
-      const lineBytes = new TextEncoder().encode(line);
-      const byteOffset = source.indexOf(lineBytes[0], offset);
-      // Find start of this line in source
-      const lineStart = text.indexOf(line, offset > 0 ? text.indexOf('\n', offset - 1) : 0);
-
-      const ref: EntityRef = {
-        expressId,
-        type,
-        byteOffset: lineStart >= 0 ? lineStart : offset,
-        byteLength: line.length,
-        lineNumber: 1,
-      };
-
-      byId.set(expressId, ref);
-      const typeUpper = type.toUpperCase();
-      let typeList = byType.get(typeUpper);
-      if (!typeList) {
-        typeList = [];
-        byType.set(typeUpper, typeList);
-      }
-      typeList.push(expressId);
-
-      offset = lineStart >= 0 ? lineStart + line.length : offset + line.length;
+): Promise<IfcDataStore> {
+  // Explicit metre units and project context keep this small fixture honest;
+  // geometry is deliberately absent because these tests inspect metadata only.
+  const entities = [
+    "#9000=IFCPROJECT('0000000000000000009000',$,'Metadata fixture',$,$,$,$,$,#9001);",
+    "#9001=IFCUNITASSIGNMENT((#9002));",
+    "#9002=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);",
+    ...lines,
+  ];
+  const globalId = (id: number): string => id.toString().padStart(22, '0');
+  const subjects = new Set([
+    100, ...(classificationMap?.keys() ?? []), ...(materialMap?.keys() ?? []),
+  ]);
+  for (const id of subjects) {
+    entities.push(`#${id}=IFCWALL('${globalId(id)}',$,'Fixture wall',$,$,$,$,$,$);`);
+  }
+  let relationshipId = 10000;
+  for (const [id, references] of classificationMap ?? []) {
+    for (const reference of references) {
+      entities.push(`#${relationshipId++}=IFCRELASSOCIATESCLASSIFICATION('${globalId(relationshipId)}',$,$,$,(#${id}),#${reference});`);
     }
   }
-
-  return {
-    source,
-    entityIndex: { byId, byType },
-    onDemandClassificationMap: classificationMap,
-    // onDemandMaterialMap is list-valued (entity -> material def ids); wrap the
-    // single-value test fixtures so they match the store's real shape.
-    onDemandMaterialMap: materialMap
-      ? new Map([...materialMap].map(([k, v]) => [k, [v]]))
-      : undefined,
-  } as unknown as IfcDataStore;
+  for (const [id, reference] of materialMap ?? []) {
+    entities.push(`#${relationshipId++}=IFCRELASSOCIATESMATERIAL('${globalId(relationshipId)}',$,$,$,(#${id}),#${reference});`);
+  }
+  const source = new TextEncoder().encode([
+    'ISO-10303-21;', 'HEADER;', "FILE_SCHEMA(('IFC4'));", 'ENDSEC;',
+    'DATA;', ...entities, 'ENDSEC;', 'END-ISO-10303-21;',
+  ].join('\n'));
+  return new IfcParser().parseColumnar(source.buffer, { disableWorkerScan: true });
 }
 
 // ============================================================================
@@ -80,26 +56,26 @@ function buildStoreFromStep(
 // ============================================================================
 
 describe('extractClassificationsOnDemand', () => {
-  it('should return empty array when no classification map', () => {
-    const store = buildStoreFromStep([]);
+  it('should return empty array when no classification map', async () => {
+    const store = await buildStoreFromStep([]);
     const result = extractClassificationsOnDemand(store, 100);
     expect(result).toEqual([]);
   });
 
-  it('should return empty array when entity has no classifications', () => {
+  it('should return empty array when entity has no classifications', async () => {
     const classMap = new Map<number, number[]>();
-    const store = buildStoreFromStep([], classMap);
+    const store = await buildStoreFromStep([], classMap);
     const result = extractClassificationsOnDemand(store, 100);
     expect(result).toEqual([]);
   });
 
-  it('should extract IfcClassificationReference with identification and name', () => {
+  it('should extract IfcClassificationReference with identification and name', async () => {
     const lines = [
       `#10=IFCCLASSIFICATIONREFERENCE('http://example.com','Pr_40_30','Walls',#20,'Wall classification',$);`,
       `#20=IFCCLASSIFICATION('CSI','2015',$,'Uniclass 2015',$,$,$);`,
     ];
     const classMap = new Map<number, number[]>([[100, [10]]]);
-    const store = buildStoreFromStep(lines, classMap);
+    const store = await buildStoreFromStep(lines, classMap);
 
     const result = extractClassificationsOnDemand(store, 100);
     expect(result).toHaveLength(1);
@@ -109,12 +85,12 @@ describe('extractClassificationsOnDemand', () => {
     expect(result[0].description).toBe('Wall classification');
   });
 
-  it('should extract direct IfcClassification reference', () => {
+  it('should extract direct IfcClassification reference', async () => {
     const lines = [
       `#30=IFCCLASSIFICATION('bSI','2015',$,'OmniClass','A classification system',$,$);`,
     ];
     const classMap = new Map<number, number[]>([[200, [30]]]);
-    const store = buildStoreFromStep(lines, classMap);
+    const store = await buildStoreFromStep(lines, classMap);
 
     const result = extractClassificationsOnDemand(store, 200);
     expect(result).toHaveLength(1);
@@ -123,14 +99,14 @@ describe('extractClassificationsOnDemand', () => {
     expect(result[0].description).toBe('A classification system');
   });
 
-  it('should walk classification chain to build path', () => {
+  it('should walk classification chain to build path', async () => {
     const lines = [
       `#10=IFCCLASSIFICATIONREFERENCE($,'Pr_40_30_10','External walls',#11,$,$);`,
       `#11=IFCCLASSIFICATIONREFERENCE($,'Pr_40_30','Walls',#12,$,$);`,
       `#12=IFCCLASSIFICATION('CSI','2015',$,'Uniclass 2015',$,$,$);`,
     ];
     const classMap = new Map<number, number[]>([[100, [10]]]);
-    const store = buildStoreFromStep(lines, classMap);
+    const store = await buildStoreFromStep(lines, classMap);
 
     const result = extractClassificationsOnDemand(store, 100);
     expect(result).toHaveLength(1);
@@ -138,7 +114,7 @@ describe('extractClassificationsOnDemand', () => {
     expect(result[0].path).toEqual(['Pr_40_30']);
   });
 
-  it('should handle multiple classifications on same entity', () => {
+  it('should handle multiple classifications on same entity', async () => {
     const lines = [
       `#10=IFCCLASSIFICATIONREFERENCE($,'EF_25','Walls',#20,$,$);`,
       `#15=IFCCLASSIFICATIONREFERENCE($,'22-00-00','Openings',#25,$,$);`,
@@ -146,7 +122,7 @@ describe('extractClassificationsOnDemand', () => {
       `#25=IFCCLASSIFICATION($,$,$,'OmniClass',$,$,$);`,
     ];
     const classMap = new Map<number, number[]>([[100, [10, 15]]]);
-    const store = buildStoreFromStep(lines, classMap);
+    const store = await buildStoreFromStep(lines, classMap);
 
     const result = extractClassificationsOnDemand(store, 100);
     expect(result).toHaveLength(2);
@@ -154,12 +130,12 @@ describe('extractClassificationsOnDemand', () => {
     expect(result[1].system).toBe('OmniClass');
   });
 
-  it('should handle missing referenced source gracefully', () => {
+  it('should handle missing referenced source gracefully', async () => {
     const lines = [
       `#10=IFCCLASSIFICATIONREFERENCE($,'ABC123','Some ref',$,$,$);`,
     ];
     const classMap = new Map<number, number[]>([[100, [10]]]);
-    const store = buildStoreFromStep(lines, classMap);
+    const store = await buildStoreFromStep(lines, classMap);
 
     const result = extractClassificationsOnDemand(store, 100);
     expect(result).toHaveLength(1);
@@ -173,25 +149,25 @@ describe('extractClassificationsOnDemand', () => {
 // ============================================================================
 
 describe('extractMaterialsOnDemand', () => {
-  it('should return null when no material map', () => {
-    const store = buildStoreFromStep([]);
+  it('should return null when no material map', async () => {
+    const store = await buildStoreFromStep([]);
     const result = extractMaterialsOnDemand(store, 100);
     expect(result).toBeNull();
   });
 
-  it('should return null when entity has no material', () => {
+  it('should return null when entity has no material', async () => {
     const matMap = new Map<number, number>();
-    const store = buildStoreFromStep([], undefined, matMap);
+    const store = await buildStoreFromStep([], undefined, matMap);
     const result = extractMaterialsOnDemand(store, 100);
     expect(result).toBeNull();
   });
 
-  it('should extract IfcMaterial (direct assignment)', () => {
+  it('should extract IfcMaterial (direct assignment)', async () => {
     const lines = [
       `#10=IFCMATERIAL('Concrete','Structural concrete',$);`,
     ];
     const matMap = new Map<number, number>([[100, 10]]);
-    const store = buildStoreFromStep(lines, undefined, matMap);
+    const store = await buildStoreFromStep(lines, undefined, matMap);
 
     const result = extractMaterialsOnDemand(store, 100);
     expect(result).not.toBeNull();
@@ -200,7 +176,7 @@ describe('extractMaterialsOnDemand', () => {
     expect(result!.description).toBe('Structural concrete');
   });
 
-  it('should extract IfcMaterialLayerSet with layers', () => {
+  it('should extract IfcMaterialLayerSet with layers', async () => {
     const lines = [
       `#10=IFCMATERIAL('Brick',$,$);`,
       `#11=IFCMATERIAL('Insulation',$,$);`,
@@ -209,7 +185,7 @@ describe('extractMaterialsOnDemand', () => {
       `#30=IFCMATERIALLAYERSET((#20,#21),'Wall Layers',$);`,
     ];
     const matMap = new Map<number, number>([[100, 30]]);
-    const store = buildStoreFromStep(lines, undefined, matMap);
+    const store = await buildStoreFromStep(lines, undefined, matMap);
 
     const result = extractMaterialsOnDemand(store, 100);
     expect(result).not.toBeNull();
@@ -222,14 +198,14 @@ describe('extractMaterialsOnDemand', () => {
     expect(result!.layers![1].thickness).toBe(0.05);
   });
 
-  it('should extract IfcMaterialProfileSet with profiles', () => {
+  it('should extract IfcMaterialProfileSet with profiles', async () => {
     const lines = [
       `#10=IFCMATERIAL('Steel',$,$);`,
       `#20=IFCMATERIALPROFILE('HEB200',$,#10,#50,$,'Structural');`,
       `#30=IFCMATERIALPROFILESET('Steel Profiles',$,(#20),$);`,
     ];
     const matMap = new Map<number, number>([[100, 30]]);
-    const store = buildStoreFromStep(lines, undefined, matMap);
+    const store = await buildStoreFromStep(lines, undefined, matMap);
 
     const result = extractMaterialsOnDemand(store, 100);
     expect(result).not.toBeNull();
@@ -241,7 +217,7 @@ describe('extractMaterialsOnDemand', () => {
     expect(result!.profiles![0].category).toBe('Structural');
   });
 
-  it('should extract IfcMaterialConstituentSet with constituents', () => {
+  it('should extract IfcMaterialConstituentSet with constituents', async () => {
     const lines = [
       `#10=IFCMATERIAL('Concrete',$,$);`,
       `#11=IFCMATERIAL('Steel Reinforcement',$,$);`,
@@ -250,7 +226,7 @@ describe('extractMaterialsOnDemand', () => {
       `#30=IFCMATERIALCONSTITUENTSET('RC Slab',$,(#20,#21));`,
     ];
     const matMap = new Map<number, number>([[100, 30]]);
-    const store = buildStoreFromStep(lines, undefined, matMap);
+    const store = await buildStoreFromStep(lines, undefined, matMap);
 
     const result = extractMaterialsOnDemand(store, 100);
     expect(result).not.toBeNull();
@@ -264,14 +240,14 @@ describe('extractMaterialsOnDemand', () => {
     expect(result!.constituents![1].fraction).toBe(0.2);
   });
 
-  it('should extract IfcMaterialList', () => {
+  it('should extract IfcMaterialList', async () => {
     const lines = [
       `#10=IFCMATERIAL('Wood',$,$);`,
       `#11=IFCMATERIAL('Glass',$,$);`,
       `#30=IFCMATERIALLIST((#10,#11));`,
     ];
     const matMap = new Map<number, number>([[100, 30]]);
-    const store = buildStoreFromStep(lines, undefined, matMap);
+    const store = await buildStoreFromStep(lines, undefined, matMap);
 
     const result = extractMaterialsOnDemand(store, 100);
     expect(result).not.toBeNull();
@@ -279,7 +255,7 @@ describe('extractMaterialsOnDemand', () => {
     expect(result!.materials).toEqual([{ name: 'Wood' }, { name: 'Glass' }]);
   });
 
-  it('should follow IfcMaterialLayerSetUsage to IfcMaterialLayerSet', () => {
+  it('should follow IfcMaterialLayerSetUsage to IfcMaterialLayerSet', async () => {
     const lines = [
       `#10=IFCMATERIAL('Brick',$,$);`,
       `#20=IFCMATERIALLAYER(#10,0.2,$,$,$,$,$);`,
@@ -287,7 +263,7 @@ describe('extractMaterialsOnDemand', () => {
       `#40=IFCMATERIALLAYERSETUSAGE(#30,.AXIS2.,.POSITIVE.,0.0,$);`,
     ];
     const matMap = new Map<number, number>([[100, 40]]);
-    const store = buildStoreFromStep(lines, undefined, matMap);
+    const store = await buildStoreFromStep(lines, undefined, matMap);
 
     const result = extractMaterialsOnDemand(store, 100);
     expect(result).not.toBeNull();
@@ -298,7 +274,7 @@ describe('extractMaterialsOnDemand', () => {
     expect(result!.layers![0].thickness).toBe(0.2);
   });
 
-  it('should follow IfcMaterialProfileSetUsage to IfcMaterialProfileSet', () => {
+  it('should follow IfcMaterialProfileSetUsage to IfcMaterialProfileSet', async () => {
     const lines = [
       `#10=IFCMATERIAL('Steel',$,$);`,
       `#20=IFCMATERIALPROFILE('IPE300',$,#10,$,$,$);`,
@@ -306,7 +282,7 @@ describe('extractMaterialsOnDemand', () => {
       `#40=IFCMATERIALPROFILESETUSAGE(#30,$,$);`,
     ];
     const matMap = new Map<number, number>([[100, 40]]);
-    const store = buildStoreFromStep(lines, undefined, matMap);
+    const store = await buildStoreFromStep(lines, undefined, matMap);
 
     const result = extractMaterialsOnDemand(store, 100);
     expect(result).not.toBeNull();
@@ -316,24 +292,24 @@ describe('extractMaterialsOnDemand', () => {
     expect(result!.profiles![0].materialName).toBe('Steel');
   });
 
-  it('should return null for unknown material entity type', () => {
+  it('should return null for unknown material entity type', async () => {
     const lines = [
       `#10=IFCMATERIALPROPERTIES('props',$,$,$);`,
     ];
     const matMap = new Map<number, number>([[100, 10]]);
-    const store = buildStoreFromStep(lines, undefined, matMap);
+    const store = await buildStoreFromStep(lines, undefined, matMap);
 
     const result = extractMaterialsOnDemand(store, 100);
     expect(result).toBeNull();
   });
 
-  it('should handle missing material reference in layer', () => {
+  it('should handle missing material reference in layer', async () => {
     const lines = [
       `#20=IFCMATERIALLAYER($,0.15,$,$,$,$,$);`,
       `#30=IFCMATERIALLAYERSET((#20),'Partial Layer Set',$);`,
     ];
     const matMap = new Map<number, number>([[100, 30]]);
-    const store = buildStoreFromStep(lines, undefined, matMap);
+    const store = await buildStoreFromStep(lines, undefined, matMap);
 
     const result = extractMaterialsOnDemand(store, 100);
     expect(result).not.toBeNull();

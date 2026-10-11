@@ -18,11 +18,13 @@
 
 import {
   createCostStoreBackend,
+  createGroupStoreBackend,
   createModellingStoreBackend,
   createOrdinaryStoreBackend,
   createStructuralStoreBackend,
   type CostBackendMethods,
   type CostStoreBackendMethods,
+  type GroupStoreBackendMethods,
   type ModellingStoreBackendMethods,
   type OrdinaryStoreBackendMethods,
   type StructuralStoreBackendMethods,
@@ -43,7 +45,7 @@ export interface StoreAuthoringDeps {
 
 export function createStoreAuthoring(
   deps: StoreAuthoringDeps,
-): CostStoreBackendMethods & StructuralStoreBackendMethods & ModellingStoreBackendMethods & OrdinaryStoreBackendMethods {
+): CostStoreBackendMethods & StructuralStoreBackendMethods & ModellingStoreBackendMethods & OrdinaryStoreBackendMethods & GroupStoreBackendMethods {
   const resolveModel = (modelId?: string) => {
     deps.assertModel(modelId ?? '');
     return {
@@ -56,6 +58,7 @@ export function createStoreAuthoring(
   const resolve = (modelId?: string) => ({ ...resolveModel(modelId), ownerHistoryId: deps.ownerHistoryId() });
   return {
     ...createCostStoreBackend(resolve, deps.cost),
+    ...createGroupStoreBackend(resolve),
     ...createStructuralStoreBackend(resolve),
     ...createModellingStoreBackend(resolve),
     ...createOrdinaryStoreBackend(resolveModel),

@@ -1,0 +1,258 @@
+{
+  "target": "apps/viewer/src/lib/assistant/artifacts/artifact-proposals.test.ts",
+  "rows": [
+    {
+      "number": 7252,
+      "head": "af56870d6234a4cb28041a5e6c98d6cbb0c44e96",
+      "fileCount": 13,
+      "touchesTarget": false
+    },
+    {
+      "number": 7250,
+      "head": "211a3aa6eaeeef89d7fc258565f1cc9e63d2e52b",
+      "fileCount": 28,
+      "touchesTarget": false
+    },
+    {
+      "number": 7249,
+      "head": "ba09b3500fdce2ae2c0129e0ab76f76d1a82d22f",
+      "fileCount": 34,
+      "touchesTarget": false
+    },
+    {
+      "number": 7248,
+      "head": "e53144af6ae9df4ed3c7ef8271e8540494111633",
+      "fileCount": 19,
+      "touchesTarget": false
+    },
+    {
+      "number": 7244,
+      "head": "04ebbecbf65b10e21a85dfa64653bdc27601860c",
+      "fileCount": 9,
+      "touchesTarget": false
+    },
+    {
+      "number": 7243,
+      "head": "2d6b002b952b5007145d5300ac31c25cb20b3cb0",
+      "fileCount": 8,
+      "touchesTarget": false
+    },
+    {
+      "number": 7240,
+      "head": "b7c5eee4118099fd8d915948b3dad92da76c19eb",
+      "fileCount": 5,
+      "touchesTarget": false
+    },
+    {
+      "number": 7237,
+      "head": "b97099e8c5e0e4d6b1b50757e31422a20c1d73e8",
+      "fileCount": 15,
+      "touchesTarget": false
+    },
+    {
+      "number": 7236,
+      "head": "d752e422f2b339e430be26e560581ad85c93df3a",
+      "fileCount": 14,
+      "touchesTarget": false
+    },
+    {
+      "number": 7224,
+      "head": "7eefd9cc4d91fd2359ab2059759dd6498a3f1c8f",
+      "fileCount": 11,
+      "touchesTarget": false
+    },
+    {
+      "number": 7223,
+      "head": "a7a4251ca037f1bc6b122ab47d4084600d9a4c90",
+      "fileCount": 8,
+      "touchesTarget": false
+    },
+    {
+      "number": 7221,
+      "head": "7269510f7be61302c6dd9172bd946e87067e3ebc",
+      "fileCount": 143,
+      "touchesTarget": false
+    },
+    {
+      "number": 7219,
+      "head": "1e37150c5cbc1f701ac3ec849312abb95b33ecb0",
+      "fileCount": 21,
+      "touchesTarget": false
+    },
+    {
+      "number": 7207,
+      "head": "5f3e1ef749de5049c432cdf5bb11f3ba21ffde24",
+      "fileCount": 7,
+      "touchesTarget": false
+    },
+    {
+      "number": 7203,
+      "head": "f852f9f4f7a492b61d1ddf9d8aa926ce8e037b9c",
+      "fileCount": 8,
+      "touchesTarget": false
+    },
+    {
+      "number": 7181,
+      "head": "c258acf6a7e3185e59b35565c71b543e3e3e496a",
+      "fileCount": 26,
+      "touchesTarget": false
+    },
+    {
+      "number": 7180,
+      "head": "e02476a1f186ffbbf5166ff98f4788ca34de618e",
+      "fileCount": 311,
+      "touchesTarget": false
+    },
+    {
+      "number": 7171,
+      "head": "4e36dfc588f55e15b3c2095023c1b2aa8e53dd18",
+      "fileCount": 50,
+      "touchesTarget": false
+    },
+    {
+      "number": 7169,
+      "head": "62bc268382255a65c7eeaaa9268898bafe201fec",
+      "fileCount": 47,
+      "touchesTarget": false
+    },
+    {
+      "number": 7168,
+      "head": "edd59c7b92b07a3a0780a24ff3a6b53ab865b4b5",
+      "fileCount": 79,
+      "touchesTarget": false
+    },
+    {
+      "number": 7161,
+      "head": "9fd20c72329e2424a468d14bbe67a6799728a38e",
+      "fileCount": 39,
+      "touchesTarget": false
+    },
+    {
+      "number": 7153,
+      "head": "ff7b1c9be19cda9e830cdce49084e46b53f960be",
+      "fileCount": 138,
+      "touchesTarget": false
+    },
+    {
+      "number": 7152,
+      "head": "66886098b86b12991838786d225c35c327b09fcb",
+      "fileCount": 1,
+      "touchesTarget": false
+    },
+    {
+      "number": 7151,
+      "head": "3395f1f1dc61a5a193526f47158d51f613e84eeb",
+      "fileCount": 46,
+      "touchesTarget": false
+    },
+    {
+      "number": 7150,
+      "head": "bf5a80dbab10c22ca9586e78cbff8ad18658fc02",
+      "fileCount": 2,
+      "touchesTarget": false
+    },
+    {
+      "number": 7149,
+      "head": "237de592ec9549b6d1dbca47423dae0ab931f7df",
+      "fileCount": 52,
+      "touchesTarget": false
+    },
+    {
+      "number": 7148,
+      "head": "0b4264265386942a485bf289bcb917a6431f6ba5",
+      "fileCount": 1,
+      "touchesTarget": false
+    },
+    {
+      "number": 7147,
+      "head": "dda895dd0771d0656646b1f92785d9742f6d3963",
+      "fileCount": 1,
+      "touchesTarget": false
+    },
+    {
+      "number": 7146,
+      "head": "a319b68141c204c9066507c9f86e4abfd52f4ced",
+      "fileCount": 2,
+      "touchesTarget": false
+    },
+    {
+      "number": 7145,
+      "head": "e89ad629ddff558aae5233c43e60052cf961cb67",
+      "fileCount": 1,
+      "touchesTarget": false
+    },
+    {
+      "number": 7144,
+      "head": "745b27441cb17a0ba309befb8d3b08f72f2be594",
+      "fileCount": 165,
+      "touchesTarget": false
+    },
+    {
+      "number": 7143,
+      "head": "4b29795bb7533261c5fbd5eaf0592a41562899d8",
+      "fileCount": 54,
+      "touchesTarget": false
+    },
+    {
+      "number": 7109,
+      "head": "ac5e1ad39a2ef2a5d8ddc85fd2efe7541e48d113",
+      "fileCount": 20,
+      "touchesTarget": false
+    },
+    {
+      "number": 7041,
+      "head": "24925006b9b77df2d219206f83a16e9a21eaf0f2",
+      "fileCount": 31,
+      "touchesTarget": false
+    },
+    {
+      "number": 7024,
+      "head": "1e70d38c7dd4103c1337dd13130ffff4a814cd61",
+      "fileCount": 24,
+      "touchesTarget": false
+    },
+    {
+      "number": 6892,
+      "head": "b79c6e2b86ce967e0472e87e68b13950b4ea34e2",
+      "fileCount": 59,
+      "touchesTarget": false
+    },
+    {
+      "number": 6890,
+      "head": "6117d89865a934769f30a40aba6e95e2e521d6d7",
+      "fileCount": 4,
+      "touchesTarget": false
+    },
+    {
+      "number": 6780,
+      "head": "9fc86cb8ead77486b0bcd29726b775c27085524b",
+      "fileCount": 23,
+      "touchesTarget": false
+    },
+    {
+      "number": 6711,
+      "head": "f4ed37fca4a6256c751df70b7d1262164549b8bf",
+      "fileCount": 9,
+      "touchesTarget": false
+    },
+    {
+      "number": 6660,
+      "head": "c3f8ad88620289642776e53c24b171df00cbadaf",
+      "fileCount": 143,
+      "touchesTarget": false
+    },
+    {
+      "number": 6644,
+      "head": "b8dff07c2aa30e2c8f46a9cda7efe9bc4957c9ba",
+      "fileCount": 244,
+      "touchesTarget": false
+    },
+    {
+      "number": 6584,
+      "head": "05c496730332f4be8e5b4308370466317123b143",
+      "fileCount": 220,
+      "touchesTarget": false
+    }
+  ],
+  "scope": "Every currently returned open PR full paginated file lists; no active unpushed work inferred"
+}

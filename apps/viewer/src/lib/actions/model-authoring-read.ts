@@ -10,27 +10,26 @@
  * preview can run during render.
  */
 
-import { StoreEditor } from '@ifc-lite/mutations';
-import { RelationshipType } from '@ifc-lite/data';
+import type { StoreEditor } from '@ifc-lite/mutations';
+import { edgeSurvives, RelationshipType } from '@ifc-lite/data';
+import { effectiveMutationRelationships } from '@/sdk/adapters/query-overlay-relations';
 import { liveEntityConforms, liveEntityType, readRelatedLists } from '@ifc-lite/create';
 import { remeshContextRoots } from '@ifc-lite/export';
 import type { ViewerState } from '@/store';
 import { entityName, typeOf } from '@/lib/commands/modeling/authored-kinds';
 import { pointToMetres } from '@/lib/length-unit-scale';
 import { resolvePlacementChain, resolveRotationState } from '@/lib/placement-edit';
-import { modelReader, type ModelReader } from './model-change-values';
+import type { ModelReader } from './model-change-values';
+import { readOnlyModelEditTarget } from './model-authoring-read-target';
 
 export interface AuthoringReader extends ModelReader {
   readonly modelId: string;
   readonly editor: StoreEditor;
 }
 
-/** The live view and the store's cached editor when the model has them; otherwise private ones that never enter the store. */
+/** Snapshot current native facts without publishing an editor, view or allocator watermark (#7267). */
 export function authoringReader(state: ViewerState, modelId: string): AuthoringReader | null {
-  const reader = modelReader(state, modelId);
-  if (!reader) return null;
-  const cached = state.mutationViews.get(modelId) === reader.view ? state.storeEditors.get(modelId) : undefined;
-  return { ...reader, modelId, editor: cached ?? new StoreEditor(reader.dataStore, reader.view) };
+  return readOnlyModelEditTarget(state, modelId);
 }
 
 const live = (reader: AuthoringReader) => ({ dataStore: reader.dataStore, view: reader.view });
@@ -77,11 +76,31 @@ const DELETABLE = ['IfcWall', 'IfcSlab', 'IfcRoof', 'IfcPlate', 'IfcColumn', 'If
   'IfcCovering', 'IfcFurnishingElement', 'IfcBuildingElementProxy'];
 
 /** Why deleting the element would break the model (dependents, unsupported class), or null. */
-export function deletionRefusal(reader: AuthoringReader, expressId: number): string | null {
-  if (!DELETABLE.some((ifcClass) => conforms(reader, expressId, ifcClass))) {
+export function deletionRefusal(reader: AuthoringReader, expressId: number, extraClass?: 'IfcRailing'): string | null {
+  if (!DELETABLE.some((ifcClass) => conforms(reader, expressId, ifcClass)) && !(extraClass && conforms(reader, expressId, extraClass))) {
     return `${className(reader, expressId)} is not deleted by reviewed authoring (supported: ${DELETABLE.join(', ')})`;
   }
-  const parts = reader.dataStore.relationships?.getRelated(expressId, RelationshipType.Aggregates, 'forward') ?? [];
+  if (extraClass === 'IfcRailing') {
+    const overlay = effectiveMutationRelationships(reader.dataStore, reader.view);
+    const superseded = (id: number) => reader.view.isDeleted(id) || overlay.supersededSourceIds.has(id);
+    const isAssembly = (type: RelationshipType) => type === RelationshipType.Aggregates || type === RelationshipType.Nests;
+    for (const direction of ['forward', 'inverse'] as const) {
+      for (const edge of reader.dataStore.relationships?.[direction].getEdges(expressId) ?? []) {
+        if (isAssembly(edge.type) && edgeSurvives(edge, superseded) && !reader.view.isDeleted(edge.target)) {
+          return 'It belongs to a live assembly; deleting it would change its parts or parent';
+        }
+      }
+    }
+    for (const relation of overlay.relationships) {
+      if (!['IFCRELAGGREGATES', 'IFCRELNESTS'].includes(relation.relationshipType.toUpperCase())) continue;
+      const related = relation.relating.includes(expressId) ? relation.related
+        : relation.related.includes(expressId) ? relation.relating : [];
+      if (related.some(id => !reader.view.isDeleted(id))) {
+        return 'It belongs to a live assembly; deleting it would change its parts or parent';
+      }
+    }
+  }
+  const parts = extraClass === 'IfcRailing' ? [] : reader.dataStore.relationships?.getRelated(expressId, RelationshipType.Aggregates, 'forward') ?? [];
   if (parts.some((id) => !reader.view.isDeleted(id))) return 'It is an assembly of other elements; deleting it would orphan its parts';
   if (conforms(reader, expressId, 'IfcDoor') || conforms(reader, expressId, 'IfcWindow')) return null;
   const openings = [...remeshContextRoots(reader.dataStore, reader.view, new Set([expressId]))]

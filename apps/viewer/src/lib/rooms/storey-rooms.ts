@@ -26,7 +26,7 @@
 import { CoordinateHandler, type MeshData } from '@ifc-lite/geometry';
 import { iterateEffectiveEntityIds } from '@ifc-lite/mutations';
 import { liveStoreyMembers } from '@/lib/visibility/storey-context';
-import { existingSpaceFootprintEntriesByStorey, type SpaceFootprint } from '@ifc-lite/create';
+import { existingSpaceFootprintEntriesByStorey, liveEntityConforms, type SpaceFootprint } from '@ifc-lite/create';
 import type { ViewerState } from '@/store';
 import { roomFramePlanOffsets, wallRectsFromMeshes } from '@/lib/wall-rects-from-meshes';
 import { spaceWasmLoaded } from '@/lib/rooms/space-wasm';
@@ -92,7 +92,9 @@ function liveMesh(s: ViewerState, modelId: string): (mesh: MeshData) => boolean 
   const view = s.mutationViews.get(modelId);
   return (mesh) => {
     const local = s.resolveGlobalIdFromModels(mesh.expressId);
-    return !(local && view?.isDeleted(local.expressId));
+    const store = s.models.get(modelId)?.ifcDataStore;
+    return !!local && local.modelId === modelId && !!store && !view?.isDeleted(local.expressId)
+      && (!mesh.ifcType || liveEntityConforms(store, local.expressId, mesh.ifcType, view));
   };
 }
 
@@ -147,17 +149,18 @@ export function storeyRoomGeometryIds(s: ViewerState, modelId: string, storeyId:
   return [...ids];
 }
 
-let wallsCache: { meshes: unknown; count: number; version: number; plane: Workplane; storeyId: number; walls: LocalWall[] } | null = null;
+let wallsCache: { modelId: string; store: unknown; view: unknown; revision: number | undefined; meshes: unknown; count: number; version: number; plane: Workplane; storeyId: number; walls: LocalWall[] } | null = null;
 
 /** The storey's walls in its storey-local frame (the last storey's are kept: a layer asks every frame). */
 export function storeyWalls(s: ViewerState, modelId: string, storeyId: number, plane: Workplane): LocalWall[] {
   const meshes = s.models.get(modelId)?.geometryResult?.meshes;
+  const store = s.models.get(modelId)?.ifcDataStore, view = s.mutationViews.get(modelId), revision = view?.getMutationRevision();
   const c = wallsCache;
-  if (c && c.meshes === meshes && c.count === (meshes?.length ?? 0) && c.version === s.mutationVersion && c.plane === plane && c.storeyId === storeyId) {
+  if (c && c.modelId === modelId && c.store === store && c.view === view && c.revision === revision && c.meshes === meshes && c.count === (meshes?.length ?? 0) && c.version === s.mutationVersion && c.plane === plane && c.storeyId === storeyId) {
     return c.walls;
   }
   const walls = deriveStoreyWalls(s, modelId, storeyId, plane);
-  wallsCache = { meshes, count: meshes?.length ?? 0, version: s.mutationVersion, plane, storeyId, walls };
+  wallsCache = { modelId, store, view, revision, meshes, count: meshes?.length ?? 0, version: s.mutationVersion, plane, storeyId, walls };
   return walls;
 }
 
@@ -187,14 +190,15 @@ export function storeyOccupancy(s: ViewerState, modelId: string, storeyId: numbe
   return occupancyTest(storeySpaceFootprints(s, modelId, storeyId), triangles);
 }
 
-let footprintCache: { store: unknown; version: number; byStorey: Map<number, SpaceFootprint[]> } | null = null;
+let footprintCache: { store: unknown; view: unknown; revision: number | undefined; version: number; byStorey: Map<number, SpaceFootprint[]> } | null = null;
 
 /** Existing IfcSpaces on the storey with their footprint rings, storey-local. */
 export function storeySpaces(s: ViewerState, modelId: string, storeyId: number): SpaceFootprint[] {
   const store = s.models.get(modelId)?.ifcDataStore;
   if (!store) return [];
-  if (footprintCache?.store !== store || footprintCache.version !== s.mutationVersion) {
-    footprintCache = { store, version: s.mutationVersion, byStorey: existingSpaceFootprintEntriesByStorey(store, s.mutationViews.get(modelId) ?? undefined) };
+  const view = s.mutationViews.get(modelId), revision = view?.getMutationRevision();
+  if (footprintCache?.store !== store || footprintCache.view !== view || footprintCache.revision !== revision || footprintCache.version !== s.mutationVersion) {
+    footprintCache = { store, view, revision, version: s.mutationVersion, byStorey: existingSpaceFootprintEntriesByStorey(store, view) };
   }
   return footprintCache.byStorey.get(storeyId) ?? [];
 }
@@ -205,6 +209,9 @@ export function storeySpaceFootprints(s: ViewerState, modelId: string, storeyId:
 }
 
 interface CacheEntry {
+  store: unknown;
+  view: unknown;
+  revision: number | undefined;
   meshes: readonly MeshData[] | undefined;
   meshCount: number;
   mutationVersion: number;
@@ -230,8 +237,9 @@ export function storeyRooms(s: ViewerState, modelId: string, storeyId: number, p
   if (!spaceWasmLoaded()) return { status: 'loading' };
   const meshes = s.models.get(modelId)?.geometryResult?.meshes;
   const head = undoHead(s, modelId);
+  const store = s.models.get(modelId)?.ifcDataStore, view = s.mutationViews.get(modelId), revision = view?.getMutationRevision();
   const c = cached;
-  if (c && c.meshes === meshes && c.meshCount === (meshes?.length ?? 0) && c.mutationVersion === s.mutationVersion
+  if (c && c.store === store && c.view === view && c.revision === revision && c.meshes === meshes && c.meshCount === (meshes?.length ?? 0) && c.mutationVersion === s.mutationVersion
     && c.head === head && c.layouts === layoutVersion() && c.plane === plane && c.storeyId === storeyId && c.modelId === modelId && c.weld === weld && c.minArea === minArea) {
     return c.result;
   }
@@ -243,7 +251,7 @@ export function storeyRooms(s: ViewerState, modelId: string, storeyId: number, p
       rooms: roomCandidatesFromFaces(layoutFaces(s, modelId, storeyId, weld, rects, minArea), storeyOccupancy(s, modelId, storeyId, plane), storeySpaces(s, modelId, storeyId)),
       walls: rects.length,
     };
-  cached = { meshes, meshCount: meshes?.length ?? 0, mutationVersion: s.mutationVersion, head, layouts: layoutVersion(), plane, storeyId, modelId, weld, minArea, result };
+  cached = { store, view, revision, meshes, meshCount: meshes?.length ?? 0, mutationVersion: s.mutationVersion, head, layouts: layoutVersion(), plane, storeyId, modelId, weld, minArea, result };
   return result;
 }
 

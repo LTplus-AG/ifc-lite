@@ -182,7 +182,7 @@ export class WebGPUDevice {
       device = await this.adapter.requestDevice();
     }
 
-    this.device = meterGpuDevice(device); // #6957 upload counters (identity unless ?perfTrace=1)
+    this.device = meterGpuDevice(device, this); // #6957/#6993 counters, per-wrapper loss lifetime (identity unless ?perfTrace=1)
     this.format = navigator.gpu.getPreferredCanvasFormat();
     this.canvas = canvas;
 

@@ -1,0 +1,46 @@
+{
+  "version": 1,
+  "name": "Walls have names",
+  "rules": [
+    {
+      "id": "wall-name",
+      "name": "Wall Name",
+      "applicability": {
+        "authoredAs": "chips",
+        "groups": [
+          {
+            "combinator": "AND",
+            "rules": [
+              {
+                "kind": "ifcType",
+                "values": [
+                  "IfcWall"
+                ],
+                "op": "in"
+              }
+            ]
+          }
+        ]
+      },
+      "requirement": {
+        "kind": "element",
+        "block": {
+          "authoredAs": "chips",
+          "groups": [
+            {
+              "combinator": "AND",
+              "rules": [
+                {
+                  "kind": "attribute",
+                  "name": "Name",
+                  "op": "isSet",
+                  "value": ""
+                }
+              ]
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

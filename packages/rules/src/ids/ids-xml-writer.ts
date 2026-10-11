@@ -118,11 +118,13 @@ function writeConstraint(xml: XmlLines, tag: string, constraint: IDSConstraint):
       break;
     case 'bounds': {
       xml.open('xs:restriction', { base: constraint.base ?? 'xs:double' });
-      const bounds: Array<[string, number | undefined]> = [
-        ['xs:minInclusive', constraint.minInclusive],
-        ['xs:minExclusive', constraint.minExclusive],
-        ['xs:maxInclusive', constraint.maxInclusive],
-        ['xs:maxExclusive', constraint.maxExclusive],
+      // Date, time and duration bounds are kept as their lexemes (#7399).
+      const temporal = constraint.temporalBounds;
+      const bounds: Array<[string, number | string | undefined]> = [
+        ['xs:minInclusive', temporal?.minInclusive ?? constraint.minInclusive],
+        ['xs:minExclusive', temporal?.minExclusive ?? constraint.minExclusive],
+        ['xs:maxInclusive', temporal?.maxInclusive ?? constraint.maxInclusive],
+        ['xs:maxExclusive', temporal?.maxExclusive ?? constraint.maxExclusive],
       ];
       for (const [facet, value] of bounds) {
         if (value !== undefined) xml.empty(facet, { value: String(value) });

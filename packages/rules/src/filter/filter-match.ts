@@ -276,7 +276,9 @@ export function matchClassificationRule(
     : refs;
 
   if (rule.op === 'isSet') return scoped.length > 0;
-  if (rule.op === 'isNotSet') return scoped.length === 0;
+  // An unresolved chain can belong to the requested system; filtering it out
+  // cannot establish absence after an unreadable live edit (#7131).
+  if (rule.op === 'isNotSet') return scoped.length === 0 && !refs.some(ref => ref.unresolved);
 
   // Value ops — match against identification (code) and name of each ref.
   // `unresolved` (server-parsed, no source bytes — #3948) means UNKNOWN, not

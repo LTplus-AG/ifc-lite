@@ -1,0 +1,15 @@
+{
+  "verifiedUTC": "2026-10-08T14:04:52.662860+00:00",
+  "sourceReceiptSHA256": "6153a5cccdd08132c20e1cd717adfe2e8213814dfc4b6ac151c0d5874020d865",
+  "fixtureSHA256": "3ff9b10bd00c7b96dded51e7ca5a6b69efbea38b049adcdd05fcd247de7e70d5",
+  "authoredRelationshipRecordsVerified": 5,
+  "relationshipPopulationForSlab52": [
+    "#51=IFCRELDEFINESBYTYPE('0KEb1WVHHEhQZ4xbbd6b2c',#1,$,$,(#52),#50);",
+    "#58=IFCRELDEFINESBYPROPERTIES('3bj39wbsr6AATUS83mcVZl',#1,$,$,(#52),#57);",
+    "#61=IFCRELASSOCIATESMATERIAL('0oKrXjQf58gwTDmoHg_xVx',#1,$,$,(#52),#62);",
+    "#67=IFCRELDEFINESBYPROPERTIES('0RxTehyvnBkfOSEQBZduh2',#1,$,$,(#52),#66);",
+    "#68=IFCRELCONTAINEDINSPATIALSTRUCTURE('3deDUGWdPDIRHoCNFWfaCk',#1,$,$,(#52,#262,#291,#315,#339,#345,#353),#43);"
+  ],
+  "classificationRelation": "#36 applies only#30, not selected#52",
+  "scope": "independent source groundtruth review only; test execution pending"
+}

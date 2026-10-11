@@ -35,7 +35,10 @@ describe('#6232 MCP paste/array parity', () => {
       expect((await call('mutation_undo', { model_id: target })).isError).not.toBe(true);
       expect(exported(model)).toEqual(before);
       expect(exported(peer)).toEqual(peerBefore);
-    });
+      // Real IFC loads (two for the 2-model case) plus a copy/undo cycle hit
+      // the 5s default under CI contention (timed out on main run 38077945902
+      // and on #7412's run 38084519929).
+    }, 30_000);
   }
   // Real IFC loads and two protocol Duplicate/Undo cycles take >5s under CI contention (#6232).
   for (const count of [1, 2]) it(`duplicates the real hosted graph, preserves identity, and undoes with ${count} models`, async () => {
@@ -80,5 +83,5 @@ describe('#6232 MCP paste/array parity', () => {
     const readonly = await session(1, true);
     expect((await readonly.call('copy_elements', args)).isError).toBe(true);
     expect((await readonly.call('duplicate_element', { express_id: 1222, offset: [1, 0, 0] })).isError).toBe(true);
-  });
+  }, 30_000);
 });

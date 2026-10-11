@@ -1,0 +1,516 @@
+{
+  "schema": "symbolic-parse-outcomes-evidence-v1",
+  "members": [
+    {
+      "path": "6537-symbolic-parse-false-success-inverse-v1/README.md",
+      "bytes": 597,
+      "sha256": "def3186e9fcfcaa6f00cb40b62e4749fbfa011b4869753981445c4db361f6102"
+    },
+    {
+      "path": "6537-symbolic-parse-false-success-inverse-v1/classification.json",
+      "bytes": 4592,
+      "sha256": "007d82314e14963004d06d2e32a69aae1560aca6806896dac4324b647ee2f312"
+    },
+    {
+      "path": "6537-symbolic-parse-false-success-inverse-v1/inverse-guardian.stdout",
+      "bytes": 787,
+      "sha256": "c05e8dd2bed785d612299193065884fe175c2846090af75f6ba574b36d6e001c"
+    },
+    {
+      "path": "6537-symbolic-parse-false-success-inverse-v1/inverse.json",
+      "bytes": 859,
+      "sha256": "f67d49b354528f17d153a57a9c03a4f5cb0fd6f800759fa7b0e105057207fa6e"
+    },
+    {
+      "path": "6537-symbolic-parse-false-success-inverse-v1/inverse.log",
+      "bytes": 77084,
+      "sha256": "abb17e07e38ad999a571506718d121c246da0d7b9a8fe4b3e9fb3bae325bf6d5"
+    },
+    {
+      "path": "6537-symbolic-parse-false-success-inverse-v1/manifest.json",
+      "bytes": 2156,
+      "sha256": "cc96b74b1828f7f7e7989c163d3bf7f44f11078d5f8d84c4cc765c5a6171900f"
+    },
+    {
+      "path": "6537-symbolic-parse-false-success-inverse-v1/mutated-index.ts",
+      "bytes": 9724,
+      "sha256": "13a019c9ecc529e30d3f93d54a4d2163d15e3c8258b2139e4b4802e18a67f57c"
+    },
+    {
+      "path": "6537-symbolic-parse-false-success-inverse-v1/restoration-before-control.json",
+      "bytes": 747,
+      "sha256": "9ac812231dbe13a22b8f49485094aed919436195e31d14f6b23972fa57b7ba0c"
+    },
+    {
+      "path": "6537-symbolic-parse-false-success-inverse-v1/restored-guardian.stdout",
+      "bytes": 787,
+      "sha256": "293909fd717d1b43c9b786ab6ec8ef3ec299aea8a1ee7f2b4d05c895550d9991"
+    },
+    {
+      "path": "6537-symbolic-parse-false-success-inverse-v1/restored.json",
+      "bytes": 859,
+      "sha256": "41c666ebe6830ec670fad345aa8b32d8f9e1fd925f0902b13a1c919039e8bda8"
+    },
+    {
+      "path": "6537-symbolic-parse-false-success-inverse-v1/restored.log",
+      "bytes": 69142,
+      "sha256": "cca2241ab58d2a5fdaa4780e54fde64d865eb2cadc13cc60b628e75434cf6fa7"
+    },
+    {
+      "path": "6537-symbolic-parse-false-success-inverse-v1/reviewed-index.ts",
+      "bytes": 9724,
+      "sha256": "5be2efda28373021aa3636d4d14df7660674441d94685d97effee169b62db4d7"
+    },
+    {
+      "path": "6537-symbolic-parse-false-success-inverse-v1/run.py",
+      "bytes": 4324,
+      "sha256": "129a1fa56bbd4b53cd208805e497c867257c981ad5f77fe96c2aa9ffc612508d"
+    },
+    {
+      "path": "6537-symbolic-parse-false-success-inverse-v1/source-mutation.patch",
+      "bytes": 428,
+      "sha256": "d9fcbb8e6bf9c6a27322ab1a38f8854c529623f36790bd64d3921b69b977868b"
+    },
+    {
+      "path": "6537-symbolic-parse-false-success-inverse-v1/summary.json",
+      "bytes": 893,
+      "sha256": "a7b9bd86ae56ddda82b3bec9a2b59b30e48716d92b5455b98b3608687aab2743"
+    },
+    {
+      "path": "6537-symbolic-parse-outcome-source-v1/canonical-source-proof.json",
+      "bytes": 2124,
+      "sha256": "623ea06bac780a50701d2a0b07ce5e028f5f925391e5c4e1e92b61710040f4fe"
+    },
+    {
+      "path": "6537-symbolic-parse-outcome-source-v1/diff-check.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "6537-symbolic-parse-outcome-source-v1/modified.patch",
+      "bytes": 12372,
+      "sha256": "653ebf30739f2742353b62d3969cc832cb4042807264f300d7a882abd1d0a045"
+    },
+    {
+      "path": "6537-symbolic-parse-outcome-source-v1/module-size.log",
+      "bytes": 12598,
+      "sha256": "a5518c7b6f4f9a055c94a7be8a2527ca763b6e208380b505070feff2c24df732"
+    },
+    {
+      "path": "6537-symbolic-parse-outcome-source-v1/packet.json",
+      "bytes": 3850,
+      "sha256": "0d549ea132bf46ac10ad0e1edab0591bd6c36482d2371862b6474a33e68c69eb"
+    },
+    {
+      "path": "6537-symbolic-parse-outcome-source-v1/source-assert.log",
+      "bytes": 1081,
+      "sha256": "6b3e40cb3f7c6d14b3f0dbfbb18fe9d882f45ab943f27a81fdf9ee7bb03c8c64"
+    },
+    {
+      "path": "6537-symbolic-parse-outcome-source-v1/source-manifest.json",
+      "bytes": 2372,
+      "sha256": "9fc02af7698a9211fac573839b6024b4ff55a9a1b3c9c9848cfdf8326de9c493"
+    },
+    {
+      "path": "6537-symbolic-parse-outcome-source-v1/source/apps/viewer/src/hooks/symbolic-parse-cache.ts",
+      "bytes": 16390,
+      "sha256": "e1fc1a234ea9a61130e2a242aa9525a896f289cdf25fe6358425f71398ea073b"
+    },
+    {
+      "path": "6537-symbolic-parse-outcome-source-v1/source/apps/viewer/src/hooks/symbolic-parse-outcomes.test.ts",
+      "bytes": 20311,
+      "sha256": "f8d551559332c1f9679fe1fe785cffd24de0b0b6a4f2627a67fa4c8182076eef"
+    },
+    {
+      "path": "6537-symbolic-parse-outcome-source-v1/source/apps/viewer/src/hooks/symbolic-parse-outcomes.ts",
+      "bytes": 6932,
+      "sha256": "c454670e5d8a2da0d13f0420fbe0024967cbb0a57a8054a6a21ec61db9277af0"
+    },
+    {
+      "path": "6537-symbolic-parse-outcome-source-v1/source/apps/viewer/src/hooks/symbolic-parse-source-key.ts",
+      "bytes": 3213,
+      "sha256": "728275b3a099a96d09524c819c8bfebcbde291e42751eea406e217f62889733b"
+    },
+    {
+      "path": "6537-symbolic-parse-outcome-source-v1/source/apps/viewer/src/lib/overlay-parse/index.ts",
+      "bytes": 9724,
+      "sha256": "5be2efda28373021aa3636d4d14df7660674441d94685d97effee169b62db4d7"
+    },
+    {
+      "path": "6537-symbolic-parse-outcome-source-v1/source/apps/viewer/src/store/createViewerActions.ts",
+      "bytes": 13072,
+      "sha256": "93e97108e6c3d4532399c8c32f1000ec5fc2e812fa8768ce2a999753b1003d86"
+    },
+    {
+      "path": "6537-symbolic-parse-outcome-source-v1/source/apps/viewer/src/store/symbolic-parse-observer.ts",
+      "bytes": 2722,
+      "sha256": "d538a4b3526d7577e3c79bc0c5432d9a9d3cb5863c93570bdd619ee89b9ae24a"
+    },
+    {
+      "path": "6537-symbolic-parse-outcome-source-v1/source/scripts/perf/symbolic-parse-census.mjs",
+      "bytes": 783,
+      "sha256": "ee7c459023fa7e4d0d92a989aca2f6c91bf14640db8bd3c541e5d6852f0a07e8"
+    },
+    {
+      "path": "6537-symbolic-parse-outcome-source-v1/source/scripts/perf/symbolic-parse-outcomes.md",
+      "bytes": 3323,
+      "sha256": "0e7ec0fa80a87923a8c7ab32e6b1232d258a884ed170cec32bd072fba4063ea8"
+    },
+    {
+      "path": "6537-symbolic-parse-outcome-source-v1/syntax.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "6537-symbolic-parse-outcome-source-v1/test-wiring.log",
+      "bytes": 859,
+      "sha256": "69a36296afef8b8191674e3f6642b9a230dfb8647dafee1a48d482198f11fccd"
+    },
+    {
+      "path": "6537-symbolic-parse-outcome-source-v2/current-status.txt",
+      "bytes": 443,
+      "sha256": "fbf8d22e3202096b7295841e1d30ae2eac6fee89ec1c36ca812f107a6e12e4b8"
+    },
+    {
+      "path": "6537-symbolic-parse-outcome-source-v2/gate-results.json",
+      "bytes": 1656,
+      "sha256": "79446e3ca0ea40fa0999d0b9d170b71a7071e0b4287d293cd2527158484f0bf4"
+    },
+    {
+      "path": "6537-symbolic-parse-outcome-source-v2/modified.patch",
+      "bytes": 12372,
+      "sha256": "653ebf30739f2742353b62d3969cc832cb4042807264f300d7a882abd1d0a045"
+    },
+    {
+      "path": "6537-symbolic-parse-outcome-source-v2/packet.json",
+      "bytes": 6724,
+      "sha256": "44cccaf33afcf98e384cc0f8b8e91cdafbeac8829ea29d72453b7b61794710dc"
+    },
+    {
+      "path": "6537-symbolic-parse-outcome-source-v2/source-manifest.json",
+      "bytes": 2581,
+      "sha256": "3a5652d3c2bdd163396ba41b95db2659c15daf3ca6faa44e1fa5b32e7f31b6be"
+    },
+    {
+      "path": "6537-symbolic-parse-outcome-source-v2/source/apps/viewer/src/hooks/symbolic-parse-cache.ts",
+      "bytes": 16390,
+      "sha256": "e1fc1a234ea9a61130e2a242aa9525a896f289cdf25fe6358425f71398ea073b"
+    },
+    {
+      "path": "6537-symbolic-parse-outcome-source-v2/source/apps/viewer/src/hooks/symbolic-parse-outcomes.test.ts",
+      "bytes": 20591,
+      "sha256": "aa20b309a0355605f4d8e0c2eb3930ba3788b73d4e77c421bc7363efeba83fef"
+    },
+    {
+      "path": "6537-symbolic-parse-outcome-source-v2/source/apps/viewer/src/hooks/symbolic-parse-outcomes.ts",
+      "bytes": 6932,
+      "sha256": "c454670e5d8a2da0d13f0420fbe0024967cbb0a57a8054a6a21ec61db9277af0"
+    },
+    {
+      "path": "6537-symbolic-parse-outcome-source-v2/source/apps/viewer/src/hooks/symbolic-parse-source-key.ts",
+      "bytes": 3213,
+      "sha256": "728275b3a099a96d09524c819c8bfebcbde291e42751eea406e217f62889733b"
+    },
+    {
+      "path": "6537-symbolic-parse-outcome-source-v2/source/apps/viewer/src/lib/overlay-parse/index.ts",
+      "bytes": 9724,
+      "sha256": "5be2efda28373021aa3636d4d14df7660674441d94685d97effee169b62db4d7"
+    },
+    {
+      "path": "6537-symbolic-parse-outcome-source-v2/source/apps/viewer/src/store/createViewerActions.ts",
+      "bytes": 13072,
+      "sha256": "93e97108e6c3d4532399c8c32f1000ec5fc2e812fa8768ce2a999753b1003d86"
+    },
+    {
+      "path": "6537-symbolic-parse-outcome-source-v2/source/apps/viewer/src/store/symbolic-parse-observer.ts",
+      "bytes": 2722,
+      "sha256": "d538a4b3526d7577e3c79bc0c5432d9a9d3cb5863c93570bdd619ee89b9ae24a"
+    },
+    {
+      "path": "6537-symbolic-parse-outcome-source-v2/source/scripts/perf/symbolic-parse-census.mjs",
+      "bytes": 783,
+      "sha256": "ee7c459023fa7e4d0d92a989aca2f6c91bf14640db8bd3c541e5d6852f0a07e8"
+    },
+    {
+      "path": "6537-symbolic-parse-outcome-source-v2/source/scripts/perf/symbolic-parse-outcomes.md",
+      "bytes": 3938,
+      "sha256": "b4bd42f25d668e035152f39c59033b992aed26461ac0e025741c004ec49d58b8"
+    },
+    {
+      "path": "6537-symbolic-parse-outcome-source-v2/validation-manifest.json",
+      "bytes": 4278,
+      "sha256": "f011775006f2f36536c753bb9a7d9f5c10c90113b8dd49999c18c873907169df"
+    },
+    {
+      "path": "6537-symbolic-parse-outcome-source-v3/current-status.txt",
+      "bytes": 443,
+      "sha256": "fbf8d22e3202096b7295841e1d30ae2eac6fee89ec1c36ca812f107a6e12e4b8"
+    },
+    {
+      "path": "6537-symbolic-parse-outcome-source-v3/gate-results.json",
+      "bytes": 1656,
+      "sha256": "79446e3ca0ea40fa0999d0b9d170b71a7071e0b4287d293cd2527158484f0bf4"
+    },
+    {
+      "path": "6537-symbolic-parse-outcome-source-v3/modified.patch",
+      "bytes": 12372,
+      "sha256": "653ebf30739f2742353b62d3969cc832cb4042807264f300d7a882abd1d0a045"
+    },
+    {
+      "path": "6537-symbolic-parse-outcome-source-v3/packet.json",
+      "bytes": 7192,
+      "sha256": "30ef726af779033ebaa70c221bad452e8d2cc7f47f314b727f938ff911d93d66"
+    },
+    {
+      "path": "6537-symbolic-parse-outcome-source-v3/source-manifest.json",
+      "bytes": 2582,
+      "sha256": "bebbaa9a283784d7a5fcd81a935419aac288b986843d7b6f77f3d49708a75746"
+    },
+    {
+      "path": "6537-symbolic-parse-outcome-source-v3/source/apps/viewer/src/hooks/symbolic-parse-cache.ts",
+      "bytes": 16390,
+      "sha256": "e1fc1a234ea9a61130e2a242aa9525a896f289cdf25fe6358425f71398ea073b"
+    },
+    {
+      "path": "6537-symbolic-parse-outcome-source-v3/source/apps/viewer/src/hooks/symbolic-parse-outcomes.test.ts",
+      "bytes": 20591,
+      "sha256": "aa20b309a0355605f4d8e0c2eb3930ba3788b73d4e77c421bc7363efeba83fef"
+    },
+    {
+      "path": "6537-symbolic-parse-outcome-source-v3/source/apps/viewer/src/hooks/symbolic-parse-outcomes.ts",
+      "bytes": 7830,
+      "sha256": "131b8e3051c31f7da1f0ef0a326e91c887794b8acbf8693c143241e578e46be9"
+    },
+    {
+      "path": "6537-symbolic-parse-outcome-source-v3/source/apps/viewer/src/hooks/symbolic-parse-source-key.ts",
+      "bytes": 3213,
+      "sha256": "728275b3a099a96d09524c819c8bfebcbde291e42751eea406e217f62889733b"
+    },
+    {
+      "path": "6537-symbolic-parse-outcome-source-v3/source/apps/viewer/src/lib/overlay-parse/index.ts",
+      "bytes": 9724,
+      "sha256": "5be2efda28373021aa3636d4d14df7660674441d94685d97effee169b62db4d7"
+    },
+    {
+      "path": "6537-symbolic-parse-outcome-source-v3/source/apps/viewer/src/store/createViewerActions.ts",
+      "bytes": 13072,
+      "sha256": "93e97108e6c3d4532399c8c32f1000ec5fc2e812fa8768ce2a999753b1003d86"
+    },
+    {
+      "path": "6537-symbolic-parse-outcome-source-v3/source/apps/viewer/src/store/symbolic-parse-observer.ts",
+      "bytes": 2722,
+      "sha256": "d538a4b3526d7577e3c79bc0c5432d9a9d3cb5863c93570bdd619ee89b9ae24a"
+    },
+    {
+      "path": "6537-symbolic-parse-outcome-source-v3/source/scripts/perf/symbolic-parse-census.mjs",
+      "bytes": 783,
+      "sha256": "ee7c459023fa7e4d0d92a989aca2f6c91bf14640db8bd3c541e5d6852f0a07e8"
+    },
+    {
+      "path": "6537-symbolic-parse-outcome-source-v3/source/scripts/perf/symbolic-parse-outcomes.md",
+      "bytes": 4380,
+      "sha256": "ec5f5b8230f7ee6066347daa376e226c2638afb09fd9d4e261cb0b9c9fc0f303"
+    },
+    {
+      "path": "6537-symbolic-parse-outcome-source-v3/v2-to-v3-scope.json",
+      "bytes": 604,
+      "sha256": "27ae6c2a271ee89b04897d7275303aed8ef0d283f3d30201539cf828c872df83"
+    },
+    {
+      "path": "6537-symbolic-parse-outcome-source-v3/validation-manifest.json",
+      "bytes": 3217,
+      "sha256": "87717c59a8040f02fb23c1265e1c180d3a8a50de055309a8a265e0e8725a8648"
+    },
+    {
+      "path": "6537-symbolic-parse-outcome-validation-v2/diff-check.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "6537-symbolic-parse-outcome-validation-v2/first-red-classification.json",
+      "bytes": 955,
+      "sha256": "cf1b6f52ce7847deba8057d4d9a68061036b3648f38b7f3b91cf0e068fa57298"
+    },
+    {
+      "path": "6537-symbolic-parse-outcome-validation-v2/first-red-test.ts",
+      "bytes": 20473,
+      "sha256": "570d2099fba1256b7846523b76c6e89395d278b615dc213354fb218e2a6e9ab1"
+    },
+    {
+      "path": "6537-symbolic-parse-outcome-validation-v2/install.json",
+      "bytes": 756,
+      "sha256": "c44dc64e8073b7aee08c1a3d5d7e4bb75c2908bfe9af68c90aab2d09c603b565"
+    },
+    {
+      "path": "6537-symbolic-parse-outcome-validation-v2/install.log",
+      "bytes": 3805,
+      "sha256": "b7a1917b9aad42649f6cbc19446a97dfd11c792cc106c0ebb5a3a21100f00e31"
+    },
+    {
+      "path": "6537-symbolic-parse-outcome-validation-v2/license.log",
+      "bytes": 171,
+      "sha256": "6aac9ababb37e2ea7b2169b954e937aabeed9bf0be87bbeee381016c6a77fe48"
+    },
+    {
+      "path": "6537-symbolic-parse-outcome-validation-v2/module-size.log",
+      "bytes": 12598,
+      "sha256": "a5518c7b6f4f9a055c94a7be8a2527ca763b6e208380b505070feff2c24df732"
+    },
+    {
+      "path": "6537-symbolic-parse-outcome-validation-v2/root-typecheck.json",
+      "bytes": 733,
+      "sha256": "8591bec14c2967a56c1f836033e21e1183d3764c6a380915999a16ff19d4b6d2"
+    },
+    {
+      "path": "6537-symbolic-parse-outcome-validation-v2/root-typecheck.log",
+      "bytes": 45693,
+      "sha256": "ae4a066aa645d4c0d206ba6ce3a053b84a874434cf0f94361f0c61004e7d0cd3"
+    },
+    {
+      "path": "6537-symbolic-parse-outcome-validation-v2/run-source-gates.py",
+      "bytes": 1428,
+      "sha256": "ab0c21955b34aca3bab46db714fc2f0bd9b463e4411032000cb5702a0258c281"
+    },
+    {
+      "path": "6537-symbolic-parse-outcome-validation-v2/scoped-lint.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "6537-symbolic-parse-outcome-validation-v2/selected-tests-corrected.json",
+      "bytes": 998,
+      "sha256": "22b77dbe1a57719aeaccad44926a94e6e1d885ef0f8e94ae1acc52095112e7d4"
+    },
+    {
+      "path": "6537-symbolic-parse-outcome-validation-v2/selected-tests-corrected.log",
+      "bytes": 80327,
+      "sha256": "745f9d3c6d4b67f1e0a5340c69825e3b8d83d1d9396b9d5194cdddd884b963b2"
+    },
+    {
+      "path": "6537-symbolic-parse-outcome-validation-v2/selected-tests.json",
+      "bytes": 998,
+      "sha256": "3313cdb61496133c10f746466c6e004f7cebcf440221fcf826d43617cfb80dfa"
+    },
+    {
+      "path": "6537-symbolic-parse-outcome-validation-v2/selected-tests.log",
+      "bytes": 84766,
+      "sha256": "964a5c139aa721092469a6f9abdc7717863c03918f2f383f64088da62338ed62"
+    },
+    {
+      "path": "6537-symbolic-parse-outcome-validation-v2/source-assert.log",
+      "bytes": 30811,
+      "sha256": "0830c2ee93e1ddf7322562441cebd8a958f100f0c97b7925abf035a053abe95d"
+    },
+    {
+      "path": "6537-symbolic-parse-outcome-validation-v2/source-gates.json",
+      "bytes": 766,
+      "sha256": "ac86d62c602d3e0d9db88e535611564d2f995479882397927e0b88a5a568e4f0"
+    },
+    {
+      "path": "6537-symbolic-parse-outcome-validation-v2/source-gates.log",
+      "bytes": 1284,
+      "sha256": "9b259a1a0958fc47bab71f8c76e9a0cd1e1e6d972ead3cbe47a1f94563ee8642"
+    },
+    {
+      "path": "6537-symbolic-parse-outcome-validation-v2/syntax.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "6537-symbolic-parse-outcome-validation-v2/test-wiring.log",
+      "bytes": 859,
+      "sha256": "69a36296afef8b8191674e3f6642b9a230dfb8647dafee1a48d482198f11fccd"
+    },
+    {
+      "path": "6537-symbolic-parse-outcome-validation-v3/diff-check.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "6537-symbolic-parse-outcome-validation-v3/license.log",
+      "bytes": 171,
+      "sha256": "6aac9ababb37e2ea7b2169b954e937aabeed9bf0be87bbeee381016c6a77fe48"
+    },
+    {
+      "path": "6537-symbolic-parse-outcome-validation-v3/module-size.log",
+      "bytes": 12598,
+      "sha256": "a5518c7b6f4f9a055c94a7be8a2527ca763b6e208380b505070feff2c24df732"
+    },
+    {
+      "path": "6537-symbolic-parse-outcome-validation-v3/root-typecheck.json",
+      "bytes": 733,
+      "sha256": "266b08faea3c6e7fa6ee12b101787288513764355f3cabc7d6a1072dbbbe834b"
+    },
+    {
+      "path": "6537-symbolic-parse-outcome-validation-v3/root-typecheck.log",
+      "bytes": 45972,
+      "sha256": "5696fd1323611b30f0db421ed98898fc69fa77b4d08fa9e618571a20b8309ec1"
+    },
+    {
+      "path": "6537-symbolic-parse-outcome-validation-v3/run-source-gates.py",
+      "bytes": 1435,
+      "sha256": "e7523b4dea123a3a307ce2308e430f97d78948d5618519bee623c5c576b4c321"
+    },
+    {
+      "path": "6537-symbolic-parse-outcome-validation-v3/scoped-lint.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "6537-symbolic-parse-outcome-validation-v3/selected-tests-corrected.json",
+      "bytes": 998,
+      "sha256": "8a19dc657d7e51f26763c038f7c9a4b53d0d5a2746b29a13124e04d4d124d3fa"
+    },
+    {
+      "path": "6537-symbolic-parse-outcome-validation-v3/selected-tests-corrected.log",
+      "bytes": 80803,
+      "sha256": "5ed9fac516cdb2cf4b81717785aa0992fe12114623fde4ffceba1d382cfb53ca"
+    },
+    {
+      "path": "6537-symbolic-parse-outcome-validation-v3/source-assert.log",
+      "bytes": 30811,
+      "sha256": "0830c2ee93e1ddf7322562441cebd8a958f100f0c97b7925abf035a053abe95d"
+    },
+    {
+      "path": "6537-symbolic-parse-outcome-validation-v3/source-gate-results.json",
+      "bytes": 1656,
+      "sha256": "79446e3ca0ea40fa0999d0b9d170b71a7071e0b4287d293cd2527158484f0bf4"
+    },
+    {
+      "path": "6537-symbolic-parse-outcome-validation-v3/source-gates.json",
+      "bytes": 765,
+      "sha256": "cd55ac4b56f21eb014607d9bb7b2f463c5adcbed389691b7cbc52c1129aee733"
+    },
+    {
+      "path": "6537-symbolic-parse-outcome-validation-v3/source-gates.log",
+      "bytes": 1284,
+      "sha256": "9b259a1a0958fc47bab71f8c76e9a0cd1e1e6d972ead3cbe47a1f94563ee8642"
+    },
+    {
+      "path": "6537-symbolic-parse-outcome-validation-v3/syntax.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "6537-symbolic-parse-outcome-validation-v3/test-wiring.log",
+      "bytes": 859,
+      "sha256": "69a36296afef8b8191674e3f6642b9a230dfb8647dafee1a48d482198f11fccd"
+    },
+    {
+      "path": "tools/freeze-symbolic-parse-source.py",
+      "bytes": 5460,
+      "sha256": "610201ef4816147caa98954fe91405681a39d0a51345f32264db214dd8f19816"
+    },
+    {
+      "path": "tools/functional-budget-guardian-v3-disk-session6503.py",
+      "bytes": 4000,
+      "sha256": "9ca9b764e0586380b8db5b8a6f61ec01d7431012d284a51a87dc3e910c93bf7f"
+    }
+  ],
+  "totalOriginalBytes": 981585,
+  "archive": {
+    "path": "receipts.tar.gz",
+    "bytes": 221193,
+    "sha256": "8a9da21f76bb35ca768117ff1af31ef409728515a91ff56f6760390f3c824f86"
+  }
+}

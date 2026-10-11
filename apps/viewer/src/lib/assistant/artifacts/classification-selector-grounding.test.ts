@@ -7,6 +7,7 @@ import { existsSync } from 'node:fs';
 import { afterEach, test } from 'node:test';
 import { evaluateFilterGroupsFederated } from '@ifc-lite/rules';
 import { MutablePropertyView } from '@ifc-lite/mutations';
+import { EMPTY_SOURCE_BYTES } from '@ifc-lite/parser';
 import { useViewerStore } from '@/store';
 import { evaluatorModelsFromState } from '@/lib/model-tags/evaluator-models';
 import { configureMutationView } from '@/utils/configureMutationView';
@@ -100,7 +101,7 @@ test('#7130 model reload cannot reuse an older classification catalog or save au
   await assert.rejects(previewArtifact(proposal, useViewerStore.getState()), /classification system.*unresolved/i);
 });
 
-test('#7130 native classification edits refuse unsupported populations; native undo removing a new attribute overlay restores review', async () => {
+test('#7131 native system edits refresh proposal grounding and undo restores the source population', async () => {
   installClassificationModels(await namedClassificationModel());
   const state = useViewerStore.getState();
   const id = [...state.models.keys()][0];
@@ -114,7 +115,8 @@ test('#7130 native classification edits refuse unsupported populations; native u
   const preview = await previewArtifact(proposal, useViewerStore.getState());
   assert.ok(state.setAttribute(id, CLASSIFICATION_SYSTEM_ID, 'Name', 'Renamed7130'));
   assert.equal(isPreviewCurrent(preview, useViewerStore.getState()), false);
-  await assert.rejects(previewArtifact(proposal, useViewerStore.getState()), /live classification edits/);
+  await assert.rejects(previewArtifact(proposal, useViewerStore.getState()), /classification system.*unresolved/i);
+  assert.equal((await previewArtifact(selectorProposal('filter.proposal', 'Renamed7130'), useViewerStore.getState())).matched, preview.matched, 'the current effective system retains its native missing-classification population');
   useViewerStore.getState().undo(id);
   assert.equal((await previewArtifact(proposal, useViewerStore.getState())).matched, preview.matched, 'undo removing the live attribute overlay restores native source results despite append-only history');
 });
@@ -129,4 +131,21 @@ test('#7130 classification list columns cannot claim a system that native column
   }
   const preview = await previewArtifact(parseArtifactProposal(payload(), 'list.proposal'), useViewerStore.getState());
   assert.equal(preview.matched, 4, 'an intentional any-system classification column retains all native wall rows');
+});
+
+test('#7131 source-empty live classification edits explicitly refuse an unavailable population', async () => {
+  installClassificationModels(await namedClassificationModel());
+  const state = useViewerStore.getState();
+  const id = [...state.models.keys()][0];
+  const model = state.models.get(id)!;
+  const store = { ...model.ifcDataStore!, source: EMPTY_SOURCE_BYTES };
+  useViewerStore.setState({ models: new Map([[id, { ...model, ifcDataStore: store }]]) });
+  const view = new MutablePropertyView(store.properties, id);
+  configureMutationView(view, store);
+  view.setExpressIdWatermark(model.maxExpressId);
+  useViewerStore.getState().registerMutationView(id, view);
+  view.setAttribute(CLASSIFICATION_SYSTEM_ID, 'Name', 'Unavailable rename 7131');
+  for (const kind of ['filter.proposal', 'list.proposal', 'lens.proposal', 'chart.proposal'] as const) {
+    await assert.rejects(previewArtifact(selectorProposal(kind, 'Uniclass 2015'), useViewerStore.getState()), /no source bytes.*live classification edits/i);
+  }
 });

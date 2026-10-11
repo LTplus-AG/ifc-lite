@@ -12,7 +12,7 @@
  *              → Location → IfcCartesianPoint → Coordinates [x, y, z]
  *
  * Reads honour the `StoreEditor` overlay (overlay-only entities,
- * positional-mutation overrides on top of source-buffer entities).
+ * named/positional mutations and current retypes on top of source-buffer entities for placement owners).
  * Writes go through `setPositionalAttribute` so they stack with
  * other overlay edits and participate in the standard undo path.
  *
@@ -20,7 +20,7 @@
  * generic so file size + cognitive scope stay manageable.
  */
 
-import { EntityExtractor, type IfcDataStore } from '@ifc-lite/parser';
+import { EntityExtractor, resolveEffectiveEntityRecord, type IfcDataStore } from '@ifc-lite/parser';
 import type { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
 
 /** Synchronous source decoding for headless edits. The viewer may override
@@ -48,19 +48,8 @@ export function setSourceAttrsReader(reader: SourceAttrsReader | null): void {
 
 type EntityAttrs = unknown[];
 
-/**
- * Read the effective attribute list for an express id. Overlay-only
- * entities come from the StoreEditor; source entities come from the
- * original buffer. Positional-mutation overrides are layered on top so
- * a previously-translated point reads back its mutated coords.
- */
-export function readAttributes(
-  dataStore: IfcDataStore,
-  view: MutablePropertyView,
-  /** Only its overlay lookup is read, so the view itself will do. */
-  editor: Pick<StoreEditor, 'getNewEntity'>,
-  expressId: number,
-): EntityAttrs | null {
+/** Shared source callback baseline; effective placement reads add no decoder. */
+function baseAttributes(dataStore: IfcDataStore, editor: Pick<StoreEditor, 'getNewEntity'>, expressId: number): EntityAttrs | null {
   const overlay = editor.getNewEntity(expressId);
   let attrs: EntityAttrs | null = null;
   if (overlay) {
@@ -75,6 +64,39 @@ export function readAttributes(
     // "unknown entity" so callers fall back gracefully.
     return null;
   }
+  return attrs;
+}
+
+/** #7315: only native placement owners use current named/retyped fields.
+ * The general body/profile reader retains its existing positional contract. */
+export function readPlacementAttributes(dataStore: IfcDataStore, view: MutablePropertyView, editor: Pick<StoreEditor, 'getNewEntity'> & Partial<Pick<StoreEditor, 'getEntityType'>>, expressId: number): EntityAttrs | null {
+  if (view.isDeleted(expressId)) return null;
+  const attributes = baseAttributes(dataStore, editor, expressId);
+  if (!attributes) return null;
+  const type = editor.getNewEntity(expressId)?.type ?? dataStore.getEntity(expressId)?.type ?? editor.getEntityType?.(expressId);
+  if (!type) return null;
+  return resolveEffectiveEntityRecord({ type, attributes }, {
+    retype: view.getEntityTypeMutation(expressId)?.newType,
+    named: view.getAttributeMutationsForEntity(expressId).map(({ name, value }) => [name, value] as const),
+    positional: view.getPositionalMutationsForEntity(expressId) ?? [],
+  }, dataStore.schemaVersion).attributes;
+}
+
+/**
+ * Read the effective attribute list for an express id. Overlay-only
+ * entities come from the StoreEditor; source entities come from the
+ * original buffer. Positional-mutation overrides are layered on top so
+ * a previously-translated point reads back its mutated coords.
+ */
+export function readAttributes(
+  dataStore: IfcDataStore,
+  view: MutablePropertyView,
+  /** Only its overlay lookup is read, so the view itself will do. */
+  editor: Pick<StoreEditor, 'getNewEntity'>,
+  expressId: number,
+): EntityAttrs | null {
+  let attrs = baseAttributes(dataStore, editor, expressId);
+  if (!attrs) return null;
   // Apply positional mutations so a partially-edited entity reflects
   // its current state (relevant when the user translates the same
   // entity twice — the second read must see the first delta).
@@ -155,7 +177,7 @@ export function resolvePlacementChain(
   editor: StoreEditor,
   expressId: number,
 ): PlacementChain | null {
-  const productAttrs = readAttributes(dataStore, view, editor, expressId);
+  const productAttrs = readPlacementAttributes(dataStore, view, editor, expressId);
   if (!productAttrs) return null;
 
   const localPlacementId = asExpressIdRef(productAttrs[5]);
@@ -172,14 +194,14 @@ export function resolvePlacementChain(
     if (visited.size >= 10_000 || visited.has(ancestor)) return null;
     visited.add(ancestor);
     if (editor.getEntityType(ancestor)?.toUpperCase() !== 'IFCLOCALPLACEMENT') return null;
-    const attrs = readAttributes(dataStore, view, editor, ancestor);
+    const attrs = readPlacementAttributes(dataStore, view, editor, ancestor);
     if (!attrs) return null;
     const parent = attrs[0];
     ancestor = parent === null || parent === undefined ? null : asExpressIdRef(parent);
     if (parent !== null && parent !== undefined && ancestor === null) return null;
   }
 
-  const localPlacementAttrs = readAttributes(dataStore, view, editor, localPlacementId);
+  const localPlacementAttrs = readPlacementAttributes(dataStore, view, editor, localPlacementId);
   if (!localPlacementAttrs) return null;
 
   // IfcLocalPlacement.RelativePlacement is at index 1
@@ -187,14 +209,14 @@ export function resolvePlacementChain(
   const axisPlacementId = asExpressIdRef(localPlacementAttrs[1]);
   if (axisPlacementId === null) return null;
 
-  const axisAttrs = readAttributes(dataStore, view, editor, axisPlacementId);
+  const axisAttrs = readPlacementAttributes(dataStore, view, editor, axisPlacementId);
   if (!axisAttrs) return null;
 
   // IfcAxis2Placement3D.Location at index 0.
   const cartesianPointId = asExpressIdRef(axisAttrs[0]);
   if (cartesianPointId === null) return null;
 
-  const pointAttrs = readAttributes(dataStore, view, editor, cartesianPointId);
+  const pointAttrs = readPlacementAttributes(dataStore, view, editor, cartesianPointId);
   if (!pointAttrs) return null;
 
   const coordinates = asCoordinateTriple(pointAttrs[0]);
@@ -289,7 +311,7 @@ export function resolveRotationState(
 ): RotationState | null {
   const chain = resolvePlacementChain(dataStore, view, editor, expressId);
   if (!chain) return null;
-  const axisAttrs = readAttributes(dataStore, view, editor, chain.axisPlacementId);
+  const axisAttrs = readPlacementAttributes(dataStore, view, editor, chain.axisPlacementId);
   if (!axisAttrs) return null;
   // IfcAxis2Placement3D index 2 = RefDirection (an optional IfcDirection ref).
   const refDirectionId = asExpressIdRef(axisAttrs[2]);
@@ -301,7 +323,7 @@ export function resolveRotationState(
       yawZ: 0,
     };
   }
-  const dirAttrs = readAttributes(dataStore, view, editor, refDirectionId);
+  const dirAttrs = readPlacementAttributes(dataStore, view, editor, refDirectionId);
   if (!dirAttrs) return null;
   // IfcDirection index 0 = DirectionRatios (list of doubles).
   const ratios = asDirectionRatios(dirAttrs[0]);

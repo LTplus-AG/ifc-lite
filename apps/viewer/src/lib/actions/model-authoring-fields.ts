@@ -4,6 +4,8 @@
 
 /** Field parsers of the reviewed authoring contract (`model-authoring.ts`): bounded, unit-aware, with actionable messages. */
 
+export const MODEL_AUTHORING_TEXT_LIMIT = 400_000;
+
 export interface LengthRange { min: number; max: number; signed?: boolean }
 
 export const record = (value: unknown): value is Record<string, unknown> =>

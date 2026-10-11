@@ -47,30 +47,55 @@ export interface GpuHealth {
   events: string[];
 }
 
-const DEVICE_LOST = /\[WebGPU\] Device lost:.*\(reason: ([\w-]+)\)/;
+/**
+ * Every line the renderer and viewer print when the renderer's device is lost,
+ * in one place (#6993 review): each names its own log site. A loss surfaces
+ * through one or more of them, so per sample the loss count is the largest
+ * per-format count, never their sum. `destroyed` is intentional teardown.
+ */
+export const DEVICE_LOSS_LOG_FORMATS: ReadonlyArray<{ site: string; pattern: RegExp; reason?: number }> = [
+  // packages/renderer/src/device.ts: the `device.lost` promise (Chromium).
+  { site: 'WebGPUDevice.lost', pattern: /\[WebGPU\] Device lost:.*\(reason: ([\w-]+)\)/, reason: 1 },
+  // packages/renderer/src/index.ts `handleDeviceLost`: also synchronous losses
+  // (Safari throws, upload exceptions) that never settle `device.lost`.
+  { site: 'Renderer.handleDeviceLost', pattern: /\[Renderer\] GPU device lost — halting rendering until re-init:/ },
+  // apps/viewer/src/components/viewer/device-loss-report.ts: once per episode.
+  { site: 'reportDeviceLost', pattern: /\[Viewport\] GPU device lost:/ },
+];
 const INSTANCE_LOST = /valid external Instance reference no longer exists/i;
 const UNCAPTURED = /\[WebGPU\] Uncaptured error:/;
 const MAX_EVENTS = 20;
+
+/** Which loss format a console line is, or null; `destroyed` teardown lines are not losses. */
+export function deviceLossFormat(line: string): string | null {
+  for (const { site, pattern, reason } of DEVICE_LOSS_LOG_FORMATS) {
+    const match = pattern.exec(line);
+    if (match && (reason === undefined || match[reason] !== 'destroyed')) return site;
+  }
+  return null;
+}
 
 export function gpuHealthFrom(
   consoleLogs: readonly string[],
   sessionCounters: Readonly<Record<string, number>> | null,
 ): GpuHealth {
-  let consoleLost = 0;
+  const lossesBySite = new Map<string, number>();
   let instanceErrors = 0;
   let consoleUncaptured = 0;
   const events: string[] = [];
   for (const line of consoleLogs) {
-    const lost = DEVICE_LOST.exec(line);
-    const isLoss = lost !== null && lost[1] !== 'destroyed';
-    // The renderer's own loss line may quote the same message; count that event once.
-    const isInstance = lost === null && INSTANCE_LOST.test(line);
+    const site = deviceLossFormat(line);
+    const isLoss = site !== null;
+    // Loss lines quote the same message, and a destroyed-teardown line is no
+    // instance error either; count that event once, as the loss.
+    const isInstance = !isLoss && !DEVICE_LOSS_LOG_FORMATS[0].pattern.test(line) && INSTANCE_LOST.test(line);
     const isUncaptured = UNCAPTURED.test(line);
-    if (isLoss) consoleLost++;
+    if (site) lossesBySite.set(site, (lossesBySite.get(site) ?? 0) + 1);
     if (isInstance) instanceErrors++;
     if (isUncaptured) consoleUncaptured++;
     if ((isLoss || isInstance || isUncaptured) && events.length < MAX_EVENTS) events.push(line.slice(0, 300));
   }
+  const consoleLost = Math.max(0, ...lossesBySite.values());
   const counter = (name: string) => sessionCounters?.[name] ?? 0;
   const deviceLost = Math.max(consoleLost, counter('gpu.deviceLost'));
   const uncapturedErrors = Math.max(consoleUncaptured, counter('gpu.uncapturedErrors'));

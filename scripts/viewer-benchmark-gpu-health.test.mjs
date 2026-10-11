@@ -86,3 +86,73 @@ test('reads the viewer session counters through the page, and falls back when th
     console.warn = warn;
   }
 });
+
+// #6993 review: every loss line the renderer and viewer can print, alone and
+// without session counters (a pre-counter base build), flags the sample.
+const LOSS_LINES = {
+  'WebGPUDevice.lost': LOST,
+  'Renderer.handleDeviceLost': '[Renderer] GPU device lost — halting rendering until re-init: The object is in an invalid state.',
+  reportDeviceLost: '[Viewport] GPU device lost: unknown A valid external Instance reference no longer exists.',
+};
+
+for (const [site, line] of Object.entries(LOSS_LINES)) {
+  test(`#6993 the ${site} loss line alone, with no counters, flags the sample`, () => {
+    const health = gpuHealthFrom([...CLEAN_LOGS, line], null);
+    assert.equal(health.contaminated, true, line);
+    assert.equal(health.deviceLost, 1);
+    assert.equal(health.instanceErrors, 0, 'a loss line quoting the instance message is the loss, not an instance error');
+  });
+}
+
+test('#6993 one loss reported through every site counts once, not three times', () => {
+  const health = gpuHealthFrom([INSTANCE, ...Object.values(LOSS_LINES), DESTROYED], null);
+  assert.equal(health.deviceLost, 1);
+  assert.equal(health.instanceErrors, 1);
+});
+
+// Drift guards: the lines the REAL log sites print, not copies of them.
+async function captureWarnings(run) {
+  const lines = [];
+  const warn = console.warn;
+  console.warn = (...args) => lines.push(args.map(String).join(' '));
+  try { await run(); } finally { console.warn = warn; }
+  return lines;
+}
+
+test('#6993 drift guard: the renderer\'s handleDeviceLost line is classified as a loss', async () => {
+  const { Renderer } = await tsImport('../packages/renderer/src/index.ts', import.meta.url);
+  const lines = await captureWarnings(() => {
+    const renderer = new Renderer({ width: 0, height: 0, getBoundingClientRect: () => ({ width: 1, height: 1 }) });
+    renderer['handleDeviceLost']({ message: 'The object is in an invalid state.', reason: 'gpu-upload-exception' });
+  });
+  assert.ok(lines.length > 0, 'guard: the renderer printed nothing, so this would prove nothing');
+  assert.equal(gpuHealthFrom(lines, null).contaminated, true, lines.join('\n'));
+});
+
+test('#6993 drift guard: WebGPUDevice\'s device.lost line is classified; its destroyed teardown line is not', async () => {
+  const { WebGPUDevice } = await tsImport('../packages/renderer/src/device.ts', import.meta.url);
+  const run = async (reason) => {
+    let settle;
+    const device = { lost: new Promise((r) => { settle = r; }), queue: {}, createBuffer() {}, addEventListener() {} };
+    const adapter = { limits: {}, features: new Set(), requestDevice: async () => device };
+    const saved = Object.getOwnPropertyDescriptor(globalThis, 'navigator');
+    Object.defineProperty(globalThis, 'navigator', { configurable: true, value: { gpu: { requestAdapter: async () => adapter, getPreferredCanvasFormat: () => 'bgra8unorm' } } });
+    globalThis.GPUTextureUsage ??= { RENDER_ATTACHMENT: 0x10 };
+    try {
+      return await captureWarnings(async () => {
+        const wrapper = new WebGPUDevice();
+        await wrapper.init({ width: 1, height: 1, getContext: () => ({ configure() {} }) });
+        settle({ message: 'A valid external Instance reference no longer exists.', reason });
+        await new Promise((r) => setImmediate(r));
+      });
+    } finally {
+      if (saved) Object.defineProperty(globalThis, 'navigator', saved); else delete globalThis.navigator;
+    }
+  };
+  const lost = await run('unknown');
+  assert.ok(lost.some((l) => l.includes('Device lost')), `guard: no loss line printed:\n${lost.join('\n')}`);
+  assert.equal(gpuHealthFrom(lost, null).contaminated, true, lost.join('\n'));
+  const destroyed = await run('destroyed');
+  assert.ok(destroyed.some((l) => l.includes('Device lost')), 'guard: no teardown line printed');
+  assert.equal(gpuHealthFrom(destroyed, null).contaminated, false, destroyed.join('\n'));
+});

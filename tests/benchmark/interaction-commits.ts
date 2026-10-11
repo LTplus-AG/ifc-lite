@@ -17,7 +17,9 @@ import { readSessionCounters } from './gpu-health.js';
  * Each interaction is measured from a quiet page (no commit for `quietMs`) to
  * the next quiet point, through real input, not store calls:
  *   select     click the first IfcBuilding row of the hierarchy
- *   hover      move the pointer onto the viewport centre (`hoverHit` says
+ *   hover      move the pointer onto the centre of the 3D viewport canvas
+ *              (`canvas[data-viewport="main"]`, checked to be what is under
+ *              the pointer there; `hoverHit` says
  *              whether the GPU pick found an entity there)
  *   panelOpen  open the Lists panel from the sidebar
  * A step that cannot run, or never goes quiet, is null with its reason, never 0.
@@ -79,6 +81,9 @@ export async function commitsFor(
   return end - start;
 }
 
+/** The 3D viewport canvas (`Viewport.tsx`), never the minimap or a 2D drawing canvas. */
+export const VIEWPORT_CANVAS = 'canvas[data-viewport="main"]';
+
 const BEFORE: QuietOptions = { quietMs: 2_000, maxMs: 30_000, pollMs: 100 };
 const AFTER: QuietOptions = { quietMs: 1_000, maxMs: 30_000, pollMs: 100 };
 
@@ -93,9 +98,18 @@ export async function measureInteractionCommits(page: Page): Promise<Interaction
   const steps: Record<Interaction, () => Promise<void>> = {
     select: () => page.locator('[data-hierarchy-node-type="IfcBuilding"]').first().click({ timeout: 10_000 }),
     hover: async () => {
-      const box = await page.locator('canvas').first().boundingBox();
-      if (!box) throw new Error('no viewport canvas');
-      await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+      // The viewport by its own marker: FZK's page also holds a WebGL minimap
+      // canvas, which can come first in document order (#6993 review).
+      const box = await page.locator(VIEWPORT_CANVAS).boundingBox();
+      if (!box) throw new Error(`no viewport canvas (${VIEWPORT_CANVAS})`);
+      const x = box.x + box.width / 2;
+      const y = box.y + box.height / 2;
+      const target = await page.evaluate(([px, py, selector]) => {
+        const hit = document.elementFromPoint(px, py);
+        return hit === document.querySelector(selector) ? null : `${hit?.tagName ?? 'nothing'}${hit?.className ? `.${String(hit.className).split(' ')[0]}` : ''}`;
+      }, [x, y, VIEWPORT_CANVAS] as const);
+      if (target !== null) throw new Error(`the viewport centre is covered by ${target}, so the pointer would not hover the viewport`);
+      await page.mouse.move(x, y);
     },
     panelOpen: () => page.getByRole('button', { name: 'Lists', exact: true }).first().click({ timeout: 10_000 }),
   };

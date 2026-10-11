@@ -211,3 +211,13 @@ test('#6993 a sample recorded ok but GPU-device-lost is excluded and invalidates
   assert.match(r.out, /\(5 A sample\(s\), 4 B sample\(s\)\)/, 'the device-lost sample is not among the averaged ones');
   assert.doesNotMatch(r.out, /⛔/, 'the 10x sample must not register as a regression');
 });
+
+test('#6993 a GPU-lost row without recorded reasons still reports, rather than crashing the reporter', () => {
+  const rows = [];
+  for (let round = 1; round <= 5; round++) rows.push(sample({ side: 'A', fixture: 'f', round }), sample({ side: 'B', fixture: 'f', round }));
+  rows[1] = { ...rows[1], gpuHealth: { contaminated: true } };
+  const r = run(rows);
+  assert.notEqual(r.code, 0, r.out);
+  assert.match(r.out, /\[GPU device lost: no reason recorded\]/);
+  assert.doesNotMatch(r.out, /TypeError/);
+});

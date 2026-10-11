@@ -110,7 +110,7 @@ lines.push(`\nbrowser cold-load A/B  base=${baseLabel}  branch=${branchLabel}`);
 if (failedRows.length > 0) {
   lines.push(`\n⚠️  ${failedRows.length} sample(s) FAILED and were excluded from the stats below (evidence archived under scripts/perf/.browser-cold-ab-results/FAILED-*):`);
   for (const f of failedRows) {
-    const gpu = lostGpu(f) ? `  [GPU device lost: ${f.gpuHealth.reasons.join('; ')}]` : '';
+    const gpu = lostGpu(f) ? `  [GPU device lost: ${(Array.isArray(f.gpuHealth.reasons) && f.gpuHealth.reasons.length ? f.gpuHealth.reasons : ['no reason recorded']).join('; ')}]` : '';
     lines.push(`   - ${f.side}/${f.fixture}/round${f.round}: ${f.error ?? 'unknown error'}${gpu}`);
   }
   if (deviceLossRows.length > 0) {

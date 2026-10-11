@@ -187,8 +187,9 @@ function readCurrent(store: IfcDataStore, entityId: number, view: MetadataReadVi
         if (quantities.some(set => names.has(set.name) && !set.globalId)) {
             throw new CurrentQuantityRefusal('Native quantity definition identity is missing');
         }
-        const nativeByGuid = new Map(quantities.map(set => [set.globalId, set]));
-        if (nativeByGuid.size !== quantities.length) throw new CurrentQuantityRefusal('Native quantity definition identities are ambiguous');
+        const identified = quantities.filter(set => set.globalId);
+        const nativeByGuid = new Map(identified.map(set => [set.globalId, set]));
+        if (nativeByGuid.size !== identified.length) throw new CurrentQuantityRefusal('Native quantity definition identities are ambiguous');
         const updated = projected.filter(set => names.has(set.name)).map(set => {
             const native = set.globalId ? nativeByGuid.get(set.globalId) : undefined;
             if (set.globalId && !native) throw new CurrentQuantityRefusal('Current quantity definition identity is unavailable');

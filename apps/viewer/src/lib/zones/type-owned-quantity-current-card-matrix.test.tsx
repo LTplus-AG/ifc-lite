@@ -314,3 +314,27 @@ test('#7355 complex-only native set missing GlobalId refuses its first scalar ed
   assert.throws(() => editedModelBytes(source, view), /Current type complex-only quantity definition identity is unavailable/);
   assert.deepEqual(source.getEntity(complex)?.attributes[2], [child]);
 });
+
+test('#7355 unrelated native sets without GlobalIds survive a GUID-owned Type edit', async t => {
+  const f = await inheritedSource(t); if (!f) return;
+  const editor = new StoreEditor(f.store, f.view);
+  const untouched = [12, 24].map((value, index) => {
+    const atom = editor.addEntity('IfcQuantityVolume', [`UnchangedVolume${index}`, null, null, value, null]).expressId;
+    return editor.addEntity('IfcElementQuantity', [null, null, `Unchanged quantities ${index}`, null, null, [`#${atom}`]]).expressId;
+  });
+  f.view.setPositionalAttribute(f.a.type, 5, [`#${f.a.qto}`, ...untouched.map(id => `#${id}`)]);
+  const source = await parse(editedModelBytes(f.store, f.view));
+  const model = useViewerStore.getState().models.get('arch'); assert.ok(model);
+  useViewerStore.setState({ models: new Map([['arch', { ...model, ifcDataStore: source }]]),
+    ifcDataStore: source, mutationViews: new Map(), storeEditors: new Map() });
+  const view = getOrCreateMutationView(useViewerStore, 'arch'); assert.ok(view);
+  view.setQuantity(f.a.type, 'Qto_WallBaseQuantities', 'NetVolume', 35, QuantityType.Volume);
+  const current = readCurrentTypeQuantities(source, f.f.id, view);
+  assert.equal(current.status, 'available');
+  assert.equal(net(current.value?.quantities ?? []), 35);
+  const saved = await parse(editedModelBytes(source, view));
+  assert.equal(net(extractTypeQuantitiesOnDemand(saved, f.f.id)?.quantities ?? []), 35);
+  for (const id of untouched) assert.deepEqual(saved.getEntity(id)?.attributes, source.getEntity(id)?.attributes,
+    'unaffected native definitions do not acquire or require fabricated writer identities');
+  assert.deepEqual(current.value?.quantities.filter(set => set.name.startsWith('Unchanged quantities')).map(set => set.quantities[0]?.value), [12, 24]);
+});

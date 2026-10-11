@@ -38,6 +38,7 @@ import { generatePropertySetEntities, generateQuantitySetEntities } from './step
 import type { ExportPass, SourceLineMutations, StepExportOptions } from './step-exporter.js';
 import { generateTypeQuantityCopy } from './step-type-owned-quantities.js';
 import type { ModificationKind } from './delta-modification-ledger.js';
+import { convertStepLine } from './schema-converter.js';
 
 
 /**
@@ -92,7 +93,13 @@ export function generatePropertyAndQuantitySetEntities(
       const generated = source
         ? generateTypeQuantityCopy(pass, options, ctx, entityId, qset, source)
         : generateQuantitySetEntities(ctx, entityId, [qset], pass.willBeEmitted, pass.effective, options.guidRandom, typeOwned);
-      pass.entities.push(...generated.lines);
+      const lines = !source && typeOwned && pass.converting ? generated.lines.map(line => {
+        const converted = convertStepLine(line, pass.sourceSchema, pass.schema, options.guidRandom,
+          pass.slotFill, pass.withheldRefIds, pass.ifc4Slots, pass.enums);
+        if (converted === null) throw new Error('New type quantity definition is unsupported in the target schema');
+        return converted;
+      }) : generated.lines;
+      pass.entities.push(...lines);
       pass.newEntityCount += generated.count;
       if (generated.lines.length > 0) pass.modifications.recordEmitted(entityId, 'quantity-set');
       if (typeOwned) {

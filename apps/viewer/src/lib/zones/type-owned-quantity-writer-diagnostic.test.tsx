@@ -404,3 +404,24 @@ for (const newSet of [false, true]) test(`#7355 IFC2X3 new scalar preserves four
  assert.equal(atom.type, 'IFCQUANTITYVOLUME');
  assert.deepEqual(atom.attributes, ['NewVolume', null, null, 35], 'IFC2X3 EXPRESS quantity has no Formula slot');
 });
+
+for (const newSet of [false, true]) test(`#7355 IFC4 Type scalar export converts target IFC2X3 newSet=${newSet}`, async t => {
+ const f = await inheritedSource(t); if (!f) return;
+ assert.equal(f.store.schemaVersion, 'IFC4');
+ const name = newSet ? 'New converted quantities' : 'Qto_WallBaseQuantities';
+ f.view.setQuantity(f.a.type, name, 'ConvertedVolume', 35, QuantityType.Volume);
+ const saved = await parse(new StepExporter(f.store, f.view).export({ schema: 'IFC2X3', applyMutations: true,
+  includeGeometry: true, includeQuantities: true }).content);
+ assert.equal(saved.schemaVersion, 'IFC2X3');
+ const quantity = extractTypeQuantitiesOnDemand(saved, f.f.id)?.quantities.find(set => set.name === name)
+  ?.quantities.find(q => q.name === 'ConvertedVolume'); assert.ok(quantity);
+ assert.equal(quantity.value, 35);
+ const owned = saved.getEntity(f.a.type)?.attributes[5]; assert.ok(Array.isArray(owned));
+ const atoms = owned.flatMap(id => {
+  const members = typeof id === 'number' ? saved.getEntity(id)?.attributes[5] : null;
+  return Array.isArray(members) ? members : [];
+ }).map(id => typeof id === 'number' ? saved.getEntity(id) : null);
+ const atom = atoms.find(entity => entity?.attributes[0] === 'ConvertedVolume'); assert.ok(atom);
+ assert.equal(atom.type, 'IFCQUANTITYVOLUME');
+ assert.deepEqual(atom.attributes, ['ConvertedVolume', null, null, 35], 'target schema conversion removes IFC4 Formula');
+});

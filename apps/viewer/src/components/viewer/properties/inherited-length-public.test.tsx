@@ -197,3 +197,84 @@ test('#7382 malformed current native inherited LengthValue cannot retain stale p
     await assertSameNativeIfcGraph(editedModelBytes(x.source, x.current), before);
   });
 });
+
+// #7382: the merged positional display witness did not exercise the supported
+// default-history Type writer or actual viewer Undo/Redo while Properties stays mounted.
+test('#7382 mounted Properties follows inherited Length default-history edit, Undo/Redo and saved native ownership', async t => {
+  const fixture = await nativeLength(t); if (!fixture) return;
+  const { source, current, a, f } = fixture;
+  useViewerStore.setState({ editEnabled: true, collabRoomId: null, undoStacks: new Map(), redoStacks: new Map(),
+    mutationBatchTags: new Map() });
+  const ui = render(<PropertiesPanel />);
+  const inherited = ui.querySelector('section[aria-label="Inherited type quantities"]');
+  assert.ok(inherited, 'the actual occurrence panel explicitly identifies inherited ownership');
+  const card = Array.from(inherited.querySelectorAll('button')).find(button => button.textContent?.includes('Qto_WallBaseQuantities'));
+  assert.ok(card); if (card.getAttribute('data-state') !== 'open') click(card);
+  const sourceBytes = editedModelBytes(source, current);
+
+  async function assertStage(value: number, unit: 'm' | 'mm') {
+    assert.equal(quantityRow(ui, 'NetVolume').querySelector('span.font-mono')?.textContent, `${value} ${unit}`,
+      'the same mounted Properties panel follows current physical value and unit');
+    assert.match(ui.querySelector('section[aria-label="Inherited type quantities"]')?.textContent ?? '', /NetVolume/);
+    const bytes = editedModelBytes(source, current);
+    const saved = await parse(bytes);
+    assert.equal(extractQuantitiesOnDemand(saved, f.id).length, 0, 'editing inherited ownership creates no occurrence quantity');
+    const canonical = extractTypeQuantitiesOnDemand(saved, f.id)?.quantities[0]?.quantities[0]; assert.ok(canonical);
+    assert.equal(canonical.value, value); assert.equal(canonical.type, QuantityType.Length);
+    assert.equal(canonical.explicitUnit, unit); assert.equal(canonical.explicitUnitSiScale, unit === 'mm' ? 0.001 : 1);
+    const read = readCurrentTypeQuantities(source, f.id, current);
+    assert.equal(read.status, 'available');
+    assert.deepEqual(read.value?.quantities[0]?.quantities[0], canonical,
+      'live canonical coverage agrees with independent saved reparse');
+    // Inspect the independently saved EXPRESS graph, not just another quantity reader.
+    const owned = saved.getEntity(a.type)?.attributes[5]; assert.ok(Array.isArray(owned));
+    const sets = owned.map(id => { assert.ok(typeof id === 'number'); return { id, entity: saved.getEntity(id) }; })
+      .filter(item => item.entity?.type.toUpperCase() === 'IFCELEMENTQUANTITY'
+        && item.entity.attributes[2] === 'Qto_WallBaseQuantities');
+    assert.equal(sets.length, 1, 'the inherited type retains exactly one current native quantity definition');
+    const ownedSet = sets[0]; assert.ok(ownedSet);
+    const qto = ownedSet.entity; assert.ok(qto);
+    const atoms = qto.attributes[5]; assert.ok(Array.isArray(atoms));
+    const quantities = atoms.map(id => { assert.ok(typeof id === 'number'); return saved.getEntity(id); })
+      .filter(entity => entity?.attributes[0] === 'NetVolume');
+    assert.equal(quantities.length, 1, 'the native definition retains exactly one Length witness');
+    const quantity = quantities[0]; assert.ok(quantity);
+    assert.equal(quantity.type.toUpperCase(), 'IFCQUANTITYLENGTH'); assert.equal(quantity.attributes[3], value);
+    const unitId = quantity.attributes[2]; assert.ok(typeof unitId === 'number');
+    const explicit = saved.getEntity(unitId); assert.ok(explicit);
+    assert.equal(explicit.type.toUpperCase(), 'IFCSIUNIT');
+    assert.deepEqual(explicit.attributes.slice(1), ['.LENGTHUNIT.', unit === 'mm' ? '.MILLI.' : null, '.METRE.']);
+    const rootGuid = qto.attributes[0]; assert.ok(typeof rootGuid === 'string');
+    assert.match(rootGuid, /^[0-3][0-9A-Za-z_$]{21}$/, 'saved quantity root has a valid IFC GlobalId');
+    if (unit === 'mm') {
+      assert.notEqual(ownedSet.id, a.qto, 'the edited owner points to its copied native quantity definition');
+      assert.notEqual(rootGuid, source.getEntity(a.qto)?.attributes[0], 'edited copy has a fresh root identity');
+    }
+    // #7378 regenerates the edited copy's root GlobalId on every export. Compare
+    // all schema/IDs/types/cardinalities/attributes except that one verified slot.
+    // @raw-entity-enumeration-ok complete independent saved graph is the Undo/Redo invariant.
+    const entities = [...saved.entityIndex.byId.keys()].sort((left, right) => left - right).map(expressId => {
+      const entity = saved.getEntity(expressId); assert.ok(entity);
+      const attributes = [...entity.attributes];
+      if (unit === 'mm' && expressId === ownedSet.id) attributes[0] = '<regenerated edited quantity GlobalId>';
+      return { expressId, type: entity.type, attributes };
+    });
+    return { bytes, graph: { schema: saved.schemaVersion, entities } };
+  }
+
+  await assertStage(10, 'm');
+  act(() => {
+    const mutation = useViewerStore.getState().setQuantity('arch', a.type, 'Qto_WallBaseQuantities', 'NetVolume',
+      35, QuantityType.Length, 'MILLIMETRE');
+    assert.ok(mutation, 'the real authorized viewer action produces a history entry');
+  });
+  assert.equal(useViewerStore.getState().canUndo('arch'), true);
+  const edited = await assertStage(35, 'mm');
+  act(() => useViewerStore.getState().undo('arch'));
+  const undone = await assertStage(10, 'm');
+  await assertSameNativeIfcGraph(undone.bytes, sourceBytes, 'Undo restores the complete source graph, including original inherited ownership and explicit unit');
+  assert.equal(useViewerStore.getState().canRedo('arch'), true);
+  act(() => useViewerStore.getState().redo('arch'));
+  const redone = await assertStage(35, 'mm');
+  assert.deepEqual(redone.graph, edited.graph, 'Redo restores the complete saved native graph, allowing only the regenerated edited root GlobalId');
+});

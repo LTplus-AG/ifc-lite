@@ -9,6 +9,12 @@ export { runModelRequest } from './request.js';
 export type { AiTransport, TransportCall, ModelRequest, RequestOutcome, RequestHooks, RequestStart } from './request.js';
 
 export type { UsageReceipt, RequestOutcomeKind } from './receipt.js';
+
+export { runToolTurn } from './tool-turn.js';
+export type {
+  ToolSpec, ContentBlock, ToolResult, ToolTurnMessage, ToolTurnStopReason, ToolTurn, ToolTurnEffort,
+  ToolTurnCall, ToolTurnTransport, ToolTurnRequest, ToolTurnOutcome,
+} from './tool-turn.js';
 export type { JsonResponseSchema, OutputFormat } from './response-schema.js';
 
 export { chatCompletionsUsage, responsesUsage, anthropicUsage } from './usage.js';

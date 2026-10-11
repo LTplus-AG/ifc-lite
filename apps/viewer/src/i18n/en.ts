@@ -61,6 +61,7 @@ import { modelAuthoringEn } from './catalogues/model-authoring.en';
 import { roomReviewEn } from './catalogues/room-review.en';
 import { sceneActionsEn } from './catalogues/scene-actions.en';
 import { checkAuthoringEn } from './catalogues/check-authoring.en';
+import { idsAgentEn } from './catalogues/ids-agent.en';
 import { assistantArtifactsEn } from './catalogues/assistant-artifacts.en';
 import type { TranslationValue } from './types';
 import type { semanticAssistEn } from './catalogues/semantic-assist.en';
@@ -276,6 +277,7 @@ export const en = {
   ...roomReviewEn,
   ...sceneActionsEn,
   ...checkAuthoringEn,
+  ...idsAgentEn,
   ...assistantArtifactsEn,
   ...clashPanelEn,
   ...clashToolsEn,

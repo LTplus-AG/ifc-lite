@@ -1,5 +1,43 @@
 # @ifc-lite/mutations
 
+## 3.2.0
+
+### Minor Changes
+
+- [#7212](https://github.com/LTplus-AG/ifc-lite/pull/7212) [`8f8fe3b`](https://github.com/LTplus-AG/ifc-lite/commit/8f8fe3b126f25201ebfd338f355eb3787e7ad908) Thanks [@louistrue](https://github.com/louistrue)! - Expose `MutablePropertyView.getQuantityMutation` for current quantity overrides, including explicit unit removal. This read is independent of append-only mutation history and lets downstream unit readers retain source inheritance without restoring a unit that was explicitly removed.
+
+- [#7189](https://github.com/LTplus-AG/ifc-lite/pull/7189) [`6a6714b`](https://github.com/LTplus-AG/ifc-lite/commit/6a6714b4e95f25ef43013be354a2ff62674ff07a) Thanks [@louistrue](https://github.com/louistrue)! - Bind authored entity creation provenance to the current NewEntity record. Native creation uses the same token as its CREATE_ENTITY mutation; original record clones and undo preserve it, while tokenless replacement/recovery cannot borrow stale history as proof of identity.
+
+- [#6760](https://github.com/LTplus-AG/ifc-lite/pull/6760) [`b92dd05`](https://github.com/LTplus-AG/ifc-lite/commit/b92dd05495094a47c4a68eb1137a3a1906fc65cc) Thanks [@louistrue](https://github.com/louistrue)! - Expose a journal count and a suffix read so append-only authoring records only the current call's mutations. Existing full-journal reads retain their behavior.
+
+- [#6759](https://github.com/LTplus-AG/ifc-lite/pull/6759) [`73070c2`](https://github.com/LTplus-AG/ifc-lite/commit/73070c2d67c2a0507e6bc5492c090f2df3736881) Thanks [@louistrue](https://github.com/louistrue)! - Expose a monotonic live-overlay invalidation token and use it for native Room preparation and geometry caching. History-free canonical edits and Undo/Redo now invalidate stale native preparation and cached geometry without changing the recorded Undo history.
+
+- [#6758](https://github.com/LTplus-AG/ifc-lite/pull/6758) [`2e2f65a`](https://github.com/LTplus-AG/ifc-lite/commit/2e2f65a66e1375ef6cc52b8a310526de1a36e1a0) Thanks [@louistrue](https://github.com/louistrue)! - Record native Room layout edits in ordinary session history even when no IFC rooms exist. Session markers never fabricate IFC attribute changes or collaboration operations, and layout Undo/Redo revisits the exact retained native plate.
+
+- [#7378](https://github.com/LTplus-AG/ifc-lite/pull/7378) [`68a0c92`](https://github.com/LTplus-AG/ifc-lite/commit/68a0c92bb287d9627b15f13586a4e063a200d5af) Thanks [@louistrue](https://github.com/louistrue)! - Export default-history type-owned quantity edits through HasPropertySets instead of an invalid IfcRelDefinesByProperties type target. Reuse canonical source type quantity extraction and preserve raw untouched physical quantities, explicit native units, Formula, set metadata, unrelated definitions and shared owners with copy-on-write. Expose extractTypeEntityOwnQuantities for callers reading a type object directly; source-only reads retain their existing semantics.
+  
+  Preserve native quantity definition GlobalIds through canonical instance claiming. Add an opt-in empty-instance projection for native exporters so deleting a last numeric member removes only that definition ownership; ordinary quantity reads retain their default omission behavior.
+  
+  The current native type-quantity reader includes the resolved explicit IFC unit category so type-owned exports refuse dimension changes that would retain an incompatible unit. Source-only output remains unchanged.
+  
+  Project supported history-nominated type quantity journal values through the canonical current reader before native export. Retain GUID-based instance claiming and native unit metadata, resolve supported length replacement labels through shared unit resolvers, and preserve explicit unit removal. Standalone skipped-history export nomination and source-only reads remain unchanged.
+  
+  Share source-project assigned length-unit eligibility and label normalization
+  between current Type quantity reading and STEP export. Preserve existing
+  GUID-owned quantity-set order when projecting tracked edits.
+  
+  Generated quantity sets now reach the export target schema through one
+  conversion site, so an IFC4 model exported as IFC2X3 writes four-slot
+  occurrence and Type-owned quantities without the IFC4 Formula attribute.
+
+- [#6760](https://github.com/LTplus-AG/ifc-lite/pull/6760) [`b92dd05`](https://github.com/LTplus-AG/ifc-lite/commit/b92dd05495094a47c4a68eb1137a3a1906fc65cc) Thanks [@louistrue](https://github.com/louistrue)! - Retain previous quantity class and unit metadata in edit history, and distinguish explicit unit removal from inherited source units. Preserve quantity classes through viewer Undo and Redo, including native Room cuts, while keeping value-only replay compatible with older histories. Generated length quantity export uses the existing length-unit resolver; other quantity classes inherit project units instead of receiving a reference with the wrong dimension.
+
+### Patch Changes
+
+- [#7439](https://github.com/LTplus-AG/ifc-lite/pull/7439) [`3ef81ad`](https://github.com/LTplus-AG/ifc-lite/commit/3ef81ad36db5a63f066ff1447bea8172c1c19f73) Thanks [@louistrue](https://github.com/louistrue)! - Apply the additive SI offset of an `IfcConversionBasedUnitWithOffset` (°F) wherever a resolved unit's scale is used: `scaleMeasureValue` / `scaledPropertyValue` (model diff) now gives 293.15 K for 68 °F instead of 37.78, and the viewer's display-unit conversion, chart field columns and table-cell write-back keep the unit's offset. `Property` gains an optional `unitSiOffset`, which the mutation overlay carries through. Rules, whose SI conversion is a factor only, report no SI factor for such a value instead of a wrong one.
+- Updated dependencies [[`3ef81ad`](https://github.com/LTplus-AG/ifc-lite/commit/3ef81ad36db5a63f066ff1447bea8172c1c19f73), [`fd1f8f5`](https://github.com/LTplus-AG/ifc-lite/commit/fd1f8f52fabbde0ecee4d6a5c15635293ff1a15e), [`884eea2`](https://github.com/LTplus-AG/ifc-lite/commit/884eea296a54e3af744b9faa618b4fdb3e4da321)]:
+  - @ifc-lite/data@6.2.0
+
 ## 3.1.0
 
 ### Minor Changes

@@ -1,0 +1,5 @@
+{
+  "log": "excluded-visible-count-assumption.log.gz",
+  "sha256Uncompressed": "5077d735d8e16b2ba3f2ef3376008c699545a131aa9eda1398e59840a9e7f14c",
+  "verdict": "83pass1fail; witness incorrectly assumed filtered visible5 equals producer8. Corrected witness qualifies only with subsequent84/84 run; this attempt is not acceptance. Exact old failed witness source not retained, so no frozen-source claim."
+}

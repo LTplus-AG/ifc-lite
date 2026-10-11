@@ -508,6 +508,9 @@ for (const [glob, expected] of [
     try {
       assert.equal(run(root).status, 0, 'the mirror must be green before the mutation');
       dropFilterEntry(root, glob);
+      // Benchmark inputs also reach the generator through Node tests; remove
+      // that route as well so this mutation genuinely reopens the baseline hole.
+      if (glob === 'tests/benchmark/baseline.json') dropFilterEntry(root, 'tests/benchmark/**');
       const { status, out } = run(root);
       assert.equal(status, 1, out);
       assert.match(out, expected);

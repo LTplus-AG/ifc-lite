@@ -14,6 +14,14 @@
  * ghost; their row says what changes.
  */
 
+import { authoringCurtainWallGhost } from './model-authoring-curtain-wall-ghost';
+import { gridCreationGhost } from './model-authoring-grid-ghost';
+import { replacementCreation } from './model-authoring-replacement';
+import { alignmentGhosts } from '@/lib/commands/modeling/align-ghosts';
+import { authoringSlabOpeningGhost } from './model-authoring-slab-opening-ghost';
+import { stairRailingGhost } from './model-authoring-stair-railing-ghost';
+import { linearProfileFrame } from '@ifc-lite/create';
+import { sectionGhostMesh } from '@/lib/profile-section/profile-outline';
 import type { MeshData } from '@ifc-lite/geometry';
 import type { ViewerState } from '@/store';
 import { toGlobalIdFromModels } from '@/store/globalId';
@@ -29,6 +37,9 @@ import { authoredElementOf, type ElementId } from './model-authoring-native';
 import { toMetres, type AuthoringOp, type ModelAuthoringBatch } from './model-authoring';
 import type { AuthoringRow, ModelAuthoringPreview } from './model-authoring-preview';
 import { authoringReader } from './model-authoring-read';
+import { authoringHostedEditGhost } from './model-authoring-hosted-edit-ghost';
+import { authoringSplitMarker } from './model-authoring-split-ghost';
+import { authoringSizeGhost } from './model-authoring-size-ghost';
 
 const DELETE_COLOR: [number, number, number, number] = [0.95, 0.25, 0.2, 0.45];
 /** Above the `command` channel's ids, so the two channels never remove each other's meshes. */
@@ -47,14 +58,30 @@ function createGhost(state: ViewerState, batch: ModelAuthoringBatch, row: Author
   const op = row.op as Extract<AuthoringOp, { op: 'element.create' }>;
   const wp = plane(state, row.modelId!, row.resolved.storey ?? null);
   if (!wp) return null;
-  const element = authoredElementOf(batch, op);
+  return authoredCreationGhost(wp, authoredElementOf(batch, op), id);
+}
+
+/** One native authored shape preview constructor shared by ordinary and bound columns. */
+export function authoredCreationGhost(wp: Workplane, element: ReturnType<typeof authoredElementOf>, id: number): MeshData | null {
+  if (element.kind === 'beam' || element.kind === 'member') {
+    const p = element.params;
+    const profile = 'Profile' in p ? p.Profile : { Type: 'Rectangle' as const, XDim: p.Width, YDim: p.Height };
+    return sectionGhostMesh(wp, profile, linearProfileFrame(p.Start, p.End), id);
+  }
+  if (element.kind === 'column' && 'Profile' in element.params) {
+    const p = element.params;
+    return sectionGhostMesh(wp, p.Profile, { origin: p.Position, u: [1, 0, 0], v: [0, 1, 0], along: [0, 0, 1], length: p.Height }, id);
+  }
+  if ((element.kind === 'slab' || element.kind === 'roof' || element.kind === 'plate' || element.kind === 'space') && 'OuterCurve' in element.params) {
+    const p = element.params, origin = p.Position ?? [0, 0, 0];
+    const depth = 'Thickness' in p ? p.Thickness : p.Height;
+    return prismGhostMesh(wp, p.OuterCurve.map(([x, y]) => [x + origin[0], y + origin[1]]), origin[2], origin[2] + depth, id);
+  }
   switch (element.kind) {
-    case 'wall': case 'beam': case 'member': {
-      const p = element.params as { Start: V3; End: V3; Height: number; Thickness?: number; Width?: number };
-      const outline = segmentOutline([p.Start[0], p.Start[1]], [p.End[0], p.End[1]], p.Thickness ?? p.Width ?? 0);
-      // A wall stands on its axis; a beam's or member's section is centred on it.
-      const [z0, z1] = element.kind === 'wall' ? [p.Start[2], p.Start[2] + p.Height] : [p.Start[2] - p.Height / 2, p.Start[2] + p.Height / 2];
-      return prismGhostMesh(wp, outline, z0, z1, id);
+    case 'wall': {
+      const p = element.params;
+      const outline = segmentOutline([p.Start[0], p.Start[1]], [p.End[0], p.End[1]], p.Thickness);
+      return prismGhostMesh(wp, outline, p.Start[2], p.Start[2] + p.Height, id);
     }
     case 'column': {
       const p = element.params as { Position: V3; Width: number; Depth: number; Height: number };
@@ -84,6 +111,7 @@ function hostAxis(state: ViewerState, batch: ModelAuthoringBatch, preview: Model
 
 function hostedGhost(state: ViewerState, batch: ModelAuthoringBatch, preview: ModelAuthoringPreview, row: AuthoringRow, id: number): MeshData | null {
   const op = row.op as Extract<AuthoringOp, { op: 'hosted.create' }>;
+  if ('params' in op) return null; // Slab cutters never use the wall-only ghost.
   const host = hostAxis(state, batch, preview, row, row.resolved.host!);
   const wp = host ? plane(state, row.modelId!, host.storey) : null;
   if (!host || !wp) return null;
@@ -115,7 +143,7 @@ function transformGhosts(state: ViewerState, batch: ModelAuthoringBatch, row: Au
     return transformedGhosts(state, selection, { kind: 'move', from: origin, to: wp.localToRender([toMetres(batch, op.delta[0]), toMetres(batch, op.delta[1]), 0]) }, wp.plane.normal, id);
   }
   if (op.op === 'element.rotate') {
-    return transformedGhosts(state, selection, { kind: 'rotate', pivot: wp.localToRender([root.origin[0], root.origin[1], 0]), angle: (op.angleDeg * Math.PI) / 180 }, wp.plane.normal, id);
+    return transformedGhosts(state, selection, { kind: 'rotate', pivot: wp.localToRender(op.pivot ? [toMetres(batch, op.pivot[0]), toMetres(batch, op.pivot[1]), 0] : [root.origin[0], root.origin[1], 0]), angle: (op.angleDeg * Math.PI) / 180 }, wp.plane.normal, id);
   }
   return transformedGhosts(state, selection, { kind: 'move', from: origin, to: origin }, wp.plane.normal, id).map((mesh) => ({ ...mesh, color: DELETE_COLOR }));
 }
@@ -126,10 +154,30 @@ export function authoringGhosts(state: ViewerState, preview: ModelAuthoringPrevi
   for (const row of preview.rows) {
     if (row.status !== 'ready' || !row.modelId) continue;
     const id = commandGhostId(state, GHOST_INDEX + row.index);
+    if (row.op.op === 'element.resize' || row.op.op === 'element.profile' || row.op.op === 'element.trimExtend' || (row.op.op === 'material.layers' && row.op.scope === 'element' && row.resolved.layers?.kind === 'wall')) {
+      const ghost = authoringSizeGhost(state, preview.batch, row, row.modelId, id);
+      if (ghost.mesh) meshes.push(ghost.mesh);
+      continue;
+    }
+    if (row.op.op === 'hosted.edit') { const mesh = authoringHostedEditGhost(state, preview.batch, row, id, preview.rows); if (mesh) meshes.push(mesh); continue; }
+    if (row.op.op === 'element.split') { const mesh = authoringSplitMarker(state, preview.batch, row, id); if (mesh) meshes.push(mesh); continue; }
     switch (row.op.op) {
+      case 'curtainWall.create': meshes.push(...authoringCurtainWallGhost(state, preview.batch, row, id)); break;
+      case 'grid.create': case 'column.createOnGrid': { const ghosts = gridCreationGhost(state, preview.batch, row, id); row.previewUnavailable = ghosts.length === 0; meshes.push(...ghosts); break; }
+      case 'stair.create': case 'railing.create': case 'stair.replace': case 'railing.replace': {const mesh=stairRailingGhost(state,preview.batch,row,id);row.previewUnavailable=!mesh;if(mesh)meshes.push(mesh);break;}
+      case 'element.replace': {const creation=replacementCreation(row.op),created={...row,op:creation};const mesh=creation.op==='element.create'?createGhost(state,preview.batch,created,id):stairRailingGhost(state,preview.batch,created,id);row.previewUnavailable=!mesh;row.previewOuterBodyOnly=true;if(mesh)meshes.push(mesh);break;}
       case 'element.create': { const mesh = createGhost(state, preview.batch, row, id); if (mesh) meshes.push(mesh); break; }
-      case 'hosted.create': { const mesh = hostedGhost(state, preview.batch, preview, row, id); if (mesh) meshes.push(mesh); break; }
+      case 'hosted.create': { const mesh = 'params' in row.op ? authoringSlabOpeningGhost(state,row,preview.rows,id) : hostedGhost(state, preview.batch, preview, row, id); if (mesh) meshes.push(mesh); break; }
       case 'element.copy': case 'element.array': meshes.push(...authoringCopyGhosts(state, preview.batch, row, id)); break;
+      case 'element.align': {
+        const a = row.resolved.alignment;
+        if (a?.geometry) {
+          const target = authoringReader(state, row.modelId);
+          const plan = target ? planElementTransform({ ...target, selected: a.targets, storeyOf: () => a.storeyId }) : null;
+          meshes.push(...alignmentGhosts({ ...a, reference: a.reference, boxes: a.geometry.boxes, mode: row.op.mode, hover: null, carried: plan?.carried }, a.geometry.plane, id));
+        }
+        break;
+      }
       case 'element.move': case 'element.rotate': case 'element.delete': meshes.push(...transformGhosts(state, preview.batch, row, id)); break;
       default: break;
     }

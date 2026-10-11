@@ -10,8 +10,10 @@
 const API = 'https://api.cesium.com/v1';
 export type IonUploadPhase = 'create' | 'upload' | 'complete';
 export type IonFailureReason = 'authorization' | 'conflict' | 'capacity' | 'rateLimit' | 'service' | 'request';
-function failureReason(status?: number): IonFailureReason {
-  if (status === 401 || status === 403) return 'authorization';
+function failureReason(phase: IonUploadPhase, status?: number): IonFailureReason {
+  // The create URL is fixed, so ion's 404 there means the token cannot see the
+  // asset-writing endpoint: a default token with only assets:read (#7335).
+  if (status === 401 || status === 403 || (phase === 'create' && status === 404)) return 'authorization';
   if (status === 409) return 'conflict';
   if (status === 402 || status === 413) return 'capacity';
   if (status === 429) return 'rateLimit';
@@ -23,7 +25,7 @@ export class IonUploadError extends Error {
   constructor(readonly phase: IonUploadPhase, readonly assetId?: number, readonly status?: number) {
     super(`Cesium ion ${phase} failed${status ? ` (HTTP ${status})` : ''}`);
     this.name = 'IonUploadError';
-    this.reason = failureReason(status);
+    this.reason = failureReason(phase, status);
   }
 }
 export function ionAssetUrl(assetId: number): string {

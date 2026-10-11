@@ -12,6 +12,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, memo } from 'react';
 import { useTranslation } from '@/i18n';
+import { ScriptFileControls } from './ScriptFileControls';
 import { ChatResizeHandle } from './ChatResizeHandle';
 import { shortcutLabel } from '@/lib/commands/shortcut-label';
 import {
@@ -270,11 +271,8 @@ export function ScriptPanel() {
           </IconButton>
         </div>
 
-        {/* Post-authoring "install as tool" banner — surfaces right
-            where the AI-written code lands so the user never has to
-            hunt for the Promote button. Highlighted (accent fill +
-            ring) so the install step reads as the obvious next move,
-            not a faint afterthought. */}
+        <ScriptFileControls />
+        {/* Post-authoring install banner keeps the Promote action beside authored code. */}
         {chatToolReady?.kind === 'script' && (
           <div className="shrink-0 border-b bg-primary/15 px-3 py-2.5 ring-1 ring-inset ring-primary/40">
             <div className="flex items-center gap-2.5">

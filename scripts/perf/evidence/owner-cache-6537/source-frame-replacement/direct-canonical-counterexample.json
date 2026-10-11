@@ -1,0 +1,29 @@
+{
+  "reviewedHead": "287350ae266f1cb624b5bae4948063f13345a8fb",
+  "sourceHashes": {
+    "apps/viewer/src/lib/geometry-cpu-buffers.ts": "1fbad7d1cd88975646600c54e8de095a109b1831af80ea6ba03978538027d49f",
+    "apps/viewer/src/lib/geometry-cpu-aliases.ts": "24c70e620c0bd66cdd4ac35fe62a5e6602bff73f517cb347c13b28d62af9bbfb",
+    "apps/viewer/src/lib/geometry-cpu-release.ts": "45464f755c522d8dc9818b41ab834da31b14b0ce9286415019c7dd675d98ea30",
+    "apps/viewer/src/hooks/ingest/federationPreAlignment.ts": "98e453e18b0e6ff8031e789ac9b956f52c652f1cd497ddf79a4ab1914939245b",
+    "apps/viewer/src/lib/model-placement/placed-geometry.ts": "db4b5c0a04c40d0c279fec32928c3ffa14bf81019e75a570616b5b02c22e3dc1"
+  },
+  "executed": "Node --import tsx direct canonical helper invariant; no browser or heavy suite",
+  "actualCallSequence": [
+    "capturePreAlignment(geometry)",
+    "placedMesh(source,[1,0,0])",
+    "restorePreAlignment(geometry,snapshot)",
+    "releaseCpuMeshBuffers(geometry.meshes)"
+  ],
+  "actualObservedResult": {
+    "sourcePositionsBytes": 0,
+    "retainedPositionsBytes": 36,
+    "retainedOldAllocation": true,
+    "retainedNormalsBytes": 36,
+    "retainedIndicesBytes": 0
+  },
+  "terminal": {
+    "exitCode": 0,
+    "toolChunk": "b51cf0"
+  },
+  "interpretation": "Actual canonical helpers leave prior registered CPU allocations live after source frame restoration. Direct invariant proof, not native viewer session."
+}

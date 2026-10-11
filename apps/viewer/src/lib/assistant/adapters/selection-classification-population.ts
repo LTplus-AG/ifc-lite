@@ -42,6 +42,7 @@ export function selectedClassificationPopulation(refs: readonly EntityRef[], sou
       total.unknown++; model.unknown++; unavailable++; continue;
     }
     const lookup = source.view?.resolveBaseEntityId(ref.expressId) ?? ref.expressId;
+    // @raw-entity-enumeration-ok source membership only after remapping; this condition excludes tombstones and admits overlay creations before consulting the base index.
     if (source.view?.isDeleted(ref.expressId) || (!source.view?.getNewEntity(ref.expressId)
       && !source.store.entityIndex?.byId.has(lookup))) {
       total.unknown++; model.unknown++; missingTargets++; continue;

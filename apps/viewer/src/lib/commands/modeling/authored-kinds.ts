@@ -14,8 +14,8 @@
  */
 
 import { liveEntityConforms, readRelatedLists, fromNativeLength } from '@ifc-lite/create';
-import { iterateEffectiveEntityIds, type IfcAttributeValue, type MutablePropertyView } from '@ifc-lite/mutations';
-import { getAttributeNamesForSchema, getSchemaRegistryForVersion, type IfcDataStore } from '@ifc-lite/parser';
+import { iterateEffectiveEntityIds, type MutablePropertyView } from '@ifc-lite/mutations';
+import { effectiveMetadataRecord, getAttributeNamesForSchema, getSchemaRegistryForVersion, type IfcDataStore } from '@ifc-lite/parser';
 import { effectiveListStringAttribute } from '@/lib/lists/effective-provider-entities';
 import { getModelLengthUnitScale } from '@/lib/length-unit-scale';
 import type { AuthoredElementKind, AuthoringDefaults } from '@/store/slices/authoringDefaultsSlice';
@@ -147,22 +147,19 @@ export function occurrencesOf(model: LiveModel, typeId: number): number[] {
     .flatMap((rel) => rel.relatedIds);
 }
 
-function liveAttributes({ dataStore, view }: LiveModel, id: number): IfcAttributeValue[] | null {
-  if (view?.isDeleted(id)) return null;
-  const entity = view?.getNewEntity(id) ?? dataStore.getEntity(id);
-  if (!entity) return null;
-  const attrs = [...entity.attributes] as IfcAttributeValue[];
-  for (const [index, value] of view?.getPositionalMutationsForEntity(id) ?? []) attrs[index] = value;
-  return attrs;
+/** Native layer metadata follows the same named/positional record used for STEP export (#7275). */
+function liveAttributes({ dataStore, view }: LiveModel, id: number): unknown[] | null {
+  const record = effectiveMetadataRecord(dataStore, id, view ?? undefined);
+  return record?.attributes.length ? record.attributes : null;
 }
 
-function refId(value: IfcAttributeValue | undefined): number | null {
+function refId(value: unknown): number | null {
   if (typeof value === 'number' && Number.isSafeInteger(value) && value > 0) return value;
   const match = typeof value === 'string' ? /^#(\d+)$/.exec(value) : null;
   return match ? Number(match[1]) : null;
 }
 
-function real(value: IfcAttributeValue | undefined): number {
+function real(value: unknown): number {
   if (typeof value === 'number') return value;
   if (value && typeof value === 'object' && 'real' in value) return Number(value.real);
   return Number.NaN;
@@ -187,10 +184,16 @@ export function readLayerSet(model: LiveModel, layerSetId: number): LayerRow[] |
   const refs = liveAttributes(model, layerSetId)?.[0];
   if (!Array.isArray(refs)) return null;
   const unit = { lengthUnitScale: getModelLengthUnitScale(model.dataStore) };
-  return refs.map((ref) => {
-    const layer = liveAttributes(model, refId(ref) ?? 0);
-    return { materialId: refId(layer?.[0]), thickness: fromNativeLength(unit, real(layer?.[1])) };
-  });
+  const layers: LayerRow[] = [];
+  for (const ref of refs) {
+    const layerId = refId(ref);
+    if (layerId === null || !liveEntityConforms(model.dataStore, layerId, 'IfcMaterialLayer', model.view)) return null;
+    const layer = liveAttributes(model, layerId), thickness = real(layer?.[1]), materialId = refId(layer?.[0]);
+    if (!Number.isFinite(thickness) || layer?.[0] !== null && materialId === null
+      || materialId !== null && !liveEntityConforms(model.dataStore, materialId, 'IfcMaterial', model.view)) return null;
+    layers.push({ materialId, thickness: fromNativeLength(unit, thickness) });
+  }
+  return layers;
 }
 
 /** An associated IfcMaterialLayerSetUsage or IfcMaterialLayerSet, resolved to the set. */
@@ -204,8 +207,10 @@ function layerSetBehind(model: LiveModel, materialId: number | null): number | n
 
 /** The element's layer set: its own association first, then its type's. */
 export function layerSetOf(model: LiveModel, expressId: number): LiveLayerSet | null {
-  const own = layerSetBehind(model, relatingOf(model, 'IfcRelAssociatesMaterial', expressId));
-  const typeId = own === null ? typeOf(model, expressId) : null;
+  const ownMaterial = relatingOf(model, 'IfcRelAssociatesMaterial', expressId);
+  const own = layerSetBehind(model, ownMaterial);
+  // Any occurrence material association overrides the type, including a plain material.
+  const typeId = ownMaterial === null ? typeOf(model, expressId) : null;
   const inherited = typeId === null ? null : layerSetBehind(model, relatingOf(model, 'IfcRelAssociatesMaterial', typeId));
   const layerSetId = own ?? inherited;
   const layers = layerSetId === null ? null : readLayerSet(model, layerSetId);

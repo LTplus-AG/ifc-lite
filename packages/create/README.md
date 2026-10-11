@@ -69,3 +69,28 @@ const { content } = creator.toIfc(); // IFC STEP text
 ## License
 
 MPL-2.0
+
+`linearProfileFrame(Start, End)` returns the existing native beam/member extrusion frame (`origin`, `u`, `v`, `along`, `length`) in the coordinates and units supplied. The in-store beam/member builders and reviewed viewer section ghosts share it, including the near-vertical reference-axis fallback. Non-finite or coincident endpoints are refused.
+
+### Current storey plan frames
+
+`storeyPlanFrame(store, storeyExpressId, mutationView)` reads current named and positional placement edits, authored records and deletions through the canonical native metadata reader. Omitting the mutation view retains source-only behavior. A live chain is limited to 256 placements and returns `null` when unreadable, non-planar, cyclic or oversized; callers must disclose unavailable geometry rather than use old coordinates. Coordinates remain metres; directions are dimensionless. This planar reader does not support tilted storey placement or infer a transform from unavailable source data.
+
+Native split placement snapshots and their writers honor current `ObjectPlacement`, `PlacementRelTo`, `RelativePlacement`, axis and direction edits. Named edits use the canonical schema layout; positional edits win for the same slot. The existing source attribute callback still supplies source records, and disabling it still makes source-only placement unreadable. Deleted leaves and cyclic or oversized parent chains are refused. This does not make unsupported body/profile layouts editable or infer geometry from missing source records.
+
+### Generic group lifecycle
+
+`addGroupToStore`, `readGroupInStore`, `updateGroupInStore`, and
+`removeGroupInStore` share a current, bounded IFC4/IFC4X3 graph owner. Supply the
+parsed `store`, its live `mutationView`, and current `ownerHistoryId` (or `null`
+where absent). Group/member identities pin `expressId` and current `GlobalId`.
+Create/update require the complete explicit `RelatedObjects` list; updates and
+deletions also require a complete current `GroupSnapshot`. `readGroupEvidenceInStore`
+provides selected native roots, owned membership and immediate incoming records
+with the actual source content identity for review; it refuses partial evidence.
+
+The owner preserves group identity, reuses/removes exact membership edges,
+protects other incoming dependencies, retains member objects and shared other
+memberships, and publishes all records atomically. Specialized groups and
+specialized assignment relationships are refused by this generic lifecycle.
+Native hosts provide their history publisher; the viewer publishes one Undo.

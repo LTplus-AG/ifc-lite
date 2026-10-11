@@ -19,13 +19,15 @@
 import { toast } from '@/components/ui/toast';
 import { useViewerStore } from '@/store';
 import { runTransaction } from '@/lib/commands/modeling/transaction';
-import { AUTHORED_KINDS, occurrencesOf } from '@/lib/commands/modeling/authored-kinds';
+import { AUTHORED_KINDS } from '@/lib/commands/modeling/authored-kinds';
 import type { AuthoringTransaction, ModelingCommand } from '@/lib/commands/modeling/types';
 import type { AuthoredElementKind } from '@/store/slices/authoringDefaultsSlice';
 import { detachFromType, recordModellingEdit } from '@/store/slices/mutation-modelling-records';
 import { commitElementSize } from '@/lib/element-size-commit';
 import type { ElementSizePatch } from '@/store/slices/mutation-element-size';
-import { setWallSection, type WallSection } from '@/store/slices/mutation-wall-section';
+import type { WallSection } from '@/store/slices/mutation-wall-section';
+import { writeMaterialLayersInDraft, type ApplyLayersSpec } from '@/lib/authoring/material-layers';
+export type { LayerInput, ApplyLayersSpec } from '@/lib/authoring/material-layers';
 import { editHostedFillIn, moveHostedFillIn, type HostedFillPosition } from '@/store/slices/mutation-hosted-fill';
 import { setElementProfile } from '@/store/slices/mutation-element-profile';
 import { editStairDimensionsInStore, type HostedElementSize, type ProfileSection, type StairDimensionEdit } from '@ifc-lite/create';
@@ -151,23 +153,6 @@ export function setStairDimensions(modelId: string, expressId: number, patch: St
   });
 }
 
-export interface LayerInput {
-  /** Metres, > 0. */
-  readonly thickness: number;
-  /** An existing IfcMaterial, a new one by name, or none. */
-  readonly material: { readonly id: number } | { readonly name: string } | null;
-}
-
-export interface ApplyLayersSpec {
-  readonly kind: AuthoredElementKind;
-  readonly layers: readonly LayerInput[];
-  /** Where the set goes: an IfcMaterialLayerSetUsage on `elementId`, or the set on `typeId`. */
-  readonly target: 'element' | 'type';
-  /** Absent in defaults mode: the set is only written, for the defaults to name. */
-  readonly elementId?: number;
-  readonly typeId: number | null;
-}
-
 /**
  * Write any new IfcMaterial, the IfcMaterialLayerSet, and associate it (on
  * the element through a usage: across a wall centred on its axis, up through
@@ -175,42 +160,15 @@ export interface ApplyLayersSpec {
  * thickness in the same step. The new set's id, or null when refused.
  */
 export function applyMaterialLayers(modelId: string, spec: ApplyLayersSpec): number | null {
-  const { kind, layers, target, elementId, typeId } = spec;
-  const direction = AUTHORED_KINDS[kind].layers;
-  if (!direction) throw new Error(`A ${kind} has no material layers`);
-  const total = layers.reduce((sum, layer) => sum + layer.thickness, 0);
   let layerSetId: number | null = null;
-  const ok = runInspectorEdit(modelId, (tx) => {
-    recordModellingEdit(useViewerStore, tx.modelId, (m) => {
-      const MaterialLayers = layers.map((layer) => ({
-        LayerThickness: layer.thickness,
-        Material: layer.material === null ? undefined
-          : 'id' in layer.material ? layer.material.id
-            : m.addMaterial(tx.modelId, { Name: layer.material.name }).expressId,
-      }));
-      const setId = m.addMaterialLayerSet(tx.modelId, { MaterialLayers }).expressId;
-      layerSetId = setId;
-      if (target === 'type') {
-        if (typeId === null) throw new Error('This element has no type to layer');
-        m.assignMaterial(tx.modelId, setId, [typeId]);
-      } else if (elementId !== undefined) {
-        const usage = m.addMaterialLayerSetUsage(tx.modelId, {
-          ForLayerSet: setId, LayerSetDirection: direction, OffsetFromReferenceLine: direction === 'AXIS2' ? -total / 2 : 0,
-        });
-        m.assignMaterial(tx.modelId, usage.expressId, [elementId]);
-      }
-    });
-    if (target === 'type') {
-      const dataStore = tx.store.models.get(tx.modelId)?.ifcDataStore;
-      return typeId === null || !dataStore ? [] : occurrencesOf({ dataStore, view: tx.store.mutationViews.get(tx.modelId) }, typeId);
-    }
-    if (elementId === undefined) return [];
-    if (kind === 'wall') {
-      const section = setWallSection(tx.api, tx.modelId, elementId, { thickness: total });
-      if (!section.ok) throw new Error(section.reason);
-      return section.remesh;
-    }
-    return [elementId];
+  const ok = runInspectorEdit(modelId, tx => {
+    const dataStore = tx.store.models.get(tx.modelId)?.ifcDataStore;
+    if (!dataStore) throw new Error(`No model loaded for id "${tx.modelId}"`);
+    return recordModellingEdit(useViewerStore, tx.modelId, (methods, draft) => {
+      const result = writeMaterialLayersInDraft({ modelId: tx.modelId, dataStore, view: draft.getMutationView(), editor: draft }, draft, methods, spec);
+      layerSetId = result.layerSetId;
+      return result.remesh;
+    }, tx.batchId);
   });
   return ok ? layerSetId : null;
 }

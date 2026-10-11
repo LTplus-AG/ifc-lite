@@ -37,13 +37,15 @@
 import '@/test/setup-dom.js';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 import { act } from 'react';
 import { cleanup, click, render } from '@/test/render.js';
 import { registerLocale, setLocale, type Catalogue } from '@/i18n';
 import type { measureEn as MeasureEnType } from '@/i18n/catalogues/measure.en';
 import type { TranslationValue } from '@/i18n/types';
 import { useViewerStore } from '@/store';
-import type { MeasurePoint } from '@/store/types';
+import { entityRefToString, type MeasurePoint } from '@/store/types';
 import { MeasureOverlay } from './MeasurePanel.js';
 import { MeasurementsPanel } from '../MeasurementsPanel.js';
 import { ViewportHud } from '../../viewport-ui/hud/ViewportHud.js';
@@ -51,6 +53,8 @@ import { SceneOverlayRoot } from '../../viewport-ui/scene/index.js';
 import { QuantityResultView } from './QuantityResultView.js';
 import { rollupQuantities, rollupGeometryVolumes, rollupMeshArea } from './measure-modes/quantities.js';
 import { fixtureModel } from '@/test/store-fixture.js';
+import { IfcParser } from '@ifc-lite/parser';
+import { ensureWasm } from '@/test/scan-slab-fixture.js';
 import { resolveElementWeight, rollupWeights } from './measure-modes/weight.js';
 import { SourceQuantityContent } from './SourceQuantityInspection.js';
 import type { ExtrusionDefinitions, SweptDiskDescriptions } from '@ifc-lite/geometry';
@@ -206,6 +210,10 @@ const RESET = {
   selectedEntity: null,
   selectedEntitiesSet: new Set<string>(),
   measureReferencePoint: null,
+  models: new Map(),
+  activeModelId: null,
+  ifcDataStore: null,
+  geometryResult: null,
 } as Partial<ReturnType<typeof useViewerStore.getState>>;
 
 /** Every STATIC_KEY the English pass actually found on screen, accumulated
@@ -605,6 +613,70 @@ describe('Measure tool localization (#4918)', { skip: !HAS_CATALOGUE && 'measure
     coveredStatic.add('measure.quantities.authoredIncomplete');
     coveredParams.add('measure.quantities.selectedPopulation');
     coveredParams.add('measure.quantities.coverageCounts');
+  });
+
+  // #7184 real IFC selection invariant: only the first of two selected walls
+  // has authored NetSideArea. The portable catalogue accounting remains
+  // independent of this case so missing WASM skips only this integration.
+  it('localizes partial authored quantity coverage and unavailable model identity (#7184)', async t => {
+    if (!ensureWasm(t)) return;
+    t.diagnostic(JSON.stringify({ actualRuntime: ['ifc-lite.js', 'ifc-lite_bg.wasm'].map(file => ({ file,
+      sha256: createHash('sha256').update(readFileSync(new URL('../../../../../../packages/wasm/pkg/' + file, import.meta.url))).digest('hex'),
+    })) }));
+    const bytes = new TextEncoder().encode(`ISO-10303-21;
+HEADER;
+FILE_DESCRIPTION(('ViewDefinition [CoordinationView]'),'2;1');
+FILE_NAME('partial-quantities.ifc','2026-10-08T00:00:00',(),(),'fixture','fixture','');
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#1=IFCWALL('0000000000000000000001',$,'First wall',$,$,$,$,$,$);
+#2=IFCWALL('0000000000000000000002',$,'Second wall',$,$,$,$,$,$);
+#10=IFCQUANTITYAREA('NetSideArea',$,$,12.,$);
+#11=IFCELEMENTQUANTITY('0000000000000000000011',$,'Qto_WallBaseQuantities',$,$,(#10));
+#12=IFCRELDEFINESBYPROPERTIES('0000000000000000000012',$,$,$,(#1),#11);
+#20=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);
+#21=IFCSIUNIT(*,.AREAUNIT.,$,.SQUARE_METRE.);
+#22=IFCUNITASSIGNMENT((#20,#21));
+#23=IFCPROJECT('0000000000000000000023',$,'Partial quantities',$,$,$,$,(),#22);
+ENDSEC;
+END-ISO-10303-21;`);
+    const store = await new IfcParser().parseColumnar(bytes.buffer, { disableWorkerScan: true });
+    const model = { ...fixtureModel('partial'), name: 'Partial quantities.ifc', ifcDataStore: store };
+    useViewerStore.setState({ models: new Map([['partial', model]]), activeModelId: 'partial', ifcDataStore: store,
+      selectedEntity: { modelId: 'partial', expressId: 1 }, selectedEntitiesSet: new Set([
+        entityRefToString({ modelId: 'partial', expressId: 1 }), entityRefToString({ modelId: 'partial', expressId: 2 }),
+      ]) });
+    const container = renderMeasure();
+    openSection(container, 'Qty');
+    const english = new Set<string>();
+    addReadable(document.body, english);
+    assert.ok(container.querySelector('[data-status="partial"]'), 'One authored row for two selected walls has Partial coverage');
+    const areaLabel = [...container.querySelectorAll('span')].find(node => node.textContent?.trim() === 'Area net');
+    assert.ok(areaLabel, 'The actual authored NetSideArea has its own quantity row');
+    assert.equal(areaLabel.nextElementSibling?.textContent, '12 m²', 'The parsed IFC area is displayed in SI square metres');
+    assert.equal(areaLabel.nextElementSibling?.nextElementSibling?.textContent, '1/2', 'Only one of the two selected IFC walls contributes authored area');
+    registerLocale(PSEUDO_LOCALE, PSEUDO);
+    act(() => setLocale(PSEUDO_LOCALE));
+    const after = new Set<string>();
+    addReadable(document.body, after);
+    assertStaticCoverage(english, after);
+    assertMarked(after, 'measure.quantities.selectedPopulation', { count: 2 });
+    assertMarked(after, 'measure.quantities.coverageCounts', { authored: 1, volumes: 0, areas: 0 });
+    assertMarked(after, 'measure.quantities.authoredIncomplete');
+    assertMarked(after, 'measure.quantities.authoredHeading');
+    // The row joins these two labels into one text node; assert each actual
+    // translated DOM token independently of the WASM-free catalogue audit.
+    assertMarked(after, 'measure.qty.area');
+    assertMarked(after, 'measure.basis.net');
+    assertMarked(after, 'measure.quantities.unprovedVolume', { count: 2 });
+    assertMarked(after, 'measure.quantities.noMeshToMeasure', { count: 2 });
+
+    act(() => useViewerStore.setState({ selectedEntity: { modelId: 'missing', expressId: 1 }, selectedEntitiesSet: new Set() }));
+    const unavailable = new Set<string>();
+    addReadable(document.body, unavailable);
+    assertMarked(unavailable, 'measure.quantities.unavailableModel', { id: 'missing' });
+    assert.ok(container.querySelector('[data-result-state="partial"]'), 'Unavailable measurements retain the Partial result state');
   });
 
   it('source quantities: localized provenance, values and loading state (#6439)', () => {

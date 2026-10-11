@@ -1,0 +1,218 @@
+{
+  "qualifiedSourceHead": "f98f3a8e0553d9169929dc84daff4800bb59227c",
+  "integratedMain": "c696805e543d934d8df47029813925d92bd4ff3f",
+  "mergeCommit": "7b10d9f235af95ff33c6a370241f02528f862829",
+  "ownershipSourceSHA256Unchanged": {
+    "apps/viewer/src/lib/geometry-cpu-buffers.ts": "179c366fafb47848eca16936cbffd74be29291f4a72ad2ee13902edf128c869a",
+    "apps/viewer/src/lib/geometry-cpu-aliases.ts": "e3324e93cc4f6a3246273b7071aaf819011d882febb4c5acea28db00061bb072",
+    "apps/viewer/src/lib/geometry-cpu-appearance.test.ts": "824a285002697958f299e1145a1432cefe0dcd374ba5961d3a748b73ec25d640",
+    "apps/viewer/src/test/geometry-cpu-aliases-gc.ts": "c5496cfe067ce31e592d771c3993bd60535f830fefa7646c63853fd01ce5d8bf"
+  },
+  "sourceSHA256": {
+    "apps/viewer/src/lib/geometry-cpu-buffers.ts": "179c366fafb47848eca16936cbffd74be29291f4a72ad2ee13902edf128c869a",
+    "apps/viewer/src/lib/geometry-cpu-aliases.ts": "e3324e93cc4f6a3246273b7071aaf819011d882febb4c5acea28db00061bb072",
+    "apps/viewer/src/lib/geometry-cpu-appearance.test.ts": "824a285002697958f299e1145a1432cefe0dcd374ba5961d3a748b73ec25d640",
+    "apps/viewer/src/test/geometry-cpu-aliases-gc.ts": "c5496cfe067ce31e592d771c3993bd60535f830fefa7646c63853fd01ce5d8bf",
+    "apps/viewer/src/components/viewer/properties/effective-classification-systems.ts": "81d7f01e2d3f62b312594cc89c0f3c6f59f30ddc30af658eed19346b4e49383f",
+    "packages/parser/src/material-resolver.ts": "7ea4dde4f2faf0c9e813308b3f5ce52a82c9f546d41f457911f929c030b125c8"
+  },
+  "classificationIntent": "Byte-exact shared marker with owning7180 integration; immutable source-class point read identifies indexed edited classification rows absent from sparse columns. No algorithm/gate allowance changed.",
+  "fixtureAdmission": {
+    "path": "tests/models/ara3d/AC20-FZK-Haus.ifc",
+    "source": "/tmp/ifc-shepherd-7024/tests/models/ara3d/AC20-FZK-Haus.ifc",
+    "manifestSha256": "d42ab0dee01173106c16cd823b4614efe188fa15dd65195d95b9879bec59acc5",
+    "sizeBytes": 2526511
+  },
+  "results": {
+    "rawGateBefore": 1,
+    "rawGateRestored": 0,
+    "controls": {
+      "exitCode": 0,
+      "pass": 104,
+      "fail": 0,
+      "skip": 0,
+      "tasks": 54,
+      "scope": "useFederatedGeometry|geometry-cpu-appearance|dataSlice.test|cache-provenance|placement-cache|effective-classification-systems|selection-materials"
+    },
+    "plainFullRootTypecheck": {
+      "exitCode": 0,
+      "packageTestFiles": 3730,
+      "packages": 62
+    },
+    "moduleSize": 0,
+    "mpl": 0,
+    "testWiring": 0
+  },
+  "runtimePhases": {
+    "controls": {
+      "rustTree": "1a1acc4260011c591fd8ce3c5387bb7c10b42f20",
+      "observedAfterControlsBeforeTypecheck": {
+        "packages/wasm/pkg/ifc-lite_bg.wasm": {
+          "sha256": "b335d9e2742a0f35db846b3a95f7b30152585ef2dd6e7abdc2328dae557dc1d0",
+          "sizeBytes": 9970066
+        },
+        "packages/wasm/pkg/ifc-lite.js": {
+          "sha256": "0a281479eb65141ae75aeef987d331d44439741a0cae855f122e53e800311a39",
+          "sizeBytes": 304051
+        },
+        "packages/wasm/pkg/ifc-lite.d.ts": {
+          "sha256": "54c9d0a52eb515e517d76726fefe5f6a63e553a81c1b10331a597965d14620f6",
+          "sizeBytes": 164165
+        },
+        "apps/viewer/public/samples/hello-wall.ifc": {
+          "sha256": "0ab20f4ea355ea9aa4fade7264b97ee9f9929addfa3961b2437c4381bd674014",
+          "sizeBytes": 79592
+        },
+        "tests/models/ara3d/AC20-FZK-Haus.ifc": {
+          "sha256": "d42ab0dee01173106c16cd823b4614efe188fa15dd65195d95b9879bec59acc5",
+          "sizeBytes": 2526511
+        }
+      },
+      "actualBonsaiControl": {
+        "fixtureSha256": "0ab20f4ea355ea9aa4fade7264b97ee9f9929addfa3961b2437c4381bd674014",
+        "primaryGeometrySha256": "1d39b0af33fb671fda1b6602d55266726ed65f30ec66ab76c37d75f1f894c513",
+        "peerGeometrySha256": "1d39b0af33fb671fda1b6602d55266726ed65f30ec66ab76c37d75f1f894c513",
+        "primaryMeshes": 8,
+        "peerMeshes": 8,
+        "visiblePrimaryMeshes": 5,
+        "counts": [
+          {
+            "triangles": 68,
+            "vertices": 80
+          },
+          {
+            "triangles": 32,
+            "vertices": 48
+          },
+          {
+            "triangles": 12,
+            "vertices": 24
+          },
+          {
+            "triangles": 12,
+            "vertices": 24
+          },
+          {
+            "triangles": 32,
+            "vertices": 48
+          },
+          {
+            "triangles": 12,
+            "vertices": 24
+          },
+          {
+            "triangles": 12,
+            "vertices": 24
+          },
+          {
+            "triangles": 12,
+            "vertices": 24
+          }
+        ]
+      }
+    },
+    "afterTypecheck": {
+      "packages/wasm/pkg/ifc-lite_bg.wasm": {
+        "sha256": "8b74229bbd4a991cbf1f32a8d52add195c5fdd333921f998b1c18eb713185143",
+        "sizeBytes": 9970066
+      },
+      "packages/wasm/pkg/ifc-lite.js": {
+        "sha256": "0a281479eb65141ae75aeef987d331d44439741a0cae855f122e53e800311a39",
+        "sizeBytes": 304051
+      },
+      "packages/wasm/pkg/ifc-lite.d.ts": {
+        "sha256": "54c9d0a52eb515e517d76726fefe5f6a63e553a81c1b10331a597965d14620f6",
+        "sizeBytes": 164165
+      },
+      "apps/viewer/public/samples/hello-wall.ifc": {
+        "sha256": "0ab20f4ea355ea9aa4fade7264b97ee9f9929addfa3961b2437c4381bd674014",
+        "sizeBytes": 79592
+      },
+      "tests/models/ara3d/AC20-FZK-Haus.ifc": {
+        "sha256": "d42ab0dee01173106c16cd823b4614efe188fa15dd65195d95b9879bec59acc5",
+        "sizeBytes": 2526511
+      }
+    },
+    "verdict": "Controls use observedb335; strict fulltypecheck subsequently restores8b. Exact artifacts remain separate, no8b functional claim."
+  },
+  "archives": {
+    "root-turbo-controls.log": {
+      "archive": "root-turbo-controls.log.gz",
+      "rawSha256": "4562250efdd296aec07092bfcf7a4f9ab8357905b97b4da3d51b079e83a40b12",
+      "archiveSha256": "0d8b1264ddd3f1d1d9afb9528a0b4396402f1738ca5949c25582648e105c6838"
+    },
+    "plain-root-typecheck.log": {
+      "archive": "plain-root-typecheck.log.gz",
+      "rawSha256": "2781900f7c86c7a4185ef449e401a0b888ac14ecc378ee1120a16d909e6b756a",
+      "archiveSha256": "8bb79399d17ade565a9145b9926df109b98f2de4e3f608986fd36ec7d3a1f784"
+    },
+    "raw-restored.log": {
+      "archive": "raw-restored.log.gz",
+      "rawSha256": "5e897933fb81b732bbb2c6009620f0a9c08c072c971ba6c5445dc060c8012afe",
+      "archiveSha256": "9ff9d240ea9667d4f97f5986bf1546287fe09cb0ca8c386fee159d2b4541ac7f"
+    },
+    "module-size.log": {
+      "archive": "module-size.log.gz",
+      "rawSha256": "9c81d74f75e7f834e7b41e67a71c6f28fd14039711deb8cd3426e1ca00aa5b9c",
+      "archiveSha256": "b3a4e596bb35e8fe830b31582dfafc42a1ad7542d995d3e1fcff662dc60138ab"
+    },
+    "mpl.log": {
+      "archive": "mpl.log.gz",
+      "rawSha256": "bf2f433314dc6b46af0115120aafb5861259541eb4479a7f19c5c46fdd28886f",
+      "archiveSha256": "3731b0ec6c79518da0ebac32f76fb856f96f82d3f48911eba663b35b2deb1c4b"
+    },
+    "wiring.log": {
+      "archive": "wiring.log.gz",
+      "rawSha256": "98a10385e08b01728c5beafad6abc4108f0096cb636594ec566c3f51a2950c30",
+      "archiveSha256": "15b34a6b5c7ff51cbcf9fa5707542d2a6b2fc540ddc13e73db4170356830d853"
+    },
+    "raw-before.log": {
+      "archive": "raw-before.log.gz",
+      "rawSha256": "2ec7abf9daaf25c496da1f524efbcf26c02abddbca64bf3dca3da07be29f2dac",
+      "archiveSha256": "3c816f428dc44fdd34181b218ba72299ad86364536367c984e65794575cabdab"
+    },
+    "qualified-geometry-cpu-buffers.ts": {
+      "archive": "qualified-geometry-cpu-buffers.ts.gz",
+      "rawSha256": "179c366fafb47848eca16936cbffd74be29291f4a72ad2ee13902edf128c869a",
+      "archiveSha256": "88f2efd46fb2277072abd029ae50f84a06cc1bd04b2b350174776e12c9ca6698"
+    },
+    "qualified-geometry-cpu-aliases.ts": {
+      "archive": "qualified-geometry-cpu-aliases.ts.gz",
+      "rawSha256": "e3324e93cc4f6a3246273b7071aaf819011d882febb4c5acea28db00061bb072",
+      "archiveSha256": "352ca8a028f42b2fb4e9b174a63ca88f7bc998139b5ee54f35543e833dd08efb"
+    },
+    "qualified-geometry-cpu-appearance.test.ts": {
+      "archive": "qualified-geometry-cpu-appearance.test.ts.gz",
+      "rawSha256": "824a285002697958f299e1145a1432cefe0dcd374ba5961d3a748b73ec25d640",
+      "archiveSha256": "e8a4d12534846d64920e7c01a4981beeb4805be1f5301cf2e0a79ad083e67326"
+    },
+    "qualified-geometry-cpu-aliases-gc.ts": {
+      "archive": "qualified-geometry-cpu-aliases-gc.ts.gz",
+      "rawSha256": "c5496cfe067ce31e592d771c3993bd60535f830fefa7646c63853fd01ce5d8bf",
+      "archiveSha256": "8e7df615d437b76215254ad8a10ffac612a62e826cf83d0cd463c7e9dce95fb7"
+    },
+    "qualified-effective-classification-systems.ts": {
+      "archive": "qualified-effective-classification-systems.ts.gz",
+      "rawSha256": "81d7f01e2d3f62b312594cc89c0f3c6f59f30ddc30af658eed19346b4e49383f",
+      "archiveSha256": "05d41cf0f4c16ba7d52989cf512f78a63de67e31eea74e06ad4ccdbb3e0a3424"
+    },
+    "qualified-material-resolver.ts": {
+      "archive": "qualified-material-resolver.ts.gz",
+      "rawSha256": "7ea4dde4f2faf0c9e813308b3f5ce52a82c9f546d41f457911f929c030b125c8",
+      "archiveSha256": "b48c8ce42d8a05400ba0da3bc8aabc9936421a97e807c87cd9a924cffeac2961"
+    }
+  },
+  "additionalFileSHA256": {
+    "runtime-after-typecheck-observation.json": "a30140c454f7311a485610136be594e7e250c0ee15b7fde294ac0d519896bc02",
+    "runtime-fixture-observation.json": "404a9294dace61302b1670784fdf8f37ed4a4a48600cf557523330a7cd8ba32b",
+    "prepared-source.json": "5051c2bb901200ea2a26090ac1a0b571726f0e1a139c958de6a036b3094cf1ee"
+  },
+  "sharedPatchSHA256": "f3d7ae4dae2a53ff85dfbd792704fd7f6a41cef0ec31b9820be8521d1f276b2e",
+  "limits": [
+    "No native browser/GPU performance or resident-memory claim.",
+    "Canonical registered-copy ownership only; no automatic registration of Scene fragments.",
+    "Current source qualified cleanf98; later evidence-only commit preserves source bytes.",
+    "Fresh exact-head CI/review and parent readiness assessment stillrequired.",
+    "Prior failed remote8785Nodecheck is not considered qualification of this integratedhead."
+  ]
+}

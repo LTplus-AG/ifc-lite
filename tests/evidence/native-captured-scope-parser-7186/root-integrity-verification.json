@@ -1,0 +1,23 @@
+{
+  "qualificationSHA": "6b91595f3586186644e818552b0464e94a1896b48c56fb51ea53ee13548b9e40",
+  "actualRawGzipPairs": 12,
+  "indexedMetadata": 12,
+  "actualLiveSourcePins": 8,
+  "actualBaseline": {
+    "actualRootTurboExit": 1,
+    "executed": 26,
+    "pass": 25,
+    "fail": 1,
+    "skip": 0,
+    "failure": "Original visible-refusal assertion: Missing expected exception at artifact-proposals.test.ts:58"
+  },
+  "actualCorrected": {
+    "actualRootTurboExit": 0,
+    "executed": 28,
+    "pass": 28,
+    "fail": 0,
+    "skip": 0,
+    "turboTasks": 54
+  },
+  "allRemainingStagesZero": true
+}

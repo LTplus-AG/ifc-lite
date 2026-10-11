@@ -6,6 +6,8 @@ import { test, expect } from '@playwright/test';
 import { writeFileSync, existsSync, mkdirSync, readFileSync } from 'fs';
 import { join, isAbsolute } from 'path';
 import { ViewerBenchmarkPage, ViewerBenchmarkMetrics } from './viewer-benchmark-page';
+import { readGpuHealth, type GpuHealth } from './gpu-health';
+import { measureInteractionCommits, type InteractionCommits } from './interaction-commits';
 
 interface ViewerBenchmarkResult {
   file: string;
@@ -24,6 +26,13 @@ interface ViewerBenchmarkResult {
   };
   /** #6957: pinned worker count, structural counters and the long-frame summary of the load. */
   loadCounters: ReturnType<ViewerBenchmarkPage['getLoadCounters']>;
+  /**
+   * #6993: whether this sample lost its GPU device. A contaminated sample is
+   * excluded by `benchmark:check` and never recorded as the baseline.
+   */
+  gpuHealth: GpuHealth;
+  /** #6993: React commits caused by one select / hover / panel open on the settled page. */
+  interactionCommits: InteractionCommits;
   thresholds: {
     passed: boolean;
     violations: string[];
@@ -259,6 +268,20 @@ test.describe('Viewer Performance Benchmarks', () => {
         console.log(`  main thread: ${JSON.stringify(loadCounters.mainThread)}`);
       }
 
+      // #6993: after every timing is taken, so it cannot move one.
+      const interactionCommits = await measureInteractionCommits(page);
+      console.log(`\n--- React Commits per Interaction (#6993) ---`);
+      console.log(`  ${JSON.stringify(interactionCommits.commits)} hoverHit=${interactionCommits.hoverHit}`);
+      for (const [name, reason] of Object.entries(interactionCommits.errors)) console.warn(`  ⚠ ${name} not measured: ${reason}`);
+
+      // #6993: read last, so a loss at any point of the sample is seen.
+      const gpuHealth = await readGpuHealth(page, benchmarkPage.getConsoleLogs());
+      console.log(`\n--- GPU Device Health (#6993) ---`);
+      console.log(`  devices: ${gpuHealth.devicesCreated ?? 'n/a'}, lost: ${gpuHealth.deviceLost}, instance errors: ${gpuHealth.instanceErrors}, uncaptured errors: ${gpuHealth.uncapturedErrors} (${gpuHealth.source})`);
+      if (gpuHealth.contaminated) {
+        console.warn(`  ⚠ CONTAMINATED SAMPLE: ${gpuHealth.reasons.join('; ')}. Excluded from benchmark:check and the baseline.`);
+      }
+
       console.log(`${'='.repeat(80)}\n`);
 
       // Save results
@@ -282,6 +305,8 @@ test.describe('Viewer Performance Benchmarks', () => {
           disagreements: benchmarkPage.getSpanRegexDisagreements(),
         },
         loadCounters: benchmarkPage.getLoadCounters(),
+        gpuHealth,
+        interactionCommits,
         thresholds: thresholdResult,
       };
 
@@ -324,6 +349,9 @@ test.describe('Viewer Performance Benchmarks', () => {
         // Moving markup saved under a pre-#7035 key costs one whole-file pass,
         // counted apart. This fresh profile has no such entry.
         expect(counters?.structural['hash.drawingLegacyKey.count'] ?? 0, 'legacy drawing-key passes').toBe(0);
+        // #6993: every interaction was driven and went quiet; a renamed row or
+        // panel button must fail here, not silently report nothing.
+        expect(interactionCommits.errors, 'interactions not measured').toEqual({});
       }
 
       // Geometry correctness validation: Check mesh count matches expected (within 5% tolerance)
@@ -354,7 +382,11 @@ test.describe('Viewer Performance Benchmarks', () => {
       // committed baseline may come from a different machine class than the
       // current runner.
       if (!thresholdResult.passed) {
-        if (process.env.VIEWER_BENCHMARK_ADVISORY === '1') {
+        if (gpuHealth.contaminated) {
+          // #6993: these timings measured a re-upload onto a replacement device,
+          // not the code under test; the sample is flagged, not judged.
+          console.warn(`Thresholds not judged on a GPU-contaminated sample:\n${thresholdResult.violations.join('\n')}`);
+        } else if (process.env.VIEWER_BENCHMARK_ADVISORY === '1') {
           console.warn(
             `Advisory mode: thresholds exceeded but not failing the test:\n${thresholdResult.violations.join('\n')}`
           );

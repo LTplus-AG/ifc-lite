@@ -1,0 +1,582 @@
+{
+  "capturedAt": "2026-09-30T23:50:27.056564+00:00",
+  "sourceBase": "3e2779997ae165c36f6939419f9229debc73c163",
+  "sourceBranch": "ffa087d031df2f48d57fd216aa8d00b783dfd8c4",
+  "sampleCount": 40,
+  "workerStreamValidCount": 40,
+  "browser": "Google Chrome153/SwiftShader fallback",
+  "limits": [
+    "CPU first-file worker-stream and metadata milestones only; no renderer readiness, full-lifetime memory, cache reopening or universal performance verdict",
+    "Metadata and geometry run concurrently; their durations must not be added",
+    "Same compiled geometry worker/WASM on both sides; source change concerns viewer mesh-owner cache",
+    "Initial observer ReferenceError retained in separate predecessor directory; excluded from this independent complete schedule"
+  ],
+  "controls": {
+    "AA-ac20": {
+      "pairs": 5,
+      "firstModelEveryFreshProcess": true,
+      "fixture": {
+        "bytes": 2526544,
+        "sha256": "ea6f04eaf92fac4d7ad0038bc3d2dfea4c094dd3f516ecc33c50bf1835ca108d",
+        "name": "AC20-FZK-Haus.ifc"
+      },
+      "geometry": {
+        "meshes": 317,
+        "retainedVertices": 57706,
+        "retainedTriangles": 33356,
+        "totalVertices": 57706,
+        "totalTriangles": 33356,
+        "fullPositionsNormalsIndicesAppearanceFNV32": "62abde08"
+      },
+      "allGeometryByteIdentity": true,
+      "metrics": {
+        "streamAfterInputMs": {
+          "leftMedianMs": 458.5700000524521,
+          "rightMedianMs": 454.039999961853,
+          "medianRatioDeltaPercent": -0.9878535643589648,
+          "medianPairedDeltaPercent": -6.925878283890164,
+          "minPairedDeltaPercent": -21.28908112469571,
+          "maxPairedDeltaPercent": 11.020199129742059,
+          "pairs": [
+            {
+              "pair": 0,
+              "left": 458.5700000524521,
+              "right": 426.8100000023842,
+              "percentDelta": -6.925878283890164
+            },
+            {
+              "pair": 1,
+              "left": 446.27499997615814,
+              "right": 451.4200000166893,
+              "percentDelta": 1.1528765986904999
+            },
+            {
+              "pair": 2,
+              "left": 578.8949999809265,
+              "right": 476.9099999666214,
+              "percentDelta": -17.6171844665553
+            },
+            {
+              "pair": 3,
+              "left": 576.8449999690056,
+              "right": 454.039999961853,
+              "percentDelta": -21.28908112469571
+            },
+            {
+              "pair": 4,
+              "left": 419.81999999284744,
+              "right": 466.0849999785423,
+              "percentDelta": 11.020199129742059
+            }
+          ]
+        },
+        "workerStreamWallMs": {
+          "leftMedianMs": 324.72000002861023,
+          "rightMedianMs": 319.9949999451637,
+          "medianRatioDeltaPercent": -1.4550998038402874,
+          "medianPairedDeltaPercent": -15.347068253805162,
+          "minPairedDeltaPercent": -28.523085182410178,
+          "maxPairedDeltaPercent": 9.046510375003036,
+          "pairs": [
+            {
+              "pair": 0,
+              "left": 324.72000002861023,
+              "right": 274.88499999046326,
+              "percentDelta": -15.347068253805162
+            },
+            {
+              "pair": 1,
+              "left": 300.89999997615814,
+              "right": 324.3600000143051,
+              "percentDelta": 7.796610182786923
+            },
+            {
+              "pair": 2,
+              "left": 461.75,
+              "right": 342.13499999046326,
+              "percentDelta": -25.90471034315901
+            },
+            {
+              "pair": 3,
+              "left": 447.6899999976158,
+              "right": 319.9949999451637,
+              "percentDelta": -28.523085182410178
+            },
+            {
+              "pair": 4,
+              "left": 285.6350000500679,
+              "right": 311.4749999642372,
+              "percentDelta": 9.046510375003036
+            }
+          ]
+        },
+        "metadataAfterInputMs": {
+          "leftMedianMs": 559.585000038147,
+          "rightMedianMs": 583.0049999952316,
+          "medianRatioDeltaPercent": 4.185244414251299,
+          "medianPairedDeltaPercent": 2.8351367546405326,
+          "minPairedDeltaPercent": -3.2493341161840994,
+          "maxPairedDeltaPercent": 8.47554193279134,
+          "pairs": [
+            {
+              "pair": 0,
+              "left": 559.585000038147,
+              "right": 575.4500000476837,
+              "percentDelta": 2.8351367546405326
+            },
+            {
+              "pair": 1,
+              "left": 582.625,
+              "right": 579.0300000309944,
+              "percentDelta": -0.6170349657164675
+            },
+            {
+              "pair": 2,
+              "left": 543.9099999666214,
+              "right": 585.464999973774,
+              "percentDelta": 7.640050745473093
+            },
+            {
+              "pair": 3,
+              "left": 602.5849999785423,
+              "right": 583.0049999952316,
+              "percentDelta": -3.2493341161840994
+            },
+            {
+              "pair": 4,
+              "left": 552.8849999904633,
+              "right": 599.7450000047684,
+              "percentDelta": 8.47554193279134
+            }
+          ]
+        }
+      }
+    },
+    "AB-ac20": {
+      "pairs": 5,
+      "firstModelEveryFreshProcess": true,
+      "fixture": {
+        "bytes": 2526544,
+        "sha256": "ea6f04eaf92fac4d7ad0038bc3d2dfea4c094dd3f516ecc33c50bf1835ca108d",
+        "name": "AC20-FZK-Haus.ifc"
+      },
+      "geometry": {
+        "meshes": 317,
+        "retainedVertices": 57706,
+        "retainedTriangles": 33356,
+        "totalVertices": 57706,
+        "totalTriangles": 33356,
+        "fullPositionsNormalsIndicesAppearanceFNV32": "62abde08"
+      },
+      "allGeometryByteIdentity": true,
+      "metrics": {
+        "streamAfterInputMs": {
+          "leftMedianMs": 439.86500000953674,
+          "rightMedianMs": 446.18000000715256,
+          "medianRatioDeltaPercent": 1.435667761126469,
+          "medianPairedDeltaPercent": 1.435667761126469,
+          "minPairedDeltaPercent": -10.489510501989452,
+          "maxPairedDeltaPercent": 13.678706279135945,
+          "pairs": [
+            {
+              "pair": 0,
+              "left": 457.60000002384186,
+              "right": 409.5999999642372,
+              "percentDelta": -10.489510501989452
+            },
+            {
+              "pair": 1,
+              "left": 499.9749999642372,
+              "right": 513.6150000095367,
+              "percentDelta": 2.7281364160758326
+            },
+            {
+              "pair": 2,
+              "left": 421.6650000214577,
+              "right": 407.7849999666214,
+              "percentDelta": -3.2917126283020792
+            },
+            {
+              "pair": 3,
+              "left": 439.86500000953674,
+              "right": 446.18000000715256,
+              "percentDelta": 1.435667761126469
+            },
+            {
+              "pair": 4,
+              "left": 402.5600000023842,
+              "right": 457.625,
+              "percentDelta": 13.678706279135945
+            }
+          ]
+        },
+        "workerStreamWallMs": {
+          "leftMedianMs": 324.3850000500679,
+          "rightMedianMs": 321.1899999976158,
+          "medianRatioDeltaPercent": -0.9849407500220231,
+          "medianPairedDeltaPercent": -2.5979945142002747,
+          "minPairedDeltaPercent": -15.573329355874133,
+          "maxPairedDeltaPercent": 18.753624239503665,
+          "pairs": [
+            {
+              "pair": 0,
+              "left": 334.4500000476837,
+              "right": 282.36500000953674,
+              "percentDelta": -15.573329355874133
+            },
+            {
+              "pair": 1,
+              "left": 372.97999995946884,
+              "right": 363.2900000214577,
+              "percentDelta": -2.5979945142002747
+            },
+            {
+              "pair": 2,
+              "left": 290.7800000309944,
+              "right": 279.94499999284744,
+              "percentDelta": -3.7261847572020335
+            },
+            {
+              "pair": 3,
+              "left": 324.3850000500679,
+              "right": 321.1899999976158,
+              "percentDelta": -0.9849407500220231
+            },
+            {
+              "pair": 4,
+              "left": 275.9200000166893,
+              "right": 327.6650000214577,
+              "percentDelta": 18.753624239503665
+            }
+          ]
+        },
+        "metadataAfterInputMs": {
+          "leftMedianMs": 542.6700000166893,
+          "rightMedianMs": 556.1899999976158,
+          "medianRatioDeltaPercent": 2.491385184460304,
+          "medianPairedDeltaPercent": 2.847685799820465,
+          "minPairedDeltaPercent": -3.242868446994429,
+          "maxPairedDeltaPercent": 9.562678642422973,
+          "pairs": [
+            {
+              "pair": 0,
+              "left": 538.1949999928474,
+              "right": 540.3649999499321,
+              "percentDelta": 0.403199575825397
+            },
+            {
+              "pair": 1,
+              "left": 570.289999961853,
+              "right": 624.8249999880791,
+              "percentDelta": 9.562678642422973
+            },
+            {
+              "pair": 2,
+              "left": 562.464999973774,
+              "right": 544.2249999642372,
+              "percentDelta": -3.242868446994429
+            },
+            {
+              "pair": 3,
+              "left": 540.789999961853,
+              "right": 556.1899999976158,
+              "percentDelta": 2.847685799820465
+            },
+            {
+              "pair": 4,
+              "left": 542.6700000166893,
+              "right": 566.0799999833107,
+              "percentDelta": 4.313855559714264
+            }
+          ]
+        }
+      }
+    },
+    "AB-holter": {
+      "pairs": 5,
+      "firstModelEveryFreshProcess": true,
+      "fixture": {
+        "bytes": 177465622,
+        "sha256": "d8cc92c00ba634d9f25f3d00185136cbc34f3b14f2cc552634551997ddc148f8",
+        "name": "ISSUE_053_20181220Holter_Tower_10.ifc"
+      },
+      "geometry": {
+        "meshes": 56697,
+        "retainedVertices": 1556858,
+        "retainedTriangles": 755426,
+        "totalVertices": 1556858,
+        "totalTriangles": 755426,
+        "fullPositionsNormalsIndicesAppearanceFNV32": "38ab4345"
+      },
+      "allGeometryByteIdentity": true,
+      "metrics": {
+        "streamAfterInputMs": {
+          "leftMedianMs": 4075.014999985695,
+          "rightMedianMs": 3927.0699999928474,
+          "medianRatioDeltaPercent": -3.630538783130044,
+          "medianPairedDeltaPercent": -3.630538783130044,
+          "minPairedDeltaPercent": -9.560984290432584,
+          "maxPairedDeltaPercent": 9.669087417017085,
+          "pairs": [
+            {
+              "pair": 0,
+              "left": 4205.025000035763,
+              "right": 4210.080000042915,
+              "percentDelta": 0.12021331638003563
+            },
+            {
+              "pair": 1,
+              "left": 4270.689999997616,
+              "right": 3862.3700000047684,
+              "percentDelta": -9.560984290432584
+            },
+            {
+              "pair": 2,
+              "left": 4075.014999985695,
+              "right": 3927.0699999928474,
+              "percentDelta": -3.630538783130044
+            },
+            {
+              "pair": 3,
+              "left": 3916.139999985695,
+              "right": 4294.794999957085,
+              "percentDelta": 9.669087417017085
+            },
+            {
+              "pair": 4,
+              "left": 4068.6800000071526,
+              "right": 3798.9650000333786,
+              "percentDelta": -6.629054139752933
+            }
+          ]
+        },
+        "workerStreamWallMs": {
+          "leftMedianMs": 3633.675000011921,
+          "rightMedianMs": 3347.100000023842,
+          "medianRatioDeltaPercent": -7.886643686822259,
+          "medianPairedDeltaPercent": -7.848117930985554,
+          "minPairedDeltaPercent": -11.088287937853957,
+          "maxPairedDeltaPercent": 12.123143978287509,
+          "pairs": [
+            {
+              "pair": 0,
+              "left": 3633.675000011921,
+              "right": 3635.8150000572205,
+              "percentDelta": 0.05889354566086524
+            },
+            {
+              "pair": 1,
+              "left": 3709.6800000071526,
+              "right": 3298.3400000333786,
+              "percentDelta": -11.088287937853957
+            },
+            {
+              "pair": 2,
+              "left": 3637.3949999809265,
+              "right": 3347.100000023842,
+              "percentDelta": -7.9808489305837504
+            },
+            {
+              "pair": 3,
+              "left": 3317.5799999833107,
+              "right": 3719.774999976158,
+              "percentDelta": 12.123143978287509
+            },
+            {
+              "pair": 4,
+              "left": 3493.8949999809265,
+              "right": 3219.689999997616,
+              "percentDelta": -7.848117930985554
+            }
+          ]
+        },
+        "metadataAfterInputMs": {
+          "leftMedianMs": 4223.410000026226,
+          "rightMedianMs": 4012.449999988079,
+          "medianRatioDeltaPercent": -4.995015876669251,
+          "medianPairedDeltaPercent": -3.4134812154917538,
+          "minPairedDeltaPercent": -7.976977269015483,
+          "maxPairedDeltaPercent": 0.29127790591381153,
+          "pairs": [
+            {
+              "pair": 0,
+              "left": 4359.170000016689,
+              "right": 4011.439999997616,
+              "percentDelta": -7.976977269015483
+            },
+            {
+              "pair": 1,
+              "left": 4058.350000023842,
+              "right": 4012.449999988079,
+              "percentDelta": -1.1310015162687592
+            },
+            {
+              "pair": 2,
+              "left": 4226.7699999809265,
+              "right": 4082.4900000095367,
+              "percentDelta": -3.4134812154917538
+            },
+            {
+              "pair": 3,
+              "left": 4063.1299999952316,
+              "right": 4074.964999973774,
+              "percentDelta": 0.29127790591381153
+            },
+            {
+              "pair": 4,
+              "left": 4223.410000026226,
+              "right": 3962.3900000452995,
+              "percentDelta": -6.1803140111735715
+            }
+          ]
+        }
+      }
+    },
+    "AB-os1": {
+      "pairs": 5,
+      "firstModelEveryFreshProcess": true,
+      "fixture": {
+        "bytes": 342657851,
+        "sha256": "e91ddbbd672bbde946af14631de4c732f0cf8a7cfae5dbbf06fbeab03b5c46df",
+        "name": "O-S1-BWK-BIM architectural - BIM bouwkundig.ifc"
+      },
+      "geometry": {
+        "meshes": 39290,
+        "retainedVertices": 2379331,
+        "retainedTriangles": 1464746,
+        "totalVertices": 2379331,
+        "totalTriangles": 1464746,
+        "fullPositionsNormalsIndicesAppearanceFNV32": "9d9fb172"
+      },
+      "allGeometryByteIdentity": true,
+      "metrics": {
+        "streamAfterInputMs": {
+          "leftMedianMs": 2635.0150000452995,
+          "rightMedianMs": 2606.4200000166893,
+          "medianRatioDeltaPercent": -1.0851930644842134,
+          "medianPairedDeltaPercent": 0.7976613745247718,
+          "minPairedDeltaPercent": -5.630707986930716,
+          "maxPairedDeltaPercent": 7.723497260701739,
+          "pairs": [
+            {
+              "pair": 0,
+              "left": 2635.0150000452995,
+              "right": 2486.6449999809265,
+              "percentDelta": -5.630707986930716
+            },
+            {
+              "pair": 1,
+              "left": 2680.7000000476837,
+              "right": 2606.4200000166893,
+              "percentDelta": -2.770918044901449
+            },
+            {
+              "pair": 2,
+              "left": 2795.560000002384,
+              "right": 3011.475000023842,
+              "percentDelta": 7.723497260701739
+            },
+            {
+              "pair": 3,
+              "left": 2509.9900000095367,
+              "right": 2686.7950000166893,
+              "percentDelta": 7.044051968592724
+            },
+            {
+              "pair": 4,
+              "left": 2483.5099999904633,
+              "right": 2503.3199999928474,
+              "percentDelta": 0.7976613745247718
+            }
+          ]
+        },
+        "workerStreamWallMs": {
+          "leftMedianMs": 1929.2250000238419,
+          "rightMedianMs": 1869.289999961853,
+          "medianRatioDeltaPercent": -3.1066879218985988,
+          "medianPairedDeltaPercent": 0.5474202032326181,
+          "minPairedDeltaPercent": -7.97543468605344,
+          "maxPairedDeltaPercent": 10.239069428201631,
+          "pairs": [
+            {
+              "pair": 0,
+              "left": 1929.550000011921,
+              "right": 1775.660000026226,
+              "percentDelta": -7.97543468605344
+            },
+            {
+              "pair": 1,
+              "left": 1929.2250000238419,
+              "right": 1869.289999961853,
+              "percentDelta": -3.1066879218985988
+            },
+            {
+              "pair": 2,
+              "left": 2052.664999961853,
+              "right": 2222.7400000095367,
+              "percentDelta": 8.285570224602857
+            },
+            {
+              "pair": 3,
+              "left": 1742.5900000333786,
+              "right": 1921.0149999856949,
+              "percentDelta": 10.239069428201631
+            },
+            {
+              "pair": 4,
+              "left": 1748.199999988079,
+              "right": 1757.7699999809265,
+              "percentDelta": 0.5474202032326181
+            }
+          ]
+        },
+        "metadataAfterInputMs": {
+          "leftMedianMs": 3709.574999988079,
+          "rightMedianMs": 3583.389999985695,
+          "medianRatioDeltaPercent": -3.4016026095385454,
+          "medianPairedDeltaPercent": -4.483543934880741,
+          "minPairedDeltaPercent": -7.318223784803102,
+          "maxPairedDeltaPercent": 12.853350402952369,
+          "pairs": [
+            {
+              "pair": 0,
+              "left": 3811.7050000429153,
+              "right": 3539.8349999785423,
+              "percentDelta": -7.132503697461168
+            },
+            {
+              "pair": 1,
+              "left": 3850.860000014305,
+              "right": 3678.2050000429153,
+              "percentDelta": -4.483543934880741
+            },
+            {
+              "pair": 2,
+              "left": 3405.260000050068,
+              "right": 3842.949999988079,
+              "percentDelta": 12.853350402952369
+            },
+            {
+              "pair": 3,
+              "left": 3709.574999988079,
+              "right": 3438.100000023842,
+              "percentDelta": -7.318223784803102
+            },
+            {
+              "pair": 4,
+              "left": 3689.8849999904633,
+              "right": 3583.389999985695,
+              "percentDelta": -2.886133307814298
+            }
+          ]
+        }
+      }
+    }
+  },
+  "verdict": "No consistent broad worker-stream speedup established. Results quantify output identity and timing variability across three public model families from ARCHICAD 20/21; these are not three independent authoring tools. Owner-cache finalization and renderer readiness remain separately scoped.",
+  "authoringTools": {
+    "ac20": "GRAPHISOFT ARCHICAD20, IFC4",
+    "holter": "GRAPHISOFT ARCHICAD20, IFC4",
+    "os1": "GRAPHISOFT ARCHICAD21, IFC2X3"
+  }
+}

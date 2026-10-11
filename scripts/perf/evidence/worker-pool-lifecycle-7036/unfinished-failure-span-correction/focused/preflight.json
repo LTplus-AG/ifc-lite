@@ -1,0 +1,31 @@
+{
+  "head": "08a891e40492b3bff2ed150a551a42751a204f54",
+  "pins": [
+    {
+      "path": "scripts/perf/worker-pool-lifecycle-invariants.mjs",
+      "exists": true,
+      "sha256": "39fe7e8a1bb1f8c1ba276bf679f4ad79163cbe70237661238780106da6aece05"
+    },
+    {
+      "path": "scripts/perf/worker-pool-lifecycle-invariants.test.mjs",
+      "exists": true,
+      "sha256": "75e5d13cb936f789afdd98deb50cb7d03a91c3ecc09365d7d9292e0eb7c77da9"
+    },
+    {
+      "path": "packages/wasm/pkg/ifc-lite_bg.wasm",
+      "exists": true,
+      "sha256": "8b74229bbd4a991cbf1f32a8d52add195c5fdd333921f998b1c18eb713185143"
+    },
+    {
+      "path": "packages/wasm/pkg/ifc-lite.js",
+      "exists": true,
+      "sha256": "0a281479eb65141ae75aeef987d331d44439741a0cae855f122e53e800311a39"
+    },
+    {
+      "path": "packages/wasm/pkg/ifc-lite.d.ts",
+      "exists": true,
+      "sha256": "54c9d0a52eb515e517d76726fefe5f6a63e553a81c1b10331a597965d14620f6"
+    }
+  ],
+  "scope": "CPU Node validators only; WASM not executed"
+}

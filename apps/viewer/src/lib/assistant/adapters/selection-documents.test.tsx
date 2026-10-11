@@ -124,7 +124,12 @@ test('#7187 native document metadata samples and text are bounded with full coun
   const productIds = ['IFCSLAB', 'IFCSPACE', 'IFCWALL', 'IFCBUILDINGELEMENTPROXY'].flatMap(type => file.entityIndex.byType.get(type) ?? []).slice(0, 12);
   assert.equal(productIds.length, 12); assert.ok(productIds.includes(52));
   useViewerStore.setState({ selectedEntities: productIds.map(expressId => ({ modelId: 'native', expressId })), selectedEntity: null });
-  const captured = rows(); assert.equal(captured.length, 12);
+  const snapshot = captureEvidence('selection'), envelope = JSON.parse(snapshot.payload);
+  const captured: Row[] = envelope.evidence.rows.map((row: { data: Row }) => row.data);
+  assert.equal(snapshot.totalRows, productIds.length, 'Native population survives the shared text budget');
+  assert.equal(snapshot.includedRows, captured.length); assert.ok(captured.length > 0 && captured.length <= productIds.length);
+  assert.equal(envelope.sampled, captured.length < productIds.length);
+  if (captured.length < productIds.length) assert.equal(snapshot.projectionTruncated, true, 'Omitted rows are disclosed rather than reported as a complete sample');
   const large = captured.find(row => row.expressId === 52); assert.ok(large);
   assert.equal(large.documentCount, 21); assert.equal(large.documents.length, 6);
 });

@@ -88,10 +88,6 @@ export const anonymizedExportEn = {
   'anonymizedExport.dialog.exportingStatus': 'Exporting…',
   'anonymizedExport.dialog.successTitle': 'Success',
   'anonymizedExport.dialog.errorTitle': 'Error',
-  'anonymizedExport.dialog.warningsSummary': {
-    one: '{count} warning',
-    other: '{count} warnings',
-  },
   'anonymizedExport.dialog.fileNameLabel': 'File name',
   'anonymizedExport.dialog.ifcExtensionSuffix': '.ifc',
   'anonymizedExport.dialog.cancelButton': 'Cancel',

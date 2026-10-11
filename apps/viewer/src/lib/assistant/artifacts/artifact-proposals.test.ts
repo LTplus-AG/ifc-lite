@@ -49,13 +49,28 @@ test('a model rule names loaded models; they stay names until the review resolve
     list: { name: 'L', columns: [{ id: 'a', source: 'attribute', propertyName: 'Name' }] } })), /scope must be all, selected, or visible/);
 });
 
+for (const scope of ['selected', 'visible'] as const) {
+  test(`#7186 filter proposals retain declared ${scope} scope for native population capture`, () => {
+    const proposal = parseFilterProposal(json({ version: 1, kind: 'filter.proposal', title: 'Scoped walls', name: 'Scoped walls',
+      scope, groups: [walls] }));
+    // Parsing preserves the requested mode; preview owns capture, its disclosed
+    // population and persistence (captured-artifact-scope.test.tsx).
+    assert.equal(proposal.scope, scope);
+    assert.equal(proposal.name, 'Scoped walls');
+    const [rule] = proposal.groups[0].rules;
+    assert.ok(rule.kind === 'ifcType' && rule.values.includes('IfcWall') && rule.values.includes('IfcWallStandardCase'),
+      'native scope must preserve the canonical wall rule and its subclasses');
+  });
+}
+
 test('filter proposals refuse with reasons a person can act on', () => {
   const refuse = (groups: unknown, pattern: RegExp, extra: Record<string, unknown> = {}) => assert.throws(
     () => parseFilterProposal(json({ version: 1, kind: 'filter.proposal', title: 'T', name: 'N', groups, ...extra })), pattern);
   refuse([{ combinator: 'AND', rules: [{ kind: 'ifcType', op: 'in', values: ['IfcWal'] }] }], /"IfcWal" is not an IFC class name/);
   refuse([{ combinator: 'AND', rules: [{ kind: 'modelTag', op: 'in', tagIds: ['t'] }] }], /Model tags are user-defined/);
-  // "Visible" and "selected" are runtime states a saved filter cannot hold; a proposal claiming one is refused, never broadened.
-  refuse([walls], /runs over every loaded model.*"visible" and "selected"/, { scope: 'visible' });
+  // #7186 allows explicit selected/visible capture; unknown modes still refuse
+  // rather than silently becoming an all-model population.
+  refuse([walls], /scope must be all, selected, or visible/, { scope: 'unknown' });
   refuse([{ combinator: 'AND', rules: [{ kind: 'name', op: 'matches', value: '^W' }] }], /"op" must be one of eq, ne, contains/);
   refuse([{ combinator: 'AND', rules: [{ kind: 'quantity', setName: 'Q', quantityName: 'A', op: 'gt', value: '10 m2' }] }], /finite number \(SI units/);
   // `Number('')` is 0: an empty or blank threshold is refused, never saved as a fabricated zero (#6914 review).

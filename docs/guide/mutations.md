@@ -942,13 +942,15 @@ must implement a method before its namespace can execute it.
 `await bim.store.roomCommand(modelId, storeyExpressId, command)` derives rooms
 from current native wall meshes. It shares the viewer's native layout cache,
 occupancy checks, supported space footprint reader and IFC writer. Actions are
-`query`, `auto`, `pick` (with `point`), `footprint`, `update` (with `expressIds`),
+`query`, `auto`, `autoAll`, `pick` (with `point`), `footprint`, `update` (with `expressIds`),
 and `edit` (with a `drag`, `split`, `remove` or `prune` layout operation).
 `query` returns candidates without writing. Writes return `created`, `updated`,
 `deleted` and `skipped` references and form one logical Undo batch. Supplied
 footprint placement remains available through `addSpace`.
 
-Settings use metres: `weld`, `minArea`, `height`, `z` and optional edit
+`autoAll` enumerates every current storey in the explicitly chosen model (the supplied storey ID is its anchor), prepares one detached native graph and commits one recorded action. Its `storeys` result contains each native storey ID, coverage status, candidate population, existing room count and created references. Existing room counts include all live owned `IfcSpace` entities, including unsupported or absent geometry. `effectiveRoomIdsByStorey(store, mutationView, storeyIds)` supplies the same complete bounded native population to SDK preparation and Viewer review; footprint readability only controls geometry planning. `unavailable` coverage refuses the entire commit; `noWalls`, `occupied` and `noFaces` are known no-write storey outcomes. Empty results create no Undo group. This never runs across other federated models. Complete preparation refuses above 128 storeys, 128 candidates or 4096 contour vertices rather than truncating an all-storey claim. Hosts can supply `NativeRoomGeometry.validate` to pin actual mesh/frame inputs across asynchronous preparation and held approval.
+
+Settings use metres: `weld`, `height`, `z` and optional edit
 `tolerance`; `boundary` is `inner`, `center` or `outer`. `namePattern`,
 `PredefinedType` and `ObjectType` control created room metadata. The runtime
 requires the WASM geometry package. The command refuses if its model changes
@@ -961,6 +963,59 @@ For append-only authoring, `view.getMutationCount()` captures the current journa
 
 Native Room SDK preparation raises `RoomCommandConflictError` when another Room command owns preparation or the model changes before commit. Callers may retry against current state. Abort signals retain their cancellation reason; no Room commit is published after cancellation.
 
+Hosts that use `createRoomCommandBackend` can call its asynchronous
+`prepareRoomCommand(modelId, storeyExpressId, command)` before asking for
+approval. The returned `PreparedRoomCommand` exposes a detached native
+`preview` model and the planned `result`. For an edit, `layoutAfter` contains
+the detached post-edit native faces, including a layout-only cut with no
+materialized IfcSpace. The existing `result.candidates` keeps its pre-edit
+candidate meaning; hosts show `layoutAfter` to review the approved new layout.
+Preparation changes no live IFC
+graph or Undo history. `validate()` checks the captured model and source-byte
+facade identity, overlay,
+history and retained layout. `commit()` applies the whole captured action
+synchronously through the host recorder, once. Auto approves every captured
+untaken face; this interface does not offer per-room subset approval.
+Always call `dispose()` in a `finally` block or when abandoning a review so
+an uncommitted duplicate native plate is freed. A newer preparation on the
+same backend/model supersedes an older approval. Native queries may refresh
+geometry and the retained cache, but do not write IFC graph changes.
+
+`minArea` uses square metres. Layout-only edits before any IfcSpace exists
+remain session Undo state; exporting IFC does not serialize that retained
+layout unless an operation has materialized rooms in the graph.
+
 ### Detecting concurrent overlay edits
 
 `MutablePropertyView.getMutationRevision()` returns an O(1) invalidation token for the live overlay. Capture it before asynchronous preparation and compare it afterward together with the model and view identities. Canonical edits, history-free edits, Undo/Redo and atomic publications advance the token; a rejected detached draft does not change the live token. Conservative increments may invalidate unchanged geometry. The token is local to one view, is not serialized, and must not replace the recorded Undo head.
+
+`readRelatedLists` normally returns syntactically valid relating references and
+excludes explicit IFC unset targets. Its optional fourth argument
+`{ includeMalformedRelatingTargets: true }` also inventories relationships whose
+relating slot is malformed or missing; these rows omit `relatingId` and must be
+refused as unknown. A reference to a missing entity retains its `relatingId`, so
+consumers must separately validate that the target exists and conforms to the
+required IFC type. Explicit unset remains excluded.
+
+
+### Same-identity storey reassignment
+
+`planStoreyReassignment(dataStore, view, selectedIds, sourceStoreyId, destinationStoreyId)` reads the complete effective product/dependency/placement state without writing. `reassignElementsToStoreyInStore(dataStore, editor, selectedIds, sourceStoreyId, destinationStoreyId, expected?)` commits that operation atomically. `planStoreyReassignmentCandidates(dataStore, view, selectedIds, sourceStoreyId, destinationStoreyIds)` reads up to 20 distinct destination candidates using one effective Root/relationship inventory and reports each candidate's plan or refusal. This snapshot is scoped to one synchronous request and never retained across edits. Both storeys and every product must belong to the supplied model. An expected plan pins both `sourceStorey` and `destinationStorey` as `{ expressId, GlobalId }` records and refuses changed identities, membership, dependencies, metadata or frames, including a valid unique replacement storey GlobalId.
+
+The operation preserves product EXPRESS IDs, GlobalIds, representation and metadata references, and world placement. It re-expresses existing local placements in the destination storey's canonical full 3D frame; dependent placement chains retain their original parent identities. Native coordinates remain in file units, so metre and millimetre models use the same operation without guessed scale factors. Hosted openings/fillings and aggregate/nested parts travel with their owning roots. Spaces retain spatial aggregation; physical products retain containment. Unrelated source members remain in place. Distinct source relationships remain distinct: a wholly moved relationship retains its EXPRESS ID, GlobalId and metadata; a partial relationship retains its source identity and creates a separate destination entry with fresh identity and copied metadata. Complete relationship attributes are included in the stale-state pin.
+
+```ts
+import type { IfcDataStore } from '@ifc-lite/parser';
+import { StoreEditor, recordCompoundMutation } from '@ifc-lite/mutations';
+import { planStoreyReassignment, reassignElementsToStoreyInStore } from '@ifc-lite/create';
+
+function reassignProducts(dataStore: IfcDataStore, editor: StoreEditor,
+  ids: number[], sourceStoreyId: number, destinationStoreyId: number) {
+  const view = editor.getMutationView();
+  const expected = planStoreyReassignment(dataStore, view, ids, sourceStoreyId, destinationStoreyId);
+  return recordCompoundMutation(view, draft => reassignElementsToStoreyInStore(
+    dataStore, new StoreEditor(dataStore, draft), ids, sourceStoreyId, destinationStoreyId, expected));
+}
+```
+
+Select 1–200 distinct roots; the complete dependency closure is bounded to 5,000 products and the effective relationship inventory to 2,000,000 references. Missing or duplicate identities/ownership, detached hosted or assembly children, cycles, shared placements, unsupported or unreadable world frames, and spatial roots such as sites/buildings/storeys refuse. IFC2X3 requires OwnerHistory; IFC4 and IFC4X3 allow it to be omitted. Native grids and grid-based product placements are unsupported; ordinary local placements may include translated, rotated or tilted frames. A refusal or late transaction failure preserves the graph, journal and allocation state. Recorded Undo restores the complete graph and journal; the native ID allocator remains monotonic after a successful operation.

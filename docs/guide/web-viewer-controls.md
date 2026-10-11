@@ -33,6 +33,10 @@ An embed with camera controls disabled does not fly or navigate. Right-button
 fly is the viewer's established behavior (#4868); it takes priority over the
 ordinary right-button pan mapping used when fly is unavailable.
 
+## Properties quantities
+
+The selected element’s Quantities tab shows occurrence quantities first and inherited type quantities in a separate section, including Length, Area and Volume. Search and copy use the displayed physical value and unit. A readable explicit member unit remains usable when the current project unit context is unavailable; implicit values retain their raw amount without an assumed unit. Unreadable inherited coverage displays its reason.
+
 ## Navigation presets
 
 Choose a preset in **Settings → Display → Navigation**. The choice is saved in
@@ -46,6 +50,14 @@ this browser and applies to every loaded model.
 
 Right-button fly remains available in every preset when camera controls are
 enabled. Shift + left drag pans in every preset and tool.
+
+## Zone volume results
+
+Each zone-set volume report states its cached processed entity outcomes and the native proved-split and refusal counts. Whole-set runs and incremental per-element cache updates have distinct coverage; cached counts describe the evaluated boundary-crossing entities. Missing geometry, unproved solids and volumes invalidated by federation alignment retain separate reasons. Captured model names and IFC `GlobalId` evidence stay with older rows through later updates and panel remounts; unknown cache history shows **Outcome unknown**, and older native revisions show **Stale**. Evidence samples show their displayed and total counts. The native split, authoring, writeback and export controls remain available in their existing locations.
+
+Declared volume totals use each quantity’s explicit native unit before project units, consistently in Properties, zone tables and CSV exports. A present unresolved or dimensionally incompatible unit leaves that physical basis unavailable; it does not inherit project cubic metres or promote a later inherited total. Independently resolved explicit units remain usable when project units are unavailable. Mesh volume stays in SI and is unchanged by declared quantity display units.
+
+Zone writeback requires a readable current project volume unit for physical quantity output. If that target unit is unavailable, readable explicitly unit-bearing totals remain available in cards, tables and CSV, but writeback records a refusal and zone labels without physical quantities. Rewriting also removes that zone set’s earlier owned physical quantities, so they cannot survive as stale unitless totals.
 
 ## Alignment sections
 
@@ -226,3 +238,9 @@ Review controls remain visible on mobile and with a collapsed sidebar. Importing
 Panel links use `?panel=<panel id>`; retired panel IDs resolve to their current panel. Saved artifacts can be opened with `?conversation=<id>`, `?receipt=<id>` or `?bcfDraft=<id>`. These refer to saved Assistant conversations, reviewed model-change receipts and BCF draft batches in this browser's own library. A link does not transfer the artifact to another browser. Missing or unreadable artifacts open their owning panel with an explanation. Conflicting destinations and invalid IDs are refused.
 
 A saved conversation opens read-only, without turning its archived evidence into permission to act. Another archive can replace the displayed archive; an unsaved conversation or active request is preserved. Links created by the viewer omit collaboration room invites and tokens.
+
+### Portable saved scripts
+
+The native Script panel offers **Export saved script** and **Import script file**. Export includes the selected saved script's complete name, code and timestamps in a versioned `.ifc-script.json` file. Save editor changes first to include them. Import appends a new saved copy; it preserves the active editor and any unsaved changes. Open the copy in the script selector and press **Run** separately. Import never executes code or installs an extension.
+
+The reader accepts version 1 portable files and the original single native saved-script JSON record. It refuses unsupported versions, corrupt metadata, code over 100,000 characters and files over 1 MB. Unreadable, partially corrupt or future-version browser libraries are preserved rather than overwritten by import. Export your readable session scripts before repairing damaged storage. If the session library already differs from browser storage, export session scripts and reload before importing; import cannot overwrite another tab with a stale session. A storage refusal keeps the file available for explicit **Retry import into current library**. Changes to saved scripts or browser storage while the file is read revoke that import; retry intentionally appends to the current library without replacing an existing script. Pending reads are cancelled when the panel closes. Existing extension promotion, Flavor conversion and whole-library backup are separate routes.

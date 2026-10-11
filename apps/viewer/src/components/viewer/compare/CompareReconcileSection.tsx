@@ -153,7 +153,8 @@ export function CompareReconcileSection({ result }: { result: CompareResult }) {
           {saveMessage && <p aria-live="polite" className="text-muted-foreground">{t(SAVE_MESSAGES[saveMessage.key], { model: saveMessage.model ?? '' })}</p>}
         </>
       )}
-      <CompareSavedRuns kind={kind} onReopen={id => setPicked(p => ({ base: p.base ?? (baseId || id), head: id }))} />
+      {/* A reopened run is an earlier run, so it becomes the base; the head stays the run shown as head, if any. */}
+      <CompareSavedRuns kind={kind} onReopen={id => setPicked({ base: id, head: headId && headId !== id ? headId : undefined })} />
       {outcome && (stale
         ? <p aria-live="polite" className="text-amber-700 dark:text-amber-400">{t('compareAnalysis.reconcile.stale')}</p>
         : <ReconcileOutcomeView outcome={outcome} />)}

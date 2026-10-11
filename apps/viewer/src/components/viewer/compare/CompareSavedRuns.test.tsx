@@ -190,6 +190,34 @@ describe('saved runs for reconciliation (#7370)', () => {
     assert.equal(root.querySelector('[role="alert"]'), null);
   });
 
+  it('a reopened run becomes the base beside the current head capture', async t => {
+    const pair = await revisionPair(t);
+    if (!pair) return;
+    await open(pair, 'A', 'B');
+    await publishClash(pair);
+    let root = mount(pair);
+    act(() => click(button(root, /Capture current run/)));
+    const save = button(root, /Save head run/);
+    const { useSavedAnalysisRuns } = await savedRuns();
+    act(() => click(save));
+    await waitFor(() => useSavedAnalysisRuns.getState().status.items[useSavedAnalysisRuns.getState().entries[0]?.id ?? ''] === 'saved', 'saved');
+    const [saved] = useSavedAnalysisRuns.getState().entries;
+    act(() => useViewerStore.getState().resetViewerState());
+
+    // A new session captures its own run first, then reopens the saved one.
+    cleanup();
+    await open(pair, 'A', 'B');
+    await publishClash(pair);
+    root = mount(pair);
+    act(() => click(button(root, /Capture current run/)));
+    const [live] = useViewerStore.getState().compareRunCaptures;
+    act(() => click(button(root, /^Reopen saved run/)));
+    const [base, head] = [...root.querySelectorAll('select')];
+    assert.deepEqual([base.value, head.value], [saved.id, live.id], 'the saved run is the base, the current capture the head');
+    act(() => click(button(root, /^Reconcile$/)));
+    assert.ok(root.querySelector('output'), 'the pair reconciles');
+  });
+
   it('a refused write says the run is not stored yet; a retry stores it', async t => {
     const pair = await revisionPair(t);
     if (!pair) return;

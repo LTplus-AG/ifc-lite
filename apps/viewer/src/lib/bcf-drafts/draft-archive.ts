@@ -88,7 +88,8 @@ export async function importDraftArchive(data: ArrayBuffer, now = new Date()): P
     const entry = mapped.get(footer.batchId) ?? { name: footer.batchName ?? project.name ?? 'Imported BCF drafts',
       source: decodedSource ?? archiveSource(at), topics: [] };
     entry.topics.push({ ...topicFields(topic), guid: footer.topicGuid, description: footer.human.slice(0, 10_000),
-      origin: footer.origin ?? { kind: 'archive' }, members: footer.members });
+      origin: footer.origin ?? { kind: 'archive' }, members: footer.members,
+      ...(footer.sourceFindings ? { sourceFindings: footer.sourceFindings } : {}) });
     mapped.set(footer.batchId, entry);
   }
   const batches: DraftBatch[] = [];

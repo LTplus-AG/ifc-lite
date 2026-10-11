@@ -58,6 +58,12 @@ function checkPropertySet(scope: FieldScope, facet: IDSPropertyFacet): Grounding
     }
   }
   const reserved = names.filter(isReservedPsetName);
+  // TODO(IDS-009, P-01): `Qto_*` names for IFC2X3 and IFC4 stay unverified
+  // (accepted) until P-01 adds their quantity-set schema rows. This is an
+  // owner decision for P-02: no tables here. When the rows land,
+  // `hasQuantitySets` becomes true for those versions, this branch starts
+  // refusing invented `Qto_` names, and the hallucination set should gain
+  // `Qto_` fakes for IFC2X3 and IFC4.
   out.push(
     ...perVersion(scope.versions, scope.ctx, (t) =>
       reserved

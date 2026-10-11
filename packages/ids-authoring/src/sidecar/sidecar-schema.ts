@@ -47,10 +47,27 @@ const meta = object({
   }, ['psets', 'userDefinedTypes']),
 }, ['provenance', 'sources', 'comments', 'suppressions', 'tests', 'mappings', 'revision', 'unresolved', 'custom']);
 
+// Optional content snapshot (versioned on its own). Version 1 is checked as
+// far as snapshot re-identification reads it (`attachSidecar` also verifies
+// it against the node index); a later version is kept opaque and ignored on
+// attachment, so a newer writer does not make the sidecar unreadable.
+const snapshotSpec = object({
+  applicability: object({ facets: arr({ type: 'object' }) }, ['facets']),
+  requirements: arr({ type: 'object' }),
+}, ['applicability', 'requirements']);
+const snapshot: JsonSchema = { anyOf: [
+  object({
+    version: { const: 1 },
+    ids: object({ info: { type: 'object' }, specifications: arr(snapshotSpec) }, ['info', 'specifications']),
+  }, ['version', 'ids']),
+  object({ version: { type: 'integer', minimum: 2 } }, ['version']),
+] };
+
 const sidecar = object({
   docId: uuid, idsFingerprint: str,
   nodes: object({ document: uuid, specs: arr({ $ref: '#/$defs/SpecNodes' }) }, ['document', 'specs']),
   meta,
+  snapshot,
 }, ['docId', 'idsFingerprint', 'nodes', 'meta']);
 
 /** The op validator's node/UUID definitions also govern imported sidecars (#7168, IDS-025). */

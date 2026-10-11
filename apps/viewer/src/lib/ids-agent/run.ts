@@ -20,9 +20,9 @@ import { recordReceipt, type UsageReceipt } from '@/lib/llm/request-receipts';
 import { idsDraftOf, type IdsDraft } from '@/lib/check-authoring/ids-draft';
 import { idsAgentRoute } from './transport';
 
-export type AgentRunPhase = 'idle' | 'running' | 'done';
+type AgentRunPhase = 'idle' | 'running' | 'done';
 
-export interface ProgressLine {
+interface ProgressLine {
   kind: 'tool' | 'note';
   text: string;
   ok?: boolean;

@@ -17,7 +17,7 @@ import { agentOpSchema } from './op-schema.js';
 import { applyResult } from './act-tools.js';
 import { defineTool, failure, success } from './registry.js';
 
-export const ASK_USER_MAX_CHOICES = 4;
+const ASK_USER_MAX_CHOICES = 4;
 
 const askUser = defineTool<{ question: string; choices: { label: string; rationale?: string; ops: unknown[] }[] }, AgentToolContext>({
   name: 'ids_ask_user', group: 'ids', strict: false, readOnly: false,

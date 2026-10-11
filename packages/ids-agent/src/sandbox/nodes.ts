@@ -16,7 +16,7 @@ export function diagnosticId(d: Pick<Diagnostic, 'code' | 'nodeId' | 'field'>): 
 }
 
 /** Node id → owning specification id, for every node of `doc`. */
-export function specOwners(doc: StudioDocument): Map<Uuid, Uuid> {
+function specOwners(doc: StudioDocument): Map<Uuid, Uuid> {
   const owners = new Map<Uuid, Uuid>();
   for (const spec of doc.nodes.specs) {
     owners.set(spec.id, spec.id);

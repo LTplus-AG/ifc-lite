@@ -34,13 +34,13 @@ let counter = 0;
 /** Deterministic test ids. */
 export const id = (): Uuid => deriveId('ids-agent-test', String(counter++));
 
-export const eq = (value: string | number | boolean) => ({ kind: 'equals' as const, value });
+const eq = (value: string | number | boolean) => ({ kind: 'equals' as const, value });
 
 export function entity(name: string): FacetDraft {
   return { type: 'entity', name: eq(name) };
 }
 
-export function property(pset: string, name: string): FacetDraft {
+function property(pset: string, name: string): FacetDraft {
   return { type: 'property', propertySet: eq(pset), baseName: eq(name) };
 }
 

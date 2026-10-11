@@ -18,7 +18,7 @@ import { useViewerStore } from '@/store';
 import type { SemanticRequirementProposal } from '@/lib/semantic/assist/requirement-proposal';
 import type { RequirementReview } from '@/lib/semantic/assist/requirement-review';
 import { prepareNativeDrafts, qualifyRequirements, type NativeDrafts } from '@/lib/semantic/assist/requirement-dispatch';
-import { sourceRevisionOf, type ClassifiedRequirement, type UnresolvedReason } from '@/lib/semantic/assist/requirement-targets';
+import { loadQuantityMeasures, textRevision, type ClassifiedRequirement, type QuantityMeasures, type UnresolvedReason } from '@/lib/semantic/assist/requirement-targets';
 import { useSemanticSourceTexts, type SourceText } from '@/lib/semantic/assist/source-texts';
 import type { Passage } from '@/lib/semantic/assist/spans';
 import { IdsDraftReview } from '../check-authoring/IdsDraftReview';
@@ -46,49 +46,60 @@ function TargetLabel({ row }: { row: ClassifiedRequirement }) {
 }
 
 /**
- * The state of every source the drafts cite (included requirements and the
- * listed unsupported items), whether or not its span verified: a draft is
- * withdrawn once any of them reads differently.
+ * The content of every source the drafts cite (included requirements, verified
+ * or not, and the listed unsupported items): a draft is withdrawn once any of
+ * them reads differently, however it read when the drafts were prepared.
  */
-function citedSources(proposal: SemanticRequirementProposal, included: readonly ClassifiedRequirement[], passages: readonly Passage[], sources: readonly SourceText[]): string {
+function citedSources(proposal: SemanticRequirementProposal, included: readonly ClassifiedRequirement[], sources: readonly SourceText[]): string {
   const ids = new Set([...included.map(row => row.requirement.span.source), ...proposal.unsupported.flatMap(item => item.span ? [item.span.source] : [])]);
   return [...ids].sort().map(id => {
-    const state = sourceRevisionOf(id, passages, sources);
-    return `${id}:${typeof state === 'string' ? state : state.revision}`;
+    const source = sources.find(candidate => candidate.id === id);
+    return `${id}:${source ? textRevision(source.text) : 'detached'}`;
   }).join('|');
 }
 
-/** IDS versions of the loaded IFC models (IFC5 has no IDS version); IFC4 when none is loaded. */
-function loadedIfcVersions(models: ReadonlyMap<string, { schemaVersion: string }>): IFCVersion[] {
+/** IDS versions of the loaded IFC models; IFC4 when none is loaded, none when only IFC5 models are (IDS has no IFC5 version). */
+function loadedIfcVersions(models: ReadonlyMap<string, { schemaVersion?: string; ifcDataStore?: { schemaVersion?: string } | null }>): IFCVersion[] {
+  if (models.size === 0) return ['IFC4'];
   const versions = new Set<IFCVersion>();
-  for (const { schemaVersion } of models.values()) {
+  for (const model of models.values()) {
+    const schemaVersion = model.schemaVersion ?? model.ifcDataStore?.schemaVersion;
     if (schemaVersion === 'IFC2X3' || schemaVersion === 'IFC4') versions.add(schemaVersion);
     else if (schemaVersion === 'IFC4X3') versions.add('IFC4X3_ADD2');
   }
-  return versions.size ? [...versions] : ['IFC4'];
+  return [...versions];
 }
 
 export function RequirementDispatch({ proposal, review, passages }: { proposal: SemanticRequirementProposal; review: RequirementReview; passages: readonly Passage[] }) {
   const { t } = useTranslation();
   const sources = useSemanticSourceTexts(s => s.sources);
-  const classified = useMemo(() => qualifyRequirements(review, passages, sources), [review, passages, sources]);
+  const [quantities, setQuantities] = useState<QuantityMeasures | null>(null);
+  useEffect(() => {
+    let live = true;
+    void loadQuantityMeasures().then(measures => { if (live) setQuantities(() => measures); });
+    return () => { live = false; };
+  }, []);
+  const classified = useMemo(() => quantities ? qualifyRequirements(review, passages, sources, quantities) : [], [review, passages, sources, quantities]);
   const [excluded, setExcluded] = useState<ReadonlySet<string>>(new Set());
-  const [prepared, setPrepared] = useState<{ drafts: NativeDrafts; cited: string; included: ClassifiedRequirement[] } | null>(null);
+  const [prepared, setPrepared] = useState<{ drafts: NativeDrafts; cited: string; included: ClassifiedRequirement[]; proposal: SemanticRequirementProposal } | null>(null);
   const [withdrawn, setWithdrawn] = useState(false);
   // Re-checked on every render: a cited source changed or detached after preparing withdraws the unsaved drafts.
-  const stale = prepared !== null && citedSources(proposal, prepared.included, passages, sources) !== prepared.cited;
+  // A different proposal in the same review withdraws them too: the drafts were built from the previous one.
+  const stale = prepared !== null && (prepared.proposal !== proposal || citedSources(proposal, prepared.included, sources) !== prepared.cited);
   useEffect(() => {
     // Withdrawn drafts are gone for good: the reviewer prepares them again from the current classification.
     if (stale) { setPrepared(null); setWithdrawn(true); }
   }, [stale]);
   const prepare = () => {
     const included = classified.filter(row => !excluded.has(row.requirement.id));
-    const drafts = prepareNativeDrafts(proposal, classified, excluded, loadedIfcVersions(useViewerStore.getState().models));
-    setPrepared({ drafts, cited: citedSources(proposal, included, passages, sources), included });
+    const drafts = prepareNativeDrafts(proposal, classified, excluded,
+      { unsupported: review.unsupported, passages, sources, ifcVersions: loadedIfcVersions(useViewerStore.getState().models) });
+    setPrepared({ drafts, cited: citedSources(proposal, included, sources), included, proposal });
     setWithdrawn(false);
   };
   const active = prepared !== null && !stale ? prepared : null;
   const included = classified.length - excluded.size;
+  if (!quantities) return null;
   return <section aria-label={t('semanticAssist.dispatchTitle')} className="space-y-1.5 rounded border border-border p-1.5">
     <p className="font-medium">{t('semanticAssist.dispatchTitle')}</p>
     <p className="text-muted-foreground">{t('semanticAssist.dispatchHint')}</p>

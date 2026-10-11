@@ -72,10 +72,16 @@ const button = (root: HTMLElement, name: RegExp) => {
   return found;
 };
 const card = (root: HTMLElement, label: string) => root.querySelector<HTMLElement>(`section[aria-label="${label}"]`);
+/** The review, once the schema's quantity measures have loaded and the native targets show. */
+async function mount() {
+  const ui = render(<SemanticProposalReview />);
+  await waitFor(() => card(ui, 'Native checks and documents') !== null, 'the native targets show');
+  return ui;
+}
 
 test('#7375 a reviewed requirement set is dispatched, on request, into native IDS, rule and document records that keep their source linkage', async () => {
   await converse();
-  const ui = render(<SemanticProposalReview />);
+  const ui = await mount();
   const dispatch = card(ui, 'Native checks and documents');
   assert.ok(dispatch, 'the requirement review offers native targets');
   const rows = [...dispatch.querySelectorAll('li')].map(row => row.textContent ?? '');
@@ -84,7 +90,7 @@ test('#7375 a reviewed requirement set is dispatched, on request, into native ID
   assert.match(rows[2], /R3 Manual check, listed in a document/);
   assert.match(rows[3], /R4 No native check: IDS cannot express this comparison/);
   assert.match(rows[4], /R5 No native check: the quote does not match the attached text/);
-  assert.equal(card(ui, 'Review IDS draft'), null, 'nothing is dispatched until asked');
+  assert.equal(card(ui, 'Review IDS draft') === null, true, 'nothing is dispatched until asked');
   assert.equal(loadDefinitionLibrary().library.entries.length, 0);
 
   click(button(dispatch, /Prepare native drafts/));
@@ -140,12 +146,12 @@ test('#7375 a reviewed requirement set is dispatched, on request, into native ID
 
 test('#7375 an excluded requirement stays in the review only and reaches no native draft', async () => {
   await converse();
-  const ui = render(<SemanticProposalReview />);
+  const ui = await mount();
   const dispatch = card(ui, 'Native checks and documents')!;
   click(dispatch.querySelector<HTMLInputElement>('input[aria-label="Include R1 in the native drafts"]')!);
   click(dispatch.querySelector<HTMLInputElement>('input[aria-label="Include R3 in the native drafts"]')!);
   click(button(dispatch, /Prepare native drafts/));
-  assert.equal(card(ui, 'Review IDS draft'), null, 'R1 was the only IDS requirement');
+  assert.equal(card(ui, 'Review IDS draft') === null, true, 'R1 was the only IDS requirement');
   assert.ok(card(ui, 'Review information rules'));
   const outline = card(ui, 'Review report outline')!;
   assert.doesNotMatch(outline.textContent ?? '', /fire-safety strategy/);
@@ -156,7 +162,7 @@ test('#7375 an excluded requirement stays in the review only and reaches no nati
 
 test('#7375 a changed or missing source refuses dispatch and withdraws unsaved drafts without touching saved records', async () => {
   await converse();
-  const ui = render(<SemanticProposalReview />);
+  const ui = await mount();
   const dispatch = card(ui, 'Native checks and documents')!;
   click(button(dispatch, /Prepare native drafts/));
   const rules = card(ui, 'Review information rules')!;
@@ -168,8 +174,8 @@ test('#7375 a changed or missing source refuses dispatch and withdraws unsaved d
   // Re-attach different text under the same id: S1 no longer says what the assistant read.
   act(() => { detachSourceText('S1'); attachSourceText('Employer information requirements', SPEC.replace('150 mm', '300 mm')); });
   assert.match(dispatch.textContent ?? '', /source text changed after the drafts were prepared/);
-  assert.equal(card(ui, 'Review IDS draft'), null, 'unsaved drafts are withdrawn');
-  assert.equal(card(ui, 'Review information rules'), null);
+  assert.equal(card(ui, 'Review IDS draft') === null, true, 'unsaved drafts are withdrawn');
+  assert.equal(card(ui, 'Review information rules') === null, true);
   assert.match(dispatch.textContent ?? '', /R1 No native check: the source text changed after the assistant read it/);
   const [entry] = loadDefinitionLibrary().library.entries;
   assert.ok(entry?.kind === 'rules');
@@ -181,7 +187,7 @@ test('#7375 a changed or missing source refuses dispatch and withdraws unsaved d
 
 test('#7375 after withdrawal the reviewer can prepare the drafts again from the current source', async () => {
   await converse();
-  const ui = render(<SemanticProposalReview />);
+  const ui = await mount();
   const dispatch = card(ui, 'Native checks and documents')!;
   click(button(dispatch, /Prepare native drafts/));
   assert.ok(card(ui, 'Review information rules'));
@@ -205,7 +211,7 @@ test('#7375 after withdrawal the reviewer can prepare the drafts again from the 
 
 test('#7375 a document draft of only unresolved requirements is withdrawn too when their source changes', async () => {
   await converse();
-  const ui = render(<SemanticProposalReview />);
+  const ui = await mount();
   const dispatch = card(ui, 'Native checks and documents')!;
   for (const id of ['R1', 'R2', 'R3', 'R5']) click(dispatch.querySelector<HTMLInputElement>(`input[aria-label="Include ${id} in the native drafts"]`)!);
   click(button(dispatch, /Prepare native drafts/));
@@ -213,18 +219,102 @@ test('#7375 a document draft of only unresolved requirements is withdrawn too wh
   assert.match(outline.textContent ?? '', new RegExp(`R4: Wall finishes are not red\\s*Source requirement R4 from S1 .*revision ${REVISION}`),
     'the unresolved item keeps its verified passage and revision');
   act(() => { detachSourceText('S1'); attachSourceText('Employer information requirements', SPEC.replace('Red', 'Blue')); });
-  assert.equal(card(ui, 'Review report outline'), null, 'the outdated document draft can no longer be saved');
+  assert.equal(card(ui, 'Review report outline') === null, true, 'the outdated document draft can no longer be saved');
   assert.match(dispatch.textContent ?? '', /source text changed after the drafts were prepared/);
 });
 
 test('#7375 a source detached before dispatch leaves only not-checked items', async () => {
   await converse();
   act(() => detachSourceText('S1'));
-  const ui = render(<SemanticProposalReview />);
+  const ui = await mount();
   const dispatch = card(ui, 'Native checks and documents')!;
   assert.match(dispatch.textContent ?? '', /R2 No native check: the source text is no longer attached/);
   click(button(dispatch, /Prepare native drafts/));
-  assert.equal(card(ui, 'Review IDS draft'), null);
-  assert.equal(card(ui, 'Review information rules'), null);
+  assert.equal(card(ui, 'Review IDS draft') === null, true);
+  assert.equal(card(ui, 'Review information rules') === null, true);
   assert.match(card(ui, 'Review report outline')?.textContent ?? '', /its source text is no longer attached/);
+});
+
+const only = (dispatch: HTMLElement, keep: readonly string[]) => {
+  for (const id of ['R1', 'R2', 'R3', 'R4', 'R5']) if (!keep.includes(id)) click(dispatch.querySelector<HTMLInputElement>(`input[aria-label="Include ${id} in the native drafts"]`)!);
+};
+const reattach = (text: string) => act(() => { detachSourceText('S1'); attachSourceText('Employer information requirements', text); });
+
+test('#7375 a draft citing only an unverified span is withdrawn when that source changes', async () => {
+  await converse();
+  const ui = await mount();
+  const dispatch = card(ui, 'Native checks and documents')!;
+  only(dispatch, ['R5']);
+  click(button(dispatch, /Prepare native drafts/));
+  assert.match(card(ui, 'Review report outline')?.textContent ?? '', /R5: Paraphrased\s*Cited from S1, characters 1-21/);
+  reattach(`${SPEC}\n\n3.6 Added later.`);
+  assert.equal(card(ui, 'Review report outline') === null, true);
+  assert.match(dispatch.textContent ?? '', /source text changed after the drafts were prepared/);
+});
+
+test('#7375 a draft citing only an unsupported item is withdrawn when that source changes', async () => {
+  const quote = '3.4 A fire-safety strategy report shall be delivered with each model issue.';
+  await converse({ ...REQUIREMENTS, unsupported: [{ text: 'A strategy report is delivered', reason: 'Not a model property', span: span(quote) }] });
+  const ui = await mount();
+  const dispatch = card(ui, 'Native checks and documents')!;
+  only(dispatch, []);
+  click(button(dispatch, /Prepare native drafts/));
+  const outline = card(ui, 'Review report outline')!;
+  assert.match(outline.textContent ?? '', new RegExp(`A strategy report is delivered\\s*Source passage from S1 .*revision ${REVISION}`), 'the unsupported item keeps its passage');
+  reattach(`${SPEC}\n\n3.6 Added later.`);
+  assert.equal(card(ui, 'Review report outline') === null, true);
+});
+
+test('#7375 a source that had already changed before preparing still withdraws the drafts when it changes again', async () => {
+  await converse();
+  const ui = await mount();
+  const dispatch = card(ui, 'Native checks and documents')!;
+  reattach(SPEC.replace('Red', 'Blue'));
+  click(button(dispatch, /Prepare native drafts/));
+  assert.ok(card(ui, 'Review report outline'), 'everything is listed as not checked');
+  reattach(SPEC.replace('Red', 'Green'));
+  assert.equal(card(ui, 'Review report outline') === null, true);
+});
+
+test('#7375 a different proposal in the same review withdraws the drafts prepared from the previous one', async () => {
+  await converse();
+  const ui = await mount();
+  const dispatch = card(ui, 'Native checks and documents')!;
+  click(button(dispatch, /Prepare native drafts/));
+  assert.ok(card(ui, 'Review information rules'));
+  // The last answer is replaced in place (same message count, same review), now without R2.
+  const replaced = { ...REQUIREMENTS, requirements: REQUIREMENTS.requirements.filter(item => item.id !== 'R2') };
+  act(() => useAssistant.setState(state => ({ messages: [...state.messages.slice(0, -1), { role: 'assistant', model: 'recorded', content: JSON.stringify(replaced) }] })));
+  const now = card(ui, 'Native checks and documents')!;
+  assert.equal(card(ui, 'Review information rules') === null, true, 'no draft of the previous proposal stays saveable');
+  assert.doesNotMatch(now.textContent ?? '', /R2 /);
+  assert.ok(button(now, /Prepare native drafts/));
+});
+
+test('#7375 the IDS draft targets the IFC version of the loaded model', async () => {
+  await converse();
+  const { models } = useViewerStore.getState();
+  useViewerStore.setState({ models: new Map([...models].map(([id, model]) => [id, { ...model, schemaVersion: 'IFC2X3' as const }])) });
+  const ui = await mount();
+  click(button(card(ui, 'Native checks and documents')!, /Prepare native drafts/));
+  const ids = card(ui, 'Review IDS draft')!;
+  await waitFor(() => /Native IDS audit: 0 errors/.test(ids.textContent ?? ''), 'the IDS draft audits clean');
+  click(button(ids, /Dry run on loaded models/));
+  await waitFor(() => !button(ids, /Save to IDS library/).disabled, 'the IDS draft dry-runs');
+  click(button(ids, /Save to IDS library/));
+  const entry = loadDefinitionLibrary().library.entries.find(candidate => candidate.kind === 'ids');
+  assert.ok(entry?.kind === 'ids');
+  assert.deepEqual(entry.document.specifications[0].ifcVersions, ['IFC2X3']);
+});
+
+test('#7375 with only IFC5 models loaded the IDS draft is refused, not targeted at IFC4', async () => {
+  await converse();
+  const { models } = useViewerStore.getState();
+  assert.ok(models.size > 0);
+  useViewerStore.setState({ models: new Map([...models].map(([id, model]) => [id, { ...model, schemaVersion: 'IFC5' as const }])) });
+  const ui = await mount();
+  click(button(card(ui, 'Native checks and documents')!, /Prepare native drafts/));
+  assert.equal(card(ui, 'Review IDS draft') === null, true);
+  assert.match(ui.textContent ?? '', /The IDS draft was refused: none of the loaded models has an IFC version IDS can check/);
+  assert.ok(card(ui, 'Review information rules'), 'the other targets are unaffected');
 });

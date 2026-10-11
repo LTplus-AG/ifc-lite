@@ -20,20 +20,27 @@ import { parseRulesProposal, type RulesProposal } from '@/lib/check-authoring/ru
 import { parseDocumentOutline, type DocumentOutline } from '@/lib/check-authoring/document-outline';
 import { unitFactor } from '@/lib/check-authoring/ids-constraint';
 import type { ExtractedRequirement, SemanticRequirementProposal } from './requirement-proposal';
+import type { SourceSpan } from './proposal-common';
 import type { RequirementReview } from './requirement-review';
 import type { SourceText } from './source-texts';
 import type { Passage } from './spans';
-import { classifyRequirement, measureUnit, propertyTarget, sourceRevisionOf, type ClassifiedRequirement, type SourceRevision, type UnresolvedReason } from './requirement-targets';
+import { classifyRequirement, measureUnit, propertyTarget, sourceRevisionOf, type ClassifiedRequirement, type QuantityMeasures, type SourceRevision,
+  type UnresolvedReason } from './requirement-targets';
 
 const message = (error: unknown) => error instanceof Error ? error.message : String(error);
 const clip = (text: string, max: number) => text.length <= max ? text : `${text.slice(0, max - 1)}…`;
 
+const passageNote = (span: SourceSpan, source: SourceRevision) =>
+  `${source.source} "${source.title}" (revision ${source.revision}, ${source.characters} characters), characters ${span.start}-${span.end}: "${span.quote}"`;
+
 /** Stored with the native record, in English like the other P07 record notes. */
 export function provenanceNote(requirement: ExtractedRequirement, source: SourceRevision): string {
-  const { span, unit } = requirement;
-  return `Source requirement ${requirement.id} from ${source.source} "${source.title}" (revision ${source.revision}, ${source.characters} characters), `
-    + `characters ${span.start}-${span.end}: "${span.quote}"${unit ? `. Stated unit: ${unit}` : ''}.`;
+  return `Source requirement ${requirement.id} from ${passageNote(requirement.span, source)}${requirement.unit ? `. Stated unit: ${requirement.unit}` : ''}.`;
 }
+
+/** Where an item without a verified source claims to come from, labelled as unverified. */
+const citedNote = (span: SourceSpan) =>
+  `Cited from ${span.source}, characters ${span.start}-${span.end}: "${span.quote}" (not verified against the attached text).`;
 
 const UNRESOLVED_NOTE: Record<UnresolvedReason, string> = {
   span: 'its source quote does not match the attached text',
@@ -100,9 +107,9 @@ const rulesAnswer = (title: string, rules: unknown[]) =>
  * Classify every reviewed requirement and let the native parser of its target
  * refuse it individually, so one malformed requirement never blocks the rest.
  */
-export function qualifyRequirements(review: RequirementReview, passages: readonly Passage[], sources: readonly SourceText[]): ClassifiedRequirement[] {
+export function qualifyRequirements(review: RequirementReview, passages: readonly Passage[], sources: readonly SourceText[], quantities: QuantityMeasures): ClassifiedRequirement[] {
   return review.requirements.map(({ requirement, check }) => {
-    const classified = classifyRequirement(requirement, check, sourceRevisionOf(requirement.span.source, passages, sources));
+    const classified = classifyRequirement(requirement, check, sourceRevisionOf(requirement.span.source, passages, sources), quantities);
     if ((classified.target !== 'ids' && classified.target !== 'geometry') || !classified.source) return classified;
     try {
       if (classified.target === 'ids') parseIdsProposal(idsAnswer('Check', [idsSpecification(requirement, classified.source)]));
@@ -122,18 +129,30 @@ export interface NativeDrafts {
   refused: Array<{ target: 'ids' | 'geometry' | 'manual'; detail: string }>;
 }
 
-/** Where an item without a verified source claims to come from, labelled as unverified. */
-function citedNote(requirement: ExtractedRequirement): string {
-  const { span } = requirement;
-  return `Cited from ${span.source}, characters ${span.start}-${span.end}: "${span.quote}" (not verified against the attached text).`;
-}
-
 function documentItem(row: ClassifiedRequirement): { text: string; reason: string } {
   const { requirement } = row;
-  const origin = row.source ? provenanceNote(requirement, row.source) : citedNote(requirement);
+  const origin = row.source ? provenanceNote(requirement, row.source) : citedNote(requirement.span);
   const text = clip(`${requirement.id}: ${requirement.statement}\n${origin}`, 2000);
   if (row.target === 'manual') return { text, reason: 'Manual requirement: check it by inspection; no automatic result is recorded' };
   return { text, reason: clip(`Unresolved: ${UNRESOLVED_NOTE[row.reason ?? 'native']}${row.detail ? ` (${row.detail})` : ''}`, 500) };
+}
+
+/** A statement P16 could not extract, with its source passage when it cited one (verified, or labelled unverified). */
+function unsupportedItem({ item, check }: RequirementReview['unsupported'][number], passages: readonly Passage[], sources: readonly SourceText[]): { text: string; reason: string } {
+  const reason = clip(`Not extracted as a requirement: ${item.reason}`, 500);
+  if (!item.span) return { text: clip(item.text, 2000), reason };
+  const source = check?.status === 'verified' ? sourceRevisionOf(item.span.source, passages, sources) : null;
+  const origin = source && typeof source !== 'string' ? `Source passage from ${passageNote(item.span, source)}.` : citedNote(item.span);
+  return { text: clip(`${item.text}\n${origin}`, 2000), reason };
+}
+
+/** What the drafts are prepared against: the review's unsupported items, the attached texts and the IDS versions of the loaded models. */
+export interface DraftContext {
+  unsupported: RequirementReview['unsupported'];
+  passages: readonly Passage[];
+  sources: readonly SourceText[];
+  /** Empty when models are loaded but none has an IDS version (IFC5): the IDS draft is then refused, never retargeted. */
+  ifcVersions: readonly IFCVersion[];
 }
 
 /**
@@ -143,7 +162,8 @@ function documentItem(row: ClassifiedRequirement): { text: string; reason: strin
  * pass/fail result.
  */
 export function prepareNativeDrafts(proposal: SemanticRequirementProposal, classified: readonly ClassifiedRequirement[], excluded: ReadonlySet<string>,
-  ifcVersions: readonly IFCVersion[] = ['IFC4']): NativeDrafts {
+  context: DraftContext): NativeDrafts {
+  const { ifcVersions } = context;
   const included = classified.filter(row => !excluded.has(row.requirement.id));
   const refused: NativeDrafts['refused'] = [];
   const attempt = <T>(target: NativeDrafts['refused'][number]['target'], build: () => T): T | null => {
@@ -153,13 +173,16 @@ export function prepareNativeDrafts(proposal: SemanticRequirementProposal, class
   const idsRows = included.filter(row => row.target === 'ids' && row.source);
   const ruleRows = included.filter(row => row.target === 'geometry' && row.source);
   const documentRows = included.filter(row => row.target === 'manual' || row.target === 'unresolved');
-  const ids = idsRows.length ? attempt('ids', () => parseIdsProposal(idsAnswer(proposal.title, idsRows.map(row => idsSpecification(row.requirement, row.source!)), ifcVersions))) : null;
+  const ids = idsRows.length ? attempt('ids', () => {
+    if (!ifcVersions.length) throw new Error('none of the loaded models has an IFC version IDS can check (IFC2X3, IFC4 or IFC4X3)');
+    return parseIdsProposal(idsAnswer(proposal.title, idsRows.map(row => idsSpecification(row.requirement, row.source!)), ifcVersions));
+  }) : null;
   const rules = ruleRows.length ? attempt('geometry', () => parseRulesProposal(rulesAnswer(proposal.title, ruleRows.map(row => geometryRule(row.requirement, row.source!))))) : null;
   const unsupported = [...documentRows.map(documentItem),
-    ...proposal.unsupported.map(item => ({ text: item.text, reason: clip(`Not extracted as a requirement: ${item.reason}`, 500) }))];
+    ...context.unsupported.map(row => unsupportedItem(row, context.passages, context.sources))];
   const document = unsupported.length ? attempt('manual', () => parseDocumentOutline(JSON.stringify({ version: 1, kind: 'document.outline', title: proposal.title,
     sections: [{ heading: 'Manual review', purpose: 'actions', blocks: [{ kind: 'text', style: 'body',
-      text: 'These requirements from the attached source have no automatic check. Each is listed with its exact source passage; check it by inspection. This document records no pass or fail result for them.' }] }],
+      text: 'These requirements from the attached source have no automatic check. Each is listed with the source passage it cites, marked as unverified where it does not match the attached text; check it by inspection. This document records no pass or fail result for them.' }] }],
     unsupported }))) : null;
   return { ids, rules, document, refused };
 }

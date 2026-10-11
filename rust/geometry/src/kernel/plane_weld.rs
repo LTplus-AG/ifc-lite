@@ -288,7 +288,7 @@ fn promote<const KEEP_INCIDENCE: bool>(cutter: &mut [Tri], host: &[Tri]) -> usiz
             // plane; the end plane is the one that needs the weld, and the
             // perpendicular projection onto it slides ALONG the bottom plane).
             // Ties → first in face order (deterministic).
-            let mut best: Option<(f64, usize)> = None; // (perp-dist², face index)
+            let mut best: Option<(f64, f64, usize)> = None; // (perp-dist², raw offset, face index)
             on.clear();
             for (i, f) in faces.iter().enumerate() {
                 let d = f.raw_offset(v);
@@ -300,8 +300,8 @@ fn promote<const KEEP_INCIDENCE: bool>(cutter: &mut [Tri], host: &[Tri]) -> usiz
                 if d2 > f.band2 {
                     continue; // outside the snap-scatter band
                 }
-                if best.is_none_or(|(bd2, _)| d2 < bd2) {
-                    best = Some((d2, i));
+                if best.is_none_or(|(bd2, ..)| d2 < bd2) {
+                    best = Some((d2, d, i));
                 }
             }
             // EXACT-PLANE LIFT (the crack-family fix): re-express the foot of
@@ -318,8 +318,19 @@ fn promote<const KEEP_INCIDENCE: bool>(cutter: &mut [Tri], host: &[Tri]) -> usiz
             // vertex is left UNTOUCHED — never an inexact foot, which would be
             // off every grid and force the BigRational tier on every predicate
             // that sees it.
-            if let Some((_, f)) = best {
+            if let Some((_, d, f)) = best {
                 if let Some(w) = exact_on_plane_weld(*v, faces[f].t) {
+                    // #7292: edge-basis quantization must not move the weld
+                    // farther in-plane than the noise band that admitted it.
+                    // In mm files the old unit-free step shifts a flush side
+                    // by micrometres and leaves metres of the host uncut.
+                    let face = &faces[f];
+                    let scale = d / face.nn;
+                    let drift = [0, 1, 2].map(|k| w[k] - (v[k] - scale * face.n[k]));
+                    let drift2 = drift[0] * drift[0] + drift[1] * drift[1] + drift[2] * drift[2];
+                    if !drift2.is_finite() || drift2 > face.band2 {
+                        continue;
+                    }
                     if KEEP_INCIDENCE && guard.refuses(&w, f, &on) {
                         continue; // #6940
                     }

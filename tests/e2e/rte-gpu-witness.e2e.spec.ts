@@ -60,7 +60,8 @@ test('production RTE GPU witness at 5,000 km (#5049)', async ({ page }, info) =>
   expect(report.system.adapter?.vendor, 'real adapter vendor').toBeTruthy();
   expect(report.system.hardwareVerified, 'positively identified hardware adapter').toBe(true);
   expect(report.evidence).toBeDefined();
-  expect(report.evidence?.canvasPixels).toEqual({ width: 640, height: 480 });
+  const density = Math.min(report.system.devicePixelRatio, 2);
+  expect(report.evidence?.canvasPixels).toEqual({ width: Math.round(640 * density), height: Math.round(480 * density) });
   expect(report.evidence?.pickPixel).toEqual({ x: 320, y: 240 });
   expect(report.evidence?.sourceResidualMetres).toBeLessThanOrEqual(0.03);
   expect(report.evidence?.pickResidualMetres).not.toBeNull();

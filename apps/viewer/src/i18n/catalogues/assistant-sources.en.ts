@@ -25,4 +25,5 @@ export const assistantSourcesEn = {
   'assistantSources.boundaryPresentation': 'Saved camera views for presenting; there is no analysis result.',
   'assistantSources.boundaryAssistant': 'The Assistant itself. Saved conversations are reopened, not attached as evidence.',
   'assistantSources.boundaryEnvironment': 'Sky, lighting and sun-time display settings. No solar analysis is recorded, and display settings are not daylight performance.',
+  'assistantSources.boundaryIdsStudio': 'IDS authoring. Editing a requirement document produces no analysis result; run it in Validation to discuss what it finds.',
 } as const satisfies Record<string, TranslationValue>;

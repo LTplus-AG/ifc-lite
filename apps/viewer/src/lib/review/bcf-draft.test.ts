@@ -84,3 +84,25 @@ test('a card digest is pinned to the card key and distinguishes keys', () => {
   assert.equal(cardDigest({ key: 'card-a' }), '59bbf293d8a76e35');
   assert.equal(cardDigest({ key: 'card-b' }), '58bbf100d5a7697c');
 });
+
+// #7373: without a wasm runtime too, non-clash card findings keep their exact
+// review id, native evidence and owning run, and are counted only when current.
+test('non-clash findings are kept as source findings with their run and membership, and counted only when current', async () => {
+  const saved = run('saved-validation:r1', 'validation', { temporal: 'historical', capturedAt: '2026-01-01T00:00:00.000Z', complete: false,
+    incomplete: [{ code: 'partial-source' }], models: ['arch.ifc'] });
+  const live = finding('v1', 'validation', [wall('W2')], { nativeStatus: 'failed',
+    evidence: { kind: 'validation', specificationId: 's1', modelId: 'm1', expressId: 2 } });
+  const old = finding('v0', 'validation', [wall('W2')], { run: saved, lifecycle: 'not-evaluated',
+    evidence: { kind: 'saved-validation', reportId: 'r1', rowId: 'row-2' } });
+  const [card] = cardsOf(live, old);
+  const { batch } = await draftBatchFromCards('Review', [card], [], { now: fixedNow });
+  const kept = batch!.topics[0].sourceFindings;
+  assert.deepEqual(kept?.map(item => [item.id, item.membership, item.run.temporal, item.run.capturedAt]),
+    [[live.id, 'included', 'current', null], [old.id, 'historical', 'historical', '2026-01-01T00:00:00.000Z']]);
+  assert.deepEqual(kept?.[1].run.gaps, ['partial-source']);
+  assert.deepEqual(kept?.[0].evidence, live.evidence);
+  assert.equal(batch!.source.findingCount, 1, 'saved evidence is described, never counted as current');
+  assert.deepEqual(decodeDraftBatch(JSON.parse(JSON.stringify(batch))), batch);
+  const parsed = parseDraftFooter(describeWithFooter(batch!.topics[0], { batchId: batch!.id, full: { batchName: batch!.name, source: batch!.source } }));
+  assert.deepEqual(parsed?.sourceFindings, kept);
+});

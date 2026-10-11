@@ -36,14 +36,14 @@
   },
   "dependencies": {
     "@ifc-lite/regex-guard": "workspace:^",
-    "acorn": "^8.18.0",
+    "acorn": "^8.19.0",
     "acorn-walk": "^8.3.0",
     "fflate": "^0.8.2"
   },
   "devDependencies": {
-    "@types/node": "^26.6.2",
+    "@types/node": "^26.6.4",
     "typescript": "^6.0.3",
-    "vitest": "^5.0.2"
+    "vitest": "^5.0.3"
   },
   "license": "MPL-2.0",
   "author": "Louis True",

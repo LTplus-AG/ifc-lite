@@ -34,6 +34,11 @@ const AREA_NAMES: Readonly<Record<string, string>> = {
   BSDD: 'bSDD references',
 };
 
+/** Severity as the catalogue tables show it: `info (opt-in)` for rules that are off by default. */
+export function severityLabel(rule: LintRule): string {
+  return rule.optIn ? `${rule.defaultSeverity} (opt-in)` : rule.defaultSeverity;
+}
+
 export function pageName(code: string): string {
   return `${code.toLowerCase()}.md`;
 }
@@ -46,11 +51,19 @@ function rulePage(rule: LintRule): string {
     '',
     '| Default severity | Kind | Scope | Quick fix |',
     '|---|---|---|---|',
-    `| ${rule.defaultSeverity} | ${rule.kind} | ${rule.scope === 'spec' ? 'specification' : 'document'} | ${rule.fix ? 'yes' : 'no'} |`,
+    `| ${severityLabel(rule)} | ${rule.kind} | ${rule.scope === 'spec' ? 'specification' : 'document'} | ${rule.fix ? 'yes' : 'no'} |`,
     '',
     rule.rationale,
     '',
   ];
+  if (rule.optIn) {
+    lines.push(
+      '## Enabling',
+      '',
+      `This rule is off by default. Enable it in the linter config, at its default severity or another one: \`createLinter(ctx, { severity: { '${rule.code}': '${rule.defaultSeverity}' } })\`. Naming it in \`rules\` also enables it.`,
+      '',
+    );
+  }
   if (rule.example) lines.push('## Example', '', '```xml', rule.example, '```', '');
   if (rule.fix) lines.push('## Quick fix', '', `${rule.fix} Quick fixes are proposals: they are op batches that pass the grounding gate and are never applied automatically.`, '');
   if (rule.assumptions?.length) {
@@ -89,11 +102,13 @@ function indexPage(rules: readonly LintRule[]): string {
     '',
     'Rules that depend on an IDS semantic the standard leaves open ship at `info` until the semantic is verified against the buildingSMART test cases; each rule page lists what was verified.',
     '',
+    'Rules marked *opt-in* are off by default because they fire on most real documents. Enable one by giving it a severity in the linter config (`severity: { \'IDSL-SPEC-008\': \'info\' }`) or by naming it in `rules`.',
+    '',
   ];
   const areas = [...new Set(rules.map((r) => r.area))];
   for (const area of areas) {
     lines.push(`## ${AREA_NAMES[area] ?? area}`, '', '| Code | Severity | Rule | Quick fix |', '|---|---|---|---|');
-    for (const r of rules.filter((x) => x.area === area)) lines.push(`| [${r.code}](${pageName(r.code)}) | ${r.defaultSeverity} | ${r.title} | ${r.fix ? 'yes' : 'no'} |`);
+    for (const r of rules.filter((x) => x.area === area)) lines.push(`| [${r.code}](${pageName(r.code)}) | ${severityLabel(r)} | ${r.title} | ${r.fix ? 'yes' : 'no'} |`);
     lines.push('');
   }
   return lines.join('\n');

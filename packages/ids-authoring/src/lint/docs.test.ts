@@ -8,7 +8,7 @@ import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { LINT_DOCS_DIR, NAV_BEGIN, NAV_END, renderLintDocs, renderLintNav } from './docs.js';
+import { LINT_DOCS_DIR, NAV_BEGIN, NAV_END, renderLintDocs, renderLintNav, severityLabel } from './docs.js';
 import { LINT_RULES } from './rules/index.js';
 
 const ROOT = fileURLToPath(new URL('../../../../', import.meta.url));
@@ -41,7 +41,7 @@ describe('generated lint docs', () => {
 
   it('the package README rule table matches the catalogue', () => {
     const readme = readFileSync(join(ROOT, 'packages/ids-authoring/README.md'), 'utf8');
-    for (const r of LINT_RULES) expect(readme, r.code).toContain(`| \`${r.code}\` | ${r.defaultSeverity} | ${r.title} | ${r.fix ? 'yes' : 'no'} |`);
+    for (const r of LINT_RULES) expect(readme, r.code).toContain(`| \`${r.code}\` | ${severityLabel(r)} | ${r.title} | ${r.fix ? 'yes' : 'no'} |`);
   });
 
   it('links each docs URL to an existing page', () => {

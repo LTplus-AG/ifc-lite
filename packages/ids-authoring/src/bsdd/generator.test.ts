@@ -122,7 +122,8 @@ describe('preview and apply', () => {
     const preview = previewDictionaryIds(doc, p, lint);
     expect(preview.gate).toEqual({ ok: true, issues: [] });
     expect([preview.specCount, preview.applicabilityFacets, preview.requirements]).toEqual([5, 10, 18]);
-    expect(preview.lint).toMatchObject({ error: 0, warning: 0, byCode: { 'IDSL-ENT-003': 5 } }); // info: IfcWall also has IfcWallStandardCase, …
+    // IDSL-ENT-003 (subtype hint) is opt-in since P-04, so a default lint of the generated specs is clean.
+    expect(preview.lint).toMatchObject({ error: 0, warning: 0, byCode: {} });
     expect(preview.result?.ids.specifications.every((s) => s.minOccurs === 0)).toBe(true); // optional by default
     expect(previewDictionaryIds(doc, plan({ cardinality: 'required' }), lint).lint.byCode['IDSL-CARD-004']).toBe(5);
     expect(doc.ids.specifications).toEqual([]); // the dry run left the document alone

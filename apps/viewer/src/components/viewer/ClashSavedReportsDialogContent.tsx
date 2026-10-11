@@ -16,43 +16,44 @@ import { Archive, Save } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { toast } from '@/components/ui/toast';
+import { ReportDeletionPreview } from './ReportDeletionPreview';
 import { ContentStorageNotice } from '@/components/viewer/ContentStorageNotice';
 import { analysisStampOf, useAnalysisStaleness } from '@/hooks/useAnalysisStaleness';
 import { useTranslation } from '@/i18n';
 import { CLASH_REPORT_LIMITS, clashReportRevision, defaultClashReportName, snapshotClashReport, type SavedClashReport } from '@/lib/clash/saved-report';
 import { clashReportLimitBadges } from '@/lib/charts/chart-source-message';
 import { useViewerStore } from '@/store';
+import { useLibraryFocus } from '@/lib/libraries/library-focus';
 
-function ReportRow({ report }: { report: SavedClashReport }) {
+function ReportRow({ report, confirming, onConfirm, onCancel, onDeleted }: {
+  report: SavedClashReport; confirming: SavedClashReport | null;
+  onConfirm: (report: SavedClashReport) => void; onCancel: () => void; onDeleted: () => void;
+}) {
   const { t } = useTranslation();
   const models = useViewerStore((s) => s.models);
   const mutationVersion = useViewerStore((s) => s.mutationVersion);
   const [name, setName] = useState(report.name);
-  const [confirming, setConfirming] = useState(false);
+  const target = useLibraryFocus(state => state.target);
+  const requested = target?.kind === 'clash-report' && target.id === report.id;
   useEffect(() => { setName(report.name); }, [report.name]);
   const persisted = (ok: boolean): void => { if (!ok) toast.error(t('clashTools.savedReports.storageFailed')); };
   const badges = clashReportLimitBadges(report, clashReportRevision(report, [...models.values()], mutationVersion), t);
   const state = useViewerStore.getState;
   return (
-    <li className="space-y-1 rounded-md border border-border p-2" data-clash-report={report.id}>
+    <li className={`space-y-1 rounded-md border border-border p-2 ${requested ? 'bg-primary/5' : ''}`} data-clash-report={report.id} aria-current={requested ? 'true' : undefined}>
       <div className="flex gap-1.5">
         <input className="min-w-0 flex-1 rounded border border-border bg-transparent px-1.5 py-0.5 text-xs" value={name}
           maxLength={CLASH_REPORT_LIMITS.name} onChange={(event) => setName(event.target.value)} aria-label={t('clashTools.savedReports.renameLabel', { name: report.name })} />
         <Button variant="outline" size="sm" className="h-6 px-2 text-xs" disabled={!name.trim() || name.trim() === report.name}
           onClick={() => void state().renameSavedClashReport(report.id, name).then(persisted)}>{t('clashTools.savedReports.renameButton')}</Button>
-        {!confirming && <Button variant="outline" size="sm" className="h-6 px-2 text-xs" onClick={() => setConfirming(true)}>{t('clashTools.savedReports.deleteButton')}</Button>}
+        {!confirming && <Button variant="outline" size="sm" className="h-6 px-2 text-xs" onClick={() => onConfirm(report)}>{t('clashTools.savedReports.deleteButton')}</Button>}
       </div>
       <div className="text-xs text-muted-foreground">
         {t('clashTools.savedReports.entrySummary', { clashes: t('clashTools.revisionCompare.clashCount', { count: report.clashes.length }), when: new Date(report.savedAt).toLocaleString(), models: report.models.map((model) => model.name).join(', ') })}
       </div>
       {badges.length > 0 && <div className="text-xs font-medium" data-clash-report-limits>{badges.join(' · ')}</div>}
-      {confirming && (
-        <div className="flex flex-wrap items-center gap-1.5 text-xs" role="alert">
-          <span className="min-w-0 flex-1">{t('clashTools.savedReports.deleteWarning', { name: report.name })}</span>
-          <Button variant="destructive" size="sm" className="h-6 px-2 text-xs" onClick={() => void state().deleteSavedClashReport(report.id).then(persisted)}>{t('clashTools.savedReports.confirmDeleteButton')}</Button>
-          <Button variant="ghost" size="sm" className="h-6 px-2 text-xs" onClick={() => setConfirming(false)}>{t('clashTools.savedReports.cancelDeleteButton')}</Button>
-        </div>
-      )}
+      {confirming && <ReportDeletionPreview source={{ kind: 'clash', id: confirming.id }} report={confirming}
+        onCancel={onCancel} onDeleted={onDeleted} storageFailed={() => persisted(false)} />}
     </li>
   );
 }
@@ -65,9 +66,19 @@ export function ClashSavedReportsDialogContent({ open, onOpenChange }: { open: b
   const rawResult = useViewerStore((s) => s.clashRawResult);
   const running = useViewerStore((s) => s.clashRunning);
   const reports = useViewerStore((s) => s.savedClashReports);
+  const target = useLibraryFocus(state => state.target);
   const storage = useViewerStore((s) => s.savedClashReportsStorage);
   const stale = useAnalysisStaleness(analysisStampOf(rawResult ?? result));
   const [name, setName] = useState('');
+  const [confirming, setConfirming] = useState<SavedClashReport | null>(null);
+  useEffect(() => {
+    if (confirming && !reports.some(report => report.id === confirming.id) && storage.items[confirming.id] === 'saved') {
+      setConfirming(null);
+    }
+  }, [confirming, reports, storage.items]);
+  // Keep the approval owner mounted while its own tombstone hides the row.
+  const visibleReports = confirming && !reports.some(report => report.id === confirming.id)
+    ? [...reports, confirming] : reports;
   // What the saved report will be labelled with, in the words its charts will use.
   const excluded = useViewerStore((s) => s.clashSuppressedCount);
   const limits = [...(result?.truncated ? [t('clashChart.badgePartial')] : []), ...(result && stale ? [t('clashChart.badgeStale')] : []),
@@ -84,7 +95,7 @@ export function ClashSavedReportsDialogContent({ open, onOpenChange }: { open: b
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={(next) => { if (!next) setConfirming(null); onOpenChange(next); }}>
       <DialogContent className="sm:max-w-[520px]">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
@@ -113,11 +124,15 @@ export function ClashSavedReportsDialogContent({ open, onOpenChange }: { open: b
           {/* Whether a report is stored, and why the list may be unread: the same notice every saved content library shows. */}
           <ContentStorageNotice status={storage} retry={() => useViewerStore.getState().retrySaveClashReports()}
             restore={() => useViewerStore.getState().restoreSavedClashReports()} />
-          {reports.length === 0
+          {target?.kind === 'clash-report' && !reports.some(report => report.id === target.id)
+            && storage.phase === 'ready' && <p role="alert">{t('searchModal.library.open.missing')}</p>}
+          {visibleReports.length === 0
             // Only a library that was read can be called empty; loading or unreadable is the notice's to say.
             ? storage.phase === 'ready' && <div className="text-xs text-muted-foreground">{t('clashTools.savedReports.empty')}</div>
             : <ul className="max-h-72 space-y-1.5 overflow-y-auto pr-1" aria-label={t('clashTools.savedReports.triggerTooltip')}>
-              {reports.map((report) => <ReportRow key={report.id} report={report} />)}
+              {visibleReports.map((report) => <ReportRow key={report.id} report={report}
+                confirming={confirming?.id === report.id ? confirming : null}
+                onConfirm={setConfirming} onCancel={() => setConfirming(null)} onDeleted={() => setConfirming(null)} />)}
             </ul>}
         </div>
       </DialogContent>

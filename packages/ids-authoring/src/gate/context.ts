@@ -44,7 +44,8 @@ export interface VersionTables {
   /**
    * Whether the tables enumerate quantity sets. The upstream data only has
    * `Qto_*` rows for IFC4X3; for IFC2X3/IFC4 a `Qto_*` name cannot be
-   * verified and is accepted (IDS-009 fills these tables).
+   * verified and is accepted until P-01's IDS-009 schema rows exist (owner
+   * decision; see the TODO in `grounding-pset.ts`).
    */
   readonly hasQuantitySets: boolean;
 }

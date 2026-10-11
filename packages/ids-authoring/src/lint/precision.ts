@@ -18,6 +18,7 @@
 import type { IDSDocument } from '@ifc-lite/ids';
 import { fromIdsDocument } from '../document/from-ids.js';
 import { lintDocument } from './engine.js';
+import { LINT_RULES } from './rules/index.js';
 import type { LintContext, LintSeverity } from './types.js';
 
 export interface Verdict {
@@ -67,6 +68,11 @@ export function findingKey(file: string, code: string, message: string): string 
   return `${file}|${code}|${message}`;
 }
 
+/** Precision covers the whole catalogue, so opt-in rules are switched on at their default severity. */
+const ALL_RULES_ON: Record<string, LintSeverity> = Object.fromEntries(
+  LINT_RULES.filter((r) => r.optIn).map((r) => [r.code, r.defaultSeverity]),
+);
+
 export function measurePrecision(cases: readonly PrecisionCase[], labels: PrecisionLabels, ctx: LintContext): PrecisionReport {
   const tallies = new Map<string, RuleTally>();
   const unlabelled: string[] = [];
@@ -74,7 +80,7 @@ export function measurePrecision(cases: readonly PrecisionCase[], labels: Precis
   const used = new Set<string>();
   let findings = 0;
   for (const c of cases) {
-    const { diagnostics } = lintDocument(fromIdsDocument(c.ids), ctx);
+    const { diagnostics } = lintDocument(fromIdsDocument(c.ids), ctx, { severity: ALL_RULES_ON });
     for (const d of diagnostics) {
       findings++;
       const key = findingKey(c.file, d.code, d.message);

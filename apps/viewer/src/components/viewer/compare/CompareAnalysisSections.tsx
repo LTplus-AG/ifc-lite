@@ -37,14 +37,15 @@ function Section({ title, badge, children }: { title: string; badge?: ReactNode;
 
 export function CompareAnalysisSections({ result }: { result: CompareResult }) {
   const { t } = useTranslation();
-  const impact = useCompareImpact();
+  const view = useCompareImpact();
+  const impact = view?.impact;
   const touched = impact ? impact.totals.clash + impact.totals.validation + impact.totals.list + impact.totals.bcf : 0;
   return (
     <section aria-label={t('compareAnalysis.sectionsLabel')} className="border-b border-border">
-      {impact && (
+      {impact && view && (
         <Section title={t('compareAnalysis.impact.title')}
           badge={<span className="ml-auto rounded bg-muted px-1.5 tabular-nums text-muted-foreground">{touched}</span>}>
-          <CompareImpactSection impact={impact} />
+          <CompareImpactSection impact={impact} navigation={view.navigation} />
         </Section>
       )}
       <Section title={t('compareAnalysis.reconcile.title')}>

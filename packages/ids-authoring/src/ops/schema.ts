@@ -152,6 +152,17 @@ const PAYLOADS: Record<OpKind, JsonSchema> = {
   'meta.custom.removePset': obj({ name: nonEmpty }, ['name']),
   'meta.custom.declareUserDefinedType': obj({ entity: nonEmpty, value: nonEmpty, index }, ['entity', 'value']),
   'meta.custom.removeUserDefinedType': obj({ entity: nonEmpty, value: nonEmpty }, ['entity', 'value']),
+  'meta.suppress': obj(
+    {
+      nodeId: uuid,
+      // Rule format and a non-blank reason are gate checks (GATE-SUP-001/002),
+      // so an inverse can restore an imported suppression exactly.
+      suppression: obj({ rule: str, reason: str, by: str, at: str }, ['rule', 'reason', 'at']),
+      index,
+    },
+    ['nodeId', 'suppression'],
+  ),
+  'meta.unsuppress': obj({ nodeId: uuid, rule: str, keepEmpty: { type: 'boolean' } }, ['nodeId', 'rule']),
   'bulk.renameProperty': obj(
     { fromPset: nonEmpty, fromName: nonEmpty, toPset: nonEmpty, toName: nonEmpty, scope },
     ['fromPset', 'fromName', 'toPset', 'toName'],

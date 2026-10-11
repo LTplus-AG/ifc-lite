@@ -34,7 +34,7 @@ import type { Uuid } from '../uuid.js';
 import type { GateContext } from './context.js';
 import { groundEntityFields, specVersions, type FieldScope } from './grounding.js';
 import { groundPropertyFields } from './grounding-pset.js';
-import { checkFacetStructure, checkOpPayload, groundingTargets, structureTargets } from './structural.js';
+import { checkFacetStructure, checkOpPayload, checkSuppressionOp, groundingTargets, structureTargets } from './structural.js';
 import type { GateCode, GateIssue, GateResult } from './types.js';
 import { checkConstraint } from './values.js';
 import { checkBsddUri } from './bsdd.js';
@@ -86,7 +86,7 @@ function checkAfter(c: Collector, op: PrimitiveOp, before: StudioDocument, after
 
 function checkPrimitive(c: Collector, op: PrimitiveOp, doc: StudioDocument, ctx: GateContext): StudioDocument | undefined {
   const before = c.issues.length;
-  for (const p of checkOpPayload(op)) push(c, { code: p.code, message: p.message, path: c.base + p.at });
+  for (const p of [...checkOpPayload(op), ...checkSuppressionOp(op, doc)]) push(c, { code: p.code, message: p.message, path: c.base + p.at });
   if (c.issues.length > before) return undefined;
   let next: StudioDocument;
   try {

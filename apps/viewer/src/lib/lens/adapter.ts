@@ -24,7 +24,7 @@ import {
   mergeInheritedPropertySets,
   mergeInheritedQuantitySets,
 } from '@ifc-lite/parser';
-import { resolveEntityPredefinedType } from '@ifc-lite/rules';
+import { resolveCapturedEntityScope, resolveEntityPredefinedType } from '@ifc-lite/rules';
 import { lensMaterialNames } from '@ifc-lite/rules';
 import {
   ownPropertySetsFor,
@@ -109,6 +109,13 @@ export function createLensDataProvider(
     : resolveGlobalId(globalId, entries, models.size > 0 ? resolveRef : undefined);
 
   return {
+    resolveCapturedScope(scope) {
+      const candidates = resolveCapturedEntityScope(scope, [...models].map(([id, model]) => ({
+        id, filterIdentity: model.sourceFingerprint, sourceContentHash: model.sourceContentHash,
+        store: model.ifcDataStore, mutationView: mutationViews?.get(id),
+      })));
+      return new Set([...candidates].flatMap(([modelId, ids]) => [...ids].map(id => toGlobalIdFromModels(models, modelId, id))));
+    },
     getEntityCount(): number {
       let count = 0;
       for (const entry of entries) {

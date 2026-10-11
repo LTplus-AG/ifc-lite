@@ -137,6 +137,12 @@ export interface LintRuleMeta {
   defaultSeverity: LintSeverity;
   /** `static` rules need no model; `model` rules are run by the model loop (P-05). */
   kind: 'static' | 'model';
+  /**
+   * Off by default (noisy on real documents). The rule runs only when the
+   * linter config enables it: `LintOptions.rules` names it, or
+   * `LintOptions.severity` gives it a severity other than `'off'`.
+   */
+  optIn?: boolean;
   /** One-line title for tables and the docs index. */
   title: string;
   /** Long-form rationale, shown as `Diagnostic.why` and on the docs page. */
@@ -166,9 +172,12 @@ export interface DocumentRule extends LintRuleMeta {
 export type LintRule = SpecRule | DocumentRule;
 
 export interface LintOptions {
-  /** Restrict to these rule codes (default: every registered rule). */
+  /**
+   * Restrict to these rule codes (default: every registered rule that is
+   * not opt-in). Naming an opt-in rule here enables it.
+   */
   rules?: readonly string[];
-  /** Per-code severity override; `'off'` disables the rule. */
+  /** Per-code severity override; `'off'` disables the rule, any other value enables an opt-in rule. */
   severity?: Readonly<Record<string, LintSeverity | 'off'>>;
 }
 

@@ -28,6 +28,10 @@ export type GateCode =
   | 'GATE-CUST-002'
   | 'GATE-CUST-003'
   | 'GATE-CUST-004'
+  // Lint suppressions (meta.suppress / meta.unsuppress)
+  | 'GATE-SUP-001'
+  | 'GATE-SUP-002'
+  | 'GATE-SUP-003'
   // Structural rules of the IDS XSD and the node model
   | 'GATE-STR-001'
   | 'GATE-STR-002'

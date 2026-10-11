@@ -21,7 +21,7 @@ import type {
   IFCVersion,
 } from '../../types.js';
 import type { IDSAuditIssue } from '../types.js';
-import { isValidLexicalForXsType } from '../coherence/index.js';
+import { isValidLexicalForXsType } from '../../constraints/xsd-lexical.js';
 
 // info/author's element declaration is an inline restriction of xs:string,
 // not the named ids:upperCaseName/ids:relations types — so it has no home in

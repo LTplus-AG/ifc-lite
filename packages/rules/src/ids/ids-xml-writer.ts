@@ -118,11 +118,13 @@ function writeConstraint(xml: XmlLines, tag: string, constraint: IDSConstraint):
       break;
     case 'bounds': {
       xml.open('xs:restriction', { base: constraint.base ?? 'xs:double' });
-      const bounds: Array<[string, number | undefined]> = [
-        ['xs:minInclusive', constraint.minInclusive],
-        ['xs:minExclusive', constraint.minExclusive],
-        ['xs:maxInclusive', constraint.maxInclusive],
-        ['xs:maxExclusive', constraint.maxExclusive],
+      // Date, time and duration bounds are kept as their lexemes (#7399).
+      const temporal = constraint.temporalBounds;
+      const bounds: Array<[string, number | string | undefined]> = [
+        ['xs:minInclusive', temporal?.minInclusive ?? constraint.minInclusive],
+        ['xs:minExclusive', temporal?.minExclusive ?? constraint.minExclusive],
+        ['xs:maxInclusive', temporal?.maxInclusive ?? constraint.maxInclusive],
+        ['xs:maxExclusive', temporal?.maxExclusive ?? constraint.maxExclusive],
       ];
       for (const [facet, value] of bounds) {
         if (value !== undefined) xml.empty(facet, { value: String(value) });
@@ -189,7 +191,13 @@ function writeFacet(xml: XmlLines, facet: IDSFacet, cardinality: string | undefi
       // an ancestor's Name, not its class). The XSD requires the related
       // entity, so a partOf without one is refused rather than written invalid.
       if (!facet.entity) throw new Error('writeIdsXml: a partOf facet needs its related entity');
-      xml.open('partOf', { relation: relationToken(facet.relation), cardinality, instructions });
+      // No relation means any part-of relation (#7401), so it stays unwritten;
+      // an unrecognised one is written as read, for the auditor to flag.
+      xml.open('partOf', {
+        relation: facet.anyRelation ? undefined : facet.rawRelation ?? relationToken(facet.relation),
+        cardinality,
+        instructions,
+      });
       writeEntity(xml, facet.entity);
       xml.close('partOf');
       return;

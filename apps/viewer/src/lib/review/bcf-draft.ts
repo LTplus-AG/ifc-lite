@@ -5,8 +5,9 @@
 /**
  * BCF topic drafts from coordination cards (P18, #6922), through the native
  * draft batch model (#6911): one topic per card. Clash findings become exact
- * draft members (framed by the clash BCF bridge); other evidence is listed in
- * the description and its validated elements are selected in the viewpoint.
+ * draft members (framed by the clash BCF bridge); every other finding is kept
+ * as a structured source finding with its native run and membership (#7373),
+ * listed in the description, and its validated elements are selected in the viewpoint.
  * Cards that already reference a BCF topic, or hold only historical evidence,
  * are excluded and reported, never drafted silently.
  */
@@ -15,8 +16,9 @@ import type { BCFPoint, BCFViewpoint } from '@ifc-lite/bcf';
 import type { Clash } from '@ifc-lite/clash';
 import { draftTopic, findingFromClash } from '../bcf-drafts/draft-create';
 import { digestStrings } from '../bcf-drafts/draft-footer';
-import { DRAFT_LIMITS, type DraftBatch, type DraftTopic } from '../bcf-drafts/draft-types';
+import { DRAFT_LIMITS, findingIdentity, type DraftBatch, type DraftFinding, type DraftSourceFinding, type DraftSourceMembership, type DraftTopic } from '../bcf-drafts/draft-types';
 import type { CoordinationCard } from './cards';
+import type { ReviewFinding } from './types';
 
 export type CardDraftExclusion = { cardKey: string; reason: 'has-topic' | 'not-current' };
 export interface CardDraftResult { batch: DraftBatch | null; exclusions: CardDraftExclusion[] }
@@ -47,6 +49,32 @@ function selectionViewpoint(card: CoordinationCard): BCFViewpoint | undefined {
   return selection.length ? { guid: crypto.randomUUID(), components: { selection } } : undefined;
 }
 
+/** A card finding frozen with the exact native run that owned it; nothing is re-derived or assumed current. */
+function sourceFinding(finding: ReviewFinding, membership: DraftSourceMembership): DraftSourceFinding {
+  const { run } = finding;
+  return { id: finding.id, lineage: finding.lineage, source: finding.source, nativeStatus: finding.nativeStatus, membership,
+    run: { id: run.id, source: run.source, temporal: run.temporal, label: run.label, capturedAt: run.capturedAt, complete: run.complete,
+      gaps: run.incomplete.map(gap => gap.code), models: [...run.models] },
+    evidence: structuredClone(finding.evidence) };
+}
+
+/**
+ * Split a card's findings into exact clash members (current clashes still in
+ * the live run) and every other finding with its membership (#7373).
+ */
+function cardMembership(card: CoordinationCard, live: ReadonlyMap<string, Clash>) {
+  const members: DraftFinding[] = [], sources: DraftSourceFinding[] = [];
+  for (const finding of card.findings) {
+    if (finding.lifecycle === 'record') { sources.push(sourceFinding(finding, 'record')); continue; }
+    if (finding.run.temporal !== 'current') { sources.push(sourceFinding(finding, 'historical')); continue; }
+    if (finding.evidence.kind !== 'clash') { sources.push(sourceFinding(finding, 'included')); continue; }
+    const clash = live.get(finding.evidence.clashId);
+    if (clash) members.push(findingFromClash(clash));
+    else sources.push(sourceFinding(finding, 'not-in-live-run'));
+  }
+  return { members, sources };
+}
+
 /**
  * @param liveClashes the current clash run; members are taken from it by id, so
  *   a card whose clash is no longer in the live run cannot carry a stale member.
@@ -59,13 +87,10 @@ export async function draftBatchFromCards(name: string, cards: readonly Coordina
   for (const card of cards) {
     if (card.topics.length) { exclusions.push({ cardKey: card.key, reason: 'has-topic' }); continue; }
     if (card.state !== 'current') { exclusions.push({ cardKey: card.key, reason: 'not-current' }); continue; }
-    const members = card.findings.flatMap(finding => {
-      if (finding.evidence.kind !== 'clash' || finding.run.temporal !== 'current') return [];
-      const clash = byId.get(finding.evidence.clashId);
-      return clash ? [findingFromClash(clash)] : [];
-    });
+    const { members, sources } = cardMembership(card, byId);
     const topic = await draftTopic(cardTitle(card), members, { kind: 'review', card: cardDigest(card) }, options.worldOffset);
     topic.description = cardDescription(card);
+    topic.sourceFindings = sources;
     if (members.length === 0) {
       // No clash member: no severity to map, and no clash bounds to frame.
       topic.topicType = 'Issue';
@@ -77,8 +102,12 @@ export async function draftBatchFromCards(name: string, cards: readonly Coordina
   }
   if (topics.length === 0) return { batch: null, exclusions };
   const at = (options.now?.() ?? new Date()).toISOString();
-  const findingCount = topics.reduce((count, topic) => count + topic.members.length, 0);
+  // Counted and digested per finding: clash members by occurrence, every other finding by its review id and membership.
+  const identities = topics.flatMap(topic => [...topic.members.map(member => `m:${findingIdentity(member)}`),
+    ...(topic.sourceFindings ?? []).map(finding => `s:${finding.id}\u0000${finding.membership}`)]);
+  const findingCount = topics.reduce((count, topic) => count + topic.members.length
+    + (topic.sourceFindings ?? []).filter(finding => finding.membership === 'included').length, 0);
   return { exclusions, batch: { version: 1, id: crypto.randomUUID(), name: name.trim().slice(0, 200) || 'Coordination review', createdAt: at,
-    modifiedAt: at, topics, source: { kind: 'review', runDigest: digestStrings(cards.map(card => card.key)), rules: [], findingCount, capturedAt: at,
+    modifiedAt: at, topics, source: { kind: 'review', runDigest: digestStrings(identities), rules: [], findingCount, capturedAt: at,
       ...(options.worldOffset ? { worldOffset: { ...options.worldOffset } } : {}) } } };
 }

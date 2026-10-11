@@ -29,6 +29,7 @@
  */
 
 import { create } from 'zustand';
+import { sceneSourcesAreCurrent, type SceneSources } from './scene-source-ownership';
 import { useViewerStore, type ViewerState } from '@/store';
 import type { CameraViewpoint, EntityRef, SectionPlane } from '@/store/types';
 import { ownsCurrentVisibility, type OwnedVisibilityRecords, type VisibilityOwnership } from '@/lib/visibility/ownership';
@@ -53,8 +54,8 @@ export interface SelectionCapture {
 export interface SceneApplication {
   id: string;
   title: string;
-  /** Loaded model ids at apply; a different set makes every captured id meaningless. */
-  modelIds: string[];
+  /** Loaded-source ownership; model labels alone cannot identify a restore target. */
+  sources: SceneSources;
   selection?: { prior: SelectionCapture; revision: number };
   isolate?: {
     prior: { isolated: Set<number> | null; ghost: Set<number> | null; records: CapturedRecords };
@@ -81,16 +82,25 @@ export const useSceneSession = create<SceneSessionState>(() => ({ active: null, 
 
 let unsubscribe: (() => void) | null = null;
 
-/** Drop the isolation claim as soon as the channel no longer shows it (see module doc). */
-function watchClaim(): void {
+/** Revoke replaced sources and isolation claims as soon as their native ownership changes. */
+function watchApplication(): void {
   unsubscribe?.();
   let seen: Set<number> | null = useViewerStore.getState().isolatedEntities;
+  let seenModels = useViewerStore.getState().models;
+  let seenStore = useViewerStore.getState().ifcDataStore;
+  let seenGeometry = useViewerStore.getState().geometryResult;
   unsubscribe = useViewerStore.subscribe(state => {
+    const application = useSceneSession.getState().active;
+    if (!application) { unsubscribe?.(); unsubscribe = null; return; }
+    if (state.models !== seenModels || state.ifcDataStore !== seenStore || state.geometryResult !== seenGeometry) {
+      sceneSourcesAreCurrent(application.sources, state);
+      seenModels = state.models; seenStore = state.ifcDataStore; seenGeometry = state.geometryResult;
+    }
     // Channels are replaced wholesale, never mutated: an unchanged reference cannot have changed content.
     if (state.isolatedEntities === seen) return;
     seen = state.isolatedEntities;
     const active = useSceneSession.getState().active;
-    if (!active?.isolate?.claim) { unsubscribe?.(); unsubscribe = null; return; }
+    if (!active?.isolate?.claim) return;
     if (!ownsCurrentVisibility(state, active.isolate.claim)) {
       useSceneSession.setState({ active: { ...active, isolate: { ...active.isolate, claim: null } } });
     }
@@ -99,7 +109,7 @@ function watchClaim(): void {
 
 export function setActiveApplication(application: SceneApplication | null, lastRestore: RestoreReport | null = null): void {
   useSceneSession.setState({ active: application, lastRestore });
-  if (application?.isolate?.claim) watchClaim();
+  if (application) watchApplication();
   else { unsubscribe?.(); unsubscribe = null; }
 }
 

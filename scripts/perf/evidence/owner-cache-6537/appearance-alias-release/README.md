@@ -1,0 +1,7 @@
+# Registered appearance-buffer release qualification (#6537 / PR #6584)
+
+The current-main release path retained appearance-only aliases when spread metadata objects or distinct typed-array views shared the source allocation. The fix compares backing allocations during registration and release, then clears only shared fields. Independent geometry and provenance remain usable. An explicit empty corner-map fence prevents fallback identity provenance after release. Allocation sets are temporary; retained release metadata holds only assigned empty fields and scalar counts.
+
+The corrected baseline failed two real assertions. The expanded four-control inverse failed all four assertions after restoring the old registration/release modules. The restored root Turbo suite passed 89 controls, including actual canonical primary/federated Bonsai IFC loading and collection of original backing allocations while wrappers stay live. Full root typecheck covered 3714 test files in 62 packages. Exact sources, raw logs and independent reviews are retained here; earlier qualification remains historical in the sibling directory.
+
+The split tests explicitly register derived fragments with canonical `carryReleasedMesh`; they prove registered-copy behavior, not automatic Scene fragment registration. The corner test calls actual `expandAppearanceCorners`. No speedup or OS peak-memory improvement is claimed. The malformed initial command is retained and excluded, and the initial 24-control run predates the strengthened backing-buffer GC oracle.

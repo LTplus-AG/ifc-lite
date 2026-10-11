@@ -8,11 +8,12 @@
  * (`ClashSavedReportsDialogContent`).
  */
 
-import { useState, type ComponentType } from 'react';
+import { useCallback, useEffect, useRef, useState, type ComponentType } from 'react';
 import { Save } from 'lucide-react';
 import { IconButton } from '@/components/ui/icon-button';
 import { toast } from '@/components/ui/toast';
 import { useTranslation } from '@/i18n';
+import { useLibraryFocus } from '@/lib/libraries/library-focus';
 
 type DialogContent = ComponentType<{ open: boolean; onOpenChange: (open: boolean) => void }>;
 
@@ -20,7 +21,9 @@ export function ClashSavedReportsDialog() {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const [Content, setContent] = useState<DialogContent | null>(null);
-  const show = (): void => {
+  const requested = useLibraryFocus(state => state.target);
+  const consumed = useRef<typeof requested>(null);
+  const show = useCallback((): void => {
     setOpen(true);
     if (Content) return;
     import('./ClashSavedReportsDialogContent')
@@ -30,7 +33,12 @@ export function ClashSavedReportsDialog() {
         setOpen(false);
         toast.error(t('viewerShell.chunkError.loadFailed', { label: t('clashTools.savedReports.triggerTooltip') }));
       });
-  };
+  }, [Content, t]);
+  useEffect(() => {
+    if (requested?.kind !== 'clash-report' || requested === consumed.current) return;
+    consumed.current = requested;
+    show();
+  }, [requested, show]);
   return (
     <>
       <IconButton label={t('clashTools.savedReports.triggerTooltip')} className="h-7 w-7" onClick={show}>

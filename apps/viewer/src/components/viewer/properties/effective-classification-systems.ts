@@ -24,6 +24,7 @@ export function hasClassificationEdits(
   // Effective changes are current; append-only history would incorrectly
   // report an unavailable edit after undo restored the source value.
   return view.getEffectiveChanges().some(change => {
+    // @raw-entity-enumeration-ok Immutable indexed kind identifies a current effective edit when columns are sparse; current classification membership uses the effective reader.
     const types = [store.entities.getTypeName(change.entityId), store.entityIndex.byId.get(change.entityId)?.type, view.getNewEntity(change.entityId)?.type, view.getEntityTypeMutation(change.entityId)?.newType];
     return types.some(type => type !== undefined && CLASSIFICATION_TYPES.has(type.toUpperCase()));
   });

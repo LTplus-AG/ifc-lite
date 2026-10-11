@@ -87,6 +87,7 @@ export async function streamAnthropicChat(
     const maxOutputTokens = outputTokenLimit(options.maxOutputTokens, ANTHROPIC_OUTPUT_TOKEN_CEILING);
     if (signal?.aborted) return;
     const client = createAnthropicClient(credentials);
+    options.onOutputFormat?.(options.outputSchema ? 'json-schema' : 'text');
     const stream = client.messages.stream({
       model,
       // Opus 5.5 (the default BYOK model) runs adaptive thinking when `thinking`
@@ -95,6 +96,7 @@ export async function streamAnthropicChat(
       // answer with nothing to show for the tokens. Keep that default unless
       // the caller explicitly chooses a smaller budget.
       max_tokens: maxOutputTokens,
+      ...(options.outputSchema ? { output_config: { format: { type: 'json_schema' as const, schema: { ...options.outputSchema.schema } } } } : {}),
       ...(sendSamplingParams ? { temperature: 0.3 } : {}),
       // Wrap the system prompt in an ephemeral cache block when it's
       // long enough to be worth caching (Anthropic's minimum is ~1024
@@ -177,6 +179,8 @@ async function streamOpenAiChatCompletions(
   // Mirror the Anthropic path.
   const sendSamplingParams = sendsSamplingParams(model);
 
+  options.onOutputFormat?.(options.outputSchema ? 'json-schema' : 'text');
+
   const { response, cleanup } = await openAiFetch(
     'https://api.openai.com/v1/chat/completions',
     {
@@ -185,6 +189,7 @@ async function streamOpenAiChatCompletions(
       stream: true,
       ...(sendSamplingParams ? { temperature: 0.3 } : {}),
       max_completion_tokens: options.maxOutputTokens,
+      ...(options.outputSchema ? { response_format: { type: 'json_schema', json_schema: { ...options.outputSchema, strict: true } } } : {}),
       // Without this OpenAI streams no usage at all; with it the last chunk carries it.
       stream_options: { include_usage: true },
     },
@@ -232,6 +237,8 @@ async function streamOpenAiResponses(
     input.push({ role: m.role, content: m.content });
   }
 
+  options.onOutputFormat?.(options.outputSchema ? 'json-schema' : 'text');
+
   const { response, cleanup } = await openAiFetch(
     'https://api.openai.com/v1/responses',
     {
@@ -239,6 +246,7 @@ async function streamOpenAiResponses(
       input,
       stream: true,
       max_output_tokens: options.maxOutputTokens,
+      ...(options.outputSchema ? { text: { format: { type: 'json_schema', ...options.outputSchema, strict: true } } } : {}),
     },
     apiKey,
     signal,

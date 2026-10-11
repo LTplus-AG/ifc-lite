@@ -1,6 +1,6 @@
 {
   "name": "@ifc-lite/rules",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "description": "Filter-rule vocabulary, evaluator and .rules.json information-validation engine for IFC-Lite",
   "type": "module",
   "main": "./dist/index.js",
@@ -27,9 +27,9 @@
     "@ifc-lite/regex-guard": "workspace:*"
   },
   "devDependencies": {
-    "@types/node": "^26.6.2",
+    "@types/node": "^26.6.4",
     "typescript": "^6.0.3",
-    "vitest": "^5.0.2"
+    "vitest": "^5.0.3"
   },
   "license": "MPL-2.0",
   "author": "Louis True",

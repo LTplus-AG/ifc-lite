@@ -13,7 +13,7 @@ import { outputTokenLimit, PROXY_OUTPUT_TOKEN_CEILING } from '../../../../../sha
 import { readSseStream } from './sse-reader.js';
 export { drainSseBuffer, readSseStream } from './sse-reader.js';
 import { buildCacheableSystem, logCacheHit } from './prompt-cache.js';
-import { chatCompletionsUsage, type TokenUsage } from '@ifc-lite/ai';
+import { chatCompletionsUsage, type TokenUsage, type JsonResponseSchema, type OutputFormat } from '@ifc-lite/ai';
 import { parseUsageFromHeaders } from './usage-quota.js';
 /** A text content part in a multimodal message */
 export interface TextContentPart {
@@ -63,6 +63,8 @@ export interface StreamOptions {
   messages: StreamMessage[];
   /** System prompt */
   system?: string;
+  outputSchema?: JsonResponseSchema;
+  onOutputFormat?: (format: OutputFormat) => void;
   /** Positive output token ceiling, including reasoning; does not guarantee visible text. */
   maxOutputTokens?: number;
   /** AbortSignal for cancellation */
@@ -88,6 +90,9 @@ const STREAM_REQUEST_TIMEOUT_MS = 45_000;
  * Parses SSE format (data: {...}\n\n).
  */
 export async function streamChat(options: StreamOptions): Promise<void> {
+  // The hosted proxy has no advertised upstream schema contract. Keep its
+  // native JSON parsing explicit instead of claiming provider enforcement.
+  options.onOutputFormat?.('text');
   const { proxyUrl, model, messages, system, signal, onChunk, onComplete, onError, onUsageInfo, onFinishReason, onTokenUsage } = options;
   const isDev = Boolean(import.meta.env.DEV);
 

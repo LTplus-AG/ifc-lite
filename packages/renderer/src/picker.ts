@@ -18,7 +18,8 @@ import {
   writeInstancedPickUniforms,
   writePickUniforms,
 } from './picker-rte-uniforms.js';
-import { isReadbackAbort, releaseReadbacks } from './picker-readbacks.js';
+import { isReadbackAbort, PickerReadbackOwner } from './picker-readbacks.js';
+import { PickDepthSample } from './picker-depth-sample.js';
 import { relativeToEyeWgsl } from './shaders/relative-to-eye.wgsl.js';
 import { drawInstanceRuns, uploadInstancedRteDeltas } from './instanced-rte.js';
 import { INSTANCED_RTE_DELTA_SLOT, INSTANCED_VERTEX_BUFFERS } from './instanced-vertex-layout.js';
@@ -40,6 +41,7 @@ export class Picker {
   private instancedPickBindGroup: GPUBindGroup | null = null;
   private instancedUniformBuffer: GPUBuffer;
   private depthTexture: GPUTexture;
+  private depthSample: PickDepthSample;
   private colorTexture: GPUTexture;
   private uniformBuffer: GPUBuffer;
   private expressIdBuffer: GPUBuffer;
@@ -47,6 +49,7 @@ export class Picker {
   private maxMeshes: number = 100000; // Support up to 100K meshes (was 10K)
   /** Set by `destroy()`; makes it idempotent and turns `pick`/`pickRect` into no-ops. */
   private destroyed = false;
+  private readonly readbacks = new PickerReadbackOwner();
   private pointPicker: PointPicker | null = null;
   // Flat meshes each bind a dynamic 256-byte slot: RTE view projection +
   // model linear transform + clip state + split drawable origin. A single
@@ -59,6 +62,7 @@ export class Picker {
   constructor(device: WebGPUDevice, width: number = 1, height: number = 1) {
     this.webgpuDevice = device;
     this.device = device.getDevice();
+    this.depthSample = new PickDepthSample(this.device);
 
     // Create textures for picking
     this.colorTexture = this.device.createTexture({
@@ -70,10 +74,7 @@ export class Picker {
     this.depthTexture = this.device.createTexture({
       size: { width, height },
       format: 'depth32float',
-      // COPY_SRC so we can read the depth texel at the click position
-      // back to the CPU and unproject to recover the world-space hit
-      // point for hover tooltips / measurements.
-      usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.COPY_SRC,
+      usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
     });
 
     // One dynamically-offset uniform slot per flat mesh. The buffer carries
@@ -352,11 +353,7 @@ export class Picker {
       width, height, meshes, viewProj, pointNodes, pointSizing, instancedTemplates, clip, pointRteSnapshot,
     );
 
-    // Clamp the texel origin to the texture bounds. Math.floor(x/y) can
-    // be -1 or equal to width/height on border clicks (and on
-    // pointer-captured drags that leave the canvas), and either makes
-    // copyTextureToBuffer reject the submit. pickRect already guards
-    // this path; pick() needs the same.
+    // Border clicks and pointer-captured drags use the same clamped ID/depth texel.
     const sampleX = Math.max(0, Math.min(width - 1, Math.floor(x)));
     const sampleY = Math.max(0, Math.min(height - 1, Math.floor(y)));
 
@@ -367,71 +364,43 @@ export class Picker {
       size: BYTES_PER_ROW,
       usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
     });
-    encoder.copyTextureToBuffer(
-      {
-        texture: this.colorTexture,
-        origin: { x: sampleX, y: sampleY, z: 0 },
-      },
-      { buffer: readBuffer, bytesPerRow: BYTES_PER_ROW, rowsPerImage: 1 },
-      { width: 1, height: 1 },
-    );
 
-    // Depth readback for click-to-world unprojection. WebGPU forbids
-    // partial copies from depth/stencil-format textures — the copy must
-    // cover the entire subresource. So we copy the whole depth image
-    // and index into the buffer client-side after mapping. depth32float
-    // = 4 bytes per texel; bytesPerRow must still be a multiple of 256.
-    const depthBytesPerRow = Math.ceil((width * 4) / 256) * 256;
-    const depthBuffer = this.device.createBuffer({
-      size: depthBytesPerRow * height,
-      usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
-    });
-    encoder.copyTextureToBuffer(
-      {
-        texture: this.depthTexture,
-        origin: { x: 0, y: 0, z: 0 },
-        aspect: 'depth-only',
-      },
-      { buffer: depthBuffer, bytesPerRow: depthBytesPerRow, rowsPerImage: height },
-      { width, height },
-    );
-
-    this.device.queue.submit([encoder.finish()]);
-    // GPUMapMode.READ = 1 (WebGPU spec)
+    // The compute sample and ID copy share the render submission and staging
+    // buffer. Each pick owns its coordinates and output until mapping finishes.
+    this.readbacks.track(readBuffer);
+    let depthResources: readonly GPUBuffer[] = [];
+    let sample: number;
+    let depth: number;
     try {
-      await Promise.all([readBuffer.mapAsync(1), depthBuffer.mapAsync(1)]);
+      encoder.copyTextureToBuffer(
+        {
+          texture: this.colorTexture,
+          origin: { x: sampleX, y: sampleY, z: 0 },
+        },
+        { buffer: readBuffer, bytesPerRow: BYTES_PER_ROW, rowsPerImage: 1 },
+        { width: 1, height: 1 },
+      );
+      depthResources = this.depthSample.encode(
+        encoder, this.depthTexture, sampleX, sampleY, readBuffer, 4,
+      );
+      this.readbacks.track(...depthResources);
+      this.device.queue.submit([encoder.finish()]);
+      await readBuffer.mapAsync(GPUMapMode.READ);
+      if (this.destroyed) return null;
+      const bytes = readBuffer.getMappedRange();
+      sample = new Uint32Array(bytes, 0, 1)[0];
+      depth = new Float32Array(bytes, 4, 1)[0];
     } catch (err) {
-      // Free BOTH readbacks on every failure path, not just the aborted one.
-      // `Promise.all` rejects the moment one map fails, so the other may have
-      // succeeded and still be holding its mapped GPU allocation — rethrowing
-      // without this leaks it for the life of the device.
-      releaseReadbacks(readBuffer, depthBuffer);
-      // The device died between submit and readback — see isReadbackAbort.
       if (!isReadbackAbort(err)) throw err;
       return null;
+    } finally {
+      this.readbacks.release(readBuffer, ...depthResources);
     }
-    const sample = new Uint32Array(readBuffer.getMappedRange())[0];
-    const depthBytes = new Uint8Array(depthBuffer.getMappedRange());
-    const depthOffset = sampleY * depthBytesPerRow + sampleX * 4;
-    const depth = new Float32Array(
-      depthBytes.buffer,
-      depthBytes.byteOffset + depthOffset,
-      1,
-    )[0];
-    readBuffer.unmap();
-    depthBuffer.unmap();
-    readBuffer.destroy();
-    depthBuffer.destroy();
 
     const decoded = decodePickSample(sample);
     if (decoded.kind === 'none') return null;
 
-    // Unproject (x, y, depth) → world space. Reverse-Z keeps depth in
-    // [0, 1] (1 = near, 0 = far) — same NDC convention as the camera
-    // raycaster, so MathUtils.transformPoint with the inverse viewProj
-    // gives the world hit position directly.
-    // Flat meshes, points and instanced occurrences all rasterise in the
-    // captured RTE frame. Decode depth with that same immutable projection.
+    // Decode reverse-Z depth with the immutable RTE projection used to rasterise.
     const rteDecoded = decoded.kind === 'mesh' || decoded.kind === 'point' || decoded.kind === 'instanced';
     const projectedWorld = unprojectPickSample(
       rteDecoded && pointRteSnapshot ? pointRteSnapshot.getViewProjection().m : viewProj,
@@ -504,53 +473,51 @@ export class Picker {
       size: rowStride * rectH,
       usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
     });
-    encoder.copyTextureToBuffer(
-      {
-        texture: this.colorTexture,
-        origin: { x: lx, y: ly, z: 0 },
-      },
-      { buffer: readBuffer, bytesPerRow: rowStride, rowsPerImage: rectH },
-      { width: rectW, height: rectH },
-    );
-    this.device.queue.submit([encoder.finish()]);
+    this.readbacks.track(readBuffer);
     try {
+      encoder.copyTextureToBuffer(
+        {
+          texture: this.colorTexture,
+          origin: { x: lx, y: ly, z: 0 },
+        },
+        { buffer: readBuffer, bytesPerRow: rowStride, rowsPerImage: rectH },
+        { width: rectW, height: rectH },
+      );
+      this.device.queue.submit([encoder.finish()]);
       await readBuffer.mapAsync(1);
+      if (this.destroyed) return new Set();
+      const view = new Uint32Array(readBuffer.getMappedRange());
+      const ids = new Set<number>();
+      const stridePx = rowStride / 4;
+      for (let y = 0; y < rectH; y++) {
+        const row = y * stridePx;
+        for (let x = 0; x < rectW; x++) {
+          const sample = view[row + x];
+          if (sample === 0) continue;
+          // Same three-way decode single-click uses — including the instanced
+          // case (the shader writes the express id straight into the sample) and
+          // the mesh case's (index + 1) offset. Both live in pick-resolve.ts and
+          // must not be re-implemented here.
+          //
+          // The bare id, not a PickResult: this returns a Set<expressId>, which
+          // has no room for a per-item result — a marquee that hits three panes
+          // of one curtain wall is one entry — and allocating a result per
+          // non-zero texel just to read `.expressId` off it dominated the rect.
+          // Single-click pick is the per-item surface.
+          //
+          // modelIndex is dropped for the same reason, which is why a point
+          // sample's owning asset (a linear scan, once per texel) is not resolved.
+          const expressId = resolvePickedExpressId(decodePickSample(sample), meshes);
+          if (expressId !== null) ids.add(expressId);
+        }
+      }
+      return ids;
     } catch (err) {
-      // Released on every failure path, not just the aborted one — a real
-      // fault must not leak the readback's GPU allocation on its way out.
-      releaseReadbacks(readBuffer);
-      // The device died between submit and readback — see isReadbackAbort.
       if (!isReadbackAbort(err)) throw err;
       return new Set();
+    } finally {
+      this.readbacks.release(readBuffer);
     }
-    const view = new Uint32Array(readBuffer.getMappedRange());
-    const ids = new Set<number>();
-    const stridePx = rowStride / 4;
-    for (let y = 0; y < rectH; y++) {
-      const row = y * stridePx;
-      for (let x = 0; x < rectW; x++) {
-        const sample = view[row + x];
-        if (sample === 0) continue;
-        // Same three-way decode single-click uses — including the instanced
-        // case (the shader writes the express id straight into the sample) and
-        // the mesh case's (index + 1) offset. Both live in pick-resolve.ts and
-        // must not be re-implemented here.
-        //
-        // The bare id, not a PickResult: this returns a Set<expressId>, which
-        // has no room for a per-item result — a marquee that hits three panes
-        // of one curtain wall is one entry — and allocating a result per
-        // non-zero texel just to read `.expressId` off it dominated the rect.
-        // Single-click pick is the per-item surface.
-        //
-        // modelIndex is dropped for the same reason, which is why a point
-        // sample's owning asset (a linear scan, once per texel) is not resolved.
-        const expressId = resolvePickedExpressId(decodePickSample(sample), meshes);
-        if (expressId !== null) ids.add(expressId);
-      }
-    }
-    readBuffer.unmap();
-    readBuffer.destroy();
-    return ids;
   }
 
   /**
@@ -581,10 +548,7 @@ export class Picker {
       this.depthTexture = this.device.createTexture({
         size: { width, height },
         format: 'depth32float',
-        // COPY_SRC so single-pixel pick can read depth back for the
-        // hover-XYZ unprojection. Rect pick doesn't sample depth but
-        // costs nothing to keep the flag set.
-        usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.COPY_SRC,
+        usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
       });
     }
     // WebGPU texture views can't be reused after submit, so build fresh ones.
@@ -730,6 +694,7 @@ export class Picker {
   destroy(): void {
     if (this.destroyed) return;
     this.destroyed = true;
+    this.readbacks.destroy();
     this.colorTexture.destroy();
     this.depthTexture.destroy();
     this.uniformBuffer.destroy();

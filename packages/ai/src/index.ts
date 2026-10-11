@@ -10,6 +10,13 @@ export type { AiTransport, TransportCall, ModelRequest, RequestOutcome, RequestH
 
 export type { UsageReceipt, RequestOutcomeKind } from './receipt.js';
 
+export { runToolTurn } from './tool-turn.js';
+export type {
+  ToolSpec, ContentBlock, ToolResult, ToolTurnMessage, ToolTurnStopReason, ToolTurn, ToolTurnEffort,
+  ToolTurnCall, ToolTurnTransport, ToolTurnRequest, ToolTurnOutcome,
+} from './tool-turn.js';
+export type { JsonResponseSchema, OutputFormat } from './response-schema.js';
+
 export { chatCompletionsUsage, responsesUsage, anthropicUsage } from './usage.js';
 export type { TokenUsage } from './usage.js';
 

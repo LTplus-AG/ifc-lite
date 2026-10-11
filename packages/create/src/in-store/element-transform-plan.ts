@@ -67,7 +67,7 @@ export interface TransformPlanInput {
 }
 
 /** The effective IFC class (UPPERCASE): retypes, overlay creations, then the source index — which also knows non-products. */
-function typeOf(input: TransformPlanInput, id: number): string {
+function typeOf(input: Pick<TransformPlanInput, 'dataStore' | 'view'>, id: number): string {
   const { dataStore, view } = input;
   const edited = view.getEntityTypeMutation(id)?.newType ?? view.getNewEntity(id)?.type;
   if (edited) return edited.toUpperCase();
@@ -98,7 +98,7 @@ function movedSet(input: TransformPlanInput): Map<number, number | null> {
 }
 
 /** A product's `ObjectPlacement` when it is an `IfcLocalPlacement`, else null. */
-function placementOf(input: TransformPlanInput, productId: number): number | null {
+function placementOf(input: Pick<TransformPlanInput, 'dataStore' | 'view'>, productId: number): number | null {
   const placement = objectPlacementOf(input, productId);
   return placement !== null && typeOf(input, placement) === 'IFCLOCALPLACEMENT' ? placement : null;
 }
@@ -126,21 +126,31 @@ export function planElementTransform(input: TransformPlanInput): TransformPlan {
       carried.push(expressId);
       continue;
     }
-    if (storeyId === null) {
-      refused.push({ expressId, reason: 'noStorey' });
-      continue;
-    }
-    const storeyPlacement = objectPlacementOf(reader, storeyId);
-    const parentId = ancestors[0] ?? null;
-    const parent = storeyPlacement === null || parentId === null
-      ? null
-      : parentId === storeyPlacement ? IDENTITY_FRAME : frameInStorey(reader, parentId, storeyPlacement);
-    const local = placementOrigin(reader, placement);
-    if (!parent || !local) {
-      refused.push({ expressId, reason: 'offStorey' });
-      continue;
-    }
-    roots.push({ expressId, storeyId, parent, origin: applyFrame(parent, local), upright: uprightFrame(reader, placement) !== null });
+    const current = readElementTransformPlacement(input, expressId, storeyId);
+    if ('reason' in current) refused.push(current);
+    else roots.push(current);
   }
   return { roots, carried, refused };
+}
+
+/** Current native placement, independent of which other selected roots carry it.
+ * Evidence can pin a carried member without treating it as a separately moved root. */
+export function readElementTransformPlacement(
+  input: Pick<TransformPlanInput, 'dataStore' | 'view'>,
+  expressId: number,
+  storeyId: number | null,
+): TransformRoot | TransformRefusal {
+  const reader: PlacementReader = input;
+  const placement = placementOf(input, expressId);
+  if (placement === null) return { expressId, reason: 'noPlacement' };
+  if (storeyId === null) return { expressId, reason: 'noStorey' };
+  const ancestors = placementAncestors(reader, placement);
+  const storeyPlacement = objectPlacementOf(reader, storeyId);
+  const parentId = ancestors[0] ?? null;
+  const parent = storeyPlacement === null || parentId === null
+    ? null
+    : parentId === storeyPlacement ? IDENTITY_FRAME : frameInStorey(reader, parentId, storeyPlacement);
+  const local = placementOrigin(reader, placement);
+  if (!parent || !local) return { expressId, reason: 'offStorey' };
+  return { expressId, storeyId, parent, origin: applyFrame(parent, local), upright: uprightFrame(reader, placement) !== null };
 }

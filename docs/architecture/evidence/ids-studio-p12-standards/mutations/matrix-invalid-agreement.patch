@@ -1,0 +1,13 @@
+diff --git b/scripts/ids-conformance/lib/matrix.mjs a/scripts/ids-conformance/lib/matrix.mjs
+index df6207813..ebded719d 100644
+--- b/scripts/ids-conformance/lib/matrix.mjs
++++ a/scripts/ids-conformance/lib/matrix.mjs
+@@ -88,7 +88,7 @@ export async function runCell(c, adapter) {
+     const answer = await question.call(adapter, { id: c.id, idsPath: c.idsPath, ifcPath: c.ifcPath });
+     const { verdict, detail } = typeof answer === 'string' ? { verdict: answer, detail: undefined } : answer;
+     // An audit answers 'valid'/'invalid'; only `invalid-` cases are audited.
+-    const agrees = c.expected === 'invalid' ? verdict !== undefined : verdict === c.expected;
++    const agrees = c.expected === 'invalid' ? verdict === 'invalid' : verdict === c.expected;
+     return detail === undefined ? { verdict, agrees } : { verdict, agrees, detail };
+   } catch (err) {
+     if (err instanceof UnsupportedCase) return { verdict: 'n/a', agrees: null, detail: err.message };

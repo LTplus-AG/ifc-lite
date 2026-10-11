@@ -1,0 +1,18 @@
+{
+  "head": "6e15e64faed1bad97aba12e60e907324cfa1d701",
+  "frozenMain": "eec7de970a21a12ef4d09eaed382f45f7210772a",
+  "rustTree": "1a1acc4260011c591fd8ce3c5387bb7c10b42f20",
+  "clean": true,
+  "sourceRuntimePins": {
+    "packages/parser/src/material-definitions.ts": "2cd9d9526b3cad0ba895905b91ed3ff39449d6c5c0c968b9e5f20ec7b5c90487",
+    "packages/parser/test/on-demand-classification-material.test.ts": "a227a19286a54587ebc07588488f2ebb1770898265ebcd5f77b80edaf2ef1a0a",
+    "apps/viewer/src/lib/assistant/adapters/selection-materials.test.tsx": "d49b0983d1a40fffb2a248b283a9d6ff4b9fd1a66a6f125af2e07cfc88cb420c",
+    "packages/wasm/pkg/ifc-lite_bg.wasm": "8b74229bbd4a991cbf1f32a8d52add195c5fdd333921f998b1c18eb713185143",
+    "packages/wasm/pkg/ifc-lite.js": "0a281479eb65141ae75aeef987d331d44439741a0cae855f122e53e800311a39",
+    "packages/wasm/pkg/ifc-lite.d.ts": "54c9d0a52eb515e517d76726fefe5f6a63e553a81c1b10331a597965d14620f6",
+    "pnpm-lock.yaml": "3baf933ea880bd57d30dc2416184777af7488835c2a7eeff94ff84e6841eb4e4"
+  },
+  "memAvailableKiB": 42002344,
+  "canonicalProductionParserExactMain": true,
+  "duplicateChangesetAbsent": true
+}

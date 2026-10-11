@@ -97,6 +97,37 @@ Primary metrics captured in the current benchmark log format:
 - **entityScanMs**: Fast entity scanning time
 - **dataModelParseMs**: Data model parse time
 
+Each result JSON also carries two #6993 blocks:
+
+- **`gpuHealth`**: whether the sample lost its WebGPU device. `contaminated`
+  is true when the renderer's device was lost (`gpu.deviceLost`, or the
+  renderer's `[WebGPU] Device lost` line with any reason but `destroyed`) or
+  replaced by its own renderer (`gpu.deviceReplacements`, the recovery path
+  that re-uploads the scene; two live renderers are not a replacement). The counters are session totals, so a loss before the load window
+  opens counts too. `benchmark:check` excludes a contaminated sample instead
+  of comparing it and says so at the top of the report; when every model is
+  contaminated it reports "No verdict" and exits 0, because a runner's lost
+  GPU is not a harness fault. `update-benchmark-baseline.mjs` never records
+  one (all contaminated: every previous entry is kept, exit 0), and the
+  cold A/B (`scripts/perf/browser-cold-ab.mts`) records it as a failed sample.
+  Uncaptured errors and Dawn `Instance reference no longer exists` lines are
+  kept as evidence only: on WSL SwiftShader every sample logs one from a
+  pipeline probe on an already-destroyed device while the renderer's device
+  keeps rendering.
+- **`interactionCommits`**: React commits caused by one hierarchy-row select,
+  one pointer move onto the viewport centre and opening the Lens panel, each
+  measured from a quiet page to the next quiet point after every timing has
+  been taken. These counts repeat exactly between runs; per-load
+  `react.commits` does not.
+
+The loss is frequent on software GPUs. In the 20 main-branch Benchmark runs
+before 2026-10-11 on GitHub's ubuntu SwiftShader runner, FZK-Haus lost its
+device in 11, Snowdon in 15, and both in 8, so until #7164's root cause is
+fixed each fixture is compared in only about half the runs. Locally on WSL
+SwiftShader, FZK lost it in 7 of 9 fresh-page loads and Snowdon in none of 4;
+refusing WebGL in the page (FZK shows a WebGL minimap) still lost it in 1 of
+4, so the minimap is not the whole cause.
+
 ## Geometry Correctness Validation
 
 The benchmark suite includes mesh count validation to detect geometry regressions:

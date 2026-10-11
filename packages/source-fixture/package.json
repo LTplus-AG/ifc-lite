@@ -1,6 +1,6 @@
 {
   "name": "@ifc-lite/source-fixture",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "private": true,
   "description": "In-memory FileSourceProvider fixture and conformance test kit for ifc-lite file-source plugins",
   "type": "module",
@@ -29,7 +29,7 @@
   },
   "devDependencies": {
     "typescript": "^6.0.3",
-    "vitest": "^5.0.2"
+    "vitest": "^5.0.3"
   },
   "license": "MPL-2.0",
   "author": "Louis True",

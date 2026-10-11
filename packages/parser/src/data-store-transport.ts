@@ -195,6 +195,7 @@ export interface DataStoreTransport {
   entityCount: number;
   parseTime: number;
   lengthUnitScale?: number;
+  lengthUnitSource?: IfcDataStore['lengthUnitSource'];
 
   entityIndex: {
     byId: CompactEntityIndexColumns;
@@ -359,6 +360,7 @@ export function toTransport(
     entityCount: store.entityCount,
     parseTime: store.parseTime,
     lengthUnitScale: store.lengthUnitScale,
+    lengthUnitSource: store.lengthUnitSource,
     georeferencing: store.georeferencing,
 
     entityIndex: indexOverride ?? {
@@ -447,6 +449,7 @@ export function fromTransport(
     entityCount: payload.entityCount,
     parseTime: payload.parseTime,
     lengthUnitScale: payload.lengthUnitScale,
+    lengthUnitSource: payload.lengthUnitSource,
     georeferencing: payload.georeferencing,
 
     source: asSourceBytes(source),

@@ -33,6 +33,14 @@ test('every workspace panel is either discussable through an adapter or an expla
   }
 });
 
+test('IDS Studio is an explained boundary that points to Validation, not a mapped source', () => {
+  assert.equal(ADAPTERS.some(adapter => adapter.panelIds.includes('idsStudio')), false, 'no adapter reads IDS Studio authoring state');
+  const reason = UNSUPPORTED_PANELS.idsStudio;
+  assert.ok(reason, 'idsStudio is listed as a boundary');
+  assert.match(resolveEnglish(reason), /Validation/, 'the boundary points to where IDS results are discussed');
+  assert.ok(ADAPTERS.some(adapter => adapter.panelIds.includes('validation')), 'the Validation panel it points to is a mapped source');
+});
+
 test('adapter copy resolves through the English catalogue', () => {
   for (const adapter of ADAPTERS) {
     for (const key of [adapter.titleKey, adapter.descriptionKey, adapter.rowMeaningKey, adapter.unavailableKey, ...adapter.suggestionKeys]) {

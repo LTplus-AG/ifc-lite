@@ -1,0 +1,4 @@
+exit: 1
+--- stdout
+<fixtures>/doors-typo.ids: not formatted
+--- stderr

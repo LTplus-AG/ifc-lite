@@ -1,0 +1,18 @@
+{
+  "status": "VERIFIED_ARCHIVE_AND_CURRENT_SOURCE",
+  "sourceHead": "9a281d33ce2691931b24eaa28de0a6c358acdb63",
+  "qualificationSHA256": "f987bb2ad3c6b786a436e0e6d64ea3ccfd9d40b5fd78a0d55bf8761f2f8c0c4b",
+  "rawGzipPairs": 17,
+  "sourcePinsVerified": 4,
+  "controls": {
+    "pass": 104,
+    "skip": 0
+  },
+  "fullRootTypecheckedTestFiles": 3737,
+  "lightGates": 8,
+  "scope": "Registered alias release/weak historical ownership functional qualification only. No automatic Scene-fragment alias registration, OS resident memory, native performance, speed or issue closure claim. Prior104/full3730 remains historical; current104/full3737 are pinned9a source.",
+  "actualTestProcessRuntimeRowsVerified": 20,
+  "pairedStartExitPids": 10,
+  "actualBonsaiGeometryDigest": "1d39b0af33fb671fda1b6602d55266726ed65f30ec66ab76c37d75f1f894c513",
+  "actualGcControl": "passed"
+}

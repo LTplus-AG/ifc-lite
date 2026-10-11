@@ -1,0 +1,164 @@
+{
+  "status": "QUALIFIED FUNCTIONAL FOLLOWUP; publication/freshreview pending",
+  "baseHead": "42cb3751d93fa40d2da7cffa8cd9a6dca04b09f6",
+  "changedSourceSHA256": "14080c060ddb8224faeb83431d152fd124b280cdd2914fd910c43800417b259e",
+  "controls": {
+    "command": "TEST_PATTERN=useFederatedGeometry.streaming.test pnpm test --filter=@ifc-lite/viewer --root-turbo-json=<archived temporary config>",
+    "pass": 18,
+    "fail": 0,
+    "skip": 0,
+    "buildTasksCached": 53,
+    "tasksTotal": 54,
+    "exitCode": 0
+  },
+  "temporaryConfigScope": "Only test.passThroughEnv=[TEST_PATTERN]; exact root dependency/build graph unchanged. Initial strict environment stripped the filter, began fullsuite, was retired by exact owned process identity and ended143; preserved, not acceptance. Loose-env dry would rebuild19 dependencies, so was never run.",
+  "gates": [
+    {
+      "command": [
+        "node",
+        "scripts/check-module-size.mjs"
+      ],
+      "exitCode": 0,
+      "log": "/home/louistrue/.t3/artifacts/6584-coderabbit-followup-20261008/gate-0.log"
+    },
+    {
+      "command": [
+        "node",
+        "scripts/check-test-wiring.mjs"
+      ],
+      "exitCode": 0,
+      "log": "/home/louistrue/.t3/artifacts/6584-coderabbit-followup-20261008/gate-1.log"
+    },
+    {
+      "command": [
+        "node",
+        "scripts/check-source-text-assertions.mjs"
+      ],
+      "exitCode": 0,
+      "log": "/home/louistrue/.t3/artifacts/6584-coderabbit-followup-20261008/gate-2.log"
+    },
+    {
+      "command": [
+        "node",
+        "scripts/add-license-headers.mjs",
+        "--check"
+      ],
+      "exitCode": 0,
+      "log": "/home/louistrue/.t3/artifacts/6584-coderabbit-followup-20261008/gate-3.log"
+    },
+    {
+      "command": [
+        "pnpm",
+        "exec",
+        "oxlint",
+        "apps/viewer/src/components/viewer/useFederatedGeometry.streaming.test.tsx"
+      ],
+      "exitCode": 0,
+      "log": "/home/louistrue/.t3/artifacts/6584-coderabbit-followup-20261008/gate-4.log"
+    },
+    {
+      "command": [
+        "git",
+        "diff",
+        "--check"
+      ],
+      "exitCode": 0,
+      "log": "/home/louistrue/.t3/artifacts/6584-coderabbit-followup-20261008/gate-5.log"
+    }
+  ],
+  "archives": [
+    {
+      "original": "focused-root-turbo-test.log",
+      "archive": "focused-root-turbo-test.log.gz",
+      "rawSHA256": "c19b84c5bebeebd7ede658dc4ae8affc58f84751e2801a57682c7a4a404e6f42",
+      "gzipSHA256": "148bffdf9c078a7b1d4d17d2a34185b4786f8299df695c7b357198e429b1ec9c",
+      "rawBytes": 167202
+    },
+    {
+      "original": "focused-root-turbo-forwarded-test.log",
+      "archive": "focused-root-turbo-forwarded-test.log.gz",
+      "rawSHA256": "de2902df972fec9ceec6fa61b6eca27f0e5ce8d32d4437ce33218168fa8f696d",
+      "gzipSHA256": "5af1406df6be393f1fbdd5b8ba31166b2b66f870bec9428f8d770726296d3e66",
+      "rawBytes": 89948
+    },
+    {
+      "original": "unintended-full-suite-retirement.json",
+      "archive": "unintended-full-suite-retirement.json.gz",
+      "rawSHA256": "709b36e6fc49b80a3bd754faaac7172d1e505ebd771d5c85f625ca04b1b28f9e",
+      "gzipSHA256": "cc8e9d66b2a3bffaaaa93b1f38e429f4e75665af9655ca73730887ffaabdeba9",
+      "rawBytes": 322
+    },
+    {
+      "original": "turbo-focused-test.json",
+      "archive": "turbo-focused-test.json.gz",
+      "rawSHA256": "7de82738714a0f201e1b0c5ba2682623f5b39b1c8a8bf6e9661fb791a589f722",
+      "gzipSHA256": "787ea39708c1cdc3e215481902527a775410ba6dddc58e1dae5d92aef7108c33",
+      "rawBytes": 2383
+    },
+    {
+      "original": "source-preparation.json",
+      "archive": "source-preparation.json.gz",
+      "rawSHA256": "29a46c52fd5cfa8a5a3127a7080e06234c8ffbde7f72bd07b7315709ba62bd47",
+      "gzipSHA256": "b0015b3f5f2b6a2857d101f9bb7a856a8c26628211b9174c292a8eea51c86c11",
+      "rawBytes": 1750
+    },
+    {
+      "original": "qualification-plan.json",
+      "archive": "qualification-plan.json.gz",
+      "rawSHA256": "dc89a04a7d6babf9a8fedabb4c0cca6132450248f93caa5e853998444b96ee59",
+      "gzipSHA256": "860c48ca25d4404bacd1ad5921f3e853974155a9d11b37dbdb67a723ce02d18c",
+      "rawBytes": 1513
+    },
+    {
+      "original": "gate-results.json",
+      "archive": "gate-results.json.gz",
+      "rawSHA256": "671d43183e6738bb1ad3764d2247cd27c4f8cae87188b0518a8dffcec2d3c458",
+      "gzipSHA256": "2aad4b2ddba76aa95bfb1798b2db955d05a5834bfe8483b3346d63ddaeaf695b",
+      "rawBytes": 1250
+    },
+    {
+      "original": "gate-0.log",
+      "archive": "gate-0.log.gz",
+      "rawSHA256": "cd75f354ff5e21e8edc69dc370d94dbc262891ad2a9d4e6659e3457d719b6c6d",
+      "gzipSHA256": "4b66f7e7ef11aa32bd137dd1db0b0385e6b1393ba642ccb7cbb5e58cce86115f",
+      "rawBytes": 12782
+    },
+    {
+      "original": "gate-1.log",
+      "archive": "gate-1.log.gz",
+      "rawSHA256": "41e9eb8de4eb493a9247c869033610dd424f4f7dd01c0d422f61bf691c9883a2",
+      "gzipSHA256": "9ece3f3673214f173ee8ae717aeffef5da23dd44a8503ab3c48afdd4730ba8a4",
+      "rawBytes": 859
+    },
+    {
+      "original": "gate-2.log",
+      "archive": "gate-2.log.gz",
+      "rawSHA256": "8f1bddcf4afee493bea09f87f859d20a619169fa6a1f64f6a172169dbac31e6b",
+      "gzipSHA256": "e4eab97a98cf9bbd292e53143555c50adee9bdcf7d909562ae11c048ce90c438",
+      "rawBytes": 30991
+    },
+    {
+      "original": "gate-3.log",
+      "archive": "gate-3.log.gz",
+      "rawSHA256": "28a51328d2ae8f3cbdde69c00820c780f655e551568bee6ad8c26a7c40c9ffc3",
+      "gzipSHA256": "1d29c830f818e2b07f3bfbafd9e98e87cdfc2bcbcb0f925dfbba575f76b3ac71",
+      "rawBytes": 171
+    },
+    {
+      "original": "gate-4.log",
+      "archive": "gate-4.log.gz",
+      "rawSHA256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "gzipSHA256": "9ceffb7310338057cfe71a4ae1e2c98d2c485d81cdef906532a801f457a38d64",
+      "rawBytes": 0
+    },
+    {
+      "original": "gate-5.log",
+      "archive": "gate-5.log.gz",
+      "rawSHA256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "gzipSHA256": "9ceffb7310338057cfe71a4ae1e2c98d2c485d81cdef906532a801f457a38d64",
+      "rawBytes": 0
+    }
+  ],
+  "historicalIntegrity": "Original capture source archived byte-for-byte; immutable wiring receipt raw digest clarified with separate gzip digest in historical-source-integrity.json. No new capture or historical rewrite.",
+  "performance": "No GPU/native/performance/OSmemory verdict; original6537 remainsOPEN"
+}

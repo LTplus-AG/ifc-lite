@@ -7,6 +7,7 @@ import { NewEntityMap } from './new-entity-map.js';
 import type { PropertySet, QuantitySet } from '@ifc-lite/data';
 import type { IfcAttributeValue, PropertyMutation, QuantityMutation, AttributeMutation,
   EntityTypeMutation, Mutation, SetOverlaySnapshot } from './types.js';
+import { quantityKey } from './types.js';
 
 
 /**
@@ -124,6 +125,12 @@ export class MutableOverlayState {
    * serialized or rewound by Undo/Redo. Detached failed drafts do not affect it.
    */
   getMutationRevision(): number { return this.mutationRevision; }
+
+  /** Read the current quantity override, including explicit unit removal.
+   * Unlike the append-only journal, this also reflects skipHistory and Undo. */
+  getQuantityMutation(entityId: number, qsetName: string, quantityName: string): Readonly<QuantityMutation> | undefined {
+    return this.quantityMutations.get(quantityKey(entityId, qsetName, quantityName));
+  }
 
   protected markOverlayChanged(): void { this.mutationRevision++; }
 

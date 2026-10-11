@@ -1,0 +1,345 @@
+[
+  {
+    "originalPath": "/home/louistrue/.t3/artifacts/7180-os-spawn-error-source-preflight-20261008/atomic-journals.diff",
+    "archivePath": "atomic-journals.diff.gz",
+    "rawSha256": "56b2aa4d4d508d8a384ab63601db4b7d570ce45dbd3e094c33ec0f3185cc9618",
+    "archiveSha256": "e69ed52ddd2f0586c1b7d0ebfe163ce7556757c220c088b01e800040c6651942",
+    "rawBytes": 4795
+  },
+  {
+    "originalPath": "/home/louistrue/.t3/artifacts/7180-os-spawn-error-source-preflight-20261008/before-local-rename-focused-green-terminal.json",
+    "archivePath": "before-local-rename-focused-green-terminal.json.gz",
+    "rawSha256": "7152aa6119e939a2109497977924e1fa6304473fb424d6a0b26efe818dda98d9",
+    "archiveSha256": "8ecd4d1b2ac31a70158bb26eb94c3d0c1eafd794df0d9b32dd3e57f7e5994027",
+    "rawBytes": 187
+  },
+  {
+    "originalPath": "/home/louistrue/.t3/artifacts/7180-os-spawn-error-source-preflight-20261008/before-local-rename-source-text-terminal.json",
+    "archivePath": "before-local-rename-source-text-terminal.json.gz",
+    "rawSha256": "8f70e498209feb1c6f758a54837ea4a6769363a82ece582025e236eb92c85252",
+    "archiveSha256": "7694eb820094440aed1b0e22335de95d0252e216e96ca77ab8e98a3f4365a6db",
+    "rawBytes": 138
+  },
+  {
+    "originalPath": "/home/louistrue/.t3/artifacts/7180-os-spawn-error-source-preflight-20261008/before-local-rename-source-text.log",
+    "archivePath": "before-local-rename-source-text.log.gz",
+    "rawSha256": "374828b1e53d5343816a278c5253d9a36608af2e92fe211df5ddf0557351a18b",
+    "archiveSha256": "8cace2bce49524d22b9290ede5d2e4dd0370e8913f0503a37375e2060d7101a6",
+    "rawBytes": 1653
+  },
+  {
+    "originalPath": "/home/louistrue/.t3/artifacts/7180-os-spawn-error-source-preflight-20261008/cleanup-only-inverse-terminal.json",
+    "archivePath": "cleanup-only-inverse-terminal.json.gz",
+    "rawSha256": "01a0768ff9dcb8c70c37d0bad71dac360b1e0da680d2cde6e473c09b6c464fc9",
+    "archiveSha256": "ce7e98a52f3055734742f5907471ac31c74668fa678a73254694092d26cdf857",
+    "rawBytes": 257
+  },
+  {
+    "originalPath": "/home/louistrue/.t3/artifacts/7180-os-spawn-error-source-preflight-20261008/cleanup-only-inverse.log",
+    "archivePath": "cleanup-only-inverse.log.gz",
+    "rawSha256": "64934ed4d95478595a540cb00aadb3b10ecfe2fea14584452ef67e74c6afb552",
+    "archiveSha256": "1ebd96c95a98c33675a9d3d817411cf5da4a6d8c86b831823afd64f8c5e015cc",
+    "rawBytes": 1969
+  },
+  {
+    "originalPath": "/home/louistrue/.t3/artifacts/7180-os-spawn-error-source-preflight-20261008/controller-before-redundant-stage-removal.py",
+    "archivePath": "controller-before-redundant-stage-removal.py.gz",
+    "rawSha256": "69ee4588898a1e6a59a6f039a6756059c330d1790e8f36bdda8d2d0207bb23d2",
+    "archiveSha256": "f91bf4e2f90f8ec4c7769644ebf418a259884fcee5c0717cbafa933c2b2acbc4",
+    "rawBytes": 3033
+  },
+  {
+    "originalPath": "/home/louistrue/.t3/artifacts/7180-os-spawn-error-source-preflight-20261008/controller.py",
+    "archivePath": "controller.py.gz",
+    "rawSha256": "6fd0dc6b95e380e8b80c23017e32143f2424855a724bc129bde9ffe18a290bbd",
+    "archiveSha256": "aedbacef7631574943301bf55088f3f0b39aa7c9e6cfb9b340f3bbe4927140a4",
+    "rawBytes": 2925
+  },
+  {
+    "originalPath": "/home/louistrue/.t3/artifacts/7180-os-spawn-error-source-preflight-20261008/diff-terminal.json",
+    "archivePath": "diff-terminal.json.gz",
+    "rawSha256": "8b26b309fedbbf94a06428d453b7ba62cd5ac7ec19a410a5c168b4854bbf6a34",
+    "archiveSha256": "55782f15da7863eccbd137ca61a25cc432819ae73490a33ac9164c833618f5cf",
+    "rawBytes": 118
+  },
+  {
+    "originalPath": "/home/louistrue/.t3/artifacts/7180-os-spawn-error-source-preflight-20261008/diff.log",
+    "archivePath": "diff.log.gz",
+    "rawSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "archiveSha256": "9ceffb7310338057cfe71a4ae1e2c98d2c485d81cdef906532a801f457a38d64",
+    "rawBytes": 0
+  },
+  {
+    "originalPath": "/home/louistrue/.t3/artifacts/7180-os-spawn-error-source-preflight-20261008/focused-green-terminal.json",
+    "archivePath": "focused-green-terminal.json.gz",
+    "rawSha256": "907b0c44c6543132c3531574738d99bc2d871efd6454080bb76c53a322da00cf",
+    "archiveSha256": "681c6f86a837f04f6f004cc74a00122c5eb1bba34a8038cc3c2504b75e7da213",
+    "rawBytes": 188
+  },
+  {
+    "originalPath": "/home/louistrue/.t3/artifacts/7180-os-spawn-error-source-preflight-20261008/focused-green.log",
+    "archivePath": "focused-green.log.gz",
+    "rawSha256": "1b3fa9012d6798b70823c799541242bc16a6322e76980a5d1c01bca6df234ebd",
+    "archiveSha256": "deac073a3bdb5f51e50d5318f07ac26c2233aa884fa94dfef32b8d6b9a439eda",
+    "rawBytes": 3789
+  },
+  {
+    "originalPath": "/home/louistrue/.t3/artifacts/7180-os-spawn-error-source-preflight-20261008/frame-gpu-chrome-lifecycle.test.mjs.after",
+    "archivePath": "frame-gpu-chrome-lifecycle.test.mjs.after.gz",
+    "rawSha256": "5a0add48caf671be7e9ae72cb10545b1dea55064c31ace9cf6fc0db70134160e",
+    "archiveSha256": "f5ba7a0f24c5c8f02dbca15290ad147880c895cc810f7eb0fbc83ef4028b08d9",
+    "rawBytes": 15460
+  },
+  {
+    "originalPath": "/home/louistrue/.t3/artifacts/7180-os-spawn-error-source-preflight-20261008/frame-gpu-chrome-lifecycle.test.mjs.before",
+    "archivePath": "frame-gpu-chrome-lifecycle.test.mjs.before.gz",
+    "rawSha256": "a04582c9c1f9d56bfb75b79d64da0b0c9df82ae6985ad2207dc1f6e191f97034",
+    "archiveSha256": "2436c99bcc3449525fd57e49af755239f188364728580cc0725061ef5a396f9e",
+    "rawBytes": 14153
+  },
+  {
+    "originalPath": "/home/louistrue/.t3/artifacts/7180-os-spawn-error-source-preflight-20261008/frame-gpu-chrome.ts.after",
+    "archivePath": "frame-gpu-chrome.ts.after.gz",
+    "rawSha256": "2b5bbc127146233bbe26e86d5d14656c8a0720274db0aa6ba5769fec784aa160",
+    "archiveSha256": "4d66c572f446462d0470e8aa3221c933d8713e9c79462cdd1e28ac38f9496619",
+    "rawBytes": 10976
+  },
+  {
+    "originalPath": "/home/louistrue/.t3/artifacts/7180-os-spawn-error-source-preflight-20261008/frame-gpu-chrome.ts.before",
+    "archivePath": "frame-gpu-chrome.ts.before.gz",
+    "rawSha256": "180ecf61b61db8f96e273ee19b6b515dd66adafacfdd409214bb90281ae57a8f",
+    "archiveSha256": "6cf96617f8fa53696e99ea66c86bab290ee30c447bc9393c1292e2dd28a914b8",
+    "rawBytes": 10650
+  },
+  {
+    "originalPath": "/home/louistrue/.t3/artifacts/7180-os-spawn-error-source-preflight-20261008/full-root-typecheck-terminal.json",
+    "archivePath": "full-root-typecheck-terminal.json.gz",
+    "rawSha256": "4fc3df9c5642ad0d744623462e01585ae1bdd96a7cdd5b6d52d0976a32d47fea",
+    "archiveSha256": "00d26a03ea5ccdf606457884f78a11c71217b5d9d7bfac35fde55e9ce6118198",
+    "rawBytes": 107
+  },
+  {
+    "originalPath": "/home/louistrue/.t3/artifacts/7180-os-spawn-error-source-preflight-20261008/full-root-typecheck.log",
+    "archivePath": "full-root-typecheck.log.gz",
+    "rawSha256": "195183207ae52da3e59f0dbe6aa27cf5c3f3eb364ee608cad6ddcbdfe54d035a",
+    "archiveSha256": "156d4a6cb8be6458c2ea0eac5bad7e11d546431324ceb706164ab674a2d778af",
+    "rawBytes": 49501
+  },
+  {
+    "originalPath": "/home/louistrue/.t3/artifacts/7180-os-spawn-error-source-preflight-20261008/inverse-assertion-verification.json",
+    "archivePath": "inverse-assertion-verification.json.gz",
+    "rawSha256": "796c4b3907e1ceda5c587873664bc70006c73138ab3725788b53e1e9a4b07540",
+    "archiveSha256": "6a13bf9dff39c74e4a7fe3b086b7d47e1571c59cf5052e3eaa86f27242413215",
+    "rawBytes": 158
+  },
+  {
+    "originalPath": "/home/louistrue/.t3/artifacts/7180-os-spawn-error-source-preflight-20261008/inverse-launcher.ts",
+    "archivePath": "inverse-launcher.ts.gz",
+    "rawSha256": "5e4ab74e000cf7b8e5076db87766c91dab0c5222aacf8bf45d9e984ad62bafd5",
+    "archiveSha256": "8eb9ae3e89155f9f1e3eaa6f8732c8174d63a82f3b6c5ea10d87924963306335",
+    "rawBytes": 10983
+  },
+  {
+    "originalPath": "/home/louistrue/.t3/artifacts/7180-os-spawn-error-source-preflight-20261008/local-rename-focused-green-terminal.json",
+    "archivePath": "local-rename-focused-green-terminal.json.gz",
+    "rawSha256": "40b66eb1c2b6017e240a763dcde623191f62c669340babcfb9f95dfc32adbb46",
+    "archiveSha256": "6be2c9b7d99c4b6d5075d4fc8254709f48c5e3405b1be791fb917b4216c9991e",
+    "rawBytes": 188
+  },
+  {
+    "originalPath": "/home/louistrue/.t3/artifacts/7180-os-spawn-error-source-preflight-20261008/local-rename-focused-green.log",
+    "archivePath": "local-rename-focused-green.log.gz",
+    "rawSha256": "9639ee17cf9e8eb4d3ed060e035f0d23b988dd5c50e5acf48d5b599904bd54d5",
+    "archiveSha256": "46dca3b705c711d5470735ad3e1655d4e82e021458876d211e1669522401a4c4",
+    "rawBytes": 3790
+  },
+  {
+    "originalPath": "/home/louistrue/.t3/artifacts/7180-os-spawn-error-source-preflight-20261008/local-rename-source-text-terminal.json",
+    "archivePath": "local-rename-source-text-terminal.json.gz",
+    "rawSha256": "753baf067a079554ace9dc7871cd369f161ea5bc6a58e94729db95da39c0f3a5",
+    "archiveSha256": "4b10655e35f4a2384a41d8585fffcdc8802f60adfe87d67ac96df44d9c2c0853",
+    "rawBytes": 138
+  },
+  {
+    "originalPath": "/home/louistrue/.t3/artifacts/7180-os-spawn-error-source-preflight-20261008/local-rename-source-text.log",
+    "archivePath": "local-rename-source-text.log.gz",
+    "rawSha256": "4fc2d9e17e6695b6fb22cff6fa6c6e06debc4a3d1069282e8a2edc698060b4c5",
+    "archiveSha256": "ac3e99309d91fe29f378219d1c14a002ad8c662c62b1a24b1cf3b1886dbe6c74",
+    "rawBytes": 1668
+  },
+  {
+    "originalPath": "/home/louistrue/.t3/artifacts/7180-os-spawn-error-source-preflight-20261008/module-size-terminal.json",
+    "archivePath": "module-size-terminal.json.gz",
+    "rawSha256": "35425946cd5eb1d40245f3d4a22c726e10d3f08786d6593c3547b13d61c74e59",
+    "archiveSha256": "92669cd825ba68579f5cfb987d1b5b03c854895d9ea4c70337196b10c65be504",
+    "rawBytes": 127
+  },
+  {
+    "originalPath": "/home/louistrue/.t3/artifacts/7180-os-spawn-error-source-preflight-20261008/module-size.log",
+    "archivePath": "module-size.log.gz",
+    "rawSha256": "55b0a470a0e5661398794e17340e2b34f145a7fdef5a64f76da4047aed5628b0",
+    "archiveSha256": "e0773afbfefc3feb1ca5c3198177aa1c014776808133088a383404f90cea4a8d",
+    "rawBytes": 13060
+  },
+  {
+    "originalPath": "/home/louistrue/.t3/artifacts/7180-os-spawn-error-source-preflight-20261008/mpl-terminal.json",
+    "archivePath": "mpl-terminal.json.gz",
+    "rawSha256": "b4e3e0dc3d4ddbea3787d752448ffb1e6dda911b269a2caeaf64333b95e485ff",
+    "archiveSha256": "b67a196d7a1623f16721707ed313d45f4294e3997a9c41ff37d7cf9c36daec11",
+    "rawBytes": 145
+  },
+  {
+    "originalPath": "/home/louistrue/.t3/artifacts/7180-os-spawn-error-source-preflight-20261008/mpl.log",
+    "archivePath": "mpl.log.gz",
+    "rawSha256": "195450cad21900ac944ffeb5577e851d1dfb113dc7a2ef9a00bab50709ba545c",
+    "archiveSha256": "d72d877da0e9452e8c9dab7e080d89a235e45b896de3b7dd473618407ffdc627",
+    "rawBytes": 171
+  },
+  {
+    "originalPath": "/home/louistrue/.t3/artifacts/7180-os-spawn-error-source-preflight-20261008/preflight-before-atomic-journals.json",
+    "archivePath": "preflight-before-atomic-journals.json.gz",
+    "rawSha256": "f5f2f0c577bc9cb1a73b2b6e110dc56b8e3d570ccf38df1a4e9ac96f1572dd51",
+    "archiveSha256": "63aabf09182a4ba63bce7a86277f117d644d39981791d665fce63d1bcf24081b",
+    "rawBytes": 2119
+  },
+  {
+    "originalPath": "/home/louistrue/.t3/artifacts/7180-os-spawn-error-source-preflight-20261008/preflight-before-local-rename.json",
+    "archivePath": "preflight-before-local-rename.json.gz",
+    "rawSha256": "986f062f7b48c5d88b2cbb80a5b086c387382ab17058d06a8c3d8a5981e278ce",
+    "archiveSha256": "c995dd4975f997f4c442af0dc0e9b721d705cc08dcd32e8b96b12580df0173fc",
+    "rawBytes": 1745
+  },
+  {
+    "originalPath": "/home/louistrue/.t3/artifacts/7180-os-spawn-error-source-preflight-20261008/preflight-before-scalar-assertion.json",
+    "archivePath": "preflight-before-scalar-assertion.json.gz",
+    "rawSha256": "963996637508b8d40085e5ad6fe581e624bdb0a5fda97397d7de92c893dadc0e",
+    "archiveSha256": "3e281e0b79faa3e0375576ab09f266be8113fe1c89392db5fd98598023303fed",
+    "rawBytes": 1972
+  },
+  {
+    "originalPath": "/home/louistrue/.t3/artifacts/7180-os-spawn-error-source-preflight-20261008/preflight.json",
+    "archivePath": "preflight.json.gz",
+    "rawSha256": "698c4a1b9bdc3ae87bc27664ec7e31bc12d9721e20028b6a451228cb6e74245d",
+    "archiveSha256": "c16d5d523339982c570d32b2c1236541fce81b36cd01995dbc46a257f4b77878",
+    "rawBytes": 2446
+  },
+  {
+    "originalPath": "/home/louistrue/.t3/artifacts/7180-os-spawn-error-source-preflight-20261008/proposal.diff",
+    "archivePath": "proposal.diff.gz",
+    "rawSha256": "f01eb585a331a124d29a881a6e7f686b8722f51bffc80b4b8bee6555d13ff892",
+    "archiveSha256": "b09e4e6ab72567180179bc3e891ec29313216a4b96c3f6d98dfc802517d0e50e",
+    "rawBytes": 2776
+  },
+  {
+    "originalPath": "/home/louistrue/.t3/artifacts/7180-os-spawn-error-source-preflight-20261008/restored-green-terminal.json",
+    "archivePath": "restored-green-terminal.json.gz",
+    "rawSha256": "93057585c7836b7341b626a9035b1ce1797b4757de4d32f4cc0cfb14b76a26ea",
+    "archiveSha256": "969ea9ea259daa12c7bf2abd0d24166e00412448f30078386af2f86ac466bf25",
+    "rawBytes": 187
+  },
+  {
+    "originalPath": "/home/louistrue/.t3/artifacts/7180-os-spawn-error-source-preflight-20261008/restored-green.log",
+    "archivePath": "restored-green.log.gz",
+    "rawSha256": "e962ac8899b38c32f082d5cfc9073eb4f536c2896e8aa2f3f49643d2fe99f7dc",
+    "archiveSha256": "208deed6ea0d4701ea8fbc04ca5adf6efe9e9c33445d91fba7cfd474e76dbaa2",
+    "rawBytes": 3792
+  },
+  {
+    "originalPath": "/home/louistrue/.t3/artifacts/7180-os-spawn-error-source-preflight-20261008/scalar-assertion-journal-failure-focused-green-terminal.json",
+    "archivePath": "scalar-assertion-journal-failure-focused-green-terminal.json.gz",
+    "rawSha256": "c72497fc6a5aa03e6112b37ec2b585036aa1dfa6fe2f61badf54c58a616959c1",
+    "archiveSha256": "5c5201e4508c6a24f11d175da982aefc35b58f7e506ed2f9e12a8ca59ed93586",
+    "rawBytes": 187
+  },
+  {
+    "originalPath": "/home/louistrue/.t3/artifacts/7180-os-spawn-error-source-preflight-20261008/scalar-assertion-journal-failure-focused-green.log",
+    "archivePath": "scalar-assertion-journal-failure-focused-green.log.gz",
+    "rawSha256": "7f4a2fe76c46eca1d14bf87962169930f4ce28903795c6086014f9da66146de5",
+    "archiveSha256": "46e18ed2ad1b76573af32dd9c3da2051c9a9edd921129b3262a33ef50224a932",
+    "rawBytes": 3921
+  },
+  {
+    "originalPath": "/home/louistrue/.t3/artifacts/7180-os-spawn-error-source-preflight-20261008/source-text-terminal.json",
+    "archivePath": "source-text-terminal.json.gz",
+    "rawSha256": "ee988c6c15c83e0eca0fa50e9ac963f16222b4f9eeea3b3662d44941c8e0096d",
+    "archiveSha256": "e8bbf3a0484246df78ced3f107dc5fa68ad5d6ee0dd045457fd401549cd0d599",
+    "rawBytes": 139
+  },
+  {
+    "originalPath": "/home/louistrue/.t3/artifacts/7180-os-spawn-error-source-preflight-20261008/source-text.log",
+    "archivePath": "source-text.log.gz",
+    "rawSha256": "e3bda36dd6b08291debf85ba9308a1570c36edb2278328dbd49254688614f1b6",
+    "archiveSha256": "4236a6df1f20a45c89d2f290d94509d65c1d6d0629818eb21bd3daab1cff7fd5",
+    "rawBytes": 30991
+  },
+  {
+    "originalPath": "/home/louistrue/.t3/artifacts/7180-os-spawn-error-source-preflight-20261008/test-after-atomic-journals.mjs",
+    "archivePath": "test-after-atomic-journals.mjs.gz",
+    "rawSha256": "0c621eeccc06e65ec629d60fb465d047b50cec9fcac62afc89fd314a16f1c9a7",
+    "archiveSha256": "ee02bbc33bb78601d9686c6cba350eb7a3ccff43a4b9b5d2f6a11c6f97e26763",
+    "rawBytes": 15764
+  },
+  {
+    "originalPath": "/home/louistrue/.t3/artifacts/7180-os-spawn-error-source-preflight-20261008/test-after-local-rename.mjs",
+    "archivePath": "test-after-local-rename.mjs.gz",
+    "rawSha256": "e5921d1e7cd19d1f82428d3f9a54e0e0812e1d28ea095d9a4526b57b123dd909",
+    "archiveSha256": "39ed5fcc8b87db09648c4af0b3b9e4bb7836afb8f70ec0d1ede5b9b0efa8f4f8",
+    "rawBytes": 15535
+  },
+  {
+    "originalPath": "/home/louistrue/.t3/artifacts/7180-os-spawn-error-source-preflight-20261008/test-after-scalar-assertion.mjs",
+    "archivePath": "test-after-scalar-assertion.mjs.gz",
+    "rawSha256": "a7a1ab29db940f4f3172f87be5ccf90b5c9ccbc3db8e414109bf300d63577691",
+    "archiveSha256": "0803d08debffd63aa24cda7a52c38487d968d065045e07d1dac1c0e046f64196",
+    "rawBytes": 15541
+  },
+  {
+    "originalPath": "/home/louistrue/.t3/artifacts/7180-os-spawn-error-source-preflight-20261008/test-before-atomic-journals.mjs",
+    "archivePath": "test-before-atomic-journals.mjs.gz",
+    "rawSha256": "a7a1ab29db940f4f3172f87be5ccf90b5c9ccbc3db8e414109bf300d63577691",
+    "archiveSha256": "0803d08debffd63aa24cda7a52c38487d968d065045e07d1dac1c0e046f64196",
+    "rawBytes": 15541
+  },
+  {
+    "originalPath": "/home/louistrue/.t3/artifacts/7180-os-spawn-error-source-preflight-20261008/test-before-local-rename.mjs",
+    "archivePath": "test-before-local-rename.mjs.gz",
+    "rawSha256": "5a0add48caf671be7e9ae72cb10545b1dea55064c31ace9cf6fc0db70134160e",
+    "archiveSha256": "f5ba7a0f24c5c8f02dbca15290ad147880c895cc810f7eb0fbc83ef4028b08d9",
+    "rawBytes": 15460
+  },
+  {
+    "originalPath": "/home/louistrue/.t3/artifacts/7180-os-spawn-error-source-preflight-20261008/test-before-scalar-assertion.mjs",
+    "archivePath": "test-before-scalar-assertion.mjs.gz",
+    "rawSha256": "e5921d1e7cd19d1f82428d3f9a54e0e0812e1d28ea095d9a4526b57b123dd909",
+    "archiveSha256": "39ed5fcc8b87db09648c4af0b3b9e4bb7836afb8f70ec0d1ede5b9b0efa8f4f8",
+    "rawBytes": 15535
+  },
+  {
+    "originalPath": "/home/louistrue/.t3/artifacts/7180-os-spawn-error-source-preflight-20261008/test-wiring-terminal.json",
+    "archivePath": "test-wiring-terminal.json.gz",
+    "rawSha256": "92fcddff24849c7f677f12da1d656323d7a0d5b6401730499ab7a096dfc5f88c",
+    "archiveSha256": "80de94042f1b05243d6649919e145dc3273cf49bb92d8a66ae99471674450344",
+    "rawBytes": 129
+  },
+  {
+    "originalPath": "/home/louistrue/.t3/artifacts/7180-os-spawn-error-source-preflight-20261008/test-wiring.log",
+    "archivePath": "test-wiring.log.gz",
+    "rawSha256": "0a95b0d39fbd8f2530cdd60f06bd456b489429fbbee4dd09a0be0935076acc2d",
+    "archiveSha256": "cdc420c2708d40c104140c5dc287165120a8d3612be0c7ebc8483ca5773133ed",
+    "rawBytes": 859
+  },
+  {
+    "originalPath": "/home/louistrue/.t3/artifacts/7180-os-spawn-error-source-preflight-20261008/touched-oxlint-terminal.json",
+    "archivePath": "touched-oxlint-terminal.json.gz",
+    "rawSha256": "7d3d1239232b234a168a467a8168cbb89c2927e18d8391346c8ffa14f0c09e09",
+    "archiveSha256": "21795896864d10580e7d5d3d081a0a64c0df0a74fe7e44b58df1512052cca982",
+    "rawBytes": 213
+  },
+  {
+    "originalPath": "/home/louistrue/.t3/artifacts/7180-os-spawn-error-source-preflight-20261008/touched-oxlint.log",
+    "archivePath": "touched-oxlint.log.gz",
+    "rawSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "archiveSha256": "9ceffb7310338057cfe71a4ae1e2c98d2c485d81cdef906532a801f457a38d64",
+    "rawBytes": 0
+  }
+]

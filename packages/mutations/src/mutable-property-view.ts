@@ -34,7 +34,7 @@ export type { AttributeExtractor } from './effective-changes.js';
 export type PropertyExtractor = (entityId: number) => Array<{
   name: string;
   globalId?: string;
-  properties: Array<{ name: string; type: number; value: unknown; values?: string[]; unit?: string; unitSiScale?: number; dataType?: string; structure?: Property['structure'] }>;
+  properties: Array<{ name: string; type: number; value: unknown; values?: string[]; unit?: string; unitSiScale?: number; unitSiOffset?: number; dataType?: string; structure?: Property['structure'] }>;
 }>;
 
 /**
@@ -212,6 +212,7 @@ export class MutablePropertyView extends MutableOverlayState {
           ...(prop.structure ? { structure: prop.structure } : {}),
           ...(prop.unit ? { unit: prop.unit } : {}),
           ...(prop.unitSiScale !== undefined ? { unitSiScale: prop.unitSiScale } : {}),
+          ...(prop.unitSiOffset !== undefined ? { unitSiOffset: prop.unitSiOffset } : {}),
           dataType: prop.dataType,
         })),
       }));
@@ -267,6 +268,7 @@ export class MutablePropertyView extends MutableOverlayState {
           // An edit that names its own unit replaces the explicit scale too;
           // one that keeps the property's unit keeps its scale.
           ...((mutation.unit === undefined || mutation.unit === prop.unit) && prop.unitSiScale !== undefined ? { unitSiScale: prop.unitSiScale } : {}),
+          ...((mutation.unit === undefined || mutation.unit === prop.unit) && prop.unitSiOffset !== undefined ? { unitSiOffset: prop.unitSiOffset } : {}),
           dataType: mutation.dataType ?? prop.dataType,
         }),
         prop => prop,
@@ -687,9 +689,11 @@ export class MutablePropertyView extends MutableOverlayState {
 
   /**
    * Get all quantity sets with mutations applied. The optional provider
-   * reads an external base store without changing this live view.
+   * reads an external base store without changing this live view. Native
+   * exporters may opt into empty instances to retain a deleted last member
+   * as an ownership removal; ordinary quantity displays omit them.
    */
-  getQuantitiesForEntity(entityId: number, baseProvider?: (baseId: number) => QuantitySet[]): QuantitySet[] {
+  getQuantitiesForEntity(entityId: number, baseProvider?: (baseId: number) => QuantitySet[], includeEmptyInstances = false): QuantitySet[] {
     const result: QuantitySet[] = [];
     const seenQsets = new Set<string>();
 
@@ -729,8 +733,8 @@ export class MutablePropertyView extends MutableOverlayState {
         }),
       );
 
-      if (mutatedQuantities.length > 0) {
-        result.push({ name: qset.name, quantities: mutatedQuantities });
+      if (mutatedQuantities.length > 0 || includeEmptyInstances) {
+        result.push({ name: qset.name, globalId: qset.globalId, quantities: mutatedQuantities });
       }
     }
 
@@ -1153,16 +1157,18 @@ export class MutablePropertyView extends MutableOverlayState {
     // STEP exporter upper-cases at write time — but `NewEntity.type` no
     // longer mangles `IfcColumn` into `IFCCOLUMN` for downstream consumers.
     const expressId = ++this.nextAllocatedId;
+    const creationId = generateMutationId();
     const entity: NewEntity = {
       expressId,
       type: type.trim(),
       attributes: attributes.slice(),
+      creationId,
     };
     this.newEntities.set(expressId, entity);
     this.markOverlayChanged();
 
     this.mutationHistory.push({
-      id: generateMutationId(),
+      id: creationId,
       type: 'CREATE_ENTITY',
       timestamp: Date.now(),
       modelId: this.modelId,

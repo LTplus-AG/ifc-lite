@@ -40,6 +40,17 @@ fan-out, memory bandwidth, GPU); a change in those still needs an end-to-end
 A/B (`ab.sh`, the browser rigs below), and a green ratchet is no evidence for it.
 
 
+## Printable ASCII STEP escaping (#7363)
+
+Campaign Group worker profiling attributed substantial work to rebuilding
+already escaped printable ASCII Names character by character. The canonical
+TypeScript escaper now returns its native quote/backslash replacement result
+when no control or non-ASCII directive is needed. Shared cross-language vectors
+and exact byte/roundtrip controls cover the unchanged directive path. This is
+a native authoring/export workload correction, not a browser model-load speed
+claim. A worker profile attributes work; isolated native acceptance under the
+original deadlines is still required before a qualification verdict.
+
 ## Workbench preset controls load on demand (#6926)
 
 The U03 preset controls initially exceeded the eager bundle allowance when
@@ -87,6 +98,45 @@ the benchmark and users run. `node scripts/perf/hook-census.mjs` counts hook
 call sites and `useViewerStore` subscriptions on the viewport, properties,
 hierarchy and streaming paths statically (minified component names make a
 runtime fiber census unattributable, and mounted counts move with UI state).
+
+## GPU point-pick depth candidate held (#6881)
+
+The [same-submission GPU oracles](evidence/bounded-depth-readback-6881/README.md)
+qualify single-texel extraction against a full-depth copy on hardware, including
+concurrent maps and target replacement. Production family, ID/item/model and georeferenced world-coordinate controls
+match the original renderer, and device destruction retires pending picks. The candidate shares ID/depth staging and keeps per-pick inputs immutable.
+Four complete interleaved fresh-document public-model viewer pairs retain unchanged geometry and hit provenance, reduced mapped bytes, and mixed interaction timings. One pair has unresolved world-coordinate differences without camera/frame receipts; a fifth attempt lost the native browser. Cold-load provenance remains unverified. Real federated viewer qualification is outstanding. No speedup or shipping verdict is accepted. Lesson: a bounded readback and exact
+GPU sample establish neither complete picking parity nor interaction throughput.
+
+Independent Linux qualification adopted the existing readback cleanup repair;
+inverse fault controls demonstrate the ownership defects and the repaired paths
+release their buffers. Source-matched base/candidate viewer runtimes were built
+and pinned. T3 navigation refused before the declared model phase, with the
+earlier RAF refusal preserved. The subsequent current-main integration passed
+root renderer tests, full serial root typecheck with both postchecks, lint and
+source gates. Current real-model comparisons, federation and focused physical
+performance remain held; CPU integration and cleanup qualification do not
+replace them. No browser or GPU cohort ran for the integration update.
+
+A subsequent normal main integration includes merged #7361 without copying its
+classification workaround. Identical actual-main and candidate CPU controls
+reproduce obsolete-picker results and delayed standalone teardown cleanup. One
+shared pending-readback owner and a picker-installation epoch repair that class;
+corrected root tests, full serial typecheck and source gates pass. Diagnostic
+method retirement also preserves later owners. These are lifecycle invariants,
+not native GPU acceptance. The current app/observer pair must be rebuilt and
+frozen before the separate T3 correctness session. Original coordinates,
+deadlines, refusals and the focused-performance hold remain.
+
+Mounted base and original-draft hover controls also reproduce stale hits and
+misses after newer input, pointer exit/cancel, unmount and ownership changes.
+The [CPU hover archive](evidence/bounded-depth-readback-6881/hover-ownership-cpu-20261010.json.gz)
+retains those inverses and the corrected shared viewport validity contract.
+Selection and hover retain independent request generations. The diagnostic
+recorder now retains resolved IFC identity and source provenance; serialization
+controls do not establish native picked identities. No additional performance
+claim follows from either repair.
+
 
 ## Prepass terminal trace publication (#6993)
 
@@ -150,6 +200,26 @@ build the appearance list in O(total) on every `models` change.
 **Lesson:** a cache keyed on array identity is only as incremental as its
 least stable upstream producer. Count the visits (`viewer.filterScan`)
 instead of trusting the "incremental" comment.
+
+## Federated appearance-source rebuilding candidate (#6537 / #7021)
+
+**Merged in #7369; end-to-end performance held.** The
+[real FZK/Snowdon mounted controls](evidence/federated-appearance-6537/README.md)
+demonstrate repeated accumulated/peer mesh visits and ownership wrapper copies
+in the remaining multi-model appearance list. Canonical producer stamping and
+a retained ordered list remove that repeated source work; replacement, content,
+visibility, removal/readdition and CPU-release controls pass with unchanged
+ordered geometry. Earlier-model appends still move suffix references to retain
+model order, counted separately. No load-time or peak-memory improvement is
+accepted: actual worker-pool federation A/B and focused GPU acceptance remain
+outstanding. Lesson: borrowing producer objects removes wrapper allocation,
+but grouped ordering still has a movement cost; qualify the real federation
+journey instead of a single-model cold load.
+The [removal gate and idle admission](evidence/federated-appearance-6537/gate-and-admission-20261010/README.md)
+are recorded separately: global Knip failed with unrelated source findings
+adjudicated by the campaign root; the timing cohort stopped at actual CPU,
+paging and swap admission before any model or probe ran. Lesson: a campaign
+reservation does not establish host-wide idle across other project owners.
 
 ## Frame-time rigs (#6960)
 
@@ -3639,3 +3709,22 @@ extracting a module can increase shared imports even when its entry chunk shrink
 ### Viewer preferences editor imports (P20, #6924)
 
 A hook used by the Assistant must live separately from the optional preferences editor: importing the hook from the editor makes its dynamic import ineffective. Keep the live project/model hook in a small module and load the form through its native lazy boundary. The combined production measurement showed no meaningful size improvement from the hook split. The remaining content-library registration and recipe run state still participate in startup; keep the split for the lazy editor boundary, without claiming a bundle reduction.
+
+## Federated CPU alias release correctness (#6584, #6537)
+
+Main's single-model array stamping supersedes the old general owner-cache
+prototype, whose measurements remain historical. Current-main mounted controls
+still reproduce CPU buffers stranded in retained federation copies, including
+an earlier immutable recolour that array-revision refresh misses. Canonical
+release now follows weak aliases at the existing shallow-copy/provenance seam,
+clearing only shared fields and preserving independent updates, retained counts,
+GPU content version and the global streaming prefix.
+
+The [retained controls and earlier negative measurements](evidence/owner-cache-6537/README.md)
+prove reference removal and collectability; they do not measure OS peak memory
+or establish a current end-to-end speedup. Lesson: invalidate shared CPU owners
+at release rather than repairing only the current rendering cache.
+
+Follow-up review of the bounded CPU release fix found that canonical frame restoration replaces source allocations before release, leaving prior registered copies alive. The release helper now remembers historical source allocation identities weakly and clears them alongside current shared fields while preserving independent replacements. Actual frame-restore regression and backing-allocation collection controls qualify this correction; no native speed or resident-memory improvement is claimed. See `evidence/owner-cache-6537/source-frame-replacement/`.
+
+A second bounded-release follow-up showed that immutable recolouring after frame restoration also needs to carry historical ownership. Flat pruned weak snapshots now transfer only across complete shared allocation domains; snapshots remain independent so derived replacements cannot pollute original ownership. Actual canonical recolour regressions and collection controls qualify this correction. The evidence retains the separate WASM identities observed before and after Turbo typecheck rather than relabeling a functional run. See `evidence/owner-cache-6537/immutable-history-carry/`; no native performance claim is made.

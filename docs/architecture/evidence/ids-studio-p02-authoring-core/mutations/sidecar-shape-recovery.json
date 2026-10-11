@@ -1,0 +1,67 @@
+{
+  "issueContext": "#7168 / IDS-025",
+  "preservedBase": "edd59c7b92b07a3a0780a24ff3a6b53ab865b4b5",
+  "node": "v24.21.0",
+  "pnpm": "10.8.1",
+  "vitest": "4.1.11 (locked actual runtime)",
+  "baseline": {
+    "testFiles": 14,
+    "passed": 173,
+    "terminalExit": 0,
+    "rootCommand": "pnpm test --filter=@ifc-lite/ids-authoring --concurrency=1 -- --maxWorkers=1"
+  },
+  "diagnostic": {
+    "passed": 173,
+    "failed": 1,
+    "terminalExit": 1,
+    "invariant": "Malformed same-format nodes:{} must be refused during public parseSidecar"
+  },
+  "corrected": {
+    "testFiles": 15,
+    "passed": 195,
+    "failed": 0,
+    "terminalExit": 0,
+    "malformedDirectAndBundleCases": 21,
+    "populatedMetadataExtensionsAndOpaquePayloadRoundTrip": 1
+  },
+  "inverse": {
+    "onlyOriginalProductionParserRestored": true,
+    "passed": 174,
+    "failed": 21,
+    "terminalExit": 1,
+    "correctedSourceExactRestored": true,
+    "finalCorrectedPassed": 195,
+    "finalTerminalExit": 0
+  },
+  "typecheck": {
+    "scope": "Root Turbo @ifc-lite/ids-authoring",
+    "terminalExit": 0,
+    "historicalRootPostcheck": "node scripts/typecheck-tests.mjs --audit",
+    "postAuditMembershipFiles": 3732,
+    "postAuditMembershipPackages": 63,
+    "allPackagesCompiled": false,
+    "packageJsonExactRestored": true
+  },
+  "sourceChecks": {
+    "moduleSizeExplicitBase": "PASS",
+    "touchedOxlint": "PASS",
+    "whitespace": "PASS"
+  },
+  "holds": {
+    "fullCurrentMainCompilation": "NOT_RUN",
+    "globalApiSurfaceGate": "REFUSED: unrelated declaration entrypoints unbuilt",
+    "hostedCi": "PENDING_NEW_HEAD",
+    "pitchAcceptance": "DRAFT_UNCHANGED"
+  },
+  "retainedFailures": {
+    "initialGraph": "EXCLUDED_WASM_GRAPH; stopped before assertions",
+    "initialShell": "sequencing error launched excluded graph then terminated",
+    "firstAdmittedRuntimeWrapper": 143,
+    "signalOrigin": "UNRESOLVED; independent actual-test rerun exited0"
+  },
+  "sourceHashes": {
+    "packages/ids-authoring/src/sidecar/sidecar.ts": "5b8dcee8c7ea4da31f63f4b0b7bd4f1cda58e664a207aeddb60310cfeddd53ab",
+    "packages/ids-authoring/src/sidecar/sidecar-schema.ts": "21329684df2e7323fa8e5966fb058c3914230083bb27726196189497e529bb0e",
+    "packages/ids-authoring/src/sidecar/sidecar-shape.test.ts": "7a222570d5f0d16ad5e622f3065971a6f4dc79136925ab5521fed2059e414247"
+  }
+}

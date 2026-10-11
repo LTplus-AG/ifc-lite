@@ -1,0 +1,7 @@
+The lifecycle validator now rejects parser.failed and error-marked spans before excluding unfinished spans from readiness completion. Ordinary unfinished work remains admissible. Refs #7036; review on #7180.
+
+The original-helper-only inverse has one ordinary-open pass and two genuine missing-exception assertion failures. Exact candidate restoration passes 22 validator controls; the final unmodified prerequisite harness executes 77 controls, all pass with zero skipped. Root typecheck covers 3,739 test files across 62 packages (2,066 viewer files); the permanent script programme and seven gates pass. Those file counts are typechecked sources, not runtime tests.
+
+The first combined run has 76 passes and one fixture allocation assertion failure. Its cause remains unknown. A single instrumented positive fixture diagnostic observed allocation, acknowledgement and retirement, but does not explain that earlier failure. Both records remain retained alongside the final restored run.
+
+This evidence qualifies standalone CPU helpers only. Actual Windows PowerShell controls use controlled providers; launcher fixtures execute real POSIX children. No native Chrome/GPU, geometry/WASM, full payload identity or performance acceptance is claimed. The original review remains non-clean: one kept finding, 79 omitted files, no dropped findings, classPass false. Fresh review and required checks remain necessary.

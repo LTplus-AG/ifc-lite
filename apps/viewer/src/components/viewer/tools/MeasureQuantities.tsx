@@ -64,52 +64,17 @@
  * user's per-unit-type override from #1573.
  */
 
-import { useMemo } from 'react';
-import { Boxes, TriangleAlert } from 'lucide-react';
 import { useViewerStore } from '@/store';
 import { useTranslation } from '@/i18n/useTranslation';
 import type { TranslationKey } from '@/i18n/en';
-// Side-effect import: merges the measure catalogue into the runtime `en`
-// object so `t('measure.*')` resolves under the real 'en' locale (see that
-// module's own doc comment).
-import { useIfc } from '@/hooks/useIfc';
-import { stringToEntityRef, type EntityRef } from '@/store/types';
-import { toGlobalIdFromModels } from '@/store/globalId';
-import {
-  extractQuantitiesOnDemand,
-  extractTypeQuantitiesOnDemand,
-  extractMaterialPropertiesOnDemand,
-  extractProjectUnits,
-  ProjectUnits,
-  type IfcDataStore,
-} from '@ifc-lite/parser';
-import { RelationshipType } from '@ifc-lite/data';
-import { geometryVolumesSurviveAlignment } from '@/lib/compare/alignmentTrust';
-import {
-  QUANTITY_TYPE_UNIT,
-  resolveQuantityDisplay,
-  formatConverted,
-} from '@/lib/units/display';
-import { resolveFromUnit, convertValue } from '@/lib/units/convert';
-import {
-  pickElementQuantities,
-  rollupQuantities,
-  rollupGeometryVolumes,
-  rollupMeshArea,
-  MEASURABLE_QUANTITY_TYPES,
-  type PickedQuantity,
-  type QuantityBasis,
-} from './measure-modes/quantities';
-import { collectMeshAreas } from './measure-modes/mesh-area';
-import {
-  pickIfcDensity,
-  resolveElementWeight,
-  rollupWeights,
-  classifyWeightUnitKind,
-  type WeightBasis,
-  type WeightOutcome,
-} from './measure-modes/weight';
+import { ProjectUnits } from '@ifc-lite/parser';
+import { resolveQuantityDisplay, formatConverted } from '@/lib/units/display';
+import { MEASURABLE_QUANTITY_TYPES, type QuantityBasis } from './measure-modes/quantities';
+import type { WeightBasis } from './measure-modes/weight';
 import { SourceQuantityInspection } from './SourceQuantityInspection';
+import { QuantityResultView } from './QuantityResultView';
+import { ResultState } from '../result/ResultState';
+import { useSelectionQuantitySummary } from './measure-modes/use-selection-quantity-summary';
 
 const QUANTITY_TYPE_LABEL_KEY: Record<number, TranslationKey> = {
   0: 'measure.qty.length',
@@ -148,324 +113,11 @@ const DERIVED_WEIGHT_TITLE_KEY: Record<Exclude<WeightBasis, 'declared'>, Transla
   'derived-library-density': 'measure.weight.massEstimatedTitle',
 };
 
-/**
- * Build the file-unit -> SI converter for one store's declared units.
- *
- * Goes through `convertValue` rather than multiplying by `siScale` directly so
- * an affine unit would carry its offset. None of the four families here is
- * affine today, which is exactly why doing it by hand would look correct
- * forever and then not be.
- */
-function siConverterFor(units: ProjectUnits) {
-  return (value: number, quantityType: number): number => {
-    const entry = QUANTITY_TYPE_UNIT[quantityType];
-    if (!entry) return value;
-    const fileUnit = units.resolvedForUnitType(entry.unitType)
-      ?? { symbol: entry.defaultSymbol, siScale: 1.0 };
-    return convertValue(value, resolveFromUnit(entry.unitType, fileUnit), { scale: 1 });
-  };
-}
-
-/**
- * Build the file-unit -> kg/m³ converter for a material's declared density.
- *
- * Routed through `unitForMeasure('IFCMASSDENSITYMEASURE')` — the same
- * `project_units` resolver the property cards already use for this measure —
- * rather than assuming kg/m³. A project declaring grams and millimetres writes
- * its `MassDensity` in g/mm³, and taking that number as kilograms per cubic
- * metre is wrong by a factor of a million.
- *
- * `unitForMeasure` already falls back to the measure's SI default, so the
- * common file that declares no `MASSDENSITYUNIT` converts by 1.
- */
-function densitySiConverterFor(units: ProjectUnits) {
-  const fileUnit = units.unitForMeasure('IFCMASSDENSITYMEASURE')
-    ?? { symbol: 'kg/m³', siScale: 1.0 };
-  const from = resolveFromUnit('MASSDENSITYUNIT', fileUnit);
-  return (value: number): number => convertValue(value, from, { scale: 1 });
-}
-
-/**
- * Occurrence quantities win, with the element's type as fallback (#1755).
- *
- * "Win" requires at least one ACTUAL quantity: a named-but-empty occurrence
- * quantity set must not mask populated type-level ones. Type extraction is
- * cached per type, so a 500-door type is parsed once rather than 500 times.
- *
- * Both parse paths are served, mirroring the Lists adapter's split (#1751):
- * `extractTypeQuantitiesOnDemand` walks the STEP source and returns `null`
- * outright when there is none, which is every server-parsed store — those
- * carry the type's own quantity sets in the prebuilt table instead, keyed by
- * the TYPE's express id. Taking only the source-backed branch would drop
- * type-declared volumes on the server path while the occurrence branch (whose
- * extractor already falls back to that same table) kept working, so the loss
- * would look like a file that simply declares nothing.
- */
-function quantitySetsFor(
-  store: IfcDataStore,
-  expressId: number,
-  typeCache: Map<number, ReturnType<typeof extractQuantitiesOnDemand>>,
-) {
-  const typeQsets = () => {
-    if (!store.relationships) return [];
-    const typeIds = store.relationships.getRelated(expressId, RelationshipType.DefinesByType, 'inverse');
-    if (typeIds.length === 0) return [];
-    const typeId = typeIds[0];
-    let cached = typeCache.get(typeId);
-    if (!cached) {
-      cached = store.source?.length
-        ? (extractTypeQuantitiesOnDemand(store, expressId)?.quantities ?? [])
-        : (store.quantities?.getForEntity(typeId) ?? []);
-      typeCache.set(typeId, cached);
-    }
-    return cached;
-  };
-
-  const own = extractQuantitiesOnDemand(store, expressId);
-  return own.some((qset) => qset.quantities.length > 0) ? own : typeQsets();
-}
-
 export function MeasureQuantities() {
   const { t } = useTranslation();
-  const selectedEntity = useViewerStore((s) => s.selectedEntity);
-  const selectedEntitiesSet = useViewerStore((s) => s.selectedEntitiesSet);
   const unitDisplayOverrides = useViewerStore((s) => s.unitDisplayOverrides);
-  const { models, ifcDataStore, geometryResult } = useIfc();
-
-  /** The selection, as model-aware refs. Multi-selection first, primary as fallback. */
-  const refs: EntityRef[] = useMemo(() => {
-    if (selectedEntitiesSet.size > 0) {
-      return [...selectedEntitiesSet].map(stringToEntityRef);
-    }
-    return selectedEntity ? [selectedEntity] : [];
-  }, [selectedEntitiesSet, selectedEntity]);
-
-  // Mesh-derived surface area (issue #2199, "mesh analysis reachable from
-  // TypeScript"): summed live from each submesh's `positions`/`indices`
-  // (`measure-modes/mesh-area.ts`'s `collectMeshAreas`), unlike
-  // `geometryVolume` which is a scalar the wasm hashing pass computed once.
-  // Because it re-reads `positions` every time, it is NOT invalidated by
-  // federation re-baking the way `geometryVolume` is — a
-  // `'same-crs'`/`'reprojected'` alignment mutates `positions` in place
-  // (`geometryVolumesSurviveAlignment`'s own contract), so summing
-  // triangles from the CURRENT positions already reflects the geometry on
-  // screen. `rescaledModelIds` therefore does not gate this collection —
-  // and neither, by construction, does `store`: `collectMeshAreas` takes
-  // mesh data alone, so there is no `store`-shaped parameter for a future
-  // early return to gate it on (see the resolution below, and the
-  // adversarial review of 85ebf7d1's confirmed defect: the lookup used to
-  // sit after `if (!store) continue` and silently drop an already-computed
-  // area for any ref whose model lacked an `IfcDataStore`).
-  //
-  // Its OWN memo, keyed on the mesh data alone: per-entity total mesh area
-  // is selection-independent (it iterates every loaded model's triangles,
-  // never `refs`), so recomputing it inside the selection-keyed `summary`
-  // memo below would re-sum the whole federation's triangles on the main
-  // thread on every selection click.
-  const meshAreaByGlobalId = useMemo(
-    () => collectMeshAreas(
-      models.size > 0
-        ? [...models.values()].map((m) => m.geometryResult?.meshes)
-        : [geometryResult?.meshes],
-    ),
-    [models, geometryResult],
-  );
-
-  const summary = useMemo(() => {
-    if (refs.length === 0) return null;
-
-    // One entry per element. `MeshData.geometryVolume` is a WHOLE-ENTITY value
-    // repeated on every submesh, so it is looked up per element rather than
-    // accumulated per mesh — summing submeshes would multiply an element's
-    // volume by its part count. `instancedGeometryVolumes` holds the same
-    // whole-entity value for entities the pipeline kept ONLY as GPU instances
-    // (no flat mesh exists to carry it), already keyed by global id.
-    const volumeByGlobalId = new Map<number, number>();
-    const collectVolumes = (
-      meshes: ReadonlyArray<{ expressId: number; geometryVolume?: number }> | undefined,
-      instanced?: ReadonlyMap<number, number>,
-    ) => {
-      if (meshes) {
-        for (const mesh of meshes) {
-          if (mesh.geometryVolume === undefined) continue;
-          if (!volumeByGlobalId.has(mesh.expressId)) {
-            volumeByGlobalId.set(mesh.expressId, mesh.geometryVolume);
-          }
-        }
-      }
-      if (instanced) {
-        for (const [id, volume] of instanced) {
-          if (!volumeByGlobalId.has(id)) volumeByGlobalId.set(id, volume);
-        }
-      }
-    };
-    // Models whose vertices federation alignment re-baked. Their volumes are
-    // not merely suspect, they describe a different size — so no total ever
-    // includes them, and the gate is at every READ site below rather than at
-    // collection: the derived-mass path (#2736) has to be able to tell "this
-    // element's volume was invalidated" from "the kernel proved no volume for
-    // this element", and it can only do that if the invalidated volume is
-    // still visible to say so about. Nothing downstream may read this map
-    // without first consulting `rescaledModelIds`.
-    const rescaledModelIds = new Set<string>();
-    if (models.size > 0) {
-      for (const [id, m] of models) {
-        if (!geometryVolumesSurviveAlignment(m.federationAlignmentStatus)) {
-          rescaledModelIds.add(id);
-        }
-        collectVolumes(m.geometryResult?.meshes, m.geometryResult?.instancedGeometryVolumes);
-      }
-    } else {
-      collectVolumes(geometryResult?.meshes, geometryResult?.instancedGeometryVolumes);
-    }
-
-    // Resolved directly from `refs`, BEFORE the store-dependent loop below —
-    // not inside it — so no store-related branch in that loop can ever skip
-    // it again. `meshAreaByGlobalId` needs no store to build or to read.
-    let meshAreaIncomplete = 0;
-    const meshAreas: Array<number | undefined> = refs.map((ref) => {
-      const entry = meshAreaByGlobalId.get(toGlobalIdFromModels(models, ref.modelId, ref.expressId));
-      if (!entry) return undefined;
-      if (entry.incomplete) meshAreaIncomplete += 1;
-      return entry.area;
-    });
-
-    const unitsCache = new Map<string, ProjectUnits>();
-    // Per model, not per element: resolving MASSDENSITYUNIT walks the unit
-    // assignment, and a 5000-element selection would otherwise redo it 5000
-    // times for the one answer its model can give.
-    const densityConverters = new Map<string, (value: number) => number>();
-    const typeCaches = new Map<string, Map<number, ReturnType<typeof extractQuantitiesOnDemand>>>();
-    const perElement: PickedQuantity[][] = [];
-    const geometryVolumes: Array<number | undefined> = [];
-    const weightOutcomes: WeightOutcome[] = [];
-    let withoutStore = 0;
-    let rescaled = 0;
-
-    for (const ref of refs) {
-      // A federated ref resolves ONLY through its own model. Falling back to
-      // the legacy store for an id that is not in `models` would read some
-      // other file's quantities for that express id and present them as this
-      // element's — a wrong answer where `withoutStore` should have said "could
-      // not be resolved". The legacy store answers for the legacy ref, and for
-      // the single-model case where `models` is empty.
-      const federated = ref.modelId !== 'legacy' ? models.get(ref.modelId) : undefined;
-      const store = ref.modelId === 'legacy' || models.size === 0
-        ? ((ifcDataStore as IfcDataStore | null) ?? undefined)
-        : (federated?.ifcDataStore as IfcDataStore | undefined);
-      if (!store) {
-        withoutStore += 1;
-        continue;
-      }
-
-      let units = unitsCache.get(ref.modelId);
-      if (!units) {
-        units = store.source?.length && store.entityIndex
-          ? extractProjectUnits(store.source, store.entityIndex)
-          : ProjectUnits.empty();
-        unitsCache.set(ref.modelId, units);
-      }
-      let densityToSi = densityConverters.get(ref.modelId);
-      if (!densityToSi) {
-        densityToSi = densitySiConverterFor(units);
-        densityConverters.set(ref.modelId, densityToSi);
-      }
-      let typeCache = typeCaches.get(ref.modelId);
-      if (!typeCache) {
-        typeCache = new Map();
-        typeCaches.set(ref.modelId, typeCache);
-      }
-
-      const picked = pickElementQuantities(
-        quantitySetsFor(store, ref.expressId, typeCache),
-        siConverterFor(units),
-      );
-      perElement.push(picked);
-
-      const volumeTrusted = !rescaledModelIds.has(ref.modelId);
-      const volume = volumeByGlobalId.get(
-        toGlobalIdFromModels(models, ref.modelId, ref.expressId),
-      );
-
-      // A re-baked model contributes no volume AND is not counted as unproved:
-      // the kernel proved one, alignment invalidated it, and the note below
-      // says exactly that.
-      if (volumeTrusted) {
-        geometryVolumes.push(volume);
-      } else {
-        rescaled += 1;
-      }
-
-      // Weight, with its provenance (#2736). The file's own `Qto` weight is
-      // taken FIRST and, when present, is the whole answer — `pickElementQuantities`
-      // already returns it net-before-gross-before-unqualified, so `find` takes
-      // the most representative one. Only when there is none does the density
-      // lookup run at all, which is both the correct precedence (never derive
-      // over what the file declared) and the reason a large selection of
-      // properly-quantified elements pays nothing for this feature.
-      const declaredWeight = picked.find(
-        (q) => q.quantityType === MEASURABLE_QUANTITY_TYPES.Weight,
-      );
-      // Exactly the complement of `resolveElementWeight`'s `no-volume` and
-      // `volume-untrusted` guards — `Number.isFinite(undefined)` is `false`,
-      // so this is one expression for both.
-      const densityCouldMatter = volumeTrusted && Number.isFinite(volume);
-      weightOutcomes.push(
-        resolveElementWeight(
-          declaredWeight
-            ? {
-                declared: { value: declaredWeight.value, provenance: declaredWeight.provenance },
-                volumeTrusted,
-              }
-            : {
-                volume,
-                volumeTrusted,
-                unitKind: classifyWeightUnitKind(units.resolvedForUnitType('MASSUNIT')?.symbol),
-                // Only the file's own density is wired today; there is no
-                // project density library to fall back to (see the module's
-                // `derived-library-density`, which no call site can reach yet).
-                //
-                // Gated on the SAME condition as `extractProjectUnits` above,
-                // and for the same reason: material properties live in
-                // `IfcMaterialProperties` entities that are only reachable by
-                // reading attributes out of the STEP source through
-                // `entityIndex`. A server-parsed store has neither — its
-                // prebuilt tables carry properties and quantities, not
-                // material psets — so there is genuinely no density to read,
-                // and asking anyway walks an index that is not there.
-                //
-                // Gated a SECOND time on the volume, because
-                // `extractMaterialPropertiesOnDemand` re-parses the source
-                // buffer per element and `resolveElementWeight` returns
-                // `no-volume` / `volume-untrusted` BEFORE it ever reads a
-                // density. Without this the panel paid that per-element parse
-                // for every element it was already going to withhold — the one
-                // place the per-model caching above was not applied. It is a
-                // cost guard only: it mirrors the resolver's two volume
-                // refusals, so every element it skips is one whose outcome the
-                // density could not have changed.
-                density: densityCouldMatter && store.source?.length && store.entityIndex
-                  ? pickIfcDensity(
-                      extractMaterialPropertiesOnDemand(store, ref.expressId),
-                      densityToSi,
-                    )
-                  : undefined,
-              },
-        ),
-      );
-    }
-
-    return {
-      declared: rollupQuantities(perElement),
-      geometry: rollupGeometryVolumes(geometryVolumes),
-      meshArea: rollupMeshArea(meshAreas),
-      weights: rollupWeights(weightOutcomes),
-      meshAreaIncomplete,
-      elements: refs.length,
-      withoutStore,
-      rescaled,
-    };
-  }, [refs, models, ifcDataStore, geometryResult, meshAreaByGlobalId]);
+  const quantities = useSelectionQuantitySummary();
+  const { summary } = quantities;
 
   // Totals are already SI, so display resolves against an EMPTY unit context —
   // handing it the file's declared millimetres would scale a metre total again.
@@ -477,15 +129,9 @@ export function MeasureQuantities() {
     return disp.unit ? `${formatted} ${disp.unit}` : formatted;
   };
 
-  if (!summary) {
-    return (
-      <div className="px-3 py-8 text-center text-xs text-muted-foreground">
-        {t('measure.quantities.selectPrompt')}
-      </div>
-    );
-  }
+  if (!summary) return <QuantityResultView quantities={quantities} />;
 
-  const { declared, geometry, meshArea, weights, meshAreaIncomplete, elements, withoutStore, rescaled } = summary;
+  const { declared, geometry, meshArea, weights, elements } = summary;
   // Derived-mass rows only. The `declared` basis is already a row of the
   // `declared` table above; see DERIVED_WEIGHT_LABEL.
   const derivedWeights = weights.rows.filter((r) => r.basis !== 'declared');
@@ -498,24 +144,10 @@ export function MeasureQuantities() {
     && derivedWeights.length === 0;
 
   return (
+    <QuantityResultView quantities={quantities} evidence={<SourceQuantityInspection />}>
     <div className="space-y-1.5 px-3 py-2">
-      <div className="flex items-center justify-between gap-2">
-        <span className="flex items-center gap-1 font-mono text-2xs uppercase tracking-wider text-foreground">
-          <Boxes className="h-3 w-3" />
-          {t('measure.quantities.header')}
-        </span>
-        <span className="font-mono text-2xs text-muted-foreground">
-          {t('measure.quantities.elementsCount', { count: elements })}
-        </span>
-      </div>
-
       {nothing ? (
-        <div className="flex items-start gap-1.5 text-2xs leading-tight text-muted-foreground">
-          <TriangleAlert className="mt-0.5 h-3 w-3 shrink-0 text-amber-500" />
-          <span>
-            {t('measure.quantities.nothingFound')}
-          </span>
-        </div>
+        <ResultState kind="partial" title={t('measure.quantities.nothingFound')} />
       ) : (
         <div className="space-y-0.5 overflow-x-auto">
           {declared.length > 0 && <div className="font-mono text-2xs uppercase tracking-wider text-muted-foreground">{t('measure.quantities.authoredHeading')}</div>}
@@ -625,49 +257,7 @@ export function MeasureQuantities() {
             : t('measure.quantities.massLegend')}
         </div>
       )}
-      {weights.withheld['density-ambiguous'] > 0 && (
-        <div className="font-mono text-2xs leading-tight text-muted-foreground">
-          {t('measure.quantities.densityAmbiguous', { count: weights.withheld['density-ambiguous'] })}
-        </div>
-      )}
-      {weights.withheld['weight-unit-is-force'] > 0 && (
-        <div className="flex items-start gap-1.5 font-mono text-2xs leading-tight text-amber-600 dark:text-amber-500">
-          <TriangleAlert className="mt-0.5 h-2.5 w-2.5 shrink-0" />
-          <span>
-            {t('measure.quantities.weightUnitIsForce', { count: weights.withheld['weight-unit-is-force'] })}
-          </span>
-        </div>
-      )}
-
-      {geometry.unproved > 0 && (
-        <div className="font-mono text-2xs leading-tight text-muted-foreground">
-          {t('measure.quantities.unprovedVolume', { count: geometry.unproved })}
-        </div>
-      )}
-      {meshArea.withoutMesh > 0 && (
-        <div className="font-mono text-2xs leading-tight text-muted-foreground">
-          {t('measure.quantities.noMeshToMeasure', { count: meshArea.withoutMesh })}
-        </div>
-      )}
-      {meshAreaIncomplete > 0 && (
-        <div className="flex items-start gap-1.5 font-mono text-2xs leading-tight text-amber-600 dark:text-amber-500">
-          <TriangleAlert className="mt-0.5 h-2.5 w-2.5 shrink-0" />
-          <span>
-            {t('measure.quantities.meshAreaIncomplete', { count: meshAreaIncomplete })}
-          </span>
-        </div>
-      )}
-      {rescaled > 0 && (
-        <div className="font-mono text-2xs leading-tight text-muted-foreground">
-          {t('measure.quantities.rescaledVolume', { count: rescaled })}
-        </div>
-      )}
-      {withoutStore > 0 && (
-        <div className="font-mono text-2xs leading-tight text-muted-foreground">
-          {t('measure.quantities.unresolvedElements', { count: withoutStore })}
-        </div>
-      )}
-      <SourceQuantityInspection />
     </div>
+    </QuantityResultView>
   );
 }

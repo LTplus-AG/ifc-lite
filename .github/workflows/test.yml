@@ -101,8 +101,8 @@ permissions:
 # Force JavaScript actions onto Node 24. GitHub deprecated Node 20 for
 # actions in late 2025 and will flip the default in June 2026. Setting
 # this opts us in early so the deprecation warning doesn't show up on
-# every run, and it covers actions like jetli/wasm-pack-action that
-# haven't shipped a Node-24-native release yet.
+# every run, and it covers any third-party action that hasn't shipped a
+# Node-24-native release yet.
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
   # Recorded-provider browser journeys (including the revert oracle) need a
@@ -341,11 +341,9 @@ jobs:
               - 'examples/**'
               - 'packages/**'
               - 'tests/e2e/**'
-              # Frame tools are a no-emit programme reached by root typecheck (#6975).
-              - 'tests/benchmark/frames/**'
-              - 'tests/benchmark/metadata-render-readiness.ts'
-              - 'tests/benchmark/viewer-benchmark-page.ts'
-              - 'tests/benchmark/load-trace-metrics.ts'
+              # Perf tools consume benchmark helpers; the CI path-coverage mirror
+              # reads every tracked benchmark input, so all must trigger Node tests.
+              - 'tests/benchmark/**'
               - 'playwright.config.ts'
               # The relay handlers and their tests. `pnpm test:api` runs in this
               # job, so without these a PR touching ONLY the relay skips the one
@@ -409,6 +407,9 @@ jobs:
               # (scripts/README-vercel-cost.md).
               - 'rust-major-offset.json'
               - 'tests/models/manifest.json'
+              # The path-coverage regression harness mirrors tracked evidence,
+              # and conservative gate inputs include the committed archive tree.
+              - 'tests/evidence/**'
               # The AI evaluation gates (scripts/ai-eval) read the corpus,
               # recordings, label sheets and study records: an edit to any of
               # them must run the gates that validate them.
@@ -545,7 +546,7 @@ jobs:
         uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
 
       - name: Setup Node.js
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 22
           cache: pnpm
@@ -651,7 +652,7 @@ jobs:
 
       - name: Upload perf-ratchet measurements
         if: steps.perf-ratchet-measure.outcome == 'success'
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: perf-ratchet-measured
           path: ${{ runner.temp }}/perf-ratchet/
@@ -659,7 +660,7 @@ jobs:
           if-no-files-found: error
 
       - name: Upload build artifacts
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: build-output
           # `packages/*/pkg` covers `wasm/pkg`, which downstream
@@ -694,7 +695,7 @@ jobs:
           persist-credentials: false
           fetch-depth: 0
       - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 22
           cache: pnpm
@@ -704,13 +705,13 @@ jobs:
       # lane, but make its formatter dependency explicit rather than relying
       # on a runner image incidental.
       - name: Install Rust formatter for codegen freshness
-        uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # master 2026-05
+        uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f # master 2026-05
         with:
           toolchain: stable
           components: rustfmt
       - run: pnpm install --frozen-lockfile
       - name: Download build artifacts
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: build-output
           path: packages
@@ -729,8 +730,9 @@ jobs:
       # them as silent skips instead of the real assertions the oracle needs
       # to revert against.
       # #6267: a changed Playwright spec can be the witness, measured in a real
-      # browser. Only then are fixtures provisioned; the oracle itself decides
-      # whether the browser runs at all (not when a cheaper test observes).
+      # browser. Manifest fixtures are provisioned for every oracle runner;
+      # the optional browser encoder is installed only for these specs. The
+      # oracle decides whether a browser runs (not when a cheaper test observes).
       - name: Detect changed Playwright specs
         id: browser
         run: |
@@ -770,13 +772,13 @@ jobs:
           lfs: false
           persist-credentials: false
       - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - name: Download build artifacts
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: build-output
           path: packages
@@ -805,7 +807,7 @@ jobs:
           # than passing, so a depth guess would turn into a flaky red.
           fetch-depth: 0
       - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 22
           cache: pnpm
@@ -816,7 +818,7 @@ jobs:
       # unmeasurable, and the ratchet fails closed. (It was written assuming
       # "lint needs no dist", which is true of eslint and false of this.)
       - name: Download build artifacts
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: build-output
           path: packages
@@ -834,7 +836,7 @@ jobs:
       - name: Check changeset-bump gate regressions
         run: node --test scripts/check-changeset-bump.test.mjs
 
-  # The viewer's own suite, split out of `node-tests` AND sharded eight ways.
+  # The viewer's own suite, split out of `node-tests` across sixteen shards.
   #
   # Measured, not guessed. Splitting it out of node-tests took that lane from
   # a 25:00 timeout to 5:32 SUCCESS, so everything except the viewer costs five
@@ -847,8 +849,8 @@ jobs:
   # 2:29, 2:01, 1:50 against a 25 minute cap, at FOUR shards over 521 files.
   # The suite had grown to 803 files by 2026-09-11 and the four shards were
   # measured at 5.6-8.2 min on hosted runners, on the frontend PR's critical
-  # path; EIGHT shards (CI redesign, step 4) halves the per-shard file count
-  # back to roughly the size the timings above were recorded at. Membership
+  # path; EIGHT shards (CI redesign, step 4) halved the per-shard file count
+  # then. The suite now needs sixteen shards (see #7360 below). Membership
   # is a hash of the path (below), so going 4 -> 8 reassigns files exactly
   # once and then stays stable.
   #
@@ -917,20 +919,22 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        shard: [0, 1, 2, 3, 4, 5, 6, 7]
+        # #7360 qualification: 2,180 files outgrew eight serial shards.
+        # Keep the 25-minute cap and run every path exactly once.
+        shard: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           lfs: false
           persist-credentials: false
       - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - name: Download build artifacts
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: build-output
           path: packages
@@ -971,7 +975,7 @@ jobs:
       # dropped or run twice (521 files split 130+131+130+130 at four).
       - run: pnpm --filter @ifc-lite/viewer run test
         env:
-          TEST_SHARDS: '8'
+          TEST_SHARDS: '16'
           TEST_SHARD: ${{ matrix.shard }}
 
   node-tests:
@@ -1018,13 +1022,13 @@ jobs:
           # which is the failure mode this repo's gates exist to prevent.
           fetch-depth: 0
       - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - name: Download build artifacts
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: build-output
           path: packages
@@ -1705,8 +1709,9 @@ jobs:
       # scripts/docs/ joined it for the same reason in #3200 - the catch-all is
       # per-DIRECTORY, so it goes blind on the next subdirectory anyone adds.
       # scripts/xmatch/ joined with its first test file (#4955, PR-6).
+      # scripts/ids-conformance/ joined with the IDS conformance dashboard (IDS-125).
       - name: Run every scripts/ test file (glob catch-all)
-        run: node --test scripts/*.test.mjs scripts/lib/*.test.mjs scripts/fixtures/*.test.mjs scripts/docs/*.test.mjs scripts/review/*.test.mjs scripts/review/lib/*.test.mjs scripts/perf/*.test.mjs scripts/perf-ratchet/*.test.mjs scripts/xmatch/*.test.mjs scripts/ai-eval/*.test.mjs scripts/ai-eval/lib/*.test.mjs
+        run: node --test scripts/*.test.mjs scripts/lib/*.test.mjs scripts/fixtures/*.test.mjs scripts/docs/*.test.mjs scripts/review/*.test.mjs scripts/review/lib/*.test.mjs scripts/perf/*.test.mjs scripts/perf-ratchet/*.test.mjs scripts/xmatch/*.test.mjs scripts/ai-eval/*.test.mjs scripts/ai-eval/lib/*.test.mjs scripts/ai-eval/ids/*.test.mjs scripts/ids-conformance/*.test.mjs scripts/ids-conformance/lib/*.test.mjs scripts/ids-conformance/lib/adapters/*.test.mjs
       # Committed codegen output (packages/codegen/generated/**,
       # packages/parser/src/generated/**, packages/data/src/ifc-schema/
       # generated/**) had no CI freshness gate at all — a generator bug fixed
@@ -1887,13 +1892,13 @@ jobs:
           lfs: false
           persist-credentials: false
       - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - name: Download build artifacts
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: build-output
           path: packages
@@ -1923,13 +1928,13 @@ jobs:
           lfs: false
           persist-credentials: false
       - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - name: Download build artifacts
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: build-output
           path: packages
@@ -1982,7 +1987,7 @@ jobs:
         run: timeout --signal=INT --kill-after=30s 13m pnpm test:e2e:ci --shard=${{ matrix.shard }}/2 --reporter=list
       - name: Upload assistant browser evidence
         if: always() && hashFiles('test-results/**/assistant-*.png', 'test-results/*assistant-context*/video.webm') != ''
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: assistant-browser-evidence-${{ matrix.shard }}
           path: |
@@ -1993,7 +1998,7 @@ jobs:
       - name: Upload E2E failure context
         # Playwright's error-context.md / traces for the failed tests only.
         if: failure()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: e2e-test-results-${{ matrix.shard }}
           path: test-results/
@@ -2312,7 +2317,7 @@ jobs:
       # fixture corpus locally. Re-blessing is now: download, replace the golden.
       - name: Upload the census rows
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: watertightness-census-rows
           path: target/watertightness_census.run.tsv
@@ -2466,7 +2471,7 @@ jobs:
           lfs: false
           persist-credentials: false
       - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 22
           cache: pnpm
@@ -2512,7 +2517,7 @@ jobs:
           lfs: false
           persist-credentials: false
       - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 22
           cache: pnpm
@@ -2597,7 +2602,7 @@ jobs:
       # high enough: >=1.93.0 needed, got 1.93.0-nightly"). The gate invokes it
       # as `cargo +stable semver-checks`, so this only has to exist.
       - name: Install stable Rust
-        uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # master 2026-05
+        uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f # master 2026-05
         with:
           toolchain: stable
 
@@ -2639,7 +2644,7 @@ jobs:
         with:
           lfs: false
           persist-credentials: false
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 22
       - name: Check AGENTS.md size and line length
@@ -2677,7 +2682,7 @@ jobs:
         with:
           lfs: false
           persist-credentials: false
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 22
       - name: Check the license-header classifier's own regressions
@@ -2704,7 +2709,7 @@ jobs:
         with:
           lfs: false
           persist-credentials: false
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 22
       - name: Setup Rust (pinned by rust-toolchain.toml)
@@ -2725,7 +2730,7 @@ jobs:
       - name: Measure perf-ratchet native-instructions family
         run: node scripts/perf-ratchet/measure-native-instructions.mjs --set small --out "$RUNNER_TEMP/perf-ratchet-native/native-instructions.json"
       - name: Upload native-instructions measurement
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: perf-ratchet-measured-native
           path: ${{ runner.temp }}/perf-ratchet-native/
@@ -2741,11 +2746,10 @@ jobs:
   perf-ratchet:
     name: Perf ratchet ceilings
     needs: [changes, build, native-instructions]
-    # `always()` because `native-instructions` is skipped on frontend-only
-    # changes, which would otherwise skip this job too. A FAILED measurement
-    # job skips the gate here and goes red in the aggregate instead.
+    # An explicit status predicate permits skipped native measurements and retires
+    # cancelled runs (#7247). Failed measurements remain red in the aggregate.
     if: >-
-      always() && needs.build.result == 'success'
+      !cancelled() && needs.build.result == 'success'
       && (needs.native-instructions.result == 'success' || needs.native-instructions.result == 'skipped')
       && (needs.changes.outputs.rust == 'true' || needs.changes.outputs.frontend == 'true' || needs.changes.outputs.perf_ratchet == 'true')
     runs-on: ubuntu-latest
@@ -2759,19 +2763,19 @@ jobs:
         with:
           lfs: false
           persist-credentials: false
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 22
       # Fails the job when `build` produced no measurement: a gate that cannot
       # find its input is red, never a skipped comparison.
       - name: Download perf-ratchet measurements
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: perf-ratchet-measured
           path: ${{ runner.temp }}/perf-ratchet
       - name: Download native-instructions measurement
         if: needs.native-instructions.result == 'success'
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: perf-ratchet-measured-native
           path: ${{ runner.temp }}/perf-ratchet
@@ -2820,7 +2824,8 @@ jobs:
   test:
     name: Build + WASM + Rust + Node
     needs: [changes, build, revert-oracle, typecheck, lint, node-tests, provenance-tests, viewer-tests, viewer-e2e, rust-tests, rust-full, rust-semver, geometry-census, csg-accept-gates, plato-check, docs-checks, docs-site, agents-md, license-headers, native-instructions, perf-ratchet]
-    if: always()
+    # Preserve failed/skipped dependency judgement, but retire cancelled workflows (#7247).
+    if: ${{ !cancelled() }}
     # Free runner — the gate just inspects upstream job results.
     runs-on: ${{ (vars.SELF_HOSTED_CI == 'true' && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.draft == false && !contains(github.event.pull_request.labels.*.name, 'ci:hosted')))) && fromJSON('["self-hosted","linux","x64","ifclite"]') || 'ubuntu-latest' }}
     timeout-minutes: 5

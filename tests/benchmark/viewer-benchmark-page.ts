@@ -149,7 +149,7 @@ export class ViewerBenchmarkPage {
           (globalThis as unknown as { __IFC_LITE_BATCH_SIZING?: unknown }).__IFC_LITE_BATCH_SIZING = c;
         }, cfg);
         console.log(`[Benchmark] batch sizing override: ${batchSizingEnv}`);
-      } catch (e) {
+      } catch {
         console.warn(`[Benchmark] invalid VIEWER_BENCHMARK_BATCH_SIZING: ${batchSizingEnv}`);
       }
     }
@@ -165,7 +165,7 @@ export class ViewerBenchmarkPage {
           (globalThis as unknown as { __IFC_LITE_VISIBILITY_FILTER?: unknown }).__IFC_LITE_VISIBILITY_FILTER = c;
         }, f);
         console.log(`[Benchmark] visibility filter: ${visFilterEnv}`);
-      } catch (e) {
+      } catch {
         console.warn(`[Benchmark] invalid VIEWER_BENCHMARK_VISIBILITY_FILTER: ${visFilterEnv}`);
       }
     }

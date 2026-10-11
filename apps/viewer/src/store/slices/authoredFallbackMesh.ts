@@ -55,13 +55,15 @@ export async function remeshAuthoredElement(get: Get, modelId: string, entityId:
   const dataStore = authoredDataStore(state, modelId);
   const remembered = dataStore ? fallbacks.get(dataStore)?.get(entityId) : undefined;
   if (!dataStore || !remembered || !isLiveWithoutMesh(state, modelId, entityId)) return { outcome, fallback: false };
+  const frame = storeyAuthoringFrame(dataStore, remembered.storeyExpressId, coordinateInfoOf(state, modelId), state.mutationViews.get(modelId));
+  if (frame.unavailable) return { outcome, fallback: false };
   const mesh = buildElementMesh({
     type: remembered.element.kind,
     globalId: toGlobalIdFromModels(state.models, modelId, entityId),
     storeyElevation: dataStore.spatialHierarchy?.storeyElevations?.get(remembered.storeyExpressId) ?? 0,
     payload: authoredElementMeshPayload(
       remembered.element,
-      storeyAuthoringFrame(dataStore, remembered.storeyExpressId, coordinateInfoOf(state, modelId)),
+      frame,
     ),
   });
   if (!mesh) return { outcome, fallback: false };

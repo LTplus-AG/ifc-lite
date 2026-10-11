@@ -1,0 +1,41 @@
+{
+  "timeUtc": "2026-10-08T09:23:42.711045+00:00",
+  "scope": "Independent read-only finite calendar/profile review; no executable checks, browser, source writes or runtime/night qualification",
+  "head": "62bc268382255a65c7eeaaa9268898bafe201fec",
+  "sourceHashes": {
+    "scripts/perf/tsconfig.frames.json": "76fc6fb5431f0fcb7032be35f47579b84357ed4a84cb8386480fc6606c8f55c4",
+    "scripts/perf/frame-gpu-night-history.ts": "89c8b66809280b059197143fb43ddc4e9e511ce83d0d96bd7b885a82a2308214",
+    "scripts/perf/frame-gpu-night-history.test.ts": "6c743fc64565461f171335fa6fb0629a799c5d72c4f24f74c5dda316a6e9d221",
+    "scripts/perf/frame-gpu-night-history.test.mjs": "660f1858c34a1e6911066a65c444e756a122adf483a427ff83dd0414fd4324ac",
+    "scripts/perf/frame-gpu-night-profile.ts": "319deed3c36e1f308ab435d5a95ab0a72bcd0dd493ff7c80199854d43b8ffc99",
+    "scripts/perf/frame-gpu-night-profile.test.ts": "28e4f246cbb1c7116f77ca10dfc235537f2ca6bc9a3b57d2b5009f8903566925"
+  },
+  "finding": {
+    "initial": "Receipt reuse from outside chosen seven-night window was accepted",
+    "counterexample": "RetainedOct1\u20138; Oct8reusesOct1 rawreceipt, Oct2\u20137distinct, sameprofile/ok; throughOct8 selected2\u20138 incorrectlyready",
+    "authorCorrection": "receiptDaysindex covers all retainedhistory; contributingreceipt appearingonanothernight refuses. Actualeightdate control appended. Sourcescorrected/unrun atreview",
+    "correctedReadOnlyVerdict": "Resolved in inspectedsource; execution still required"
+  },
+  "otherFindings": [],
+  "reviewedChecks": [
+    "Distinctconsecutive UTCdates, date/startintervalstatus/hashdecode, gaps/duplicateattempts/refused/failed/profiledrift rejectwindow",
+    "OutputcalendarReady doesnotgenerate threshold oradmitphysicalhardware",
+    "ActualgitHEAD/Rusttree/cleanchecked; allpinnedartifactsactualSHA;fullresolveddistfilesincludingindex/runtime/fixture/qualificationreceipt mustbepinned",
+    "Artifactpathescapes andmultiplepathsidentifyingonecanonicalfile refused;dist symlinks refused",
+    "Profiletests use actualtemporarygitcheckout/files, withfinally cleanup, byte/build drift/source/missingpin/extraasset/pathalias controls",
+    "TShelpers/testsources reached throughpermanentrootframes programme, JSfacade reachedCIperf catchall"
+  ],
+  "limits": [
+    "This is helpercode preparation only; no actualsevennights/nativeGPU/physicaldisplay/calibrationthreshold claimed",
+    "Profileverifier pinsbytes anddrift; explicitlydoesnotjudgesufficiency/contentofindependentnativequalificationreceipt",
+    "Temporaryprofiletestsuse syntheticfixture/runtimebytes, notrealWASM/IFC/hardware evidence",
+    "No heavychecksrun by reviewer; author mustqualify correctedsource throughrootprogramme andactualtestfacade"
+  ],
+  "nestedWrapperFollowup": {
+    "timeUtc": "2026-10-08T09:34:27.164341+00:00",
+    "sha256": "660f1858c34a1e6911066a65c444e756a122adf483a427ff83dd0414fd4324ac",
+    "scope": "Readonlysourcefollowup, noexecutablechecksbyreviewer",
+    "verdict": "Reviewedclean; clonedenv removesonlyNODE_TEST_CONTEXT so nestedtest runnerexecutesactualinnercontrols, retainsotherenv, childstatus/stdout/stderr propagateassertionfailure; diagnostic exposes8controls",
+    "previousFalseGreen": "Inheritedchild-v8 suppressedinnercontrols; authororiginalwrappergreenlogs excluded"
+  }
+}

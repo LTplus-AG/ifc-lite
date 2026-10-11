@@ -17,8 +17,8 @@
 
 import type { EntityExtractor } from './entity-extractor.js';
 import type { IfcDataStore } from './columnar-parser.js';
-import { getAttributeNames, normalizeIfcTypeName } from './ifc-schema.js';
-import { asBoolean, asNumber, asString } from './structural-step-values.js';
+import { getAttributeNames, getInheritanceChain, normalizeIfcTypeName } from './ifc-schema.js';
+import { asBoolean, asNumber, asRef, asString } from './structural-step-values.js';
 
 /** Attributes that every load/condition carries from its supertype, not a component. */
 const NAME_ATTR = 'Name';
@@ -73,7 +73,7 @@ export type StructuralLoadDropReason =
   | 'cycle'
   /** The node budget for this top-level load was spent before this slot. */
   | 'budget'
-  /** The slot is not an entity reference at all (`$`, an inline value, …). */
+  /** The slot is not a structural-load reference (`$`, an inline value, or a different IFC class). */
   | 'invalid-reference'
   /** The referenced expressId is in no index — a dangling reference. */
   | 'unresolved'
@@ -196,8 +196,9 @@ export function extractStructuralLoad(
   extractor: EntityExtractor,
   store: IfcDataStore,
   expressId: number,
+  readEntity?: (expressId: number) => { type: string; attrs: unknown[] } | undefined,
 ): StructuralLoadInfo | undefined {
-  return readLoad(extractor, store, expressId, new Set(), { remaining: MAX_LOAD_NODES }, 0).value;
+  return readLoad(extractor, store, expressId, new Set(), { remaining: MAX_LOAD_NODES }, 0, readEntity).value;
 }
 
 /**
@@ -218,19 +219,20 @@ function readLoad(
   path: Set<number>,
   budget: { remaining: number },
   depth: number,
+  readEntity?: (expressId: number) => { type: string; attrs: unknown[] } | undefined,
 ): LoadReadResult {
   if (depth > MAX_LOAD_DEPTH) return { dropped: 'depth', truncated: true };
   if (path.has(expressId)) return { dropped: 'cycle', truncated: true };
   if (budget.remaining <= 0) return { dropped: 'budget', truncated: true };
-  // @raw-entity-enumeration-ok bounded source reference walk needs this STEP byte span for EntityExtractor
-  const ref = store.entityIndex.byId.get(expressId);
-  if (!ref) return { dropped: 'unresolved', truncated: false };
-  const entity = extractor.extractEntity(ref);
-  if (!entity) return { dropped: 'unreadable', truncated: false };
-
+  const source = readEntity ? undefined : sourceLoadRecord(extractor, store, expressId);
+  const entity = readEntity ? readEntity(expressId) : source?.record;
+  if (!entity) return { dropped: source?.dropped ?? 'unresolved', truncated: false };
   budget.remaining--;
   const type = normalizeIfcTypeName(entity.type);
-  const attrs = entity.attributes || [];
+  if (type !== 'IfcStructuralLoad' && !getInheritanceChain(type).includes('IfcStructuralLoad')) {
+    return { dropped: 'invalid-reference', truncated: false };
+  }
+  const attrs = entity.attrs;
 
   if (type.toUpperCase() === 'IFCSTRUCTURALLOADCONFIGURATION') {
     const locations = readLocations(attrs[LOAD_CONFIGURATION_ATTR.Locations]);
@@ -246,8 +248,8 @@ function readLoad(
         const row = locations?.[i];
         const location = row && row.length > 0 ? row : undefined; // empty = placeholder for an unusable row
         const slot: LoadReadResult =
-          typeof v === 'number' && Number.isInteger(v) && v > 0
-            ? readLoad(extractor, store, v, path, budget, depth + 1)
+          asRef(v) !== undefined
+            ? readLoad(extractor, store, asRef(v)!, path, budget, depth + 1, readEntity)
             : { dropped: 'invalid-reference', truncated: false };
         if (slot.truncated) truncated = true;
         entries.push({ value: slot.value, dropped: slot.dropped, location });
@@ -293,20 +295,26 @@ function readNumericComponents(type: string, attrs: unknown[]): Record<string, n
   return components;
 }
 
+function sourceLoadRecord(extractor: EntityExtractor, store: IfcDataStore, id: number): { record?: { type: string; attrs: unknown[] }; dropped: 'unresolved' | 'unreadable' } {
+  // @raw-entity-enumeration-ok bounded source reference walk needs this STEP byte span for EntityExtractor
+  const ref = store.entityIndex.byId.get(id);
+  if (!ref) return { dropped: 'unresolved' as const };
+  const entity = extractor.extractEntity(ref);
+  return { record: entity ? { type: entity.type, attrs: entity.attributes ?? [] } : undefined, dropped: 'unreadable' as const };
+}
+
 /** Read one `IfcBoundaryCondition` entity by expressId. */
 export function extractBoundaryCondition(
   extractor: EntityExtractor,
   store: IfcDataStore,
   expressId: number,
+  readEntity?: (expressId: number) => { type: string; attrs: unknown[] } | undefined,
 ): BoundaryConditionInfo | undefined {
-  // @raw-entity-enumeration-ok boundary condition is decoded from one source STEP record
-  const ref = store.entityIndex.byId.get(expressId);
-  if (!ref) return undefined;
-  const entity = extractor.extractEntity(ref);
+  const entity = readEntity ? readEntity(expressId) : sourceLoadRecord(extractor, store, expressId).record;
   if (!entity) return undefined;
-
   const type = normalizeIfcTypeName(entity.type);
-  const attrs = entity.attributes || [];
+  if (type !== 'IfcBoundaryCondition' && !getInheritanceChain(type).includes('IfcBoundaryCondition')) return undefined;
+  const attrs = entity.attrs;
   const components: Record<string, number | boolean> = {};
   const names = getAttributeNames(type);
   for (let i = 0; i < names.length; i++) {

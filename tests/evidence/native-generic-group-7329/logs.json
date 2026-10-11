@@ -1,0 +1,97 @@
+[
+  {
+    "file": "fc27-broad-native-sdk.log.gz",
+    "uncompressedSha256": "da97ddbaac2a99ae6fb4e7a36c002b31f7cede1cecc2ca6c23c1048a9d910ad5",
+    "uncompressedBytes": 1819
+  },
+  {
+    "file": "fc27-viewer.log.gz",
+    "uncompressedSha256": "1e26304631ddf22c6558a8754ac6fd5ad3bcad830770cdfd8d2ebaced369ebf9",
+    "uncompressedBytes": 3590
+  },
+  {
+    "file": "sierra-native-v2.log.gz",
+    "uncompressedSha256": "fef089653672f38faf33e31d0e11ceea7188dd28f53157c161a2da13fde111c7",
+    "uncompressedBytes": 2561
+  },
+  {
+    "file": "budget-v2-act-inverse.log.gz",
+    "uncompressedSha256": "3e4249080f6c929bfe77a20e1670968c0aadc4d9eafe0ceb28c7623b71d1763e",
+    "uncompressedBytes": 5917
+  },
+  {
+    "file": "budget-v2-report-inverse.log.gz",
+    "uncompressedSha256": "6aa5f5caf50294ef465411c219ec917ea73194ab11a83886525867a2e1591dc5",
+    "uncompressedBytes": 5917
+  },
+  {
+    "file": "budget-v2-restored.log.gz",
+    "uncompressedSha256": "bb8b6490e993593e04b68650827515ecce951da6d85e17f2bc67adabe1b46d45",
+    "uncompressedBytes": 2439
+  },
+  {
+    "file": "public-whole-mainfc27.log.gz",
+    "uncompressedSha256": "538b6f1a7781eb770ae4a5c683cbaef4cd1d508622f2ffb35d77f1da9305f048",
+    "uncompressedBytes": 9632
+  },
+  {
+    "file": "public-whole-mainfc27-restored.log.gz",
+    "uncompressedSha256": "f107925023660cef1f401047dc1e8b97aec9212d6f6c5187383257956bae73bd",
+    "uncompressedBytes": 3588
+  },
+  {
+    "file": "reviewed-fc27-dispatch-inverse.log.gz",
+    "uncompressedSha256": "786f1384eb149721745979935a05d7d0fc07a3a97ee52dec034708d85e6fd29d",
+    "uncompressedBytes": 5207
+  },
+  {
+    "file": "reviewed-fc27-dispatch-restored.log.gz",
+    "uncompressedSha256": "49a4f9e6b4ff0f48b2a7c3f814ca6f3cd7c9e852af586311a06b1201221b2f91",
+    "uncompressedBytes": 3587
+  },
+  {
+    "file": "reviewed-fc27-native-write-inverse.log.gz",
+    "uncompressedSha256": "1b12c1466e9f73a3e6e5da7ba29129a3096552fd9eb5a50ea252bc2f2a90cd48",
+    "uncompressedBytes": 7512
+  },
+  {
+    "file": "reviewed-fc27-native-write-restored.log.gz",
+    "uncompressedSha256": "0db7b9108e5bfc9a0e1de7e467a0effb07539ca95b5a978595f4d4409e592815",
+    "uncompressedBytes": 3586
+  },
+  {
+    "file": "4cb-root-typecheck-v2.log.gz",
+    "uncompressedSha256": "a27e3420d06d5e6765d3ec842df3dc69cc7e697bc9cf7ced3defe20b92413838",
+    "uncompressedBytes": 49582
+  },
+  {
+    "file": "4cb-root-lint-v2.log.gz",
+    "uncompressedSha256": "2b368799ba4c4e9d0a5c4d23d07bbab2716c80ec5c3dbe2fc719c77b5b05619a",
+    "uncompressedBytes": 182897
+  },
+  {
+    "file": "ifc4x3-fixture-fetch.log.gz",
+    "uncompressedSha256": "c738f872d0b969842b8afd1e8bacd193c580d8908361bf59ea03435b6ea95141",
+    "uncompressedBytes": 218
+  },
+  {
+    "file": "cost-fixture-fetch.log.gz",
+    "uncompressedSha256": "438ab94961f9bbce99c5e13b7dcc347caf5dac2074cf1b9616f2069518dbc906",
+    "uncompressedBytes": 211
+  },
+  {
+    "file": "edb-bounded-build.log.gz",
+    "uncompressedSha256": "328c3eae7e262041d2bbc86900bccbb7b70df4cf198d66e933ede553517aa31c",
+    "uncompressedBytes": 88859
+  },
+  {
+    "file": "edb-api-input-build.log.gz",
+    "uncompressedSha256": "74b533ec776c057aaa399176ea759893d2f39fe0a59f15d7ee999f0790e1a762",
+    "uncompressedBytes": 16372
+  },
+  {
+    "file": "edb-api-update.log.gz",
+    "uncompressedSha256": "58320eef3dcb4a123b78997c22ab99a7192040edf081acbd0934a9dbe8b22b82",
+    "uncompressedBytes": 208
+  }
+]

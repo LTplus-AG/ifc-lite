@@ -1,0 +1,158 @@
+{
+  "integrationHead": "5a4e5d70546148fbc6313ddfd735c5157bd7eafc",
+  "mainAtQualification": "1ccb61c110",
+  "rustTree": "1a1acc4260011c591fd8ce3c5387bb7c10b42f20",
+  "scope": "Canonical actual IFC loader/WASM plus mounted store/federation/filter controls; no GPU/rendered-frame or end-to-end timing claim.",
+  "sources": [
+    {
+      "path": "apps/viewer/src/components/viewer/useFederatedGeometry.ts",
+      "source": "qualified-useFederatedGeometry.ts.gz",
+      "sha256": "53216afb3197b8b8d0109a2a5730e6c229f0719982ca8e64b20a473ca8520fef"
+    },
+    {
+      "path": "apps/viewer/src/components/viewer/useAppearanceSourceGeometry.ts",
+      "source": "qualified-useAppearanceSourceGeometry.ts.gz",
+      "sha256": "fa0c3a2ab021a972fb8e0b687bbc047d6fa67efe1a7f571cf38bd6143891b80c"
+    },
+    {
+      "path": "apps/viewer/src/lib/model-placement/placed-geometry.ts",
+      "source": "qualified-placed-geometry.ts.gz",
+      "sha256": "db4b5c0a04c40d0c279fec32928c3ffa14bf81019e75a570616b5b02c22e3dc1"
+    },
+    {
+      "path": "apps/viewer/src/store/slices/dataSlice.ts",
+      "source": "qualified-dataSlice.ts.gz",
+      "sha256": "1b011f386f29ad27d17b7a7f86338f1c5238a67d1c97f980e9d3ccbfb82c42cd"
+    },
+    {
+      "path": "apps/viewer/src/lib/geometry-cpu-release.ts",
+      "source": "qualified-geometry-cpu-release.ts.gz",
+      "sha256": "65429265a81860b449c79ef2cf0c718ca4f3351d85d8d84aa685db85db2b01ca"
+    },
+    {
+      "path": "apps/viewer/src/lib/geometry-cpu-aliases.ts",
+      "source": "qualified-geometry-cpu-aliases.ts.gz",
+      "sha256": "74c275c4857cec79f0003e75057c264571f33ee40e260de2c278e85228f1c777"
+    },
+    {
+      "path": "apps/viewer/src/lib/released-mesh-provenance.ts",
+      "source": "qualified-released-mesh-provenance.ts.gz",
+      "sha256": "e46a6232d903f5febfe0168a4e4355aaaac6c562396d91575a164a9a634fc5f8"
+    },
+    {
+      "path": "apps/viewer/src/components/viewer/useFederatedGeometry.streaming.test.tsx",
+      "source": "qualified-useFederatedGeometry.streaming.test.tsx.gz",
+      "sha256": "5e6fe541b842e7a3b1fc332e790404f5e44e9def1efd3f8784804203d73e0f08"
+    },
+    {
+      "path": "apps/viewer/src/components/viewer/useFederatedGeometry.real-ifc-release.test.tsx",
+      "source": "qualified-useFederatedGeometry.real-ifc-release.test.tsx.gz",
+      "sha256": "4a6bff269b01b4c648cf778b124118e9b5f68a28e416ee1183f7b488a6b5e22b"
+    },
+    {
+      "path": "apps/viewer/src/test/geometry-cpu-aliases-gc.ts",
+      "source": "qualified-geometry-cpu-aliases-gc.ts.gz",
+      "sha256": "3576d5645362628a584ea3b3cdc38035ec061a3ea408882fb4534482815c1bc4"
+    },
+    {
+      "path": "apps/viewer/src/test/blank-ifc-loader-harness.tsx",
+      "source": "qualified-blank-ifc-loader-harness.tsx.gz",
+      "sha256": "5f6e2ebb2b23f707165da2927733868e4d4a81dbf3b504bc5dec2b0a32bb3570"
+    }
+  ],
+  "runs": [
+    {
+      "log": "6584-candidate-final-qualified-controls.log.gz",
+      "sha256Uncompressed": "013000dbf4eb13fca7dbf517a4c019973cceeb216f39a3bd0372d67264d62df8",
+      "exitCode": 0,
+      "verdict": "84/84 pass, zero failures/skips; root Turbo filtered relevant viewer suite"
+    },
+    {
+      "log": "6584-final-qualified-typecheck.log.gz",
+      "sha256Uncompressed": "488263d124decb8aef4fa8123b78ad37b8fa34d1524f9005e9a20a207fca50ee",
+      "exitCode": 0,
+      "verdict": "3708/3708 test files in typecheck across62packages; plain root full typecheck"
+    },
+    {
+      "log": "6584-lint-qualified.log.gz",
+      "sha256Uncompressed": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "exitCode": 0,
+      "verdict": "touched-files oxlint exit0"
+    },
+    {
+      "log": "6584-final-real-fixture-lint.log.gz",
+      "sha256Uncompressed": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "exitCode": 0,
+      "verdict": "final corrected IFC witness oxlint exit0"
+    },
+    {
+      "log": "6584-module-size-qualified.log.gz",
+      "sha256Uncompressed": "442aaedaf1e8af1cf900df6b84fc43b88507e246a64d517f79f1c5873c462751",
+      "exitCode": 0,
+      "verdict": "module-size gate exit0"
+    }
+  ],
+  "commands": [
+    "TEST_PATTERN=\"(useFederatedGeometry|useFilteredGeometry|dataSlice|data-mesh-prune|translation|released-mesh)\" NODE_OPTIONS=--max-old-space-size=6144 pnpm test --filter=@ifc-lite/viewer --env-mode=loose",
+    "NODE_OPTIONS=--max-old-space-size=6144 pnpm typecheck"
+  ],
+  "actualIFC": {
+    "fixtureSha256": "0ab20f4ea355ea9aa4fade7264b97ee9f9929addfa3961b2437c4381bd674014",
+    "primaryGeometrySha256": "1d39b0af33fb671fda1b6602d55266726ed65f30ec66ab76c37d75f1f894c513",
+    "peerGeometrySha256": "1d39b0af33fb671fda1b6602d55266726ed65f30ec66ab76c37d75f1f894c513",
+    "primaryMeshes": 8,
+    "peerMeshes": 8,
+    "visiblePrimaryMeshes": 5,
+    "counts": [
+      {
+        "triangles": 68,
+        "vertices": 80
+      },
+      {
+        "triangles": 32,
+        "vertices": 48
+      },
+      {
+        "triangles": 12,
+        "vertices": 24
+      },
+      {
+        "triangles": 12,
+        "vertices": 24
+      },
+      {
+        "triangles": 32,
+        "vertices": 48
+      },
+      {
+        "triangles": 12,
+        "vertices": 24
+      },
+      {
+        "triangles": 12,
+        "vertices": 24
+      },
+      {
+        "triangles": 12,
+        "vertices": 24
+      }
+    ]
+  },
+  "runtime": {
+    "provenance": "Root Turbo source-input cache6fc87c4e1534076d restored ignored runtime; cached build log origin ai-p19-flow-ai has identical Rust tree, with no Rust/Cargo/build-script working edits. Runtime differs from earlier6881 copy and is recorded as actually tested.",
+    "files": [
+      {
+        "path": "packages/wasm/pkg/ifc-lite_bg.wasm",
+        "sha256": "6318355d8a78d819d91717802a54e69500cf7c642559c75ff331e5c6159aaaff"
+      },
+      {
+        "path": "packages/wasm/pkg/ifc-lite.js",
+        "sha256": "0a281479eb65141ae75aeef987d331d44439741a0cae855f122e53e800311a39"
+      },
+      {
+        "path": "packages/wasm/pkg/ifc-lite.d.ts",
+        "sha256": "54c9d0a52eb515e517d76726fefe5f6a63e553a81c1b10331a597965d14620f6"
+      }
+    ]
+  }
+}

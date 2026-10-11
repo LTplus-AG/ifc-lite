@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ids xmlns="http://standards.buildingsmart.org/IDS" xmlns:xs="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://standards.buildingsmart.org/IDS http://standards.buildingsmart.org/IDS/1.0/ids.xsd">
+  <info>
+    <title>Structural element requirements</title>
+    <version>1.0</version>
+  </info>
+  <specifications>
+    <specification name="Column material" ifcVersion="IFC4">
+      <applicability minOccurs="1" maxOccurs="unbounded">
+        <entity>
+          <name>
+            <simpleValue>IFCCOLUMN</simpleValue>
+          </name>
+        </entity>
+      </applicability>
+      <requirements>
+        <material/>
+      </requirements>
+    </specification>
+    <specification name="Beam location" ifcVersion="IFC4">
+      <applicability minOccurs="1" maxOccurs="unbounded">
+        <entity>
+          <name>
+            <simpleValue>IFCBEAM</simpleValue>
+          </name>
+        </entity>
+      </applicability>
+      <requirements>
+        <partOf relation="IFCRELCONTAINEDINSPATIALSTRUCTURE">
+          <entity>
+            <name>
+              <simpleValue>IFCBUILDINGSTOREY</simpleValue>
+            </name>
+          </entity>
+        </partOf>
+      </requirements>
+    </specification>
+    <specification name="No proxy elements" ifcVersion="IFC4">
+      <applicability minOccurs="0" maxOccurs="0">
+        <entity>
+          <name>
+            <simpleValue>IFCBUILDINGELEMENTPROXY</simpleValue>
+          </name>
+        </entity>
+      </applicability>
+    </specification>
+  </specifications>
+</ids>

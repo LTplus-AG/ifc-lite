@@ -1,0 +1,26 @@
+exit: 1
+--- stdout
+{
+  "file": "<fixtures>/doors-typo.ids",
+  "status": "error",
+  "counts": {
+    "error": 1,
+    "warning": 0,
+    "info": 0
+  },
+  "issues": [
+    {
+      "severity": "error",
+      "code": "E_IFC_PROP_NOT_IN_PSET",
+      "message": "property \"FireRatng\" is not part of Pset_DoorCommon (IFC4)",
+      "path": "specifications[0].requirements[0].baseName",
+      "facetType": "property",
+      "detail": {
+        "property": "FireRatng",
+        "pset": "Pset_DoorCommon",
+        "version": "IFC4"
+      }
+    }
+  ]
+}
+--- stderr

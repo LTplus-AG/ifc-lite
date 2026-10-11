@@ -51,6 +51,8 @@ ifc-lite ships its public npm packages under the `@ifc-lite/*` scope, plus the `
 | [`@ifc-lite/documents-api`](https://www.npmjs.com/package/@ifc-lite/documents-api) | OpenCDE Documents API 1.0 client: select, download, query and upload documents against a buildingSMART Documents API server |
 | [`@ifc-lite/flow`](https://www.npmjs.com/package/@ifc-lite/flow) | Keyed-data graph runtime for BIM workflows: typed ports, item/list/group lifting, memoised evaluation, and element tracking for re-runnable graphs |
 | [`@ifc-lite/flow-nodes`](https://www.npmjs.com/package/@ifc-lite/flow-nodes) | Standard node library for @ifc-lite/flow over the ifc-lite SDK: model reads and writes, tables, viewer, and a sandboxed Script node |
+| [`@ifc-lite/ids-agent`](https://www.npmjs.com/package/@ifc-lite/ids-agent) | Headless IDS authoring agent: a tool-calling loop over the IDS Studio op vocabulary, grounded by the gate, producing reviewable proposals |
+| [`@ifc-lite/ids-authoring`](https://www.npmjs.com/package/@ifc-lite/ids-authoring) | Headless IDS authoring core: Studio document with stable node ids, typed invertible operations, a grounding gate against the IFC schema tables, history, sidecar and re-identification |
 | [`@ifc-lite/load-trace`](https://www.npmjs.com/package/@ifc-lite/load-trace) | Dependency-free load-trace spans: performance.measure plus a per-load, cross-thread span tree with worker clock alignment and Chrome-trace export |
 | [`@ifc-lite/merge`](https://www.npmjs.com/package/@ifc-lite/merge) | Three-way merge engine for IFCX layers — MergePlan with auto-merged ops and explicit conflict records, merge-layer emission, rebase, and revert. |
 | [`@ifc-lite/oauth-pkce`](https://www.npmjs.com/package/@ifc-lite/oauth-pkce) | Browser OAuth 2.0 Authorization Code + PKCE flow, shared by ifc-lite's file-source providers |
@@ -139,6 +141,8 @@ interface IfcDataStore extends IfcStoreBase {
   parseTime: number;
   // Length unit scale to metres (e.g. 0.001 for mm files)
   lengthUnitScale?: number;
+  // 'declared' if the project declares its length unit, 'default' if metres are assumed
+  lengthUnitSource?: 'declared' | 'default';
 
   // On-demand lookup maps: entityId -> related expressIds
   onDemandPropertyMap?: Map<number, number[]>;
@@ -758,6 +762,8 @@ Mutation types cover properties (`CREATE/UPDATE/DELETE_PROPERTY`, `CREATE/DELETE
 
 Build valid IFC4 STEP files programmatically, or add elements into an already-parsed model.
 
+`storeyPlanFrame(store, storeyExpressId, mutationView)` reads the current native placement chain when a view is supplied, including named/positional edits and authored records. Omit the view for source-only reads. Live unreadable, tilted, cyclic or over-256-placement chains return `null`; preview callers must disclose unavailable geometry. Origins remain metres and directions remain dimensionless.
+
 ### IfcCreator
 
 ```typescript
@@ -995,7 +1001,7 @@ function auditIDSDocument(/* ... */): IDSAuditReport;
 function auditIDSStructure(/* ... */): IDSAuditReport;
 
 // Report localisation
-function createTranslationService(locale: 'en' | 'de' | 'fr'): TranslationService;
+function createTranslationService(locale: 'en' | 'de' | 'fr' | 'it'): TranslationService;
 ```
 
 ---

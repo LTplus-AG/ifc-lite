@@ -1,0 +1,810 @@
+{
+  "head": "aab441cd86bb2fad448632b200affdf2e2d62734",
+  "frozenMain": "2a687c1ee0e9ca7e91e2f6af68dc9311af22e626",
+  "RustTree": "1a1acc4260011c591fd8ce3c5387bb7c10b42f20",
+  "sourcePinsBefore": {
+    "apps/viewer/src/components/viewer/useAppearanceSourceGeometry.ts": "fa0c3a2ab021a972fb8e0b687bbc047d6fa67efe1a7f571cf38bd6143891b80c",
+    "apps/viewer/src/components/viewer/useFederatedGeometry.real-ifc-release.test.tsx": "4a6bff269b01b4c648cf778b124118e9b5f68a28e416ee1183f7b488a6b5e22b",
+    "apps/viewer/src/components/viewer/useFederatedGeometry.streaming.test.tsx": "5e6fe541b842e7a3b1fc332e790404f5e44e9def1efd3f8784804203d73e0f08",
+    "apps/viewer/src/components/viewer/useFederatedGeometry.ts": "53216afb3197b8b8d0109a2a5730e6c229f0719982ca8e64b20a473ca8520fef",
+    "apps/viewer/src/lib/geometry-cpu-aliases.ts": "e3324e93cc4f6a3246273b7071aaf819011d882febb4c5acea28db00061bb072",
+    "apps/viewer/src/lib/geometry-cpu-appearance.test.ts": "824a285002697958f299e1145a1432cefe0dcd374ba5961d3a748b73ec25d640",
+    "apps/viewer/src/lib/geometry-cpu-buffers.ts": "179c366fafb47848eca16936cbffd74be29291f4a72ad2ee13902edf128c869a",
+    "apps/viewer/src/lib/geometry-cpu-release.ts": "5dae8336db131705959353981a7c8220b5a65d4b65477f0e74abe4715620a567",
+    "apps/viewer/src/lib/model-placement/placed-geometry.ts": "db4b5c0a04c40d0c279fec32928c3ffa14bf81019e75a570616b5b02c22e3dc1",
+    "apps/viewer/src/lib/released-mesh-provenance.ts": "e46a6232d903f5febfe0168a4e4355aaaac6c562396d91575a164a9a634fc5f8",
+    "apps/viewer/src/store/slices/dataSlice.ts": "1b011f386f29ad27d17b7a7f86338f1c5238a67d1c97f980e9d3ccbfb82c42cd",
+    "apps/viewer/src/test/geometry-cpu-aliases-gc.ts": "c5496cfe067ce31e592d771c3993bd60535f830fefa7646c63853fd01ce5d8bf",
+    "pnpm-lock.yaml": "3baf933ea880bd57d30dc2416184777af7488835c2a7eeff94ff84e6841eb4e4",
+    "Cargo.lock": "9272c9ef25f76480e23ad2282fba08e05836398e24706a77c3be55fd973db475",
+    "rust-toolchain.toml": "c2836f98a79a38903e78036882c16c530da1e7e45f365af8a7abcc170ef36daf",
+    "scripts/build-wasm.sh": "dae5e4e76cac9b9458953a51e8156bf496127cb35196a7d13f4e28d239d7d19b",
+    "packages/wasm/pkg/ifc-lite.d.ts": "54c9d0a52eb515e517d76726fefe5f6a63e553a81c1b10331a597965d14620f6"
+  },
+  "stages": [
+    {
+      "stage": "offline-install",
+      "command": [
+        "pnpm",
+        "install",
+        "--offline",
+        "--frozen-lockfile",
+        "--ignore-scripts"
+      ],
+      "started": "2026-10-08T19:25:24.224789+00:00",
+      "sourcePinsBefore": {
+        "apps/viewer/src/components/viewer/useAppearanceSourceGeometry.ts": "fa0c3a2ab021a972fb8e0b687bbc047d6fa67efe1a7f571cf38bd6143891b80c",
+        "apps/viewer/src/components/viewer/useFederatedGeometry.real-ifc-release.test.tsx": "4a6bff269b01b4c648cf778b124118e9b5f68a28e416ee1183f7b488a6b5e22b",
+        "apps/viewer/src/components/viewer/useFederatedGeometry.streaming.test.tsx": "5e6fe541b842e7a3b1fc332e790404f5e44e9def1efd3f8784804203d73e0f08",
+        "apps/viewer/src/components/viewer/useFederatedGeometry.ts": "53216afb3197b8b8d0109a2a5730e6c229f0719982ca8e64b20a473ca8520fef",
+        "apps/viewer/src/lib/geometry-cpu-aliases.ts": "e3324e93cc4f6a3246273b7071aaf819011d882febb4c5acea28db00061bb072",
+        "apps/viewer/src/lib/geometry-cpu-appearance.test.ts": "824a285002697958f299e1145a1432cefe0dcd374ba5961d3a748b73ec25d640",
+        "apps/viewer/src/lib/geometry-cpu-buffers.ts": "179c366fafb47848eca16936cbffd74be29291f4a72ad2ee13902edf128c869a",
+        "apps/viewer/src/lib/geometry-cpu-release.ts": "5dae8336db131705959353981a7c8220b5a65d4b65477f0e74abe4715620a567",
+        "apps/viewer/src/lib/model-placement/placed-geometry.ts": "db4b5c0a04c40d0c279fec32928c3ffa14bf81019e75a570616b5b02c22e3dc1",
+        "apps/viewer/src/lib/released-mesh-provenance.ts": "e46a6232d903f5febfe0168a4e4355aaaac6c562396d91575a164a9a634fc5f8",
+        "apps/viewer/src/store/slices/dataSlice.ts": "1b011f386f29ad27d17b7a7f86338f1c5238a67d1c97f980e9d3ccbfb82c42cd",
+        "apps/viewer/src/test/geometry-cpu-aliases-gc.ts": "c5496cfe067ce31e592d771c3993bd60535f830fefa7646c63853fd01ce5d8bf",
+        "pnpm-lock.yaml": "3baf933ea880bd57d30dc2416184777af7488835c2a7eeff94ff84e6841eb4e4",
+        "Cargo.lock": "9272c9ef25f76480e23ad2282fba08e05836398e24706a77c3be55fd973db475",
+        "rust-toolchain.toml": "c2836f98a79a38903e78036882c16c530da1e7e45f365af8a7abcc170ef36daf",
+        "scripts/build-wasm.sh": "dae5e4e76cac9b9458953a51e8156bf496127cb35196a7d13f4e28d239d7d19b",
+        "packages/wasm/pkg/ifc-lite.d.ts": "54c9d0a52eb515e517d76726fefe5f6a63e553a81c1b10331a597965d14620f6"
+      },
+      "runtimeBefore": {
+        "packages/wasm/pkg/ifc-lite_bg.wasm": null,
+        "packages/wasm/pkg/ifc-lite.js": null,
+        "packages/wasm/pkg/ifc-lite.d.ts": "54c9d0a52eb515e517d76726fefe5f6a63e553a81c1b10331a597965d14620f6"
+      },
+      "exitCode": 0,
+      "ended": "2026-10-08T19:25:26.464440+00:00",
+      "sourcePinsAfter": {
+        "apps/viewer/src/components/viewer/useAppearanceSourceGeometry.ts": "fa0c3a2ab021a972fb8e0b687bbc047d6fa67efe1a7f571cf38bd6143891b80c",
+        "apps/viewer/src/components/viewer/useFederatedGeometry.real-ifc-release.test.tsx": "4a6bff269b01b4c648cf778b124118e9b5f68a28e416ee1183f7b488a6b5e22b",
+        "apps/viewer/src/components/viewer/useFederatedGeometry.streaming.test.tsx": "5e6fe541b842e7a3b1fc332e790404f5e44e9def1efd3f8784804203d73e0f08",
+        "apps/viewer/src/components/viewer/useFederatedGeometry.ts": "53216afb3197b8b8d0109a2a5730e6c229f0719982ca8e64b20a473ca8520fef",
+        "apps/viewer/src/lib/geometry-cpu-aliases.ts": "e3324e93cc4f6a3246273b7071aaf819011d882febb4c5acea28db00061bb072",
+        "apps/viewer/src/lib/geometry-cpu-appearance.test.ts": "824a285002697958f299e1145a1432cefe0dcd374ba5961d3a748b73ec25d640",
+        "apps/viewer/src/lib/geometry-cpu-buffers.ts": "179c366fafb47848eca16936cbffd74be29291f4a72ad2ee13902edf128c869a",
+        "apps/viewer/src/lib/geometry-cpu-release.ts": "5dae8336db131705959353981a7c8220b5a65d4b65477f0e74abe4715620a567",
+        "apps/viewer/src/lib/model-placement/placed-geometry.ts": "db4b5c0a04c40d0c279fec32928c3ffa14bf81019e75a570616b5b02c22e3dc1",
+        "apps/viewer/src/lib/released-mesh-provenance.ts": "e46a6232d903f5febfe0168a4e4355aaaac6c562396d91575a164a9a634fc5f8",
+        "apps/viewer/src/store/slices/dataSlice.ts": "1b011f386f29ad27d17b7a7f86338f1c5238a67d1c97f980e9d3ccbfb82c42cd",
+        "apps/viewer/src/test/geometry-cpu-aliases-gc.ts": "c5496cfe067ce31e592d771c3993bd60535f830fefa7646c63853fd01ce5d8bf",
+        "pnpm-lock.yaml": "3baf933ea880bd57d30dc2416184777af7488835c2a7eeff94ff84e6841eb4e4",
+        "Cargo.lock": "9272c9ef25f76480e23ad2282fba08e05836398e24706a77c3be55fd973db475",
+        "rust-toolchain.toml": "c2836f98a79a38903e78036882c16c530da1e7e45f365af8a7abcc170ef36daf",
+        "scripts/build-wasm.sh": "dae5e4e76cac9b9458953a51e8156bf496127cb35196a7d13f4e28d239d7d19b",
+        "packages/wasm/pkg/ifc-lite.d.ts": "54c9d0a52eb515e517d76726fefe5f6a63e553a81c1b10331a597965d14620f6"
+      },
+      "runtimeAfter": {
+        "packages/wasm/pkg/ifc-lite_bg.wasm": null,
+        "packages/wasm/pkg/ifc-lite.js": null,
+        "packages/wasm/pkg/ifc-lite.d.ts": "54c9d0a52eb515e517d76726fefe5f6a63e553a81c1b10331a597965d14620f6"
+      },
+      "logSHA256": "f409a05100809998495b937249bd3cd90a9ab2d17f91eadee3a8abbe73cb36ff"
+    },
+    {
+      "stage": "affected-controls",
+      "command": [
+        "pnpm",
+        "test",
+        "--filter=@ifc-lite/viewer",
+        "--env-mode=loose",
+        "--concurrency=1"
+      ],
+      "started": "2026-10-08T19:25:26.845793+00:00",
+      "sourcePinsBefore": {
+        "apps/viewer/src/components/viewer/useAppearanceSourceGeometry.ts": "fa0c3a2ab021a972fb8e0b687bbc047d6fa67efe1a7f571cf38bd6143891b80c",
+        "apps/viewer/src/components/viewer/useFederatedGeometry.real-ifc-release.test.tsx": "4a6bff269b01b4c648cf778b124118e9b5f68a28e416ee1183f7b488a6b5e22b",
+        "apps/viewer/src/components/viewer/useFederatedGeometry.streaming.test.tsx": "5e6fe541b842e7a3b1fc332e790404f5e44e9def1efd3f8784804203d73e0f08",
+        "apps/viewer/src/components/viewer/useFederatedGeometry.ts": "53216afb3197b8b8d0109a2a5730e6c229f0719982ca8e64b20a473ca8520fef",
+        "apps/viewer/src/lib/geometry-cpu-aliases.ts": "e3324e93cc4f6a3246273b7071aaf819011d882febb4c5acea28db00061bb072",
+        "apps/viewer/src/lib/geometry-cpu-appearance.test.ts": "824a285002697958f299e1145a1432cefe0dcd374ba5961d3a748b73ec25d640",
+        "apps/viewer/src/lib/geometry-cpu-buffers.ts": "179c366fafb47848eca16936cbffd74be29291f4a72ad2ee13902edf128c869a",
+        "apps/viewer/src/lib/geometry-cpu-release.ts": "5dae8336db131705959353981a7c8220b5a65d4b65477f0e74abe4715620a567",
+        "apps/viewer/src/lib/model-placement/placed-geometry.ts": "db4b5c0a04c40d0c279fec32928c3ffa14bf81019e75a570616b5b02c22e3dc1",
+        "apps/viewer/src/lib/released-mesh-provenance.ts": "e46a6232d903f5febfe0168a4e4355aaaac6c562396d91575a164a9a634fc5f8",
+        "apps/viewer/src/store/slices/dataSlice.ts": "1b011f386f29ad27d17b7a7f86338f1c5238a67d1c97f980e9d3ccbfb82c42cd",
+        "apps/viewer/src/test/geometry-cpu-aliases-gc.ts": "c5496cfe067ce31e592d771c3993bd60535f830fefa7646c63853fd01ce5d8bf",
+        "pnpm-lock.yaml": "3baf933ea880bd57d30dc2416184777af7488835c2a7eeff94ff84e6841eb4e4",
+        "Cargo.lock": "9272c9ef25f76480e23ad2282fba08e05836398e24706a77c3be55fd973db475",
+        "rust-toolchain.toml": "c2836f98a79a38903e78036882c16c530da1e7e45f365af8a7abcc170ef36daf",
+        "scripts/build-wasm.sh": "dae5e4e76cac9b9458953a51e8156bf496127cb35196a7d13f4e28d239d7d19b",
+        "packages/wasm/pkg/ifc-lite.d.ts": "54c9d0a52eb515e517d76726fefe5f6a63e553a81c1b10331a597965d14620f6"
+      },
+      "runtimeBefore": {
+        "packages/wasm/pkg/ifc-lite_bg.wasm": "8b74229bbd4a991cbf1f32a8d52add195c5fdd333921f998b1c18eb713185143",
+        "packages/wasm/pkg/ifc-lite.js": "0a281479eb65141ae75aeef987d331d44439741a0cae855f122e53e800311a39",
+        "packages/wasm/pkg/ifc-lite.d.ts": "54c9d0a52eb515e517d76726fefe5f6a63e553a81c1b10331a597965d14620f6"
+      },
+      "exitCode": 0,
+      "ended": "2026-10-08T19:28:21.569592+00:00",
+      "sourcePinsAfter": {
+        "apps/viewer/src/components/viewer/useAppearanceSourceGeometry.ts": "fa0c3a2ab021a972fb8e0b687bbc047d6fa67efe1a7f571cf38bd6143891b80c",
+        "apps/viewer/src/components/viewer/useFederatedGeometry.real-ifc-release.test.tsx": "4a6bff269b01b4c648cf778b124118e9b5f68a28e416ee1183f7b488a6b5e22b",
+        "apps/viewer/src/components/viewer/useFederatedGeometry.streaming.test.tsx": "5e6fe541b842e7a3b1fc332e790404f5e44e9def1efd3f8784804203d73e0f08",
+        "apps/viewer/src/components/viewer/useFederatedGeometry.ts": "53216afb3197b8b8d0109a2a5730e6c229f0719982ca8e64b20a473ca8520fef",
+        "apps/viewer/src/lib/geometry-cpu-aliases.ts": "e3324e93cc4f6a3246273b7071aaf819011d882febb4c5acea28db00061bb072",
+        "apps/viewer/src/lib/geometry-cpu-appearance.test.ts": "824a285002697958f299e1145a1432cefe0dcd374ba5961d3a748b73ec25d640",
+        "apps/viewer/src/lib/geometry-cpu-buffers.ts": "179c366fafb47848eca16936cbffd74be29291f4a72ad2ee13902edf128c869a",
+        "apps/viewer/src/lib/geometry-cpu-release.ts": "5dae8336db131705959353981a7c8220b5a65d4b65477f0e74abe4715620a567",
+        "apps/viewer/src/lib/model-placement/placed-geometry.ts": "db4b5c0a04c40d0c279fec32928c3ffa14bf81019e75a570616b5b02c22e3dc1",
+        "apps/viewer/src/lib/released-mesh-provenance.ts": "e46a6232d903f5febfe0168a4e4355aaaac6c562396d91575a164a9a634fc5f8",
+        "apps/viewer/src/store/slices/dataSlice.ts": "1b011f386f29ad27d17b7a7f86338f1c5238a67d1c97f980e9d3ccbfb82c42cd",
+        "apps/viewer/src/test/geometry-cpu-aliases-gc.ts": "c5496cfe067ce31e592d771c3993bd60535f830fefa7646c63853fd01ce5d8bf",
+        "pnpm-lock.yaml": "3baf933ea880bd57d30dc2416184777af7488835c2a7eeff94ff84e6841eb4e4",
+        "Cargo.lock": "9272c9ef25f76480e23ad2282fba08e05836398e24706a77c3be55fd973db475",
+        "rust-toolchain.toml": "c2836f98a79a38903e78036882c16c530da1e7e45f365af8a7abcc170ef36daf",
+        "scripts/build-wasm.sh": "dae5e4e76cac9b9458953a51e8156bf496127cb35196a7d13f4e28d239d7d19b",
+        "packages/wasm/pkg/ifc-lite.d.ts": "54c9d0a52eb515e517d76726fefe5f6a63e553a81c1b10331a597965d14620f6"
+      },
+      "runtimeAfter": {
+        "packages/wasm/pkg/ifc-lite_bg.wasm": "51894fa5372ddb361221bde3b60b2c8239db206a81f7c09b1c14e617fb4d5593",
+        "packages/wasm/pkg/ifc-lite.js": "0a281479eb65141ae75aeef987d331d44439741a0cae855f122e53e800311a39",
+        "packages/wasm/pkg/ifc-lite.d.ts": "54c9d0a52eb515e517d76726fefe5f6a63e553a81c1b10331a597965d14620f6"
+      },
+      "logSHA256": "319d02bcc3ac0597cb6da4633896dda2209f6f5cf3f0cc18f2dfc41fe1a8ba5e"
+    },
+    {
+      "stage": "plain-full-root-typecheck",
+      "command": [
+        "pnpm",
+        "typecheck"
+      ],
+      "started": "2026-10-08T19:28:21.578979+00:00",
+      "sourcePinsBefore": {
+        "apps/viewer/src/components/viewer/useAppearanceSourceGeometry.ts": "fa0c3a2ab021a972fb8e0b687bbc047d6fa67efe1a7f571cf38bd6143891b80c",
+        "apps/viewer/src/components/viewer/useFederatedGeometry.real-ifc-release.test.tsx": "4a6bff269b01b4c648cf778b124118e9b5f68a28e416ee1183f7b488a6b5e22b",
+        "apps/viewer/src/components/viewer/useFederatedGeometry.streaming.test.tsx": "5e6fe541b842e7a3b1fc332e790404f5e44e9def1efd3f8784804203d73e0f08",
+        "apps/viewer/src/components/viewer/useFederatedGeometry.ts": "53216afb3197b8b8d0109a2a5730e6c229f0719982ca8e64b20a473ca8520fef",
+        "apps/viewer/src/lib/geometry-cpu-aliases.ts": "e3324e93cc4f6a3246273b7071aaf819011d882febb4c5acea28db00061bb072",
+        "apps/viewer/src/lib/geometry-cpu-appearance.test.ts": "824a285002697958f299e1145a1432cefe0dcd374ba5961d3a748b73ec25d640",
+        "apps/viewer/src/lib/geometry-cpu-buffers.ts": "179c366fafb47848eca16936cbffd74be29291f4a72ad2ee13902edf128c869a",
+        "apps/viewer/src/lib/geometry-cpu-release.ts": "5dae8336db131705959353981a7c8220b5a65d4b65477f0e74abe4715620a567",
+        "apps/viewer/src/lib/model-placement/placed-geometry.ts": "db4b5c0a04c40d0c279fec32928c3ffa14bf81019e75a570616b5b02c22e3dc1",
+        "apps/viewer/src/lib/released-mesh-provenance.ts": "e46a6232d903f5febfe0168a4e4355aaaac6c562396d91575a164a9a634fc5f8",
+        "apps/viewer/src/store/slices/dataSlice.ts": "1b011f386f29ad27d17b7a7f86338f1c5238a67d1c97f980e9d3ccbfb82c42cd",
+        "apps/viewer/src/test/geometry-cpu-aliases-gc.ts": "c5496cfe067ce31e592d771c3993bd60535f830fefa7646c63853fd01ce5d8bf",
+        "pnpm-lock.yaml": "3baf933ea880bd57d30dc2416184777af7488835c2a7eeff94ff84e6841eb4e4",
+        "Cargo.lock": "9272c9ef25f76480e23ad2282fba08e05836398e24706a77c3be55fd973db475",
+        "rust-toolchain.toml": "c2836f98a79a38903e78036882c16c530da1e7e45f365af8a7abcc170ef36daf",
+        "scripts/build-wasm.sh": "dae5e4e76cac9b9458953a51e8156bf496127cb35196a7d13f4e28d239d7d19b",
+        "packages/wasm/pkg/ifc-lite.d.ts": "54c9d0a52eb515e517d76726fefe5f6a63e553a81c1b10331a597965d14620f6"
+      },
+      "runtimeBefore": {
+        "packages/wasm/pkg/ifc-lite_bg.wasm": "51894fa5372ddb361221bde3b60b2c8239db206a81f7c09b1c14e617fb4d5593",
+        "packages/wasm/pkg/ifc-lite.js": "0a281479eb65141ae75aeef987d331d44439741a0cae855f122e53e800311a39",
+        "packages/wasm/pkg/ifc-lite.d.ts": "54c9d0a52eb515e517d76726fefe5f6a63e553a81c1b10331a597965d14620f6"
+      },
+      "exitCode": 0,
+      "ended": "2026-10-08T19:29:28.868932+00:00",
+      "sourcePinsAfter": {
+        "apps/viewer/src/components/viewer/useAppearanceSourceGeometry.ts": "fa0c3a2ab021a972fb8e0b687bbc047d6fa67efe1a7f571cf38bd6143891b80c",
+        "apps/viewer/src/components/viewer/useFederatedGeometry.real-ifc-release.test.tsx": "4a6bff269b01b4c648cf778b124118e9b5f68a28e416ee1183f7b488a6b5e22b",
+        "apps/viewer/src/components/viewer/useFederatedGeometry.streaming.test.tsx": "5e6fe541b842e7a3b1fc332e790404f5e44e9def1efd3f8784804203d73e0f08",
+        "apps/viewer/src/components/viewer/useFederatedGeometry.ts": "53216afb3197b8b8d0109a2a5730e6c229f0719982ca8e64b20a473ca8520fef",
+        "apps/viewer/src/lib/geometry-cpu-aliases.ts": "e3324e93cc4f6a3246273b7071aaf819011d882febb4c5acea28db00061bb072",
+        "apps/viewer/src/lib/geometry-cpu-appearance.test.ts": "824a285002697958f299e1145a1432cefe0dcd374ba5961d3a748b73ec25d640",
+        "apps/viewer/src/lib/geometry-cpu-buffers.ts": "179c366fafb47848eca16936cbffd74be29291f4a72ad2ee13902edf128c869a",
+        "apps/viewer/src/lib/geometry-cpu-release.ts": "5dae8336db131705959353981a7c8220b5a65d4b65477f0e74abe4715620a567",
+        "apps/viewer/src/lib/model-placement/placed-geometry.ts": "db4b5c0a04c40d0c279fec32928c3ffa14bf81019e75a570616b5b02c22e3dc1",
+        "apps/viewer/src/lib/released-mesh-provenance.ts": "e46a6232d903f5febfe0168a4e4355aaaac6c562396d91575a164a9a634fc5f8",
+        "apps/viewer/src/store/slices/dataSlice.ts": "1b011f386f29ad27d17b7a7f86338f1c5238a67d1c97f980e9d3ccbfb82c42cd",
+        "apps/viewer/src/test/geometry-cpu-aliases-gc.ts": "c5496cfe067ce31e592d771c3993bd60535f830fefa7646c63853fd01ce5d8bf",
+        "pnpm-lock.yaml": "3baf933ea880bd57d30dc2416184777af7488835c2a7eeff94ff84e6841eb4e4",
+        "Cargo.lock": "9272c9ef25f76480e23ad2282fba08e05836398e24706a77c3be55fd973db475",
+        "rust-toolchain.toml": "c2836f98a79a38903e78036882c16c530da1e7e45f365af8a7abcc170ef36daf",
+        "scripts/build-wasm.sh": "dae5e4e76cac9b9458953a51e8156bf496127cb35196a7d13f4e28d239d7d19b",
+        "packages/wasm/pkg/ifc-lite.d.ts": "54c9d0a52eb515e517d76726fefe5f6a63e553a81c1b10331a597965d14620f6"
+      },
+      "runtimeAfter": {
+        "packages/wasm/pkg/ifc-lite_bg.wasm": "8b74229bbd4a991cbf1f32a8d52add195c5fdd333921f998b1c18eb713185143",
+        "packages/wasm/pkg/ifc-lite.js": "0a281479eb65141ae75aeef987d331d44439741a0cae855f122e53e800311a39",
+        "packages/wasm/pkg/ifc-lite.d.ts": "54c9d0a52eb515e517d76726fefe5f6a63e553a81c1b10331a597965d14620f6"
+      },
+      "logSHA256": "15d1b6f0e8c9d42e228f6d01433d970efebb90f9f4b9fe5152fb78810d231829"
+    },
+    {
+      "stage": "raw",
+      "command": [
+        "node",
+        "scripts/check-raw-entity-enumeration.mjs"
+      ],
+      "started": "2026-10-08T19:29:28.875872+00:00",
+      "sourcePinsBefore": {
+        "apps/viewer/src/components/viewer/useAppearanceSourceGeometry.ts": "fa0c3a2ab021a972fb8e0b687bbc047d6fa67efe1a7f571cf38bd6143891b80c",
+        "apps/viewer/src/components/viewer/useFederatedGeometry.real-ifc-release.test.tsx": "4a6bff269b01b4c648cf778b124118e9b5f68a28e416ee1183f7b488a6b5e22b",
+        "apps/viewer/src/components/viewer/useFederatedGeometry.streaming.test.tsx": "5e6fe541b842e7a3b1fc332e790404f5e44e9def1efd3f8784804203d73e0f08",
+        "apps/viewer/src/components/viewer/useFederatedGeometry.ts": "53216afb3197b8b8d0109a2a5730e6c229f0719982ca8e64b20a473ca8520fef",
+        "apps/viewer/src/lib/geometry-cpu-aliases.ts": "e3324e93cc4f6a3246273b7071aaf819011d882febb4c5acea28db00061bb072",
+        "apps/viewer/src/lib/geometry-cpu-appearance.test.ts": "824a285002697958f299e1145a1432cefe0dcd374ba5961d3a748b73ec25d640",
+        "apps/viewer/src/lib/geometry-cpu-buffers.ts": "179c366fafb47848eca16936cbffd74be29291f4a72ad2ee13902edf128c869a",
+        "apps/viewer/src/lib/geometry-cpu-release.ts": "5dae8336db131705959353981a7c8220b5a65d4b65477f0e74abe4715620a567",
+        "apps/viewer/src/lib/model-placement/placed-geometry.ts": "db4b5c0a04c40d0c279fec32928c3ffa14bf81019e75a570616b5b02c22e3dc1",
+        "apps/viewer/src/lib/released-mesh-provenance.ts": "e46a6232d903f5febfe0168a4e4355aaaac6c562396d91575a164a9a634fc5f8",
+        "apps/viewer/src/store/slices/dataSlice.ts": "1b011f386f29ad27d17b7a7f86338f1c5238a67d1c97f980e9d3ccbfb82c42cd",
+        "apps/viewer/src/test/geometry-cpu-aliases-gc.ts": "c5496cfe067ce31e592d771c3993bd60535f830fefa7646c63853fd01ce5d8bf",
+        "pnpm-lock.yaml": "3baf933ea880bd57d30dc2416184777af7488835c2a7eeff94ff84e6841eb4e4",
+        "Cargo.lock": "9272c9ef25f76480e23ad2282fba08e05836398e24706a77c3be55fd973db475",
+        "rust-toolchain.toml": "c2836f98a79a38903e78036882c16c530da1e7e45f365af8a7abcc170ef36daf",
+        "scripts/build-wasm.sh": "dae5e4e76cac9b9458953a51e8156bf496127cb35196a7d13f4e28d239d7d19b",
+        "packages/wasm/pkg/ifc-lite.d.ts": "54c9d0a52eb515e517d76726fefe5f6a63e553a81c1b10331a597965d14620f6"
+      },
+      "runtimeBefore": {
+        "packages/wasm/pkg/ifc-lite_bg.wasm": "8b74229bbd4a991cbf1f32a8d52add195c5fdd333921f998b1c18eb713185143",
+        "packages/wasm/pkg/ifc-lite.js": "0a281479eb65141ae75aeef987d331d44439741a0cae855f122e53e800311a39",
+        "packages/wasm/pkg/ifc-lite.d.ts": "54c9d0a52eb515e517d76726fefe5f6a63e553a81c1b10331a597965d14620f6"
+      },
+      "exitCode": 0,
+      "ended": "2026-10-08T19:29:32.367356+00:00",
+      "sourcePinsAfter": {
+        "apps/viewer/src/components/viewer/useAppearanceSourceGeometry.ts": "fa0c3a2ab021a972fb8e0b687bbc047d6fa67efe1a7f571cf38bd6143891b80c",
+        "apps/viewer/src/components/viewer/useFederatedGeometry.real-ifc-release.test.tsx": "4a6bff269b01b4c648cf778b124118e9b5f68a28e416ee1183f7b488a6b5e22b",
+        "apps/viewer/src/components/viewer/useFederatedGeometry.streaming.test.tsx": "5e6fe541b842e7a3b1fc332e790404f5e44e9def1efd3f8784804203d73e0f08",
+        "apps/viewer/src/components/viewer/useFederatedGeometry.ts": "53216afb3197b8b8d0109a2a5730e6c229f0719982ca8e64b20a473ca8520fef",
+        "apps/viewer/src/lib/geometry-cpu-aliases.ts": "e3324e93cc4f6a3246273b7071aaf819011d882febb4c5acea28db00061bb072",
+        "apps/viewer/src/lib/geometry-cpu-appearance.test.ts": "824a285002697958f299e1145a1432cefe0dcd374ba5961d3a748b73ec25d640",
+        "apps/viewer/src/lib/geometry-cpu-buffers.ts": "179c366fafb47848eca16936cbffd74be29291f4a72ad2ee13902edf128c869a",
+        "apps/viewer/src/lib/geometry-cpu-release.ts": "5dae8336db131705959353981a7c8220b5a65d4b65477f0e74abe4715620a567",
+        "apps/viewer/src/lib/model-placement/placed-geometry.ts": "db4b5c0a04c40d0c279fec32928c3ffa14bf81019e75a570616b5b02c22e3dc1",
+        "apps/viewer/src/lib/released-mesh-provenance.ts": "e46a6232d903f5febfe0168a4e4355aaaac6c562396d91575a164a9a634fc5f8",
+        "apps/viewer/src/store/slices/dataSlice.ts": "1b011f386f29ad27d17b7a7f86338f1c5238a67d1c97f980e9d3ccbfb82c42cd",
+        "apps/viewer/src/test/geometry-cpu-aliases-gc.ts": "c5496cfe067ce31e592d771c3993bd60535f830fefa7646c63853fd01ce5d8bf",
+        "pnpm-lock.yaml": "3baf933ea880bd57d30dc2416184777af7488835c2a7eeff94ff84e6841eb4e4",
+        "Cargo.lock": "9272c9ef25f76480e23ad2282fba08e05836398e24706a77c3be55fd973db475",
+        "rust-toolchain.toml": "c2836f98a79a38903e78036882c16c530da1e7e45f365af8a7abcc170ef36daf",
+        "scripts/build-wasm.sh": "dae5e4e76cac9b9458953a51e8156bf496127cb35196a7d13f4e28d239d7d19b",
+        "packages/wasm/pkg/ifc-lite.d.ts": "54c9d0a52eb515e517d76726fefe5f6a63e553a81c1b10331a597965d14620f6"
+      },
+      "runtimeAfter": {
+        "packages/wasm/pkg/ifc-lite_bg.wasm": "8b74229bbd4a991cbf1f32a8d52add195c5fdd333921f998b1c18eb713185143",
+        "packages/wasm/pkg/ifc-lite.js": "0a281479eb65141ae75aeef987d331d44439741a0cae855f122e53e800311a39",
+        "packages/wasm/pkg/ifc-lite.d.ts": "54c9d0a52eb515e517d76726fefe5f6a63e553a81c1b10331a597965d14620f6"
+      },
+      "logSHA256": "9f2e416e9d4c1a11123c4b1b0a111c2a08db64e6d883164600bd852032cb78b0"
+    },
+    {
+      "stage": "module",
+      "command": [
+        "node",
+        "scripts/check-module-size.mjs"
+      ],
+      "started": "2026-10-08T19:29:32.374469+00:00",
+      "sourcePinsBefore": {
+        "apps/viewer/src/components/viewer/useAppearanceSourceGeometry.ts": "fa0c3a2ab021a972fb8e0b687bbc047d6fa67efe1a7f571cf38bd6143891b80c",
+        "apps/viewer/src/components/viewer/useFederatedGeometry.real-ifc-release.test.tsx": "4a6bff269b01b4c648cf778b124118e9b5f68a28e416ee1183f7b488a6b5e22b",
+        "apps/viewer/src/components/viewer/useFederatedGeometry.streaming.test.tsx": "5e6fe541b842e7a3b1fc332e790404f5e44e9def1efd3f8784804203d73e0f08",
+        "apps/viewer/src/components/viewer/useFederatedGeometry.ts": "53216afb3197b8b8d0109a2a5730e6c229f0719982ca8e64b20a473ca8520fef",
+        "apps/viewer/src/lib/geometry-cpu-aliases.ts": "e3324e93cc4f6a3246273b7071aaf819011d882febb4c5acea28db00061bb072",
+        "apps/viewer/src/lib/geometry-cpu-appearance.test.ts": "824a285002697958f299e1145a1432cefe0dcd374ba5961d3a748b73ec25d640",
+        "apps/viewer/src/lib/geometry-cpu-buffers.ts": "179c366fafb47848eca16936cbffd74be29291f4a72ad2ee13902edf128c869a",
+        "apps/viewer/src/lib/geometry-cpu-release.ts": "5dae8336db131705959353981a7c8220b5a65d4b65477f0e74abe4715620a567",
+        "apps/viewer/src/lib/model-placement/placed-geometry.ts": "db4b5c0a04c40d0c279fec32928c3ffa14bf81019e75a570616b5b02c22e3dc1",
+        "apps/viewer/src/lib/released-mesh-provenance.ts": "e46a6232d903f5febfe0168a4e4355aaaac6c562396d91575a164a9a634fc5f8",
+        "apps/viewer/src/store/slices/dataSlice.ts": "1b011f386f29ad27d17b7a7f86338f1c5238a67d1c97f980e9d3ccbfb82c42cd",
+        "apps/viewer/src/test/geometry-cpu-aliases-gc.ts": "c5496cfe067ce31e592d771c3993bd60535f830fefa7646c63853fd01ce5d8bf",
+        "pnpm-lock.yaml": "3baf933ea880bd57d30dc2416184777af7488835c2a7eeff94ff84e6841eb4e4",
+        "Cargo.lock": "9272c9ef25f76480e23ad2282fba08e05836398e24706a77c3be55fd973db475",
+        "rust-toolchain.toml": "c2836f98a79a38903e78036882c16c530da1e7e45f365af8a7abcc170ef36daf",
+        "scripts/build-wasm.sh": "dae5e4e76cac9b9458953a51e8156bf496127cb35196a7d13f4e28d239d7d19b",
+        "packages/wasm/pkg/ifc-lite.d.ts": "54c9d0a52eb515e517d76726fefe5f6a63e553a81c1b10331a597965d14620f6"
+      },
+      "runtimeBefore": {
+        "packages/wasm/pkg/ifc-lite_bg.wasm": "8b74229bbd4a991cbf1f32a8d52add195c5fdd333921f998b1c18eb713185143",
+        "packages/wasm/pkg/ifc-lite.js": "0a281479eb65141ae75aeef987d331d44439741a0cae855f122e53e800311a39",
+        "packages/wasm/pkg/ifc-lite.d.ts": "54c9d0a52eb515e517d76726fefe5f6a63e553a81c1b10331a597965d14620f6"
+      },
+      "exitCode": 0,
+      "ended": "2026-10-08T19:29:33.965270+00:00",
+      "sourcePinsAfter": {
+        "apps/viewer/src/components/viewer/useAppearanceSourceGeometry.ts": "fa0c3a2ab021a972fb8e0b687bbc047d6fa67efe1a7f571cf38bd6143891b80c",
+        "apps/viewer/src/components/viewer/useFederatedGeometry.real-ifc-release.test.tsx": "4a6bff269b01b4c648cf778b124118e9b5f68a28e416ee1183f7b488a6b5e22b",
+        "apps/viewer/src/components/viewer/useFederatedGeometry.streaming.test.tsx": "5e6fe541b842e7a3b1fc332e790404f5e44e9def1efd3f8784804203d73e0f08",
+        "apps/viewer/src/components/viewer/useFederatedGeometry.ts": "53216afb3197b8b8d0109a2a5730e6c229f0719982ca8e64b20a473ca8520fef",
+        "apps/viewer/src/lib/geometry-cpu-aliases.ts": "e3324e93cc4f6a3246273b7071aaf819011d882febb4c5acea28db00061bb072",
+        "apps/viewer/src/lib/geometry-cpu-appearance.test.ts": "824a285002697958f299e1145a1432cefe0dcd374ba5961d3a748b73ec25d640",
+        "apps/viewer/src/lib/geometry-cpu-buffers.ts": "179c366fafb47848eca16936cbffd74be29291f4a72ad2ee13902edf128c869a",
+        "apps/viewer/src/lib/geometry-cpu-release.ts": "5dae8336db131705959353981a7c8220b5a65d4b65477f0e74abe4715620a567",
+        "apps/viewer/src/lib/model-placement/placed-geometry.ts": "db4b5c0a04c40d0c279fec32928c3ffa14bf81019e75a570616b5b02c22e3dc1",
+        "apps/viewer/src/lib/released-mesh-provenance.ts": "e46a6232d903f5febfe0168a4e4355aaaac6c562396d91575a164a9a634fc5f8",
+        "apps/viewer/src/store/slices/dataSlice.ts": "1b011f386f29ad27d17b7a7f86338f1c5238a67d1c97f980e9d3ccbfb82c42cd",
+        "apps/viewer/src/test/geometry-cpu-aliases-gc.ts": "c5496cfe067ce31e592d771c3993bd60535f830fefa7646c63853fd01ce5d8bf",
+        "pnpm-lock.yaml": "3baf933ea880bd57d30dc2416184777af7488835c2a7eeff94ff84e6841eb4e4",
+        "Cargo.lock": "9272c9ef25f76480e23ad2282fba08e05836398e24706a77c3be55fd973db475",
+        "rust-toolchain.toml": "c2836f98a79a38903e78036882c16c530da1e7e45f365af8a7abcc170ef36daf",
+        "scripts/build-wasm.sh": "dae5e4e76cac9b9458953a51e8156bf496127cb35196a7d13f4e28d239d7d19b",
+        "packages/wasm/pkg/ifc-lite.d.ts": "54c9d0a52eb515e517d76726fefe5f6a63e553a81c1b10331a597965d14620f6"
+      },
+      "runtimeAfter": {
+        "packages/wasm/pkg/ifc-lite_bg.wasm": "8b74229bbd4a991cbf1f32a8d52add195c5fdd333921f998b1c18eb713185143",
+        "packages/wasm/pkg/ifc-lite.js": "0a281479eb65141ae75aeef987d331d44439741a0cae855f122e53e800311a39",
+        "packages/wasm/pkg/ifc-lite.d.ts": "54c9d0a52eb515e517d76726fefe5f6a63e553a81c1b10331a597965d14620f6"
+      },
+      "logSHA256": "5147a6a4c122257c874a038db4aba58290fc5843d88ba1a1db71471462e88563"
+    },
+    {
+      "stage": "wiring",
+      "command": [
+        "node",
+        "scripts/check-test-wiring.mjs"
+      ],
+      "started": "2026-10-08T19:29:33.972156+00:00",
+      "sourcePinsBefore": {
+        "apps/viewer/src/components/viewer/useAppearanceSourceGeometry.ts": "fa0c3a2ab021a972fb8e0b687bbc047d6fa67efe1a7f571cf38bd6143891b80c",
+        "apps/viewer/src/components/viewer/useFederatedGeometry.real-ifc-release.test.tsx": "4a6bff269b01b4c648cf778b124118e9b5f68a28e416ee1183f7b488a6b5e22b",
+        "apps/viewer/src/components/viewer/useFederatedGeometry.streaming.test.tsx": "5e6fe541b842e7a3b1fc332e790404f5e44e9def1efd3f8784804203d73e0f08",
+        "apps/viewer/src/components/viewer/useFederatedGeometry.ts": "53216afb3197b8b8d0109a2a5730e6c229f0719982ca8e64b20a473ca8520fef",
+        "apps/viewer/src/lib/geometry-cpu-aliases.ts": "e3324e93cc4f6a3246273b7071aaf819011d882febb4c5acea28db00061bb072",
+        "apps/viewer/src/lib/geometry-cpu-appearance.test.ts": "824a285002697958f299e1145a1432cefe0dcd374ba5961d3a748b73ec25d640",
+        "apps/viewer/src/lib/geometry-cpu-buffers.ts": "179c366fafb47848eca16936cbffd74be29291f4a72ad2ee13902edf128c869a",
+        "apps/viewer/src/lib/geometry-cpu-release.ts": "5dae8336db131705959353981a7c8220b5a65d4b65477f0e74abe4715620a567",
+        "apps/viewer/src/lib/model-placement/placed-geometry.ts": "db4b5c0a04c40d0c279fec32928c3ffa14bf81019e75a570616b5b02c22e3dc1",
+        "apps/viewer/src/lib/released-mesh-provenance.ts": "e46a6232d903f5febfe0168a4e4355aaaac6c562396d91575a164a9a634fc5f8",
+        "apps/viewer/src/store/slices/dataSlice.ts": "1b011f386f29ad27d17b7a7f86338f1c5238a67d1c97f980e9d3ccbfb82c42cd",
+        "apps/viewer/src/test/geometry-cpu-aliases-gc.ts": "c5496cfe067ce31e592d771c3993bd60535f830fefa7646c63853fd01ce5d8bf",
+        "pnpm-lock.yaml": "3baf933ea880bd57d30dc2416184777af7488835c2a7eeff94ff84e6841eb4e4",
+        "Cargo.lock": "9272c9ef25f76480e23ad2282fba08e05836398e24706a77c3be55fd973db475",
+        "rust-toolchain.toml": "c2836f98a79a38903e78036882c16c530da1e7e45f365af8a7abcc170ef36daf",
+        "scripts/build-wasm.sh": "dae5e4e76cac9b9458953a51e8156bf496127cb35196a7d13f4e28d239d7d19b",
+        "packages/wasm/pkg/ifc-lite.d.ts": "54c9d0a52eb515e517d76726fefe5f6a63e553a81c1b10331a597965d14620f6"
+      },
+      "runtimeBefore": {
+        "packages/wasm/pkg/ifc-lite_bg.wasm": "8b74229bbd4a991cbf1f32a8d52add195c5fdd333921f998b1c18eb713185143",
+        "packages/wasm/pkg/ifc-lite.js": "0a281479eb65141ae75aeef987d331d44439741a0cae855f122e53e800311a39",
+        "packages/wasm/pkg/ifc-lite.d.ts": "54c9d0a52eb515e517d76726fefe5f6a63e553a81c1b10331a597965d14620f6"
+      },
+      "exitCode": 0,
+      "ended": "2026-10-08T19:29:34.254714+00:00",
+      "sourcePinsAfter": {
+        "apps/viewer/src/components/viewer/useAppearanceSourceGeometry.ts": "fa0c3a2ab021a972fb8e0b687bbc047d6fa67efe1a7f571cf38bd6143891b80c",
+        "apps/viewer/src/components/viewer/useFederatedGeometry.real-ifc-release.test.tsx": "4a6bff269b01b4c648cf778b124118e9b5f68a28e416ee1183f7b488a6b5e22b",
+        "apps/viewer/src/components/viewer/useFederatedGeometry.streaming.test.tsx": "5e6fe541b842e7a3b1fc332e790404f5e44e9def1efd3f8784804203d73e0f08",
+        "apps/viewer/src/components/viewer/useFederatedGeometry.ts": "53216afb3197b8b8d0109a2a5730e6c229f0719982ca8e64b20a473ca8520fef",
+        "apps/viewer/src/lib/geometry-cpu-aliases.ts": "e3324e93cc4f6a3246273b7071aaf819011d882febb4c5acea28db00061bb072",
+        "apps/viewer/src/lib/geometry-cpu-appearance.test.ts": "824a285002697958f299e1145a1432cefe0dcd374ba5961d3a748b73ec25d640",
+        "apps/viewer/src/lib/geometry-cpu-buffers.ts": "179c366fafb47848eca16936cbffd74be29291f4a72ad2ee13902edf128c869a",
+        "apps/viewer/src/lib/geometry-cpu-release.ts": "5dae8336db131705959353981a7c8220b5a65d4b65477f0e74abe4715620a567",
+        "apps/viewer/src/lib/model-placement/placed-geometry.ts": "db4b5c0a04c40d0c279fec32928c3ffa14bf81019e75a570616b5b02c22e3dc1",
+        "apps/viewer/src/lib/released-mesh-provenance.ts": "e46a6232d903f5febfe0168a4e4355aaaac6c562396d91575a164a9a634fc5f8",
+        "apps/viewer/src/store/slices/dataSlice.ts": "1b011f386f29ad27d17b7a7f86338f1c5238a67d1c97f980e9d3ccbfb82c42cd",
+        "apps/viewer/src/test/geometry-cpu-aliases-gc.ts": "c5496cfe067ce31e592d771c3993bd60535f830fefa7646c63853fd01ce5d8bf",
+        "pnpm-lock.yaml": "3baf933ea880bd57d30dc2416184777af7488835c2a7eeff94ff84e6841eb4e4",
+        "Cargo.lock": "9272c9ef25f76480e23ad2282fba08e05836398e24706a77c3be55fd973db475",
+        "rust-toolchain.toml": "c2836f98a79a38903e78036882c16c530da1e7e45f365af8a7abcc170ef36daf",
+        "scripts/build-wasm.sh": "dae5e4e76cac9b9458953a51e8156bf496127cb35196a7d13f4e28d239d7d19b",
+        "packages/wasm/pkg/ifc-lite.d.ts": "54c9d0a52eb515e517d76726fefe5f6a63e553a81c1b10331a597965d14620f6"
+      },
+      "runtimeAfter": {
+        "packages/wasm/pkg/ifc-lite_bg.wasm": "8b74229bbd4a991cbf1f32a8d52add195c5fdd333921f998b1c18eb713185143",
+        "packages/wasm/pkg/ifc-lite.js": "0a281479eb65141ae75aeef987d331d44439741a0cae855f122e53e800311a39",
+        "packages/wasm/pkg/ifc-lite.d.ts": "54c9d0a52eb515e517d76726fefe5f6a63e553a81c1b10331a597965d14620f6"
+      },
+      "logSHA256": "41e9eb8de4eb493a9247c869033610dd424f4f7dd01c0d422f61bf691c9883a2"
+    },
+    {
+      "stage": "source-text",
+      "command": [
+        "node",
+        "scripts/check-source-text-assertions.mjs"
+      ],
+      "started": "2026-10-08T19:29:34.262191+00:00",
+      "sourcePinsBefore": {
+        "apps/viewer/src/components/viewer/useAppearanceSourceGeometry.ts": "fa0c3a2ab021a972fb8e0b687bbc047d6fa67efe1a7f571cf38bd6143891b80c",
+        "apps/viewer/src/components/viewer/useFederatedGeometry.real-ifc-release.test.tsx": "4a6bff269b01b4c648cf778b124118e9b5f68a28e416ee1183f7b488a6b5e22b",
+        "apps/viewer/src/components/viewer/useFederatedGeometry.streaming.test.tsx": "5e6fe541b842e7a3b1fc332e790404f5e44e9def1efd3f8784804203d73e0f08",
+        "apps/viewer/src/components/viewer/useFederatedGeometry.ts": "53216afb3197b8b8d0109a2a5730e6c229f0719982ca8e64b20a473ca8520fef",
+        "apps/viewer/src/lib/geometry-cpu-aliases.ts": "e3324e93cc4f6a3246273b7071aaf819011d882febb4c5acea28db00061bb072",
+        "apps/viewer/src/lib/geometry-cpu-appearance.test.ts": "824a285002697958f299e1145a1432cefe0dcd374ba5961d3a748b73ec25d640",
+        "apps/viewer/src/lib/geometry-cpu-buffers.ts": "179c366fafb47848eca16936cbffd74be29291f4a72ad2ee13902edf128c869a",
+        "apps/viewer/src/lib/geometry-cpu-release.ts": "5dae8336db131705959353981a7c8220b5a65d4b65477f0e74abe4715620a567",
+        "apps/viewer/src/lib/model-placement/placed-geometry.ts": "db4b5c0a04c40d0c279fec32928c3ffa14bf81019e75a570616b5b02c22e3dc1",
+        "apps/viewer/src/lib/released-mesh-provenance.ts": "e46a6232d903f5febfe0168a4e4355aaaac6c562396d91575a164a9a634fc5f8",
+        "apps/viewer/src/store/slices/dataSlice.ts": "1b011f386f29ad27d17b7a7f86338f1c5238a67d1c97f980e9d3ccbfb82c42cd",
+        "apps/viewer/src/test/geometry-cpu-aliases-gc.ts": "c5496cfe067ce31e592d771c3993bd60535f830fefa7646c63853fd01ce5d8bf",
+        "pnpm-lock.yaml": "3baf933ea880bd57d30dc2416184777af7488835c2a7eeff94ff84e6841eb4e4",
+        "Cargo.lock": "9272c9ef25f76480e23ad2282fba08e05836398e24706a77c3be55fd973db475",
+        "rust-toolchain.toml": "c2836f98a79a38903e78036882c16c530da1e7e45f365af8a7abcc170ef36daf",
+        "scripts/build-wasm.sh": "dae5e4e76cac9b9458953a51e8156bf496127cb35196a7d13f4e28d239d7d19b",
+        "packages/wasm/pkg/ifc-lite.d.ts": "54c9d0a52eb515e517d76726fefe5f6a63e553a81c1b10331a597965d14620f6"
+      },
+      "runtimeBefore": {
+        "packages/wasm/pkg/ifc-lite_bg.wasm": "8b74229bbd4a991cbf1f32a8d52add195c5fdd333921f998b1c18eb713185143",
+        "packages/wasm/pkg/ifc-lite.js": "0a281479eb65141ae75aeef987d331d44439741a0cae855f122e53e800311a39",
+        "packages/wasm/pkg/ifc-lite.d.ts": "54c9d0a52eb515e517d76726fefe5f6a63e553a81c1b10331a597965d14620f6"
+      },
+      "exitCode": 0,
+      "ended": "2026-10-08T19:29:40.590998+00:00",
+      "sourcePinsAfter": {
+        "apps/viewer/src/components/viewer/useAppearanceSourceGeometry.ts": "fa0c3a2ab021a972fb8e0b687bbc047d6fa67efe1a7f571cf38bd6143891b80c",
+        "apps/viewer/src/components/viewer/useFederatedGeometry.real-ifc-release.test.tsx": "4a6bff269b01b4c648cf778b124118e9b5f68a28e416ee1183f7b488a6b5e22b",
+        "apps/viewer/src/components/viewer/useFederatedGeometry.streaming.test.tsx": "5e6fe541b842e7a3b1fc332e790404f5e44e9def1efd3f8784804203d73e0f08",
+        "apps/viewer/src/components/viewer/useFederatedGeometry.ts": "53216afb3197b8b8d0109a2a5730e6c229f0719982ca8e64b20a473ca8520fef",
+        "apps/viewer/src/lib/geometry-cpu-aliases.ts": "e3324e93cc4f6a3246273b7071aaf819011d882febb4c5acea28db00061bb072",
+        "apps/viewer/src/lib/geometry-cpu-appearance.test.ts": "824a285002697958f299e1145a1432cefe0dcd374ba5961d3a748b73ec25d640",
+        "apps/viewer/src/lib/geometry-cpu-buffers.ts": "179c366fafb47848eca16936cbffd74be29291f4a72ad2ee13902edf128c869a",
+        "apps/viewer/src/lib/geometry-cpu-release.ts": "5dae8336db131705959353981a7c8220b5a65d4b65477f0e74abe4715620a567",
+        "apps/viewer/src/lib/model-placement/placed-geometry.ts": "db4b5c0a04c40d0c279fec32928c3ffa14bf81019e75a570616b5b02c22e3dc1",
+        "apps/viewer/src/lib/released-mesh-provenance.ts": "e46a6232d903f5febfe0168a4e4355aaaac6c562396d91575a164a9a634fc5f8",
+        "apps/viewer/src/store/slices/dataSlice.ts": "1b011f386f29ad27d17b7a7f86338f1c5238a67d1c97f980e9d3ccbfb82c42cd",
+        "apps/viewer/src/test/geometry-cpu-aliases-gc.ts": "c5496cfe067ce31e592d771c3993bd60535f830fefa7646c63853fd01ce5d8bf",
+        "pnpm-lock.yaml": "3baf933ea880bd57d30dc2416184777af7488835c2a7eeff94ff84e6841eb4e4",
+        "Cargo.lock": "9272c9ef25f76480e23ad2282fba08e05836398e24706a77c3be55fd973db475",
+        "rust-toolchain.toml": "c2836f98a79a38903e78036882c16c530da1e7e45f365af8a7abcc170ef36daf",
+        "scripts/build-wasm.sh": "dae5e4e76cac9b9458953a51e8156bf496127cb35196a7d13f4e28d239d7d19b",
+        "packages/wasm/pkg/ifc-lite.d.ts": "54c9d0a52eb515e517d76726fefe5f6a63e553a81c1b10331a597965d14620f6"
+      },
+      "runtimeAfter": {
+        "packages/wasm/pkg/ifc-lite_bg.wasm": "8b74229bbd4a991cbf1f32a8d52add195c5fdd333921f998b1c18eb713185143",
+        "packages/wasm/pkg/ifc-lite.js": "0a281479eb65141ae75aeef987d331d44439741a0cae855f122e53e800311a39",
+        "packages/wasm/pkg/ifc-lite.d.ts": "54c9d0a52eb515e517d76726fefe5f6a63e553a81c1b10331a597965d14620f6"
+      },
+      "logSHA256": "8f1bddcf4afee493bea09f87f859d20a619169fa6a1f64f6a172169dbac31e6b"
+    },
+    {
+      "stage": "changesets",
+      "command": [
+        "node",
+        "scripts/check-changesets.mjs"
+      ],
+      "started": "2026-10-08T19:29:40.598392+00:00",
+      "sourcePinsBefore": {
+        "apps/viewer/src/components/viewer/useAppearanceSourceGeometry.ts": "fa0c3a2ab021a972fb8e0b687bbc047d6fa67efe1a7f571cf38bd6143891b80c",
+        "apps/viewer/src/components/viewer/useFederatedGeometry.real-ifc-release.test.tsx": "4a6bff269b01b4c648cf778b124118e9b5f68a28e416ee1183f7b488a6b5e22b",
+        "apps/viewer/src/components/viewer/useFederatedGeometry.streaming.test.tsx": "5e6fe541b842e7a3b1fc332e790404f5e44e9def1efd3f8784804203d73e0f08",
+        "apps/viewer/src/components/viewer/useFederatedGeometry.ts": "53216afb3197b8b8d0109a2a5730e6c229f0719982ca8e64b20a473ca8520fef",
+        "apps/viewer/src/lib/geometry-cpu-aliases.ts": "e3324e93cc4f6a3246273b7071aaf819011d882febb4c5acea28db00061bb072",
+        "apps/viewer/src/lib/geometry-cpu-appearance.test.ts": "824a285002697958f299e1145a1432cefe0dcd374ba5961d3a748b73ec25d640",
+        "apps/viewer/src/lib/geometry-cpu-buffers.ts": "179c366fafb47848eca16936cbffd74be29291f4a72ad2ee13902edf128c869a",
+        "apps/viewer/src/lib/geometry-cpu-release.ts": "5dae8336db131705959353981a7c8220b5a65d4b65477f0e74abe4715620a567",
+        "apps/viewer/src/lib/model-placement/placed-geometry.ts": "db4b5c0a04c40d0c279fec32928c3ffa14bf81019e75a570616b5b02c22e3dc1",
+        "apps/viewer/src/lib/released-mesh-provenance.ts": "e46a6232d903f5febfe0168a4e4355aaaac6c562396d91575a164a9a634fc5f8",
+        "apps/viewer/src/store/slices/dataSlice.ts": "1b011f386f29ad27d17b7a7f86338f1c5238a67d1c97f980e9d3ccbfb82c42cd",
+        "apps/viewer/src/test/geometry-cpu-aliases-gc.ts": "c5496cfe067ce31e592d771c3993bd60535f830fefa7646c63853fd01ce5d8bf",
+        "pnpm-lock.yaml": "3baf933ea880bd57d30dc2416184777af7488835c2a7eeff94ff84e6841eb4e4",
+        "Cargo.lock": "9272c9ef25f76480e23ad2282fba08e05836398e24706a77c3be55fd973db475",
+        "rust-toolchain.toml": "c2836f98a79a38903e78036882c16c530da1e7e45f365af8a7abcc170ef36daf",
+        "scripts/build-wasm.sh": "dae5e4e76cac9b9458953a51e8156bf496127cb35196a7d13f4e28d239d7d19b",
+        "packages/wasm/pkg/ifc-lite.d.ts": "54c9d0a52eb515e517d76726fefe5f6a63e553a81c1b10331a597965d14620f6"
+      },
+      "runtimeBefore": {
+        "packages/wasm/pkg/ifc-lite_bg.wasm": "8b74229bbd4a991cbf1f32a8d52add195c5fdd333921f998b1c18eb713185143",
+        "packages/wasm/pkg/ifc-lite.js": "0a281479eb65141ae75aeef987d331d44439741a0cae855f122e53e800311a39",
+        "packages/wasm/pkg/ifc-lite.d.ts": "54c9d0a52eb515e517d76726fefe5f6a63e553a81c1b10331a597965d14620f6"
+      },
+      "exitCode": 0,
+      "ended": "2026-10-08T19:29:41.427382+00:00",
+      "sourcePinsAfter": {
+        "apps/viewer/src/components/viewer/useAppearanceSourceGeometry.ts": "fa0c3a2ab021a972fb8e0b687bbc047d6fa67efe1a7f571cf38bd6143891b80c",
+        "apps/viewer/src/components/viewer/useFederatedGeometry.real-ifc-release.test.tsx": "4a6bff269b01b4c648cf778b124118e9b5f68a28e416ee1183f7b488a6b5e22b",
+        "apps/viewer/src/components/viewer/useFederatedGeometry.streaming.test.tsx": "5e6fe541b842e7a3b1fc332e790404f5e44e9def1efd3f8784804203d73e0f08",
+        "apps/viewer/src/components/viewer/useFederatedGeometry.ts": "53216afb3197b8b8d0109a2a5730e6c229f0719982ca8e64b20a473ca8520fef",
+        "apps/viewer/src/lib/geometry-cpu-aliases.ts": "e3324e93cc4f6a3246273b7071aaf819011d882febb4c5acea28db00061bb072",
+        "apps/viewer/src/lib/geometry-cpu-appearance.test.ts": "824a285002697958f299e1145a1432cefe0dcd374ba5961d3a748b73ec25d640",
+        "apps/viewer/src/lib/geometry-cpu-buffers.ts": "179c366fafb47848eca16936cbffd74be29291f4a72ad2ee13902edf128c869a",
+        "apps/viewer/src/lib/geometry-cpu-release.ts": "5dae8336db131705959353981a7c8220b5a65d4b65477f0e74abe4715620a567",
+        "apps/viewer/src/lib/model-placement/placed-geometry.ts": "db4b5c0a04c40d0c279fec32928c3ffa14bf81019e75a570616b5b02c22e3dc1",
+        "apps/viewer/src/lib/released-mesh-provenance.ts": "e46a6232d903f5febfe0168a4e4355aaaac6c562396d91575a164a9a634fc5f8",
+        "apps/viewer/src/store/slices/dataSlice.ts": "1b011f386f29ad27d17b7a7f86338f1c5238a67d1c97f980e9d3ccbfb82c42cd",
+        "apps/viewer/src/test/geometry-cpu-aliases-gc.ts": "c5496cfe067ce31e592d771c3993bd60535f830fefa7646c63853fd01ce5d8bf",
+        "pnpm-lock.yaml": "3baf933ea880bd57d30dc2416184777af7488835c2a7eeff94ff84e6841eb4e4",
+        "Cargo.lock": "9272c9ef25f76480e23ad2282fba08e05836398e24706a77c3be55fd973db475",
+        "rust-toolchain.toml": "c2836f98a79a38903e78036882c16c530da1e7e45f365af8a7abcc170ef36daf",
+        "scripts/build-wasm.sh": "dae5e4e76cac9b9458953a51e8156bf496127cb35196a7d13f4e28d239d7d19b",
+        "packages/wasm/pkg/ifc-lite.d.ts": "54c9d0a52eb515e517d76726fefe5f6a63e553a81c1b10331a597965d14620f6"
+      },
+      "runtimeAfter": {
+        "packages/wasm/pkg/ifc-lite_bg.wasm": "8b74229bbd4a991cbf1f32a8d52add195c5fdd333921f998b1c18eb713185143",
+        "packages/wasm/pkg/ifc-lite.js": "0a281479eb65141ae75aeef987d331d44439741a0cae855f122e53e800311a39",
+        "packages/wasm/pkg/ifc-lite.d.ts": "54c9d0a52eb515e517d76726fefe5f6a63e553a81c1b10331a597965d14620f6"
+      },
+      "logSHA256": "2283a41251ac4bd866ae5ba98cfe172b353a45f93510e61307dfb7cf67ef9c25"
+    },
+    {
+      "stage": "MPL",
+      "command": [
+        "node",
+        "scripts/add-license-headers.mjs",
+        "--check"
+      ],
+      "started": "2026-10-08T19:29:41.435033+00:00",
+      "sourcePinsBefore": {
+        "apps/viewer/src/components/viewer/useAppearanceSourceGeometry.ts": "fa0c3a2ab021a972fb8e0b687bbc047d6fa67efe1a7f571cf38bd6143891b80c",
+        "apps/viewer/src/components/viewer/useFederatedGeometry.real-ifc-release.test.tsx": "4a6bff269b01b4c648cf778b124118e9b5f68a28e416ee1183f7b488a6b5e22b",
+        "apps/viewer/src/components/viewer/useFederatedGeometry.streaming.test.tsx": "5e6fe541b842e7a3b1fc332e790404f5e44e9def1efd3f8784804203d73e0f08",
+        "apps/viewer/src/components/viewer/useFederatedGeometry.ts": "53216afb3197b8b8d0109a2a5730e6c229f0719982ca8e64b20a473ca8520fef",
+        "apps/viewer/src/lib/geometry-cpu-aliases.ts": "e3324e93cc4f6a3246273b7071aaf819011d882febb4c5acea28db00061bb072",
+        "apps/viewer/src/lib/geometry-cpu-appearance.test.ts": "824a285002697958f299e1145a1432cefe0dcd374ba5961d3a748b73ec25d640",
+        "apps/viewer/src/lib/geometry-cpu-buffers.ts": "179c366fafb47848eca16936cbffd74be29291f4a72ad2ee13902edf128c869a",
+        "apps/viewer/src/lib/geometry-cpu-release.ts": "5dae8336db131705959353981a7c8220b5a65d4b65477f0e74abe4715620a567",
+        "apps/viewer/src/lib/model-placement/placed-geometry.ts": "db4b5c0a04c40d0c279fec32928c3ffa14bf81019e75a570616b5b02c22e3dc1",
+        "apps/viewer/src/lib/released-mesh-provenance.ts": "e46a6232d903f5febfe0168a4e4355aaaac6c562396d91575a164a9a634fc5f8",
+        "apps/viewer/src/store/slices/dataSlice.ts": "1b011f386f29ad27d17b7a7f86338f1c5238a67d1c97f980e9d3ccbfb82c42cd",
+        "apps/viewer/src/test/geometry-cpu-aliases-gc.ts": "c5496cfe067ce31e592d771c3993bd60535f830fefa7646c63853fd01ce5d8bf",
+        "pnpm-lock.yaml": "3baf933ea880bd57d30dc2416184777af7488835c2a7eeff94ff84e6841eb4e4",
+        "Cargo.lock": "9272c9ef25f76480e23ad2282fba08e05836398e24706a77c3be55fd973db475",
+        "rust-toolchain.toml": "c2836f98a79a38903e78036882c16c530da1e7e45f365af8a7abcc170ef36daf",
+        "scripts/build-wasm.sh": "dae5e4e76cac9b9458953a51e8156bf496127cb35196a7d13f4e28d239d7d19b",
+        "packages/wasm/pkg/ifc-lite.d.ts": "54c9d0a52eb515e517d76726fefe5f6a63e553a81c1b10331a597965d14620f6"
+      },
+      "runtimeBefore": {
+        "packages/wasm/pkg/ifc-lite_bg.wasm": "8b74229bbd4a991cbf1f32a8d52add195c5fdd333921f998b1c18eb713185143",
+        "packages/wasm/pkg/ifc-lite.js": "0a281479eb65141ae75aeef987d331d44439741a0cae855f122e53e800311a39",
+        "packages/wasm/pkg/ifc-lite.d.ts": "54c9d0a52eb515e517d76726fefe5f6a63e553a81c1b10331a597965d14620f6"
+      },
+      "exitCode": 0,
+      "ended": "2026-10-08T19:29:41.704340+00:00",
+      "sourcePinsAfter": {
+        "apps/viewer/src/components/viewer/useAppearanceSourceGeometry.ts": "fa0c3a2ab021a972fb8e0b687bbc047d6fa67efe1a7f571cf38bd6143891b80c",
+        "apps/viewer/src/components/viewer/useFederatedGeometry.real-ifc-release.test.tsx": "4a6bff269b01b4c648cf778b124118e9b5f68a28e416ee1183f7b488a6b5e22b",
+        "apps/viewer/src/components/viewer/useFederatedGeometry.streaming.test.tsx": "5e6fe541b842e7a3b1fc332e790404f5e44e9def1efd3f8784804203d73e0f08",
+        "apps/viewer/src/components/viewer/useFederatedGeometry.ts": "53216afb3197b8b8d0109a2a5730e6c229f0719982ca8e64b20a473ca8520fef",
+        "apps/viewer/src/lib/geometry-cpu-aliases.ts": "e3324e93cc4f6a3246273b7071aaf819011d882febb4c5acea28db00061bb072",
+        "apps/viewer/src/lib/geometry-cpu-appearance.test.ts": "824a285002697958f299e1145a1432cefe0dcd374ba5961d3a748b73ec25d640",
+        "apps/viewer/src/lib/geometry-cpu-buffers.ts": "179c366fafb47848eca16936cbffd74be29291f4a72ad2ee13902edf128c869a",
+        "apps/viewer/src/lib/geometry-cpu-release.ts": "5dae8336db131705959353981a7c8220b5a65d4b65477f0e74abe4715620a567",
+        "apps/viewer/src/lib/model-placement/placed-geometry.ts": "db4b5c0a04c40d0c279fec32928c3ffa14bf81019e75a570616b5b02c22e3dc1",
+        "apps/viewer/src/lib/released-mesh-provenance.ts": "e46a6232d903f5febfe0168a4e4355aaaac6c562396d91575a164a9a634fc5f8",
+        "apps/viewer/src/store/slices/dataSlice.ts": "1b011f386f29ad27d17b7a7f86338f1c5238a67d1c97f980e9d3ccbfb82c42cd",
+        "apps/viewer/src/test/geometry-cpu-aliases-gc.ts": "c5496cfe067ce31e592d771c3993bd60535f830fefa7646c63853fd01ce5d8bf",
+        "pnpm-lock.yaml": "3baf933ea880bd57d30dc2416184777af7488835c2a7eeff94ff84e6841eb4e4",
+        "Cargo.lock": "9272c9ef25f76480e23ad2282fba08e05836398e24706a77c3be55fd973db475",
+        "rust-toolchain.toml": "c2836f98a79a38903e78036882c16c530da1e7e45f365af8a7abcc170ef36daf",
+        "scripts/build-wasm.sh": "dae5e4e76cac9b9458953a51e8156bf496127cb35196a7d13f4e28d239d7d19b",
+        "packages/wasm/pkg/ifc-lite.d.ts": "54c9d0a52eb515e517d76726fefe5f6a63e553a81c1b10331a597965d14620f6"
+      },
+      "runtimeAfter": {
+        "packages/wasm/pkg/ifc-lite_bg.wasm": "8b74229bbd4a991cbf1f32a8d52add195c5fdd333921f998b1c18eb713185143",
+        "packages/wasm/pkg/ifc-lite.js": "0a281479eb65141ae75aeef987d331d44439741a0cae855f122e53e800311a39",
+        "packages/wasm/pkg/ifc-lite.d.ts": "54c9d0a52eb515e517d76726fefe5f6a63e553a81c1b10331a597965d14620f6"
+      },
+      "logSHA256": "6b66fc0ff87aaf05af720ef9d308da139a56c5bbd06476e7cc648d0dbd106c91"
+    },
+    {
+      "stage": "touched-oxlint",
+      "command": [
+        "pnpm",
+        "exec",
+        "oxlint",
+        "apps/viewer/src/lib/geometry-cpu-buffers.ts",
+        "apps/viewer/src/lib/geometry-cpu-aliases.ts",
+        "apps/viewer/src/lib/geometry-cpu-appearance.test.ts",
+        "apps/viewer/src/test/geometry-cpu-aliases-gc.ts"
+      ],
+      "started": "2026-10-08T19:29:41.711521+00:00",
+      "sourcePinsBefore": {
+        "apps/viewer/src/components/viewer/useAppearanceSourceGeometry.ts": "fa0c3a2ab021a972fb8e0b687bbc047d6fa67efe1a7f571cf38bd6143891b80c",
+        "apps/viewer/src/components/viewer/useFederatedGeometry.real-ifc-release.test.tsx": "4a6bff269b01b4c648cf778b124118e9b5f68a28e416ee1183f7b488a6b5e22b",
+        "apps/viewer/src/components/viewer/useFederatedGeometry.streaming.test.tsx": "5e6fe541b842e7a3b1fc332e790404f5e44e9def1efd3f8784804203d73e0f08",
+        "apps/viewer/src/components/viewer/useFederatedGeometry.ts": "53216afb3197b8b8d0109a2a5730e6c229f0719982ca8e64b20a473ca8520fef",
+        "apps/viewer/src/lib/geometry-cpu-aliases.ts": "e3324e93cc4f6a3246273b7071aaf819011d882febb4c5acea28db00061bb072",
+        "apps/viewer/src/lib/geometry-cpu-appearance.test.ts": "824a285002697958f299e1145a1432cefe0dcd374ba5961d3a748b73ec25d640",
+        "apps/viewer/src/lib/geometry-cpu-buffers.ts": "179c366fafb47848eca16936cbffd74be29291f4a72ad2ee13902edf128c869a",
+        "apps/viewer/src/lib/geometry-cpu-release.ts": "5dae8336db131705959353981a7c8220b5a65d4b65477f0e74abe4715620a567",
+        "apps/viewer/src/lib/model-placement/placed-geometry.ts": "db4b5c0a04c40d0c279fec32928c3ffa14bf81019e75a570616b5b02c22e3dc1",
+        "apps/viewer/src/lib/released-mesh-provenance.ts": "e46a6232d903f5febfe0168a4e4355aaaac6c562396d91575a164a9a634fc5f8",
+        "apps/viewer/src/store/slices/dataSlice.ts": "1b011f386f29ad27d17b7a7f86338f1c5238a67d1c97f980e9d3ccbfb82c42cd",
+        "apps/viewer/src/test/geometry-cpu-aliases-gc.ts": "c5496cfe067ce31e592d771c3993bd60535f830fefa7646c63853fd01ce5d8bf",
+        "pnpm-lock.yaml": "3baf933ea880bd57d30dc2416184777af7488835c2a7eeff94ff84e6841eb4e4",
+        "Cargo.lock": "9272c9ef25f76480e23ad2282fba08e05836398e24706a77c3be55fd973db475",
+        "rust-toolchain.toml": "c2836f98a79a38903e78036882c16c530da1e7e45f365af8a7abcc170ef36daf",
+        "scripts/build-wasm.sh": "dae5e4e76cac9b9458953a51e8156bf496127cb35196a7d13f4e28d239d7d19b",
+        "packages/wasm/pkg/ifc-lite.d.ts": "54c9d0a52eb515e517d76726fefe5f6a63e553a81c1b10331a597965d14620f6"
+      },
+      "runtimeBefore": {
+        "packages/wasm/pkg/ifc-lite_bg.wasm": "8b74229bbd4a991cbf1f32a8d52add195c5fdd333921f998b1c18eb713185143",
+        "packages/wasm/pkg/ifc-lite.js": "0a281479eb65141ae75aeef987d331d44439741a0cae855f122e53e800311a39",
+        "packages/wasm/pkg/ifc-lite.d.ts": "54c9d0a52eb515e517d76726fefe5f6a63e553a81c1b10331a597965d14620f6"
+      },
+      "exitCode": 0,
+      "ended": "2026-10-08T19:29:41.993690+00:00",
+      "sourcePinsAfter": {
+        "apps/viewer/src/components/viewer/useAppearanceSourceGeometry.ts": "fa0c3a2ab021a972fb8e0b687bbc047d6fa67efe1a7f571cf38bd6143891b80c",
+        "apps/viewer/src/components/viewer/useFederatedGeometry.real-ifc-release.test.tsx": "4a6bff269b01b4c648cf778b124118e9b5f68a28e416ee1183f7b488a6b5e22b",
+        "apps/viewer/src/components/viewer/useFederatedGeometry.streaming.test.tsx": "5e6fe541b842e7a3b1fc332e790404f5e44e9def1efd3f8784804203d73e0f08",
+        "apps/viewer/src/components/viewer/useFederatedGeometry.ts": "53216afb3197b8b8d0109a2a5730e6c229f0719982ca8e64b20a473ca8520fef",
+        "apps/viewer/src/lib/geometry-cpu-aliases.ts": "e3324e93cc4f6a3246273b7071aaf819011d882febb4c5acea28db00061bb072",
+        "apps/viewer/src/lib/geometry-cpu-appearance.test.ts": "824a285002697958f299e1145a1432cefe0dcd374ba5961d3a748b73ec25d640",
+        "apps/viewer/src/lib/geometry-cpu-buffers.ts": "179c366fafb47848eca16936cbffd74be29291f4a72ad2ee13902edf128c869a",
+        "apps/viewer/src/lib/geometry-cpu-release.ts": "5dae8336db131705959353981a7c8220b5a65d4b65477f0e74abe4715620a567",
+        "apps/viewer/src/lib/model-placement/placed-geometry.ts": "db4b5c0a04c40d0c279fec32928c3ffa14bf81019e75a570616b5b02c22e3dc1",
+        "apps/viewer/src/lib/released-mesh-provenance.ts": "e46a6232d903f5febfe0168a4e4355aaaac6c562396d91575a164a9a634fc5f8",
+        "apps/viewer/src/store/slices/dataSlice.ts": "1b011f386f29ad27d17b7a7f86338f1c5238a67d1c97f980e9d3ccbfb82c42cd",
+        "apps/viewer/src/test/geometry-cpu-aliases-gc.ts": "c5496cfe067ce31e592d771c3993bd60535f830fefa7646c63853fd01ce5d8bf",
+        "pnpm-lock.yaml": "3baf933ea880bd57d30dc2416184777af7488835c2a7eeff94ff84e6841eb4e4",
+        "Cargo.lock": "9272c9ef25f76480e23ad2282fba08e05836398e24706a77c3be55fd973db475",
+        "rust-toolchain.toml": "c2836f98a79a38903e78036882c16c530da1e7e45f365af8a7abcc170ef36daf",
+        "scripts/build-wasm.sh": "dae5e4e76cac9b9458953a51e8156bf496127cb35196a7d13f4e28d239d7d19b",
+        "packages/wasm/pkg/ifc-lite.d.ts": "54c9d0a52eb515e517d76726fefe5f6a63e553a81c1b10331a597965d14620f6"
+      },
+      "runtimeAfter": {
+        "packages/wasm/pkg/ifc-lite_bg.wasm": "8b74229bbd4a991cbf1f32a8d52add195c5fdd333921f998b1c18eb713185143",
+        "packages/wasm/pkg/ifc-lite.js": "0a281479eb65141ae75aeef987d331d44439741a0cae855f122e53e800311a39",
+        "packages/wasm/pkg/ifc-lite.d.ts": "54c9d0a52eb515e517d76726fefe5f6a63e553a81c1b10331a597965d14620f6"
+      },
+      "logSHA256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "stage": "diff",
+      "command": [
+        "git",
+        "diff",
+        "--check",
+        "2a687c1ee0e9ca7e91e2f6af68dc9311af22e626"
+      ],
+      "started": "2026-10-08T19:29:42.001729+00:00",
+      "sourcePinsBefore": {
+        "apps/viewer/src/components/viewer/useAppearanceSourceGeometry.ts": "fa0c3a2ab021a972fb8e0b687bbc047d6fa67efe1a7f571cf38bd6143891b80c",
+        "apps/viewer/src/components/viewer/useFederatedGeometry.real-ifc-release.test.tsx": "4a6bff269b01b4c648cf778b124118e9b5f68a28e416ee1183f7b488a6b5e22b",
+        "apps/viewer/src/components/viewer/useFederatedGeometry.streaming.test.tsx": "5e6fe541b842e7a3b1fc332e790404f5e44e9def1efd3f8784804203d73e0f08",
+        "apps/viewer/src/components/viewer/useFederatedGeometry.ts": "53216afb3197b8b8d0109a2a5730e6c229f0719982ca8e64b20a473ca8520fef",
+        "apps/viewer/src/lib/geometry-cpu-aliases.ts": "e3324e93cc4f6a3246273b7071aaf819011d882febb4c5acea28db00061bb072",
+        "apps/viewer/src/lib/geometry-cpu-appearance.test.ts": "824a285002697958f299e1145a1432cefe0dcd374ba5961d3a748b73ec25d640",
+        "apps/viewer/src/lib/geometry-cpu-buffers.ts": "179c366fafb47848eca16936cbffd74be29291f4a72ad2ee13902edf128c869a",
+        "apps/viewer/src/lib/geometry-cpu-release.ts": "5dae8336db131705959353981a7c8220b5a65d4b65477f0e74abe4715620a567",
+        "apps/viewer/src/lib/model-placement/placed-geometry.ts": "db4b5c0a04c40d0c279fec32928c3ffa14bf81019e75a570616b5b02c22e3dc1",
+        "apps/viewer/src/lib/released-mesh-provenance.ts": "e46a6232d903f5febfe0168a4e4355aaaac6c562396d91575a164a9a634fc5f8",
+        "apps/viewer/src/store/slices/dataSlice.ts": "1b011f386f29ad27d17b7a7f86338f1c5238a67d1c97f980e9d3ccbfb82c42cd",
+        "apps/viewer/src/test/geometry-cpu-aliases-gc.ts": "c5496cfe067ce31e592d771c3993bd60535f830fefa7646c63853fd01ce5d8bf",
+        "pnpm-lock.yaml": "3baf933ea880bd57d30dc2416184777af7488835c2a7eeff94ff84e6841eb4e4",
+        "Cargo.lock": "9272c9ef25f76480e23ad2282fba08e05836398e24706a77c3be55fd973db475",
+        "rust-toolchain.toml": "c2836f98a79a38903e78036882c16c530da1e7e45f365af8a7abcc170ef36daf",
+        "scripts/build-wasm.sh": "dae5e4e76cac9b9458953a51e8156bf496127cb35196a7d13f4e28d239d7d19b",
+        "packages/wasm/pkg/ifc-lite.d.ts": "54c9d0a52eb515e517d76726fefe5f6a63e553a81c1b10331a597965d14620f6"
+      },
+      "runtimeBefore": {
+        "packages/wasm/pkg/ifc-lite_bg.wasm": "8b74229bbd4a991cbf1f32a8d52add195c5fdd333921f998b1c18eb713185143",
+        "packages/wasm/pkg/ifc-lite.js": "0a281479eb65141ae75aeef987d331d44439741a0cae855f122e53e800311a39",
+        "packages/wasm/pkg/ifc-lite.d.ts": "54c9d0a52eb515e517d76726fefe5f6a63e553a81c1b10331a597965d14620f6"
+      },
+      "exitCode": 0,
+      "ended": "2026-10-08T19:29:42.618617+00:00",
+      "sourcePinsAfter": {
+        "apps/viewer/src/components/viewer/useAppearanceSourceGeometry.ts": "fa0c3a2ab021a972fb8e0b687bbc047d6fa67efe1a7f571cf38bd6143891b80c",
+        "apps/viewer/src/components/viewer/useFederatedGeometry.real-ifc-release.test.tsx": "4a6bff269b01b4c648cf778b124118e9b5f68a28e416ee1183f7b488a6b5e22b",
+        "apps/viewer/src/components/viewer/useFederatedGeometry.streaming.test.tsx": "5e6fe541b842e7a3b1fc332e790404f5e44e9def1efd3f8784804203d73e0f08",
+        "apps/viewer/src/components/viewer/useFederatedGeometry.ts": "53216afb3197b8b8d0109a2a5730e6c229f0719982ca8e64b20a473ca8520fef",
+        "apps/viewer/src/lib/geometry-cpu-aliases.ts": "e3324e93cc4f6a3246273b7071aaf819011d882febb4c5acea28db00061bb072",
+        "apps/viewer/src/lib/geometry-cpu-appearance.test.ts": "824a285002697958f299e1145a1432cefe0dcd374ba5961d3a748b73ec25d640",
+        "apps/viewer/src/lib/geometry-cpu-buffers.ts": "179c366fafb47848eca16936cbffd74be29291f4a72ad2ee13902edf128c869a",
+        "apps/viewer/src/lib/geometry-cpu-release.ts": "5dae8336db131705959353981a7c8220b5a65d4b65477f0e74abe4715620a567",
+        "apps/viewer/src/lib/model-placement/placed-geometry.ts": "db4b5c0a04c40d0c279fec32928c3ffa14bf81019e75a570616b5b02c22e3dc1",
+        "apps/viewer/src/lib/released-mesh-provenance.ts": "e46a6232d903f5febfe0168a4e4355aaaac6c562396d91575a164a9a634fc5f8",
+        "apps/viewer/src/store/slices/dataSlice.ts": "1b011f386f29ad27d17b7a7f86338f1c5238a67d1c97f980e9d3ccbfb82c42cd",
+        "apps/viewer/src/test/geometry-cpu-aliases-gc.ts": "c5496cfe067ce31e592d771c3993bd60535f830fefa7646c63853fd01ce5d8bf",
+        "pnpm-lock.yaml": "3baf933ea880bd57d30dc2416184777af7488835c2a7eeff94ff84e6841eb4e4",
+        "Cargo.lock": "9272c9ef25f76480e23ad2282fba08e05836398e24706a77c3be55fd973db475",
+        "rust-toolchain.toml": "c2836f98a79a38903e78036882c16c530da1e7e45f365af8a7abcc170ef36daf",
+        "scripts/build-wasm.sh": "dae5e4e76cac9b9458953a51e8156bf496127cb35196a7d13f4e28d239d7d19b",
+        "packages/wasm/pkg/ifc-lite.d.ts": "54c9d0a52eb515e517d76726fefe5f6a63e553a81c1b10331a597965d14620f6"
+      },
+      "runtimeAfter": {
+        "packages/wasm/pkg/ifc-lite_bg.wasm": "8b74229bbd4a991cbf1f32a8d52add195c5fdd333921f998b1c18eb713185143",
+        "packages/wasm/pkg/ifc-lite.js": "0a281479eb65141ae75aeef987d331d44439741a0cae855f122e53e800311a39",
+        "packages/wasm/pkg/ifc-lite.d.ts": "54c9d0a52eb515e517d76726fefe5f6a63e553a81c1b10331a597965d14620f6"
+      },
+      "logSHA256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "stage": "ci-path-coverage",
+      "command": [
+        "node",
+        "scripts/check-ci-path-coverage.mjs"
+      ],
+      "started": "2026-10-08T19:29:42.625870+00:00",
+      "sourcePinsBefore": {
+        "apps/viewer/src/components/viewer/useAppearanceSourceGeometry.ts": "fa0c3a2ab021a972fb8e0b687bbc047d6fa67efe1a7f571cf38bd6143891b80c",
+        "apps/viewer/src/components/viewer/useFederatedGeometry.real-ifc-release.test.tsx": "4a6bff269b01b4c648cf778b124118e9b5f68a28e416ee1183f7b488a6b5e22b",
+        "apps/viewer/src/components/viewer/useFederatedGeometry.streaming.test.tsx": "5e6fe541b842e7a3b1fc332e790404f5e44e9def1efd3f8784804203d73e0f08",
+        "apps/viewer/src/components/viewer/useFederatedGeometry.ts": "53216afb3197b8b8d0109a2a5730e6c229f0719982ca8e64b20a473ca8520fef",
+        "apps/viewer/src/lib/geometry-cpu-aliases.ts": "e3324e93cc4f6a3246273b7071aaf819011d882febb4c5acea28db00061bb072",
+        "apps/viewer/src/lib/geometry-cpu-appearance.test.ts": "824a285002697958f299e1145a1432cefe0dcd374ba5961d3a748b73ec25d640",
+        "apps/viewer/src/lib/geometry-cpu-buffers.ts": "179c366fafb47848eca16936cbffd74be29291f4a72ad2ee13902edf128c869a",
+        "apps/viewer/src/lib/geometry-cpu-release.ts": "5dae8336db131705959353981a7c8220b5a65d4b65477f0e74abe4715620a567",
+        "apps/viewer/src/lib/model-placement/placed-geometry.ts": "db4b5c0a04c40d0c279fec32928c3ffa14bf81019e75a570616b5b02c22e3dc1",
+        "apps/viewer/src/lib/released-mesh-provenance.ts": "e46a6232d903f5febfe0168a4e4355aaaac6c562396d91575a164a9a634fc5f8",
+        "apps/viewer/src/store/slices/dataSlice.ts": "1b011f386f29ad27d17b7a7f86338f1c5238a67d1c97f980e9d3ccbfb82c42cd",
+        "apps/viewer/src/test/geometry-cpu-aliases-gc.ts": "c5496cfe067ce31e592d771c3993bd60535f830fefa7646c63853fd01ce5d8bf",
+        "pnpm-lock.yaml": "3baf933ea880bd57d30dc2416184777af7488835c2a7eeff94ff84e6841eb4e4",
+        "Cargo.lock": "9272c9ef25f76480e23ad2282fba08e05836398e24706a77c3be55fd973db475",
+        "rust-toolchain.toml": "c2836f98a79a38903e78036882c16c530da1e7e45f365af8a7abcc170ef36daf",
+        "scripts/build-wasm.sh": "dae5e4e76cac9b9458953a51e8156bf496127cb35196a7d13f4e28d239d7d19b",
+        "packages/wasm/pkg/ifc-lite.d.ts": "54c9d0a52eb515e517d76726fefe5f6a63e553a81c1b10331a597965d14620f6"
+      },
+      "runtimeBefore": {
+        "packages/wasm/pkg/ifc-lite_bg.wasm": "8b74229bbd4a991cbf1f32a8d52add195c5fdd333921f998b1c18eb713185143",
+        "packages/wasm/pkg/ifc-lite.js": "0a281479eb65141ae75aeef987d331d44439741a0cae855f122e53e800311a39",
+        "packages/wasm/pkg/ifc-lite.d.ts": "54c9d0a52eb515e517d76726fefe5f6a63e553a81c1b10331a597965d14620f6"
+      },
+      "exitCode": 0,
+      "ended": "2026-10-08T19:29:43.021246+00:00",
+      "sourcePinsAfter": {
+        "apps/viewer/src/components/viewer/useAppearanceSourceGeometry.ts": "fa0c3a2ab021a972fb8e0b687bbc047d6fa67efe1a7f571cf38bd6143891b80c",
+        "apps/viewer/src/components/viewer/useFederatedGeometry.real-ifc-release.test.tsx": "4a6bff269b01b4c648cf778b124118e9b5f68a28e416ee1183f7b488a6b5e22b",
+        "apps/viewer/src/components/viewer/useFederatedGeometry.streaming.test.tsx": "5e6fe541b842e7a3b1fc332e790404f5e44e9def1efd3f8784804203d73e0f08",
+        "apps/viewer/src/components/viewer/useFederatedGeometry.ts": "53216afb3197b8b8d0109a2a5730e6c229f0719982ca8e64b20a473ca8520fef",
+        "apps/viewer/src/lib/geometry-cpu-aliases.ts": "e3324e93cc4f6a3246273b7071aaf819011d882febb4c5acea28db00061bb072",
+        "apps/viewer/src/lib/geometry-cpu-appearance.test.ts": "824a285002697958f299e1145a1432cefe0dcd374ba5961d3a748b73ec25d640",
+        "apps/viewer/src/lib/geometry-cpu-buffers.ts": "179c366fafb47848eca16936cbffd74be29291f4a72ad2ee13902edf128c869a",
+        "apps/viewer/src/lib/geometry-cpu-release.ts": "5dae8336db131705959353981a7c8220b5a65d4b65477f0e74abe4715620a567",
+        "apps/viewer/src/lib/model-placement/placed-geometry.ts": "db4b5c0a04c40d0c279fec32928c3ffa14bf81019e75a570616b5b02c22e3dc1",
+        "apps/viewer/src/lib/released-mesh-provenance.ts": "e46a6232d903f5febfe0168a4e4355aaaac6c562396d91575a164a9a634fc5f8",
+        "apps/viewer/src/store/slices/dataSlice.ts": "1b011f386f29ad27d17b7a7f86338f1c5238a67d1c97f980e9d3ccbfb82c42cd",
+        "apps/viewer/src/test/geometry-cpu-aliases-gc.ts": "c5496cfe067ce31e592d771c3993bd60535f830fefa7646c63853fd01ce5d8bf",
+        "pnpm-lock.yaml": "3baf933ea880bd57d30dc2416184777af7488835c2a7eeff94ff84e6841eb4e4",
+        "Cargo.lock": "9272c9ef25f76480e23ad2282fba08e05836398e24706a77c3be55fd973db475",
+        "rust-toolchain.toml": "c2836f98a79a38903e78036882c16c530da1e7e45f365af8a7abcc170ef36daf",
+        "scripts/build-wasm.sh": "dae5e4e76cac9b9458953a51e8156bf496127cb35196a7d13f4e28d239d7d19b",
+        "packages/wasm/pkg/ifc-lite.d.ts": "54c9d0a52eb515e517d76726fefe5f6a63e553a81c1b10331a597965d14620f6"
+      },
+      "runtimeAfter": {
+        "packages/wasm/pkg/ifc-lite_bg.wasm": "8b74229bbd4a991cbf1f32a8d52add195c5fdd333921f998b1c18eb713185143",
+        "packages/wasm/pkg/ifc-lite.js": "0a281479eb65141ae75aeef987d331d44439741a0cae855f122e53e800311a39",
+        "packages/wasm/pkg/ifc-lite.d.ts": "54c9d0a52eb515e517d76726fefe5f6a63e553a81c1b10331a597965d14620f6"
+      },
+      "logSHA256": "ea4d701abc84043e1dde874b36b0b8e16646d39f4020361ea400069651805129"
+    }
+  ],
+  "scope": "Registered weakCPUaliasownership only; no OSresident/full6537/native/performance claim.",
+  "fixturePreflight": [
+    {
+      "path": "apps/viewer/public/samples/hello-wall.ifc",
+      "sha256": "0ab20f4ea355ea9aa4fade7264b97ee9f9929addfa3961b2437c4381bd674014",
+      "bytes": 79592,
+      "actualTarget": "/tmp/ifc-6584-main-a2bb/apps/viewer/public/samples/hello-wall.ifc"
+    },
+    {
+      "path": "tests/models/ara3d/AC20-FZK-Haus.ifc",
+      "sha256": "d42ab0dee01173106c16cd823b4614efe188fa15dd65195d95b9879bec59acc5",
+      "bytes": 2526511,
+      "actualTarget": "/tmp/ifc-shepherd-7024/tests/models/ara3d/AC20-FZK-Haus.ifc"
+    }
+  ],
+  "reusedExistingPrebuildRuntimeNotNewBuild": [
+    {
+      "source": "/tmp/ifc-6584/packages/wasm/pkg/ifc-lite.js",
+      "destination": "/tmp/ifc-6584-main-a2bb/packages/wasm/pkg/ifc-lite.js",
+      "sha256": "0a281479eb65141ae75aeef987d331d44439741a0cae855f122e53e800311a39"
+    },
+    {
+      "source": "/tmp/ifc-6584/packages/wasm/pkg/ifc-lite_bg.wasm",
+      "destination": "/tmp/ifc-6584-main-a2bb/packages/wasm/pkg/ifc-lite_bg.wasm",
+      "sha256": "8b74229bbd4a991cbf1f32a8d52add195c5fdd333921f998b1c18eb713185143"
+    },
+    {
+      "source": "/tmp/ifc-6584/packages/wasm/pkg/package.json",
+      "destination": "/tmp/ifc-6584-main-a2bb/packages/wasm/pkg/package.json",
+      "sha256": "10f68fc85e7a0c3f9cf57d1343f9909a5220c2711d98a454cc0b04b59a38cf45"
+    }
+  ],
+  "sourcePinsAfter": {
+    "apps/viewer/src/components/viewer/useAppearanceSourceGeometry.ts": "fa0c3a2ab021a972fb8e0b687bbc047d6fa67efe1a7f571cf38bd6143891b80c",
+    "apps/viewer/src/components/viewer/useFederatedGeometry.real-ifc-release.test.tsx": "4a6bff269b01b4c648cf778b124118e9b5f68a28e416ee1183f7b488a6b5e22b",
+    "apps/viewer/src/components/viewer/useFederatedGeometry.streaming.test.tsx": "5e6fe541b842e7a3b1fc332e790404f5e44e9def1efd3f8784804203d73e0f08",
+    "apps/viewer/src/components/viewer/useFederatedGeometry.ts": "53216afb3197b8b8d0109a2a5730e6c229f0719982ca8e64b20a473ca8520fef",
+    "apps/viewer/src/lib/geometry-cpu-aliases.ts": "e3324e93cc4f6a3246273b7071aaf819011d882febb4c5acea28db00061bb072",
+    "apps/viewer/src/lib/geometry-cpu-appearance.test.ts": "824a285002697958f299e1145a1432cefe0dcd374ba5961d3a748b73ec25d640",
+    "apps/viewer/src/lib/geometry-cpu-buffers.ts": "179c366fafb47848eca16936cbffd74be29291f4a72ad2ee13902edf128c869a",
+    "apps/viewer/src/lib/geometry-cpu-release.ts": "5dae8336db131705959353981a7c8220b5a65d4b65477f0e74abe4715620a567",
+    "apps/viewer/src/lib/model-placement/placed-geometry.ts": "db4b5c0a04c40d0c279fec32928c3ffa14bf81019e75a570616b5b02c22e3dc1",
+    "apps/viewer/src/lib/released-mesh-provenance.ts": "e46a6232d903f5febfe0168a4e4355aaaac6c562396d91575a164a9a634fc5f8",
+    "apps/viewer/src/store/slices/dataSlice.ts": "1b011f386f29ad27d17b7a7f86338f1c5238a67d1c97f980e9d3ccbfb82c42cd",
+    "apps/viewer/src/test/geometry-cpu-aliases-gc.ts": "c5496cfe067ce31e592d771c3993bd60535f830fefa7646c63853fd01ce5d8bf",
+    "pnpm-lock.yaml": "3baf933ea880bd57d30dc2416184777af7488835c2a7eeff94ff84e6841eb4e4",
+    "Cargo.lock": "9272c9ef25f76480e23ad2282fba08e05836398e24706a77c3be55fd973db475",
+    "rust-toolchain.toml": "c2836f98a79a38903e78036882c16c530da1e7e45f365af8a7abcc170ef36daf",
+    "scripts/build-wasm.sh": "dae5e4e76cac9b9458953a51e8156bf496127cb35196a7d13f4e28d239d7d19b",
+    "packages/wasm/pkg/ifc-lite.d.ts": "54c9d0a52eb515e517d76726fefe5f6a63e553a81c1b10331a597965d14620f6"
+  },
+  "sourcePinsEqual": true,
+  "fixturePost": [
+    {
+      "path": "apps/viewer/public/samples/hello-wall.ifc",
+      "sha256": "0ab20f4ea355ea9aa4fade7264b97ee9f9929addfa3961b2437c4381bd674014"
+    },
+    {
+      "path": "tests/models/ara3d/AC20-FZK-Haus.ifc",
+      "sha256": "d42ab0dee01173106c16cd823b4614efe188fa15dd65195d95b9879bec59acc5"
+    }
+  ]
+}

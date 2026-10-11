@@ -1,0 +1,13 @@
+diff --git b/packages/ids-authoring/src/bsdd/cache.ts a/packages/ids-authoring/src/bsdd/cache.ts
+index bd66c5d21..2a8d1b39c 100644
+--- b/packages/ids-authoring/src/bsdd/cache.ts
++++ a/packages/ids-authoring/src/bsdd/cache.ts
+@@ -112,7 +112,7 @@ export function createCachedBsddSource(source: BsddSource, options: CachedBsddSo
+   /** Read through the cache. `T` is what `fetcher` returns; the cached copy passed the shape check of `kind`. */
+   async function through<T>(kind: BsddCacheKind, key: string, fetcher: () => Promise<T>): Promise<T> {
+     const hit = await read(key, kind);
+-    if (hit) {
++    if (hit && now() - hit.storedAt < ttl) {
+       offline = false;
+       return hit.value as T;
+     }

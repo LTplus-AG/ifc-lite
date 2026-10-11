@@ -10,6 +10,7 @@ import { useTranslation } from '@/i18n';
 import { sanitizeFilename } from '@/lib/export/download';
 import { loadResolvedSourcePrefs } from '@/lib/sources/preferences';
 import type { SourceDownloadState } from '@/lib/sources/downloadProgress';
+import { beginActivity, finishActivity, updateActivity } from '@/lib/activity/activity-journal';
 
 export interface SourceDownloadSelection {
   readonly projectId: string;
@@ -58,13 +59,23 @@ export function useSourceDownloadBatch({
 
   const handleDownload = useCallback(
     async ({ projectId, files }: SourceDownloadSelection) => {
-      if (!provider || !providerId) return;
+      if (!provider || !providerId || files.length === 0) return;
       const ctx = sourceHost.createContext(provider.manifest, loadResolvedSourcePrefs(provider.manifest));
       const providerTitle = provider.manifest.title;
 
       abortRef.current?.abort();
       const controller = new AbortController();
       abortRef.current = controller;
+      const job = beginActivity({ kind: 'load', title: 'activityTray.job.sourceDownload', subject: providerTitle,
+        cancel: () => {
+          if (abortRef.current !== controller) return;
+          controller.abort();
+          setDownloading(false);
+          setDownloadStates(NO_DOWNLOADS);
+        } });
+      let dispatched = 0;
+      let failed = 0;
+      updateActivity(job, { progress: { done: 0, total: files.length } });
 
       const setFileState = (fileId: string, state: SourceDownloadState | undefined) => {
         if (controller.signal.aborted) return;
@@ -79,12 +90,12 @@ export function useSourceDownloadBatch({
       setDownloadStates(new Map(files.map((f) => [f.id, { phase: 'queued' }] as const)));
       setDownloading(true);
       try {
-        let failed = 0;
         for (const f of files) {
           if (controller.signal.aborted) break;
           // Started, size not yet known: a spinner until the provider's first
           // `onProgress` (a provider that never reports keeps the spinner).
           setFileState(f.id, { phase: 'downloading', received: 0 });
+          updateActivity(job, { phase: f.name, progress: { done: dispatched + failed, total: files.length } });
           try {
             const buffer = await provider.download(
               ctx,
@@ -108,10 +119,13 @@ export function useSourceDownloadBatch({
                 tag: sourceHost.createSourceTag(providerId, projectId, f.containerId, f.id, f.currentRevisionId),
               },
             ]);
+            dispatched += 1;
             setFileState(f.id, undefined);
+            updateActivity(job, { progress: { done: dispatched + failed, total: files.length } });
           } catch (err) {
             if (controller.signal.aborted) break;
             failed += 1;
+            updateActivity(job, { progress: { done: dispatched + failed, total: files.length } });
             setFileState(f.id, { phase: 'failed' });
             toast.error(
               err instanceof Error
@@ -122,7 +136,17 @@ export function useSourceDownloadBatch({
         }
         if (!controller.signal.aborted && failed === 0) onBatchSucceeded();
       } finally {
-        if (abortRef.current === controller) setDownloading(false);
+        const stopped = controller.signal.aborted;
+        // Cancellation after the final dispatch stopped no download work (#7134).
+        const incomplete = dispatched !== files.length;
+        finishActivity(job, incomplete ? (dispatched > 0 ? 'partial' : stopped ? 'cancelled' : 'failed') : 'completed',
+          incomplete && dispatched > 0
+            ? { detail: t(stopped ? 'activityTray.sourceDownload.partialCancelled' : 'activityTray.sourceDownload.partialFailed', { count: dispatched }) }
+            : failed > 0 ? { detail: t('activityTray.sourceDownload.failed', { count: failed }) } : {});
+        if (abortRef.current === controller) {
+          abortRef.current = null;
+          setDownloading(false);
+        }
       }
     },
     [onBatchSucceeded, provider, providerId, sourceHost, t],

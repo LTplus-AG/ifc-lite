@@ -24,6 +24,12 @@ export function replaceElementIn(
       ensureStoreyPlacement(dataStore, draft, storeyId);
       return resolveSpatialAnchor(dataStore, storeyId, draft.getMutationView());
     }, element));
+  completeElementReplacement(store,modelId,storeyId,element,built,undoBefore);
+  return built.expressId;
+}
+/** Same native completion for SDK and reviewed replacement; the surrounding
+ * reviewed transaction may own remeshing of its complete created/deleted set. */
+export function completeElementReplacement(store:ModellingStore,modelId:string,storeyId:number,element:InStoreReplacementElement,built:ReturnType<typeof replaceElementInStore>,undoBefore:number,dispatchRemesh=true):void {
   for (const id of built.removedIds) {
     completeEntityRemoval(store.getState, store.setState, modelId, id,
       store.getState().removedNewEntities.get(`${modelId}:${id}`));
@@ -33,9 +39,8 @@ export function replaceElementIn(
     const last = stack.length > undoBefore ? stack.at(-1) : undefined;
     completeStairRailingGeometry(store, modelId, storeyId, built,
       element.kind === 'stair' ? 'IFCSTAIR' : 'IFCRAILING',
-      last ? state.mutationBatchTags.get(last.id) ?? null : null);
+      last ? state.mutationBatchTags.get(last.id) ?? null : null,dispatchRemesh);
   } else {
     store.getState().recordAuthoredElement(modelId, storeyId, built.expressId, element, { historyRecorded: true });
   }
-  return built.expressId;
 }

@@ -1,0 +1,27 @@
+{
+  "baseHead": "b56b8b9a3ac7be2f28c9f2c92a36605c9ba10bbe",
+  "before": {
+    "pass": 6,
+    "fail": 1,
+    "skip": 0,
+    "failure": "newly selected operation retains old acknowledgment"
+  },
+  "fixedFocused": {
+    "pass": 19,
+    "fail": 0,
+    "skip": 0,
+    "scope": "13 Group plus6 shared native graph controls"
+  },
+  "behavior": "new selection and returning selection each require acknowledgment of new preview; summary labels native record counts; native export and one Undo preserved",
+  "logs": {
+    "before": {
+      "path": "tests/evidence/native-generic-group-7329/preview-ack-before.log.gz",
+      "sha256": "e146d12166e38c713e24aec9f53b8818b49b21e09fe1262c2028f85f477967f1"
+    },
+    "fixed": {
+      "path": "tests/evidence/native-generic-group-7329/preview-ack-fixed.log.gz",
+      "sha256": "3c69d58e30dda43024d6030fded91155b9ae01f905a9cde724ee7a9a044817c6"
+    }
+  },
+  "all10CurrentHead": "PENDING"
+}

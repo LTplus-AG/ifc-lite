@@ -113,7 +113,8 @@ test('German AI report: checked claims, contradicted claim edit, refresh reconci
   // A person rewrites the first claim's caption; the next native run deepens that clash by 5 mm.
   const blockTexts = page.locator('[data-document-blocks] textarea');
   const withValue = (match: string) => blockTexts.evaluateAll((list, text) => list.filter(el => (el as HTMLTextAreaElement).value.includes(text)).length, match);
-  const captionIndex = await blockTexts.evaluateAll(list => list.findIndex(el => (el as HTMLTextAreaElement).value.startsWith('Supported by captured data · Sources: E1\n')));
+  // #7302: generated report chrome follows the saved German report, independently of UI locale.
+  const captionIndex = await blockTexts.evaluateAll(list => list.findIndex(el => (el as HTMLTextAreaElement).value.startsWith('Durch erfasste Daten unterstützt · Quellen: E1\n')));
   expect(captionIndex).toBeGreaterThanOrEqual(0);
   // The claim rewritten during review is already edited text; the caption is the second edit.
   await expect(page.locator('[data-ai-origin="human-edited"]')).toHaveCount(1);
@@ -135,7 +136,7 @@ test('German AI report: checked claims, contradicted claim edit, refresh reconci
   await expect(refresh.getByRole('status')).toContainText('Evidence refreshed');
   await expect(refresh).toContainText('revision 2');
   expect(await withValue('Vor Ort geprüft: Durchbruch fehlt.')).toBe(1);
-  expect(await withValue('Evidence refreshed (revision 2): 1 cited value(s) changed')).toBe(1);
+  expect(await withValue('Nachweise aktualisiert (Revision 2): 1 zitierte Werte geändert')).toBe(1);
   await page.locator('[data-ai-origin="human-edited"]').first().scrollIntoViewIfNeeded();
   await page.screenshot({ path: testInfo.outputPath('report-refresh-applied.png') });
 
@@ -146,6 +147,6 @@ test('German AI report: checked claims, contradicted claim edit, refresh reconci
   const text = await pdfText(file);
   expect(text).toContain('Wände und Decken überschneiden sich [E1].');
   expect(text).toContain('Vor Ort geprüft: Durchbruch fehlt.');
-  expect(text).toContain('Narrative language: de · Revision 2');
-  expect(text).toMatch(/Evidence refreshed \(revision 2\): 1 cited value\(s\) changed/);
+  expect(text).toContain('Berichtssprache: de · Revision 2');
+  expect(text).toMatch(/Nachweise aktualisiert \(Revision 2\): 1 zitierte Werte geändert/);
 });

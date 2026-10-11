@@ -114,6 +114,11 @@ function unwrapAnchoredGroup(source: string): string | null {
 
 const QUANTIFIER_END = new Set(['*', '+', '?', '}']);
 
+/** JS `.` without the `s` flag in XSD syntax: XSD's `.` also matches the
+ *  line and paragraph separators U+2028 (`\p{Zl}`) and U+2029 (`\p{Zp}`),
+ *  which JS `.` does not. */
+const JS_DOT_XSD = '[^\\n\\r\\p{Zl}\\p{Zp}]';
+
 /** Rewrite a JS regex body (no anchors) into XSD syntax, or say why not. */
 function jsBodyToXsd(body: string, unicode: boolean): RegexConversion {
   let out = '';
@@ -181,7 +186,8 @@ function jsBodyToXsd(body: string, unicode: boolean): RegexConversion {
       return { ok: false, reason: 'lazy quantifiers are not supported by IDS (XSD) patterns' };
     }
     if (QUANTIFIER_END.has(ch)) afterQuantifier = true;
-    out += ch;
+    // JS `.` (no `s` flag) excludes U+2028/U+2029; XSD `.` matches them.
+    out += ch === '.' ? JS_DOT_XSD : ch;
   }
   if (inClass) return { ok: false, reason: 'the pattern has an unterminated character class' };
   return { ok: true, pattern: out };
@@ -246,26 +252,14 @@ export function jsRegexToIdsPattern(regex: JsRegex): RegexConversion {
 /**
  * Translate an IDS pattern into the rule operand that accepts the same
  * values: a `/^(?:…)$/u` literal (the `u` flag because XSD's `\d`, `\i`,
- * `\c` and `\w` translate to Unicode property escapes). XSD's `^` and `$`
- * are ordinary characters, so they are escaped first.
+ * `\c` and `\w` translate to Unicode property escapes). The pattern goes
+ * through the IDS checker's own translator unchanged, so `^` and `$` read
+ * exactly as the checker reads them: literal characters, except that a
+ * pattern-initial `^` and pattern-final `$` are redundant anchors and drop
+ * (`^US$` accepts `US`, `US$?` accepts `US` or `US$`).
  */
 export function idsPatternToJsRegex(xsd: string): RegexConversion {
-  let literalAnchors = '';
-  let inClass = false;
-  let classStart = false;
-  for (let i = 0; i < xsd.length; i++) {
-    const ch = xsd[i];
-    if (ch === '\\') { literalAnchors += ch + (xsd[i + 1] ?? ''); i++; classStart = false; continue; }
-    if (inClass) {
-      if (ch === ']' && !classStart) inClass = false;
-      classStart = false;
-      literalAnchors += ch;
-      continue;
-    }
-    if (ch === '[') { inClass = true; classStart = true; literalAnchors += ch; continue; }
-    literalAnchors += ch === '^' || ch === '$' ? `\\${ch}` : ch;
-  }
-  const translated = translateXsdRegex(literalAnchors);
+  const translated = translateXsdRegex(xsd);
   if (!translated.supported) return { ok: false, reason: translated.reason };
   const source = `^(?:${translated.pattern})$`;
   try {

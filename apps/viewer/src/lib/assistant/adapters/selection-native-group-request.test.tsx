@@ -37,6 +37,8 @@ async function selectedSource() {
   useViewerStore.getState().setSelectedEntityIds([291]);
   return fixture;
 }
+/** A carried Group status field; `GROUP_LIFECYCLE_GUIDANCE` mentions the bare status text. */
+const CARRIED_BUDGET_STATUS = /\\?"status\\?":\\?"unavailable-transport-budget\\?"/;
 function texts(value: unknown): string[] {
   if (typeof value === 'string') return [value];
   if (Array.isArray(value)) return value.flatMap(texts);
@@ -124,7 +126,8 @@ for (const attached of [false, true]) test(`#7329 ${attached ? 'attached' : 'ric
     const ownFacts = grounding.elements[0].nativeGroup?.snapshot;
     assert.ok(ownFacts && 'groups' in ownFacts); assert.equal(ownFacts.groups[0].GlobalId, own.GlobalId);
     assert.equal(grounding.elements[1].nativeGroup?.snapshot, null);
-    assert.ok(texts(wire).join('\n').includes('unavailable-transport-budget'));
+    // The system guidance names this status too, so only a serialized status field proves transport.
+    assert.match(texts(wire).join('\n'), CARRIED_BUDGET_STATUS);
   } finally { federationRegistry.unregisterModel(SAMPLE_MODEL); federationRegistry.unregisterModel(peerId); }
 });
 
@@ -151,7 +154,7 @@ for (const attached of [false, true]) test(`#7329 ${attached ? 'attached' : 'ric
   assert.equal(grounding.elements[0].nativeGroup?.status, 'unavailable-transport-budget');
   assert.equal(grounding.elements[0].nativeGroup?.snapshot, null);
   const text = texts(wire).join('\n');
-  assert.ok(text.includes('unavailable-transport-budget'));
+  assert.match(text, CARRIED_BUDGET_STATUS);
   assert.ok(text.includes('reduce the selected'));
 });
 

@@ -1,5 +1,0 @@
----
-"@ifc-lite/parser": minor
----
-
-A project length unit that defaulted to metres is now reported through `onDiagnostic`, and the parsed store records where its scale came from (#7395, part 3). `IfcDataStore.lengthUnitSource` is `'declared'` when the first IFCPROJECT's IFCUNITASSIGNMENT declares a LENGTHUNIT that resolves, and `'default'` when `lengthUnitScale` is the unconfirmed 1.0 assumed otherwise: no IFCPROJECT, no UnitsInContext, an assignment without a LENGTHUNIT, an unrecognised SI prefix, or an unreadable project or assignment. `parseColumnar` sends the reason to `onDiagnostic` once per parse, as `units: ` followed by the same sentence the console has printed since #2104 (`<reason>, defaulting to meters (unconfirmed — see issue #2104)`); the console line is unchanged. A caller of `validateIDS` can now qualify or withhold a result that compared lengths, areas or volumes under an assumed metre, without any change to the IDS report. The field travels through the worker transport; it is absent on stores not parsed from STEP here.

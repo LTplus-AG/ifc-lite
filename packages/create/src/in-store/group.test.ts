@@ -5,7 +5,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { IfcParser, effectiveMetadataRecord, getSchemaRegistryForVersion, type IfcDataStore } from '@ifc-lite/parser';
 import * as parserApi from '@ifc-lite/parser';
-import { MutablePropertyView, StoreEditor, recordCompoundMutation, undoRecordedMutationOperations } from '@ifc-lite/mutations';
+import { MutablePropertyView, StoreEditor, iterateEffectiveEntityIds, recordCompoundMutation, undoRecordedMutationOperations } from '@ifc-lite/mutations';
 import { StepExporter } from '@ifc-lite/export';
 import { generateIfcGuid } from '@ifc-lite/encoding';
 import { RelationshipType } from '@ifc-lite/data';
@@ -14,6 +14,7 @@ import { AnchorEntityReader } from './resolve-anchor.js';
 import { addGroupToStore, readGroupInStore, updateGroupInStore, removeGroupInStore } from './group.js';
 import { GROUP_GRAPH_LIMITS, GroupGraph } from './group-graph.js';
 import * as groupGraphApi from './group-graph.js';
+import { readGroupCreateEvidenceInStore, readGroupEvidenceInStore } from './group-evidence.js';
 
 async function session(schema: 'IFC4' | 'IFC4X3' = 'IFC4') {
   let bytes: Uint8Array;
@@ -249,7 +250,7 @@ it('a first refused operation preserves the fresh live allocator as well as its 
 it('complete replacement safely consolidates multiple owned assignments and reuses the first Root identity #7329', async () => {
   const s = await session();
   const group = addGroupToStore(s, { Name: 'Multiple membership edges', RelatedObjects: [s.member] });
-  const extra = s.editor.addEntity('IfcRelAssignsToGroup', [generateIfcGuid(), null, null, null, [`#${s.member.expressId}`], null, `#${group.expressId}`]).expressId;
+  const extra = s.editor.addEntity('IfcRelAssignsToGroup', [generateIfcGuid(), s.ownerHistoryId === null ? null : `#${s.ownerHistoryId}`, null, null, [`#${s.member.expressId}`], null, `#${group.expressId}`]).expressId;
   const before = readGroupInStore(s, group);
   expect(before.memberships).toHaveLength(2);
   updateGroupInStore(s, before, { RelatedObjects: [s.member] });
@@ -257,6 +258,55 @@ it('complete replacement safely consolidates multiple owned assignments and reus
   expect(readGroupInStore(saved, group).memberships).toEqual([before.memberships[0]]);
   expect(saved.store.entityIndex.byId.has(extra)).toBe(false);
   expect(saved.store.relationships.getRelated(group.expressId, RelationshipType.AssignsToGroup, 'forward')).toEqual([s.member.expressId]);
+});
+
+it('refuses complete replacement of PRODUCT/PROCESS assignments without changing either exported semantic record #7329', async () => {
+  const s = await session();
+  const group = addGroupToStore(s, { Name: 'Typed memberships', RelatedObjects: [s.member] });
+  const product = readGroupInStore(s, group).memberships[0].relationship.expressId;
+  s.editor.setPositionalAttribute(product, 5, '.PRODUCT.');
+  const taskGuid = generateIfcGuid();
+  const taskId = s.editor.addEntity('IfcTask', [taskGuid, null, 'Task', null, null, null, null, null, null, '.F.', null, null, '.NOTDEFINED.']).expressId;
+  const task = { expressId: taskId, GlobalId: taskGuid };
+  s.editor.addEntity('IfcRelAssignsToGroup', [generateIfcGuid(), null, null, null, [`#${taskId}`], '.PROCESS.', `#${group.expressId}`]);
+  const expected = readGroupInStore(s, group);
+  const before = await reread(s), transaction = state(s);
+  for (const RelatedObjects of [[s.member, task], [], [task]]) {
+    expect(() => updateGroupInStore(s, expected, { Name: 'Must not publish', RelatedObjects })).toThrow(/typed RelatedObjectsType/);
+    expect(state(s)).toBe(transaction);
+    const after = await reread(s);
+    const graph = (source: typeof before) => {
+      const reader = new AnchorEntityReader(source.store, source.mutationView);
+      return [...source.store.entityIndex.byId.keys()].map(id => {
+        const entity = reader.entity(id);
+        if (!entity) throw new Error(`Independently exported graph record #${id} is unreadable`);
+        return { id, type: entity.type, attributes: entity.attributes };
+      });
+    };
+    expect(graph(after)).toEqual(graph(before));
+  }
+  expect(readGroupInStore(await reread(s), group)).toEqual(expected);
+});
+
+it('refuses consolidation of distinct untyped assignment metadata without publishing #7329', async () => {
+  const s = await session();
+  const group = addGroupToStore(s, { Name: 'Distinct edges', RelatedObjects: [s.member] });
+  s.editor.addEntity('IfcRelAssignsToGroup', [generateIfcGuid(), null, 'Distinct assignment', 'Keep this description', [`#${s.member.expressId}`], null, `#${group.expressId}`]);
+  const expected = readGroupInStore(s, group), before = state(s);
+  expect(() => updateGroupInStore(s, expected, { RelatedObjects: [s.member] })).toThrow(/distinct assignment semantics/);
+  expect(state(s)).toBe(before);
+  expect(readGroupInStore(await reread(s), group)).toEqual(expected);
+});
+
+it('refuses changing even one typed assignment through an unpartitioned member list #7329', async () => {
+  const s = await session();
+  const group = addGroupToStore(s, { Name: 'Product-only group', RelatedObjects: [s.member] });
+  const relation = readGroupInStore(s, group).memberships[0].relationship.expressId;
+  s.editor.setPositionalAttribute(relation, 5, '.PRODUCT.');
+  const expected = readGroupInStore(s, group), before = state(s);
+  expect(() => updateGroupInStore(s, expected, { Name: 'Must not publish', RelatedObjects: [] })).toThrow(/typed RelatedObjectsType/);
+  expect(state(s)).toBe(before);
+  expect(readGroupInStore(await reread(s), group)).toEqual(expected);
 });
 
 it('bounds total effective record work and reports refusal rather than a truncated success #7329', async () => {
@@ -318,3 +368,71 @@ it.skipIf(!hasExternalIfc4x3)('preserves the complete SierraSoft IFC4X3_ADD2 rai
   expect(records(restored)).toEqual(records(store));
   // Real railway parse, edit, export and reparse: 2.4 s locally, 27 s on a shared CI runner (#7366).
 }, 60_000);
+
+it('refuses whole-model entity and record budgets from index metadata before decoding records #7346', async () => {
+  const s = await session();
+  const decodes = () => { let count = 0; const original = s.store.source.decodeUtf8.bind(s.store.source);
+    s.store.source.decodeUtf8 = (start: number, end: number) => { count++; return original(start, end); };
+    return { get count() { return count; }, restore: () => { s.store.source.decodeUtf8 = original; } }; };
+  const entityCount = [...s.store.entityIndex.byId.keys()].filter(id => !s.mutationView.isDeleted(id)).length;
+  let probe = decodes();
+  try {
+    expect(() => new GroupGraph(s.store, s.mutationView, { ...GROUP_GRAPH_LIMITS, entities: entityCount - 1 })).toThrow(/entity budget/);
+    expect(probe.count).toBe(0);
+  } finally { probe.restore(); }
+  const lengths = [...s.store.entityIndex.byId.values()].map(row => row.byteLength).sort((a, b) => b - a);
+  probe = decodes();
+  try {
+    // Only the single oversized source record is decoded to certify its exact export length.
+    expect(() => new GroupGraph(s.store, s.mutationView, { ...GROUP_GRAPH_LIMITS, recordCharacters: lengths[1] + 1 })).toThrow(/record budget/);
+    expect(probe.count).toBe(1);
+  } finally { probe.restore(); }
+  expect(() => new GroupGraph(s.store, s.mutationView, { ...GROUP_GRAPH_LIMITS, entities: entityCount })).not.toThrow();
+});
+
+it('publishes bounded create-only facts outside exact IfcGroup context, from type buckets without a whole-model scan #7346', async () => {
+  const s = await session();
+  const storey = new AnchorEntityReader(s.store, s.mutationView).firstId('IFCBUILDINGSTOREY')!;
+  expect(storey).not.toBeNull();
+  let decodes = 0; const original = s.store.source.decodeUtf8.bind(s.store.source);
+  s.store.source.decodeUtf8 = (start: number, end: number) => { decodes++; return original(start, end); };
+  let bounded: ReturnType<typeof readGroupCreateEvidenceInStore>;
+  try {
+    bounded = readGroupCreateEvidenceInStore(s, [s.member.expressId, storey]);
+    expect(decodes).toBeLessThanOrEqual(2);
+  } finally { s.store.source.decodeUtf8 = original; }
+  // The bounded identities are exactly the complete owner's.
+  const complete = readGroupEvidenceInStore(s, [s.member.expressId, storey]);
+  expect(bounded).toEqual({ scope: 'no-group-context', source: complete.source, selected: complete.selected, members: complete.members });
+  // Specialized group membership is not generic Group context.
+  const zone = s.editor.addEntity('IfcZone', [generateIfcGuid(), null, 'Zone', null, null, null]).expressId;
+  s.editor.addEntity('IfcRelAssignsToGroup', [generateIfcGuid(), null, null, null, [`#${storey}`], null, `#${zone}`]);
+  expect(readGroupCreateEvidenceInStore(s, [storey])?.members).toEqual(complete.members.filter(row => row.expressId === storey));
+  const group = addGroupToStore(s, { Name: 'Context', RelatedObjects: [s.member] });
+  expect(readGroupCreateEvidenceInStore(s, [s.member.expressId])).toBeNull();
+  expect(readGroupCreateEvidenceInStore(s, [group.expressId])).toBeNull();
+  expect(readGroupCreateEvidenceInStore(s, [storey])).not.toBeNull();
+  // Exported and re-parsed, the source-owned relationship is found through its type bucket.
+  const saved = await reread(s);
+  expect(readGroupCreateEvidenceInStore(saved, [s.member.expressId])).toBeNull();
+  expect(readGroupCreateEvidenceInStore(saved, [storey])).not.toBeNull();
+  // A weighted assignment subtype to an exact IfcGroup is group context too.
+  const weighted = addGroupToStore(s, { Name: 'Weighted', RelatedObjects: [] });
+  s.editor.addEntity('IfcRelAssignsToGroupByFactor', [generateIfcGuid(), null, null, null, [`#${storey}`], null, `#${weighted.expressId}`, 0.5]);
+  expect(readGroupCreateEvidenceInStore(s, [storey])).toBeNull();
+});
+
+it('refuses create-only facts over the graph entity budget that review could never read #7346', async () => {
+  const s = await session();
+  const live = [...iterateEffectiveEntityIds(s.store, s.mutationView)].length;
+  expect(readGroupCreateEvidenceInStore(s, [s.member.expressId], live)?.scope).toBe('no-group-context');
+  expect(() => readGroupCreateEvidenceInStore(s, [s.member.expressId], live - 1)).toThrow(/entity budget/);
+  // An overlay creation counts against the same budget.
+  s.editor.addEntity('IfcGroup', [generateIfcGuid(), null, 'Extra', null, null]);
+  expect(() => readGroupCreateEvidenceInStore(s, [s.member.expressId], live)).toThrow(/entity budget/);
+  // An overlay deletion drops the live count, though the parsed buckets still hold it.
+  const storey = new AnchorEntityReader(s.store, s.mutationView).firstId('IFCBUILDINGSTOREY')!;
+  expect(s.mutationView.deleteEntity(storey)).toBe(true);
+  expect(readGroupCreateEvidenceInStore(s, [s.member.expressId], live)?.scope).toBe('no-group-context');
+  expect(() => readGroupCreateEvidenceInStore(s, [s.member.expressId], live - 1)).toThrow(/entity budget/);
+});

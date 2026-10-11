@@ -98,6 +98,15 @@
           "omittedLabelGroups": 0,
           "labelGroupMeaning": "Exact native system/code text grouped separately per model/schema, not unique IFC identities. elements counts requested refs carrying each label once; referenceRows retains native repeated entries. Null labels are unknown. Complete status describes membership coverage, not complete system/code attributes. Omitted groups remain outside the displayed distribution."
         },
+        "nativeGroups": [
+          {
+            "modelId": "arch",
+            "status": "available",
+            "expectedJsonParts": [
+              "{\"scope\":\"no-group-context\",\"source\":{\"contentKey\":\"37163-93a54f81\",\"byteLength\":225635},\"selected\":[425],\"members\":[{\"expressId\":425,\"GlobalId\":\"12UVOn4wvAJPMUExKdZLb8\"}]}"
+            ]
+          }
+        ],
         "byModel": [
           {
             "modelId": "arch",

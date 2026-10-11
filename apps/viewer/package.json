@@ -1,6 +1,6 @@
 {
   "name": "@ifc-lite/viewer",
-  "version": "4.0.0",
+  "version": "5.0.0",
   "description": "IFC-Lite viewer application",
   "private": true,
   "type": "module",
@@ -119,7 +119,9 @@
     "three": "^0.186.1",
     "zustand": "^5.0.15",
     "@ifc-lite/semantic": "workspace:*",
-    "@ifc-lite/source-autodesk": "workspace:^"
+    "@ifc-lite/source-autodesk": "workspace:^",
+    "@ifc-lite/ids-agent": "workspace:^",
+    "@ifc-lite/ids-authoring": "workspace:^"
   },
   "devDependencies": {
     "@happy-dom/global-registrator": "^20.14.5",

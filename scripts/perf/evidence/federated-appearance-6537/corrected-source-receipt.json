@@ -1,0 +1,22 @@
+{
+  "at": "2026-10-09T15:54:44.635617+00:00",
+  "head": "57a963c0c55ae9909bc326cc6c86ecfbd31d201d",
+  "base": "2382cf4124315f027b2d33c21c1751cee33c5081",
+  "status": "",
+  "files": [
+    {
+      "path": "apps/viewer/src/components/viewer/useAppearanceSourceGeometry.real-ifc-streaming.test.tsx",
+      "sha256": "95bbe188429b7872f3982393189af6220a13af3d957840b2640ef9cd52d7ebaa"
+    },
+    {
+      "path": "apps/viewer/src/components/viewer/useAppearanceSourceGeometry.test.tsx",
+      "sha256": "dbf6f91da804df84be734a5ff179737443c51c84f3c1cb6a5f0a676229827ed0"
+    },
+    {
+      "path": "apps/viewer/src/components/viewer/useAppearanceSourceGeometry.ts",
+      "sha256": "d7b1ee2ecb103e59ce96a5300756a758a6df09c4b2636b3d8e0326c2588d1be2"
+    }
+  ],
+  "gitMetadata": "/home/louistrue/wt/6537-load-pipeline-227af528/.git",
+  "cohort": "Corrected validation; source freeze before acquisition; no execution yet"
+}

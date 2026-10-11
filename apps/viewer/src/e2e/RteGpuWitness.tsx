@@ -40,7 +40,9 @@ function pickEvidence(pick: PickResult | null): PickEvidence | null {
   };
 }
 
-async function runWitness(canvas: HTMLCanvasElement): Promise<RteGpuWitnessReport> {
+export async function runWitness(
+  canvas: HTMLCanvasElement, observe?: (renderer: Renderer) => void,
+): Promise<RteGpuWitnessReport> {
   const report = baseReport();
   if (!navigator.gpu) {
     report.status = 'skipped';
@@ -51,6 +53,7 @@ async function runWitness(canvas: HTMLCanvasElement): Promise<RteGpuWitnessRepor
   const renderer = new Renderer(canvas);
   try {
     await renderer.init();
+    observe?.(renderer);
     const adapter = renderer.getAdapterInfo();
     report.system.adapter = adapter;
     const adapterText = `${adapter?.vendor ?? ''} ${adapter?.architecture ?? ''}`.toLowerCase();
@@ -62,6 +65,9 @@ async function runWitness(canvas: HTMLCanvasElement): Promise<RteGpuWitnessRepor
     }
     report.system.hardwareVerified = true;
 
+    const pixel = (dataUrl: string | null, x: number, y: number) => screenshotPixel(
+      dataUrl, x, y, { width: canvas.clientWidth, height: canvas.clientHeight },
+    );
     const quantized = await renderer.enableQuantizedBatches();
     const flat = witnessMesh(101, COMMON_ORIGIN, [1, 0.15, 0.1, 1]);
     const textured = witnessMesh(102, [COMMON_ORIGIN[0] - 24, COMMON_ORIGIN[1], COMMON_ORIGIN[2]], [1, 1, 1, 1], true);
@@ -102,7 +108,7 @@ async function runWitness(canvas: HTMLCanvasElement): Promise<RteGpuWitnessRepor
     renderer.render({ clearColor: [0.02, 0.02, 0.02, 1], environment: sunEnvironment });
     await device.queue.onSubmittedWorkDone();
     const lineScreenshot = await renderer.captureScreenshot();
-    const linePixel = await screenshotPixel(lineScreenshot, PICK_CSS_X, PICK_CSS_Y);
+    const linePixel = await pixel(lineScreenshot, PICK_CSS_X, PICK_CSS_Y);
 
     const pick = await renderer.pick(PICK_CSS_X, PICK_CSS_Y);
     const cpuRay = renderer.raycastScene(CPU_PICK_CSS_X, CPU_PICK_CSS_Y, {
@@ -163,21 +169,21 @@ async function runWitness(canvas: HTMLCanvasElement): Promise<RteGpuWitnessRepor
     await device.queue.onSubmittedWorkDone();
     // Sample inside the face but away from the yellow alignment segment.
     const colorScreenshot = await renderer.captureScreenshot();
-    const colorPixel = await screenshotPixel(colorScreenshot, PICK_CSS_X, PICK_CSS_Y + 60);
+    const colorPixel = await pixel(colorScreenshot, PICK_CSS_X, PICK_CSS_Y + 60);
 
     camera.setPosition(COMMON_ORIGIN[0] - 24, COMMON_ORIGIN[1], COMMON_ORIGIN[2] + 60);
     camera.setTarget(COMMON_ORIGIN[0] - 24, COMMON_ORIGIN[1], COMMON_ORIGIN[2]);
     renderer.render({ clearColor: [0.02, 0.02, 0.02, 1], environment: sunEnvironment });
     await device.queue.onSubmittedWorkDone();
     const texturedScreenshot = await renderer.captureScreenshot();
-    const texturedPixel = await screenshotPixel(texturedScreenshot, PICK_CSS_X, PICK_CSS_Y);
+    const texturedPixel = await pixel(texturedScreenshot, PICK_CSS_X, PICK_CSS_Y);
     const texturedPick = await renderer.pick(PICK_CSS_X, PICK_CSS_Y);
     camera.setPosition(COMMON_ORIGIN[0] + 24, COMMON_ORIGIN[1], COMMON_ORIGIN[2] + 60);
     camera.setTarget(COMMON_ORIGIN[0] + 24, COMMON_ORIGIN[1], COMMON_ORIGIN[2]);
     renderer.render({ clearColor: [0.02, 0.02, 0.02, 1], environment: sunEnvironment });
     await device.queue.onSubmittedWorkDone();
     const instancedScreenshot = await renderer.captureScreenshot();
-    const instancedPixel = await screenshotPixel(instancedScreenshot, PICK_CSS_X, PICK_CSS_Y);
+    const instancedPixel = await pixel(instancedScreenshot, PICK_CSS_X, PICK_CSS_Y);
     const instancedPick = await renderer.pick(PICK_CSS_X, PICK_CSS_Y);
     // The anchored-line family was sampled above. Clear it before the point
     // family so the yellow line cannot occupy the point's centre pixel.
@@ -187,7 +193,7 @@ async function runWitness(canvas: HTMLCanvasElement): Promise<RteGpuWitnessRepor
     renderer.render({ clearColor: [0.02, 0.02, 0.02, 1], environment: sunEnvironment });
     await device.queue.onSubmittedWorkDone();
     const pointScreenshot = await renderer.captureScreenshot();
-    const pointPixel = await screenshotPixel(pointScreenshot, PICK_CSS_X, PICK_CSS_Y);
+    const pointPixel = await pixel(pointScreenshot, PICK_CSS_X, PICK_CSS_Y);
     const pointPick = await renderer.pick(PICK_CSS_X, PICK_CSS_Y);
     const pointCrop = {
       enabled: true,
@@ -239,7 +245,7 @@ async function runWitness(canvas: HTMLCanvasElement): Promise<RteGpuWitnessRepor
     renderer.render({ clearColor: [0.02, 0.02, 0.02, 1], environment: sunEnvironment });
     await device.queue.onSubmittedWorkDone();
     const largeExtentScreenshot = await renderer.captureScreenshot();
-    const largeExtentPixel = await screenshotPixel(largeExtentScreenshot, PICK_CSS_X, PICK_CSS_Y);
+    const largeExtentPixel = await pixel(largeExtentScreenshot, PICK_CSS_X, PICK_CSS_Y);
     const largeExtentPick = await renderer.pick(PICK_CSS_X, PICK_CSS_Y);
     const screenshot = await renderer.captureScreenshot();
     const diagnostics = renderer.getDiagnostics();
@@ -369,7 +375,7 @@ export function RteGpuWitness() {
     <main style={{ background: '#0b1020', color: '#e8eefc', minHeight: '100vh', padding: 24, fontFamily: 'ui-monospace, monospace' }}>
       <h1>RTE GPU witness (#5049)</h1>
       <p>Hardware-only production-renderer acceptance. Software adapters are reported as skipped, never passed.</p>
-      <canvas ref={canvasRef} width={640} height={480} style={{ display: 'block', width: 640, height: 480, border: '1px solid #415078' }} />
+      <canvas ref={canvasRef} width={640} height={480} style={{ display: 'block', width: 640, height: 480 }} />
       <pre aria-label="RTE GPU witness report" style={{ whiteSpace: 'pre-wrap' }}>{JSON.stringify(report, null, 2)}</pre>
     </main>
   );

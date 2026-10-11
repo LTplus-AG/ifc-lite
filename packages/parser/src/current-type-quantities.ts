@@ -176,6 +176,9 @@ function readCurrent(store: IfcDataStore, entityId: number, view: MetadataReadVi
         const base = quantities.map(set => ({ name: set.name, globalId: set.globalId,
             quantities: set.quantities.map(q => ({ name: q.name, type: q.type, value: q.value, unit: q.explicitUnit })) }));
         const projected = journal.getQuantitiesForEntity(typeId, () => base);
+        if (quantities.some(set => names.has(set.name) && !set.globalId)) {
+            throw new CurrentQuantityRefusal('Native quantity definition identity is missing');
+        }
         const nativeByGuid = new Map(quantities.map(set => [set.globalId, set]));
         if (nativeByGuid.size !== quantities.length) throw new CurrentQuantityRefusal('Native quantity definition identities are ambiguous');
         const updated = projected.filter(set => names.has(set.name)).map(set => {

@@ -125,10 +125,15 @@ export function generatePropertySetEntities(
 export function generateQuantityAtom(
   ctx: PropertySetContext, q: Quantity, effective: EffectiveEntityIndex,
 ): { id: number; line: string } {
-  const id = ctx.allocateExpressId();
   const ifcType = quantityTypeToIfcType(q.type);
-  // This resolver supplies LENGTHUNIT references; other quantity classes inherit project units.
-  const unitId = q.unit && ifcType === 'IFCQUANTITYLENGTH' ? findUnitId(ctx, q.unit, effective) : null;
+  // Explicit intent must never become an implicit project-unit value (#7355).
+  // The existing resolver supports Length only; other explicit kinds refuse.
+  const unitId = q.unit !== undefined && ifcType === 'IFCQUANTITYLENGTH'
+    ? findUnitId(ctx, q.unit, effective) : null;
+  if (q.unit !== undefined && unitId === null) {
+    throw new Error(`Quantity ${q.name} explicit unit cannot resolve a native reference`);
+  }
+  const id = ctx.allocateExpressId();
   const unit = unitId !== null ? serializeValue(ref(unitId)) : '$';
   const line = `#${id}=${ifcType}('${escapeStepString(q.name)}',$,${unit},${toStepReal(q.value)},$);`;
   return { id, line };

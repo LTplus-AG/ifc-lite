@@ -214,3 +214,39 @@ test('#7355 distinct named Type sets preserve native precedence after editing th
   assert.deepEqual(read.value?.quantities.map(set => set.name), native.map(set => set.name), 'current canonical order preserves independent native first-set precedence');
   assert.match(card ?? '', /netNetVolume35 m³/);
 });
+
+
+// #7378 review: both new-set and copied-member paths share scalar unit admission.
+for (const newSet of [true, false]) test(`#7355 new Length unassigned MILLIMETRE refuses newSet=${newSet}`, async t => {
+  const f = await inheritedSource(t); if (!f) return;
+  const setName = newSet ? 'New length quantities' : 'Qto_WallBaseQuantities';
+  f.view.setQuantity(f.a.type, setName, 'NewLength', 35, QuantityType.Length, 'MILLIMETRE');
+  assert.equal(readCurrentTypeQuantities(f.store, f.f.id, f.view).status, 'unavailable');
+  assert.throws(() => editedModelBytes(f.store, f.view), /explicit unit cannot resolve a native reference/);
+  assert.equal(f.store.getEntity(f.a.volume)?.attributes[3], 10, 'refusal retains native source value');
+  assert.throws(() => editedModelBytes(f.store, f.view), /explicit unit cannot resolve a native reference/);
+});
+
+test('#7355 newly added explicit cm³ Volume refuses instead of emitting project m³', async t => {
+  const f = await inheritedSource(t); if (!f) return;
+  f.view.setQuantity(f.a.type, 'Qto_WallBaseQuantities', 'NewVolume', 35, QuantityType.Volume, 'cm³');
+  assert.equal(readCurrentTypeQuantities(f.store, f.f.id, f.view).status, 'unavailable');
+  assert.throws(() => editedModelBytes(f.store, f.view), /explicit unit cannot resolve a native reference/);
+  assert.equal(f.store.getEntity(f.a.volume)?.attributes[3], 10);
+});
+
+test('#7355 sole native set missing GlobalId refuses live edit and export consistently', async t => {
+  const f = await inheritedSource(t); if (!f) return;
+  f.view.setPositionalAttribute(f.a.qto, 0, null);
+  const source = await parse(editedModelBytes(f.store, f.view));
+  const model = useViewerStore.getState().models.get('arch'); assert.ok(model);
+  useViewerStore.setState({ models: new Map([['arch', { ...model, ifcDataStore: source }]]),
+    ifcDataStore: source, mutationViews: new Map(), storeEditors: new Map() });
+  const view = getOrCreateMutationView(useViewerStore, 'arch'); assert.ok(view);
+  view.setQuantity(f.a.type, 'Qto_WallBaseQuantities', 'NetVolume', 35, QuantityType.Volume);
+  const read = readCurrentTypeQuantities(source, f.f.id, view);
+  assert.equal(read.status, 'unavailable');
+  assert.match(read.reason ?? '', /identity is missing/);
+  assert.throws(() => editedModelBytes(source, view), /identity is missing or ambiguous/);
+  assert.equal(source.getEntity(f.a.volume)?.attributes[3], 10);
+});

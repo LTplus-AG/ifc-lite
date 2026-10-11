@@ -161,6 +161,14 @@ export {
 
 export { boundedPassRate, passRateBand, type PassRateBand } from './validation/pass-rate.js';
 
+// IFC2X3 occurrence/type mapping table (IfcAirTerminal -> IfcFlowTerminal +
+// IfcAirTerminalType): shared with `@ifc-lite/ids-authoring`'s gate so an
+// authored IFC2X3 facet accepts the same aliases the audit and checker do.
+export {
+  rowForAlias as ifc2x3TypeMappingForAlias,
+  type Ifc2x3TypeMappingRow,
+} from './facets/ifc2x3-type-mapping.js';
+
 // ============================================================================
 // Constraints
 // ============================================================================

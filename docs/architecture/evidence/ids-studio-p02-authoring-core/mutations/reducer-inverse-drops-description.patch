@@ -1,0 +1,12 @@
+diff --git a/packages/ids-authoring/src/reducer/facet-ops.ts b/packages/ids-authoring/src/reducer/facet-ops.ts
+index 4d73124bc..19c88f2a1 100644
+--- a/packages/ids-authoring/src/reducer/facet-ops.ts
++++ b/packages/ids-authoring/src/reducer/facet-ops.ts
+@@ -61,6 +61,7 @@ function snapshotOf(item: SectionItem): RequirementSnapshot | undefined {
+   if (!r) return undefined;
+   let snap: RequirementSnapshot = { optionality: r.optionality };
+   snap = withKey(snap, 'cardinalityRaw', r.cardinalityRaw);
++  snap = withKey(snap, 'description', r.description);
+   return withKey(snap, 'instructions', r.instructions);
+ }
+ 

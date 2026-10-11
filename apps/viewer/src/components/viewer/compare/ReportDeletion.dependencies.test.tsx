@@ -20,7 +20,11 @@ import { button, dependents, realComparison, setupReportDeletionFixtures } from 
 
 setupReportDeletionFixtures();
 
-const settle = async () => { await act(async () => { for (let i = 0; i < 8; i++) await Promise.resolve(); }); };
+// #7252: durable Document reads use IndexedDB tasks, not only microtasks.
+const settle = async (ui: HTMLElement) => {
+  await waitFor(() => !/Documents are still loading/.test(ui.textContent ?? ''), 'the mounted preview finishes its actual durable Document read');
+  await act(async () => { for (let i = 0; i < 8; i++) await Promise.resolve(); });
+};
 function previewFor(report: Awaited<ReturnType<typeof realComparison>>) {
   const ui = render(<SavedComparisonLibrary result={null} running={false} />);
   const picker = ui.querySelector('select'); assert.ok(picker);
@@ -34,7 +38,7 @@ test('#7245 dependency changes require explicit review again and Cancel preserve
   const ui = render(<SavedComparisonLibrary result={null} running={false} />);
   const picker = ui.querySelector('select'); assert.ok(picker);
   act(() => { picker.value = report.id; picker.dispatchEvent(new window.Event('change', { bubbles: true })); });
-  click(button(ui, 'Delete saved comparison')!); await settle();
+  click(button(ui, 'Delete saved comparison')!); await settle(ui);
   assert.equal(button(ui, 'Delete report')?.disabled, false);
   const dashboard = useViewerStore.getState().dashboards[0];
   act(() => useViewerStore.getState().upsertDashboard({ ...dashboard, name: 'Changed owner dashboard' }));
@@ -45,13 +49,13 @@ test('#7245 dependency changes require explicit review again and Cancel preserve
   assert.ok(useViewerStore.getState().savedComparisons.some(row => row.id === report.id));
 });
 test('#7245 same-ID native rename invalidates the captured source instead of deleting its replacement', async () => {
-  const report = await realComparison(); const ui = previewFor(report); await settle();
+  const report = await realComparison(); const ui = previewFor(report); await settle(ui);
   await act(async () => { assert.equal(await useViewerStore.getState().renameSavedComparison(report.id, 'New source revision'), true); });
   assert.match(ui.textContent ?? '', /report changed or was replaced/); assert.equal(button(ui, 'Delete report')?.disabled, true);
   assert.equal((await readContentRows('comparison')).find(row => row.id === report.id)?.deleted, false);
 });
 test('#7245 native revision CAS refuses a replacement invisible to the preview at async durable deletion', async () => {
-  const report = await realComparison(); const ui = previewFor(report); await settle();
+  const report = await realComparison(); const ui = previewFor(report); await settle(ui);
   const row = (await readContentRows('comparison')).find(entry => entry.id === report.id); assert.ok(row);
   assert.equal((await writeContent('comparison', report.id, { ...report, name: 'Other tab replacement' }, row.revision)).ok, true);
   // The old native session still owns its old report pointer. Only the real async storage CAS sees the replacement.
@@ -65,7 +69,7 @@ test('#7245 native revision CAS refuses a replacement invisible to the preview a
   assert.equal(await useViewerStore.getState().retrySaveComparisons(), false, 'retry cannot silently erase the replacement');
 });
 test('#7245 actual storage quota refusal preserves durable report and native Retry recovers deletion', async () => {
-  const report = await realComparison(); const ui = previewFor(report); await settle();
+  const report = await realComparison(); const ui = previewFor(report); await settle(ui);
   const refused = refuseContentWrites();
   try {
     const confirmDelete = button(ui, 'Delete report');
@@ -79,7 +83,7 @@ test('#7245 actual storage quota refusal preserves durable report and native Ret
 });
 test('#7245 damaged dashboard storage discloses unknown dependencies without claiming an empty readable library', async () => {
   const report = await realComparison(); localStorage.setItem('ifc-lite-dashboards', '{not-json');
-  const ui = previewFor(report); await settle();
+  const ui = previewFor(report); await settle(ui);
   assert.match(ui.textContent ?? '', /could not be read completely/); assert.match(ui.textContent ?? '', /More chart references may exist/);
   assert.equal(button(ui, 'Delete report')?.disabled, false, 'informed deletion is still allowed');
 });
@@ -93,7 +97,7 @@ test('#7245 full reference counts survive bounded display and exclude other repo
   ] }));
   const document = { ...blankDocument(), name: 'Independent embedded comparison', blocks: [{ kind: 'table' as const, id: 'embedded', source: { kind: 'comparison' as const, comparison: report } }] };
   assert.equal(await useViewerStore.getState().upsertDocument(document), true);
-  const ui = previewFor(report); await settle();
+  const ui = previewFor(report); await settle(ui);
   assert.match(ui.textContent ?? '', /26 chart references/); assert.match(ui.textContent ?? '', /Showing 20 of 26/);
   assert.equal(ui.querySelectorAll('li').length, 20);
   assert.doesNotMatch(ui.textContent ?? '', /Independent embedded comparison|Other saved source|Current comparison/);
@@ -111,7 +115,7 @@ test('#7245 native Document hydration distinguishes loading and unavailable from
     const ui = previewFor(report);
     assert.match(ui.textContent ?? '', /Documents are still loading/); assert.equal(button(ui, 'Delete report')?.disabled, true);
     await waitFor(() => useViewerStore.getState().documentsStorage.phase === 'unavailable', 'actual Document read failure is published');
-    await settle();
+    await settle(ui);
     assert.match(ui.textContent ?? '', /More chart references may exist/);
     assert.doesNotMatch(ui.textContent ?? '', /Documents are still loading/);
     assert.equal(button(ui, 'Delete report')?.disabled, false);
@@ -124,11 +128,11 @@ test('#7245 native unsaved Document chart edits participate even when their dura
   const refused = refuseContentWrites();
   try { assert.equal(await useViewerStore.getState().upsertDocument(draft), false); } finally { refused.mock.restore(); }
   assert.equal((await readContentRows('document')).some(row => row.id === draft.id), false);
-  const ui = previewFor(report); await settle();
+  const ui = previewFor(report); await settle(ui);
   assert.match(ui.textContent ?? '', /3 chart references/); assert.match(ui.textContent ?? '', /Unsaved affected Document/);
 });
 test('#7245 a readable genuinely empty native catalogue makes zero references explicit', async () => {
-  const report = await realComparison(); const ui = previewFor(report); await settle();
+  const report = await realComparison(); const ui = previewFor(report); await settle(ui);
   assert.match(ui.textContent ?? '', /0 chart references found in readable libraries/);
   assert.doesNotMatch(ui.textContent ?? '', /More chart references may exist|still loading/);
   assert.equal(button(ui, 'Delete report')?.disabled, false);
@@ -136,7 +140,7 @@ test('#7245 a readable genuinely empty native catalogue makes zero references ex
 test('#7245 partially invalid native dashboard storage retains readable references and discloses omissions', async () => {
   const report = await realComparison(); await dependents('compare', report.id);
   localStorage.setItem('ifc-lite-dashboards', JSON.stringify([useViewerStore.getState().dashboards[0], null]));
-  const ui = previewFor(report); await settle();
+  const ui = previewFor(report); await settle(ui);
   assert.match(ui.textContent ?? '', /2 chart references/); assert.match(ui.textContent ?? '', /Affected dashboard/);
   assert.match(ui.textContent ?? '', /More chart references may exist/);
 });
@@ -148,7 +152,7 @@ test('#7245 native dashboard Storage read refusal is unknown coverage instead of
     return read.call(this, key);
   });
   try {
-    const ui = previewFor(report); await settle();
+    const ui = previewFor(report); await settle(ui);
     assert.match(ui.textContent ?? '', /More chart references may exist/);
     assert.equal(button(ui, 'Delete report')?.disabled, false);
   } finally { refused.mock.restore(); }
@@ -161,14 +165,14 @@ test('#7245 recovered Document originals disclose incomplete coverage beside the
   useViewerStore.setState(createDocumentSlice(useViewerStore.setState, useViewerStore.getState, useViewerStore));
   const ui = previewFor(report);
   await waitFor(() => useViewerStore.getState().documentsStorage.phase === 'ready', 'native migration retains the readable Document');
-  await settle();
+  await settle(ui);
   assert.equal(useViewerStore.getState().documentsStorage.recovered, true);
   assert.match(ui.textContent ?? '', /Recovered readable Document/);
   assert.match(ui.textContent ?? '', /More chart references may exist/);
 });
 test('#7245 references changed after confirmation but before native queued commit revoke deletion', async () => {
   const report = await realComparison(); await dependents('compare', report.id);
-  const ui = previewFor(report); await settle();
+  const ui = previewFor(report); await settle(ui);
   const dashboard = useViewerStore.getState().dashboards[0];
   const confirmDelete = button(ui, 'Delete report');
   assert.ok(confirmDelete, 'the mounted reviewed report exposes its Delete report action');
@@ -183,7 +187,7 @@ test('#7245 references changed after confirmation but before native queued commi
 });
 test('#7245 a refused quota tombstone rechecks changed dependencies on native Retry and restores its source', async () => {
   const report = await realComparison(); await dependents('compare', report.id);
-  const ui = previewFor(report); await settle();
+  const ui = previewFor(report); await settle(ui);
   const refused = refuseContentWrites();
   try {
     const confirmDelete = button(ui, 'Delete report');
@@ -198,7 +202,7 @@ test('#7245 a refused quota tombstone rechecks changed dependencies on native Re
   assert.ok(useViewerStore.getState().savedComparisons.some(row => row.id === report.id), 'refused old deletion restores its readable source');
 });
 test('#7245 revoked queued deletion preserves a newer native same-ID rename draft', async () => {
-  const report = await realComparison(); const ui = previewFor(report); await settle();
+  const report = await realComparison(); const ui = previewFor(report); await settle(ui);
   const confirmDelete = button(ui, 'Delete report');
   assert.ok(confirmDelete, 'the mounted reviewed report exposes its Delete report action');
   click(confirmDelete);
@@ -212,7 +216,7 @@ test('#7245 revoked queued deletion preserves a newer native same-ID rename draf
   assert.equal((durable.payload as { name: string }).name, 'Newer native rename draft');
 });
 test('#7245 native preview unmount revokes a queued confirmation before its actual storage write', async () => {
-  const report = await realComparison(); const ui = previewFor(report); await settle();
+  const report = await realComparison(); const ui = previewFor(report); await settle(ui);
   const confirmDelete = button(ui, 'Delete report');
   assert.ok(confirmDelete, 'the mounted reviewed report exposes its Delete report action');
   click(confirmDelete); cleanup();
@@ -230,14 +234,14 @@ test('#7245 revoked native confirmation explains changed references without repo
   assert.equal(latestToast(ui), '', 'no earlier notification can be mistaken for this confirmation result');
   const picker = ui.querySelector('select'); assert.ok(picker);
   act(() => { picker.value = report.id; picker.dispatchEvent(new window.Event('change', { bubbles: true })); });
-  click(button(ui, 'Delete saved comparison')!); await settle();
+  click(button(ui, 'Delete saved comparison')!); await settle(ui);
   const dashboard = useViewerStore.getState().dashboards[0];
   const confirmDelete = button(ui, 'Delete report');
   assert.ok(confirmDelete, 'the mounted reviewed report exposes its Delete report action');
   click(confirmDelete);
   act(() => useViewerStore.getState().upsertDashboard({ ...dashboard, name: 'Changed just before native write' }));
   await waitFor(() => useViewerStore.getState().savedComparisonsStorage.items[report.id] !== 'saving', 'revoked native request finishes');
-  await settle();
+  await settle(ui);
   assert.equal((await readContentRows('comparison')).find(row => row.id === report.id)?.deleted, false);
   assert.match(ui.textContent ?? '', /Chart references changed/);
   assert.doesNotMatch(latestToast(ui), /Comparison changes are in memory, but browser storage is unavailable or full/);
@@ -245,7 +249,7 @@ test('#7245 revoked native confirmation explains changed references without repo
 
 test('#7245 closing a quota-refused native preview revokes its retained deletion on Retry', async () => {
   const report = await realComparison(); await dependents('compare', report.id);
-  const ui = previewFor(report); await settle();
+  const ui = previewFor(report); await settle(ui);
   const refused = refuseContentWrites();
   try {
     const confirmDelete = button(ui, 'Delete report');
@@ -262,7 +266,7 @@ test('#7245 closing a quota-refused native preview revokes its retained deletion
 
 for (const addReference of [false, true]) test(`#7245 own import receipt ${addReference ? 'cannot reuse approval after a new native chart reference' : 'retains approved native CAS retry'}`, async () => {
   const report = await realComparison(); await dependents('compare', report.id);
-  const ui = previewFor(report); await settle();
+  const ui = previewFor(report); await settle(ui);
   const row = (await readContentRows('comparison')).find(entry => entry.id === report.id)!;
   let ownCommit: Promise<void> | undefined;
   const unsubscribe = useViewerStore.subscribe(state => {
@@ -300,7 +304,7 @@ for (const addReference of [false, true]) test(`#7245 own import receipt ${addRe
 
 test('#7245 closing the mounted native preview revokes an own-receipt CAS retry', async () => {
   const report = await realComparison(); await dependents('compare', report.id);
-  const ui = previewFor(report); await settle();
+  const ui = previewFor(report); await settle(ui);
   const row = (await readContentRows('comparison')).find(entry => entry.id === report.id)!;
   let ownCommit: Promise<void> | undefined;
   const unsubscribe = useViewerStore.subscribe(state => {
@@ -328,7 +332,7 @@ test('#7245 closing the mounted native preview revokes an own-receipt CAS retry'
 
 test('#7245 a renamed actual own-receipt replacement revokes staged native deletion', async () => {
   const report = await realComparison(); await dependents('compare', report.id);
-  const ui = previewFor(report); await settle();
+  const ui = previewFor(report); await settle(ui);
   const row = (await readContentRows('comparison')).find(entry => entry.id === report.id)!;
   const replacementName = 'Actual own imported renamed replacement';
   let ownCommit: Promise<void> | undefined;

@@ -1,0 +1,99 @@
+{
+  "utc": "2026-10-09T10:06:52.105Z",
+  "status": "ACTUAL_UNTIMED_FZK_CPU_DOMAIN_EQUAL",
+  "equal": true,
+  "schema": "6709-primary-source-and-placed-cpu-v2",
+  "digest": "29f134d62306b9f076185d1fe4d1fa014c1d4cd510f301314a0c2e551db92746",
+  "counts": {
+    "sourceMeshes": 275,
+    "placedMeshes": 245,
+    "triangles": 32852,
+    "vertices": 56698
+  },
+  "roles": {
+    "base": {
+      "url": "http://127.0.0.1:5417/?perfTrace=1&geomWorkers=4",
+      "focus": false,
+      "DPR": 1,
+      "session": {
+        "modelId": "d19ea822-51d4-42bb-af18-4cc3f7433a4e",
+        "sourceFile": {
+          "name": "AC20-FZK-Haus.ifc",
+          "size": 2526511,
+          "lastModified": 1791539801028
+        },
+        "loadId": "d19ea822-51d4-42bb-af18-4cc3f7433a4e",
+        "loadStart": 21119.694999992847,
+        "loadEnd": 23960.05000001192,
+        "loadTimeOrigin": 1791539779914.255,
+        "loadPath": "wasm",
+        "cacheTier": "none",
+        "authoredGeneration": 1,
+        "mutationVersion": 1,
+        "checks": 2,
+        "sourceMeshes": 275,
+        "orderedPublicationCounts": [
+          15,
+          0,
+          4
+        ],
+        "limitation": "Original live File/model/data/geometry identities, ordered scene references and available canonical revisions. No arbitrary in-place buffer byte mutation or complete placed-input certificate claimed."
+      },
+      "originalCaptureSHA256": "40e921f2fc17b2920eeea490a669f5593daea48b8ebbab016841663ef1a77c8f"
+    },
+    "candidate": {
+      "url": "http://127.0.0.1:5418/?perfTrace=1&geomWorkers=4",
+      "focus": false,
+      "DPR": 1,
+      "session": {
+        "modelId": "090c220c-29d2-45c8-a2de-605fadd284bd",
+        "sourceFile": {
+          "name": "AC20-FZK-Haus.ifc",
+          "size": 2526511,
+          "lastModified": 1791540224457
+        },
+        "loadId": "090c220c-29d2-45c8-a2de-605fadd284bd",
+        "loadStart": 94623.81499999762,
+        "loadEnd": 98048.69499999285,
+        "loadTimeOrigin": 1791540129837.15,
+        "loadPath": "wasm",
+        "cacheTier": "none",
+        "authoredGeneration": 1,
+        "mutationVersion": 1,
+        "checks": 2,
+        "sourceMeshes": 275,
+        "orderedPublicationCounts": [
+          15,
+          0,
+          4
+        ],
+        "limitation": "Original live File/model/data/geometry identities, ordered scene references and available canonical revisions. No arbitrary in-place buffer byte mutation or complete placed-input certificate claimed."
+      },
+      "originalCaptureSHA256": "4bec6904944c90656824edd3523e8af6388578d972d2a09fc5d2253698d50e02"
+    }
+  },
+  "retirement": {
+    "base": {
+      "session": 4629,
+      "exit": 0,
+      "tab": "tab_2",
+      "url": "about:blank"
+    },
+    "candidate": {
+      "session": 54385,
+      "exit": 0,
+      "tab": "tab_3",
+      "url": "about:blank"
+    },
+    "listenersGone": true,
+    "diagnosticTapAndListenerRetired": true,
+    "GPUDeviceDestructionObserved": false
+  },
+  "limitations": [
+    "Only FZK source and placed/materialized CPU fields plus ordered owner/type/source-range/coordinate/placement witnesses",
+    "No raw IFNS/GPU-buffer/full-metadata/overlay equivalence",
+    "No physical focus/performance/navigation/capture-quality acceptance",
+    "BASE reused owned blank tab2 in new empty-store document; candidate newlycreatedtab3. No fresh-tab timing acceptance claimed.",
+    "Original v1 helper-domain refusal and all preparation/retrieval failures retained; no repeated capture inside either v2 arm"
+  ]
+}

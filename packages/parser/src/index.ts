@@ -63,6 +63,7 @@ export {
   SI_PREFIX_MULTIPLIERS, extractLengthUnitScale,
   resolveEntityLengthUnitScale,
   resolveOwningIfcProjectId,
+  type LengthUnitSource,
 } from './unit-extractor.js';
 export {
   extractProjectUnits,

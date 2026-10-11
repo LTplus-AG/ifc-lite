@@ -80,3 +80,20 @@ describe('computeDrawingBufferSize (#5383)', () => {
     assert.strictEqual(computeDrawingBufferSize(500, 400, 0, 8192)?.width, 500);
   });
 });
+
+// #6709: navigation resolution must not become a persistent capture preference.
+describe('frame-local drawing-buffer resolution', () => {
+  it('restores configured quality for the next capture-style frame', () => {
+    assert.deepEqual(computeDrawingBufferSize(600, 400, 2, 8192, 2, 1), { width: 600, height: 400, pixelRatio: 1 });
+    assert.deepEqual(computeDrawingBufferSize(600, 400, 2, 8192, 2), { width: 1200, height: 800, pixelRatio: 2 });
+    assert.deepEqual(computeDrawingBufferSize(600, 400, 2, 8192, 1.5, 2), { width: 900, height: 600, pixelRatio: 1.5 });
+  });
+  it('preserves DPR1 and ignores invalid frame caps without bypassing the configured cap', () => {
+    for (const dpr of [1, 2]) {
+      for (const cap of [undefined, 0, -1, Infinity, NaN]) {
+        assert.deepEqual(computeDrawingBufferSize(600, 400, dpr, 8192, 1.5, cap), computeDrawingBufferSize(600, 400, dpr, 8192, 1.5));
+      }
+    }
+    assert.deepEqual(computeDrawingBufferSize(600, 400, 1, 8192, 2, 1), computeDrawingBufferSize(600, 400, 1, 8192, 2));
+  });
+});

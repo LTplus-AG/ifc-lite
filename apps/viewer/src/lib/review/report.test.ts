@@ -7,6 +7,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { validateDocumentSpec } from '../document/types';
 import { buildCards } from './cards';
+import { cardDescription } from './bcf-draft';
 import { reviewDocument } from './report';
 import { element, fakeModel, finding, run } from './test-support';
 
@@ -55,4 +56,14 @@ test('native report creation counts only the selected card and its findings', as
   assert.match(body, /1 unique validated element\(s\)/);
   assert.match(body, /1 current finding\(s\), 0 historical finding\(s\), 1 card\(s\)/);
   assert.doesNotMatch(body, /Baseline|W2/);
+});
+
+test('#7371 the re-examination sentence survives the three-line cap in report text and BCF descriptions', () => {
+  const saved = run('saved-validation', 'validation', { temporal: 'historical', complete: false });
+  const { cards: rows, totals: counts } = buildCards([finding('s1', 'validation', [e('W1')], { run: saved, lifecycle: 'changed',
+    detail: ['IsExternal · actual false · expected true', 'Name · absent', 'source fingerprint fp-7371'],
+    notes: [{ labelKey: 'reviewWorkspace.reexamination.changed' }] })], models);
+  const sentence = 'The current run still fails this element, but on different requirements or values.';
+  assert.ok(text(reviewDocument('R', rows, counts, workspace)).includes(sentence));
+  assert.ok(cardDescription(rows[0]).includes(sentence));
 });

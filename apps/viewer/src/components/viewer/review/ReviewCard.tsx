@@ -19,7 +19,7 @@ import { usePanelControls } from '@/hooks/usePanelControls';
 import { captureEvidence } from '@/lib/assistant/evidence';
 import { replaceEvidence } from '@/lib/assistant/conversation';
 import { ReviewDecision } from './ReviewDecision';
-import { HUMAN_STATUS_KEY, LIFECYCLE_KEY, SOURCE_KEY, STATE_HELP_KEY, STATE_KEY, gapText } from './review-labels';
+import { HUMAN_STATUS_KEY, SOURCE_KEY, STATE_HELP_KEY, STATE_KEY, gapText, lifecycleKey } from './review-labels';
 
 const CHIP = 'inline-flex items-center rounded border border-border px-1.5 py-px text-2xs';
 
@@ -32,12 +32,13 @@ function FindingItem({ finding, openPanel }: { finding: ReviewFinding; openPanel
       <div className="flex flex-wrap items-center gap-1">
         <span className={CHIP}>{t(SOURCE_KEY[finding.source])}</span>
         <span className={cn(CHIP, historical && 'border-dashed')}>{t(historical ? 'reviewWorkspace.temporal.historical' : 'reviewWorkspace.temporal.current')}</span>
-        <span className="text-muted-foreground">{t(LIFECYCLE_KEY[finding.lifecycle])}</span>
+        <span className="text-muted-foreground">{t(lifecycleKey(finding))}</span>
       </div>
       <p className="text-xs font-medium break-words">{finding.title}</p>
       <p className="text-muted-foreground">{t('reviewWorkspace.nativeStatus', { status: finding.nativeStatus || t('reviewWorkspace.noStatus') })} · {finding.run.label}</p>
       {finding.run.incomplete.length > 0 && <p className="text-amber-600 dark:text-amber-400">{t('reviewWorkspace.incompleteRun', { reasons: gapText(t, finding.run.incomplete) })}</p>}
       {finding.detail.map((line, index) => <p key={index} className="text-muted-foreground break-words">{line}</p>)}
+      {finding.notes?.map((note, index) => <p key={`note-${index}`} className="text-muted-foreground break-words">{t(note.labelKey, note.params)}</p>)}
       <Button size="sm" variant="outline" aria-label={t('reviewWorkspace.openLabel', { source: t(SOURCE_KEY[finding.source]), title: finding.title })}
         onClick={() => setOriginalUnavailable(!openOriginal(finding, openPanel))}>{t('reviewWorkspace.open')}</Button>
       {originalUnavailable && <p role="alert">{t('reviewWorkspace.originalUnavailable')}</p>}

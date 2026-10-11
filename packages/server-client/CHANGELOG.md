@@ -1,5 +1,11 @@
 # @ifc-lite/server-client
 
+## 4.0.1
+
+### Patch Changes
+
+- [#7391](https://github.com/LTplus-AG/ifc-lite/pull/7391) [`c1ff0d7`](https://github.com/LTplus-AG/ifc-lite/commit/c1ff0d798b3e9dd50ba4d821c9075aca85121ceb) Thanks [@dependabot](https://github.com/apps/dependabot)! - The optional `parquet-wasm` peer range now also accepts `^0.9.0`, the version the package is developed and tested against. Projects already on `^0.7.2` or `^0.8.0` are unaffected.
+
 ## 4.0.0
 
 ### Major Changes

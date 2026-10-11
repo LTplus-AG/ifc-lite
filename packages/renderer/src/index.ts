@@ -99,12 +99,7 @@ export { isEntityVisible } from './entity-visibility.js';
 // through its own glTF pipeline rather than this one (#2591).
 export { DEFAULT_GHOST_ALPHA, OPAQUE_ALPHA_CUTOFF } from './overlay-routing.js';
 export { VisibilityEpochTracker } from './visibility-epoch.js';
-export type { FrameStats, ResidentGpuBytes } from './render-stats.js';
-// Frame/pass GPU timing (issue #2670 perf-verdict gate). Opt-in and NOT wired
-// into `Renderer` by default — a caller constructs `GpuFrameTimingRecorder`
-// itself and attaches its `timestampWrites` to the passes it wants measured;
-// see `frame-timing-gpu.ts`'s module doc for the usage pattern, and
-// `decideTimingMode` for choosing GPU queries vs. the CPU fallback vs. off.
+export type { FrameStats, ResidentGpuBytes } from './render-stats.js'; // GPU timing is opt-in (#6975).
 export { decideTimingMode, passDurationsMs, frameTotalMs, aggregateFrameTimings } from './frame-timing.js';
 export type { TimingMode, TimingModeRequest, PassTimingSample, FrameTimingReport } from './frame-timing.js';
 export { computeDurationStats, nsToMs, isNegativeDelta } from './frame-timing-stats.js';
@@ -136,6 +131,7 @@ export type {
 export type { GpuUploadOutcome } from './gpu-upload-guard.js';
 export type { DeviceRecoveryFailureReason, DeviceRecoveryOmission, DeviceRecoveryResult } from './device-recovery.js';
 import { modelPlacementBounds, sceneMeshBounds } from './model-placement-bounds.js';
+import { configureRendererGpuTiming, readRendererGpuTiming, releaseRendererGpuTiming, beginRendererGpuTiming, renderPassTimestampWrites, submitRendererGpuTiming } from './renderer-frame-timing.js';
 import { WebGPUDevice, type AdapterInfoSnapshot } from './device.js';
 import { RenderPipeline } from './pipeline.js';
 import { Camera } from './camera.js';
@@ -852,14 +848,14 @@ export class Renderer {
         if (this.deviceLost) { if (options.fromDevicePromise) this.deviceLossSequence++; return; }
         this.deviceLossSequence++;
         this.deviceLost = true; cancelRendererColorFrame(this);
+        releaseRendererGpuTiming(this);
         this.recovery.lostReferenceImages = this.referenceImages.hasImages();
         this.referenceImages.destroy();
         this.deviceLostGeneration = this.initGeneration;
         this.deviceLostInfo = info;
         console.warn('[Renderer] GPU device lost — halting rendering until re-init:', info.message);
-        // Readiness describes the GPU objects, and every one of them just died:
-        // `isReady()` reports it from here on, and anyone parked in
-        // `whenReady()` is failed rather than left to be resolved by the init
+        // Readiness describes dead GPU objects: `isReady()` reports the loss
+        // and `whenReady()` waiters fail rather than awaiting the init
         // this loss may have landed in the middle of. Done BEFORE the listeners
         // run, so a listener that recovers by calling `init()` synchronously
         // finds the waiters already settled and re-arms the wait for the next
@@ -1473,9 +1469,6 @@ export class Renderer {
         });
     }
 
-    /**
-     * Render frame
-     */
     /** Get diagnostic info for mobile debugging */
     getDiagnostics(): {
         calls: number; skips: number; errors: number; lastError: string;
@@ -1502,15 +1495,15 @@ export class Renderer {
         };
     }
 
+    setGpuFrameTiming(enabled: boolean): void { configureRendererGpuTiming(this, enabled); }
+    getGpuFrameTiming() { return readRendererGpuTiming(this); }
     /**
      * Statistics of the last COMPLETED render() call (draw calls issued,
      * batches drawn / frustum-culled / contribution-culled), or null before
      * the first frame. Pair with `getScene().getResidentGpuBytes()` for the
      * load-complete telemetry snapshot (issue #1682 observability).
      */
-    getFrameStats(): FrameStats | null {
-        return this._lastFrameStats;
-    }
+    getFrameStats(): FrameStats | null { return this._lastFrameStats; }
 
     /**
      * Vendor/architecture identity of the GPU adapter, snapshotted during
@@ -1536,8 +1529,11 @@ export class Renderer {
         return ok;
     }
 
+    /** Draw a frame through the shared submission path, preserving the void API. */
+    render(options: RenderOptions = {}): void { this.renderWithResult(options); }
+
     /**
-     * Draw one frame.
+     * Draw one frame; true only when it submits without a contained synchronous failure (#6709).
      *
      * Never throws, so callers never need to guard this call to keep their
      * animation loop alive.
@@ -1556,31 +1552,28 @@ export class Renderer {
      *    carries on. Once enough such frames have degraded without recovering,
      *    `onPersistentRenderDegradation` fires once.
      *
-     * SCOPE: `renderFrame()` has two try/catch regions — this outer one (canvas
-     * resize, context setup, evicted-batch restore) and an inner one opened
-     * after the swap-chain texture is acquired, covering encoder work through
-     * `submit`. Until #2417 only the outer one discriminated, so a device that
-     * died after `getCurrentTexture()` succeeded degraded quietly forever with
-     * no latch and no toast. Both now run the same policy; the encode catch
-     * additionally balances the frame's validation error scope before doing so.
+     * Frame setup and encoding through `submit` share `containFrameThrow`
+     * (#2417); the encode catch also balances the validation error scope.
+     * Submission is synchronous, distinct from GPU completion/validation.
      */
-    render(options: RenderOptions = {}): void {
+    renderWithResult(options: RenderOptions = {}): boolean {
         this._renderCallCount++;
         // A lost device leaves every pipeline/buffer dead; rendering would only
         // emit a stream of validation errors. Stay quiet until re-init.
         if (this.deviceLost) {
             this._renderSkipCount++; cancelRendererColorFrame(this);
-            return;
+            return false;
         }
         try {
             this.frameContainedThrow = false;
-            this.renderFrame(options);
+            const submitted = this.renderFrame(options);
             // Only a frame that actually got through resets the run. A frame
             // the ENCODE catch contained returns here normally (that catch is
             // inside renderFrame), so "did not throw" is not the same question
             // as "did not fail" — see `frameContainedThrow`.
             if (!this.frameContainedThrow) this.consecutiveDegradedFrames = 0;
             retryRendererColorFrame(this, () => this.requestRender());
+            return submitted;
         } catch (error) {
             // Safari (26.5) reports device loss SYNCHRONOUSLY: a call against a
             // dead device throws `InvalidStateError` instead of — or long
@@ -1595,24 +1588,25 @@ export class Renderer {
             // host down with us".
             this._renderSkipCount++;
             this.containFrameThrow(error, 'frame'); cancelRendererColorFrame(this);
+            return false;
         }
     }
 
     /**
-     * The frame body. Throws on a synchronously-dead GPU device; `render()`
-     * owns the containment. Private for that reason — call `render()`.
+     * The frame body. Throws on a synchronously-dead GPU device;
+     * `renderWithResult()` owns containment for both public render methods.
      */
-    private renderFrame(options: RenderOptions): void {
+    private renderFrame(options: RenderOptions): boolean {
         if (!this.device.isInitialized() || !this.pipeline) {
             this._renderSkipCount++;
-            return;
+            return false;
         }
 
         // Drawing buffer = the element's device-pixel size (capped ratio, clamped
         // to the GPU's max texture dimension); see computeDrawingBufferSize (#5383).
-        const measured = measureDrawingBuffer(this.canvas, this.device.getMaxTextureDimension(), this.maxPixelRatio);
+        const measured = measureDrawingBuffer(this.canvas, this.device.getMaxTextureDimension(), this.maxPixelRatio, options.maxPixelRatio);
         // Skip rendering while the canvas is collapsed or too small.
-        if (!measured || measured.height < 10) { this._renderSkipCount++; return; }
+        if (!measured || measured.height < 10) { this._renderSkipCount++; return false; }
         const { width, height } = measured;
         this.pixelRatio = measured.pixelRatio;
 
@@ -1629,12 +1623,12 @@ export class Renderer {
         }
 
         // Skip rendering if canvas is invalid
-        if (this.canvas.width === 0 || this.canvas.height === 0) { this._renderSkipCount++; return; }
+        if (this.canvas.width === 0 || this.canvas.height === 0) { this._renderSkipCount++; return false; }
 
         // Ensure context is valid before rendering (handles HMR, focus changes, etc.)
         if (!this.device.ensureContext()) {
             this._renderSkipCount++;
-            return; // Skip this frame, context will be ready next frame
+            return false; // Skip this frame, context will be ready next frame
         }
 
         const device = this.device.getDevice();
@@ -1845,7 +1839,7 @@ export class Renderer {
                 errorScopePushed = false;
                 this.drainErrorScope(device);
             }
-            return; // Skip this frame, context will be reconfigured next frame
+            return false; // Skip this frame, context will be reconfigured next frame
         }
         let colorCapture: RendererColorFrameCapture | null = null;
         let colorReadback: ReturnType<typeof encodeRendererColorFrameCapture> | null = null;
@@ -2005,6 +1999,7 @@ export class Renderer {
 
             // Now record draw commands
             const encoder = device.createCommandEncoder();
+            beginRendererGpuTiming(this, device, encoder);
 
             // Sun shadow-map pass (#2670, Phase 2). Off unless the caller opts
             // in; when off the hot path pays only this check and (once) an
@@ -2178,6 +2173,7 @@ export class Renderer {
             });
 
             const pass = encoder.beginRenderPass({
+                timestampWrites: renderPassTimestampWrites(encoder, 'main'),
                 colorAttachments,
                 depthStencilAttachment: {
                     view: this.pipeline.getDepthTextureView(),
@@ -3103,7 +3099,7 @@ export class Renderer {
             });
 
             colorReadback = colorCapture && encodeRendererColorFrameCapture(device, encoder, colorCapture);
-            device.queue.submit([encoder.finish()]);
+            submitRendererGpuTiming(this, device, encoder);
             if (colorReadback && colorCapture) {
                 settleRendererColorFrameCapture(this, colorCapture, colorReadback);
                 colorCapture = null; colorReadback = null;
@@ -3131,7 +3127,9 @@ export class Renderer {
                 errorScopePushed = false;
                 this.drainErrorScope(device);
             }
+            return true;
         } catch (error) {
+            releaseRendererGpuTiming(this);
             discardRendererColorFrameReadback(colorReadback);
             // Balance the validation scope if we threw before popping it above —
             // an unpopped scope would capture every later frame's errors silently.
@@ -3167,7 +3165,7 @@ export class Renderer {
             // host memory, and that throws a `RangeError` — which is exactly why
             // the discriminator keys on the TYPE and not on "a frame threw".
             this.containFrameThrow(error, 'encode');
-            cancelRendererColorFrame(this);
+            cancelRendererColorFrame(this); return false;
         }
     }
 
@@ -3643,6 +3641,7 @@ export class Renderer {
             this._loggedSectionBounds = false;
         }
 
+        releaseRendererGpuTiming(this);
         // Render pipelines (textures + uniform buffers)
         this.pipeline?.destroy();
         this.pipeline = null;

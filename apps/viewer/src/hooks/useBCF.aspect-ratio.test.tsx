@@ -32,6 +32,7 @@ import { writeBCF } from '@ifc-lite/bcf';
 import type { BCFProject, BCFViewpoint } from '@ifc-lite/bcf';
 import { useViewerStore } from '@/store';
 import { useBCF } from './useBCF.js';
+import { registerViewportCapture } from '@/lib/viewport-capture';
 
 /** 1600x900 viewport. A square one would not distinguish w/h from h/w. */
 const ASPECT = 16 / 9;
@@ -54,10 +55,14 @@ const dataStore = {
  * path reads. Reset in `beforeEach`.
  */
 let liveAspect = ASPECT;
+let renderedAspect = ASPECT;
+let unregisterCapture: (() => void) | undefined;
 /** Runs while `captureSnapshot` awaits the GPU, i.e. between the two reads. */
 let duringGpuWait: (() => void) | null = null;
 
 const renderer = {
+  renderWithResult: () => { renderedAspect = liveAspect; return true; },
+  requestRender: () => {},
   getCamera: () => ({
     getPosition: () => ({ x: 10, y: 5, z: 20 }),
     getTarget: () => ({ x: 1, y: 2, z: 3 }),
@@ -138,6 +143,7 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
+  unregisterCapture?.(); unregisterCapture = undefined;
   const current = root;
   root = null;
   api = null;
@@ -159,22 +165,13 @@ describe('useBCF — captured viewpoints carry the viewport aspect ratio', () =>
     assert.ok(blob.size > 0, 'the export must produce an archive');
   });
 
-  /**
-   * The PNG and the `AspectRatio` describe ONE frame, so they must be read
-   * from one drawing buffer. `captureSnapshot` awaits
-   * `queue.onSubmittedWorkDone()` before `toDataURL`, and the render loop
-   * resizes the canvas and calls `camera.setAspect` inside that wait
-   * (`packages/renderer/src/index.ts`, the `dimensionsChanged` branch). Read
-   * the camera first and the viewpoint claims a ratio the image it ships does
-   * not have. Reading it after closes the window: the continuation of the
-   * `await` is a microtask, and a rAF render is a task, so nothing can resize
-   * between `toDataURL` and the camera read.
-   */
-  it('reads the camera after the snapshot, so both describe one frame', async () => {
+  // #6709: a newer live camera action must not become metadata for the owned image.
+  it('pairs the snapshot with its rendered camera when live aspect changes during GPU completion', async () => {
     const canvas = {
-      toDataURL: () => `data:image/png;base64,${Buffer.from(String(liveAspect)).toString('base64')}`,
+      toDataURL: () => `data:image/png;base64,${Buffer.from(String(renderedAspect)).toString('base64')}`,
     } as unknown as HTMLCanvasElement;
     api!.setCanvasRef({ current: canvas });
+    unregisterCapture = registerViewportCapture(renderer, canvas, () => ({}));
     duringGpuWait = () => {
       liveAspect = RESIZED_ASPECT;
     };
@@ -190,13 +187,13 @@ describe('useBCF — captured viewpoints carry the viewport aspect ratio', () =>
     assert.ok(snapshot, 'the viewpoint must carry the snapshot it was asked for');
     assert.equal(
       Buffer.from(snapshot.split(',')[1] ?? snapshot, 'base64').toString(),
-      String(RESIZED_ASPECT),
-      'fixture sanity: the PNG is encoded from the post-resize buffer',
+      String(ASPECT),
+      'the readback describes the owned render, not the later live camera',
     );
     assert.equal(
       viewpoint.perspectiveCamera?.aspectRatio,
-      RESIZED_ASPECT,
-      'BUG: the camera ratio was read before the snapshot, so it describes a frame the PNG is not',
+      ASPECT,
+      'camera metadata must describe the rendered frame even after asynchronous input',
     );
   });
 
@@ -204,6 +201,7 @@ describe('useBCF — captured viewpoints carry the viewport aspect ratio', () =>
     useViewerStore.setState({ hiddenEntities: new Set([INITIAL_HIDDEN]) });
     const canvas = { toDataURL: () => 'data:image/png;base64,c25hcHNob3Q=' } as unknown as HTMLCanvasElement;
     act(() => api!.setCanvasRef({ current: canvas }));
+    unregisterCapture = registerViewportCapture(renderer, canvas, () => ({}));
     duringGpuWait = () => {
       useViewerStore.setState({ hiddenEntities: new Set([LATER_HIDDEN]) });
     };

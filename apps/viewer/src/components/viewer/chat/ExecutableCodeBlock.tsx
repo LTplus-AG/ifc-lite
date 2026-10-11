@@ -22,6 +22,8 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { cn } from '@/lib/utils';
 import { useTranslation } from '@/i18n';
 import { resolveChatViewportScreenshot } from './chatViewportCapture.js';
+import { getGlobalRenderer } from '@/hooks/useBCF';
+import { captureViewportFrame } from '@/lib/viewport-capture';
 import { formatArg, levelPrefix, captureCompressedCanvasImage } from './executableCodeBlockHelpers';
 import { useSandbox } from '@/hooks/useSandbox';
 import { useViewerStore } from '@/store';
@@ -66,17 +68,13 @@ export const ExecutableCodeBlock = memo(function ExecutableCodeBlock({
 
         // Auto-capture viewport screenshot if script likely created/modified geometry
         if (block.code.includes('loadIfc') || block.code.includes('bim.create') || block.code.includes('colorize')) {
-          // Small delay to let the renderer finish presenting the frame
-          setTimeout(() => {
-            // Always WRITE the slot, including on failure: it is only cleared
-            // when the user sends, so skipping the write would leave the
-            // previous run's screenshot attached to a message about this one.
-            // See resolveChatViewportScreenshot.
-            const canvas = document.querySelector('canvas') as HTMLCanvasElement | null;
-            useViewerStore.getState().setChatViewportScreenshot(
-              resolveChatViewportScreenshot(canvas, captureCompressedCanvasImage),
-            );
-          }, 500);
+          const renderer = getGlobalRenderer();
+          const image = renderer ? await captureViewportFrame(renderer, {
+            read: canvas => resolveChatViewportScreenshot(canvas, captureCompressedCanvasImage),
+          }) : null;
+          // Always write on failure too, so an earlier script's screenshot
+          // cannot survive and describe the wrong model state (#2085).
+          useViewerStore.getState().setChatViewportScreenshot(image);
         }
       } else {
         // useSandbox sets scriptLastError synchronously before returning null —

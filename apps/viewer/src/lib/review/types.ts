@@ -13,6 +13,8 @@
  * exact native row so the original stays one click away.
  */
 
+import type { TranslatableMessage } from '@/i18n';
+
 /** The analyses a finding can come from. */
 export type FindingSourceKind = 'clash' | 'validation' | 'comparison' | 'bcf' | 'linked';
 /** Keyed by every source kind, so the runtime list cannot drift from `FindingSourceKind`. */
@@ -51,7 +53,8 @@ export type RunGapCode = 'truncated' | 'stale' | 'check-error' | 'sets-truncated
 const RUN_GAP_CODE_SET = { truncated: true, stale: true, 'check-error': true, 'sets-truncated': true, 'partial-source': true,
   'geometry-unavailable': true, 'placement-only': true, 'excluded-classes': true } as const satisfies Record<RunGapCode, true>;
 export const RUN_GAP_CODES = Object.keys(RUN_GAP_CODE_SET) as readonly RunGapCode[];
-export interface RunGap { code: RunGapCode; detail?: string }
+/** `detail` is native wording shown verbatim; `message` is a catalogued sentence translated where it is rendered. */
+export interface RunGap { code: RunGapCode; detail?: string; message?: TranslatableMessage }
 
 /** An element a finding refers to, as the native source names it. */
 export interface FindingElement {
@@ -84,13 +87,15 @@ export type FindingEvidence =
  * Lifecycle of one finding relative to the other runs of its own source.
  * `observed`: current, no compatible earlier run to compare with.
  * `new` / `persistent`: current, absent from / present in a compatible earlier run.
+ *   On a historical finding, `persistent` means the compatible current run still reports it.
+ * `changed`: still reported by the compatible other run, with different failed requirements or values.
  * `no-longer-observed`: historical only, and a complete compatible current run
  *   re-examined it (a resolution *candidate*, never a resolution).
  * `not-evaluated`: historical only, and no complete compatible current run
  *   could have seen it.
  * `record`: a coordination record (BCF topic or grouping receipt) whose native status is authoritative.
  */
-export type FindingLifecycle = 'observed' | 'new' | 'persistent' | 'no-longer-observed' | 'not-evaluated' | 'record';
+export type FindingLifecycle = 'observed' | 'new' | 'persistent' | 'changed' | 'no-longer-observed' | 'not-evaluated' | 'record';
 
 export interface ReviewFinding {
   /** Unique per run: `${run.id}#${native id}`. */
@@ -106,6 +111,8 @@ export interface ReviewFinding {
   title: string;
   /** Extra native lines for the detail view (failed requirements, changed components). */
   detail: string[];
+  /** Catalogued explanations (why a historical finding was or was not re-checked), translated where rendered. */
+  notes?: TranslatableMessage[];
   lifecycle: FindingLifecycle;
   /** Discipline candidates from the native taxonomy; overlapping and empty lists stay as given. */
   disciplines: string[];

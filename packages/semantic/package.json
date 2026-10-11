@@ -1,6 +1,6 @@
 {
   "name": "@ifc-lite/semantic",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Portable semantic datasets, profiles, validation and IFC identity resolution",
   "type": "module",
   "main": "./dist/index.js",

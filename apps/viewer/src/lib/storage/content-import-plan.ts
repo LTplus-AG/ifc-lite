@@ -116,6 +116,8 @@ export function planContentImport(prepared: PreparedContentImport, existing: Con
   for (const entry of libraries.reviewWorkspaces ?? []) add('reviewWorkspaces', entry, () => ({ ...entry, id: crypto.randomUUID() }));
   for (const entry of libraries.semanticReviews ?? []) add('semanticReviews', entry, () => ({ ...entry, id: crypto.randomUUID() }));
   for (const entry of libraries.assistantRecipes ?? []) add('assistantRecipes', entry, () => ({ ...entry, id: crypto.randomUUID() }));
+  // A saved run keeps its evidence; a conflicting ID becomes a copy.
+  for (const entry of libraries.analysisRuns ?? []) add('analysisRuns', entry, () => ({ ...entry, id: crypto.randomUUID() }));
   // Preferences are identified by their project scope: an existing local entry wins and is never overwritten by an import.
   for (const entry of libraries.assistantPreferences ?? []) {
     const current = known.get(key('assistantPreferences', entry.id));

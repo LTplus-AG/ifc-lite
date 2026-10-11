@@ -60,6 +60,7 @@ const CHUNK_LABEL_KEYS = {
   'MCP page': 'viewerShell.chunkLabel.mcpPage',
   'MCP playground': 'viewerShell.chunkLabel.mcpPlayground',
   'RTE GPU witness': 'viewerShell.chunkLabel.rteGpuWitness',
+  'Saved runs': 'compareAnalysis.reconcile.savedTitle',
 } as const satisfies Record<string, TranslationKey>;
 
 type ChunkLabel = keyof typeof CHUNK_LABEL_KEYS;

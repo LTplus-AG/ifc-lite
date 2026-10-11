@@ -67,7 +67,8 @@ function loadedIfcVersions(models: ReadonlyMap<string, { schemaVersion?: string;
   for (const model of models.values()) {
     const schemaVersion = model.schemaVersion ?? model.ifcDataStore?.schemaVersion;
     if (schemaVersion === 'IFC2X3' || schemaVersion === 'IFC4') versions.add(schemaVersion);
-    else if (schemaVersion === 'IFC4X3') versions.add('IFC4X3_ADD2');
+    // A model record says IFC4X3; the IDS spelling is accepted too, so no IFC4X3 model is ever left untargeted.
+    else if (schemaVersion === 'IFC4X3' || schemaVersion === 'IFC4X3_ADD2') versions.add('IFC4X3_ADD2');
   }
   // Sorted, so the same set of versions in another load order is the same target.
   return [...versions].sort();

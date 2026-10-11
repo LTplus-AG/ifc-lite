@@ -136,6 +136,7 @@ export function extractPsetsFromIds(
                 const unit = resolvePropertyUnit(store, extractor, propEntity.type, propAttrs, parsed.dataType);
                 if (unit) entry.unit = unit.symbol;
                 if (unit?.siScale !== undefined) entry.unitSiScale = unit.siScale;
+                if (unit?.siOffset !== undefined) entry.unitSiOffset = unit.siOffset;
                 properties.push(entry);
             }
         }

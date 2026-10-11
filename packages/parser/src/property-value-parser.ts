@@ -59,6 +59,8 @@ export interface ExtractedProperty extends ParsedIfcPropertyValue {
     name: string;
     unit?: string;
     unitSiScale?: number;
+    /** Additive SI offset of `unit` (°F), when it has one. */
+    unitSiOffset?: number;
 }
 
 /** The IFC type every typed member of a list shares, or `undefined` when a

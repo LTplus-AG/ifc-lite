@@ -190,6 +190,13 @@ describe('XSD regex: \\s, \\w and . follow Appendix F', () => {
   it('. matches everything except CR and LF', () => {
     expect(m('.', ' ')).toBe(true);
     expect(m('.', '\n')).toBe(false);
+    expect(m('.', '\r')).toBe(false);
+  });
+
+  it('. matches the line and paragraph separators U+2028 and U+2029, unlike JS .', () => {
+    expect(m('a.b', 'a\u2028b')).toBe(true);
+    expect(m('a.b', 'a\u2029b')).toBe(true);
+    expect(m('.+', '\u2028\u2029')).toBe(true);
   });
 });
 

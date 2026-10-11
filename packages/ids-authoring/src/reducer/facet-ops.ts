@@ -205,6 +205,13 @@ export function applyFacetPatch(doc: StudioDocument, forward: { opId: Uuid }, fa
       facet = withKey(facet, 'rawRelation', patch.rawRelation);
     }
   }
+  if (patch.uri !== undefined) {
+    if (facet.type !== 'property' && facet.type !== 'classification' && facet.type !== 'material') {
+      throw new OpApplyError('GATE-STR-002', 'uri only exists on property, classification and material facets');
+    }
+    undo.uri = facet.uri ?? null;
+    facet = withKey(facet, 'uri', patch.uri);
+  }
   return {
     doc: replaceItem(doc, loc, { ...item, facet, requirement }),
     inverse: [inv(forward, 0, 'facet.patch', { facetId, set: undo })],

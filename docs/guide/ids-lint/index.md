@@ -127,3 +127,11 @@ Rules marked *opt-in* are off by default because they fire on most real document
 | Code | Severity | Rule | Quick fix |
 |---|---|---|---|
 | [IDSL-PART-001](idsl-part-001.md) | info | Unlikely partOf relation for these entities | yes |
+
+## bSDD references
+
+| Code | Severity | Rule | Quick fix |
+|---|---|---|---|
+| [IDSL-BSDD-001](idsl-bsdd-001.md) | warning | bSDD URI not found or inactive | yes |
+| [IDSL-BSDD-002](idsl-bsdd-002.md) | info | Classification system differs from the bSDD dictionary name | yes |
+| [IDSL-BSDD-003](idsl-bsdd-003.md) | warning | Value outside the allowed values bSDD publishes | yes |

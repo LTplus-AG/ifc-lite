@@ -32,6 +32,7 @@ import {
   getChildElements,
   getChildElementNS,
   getChildText,
+  uriOf,
 } from './dom.js';
 import { parseRestriction } from './parse-restriction.js';
 import { applyIds11Preview } from '../preview/parse-ids11.js';
@@ -368,9 +369,7 @@ function parseAttributeFacet(el: Element): IDSAttributeFacet {
   };
 }
 
-/**
- * Parse property facet
- */
+/** Parse property facet */
 function parsePropertyFacet(el: Element): IDSPropertyFacet {
   const propertySetEl = getChildElement(el, 'propertySet');
   const baseNameEl = getChildElement(el, 'baseName');
@@ -404,9 +403,7 @@ function parsePropertyFacet(el: Element): IDSPropertyFacet {
   };
 }
 
-/**
- * Parse classification facet
- */
+/** Parse classification facet */
 function parseClassificationFacet(el: Element): IDSClassificationFacet {
   const systemEl = getChildElement(el, 'system');
   const valueEl = getChildElement(el, 'value');
@@ -418,9 +415,7 @@ function parseClassificationFacet(el: Element): IDSClassificationFacet {
   };
 }
 
-/**
- * Parse material facet
- */
+/** Parse material facet */
 function parseMaterialFacet(el: Element): IDSMaterialFacet {
   const valueEl = getChildElement(el, 'value');
 
@@ -493,7 +488,10 @@ function parseRequirements(parent: Element): IDSRequirement[] {
   let reqIndex = 0;
 
   for (const child of Array.from(parent.children)) {
-    const facet = parseFacet(child);
+    const parsed = parseFacet(child);
+    // IDS 1.0 allows @uri on property, classification and material facets in
+    // requirements only (in applicability it is IDS 1.1, read by the preview pass).
+    const facet = parsed && (parsed.type === 'property' || parsed.type === 'classification' || parsed.type === 'material') ? { ...parsed, ...uriOf(child) } : parsed;
     if (facet) {
       // IDS 1.0 uses `cardinality="required|optional|prohibited"` on the
       // requirement facet. 0.9.7 used minOccurs/maxOccurs. Honour both;

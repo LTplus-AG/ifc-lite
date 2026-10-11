@@ -1,0 +1,13 @@
+diff --git a/scripts/ai-eval/ids/e4-e5-datasets.mjs b/scripts/ai-eval/ids/e4-e5-datasets.mjs
+index b33c7e67c..b550d5300 100644
+--- a/scripts/ai-eval/ids/e4-e5-datasets.mjs
++++ b/scripts/ai-eval/ids/e4-e5-datasets.mjs
+@@ -170,7 +170,7 @@ export async function e5DatasetErrors(cases, schema) {
+       if (expected.mustNotEmit.length === 0) errors.push(`${at}: an unknown-name case must name what must not be emitted`);
+       for (const name of expected.mustNotEmit) {
+         if (!input.text.toUpperCase().includes(name.toUpperCase())) errors.push(`${at}: ${name} does not appear in the request`);
+-        if (false && await knownToSchema(schema, name)) errors.push(`${at}: ${name} exists in the IFC schema tables, so it is not invented`);
++        if (await knownToSchema(schema, name)) errors.push(`${at}: ${name} exists in the IFC schema tables, so it is not invented`);
+       }
+     }
+     if (typeof record.rationale !== 'string' || record.rationale.trim().length < 20) errors.push(`${at}: rationale is too short`);

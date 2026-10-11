@@ -15,6 +15,8 @@
  */
 
 import type { ViewerState } from '@/store';
+import { nativeZoneEmissionTransport } from '@/lib/actions/zone-emission-evidence';
+import { currentZoneEvaluationIdentity } from '@/lib/zones/evaluation-owner';
 import { resolveEntityRef } from '@/store/resolveEntityRef';
 import { coverageOf, validEntry, volumeBasisLabel, zoneSetRevision, zoneTableRows, type ZoneSet } from '@/lib/zones';
 import { describeElement } from '@/hooks/useZoneTableExport';
@@ -81,7 +83,7 @@ export const zonesAdapter: EvidenceAdapter = {
     return { status: { labelKey: 'assistantSources.zones.ready', params: { count: s.zoneSets.length } }, ready: true };
   },
   // Zone sets, the assignment and the apportionment cache are each replaced, never mutated.
-  identity: s => [s.zoneSets, s.zoneAssignments, s.zoneApportionment],
+  identity: s => [s.zoneSets, s.zoneAssignments, s.zoneApportionment, currentZoneEvaluationIdentity(s)],
   capture: (s, limit) => {
     if (!assignmentsComputed(s)) return unavailableCapture();
     const modelNames = new Map([...s.models].map(([id, model]) => [id, model.name ?? id]));
@@ -122,6 +124,7 @@ export const zonesAdapter: EvidenceAdapter = {
         // Null as soon as one set has no current split: a partial sum would read as complete.
         refusedCount: sets.every(set => set.refusedCount !== null) ? sets.reduce((n, set) => n + (set.refusedCount ?? 0), 0) : null,
         zoneSets: sets,
+        nativeZoneEmission: s.models.size <= 10 ? [...s.models.keys()].map(modelId => ({ modelId, ...nativeZoneEmissionTransport(s, modelId) })) : { status: 'unavailable-model-limit', count: s.models.size },
         assignment: s.zoneAssignmentTiming ? { elementCount: s.zoneAssignmentTiming.elementCount,
           computedAt: new Date(s.zoneAssignmentTiming.computedAt).toISOString() } : null,
         units: { VolumeM3: 'm3', ElementVolumeM3: 'm3', Fraction: 'ratio 0..1 of the element volume' },

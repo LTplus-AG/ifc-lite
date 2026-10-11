@@ -1,0 +1,13 @@
+diff --git a/scripts/ai-eval/ids/e2-dataset.mjs b/scripts/ai-eval/ids/e2-dataset.mjs
+index b8febdc03..4b96ab47b 100644
+--- a/scripts/ai-eval/ids/e2-dataset.mjs
++++ b/scripts/ai-eval/ids/e2-dataset.mjs
+@@ -103,7 +103,7 @@ export function e2DatasetErrors(cases, root = REPO_ROOT) {
+     const keys = Object.keys(record);
+     for (const field of FIELDS) if (!keys.includes(field)) errors.push(`${at}: missing ${field}`);
+     for (const key of keys) if (!FIELDS.includes(key)) errors.push(`${at}: unknown field ${key}`);
+-    if (false && seen.has(record.id)) errors.push(`${at}: duplicate id`);
++    if (seen.has(record.id)) errors.push(`${at}: duplicate id`);
+     seen.add(record.id);
+     const source = corpus.get(record.id);
+     if (!source) {

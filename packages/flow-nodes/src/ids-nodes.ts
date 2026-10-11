@@ -11,10 +11,16 @@
  * The IDS document travels between nodes as a Studio document (plain
  * JSON, content-derived node ids; `@ifc-lite/ids-authoring`), the same
  * shape the MCP tools exchange.
+ *
+ * The node definitions are eager (the standard registry lists them), but the
+ * authoring runtime is loaded inside `run` via `import()`: the viewer
+ * registers these nodes at startup, and the authoring gate, reducer and lint
+ * rules must stay out of its eager bundle. `run` may return a promise, so
+ * the contract is unchanged; a failed load fails the node with its error.
  */
 
 import { validateIDS, type IDSValidationReport, type IFCDataAccessor } from '@ifc-lite/ids';
-import { createLintContext, lintDocument, nodePath, parseStudioDocument, readStudioDocument, type StudioDocument } from '@ifc-lite/ids-authoring';
+import type { StudioDocument } from '@ifc-lite/ids-authoring';
 import type { Column, Row, Table } from '@ifc-lite/flow';
 import { ANY_ITEM, ANY_LIST, SCALAR_ITEM, TABLE_ITEM, type Ctx, type FlowNodeDef } from './host.js';
 
@@ -36,7 +42,10 @@ const FAILURE_COLUMNS: readonly Column[] = [
 
 const SEVERITY_RANK = { error: 0, warning: 1, info: 2 } as const;
 
-function studioDoc(v: unknown, node: string): StudioDocument {
+const loadAuthoring = () => import('@ifc-lite/ids-authoring');
+
+async function studioDoc(v: unknown, node: string): Promise<StudioDocument> {
+  const { parseStudioDocument } = await loadAuthoring();
   try {
     return parseStudioDocument(v);
   } catch (err) {
@@ -91,9 +100,10 @@ export const idsNodes: FlowNodeDef[] = [
     ],
     params: [{ name: 'xml', kind: 'string', default: '', doc: 'IDS XML, used when the input is not wired.' }],
     capabilities: [],
-    run: (_ctx, i, p) => {
+    run: async (_ctx, i, p) => {
       const xml = typeof i.xml === 'string' && i.xml.trim() !== '' ? i.xml : String(p.xml ?? '');
       if (xml.trim() === '') throw new Error('ids.load: no IDS XML (wire the `xml` input or set the param)');
+      const { readStudioDocument } = await loadAuthoring();
       const doc = readStudioDocument(xml);
       return { ids: doc, title: doc.ids.info.title, specifications: doc.ids.specifications.length };
     },
@@ -115,7 +125,8 @@ export const idsNodes: FlowNodeDef[] = [
     ],
     capabilities: [],
     run: async (_ctx, i, p) => {
-      const doc = studioDoc(i.ids, 'ids.lint');
+      const doc = await studioDoc(i.ids, 'ids.lint');
+      const { createLintContext, lintDocument, nodePath } = await loadAuthoring();
       const rules = String(p.rules ?? '').split(',').map((s) => s.trim()).filter(Boolean);
       const { diagnostics } = lintDocument(doc, await createLintContext(), rules.length ? { rules } : {});
       const rows: Row[] = diagnostics.map((d) => ({
@@ -148,7 +159,7 @@ export const idsNodes: FlowNodeDef[] = [
     capabilities: ['model.read'],
     reads: 'model',
     run: async (ctx, i) => {
-      const doc = studioDoc(i.ids, 'ids.validate');
+      const doc = await studioDoc(i.ids, 'ids.validate');
       const model = ctx.host.bim.model.active();
       const report = await validateIDS(doc.ids, accessorFor(ctx), {
         modelId: model?.id ?? ctx.host.defaultModelId ?? 'model',

@@ -105,7 +105,8 @@ const classifications = extractClassificationsOnDemand(store, wallId);
 
 Current occurrence quantity reads with a native mutation view throw
 `OccurrenceQuantityReadError` when their complete inventory cannot be read within
-the 256-set / 4,096-member bounds, or a member list is unreadable. Report this as
+the 256-set / 4,096-member / 512-unit-read bounds, a unit record is oversized,
+or a member list is unreadable. Report this as
 unavailable coverage instead of treating it as an empty inventory. Source-only
 two-argument reads retain their existing behavior.
 

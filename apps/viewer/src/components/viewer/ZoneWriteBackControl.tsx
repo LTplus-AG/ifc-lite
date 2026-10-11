@@ -20,6 +20,7 @@
 
 import { useId, useMemo, useRef, useState } from 'react';
 import { Box, FileOutput, Sheet, Undo2 } from 'lucide-react';
+import { OccurrenceQuantityReadError } from '@ifc-lite/parser';
 import { Button } from '@/components/ui/button';
 import { IconButton } from '@/components/ui/icon-button';
 import {
@@ -161,7 +162,14 @@ export function ZoneWriteBackControl({ zoneSet }: { zoneSet: ZoneSet }) {
           aria-describedby={writeDenial ? denialId : undefined}
           title={messageFor(writeDenial) ?? t('zonesPanel.writeBack.writeButtonTitle', { psetName: zonePropertySetName(zoneSet.name) })}
           onClick={() => {
-            const result = write(zoneSet, basis);
+            let result: ReturnType<typeof write>;
+            try {
+              result = write(zoneSet, basis);
+            } catch (error) {
+              if (!(error instanceof OccurrenceQuantityReadError)) throw error;
+              toast.error(t('properties.panel.occurrenceUnavailable', { reason: error.message }));
+              return;
+            }
             if (result.blocked === 'edit-mode' || result.blocked === 'workflow-running' || result.blocked === 'model-unavailable') { toast.error(t(mutationDenialKey(result.blocked))); return; }
             if (result.blocked === 'collab-role') {
               toast.error(t('zonesPanel.writeBack.collabReadOnlyWrite'));
@@ -203,7 +211,15 @@ export function ZoneWriteBackControl({ zoneSet }: { zoneSet: ZoneSet }) {
           {...(removePropertiesDenial ? { 'aria-describedby': denialId } : {})}
           className="h-6 w-6"
           onClick={() => {
-            const { removed, blocked } = remove(zoneSet);
+            let result: ReturnType<typeof remove>;
+            try {
+              result = remove(zoneSet);
+            } catch (error) {
+              if (!(error instanceof OccurrenceQuantityReadError)) throw error;
+              toast.error(t('properties.panel.occurrenceUnavailable', { reason: error.message }));
+              return;
+            }
+            const { removed, blocked } = result;
             if (blocked === 'edit-mode' || blocked === 'workflow-running' || blocked === 'model-unavailable') { toast.error(t(mutationDenialKey(blocked))); return; }
             if (blocked === 'collab-role') {
               toast.error(t('zonesPanel.writeBack.collabReadOnlyRemove'));

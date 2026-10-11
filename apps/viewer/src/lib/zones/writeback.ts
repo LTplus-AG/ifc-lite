@@ -205,7 +205,7 @@ const REFUSAL_TEXT: Record<WriteBackRefusal, string> = {
   'declared-unit-unavailable':
     'The native quantity is present but its physical unit is unavailable, so no volume was written for it.',
   'declared-quantity-unavailable':
-    'Current inherited native quantities are unavailable, so absence of a declared volume cannot be established.',
+    'Current native quantities are unavailable, so absence of a declared volume cannot be established.',
   'no-declared-quantity':
     'This element declares no volume quantity on the requested basis, so no volume was written for it.',
   'overlapping-zones':

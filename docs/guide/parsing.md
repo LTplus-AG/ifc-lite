@@ -884,10 +884,14 @@ For occurrence quantities, pass the native mutation view as the optional third
 argument to `extractQuantitiesOnDemand(store, expressId, view)`. It reads current
 member `Unit` dependencies, including edits, replacement, deletion and Undo.
 An unresolved explicit unit leaves the value raw instead of substituting SI.
-Current inventory reads are bounded to 256 sets and 4,096 members. If that
-inventory exceeds a bound or a set's member list is unreadable, the reader throws
+Current inventory reads are bounded to 256 sets, 4,096 members and 512 unit
+dependency reads. Oversized unit records are also refused. If a bound is exceeded
+or a set's member list is unreadable, the reader throws
 `OccurrenceQuantityReadError`; consumers should report unavailable coverage
-instead of displaying an empty result as verified absence. Source-only two-argument
+instead of displaying an empty result as verified absence. Synchronous SDK and
+export callers may propagate this typed error and fail the operation explicitly;
+consumers with per-element coverage contracts must report unavailable rows.
+Source-only two-argument
 reads retain their existing behavior.
 
 ```typescript

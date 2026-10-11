@@ -40,17 +40,13 @@ export function readOccurrenceQuantities(
         return record ? { ...record, expressId: id } : null;
     };
     let unitReads = 0;
-    let reportedLimit = false;
     const readUnit: UnitEntityReader = id => {
         if (++unitReads > MAX_UNIT_READS) {
-            if (!reportedLimit) console.warn('[occurrence quantities] Native unit dependencies exceed the read limit');
-            reportedLimit = true;
-            return null;
+            throw new OccurrenceQuantityReadError('Native occurrence unit dependencies exceed the read limit');
         }
         const record = readEntity(id);
         if (record?.attributes.some(value => Array.isArray(value) && value.length > MAX_MEMBERS)) {
-            console.warn('[occurrence quantities] Native unit references exceed the read limit');
-            return null;
+            throw new OccurrenceQuantityReadError('Native occurrence unit references exceed the read limit');
         }
         return record;
     };

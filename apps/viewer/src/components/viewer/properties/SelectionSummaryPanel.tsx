@@ -143,6 +143,9 @@ export function SelectionSummaryPanel({ models, ifcDataStore }: { models: Map<st
             ))}
           </Section>
         )}
+        {summary.quantityUnavailable.map(row => <output key={`${row.modelId}:${row.expressId}`} className="block px-3 py-2 text-xs text-muted-foreground">
+          {t('properties.panel.occurrenceUnavailable', { reason: `#${row.expressId}: ${row.reason}` })}
+        </output>)}
         {quantityRowCount > 0 && (
           <Section id="quantities" icon={<Calculator className="h-4 w-4 text-muted-foreground" />} title={t('properties.summary.quantitiesHeading')} count={quantityRowCount}>
             {summary.quantities.map((group) => (

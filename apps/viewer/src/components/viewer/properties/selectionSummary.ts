@@ -38,6 +38,7 @@ interface SelectionSummary {
   attributes: SummaryRow[];
   properties: SummaryGroup[];
   quantities: SummaryGroup[];
+  quantityUnavailable: Array<{ modelId: string; expressId: number; reason: string }>;
 }
 
 /** Rows present on every compared element, keyed `group\u0000name`, in first-seen order. */
@@ -110,12 +111,14 @@ export function summarizeSelection(
   const attributeValues: Array<Map<string, string>> = [];
   const propertyValues: Array<Map<string, string>> = [];
   const quantityValues: Array<Map<string, string>> = [];
+  const quantityUnavailable: Array<{ modelId: string; expressId: number; reason: string }> = [];
   for (const { ref } of elements.slice(0, SUMMARY_VALUE_LIMIT)) {
     const source = sourceFor(ref.modelId);
     const store = source?.store ?? null;
     const unitContext = unitsFor(ref.modelId, store, source?.view);
     const projectUnits = unitContext.value;
     const data = effectiveElementData(ref.expressId, queryFor(ref.modelId, store), source?.view);
+    if (data.quantityStatus === 'unavailable') quantityUnavailable.push({ modelId: ref.modelId, expressId: ref.expressId, reason: data.quantityReason ?? 'Unknown occurrence coverage' });
 
     const attributes = new Map<string, string>();
     for (const [name, value] of data.attributes) attributes.set(`\u0000${name}`, String(value));
@@ -151,6 +154,6 @@ export function summarizeSelection(
     elements: elements.map(({ ref, name, className }) => ({ ref, name, className })),
     attributes: [...sharedRows(attributeValues).values()],
     properties: grouped(sharedRows(propertyValues)),
-    quantities: grouped(sharedRows(quantityValues)),
+    quantities: grouped(sharedRows(quantityValues)), quantityUnavailable,
   };
 }

@@ -9,7 +9,8 @@
  * gets either new / resolved / persisting / changed / not-evaluated findings
  * or an explicit refusal listing every incompatibility. Nothing is re-run.
  * An outcome is shown only for the base/head pair it was computed from, and
- * is withdrawn once a model edit postdates one of its runs.
+ * is withdrawn once a model edit postdates one of its runs. A captured run
+ * can be saved and reopened in a later session (#7370).
  */
 
 import { useEffect, useMemo, useState } from 'react';
@@ -17,7 +18,7 @@ import { Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { IconButton } from '@/components/ui/icon-button';
 import { SegmentedControl } from '@/components/ui/segmented-control';
-import { useTranslation } from '@/i18n';
+import { useTranslation, type TranslationKey } from '@/i18n';
 import { formatLocaleDate } from '@/i18n/intlFormat';
 import { useViewerStore } from '@/store';
 import type { CompareResult } from '@/store/slices/compareSlice';
@@ -26,6 +27,15 @@ import { savedReconciliationOf } from '@/lib/compare/compare-reconcile-state';
 import type { CapturedRun, RunKind } from '@/lib/compare/run-reconcile-types';
 import { ReconcileOutcomeView } from './ReconcileOutcomeView';
 import { useReconciliationFocus } from '@/lib/panels/evidence-focus';
+import { portableAnalysisRun } from '@/lib/compare/saved-analysis-run-binding';
+import { saveAnalysisRun } from '@/lib/compare/saved-analysis-runs';
+import { CompareSavedRuns } from './CompareSavedRuns';
+
+const SAVE_MESSAGES = {
+  saved: 'compareAnalysis.reconcile.saved', saveFailed: 'compareAnalysis.reconcile.saveFailed',
+  saveModelClosed: 'compareAnalysis.reconcile.saveModelClosed', saveEmpty: 'compareAnalysis.reconcile.saveEmpty',
+} as const satisfies Record<string, TranslationKey>;
+type SaveMessage = keyof typeof SAVE_MESSAGES;
 
 function RunSelect({ label, runs, value, onChange, describe }: {
   label: string; runs: CapturedRun[]; value: string; onChange: (id: string) => void; describe: (run: CapturedRun) => string;
@@ -52,6 +62,7 @@ export function CompareReconcileSection({ result }: { result: CompareResult }) {
   const focus = useReconciliationFocus(s => s.record);
   const [kind, setKind] = useState<RunKind>('clash');
   const [picked, setPicked] = useState<{ base?: string; head?: string }>({});
+  const [saveMessage, setSaveMessage] = useState<SaveMessage | null>(null);
 
   useEffect(() => {
     const outcome = stored?.comparison === result ? stored.outcome : null;
@@ -82,6 +93,16 @@ export function CompareReconcileSection({ result }: { result: CompareResult }) {
     setPicked(p => ({ base: p.base ?? (baseId || id), head: id }));
   };
 
+  const save = () => {
+    const state = useViewerStore.getState();
+    const head = runs.find(r => r.id === headId);
+    if (!head) return;
+    const portable = portableAnalysisRun(head, state);
+    if (!portable.ok) { setSaveMessage(portable.reason === 'modelClosed' ? 'saveModelClosed' : 'saveEmpty'); return; }
+    setSaveMessage(null);
+    void saveAnalysisRun(portable.saved).then(saved => setSaveMessage(saved ? 'saved' : 'saveFailed'));
+  };
+
   const reconcile = () => {
     const state = useViewerStore.getState();
     const base = runs.find(r => r.id === baseId), head = runs.find(r => r.id === headId);
@@ -92,7 +113,7 @@ export function CompareReconcileSection({ result }: { result: CompareResult }) {
   return (
     <div className="space-y-2 text-xs">
       <SegmentedControl size="sm" label={t('compareAnalysis.reconcile.kindLabel')} value={kind}
-        onValueChange={value => { setKind(value); setPicked({}); }}
+        onValueChange={value => { setKind(value); setPicked({}); setSaveMessage(null); }}
         options={[{ value: 'clash', label: t('compareAnalysis.reconcile.kind.clash') },
           { value: 'validation', label: t('compareAnalysis.reconcile.kind.validation') }]} />
       <div className="flex flex-wrap items-center gap-2">
@@ -117,13 +138,16 @@ export function CompareReconcileSection({ result }: { result: CompareResult }) {
           </div>
           <div className="flex items-center gap-2">
             <Button type="button" size="sm" onClick={reconcile}>{t('compareAnalysis.reconcile.run')}</Button>
+            <Button type="button" size="sm" variant="outline" onClick={save}>{t('compareAnalysis.reconcile.save')}</Button>
             <IconButton size="icon-sm" label={t('compareAnalysis.reconcile.remove')}
               onClick={() => useViewerStore.getState().removeCompareRunCapture(headId)}>
               <Trash2 className="h-3.5 w-3.5" />
             </IconButton>
           </div>
+          {saveMessage && <p aria-live="polite" className="text-muted-foreground">{t(SAVE_MESSAGES[saveMessage])}</p>}
         </>
       )}
+      <CompareSavedRuns kind={kind} onReopen={id => setPicked(p => ({ base: p.base ?? (baseId || id), head: id }))} />
       {outcome && (stale
         ? <p aria-live="polite" className="text-amber-700 dark:text-amber-400">{t('compareAnalysis.reconcile.stale')}</p>
         : <ReconcileOutcomeView outcome={outcome} />)}

@@ -14,6 +14,7 @@ import { semanticReviewContent } from '../semantic/assist/library.js';
 import { assistantRecipesContent } from '../assistant/reuse/recipe-library.js';
 import { assistantPreferencesContent } from '../assistant/reuse/preferences.js';
 import { comparisonContent } from '../compare/savedComparisonPersistence.js';
+import { analysisRunsContent } from '../compare/saved-analysis-runs.js';
 import { documentContent } from '../document/persistence.js';
 import { validationContent } from '../validation/reports/persistence.js';
 import type { ContentDefinition } from './content-migration.js';
@@ -35,6 +36,7 @@ export const CONTENT_DEFINITIONS = {
   semanticReviews: semanticReviewContent,
   assistantRecipes: assistantRecipesContent,
   assistantPreferences: assistantPreferencesContent,
+  analysisRuns: analysisRunsContent,
 } satisfies Record<ContentKind, Pick<ContentDefinition<{ id: string }>, 'kind' | 'legacyKey' | 'decode'>>;
 
 export function contentKindForLegacyKey(key: string): ContentKind | undefined {

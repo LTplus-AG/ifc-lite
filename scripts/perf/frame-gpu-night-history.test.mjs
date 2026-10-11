@@ -9,7 +9,7 @@ import { fileURLToPath } from 'node:url';
 
 // Reached by test.yml's scripts/perf/*.test.mjs catch-all. The TS source and
 // controls also belong to the permanent root typecheck programme.
-test('#6975 nightly-calendar production invariants', (context) => {
+test('#6975 / #7456 nightly calendar and independent profile production invariants', (context) => {
   const root = fileURLToPath(new URL('../..', import.meta.url));
   // A nested `node --test` must create its own runner. Inheriting the parent
   // runner's child-v8 context suppresses the nested controls and exits green.

@@ -25,6 +25,24 @@ import { validateSidecarShape } from './sidecar-schema.js';
 
 export const SIDECAR_FORMAT = 'ifc-lite.ids-studio.sidecar';
 export const SIDECAR_FILENAME = 'studio.json';
+/**
+ * Version of the optional content snapshot. It is versioned on its own so
+ * the snapshot can evolve without bumping the sidecar `schemaVersion`:
+ * sidecars without a snapshot (written before it existed) still load, and
+ * a snapshot with a version this reader does not know is ignored.
+ */
+export const SIDECAR_SNAPSHOT_VERSION = 1;
+
+/**
+ * The IDS content the node index was written for, so a standalone `.idsz`
+ * edited elsewhere can be re-identified without the previous document.
+ * `ids` carries the Studio node UUIDs as specification / requirement ids.
+ */
+export interface SidecarSnapshot {
+  /** {@link SIDECAR_SNAPSHOT_VERSION} when written by this core; later versions are read but ignored. */
+  version: number;
+  ids: IDSDocument;
+}
 
 export interface StudioSidecar {
   format: typeof SIDECAR_FORMAT;
@@ -34,6 +52,17 @@ export interface StudioSidecar {
   idsFingerprint: string;
   nodes: NodeIndex;
   meta: StudioMeta;
+  /** Optional content snapshot (additive; absent in older sidecars). */
+  snapshot?: SidecarSnapshot;
+}
+
+export interface CreateSidecarOptions {
+  /**
+   * Embed a content snapshot so the bundle can be re-identified on its own
+   * after an external edit. Default `true`; pass `false` for a smaller
+   * sidecar when the previous document is always available elsewhere.
+   */
+  snapshot?: boolean;
 }
 
 /** Canonical JSON: sorted keys, `undefined` dropped. */
@@ -69,7 +98,7 @@ export function fingerprintIds(ids: IDSDocument): string {
  * there is one: the fingerprint is then taken from what a reader will
  * parse, which is what `attachSidecar` compares against.
  */
-export function createSidecar(doc: StudioDocument, xml?: string): StudioSidecar {
+export function createSidecar(doc: StudioDocument, xml?: string, options: CreateSidecarOptions = {}): StudioSidecar {
   let content = doc.ids;
   if (xml !== undefined) {
     content = parseIDS(xml);
@@ -78,7 +107,7 @@ export function createSidecar(doc: StudioDocument, xml?: string): StudioSidecar 
       throw new Error('the XML does not have the shape of the document; write it from this document');
     }
   }
-  return {
+  const sidecar: StudioSidecar = {
     format: SIDECAR_FORMAT,
     schemaVersion: STUDIO_SCHEMA_VERSION,
     docId: doc.docId,
@@ -86,6 +115,8 @@ export function createSidecar(doc: StudioDocument, xml?: string): StudioSidecar 
     nodes: doc.nodes,
     meta: doc.meta,
   };
+  if (options.snapshot !== false) sidecar.snapshot = { version: SIDECAR_SNAPSHOT_VERSION, ids: doc.ids };
+  return sidecar;
 }
 
 /** Stable, human-diffable JSON (2-space indent, trailing newline). */
@@ -112,7 +143,7 @@ export function parseSidecar(json: string): StudioSidecar {
 }
 
 /** Stamp node ids onto parsed content positionally; undefined if the shape differs. */
-function stamp(ids: IDSDocument, sidecar: StudioSidecar): StudioDocument | undefined {
+function stamp(ids: IDSDocument, sidecar: Pick<StudioSidecar, 'docId' | 'nodes' | 'meta'>): StudioDocument | undefined {
   const nodes = sidecar.nodes;
   if (nodes.specs.length !== ids.specifications.length) return undefined;
   const doc: StudioDocument = {
@@ -132,9 +163,26 @@ function stamp(ids: IDSDocument, sidecar: StudioSidecar): StudioDocument | undef
   return verifyNodeIndex(doc).length === 0 ? doc : undefined;
 }
 
+/**
+ * The document as it was when the sidecar was written, rebuilt from its
+ * snapshot; undefined when there is no snapshot, its version is unknown, or
+ * it does not fit the node index.
+ */
+function snapshotDocument(sidecar: StudioSidecar): StudioDocument | undefined {
+  const snapshot = sidecar.snapshot;
+  if (!snapshot || snapshot.version !== SIDECAR_SNAPSHOT_VERSION) return undefined;
+  return stamp(snapshot.ids, sidecar);
+}
+
 export type AttachResult =
   | { doc: StudioDocument; binding: 'exact' }
-  | { doc: StudioDocument; binding: 'reidentified'; report: ReidentifyReport }
+  | {
+      doc: StudioDocument;
+      binding: 'reidentified';
+      report: ReidentifyReport;
+      /** What the nodes were matched against: `options.previous` or the sidecar's snapshot. */
+      basis: 'previous' | 'snapshot';
+    }
   | { doc: StudioDocument; binding: 'fresh' };
 
 export interface AttachOptions {
@@ -150,9 +198,10 @@ export interface AttachOptions {
 /**
  * Rebuild a Studio document from parsed IDS content and its sidecar. When
  * the content still has the sidecar's fingerprint the node ids are reused
- * exactly. Otherwise, given the `previous` document, nodes are
- * re-identified (identifier → name + signature → similarity); without it
- * the document gets fresh ids. `docId` and `meta` are kept either way and
+ * exactly. Otherwise nodes are re-identified (identifier → name +
+ * signature → similarity) against the `previous` document or, without it,
+ * against the sidecar's content snapshot; when neither is usable the
+ * document gets fresh ids. `docId` and `meta` are kept either way and
  * `binding` tells the caller which path was taken.
  */
 export function attachSidecar(ids: IDSDocument, sidecar: StudioSidecar, options: AttachOptions = {}): AttachResult {
@@ -164,7 +213,16 @@ export function attachSidecar(ids: IDSDocument, sidecar: StudioSidecar, options:
   if (options.previous) {
     const base: StudioDocument = { ...options.previous, docId: sidecar.docId, meta: sidecar.meta };
     const { doc, report } = reidentify(base, ids, { newId });
-    return { doc, binding: 'reidentified', report };
+    return { doc, binding: 'reidentified', report, basis: 'previous' };
+  }
+  const fromSnapshot = snapshotDocument(sidecar);
+  if (fromSnapshot) {
+    try {
+      const { doc, report } = reidentify(fromSnapshot, ids, { newId });
+      return { doc, binding: 'reidentified', report, basis: 'snapshot' };
+    } catch {
+      // A snapshot that passed the shape check but not the matcher falls back to fresh ids.
+    }
   }
   return { doc: fromIdsDocument(ids, { docId: sidecar.docId, meta: sidecar.meta, newId }), binding: 'fresh' };
 }

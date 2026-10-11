@@ -111,7 +111,7 @@ in IDS XML.
 | `GATE-ENT-001` | Entity does not exist in every IFC version of the spec (also partOf entities) |
 | `GATE-PDT-001` | Predefined type not in the entity's enumeration (user-defined values must be declared) |
 | `GATE-ATT-001` | Attribute not on the applicability entity (inherited attributes included) |
-| `GATE-PSET-001` | `Pset_`/`Qto_` name is not a standard set (`Qto_` is unverifiable for IFC2X3/IFC4 and accepted) |
+| `GATE-PSET-001` | `Pset_`/`Qto_` name is not a standard set (`Qto_` is unverifiable for IFC2X3/IFC4 and accepted until P-01's IDS-009 schema rows exist) |
 | `GATE-PROP-001` | Property not in the standard set |
 | `GATE-ENUM-001` | Value not in the standard property's enumeration |
 | `GATE-DT-001` | Unknown data type, or inconsistent with the standard property |
@@ -215,6 +215,14 @@ metadata, extension fields and opaque later-pitch payloads remain intact.
 
 - `createSidecar(doc, xml)` and `attachSidecar(parsed, sidecar, { previous })`
   persist node ids and `meta` next to the XML, never inside it.
+- `studio.json` embeds a content snapshot (`snapshot: { version: 1, ids }`)
+  by default, so a standalone `.idsz` whose XML was edited elsewhere is
+  re-identified on its own (`binding: 'reidentified'`, `basis: 'snapshot'`).
+  An explicit `previous` document still wins. The field is additive and
+  versioned separately from `schemaVersion`: sidecars without it load as
+  before (an external edit then gives fresh ids), and a snapshot of a later
+  version is kept but ignored. `createSidecar(doc, xml, { snapshot: false })`
+  leaves it out.
 - `writeIdsz` and `readIdsz` build a plain zip containing `ids.xml`,
   `studio.json`, `fixtures/*` and `appendix.pdf`. The XML is stored byte for
   byte.

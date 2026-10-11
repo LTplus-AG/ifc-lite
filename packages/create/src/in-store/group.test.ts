@@ -147,7 +147,11 @@ it('reports an oversized effective native record before publishing any group edi
   const before = state(s);
   expect(() => addGroupToStore(s, { Name: 'Must not publish', RelatedObjects: [] })).toThrow(/record budget/);
   expect(state(s)).toBe(before);
-});
+  // Real Bonsai parse plus serializing a 4 M-character record is GC-bound like
+  // the total-budget case (#7366): 1.6 s locally, but it hit the 5 s default on
+  // shared CI runners in PR runs 38080736953, 38095691088 and 38107682210, none
+  // of which touched packages/create.
+}, 60_000);
 
 it('a first refused operation preserves the fresh live allocator as well as its graph #7329', async () => {
   const { store } = await session();

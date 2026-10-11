@@ -223,4 +223,119 @@ END-ISO-10303-21;
     // (0.001**2 = 1e-6, which would report 0.000012).
     expect(area?.value).toBe(12);
   });
+  it("reads a mass with the owner's own MASSUNIT when the owner declares no length unit (#7395)", async () => {
+    // Project 1 declares millimetres and kilograms; project 2 declares grams
+    // but no LENGTHUNIT. Wall #19's 2500 g is 2.5 kg, not project 1's 2500 kg.
+    const ifc = `ISO-10303-21;
+HEADER;
+FILE_DESCRIPTION(('ViewDefinition [CoordinationView]'),'2;1');
+FILE_NAME('','2026-10-11T00:00:00',(),(),'','','');
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#1=IFCPROJECT('1hqIFTRjfV6AWq_bMtnZwI',$,'Primary-mm-kg',$,$,$,$,$,#6);
+#2=IFCSIUNIT(*,.LENGTHUNIT.,.MILLI.,.METRE.);
+#3=IFCSIUNIT(*,.MASSUNIT.,.KILO.,.GRAM.);
+#6=IFCUNITASSIGNMENT((#2,#3));
+#7=IFCWALL('2nJrDaLQfJ1QPhdJR0o97J',$,$,$,$,$,$,$,$);
+#11=IFCPROJECT('0hqIFTRjfV6AWq_bMtnZw2',$,'Secondary-g',$,$,$,$,$,#16);
+#12=IFCSIUNIT(*,.MASSUNIT.,$,.GRAM.);
+#16=IFCUNITASSIGNMENT((#12));
+#17=IFCSITE('3z6M0fVLDCPBUYwtcqp5bq',$,$,$,$,$,$,$,$);
+#18=IFCRELAGGREGATES('4z6M0fVLDCPBUYwtcqp5cq',$,$,$,#11,(#17));
+#19=IFCWALL('5z6M0fVLDCPBUYwtcqp5dq',$,$,$,$,$,$,$,$);
+#20=IFCRELCONTAINEDINSPATIALSTRUCTURE('6z6M0fVLDCPBUYwtcqp5eq',$,$,$,(#19),#17);
+#21=IFCPROPERTYSINGLEVALUE('Mass',$,IFCMASSMEASURE(2500.),$);
+#22=IFCPROPERTYSET('7z6M0fVLDCPBUYwtcqp5fq',$,'Pset_Custom',$,(#21));
+#23=IFCRELDEFINESBYPROPERTIES('8z6M0fVLDCPBUYwtcqp5gq',$,$,$,(#19),#22);
+#24=IFCSITE('9z6M0fVLDCPBUYwtcqp5hq',$,$,$,$,$,$,$,$);
+#25=IFCRELAGGREGATES('Az6M0fVLDCPBUYwtcqp5iq',$,$,$,#1,(#24));
+#26=IFCRELCONTAINEDINSPATIALSTRUCTURE('Bz6M0fVLDCPBUYwtcqp5jq',$,$,$,(#7),#24);
+ENDSEC;
+END-ISO-10303-21;
+`;
+    const accessor = createDataAccessor(await parseIfc(ifc));
+    const mass = accessor
+      .getPropertySets(19)
+      .find((p) => p.name === 'Pset_Custom')
+      ?.properties.find((p) => p.name === 'Mass');
+    expect(Number(mass?.value)).toBeCloseTo(2.5, 12);
+  });
+  it("leaves a mass raw when the owner declares a MASSUNIT that cannot be resolved (#7395)", async () => {
+    // Project 2 declares a conversion-based MASSUNIT whose factor is missing:
+    // its 2500 must not take project 1's grams (2.5 kg) instead.
+    const ifc = `ISO-10303-21;
+HEADER;
+FILE_DESCRIPTION(('ViewDefinition [CoordinationView]'),'2;1');
+FILE_NAME('','2026-10-11T00:00:00',(),(),'','','');
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#1=IFCPROJECT('1hqIFTRjfV6AWq_bMtnZwI',$,'Primary-mm-g',$,$,$,$,$,#6);
+#2=IFCSIUNIT(*,.LENGTHUNIT.,.MILLI.,.METRE.);
+#3=IFCSIUNIT(*,.MASSUNIT.,$,.GRAM.);
+#6=IFCUNITASSIGNMENT((#2,#3));
+#7=IFCWALL('2nJrDaLQfJ1QPhdJR0o97J',$,$,$,$,$,$,$,$);
+#11=IFCPROJECT('0hqIFTRjfV6AWq_bMtnZw2',$,'Secondary-odd',$,$,$,$,$,#16);
+#12=IFCDIMENSIONALEXPONENTS(0,1,0,0,0,0,0);
+#13=IFCCONVERSIONBASEDUNIT(#12,.MASSUNIT.,'STONE',#99);
+#16=IFCUNITASSIGNMENT((#13));
+#17=IFCSITE('3z6M0fVLDCPBUYwtcqp5bq',$,$,$,$,$,$,$,$);
+#18=IFCRELAGGREGATES('4z6M0fVLDCPBUYwtcqp5cq',$,$,$,#11,(#17));
+#19=IFCWALL('5z6M0fVLDCPBUYwtcqp5dq',$,$,$,$,$,$,$,$);
+#20=IFCRELCONTAINEDINSPATIALSTRUCTURE('6z6M0fVLDCPBUYwtcqp5eq',$,$,$,(#19),#17);
+#21=IFCPROPERTYSINGLEVALUE('Mass',$,IFCMASSMEASURE(2500.),$);
+#22=IFCPROPERTYSET('7z6M0fVLDCPBUYwtcqp5fq',$,'Pset_Custom',$,(#21));
+#23=IFCRELDEFINESBYPROPERTIES('8z6M0fVLDCPBUYwtcqp5gq',$,$,$,(#19),#22);
+#24=IFCSITE('9z6M0fVLDCPBUYwtcqp5hq',$,$,$,$,$,$,$,$);
+#25=IFCRELAGGREGATES('Az6M0fVLDCPBUYwtcqp5iq',$,$,$,#1,(#24));
+#26=IFCRELCONTAINEDINSPATIALSTRUCTURE('Bz6M0fVLDCPBUYwtcqp5jq',$,$,$,(#7),#24);
+ENDSEC;
+END-ISO-10303-21;
+`;
+    const accessor = createDataAccessor(await parseIfc(ifc));
+    const mass = accessor
+      .getPropertySets(19)
+      .find((p) => p.name === 'Pset_Custom')
+      ?.properties.find((p) => p.name === 'Mass');
+    expect(Number(mass?.value)).toBe(2500);
+  });
+  it("reads an area with the owner's own AREAUNIT when the owner declares no length unit (#7395)", async () => {
+    // Project 1 declares square metres; project 2 declares only square
+    // millimetres. Wall #19's 3000000 mm² is 3 m², not 3000000 m².
+    const ifc = `ISO-10303-21;
+HEADER;
+FILE_DESCRIPTION(('ViewDefinition [CoordinationView]'),'2;1');
+FILE_NAME('','2026-10-11T00:00:00',(),(),'','','');
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#1=IFCPROJECT('1hqIFTRjfV6AWq_bMtnZwI',$,'Primary-m',$,$,$,$,$,#6);
+#2=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);
+#3=IFCSIUNIT(*,.AREAUNIT.,$,.SQUARE_METRE.);
+#6=IFCUNITASSIGNMENT((#2,#3));
+#7=IFCWALL('2nJrDaLQfJ1QPhdJR0o97J',$,$,$,$,$,$,$,$);
+#11=IFCPROJECT('0hqIFTRjfV6AWq_bMtnZw2',$,'Secondary-mm2',$,$,$,$,$,#16);
+#12=IFCSIUNIT(*,.AREAUNIT.,.MILLI.,.SQUARE_METRE.);
+#16=IFCUNITASSIGNMENT((#12));
+#17=IFCSITE('3z6M0fVLDCPBUYwtcqp5bq',$,$,$,$,$,$,$,$);
+#18=IFCRELAGGREGATES('4z6M0fVLDCPBUYwtcqp5cq',$,$,$,#11,(#17));
+#19=IFCWALL('5z6M0fVLDCPBUYwtcqp5dq',$,$,$,$,$,$,$,$);
+#20=IFCRELCONTAINEDINSPATIALSTRUCTURE('6z6M0fVLDCPBUYwtcqp5eq',$,$,$,(#19),#17);
+#21=IFCPROPERTYSINGLEVALUE('GrossArea',$,IFCAREAMEASURE(3000000.),$);
+#22=IFCPROPERTYSET('7z6M0fVLDCPBUYwtcqp5fq',$,'Pset_WallCommon',$,(#21));
+#23=IFCRELDEFINESBYPROPERTIES('8z6M0fVLDCPBUYwtcqp5gq',$,$,$,(#19),#22);
+#24=IFCSITE('9z6M0fVLDCPBUYwtcqp5hq',$,$,$,$,$,$,$,$);
+#25=IFCRELAGGREGATES('Az6M0fVLDCPBUYwtcqp5iq',$,$,$,#1,(#24));
+#26=IFCRELCONTAINEDINSPATIALSTRUCTURE('Bz6M0fVLDCPBUYwtcqp5jq',$,$,$,(#7),#24);
+ENDSEC;
+END-ISO-10303-21;
+`;
+    const accessor = createDataAccessor(await parseIfc(ifc));
+    const area = accessor
+      .getPropertySets(19)
+      .find((p) => p.name === 'Pset_WallCommon')
+      ?.properties.find((p) => p.name === 'GrossArea');
+    expect(Number(area?.value)).toBeCloseTo(3, 9);
+  });
 });

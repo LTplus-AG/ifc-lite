@@ -6786,6 +6786,7 @@
     "PropertyOverride: interface",
     "createDataAccessor: function",
     "narrowSchemaVersion: function",
+    "propertyValueToRaw: function",
     "resolveEntityMeasureScales: function",
     "toRaw: function"
   ],

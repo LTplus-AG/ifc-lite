@@ -32,10 +32,7 @@ import {
   type PropertyOverride,
   type PropertyOverlayResolver,
 } from './property-overlay-resolver.js';
-import {
-  resolveObjectType,
-  resolveRawPredefinedType,
-} from './predefined-types.js';
+import { resolvePredefinedType } from './predefined-types.js';
 import { narrowSchemaVersion } from './schema-version.js';
 import { overlayEntityLookup, type EntityVisibilityView } from './entity-visibility.js';
 
@@ -204,13 +201,15 @@ export function createDataAccessor(
     },
 
     getPredefinedTypeRaw(expressId: number): string | undefined {
-      return resolveRawPredefinedType(store, expressId);
+      return resolvePredefinedType(store, expressId, getEntityAttributes).raw;
     },
 
     getObjectType(expressId: number): string | undefined {
-      return resolveObjectType(store, expressId, () =>
-        store.entities?.getObjectType?.(expressId)
-      );
+      // The IDS predefined-type value: the user-defined name for
+      // USERDEFINED, else the enum token. Never the bare `ObjectType`
+      // of an entity whose PredefinedType is unset or NOTDEFINED (#7394).
+      const { raw, userDefined } = resolvePredefinedType(store, expressId, getEntityAttributes);
+      return userDefined ?? raw;
     },
 
     getSchemaVersion(): string | undefined {
@@ -313,15 +312,14 @@ export function createDataAccessor(
           return accessor.getDescription(expressId);
         case 'globalid':
           return accessor.getGlobalId(expressId);
-        // `predefinedtype` deliberately resolves through
-        // `getObjectType` (the PredefinedType/USERDEFINED-name helper) —
-        // but `objecttype` must NOT: that would shadow the entity's
-        // actual `ObjectType` attribute with the PredefinedType enum
-        // whenever PredefinedType is a concrete, non-USERDEFINED,
-        // non-NOTDEFINED token. Let it fall through to the raw
-        // attribute extraction below, same as any other named attribute.
-        case 'predefinedtype':
-          return accessor.getObjectType(expressId);
+        // No `predefinedtype` case: the attribute facet tests the
+        // `PredefinedType` attribute as stored on this entity, so it
+        // reads through the raw extraction below like any other named
+        // attribute. The type-inherited, USERDEFINED-substituted value
+        // is the ENTITY facet's notion (`getObjectType`), not an
+        // attribute (#7394). Likewise `objecttype` must not resolve
+        // through `getObjectType`, which would shadow the entity's real
+        // `ObjectType` attribute with the PredefinedType enum.
         default: {
           const fromExtract = findAttributeValue(expressId, attributeName);
           if (fromExtract !== undefined) return fromExtract;

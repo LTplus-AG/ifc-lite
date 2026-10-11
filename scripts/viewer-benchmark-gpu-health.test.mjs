@@ -31,7 +31,7 @@ test('#7164: an instance/device loss before the first batch is flagged, counted 
   assert.equal(health.contaminated, true);
   assert.equal(health.deviceLost, 1, 'the counter and the console saw the same loss');
   assert.equal(health.instanceErrors, 1, 'the renderer line quoting the message is the device loss, not a second instance error');
-  assert.match(health.reasons.join(';'), /GPU device lost 1x/);
+  assert.match(health.reasons.join(';'), /GPU device lost ≥1x/);
   assert.ok(health.events.includes(LOST));
 });
 
@@ -157,16 +157,17 @@ test('#6993 drift guard: WebGPUDevice\'s device.lost line is classified; its des
   assert.equal(gpuHealthFrom(destroyed, null).contaminated, false, destroyed.join('\n'));
 });
 
-test('#6993 review: a log-derived loss count is labelled a lower bound; a counter that agrees with every site is exact', () => {
+test('#6993 review: the loss count is always a lower bound, even when the counter agrees with every site', () => {
   // Two DISTINCT losses, each printed at a different site only (a sync loss via
-  // handleDeviceLost, then an async device.lost): logs alone cannot tell them
-  // from one loss printed twice, so the count is ">= 1", not "1".
+  // handleDeviceLost, then an async device.lost): logs cannot tell them from
+  // one loss printed twice, and the counter sees only the async one, so it
+  // agrees with both sites at 1 while there were 2 losses.
   const twoSites = [LOSS_LINES['Renderer.handleDeviceLost'], LOSS_LINES['WebGPUDevice.lost']];
-  const fromLogs = gpuHealthFrom(twoSites, null);
-  assert.equal(fromLogs.contaminated, true);
-  assert.equal(fromLogs.deviceLostIsLowerBound, true);
-  assert.match(fromLogs.reasons[0], /GPU device lost ≥1x/);
-  const counted = gpuHealthFrom([LOSS_LINES['WebGPUDevice.lost'], LOSS_LINES['Renderer.handleDeviceLost']], { 'gpu.devices': 2, 'gpu.deviceLost': 1 });
-  assert.equal(counted.deviceLostIsLowerBound, false);
-  assert.match(counted.reasons[0], /GPU device lost 1x/);
+  for (const counters of [null, { 'gpu.devices': 3, 'gpu.deviceLost': 1 }]) {
+    const health = gpuHealthFrom(twoSites, counters);
+    assert.equal(health.contaminated, true);
+    assert.equal(health.deviceLost, 1);
+    assert.match(health.reasons[0], /GPU device lost ≥1x/, `counters=${JSON.stringify(counters)}`);
+    assert.doesNotMatch(health.reasons.join(';'), /lost 1x/, 'never claimed exact');
+  }
 });

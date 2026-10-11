@@ -110,6 +110,19 @@ describe('writeIdsXml round-trips the buildingSMART IDS corpus (#6915)', () => {
       .toThrow(/length or digit bounds are not supported/);
   });
 
+  // #7401: a partOf without a relation means any part-of relation; writing containment would narrow it.
+  it('writes a partOf without a relation back without one', () => {
+    const doc: IDSDocument = { info: { title: 'Any relation' }, specifications: [{
+      id: 's', name: 'Curtain wall members', ifcVersions: ['IFC4'], minOccurs: 0, maxOccurs: 'unbounded',
+      applicability: { facets: [{ type: 'entity', name: { type: 'simpleValue', value: 'IFCMEMBER' } }] },
+      requirements: [{ id: 'r', optionality: 'required', facet: { type: 'partOf', relation: 'IfcRelContainedInSpatialStructure', anyRelation: true,
+        entity: { type: 'entity', name: { type: 'simpleValue', value: 'IFCCURTAINWALL' } } } }],
+    }] };
+    const xml = writeIdsXml(doc);
+    expect(xml).toContain('<partOf cardinality="required">');
+    expect(parseIDS(xml).specifications[0].requirements[0].facet).toEqual(doc.specifications[0].requirements[0].facet);
+  });
+
   // #7399: date, time and duration bounds are kept as lexemes, not numbers, and must be written back as such.
   it('writes date bounds back as the dates they were, under their base', () => {
     const source = parseIDS(`<?xml version="1.0" encoding="UTF-8"?>

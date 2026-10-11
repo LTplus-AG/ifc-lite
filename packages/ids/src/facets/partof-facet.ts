@@ -31,6 +31,66 @@ const RELATION_NAMES: Record<PartOfRelation, string> = {
   'IfcRelVoidsElement IfcRelFillsElement': 'connected through an opening to',
 };
 
+/** Every part-of relation IDS 1.0 lets a `relation` attribute name. */
+const ALL_PARTOF_RELATIONS: readonly PartOfRelation[] = [
+  'IfcRelAggregates',
+  'IfcRelAssignsToGroup',
+  'IfcRelContainedInSpatialStructure',
+  'IfcRelNests',
+  'IfcRelVoidsElement IfcRelFillsElement',
+];
+
+/** The relation a failure names: `part of` when the facet leaves it open. */
+function relationKey(facet: IDSPartOfFacet): string {
+  return facet.anyRelation ? 'part of' : facet.relation;
+}
+
+function describeRelation(facet: IDSPartOfFacet): string {
+  if (facet.anyRelation) return 'part of';
+  return RELATION_NAMES[facet.relation] || facet.relation;
+}
+
+/** Ancestors reachable through one relation (transitive within it). */
+function collectAncestors(
+  expressId: number,
+  relation: PartOfRelation,
+  accessor: IFCDataAccessor
+): ParentInfo[] {
+  const ancestors = accessor.getAncestors ? accessor.getAncestors(expressId, relation) : [];
+  if (ancestors.length === 0) {
+    const direct = accessor.getParent(expressId, relation);
+    if (direct) ancestors.push(direct);
+  }
+  return ancestors;
+}
+
+/**
+ * A partOf facet without a relation considers every part-of relation,
+ * recursively (IDS 1.0 user manual, #7401), so a chain may mix them: a
+ * mullion aggregated into a curtain wall contained in a storey is part of
+ * that storey. Walk to a fixpoint over all relations, nearest first.
+ */
+function collectAnyRelationAncestors(
+  expressId: number,
+  accessor: IFCDataAccessor
+): ParentInfo[] {
+  const out: ParentInfo[] = [];
+  const seen = new Set<number>([expressId]);
+  const queue = [expressId];
+  while (queue.length > 0) {
+    const id = queue.shift()!;
+    for (const relation of ALL_PARTOF_RELATIONS) {
+      for (const parent of collectAncestors(id, relation, accessor)) {
+        if (seen.has(parent.expressId)) continue;
+        seen.add(parent.expressId);
+        out.push(parent);
+        queue.push(parent.expressId);
+      }
+    }
+  }
+  return out;
+}
+
 /**
  * Check if an entity matches a partOf facet
  */
@@ -44,16 +104,12 @@ export function checkPartOfFacet(
   // pass if ANY matches the requirement entity. Fall back to single-
   // step `getParent` when the accessor doesn't expose ancestor
   // traversal.
-  const ancestors: ParentInfo[] = accessor.getAncestors
-    ? accessor.getAncestors(expressId, facet.relation)
-    : [];
-  if (ancestors.length === 0) {
-    const direct = accessor.getParent(expressId, facet.relation);
-    if (direct) ancestors.push(direct);
-  }
+  const ancestors = facet.anyRelation
+    ? collectAnyRelationAncestors(expressId, accessor)
+    : collectAncestors(expressId, facet.relation, accessor);
 
   if (ancestors.length === 0) {
-    const relationName = RELATION_NAMES[facet.relation] || facet.relation;
+    const relationName = describeRelation(facet);
     const expectedEntity = facet.entity
       ? formatConstraint(facet.entity.name)
       : 'any entity';
@@ -64,10 +120,10 @@ export function checkPartOfFacet(
       expectedValue: `${relationName} ${expectedEntity}`,
       failure: {
         type: 'PARTOF_RELATION_MISSING',
-        field: facet.relation,
+        field: relationKey(facet),
         expected: `${relationName} ${expectedEntity}`,
         context: {
-          relation: facet.relation,
+          relation: relationKey(facet),
         },
       },
     };
@@ -99,7 +155,7 @@ function checkAncestorAgainstFacet(
 
   // If no entity constraint, just check if relationship exists
   if (!facet.entity) {
-    const relationName = RELATION_NAMES[facet.relation] || facet.relation;
+    const relationName = describeRelation(facet);
 
     return {
       passed: true,
@@ -110,7 +166,7 @@ function checkAncestorAgainstFacet(
 
   // Check parent entity type (case-insensitive for IFC entity names)
   if (!matchConstraint(facet.entity.name, parent.entityType, IFC_CASE_INSENSITIVE)) {
-    const relationName = RELATION_NAMES[facet.relation] || facet.relation;
+    const relationName = describeRelation(facet);
 
     return {
       passed: false,
@@ -122,7 +178,7 @@ function checkAncestorAgainstFacet(
         actual: parent.entityType,
         expected: formatConstraint(facet.entity.name),
         context: {
-          relation: facet.relation,
+          relation: relationKey(facet),
           parentId: String(parent.expressId),
         },
       },
@@ -152,7 +208,7 @@ function checkAncestorAgainstFacet(
           field: 'predefinedType',
           expected: formatConstraint(facet.entity.predefinedType),
           context: {
-            relation: facet.relation,
+            relation: relationKey(facet),
             parentType: parent.entityType,
           },
         },
@@ -170,7 +226,7 @@ function checkAncestorAgainstFacet(
           actual: outcome.actual,
           expected: formatConstraint(facet.entity.predefinedType),
           context: {
-            relation: facet.relation,
+            relation: relationKey(facet),
             parentType: parent.entityType,
           },
         },
@@ -178,7 +234,7 @@ function checkAncestorAgainstFacet(
     }
   }
 
-  const relationName = RELATION_NAMES[facet.relation] || facet.relation;
+  const relationName = describeRelation(facet);
   const parentDesc = parent.predefinedType
     ? `${parent.entityType}[${parent.predefinedType}]`
     : parent.entityType;

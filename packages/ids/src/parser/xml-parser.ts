@@ -441,19 +441,15 @@ function parsePartOfFacet(el: Element): IDSPartOfFacet {
   const entityEl = getChildElement(el, 'entity');
 
   const relation = normalizePartOfRelation(relationAttr);
-  // When the source attribute didn't map cleanly onto one of the known
-  // relations (or was missing), preserve the original string so the
-  // auditor can flag the discrepancy without us breaking the existing
-  // narrow `PartOfRelation` enum.
-  const recognised = isRecognisedPartOfRelation(relationAttr);
   const facet: IDSPartOfFacet = {
     type: 'partOf',
     relation,
     entity: entityEl ? parseEntityFacet(entityEl) : undefined,
   };
-  if (!recognised && relationAttrRaw) {
-    facet.rawRelation = relationAttrRaw;
-  }
+  // An unrecognised relation keeps its source string so the auditor can
+  // flag it; a missing one means any part-of relation (IDS 1.0, #7401).
+  if (!relationAttrRaw) facet.anyRelation = true;
+  else if (!isRecognisedPartOfRelation(relationAttr)) facet.rawRelation = relationAttrRaw;
   return facet;
 }
 

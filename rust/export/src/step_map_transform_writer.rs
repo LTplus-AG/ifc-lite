@@ -33,18 +33,31 @@ impl Writer {
         self.entity("IFCLOCALPLACEMENT", format!("$,#{frame}"))
     }
 
-    pub(super) fn mapped_representation(&mut self, source: &Record<'_>, _context: u32, scale: f64) -> Result<u32, String> {
-        let (point, frame) = match self.origin {
-            Some(origin) => origin,
+    /// The shared identity `IfcAxis2Placement3D` at the origin.
+    pub(super) fn identity_frame(&mut self) -> Result<u32, String> {
+        Ok(match self.origin {
+            Some((_, frame)) => frame,
             None => {
                 let point = self.entity("IFCCARTESIANPOINT", "(0.,0.,0.)".into())?;
                 let frame = self.entity("IFCAXIS2PLACEMENT3D", format!("#{point},$,$"))?;
                 self.origin = Some((point, frame));
-                (point, frame)
+                frame
             }
-        };
+        })
+    }
+
+    pub(super) fn mapped_representation(&mut self, source: &Record<'_>, _context: u32, scale: f64) -> Result<u32, String> {
+        let frame = self.identity_frame()?;
+        self.scaled_wrapper(source, &format!("#{frame}"), scale)
+    }
+
+    /// A `MappedRepresentation` with `source`'s context and identifier whose one
+    /// item maps `source` through a new map at `origin`, scaled uniformly.
+    pub(super) fn scaled_wrapper(&mut self, source: &Record<'_>, origin: &str, scale: f64) -> Result<u32, String> {
+        self.identity_frame()?;
+        let point = self.origin.map(|(point, _)| point).ok_or("identity origin is missing")?;
         let operator = self.entity("IFCCARTESIANTRANSFORMATIONOPERATOR3D", format!("$,$,#{point},{},$", real(scale)?))?;
-        let map = self.entity("IFCREPRESENTATIONMAP", format!("#{frame},#{}", source.id))?;
+        let map = self.entity("IFCREPRESENTATIONMAP", format!("{origin},#{}", source.id))?;
         let item = self.entity("IFCMAPPEDITEM", format!("#{map},#{operator}"))?;
         let context = attribute_of(source.line, 0).ok_or("invalid representation ContextOfItems")?;
         let identifier = attribute_of(source.line, 1).ok_or("invalid representation identifier")?;

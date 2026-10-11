@@ -128,7 +128,7 @@
     "@changesets/changelog-github": "^1.0.1",
     "@changesets/cli": "^3.0.3",
     "@changesets/parse": "1.0.0",
-    "@playwright/test": "^1.63.0",
+    "@playwright/test": "^1.64.0",
     "@posthog/cli": "0.18.9",
     "@types/node": "^26.6.4",
     "@vercel/functions": "3.9.11",

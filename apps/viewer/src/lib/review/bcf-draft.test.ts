@@ -5,6 +5,8 @@
 import '@/test/setup-dom.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readBCF, writeBCF } from '@ifc-lite/bcf';
+import { DraftArchiveError, draftBatchToProject, exportDraftArchive, importDraftArchive } from '../bcf-drafts/draft-archive';
 import { decodeDraftBatch } from '../bcf-drafts/draft-codec';
 import { describeWithFooter, parseDraftFooter } from '../bcf-drafts/draft-footer';
 import { buildCards } from './cards';
@@ -105,4 +107,64 @@ test('non-clash findings are kept as source findings with their run and membersh
   assert.deepEqual(decodeDraftBatch(JSON.parse(JSON.stringify(batch))), batch);
   const parsed = parseDraftFooter(describeWithFooter(batch!.topics[0], { batchId: batch!.id, full: { batchName: batch!.name, source: batch!.source } }));
   assert.deepEqual(parsed?.sourceFindings, kept);
+});
+
+// #7373 follow-up: a grouping receipt is a coordination record; its native status stays authoritative,
+// so it is kept as a `record`, never re-labelled historical by its saved run.
+test('a grouping receipt on a card is kept as a record source finding, not as historical evidence', async () => {
+  const receiptRun = run('["clash-group-application","a1"]', 'clash', { temporal: 'historical', capturedAt: '2026-02-01T00:00:00.000Z',
+    complete: false, incomplete: [{ code: 'partial-source' }] });
+  const receipt = finding('g1', 'clash', [wall('W2')], { run: receiptRun, lifecycle: 'record', nativeStatus: 'applied',
+    evidence: { kind: 'clash-group-application', applicationId: 'a1', groupId: 'g1' } });
+  const failed = finding('v1', 'validation', [wall('W2')], { nativeStatus: 'failed',
+    evidence: { kind: 'validation', specificationId: 's1', modelId: 'm1', expressId: 2 } });
+  const [card] = cardsOf(failed, receipt);
+  const { batch } = await draftBatchFromCards('Review', [card], [], { now: fixedNow });
+  const kept = batch!.topics[0].sourceFindings;
+  assert.deepEqual(kept?.map(item => [item.id, item.membership]), [[failed.id, 'included'], [receipt.id, 'record']]);
+  assert.equal(kept?.[1].nativeStatus, 'applied');
+  assert.equal(batch!.source.findingCount, 1, 'a record is described, never counted as a current finding');
+  assert.deepEqual(decodeDraftBatch(JSON.parse(JSON.stringify(batch))), batch);
+});
+
+async function reviewArchive() {
+  const first = cardsOf(finding('v1', 'validation', [wall('W2')], { nativeStatus: 'failed',
+    evidence: { kind: 'validation', specificationId: 's1', modelId: 'm1', expressId: 2 } }))[0];
+  const second = cardsOf(finding('v2', 'validation', [pipe('P2')], { nativeStatus: 'failed',
+    evidence: { kind: 'validation', specificationId: 's1', modelId: 'm2', expressId: 2 } }))[0];
+  const { batch } = await draftBatchFromCards('Review', [first, second], [], { now: fixedNow });
+  assert.ok(batch && batch.topics.length === 2);
+  assert.ok(batch.topics.every(topic => topic.sourceFindings?.length === 1));
+  return batch;
+}
+
+// A hand-edited origin is not covered by a digest; with intact source lines the topic is reported damaged
+// and imported unmapped (the documented degrade), instead of aborting the whole import with a wrong reason.
+test('an archive whose review origin line no longer reads is imported with that topic unmapped and reported damaged', async () => {
+  const batch = await reviewArchive();
+  for (const origin of ['%7Bbroken', encodeURIComponent(JSON.stringify({ kind: 'selection' }))]) {
+    const project = await readBCF(await (await exportDraftArchive(batch, 'a@example.test')).arrayBuffer());
+    const edited = project.topics.get(batch.topics[0].guid)!;
+    const before = edited.description!;
+    edited.description = before.replace(/\norigin: [^\n]+/, `\norigin: ${origin}`);
+    assert.notEqual(edited.description, before);
+    assert.match(edited.description, /\ns: /, 'its source lines are intact');
+    const imported = await importDraftArchive(await (await writeBCF(project)).arrayBuffer());
+    assert.equal(imported.damaged, 1);
+    const topics = imported.batches.flatMap(entry => entry.topics);
+    const unmapped = topics.find(topic => topic.guid === batch.topics[0].guid);
+    assert.equal(unmapped?.origin.kind, 'archive');
+    assert.equal(unmapped?.sourceFindings, undefined, 'source findings are never re-homed onto an archive topic');
+    assert.deepEqual(topics.find(topic => topic.guid === batch.topics[1].guid)?.sourceFindings, batch.topics[1].sourceFindings,
+      'the untouched topic keeps its provenance');
+  }
+});
+
+test('an archive that maps one reviewed finding to two topics is refused with that exact reason', async () => {
+  const batch = await reviewArchive();
+  const [owner, other] = batch.topics;
+  const duplicated = { ...batch, topics: [owner, { ...other, sourceFindings: [...other.sourceFindings!, owner.sourceFindings![0]] }] };
+  const bytes = await (await writeBCF(draftBatchToProject(duplicated, 'a@example.test'))).arrayBuffer();
+  await assert.rejects(importDraftArchive(bytes), (error: unknown) => error instanceof DraftArchiveError && error.reason === 'source-finding'
+    && /reviewed finding/.test(error.message) && !/clash/.test(error.message));
 });

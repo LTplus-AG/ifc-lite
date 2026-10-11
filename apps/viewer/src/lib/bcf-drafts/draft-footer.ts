@@ -134,7 +134,9 @@ export function parseDraftFooter(description: string | undefined): ParsedFooter 
   if (sourceLines.length > 0 || fields.has('sources')) {
     const declared = /^(\d+) ([0-9a-f]{16})$/.exec(fields.get('sources') ?? '');
     const findings = sourceLines.map(line => decodeSourceFinding(json(line)));
-    if (!declared || !parsed.members || findings.some(finding => !finding)) return null;
+    // Source findings belong to a review card: an origin line that no longer reads as one leaves them without
+    // an owner, so the mapping is damaged (imported unmapped and reported), never re-homed onto an archive topic.
+    if (!declared || !parsed.members || parsed.origin?.kind !== 'review' || findings.some(finding => !finding)) return null;
     const valid = findings.flatMap(finding => finding ? [finding] : []);
     if (valid.length !== Number(declared[1]) || sourceFindingsDigest(valid) !== declared[2]) return null;
     parsed.sourceFindings = valid;

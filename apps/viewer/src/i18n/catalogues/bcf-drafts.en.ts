@@ -81,6 +81,10 @@ export const bcfDraftsEn = {
   'bcfDrafts.archive.imported': { one: 'Imported {count} draft batch', other: 'Imported {count} draft batches' },
   'bcfDrafts.archive.unmapped': { one: '{count} topic had no readable clash mapping and was imported without findings.', other: '{count} topics had no readable clash mapping and were imported without findings.' },
   'bcfDrafts.archive.failed': 'The archive could not be imported.',
+  'bcfDrafts.archive.refused.topic': 'Nothing was imported: the archive contains the same topic twice.',
+  'bcfDrafts.archive.refused.member': 'Nothing was imported: the archive links one clash to more than one topic.',
+  'bcfDrafts.archive.refused.sourceFinding': 'Nothing was imported: the archive links one reviewed finding to more than one topic.',
+  'bcfDrafts.archive.refused.unreadable': 'Nothing was imported: the archive topics could not be read as drafts.',
   'bcfDrafts.archive.exportFailed': 'The archive could not be exported.',
 
   'bcfDrafts.publish.region': 'Publish to the BCF server',

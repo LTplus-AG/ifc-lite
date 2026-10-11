@@ -114,6 +114,7 @@ export const reviewWorkspaceEn = {
   'reviewWorkspace.actions.reportName': 'Coordination review {date}',
   'reviewWorkspace.actions.draftSaved': { one: 'Drafted {count} BCF topic. Review it in the BCF panel before anything is published.', other: 'Drafted {count} BCF topics. Review them in the BCF panel before anything is published.' },
   'reviewWorkspace.actions.draftUnsaved': 'Drafted, but not saved. No saved draft is available; try again.',
+  'reviewWorkspace.actions.draftInvalid': { one: 'The topic was not saved: a selected card holds a finding or text that is too large for a BCF draft. Draft fewer cards, or that card on its own.', other: 'The {count} topics were not saved: a selected card holds a finding or text that is too large for a BCF draft. Draft fewer cards, or that card on its own.' },
   'reviewWorkspace.actions.draftNone': 'No topic was drafted.',
   'reviewWorkspace.actions.draftFailed': 'Could not draft BCF topics.',
   'reviewWorkspace.actions.excludedHasTopic': { one: '{count} card already has a BCF topic and was left out.', other: '{count} cards already have a BCF topic and were left out.' },

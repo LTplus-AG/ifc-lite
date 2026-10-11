@@ -15,7 +15,9 @@
 
 /** The analyses a finding can come from. */
 export type FindingSourceKind = 'clash' | 'validation' | 'comparison' | 'bcf' | 'linked';
-export const FINDING_SOURCE_KINDS: readonly FindingSourceKind[] = ['clash', 'validation', 'comparison', 'bcf', 'linked'];
+/** Keyed by every source kind, so the runtime list cannot drift from `FindingSourceKind`. */
+const FINDING_SOURCE_KIND_SET = { clash: true, validation: true, comparison: true, bcf: true, linked: true } as const satisfies Record<FindingSourceKind, true>;
+export const FINDING_SOURCE_KINDS = Object.keys(FINDING_SOURCE_KIND_SET) as readonly FindingSourceKind[];
 
 /**
  * One native run (or record set). `current` is the result held live in the
@@ -45,8 +47,10 @@ export interface FindingRun {
 
 export type RunGapCode = 'truncated' | 'stale' | 'check-error' | 'sets-truncated' | 'partial-source' | 'geometry-unavailable'
   | 'placement-only' | 'excluded-classes';
-export const RUN_GAP_CODES: readonly RunGapCode[] = ['truncated', 'stale', 'check-error', 'sets-truncated', 'partial-source',
-  'geometry-unavailable', 'placement-only', 'excluded-classes'];
+/** Keyed by every gap code, so adding a code to `RunGapCode` without listing it here fails the typecheck. */
+const RUN_GAP_CODE_SET = { truncated: true, stale: true, 'check-error': true, 'sets-truncated': true, 'partial-source': true,
+  'geometry-unavailable': true, 'placement-only': true, 'excluded-classes': true } as const satisfies Record<RunGapCode, true>;
+export const RUN_GAP_CODES = Object.keys(RUN_GAP_CODE_SET) as readonly RunGapCode[];
 export interface RunGap { code: RunGapCode; detail?: string }
 
 /** An element a finding refers to, as the native source names it. */

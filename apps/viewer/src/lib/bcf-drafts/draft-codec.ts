@@ -48,24 +48,32 @@ export function decodeFinding(value: unknown): DraftFinding | null {
     severity: value.severity as ClashSeverity, distance: value.distance, a, b, ...(bounds ? { bounds } : {}) };
 }
 
+type EvidenceOf<K extends FindingEvidence['kind']> = Extract<FindingEvidence, { kind: K }>;
+/** How one evidence field is checked: text, text that may be empty, or a safe integer (only for numeric fields). */
+type FieldCheck<V> = V extends number ? 'integer' : 'text' | 'text-or-empty';
 /**
- * Each native evidence kind with its exact fields, in the native order: text,
- * text that may be empty (`?`) or a safe integer (`#`). Anything else is refused, never guessed.
+ * Exactly the fields of every native evidence kind, keyed by the native field
+ * names: a new kind, a renamed, added or removed field, or a field that changes
+ * between text and number fails the typecheck instead of refusing real rows at runtime.
  */
-const EVIDENCE_FIELDS: Record<FindingEvidence['kind'], readonly string[]> = {
-  clash: ['clashId', 'occurrenceKey?', 'reviewKey'], 'clash-baseline': ['reviewKey'], 'clash-group-application': ['applicationId', 'groupId'],
-  'saved-validation': ['reportId', 'rowId'], validation: ['specificationId', 'modelId', 'expressId#'],
-  'run-reconciliation': ['baseRunId', 'headRunId', 'identity'], comparison: ['key'], 'saved-comparison': ['comparisonId', 'key'],
-  bcf: ['topicGuid'], linked: ['resourceId'],
-};
+type EvidenceFields = { [K in FindingEvidence['kind']]: { [F in Exclude<keyof EvidenceOf<K>, 'kind'>]-?: FieldCheck<EvidenceOf<K>[F]> } };
 
+const EVIDENCE_FIELDS = {
+  clash: { clashId: 'text', occurrenceKey: 'text-or-empty', reviewKey: 'text' }, 'clash-baseline': { reviewKey: 'text' },
+  'clash-group-application': { applicationId: 'text', groupId: 'text' }, 'saved-validation': { reportId: 'text', rowId: 'text' },
+  validation: { specificationId: 'text', modelId: 'text', expressId: 'integer' },
+  'run-reconciliation': { baseRunId: 'text', headRunId: 'text', identity: 'text' }, comparison: { key: 'text' },
+  'saved-comparison': { comparisonId: 'text', key: 'text' }, bcf: { topicGuid: 'text' }, linked: { resourceId: 'text' },
+} as const satisfies EvidenceFields;
+
+/** A native evidence row with exactly its kind's fields; anything else is refused, never guessed. */
 function evidence(value: unknown): FindingEvidence | null {
   if (!isRecord(value) || typeof value.kind !== 'string' || !Object.hasOwn(EVIDENCE_FIELDS, value.kind)) return null;
   const kind = value.kind as FindingEvidence['kind'];
   const out: Record<string, unknown> = { kind };
-  for (const spec of EVIDENCE_FIELDS[kind]) {
-    const name = spec.replace(/[?#]$/, ''), field = value[name];
-    if (spec.endsWith('#') ? !Number.isSafeInteger(field) : !isText(field, 10_000, spec.endsWith('?'))) return null;
+  for (const [name, check] of Object.entries(EVIDENCE_FIELDS[kind]) as [string, FieldCheck<string | number>][]) {
+    const field = value[name];
+    if (check === 'integer' ? !Number.isSafeInteger(field) : !isText(field, 10_000, check === 'text-or-empty')) return null;
     out[name] = field;
   }
   return out as FindingEvidence;
@@ -215,6 +223,31 @@ function decodeSource(value: unknown): DraftSource | null {
     capturedAt: value.capturedAt, ...(offset ? { worldOffset: offset } : {}) };
 }
 
+/** Why topics cannot share one batch: a repeated topic GUID, or a clash member or source finding claimed twice. */
+export type DraftOwnershipConflict = 'topic' | 'member' | 'source-finding';
+
+/**
+ * The first ownership conflict among decoded topics, or null. Every clash
+ * member and every reviewed source finding (#7373) belongs to exactly one topic.
+ */
+export function draftOwnershipConflict(topics: readonly DraftTopic[]): DraftOwnershipConflict | null {
+  const guids = new Set<string>(), claims = new Set<string>(), sourceClaims = new Set<string>();
+  for (const topic of topics) {
+    if (guids.has(topic.guid)) return 'topic';
+    guids.add(topic.guid);
+    for (const member of topic.members) {
+      const identity = findingIdentity(member);
+      if (claims.has(identity)) return 'member';
+      claims.add(identity);
+    }
+    for (const finding of topic.sourceFindings ?? []) {
+      if (sourceClaims.has(finding.id)) return 'source-finding';
+      sourceClaims.add(finding.id);
+    }
+  }
+  return null;
+}
+
 /**
  * A batch is a partition: no finding is claimed by two topics and topic GUIDs
  * are unique. Anything else is refused so an edit can never silently
@@ -225,23 +258,8 @@ export function decodeDraftBatch(value: unknown): DraftBatch | null {
     || !isText(value.createdAt, 40) || !isText(value.modifiedAt, 40) || !Array.isArray(value.topics)
     || value.topics.length > DRAFT_LIMITS.topics) return null;
   const source = decodeSource(value.source);
-  const topics = value.topics.map(decodeTopic);
-  if (!source || topics.some(topic => !topic)) return null;
-  const guids = new Set<string>(), claims = new Set<string>(), sourceClaims = new Set<string>();
-  for (const topic of topics) {
-    if (!topic || guids.has(topic.guid)) return null;
-    guids.add(topic.guid);
-    for (const member of topic.members) {
-      const identity = findingIdentity(member);
-      if (claims.has(identity)) return null;
-      claims.add(identity);
-    }
-    // A reviewed source finding belongs to exactly one topic, like a clash member.
-    for (const finding of topic.sourceFindings ?? []) {
-      if (sourceClaims.has(finding.id)) return null;
-      sourceClaims.add(finding.id);
-    }
-  }
-  return { version: 1, id: value.id, name: value.name, createdAt: value.createdAt, modifiedAt: value.modifiedAt, source,
-    topics: topics.flatMap(topic => topic ? [topic] : []) };
+  const decoded = value.topics.map(decodeTopic);
+  const topics = decoded.flatMap(topic => topic ? [topic] : []);
+  if (!source || topics.length !== decoded.length || draftOwnershipConflict(topics)) return null;
+  return { version: 1, id: value.id, name: value.name, createdAt: value.createdAt, modifiedAt: value.modifiedAt, source, topics };
 }

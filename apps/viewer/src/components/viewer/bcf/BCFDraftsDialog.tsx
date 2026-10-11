@@ -17,7 +17,7 @@ import { useTranslation } from '@/i18n';
 import { useViewerStore } from '@/store';
 import { sanitizeFilename } from '@/lib/export/download';
 import { publishBcfArchive } from '@/lib/bcf-drafts/archive-activity';
-import { exportDraftArchive, importDraftArchive } from '@/lib/bcf-drafts/draft-archive';
+import { DraftArchiveError, exportDraftArchive, importDraftArchive } from '@/lib/bcf-drafts/draft-archive';
 import { mergeDraftTopics, type DraftEditResult } from '@/lib/bcf-drafts/draft-edit';
 import { adoptImportedBatches, bcfDraftLibrary, saveDraftBatch, useBcfDraftLibrary } from '@/lib/bcf-drafts/draft-library';
 import type { DraftBatch } from '@/lib/bcf-drafts/draft-types';
@@ -31,6 +31,8 @@ import { BCFPublicationPanel, useBcfConnection } from './BCFPublicationPanel';
 
 const REFUSALS = { 'unknown-topic': 'bcfDrafts.edit.unknownTopic', 'empty-split': 'bcfDrafts.edit.emptySplit',
   'merge-needs-two': 'bcfDrafts.edit.mergeNeedsTwo', invalid: 'bcfDrafts.edit.invalid' } as const;
+const ARCHIVE_REFUSALS = { topic: 'bcfDrafts.archive.refused.topic', member: 'bcfDrafts.archive.refused.member',
+  'source-finding': 'bcfDrafts.archive.refused.sourceFinding', unreadable: 'bcfDrafts.archive.refused.unreadable' } as const;
 
 /** Outbox entries elsewhere (other batches, imports, Flow) that wait for a coordinator decision. */
 function OutboxAttention({ excludeId }: { excludeId: string | null }) {
@@ -95,7 +97,8 @@ export function BCFDraftsDialog({ open, onOpenChange }: { open: boolean; onOpenC
       if (imported.unmapped || imported.damaged) toast.info(t('bcfDrafts.archive.unmapped', { count: imported.unmapped + imported.damaged }));
     } catch (error) {
       console.error('[BCF drafts] Archive import failed', error);
-      toast.error(error instanceof Error ? error.message : t('bcfDrafts.archive.failed'));
+      toast.error(error instanceof DraftArchiveError ? t(ARCHIVE_REFUSALS[error.reason])
+        : error instanceof Error ? error.message : t('bcfDrafts.archive.failed'));
     }
   };
   const publicationOf = (guid: string) => {

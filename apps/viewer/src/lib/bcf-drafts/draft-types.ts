@@ -57,7 +57,10 @@ export type DraftOrigin =
  * (grouping receipt) whose native status stays authoritative.
  */
 export type DraftSourceMembership = 'included' | 'historical' | 'not-in-live-run' | 'record';
-export const DRAFT_SOURCE_MEMBERSHIPS: readonly DraftSourceMembership[] = ['included', 'historical', 'not-in-live-run', 'record'];
+const DRAFT_SOURCE_MEMBERSHIP_SET = { included: true, historical: true, 'not-in-live-run': true, record: true } as const satisfies
+  Record<DraftSourceMembership, true>;
+/** Every membership; keyed above so the runtime list cannot drift from `DraftSourceMembership`. */
+export const DRAFT_SOURCE_MEMBERSHIPS = Object.keys(DRAFT_SOURCE_MEMBERSHIP_SET) as readonly DraftSourceMembership[];
 
 /** The native run that owned a source finding, exactly as that run reported itself. */
 export interface DraftSourceRun {

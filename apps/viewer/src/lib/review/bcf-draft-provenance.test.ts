@@ -26,7 +26,8 @@ import { mergeDraftTopics, splitDraftTopic } from '../bcf-drafts/draft-edit';
 import { findingIdentity, type DraftBatch, type DraftFinding, type DraftSourceFinding, type DraftTopic } from '../bcf-drafts/draft-types';
 import { captureReviewSnapshot } from './collect';
 import { draftTopicsFromCards } from './actions';
-import type { CoordinationCard } from './cards';
+import { buildCards, type CoordinationCard } from './cards';
+import { element, fakeModel, finding } from './test-support';
 import type { ReviewFinding } from './types';
 
 const initial = useViewerStore.getState();
@@ -194,4 +195,20 @@ test('#7373 merge and split keep every source finding with exactly one topic', a
   assert.deepEqual(ids(kept), ids(mergedTopic), 'source findings stay with the original topic');
   assert.equal(moved?.sourceFindings, undefined);
   assert.deepEqual(moved?.members, clashTopics[0].members);
+});
+
+test('#7373 a batch the strict codec refuses is reported as invalid, never as a retryable unsaved draft', async () => {
+  const models = [fakeModel('m1', 'arch.ifc', ['W1'])];
+  // A native status beyond the draft limit: the whole batch is refused rather than saved with a truncated finding.
+  const oversized = finding('v1', 'validation', [element('W1', 'arch.ifc', 'm1')], { nativeStatus: 'x'.repeat(201),
+    evidence: { kind: 'validation', specificationId: 's1', modelId: 'm1', expressId: 1 } });
+  const result = await draftTopicsFromCards('Round', buildCards([oversized], models).cards);
+  assert.ok(result.batch);
+  assert.equal(result.saved, false);
+  assert.equal(result.invalid, true, 'the caller can name the reason instead of suggesting a retry');
+  const ok = finding('v2', 'validation', [element('W1', 'arch.ifc', 'm1')], { nativeStatus: 'failed',
+    evidence: { kind: 'validation', specificationId: 's1', modelId: 'm1', expressId: 1 } });
+  const saved = await draftTopicsFromCards('Round', buildCards([ok], models).cards);
+  assert.equal(saved.saved, true);
+  assert.equal(saved.invalid, undefined);
 });

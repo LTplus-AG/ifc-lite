@@ -32,7 +32,8 @@ export function useCardActions(): CardActions {
       const hasTopic = result.exclusions.filter(item => item.reason === 'has-topic').length;
       const notCurrent = result.exclusions.filter(item => item.reason === 'not-current').length;
       const next = [
-        result.batch ? t(result.saved ? 'reviewWorkspace.actions.draftSaved' : 'reviewWorkspace.actions.draftUnsaved', { count: result.batch.topics.length })
+        result.batch ? t(result.saved ? 'reviewWorkspace.actions.draftSaved'
+          : result.invalid ? 'reviewWorkspace.actions.draftInvalid' : 'reviewWorkspace.actions.draftUnsaved', { count: result.batch.topics.length })
           : t('reviewWorkspace.actions.draftNone'),
         ...(hasTopic ? [t('reviewWorkspace.actions.excludedHasTopic', { count: hasTopic })] : []),
         ...(notCurrent ? [t('reviewWorkspace.actions.excludedNotCurrent', { count: notCurrent })] : []),
@@ -42,6 +43,7 @@ export function useCardActions(): CardActions {
         useBcfDraftLibrary.setState({ dialogOpen: true });
         useViewerStore.getState().setBcfPanelVisible(true);
       } });
+      else if (result.invalid) toast.error(next[0]);
     } catch (error) {
       console.error('[Review] Could not draft BCF topics', error);
       setNotes([t('reviewWorkspace.actions.draftFailed')]);

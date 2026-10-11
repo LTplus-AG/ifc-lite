@@ -10,7 +10,7 @@
  */
 
 import { createBCFComment, createBCFProject, readBCF, writeBCF, type BCFProject, type BCFTopic } from '@ifc-lite/bcf';
-import { decodeDraftBatch, decodeViewpoint } from './draft-codec.js';
+import { decodeDraftBatch, decodeViewpoint, draftOwnershipConflict, type DraftOwnershipConflict } from './draft-codec.js';
 import { DRAFT_FOOTER_MARKER, describeWithFooter, parseDraftFooter } from './draft-footer.js';
 import type { DraftBatch, DraftSource, DraftTopic } from './draft-types.js';
 
@@ -40,8 +40,26 @@ export interface DraftArchiveImport {
   batches: DraftBatch[];
   /** Plain BCF topics without a mapping footer; imported unmapped (no findings). */
   unmapped: number;
-  /** Footers present but inconsistent (edited member lines); imported unmapped. */
+  /** Footers present but inconsistent (edited member or source lines, or a reviewed topic's unreadable origin); imported unmapped. */
   damaged: number;
+}
+
+/** Why a whole archive was refused; the dialog shows a translated message per reason. */
+export type DraftArchiveFailure = DraftOwnershipConflict | 'unreadable';
+
+const FAILURE_MESSAGES: Record<DraftArchiveFailure, string> = {
+  topic: 'The archive holds one topic GUID twice; nothing was imported',
+  member: 'The archive maps one clash finding to several topics; nothing was imported',
+  'source-finding': 'The archive maps one reviewed finding to several topics; nothing was imported',
+  unreadable: 'The archive topics could not be read as drafts; nothing was imported',
+};
+
+/** An archive refused as a whole, with the exact reason (never a guessed one). */
+export class DraftArchiveError extends Error {
+  constructor(readonly reason: DraftArchiveFailure) {
+    super(FAILURE_MESSAGES[reason]);
+    this.name = 'DraftArchiveError';
+  }
 }
 
 /** Provenance of topics that arrived without their clash run. */
@@ -63,8 +81,9 @@ function topicFields(topic: BCFTopic): Pick<DraftTopic, 'title' | 'topicType' | 
 /**
  * Read an archive back into batches. Mapped topics regroup by their footer
  * batch; plain topics become one unmapped "archive" batch. Each batch is
- * revalidated, so an archive that would make two topics claim one finding
- * is refused rather than imported half-way.
+ * revalidated, so an archive that would make two topics claim one clash
+ * finding or one reviewed source finding is refused rather than imported
+ * half-way, with a `DraftArchiveError` naming the conflict.
  */
 export async function importDraftArchive(data: ArrayBuffer, now = new Date()): Promise<DraftArchiveImport> {
   const project = await readBCF(data);
@@ -95,13 +114,13 @@ export async function importDraftArchive(data: ArrayBuffer, now = new Date()): P
   const batches: DraftBatch[] = [];
   for (const [id, entry] of mapped) {
     const batch = decodeDraftBatch({ version: 1, id, name: entry.name, createdAt: at, modifiedAt: at, source: entry.source, topics: entry.topics });
-    if (!batch) throw new Error('The archive maps one clash finding to several topics; nothing was imported');
+    if (!batch) throw new DraftArchiveError(draftOwnershipConflict(entry.topics) ?? 'unreadable');
     batches.push(batch);
   }
   if (plain.length) {
     const batch = decodeDraftBatch({ version: 1, id: crypto.randomUUID(), name: project.name || 'Imported BCF topics', createdAt: at,
       modifiedAt: at, source: archiveSource(at), topics: plain });
-    if (!batch) throw new Error('The archive topics could not be read as drafts');
+    if (!batch) throw new DraftArchiveError(draftOwnershipConflict(plain) ?? 'unreadable');
     batches.push(batch);
   }
   return { batches, unmapped: plain.length - damaged, damaged };

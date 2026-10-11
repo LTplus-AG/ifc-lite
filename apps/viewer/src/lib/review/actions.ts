@@ -16,7 +16,11 @@ import { draftBatchFromCards, type CardDraftResult } from './bcf-draft';
 import { reviewDocument } from './report';
 import { currentReviewWorkspace, useReviewWorkspaces } from './workspace';
 
-export interface SavedCardDrafts extends CardDraftResult { saved: boolean }
+export interface SavedCardDrafts extends CardDraftResult {
+  saved: boolean;
+  /** The durable draft codec refused the batch (a value beyond a draft limit): retrying cannot save it. */
+  invalid?: boolean;
+}
 
 /** One topic per eligible card, saved as a draft batch the BCF drafts dialog then reviews. */
 export async function draftTopicsFromCards(name: string, cards: readonly CoordinationCard[]): Promise<SavedCardDrafts> {
@@ -26,7 +30,8 @@ export async function draftTopicsFromCards(name: string, cards: readonly Coordin
   if (!result.batch) return { ...result, saved: false };
   const saved = await saveDraftBatch(result.batch);
   if (saved) useBcfDraftLibrary.setState({ activeId: result.batch.id });
-  return { ...result, saved };
+  const invalid = !saved && useBcfDraftLibrary.getState().status.items[result.batch.id] === 'invalid';
+  return { ...result, saved, ...(invalid ? { invalid } : {}) };
 }
 
 /** A new native document of the selected cards; never overwrites an existing document. */

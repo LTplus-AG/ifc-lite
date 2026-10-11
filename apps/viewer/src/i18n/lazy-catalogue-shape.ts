@@ -231,6 +231,7 @@ const reviewMessageShape = {
   "actions.reportName": ["date"],
   "actions.draftSaved": ["count"],
   "actions.draftUnsaved": [],
+  "actions.draftInvalid": ["count"],
   "actions.draftNone": [],
   "actions.draftFailed": [],
   "actions.excludedHasTopic": ["count"],

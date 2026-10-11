@@ -33,8 +33,20 @@ const PARTOF_REL_MAP: Record<PartOfRelation, readonly RelationshipType[]> = {
 };
 
 /**
+ * Every edge type a partOf relation maps to. A partOf facet without a
+ * relation follows all of them at each step, so a chain may mix
+ * relations: a window fills an opening that voids a wall contained in a
+ * storey, and is partOf that storey (IDS 1.0 user manual, partof-facet.md:
+ * with no relation "all 6 are to be considered (recursively)", #7401).
+ */
+const ANY_PARTOF_REL: readonly RelationshipType[] = [
+  ...new Set(Object.values(PARTOF_REL_MAP).flat()),
+];
+
+/**
  * BFS walk of the partOf ancestor graph for `expressId`, following the
- * edge type(s) `relationType` maps to. IDS partOf is transitive, so any
+ * edge type(s) `relationType` maps to, or every partOf edge type when
+ * `relationType` is undefined. IDS partOf is transitive, so any
  * reachable ancestor counts; the merged voids/fills relation walks two
  * edge types per node, so the queue follows each mapped type in turn.
  *
@@ -45,14 +57,14 @@ const PARTOF_REL_MAP: Record<PartOfRelation, readonly RelationshipType[]> = {
 export function resolvePartOfAncestors(
   store: IfcDataStore,
   expressId: number,
-  relationType: PartOfRelation,
+  relationType: PartOfRelation | undefined,
   getEntityType: (expressId: number) => string | undefined,
   getPredefinedTypeRaw: (expressId: number) => string | undefined,
   getObjectType: (expressId: number) => string | undefined
 ): ParentInfo[] {
   const relationships = store.relationships;
   if (!relationships?.getRelated) return [];
-  const relTypes = PARTOF_REL_MAP[relationType];
+  const relTypes = relationType === undefined ? ANY_PARTOF_REL : PARTOF_REL_MAP[relationType];
   if (!relTypes || relTypes.length === 0) return [];
 
   const out: ParentInfo[] = [];

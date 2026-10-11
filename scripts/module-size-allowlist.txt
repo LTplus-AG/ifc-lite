@@ -223,8 +223,8 @@
    904 packages/ids/src/audit/ifc-schema/index.ts
    566 packages/ids/src/audit/structural/index.ts
    445 packages/ids/src/facets/property-facet.ts
-   597 packages/ids/src/parser/xml-parser.ts
-   628 packages/ids/src/translation/service.ts
+   596 packages/ids/src/parser/xml-parser.ts
+   624 packages/ids/src/translation/service.ts
    636 packages/ids/src/types.ts
    772 packages/ids/src/validation/validator.ts
    468 packages/ifcx/src/federated-composition.ts

@@ -337,6 +337,34 @@ describe('parseIDS — valid documents', () => {
     }
   });
 
+  // #7401: no relation means every partOf relation (IDS 1.0 user manual, partof-facet.md), not containment.
+  it.each([
+    ['without a relation attribute', '<partOf>'],
+    ['with an empty relation attribute', '<partOf relation="">'],
+  ])('leaves the partOf relation unset %s', (_, open) => {
+    const xml = `<ids xmlns="http://standards.buildingsmart.org/IDS">
+  <info><title>T</title></info>
+  <specifications>
+    <specification name="Test" ifcVersion="IFC4">
+      <applicability>
+        <entity><name><simpleValue>IFCMEMBER</simpleValue></name></entity>
+      </applicability>
+      <requirements>
+        ${open}
+          <entity><name><simpleValue>IFCCURTAINWALL</simpleValue></name></entity>
+        </partOf>
+      </requirements>
+    </specification>
+  </specifications>
+</ids>`;
+
+    const facet = parseIDS(xml).specifications[0].requirements[0].facet;
+    expect(facet).toEqual({
+      type: 'partOf',
+      entity: { type: 'entity', name: { type: 'simpleValue', value: 'IFCCURTAINWALL' } },
+    });
+  });
+
   it('parses XSD restriction with pattern', () => {
     const xml = `<ids xmlns="http://standards.buildingsmart.org/IDS"
      xmlns:xs="http://www.w3.org/2001/XMLSchema">

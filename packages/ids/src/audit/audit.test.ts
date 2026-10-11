@@ -509,6 +509,37 @@ describe('auditIDSDocument — IFC schema cross-checks', () => {
     expect(codes(r.issues)).not.toContain('E_IFC_PARTOF_RELATION');
     expect(codes(r.issues)).not.toContain('E_IFC_PARTOF_ENTITY');
   });
+
+  // #7401: with no relation, every partOf relation counts, so the related
+  // entity needs to fit only one of them. The user manual's own example: a
+  // mullion is partOf a curtain wall, which containment alone would refuse.
+  it('accepts a partOf without a relation whose entity fits any relation (issue #7401)', async () => {
+    const xml = wrap(`<specification name="Mullions" ifcVersion="IFC4">
+      <applicability>
+        <entity><name><simpleValue>IFCMEMBER</simpleValue></name></entity>
+      </applicability>
+      <requirements>
+        <partOf><entity><name><simpleValue>IFCCURTAINWALL</simpleValue></name></entity></partOf>
+      </requirements>
+    </specification>`);
+    const r = await auditIDSDocument(xml);
+    expect(codes(r.issues)).not.toContain('E_IFC_PARTOF_RELATION');
+    expect(codes(r.issues)).not.toContain('E_IFC_PARTOF_ENTITY');
+  });
+
+  it('still flags a partOf without a relation whose entity no relation allows (issue #7401)', async () => {
+    const xml = wrap(`<specification name="Members" ifcVersion="IFC4">
+      <applicability>
+        <entity><name><simpleValue>IFCMEMBER</simpleValue></name></entity>
+      </applicability>
+      <requirements>
+        <partOf><entity><name><simpleValue>IFCMATERIAL</simpleValue></name></entity></partOf>
+      </requirements>
+    </specification>`);
+    const r = await auditIDSDocument(xml);
+    const issue = r.issues.find((i) => i.code === 'E_IFC_PARTOF_ENTITY');
+    expect(issue?.message).toContain('any partOf relation');
+  });
 });
 
 describe('auditIDSDocument — coherence checks', () => {

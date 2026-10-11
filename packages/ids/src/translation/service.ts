@@ -104,8 +104,6 @@ class IDSTranslationServiceImpl implements TranslationService {
     facet: IDSFacet,
     context: 'applicability' | 'requirement'
   ): string {
-    const t = this.translations;
-
     switch (facet.type) {
       case 'entity':
         return this.describeEntityFacet(facet, context);
@@ -337,7 +335,7 @@ class IDSTranslationServiceImpl implements TranslationService {
     context: 'applicability' | 'requirement'
   ): string {
     const t = this.translations;
-    const relation = this.getRelationDescription(facet.relation);
+    const relation = this.describeRelation(facet.relation);
 
     if (context === 'applicability') {
       if (facet.entity) {
@@ -520,20 +518,13 @@ class IDSTranslationServiceImpl implements TranslationService {
         });
 
       // PartOf failures
-      case 'PARTOF_RELATION_MISSING':
-        if (context?.entity) {
-          return this.interpolate(t.partOfMissing, {
-            relation: this.getRelationDescription(
-              field as PartOfRelation || 'IfcRelContainedInSpatialStructure'
-            ),
-            entity: context.entity,
-          });
-        }
-        return this.interpolate(t.partOfMissingSimple, {
-          relation: this.getRelationDescription(
-            field as PartOfRelation || 'IfcRelContainedInSpatialStructure'
-          ),
-        });
+      case 'PARTOF_RELATION_MISSING': {
+        // No field: the facet names no relation, so any relation counts (#7401).
+        const relation = this.describeRelation((field || undefined) as PartOfRelation | undefined);
+        return context?.entity
+          ? this.interpolate(t.partOfMissing, { relation, entity: context.entity })
+          : this.interpolate(t.partOfMissingSimple, { relation });
+      }
 
       case 'PARTOF_ENTITY_MISMATCH':
         return this.interpolate(t.partOfEntityMismatch, {
@@ -622,6 +613,11 @@ class IDSTranslationServiceImpl implements TranslationService {
       this.translations.relations[relation] ||
       relation.replace('IfcRel', '').toLowerCase()
     );
+  }
+
+  /** A partOf facet's relation in words; `undefined` (no relation) is any partOf relation (#7401). */
+  private describeRelation(relation: PartOfRelation | undefined): string {
+    return relation === undefined ? this.translations.anyRelation : this.getRelationDescription(relation);
   }
 }
 

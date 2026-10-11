@@ -281,7 +281,7 @@ export function createDataAccessor(
 
     getParent(
       expressId: number,
-      relationType: PartOfRelation
+      relationType: PartOfRelation | undefined
     ): ParentInfo | undefined {
       const all = accessor.getAncestors!(expressId, relationType);
       return all.length > 0 ? all[0] : undefined;
@@ -289,7 +289,7 @@ export function createDataAccessor(
 
     getAncestors(
       expressId: number,
-      relationType: PartOfRelation
+      relationType: PartOfRelation | undefined
     ): ParentInfo[] {
       return resolvePartOfAncestors(
         store,

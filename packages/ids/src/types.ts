@@ -179,8 +179,8 @@ export interface IDSMaterialFacet {
 /** PartOf facet - match by spatial/compositional relationship */
 export interface IDSPartOfFacet {
   type: 'partOf';
-  /** Relationship type (normalised; defaults to `IfcRelContainedInSpatialStructure` when unrecognised). */
-  relation: PartOfRelation;
+  /** Relationship type (normalised; defaults to `IfcRelContainedInSpatialStructure` when unrecognised). Absent: any partOf relation, recursively (#7401). */
+  relation?: PartOfRelation;
   /**
    * The relation string as it appeared in the XML, before normalisation.
    * Set when the original value didn't map to a recognised
@@ -461,20 +461,20 @@ export interface IFCDataAccessor {
   getClassifications(expressId: number): ClassificationInfo[];
   /** Get materials for an entity */
   getMaterials(expressId: number): MaterialInfo[];
-  /** Get parent via relationship */
+  /** Get parent via relationship (`undefined`: via any partOf relation) */
   getParent(
     expressId: number,
-    relationType: PartOfRelation
+    relationType: PartOfRelation | undefined
   ): ParentInfo | undefined;
   /**
-   * Walk every ancestor reachable via `relationType` (the IDS spec
-   * treats partOf as transitive — a wall in a storey in a building
-   * IS partOf the building). Optional: when not provided, the
-   * partOf facet falls back to single-step `getParent` traversal.
+   * Walk every ancestor reachable via `relationType`, or via every partOf
+   * relation when it is `undefined` (the IDS spec treats partOf as transitive —
+   * a wall in a storey in a building IS partOf the building). Optional: when
+   * not provided, the partOf facet falls back to single-step `getParent` traversal.
    */
   getAncestors?(
     expressId: number,
-    relationType: PartOfRelation
+    relationType: PartOfRelation | undefined
   ): ParentInfo[];
   /** Get attribute value by name */
   getAttribute(expressId: number, attributeName: string): string | number | boolean | undefined;

@@ -128,6 +128,21 @@ describe('writeIdsXml round-trips the buildingSMART IDS corpus (#6915)', () => {
     expect(parseIDS(xml).specifications[0].requirements[0].facet).toEqual(source.specifications[0].requirements[0].facet);
   });
 
+  // #7401: a partOf without a relation means every partOf relation; writing one in would narrow it.
+  it('writes a partOf without a relation back without one', () => {
+    const source = parseIDS(`<?xml version="1.0" encoding="UTF-8"?>
+<ids xmlns="http://standards.buildingsmart.org/IDS" xmlns:xs="http://www.w3.org/2001/XMLSchema">
+  <info><title>partOf</title></info>
+  <specifications><specification name="S" ifcVersion="IFC4">
+    <applicability><entity><name><simpleValue>IFCMEMBER</simpleValue></name></entity></applicability>
+    <requirements><partOf><entity><name><simpleValue>IFCCURTAINWALL</simpleValue></name></entity></partOf></requirements>
+  </specification></specifications>
+</ids>`);
+    const xml = writeIdsXml(source);
+    expect(xml).not.toContain('relation=');
+    expect(parseIDS(xml).specifications[0].requirements[0].facet).toEqual(source.specifications[0].requirements[0].facet);
+  });
+
   // #6915 review: attribute-value normalisation turns raw line breaks and tabs into spaces, and
   // XML 1.0 cannot carry other control characters at all.
   it('keeps line breaks and tabs in attributes, and refuses control characters by field', () => {

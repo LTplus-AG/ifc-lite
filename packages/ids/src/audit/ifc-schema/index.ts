@@ -711,19 +711,26 @@ async function auditPartOfFacet(
   // `rawRelation`. Prefer the raw value for cross-checking so we can
   // flag bogus inputs.
   const probe = facet.rawRelation ?? facet.relation;
-  const probeUpper = probe.toUpperCase();
-  const relation = relations.find((r) => r.relation === probeUpper);
-  if (!relation) {
-    issues.push({
-      severity: 'error',
-      code: 'E_IFC_PARTOF_RELATION',
-      message: `partOf relation "${probe}" is not valid for ${version}`,
-      path: `${path}.relation`,
-      facetType: 'partOf',
-      detail: { value: probe, version },
-    });
-    return;
+  // No relation at all: IDS counts every partOf relation (#7401), so the
+  // two entities need only fit one of them. Otherwise only the named one.
+  let candidates: typeof relations = relations;
+  if (probe !== undefined) {
+    const probeUpper = probe.toUpperCase();
+    const relation = relations.find((r) => r.relation === probeUpper);
+    if (!relation) {
+      issues.push({
+        severity: 'error',
+        code: 'E_IFC_PARTOF_RELATION',
+        message: `partOf relation "${probe}" is not valid for ${version}`,
+        path: `${path}.relation`,
+        facetType: 'partOf',
+        detail: { value: probe, version },
+      });
+      return;
+    }
+    candidates = [relation];
   }
+  const relationLabel = facet.relation ?? 'any partOf relation';
   if (
     facet.entity &&
     facet.entity.name.type === 'simpleValue' &&
@@ -746,13 +753,13 @@ async function auditPartOfFacet(
     // partOf entity to be a subtype of the relation's `owner`. Apply
     // that too — it's the most useful signal for catching e.g.
     // "IFCRELCONTAINEDINSPATIALSTRUCTURE on an IfcWindow" mistakes.
-    const ownerName = relation.owner;
-    const ok = await isEntitySubtypeOf(version, entity.name, ownerName);
+    const ownerName = distinctJoined(candidates.map((r) => r.owner));
+    const ok = await isSubtypeOfAny(version, entity.name, candidates.map((r) => r.owner));
     if (!ok) {
       issues.push({
         severity: 'error',
         code: 'E_IFC_PARTOF_ENTITY',
-        message: `partOf @entity "${entity.name}" is not a subtype of "${ownerName}" required by ${facet.relation} (${version})`,
+        message: `partOf @entity "${entity.name}" is not a subtype of "${ownerName}" required by ${relationLabel} (${version})`,
         path: `${path}.entity.name`,
         facetType: 'partOf',
         detail: {
@@ -774,21 +781,39 @@ async function auditPartOfFacet(
     applicabilityEntity.name.value
   ) {
     const appName = applicabilityEntity.name.value;
-    const memberOk = await isEntitySubtypeOf(version, appName, relation.member);
+    const memberName = distinctJoined(candidates.map((r) => r.member));
+    const memberOk = await isSubtypeOfAny(version, appName, candidates.map((r) => r.member));
     if (!memberOk) {
       issues.push({
         severity: 'error',
         code: 'E_IFC_PARTOF_ENTITY',
-        message: `applicability entity "${appName}" cannot be the member of ${facet.relation}; ${facet.relation} requires the member to be a subtype of "${relation.member}" (${version})`,
+        message: `applicability entity "${appName}" cannot be the member of ${relationLabel}; ${relationLabel} requires the member to be a subtype of "${memberName}" (${version})`,
         path: `${path}.relation`,
         facetType: 'partOf',
         detail: {
           applicability: appName,
-          required: relation.member,
+          required: memberName,
           relation: facet.relation,
           version,
         },
       });
     }
   }
+}
+
+/** Whether `name` is a subtype of at least one of `supertypes`. */
+async function isSubtypeOfAny(
+  version: IfcSchemaVersion,
+  name: string,
+  supertypes: readonly string[]
+): Promise<boolean> {
+  for (const supertype of new Set(supertypes)) {
+    if (await isEntitySubtypeOf(version, name, supertype)) return true;
+  }
+  return false;
+}
+
+/** The distinct names, joined for a message: one name alone reads as before. */
+function distinctJoined(names: readonly string[]): string {
+  return [...new Set(names)].join('" or "');
 }

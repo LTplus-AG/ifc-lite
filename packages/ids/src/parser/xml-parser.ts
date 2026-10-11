@@ -35,7 +35,6 @@ import {
 } from './dom.js';
 import { parseRestriction } from './parse-restriction.js';
 
-const IDS_NAMESPACE = 'http://standards.buildingsmart.org/IDS';
 const XS_NAMESPACE = 'http://www.w3.org/2001/XMLSchema';
 
 /** Error thrown when parsing invalid IDS XML */
@@ -437,21 +436,21 @@ function parseMaterialFacet(el: Element): IDSMaterialFacet {
  */
 function parsePartOfFacet(el: Element): IDSPartOfFacet {
   const relationAttrRaw = el.getAttribute('relation');
-  const relationAttr = relationAttrRaw || 'IfcRelContainedInSpatialStructure';
   const entityEl = getChildElement(el, 'entity');
-
-  const relation = normalizePartOfRelation(relationAttr);
-  // When the source attribute didn't map cleanly onto one of the known
-  // relations (or was missing), preserve the original string so the
-  // auditor can flag the discrepancy without us breaking the existing
-  // narrow `PartOfRelation` enum.
-  const recognised = isRecognisedPartOfRelation(relationAttr);
   const facet: IDSPartOfFacet = {
     type: 'partOf',
-    relation,
     entity: entityEl ? parseEntityFacet(entityEl) : undefined,
   };
-  if (!recognised && relationAttrRaw) {
+  // No relation is not containment: IDS then counts every partOf
+  // relation, recursively (#7401), so `relation` stays absent.
+  if (!relationAttrRaw) return facet;
+
+  facet.relation = normalizePartOfRelation(relationAttrRaw);
+  // When the source attribute didn't map cleanly onto one of the known
+  // relations, preserve the original string so the auditor can flag the
+  // discrepancy without us breaking the existing narrow `PartOfRelation`
+  // enum.
+  if (!isRecognisedPartOfRelation(relationAttrRaw)) {
     facet.rawRelation = relationAttrRaw;
   }
   return facet;

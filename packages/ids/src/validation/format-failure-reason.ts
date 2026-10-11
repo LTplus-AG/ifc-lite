@@ -129,7 +129,8 @@ export function formatRequirementDescription(requirement: IDSRequirement): strin
       break;
 
     case 'partOf': {
-      const relName = facet.relation.replace('IfcRel', '').toLowerCase();
+      // No relation: any partOf relation counts (#7401).
+      const relName = facet.relation ? facet.relation.replace('IfcRel', '').toLowerCase() : 'part of';
       if (facet.entity) {
         desc = `Must be ${relName} ${formatConstraint(facet.entity.name)}`;
       } else {

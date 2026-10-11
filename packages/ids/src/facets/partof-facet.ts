@@ -31,6 +31,16 @@ const RELATION_NAMES: Record<PartOfRelation, string> = {
   'IfcRelVoidsElement IfcRelFillsElement': 'connected through an opening to',
 };
 
+/** A relation's name; `undefined` is a partOf without a relation, which any relation satisfies (#7401). */
+function relationNameOf(relation: PartOfRelation | undefined): string {
+  return relation === undefined ? 'part of' : RELATION_NAMES[relation] || relation;
+}
+
+/** The failure context's `relation`, left out when the facet names none. */
+function relationContext(relation: PartOfRelation | undefined): Record<string, string> {
+  return relation === undefined ? {} : { relation };
+}
+
 /**
  * Check if an entity matches a partOf facet
  */
@@ -53,7 +63,7 @@ export function checkPartOfFacet(
   }
 
   if (ancestors.length === 0) {
-    const relationName = RELATION_NAMES[facet.relation] || facet.relation;
+    const relationName = relationNameOf(facet.relation);
     const expectedEntity = facet.entity
       ? formatConstraint(facet.entity.name)
       : 'any entity';
@@ -66,9 +76,7 @@ export function checkPartOfFacet(
         type: 'PARTOF_RELATION_MISSING',
         field: facet.relation,
         expected: `${relationName} ${expectedEntity}`,
-        context: {
-          relation: facet.relation,
-        },
+        context: relationContext(facet.relation),
       },
     };
   }
@@ -99,7 +107,7 @@ function checkAncestorAgainstFacet(
 
   // If no entity constraint, just check if relationship exists
   if (!facet.entity) {
-    const relationName = RELATION_NAMES[facet.relation] || facet.relation;
+    const relationName = relationNameOf(facet.relation);
 
     return {
       passed: true,
@@ -110,7 +118,7 @@ function checkAncestorAgainstFacet(
 
   // Check parent entity type (case-insensitive for IFC entity names)
   if (!matchConstraint(facet.entity.name, parent.entityType, IFC_CASE_INSENSITIVE)) {
-    const relationName = RELATION_NAMES[facet.relation] || facet.relation;
+    const relationName = relationNameOf(facet.relation);
 
     return {
       passed: false,
@@ -122,7 +130,7 @@ function checkAncestorAgainstFacet(
         actual: parent.entityType,
         expected: formatConstraint(facet.entity.name),
         context: {
-          relation: facet.relation,
+          ...relationContext(facet.relation),
           parentId: String(parent.expressId),
         },
       },
@@ -152,7 +160,7 @@ function checkAncestorAgainstFacet(
           field: 'predefinedType',
           expected: formatConstraint(facet.entity.predefinedType),
           context: {
-            relation: facet.relation,
+            ...relationContext(facet.relation),
             parentType: parent.entityType,
           },
         },
@@ -170,7 +178,7 @@ function checkAncestorAgainstFacet(
           actual: outcome.actual,
           expected: formatConstraint(facet.entity.predefinedType),
           context: {
-            relation: facet.relation,
+            ...relationContext(facet.relation),
             parentType: parent.entityType,
           },
         },
@@ -178,7 +186,7 @@ function checkAncestorAgainstFacet(
     }
   }
 
-  const relationName = RELATION_NAMES[facet.relation] || facet.relation;
+  const relationName = relationNameOf(facet.relation);
   const parentDesc = parent.predefinedType
     ? `${parent.entityType}[${parent.predefinedType}]`
     : parent.entityType;

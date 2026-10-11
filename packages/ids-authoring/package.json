@@ -1,6 +1,6 @@
 {
   "name": "@ifc-lite/ids-authoring",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Headless IDS authoring core: Studio document with stable node ids, typed invertible operations, a grounding gate against the IFC schema tables, history, sidecar and re-identification",
   "type": "module",
   "sideEffects": false,

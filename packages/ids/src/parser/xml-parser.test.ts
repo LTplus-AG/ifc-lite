@@ -793,4 +793,11 @@ describe('parseIDS: the facet @uri attribute (bSDD references)', () => {
     expect(material.type).toBe('material');
     expect('uri' in material).toBe(false);
   });
+
+  it('leaves an applicability @uri (IDS 1.1) to the preview pass', () => {
+    const inApplicability = xml.replace('<applicability><entity><name><simpleValue>IFCWALL</simpleValue></name></entity></applicability>',
+      '<applicability><entity><name><simpleValue>IFCWALL</simpleValue></name></entity><classification uri="https://example.org/c/EW"><system><simpleValue>Demo</simpleValue></system></classification></applicability>');
+    expect(parseIDS(inApplicability).specifications[0].applicability.facets[1]).not.toHaveProperty('uri');
+    expect(parseIDS(inApplicability, { preview: { ids11: true } }).specifications[0].applicability.facets[1]).toMatchObject({ uri: 'https://example.org/c/EW' });
+  });
 });

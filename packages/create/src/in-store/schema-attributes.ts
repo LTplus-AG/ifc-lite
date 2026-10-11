@@ -19,7 +19,7 @@
  * the enumeration has that value.
  */
 
-import { getSchemaRegistryForVersion, type SchemaRegistry } from '@ifc-lite/parser';
+import { getSchemaRegistryForVersion, getCanonicalEntityName, type SchemaRegistry, type SchemaEntityNameSnapshot } from '@ifc-lite/parser';
 import type { SpatialAnchorSchema } from './anchor.js';
 
 type Schema = Exclude<SpatialAnchorSchema, 'IFC5'>;
@@ -40,19 +40,20 @@ export function schemaRegistry(schema: SpatialAnchorSchema | undefined, op: stri
 }
 
 /** The schema's canonical spelling of `type`, or null when the class does not exist in it. */
-export function canonicalEntity(registry: SchemaRegistry, type: string): string | null {
-  const upper = type.toUpperCase();
-  return Object.keys(registry.entities).find((name) => name.toUpperCase() === upper) ?? null;
+export function canonicalEntity(registry: SchemaRegistry, type: string, snapshot?: SchemaEntityNameSnapshot): string | null {
+  return getCanonicalEntityName(registry, type, snapshot) ?? null;
 }
 
 /**
  * Whether `type` is an `expected` in the schema: the class itself or one of its
  * subtypes, or (transitively) a member of the `expected` SELECT.
  */
-export function conformsTo(registry: SchemaRegistry, type: string, expected: string): boolean {
-  const name = canonicalEntity(registry, type);
+export function conformsTo(registry: SchemaRegistry, type: string, expected: string, snapshot?: SchemaEntityNameSnapshot): boolean {
+  const name = canonicalEntity(registry, type, snapshot);
   if (!name) return false;
-  const chain = registry.entities[name].inheritanceChain ?? [name];
+  const definition = registry.entities[name];
+  if (!definition) return false;
+  const chain = definition.inheritanceChain ?? [name];
   const matches = (target: string, depth: number): boolean =>
     chain.includes(target) || (depth < 8 && (registry.selects[target] ?? []).some((member) => matches(member, depth + 1)));
   return matches(expected, 0);

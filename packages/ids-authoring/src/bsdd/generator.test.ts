@@ -8,8 +8,7 @@
  * audit- and lint-clean result.
  */
 
-import { auditIDSDocument, parseIDS } from '@ifc-lite/ids';
-import { writeIdsXml } from '@ifc-lite/rules';
+import { auditIDSDocument, parseIDS, writeIdsXml } from '@ifc-lite/ids';
 import { readFileSync } from 'node:fs';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { DEMO, demoClass, demoSource } from '../../test/bsdd/replay.js';

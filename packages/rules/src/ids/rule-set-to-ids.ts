@@ -16,12 +16,11 @@
  * The per-condition mapping is in `rule-to-ids-facets.ts`.
  */
 
-import type { IDSDocument, IDSRequirement, IDSSpecification, IFCVersion } from '@ifc-lite/ids';
+import { writeIdsXml, type IDSDocument, type IDSRequirement, type IDSSpecification, type IFCVersion } from '@ifc-lite/ids';
 import type { InformationRule, RuleSetFile } from '../rule-set/rule-set.js';
 import { groupToFacets, type StoredUnitScaleOf } from './rule-to-ids-facets.js';
 import { storedUnitScaleOf } from './stored-unit-scale.js';
 import type { EvaluatorModel } from '../filter/filter-evaluate.js';
-import { writeIdsXml } from './ids-xml-writer.js';
 
 /** The engine's default relative tolerance, which IDS 1.0 also fixes (bSI #418). */
 const IDS_TOLERANCE = 1e-6;

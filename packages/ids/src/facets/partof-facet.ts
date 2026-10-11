@@ -15,6 +15,7 @@ import type {
 import type { FacetCheckResult } from './index.js';
 import { matchConstraint, formatConstraint, type MatchOptions } from '../constraints/index.js';
 import { matchPredefinedType } from './predefined-type-match.js';
+import { checkPartOfParentFacets } from '../preview/partof-nested.js';
 
 /** IFC entity NAME comparisons are case-insensitive per IDS spec. Predefined
  *  types are NOT — see `predefined-type-match.ts`. */
@@ -142,7 +143,7 @@ export function checkPartOfFacet(
   // generic "no match" form.
   let bestFailure: FacetCheckResult | undefined;
   for (const parent of ancestors) {
-    const result = checkAncestorAgainstFacet(facet, parent);
+    const result = checkAncestorAgainstFacet(facet, parent, accessor);
     if (result.passed) return result;
     if (
       !bestFailure ||
@@ -157,11 +158,16 @@ export function checkPartOfFacet(
 
 function checkAncestorAgainstFacet(
   facet: IDSPartOfFacet,
-  parent: ParentInfo
+  parent: ParentInfo,
+  accessor: IFCDataAccessor
 ): FacetCheckResult {
+  // IDS 1.1 PREVIEW (#379/#380): conditions on the related element itself.
+  // Unset on every IDS 1.0 document, so this is a no-op there.
+  const nestedFailure = facet.facets ? checkPartOfParentFacets(facet, parent, accessor) : undefined;
 
   // If no entity constraint, just check if relationship exists
   if (!facet.entity) {
+    if (nestedFailure) return nestedFailure;
     const relationName = describeRelation(facet);
 
     return {
@@ -240,6 +246,8 @@ function checkAncestorAgainstFacet(
       };
     }
   }
+
+  if (nestedFailure) return nestedFailure;
 
   const relationName = describeRelation(facet);
   const parentDesc = parent.predefinedType

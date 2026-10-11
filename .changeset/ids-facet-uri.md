@@ -1,6 +1,5 @@
 ---
 "@ifc-lite/ids": minor
-"@ifc-lite/rules": patch
 ---
 
-IDS facets keep their `@uri`: `IDSPropertyFacet`, `IDSClassificationFacet` and `IDSMaterialFacet` have an optional `uri` (through the shared `IDSFacetUri`), which `parseIDS` reads and `writeIdsXml` writes on requirement facets (IDS 1.0 allows `@uri` only there). A bSDD class or property reference therefore survives a parse/write round trip.
+`parseIDS` now reads the IDS 1.0 `@uri` of property, classification and material facets in requirements (blank values are dropped), so a bSDD class or property reference survives a default parse/`writeIdsXml` round trip. In applicability `@uri` stays an IDS 1.1 preview feature, read and written only with `preview: { ids11: true }`.

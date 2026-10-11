@@ -21,7 +21,7 @@
         </classification>
       </applicability>
       <requirements>
-        <property dataType="IFCBOOLEAN" uri="https://identifier.example.org/uri/ifc-lite-test/demo/1.0/prop/LoadBearing" cardinality="required">
+        <property dataType="IFCBOOLEAN" cardinality="required" uri="https://identifier.example.org/uri/ifc-lite-test/demo/1.0/prop/LoadBearing">
           <propertySet>
             <simpleValue>Demo_Wall</simpleValue>
           </propertySet>
@@ -29,7 +29,7 @@
             <simpleValue>LoadBearing</simpleValue>
           </baseName>
         </property>
-        <property dataType="IFCLABEL" uri="https://identifier.example.org/uri/ifc-lite-test/demo/1.0/prop/FireRating" cardinality="required">
+        <property dataType="IFCLABEL" cardinality="required" uri="https://identifier.example.org/uri/ifc-lite-test/demo/1.0/prop/FireRating">
           <propertySet>
             <simpleValue>Demo_Wall</simpleValue>
           </propertySet>
@@ -44,7 +44,7 @@
             </xs:restriction>
           </value>
         </property>
-        <property dataType="IFCLENGTHMEASURE" uri="https://identifier.example.org/uri/ifc-lite-test/demo/1.0/prop/Thickness" cardinality="optional">
+        <property dataType="IFCLENGTHMEASURE" cardinality="optional" uri="https://identifier.example.org/uri/ifc-lite-test/demo/1.0/prop/Thickness">
           <propertySet>
             <simpleValue>Demo_Wall</simpleValue>
           </propertySet>
@@ -77,7 +77,7 @@
         </classification>
       </applicability>
       <requirements>
-        <property dataType="IFCBOOLEAN" uri="https://identifier.example.org/uri/ifc-lite-test/demo/1.0/prop/LoadBearing" cardinality="optional">
+        <property dataType="IFCBOOLEAN" cardinality="optional" uri="https://identifier.example.org/uri/ifc-lite-test/demo/1.0/prop/LoadBearing">
           <propertySet>
             <simpleValue>Demo_Wall</simpleValue>
           </propertySet>
@@ -85,7 +85,7 @@
             <simpleValue>LoadBearing</simpleValue>
           </baseName>
         </property>
-        <property dataType="IFCLABEL" uri="https://identifier.example.org/uri/ifc-lite-test/demo/1.0/prop/FireRating" cardinality="required">
+        <property dataType="IFCLABEL" cardinality="required" uri="https://identifier.example.org/uri/ifc-lite-test/demo/1.0/prop/FireRating">
           <propertySet>
             <simpleValue>Demo_Wall</simpleValue>
           </propertySet>
@@ -100,7 +100,7 @@
             </xs:restriction>
           </value>
         </property>
-        <property dataType="IFCLENGTHMEASURE" uri="https://identifier.example.org/uri/ifc-lite-test/demo/1.0/prop/Thickness" cardinality="optional">
+        <property dataType="IFCLENGTHMEASURE" cardinality="optional" uri="https://identifier.example.org/uri/ifc-lite-test/demo/1.0/prop/Thickness">
           <propertySet>
             <simpleValue>Demo_Wall</simpleValue>
           </propertySet>
@@ -114,7 +114,7 @@
             </xs:restriction>
           </value>
         </property>
-        <property dataType="IFCTHERMALTRANSMITTANCEMEASURE" uri="https://identifier.example.org/uri/ifc-lite-test/demo/1.0/prop/ThermalTransmittance" cardinality="required">
+        <property dataType="IFCTHERMALTRANSMITTANCEMEASURE" cardinality="required" uri="https://identifier.example.org/uri/ifc-lite-test/demo/1.0/prop/ThermalTransmittance">
           <propertySet>
             <simpleValue>Demo_Wall</simpleValue>
           </propertySet>
@@ -127,7 +127,7 @@
             </xs:restriction>
           </value>
         </property>
-        <property dataType="IFCBOOLEAN" uri="https://identifier.buildingsmart.org/uri/buildingsmart/ifc/4.3/prop/IsExternal" cardinality="required">
+        <property dataType="IFCBOOLEAN" cardinality="required" uri="https://identifier.buildingsmart.org/uri/buildingsmart/ifc/4.3/prop/IsExternal">
           <propertySet>
             <simpleValue>Pset_WallCommon</simpleValue>
           </propertySet>
@@ -154,7 +154,7 @@
         </classification>
       </applicability>
       <requirements>
-        <property dataType="IFCBOOLEAN" uri="https://identifier.example.org/uri/ifc-lite-test/demo/1.0/prop/LoadBearing" cardinality="required">
+        <property dataType="IFCBOOLEAN" cardinality="required" uri="https://identifier.example.org/uri/ifc-lite-test/demo/1.0/prop/LoadBearing">
           <propertySet>
             <simpleValue>Demo_Wall</simpleValue>
           </propertySet>
@@ -162,7 +162,7 @@
             <simpleValue>LoadBearing</simpleValue>
           </baseName>
         </property>
-        <property dataType="IFCLABEL" uri="https://identifier.example.org/uri/ifc-lite-test/demo/1.0/prop/FireRating" cardinality="required">
+        <property dataType="IFCLABEL" cardinality="required" uri="https://identifier.example.org/uri/ifc-lite-test/demo/1.0/prop/FireRating">
           <propertySet>
             <simpleValue>Demo_Wall</simpleValue>
           </propertySet>
@@ -177,7 +177,7 @@
             </xs:restriction>
           </value>
         </property>
-        <property dataType="IFCLENGTHMEASURE" uri="https://identifier.example.org/uri/ifc-lite-test/demo/1.0/prop/Thickness" cardinality="optional">
+        <property dataType="IFCLENGTHMEASURE" cardinality="optional" uri="https://identifier.example.org/uri/ifc-lite-test/demo/1.0/prop/Thickness">
           <propertySet>
             <simpleValue>Demo_Wall</simpleValue>
           </propertySet>
@@ -210,7 +210,7 @@
         </classification>
       </applicability>
       <requirements>
-        <property dataType="IFCBOOLEAN" uri="https://identifier.example.org/uri/ifc-lite-test/demo/1.0/prop/FireExit" cardinality="required">
+        <property dataType="IFCBOOLEAN" cardinality="required" uri="https://identifier.example.org/uri/ifc-lite-test/demo/1.0/prop/FireExit">
           <propertySet>
             <simpleValue>Demo_Door</simpleValue>
           </propertySet>
@@ -218,7 +218,7 @@
             <simpleValue>FireExit</simpleValue>
           </baseName>
         </property>
-        <property dataType="IFCLENGTHMEASURE" uri="https://identifier.example.org/uri/ifc-lite-test/demo/1.0/prop/ClearWidth" cardinality="required">
+        <property dataType="IFCLENGTHMEASURE" cardinality="required" uri="https://identifier.example.org/uri/ifc-lite-test/demo/1.0/prop/ClearWidth">
           <propertySet>
             <simpleValue>Demo_Door</simpleValue>
           </propertySet>
@@ -231,7 +231,7 @@
             </xs:restriction>
           </value>
         </property>
-        <property dataType="IFCINTEGER" uri="https://identifier.example.org/uri/ifc-lite-test/demo/1.0/prop/LeafCount" cardinality="optional">
+        <property dataType="IFCINTEGER" cardinality="optional" uri="https://identifier.example.org/uri/ifc-lite-test/demo/1.0/prop/LeafCount">
           <propertySet>
             <simpleValue>Demo_Door</simpleValue>
           </propertySet>
@@ -245,7 +245,7 @@
             </xs:restriction>
           </value>
         </property>
-        <property dataType="IFCDATETIME" uri="https://identifier.example.org/uri/ifc-lite-test/demo/1.0/prop/InstallationDate" cardinality="optional">
+        <property dataType="IFCDATETIME" cardinality="optional" uri="https://identifier.example.org/uri/ifc-lite-test/demo/1.0/prop/InstallationDate">
           <propertySet>
             <simpleValue>Demo_Door</simpleValue>
           </propertySet>
@@ -253,7 +253,7 @@
             <simpleValue>InstallationDate</simpleValue>
           </baseName>
         </property>
-        <property dataType="IFCLABEL" uri="https://identifier.example.org/uri/ifc-lite-test/demo/1.0/prop/Grade" cardinality="optional">
+        <property dataType="IFCLABEL" cardinality="optional" uri="https://identifier.example.org/uri/ifc-lite-test/demo/1.0/prop/Grade">
           <propertySet>
             <simpleValue>Demo_Door</simpleValue>
           </propertySet>
@@ -266,7 +266,7 @@
             </xs:restriction>
           </value>
         </property>
-        <property dataType="IFCLABEL" uri="https://identifier.example.org/uri/ifc-lite-test/demo/1.0/prop/Accessories" cardinality="optional">
+        <property dataType="IFCLABEL" cardinality="optional" uri="https://identifier.example.org/uri/ifc-lite-test/demo/1.0/prop/Accessories">
           <propertySet>
             <simpleValue>Demo_Door</simpleValue>
           </propertySet>
@@ -274,7 +274,7 @@
             <simpleValue>Accessories</simpleValue>
           </baseName>
         </property>
-        <property dataType="IFCLABEL" uri="https://identifier.example.org/uri/ifc-lite-test/demo/1.0/prop/Manufacturer" cardinality="optional">
+        <property dataType="IFCLABEL" cardinality="optional" uri="https://identifier.example.org/uri/ifc-lite-test/demo/1.0/prop/Manufacturer">
           <propertySet>
             <simpleValue>Project_Common</simpleValue>
           </propertySet>
@@ -304,7 +304,7 @@
         </classification>
       </applicability>
       <requirements>
-        <property dataType="IFCREAL" uri="https://identifier.example.org/uri/ifc-lite-test/demo/1.0/prop/SolarFactor" cardinality="required">
+        <property dataType="IFCREAL" cardinality="required" uri="https://identifier.example.org/uri/ifc-lite-test/demo/1.0/prop/SolarFactor">
           <propertySet>
             <simpleValue>Demo_Shading</simpleValue>
           </propertySet>

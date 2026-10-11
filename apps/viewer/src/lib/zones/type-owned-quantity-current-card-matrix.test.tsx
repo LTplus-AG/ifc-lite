@@ -311,6 +311,6 @@ test('#7355 complex-only native set missing GlobalId refuses its first scalar ed
   const read = readCurrentTypeQuantities(source, f.f.id, view);
   assert.equal(read.status, 'unavailable');
   assert.match(read.reason ?? '', /identity is missing/);
-  assert.throws(() => editedModelBytes(source, view), /identity is missing or ambiguous/);
+  assert.throws(() => editedModelBytes(source, view), /Current type complex-only quantity definition identity is unavailable/);
   assert.deepEqual(source.getEntity(complex)?.attributes[2], [child]);
 });

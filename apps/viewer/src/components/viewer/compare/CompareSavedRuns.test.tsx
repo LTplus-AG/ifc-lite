@@ -63,6 +63,12 @@ const button = (root: HTMLElement, name: RegExp) => {
   return found;
 };
 
+/** The saved-run list is a lazy chunk: wait for its Reopen control, then press it. */
+async function reopen(root: HTMLElement) {
+  await waitFor(() => [...root.querySelectorAll('button')].some(b => (b.getAttribute('aria-label') ?? '').startsWith('Reopen saved run')), 'saved-run list');
+  act(() => click(button(root, /^Reopen saved run/)));
+}
+
 function mount(pair: RevisionPair) {
   const root = render(<CompareAnalysisSections result={pair.compare} />);
   act(() => click(button(root, /Reconcile findings across revisions/)));
@@ -122,7 +128,7 @@ describe('saved runs for reconciliation (#7370)', () => {
     await open(pair, 'A', 'B');
     await publishClash(pair);
     root = mount(pair);
-    act(() => click(button(root, /^Reopen saved run/)));
+    await reopen(root);
     assert.deepEqual(useViewerStore.getState().compareRunCaptures.map(run => run.id), [saved.id]);
     act(() => click(button(root, /Capture current run/)));
     const [base, head] = [...root.querySelectorAll('select')];
@@ -149,7 +155,7 @@ describe('saved runs for reconciliation (#7370)', () => {
     await open(pair, 'B');
     act(() => useViewerStore.setState({ dirtyModels: new Set(['B']) }));
     root = mount(pair);
-    act(() => click(button(root, /^Reopen saved run/)));
+    await reopen(root);
     const alert = root.querySelector('[role="alert"]');
     assert.ok(alert, 'the refusal is announced');
     assert.match(alert.textContent ?? '', /This saved run cannot be reopened:/);
@@ -182,7 +188,7 @@ describe('saved runs for reconciliation (#7370)', () => {
     assert.deepEqual(useViewerStore.getState().compareRunCaptures.map(run => run.modelIds), [['A', 'B']]);
     root = render(<CompareAnalysisSections result={compare} />);
     act(() => click(button(root, /Reconcile findings across revisions/)));
-    act(() => click(button(root, /^Reopen saved run/)));
+    await reopen(root);
     assert.equal(root.querySelector('[role="alert"]'), null, 'the run binds');
     assert.deepEqual(useViewerStore.getState().compareRunCaptures.map(run => [run.id, run.modelIds]), [[saved.id, [moved.A, moved.B]]]);
     act(() => click(button(root, /^Reconcile$/)));
@@ -211,7 +217,7 @@ describe('saved runs for reconciliation (#7370)', () => {
     root = mount(pair);
     act(() => click(button(root, /Capture current run/)));
     const [live] = useViewerStore.getState().compareRunCaptures;
-    act(() => click(button(root, /^Reopen saved run/)));
+    await reopen(root);
     const [base, head] = [...root.querySelectorAll('select')];
     assert.deepEqual([base.value, head.value], [saved.id, live.id], 'the saved run is the base, the current capture the head');
     act(() => click(button(root, /^Reconcile$/)));

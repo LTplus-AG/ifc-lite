@@ -13,7 +13,7 @@
  * can be saved and reopened in a later session (#7370).
  */
 
-import { useEffect, useMemo, useState } from 'react';
+import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
 import { Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { IconButton } from '@/components/ui/icon-button';
@@ -27,9 +27,13 @@ import { savedReconciliationOf } from '@/lib/compare/compare-reconcile-state';
 import type { CapturedRun, RunKind } from '@/lib/compare/run-reconcile-types';
 import { ReconcileOutcomeView } from './ReconcileOutcomeView';
 import { useReconciliationFocus } from '@/lib/panels/evidence-focus';
-import { portableAnalysisRun } from '@/lib/compare/saved-analysis-run-binding';
 import { saveAnalysisRun } from '@/lib/compare/saved-analysis-runs';
-import { CompareSavedRuns } from './CompareSavedRuns';
+import { ChunkErrorBoundary } from '@/components/ChunkErrorBoundary';
+
+// Lazy (#7370): the saved-run list and the save/reopen binding load only once this section is shown,
+// keeping them out of the first-paint bundle.
+const CompareSavedRuns = lazy(() => import('./CompareSavedRuns').then(m => ({ default: m.CompareSavedRuns })));
+const loadBinding = () => import('@/lib/compare/saved-analysis-run-binding');
 
 const SAVE_MESSAGES = {
   saved: 'compareAnalysis.reconcile.saved', saveFailed: 'compareAnalysis.reconcile.saveFailed',
@@ -94,11 +98,14 @@ export function CompareReconcileSection({ result }: { result: CompareResult }) {
     setPicked(p => ({ base: p.base ?? (baseId || id), head: id }));
   };
 
-  const save = () => {
-    const state = useViewerStore.getState();
+  const save = async () => {
     const head = runs.find(r => r.id === headId);
     if (!head) return;
-    const portable = portableAnalysisRun(head, state);
+    let binding: Awaited<ReturnType<typeof loadBinding>>;
+    try { binding = await loadBinding(); }
+    catch (error) { console.warn('[Compare] Saved-run code could not be loaded', error); setSaveMessage({ key: 'saveFailed' }); return; }
+    // Read the models only once the code is here: they may have changed while it loaded.
+    const portable = binding.portableAnalysisRun(head, useViewerStore.getState());
     if (!portable.ok) {
       setSaveMessage(portable.reason === 'sourceUnknown'
         ? { key: 'saveSourceUnknown', model: portable.model || t('compareAnalysis.reconcile.unnamedModel') }
@@ -144,7 +151,7 @@ export function CompareReconcileSection({ result }: { result: CompareResult }) {
           </div>
           <div className="flex items-center gap-2">
             <Button type="button" size="sm" onClick={reconcile}>{t('compareAnalysis.reconcile.run')}</Button>
-            <Button type="button" size="sm" variant="outline" onClick={save}>{t('compareAnalysis.reconcile.save')}</Button>
+            <Button type="button" size="sm" variant="outline" onClick={() => void save()}>{t('compareAnalysis.reconcile.save')}</Button>
             <IconButton size="icon-sm" label={t('compareAnalysis.reconcile.remove')}
               onClick={() => useViewerStore.getState().removeCompareRunCapture(headId)}>
               <Trash2 className="h-3.5 w-3.5" />
@@ -154,7 +161,11 @@ export function CompareReconcileSection({ result }: { result: CompareResult }) {
         </>
       )}
       {/* A reopened run is an earlier run, so it becomes the base; the head stays the run shown as head, if any. */}
-      <CompareSavedRuns kind={kind} onReopen={id => setPicked({ base: id, head: headId && headId !== id ? headId : undefined })} />
+      <ChunkErrorBoundary label="Saved runs">
+        <Suspense fallback={null}>
+          <CompareSavedRuns kind={kind} onReopen={id => setPicked({ base: id, head: headId && headId !== id ? headId : undefined })} />
+        </Suspense>
+      </ChunkErrorBoundary>
       {outcome && (stale
         ? <p aria-live="polite" className="text-amber-700 dark:text-amber-400">{t('compareAnalysis.reconcile.stale')}</p>
         : <ReconcileOutcomeView outcome={outcome} />)}

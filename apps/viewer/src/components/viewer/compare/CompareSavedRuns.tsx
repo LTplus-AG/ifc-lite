@@ -45,8 +45,9 @@ export function CompareSavedRuns({ kind, onReopen }: { kind: RunKind; onReopen: 
     const bound = bindSavedAnalysisRun(saved, state);
     if (!bound.ok) { setRefused({ id: saved.id, refusals: bound.refusals }); return; }
     setRefused(null);
-    if (!state.compareRunCaptures.some(run => run.id === saved.id)) state.addCompareRunCapture(bound.run);
-    onReopen(saved.id);
+    // A capture under the same id predates this binding (its model ids may be another session's): the bound run replaces it.
+    if (state.compareRunCaptures.some(run => run.id === saved.id)) state.removeCompareRunCapture(saved.id);
+    onReopen(state.addCompareRunCapture(bound.run));
   };
 
   return (

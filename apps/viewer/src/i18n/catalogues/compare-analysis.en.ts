@@ -88,6 +88,8 @@ export const compareAnalysisEn = {
   'compareAnalysis.reconcile.saved': 'Saved. You can reopen this run after a reload.',
   'compareAnalysis.reconcile.saveFailed': 'The run could not be saved in this browser.',
   'compareAnalysis.reconcile.saveModelClosed': 'A model this run examined is no longer open, so the run cannot be saved.',
+  'compareAnalysis.reconcile.saveSourceUnknown': 'The file {model} came from was not recorded, so this run could never be matched to it again. It was not saved.',
+  'compareAnalysis.reconcile.unnamedModel': 'an unnamed model',
   'compareAnalysis.reconcile.saveEmpty': 'This run examined no models, so there is nothing to save.',
   'compareAnalysis.reconcile.savedTitle': 'Saved runs',
   'compareAnalysis.reconcile.savedNotStored': 'Not stored in this browser yet',

@@ -33,7 +33,8 @@ import type { SavedAnalysisRun, SavedClashRef, SavedDistance, SavedRunClash, Sav
 
 type BindingState = Pick<ViewerState, 'models' | 'mutationVersion' | 'geometryContentVersion' | 'modelPlacement' | 'hasChanges'>;
 
-export type SaveRefusal = 'modelClosed' | 'empty';
+/** Why a capture cannot be saved; `model` names the model a run could never be matched to again. */
+export type SaveRefusal = { reason: 'modelClosed' | 'empty' } | { reason: 'sourceUnknown'; model: string };
 export type BindRefusalCode = 'runEdited' | 'modelEdited' | 'sourceUnknown' | 'modelMissing' | 'modelReplaced' | 'modelAmbiguous' | 'modelMoved';
 export interface BindRefusal { code: BindRefusalCode; model?: string }
 
@@ -68,22 +69,27 @@ function nativeModelIds(run: CapturedRun): string[] {
 
 /** The capture as portable evidence, or why it cannot be saved. */
 export function portableAnalysisRun(run: CapturedRun, state: BindingState, now = new Date()):
-  { ok: true; saved: SavedAnalysisRun } | { ok: false; reason: SaveRefusal } {
+  { ok: true; saved: SavedAnalysisRun } | ({ ok: false } & SaveRefusal) {
   const ids = nativeModelIds(run);
   if (ids.length === 0) return { ok: false, reason: 'empty' };
   const keyOf = new Map(ids.map((id, index) => [id, `m${index}`]));
   const key = (id: string) => keyOf.get(id)!;
   const stamp = run.stamp;
-  const models: SavedRunModel[] = ids.map(id => {
+  const models: SavedRunModel[] = [];
+  for (const id of ids) {
     const recorded = stamp?.placement?.get(id), open = state.models.get(id);
+    // Without the run's own record or the open model, nothing says which file the run examined.
     const identity = recorded ?? open;
-    const name = identity?.name?.trim() ? identity.name : id;
-    return { key: key(id), name,
-      ...(identity?.sourceFingerprint ? { sourceFingerprint: identity.sourceFingerprint } : {}),
-      ...(identity?.sourceContentHash ? { sourceContentHash: identity.sourceContentHash } : {}),
+    if (!identity) return { ok: false, reason: 'modelClosed' };
+    const name = identity.name?.trim() ? identity.name : open?.name?.trim() ? open.name : '';
+    // A run that could never be matched to its file again is refused now, not saved and refused on every reopen.
+    if (!identity.sourceFingerprint && !identity.sourceContentHash || !name) return { ok: false, reason: 'sourceUnknown', model: name };
+    models.push({ key: key(id), name,
+      ...(identity.sourceFingerprint ? { sourceFingerprint: identity.sourceFingerprint } : {}),
+      ...(identity.sourceContentHash ? { sourceContentHash: identity.sourceContentHash } : {}),
       ...(recorded ? { placement: { translation: [...recorded.translation] as [number, number, number], angle: recorded.angle,
-        pivot: [...recorded.pivot] as [number, number, number] } } : {}) };
-  });
+        pivot: [...recorded.pivot] as [number, number, number] } } : {}) });
+  }
   const freshness = stamp === null ? 'unknown' as const : isAnalysisStale(stamp, state) ? 'stale' as const : 'current' as const;
   const base = {
     version: 1 as const, id: run.id, capturedAt: run.capturedAt, savedAt: now.toISOString(), models,

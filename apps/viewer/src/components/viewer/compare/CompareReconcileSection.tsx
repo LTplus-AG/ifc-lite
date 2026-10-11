@@ -34,6 +34,7 @@ import { CompareSavedRuns } from './CompareSavedRuns';
 const SAVE_MESSAGES = {
   saved: 'compareAnalysis.reconcile.saved', saveFailed: 'compareAnalysis.reconcile.saveFailed',
   saveModelClosed: 'compareAnalysis.reconcile.saveModelClosed', saveEmpty: 'compareAnalysis.reconcile.saveEmpty',
+  saveSourceUnknown: 'compareAnalysis.reconcile.saveSourceUnknown',
 } as const satisfies Record<string, TranslationKey>;
 type SaveMessage = keyof typeof SAVE_MESSAGES;
 
@@ -62,7 +63,7 @@ export function CompareReconcileSection({ result }: { result: CompareResult }) {
   const focus = useReconciliationFocus(s => s.record);
   const [kind, setKind] = useState<RunKind>('clash');
   const [picked, setPicked] = useState<{ base?: string; head?: string }>({});
-  const [saveMessage, setSaveMessage] = useState<SaveMessage | null>(null);
+  const [saveMessage, setSaveMessage] = useState<{ key: SaveMessage; model?: string } | null>(null);
 
   useEffect(() => {
     const outcome = stored?.comparison === result ? stored.outcome : null;
@@ -98,9 +99,14 @@ export function CompareReconcileSection({ result }: { result: CompareResult }) {
     const head = runs.find(r => r.id === headId);
     if (!head) return;
     const portable = portableAnalysisRun(head, state);
-    if (!portable.ok) { setSaveMessage(portable.reason === 'modelClosed' ? 'saveModelClosed' : 'saveEmpty'); return; }
+    if (!portable.ok) {
+      setSaveMessage(portable.reason === 'sourceUnknown'
+        ? { key: 'saveSourceUnknown', model: portable.model || t('compareAnalysis.reconcile.unnamedModel') }
+        : { key: portable.reason === 'modelClosed' ? 'saveModelClosed' : 'saveEmpty' });
+      return;
+    }
     setSaveMessage(null);
-    void saveAnalysisRun(portable.saved).then(saved => setSaveMessage(saved ? 'saved' : 'saveFailed'));
+    void saveAnalysisRun(portable.saved).then(saved => setSaveMessage({ key: saved ? 'saved' : 'saveFailed' }));
   };
 
   const reconcile = () => {
@@ -144,7 +150,7 @@ export function CompareReconcileSection({ result }: { result: CompareResult }) {
               <Trash2 className="h-3.5 w-3.5" />
             </IconButton>
           </div>
-          {saveMessage && <p aria-live="polite" className="text-muted-foreground">{t(SAVE_MESSAGES[saveMessage])}</p>}
+          {saveMessage && <p aria-live="polite" className="text-muted-foreground">{t(SAVE_MESSAGES[saveMessage.key], { model: saveMessage.model ?? '' })}</p>}
         </>
       )}
       <CompareSavedRuns kind={kind} onReopen={id => setPicked(p => ({ base: p.base ?? (baseId || id), head: id }))} />

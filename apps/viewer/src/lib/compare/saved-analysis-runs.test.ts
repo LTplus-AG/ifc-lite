@@ -18,6 +18,8 @@ import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { ClashRule } from '@ifc-lite/clash';
+import { StepExporter } from '@ifc-lite/export';
+import { IfcParser } from '@ifc-lite/parser';
 import type { ViewerState } from '@/store';
 import { analysisStampFrom } from '@/hooks/useAnalysisStaleness';
 import { emptyPlacementState } from '@/lib/model-placement/state';
@@ -100,6 +102,28 @@ describe('saved analysis runs reconcile across sessions (#7370)', () => {
     assert.ok(bound.run.kind === 'clash' && bound.run.result.clashes.every(c => c.a.model === 'A-session-2'));
     const reopened = ok(reconcile(after, bound.run, capture(after, { kind: 'clash', result: await runClash(pair, ['B'], { rules: RULES }) }, ['B'])));
     assert.deepEqual(byState(reopened), byState(native));
+  });
+
+  it('the saved element identities are the files\' own: a native IFC export, re-parsed, names the same elements', async t => {
+    const pair = await revisionPair(t); if (!pair) return;
+    const state = await session(pair);
+    const run = capture(state, { kind: 'clash', result: await runClash(pair, ['A', 'B'], { rules: RULES }) }, ['A', 'B']);
+    const portable = portableAnalysisRun(run, state);
+    assert.ok(portable.ok && portable.saved.kind === 'clash' && portable.saved.result.clashes.length > 0);
+    const saved = portable.saved;
+    const reparsed = new Map<string, Awaited<ReturnType<IfcParser['parseColumnar']>>>();
+    for (const [model, source] of [[saved.models.find(m => m.name === pair.base.name)!, pair.base], [saved.models.find(m => m.name === pair.head.name)!, pair.head]] as const) {
+      const step = new StepExporter(source.ifcDataStore).export({ schema: 'IFC4' });
+      reparsed.set(model.key, await new IfcParser().parseColumnar(step.content.slice().buffer, { disableWorkerScan: true }));
+    }
+    let checked = 0;
+    for (const clash of saved.result.clashes) for (const ref of [clash.a, clash.b]) {
+      if (ref.key.startsWith('expressid:')) continue;
+      const store = reparsed.get(ref.model)!;
+      assert.equal(store.entities.getGlobalId(ref.expressId), ref.key.split(':')[0], `${ref.model}#${ref.expressId}`);
+      checked++;
+    }
+    assert.ok(checked > 0);
   });
 
   it('an element without a GlobalId keeps its model-scoped key under the model it is bound to', async t => {
@@ -201,6 +225,20 @@ describe('saved analysis runs reconcile across sessions (#7370)', () => {
     const editedRun = portableAnalysisRun(run, { ...state, hasChanges: id => id === 'A' });
     assert.ok(editedRun.ok && editedRun.saved.edited === true);
     assert.deepEqual(refusals(state, editedRun.saved), ['runEdited:']);
+  });
+
+  it('Save refuses a run it could never reopen: a closed model without a record, or a model without a source identity', async t => {
+    const pair = await revisionPair(t); if (!pair) return;
+    const state = await session(pair);
+    // A validation stamp records no per-model identity; once the model is closed nothing says which file it was.
+    const run = capture(state, { kind: 'validation', report: await runIds(pair, 'B') }, ['B']);
+    assert.equal(run.stamp?.placement, undefined);
+    const onlyA: State = { ...state, models: new Map([...state.models].filter(([id]) => id === 'A')) };
+    assert.deepEqual(portableAnalysisRun(run, onlyA), { ok: false, reason: 'modelClosed' });
+    // Open, but loaded from no recognisable file (no content hash, no fingerprint): refused by name, not saved.
+    const anonymous: State = { ...state, models: new Map([...state.models].map(([id, m]) =>
+      [id, id === 'B' ? { ...m, sourceContentHash: undefined, sourceFingerprint: undefined } : m])) };
+    assert.deepEqual(portableAnalysisRun(run, anonymous), { ok: false, reason: 'sourceUnknown', model: pair.head.name });
   });
 
   it('a capture whose model was closed cannot be saved; the stored payload is strict', async t => {

@@ -159,6 +159,37 @@ describe('saved runs for reconciliation (#7370)', () => {
     assert.deepEqual(useViewerStore.getState().compareRunCaptures, []);
   });
 
+  it('reopening while the old capture is still held replaces it with the run bound to the current model ids', async t => {
+    const pair = await revisionPair(t);
+    if (!pair) return;
+    await open(pair, 'A', 'B');
+    await publishClash(pair);
+    let root = mount(pair);
+    act(() => click(button(root, /Capture current run/)));
+    const save = button(root, /Save head run/);
+    const { useSavedAnalysisRuns } = await savedRuns();
+    act(() => click(save));
+    await waitFor(() => useSavedAnalysisRuns.getState().status.items[useSavedAnalysisRuns.getState().entries[0]?.id ?? ''] === 'saved', 'saved');
+    const [saved] = useSavedAnalysisRuns.getState().entries;
+
+    // The same two files reopened under new viewer ids, without a session reset: the old capture is still held.
+    cleanup();
+    const { models } = useViewerStore.getState();
+    const moved = { A: 'A-reopened', B: 'B-reopened' } as const;
+    const compare = { ...pair.compare, baseModelId: moved.A, headModelId: moved.B };
+    act(() => useViewerStore.setState({ compareResult: compare, clashResult: null, clashRawResult: null,
+      models: new Map([...models].map(([id, m]) => [moved[id as 'A' | 'B'], { ...m, id: moved[id as 'A' | 'B'] }])) }));
+    assert.deepEqual(useViewerStore.getState().compareRunCaptures.map(run => run.modelIds), [['A', 'B']]);
+    root = render(<CompareAnalysisSections result={compare} />);
+    act(() => click(button(root, /Reconcile findings across revisions/)));
+    act(() => click(button(root, /^Reopen saved run/)));
+    assert.equal(root.querySelector('[role="alert"]'), null, 'the run binds');
+    assert.deepEqual(useViewerStore.getState().compareRunCaptures.map(run => [run.id, run.modelIds]), [[saved.id, [moved.A, moved.B]]]);
+    act(() => click(button(root, /^Reconcile$/)));
+    assert.ok(root.querySelector('output'), 'the reopened run reconciles under the current ids');
+    assert.equal(root.querySelector('[role="alert"]'), null);
+  });
+
   it('a refused write says the run is not stored yet; a retry stores it', async t => {
     const pair = await revisionPair(t);
     if (!pair) return;

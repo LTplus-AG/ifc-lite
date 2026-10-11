@@ -20,6 +20,7 @@ import { waitFor } from './render.js';
 import { createDocumentSlice } from '@/store/slices/documentSlice';
 import { createValidationReportsSlice } from '@/store/slices/validationReportsSlice';
 import { createSavedComparisonsSlice } from '@/store/slices/savedComparisonsSlice';
+import * as contentLibraries from '@/lib/storage/content-library';
 import { contentTransaction, transactionDone, requestValue, type RecoveryRow } from '@/lib/storage/content-database';
 
 export async function clearContentDatabase(): Promise<void> {
@@ -73,6 +74,9 @@ beforeEach(async () => {
     localStorage.removeItem('ifc-lite-clash-manual-groups');
     await clashGroupLibrary.restore();
     await Promise.all([bcfDraftLibrary.restore(), bcfOutboxLibrary.restore(), modelChangeLibrary.restore(), clashGroupApplicationLibrary.restore(), reviewWorkspaceLibrary.restore(), semanticReviewLibrary.restore(), assistantRecipeLibrary.restore(), assistantPreferencesLibrary.restore()]);
+    // Every other loaded library (saved analysis runs, #7370) through the controller registry, never by importing
+    // it: a namespace read keeps this fixture loadable where that registry is absent.
+    await contentLibraries.restoreContentLibraries?.();
     useClashGroupLibrary.setState({ activeId: DEFAULT_GROUP_WORKSPACE });
     useViewerStore.setState({
       ...createDocumentSlice(useViewerStore.setState, useViewerStore.getState, useViewerStore),

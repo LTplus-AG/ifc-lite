@@ -18,6 +18,12 @@ export interface ContentCommitReceipt extends ContentRow { stagedPayload?: unkno
 const copyItemStatus = (items?: ContentStatus['items']): ContentStatus['items'] => Object.assign(Object.create(null), items);
 export const initialContentStatus = (): ContentStatus => ({ phase: 'loading', recovered: false, items: copyItemStatus() });
 
+const controllers = new Set<{ restore: () => Promise<boolean> }>();
+/** Reread every library controller created so far from IndexedDB, without naming each kind (#7370). */
+export function restoreContentLibraries(): Promise<boolean[]> {
+  return Promise.all([...controllers].map(controller => controller.restore()));
+}
+
 /** One controller per store slice: edits stay visible before hydration and on refusal.
  * Per-item queues prevent old commits clearing newer drafts; transactions check other tabs. */
 export function createContentLibrary<T extends { id: string }>(definition: ContentDefinition<T>,
@@ -276,5 +282,7 @@ export function createContentLibrary<T extends { id: string }>(definition: Conte
       return true;
     } catch (error) { contentFailure(error); return false; }
   };
-  return { initialize, put, retry, refresh, stage, restore, cancelDeletion };
+  const controller = { initialize, put, retry, refresh, stage, restore, cancelDeletion };
+  controllers.add(controller);
+  return controller;
 }

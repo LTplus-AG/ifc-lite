@@ -43,7 +43,7 @@ for (const s of storeys) {
 
 `bim.ids.authoring` edits IDS documents with the typed operations and
 grounding gate that the IDS editor and the MCP `ids_apply_ops` tool use (see
-[IDS authoring](ids-authoring.md)). A batch that names an entity, property
+[Writing IDS documents](ids.md#writing-ids-documents)). A batch that names an entity, property
 set or property the IFC schema does not have is refused as a whole. The
 result lists each problem with ranked candidates. Accepted batches can be
 undone.

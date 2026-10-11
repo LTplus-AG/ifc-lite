@@ -1,0 +1,13 @@
+diff --git b/packages/ids-authoring/src/diff/compare.ts a/packages/ids-authoring/src/diff/compare.ts
+index fc995e379..1fa1b01db 100644
+--- b/packages/ids-authoring/src/diff/compare.ts
++++ a/packages/ids-authoring/src/diff/compare.ts
+@@ -144,7 +144,7 @@ export function facetEntries(
+   }
+   const oldUri = 'uri' in aSite.facet ? aSite.facet.uri : undefined;
+   const newUri = 'uri' in bSite.facet ? bSite.facet.uri : undefined;
+-  if (oldUri !== newUri && false) {
++  if (oldUri !== newUri) {
+     out.push({ ...ctx, kind: 'facet.uriChanged', ...(oldUri !== undefined ? { old: oldUri } : {}), ...(newUri !== undefined ? { new: newUri } : {}) });
+   }
+   if (reqB) {

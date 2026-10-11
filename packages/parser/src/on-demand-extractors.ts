@@ -11,6 +11,8 @@
  */
 
 import { EntityExtractor } from './entity-extractor.js';
+import { extractCurrentTypeQuantities } from './current-type-quantities.js';
+import type { MetadataReadView } from './effective-metadata-record.js';
 import { RelationshipType, resolvedTypeName } from '@ifc-lite/data';
 import type { IfcDataStore } from './columnar-parser.js';
 import { readQuantitySet, type CollectedQuantity } from './quantity-collect.js';
@@ -312,8 +314,10 @@ export function extractQsetsFromIds(
  */
 export function extractTypeQuantitiesOnDemand(
     store: IfcDataStore,
-    entityId: number
+    entityId: number,
+    view?: MetadataReadView,
 ): TypeQuantityInfo | null {
+    if (view && store.source?.length) return extractCurrentTypeQuantities(store, entityId, view);
     if (!store.relationships) return null;
 
     const typeIds = store.relationships.getRelated(entityId, RelationshipType.DefinesByType, 'inverse');

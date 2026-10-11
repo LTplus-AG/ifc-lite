@@ -243,6 +243,8 @@ test('#7355 sole native set missing GlobalId refuses live edit and export consis
   useViewerStore.setState({ models: new Map([['arch', { ...model, ifcDataStore: source }]]),
     ifcDataStore: source, mutationViews: new Map(), storeEditors: new Map() });
   const view = getOrCreateMutationView(useViewerStore, 'arch'); assert.ok(view);
+  assert.equal(readCurrentTypeQuantities(source, f.f.id, view).status, 'available',
+    'unchanged native quantities do not require writer identity');
   view.setQuantity(f.a.type, 'Qto_WallBaseQuantities', 'NetVolume', 35, QuantityType.Volume);
   const read = readCurrentTypeQuantities(source, f.f.id, view);
   assert.equal(read.status, 'unavailable');

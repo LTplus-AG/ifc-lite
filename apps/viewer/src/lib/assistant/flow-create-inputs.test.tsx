@@ -138,3 +138,19 @@ test('#7241 all native Player kinds retain their exact explicit metadata and dig
     assert.throws(() => applyFlowCreateProposal({ ...proposal, docJson: JSON.stringify(changed) }, proposal.digest), /Reviewed proposal has changed/);
   }
 });
+
+// #7243: slot identity binds the Player file, even when labels and filters agree.
+test('#7243 expanded native creation review distinguishes file-slot binding IDs with identical presentation metadata', () => {
+  for (const id of ['models', 'checks']) {
+    const proposal = prepareFlowCreateProposal(envelope([{ ...exposed, kind: 'files', fileSlots: [
+      { id, label: 'Choose IFC', accept: '.ifc', multiple: false, required: true },
+    ] }]), captureEvidence('flow'));
+    useFlowCreateReview.setState({ proposal, receipt: null, approved: false, error: null });
+    const ui = render(<FlowCreateReview />);
+    const visibleSlots = [...ui.querySelectorAll('li span')].map(slot => slot.textContent);
+    assert.deepEqual(visibleSlots, [`${id} · Choose IFC · .ifc · required · one file`]);
+    assert.equal([...ui.querySelectorAll('button')].find(button => button.textContent === 'Create and open graph')?.disabled, true);
+    assert.equal(useViewerStore.getState().savedFlows.length, initial.savedFlows.length, 'review never creates or executes a graph');
+    cleanup();
+  }
+});

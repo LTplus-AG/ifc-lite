@@ -71,7 +71,7 @@ export function FlowCreateReview() {
             {input.label} · {input.nodeId}.{input.param} · {input.kind}
             {input.options && ` · ${input.options.join(', ')}`}
             {input.fileSlots?.map(slot => <span key={slot.id} className="block font-mono text-2xs">
-              {slot.label} · {slot.accept || '*'} · {t(slot.required ? 'flowAssistant.inputRequired' : 'flowAssistant.inputOptional')}
+              {slot.id} · {slot.label} · {slot.accept || '*'} · {t(slot.required ? 'flowAssistant.inputRequired' : 'flowAssistant.inputOptional')}
               {' · '}{t(slot.multiple ? 'flowAssistant.inputMultiple' : 'flowAssistant.inputSingle')}
             </span>)}
           </li>)}</ul>

@@ -42,7 +42,7 @@ import '@/test/setup-dom.js';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
-import { cleanup, render } from '@/test/render.js';
+import { cleanup, render, waitFor } from '@/test/render.js';
 import { registerLocale, setLocale, type Catalogue } from '@/i18n';
 import type { keyboardShortcutsEn as KeyboardShortcutsEnType } from '@/i18n/catalogues/keyboard-shortcuts.en';
 import { KeyboardShortcutsDialog } from './KeyboardShortcutsDialog.js';
@@ -67,11 +67,9 @@ const ALL_KEYS = Object.keys(keyboardShortcutsEn) as Key[];
 const mark = (key: Key) => `⟦${key}|${String(keyboardShortcutsEn[key])}⟧`;
 const PSEUDO: Catalogue = Object.fromEntries(ALL_KEYS.map((key) => [key, mark(key)])) as Catalogue;
 
-async function flush(): Promise<void> {
-  await act(async () => {
-    await Promise.resolve();
-    await Promise.resolve();
-  });
+/** What's New is a lazy chunk (its release history must stay out of the eager bundle): wait for it to mount. */
+async function whatsNewLoaded(): Promise<void> {
+  await waitFor(() => (document.body.textContent ?? '').includes('rows below are per-package releases'), "the lazy What's New tab to mount");
 }
 
 beforeEach(() => {
@@ -114,7 +112,7 @@ describe('KeyboardShortcutsDialog localization (#4918)', () => {
     assert.match(aboutText(), /Local model viewing runs on your device\./);
 
     render(<KeyboardShortcutsDialog open onClose={() => {}} initialTab="whatsnew" />);
-    await flush();
+    await whatsNewLoaded();
     assert.match(document.body.textContent ?? '', /You’re on viewer v0\.0\.0-test/);
     assert.match(document.body.textContent ?? '', /rows below are per-package releases/);
     assert.match(document.body.textContent ?? '', /1 change/);
@@ -141,7 +139,7 @@ describe('KeyboardShortcutsDialog localization (#4918)', () => {
     act(() => privacyToggle.click());
 
     render(<KeyboardShortcutsDialog open onClose={() => {}} initialTab="whatsnew" />);
-    await flush();
+    await whatsNewLoaded();
     render(<KeyboardShortcutsDialog open onClose={() => {}} initialTab="shortcuts" />);
 
     // All three dialogs stay mounted (this test never closes one before

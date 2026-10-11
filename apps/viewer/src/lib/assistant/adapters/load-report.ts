@@ -11,7 +11,7 @@ export const loadReportAdapter: EvidenceAdapter = {
   id: 'loadReport', group: 'model', panelIds: ['loadReport'],
   titleKey: 'newIfc.modelsTitle', descriptionKey: 'newIfc.modelsDescription',
   rowMeaningKey: 'assistant.evidenceRowsLoadReport', unavailableKey: 'assistant.evidenceUnavailableLoadReport',
-  suggestionKeys: ['newIfc.suggest', 'assistant.suggestLoadReport', 'assistant.suggestAuthoring', 'assistant.suggestRulesDraft', 'assistantArtifacts.suggestList', 'assistantArtifacts.suggestChart'],
+  suggestionKeys: ['newIfc.suggest', 'assistant.suggestLoadReport', 'assistant.suggestAuthoring', 'assistant.suggestIdsDraft', 'assistant.suggestRulesDraft', 'assistantArtifacts.suggestList', 'assistantArtifacts.suggestChart'],
   readiness: s => s.models.size ? { status: { labelKey: 'assistant.pickModels', params: { count: s.models.size } }, ready: true }
     : { status: { labelKey: 'newIfc.capabilityReady' }, ready: true },
   identity: s => s.models,

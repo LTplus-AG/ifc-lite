@@ -3,11 +3,12 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * The IDS agent in the Assistant (IDS-081, IDS-082, IDS-085, IDS-086). It
- * supersedes the JSON `ids.specifications` proposal: the agent drafts with
- * tools against the grounding gate, the user reviews each change (sources,
+ * The IDS agent in the Assistant (IDS-081, IDS-082, IDS-085, IDS-086). Next
+ * to the JSON `ids.specifications` answer (which the hosted free models still
+ * use), the agent drafts with tools against the grounding gate, the user reviews each change (sources,
  * live counts, unresolved statements, decisions), and the kept changes go
- * through the same native gates as before (audit, dry run, save or export).
+ * into the same review card as a JSON IDS answer (`IdsDraftReview`): inline
+ * edits, native audit, dry run, save or export.
  */
 
 import { useState } from 'react';
@@ -16,9 +17,9 @@ import { Button } from '@/components/ui/button';
 import { useTranslation } from '@/i18n';
 import { useViewerStore } from '@/store';
 import { useAssistantDraft } from '@/lib/assistant/composer-draft';
-import { answerIdsAgentQuestion, acceptedIdsDraft, cancelIdsAgentRun, resetIdsAgent, setIdsAgentSelection, startIdsAgentRun, useIdsAgent } from '@/lib/ids-agent/run';
-import type { IdsDraft } from '@/lib/check-authoring/ids-draft';
-import { IdsDraftChecks } from '../check-authoring/IdsDraftChecks';
+import { answerIdsAgentQuestion, acceptedIdsProposal, cancelIdsAgentRun, resetIdsAgent, setIdsAgentSelection, startIdsAgentRun, useIdsAgent } from '@/lib/ids-agent/run';
+import type { IdsProposal } from '@/lib/check-authoring/ids-proposal';
+import { IdsDraftReview } from '../check-authoring/IdsDraftReview';
 import { Notice, ReviewCard } from '../check-authoring/DraftParts';
 import { IdsAgentProposal } from './IdsAgentProposal';
 import { IdsAgentPrivacy } from './IdsAgentPrivacy';
@@ -60,11 +61,11 @@ export function IdsAgentReview() {
   const state = useIdsAgent();
   const prompt = useAssistantDraft(s => s.text);
   const model = useViewerStore(s => s.chatActiveModel);
-  const [draft, setDraft] = useState<{ draft: IdsDraft; rejected: string[] } | null>(null);
+  const [draft, setDraft] = useState<{ proposal: IdsProposal; rejected: string[] } | null>(null);
   const [acceptError, setAcceptError] = useState<string | null>(null);
   const start = () => { setDraft(null); setAcceptError(null); void startIdsAgentRun({ request: prompt, model }); };
   const accept = () => {
-    acceptedIdsDraft().then(setDraft, (error: unknown) => setAcceptError(error instanceof Error ? error.message : String(error)));
+    acceptedIdsProposal().then(setDraft, (error: unknown) => setAcceptError(error instanceof Error ? error.message : String(error)));
   };
   const run = state.run;
   const stopped = run && run.status !== 'completed' ? run.proposal.status : null;
@@ -90,7 +91,7 @@ export function IdsAgentReview() {
       {!draft && <Button size="sm" className="h-7" disabled={state.selection.size === 0} onClick={accept}>{t('idsAgent.accept')}</Button>}
       {acceptError && <Notice tone="error">{acceptError}</Notice>}
       {draft && draft.rejected.length > 0 && <Notice tone="warning">{t('idsAgent.rejected', { count: draft.rejected.length })}</Notice>}
-      {draft && <IdsDraftChecks draft={draft.draft} />}
+      {draft && <IdsDraftReview initial={draft.proposal} />}
     </>}
     {state.phase !== 'running' && (state.phase === 'done' || state.error) && <Button size="sm" variant="ghost" className="h-7"
       onClick={() => { setDraft(null); resetIdsAgent(); }}><RotateCcw className="h-3 w-3 mr-1" />{t('idsAgent.again')}</Button>}

@@ -17,7 +17,7 @@ import { create } from 'zustand';
 import type { AgentRun, AskUserQuestion, Attachment } from '@ifc-lite/ids-agent';
 import type { LintContext, StudioDocument } from '@ifc-lite/ids-authoring';
 import { recordReceipt, type UsageReceipt } from '@/lib/llm/request-receipts';
-import { idsDraftOf, type IdsDraft } from '@/lib/check-authoring/ids-draft';
+import type { IdsProposal } from '@/lib/check-authoring/ids-proposal';
 import { idsAgentRoute } from './transport';
 
 type AgentRunPhase = 'idle' | 'running' | 'done';
@@ -111,16 +111,24 @@ export async function startIdsAgentRun(options: StartOptions): Promise<void> {
 }
 
 /**
- * The accepted part of the proposal as an IDS draft for the native gates:
- * the selected batches, re-gated and applied to the run's base document.
+ * The accepted part of the proposal as an editable IDS draft: the selected
+ * batches, re-gated and applied to the run's base document. It is the same
+ * `IdsProposal` a JSON answer produces, so both are reviewed, edited inline
+ * and saved by one card (`IdsDraftReview`). Unresolved statements travel as
+ * unsupported requirements. The agent writes SI values, so no declared units.
  */
-export async function acceptedIdsDraft(): Promise<{ draft: IdsDraft; rejected: string[] }> {
+export async function acceptedIdsProposal(): Promise<{ proposal: IdsProposal; rejected: string[] }> {
   const { run, base, selection } = useIdsAgent.getState();
   if (!run || !base) throw new Error('There is no proposal to accept.');
   const [{ acceptProposal }, authoring, lint] = await Promise.all([import('@ifc-lite/ids-agent'), import('@ifc-lite/ids-authoring'), contexts()]);
   const { state, rejected } = acceptProposal(authoring.createStudioState(base), run.proposal, { gate: lint.gate, batchIds: selection });
+  const document = state.doc.ids;
+  const title = document.info.title.trim() || 'IDS draft';
   const unsupported = run.proposal.unresolved.map((u) => ({ text: u.statement, reason: `${u.category}: ${u.reason}` }));
-  return { draft: idsDraftOf(state.doc.ids, unsupported), rejected: rejected.map((r) => r.batchId) };
+  return {
+    proposal: { title, document: { ...document, info: { ...document.info, title } }, unsupported, units: [] },
+    rejected: rejected.map((r) => r.batchId),
+  };
 }
 
 export function cancelIdsAgentRun(): void {

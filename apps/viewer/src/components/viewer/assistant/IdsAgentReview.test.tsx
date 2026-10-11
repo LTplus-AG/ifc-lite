@@ -13,18 +13,17 @@ import '@/test/setup-dom.js';
 import 'fake-indexeddb/auto';
 import assert from 'node:assert/strict';
 import { afterEach, test } from 'node:test';
-import { render, click, cleanup, waitFor } from '@/test/render';
+import { render, click, cleanup, type, waitFor } from '@/test/render';
 import { useViewerStore } from '@/store';
 import { seedAuthoringSample } from '@/test/authoring-sample-fixture';
 import { anthropicStream, serveAnthropicStreams } from '@/test/anthropic-sse';
-import { sampleIdsDraft } from '@/test/check-authoring-fixture';
+import { SAMPLE_IDS_PROPOSAL, json } from '@/test/check-authoring-fixture';
 import { captureEvidence } from '@/lib/assistant/evidence';
 import { cancelAssistant, replaceEvidence, useAssistant } from '@/lib/assistant/conversation';
 import { setAssistantDraft } from '@/lib/assistant/composer-draft';
 import { resetIdsAgent, useIdsAgent } from '@/lib/ids-agent/run';
 import { loadDefinitionLibrary } from '@/lib/validation/definition-library';
 import { updateApiKeys } from '@/services/api-keys';
-import { IdsDraftChecks } from '../check-authoring/IdsDraftChecks';
 import { AssistantPanel } from './AssistantPanel';
 
 const initial = useViewerStore.getState();
@@ -92,6 +91,7 @@ test('a drafted IDS is grounded, reviewed per change, shows what was sent, and s
   assert.doesNotMatch(text, /Pset_SpaceMagic.*New specification/);
 
   click(button(card, /Use the kept changes/));
+  await waitFor(() => !!card.querySelector('section[aria-label="Review IDS draft"]'), 'the accepted draft opens in the IDS review card', 20_000);
   await waitFor(() => /Native IDS audit: 0 errors/.test(card.textContent ?? ''), 'the accepted draft passes the native audit', 20_000);
   assert.match(card.textContent ?? '', /Spaces are at least 8 m2\./, 'the unresolved statement travels with the draft');
   click(button(card, /Dry run on loaded models/));
@@ -123,23 +123,84 @@ test('a dropped change is not used, and a clarification is asked with gated choi
   assert.equal(button(card, /Use the kept changes/).disabled, true);
 });
 
-test('the hosted free models are refused with a reason instead of the old JSON path', async () => {
-  const { card } = await openPanel('Spaces have names.', 'openai/gpt-free');
+const select = (root: HTMLElement, id: string, value: string) => {
+  const element = root.querySelector<HTMLSelectElement>(`#${id}`);
+  assert.ok(element, `select #${id}`);
+  element.value = value;
+  element.dispatchEvent(new Event('change', { bubbles: true }));
+};
+const wallOps = [
+  { kind: 'spec.add', payload: { specId: '@walls', name: 'Walls are rated', ifcVersions: ['IFC4'] } },
+  { kind: 'facet.add', payload: { specId: '@walls', section: 'applicability', facetId: '@a', facet: { type: 'entity', name: eq('IfcWall') } } },
+  { kind: 'facet.add', payload: { specId: '@walls', section: 'requirements', facetId: '@r', facet: { type: 'property', propertySet: eq('Pset_WallCommon'),
+    baseName: eq('FireRating'), dataType: eq('IFCLABEL'), value: eq('REI60') } } },
+];
+
+// Owner decision on #7148: an agent draft keeps the inline edits of the JSON path.
+test('every inline edit of an accepted agent draft reaches the saved IDS', async () => {
+  const served = serveAnthropicStreams([
+    anthropicStream([{ type: 'tool_use', id: 'toolu_w', name: 'ids_apply_ops', input: { ops: wallOps } }]),
+    anthropicStream([{ type: 'text', text: 'One specification.' }]),
+  ]);
+  restoreFetch = served.restore;
+  const { card } = await openPanel('Walls carry fire rating REI60.');
   click(button(card, /Draft IDS from the message/));
-  await waitFor(() => /needs your own Anthropic or OpenAI key/.test(card.textContent ?? ''), 'the reason is shown');
-  assert.equal(useIdsAgent.getState().run, null);
+  await waitFor(() => useIdsAgent.getState().phase === 'done', 'the run finishes', 20_000);
+  click(button(card, /Use the kept changes/));
+  await waitFor(() => !!card.querySelector('section[aria-label="Review IDS draft"]'), 'the review card opens', 20_000);
+  const review = card.querySelector<HTMLElement>('section[aria-label="Review IDS draft"]')!;
+  await waitFor(() => /Native IDS audit: 0 errors/.test(review.textContent ?? ''), 'the draft audits clean', 20_000);
+
+  const value = review.querySelector<HTMLInputElement>('#ids-draft-spec-0-req-0-value');
+  assert.equal(value?.value, 'REI60');
+  type(review.querySelector<HTMLInputElement>('#ids-draft-title')!, 'Wall fire safety');
+  type(review.querySelector<HTMLInputElement>('#ids-draft-spec-0-name')!, 'Walls carry a fire rating');
+  select(review, 'ids-draft-spec-0-cardinality', 'optional');
+  select(review, 'ids-draft-spec-0-req-0-cardinality', 'optional');
+  type(value!, 'REI90');
+  await waitFor(() => /Native IDS audit: 0 errors/.test(review.textContent ?? ''), 'the edited draft audits clean', 20_000);
+  click(button(review, /Dry run on loaded models/));
+  await waitFor(() => !button(review, /Save to IDS library/).disabled, 'the edited draft dry-runs', 20_000);
+  click(button(review, /Save to IDS library/));
+  const [entry] = loadDefinitionLibrary().library.entries;
+  assert.ok(entry && entry.kind === 'ids');
+  assert.equal(entry.document.info.title, 'Wall fire safety');
+  const [spec] = entry.document.specifications;
+  assert.equal(spec.name, 'Walls carry a fire rating');
+  assert.equal(spec.minOccurs, 0, 'the specification is optional');
+  assert.equal(spec.requirements[0].optionality, 'optional');
+  const facet = spec.requirements[0].facet;
+  assert.ok(facet.type === 'property' && facet.value?.type === 'simpleValue');
+  assert.equal(facet.value.value, 'REI90');
 });
 
-// #6915 review, kept: an audit that could not run is not a clean audit.
-test('an IDS audit that fails to run blocks saving and export, and stays shown after a dry run', async () => {
+// Owner decision on #7148: free hosted models still draft IDS, through the chat's reviewed JSON answer.
+test('a hosted free model drafts IDS through the chat, and the draft is reviewed and edited inline', async () => {
   await seedAuthoringSample({ editEnabled: false });
-  const root = render(<IdsDraftChecks draft={sampleIdsDraft()} audit={() => Promise.reject(new Error('schema data failed to load'))} />);
-  await waitFor(() => /audit could not run/.test(root.textContent ?? ''), 'the audit failure is shown');
-  assert.doesNotMatch(root.textContent ?? '', /0 errors/);
-  assert.match(root.textContent ?? '', /schema data failed to load/);
-  assert.equal(button(root, /Export \.ids/).disabled, true);
-  click(button(root, /Dry run on loaded models/));
-  await waitFor(() => !!root.querySelector('section[aria-label="Dry-run results"]'), 'the dry run completes', 20_000);
-  assert.equal(button(root, /Save to IDS library/).disabled, true, 'a current dry run does not unblock an audit that never ran');
-  assert.equal(button(root, /Export \.ids/).disabled, true);
+  replaceEvidence(captureEvidence('loadReport'));
+  useViewerStore.setState({ chatActiveModel: 'openai/gpt-free' });
+  let body = '';
+  const original = globalThis.fetch;
+  restoreFetch = () => { globalThis.fetch = original; };
+  const chunk = JSON.stringify({ choices: [{ delta: { content: json(SAMPLE_IDS_PROPOSAL) }, finish_reason: 'stop' }] });
+  globalThis.fetch = async (_url, init) => { body = String(init?.body); return new Response(`data: ${chunk}\n\ndata: [DONE]\n\n`); };
+  setAssistantDraft('Draft IDS specifications for review: spaces are named, walls are external.');
+  const ui = render(<AssistantPanel />);
+  const card = ui.querySelector<HTMLElement>('section[aria-label="Draft IDS with tools"]')!;
+  click(button(card, /Draft IDS from the message/));
+  await waitFor(() => /needs your own Anthropic or OpenAI key/.test(card.textContent ?? ''), 'the agent states why it cannot run');
+  assert.match(card.textContent ?? '', /send the requirements in the chat instead/);
+  assert.equal(useIdsAgent.getState().run, null);
+
+  click(button(ui, /^Send$/));
+  await waitFor(() => useAssistant.getState().status === 'idle' && useAssistant.getState().messages.length === 2, 'the free model answers');
+  const sent = JSON.parse(body) as { model: string; system?: unknown };
+  assert.equal(sent.model, 'openai/gpt-free', 'the hosted free model is used');
+  // The system prompt is sent as cacheable text blocks.
+  assert.match(JSON.stringify(sent.system ?? ''), /ids\.specifications/, 'the free model is given the IDS draft contract');
+  await waitFor(() => !!ui.querySelector('section[aria-label="Review IDS draft"]'), 'the IDS review card mounts');
+  const review = ui.querySelector<HTMLElement>('section[aria-label="Review IDS draft"]')!;
+  await waitFor(() => /Native IDS audit: 0 errors/.test(review.textContent ?? ''), 'the draft audits clean', 20_000);
+  type(review.querySelector<HTMLInputElement>('#ids-draft-spec-0-name')!, 'Spaces carry a name');
+  assert.equal(review.querySelector<HTMLInputElement>('#ids-draft-spec-0-name')?.value, 'Spaces carry a name');
 });

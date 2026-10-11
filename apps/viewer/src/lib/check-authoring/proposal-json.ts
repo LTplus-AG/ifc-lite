@@ -4,12 +4,13 @@
 
 /**
  * Shared strict-parsing helpers for the reviewed check-authoring proposals
- * (viewer AI P07, #6915): `rules.proposal` and `document.outline`. Every refusal names the field and what to change, so
+ * (viewer AI P07, #6915): `ids.specifications`, `rules.proposal` and
+ * `document.outline`. Every refusal names the field and what to change, so
  * the assistant's "ask again" correction carries an actionable reason.
  */
 
-export type CheckAuthoringKind = 'rules.proposal' | 'document.outline';
-export const CHECK_AUTHORING_KINDS: readonly CheckAuthoringKind[] = ['rules.proposal', 'document.outline'];
+export type CheckAuthoringKind = 'ids.specifications' | 'rules.proposal' | 'document.outline';
+export const CHECK_AUTHORING_KINDS: readonly CheckAuthoringKind[] = ['ids.specifications', 'rules.proposal', 'document.outline'];
 
 export const ANSWER_LIMIT = 200_000;
 export const TEXT_LIMIT = 2000;
@@ -30,7 +31,7 @@ export function onlyKeys(value: JsonRecord, allowed: readonly string[], at: stri
 }
 
 /** Control characters other than tab and line breaks: XML 1.0 cannot carry them, so a saved IDS could not either. */
-function plainText(text: string, at: string): string {
+export function plainText(text: string, at: string): string {
   // Matching control characters is the point: they are refused, not allowed through.
   // eslint-disable-next-line no-control-regex
   const bad = /[\u0000-\u0008\u000B\u000C\u000E-\u001F]/.exec(text);
@@ -53,7 +54,7 @@ export function requiredText(value: JsonRecord, key: string, at: string, max = 2
 export function declaredCheckKind(content: string): CheckAuthoringKind | null {
   const trimmed = content.trimStart();
   if (!trimmed.startsWith('{') && !trimmed.startsWith('```')) return null;
-  const kind = /"kind"\s*:\s*"(rules\.proposal|document\.outline)"/.exec(content)?.[1];
+  const kind = /"kind"\s*:\s*"(ids\.specifications|rules\.proposal|document\.outline)"/.exec(content)?.[1];
   return kind ? kind as CheckAuthoringKind : null;
 }
 

@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { memo, useEffect, useMemo, useRef, useState, type MouseEvent } from 'react';
-import { BarChart3, Bot, Crosshair, Eye, FileText, Filter, GitBranch, Hammer, Layers, ListChecks, Network, Palette, PencilLine, Table, Table2, User, X } from 'lucide-react';
+import { BarChart3, Bot, ClipboardCheck, Crosshair, Eye, FileText, Filter, GitBranch, Hammer, Layers, ListChecks, Network, Palette, PencilLine, Table, Table2, User, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { IconButton } from '@/components/ui/icon-button';
 import { cn } from '@/lib/utils';
@@ -41,13 +41,13 @@ const DECLARED: Record<string, Declared> = { 'clash.groups': 'clash', 'flow.patc
   'filter.proposal': 'filter', 'list.proposal': 'list', 'lens.proposal': 'lens', 'chart.proposal': 'chart' };
 const PROPOSAL_TITLE = { clash: 'assistant.proposalClash', flow: 'assistant.proposalFlow', flowCreate: 'flowAssistant.proposalCreate', changes: 'assistant.proposalChanges',
   authoring: 'assistant.proposalAuthoring', room: 'roomReview.proposal', scene: 'sceneActions.proposal', mapping: 'assistant.proposalMapping',
-  rules: 'checkAuthoring.proposalRules', document: 'checkAuthoring.proposalDocument',
+  ids: 'checkAuthoring.proposalIds', rules: 'checkAuthoring.proposalRules', document: 'checkAuthoring.proposalDocument',
   filter: 'assistantArtifacts.proposal.filter', list: 'assistantArtifacts.proposal.list',
   lens: 'assistantArtifacts.proposal.lens', chart: 'assistantArtifacts.proposal.chart', semantic: 'semanticAssist.proposalTitle' } as const;
 const PROPOSAL_ICON = { clash: Layers, flow: GitBranch, flowCreate: GitBranch, changes: PencilLine, authoring: Hammer, room: Layers, scene: Eye, mapping: Table2,
-  rules: ListChecks, document: FileText,
+  ids: ClipboardCheck, rules: ListChecks, document: FileText,
   filter: Filter, list: Table, lens: Palette, chart: BarChart3, semantic: Network } as const;
-const CHECK_SUMMARY = { rules: 'checkAuthoring.proposalRulesSummary',
+const CHECK_SUMMARY = { ids: 'checkAuthoring.proposalIdsSummary', rules: 'checkAuthoring.proposalRulesSummary',
   document: 'checkAuthoring.proposalDocumentSummary' } as const;
 const ARTIFACT_OF: Record<ArtifactKind, Artifact> = { 'filter.proposal': 'filter', 'list.proposal': 'list', 'lens.proposal': 'lens', 'chart.proposal': 'chart' };
 const ARTIFACT_SUMMARY = { filter: 'assistantArtifacts.summary.filter', list: 'assistantArtifacts.summary.list',

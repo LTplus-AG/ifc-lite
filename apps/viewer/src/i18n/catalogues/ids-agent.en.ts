@@ -15,7 +15,7 @@ export const idsAgentEn = {
   'idsAgent.again': 'Start over',
   'idsAgent.error.missing-model': 'Choose a model for the Assistant first.',
   'idsAgent.error.missing-key': 'Add your API key for this model in the key settings.',
-  'idsAgent.error.needs-key': 'Drafting IDS with tools needs your own Anthropic or OpenAI key: the hosted free models cannot call tools.',
+  'idsAgent.error.needs-key': 'Drafting IDS with tools needs your own Anthropic or OpenAI key: the hosted free models cannot call tools. With a free model, send the requirements in the chat instead; its IDS draft opens below for review and inline edits.',
   'idsAgent.error.other': 'The agent could not run: {reason}',
   'idsAgent.question': 'The agent needs a decision',
   'idsAgent.dismiss': 'None of these',

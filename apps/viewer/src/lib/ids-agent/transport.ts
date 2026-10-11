@@ -7,8 +7,9 @@
  * chosen for the Assistant, called directly with the user's own key.
  *
  * The agent needs tool calling. The hosted proxy carries text completions
- * only, so the free route is refused here with a reason the panel shows,
- * rather than degraded into the JSON-proposal path this replaces. Keys stay
+ * only, so the free route is refused here with a reason the panel shows.
+ * Free models still draft IDS through the chat: their `ids.specifications`
+ * JSON answer opens in the same review card (`IdsDraftReview`). Keys stay
  * in the browser (`byok-guard.ts`); the Anthropic client is the one place
  * that adds the workspace header (`anthropic-client.ts`).
  */

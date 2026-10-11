@@ -1,7 +1,9 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+import { gatherProvedVolumes, type ProvedVolumes } from '@/hooks/useZoneApportionment';
 import { nativeStructuralTransportEvidence } from '@/lib/actions/structural-graph-evidence';
+import { groupTransportBudget, nativeGroupTransportEvidence } from '@/lib/actions/group-lifecycle-evidence';
 
 
 /**
@@ -14,20 +16,23 @@ import { nativeStructuralTransportEvidence } from '@/lib/actions/structural-grap
  *
  * The selection is read the way the Properties panel resolves it: a unified
  * storey selection, then the multi-model ref set, then the renderer id set,
- * then the primary element. Only the first `limit` elements are read; every
+ * then the primary element. Only the first `limit` detail rows are read; classification membership and every
  * total is over the whole selection.
  */
 
+import { nativeZoneEmissionTransport } from '@/lib/actions/zone-emission-evidence';
 import { nativeAuthoringEvidence } from '@/lib/actions/native-authoring-evidence';
 import { IfcQuery } from '@ifc-lite/query';
-import { extractClassificationsOnDemand, extractProjectUnits, materialAssignmentsAvailable, ProjectUnits, type IfcDataStore } from '@ifc-lite/parser';
+import { extractClassificationsOnDemand, materialAssignmentsAvailable, ProjectUnits, type ClassificationInfo, type IfcDataStore } from '@ifc-lite/parser';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
+import { currentProjectUnitContext } from '@/lib/units/current-project-unit-context';
 import { useViewerStore, type ViewerState } from '@/store';
 import { createQueryAdapter } from '@/sdk/adapters/query-adapter';
 import { relationshipsForSelection } from '@/components/viewer/properties/merge-relationship-data';
 import { relationshipPopulationUnavailable } from '@/components/viewer/properties/effective-relationship-availability';
 import type { EntityRef } from '@/store/types';
 import { stringToEntityRef } from '@/store/entity-ref';
+import { toGlobalIdForRef } from '@/store/globalId';
 import { resolveEntityRef, resolveEntityRefGlobalIdFromState } from '@/store/resolveEntityRef';
 import { resolveQuantityDisplay } from '@/lib/units/display';
 import { effectiveElementData } from '@/components/viewer/properties/effectiveElementData';
@@ -39,6 +44,8 @@ import { structuralEvidence } from './selection-structural';
 import { effectiveStructuralData } from '@/components/viewer/properties/effectiveStructuralData';
 import { effectiveDocuments } from '@/components/viewer/properties/effectiveDocuments';
 import { classificationEvidence } from './selection-classifications';
+import { selectedZoneVolumeBreakdowns, zoneQuantitySources, zoneQuantitySourceIdentity, ZONE_VOLUME_UNIT_LIMITATIONS } from './zone-volume-bases';
+import { selectedClassificationPopulation } from './selection-classification-population';
 import { effectiveTypeProperties } from '@/components/viewer/properties/effectiveTypeProperties';
 import { effectiveSelectedClass } from '@/components/viewer/properties/effectiveSelectedClass';
 import { propertyDisplayValue } from '@/components/viewer/properties/propertyDisplayValue';
@@ -92,7 +99,7 @@ function selectionRefs(s: ViewerState): { channel: Channel; refs: EntityRef[] } 
 
 const isLegacy = (modelId: string) => modelId === 'legacy' || modelId === '__legacy__';
 
-interface ModelSource { store: IfcDataStore | null; view: MutablePropertyView | undefined; query: IfcQuery | null; units: ProjectUnits; name: string }
+interface ModelSource { store: IfcDataStore | null; view: MutablePropertyView | undefined; query: IfcQuery | null; units: ProjectUnits; unitsAvailable: boolean; name: string; classificationsUnavailable: boolean; classifications: (id: number) => ClassificationInfo[] }
 
 function sources(s: ViewerState) {
   const cache = new Map<string, ModelSource>();
@@ -101,11 +108,21 @@ function sources(s: ViewerState) {
     if (cached) return cached;
     const model = isLegacy(modelId) ? undefined : s.models.get(modelId);
     const store = (model?.ifcDataStore ?? (isLegacy(modelId) ? s.ifcDataStore : null)) as IfcDataStore | null;
+    const view = s.mutationViews.get(isLegacy(modelId) ? '__legacy__' : modelId) ?? undefined;
+    const currentUnits = currentProjectUnitContext(store, view);
+    const classes = new Map<number, ClassificationInfo[]>();
     const source = {
-      store, view: s.mutationViews.get(isLegacy(modelId) ? '__legacy__' : modelId) ?? undefined,
+      store, view,
       query: store ? new IfcQuery(store) : null,
-      units: store?.source?.length && store.entityIndex ? extractProjectUnits(store.source, store.entityIndex) : ProjectUnits.empty(),
+      units: currentUnits.value ?? ProjectUnits.empty(),
+      unitsAvailable: currentUnits.status === 'available',
       name: model?.name ?? modelId,
+      classificationsUnavailable: classificationPopulationUnavailable(store, view),
+      classifications: (id: number): ClassificationInfo[] => {
+        let rows = classes.get(id);
+        if (!rows) { rows = store ? extractClassificationsOnDemand(store, id, view) : []; classes.set(id, rows); }
+        return rows;
+      },
     };
     cache.set(modelId, source);
     return source;
@@ -119,7 +136,8 @@ function bounded(value: unknown): string | number | boolean | null {
   return text.length > VALUE_CHARS ? `${text.slice(0, VALUE_CHARS)}…` : text;
 }
 
-function elementRow(s: ViewerState, ref: EntityRef, source: ModelSource, rich: boolean, nativeTarget: ModelEditTarget | null, completeStructuralPin: boolean) {
+function elementRow(s: ViewerState, ref: EntityRef, source: ModelSource, rich: boolean,
+  nativeTarget: ModelEditTarget | null, completeStructuralPin: boolean, quantitySource: ReturnType<typeof zoneQuantitySources>, provedVolumes: () => ProvedVolumes, zones: ReturnType<typeof nativeZoneEmissionTransport>) {
   const setLimit = rich ? 16 : 6;
   const relationshipLookupExpressId = source.view?.resolveBaseEntityId(ref.expressId) ?? ref.expressId;
   const nativeRelationships = source.store ? relationshipsForSelection(
@@ -130,8 +148,8 @@ function elementRow(s: ViewerState, ref: EntityRef, source: ModelSource, rich: b
   const data = effectiveElementData(ref.expressId, source.query, source.view);
   const structuralData = source.store ? effectiveStructuralData(source.store, source.view) : null;
   const { rows: documents, membershipUnavailable: documentsUnavailable } = effectiveDocuments(source.store, ref.expressId, source.view);
-  const classifications = source.store ? extractClassificationsOnDemand(source.store, ref.expressId, source.view) : [];
-  const classificationsUnavailable = classificationPopulationUnavailable(source.store, source.view);
+  const classifications = source.classifications(ref.expressId);
+  const classificationsUnavailable = source.classificationsUnavailable;
   const materials = effectiveMaterials(source.store, ref.expressId, source.view);
   const materialAssignmentsVerified = Boolean(source.store && materialAssignmentsAvailable(source.store, ref.expressId, source.view));
   const materialPropertiesVerified = materialAssignmentsVerified && Boolean(source.store?.source?.length) && !materials.some(material => material.unresolved);
@@ -146,18 +164,21 @@ function elementRow(s: ViewerState, ref: EntityRef, source: ModelSource, rich: b
   const psets = data.psets.slice(0, setLimit).map(pset => ({
     name: pset.name, propertyCount: pset.properties.length,
     properties: Object.fromEntries(pset.properties.slice(0, valueLimit)
-      .map(prop => [prop.name, bounded(propertyDisplayValue(prop, source.units, s.unitDisplayOverrides).full)])),
+      .map(prop => [prop.name, bounded(propertyDisplayValue(prop, source.units, s.unitDisplayOverrides, source.unitsAvailable).full)])),
   }));
   const quantities = data.qsets.slice(0, setLimit).map(qset => ({
     name: qset.name, quantityCount: qset.quantities.length,
     quantities: Object.fromEntries(qset.quantities.slice(0, valueLimit).map(q => {
       if (!Number.isFinite(q.value)) return [q.name, { value: null, unit: null }];
-      const display = resolveQuantityDisplay(q.value, q.type, source.units, s.unitDisplayOverrides);
+      const display = resolveQuantityDisplay(q.value, q.type, source.units, s.unitDisplayOverrides, q, source.unitsAvailable);
       // A null unit is undeclared, never assumed.
       return [q.name, { value: display.converted ?? q.value, unit: display.unit ?? null }];
     })),
   }));
   const name = source.store ? nativeRootName({ dataStore: source.store, view: source.view }, ref.expressId) : data.attributes.get('Name');
+  const globalId = toGlobalIdForRef(s.models, ref);
+  const hasZoneBreakdown = s.zoneSets.some(set => s.zoneAssignments.get(globalId)?.[set.id]?.touchedZoneIds.length);
+  const zoneQuantities = hasZoneBreakdown ? quantitySource(ref) : null;
   const gridName = nativeGridName(nativeTarget, ref.expressId);
   return evidenceRow({
     kind: 'selected-element', modelId: ref.modelId,
@@ -170,8 +191,14 @@ function elementRow(s: ViewerState, ref: EntityRef, source: ModelSource, rich: b
     ...nativeAuthoringEvidence(nativeTarget, ref.expressId, rich),
     ...(completeStructuralPin ? { nativeStructural: nativeStructuralTransportEvidence(nativeTarget, ref.expressId) } : {}),
     attributes, psets, psetCount: data.psets.length, quantities, qsetCount: data.qsets.length,
+    ...(zoneQuantities ? { zoneVolumeBreakdowns: { quantityStatus: zoneQuantities.status, quantityReason: zoneQuantities.reason,
+      unitStatus: zoneQuantities.unitStatus, unitReason: zoneQuantities.unitReason,
+      ...selectedZoneVolumeBreakdowns(s, globalId,
+        zoneQuantities.quantities, zoneQuantities.scale, setLimit, valueLimit, provedVolumes) } }
+      : s.zoneSets.length > 0 ? { zoneVolumeBreakdowns: { zoneSetCount: 0, zoneSets: [], volumeBases: [] } } : {}),
     nativeEdit: nativeEditEvidence(nativeTarget, ref.expressId),
     nativeType: nativeTypeEvidence(s, nativeTarget, ref.expressId),
+    nativeZoneEmission: zones,
     nativeLayers: nativeLayerEvidence(s, nativeTarget, ref.expressId),
     ...(() => { const nativeGrid = nativeGridEvidence(nativeTarget, ref.expressId); return nativeGrid ? { nativeGrid } : {}; })(),
     ...(rich ? { nativeCost: nativeCostTransportEvidence(nativeTarget, ref.expressId) } : {}),
@@ -209,7 +236,7 @@ function elementRow(s: ViewerState, ref: EntityRef, source: ModelSource, rich: b
       psets: group.psets.slice(0, setLimit).map(pset => ({
         name: pset.name, propertyCount: materialPropertiesVerified ? pset.properties.length : null,
         properties: Object.fromEntries(pset.properties.slice(0, valueLimit)
-          .map(prop => [prop.name, bounded(propertyDisplayValue(prop, source.units, s.unitDisplayOverrides).full)])),
+          .map(prop => [prop.name, bounded(propertyDisplayValue(prop, source.units, s.unitDisplayOverrides, source.unitsAvailable).full)])),
       })),
     })),
     inheritedType: inherited ? {
@@ -221,7 +248,7 @@ function elementRow(s: ViewerState, ref: EntityRef, source: ModelSource, rich: b
       psets: inherited.psets.slice(0, setLimit).map(pset => ({
         name: pset.name, propertyCount: pset.properties.length,
         properties: Object.fromEntries(pset.properties.slice(0, valueLimit)
-          .map(prop => [prop.name, bounded(propertyDisplayValue(prop, source.units, s.unitDisplayOverrides).full)])),
+          .map(prop => [prop.name, bounded(propertyDisplayValue(prop, source.units, s.unitDisplayOverrides, source.unitsAvailable).full)])),
       })),
     } : null,
   });
@@ -239,6 +266,7 @@ export const selectionAdapter: EvidenceAdapter = {
   },
   // Every selection action replaces one of these; edits are covered by the context stamp.
   identity: s => [s.selectedEntities, s.selectedEntitiesSet, s.selectedEntityIds, s.selectedEntity, s.selectedEntityId,
+    s.zoneSets, s.zoneAssignments, s.zoneApportionment, ...zoneQuantitySourceIdentity(s, new Set((selectionRefs(s)?.refs ?? []).map(ref => ref.modelId))),
     // #7282: native expected pins belong to these exact loaded sources/views,
     // even when a replacement preserves the same GUIDs and analysis versions.
     ...[...new Set((selectionRefs(s)?.refs ?? []).map(ref => ref.modelId))].flatMap(modelId => [
@@ -251,7 +279,16 @@ export const selectionAdapter: EvidenceAdapter = {
     if (!selection || selection.refs.length === 0) return unavailableCapture();
     const { refs, channel } = selection;
     const sourceFor = sources(s);
+    const quantitySource = zoneQuantitySources(s);
+    let proved: ProvedVolumes | undefined;
+    const provedVolumes = () => proved ??= gatherProvedVolumes();
+    const hasZoneBreakdowns = refs.some(ref => s.zoneSets.some(set => s.zoneAssignments.get(toGlobalIdForRef(s.models, ref))?.[set.id]?.touchedZoneIds.length));
     const nativeTarget = nativeReadTargets(s);
+    const zoneTargets = new Map<string, ReturnType<typeof nativeZoneEmissionTransport>>();
+    const zonesFor = (modelId: string) => {
+      if (!zoneTargets.has(modelId)) zoneTargets.set(modelId, nativeZoneEmissionTransport(s, modelId));
+      return zoneTargets.get(modelId)!;
+    };
     const byModel = new Map<string, number>();
     const byClass = new Map<string, number>();
     for (const ref of refs) {
@@ -262,21 +299,27 @@ export const selectionAdapter: EvidenceAdapter = {
     }
     const sample = refs.slice(0, limit);
     const rich = sample.length <= 10;
+    const groupBudget = groupTransportBudget();
     return {
       summary: {
         kind: 'selection', channel, selectionSize: refs.length, modelCount: byModel.size,
+        classifications: selectedClassificationPopulation(refs, sourceFor),
+        nativeGroups: sample.length !== refs.length || sample.length > 100 ? [{ status: 'unavailable-selection-budget', expectedJsonParts: null }]
+          : [...byModel.keys()].map(modelId => ({ modelId,
+            ...nativeGroupTransportEvidence(nativeTarget(modelId), sample.filter(ref => ref.modelId === modelId).map(ref => ref.expressId), groupBudget) })),
         ...(!rich ? { nativeCostCapture: 'unavailable-selection-budget', nativeReplacementCapture: 'unavailable-selection-budget', nativeRoomAutoAllCapture: 'unavailable-selection-budget' } : {}),
         ...(sample.length !== 1 ? { nativeStructuralCapture: 'unavailable-selection-budget' } : {}),
         byModel: [...byModel].map(([modelId, count]) => ({ modelId, name: sourceFor(modelId).name, count })),
         byClass: [...byClass].map(([type, count]) => ({ type, count })).sort((a, b) => b.count - a.count),
-        perElementBounds: rich ? { sets: 16, valuesPerSet: 32, attributes: 32, classifications: 16, classificationPath: 16, relationships: 16, documents: 16 }
-          : { sets: 6, valuesPerSet: 12, attributes: 12, classifications: 6, classificationPath: 6, relationships: 6, documents: 6 },
+        perElementBounds: rich ? { sets: 16, valuesPerSet: 32, attributes: 32, classifications: 16, classificationPath: 16, relationships: 16, documents: 16, ...(hasZoneBreakdowns ? { zoneSets: 16, sharesPerVolumeBasis: 32 } : {}) }
+          : { sets: 6, valuesPerSet: 12, attributes: 12, classifications: 6, classificationPath: 6, relationships: 6, documents: 6, ...(hasZoneBreakdowns ? { zoneSets: 6, sharesPerVolumeBasis: 12 } : {}) },
+        ...(hasZoneBreakdowns ? { zoneVolumeUnits: ZONE_VOLUME_UNIT_LIMITATIONS } : {}),
         units: 'Quantity values carry {value, unit} in the Properties panel display unit (project unit, or the display-unit override below); a null unit is undeclared. Property values are the panel display strings, with the unit inline when the measure declares one.',
         displayUnitOverrides: s.unitDisplayOverrides,
         limitations: 'Includes native edits; status covers own edits. Definitions/associations use snapshot freshness. Sections use perElementBounds and full known counts. inheritedType has model/type provenance; occurrence properties override same-named type values. Materials prefer occurrence over type; LayerThickness is metres; properties use panel units. IFC2X3 scalar material-property subtypes are outside the generic-set reader. Unverified fields remain unknown; missing membership inputs/unreadable source edits make totals null/unavailable. Source-free classification/document markers describe original source, not current assignments. Paths have bounded known ancestors; unverified path totals are null. Classification codes use schema-exact ItemReference/Identification; missing systems stay unknown. Relationships count exact native edges; aliases carry inherited lookup IDs. Edited source-free graph edges are unverified source-origin evidence. Unverified material-property counts stay null; empty rows do not prove absence. Documents have native model/target IDs and separate bounds. Empty samples do not prove absence. Selection is sampled; byClass/byModel cover every selected element.',
         structuralLimitations: 'Structural rows match the native member card; counts cover resolved native records and units are declared source units only. Load/evidence bounds are explicit. Missing/duplicate native GUID targets are omitted with unknown resolved totals. Source-free original fields/totals are unknown; authored fields remain readable.',
       },
-      rows: sample.map(ref => elementRow(s, ref, sourceFor(ref.modelId), rich, nativeTarget(ref.modelId), sample.length === 1)),
+      rows: sample.map(ref => elementRow(s, ref, sourceFor(ref.modelId), rich, nativeTarget(ref.modelId), sample.length === 1, quantitySource, provedVolumes, zonesFor(ref.modelId))),
       totalRows: refs.length, availability: 'available',
     };
   },

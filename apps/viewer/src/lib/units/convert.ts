@@ -37,10 +37,11 @@ export function convertValue(value: number, from: LinearUnit, to: LinearUnit): n
  * option's `offset` - `ProjectUnits.unitForMeasure` only carries a scale, so
  * without this an affine unit (temperature) would silently lose its offset
  * and convert as if it were purely multiplicative. Falls back to the file's
- * raw SI scale with no offset when the symbol isn't one we curate.
+ * raw SI scale, with the unit's own resolved offset when it has one (°F),
+ * when the symbol isn't one we curate.
  */
 export function resolveFromUnit(unitType: string, fileUnit: ResolvedUnit): LinearUnit {
   const match = alternativesForUnitType(unitType).find((opt) => opt.symbol === fileUnit.symbol);
   if (match) return { scale: match.scale, offset: match.offset ?? 0 };
-  return { scale: fileUnit.siScale, offset: 0 };
+  return { scale: fileUnit.siScale, offset: fileUnit.siOffset ?? 0 };
 }

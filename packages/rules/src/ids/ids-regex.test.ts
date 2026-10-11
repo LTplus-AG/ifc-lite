@@ -42,6 +42,9 @@ describe('jsRegexToIdsPattern (#5225)', () => {
     ['\\/tmp\\/', '', ['/tmp/', 'tmp']],
     ['[\\d.]+m', '', ['3.5m', 'm']],
     ['^(?:REI60|REI90)$', 'u', ['REI60', 'REI90', 'REI120', 'xREI60']],
+    // JS `.` excludes U+2028/U+2029 as well as CR and LF; XSD `.` does not.
+    ['^a.b$', '', ['axb', 'a\u2028b', 'a\u2029b', 'a\nb', 'a\rb']],
+    ['^[.].+$', 'u', ['.x', '.\u2028', '.\u2029', '.\n', 'x\u2028']],
   ];
   for (const [source, flags, samples] of same) {
     it(`/${source}/${flags} accepts the same values as its IDS pattern`, () => {
@@ -76,10 +79,67 @@ describe('jsRegexToIdsPattern (#5225)', () => {
 });
 
 describe('idsPatternToJsRegex (#5225)', () => {
-  it('anchors the pattern and keeps XSD ^ and $ literal', () => {
-    const converted = idsPatternToJsRegex('a^b$');
+  it('anchors the pattern and keeps an interior XSD ^ and $ literal', () => {
+    const converted = idsPatternToJsRegex('a^b$c');
     assert.ok(converted.ok);
-    assert.equal(converted.pattern, '/^(?:a\\^b\\$)$/u');
+    assert.equal(converted.pattern, '/^(?:a\\^b\\$c)$/u');
+  });
+
+  // The IDS checker drops a pattern-initial `^` and pattern-final `$` as
+  // redundant anchors and reads every other `^` / `$` as a literal; the
+  // import must accept exactly the values the checker accepts.
+  const checkerAgrees: Array<[string, string[]]> = [
+    ['^US$', ['US', '^US$', '^US', 'US$', 'xUS']],
+    ['^.*$', ['', 'anything', '^x$']],
+    ['^US', ['US', '^US']],
+    ['US$', ['US', 'US$']],
+    ['US$?', ['US', 'US$', 'US$$']],
+    ['a^b$', ['ab', 'a^b', 'a^b$', 'a^b$$']],
+    ['^^a$$', ['a', '^a$', '^a', 'a$']],
+    ['\\^US\\$', ['US', '^US$', '^US', 'US$']],
+    ['^US\\$', ['US', 'US$', '^US$']],
+    ['[^$]$', ['a', '$', 'a$', '^']],
+    ['[$^]', ['$', '^', 'a']],
+    ['^', ['', '^']],
+    ['$', ['', '$']],
+    ['^$', ['', '^', '$', '^$']],
+    ['', ['', 'a']],
+  ];
+  for (const [xsd, samples] of checkerAgrees) {
+    it(`reads ${JSON.stringify(xsd)} as the IDS checker does`, () => {
+      const converted = idsPatternToJsRegex(xsd);
+      assert.ok(converted.ok, converted.ok ? '' : converted.reason);
+      const body = /^\/(.*)\/u$/.exec(converted.pattern)![1];
+      const js = new RegExp(body, 'u');
+      for (const sample of samples) {
+        assert.equal(js.test(sample), xsdAccepts(xsd, sample), `${JSON.stringify(sample)} against ${converted.pattern}`);
+      }
+    });
+  }
+
+  it('imports XSD . as matching U+2028 and U+2029 but not CR or LF', () => {
+    const converted = idsPatternToJsRegex('a.b');
+    assert.ok(converted.ok);
+    const js = new RegExp(/^\/(.*)\/u$/.exec(converted.pattern)![1], 'u');
+    for (const sample of ['a\u2028b', 'a\u2029b', 'axb']) assert.equal(js.test(sample), true, JSON.stringify(sample));
+    for (const sample of ['a\nb', 'a\rb']) assert.equal(js.test(sample), false, JSON.stringify(sample));
+  });
+
+  it('imports ^US$ as a rule accepting US, not the literal ^US$', () => {
+    const converted = idsPatternToJsRegex('^US$');
+    assert.ok(converted.ok);
+    assert.equal(converted.pattern, '/^(?:US)$/u');
+  });
+
+  it('round-trips an anchored IDS pattern through a rule back to IDS', () => {
+    for (const [xsd, exported] of [['^US$', 'US'], ['a^b$', 'a\\^b'], ['^US\\$', 'US\\$']] as const) {
+      const imported = idsPatternToJsRegex(xsd);
+      assert.ok(imported.ok);
+      const body = /^\/(.*)\/u$/.exec(imported.pattern)![1];
+      const back = jsRegexToIdsPattern({ source: body, flags: 'u' });
+      assert.ok(back.ok, back.ok ? '' : back.reason);
+      assert.equal(back.pattern, exported);
+    }
   });
 
   it('translates XSD \\d to the Unicode digit class it means', () => {
@@ -91,7 +151,17 @@ describe('idsPatternToJsRegex (#5225)', () => {
   });
 
   it('refuses a construct JS cannot express', () => {
-    const converted = idsPatternToJsRegex('\\p{IsBasicLatin}+');
+    // A block name XML Schema does not define has no exact translation.
+    const converted = idsPatternToJsRegex('\\p{IsNoSuchBlock}+');
     assert.equal(converted.ok, false);
+    if (!converted.ok) assert.match(converted.reason, /IsNoSuchBlock/);
+  });
+
+  it('translates an XSD block escape to its code-point range (#7400)', () => {
+    const converted = idsPatternToJsRegex('\\p{IsBasicLatin}+');
+    assert.ok(converted.ok);
+    const body = /^\/(.+)\/u$/.exec(converted.pattern)![1];
+    assert.equal(new RegExp(body, 'u').test('abc-1'), true);
+    assert.equal(new RegExp(body, 'u').test('ā'), false);
   });
 });

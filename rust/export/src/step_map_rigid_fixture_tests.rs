@@ -219,12 +219,27 @@ fn issue_7335_real_alignment_bridge_with_linear_placements_preserves_physical_fr
 
 /// Every sampled product's physical surface, mapped through the authored
 /// conversion before normalization, matches the normalized surface both ways.
-fn assert_physical_surfaces(
+pub(super) fn assert_physical_surfaces(
     path: &str,
     before: &ifc_lite_processing::GeometryDataExport,
     after: &ifc_lite_processing::GeometryDataExport,
     geo: &ifc_lite_core::GeoReference,
     ids: &[u32],
+) {
+    assert_mapped_surfaces(path, before, after, ids, |point| {
+        let p = geo.local_to_map(point[0], point[1], point[2]);
+        nalgebra::Vector3::new(p.0, p.1, p.2)
+    });
+}
+
+/// Each sampled product's `before` surface, mapped point-wise by `expect`,
+/// matches its `after` surface both ways (<1 mm) with the same area.
+pub(super) fn assert_mapped_surfaces(
+    path: &str,
+    before: &ifc_lite_processing::GeometryDataExport,
+    after: &ifc_lite_processing::GeometryDataExport,
+    ids: &[u32],
+    expect: impl Fn(&[f64; 3]) -> nalgebra::Vector3<f64>,
 ) {
     for &id in ids {
         let old = &before.elements[&id];
@@ -232,14 +247,7 @@ fn assert_physical_surfaces(
         assert_eq!(new.color, old.color);
         assert_eq!(new.global_id, old.global_id);
         assert_eq!(new.name, old.name);
-        let expected: Vec<_> = old
-            .vertices
-            .iter()
-            .map(|point| {
-                let p = geo.local_to_map(point[0], point[1], point[2]);
-                nalgebra::Vector3::new(p.0, p.1, p.2)
-            })
-            .collect();
+        let expected: Vec<_> = old.vertices.iter().map(&expect).collect();
         let actual: Vec<_> = new
             .vertices
             .iter()

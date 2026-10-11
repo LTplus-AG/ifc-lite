@@ -8,12 +8,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createBCFProject, createBCFTopic, readBCF, writeBCF } from '@ifc-lite/bcf';
-import { strFromU8, unzipSync } from 'fflate';
+import { strFromU8, unzipSync, zipSync } from 'fflate';
 import { resolveManualClashGroups } from '../clash/manual-groups';
 import { groupOf, proxyWallRun, sampleElements, PROXY_WALL_RULE } from '@/test/bcf-draft-fixture';
 import { draftBatchFromGroups } from './draft-create';
 import { addDraftComment } from './draft-edit';
-import { exportDraftArchive, importDraftArchive } from './draft-archive';
+import { draftBatchToProject, exportDraftArchive, importDraftArchive } from './draft-archive';
 import { DRAFT_FOOTER_MARKER } from './draft-footer';
 
 async function batchWithComment() {
@@ -81,4 +81,29 @@ test('a plain BCF archive imports as an unmapped batch and an edited footer is r
   assert.deepEqual(topics.map(topic => topic.members.length), [0, 0], 'no half-trusted membership');
   assert.ok(topics.every(topic => topic.origin.kind === 'archive'));
   assert.ok(topics.every(topic => !topic.description.includes(DRAFT_FOOTER_MARKER)));
+});
+
+// The archive is keyed by topic GUID: a repeated GUID would silently drop a topic, so export refuses it.
+test('a batch with one topic GUID twice is refused at export with that reason, never written lossily', async () => {
+  const batch = await batchWithComment();
+  const duplicated = { ...batch, topics: [batch.topics[0], { ...batch.topics[1], guid: batch.topics[0].guid, title: 'Other title' }] };
+  // Read structurally (a DraftArchiveError) so this file still loads, and fails by assertion, without the refusal.
+  const refused = (error: unknown) => error instanceof Error && error.name === 'DraftArchiveError' && 'reason' in error && error.reason === 'topic'
+    && 'direction' in error && error.direction === 'export' && /nothing was exported/.test(error.message);
+  assert.throws(() => draftBatchToProject(duplicated, 'a@example.test'), refused);
+  await assert.rejects(async () => exportDraftArchive(duplicated, 'a@example.test'), refused);
+  assert.ok(draftBatchToProject(batch, 'a@example.test').topics.size === 2, 'a valid batch still exports every topic');
+});
+
+// The reader keys topics by GUID: two markups sharing one would lose a topic, so import refuses that archive too.
+test('an archive with two markups sharing one topic GUID is refused at import, never imported short a topic', async () => {
+  const batch = await batchWithComment();
+  const files = unzipSync(new Uint8Array(await (await exportDraftArchive(batch, 'a@example.test')).arrayBuffer()));
+  const [first, second] = batch.topics.map(topic => topic.guid);
+  const markup = (guid: string) => Object.entries(files).find(([path]) => path === `${guid}/markup.bcf`)![1];
+  // The second topic's folder now holds a markup claiming the first topic's GUID.
+  files[`${second}/markup.bcf`] = new TextEncoder().encode(strFromU8(markup(second)).replaceAll(second, first));
+  const refused = (error: unknown) => error instanceof Error && error.name === 'DraftArchiveError' && 'reason' in error && error.reason === 'topic'
+    && /nothing was imported/.test(error.message);
+  await assert.rejects(async () => importDraftArchive(zipSync(files).buffer as ArrayBuffer), refused);
 });

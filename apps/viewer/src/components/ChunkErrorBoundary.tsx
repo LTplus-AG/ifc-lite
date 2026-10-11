@@ -50,6 +50,7 @@ const CHUNK_LABEL_KEYS = {
   'Assistant panel': 'assistant.title',
   'Point cloud panel': 'pointCloudPanel.title',
   'Review panel': 'reviewWorkspace.title',
+  'IDS Studio panel': 'idsStudio.title',
   'Script panel': 'scriptPanel.header.defaultTitle',
   'Flow panel': 'viewerShell.chunkLabel.flowPanel',
   'Drawing panel': 'viewerShell.chunkLabel.drawingPanel',
@@ -59,6 +60,8 @@ const CHUNK_LABEL_KEYS = {
   'MCP page': 'viewerShell.chunkLabel.mcpPage',
   'MCP playground': 'viewerShell.chunkLabel.mcpPlayground',
   'RTE GPU witness': 'viewerShell.chunkLabel.rteGpuWitness',
+  'Saved runs': 'compareAnalysis.reconcile.savedTitle',
+  "What's New tab": 'keyboardShortcuts.tabs.whatsNew',
 } as const satisfies Record<string, TranslationKey>;
 
 type ChunkLabel = keyof typeof CHUNK_LABEL_KEYS;

@@ -5,7 +5,7 @@
 import type { TranslationKey } from '@/i18n';
 import type { CoordinationCard } from '@/lib/review/cards';
 import type { FacetKey } from '@/lib/review/facets';
-import type { FindingLifecycle, FindingSourceKind, RunGap, RunGapCode } from '@/lib/review/types';
+import type { FindingLifecycle, FindingSourceKind, ReviewFinding, RunGap, RunGapCode } from '@/lib/review/types';
 import type { HumanStatus } from '@/lib/review/workspace';
 
 type Translate = (key: TranslationKey, params?: Record<string, string | number>) => string;
@@ -22,11 +22,19 @@ export const STATE_HELP_KEY: Record<CoordinationCard['state'], TranslationKey> =
   current: 'reviewWorkspace.stateHelp.current', 'not-evaluated': 'reviewWorkspace.stateHelp.not-evaluated',
   'resolution-candidate': 'reviewWorkspace.stateHelp.resolution-candidate', record: 'reviewWorkspace.stateHelp.record',
 };
-export const LIFECYCLE_KEY: Record<FindingLifecycle, TranslationKey> = {
+const LIFECYCLE_KEY: Record<FindingLifecycle, TranslationKey> = {
   observed: 'reviewWorkspace.lifecycle.observed', new: 'reviewWorkspace.lifecycle.new', persistent: 'reviewWorkspace.lifecycle.persistent',
+  changed: 'reviewWorkspace.lifecycle.changed',
   'no-longer-observed': 'reviewWorkspace.lifecycle.no-longer-observed', 'not-evaluated': 'reviewWorkspace.lifecycle.not-evaluated',
   record: 'reviewWorkspace.lifecycle.record',
 };
+/** A historical finding IS the earlier run, so its counterpart is the current one (#7371 follow-up). */
+const HISTORICAL_LIFECYCLE_KEY: Partial<Record<FindingLifecycle, TranslationKey>> = {
+  persistent: 'reviewWorkspace.lifecycle.persistent-historical', changed: 'reviewWorkspace.lifecycle.changed-historical',
+};
+export function lifecycleKey(finding: Pick<ReviewFinding, 'lifecycle' | 'run'>): TranslationKey {
+  return (finding.run.temporal === 'historical' ? HISTORICAL_LIFECYCLE_KEY[finding.lifecycle] : undefined) ?? LIFECYCLE_KEY[finding.lifecycle];
+}
 const GAP_KEY: Record<RunGapCode, TranslationKey> = {
   truncated: 'reviewWorkspace.gap.truncated', stale: 'reviewWorkspace.gap.stale', 'check-error': 'reviewWorkspace.gap.check-error',
   'sets-truncated': 'reviewWorkspace.gap.sets-truncated', 'partial-source': 'reviewWorkspace.gap.partial-source',
@@ -43,9 +51,12 @@ export const HUMAN_STATUS_KEY: Record<HumanStatus, TranslationKey> = {
   resolved: 'reviewWorkspace.humanStatus.resolved', accepted: 'reviewWorkspace.humanStatus.accepted', dismissed: 'reviewWorkspace.humanStatus.dismissed',
 };
 
-/** Native detail (a truncation reason, a failed check's name) follows the translated reason verbatim. */
+/** Native detail (a truncation reason, a failed check's name) follows the translated reason verbatim; a catalogued message is translated. */
 export function gapText(t: Translate, gaps: readonly RunGap[]): string {
-  return gaps.map(gap => gap.detail ? `${t(GAP_KEY[gap.code])} (${gap.detail})` : t(GAP_KEY[gap.code])).join('; ');
+  return gaps.map(gap => {
+    const detail = gap.message ? t(gap.message.labelKey, gap.message.params) : gap.detail;
+    return detail ? `${t(GAP_KEY[gap.code])} (${detail})` : t(GAP_KEY[gap.code]);
+  }).join('; ');
 }
 
 /** Display text for one facet value; native names (models, runs, storeys, disciplines) stay as given. */

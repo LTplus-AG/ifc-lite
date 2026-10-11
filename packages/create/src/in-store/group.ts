@@ -42,7 +42,7 @@ function members(graph: GroupGraph, values: readonly GroupRootIdentity[], groupI
   const ids = values.map(value => {
     if (!value || !Number.isSafeInteger(value.expressId) || typeof value.GlobalId !== 'string') throw new Error('Group member identity is missing');
     const root = graph.root(value.expressId, value.GlobalId);
-    if (!conformsTo(registry, graph.entities.get(root.expressId)!.type, 'IfcObjectDefinition')) {
+    if (!conformsTo(registry, graph.entities.get(root.expressId)!.type, 'IfcObjectDefinition', graph.schemaNames)) {
       throw new Error('Group membership requires an IfcObjectDefinition');
     }
     if (root.expressId === groupId) throw new Error('IfcGroup cannot assign itself');
@@ -108,13 +108,23 @@ export function addGroupToStore(context: GroupStoreContext, params: GroupInStore
   });
 }
 
-/** Preserve group identity and reuse its first exact relationship; empty membership removes all own relations. */
+/** Preserve group identity; reuse/consolidate only semantically compatible untyped assignments. */
 export function updateGroupInStore(context: GroupStoreContext, expected: GroupSnapshot, patch: GroupInStorePatch): GroupRootIdentity {
   return atomicGroupEdit(context, editor => {
     const graph = new GroupGraph(context.store, editor.getMutationView());
     const current = unchanged(graph, expected);
     text(patch.Name, 'Name'); text(patch.Description, 'Description'); text(patch.ObjectType, 'ObjectType');
     const ids = members(graph, patch.RelatedObjects, current.expressId);
+    // A complete member list supplies no PRODUCT/PROCESS/etc. partition. Never
+    // reinterpret typed assignments, nor erase distinct relationship metadata.
+    const semantics = current.memberships.map(row => {
+      const attributes = graph.entities.get(row.relationship.expressId)!.attributes;
+      if (attributes[5] !== null && attributes[5] !== undefined) {
+        throw new Error('Generic group replacement cannot rewrite typed RelatedObjectsType assignments');
+      }
+      return JSON.stringify([attributes[1], attributes[2], attributes[3], attributes[5], attributes[6]]);
+    });
+    if (new Set(semantics).size > 1) throw new Error('Generic group replacement cannot consolidate distinct assignment semantics');
     const keep = ids.length ? current.memberships[0]?.relationship.expressId : undefined;
     const removed = new Set(current.memberships.map(row => row.relationship.expressId).filter(id => id !== keep));
     protectRelationships(graph, removed);
@@ -144,7 +154,7 @@ export function removeGroupInStore(context: GroupStoreContext, expected: GroupSn
       const relating = referenceId(entity.attributes[6]);
       if (relating === null) throw new Error('Incoming group membership has an unreadable owner');
       graph.root(relating);
-      if (!conformsTo(schemaRegistry(graph.store.schemaVersion as 'IFC4' | 'IFC4X3', 'IfcGroup'), graph.entities.get(relating)!.type, 'IfcGroup')) throw new Error('Incoming membership owner is not an IfcGroup');
+      if (!conformsTo(schemaRegistry(graph.store.schemaVersion as 'IFC4' | 'IFC4X3', 'IfcGroup'), graph.entities.get(relating)!.type, 'IfcGroup', graph.schemaNames)) throw new Error('Incoming membership owner is not an IfcGroup');
       graph.root(id);
       const raw = entity.attributes[4];
       if (!Array.isArray(raw) || raw.length > GROUP_GRAPH_LIMITS.members) throw new Error('Incoming group membership is incomplete');
@@ -152,7 +162,7 @@ export function removeGroupInStore(context: GroupStoreContext, expected: GroupSn
       if (ids.some(value => value === null) || new Set(ids).size !== ids.length || !ids.includes(current.expressId)) throw new Error('Incoming group membership is unreadable');
       ids.forEach(value => {
         const member = graph.root(value!);
-        if (!conformsTo(schemaRegistry(graph.store.schemaVersion as 'IFC4' | 'IFC4X3', 'IfcGroup'), graph.entities.get(member.expressId)!.type, 'IfcObjectDefinition')) {
+        if (!conformsTo(schemaRegistry(graph.store.schemaVersion as 'IFC4' | 'IFC4X3', 'IfcGroup'), graph.entities.get(member.expressId)!.type, 'IfcObjectDefinition', graph.schemaNames)) {
           throw new Error('Incoming group membership has an invalid object definition');
         }
       });

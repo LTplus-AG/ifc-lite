@@ -12,8 +12,8 @@
  * response.
  */
 
-import { decodeFinding, isRecord } from './draft-codec.js';
-import { findingIdentity, type DraftFinding, type DraftOrigin, type DraftTopic } from './draft-types.js';
+import { decodeFinding, decodeOrigin, decodeSourceFinding } from './draft-codec.js';
+import { findingIdentity, type DraftFinding, type DraftOrigin, type DraftSourceFinding, type DraftTopic } from './draft-types.js';
 
 export const DRAFT_FOOTER_MARKER = '-- ifc-lite BCF draft mapping v1 (generated; do not edit below) --';
 
@@ -33,6 +33,11 @@ export function membersDigest(members: readonly Pick<DraftFinding, 'reviewKey' |
   return digestStrings(members.map(member => `${findingIdentity(member)}\u0000${member.reviewKey}`));
 }
 
+/** Digest of reviewed source findings in their decoded form, so membership or run edits are detected (#7373). */
+export function sourceFindingsDigest(findings: readonly DraftSourceFinding[]): string {
+  return digestStrings(findings.map(finding => JSON.stringify(decodeSourceFinding(finding))));
+}
+
 export interface FooterOptions {
   batchId: string;
   /** Archive footers also carry the batch name, origin and every member. */
@@ -47,6 +52,10 @@ export function draftFooter(topic: DraftTopic, options: FooterOptions): string {
       `source: ${encodeURIComponent(JSON.stringify(options.full.source))}`,
       `origin: ${encodeURIComponent(JSON.stringify(topic.origin))}`);
     for (const member of topic.members) lines.push(`m: ${encodeURIComponent(JSON.stringify(member))}`);
+    if (topic.sourceFindings) {
+      lines.push(`sources: ${topic.sourceFindings.length} ${sourceFindingsDigest(topic.sourceFindings)}`);
+      for (const finding of topic.sourceFindings) lines.push(`s: ${encodeURIComponent(JSON.stringify(finding))}`);
+    }
   }
   return lines.join('\n');
 }
@@ -68,6 +77,10 @@ export interface ParsedFooter {
   origin?: DraftOrigin;
   /** Present only for archive footers; validated and consistent with the digest. */
   members?: DraftFinding[];
+  /** Review topics' source findings (#7373); validated and consistent with their own digest. */
+  sourceFindings?: DraftSourceFinding[];
+  /** Reviewed source findings were declared but dropped because the origin no longer reads as a review card. */
+  droppedSourceFindings?: true;
 }
 
 function json(text: string): unknown {
@@ -86,11 +99,12 @@ export function parseDraftFooter(description: string | undefined): ParsedFooter 
   if (at < 0) return null;
   const human = description.slice(0, at).trim();
   const fields = new Map<string, string>();
-  const memberLines: string[] = [];
+  const memberLines: string[] = [], sourceLines: string[] = [];
   for (const line of description.slice(at + DRAFT_FOOTER_MARKER.length).split('\n')) {
     const match = /^([a-z-]+): (.*)$/.exec(line.trim());
     if (!match) continue;
     if (match[1] === 'm') memberLines.push(match[2]);
+    else if (match[1] === 's') sourceLines.push(match[2]);
     else fields.set(match[1], match[2]);
   }
   const counted = /^(\d+) ([0-9a-f]{16})$/.exec(fields.get('members') ?? '');
@@ -106,18 +120,35 @@ export function parseDraftFooter(description: string | undefined): ParsedFooter 
     catch (error) { console.warn('[BCF drafts] Unreadable batch name in footer', error); }
   }
   if (fields.has('source')) parsed.source = json(fields.get('source') ?? '');
-  const origin = fields.has('origin') ? json(fields.get('origin') ?? '') : undefined;
-  if (isRecord(origin) && (origin.kind === 'selection' || origin.kind === 'archive')) parsed.origin = { kind: origin.kind };
-  if (isRecord(origin) && origin.kind === 'group' && typeof origin.workspaceId === 'string' && typeof origin.groupId === 'string') {
-    parsed.origin = { kind: 'group', workspaceId: origin.workspaceId, groupId: origin.groupId };
-  }
-  if (isRecord(origin) && origin.kind === 'review' && typeof origin.card === 'string') parsed.origin = { kind: 'review', card: origin.card };
+  // The codec's own origin rules (e.g. a review card is 1-100 chars): an origin the batch codec would refuse
+  // is treated as unreadable here, so it degrades this topic instead of aborting the whole import.
+  const origin = fields.has('origin') ? decodeOrigin(json(fields.get('origin') ?? '')) : null;
+  if (origin) parsed.origin = origin;
   if (memberLines.length > 0 || fields.has('batch-name')) {
     const members = memberLines.map(line => decodeFinding(json(line)));
     if (members.some(member => !member)) return null;
     const valid = members.flatMap(member => member ? [member] : []);
     if (valid.length !== parsed.memberCount || membersDigest(valid) !== parsed.digest) return null;
     parsed.members = valid;
+  }
+  if (sourceLines.length > 0 || fields.has('sources')) {
+    const declared = /^(\d+) ([0-9a-f]{16})$/.exec(fields.get('sources') ?? '');
+    if (!declared || !parsed.members) return null;
+    // Source findings belong to a review card. An origin line that no longer reads as one (it is not digest
+    // covered) leaves them without an owner: they are dropped, never re-homed, while the digest-verified clash
+    // members are kept as before #7373. Only a real loss of reviewed findings is reported.
+    if (parsed.origin?.kind !== 'review') {
+      // A topic carrying review provenance is never re-labelled as a selection or group topic: it degrades to archive.
+      parsed.origin = { kind: 'archive' };
+      // Only declared findings count: stray `s:` lines beside `sources: 0` are no reviewed finding lost.
+      if (Number(declared[1]) > 0) parsed.droppedSourceFindings = true;
+      return parsed;
+    }
+    const findings = sourceLines.map(line => decodeSourceFinding(json(line)));
+    if (findings.some(finding => !finding)) return null;
+    const valid = findings.flatMap(finding => finding ? [finding] : []);
+    if (valid.length !== Number(declared[1]) || sourceFindingsDigest(valid) !== declared[2]) return null;
+    parsed.sourceFindings = valid;
   }
   return parsed;
 }

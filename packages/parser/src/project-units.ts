@@ -41,6 +41,9 @@ export { measureUnit };
 export interface ResolvedUnit {
   symbol: string;
   siScale: number;
+  /** Additive SI offset, present only for an `IfcConversionBasedUnitWithOffset`
+   *  (°F over kelvin): `si = value * siScale + siOffset`. */
+  siOffset?: number;
 }
 
 /** Native current point provider; omitted readers retain parsed-source semantics. */
@@ -166,8 +169,10 @@ function resolveDeclaredUnit(
       if (!res) return null;
       return { unitType, resolved: { symbol: res.symbol, siScale: res.scale }, monetary: false };
     }
-    case 'IFCCONVERSIONBASEDUNIT': {
-      // [1]=UnitType, [2]=Name, [3]=ConversionFactor
+    case 'IFCCONVERSIONBASEDUNIT':
+    case 'IFCCONVERSIONBASEDUNITWITHOFFSET': {
+      // [1]=UnitType, [2]=Name, [3]=ConversionFactor, [4]=ConversionOffset
+      const withOffset = entity.type.toUpperCase() === 'IFCCONVERSIONBASEDUNITWITHOFFSET';
       const unitType = cleanEnum(attrs[1]);
       const name = typeof attrs[2] === 'string' ? attrs[2] : '';
       // A factor the file does not resolve falls back to the name's known
@@ -176,9 +181,17 @@ function resolveDeclaredUnit(
       // at 1.0 (#4690).
       const namedFactor = unitType === 'LENGTHUNIT' ? CONVERSION_BASED_UNIT_FACTORS[name.toUpperCase()] : undefined;
       const scale = (typeof attrs[3] === 'number'
-        ? conversionFactorScale(extractor, entityIndex, attrs[3], readEntity)
+        ? conversionFactorScale(extractor, entityIndex, attrs[3], readEntity, withOffset)
         : null) ?? (readEntity ? undefined : namedFactor);
-      const resolved = scale === undefined ? null : { symbol: conversionUnitSymbol(name), siScale: scale };
+      const symbol = conversionUnitSymbol(name);
+      if (!withOffset) return { unitType, resolved: scale === undefined ? null : { symbol, siScale: scale }, monetary: false };
+      // The offset is the value of this unit at the SI zero (°F over kelvin:
+      // -459.67), so `si = (value - offset) * factor`; an unreadable one
+      // leaves the unit unresolved rather than converted without it.
+      const offset = attrs[4];
+      const resolved = scale === undefined || typeof offset !== 'number' || !Number.isFinite(offset)
+        ? null
+        : { symbol, siScale: scale, siOffset: offset === 0 ? 0 : -offset * scale };
       return { unitType, resolved, monetary: false };
     }
     case 'IFCDERIVEDUNIT': {
@@ -238,6 +251,7 @@ function conversionFactorScale(
   entityIndex: EntityByIdIndexLike,
   measureRef: number,
   readEntity?: UnitEntityReader,
+  withOffset = false,
 ): number | null {
   // @raw-entity-enumeration-ok read the source measure in a conversion-based unit
   const ref = entityIndex.byId.get(measureRef);
@@ -259,9 +273,11 @@ function conversionFactorScale(
   const cRef = typeof compRef === 'number' ? entityIndex.byId.get(compRef) : undefined;
   const comp = readEntity && typeof compRef === 'number' ? readEntity(compRef) : cRef ? extractor.extractEntity(cRef) : null;
   if (!comp) return null;
-  if (comp.type.toUpperCase() !== 'IFCSIUNIT') return readEntity ? null : value;
+  if (comp.type.toUpperCase() !== 'IFCSIUNIT') return readEntity || withOffset ? null : value;
   const cAttrs = comp.attributes ?? [];
   const name = typeof cAttrs[3] === 'string' ? cAttrs[3] : null;
+  // An offset over a unit that has its own offset (°C) would need both.
+  if (withOffset && name?.replace(/\./g, '').toUpperCase() === 'DEGREE_CELSIUS') return null;
   const prefixAttr = cAttrs[2];
   const prefix = typeof prefixAttr === 'string' && prefixAttr !== '$' ? prefixAttr : null;
   const res = name ? siUnitSymbolAndScale(name, prefix) : null;

@@ -1,0 +1,13 @@
+diff --git a/packages/ids-authoring/src/lint/rules/values.ts b/packages/ids-authoring/src/lint/rules/values.ts
+index 196feed91..57e3e6f41 100644
+--- a/packages/ids-authoring/src/lint/rules/values.ts
++++ b/packages/ids-authoring/src/lint/rules/values.ts
+@@ -207,7 +207,7 @@ export const VAL_005: SpecRule = {
+     for (const site of valueSites(ctx, spec)) {
+       const isBoolean = (site.xsd.length === 1 && site.xsd[0] === 'xs:boolean') || baseOf(site.constraint) === 'xs:boolean';
+       if (!isBoolean) continue;
+-      const bad = siteLiterals(site.constraint).filter((v) => v.toLowerCase() !== 'true' && v.toLowerCase() !== 'false' && BOOLEAN_FORMS[v.trim().toLowerCase()]);
++      const bad = siteLiterals(site.constraint).filter((v) => v !== 'true' && v !== 'false' && BOOLEAN_FORMS[v.trim().toLowerCase()]);
+       if (!bad.length) continue;
+       const fixed = mapLiterals(site.constraint, (v) => (bad.includes(v) ? BOOLEAN_FORMS[v.trim().toLowerCase()] : v));
+       const fix = quickFix('Normalise to true / false', this.code, site.view.facetId, site.field, [rawSet(site.view.facetId, site.field, fixed)]);

@@ -18,6 +18,7 @@ import { useSemanticSession } from '../semantic/session';
 import { take } from '../assistant/adapters/types';
 import { useReviewAssistantCard } from './assistant-state';
 import type { CoordinationCard } from './cards';
+import { findingLines, gapLine } from './finding-text';
 import { currentReviewWorkspace, decisionFor, useReviewWorkspaces, type CardDecision } from './workspace';
 
 /** Pin one card (and the person's decision on it) for the next assistant attachment. */
@@ -61,6 +62,7 @@ useSemanticSession.subscribe((next, previous) => {
 export const REVIEW_EVIDENCE_LIMITATIONS =
   'One coordination card from the review workspace. Findings were grouped only because they name exactly the same validated elements; '
   + 'nativeStatus is the native source status, verbatim. run.temporal=historical is saved earlier evidence and does not describe the live model. '
+  + 'lifecycle persistent or changed on a historical finding means the compatible current run still reports it (changed: with different failures). '
   + 'lifecycle no-longer-observed is a resolution candidate for a person to confirm, never a resolution; not-evaluated means no complete compatible run looked again. '
   + 'lifecycle record is a coordination record, including a saved grouping application, and never confirms analysis resolution. '
   + 'humanDecision is the reviewer\'s own status and comment; do not restate it as an engine result, and never propose changing native statuses or BCF topic status.';
@@ -72,8 +74,8 @@ export function reviewFindingRow(finding: CoordinationCard['findings'][number]) 
     kind: 'reviewFinding', modelId: first?.modelId ?? null, globalId: first?.globalId ?? null, status: finding.nativeStatus || null,
     source: finding.source,
     run: { label: finding.run.label, temporal: finding.run.temporal, capturedAt: finding.run.capturedAt, complete: finding.run.complete,
-      incomplete: finding.run.incomplete.map(gap => gap.detail ? `${gap.code}: ${gap.detail}` : gap.code) },
-    lifecycle: finding.lifecycle, title: finding.title, detail: finding.detail, disciplineCandidates: finding.disciplines, storeys: finding.storeys,
+      incomplete: finding.run.incomplete.map(gapLine) },
+    lifecycle: finding.lifecycle, title: finding.title, detail: findingLines(finding), disciplineCandidates: finding.disciplines, storeys: finding.storeys,
     elements: finding.elements.map(element => ({ GlobalId: element.globalId, model: element.modelName })),
   };
 }

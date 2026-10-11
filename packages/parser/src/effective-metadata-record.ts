@@ -5,6 +5,7 @@
 import type { EffectiveEntityOverlay, IfcAttributeValue } from '@ifc-lite/data';
 import type { IfcDataStore } from './columnar-parser.js';
 import { resolveEffectiveEntityRecord, type EffectiveEntityRecord } from './effective-entity-record.js';
+import { getEntityRefFromStore } from './columnar-parser-root-attributes.js';
 import { normalizeIfcTypeName } from './ifc-schema.js';
 import { namedMetadataValue, positionalMetadataValue } from './metadata-edit-value.js';
 
@@ -19,6 +20,14 @@ export interface MetadataReadView extends EffectiveEntityOverlay {
 
 const records = new WeakMap<IfcDataStore, WeakMap<MetadataReadView, { revision: number; source: IfcDataStore['source']; rows: Map<number, EffectiveEntityRecord | null> }>>();
 
+/** Retained native indexes provide resource types absent from the entity table.
+ * Only the type is read: source-free attributes must still come from current edits. */
+function sourceFreeMetadataType(store: IfcDataStore, expressId: number): string {
+  const tableType = store.entities.getTypeName(expressId);
+  return tableType && tableType !== 'Unknown' ? tableType
+    : getEntityRefFromStore(store, expressId)?.type ?? tableType;
+}
+
 export function effectiveMetadataRecord(store: IfcDataStore, expressId: number, view?: MetadataReadView): EffectiveEntityRecord | null {
   if (view?.isDeleted(expressId)) return null;
   let modelRecords = records.get(store);
@@ -31,7 +40,7 @@ export function effectiveMetadataRecord(store: IfcDataStore, expressId: number, 
   // Source-empty stores cannot reveal source attributes through a stale accessor closure.
   // Named/positional edits may still supply a known field on an otherwise unreadable row.
   const base = created ? { ...created, attributes: created.attributes.map(positionalMetadataValue) } : (store.source?.length ? store.getEntity(expressId) : {
-    type: store.entities.getTypeName(expressId), attributes: [],
+    type: sourceFreeMetadataType(store, expressId), attributes: [],
   });
   if (!base) return null;
   const retype = view?.getTypeMutations?.().get(expressId)?.newType;

@@ -5,11 +5,9 @@
 /**
  * Sun shadow-map depth pre-pass (issue #2670, Phase 2a).
  *
- * Owns the shadow depth texture and the four depth-only pipelines (one per
- * geometry path — flat, quantized, instanced, textured), and records a single
- * depth-only render pass that rasterises every occluder from the sun's point
- * of view. The main colour pass (Phase 2b) then samples this depth map to
- * decide lit vs. shadowed.
+ * Owns depth and four pipelines (flat, quantized, instanced, textured).
+ * One timed depth-only pass rasterises occluders from the sun's viewpoint;
+ * the main colour pass samples that map to decide lit vs. shadowed.
  *
  * Per-draw `model`/`quantParams` are supplied through ONE dynamic-offset
  * uniform buffer (a grow-only ring) rather than a buffer per batch, so a
@@ -22,6 +20,7 @@
  * holes in the shadow.
  */
 
+import { renderPassTimestampWrites } from './renderer-frame-timing.js';
 import type { Mat4 } from './types.js';
 import { shadowShaderSource } from './shaders/shadow.wgsl.js';
 import { packRteOrigin, tryPackRteDrawableDelta } from './relative-to-eye.js';
@@ -262,6 +261,7 @@ export class ShadowPass {
 
     const pass = encoder.beginRenderPass({
       label: 'shadow-depth-pass',
+      timestampWrites: renderPassTimestampWrites(encoder, 'shadow-depth'),
       colorAttachments: [],
       depthStencilAttachment: {
         view: this.depthTextureView,

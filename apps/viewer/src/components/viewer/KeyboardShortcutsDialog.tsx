@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { useState, useLayoutEffect, useCallback } from 'react';
+import { useState, useLayoutEffect, useCallback, lazy, Suspense } from 'react';
 import { X, Sparkles, Info, Keyboard, ExternalLink, GraduationCap } from 'lucide-react';
 import { IconButton } from '@/components/ui/icon-button';
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
@@ -13,7 +13,11 @@ import { useTranslation } from '@/i18n';
 import { registerKeyboardCommand } from '@/lib/commands/dispatcher';
 import { AboutTab } from './KeyboardShortcutsDialogTabs';
 import { ShortcutsTab } from './ShortcutsTab';
-import { WhatsNewTab } from './KeyboardShortcutsWhatsNewTab';
+import { ChunkErrorBoundary } from '@/components/ChunkErrorBoundary';
+
+// Lazy: What's New inlines every package's release history (`__RELEASE_HISTORY__`,
+// over 1 MB and growing with each release), so it must not sit in the eager bundle.
+const WhatsNewTab = lazy(() => import('./KeyboardShortcutsWhatsNewTab').then(m => ({ default: m.WhatsNewTab })));
 
 // Re-exported for `ViewportWelcomeCard.privacy.test.tsx` (#5119): the start
 // screen renders the same banner and asserts it's the same component, not a
@@ -104,7 +108,7 @@ export function KeyboardShortcutsDialog({ open, onClose, initialTab }: InfoDialo
           {/* Each wraps exactly one child — single-line, so a fifth tab
               (Preferences, #5509) didn't need a module-size budget raise. */}
           <TabsContent value="about" className="p-4 max-h-80 overflow-y-auto"><AboutTab /></TabsContent>
-          <TabsContent value="whatsnew" className="p-4 max-h-96 overflow-y-auto"><WhatsNewTab /></TabsContent>
+          <TabsContent value="whatsnew" className="p-4 max-h-96 overflow-y-auto"><ChunkErrorBoundary label="What's New tab"><Suspense fallback={null}><WhatsNewTab /></Suspense></ChunkErrorBoundary></TabsContent>
           <TabsContent value="shortcuts" className="p-4 max-h-80 overflow-y-auto"><ShortcutsTab /></TabsContent>
           <TabsContent value="learn" className="p-4 max-h-80 overflow-y-auto"><LearnTab onClose={onClose} /></TabsContent>
         </Tabs>

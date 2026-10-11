@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ids xmlns="http://standards.buildingsmart.org/IDS" xmlns:xs="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://standards.buildingsmart.org/IDS http://standards.buildingsmart.org/IDS/1.0/ids.xsd">
+  <info>
+    <title>Tolerance 1e6</title>
+    <description>buildingSMART/IDS#418: 1000000 + 1000000e-6 + 1e-6 = 1000001.000001 is on the inclusive upper bound.</description>
+    <author>ids-studio@example.org</author>
+  </info>
+  <specifications>
+    <specification name="Tolerance 1e6" ifcVersion="IFC4">
+      <applicability minOccurs="1" maxOccurs="unbounded">
+        <entity>
+          <name>
+            <simpleValue>IFCWALL</simpleValue>
+          </name>
+        </entity>
+      </applicability>
+      <requirements>
+        <property dataType="IFCLENGTHMEASURE" cardinality="required">
+          <propertySet>
+            <simpleValue>ProposedCases</simpleValue>
+          </propertySet>
+          <baseName>
+            <simpleValue>Length</simpleValue>
+          </baseName>
+          <value>
+            <simpleValue>1000000</simpleValue>
+          </value>
+        </property>
+      </requirements>
+    </specification>
+  </specifications>
+</ids>

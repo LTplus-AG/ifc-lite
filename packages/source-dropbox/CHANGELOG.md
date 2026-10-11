@@ -1,5 +1,17 @@
 # @ifc-lite/source-dropbox
 
+## 0.4.0
+
+### Minor Changes
+
+- [#6845](https://github.com/LTplus-AG/ifc-lite/pull/6845) [`8dd47a0`](https://github.com/LTplus-AG/ifc-lite/commit/8dd47a0b3a9f9029995c2835d7c7226d08bb1dce) Thanks [@louistrue](https://github.com/louistrue)! - Add injectable hosted cloud authentication and read transports; request Microsoft User.Read for account identity.
+
+### Patch Changes
+
+- Updated dependencies [[`7c00fad`](https://github.com/LTplus-AG/ifc-lite/commit/7c00fadaf7bb702f8fe3d9a98541bd1d3db2d3b2)]:
+  - @ifc-lite/plugin-api@0.5.0
+  - @ifc-lite/oauth-pkce@0.3.0
+
 ## 0.3.0
 
 ### Minor Changes

@@ -6,9 +6,10 @@
 
 import type { BCFComponent, BCFPoint, BCFViewpoint } from '@ifc-lite/bcf';
 import type { ClashSeverity } from '@ifc-lite/clash';
+import { FINDING_SOURCE_KINDS, RUN_GAP_CODES, type FindingEvidence, type FindingSourceKind, type RunGapCode } from '../review/types.js';
 import {
-  DRAFT_LIMITS, findingIdentity, type DraftBatch, type DraftComment, type DraftElement, type DraftFinding,
-  type DraftOrigin, type DraftSource, type DraftTopic,
+  DRAFT_LIMITS, DRAFT_SOURCE_MEMBERSHIPS, findingIdentity, type DraftBatch, type DraftComment, type DraftElement, type DraftFinding,
+  type DraftOrigin, type DraftSource, type DraftSourceFinding, type DraftSourceMembership, type DraftSourceRun, type DraftTopic,
 } from './draft-types.js';
 
 type Raw = Record<string, unknown>;
@@ -47,7 +48,70 @@ export function decodeFinding(value: unknown): DraftFinding | null {
     severity: value.severity as ClashSeverity, distance: value.distance, a, b, ...(bounds ? { bounds } : {}) };
 }
 
-function origin(value: unknown): DraftOrigin | null {
+type EvidenceOf<K extends FindingEvidence['kind']> = Extract<FindingEvidence, { kind: K }>;
+/** How one evidence field is checked: text, text that may be empty, or a safe integer (only for numeric fields). */
+type FieldCheck<V> = V extends number ? 'integer' : 'text' | 'text-or-empty';
+/**
+ * Exactly the fields of every native evidence kind, keyed by the native field
+ * names: a new kind, a renamed, added or removed field, or a field that changes
+ * between text and number fails the typecheck instead of refusing real rows at runtime.
+ */
+type EvidenceFields = { [K in FindingEvidence['kind']]: { [F in Exclude<keyof EvidenceOf<K>, 'kind'>]-?: FieldCheck<EvidenceOf<K>[F]> } };
+
+const EVIDENCE_FIELDS = {
+  clash: { clashId: 'text', occurrenceKey: 'text-or-empty', reviewKey: 'text' }, 'clash-baseline': { reviewKey: 'text' },
+  'clash-group-application': { applicationId: 'text', groupId: 'text' }, 'saved-validation': { reportId: 'text', rowId: 'text' },
+  validation: { specificationId: 'text', modelId: 'text', expressId: 'integer' },
+  'run-reconciliation': { baseRunId: 'text', headRunId: 'text', identity: 'text' }, comparison: { key: 'text' },
+  'saved-comparison': { comparisonId: 'text', key: 'text' }, bcf: { topicGuid: 'text' }, linked: { resourceId: 'text' },
+} as const satisfies EvidenceFields;
+
+/** A native evidence row with exactly its kind's fields; anything else is refused, never guessed. */
+function evidence(value: unknown): FindingEvidence | null {
+  if (!isRecord(value) || typeof value.kind !== 'string' || !Object.hasOwn(EVIDENCE_FIELDS, value.kind)) return null;
+  const kind = value.kind as FindingEvidence['kind'];
+  const out: Record<string, unknown> = { kind };
+  for (const [name, check] of Object.entries(EVIDENCE_FIELDS[kind]) as [string, FieldCheck<string | number>][]) {
+    const field = value[name];
+    if (check === 'integer' ? !Number.isSafeInteger(field) : !isText(field, 10_000, check === 'text-or-empty')) return null;
+    out[name] = field;
+  }
+  return out as FindingEvidence;
+}
+
+function sourceRun(value: unknown): DraftSourceRun | null {
+  if (!isRecord(value) || !isText(value.id, 1_000) || !FINDING_SOURCE_KINDS.includes(value.source as FindingSourceKind)
+    || (value.temporal !== 'current' && value.temporal !== 'historical') || !isText(value.label, 1_000, true)
+    || !(value.capturedAt === null || isText(value.capturedAt, 40)) || typeof value.complete !== 'boolean'
+    || !Array.isArray(value.gaps) || !value.gaps.every(gap => RUN_GAP_CODES.includes(gap as RunGapCode))
+    || (value.complete && value.gaps.length > 0)
+    || !Array.isArray(value.models) || value.models.length > 100 || !value.models.every(model => isText(model, 500))) return null;
+  return { id: value.id, source: value.source as FindingSourceKind, temporal: value.temporal, label: value.label,
+    capturedAt: value.capturedAt as string | null, complete: value.complete, gaps: [...value.gaps as RunGapCode[]],
+    models: [...value.models as string[]] };
+}
+
+/**
+ * A reviewed source finding (#7373). Its membership must agree with the run
+ * that owned it: historical evidence is never included as current, and only a
+ * current clash can be missing from the live run.
+ */
+export function decodeSourceFinding(value: unknown): DraftSourceFinding | null {
+  if (!isRecord(value) || !isText(value.id, 10_000) || !isText(value.lineage, 10_000)
+    || !FINDING_SOURCE_KINDS.includes(value.source as FindingSourceKind) || !isText(value.nativeStatus, 200, true)
+    || !DRAFT_SOURCE_MEMBERSHIPS.includes(value.membership as DraftSourceMembership)) return null;
+  const run = sourceRun(value.run), native = evidence(value.evidence);
+  if (!run || !native || run.source !== value.source) return null;
+  const membership = value.membership as DraftSourceMembership;
+  if ((membership === 'included' || membership === 'not-in-live-run') && run.temporal !== 'current') return null;
+  if (membership === 'historical' && run.temporal !== 'historical') return null;
+  if (membership === 'not-in-live-run' && native.kind !== 'clash') return null;
+  return { id: value.id, lineage: value.lineage, source: value.source as FindingSourceKind, nativeStatus: value.nativeStatus,
+    membership, run, evidence: native };
+}
+
+/** A topic origin under the durable codec's rules; shared with the archive footer so both agree. */
+export function decodeOrigin(value: unknown): DraftOrigin | null {
   if (!isRecord(value)) return null;
   if (value.kind === 'selection' || value.kind === 'archive') return { kind: value.kind };
   if (value.kind === 'group' && isText(value.workspaceId, 200) && isText(value.groupId, 200)) {
@@ -133,16 +197,20 @@ export function decodeTopic(value: unknown): DraftTopic | null {
     || !optionalText(value.priority, 100) || !optionalText(value.assignedTo, 500) || !Array.isArray(value.labels)
     || value.labels.length > DRAFT_LIMITS.labels || !value.labels.every(label => isText(label, 100))
     || !Array.isArray(value.members) || value.members.length > DRAFT_LIMITS.members
-    || !Array.isArray(value.comments) || value.comments.length > 100) return null;
-  const source = origin(value.origin);
+    || !Array.isArray(value.comments) || value.comments.length > 100
+    || (value.sourceFindings !== undefined && (!Array.isArray(value.sourceFindings) || value.sourceFindings.length > DRAFT_LIMITS.members))) return null;
+  const source = decodeOrigin(value.origin);
   const members = value.members.map(decodeFinding);
   const comments = value.comments.map(comment);
   const viewpoint = value.viewpoint === undefined ? undefined : decodeViewpoint(value.viewpoint);
-  if (!source || viewpoint === null || members.some(member => !member) || comments.some(item => !item)) return null;
+  const sourceFindings = Array.isArray(value.sourceFindings) ? value.sourceFindings.map(decodeSourceFinding) : undefined;
+  if (!source || viewpoint === null || members.some(member => !member) || comments.some(item => !item)
+    || sourceFindings?.some(item => !item) || (sourceFindings && source.kind !== 'review')) return null;
   return { guid: value.guid, title: value.title, description: value.description, topicType: value.topicType,
     topicStatus: value.topicStatus, ...(value.priority !== undefined ? { priority: value.priority } : {}), labels: [...value.labels as string[]],
     ...(value.assignedTo !== undefined ? { assignedTo: value.assignedTo } : {}), origin: source,
-    members: members.flatMap(member => member ? [member] : []), ...(viewpoint ? { viewpoint } : {}),
+    members: members.flatMap(member => member ? [member] : []),
+    ...(sourceFindings ? { sourceFindings: sourceFindings.flatMap(item => item ? [item] : []) } : {}), ...(viewpoint ? { viewpoint } : {}),
     comments: comments.flatMap(item => item ? [item] : []) };
 }
 
@@ -156,6 +224,31 @@ function decodeSource(value: unknown): DraftSource | null {
     capturedAt: value.capturedAt, ...(offset ? { worldOffset: offset } : {}) };
 }
 
+/** Why topics cannot share one batch: a repeated topic GUID, or a clash member or source finding claimed twice. */
+export type DraftOwnershipConflict = 'topic' | 'member' | 'source-finding';
+
+/**
+ * The first ownership conflict among decoded topics, or null. Every clash
+ * member and every reviewed source finding (#7373) belongs to exactly one topic.
+ */
+export function draftOwnershipConflict(topics: readonly DraftTopic[]): DraftOwnershipConflict | null {
+  const guids = new Set<string>(), claims = new Set<string>(), sourceClaims = new Set<string>();
+  for (const topic of topics) {
+    if (guids.has(topic.guid)) return 'topic';
+    guids.add(topic.guid);
+    for (const member of topic.members) {
+      const identity = findingIdentity(member);
+      if (claims.has(identity)) return 'member';
+      claims.add(identity);
+    }
+    for (const finding of topic.sourceFindings ?? []) {
+      if (sourceClaims.has(finding.id)) return 'source-finding';
+      sourceClaims.add(finding.id);
+    }
+  }
+  return null;
+}
+
 /**
  * A batch is a partition: no finding is claimed by two topics and topic GUIDs
  * are unique. Anything else is refused so an edit can never silently
@@ -166,18 +259,8 @@ export function decodeDraftBatch(value: unknown): DraftBatch | null {
     || !isText(value.createdAt, 40) || !isText(value.modifiedAt, 40) || !Array.isArray(value.topics)
     || value.topics.length > DRAFT_LIMITS.topics) return null;
   const source = decodeSource(value.source);
-  const topics = value.topics.map(decodeTopic);
-  if (!source || topics.some(topic => !topic)) return null;
-  const guids = new Set<string>(), claims = new Set<string>();
-  for (const topic of topics) {
-    if (!topic || guids.has(topic.guid)) return null;
-    guids.add(topic.guid);
-    for (const member of topic.members) {
-      const identity = findingIdentity(member);
-      if (claims.has(identity)) return null;
-      claims.add(identity);
-    }
-  }
-  return { version: 1, id: value.id, name: value.name, createdAt: value.createdAt, modifiedAt: value.modifiedAt, source,
-    topics: topics.flatMap(topic => topic ? [topic] : []) };
+  const decoded = value.topics.map(decodeTopic);
+  const topics = decoded.flatMap(topic => topic ? [topic] : []);
+  if (!source || topics.length !== decoded.length || draftOwnershipConflict(topics)) return null;
+  return { version: 1, id: value.id, name: value.name, createdAt: value.createdAt, modifiedAt: value.modifiedAt, source, topics };
 }

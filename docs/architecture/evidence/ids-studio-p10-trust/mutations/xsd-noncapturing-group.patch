@@ -1,0 +1,12 @@
+diff --git b/packages/ids/src/constraints/xsd-regex-ast.ts a/packages/ids/src/constraints/xsd-regex-ast.ts
+index 96995b445..b153bcabb 100644
+--- b/packages/ids/src/constraints/xsd-regex-ast.ts
++++ a/packages/ids/src/constraints/xsd-regex-ast.ts
+@@ -67,6 +67,7 @@ export function parseXsdRegex(pattern: string): XsdNode {
+     if (c === '(') {
+       i++;
+       // `(?:…)` is not XSD, but checkers (and ours) read it as a plain group (IDSL-REGEX-003).
++      if (pattern.startsWith('?:', i)) i += 2;
+       const body = alt();
+       if (pattern[i] !== ')') throw new XsdParseError(`missing ) at ${i}`);
+       i++;

@@ -1,0 +1,32 @@
+{
+  "observedAt": "2026-10-10T07:08:03.204173+00:00",
+  "issue": 6881,
+  "corePR": 7109,
+  "combinedPR": 7389,
+  "sourceHead": "7ee5360c9837cda8f4d24c36380b3a3b47325286",
+  "sourceTree": "bb452acdfa421e372f0559df0ca3414ac9bebccb",
+  "integratedMain": "95535c6fcffe997eb5ad6c2892cb1bdedf30a7cc",
+  "firstRun": "https://github.com/LTplus-AG/ifc-lite/actions/runs/38032672977",
+  "trigger": "pull_request edited base change; noop=false and frontend=true",
+  "actualFirstRunCheckout": "62e78da1bb20fd756fe333b80e43c77c7dc4864b",
+  "actualFirstRunParents": [
+    "5bec01db2039ba0aca9cf43c35a3df9c8acd5c61",
+    "7ee5360c9837cda8f4d24c36380b3a3b47325286"
+  ],
+  "currentMainMerge": "235f28ad26729e03456e93c82c2ad47e770b9251",
+  "currentMainMergeParents": [
+    "95535c6fcffe997eb5ad6c2892cb1bdedf30a7cc",
+    "7ee5360c9837cda8f4d24c36380b3a3b47325286"
+  ],
+  "buildLogSHA256": "48e95d53e7ccae28e98f3e53bc33168148ab837aa461d2da5b835216e86dc845",
+  "detectChangesLogSHA256": "a9bbdaf5c4213087313938db34a7e41369f16fd9564b4586a916cc4b1c8f3c06",
+  "classification": "Actual combined source tree built, but checkout synthetic merge retained old feature-base parent. Base-dependent gates cannot qualify current main from that run. Preserve actual results; require a fresh synchronize run with verified main-parent checkout.",
+  "firstRunAtObservation": "in_progress; terminal outcome not asserted here",
+  "repair": "A normal evidence commit at the integrated source will trigger fresh CI while the PR already targets main; no production change or acceptance relaxation.",
+  "runtimeCompilationHeadStillFrozen": "deba56e275242aed9282b02ceedebf8e0b7a861a",
+  "nativeGPUAcceptance": false,
+  "federationAcceptance": false,
+  "focusedPerformanceAcceptance": false,
+  "readiness": "DRAFT / HOLD",
+  "fullLocalEvidence": "/home/louistrue/.t3/artifacts/6881-qualification-48637c43-20261009/combined-main-ci-20261010"
+}

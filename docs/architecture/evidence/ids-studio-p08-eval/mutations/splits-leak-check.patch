@@ -1,0 +1,13 @@
+diff --git a/scripts/ai-eval/ids/e2-splits.mjs b/scripts/ai-eval/ids/e2-splits.mjs
+index fad0e96fe..c31a46bc0 100644
+--- a/scripts/ai-eval/ids/e2-splits.mjs
++++ b/scripts/ai-eval/ids/e2-splits.mjs
+@@ -109,7 +109,7 @@ export function e2SplitErrors(cases) {
+     splitsByGroup.set(group, splits);
+   }
+   for (const [group, splits] of splitsByGroup) {
+-    if (false) errors.push(`group ${group} leaks across splits: ${[...splits].sort().join(', ')}`);
++    if (splits.size > 1) errors.push(`group ${group} leaks across splits: ${[...splits].sort().join(', ')}`);
+   }
+   return errors;
+ }

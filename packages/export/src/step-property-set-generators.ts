@@ -9,8 +9,8 @@
  * out of `step-property-sets.ts` (#3184).
  */
 
-import { serializeValue, ref } from '@ifc-lite/parser';
-import type { PropertySet, QuantitySet } from '@ifc-lite/data';
+import { serializeValue, ref, getAttributeNamesForSchema } from '@ifc-lite/parser';
+import type { PropertySet, QuantitySet, Quantity } from '@ifc-lite/data';
 import type { RandomSource } from '@ifc-lite/encoding';
 import type { EffectiveEntityIndex } from './effective-index.js';
 import { escapeStepString, toStepReal, quantityTypeToIfcType } from './step-serialization.js';
@@ -121,6 +121,26 @@ export function generatePropertySetEntities(
   return { lines, count, generatedTypeOwnedPsetIds };
 }
 
+/** Canonical scalar quantity serialization shared by ordinary and type-owned writers. */
+export function generateQuantityAtom(
+  ctx: PropertySetContext, q: Quantity, effective: EffectiveEntityIndex,
+  requireExplicitUnitReference = false,
+): { id: number; line: string } {
+  const ifcType = quantityTypeToIfcType(q.type);
+  // Type-owned writer admission must not silently reinterpret explicit intent (#7355).
+  // Ordinary occurrence serialization keeps its existing API contract.
+  const unitId = q.unit !== undefined && ifcType === 'IFCQUANTITYLENGTH'
+    ? findUnitId(ctx, q.unit, effective) : null;
+  if (requireExplicitUnitReference && q.unit !== undefined && unitId === null) {
+    throw new Error(`Quantity ${q.name} explicit unit cannot resolve a native reference`);
+  }
+  const id = ctx.allocateExpressId();
+  const unit = unitId !== null ? serializeValue(ref(unitId)) : '$';
+  const formula = getAttributeNamesForSchema(ifcType, ctx.dataStore.schemaVersion).includes('Formula') ? ',$' : '';
+  const line = `#${id}=${ifcType}('${escapeStepString(q.name)}',$,${unit},${toStepReal(q.value)}${formula});`;
+  return { id, line };
+}
+
 /**
  * Generate STEP entities for quantity sets (IfcElementQuantity)
  */
@@ -130,9 +150,11 @@ export function generateQuantitySetEntities(
   qsets: QuantitySet[],
   willBeEmitted: (id: number) => boolean,
   effective: EffectiveEntityIndex,
-  random?: RandomSource
-): { lines: string[]; count: number } {
+  random?: RandomSource,
+  typeOwned = false,
+): { lines: string[]; count: number; generatedSetIds: number[] } {
   const lines: string[] = [];
+  const generatedSetIds: number[] = [];
   let count = 0;
   const ownerHistoryRef = resolveOwnerHistoryRef(ctx, entityId, willBeEmitted, effective);
 
@@ -143,19 +165,8 @@ export function generateQuantitySetEntities(
     const quantityIds: number[] = [];
 
     for (const q of qset.quantities) {
-      const qId = ctx.allocateExpressId();
-      count++;
-
-      const ifcType = quantityTypeToIfcType(q.type);
-      // This resolver only supplies LENGTHUNIT references; other quantity
-      // classes inherit project units rather than receive an invalid dimension.
-      const unitId = q.unit && ifcType === 'IFCQUANTITYLENGTH' ? findUnitId(ctx, q.unit, effective) : null;
-      const unit = unitId !== null ? serializeValue(ref(unitId)) : '$';
-      // #ID=IFCQUANTITYLENGTH('Name',$,Unit,Value,$);
-      const val = toStepReal(q.value);
-      const line = `#${qId}=${ifcType}('${escapeStepString(q.name)}',$,${unit},${val},$);`;
-      lines.push(line);
-      quantityIds.push(qId);
+      const atom = generateQuantityAtom(ctx, q, effective, typeOwned);
+      lines.push(atom.line); quantityIds.push(atom.id); count++;
     }
 
     // Create IfcElementQuantity
@@ -168,6 +179,9 @@ export function generateQuantitySetEntities(
     // #ID=IFCELEMENTQUANTITY('GlobalId',#ownerHistory,'Name',$,$,(#quants));
     const qsetLine = `#${qsetId}=IFCELEMENTQUANTITY('${globalId}',${ownerHistoryRef},'${escapeStepString(qset.name)}',$,$,(${quantRefs}));`;
     lines.push(qsetLine);
+    generatedSetIds.push(qsetId);
+
+    if (typeOwned) continue;
 
     // Create IfcRelDefinesByProperties to link qset to entity
     const relId = ctx.allocateExpressId();
@@ -178,5 +192,5 @@ export function generateQuantitySetEntities(
     lines.push(relLine);
   }
 
-  return { lines, count };
+  return { lines, count, generatedSetIds };
 }

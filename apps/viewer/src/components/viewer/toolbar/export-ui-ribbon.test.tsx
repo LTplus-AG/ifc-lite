@@ -20,6 +20,7 @@ import type { FederatedModel } from '@/store/types';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { GeometryProcessor } from '@ifc-lite/geometry';
 import { EVENT_FILE_DOWNLOADED } from '@/lib/tours/events.js';
+import { installViewportCaptureBoundary } from '@/test/viewport-capture-boundary.js';
 import {
   EXPORT_COMMANDS,
   EXPORT_COMMAND_IDS,
@@ -351,6 +352,13 @@ describe('ribbon export UI (#2510, #2511, #5874)', () => {
     canvas.dataset.viewport = 'main';
     canvas.toDataURL = () => 'data:image/png;base64,iVBORw0KGgo=';
     document.body.appendChild(canvas);
+    // #6709: downloads use the owned viewport boundary; this UI fixture does
+    // not mount the canonical loop or claim a physical GPU submission.
+    const releaseViewport = installViewportCaptureBoundary(canvas);
+    const presentation = mock.method(globalThis, 'requestAnimationFrame', (callback: FrameRequestCallback) => {
+      queueMicrotask(() => callback(0));
+      return 0;
+    });
     const events: Array<{ event: string; properties: Record<string, unknown> }> = [];
     const capture = mock.method(posthog, 'capture', (event: string, properties: Record<string, unknown>) => {
       events.push({ event, properties });
@@ -359,8 +367,12 @@ describe('ribbon export UI (#2510, #2511, #5874)', () => {
     try {
       renderRibbonExports();
       const fromRibbon = await captureDownloads(async () => {
+        const downloaded = new Promise<void>(resolve => {
+          window.addEventListener(EVENT_FILE_DOWNLOADED, () => resolve(), { once: true });
+        });
         await act(async () => {
           exportControl('screenshot').click();
+          await downloaded;
         });
       });
       assert.deepEqual(fromRibbon, ['png'], 'the ribbon Screenshot button must save a PNG');
@@ -369,6 +381,8 @@ describe('ribbon export UI (#2510, #2511, #5874)', () => {
       ], '#5844: screenshot completions retain the initiating surface');
     } finally {
       capture.mock.restore();
+      releaseViewport();
+      presentation.mock.restore();
       canvas.remove();
     }
   });

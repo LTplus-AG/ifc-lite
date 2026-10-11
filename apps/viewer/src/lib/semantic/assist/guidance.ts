@@ -15,8 +15,9 @@ export const SEMANTIC_OUTPUT_GUIDANCE = [
   'Projection: {"version":1,"kind":"semantic.projection","title":"…","projections":[{"resource":"<installation record id>","field":"fireRating","policy":"error"}]}'
   + ' using only fields listed in projectionMappings; policy is error, skip or overwrite.',
   'Requirements: {"version":1,"kind":"semantic.requirements","title":"…","requirements":[{"id":"R1","statement":"…","appliesTo":{"ifcClass":"IfcDoor"},'
-  + '"property":"FireRating","operator":"equals","value":"EI30","unit":"…","span":{"source":"S1","start":0,"end":42,"quote":"…"}}],'
-  + '"unsupported":[{"text":"…","reason":"ambiguous …","span":{…}}]}. Operators: equals, notEquals, atLeast, atMost, exists, oneOf, matches.',
+  + '"property":"Pset_DoorCommon.FireRating","operator":"equals","value":"EI30","span":{"source":"S1","start":0,"end":42,"quote":"…"}}],'
+  + '"unsupported":[{"text":"…","reason":"ambiguous …","span":{…}}]}. Operators: equals, notEquals, atLeast, atMost, exists, oneOf, matches.'
+  + ' Name property as PropertySet.Property (Qto_*.Quantity for quantities) or an IFC attribute; give unit only for a measured value.',
   'Spans: copy quote exactly from one captured passage; start = passage.start + index within passage.text; end = start + quote length.'
   + ' Never paraphrase a quote. Keep ambiguous, conditional or unsupported statements in "unsupported" with a reason instead of guessing.',
 ].join('\n');

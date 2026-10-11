@@ -1,0 +1,13 @@
+diff --git b/packages/ids-authoring/src/lint/rules/bsdd.ts a/packages/ids-authoring/src/lint/rules/bsdd.ts
+index 673a658f4..b0f00e4e1 100644
+--- b/packages/ids-authoring/src/lint/rules/bsdd.ts
++++ a/packages/ids-authoring/src/lint/rules/bsdd.ts
+@@ -83,7 +83,7 @@ export const BSDD_002: SpecRule = {
+       const name = record?.dictionaryName;
+       if (f.type !== 'classification' || !name) continue;
+       const system = f.system ? literals(f.system) : [];
+-      if (system.length || (f.system && f.system.type === 'pattern')) continue;
++      if (system.includes(name) || (f.system && f.system.type === 'pattern')) continue;
+       const fix = quickFix(`Use "${name}"`, this.code, view.facetId, name, [{ kind: 'value.set', payload: { facetId: view.facetId, field: 'classification.system', value: { kind: 'equals', value: name } } }]);
+       const message = system.length
+         ? `${where(view)}: system "${system.join('", "')}" differs from the bSDD dictionary name "${name}"`

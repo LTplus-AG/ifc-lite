@@ -1,0 +1,13 @@
+diff --git b/packages/ids-authoring/src/merge/sidecar.ts a/packages/ids-authoring/src/merge/sidecar.ts
+index 32d0c5292..bd4bba40c 100644
+--- b/packages/ids-authoring/src/merge/sidecar.ts
++++ a/packages/ids-authoring/src/merge/sidecar.ts
+@@ -44,7 +44,7 @@ function cases(doc: StudioDocument): Map<Uuid, CaseSite> {
+ 
+ /** The value a key takes: theirs if theirs changed it, else ours. */
+ function pick<T>(b: T | undefined, o: T | undefined, t: T | undefined): T | undefined {
+-  return o;
++  return canonical(t ?? null) !== canonical(b ?? null) ? t : o;
+ }
+ 
+ /** Ops that bring both sides' suppression and test-suite changes into `merged` (which carries the base records). */

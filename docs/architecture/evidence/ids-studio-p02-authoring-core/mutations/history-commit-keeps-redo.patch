@@ -1,0 +1,13 @@
+diff --git a/packages/ids-authoring/src/history/history.ts b/packages/ids-authoring/src/history/history.ts
+index 3b3171ed8..b8ca0686f 100644
+--- a/packages/ids-authoring/src/history/history.ts
++++ b/packages/ids-authoring/src/history/history.ts
+@@ -87,7 +87,7 @@ export function commit(
+   if (info.label) entry.label = info.label;
+   const past = [...state.history.past, entry];
+   return {
+-    state: { doc: result.doc, history: { past: past.slice(Math.max(0, past.length - limit)), future: state.history.future } },
++    state: { doc: result.doc, history: { past: past.slice(Math.max(0, past.length - limit)), future: [] } },
+     result,
+   };
+ }

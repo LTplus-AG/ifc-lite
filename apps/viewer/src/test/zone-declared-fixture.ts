@@ -11,6 +11,7 @@ import type { Renderer } from '@ifc-lite/renderer';
 import { Scene } from '../../../../packages/renderer/src/scene';
 import { useViewerStore } from '@/store';
 import { fixtureModel } from './store-fixture';
+import { getMaxExpressId } from '@/hooks/ingest/viewerModelIngest';
 import { ensureWasm } from './scan-slab-fixture';
 import { setGlobalRendererRef } from '@/hooks/useBCF';
 import { recomputeZoneAssignmentsNow } from '@/hooks/useZoneAssignmentSync';
@@ -70,8 +71,11 @@ export async function seedDeclaredZoneWall(t: TestContext): Promise<DeclaredZone
     { id: 'right', name: 'Right', center: [(cut + bounds.max.x) / 2, (bounds.min.y + bounds.max.y) / 2, (bounds.min.z + bounds.max.z) / 2], size: [bounds.max.x - cut, bounds.max.y - bounds.min.y + 1, bounds.max.z - bounds.min.z + 1], rotationY: 0 },
   ] };
   const geometry: GeometryResult = { meshes, totalTriangles: meshes.reduce((n, m) => n + m.indices.length / 3, 0), totalVertices: meshes.reduce((n, m) => n + m.positions.length / 3, 0), coordinateInfo: { originShift: { x: 0, y: 0, z: 0 }, originalBounds: bounds, shiftedBounds: bounds, hasLargeCoordinates: false } };
-  const model = { ...fixtureModel('arch'), name: 'AC20-FZK-Haus.ifc', ifcDataStore: store, geometryResult: geometry };
+  const model = { ...fixtureModel('arch'), name: 'AC20-FZK-Haus.ifc', ifcDataStore: store, geometryResult: geometry,
+    maxExpressId: getMaxExpressId(store, meshes) };
   useViewerStore.setState({ models: new Map([['arch', model]]), activeModelId: 'arch', ifcDataStore: store, geometryResult: geometry, mutationViews: new Map(), zoneSets: [zoneSet], zoneApportionment: new Map(), zoneAssignments: new Map(), selectedEntity: { modelId: 'arch', expressId: id }, selectedEntityId: id, selectedEntities: [], selectedEntitiesSet: new Set(), selectedEntityIds: new Set() });
+  assert.deepEqual(useViewerStore.getState().resolveGlobalIdFromModels(id), { modelId: 'arch', expressId: id },
+    '#7220 native fixture retains canonical source-wall ownership');
   recomputeZoneAssignmentsNow();
   assert.equal(useViewerStore.getState().zoneAssignments.get(id)?.[zoneSet.id].straddles, true);
   const result = computeZoneApportionmentForElement(zoneSet, id); assert.ok(result.apportionment);

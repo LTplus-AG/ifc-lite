@@ -12,6 +12,7 @@ import { reviewWorkspaceLibrary } from '../review/workspace.js';
 import { semanticReviewLibrary } from '../semantic/assist/library.js';
 import { assistantRecipeLibrary } from '../assistant/reuse/recipe-library.js';
 import { assistantPreferencesLibrary } from '../assistant/reuse/preferences.js';
+import { analysisRunLibrary } from '../compare/saved-analysis-runs.js';
 import { useViewerStore } from '../../store/index.js';
 import { subscribeContentChanges } from './content-events.js';
 import { preserveLegacyChange } from './content-backup.js';
@@ -32,6 +33,7 @@ function contentHosts() {
     semanticReviews: { initialize: semanticReviewLibrary.initialize, refresh: semanticReviewLibrary.refresh },
     assistantRecipes: { initialize: assistantRecipeLibrary.initialize, refresh: assistantRecipeLibrary.refresh },
     assistantPreferences: { initialize: assistantPreferencesLibrary.initialize, refresh: assistantPreferencesLibrary.refresh },
+    analysisRuns: { initialize: analysisRunLibrary.initialize, refresh: analysisRunLibrary.refresh },
     document: { initialize: state.initializeDocuments, refresh: state.refreshDocuments },
     validation: { initialize: state.initializeValidationReports, refresh: state.refreshValidationReports },
     comparison: { initialize: state.initializeSavedComparisons, refresh: state.refreshSavedComparisons },

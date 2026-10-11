@@ -10,13 +10,15 @@
  */
 
 import '@/test/setup-dom.js';
+import { clearDownloads, downloadedNames } from '@/test/download-capture.js';
 import { installLayout } from '@/test/dom-layout.js';
 installLayout();
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { blur, cleanup, click, press, render, type } from '@/test/render.js';
+import { blur, cleanup, click, press, render, type, waitFor } from '@/test/render.js';
 import { useViewerStore } from '@/store';
 import { loadStudioContexts } from '@/lib/ids-studio/context';
+import { exportIds } from '@/lib/ids-studio/export';
 import { wallFixture } from '@/test/ids-studio-fixture';
 import { IdsStudioPanel } from './IdsStudioPanel';
 
@@ -98,5 +100,50 @@ describe('IdsStudioPanel (IDS-030 … IDS-032)', () => {
     assert.equal(rows().length, 1, 'ArrowLeft on an open spec collapses it');
     press(tree, 'ArrowRight');
     assert.equal(rows().length, 5, 'ArrowRight expands it again');
+  });
+
+  it('saves the document as .ids and .idsz, and closes it (IDS-040)', async () => {
+    const fixture = await wallFixture();
+    useViewerStore.getState().idsStudioOpen(fixture.doc);
+    clearDownloads();
+    const ui = render(<IdsStudioPanel />);
+    click(ui.querySelector('[aria-label="Save as IDS (.ids)"]') as HTMLElement);
+    click(ui.querySelector('[aria-label="Save as Studio bundle (.idsz)"]') as HTMLElement);
+    assert.deepEqual(downloadedNames(), ['Fire-safety.ids', 'Fire-safety.idsz']);
+    assert.equal(ui.querySelector('[role="alert"]'), null, 'no save error');
+    click(ui.querySelector('[aria-label="Close the document"]') as HTMLElement);
+    assert.equal(useViewerStore.getState().idsStudioState, null);
+    assert.ok(byText(ui, 'button', 'New IDS'), 'the empty state is back');
+  });
+
+  it('undoes and redoes with the panel keyboard shortcuts', async () => {
+    const fixture = await wallFixture();
+    useViewerStore.getState().idsStudioOpen(fixture.doc);
+    useViewerStore.getState().idsStudioSelect(fixture.specId);
+    const ui = render(<IdsStudioPanel />);
+    const name = labelled(ui, 'Name');
+    type(name, 'Walls');
+    blur(name);
+    const tree = ui.querySelector('[role="tree"]') as HTMLElement;
+    press(tree, 'z', { ctrlKey: true });
+    assert.equal(doc()?.ids.specifications[0].name, 'Walls – fire rating', 'Ctrl+Z undoes');
+    press(tree, 'z', { ctrlKey: true, shiftKey: true });
+    assert.equal(doc()?.ids.specifications[0].name, 'Walls', 'Ctrl+Shift+Z redoes');
+  });
+
+  it('opens an IDS file dropped on the empty state (IDS-040)', async () => {
+    const fixture = await wallFixture();
+    const saved = exportIds(fixture.doc);
+    assert.ok(saved.ok);
+    if (!saved.ok) return;
+    const ui = render(<IdsStudioPanel />);
+    const file = new File([saved.content], 'walls.ids');
+    const drop = new window.Event('drop', { bubbles: true, cancelable: true });
+    Object.defineProperty(drop, 'dataTransfer', { value: { types: ['Files'], files: [file] } });
+    const zone = ui.querySelector('[data-tour="ids-studio-panel"] > div') as HTMLElement;
+    zone.dispatchEvent(drop);
+    await waitFor(() => doc() !== undefined, 'the dropped file opens');
+    assert.equal(drop.defaultPrevented, true, 'the browser does not navigate to the file');
+    assert.equal(doc()?.ids.specifications[0].name, 'Walls – fire rating');
   });
 });

@@ -23,6 +23,10 @@ export const idsStudioEn = {
   'idsStudio.header.view': 'View',
   'idsStudio.header.inspector': 'Inspector',
   'idsStudio.header.xml': 'XML',
+  'idsStudio.header.saveIds': 'Save as IDS (.ids)',
+  'idsStudio.header.saveIdsz': 'Save as Studio bundle (.idsz)',
+  'idsStudio.header.saveFailed': 'Could not save: {reason}',
+  'idsStudio.header.close': 'Close the document',
 
   'idsStudio.outline.label': 'Specifications',
   'idsStudio.outline.filter': 'Filter specifications…',

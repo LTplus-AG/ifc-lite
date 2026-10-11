@@ -10,11 +10,13 @@
  */
 
 import { useState, type KeyboardEvent } from 'react';
-import { ChevronDown, ChevronUp, Code2, PanelTop, Redo2, Undo2 } from 'lucide-react';
+import { ChevronDown, ChevronUp, Code2, FileDown, Package, PanelTop, Redo2, Undo2, X } from 'lucide-react';
 import { canRedo, canUndo } from '@ifc-lite/ids-authoring';
 import { IconButton } from '@/components/ui/icon-button';
 import { useTranslation } from '@/i18n';
 import { useViewerStore } from '@/store';
+import { exportIds, exportIdsz } from '@/lib/ids-studio/export';
+import { downloadFile } from '@/lib/export/download';
 import { tourAnchor, TOUR_ANCHORS } from '@/lib/tours/anchors';
 import { cn } from '@/lib/utils';
 import { DiagnosticsPanel } from './DiagnosticsPanel';
@@ -36,7 +38,9 @@ export function IdsStudioPanel() {
   const redo = useViewerStore((s) => s.idsStudioRedo);
   const ready = useViewerStore((s) => s.idsStudioContexts !== null);
   const diagnostics = useStudioDiagnostics();
+  const close = useViewerStore((s) => s.idsStudioClose);
   const [diagnosticsOpen, setDiagnosticsOpen] = useState(true);
+  const [saveError, setSaveError] = useState<string | null>(null);
   if (!state) return <div className="h-full overflow-auto" {...tourAnchor(TOUR_ANCHORS.idsStudioPanel)}><StudioEmptyState /></div>;
   const doc = state.doc;
   // ⌘Z / ⇧⌘Z / ⌘/ (UX spec §7), scoped to the panel so text fields keep their own undo.
@@ -49,6 +53,12 @@ export function IdsStudioPanel() {
     else if (key === '/') { event.preventDefault(); setView(view === 'xml' ? 'inspector' : 'xml'); }
   };
   const { counts } = diagnostics;
+  const save = (format: 'ids' | 'idsz') => {
+    const saved = format === 'ids' ? exportIds(doc) : exportIdsz(doc);
+    if (!saved.ok) { setSaveError(saved.error); return; }
+    setSaveError(null);
+    downloadFile(saved.content, saved.fileName, format === 'ids' ? 'application/xml;charset=utf-8' : 'application/zip');
+  };
   return <StudioDiagnosticsProvider value={diagnostics}>
     {/* The panel-level shortcuts are a keyboard convenience for the focused panel. */}
     <div className="flex h-full min-h-0 flex-col text-xs" onKeyDown={onKeyDown} role="presentation" {...tourAnchor(TOUR_ANCHORS.idsStudioPanel)}>
@@ -60,6 +70,12 @@ export function IdsStudioPanel() {
         <IconButton label={t('idsStudio.header.redo')} className="h-7 w-7" disabled={!canRedo(state)} onClick={redo}>
           <Redo2 className="h-3.5 w-3.5" aria-hidden />
         </IconButton>
+        <IconButton label={t('idsStudio.header.saveIds')} className="h-7 w-7" onClick={() => save('ids')}>
+          <FileDown className="h-3.5 w-3.5" aria-hidden />
+        </IconButton>
+        <IconButton label={t('idsStudio.header.saveIdsz')} className="h-7 w-7" onClick={() => save('idsz')}>
+          <Package className="h-3.5 w-3.5" aria-hidden />
+        </IconButton>
         <fieldset className="flex rounded border border-border">
           <legend className="sr-only">{t('idsStudio.header.view')}</legend>
           <button type="button" aria-pressed={view === 'inspector'} onClick={() => setView('inspector')}
@@ -67,7 +83,11 @@ export function IdsStudioPanel() {
           <button type="button" aria-pressed={view === 'xml'} onClick={() => setView('xml')}
             className={cn('flex items-center gap-1 px-1.5 py-0.5 text-2xs', view === 'xml' && 'bg-accent')}><Code2 className="h-3 w-3" aria-hidden />{t('idsStudio.header.xml')}</button>
         </fieldset>
+        <IconButton label={t('idsStudio.header.close')} className="h-7 w-7" onClick={close}>
+          <X className="h-3.5 w-3.5" aria-hidden />
+        </IconButton>
       </div>
+      {saveError && <p role="alert" className="border-b border-border px-2 py-1 text-2xs text-destructive break-words">{t('idsStudio.header.saveFailed', { reason: saveError })}</p>}
       {!ready && <p className="border-b border-border px-2 py-1 text-2xs text-muted-foreground">{t('idsStudio.loadingSchema')}</p>}
       <div className="min-h-[8rem] flex-[2] border-b border-border"><StudioOutline doc={doc} /></div>
       <div className="min-h-0 flex-[3] overflow-auto">

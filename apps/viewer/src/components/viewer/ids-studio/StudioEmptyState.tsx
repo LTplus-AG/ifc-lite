@@ -8,13 +8,14 @@
  * wholesale; it is not an edit, so it is not an op.
  */
 
-import { useId, useRef, useState } from 'react';
+import { useId, useRef, useState, type DragEvent } from 'react';
 import { ClipboardPen, FilePlus2, FolderOpen } from 'lucide-react';
 import { createStudioDocument, fromIdsDocument } from '@ifc-lite/ids-authoring';
 import { Button } from '@/components/ui/button';
 import { useTranslation } from '@/i18n';
 import { useViewerStore } from '@/store';
 import { importStudioFile } from '@/lib/ids-studio/import';
+import { cn } from '@/lib/utils';
 
 export function StudioEmptyState() {
   const { t } = useTranslation();
@@ -28,7 +29,22 @@ export function StudioEmptyState() {
     const result = await importStudioFile(file);
     if (result.ok) { setError(null); open(result.doc); } else setError(result.error);
   };
-  return <div className="space-y-4 p-3">
+  const [dragging, setDragging] = useState(false);
+  // Dropping an .ids / .xml / .idsz anywhere on the empty state opens it.
+  const onDragOver = (event: DragEvent<HTMLDivElement>) => {
+    if (![...(event.dataTransfer?.types ?? [])].includes('Files')) return;
+    event.preventDefault();
+    setDragging(true);
+  };
+  const onDrop = (event: DragEvent<HTMLDivElement>) => {
+    const file = event.dataTransfer?.files?.[0];
+    setDragging(false);
+    if (!file) return;
+    event.preventDefault();
+    void openFile(file);
+  };
+  return <div className={cn('space-y-4 p-3', dragging && 'outline-dashed outline-2 outline-primary')}
+    onDragOver={onDragOver} onDragLeave={() => setDragging(false)} onDrop={onDrop}>
     <div className="flex items-start gap-2">
       <ClipboardPen className="mt-0.5 h-5 w-5 shrink-0 text-primary" aria-hidden />
       <div className="space-y-1">

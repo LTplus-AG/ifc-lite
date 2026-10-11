@@ -235,16 +235,14 @@ Check again immediately before opening the PR. A claim can appear while you work
 
 If the account is assigned with no claim comment, ask on the issue rather than reading the field as your own. This applies to OUR sessions only. An outside contributor has their own account, so for them the field says what it appears to say.
 
+**Also label the claim** with your session's `claimed:session-<id>` label (create it if missing; `<id>` is your branch suffix); remove it when the PR merges or you stop. Outside contributors' issues get `claimed:contributor`. Before starting, `gh issue view <n> --json labels`: a `claimed:*` label that is not yours means it is taken.
+
 ### The contributor check and the session check are different checks
 
 Doing one does not do the other. Run both, every time:
 
     gh issue view <n> --json assignees      # is one of us on it
     gh pr list --search "<n>"               # CANDIDATES; confirm on the issue page
-
-That search is TEXT: it misses linked PRs that never name the number and returns
-unrelated ones that do. A hit is a reason to look, not an answer; the issue's
-linked-PR list is authoritative where they disagree.
 
 On #3012 the account was self-assigned and a PR appeared 47 minutes later. That looked like a session ignoring the claim; it was an outside contributor, who has no reason to know about an internal assignment. No assignee field would have helped, because no session held it. Only the PR search would have.
 
@@ -262,12 +260,7 @@ Help, no permission needed: reviewing their PR including finding real defects; d
 
 Not help, however good the code: building a parallel implementation and announcing it afterwards; carrying an unraised branch that duplicates their work; pushing to their branch; opening a competing PR on their issue.
 
-If you built something before noticing, say so plainly, hand it over, and let them decide. That is recoverable; landing it is not. When you find you have duplicated someone, the owner follows the rules above in
-order: an outside contributor's PR beats any internal claim; else the earliest
-claim comment wins; the assignee field decides only when neither applies, since it
-cannot name a session. Never whoever is further along or noticed first. Do not
-close the duplicate silently: enumerate what it holds that the survivor does not,
-and never push to a branch you do not own to "help".
+If you built something before noticing, say so plainly, hand it over, and let them decide. That is recoverable; landing it is not. Do not close a duplicate silently: list what it holds that the survivor does not.
 
 This rule exists because it was broken twice in two days against the same external contributor (#2951 filed, assigned and implemented by them as #2952, with #2970 arriving fifteen hours later doing the same thing; and #2670, where they were mid-development when told a parallel implementation existed). The cost is not the wasted effort. It is that a contributor who did everything correctly had to be the one to raise it, twice.
 

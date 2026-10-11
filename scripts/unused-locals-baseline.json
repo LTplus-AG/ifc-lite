@@ -1,7 +1,7 @@
 {
   "apps/autodesk-service": 0,
   "apps/cloud-service": 0,
-  "apps/viewer": 189,
+  "apps/viewer": 188,
   "apps/viewer-embed": 191,
   "examples/babylonjs-viewer": 0,
   "examples/collab-demo": 1,

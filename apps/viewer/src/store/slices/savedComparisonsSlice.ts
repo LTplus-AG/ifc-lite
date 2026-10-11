@@ -19,8 +19,8 @@ export interface SavedComparisonsSlice {
   saveComparison: (comparison: SavedComparison) => Promise<boolean>;
   stageComparison: (comparison: SavedComparison) => void;
   renameSavedComparison: (id: string, name: string) => Promise<boolean>;
-  deleteSavedComparison: (id: string, beforeWrite?: () => boolean) => Promise<boolean>;
-  cancelSavedComparisonDeletion: (id: string, beforeWrite: () => boolean) => Promise<boolean>;
+  deleteSavedComparison: (id: string, beforeWrite?: () => boolean | Promise<boolean>) => Promise<boolean>;
+  cancelSavedComparisonDeletion: (id: string, beforeWrite: () => boolean | Promise<boolean>) => Promise<boolean>;
 }
 
 export const createSavedComparisonsSlice: StateCreator<SavedComparisonsSlice, [], [], SavedComparisonsSlice> = (set, get) => {

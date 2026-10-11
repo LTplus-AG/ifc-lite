@@ -29,7 +29,7 @@ export function createContentLibrary<T extends { id: string }>(definition: Conte
   const queues = new Map<string, Promise<boolean>>();
   const generations = new Map<string, number>();
   // Optional native deletion authority stays with refused tombstones for explicit Retry.
-  const deletionGuards = new Map<string, { check: () => boolean; original: T | undefined; replacement?: T }>();
+  const deletionGuards = new Map<string, { check: () => boolean | Promise<boolean>; original: T | undefined; replacement?: T }>();
   // Revoked deletions retain recovery evidence, never writable tombstones or approval.
   const cancelledDeletions = new Map<string, { generation: number; original: T | undefined }>();
   let editGeneration = 0;
@@ -107,7 +107,7 @@ export function createContentLibrary<T extends { id: string }>(definition: Conte
       return null;
     }
   };
-  const put = (id: string, value: T | null, beforeWrite?: () => boolean): Promise<boolean> => {
+  const put = (id: string, value: T | null, beforeWrite?: () => boolean | Promise<boolean>): Promise<boolean> => {
     const entry = portableEntry(value);
     if (value !== null && !entry) { stage(id, value, 'invalid'); return Promise.resolve(false); }
     editGeneration++;
@@ -125,12 +125,12 @@ export function createContentLibrary<T extends { id: string }>(definition: Conte
       dirty.set(id, value); status.items[id] = 'saving'; change(id, value);
     }
     const previous = queues.get(id) ?? Promise.resolve(true);
-    const deletionAllowed = (): boolean => {
+    const deletionAllowed = async (): Promise<boolean> => {
       const authority = deletionGuards.get(id);
       if (beforeWrite && (!authority || authority.check !== beforeWrite || generations.get(id) !== generation)) return false;
       // Restore the actual own-import replacement before checking source identity.
       if (authority?.replacement && generations.get(id) === generation) change(id, authority.replacement);
-      const permitted = !beforeWrite || beforeWrite();
+      const permitted = !beforeWrite || await beforeWrite();
       // The callback can synchronously revoke itself or stage a newer draft.
       if (permitted && !authority?.replacement && (!beforeWrite
         || (deletionGuards.get(id) === authority && generations.get(id) === generation))) return true;
@@ -154,7 +154,7 @@ export function createContentLibrary<T extends { id: string }>(definition: Conte
         return false;
       }
       if (beforeWrite && value === null) {
-        if (!deletionAllowed()) return false;
+        if (!(await deletionAllowed())) return false;
         dirty.set(id, value); change(id, value);
       }
       const expected = revisions.get(id) ?? 0;
@@ -168,7 +168,7 @@ export function createContentLibrary<T extends { id: string }>(definition: Conte
           const draft = dirty.get(id);
           if (draft === undefined) return false;
           // #7245: an own receipt advances CAS, never deletion approval.
-          if (draft === null && !deletionAllowed()) return false;
+          if (draft === null && !(await deletionAllowed())) return false;
           const latest = portableEntry(draft);
           if (draft !== null && !latest) { stage(id, draft, 'invalid'); return false; }
           result = await writeContent(definition.kind, id, latest, acknowledged);
@@ -212,7 +212,7 @@ export function createContentLibrary<T extends { id: string }>(definition: Conte
     }
   };
   // Revoke only this mounted review's tombstone; never flush unrelated drafts.
-  const cancelDeletion = (id: string, check: () => boolean): Promise<boolean> => {
+  const cancelDeletion = (id: string, check: () => boolean | Promise<boolean>): Promise<boolean> => {
     const authority = deletionGuards.get(id);
     if (!authority || authority.check !== check || dirty.get(id) !== null) return Promise.resolve(false);
     const generation = (generations.get(id) ?? 0) + 1;

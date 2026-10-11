@@ -6,7 +6,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
 import { useViewerStore } from '@/store';
-import { readContentRows } from '@/lib/storage/content-database';
+import { readContentRows, writeContent } from '@/lib/storage/content-database';
 import { saveDashboards, loadDashboards } from '@/lib/charts/persistence';
 import { click, render, waitFor } from '@/test/render';
 import { button, dependents, realComparison, setupReportDeletionFixtures } from '@/test/report-deletion-fixture';
@@ -115,4 +115,55 @@ for (const raw of [null, '[]']) test(`#7245 ${raw === null ? 'absent' : 'readabl
   assert.match(ui.textContent ?? '', /0 chart references found/);
   assert.doesNotMatch(ui.textContent ?? '', /Some saved libraries could not be read completely/);
   assert.equal((await readContentRows('comparison')).find(row => row.id === report.id)?.deleted, false);
+});
+
+async function addDurableDocumentReference() {
+  const current = useViewerStore.getState().documents[0]; assert.ok(current);
+  const chart = current.blocks.find(block => block.kind === 'chart'); assert.ok(chart);
+  const saved = { ...current, blocks: [...current.blocks, { ...chart, id: 'external-document-reference', chart: { ...chart.chart, id: 'external-document-chart', title: 'New durable Document reference' } }] };
+  const row = (await readContentRows('document')).find(entry => entry.id === current.id); assert.ok(row);
+  assert.equal((await writeContent('document', current.id, saved, row.revision)).ok, true);
+  assert.equal(useViewerStore.getState().documents[0], current, 'native view remains genuinely stale after another tab writes');
+}
+
+test('#7252 a Document saved after native hydration is refreshed before mounted dependency acknowledgement', async () => {
+  const report = await realComparison(); await dependents('compare', report.id);
+  await addDurableDocumentReference();
+  const ui = await preview(report.id);
+  assert.match(ui.textContent ?? '', /3 chart references found/);
+  assert.match(ui.textContent ?? '', /New durable Document reference/);
+  assert.equal((await readContentRows('comparison')).find(row => row.id === report.id)?.deleted, false);
+});
+
+test('#7252 final native Delete refreshes a late durable Document and revokes its stale acknowledgement', async () => {
+  const report = await realComparison(); await dependents('compare', report.id);
+  const ui = await preview(report.id);
+  assert.match(ui.textContent ?? '', /2 chart references found/);
+  await addDurableDocumentReference();
+  const remove = button(ui, 'Delete report'); assert.ok(remove); assert.equal(remove.disabled, false);
+  click(remove);
+  await waitFor(() => /Chart references changed/.test(ui.textContent ?? ''), 'late durable Document revokes native deletion approval');
+  assert.match(ui.textContent ?? '', /New durable Document reference/);
+  assert.equal(button(ui, 'Delete report')?.disabled, true);
+  assert.equal((await readContentRows('comparison')).find(row => row.id === report.id)?.deleted, false);
+});
+
+test('#7252 durable same-ID Document references and current unsaved retargeted drafts both remain covered', async () => {
+  const report = await realComparison(); await dependents('compare', report.id);
+  const other = await realComparison();
+  const current = useViewerStore.getState().documents[0]; assert.ok(current);
+  const chart = current.blocks.find(block => block.kind === 'chart'); assert.ok(chart);
+  const draft = { ...current, blocks: [
+    { ...chart, chart: { ...chart.chart, comparisonId: other.id, title: 'Retargeted unsaved Document chart' } },
+    { ...chart, id: 'unsaved-document-reference', chart: { ...chart.chart, id: 'unsaved-chart', title: 'Current unsaved Document reference' } },
+  ] };
+  await addDurableDocumentReference();
+  act(() => useViewerStore.getState().stageDocument(draft));
+  const ui = await preview(report.id);
+  assert.match(ui.textContent ?? '', /4 chart references found/);
+  assert.match(ui.textContent ?? '', /Document report chart/);
+  assert.match(ui.textContent ?? '', /New durable Document reference/);
+  assert.match(ui.textContent ?? '', /Current unsaved Document reference/);
+  assert.doesNotMatch(ui.textContent ?? '', /Retargeted unsaved Document chart/);
+  assert.equal(useViewerStore.getState().documents[0], draft, 'durable dependency reads never overwrite the native unsaved draft');
 });

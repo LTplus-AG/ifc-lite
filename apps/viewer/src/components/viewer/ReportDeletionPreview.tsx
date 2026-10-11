@@ -6,10 +6,17 @@ import { Button } from '@/components/ui/button';
 import { useTranslation } from '@/i18n';
 import { useViewerStore } from '@/store';
 import { reportChartDependencies, type ChartDependencyPreview, type ReportSource } from '@/lib/reports/chart-dependencies';
+import { loadDocuments } from '@/lib/document/persistence';
+import type { DocumentSpec } from '@/lib/document/types';
 import type { SavedComparison } from '@/lib/compare/savedComparisons';
 import type { SavedClashReport } from '@/lib/clash/saved-report';
 
 type Report = SavedComparison | SavedClashReport;
+type DurableDocuments = { entries: readonly DocumentSpec[]; phase: ChartDependencyPreview['documentPhase'] };
+async function readDurableDocuments(): Promise<DurableDocuments> {
+  try { return { entries: await loadDocuments(), phase: 'ready' }; }
+  catch (error) { console.warn('[Report deletion] Saved Document coverage unavailable', error); return { entries: [], phase: 'unavailable' }; }
+}
 export function ReportDeletionPreview({ source, report, onCancel, onDeleted, storageFailed }: {
   source: ReportSource; report: Report; onCancel: () => void; onDeleted?: () => void; storageFailed: () => void;
 }) {
@@ -23,10 +30,11 @@ export function ReportDeletionPreview({ source, report, onCancel, onDeleted, sto
   const [acknowledged, setAcknowledged] = useState<ChartDependencyPreview | null>(null);
   const [busy, setBusy] = useState(false);
   const [pendingDeletion, setPendingDeletion] = useState(false);
-  const ownGuard = useRef<(() => boolean) | null>(null);
+  const ownGuard = useRef<(() => boolean | Promise<boolean>) | null>(null);
+  const [durableDocuments, setDurableDocuments] = useState<DurableDocuments>({ entries: [], phase: 'loading' });
   const [, refreshRead] = useState(0);
   const state = useViewerStore.getState();
-  const preview = reportChartDependencies(state, source);
+  const preview = reportChartDependencies(state, source, durableDocuments);
   const current = source.kind === 'compare' ? state.savedComparisons.find(row => row.id === source.id) : state.savedClashReports.find(row => row.id === source.id);
   const ownPending = pendingDeletion && current === undefined && itemState !== undefined
     && itemState !== 'saving' && itemState !== 'saved' && itemState !== 'conflict';
@@ -35,17 +43,27 @@ export function ReportDeletionPreview({ source, report, onCancel, onDeleted, sto
   useEffect(() => {
     const owner = { alive: true };
     active.current = owner;
-    const changedStorage = () => refreshRead(value => value + 1);
+    const refreshDocuments = async () => {
+      const durable = await readDurableDocuments();
+      if (active.current === owner && owner.alive) { setDurableDocuments(durable); refreshRead(value => value + 1); }
+      return durable;
+    };
+    const changedStorage = () => { refreshRead(value => value + 1); void refreshDocuments(); };
     window.addEventListener('storage', changedStorage);
-    void useViewerStore.getState().initializeDocuments().then(() => {
-      if (active.current === owner && owner.alive) setAcknowledged(reportChartDependencies(useViewerStore.getState(), source));
+    void useViewerStore.getState().initializeDocuments().then(refreshDocuments).then(durable => {
+      if (active.current === owner && owner.alive) setAcknowledged(reportChartDependencies(useViewerStore.getState(), source, durable));
     });
     return () => { owner.alive = false; window.removeEventListener('storage', changedStorage); };
   }, [source.kind, source.id]);
   const remove = async () => {
+    if (busy) return;
+    // #7252: another tab can commit a Document after this preview hydrated.
+    // Refresh through the existing validated native library before approval.
+    const durable = await readDurableDocuments();
+    setDurableDocuments(durable);
     const latest = useViewerStore.getState();
     const target = source.kind === 'compare' ? latest.savedComparisons.find(row => row.id === source.id) : latest.savedClashReports.find(row => row.id === source.id);
-    const next = reportChartDependencies(latest, source);
+    const next = reportChartDependencies(latest, source, durable);
     const removeAction = source.kind === 'compare' ? latest.deleteSavedComparison : latest.deleteSavedClashReport;
     if (busy || removeAction !== action.current || target !== captured.current || !acknowledged || next.signature !== acknowledged.signature || next.documentPhase === 'loading') {
       refreshRead(value => value + 1); return;
@@ -54,13 +72,15 @@ export function ReportDeletionPreview({ source, report, onCancel, onDeleted, sto
     setBusy(true);
     let staged = false;
     let guardRejected = false;
-    const beforeWrite = () => {
+    const beforeWrite = async () => {
+      const durableNow = await readDurableDocuments();
+      if (active.current === owner && owner.alive) setDurableDocuments(durableNow);
       const now = useViewerStore.getState();
       const targetNow = source.kind === 'compare' ? now.savedComparisons.find(row => row.id === source.id) : now.savedClashReports.find(row => row.id === source.id);
       const currentAction = source.kind === 'compare' ? now.deleteSavedComparison : now.deleteSavedClashReport;
       const owned = active.current === owner && owner.alive
         && (staged ? targetNow === undefined : targetNow === captured.current);
-      if (!owned || currentAction !== removeAction || reportChartDependencies(now, source).signature !== acknowledged.signature) {
+      if (!owned || currentAction !== removeAction || reportChartDependencies(now, source, durableNow).signature !== acknowledged.signature) {
         guardRejected = true; return false;
       }
       staged = true;
@@ -99,7 +119,7 @@ export function ReportDeletionPreview({ source, report, onCancel, onDeleted, sto
       <Button variant="destructive" size="sm" disabled={busy || ownPending || sourceChanged || changed || !acknowledged || preview.documentPhase === 'loading'} onClick={() => void remove()}>
         {t('clashTools.savedReports.confirmDeleteButton')}
       </Button>
-      {changed && !sourceChanged && <Button size="sm" variant="outline" onClick={() => setAcknowledged(reportChartDependencies(useViewerStore.getState(), source))}>{t('comparePanel.saved.dependencies.review')}</Button>}
+      {changed && !sourceChanged && <Button size="sm" variant="outline" onClick={() => setAcknowledged(reportChartDependencies(useViewerStore.getState(), source, durableDocuments))}>{t('comparePanel.saved.dependencies.review')}</Button>}
       <Button variant="ghost" size="sm" disabled={busy} onClick={cancel}>{t('clashTools.savedReports.cancelDeleteButton')}</Button>
     </div>
   </div>;

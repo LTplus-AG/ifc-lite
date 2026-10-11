@@ -22,8 +22,8 @@ export interface SavedClashReportsSlice {
   saveClashReport: (report: SavedClashReport) => Promise<boolean>;
   stageClashReport: (report: SavedClashReport) => Promise<void>;
   renameSavedClashReport: (id: string, name: string) => Promise<boolean>;
-  deleteSavedClashReport: (id: string, beforeWrite?: () => boolean) => Promise<boolean>;
-  cancelSavedClashReportDeletion: (id: string, beforeWrite: () => boolean) => Promise<boolean>;
+  deleteSavedClashReport: (id: string, beforeWrite?: () => boolean | Promise<boolean>) => Promise<boolean>;
+  cancelSavedClashReportDeletion: (id: string, beforeWrite: () => boolean | Promise<boolean>) => Promise<boolean>;
 }
 
 /** `load` fetches the rules; a test passes one that fails, as a chunk the browser cannot fetch does. */

@@ -3,8 +3,9 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { existsSync, readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { IfcParser, effectiveMetadataRecord, type IfcDataStore } from '@ifc-lite/parser';
-import { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
+import { IfcParser, effectiveMetadataRecord, getSchemaRegistryForVersion, type IfcDataStore } from '@ifc-lite/parser';
+import * as parserApi from '@ifc-lite/parser';
+import { MutablePropertyView, StoreEditor, iterateEffectiveEntityIds, recordCompoundMutation, undoRecordedMutationOperations } from '@ifc-lite/mutations';
 import { StepExporter } from '@ifc-lite/export';
 import { generateIfcGuid } from '@ifc-lite/encoding';
 import { RelationshipType } from '@ifc-lite/data';
@@ -12,6 +13,8 @@ import { IfcCreator } from '../ifc-creator.js';
 import { AnchorEntityReader } from './resolve-anchor.js';
 import { addGroupToStore, readGroupInStore, updateGroupInStore, removeGroupInStore } from './group.js';
 import { GROUP_GRAPH_LIMITS, GroupGraph } from './group-graph.js';
+import * as groupGraphApi from './group-graph.js';
+import { readGroupCreateEvidenceInStore, readGroupEvidenceInStore } from './group-evidence.js';
 
 async function session(schema: 'IFC4' | 'IFC4X3' = 'IFC4') {
   let bytes: Uint8Array;
@@ -45,6 +48,44 @@ async function reread(s: Awaited<ReturnType<typeof session>>) {
   const store = await new IfcParser().parseColumnar(content.slice().buffer as ArrayBuffer, { disableWorkerScan: true });
   return { store, mutationView: new MutablePropertyView(null, 'exported'), ownerHistoryId: null };
 }
+
+it('fresh native graphs observe registry edits between operations and preserve export after one compound Undo #7362', async () => {
+  const s = await session(), registry = getSchemaRegistryForVersion('IFC4');
+  const originalEntities = registry.entities;
+  const memberType = new AnchorEntityReader(s.store, s.mutationView).entity(s.member.expressId)?.type;
+  if (!memberType) throw new Error('Authentic member has no current IFC type');
+  const key = parserApi.getCanonicalEntityName?.(registry, memberType);
+  expect(key).toBeDefined();
+  if (!key) throw new Error('Authentic member is absent from IFC4');
+  const originalDefinition = originalEntities[key];
+  const group = addGroupToStore(s, { Name: 'Registry lifecycle', RelatedObjects: [s.member] });
+  const initial = readGroupInStore(s, group), before = await reread(s);
+  try {
+    registry.entities = { ...originalEntities };
+    // Existing canonical key wins over this later case-colliding extension.
+    registry.entities[key.toUpperCase()] = { ...originalDefinition, inheritanceChain: [key] };
+    expect(readGroupInStore(s, group)).toEqual(initial);
+    delete registry.entities[key];
+    registry.entities[key] = originalDefinition;
+    const unchanged = state(s);
+    expect(() => updateGroupInStore(s, initial, { Name: 'Must refuse', RelatedObjects: [s.member] })).toThrow(/invalid object definition/);
+    expect(state(s)).toBe(unchanged);
+    delete registry.entities[key.toUpperCase()];
+    expect(readGroupInStore(s, group)).toEqual(initial);
+    recordCompoundMutation(s.mutationView, draft => {
+      const context = { ...s, mutationView: draft };
+      updateGroupInStore(context, readGroupInStore(context, group), { Name: 'Changed', RelatedObjects: [] });
+    });
+    expect(readGroupInStore(await reread(s), group).Name).toBe('Changed');
+    expect(undoRecordedMutationOperations(s.mutationView, 1, () => { throw new Error('Group update must undo as one compound operation'); })).toBeGreaterThan(0);
+    const after = await reread(s);
+    expect(readGroupInStore(after, group)).toEqual(initial);
+    const records = (source: typeof before) => [...source.store.entityIndex.byId.keys()].sort((a, b) => a - b).map(expressId => ({ expressId, ...effectiveMetadataRecord(source.store, expressId) }));
+    expect(records(after)).toEqual(records(before));
+  } finally { registry.entities = originalEntities; }
+// First test in the file: it pays the cold session/WASM start and two full
+// export round-trips, which exceeds vitest's 5 s default on loaded runners.
+}, 60_000);
 
 describe.each(['IFC4', 'IFC4X3'] as const)('generic group native lifecycle #7329 %s', schema => {
   it('exports complete replacement, stable group/relation identities, and empty membership without an empty SET', async () => {
@@ -141,6 +182,49 @@ it('does not confuse quoted STEP-looking metadata with an incoming dependency #7
   expect(readGroupInStore(await reread(s), other).Name).toBe(`Quoted '#${group.expressId}' is text`);
 });
 
+it('scans real references after escaped strings and comments without treating their contents as dependencies #7329', () => {
+  // The STEP lexical invariant is independent of a parser accepting malformed input.
+  const record = "#99=IFCRELASSIGNSTOGROUP('Owner''s #123 /* text */',/* '#456 */#7,$,'#890',(#11,#12),$,#13);";
+  expect(groupGraphApi.groupRecordReferences?.(record)).toEqual([7, 11, 12, 13]);
+  expect(groupGraphApi.groupRecordReferences?.('#99=IFCGROUP/* ( #42 */($,#17);')).toEqual([17]);
+  expect(() => groupGraphApi.groupRecordReferences?.('#99=IFCGROUP/* ( #42 */;')).toThrow(/unreadable record/);
+  expect(groupGraphApi.groupRecordReferences?.("#99=IFCGROUP('" + 'x'.repeat(2_000_000) + "''#999',$,#17);" )).toEqual([17]);
+});
+
+it('native removal ignores a group reference inside a comment before an unrelated record attribute opener #7329', async () => {
+  const s = await session();
+  const group = addGroupToStore(s, { Name: 'Comment-only reference', RelatedObjects: [] });
+  const content = new StepExporter(s.store, s.mutationView).export({ schema: 'IFC4', applyMutations: true }).content;
+  const type = new AnchorEntityReader(s.store, s.mutationView).entity(s.member.expressId)?.type;
+  expect(type).toBeDefined();
+  const opener = `#${s.member.expressId}=${type?.toUpperCase()}(`;
+  const source = new TextDecoder().decode(content);
+  expect(source.includes(opener)).toBe(true);
+  const commented = source.replace(opener, `${opener.slice(0, -1)}/* ( #${group.expressId} */(`);
+  const bytes = new TextEncoder().encode(commented);
+  const store = await new IfcParser().parseColumnar(bytes.buffer, { disableWorkerScan: true });
+  const view = new MutablePropertyView(null, 'commented-native');
+  const context = { store, mutationView: view, ownerHistoryId: null };
+  expect(new AnchorEntityReader(store, view).entity(s.member.expressId)?.attributes[0]).toBe(s.member.GlobalId);
+  const row = store.entityIndex.byId.get(s.member.expressId); expect(row).toBeDefined();
+  if (!row) throw new Error('Native commented wall must retain its source record');
+  expect(store.source.decodeUtf8(row.byteOffset, row.byteOffset + row.byteLength)).toContain(`/* ( #${group.expressId} */`);
+  const before = readGroupInStore(context, group);
+  recordCompoundMutation(view, draft => removeGroupInStore({ ...context, mutationView: draft }, before));
+  const exported = new StepExporter(store, view).export({ schema: 'IFC4', applyMutations: true }).content;
+  const saved = await new IfcParser().parseColumnar(exported.slice().buffer as ArrayBuffer, { disableWorkerScan: true });
+  expect(saved.entityIndex.byId.has(group.expressId)).toBe(false);
+  expect(saved.getEntity(s.member.expressId)?.attributes[0]).toBe(s.member.GlobalId);
+  expect(undoRecordedMutationOperations(view, 1, () => { throw new Error('Removal must undo as one compound operation'); })).toBeGreaterThan(0);
+  expect(readGroupInStore(context, group)).toEqual(before);
+});
+
+it('refuses unterminated quoted or comment spans and invalid real references instead of certifying truncated dependencies #7329', () => {
+  for (const record of ["#99=IFCGROUP/* ( never closes #17;", "#99=IFCGROUP'never closes ( #17;", "#99=IFCGROUP('never closes,#17);", "#99=IFCGROUP(/* never closes #17);", "#99=IFCGROUP('escaped''", "#99=IFCGROUP($,#);", "#99=IFCGROUP($,#0);", "#99=IFCGROUP($,#9007199254740992);"]) {
+    expect(() => groupGraphApi.groupRecordReferences?.(record)).toThrow(/unterminated|unreadable reference|invalid reference/);
+  }
+});
+
 it('reports an oversized effective native record before publishing any group edit #7329', async () => {
   const s = await session();
   s.editor.addEntity('IfcGroup', [generateIfcGuid(), null, 'x'.repeat(GROUP_GRAPH_LIMITS.recordCharacters + 1), null, null]);
@@ -166,7 +250,7 @@ it('a first refused operation preserves the fresh live allocator as well as its 
 it('complete replacement safely consolidates multiple owned assignments and reuses the first Root identity #7329', async () => {
   const s = await session();
   const group = addGroupToStore(s, { Name: 'Multiple membership edges', RelatedObjects: [s.member] });
-  const extra = s.editor.addEntity('IfcRelAssignsToGroup', [generateIfcGuid(), null, null, null, [`#${s.member.expressId}`], null, `#${group.expressId}`]).expressId;
+  const extra = s.editor.addEntity('IfcRelAssignsToGroup', [generateIfcGuid(), s.ownerHistoryId === null ? null : `#${s.ownerHistoryId}`, null, null, [`#${s.member.expressId}`], null, `#${group.expressId}`]).expressId;
   const before = readGroupInStore(s, group);
   expect(before.memberships).toHaveLength(2);
   updateGroupInStore(s, before, { RelatedObjects: [s.member] });
@@ -174,6 +258,55 @@ it('complete replacement safely consolidates multiple owned assignments and reus
   expect(readGroupInStore(saved, group).memberships).toEqual([before.memberships[0]]);
   expect(saved.store.entityIndex.byId.has(extra)).toBe(false);
   expect(saved.store.relationships.getRelated(group.expressId, RelationshipType.AssignsToGroup, 'forward')).toEqual([s.member.expressId]);
+});
+
+it('refuses complete replacement of PRODUCT/PROCESS assignments without changing either exported semantic record #7329', async () => {
+  const s = await session();
+  const group = addGroupToStore(s, { Name: 'Typed memberships', RelatedObjects: [s.member] });
+  const product = readGroupInStore(s, group).memberships[0].relationship.expressId;
+  s.editor.setPositionalAttribute(product, 5, '.PRODUCT.');
+  const taskGuid = generateIfcGuid();
+  const taskId = s.editor.addEntity('IfcTask', [taskGuid, null, 'Task', null, null, null, null, null, null, '.F.', null, null, '.NOTDEFINED.']).expressId;
+  const task = { expressId: taskId, GlobalId: taskGuid };
+  s.editor.addEntity('IfcRelAssignsToGroup', [generateIfcGuid(), null, null, null, [`#${taskId}`], '.PROCESS.', `#${group.expressId}`]);
+  const expected = readGroupInStore(s, group);
+  const before = await reread(s), transaction = state(s);
+  for (const RelatedObjects of [[s.member, task], [], [task]]) {
+    expect(() => updateGroupInStore(s, expected, { Name: 'Must not publish', RelatedObjects })).toThrow(/typed RelatedObjectsType/);
+    expect(state(s)).toBe(transaction);
+    const after = await reread(s);
+    const graph = (source: typeof before) => {
+      const reader = new AnchorEntityReader(source.store, source.mutationView);
+      return [...source.store.entityIndex.byId.keys()].map(id => {
+        const entity = reader.entity(id);
+        if (!entity) throw new Error(`Independently exported graph record #${id} is unreadable`);
+        return { id, type: entity.type, attributes: entity.attributes };
+      });
+    };
+    expect(graph(after)).toEqual(graph(before));
+  }
+  expect(readGroupInStore(await reread(s), group)).toEqual(expected);
+});
+
+it('refuses consolidation of distinct untyped assignment metadata without publishing #7329', async () => {
+  const s = await session();
+  const group = addGroupToStore(s, { Name: 'Distinct edges', RelatedObjects: [s.member] });
+  s.editor.addEntity('IfcRelAssignsToGroup', [generateIfcGuid(), null, 'Distinct assignment', 'Keep this description', [`#${s.member.expressId}`], null, `#${group.expressId}`]);
+  const expected = readGroupInStore(s, group), before = state(s);
+  expect(() => updateGroupInStore(s, expected, { RelatedObjects: [s.member] })).toThrow(/distinct assignment semantics/);
+  expect(state(s)).toBe(before);
+  expect(readGroupInStore(await reread(s), group)).toEqual(expected);
+});
+
+it('refuses changing even one typed assignment through an unpartitioned member list #7329', async () => {
+  const s = await session();
+  const group = addGroupToStore(s, { Name: 'Product-only group', RelatedObjects: [s.member] });
+  const relation = readGroupInStore(s, group).memberships[0].relationship.expressId;
+  s.editor.setPositionalAttribute(relation, 5, '.PRODUCT.');
+  const expected = readGroupInStore(s, group), before = state(s);
+  expect(() => updateGroupInStore(s, expected, { Name: 'Must not publish', RelatedObjects: [] })).toThrow(/typed RelatedObjectsType/);
+  expect(state(s)).toBe(before);
+  expect(readGroupInStore(await reread(s), group)).toEqual(expected);
 });
 
 it('bounds total effective record work and reports refusal rather than a truncated success #7329', async () => {
@@ -235,3 +368,71 @@ it.skipIf(!hasExternalIfc4x3)('preserves the complete SierraSoft IFC4X3_ADD2 rai
   expect(records(restored)).toEqual(records(store));
   // Real railway parse, edit, export and reparse: 2.4 s locally, 27 s on a shared CI runner (#7366).
 }, 60_000);
+
+it('refuses whole-model entity and record budgets from index metadata before decoding records #7346', async () => {
+  const s = await session();
+  const decodes = () => { let count = 0; const original = s.store.source.decodeUtf8.bind(s.store.source);
+    s.store.source.decodeUtf8 = (start: number, end: number) => { count++; return original(start, end); };
+    return { get count() { return count; }, restore: () => { s.store.source.decodeUtf8 = original; } }; };
+  const entityCount = [...s.store.entityIndex.byId.keys()].filter(id => !s.mutationView.isDeleted(id)).length;
+  let probe = decodes();
+  try {
+    expect(() => new GroupGraph(s.store, s.mutationView, { ...GROUP_GRAPH_LIMITS, entities: entityCount - 1 })).toThrow(/entity budget/);
+    expect(probe.count).toBe(0);
+  } finally { probe.restore(); }
+  const lengths = [...s.store.entityIndex.byId.values()].map(row => row.byteLength).sort((a, b) => b - a);
+  probe = decodes();
+  try {
+    // Only the single oversized source record is decoded to certify its exact export length.
+    expect(() => new GroupGraph(s.store, s.mutationView, { ...GROUP_GRAPH_LIMITS, recordCharacters: lengths[1] + 1 })).toThrow(/record budget/);
+    expect(probe.count).toBe(1);
+  } finally { probe.restore(); }
+  expect(() => new GroupGraph(s.store, s.mutationView, { ...GROUP_GRAPH_LIMITS, entities: entityCount })).not.toThrow();
+});
+
+it('publishes bounded create-only facts outside exact IfcGroup context, from type buckets without a whole-model scan #7346', async () => {
+  const s = await session();
+  const storey = new AnchorEntityReader(s.store, s.mutationView).firstId('IFCBUILDINGSTOREY')!;
+  expect(storey).not.toBeNull();
+  let decodes = 0; const original = s.store.source.decodeUtf8.bind(s.store.source);
+  s.store.source.decodeUtf8 = (start: number, end: number) => { decodes++; return original(start, end); };
+  let bounded: ReturnType<typeof readGroupCreateEvidenceInStore>;
+  try {
+    bounded = readGroupCreateEvidenceInStore(s, [s.member.expressId, storey]);
+    expect(decodes).toBeLessThanOrEqual(2);
+  } finally { s.store.source.decodeUtf8 = original; }
+  // The bounded identities are exactly the complete owner's.
+  const complete = readGroupEvidenceInStore(s, [s.member.expressId, storey]);
+  expect(bounded).toEqual({ scope: 'no-group-context', source: complete.source, selected: complete.selected, members: complete.members });
+  // Specialized group membership is not generic Group context.
+  const zone = s.editor.addEntity('IfcZone', [generateIfcGuid(), null, 'Zone', null, null, null]).expressId;
+  s.editor.addEntity('IfcRelAssignsToGroup', [generateIfcGuid(), null, null, null, [`#${storey}`], null, `#${zone}`]);
+  expect(readGroupCreateEvidenceInStore(s, [storey])?.members).toEqual(complete.members.filter(row => row.expressId === storey));
+  const group = addGroupToStore(s, { Name: 'Context', RelatedObjects: [s.member] });
+  expect(readGroupCreateEvidenceInStore(s, [s.member.expressId])).toBeNull();
+  expect(readGroupCreateEvidenceInStore(s, [group.expressId])).toBeNull();
+  expect(readGroupCreateEvidenceInStore(s, [storey])).not.toBeNull();
+  // Exported and re-parsed, the source-owned relationship is found through its type bucket.
+  const saved = await reread(s);
+  expect(readGroupCreateEvidenceInStore(saved, [s.member.expressId])).toBeNull();
+  expect(readGroupCreateEvidenceInStore(saved, [storey])).not.toBeNull();
+  // A weighted assignment subtype to an exact IfcGroup is group context too.
+  const weighted = addGroupToStore(s, { Name: 'Weighted', RelatedObjects: [] });
+  s.editor.addEntity('IfcRelAssignsToGroupByFactor', [generateIfcGuid(), null, null, null, [`#${storey}`], null, `#${weighted.expressId}`, 0.5]);
+  expect(readGroupCreateEvidenceInStore(s, [storey])).toBeNull();
+});
+
+it('refuses create-only facts over the graph entity budget that review could never read #7346', async () => {
+  const s = await session();
+  const live = [...iterateEffectiveEntityIds(s.store, s.mutationView)].length;
+  expect(readGroupCreateEvidenceInStore(s, [s.member.expressId], live)?.scope).toBe('no-group-context');
+  expect(() => readGroupCreateEvidenceInStore(s, [s.member.expressId], live - 1)).toThrow(/entity budget/);
+  // An overlay creation counts against the same budget.
+  s.editor.addEntity('IfcGroup', [generateIfcGuid(), null, 'Extra', null, null]);
+  expect(() => readGroupCreateEvidenceInStore(s, [s.member.expressId], live)).toThrow(/entity budget/);
+  // An overlay deletion drops the live count, though the parsed buckets still hold it.
+  const storey = new AnchorEntityReader(s.store, s.mutationView).firstId('IFCBUILDINGSTOREY')!;
+  expect(s.mutationView.deleteEntity(storey)).toBe(true);
+  expect(readGroupCreateEvidenceInStore(s, [s.member.expressId], live)?.scope).toBe('no-group-context');
+  expect(() => readGroupCreateEvidenceInStore(s, [s.member.expressId], live - 1)).toThrow(/entity budget/);
+});

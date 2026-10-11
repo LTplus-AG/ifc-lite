@@ -1,0 +1,13 @@
+diff --git b/packages/ids-authoring/src/testing/junit.ts a/packages/ids-authoring/src/testing/junit.ts
+index 3a2733900..494133158 100644
+--- b/packages/ids-authoring/src/testing/junit.ts
++++ a/packages/ids-authoring/src/testing/junit.ts
+@@ -50,7 +50,7 @@ export function junitXml(report: TestRunReport, options: { name?: string } = {})
+   const s = report.summary;
+   const lines = [
+     '<?xml version="1.0" encoding="UTF-8"?>',
+-    `<testsuites name="${esc(options.name ?? 'IDS tests')}" tests="${s.total}" failures="${s.error}" errors="${s.error}" skipped="${s.skipped}" time="${seconds(time)}">`,
++    `<testsuites name="${esc(options.name ?? 'IDS tests')}" tests="${s.total}" failures="${s.failed}" errors="${s.error}" skipped="${s.skipped}" time="${seconds(time)}">`,
+   ];
+   for (const results of bySpec.values()) {
+     const n = (v: CaseResult['verdict']) => results.filter((r) => r.verdict === v).length;

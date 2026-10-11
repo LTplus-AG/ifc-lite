@@ -1,5 +1,11 @@
 # @ifc-lite/server-bin
 
+## 2.0.1
+
+### Patch Changes
+
+- [#6908](https://github.com/LTplus-AG/ifc-lite/pull/6908) [`12aa45a`](https://github.com/LTplus-AG/ifc-lite/commit/12aa45ad2fda759a3904ed5ae681c5dbb498d1f3) Thanks [@louistrue](https://github.com/louistrue)! - Download the server binary from its own `server-v<version>` release, never from a root `v*` release, and never fall back to a release of a different major version. server-bin 2.0.0 shared the `v2.0.0` tag with an older, asset-less root release, so it silently installed the 1.22.1 binary ([#6900](https://github.com/LTplus-AG/ifc-lite/issues/6900)).
+
 ## 2.0.0
 
 ### Major Changes

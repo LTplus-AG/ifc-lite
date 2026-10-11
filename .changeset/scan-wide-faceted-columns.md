@@ -1,6 +1,0 @@
----
-"@ifc-lite/wasm": minor
-"@ifc-lite/geometry": minor
----
-
-Scan segmentation recovers wide round and polygonal columns (#6893). Region growing claims a round column wider than about 0.8 m as vertical strip planes, and a polygonal column as one plane per face; rings of adjacent vertical planes about a common axis are now searched as a round column first, then tested as a regular polygon of six or more faces. A polygonal column is reported in `cylinders` with `faceted: { faces, faceNormal, apothem }` and its circumradius as `radius` (`ScanFacets` in `@ifc-lite/geometry/scan-segmentation`); round cylinders carry `faceted: null`. A column takes precedence over the planes it is made of: strips and faces leave `planes`, so a surface is reported once. Rings with a scanned floor inside (bays, niches, apses seen from the room) stay planes, as do rectangular columns and wall corners. On fine, noisy voxels the seed gate rises to the flattest 5 % of voxels, so planes and columns are found at a 2 cm voxel with 8 mm noise. `maxCylinderRadiusMetres` now defaults to 2 m (was 1.5). New stats: `seedCurvature`, `planeRings`, `planeRingsRejectedAsIrregular`, `planeRingsRejectedAsHollow`, `planesAbsorbedIntoCylinders`.

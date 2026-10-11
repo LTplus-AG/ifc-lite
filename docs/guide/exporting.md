@@ -65,6 +65,15 @@ leave room for the type-level wrapper and an instance, is refused.
 These transformations preserve
 physical map coordinates, project units, properties and authored shape data.
 Ordinary IFC downloads retain their original coordinate representation.
+Cesium ion applies a geoid only for vertical CRS codes it recognises, such as
+`EPSG:3855` (EGM2008 height), and treats other heights as ellipsoidal. A
+recognized `VerticalDatum` name (`EVRS2007` or `EGM2008`, including an
+optional `height` suffix and parenthesized `WGS84`/`WGS 1984`) is uploaded as
+`EPSG:3855`, which places sea-level heights on Cesium terrain to within the
+named datum's offset from EGM2008 (typically decimetres). Explicit EPSG codes
+and ellipsoidal datum names are uploaded as authored. Unrecognized names,
+including local project-zero datums, are preserved; this compatibility option
+does not infer a geoid height from arbitrary free text.
 Cesium ion currently tiles `IfcSectionedSolidHorizontal` sweeps (for example
 girders and pavement along an alignment) without their full alignment
 geometry, with or without this compatibility export. IFC2X3
@@ -1189,3 +1198,11 @@ compression, external resources, mirrored repeat and UV sets beyond
 `TEXCOORD_0` stop import with a diagnostic rather than produce an untextured
 success. Images use the existing inventory limits (32 MiB per encoded image,
 8192 px maximum edge, 16 megapixels per image).
+
+### Editing quantity sets owned by a type
+
+Default-history `MutablePropertyView.setQuantity` edits on an `IfcTypeObject` subtype save the replacement `IfcElementQuantity` in the type's `HasPropertySets`. A type is never placed in `IfcRelDefinesByProperties.RelatedObjects`. When another type shares the original definition, it retains that definition. Untouched physical quantity members retain their native IDs and attributes, including complex quantities; edited scalar members retain their source description, native unit reference and Formula when those fields were not edited. Unrelated property sets, including one with the same name as a quantity set, keep their ownership. Ordinary occurrence quantity edits continue to use `IfcRelDefinesByProperties`.
+
+Type-owned quantity edits preserve an existing explicit native unit when no replacement or removal is requested. A change of quantity dimension refuses export when that retained unit is incompatible with the new IFC measure type. Explicit unit removal remains intentional; compatible same-dimension edits preserve the native unit.
+
+New type-owned scalar quantity members with explicit unit intent must resolve a native unit reference before export. The new-member resolver currently supports assigned Length units; an unassigned requested Length unit or an explicit unit of another quantity dimension refuses instead of saving the value in implicit project units. This applies both to new type-owned sets and members copied into existing type-owned sets; ordinary occurrence serialization retains its existing contract. Adding the first scalar member to a native complex-only set is associated with that set through its source GlobalId, and its opaque members remain unchanged. Like every edited type-owned quantity set, the saved copy receives a fresh GlobalId, so look up the edited set on the type's `HasPropertySets` rather than by the source GlobalId. An edited native definition without a readable GlobalId is unavailable to the current reader and refuses export; an unchanged source definition is not made unreadable merely by lacking export identity.

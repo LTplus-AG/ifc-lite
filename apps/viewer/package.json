@@ -1,6 +1,6 @@
 {
   "name": "@ifc-lite/viewer",
-  "version": "4.0.0",
+  "version": "5.0.0",
   "description": "IFC-Lite viewer application",
   "private": true,
   "type": "module",
@@ -47,6 +47,7 @@
     "@ifc-lite/flow-nodes": "workspace:^",
     "@ifc-lite/geometry": "workspace:^",
     "@ifc-lite/ids": "workspace:^",
+    "@ifc-lite/ids-authoring": "workspace:^",
     "@ifc-lite/ifcx": "workspace:^",
     "@ifc-lite/lens": "workspace:^",
     "@ifc-lite/lists": "workspace:^",
@@ -118,7 +119,9 @@
     "three": "^0.186.1",
     "zustand": "^5.0.15",
     "@ifc-lite/semantic": "workspace:*",
-    "@ifc-lite/source-autodesk": "workspace:^"
+    "@ifc-lite/source-autodesk": "workspace:^",
+    "@ifc-lite/ids-agent": "workspace:^",
+    "@ifc-lite/ids-authoring": "workspace:^"
   },
   "devDependencies": {
     "@happy-dom/global-registrator": "^20.14.5",
@@ -131,6 +134,7 @@
     "@types/three": "^0.186.0",
     "@vitejs/plugin-react": "^6.1.2",
     "@webgpu/types": "^0.1.74",
+    "ajv": "^8.17.1",
     "fake-indexeddb": "^6.2.5",
     "happy-dom": "^20.14.5",
     "jszip": "^3.10.2",

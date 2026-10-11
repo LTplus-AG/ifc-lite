@@ -217,3 +217,26 @@ fn logs_the_typescript_replay_would_save_without_an_edit_are_refused() {
         assert!(err.to_string().contains(&case.error), "{}: {err}", case.name);
     }
 }
+
+/// IFC2X3 has no Formula slot; IFC4 retains it (#7378).
+#[test]
+fn generated_quantity_arity_matches_the_declared_schema() {
+    let fx = fixture();
+    for (case_name, schema, quantity_name, expected) in [
+        ("ifc2x3-edits", "IFC2X3", "Length", "IFCQUANTITYLENGTH('Length',$,$,6.);"),
+        ("create-quantity-set", "IFC4", "L", "IFCQUANTITYLENGTH('L',$,$,3.,$);"),
+    ] {
+        // Generation follows the source family; target-schema conversion is a
+        // separate contract and does not pad optional fields on upgrade.
+        let case = fx.cases.iter().find(|c| c.name == case_name).expect("source-family control");
+        let source = format!("{}\n", fx.sources[&case.source].join("\n"));
+        let log = MutationLog::from_json(&case.log.to_string()).expect("log parses");
+        let options = StepOptions { schema: Some(schema.to_string()), ..StepOptions::default() };
+        let (out, _) = export_step_with_log(source.as_bytes(), &options, &log).expect("export succeeds");
+        let marker = format!("=IFCQUANTITYLENGTH('{quantity_name}'");
+        let quantities: Vec<_> = out.lines().filter(|line| line.contains(&marker)).collect();
+        assert_eq!(quantities.len(), 1, "one regenerated quantity in {schema}");
+        assert!(quantities[0].ends_with(expected), "{schema}: {}", quantities[0]);
+        assert!(out.contains(&format!("FILE_SCHEMA(('{schema}'));")));
+    }
+}

@@ -16,6 +16,7 @@ import type { Capability } from '@ifc-lite/extensions';
 import type { FlowHost } from '@ifc-lite/flow-nodes';
 import type { FlowAiService } from '@ifc-lite/flow-nodes/ai';
 import type { IfcDataStore } from '@ifc-lite/parser';
+import { createDataAccessor } from '@ifc-lite/ids/bridge';
 import { createBimContext, type BimContext } from '@ifc-lite/sdk';
 import { HeadlessBackend } from '../headless-backend.js';
 import { parseIfcBytes } from '../loader.js';
@@ -47,6 +48,9 @@ export function createCliFlowSession(initial: HeadlessModel, networkGrants: read
     // csv-match.ts index builder, which needs the raw entity table + mutation
     // view rather than per-ref BimContext accessors (see host.ts's TableAccess).
     tables: (modelId) => active.backend.tableAccess(modelId),
+    // `ids.validate` reads through the same mutation view, so it sees what an
+    // earlier node in the run wrote.
+    idsAccessor: () => createDataAccessor(active.store, undefined, active.backend.tableAccess().mutationView),
     async openModel(bytes, name) {
       const store = await parseIfcBytes(bytes, name);
       const backend = new HeadlessBackend(store, name);

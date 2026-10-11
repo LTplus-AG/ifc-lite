@@ -1,0 +1,13 @@
+diff --git b/packages/ids-authoring/src/gate/bsdd.ts a/packages/ids-authoring/src/gate/bsdd.ts
+index bb9b742ca..990f8ecac 100644
+--- b/packages/ids-authoring/src/gate/bsdd.ts
++++ a/packages/ids-authoring/src/gate/bsdd.ts
+@@ -21,7 +21,7 @@ export function checkBsddUri(facet: IDSFacet, ctx: GateContext): Pick<GateIssue,
+   const candidates: GateCandidate[] = (record.replacedBy ?? []).map((value) => ({ value, score: 1, reason: 'replacement published by bSDD' }));
+   if (record.state === 'notFound') return [{ code: 'GATE-BSDD-001', message: `bSDD does not know ${uri}`, candidates, value: uri }];
+   if (record.state === 'inactive') {
+-    return [{ code: 'GATE-BSDD-001', message: `${uri} is inactive (deprecated) in bSDD`, candidates, value: uri }];
++    return [{ code: 'GATE-BSDD-001', message: `${uri} is inactive (deprecated) in bSDD`, candidates, value: uri, severity: 'warning' }];
+   }
+   return [];
+ }

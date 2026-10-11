@@ -17,7 +17,8 @@ import { validateIDS } from '../validation/validator.js';
 import { createDataAccessor } from './index.js';
 
 // Metre project. #20..#23 carry their own millimetre / square-millimetre unit;
-// #24 has a unit reference the parser cannot resolve; #25 is a plain project-unit length.
+// #24 has a unit reference the parser cannot resolve; #25 is a plain project-unit length;
+// #26 is a mixed list with its own millimetre unit.
 const IFC = `ISO-10303-21;
 HEADER;
 FILE_DESCRIPTION(('ViewDefinition [CoordinationView]'),'2;1');
@@ -33,7 +34,7 @@ DATA;
 #7=IFCWALL('2nJrDaLQfJ1QPhdJR0o97J',$,$,$,$,$,$,$,$);
 #9=IFCSIUNIT(*,.LENGTHUNIT.,.MILLI.,.METRE.);
 #10=IFCSIUNIT(*,.AREAUNIT.,.MILLI.,.SQUARE_METRE.);
-#11=IFCPROPERTYSET('0aF8zX9mT1Hx2V3cP4kL5n',$,'Civil_Props',$,(#20,#21,#24,#25));
+#11=IFCPROPERTYSET('0aF8zX9mT1Hx2V3cP4kL5n',$,'Civil_Props',$,(#20,#21,#24,#25,#26));
 #12=IFCRELDEFINESBYPROPERTIES('1xdwj8qGXK4hzoNbvMdXJW',$,$,$,(#7),#11);
 #13=IFCELEMENTQUANTITY('16MocU_IDOF8_x3Iqllz0d',$,'Qto_Civil',$,$,(#22,#23));
 #14=IFCRELDEFINESBYPROPERTIES('3kQ1lW8vZ0Gm7N2bR5tY6u',$,$,$,(#7),#13);
@@ -43,6 +44,7 @@ DATA;
 #23=IFCQUANTITYAREA('Area',$,#10,3000000.,$);
 #24=IFCPROPERTYSINGLEVALUE('Odd',$,IFCLENGTHMEASURE(7.),#99);
 #25=IFCPROPERTYSINGLEVALUE('Height',$,IFCLENGTHMEASURE(3.),$);
+#26=IFCPROPERTYLISTVALUE('Mixed',$,(IFCLABEL('x'),IFCLENGTHMEASURE(500.)),#9);
 #30=IFCWALLTYPE('2Yv7qL0sH4bN9mK3jP1xR8',$,'T',$,$,(#31),$,$,$,.STANDARD.);
 #31=IFCPROPERTYSET('3Zc8rM1tJ5dP0nL4kQ2yS9',$,'Type_Props',$,(#32));
 #32=IFCPROPERTYSINGLEVALUE('Nominal Width',$,IFCLENGTHMEASURE(250.),#9);
@@ -105,6 +107,12 @@ describe('IDS bridge honours a property or quantity own Unit (#7395)', () => {
     const values = (await prop('Civil_Props', 'Offsets'))?.values?.map(Number);
     expect(values?.[0]).toBeCloseTo(0.25, 12);
     expect(values?.[1]).toBeCloseTo(0.5, 12);
+  });
+
+  it('converts the measure members of a mixed list with its own unit, each by its type', async () => {
+    const values = (await prop('Civil_Props', 'Mixed'))?.values;
+    expect(values?.[0]).toBe('x');
+    expect(Number(values?.[1])).toBeCloseTo(0.5, 12);
   });
 
   it('converts a quantity with its own millimetre unit to metres', async () => {

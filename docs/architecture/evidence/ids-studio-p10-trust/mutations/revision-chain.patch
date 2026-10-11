@@ -1,0 +1,13 @@
+diff --git b/packages/ids-authoring/src/revision/verify.ts a/packages/ids-authoring/src/revision/verify.ts
+index b35e68119..66027e0e8 100644
+--- b/packages/ids-authoring/src/revision/verify.ts
++++ a/packages/ids-authoring/src/revision/verify.ts
+@@ -55,7 +55,7 @@ export function verifyRevisionLog(log: RevisionLog): RevisionVerification {
+     }
+     const parent = byId.get(r.parentRevId);
+     const parentIndex = log.revisions.findIndex((x) => x.revId === r.parentRevId);
+-    if (!parent || parentIndex >= i) {
++    if (!parent || parentIndex >= i || parent.hash !== r.parentHash) {
+       problems.push({ ...at, code: 'REV-CHAIN-001', message: 'parent revision is missing, later, or does not match the recorded parent hash' });
+       return;
+     }

@@ -1,6 +1,6 @@
 {
   "name": "@ifc-lite/sdk",
-  "version": "9.0.0",
+  "version": "9.1.0",
   "description": "Scripting SDK for ifc-lite — the bim.* API for BIM automation",
   "type": "module",
   "main": "./dist/index.js",
@@ -27,6 +27,7 @@
     "@ifc-lite/encoding": "workspace:^",
     "@ifc-lite/export": "workspace:^",
     "@ifc-lite/ids": "workspace:^",
+    "@ifc-lite/ids-authoring": "workspace:^",
     "@ifc-lite/lens": "workspace:^",
     "@ifc-lite/lists": "workspace:^",
     "@ifc-lite/mutations": "workspace:^",

@@ -1,5 +1,16 @@
 # @ifc-lite/lens
 
+## 2.2.0
+
+### Minor Changes
+
+- [#7189](https://github.com/LTplus-AG/ifc-lite/pull/7189) [`6a6714b`](https://github.com/LTplus-AG/ifc-lite/commit/6a6714b4e95f25ef43013be354a2ff62674ff07a) Thanks [@louistrue](https://github.com/louistrue)! - Add a durable captured entity population contract with full source identity and authored creation provenance. Resolve every member before native evaluation; Lists intersect the captured population with their source criteria and manual and automatic Lens evaluations restrict their complete native populations. Providers unable to resolve a saved scope refuse rather than evaluating every entity.
+
+### Patch Changes
+
+- Updated dependencies [[`fd30c8f`](https://github.com/LTplus-AG/ifc-lite/commit/fd30c8fac106ad06bae5869169377165ebfc8216), [`25a8f4c`](https://github.com/LTplus-AG/ifc-lite/commit/25a8f4c7f4dd7633cf5b082ab77525c054022dcd), [`83c9f35`](https://github.com/LTplus-AG/ifc-lite/commit/83c9f3516acfe895c98cffd13f0f4410bc44b30b), [`3ef81ad`](https://github.com/LTplus-AG/ifc-lite/commit/3ef81ad36db5a63f066ff1447bea8172c1c19f73), [`6a6714b`](https://github.com/LTplus-AG/ifc-lite/commit/6a6714b4e95f25ef43013be354a2ff62674ff07a), [`16514f2`](https://github.com/LTplus-AG/ifc-lite/commit/16514f2b3046f7b3a4900eea0db1ac47d82ff896), [`3ef81ad`](https://github.com/LTplus-AG/ifc-lite/commit/3ef81ad36db5a63f066ff1447bea8172c1c19f73), [`b13a060`](https://github.com/LTplus-AG/ifc-lite/commit/b13a0603dbdca1b660db0626b3ffaed6b57a1da5), [`295a243`](https://github.com/LTplus-AG/ifc-lite/commit/295a2439e533af87a838ee2f252d87da19755890)]:
+  - @ifc-lite/rules@0.7.0
+
 ## 2.1.0
 
 ### Minor Changes

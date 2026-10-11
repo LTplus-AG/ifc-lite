@@ -32,10 +32,12 @@ import {
   getChildElements,
   getChildElementNS,
   getChildText,
+  uriOf,
 } from './dom.js';
 import { parseRestriction } from './parse-restriction.js';
+import { applyIds11Preview } from '../preview/parse-ids11.js';
+import type { IDSPreviewFlags } from '../preview/types.js';
 
-const IDS_NAMESPACE = 'http://standards.buildingsmart.org/IDS';
 const XS_NAMESPACE = 'http://www.w3.org/2001/XMLSchema';
 
 /** Error thrown when parsing invalid IDS XML */
@@ -77,10 +79,11 @@ if (!DOMParserImpl && isNodeRuntime) {
   DOMParserImpl = xmldom.DOMParser;
 }
 
-/**
- * Parse IDS XML content into an IDSDocument
- */
-export function parseIDS(xmlContent: string | ArrayBuffer): IDSDocument {
+/** Options for `parseIDS`. `preview.ids11` also reads IDS 1.1 PREVIEW candidates (unstable). */
+export interface ParseIDSOptions { preview?: IDSPreviewFlags }
+
+/** Parse IDS XML content into an IDSDocument (IDS 1.0 unless `options.preview.ids11`). */
+export function parseIDS(xmlContent: string | ArrayBuffer, options?: ParseIDSOptions): IDSDocument {
   let xmlString =
     typeof xmlContent === 'string'
       ? xmlContent
@@ -143,7 +146,7 @@ export function parseIDS(xmlContent: string | ArrayBuffer): IDSDocument {
     );
   }
 
-  return {
+  const document: IDSDocument = {
     info: parseInfo(root),
     specifications: parseSpecifications(root),
     schemaLocation:
@@ -151,11 +154,11 @@ export function parseIDS(xmlContent: string | ArrayBuffer): IDSDocument {
       root.getAttributeNS('http://www.w3.org/2001/XMLSchema-instance', 'schemaLocation') ||
       undefined,
   };
+  if (options?.preview?.ids11 === true) applyIds11Preview(root, document, parseFacet);
+  return document;
 }
 
-/**
- * Parse the <info> section
- */
+/** Parse the <info> section */
 function parseInfo(root: Element): IDSInfo {
   const info = getChildElement(root, 'info');
   if (!info) {
@@ -174,9 +177,7 @@ function parseInfo(root: Element): IDSInfo {
   };
 }
 
-/**
- * Parse the <specifications> section
- */
+/** Parse the <specifications> section */
 function parseSpecifications(root: Element): IDSSpecification[] {
   const specsContainer = getChildElement(root, 'specifications');
   if (!specsContainer) {
@@ -308,9 +309,7 @@ function parseFacets(parent: Element): IDSFacet[] {
   return facets;
 }
 
-/**
- * Parse a single facet element
- */
+/** Parse a single facet element (also used by the IDS 1.1 preview pass). */
 function parseFacet(el: Element): IDSFacet | null {
   const localName = el.localName.toLowerCase();
 
@@ -370,9 +369,7 @@ function parseAttributeFacet(el: Element): IDSAttributeFacet {
   };
 }
 
-/**
- * Parse property facet
- */
+/** Parse property facet */
 function parsePropertyFacet(el: Element): IDSPropertyFacet {
   const propertySetEl = getChildElement(el, 'propertySet');
   const baseNameEl = getChildElement(el, 'baseName');
@@ -406,9 +403,7 @@ function parsePropertyFacet(el: Element): IDSPropertyFacet {
   };
 }
 
-/**
- * Parse classification facet
- */
+/** Parse classification facet */
 function parseClassificationFacet(el: Element): IDSClassificationFacet {
   const systemEl = getChildElement(el, 'system');
   const valueEl = getChildElement(el, 'value');
@@ -420,9 +415,7 @@ function parseClassificationFacet(el: Element): IDSClassificationFacet {
   };
 }
 
-/**
- * Parse material facet
- */
+/** Parse material facet */
 function parseMaterialFacet(el: Element): IDSMaterialFacet {
   const valueEl = getChildElement(el, 'value');
 
@@ -453,19 +446,15 @@ function parsePartOfFacet(el: Element): IDSPartOfFacet {
   return facet;
 }
 
+/** The `ids.xsd` `relations` tokens (what IDS 1.0 files and `writeIdsXml` carry), then the lenient PascalCase spellings. */
+const RECOGNISED_PARTOF_RELATIONS = new Set([
+  'IFCRELAGGREGATES', 'IFCRELASSIGNSTOGROUP', 'IFCRELCONTAINEDINSPATIALSTRUCTURE', 'IFCRELNESTS', 'IFCRELVOIDSELEMENT IFCRELFILLSELEMENT',
+  'IfcRelAggregates', 'IfcRelContainedInSpatialStructure', 'IfcRelNests', 'IfcRelVoidsElement', 'IfcRelFillsElement',
+  'IfcRelAssignsToGroup', 'IfcRelVoidsElement IfcRelFillsElement',
+]);
+
 function isRecognisedPartOfRelation(relation: string): boolean {
-  switch (relation) {
-    case 'IfcRelAggregates':
-    case 'IfcRelContainedInSpatialStructure':
-    case 'IfcRelNests':
-    case 'IfcRelVoidsElement':
-    case 'IfcRelFillsElement':
-    case 'IfcRelAssignsToGroup':
-    case 'IfcRelVoidsElement IfcRelFillsElement':
-      return true;
-    default:
-      return false;
-  }
+  return RECOGNISED_PARTOF_RELATIONS.has(relation);
 }
 
 /**
@@ -499,7 +488,10 @@ function parseRequirements(parent: Element): IDSRequirement[] {
   let reqIndex = 0;
 
   for (const child of Array.from(parent.children)) {
-    const facet = parseFacet(child);
+    const parsed = parseFacet(child);
+    // IDS 1.0 allows @uri on property, classification and material facets in
+    // requirements only (in applicability it is IDS 1.1, read by the preview pass).
+    const facet = parsed && (parsed.type === 'property' || parsed.type === 'classification' || parsed.type === 'material') ? { ...parsed, ...uriOf(child) } : parsed;
     if (facet) {
       // IDS 1.0 uses `cardinality="required|optional|prohibited"` on the
       // requirement facet. 0.9.7 used minOccurs/maxOccurs. Honour both;

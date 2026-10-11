@@ -114,6 +114,11 @@ function unwrapAnchoredGroup(source: string): string | null {
 
 const QUANTIFIER_END = new Set(['*', '+', '?', '}']);
 
+/** JS `.` without the `s` flag in XSD syntax: XSD's `.` also matches the
+ *  line and paragraph separators U+2028 (`\p{Zl}`) and U+2029 (`\p{Zp}`),
+ *  which JS `.` does not. */
+const JS_DOT_XSD = '[^\\n\\r\\p{Zl}\\p{Zp}]';
+
 /** Rewrite a JS regex body (no anchors) into XSD syntax, or say why not. */
 function jsBodyToXsd(body: string, unicode: boolean): RegexConversion {
   let out = '';
@@ -181,7 +186,8 @@ function jsBodyToXsd(body: string, unicode: boolean): RegexConversion {
       return { ok: false, reason: 'lazy quantifiers are not supported by IDS (XSD) patterns' };
     }
     if (QUANTIFIER_END.has(ch)) afterQuantifier = true;
-    out += ch;
+    // JS `.` (no `s` flag) excludes U+2028/U+2029; XSD `.` matches them.
+    out += ch === '.' ? JS_DOT_XSD : ch;
   }
   if (inClass) return { ok: false, reason: 'the pattern has an unterminated character class' };
   return { ok: true, pattern: out };

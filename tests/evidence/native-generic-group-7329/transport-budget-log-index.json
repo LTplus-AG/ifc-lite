@@ -1,0 +1,32 @@
+[
+  {
+    "file": "transport-campaign-group-transport-budget-n2-viewer.log.gz",
+    "sha256": "4073642e5aba15655bd44e694f862c25999f4257976f175da7cf29b835458202",
+    "bytes": 24520
+  },
+  {
+    "file": "transport-campaign-group-group-limit-inverse.log.gz",
+    "sha256": "6496c89f0c2dcc01a7c683489e624f34de897f077225562618f77476de537c67",
+    "bytes": 31403
+  },
+  {
+    "file": "transport-campaign-group-attachment-native-limit-inverse.log.gz",
+    "sha256": "c683d91f169477d40dc836035d7834af8f73a52800f0f3a10ca6181ae69bf66e",
+    "bytes": 27301
+  },
+  {
+    "file": "transport-campaign-group-budget-final-restored.log.gz",
+    "sha256": "ca5d3455595f047a3a94b404e21620148c413f73b59e3a39f739ae2415cb7910",
+    "bytes": 24523
+  },
+  {
+    "file": "transport-campaign-generic-group-public-whole-mainfe307.log.gz",
+    "sha256": "7cd0198a3c7a3eedf70bd2b8e836bc75fadf50b4ee87974500bc6b8d9aeee83f",
+    "bytes": 34785
+  },
+  {
+    "file": "transport-campaign-generic-group-public-whole-mainfe307-restored.log.gz",
+    "sha256": "7e95126b19352fd1426117420b5348aa3b3c74a2317fe859688a41e52342e62a",
+    "bytes": 24519
+  }
+]

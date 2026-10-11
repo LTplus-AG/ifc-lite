@@ -1,0 +1,26 @@
+{
+  "base": "2382cf4124315f027b2d33c21c1751cee33c5081",
+  "originalExit": 1,
+  "restoredExit": 0,
+  "exactSourceRestored": true,
+  "sourceSha256": {
+    "packages/parser/src/ifc-schema.ts": "6c8b5235f7175d4333c71b8b68d328031eb68ff79fcde85cceca8b41bece9248",
+    "packages/parser/src/relationship-schema-slots.ts": "0e3c4cb393bcba42d6d973b031ada29c2ed17448961b646a182e6c04a23d20d5",
+    "packages/parser/src/index.ts": "589cf0ab277a2e3aa7cfe5645ac6f34d1d19247b0f9b8effc60d4aae610ad68a",
+    "packages/create/src/in-store/schema-attributes.ts": "38715c14e84d3f1bc164f5a13e05fcc9f936851092309e84508102d0bee2040f",
+    "packages/create/src/in-store/edit/read-profile.ts": "afa78207fdc3d3f81b74abeb1d85d9d485dcedf2af0c7a680d3cf4c0c00d907c",
+    "packages/parser/src/schema-entity-name.ts": "78c3d7701d432fabfb8a7f2aafe58e9d0e94e17bb0f97561b005d0e72eac3ca8"
+  },
+  "boundary": "Actual complete class production restored to main, new public API tests retained with optional namespace calls; no fake module/import failure",
+  "actualMain": {
+    "pass": 32,
+    "fail": 3,
+    "skip": 0,
+    "failures": "Three actual public namespace API assertions, no missing-module or TypeError"
+  },
+  "exactRestored": {
+    "pass": 35,
+    "fail": 0,
+    "skip": 0
+  }
+}

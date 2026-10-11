@@ -62,6 +62,24 @@ export interface MeasureScales {
 const projectUnitsCache = new WeakMap<object, ReturnType<typeof extractProjectUnits>>();
 
 /**
+ * The declared AREAUNIT/VOLUMEUNIT scale of `units`. One that is declared but
+ * cannot be resolved (`unitForMeasure` null) gives 1: the value stays
+ * unconverted, as `projectUnitConversion` does for other measures, rather
+ * than being derived from the length scale or taken from another project.
+ * `otherwise` answers a unit that is not declared at all.
+ */
+function declaredScale(
+  units: ProjectUnits,
+  unitType: 'AREAUNIT' | 'VOLUMEUNIT',
+  otherwise: number | undefined
+): number | undefined {
+  const resolved = units.resolvedForUnitType(unitType)?.siScale;
+  if (resolved !== undefined) return resolved;
+  const measure = unitType === 'AREAUNIT' ? 'IFCAREAMEASURE' : 'IFCVOLUMEMEASURE';
+  return units.unitForMeasure(measure) === null ? 1 : otherwise;
+}
+
+/**
  * Resolve the file-declared area/volume scale for `store`, reusing the
  * canonical `ProjectUnits` resolver (`@ifc-lite/parser`, mirror of
  * `rust/core/src/project_units`) that already backs unit *display* in the
@@ -80,8 +98,8 @@ export function resolveMeasureScales(store: IfcDataStore): MeasureScales {
     projectUnitsCache.set(store, units);
   }
   return {
-    area: units.resolvedForUnitType('AREAUNIT')?.siScale,
-    volume: units.resolvedForUnitType('VOLUMEUNIT')?.siScale,
+    area: declaredScale(units, 'AREAUNIT', undefined),
+    volume: declaredScale(units, 'VOLUMEUNIT', undefined),
     units,
   };
 }
@@ -164,12 +182,13 @@ export function resolveEntityMeasureScales(
       // A measure outside the length family still takes the owner's own
       // declared unit (a project may declare grams without a LENGTHUNIT);
       // only one the owner leaves undeclared takes the file-wide unit.
-      // An owner's own AREAUNIT/VOLUMEUNIT still wins over the file-wide one.
+      // An owner's own AREAUNIT/VOLUMEUNIT still wins over the file-wide one,
+      // and one it declares but cannot resolve leaves the value unconverted.
       const fileWide = fallback();
       scales = {
         ...fileWide,
-        area: units.resolvedForUnitType('AREAUNIT')?.siScale ?? fileWide.area,
-        volume: units.resolvedForUnitType('VOLUMEUNIT')?.siScale ?? fileWide.volume,
+        area: declaredScale(units, 'AREAUNIT', fileWide.area),
+        volume: declaredScale(units, 'VOLUMEUNIT', fileWide.volume),
         units,
         fallbackUnits: fileWide.units,
       };
@@ -185,8 +204,8 @@ export function resolveEntityMeasureScales(
     // length-unit-resolvers-agreement.test.ts).
     scales = {
       length: extractLengthUnitScale(store.source, store.entityIndex, ownerId),
-      area: units.resolvedForUnitType('AREAUNIT')?.siScale,
-      volume: units.resolvedForUnitType('VOLUMEUNIT')?.siScale,
+      area: declaredScale(units, 'AREAUNIT', undefined),
+      volume: declaredScale(units, 'VOLUMEUNIT', undefined),
       units,
     };
     byProject.set(ownerId, scales);

@@ -1,0 +1,13 @@
+diff --git b/scripts/ids-conformance/lib/report.mjs a/scripts/ids-conformance/lib/report.mjs
+index 7110f02a8..d3a5d5165 100644
+--- b/scripts/ids-conformance/lib/report.mjs
++++ a/scripts/ids-conformance/lib/report.mjs
+@@ -14,7 +14,7 @@ export const REGION = 'ids-conformance';
+ /** @param {{ agree: number, disagree: number, error: number, na: number } | undefined} t */
+ function scored(t) {
+   if (!t) return '–';
+-  const judged = t.agree + t.disagree;
++  const judged = t.agree + t.disagree + t.error;
+   if (judged === 0) return t.na > 0 ? `n/a (${t.na})` : '–';
+   const pct = ((100 * t.agree) / judged).toFixed(1);
+   const extra = [t.error > 0 ? `${t.error} error` : '', t.na > 0 ? `${t.na} n/a` : ''].filter(Boolean).join(', ');

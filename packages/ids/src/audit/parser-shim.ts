@@ -16,7 +16,7 @@
  * we collect a single parse error and stop.
  */
 
-import { IDSParseError, parseIDS } from '../parser/xml-parser.js';
+import { IDSParseError, parseIDS, type ParseIDSOptions } from '../parser/xml-parser.js';
 import type { IDSDocument } from '../types.js';
 import type { IDSAuditIssue } from './types.js';
 
@@ -31,10 +31,11 @@ export interface PermissiveParseResult {
  * mapped onto a structured `IDSAuditIssue`.
  */
 export function permissiveParse(
-  xml: string | ArrayBuffer
+  xml: string | ArrayBuffer,
+  options?: ParseIDSOptions
 ): PermissiveParseResult {
   try {
-    const document = parseIDS(xml);
+    const document = parseIDS(xml, options);
     return { document, issues: [] };
   } catch (err) {
     return { issues: [parseErrorToIssue(err)] };

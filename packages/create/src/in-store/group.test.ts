@@ -3,8 +3,9 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { existsSync, readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { IfcParser, effectiveMetadataRecord, type IfcDataStore } from '@ifc-lite/parser';
-import { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
+import { IfcParser, effectiveMetadataRecord, getSchemaRegistryForVersion, type IfcDataStore } from '@ifc-lite/parser';
+import * as parserApi from '@ifc-lite/parser';
+import { MutablePropertyView, StoreEditor, recordCompoundMutation, undoRecordedMutationOperations } from '@ifc-lite/mutations';
 import { StepExporter } from '@ifc-lite/export';
 import { generateIfcGuid } from '@ifc-lite/encoding';
 import { RelationshipType } from '@ifc-lite/data';
@@ -12,6 +13,7 @@ import { IfcCreator } from '../ifc-creator.js';
 import { AnchorEntityReader } from './resolve-anchor.js';
 import { addGroupToStore, readGroupInStore, updateGroupInStore, removeGroupInStore } from './group.js';
 import { GROUP_GRAPH_LIMITS, GroupGraph } from './group-graph.js';
+import * as groupGraphApi from './group-graph.js';
 
 async function session(schema: 'IFC4' | 'IFC4X3' = 'IFC4') {
   let bytes: Uint8Array;
@@ -45,6 +47,42 @@ async function reread(s: Awaited<ReturnType<typeof session>>) {
   const store = await new IfcParser().parseColumnar(content.slice().buffer as ArrayBuffer, { disableWorkerScan: true });
   return { store, mutationView: new MutablePropertyView(null, 'exported'), ownerHistoryId: null };
 }
+
+it('fresh native graphs observe registry edits between operations and preserve export after one compound Undo #7362', async () => {
+  const s = await session(), registry = getSchemaRegistryForVersion('IFC4');
+  const originalEntities = registry.entities;
+  const memberType = new AnchorEntityReader(s.store, s.mutationView).entity(s.member.expressId)?.type;
+  if (!memberType) throw new Error('Authentic member has no current IFC type');
+  const key = parserApi.getCanonicalEntityName?.(registry, memberType);
+  expect(key).toBeDefined();
+  if (!key) throw new Error('Authentic member is absent from IFC4');
+  const originalDefinition = originalEntities[key];
+  const group = addGroupToStore(s, { Name: 'Registry lifecycle', RelatedObjects: [s.member] });
+  const initial = readGroupInStore(s, group), before = await reread(s);
+  try {
+    registry.entities = { ...originalEntities };
+    // Existing canonical key wins over this later case-colliding extension.
+    registry.entities[key.toUpperCase()] = { ...originalDefinition, inheritanceChain: [key] };
+    expect(readGroupInStore(s, group)).toEqual(initial);
+    delete registry.entities[key];
+    registry.entities[key] = originalDefinition;
+    const unchanged = state(s);
+    expect(() => updateGroupInStore(s, initial, { Name: 'Must refuse', RelatedObjects: [s.member] })).toThrow(/invalid object definition/);
+    expect(state(s)).toBe(unchanged);
+    delete registry.entities[key.toUpperCase()];
+    expect(readGroupInStore(s, group)).toEqual(initial);
+    recordCompoundMutation(s.mutationView, draft => {
+      const context = { ...s, mutationView: draft };
+      updateGroupInStore(context, readGroupInStore(context, group), { Name: 'Changed', RelatedObjects: [] });
+    });
+    expect(readGroupInStore(await reread(s), group).Name).toBe('Changed');
+    expect(undoRecordedMutationOperations(s.mutationView, 1, () => { throw new Error('Group update must undo as one compound operation'); })).toBeGreaterThan(0);
+    const after = await reread(s);
+    expect(readGroupInStore(after, group)).toEqual(initial);
+    const records = (source: typeof before) => [...source.store.entityIndex.byId.keys()].sort((a, b) => a - b).map(expressId => ({ expressId, ...effectiveMetadataRecord(source.store, expressId) }));
+    expect(records(after)).toEqual(records(before));
+  } finally { registry.entities = originalEntities; }
+});
 
 describe.each(['IFC4', 'IFC4X3'] as const)('generic group native lifecycle #7329 %s', schema => {
   it('exports complete replacement, stable group/relation identities, and empty membership without an empty SET', async () => {
@@ -139,6 +177,49 @@ it('does not confuse quoted STEP-looking metadata with an incoming dependency #7
   const other = addGroupToStore(s, { Name: `Quoted '#${group.expressId}' is text`, RelatedObjects: [] });
   removeGroupInStore(s, readGroupInStore(s, group));
   expect(readGroupInStore(await reread(s), other).Name).toBe(`Quoted '#${group.expressId}' is text`);
+});
+
+it('scans real references after escaped strings and comments without treating their contents as dependencies #7329', () => {
+  // The STEP lexical invariant is independent of a parser accepting malformed input.
+  const record = "#99=IFCRELASSIGNSTOGROUP('Owner''s #123 /* text */',/* '#456 */#7,$,'#890',(#11,#12),$,#13);";
+  expect(groupGraphApi.groupRecordReferences?.(record)).toEqual([7, 11, 12, 13]);
+  expect(groupGraphApi.groupRecordReferences?.('#99=IFCGROUP/* ( #42 */($,#17);')).toEqual([17]);
+  expect(() => groupGraphApi.groupRecordReferences?.('#99=IFCGROUP/* ( #42 */;')).toThrow(/unreadable record/);
+  expect(groupGraphApi.groupRecordReferences?.("#99=IFCGROUP('" + 'x'.repeat(2_000_000) + "''#999',$,#17);" )).toEqual([17]);
+});
+
+it('native removal ignores a group reference inside a comment before an unrelated record attribute opener #7329', async () => {
+  const s = await session();
+  const group = addGroupToStore(s, { Name: 'Comment-only reference', RelatedObjects: [] });
+  const content = new StepExporter(s.store, s.mutationView).export({ schema: 'IFC4', applyMutations: true }).content;
+  const type = new AnchorEntityReader(s.store, s.mutationView).entity(s.member.expressId)?.type;
+  expect(type).toBeDefined();
+  const opener = `#${s.member.expressId}=${type?.toUpperCase()}(`;
+  const source = new TextDecoder().decode(content);
+  expect(source.includes(opener)).toBe(true);
+  const commented = source.replace(opener, `${opener.slice(0, -1)}/* ( #${group.expressId} */(`);
+  const bytes = new TextEncoder().encode(commented);
+  const store = await new IfcParser().parseColumnar(bytes.buffer, { disableWorkerScan: true });
+  const view = new MutablePropertyView(null, 'commented-native');
+  const context = { store, mutationView: view, ownerHistoryId: null };
+  expect(new AnchorEntityReader(store, view).entity(s.member.expressId)?.attributes[0]).toBe(s.member.GlobalId);
+  const row = store.entityIndex.byId.get(s.member.expressId); expect(row).toBeDefined();
+  if (!row) throw new Error('Native commented wall must retain its source record');
+  expect(store.source.decodeUtf8(row.byteOffset, row.byteOffset + row.byteLength)).toContain(`/* ( #${group.expressId} */`);
+  const before = readGroupInStore(context, group);
+  recordCompoundMutation(view, draft => removeGroupInStore({ ...context, mutationView: draft }, before));
+  const exported = new StepExporter(store, view).export({ schema: 'IFC4', applyMutations: true }).content;
+  const saved = await new IfcParser().parseColumnar(exported.slice().buffer as ArrayBuffer, { disableWorkerScan: true });
+  expect(saved.entityIndex.byId.has(group.expressId)).toBe(false);
+  expect(saved.getEntity(s.member.expressId)?.attributes[0]).toBe(s.member.GlobalId);
+  expect(undoRecordedMutationOperations(view, 1, () => { throw new Error('Removal must undo as one compound operation'); })).toBeGreaterThan(0);
+  expect(readGroupInStore(context, group)).toEqual(before);
+});
+
+it('refuses unterminated quoted or comment spans and invalid real references instead of certifying truncated dependencies #7329', () => {
+  for (const record of ["#99=IFCGROUP/* ( never closes #17;", "#99=IFCGROUP'never closes ( #17;", "#99=IFCGROUP('never closes,#17);", "#99=IFCGROUP(/* never closes #17);", "#99=IFCGROUP('escaped''", "#99=IFCGROUP($,#);", "#99=IFCGROUP($,#0);", "#99=IFCGROUP($,#9007199254740992);"]) {
+    expect(() => groupGraphApi.groupRecordReferences?.(record)).toThrow(/unterminated|unreadable reference|invalid reference/);
+  }
 });
 
 it('reports an oversized effective native record before publishing any group edit #7329', async () => {

@@ -74,6 +74,7 @@ function numericOps(c: IDSConstraint): Array<{ op: NumericOp; value: number }> |
   if (compound(c)) return 'a restriction combining several facets has no rule equivalent';
   const lengthLike = [c.length, c.minLength, c.maxLength, c.totalDigits, c.fractionDigits];
   if (lengthLike.some((v) => v !== undefined)) return 'length and digit restrictions have no rule equivalent';
+  if (c.temporalBounds !== undefined) return 'a date, time or duration bound has no rule equivalent';
   const bounds = [c.minInclusive, c.minExclusive, c.maxInclusive, c.maxExclusive];
   if (bounds.some((v) => v !== undefined && !Number.isFinite(v))) return 'a bound that is not a finite number';
   const ops: Array<{ op: NumericOp; value: number }> = [];

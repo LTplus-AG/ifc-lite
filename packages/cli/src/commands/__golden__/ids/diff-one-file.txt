@@ -1,0 +1,4 @@
+exit: 2
+--- stdout
+--- stderr
+Error: usage: ifc-lite ids diff <before.ids> <after.ids> [--json | --md]

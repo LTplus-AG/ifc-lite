@@ -1,0 +1,13 @@
+diff --git a/packages/ids-authoring/src/lint/rules/pdt-att.ts b/packages/ids-authoring/src/lint/rules/pdt-att.ts
+index 91f515304..1a36c117c 100644
+--- a/packages/ids-authoring/src/lint/rules/pdt-att.ts
++++ b/packages/ids-authoring/src/lint/rules/pdt-att.ts
+@@ -69,7 +69,7 @@ export const PDT_001: SpecRule = {
+   example: '<entity><name><simpleValue>IFCSITE</simpleValue></name><predefinedType><simpleValue>FOO</simpleValue></predefinedType></entity>',
+   check(spec, { ctx, doc }) {
+     return pdtProblems(spec, ctx, () => false)
+-      .filter(() => true)
++      .filter((p) => !p.userDefinable)
+       .map((p) => ({
+         ...at(p.site.view, pdtField(p.site.field)),
+         message: `"${p.value}" is not a predefined type of ${p.entity}`,

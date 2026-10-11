@@ -72,4 +72,11 @@ describe('resolveFromUnit', () => {
     assert.strictEqual(from.scale, 201.168);
     assert.strictEqual(from.offset, 0);
   });
+
+  it('keeps the file unit own offset for an uncurated offset unit (IfcConversionBasedUnitWithOffset, °F)', () => {
+    const from = resolveFromUnit('THERMODYNAMICTEMPERATUREUNIT', { symbol: 'Fahrenheit', siScale: 5 / 9, siOffset: 459.67 * 5 / 9 });
+    const kelvin = option('THERMODYNAMICTEMPERATUREUNIT', 'k');
+    const result = convertValue(68, from, kelvin);
+    assert.ok(Math.abs(result - 293.15) < 1e-9, `expected 293.15, got ${result}`);
+  });
 });

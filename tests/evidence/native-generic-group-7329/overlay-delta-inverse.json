@@ -1,0 +1,38 @@
+{
+  "issue": 7329,
+  "baseHead": "bc032cf6a7dd1148d4bd50c2f1ec03ef61b4ed77",
+  "sourceSha256": "2f0fd09673094703ddd6c234f1c137d9c4a801958a4a0593cf8f71f291c9e8cd",
+  "exactSourceRestored": true,
+  "baseline": {
+    "pass": 19,
+    "fail": 0,
+    "skip": 0
+  },
+  "originalGuardInverse": {
+    "pass": 18,
+    "fail": 1,
+    "skip": 0,
+    "failure": "Existing unrelated overlay edits exceed ids.size before filtering actual delta"
+  },
+  "restored": {
+    "pass": 19,
+    "fail": 0,
+    "skip": 0
+  },
+  "scope": "13 Group controls plus 6 shared native graph oracle controls; 201 real preexisting native Group edits preserved across review, native export and one Undo",
+  "logs": {
+    "focused": {
+      "path": "tests/evidence/native-generic-group-7329/overlay-delta-focused.log.gz",
+      "sha256": "e22f0bff79fa608e1f8225577a3793899dff97e535dfcb0a99d019c19aeb23fb"
+    },
+    "inverse": {
+      "path": "tests/evidence/native-generic-group-7329/overlay-delta-inverse.log.gz",
+      "sha256": "b4643173c1a00f5234dbf3dbdfc870f0217d5128c15db29f566aa672357f9903"
+    },
+    "restored": {
+      "path": "tests/evidence/native-generic-group-7329/overlay-delta-restored.log.gz",
+      "sha256": "a1708ab2754eee2dc7bf09df0a339890f0522791792f64446bcb45fadc8e051c"
+    }
+  },
+  "all10CurrentHead": "PENDING"
+}

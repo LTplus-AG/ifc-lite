@@ -1,6 +1,6 @@
 {
   "name": "@ifc-lite/source-msgraph",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Microsoft Graph file-source provider for the signed-in user's own OneDrive",
   "type": "module",
   "main": "./dist/index.js",
@@ -25,7 +25,7 @@
   "devDependencies": {
     "@ifc-lite/source-fixture": "workspace:^",
     "typescript": "^6.0.3",
-    "vitest": "^5.0.2"
+    "vitest": "^5.0.3"
   },
   "license": "MPL-2.0",
   "author": "Louis True",

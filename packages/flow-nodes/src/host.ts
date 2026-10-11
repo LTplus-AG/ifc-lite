@@ -19,6 +19,7 @@ import type { NodeDef, NodeRunContext } from '@ifc-lite/flow';
 import type { BimContext, EntityData, EntityRef as SdkEntityRef } from '@ifc-lite/sdk';
 import type { EntityRef } from '@ifc-lite/flow';
 import type { EntityTable } from '@ifc-lite/data';
+import type { IFCDataAccessor } from '@ifc-lite/ids';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
 import type { SessionAutomationHost } from './session-contracts.js';
 import type { BcfWriteGateway } from './bcf-write-gateway.js';
@@ -99,6 +100,12 @@ export interface FlowHost {
    * model `bim` and `defaultModelId` answer for from then on.
    */
   openModel?(bytes: Uint8Array, name: string): Promise<{ readonly modelId: string }>;
+  /**
+   * An `@ifc-lite/ids` `IFCDataAccessor` over the active model, for
+   * `ids.validate`. Hosts that hold the parsed store (CLI, MCP) offer it;
+   * without it `ids.validate` fails with a clear message.
+   */
+  idsAccessor?(): IFCDataAccessor;
 }
 
 export type FlowNodeDef = NodeDef<FlowHost>;

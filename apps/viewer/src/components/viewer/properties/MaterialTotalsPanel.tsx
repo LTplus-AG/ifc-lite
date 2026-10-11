@@ -27,11 +27,12 @@ import {
   extractMaterialPropertiesForMaterialId,
   extractQuantitiesOnDemand,
   extractTypeQuantitiesOnDemand,
-  extractProjectUnits,
   ProjectUnits,
 } from '@ifc-lite/parser';
 import { QuantityType, RelationshipType } from '@ifc-lite/data';
 import { resolveQuantityDisplay } from '@/lib/units/display';
+import { normalizeMutationModelId } from '@/sdk/adapters/mutation-view';
+import { useCurrentProjectUnits } from './useCurrentProjectUnits';
 import { PropertySetCard } from './PropertySetCard';
 import type { PropertySet } from './encodingUtils';
 import { useTranslation } from '@/i18n';
@@ -171,8 +172,9 @@ function formatTotal(
   quantityType: number,
   projectUnits: ProjectUnits,
   overrides: Record<string, string>,
+  projectUnitsAvailable: boolean,
 ): string {
-  const disp = resolveQuantityDisplay(value, quantityType, projectUnits, overrides);
+  const disp = resolveQuantityDisplay(value, quantityType, projectUnits, overrides, undefined, projectUnitsAvailable);
   const shown = disp.converted ?? value;
   const formatted = formatMaterialNumber(locale, shown);
   return disp.unit ? `${formatted} ${disp.unit}` : formatted;
@@ -205,12 +207,9 @@ export function MaterialTotalsPanel({ materialId, modelId }: { materialId: numbe
     return extractMaterialPropertiesForMaterialId(selectedStore, materialId);
   }, [selectedStore, materialId]);
 
-  // The file's declared units, for rendering unit suffixes on material
-  // property values (issue #1573).
-  const projectUnits = useMemo(() => {
-    if (!selectedStore?.source?.length || !selectedStore?.entityIndex) return ProjectUnits.empty();
-    return extractProjectUnits(selectedStore.source, selectedStore.entityIndex);
-  }, [selectedStore]);
+  const currentView = useViewerStore(s => s.mutationViews.get(normalizeMutationModelId(s, modelId)));
+  const unitContext = useCurrentProjectUnits(models.get(modelId)?.ifcDataStore ?? ifcDataStore, currentView);
+  const projectUnits = unitContext.value ?? ProjectUnits.empty();
 
   // Aggregate quantities across all elements using a material of this name.
   const totals = useMemo<MaterialTotals>(() => {
@@ -332,13 +331,13 @@ export function MaterialTotalsPanel({ materialId, modelId }: { materialId: numbe
             <div className="divide-y divide-amber-100 dark:divide-amber-900/30">
               <TotalRow label={t('properties.materialTotals.elements')} value={formatLocaleNumber(locale, totals.elementCount)} />
               {totals.hasVolume && (
-                <TotalRow label={t('properties.materialTotals.volume')} value={formatTotal(locale, totals.volume, QuantityType.Volume, projectUnits, unitDisplayOverrides)} />
+                <TotalRow label={t('properties.materialTotals.volume')} value={formatTotal(locale, totals.volume, QuantityType.Volume, projectUnits, unitDisplayOverrides, unitContext.status !== 'unavailable')} />
               )}
               {totals.hasArea && (
-                <TotalRow label={t('properties.materialTotals.area')} value={formatTotal(locale, totals.area, QuantityType.Area, projectUnits, unitDisplayOverrides)} />
+                <TotalRow label={t('properties.materialTotals.area')} value={formatTotal(locale, totals.area, QuantityType.Area, projectUnits, unitDisplayOverrides, unitContext.status !== 'unavailable')} />
               )}
               {totals.hasWeight && (
-                <TotalRow label={t('properties.materialTotals.weight')} value={formatTotal(locale, totals.weight, QuantityType.Weight, projectUnits, unitDisplayOverrides)} />
+                <TotalRow label={t('properties.materialTotals.weight')} value={formatTotal(locale, totals.weight, QuantityType.Weight, projectUnits, unitDisplayOverrides, unitContext.status !== 'unavailable')} />
               )}
             </div>
             {totals.elementCount > 0 && !totals.hasVolume && (
@@ -388,7 +387,7 @@ export function MaterialTotalsPanel({ materialId, modelId }: { materialId: numbe
                     name: pset.name,
                     properties: pset.properties.map((p) => ({ name: p.name, value: p.value, isMutated: false, dataType: p.dataType })),
                   };
-                  return <PropertySetCard key={`${group.materialId}-${pset.name}-${index}`} pset={psetView} projectUnits={projectUnits} unitDisplayOverrides={unitDisplayOverrides} />;
+                  return <PropertySetCard key={`${group.materialId}-${pset.name}-${index}`} pset={psetView} projectUnits={projectUnits} projectUnitsAvailable={unitContext.status !== 'unavailable'} unitDisplayOverrides={unitDisplayOverrides} />;
                 }),
               )}
             </div>

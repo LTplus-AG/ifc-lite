@@ -22,7 +22,7 @@ import type { TranslationKey } from '@/i18n';
 import type { AssistantPlacement } from '@/lib/assistant/placement';
 import { isWorkspacePanelId, type WorkspacePanelId } from './registry';
 
-export type LayoutPresetId = 'coordinator';
+export type LayoutPresetId = 'coordinator' | 'idsStudio';
 
 export interface LayoutPresetDef {
   id: LayoutPresetId;
@@ -52,7 +52,24 @@ export const COORDINATOR_PRESET: LayoutPresetDef = {
   assistantPlacement: 'split',
 };
 
-export const LAYOUT_PRESETS: readonly LayoutPresetDef[] = [COORDINATOR_PRESET];
+/**
+ * IDS authoring (IDS-030, UX spec §1): Studio docked with its results panel,
+ * Data validation, below it, so "Run" lands one glance away; the Assistant
+ * opens in the split. The viewport stays in the centre. The spec's bottom
+ * grid is the Studio's own grid mode, not a dock change ("use a layout
+ * preset; don't redesign the dock").
+ */
+export const IDS_STUDIO_PRESET: LayoutPresetDef = {
+  id: 'idsStudio',
+  titleKey: 'layoutPresets.idsStudio.title',
+  descriptionKey: 'layoutPresets.idsStudio.description',
+  rail: ['idsStudio', 'validation', 'assistant'],
+  primary: 'idsStudio',
+  secondary: 'validation',
+  assistantPlacement: 'split',
+};
+
+export const LAYOUT_PRESETS: readonly LayoutPresetDef[] = [COORDINATOR_PRESET, IDS_STUDIO_PRESET];
 
 export function getLayoutPreset(id: string): LayoutPresetDef | undefined {
   return LAYOUT_PRESETS.find((preset) => preset.id === id);

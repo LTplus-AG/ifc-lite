@@ -88,6 +88,8 @@ test('mounted ion upload applies edited public IFC4X3 map rotation/scale through
   const operator = attrs(output, Number(mapped[1]));
   assert.equal(operator[3], 0.9996, 'uniform representation scale is applied exactly once');
   for (const id of [1, 2, 5, 22, 24, 28, 29]) assert.deepEqual(attrs(output, id), attrs(source, id), `authored units/body #${id} preserved`);
+  // An explicit EPSG vertical CRS is the author's statement; ion applies its geoid (#7356).
+  assert.equal(attrs(output, 37)[3], 'EPSG:5703');
   assert.equal(source.entities.getName(16), originalName);
   assert.deepEqual(view.getAttributeMutationsForEntity(16), [{ name: 'Name', value: editedName }]);
 });
@@ -108,4 +110,26 @@ test('mounted ion upload refuses unsupported edited map scale before network tra
   assert.ok(reasons.some(reason => /normaliz/i.test(reason) && /scale/i.test(reason)), `exporter reason shown: ${reasons.join(' | ')}`);
   assert.equal(attrs(source, 38)[7], 0.9996, 'source remains authored');
   assert.deepEqual(view.getAttributeMutationsForEntity(38), [{ name: 'Scale', value: '-1' }]);
+});
+
+test('mounted ion upload writes a named vertical datum as EGM2008 height (#7356)', async context => {
+  let source: IfcDataStore;
+  try {
+    const bytes = await readFile(new URL('../../../../../tests/models/buildingsmart/Viadotto_Acerno.ifc', import.meta.url));
+    source = await new IfcParser().parseColumnar(bytes.slice().buffer as ArrayBuffer, { disableWorkerScan: true });
+  } catch (error) {
+    if (error instanceof Error && 'code' in error && error.code === 'ENOENT') { context.skip('ACCA bridge fixture missing; run pnpm fixtures'); return; }
+    throw error;
+  }
+  const crs = source.entityIndex.byType.get('IFCPROJECTEDCRS')?.[0];
+  assert.ok(crs);
+  assert.equal(attrs(source, crs)[3], 'EVRS2007');
+  let sent: IonUploadInput | undefined;
+  begin(source, new MutablePropertyView(source.properties ?? null, 'acca'), async input => { sent = input; return { assetId: 42 }; });
+  await waitFor(() => sent !== undefined, 'ACCA export did not reach transport', 60_000);
+  assert.ok(sent);
+  const output = await new IfcParser().parseColumnar(sent.bytes.slice().buffer as ArrayBuffer, { disableWorkerScan: true });
+  // Live: ion lifted the tiled terrain by the local EGM2008 separation (48.63 m) only for this code.
+  assert.equal(attrs(output, crs)[3], 'EPSG:3855');
+  assert.equal(attrs(source, crs)[3], 'EVRS2007', 'source remains authored');
 });

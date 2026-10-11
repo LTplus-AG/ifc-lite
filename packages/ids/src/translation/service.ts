@@ -331,7 +331,7 @@ class IDSTranslationServiceImpl implements TranslationService {
     context: 'applicability' | 'requirement'
   ): string {
     const t = this.translations;
-    const relation = this.getRelationDescription(facet.relation);
+    const relation = facet.anyRelation ? t.anyRelation : this.getRelationDescription(facet.relation);
 
     if (context === 'applicability') {
       if (facet.entity) {
@@ -512,20 +512,15 @@ class IDSTranslationServiceImpl implements TranslationService {
         });
 
       // PartOf failures
-      case 'PARTOF_RELATION_MISSING':
-        if (context?.entity) {
-          return this.interpolate(t.partOfMissing, {
-            relation: this.getRelationDescription(
-              field as PartOfRelation || 'IfcRelContainedInSpatialStructure'
-            ),
-            entity: context.entity,
-          });
-        }
-        return this.interpolate(t.partOfMissingSimple, {
-          relation: this.getRelationDescription(
-            field as PartOfRelation || 'IfcRelContainedInSpatialStructure'
-          ),
-        });
+      case 'PARTOF_RELATION_MISSING': {
+        // 'part of' is the facet's key for no relation: any relation counts (#7401).
+        const relation = field === 'part of'
+          ? this.translations.anyRelation
+          : this.getRelationDescription((field as PartOfRelation) || 'IfcRelContainedInSpatialStructure');
+        return context?.entity
+          ? this.interpolate(t.partOfMissing, { relation, entity: context.entity })
+          : this.interpolate(t.partOfMissingSimple, { relation });
+      }
 
       case 'PARTOF_ENTITY_MISMATCH':
         return this.interpolate(t.partOfEntityMismatch, {

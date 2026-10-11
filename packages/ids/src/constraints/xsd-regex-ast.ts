@@ -66,6 +66,8 @@ export function parseXsdRegex(pattern: string): XsdNode {
     const c = pattern[i];
     if (c === '(') {
       i++;
+      // `(?:…)` is not XSD, but checkers (and ours) read it as a plain group (IDSL-REGEX-003).
+      if (pattern.startsWith('?:', i)) i += 2;
       const body = alt();
       if (pattern[i] !== ')') throw new XsdParseError(`missing ) at ${i}`);
       i++;

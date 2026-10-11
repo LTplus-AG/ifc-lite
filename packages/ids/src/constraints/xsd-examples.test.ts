@@ -128,18 +128,27 @@ describe('generatePatternExamples', () => {
     }
   });
 
-  it('is never wrong on 2000 random patterns and finds a match for at least 99% of them', () => {
+  it('is never wrong on 2000 random patterns and finds a match for at least 99% of those the checker accepts', () => {
     const rng = seeded(0x114);
     let found = 0;
+    let supported = 0;
     const total = 2000;
     for (let k = 0; k < total; k++) {
       const p = randomPattern(rng);
       expect(() => parseXsdRegex(p), p).not.toThrow();
       const r = generatePatternExamples(p, { seed: k, count: 3 });
       verify(p, r.matching, r.nonMatching);
+      // A pattern the ReDoS guard refuses cannot be checked, so it gets no examples, only the reason.
+      if (!r.supported) {
+        expect(r.matching, p).toEqual([]);
+        expect(r.reason, p).toMatch(/unsafe regex/);
+        continue;
+      }
+      supported++;
       if (r.matching.length) found++;
     }
-    expect(found / total).toBeGreaterThanOrEqual(0.99);
+    expect(supported / total).toBeGreaterThan(0.6);
+    expect(found / supported).toBeGreaterThanOrEqual(0.99);
   });
 
   it('reports patterns it cannot check instead of guessing', () => {

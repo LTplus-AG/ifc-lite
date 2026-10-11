@@ -159,17 +159,29 @@ pub(in crate::router::voids) fn reconcile_positions_with_host_vertices(
     // Only host vertices within a step of the cutter's box can match. The
     // cheap f32 reject comes first (two steps wide, so f32 rounding of the
     // pad cannot lose a candidate); the exact test is the cell comparison.
-    let (mut lo, mut hi) = ([i64::MAX; 3], [i64::MIN; 3]);
     let (mut flo, mut fhi) = ([f32::INFINITY; 3], [f32::NEG_INFINITY; 3]);
     for p in cutter.positions.chunks_exact(3) {
-        let c = cell(p);
         for k in 0..3 {
-            lo[k] = lo[k].min(c[k] - 1);
-            hi[k] = hi[k].max(c[k] + 1);
             flo[k] = flo[k].min(p[k]);
             fhi[k] = fhi[k].max(p[k]);
         }
     }
+    // The cutter's box in cells costs three roundings a vertex and is read
+    // only for a host vertex that passes the f32 reject. An opening that
+    // shares no corner with its host has none, so the box is built on the
+    // first one that does (#7024).
+    let cell_box = || {
+        let (mut lo, mut hi) = ([i64::MAX; 3], [i64::MIN; 3]);
+        for p in cutter.positions.chunks_exact(3) {
+            let c = cell(p);
+            for k in 0..3 {
+                lo[k] = lo[k].min(c[k] - 1);
+                hi[k] = hi[k].max(c[k] + 1);
+            }
+        }
+        (lo, hi)
+    };
+    let mut cells: Option<([i64; 3], [i64; 3])> = None;
     let pad = (2.0 * SNAP_GRID) as f32;
     let mut host_at: FxHashMap<Cell, [f32; 3]> = FxHashMap::default();
     for p in host.positions.chunks_exact(3) {
@@ -177,6 +189,7 @@ pub(in crate::router::voids) fn reconcile_positions_with_host_vertices(
         if !(0..3).all(|k| p[k] >= flo[k] - pad && p[k] <= fhi[k] + pad) {
             continue;
         }
+        let (lo, hi) = *cells.get_or_insert_with(cell_box);
         let c = cell(p);
         if (0..3).all(|k| lo[k] <= c[k] && c[k] <= hi[k]) {
             host_at.entry(c).or_insert([p[0], p[1], p[2]]);

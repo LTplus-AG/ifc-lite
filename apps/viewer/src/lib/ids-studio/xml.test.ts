@@ -44,11 +44,19 @@ describe('XML preview (IDS-037)', () => {
     assert.equal(parsed.specifications[1].applicability.facets[0].type, 'entity');
   });
 
-  it('reports content the shared writer cannot express instead of throwing', async () => {
+  it('writes length bounds with the full P-01 writer', async () => {
     const { state, propertyId } = await wallFixture();
     const doc = commit(state, [{ kind: 'facet.setField', opId: '0190a8a0-0000-7000-8000-000000000001', payload: { facetId: propertyId, field: 'property.value', value: { kind: 'length', max: 8 } } }]).state.doc;
     const out = studioXml(doc);
+    assert.ok(out.ok, out.ok ? '' : out.error);
+    assert.ok(out.ok && /<xs:maxLength value="8"\s*\/>/.test(out.xml));
+  });
+
+  it('reports content the shared writer cannot express instead of throwing', async () => {
+    const { state, specId } = await wallFixture();
+    const doc = commit(state, [{ kind: 'spec.set', opId: '0190a8a0-0000-7000-8000-000000000002', payload: { specId, field: 'name', value: 'Walls\u0001' } }]).state.doc;
+    const out = studioXml(doc);
     assert.equal(out.ok, false);
-    assert.ok(!out.ok && /length or digit bounds/.test(out.error));
+    assert.ok(!out.ok && /control character/.test(out.error));
   });
 });

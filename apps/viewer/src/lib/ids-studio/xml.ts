@@ -7,13 +7,12 @@
  * writer, and the character range of a node inside it so the read-only
  * preview can highlight the selection.
  *
- * The writer is imported from ONE place, here. The campaign moves it into
- * `@ifc-lite/ids/writer` (IDS-003, P-01) and widens it to every info field and
- * to length/digit restrictions; until that lands this preview shows what the
- * current shared writer emits.
+ * The writer is imported from ONE place, here: the full IDS 1.0 writer in
+ * `@ifc-lite/ids` (IDS-003, P-01), which covers every info field and every
+ * restriction kind.
  */
 
-import { writeIdsXml } from '@ifc-lite/rules';
+import { writeIdsXml } from '@ifc-lite/ids';
 import { locateNode, type StudioDocument, type Uuid } from '@ifc-lite/ids-authoring';
 
 export type StudioXml = { ok: true; xml: string } | { ok: false; error: string };

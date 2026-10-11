@@ -120,7 +120,7 @@ pub(super) fn model(records: &[Record<'_>], context: u32, decoder: &mut EntityDe
         }
     }
     let allowance = records.len().saturating_mul(ifc_lite_core::limits::MAX_MAPPED_ITEM_DEPTH as usize);
-    let mapped_sources = body_mapped_sources(&used_representations, context, decoder, allowance, 1)?;
+    let mapped_sources = body_mapped_sources(&used_representations, context, decoder, allowance)?;
     let mut type_maps = std::collections::BTreeSet::new();
     for record in records.iter().filter(|record| record.kind.is_subtype_of(IfcType::IfcTypeProduct)) {
         let product = decoder.decode_by_id(record.id).map_err(|error| error.to_string())?;
@@ -145,7 +145,7 @@ pub(super) fn model(records: &[Record<'_>], context: u32, decoder: &mut EntityDe
     }
     // A type map is reached through its new type-level wrapper and then
     // through the consumer's own instance item: reserve both levels.
-    let nested = body_mapped_sources(&roots, context, decoder, allowance, 2)?;
+    let nested = mapped_sources_reserving(&roots, context, decoder, allowance, 2)?;
     if let Some(map) = type_maps.iter().find(|map| nested.contains(map)) {
         return Err(format!("uninstantiated type map #{map} is nested in other uninstantiated type geometry"));
     }
@@ -154,10 +154,14 @@ pub(super) fn model(records: &[Record<'_>], context: u32, decoder: &mut EntityDe
 
 /// Pure reachable-ID set: memoization is global, unlike mesh accumulation.
 /// Only actual product Body roots confer ownership; orphan items do not.
-/// `added_levels` is how many mapped levels normalization (and, for type
-/// geometry, its instantiation) puts above each root: 1 for a product
-/// representation's wrapper, 2 for a type map's wrapper plus an instance.
-pub(super) fn body_mapped_sources(roots: &HashSet<u32>, context: u32, decoder: &mut EntityDecoder, max_work: usize, added_levels: usize) -> Result<HashSet<u32>, String> {
+pub(super) fn body_mapped_sources(roots: &HashSet<u32>, context: u32, decoder: &mut EntityDecoder, max_work: usize) -> Result<HashSet<u32>, String> {
+    mapped_sources_reserving(roots, context, decoder, max_work, 1)
+}
+
+/// [`body_mapped_sources`] with `added_levels` mapped levels reserved above
+/// each root: 1 for a product representation's wrapper, 2 for a type map's
+/// type-level wrapper plus a consumer's instance item.
+fn mapped_sources_reserving(roots: &HashSet<u32>, context: u32, decoder: &mut EntityDecoder, max_work: usize, added_levels: usize) -> Result<HashSet<u32>, String> {
     let mut pending: Vec<_> = roots.iter().map(|id| (*id, false)).collect();
     let mut seen = HashSet::new();
     let mut active = HashSet::new();

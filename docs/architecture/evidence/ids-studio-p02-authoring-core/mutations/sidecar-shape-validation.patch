@@ -1,0 +1,24 @@
+diff --git a/packages/ids-authoring/src/sidecar/sidecar.ts b/packages/ids-authoring/src/sidecar/sidecar.ts
+index 7d083568..0d8aaff5 100644
+--- a/packages/ids-authoring/src/sidecar/sidecar.ts
++++ b/packages/ids-authoring/src/sidecar/sidecar.ts
+@@ -21,6 +21,7 @@ import { verifyNodeIndex } from '../document/node-index.js';
+ import { STUDIO_SCHEMA_VERSION, type NodeIndex, type StudioDocument, type StudioMeta } from '../document/types.js';
+ import { reidentify, type ReidentifyReport } from '../match/reidentify.js';
+ import { fnv1a64, uuidv7, type Uuid } from '../uuid.js';
++import { validateSidecarShape } from './sidecar-schema.js';
+ 
+ export const SIDECAR_FORMAT = 'ifc-lite.ids-studio.sidecar';
+ export const SIDECAR_FILENAME = 'studio.json';
+@@ -103,8 +104,9 @@ export function parseSidecar(json: string): StudioSidecar {
+   if (value.schemaVersion !== STUDIO_SCHEMA_VERSION) {
+     throw new Error(`unsupported sidecar schemaVersion ${String(value.schemaVersion)}`);
+   }
+-  if (typeof value.docId !== 'string' || typeof value.idsFingerprint !== 'string' || !isRecord(value.nodes) || !isRecord(value.meta)) {
+-    throw new Error('IDS Studio sidecar is incomplete');
++  const errors = validateSidecarShape(value);
++  if (errors.length) {
++    throw new Error(`IDS Studio sidecar is incomplete or invalid: ${errors[0].path} ${errors[0].message}`);
+   }
+   return value as unknown as StudioSidecar;
+ }

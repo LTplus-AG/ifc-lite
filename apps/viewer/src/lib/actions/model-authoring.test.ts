@@ -45,7 +45,7 @@ test('the contract refuses undeclared units or frames, unit mistakes, unsupporte
   refuse(/refers to "nowhere"/, [{ ...door, host: { ref: 'nowhere' } }]);
   refuse(/vertical moves are not supported/, [{ op: 'element.move', target: backWall, delta: [0, 0, 100] }]);
   refuse(/must state the element's expected ifcClass/, [{ op: 'element.delete', target: { globalId: BACK_WALL, name: '' } }]);
-  refuse(/hosted in walls only/, [{ ...door, host: { globalId: BACK_WALL, ifcClass: 'IfcSlab', name: 'x' } }]);
+  refuse(/slab hosts support bare openings only/, [{ ...door, host: { globalId: BACK_WALL, ifcClass: 'IfcSlab', name: 'x' } }]);
   refuse(/reuses ref/, [wallA, { ...wallB, ref: 'wall-a' }]);
   const metres = authoredElementOf(batch([wallA]), batch([wallA]).operations[0] as never);
   const sameInMetres = parseModelAuthoringBatch(JSON.stringify({ version: 1, kind: 'model.authoring', title: 'm', units: 'm', frame: 'storey-local',

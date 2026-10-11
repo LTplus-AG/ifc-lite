@@ -51,7 +51,7 @@ export function idsCorrectionToModelChanges(state: ViewerState, input: IdsCorrec
       issues.push({ kind: 'invalid-value', element, detail: error.message });
       continue;
     }
-    value = scaleCorrectionForWrite(reader.dataStore, expressId, dataType, value);
+    value = scaleCorrectionForWrite(reader.dataStore, expressId, target, dataType, value);
     let declared: string | undefined;
     try { declared = dataType ? validatePropertyDataType(value, dataType).dataType : undefined; }
     catch (error) {

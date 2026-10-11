@@ -16,6 +16,7 @@ import { PersistentCollapsible } from './PersistentCollapsible';
 
 interface RelationshipsCardProps {
   relationships: EntityRelationshipsData;
+  populationUnavailable?: boolean;
   onSelectEntity?: (entityId: number) => void;
   /** Isolate + select all member objects of a group/zone in 3D (#1075). */
   onIsolateGroupMembers?: (groupId: number) => void;
@@ -31,7 +32,7 @@ function relationListKey(relations: NonNullable<EntityRelationshipsData['relatio
   return `${relations.length}:${edgeKey(0)}:${edgeKey(relations.length - 1)}`;
 }
 
-export function RelationshipsCard({ relationships, onSelectEntity, onIsolateGroupMembers }: RelationshipsCardProps) {
+export function RelationshipsCard({ relationships, populationUnavailable = false, onSelectEntity, onIsolateGroupMembers }: RelationshipsCardProps) {
   const { t, locale } = useTranslation();
   const { voids, fills, groups, connections } = relationships;
   // Keep the exact record rows even when a convenience section below also
@@ -45,7 +46,7 @@ export function RelationshipsCard({ relationships, onSelectEntity, onIsolateGrou
   const visibleExactRelations = exactRelations.slice(0, visibleExactCount);
   const totalCount = voids.length + fills.length + groups.length + connections.length + exactRelations.length;
 
-  if (totalCount === 0) return null;
+  if (totalCount === 0 && !populationUnavailable) return null;
 
   return (
     <PersistentCollapsible id="relationships" className="border-2 border-zinc-300 dark:border-zinc-700 bg-zinc-50/20 dark:bg-zinc-950/20 w-full max-w-full overflow-hidden">
@@ -55,11 +56,12 @@ export function RelationshipsCard({ relationships, onSelectEntity, onIsolateGrou
           {t('properties.relationships.heading')}
         </span>
         <span className="text-2xs font-mono bg-zinc-200 dark:bg-zinc-800 px-1.5 py-0.5 border border-zinc-300 dark:border-zinc-700 text-zinc-600 dark:text-zinc-400 shrink-0">
-          {formatLocaleNumber(locale, totalCount)}
+          {populationUnavailable ? '?' : formatLocaleNumber(locale, totalCount)}
         </span>
         <ChevronDown className="size-3 shrink-0 transition-transform group-data-[state=closed]/disclosure:-rotate-90" aria-hidden="true" />
       </CollapsibleTrigger>
       <CollapsibleContent>
+        {populationUnavailable && <p className="px-3 py-2 text-xs text-zinc-600 dark:text-zinc-400">{t('properties.relationships.unavailableMembership')}</p>}
         <div className="border-t-2 border-zinc-300 dark:border-zinc-700 divide-y divide-zinc-200 dark:divide-zinc-800">
           {voids.length > 0 && (
             <div className="px-3 py-2">

@@ -1,0 +1,7 @@
+# Frozen main integration qualification (#6537 / PR #6584)
+
+Normal merge of pinned main `c696805e` preserved the four qualified ownership source files byte-for-byte. Main's indexed-classification fix introduced an unannotated source-class point lookup; raw-access gate reproduction failed on that statement. The shared intent marker from the standalone #7180 integration documents its existing purpose without changing behavior or budgets. The earlier material marker remains unchanged.
+
+Clean source `f98f3a8e` passes 104 relevant root Turbo controls with no skips, including actual manifest-qualified ArchiCAD indexed classification/material cases, canonical Bonsai primary/federated loading, the frame-restore/recolour regressions and strengthened real GC. Plain full root typecheck covers 3730 test files in 62 packages. Final raw-access/module/MPL/wiring gates pass. Source hashes, fixture admission, exact logs and matching marker patch are retained.
+
+The fixture was absent locally; its canonical file was linked only after verifying the manifest SHA, so the real ArchiCAD controls execute. The material/classification source algorithm is unchanged. Runtime observations remain phase-specific: loose controls use observed b335, and strict full typecheck subsequently restores cached8b. There is no relabeling of the functional controls as an8b run, no native speed/resident-memory claim, and no replacement of earlier qualification receipts.

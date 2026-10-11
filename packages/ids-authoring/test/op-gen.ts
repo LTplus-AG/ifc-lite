@@ -9,6 +9,7 @@
 
 import type { IDSFacet, IFCVersion, PartOfRelation } from '@ifc-lite/ids';
 import { FACET_FIELDS, getField, REQUIRED_FIELDS, type FacetFieldName } from '../src/document/fields.js';
+import { allNodeIds } from '../src/document/node-index.js';
 import type { Section, StudioDocument } from '../src/document/types.js';
 import type { ConstraintDraft, FacetDraft, InfoField, StudioOp, ValueInput } from '../src/ops/types.js';
 
@@ -111,7 +112,7 @@ export function randomOp(rng: Rng, doc: StudioDocument, newId: () => string): St
   const all = facets(doc);
   const spec = specs.length ? pick(rng, specs) : undefined;
   const f = all.length ? pick(rng, all) : undefined;
-  switch (int(rng, 34)) {
+  switch (int(rng, 36)) {
     case 0:
       return { kind: 'doc.setInfo', opId, payload: { field: pick(rng, ['title', 'author', 'purpose'] as InfoField[]), value: pick(rng, WORDS) } };
     case 21:
@@ -227,6 +228,25 @@ export function randomOp(rng: Rng, doc: StudioDocument, newId: () => string): St
     case 33: {
       const declared = doc.meta.custom.userDefinedTypes;
       return declared.length ? { kind: 'meta.custom.removeUserDefinedType', opId, payload: { ...pick(rng, declared) } } : undefined;
+    }
+    case 34: {
+      // Suppressions may sit on any node, including constraints and the document.
+      const nodes = allNodeIds(doc);
+      const rule = pick(rng, ['IDSL-SPEC-008', 'IDSL-ENT-003', 'IDSL-ENT-*', 'IDSL-*']);
+      const list = doc.meta.suppressions;
+      const nodeId = pick(rng, nodes);
+      const index = rng() < 0.5 ? int(rng, (list[nodeId]?.length ?? 0) + 1) : undefined;
+      return {
+        kind: 'meta.suppress',
+        opId,
+        payload: { nodeId, suppression: { rule, reason: pick(rng, WORDS), at: '2026-10-11T00:00:00Z' }, ...(index === undefined ? {} : { index }) },
+      };
+    }
+    case 35: {
+      const entries = Object.entries(doc.meta.suppressions).filter(([, l]) => l.length > 0);
+      if (!entries.length) return undefined;
+      const [nodeId, list] = pick(rng, entries);
+      return { kind: 'meta.unsuppress', opId, payload: { nodeId, rule: pick(rng, list).rule } };
     }
     case 20:
       return { kind: 'meta.custom.declarePset', opId, payload: { decl: { name: pick(rng, ['Acme_A', 'Acme_B', 'Acme_C']), properties: rng() < 0.5 ? [{ name: 'Code' }] : undefined } } };

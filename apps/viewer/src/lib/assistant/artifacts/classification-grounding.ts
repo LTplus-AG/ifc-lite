@@ -9,6 +9,7 @@ import type { ArtifactProposal } from './proposal-kinds';
 import { fieldSites } from './field-refs';
 import { resolveFields } from './field-candidates';
 import { modelSchemaIndex } from './model-schema';
+import { classificationPopulationUnavailable } from '@/components/viewer/properties/effective-classification-systems';
 
 function dependsOnClassification(proposal: ArtifactProposal): boolean {
   const has = (groups: readonly FilterGroup[]) => groups.some(group => group.rules.some(rule => rule.kind === 'classification'));
@@ -20,17 +21,10 @@ function dependsOnClassification(proposal: ArtifactProposal): boolean {
   }
 }
 
-const CLASSIFICATION_TYPES = new Set(['IFCCLASSIFICATION', 'IFCCLASSIFICATIONREFERENCE', 'IFCRELASSOCIATESCLASSIFICATION', 'IFCRELDEFINESBYTYPE']);
-
 /** Use current effective changes, never append-only history (undo leaves history). */
-function hasUnsupportedClassificationEdits(state: ViewerState): boolean {
+function hasUnavailableClassificationEdits(state: ViewerState): boolean {
   for (const [id, model] of state.models) {
-    const view = state.mutationViews.get(id);
-    if (!view) continue;
-    for (const change of view.getEffectiveChanges()) {
-      const types = [model.ifcDataStore?.entities.getTypeName(change.entityId), view.getNewEntity(change.entityId)?.type, view.getEntityTypeMutation(change.entityId)?.newType];
-      if (types.some(type => type !== undefined && CLASSIFICATION_TYPES.has(type.toUpperCase()))) return true;
-    }
+    if (classificationPopulationUnavailable(model.ifcDataStore, state.mutationViews.get(id))) return true;
   }
   return false;
 }
@@ -38,8 +32,9 @@ function hasUnsupportedClassificationEdits(state: ViewerState): boolean {
 export async function groundClassificationSelectors(proposal: ArtifactProposal, state: ViewerState, signal?: AbortSignal): Promise<void> {
   if (!dependsOnClassification(proposal)) return;
   signal?.throwIfAborted();
-  // TODO(remove-by: native effective classification evaluation #7131, owner: campaign #6812)
-  if (hasUnsupportedClassificationEdits(state)) throw new Error('Native artifact classification evaluation cannot yet read these live classification edits; export and reload before reviewing this population');
+  // Source-empty transports cannot reconstruct edited source association
+  // membership. The effective reader handles source-bearing edits (#7131).
+  if (hasUnavailableClassificationEdits(state)) throw new Error('Classification population unavailable: this model has no source bytes for its live classification edits; load the original IFC before reviewing this population');
   const sites = fieldSites(proposal).filter(site => site.kind === 'classification');
   if (sites.length === 0) return; // Omitted/empty/whitespace means native any-system.
   const resolutions = resolveFields(sites, await modelSchemaIndex(state, signal));

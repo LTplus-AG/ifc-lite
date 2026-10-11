@@ -17,6 +17,8 @@
  * identity, cannot tell a double application from a single one.
  */
 
+import { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
+import { StepExporter } from '@ifc-lite/export';
 import { describe, it, expect } from 'vitest';
 import { IfcParser, type IfcDataStore } from '@ifc-lite/parser';
 import { storeyPlanFrame, toStoreyLocal, fromStoreyLocal } from './storey-plan-frame.js';
@@ -185,4 +187,11 @@ describe('storeyPlanFrame', () => {
   it('refuses an unknown storey id rather than reporting the identity', async () => {
     expect(storeyPlanFrame(await parse(fixture()), 999)).toBeNull();
   });
+});
+
+for (const units of ['m','mm'] as const) it(`#7306 effective full ancestor frame in ${units} agrees with independently exported native source`,async()=>{
+ const store=await parse(fixture({unit:units==='mm'?'#81=IFCSIUNIT(*,.LENGTHUNIT.,.MILLI.,.METRE.);':undefined}));const view=new MutablePropertyView(store.properties,'frame'),editor=new StoreEditor(store,view);
+ editor.setPositionalAttribute(91,0,[3000,4000,0]);editor.setAttribute(15,'Location','#92');
+ const exported=new StepExporter(store,view).export({schema:store.schemaVersion,applyMutations:true}).content;const saved=await parse(new TextDecoder().decode(exported));const live=storeyPlanFrame(store,4,view),independent=storeyPlanFrame(saved,4);expect(live).not.toBeNull();expect(live).toEqual(independent);
+ expect(live!.origin).toEqual(units==='mm'?[3,4]:[3000,4000]);expect(live!.axisX[0]).toBeCloseTo(-.8,9);expect(live!.axisX[1]).toBeCloseTo(.6,9);
 });

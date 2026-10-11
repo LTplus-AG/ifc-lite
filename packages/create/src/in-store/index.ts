@@ -4,6 +4,7 @@
 
 // In-store builders — emit elements into an existing parsed IfcDataStore
 // via a `StoreEditor` overlay (closes the merge-roundtrip gap from #592).
+export { linearProfileFrame } from './linear-profile-frame.js';
 export { addOrdinaryElementInStore, type OrdinaryInStoreElement } from './ordinary-element.js';
 export {
   addColumnToStore,
@@ -238,3 +239,9 @@ export { reanchorHostedOpeningsInStore } from './hosted-placement-edit.js';
 export { reassignHostedOpeningsInStore, type HostedOpeningReassignment } from './hosted-placement-edit.js';
 
 export { replaceElementInStore, type InStoreReplacementElement } from './element-replacement.js';
+export {
+  addGroupToStore, updateGroupInStore, removeGroupInStore, readGroupInStore,
+  type GroupStoreContext, type GroupInStoreParams, type GroupInStorePatch,
+  type GroupRootIdentity, type GroupSnapshot, type GroupMembershipSnapshot,
+} from './group.js';
+export { readGroupEvidenceInStore, type GroupNativeEvidence } from './group-evidence.js';

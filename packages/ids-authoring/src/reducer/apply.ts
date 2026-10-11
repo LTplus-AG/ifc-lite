@@ -21,6 +21,7 @@ import { expandCompound } from '../compound/expand.js';
 import type { PrimitiveOp, StudioOp } from '../ops/types.js';
 import type { Uuid } from '../uuid.js';
 import { OpApplyError } from './edit.js';
+import { applySuppress, applyUnsuppress } from './meta-ops.js';
 import {
   applyFacetAdd,
   applyFacetMove,
@@ -117,6 +118,10 @@ export function applyPrimitive(doc: StudioDocument, op: PrimitiveOp): StepResult
       return applyDeclareUserDefinedType(doc, op);
     case 'meta.custom.removeUserDefinedType':
       return applyRemoveUserDefinedType(doc, op);
+    case 'meta.suppress':
+      return applySuppress(doc, op);
+    case 'meta.unsuppress':
+      return applyUnsuppress(doc, op);
   }
 }
 

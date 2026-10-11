@@ -19,30 +19,34 @@
  * them. A rules report whose content was not recorded is refused as unknown.
  */
 
-import type { EntityResult, SpecificationResult } from '@ifc-lite/ids';
+import type { EntityResult, SpecificationResult, ValidationReport } from '@ifc-lite/ids';
 import { reportRuleSetOf } from '@/lib/validation/report-rule-set';
 import { emptyCounts, type CapturedRun, type Incompatibility, type ReconcileContext,
   type ReconciledFinding, type ReconcileOutcome } from './run-reconcile-types';
 
 type ValidationRun = Extract<CapturedRun, { kind: 'validation' }>;
 
-/** What the run checked; null when a rules report's content was not recorded. */
-function sourceDigest(run: ValidationRun): string | null {
-  const source = run.report.source;
+/** What a report checked; null when a rules report's content was not recorded.
+ * Saved validation evidence digests the same text (#7371), so both owners agree. */
+export function validationSourceDigest(report: ValidationReport): string | null {
+  const source = report.source;
   if (source.kind === 'ids') return JSON.stringify(['ids', source.document.specifications]);
-  const content = reportRuleSetOf(run.report);
+  const content = reportRuleSetOf(report);
   return content ? JSON.stringify(['rules', source.ruleSet.fileName ?? null, content.file]) : null;
 }
+const sourceDigest = (run: ValidationRun) => validationSourceDigest(run.report);
 
 function sourceTitle(run: ValidationRun): string {
   const source = run.report.source;
   return source.kind === 'ids' ? source.document.info.title || 'IDS' : source.ruleSet.name;
 }
 
-function specDigest(run: ValidationRun, spec: SpecificationResult): string {
-  const rule = run.report.source.kind === 'rules' ? reportRuleSetOf(run.report)?.rules.get(spec.specification.id) ?? null : null;
+/** One check exactly as the runner recorded it: the specification and, for rules, the rule content. */
+export function validationSpecificationDigest(report: ValidationReport, spec: SpecificationResult): string {
+  const rule = report.source.kind === 'rules' ? reportRuleSetOf(report)?.rules.get(spec.specification.id) ?? null : null;
   return JSON.stringify([spec.specification, rule]);
 }
+const specDigest = (run: ValidationRun, spec: SpecificationResult) => validationSpecificationDigest(run.report, spec);
 
 export function validationIncompatibilities(base: ValidationRun, head: ValidationRun, ctx: Pick<ReconcileContext, 'baseModelId' | 'headModelId'>): Incompatibility[] {
   const out: Incompatibility[] = [];
@@ -62,17 +66,18 @@ export function validationIncompatibilities(base: ValidationRun, head: Validatio
   return out;
 }
 
-const failingSignature = (entity: EntityResult) => JSON.stringify(entity.requirementResults
+/** Which requirements an entity failed and with what value, independent of message language. */
+export const failingSignature = (entity: EntityResult) => JSON.stringify(entity.requirementResults
   .filter(r => r.status === 'fail').map(r => [r.requirement.id, r.actualValue ?? null]).sort());
 
 const entityLabel = (spec: SpecificationResult, entity: EntityResult) =>
   `${spec.specification.name}: ${entity.entityType} ${entity.globalId ?? ''}${entity.entityName ? ` (${entity.entityName})` : ''}`;
 
 /** A specification result that lists fewer entities than it found applicable, or that errored. */
-const hasGap = (spec: SpecificationResult | undefined) => !spec || !!spec.error || spec.entityResults.length < spec.applicableCount;
+export const hasGap = (spec: SpecificationResult | undefined) => !spec || !!spec.error || spec.entityResults.length < spec.applicableCount;
 
 /** One model's results of one specification by GlobalId; a GlobalId carried twice has no identity. */
-function byGlobalId(spec: SpecificationResult | undefined, modelId: string) {
+export function byGlobalId(spec: SpecificationResult | undefined, modelId: string) {
   const results = new Map<string, EntityResult>();
   const duplicated = new Set<string>();
   let unidentified = 0;

@@ -14,7 +14,8 @@ import type { TranslationKey } from '@/i18n';
 import type { ViewerState } from '@/store';
 import type { WorkspacePanelId } from '@/lib/panels/registry';
 import type { AssistantSource } from '../sources';
-import type { AdapterGroup, EvidenceAdapter } from './types';
+import type { AdapterGroup, EvidenceAdapter, SourceActionAdapter } from './types';
+import { describeSourceActions } from './actions';
 import { clashAdapter } from './clash';
 import { validationAdapter } from './validation';
 import { compareAdapter } from './compare';
@@ -35,14 +36,16 @@ export const ADAPTER_GROUPS: ReadonlyArray<{ id: AdapterGroup; labelKey: Transla
   { id: 'automation', labelKey: 'assistantSources.groupAutomation' },
 ];
 
-export const ADAPTERS: readonly EvidenceAdapter[] = [
+const SOURCES: readonly EvidenceAdapter[] = [
   clashAdapter, validationAdapter, compareAdapter, flowAdapter, loadReportAdapter,
   ...CHECKS, ...COORDINATION, ...SITE, ...TABLES, ...MEASURE, ...AUTOMATION,
 ];
 
+export const ADAPTERS: readonly SourceActionAdapter[] = SOURCES.map(adapter => ({ ...adapter, actions: describeSourceActions(adapter) }));
+
 const BY_ID = new Map(ADAPTERS.map(adapter => [adapter.id, adapter]));
 
-export function adapterFor(source: AssistantSource): EvidenceAdapter {
+export function adapterFor(source: AssistantSource): SourceActionAdapter {
   const adapter = BY_ID.get(source);
   if (!adapter) throw new Error(`No evidence adapter is registered for ${source}`);
   return adapter;

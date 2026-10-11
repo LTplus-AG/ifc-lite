@@ -33,12 +33,15 @@
 
 import { storeyPlanFrame, fromStoreyLocal, type StoreyPlanFrame } from './storey-plan-frame.js';
 import type { CoordinateInfo } from '@ifc-lite/geometry';
+import type { MutablePropertyView } from '@ifc-lite/mutations';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { roomFramePlanOffsets, roomFrameToModelWorld } from './room-wall-rects.js';
 
 type Vec2 = [number, number];
 
 export interface StoreyAuthoringFrame {
+  /** Current placement could not be verified; callers must not render its identity placeholder. */
+  unavailable?: true;
   /** The storey's chain as a planar rigid motion in the model's world frame. */
   plan: StoreyPlanFrame;
   /** Model-world = rendered model frame + this (origin shift + survey anchor). */
@@ -52,11 +55,13 @@ export function storeyAuthoringFrame(
   store: IfcDataStore | null | undefined,
   storeyExpressId: number,
   coordinateInfo: CoordinateInfo | undefined,
+  view?: MutablePropertyView | null,
 ): StoreyAuthoringFrame {
-  const plan = store ? storeyPlanFrame(store, storeyExpressId) : null;
+  const plan = store ? storeyPlanFrame(store, storeyExpressId, view) : null;
   const { cx, cy } = roomFramePlanOffsets(coordinateInfo);
   const { dx, dy } = roomFrameToModelWorld(coordinateInfo);
-  return { plan: plan ?? IDENTITY_PLAN, offset: [cx + dx, cy + dy] };
+  return { plan: plan ?? IDENTITY_PLAN, offset: [cx + dx, cy + dy],
+    ...(view && !plan ? { unavailable: true as const } : {}) };
 }
 
 /** Storey-local plan point → the rendered model frame. Inverse of the above. */

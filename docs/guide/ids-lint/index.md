@@ -18,13 +18,15 @@ Keep one linter per open document: specification-level findings are cached and o
 
 Rules that depend on an IDS semantic the standard leaves open ship at `info` until the semantic is verified against the buildingSMART test cases; each rule page lists what was verified.
 
+Rules marked *opt-in* are off by default because they fire on most real documents. Enable one by giving it a severity in the linter config (`severity: { 'IDSL-SPEC-008': 'info' }`) or by naming it in `rules`.
+
 ## Entities
 
 | Code | Severity | Rule | Quick fix |
 |---|---|---|---|
 | [IDSL-ENT-001](idsl-ent-001.md) | error | Abstract entity in an entity facet | yes |
 | [IDSL-ENT-002](idsl-ent-002.md) | info | Entity removed in IFC4X3 | yes |
-| [IDSL-ENT-003](idsl-ent-003.md) | info | Entity has subtypes the author may also mean | yes |
+| [IDSL-ENT-003](idsl-ent-003.md) | info (opt-in) | Entity has subtypes the author may also mean | yes |
 | [IDSL-ENT-004](idsl-ent-004.md) | warning | Type entity where an occurrence is meant | yes |
 | [IDSL-ENT-005](idsl-ent-005.md) | warning | Entity name not in upper case | yes |
 
@@ -105,7 +107,7 @@ Rules that depend on an IDS semantic the standard leaves open ship at `info` unt
 | [IDSL-SPEC-005](idsl-spec-005.md) | warning | Duplicate specification | yes |
 | [IDSL-SPEC-006](idsl-spec-006.md) | warning | Overlapping specifications with conflicting requirements | no |
 | [IDSL-SPEC-007](idsl-spec-007.md) | info | Specification without requirements | no |
-| [IDSL-SPEC-008](idsl-spec-008.md) | info | Specification without description or instructions | no |
+| [IDSL-SPEC-008](idsl-spec-008.md) | info (opt-in) | Specification without description or instructions | no |
 | [IDSL-SPEC-009](idsl-spec-009.md) | warning | Duplicate identifier | yes |
 
 ## Document

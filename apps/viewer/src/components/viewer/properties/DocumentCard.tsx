@@ -43,6 +43,7 @@ export function DocumentCard({ document, sectionId }: { document: DocumentInfo; 
       </CollapsibleTrigger>
       <CollapsibleContent>
         <div className="border-t-2 border-sky-200 dark:border-sky-800 divide-y divide-sky-100 dark:divide-sky-900/30">
+          {document.unresolved && <output className="block px-3 py-2 text-xs text-amber-700 dark:text-amber-300">{t('properties.document.unresolved')}</output>}
           {document.identification && (
             <div className="flex flex-col gap-0.5 px-3 py-2 text-xs hover:bg-sky-50/50 dark:hover:bg-sky-900/20">
               <span className="text-zinc-500 dark:text-zinc-400 font-medium">{EXPRESS_IDENTIFICATION_ATTRIBUTE}</span>

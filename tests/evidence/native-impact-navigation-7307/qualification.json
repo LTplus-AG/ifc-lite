@@ -1,0 +1,69 @@
+{
+  "issue": 7307,
+  "pullRequest": 7309,
+  "mainBase": "76b4ce16630c059a42cb9108cdc68b121acb5ff9",
+  "qualifiedRuntimeHead": "514037e5bf9c78bb1b731cddaa48d79483e4a0b1",
+  "productionSha256": {
+    "apps/viewer/src/components/viewer/compare/CompareAnalysisSections.tsx": "d8aaa80f86f38cc00bebe8c41ac094f6e6d5c49dd5d49b01fa9c0d7665e07c94",
+    "apps/viewer/src/components/viewer/compare/CompareImpactSection.tsx": "50a9f10803a575e5b199942a699475946bf75a3b1d9117ea6c32b406a0dbe476",
+    "apps/viewer/src/components/viewer/compare/useCompareImpact.ts": "c8aa7ac120fe3db60f21cd31c3d37ab293c84123e927316a18f8c4cfae164065",
+    "apps/viewer/src/i18n/catalogues/compare-analysis.en.ts": "a1f7ce6d42fd046b055439a4621ad85f3831462d19de5978c2a70c4c914ec304",
+    "apps/viewer/src/lib/compare/comparison-navigation-lease.ts": "4c7fc8687086aefbbba268db1252224ab575ea407f81266cb7d9a2910b53a24f",
+    "apps/viewer/src/lib/compare/impact-navigation.ts": "7991d0bd73e84a74d8e8f9328cf5b779d897b0d70bdf9de4511cdfd2a47d43e3",
+    "apps/viewer/src/lib/compare/run-comparison.ts": "883fd05b6ed0af472da19528861bde229d6972f28530fb2f0ffc636b8189fce8"
+  },
+  "nativeBefore": {
+    "pass": 1,
+    "actualAssertions": 1,
+    "skip": 0,
+    "log": "/tmp/campaign-impact-navigation-before-corrected-control.log"
+  },
+  "nativeRestored": {
+    "pass": 36,
+    "fail": 0,
+    "skip": 0,
+    "log": "/tmp/campaign-impact-navigation-final-restored-native.log"
+  },
+  "wholeSevenRuntimeOracle": {
+    "baselinePass": 15,
+    "revertedControls": 4,
+    "revertedActualAssertions": 11,
+    "verdict": "OBSERVED",
+    "restoration": "verified",
+    "invocationId": "3706734b-2662-4608-8972-fd2d4217c18b",
+    "log": "/tmp/campaign-impact-navigation-final-whole-class-oracle.log"
+  },
+  "authenticLeaseSurgicalOracle": {
+    "head": "759a2b16aa5fd88b5d21b6829d49a41e95e7e91d",
+    "runtimeFileByteIdenticalAtFinal": true,
+    "baselinePass": 15,
+    "revertedControls": 10,
+    "revertedActualAssertions": 5,
+    "verdict": "OBSERVED",
+    "restoration": "verified",
+    "invocationId": "34d3f6ba-74b8-4403-8fe0-e9a8e9f054a5",
+    "mutation": "/tmp/campaign-impact-navigation-authentic-lease-mutation.patch",
+    "log": "/tmp/campaign-impact-navigation-authentic-lease-oracle.log"
+  },
+  "dependencyReceipts": {
+    "/tmp/campaign-impact-navigation-dependency-copy-receipt.json": "fce6f53b1cacfffe3e5feae2d83928adec0d8fb5e40521a3118f943253dd5a5d",
+    "/tmp/campaign-impact-navigation-room-sdk-copy-receipt.json": "6951de24390a9e934be324d39e23a2dd7d24981d37f345a0b32722c311b6cafe"
+  },
+  "gates": [
+    "module-size",
+    "source-text-assertions",
+    "test-wiring",
+    "MPL",
+    "raw-entity-enumeration",
+    "git-diff-check",
+    "touched-oxlint-zero-warnings"
+  ],
+  "compilerBuildApiDocsBundle": "NOT RUN: parent serial qualification pending",
+  "limits": [
+    "Happy DOM mounted native comparison/actions, not a rendered 3D camera/browser acceptance run",
+    "English catalogue fallback remains valid; no native-speaker approval",
+    "No provider request, inference, new matching engine, analysis rerun or created artifact",
+    "Unverifiable comparisons retain facts without navigation; native aggregate list freshness remains unknown",
+    "No completed external human labels/privacy-licence approval/coordinator study claim"
+  ]
+}

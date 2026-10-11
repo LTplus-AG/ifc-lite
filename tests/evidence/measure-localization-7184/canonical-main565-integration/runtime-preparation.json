@@ -1,0 +1,22 @@
+{
+  "sourceHead": "b62ad9dcd6623b8cc4ab531fd988ba710eb08b2a",
+  "rustTree": "1a1acc4260011c591fd8ce3c5387bb7c10b42f20",
+  "dtsByteEqual": true,
+  "runtimeCopiedExistingNotBuilt": [
+    {
+      "source": "/tmp/ifc-7186-visible-proposal-control/packages/wasm/pkg/ifc-lite.js",
+      "destination": "/tmp/ifc-7249-canonical-main565/packages/wasm/pkg/ifc-lite.js",
+      "sha256": "0a281479eb65141ae75aeef987d331d44439741a0cae855f122e53e800311a39"
+    },
+    {
+      "source": "/tmp/ifc-7186-visible-proposal-control/packages/wasm/pkg/ifc-lite_bg.wasm",
+      "destination": "/tmp/ifc-7249-canonical-main565/packages/wasm/pkg/ifc-lite_bg.wasm",
+      "sha256": "8b74229bbd4a991cbf1f32a8d52add195c5fdd333921f998b1c18eb713185143"
+    },
+    {
+      "source": "/tmp/ifc-7186-visible-proposal-control/packages/wasm/pkg/package.json",
+      "destination": "/tmp/ifc-7249-canonical-main565/packages/wasm/pkg/package.json",
+      "sha256": "10f68fc85e7a0c3f9cf57d1343f9909a5220c2711d98a454cc0b04b59a38cf45"
+    }
+  ]
+}

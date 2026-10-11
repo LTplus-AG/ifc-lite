@@ -1,0 +1,72 @@
+[
+  {
+    "originalPath": "/home/louistrue/.t3/artifacts/7180-page-probe-final-cleanup-20261008/controller.py",
+    "archivePath": "controller.py.gz",
+    "rawSha256": "6d71500f84ca8d0386e60b60d6a71c0e0e65cf68576f478c882def85ea298316",
+    "archiveSha256": "97285f434537aec56c4cb77d93ce6cd4cefbc0cee2c3186c877dd1f6afaf1c78",
+    "rawBytes": 1136
+  },
+  {
+    "originalPath": "/home/louistrue/.t3/artifacts/7180-page-probe-final-cleanup-20261008/diff-terminal.json",
+    "archivePath": "diff-terminal.json.gz",
+    "rawSha256": "224c17d4c42d980e5a545fcb914a8e9f9ea65c240b523104bf0a280a473470d0",
+    "archiveSha256": "0818408aa34f8fbd9a695fc8e2bbb964dea95ecfc84724d7fdb7f6ace8b4f3ac",
+    "rawBytes": 118
+  },
+  {
+    "originalPath": "/home/louistrue/.t3/artifacts/7180-page-probe-final-cleanup-20261008/diff.log",
+    "archivePath": "diff.log.gz",
+    "rawSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "archiveSha256": "9ceffb7310338057cfe71a4ae1e2c98d2c485d81cdef906532a801f457a38d64",
+    "rawBytes": 0
+  },
+  {
+    "originalPath": "/home/louistrue/.t3/artifacts/7180-page-probe-final-cleanup-20261008/full-root-typecheck-terminal.json",
+    "archivePath": "full-root-typecheck-terminal.json.gz",
+    "rawSha256": "75c951ac89a58f7f66ad0f1832b72278d346c1039bafecc8eede0b5e170e7364",
+    "archiveSha256": "80878abdb421cdcaf9c5f99c3c85d6810e561fb2295dd9e7a60a292dc774c158",
+    "rawBytes": 107
+  },
+  {
+    "originalPath": "/home/louistrue/.t3/artifacts/7180-page-probe-final-cleanup-20261008/full-root-typecheck.log",
+    "archivePath": "full-root-typecheck.log.gz",
+    "rawSha256": "df693a214716bf8e3243593459f971807fc2def715b682dd1df470f7ce4d8534",
+    "archiveSha256": "4f6492ffa0d10ba3db586876ef94129531071a7b66d6d70b6e21b2a05f2f80be",
+    "rawBytes": 49501
+  },
+  {
+    "originalPath": "/home/louistrue/.t3/artifacts/7180-page-probe-final-cleanup-20261008/preflight.json",
+    "archivePath": "preflight.json.gz",
+    "rawSha256": "9f992bf119c4ff213b8bbacd3a291ab9aa337e36bc127180ef3eb84ce1dbaa96",
+    "archiveSha256": "804d847ebc38f6d542cf75906370ff1a645829524452bd5985d2905fc9a10727",
+    "rawBytes": 620
+  },
+  {
+    "originalPath": "/home/louistrue/.t3/artifacts/7180-page-probe-final-cleanup-20261008/touched-oxlint-terminal.json",
+    "archivePath": "touched-oxlint-terminal.json.gz",
+    "rawSha256": "af84c356c31f83b1b499bbe0885de555d4f657cd08c22f9f9885200d7c22d371",
+    "archiveSha256": "c40c19b23ed661036f5de327d8ad9e59de8f3b3f61c0b862871571587078fd74",
+    "rawBytes": 268
+  },
+  {
+    "originalPath": "/home/louistrue/.t3/artifacts/7180-page-probe-final-cleanup-20261008/touched-oxlint.log",
+    "archivePath": "touched-oxlint.log.gz",
+    "rawSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "archiveSha256": "9ceffb7310338057cfe71a4ae1e2c98d2c485d81cdef906532a801f457a38d64",
+    "rawBytes": 0
+  },
+  {
+    "originalPath": "/home/louistrue/.t3/artifacts/7180-page-probe-final-cleanup-20261008/viewer-benchmark-page.ts.after",
+    "archivePath": "viewer-benchmark-page.ts.after.gz",
+    "rawSha256": "cb97ac629091d4b11416cfa96251e78e91db31ed4000e5c3557f7b3575b9aacd",
+    "archiveSha256": "8934c623cb93df548c940ca2d77cfae6a3a9b67dcea33f33f18b0487490e08b9",
+    "rawBytes": 35642
+  },
+  {
+    "originalPath": "/home/louistrue/.t3/artifacts/7180-page-probe-final-cleanup-20261008/viewer-benchmark-page.ts.before",
+    "archivePath": "viewer-benchmark-page.ts.before.gz",
+    "rawSha256": "20a8d75accbfe5df236dcdf87c00b789b75c4970dcd82d3856c80c43c068e5bd",
+    "archiveSha256": "f7e0eea7eb5a9344854a651399965e0a9cb9834240197abfbe375899a78ba321",
+    "rawBytes": 35650
+  }
+]

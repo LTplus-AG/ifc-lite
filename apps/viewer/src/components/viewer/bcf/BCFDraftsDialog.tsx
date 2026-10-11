@@ -94,7 +94,9 @@ export function BCFDraftsDialog({ open, onOpenChange }: { open: boolean; onOpenC
       const adopted = await adoptImportedBatches(imported.batches);
       if (adopted[0]) useBcfDraftLibrary.setState({ activeId: adopted[0].id });
       toast.success(t('bcfDrafts.archive.imported', { count: adopted.length }));
-      if (imported.unmapped || imported.damaged) toast.info(t('bcfDrafts.archive.unmapped', { count: imported.unmapped + imported.damaged }));
+      const withoutFindings = imported.unmapped + imported.damaged - imported.droppedFindings;
+      if (withoutFindings) toast.info(t('bcfDrafts.archive.unmapped', { count: withoutFindings }));
+      if (imported.droppedFindings) toast.info(t('bcfDrafts.archive.droppedFindings', { count: imported.droppedFindings }));
     } catch (error) {
       console.error('[BCF drafts] Archive import failed', error);
       toast.error(error instanceof DraftArchiveError ? t(ARCHIVE_REFUSALS[error.reason])

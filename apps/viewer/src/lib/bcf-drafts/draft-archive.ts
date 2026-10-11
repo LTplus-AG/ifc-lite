@@ -40,8 +40,13 @@ export interface DraftArchiveImport {
   batches: DraftBatch[];
   /** Plain BCF topics without a mapping footer; imported unmapped (no findings). */
   unmapped: number;
-  /** Footers present but inconsistent (edited member or source lines, or a reviewed topic's unreadable origin); imported unmapped. */
+  /**
+   * Footers present but inconsistent: edited member or source lines (imported unmapped), or a reviewed
+   * topic whose origin no longer reads (its clash members kept, its reviewed findings dropped).
+   */
   damaged: number;
+  /** Of `damaged`: mapped topics that kept their clash members but lost their reviewed source findings. */
+  droppedFindings: number;
 }
 
 /** Why a whole archive was refused; the dialog shows a translated message per reason. */
@@ -90,7 +95,7 @@ export async function importDraftArchive(data: ArrayBuffer, now = new Date()): P
   const at = now.toISOString();
   const mapped = new Map<string, { name: string; source: DraftSource; topics: DraftTopic[] }>();
   const plain: DraftTopic[] = [];
-  let damaged = 0;
+  let damaged = 0, droppedFindings = 0;
   for (const topic of project.topics.values()) {
     const footer = parseDraftFooter(topic.description);
     const markerAt = topic.description?.lastIndexOf(DRAFT_FOOTER_MARKER) ?? -1;
@@ -102,6 +107,7 @@ export async function importDraftArchive(data: ArrayBuffer, now = new Date()): P
         origin: { kind: 'archive' }, members: [] });
       continue;
     }
+    if (footer.droppedSourceFindings) { damaged += 1; droppedFindings += 1; }
     const decodedSource = decodeDraftBatch({ version: 1, id: 'probe', name: 'probe', createdAt: at, modifiedAt: at,
       source: footer.source, topics: [] })?.source;
     const entry = mapped.get(footer.batchId) ?? { name: footer.batchName ?? project.name ?? 'Imported BCF drafts',
@@ -123,5 +129,5 @@ export async function importDraftArchive(data: ArrayBuffer, now = new Date()): P
     if (!batch) throw new DraftArchiveError(draftOwnershipConflict(plain) ?? 'unreadable');
     batches.push(batch);
   }
-  return { batches, unmapped: plain.length - damaged, damaged };
+  return { batches, unmapped: plain.length - (damaged - droppedFindings), damaged, droppedFindings };
 }

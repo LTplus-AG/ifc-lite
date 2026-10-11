@@ -79,6 +79,8 @@ export interface ParsedFooter {
   members?: DraftFinding[];
   /** Review topics' source findings (#7373); validated and consistent with their own digest. */
   sourceFindings?: DraftSourceFinding[];
+  /** Reviewed source findings were declared but dropped because the origin no longer reads as a review card. */
+  droppedSourceFindings?: true;
 }
 
 function json(text: string): unknown {
@@ -133,10 +135,16 @@ export function parseDraftFooter(description: string | undefined): ParsedFooter 
   }
   if (sourceLines.length > 0 || fields.has('sources')) {
     const declared = /^(\d+) ([0-9a-f]{16})$/.exec(fields.get('sources') ?? '');
+    if (!declared || !parsed.members) return null;
+    // Source findings belong to a review card. An origin line that no longer reads as one (it is not digest
+    // covered) leaves them without an owner: they are dropped, never re-homed, while the digest-verified clash
+    // members are kept as before #7373. Only a real loss of reviewed findings is reported.
+    if (parsed.origin?.kind !== 'review') {
+      if (Number(declared[1]) > 0 || sourceLines.length > 0) parsed.droppedSourceFindings = true;
+      return parsed;
+    }
     const findings = sourceLines.map(line => decodeSourceFinding(json(line)));
-    // Source findings belong to a review card: an origin line that no longer reads as one leaves them without
-    // an owner, so the mapping is damaged (imported unmapped and reported), never re-homed onto an archive topic.
-    if (!declared || !parsed.members || parsed.origin?.kind !== 'review' || findings.some(finding => !finding)) return null;
+    if (findings.some(finding => !finding)) return null;
     const valid = findings.flatMap(finding => finding ? [finding] : []);
     if (valid.length !== Number(declared[1]) || sourceFindingsDigest(valid) !== declared[2]) return null;
     parsed.sourceFindings = valid;

@@ -8,6 +8,7 @@ import assert from 'node:assert/strict';
 import { readBCF, writeBCF } from '@ifc-lite/bcf';
 import { DraftArchiveError, draftBatchToProject, exportDraftArchive, importDraftArchive } from '../bcf-drafts/draft-archive';
 import { decodeDraftBatch } from '../bcf-drafts/draft-codec';
+import type { DraftBatch } from '../bcf-drafts/draft-types';
 import { describeWithFooter, parseDraftFooter } from '../bcf-drafts/draft-footer';
 import { buildCards } from './cards';
 import { cardDigest, cardTitle, draftBatchFromCards } from './bcf-draft';
@@ -138,26 +139,69 @@ async function reviewArchive() {
   return batch;
 }
 
-// A hand-edited origin is not covered by a digest; with intact source lines the topic is reported damaged
-// and imported unmapped (the documented degrade), instead of aborting the whole import with a wrong reason.
-test('an archive whose review origin line no longer reads is imported with that topic unmapped and reported damaged', async () => {
-  const batch = await reviewArchive();
-  for (const origin of ['%7Bbroken', encodeURIComponent(JSON.stringify({ kind: 'selection' }))]) {
-    const project = await readBCF(await (await exportDraftArchive(batch, 'a@example.test')).arrayBuffer());
-    const edited = project.topics.get(batch.topics[0].guid)!;
-    const before = edited.description!;
-    edited.description = before.replace(/\norigin: [^\n]+/, `\norigin: ${origin}`);
-    assert.notEqual(edited.description, before);
-    assert.match(edited.description, /\ns: /, 'its source lines are intact');
-    const imported = await importDraftArchive(await (await writeBCF(project)).arrayBuffer());
-    assert.equal(imported.damaged, 1);
-    const topics = imported.batches.flatMap(entry => entry.topics);
-    const unmapped = topics.find(topic => topic.guid === batch.topics[0].guid);
-    assert.equal(unmapped?.origin.kind, 'archive');
-    assert.equal(unmapped?.sourceFindings, undefined, 'source findings are never re-homed onto an archive topic');
-    assert.deepEqual(topics.find(topic => topic.guid === batch.topics[1].guid)?.sourceFindings, batch.topics[1].sourceFindings,
-      'the untouched topic keeps its provenance');
+/** Three live wall/pipe clashes on one card, optionally with a current validation finding on the same elements. */
+async function clashReview(withSources: boolean) {
+  const clashes = [0, 1, 2].map(at => clash(`c${at}`, { guid: 'W1', model: 'm1', tag: 'IfcWall' }, { guid: 'P1', model: 'm2', tag: 'IfcPipeSegment' },
+    { rule: `rule-${at}`, point: [at, 0, 0], bounds: { min: [at, 0, 0], max: [at + 1, 1, 1] } }));
+  const findings = clashes.map(item => finding(item.id, 'clash', [wall('W1'), pipe('P1')],
+    { evidence: { kind: 'clash', clashId: item.id, occurrenceKey: '', reviewKey: item.id }, nativeStatus: 'hard' }));
+  if (withSources) findings.push(finding('v1', 'validation', [wall('W1'), pipe('P1')], { nativeStatus: 'failed',
+    evidence: { kind: 'validation', specificationId: 's1', modelId: 'm1', expressId: 1 } }));
+  const cards = cardsOf(...findings);
+  assert.equal(cards.length, 1);
+  const { batch } = await draftBatchFromCards('Review', cards, clashes, { now: fixedNow });
+  assert.ok(batch && batch.topics[0].members.length === 3);
+  assert.equal(batch.topics[0].sourceFindings?.length, withSources ? 1 : 0);
+  return batch;
+}
+
+/** Export, replace the topic's origin line (not digest covered), and import the real bytes again. */
+async function withOrigin(batch: DraftBatch, origin: string) {
+  const project = await readBCF(await (await exportDraftArchive(batch, 'a@example.test')).arrayBuffer());
+  const edited = project.topics.get(batch.topics[0].guid)!;
+  const before = edited.description!;
+  edited.description = before.replace(/\norigin: [^\n]+/, `\norigin: ${origin}`);
+  assert.notEqual(edited.description, before);
+  return importDraftArchive(await (await writeBCF(project)).arrayBuffer());
+}
+
+const BROKEN_ORIGINS = ['%7Bbroken', encodeURIComponent(JSON.stringify({ kind: 'selection' }))];
+
+// Before #7373 a clash topic with a broken origin degraded to an archive topic with its verified members.
+test('a clash-only review topic whose origin line no longer reads keeps every clash member and is not reported damaged', async () => {
+  const batch = await clashReview(false);
+  for (const origin of BROKEN_ORIGINS) {
+    const imported = await withOrigin(batch, origin);
+    assert.equal(imported.damaged, 0, 'no reviewed finding was lost');
+    assert.equal(imported.unmapped, 0);
+    const [topic] = imported.batches.flatMap(entry => entry.topics);
+    assert.deepEqual(topic.members, batch.topics[0].members, 'all 3 digest-verified clash members');
+    assert.notEqual(topic.origin.kind, 'review');
+    assert.equal(topic.sourceFindings, undefined);
   }
+});
+
+test('a review topic with source findings and a broken origin keeps its members, drops its findings and is reported damaged', async () => {
+  const batch = await clashReview(true);
+  for (const origin of BROKEN_ORIGINS) {
+    const imported = await withOrigin(batch, origin);
+    assert.equal(imported.damaged, 1);
+    assert.equal(imported.droppedFindings, 1);
+    assert.equal(imported.unmapped, 0);
+    const [topic] = imported.batches.flatMap(entry => entry.topics);
+    assert.deepEqual(topic.members, batch.topics[0].members);
+    assert.equal(topic.sourceFindings, undefined, 'source findings are never re-homed onto a non-review topic');
+  }
+});
+
+// The untouched topic of the same archive keeps its provenance.
+test('a broken origin on one review topic leaves the other topics of the archive intact', async () => {
+  const batch = await reviewArchive();
+  const imported = await withOrigin(batch, BROKEN_ORIGINS[0]);
+  assert.equal(imported.damaged, 1);
+  const topics = imported.batches.flatMap(entry => entry.topics);
+  assert.equal(topics.find(topic => topic.guid === batch.topics[0].guid)?.sourceFindings, undefined);
+  assert.deepEqual(topics.find(topic => topic.guid === batch.topics[1].guid)?.sourceFindings, batch.topics[1].sourceFindings);
 });
 
 test('an archive that maps one reviewed finding to two topics is refused with that exact reason', async () => {

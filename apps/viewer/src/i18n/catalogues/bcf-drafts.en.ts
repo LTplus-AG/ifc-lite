@@ -80,6 +80,7 @@ export const bcfDraftsEn = {
   'bcfDrafts.archive.export': 'Export .bcfzip',
   'bcfDrafts.archive.imported': { one: 'Imported {count} draft batch', other: 'Imported {count} draft batches' },
   'bcfDrafts.archive.unmapped': { one: '{count} topic had no readable clash mapping and was imported without findings.', other: '{count} topics had no readable clash mapping and were imported without findings.' },
+  'bcfDrafts.archive.droppedFindings': { one: '{count} reviewed topic lost its link to its review card; its clash findings were imported, its other reviewed findings were not.', other: '{count} reviewed topics lost their link to their review cards; their clash findings were imported, their other reviewed findings were not.' },
   'bcfDrafts.archive.failed': 'The archive could not be imported.',
   'bcfDrafts.archive.refused.topic': 'Nothing was imported: the archive contains the same topic twice.',
   'bcfDrafts.archive.refused.member': 'Nothing was imported: the archive links one clash to more than one topic.',

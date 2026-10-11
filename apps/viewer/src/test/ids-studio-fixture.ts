@@ -11,7 +11,6 @@
 import { commit, createStudioDocument, createStudioState, type StudioDocument, type StudioState, type Uuid } from '@ifc-lite/ids-authoring';
 import { loadStudioContexts, type StudioContexts } from '@/lib/ids-studio/context';
 import { addFacetOps, addSpecOps } from '@/lib/ids-studio/ops';
-import { loadIdsStudioRuntime } from '@/lib/ids-studio/runtime-loader';
 
 export interface WallFixture {
   contexts: StudioContexts;
@@ -22,9 +21,7 @@ export interface WallFixture {
   propertyId: Uuid;
 }
 
-/** Also installs the Studio authoring runtime, as the lazy panel does before it mounts. */
 export async function wallFixture(): Promise<WallFixture> {
-  await loadIdsStudioRuntime();
   const contexts = await loadStudioContexts();
   const spec = addSpecOps({ name: 'Walls – fire rating', ifcVersions: ['IFC4'] });
   const entity = addFacetOps(spec.specId, 'applicability', { type: 'entity', name: { kind: 'equals', value: 'IfcWall' } });

@@ -90,7 +90,7 @@ const RUNTIME_LOADING_ISSUE: GateIssue = {
 };
 
 /** Thrown by an action that cannot refuse with data, when called before the runtime is installed. */
-export const IDS_STUDIO_RUNTIME_NOT_LOADED = 'IDS Studio authoring runtime is not loaded; await loadIdsStudioRuntime() first.';
+const IDS_STUDIO_RUNTIME_NOT_LOADED = 'IDS Studio authoring runtime is not loaded; await loadIdsStudioRuntime() first.';
 
 /** Keep the selection only while its node still exists (undo may remove it). */
 function liveSelection(runtime: IdsStudioRuntime, doc: StudioDocument, id: Uuid | null): Uuid | null {

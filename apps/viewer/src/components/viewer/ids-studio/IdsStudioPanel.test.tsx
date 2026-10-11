@@ -18,7 +18,6 @@ import assert from 'node:assert/strict';
 import { blur, cleanup, click, press, render, type, waitFor } from '@/test/render.js';
 import { useViewerStore } from '@/store';
 import { loadStudioContexts } from '@/lib/ids-studio/context';
-import { loadIdsStudioRuntime } from '@/lib/ids-studio/runtime-loader';
 import { exportIds } from '@/lib/ids-studio/export';
 import { wallFixture } from '@/test/ids-studio-fixture';
 import { IdsStudioPanel } from './IdsStudioPanel';
@@ -34,8 +33,6 @@ const labelled = (root: HTMLElement, label: string) => {
 };
 
 beforeEach(async () => {
-  // The lazy panel chunk awaits this before mounting (renderPanelBody).
-  await loadIdsStudioRuntime();
   useViewerStore.getState().idsStudioClose();
   useViewerStore.getState().idsStudioSetContexts(await loadStudioContexts());
 });

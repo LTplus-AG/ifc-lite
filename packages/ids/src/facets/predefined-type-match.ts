@@ -21,9 +21,12 @@
  *     `USERDEFINED`, `NOTDEFINED`, …).
  *  2. Only when that raw token is `USERDEFINED`, fall back to the
  *     user-defined name (`ObjectType`/`ElementType`/`ProcessType`).
- *  3. When no raw token is reported at all (legacy accessors that do not
- *     implement `getPredefinedTypeRaw`), compare against the
- *     user-defined name directly.
+ *  3. When no raw token is reported because the accessor cannot look one
+ *     up (legacy accessors that do not implement `getPredefinedTypeRaw`),
+ *     compare against the user-defined name directly. An accessor that
+ *     CAN look it up and finds none (an unset `PredefinedType`, on the
+ *     element and its type) reports `absent`: the ObjectType does not
+ *     stand in for a PredefinedType that is not USERDEFINED (#7394).
  *
  * Both comparisons are CASE-SENSITIVE: enum tokens are uppercase by the
  * IFC schema and the IDS literal must match them exactly, and the corpus
@@ -65,9 +68,11 @@ export type PredefinedTypeMatch =
 export function matchPredefinedType(
   constraint: IDSConstraint,
   rawType: string | undefined,
-  userDefinedType: string | undefined
+  userDefinedType: string | undefined,
+  /** Whether `rawType` was looked up (the accessor implements `getPredefinedTypeRaw`). */
+  rawTypeKnown: boolean
 ): PredefinedTypeMatch {
-  if (!rawType && !userDefinedType) return { kind: 'absent' };
+  if (!rawType && (rawTypeKnown || !userDefinedType)) return { kind: 'absent' };
 
   if (rawType && matchConstraint(constraint, rawType)) {
     return { kind: 'match' };

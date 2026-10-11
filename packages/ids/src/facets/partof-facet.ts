@@ -78,8 +78,10 @@ export function checkPartOfFacet(
   // entity, wrong predefinedType, say) is reported instead of the
   // generic "no match" form.
   let bestFailure: FacetCheckResult | undefined;
+  // Ancestors carry the raw predefined type only when the accessor can look it up (#7394).
+  const rawTypeKnown = typeof accessor.getPredefinedTypeRaw === 'function';
   for (const parent of ancestors) {
-    const result = checkAncestorAgainstFacet(facet, parent);
+    const result = checkAncestorAgainstFacet(facet, parent, rawTypeKnown);
     if (result.passed) return result;
     if (
       !bestFailure ||
@@ -94,7 +96,8 @@ export function checkPartOfFacet(
 
 function checkAncestorAgainstFacet(
   facet: IDSPartOfFacet,
-  parent: ParentInfo
+  parent: ParentInfo,
+  rawTypeKnown: boolean
 ): FacetCheckResult {
 
   // If no entity constraint, just check if relationship exists
@@ -139,7 +142,8 @@ function checkAncestorAgainstFacet(
     const outcome = matchPredefinedType(
       facet.entity.predefinedType,
       parent.predefinedType,
-      parent.objectType
+      parent.objectType,
+      rawTypeKnown
     );
 
     if (outcome.kind === 'absent') {

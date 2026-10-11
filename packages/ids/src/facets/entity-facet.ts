@@ -139,7 +139,8 @@ export function checkEntityFacet(
     const outcome = matchPredefinedType(
       facet.predefinedType,
       accessor.getPredefinedTypeRaw?.(expressId),
-      accessor.getObjectType(expressId)
+      accessor.getObjectType(expressId),
+      typeof accessor.getPredefinedTypeRaw === 'function'
     );
 
     if (outcome.kind === 'absent') {
@@ -219,7 +220,8 @@ export function entityFacetPasses(
       matchPredefinedType(
         facet.predefinedType,
         accessor.getPredefinedTypeRaw?.(expressId),
-        accessor.getObjectType(expressId)
+        accessor.getObjectType(expressId),
+        typeof accessor.getPredefinedTypeRaw === 'function'
       ).kind === 'match'
     );
   }

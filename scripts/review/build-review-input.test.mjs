@@ -213,10 +213,10 @@ test('REVIEW_TOO_LARGE refuses rather than reviewing a prefix', () => {
   // A percentage claim ("~60% of the diff could be read") only holds for
   // evenly sized files; it is not true in general and was never measured for
   // this cap. The message now states what IS guaranteed instead: below the
-  // cap the largest-first fit keeps whatever fits, and the omitted list names
+  // cap the priority fit keeps whatever fits, and the omitted list names
   // the rest.
   assert.doesNotMatch(r.out, /%/, 'no percentage claim');
-  assert.match(r.out, /largest-first fit keeps/);
+  assert.match(r.out, /priority fit \(production, tests, docs\/config, then evidence\) keeps/);
   assert.match(r.out, /omitted list/);
 });
 

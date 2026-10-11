@@ -1,0 +1,29 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "declaration": false,
+    "declarationMap": false,
+    "allowImportingTsExtensions": true,
+    "types": [
+      "node",
+      "@webgpu/types"
+    ],
+    "typeRoots": [
+      "../../node_modules/@types",
+      "../../packages/renderer/node_modules"
+    ],
+    "paths": {
+      "@ifc-lite/renderer": [
+        "packages/renderer/dist/index.d.ts"
+      ]
+    }
+  },
+  "files": [
+    "./frame-gpu-chrome.ts",
+    "../../tests/benchmark/viewer-benchmark-page.ts",
+    "../../tests/benchmark/viewer-benchmark.spec.ts"
+  ],
+  "include": [],
+  "exclude": []
+}

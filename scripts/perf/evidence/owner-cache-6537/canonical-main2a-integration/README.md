@@ -1,0 +1,5 @@
+The normal integration at `aab441` consumes frozen main `2a687c` and preserves all 12 previously qualified ownership implementation and test files. All 104 root Turbo controls passed with zero skips. The real Bonsai primary and peer geometry hashes match `1d39b0af`; the WeakRef control collected discarded wrappers and released backing allocations.
+
+Plain root typecheck covered 3,760 test source files across 62 packages (viewer: 2,087). These are typechecked files, not executed test counts. The fresh offline dependency install and all nine gates passed. The 22 runtime probe rows cover 11 paired process identities, including the GC child, and are recorded separately from prebuild runtime reuse and later Turbo restoration.
+
+This evidence covers explicitly registered copies and weak CPU buffer ownership. Automatic Scene alias registration, operating-system resident memory, native browser behavior, performance and full issue #6537 acceptance remain unqualified. Publication awaits independent archive verification and fresh current-head CI and raw review. The previous #6584 head and its failures remain historical.

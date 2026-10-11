@@ -218,7 +218,7 @@ describe('chart IFC field reader (#4833)', () => {
     edited.deleteQuantity(52, 'Qto_SlabBaseQuantities', 'NetArea');
     assert.equal(createElementFieldReader(store, edited).readResolved(52, netArea).status, 'missing');
     assert.equal(createElementFieldReader(store, edited).readResolved(52, { ...netArea, quantityName: 'Depth' }).value, 250.00000000009484, 'sibling quantities are untouched');
-    // A quantity edited without naming a unit keeps its explicit scale; a category read carries it too.
+    // #7210: a quantity edited without naming a unit keeps its explicit scale; a category read carries it too.
     const scaled = await parseSampleWith(`
 #60040=IFCSIUNIT(*,.LENGTHUNIT.,.CENTI.,.METRE.);
 #60041=IFCQUANTITYLENGTH('Girth',$,#60040,12.,$);
@@ -329,7 +329,7 @@ describe('chart IFC field reader (#4833)', () => {
     const size = reader.discover([52]).quantities.get('Qto_Probe')?.find(({ binding }) => binding.kind === 'quantity' && binding.quantityName === 'Size')?.binding;
     assert.equal(size?.valueKind, 'number', 'the overridden type length must not make the area categorical');
     assert.equal(size?.dataType, 'IFCAREAMEASURE');
-    // A type-derived quantity edited on the type object keeps the type's explicit centimetre scale.
+    // #7210: a type-derived quantity edited on the type object keeps the type's explicit centimetre scale.
     const view = new MutablePropertyView(store.properties, 'fixture');
     view.setQuantity(50, 'Qto_Probe', 'Extra', 8, QuantityType.Length);
     const extra = createElementFieldReader(store, view).readResolved(52, { kind: 'quantity', qsetName: 'Qto_Probe', quantityName: 'Extra', valueKind: 'number', dataType: 'IFCLENGTHMEASURE' });

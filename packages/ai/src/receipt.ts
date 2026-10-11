@@ -13,6 +13,22 @@ import type { OutputFormat } from './response-schema.js';
 
 export type RequestOutcomeKind = 'completed' | 'truncated' | 'cancelled' | 'timeout' | 'error';
 
+export interface RequestProvenance {
+  contractVersion: 'ifc-lite.ai.request.v1';
+  /** Explicitly declared by the producer, never inferred for a generic host. */
+  promptVersion?: string;
+  /** Actual grant handed to the transport, distinct from provider usage. */
+  grantedOutputTokens: number;
+  /** Effective parent timer duration (milliseconds). */
+  timeoutMs: number;
+  finishReason: 'stop' | 'length' | 'max_tokens' | 'end_turn' | 'stop_sequence' | 'tool_calls' | 'function_call' | 'content_filter' | 'refusal' | 'pause_turn' | 'unknown';
+  /** Finalized logical system/messages/schema; never a provider wire-byte claim. */
+  inputDigest?: { algorithm: 'sha256'; referent: 'logical-input.v1'; value: string };
+  inputDigestUnavailable?: 'non-json-input' | 'opaque-input' | 'digest-limit';
+  /** Exact completed output text, NOT a native output-artifact digest. */
+  outputTextDigest?: { algorithm: 'sha256'; referent: 'output-text.utf8.v1'; value: string };
+}
+
 interface ReceiptBase<Route extends string> {
   id: string;
   model: string;
@@ -22,6 +38,8 @@ interface ReceiptBase<Route extends string> {
   startedAt: number;
   finishedAt: number;
   outcome: RequestOutcomeKind;
+  /** Absent on legacy records and pre-dispatch cancellation outcomes. */
+  provenance?: RequestProvenance;
   /** Present for typed requests: the protocol sent, never a live-quality verdict. */
   outputFormat?: OutputFormat;
 }

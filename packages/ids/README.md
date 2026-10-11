@@ -45,7 +45,7 @@ for (const spec of report.specificationResults) {
 
 ## Multi-language reports
 
-Reports translate automatically. Supported languages: English (`en`), German (`de`), French (`fr`).
+Reports translate automatically. Supported languages: English (`en`), German (`de`), French (`fr`), Italian (`it`).
 
 ```typescript
 import { parseIDS, validateIDS, createTranslationService } from '@ifc-lite/ids';
@@ -102,6 +102,15 @@ for (const spec of idsSpec.specifications) {
 | `Pattern` | Regex match |
 | `Enumeration` | One-of-list |
 | `Bounds` | Numeric range (min/max, inclusive/exclusive) |
+
+## IDS 1.1 preview (unstable)
+
+IDS 1.1 is not released. Candidate features from the buildingSMART 1.1
+milestone (`uri` and `instructions` on applicability facets, facets nested in
+`partOf`, the #418 tolerance rule, identifier uniqueness) are available only
+with `preview: { ids11: true }` on `parseIDS`, `writeIdsXml`, `validateIDS`
+and `auditIDSDocument`. Without the flag the package is IDS 1.0 only. See
+[IDS 1.1 preview](https://ifclite.dev/docs/guide/ids/#ids-11-preview-unstable).
 
 ## API
 

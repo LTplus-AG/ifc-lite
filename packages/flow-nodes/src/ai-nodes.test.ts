@@ -13,24 +13,26 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { createRootBudget, runModelRequest, type RootBudget } from '@ifc-lite/ai';
+import { createRootBudget, runModelRequest, type RootBudget, type UsageReceipt } from '@ifc-lite/ai';
 import { nodeAvailability, NodeRegistry, runFlow, type FlowDocument, type NodeDef, type Table } from '@ifc-lite/flow';
 import { parseCapabilities } from '@ifc-lite/extensions';
 import { createFakeBim } from './__tests__/fake-backend.js';
 import { aiNodes, AI_FEATURE, type FlowAiCall, type FlowAiService } from './ai.js';
 import { BROWSER_FEATURES, headlessFeatures, type FlowHost } from './index.js';
 
-interface StandIn { service: FlowAiService; budget: RootBudget; calls: FlowAiCall[] }
+interface StandIn { service: FlowAiService; budget: RootBudget; calls: FlowAiCall[]; receipts: UsageReceipt[] }
 
 /** A model that answers from the data block it is sent; `answer` sees the parsed data lines. */
 function standIn(answer: (rows: Record<string, unknown>[], call: FlowAiCall) => unknown, limits = { maxRequests: 20, maxOutputTokens: 100_000 }, finish = 'stop'): StandIn {
   const budget = createRootBudget(limits);
   const calls: FlowAiCall[] = [];
+  const receipts: UsageReceipt[] = [];
   const service: FlowAiService = {
     model: 'stand-in',
     request: (call) => runModelRequest({
       model: 'stand-in', route: 'test', budget, routeCeiling: 4000, timeoutMs: 5000,
-      messages: [call.prompt], system: call.system, maxOutputTokens: call.maxOutputTokens, signal: call.signal,
+      prepareInput: () => JSON.stringify({ messages: [call.prompt], system: call.system, outputSchema: call.outputSchema }),
+      messages: [call.prompt], system: call.system, promptVersion: call.promptVersion, maxOutputTokens: call.maxOutputTokens, signal: call.signal,
       transport: async (t) => {
         calls.push(call);
         const rows = /<data>\n([\s\S]*)\n<\/data>/.exec(call.prompt)![1].split('\n').map((l) => JSON.parse(l) as Record<string, unknown>);
@@ -40,9 +42,9 @@ function standIn(answer: (rows: Record<string, unknown>[], call: FlowAiCall) => 
         t.onTokenUsage({ inputTokens: 10, outputTokens: 5 });
         t.onComplete(text);
       },
-    }),
+    }, { onReceipt: receipt => receipts.push(receipt) }),
   };
-  return { service, budget, calls };
+  return { service, budget, calls, receipts };
 }
 
 const tableNode: NodeDef<FlowHost> = {
@@ -87,6 +89,8 @@ describe('ai.classify', () => {
   it('labels every row with cited evidence and pauses the run for review', async () => {
     const model = standIn(classifyBy);
     const { result, table, coverage } = await classify({ columns: ['Type'] }, model);
+    // #7246 native node producer declarations reach actual shared-core receipts.
+    expect(model.receipts[0].provenance).toMatchObject({ promptVersion: 'flow.ai.classify.v1', finishReason: 'stop', grantedOutputTokens: 2000 });
     expect(result.review).toEqual(['ai']);
     expect(result.reports.find((r) => r.nodeId === 'ai')?.status).toBe('review');
     expect(table!.value.rows.map((r) => [r.key, r.label, r.evidence, r.outcome])).toEqual([
@@ -173,11 +177,14 @@ describe('ai.summarize', () => {
       [{ from: ['src', 't'], to: ['sum', 'table'] }],
     );
     const result = await runFlow(doc, { host: host(model.service), registry, features });
-    const sections = (result.outputs.get('sum')?.get('sections') as { value: Table }).value;
+    const sectionOutput = result.outputs.get('sum')?.get('sections') as { value: Table } | undefined;
+    if (!sectionOutput) throw new Error('Native summary must publish reviewed sections');
+    const sections = sectionOutput.value;
     expect(sections.rows).toEqual([
       { heading: 'Walls', text: 'Two walls.', citations: 'g0, g2', outcome: 'cited' },
       { heading: 'Rumour', text: 'Something unsupported.', citations: '', outcome: 'uncited' },
     ]);
+    expect(model.receipts[0].provenance).toMatchObject({ promptVersion: 'flow.ai.summarize.v1', finishReason: 'stop' });
     expect(result.review).toEqual(['sum']);
     // #7132: citations are bounded by the same captured native row keys.
     expect(model.calls[0].outputSchema).toMatchObject({ name: 'flow_summary', schema: {
@@ -211,6 +218,7 @@ describe('ai.extract', () => {
       { passage: 1, span: 'rated 90 minutes', element: 'W2', minutes: 90, outcome: 'unsupported' },
       { passage: 0, span: 'fire rating of 30 minutes', element: 'D1', minutes: 999, outcome: 'supported' },
     ]);
+    expect(model.receipts[0].provenance).toMatchObject({ promptVersion: 'flow.ai.extract.v1', finishReason: 'stop', grantedOutputTokens: 2000 });
     expect(out.coverage).toMatchObject({ passages: 2, sent: 2, records: 4, unsupported: 2 });
     // #7132: passage identity and nullable candidate types reach the host.
     expect(model.calls[0].outputSchema).toMatchObject({ name: 'flow_extraction', schema: {

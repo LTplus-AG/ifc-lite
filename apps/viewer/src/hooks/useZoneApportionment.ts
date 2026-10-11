@@ -41,6 +41,7 @@ import {
   type ZoneApportionmentEntry,
 } from '../lib/zones/index.js';
 import type { ZoneSet } from '../lib/zones/types.js';
+import { captureZoneResultInputs, recordZoneResultSource } from '@/lib/zones/result-source';
 
 /**
  * The kernel's proved volumes, and the elements whose stored volume federation
@@ -157,10 +158,12 @@ export function apportionOne(
  */
 export function computeZoneApportionmentNow(zoneSet: ZoneSet): ZoneApportionmentEntry {
   const proved = gatherProvedVolumes();
+  const ids = straddlerIdsFor(zoneSet.id);
+  const source = captureZoneResultInputs(zoneSet, ids);
   const byElement = new Map<number, ElementApportionment>();
   const refused = new Map<number, ApportionmentRefusal>();
   const t0 = performance.now();
-  for (const globalId of straddlerIdsFor(zoneSet.id)) {
+  for (const globalId of ids) {
     const { apportionment, refusal } = apportionOne(globalId, zoneSet, proved);
     if (apportionment) byElement.set(globalId, apportionment);
     else if (refusal) refused.set(globalId, refusal);
@@ -172,6 +175,7 @@ export function computeZoneApportionmentNow(zoneSet: ZoneSet): ZoneApportionment
     computedAt: Date.now(),
     elapsedMs: performance.now() - t0,
   };
+  recordZoneResultSource(entry, source, false);
   useViewerStore.getState().setZoneApportionment(zoneSet.id, entry);
   return entry;
 }
@@ -184,6 +188,7 @@ export function computeZoneApportionmentNow(zoneSet: ZoneSet): ZoneApportionment
  */
 export function computeZoneApportionmentForElement(zoneSet: ZoneSet, globalId: number): ApportionOneResult {
   const proved = gatherProvedVolumes();
+  const source = captureZoneResultInputs(zoneSet, [globalId]);
   const t0 = performance.now();
   const result = apportionOne(globalId, zoneSet, proved);
   const elapsedMs = performance.now() - t0;
@@ -198,13 +203,15 @@ export function computeZoneApportionmentForElement(zoneSet: ZoneSet, globalId: n
   if (result.apportionment) byElement.set(globalId, result.apportionment);
   else if (result.refusal) refused.set(globalId, result.refusal);
 
-  useViewerStore.getState().setZoneApportionment(zoneSet.id, {
+  const entry: ZoneApportionmentEntry = {
     revision,
     byElement,
     refused,
     computedAt: Date.now(),
     elapsedMs: (fresh ? previous.elapsedMs : 0) + elapsedMs,
-  });
+  };
+  recordZoneResultSource(entry, source, true, fresh ? previous : undefined);
+  useViewerStore.getState().setZoneApportionment(zoneSet.id, entry);
   return result;
 }
 

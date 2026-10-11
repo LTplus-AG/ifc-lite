@@ -90,7 +90,7 @@
     "collab:server": "pnpm turbo build --filter=@ifc-lite/collab-server && node packages/collab-server/dist/bin.js",
     "collab:demo": "pnpm turbo build --filter=@ifc-lite/collab --filter=@ifc-lite/collab-server && node scripts/collab-demo.mjs",
     "collab:demo:3d": "pnpm turbo build --filter=@ifc-lite/collab --filter=@ifc-lite/collab-server && node scripts/collab-demo-3d.mjs",
-    "typecheck": "turbo typecheck && node scripts/typecheck-tests.mjs --audit",
+    "typecheck": "turbo typecheck && node scripts/typecheck-tests.mjs --audit && tsc --project scripts/perf/tsconfig.frames.json",
     "check:test-typecheck": "node scripts/typecheck-tests.mjs --audit",
     "lint": "node scripts/check-changesets.mjs && node scripts/check-test-glob-coverage.mjs && node scripts/check-main-entry-guards.mjs && node scripts/check-unused-locals.mjs && node scripts/check-i18n-literals.mjs && node scripts/check-jsx-a11y.mjs && node scripts/check-type-scale.mjs && node scripts/check-lint-ran.mjs",
     "lint:baseline": "node scripts/check-unused-locals.mjs --update",
@@ -128,15 +128,15 @@
     "@changesets/changelog-github": "^1.0.1",
     "@changesets/cli": "^3.0.3",
     "@changesets/parse": "1.0.0",
-    "@playwright/test": "^1.63.0",
-    "@posthog/cli": "0.18.7",
-    "@types/node": "^26.6.2",
-    "@vercel/functions": "3.9.9",
+    "@playwright/test": "^1.64.0",
+    "@posthog/cli": "0.18.9",
+    "@types/node": "^26.6.4",
+    "@vercel/functions": "3.9.11",
     "gltf-validator": "2.0.0-dev.3.10",
-    "knip": "^6.38.0",
-    "oxlint": "^1.85.0",
+    "knip": "^6.40.0",
+    "oxlint": "^1.87.0",
     "tsx": "^4.23.15",
-    "turbo": "^2.11.4",
+    "turbo": "^2.11.7",
     "typescript": "^6.0.3",
     "yaml": "^2.9.1"
   },
@@ -145,7 +145,7 @@
     "pnpm": ">=10.0.0"
   },
   "dependencies": {
-    "@neondatabase/serverless": "^1.1.0"
+    "@neondatabase/serverless": "^1.2.0"
   },
   "pnpm": {
     "overrides": {
@@ -160,12 +160,8 @@
       "rollup": "^4.59.0",
       "esbuild": "^0.28.1",
       "vite": "^8.1.0",
-      "vitest": "^4.1.0",
-      "@vitest/expect": "^4.1.0",
-      "@vitest/runner": "^4.1.0",
-      "@vitest/snapshot": "^4.1.0",
-      "@vitest/spy": "^4.1.0",
-      "@vitest/utils": "^4.1.0",
+      "vitest": "^5.0.3",
+      "@vitest/spy": "^5.0.3",
       "picomatch@<3": "^2.3.2",
       "picomatch@>=4": "^4.0.4",
       "uuid@<11.1.1": "^11.1.1",

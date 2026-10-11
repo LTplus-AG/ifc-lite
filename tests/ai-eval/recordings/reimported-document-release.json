@@ -64,7 +64,7 @@
         "kind": "document",
         "documentId": "document-00000000-0000-4000-8000-000000000004",
         "name": "Recovered coordination cover",
-        "version": 12,
+        "version": 13,
         "page": {
           "size": "A4",
           "orientation": "portrait"

@@ -12,6 +12,7 @@ import type { TextBlock } from '../document/types';
 import { parseClashGroupPatch } from './clash-group-proposal';
 import { parseMarkdown, plainInline } from './markdown';
 import { rowFields } from './captured-rows';
+import { reportTextFor, type ReportText } from './report-text';
 
 type Text = (style: TextBlock['style'], value: string) => TextBlock;
 
@@ -29,15 +30,15 @@ function typedClashProposal(answer: string) {
 }
 
 /** Narrative blocks: typed clash proposals become one section per group; Markdown maps onto text styles. */
-export function narrativeBlocks(answer: string, text: Text): TextBlock[] {
+export function narrativeBlocks(answer: string, text: Text, t: ReportText = reportTextFor('en')): TextBlock[] {
   const proposal = typedClashProposal(answer);
   if (proposal) {
     return [
-      text('body', `Proposed grouping: ${proposal.groups.length} group${proposal.groups.length === 1 ? '' : 's'}. Groups are AI suggestions over captured rows and do not change native findings or review status.`),
+      text('body', t('grouping', { count: proposal.groups.length, plural: proposal.groups.length === 1 ? '' : t('groupPlural') })),
       ...proposal.groups.flatMap(group => [
         text('subheading', group.name),
         text('body', group.explanation),
-        text('small', `Findings (${group.citations.length}): ${group.citations.join(', ')}`),
+        text('small', `${t('findings')} (${group.citations.length}): ${group.citations.join(', ')}`),
       ]),
     ];
   }
@@ -55,27 +56,29 @@ export function narrativeBlocks(answer: string, text: Text): TextBlock[] {
   return blocks.length ? blocks : [text('body', answer)];
 }
 
-function clashLine(citation: string, data: Record<string, unknown>): string | null {
+function clashLine(citation: string, data: Record<string, unknown>, t: ReportText): string | null {
   const a = data.a, b = data.b;
   if (!record(a) || !record(b)) return null;
   const candidates = record(data.disciplineCandidates) ? data.disciplineCandidates : {};
-  const side = (codes: unknown) => Array.isArray(codes) && codes.length ? codes.join('/') : 'unknown';
-  const distance = typeof data.distance === 'number' ? `${Number(data.distance.toPrecision(3))} m${data.distanceKind ? ` (${String(data.distanceKind)})` : ''}` : 'distance n/a';
+  const side = (codes: unknown) => Array.isArray(codes) && codes.length ? codes.join('/') : t('unknown');
+  const distance = typeof data.distance === 'number' ? `${Number(data.distance.toPrecision(3))} m${data.distanceKind ? ` (${String(data.distanceKind)})` : ''}` : t('distanceUnavailable');
   return `${citation}  ${String(a.tag ?? '?')} vs ${String(b.tag ?? '?')} · ${String(data.status ?? '?')} · ${String(data.severity ?? '?')} · ${distance}`
-    + ` · disciplines ${side(candidates.a)} vs ${side(candidates.b)} · ${String(a.key ?? '?')} vs ${String(b.key ?? '?')}`;
+    + ` · ${t('disciplines')} ${side(candidates.a)} vs ${side(candidates.b)} · ${String(a.key ?? '?')} vs ${String(b.key ?? '?')}`;
 }
 
 /** Readable appendix: what was captured, from which models, and every included row on one line. */
-export function appendixBlocks(payload: Record<string, unknown>, rows: Array<{ citation: string; data: unknown }>, text: Text): TextBlock[] {
+export function appendixBlocks(payload: Record<string, unknown>, rows: Array<{ citation: string; data: unknown }>, text: Text, t: ReportText = reportTextFor('en')): TextBlock[] {
   const models = Array.isArray(payload.models) ? payload.models.filter(record) : [];
   const evidence = record(payload.evidence) ? payload.evidence : {};
   const summary = rowFields(evidence.summary).filter(([, value]) => value !== '—');
   return [
-    text('body', `Models at capture: ${models.length ? models.map(model => `${String(model.name)}${model.fingerprint ? ` (${String(model.fingerprint)})` : ''}`).join('; ') : 'not recorded'}.`
-      + `\nRows: ${String(payload.includedRows ?? rows.length)} of ${String(payload.totalRows ?? rows.length)} included${payload.sampled ? ' (sample)' : ''}${payload.projectionTruncated ? '; some values shortened' : ''}.`),
-    ...(summary.length ? [text('subheading', 'Native summary'), text('small', summary.map(([key, value]) => `${key}: ${value}`).join('\n'))] : []),
-    text('subheading', 'Captured rows'),
-    text('small', rows.map(({ citation, data }) => (record(data) && clashLine(citation, data))
+    text('body', t('modelsRows', { models: models.length
+      ? models.map(model => `${String(model.name)}${model.fingerprint ? ` (${String(model.fingerprint)})` : ''}`).join('; ') : t('notRecorded'),
+      included: String(payload.includedRows ?? rows.length), total: String(payload.totalRows ?? rows.length),
+      sample: payload.sampled ? t('sampleSuffix') : '', truncated: payload.projectionTruncated ? t('truncatedSuffix') : '' })),
+    ...(summary.length ? [text('subheading', t('nativeSummary')), text('small', summary.map(([key, value]) => `${key}: ${value}`).join('\n'))] : []),
+    text('subheading', t('capturedRows')),
+    text('small', rows.map(({ citation, data }) => (record(data) && clashLine(citation, data, t))
       || `${citation}  ${rowFields(data).map(([key, value]) => `${key}: ${value}`).join(' · ')}`).join('\n')),
   ];
 }

@@ -1,0 +1,12 @@
+{
+  "command": [
+    "node",
+    "--test",
+    "--test-concurrency=1",
+    "scripts/perf/worker-pool-lifecycle-invariants.test.mjs"
+  ],
+  "exitCode": 0,
+  "started": "2026-10-08T17:35:46.274560+00:00",
+  "ended": "2026-10-08T17:35:46.370068+00:00",
+  "logSHA256": "04105782861dafcae32a05ee26a3f3d31b55d8f4f5adbe48d77f69c1fe8107a5"
+}

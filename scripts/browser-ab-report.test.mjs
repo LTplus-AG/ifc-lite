@@ -20,7 +20,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -132,7 +132,7 @@ test('a real regression on one fixture and a crashed-on-one-side second fixture:
 });
 
 test('#3978 refuses legacy or contradictory readiness without rewriting the app total', () => {
-  for (const readiness of [undefined, 200]) {
+  for (const readiness of [undefined, 0, 200]) {
     const a = sample({ side: 'A', fixture: 'late-metadata', round: 1 });
     const b = sample({ side: 'B', fixture: 'late-metadata', round: 1 });
     a.totalWallClockMs = b.totalWallClockMs = 200;
@@ -192,4 +192,43 @@ test('#3978 an entirely unavailable optional metric is omitted without invalidat
   assert.equal(result.code, 0);
   assert.doesNotMatch(result.out, /spatial-ready|insufficient paired samples/);
   assert.match(result.out, /VERDICT: no metric moved/);
+});
+
+test('#6993 samples recorded ok but GPU-device-lost are excluded from the medians, never averaged', () => {
+  // Legacy rows (written before the harness turned GPU loss into a failure),
+  // recorded ok: B rounds 1-3 lost their device and re-uploaded (10x slower).
+  // Included, they ARE the B median (3 of 5); excluded, B's median is the
+  // clean rounds 4-5, equal to A's. So the median itself proves the exclusion.
+  const rows = [];
+  for (let round = 1; round <= 5; round++) rows.push(sample({ side: 'A', fixture: 'f', round }));
+  for (let round = 1; round <= 5; round++) {
+    const row = sample({ side: 'B', fixture: 'f', round });
+    if (round <= 3) {
+      for (const key of Object.keys(METRICS)) row[key] *= 10;
+      row.gpuHealth = { contaminated: true, reasons: ['GPU device lost ≥1x'] };
+    }
+    rows.push(row);
+  }
+  const jsonlPath = join(TMP, `runs-gpu-${++seq}.jsonl`);
+  const reportPath = join(TMP, `report-gpu-${seq}.json`);
+  writeFileSync(jsonlPath, rows.map((r) => JSON.stringify(r)).join('\n') + '\n');
+  const res = spawnSync(process.execPath, [SCRIPT, jsonlPath, '--base', 'A', '--branch', 'B', '--json', reportPath], { encoding: 'utf8' });
+  const out = `${res.stdout}${res.stderr}`;
+  assert.notEqual(res.status, 0, out);
+  assert.match(out, /3 of these lost their GPU device mid-sample/);
+  const report = JSON.parse(readFileSync(reportPath, 'utf8'));
+  assert.equal(report.deviceLossFailures, 3);
+  const stream = report.fixtures[0].metrics.find((m) => m.metric === 'stream-complete');
+  assert.equal(stream.branchMedianMs, METRICS.streamCompleteMs, 'a device-lost timing reached the branch median');
+  assert.doesNotMatch(out, /⛔/);
+});
+
+test('#6993 a GPU-lost row without recorded reasons still reports, rather than crashing the reporter', () => {
+  const rows = [];
+  for (let round = 1; round <= 5; round++) rows.push(sample({ side: 'A', fixture: 'f', round }), sample({ side: 'B', fixture: 'f', round }));
+  rows[1] = { ...rows[1], gpuHealth: { contaminated: true } };
+  const r = run(rows);
+  assert.notEqual(r.code, 0, r.out);
+  assert.match(r.out, /\[GPU device lost: no reason recorded\]/);
+  assert.doesNotMatch(r.out, /TypeError/);
 });

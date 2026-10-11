@@ -5,6 +5,7 @@
 import { MutablePropertyView } from '@ifc-lite/mutations';
 import { getInheritanceChainAcrossSchemas } from '@ifc-lite/parser';
 import {
+  getRawNamedAttributes,
   extractPropertiesOnDemand,
   extractQuantitiesOnDemand,
   extractTypeEntityOwnProperties,
@@ -28,6 +29,18 @@ export function resolveBaseAttributeValue(
 ): string | null {
   const entities = dataStore.entities;
   if (!entities) return null;
+  // IfcClassification / IfcClassificationReference are not IfcRoot records:
+  // their Name occupies different EXPRESS slots from the columnar root table.
+  // Use the canonical named source reader so native undo restores their actual
+  // base value and no-op effective changes disappear (#7131).
+  const type = entities.getTypeName(entityId).toUpperCase();
+  if (type === 'IFCCLASSIFICATION' || type === 'IFCCLASSIFICATIONREFERENCE') {
+    if (!dataStore.source?.length) return null;
+    const entity = dataStore.getEntity(entityId);
+    const raw = entity ? getRawNamedAttributes(entity, dataStore.schemaVersion === 'IFC5' ? undefined : dataStore.schemaVersion)
+      .find(attribute => attribute.name === attrName)?.raw : undefined;
+    return typeof raw === 'number' ? `#${raw}` : typeof raw === 'string' ? raw : null;
+  }
   switch (attrName) {
     case 'GlobalId':
       return entities.getGlobalId(entityId) || null;

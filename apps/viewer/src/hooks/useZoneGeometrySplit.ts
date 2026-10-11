@@ -35,6 +35,7 @@
  */
 
 import { useCallback } from 'react';
+import { recordZoneGeometryExport } from '@/lib/zones/export-activity';
 import * as IfcWasm from '@ifc-lite/wasm';
 import type { MeshData } from '@ifc-lite/geometry';
 import { useViewerStore } from '@/store';
@@ -198,7 +199,11 @@ export async function exportZoneGeometry(
   if (exportInFlight) return { ok: false, reason: 'busy' };
   exportInFlight = true;
   try {
-    return await runExport(zoneSet, zone, zoneIndex, { meshPieces, emit, batch, onProgress: deps.onProgress });
+    return await recordZoneGeometryExport(`${zoneSet.name} — ${zone.name}`, (progress) =>
+      runExport(zoneSet, zone, zoneIndex, { meshPieces, emit, batch, onProgress: (done, total) => {
+        progress(done, total);
+        deps.onProgress?.(done, total);
+      } }));
   } finally {
     // In a `finally` so a throw from the kernel, the GLB build or the download
     // does not leave the button dead for the rest of the session.

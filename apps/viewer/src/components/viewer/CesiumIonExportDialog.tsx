@@ -90,7 +90,8 @@ export function CesiumIonExportDialog({ trigger, upload = uploadToCesiumIon }: C
       });
       abort.signal.throwIfAborted();
       if (result.stats.warnings.length) {
-        return { success: false, message: t('ionUpload.exportWarnings', { count: result.stats.warnings.length }) };
+        return { success: false, message: t('ionUpload.exportWarnings', { count: result.stats.warnings.length }),
+          warnings: result.stats.warnings };
       }
       if (result.resources.exportResources().resources.size) {
         return { success: false, message: t('ionUpload.texturesUnsupported') };

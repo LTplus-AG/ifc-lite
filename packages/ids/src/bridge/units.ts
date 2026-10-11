@@ -7,7 +7,20 @@ import {
   extractProjectUnits,
   resolveOwningIfcProjectId,
   type IfcDataStore,
+  type ProjectUnits,
 } from '@ifc-lite/parser';
+
+import {
+  convertNumeric,
+  convertTypedMembers,
+  fromSi,
+  isIdentity,
+  lengthFamilyKind,
+  projectUnitConversion,
+  toSi,
+  unitConversion,
+  type SiConversion,
+} from './measure-conversion.js';
 
 /**
  * Per IDS spec, IDS literal values for IFC measure types are always in
@@ -15,14 +28,16 @@ import {
  * project's length unit is `MILLI`, a stored `1000` length means
  * `1.0 metre` and the IDS check `1` should match. This helper applies
  * the project's `lengthUnitScale` to numeric values for length
- * measures, and the analogous area/volume scale to area/volume measures.
+ * measures, the analogous area/volume scale to area/volume measures, and
+ * the declared project unit to every other dimensioned measure (angle,
+ * temperature, mass, time, force, power, ...; see measure-conversion.ts).
  *
- * Properties without a declared dataType (notably `IfcPropertyTableValue`,
- * where columns mix labels and measures) get a conservative double-up:
- * every numeric candidate is surfaced both raw and scaled, so an IDS
- * check using either unit space matches. That double-up only ever uses
- * the length scale — an untyped table has no dataType to key an
- * area/volume exponent off, so it is out of scope here as before.
+ * Properties without one shared dataType (an `IfcPropertyTableValue`, where
+ * columns mix labels and measures, or a list mixing types) convert each
+ * member by its own type when the parser reports it (`valueDataTypes`).
+ * Only a source that does not (the prebuilt property table of a
+ * server-parsed store) keeps the old conservative double-up: every numeric
+ * candidate is surfaced both raw and length-scaled.
  */
 
 /**
@@ -38,9 +53,31 @@ import {
 export interface MeasureScales {
   area?: number;
   volume?: number;
+  /** The project's declared units, for measures outside the length family. */
+  units?: ProjectUnits;
+  /** File-wide units, for a measure `units` leaves undeclared (a project without its own LENGTHUNIT). */
+  fallbackUnits?: ProjectUnits;
 }
 
 const projectUnitsCache = new WeakMap<object, ReturnType<typeof extractProjectUnits>>();
+
+/**
+ * The declared AREAUNIT/VOLUMEUNIT scale of `units`. One that is declared but
+ * cannot be resolved (`unitForMeasure` null) gives 1: the value stays
+ * unconverted, as `projectUnitConversion` does for other measures, rather
+ * than being derived from the length scale or taken from another project.
+ * `otherwise` answers a unit that is not declared at all.
+ */
+function declaredScale(
+  units: ProjectUnits,
+  unitType: 'AREAUNIT' | 'VOLUMEUNIT',
+  otherwise: number | undefined
+): number | undefined {
+  const resolved = units.resolvedForUnitType(unitType)?.siScale;
+  if (resolved !== undefined) return resolved;
+  const measure = unitType === 'AREAUNIT' ? 'IFCAREAMEASURE' : 'IFCVOLUMEMEASURE';
+  return units.unitForMeasure(measure) === null ? 1 : otherwise;
+}
 
 /**
  * Resolve the file-declared area/volume scale for `store`, reusing the
@@ -61,8 +98,9 @@ export function resolveMeasureScales(store: IfcDataStore): MeasureScales {
     projectUnitsCache.set(store, units);
   }
   return {
-    area: units.resolvedForUnitType('AREAUNIT')?.siScale,
-    volume: units.resolvedForUnitType('VOLUMEUNIT')?.siScale,
+    area: declaredScale(units, 'AREAUNIT', undefined),
+    volume: declaredScale(units, 'VOLUMEUNIT', undefined),
+    units,
   };
 }
 
@@ -141,7 +179,19 @@ export function resolveEntityMeasureScales(
       // area/volume scale, which IFC does not require to be related by that
       // exponent (see the module doc above). Take the file-wide answer for
       // all three together, matching the walk-failed fallback exactly.
-      scales = fallback();
+      // A measure outside the length family still takes the owner's own
+      // declared unit (a project may declare grams without a LENGTHUNIT);
+      // only one the owner leaves undeclared takes the file-wide unit.
+      // An owner's own AREAUNIT/VOLUMEUNIT still wins over the file-wide one,
+      // and one it declares but cannot resolve leaves the value unconverted.
+      const fileWide = fallback();
+      scales = {
+        ...fileWide,
+        area: declaredScale(units, 'AREAUNIT', fileWide.area),
+        volume: declaredScale(units, 'VOLUMEUNIT', fileWide.volume),
+        units,
+        fallbackUnits: fileWide.units,
+      };
       byProject.set(ownerId, scales);
       return scales;
     }
@@ -154,8 +204,9 @@ export function resolveEntityMeasureScales(
     // length-unit-resolvers-agreement.test.ts).
     scales = {
       length: extractLengthUnitScale(store.source, store.entityIndex, ownerId),
-      area: units.resolvedForUnitType('AREAUNIT')?.siScale,
-      volume: units.resolvedForUnitType('VOLUMEUNIT')?.siScale,
+      area: declaredScale(units, 'AREAUNIT', undefined),
+      volume: declaredScale(units, 'VOLUMEUNIT', undefined),
+      units,
     };
     byProject.set(ownerId, scales);
   }
@@ -163,36 +214,21 @@ export function resolveEntityMeasureScales(
 }
 
 /**
- * Which scalable IFC measure dimension `dataType` names, or `undefined`
- * for anything this module doesn't scale (labels, identifiers, booleans,
- * an untyped table column). The single classification both
- * `applyUnitConversion` and the raw/base-SI helpers below key off, so
- * "which measure types get scaled" can't drift between the base
- * projection and an overlay correction.
- */
-function measureKind(dataType: string | undefined): 'length' | 'area' | 'volume' | undefined {
-  const upper = dataType ? dataType.toUpperCase() : '';
-  if (upper === 'IFCLENGTHMEASURE' || upper === 'IFCPOSITIVELENGTHMEASURE') return 'length';
-  if (upper === 'IFCAREAMEASURE') return 'area';
-  if (upper === 'IFCVOLUMEMEASURE') return 'volume';
-  return undefined;
-}
-
-/**
- * The raw-to-base-SI multiplier for a scalar measure of `dataType`, given
- * the entity's resolved {@link EntityMeasureScales}. Area scales by the
+ * The raw-to-base-SI multiplier for a length-family measure of `dataType`,
+ * given the entity's resolved {@link EntityMeasureScales}. Area scales by the
  * SQUARE of the length factor and volume by the CUBE (a millimetre-authored
  * 1 m² is stored as 1e6 mm², not 1e3) — NOT the raw length scale — unless
  * the file declares an explicit AREAUNIT/VOLUMEUNIT, which takes
  * precedence (IFC does not require it to relate to LENGTHUNIT by that
  * exponent; see `resolveMeasureScales` above). `undefined` for a
- * non-measure `dataType` or when the entity has no resolved length scale.
+ * measure outside the length family or when the entity has no resolved
+ * length scale.
  */
-export function measureScaleFor(
+function lengthFamilyScale(
   dataType: string | undefined,
   scales: EntityMeasureScales
 ): number | undefined {
-  const kind = measureKind(dataType);
+  const kind = lengthFamilyKind(dataType);
   if (!kind) return undefined;
   if (kind === 'length') return scales.length;
   if (kind === 'area') {
@@ -202,13 +238,29 @@ export function measureScaleFor(
 }
 
 /**
+ * The raw-to-SI conversion for a value of `dataType` held in the project's
+ * units: the length family through {@link lengthFamilyScale}, every other
+ * dimensioned measure through its declared project unit. The single
+ * classification the base projection, an overlay correction and a
+ * correction write all key off, so "which measures convert, and how" can't
+ * drift between them.
+ */
+export function measureConversionFor(
+  dataType: string | undefined,
+  scales: EntityMeasureScales
+): SiConversion | undefined {
+  const scale = lengthFamilyScale(dataType, scales);
+  if (scale !== undefined) return scale ? { scale, offset: 0 } : undefined;
+  return projectUnitConversion(dataType, scales.units, scales.fallbackUnits);
+}
+
+/**
  * Convert a raw-frame scalar value — the frame every stored IFC property,
  * and every `MutablePropertyView` property mutation, is written in — into
  * the base-SI frame `applyUnitConversion`/`projectProperty` already put
  * every OTHER property of the same pset into. Only numeric measure values
  * move; strings, booleans and non-measure dataTypes pass through
- * unchanged, and a value that is already `1` scale (e.g. a metre project)
- * is returned as-is rather than re-boxed.
+ * unchanged, and a value already in SI is returned as-is.
  */
 export function toBaseSI(
   rawValue: string | number | boolean | null,
@@ -216,9 +268,8 @@ export function toBaseSI(
   scales: EntityMeasureScales
 ): string | number | boolean | null {
   if (typeof rawValue !== 'number') return rawValue;
-  const scale = measureScaleFor(dataType, scales);
-  if (!scale || scale === 1) return rawValue;
-  return rawValue * scale;
+  const c = measureConversionFor(dataType, scales);
+  return isIdentity(c) ? rawValue : toSi(rawValue, c!);
 }
 
 /**
@@ -232,72 +283,117 @@ export function toRaw(
   scales: EntityMeasureScales
 ): string | number | boolean | null {
   if (typeof baseSIValue !== 'number') return baseSIValue;
-  const scale = measureScaleFor(dataType, scales);
-  if (!scale || scale === 1) return baseSIValue;
-  return baseSIValue / scale;
+  const c = measureConversionFor(dataType, scales);
+  return isIdentity(c) ? baseSIValue : fromSi(baseSIValue, c!);
 }
 
+/**
+ * The conversion for a value whose property or quantity declares its OWN
+ * `Unit`. `siScale` is the parser's resolved SI factor of that unit
+ * (`unitSiScale` / `explicitUnitSiScale`) and `symbol` its display symbol;
+ * an unresolved factor, a non-measure dataType or a monetary value (not an
+ * SI quantity) gives `undefined`: the value stays as written.
+ */
+export function ownUnitConversionFor(
+  dataType: string | undefined,
+  siScale: number | undefined,
+  symbol: string | undefined
+): SiConversion | undefined {
+  const upper = dataType ? dataType.toUpperCase() : '';
+  if (!upper.endsWith('MEASURE') || upper === 'IFCMONETARYMEASURE') return undefined;
+  return unitConversion(upper, siScale, symbol);
+}
+
+/**
+ * A list's display value is its members joined by the parser; rebuild it from
+ * the converted members so it matches them.
+ */
+function listDisplayValue(
+  rawValue: string | number | boolean | null,
+  values: string[]
+): string | number | boolean | null {
+  return typeof rawValue === 'string' ? values.join(', ') : rawValue;
+}
+
+function convertAll(
+  rawValue: string | number | boolean | null,
+  rawValues: string[] | undefined,
+  c: SiConversion | undefined
+): { value: string | number | boolean | null; values: string[] | undefined } {
+  if (isIdentity(c)) return { value: rawValue, values: rawValues };
+  const values = Array.isArray(rawValues)
+    ? rawValues.map((m) => {
+        const cm = convertNumeric(m, c!);
+        return cm == null ? String(m) : String(cm);
+      })
+    : rawValues;
+  if (values && values.length > 1 && typeof rawValue === 'string') {
+    return { value: listDisplayValue(rawValue, values), values };
+  }
+  const v = typeof rawValue === 'boolean' || rawValue === null ? null : convertNumeric(rawValue, c!);
+  return { value: v == null ? rawValue : v, values };
+}
+
+/**
+ * Convert a value whose property or quantity declares its OWN `Unit` into
+ * SI. IFC uses that `Unit` precisely to let one value depart from the
+ * project's unit assignment, so the project factor must not be applied to
+ * it (#7395). A unit that is present but could not be read leaves the value
+ * raw rather than silently rescaled by the project factor.
+ */
+export function applyOwnUnitConversion(
+  rawValue: string | number | boolean | null,
+  rawValues: string[] | undefined,
+  dataType: string | undefined,
+  siScale: number | undefined,
+  symbol?: string,
+  valueDataTypes?: ReadonlyArray<string | undefined>
+): { value: string | number | boolean | null; values: string[] | undefined } {
+  // A mixed list has no shared dataType; convert each member by its own type.
+  if (!dataType && Array.isArray(rawValues) && rawValues.length > 0 && valueDataTypes?.length === rawValues.length) {
+    const values = convertTypedMembers(rawValues, valueDataTypes, (t) => ownUnitConversionFor(t, siScale, symbol));
+    return { value: listDisplayValue(rawValue, values), values };
+  }
+  return convertAll(rawValue, rawValues, ownUnitConversionFor(dataType, siScale, symbol));
+}
+
+/**
+ * Convert a value held in the project's units into SI. A multi-valued
+ * property without a shared `dataType` converts each member by its own
+ * type (`valueDataTypes`, index-aligned with `rawValues`); without those
+ * types, see the module doc's legacy double-up.
+ */
 export function applyUnitConversion(
   rawValue: string | number | boolean | null,
   rawValues: string[] | undefined,
   dataType: string | undefined,
   scale: number | undefined,
-  measureScales?: MeasureScales
+  measureScales?: MeasureScales,
+  valueDataTypes?: ReadonlyArray<string | undefined>
 ): { value: string | number | boolean | null; values: string[] | undefined } {
-  const kind = measureKind(dataType);
-  const isUntypedTable =
-    !dataType && Array.isArray(rawValues) && rawValues.length > 0;
+  const scales: EntityMeasureScales = { length: scale, ...measureScales };
+  const isUntypedMulti = !dataType && Array.isArray(rawValues) && rawValues.length > 0;
 
-  if (!kind && !isUntypedTable) {
+  if (!isUntypedMulti) {
+    return convertAll(rawValue, rawValues, measureConversionFor(dataType, scales));
+  }
+
+  if (valueDataTypes && valueDataTypes.length === rawValues!.length) {
+    const values = convertTypedMembers(rawValues!, valueDataTypes, (t) => measureConversionFor(t, scales));
+    return { value: listDisplayValue(rawValue, values), values };
+  }
+
+  if (!scale || scale === 1) {
     return { value: rawValue, values: rawValues };
   }
-
-  if (isUntypedTable) {
-    if (!scale || scale === 1) {
-      return { value: rawValue, values: rawValues };
-    }
-    const convertNum = (v: unknown): number | null => {
-      const n = typeof v === 'number' ? v : parseFloat(String(v));
-      return Number.isFinite(n) ? n * scale : null;
-    };
-    // Untyped table — keep raw values and append scaled copies for every
-    // numeric candidate so either unit space matches.
-    const expanded: string[] = [];
-    for (const v of rawValues!) {
-      expanded.push(String(v));
-      const c = convertNum(v);
-      if (c != null && String(c) !== String(v)) expanded.push(String(c));
-    }
-    return { value: rawValue, values: expanded };
+  // Untyped members of unknown type — keep raw values and append
+  // length-scaled copies for every numeric candidate so either unit space
+  // matches.
+  const expanded: string[] = [];
+  for (const v of rawValues!) {
+    expanded.push(String(v));
+    const c = convertNumeric(v, { scale, offset: 0 });
+    if (c != null && String(c) !== String(v)) expanded.push(String(c));
   }
-
-  // Dimension handling (length vs. area-squared vs. volume-cubed) lives in
-  // `measureScaleFor` — see its doc for why area/volume don't just reuse
-  // the raw length scale.
-  const effectiveScale = measureScaleFor(dataType, {
-    length: scale,
-    area: measureScales?.area,
-    volume: measureScales?.volume,
-  });
-
-  if (!effectiveScale || effectiveScale === 1) {
-    return { value: rawValue, values: rawValues };
-  }
-
-  const convertNum = (v: unknown): number | null => {
-    const n = typeof v === 'number' ? v : parseFloat(String(v));
-    return Number.isFinite(n) ? n * effectiveScale : null;
-  };
-
-  const converted = (() => {
-    const c = convertNum(rawValue);
-    return c == null ? rawValue : c;
-  })();
-  const values = Array.isArray(rawValues)
-    ? rawValues.map((v) => {
-        const c = convertNum(v);
-        return c == null ? String(v) : String(c);
-      })
-    : rawValues;
-  return { value: converted, values };
+  return { value: rawValue, values: expanded };
 }

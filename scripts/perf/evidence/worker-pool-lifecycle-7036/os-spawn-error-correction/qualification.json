@@ -1,0 +1,245 @@
+{
+  "headBeforeCorrection": "5afc47a278263065eaf7e632cc84fa70028a05ba",
+  "sourcePins": [
+    {
+      "path": "scripts/perf/frame-gpu-chrome.ts",
+      "beforeSha256": "180ecf61b61db8f96e273ee19b6b515dd66adafacfdd409214bb90281ae57a8f",
+      "afterSha256": "2b5bbc127146233bbe26e86d5d14656c8a0720274db0aa6ba5769fec784aa160"
+    },
+    {
+      "path": "scripts/perf/frame-gpu-chrome-lifecycle.test.mjs",
+      "beforeSha256": "a04582c9c1f9d56bfb75b79d64da0b0c9df82ae6985ad2207dc1f6e191f97034",
+      "afterSha256": "0c621eeccc06e65ec629d60fb465d047b50cec9fcac62afc89fd314a16f1c9a7"
+    }
+  ],
+  "scope": "Actual OS spawn failure without successful spawn event or PID removes only the allocated profile; possible/live child ownership keeps canonical cleanup/refusal. No Windows Chrome/native GPU/performance acceptance.",
+  "finalResults": {
+    "lifecycleControls": {
+      "pass": 9,
+      "fail": 0,
+      "skip": 0,
+      "session": 4452,
+      "source": {
+        "launcher": "2b5bbc127146233bbe26e86d5d14656c8a0720274db0aa6ba5769fec784aa160",
+        "test": "0c621eeccc06e65ec629d60fb465d047b50cec9fcac62afc89fd314a16f1c9a7"
+      }
+    },
+    "sourceGates": {
+      "count": 6,
+      "allExitCode": 0,
+      "session": 82381,
+      "touchedOxlintWarnings": 0
+    }
+  },
+  "precedingQualifiedPhases": {
+    "initialFocused": {
+      "session": 35166,
+      "pass": 9,
+      "fail": 0,
+      "skip": 0,
+      "sourceTest": "5a0add48caf671be7e9ae72cb10545b1dea55064c31ace9cf6fc0db70134160e",
+      "receipt": "before-local-rename-focused-green-terminal.json.gz",
+      "rawLimitation": "First focused raw filename was reused by later phase; no immutable full original raw is claimed. Separate pre-rename restored9 raw remains retained."
+    },
+    "inverseAndRestored": {
+      "session": 85787,
+      "inverse": {
+        "pass": 0,
+        "fail": 2,
+        "onlyCases": "Actual ENOENT/EACCES cleanup contract; original primary-error regexp assertion",
+        "verification": "inverse-assertion-verification.json.gz",
+        "raw": "cleanup-only-inverse.log.gz"
+      },
+      "restored": {
+        "pass": 9,
+        "fail": 0,
+        "skip": 0,
+        "raw": "restored-green.log.gz"
+      },
+      "sourceTest": "5a0add48caf671be7e9ae72cb10545b1dea55064c31ace9cf6fc0db70134160e",
+      "launcherRestoredExactly": true
+    },
+    "rootTypecheck": {
+      "session": 18970,
+      "exitCode": 0,
+      "auditedTestFiles": 3739,
+      "auditedPackages": 62,
+      "command": "pnpm typecheck",
+      "actualRootScript": "turbo typecheck && node scripts/typecheck-tests.mjs --audit && tsc --project scripts/perf/tsconfig.frames.json",
+      "scope": "Production launcher2b5bbc12 and TS programme unchanged afterward; later edits are private .mjs scalar assertion and CPU fixture publication only, so root check not repeated. Turbo package cache replay distinct from actual audit/script programme."
+    }
+  },
+  "preservedFailures": [
+    {
+      "session": 33299,
+      "kind": "Gate falsepositive, runtime error receipt regexp classified as source text",
+      "raw": "before-local-rename-source-text.log.gz"
+    },
+    {
+      "session": 24669,
+      "kind": "Variable rename hypothesis did not resolve falsepositive",
+      "raw": "local-rename-source-text.log.gz",
+      "precedingFocused9": "local-rename-focused-green.log.gz"
+    },
+    {
+      "session": 31120,
+      "kind": "Actual8pass1fail0skip: partial fixture allocations.jsonl causes Unexpected end of JSON input; both new OS controls pass. Original exact-owned child retired in finally (PID7819, livefalse).",
+      "raw": "scalar-assertion-journal-failure-focused-green.log.gz",
+      "repair": "One atomic journal publisher used by both allocations and identities, prior rows preserved, PID-unique exclusive temp, close before replace; owner.json atomic ack unchanged."
+    }
+  ],
+  "finalTestOnlyAssertion": "Actual primary OS error final-token equality; no source bytes as subject and no gate/allowlist changes.",
+  "reviewQuestion": {
+    "thread": "PRRT_kwDOQ3UF-86qeOfI",
+    "comment": 4221979170,
+    "assessment": "Genuine failed-spawn allocation cleanup issue; original receipt.error was already preserved, so claim that it hid primary error was overstated."
+  },
+  "runs": {
+    "source-text": {
+      "command": [
+        "node",
+        "scripts/check-source-text-assertions.mjs"
+      ],
+      "exitCode": 0,
+      "elapsedSeconds": 7.8357648849487305
+    },
+    "before-local-rename-source-text": {
+      "command": [
+        "node",
+        "scripts/check-source-text-assertions.mjs"
+      ],
+      "exitCode": 1,
+      "elapsedSeconds": 6.399434566497803
+    },
+    "mpl": {
+      "command": [
+        "node",
+        "scripts/add-license-headers.mjs",
+        "--check"
+      ],
+      "exitCode": 0,
+      "elapsedSeconds": 0.4358389377593994
+    },
+    "before-local-rename-focused-green": {
+      "command": [
+        "node",
+        "--import",
+        "tsx",
+        "--test",
+        "scripts/perf/frame-gpu-chrome-lifecycle.test.mjs"
+      ],
+      "exitCode": 0,
+      "elapsedSeconds": 44.09114408493042
+    },
+    "scalar-assertion-journal-failure-focused-green": {
+      "command": [
+        "node",
+        "--import",
+        "tsx",
+        "--test",
+        "scripts/perf/frame-gpu-chrome-lifecycle.test.mjs"
+      ],
+      "exitCode": 1,
+      "elapsedSeconds": 40.19912385940552
+    },
+    "full-root-typecheck": {
+      "command": [
+        "pnpm",
+        "typecheck"
+      ],
+      "exitCode": 0,
+      "elapsedSeconds": 6.078169107437134
+    },
+    "module-size": {
+      "command": [
+        "node",
+        "scripts/check-module-size.mjs"
+      ],
+      "exitCode": 0,
+      "elapsedSeconds": 2.042731761932373
+    },
+    "diff": {
+      "command": [
+        "git",
+        "diff",
+        "--check"
+      ],
+      "exitCode": 0,
+      "elapsedSeconds": 0.16558337211608887
+    },
+    "focused-green": {
+      "command": [
+        "node",
+        "--import",
+        "tsx",
+        "--test",
+        "scripts/perf/frame-gpu-chrome-lifecycle.test.mjs"
+      ],
+      "exitCode": 0,
+      "elapsedSeconds": 28.601153135299683
+    },
+    "touched-oxlint": {
+      "command": [
+        "pnpm",
+        "exec",
+        "oxlint",
+        "scripts/perf/frame-gpu-chrome.ts",
+        "scripts/perf/frame-gpu-chrome-lifecycle.test.mjs"
+      ],
+      "exitCode": 0,
+      "elapsedSeconds": 0.3469359874725342
+    },
+    "local-rename-source-text": {
+      "command": [
+        "node",
+        "scripts/check-source-text-assertions.mjs"
+      ],
+      "exitCode": 1,
+      "elapsedSeconds": 6.333274602890015
+    },
+    "local-rename-focused-green": {
+      "command": [
+        "node",
+        "--import",
+        "tsx",
+        "--test",
+        "scripts/perf/frame-gpu-chrome-lifecycle.test.mjs"
+      ],
+      "exitCode": 0,
+      "elapsedSeconds": 49.141109228134155
+    },
+    "cleanup-only-inverse": {
+      "command": [
+        "node",
+        "--import",
+        "tsx",
+        "--test",
+        "--test-name-pattern",
+        "actual (ENOENT|EACCES) spawn failure",
+        "scripts/perf/frame-gpu-chrome-lifecycle.test.mjs"
+      ],
+      "exitCode": 1,
+      "elapsedSeconds": 6.03960394859314
+    },
+    "test-wiring": {
+      "command": [
+        "node",
+        "scripts/check-test-wiring.mjs"
+      ],
+      "exitCode": 0,
+      "elapsedSeconds": 0.43990182876586914
+    },
+    "restored-green": {
+      "command": [
+        "node",
+        "--import",
+        "tsx",
+        "--test",
+        "scripts/perf/frame-gpu-chrome-lifecycle.test.mjs"
+      ],
+      "exitCode": 0,
+      "elapsedSeconds": 30.11012578010559
+    }
+  },
+  "archiveManifest": "archive-manifest.json"
+}

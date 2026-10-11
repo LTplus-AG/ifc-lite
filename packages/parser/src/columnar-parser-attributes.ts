@@ -14,6 +14,7 @@ import { decodeIfcString } from '@ifc-lite/encoding';
 import { isIndexableExpressId } from './express-id.js';
 import { opensComment, skipComment, skipTrivia } from './step-lexing.js';
 import { EntityExtractor } from './entity-extractor.js';
+import { getRootAttrIndices } from './columnar-parser-root-attributes.js';
 
 /** Does `ref`'s byte range contain a `/*` comment opener? Cheap linear scan,
  *  only run on a record `findQuotedAttrRange` already failed to read. */
@@ -243,7 +244,7 @@ export function readRefList(buffer: Uint8Array, pos: number, end: number): [numb
 }
 
 /**
- * Batch extract GlobalId (attr[0]) and Name (attr[2]) for many entities using
+ * Batch extract schema-declared GlobalId and Name for many entities using
  * only 2 TextDecoder.decode() calls total (one for all GlobalIds, one for all Names).
  *
  * This is ~100x faster than calling extractEntity() per entity for large batches
@@ -277,13 +278,19 @@ export async function batchExtractGlobalIdAndName(
             await yieldIfNeeded();
         }
         const ref = refs[i];
-        const gidRange = findQuotedAttrRange(buffer, ref.byteOffset, ref.byteLength, 0);
-        const nameRange = findQuotedAttrRange(buffer, ref.byteOffset, ref.byteLength, 2);
+        const schema = getRootAttrIndices(ref.type);
+        // Known roots keep the same 0/2 fast path. Known non-roots must not
+        // project Name as GlobalId; unknown vendor types retain the existing
+        // explicit IfcRoot-position policy used by on-demand extraction.
+        const gidIndex = schema.known ? schema.globalId : 0;
+        const nameIndex = schema.known ? schema.name : 2;
+        const gidRange = gidIndex < 0 ? null : findQuotedAttrRange(buffer, ref.byteOffset, ref.byteLength, gidIndex);
+        const nameRange = nameIndex < 0 ? null : findQuotedAttrRange(buffer, ref.byteOffset, ref.byteLength, nameIndex);
 
         gidRanges.push(gidRange ?? [0, 0]);
         nameRanges.push(nameRange ?? [0, 0]);
         nameFound.push(nameRange !== null);
-        commentSuspect.push((gidRange === null || nameRange === null) && hasCommentOpener(buffer, ref));
+        commentSuspect.push(((gidIndex >= 0 && gidRange === null) || (nameIndex >= 0 && nameRange === null)) && hasCommentOpener(buffer, ref));
         validIndices.push(i);
     }
 
@@ -359,9 +366,12 @@ export async function batchExtractGlobalIdAndName(
         if (!commentSuspect[i]) continue;
         const ref = refs[validIndices[i]];
         const attrs = (fallback ??= new EntityExtractor(buffer)).extractEntity(ref)?.attributes ?? [];
+        const schema = getRootAttrIndices(ref.type);
+        const globalId = attrs[schema.known ? schema.globalId : 0];
+        const name = attrs[schema.known ? schema.name : 2];
         result.set(ref.expressId, {
-            globalId: typeof attrs[0] === 'string' ? attrs[0] : '',
-            name: typeof attrs[2] === 'string' ? attrs[2] : undefined,
+            globalId: typeof globalId === 'string' ? globalId : '',
+            name: typeof name === 'string' ? name : undefined,
         });
     }
 

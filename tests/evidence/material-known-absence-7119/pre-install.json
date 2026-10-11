@@ -1,0 +1,14 @@
+{
+  "head": "f43d101f55d5312bc8ab3b0483899d18e19d3500",
+  "rustTree": "1a1acc4260011c591fd8ce3c5387bb7c10b42f20",
+  "memAvailable": "MemAvailable:   43085492 kB",
+  "sourcePins": {
+    "packages/parser/src/material-definitions.ts": "1a462d754a3d7117cfb19fed3b2a1feeef07f9a8ad9d863422cba23775d3d510",
+    "packages/parser/test/on-demand-classification-material.test.ts": "a885c95e49acf6ba58910e52cc972b3f6e86ec3116771f78d6ffef5574ea1a6d",
+    ".changeset/quiet-material-names.md": "8649798f31a12bcbcb8d334947235890d02acf6ec724c5a038d2ab7489f96e36",
+    "pnpm-lock.yaml": "3baf933ea880bd57d30dc2416184777af7488835c2a7eeff94ff84e6841eb4e4",
+    "package.json": "fc4f0d6bc46b343656db9a6249043449bfa71cb432e9f6dc76e8eb1776ae4190",
+    "packages/wasm/pkg/ifc-lite.d.ts": "54c9d0a52eb515e517d76726fefe5f6a63e553a81c1b10331a597965d14620f6"
+  },
+  "nodeModulesPresent": false
+}

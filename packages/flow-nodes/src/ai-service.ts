@@ -37,6 +37,8 @@ export interface FlowAiCall {
   readonly maxOutputTokens: number;
   readonly signal?: AbortSignal;
   readonly outputSchema?: JsonResponseSchema;
+  /** Declared by the native node prompt producer; generic hosts may omit it. */
+  readonly promptVersion?: string;
 }
 
 export interface FlowAiService {
@@ -68,8 +70,8 @@ const SYSTEM_RULES = [
   'A table row has a host-assigned key and selected source columns inside values; values.key is source data, never the row identifier.',
 ].join('\n');
 
-export async function requestJson(ctx: Ctx, service: FlowAiService, task: string, prompt: string, maxOutputTokens: number, outputSchema: JsonResponseSchema): Promise<JsonReply> {
-  const outcome = await service.request({ system: `${SYSTEM_RULES}\n\n${task}`, prompt, maxOutputTokens, signal: ctx.signal, outputSchema });
+export async function requestJson(ctx: Ctx, service: FlowAiService, task: string, prompt: string, maxOutputTokens: number, outputSchema: JsonResponseSchema, promptVersion: string): Promise<JsonReply> {
+  const outcome = await service.request({ system: `${SYSTEM_RULES}\n\n${task}`, prompt, maxOutputTokens, signal: ctx.signal, outputSchema, promptVersion });
   switch (outcome.kind) {
     case 'refused':
       if (outcome.reason === 'unsupported-schema') throw new Error(outcome.message);

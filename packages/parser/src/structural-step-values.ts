@@ -12,6 +12,7 @@
  * a file exercised both paths over one value.
  */
 
+import { getReference } from './attribute-helpers.js';
 import type { EntityExtractor } from './entity-extractor.js';
 import type { IfcDataStore } from './columnar-parser.js';
 import { getAttributeNames, normalizeIfcTypeName } from './ifc-schema.js';
@@ -55,7 +56,8 @@ export function asEnum(value: unknown): string | undefined {
 }
 
 export function asRef(value: unknown): number | undefined {
-  return typeof value === 'number' && Number.isInteger(value) && value > 0 ? value : undefined;
+  if (typeof value === 'string' && !/^#\d+$/.test(value.trim())) return undefined;
+  return getReference(typeof value === 'string' ? value.trim() : value);
 }
 
 export function asRefList(value: unknown): number[] {

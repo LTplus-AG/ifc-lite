@@ -1,0 +1,14 @@
+{
+  "packages/wasm/pkg/ifc-lite_bg.wasm": {
+    "sha256": "5606f31452779f749ed060b878ee77dbbf3dac7d8bf71b1f21a9a8865cf2ccd2",
+    "sizeBytes": 9970130
+  },
+  "packages/wasm/pkg/ifc-lite.js": {
+    "sha256": "0a281479eb65141ae75aeef987d331d44439741a0cae855f122e53e800311a39",
+    "sizeBytes": 304051
+  },
+  "packages/wasm/pkg/ifc-lite.d.ts": {
+    "sha256": "54c9d0a52eb515e517d76726fefe5f6a63e553a81c1b10331a597965d14620f6",
+    "sizeBytes": 164165
+  }
+}

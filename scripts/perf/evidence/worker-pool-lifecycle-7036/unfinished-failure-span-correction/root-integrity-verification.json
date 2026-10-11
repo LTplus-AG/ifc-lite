@@ -1,0 +1,9 @@
+{
+  "qualificationSHA": "c70b23e2b8234cae5c07e8feaa31047d2c44ec77c037ed253cae114ce908ce15",
+  "indexedFilesVerified": 19,
+  "rawGzipPairsVerified": 15,
+  "liveSourcePinsVerified": 30,
+  "terminalStagesVerified": 10,
+  "actualExecutedControls": 77,
+  "priorUnexplainedFixtureFailureRetained": true
+}

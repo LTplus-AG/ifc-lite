@@ -25,6 +25,8 @@ import { createDataAccessor } from '../bridge/data-accessor.js';
 import { parseIDS } from '../parser/xml-parser.js';
 import { validateIDS } from '../validation/validator.js';
 import { auditIDSDocument } from '../audit/index.js';
+import { checkPartOfFacet } from './partof-facet.js';
+import type { IFCDataAccessor, IDSPartOfFacet, ParentInfo, PartOfRelation } from '../types.js';
 
 const IFC = `ISO-10303-21;
 HEADER;
@@ -49,14 +51,19 @@ DATA;
 #21=IFCMEMBER('0000000000000000000021',$,'Mullion',$,$,$,$,$,.MULLION.);
 #22=IFCRELAGGREGATES('0000000000000000000022',$,$,$,#20,(#21));
 #23=IFCMEMBER('0000000000000000000023',$,'Loose',$,$,$,$,$,.MULLION.);
+#30=IFCWALL('0000000000000000000030',$,'Host',$,$,$,$,$,$);
+#31=IFCOPENINGELEMENT('0000000000000000000031',$,'Opening',$,$,$,$,$,$);
+#32=IFCWINDOW('0000000000000000000032',$,'Window',$,$,$,$,$,$,$,$,$,$);
+#33=IFCRELVOIDSELEMENT('0000000000000000000033',$,$,$,#30,#31);
+#34=IFCRELFILLSELEMENT('0000000000000000000034',$,$,$,#31,#32);
 #99=IFCRELCONTAINEDINSPATIALSTRUCTURE('0000000000000000000099',$,$,$,(#20),#9);
 ENDSEC;
 END-ISO-10303-21;
 `;
 
-function spec(name: string, partOf: string): string {
+function spec(name: string, partOf: string, applicability = 'IFCMEMBER'): string {
   return `<specification name="${name}" ifcVersion="IFC4">
-      <applicability minOccurs="0" maxOccurs="unbounded"><entity><name><simpleValue>IFCMEMBER</simpleValue></name></entity></applicability>
+      <applicability minOccurs="0" maxOccurs="unbounded"><entity><name><simpleValue>${applicability}</simpleValue></name></entity></applicability>
       <requirements>${partOf}</requirements>
     </specification>`;
 }
@@ -140,5 +147,37 @@ describe('partOf without a relation follows every part-of relation (#7401)', () 
   it('keeps checking an explicit relation against its own owner type', async () => {
     const report = await auditIDSDocument(ids(spec('contained', partOf('IFCCURTAINWALL', 'IFCRELCONTAINEDINSPATIALSTRUCTURE'))));
     expect(report.issues.map((i) => i.code)).toContain('E_IFC_PARTOF_ENTITY');
+  });
+
+  it('reaches the opening a window fills and the wall that opening voids', async () => {
+    const v = await verdicts(ids(
+      spec('opening', partOf('IFCOPENINGELEMENT'), 'IFCWINDOW'),
+      spec('wall', partOf('IFCWALL'), 'IFCWINDOW'),
+    ));
+    expect(v['opening']).toEqual({ Window: true });
+    expect(v['wall']).toEqual({ Window: true });
+  });
+
+  it('asks for the single fills and voids relations too, not only the merged opening path', () => {
+    // An accessor whose merged voids/fills walk reports only the host wall
+    // must still yield the opening through the direct fills link.
+    const opening: ParentInfo = { expressId: 31, entityType: 'IfcOpeningElement' };
+    const wall: ParentInfo = { expressId: 30, entityType: 'IfcWall' };
+    const edges: Partial<Record<PartOfRelation, Record<number, ParentInfo[]>>> = {
+      'IfcRelVoidsElement IfcRelFillsElement': { 32: [wall] },
+      IfcRelFillsElement: { 32: [opening] },
+      IfcRelVoidsElement: { 31: [wall] },
+    };
+    const accessor = {
+      getAncestors: (id: number, relation: PartOfRelation) => edges[relation]?.[id] ?? [],
+      getParent: (id: number, relation: PartOfRelation) => edges[relation]?.[id]?.[0],
+    } as unknown as IFCDataAccessor;
+    const facet: IDSPartOfFacet = {
+      type: 'partOf',
+      relation: 'IfcRelContainedInSpatialStructure',
+      anyRelation: true,
+      entity: { type: 'entity', name: { type: 'simpleValue', value: 'IFCOPENINGELEMENT' } },
+    };
+    expect(checkPartOfFacet(facet, 32, accessor).passed).toBe(true);
   });
 });

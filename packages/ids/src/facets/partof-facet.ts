@@ -31,12 +31,19 @@ const RELATION_NAMES: Record<PartOfRelation, string> = {
   'IfcRelVoidsElement IfcRelFillsElement': 'connected through an opening to',
 };
 
-/** Every part-of relation IDS 1.0 lets a `relation` attribute name. */
+/**
+ * The six part-of relations the IDS manual lists, plus the merged
+ * voids/fills token. The single fills and voids links are asked for
+ * directly so the opening a window fills is reached whatever an
+ * accessor's merged walk returns.
+ */
 const ALL_PARTOF_RELATIONS: readonly PartOfRelation[] = [
   'IfcRelAggregates',
   'IfcRelAssignsToGroup',
   'IfcRelContainedInSpatialStructure',
   'IfcRelNests',
+  'IfcRelVoidsElement',
+  'IfcRelFillsElement',
   'IfcRelVoidsElement IfcRelFillsElement',
 ];
 

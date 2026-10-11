@@ -90,6 +90,8 @@ const psets = extractPropertiesOnDemand(store, wallId);
 //   [{ name: 'Pset_WallCommon', properties: [{ name: 'FireRating', value: 'REI 60' }, ...] }]
 
 const qsets = extractQuantitiesOnDemand(store, wallId);
+// Pass a native mutation view to resolve current occurrence member Units and dependencies.
+// const currentQsets = extractQuantitiesOnDemand(store, wallId, mutationView);
 //   [{ name: 'Qto_WallBaseQuantities', quantities: [{ name: 'Length', value: 5.0 }, ...] }]
 
 const material = extractMaterialsOnDemand(store, wallId);

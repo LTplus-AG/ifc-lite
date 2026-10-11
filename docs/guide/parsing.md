@@ -201,7 +201,8 @@ for (const pset of psets) {
   }
 }
 
-// Extract quantities
+// Extract quantities; an optional third native mutation view resolves current member Units.
+// Unknown or deleted explicit Units retain raw magnitudes without an assumed SI basis.
 const qsets = extractQuantitiesOnDemand(store, wallId);
 for (const qset of qsets) {
   console.log(`Quantity Set: ${qset.name}`);

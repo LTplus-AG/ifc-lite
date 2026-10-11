@@ -15,7 +15,9 @@ import { SpatialHierarchyBuilder } from './spatial-hierarchy-builder.js';
 import { EntityExtractor } from './entity-extractor.js';
 import { resolveLengthUnit, type LengthUnitSource } from './unit-extractor.js';
 import { extractPsetsFromIds } from './on-demand-extractors.js'; import type { ExtractedProperty } from './property-value-parser.js';
-import { readQuantitySet, type CollectedQuantity } from './quantity-collect.js';
+import type { CollectedQuantity } from './quantity-collect.js';
+import { readOccurrenceQuantities } from './current-occurrence-quantities.js';
+import type { MetadataReadView } from './effective-metadata-record.js';
 import { prepareColumnarEntities, type ColumnarEntityInput } from './columnar-entity-preparation.js';
 import type { DropCensus } from './drop-census.js';
 import { yieldToEventLoop } from './yield-to-event-loop.js';
@@ -41,7 +43,7 @@ import { detectSchemaVersion, parseSourceHeader } from './source-header.js';
 import type { EntityByIdIndex } from './columnar-parser-indexes.js';
 
 import { contiguousSourceBytes, type IfcSourceBytes } from './source-bytes.js';
-import { getEntityRefFromStore, extractRootAttributesFromEntity, pickLongName } from './columnar-parser-root-attributes.js';
+import { extractRootAttributesFromEntity, pickLongName } from './columnar-parser-root-attributes.js';
 import { getAttributeNamesAcrossSchemas } from './ifc-schema.js';
 // Re-exported: part of the package's public on-demand-extraction surface
 // (see packages/parser/src/index.ts).
@@ -758,7 +760,8 @@ export class ColumnarParser {
      */
     extractQuantitiesOnDemand(
         store: IfcDataStore,
-        entityId: number
+        entityId: number,
+        view?: MetadataReadView
     ): Array<{ name: string; globalId?: string; quantities: CollectedQuantity[] }> {
         // Use on-demand extraction if map is available (preferred for single-entity access)
         if (!store.onDemandQuantityMap || !store.source?.length) {
@@ -771,18 +774,7 @@ export class ColumnarParser {
             return [];
         }
 
-        const extractor = new EntityExtractor(store.source);
-        const result: Array<{ name: string; globalId?: string; quantities: CollectedQuantity[] }> = [];
-
-        for (const qsetId of qsetIds) {
-            const qsetRef = getEntityRefFromStore(store, qsetId);
-            if (!qsetRef) continue;
-
-            const qset = readQuantitySet(store, extractor, qsetRef);
-            if (qset) result.push(qset);
-        }
-
-        return result;
+        return readOccurrenceQuantities(store, qsetIds, view);
     }
 }
 
@@ -801,10 +793,11 @@ export function extractPropertiesOnDemand(
 /** Standalone on-demand quantity extractor, usable outside the ColumnarParser class. */
 export function extractQuantitiesOnDemand(
     store: IfcDataStore,
-    entityId: number
+    entityId: number,
+    view?: MetadataReadView
 ): Array<{ name: string; globalId?: string; quantities: CollectedQuantity[] }> {
     const parser = new ColumnarParser();
-    return parser.extractQuantitiesOnDemand(store, entityId);
+    return parser.extractQuantitiesOnDemand(store, entityId, view);
 }
 
 // Re-export on-demand extraction functions from focused module

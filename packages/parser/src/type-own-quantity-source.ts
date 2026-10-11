@@ -168,9 +168,11 @@ function currentTypeOwnQuantities(store: IfcDataStore, typeId: number, view: Met
         }
         const members = refs(set.attributes[5], 4096 - references); references += members.length;
         const unitTypes = new Map<string, string>();
+        let onlyComplexMembers = true;
         for (const member of members) {
             const quantity = read(member);
             if (!quantity || !getInheritanceChain(quantity.type).includes('IfcPhysicalQuantity')) throw new Error('Current type physical quantity is unavailable');
+            if (quantity.type.toUpperCase() !== 'IFCPHYSICALCOMPLEXQUANTITY') onlyComplexMembers = false;
             if (getInheritanceChain(quantity.type).includes('IfcPhysicalSimpleQuantity')) {
                 const unit = quantity.attributes[2];
                 if (unit !== null && (typeof unit !== 'number' || !Number.isSafeInteger(unit) || unit <= 0)) throw new Error('Current type quantity unit reference is unreadable');
@@ -186,6 +188,15 @@ function currentTypeOwnQuantities(store: IfcDataStore, typeId: number, view: Met
             const explicitUnitType = unitTypes.get(quantity.name);
             return explicitUnitType ? { ...quantity, explicitUnitType } : quantity;
         }) });
+        else if (onlyComplexMembers) {
+            // Preserve the native definition identity for the first scalar edit.
+            // Opaque members have no numeric projection but are retained by the writer.
+            const name = set.attributes[2], globalId = set.attributes[0];
+            if (typeof name !== 'string' || !name || typeof globalId !== 'string' || !globalId) {
+                throw new Error('Current type complex-only quantity definition identity is unavailable');
+            }
+            result.push({ name, globalId, quantities: [] });
+        }
     }
     return result;
 }

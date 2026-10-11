@@ -147,7 +147,7 @@ export function generateTypeQuantityCopy(
     lines.push(copy); memberIds.push(newId);
   }
   for (const quantity of remaining.values()) {
-    const atom = generateQuantityAtom(ctx, quantity, pass.effective);
+    const atom = generateQuantityAtom(ctx, quantity, pass.effective, true);
     lines.push(atom.line); memberIds.push(atom.id);
   }
   if (memberIds.length === 0) throw new Error('An empty native type quantity copy cannot be emitted');

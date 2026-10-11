@@ -5,7 +5,7 @@ import '@/test/setup-dom.js';
 import assert from 'node:assert/strict';
 import { afterEach, test } from 'node:test';
 import { writeFile } from 'node:fs/promises';
-import { readCurrentTypeQuantities, extractTypeQuantitiesOnDemand, extractProjectUnits, quantitySiScale } from '@ifc-lite/parser';
+import { readCurrentTypeQuantities, extractTypeQuantitiesOnDemand, extractQuantitiesOnDemand, extractProjectUnits, quantitySiScale } from '@ifc-lite/parser';
 import { QuantityType } from '@ifc-lite/data';
 import { StoreEditor } from '@ifc-lite/mutations';
 import { generateIfcGuid } from '@ifc-lite/encoding';
@@ -251,4 +251,44 @@ test('#7355 sole native set missing GlobalId refuses live edit and export consis
   assert.match(read.reason ?? '', /identity is missing/);
   assert.throws(() => editedModelBytes(source, view), /identity is missing or ambiguous/);
   assert.equal(source.getEntity(f.a.volume)?.attributes[3], 10);
+});
+
+
+test('#7355 ordinary occurrence explicit m³ retains the surviving export contract', async t => {
+  const f = await inheritedSource(t); if (!f) return;
+  const units = extractProjectUnits(f.store.source, f.store.entityIndex);
+  assert.deepEqual(units.resolvedForUnitType('VOLUMEUNIT'), { symbol: 'm³', siScale: 1 });
+  f.view.setQuantity(f.f.id, 'Occurrence quantities', 'NetVolume', 35, QuantityType.Volume, 'm³');
+  const saved = await parse(editedModelBytes(f.store, f.view));
+  const quantity = extractQuantitiesOnDemand(saved, f.f.id).find(set => set.name === 'Occurrence quantities')
+    ?.quantities.find(q => q.name === 'NetVolume'); assert.ok(quantity);
+  assert.equal(quantity.value, 35);
+  assert.equal(quantity.value * quantitySiScale(quantity, extractProjectUnits(saved.source, saved.entityIndex)), 35,
+    'unchanged occurrence API preserves the requested project-m³ physical value');
+});
+
+test('#7355 first scalar edit retains native identity and opaque complex-only members', async t => {
+  const f = await inheritedSource(t); if (!f) return;
+  const editor = new StoreEditor(f.store, f.view);
+  const child = editor.addEntity('IfcQuantityVolume', ['Opaque child', 'Description', null, 12, 'Formula']).expressId;
+  const complex = editor.addEntity('IfcPhysicalComplexQuantity', ['Opaque complex', 'Description',
+    [`#${child}`], 'Grouping', 'Quality', 'Usage']).expressId;
+  f.view.setPositionalAttribute(f.a.qto, 5, [`#${complex}`]);
+  const source = await parse(editedModelBytes(f.store, f.view));
+  const model = useViewerStore.getState().models.get('arch'); assert.ok(model);
+  useViewerStore.setState({ models: new Map([['arch', { ...model, ifcDataStore: source }]]),
+    ifcDataStore: source, mutationViews: new Map(), storeEditors: new Map() });
+  const view = getOrCreateMutationView(useViewerStore, 'arch'); assert.ok(view);
+  view.setQuantity(f.a.type, 'Qto_WallBaseQuantities', 'NetVolume', 35, QuantityType.Volume);
+  const saved = await parse(editedModelBytes(source, view));
+  assert.equal(net(extractTypeQuantitiesOnDemand(saved, f.f.id)?.quantities ?? []), 35);
+  const owned = saved.getEntity(f.a.type)?.attributes[5]; assert.ok(Array.isArray(owned));
+  assert.ok(owned.some(id => {
+    if (typeof id !== 'number') return false;
+    const members = saved.getEntity(id)?.attributes[5];
+    return Array.isArray(members) && members.includes(complex);
+  }),
+    'the rewritten native type-owned definition still owns the opaque member');
+  assert.deepEqual(saved.getEntity(complex)?.attributes, source.getEntity(complex)?.attributes);
+  assert.deepEqual(saved.getEntity(child)?.attributes, source.getEntity(child)?.attributes);
 });

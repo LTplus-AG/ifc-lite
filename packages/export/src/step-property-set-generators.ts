@@ -124,13 +124,14 @@ export function generatePropertySetEntities(
 /** Canonical scalar quantity serialization shared by ordinary and type-owned writers. */
 export function generateQuantityAtom(
   ctx: PropertySetContext, q: Quantity, effective: EffectiveEntityIndex,
+  requireExplicitUnitReference = false,
 ): { id: number; line: string } {
   const ifcType = quantityTypeToIfcType(q.type);
-  // Explicit intent must never become an implicit project-unit value (#7355).
-  // The existing resolver supports Length only; other explicit kinds refuse.
+  // Type-owned writer admission must not silently reinterpret explicit intent (#7355).
+  // Ordinary occurrence serialization keeps its existing API contract.
   const unitId = q.unit !== undefined && ifcType === 'IFCQUANTITYLENGTH'
     ? findUnitId(ctx, q.unit, effective) : null;
-  if (q.unit !== undefined && unitId === null) {
+  if (requireExplicitUnitReference && q.unit !== undefined && unitId === null) {
     throw new Error(`Quantity ${q.name} explicit unit cannot resolve a native reference`);
   }
   const id = ctx.allocateExpressId();
@@ -163,7 +164,7 @@ export function generateQuantitySetEntities(
     const quantityIds: number[] = [];
 
     for (const q of qset.quantities) {
-      const atom = generateQuantityAtom(ctx, q, effective);
+      const atom = generateQuantityAtom(ctx, q, effective, typeOwned);
       lines.push(atom.line); quantityIds.push(atom.id); count++;
     }
 

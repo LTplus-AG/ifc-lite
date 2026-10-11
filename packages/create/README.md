@@ -93,4 +93,8 @@ The owner preserves group identity, reuses/removes exact membership edges,
 protects other incoming dependencies, retains member objects and shared other
 memberships, and publishes all records atomically. Specialized groups and
 specialized assignment relationships are refused by this generic lifecycle.
+Replacement also refuses typed `RelatedObjectsType` assignments and multiple
+assignments with distinct OwnerHistory, Name or Description; a single complete
+member list cannot express their separate semantics. Reads and safe deletion
+remain available, and refusal preserves the entire graph and allocator.
 Native hosts provide their history publisher; the viewer publishes one Undo.

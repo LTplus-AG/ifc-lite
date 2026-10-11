@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { structuralReviewEn } from './catalogues/structural-review.en';
+import { groupReviewEn } from './catalogues/group-review.en';
 
 import { zoneEmissionEn } from './catalogues/zone-emission.en';
 
@@ -157,6 +158,7 @@ export const en = {
   ...zoneEmissionEn,
   ...newIfcEn,
   ...structuralReviewEn,
+  ...groupReviewEn,
   ...semanticEn,
   ...semanticResultsEn,
   ...semanticIdentityEn,

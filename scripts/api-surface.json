@@ -6982,7 +6982,6 @@
     "verifyNodeIndex: function",
     "verifyRevisionLog: function",
     "writeIdsChecked: function",
-    "writeIdsz: function"
     "writeIdsz: function",
     "writeStudioDocument: function"
   ],

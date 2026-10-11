@@ -9,14 +9,14 @@
  * through a dedicated `objectType` field, so it cannot see a bug in how
  * the bridge POPULATES that value from the raw entity).
  *
- * `checkAttributeFacet`'s `getAttributeValue('objecttype', …)` reads
- * `accessor.getObjectType(expressId)`, which is `resolveObjectType` —
- * a helper built for the *PredefinedType* USERDEFINED-fallback lookup
+ * `checkAttributeFacet`'s `getAttributeValue('objecttype', …)` used to
+ * read `accessor.getObjectType(expressId)` — the entity facet's resolved
+ * predefined type, a helper built for the *PredefinedType* USERDEFINED-fallback lookup
  * (`matchPredefinedType`'s `userDefinedType` argument), documented in
  * `IFCDataAccessor.getObjectType` as "entity object type (predefined
  * type)". For an entity whose raw `PredefinedType` is a concrete,
  * non-`USERDEFINED`, non-`NOTDEFINED` enum token (e.g. `STANDARD`),
- * `resolveObjectType` returns that enum token immediately — it never
+ * that helper returns the enum token — it never
  * looks at the entity's actual `ObjectType` *attribute* at all. So an
  * IDS spec checking the real `ObjectType` attribute value on such an
  * entity is silently checked against the `PredefinedType` enum instead

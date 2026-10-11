@@ -257,7 +257,7 @@ jobs:
 
       - name: Setup Node.js
         if: steps.superseded.outputs.skip != 'true'
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           # Node 24 ships npm ≥ 11.5.1 out of the box, which is what npm
           # trusted publishing (OIDC handshake) needs. We tried staying on
@@ -743,7 +743,7 @@ jobs:
         uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
 
       - name: Setup Node.js
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 22
           registry-url: 'https://registry.npmjs.org'
@@ -776,7 +776,7 @@ jobs:
           persist-credentials: false
 
       - name: Setup Node.js
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           # Deliberately the same 22 as the npm verify job above, not the 24
           # the `release` job needs. 24 is there for npm ≥ 11.5.1's OIDC

@@ -14,13 +14,13 @@ import { nativeStructuralTransportEvidence } from '@/lib/actions/structural-grap
  *
  * The selection is read the way the Properties panel resolves it: a unified
  * storey selection, then the multi-model ref set, then the renderer id set,
- * then the primary element. Only the first `limit` elements are read; every
+ * then the primary element. Only the first `limit` detail rows are read; classification membership and every
  * total is over the whole selection.
  */
 
 import { nativeAuthoringEvidence } from '@/lib/actions/native-authoring-evidence';
 import { IfcQuery } from '@ifc-lite/query';
-import { extractClassificationsOnDemand, materialAssignmentsAvailable, ProjectUnits, type IfcDataStore } from '@ifc-lite/parser';
+import { extractClassificationsOnDemand, materialAssignmentsAvailable, ProjectUnits, type ClassificationInfo, type IfcDataStore } from '@ifc-lite/parser';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
 import { currentProjectUnitContext } from '@/lib/units/current-project-unit-context';
 import { useViewerStore, type ViewerState } from '@/store';
@@ -42,6 +42,7 @@ import { effectiveStructuralData } from '@/components/viewer/properties/effectiv
 import { effectiveDocuments } from '@/components/viewer/properties/effectiveDocuments';
 import { classificationEvidence } from './selection-classifications';
 import { selectedZoneVolumeBreakdowns, zoneQuantitySources, zoneQuantitySourceIdentity } from './zone-volume-bases';
+import { selectedClassificationPopulation } from './selection-classification-population';
 import { effectiveTypeProperties } from '@/components/viewer/properties/effectiveTypeProperties';
 import { effectiveSelectedClass } from '@/components/viewer/properties/effectiveSelectedClass';
 import { propertyDisplayValue } from '@/components/viewer/properties/propertyDisplayValue';
@@ -95,7 +96,7 @@ function selectionRefs(s: ViewerState): { channel: Channel; refs: EntityRef[] } 
 
 const isLegacy = (modelId: string) => modelId === 'legacy' || modelId === '__legacy__';
 
-interface ModelSource { store: IfcDataStore | null; view: MutablePropertyView | undefined; query: IfcQuery | null; units: ProjectUnits; unitsAvailable: boolean; name: string }
+interface ModelSource { store: IfcDataStore | null; view: MutablePropertyView | undefined; query: IfcQuery | null; units: ProjectUnits; unitsAvailable: boolean; name: string; classificationsUnavailable: boolean; classifications: (id: number) => ClassificationInfo[] }
 
 function sources(s: ViewerState) {
   const cache = new Map<string, ModelSource>();
@@ -106,12 +107,19 @@ function sources(s: ViewerState) {
     const store = (model?.ifcDataStore ?? (isLegacy(modelId) ? s.ifcDataStore : null)) as IfcDataStore | null;
     const view = s.mutationViews.get(isLegacy(modelId) ? '__legacy__' : modelId) ?? undefined;
     const currentUnits = currentProjectUnitContext(store, view);
+    const classes = new Map<number, ClassificationInfo[]>();
     const source = {
       store, view,
       query: store ? new IfcQuery(store) : null,
       units: currentUnits.value ?? ProjectUnits.empty(),
       unitsAvailable: currentUnits.status === 'available',
       name: model?.name ?? modelId,
+      classificationsUnavailable: classificationPopulationUnavailable(store, view),
+      classifications: (id: number): ClassificationInfo[] => {
+        let rows = classes.get(id);
+        if (!rows) { rows = store ? extractClassificationsOnDemand(store, id, view) : []; classes.set(id, rows); }
+        return rows;
+      },
     };
     cache.set(modelId, source);
     return source;
@@ -137,8 +145,8 @@ function elementRow(s: ViewerState, ref: EntityRef, source: ModelSource, rich: b
   const data = effectiveElementData(ref.expressId, source.query, source.view);
   const structuralData = source.store ? effectiveStructuralData(source.store, source.view) : null;
   const { rows: documents, membershipUnavailable: documentsUnavailable } = effectiveDocuments(source.store, ref.expressId, source.view);
-  const classifications = source.store ? extractClassificationsOnDemand(source.store, ref.expressId, source.view) : [];
-  const classificationsUnavailable = classificationPopulationUnavailable(source.store, source.view);
+  const classifications = source.classifications(ref.expressId);
+  const classificationsUnavailable = source.classificationsUnavailable;
   const materials = effectiveMaterials(source.store, ref.expressId, source.view);
   const materialAssignmentsVerified = Boolean(source.store && materialAssignmentsAvailable(source.store, ref.expressId, source.view));
   const materialPropertiesVerified = materialAssignmentsVerified && Boolean(source.store?.source?.length) && !materials.some(material => material.unresolved);
@@ -283,6 +291,7 @@ export const selectionAdapter: EvidenceAdapter = {
     return {
       summary: {
         kind: 'selection', channel, selectionSize: refs.length, modelCount: byModel.size,
+        classifications: selectedClassificationPopulation(refs, sourceFor),
         ...(!rich ? { nativeCostCapture: 'unavailable-selection-budget', nativeReplacementCapture: 'unavailable-selection-budget', nativeRoomAutoAllCapture: 'unavailable-selection-budget' } : {}),
         ...(sample.length !== 1 ? { nativeStructuralCapture: 'unavailable-selection-budget' } : {}),
         byModel: [...byModel].map(([modelId, count]) => ({ modelId, name: sourceFor(modelId).name, count })),

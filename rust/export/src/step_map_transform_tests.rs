@@ -154,7 +154,9 @@ fn issue_6587_unsupported_coordinate_consumers_and_bad_frames_refuse_atomically(
         source.replace("#24=IFCDIRECTION((0.,1.,0.))", "#24=IFCDIRECTION((0.6,0.,0.8))"),
         source.replace("'Body','SweptSolid'", "'Axis','SweptSolid'"),
         source.replace("#12=IFCCARTESIANPOINT((0.,0.,0.))", "#12=IFCCARTESIANPOINT((5.,0.,0.))"),
-        source.replace("#50=IFCWALL", "#50=IFCANNOTATION"),
+        // #7359 carries annotations and curve-only non-Body representations;
+        // a non-Body representation with surface items still refuses.
+        source.replace("#50=IFCWALL", "#50=IFCANNOTATION").replace("'Body','SweptSolid'", "'Annotation','SweptSolid'"),
         source.replace("#3=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.)", "#3=IFCSIUNIT(*,.LENGTHUNIT.,.MILLI.,.METRE.)"),
         source.replace("0.6,0.8,0.9996", "0.,0.,0.9996"),
         source.replace("0.6,0.8,0.9996", "0.6,0.8,-0.9996"),
@@ -210,11 +212,14 @@ fn issue_6587_type_maps_require_actual_body_reachability_not_orphan_items() {
     let extra = "#170=IFCSHAPEREPRESENTATION(#10,'Body','SweptSolid',(#42));\n#171=IFCREPRESENTATIONMAP(#11,#170);\n#172=IFCBUILDINGELEMENTPROXYTYPE('0M7tQ9Jbj1BAeHd7rqnDmS',$,'Type',$,$,$,(#171),$,$,.NOTDEFINED.);\n#174=IFCCARTESIANTRANSFORMATIONOPERATOR3D($,$,#12,1.,$);\n";
     let source = model(1., false).replace("ENDSEC;\nEND-ISO", &format!("{extra}ENDSEC;\nEND-ISO"));
     let orphan = source.replace("ENDSEC;\nEND-ISO", "#173=IFCMAPPEDITEM(#171,#174);\nENDSEC;\nEND-ISO");
+    // Superseded by the #7359 follow-up: geometry no product instantiates is
+    // wrapped at type level instead of refused, and an orphan item still
+    // does not count as instantiation (see `scaled_type_geometry`).
     for input in [&source, &orphan] {
         let plan = plan_map_conversion_normalization(input.as_bytes()).unwrap();
-        assert!(plan.warnings.iter().any(|warning| warning.contains("uninstantiated geometry")));
-        assert!(plan.replacements.is_empty());
-        assert!(plan.new_entities.is_empty());
+        assert!(plan.warnings.is_empty(), "{:?}", plan.warnings);
+        let map = plan.replacements.iter().find(|patch| patch.express_id == 171).expect("type map #171 is wrapped at type level");
+        assert!(!map.line.contains("#170)"), "{}", map.line);
     }
     let used = orphan.replace("'Body','SweptSolid',(#42));\n#45", "'Body','MappedRepresentation',(#173));\n#45");
     let plan = plan_map_conversion_normalization(used.as_bytes()).unwrap();
@@ -329,3 +334,11 @@ fn issue_6587_public_bridge_deck_uses_the_same_canonical_normalization() {
     assert!((xmin - 545779.8812945185).abs() < 0.001);
     assert!((xmax - 546005.6070590066).abs() < 0.001);
 }
+
+// #7359: declared here, not in the production module, so reverting the
+// production files keeps these tests compiling (revert oracle).
+#[path = "step_map_scaled_alignment_tests.rs"]
+mod scaled_alignment;
+
+#[path = "step_map_scaled_type_geometry_tests.rs"]
+mod scaled_type_geometry;

@@ -137,6 +137,14 @@ function declaredType(target: { set: string; name: string }, schema: SchemaMeasu
   return distinct.size === 1 ? types[0]! : 'version';
 }
 
+/** A standard property every targeted IFC version defines; IDS would audit any other as not in its property set. */
+function definedIn(target: { set: string; name: string }, schema: SchemaMeasures, versions: readonly IFCVersion[]): 'unknown' | 'version' | null {
+  if (!STANDARD_SET.test(target.set)) return null;
+  const declared = schema(target.set, target.name);
+  if (!declared.size) return 'unknown';
+  return versions.some(version => !declared.has(TABLE_OF[version])) ? 'version' : null;
+}
+
 /**
  * The type a numeric value stated in `unit` is checked as: a standard
  * property or quantity is checked as the type the schema declares for it,
@@ -207,6 +215,9 @@ export function classifyRequirement(requirement: ExtractedRequirement, check: Sp
   if (operator === 'matches' && typeof value !== 'string') return unresolved('value');
   if (operator === 'oneOf' && !Array.isArray(value)) return unresolved('value');
   if (operator === 'equals' && (Array.isArray(value) || value === undefined)) return unresolved('value');
+  // Whatever the value, an IDS check names a property every targeted version defines.
+  const undefinedIn = target.kind === 'property' ? definedIn(target, schema, versions) : null;
+  if (undefinedIn) return unresolved(undefinedIn);
   if (operator === 'exists' || operator === 'matches' || target.kind === 'attribute') return unit === undefined ? resolved('ids') : unresolved('unit');
   if (unit === undefined) {
     const typed = plainType(target, value, schema, versions);

@@ -111,7 +111,8 @@ export function RequirementDispatch({ proposal, review, passages, loadSchema = l
     setWithdrawn(false);
   };
   const active = prepared !== null && !stale ? prepared : null;
-  const included = classified.length - excluded.size;
+  // Exclusions of requirements a replaced proposal no longer has do not count.
+  const included = classified.filter(row => !excluded.has(row.requirement.id)).length;
   // Without the schema no unit can be checked, so nothing is classified or offered for dispatch.
   if (schemaFailure) return <section aria-label={t('semanticAssist.dispatchTitle')} className="space-y-1.5 rounded border border-border p-1.5">
     <p className="font-medium">{t('semanticAssist.dispatchTitle')}</p>

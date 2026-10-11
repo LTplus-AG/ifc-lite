@@ -229,3 +229,16 @@ test('#7375 a value without its unit, or of the wrong type, never reaches an IDS
     ['D', 'unresolved', 'measure', null], ['E', 'ids', null, 'IFCBOOLEAN'],
   ]);
 });
+
+test('#7375 an IDS check names a property every targeted IFC version defines, whatever its value', () => {
+  const quoted = 'at least 900 mm';
+  const rows = (requirements: object[], versions: IFCVersion[]) => qualify(requirements, [], versions).rows.map(row => [row.requirement.id, row.target, row.reason ?? null]);
+  assert.deepEqual(rows([
+    door('A', { property: 'Pset_DoorCommon.NoSuchWidth', operator: 'equals', value: 'EI30' }),
+    door('B', { property: 'Pset_DoorCommon.NoSuchWidth', operator: 'exists' }),
+    door('C', { property: 'Acme_Door.NoSuchWidth', operator: 'equals', value: 'EI30' }),
+    door('D', { appliesTo: { ifcClass: 'IfcWall' }, property: 'Qto_WallBaseQuantities.Width', operator: 'exists' }, quoted),
+  ], ['IFC4']), [['A', 'unresolved', 'unknown'], ['B', 'unresolved', 'unknown'], ['C', 'ids', null], ['D', 'unresolved', 'version']]);
+  assert.deepEqual(rows([door('D', { appliesTo: { ifcClass: 'IfcWall' }, property: 'Qto_WallBaseQuantities.Width', operator: 'exists' }, quoted)], ['IFC4X3_ADD2']),
+    [['D', 'ids', null]]);
+});

@@ -314,6 +314,18 @@ test('#7375 loading a model of another IFC version withdraws drafts typed for th
   assert.match(ui.textContent ?? '', /the unsaved drafts were withdrawn/);
 });
 
+test('#7375 an exclusion of a requirement a replaced proposal no longer has does not block preparing the rest', async () => {
+  await converse();
+  const ui = await mount();
+  click(card(ui, 'Native checks and documents')!.querySelector<HTMLInputElement>('input[aria-label="Include R1 in the native drafts"]')!);
+  const onlyR2 = { ...REQUIREMENTS, requirements: REQUIREMENTS.requirements.filter(item => item.id === 'R2') };
+  act(() => useAssistant.setState(state => ({ messages: [...state.messages.slice(0, -1), { role: 'assistant', model: 'recorded', content: JSON.stringify(onlyR2) }] })));
+  const prepare = button(card(ui, 'Native checks and documents')!, /Prepare native drafts/);
+  assert.equal(prepare.disabled, false);
+  click(prepare);
+  assert.ok(card(ui, 'Review information rules'));
+});
+
 test('#7375 the IDS draft targets the IFC version of the loaded model', async () => {
   await converse();
   const { models } = useViewerStore.getState();

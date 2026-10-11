@@ -16,12 +16,13 @@
 
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
+import { e2SplitErrors } from './e2-splits.mjs';
 
 export const REPO_ROOT = join(import.meta.dirname, '..', '..', '..');
 export const CORPUS_REL = 'packages/ids/src/__corpus__/buildingsmart-ids';
 export const E2_CASES_REL = 'tests/ai-eval/ids/e2/cases.jsonl';
 
-const FIELDS = ['id', 'corpusIds', 'corpusIfc', 'expected', 'ifcVersion', 'description', 'language', 'reviewed'];
+const FIELDS = ['id', 'corpusIds', 'corpusIfc', 'expected', 'ifcVersion', 'description', 'language', 'split', 'reviewed'];
 const IFC_VERSIONS = new Set(['IFC2X3', 'IFC4', 'IFC4X3_ADD2']);
 
 /**
@@ -130,5 +131,6 @@ export function e2DatasetErrors(cases, root = REPO_ROOT) {
     if (typeof record.reviewed !== 'boolean') errors.push(`${at}: reviewed must be a boolean`);
   });
   for (const id of corpus.keys()) if (!seen.has(id)) errors.push(`corpus case ${id} has no E2 record`);
+  errors.push(...e2SplitErrors(cases));
   return errors;
 }

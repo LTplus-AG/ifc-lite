@@ -14,39 +14,6 @@ const byId = new Map(cases.map(record => [record.id, record]));
 const corpusIds = record => readFileSync(join(REPO_ROOT, record.corpusIds), 'utf8');
 const scorer = await createE2Scorer();
 
-/**
- * Corpus IDS files that are conforming IDS (they are `pass-`/`fail-` cases,
- * not `invalid-`), but that our audit reports with errors today. Measured,
- * not derived. Three families: user-defined predefined types
- * (E_IFC_PREDEF_TYPE_INVALID), the IFC2X3 air-terminal type mapping
- * (E_IFC_ENTITY_UNKNOWN), and a classification on a material
- * (E_IFC_PARTOF_ENTITY). The list may only SHRINK. A case the audit stops
- * flagging fails here until it is removed. A new false positive fails as
- * well. Until the list is empty, a 100% audit pass rate on E2 is out of reach
- * even for a perfect agent. P-01 owns the audit, and the worklog records
- * this.
- */
-const AUDIT_FALSE_POSITIVES = new Set([
-  'classification/pass-non_rooted_resources_that_have_external_classification_references_should_also_pass',
-  'entity/fail-in_ifc2x3_a_user_defined_airterminal_predefined_type_resolves_via_the_type_mapping_table_2_2',
-  'entity/fail-in_ifc2x3_an_airterminal_can_be_checked_by_name_via_the_type_mapping_table_2_2',
-  'entity/fail-in_ifc2x3_an_airterminal_predefined_type_resolves_via_the_type_mapping_table_2_2',
-  'entity/fail-in_ifc2x3_there_must_be_an_airterminal_per_the_type_mapping_table_2_2',
-  'entity/fail-restrictions_can_be_specified_for_the_predefined_type_3_3',
-  'entity/fail-user_defined_types_are_checked_case_sensitively',
-  'entity/pass-a_predefined_type_may_specify_a_user_defined_element_type',
-  'entity/pass-a_predefined_type_may_specify_a_user_defined_object_type',
-  'entity/pass-a_predefined_type_may_specify_a_user_defined_process_type',
-  'entity/pass-in_ifc2x3_a_user_defined_airterminal_predefined_type_resolves_via_the_type_mapping_table_1_2',
-  'entity/pass-in_ifc2x3_an_airterminal_can_be_checked_by_name_via_the_type_mapping_table_1_2',
-  'entity/pass-in_ifc2x3_an_airterminal_predefined_type_resolves_via_the_type_mapping_table_1_2',
-  'entity/pass-in_ifc2x3_there_must_be_an_airterminal_per_the_type_mapping_table_1_2',
-  'entity/pass-inherited_predefined_types_should_pass',
-  'entity/pass-overridden_predefined_types_should_pass',
-  'entity/pass-restrictions_can_be_specified_for_the_predefined_type_1_3',
-  'entity/pass-restrictions_can_be_specified_for_the_predefined_type_2_3',
-]);
-
 test('self-check: the original corpus IDS as candidate agrees on every E2 case', async () => {
   // Validates the dataset (paths, verdicts) and the scorer (IFC loading,
   // verdict rule) together: any mismatch between them shows up here.
@@ -59,10 +26,13 @@ test('self-check: the original corpus IDS as candidate agrees on every E2 case',
   assert.deepEqual(summary.byExpected, { pass: { cases: 187, agreed: 187 }, fail: { cases: 120, agreed: 120 } });
   assert.equal(summary.unscorable, 0);
 
+  // Every corpus pass-/fail- IDS is conforming IDS, so the audit must not
+  // report an error on any of them. Until P-01's audit fixes landed, 18 of
+  // them were pinned here as known false positives; that list is now empty,
+  // so the E2 "audit pass = 100%" ship gate applies to every case.
   const flagged = scores.filter(score => score.audit.status === 'error').map(score => score.id);
-  assert.deepEqual(flagged.filter(id => !AUDIT_FALSE_POSITIVES.has(id)), [], 'new audit false positives on conforming corpus IDS');
-  assert.deepEqual([...AUDIT_FALSE_POSITIVES].filter(id => !flagged.includes(id)), [], 'now audits clean: delete from AUDIT_FALSE_POSITIVES');
-  assert.equal(summary.audit.valid + summary.audit.warning, 307 - AUDIT_FALSE_POSITIVES.size);
+  assert.deepEqual(flagged, [], 'audit false positives on conforming corpus IDS');
+  assert.equal(summary.audit.valid + summary.audit.warning, 307);
 });
 
 test('a candidate that inverts the requirement disagrees on a pass case', async () => {

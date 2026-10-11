@@ -18,6 +18,30 @@ change them. The descriptions, edit tasks and adversarial inputs are our own
 work, released under the repository's licence. They contain no client data and
 no vendor names.
 
+## Splits
+
+Every E2 case has a `split`: `train` (prompt tuning allowed), `validation`
+(go/no-go) or `test` (headline numbers, never tuned on). Today: 188 train, 67
+validation, 52 test. `scripts/ai-eval/ids/e2-splits.mjs` assigns the split per
+group, so a task never appears in two splits: cases from the same corpus test
+(its `_1_2`/`_2_2` variants and its pass/fail pair) and cases that share a
+description are one group. The group's split comes from a SHA-256 hash of its
+smallest id (60/20/20 by bucket). The test split is frozen: the dataset test
+pins a digest of its ids, so changing it needs an explicit, recorded decision.
+
+## Scorers
+
+- E2: `e2-scorer.mjs` validates the candidate IDS against the paired corpus
+  IFC; a case agrees when the verdict equals `expected`.
+- E4: `e4-scorer.mjs` parses the candidate and compares it with the parsed
+  expected IDS, so formatting and comments do not count but content does. A
+  candidate equal to the unedited input is counted as `unchanged`.
+- E5 has no automatic scorer yet: `mustCover` needs a judgement of whether a
+  requirement was authored, which depends on the agent's output (P-07).
+
+Both scorers are deterministic and offline. Each one has a self-check: the
+expected answer scores 100%.
+
 ## Review status
 
 Every E2 description has `reviewed: false`. Before E2 numbers are published,

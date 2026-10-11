@@ -284,13 +284,18 @@ function convertAll(
   c: SiConversion | undefined
 ): { value: string | number | boolean | null; values: string[] | undefined } {
   if (isIdentity(c)) return { value: rawValue, values: rawValues };
-  const v = typeof rawValue === 'boolean' || rawValue === null ? null : convertNumeric(rawValue, c!);
   const values = Array.isArray(rawValues)
     ? rawValues.map((m) => {
         const cm = convertNumeric(m, c!);
         return cm == null ? String(m) : String(cm);
       })
     : rawValues;
+  // A list's display value is its members joined by the parser; rebuild it
+  // from the converted members rather than reading only the first.
+  if (values && values.length > 1 && typeof rawValue === 'string') {
+    return { value: values.join(', '), values };
+  }
+  const v = typeof rawValue === 'boolean' || rawValue === null ? null : convertNumeric(rawValue, c!);
   return { value: v == null ? rawValue : v, values };
 }
 

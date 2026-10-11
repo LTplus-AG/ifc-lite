@@ -67,10 +67,11 @@ DATA;
 #27=IFCPROPERTYSINGLEVALUE('Ratio',$,IFCRATIOMEASURE(0.5),$);
 #28=IFCPROPERTYSINGLEVALUE('Setpoint',$,IFCTHERMODYNAMICTEMPERATUREMEASURE(21.),#44);
 #29=IFCPROPERTYSINGLEVALUE('Span',$,IFCLENGTHMEASURE(4.),#51);
-#13=IFCPROPERTYSET('3kQ1lW8vZ0Gm7N2bR5tY6u',$,'Mixed',$,(#70,#71));
+#13=IFCPROPERTYSET('3kQ1lW8vZ0Gm7N2bR5tY6u',$,'Mixed',$,(#70,#71,#72));
 #14=IFCRELDEFINESBYPROPERTIES('16MocU_IDOF8_x3Iqllz0d',$,$,$,(#7),#13);
 #70=IFCPROPERTYTABLEVALUE('Curve',$,(IFCREAL(1000.),IFCLABEL('A')),(IFCLENGTHMEASURE(2000.),IFCPLANEANGLEMEASURE(90.)),$,$,$,$);
 #71=IFCPROPERTYLISTVALUE('Offsets',$,(IFCLABEL('x'),IFCLENGTHMEASURE(500.)),$);
+#72=IFCPROPERTYLISTVALUE('Masses',$,(IFCMASSMEASURE(2500.),IFCMASSMEASURE(4000.)),$);
 #30=IFCWALLTYPE('2Yv7qL0sH4bN9mK3jP1xR8',$,'T',$,$,(#31),$,$,$,.STANDARD.);
 #31=IFCPROPERTYSET('3Zc8rM1tJ5dP0nL4kQ2yS9',$,'Type_Props',$,(#32,#33));
 #32=IFCPROPERTYSINGLEVALUE('Nominal Width',$,IFCLENGTHMEASURE(250.),$);
@@ -193,6 +194,12 @@ describe('untyped list and table members (#7395, case 5)', () => {
 
   it('converts the measure member of a mixed list and leaves the label', async () => {
     expect((await prop(7, 'Mixed', 'Offsets'))?.values).toEqual(['x', '0.5']);
+  });
+
+  it('keeps every member of a converted list in its display value', async () => {
+    const masses = await prop(7, 'Mixed', 'Masses');
+    expect(masses?.values?.map(Number)).toEqual([2.5, 4]);
+    expect(masses?.value).toBe('2.5, 4');
   });
 
   it('does not match the raw millimetre value or a scaled IfcReal', async () => {

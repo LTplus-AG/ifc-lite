@@ -14,6 +14,7 @@ import { test } from 'node:test';
 import type { EntityResult, SpecificationResult, ValidationReport } from '@ifc-lite/ids';
 import { validationReportSnapshot } from './history';
 import { reexamineSavedValidation, type RowReexamination } from './reexamine';
+import { savedValidationFindings } from '../../review/sources/saved-validation';
 
 const MODEL = { name: 'tower.ifc', sourceFingerprint: 'fp-tower-7371' };
 const models = new Map([['m1', MODEL]]);
@@ -112,4 +113,22 @@ test('#7371 follow-up: the GlobalId lookup is built once per check and model, no
   rows.again();
   assert.ok(many.reads() - before <= many.current.specificationResults.length,
     'a recompute reads each check at most once (its completeness), never once per saved row');
+});
+
+test('#7371 follow-up: a compatible run that could check none of the saved failures never says it checked them again', () => {
+  const runNote = (before: Record<string, Element[]>, after: Record<string, Element[]>) => {
+    const saved = validationReportSnapshot(report(before), models, 'saved');
+    const current = report(after);
+    validationReportSnapshot(current, models, 'current');
+    const [run] = savedValidationFindings([{ id: 'saved', name: 'saved', snapshot: saved }], { report: current, stale: false, stamped: true }).runs;
+    return run.incomplete.flatMap(gap => gap.message ? [gap.message] : []);
+  };
+  // The one saved failure's GlobalId occurs twice in the current run: nothing was checked again.
+  assert.deepEqual(runNote({ walls: [failing('dup')] }, { walls: [failing('dup'), failing('dup', 'no')] }),
+    [{ labelKey: 'reviewWorkspace.reexamination.compatibleNone', params: { count: 1 } }]);
+  assert.deepEqual(runNote({ walls: [failing('dup'), { passed: false }] }, { walls: [failing('dup'), failing('dup', 'no')] }),
+    [{ labelKey: 'reviewWorkspace.reexamination.compatibleNone', params: { count: 2 } }]);
+  // Some checked again, some not: the partial sentence, with both counts.
+  assert.deepEqual(runNote({ walls: [failing('dup'), failing('solo')] }, { walls: [failing('dup'), failing('dup', 'no'), failing('solo')] }),
+    [{ labelKey: 'reviewWorkspace.reexamination.compatiblePartial', params: { count: 1, total: 2 } }]);
 });

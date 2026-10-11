@@ -35,10 +35,13 @@ const gap = (labelKey: TranslationKey): RunGap => ({ code: 'partial-source', mes
 function reexaminationGaps(result: Reexamination | null): RunGap[] {
   if (!result) return [gap('reviewWorkspace.reexamination.countOnly')];
   if (result.compatible) {
-    // Compatible runs can still leave rows unchecked (capped, unevaluated, ambiguous): "each" is said only when none was.
+    // Compatible runs can still leave rows unchecked (capped, unevaluated, ambiguous): "each" is said only when none was,
+    // and a run that checked none of them never says it checked them again.
     const skipped = [...result.rows.values()].filter(row => row.state === 'notEvaluated').length;
-    return [skipped ? { code: 'partial-source', message: { labelKey: 'reviewWorkspace.reexamination.compatiblePartial', params: { count: skipped, total: result.rows.size } } }
-      : gap('reviewWorkspace.reexamination.compatible')];
+    if (!skipped) return [gap('reviewWorkspace.reexamination.compatible')];
+    return [{ code: 'partial-source', message: skipped === result.rows.size
+      ? { labelKey: 'reviewWorkspace.reexamination.compatibleNone', params: { count: skipped } }
+      : { labelKey: 'reviewWorkspace.reexamination.compatiblePartial', params: { count: skipped, total: result.rows.size } } }];
   }
   return [...new Set(['reviewWorkspace.reexamination.historical' as const, ...result.reasons.map(reason => REASON[reason])])].map(gap);
 }

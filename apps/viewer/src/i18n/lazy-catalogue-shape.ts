@@ -219,6 +219,7 @@ const reviewMessageShape = {
   "gap.excluded-classes": [],
   "reexamination.compatible": [],
   "reexamination.compatiblePartial": ["count", "total"],
+  "reexamination.compatibleNone": ["count"],
   "reexamination.countOnly": [],
   "reexamination.historical": [],
   "reexamination.persisting": [],

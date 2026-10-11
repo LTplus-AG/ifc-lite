@@ -3,10 +3,8 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { effectiveMetadataRecord } from '@ifc-lite/parser';
-import { iterateEffectiveEntityIds } from '@ifc-lite/mutations';
-import { liveEntityConforms } from '@ifc-lite/create';
+import { effectiveRoomIdsByStorey, liveEntityConforms } from '@ifc-lite/create';
 import type { PreparedRoomCommand, RoomCommandResult } from '@ifc-lite/sdk';
-import { effectiveStoreyId } from '../../../../../packages/create/src/in-store/edit/effective-storey.js';
 import { roomChainInStore } from '../../../../../packages/create/src/in-store/room-store.js';
 import { useViewerStore, type ViewerState } from '@/store';
 import { prepareNativeRoomCommand } from '@/sdk/adapters/store-adapter-room';
@@ -25,6 +23,13 @@ export interface RoomIdentity extends RoomRootTarget {
   height: number | null;
   z: number | null;
 }
+export interface RoomStoreySnapshot extends RoomRootTarget {
+  expressId: number;
+  status: NonNullable<RoomCommandResult['storeys']>[number]['status'];
+  reason?: string;
+  candidates: RoomCommandResult['candidates'];
+  rooms: RoomIdentity[];
+}
 export interface RoomSnapshot {
   modelId: string;
   storey: RoomRootTarget & { expressId: number };
@@ -35,6 +40,8 @@ export interface RoomSnapshot {
   roomCount: number;
   candidates: RoomCommandResult['candidates'];
   rooms: RoomIdentity[];
+  /** Complete one-model coverage, present only for AutoAll. */
+  storeys?: RoomStoreySnapshot[];
 }
 export interface RoomReview {
   proposal: RoomProposal;
@@ -57,26 +64,26 @@ function target(state: ViewerState, modelId: string, root: RoomRootTarget, ifcCl
 }
 
 /** Complete current population; unsupported room shapes stay visible rather than disappearing from counts. */
-function roomPopulation(state: ViewerState, modelId: string, storeyId: number): RoomIdentity[] {
+function roomPopulations(state: ViewerState, modelId: string, storeyIds: readonly number[]): Map<number, RoomIdentity[]> {
   const reader = readOnlyModelEditTarget(state, modelId);
   if (!reader) throw new Error('The current Room source is unavailable');
   const { dataStore: store, view, editor } = reader;
   const changed = new Set(view.getEffectiveChanges().map(change => change.entityId));
-  const rows: RoomIdentity[] = [];
-  let scanned = 0;
-  for (const { expressId } of iterateEffectiveEntityIds(store, view)) {
-    if (++scanned > 200000) throw new Error('The loaded model is too large for a complete reviewed Room population');
-    if (!liveEntityConforms(store, expressId, 'IfcSpace', view) || effectiveStoreyId(store, view, expressId) !== storeyId) continue;
-    if (rows.length >= 128) throw new Error('More than 128 rooms belong to this storey; a complete review is unavailable');
-    const GlobalId = changed.has(expressId) || view.getNewEntity(expressId)
-      ? effectiveMetadataRecord(store, expressId, view)?.attributes[0] : store.entities.getGlobalId(expressId);
-    if (typeof GlobalId !== 'string' || !GlobalId || !uniqueSplitGuid(store, editor, GlobalId)) throw new Error('A current room has an unavailable or ambiguous native identity');
-    const native = roomChainInStore(store, editor, expressId);
-    rows.push({ expressId, GlobalId, Name: nativeRootName(reader, expressId), supported: native.ok,
-      outline: native.ok ? structuredClone(native.chain.footprint) : null,
-      height: native.ok ? native.chain.thickness : null, z: native.ok ? native.chain.baseElevation : null });
+  const populations = new Map(storeyIds.map(id => [id, [] as RoomIdentity[]]));
+  for (const [owner, ids] of effectiveRoomIdsByStorey(store, view, storeyIds)) {
+    const rows = populations.get(owner)!;
+    for (const expressId of ids) {
+      const GlobalId = changed.has(expressId) || view.getNewEntity(expressId)
+        ? effectiveMetadataRecord(store, expressId, view)?.attributes[0] : store.entities.getGlobalId(expressId);
+      if (typeof GlobalId !== 'string' || !GlobalId || !uniqueSplitGuid(store, editor, GlobalId)) throw new Error('A current room has an unavailable or ambiguous native identity');
+      const native = roomChainInStore(store, editor, expressId);
+      rows.push({ expressId, GlobalId, Name: nativeRootName(reader, expressId), supported: native.ok,
+        outline: native.ok ? structuredClone(native.chain.footprint) : null,
+        height: native.ok ? native.chain.thickness : null, z: native.ok ? native.chain.baseElevation : null });
+    }
   }
-  return rows.sort((a, b) => a.expressId - b.expressId);
+  for (const rows of populations.values()) rows.sort((a,b)=>a.expressId-b.expressId);
+  return populations;
 }
 
 function sources(state: ViewerState) {
@@ -108,7 +115,16 @@ export async function prepareRoomReview(proposal: RoomProposal, signal: AbortSig
     const current = useViewerStore.getState();
     if (!sourceIdentitiesCurrent(inputSources, current)) throw new Error('The loaded source identity changed during native Room preparation; prepare again');
     if (target(current, proposal.modelId, proposal.storey, 'IfcBuildingStorey') !== storeyId) throw new Error('The storey changed while Room geometry was preparing');
-    const rooms = roomPopulation(current, proposal.modelId, storeyId);
+    const populations = roomPopulations(current, proposal.modelId, prepared.result.storeys?.map(row=>row.storeyId) ?? [storeyId]);
+    const rooms = [...populations.values()].flat();
+    const reader = readOnlyModelEditTarget(current, proposal.modelId)!;
+    const storeys = prepared.result.storeys?.map(row => {
+      const record = effectiveMetadataRecord(reader.dataStore,row.storeyId,reader.view);
+      const GlobalId = record?.attributes[record.names.indexOf('GlobalId')];
+      if (typeof GlobalId !== 'string' || !uniqueSplitGuid(reader.dataStore,reader.editor,GlobalId)) throw new Error('A current storey has an unavailable or ambiguous identity');
+      return {expressId:row.storeyId,GlobalId,Name:nativeRootName(reader,row.storeyId),status:row.status,
+        ...(row.reason?{reason:row.reason}:{}),candidates:structuredClone(row.candidates),rooms:populations.get(row.storeyId) ?? []};
+    });
     if (command.action === 'update' && command.expressIds.some(id => !rooms.some(room => room.expressId === id))) throw new Error('A selected room no longer belongs to this storey');
     const candidates = prepared.result.candidates;
     const vertices = candidates.reduce((count, face) => count + face.centre.length + face.inner.length + face.outer.length, 0);
@@ -122,7 +138,7 @@ export async function prepareRoomReview(proposal: RoomProposal, signal: AbortSig
     }
     const snapshot: RoomSnapshot = { modelId: proposal.modelId, storey: { ...proposal.storey, expressId: storeyId }, units: 'm', frame: 'storey-local',
       settings: { weld: command.weld, minArea: command.minArea, boundary: command.boundary, height: command.height, z: command.z, namePattern: command.namePattern, PredefinedType: command.PredefinedType ?? null, ObjectType: command.ObjectType ?? null },
-      candidateCount: candidates.length, roomCount: rooms.length, candidates: structuredClone(candidates), rooms };
+      candidateCount: candidates.length, roomCount: rooms.length, candidates: structuredClone(candidates), rooms, ...(storeys?{storeys}:{}) };
     if (JSON.stringify(snapshot).length > 60000) throw new Error('The complete Room snapshot exceeds the attachment limit');
     if (proposal.expected !== undefined && !sameReportEvidence(proposal.expected, snapshot)) throw new Error('The supplied native Room snapshot differs from the current source; prepare it again');
     const captured = sources(current);

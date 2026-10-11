@@ -9,6 +9,7 @@ import {
 } from '@ifc-lite/parser';
 import {
   RelationshipType,
+  exactTypeName,
   getAttributeXsdTypes,
   iterateEffectiveEntities,
 } from '@ifc-lite/data';
@@ -132,12 +133,16 @@ export function createDataAccessor(
     getEntityType(expressId: number): string | undefined {
       const overlaid = overlay?.typeOf(expressId);
       if (overlaid) return overlaid;
+      // The class the STEP line DECLARES, in IFC PascalCase: IDS entity
+      // facets match the exact class. `getTypeName` coalesces eight
+      // *StandardCase classes and two distribution subtypes onto their
+      // parent's enum value (#7402), so it is not used here.
       // The columnar entity table only summarises "interesting"
       // entities (spatial, building elements, etc.); resource-level
       // types resolve to `'Unknown'` there. Fall back to the raw
       // type name from `entityIndex.byId` so applicability checks
       // for those types still match.
-      const entityType = store.entities?.getTypeName?.(expressId);
+      const entityType = store.entities ? exactTypeName(store.entities, expressId) : undefined;
       if (entityType && entityType !== 'Unknown') return entityType;
 
       // @raw-entity-enumeration-ok point lookup of one source record's parsed class; created and retyped ids were answered from the overlay above

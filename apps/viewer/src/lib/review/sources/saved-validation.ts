@@ -34,7 +34,12 @@ const gap = (labelKey: TranslationKey): RunGap => ({ code: 'partial-source', mes
 /** Without a current run the saved run says so in one sentence; otherwise every refusal reason follows as its own line. */
 function reexaminationGaps(result: Reexamination | null): RunGap[] {
   if (!result) return [{ code: 'partial-source', detail: 'This older count-only snapshot contains no saved element evidence' }];
-  if (result.compatible) return [gap('reviewWorkspace.reexamination.compatible')];
+  if (result.compatible) {
+    // Compatible runs can still leave rows unchecked (capped, unevaluated, ambiguous): "each" is said only when none was.
+    const skipped = [...result.rows.values()].filter(row => row.state === 'notEvaluated').length;
+    return [skipped ? { code: 'partial-source', message: { labelKey: 'reviewWorkspace.reexamination.compatiblePartial', params: { count: skipped, total: result.rows.size } } }
+      : gap('reviewWorkspace.reexamination.compatible')];
+  }
   return [...new Set(['reviewWorkspace.reexamination.historical' as const, ...result.reasons.map(reason => REASON[reason])])].map(gap);
 }
 

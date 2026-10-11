@@ -43,9 +43,9 @@ export function reviewDocument(name: string, cards: readonly CoordinationCard[],
       `Elements: ${card.elements.map(element => `${element.globalId}${element.modelName ? ` (${element.modelName})` : ''}`).join(', ') || 'none named'}.`,
       decision ? `Reviewer decision: ${decision.status}${decision.comment ? ` — ${decision.comment}` : ''} (${decision.updatedAt}).` : 'Reviewer decision: none recorded.',
     ].filter(Boolean).join('\n')));
-    blocks.push(text('body', card.findings.map(finding => `• [${finding.source}${finding.run.temporal === 'historical' ? ', historical' : ''}: ${finding.run.label}`
+    blocks.push(text('body', card.findings.map(finding => ({ finding, lines: findingLines(finding) })).map(({ finding, lines }) => `• [${finding.source}${finding.run.temporal === 'historical' ? ', historical' : ''}: ${finding.run.label}`
       + `${finding.run.complete ? '' : ', incomplete run'}] ${finding.title} — native status ${finding.nativeStatus || 'n/a'}`
-      + (findingLines(finding).length ? `\n  ${findingLines(finding).slice(0, 3).join('\n  ')}` : '')).join('\n')));
+      + (lines.length ? `\n  ${lines.slice(0, 3).join('\n  ')}` : '')).join('\n')));
   }
   const document: DocumentSpec = { version: DOCUMENT_VERSION, id: freshDocumentId(), name: title,
     page: { size: 'A4', orientation: 'portrait' }, blocks };

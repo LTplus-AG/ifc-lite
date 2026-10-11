@@ -190,6 +190,7 @@ const reviewMessageShape = {
   "gap.placement-only": [],
   "gap.excluded-classes": [],
   "reexamination.compatible": [],
+  "reexamination.compatiblePartial": ["count", "total"],
   "reexamination.historical": [],
   "reexamination.persisting": [],
   "reexamination.changed": [],

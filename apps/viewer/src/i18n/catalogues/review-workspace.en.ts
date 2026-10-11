@@ -69,6 +69,10 @@ export const reviewWorkspaceEn = {
   'reviewWorkspace.gap.placement-only': 'placement-only geometry',
   'reviewWorkspace.gap.excluded-classes': 'classes excluded',
   'reviewWorkspace.reexamination.compatible': 'Only the failed elements were saved. The matching current run checked each of them again.',
+  'reviewWorkspace.reexamination.compatiblePartial': {
+    one: 'Only the failed elements were saved. The matching current run checked them again, but {count} of {total} could not be checked; that finding says why.',
+    other: 'Only the failed elements were saved. The matching current run checked them again, but {count} of {total} could not be checked; each of those findings says why.',
+  },
   'reviewWorkspace.reexamination.historical': 'Saved failures are historical. No matching current run has checked them again.',
   'reviewWorkspace.reexamination.persisting': 'The current run still fails this element on the same requirements.',
   'reviewWorkspace.reexamination.changed': 'The current run still fails this element, but on different requirements or values.',

@@ -12,8 +12,9 @@ import '@/i18n/catalogues/review-workspace.register';
 import { resolveEnglish } from '@/i18n/registry';
 import type { ReviewFinding, RunGap } from './types';
 
+/** Notes come first: callers cap the lines they print, and the explanation must survive that cap. */
 export function findingLines(finding: Pick<ReviewFinding, 'detail' | 'notes'>): string[] {
-  return [...finding.detail, ...(finding.notes ?? []).map(note => resolveEnglish(note.labelKey, note.params))];
+  return [...(finding.notes ?? []).map(note => resolveEnglish(note.labelKey, note.params)), ...finding.detail];
 }
 
 export function gapLine(gap: RunGap): string {

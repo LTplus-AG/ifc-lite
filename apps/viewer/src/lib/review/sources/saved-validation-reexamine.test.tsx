@@ -106,7 +106,9 @@ test('#7371 a complete compatible native rerun re-examines persisted saved failu
   assert.equal(others.length, failingGlobalIds(baseline).length - 1);
   assert.ok(others.every(row => row.lifecycle === 'persistent' && JSON.stringify(row.notes) === JSON.stringify([note('persisting')])));
   assert.ok(savedRuns().every(run => run.temporal === 'historical' && !run.complete
-    && run.incomplete.some(gap => gap.message?.labelKey === 'reviewWorkspace.reexamination.compatible')));
+    && run.incomplete.some(gap => gap.message?.labelKey === 'reviewWorkspace.reexamination.compatible')
+    && !run.incomplete.some(gap => gap.message?.labelKey === 'reviewWorkspace.reexamination.compatiblePartial')),
+    'every saved row was checked again, so the run may say "each"');
 
   // A candidate stays distinct from a human decision and from native results.
   assert.deepEqual((await loadValidationReports()).find(item => item.id === saved.id), before);
@@ -195,6 +197,14 @@ test('#7371 changed requirements persist as changed; a capped rerun cannot resol
   const [incomplete] = findingFor(PLUMBING_WALL);
   assert.equal(incomplete.lifecycle, 'not-evaluated', 'an incomplete run never yields a resolution candidate');
   assert.deepEqual(incomplete.notes, [note('runIncomplete')]);
+  // A compatible but capped run skipped rows: the run never claims it checked each of them.
+  const skipped = savedFindings().filter(row => row.lifecycle === 'not-evaluated').length;
+  assert.ok(skipped > 0);
+  const partial = (count: number) => savedRuns().every(run => !run.incomplete.some(gap => gap.message?.labelKey === 'reviewWorkspace.reexamination.compatible')
+    && run.incomplete.some(gap => gap.message?.labelKey === 'reviewWorkspace.reexamination.compatiblePartial'
+      && gap.message.params?.count === count && gap.message.params?.total === savedFindings().length));
+  assert.ok(partial(skipped), JSON.stringify(savedRuns().map(run => run.incomplete)));
+  assert.ok(reviewFindingRow(incomplete).run.incomplete.some(line => line.includes(`but ${skipped} of ${savedFindings().length} could not be checked`)));
   // A tighter cap leaves saved rows without any current result at all.
   publish(await runIds(pair, 'B', { maxEntities: 1, view: fixed }));
   assert.ok(savedFindings().some(row => row.lifecycle === 'not-evaluated'

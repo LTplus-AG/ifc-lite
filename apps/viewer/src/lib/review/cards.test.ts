@@ -85,6 +85,14 @@ test('card state keeps historical evidence apart from current evidence', () => {
   assert.equal(states('not-evaluated'), 'not-evaluated');
 });
 
+test('#7371 a saved finding the current run still reports, changed or not, is current evidence', () => {
+  const saved = run('saved-validation', 'validation', { temporal: 'historical', complete: false });
+  for (const lifecycle of ['persistent', 'changed'] as const) {
+    const { cards } = buildCards([finding('h', 'validation', [wall('W1')], { run: saved, lifecycle })], models);
+    assert.equal(cards[0].state, 'current', lifecycle);
+  }
+});
+
 test('one not-evaluated finding keeps the whole card from becoming a resolution candidate', () => {
   const historical = run('clash:baseline', 'clash', { temporal: 'historical' });
   const pair = [wall('W1'), pipe('P1')];

@@ -24,11 +24,11 @@ const door = (id: string, fields: Partial<ExtractedRequirement>, quote = 'rated 
 let schema: SchemaMeasures;
 before(async () => { schema = await loadSchemaMeasures(); });
 
-function qualify(requirements: object[], unsupported: object[] = []) {
+function qualify(requirements: object[], unsupported: object[] = [], versions: readonly IFCVersion[] = ['IFC4']) {
   const proposal = parseSemanticRequirements(JSON.stringify({ version: 1, kind: 'semantic.requirements', title: 'Doors', requirements, unsupported }));
   const review = reviewRequirements(proposal, passages);
-  const rows = qualifyRequirements(review, passages, sources, schema);
-  const draft = (excluded: ReadonlySet<string> = new Set(), ifcVersions: readonly IFCVersion[] = ['IFC4']) =>
+  const rows = qualifyRequirements(review, passages, sources, schema, versions);
+  const draft = (excluded: ReadonlySet<string> = new Set(), ifcVersions: readonly IFCVersion[] = versions) =>
     prepareNativeDrafts(proposal, rows, excluded, { unsupported: review.unsupported, passages, sources, ifcVersions });
   return { rows, draft };
 }
@@ -146,7 +146,7 @@ test('#7375 a quantity rule needs the stated unit to measure what the schema say
     door('X', { property: 'Pset_DoorCommon.FireRating', operator: 'exists', unit: 'mm' }),
   ]);
   assert.deepEqual(rows.map(row => [row.requirement.id, row.target, row.reason ?? null]), [
-    ['W', 'unresolved', 'unit'], ['G', 'unresolved', 'unit'], ['N', 'unresolved', 'unit'], ['U', 'unresolved', 'unknown'],
+    ['W', 'unresolved', 'dimension'], ['G', 'unresolved', 'dimension'], ['N', 'unresolved', 'dimension'], ['U', 'unresolved', 'unknown'],
     ['L', 'geometry', null], ['A', 'geometry', null], ['X', 'unresolved', 'unit'],
   ]);
 });
@@ -180,10 +180,10 @@ test('#7375 an IDS check on a measured value states the type the schema declares
     door('P', { appliesTo: { ifcClass: 'IfcSpace' }, property: 'Pset_SpaceCommon.GrossPlannedArea', operator: 'atLeast', value: 20, unit: 'm²' }, quoted),
     door('K', { property: 'Pset_DoorCommon.NoSuchWidth', operator: 'atLeast', value: 900, unit: 'mm' }, quoted),
     door('C', { property: 'Acme_Door.ClearWidth', operator: 'atLeast', value: 900, unit: 'mm' }, quoted),
-  ]);
-  assert.deepEqual(rows.map(row => [row.requirement.id, row.target, row.reason ?? null, row.measure?.dataType ?? null]), [
-    ['Q', 'unresolved', 'unit', null], ['R', 'ids', null, 'IFCLENGTHMEASURE'], ['T', 'ids', null, 'IFCPOSITIVELENGTHMEASURE'],
-    ['S', 'unresolved', 'unit', null], ['P', 'ids', null, 'IFCAREAMEASURE'], ['K', 'unresolved', 'unknown', null],
+  ], [], ['IFC4X3_ADD2']);
+  assert.deepEqual(rows.map(row => [row.requirement.id, row.target, row.reason ?? null, row.typed?.dataType ?? null]), [
+    ['Q', 'unresolved', 'dimension', null], ['R', 'ids', null, 'IFCLENGTHMEASURE'], ['T', 'ids', null, 'IFCPOSITIVELENGTHMEASURE'],
+    ['S', 'unresolved', 'dimension', null], ['P', 'ids', null, 'IFCAREAMEASURE'], ['K', 'unresolved', 'unknown', null],
     ['C', 'ids', null, 'IFCLENGTHMEASURE'],
   ]);
   const ids = draft().ids!;
@@ -191,4 +191,41 @@ test('#7375 an IDS check on a measured value states the type the schema declares
   assert.deepEqual(facets.map(facet => 'dataType' in facet && facet.dataType?.type === 'simpleValue' ? facet.dataType.value : null), ['IFCLENGTHMEASURE', 'IFCPOSITIVELENGTHMEASURE', 'IFCAREAMEASURE', 'IFCLENGTHMEASURE']);
   const errors = (await auditIdsDraft(buildIdsDraft(ids))).filter(issue => issue.severity === 'error');
   assert.deepEqual(errors, [], 'the native audit accepts every dispatched specification');
+});
+
+test('#7375 the declared type is the one of every IFC version the IDS draft targets', async () => {
+  const quoted = 'at least 900 mm';
+  const silencer = (id: string) => door(id, { appliesTo: { ifcClass: 'IfcDuctSilencerType' }, property: 'Pset_DuctSilencerTypeCommon.Length',
+    operator: 'atLeast', value: 500, unit: 'mm' }, quoted);
+  const typed = (versions: IFCVersion[]) => qualify([silencer('L')], [], versions).rows.map(row => [row.target, row.reason ?? null, row.typed?.dataType ?? null])[0];
+  // IFC4 and IFC2X3 declare a plain length; IFC4X3 a positive one. One IDS specification carries one dataType for all its versions.
+  assert.deepEqual(typed(['IFC4']), ['ids', null, 'IFCLENGTHMEASURE']);
+  assert.deepEqual(typed(['IFC2X3', 'IFC4']), ['ids', null, 'IFCLENGTHMEASURE']);
+  assert.deepEqual(typed(['IFC4X3_ADD2']), ['ids', null, 'IFCPOSITIVELENGTHMEASURE']);
+  assert.deepEqual(typed(['IFC2X3', 'IFC4X3_ADD2']), ['unresolved', 'version', null]);
+  // The generated tables define quantity sets for IFC4X3 only: an IDS check on one cannot be typed for IFC4.
+  const width = door('W', { appliesTo: { ifcClass: 'IfcWall' }, property: 'Qto_WallBaseQuantities.Width', operator: 'oneOf', value: [150, 200], unit: 'mm' }, quoted);
+  assert.equal(qualify([width], [], ['IFC4']).rows[0].reason, 'version');
+  // An information rule compares in SI whatever the version.
+  const rule = door('R', { appliesTo: { ifcClass: 'IfcWall' }, property: 'Qto_WallBaseQuantities.Width', operator: 'atLeast', value: 150, unit: 'mm' }, quoted);
+  assert.equal(qualify([rule], [], ['IFC4']).rows[0].target, 'geometry');
+  const { draft } = qualify([silencer('L')], [], ['IFC4']);
+  const ids = draft().ids!;
+  const errors = (await auditIdsDraft(buildIdsDraft(ids))).filter(issue => issue.severity === 'error' || issue.code === 'W_IFC_DATATYPE_MISMATCH');
+  assert.deepEqual(errors, [], 'the IFC4 draft states the IFC4 type');
+});
+
+test('#7375 a value without its unit, or of the wrong type, never reaches an IDS check', () => {
+  const quoted = 'at least 900 mm';
+  const { rows } = qualify([
+    door('A', { appliesTo: { ifcClass: 'IfcSpace' }, property: 'Pset_SpaceCommon.GrossPlannedArea', operator: 'atLeast', value: 20 }, quoted),
+    door('B', { appliesTo: { ifcClass: 'IfcWall' }, property: 'Pset_WallCommon.IsExternal', operator: 'equals', value: true }, quoted),
+    door('C', { appliesTo: { ifcClass: 'IfcWall' }, property: 'Pset_WallCommon.FireRating', operator: 'equals', value: true }, quoted),
+    door('D', { appliesTo: { ifcClass: 'IfcArbitraryClosedProfileDef' }, property: 'Pset_ProfileArbitraryDoubleT.FlangeChamfer', operator: 'atLeast', value: 5, unit: 'mm' }, quoted),
+    door('E', { appliesTo: { ifcClass: 'IfcWall' }, property: 'Acme_Wall.Checked', operator: 'equals', value: true }, quoted),
+  ]);
+  assert.deepEqual(rows.map(row => [row.requirement.id, row.target, row.reason ?? null, row.typed?.dataType ?? null]), [
+    ['A', 'unresolved', 'unit', null], ['B', 'ids', null, 'IFCBOOLEAN'], ['C', 'unresolved', 'value', null],
+    ['D', 'unresolved', 'measure', null], ['E', 'ids', null, 'IFCBOOLEAN'],
+  ]);
 });

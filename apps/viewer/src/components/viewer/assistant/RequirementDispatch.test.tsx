@@ -173,7 +173,7 @@ test('#7375 a changed or missing source refuses dispatch and withdraws unsaved d
 
   // Re-attach different text under the same id: S1 no longer says what the assistant read.
   act(() => { detachSourceText('S1'); attachSourceText('Employer information requirements', SPEC.replace('150 mm', '300 mm')); });
-  assert.match(dispatch.textContent ?? '', /source text changed after the drafts were prepared/);
+  assert.match(dispatch.textContent ?? '', /changed after the drafts were prepared, so the unsaved drafts were withdrawn/);
   assert.equal(card(ui, 'Review IDS draft') === null, true, 'unsaved drafts are withdrawn');
   assert.equal(card(ui, 'Review information rules') === null, true);
   assert.match(dispatch.textContent ?? '', /R1 No native check: the source text changed after the assistant read it/);
@@ -194,12 +194,12 @@ test('#7375 after withdrawal the reviewer can prepare the drafts again from the 
   // Re-attach the same wording under the same id with one extra trailing passage: the frozen passages still read the same.
   const changed = `${SPEC}\n\n3.6 Added later.`;
   act(() => { detachSourceText('S1'); attachSourceText('Employer information requirements', changed); });
-  assert.match(dispatch.textContent ?? '', /source text changed after the drafts were prepared/);
+  assert.match(dispatch.textContent ?? '', /changed after the drafts were prepared, so the unsaved drafts were withdrawn/);
   assert.equal(dispatch.querySelector<HTMLInputElement>('input[aria-label="Include R2 in the native drafts"]')!.disabled, false, 'targets can be changed again');
   click(button(dispatch, /Prepare native drafts/));
   const rules = card(ui, 'Review information rules');
   assert.ok(rules, 'the drafts are prepared again');
-  assert.doesNotMatch(dispatch.textContent ?? '', /source text changed after the drafts were prepared/);
+  assert.doesNotMatch(dispatch.textContent ?? '', /changed after the drafts were prepared, so the unsaved drafts were withdrawn/);
   click(button(rules, /Dry run on loaded models/));
   await waitFor(() => !button(rules, /Save as rule set/).disabled, 'the re-prepared rule draft dry-runs');
   click(button(rules, /Save as rule set/));
@@ -220,7 +220,7 @@ test('#7375 a document draft of only unresolved requirements is withdrawn too wh
     'the unresolved item keeps its verified passage and revision');
   act(() => { detachSourceText('S1'); attachSourceText('Employer information requirements', SPEC.replace('Red', 'Blue')); });
   assert.equal(card(ui, 'Review report outline') === null, true, 'the outdated document draft can no longer be saved');
-  assert.match(dispatch.textContent ?? '', /source text changed after the drafts were prepared/);
+  assert.match(dispatch.textContent ?? '', /changed after the drafts were prepared, so the unsaved drafts were withdrawn/);
 });
 
 test('#7375 a source detached before dispatch leaves only not-checked items', async () => {
@@ -249,7 +249,7 @@ test('#7375 a draft citing only an unverified span is withdrawn when that source
   assert.match(card(ui, 'Review report outline')?.textContent ?? '', /R5: Paraphrased\s*Cited from S1, characters 1-21/);
   reattach(`${SPEC}\n\n3.6 Added later.`);
   assert.equal(card(ui, 'Review report outline') === null, true);
-  assert.match(dispatch.textContent ?? '', /source text changed after the drafts were prepared/);
+  assert.match(dispatch.textContent ?? '', /changed after the drafts were prepared, so the unsaved drafts were withdrawn/);
 });
 
 test('#7375 a draft citing only an unsupported item is withdrawn when that source changes', async () => {
@@ -301,6 +301,17 @@ test('#7375 an excluded unresolved requirement is not announced as listed in the
   assert.doesNotMatch(row('R4'), /Listed in the document/);
   click(button(dispatch, /Prepare native drafts/));
   assert.doesNotMatch(card(ui, 'Review report outline')?.textContent ?? '', /R4:/, 'and it is not');
+});
+
+test('#7375 loading a model of another IFC version withdraws drafts typed for the previous versions', async () => {
+  await converse();
+  const ui = await mount();
+  click(button(card(ui, 'Native checks and documents')!, /Prepare native drafts/));
+  assert.ok(card(ui, 'Review IDS draft'));
+  const { models } = useViewerStore.getState();
+  act(() => useViewerStore.setState({ models: new Map([...models].map(([id, model]) => [id, { ...model, schemaVersion: 'IFC2X3' as const }])) }));
+  assert.equal(card(ui, 'Review IDS draft') === null, true);
+  assert.match(ui.textContent ?? '', /the unsaved drafts were withdrawn/);
 });
 
 test('#7375 the IDS draft targets the IFC version of the loaded model', async () => {

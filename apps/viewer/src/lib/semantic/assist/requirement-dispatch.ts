@@ -24,7 +24,7 @@ import type { SourceSpan } from './proposal-common';
 import type { RequirementReview } from './requirement-review';
 import type { SourceText } from './source-texts';
 import type { Passage } from './spans';
-import { classifyRequirement, propertyTarget, sourceRevisionOf, type ClassifiedRequirement, type SchemaMeasures, type SourceRevision,
+import { classifyRequirement, propertyTarget, sourceRevisionOf, type ClassifiedRequirement, type SchemaMeasures, type SourceRevision, type Typed,
   type UnresolvedReason } from './requirement-targets';
 
 const message = (error: unknown) => error instanceof Error ? error.message : String(error);
@@ -47,21 +47,22 @@ const UNRESOLVED_NOTE: Record<UnresolvedReason, string> = {
   'source-missing': 'its source text is no longer attached',
   'source-changed': 'its source text changed after the assistant read it',
   unknown: 'the IFC schema defines no such standard property or quantity',
+  version: 'the targeted IFC versions declare this property with different types, or not at all',
+  dimension: 'the stated unit measures something other than what the IFC schema declares for this property',
+  measure: 'the IFC schema declares a measure type whose units the authoring tools cannot convert',
   scope: 'it applies to a linked-data class, which a check on the whole IFC class would widen',
   property: 'the property is not named as PropertySet.Property or an IFC attribute',
   operator: 'no native check expresses this comparison',
   value: 'the value does not fit the comparison',
-  unit: 'the stated unit cannot be converted natively',
+  unit: 'the value needs a unit the native tools can convert (mm, cm, m, m², m³), or carries one where none applies',
   native: 'the native validator refused it',
 };
 
 const specName = (requirement: ExtractedRequirement) => clip(`${requirement.id}: ${requirement.statement}`, 200);
 
-type Measure = ClassifiedRequirement['measure'];
-
-function idsValue(requirement: ExtractedRequirement, measure: Measure): Record<string, unknown> {
+function idsValue(requirement: ExtractedRequirement, type: Typed | undefined): Record<string, unknown> {
   const { value } = requirement;
-  const typed = measure ? { dataType: measure.dataType, unit: measure.unit } : typeof value === 'boolean' ? { dataType: 'IFCBOOLEAN' } : {};
+  const typed = type ? { dataType: type.dataType, ...(type.unit ? { unit: type.unit } : {}) } : {};
   switch (requirement.operator ?? 'exists') {
     case 'exists': return {};
     case 'oneOf': return { ...typed, value: { type: 'enumeration', values: value } };
@@ -73,9 +74,9 @@ function idsValue(requirement: ExtractedRequirement, measure: Measure): Record<s
 }
 
 /** One IDS specification in the `ids.specifications` proposal shape. */
-function idsSpecification({ requirement, measure }: ClassifiedRequirement, source: SourceRevision): Record<string, unknown> {
+function idsSpecification({ requirement, typed }: ClassifiedRequirement, source: SourceRevision): Record<string, unknown> {
   const target = propertyTarget(requirement.property ?? '')!;
-  const constraint = idsValue(requirement, measure);
+  const constraint = idsValue(requirement, typed);
   // An attribute facet has no dataType or unit; classification already refused a unit on one.
   const facet = target.kind === 'attribute'
     ? { type: 'attribute', name: target.name, ...(constraint.value === undefined ? {} : { value: constraint.value }) }
@@ -88,10 +89,10 @@ const chips = (rules: unknown[]) => ({ groups: [{ combinator: 'AND', rules }], a
 const NUMERIC = { equals: 'eq', notEquals: 'ne', atLeast: 'gte', atMost: 'lte' } as const;
 
 /** One information rule over a `Qto_*` quantity, compared in SI like the native validation reading. */
-function geometryRule({ requirement, measure }: ClassifiedRequirement, source: SourceRevision): Record<string, unknown> {
+function geometryRule({ requirement, typed }: ClassifiedRequirement, source: SourceRevision): Record<string, unknown> {
   const target = propertyTarget(requirement.property ?? '');
-  if (target?.kind !== 'property' || !measure || typeof requirement.value !== 'number') throw new Error('not a quantity comparison');
-  const factor = unitFactor(measure.unit, measure.dataType, requirement.id)!;
+  if (target?.kind !== 'property' || !typed?.unit || typeof requirement.value !== 'number') throw new Error('not a quantity comparison');
+  const factor = unitFactor(typed.unit, typed.dataType, requirement.id)!;
   return { id: `source-${requirement.id}`, name: specName(requirement), severity: 'error',
     description: `${requirement.statement}\n${provenanceNote(requirement, source)}`,
     applicability: chips([{ kind: 'ifcType', values: [requirement.appliesTo!.ifcClass], op: 'in' }]),
@@ -108,12 +109,13 @@ const rulesAnswer = (title: string, rules: unknown[]) =>
  * Classify every reviewed requirement and let the native parser of its target
  * refuse it individually, so one malformed requirement never blocks the rest.
  */
-export function qualifyRequirements(review: RequirementReview, passages: readonly Passage[], sources: readonly SourceText[], schema: SchemaMeasures): ClassifiedRequirement[] {
+export function qualifyRequirements(review: RequirementReview, passages: readonly Passage[], sources: readonly SourceText[], schema: SchemaMeasures,
+  ifcVersions: readonly IFCVersion[]): ClassifiedRequirement[] {
   return review.requirements.map(({ requirement, check }) => {
-    const classified = classifyRequirement(requirement, check, sourceRevisionOf(requirement.span.source, passages, sources), schema);
+    const classified = classifyRequirement(requirement, check, sourceRevisionOf(requirement.span.source, passages, sources), schema, ifcVersions);
     if ((classified.target !== 'ids' && classified.target !== 'geometry') || !classified.source) return classified;
     try {
-      if (classified.target === 'ids') parseIdsProposal(idsAnswer('Check', [idsSpecification(classified, classified.source)]));
+      if (classified.target === 'ids') parseIdsProposal(idsAnswer('Check', [idsSpecification(classified, classified.source)], ifcVersions.length ? ifcVersions : undefined));
       else parseRulesProposal(rulesAnswer('Check', [geometryRule(classified, classified.source)]));
       return classified;
     } catch (error) {

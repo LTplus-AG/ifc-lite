@@ -27,7 +27,8 @@ import { DocumentOutlineReview } from '../check-authoring/DocumentOutlineReview'
 
 const UNRESOLVED: Record<Exclude<UnresolvedReason, 'native'>, TranslationKey> = {
   span: 'semanticAssist.unresolvedSpan', 'source-missing': 'semanticAssist.unresolvedSourceMissing',
-  'source-changed': 'semanticAssist.unresolvedSourceChanged', scope: 'semanticAssist.unresolvedScope', unknown: 'semanticAssist.unresolvedUnknown', property: 'semanticAssist.unresolvedProperty',
+  'source-changed': 'semanticAssist.unresolvedSourceChanged', scope: 'semanticAssist.unresolvedScope', unknown: 'semanticAssist.unresolvedUnknown', version: 'semanticAssist.unresolvedVersion',
+  dimension: 'semanticAssist.unresolvedDimension', measure: 'semanticAssist.unresolvedMeasure', property: 'semanticAssist.unresolvedProperty',
   operator: 'semanticAssist.unresolvedOperator', value: 'semanticAssist.unresolvedValue', unit: 'semanticAssist.unresolvedUnit',
 };
 const TARGET: Record<'ids' | 'geometry' | 'manual', TranslationKey> = {
@@ -86,13 +87,18 @@ export function RequirementDispatch({ proposal, review, passages, loadSchema = l
       (failure: unknown) => { if (live) setSchemaFailure(failure instanceof Error ? failure.message : String(failure)); });
     return () => { live = false; };
   }, [loadSchema]);
-  const classified = useMemo(() => schema ? qualifyRequirements(review, passages, sources, schema) : [], [review, passages, sources, schema]);
+  // The IFC versions an IDS draft would target decide which declared types the values are checked as.
+  const models = useViewerStore(s => s.models);
+  const ifcVersions = useMemo(() => loadedIfcVersions(models), [models]);
+  const classified = useMemo(() => schema ? qualifyRequirements(review, passages, sources, schema, ifcVersions) : [], [review, passages, sources, schema, ifcVersions]);
   const [excluded, setExcluded] = useState<ReadonlySet<string>>(new Set());
-  const [prepared, setPrepared] = useState<{ drafts: NativeDrafts; cited: string; included: ClassifiedRequirement[]; proposal: SemanticRequirementProposal } | null>(null);
+  const [prepared, setPrepared] = useState<{ drafts: NativeDrafts; cited: string; included: ClassifiedRequirement[]; proposal: SemanticRequirementProposal; versions: string } | null>(null);
   const [withdrawn, setWithdrawn] = useState(false);
   // Re-checked on every render: a cited source changed or detached after preparing withdraws the unsaved drafts.
   // A different proposal in the same review withdraws them too: the drafts were built from the previous one.
-  const stale = prepared !== null && (prepared.proposal !== proposal || citedSources(proposal, prepared.included, sources) !== prepared.cited);
+  // So do models of other IFC versions: the drafts' types were chosen for the versions loaded when they were prepared.
+  const stale = prepared !== null && (prepared.proposal !== proposal || prepared.versions !== ifcVersions.join()
+    || citedSources(proposal, prepared.included, sources) !== prepared.cited);
   useEffect(() => {
     // Withdrawn drafts are gone for good: the reviewer prepares them again from the current classification.
     if (stale) { setPrepared(null); setWithdrawn(true); }
@@ -100,8 +106,8 @@ export function RequirementDispatch({ proposal, review, passages, loadSchema = l
   const prepare = () => {
     const included = classified.filter(row => !excluded.has(row.requirement.id));
     const drafts = prepareNativeDrafts(proposal, classified, excluded,
-      { unsupported: review.unsupported, passages, sources, ifcVersions: loadedIfcVersions(useViewerStore.getState().models) });
-    setPrepared({ drafts, cited: citedSources(proposal, included, sources), included, proposal });
+      { unsupported: review.unsupported, passages, sources, ifcVersions });
+    setPrepared({ drafts, cited: citedSources(proposal, included, sources), included, proposal, versions: ifcVersions.join() });
     setWithdrawn(false);
   };
   const active = prepared !== null && !stale ? prepared : null;

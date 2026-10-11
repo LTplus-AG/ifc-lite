@@ -20,8 +20,9 @@
  * room so recipients reconstruct the same IFC relationships.
  */
 
-import { MutablePropertyView, StoreEditor, type IfcAttributeValue } from '@ifc-lite/mutations';
-import { resolveAllMaterialDefIds, type IfcDataStore } from '@ifc-lite/parser';
+import { MutablePropertyView, StoreEditor, iterateEffectiveEntityIds, type IfcAttributeValue } from '@ifc-lite/mutations';
+import { effectiveMetadataRecord, resolveAllMaterialDefIds, type IfcDataStore } from '@ifc-lite/parser';
+import { liveEntityConforms } from '@ifc-lite/create';
 import { RelationshipType } from '@ifc-lite/data';
 import { generateIfcGuid } from '@ifc-lite/encoding';
 import { resolveLiveOwnerHistoryId } from '@ifc-lite/sdk';
@@ -74,7 +75,7 @@ const referenceId = (value: IfcAttributeValue | undefined): number | null => {
 };
 
 /** Source and overlay records, including positional edits from this session. */
-function effectiveAttributes(target: Target, id: number): IfcAttributeValue[] | null {
+function effectiveAttributes(target: Pick<Target, 'store' | 'view'>, id: number): IfcAttributeValue[] | null {
   if (target.view.isDeleted(id)) return null;
   const entity = target.view.getNewEntity(id) ?? target.store.getEntity(id);
   if (!entity) return null;
@@ -83,15 +84,23 @@ function effectiveAttributes(target: Target, id: number): IfcAttributeValue[] | 
   return attrs;
 }
 
-function entityNamed(target: Target, type: string, name: string, nameSlot: number): number | null {
+function entityNamed(target: Pick<Target, 'store' | 'view'>, type: string, name: string, nameSlot: number): number | null {
+  if (type === 'IFCCLASSIFICATION') {
+    for (const { expressId } of iterateEffectiveEntityIds(target.store, target.view, ['IfcClassification'])) {
+      const record = effectiveMetadataRecord(target.store, expressId, target.view);
+      if (record?.attributes[nameSlot] === name) return expressId;
+    }
+    return null;
+  }
+  const matches = (id: number) => effectiveAttributes(target, id)?.[nameSlot] === name;
   // The source is immutable, so this index walk happens only when the user
   // presses Add; no per-element attribute reparsing on the render path.
   // @raw-entity-enumeration-ok source Name candidates are paired with overlay entities; effectiveAttributes applies tombstones and edits before matching.
   for (const id of target.store.entityIndex.byType.get(type) ?? []) {
-    if (effectiveAttributes(target, id)?.[nameSlot] === name) return id;
+    if (matches(id)) return id;
   }
   for (const entity of target.view.getNewEntitiesOfType(type)) {
-    if (effectiveAttributes(target, entity.expressId)?.[nameSlot] === name) return entity.expressId;
+    if (matches(entity.expressId)) return entity.expressId;
   }
   return null;
 }
@@ -169,23 +178,48 @@ function createAsOneStep(target: Target, build: (add: (type: string, attrs: IfcA
   });
 }
 
-export function addClassificationAssociation(modelId: string, entityId: number, input: ClassificationInput): AssociationResult {
+function classificationText(input: ClassificationInput): Required<ClassificationInput> | null {
   const system = input.system.trim();
   const identification = input.identification.trim();
   const name = input.name?.trim() || identification;
-  if ([system, identification, name].some((v) => STEP_TOKEN.test(v))) return { ok: false, reasonKey: 'propertyEditor.association.stepToken' };
+  return [system, identification, name].some((v) => STEP_TOKEN.test(v)) ? null : { system, identification, name };
+}
+
+function classificationEntities(target: Pick<Target, 'store' | 'view'>, entityId: number,
+  input: Required<ClassificationInput>, add: (type: string, attrs: IfcAttributeValue[]) => number, ownerHistory: string | null): void {
+  const { system, identification, name } = input;
+  const ifc2x3 = target.store.schemaVersion === 'IFC2X3';
+  // IfcClassification.Name is slot 3 in every schema; Source and Edition are mandatory in IFC2X3.
+  const attrs: IfcAttributeValue[] = ifc2x3 ? [system, '', null, system] : [null, null, null, system, null, null, null];
+  const classification = entityNamed(target, 'IFCCLASSIFICATION', system, 3) ?? add('IfcClassification', attrs);
+  // Location, ItemReference|Identification, Name, ReferencedSource (+ Description, Sort in IFC4+).
+  const reference = add('IfcClassificationReference', ifc2x3
+    ? [null, identification, name, `#${classification}`]
+    : [null, identification, name, `#${classification}`, null, null]);
+  add('IfcRelAssociatesClassification', [generateIfcGuid(), ownerHistory, null, null, [`#${entityId}`], `#${reference}`]);
+}
+
+/** Same native association construction on a caller-owned unpublished or approved draft (#7271). */
+export function addClassificationInDraft(store: IfcDataStore, draft: StoreEditor, entityId: number, input: ClassificationInput): AssociationResult {
+  const text = classificationText(input);
+  if (!text) return { ok: false, reasonKey: 'propertyEditor.association.stepToken' };
+  const view = draft.getMutationView();
+  if (!liveEntityConforms(store, entityId, store.schemaVersion === 'IFC2X3' ? 'IfcRoot' : 'IfcDefinitionSelect', view)) {
+    return { ok: false, reasonKey: 'propertyEditor.association.classificationTarget' };
+  }
+  const ownerHistoryId = resolveLiveOwnerHistoryId(store, draft, view);
+  if (store.schemaVersion === 'IFC2X3' && ownerHistoryId === null) return { ok: false, reasonKey: 'propertyEditor.association.noOwnerHistory' };
+  classificationEntities({ store, view }, entityId, text,
+    (type, attrs) => draft.addEntity(type, attrs).expressId, ownerHistoryId === null ? null : `#${ownerHistoryId}`);
+  return { ok: true };
+}
+
+export function addClassificationAssociation(modelId: string, entityId: number, input: ClassificationInput): AssociationResult {
+  const text = classificationText(input);
+  if (!text) return { ok: false, reasonKey: 'propertyEditor.association.stepToken' };
   const target = resolveTarget(modelId);
   if (!('editor' in target)) return target;
-  return createAsOneStep(target, (add, ownerHistory) => {
-    // IfcClassification.Name is slot 3 in every schema; Source and Edition are mandatory in IFC2X3.
-    const attrs: IfcAttributeValue[] = target.ifc2x3 ? [system, '', null, system] : [null, null, null, system, null, null, null];
-    const classification = entityNamed(target, 'IFCCLASSIFICATION', system, 3) ?? add('IfcClassification', attrs);
-    // Location, ItemReference|Identification, Name, ReferencedSource (+ Description, Sort in IFC4+).
-    const reference = add('IfcClassificationReference', target.ifc2x3
-      ? [null, identification, name, `#${classification}`]
-      : [null, identification, name, `#${classification}`, null, null]);
-    add('IfcRelAssociatesClassification', [generateIfcGuid(), ownerHistory, null, null, [`#${entityId}`], `#${reference}`]);
-  });
+  return createAsOneStep(target, (add, ownerHistory) => classificationEntities(target, entityId, text, add, ownerHistory));
 }
 
 export function addMaterialAssociation(modelId: string, entityId: number, input: MaterialInput): AssociationResult {

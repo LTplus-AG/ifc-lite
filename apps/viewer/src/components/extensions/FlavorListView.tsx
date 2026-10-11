@@ -32,6 +32,7 @@ import { useTranslation } from '@/i18n';
 import { formatLocaleNumber } from '@/i18n/intlFormat';
 import { localizedFlavorDescription, localizedFlavorName } from './localized-flavor-metadata';
 import { formatExtensionDate } from './localized-date';
+import { useLibraryFocus } from '@/lib/libraries/library-focus';
 
 /** Number of clash rules (customs + modified built-ins) stored in a flavor's
  *  `settings.clash` blob. 0 when the flavor carries no clash config. */
@@ -46,6 +47,7 @@ interface FlavorListViewProps {
   flavors: readonly Flavor[];
   activeId: string | undefined;
   busy: boolean;
+  readPhase?: 'loading' | 'ready' | 'unavailable';
   /** Count of lenses currently in viewer state — surfaces "you have N lenses uncaptured" hint. */
   liveLensCount: number;
   onActivate(id: string): void;
@@ -69,6 +71,7 @@ export function FlavorListView({
   flavors,
   activeId,
   busy,
+  readPhase = 'ready',
   liveLensCount,
   onActivate,
   onExport,
@@ -81,6 +84,8 @@ export function FlavorListView({
   onCreate,
 }: FlavorListViewProps) {
   const { t, locale } = useTranslation();
+  const target = useLibraryFocus(state => state.target);
+  const requested = target?.kind === 'profile' ? target : null;
   const newFlavorNameId = useId();
   const [creating, setCreating] = useState<Creating>(null);
   const [renamingId, setRenamingId] = useState<string | null>(null);
@@ -110,6 +115,9 @@ export function FlavorListView({
 
   return (
     <div className="space-y-3">
+      {readPhase === 'unavailable' && <p role="alert">{t('searchModal.library.open.unavailable')}</p>}
+      {readPhase === 'ready' && requested && !flavors.some(flavor => flavor.id === requested.id)
+        && <p role="alert">{t('searchModal.library.open.missing')}</p>}
       <div className="flex items-center justify-between gap-2 flex-wrap">
         <div className="text-xs text-muted-foreground flex-1 min-w-[200px]">
           {t('extensionsFlavors.flavorListView.intro')}
@@ -229,7 +237,8 @@ export function FlavorListView({
             return (
               <li
                 key={flavor.id}
-                className={`flex items-start gap-3 px-3 py-2 ${isActive ? 'bg-primary/5' : ''}`}
+                aria-current={requested?.id === flavor.id ? 'true' : undefined}
+                className={`flex items-start gap-3 px-3 py-2 ${isActive || requested?.id === flavor.id ? 'bg-primary/5' : ''}`}
               >
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">

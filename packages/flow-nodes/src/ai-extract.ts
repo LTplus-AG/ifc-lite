@@ -104,7 +104,7 @@ export const aiExtractNode: FlowNodeDef = {
       for (let i = start; i < Math.min(start + batchSize, sendable); i++) batch.set(i, passages[i].slice(0, 8000));
       const data = [...batch].map(([i, t]) => JSON.stringify({ passage: i, text: t })).join('\n');
       const reply = await requestJson(ctx, service, task, `<data>\n${data}\n</data>`, maxOutputTokens,
-        extractionSchema([...batch.keys()], fields));
+        extractionSchema([...batch.keys()], fields), 'flow.ai.extract.v1');
       if (reply.kind === 'budget') { ctx.log('warn', `the AI budget ran out after ${requests} request(s)`); break; }
       requests += 1;
       sent += batch.size;

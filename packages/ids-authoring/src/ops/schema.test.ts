@@ -58,6 +58,8 @@ const EXAMPLES: Record<OpKind, StudioOp['payload']> = {
   'meta.custom.removePset': { name: 'Acme_Wall' },
   'meta.custom.declareUserDefinedType': { entity: 'IfcSlab', value: 'SLABRADOR' },
   'meta.custom.removeUserDefinedType': { entity: 'IfcSlab', value: 'SLABRADOR' },
+  'meta.suppress': { nodeId: S, suppression: { rule: 'IDSL-SPEC-008', reason: 'Reviewed', by: 'a@example.com', at: '2026-10-11T00:00:00Z' }, index: 0 },
+  'meta.unsuppress': { nodeId: S, rule: 'IDSL-SPEC-008' },
   'bulk.renameProperty': { fromPset: 'Pset_WallCommon', fromName: 'Fire', toPset: 'Pset_WallCommon', toName: 'FireRating' },
   'bulk.retargetEntity': { from: 'IfcWallStandardCase', to: 'IfcWall', scope: [S] },
   'bulk.applyTemplate': {

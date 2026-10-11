@@ -4,9 +4,13 @@
 
 | Default severity | Kind | Scope | Quick fix |
 |---|---|---|---|
-| info | static | specification | no |
+| info (opt-in) | static | specification | no |
 
 Modellers see the description and instructions when a check fails. Without them the failure report shows only facet text, which rarely tells a modeller what to change or why the requirement exists.
+
+## Enabling
+
+This rule is off by default. Enable it in the linter config, at its default severity or another one: `createLinter(ctx, { severity: { 'IDSL-SPEC-008': 'info' } })`. Naming it in `rules` also enables it.
 
 ## Example
 

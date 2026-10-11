@@ -12,8 +12,8 @@
  * response.
  */
 
-import { decodeFinding, isRecord } from './draft-codec.js';
-import { findingIdentity, type DraftFinding, type DraftOrigin, type DraftTopic } from './draft-types.js';
+import { decodeFinding, decodeSourceFinding, isRecord } from './draft-codec.js';
+import { findingIdentity, type DraftFinding, type DraftOrigin, type DraftSourceFinding, type DraftTopic } from './draft-types.js';
 
 export const DRAFT_FOOTER_MARKER = '-- ifc-lite BCF draft mapping v1 (generated; do not edit below) --';
 
@@ -33,6 +33,11 @@ export function membersDigest(members: readonly Pick<DraftFinding, 'reviewKey' |
   return digestStrings(members.map(member => `${findingIdentity(member)}\u0000${member.reviewKey}`));
 }
 
+/** Digest of reviewed source findings in their decoded form, so membership or run edits are detected (#7373). */
+export function sourceFindingsDigest(findings: readonly DraftSourceFinding[]): string {
+  return digestStrings(findings.map(finding => JSON.stringify(decodeSourceFinding(finding))));
+}
+
 export interface FooterOptions {
   batchId: string;
   /** Archive footers also carry the batch name, origin and every member. */
@@ -47,6 +52,10 @@ export function draftFooter(topic: DraftTopic, options: FooterOptions): string {
       `source: ${encodeURIComponent(JSON.stringify(options.full.source))}`,
       `origin: ${encodeURIComponent(JSON.stringify(topic.origin))}`);
     for (const member of topic.members) lines.push(`m: ${encodeURIComponent(JSON.stringify(member))}`);
+    if (topic.sourceFindings) {
+      lines.push(`sources: ${topic.sourceFindings.length} ${sourceFindingsDigest(topic.sourceFindings)}`);
+      for (const finding of topic.sourceFindings) lines.push(`s: ${encodeURIComponent(JSON.stringify(finding))}`);
+    }
   }
   return lines.join('\n');
 }
@@ -68,6 +77,8 @@ export interface ParsedFooter {
   origin?: DraftOrigin;
   /** Present only for archive footers; validated and consistent with the digest. */
   members?: DraftFinding[];
+  /** Review topics' source findings (#7373); validated and consistent with their own digest. */
+  sourceFindings?: DraftSourceFinding[];
 }
 
 function json(text: string): unknown {
@@ -86,11 +97,12 @@ export function parseDraftFooter(description: string | undefined): ParsedFooter 
   if (at < 0) return null;
   const human = description.slice(0, at).trim();
   const fields = new Map<string, string>();
-  const memberLines: string[] = [];
+  const memberLines: string[] = [], sourceLines: string[] = [];
   for (const line of description.slice(at + DRAFT_FOOTER_MARKER.length).split('\n')) {
     const match = /^([a-z-]+): (.*)$/.exec(line.trim());
     if (!match) continue;
     if (match[1] === 'm') memberLines.push(match[2]);
+    else if (match[1] === 's') sourceLines.push(match[2]);
     else fields.set(match[1], match[2]);
   }
   const counted = /^(\d+) ([0-9a-f]{16})$/.exec(fields.get('members') ?? '');
@@ -118,6 +130,14 @@ export function parseDraftFooter(description: string | undefined): ParsedFooter 
     const valid = members.flatMap(member => member ? [member] : []);
     if (valid.length !== parsed.memberCount || membersDigest(valid) !== parsed.digest) return null;
     parsed.members = valid;
+  }
+  if (sourceLines.length > 0 || fields.has('sources')) {
+    const declared = /^(\d+) ([0-9a-f]{16})$/.exec(fields.get('sources') ?? '');
+    const findings = sourceLines.map(line => decodeSourceFinding(json(line)));
+    if (!declared || !parsed.members || findings.some(finding => !finding)) return null;
+    const valid = findings.flatMap(finding => finding ? [finding] : []);
+    if (valid.length !== Number(declared[1]) || sourceFindingsDigest(valid) !== declared[2]) return null;
+    parsed.sourceFindings = valid;
   }
   return parsed;
 }

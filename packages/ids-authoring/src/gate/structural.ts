@@ -10,7 +10,7 @@
 
 import type { IDSFacet, IDSRequirement } from '@ifc-lite/ids';
 import { presentFields, type FacetFieldName } from '../document/fields.js';
-import { facetAt, locateFacet, locateSpec } from '../document/node-index.js';
+import { facetAt, locateFacet, locateNode, locateSpec } from '../document/node-index.js';
 import type { StudioDocument } from '../document/types.js';
 import type { PrimitiveOp } from '../ops/types.js';
 import type { Uuid } from '../uuid.js';
@@ -32,6 +32,35 @@ function versionsProblem(versions: readonly string[]): StructuralProblem[] {
   return new Set(versions).size === versions.length
     ? []
     : [{ code: 'GATE-STR-007', message: 'ifcVersions lists a version twice', at: '.payload' }];
+}
+
+/**
+ * What a `meta.suppressions` entry can name: a lint rule code
+ * (`IDSL-SPEC-008`), an area wildcard (`IDSL-SPEC-*`) or every rule
+ * (`IDSL-*`), matching `suppressionMatches` in the linter.
+ */
+export const SUPPRESSION_RULE = /^IDSL-(?:\*|[A-Z]+-(?:\d{3}|\*))$/;
+
+/**
+ * `meta.suppress` checks that need the document. They live in the gate, not
+ * the reducer, so undo can restore any suppression exactly as it was.
+ */
+export function checkSuppressionOp(op: PrimitiveOp, doc: StudioDocument): StructuralProblem[] {
+  if (op.kind !== 'meta.suppress') return [];
+  const { nodeId, suppression } = op.payload;
+  const out: StructuralProblem[] = [];
+  if (!locateNode(doc, nodeId)) out.push({ code: 'GATE-STR-001', message: `unknown node ${nodeId}`, at: '.payload.nodeId' });
+  if (!SUPPRESSION_RULE.test(suppression.rule)) {
+    out.push({
+      code: 'GATE-SUP-001',
+      message: `"${suppression.rule}" is not a lint rule code; use IDSL-<AREA>-<nnn>, IDSL-<AREA>-* or IDSL-*`,
+      at: '.payload.suppression.rule',
+    });
+  }
+  if (suppression.reason.trim() === '') {
+    out.push({ code: 'GATE-SUP-002', message: `a suppression of ${suppression.rule} needs a reason`, at: '.payload.suppression.reason' });
+  }
+  return out;
 }
 
 /** Checks on the op payload itself, before it is applied. */

@@ -1,0 +1,14 @@
+{
+  "command": [
+    "pnpm",
+    "test",
+    "--filter=@ifc-lite/viewer",
+    "--env-mode=loose",
+    "--concurrency=1"
+  ],
+  "TEST_PATTERN": "selection-materials",
+  "sourceSha256": "d49b0983d1a40fffb2a248b283a9d6ff4b9fd1a66a6f125af2e07cfc88cb420c",
+  "exitCode": 0,
+  "startedUnix": 1791464603.189098,
+  "finishedUnix": 1791464699.9659338
+}

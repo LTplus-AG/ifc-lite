@@ -14,6 +14,8 @@
 import { useShallow } from 'zustand/react/shallow';
 import { analysisChartInputs, isAnalysisChartSource } from '@/lib/assistant/artifacts/analysis-chart';
 import { useEffect, useMemo, useState } from 'react';
+import type { CapturedEntityScope } from '@ifc-lite/rules';
+import { captureArtifactScope } from '@/lib/captured-artifact-scope';
 import { CheckCircle2, ClipboardCheck, ExternalLink, Save } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useTranslation, type TranslationKey } from '@/i18n';
@@ -65,6 +67,15 @@ function ArtifactReview({ initial, onAsk }: { initial: ArtifactProposal; onAsk: 
   const mutationViews = useViewerStore((s) => s.mutationViews);
   const mutationVersion = useViewerStore((s) => s.mutationVersion);
   const [proposal, setProposal] = useState(initial);
+  // Pin the native population when this keyed review opens, before asynchronous schema discovery (#7186).
+  const [scopeCapture] = useState<{ scope?: CapturedEntityScope; error: string | null }>(() => {
+    if (initial.kind === 'chart.proposal' || !initial.scope || initial.scope === 'all') return { error: null };
+    try { return { scope: captureArtifactScope(initial.scope, useViewerStore.getState()), error: null }; }
+    catch (reason) {
+      console.warn('[Assistant] Artifact population capture refused', reason);
+      return { error: reason instanceof Error ? reason.message : String(reason) };
+    }
+  });
   const analysis = proposal.kind === 'chart.proposal' && isAnalysisChartSource(proposal.chart.source);
   const sourceInputs = useViewerStore(useShallow((s) => proposal.kind === 'chart.proposal' && isAnalysisChartSource(proposal.chart.source)
     ? analysisChartInputs(proposal.chart.source, s) : []));
@@ -72,7 +83,7 @@ function ArtifactReview({ initial, onAsk }: { initial: ArtifactProposal; onAsk: 
   const scopeKey = useViewerStore((s) => proposal.kind === 'chart.proposal' ? chartScopeKey(proposal.scope, s) : null);
   const [preview, setPreview] = useState<ArtifactPreview | null>(null);
   const [running, setRunning] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(scopeCapture.error);
   const [saved, setSaved] = useState<SavedArtifact | null>(null);
   // The schema index is scanned in chunks; a newer federation or revision abandons the stale scan.
   const [schema, setSchema] = useState<{ index: ModelSchemaIndex | null; error: string | null; checking: boolean }>({ index: null, error: null, checking: false });
@@ -92,7 +103,7 @@ function ArtifactReview({ initial, onAsk }: { initial: ArtifactProposal; onAsk: 
   const { index, error: indexError, checking } = schema;
   const resolutions = useMemo<FieldResolution[]>(() => (index ? resolveFields(fieldSites(proposal), index) : []), [proposal, index]);
   const unresolved = resolutions.filter((resolution): resolution is Extract<FieldResolution, { status: 'unresolved' }> => resolution.status === 'unresolved');
-  const blocked = (!analysis && !index) || unresolved.length > 0;
+  const blocked = scopeCapture.error !== null || (!analysis && !index) || unresolved.length > 0;
 
   // The engine reruns whenever the proposal resolves or the models change, so the numbers shown are always current.
   useEffect(() => {
@@ -101,7 +112,11 @@ function ArtifactReview({ initial, onAsk }: { initial: ArtifactProposal; onAsk: 
     const controller = new AbortController();
     setRunning(true);
     setError(null);
-    previewArtifact(proposal, useViewerStore.getState(), controller.signal)
+    const run = async () => {
+      const state = useViewerStore.getState();
+      return previewArtifact(proposal, state, controller.signal, scopeCapture.scope);
+    };
+    run()
       .then((next) => { if (!controller.signal.aborted) setPreview(next); })
       .catch((reason: unknown) => {
         if (controller.signal.aborted) return;
@@ -111,7 +126,7 @@ function ArtifactReview({ initial, onAsk }: { initial: ArtifactProposal; onAsk: 
       })
       .finally(() => { if (!controller.signal.aborted) setRunning(false); });
     return () => controller.abort();
-  }, [proposal, blocked, index, scopeKey, sourceInputs, models, mutationVersion]);
+  }, [proposal, blocked, index, scopeKey, sourceInputs, models, mutationVersion, scopeCapture]);
 
   const current = !!preview && !running && isPreviewCurrent(preview, useViewerStore.getState());
   const save = () => {

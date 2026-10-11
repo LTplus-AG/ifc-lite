@@ -1,0 +1,53 @@
+{
+  "issue": 7239,
+  "source": {
+    "path": "tests/models/ara3d/C20-Institute-Var-2.ifc",
+    "sha256": "a06b9cf1922cc0a1e200719189054510dd3e1d188292325f66614f7c1fdb37b4"
+  },
+  "capture": {
+    "route": "useIfcLoader.loadFile fresh load",
+    "date": "2026-10-08",
+    "qualificationSha256": "53ee549bba0c973f1317181156e601e76b3b465ad300b0b292f40924c02f5530"
+  },
+  "coordinateInfo": {
+    "boundsRecoveryFallbackCount": 0,
+    "buildingRotation": 0,
+    "hasLargeCoordinates": false,
+    "lengthUnitScale": 1,
+    "originShift": {
+      "x": 0,
+      "y": 0,
+      "z": 0
+    },
+    "originalBounds": {
+      "max": {
+        "x": 50,
+        "y": 12.04931853711605,
+        "z": 11
+      },
+      "min": {
+        "x": -8,
+        "y": -3.300000011920929,
+        "z": -27
+      }
+    },
+    "shiftedBounds": {
+      "max": {
+        "x": 50,
+        "y": 12.04931853711605,
+        "z": 11
+      },
+      "min": {
+        "x": -8,
+        "y": -3.300000011920929,
+        "z": -27
+      }
+    },
+    "wasmRtcFrame": {
+      "needsShift": false,
+      "x": 0,
+      "y": 0,
+      "z": 0
+    }
+  }
+}

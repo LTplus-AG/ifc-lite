@@ -31,7 +31,6 @@ scripts/lib/module-size-ratchet.test.mjs tests/* # `tests` fragment from a fixtu
 scripts/ai-eval/check-ai-eval-manifest.mjs tests/* # `tests` fragment of join(root, 'tests', 'ai-eval' | 'models', ...); the real inputs are tests/ai-eval/** and tests/models/manifest.json, both in the node-tests filter
 scripts/ai-eval/check-ai-eval-invariants.mjs tests/* # same fragment; the real input is tests/ai-eval/** (recordings and manifest)
 scripts/fixtures/fetch-fixtures.test.mjs tests/* # `tests` fragment; the fetcher targets tests/models from its manifest
-scripts/docs/generate-docs-sections.mjs tests/benchmark/* # `tests` prefix fragment; the one input under tests/benchmark is baseline.json, now in the docs filter and pinned by REQUIRED_COVERAGE
 scripts/docs/generate-docs-sections.mjs tests/extensions # `tests` prefix fragment; sdk-canary.yml carries tests/extensions/canaries/** in its own paths
 scripts/docs/generate-docs-sections.mjs tests/models # `tests` prefix fragment; the corpus input tests/models/manifest.json is in the rust, geometry and frontend filters
 scripts/docs/generate-docs-sections.mjs tests/perf-ratchets # `tests` prefix fragment; the generator reads no perf-ratchet ceiling file (#6959)
@@ -107,7 +106,6 @@ scripts/perf/build-csg-work-bundle.mjs ** # manual-only pinned-historical diagno
 # ---------------------------------------------------------------------------
 scripts/check-ci-path-coverage.mjs apps/landing/app.jsx # asserted about, not read -- REQUIRED_COVERAGE entry
 scripts/check-ci-path-coverage.mjs apps/landing/bench-data.json # asserted about, not read -- REQUIRED_COVERAGE entry
-scripts/check-ci-path-coverage.mjs tests/benchmark/baseline.json # asserted about, not read -- REQUIRED_COVERAGE entry
 
 # ---------------------------------------------------------------------------
 # 5. THIS CHECK'S OWN HARNESS. check-ci-path-coverage.test.mjs quotes real repo
@@ -117,7 +115,6 @@ scripts/check-ci-path-coverage.mjs tests/benchmark/baseline.json # asserted abou
 scripts/check-ci-path-coverage.test.mjs .github/* # `.github` prefix fragment from a fixture path, not read
 scripts/check-ci-path-coverage.test.mjs apps/landing/** # quoted in an assertion, not read
 scripts/check-ci-path-coverage.test.mjs docs/** # quoted in an assertion, not read
-scripts/check-ci-path-coverage.test.mjs tests/benchmark # quoted in an assertion, not read
 scripts/check-ci-path-coverage.test.mjs tests/extensions # quoted in an assertion, not read
 scripts/check-ci-path-coverage.test.mjs tests/models # quoted in an assertion, not read
 scripts/check-ci-path-coverage.test.mjs tests/perf-ratchets # `tests` prefix fragment expanded over the tree, not read (#6959)

@@ -61,7 +61,7 @@
  *   REVIEW_TOO_LARGE  Total patch text over MAX_PATCH_BYTES.
  *                     REMEDY: split the PR. Below the cap the lane DEGRADES
  *                     instead (see the omission note above `fitFilesToPrompt`):
- *                     it reviews the largest files that fit the prompt and
+ *                     it reviews the highest-priority files that fit and
  *                     records the rest as unreviewable, so a near-cap PR gets a
  *                     partial review with a marker instead of a MODEL_ERROR red
  *                     that no re-run can clear (#3679).
@@ -113,6 +113,7 @@ import { unifiedDiffLineKind } from '../lib/unified-diff.mjs';
 // comment says was moved rather than fixed.
 import { pageAll } from '../check-review-posted.mjs';
 import { DEFECT_CLASSES } from './lib/defect-classes.mjs';
+import { compareForReview, omittedByTier } from './lib/review-priority.mjs';
 
 /**
  * 600 KB of patch text; the largest PR observed on this repo is ~427 KB. This is
@@ -342,13 +343,11 @@ export function addedLineRanges(patch) {
  * run-reviewer has NO path from MODEL_ERROR to a marker, so the job went red
  * with nothing posted and nothing any re-run could clear. Refusing instead
  * (lowering the cap) is the same trade already made and reverted once here.
- * So the lane DEGRADES: it reviews the largest files that fit and RECORDS the
- * rest, and the recorded rows travel all the way to the posted marker.
+ * So the lane DEGRADES: it reviews the files that fit and RECORDS the rest,
+ * and the recorded rows travel all the way to the posted marker.
  *
- * LARGEST FIRST, because the largest files carry the most changed lines: for a
- * fixed byte budget that ordering maximises how much of the diff is actually
- * read. Greedy, so a file too big for the remaining room does not block a
- * smaller one behind it. Ties break on path so two runs of one head agree.
+ * PRODUCTION FIRST, then tests, docs/config, archived evidence (#7268), largest
+ * first within a tier; greedy and deterministic. See lib/review-priority.mjs.
  *
  * THE CHARGE IS MEASURED, PER ROLE, AND EACH CANDIDATE PAYS THE ROLE IT ENDS
  * UP IN. A candidate is either KEPT (a `--- FILE:` header plus a roster row --
@@ -406,6 +405,7 @@ export function fitFilesToPrompt(candidates, unreviewable) {
 
   const sized = candidates.map((c) => ({
     c,
+    path: c.path,
     bytes: Buffer.byteLength(c.patch, 'utf8'),
     // What admitting this file costs on top of its patch: it stops paying for an
     // unreviewable row and starts paying for a header plus a roster row.
@@ -415,10 +415,9 @@ export function fitFilesToPrompt(candidates, unreviewable) {
   // always available, so this is what the budget is measured against.
   const budget = sized.reduce((n, s) => n - omittedCharge(s.c.path), base);
 
-  const bySize = [...sized].sort((a, b) => b.bytes - a.bytes || a.c.path.localeCompare(b.c.path));
   const keep = new Set();
   let spent = 0;
-  for (const s of bySize) {
+  for (const s of [...sized].sort(compareForReview)) {
     const cost = s.bytes + s.swing;
     if (spent + cost <= budget) {
       keep.add(s.c.path);
@@ -506,7 +505,8 @@ export function buildInput(fileRows, headSha) {
       throw new BuildInputError(
         'REVIEW_TOO_LARGE',
         `Patch text exceeds ${MAX_PATCH_BYTES} bytes at \`${path}\`. Below this cap the lane degrades ` +
-          'to reviewing whatever the largest-first fit keeps within the model prompt and names the ' +
+          'to reviewing whatever the priority fit (production, tests, docs/config, then evidence) keeps ' +
+          'within the model prompt and names the ' +
           'rest in the omitted list; past it there is no such guarantee left to make -- a diff this ' +
           'size has no evenly-sized-file assumption to fall back on, so no fixed fraction of it can be ' +
           'promised read. REMEDY: split the PR.',
@@ -611,7 +611,7 @@ function main() {
       `::warning::review-input: PARTIAL REVIEW -- ${omittedRows.length} file(s) were not shown to the ` +
         'reviewer, dropped to fit the model prompt (#3679) or refused a patch by GitHub for being too ' +
         'large. They are recorded as unreviewable and the posted marker will name them; nothing ' +
-        'vouches for those files.',
+        `vouches for those files. Omitted by tier: ${omittedByTier(omittedRows.map((u) => u.path))}.`,
     );
   }
   // THE CONTEXT PACK. Built here, in the harness, never by the model.

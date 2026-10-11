@@ -1,0 +1,70 @@
+{
+  "head": "08a891e40492b3bff2ed150a551a42751a204f54",
+  "correctedFullBefore": {
+    "tests": 22,
+    "pass": 22,
+    "fail": 0,
+    "skip": 0
+  },
+  "oldHelperInverse": {
+    "tests": 3,
+    "pass": 1,
+    "fail": 2,
+    "skip": 0,
+    "failures": "Both failure-marker controls missing expected exception; ordinary open work passes"
+  },
+  "correctedFullAfter": {
+    "tests": 22,
+    "pass": 22,
+    "fail": 0,
+    "skip": 0
+  },
+  "sourceRestoredByteExact": {
+    "candidateSHA": "39fe7e8a1bb1f8c1ba276bf679f4ad79163cbe70237661238780106da6aece05",
+    "restoredSHA": "39fe7e8a1bb1f8c1ba276bf679f4ad79163cbe70237661238780106da6aece05",
+    "byteExact": true
+  },
+  "files": [
+    {
+      "path": "focused/candidate-full-result.json",
+      "bytes": 334,
+      "sha256": "49910f06f8df6fdbdac05039e513517bd1d474f3c3a726aa338dd27ecb74f940"
+    },
+    {
+      "path": "focused/candidate-full.log",
+      "bytes": 2476,
+      "sha256": "14cb84961ec5425d90b1b0c875dde3692216e798e235ca5415db0f86855af19d"
+    },
+    {
+      "path": "focused/original-helper-inverse-result.json",
+      "bytes": 459,
+      "sha256": "75077078c8209db8f8881e529dcc71e19a86424ffce9ac21b573c31d2f2a05c3"
+    },
+    {
+      "path": "focused/original-helper-inverse.log",
+      "bytes": 2123,
+      "sha256": "4b641b40c8a433f812b803d908fb10a39a1af77fe88c5c79240420e26bd8668e"
+    },
+    {
+      "path": "focused/preflight.json",
+      "bytes": 1008,
+      "sha256": "56cd00337a2eb080837d7d262cd86bb66828d53482e0a852b6c5313151b1a9da"
+    },
+    {
+      "path": "focused/restoration.json",
+      "bytes": 195,
+      "sha256": "7c3426008448e58a61b4684f9067006b920515686dcff3c89f5b8e3a54785cfc"
+    },
+    {
+      "path": "focused/restored-full-result.json",
+      "bytes": 334,
+      "sha256": "eb22352b62b257ffda1a1bee15f7a25b3ab002dea6511fbf1f6bb64066e7e1d0"
+    },
+    {
+      "path": "focused/restored-full.log",
+      "bytes": 2476,
+      "sha256": "04105782861dafcae32a05ee26a3f3d31b55d8f4f5adbe48d77f69c1fe8107a5"
+    }
+  ],
+  "limits": "CPU validator only; no geometry/WASM/native Chrome execution. Remaining qualification pending."
+}

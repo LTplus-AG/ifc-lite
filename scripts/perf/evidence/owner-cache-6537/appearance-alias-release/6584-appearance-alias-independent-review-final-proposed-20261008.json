@@ -1,0 +1,28 @@
+{
+  "timeUtc": "2026-10-08T08:54:39.438785+00:00",
+  "worktree": "/tmp/ifc-6584",
+  "head": "43b3537051408aef41bf49f995ea87314703299d",
+  "dirty": "M apps/viewer/src/lib/geometry-cpu-aliases.ts\n M apps/viewer/src/lib/geometry-cpu-release.ts\n?? apps/viewer/src/lib/geometry-cpu-appearance.test.ts\n?? apps/viewer/src/lib/geometry-cpu-buffers.ts",
+  "sourceHashes": {
+    "apps/viewer/src/lib/geometry-cpu-buffers.ts": "1fbad7d1cd88975646600c54e8de095a109b1831af80ea6ba03978538027d49f",
+    "apps/viewer/src/lib/geometry-cpu-aliases.ts": "24c70e620c0bd66cdd4ac35fe62a5e6602bff73f517cb347c13b28d62af9bbfb",
+    "apps/viewer/src/lib/geometry-cpu-release.ts": "45464f755c522d8dc9818b41ab834da31b14b0ce9286415019c7dd675d98ea30",
+    "apps/viewer/src/lib/released-mesh-provenance.ts": "e46a6232d903f5febfe0168a4e4355aaaac6c562396d91575a164a9a634fc5f8",
+    "apps/viewer/src/lib/geometry-cpu-appearance.test.ts": "c27f5ea2eb0971d16e22dba8636da5f3fd7060b65fea8ac4ce29db0ef68e8a8e",
+    "packages/renderer/src/scene-stream-split.ts": "b91fc85faacf647febfc9d1d7b5f281687de7e24f388fff03e7c561e15c1c9a8",
+    "packages/renderer/src/appearance-uvs.ts": "da24048d74fec7cfb223442301efbe97e4f841b274b8fffd014eaa69273be6ca"
+  },
+  "scope": "Independent read-only inspection, no test/build/native execution",
+  "findings": [],
+  "observations": [
+    "Actual backing buffer identity checked, including zero-length views with populated backing allocations",
+    "Release replaces only sharing fields; independent topology and corner-remapping identities preserved",
+    "Explicit empty corner fence avoids implicit identity provenance",
+    "Per-field retained count markers preserve released main-field counts without replacing independent geometry",
+    "Appearance object spread isolates replacements; unrelated fields/provenance identities retained",
+    "Four final proposed controls inspected; actual expandAppearanceCorners produces independent geometry and shares source corner map, release preserves independent geometry/sourceIndices, explicitly empty map makes appearanceSourceTriangle undefined",
+    "No executable checks run by independent reviewer; picker owns restored/inverse qualification"
+  ],
+  "qualificationLimit": "Real split function invoked, but regression explicitly registers fragments through carryReleasedMesh; this is registered-alias behavioral coverage, not proof of renderer registration wiring. Scene has separate bucket/map clearing release.",
+  "previousReviewReceipt": "/home/louistrue/.t3/artifacts/6584-appearance-alias-independent-review-20261008.json"
+}

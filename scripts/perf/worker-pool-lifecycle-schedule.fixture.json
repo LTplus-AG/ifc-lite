@@ -1,0 +1,79 @@
+{
+  "sourcePlanSHA256": "b0516268dfaefad5e23617fb243b42739c50d85530bafb6139b8f6e847ef746e",
+  "rows": [
+    {
+      "index": 80,
+      "contrast": "compatibility",
+      "pair": 1,
+      "side": "A",
+      "source": "base",
+      "query": "geomWorkers=4&perfTrace=1&perfMem=1&warmPool=0",
+      "workload": {
+        "name": "repeat-fzk-snowdon-fzk",
+        "mode": "replace",
+        "loads": [
+          "fzk",
+          "snowdon",
+          "fzk"
+        ]
+      },
+      "freshOwnedProfile": true,
+      "deadlineMs": 300000
+    },
+    {
+      "index": 81,
+      "contrast": "compatibility",
+      "pair": 1,
+      "side": "B",
+      "source": "candidate",
+      "query": "geomWorkers=4&perfTrace=1&perfMem=1&warmPool=0",
+      "workload": {
+        "name": "repeat-fzk-snowdon-fzk",
+        "mode": "replace",
+        "loads": [
+          "fzk",
+          "snowdon",
+          "fzk"
+        ]
+      },
+      "freshOwnedProfile": true,
+      "deadlineMs": 300000
+    },
+    {
+      "index": 110,
+      "contrast": "compatibility",
+      "pair": 1,
+      "side": "A",
+      "source": "base",
+      "query": "geomWorkers=4&perfTrace=1&perfMem=1&warmPool=0",
+      "workload": {
+        "name": "cache-reload-54MiB",
+        "mode": "cache",
+        "loads": [
+          "54MiB",
+          "54MiB"
+        ]
+      },
+      "freshOwnedProfile": true,
+      "deadlineMs": 300000
+    },
+    {
+      "index": 111,
+      "contrast": "compatibility",
+      "pair": 1,
+      "side": "B",
+      "source": "candidate",
+      "query": "geomWorkers=4&perfTrace=1&perfMem=1&warmPool=0",
+      "workload": {
+        "name": "cache-reload-54MiB",
+        "mode": "cache",
+        "loads": [
+          "54MiB",
+          "54MiB"
+        ]
+      },
+      "freshOwnedProfile": true,
+      "deadlineMs": 300000
+    }
+  ]
+}

@@ -127,8 +127,8 @@ test('opening the Assistant without evidence offers every source with its live s
   assert.match(row('Clash detection').textContent ?? '', /Not run yet/);
   assert.ok([...row('Clash detection').querySelectorAll('button')].some(b => b.textContent === 'Run clash detection'));
   assert.match(row('Compare models').textContent ?? '', /Needs two models/);
-  assert.match(row('Load report').textContent ?? '', /1 model/);
-  click(ui.querySelector('button[aria-label="Discuss Load report"]')!);
+  assert.match(row('Models and new IFC files').textContent ?? '', /1 model/);
+  click(ui.querySelector('button[aria-label="Discuss Models and new IFC files"]')!);
   assert.equal(useAssistant.getState().snapshot?.source, 'loadReport');
   assert.equal(ui.querySelector('textarea')!.disabled, false);
   assert.match(ui.textContent ?? '', /1 of 1 rows attached/);

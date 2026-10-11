@@ -37,6 +37,7 @@ import { PlacementPanel } from '@/components/viewer/placement/PlacementPanel';
 import { ModelInspectorPanel } from '@/components/viewer/model-inspector/ModelInspectorPanel';
 import { PanelModelGate } from '@/components/viewer/PanelModelGate';
 import { TOUR_ANCHORS, tourAnchor } from '@/lib/tours/anchors';
+import { loadIdsStudioRuntime } from '@/lib/ids-studio/runtime-loader';
 import { useViewerStore } from '@/store';
 // Lazy: the Layers panel pulls in @ifc-lite/merge (engine + blake3); a
 // dynamic chunk keeps it out of the initial bundle until first opened.
@@ -78,7 +79,12 @@ function ReviewPanelBody() {
 }
 
 // Lazy: IDS Studio pulls in the authoring core, lint rules and CodeMirror (IDS-030).
-const IdsStudioPanel = lazy(() => import('@/components/viewer/ids-studio/IdsStudioPanel').then(m => ({ default: m.IdsStudioPanel })));
+// The panel mounts only once the store's authoring runtime is installed, so the
+// Studio slice's synchronous actions are always ready when the panel calls them.
+const IdsStudioPanel = lazy(() => Promise.all([
+  import('@/components/viewer/ids-studio/IdsStudioPanel'),
+  loadIdsStudioRuntime(),
+]).then(([m]) => ({ default: m.IdsStudioPanel })));
 function IdsStudioPanelBody() {
   return <ChunkErrorBoundary label="IDS Studio panel"><Suspense fallback={null}><IdsStudioPanel /></Suspense></ChunkErrorBoundary>;
 }

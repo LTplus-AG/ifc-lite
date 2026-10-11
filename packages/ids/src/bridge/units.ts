@@ -290,16 +290,14 @@ export function toRaw(
 /**
  * The conversion for a value whose property or quantity declares its OWN
  * `Unit`. `siScale` is the parser's resolved SI factor of that unit
- * (`unitSiScale` / `explicitUnitSiScale`), `symbol` its display symbol and
- * `siOffset` its additive SI offset when it has one (°F, `unitSiOffset`);
+ * (`unitSiScale` / `explicitUnitSiScale`), `symbol` its display symbol, `siOffset` its °F offset;
  * an unresolved factor, a non-measure dataType or a monetary value (not an
  * SI quantity) gives `undefined`: the value stays as written.
  */
 export function ownUnitConversionFor(
   dataType: string | undefined,
   siScale: number | undefined,
-  symbol: string | undefined,
-  siOffset?: number
+  symbol: string | undefined, siOffset?: number
 ): SiConversion | undefined {
   const upper = dataType ? dataType.toUpperCase() : '';
   if (!upper.endsWith('MEASURE') || upper === 'IFCMONETARYMEASURE') return undefined;

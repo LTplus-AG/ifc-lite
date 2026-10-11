@@ -25,7 +25,8 @@ import { findingFromClash } from '../bcf-drafts/draft-create';
 import { mergeDraftTopics, splitDraftTopic } from '../bcf-drafts/draft-edit';
 import { findingIdentity, type DraftBatch, type DraftFinding, type DraftSourceFinding, type DraftTopic } from '../bcf-drafts/draft-types';
 import { captureReviewSnapshot } from './collect';
-import { draftTopicsFromCards } from './actions';
+import { cardDraftNoteKey, draftTopicsFromCards } from './actions';
+import { reviewWorkspaceEn } from '@/i18n/catalogues/review-workspace.en';
 import { buildCards, type CoordinationCard } from './cards';
 import { element, fakeModel, finding } from './test-support';
 import type { ReviewFinding } from './types';
@@ -197,18 +198,26 @@ test('#7373 merge and split keep every source finding with exactly one topic', a
   assert.deepEqual(moved?.members, clashTopics[0].members);
 });
 
-test('#7373 a batch the strict codec refuses is reported as invalid, never as a retryable unsaved draft', async () => {
-  const models = [fakeModel('m1', 'arch.ifc', ['W1'])];
-  // A native status beyond the draft limit: the whole batch is refused rather than saved with a truncated finding.
-  const oversized = finding('v1', 'validation', [element('W1', 'arch.ifc', 'm1')], { nativeStatus: 'x'.repeat(201),
-    evidence: { kind: 'validation', specificationId: 's1', modelId: 'm1', expressId: 1 } });
-  const result = await draftTopicsFromCards('Round', buildCards([oversized], models).cards);
-  assert.ok(result.batch);
-  assert.equal(result.saved, false);
-  assert.equal(result.invalid, true, 'the caller can name the reason instead of suggesting a retry');
-  const ok = finding('v2', 'validation', [element('W1', 'arch.ifc', 'm1')], { nativeStatus: 'failed',
-    evidence: { kind: 'validation', specificationId: 's1', modelId: 'm1', expressId: 1 } });
-  const saved = await draftTopicsFromCards('Round', buildCards([ok], models).cards);
+test('#7373 a batch the strict codec refuses names its reason, never a retry or advice that cannot fix it', async () => {
+  const guids = Array.from({ length: 501 }, (_, at) => `W${at}`);
+  const models = [fakeModel('m1', 'arch.ifc', guids)];
+  const failed = (guid: string, nativeStatus = 'failed') => finding(guid, 'validation', [element(guid, 'arch.ifc', 'm1')], { nativeStatus,
+    evidence: { kind: 'validation', specificationId: 's1', modelId: 'm1', expressId: guids.indexOf(guid) + 1 } });
+  // One over-long native status: drafting fewer cards cannot help, so the note must not suggest it.
+  const long = await draftTopicsFromCards('Round', buildCards([failed('W0', 'x'.repeat(201))], models).cards);
+  assert.ok(long.batch);
+  assert.equal(long.saved, false);
+  assert.equal(long.invalid, 'field-limit');
+  assert.equal(cardDraftNoteKey(long), 'reviewWorkspace.actions.draftFieldLimit');
+  assert.doesNotMatch(reviewWorkspaceEn['reviewWorkspace.actions.draftFieldLimit'].other, /fewer cards/);
+  // More topics than one draft batch holds: drafting fewer cards is the fix.
+  const many = await draftTopicsFromCards('Round', buildCards(guids.map(guid => failed(guid)), models).cards);
+  assert.equal(many.batch?.topics.length, 501);
+  assert.equal(many.invalid, 'too-many');
+  assert.equal(cardDraftNoteKey(many), 'reviewWorkspace.actions.draftTooMany');
+  assert.match(reviewWorkspaceEn['reviewWorkspace.actions.draftTooMany'].other, /fewer cards/);
+  const saved = await draftTopicsFromCards('Round', buildCards([failed('W1')], models).cards);
   assert.equal(saved.saved, true);
   assert.equal(saved.invalid, undefined);
+  assert.equal(cardDraftNoteKey(saved), 'reviewWorkspace.actions.draftSaved');
 });

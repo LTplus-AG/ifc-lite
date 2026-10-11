@@ -14,7 +14,13 @@ import { decodeDraftBatch, decodeViewpoint, draftOwnershipConflict, type DraftOw
 import { DRAFT_FOOTER_MARKER, describeWithFooter, parseDraftFooter } from './draft-footer.js';
 import type { DraftBatch, DraftSource, DraftTopic } from './draft-types.js';
 
+/**
+ * The archive is keyed by topic GUID, so a batch that is not a partition (a repeated GUID would silently
+ * drop a topic; a finding claimed twice could never be imported) is refused rather than written lossily.
+ */
 export function draftBatchToProject(batch: DraftBatch, author: string, now = new Date()): BCFProject {
+  const conflict = draftOwnershipConflict(batch.topics);
+  if (conflict) throw new DraftArchiveError(conflict, 'export');
   const project = createBCFProject({ name: batch.name, version: '2.1' });
   const date = now.toISOString();
   for (const topic of batch.topics) {
@@ -49,20 +55,20 @@ export interface DraftArchiveImport {
   droppedFindings: number;
 }
 
-/** Why a whole archive was refused; the dialog shows a translated message per reason. */
+/** Why a whole archive was refused; the dialog shows a translated message per reason and direction. */
 export type DraftArchiveFailure = DraftOwnershipConflict | 'unreadable';
+export type DraftArchiveDirection = 'import' | 'export';
 
-const FAILURE_MESSAGES: Record<DraftArchiveFailure, string> = {
-  topic: 'The archive holds one topic GUID twice; nothing was imported',
-  member: 'The archive maps one clash finding to several topics; nothing was imported',
-  'source-finding': 'The archive maps one reviewed finding to several topics; nothing was imported',
-  unreadable: 'The archive topics could not be read as drafts; nothing was imported',
+const CONFLICTS: Record<DraftArchiveFailure, string> = {
+  topic: 'holds one topic GUID twice', member: 'maps one clash finding to several topics',
+  'source-finding': 'maps one reviewed finding to several topics', unreadable: 'has topics that cannot be read as drafts',
 };
 
-/** An archive refused as a whole, with the exact reason (never a guessed one). */
+/** An archive refused as a whole on import or export, with the exact reason (never a guessed one). */
 export class DraftArchiveError extends Error {
-  constructor(readonly reason: DraftArchiveFailure) {
-    super(FAILURE_MESSAGES[reason]);
+  constructor(readonly reason: DraftArchiveFailure, readonly direction: DraftArchiveDirection = 'import') {
+    super(direction === 'import' ? `The archive ${CONFLICTS[reason]}; nothing was imported`
+      : `The draft batch ${CONFLICTS[reason]}; nothing was exported`);
     this.name = 'DraftArchiveError';
   }
 }

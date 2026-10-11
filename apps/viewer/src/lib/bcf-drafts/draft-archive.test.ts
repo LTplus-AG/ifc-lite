@@ -13,7 +13,7 @@ import { resolveManualClashGroups } from '../clash/manual-groups';
 import { groupOf, proxyWallRun, sampleElements, PROXY_WALL_RULE } from '@/test/bcf-draft-fixture';
 import { draftBatchFromGroups } from './draft-create';
 import { addDraftComment } from './draft-edit';
-import { exportDraftArchive, importDraftArchive } from './draft-archive';
+import { DraftArchiveError, draftBatchToProject, exportDraftArchive, importDraftArchive } from './draft-archive';
 import { DRAFT_FOOTER_MARKER } from './draft-footer';
 
 async function batchWithComment() {
@@ -81,4 +81,15 @@ test('a plain BCF archive imports as an unmapped batch and an edited footer is r
   assert.deepEqual(topics.map(topic => topic.members.length), [0, 0], 'no half-trusted membership');
   assert.ok(topics.every(topic => topic.origin.kind === 'archive'));
   assert.ok(topics.every(topic => !topic.description.includes(DRAFT_FOOTER_MARKER)));
+});
+
+// The archive is keyed by topic GUID: a repeated GUID would silently drop a topic, so export refuses it.
+test('a batch with one topic GUID twice is refused at export with that reason, never written lossily', async () => {
+  const batch = await batchWithComment();
+  const duplicated = { ...batch, topics: [batch.topics[0], { ...batch.topics[1], guid: batch.topics[0].guid, title: 'Other title' }] };
+  const refused = (error: unknown) => error instanceof DraftArchiveError && error.reason === 'topic' && error.direction === 'export'
+    && /nothing was exported/.test(error.message);
+  assert.throws(() => draftBatchToProject(duplicated, 'a@example.test'), refused);
+  await assert.rejects(async () => exportDraftArchive(duplicated, 'a@example.test'), refused);
+  assert.ok(draftBatchToProject(batch, 'a@example.test').topics.size === 2, 'a valid batch still exports every topic');
 });

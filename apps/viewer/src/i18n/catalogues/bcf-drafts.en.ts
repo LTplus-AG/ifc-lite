@@ -86,6 +86,10 @@ export const bcfDraftsEn = {
   'bcfDrafts.archive.refused.member': 'Nothing was imported: the archive links one clash to more than one topic.',
   'bcfDrafts.archive.refused.sourceFinding': 'Nothing was imported: the archive links one reviewed finding to more than one topic.',
   'bcfDrafts.archive.refused.unreadable': 'Nothing was imported: the archive topics could not be read as drafts.',
+  'bcfDrafts.archive.exportRefused.topic': 'Nothing was exported: the batch contains the same topic twice.',
+  'bcfDrafts.archive.exportRefused.member': 'Nothing was exported: the batch links one clash to more than one topic.',
+  'bcfDrafts.archive.exportRefused.sourceFinding': 'Nothing was exported: the batch links one reviewed finding to more than one topic.',
+  'bcfDrafts.archive.exportRefused.unreadable': 'Nothing was exported: the batch topics could not be read as drafts.',
   'bcfDrafts.archive.exportFailed': 'The archive could not be exported.',
 
   'bcfDrafts.publish.region': 'Publish to the BCF server',

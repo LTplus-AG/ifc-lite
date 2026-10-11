@@ -165,7 +165,9 @@ async function withOrigin(batch: DraftBatch, origin: string) {
   return importDraftArchive(await (await writeBCF(project)).arrayBuffer());
 }
 
-const BROKEN_ORIGINS = ['%7Bbroken', encodeURIComponent(JSON.stringify({ kind: 'selection' }))];
+/** Unparsable, non-review, and review origins the codec refuses (empty card, card over 100 chars). */
+const BROKEN_ORIGINS = ['%7Bbroken', ...[{ kind: 'selection' }, { kind: 'review', card: '' }, { kind: 'review', card: 'c'.repeat(101) }]
+  .map(origin => encodeURIComponent(JSON.stringify(origin)))];
 
 // Before #7373 a clash topic with a broken origin degraded to an archive topic with its verified members.
 test('a clash-only review topic whose origin line no longer reads keeps every clash member and is not reported damaged', async () => {
@@ -207,8 +209,11 @@ test('a broken origin on one review topic leaves the other topics of the archive
 test('an archive that maps one reviewed finding to two topics is refused with that exact reason', async () => {
   const batch = await reviewArchive();
   const [owner, other] = batch.topics;
-  const duplicated = { ...batch, topics: [owner, { ...other, sourceFindings: [...other.sourceFindings!, owner.sourceFindings![0]] }] };
-  const bytes = await (await writeBCF(draftBatchToProject(duplicated, 'a@example.test'))).arrayBuffer();
+  // Export refuses such a batch, so write a consistent footer (count and digest) claiming the owner's finding by hand.
+  const project = draftBatchToProject(batch, 'a@example.test');
+  project.topics.get(other.guid)!.description = describeWithFooter({ ...other, sourceFindings: [...other.sourceFindings!, owner.sourceFindings![0]] },
+    { batchId: batch.id, full: { batchName: batch.name, source: batch.source } });
+  const bytes = await (await writeBCF(project)).arrayBuffer();
   await assert.rejects(importDraftArchive(bytes), (error: unknown) => error instanceof DraftArchiveError && error.reason === 'source-finding'
     && /reviewed finding/.test(error.message) && !/clash/.test(error.message));
 });

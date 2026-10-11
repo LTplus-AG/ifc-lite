@@ -12,7 +12,7 @@
  * response.
  */
 
-import { decodeFinding, decodeSourceFinding, isRecord } from './draft-codec.js';
+import { decodeFinding, decodeOrigin, decodeSourceFinding } from './draft-codec.js';
 import { findingIdentity, type DraftFinding, type DraftOrigin, type DraftSourceFinding, type DraftTopic } from './draft-types.js';
 
 export const DRAFT_FOOTER_MARKER = '-- ifc-lite BCF draft mapping v1 (generated; do not edit below) --';
@@ -120,12 +120,10 @@ export function parseDraftFooter(description: string | undefined): ParsedFooter 
     catch (error) { console.warn('[BCF drafts] Unreadable batch name in footer', error); }
   }
   if (fields.has('source')) parsed.source = json(fields.get('source') ?? '');
-  const origin = fields.has('origin') ? json(fields.get('origin') ?? '') : undefined;
-  if (isRecord(origin) && (origin.kind === 'selection' || origin.kind === 'archive')) parsed.origin = { kind: origin.kind };
-  if (isRecord(origin) && origin.kind === 'group' && typeof origin.workspaceId === 'string' && typeof origin.groupId === 'string') {
-    parsed.origin = { kind: 'group', workspaceId: origin.workspaceId, groupId: origin.groupId };
-  }
-  if (isRecord(origin) && origin.kind === 'review' && typeof origin.card === 'string') parsed.origin = { kind: 'review', card: origin.card };
+  // The codec's own origin rules (e.g. a review card is 1-100 chars): an origin the batch codec would refuse
+  // is treated as unreadable here, so it degrades this topic instead of aborting the whole import.
+  const origin = fields.has('origin') ? decodeOrigin(json(fields.get('origin') ?? '')) : null;
+  if (origin) parsed.origin = origin;
   if (memberLines.length > 0 || fields.has('batch-name')) {
     const members = memberLines.map(line => decodeFinding(json(line)));
     if (members.some(member => !member)) return null;

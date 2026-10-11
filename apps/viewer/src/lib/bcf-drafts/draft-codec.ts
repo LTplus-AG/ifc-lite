@@ -110,7 +110,8 @@ export function decodeSourceFinding(value: unknown): DraftSourceFinding | null {
     membership, run, evidence: native };
 }
 
-function origin(value: unknown): DraftOrigin | null {
+/** A topic origin under the durable codec's rules; shared with the archive footer so both agree. */
+export function decodeOrigin(value: unknown): DraftOrigin | null {
   if (!isRecord(value)) return null;
   if (value.kind === 'selection' || value.kind === 'archive') return { kind: value.kind };
   if (value.kind === 'group' && isText(value.workspaceId, 200) && isText(value.groupId, 200)) {
@@ -198,7 +199,7 @@ export function decodeTopic(value: unknown): DraftTopic | null {
     || !Array.isArray(value.members) || value.members.length > DRAFT_LIMITS.members
     || !Array.isArray(value.comments) || value.comments.length > 100
     || (value.sourceFindings !== undefined && (!Array.isArray(value.sourceFindings) || value.sourceFindings.length > DRAFT_LIMITS.members))) return null;
-  const source = origin(value.origin);
+  const source = decodeOrigin(value.origin);
   const members = value.members.map(decodeFinding);
   const comments = value.comments.map(comment);
   const viewpoint = value.viewpoint === undefined ? undefined : decodeViewpoint(value.viewpoint);

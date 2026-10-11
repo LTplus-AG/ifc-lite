@@ -31,8 +31,12 @@ import { BCFPublicationPanel, useBcfConnection } from './BCFPublicationPanel';
 
 const REFUSALS = { 'unknown-topic': 'bcfDrafts.edit.unknownTopic', 'empty-split': 'bcfDrafts.edit.emptySplit',
   'merge-needs-two': 'bcfDrafts.edit.mergeNeedsTwo', invalid: 'bcfDrafts.edit.invalid' } as const;
-const ARCHIVE_REFUSALS = { topic: 'bcfDrafts.archive.refused.topic', member: 'bcfDrafts.archive.refused.member',
-  'source-finding': 'bcfDrafts.archive.refused.sourceFinding', unreadable: 'bcfDrafts.archive.refused.unreadable' } as const;
+const ARCHIVE_REFUSALS = {
+  import: { topic: 'bcfDrafts.archive.refused.topic', member: 'bcfDrafts.archive.refused.member',
+    'source-finding': 'bcfDrafts.archive.refused.sourceFinding', unreadable: 'bcfDrafts.archive.refused.unreadable' },
+  export: { topic: 'bcfDrafts.archive.exportRefused.topic', member: 'bcfDrafts.archive.exportRefused.member',
+    'source-finding': 'bcfDrafts.archive.exportRefused.sourceFinding', unreadable: 'bcfDrafts.archive.exportRefused.unreadable' },
+} as const;
 
 /** Outbox entries elsewhere (other batches, imports, Flow) that wait for a coordinator decision. */
 function OutboxAttention({ excludeId }: { excludeId: string | null }) {
@@ -85,7 +89,8 @@ export function BCFDraftsDialog({ open, onOpenChange }: { open: boolean; onOpenC
       await publishBcfArchive(batch.name, `${sanitizeFilename(batch.name)}.bcfzip`, () => exportDraftArchive(batch, author));
     } catch (error) {
       console.error('[BCF drafts] Archive export failed', error);
-      toast.error(error instanceof Error ? error.message : t('bcfDrafts.archive.exportFailed'));
+      toast.error(error instanceof DraftArchiveError ? t(ARCHIVE_REFUSALS[error.direction][error.reason])
+        : error instanceof Error ? error.message : t('bcfDrafts.archive.exportFailed'));
     }
   };
   const importArchive = async (file: File) => {
@@ -99,7 +104,7 @@ export function BCFDraftsDialog({ open, onOpenChange }: { open: boolean; onOpenC
       if (imported.droppedFindings) toast.info(t('bcfDrafts.archive.droppedFindings', { count: imported.droppedFindings }));
     } catch (error) {
       console.error('[BCF drafts] Archive import failed', error);
-      toast.error(error instanceof DraftArchiveError ? t(ARCHIVE_REFUSALS[error.reason])
+      toast.error(error instanceof DraftArchiveError ? t(ARCHIVE_REFUSALS[error.direction][error.reason])
         : error instanceof Error ? error.message : t('bcfDrafts.archive.failed'));
     }
   };

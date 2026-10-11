@@ -120,8 +120,7 @@
     "zustand": "^5.0.15",
     "@ifc-lite/semantic": "workspace:*",
     "@ifc-lite/source-autodesk": "workspace:^",
-    "@ifc-lite/ids-agent": "workspace:^",
-    "@ifc-lite/ids-authoring": "workspace:^"
+    "@ifc-lite/ids-agent": "workspace:^"
   },
   "devDependencies": {
     "@happy-dom/global-registrator": "^20.14.5",

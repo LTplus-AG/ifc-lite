@@ -38,6 +38,8 @@ const REFUSED: Record<NativeDrafts['refused'][number]['target'], TranslationKey>
   ids: 'semanticAssist.refusedIds', geometry: 'semanticAssist.refusedGeometry', manual: 'semanticAssist.refusedManual',
 };
 
+const NONE_EXCLUDED: ReadonlySet<string> = new Set();
+
 function TargetLabel({ row, excluded }: { row: ClassifiedRequirement; excluded: boolean }) {
   const { t } = useTranslation();
   if (row.target !== 'unresolved') return <span className="rounded bg-primary/10 px-1 py-0.5 font-medium">{t(TARGET[row.target])}</span>;
@@ -93,7 +95,9 @@ export function RequirementDispatch({ proposal, review, passages, loadSchema = l
   const models = useViewerStore(s => s.models);
   const ifcVersions = useMemo(() => loadedIfcVersions(models), [models]);
   const classified = useMemo(() => schema ? qualifyRequirements(review, passages, sources, schema, ifcVersions) : [], [review, passages, sources, schema, ifcVersions]);
-  const [excluded, setExcluded] = useState<ReadonlySet<string>>(new Set());
+  // Exclusions belong to the proposal they were made on: a replacement that reuses an id for another requirement starts included.
+  const [exclusion, setExclusion] = useState<{ proposal: SemanticRequirementProposal; ids: ReadonlySet<string> }>(() => ({ proposal, ids: new Set() }));
+  const excluded = exclusion.proposal === proposal ? exclusion.ids : NONE_EXCLUDED;
   const [prepared, setPrepared] = useState<{ drafts: NativeDrafts; cited: string; included: ClassifiedRequirement[]; proposal: SemanticRequirementProposal; versions: string } | null>(null);
   const [withdrawn, setWithdrawn] = useState(false);
   // Re-checked on every render: a cited source changed or detached after preparing withdraws the unsaved drafts.
@@ -113,7 +117,6 @@ export function RequirementDispatch({ proposal, review, passages, loadSchema = l
     setWithdrawn(false);
   };
   const active = prepared !== null && !stale ? prepared : null;
-  // Exclusions of requirements a replaced proposal no longer has do not count.
   const included = classified.filter(row => !excluded.has(row.requirement.id)).length;
   // Without the schema no unit can be checked, so nothing is classified or offered for dispatch.
   if (schemaFailure) return <section aria-label={t('semanticAssist.dispatchTitle')} className="space-y-1.5 rounded border border-border p-1.5">
@@ -129,16 +132,19 @@ export function RequirementDispatch({ proposal, review, passages, loadSchema = l
       return <li key={id} className="flex items-start gap-1.5">
         <input type="checkbox" id={`dispatch-${id}`} className="mt-0.5" checked={!excluded.has(id)} disabled={active !== null}
           aria-label={t('semanticAssist.include', { id })}
-          onChange={event => setExcluded(previous => {
-            const next = new Set(previous);
-            if (event.target.checked) next.delete(id); else next.add(id);
-            return next;
-          })} />
+          onChange={event => {
+            const checked = event.target.checked;
+            setExclusion(previous => {
+              const next = new Set(previous.proposal === proposal ? previous.ids : []);
+              if (checked) next.delete(id); else next.add(id);
+              return { proposal, ids: next };
+            });
+          }} />
         <label htmlFor={`dispatch-${id}`} className="break-words"><span className="font-mono font-semibold">{id}</span> <TargetLabel row={row} excluded={excluded.has(id)} /></label>
       </li>;
     })}</ul>
     {withdrawn && <p role="alert" className="rounded border border-amber-500/40 bg-amber-500/10 p-2">{t('semanticAssist.draftsWithdrawn')}</p>}
-    {!active && <Button size="sm" variant="outline" className="h-7" disabled={!passages.length || (included === 0 && !proposal.unsupported.length)}
+    {!active && <Button size="sm" variant="outline" className="h-7" disabled={included === 0 && !proposal.unsupported.length}
       onClick={prepare}>{t('semanticAssist.prepareDrafts')}</Button>}
     {active && <>
       <p aria-live="polite" className="text-muted-foreground">{t('semanticAssist.draftsPrepared')}</p>

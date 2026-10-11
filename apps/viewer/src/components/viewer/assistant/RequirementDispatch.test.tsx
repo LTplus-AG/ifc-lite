@@ -353,3 +353,32 @@ test('#7375 with only IFC5 models loaded the IDS draft is refused, not targeted 
   assert.match(ui.textContent ?? '', /The IDS draft was refused: none of the loaded models has an IFC version IDS can check/);
   assert.ok(card(ui, 'Review information rules'), 'the other targets are unaffected');
 });
+
+test('#7375 a replacement proposal that reuses an excluded id for another requirement starts with it included', async () => {
+  await converse();
+  const ui = await mount();
+  click(card(ui, 'Native checks and documents')!.querySelector<HTMLInputElement>('input[aria-label="Include R1 in the native drafts"]')!);
+  // R1 now names the thickness requirement: the exclusion made on the previous R1 does not carry over.
+  const reused = { ...REQUIREMENTS, requirements: [{ ...REQUIREMENTS.requirements[1], id: 'R1' }] };
+  act(() => useAssistant.setState(state => ({ messages: [...state.messages.slice(0, -1), { role: 'assistant', model: 'recorded', content: JSON.stringify(reused) }] })));
+  const dispatch = card(ui, 'Native checks and documents')!;
+  assert.equal(dispatch.querySelector<HTMLInputElement>('input[aria-label="Include R1 in the native drafts"]')!.checked, true);
+  click(button(dispatch, /Prepare native drafts/));
+  assert.ok(card(ui, 'Review information rules'), 'the new R1 reaches its draft');
+});
+
+test('#7375 without attached passages the requirements and unsupported items still reach the not-checked document', async () => {
+  await seedAuthoringSample({ editEnabled: false });
+  await import('@/components/viewer/SemanticPanel');
+  replaceEvidence(captureEvidence('semantic'));
+  const answer = { ...REQUIREMENTS, requirements: [REQUIREMENTS.requirements[2]],
+    unsupported: [{ text: 'A strategy report is delivered', reason: 'Not a model property' }] };
+  act(() => useAssistant.setState({ messages: [{ role: 'user', content: 'Extract' }, { role: 'assistant', model: 'recorded', content: JSON.stringify(answer) }] }));
+  const ui = await mount();
+  const prepare = button(card(ui, 'Native checks and documents')!, /Prepare native drafts/);
+  assert.equal(prepare.disabled, false);
+  click(prepare);
+  const outline = card(ui, 'Review report outline')?.textContent ?? '';
+  assert.match(outline, /A strategy report is delivered/);
+  assert.match(outline, /R3: A fire-safety strategy report/);
+});

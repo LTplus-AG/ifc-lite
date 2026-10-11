@@ -12,7 +12,7 @@ import { createSavedComparisonsSlice, type SavedComparisonsSlice } from '@/store
 import { DEFAULT_THEME } from '@ifc-lite/charts';
 import { useViewerStore } from '@/store';
 import { comparisonModels, comparisonResult } from '@/test/saved-comparison-fixture';
-import { render, click, type, cleanup } from '@/test/render';
+import { render, click, type, cleanup, waitFor } from '@/test/render';
 import { loadSavedComparisons, SAVED_COMPARISONS_KEY } from '@/lib/compare/savedComparisonPersistence';
 import { SavedComparisonLibrary } from './SavedComparisonLibrary';
 import { snapshotComparison } from '@/lib/compare/savedComparisons';
@@ -30,6 +30,10 @@ import { EVENT_FILE_DOWNLOADED } from '@/lib/tours/events.js';
 function Library() { const result = useViewerStore((s) => s.compareResult); return <SavedComparisonLibrary result={result} running={false} />; }
 const select = (el: HTMLSelectElement, value: string): void => { act(() => { el.value = value; el.dispatchEvent(new window.Event('change', { bubbles: true })); }); };
 const settle = async (): Promise<void> => { await act(async () => { await new Promise((r) => setTimeout(r, 5)); }); };
+// The paper preview composes asynchronously (lazy jsPDF font metrics, #6610);
+// one fixed tick only wins that race when the metrics are already cached.
+const previewReady = (ui: HTMLElement): Promise<void> => waitFor(() => ui.querySelector('[data-preview-section]') !== null
+  && ui.querySelector('[data-layout-pending="true"]') === null, 'the shared asynchronous document layout is ready');
 function recordingSeams(printed: string[], tables: ReportTableArgs[]): () => Promise<DocumentPdfSeams> {
   return async () => ({
     createDoc: async () => ({ addPage: () => {}, setFont: () => {}, setFontSize: () => {}, setTextColor: () => {},
@@ -97,7 +101,7 @@ describe('Multiple saved pairs in mounted UI and documentation (#6506)', () => {
     act(() => useViewerStore.setState({ models: new Map(), activeModelId: null, documents: [spec], activeDocumentId: spec.id,
       dashboards: [], bcfProject: null, selectedEntityIds: new Set(), mutationViews: new Map() }));
     const tables: ReportTableArgs[] = [];
-    const ui = render(<DocumentPanel pdfSeams={recordingSeams([], tables)} />); await settle();
+    const ui = render(<DocumentPanel pdfSeams={recordingSeams([], tables)} />); await previewReady(ui);
     const head = [...ui.querySelectorAll('[data-block-table] th')].map((cell) => cell.textContent);
     assert.equal(head.at(-1), 'Authored key');
     const rows = [...ui.querySelectorAll('[data-block-table] tbody tr')];
@@ -147,7 +151,7 @@ describe('Multiple saved pairs in mounted UI and documentation (#6506)', () => {
       selectedEntityIds: new Set(), mutationViews: new Map() }));
     const printed: string[] = []; const tables: ReportTableArgs[] = [];
     const seams = recordingSeams(printed, tables);
-    ui = render(<DocumentPanel pdfSeams={seams} />); await settle();
+    ui = render(<DocumentPanel pdfSeams={seams} />); await previewReady(ui);
     const previewBlock = ui.querySelector('[data-preview-block="table"]'); assert.ok(previewBlock); click(previewBlock);
     await settle();
     const source = ui.querySelector<HTMLSelectElement>('select[aria-label="Choose saved comparison for document"]'); assert.ok(source);

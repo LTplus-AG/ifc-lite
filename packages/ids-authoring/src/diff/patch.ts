@@ -11,12 +11,12 @@
  * Phases, chosen so every op is valid where it lands:
  * 1. declarations (custom psets, user-defined types) and document info;
  * 2. removed facets; replaced facets (re-added in phase 5);
- * 3. value and relation changes; specification field changes;
+ * 3. value and relation changes, cleared uris; specification field changes;
  * 4. specification order (new specs restored in place, without facets
  *    that move in from elsewhere);
  * 5. facet order per section (moves across specs/sections, restores);
- * 6. requirement field changes (after moves, so a facet that became a
- *    requirement has its optionality); 7. removed specs; removed
+ * 6. requirement field changes and new uris (after moves, so a facet that
+ *    became a requirement has its optionality); 7. removed specs; removed
  *    declarations.
  */
 
@@ -114,6 +114,9 @@ function valueChanges(b: Builder, entries: readonly DiffEntry[], byNodeId: boole
   for (const e of only(entries, 'facet.relationChanged')) {
     b.push('facet.patch', { facetId: e.facetId, set: { relation: e.new.relation, rawRelation: e.new.rawRelation ?? null } });
   }
+  // A uri is cleared here, before a facet can move into the applicability;
+  // a new uri is set after the moves (see diffToOps), once the facet is a requirement.
+  for (const e of only(entries, 'facet.uriChanged')) if (e.new === undefined) b.push('facet.patch', { facetId: e.facetId, set: { uri: null } });
 }
 
 function specChanges(b: Builder, entries: readonly DiffEntry[]): void {
@@ -187,6 +190,7 @@ export function diffToOps(a: StudioDocument, diff: DocumentDiff, options: PatchO
   for (const e of only(entries, 'requirement.changed')) {
     b.push('facet.patch', { facetId: e.facetId, set: { [e.field]: e.new ?? null } as FacetPatch });
   }
+  for (const e of only(entries, 'facet.uriChanged')) if (e.new !== undefined) b.push('facet.patch', { facetId: e.facetId, set: { uri: e.new } });
   for (const e of only(entries, 'spec.removed')) b.push('spec.remove', { specId: e.specId });
   for (const e of only(entries, 'custom.psetRemoved')) {
     const redeclared = entries.some((x) => x.kind === 'custom.psetDeclared' && x.decl.name === e.decl.name);

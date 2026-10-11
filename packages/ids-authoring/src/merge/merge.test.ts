@@ -100,6 +100,20 @@ describe('mergeDocuments', () => {
     expect(conflicted).toBeGreaterThan(5);
   }, 120_000);
 
+  it('treats a facet uri as one field: a conflict when both sides set it differently', () => {
+    const base = corpusDocument(4, 3);
+    const req = base.ids.specifications.flatMap((s) => s.requirements).find((r) => ['property', 'classification', 'material'].includes(r.facet.type));
+    if (!req) throw new Error('fixture needs a property, classification or material requirement');
+    const set = (uri: string) => apply(base, [op('facet.setUri', { facetId: req.id, uri })]).doc;
+    const ours = set('https://example.org/ours');
+    const theirs = set('https://example.org/theirs');
+    const open = mergeDocuments(base, ours, theirs);
+    expect(open.conflicts).toEqual([expect.objectContaining({ id: `facet:${req.id}:uri`, kind: 'field' })]);
+    const pick = mergeDocuments(base, ours, theirs, { resolutions: { [open.conflicts[0].id]: 'theirs' } });
+    expect(pick.doc.ids.specifications.flatMap((s) => s.requirements).find((r) => r.id === req.id)?.facet).toMatchObject({ uri: 'https://example.org/theirs' });
+    expect(mergeDocuments(base, ours, base).doc.ids).toEqual(ours.ids);
+  });
+
   it('reports a field conflict, keeps the base until resolved, then applies the chosen side', () => {
     const base = corpusDocument(4, 3);
     const spec = base.ids.specifications[0];

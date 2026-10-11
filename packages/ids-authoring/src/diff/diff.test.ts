@@ -82,6 +82,7 @@ describe('diffDocuments', () => {
         'facet.relationChanged',
         'facet.removed',
         'facet.replaced',
+        'facet.uriChanged',
         'facet.valueChanged',
         'info.changed',
         'requirement.changed',

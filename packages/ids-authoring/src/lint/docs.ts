@@ -31,6 +31,7 @@ const AREA_NAMES: Readonly<Record<string, string>> = {
   DOC: 'Document',
   VER: 'IFC versions',
   PART: 'partOf relations',
+  BSDD: 'bSDD references',
 };
 
 /** Severity as the catalogue tables show it: `info (opt-in)` for rules that are off by default. */

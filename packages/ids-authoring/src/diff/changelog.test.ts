@@ -12,7 +12,7 @@ import { seeded } from '../../test/op-gen.js';
 import { createStudioDocument } from '../document/from-ids.js';
 import type { PrimitiveOp, StudioOp } from '../ops/types.js';
 import { apply } from '../reducer/apply.js';
-import { changelog, changelogMarkdown, diffDocuments } from './index.js';
+import { changelog, changelogMarkdown, diffDocuments, diffToOps } from './index.js';
 
 const ids = counterIds(0xc4a);
 const op = <K extends PrimitiveOp['kind']>(kind: K, payload: Extract<PrimitiveOp, { kind: K }>['payload']): StudioOp =>
@@ -55,6 +55,21 @@ describe('changelog', () => {
     expect(texts).toContain('Specification "Fire doors" changed from required to optional');
     expect(texts.find((t) => t.startsWith('Fire doors: FireRating (Pset_DoorCommon) set to'))).toBeDefined();
     expect(texts.filter((t) => t.includes('changed from required to optional'))).toHaveLength(1);
+  });
+
+  it('explains a bSDD uri being set, changed and removed, and patches it back', () => {
+    const { doc, reqId } = doorsDocument();
+    const u1 = 'https://identifier.buildingsmart.org/uri/example/demo/1.0/prop/FireRating';
+    const u2 = 'https://identifier.buildingsmart.org/uri/example/demo/2.0/prop/FireRating';
+    const withUri = apply(doc, [op('facet.setUri', { facetId: reqId, uri: u1 })]).doc;
+    const changed = apply(withUri, [op('facet.setUri', { facetId: reqId, uri: u2 })]).doc;
+    const text = (a: typeof doc, b: typeof doc) => changelog(diffDocuments(a, b)).map((l) => l.text);
+    expect(text(doc, withUri)).toEqual([`Doors: FireRating (Pset_DoorCommon) URI set to ${u1}`]);
+    expect(text(withUri, changed)).toEqual([`Doors: FireRating (Pset_DoorCommon) URI changed from ${u1} to ${u2}`]);
+    expect(text(changed, doc)).toEqual([`Doors: FireRating (Pset_DoorCommon) URI removed (was ${u2})`]);
+    for (const [a, b] of [[doc, withUri], [withUri, changed], [changed, doc]] as const) {
+      expect(apply(a, diffToOps(a, diffDocuments(a, b))).doc.ids).toEqual(b.ids);
+    }
   });
 
   it('gives every change of 300 corpus revisions a sentence in en, de, fr and it', () => {

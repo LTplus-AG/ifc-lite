@@ -59,6 +59,7 @@ function payload(e: DiffEntry): unknown {
     case 'facet.valueChanged':
       return [e.kind, e.field, e.new];
     case 'facet.relationChanged':
+    case 'facet.uriChanged':
       return [e.kind, e.new];
     case 'facet.moved':
       return [e.kind, e.to.specId, e.to.section];

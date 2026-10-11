@@ -114,6 +114,12 @@ function sentence(e: DiffEntry, t: ChangelogCatalogue, locale: SupportedLocale):
     }
     case 'facet.relationChanged':
       return `${e.specName}: ${t.changed(`${facetLabel(e.facet)} ${t.relation}`, e.old.relation, e.new.relation)}`;
+    case 'facet.uriChanged': {
+      const what = `${facetLabel(e.facet)} URI`;
+      if (e.old === undefined) return `${e.specName}: ${t.set(what, e.new ?? t.none)}`;
+      if (e.new === undefined) return `${e.specName}: ${t.removedValue(what, e.old)}`;
+      return `${e.specName}: ${t.changed(what, e.old, e.new)}`;
+    }
     case 'requirement.changed':
       if (e.field === 'optionality') {
         return `${e.specName}: ${t.changed(facetLabel(e.facet), t.optionality[e.old as 'required'], t.optionality[e.new as 'required'])}`;

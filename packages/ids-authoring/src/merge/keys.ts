@@ -56,6 +56,8 @@ export function scopeOf(e: DiffEntry): EntryScope {
       return { key: `facet:${e.facetId}:${e.field}`, nodes: [e.specId, e.facetId] };
     case 'facet.relationChanged':
       return { key: `facet:${e.facetId}:relation`, nodes: [e.specId, e.facetId] };
+    case 'facet.uriChanged':
+      return { key: `facet:${e.facetId}:uri`, nodes: [e.specId, e.facetId] };
     case 'requirement.changed':
       return { key: `facet:${e.facetId}:req.${e.field}`, nodes: [e.specId, e.facetId] };
   }

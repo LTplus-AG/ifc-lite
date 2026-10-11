@@ -104,6 +104,12 @@ export type DiffEntry =
       old: { relation: PartOfRelation; rawRelation?: string };
       new: { relation: PartOfRelation; rawRelation?: string };
     })
+  | (FacetContext & {
+      /** The facet's `@uri` (requirement property, classification and material facets). */
+      kind: 'facet.uriChanged';
+      old?: string;
+      new?: string;
+    })
   | (FacetContext & { kind: 'requirement.changed'; field: RequirementField; old: unknown; new: unknown });
 
 export type DiffEntryKind = DiffEntry['kind'];

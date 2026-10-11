@@ -142,6 +142,11 @@ export function facetEntries(
     const n = { relation: bSite.facet.relation, ...(bSite.facet.rawRelation !== undefined ? { rawRelation: bSite.facet.rawRelation } : {}) };
     if (!same(o, n)) out.push({ ...ctx, kind: 'facet.relationChanged', old: o, new: n });
   }
+  const oldUri = 'uri' in aSite.facet ? aSite.facet.uri : undefined;
+  const newUri = 'uri' in bSite.facet ? bSite.facet.uri : undefined;
+  if (oldUri !== newUri) {
+    out.push({ ...ctx, kind: 'facet.uriChanged', ...(oldUri !== undefined ? { old: oldUri } : {}), ...(newUri !== undefined ? { new: newUri } : {}) });
+  }
   if (reqB) {
     const base = reqA ?? { optionality: 'required' };
     for (const field of REQUIREMENT_FIELDS) {

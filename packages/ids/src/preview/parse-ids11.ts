@@ -50,8 +50,7 @@ type Context = 'applicability' | 'requirement' | 'nested';
 
 function enrichFacet(facet: IDSFacet, el: Element, context: Context, parseFacet: FacetParser): void {
   // A requirement facet's uri is IDS 1.0 and stays with the 1.0 parser,
-  // which ignores it today; reading it here would make a preview parse of a
-  // 1.0 file write differently from a default parse.
+  // which reads it; reading it here too would be redundant.
   if (context !== 'requirement' && (facet.type === 'property' || facet.type === 'classification' || facet.type === 'material')) {
     const uri = readAttr(el, 'uri');
     if (uri !== undefined) facet.uri = uri;

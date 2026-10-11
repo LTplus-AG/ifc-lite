@@ -23,6 +23,7 @@ const str: JsonSchema = { type: 'string' };
 const num: JsonSchema = { type: 'number' };
 const int0: JsonSchema = { type: 'integer', minimum: 0 };
 const bool: JsonSchema = { type: 'boolean' };
+const uri: JsonSchema = { type: 'string', minLength: 1 };
 
 const DRAFTS: Record<string, JsonSchema> = {
   DraftAny: obj({ kind: { const: 'any' } }, ['kind']),
@@ -101,14 +102,15 @@ const IDS_CONTENT: Record<string, JsonSchema> = {
       baseName: ref('IDSConstraint'),
       dataType: ref('IDSConstraint'),
       value: ref('IDSConstraint'),
+      uri,
     },
     ['type', 'propertySet', 'baseName'],
   ),
   IDSClassificationFacet: obj(
-    { type: { const: 'classification' }, system: ref('IDSConstraint'), value: ref('IDSConstraint') },
+    { type: { const: 'classification' }, system: ref('IDSConstraint'), value: ref('IDSConstraint'), uri },
     ['type'],
   ),
-  IDSMaterialFacet: obj({ type: { const: 'material' }, value: ref('IDSConstraint') }, ['type']),
+  IDSMaterialFacet: obj({ type: { const: 'material' }, value: ref('IDSConstraint'), uri }, ['type']),
   IDSPartOfFacet: obj(
     { type: { const: 'partOf' }, relation: ref('PartOfRelation'), rawRelation: str, entity: ref('IDSEntityFacet') },
     ['type', 'relation'],
@@ -173,11 +175,11 @@ const FACET_DRAFTS: Record<string, JsonSchema> = {
   EntityDraft: obj({ type: { const: 'entity' }, name: vi, predefinedType: vi }, ['type', 'name']),
   AttributeDraft: obj({ type: { const: 'attribute' }, name: vi, value: vi }, ['type', 'name']),
   PropertyDraft: obj(
-    { type: { const: 'property' }, propertySet: vi, baseName: vi, dataType: vi, value: vi },
+    { type: { const: 'property' }, propertySet: vi, baseName: vi, dataType: vi, value: vi, uri },
     ['type', 'propertySet', 'baseName'],
   ),
-  ClassificationDraft: obj({ type: { const: 'classification' }, system: vi, value: vi }, ['type']),
-  MaterialDraft: obj({ type: { const: 'material' }, value: vi }, ['type']),
+  ClassificationDraft: obj({ type: { const: 'classification' }, system: vi, value: vi, uri }, ['type']),
+  MaterialDraft: obj({ type: { const: 'material' }, value: vi, uri }, ['type']),
   PartOfDraft: obj(
     {
       type: { const: 'partOf' },

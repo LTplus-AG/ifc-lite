@@ -1,0 +1,12 @@
+diff --git b/packages/ids/src/parser/xml-parser.ts a/packages/ids/src/parser/xml-parser.ts
+index 3fc384580..71aa4548a 100644
+--- b/packages/ids/src/parser/xml-parser.ts
++++ a/packages/ids/src/parser/xml-parser.ts
+@@ -412,7 +412,6 @@ function parseClassificationFacet(el: Element): IDSClassificationFacet {
+     type: 'classification',
+     system: systemEl ? parseConstraintElement(systemEl) : undefined,
+     value: valueEl ? parseConstraintElement(valueEl) : undefined,
+-    ...uriOf(el),
+   };
+ }
+ 

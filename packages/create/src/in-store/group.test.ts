@@ -82,7 +82,9 @@ it('fresh native graphs observe registry edits between operations and preserve e
     const records = (source: typeof before) => [...source.store.entityIndex.byId.keys()].sort((a, b) => a - b).map(expressId => ({ expressId, ...effectiveMetadataRecord(source.store, expressId) }));
     expect(records(after)).toEqual(records(before));
   } finally { registry.entities = originalEntities; }
-});
+// First test in the file: it pays the cold session/WASM start and two full
+// export round-trips, which exceeds vitest's 5 s default on loaded runners.
+}, 60_000);
 
 describe.each(['IFC4', 'IFC4X3'] as const)('generic group native lifecycle #7329 %s', schema => {
   it('exports complete replacement, stable group/relation identities, and empty membership without an empty SET', async () => {

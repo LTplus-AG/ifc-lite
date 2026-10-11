@@ -1,5 +1,21 @@
 # @ifc-lite/renderer
 
+## 6.2.0
+
+### Minor Changes
+
+- [#6711](https://github.com/LTplus-AG/ifc-lite/pull/6711) [`cf4e0b9`](https://github.com/LTplus-AG/ifc-lite/commit/cf4e0b912ffd050f9da943811f6d3abec87f5265) Thanks [@louistrue](https://github.com/louistrue)! - Add a frame-local RenderOptions.maxPixelRatio cap that preserves the renderer's persistent resolution preference for subsequent idle and capture renders.
+  
+  Add Renderer.renderWithResult on the shared render path so captures can reject skipped or contained-failure frames before reading the canvas. Preserve the existing void Renderer.render contract.
+
+### Patch Changes
+
+- [#7389](https://github.com/LTplus-AG/ifc-lite/pull/7389) [`e94652b`](https://github.com/LTplus-AG/ifc-lite/commit/e94652baed2cc8c8ef2e179396ad5d002c0c4024) Thanks [@louistrue](https://github.com/louistrue)! - Bound point-pick depth readback to a single GPU sample, sharing the ID staging buffer and releasing per-pick resources after mapping. Release point and rectangle readback buffers when encoding, submission or mapped-range access fails. Also retire all pending readbacks on picker teardown and discard results from a destroyed or replaced picker.
+  
+  Reject stale viewport selections and hover readbacks after pointer, viewer-state or lifecycle changes, and dispatch the latest hover position when movement stops inside the throttle interval.
+
+- [#7169](https://github.com/LTplus-AG/ifc-lite/pull/7169) [`7e2fcec`](https://github.com/LTplus-AG/ifc-lite/commit/7e2fcec5063d2aaf3ac9d7b2e66c714a965e155a) Thanks [@louistrue](https://github.com/louistrue)! - Add opt-in per-pass GPU timestamp samples with bounded readback ownership and cancellation during device loss. Pending maps prevent query-buffer reuse; configuration and recovery advance timing resource epochs.
+
 ## 6.1.0
 
 ### Minor Changes

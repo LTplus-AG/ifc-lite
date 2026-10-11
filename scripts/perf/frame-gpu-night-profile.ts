@@ -87,6 +87,11 @@ export function verifyNightProfile(checkout: string, profileBytes: Uint8Array): 
     if (pinned.has(full)) throw new Error('multiple profile paths identify one artifact');
     pinned.add(full);
   }
+  const fixture = statSync(inside(checkout, profile.fixture), { bigint: true });
+  const receipt = statSync(inside(checkout, profile.qualificationReceipt), { bigint: true });
+  if (fixture.dev === receipt.dev && fixture.ino === receipt.ino) {
+    throw new Error('fixture and independent qualification receipt identify one artifact');
+  }
   const dist = inside(checkout, profile.dist);
   if (!statSync(dist).isDirectory()) throw new Error('night profile distribution is not a directory');
   for (const path of files(dist)) if (!pinned.has(path)) throw new Error(`unpinned viewer artifact: ${relative(checkout, path)}`);

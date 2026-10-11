@@ -1,5 +1,16 @@
 # @ifc-lite/export
 
+## 4.11.0
+
+### Minor Changes
+
+- [#7358](https://github.com/LTplus-AG/ifc-lite/pull/7358) [`b20cb40`](https://github.com/LTplus-AG/ifc-lite/commit/b20cb40c5e40395a4676c038000ad2a004768886) Thanks [@louistrue](https://github.com/louistrue)! - Add the opt-in `normalizeVerticalDatumToEgm2008` STEP export option. It writes a free-text `IfcProjectedCRS.VerticalDatum` naming a sea-level datum (for example `EVRS2007`) as `EPSG:3855` (EGM2008 height), the geoid Cesium ion applies. Without it, ion placed such models one geoid separation too low (48 m for a public alignment bridge). Explicit EPSG codes and ellipsoidal datum names are preserved, and heights are never rewritten.
+
+### Patch Changes
+
+- Updated dependencies [[`10825f8`](https://github.com/LTplus-AG/ifc-lite/commit/10825f80a10a5fe2e7e8622f9e51b5fede830219), [`7754c19`](https://github.com/LTplus-AG/ifc-lite/commit/7754c19b41179e4fde123e7427cea29fbb36aa89)]:
+  - @ifc-lite/parser@9.4.0
+
 ## 4.10.0
 
 ### Minor Changes

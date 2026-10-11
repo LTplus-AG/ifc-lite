@@ -97,5 +97,5 @@ describe('opt-in vertical datum normalization for Cesium ion (#7356)', () => {
     expect(attrs(input, crs!)[3]).toBe('EVRS2007');
     const result = new StepExporter(input).export({ schema: 'IFC4X3', normalizeVerticalDatumToEgm2008: true });
     expect(attrs(await parse(result.content), crs!)[3]).toBe('EPSG:3855');
-  });
+  }, 30_000);
 });

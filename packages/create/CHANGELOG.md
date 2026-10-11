@@ -1,5 +1,17 @@
 # @ifc-lite/create
 
+## 5.1.0
+
+### Minor Changes
+
+- [#7346](https://github.com/LTplus-AG/ifc-lite/pull/7346) [`7541089`](https://github.com/LTplus-AG/ifc-lite/commit/75410892ca2671ef1cc356258eb342cd6e896d12) Thanks [@louistrue](https://github.com/louistrue)! - `updateGroupInStore` now refuses complete membership replacement when a group has typed `RelatedObjectsType` assignments or several assignment relationships with distinct OwnerHistory, Name or Description, instead of merging their meanings into one relationship. Such groups can still be read and safely removed. The viewer Assistant can review generic IfcGroup create, update and remove proposals from attached selection evidence, apply them through the native owner with one Undo, and reports complete Group facts that exceed the transport budget as unavailable rather than truncating them. Selection evidence and attachments skip the whole-model Group graph when the selection touches no exact IfcGroup: they carry bounded create-only facts (`scope: "no-group-context"`, from `readGroupCreateEvidenceInStore` in `@ifc-lite/create`), and review still checks the complete graph. Models over the graph's entity budget are refused on both paths before any record is decoded; the per-record budget refuses a source record when its export text is measured.
+
+### Patch Changes
+
+- Updated dependencies [[`10825f8`](https://github.com/LTplus-AG/ifc-lite/commit/10825f80a10a5fe2e7e8622f9e51b5fede830219), [`b20cb40`](https://github.com/LTplus-AG/ifc-lite/commit/b20cb40c5e40395a4676c038000ad2a004768886), [`7754c19`](https://github.com/LTplus-AG/ifc-lite/commit/7754c19b41179e4fde123e7427cea29fbb36aa89)]:
+  - @ifc-lite/parser@9.4.0
+  - @ifc-lite/export@4.11.0
+
 ## 5.0.0
 
 ### Major Changes

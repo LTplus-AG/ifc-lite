@@ -1,6 +1,6 @@
 {
   "name": "@ifc-lite/ids-agent",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Headless IDS authoring agent: a tool-calling loop over the IDS Studio op vocabulary, grounded by the gate, producing reviewable proposals",
   "type": "module",
   "sideEffects": false,

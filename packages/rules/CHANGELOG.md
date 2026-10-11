@@ -1,5 +1,13 @@
 # @ifc-lite/rules
 
+## 0.7.1
+
+### Patch Changes
+
+- Updated dependencies [[`10825f8`](https://github.com/LTplus-AG/ifc-lite/commit/10825f80a10a5fe2e7e8622f9e51b5fede830219), [`7754c19`](https://github.com/LTplus-AG/ifc-lite/commit/7754c19b41179e4fde123e7427cea29fbb36aa89)]:
+  - @ifc-lite/parser@9.4.0
+  - @ifc-lite/ids@3.3.1
+
 ## 0.7.0
 
 ### Minor Changes

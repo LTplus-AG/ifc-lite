@@ -66,6 +66,7 @@ describe('GPU and merge counters (#6957)', () => {
   it('#6993 counts devices, non-teardown losses and uncaptured errors per device', async () => {
     perfCounters.enable();
     const before = perfCounters.read();
+    const owner = {}; // one WebGPUDevice wrapper re-initialising: [1] replaces [0]
     const devices = ['unknown', 'destroyed'].map((reason) => {
       const { device } = fakeDevice();
       let settle!: (info: { message: string; reason: string }) => void;
@@ -74,7 +75,7 @@ describe('GPU and merge counters (#6957)', () => {
         lost: new Promise((resolve) => { settle = resolve; }),
         addEventListener: (type: string, listener: () => void) => { if (type === 'uncapturederror') listeners.push(listener); },
       });
-      meterGpuDevice(device);
+      meterGpuDevice(device, owner);
       return { lose: () => settle({ message: 'gone', reason }), error: () => listeners.forEach((l) => l()) };
     });
     devices[0].error();
@@ -86,6 +87,23 @@ describe('GPU and merge counters (#6957)', () => {
       'gpu.devices': 2,
       'gpu.uncapturedErrors': 2,
     });
+  });
+
+  it('#6993 two concurrent live renderers: A lost after B is metered still counts', async () => {
+    // e.g. the appearance local preview creates a second Renderer while the
+    // viewport's is live; B is not A's replacement.
+    perfCounters.enable();
+    const before = perfCounters.read();
+    const live = [{}, {}].map((owner) => {
+      const { device } = fakeDevice();
+      let settle!: (info: { message: string; reason: string }) => void;
+      Object.assign(device, { lost: new Promise((resolve) => { settle = resolve; }) });
+      meterGpuDevice(device, owner);
+      return () => settle({ message: 'A valid external Instance reference no longer exists.', reason: 'unknown' });
+    });
+    live[0](); // A, metered before B
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.deepStrictEqual(diffCounters(perfCounters.read(), before), { 'gpu.devices': 2, 'gpu.deviceLost': 1 });
   });
 
   it('#6993 counts a real loss of the device in use', async () => {

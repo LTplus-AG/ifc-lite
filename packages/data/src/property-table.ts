@@ -27,6 +27,8 @@ export interface Property {
   unit?: string;
   /** Scale of the explicit `unit` to its SI base (`mm` → `1e-3`), only when it resolved; `unit` without it means "a unit we could not read": neither convertible nor project-unit. */
   unitSiScale?: number;
+  /** Additive SI offset of `unit` (°F: `si = value * unitSiScale + unitSiOffset`), only when it has one. */
+  unitSiOffset?: number;
   /** Raw IFC measure value type (e.g. "IFCVOLUMETRICFLOWRATEMEASURE") that resolves the file's declared display unit (#1573). Absent when the value type has no measure semantics. */
   dataType?: string;
   /** `IfcPropertyTableValue`: columns differ in type by design, so no single `dataType` (#5224). */ dataTypeMixed?: true;

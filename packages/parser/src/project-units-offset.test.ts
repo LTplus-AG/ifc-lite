@@ -4,6 +4,7 @@
 
 import { describe, it, expect } from 'vitest';
 import { extractProjectUnits } from './project-units.js';
+import { scaleMeasureValue } from './measure-unit-scale.js';
 import type { EntityIndex, EntityRef } from './types.js';
 
 /**
@@ -62,5 +63,11 @@ describe('IfcConversionBasedUnitWithOffset', () => {
 
   it('leaves the unit unresolved when its offset is unset', () => {
     expect(temperatureUnit(project('IFCSIUNIT(*,.THERMODYNAMICTEMPERATUREUNIT.,$,.KELVIN.)', '$'))).toBeUndefined();
+  });
+
+  it('scales a measure value in it to kelvin, offset included', () => {
+    const { source, entityIndex } = indexIfc(project('IFCSIUNIT(*,.THERMODYNAMICTEMPERATUREUNIT.,$,.KELVIN.)'));
+    const units = extractProjectUnits(source, entityIndex);
+    expect(scaleMeasureValue(68, 'IFCTHERMODYNAMICTEMPERATUREMEASURE', units) as number).toBeCloseTo(293.15, 9);
   });
 });

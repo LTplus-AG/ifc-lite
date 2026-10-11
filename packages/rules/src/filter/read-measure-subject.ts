@@ -100,7 +100,10 @@ function readProperty(subject: Extract<MeasureSubject, { kind: 'property' }>, st
       // Every candidate of a list, enumerated or table value (#5475); they
       // share the property's unit.
       const unit = p.unit ?? projectUnitSymbol(store, p.dataType);
-      const siScale = p.unit !== undefined ? p.unitSiScale : projectSiScale(store, p.dataType);
+      // A unit with an offset (°F) has no SI factor alone: the value stays as written.
+      const siScale = p.unit !== undefined
+        ? (p.unitSiOffset === undefined ? p.unitSiScale : undefined)
+        : projectSiScale(store, p.dataType);
       displayValues.push(stringifyValue(p.value));
       for (const value of propertyCandidates(p)) {
         values.push(value);

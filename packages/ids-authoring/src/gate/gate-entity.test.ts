@@ -69,6 +69,15 @@ describe('GATE-ENT-001: entity exists in every version of the spec', () => {
     expect(r.issues.map((i) => [i.code, i.value, i.versions])).toEqual([['GATE-ENT-001', 'IFCALIGNMENT', ['IFC2X3']]]);
   });
 
+  it('accepts IFC2X3 occurrence/type mapping aliases and grounds their predefined type on the type object', () => {
+    // IFC2X3 has no IfcAirTerminal: IDS maps it to IfcFlowTerminal + IfcAirTerminalType.
+    const { doc, specId } = specDoc(['IFC2X3', 'IFC4']);
+    const ok = checkOps([addFacet(specId, { type: 'entity', name: eq('IfcAirTerminal'), predefinedType: eq('DIFFUSER') }, 'applicability')], doc, ctx);
+    expect(ok.issues).toEqual([]);
+    const bad = checkOps([addFacet(specId, { type: 'entity', name: eq('IfcAirTerminal'), predefinedType: eq('NOTATYPE') }, 'applicability')], doc, ctx);
+    expect(bad.issues.map((i) => [i.code, i.value])).toEqual([['GATE-PDT-001', 'NOTATYPE']]);
+  });
+
   it('grounds partOf related entities too', () => {
     const { doc, specId } = specDoc(['IFC4'], 'IfcWall');
     const r = checkOps([addFacet(specId, { type: 'partOf', relation: 'IfcRelContainedInSpatialStructure', entity: { name: eq('IfcBuildingStory') } })], doc, ctx);

@@ -6,6 +6,7 @@ import {
   type IfcDataStore,
   extractAllEntityAttributes,
   extractAllMaterialsOnDemand,
+  getAttributeTypeForSchema,
 } from '@ifc-lite/parser';
 import {
   RelationshipType,
@@ -35,6 +36,7 @@ import {
 import { resolvePredefinedType } from './predefined-types.js';
 import { narrowSchemaVersion } from './schema-version.js';
 import { overlayEntityLookup, type EntityVisibilityView } from './entity-visibility.js';
+import { resolveEntityMeasureScales, toBaseSI } from './units.js';
 
 export type { PropertyOverride, PropertyOverlayResolver };
 
@@ -104,16 +106,39 @@ export function createDataAccessor(
     return all;
   }
 
+  function findAttribute(
+    expressId: number,
+    attributeName: string
+  ): { name: string; value: string | number | boolean } | undefined {
+    const lower = attributeName.toLowerCase();
+    return getEntityAttributes(expressId).find((a) => a.name.toLowerCase() === lower);
+  }
+
   function findAttributeValue(
     expressId: number,
     attributeName: string
   ): string | number | boolean | undefined {
-    const lower = attributeName.toLowerCase();
-    const all = getEntityAttributes(expressId);
-    for (const a of all) {
-      if (a.name.toLowerCase() === lower) return a.value;
-    }
-    return undefined;
+    return findAttribute(expressId, attributeName)?.value;
+  }
+
+  /**
+   * A measure-typed attribute (`IfcDoor.OverallHeight`, an
+   * `IfcPositiveLengthMeasure`) is stored in the project's units, and IDS
+   * compares it in SI like a property value (#7395). The attribute's declared
+   * EXPRESS type picks the conversion; any other attribute passes through.
+   */
+  function attributeInSi(
+    expressId: number,
+    attr: { name: string; value: string | number | boolean }
+  ): string | number | boolean {
+    if (typeof attr.value !== 'number') return attr.value;
+    const entityType = accessor.getEntityType(expressId);
+    const dataType = entityType
+      ? getAttributeTypeForSchema(entityType, attr.name, store.schemaVersion)
+      : undefined;
+    if (!dataType) return attr.value;
+    const si = toBaseSI(attr.value, dataType.toUpperCase(), resolveEntityMeasureScales(store, expressId));
+    return typeof si === 'number' ? si : attr.value;
   }
 
   /**
@@ -321,8 +346,8 @@ export function createDataAccessor(
         // through `getObjectType`, which would shadow the entity's real
         // `ObjectType` attribute with the PredefinedType enum.
         default: {
-          const fromExtract = findAttributeValue(expressId, attributeName);
-          if (fromExtract !== undefined) return fromExtract;
+          const fromExtract = findAttribute(expressId, attributeName);
+          if (fromExtract?.value !== undefined) return attributeInSi(expressId, fromExtract);
           const entities = store.entities as {
             getAttribute?: (id: number, attr: string) => string | undefined;
           };

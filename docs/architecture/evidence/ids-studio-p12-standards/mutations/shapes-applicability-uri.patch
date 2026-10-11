@@ -1,0 +1,13 @@
+diff --git b/packages/ids/src/audit/structural/shapes.ts a/packages/ids/src/audit/structural/shapes.ts
+index ceae5ae7c..8faec3b3a 100644
+--- b/packages/ids/src/audit/structural/shapes.ts
++++ a/packages/ids/src/audit/structural/shapes.ts
+@@ -219,7 +219,7 @@ export function ids11FacetShape(tag: string, context: FacetContext): ElementShap
+   const base = context === 'requirement' ? shapeInRequirements(lower) : facetBaseShape(lower);
+   const attrs = [...base.attrs];
+   const takesUri = lower === 'property' || lower === 'classification' || lower === 'material';
+-
++  if (context !== 'requirement' && takesUri) attrs.push('uri');
+   if (context === 'applicability') attrs.push('instructions');
+   const children = lower === 'partof' ? [...base.children, ...IDS11_PARTOF_NESTED] : base.children;
+   return { ...base, attrs, children };

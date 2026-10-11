@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ids xmlns="http://standards.buildingsmart.org/IDS" xmlns:xs="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://standards.buildingsmart.org/IDS http://standards.buildingsmart.org/IDS/1.0/ids.xsd">
+  <info>
+    <title>Prohibited value</title>
+    <description>buildingSMART/IDS#206, #420: a prohibited property with a value or dataType is not a valid IDS 1.0 configuration.</description>
+    <author>ids-studio@example.org</author>
+  </info>
+  <specifications>
+    <specification name="Prohibited value" ifcVersion="IFC4">
+      <applicability minOccurs="1" maxOccurs="unbounded">
+        <entity>
+          <name>
+            <simpleValue>IFCWALL</simpleValue>
+          </name>
+        </entity>
+      </applicability>
+      <requirements>
+        <property dataType="IFCLABEL" cardinality="prohibited">
+          <propertySet>
+            <simpleValue>ProposedCases</simpleValue>
+          </propertySet>
+          <baseName>
+            <simpleValue>Note</simpleValue>
+          </baseName>
+          <value>
+            <simpleValue>n/a</simpleValue>
+          </value>
+        </property>
+      </requirements>
+    </specification>
+  </specifications>
+</ids>

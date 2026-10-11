@@ -103,6 +103,8 @@ describe('GPU and merge counters (#6957)', () => {
     });
     live[0](); // A, metered before B
     await new Promise((resolve) => setImmediate(resolve));
+    // Two live owners with one device each: no replacement, so the sample is
+    // not marked re-uploaded; A's real loss is still counted.
     assert.deepStrictEqual(diffCounters(perfCounters.read(), before), { 'gpu.devices': 2, 'gpu.deviceLost': 1 });
   });
 

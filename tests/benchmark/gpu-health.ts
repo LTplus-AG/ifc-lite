@@ -46,6 +46,13 @@ export interface GpuHealth {
   instanceErrors: number;
   /** Devices the renderer created; null when the build exposes no counters. */
   devicesCreated: number | null;
+  /**
+   * Devices an owner (one renderer's `WebGPUDevice`) created to replace its
+   * own: the recovery path that re-uploads the scene. Null without counters.
+   * Not `devicesCreated - 1`: two live renderers (viewport plus the appearance
+   * preview) each own a device without either being replaced.
+   */
+  deviceReplacements: number | null;
   uncapturedErrors: number;
   /** Which witnesses were available. */
   source: 'counters+console' | 'console';
@@ -106,16 +113,18 @@ export function gpuHealthFrom(
   const deviceLost = Math.max(consoleLost, counter('gpu.deviceLost'));
   const uncapturedErrors = Math.max(consoleUncaptured, counter('gpu.uncapturedErrors'));
   const devicesCreated = sessionCounters ? counter('gpu.devices') : null;
+  const deviceReplacements = sessionCounters ? counter('gpu.deviceReplacements') : null;
 
   const reasons: string[] = [];
   if (deviceLost > 0) reasons.push(`GPU device lost ≥${deviceLost}x`);
-  if (devicesCreated !== null && devicesCreated > 1) reasons.push(`renderer re-created its GPU device (${devicesCreated} devices): scene re-uploaded`);
+  if (deviceReplacements !== null && deviceReplacements > 0) reasons.push(`renderer replaced its GPU device ${deviceReplacements}x: scene re-uploaded`);
   return {
     contaminated: reasons.length > 0,
     reasons,
     deviceLost,
     instanceErrors,
     devicesCreated,
+    deviceReplacements,
     uncapturedErrors,
     source: sessionCounters ? 'counters+console' : 'console',
     events,

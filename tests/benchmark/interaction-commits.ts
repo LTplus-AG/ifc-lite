@@ -21,7 +21,10 @@ import { readSessionCounters } from './gpu-health.js';
  *              (`canvas[data-viewport="main"]`, checked to be what is under
  *              the pointer there; `hoverHit` says
  *              whether the GPU pick found an entity there)
- *   panelOpen  open the Lists panel from the sidebar
+ *   panelOpen  open the Lens panel from the sidebar strip. Not Lists: that
+ *              docks below the viewport and resizes it, and on FZK the resize
+ *              re-lays the WebGL minimap, which committed 5 or 6 times
+ *              between identical runs; Lens replaces the sidebar content only
  * A step that cannot run, or never goes quiet, is null with its reason, never 0.
  */
 
@@ -84,15 +87,21 @@ export async function commitsFor(
 /** The 3D viewport canvas (`Viewport.tsx`), never the minimap or a 2D drawing canvas. */
 export const VIEWPORT_CANVAS = 'canvas[data-viewport="main"]';
 
-const BEFORE: QuietOptions = { quietMs: 2_000, maxMs: 30_000, pollMs: 100 };
+/** Where the pointer rests between steps: the page's top-left corner, off the viewport. */
+const POINTER_REST = { x: 1, y: 1 };
+
+// 4 s: longer than the 3 s auto-dismiss of the viewer's success toasts (the
+// "GPU recovered" notification among them), whose dismissal commit otherwise
+// lands inside a later step's window.
+const BEFORE: QuietOptions = { quietMs: 4_000, maxMs: 30_000, pollMs: 100 };
 const AFTER: QuietOptions = { quietMs: 1_000, maxMs: 30_000, pollMs: 100 };
 
 /** Run every interaction in order on a loaded viewer and count the commits each one causes. */
-export async function measureInteractionCommits(page: Page): Promise<InteractionCommits> {
+export async function measureInteractionCommits(page: Page, now: () => number = Date.now): Promise<InteractionCommits> {
   const probe: CommitProbe = {
     readCommits: async () => (await readSessionCounters(page))?.['react.commits'] ?? null,
     pause: (ms) => page.waitForTimeout(ms),
-    now: () => Date.now(),
+    now,
   };
   const result: InteractionCommits = { commits: { select: null, hover: null, panelOpen: null }, hoverHit: null, errors: {} };
   const steps: Record<Interaction, () => Promise<void>> = {
@@ -111,7 +120,7 @@ export async function measureInteractionCommits(page: Page): Promise<Interaction
       if (target !== null) throw new Error(`the viewport centre is covered by ${target}, so the pointer would not hover the viewport`);
       await page.mouse.move(x, y);
     },
-    panelOpen: () => page.getByRole('button', { name: 'Lists', exact: true }).first().click({ timeout: 10_000 }),
+    panelOpen: () => page.getByRole('button', { name: 'Lens', exact: true }).first().click({ timeout: 10_000 }),
   };
   for (const name of INTERACTIONS) {
     try {
@@ -121,6 +130,11 @@ export async function measureInteractionCommits(page: Page): Promise<Interaction
           const store = (globalThis as { __ifc_lite_viewer_store__?: { getState(): { hoverState?: { entityId: number | null } } } }).__ifc_lite_viewer_store__;
           return (store?.getState().hoverState?.entityId ?? null) !== null;
         });
+        // Leave the viewport before the next step, outside any measured window:
+        // opening a panel resizes the viewport under a resting pointer, and the
+        // re-pick that causes would be charged to panelOpen (6 vs 7 commits
+        // between runs, depending on what lands under the pointer).
+        await page.mouse.move(POINTER_REST.x, POINTER_REST.y);
       }
     } catch (error) {
       result.errors[name] = error instanceof Error ? error.message.split('\n')[0] : String(error);

@@ -23,8 +23,10 @@ const UNIFORM = 0x40;
  * lost its device (and re-uploaded everything onto a replacement) from a
  * clean one instead of averaging the two:
  *
- *   gpu.devices                 devices metered; above 1 the renderer re-created its
- *                               device (the loss-recovery path), re-uploading the scene
+ *   gpu.devices                 devices metered, across every live renderer
+ *   gpu.deviceReplacements      counted by `device-recovery.ts`: a renderer rebuilding
+ *                               itself on a replacement device after a loss, which
+ *                               re-uploads its scene (two live renderers are not one)
  *   gpu.deviceLost              `device.lost` settled for any reason but `destroyed`
  *   gpu.uncapturedErrors        `uncapturederror` events (validation / out-of-memory)
  *

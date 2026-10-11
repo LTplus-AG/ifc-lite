@@ -35,10 +35,17 @@ test('#7164: an instance/device loss before the first batch is flagged, counted 
   assert.ok(health.events.includes(LOST));
 });
 
-test('the renderer re-creating its device (re-upload path) flags the sample even with no console line', () => {
-  const health = gpuHealthFrom(CLEAN_LOGS, { 'gpu.devices': 2 });
+test('a renderer replacing its own device (re-upload path) flags the sample even with no console line', () => {
+  const health = gpuHealthFrom(CLEAN_LOGS, { 'gpu.devices': 2, 'gpu.deviceReplacements': 1 });
   assert.equal(health.contaminated, true);
-  assert.match(health.reasons[0], /re-created its GPU device \(2 devices\)/);
+  assert.match(health.reasons[0], /replaced its GPU device 1x/);
+});
+
+test('#6993 review: two live renderers with one device each (viewport + appearance preview) are a clean sample', () => {
+  const health = gpuHealthFrom(CLEAN_LOGS, { 'gpu.devices': 2 });
+  assert.equal(health.contaminated, false, health.reasons.join(';'));
+  assert.equal(health.devicesCreated, 2);
+  assert.equal(health.deviceReplacements, 0);
 });
 
 test('a pre-#6993 build is still classified from the console alone', () => {

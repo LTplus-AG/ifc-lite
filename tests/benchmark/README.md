@@ -102,8 +102,8 @@ Each result JSON also carries two #6993 blocks:
 - **`gpuHealth`**: whether the sample lost its WebGPU device. `contaminated`
   is true when the renderer's device was lost (`gpu.deviceLost`, or the
   renderer's `[WebGPU] Device lost` line with any reason but `destroyed`) or
-  re-created (`gpu.devices` above 1, the recovery path that re-uploads the
-  scene). The counters are session totals, so a loss before the load window
+  replaced by its own renderer (`gpu.deviceReplacements`, the recovery path
+  that re-uploads the scene; two live renderers are not a replacement). The counters are session totals, so a loss before the load window
   opens counts too. `benchmark:check` excludes a contaminated sample instead
   of comparing it and says so at the top of the report; when every model is
   contaminated it reports "No verdict" and exits 0, because a runner's lost
@@ -115,7 +115,7 @@ Each result JSON also carries two #6993 blocks:
   pipeline probe on an already-destroyed device while the renderer's device
   keeps rendering.
 - **`interactionCommits`**: React commits caused by one hierarchy-row select,
-  one pointer move onto the viewport centre and opening the Lists panel, each
+  one pointer move onto the viewport centre and opening the Lens panel, each
   measured from a quiet page to the next quiet point after every timing has
   been taken. These counts repeat exactly between runs; per-load
   `react.commits` does not.

@@ -177,6 +177,7 @@ nav:
     - LandXML: guide/landxml.md
     - BCF Collaboration: guide/bcf.md
     - IDS Validation: guide/ids.md
+    - IDS Conformance Dashboard: guide/ids-conformance.md
     - IDS Lint Rules:
       # BEGIN GENERATED ids-lint-nav (packages/ids-authoring/scripts/generate-lint-docs.mjs)
       - Overview: guide/ids-lint/index.md

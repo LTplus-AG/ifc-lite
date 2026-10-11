@@ -4,6 +4,7 @@
 
 import {
   type IfcDataStore,
+  EntityExtractor,
   extractAllEntityAttributes,
   getAttributeTypeForSchema,
 } from '@ifc-lite/parser';
@@ -30,13 +31,47 @@ export function appendPredefinedPropertySets(
   scales: EntityMeasureScales,
   out: PropertySetInfo[]
 ): void {
-  const psetIds =
-    store.relationships?.getRelated?.(
-      expressId,
-      RelationshipType.DefinesByProperties,
-      'inverse'
-    ) || [];
+  appendPredefinedFromIds(store, definingPropertySetIds(store, expressId), scales, out);
+}
 
+/**
+ * Predefined property sets on the element's type object (an
+ * `IfcDoorLiningProperties` in an `IfcDoorType`'s `HasPropertySets`), for
+ * inheritance by the occurrence like the type's ordinary property sets, and
+ * converted to SI with the occurrence's units (#7395).
+ */
+export function typePredefinedPropertySets(
+  store: IfcDataStore,
+  expressId: number,
+  scales: EntityMeasureScales
+): PropertySetInfo[] {
+  const typeId = store.relationships?.getRelated?.(expressId, RelationshipType.DefinesByType, 'inverse')?.[0];
+  if (typeId === undefined) return [];
+  const out: PropertySetInfo[] = [];
+  const ids = new Set([...hasPropertySetIds(store, typeId), ...definingPropertySetIds(store, typeId)]);
+  appendPredefinedFromIds(store, [...ids], scales, out);
+  return out;
+}
+
+function definingPropertySetIds(store: IfcDataStore, expressId: number): number[] {
+  return store.relationships?.getRelated?.(expressId, RelationshipType.DefinesByProperties, 'inverse') || [];
+}
+
+/** A type object's `HasPropertySets` (attribute 5 of `IfcTypeObject`). */
+function hasPropertySetIds(store: IfcDataStore, typeId: number): number[] {
+  // @raw-entity-enumeration-ok point lookup of one source type object reached through the element's DefinesByType relationship
+  const ref = store.entityIndex?.byId?.get?.(typeId);
+  if (!ref || !store.source?.length) return [];
+  const attr = new EntityExtractor(store.source).extractEntity(ref)?.attributes?.[5];
+  return Array.isArray(attr) ? attr.filter((id): id is number => typeof id === 'number') : [];
+}
+
+function appendPredefinedFromIds(
+  store: IfcDataStore,
+  psetIds: number[],
+  scales: EntityMeasureScales,
+  out: PropertySetInfo[]
+): void {
   for (const psetId of psetIds) {
     // @raw-entity-enumeration-ok point lookup for one source pset reached through the parser's source-snapshot relationship index; this is not a base-entity enumeration
     const ref = store.entityIndex?.byId?.get?.(psetId);

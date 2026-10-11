@@ -381,4 +381,43 @@ END-ISO-10303-21;
     expect(Number(pset?.properties.find((p) => p.name === 'GrossArea')?.value)).toBe(2500);
     expect(Number(pset?.properties.find((p) => p.name === 'GrossVolume')?.value)).toBe(40);
   });
+  it('leaves an area raw when an owner WITH a length unit declares an AREAUNIT that cannot be resolved (#7395)', async () => {
+    // Project 2 declares millimetres and a conversion-based AREAUNIT whose
+    // factor is missing: deriving area from its length scale would turn 2500
+    // into 0.0025 m².
+    const ifc = `ISO-10303-21;
+HEADER;
+FILE_DESCRIPTION(('ViewDefinition [CoordinationView]'),'2;1');
+FILE_NAME('','2026-10-11T00:00:00',(),(),'','','');
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#1=IFCPROJECT('1hqIFTRjfV6AWq_bMtnZwI',$,'Primary-m',$,$,$,$,$,#6);
+#2=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);
+#6=IFCUNITASSIGNMENT((#2));
+#7=IFCWALL('2nJrDaLQfJ1QPhdJR0o97J',$,$,$,$,$,$,$,$);
+#11=IFCPROJECT('0hqIFTRjfV6AWq_bMtnZw2',$,'Secondary-mm-odd',$,$,$,$,$,#16);
+#12=IFCSIUNIT(*,.LENGTHUNIT.,.MILLI.,.METRE.);
+#13=IFCDIMENSIONALEXPONENTS(2,0,0,0,0,0,0);
+#14=IFCCONVERSIONBASEDUNIT(#13,.AREAUNIT.,'ACRE',#99);
+#16=IFCUNITASSIGNMENT((#12,#14));
+#17=IFCSITE('3z6M0fVLDCPBUYwtcqp5bq',$,$,$,$,$,$,$,$);
+#18=IFCRELAGGREGATES('4z6M0fVLDCPBUYwtcqp5cq',$,$,$,#11,(#17));
+#19=IFCWALL('5z6M0fVLDCPBUYwtcqp5dq',$,$,$,$,$,$,$,$);
+#20=IFCRELCONTAINEDINSPATIALSTRUCTURE('6z6M0fVLDCPBUYwtcqp5eq',$,$,$,(#19),#17);
+#21=IFCPROPERTYSINGLEVALUE('GrossArea',$,IFCAREAMEASURE(2500.),$);
+#22=IFCPROPERTYSET('7z6M0fVLDCPBUYwtcqp5fq',$,'Pset_Custom',$,(#21));
+#23=IFCRELDEFINESBYPROPERTIES('8z6M0fVLDCPBUYwtcqp5gq',$,$,$,(#19),#22);
+#24=IFCSITE('9z6M0fVLDCPBUYwtcqp5hq',$,$,$,$,$,$,$,$);
+#25=IFCRELAGGREGATES('Az6M0fVLDCPBUYwtcqp5iq',$,$,$,#1,(#24));
+#26=IFCRELCONTAINEDINSPATIALSTRUCTURE('Bz6M0fVLDCPBUYwtcqp5jq',$,$,$,(#7),#24);
+ENDSEC;
+END-ISO-10303-21;
+`;
+    const area = createDataAccessor(await parseIfc(ifc))
+      .getPropertySets(19)
+      .find((p) => p.name === 'Pset_Custom')
+      ?.properties.find((p) => p.name === 'GrossArea');
+    expect(Number(area?.value)).toBe(2500);
+  });
 });

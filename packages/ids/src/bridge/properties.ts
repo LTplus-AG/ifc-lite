@@ -215,9 +215,17 @@ function inheritedPropertySets(
     properties: (pset.properties || []).map((p) => projectProperty(p as RawProp, scales)),
   }));
   // The type's predefined property sets (IfcDoorLiningProperties, ...) are
-  // inherited the same way (#7395).
+  // inherited the same way (#7395). One sharing a name with an ordinary type
+  // set adds the properties that set lacks, rather than being dropped.
   for (const pset of typePredefinedPropertySets(store, expressId, scales)) {
-    if (!inherited.some((p) => p.name === pset.name)) inherited.push(pset);
+    const same = inherited.find((p) => p.name === pset.name);
+    if (!same) {
+      inherited.push(pset);
+      continue;
+    }
+    for (const prop of pset.properties) {
+      if (!same.properties.some((p) => p.name === prop.name)) same.properties.push(prop);
+    }
   }
   return inherited;
 }

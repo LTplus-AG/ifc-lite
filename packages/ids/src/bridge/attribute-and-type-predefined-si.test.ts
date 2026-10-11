@@ -102,3 +102,23 @@ describe('predefined property sets on a type object (#7395)', () => {
     expect(lining?.properties.find((p) => p.name === 'LiningThickness')?.value).toBeCloseTo(0.05, 12);
   });
 });
+
+describe('a type predefined set sharing a name with an ordinary type set (#7395)', () => {
+  it('inherits the properties of both sets on the occurrence', async () => {
+    // #20's HasPropertySets holds an ordinary 'TypeLining' (FireRating) and
+    // a predefined 'TypeLining' (LiningDepth); neither may hide the other.
+    const ifc = IFC.replace(
+      "#20=IFCDOORTYPE('2Yv7qL0sH4bN9mK3jP1xR8',$,'DT',$,$,(#21),$,$,$,.DOOR.,.SINGLE_SWING_LEFT.,$,$);",
+      `#20=IFCDOORTYPE('2Yv7qL0sH4bN9mK3jP1xR8',$,'DT',$,$,(#40,#21),$,$,$,.DOOR.,.SINGLE_SWING_LEFT.,$,$);
+#40=IFCPROPERTYSET('5Gi4xS7zP1kV6tR0qW8eY5',$,'TypeLining',$,(#41));
+#41=IFCPROPERTYSINGLEVALUE('FireRating',$,IFCLABEL('EI30'),$);`
+    );
+    expect(ifc).not.toBe(IFC);
+    const bytes = new TextEncoder().encode(ifc);
+    const store = await new IfcParser().parseColumnar(bytes.buffer.slice(0) as ArrayBuffer);
+    const lining = createDataAccessor(store).getPropertySets(10).filter((p) => p.name === 'TypeLining');
+    const props = lining.flatMap((p) => p.properties);
+    expect(props.find((p) => p.name === 'FireRating')?.value).toBe('EI30');
+    expect(props.find((p) => p.name === 'LiningDepth')?.value).toBeCloseTo(0.1, 12);
+  });
+});

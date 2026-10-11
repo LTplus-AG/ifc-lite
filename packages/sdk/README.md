@@ -79,6 +79,18 @@ two-argument call remains source-only and skips deleted source records.
 
 Also exported: `BimHost` (viewer side), `RemoteBackend`, `MessagePortTransport`, and the full `IfcCreator` API re-exported from `@ifc-lite/create`.
 
+## Native Review facts
+
+The pure `@ifc-lite/sdk/review` subpath shares the viewer's native validation
+and BCF finding normalization, coordination cards and identity resolution.
+Pass actual native reports and model lookup functions to `validationFindings`
+and `snapshotFrom`; no analysis or mutation is performed. Native statuses,
+historical candidates and collector failures remain distinct. Native
+evaluation caps remain incomplete; hiding passing detail rows retains complete
+coverage when native evaluated counts cover the population. Existing
+model-name card keys do not establish durable source or captured-run identity.
+See the [SDK guide](https://ifclite.dev/docs/guide/scripting-sdk/#native-review-normalization).
+
 ## Links
 
 - Docs: https://ifclite.dev/docs/

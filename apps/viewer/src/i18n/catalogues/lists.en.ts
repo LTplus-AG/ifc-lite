@@ -11,6 +11,19 @@ import type { TranslationValue } from '../types';
  * error banner. Covers `apps/viewer/src/components/viewer/lists/**`.
  */
 export const listsEn = {
+  'lists.resultChrome.loadedModel': 'Loaded model',
+  'lists.resultChrome.sourceUnavailable': 'Unrecorded list source',
+  'lists.resultChrome.provenanceUnavailable': 'The executed list or model scope was not recorded for this result.',
+  'lists.resultChrome.modelUnavailable': 'No IFC table data was available for {name}; that model was not evaluated.',
+  'lists.resultChrome.matched': { one: '{count} matched entity', other: '{count} matched entities' },
+  'lists.resultChrome.visible': { one: '{count} visible row', other: '{count} visible rows' },
+  'lists.resultChrome.filtered': { one: '{count} matched row is hidden by visibility or search filters.', other: '{count} matched rows are hidden by visibility or search filters.' },
+  'lists.resultChrome.noPopulation': 'The list’s explicit scope contains no entities',
+  'lists.resultChrome.noVisibleRows': 'Matching rows are hidden by the current filters',
+  'lists.resultChrome.incompleteEvaluation': 'No rows are available from the incomplete or unrecorded evaluation',
+  'lists.resultChrome.noReturnedRows': 'Matching rows are not available to display',
+  'lists.resultChrome.rowsUnavailable': { one: '{count} matched row is not available to display', other: '{count} matched rows are not available to display' },
+  'lists.resultChrome.snapshotModelsUnavailable': { one: 'Selected entities from {count} unavailable model could not be evaluated', other: 'Selected entities from {count} unavailable models could not be evaluated' },
   // ColumnHeaderMenu
   'lists.columnMenu.optionsAriaLabel': 'Column options',
   'lists.columnMenu.sortAscending': 'Sort ascending',
@@ -65,7 +78,7 @@ export const listsEn = {
   'lists.panel.editList': 'Edit List',
   'lists.panel.newList': 'New List',
   'lists.panel.results': 'Results',
-  'lists.panel.resultsSummary': { one: '{countDisplay} row, {ms}ms', other: '{countDisplay} rows, {ms}ms' },
+  'lists.panel.resultsSummary': { one: '{countDisplay} matched entity, {ms}ms', other: '{countDisplay} matched entities, {ms}ms' },
   'lists.panel.editConfiguration': 'Edit Configuration',
   'lists.panel.backToLists': 'Back to Lists',
   'lists.panel.cancel': 'Cancel',

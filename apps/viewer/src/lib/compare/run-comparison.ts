@@ -11,6 +11,7 @@ import { effectiveComparePair } from './effectiveCompareStore';
 import { fallbackPairDuplicateAuthoredKeys } from './authoredKeys';
 import { geometryVolumesSurviveAlignment, resolveGeometryChannel } from './geometryCapability';
 import { keyAliasesFromAccepted } from './acceptedIdentity';
+import { comparisonNavigationInputs, rememberPreparedNavigation, rememberComparisonNavigation } from './comparison-navigation-lease';
 import type { BuiltPair } from '@/hooks/compare/comparePairCache';
 
 export interface ComparisonOptions {
@@ -45,13 +46,14 @@ export async function prepareComparison(input: ComparisonPreparation): Promise<B
   if (!baseStore) throw new Error('Version A is not fully loaded yet.');
   if (!headStore) throw new Error('Version B is not fully loaded yet.');
   checkCancelled(signal);
+  const navigation = comparisonNavigationInputs([baseModel, headModel], getMutationView, contentVersion);
   // ONE collision map for both sides (#4989): if either revision
   // duplicates a value, the pair-level fallback below retires that
   // authored key from both revisions before diffing.
   const duplicateAuthoredKeys = new Map<string, number[]>();
   // The models as edited, not as loaded (#5312): see effectiveCompareStore.
   const { baseEffective, headEffective, comparedStores } = await effectiveComparePair(
-    [baseModel, baseStore], [headModel, headStore], getMutationView);
+    [baseModel, baseStore], [headModel, headStore], navigation.getView);
   checkCancelled(signal);
   const base = await buildEntityFingerprints({
     modelId: baseId,
@@ -87,7 +89,7 @@ export async function prepareComparison(input: ComparisonPreparation): Promise<B
     { fingerprints: base, store: baseEffective },
     { fingerprints: head, store: headEffective },
   ], duplicateAuthoredKeys);
-  return {
+  const built: BuiltPair = {
     comparedStores,
     mutationVersion,
     baseModelId: baseId,
@@ -100,6 +102,8 @@ export async function prepareComparison(input: ComparisonPreparation): Promise<B
     base,
     head,
   };
+  rememberPreparedNavigation(built, navigation);
+  return built;
 }
 
 function collectExcludedHiddenIds(built: BuiltPair, excludedTypes: string[]): Set<number> {
@@ -155,7 +159,7 @@ export function comparePreparedPair(built: BuiltPair, options: ComparisonOptions
     // other options, under the same no-await rule.
     keyAliases: keyAliasesFromAccepted(acceptedIdentity ?? []),
   });
-  return {
+  const result: CompareResult = {
     baseModelId: built.baseModelId,
     headModelId: built.headModelId,
     baseName: built.baseName,
@@ -172,4 +176,6 @@ export function comparePreparedPair(built: BuiltPair, options: ComparisonOptions
     comparedStores: built.comparedStores.size > 0 ? built.comparedStores : undefined,
     mutationVersion: built.mutationVersion,
   };
+  rememberComparisonNavigation(result, built);
+  return result;
 }

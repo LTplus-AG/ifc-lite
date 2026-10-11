@@ -441,8 +441,7 @@ function getVisibleGlobalIds(state: ViewerStateSnapshot): Set<number> {
 }
 
 /** `ignoreIsolatedEntities`: as if `isolatedEntities` were unset, so a panel's own isolation does not filter its own rows (#6368). */
-export function getVisibleBasketEntityRefsFromStore(ignoreIsolatedEntities = false): EntityRef[] {
-  const live = useViewerStore.getState();
+export function getVisibleBasketEntityRefsFromStore(ignoreIsolatedEntities = false, live = useViewerStore.getState()): EntityRef[] {
   const state = ignoreIsolatedEntities && live.isolatedEntities !== null ? { ...live, isolatedEntities: null } : live;
   const key = visibilityFingerprint(state);
   if (_visibleCache?.key === key) return _visibleCache.refs;
@@ -466,8 +465,7 @@ export function getVisibleBasketEntityRefsFromStore(ignoreIsolatedEntities = fal
  * Resolve active entity selection into basket refs.
  * Explicit selected entities are preferred; if empty, selected storeys are expanded.
  */
-export function getBasketSelectionRefsFromStore(): EntityRef[] {
-  const state = useViewerStore.getState();
+export function getBasketSelectionRefsFromStore(state = useViewerStore.getState()): EntityRef[] {
 
   const expandedSelection = getExpandedSelectionRefs(state);
   if (expandedSelection.length > 0) {

@@ -149,12 +149,17 @@ export const measureEn = {
     'Mass ESTIMATED as the meshed geometry volume (after opening cuts) x a density from the project density library. The file does not declare this density. A mass, not a force.',
   'measure.quantities.selectPrompt': 'Select elements to read their quantities',
   'measure.quantities.header': 'Quantities',
+  'measure.quantities.singleModelSource': 'Single-model source',
+  'measure.quantities.unavailableModel': 'Unavailable model ({id})',
+  'measure.quantities.selectedPopulation': { one: '{count} selected element', other: '{count} selected elements' },
+  'measure.quantities.coverageCounts': '{authored} authored quantity rows; {volumes} proved enclosed volumes; {areas} triangulated mesh areas',
+  'measure.quantities.authoredIncomplete': 'Some authored quantity rows cover only part of the selection; their contributing counts remain beside the totals.',
+  'measure.quantities.noDensity': {
+    one: '{count} element has no declared material density from which a mass can be derived.',
+    other: '{count} elements have no declared material density from which masses can be derived.',
+  },
   'measure.quantities.authoredHeading': 'Authored IFC Qto',
   'measure.quantities.computedHeading': 'Computed from mesh',
-  'measure.quantities.elementsCount': {
-    one: '{count} element',
-    other: '{count} elements',
-  },
   'measure.quantities.nothingFound':
     'No authored Qto, proved enclosed mesh volume, or triangulated mesh area is available for this selection.',
   'measure.quantities.volumeMeshLabel': 'Volume mesh',

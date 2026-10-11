@@ -51,7 +51,7 @@ export const aiProposeNode: FlowNodeDef = {
     const task = `${MODEL_DATA_CHANGE_OUTPUT_GUIDANCE}\nReply {"artifact":<model.changes>,"citations":["<row key>"],"clarification":null}. Each change must match exactly one cited row. Use targetColumn ${JSON.stringify(targetColumn)} and modelColumn ${JSON.stringify(modelColumn)}; copy each expected value from its field's expectedColumn. Never propose more than ${maxChanges} changes. Use only the supplied fields and allowedValues. If evidence cannot decide, return {"artifact":null,"citations":[],"clarification":"What input is missing"}.\nRequested policy: ${p.instructions}\nField constraints: ${JSON.stringify(p.fields)}`;
     const service = aiService(ctx);
     const reply = await requestJson(ctx, service, task, dataBlock(sent, keys, keys.map((_, index) => index), columns), maxOutputTokens,
-      proposalSchema(fields, keys, !!modelColumn));
+      proposalSchema(fields, keys, !!modelColumn), 'flow.ai.propose.v1');
     if (reply.kind !== 'value') throw new Error(reply.kind === 'budget' ? 'The AI proposal budget is exhausted' : reply.message);
     if (reply.value.kind === 'clarification') throw new Error(`Proposal needs clarification: ${String(reply.value.message ?? 'Missing evidence').slice(0, 1000)}`);
     if (typeof reply.value.clarification === 'string') throw new Error(`Proposal needs clarification: ${reply.value.clarification.slice(0, 1000)}`);

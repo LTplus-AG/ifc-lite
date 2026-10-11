@@ -1,0 +1,31 @@
+{
+  "raw": {
+    "command": [
+      "node",
+      "scripts/check-raw-entity-enumeration.mjs"
+    ],
+    "exitCode": 0
+  },
+  "module": {
+    "command": [
+      "node",
+      "scripts/check-module-size.mjs"
+    ],
+    "exitCode": 0
+  },
+  "mpl": {
+    "command": [
+      "node",
+      "scripts/add-license-headers.mjs",
+      "--check"
+    ],
+    "exitCode": 0
+  },
+  "wiring": {
+    "command": [
+      "node",
+      "scripts/check-test-wiring.mjs"
+    ],
+    "exitCode": 0
+  }
+}

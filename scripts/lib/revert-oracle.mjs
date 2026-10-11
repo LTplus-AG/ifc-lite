@@ -197,12 +197,12 @@ export { ALL_SKIPPED };
 
 /**
  * Errors that mean the module never loaded, so no assertion was ever evaluated.
- * Matched against raw runner output regardless of family — every one of these
- * is fatal at import/compile time in every runner here.
+ * Match raw runner output; SyntaxError must start a diagnostic (optionally TAP
+ * prefixed), since caught application JSON errors may accompany real assertions.
  */
 const LOAD_ERROR_PATTERNS = [
   /does not provide an export named/,
-  /SyntaxError:/,
+  /^(?:\s*#\s*)?\s*SyntaxError:/m,
   /ERR_MODULE_NOT_FOUND/,
   /Cannot find module/,
   /Cannot find package/,

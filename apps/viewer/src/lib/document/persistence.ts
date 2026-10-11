@@ -10,6 +10,7 @@
 import type { ContentDefinition } from '../storage/content-migration.js';
 import { readContentEntries } from '../storage/content-reader.js';
 import { rebindCommittedDocument } from '../storage/content-backup-references.js';
+import { decodeUsageReceipt } from '../llm/receipt-codec.js';
 import { trackExportCompleted } from '@/lib/analytics';
 import { downloadFile, sanitizeFilename } from '../export/download.js';
 import { migrateDocumentSpec, validateDocumentSpec, type DocumentBlock, type DocumentSpec } from './types.js';
@@ -21,11 +22,17 @@ export const documentContent: ContentDefinition<DocumentSpec> = {
   decode: value => {
     // Existing valid blocks retain their references during cosmetic edits. Re-migrating
     // them would rerun embedded IFC lists on every keystroke (#6679).
-    if (validateDocumentSpec(value).length === 0) return value as DocumentSpec;
+    if (validateDocumentSpec(value).length === 0) return portableGenerationReceipt(value as DocumentSpec);
     const migrated = migrateDocumentSpec(value);
-    return validateDocumentSpec(migrated).length === 0 ? migrated as DocumentSpec : null;
+    return validateDocumentSpec(migrated).length === 0 ? portableGenerationReceipt(migrated as DocumentSpec) : null;
   },
 };
+/** Successful raw decoding must also strip unknown nested receipt fields (#7242). */
+function portableGenerationReceipt(document: DocumentSpec): DocumentSpec | null {
+  if (document.aiReport?.generationReceipt === undefined) return document;
+  const receipt = decodeUsageReceipt(document.aiReport.generationReceipt);
+  return receipt && receipt.model === document.aiReport.model && receipt.outcome === 'completed' ? { ...document, aiReport: { ...document.aiReport, generationReceipt: receipt } } : null;
+}
 export function loadDocuments(): Promise<DocumentSpec[]> {
   return readContentEntries(documentContent);
 }
@@ -34,7 +41,9 @@ export function loadDocuments(): Promise<DocumentSpec[]> {
 export const DOCUMENT_FILE_SUFFIX = '.ifclite-document.json';
 
 export function exportDocument(document: DocumentSpec): void {
-  downloadFile(JSON.stringify(document, null, 2), `${sanitizeFilename(document.name, { fallback: 'document' })}${DOCUMENT_FILE_SUFFIX}`, 'application/json');
+  const portable = portableGenerationReceipt(document);
+  if (!portable) throw new Error('Invalid document generation receipt');
+  downloadFile(JSON.stringify(portable, null, 2), `${sanitizeFilename(document.name, { fallback: 'document' })}${DOCUMENT_FILE_SUFFIX}`, 'application/json');
   trackExportCompleted({ format: 'json', surface: 'document' });
 }
 
@@ -63,7 +72,8 @@ export function parseDocumentFile(text: string): DocumentSpec {
   if (errors.length > 0) {
     throw new Error(`Not a document file: ${errors.slice(0, 3).map((e) => `${e.path || '/'} ${e.message}`).join('; ')}`);
   }
-  const spec = parsed as DocumentSpec;
+  const spec = portableGenerationReceipt(parsed as DocumentSpec);
+  if (!spec) throw new Error('Invalid document generation receipt');
   return {
     ...spec,
     id: freshDocumentId(),

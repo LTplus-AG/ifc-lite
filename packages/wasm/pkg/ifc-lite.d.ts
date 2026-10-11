@@ -1140,12 +1140,20 @@ export class IfcAPI {
      * Fast entity scanning using SIMD-accelerated Rust scanner
      * Returns array of entity references for data model parsing
      * Much faster than TypeScript byte-by-byte scanning (5-10x speedup)
+     *
+     * The returned array also carries two own properties describing what the
+     * scan refused (#7393): `oversizedIdCount` (records skipped because their
+     * express id does not fit u32, #3395) and `malformedRecordCount` (0 or 1:
+     * whether a record was dropped for having no terminating `;`, #3695).
      */
     scanEntitiesFast(content: string): any;
     /**
      * Fast entity scanning from raw bytes (avoids TextDecoder.decode on JS side).
      * Accepts Uint8Array directly — saves ~2-5s for 487MB files by skipping
      * JS string creation and UTF-16→UTF-8 conversion.
+     *
+     * Carries the same `oversizedIdCount` / `malformedRecordCount` array
+     * properties as `scanEntitiesFast` (#7393).
      */
     scanEntitiesFastBytes(data: Uint8Array): any;
     /**

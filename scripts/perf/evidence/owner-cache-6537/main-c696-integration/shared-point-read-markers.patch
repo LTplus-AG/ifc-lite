@@ -1,0 +1,24 @@
+diff --git a/apps/viewer/src/components/viewer/properties/effective-classification-systems.ts b/apps/viewer/src/components/viewer/properties/effective-classification-systems.ts
+index e10c536d8f..65c34ffee8 100644
+--- a/apps/viewer/src/components/viewer/properties/effective-classification-systems.ts
++++ b/apps/viewer/src/components/viewer/properties/effective-classification-systems.ts
+@@ -24,6 +24,7 @@ export function hasClassificationEdits(
+   // Effective changes are current; append-only history would incorrectly
+   // report an unavailable edit after undo restored the source value.
+   return view.getEffectiveChanges().some(change => {
++    // @raw-entity-enumeration-ok source-class point lookup classifies current effective edits, including deletion or retyping of indexed classification rows absent from sparse columns; it does not enumerate live membership
+     const types = [store.entities.getTypeName(change.entityId), store.entityIndex.byId.get(change.entityId)?.type, view.getNewEntity(change.entityId)?.type, view.getEntityTypeMutation(change.entityId)?.newType];
+     return types.some(type => type !== undefined && CLASSIFICATION_TYPES.has(type.toUpperCase()));
+   });
+diff --git a/packages/parser/src/material-resolver.ts b/packages/parser/src/material-resolver.ts
+index 66c39d025a..d0c6472349 100644
+--- a/packages/parser/src/material-resolver.ts
++++ b/packages/parser/src/material-resolver.ts
+@@ -88,6 +88,7 @@ export function extractAllMaterialsOnDemand(
+         if (!store.source?.length) {
+             const edits = view?.getEffectiveChanges?.().some(edit => {
+                 if (!['attribute', 'type', 'entity-deleted'].includes(edit.kind)) return false;
++                // @raw-entity-enumeration-ok source-class point lookup invalidates forwarded material evidence after edits, deletion or retyping, including deferred material atoms
+                 const sourceType = store.entityIndex.byId.get(edit.entityId)?.type ?? store.deferredEntityIndex?.get(edit.entityId)?.type;
+                 return edit.entityId === id || Boolean(sourceType?.toUpperCase().startsWith('IFCMATERIAL'));
+             });

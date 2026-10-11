@@ -1,0 +1,75 @@
+{
+  "issue": 7302,
+  "pr": 7303,
+  "base": "89839f78cddd7c8a684b281c7987b9d6a4cef149",
+  "qualifiedSourceHead": "87eef8d43a7f214904023482c74c115121a69828",
+  "native": {
+    "before": {
+      "passed": 7,
+      "failed": 2,
+      "skipped": 0,
+      "classification": "French/German report-owned chrome AssertionErrors after native fact-format test invariant correction"
+    },
+    "finalRestored": {
+      "passed": 69,
+      "failed": 0,
+      "skipped": 0,
+      "command": "TEST_PATTERN='report-chrome|report-language|report-draft|report-refresh|report-narrative|generation-receipt-retention' pnpm test --filter=@ifc-lite/viewer --only --env-mode=loose"
+    }
+  },
+  "wholeClassInverse": {
+    "runtimeFiles": 17,
+    "baselinePassed": 41,
+    "revertedPassed": 16,
+    "revertedFailed": 25,
+    "runnerClassification": "all three Node files assertion-failure",
+    "verdict": "OBSERVED",
+    "invocationId": "cad6bc9c-a524-4394-a0a1-bf38ce7caf40",
+    "restoration": "verified"
+  },
+  "sourceSha256": {
+    "apps/viewer/src/lib/assistant/report-blocks.ts": "13a643c410716b8b8b5aea93a3c40b0432b3a86e33e1b2c63e0c1d66e4751e29",
+    "apps/viewer/src/lib/assistant/report-locales/cs.ts": "83b6ec312807d158d07bc18d48716b8a54740f929e63449879665a0f2e5af0f3",
+    "apps/viewer/src/lib/assistant/report-locales/da.ts": "3ec61de54dc0025f0285be301581a7b812b8267f7e6955a47e73f52df0bae9e4",
+    "apps/viewer/src/lib/assistant/report-locales/de.ts": "21965a5650f276dd2d7c574d7b338d3b6e0ddd2f43451f955683a94a7b83623f",
+    "apps/viewer/src/lib/assistant/report-locales/en.ts": "5ce8b7c067e55c92a8404215117eb0e4eb3c807376a85ed1d04235449aadcefa",
+    "apps/viewer/src/lib/assistant/report-locales/es.ts": "97435bef618f3ae6dae9470d1489f9ebc90eb768638512aa0462457aa524b339",
+    "apps/viewer/src/lib/assistant/report-locales/fi.ts": "f3871d2e96c3045bf0dd48c7d4abf7c2b9b889b7e03e4b9ab53929d95db73343",
+    "apps/viewer/src/lib/assistant/report-locales/fr.ts": "2ac7be3a120e0966a20ba7d68926a9b301aaf63cf597bd5da9770196940e55fe",
+    "apps/viewer/src/lib/assistant/report-locales/it.ts": "1943892c477db73e17c3ce7b76493355e560983a87aa03f499d148f03b4a77c6",
+    "apps/viewer/src/lib/assistant/report-locales/nb.ts": "c07a49d8788543995b7a5ca645329f436ad8124edb4474e41dec1ef720dbd082",
+    "apps/viewer/src/lib/assistant/report-locales/nl.ts": "6e39c72cbd39d06936ad25b19fb90e177e4831937a84b790e0cce07eae187d57",
+    "apps/viewer/src/lib/assistant/report-locales/pl.ts": "d1248e0d37cfee7a3f5f73dfb086b8e8e9682a12abb9f3baca064806d53377c5",
+    "apps/viewer/src/lib/assistant/report-locales/pt.ts": "b7112be9b2a111ab9ae0a9cf45be29e11ef7837cc80b9770ccfc4d484a16f6f8",
+    "apps/viewer/src/lib/assistant/report-locales/sv.ts": "a5581f5f30c08205dd9909464ac5d01986c03332ab4b05d51d699fe2a5a4a386",
+    "apps/viewer/src/lib/assistant/report-narrative.ts": "c7333c4052708215067b4664a42a221ae656b7c1f45473c83e7a90479184007f",
+    "apps/viewer/src/lib/assistant/report-refresh.ts": "ee973e0a87841717181368f93710c9abbc8a8164b7e4d942dba01c60e4dc6ac5",
+    "apps/viewer/src/lib/assistant/report-text.ts": "c3ad1ee8654320df84d2cc3373311a4f8985bccfd98e7d573a7735665b0099eb"
+  },
+  "logs": {
+    "/tmp/campaign-report-chrome-before-corrected-invariant.log": "69d6747270f6915924a38d736a2a7e39382d67a890500f579f9321a19e8c3893",
+    "/tmp/campaign-report-chrome-final-restored-native69.log": "c8134e6a28bc5cd7fe63d5671db83101eb068dba596154b11136764006c7be28",
+    "/tmp/campaign-report-chrome-whole-class-oracle.log": "0900ec231dc1f97795e4d2f91a271c0f0b471c42d83c1ae44f958c4b71a78101",
+    "/tmp/campaign-report-chrome-final-module.log": "9b6f01635d184469de6597d72ef9c1928538f464a11c3cae304347e5b1b120a2",
+    "/tmp/campaign-report-chrome-final-source.log": "ef74eda63e10149e602d4685763111e8bbb0f0736c71870d7fc2f2057dcd2b7d",
+    "/tmp/campaign-report-chrome-final-mpl-restored-roots.log": "acdbb065c0679410783fa20dcecbec5ada7a4819dac8598162d090ba9f6e7689",
+    "/tmp/campaign-report-chrome-final-wiring.log": "f60b95218f3b2cde5dbf7ce9a4eeb2c4a6ea8b2a4f7f88cc9fc8402c2bfdf322",
+    "/tmp/campaign-report-chrome-final-raw-canonical.log": "1c40123a71a89b4790ef46369479d561e1d45506ba3f92b39072eb4e9bf59a9f",
+    "/tmp/campaign-report-chrome-final-diff.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "dependencyDonor": {
+    "head": "3bfb67a7084e3dcd861801102fce1e17f7166f65",
+    "matchingInputs": 5448,
+    "verifiedOutputs": 7419,
+    "receipt": "/tmp/campaign-report-chrome-dependency-copy-receipt.json"
+  },
+  "notPerformed": [
+    "own root compiler/lint/build/API/docs/bundle qualification",
+    "live provider run",
+    "native-speaker approval",
+    "human evaluation",
+    "fixture privacy/licence approval",
+    "generic PDF footer/page localization",
+    "DOCX export (no native exporter exists)"
+  ]
+}

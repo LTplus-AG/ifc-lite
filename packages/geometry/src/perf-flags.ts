@@ -20,7 +20,7 @@ export const GEOMETRY_PERF_FLAG_BINDINGS = {
   visibilityFilter: { global: '__IFC_LITE_VISIBILITY_FILTER', urlParam: 'perf.visibilityFilter' },
   /** Sharded entity-index pre-pass; on by default, `0` is the kill switch. */
   shardScan: { global: '__IFC_LITE_SHARD_SCAN', urlParam: 'perf.shardScan' },
-  /** Engine init + geometry workers started at load request (#7036); on by default, `0` is the kill switch. */
+  /** Experimental idle/load-intent engine warm-up and bounded worker reuse (#7036); opt-in with `1`. */
   warmPool: { global: '__IFC_LITE_WARM_POOL', urlParam: 'perf.warmPool' },
 } as const satisfies Record<string, PerfFlagBinding>;
 

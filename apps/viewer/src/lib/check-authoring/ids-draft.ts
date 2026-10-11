@@ -12,8 +12,7 @@
  * lists them, so a saved or exported file never silently loses them.
  */
 
-import { auditIDSDocument, parseIDS, type IDSAuditIssue, type IDSDocument } from '@ifc-lite/ids';
-import { writeIdsXml } from '@ifc-lite/rules';
+import { auditIDSDocument, parseIDS, writeIdsXml, type IDSAuditIssue, type IDSDocument } from '@ifc-lite/ids';
 import { unsupportedNote, type UnsupportedRequirement } from './proposal-json';
 
 export interface IdsDraft {

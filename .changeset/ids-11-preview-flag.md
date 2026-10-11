@@ -1,0 +1,5 @@
+---
+"@ifc-lite/ids": minor
+---
+
+IDS 1.1 preview (unstable, opt-in). `parseIDS`, `writeIdsXml`, `validateIDS` and `auditIDSDocument` take `preview: { ids11: true }` to read, write, evaluate and audit candidate features of the unreleased IDS 1.1, each tied to its buildingSMART/IDS issue: `uri` on applicability facets (#188, #251), `instructions` on applicability facets (#154), attribute, property, classification and material facets nested in `partOf` that the related element must satisfy (#379, draft #380), a duplicate specification identifier warning (#339) and the #418 tolerance candidate (inclusive bounds rounded to 15 decimals). Without the flag nothing changes: every buildingSMART IDS 1.0 corpus file writes byte for byte as before, and a document that uses a 1.1 feature makes the writer and validator throw `IDS11PreviewRequiredError` instead of being silently downgraded. New exports: `IDS11_PREVIEW_FEATURES`, `findIds11Features`, `IDS11PreviewRequiredError` and the `IDSPreviewFlags`, `ParseIDSOptions`, `IdsXmlWriteOptions` types. New audit codes `I_IDS11_PREVIEW_FEATURE` and `W_IDS11_IDENTIFIER_DUPLICATE` are raised only under the preview.

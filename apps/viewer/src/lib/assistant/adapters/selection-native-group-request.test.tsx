@@ -40,10 +40,14 @@ function texts(value: unknown): string[] {
   return value && typeof value === 'object' ? Object.values(value).flatMap(texts) : [];
 }
 for (const attached of [false, true]) test(`#7329 actual ${attached ? 'explicit attachment' : 'rich selection'} request carries complete native Group identities and source ownership`, async () => {
-  await selectedSource();
+  const { dataStore, view } = await selectedSource();
+  // Complete whole-graph facts are read only in exact IfcGroup context (#7346).
+  addGroupToStore({ store: dataStore, mutationView: view, ownerHistoryId: null },
+    { Name: 'Selected context', RelatedObjects: [{ expressId: 291, GlobalId: dataStore.entities.getGlobalId(291) }] });
   const grounding = captureSelectionGrounding(useViewerStore.getState());
   const native = grounding.elements[0].nativeGroup;
-  assert.equal(native?.status, 'available'); assert.ok(native?.snapshot);
+  assert.equal(native?.status, 'available'); assert.ok(native?.snapshot && 'groups' in native.snapshot, JSON.stringify(native));
+  assert.equal(native.snapshot.groups.length, 0); assert.ok(native.snapshot.records.some(row => row.type.toUpperCase() === 'IFCRELASSIGNSTOGROUP'), JSON.stringify(native.snapshot.records.map(row => row.type)));
   const source = captureEvidence(attached ? 'loadReport' : 'selection');
   replaceEvidence(source);
   if (!attached) {
@@ -62,6 +66,27 @@ for (const attached of [false, true]) test(`#7329 actual ${attached ? 'explicit 
   assert.ok(text.includes('group.lifecycle')); assert.ok(text.includes(native.snapshot.source.contentKey));
   assert.ok(text.includes('3wdauVJT5Fx9drrREiDqA$'));
   assert.ok(text.includes(attached ? 'nativeGroup' : 'nativeGroups'));
+});
+
+test('#7346 rich selection and explicit attachment outside group context carry bounded create-only facts without the whole-model graph', async () => {
+  const { dataStore, view } = await selectedSource();
+  let decodes = 0; const decode = dataStore.source.decodeUtf8.bind(dataStore.source);
+  dataStore.source.decodeUtf8 = (start: number, end: number) => { decodes++; return decode(start, end); };
+  const bounded = (snapshot: unknown) => assert.deepEqual(snapshot, { scope: 'no-group-context', source: { contentKey: dataStore.source.contentKey, byteLength: dataStore.source.byteLength },
+    selected: [291], members: [{ expressId: 291, GlobalId: dataStore.entities.getGlobalId(291) }] });
+  const target = readOnlyModelEditTarget(useViewerStore.getState(), SAMPLE_MODEL);
+  try {
+    bounded(nativeGroupEvidence(target, [291]).snapshot);
+    assert.ok(decodes < 10, `an ungrouped selection decoded ${decodes} records`);
+  } finally { dataStore.source.decodeUtf8 = decode; }
+  bounded(captureSelectionGrounding(useViewerStore.getState()).elements[0].nativeGroup?.snapshot);
+  const payload = JSON.parse(captureEvidence('selection').payload);
+  const [group] = payload.evidence.summary.nativeGroups;
+  assert.equal(group.status, 'available'); bounded(JSON.parse(group.expectedJsonParts.join('')));
+  // A specialized group is not generic Group context; an exact IfcGroup is.
+  addGroupToStore({ store: dataStore, mutationView: view, ownerHistoryId: null }, { Name: 'Context', RelatedObjects: [{ expressId: 291, GlobalId: dataStore.entities.getGlobalId(291) }] });
+  const complete = captureSelectionGrounding(useViewerStore.getState()).elements[0].nativeGroup?.snapshot;
+  assert.ok(complete && 'incoming' in complete && complete.incoming.length);
 });
 
 for (const attached of [false, true]) test(`#7329 ${attached ? 'attached' : 'rich'} request shares complete Group transport budget across two actual loaded sources`, async () => {
@@ -93,7 +118,8 @@ for (const attached of [false, true]) test(`#7329 ${attached ? 'attached' : 'ric
     assert.equal(await sendAssistant('Review captured groups', 'openai/gpt-free', '/api/chat',
       attached ? attachmentsForSend({ selection: grounding, screenshot: null }) : undefined), true);
     assert.deepEqual(grounding.elements.map(row => row.nativeGroup?.status), ['available', 'unavailable-transport-budget']);
-    assert.equal(grounding.elements[0].nativeGroup?.snapshot?.groups[0].GlobalId, own.GlobalId);
+    const ownFacts = grounding.elements[0].nativeGroup?.snapshot;
+    assert.ok(ownFacts && 'groups' in ownFacts); assert.equal(ownFacts.groups[0].GlobalId, own.GlobalId);
     assert.equal(grounding.elements[1].nativeGroup?.snapshot, null);
     assert.ok(texts(wire).join('\n').includes('unavailable-transport-budget'));
   } finally { federationRegistry.unregisterModel(SAMPLE_MODEL); federationRegistry.unregisterModel(peerId); }

@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { isValidIfcGuid } from '@ifc-lite/encoding';
-import type { GroupInStoreParams, GroupInStorePatch, GroupRootIdentity, GroupNativeEvidence } from '@ifc-lite/create';
+import type { GroupCreateEvidence, GroupInStoreParams, GroupInStorePatch, GroupRootIdentity, GroupNativeEvidence } from '@ifc-lite/create';
 import { isRecord, onlyKeys, requiredText } from '@/lib/check-authoring/proposal-json';
 
 export const GROUP_OPS = ['group.create', 'group.update', 'group.remove'] as const;
@@ -11,7 +11,7 @@ export type GroupOperation = { op: 'group.create'; params: GroupInStoreParams }
   | { op: 'group.remove'; target: GroupRootIdentity };
 export interface GroupProposal {
   version: 1; kind: 'group.lifecycle'; title: string; modelId: string;
-  expected: GroupNativeEvidence; operations: GroupOperation[];
+  expected: GroupNativeEvidence | GroupCreateEvidence; operations: GroupOperation[];
 }
 function identity(value: unknown): GroupRootIdentity {
   if (!isRecord(value)) throw new Error('Group requires a captured native Root identity');
@@ -75,6 +75,6 @@ export function parseGroupProposal(content: string): GroupProposal {
     targets.add(target.expressId);
     return row.op === 'group.update' ? { op: row.op, target, params: params(row.params, false) } : { op: row.op, target };
   });
-  return { version: 1, kind: 'group.lifecycle', title: requiredText(value, 'title', 'Group proposal'), modelId: requiredText(value, 'modelId', 'Group proposal'), expected: value.expected as unknown as GroupNativeEvidence, operations };
+  return { version: 1, kind: 'group.lifecycle', title: requiredText(value, 'title', 'Group proposal'), modelId: requiredText(value, 'modelId', 'Group proposal'), expected: value.expected as unknown as GroupNativeEvidence | GroupCreateEvidence, operations };
 }
-export const GROUP_LIFECYCLE_GUIDANCE = `Exact generic IfcGroup lifecycle uses kind:"group.lifecycle", version:1, title, modelId, expected equal to the complete available nativeGroup.snapshot (or JSON parsed from the matching summary.nativeGroups entry's expectedJsonParts.join('')), and operations group.create/group.update/group.remove. RelatedObjects is the entire intended membership, including an explicit [] to clear it, with captured {expressId,GlobalId} identities. Create requires Name; update/remove require the captured exact IfcGroup target. Preserve all unrelated memberships and members. Protected dependencies or stale/incomplete evidence require a fresh attachment. unavailable-transport-budget means the complete escaped facts exceed the shared request budget: reduce the selected groups or long metadata before capturing again, rather than retrying the same attachment. Never infer omitted facts. Updates refuse typed RelatedObjectsType assignments or consolidation of relationships with distinct OwnerHistory, Name or Description; this member list cannot express their separate semantics. Reads and safe removal remain supported. Specialized Structural groups are outside this generic lifecycle. Output a proposal for explicit native review; never raw STEP patches or an automatic edit.`;
+export const GROUP_LIFECYCLE_GUIDANCE = `Exact generic IfcGroup lifecycle uses kind:"group.lifecycle", version:1, title, modelId, expected equal to the complete available nativeGroup.snapshot (or JSON parsed from the matching summary.nativeGroups entry's expectedJsonParts.join('')), and operations group.create/group.update/group.remove. RelatedObjects is the entire intended membership, including an explicit [] to clear it, with captured {expressId,GlobalId} identities. Create requires Name; update/remove require the captured exact IfcGroup target. Preserve all unrelated memberships and members. Protected dependencies or stale/incomplete evidence require a fresh attachment. unavailable-transport-budget means the complete escaped facts exceed the shared request budget: reduce the selected groups or long metadata before capturing again, rather than retrying the same attachment. A snapshot with scope:"no-group-context" means no selected element is an exact IfcGroup or a member of one: it supports only group.create from those members. Never infer omitted facts. Updates refuse typed RelatedObjectsType assignments or consolidation of relationships with distinct OwnerHistory, Name or Description; this member list cannot express their separate semantics. Reads and safe removal remain supported. Specialized Structural groups are outside this generic lifecycle. Output a proposal for explicit native review; never raw STEP patches or an automatic edit.`;

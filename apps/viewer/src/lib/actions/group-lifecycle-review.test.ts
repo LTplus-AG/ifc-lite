@@ -6,7 +6,7 @@ import assert from 'node:assert/strict';
 import { afterEach, test } from 'node:test';
 import { RelationshipType } from '@ifc-lite/data';
 import { MutablePropertyView } from '@ifc-lite/mutations';
-import { addGroupToStore, readGroupInStore, readGroupEvidenceInStore } from '@ifc-lite/create';
+import { addGroupToStore, readGroupCreateEvidenceInStore, readGroupInStore, readGroupEvidenceInStore } from '@ifc-lite/create';
 import { asSourceBytes } from '@ifc-lite/parser';
 import { assertSameNativeIfcGraph } from '@/test/native-ifc-graph';
 import { useViewerStore } from '@/store';
@@ -172,4 +172,24 @@ test('#7329 two real loaded sources keep identical local IDs source-owned, rejec
   assert.equal(undoneOwn.entityIndex.byId.has(own.expressId), false);
   assert.equal(undoneOwn.entities.getGlobalId(member.expressId), member.GlobalId);
   assert.deepEqual(danglingReferences(new TextDecoder().decode(ownBytes)), []);
+});
+
+test('#7346 bounded create-only facts admit only creation, re-derived at review and certified by the complete graph', async () => {
+  const { dataStore, view, member, context } = await setup();
+  const expected = readGroupCreateEvidenceInStore(context, [member.expressId]);
+  assert.equal(expected?.scope, 'no-group-context');
+  const parse = (operations: GroupOperation[], facts: unknown = expected) => parseGroupProposal(JSON.stringify({ version: 1, kind: 'group.lifecycle', title: 'New group', modelId: SAMPLE_MODEL, expected: facts, operations }));
+  const create: GroupOperation = { op: 'group.create', params: { Name: 'Bounded new group', RelatedObjects: [member] } };
+  assert.throws(() => prepareGroupReview(useViewerStore, parse([create], { ...expected, members: [{ ...member, GlobalId: dataStore.entities.getGlobalId(353)! }] })), /differs/);
+  const existing = addGroupToStore({ ...context, mutationView: view }, { Name: 'Unrelated', RelatedObjects: [] });
+  assert.throws(() => prepareGroupReview(useViewerStore, parse([{ op: 'group.remove', target: existing }])), /only create/);
+  const review = prepareGroupReview(useViewerStore, parse([create]));
+  assert.deepEqual(review.snapshot, readGroupEvidenceInStore(context, [member.expressId]), 'review reads the complete graph itself');
+  commitReviewedGroup(useViewerStore, review, 'bounded create');
+  const saved = await parseIfc(editedModelBytes(dataStore, view));
+  const created = (saved.entityIndex.byType.get('IFCGROUP') ?? []).filter(id => saved.entities.getName(id) === 'Bounded new group');
+  assert.equal(created.length, 1);
+  assert.deepEqual(saved.relationships.getRelated(created[0], RelationshipType.AssignsToGroup, 'forward'), [member.expressId]);
+  // The member is now in group context: the same create-only facts are stale.
+  assert.throws(() => prepareGroupReview(useViewerStore, parse([{ ...create, params: { ...create.params, Name: 'Again' } }])), /differs/);
 });

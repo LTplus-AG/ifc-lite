@@ -495,6 +495,12 @@ Unavailable or incomplete captured evidence requires a fresh attachment.
 Generic replacement refuses typed `RelatedObjectsType` assignments and
 semantically distinct assignment records instead of merging their meanings.
 Those groups can still be read and safely removed through native review.
+Selection evidence and attachments read the complete whole-model Group graph
+only when the selection includes an exact IfcGroup or a current member of one.
+Other selections carry bounded `scope: "no-group-context"` facts (the selected
+identities), read from the group assignments alone; they support only creating
+a new group, and review still checks the complete graph before Apply. Models
+above the 250,000-entity graph budget are refused before any record is decoded.
 Complete Group facts share a transport budget across every selected model,
 including escaped JSON. Oversized facts are explicitly unavailable; select a
 smaller set of groups before capturing again. Reattaching the same oversized

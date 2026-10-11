@@ -72,17 +72,7 @@ export class GroupGraph {
     }
     this.schemaNames = createSchemaEntityNameSnapshot(schemaRegistry(store.schemaVersion, 'IfcGroup'));
     const reader = new AnchorEntityReader(store, view, this.schemaNames);
-    let referenceCount = 0;
-    let recordCharacters = 0;
-    for (const { expressId } of iterateEffectiveEntityIds(store, view)) {
-      if (this.entities.size >= this.limits.entities) throw new Error('Group graph entity budget exceeded');
-      const entity = reader.entity(expressId);
-      if (!entity) throw new Error(`Group graph cannot read current entity #${expressId}`);
-      this.entities.set(expressId, entity);
-      if (entity.names[0] === 'GlobalId' && typeof entity.attributes[0] === 'string') {
-        const guid = entity.attributes[0];
-        const ids = this.roots.get(guid) ?? []; ids.push(expressId); this.roots.set(guid, ids);
-      }
+    const exportRecord = (expressId: number) => {
       const created = effectiveCreatedRecord(view, expressId, store.schemaVersion);
       // @raw-entity-enumeration-ok current candidate came from the canonical live iterator; source lookup supplies export record bytes only
       const source = created ? undefined : store.entityIndex.byId.get(expressId);
@@ -90,11 +80,36 @@ export class GroupGraph {
         store.source.decodeUtf8(source.byteOffset, source.byteOffset + source.byteLength), source.type, store.schemaVersion) : null);
       if (!record || record.notWritten.length) throw new Error(`Group graph cannot certify exported entity #${expressId}`);
       if (record.text.length > this.limits.recordCharacters) throw new Error('Group graph record budget exceeded');
+      return record;
+    };
+    // Refuse whole-model budgets from index metadata before decoding any record:
+    // a refusal is the same answer, without seconds of main-thread decoding (#7346).
+    const ids: number[] = [];
+    for (const { expressId } of iterateEffectiveEntityIds(store, view)) {
+      if (ids.length >= this.limits.entities) throw new Error('Group graph entity budget exceeded');
+      ids.push(expressId);
+    }
+    for (const expressId of ids) {
+      // @raw-entity-enumeration-ok id came from the canonical live iterator; source byte length only bounds its UTF-16 export text
+      const source = view.getNewEntity(expressId) ? undefined : store.entityIndex.byId.get(expressId);
+      if (source && source.byteLength > this.limits.recordCharacters) exportRecord(expressId);
+    }
+    let referenceCount = 0;
+    let recordCharacters = 0;
+    for (const expressId of ids) {
+      const entity = reader.entity(expressId);
+      if (!entity) throw new Error(`Group graph cannot read current entity #${expressId}`);
+      this.entities.set(expressId, entity);
+      if (entity.names[0] === 'GlobalId' && typeof entity.attributes[0] === 'string') {
+        const guid = entity.attributes[0];
+        const owners = this.roots.get(guid) ?? []; owners.push(expressId); this.roots.set(guid, owners);
+      }
+      const record = exportRecord(expressId);
       recordCharacters += record.text.length;
       if (recordCharacters > this.limits.totalRecordCharacters) throw new Error('Group graph total record work budget exceeded');
       for (const target of groupRecordReferences(record.text)) {
         if (++referenceCount > this.limits.references) throw new Error('Group graph reference budget exceeded');
-        const ids = this.incoming.get(target) ?? new Set<number>(); ids.add(expressId); this.incoming.set(target, ids);
+        const referrers = this.incoming.get(target) ?? new Set<number>(); referrers.add(expressId); this.incoming.set(target, referrers);
       }
     }
   }

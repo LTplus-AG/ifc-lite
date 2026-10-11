@@ -2,7 +2,7 @@
 
 The stack adds one native Create owner for exact generic `IfcGroup` creation, complete membership replacement and removal, then reuses it through the SDK, CLI, sandbox and reviewed viewer transport. It does not broaden Structural assignment/deletion or claim campaign #6812 human acceptance.
 
-The lower PR is #7345; the upper reviewed transport PR is #7346. Their tracked changes are Create/SDK/CLI/sandbox/viewer, guides, changeset and generated API/types. Ordinary main integrations are excluded from their diffs. No perf-sensitive path or throughput claim is introduced.
+The lower PR is #7345; the upper reviewed transport PR is #7346. Their tracked changes are Create/SDK/CLI/sandbox/viewer, guides, changeset and generated API/types. Ordinary main integrations are excluded from their diffs. Complete Group evidence is perf-sensitive: it builds a whole-model graph. #7346 bounds it on the selection path. The graph refuses its entity and per-record budgets from index metadata before decoding any record. Rich selection evidence builds the graph only when a type-bucket check finds that the selection touches a current group. An explicit selection attachment still builds it, so the attachment can propose a new group. Measured locally with one selected element (untracked probe, not committed): on `FM_ARC_DigitalHub.ifc` (266k entities), readGroupEvidenceInStore went from 3,172 ms to 27 ms. On `Viadotto_Acerno.ifc` (253k entities) it went from 1,187 ms to 36 ms. Both are still refused. Rich selection capture on `AC20-FZK-Haus.ifc` (44k entities, ungrouped wall) went from about 700 ms to about 140 ms. On FM_ARC it went from about 4,300 ms to about 1,000 ms.
 
 ## Ground truth and public behavior
 

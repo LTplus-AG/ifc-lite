@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import type { StoreApi } from 'zustand';
 import { generateIfcGuid } from '@ifc-lite/encoding';
-import { readGroupEvidenceInStore, type GroupNativeEvidence } from '@ifc-lite/create';
+import { readGroupCreateEvidenceInStore, readGroupEvidenceInStore, type GroupNativeEvidence } from '@ifc-lite/create';
 import { effectiveMetadataRecord } from '@ifc-lite/parser';
 import { StoreEditor } from '@ifc-lite/mutations';
 import type { ViewerState } from '@/store';
@@ -33,7 +33,11 @@ export function prepareGroupReview(store: StoreApi<ViewerState>, input: GroupPro
     hash: row.sourceContentHash, fingerprint: row.sourceFingerprint, view: initial.mutationViews.get(id), revision: initial.mutationViews.get(id)?.getMutationRevision() }));
   const read = (draft: StoreEditor) => readGroupEvidenceInStore({ store: lease.target.dataStore, mutationView: draft.getMutationView(), ownerHistoryId: null }, proposal.expected.selected);
   const snapshot = read(lease.target.editor);
-  if (!sameReportEvidence(proposal.expected, snapshot)) throw new Error('The complete captured Group graph differs from the current native source; attach it again');
+  // Create-only facts (#7346) are re-derived the same bounded way; the complete read above still certifies identities.
+  const current = 'scope' in proposal.expected ? readGroupCreateEvidenceInStore({ store: lease.target.dataStore,
+    mutationView: lease.target.editor.getMutationView(), ownerHistoryId: null }, proposal.expected.selected) : snapshot;
+  if (!sameReportEvidence(proposal.expected, current)) throw new Error('The complete captured Group graph differs from the current native source; attach it again');
+  if ('scope' in proposal.expected && proposal.operations.some(row => row.op !== 'group.create')) throw new Error('Selections outside group context can only create a new group');
   const approved = new Set(approval ?? proposal.operations.map((_, index) => index));
   if (!approved.size || [...approved].some(index => !Number.isInteger(index) || index < 0 || index >= proposal.operations.length)) throw new Error('Approve at least one existing Group operation');
   const allocations = new Map<number, string[]>();

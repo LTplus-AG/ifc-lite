@@ -10,14 +10,27 @@
  */
 import '@/i18n/catalogues/review-workspace.register';
 import { resolveEnglish } from '@/i18n/registry';
+import type { TranslatableMessage } from '@/i18n';
 import type { ReviewFinding, RunGap } from './types';
+
+const english = (message: TranslatableMessage) => resolveEnglish(message.labelKey, message.params);
 
 /** Notes come first: callers cap the lines they print, and the explanation must survive that cap. */
 export function findingLines(finding: Pick<ReviewFinding, 'detail' | 'notes'>): string[] {
-  return [...(finding.notes ?? []).map(note => resolveEnglish(note.labelKey, note.params)), ...finding.detail];
+  return [...(finding.notes ?? []).map(english), ...finding.detail];
+}
+
+/**
+ * Lines for exports that print no run gaps of their own (report text, BCF descriptions).
+ * A finding without its own explanation carries its run's catalogued sentences instead,
+ * e.g. why saved failures were not checked again (no current run, edited checks).
+ */
+export function exportLines(finding: Pick<ReviewFinding, 'detail' | 'notes' | 'run'>): string[] {
+  const own = finding.notes?.length ? [] : finding.run.incomplete.flatMap(gap => gap.message ? [english(gap.message)] : []);
+  return [...own, ...findingLines(finding)];
 }
 
 export function gapLine(gap: RunGap): string {
-  const detail = gap.message ? resolveEnglish(gap.message.labelKey, gap.message.params) : gap.detail;
+  const detail = gap.message ? english(gap.message) : gap.detail;
   return detail ? `${gap.code}: ${detail}` : gap.code;
 }

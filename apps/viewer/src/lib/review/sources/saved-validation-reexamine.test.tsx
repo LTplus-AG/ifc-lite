@@ -37,6 +37,9 @@ import { parseDocumentFile } from '@/lib/document/persistence';
 import { renderPanelBody } from '@/lib/panels/renderPanelBody';
 import { cleanup, click, render, waitFor } from '@/test/render';
 import { reviewFindingRow } from '../assistant';
+import { cardDescription } from '../bcf-draft';
+import { buildCards } from '../cards';
+import { reviewDocument } from '../report';
 import { captureReviewSnapshot } from '../collect';
 import type { ReviewFinding } from '../types';
 
@@ -244,6 +247,31 @@ test('#7371 incompatible, unknown or older evidence stays explicitly not evaluat
   assert.ok(await useViewerStore.getState().saveValidationReportEntry(newSavedReport(older.snapshot, 'Older saved run')));
   publish(await runIds(pair, 'B', { view }));
   refused('definitionNotRecorded');
+});
+
+/** What the report text and the BCF description of the plumbing wall's saved card say. */
+function exportedText(): { report: string; bcf: string } {
+  const { cards, totals } = buildCards(savedFindings(), []);
+  const card = cards.find(item => item.findings.some(row => row.elements[0]?.globalId === PLUMBING_WALL)); assert.ok(card);
+  const document = reviewDocument('R', [card], totals, { version: 1, id: 'w', name: 'w', decisions: [] });
+  return { report: document.blocks.map(block => block.kind === 'text' ? block.text : '').join('\n'), bcf: cardDescription(card) };
+}
+
+test('#7371 follow-up: report text and BCF descriptions say why a saved failure was not checked again', async t => {
+  const source = await savedHeadRun(t); if (!source) return;
+  const { pair } = source;
+  const historical = 'Saved failures are historical. No matching current run has checked them again.';
+  const idle = exportedText();
+  assert.ok(idle.report.includes(historical), 'no current run: report');
+  assert.ok(idle.bcf.includes(historical), 'no current run: BCF description');
+
+  publish(await runIds(pair, 'B', { edit: xml => xml.replace('name="Walls are external"', 'name="Walls are external (revised)"') }));
+  const edited = exportedText();
+  const differs = 'Not checked again: the current run used different or edited checks.';
+  for (const text of [edited.report, edited.bcf]) {
+    assert.ok(text.includes(historical) && text.includes(differs), text);
+    assert.doesNotMatch(text, /definitionDiffers|noCurrentRun/);
+  }
 });
 
 test('#7371 recorded definitions survive document copies and backup import, and copies re-examine identically', async t => {

@@ -18,7 +18,7 @@ import { draftTopic, findingFromClash } from '../bcf-drafts/draft-create';
 import { digestStrings } from '../bcf-drafts/draft-footer';
 import { DRAFT_LIMITS, findingIdentity, type DraftBatch, type DraftFinding, type DraftSourceFinding, type DraftSourceMembership, type DraftTopic } from '../bcf-drafts/draft-types';
 import type { CoordinationCard } from './cards';
-import { findingLines } from './finding-text';
+import { exportLines } from './finding-text';
 import type { ReviewFinding } from './types';
 
 export type CardDraftExclusion = { cardKey: string; reason: 'has-topic' | 'not-current' };
@@ -38,7 +38,7 @@ export function cardDescription(card: CoordinationCard): string {
   const lines = [`Coordination review card: ${card.findings.length} finding(s) from ${card.sources.join(', ')}.`, ''];
   for (const finding of card.findings) {
     lines.push(`- [${finding.source}, ${finding.run.temporal}: ${finding.run.label}] ${finding.title} · native status ${finding.nativeStatus || 'n/a'}`);
-    for (const detail of findingLines(finding).slice(0, 3)) lines.push(`  ${detail}`);
+    for (const detail of exportLines(finding).slice(0, 3)) lines.push(`  ${detail}`);
   }
   lines.push('', `Elements: ${card.elements.map(element => `${element.globalId}${element.modelName ? ` (${element.modelName})` : ''}`).join(', ')}`);
   const text = lines.join('\n');

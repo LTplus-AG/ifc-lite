@@ -15,7 +15,7 @@ import { freshBlockId, freshDocumentId } from '../document/persistence';
 import { DOCUMENT_VERSION, validateDocumentSpec, type DocumentSpec, type TextBlock } from '../document/types';
 import { cardTitle } from './bcf-draft';
 import type { CoordinationCard, ReviewTotals } from './cards';
-import { findingLines } from './finding-text';
+import { exportLines } from './finding-text';
 import { decisionFor, type ReviewWorkspace } from './workspace';
 
 const STATE_TEXT: Record<CoordinationCard['state'], string> = {
@@ -43,7 +43,7 @@ export function reviewDocument(name: string, cards: readonly CoordinationCard[],
       `Elements: ${card.elements.map(element => `${element.globalId}${element.modelName ? ` (${element.modelName})` : ''}`).join(', ') || 'none named'}.`,
       decision ? `Reviewer decision: ${decision.status}${decision.comment ? ` — ${decision.comment}` : ''} (${decision.updatedAt}).` : 'Reviewer decision: none recorded.',
     ].filter(Boolean).join('\n')));
-    blocks.push(text('body', card.findings.map(finding => ({ finding, lines: findingLines(finding) })).map(({ finding, lines }) => `• [${finding.source}${finding.run.temporal === 'historical' ? ', historical' : ''}: ${finding.run.label}`
+    blocks.push(text('body', card.findings.map(finding => ({ finding, lines: exportLines(finding) })).map(({ finding, lines }) => `• [${finding.source}${finding.run.temporal === 'historical' ? ', historical' : ''}: ${finding.run.label}`
       + `${finding.run.complete ? '' : ', incomplete run'}] ${finding.title} — native status ${finding.nativeStatus || 'n/a'}`
       + (lines.length ? `\n  ${lines.slice(0, 3).join('\n  ')}` : '')).join('\n')));
   }

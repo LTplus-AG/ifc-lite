@@ -33,7 +33,7 @@ const outcomeNote = (outcome: RowReexamination): TranslatableMessage =>
 const gap = (labelKey: TranslationKey): RunGap => ({ code: 'partial-source', message: { labelKey } });
 /** Without a current run the saved run says so in one sentence; otherwise every refusal reason follows as its own line. */
 function reexaminationGaps(result: Reexamination | null): RunGap[] {
-  if (!result) return [{ code: 'partial-source', detail: 'This older count-only snapshot contains no saved element evidence' }];
+  if (!result) return [gap('reviewWorkspace.reexamination.countOnly')];
   if (result.compatible) {
     // Compatible runs can still leave rows unchecked (capped, unevaluated, ambiguous): "each" is said only when none was.
     const skipped = [...result.rows.values()].filter(row => row.state === 'notEvaluated').length;

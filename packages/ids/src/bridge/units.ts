@@ -300,8 +300,16 @@ export function applyOwnUnitConversion(
   rawValues: string[] | undefined,
   dataType: string | undefined,
   siScale: number | undefined,
-  symbol?: string
+  symbol?: string,
+  valueDataTypes?: ReadonlyArray<string | undefined>
 ): { value: string | number | boolean | null; values: string[] | undefined } {
+  // A mixed list has no shared dataType; convert each member by its own type.
+  if (!dataType && Array.isArray(rawValues) && rawValues.length > 0 && valueDataTypes?.length === rawValues.length) {
+    return {
+      value: rawValue,
+      values: convertTypedMembers(rawValues, valueDataTypes, (t) => ownUnitConversionFor(t, siScale, symbol)),
+    };
+  }
   return convertAll(rawValue, rawValues, ownUnitConversionFor(dataType, siScale, symbol));
 }
 

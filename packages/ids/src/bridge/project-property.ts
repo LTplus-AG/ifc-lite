@@ -86,7 +86,7 @@ export function projectProperty(p: RawProp, scales: EntityMeasureScales): Projec
   const baseValues = hasMultiValue ? (p.values as string[]) : undefined;
   const converted =
     p.unit !== undefined
-      ? applyOwnUnitConversion(baseValue, baseValues, dataType, p.unitSiScale, p.unit)
+      ? applyOwnUnitConversion(baseValue, baseValues, dataType, p.unitSiScale, p.unit, p.valueDataTypes)
       : applyUnitConversion(baseValue, baseValues, dataType, scales.length, scales, p.valueDataTypes);
   const out: ProjectedProperty = {
     name: p.name,

@@ -1,5 +1,15 @@
 # @ifc-lite/parser
 
+## 9.4.0
+
+### Minor Changes
+
+- [#7448](https://github.com/LTplus-AG/ifc-lite/pull/7448) [`7754c19`](https://github.com/LTplus-AG/ifc-lite/commit/7754c19b41179e4fde123e7427cea29fbb36aa89) Thanks [@madsik](https://github.com/madsik)! - Export the `LengthUnitSource` type (`'declared' | 'default'`) from the package index, so callers can name the type of `IfcDataStore.lengthUnitSource` without a deep import, and say in its JSDoc that the unit is read from the first `IFCPROJECT` ([#7395](https://github.com/LTplus-AG/ifc-lite/issues/7395) follow-up).
+
+### Patch Changes
+
+- [#7223](https://github.com/LTplus-AG/ifc-lite/pull/7223) [`10825f8`](https://github.com/LTplus-AG/ifc-lite/commit/10825f80a10a5fe2e7e8622f9e51b5fede830219) Thanks [@louistrue](https://github.com/louistrue)! - Read public StoreEditor reference tokens in current native type quantity reference lists while retaining whole-graph refusal for malformed references and existing read limits.
+
 ## 9.3.0
 
 ### Minor Changes

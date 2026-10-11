@@ -1,5 +1,15 @@
 # @ifc-lite/flow-nodes
 
+## 0.7.1
+
+### Patch Changes
+
+- [#7445](https://github.com/LTplus-AG/ifc-lite/pull/7445) [`a44434a`](https://github.com/LTplus-AG/ifc-lite/commit/a44434a27c3449b35a306a78bbfbcdc2a8c51c91) Thanks [@louistrue](https://github.com/louistrue)! - The `ids.load`, `ids.lint` and `ids.validate` flow nodes now load `@ifc-lite/ids-authoring` on first run instead of at import, so hosts that register the standard node set (like the viewer) no longer pull the IDS authoring core into their startup bundle. Node ids, ports, params, outputs and error messages are unchanged.
+- Updated dependencies [[`b20cb40`](https://github.com/LTplus-AG/ifc-lite/commit/b20cb40c5e40395a4676c038000ad2a004768886)]:
+  - @ifc-lite/export@4.11.0
+  - @ifc-lite/ids@3.3.1
+  - @ifc-lite/ids-authoring@0.2.1
+
 ## 0.7.0
 
 ### Minor Changes

@@ -1,5 +1,36 @@
 # @ifc-lite/viewer
 
+## 5.1.0
+
+### Minor Changes
+
+- [#7346](https://github.com/LTplus-AG/ifc-lite/pull/7346) [`7541089`](https://github.com/LTplus-AG/ifc-lite/commit/75410892ca2671ef1cc356258eb342cd6e896d12) Thanks [@louistrue](https://github.com/louistrue)! - `updateGroupInStore` now refuses complete membership replacement when a group has typed `RelatedObjectsType` assignments or several assignment relationships with distinct OwnerHistory, Name or Description, instead of merging their meanings into one relationship. Such groups can still be read and safely removed. The viewer Assistant can review generic IfcGroup create, update and remove proposals from attached selection evidence, apply them through the native owner with one Undo, and reports complete Group facts that exceed the transport budget as unavailable rather than truncating them. Selection evidence and attachments skip the whole-model Group graph when the selection touches no exact IfcGroup: they carry bounded create-only facts (`scope: "no-group-context"`, from `readGroupCreateEvidenceInStore` in `@ifc-lite/create`), and review still checks the complete graph. Models over the graph's entity budget are refused on both paths before any record is decoded; the per-record budget refuses a source record when its export text is measured.
+
+- [#7434](https://github.com/LTplus-AG/ifc-lite/pull/7434) [`490db03`](https://github.com/LTplus-AG/ifc-lite/commit/490db03ff81919c06e1833cc126d989f735ddbc2) Thanks [@louistrue](https://github.com/louistrue)! - Compare can now save a captured clash or validation run for reconciliation and reopen it after a reload. A saved run stores the native result with each model identified by its file name, source identity and, for clash runs, its placement, never by viewer model ids. Reopening refuses, naming each reason, when a model (for a clash run, any model open when it ran) is not open, is another version of the file, is ambiguous, has no recorded source, has moved or has unsaved edits. Runs saved out of date or of unknown freshness stay that way. Saved runs are immutable and travel with library backup, import and recovery.
+
+- [#7433](https://github.com/LTplus-AG/ifc-lite/pull/7433) [`b82a435`](https://github.com/LTplus-AG/ifc-lite/commit/b82a435454d08d6e0f04aa8f60ac4ce275c56feb) Thanks [@louistrue](https://github.com/louistrue)! - Reviewed source requirements can now be turned into native checks. The requirement review shows, for each requirement, which native tool can check it: an IDS check, an information rule on a model quantity, a manual check listed in a document, or no native check with the reason (quote not matching, source changed or detached, unaddressable property, unsupported comparison, value or unit). On request it prepares the IDS, rule and document drafts, which go through the existing review, dry run, save and editor handoff. Each saved record keeps the requirement's statement, stated unit, exact source passage and source revision. Manual and unresolved requirements are listed as not checked, never with a pass or fail result, and unsaved drafts are withdrawn if a source text changes.
+
+### Patch Changes
+
+- [#7389](https://github.com/LTplus-AG/ifc-lite/pull/7389) [`e94652b`](https://github.com/LTplus-AG/ifc-lite/commit/e94652baed2cc8c8ef2e179396ad5d002c0c4024) Thanks [@louistrue](https://github.com/louistrue)! - Bound point-pick depth readback to a single GPU sample, sharing the ID staging buffer and releasing per-pick resources after mapping. Release point and rectangle readback buffers when encoding, submission or mapped-range access fails. Also retire all pending readbacks on picker teardown and discard results from a destroyed or replaced picker.
+  
+  Reject stale viewport selections and hover readbacks after pointer, viewer-state or lifecycle changes, and dispatch the latest hover position when movement stops inside the throttle interval.
+
+- [#7459](https://github.com/LTplus-AG/ifc-lite/pull/7459) [`a9a6cc5`](https://github.com/LTplus-AG/ifc-lite/commit/a9a6cc5ac4e6e2e09970e90a4e1aa73e31f68bc2) Thanks [@louistrue](https://github.com/louistrue)! - A source requirement comparing a declared boolean property with a number or text is no longer offered as an untyped IDS check; it is listed as not checked. The native-dispatch hint no longer says the document draft is dry-run on the models. A saved placement-stamped clash run missing a model's placement is refused on import and on reopen, instead of coming back current.
+
+- [#7435](https://github.com/LTplus-AG/ifc-lite/pull/7435) [`179b542`](https://github.com/LTplus-AG/ifc-lite/commit/179b54242abde0de3d69c628595166ff83e54f49) Thanks [@louistrue](https://github.com/louistrue)! - Review re-examination of saved validation failures ([#7371](https://github.com/LTplus-AG/ifc-lite/issues/7371)) follow-ups: a saved failure the current run still reports now reads "Still in the current run" (or "Still in the current run, with different failures" when other requirements or values fail) instead of "Also in the earlier run". Why a saved failure was or was not checked again is shown as a translatable plain sentence rather than an internal reason code, and the no-current-run case reads as one clean sentence. Re-examining many saved rows against a large run no longer rebuilds the run's GlobalId lookup per row.
+- Updated dependencies [[`e94652b`](https://github.com/LTplus-AG/ifc-lite/commit/e94652baed2cc8c8ef2e179396ad5d002c0c4024), [`10825f8`](https://github.com/LTplus-AG/ifc-lite/commit/10825f80a10a5fe2e7e8622f9e51b5fede830219), [`a44434a`](https://github.com/LTplus-AG/ifc-lite/commit/a44434a27c3449b35a306a78bbfbcdc2a8c51c91), [`7541089`](https://github.com/LTplus-AG/ifc-lite/commit/75410892ca2671ef1cc356258eb342cd6e896d12), [`cf4e0b9`](https://github.com/LTplus-AG/ifc-lite/commit/cf4e0b912ffd050f9da943811f6d3abec87f5265), [`b20cb40`](https://github.com/LTplus-AG/ifc-lite/commit/b20cb40c5e40395a4676c038000ad2a004768886), [`7754c19`](https://github.com/LTplus-AG/ifc-lite/commit/7754c19b41179e4fde123e7427cea29fbb36aa89), [`7e2fcec`](https://github.com/LTplus-AG/ifc-lite/commit/7e2fcec5063d2aaf3ac9d7b2e66c714a965e155a)]:
+  - @ifc-lite/renderer@6.2.0
+  - @ifc-lite/parser@9.4.0
+  - @ifc-lite/flow-nodes@0.7.1
+  - @ifc-lite/create@5.1.0
+  - @ifc-lite/export@4.11.0
+  - @ifc-lite/ids@3.3.1
+  - @ifc-lite/ids-authoring@0.2.1
+  - @ifc-lite/rules@0.7.1
+  - @ifc-lite/ids-agent@0.2.1
+  - @ifc-lite/lists@3.1.1
+
 ## 5.0.0
 
 ### Major Changes

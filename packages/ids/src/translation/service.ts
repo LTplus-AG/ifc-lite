@@ -28,12 +28,7 @@ import { it } from './locales/it.js';
 
 type Translations = typeof en;
 
-const LOCALES: Record<SupportedLocale, Translations> = {
-  en,
-  de,
-  fr,
-  it,
-};
+const LOCALES: Record<SupportedLocale, Translations> = { en, de, fr, it };
 
 /**
  * Create a translation service for the specified locale

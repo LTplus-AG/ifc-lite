@@ -88,7 +88,12 @@ export function createLinter(ctx: LintContext, options: LinterOptions = {}): Lin
   validateRegistry(registry);
   const only = options.rules ? new Set(options.rules) : undefined;
   const severityOf = (r: LintRule): LintSeverity | 'off' => options.severity?.[r.code] ?? r.defaultSeverity;
-  const rules = registry.filter((r) => (!only || only.has(r.code)) && severityOf(r) !== 'off');
+  const enabled = (r: LintRule): boolean => {
+    if (severityOf(r) === 'off') return false;
+    if (only) return only.has(r.code);
+    return !r.optIn || options.severity?.[r.code] !== undefined;
+  };
+  const rules = registry.filter(enabled);
   const specRules = rules.filter((r): r is SpecRule => r.scope === 'spec');
   const docRules = rules.filter((r): r is DocumentRule => r.scope === 'document');
   const cache = new Map<Uuid, CacheEntry>();

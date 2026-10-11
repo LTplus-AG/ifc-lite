@@ -170,6 +170,8 @@ export const SPEC_008: SpecRule = {
   scope: 'spec',
   kind: 'static',
   defaultSeverity: 'info',
+  // Owner decision (#7144): fires on nearly every specification in practice.
+  optIn: true,
   title: 'Specification without description or instructions',
   rationale:
     'Modellers see the description and instructions when a check fails. Without them the failure report shows only facet text, which rarely tells a modeller what to change or why the requirement exists.',

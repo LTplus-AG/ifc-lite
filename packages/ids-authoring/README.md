@@ -408,6 +408,8 @@ it: removing a specification keeps its discussion, and undo re-anchors it.
 `commentThreads(doc)` is the view model (anchor, orphan flag, participants,
 `@name` mentions, unresolved badges per node). In a three-way merge,
 threads merge additively: new threads and replies from both sides are kept.
+Lint suppressions and test cases merge per record (node and rule, or test id):
+the side that changed a record relative to the base wins, theirs when both did.
 
 ## Sidecar, bundles, re-identification
 

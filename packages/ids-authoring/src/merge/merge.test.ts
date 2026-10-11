@@ -64,6 +64,8 @@ describe('mergeDocuments', () => {
         expect(r.conflicts, `seq ${seq}`).toEqual([]);
         expect(shape(r.doc), `seq ${seq}`).toEqual(shape(x));
         expect(r.doc.meta.comments, `seq ${seq} comments`).toEqual(x.meta.comments);
+        expect(r.doc.meta.suppressions, `seq ${seq} suppressions`).toEqual(x.meta.suppressions);
+        expect(r.doc.meta.tests, `seq ${seq} tests`).toEqual(x.meta.tests);
       }
     }
   }, 60_000);
@@ -112,6 +114,27 @@ describe('mergeDocuments', () => {
     const pick = mergeDocuments(base, ours, theirs, { resolutions: { [open.conflicts[0].id]: 'theirs' } });
     expect(pick.doc.ids.specifications.flatMap((s) => s.requirements).find((r) => r.id === req.id)?.facet).toMatchObject({ uri: 'https://example.org/theirs' });
     expect(mergeDocuments(base, ours, base).doc.ids).toEqual(ours.ids);
+  });
+
+  it('merges suppressions and test cases per record: both sides kept, theirs wins on the same record', () => {
+    const base = corpusDocument(4, 3);
+    const spec = base.ids.specifications[0];
+    const sup = (rule: string, reason: string) => op('meta.suppress', { nodeId: spec.id, suppression: { rule, reason, at: '2026-10-11T00:00:00Z' } });
+    const tc = (id: string, name: string) => op('meta.test.add', { specId: spec.id, testCase: { id, name, fixture: { kind: 'file', path: `fixtures/${name}.ifc` }, expect: 'pass' } });
+    const [t1, t2] = [ids(), ids()];
+    const ours = apply(base, [sup('IDSL-SPEC-008', 'ours'), sup('IDSL-ENT-003', 'ours'), tc(t1, 'a')]).doc;
+    const theirs = apply(base, [sup('IDSL-SPEC-008', 'theirs'), tc(t2, 'b')]).doc;
+    const r = mergeDocuments(base, ours, theirs);
+    expect(r.clean).toBe(true);
+    expect(Object.fromEntries((r.doc.meta.suppressions[spec.id] ?? []).map((x) => [x.rule, x.reason]))).toEqual({ 'IDSL-SPEC-008': 'theirs', 'IDSL-ENT-003': 'ours' });
+    expect(r.doc.meta.tests[spec.id]?.cases.map((c) => c.name).sort()).toEqual(['a', 'b']);
+    // The merge result is reachable through its ops.
+    expect(apply(base, r.ops).doc.meta).toEqual(r.doc.meta);
+    // A removal on one side wins over an unchanged other side.
+    const removed = apply(ours, [op('meta.unsuppress', { nodeId: spec.id, rule: 'IDSL-ENT-003' }), op('meta.test.remove', { testId: t1 })]).doc;
+    const r2 = mergeDocuments(ours, removed, ours);
+    expect(r2.doc.meta.suppressions[spec.id]?.map((x) => x.rule)).toEqual(['IDSL-SPEC-008']);
+    expect(r2.doc.meta.tests[spec.id]?.cases ?? []).toEqual([]);
   });
 
   it('reports a field conflict, keeps the base until resolved, then applies the chosen side', () => {

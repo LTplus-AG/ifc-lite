@@ -20,7 +20,8 @@
  * The merged change set is turned into primitive ops with `diffToOps`, so
  * the result is reachable through ops, and those ops can be re-checked by
  * the grounding gate (`options.gate`). Comment threads merge additively
- * (`comments.ts`).
+ * (`comments.ts`); lint suppressions and test suites merge per record,
+ * the side that changed a record winning (`sidecar.ts`).
  */
 
 import { diffDocuments } from '../diff/diff.js';
@@ -32,6 +33,7 @@ import { canonical } from '../match/cascade.js';
 import type { StudioOp } from '../ops/types.js';
 import { apply } from '../reducer/apply.js';
 import { commentMergeOps } from './comments.js';
+import { sidecarMergeOps } from './sidecar.js';
 import { contentKeyOf, isOrderKey, scopeOf } from './keys.js';
 import { mergeOrder } from './order.js';
 import type { MergeConflict, MergeDiagnostic, MergeOptions, MergeResult, MergeSide } from './types.js';
@@ -192,8 +194,10 @@ export function mergeDocuments(base: StudioDocument, ours: StudioDocument, their
   }
   const content = apply(base, contentOps).doc;
   const commentOps = commentMergeOps(base, ours, theirs, content, seed);
-  const ops = [...contentOps, ...commentOps];
-  const doc = apply(content, commentOps).doc;
+  const withComments = apply(content, commentOps).doc;
+  const sidecarOps = sidecarMergeOps(base, ours, theirs, withComments, seed);
+  const ops = [...contentOps, ...commentOps, ...sidecarOps];
+  const doc = apply(withComments, sidecarOps).doc;
   const unresolved = conflicts.some((c) => !c.resolution);
   return { doc, ops, conflicts, diagnostics, clean: !unresolved && !diagnostics.some((d) => d.code === 'MERGE-GATE-001') };
 }

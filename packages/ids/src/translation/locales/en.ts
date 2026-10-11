@@ -45,6 +45,8 @@ export const en = {
     IfcRelFillsElement: 'filling',
     'IfcRelVoidsElement IfcRelFillsElement': 'connected through an opening to',
   },
+  /** A partOf without a relation: any partOf relation, followed recursively (#7401). */
+  anyRelation: 'part of',
 
   // ============================================================================
   // Constraint Descriptions

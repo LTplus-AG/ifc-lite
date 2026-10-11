@@ -1,0 +1,87 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ids xmlns="http://standards.buildingsmart.org/IDS" xmlns:xs="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://standards.buildingsmart.org/IDS http://standards.buildingsmart.org/IDS/1.0/ids.xsd">
+  <info>
+    <title>Canonical layout</title>
+    <copyright>CC0</copyright>
+    <version>1.0.0</version>
+    <description>Golden file for the writer</description>
+    <author>someone@example.org</author>
+    <date>2026-10-08</date>
+    <purpose>Testing</purpose>
+    <milestone>Design</milestone>
+  </info>
+  <specifications>
+    <specification name="Fire-rated walls" ifcVersion="IFC2X3 IFC4 IFC4X3_ADD2" identifier="walls" description="External walls" instructions="Rate every external wall.">
+      <applicability minOccurs="1" maxOccurs="unbounded">
+        <entity>
+          <name>
+            <simpleValue>IFCWALL</simpleValue>
+          </name>
+          <predefinedType>
+            <xs:restriction base="xs:string">
+              <xs:enumeration value="SOLIDWALL"/>
+              <xs:enumeration value="SHEAR"/>
+            </xs:restriction>
+          </predefinedType>
+        </entity>
+        <partOf relation="IFCRELCONTAINEDINSPATIALSTRUCTURE">
+          <entity>
+            <name>
+              <simpleValue>IFCBUILDINGSTOREY</simpleValue>
+            </name>
+          </entity>
+        </partOf>
+        <property dataType="IFCBOOLEAN">
+          <propertySet>
+            <simpleValue>Pset_WallCommon</simpleValue>
+          </propertySet>
+          <baseName>
+            <simpleValue>IsExternal</simpleValue>
+          </baseName>
+          <value>
+            <simpleValue>true</simpleValue>
+          </value>
+        </property>
+      </applicability>
+      <requirements>
+        <property dataType="IFCLABEL" cardinality="required" instructions="From the fire strategy.">
+          <propertySet>
+            <simpleValue>Pset_WallCommon</simpleValue>
+          </propertySet>
+          <baseName>
+            <simpleValue>FireRating</simpleValue>
+          </baseName>
+          <value>
+            <xs:restriction base="xs:string">
+              <xs:pattern value="EI[0-9]+"/>
+              <xs:minLength value="3"/>
+              <xs:maxLength value="5"/>
+            </xs:restriction>
+          </value>
+        </property>
+        <property dataType="IFCLENGTHMEASURE" cardinality="optional">
+          <propertySet>
+            <simpleValue>Qto_WallBaseQuantities</simpleValue>
+          </propertySet>
+          <baseName>
+            <simpleValue>Width</simpleValue>
+          </baseName>
+          <value>
+            <xs:restriction base="xs:double">
+              <xs:minExclusive value="0"/>
+              <xs:maxInclusive value="0.5"/>
+            </xs:restriction>
+          </value>
+        </property>
+        <attribute cardinality="prohibited">
+          <name>
+            <simpleValue>Description</simpleValue>
+          </name>
+          <value>
+            <simpleValue>TBD</simpleValue>
+          </value>
+        </attribute>
+      </requirements>
+    </specification>
+  </specifications>
+</ids>

@@ -242,3 +242,30 @@ test('#7375 an IDS check names a property every targeted IFC version defines, wh
   assert.deepEqual(rows([door('D', { appliesTo: { ifcClass: 'IfcWall' }, property: 'Qto_WallBaseQuantities.Width', operator: 'exists' }, quoted)], ['IFC4X3_ADD2']),
     [['D', 'ids', null]]);
 });
+
+test('#7375 a value without its unit on any measure the validator converts to SI never reaches an IDS check', () => {
+  const quoted = 'at least 900 mm';
+  const rows = qualify([
+    door('A', { appliesTo: { ifcClass: 'IfcActuatorType' }, property: 'Pset_ActuatorTypeRotationalActuation.RangeAngle', operator: 'atMost', value: 6 }, quoted),
+    door('T', { appliesTo: { ifcClass: 'IfcSystem' }, property: 'Pset_AirSideSystemInformation.CoolingTemperatureDelta', operator: 'atLeast', value: 5 }, quoted),
+    door('M', { appliesTo: { ifcClass: 'IfcCableSegment' }, property: 'Pset_CableSegmentTypeCableSegment.Weight', operator: 'atMost', value: 2 }, quoted),
+    door('S', { appliesTo: { ifcClass: 'IfcController' }, property: 'Pset_ControllerTypeFloating.SignalTime', operator: 'atMost', value: 2 }, quoted),
+    door('N', { appliesTo: { ifcClass: 'IfcWindow' }, property: 'Pset_DoorWindowGlazingType.GlassThickness1', operator: 'equals', value: '6' }, quoted),
+    door('U', { appliesTo: { ifcClass: 'IfcWindow' }, property: 'Pset_DoorWindowGlazingType.GlassThickness1', operator: 'oneOf', value: ['6 mm', '8 mm'] }, quoted),
+    door('P', { appliesTo: { ifcClass: 'IfcWindow' }, property: 'Pset_DoorWindowGlazingType.GlassThickness1', operator: 'matches', value: '6.*' }, quoted),
+    door('C', { appliesTo: { ifcClass: 'IfcActor' }, property: 'Pset_ActorCommon.NumberOfActors', operator: 'atLeast', value: 2 }, quoted),
+  ]).rows;
+  assert.deepEqual(rows.map(row => [row.requirement.id, row.target, row.reason ?? null]), [
+    ['A', 'unresolved', 'unit'], ['T', 'unresolved', 'unit'], ['M', 'unresolved', 'unit'], ['S', 'unresolved', 'unit'],
+    ['N', 'unresolved', 'unit'], ['U', 'unresolved', 'unit'], ['P', 'unresolved', 'value'], ['C', 'ids', null],
+  ]);
+});
+
+test('#7375 an enumerated standard property is known to the schema, and its values are labels', () => {
+  const rows = qualify([
+    door('E', { appliesTo: { ifcClass: 'IfcWall' }, property: 'Pset_WallCommon.Status', operator: 'equals', value: 'NEW' }),
+    door('B', { appliesTo: { ifcClass: 'IfcWall' }, property: 'Pset_WallCommon.Status', operator: 'equals', value: true }),
+    door('X', { appliesTo: { ifcClass: 'IfcWall' }, property: 'Pset_WallCommon.Status', operator: 'exists' }),
+  ]).rows;
+  assert.deepEqual(rows.map(row => [row.requirement.id, row.target, row.reason ?? null]), [['E', 'ids', null], ['B', 'unresolved', 'value'], ['X', 'ids', null]]);
+});

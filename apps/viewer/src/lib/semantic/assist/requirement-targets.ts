@@ -13,6 +13,7 @@
 
 import { xxhash64Hex } from '@ifc-lite/cache';
 import { getPropertySets, type IfcSchemaVersion } from '@ifc-lite/data';
+import { measureUnit as ifcMeasureUnit } from '@ifc-lite/parser';
 import { siUnitOf } from '@/lib/check-authoring/ids-constraint';
 import type { IFCVersion } from '@ifc-lite/ids';
 import type { ExtractedRequirement } from './requirement-proposal';
@@ -97,10 +98,10 @@ async function readSchemaMeasures(): Promise<SchemaMeasures> {
   const measures = new Map<string, Map<SchemaTable, string>>();
   for (const table of Object.keys(TABLES) as SchemaTable[]) {
     for (const set of await getPropertySets(TABLES[table])) for (const property of set.properties) {
-      if (!property.dataType) continue;
       const key = `${set.name}.${property.name}`;
       const declared = measures.get(key) ?? new Map<SchemaTable, string>();
-      declared.set(table, property.dataType.toUpperCase());
+      // An enumerated property declares no dataType: its values are labels, as the IDS audit reads them.
+      declared.set(table, property.dataType ? property.dataType.toUpperCase() : property.kind === 'enumeration' ? 'IFCLABEL' : UNTYPED);
       measures.set(key, declared);
     }
   }
@@ -116,6 +117,20 @@ export function loadSchemaMeasures(): Promise<SchemaMeasures> {
 }
 
 const STANDARD_SET = /^(Pset|Qto)_/;
+/** A standard property the tables define without a value type (a reference or table value): nothing is typed as it. */
+const UNTYPED = 'UNTYPED';
+/** A number, or text that starts like one ("500", "500 mm", ".5"). */
+const NUMERIC_TEXT = /^\s*[-+]?(\d|[.,]\d)/;
+
+/**
+ * A measure the native validator rescales from the project's units to SI
+ * before comparing (lengths, areas, volumes, angles, temperatures, masses,
+ * times, ...); a value stated without its unit cannot be compared with it.
+ * Dimensionless and monetary measures are compared as written.
+ */
+function dimensioned(type: string): boolean {
+  return siUnitOf(type) !== null || UNCONVERTED_LENGTHS.has(type) || ifcMeasureUnit(type)?.kind === 'typed';
+}
 /** Length measures the native validator rescales but the authoring converters do not (`ids-constraint.ts`). */
 const UNCONVERTED_LENGTHS = new Set(['IFCNONNEGATIVELENGTHMEASURE']);
 
@@ -169,7 +184,7 @@ function plainType(target: { set: string; name: string }, value: unknown, schema
   const declared = declaredType(target, schema, versions);
   if (declared === 'version') return declared;
   const type = declared === 'unknown' ? null : declared;
-  if (values.some(item => typeof item === 'number') && type && (siUnitOf(type) || UNCONVERTED_LENGTHS.has(type))) return 'unit';
+  if (type && dimensioned(type) && values.some(item => typeof item === 'number' || (typeof item === 'string' && NUMERIC_TEXT.test(item)))) return 'unit';
   if (values.some(item => typeof item === 'boolean')) {
     if (type === null) return 'unknown';
     return type === 'IFCBOOLEAN' || type === 'IFCLOGICAL' ? { dataType: type } : 'value';
@@ -218,6 +233,12 @@ export function classifyRequirement(requirement: ExtractedRequirement, check: Sp
   // Whatever the value, an IDS check names a property every targeted version defines.
   const undefinedIn = target.kind === 'property' ? definedIn(target, schema, versions) : null;
   if (undefinedIn) return unresolved(undefinedIn);
+  if (operator === 'matches' && target.kind === 'property') {
+    // A pattern over the text of a measure ignores its unit and the SI conversion.
+    const declared = STANDARD_SET.test(target.set) ? declaredType(target, schema, versions) : null;
+    if (declared === 'version') return unresolved(declared);
+    if (declared && declared !== 'unknown' && dimensioned(declared)) return unresolved('value');
+  }
   if (operator === 'exists' || operator === 'matches' || target.kind === 'attribute') return unit === undefined ? resolved('ids') : unresolved('unit');
   if (unit === undefined) {
     const typed = plainType(target, value, schema, versions);

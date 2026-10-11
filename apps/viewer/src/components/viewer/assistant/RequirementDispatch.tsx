@@ -69,7 +69,8 @@ function loadedIfcVersions(models: ReadonlyMap<string, { schemaVersion?: string;
     if (schemaVersion === 'IFC2X3' || schemaVersion === 'IFC4') versions.add(schemaVersion);
     else if (schemaVersion === 'IFC4X3') versions.add('IFC4X3_ADD2');
   }
-  return [...versions];
+  // Sorted, so the same set of versions in another load order is the same target.
+  return [...versions].sort();
 }
 
 export function RequirementDispatch({ proposal, review, passages, loadSchema = loadSchemaMeasures }: {

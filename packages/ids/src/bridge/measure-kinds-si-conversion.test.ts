@@ -208,6 +208,14 @@ describe('overlay edits of a property with its own Unit (#7395)', () => {
     expect(span?.value).toBe(5);
   });
 
+  it('keeps the own unit across two overrides of the same property', async () => {
+    const span = await prop(7, 'Kinds', 'Span', [
+      { psetName: 'Kinds', propName: 'Span', value: 4 },
+      { psetName: 'Kinds', propName: 'Span', value: 5 },
+    ]);
+    expect(span?.value).toBe(5);
+  });
+
   it('applies the Celsius offset to an override of a project-unit temperature', async () => {
     const temp = await prop(7, 'Kinds', 'Temp', [{ psetName: 'Kinds', propName: 'Temp', value: 25 }]);
     expect(temp?.value).toBeCloseTo(298.15, 9);

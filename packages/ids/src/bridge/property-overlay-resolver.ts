@@ -165,10 +165,14 @@ export function resolveEffectivePropertySets(
       // scale: a non-measure property (IFCLABEL, boolean, identifier)
       // has no scale and passes through untouched.
       const existing = targetSet.properties[idx];
-      targetSet.properties[idx] = {
+      const replacement = {
         ...existing,
         value: existingToBaseSI(existing, override.value, scales),
       };
+      // Keep its own Unit so a later override of the same property in this
+      // array converts in that unit too.
+      copyOwnUnit(existing, replacement);
+      targetSet.properties[idx] = replacement;
     } else if (matchingSets.length > 0) {
       // No same-named set carries this property yet — a PROPERTY_MISSING
       // correction (#3943): the property is being CREATED, not updated, so

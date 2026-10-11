@@ -23,7 +23,7 @@ export interface CostSnapshot {
   incoming: Array<{ target: number; referrers: Array<{ expressId: number; count: number }> }>;
 }
 export interface CostEvidence {
-  status: 'available' | 'unavailable-source' | 'unavailable-complete-graph';
+  status: 'available' | 'unavailable-source' | 'unavailable-complete-graph' | 'unavailable-transport-budget';
   recordCount: number | null;
   expected: CostSnapshot | null;
 }

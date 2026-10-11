@@ -10,6 +10,11 @@ field remains unknown; reading a pre-v24 cache does not infer these values.
 Versioned cache keys invalidate older entries once so fresh loads can retain
 the complete coordinate metadata.
 
+Format v25 keeps each mesh's optional `shadingColor`, pre-placement
+`localBounds` and `localToWorld` placement matrix across a cache hit. Absent
+fields stay absent; a pre-v25 entry reads them as unknown and is rebuilt once
+through the versioned cache key.
+
 ## Installation
 
 ```bash

@@ -104,7 +104,7 @@ fn issue_6692_rigid_root_refuses_invalid_ownership_and_reports_without_partial_p
     }
 }
 
-fn with_entities(source: &str, entities: &str) -> String {
+pub(super) fn with_entities(source: &str, entities: &str) -> String {
     let end = source.rfind("ENDSEC;").unwrap();
     format!("{}\n{entities}\n{}", &source[..end], &source[end..])
 }
@@ -348,12 +348,17 @@ fn aligned_model(linear_parent: &str) -> String {
     aligned_model_in(1., linear_parent)
 }
 
-/// Lengths are authored in project units: `unit` metres per unit.
 fn aligned_model_in(unit: f64, linear_parent: &str) -> String {
+    with_entities(&rigid_model(unit), &aligned_entities(unit, linear_parent))
+}
+
+/// An alignment (#106, `Axis` polyline #103 under root #100) and two stations
+/// linearly placed along it: #110 via #109 (relative to `linear_parent`) and
+/// #112 via #111 (relative to the wall's nested #30). Lengths are authored in
+/// project units: `unit` metres per unit.
+pub(super) fn aligned_entities(unit: f64, linear_parent: &str) -> String {
     let length = |metres: f64| writer::real(metres / unit).unwrap();
-    with_entities(
-        &rigid_model(unit),
-        &format!("\
+    format!("\
 #100=IFCLOCALPLACEMENT($,#11);\n\
 #101=IFCCARTESIANPOINT((0.,0.,0.));\n#102=IFCCARTESIANPOINT(({},{},0.));\n#103=IFCPOLYLINE((#101,#102));\n\
 #104=IFCSHAPEREPRESENTATION(#10,'Axis','Curve3D',(#103));\n#105=IFCPRODUCTDEFINITIONSHAPE($,$,(#104));\n\
@@ -363,8 +368,7 @@ fn aligned_model_in(unit: f64, linear_parent: &str) -> String {
 #110=IFCREFERENT('0M7tQ9Jbj1BAeHd7rqnDmV',$,'Station',$,$,#109,$,.STATION.);\n\
 #111=IFCLINEARPLACEMENT(#30,#108,$);\n\
 #112=IFCREFERENT('0M7tQ9Jbj1BAeHd7rqnDmW',$,'Nested station',$,$,#111,$,.STATION.);",
-            length(10.), length(5.), length(4.), length(1.), length(0.5)),
-    )
+            length(10.), length(5.), length(4.), length(1.), length(0.5))
 }
 
 #[test]

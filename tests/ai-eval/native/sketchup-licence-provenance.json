@@ -1,0 +1,36 @@
+{
+  "version": 1,
+  "recordedOn": "2026-10-09",
+  "publisher": "buildingSMART International Ltd.",
+  "publisherCommit": "05585e04cecbc6b67d397284bbc54d9163027023",
+  "publisherFile": "https://github.com/buildingSMART/Certification-datasets/blob/05585e04cecbc6b67d397284bbc54d9163027023/IFC%204.0.2.1%20%28IFC%204%29/PCERT-Sample-Scene/Building-Architecture.ifc",
+  "download": "https://raw.githubusercontent.com/buildingSMART/Certification-datasets/05585e04cecbc6b67d397284bbc54d9163027023/IFC%204.0.2.1%20%28IFC%204%29/PCERT-Sample-Scene/Building-Architecture.ifc",
+  "license": {
+    "spdx": "CC-BY-4.0",
+    "publisherTerms": "https://github.com/buildingSMART/Certification-datasets/blob/05585e04cecbc6b67d397284bbc54d9163027023/LICENSE",
+    "download": "https://raw.githubusercontent.com/buildingSMART/Certification-datasets/05585e04cecbc6b67d397284bbc54d9163027023/LICENSE",
+    "sha256": "3e20c50b6edfdb4be207f64495586115d0574c8394538109d74f79e1d8976d18",
+    "credit": "buildingSMART International Ltd., Certification-datasets, Building-Architecture.ifc",
+    "fullTerms": "https://creativecommons.org/licenses/by/4.0/legalcode"
+  },
+  "baseFixture": {
+    "path": "apps/viewer/public/samples/building-architecture.ifc",
+    "bytes": 225635,
+    "sha256": "3ff9b10bd00c7b96dded51e7ca5a6b69efbea38b049adcdd05fcd247de7e70d5",
+    "rawByteIdentityWithPublisher": true
+  },
+  "derivedFixture": {
+    "path": "apps/viewer/public/samples/building-architecture-rev-b.ifc",
+    "bytes": 226971,
+    "sha256": "0dfb7152db0a845747d2f35ee5ba9ba3772744072cb23040353c469c2a05f366",
+    "derivedFrom": "sample-architecture",
+    "derivation": "tools/demo-kit/derive-variants.mts",
+    "changes": "One property edit, one moved wall, one deletion and an added duct; repository-derived revision, not a separate publisher export.",
+    "rawByteIdentityWithPublisher": false
+  },
+  "approval": {
+    "humanPrivacy": "pending",
+    "humanLicence": "pending",
+    "note": "Publisher terms and file provenance are recorded; no completed human review or approval is asserted."
+  }
+}

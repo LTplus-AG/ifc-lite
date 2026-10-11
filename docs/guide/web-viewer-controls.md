@@ -33,6 +33,10 @@ An embed with camera controls disabled does not fly or navigate. Right-button
 fly is the viewer's established behavior (#4868); it takes priority over the
 ordinary right-button pan mapping used when fly is unavailable.
 
+## Properties quantities
+
+The selected element’s Quantities tab shows occurrence quantities first and inherited type quantities in a separate section, including Length, Area and Volume. Search and copy use the displayed physical value and unit. A readable explicit member unit remains usable when the current project unit context is unavailable; implicit values retain their raw amount without an assumed unit. Unreadable inherited coverage displays its reason.
+
 ## Navigation presets
 
 Choose a preset in **Settings → Display → Navigation**. The choice is saved in
@@ -50,6 +54,10 @@ enabled. Shift + left drag pans in every preset and tool.
 ## Zone volume results
 
 Each zone-set volume report states its cached processed entity outcomes and the native proved-split and refusal counts. Whole-set runs and incremental per-element cache updates have distinct coverage; cached counts describe the evaluated boundary-crossing entities. Missing geometry, unproved solids and volumes invalidated by federation alignment retain separate reasons. Captured model names and IFC `GlobalId` evidence stay with older rows through later updates and panel remounts; unknown cache history shows **Outcome unknown**, and older native revisions show **Stale**. Evidence samples show their displayed and total counts. The native split, authoring, writeback and export controls remain available in their existing locations.
+
+Declared volume totals use each quantity’s explicit native unit before project units, consistently in Properties, zone tables and CSV exports. A present unresolved or dimensionally incompatible unit leaves that physical basis unavailable; it does not inherit project cubic metres or promote a later inherited total. Independently resolved explicit units remain usable when project units are unavailable. Mesh volume stays in SI and is unchanged by declared quantity display units.
+
+Zone writeback requires a readable current project volume unit for physical quantity output. If that target unit is unavailable, readable explicitly unit-bearing totals remain available in cards, tables and CSV, but writeback records a refusal and zone labels without physical quantities. Rewriting also removes that zone set’s earlier owned physical quantities, so they cannot survive as stale unitless totals.
 
 ## Alignment sections
 

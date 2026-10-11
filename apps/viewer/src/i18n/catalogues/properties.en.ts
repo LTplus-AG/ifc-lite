@@ -17,6 +17,8 @@ import type { TranslationValue } from '../types';
  * `properties-panel.en.ts`.
  */
 export const propertiesEn = {
+  'properties.panel.occurrenceQuantitiesHeading': 'Occurrence quantities',
+  'properties.panel.typeQuantitiesHeading': 'Inherited type quantities',
   'properties.propertySet.unnamed': 'Unnamed Property Set',
   'properties.quantitySet.unnamed': 'Unnamed Quantity Set',
   'properties.quantitySet.type.length': 'Length',

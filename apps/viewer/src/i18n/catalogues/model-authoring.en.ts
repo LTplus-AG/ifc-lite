@@ -6,6 +6,8 @@ import type { TranslationValue } from '../types';
 
 /** Reviewed native authoring (viewer AI P15A): `components/viewer/actions/ModelAuthoringReview.tsx`, assistant proposals. */
 export const modelAuthoringEn = {
+  'modelAuthoring.op.element.reassignStorey': 'Reassign storey',
+  'modelAuthoring.reassignmentPreview': 'Move {count} products with their complete hosted and aggregate dependencies. Existing identities and world placement stay fixed; no displaced geometry preview.',
   'modelAuthoring.reachNeighborPreview': 'The preview shows the target body; adjoining wall updates are not drawn. Applying uses the native joined-wall writer.',
   'modelAuthoring.trimExtendResult': '{mode} {end} · length {length} {units} {joined}',
   'modelAuthoring.splitResult': 'Split at {cut}; the {side} piece keeps the existing identity and one new piece is created',

@@ -51,6 +51,7 @@ import { nativeGridName } from '@/lib/actions/model-authoring-grid-native';
 import { nativeTypeEvidence } from '@/lib/actions/native-type-evidence';
 import { nativeLayerEvidence } from '@/lib/actions/native-layer-evidence';
 import { nativeCostTransportEvidence } from '@/lib/actions/cost-graph-evidence';
+import { roomAutoAllEvidence } from '@/lib/actions/room-auto-all-evidence';
 import type { ModelEditTarget } from '@/store/slices/mutation-modelling-records';
 
 type Channel = 'storeys' | 'multi' | 'renderer-ids' | 'single';
@@ -174,6 +175,7 @@ function elementRow(s: ViewerState, ref: EntityRef, source: ModelSource, rich: b
     nativeLayers: nativeLayerEvidence(s, nativeTarget, ref.expressId),
     ...(() => { const nativeGrid = nativeGridEvidence(nativeTarget, ref.expressId); return nativeGrid ? { nativeGrid } : {}; })(),
     ...(rich ? { nativeCost: nativeCostTransportEvidence(nativeTarget, ref.expressId) } : {}),
+    ...(rich ? { nativeRoomAutoAll: roomAutoAllEvidence(nativeTarget) } : {}),
     structuralStatus: !source.store ? 'unavailable' : source.store.source?.length ? 'available' : 'unavailable-source',
     structural: structuralEvidence(structuralData, ref.expressId, typeof data.attributes.get('GlobalId') === 'string'
       ? String(data.attributes.get('GlobalId')) : undefined, setLimit, valueLimit, source.units, source.store?.schemaVersion, Boolean(source.store?.source?.length)),
@@ -263,7 +265,7 @@ export const selectionAdapter: EvidenceAdapter = {
     return {
       summary: {
         kind: 'selection', channel, selectionSize: refs.length, modelCount: byModel.size,
-        ...(!rich ? { nativeCostCapture: 'unavailable-selection-budget', nativeReplacementCapture: 'unavailable-selection-budget' } : {}),
+        ...(!rich ? { nativeCostCapture: 'unavailable-selection-budget', nativeReplacementCapture: 'unavailable-selection-budget', nativeRoomAutoAllCapture: 'unavailable-selection-budget' } : {}),
         ...(sample.length !== 1 ? { nativeStructuralCapture: 'unavailable-selection-budget' } : {}),
         byModel: [...byModel].map(([modelId, count]) => ({ modelId, name: sourceFor(modelId).name, count })),
         byClass: [...byClass].map(([type, count]) => ({ type, count })).sort((a, b) => b.count - a.count),

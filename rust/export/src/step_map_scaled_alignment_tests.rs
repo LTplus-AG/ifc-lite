@@ -162,10 +162,12 @@ fn curve_set(source: &str, members: &str) -> String {
 /// Proves, for every rendered product except `IfcAlignment` ribbons: the
 /// same set of rendered products; every `after` vertex lies within 1 mm of a
 /// `before` vertex mapped by `expect`, and every mapped `before` vertex within
-/// 1 mm of an `after` vertex; and the same triangle count, or for large
-/// tessellated surfaces (ACCA's terrain and earthworks, whose sliver triangles
-/// the mesher's degenerate filter resolves differently at scaled coordinates)
-/// at most 1% fewer or more triangles with the physical area within 1e-6.
+/// 1 mm of an `after` vertex; a triangle count within 1% (large tessellated
+/// surfaces such as ACCA's terrain and earthworks lose or gain a few sliver
+/// triangles that the mesher's degenerate filter resolves differently at
+/// scaled coordinates); and, for every product, the physical surface area
+/// within 1e-6 relative plus 0.1 mm of f32 vertex noise per unit of triangle
+/// perimeter, so triangles rewired across the same vertices fail.
 /// Excluded: ifc-lite draws an `IfcAlignment` as a ribbon sampled from a curve
 /// item directly in its `Axis` representation (`alignment_axis::locate_axis_curve`);
 /// behind the scaled wrapper that item is an `IfcMappedItem`, so the ribbon
@@ -186,10 +188,15 @@ fn assert_same_meshes_except_alignment_ribbons(
         let actual: Vec<_> = new.vertices.iter().map(|point| nalgebra::Vector3::from_column_slice(point)).collect();
         assert_points_within(*id, &mapped, &actual, 0.001);
         assert_points_within(*id, &actual, &mapped, 0.001);
-        if old.faces.len() == new.faces.len() { continue; }
         assert!(old.faces.len().abs_diff(new.faces.len()) * 100 <= old.faces.len(), "#{id}: {} -> {} faces", old.faces.len(), new.faces.len());
         let (old_area, new_area) = (area(&mapped, &old.faces), area(&actual, &new.faces));
-        assert!((old_area - new_area).abs() <= old_area * 1e-6, "#{id}: physical area {old_area} -> {new_area}");
+        // Mesh positions are f32 about the RTC origin: the worst vertex noise
+        // measured over both real models is 4.6e-5 m. Each triangle's area
+        // moves by at most its perimeter times that noise, so bound with
+        // 1e-4 m per unit of perimeter plus a relative 1e-6.
+        let perimeter: f64 = old.faces.iter().map(|face| (0..3).map(|k| (mapped[face[(k + 1) % 3] as usize] - mapped[face[k] as usize]).norm()).sum::<f64>()).sum();
+        let tolerance = old_area * 1e-6 + perimeter * 1e-4;
+        assert!((old_area - new_area).abs() <= tolerance, "#{id}: physical area {old_area} -> {new_area} (tolerance {tolerance})");
     }
 }
 
@@ -209,24 +216,57 @@ fn assert_points_within(id: u32, points: &[nalgebra::Vector3<f64>], targets: &[n
     }
 }
 
+fn displaced_vertex_and_flipped_diagonal_fixture() -> (ifc_lite_processing::GeometryDataExport, ifc_lite_processing::GeometryDataExport, ifc_lite_core::GeoReference) {
+    let source = scaled_aligned_model(1., "#100");
+    let plan = plan_map_conversion_normalization(source.as_bytes()).unwrap();
+    let mut decoder = EntityDecoder::new(&source);
+    let geo = GeoRefExtractor::extract(&mut decoder, &[(61, IfcType::IfcMapConversion), (60, IfcType::IfcProjectedCRS)]).unwrap().unwrap();
+    (world_mesh(&source), world_mesh(&apply(&source, &plan)), geo)
+}
+
+fn compare_with_map(before: &ifc_lite_processing::GeometryDataExport, after: &ifc_lite_processing::GeometryDataExport, geo: &ifc_lite_core::GeoReference) {
+    assert_same_meshes_except_alignment_ribbons(before, after, |point| {
+        let p = geo.local_to_map(point[0], point[1], point[2]);
+        nalgebra::Vector3::new(p.0, p.1, p.2)
+    });
+}
+
 /// The geometry check has teeth: one vertex of a product whose triangle count
 /// is unchanged, moved 5 mm, fails it.
 #[test]
 #[should_panic(expected = "has no counterpart within 0.001 m")]
 fn issue_7359_mesh_comparison_rejects_a_displaced_vertex_with_unchanged_faces() {
-    let source = scaled_aligned_model(1., "#100");
-    let plan = plan_map_conversion_normalization(source.as_bytes()).unwrap();
-    let mut before_decoder = EntityDecoder::new(&source);
-    let geo = GeoRefExtractor::extract(&mut before_decoder, &[(61, IfcType::IfcMapConversion), (60, IfcType::IfcProjectedCRS)]).unwrap().unwrap();
-    let before = world_mesh(&source);
-    let mut after = world_mesh(&apply(&source, &plan));
+    let (before, mut after, geo) = displaced_vertex_and_flipped_diagonal_fixture();
     let wall = after.elements.get_mut(&50).unwrap();
     assert_eq!(wall.faces.len(), before.elements[&50].faces.len());
     wall.vertices[0][0] += 0.005;
-    assert_same_meshes_except_alignment_ribbons(&before, &after, |point| {
-        let p = geo.local_to_map(point[0], point[1], point[2]);
-        nalgebra::Vector3::new(p.0, p.1, p.2)
-    });
+    compare_with_map(&before, &after, &geo);
+}
+
+/// Same vertices, same triangle count, but two triangles sharing an edge
+/// across a box corner (a non-planar quad) get the other diagonal: the
+/// rendered surface changes, and the area check catches it.
+#[test]
+#[should_panic(expected = "physical area")]
+fn issue_7359_mesh_comparison_rejects_a_flipped_diagonal_with_unchanged_vertices() {
+    let (before, mut after, geo) = displaced_vertex_and_flipped_diagonal_fixture();
+    let wall = after.elements.get_mut(&50).unwrap();
+    let point = |index: u32| nalgebra::Vector3::from_column_slice(&wall.vertices[index as usize]);
+    let normal = |face: &[u32; 3]| (point(face[1]) - point(face[0])).cross(&(point(face[2]) - point(face[0]))).normalize();
+    // Two triangles (a, b, c) and (b, a, d) sharing edge a-b on different planes.
+    let (first, second, a, b, c, d) = (0..wall.faces.len()).flat_map(|i| (0..wall.faces.len()).map(move |j| (i, j))).find_map(|(i, j)| {
+        let (f, g) = (wall.faces[i], wall.faces[j]);
+        if i == j || normal(&f).dot(&normal(&g)) > 0.5 { return None; }
+        (0..3).find_map(|k| {
+            let (a, b, c) = (f[k], f[(k + 1) % 3], f[(k + 2) % 3]);
+            let d = *g.iter().find(|v| **v != a && **v != b)?;
+            (g.contains(&a) && g.contains(&b)).then_some((i, j, a, b, c, d))
+        })
+    }).expect("the wall box has edge-adjacent triangles on different faces");
+    wall.faces[first] = [c, d, a];
+    wall.faces[second] = [d, c, b];
+    assert_eq!(wall.faces.len(), before.elements[&50].faces.len());
+    compare_with_map(&before, &after, &geo);
 }
 
 /// Replace one attribute of one entity, keeping every other source byte.

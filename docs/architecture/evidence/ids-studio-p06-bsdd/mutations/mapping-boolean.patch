@@ -1,0 +1,13 @@
+diff --git b/packages/ids-authoring/src/bsdd/mapping.ts a/packages/ids-authoring/src/bsdd/mapping.ts
+index b23db8411..4a828e625 100644
+--- b/packages/ids-authoring/src/bsdd/mapping.ts
++++ a/packages/ids-authoring/src/bsdd/mapping.ts
+@@ -38,7 +38,7 @@ export interface BsddDataTypeRule {
+ 
+ /** bSDD data type (lower case) → IFC data type. */
+ export const BSDD_DATA_TYPES: Readonly<Record<string, BsddDataTypeRule>> = {
+-  boolean: { ifc: 'IFCLOGICAL', base: 'xs:boolean', measured: false },
++  boolean: { ifc: 'IFCBOOLEAN', base: 'xs:boolean', measured: false },
+   character: { ifc: 'IFCLABEL', base: 'xs:string', measured: false },
+   string: { ifc: 'IFCLABEL', base: 'xs:string', measured: false },
+   integer: { ifc: 'IFCINTEGER', base: 'xs:integer', measured: false },

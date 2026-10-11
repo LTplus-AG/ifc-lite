@@ -20,8 +20,17 @@ import type { StudioDocument } from '../document/types.js';
 import { expandCompound } from '../compound/expand.js';
 import type { PrimitiveOp, StudioOp } from '../ops/types.js';
 import type { Uuid } from '../uuid.js';
+import {
+  applyCommentAdd,
+  applyCommentRemoveReply,
+  applyCommentRemoveThread,
+  applyCommentReply,
+  applyCommentResolve,
+  applyCommentRestoreThread,
+} from './comment-ops.js';
 import { OpApplyError } from './edit.js';
 import { applySuppress, applyUnsuppress } from './meta-ops.js';
+import { applyTestAdd, applyTestRemove, applyTestRestore, applyTestSetExpectation } from './test-ops.js';
 import {
   applyFacetAdd,
   applyFacetMove,
@@ -98,6 +107,8 @@ export function applyPrimitive(doc: StudioDocument, op: PrimitiveOp): StepResult
       return applySetField(doc, op, op.payload.facetId, op.payload.field, op.payload.value, op.payload.constraintId);
     case 'facet.setRelation':
       return applyFacetPatch(doc, op, op.payload.facetId, { relation: op.payload.relation, rawRelation: null });
+    case 'facet.setUri':
+      return applyFacetPatch(doc, op, op.payload.facetId, { uri: op.payload.uri });
     case 'facet.restore':
       return applyFacetRestore(doc, op);
     case 'facet.patch':
@@ -118,6 +129,26 @@ export function applyPrimitive(doc: StudioDocument, op: PrimitiveOp): StepResult
       return applyDeclareUserDefinedType(doc, op);
     case 'meta.custom.removeUserDefinedType':
       return applyRemoveUserDefinedType(doc, op);
+    case 'meta.comment.add':
+      return applyCommentAdd(doc, op);
+    case 'meta.comment.reply':
+      return applyCommentReply(doc, op);
+    case 'meta.comment.removeReply':
+      return applyCommentRemoveReply(doc, op);
+    case 'meta.comment.resolve':
+      return applyCommentResolve(doc, op);
+    case 'meta.comment.removeThread':
+      return applyCommentRemoveThread(doc, op);
+    case 'meta.comment.restoreThread':
+      return applyCommentRestoreThread(doc, op);
+    case 'meta.test.add':
+      return applyTestAdd(doc, op);
+    case 'meta.test.remove':
+      return applyTestRemove(doc, op);
+    case 'meta.test.restore':
+      return applyTestRestore(doc, op);
+    case 'meta.test.setExpectation':
+      return applyTestSetExpectation(doc, op);
     case 'meta.suppress':
       return applySuppress(doc, op);
     case 'meta.unsuppress':

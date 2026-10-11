@@ -1,0 +1,4 @@
+exit: 2
+--- stdout
+--- stderr
+Error: model-aware lint (--model) is not available in this build; it ships with the IDS model loop

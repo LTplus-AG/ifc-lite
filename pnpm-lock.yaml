@@ -986,6 +986,9 @@ importers:
       '@ifc-lite/ids':
         specifier: workspace:^
         version: link:../ids
+      '@ifc-lite/ids-authoring':
+        specifier: workspace:^
+        version: link:../ids-authoring
       '@ifc-lite/ifcx':
         specifier: workspace:^
         version: link:../ifcx
@@ -1388,6 +1391,12 @@ importers:
       '@ifc-lite/flow':
         specifier: workspace:^
         version: link:../flow
+      '@ifc-lite/ids':
+        specifier: workspace:^
+        version: link:../ids
+      '@ifc-lite/ids-authoring':
+        specifier: workspace:^
+        version: link:../ids-authoring
       '@ifc-lite/mutations':
         specifier: workspace:^
         version: link:../mutations
@@ -1523,9 +1532,15 @@ importers:
         specifier: ^0.8.3
         version: 0.8.3
     devDependencies:
+      '@ifc-lite/parser':
+        specifier: workspace:*
+        version: link:../parser
       '@types/node':
         specifier: ^26.6.4
         version: 26.6.5
+      fake-indexeddb:
+        specifier: ^6.2.5
+        version: 6.2.5
       typescript:
         specifier: ^6.0.3
         version: 6.0.3
@@ -1655,6 +1670,9 @@ importers:
       '@ifc-lite/ids':
         specifier: workspace:^
         version: link:../ids
+      '@ifc-lite/ids-authoring':
+        specifier: workspace:^
+        version: link:../ids-authoring
       '@ifc-lite/ifcx':
         specifier: workspace:^
         version: link:../ifcx
@@ -1967,6 +1985,9 @@ importers:
       '@ifc-lite/ids':
         specifier: workspace:^
         version: link:../ids
+      '@ifc-lite/ids-authoring':
+        specifier: workspace:^
+        version: link:../ids-authoring
       '@ifc-lite/lens':
         specifier: workspace:^
         version: link:../lens
@@ -9389,7 +9410,7 @@ snapshots:
 
   canvg@3.0.11:
     dependencies:
-      '@babel/runtime': 7.29.2
+      '@babel/runtime': 7.29.10
       '@types/raf': 3.4.3
       core-js: 3.49.0
       raf: 3.4.1

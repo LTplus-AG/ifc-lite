@@ -10,6 +10,10 @@
  * multi-language translation (EN, DE, FR).
  */
 
+import { IDSAuthoringNamespace } from './ids-authoring.js';
+
+export { IDSAuthoringNamespace, IDSAuthoringDocument, type IDSAuthoringApplyResult, type IDSAuthoringLintOptions } from './ids-authoring.js';
+
 // ============================================================================
 // Summary type (standalone — no dependency on @ifc-lite/ids types at compile time)
 // ============================================================================
@@ -85,6 +89,8 @@ type AnyFn = (...args: unknown[]) => unknown;
 
 /** bim.ids — IDS (Information Delivery Specification) parsing, validation, and reporting */
 export class IDSNamespace {
+  /** IDS authoring: open, edit through grounded ops, lint and write IDS documents. */
+  readonly authoring = new IDSAuthoringNamespace();
 
   // --------------------------------------------------------------------------
   // Parsing

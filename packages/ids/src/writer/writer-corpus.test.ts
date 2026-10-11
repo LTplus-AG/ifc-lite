@@ -189,6 +189,30 @@ describe('writeIdsXml round-trips the buildingSMART IDS corpus (#6915)', () => {
     expect(refusal({ type: 'bounds', maxInclusive: Number.POSITIVE_INFINITY })).toThrow(/xs:maxInclusive must be a finite number/);
   });
 
+  // IDS Studio P-06: a bSDD reference on a requirement survives the default (IDS 1.0) round trip.
+  it('writes and re-reads @uri on property, classification and material requirements, and the audit accepts it', async () => {
+    const cls = 'https://identifier.buildingsmart.org/uri/example/demo/1.0/class/EW';
+    const prop = 'https://identifier.buildingsmart.org/uri/example/demo/1.0/prop/LoadBearing';
+    const doc: IDSDocument = { info: { title: 'uri' }, specifications: [{
+      id: 's', name: 'Walls', ifcVersions: ['IFC4'], minOccurs: 0, maxOccurs: 'unbounded',
+      applicability: { facets: [{ type: 'classification', system: { type: 'simpleValue', value: 'Demo' }, uri: cls }] },
+      requirements: [
+        { id: 'a', optionality: 'required', facet: { type: 'classification', system: { type: 'simpleValue', value: 'Demo' }, value: { type: 'simpleValue', value: 'EW' }, uri: cls } },
+        { id: 'b', optionality: 'required', facet: { type: 'property', propertySet: { type: 'simpleValue', value: 'Demo_Wall' }, baseName: { type: 'simpleValue', value: 'LoadBearing' }, dataType: { type: 'simpleValue', value: 'IFCBOOLEAN' }, uri: prop } },
+        { id: 'c', optionality: 'optional', facet: { type: 'material', value: { type: 'simpleValue', value: 'Concrete' }, uri: 'https://example.org/material/concrete' } },
+      ],
+    }] };
+    // In applicability @uri is IDS 1.1: refused without the preview flag, never silently dropped.
+    expect(() => writeIdsXml(doc)).toThrow(/IDS 1\.1|preview/i);
+    doc.specifications[0].applicability.facets[0] = { type: 'classification', system: { type: 'simpleValue', value: 'Demo' } };
+    const xml = writeIdsXml(doc);
+    expect(xml.match(/ uri="/g)).toHaveLength(3);
+    const reread = parseIDS(xml).specifications[0];
+    expect(reread.requirements.map((r) => r.facet)).toEqual(doc.specifications[0].requirements.map((r) => r.facet));
+    const audit = await auditIDSDocument(xml);
+    expect(audit.issues.filter((issue) => issue.severity === 'error')).toEqual([]);
+  });
+
   // #7401: a partOf without a relation means any part-of relation; writing containment would narrow it.
   it('writes a partOf without a relation back without one', () => {
     const doc: IDSDocument = { info: { title: 'Any relation' }, specifications: [{

@@ -31,6 +31,8 @@
     "@ifc-lite/export": "workspace:^",
     "@ifc-lite/extensions": "workspace:^",
     "@ifc-lite/flow": "workspace:^",
+    "@ifc-lite/ids": "workspace:^",
+    "@ifc-lite/ids-authoring": "workspace:^",
     "@ifc-lite/mutations": "workspace:^",
     "@ifc-lite/query": "workspace:^",
     "@ifc-lite/sandbox": "workspace:^",

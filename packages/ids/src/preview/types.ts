@@ -52,7 +52,11 @@ export interface IDS11FeatureUse {
  * the concept (for example a bSDD URI) and is never checked against a model.
  */
 export interface IDS11FacetUri {
-  /** IDS 1.1 PREVIEW. Only set by `parseIDS(xml, { preview: { ids11: true } })`. */
+  /**
+   * On a requirement facet this is IDS 1.0 and `parseIDS` always reads it.
+   * On an applicability or nested facet it is IDS 1.1 PREVIEW, only set by
+   * `parseIDS(xml, { preview: { ids11: true } })`.
+   */
   uri?: string;
 }
 

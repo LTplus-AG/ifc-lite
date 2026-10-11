@@ -15,6 +15,7 @@ import { REGEX_001, REGEX_002, REGEX_003, REGEX_004 } from './regex.js';
 import { UNIT_001, VAL_008 } from './units.js';
 import { VAL_001, VAL_002, VAL_003, VAL_004, VAL_005, VAL_006 } from './values.js';
 import { PROP_001, PROP_002, PROP_003, PSET_001, PSET_002, PSET_003 } from './pset.js';
+import { BSDD_001, BSDD_002, BSDD_003 } from './bsdd.js';
 
 export const LINT_RULES: readonly LintRule[] = [
   ENT_001,
@@ -60,4 +61,7 @@ export const LINT_RULES: readonly LintRule[] = [
   DOC_001,
   VER_001,
   PART_001,
+  BSDD_001,
+  BSDD_002,
+  BSDD_003,
 ];

@@ -19,7 +19,7 @@ The [2026-10-10 recovery plan](RECOVERY.md) pins the preserved heads, dependency
 | P-05 Model loop | `claude/ids-studio-p05-model-loop` | #7146 (charter consolidated) | ⬜ | Not started; charter/work log preserved in umbrella #7143; branch retained for future P-03-based implementation |
 | P-06 bSDD | `claude/ids-studio-p06-bsdd` | #7147 | ⏸ | Interrupted. IDS-069–074 committed by agent (final checks unreported) + WIP evidence baca3552f. Needs checks, fixture licence confirmation |
 | P-07 Agent | `claude/ids-studio-p07-agent` | #7148 | ⏸ | Interrupted. One UNVERIFIED WIP checkpoint 7e18628c8 (91 files; deletes old check-authoring editor — verify supersession) |
-| P-08 Eval | `claude/ids-studio-p08-eval` | #7149 | 🟨 | E2 (307 cases), E4 (24), E5 (19), scorer done; self-check 307/307. Human review + runner pending |
+| P-08 Eval | `claude/ids-studio-p08-eval` | #7149 | 🟨 | E2 (307 cases, frozen train/validation/test split), E4 (24), E5 (19); E2 + E4 scorers done; self-check 307/307 with 0 audit errors after P-01. Human review + runner pending |
 | P-09 Ingestion & documents | `claude/ids-studio-p09-ingestion` | #7150 (charter consolidated) | ⬜ | Not started; charter/work log preserved in umbrella #7143; branch retained for future P-07-based implementation |
 | P-10 Trust & teamwork | `claude/ids-studio-p10-trust` | #7151 | ⏸ | Interrupted. IDS-104/106/107/108/110 committed; IDS-114 WIP d5b0b85e1 (UNVERIFIED); 105/109/111–113 not started |
 | P-11 Headless | `claude/ids-studio-p11-headless` | #7152 | ⏸ | Interrupted. IDS-115/116/118/119 committed; IDS-120/122 WIP a3e5f591f (UNVERIFIED); 117/121/123 not started |
@@ -151,10 +151,10 @@ The [2026-10-10 recovery plan](RECOVERY.md) pins the preserved heads, dependency
 
 | ID | Title | State | PR / commit |
 |---|---|---|---|
-| IDS-087 | E2: generate NL descriptions for corpus specs; human review pass | 🟨 | #7149 — data done (7bcc2fd98); human review pending |
+| IDS-087 | E2: generate NL descriptions for corpus specs; human review pass | 🟨 | #7149 — data done (7bcc2fd98), split assigned; human review pending |
 | IDS-088 | Charter: E3 gold set (≥100 cases, 4 languages) | ⬜ | |
 | IDS-089 | E4 edit tasks + E5 adversarial set | 🟨 | #7149 — seed sets done (944d20841); human review pending |
-| IDS-090 | Eval runner: CI recorded replay + nightly live (Batch API) + `scores.json` | 🟨 | #7149 — scorer done (44914239a); runner needs P-07 |
+| IDS-090 | Eval runner: CI recorded replay + nightly live (Batch API) + `scores.json` | 🟨 | #7149 — E2 scorer (44914239a) and E4 scorer done; E5 scorer, runner need P-07 |
 | IDS-091 | Ishigaki-IDS-Bench adapter (pending D4) | ⏸ | blocked: licence D4 unknown |
 | IDS-092 | Public benchmark page (generated) | ⬜ | |
 

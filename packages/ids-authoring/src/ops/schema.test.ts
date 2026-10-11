@@ -40,6 +40,7 @@ const EXAMPLES: Record<OpKind, StudioOp['payload']> = {
   'facet.replace': { facetId: F, facet: { type: 'material', value: { kind: 'pattern', pattern: 'Concrete.*' } } },
   'facet.setField': { facetId: F, field: 'property.value', value: { kind: 'range', min: 30, unit: 'min' } },
   'facet.setRelation': { facetId: F, relation: 'IfcRelAggregates' },
+  'facet.setUri': { facetId: F, uri: 'https://identifier.buildingsmart.org/uri/example/demo/1.0/class/EW' },
   'facet.restore': {
     specId: S,
     section: 'requirements',
@@ -58,6 +59,20 @@ const EXAMPLES: Record<OpKind, StudioOp['payload']> = {
   'meta.custom.removePset': { name: 'Acme_Wall' },
   'meta.custom.declareUserDefinedType': { entity: 'IfcSlab', value: 'SLABRADOR' },
   'meta.custom.removeUserDefinedType': { entity: 'IfcSlab', value: 'SLABRADOR' },
+  'meta.comment.add': { nodeId: S, threadId: F, author: 'Ana', at: '2026-10-08T09:00:00Z', text: 'Is EI60 enough here?' },
+  'meta.comment.reply': { threadId: F, author: 'Ben', at: '2026-10-08T10:00:00Z', text: '@Ana yes, per the fire concept' },
+  'meta.comment.removeReply': { threadId: F },
+  'meta.comment.resolve': { threadId: F, resolved: true },
+  'meta.comment.removeThread': { threadId: F },
+  'meta.comment.restoreThread': { nodeId: S, index: 0, thread: { id: F, resolved: false, comments: [{ author: 'Ana', at: '2026-10-08', text: 'x' }] } },
+  'meta.test.add': {
+    specId: S,
+    testCase: { id: F, name: 'Doors without fire rating fail', fixture: { kind: 'synthetic', recipe: { generator: 'ids-testgen/1', ifcVersion: 'IFC4', variant: { kind: 'fail', requirementId: O } } }, expect: 'fail', expectFailureOn: [O] },
+    index: 0,
+  },
+  'meta.test.remove': { testId: F },
+  'meta.test.restore': { specId: S, index: 0, testCase: { id: F, name: 'x', fixture: { kind: 'file', path: 'fixtures/x.ifc' }, expect: 'pass' } },
+  'meta.test.setExpectation': { testId: F, expect: 'pass', expectFailureOn: null },
   'meta.suppress': { nodeId: S, suppression: { rule: 'IDSL-SPEC-008', reason: 'Reviewed', by: 'a@example.com', at: '2026-10-11T00:00:00Z' }, index: 0 },
   'meta.unsuppress': { nodeId: S, rule: 'IDSL-SPEC-008' },
   'bulk.renameProperty': { fromPset: 'Pset_WallCommon', fromName: 'Fire', toPset: 'Pset_WallCommon', toName: 'FireRating' },
@@ -69,6 +84,21 @@ const EXAMPLES: Record<OpKind, StudioOp['payload']> = {
       ops: [{ kind: 'spec.add', payload: { specId: '{{id:s}}', name: '{{entity}}', ifcVersions: ['IFC4'] } }],
     },
     params: { entity: 'IfcDoor' },
+  },
+  'bulk.fromBsddClass': {
+    classes: [
+      {
+        uri: 'https://identifier.example.org/uri/ifc-lite-test/demo/1.0/class/WAL',
+        code: 'WAL',
+        name: 'Wall',
+        dictionaryUri: 'https://identifier.example.org/uri/ifc-lite-test/demo/1.0',
+        dictionaryName: 'Demo Elements',
+        relatedIfcEntities: [{ entity: 'IfcWall', predefinedType: 'SOLIDWALL' }],
+      },
+    ],
+    target: { newSpec: { specId: S, name: 'Walls', ifcVersions: ['IFC4'] } },
+    classification: { section: 'requirements', uri: true },
+    entity: { section: 'applicability' },
   },
 };
 

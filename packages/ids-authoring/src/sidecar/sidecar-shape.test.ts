@@ -59,7 +59,7 @@ describe('#7168 IDS-025 sidecar shape at every import boundary', () => {
         sources: { [id]: [{ docRef: '', kind: 'text' as const, quote: 'Walls have ratings' }] },
         comments: { [id]: [{ id, resolved: false, comments: [{ author: '', at: '', text: 'Review' }] }] },
         suppressions: { [id]: [{ rule: 'ENT-001', reason: 'Reviewed', at: '' }] },
-        tests: { [id]: { laterPitch: [1, null, { nested: true }] } },
+        tests: { [id]: { specId: id, cases: [{ id, name: 'Walls pass', fixture: { kind: 'file' as const, path: 'fixtures/walls.ifc' }, expect: 'pass' as const }] } },
         mappings: [{ laterPitch: true }], unresolved: [null, { statement: 'Review' }],
         revision: { signOffs: [{ by: '', at: '' }] },
         custom: { psets: [{ name: 'Example', properties: [{ name: 'Rating', dataType: 'IFCLABEL' }] }],

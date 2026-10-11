@@ -98,6 +98,7 @@ const PAYLOADS: Record<OpKind, JsonSchema> = {
     ['facetId', 'field', 'value'],
   ),
   'facet.setRelation': obj({ facetId: uuid, relation: ref('PartOfRelation') }, ['facetId', 'relation']),
+  'facet.setUri': obj({ facetId: uuid, uri: { type: ['string', 'null'], minLength: 1 } }, ['facetId', 'uri']),
   'facet.restore': obj(
     {
       specId: uuid,
@@ -122,6 +123,7 @@ const PAYLOADS: Record<OpKind, JsonSchema> = {
         instructions: nullableStr,
         relation: ref('PartOfRelation'),
         rawRelation: nullableStr,
+        uri: nullableStr,
       }),
     },
     ['facetId', 'set'],
@@ -150,6 +152,25 @@ const PAYLOADS: Record<OpKind, JsonSchema> = {
   'meta.custom.removePset': obj({ name: nonEmpty }, ['name']),
   'meta.custom.declareUserDefinedType': obj({ entity: nonEmpty, value: nonEmpty, index }, ['entity', 'value']),
   'meta.custom.removeUserDefinedType': obj({ entity: nonEmpty, value: nonEmpty }, ['entity', 'value']),
+  'meta.comment.add': obj({ nodeId: uuid, threadId: uuid, author: nonEmpty, at: nonEmpty, text: nonEmpty }, [
+    'nodeId',
+    'threadId',
+    'author',
+    'at',
+    'text',
+  ]),
+  'meta.comment.reply': obj({ threadId: uuid, author: nonEmpty, at: nonEmpty, text: nonEmpty }, ['threadId', 'author', 'at', 'text']),
+  'meta.comment.removeReply': obj({ threadId: uuid }, ['threadId']),
+  'meta.comment.resolve': obj({ threadId: uuid, resolved: { type: 'boolean' } }, ['threadId', 'resolved']),
+  'meta.comment.removeThread': obj({ threadId: uuid }, ['threadId']),
+  'meta.comment.restoreThread': obj({ nodeId: uuid, index, thread: ref('CommentThread') }, ['nodeId', 'index', 'thread']),
+  'meta.test.add': obj({ specId: uuid, testCase: ref('TestCase'), index }, ['specId', 'testCase']),
+  'meta.test.remove': obj({ testId: uuid }, ['testId']),
+  'meta.test.restore': obj({ specId: uuid, index, testCase: ref('TestCase') }, ['specId', 'index', 'testCase']),
+  'meta.test.setExpectation': obj(
+    { testId: uuid, expect: ref('TestExpectation'), expectFailureOn: { anyOf: [{ type: 'array', items: uuid }, { type: 'null' }] } },
+    ['testId', 'expect', 'expectFailureOn'],
+  ),
   'meta.suppress': obj(
     {
       nodeId: uuid,
@@ -170,12 +191,43 @@ const PAYLOADS: Record<OpKind, JsonSchema> = {
     { template: ref('OpTemplate'), params: { type: 'object', additionalProperties: str } },
     ['template', 'params'],
   ),
+  'bulk.fromBsddClass': obj(
+    {
+      classes: { type: 'array', items: ref('BsddClassSnapshot'), minItems: 1 },
+      target: {
+        oneOf: [
+          obj({ specId: uuid }, ['specId']),
+          obj(
+            {
+              newSpec: obj(
+                { specId: uuid, name: nonEmpty, ifcVersions: versions, index, description: str, identifier: str, cardinality: ref('Optionality') },
+                ['specId', 'name', 'ifcVersions'],
+              ),
+            },
+            ['newSpec'],
+          ),
+        ],
+      },
+      classification: obj({ section: ref('Section'), uri: { type: 'boolean' } }, ['section']),
+      entity: obj({ section: ref('Section'), entities: { type: 'array', items: nonEmpty, minItems: 1 } }, ['section']),
+      properties: obj(
+        {
+          select: { type: 'array', items: nonEmpty, minItems: 1 },
+          optionality: { enum: ['fromClass', 'required', 'optional'] },
+          fallbackPropertySet: nonEmpty,
+          uri: { type: 'boolean' },
+        },
+        ['select'],
+      ),
+    },
+    ['classes', 'target'],
+  ),
 };
 
 /** Every op kind of vocabulary v1, in schema order. */
 export const OP_KINDS = Object.keys(PAYLOADS) as OpKind[];
 
-const COMPOUND = new Set<string>(['bulk.renameProperty', 'bulk.retargetEntity', 'bulk.applyTemplate']);
+const COMPOUND = new Set<string>(['bulk.renameProperty', 'bulk.retargetEntity', 'bulk.applyTemplate', 'bulk.fromBsddClass']);
 
 function opDefName(kind: string): string {
   return `Op_${kind.replace(/\./g, '_')}`;
@@ -213,6 +265,40 @@ function buildDefs(): Record<string, JsonSchema> {
       ops: { type: 'array', items: ref('TemplateOp'), minItems: 1 },
     },
     ['id', 'params', 'ops'],
+  );
+  defs.BsddClassSnapshot = obj(
+    {
+      uri: nonEmpty,
+      code: nonEmpty,
+      name: str,
+      dictionaryUri: nonEmpty,
+      dictionaryName: nonEmpty,
+      relatedIfcEntities: { type: 'array', items: obj({ entity: nonEmpty, predefinedType: nonEmpty }, ['entity']) },
+      properties: { type: 'array', items: ref('BsddPropertySnapshot') },
+    },
+    ['uri', 'code', 'name', 'dictionaryUri', 'dictionaryName'],
+  );
+  const num: JsonSchema = { type: 'number' };
+  defs.BsddPropertySnapshot = obj(
+    {
+      code: nonEmpty,
+      name: str,
+      uri: nonEmpty,
+      propertySet: nonEmpty,
+      dataType: nonEmpty,
+      propertyValueKind: nonEmpty,
+      dimension: nonEmpty,
+      units: { type: 'array', items: nonEmpty },
+      allowedValues: { type: 'array', items: obj({ code: nonEmpty, value: str }, ['code']) },
+      minInclusive: num,
+      maxInclusive: num,
+      minExclusive: num,
+      maxExclusive: num,
+      pattern: nonEmpty,
+      isRequired: { type: 'boolean' },
+      standardDataType: nonEmpty,
+    },
+    ['code'],
   );
   defs.StudioOp = { oneOf: OP_KINDS.map((k) => ref(opDefName(k))) };
   return defs;

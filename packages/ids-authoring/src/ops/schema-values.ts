@@ -23,6 +23,7 @@ const str: JsonSchema = { type: 'string' };
 const num: JsonSchema = { type: 'number' };
 const int0: JsonSchema = { type: 'integer', minimum: 0 };
 const bool: JsonSchema = { type: 'boolean' };
+const uri: JsonSchema = { type: 'string', minLength: 1 };
 
 const DRAFTS: Record<string, JsonSchema> = {
   DraftAny: obj({ kind: { const: 'any' } }, ['kind']),
@@ -101,14 +102,15 @@ const IDS_CONTENT: Record<string, JsonSchema> = {
       baseName: ref('IDSConstraint'),
       dataType: ref('IDSConstraint'),
       value: ref('IDSConstraint'),
+      uri,
     },
     ['type', 'propertySet', 'baseName'],
   ),
   IDSClassificationFacet: obj(
-    { type: { const: 'classification' }, system: ref('IDSConstraint'), value: ref('IDSConstraint') },
+    { type: { const: 'classification' }, system: ref('IDSConstraint'), value: ref('IDSConstraint'), uri },
     ['type'],
   ),
-  IDSMaterialFacet: obj({ type: { const: 'material' }, value: ref('IDSConstraint') }, ['type']),
+  IDSMaterialFacet: obj({ type: { const: 'material' }, value: ref('IDSConstraint'), uri }, ['type']),
   IDSPartOfFacet: obj(
     { type: { const: 'partOf' }, relation: ref('PartOfRelation'), rawRelation: str, entity: ref('IDSEntityFacet') },
     ['type', 'relation'],
@@ -173,11 +175,11 @@ const FACET_DRAFTS: Record<string, JsonSchema> = {
   EntityDraft: obj({ type: { const: 'entity' }, name: vi, predefinedType: vi }, ['type', 'name']),
   AttributeDraft: obj({ type: { const: 'attribute' }, name: vi, value: vi }, ['type', 'name']),
   PropertyDraft: obj(
-    { type: { const: 'property' }, propertySet: vi, baseName: vi, dataType: vi, value: vi },
+    { type: { const: 'property' }, propertySet: vi, baseName: vi, dataType: vi, value: vi, uri },
     ['type', 'propertySet', 'baseName'],
   ),
-  ClassificationDraft: obj({ type: { const: 'classification' }, system: vi, value: vi }, ['type']),
-  MaterialDraft: obj({ type: { const: 'material' }, value: vi }, ['type']),
+  ClassificationDraft: obj({ type: { const: 'classification' }, system: vi, value: vi, uri }, ['type']),
+  MaterialDraft: obj({ type: { const: 'material' }, value: vi, uri }, ['type']),
   PartOfDraft: obj(
     {
       type: { const: 'partOf' },
@@ -227,6 +229,62 @@ export const VALUE_DEFS: Record<string, JsonSchema> = {
   ...FACET_DRAFTS,
   FacetDraft: { oneOf: Object.keys(FACET_DRAFTS).map(ref) },
   ...IDS_CONTENT,
+  CommentThread: obj(
+    {
+      id: { $ref: '#/$defs/Uuid' },
+      resolved: { type: 'boolean' },
+      comments: {
+        type: 'array',
+        minItems: 1,
+        items: obj({ author: { type: 'string', minLength: 1 }, at: { type: 'string', minLength: 1 }, text: { type: 'string', minLength: 1 } }, [
+          'author',
+          'at',
+          'text',
+        ]),
+      },
+    },
+    ['id', 'resolved', 'comments'],
+  ),
+  TestExpectation: { enum: ['pass', 'fail', 'notApplicable'] },
+  TestCase: obj(
+    {
+      id: { $ref: '#/$defs/Uuid' },
+      name: { type: 'string', minLength: 1 },
+      fixture: {
+        oneOf: [
+          obj(
+            {
+              kind: { const: 'synthetic' },
+              recipe: obj(
+                {
+                  generator: { const: 'ids-testgen/1' },
+                  ifcVersion: { $ref: '#/$defs/IfcVersion' },
+                  variant: {
+                    oneOf: [
+                      obj({ kind: { const: 'pass' } }, ['kind']),
+                      obj({ kind: { const: 'fail' }, requirementId: { $ref: '#/$defs/Uuid' } }, ['kind', 'requirementId']),
+                      obj({ kind: { const: 'notApplicable' } }, ['kind']),
+                    ],
+                  },
+                },
+                ['generator', 'ifcVersion', 'variant'],
+              ),
+            },
+            ['kind', 'recipe'],
+          ),
+          obj({ kind: { const: 'snapshot' }, ifcRef: { type: 'string', minLength: 1 }, entityRefs: { type: 'array', items: { type: 'string' } } }, [
+            'kind',
+            'ifcRef',
+            'entityRefs',
+          ]),
+          obj({ kind: { const: 'file' }, path: { type: 'string', minLength: 1 } }, ['kind', 'path']),
+        ],
+      },
+      expect: { $ref: '#/$defs/TestExpectation' },
+      expectFailureOn: { type: 'array', items: { $ref: '#/$defs/Uuid' } },
+    },
+    ['id', 'name', 'fixture', 'expect'],
+  ),
   CustomPsetDecl: obj(
     {
       name: { type: 'string', minLength: 1 },

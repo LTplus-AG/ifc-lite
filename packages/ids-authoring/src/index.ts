@@ -59,6 +59,12 @@ export {
   type RequirementSnapshot,
   type OpTemplate,
   type TemplateOp,
+  type CommentDraft,
+  type BsddClassSnapshot,
+  type BsddEntityRef,
+  type BsddNewSpec,
+  type BsddPropertySelection,
+  type BsddPropertySnapshot,
 } from './ops/types.js';
 export { OP_KINDS, validateOp, getOpJsonSchema, type OpValidation } from './ops/schema.js';
 export { validateJson, type JsonSchema, type SchemaError } from './ops/json-schema-lite.js';
@@ -118,7 +124,30 @@ export {
 export { writeIdsz, readIdsz, type IdszContent } from './sidecar/idsz.js';
 
 // Re-identification (IDS-026)
-export { reidentify, type ReidentifyReport, type ReidentifyOptions, type MatchStep } from './match/reidentify.js';
+export { reidentify, type ReidentifyReport, type ReidentifyOptions } from './match/reidentify.js';
+export type { MatchStep, FacetMatchStep } from './match/cascade.js';
+
+// Semantic diff and plain-language changelog (IDS-104)
+export * from './diff/index.js';
+
+// Three-way merge and conflict view model (IDS-106)
+export * from './merge/index.js';
+
+// Revisions, sign-off and hash chain (IDS-107)
+export * from './revision/index.js';
+
+// IDS test suites: model, runner, JUnit, view model (IDS-110)
+export * from './testing/index.js';
+
+// Comment threads in the sidecar (IDS-108)
+export {
+  commentThreads,
+  extractMentions,
+  type CommentAnchor,
+  type CommentThreadView,
+  type CommentView,
+  type CommentsView,
+} from './comments/view.js';
 
 // Plain-language rendering (IDS-027)
 export { describeFacet } from './render/describe.js';
@@ -147,3 +176,125 @@ export type {
   SpecView,
   SuppressedDiagnostic,
 } from './lint/types.js';
+
+// Headless surfaces: CLI, MCP, SDK, Flow (IDS-115, IDS-118)
+export { readStudioDocument, studioDocumentFromIds, parseStudioDocument } from './headless/read.js';
+export {
+  formatIds,
+  writeIdsChecked,
+  writeStudioDocument,
+  type IdsWriter,
+  type WriteOutcome,
+  type WriteFailure,
+  type FormatOutcome,
+} from './headless/write.js';
+export { nodePath } from './headless/node-path.js';
+export { diffIds, type IdsDiff, type IdsDiffEntry, type IdsDiffChange } from './headless/diff.js';
+export { applyOpsGated, type GatedApplyResult } from './headless/apply-gated.js';
+export {
+  searchSchema,
+  describeEntity,
+  describePset,
+  type SchemaKind,
+  type SchemaHit,
+  type SchemaSearchOptions,
+  type EntityDescription,
+  type PsetDescription,
+} from './headless/schema-lookup.js';
+
+// bSDD: source port, HTTP client, picker view model (IDS-069)
+export {
+  BsddHttpError,
+  BsddUnavailableError,
+  type BsddAllowedValue,
+  type BsddClass,
+  type BsddClassOptions,
+  type BsddClassProperty,
+  type BsddClassRef,
+  type BsddClassSummary,
+  type BsddDictionary,
+  type BsddSearchPage,
+  type BsddSearchQuery,
+  type BsddSource,
+  type BsddStatus,
+  type BsddUriRecord,
+} from './bsdd/types.js';
+export { createHttpBsddSource, BSDD_API_BASE, type HttpBsddSourceOptions } from './bsdd/http-source.js';
+export {
+  cardFromClass,
+  cardFromSummary,
+  createBsddSearch,
+  initialPickerFilters,
+  type BsddClassCard,
+  type BsddPickerFilters,
+  type BsddPropertyPreview,
+  type BsddSearch,
+  type BsddSearchOptions,
+  type BsddSearchPhase,
+  type BsddSearchState,
+  type BsddSearchTimers,
+} from './bsdd/picker.js';
+
+// bSDD class → classification / entity facets (IDS-070)
+export {
+  bsddInsertOp,
+  entityChoices,
+  snapshotBsddClass,
+  splitRelatedEntity,
+  type BsddInsertMode,
+  type BsddInsertRequest,
+} from './bsdd/insert.js';
+
+// bSDD property → requirement mapping table (IDS-071)
+export {
+  BSDD_DATA_TYPES,
+  BsddMappingError,
+  mapBsddDataType,
+  mapBsddProperty,
+  type BsddDataTypeRule,
+  type BsddMappingNote,
+  type BsddMappingNoteCode,
+  type BsddPropertyMapping,
+} from './bsdd/mapping.js';
+
+// Dictionary → IDS generator (IDS-072)
+export {
+  buildClassTree,
+  effectiveProperties,
+  loadClassesWithAncestors,
+  type BsddClassTreeNode,
+} from './bsdd/dictionary.js';
+export {
+  planDictionaryIds,
+  previewDictionaryIds,
+  type DictionaryIdsInput,
+  type DictionaryIdsOptions,
+  type DictionaryIdsPlan,
+  type DictionaryIdsPreview,
+  type PlannedSpec,
+} from './bsdd/generator.js';
+
+// bSDD URI health (IDS-073); its lint rules are in LINT_RULES (IDSL-BSDD-001…003), the gate rule is GATE-BSDD-001
+export {
+  checkUriHealth,
+  collectDocUris,
+  createBsddUriIndex,
+  URI_HEALTH_TTL_MS,
+  type BsddUriIndex,
+  type DocUri,
+  type UriHealthOptions,
+  type UriHealthReport,
+} from './bsdd/uri-health.js';
+
+// bSDD offline cache (IDS-074)
+export {
+  createCachedBsddSource,
+  createMemoryBsddStore,
+  loadUriIndex,
+  type BsddCacheEntry,
+  type BsddCacheKind,
+  type BsddCacheStore,
+  type CachedBsddSource,
+  type CachedBsddSourceOptions,
+} from './bsdd/cache.js';
+export { createIndexedDbBsddStore, type IndexedDbBsddStoreOptions } from './bsdd/idb-store.js';

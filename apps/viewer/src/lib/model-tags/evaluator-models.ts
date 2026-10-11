@@ -23,7 +23,7 @@ import type { ModelTag } from '@ifc-lite/rules';
 
 /** The slice of store state this reads. Structural so tests need no store. */
 export interface ModelTagState {
-  models: ReadonlyMap<string, Pick<FederatedModel, 'id' | 'sourceFingerprint' | 'ifcDataStore'>>;
+  models: ReadonlyMap<string, Pick<FederatedModel, 'id' | 'sourceFingerprint' | 'sourceContentHash' | 'ifcDataStore'>>;
   modelTags: ReadonlyMap<string, ModelTag>;
   modelTagAssignments: ModelTagAssignments;
   /** Live per-model property/quantity/attribute edits (#4946 review finding):
@@ -40,7 +40,7 @@ export function evaluatorModelsFromState(state: ModelTagState): EvaluatorModel[]
   for (const [id, m] of state.models) {
     out.push({
       id,
-      filterIdentity: m.sourceFingerprint,
+      filterIdentity: m.sourceFingerprint, sourceContentHash: m.sourceContentHash,
       tagIds: state.modelTagAssignments.get(id),
       store: m.ifcDataStore,
       mutationView: state.mutationViews?.get(id),

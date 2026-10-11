@@ -170,6 +170,13 @@ export const bcfEn = {
 
   // BCFTopicList.tsx
   'bcf.topicList.allStatuses': 'All statuses',
+  'bcf.resultChrome.region': 'BCF topic workspace',
+  'bcf.resultChrome.source': 'BCF topics · {name}',
+  'bcf.resultChrome.unnamed': 'Unnamed workspace',
+  'bcf.resultChrome.population': { one: '{count} topic in this workspace', other: '{count} topics in this workspace' },
+  'bcf.resultChrome.shown': '{count} shown',
+  'bcf.resultChrome.coverageUnknown': 'Workspace topics do not prove that all checks or all imported or server topics are included.',
+  'bcf.resultChrome.filtered': 'No topics match this status filter',
   'bcf.topicList.newTopicAria': 'New topic',
   'bcf.topicList.noTopics': 'No topics',
   'bcf.topicList.createFirstTopic': 'Create first topic',

@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { Page, ConsoleMessage } from '@playwright/test';
-import { probeMetadataRenderTrace, waitForMetadataRenderReadiness, type LoadTraceProbe } from './metadata-render-readiness.js';
+import { READINESS_SPANS, probePageLoadTrace, waitForMetadataRenderReadiness, type LoadTraceProbe } from './metadata-render-readiness.js';
 import {
   compareSpanAndRegexMetrics,
   countersFromLoadTrace,
@@ -149,7 +149,7 @@ export class ViewerBenchmarkPage {
           (globalThis as unknown as { __IFC_LITE_BATCH_SIZING?: unknown }).__IFC_LITE_BATCH_SIZING = c;
         }, cfg);
         console.log(`[Benchmark] batch sizing override: ${batchSizingEnv}`);
-      } catch (e) {
+      } catch {
         console.warn(`[Benchmark] invalid VIEWER_BENCHMARK_BATCH_SIZING: ${batchSizingEnv}`);
       }
     }
@@ -165,7 +165,7 @@ export class ViewerBenchmarkPage {
           (globalThis as unknown as { __IFC_LITE_VISIBILITY_FILTER?: unknown }).__IFC_LITE_VISIBILITY_FILTER = c;
         }, f);
         console.log(`[Benchmark] visibility filter: ${visFilterEnv}`);
-      } catch (e) {
+      } catch {
         console.warn(`[Benchmark] invalid VIEWER_BENCHMARK_VISIBILITY_FILTER: ${visFilterEnv}`);
       }
     }
@@ -488,7 +488,15 @@ export class ViewerBenchmarkPage {
    * exposes no trace yet (or at all: a viewer built before #6977).
    */
   private async probeLoadTrace(): Promise<LoadTraceProbe | null> {
-    return probeMetadataRenderTrace(this.page);
+    try {
+      return await this.page.evaluate(
+        probePageLoadTrace,
+        { key: LOAD_TRACE_GLOBAL, names: READINESS_SPANS },
+      );
+    } catch (err) {
+      console.warn('[Benchmark] could not probe the load trace', err);
+      return null;
+    }
   }
 
   /** Pull the latest load's span tree out of the page (null when tracing is unavailable). */

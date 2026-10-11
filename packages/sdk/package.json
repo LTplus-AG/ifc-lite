@@ -27,6 +27,7 @@
     "@ifc-lite/encoding": "workspace:^",
     "@ifc-lite/export": "workspace:^",
     "@ifc-lite/ids": "workspace:^",
+    "@ifc-lite/ids-authoring": "workspace:^",
     "@ifc-lite/lens": "workspace:^",
     "@ifc-lite/lists": "workspace:^",
     "@ifc-lite/mutations": "workspace:^",
@@ -37,7 +38,7 @@
   "devDependencies": {
     "@ifc-lite/export": "workspace:^",
     "typescript": "^6.0.3",
-    "vitest": "^5.0.2",
+    "vitest": "^5.0.3",
     "@ifc-lite/wasm": "workspace:^"
   },
   "license": "MPL-2.0",

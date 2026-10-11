@@ -8,11 +8,9 @@ import '@/test/setup-dom.js';
 import '@/test/content-backup-fixture.js';
 import assert from 'node:assert/strict';
 import test, { afterEach } from 'node:test';
-import { createRootBudget, runModelRequest } from '@ifc-lite/ai';
 import { parseModelChangeBatch } from '@ifc-lite/ai/artifacts';
 import { MemoCache, type FlowDocument } from '@ifc-lite/flow';
 import { createCheckpoint, parseCheckpoint, approveCheckpoint, claimCheckpoint, updateCheckpoint, resumeOutputs, graphDigest, finishCheckpoint } from '@ifc-lite/flow/checkpoint';
-import { type FlowAiService } from '@ifc-lite/flow-nodes/ai';
 import { createBimContext } from '@ifc-lite/sdk';
 import { useViewerStore } from '@/store';
 import { LocalBackend } from '@/sdk/local-backend';
@@ -23,25 +21,40 @@ import { editedModelBytes } from '@/lib/export/edited-model-bytes';
 import { flowRegistry, runFlowInViewer } from './runner';
 import { browserCheckpointStore } from './checkpoint-store';
 import { viewerSourceDigest } from './review-session';
+import { viewerFlowAi } from './ai-host';
+import { updateApiKeys } from '@/services/api-keys';
 
 const initial = useViewerStore.getState();
-afterEach(() => useViewerStore.setState(initial, true));
+const originalFetch = globalThis.fetch;
+const initialKeys = localStorage.getItem('ifc-lite:api-keys:v1');
+afterEach(() => {
+  globalThis.fetch = originalFetch;
+  if (initialKeys === null) localStorage.removeItem('ifc-lite:api-keys:v1');
+  else localStorage.setItem('ifc-lite:api-keys:v1', initialKeys);
+  useViewerStore.setState(initial, true);
+});
 test('#7070 a SketchUp wall proposal stays portable and read-only until native approval; exported edits undo together', async () => {
   const { dataStore, view } = await seedAuthoringSample();
   const bim = createBimContext({ backend: new LocalBackend(useViewerStore) });
-  const budget = createRootBudget({ maxRequests: 1, maxOutputTokens: 2000 });
   let requests = 0;
-  const ai: FlowAiService = { model: 'fixture', request: call => runModelRequest({ model: 'fixture', route: 'test', budget,
-    routeCeiling: 2000, maxOutputTokens: call.maxOutputTokens, timeoutMs: 1000, messages: [call.prompt], system: call.system,
-    signal: call.signal, transport: async transport => {
+  const sentFormats: unknown[] = [];
+  globalThis.fetch = async (_input, init) => {
       requests++;
-      const rows = /<data>\n([\s\S]*)\n<\/data>/.exec(call.prompt)![1].split('\n').map(line => JSON.parse(line) as { key: string; values: { GlobalId: string; Name: string } });
+      const body = JSON.parse(String(init?.body)) as { messages: { content: string }[]; response_format?: unknown };
+      sentFormats.push(body.response_format);
+      const rows = /<data>\n([\s\S]*)\n<\/data>/.exec(body.messages.at(-1)!.content)![1].split('\n').map(line => JSON.parse(line) as { key: string; values: { GlobalId: string; Name: string } });
       const row = rows[0];
       const text = JSON.stringify({ artifact: { version: 1, kind: 'model.changes', title: 'Reviewed rename', changes: [
         { op: 'attribute.set', target: { globalId: row.values.GlobalId }, name: 'Name', expected: row.values.Name, value: 'Reviewed wall' },
-      ] }, citations: [row.key] });
-      transport.onChunk(text); transport.onFinishReason('stop'); transport.onComplete(text);
-    } }) };
+      ] }, citations: [row.key], clarification: null });
+      return new Response(`data: ${JSON.stringify({ choices: [{ delta: { content: text }, finish_reason: 'stop' }], usage: { prompt_tokens: 30, completion_tokens: 10 } })}\n\ndata: [DONE]\n\n`,
+        { headers: { 'Content-Type': 'text/event-stream' } });
+  };
+  useViewerStore.setState({ chatActiveModel: 'gpt-6.1-sol' });
+  updateApiKeys({ openaiKey: 'sk-native-fixture' });
+  const service = viewerFlowAi();
+  assert.ok(service);
+  const { service: ai, budget } = service;
   const doc: FlowDocument = { flowVersion: 2, id: 'real-wall-proposal', name: 'Real wall proposal', capabilities: ['model.read', 'network.ai'], inputs: [], outputs: [],
     nodes: [{ id: 'walls', type: 'model.byType', params: { type: 'IfcWall' } },
       { id: 'findings', type: 'table.fromEntities', params: { columns: ['Name'] } },
@@ -51,6 +64,11 @@ test('#7070 a SketchUp wall proposal stays portable and read-only until native a
   const result = await runFlowInViewer({ doc, bim, pin: SAMPLE_MODEL, cache: new MemoCache(), ai });
   assert.equal(result.ok, true, JSON.stringify(result.reports));
   assert.deepEqual(result.review, ['draft']); assert.equal(requests, 1);
+  assert.equal(budget.requests, 1);
+  assert.ok(sentFormats[0], '#7132 native proposal schema reaches the actual viewer host transport');
+  assert.deepEqual(sentFormats.map(format => (format as { type: string; json_schema: { name: string; strict: boolean } }).json_schema.name), ['flow_proposal']);
+  assert.equal((sentFormats[0] as { type: string }).type, 'json_schema');
+  assert.equal((sentFormats[0] as { json_schema: { strict: boolean } }).json_schema.strict, true);
   assert.equal(useViewerStore.getState().dirtyModels.size, 0, 'drafting performs no mutations');
   const checkpoint = parseCheckpoint(JSON.parse(JSON.stringify(createCheckpoint({ doc, registry: flowRegistry(), result, sourceDigest: viewerSourceDigest(), budget }))));
   assert.equal(checkpoint.state, 'prepared');

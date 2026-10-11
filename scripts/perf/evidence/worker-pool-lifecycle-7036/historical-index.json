@@ -1,0 +1,124 @@
+{
+  "preservedCommit": "e02476a1f186ffbbf5166ff98f4788ca34de618e",
+  "scope": "Historical exact-source evidence, including failed, excluded and inverse cases. These are not relabelled as current qualification.",
+  "completePreservedTreeURL": "https://github.com/LTplus-AG/ifc-lite/tree/e02476a1f186ffbbf5166ff98f4788ca34de618e/scripts/perf/evidence/worker-pool-lifecycle-7036",
+  "historicalPhases": [
+    {
+      "phase": "ae27-main-integration",
+      "immutableCommit": "e02476a1f186ffbbf5166ff98f4788ca34de618e",
+      "tree": "0744e6cce37aa5784847293b013e896203dabdb0",
+      "publicURL": "https://github.com/LTplus-AG/ifc-lite/tree/e02476a1f186ffbbf5166ff98f4788ca34de618e/scripts/perf/evidence/worker-pool-lifecycle-7036/ae27-main-integration",
+      "fileCount": 15,
+      "currentReviewPatchBytes": 28964,
+      "scope": "Historical evidence, not relabelled as current source qualification."
+    },
+    {
+      "phase": "canonical-2003002-integration",
+      "immutableCommit": "e02476a1f186ffbbf5166ff98f4788ca34de618e",
+      "tree": "d3f509168797a9840f295aa4bfb359fd54f2d903",
+      "publicURL": "https://github.com/LTplus-AG/ifc-lite/tree/e02476a1f186ffbbf5166ff98f4788ca34de618e/scripts/perf/evidence/worker-pool-lifecycle-7036/canonical-2003002-integration",
+      "fileCount": 17,
+      "currentReviewPatchBytes": 33768,
+      "scope": "Historical evidence, not relabelled as current source qualification."
+    },
+    {
+      "phase": "ci-benchmark-trigger",
+      "immutableCommit": "e02476a1f186ffbbf5166ff98f4788ca34de618e",
+      "tree": "e01e8671c6749855512f5d2be38faf083c671862",
+      "publicURL": "https://github.com/LTplus-AG/ifc-lite/tree/e02476a1f186ffbbf5166ff98f4788ca34de618e/scripts/perf/evidence/worker-pool-lifecycle-7036/ci-benchmark-trigger",
+      "fileCount": 19,
+      "currentReviewPatchBytes": 11669,
+      "scope": "Historical evidence, not relabelled as current source qualification."
+    },
+    {
+      "phase": "controls",
+      "immutableCommit": "e02476a1f186ffbbf5166ff98f4788ca34de618e",
+      "tree": "69543f38e191e65e9f6de5ab9080667f69c7e74d",
+      "publicURL": "https://github.com/LTplus-AG/ifc-lite/tree/e02476a1f186ffbbf5166ff98f4788ca34de618e/scripts/perf/evidence/worker-pool-lifecycle-7036/controls",
+      "fileCount": 19,
+      "currentReviewPatchBytes": 5529,
+      "scope": "Historical evidence, not relabelled as current source qualification."
+    },
+    {
+      "phase": "correction",
+      "immutableCommit": "e02476a1f186ffbbf5166ff98f4788ca34de618e",
+      "tree": "ec3a3b61edb4221961cf28931b85cb78ab873c5f",
+      "publicURL": "https://github.com/LTplus-AG/ifc-lite/tree/e02476a1f186ffbbf5166ff98f4788ca34de618e/scripts/perf/evidence/worker-pool-lifecycle-7036/correction",
+      "fileCount": 22,
+      "currentReviewPatchBytes": 32045,
+      "scope": "Historical evidence, not relabelled as current source qualification."
+    },
+    {
+      "phase": "main-canonical-markers-7cf",
+      "immutableCommit": "e02476a1f186ffbbf5166ff98f4788ca34de618e",
+      "tree": "848e61bfc8ba15eb26d66ed82289a151f350e8fc",
+      "publicURL": "https://github.com/LTplus-AG/ifc-lite/tree/e02476a1f186ffbbf5166ff98f4788ca34de618e/scripts/perf/evidence/worker-pool-lifecycle-7036/main-canonical-markers-7cf",
+      "fileCount": 9,
+      "currentReviewPatchBytes": 7065,
+      "scope": "Historical evidence, not relabelled as current source qualification."
+    },
+    {
+      "phase": "main-integration-qualified",
+      "immutableCommit": "e02476a1f186ffbbf5166ff98f4788ca34de618e",
+      "tree": "6155e389fa13f93098a3aab1da8d35be4d431976",
+      "publicURL": "https://github.com/LTplus-AG/ifc-lite/tree/e02476a1f186ffbbf5166ff98f4788ca34de618e/scripts/perf/evidence/worker-pool-lifecycle-7036/main-integration-qualified",
+      "fileCount": 23,
+      "currentReviewPatchBytes": 10013,
+      "scope": "Historical evidence, not relabelled as current source qualification."
+    },
+    {
+      "phase": "main-raw-point-read-correction",
+      "immutableCommit": "e02476a1f186ffbbf5166ff98f4788ca34de618e",
+      "tree": "ce7dfdf2b09d19e5238f21a7d2b5b433d782c03d",
+      "publicURL": "https://github.com/LTplus-AG/ifc-lite/tree/e02476a1f186ffbbf5166ff98f4788ca34de618e/scripts/perf/evidence/worker-pool-lifecycle-7036/main-raw-point-read-correction",
+      "fileCount": 10,
+      "currentReviewPatchBytes": 3733,
+      "scope": "Historical evidence, not relabelled as current source qualification."
+    },
+    {
+      "phase": "missing-trace-attrs",
+      "immutableCommit": "e02476a1f186ffbbf5166ff98f4788ca34de618e",
+      "tree": "8695797a4fb98fa1d6b769119df220d290c3f3b2",
+      "publicURL": "https://github.com/LTplus-AG/ifc-lite/tree/e02476a1f186ffbbf5166ff98f4788ca34de618e/scripts/perf/evidence/worker-pool-lifecycle-7036/missing-trace-attrs",
+      "fileCount": 10,
+      "currentReviewPatchBytes": 8217,
+      "scope": "Historical evidence, not relabelled as current source qualification."
+    },
+    {
+      "phase": "modern-probe-and-owned-fixture-correction",
+      "immutableCommit": "e02476a1f186ffbbf5166ff98f4788ca34de618e",
+      "tree": "b5904d282f19d03fc2b0c28a588052d80ccaf0a6",
+      "publicURL": "https://github.com/LTplus-AG/ifc-lite/tree/e02476a1f186ffbbf5166ff98f4788ca34de618e/scripts/perf/evidence/worker-pool-lifecycle-7036/modern-probe-and-owned-fixture-correction",
+      "fileCount": 58,
+      "currentReviewPatchBytes": 198239,
+      "scope": "Historical evidence, not relabelled as current source qualification."
+    },
+    {
+      "phase": "observed-owner-and-paired-workload-correction",
+      "immutableCommit": "e02476a1f186ffbbf5166ff98f4788ca34de618e",
+      "tree": "c86c81bcc923eb9c354a777cc96d15d393e4682f",
+      "publicURL": "https://github.com/LTplus-AG/ifc-lite/tree/e02476a1f186ffbbf5166ff98f4788ca34de618e/scripts/perf/evidence/worker-pool-lifecycle-7036/observed-owner-and-paired-workload-correction",
+      "fileCount": 28,
+      "currentReviewPatchBytes": 68705,
+      "scope": "Historical evidence, not relabelled as current source qualification."
+    },
+    {
+      "phase": "readiness-correction",
+      "immutableCommit": "e02476a1f186ffbbf5166ff98f4788ca34de618e",
+      "tree": "cad0d50beae3e24b43d8838122969f32258b2b7b",
+      "publicURL": "https://github.com/LTplus-AG/ifc-lite/tree/e02476a1f186ffbbf5166ff98f4788ca34de618e/scripts/perf/evidence/worker-pool-lifecycle-7036/readiness-correction",
+      "fileCount": 15,
+      "currentReviewPatchBytes": 7255,
+      "scope": "Historical evidence, not relabelled as current source qualification."
+    },
+    {
+      "phase": "standalone-main",
+      "immutableCommit": "e02476a1f186ffbbf5166ff98f4788ca34de618e",
+      "tree": "0ecf08921a671c81b8f8960a7c634ace62dafba5",
+      "publicURL": "https://github.com/LTplus-AG/ifc-lite/tree/e02476a1f186ffbbf5166ff98f4788ca34de618e/scripts/perf/evidence/worker-pool-lifecycle-7036/standalone-main",
+      "fileCount": 9,
+      "currentReviewPatchBytes": 2877,
+      "scope": "Historical evidence, not relabelled as current source qualification."
+    }
+  ]
+}

@@ -1,0 +1,14 @@
+{
+  "qualificationSHA256": "55684eef328a0b09ad641b72042b404c62de2413ae69aa980ee3330f10b93b8e",
+  "rawAndGzipPairsVerified": 12,
+  "indexedFilesVerified": 4,
+  "liveSourcePinsVerified": 17,
+  "terminalStagesZero": 12,
+  "runtimeRows": 22,
+  "pairedPids": 11,
+  "actualTestCount": 104,
+  "typecheckedFileCount": 3760,
+  "actualWeakRefGcObserved": true,
+  "head": "aab441cd86bb2fad448632b200affdf2e2d62734",
+  "scope": "Registered CPU aliases and actual canonical Bonsai mesh release. No broader native memory/performance or #6537 closure."
+}

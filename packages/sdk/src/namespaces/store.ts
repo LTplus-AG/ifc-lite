@@ -24,7 +24,7 @@ import type {
   StoreBackendMethods,
 } from '../types.js';
 
-import { StoreModellingNamespace } from './store-modelling.js';
+import { StoreGroupNamespace } from './store-group.js';
 
 /**
  * `bim.store` — document-level edits on a parsed model.
@@ -41,7 +41,7 @@ import { StoreModellingNamespace } from './store-modelling.js';
  * Changes accumulate in a per-model overlay and are flushed to the IFC
  * file on the next `bim.export.ifc({ applyMutations: true })`.
  */
-export class StoreNamespace extends StoreModellingNamespace {
+export class StoreNamespace extends StoreGroupNamespace {
   /**
    * Inject a new entity into the active model. Returns an `EntityRef`
    * pointing at the freshly-allocated expressId.

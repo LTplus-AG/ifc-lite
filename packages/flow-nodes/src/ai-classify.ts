@@ -23,6 +23,7 @@ import type { Table } from '@ifc-lite/flow';
 import { SCALAR_ITEM, TABLE_ITEM } from './ports.js';
 import type { FlowNodeDef } from './host.js';
 import { AI_CAPABILITY, AI_FEATURE, aiService, dataBlock, positiveInt, requestJson, rowKeys, sentColumns } from './ai-service.js';
+import { classificationSchema } from './ai-response-schemas.js';
 
 type Outcome = 'classified' | 'unknown' | 'failed' | 'not-sent';
 
@@ -97,7 +98,8 @@ export const aiClassifyNode: FlowNodeDef = {
     const sendable = keys.map((_, i) => i).slice(0, maxRows);
     for (let start = 0; start < sendable.length; start += batchSize) {
       const batch = sendable.slice(start, start + batchSize);
-      const reply = await requestJson(ctx, service, task, dataBlock(table, keys, batch, columns), maxOutputTokens);
+      const reply = await requestJson(ctx, service, task, dataBlock(table, keys, batch, columns), maxOutputTokens,
+        classificationSchema(batch.map(i => keys[i]), [...labels], columns), 'flow.ai.classify.v1');
       if (reply.kind === 'budget') {
         ctx.log('warn', `the AI budget ran out after ${requests} request(s); ${sendable.length - start} row(s) were not sent`);
         break;

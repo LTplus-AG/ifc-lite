@@ -4,7 +4,7 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { createLoadTracer } from '@ifc-lite/load-trace';
+import { createLoadTracer, createPerfCounters } from '@ifc-lite/load-trace';
 import { isPerfTraceRequested, loadTracer } from './loadTrace.js';
 import { exposeLoadTrace } from './loadTraceEnabled.js';
 
@@ -12,6 +12,7 @@ interface ExposedTrace {
   latest(): { loadId: string; spans: Array<{ name: string }> } | null;
   tree(): Array<{ span: { name: string }; children: unknown[] }>;
   chromeTrace(): { traceEvents: Array<{ name: string; ph: string }> };
+  sessionCounters(): Record<string, number>;
 }
 
 describe('viewer load trace (#6956)', () => {
@@ -45,5 +46,23 @@ describe('viewer load trace (#6956)', () => {
     assert.equal(poolNode?.children.length, 1);
     const names = api.chromeTrace().traceEvents.filter((e) => e.ph === 'X').map((e) => e.name);
     assert.deepEqual(names, ['load', 'geometry.pool', 'shard.stitch', 'geometry.firstVisible']);
+  });
+
+  it('#6993 publishes session counter totals, including work outside every load window', () => {
+    const counters = createPerfCounters();
+    counters.enable();
+    const tracer = createLoadTracer({ enabled: true, sink: null, counters });
+    counters.add('gpu.deviceLost'); // lost at boot, before any load
+    const trace = tracer.startLoad('m1');
+    counters.add('react.commits', 3);
+    trace.finish();
+
+    const target: Record<string, unknown> = {};
+    exposeLoadTrace(tracer, target, () => counters.read());
+    const api = target.__IFC_LITE_LOAD_TRACE__ as ExposedTrace;
+    assert.deepEqual(api.sessionCounters(), { 'gpu.deviceLost': 1, 'react.commits': 3 });
+    assert.equal(tracer.latest()?.counters?.['gpu.deviceLost'], undefined, 'the per-load delta cannot see a boot-time loss');
+    counters.add('react.commits', 2); // an interaction after the load
+    assert.equal(api.sessionCounters()['react.commits'], 5);
   });
 });

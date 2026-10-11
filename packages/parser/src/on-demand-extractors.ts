@@ -13,7 +13,7 @@
 import { EntityExtractor } from './entity-extractor.js';
 import { RelationshipType, resolvedTypeName } from '@ifc-lite/data';
 import type { IfcDataStore } from './columnar-parser.js';
-import { readQuantitySet, type CollectedQuantity } from './quantity-collect.js';
+import type { CollectedQuantity } from './quantity-collect.js';
 import { appendSetsFromSecondSource, setIdentityKey } from './property-set-merge.js';
 import type { GeoreferenceInfo } from './georef-extractor.js';
 import { extractExactRelationshipEdges, type EntityRelationships } from './exact-relationship-edges.js';
@@ -60,19 +60,7 @@ export interface TypeQuantityInfo {
     quantities: Array<{ name: string; globalId?: string; quantities: CollectedQuantity[] }>;
 }
 
-/**
- * Structured document info from IFC document references.
- */
-export interface DocumentInfo {
-    name?: string;
-    description?: string;
-    location?: string;
-    identification?: string;
-    purpose?: string;
-    intendedUse?: string;
-    revision?: string;
-    confidentiality?: string;
-}
+export { extractDocumentsOnDemand, type DocumentInfo } from './document-resolver.js';
 
 export type { GeoreferenceInfo as GeorefInfo };
 
@@ -146,6 +134,7 @@ export function extractPsetsFromIds(
                 const unit = resolvePropertyUnit(store, extractor, propEntity.type, propAttrs, parsed.dataType);
                 if (unit) entry.unit = unit.symbol;
                 if (unit?.siScale !== undefined) entry.unitSiScale = unit.siScale;
+                if (unit?.siOffset !== undefined) entry.unitSiOffset = unit.siOffset;
                 properties.push(entry);
             }
         }
@@ -278,101 +267,7 @@ export function extractTypeEntityOwnProperties(
 // Type Quantity Extraction
 // ============================================================================
 
-/**
- * Extract quantity sets (IfcElementQuantity) from a list of set IDs using the
- * entity index. The quantity counterpart of {@link extractPsetsFromIds}: it
- * skips anything that is not an IFCELEMENTQUANTITY (e.g. property sets that
- * share the HasPropertySets list on a type).
- */
-export function extractQsetsFromIds(
-    store: IfcDataStore,
-    extractor: EntityExtractor,
-    qsetIds: number[]
-): Array<{ name: string; globalId?: string; quantities: CollectedQuantity[] }> {
-    const result: Array<{ name: string; globalId?: string; quantities: CollectedQuantity[] }> = [];
-
-    for (const qsetId of qsetIds) {
-        // @raw-entity-enumeration-ok one requested quantity-set id is decoded from its source STEP span
-        const qsetRef = store.entityIndex.byId.get(qsetId);
-        if (!qsetRef) continue;
-
-        // Only extract IFCELEMENTQUANTITY entities (skip property sets etc.)
-        if (qsetRef.type.toUpperCase() !== 'IFCELEMENTQUANTITY') continue;
-
-        // A set that walks to zero quantities is dropped — see
-        // {@link readQuantitySet}. Here that also stops an empty set from one
-        // source suppressing a populated same-identity set from another, since
-        // `extractTypeQuantitiesOnDemand` still dedups NAMED sets by
-        // `(name, globalId)` identity (see {@link appendSetsFromSecondSource}).
-        const qset = readQuantitySet(store, extractor, qsetRef);
-        if (qset) result.push(qset);
-    }
-
-    return result;
-}
-
-/**
- * Extract type-level quantities for a single entity ON-DEMAND.
- * Finds the element's type via IfcRelDefinesByType, then extracts element
- * quantities from:
- * 1. The type entity's HasPropertySets attribute (index 5 on IfcTypeObject) —
- *    an IfcPropertySetDefinition list that may include IfcElementQuantity.
- * 2. The onDemandQuantityMap for the type entity (IFC4 IfcRelDefinesByProperties
- *    with an IfcElementQuantity targeting the type).
- * Returns null when the element has no type or the type carries no quantities.
- * The quantity counterpart of {@link extractTypePropertiesOnDemand}.
- */
-export function extractTypeQuantitiesOnDemand(
-    store: IfcDataStore,
-    entityId: number
-): TypeQuantityInfo | null {
-    if (!store.relationships) return null;
-
-    const typeIds = store.relationships.getRelated(entityId, RelationshipType.DefinesByType, 'inverse');
-    if (typeIds.length === 0) return null;
-
-    const typeId = typeIds[0];
-    // @raw-entity-enumeration-ok typeIds came from this selected entity's relationship lookup
-    const typeRef = store.entityIndex.byId.get(typeId);
-    if (!typeRef) return null;
-
-    if (!store.source?.length) return null;
-
-    const extractor = new EntityExtractor(store.source);
-
-    const typeEntity = extractor.extractEntity(typeRef);
-    const typeName = typeEntity && typeof typeEntity.attributes?.[2] === 'string'
-        ? typeEntity.attributes[2]
-        : typeRef.type;
-
-    const allQsets: Array<{ name: string; globalId?: string; quantities: CollectedQuantity[] }> = [];
-    const seenQsetKeys = new Set<string>();
-    const ownSetIds = new Set<number>();
-
-    // Source 1: HasPropertySets attribute on the type (index 5) — quantity sets
-    // live alongside property sets in this IfcPropertySetDefinition list.
-    if (typeEntity) {
-        const hasPropertySets = typeEntity.attributes?.[5];
-        if (Array.isArray(hasPropertySets)) {
-            for (const id of hasPropertySets) if (typeof id === 'number') ownSetIds.add(id);
-            for (const qset of extractQsetsFromIds(store, extractor, [...ownSetIds])) {
-                seenQsetKeys.add(setIdentityKey(qset));
-                allQsets.push(qset);
-            }
-        }
-    }
-
-    // Source 2: onDemandQuantityMap for the type entity (IFC4 IfcRelDefinesByProperties).
-    const typeQsetIds = store.onDemandQuantityMap?.get(typeId);
-    if (typeQsetIds && typeQsetIds.length > 0) {
-        appendSetsFromSecondSource(allQsets, ownSetIds, seenQsetKeys, typeQsetIds,
-            (ids) => extractQsetsFromIds(store, extractor, ids));
-    }
-
-    if (allQsets.length === 0) return null;
-
-    return { typeName, typeId, quantities: allQsets };
-}
+export { extractQsetsFromIds, extractTypeQuantitiesOnDemand, extractTypeEntityOwnQuantities } from './type-own-quantity-source.js';
 
 // ============================================================================
 // Document Extraction
@@ -385,107 +280,6 @@ export function extractTypeQuantitiesOnDemand(
  * Also checks type-level documents via IfcRelDefinesByType.
  * Returns an array of document info objects.
  */
-export function extractDocumentsOnDemand(
-    store: IfcDataStore,
-    entityId: number
-): DocumentInfo[] {
-    let docRefIds: number[] | undefined;
-
-    if (store.onDemandDocumentMap) {
-        docRefIds = store.onDemandDocumentMap.get(entityId);
-    } else if (store.relationships) {
-        const related = store.relationships.getRelated(entityId, RelationshipType.AssociatesDocument, 'inverse');
-        if (related.length > 0) docRefIds = related;
-    }
-
-    // Also check type-level documents via IfcRelDefinesByType
-    if (store.relationships) {
-        const typeIds = store.relationships.getRelated(entityId, RelationshipType.DefinesByType, 'inverse');
-        for (const typeId of typeIds) {
-            let typeDocRefs: number[] | undefined;
-            if (store.onDemandDocumentMap) {
-                typeDocRefs = store.onDemandDocumentMap.get(typeId);
-            } else {
-                const related = store.relationships.getRelated(typeId, RelationshipType.AssociatesDocument, 'inverse');
-                if (related.length > 0) typeDocRefs = related;
-            }
-            if (typeDocRefs && typeDocRefs.length > 0) {
-                docRefIds = docRefIds ? [...docRefIds, ...typeDocRefs] : [...typeDocRefs];
-            }
-        }
-    }
-
-    if (!docRefIds || docRefIds.length === 0) return [];
-    if (!store.source?.length) return [];
-
-    const extractor = new EntityExtractor(store.source);
-    const results: DocumentInfo[] = [];
-
-    for (const docId of docRefIds) {
-        // @raw-entity-enumeration-ok one relationship-selected document id is decoded from its source STEP span
-        const docRef = store.entityIndex.byId.get(docId);
-        if (!docRef) continue;
-
-        const docEntity = extractor.extractEntity(docRef);
-        if (!docEntity) continue;
-
-        const typeUpper = docEntity.type.toUpperCase();
-        const attrs = docEntity.attributes || [];
-
-        if (typeUpper === 'IFCDOCUMENTREFERENCE') {
-            // IFC4: [Location, Identification, Name, Description, ReferencedDocument]
-            // IFC2X3: [Location, ItemReference, Name]
-            const info: DocumentInfo = {
-                location: typeof attrs[0] === 'string' ? attrs[0] : undefined,
-                identification: typeof attrs[1] === 'string' ? attrs[1] : undefined,
-                name: typeof attrs[2] === 'string' ? attrs[2] : undefined,
-                description: typeof attrs[3] === 'string' ? attrs[3] : undefined,
-            };
-
-            // Walk to IfcDocumentInformation if ReferencedDocument is set (IFC4 attr[4])
-            if (typeof attrs[4] === 'number') {
-                // @raw-entity-enumeration-ok follow this document's one ReferencedDocument source id
-                const docInfoRef = store.entityIndex.byId.get(attrs[4]);
-                if (docInfoRef) {
-                    const docInfoEntity = extractor.extractEntity(docInfoRef);
-                    if (docInfoEntity && docInfoEntity.type.toUpperCase() === 'IFCDOCUMENTINFORMATION') {
-                        const ia = docInfoEntity.attributes || [];
-                        // IfcDocumentInformation: [Identification, Name, Description, Location, Purpose, IntendedUse, Scope, Revision, ...]
-                        if (!info.identification && typeof ia[0] === 'string') info.identification = ia[0];
-                        if (!info.name && typeof ia[1] === 'string') info.name = ia[1];
-                        if (!info.description && typeof ia[2] === 'string') info.description = ia[2];
-                        if (!info.location && typeof ia[3] === 'string') info.location = ia[3];
-                        if (typeof ia[4] === 'string') info.purpose = ia[4];
-                        if (typeof ia[5] === 'string') info.intendedUse = ia[5];
-                        if (typeof ia[7] === 'string') info.revision = ia[7];
-                    }
-                }
-            }
-
-            if (info.name || info.location || info.identification) {
-                results.push(info);
-            }
-        } else if (typeUpper === 'IFCDOCUMENTINFORMATION') {
-            // Direct IfcDocumentInformation (less common)
-            const info: DocumentInfo = {
-                identification: typeof attrs[0] === 'string' ? attrs[0] : undefined,
-                name: typeof attrs[1] === 'string' ? attrs[1] : undefined,
-                description: typeof attrs[2] === 'string' ? attrs[2] : undefined,
-                location: typeof attrs[3] === 'string' ? attrs[3] : undefined,
-                purpose: typeof attrs[4] === 'string' ? attrs[4] : undefined,
-                intendedUse: typeof attrs[5] === 'string' ? attrs[5] : undefined,
-                revision: typeof attrs[7] === 'string' ? attrs[7] : undefined,
-            };
-
-            if (info.name || info.location || info.identification) {
-                results.push(info);
-            }
-        }
-    }
-
-    return results;
-}
-
 // ============================================================================
 // Relationship Extraction
 // ============================================================================

@@ -20,6 +20,8 @@
  * `IfcGridAxis.SameSense` is ignored, as everywhere else the grid is read.
  */
 
+import { MutablePropertyView } from '@ifc-lite/mutations';
+import { AnchorEntityReader } from './resolve-anchor.js';
 import { EntityExtractor, type IfcDataStore } from '@ifc-lite/parser';
 import type { Vec2 } from './auto-space-detect.js';
 import { safeLengthUnitScale } from './length-unit-scale.js';
@@ -171,7 +173,14 @@ export function extractGridAxesForStorey(
   if (!store.source) return out;
   const extractor = new EntityExtractor(store.source);
   const lookup = createOverlayLookup(overlay);
-  const read: Reader = (id) => readEntity(store, extractor, overlay, id);
+  // #7304: native grid evidence and binding share effective named/positional records.
+  const nativeView = overlay instanceof MutablePropertyView ? overlay : undefined;
+  const effective = new AnchorEntityReader(store, nativeView);
+  // The public structural OverlayWallReader also accepts lightweight callers
+  // without named-edit methods. Preserve that existing positional-only contract.
+  const read: Reader = overlay && !nativeView
+    ? id => readEntity(store, extractor, overlay, id)
+    : id => effective.entity(id);
   const scale = store.source.byteLength > 0
     ? safeLengthUnitScale(store.source, store.entityIndex, 'extractGridAxesForStorey') ?? 1
     : 1;

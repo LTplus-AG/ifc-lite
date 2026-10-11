@@ -1,0 +1,7 @@
+{
+  "sourceCommit": "5e7dc1e4d59868638f34c4591ad262f3f844b417",
+  "changedFile": "apps/viewer/src/lib/assistant/artifacts/artifact-proposals.test.ts",
+  "sha256": "0a60817c732e2294c2f091986e403844620c73caad6b73bab611a6439eaaa8f7",
+  "qualificationSHA256": "6b91595f3586186644e818552b0464e94a1896b48c56fb51ea53ee13548b9e40",
+  "rootVerificationSHA256": "04616d14ba86fb9122bb60e1c19c2b2ce4d485122f129be5ac89a1051d4d8c26"
+}

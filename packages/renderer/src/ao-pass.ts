@@ -19,7 +19,6 @@
  * re-creates it on the next AO frame).
  */
 
-import { renderPassTimestampWrites } from './renderer-frame-timing.js';
 import { AO_UNIFORM_BYTES, aoTargetSize, packAoUniforms, type AoFrameParams } from './ao-params.js';
 import { aoShaderSource } from './shaders/ao.wgsl.js';
 
@@ -127,7 +126,6 @@ export class AoPass {
     const run = (label: string, view: GPUTextureView, pipeline: GPURenderPipeline, group: GPUBindGroup, load: GPULoadOp) => {
       const pass = frame.encoder.beginRenderPass({
         label,
-        timestampWrites: renderPassTimestampWrites(frame.encoder, label),
         colorAttachments: [{ view, loadOp: load, storeOp: 'store', clearValue: { r: 0, g: 0, b: 0, a: 0 } }],
       });
       pass.setPipeline(pipeline);

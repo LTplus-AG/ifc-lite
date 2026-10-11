@@ -59,7 +59,7 @@ export type StepAction =
   | { kind: 'flow'; flowId: string };
 export function stepAction(step: RecipeStep): StepAction {
   switch (step.kind) {
-    case 'analysis': return { kind: 'panel', panel: adapterFor(step.source).panelIds[0] };
+    case 'analysis': return { kind: 'panel', panel: adapterFor(step.source).actions.open.panel };
     case 'ask': return { kind: 'ask', source: step.source, prompt: step.prompt };
     case 'review':
       if (step.action === 'bcf.drafts') return { kind: 'panel', panel: 'clash' };

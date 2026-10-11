@@ -62,6 +62,7 @@ import { drawing2DTeardown } from './slices/drawing2DSlice.teardown.js';
 import { sheetTeardown } from './slices/sheetSlice.teardown.js';
 import { bcfTeardown } from './slices/bcfSlice.teardown.js';
 import { idsTeardown } from './slices/idsSlice.teardown.js';
+import { idsStudioTeardown } from './slices/idsStudioSlice.js';
 import { validationDraftTeardown } from './slices/validationDraftSlice.js';
 import { listTeardown } from './slices/listSlice.js';
 import { pinboardTeardown } from './slices/pinboardSlice.teardown.js';
@@ -107,6 +108,7 @@ export const viewerTeardownRegistry: readonly AnySliceTeardown[] = createTeardow
   sheetTeardown,
   bcfTeardown,
   idsTeardown,
+  idsStudioTeardown,
   validationDraftTeardown,
   listTeardown,
   pinboardTeardown,

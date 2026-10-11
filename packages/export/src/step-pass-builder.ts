@@ -302,6 +302,8 @@ export function buildExportPass(input: PassBuildInput): ExportPass {
     modifiedAttributes: new Map<number, Map<string, string>>(),
     newPropertySets: [],
     newQuantitySets: [],
+    typeOwnedQuantityIdsByEntity: new Map(),
+    addedTypeOwnedQuantityIds: new Map(),
     typeOwnedPsetNamesByEntity: new Map<number, Set<string>>(),
     typeOwnedPsetIdsByEntity: new Map<number, number[]>(),
     rewrittenEntityIds: new Set<number>(),

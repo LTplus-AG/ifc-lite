@@ -1,0 +1,15 @@
+exit: 1
+--- stdout
+## IDS changes: `<fixtures>/doors-clean.ids` → `<fixtures>/doors-rev-b.ids`
+
+### Added (2)
+
+- Fire rating on all doors: requirement added: Attribute ""Name"" must exist (`specifications[0].requirements[1]`)
+- Specification "Windows carry a thermal transmittance" added (`specifications[1]`)
+
+### Changed (3)
+
+- Document title changed from "Door fire ratings" to "Door fire ratings (rev B)" (`info.title`)
+- Specification "Fire rating on doors" renamed to "Fire rating on all doors" (`specifications[0]`)
+- Fire rating on all doors: requirement changed from required to optional: Property ""Pset_DoorCommon"."FireRating"" must exist (`specifications[0].requirements[0]`)
+--- stderr

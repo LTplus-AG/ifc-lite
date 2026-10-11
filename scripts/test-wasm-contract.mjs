@@ -116,6 +116,7 @@ function test(name, fn) {
 }
 runEarlyContracts({ IfcAPI, api, test, skip, root: ROOT_DIR });
 runScanOutlineContracts({ test }); // #6871, fixture-free
+await (await import('./lib/wasm-scan-refusal-contracts.mjs')).runScanRefusalContracts(api, test); // #7393, fixture-free
 await (await import('./lib/wasm-extrusion-bridge-contracts.mjs')).runExtrusionBridgeContracts(test, ROOT_DIR); // #6306
 if (!COLUMN_AVAILABLE) {
   skip('IFC-backed WASM contracts', `column fixture missing — ${FIXTURES_HINT}`);

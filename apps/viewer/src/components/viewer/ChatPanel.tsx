@@ -666,7 +666,7 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
     abortController.signal.addEventListener('abort', cancelEdits, { once: true });
     const handleComplete = (fullText: string) => settleTurnAfter(turnTelemetry, () => completeTurn(fullText),
       () => ({ scriptEdited: responseEditState.appliedAny || responseEditState.fallbackApplied }));
-    const outcome = await runModelRequest({ route, proxyUrl: PROXY_URL, messages: streamMessages, system: systemPrompt,
+    const outcome = await runModelRequest({ promptVersion: 'viewer.script-chat.v1', route, proxyUrl: PROXY_URL, messages: streamMessages, system: systemPrompt,
       signal: abortController.signal, maxOutputTokens: OUTPUT_TOKEN_RESERVE, budget: task.budget,
       timeoutMs: 120_000, onChunk: handleChunk,
       onUsageInfo: info => { if (ownsRequest()) setChatUsage(info); },

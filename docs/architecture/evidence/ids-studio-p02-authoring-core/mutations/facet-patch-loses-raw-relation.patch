@@ -1,0 +1,13 @@
+diff --git a/packages/ids-authoring/src/reducer/facet-ops.ts b/packages/ids-authoring/src/reducer/facet-ops.ts
+index 6b1568c0f..19c88f2a1 100644
+--- a/packages/ids-authoring/src/reducer/facet-ops.ts
++++ b/packages/ids-authoring/src/reducer/facet-ops.ts
+@@ -201,7 +201,7 @@ export function applyFacetPatch(doc: StudioDocument, forward: { opId: Uuid }, fa
+       facet = { ...facet, relation: patch.relation };
+     }
+     if (patch.rawRelation !== undefined) {
+-      undo.rawRelation = null;
++      undo.rawRelation = item.facet.type === 'partOf' ? (item.facet.rawRelation ?? null) : null;
+       facet = withKey(facet, 'rawRelation', patch.rawRelation);
+     }
+   }

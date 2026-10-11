@@ -5,16 +5,26 @@
     "declaration": false,
     "declarationMap": false,
     "allowImportingTsExtensions": true,
-    "types": ["node", "@webgpu/types"],
-    "typeRoots": ["../../node_modules/@types", "../../packages/renderer/node_modules"],
-    "paths": { "@ifc-lite/renderer": ["packages/renderer/dist/index.d.ts"] }
+    "types": [
+      "node",
+      "@webgpu/types"
+    ],
+    "typeRoots": [
+      "../../node_modules/@types",
+      "../../packages/renderer/node_modules"
+    ],
+    "paths": {
+      "@ifc-lite/renderer": [
+        "packages/renderer/dist/index.d.ts"
+      ]
+    }
   },
   "files": [
-    "./frame-gpu-rig.mts",
+    "./frame-gpu-chrome.ts",
     "./frame-gpu-night-history.test.ts",
     "./frame-gpu-night-profile.test.ts",
     "../../tests/benchmark/viewer-benchmark-page.ts",
-    "../../tests/benchmark/frames/frame-rig.spec.ts"
+    "../../tests/benchmark/viewer-benchmark.spec.ts"
   ],
   "include": [],
   "exclude": []

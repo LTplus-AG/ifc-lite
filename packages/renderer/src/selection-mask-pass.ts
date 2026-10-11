@@ -24,7 +24,6 @@
  * so the outline composite cannot tell which path wrote a pixel.
  */
 
-import { renderPassTimestampWrites } from './renderer-frame-timing.js';
 import type { WebGPUDevice } from './device.js';
 import { mainShaderSource } from './shaders/main.wgsl.js';
 import { selectionMaskFragmentSource } from './shaders/selection-mask.wgsl.js';
@@ -147,7 +146,6 @@ export class SelectionMaskPass {
       cleared.add(view);
       const visible = kind !== 'selectedAll';
       const pass = frame.encoder.beginRenderPass({
-        timestampWrites: renderPassTimestampWrites(frame.encoder, `selection-${kind}`),
         colorAttachments: [{
           view: visible ? targets.multisampledVisibleView ?? view : view,
           ...(visible && targets.multisampledVisibleView ? { resolveTarget: view } : {}),

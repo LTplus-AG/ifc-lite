@@ -42,14 +42,36 @@ IFC4 and IFC4X3 uploads use the canonical compatibility exporter after applying
 edits. It normalizes map units to metres. When the physical scale is one, supported
 map rotation and translation move into the original root `IfcLocalPlacement`
 frames; child placements, representations, openings and fills retain their
-original relationships. Other supported uniform scales use mapped Body
-representations under stricter ownership checks. These transformations preserve
+original relationships. Cesium ion evaluates `IfcLinearPlacement` without a
+transformed `PlacementRelTo`, so each linear placement is written as the
+equivalent `IfcLocalPlacement` (same parent, its resolved curve frame); a linear
+placement without `PlacementRelTo` is refused. Other supported uniform scales (for
+example the UTM 0.9996) give every product a fresh root placement and wrap its
+representations in a uniformly scaled mapped representation, under stricter
+ownership checks. Linear placements are resolved for that root and then
+bypassed, with or without `PlacementRelTo`; one whose `IfcAxis2PlacementLinear`
+sets `Axis` or `RefDirection` is refused. Besides Body geometry, curve-only
+representations such as an alignment's `Axis` or a `FootPrint` are carried
+through scaled; other non-Body representations are refused. Alignment layout
+parameters (segment lengths and start points) are not rewritten, so tools that
+rebuild an alignment from them rather than from its `Axis` curve are off by the
+map scale factor (0.04% at 0.9996). Type geometry that no occurrence
+instantiates gets the same scale at type level. An instance placed in the
+exported file, with an identity mapping target or one written in the exported
+coordinates, lands on the authored map coordinates; a target copied with a
+translation from the original file is off by that translation times one minus
+the scale. A type map nested inside another such map, or too deeply nested to
+leave room for the type-level wrapper and an instance, is refused.
+These transformations preserve
 physical map coordinates, project units, properties and authored shape data.
-Ordinary IFC downloads retain their original coordinate representation. IFC2X3
+Ordinary IFC downloads retain their original coordinate representation.
+Cesium ion currently tiles `IfcSectionedSolidHorizontal` sweeps (for example
+girders and pavement along an alignment) without their full alignment
+geometry, with or without this compatibility export. IFC2X3
 uploads keep their source schema and edits without an implicit upgrade.
 
 Unsupported coordinate consumers, ambiguous units or export warnings stop the
-upload before network transfer. For a model without georeferencing, set its
+upload before network transfer, and the dialog lists each reason. For a model without georeferencing, set its
 location in Cesium ion. No undocumented heading or placement override is sent.
 A successful upload starts tiling; follow the asset link to check its progress.
 
@@ -441,6 +463,15 @@ The PDF writer has no native abort contract, so its row offers no Cancel action.
 
 ## CSV Export
 
+The web viewer’s entities, properties, quantities and spatial hierarchy CSV commands
+share the same handler across the ribbon, command palette and mobile toolbar.
+They export the active model with pending native edits applied. In a federation,
+the Activity subject and existing export toast state that other loaded models
+are excluded. Each invocation has its own Activity row; Completed follows browser
+publication and Failed records writer or publication errors. Exports can finish
+after their initiating controls close. The Rust CSV writer has no abort contract,
+so these rows offer no Cancel action. An unavailable source creates no job.
+
 Export tabular data for spreadsheet applications:
 
 CSV is produced in Rust (`ifc-lite-export`) via `GeometryProcessor`. The `mode`
@@ -583,24 +614,40 @@ IFC4/IFC4X3 `North2D` constraint. Malformed metadata is refused atomically;
 the ordinary edited IFC content is retained without normalization patches.
 
 Non-unit uniform physical scale uses absolute logical product placements and
-scaled `IfcMappedItem` Body representations. Both paths preserve physical map
-coordinates, logical placement origins, GUIDs, properties and authored units.
-The remaining coordinate operation retains only project-to-metre conversion.
-Exactly neutral rotation/physical scale preserves the original operation and
-geometry; machine-epsilon sine roundoff with exact neutral cosine/scale also
-remains untouched.
+scaled `IfcMappedItem` representations: Body geometry, plus curve-only
+representations such as an alignment's `Axis` or a `FootPrint`. Both paths
+preserve physical map coordinates, logical placement origins, GUIDs, properties
+and authored units. The remaining coordinate operation retains only
+project-to-metre conversion. Exactly neutral rotation/physical scale preserves
+the original operation and geometry; machine-epsilon sine roundoff with exact
+neutral cosine/scale also remains untouched.
 
 Both paths require one map conversion, one project, SI metre-based project units,
-validated local 3D placements and identity 3D engineering contexts. The rigid
-path also accepts identity 3D sibling contexts explicitly declared by that same
+validated `IfcLocalPlacement` or `IfcLinearPlacement` chains and identity 3D
+engineering contexts. Alignments and linear placements are supported on both
+paths. The rigid path writes each reached linear placement as the equivalent
+`IfcLocalPlacement` and refuses one without `PlacementRelTo`. The scaled path
+composes the product's world frame through the chain, so it accepts linear
+placements with or without a parent. It refuses one it cannot resolve, and one
+whose `IfcAxis2PlacementLinear` sets `Axis` or `RefDirection`. The rigid path
+also accepts identity 3D sibling contexts explicitly declared by that same
 project, preserving the common Model/Plan engineering frame. Foreign contexts,
 unknown placement or connection-geometry consumers, malformed metadata and
-alignment/grid/structural consumers refuse atomically with explanatory warnings.
+grid/structural consumers refuse atomically with explanatory warnings.
 Represented products without placements are refused.
 
-The scaled Body path additionally requires unambiguous Body ownership and type
-maps reachable from actual products. It refuses voids/fills, annotations and
-other coordinate consumers it cannot preserve. Its added wrapper requires fewer
+The scaled path additionally requires unambiguous representation ownership. A
+type map no product instantiates is wrapped at type level with the same scale:
+it keeps its ID and owner, and its authored origin and representation move into
+a scaled inner map. An instance with an identity mapping target, or a target
+written in the exported coordinates, then lands on the authored map
+coordinates; a target copied with a translation from the original file does
+not. Such a map nested inside another one is refused, because it would be
+scaled twice, as is one whose mapped nesting leaves no room for both the
+type-level wrapper and an instance. The scaled path carries annotations, but refuses
+voids/fills, shape aspects, non-Body representations with surface items (for
+example annotation fills or bounding boxes) and other coordinate consumers it
+cannot preserve. Its added wrapper requires fewer
 than 31 existing mapped levels. The rigid path adds no wrapper: 31 mapped levels
 can retain their original per-leaf styles; cycles, excessive depth and reference
 work are still refused. Nonuniform scale remains unsupported.
@@ -1142,3 +1189,11 @@ compression, external resources, mirrored repeat and UV sets beyond
 `TEXCOORD_0` stop import with a diagnostic rather than produce an untextured
 success. Images use the existing inventory limits (32 MiB per encoded image,
 8192 px maximum edge, 16 megapixels per image).
+
+### Editing quantity sets owned by a type
+
+Default-history `MutablePropertyView.setQuantity` edits on an `IfcTypeObject` subtype save the replacement `IfcElementQuantity` in the type's `HasPropertySets`. A type is never placed in `IfcRelDefinesByProperties.RelatedObjects`. When another type shares the original definition, it retains that definition. Untouched physical quantity members retain their native IDs and attributes, including complex quantities; edited scalar members retain their source description, native unit reference and Formula when those fields were not edited. Unrelated property sets, including one with the same name as a quantity set, keep their ownership. Ordinary occurrence quantity edits continue to use `IfcRelDefinesByProperties`.
+
+Type-owned quantity edits preserve an existing explicit native unit when no replacement or removal is requested. A change of quantity dimension refuses export when that retained unit is incompatible with the new IFC measure type. Explicit unit removal remains intentional; compatible same-dimension edits preserve the native unit.
+
+New type-owned scalar quantity members with explicit unit intent must resolve a native unit reference before export. The new-member resolver currently supports assigned Length units; an unassigned requested Length unit or an explicit unit of another quantity dimension refuses instead of saving the value in implicit project units. This applies both to new type-owned sets and members copied into existing type-owned sets; ordinary occurrence serialization retains its existing contract. Adding the first scalar member to a native complex-only set is associated with that set through its source GlobalId, and its opaque members remain unchanged. Like every edited type-owned quantity set, the saved copy receives a fresh GlobalId, so look up the edited set on the type's `HasPropertySets` rather than by the source GlobalId. An edited native definition without a readable GlobalId is unavailable to the current reader and refuses export; an unchanged source definition is not made unreadable merely by lacking export identity.

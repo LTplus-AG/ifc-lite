@@ -1,0 +1,203 @@
+{
+  "status": "SOURCE_ONLY_PREPARED_UNRUN",
+  "worktree": "/tmp/ifc-6584-main-a2bb",
+  "sourceHead": "aab441cd86bb2fad448632b200affdf2e2d62734",
+  "frozenMain": "2a687c1ee0e9ca7e91e2f6af68dc9311af22e626",
+  "priorQualifiedHead": "05c496730332f4be8e5b4308370466317123b143",
+  "all12RuntimeTestDeltaFilesByteIdenticalPrior": true,
+  "sourcePins": {
+    "apps/viewer/src/components/viewer/useAppearanceSourceGeometry.ts": "fa0c3a2ab021a972fb8e0b687bbc047d6fa67efe1a7f571cf38bd6143891b80c",
+    "apps/viewer/src/components/viewer/useFederatedGeometry.real-ifc-release.test.tsx": "4a6bff269b01b4c648cf778b124118e9b5f68a28e416ee1183f7b488a6b5e22b",
+    "apps/viewer/src/components/viewer/useFederatedGeometry.streaming.test.tsx": "5e6fe541b842e7a3b1fc332e790404f5e44e9def1efd3f8784804203d73e0f08",
+    "apps/viewer/src/components/viewer/useFederatedGeometry.ts": "53216afb3197b8b8d0109a2a5730e6c229f0719982ca8e64b20a473ca8520fef",
+    "apps/viewer/src/lib/geometry-cpu-aliases.ts": "e3324e93cc4f6a3246273b7071aaf819011d882febb4c5acea28db00061bb072",
+    "apps/viewer/src/lib/geometry-cpu-appearance.test.ts": "824a285002697958f299e1145a1432cefe0dcd374ba5961d3a748b73ec25d640",
+    "apps/viewer/src/lib/geometry-cpu-buffers.ts": "179c366fafb47848eca16936cbffd74be29291f4a72ad2ee13902edf128c869a",
+    "apps/viewer/src/lib/geometry-cpu-release.ts": "5dae8336db131705959353981a7c8220b5a65d4b65477f0e74abe4715620a567",
+    "apps/viewer/src/lib/model-placement/placed-geometry.ts": "db4b5c0a04c40d0c279fec32928c3ffa14bf81019e75a570616b5b02c22e3dc1",
+    "apps/viewer/src/lib/released-mesh-provenance.ts": "e46a6232d903f5febfe0168a4e4355aaaac6c562396d91575a164a9a634fc5f8",
+    "apps/viewer/src/store/slices/dataSlice.ts": "1b011f386f29ad27d17b7a7f86338f1c5238a67d1c97f980e9d3ccbfb82c42cd",
+    "apps/viewer/src/test/geometry-cpu-aliases-gc.ts": "c5496cfe067ce31e592d771c3993bd60535f830fefa7646c63853fd01ce5d8bf",
+    "pnpm-lock.yaml": "3baf933ea880bd57d30dc2416184777af7488835c2a7eeff94ff84e6841eb4e4",
+    "Cargo.lock": "9272c9ef25f76480e23ad2282fba08e05836398e24706a77c3be55fd973db475",
+    "rust-toolchain.toml": "c2836f98a79a38903e78036882c16c530da1e7e45f365af8a7abcc170ef36daf",
+    "scripts/build-wasm.sh": "dae5e4e76cac9b9458953a51e8156bf496127cb35196a7d13f4e28d239d7d19b",
+    "packages/wasm/pkg/ifc-lite.d.ts": "54c9d0a52eb515e517d76726fefe5f6a63e553a81c1b10331a597965d14620f6"
+  },
+  "RustTree": "1a1acc4260011c591fd8ce3c5387bb7c10b42f20",
+  "dependencyLockUnchangedFromPrior": true,
+  "typeSurfaceUnchangedFromPrior": true,
+  "fixtures": [
+    {
+      "path": "apps/viewer/public/samples/hello-wall.ifc",
+      "expectedSHA256": "0ab20f4ea355ea9aa4fade7264b97ee9f9929addfa3961b2437c4381bd674014",
+      "expectedBytes": 79592,
+      "currentlyPresent": true,
+      "observedSHA256": "0ab20f4ea355ea9aa4fade7264b97ee9f9929addfa3961b2437c4381bd674014",
+      "admittedSource": "/tmp/ifc-6584/apps/viewer/public/samples/hello-wall.ifc",
+      "sourceSHA256": "0ab20f4ea355ea9aa4fade7264b97ee9f9929addfa3961b2437c4381bd674014",
+      "sourceOnly": "No links/copies performed; afterCPUadmission linkmanifestqualifiedFZK inignoredtests/models andverifyactualhash; preservecommittedBonsai."
+    },
+    {
+      "path": "tests/models/ara3d/AC20-FZK-Haus.ifc",
+      "expectedSHA256": "d42ab0dee01173106c16cd823b4614efe188fa15dd65195d95b9879bec59acc5",
+      "expectedBytes": 2526511,
+      "currentlyPresent": false,
+      "observedSHA256": null,
+      "admittedSource": "/tmp/ifc-6584/tests/models/ara3d/AC20-FZK-Haus.ifc",
+      "sourceSHA256": "d42ab0dee01173106c16cd823b4614efe188fa15dd65195d95b9879bec59acc5",
+      "sourceOnly": "No links/copies performed; afterCPUadmission linkmanifestqualifiedFZK inignoredtests/models andverifyactualhash; preservecommittedBonsai."
+    }
+  ],
+  "runtimeSetup": {
+    "currentlyMissingRuntime": true,
+    "admittedExistingRuntimeSource": "/tmp/ifc-6584/packages/wasm/pkg",
+    "copiedRuntimeWouldBeReusedNotNewBuild": true,
+    "requiredBeforeCopy": "Rusttree1a+dts54c9 equality thenactualWASM/JS/packagehashrecord; Turbo mayreplacepkg soactualPID probesdeterminein-test identities. Noexisting8b/b335relabel."
+  },
+  "serialEnvironment": {
+    "CARGO_BUILD_JOBS": "1",
+    "NODE_OPTIONS": "--max-old-space-size=6144",
+    "TURBO_CONCURRENCY": "1"
+  },
+  "stages": [
+    {
+      "name": "frozen-offline-dependencies",
+      "command": [
+        "pnpm",
+        "install",
+        "--offline",
+        "--frozen-lockfile",
+        "--ignore-scripts"
+      ],
+      "note": "Actuallynewinstall iffexecuted; priorAE27copiedloghistoricalonly."
+    },
+    {
+      "name": "fixture-runtime-preflight",
+      "note": "Afteradmission fillignoredFZK link/verifiedsameRustruntime, recordsourcehead/17pins/fixtureSHA/runtime; nootherfeaturechanges."
+    },
+    {
+      "name": "affected-root-controls",
+      "command": [
+        "pnpm",
+        "test",
+        "--filter=@ifc-lite/viewer",
+        "--env-mode=loose",
+        "--concurrency=1"
+      ],
+      "environment": {
+        "TEST_PATTERN": "useFederatedGeometry|geometry-cpu-appearance|dataSlice.test|cache-provenance|placement-cache|effective-classification-systems|selection-materials",
+        "IFC_SOURCE_ROOT": "/tmp/ifc-6584-main-a2bb",
+        "IFC_RUNTIME_REPORT": "/home/louistrue/.t3/artifacts/6584-main2a-qualification-plan-20261008/qualification/controls-runtime.jsonl"
+      },
+      "runtimeWitness": "NODE_OPTIONS --import artifactruntime-witness.mjs capturebefore/exitperPID foractualselectedtestfiles+GCchild; countrows/PIDsobserved.",
+      "scope": "Sameprevious104pattern; observeactualpass/fail/skip counts aftermainintegration, do nothardcode104green. RealBonsai primary+peer mesh/triangle/geometryhash witness andactualWeakRefArrayBufferGC required whenfixturesavailable; missingfixtures disclosedskip."
+    },
+    {
+      "name": "plain-root-typecheck",
+      "command": [
+        "pnpm",
+        "typecheck"
+      ],
+      "note": "TYPECHECKEDfile/packagecounts separate fromexecutedcontrols; programme comesfromroot command."
+    },
+    {
+      "name": "necessary-nine-light-gates",
+      "commands": [
+        {
+          "stage": "raw",
+          "command": [
+            "node",
+            "scripts/check-raw-entity-enumeration.mjs"
+          ],
+          "exitCode": 0
+        },
+        {
+          "stage": "module",
+          "command": [
+            "node",
+            "scripts/check-module-size.mjs"
+          ],
+          "exitCode": 0
+        },
+        {
+          "stage": "wiring",
+          "command": [
+            "node",
+            "scripts/check-test-wiring.mjs"
+          ],
+          "exitCode": 0
+        },
+        {
+          "stage": "source-text",
+          "command": [
+            "node",
+            "scripts/check-source-text-assertions.mjs"
+          ],
+          "exitCode": 0
+        },
+        {
+          "stage": "changesets",
+          "command": [
+            "node",
+            "scripts/check-changesets.mjs"
+          ],
+          "exitCode": 0
+        },
+        {
+          "stage": "MPL",
+          "command": [
+            "node",
+            "scripts/add-license-headers.mjs",
+            "--check"
+          ],
+          "exitCode": 0
+        },
+        {
+          "stage": "touched-oxlint",
+          "command": [
+            "pnpm",
+            "exec",
+            "oxlint",
+            "apps/viewer/src/lib/geometry-cpu-buffers.ts",
+            "apps/viewer/src/lib/geometry-cpu-aliases.ts",
+            "apps/viewer/src/lib/geometry-cpu-appearance.test.ts",
+            "apps/viewer/src/test/geometry-cpu-aliases-gc.ts"
+          ],
+          "exitCode": 0
+        },
+        {
+          "stage": "diff",
+          "command": [
+            "git",
+            "diff",
+            "--check"
+          ],
+          "exitCode": 0
+        },
+        {
+          "stage": "ci-path-coverage",
+          "command": [
+            "node",
+            "scripts/check-ci-path-coverage.mjs"
+          ],
+          "exitCode": 0
+        }
+      ]
+    }
+  ],
+  "historicalScope": "Canonical2003002/b953/05c qualification andfailedoldaggregate arehistorical, preservedunchanged. Newsourceaab/main2a notpreviouslyexecuted orpublished. No retry/cancelold05c CI.",
+  "claimBoundary": "Weak historicalCPU-buffer ownership and explicitlyregistered immutable/placed/appearance aliases only. No full6537 closure, automaticScene registration, OSresidentmemory, nativebrowser orperformance claim.",
+  "acceptanceBeforePublication": "Observedterminalcontrols/root/gates+source/fixture/runtimepins, independentarchiveverification, thenfreshnewheadCI andactualrawreview required; no ownmerge.",
+  "notPerformed": [
+    "install",
+    "fixture population",
+    "runtime copying",
+    "build",
+    "tests",
+    "typecheck",
+    "gates",
+    "native",
+    "publication"
+  ]
+}

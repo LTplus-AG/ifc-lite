@@ -1,0 +1,16 @@
+{
+  "command": [
+    "node",
+    "--test",
+    "--test-concurrency=1",
+    "--test-name-pattern=waits for observed root retirement",
+    "scripts/perf/frame-gpu-chrome-lifecycle.test.mjs"
+  ],
+  "exitCode": 0,
+  "started": "2026-10-08T17:38:41.727907+00:00",
+  "ended": "2026-10-08T17:38:42.420612+00:00",
+  "baselineFixtureSHA": "a04582c9c1f9d56bfb75b79d64da0b0c9df82ae6985ad2207dc1f6e191f97034",
+  "diagnosticFixtureSHA": "048aa7df97b08f2ab91dc530715278384337c0045b981ff288fba8fa89909fad",
+  "logSHA": "9bb651d504c897719e9038e6cb747585465350f1f77d55a3ec6030bf3ec9fbef",
+  "scope": "One positive fixture diagnostic; unchanged deadlines and production; earlysettlement observation only"
+}

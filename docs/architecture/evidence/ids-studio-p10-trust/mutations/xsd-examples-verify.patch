@@ -1,0 +1,13 @@
+diff --git b/packages/ids/src/constraints/xsd-examples.ts a/packages/ids/src/constraints/xsd-examples.ts
+index 0a7108270..bc87536b1 100644
+--- b/packages/ids/src/constraints/xsd-examples.ts
++++ a/packages/ids/src/constraints/xsd-examples.ts
+@@ -171,7 +171,7 @@ export function generatePatternExamples(pattern: string, options: PatternExample
+     return { ...result, supported: false, reason: err.message };
+   }
+   const constraint: IDSPatternConstraint = { type: 'pattern', pattern };
+-  const matches = (s: string) => (matchConstraint(constraint, s), true);
++  const matches = (s: string) => matchConstraint(constraint, s);
+   try {
+     matches('');
+   } catch (err) {

@@ -61,8 +61,9 @@ test('every registered analysis source drafts a native report with checked claim
     assert.equal(draft.document.aiReport?.language, 'fr');
     assert.equal(draft.document.aiReport?.citedRows.E2, `globalId=${source}-1|modelId=model-a`, 'cited rows keep their native identity');
     const text = draft.document.blocks.flatMap(block => block.kind === 'text' ? [block.text] : []).join('\n');
-    assert.match(text, new RegExp(`Source: ${source} `));
-    assert.match(text, /Included evidence: 5 of 7 native rows\.\nThis is a sample/);
+    // #7302: this draft explicitly requests French; provider prose and native facts stay verbatim.
+    assert.match(text, new RegExp(`Source : ${source} ·`));
+    assert.match(text, /Données incluses : 5 sur 7 lignes natives\.\nCeci est un échantillon/);
     const revised = reviseReportClaim(draft, 'C3', 'remove');
     assert.deepEqual(revised.claims.map(claim => claim.id), ['C1', 'C2', 'C4', 'C5'], 'removal keeps the other claim ids');
     assert.equal(reviseReportClaim(revised, 'C5', { text: 'E6 is a long pipe [E6].' }).claims.at(-1)?.status, 'unverifiable',

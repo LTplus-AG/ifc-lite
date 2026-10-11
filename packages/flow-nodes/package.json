@@ -31,6 +31,8 @@
     "@ifc-lite/export": "workspace:^",
     "@ifc-lite/extensions": "workspace:^",
     "@ifc-lite/flow": "workspace:^",
+    "@ifc-lite/ids": "workspace:^",
+    "@ifc-lite/ids-authoring": "workspace:^",
     "@ifc-lite/mutations": "workspace:^",
     "@ifc-lite/query": "workspace:^",
     "@ifc-lite/sandbox": "workspace:^",
@@ -38,9 +40,10 @@
     "exceljs": "^4.4.0"
   },
   "devDependencies": {
-    "@types/node": "^26.6.2",
+    "@types/node": "^26.6.4",
+    "ajv": "^8.17.1",
     "typescript": "^6.0.3",
-    "vitest": "^5.0.2"
+    "vitest": "^5.0.3"
   },
   "license": "MPL-2.0",
   "author": "Louis True",

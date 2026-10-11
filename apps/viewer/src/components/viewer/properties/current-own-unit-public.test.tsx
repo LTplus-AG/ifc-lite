@@ -54,13 +54,15 @@ for (const change of ['prefix', 'replacement', 'removal', 'unsupported', 'delete
       const model = useViewerStore.getState().models.get('arch'); assert.ok(model);
       useViewerStore.setState({ models: new Map([['arch', { ...model, ifcDataStore: source,
         maxExpressId: getMaxExpressId(source, model.geometryResult?.meshes ?? [], model.geometryResult?.pointClouds ?? []) }]]),
-        ifcDataStore: source, mutationViews: new Map(), storeEditors: new Map(), propertiesActiveTab: 'quantities', unitDisplayOverrides: {} });
+        ifcDataStore: source, mutationViews: new Map(), storeEditors: new Map(), propertiesActiveTab: 'quantities', unitDisplayOverrides: {},
+        editEnabled: true, collabRoomId: null, canCollabEdit: () => true, undoStacks: new Map(), redoStacks: new Map() });
       const current = getOrCreateMutationView(useViewerStore, 'arch'); assert.ok(current);
       // @raw-entity-enumeration-ok authentic source Project is located before its current UnitsInContext edit.
       const project = source.entityIndex.byType.get('IFCPROJECT')?.[0]; assert.ok(project);
       current.setPositionalAttribute(project, 8, null);
       if (change === 'prefix' || change === 'override') current.setPositionalAttribute(metre, 2, '.CENTI.');
-      else if (change === 'undo-redo') useViewerStore.getState().setPositionalAttribute('arch', metre, 2, '.CENTI.');
+      else if (change === 'undo-redo') assert.ok(useViewerStore.getState().setPositionalAttribute('arch', metre, 2, '.CENTI.'),
+        'the public edit-mode action accepts the native unit edit before testing its Undo/redo history');
       else if (change === 'unsupported') current.setPositionalAttribute(metre, 3, '.UNSUPPORTED.');
       else if (change === 'deleted') current.deleteEntity(metre);
       else current.setPositionalAttribute(volume, 2, change === 'replacement' ? `#${centimetre}` : null);
@@ -101,7 +103,8 @@ for (const change of ['prefix', 'replacement', 'removal', 'unsupported', 'delete
           useViewerStore.getState()[step]('arch');
           const expected = step === 'undo' ? 'm³' : 'cm³';
           const saved = await parse(editedModelBytes(source, current));
-          const reparsed = extractQuantitiesOnDemand(saved, f.id).flatMap(set => set.quantities).find(q => q.name === 'NetWitnessVolume'); assert.ok(reparsed);
+          const reparsed: ReturnType<typeof extractQuantitiesOnDemand>[number]['quantities'][number] | undefined =
+            extractQuantitiesOnDemand(saved, f.id).flatMap(set => set.quantities).find(q => q.name === 'NetWitnessVolume'); assert.ok(reparsed);
           assert.equal(reparsed.explicitUnit, expected);
           if (consumer === 'metadata') {
             assert.deepEqual(current.getQuantitiesForEntity(f.id).flatMap(set => set.quantities).find(q => q.name === 'NetWitnessVolume'), reparsed,

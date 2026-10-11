@@ -90,7 +90,7 @@ test('#7322 an old proposal refuses a fresh byte-identical source/evaluation own
   const f = await seed(t); if (!f) return;
   const old = proposal(); recomputeZoneAssignmentsNow(); assert.throws(() => prepareZoneEmission(useViewerStore, old), /differs/, 'a fresh actual evaluation has its own native owner, even when values match');
   const prepared = prepareZoneEmission(useViewerStore, proposal()), original = useViewerStore.getState().models.get('bonsai')!;
-  const reloaded = await parseIfc(new Uint8Array(f.store.source)); assert.deepEqual(reloaded.source, f.store.source, 'native reload has identical source bytes'); useViewerStore.setState({ models: new Map([['bonsai', { ...original, ifcDataStore: reloaded }]]) });
+  const reloaded = await parseIfc(f.store.source.materialize()); assert.deepEqual(reloaded.source.materialize(), f.store.source.materialize(), 'native reload has identical source bytes'); useViewerStore.setState({ models: new Map([['bonsai', { ...original, ifcDataStore: reloaded }]]) });
   assert.throws(() => prepared.commit('same-ID source reload'), /source|changed/);
   recomputeZoneAssignmentsNow(); assert.throws(() => prepareZoneEmission(useViewerStore, old), /differs|unavailable/, 'a reloaded source must refuse old evidence, including native unavailable-unit refusal');
 });
@@ -98,18 +98,18 @@ test('#7322 an old proposal refuses a fresh byte-identical source/evaluation own
 test('#7322 native federated evaluation emits only explicitly chosen model and set, retaining other set outputs', async t => {
   const f = await seed(t); if (!f) return;
   const primary = useViewerStore.getState().models.get('bonsai')!;
-  const peerStore = await parseIfc(new Uint8Array(f.store.source));
+  const peerStore = await parseIfc(f.store.source.materialize());
   useViewerStore.setState({ models: new Map([['bonsai', primary], ['peer', { ...primary, id: 'peer', idOffset: 1000000, ifcDataStore: peerStore }]]) });
   f.meshes.forEach(mesh => f.scene.addMeshData({ ...mesh, expressId: mesh.expressId + 1000000 }));
   recomputeZoneAssignmentsNow();
   assert.equal(useViewerStore.getState().resolveGlobalIdFromModels(f.wall.expressId + 1000000)?.modelId, 'peer');
   assert.ok(useViewerStore.getState().zoneAssignments.get(f.wall.expressId + 1000000)?.[f.zoneSet.id], 'the actual native evaluator includes the independent loaded peer');
   const p = proposal();
-  const reordered = { ...p, expected: Object.fromEntries(Object.entries(p.expected).reverse()) };
+  const reordered = { ...p, expected: Object.fromEntries(Object.entries(p.expected as Record<string, unknown>).reverse()) };
   const receipt = prepareZoneEmission(useViewerStore, reordered).commit('explicit Bonsai only');
   assert.deepEqual(receipt.batches.map(row => row.modelId), ['bonsai']);
   assert.equal(useViewerStore.getState().mutationViews.has('peer'), false);
-  assert.equal((await parseIfc(new Uint8Array(peerStore.source))).entityIndex.byType.get('IFCSPATIALZONE')?.length ?? 0, 0);
+  assert.equal((await parseIfc(peerStore.source.materialize())).entityIndex.byType.get('IFCSPATIALZONE')?.length ?? 0, 0);
   const other = { ...f.zoneSet, id: 'separate-zone-set', name: 'Independent native sections' };
   useViewerStore.setState({ zoneSets: [f.zoneSet, other] }); recomputeZoneAssignmentsNow();
   const choice = nativeZoneEmissionEvidence(useViewerStore.getState(), 'bonsai').choices.find(row => row.zoneSetId === other.id && row.status === 'available'); assert.ok(choice?.expected);

@@ -22,6 +22,7 @@ import { fixtureModel } from '@/test/store-fixture';
 import { useViewerStore } from '@/store';
 import { posthog } from '@/lib/analytics';
 import { setGlobalRendererRef } from '@/hooks/useBCF';
+import { installViewportCaptureBoundary } from '@/test/viewport-capture-boundary';
 import { parseFixtureModel } from './anonymized-export/anonymized-export-fixture.test-support';
 import { GLBExportDialog } from './GLBExportDialog';
 import { MobileToolbar } from './MobileToolbar';
@@ -125,6 +126,7 @@ describe('every model export is filed under the model name (#5833)', () => {
     canvas.dataset.viewport = 'main';
     canvas.toDataURL = () => 'data:image/png;base64,AA==';
     document.body.appendChild(canvas);
+    const releaseCapture = installViewportCaptureBoundary(canvas);
     try {
       for (const surface of ['classic', 'ribbon', 'palette'] as const) {
         const before = downloadedNames().length;
@@ -135,7 +137,7 @@ describe('every model export is filed under the model name (#5833)', () => {
         await commands().handleExportCSV('properties');
         await commands().handleExportCSV('quantities');
         await commands().handleExportCSV('spatial');
-        commands().handleScreenshot();
+        await commands().handleScreenshot();
         assert.deepEqual(downloadedNames().slice(before), [
           'Haus -2_data.json',
           'Haus -2_entities.csv',
@@ -155,6 +157,7 @@ describe('every model export is filed under the model name (#5833)', () => {
         cleanup();
       }
     } finally {
+      releaseCapture();
       canvas.remove();
     }
   });

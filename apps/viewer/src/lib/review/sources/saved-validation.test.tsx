@@ -76,7 +76,7 @@ test('#7091 older count-only snapshots remain valid and cannot invent historical
   const saved = newSavedReport(legacy, 'Older native report'); assert.ok(validateSavedReport(saved));
   assert.equal(await useViewerStore.getState().saveValidationReportEntry(saved), saved.id);
   assert.deepEqual(savedFindings(), []);
-  assert.ok(captureReviewSnapshot().runs.some(run => run.incomplete.some(gap => gap.detail?.includes('older count-only'))));
+  assert.ok(captureReviewSnapshot().runs.some(run => run.incomplete.some(gap => gap.message?.labelKey === 'reviewWorkspace.reexamination.countOnly')));
 });
 
 test('#7091 missing native GlobalIds resolve only against the original evaluated model and survive scene removal', async t => {

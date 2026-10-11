@@ -114,6 +114,27 @@ describe('ids.* flow nodes', () => {
     expect(r.log.find((l) => l.level === 'error')?.message).toMatch(/cannot read model data/);
   });
 
+  it('lint and validate refuse an input that is not an IDS document, naming the node', async () => {
+    for (const type of ['ids.lint', 'ids.validate']) {
+      const g = graph(
+        [
+          { id: 'src', type: 'core.string', params: { value: 'not a document' } },
+          { id: 'n', type, params: {} },
+        ],
+        [edge('src', 'value', 'n', 'ids')],
+      );
+      const r = await runFlow(g, { host: host(), registry, features: headlessFeatures() });
+      expect(r.ok).toBe(false);
+      expect(r.log.find((l) => l.level === 'error')?.message).toMatch(new RegExp(`${type.replace('.', '\\.')}: the "ids" input is not an IDS document from ids.load`));
+    }
+  });
+
+  it('load refuses malformed XML', async () => {
+    const r = await runFlow(graph([{ id: 'load', type: 'ids.load', params: { xml: '<ids><info>' } }]), { host: host(), registry, features: headlessFeatures() });
+    expect(r.ok).toBe(false);
+    expect(r.log.find((l) => l.level === 'error')).toBeTruthy();
+  });
+
   it('load refuses an empty input', async () => {
     const r = await runFlow(graph([{ id: 'load', type: 'ids.load', params: {} }]), { host: host(), registry, features: headlessFeatures() });
     expect(r.ok).toBe(false);

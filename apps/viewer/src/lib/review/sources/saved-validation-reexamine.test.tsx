@@ -35,7 +35,11 @@ import { createContentBackup, parseContentBackup, importContentBackup } from '@/
 import { blankDocument } from '@/lib/document/presets';
 import { parseDocumentFile } from '@/lib/document/persistence';
 import { renderPanelBody } from '@/lib/panels/renderPanelBody';
-import { cleanup, render, waitFor } from '@/test/render';
+import { cleanup, click, render, waitFor } from '@/test/render';
+import { reviewFindingRow } from '../assistant';
+import { cardDescription } from '../bcf-draft';
+import { buildCards } from '../cards';
+import { reviewDocument } from '../report';
 import { captureReviewSnapshot } from '../collect';
 import type { ReviewFinding } from '../types';
 
@@ -81,6 +85,7 @@ async function savedHeadRun(t: TestContext) {
   return { pair, baseline, saved };
 }
 
+const note = (key: string) => ({ labelKey: `reviewWorkspace.reexamination.${key}` });
 const findingFor = (globalId: string) => savedFindings().filter(row => row.elements[0]?.globalId === globalId);
 
 test('#7371 a complete compatible native rerun re-examines persisted saved failures: persisting rows and one resolution candidate', async t => {
@@ -99,12 +104,14 @@ test('#7371 a complete compatible native rerun re-examines persisted saved failu
   assert.equal(resolved.length, 1);
   assert.equal(resolved[0].lifecycle, 'no-longer-observed');
   assert.equal(resolved[0].nativeStatus, 'failed', 'a candidate never rewrites the saved native status');
-  assert.ok(resolved[0].detail.includes('Current native re-examination: resolved'));
+  assert.deepEqual(resolved[0].notes, [note('resolved')]);
   const others = savedFindings().filter(row => row.elements[0]?.globalId !== PLUMBING_WALL);
   assert.equal(others.length, failingGlobalIds(baseline).length - 1);
-  assert.ok(others.every(row => row.lifecycle === 'persistent' && row.detail.includes('Current native re-examination: persisting')));
+  assert.ok(others.every(row => row.lifecycle === 'persistent' && JSON.stringify(row.notes) === JSON.stringify([note('persisting')])));
   assert.ok(savedRuns().every(run => run.temporal === 'historical' && !run.complete
-    && run.incomplete.some(gap => gap.detail?.includes('the current compatible native run re-examined them'))));
+    && run.incomplete.some(gap => gap.message?.labelKey === 'reviewWorkspace.reexamination.compatible')
+    && !run.incomplete.some(gap => gap.message?.labelKey === 'reviewWorkspace.reexamination.compatiblePartial')),
+    'every saved row was checked again, so the run may say "each"');
 
   // A candidate stays distinct from a human decision and from native results.
   assert.deepEqual((await loadValidationReports()).find(item => item.id === saved.id), before);
@@ -127,6 +134,42 @@ test('#7371 a complete compatible native rerun re-examines persisted saved failu
   assert.ok(!states.includes('not-evaluated'));
 });
 
+/** Open every card the way a reviewer does and return what the panel shows. */
+async function reviewText(): Promise<string> {
+  const ui = render(renderPanelBody('review', () => {}));
+  await waitFor(() => ui.querySelectorAll('[data-review-card]').length > 0, 'Review cards');
+  // One card is open at a time, so read each card while it is open.
+  let text = ui.textContent ?? '';
+  const cards = () => [...ui.querySelectorAll('[data-review-card]')];
+  for (let index = 0; index < cards().length; index++) {
+    const toggle = cards()[index].querySelector('button[aria-expanded="false"]');
+    if (toggle) click(toggle);
+    text += cards()[index].textContent ?? '';
+  }
+  cleanup();
+  return text;
+}
+const CODES = /\b(?:noCurrentRun|notEvaluated|definitionDiffers|runIncomplete|entityNotEvaluated|persisting|identityAmbiguous)\b/;
+
+test('#7371 follow-up: Review labels a still-failing saved row against the current run, in plain language', async t => {
+  const source = await savedHeadRun(t); if (!source) return;
+  const { pair } = source;
+  const idle = await reviewText();
+  assert.ok(idle.includes('Saved failures are historical. No matching current run has checked them again.'), 'the no-current-run sentence is clean');
+  assert.doesNotMatch(idle, CODES);
+
+  const view = new MutablePropertyView(pair.head.ifcDataStore.properties, 'B');
+  view.setProperty(pair.head.ifcDataStore.entities.getExpressIdByGlobalId(PLUMBING_WALL), 'Pset_WallCommon', 'IsExternal', 'no', PropertyValueType.Label);
+  publish(await runIds(pair, 'B', { view }));
+  const shown = await reviewText();
+  // The saved row IS the earlier run: its counterpart is the current run, never "the earlier run".
+  assert.ok(shown.includes('Still in the current run, with different failures'), 'a changed row is told apart');
+  assert.ok(shown.includes('The current run still fails this element on the same requirements.'));
+  assert.ok(shown.includes('The current run still fails this element, but on different requirements or values.'));
+  assert.ok(!shown.includes('Also in the earlier run'));
+  assert.doesNotMatch(shown, CODES);
+});
+
 test('#7371 changed requirements persist as changed; a capped rerun cannot resolve or see unevaluated rows', async t => {
   const source = await savedHeadRun(t); if (!source) return;
   const { pair, baseline } = source;
@@ -138,8 +181,12 @@ test('#7371 changed requirements persist as changed; a capped rerun cannot resol
   view.setProperty(target.expressId, 'Pset_WallCommon', 'IsExternal', 'no', PropertyValueType.Label);
   publish(await runIds(pair, 'B', { view }));
   const [changed] = findingFor(target.globalId);
-  assert.equal(changed.lifecycle, 'persistent');
-  assert.ok(changed.detail.includes('Current native re-examination: changed'), changed.detail.join(' | '));
+  assert.equal(changed.lifecycle, 'changed', 'different failed requirements stay distinguishable from the same failure');
+  assert.deepEqual(changed.notes, [note('changed')]);
+  // Assistant evidence, report text and BCF drafts carry the same sentence in English, never the code.
+  const row = reviewFindingRow(changed);
+  assert.ok(row.detail.includes('The current run still fails this element, but on different requirements or values.'), row.detail.join(' | '));
+  assert.ok(row.run.incomplete.includes('partial-source: Only the failed elements were saved. The matching current run checked each of them again.'));
 
   // A native evaluation cap that still evaluates the corrected wall: an explicit pass, but an incomplete run.
   const position = walls.entityResults.findIndex(entity => entity.globalId === PLUMBING_WALL);
@@ -152,11 +199,19 @@ test('#7371 changed requirements persist as changed; a capped rerun cannot resol
   publish(capped);
   const [incomplete] = findingFor(PLUMBING_WALL);
   assert.equal(incomplete.lifecycle, 'not-evaluated', 'an incomplete run never yields a resolution candidate');
-  assert.ok(incomplete.detail.includes('Current native re-examination: notEvaluated (runIncomplete)'));
+  assert.deepEqual(incomplete.notes, [note('runIncomplete')]);
+  // A compatible but capped run skipped rows: the run never claims it checked each of them.
+  const skipped = savedFindings().filter(row => row.lifecycle === 'not-evaluated').length;
+  assert.ok(skipped > 0);
+  const partial = (count: number) => savedRuns().every(run => !run.incomplete.some(gap => gap.message?.labelKey === 'reviewWorkspace.reexamination.compatible')
+    && run.incomplete.some(gap => gap.message?.labelKey === 'reviewWorkspace.reexamination.compatiblePartial'
+      && gap.message.params?.count === count && gap.message.params?.total === savedFindings().length));
+  assert.ok(partial(skipped), JSON.stringify(savedRuns().map(run => run.incomplete)));
+  assert.ok(reviewFindingRow(incomplete).run.incomplete.some(line => line.includes(`but ${skipped} of ${savedFindings().length} could not be checked`)));
   // A tighter cap leaves saved rows without any current result at all.
   publish(await runIds(pair, 'B', { maxEntities: 1, view: fixed }));
   assert.ok(savedFindings().some(row => row.lifecycle === 'not-evaluated'
-    && row.detail.includes('Current native re-examination: notEvaluated (entityNotEvaluated)')));
+    && JSON.stringify(row.notes) === JSON.stringify([note('entityNotEvaluated')])));
 });
 
 test('#7371 incompatible, unknown or older evidence stays explicitly not evaluated', async t => {
@@ -166,7 +221,7 @@ test('#7371 incompatible, unknown or older evidence stays explicitly not evaluat
   view.setProperty(pair.head.ifcDataStore.entities.getExpressIdByGlobalId(PLUMBING_WALL), 'Pset_WallCommon', 'IsExternal', true, PropertyValueType.Boolean);
   const refused = (reason: string) => {
     assert.ok(savedFindings().every(row => row.lifecycle === 'not-evaluated'), reason);
-    assert.ok(savedRuns().some(run => run.incomplete.some(gap => gap.detail?.includes(reason))), reason);
+    assert.ok(savedRuns().some(run => run.incomplete.some(gap => gap.message?.labelKey === `reviewWorkspace.reexamination.${reason}`)), reason);
   };
 
   publish(await runIds(pair, 'B', { view, edit: xml => xml.replace('name="Walls are external"', 'name="Walls are external (revised)"') }));
@@ -192,6 +247,31 @@ test('#7371 incompatible, unknown or older evidence stays explicitly not evaluat
   assert.ok(await useViewerStore.getState().saveValidationReportEntry(newSavedReport(older.snapshot, 'Older saved run')));
   publish(await runIds(pair, 'B', { view }));
   refused('definitionNotRecorded');
+});
+
+/** What the report text and the BCF description of the plumbing wall's saved card say. */
+function exportedText(): { report: string; bcf: string } {
+  const { cards, totals } = buildCards(savedFindings(), []);
+  const card = cards.find(item => item.findings.some(row => row.elements[0]?.globalId === PLUMBING_WALL)); assert.ok(card);
+  const document = reviewDocument('R', [card], totals, { version: 1, id: 'w', name: 'w', decisions: [] });
+  return { report: document.blocks.map(block => block.kind === 'text' ? block.text : '').join('\n'), bcf: cardDescription(card) };
+}
+
+test('#7371 follow-up: report text and BCF descriptions say why a saved failure was not checked again', async t => {
+  const source = await savedHeadRun(t); if (!source) return;
+  const { pair } = source;
+  const historical = 'Saved failures are historical. No matching current run has checked them again.';
+  const idle = exportedText();
+  assert.ok(idle.report.includes(historical), 'no current run: report');
+  assert.ok(idle.bcf.includes(historical), 'no current run: BCF description');
+
+  publish(await runIds(pair, 'B', { edit: xml => xml.replace('name="Walls are external"', 'name="Walls are external (revised)"') }));
+  const edited = exportedText();
+  const differs = 'Not checked again: the current run used different or edited checks.';
+  for (const text of [edited.report, edited.bcf]) {
+    assert.ok(text.includes(historical) && text.includes(differs), text);
+    assert.doesNotMatch(text, /definitionDiffers|noCurrentRun/);
+  }
 });
 
 test('#7371 recorded definitions survive document copies and backup import, and copies re-examine identically', async t => {

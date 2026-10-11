@@ -10,24 +10,26 @@
  * `lib/ids-studio/session.ts`) and `idsStudioUndo` / `idsStudioRedo`, which
  * replay already-gated inverses. Opening a document replaces it wholesale; it
  * is not an edit.
+ *
+ * Lazy boundary: this slice is part of the root store, so it imports NOTHING
+ * at runtime from `@ifc-lite/ids-authoring` (types only). The authoring
+ * runtime (`lib/ids-studio/runtime.ts`) is installed by `loadIdsStudioRuntime`,
+ * which the Studio panel's lazy chunk awaits before it mounts. The actions stay
+ * synchronous; called before the runtime is installed, `idsStudioOpen` throws
+ * and `idsStudioDispatch` refuses with an issue, never a silent no-op.
  */
 
 import type { StateCreator } from 'zustand';
-import {
-  canRedo,
-  canUndo,
-  createStudioState,
-  locateNode,
-  redo,
-  undo,
-  type GateIssue,
-  type StudioDocument,
-  type StudioOp,
-  type StudioState,
-  type Uuid,
+import type {
+  GateIssue,
+  StudioDocument,
+  StudioOp,
+  StudioState,
+  Uuid,
 } from '@ifc-lite/ids-authoring';
-import { dispatchStudioOps, type StudioDispatchInfo } from '@/lib/ids-studio/session';
+import type { StudioDispatchInfo } from '@/lib/ids-studio/session';
 import type { StudioContexts } from '@/lib/ids-studio/context';
+import type { IdsStudioRuntime } from '@/lib/ids-studio/runtime';
 import { defineSliceTeardown, notApplicable } from '../teardown.js';
 
 export type IdsStudioView = 'inspector' | 'xml';
@@ -48,6 +50,8 @@ export interface IdsStudioRejection {
 }
 
 export interface IdsStudioSlice {
+  /** The authoring runtime; `null` until `loadIdsStudioRuntime` installs it. */
+  idsStudioRuntime: IdsStudioRuntime | null;
   /** The open document and its history; `null` until one is created or opened. */
   idsStudioState: StudioState | null;
   /** Bumps on every document change, undo and redo included. */
@@ -60,6 +64,7 @@ export interface IdsStudioSlice {
   idsStudioView: IdsStudioView;
   idsStudioFixPreview: IdsStudioFixPreview | null;
 
+  /** Throws when the authoring runtime is not installed yet (see `loadIdsStudioRuntime`). */
   idsStudioOpen: (doc: StudioDocument) => void;
   idsStudioClose: () => void;
   /** Gate + commit as one undo step. Refused batches change nothing. */
@@ -68,6 +73,7 @@ export interface IdsStudioSlice {
   idsStudioRedo: () => void;
   idsStudioSelect: (id: Uuid | null) => void;
   idsStudioSetContexts: (contexts: StudioContexts) => void;
+  idsStudioSetRuntime: (runtime: IdsStudioRuntime) => void;
   idsStudioSetView: (view: IdsStudioView) => void;
   idsStudioSetFixPreview: (preview: IdsStudioFixPreview | null) => void;
   idsStudioDismissRejection: () => void;
@@ -78,22 +84,36 @@ const LOADING_ISSUE: GateIssue = {
   message: 'The IFC schema tables are still loading; nothing was changed.',
 };
 
+const RUNTIME_LOADING_ISSUE: GateIssue = {
+  ...LOADING_ISSUE,
+  message: 'The IDS Studio authoring runtime is still loading; nothing was changed.',
+};
+
+/** Thrown by an action that cannot refuse with data, when called before the runtime is installed. */
+const IDS_STUDIO_RUNTIME_NOT_LOADED = 'IDS Studio authoring runtime is not loaded; await loadIdsStudioRuntime() first.';
+
 /** Keep the selection only while its node still exists (undo may remove it). */
-function liveSelection(doc: StudioDocument, id: Uuid | null): Uuid | null {
+function liveSelection(runtime: IdsStudioRuntime, doc: StudioDocument, id: Uuid | null): Uuid | null {
   if (!id) return null;
-  return id === doc.nodes.document || locateNode(doc, id) ? id : null;
+  return id === doc.nodes.document || runtime.locateNode(doc, id) ? id : null;
 }
 
 export const createIdsStudioSlice: StateCreator<IdsStudioSlice, [], [], IdsStudioSlice> = (set, get) => {
-  function replace(state: StudioState): void {
+  function runtime(): IdsStudioRuntime {
+    const installed = get().idsStudioRuntime;
+    if (!installed) throw new Error(IDS_STUDIO_RUNTIME_NOT_LOADED);
+    return installed;
+  }
+  function replace(rt: IdsStudioRuntime, state: StudioState): void {
     set({
       idsStudioState: state,
       idsStudioRevision: get().idsStudioRevision + 1,
-      idsStudioSelection: liveSelection(state.doc, get().idsStudioSelection),
+      idsStudioSelection: liveSelection(rt, state.doc, get().idsStudioSelection),
       idsStudioFixPreview: null,
     });
   }
   return {
+    idsStudioRuntime: null,
     idsStudioState: null,
     idsStudioRevision: 0,
     idsStudioSelection: null,
@@ -104,7 +124,7 @@ export const createIdsStudioSlice: StateCreator<IdsStudioSlice, [], [], IdsStudi
 
     idsStudioOpen: (doc) => {
       set({
-        idsStudioState: createStudioState(doc),
+        idsStudioState: runtime().createStudioState(doc),
         idsStudioRevision: get().idsStudioRevision + 1,
         idsStudioSelection: null,
         idsStudioRejection: null,
@@ -116,29 +136,35 @@ export const createIdsStudioSlice: StateCreator<IdsStudioSlice, [], [], IdsStudi
         idsStudioRejection: null, idsStudioFixPreview: null });
     },
     idsStudioDispatch: (ops, info) => {
-      const { idsStudioState: state, idsStudioContexts: contexts } = get();
+      const { idsStudioState: state, idsStudioContexts: contexts, idsStudioRuntime: rt } = get();
       if (!state) return { ok: false, issues: [{ ...LOADING_ISSUE, message: 'No IDS document is open.' }] };
       const refuse = (issues: GateIssue[]): IdsStudioDispatchOutcome => {
         set({ idsStudioRejection: { issues, ops, ...(info?.label ? { label: info.label } : {}) } });
         return { ok: false, issues };
       };
+      if (!rt) return refuse([RUNTIME_LOADING_ISSUE]);
       if (!contexts) return refuse([LOADING_ISSUE]);
-      const result = dispatchStudioOps(state, ops, contexts.gate, info);
+      const result = rt.dispatchStudioOps(state, ops, contexts.gate, info);
       if (!result.ok) return refuse(result.issues);
-      if (result.state !== state) replace(result.state);
+      if (result.state !== state) replace(rt, result.state);
       set({ idsStudioRejection: null });
       return { ok: true };
     },
     idsStudioUndo: () => {
       const state = get().idsStudioState;
-      if (state && canUndo(state)) replace(undo(state));
+      if (!state) return;
+      const rt = runtime();
+      if (rt.canUndo(state)) replace(rt, rt.undo(state));
     },
     idsStudioRedo: () => {
       const state = get().idsStudioState;
-      if (state && canRedo(state)) replace(redo(state));
+      if (!state) return;
+      const rt = runtime();
+      if (rt.canRedo(state)) replace(rt, rt.redo(state));
     },
     idsStudioSelect: (id) => set({ idsStudioSelection: id }),
     idsStudioSetContexts: (contexts) => set({ idsStudioContexts: contexts }),
+    idsStudioSetRuntime: (rt) => set({ idsStudioRuntime: rt }),
     idsStudioSetView: (view) => set({ idsStudioView: view }),
     idsStudioSetFixPreview: (preview) => set({ idsStudioFixPreview: preview }),
     idsStudioDismissRejection: () => set({ idsStudioRejection: null }),

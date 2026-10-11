@@ -36,6 +36,7 @@ import type { IfcDataStore } from '@ifc-lite/parser';
 import { writeBCF, type BCFProject, type BCFViewpoint } from '@ifc-lite/bcf';
 import { useViewerStore, type ViewerState } from '@/store';
 import { useBCF } from './useBCF.js';
+import { registerViewportCapture } from '@/lib/viewport-capture';
 import { StoreEditor } from '@ifc-lite/mutations';
 import { generateIfcGuid } from '@ifc-lite/encoding';
 import { BACK_WALL, SAMPLE_MODEL, parseIfc, seedAuthoringSample } from '@/test/authoring-sample-fixture';
@@ -62,6 +63,8 @@ const dataStore = {
 
 let submittedWork: Promise<void> = Promise.resolve();
 const renderer = {
+  renderWithResult: () => true,
+  requestRender: () => {},
   getGPUDevice: () => ({ queue: { onSubmittedWorkDone: () => submittedWork } }),
   getCamera: () => ({
     getPosition: () => ({ x: 10, y: 5, z: 20 }),
@@ -75,16 +78,19 @@ const renderer = {
 
 let api: ReturnType<typeof useBCF> | null = null;
 let root: Root | null = null;
+const snapshotCanvas = { toDataURL: () => 'data:image/png;base64,c25hcHNob3Q=' } as unknown as HTMLCanvasElement;
+let unregisterCapture: (() => void) | undefined;
 
 function Probe(): null {
   api = useBCF({
     rendererRef: { current: renderer },
-    canvasRef: { current: { toDataURL: () => 'data:image/png;base64,c25hcHNob3Q=' } as HTMLCanvasElement },
+    canvasRef: { current: snapshotCanvas },
   });
   return null;
 }
 
 beforeEach(async () => {
+  unregisterCapture = registerViewportCapture(renderer, snapshotCanvas, () => ({}));
   submittedWork = Promise.resolve();
   useViewerStore.setState({
     models: new Map(),
@@ -108,6 +114,7 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
+  unregisterCapture?.(); unregisterCapture = undefined;
   const current = root;
   root = null;
   api = null;

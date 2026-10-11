@@ -17,7 +17,7 @@
  * (deleted, unevaluated, duplicated, errored) stays not evaluated.
  */
 
-import type { ValidationReport } from '@ifc-lite/ids';
+import type { SpecificationResult, ValidationReport } from '@ifc-lite/ids';
 import { capturedReportModelScope } from '../../document/report-provenance';
 import type { IdsReportBlock } from '../../document/ids-report-types';
 import { byGlobalId, failingSignature, hasGap } from '../../compare/run-reconcile-validation';
@@ -31,7 +31,7 @@ export interface CurrentValidationRun {
   stamped: boolean;
 }
 
-/** Why a saved row was not compared. Codes are stable; Review prints them as native detail. */
+/** Why a saved row was not compared. Codes are stable; Review translates each into a plain sentence. */
 export type ReexaminationGap =
   | 'noCurrentRun' | 'definitionNotRecorded' | 'definitionUnknown' | 'definitionDiffers'
   | 'runFreshnessUnknown' | 'runStale' | 'scopeUnknown' | 'scopeDiffers'
@@ -62,6 +62,17 @@ const definitions = new WeakMap<ValidationReport, ReturnType<typeof validationDe
 function currentDefinition(report: ValidationReport) {
   if (!definitions.has(report)) definitions.set(report, validationDefinition(report));
   return definitions.get(report) ?? null;
+}
+
+/** One check's results for one model, built once per check and model, not once per saved row (#7371 follow-up):
+ * a report is immutable once published, so Review's recomputes reuse it too. */
+const lookups = new WeakMap<SpecificationResult, Map<string, ReturnType<typeof byGlobalId>>>();
+function resultsOf(spec: SpecificationResult, modelId: string) {
+  let byModel = lookups.get(spec);
+  if (!byModel) lookups.set(spec, byModel = new Map());
+  let results = byModel.get(modelId);
+  if (!results) byModel.set(modelId, results = byGlobalId(spec, modelId));
+  return results;
 }
 
 const completeRun = (report: ValidationReport) => report.specificationResults.every(spec => !hasGap(spec) && !spec.setResultsTruncated);
@@ -104,7 +115,7 @@ export function reexamineSavedValidation(snapshot: IdsReportBlock, current: Curr
     }
     const spec = specs.get(row.specificationId);
     if (!spec || spec.error) { skip(row, 'specificationError'); continue; }
-    const results = byGlobalId(spec, models[0].modelId);
+    const results = resultsOf(spec, models[0].modelId);
     if (owners.get(ownerKey(row)) !== 1 || results.duplicated.has(row.GlobalId)) { skip(row, 'identityAmbiguous'); continue; }
     const next = results.results.get(row.GlobalId);
     if (!next) { skip(row, 'entityNotEvaluated'); continue; }

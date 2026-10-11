@@ -461,10 +461,10 @@ export interface IFCDataAccessor {
   getClassifications(expressId: number): ClassificationInfo[];
   /** Get materials for an entity */
   getMaterials(expressId: number): MaterialInfo[];
-  /** Get parent via relationship (`undefined`: via any partOf relation) */
+  /** Get parent via relationship */
   getParent(
     expressId: number,
-    relationType: PartOfRelation | undefined
+    relationType: PartOfRelation
   ): ParentInfo | undefined;
   /**
    * Walk every ancestor reachable via `relationType`, or via every partOf

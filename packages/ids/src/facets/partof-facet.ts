@@ -41,6 +41,32 @@ function relationContext(relation: PartOfRelation | undefined): Record<string, s
   return relation === undefined ? {} : { relation };
 }
 
+/** Every partOf relation an accessor may report. */
+const ALL_RELATIONS = Object.keys(RELATION_NAMES) as PartOfRelation[];
+
+/**
+ * Ancestors through any partOf relation for an accessor without
+ * `getAncestors`: each step asks `getParent` once per relation, so an
+ * element with parents through two relations keeps both, and a chain may
+ * mix relations (#7401).
+ */
+function ancestorsViaGetParent(accessor: IFCDataAccessor, expressId: number): ParentInfo[] {
+  const out: ParentInfo[] = [];
+  const seen = new Set<number>([expressId]);
+  const queue = [expressId];
+  while (queue.length > 0) {
+    const id = queue.shift()!;
+    for (const relation of ALL_RELATIONS) {
+      const parent = accessor.getParent(id, relation);
+      if (!parent || seen.has(parent.expressId)) continue;
+      seen.add(parent.expressId);
+      out.push(parent);
+      queue.push(parent.expressId);
+    }
+  }
+  return out;
+}
+
 /**
  * Check if an entity matches a partOf facet
  */
@@ -53,11 +79,13 @@ export function checkPartOfFacet(
   // in a building IS partOf the building. Walk every ancestor and
   // pass if ANY matches the requirement entity. Fall back to single-
   // step `getParent` when the accessor doesn't expose ancestor
-  // traversal.
+  // traversal; with no relation named, walk `getParent` per relation.
   const ancestors: ParentInfo[] = accessor.getAncestors
     ? accessor.getAncestors(expressId, facet.relation)
-    : [];
-  if (ancestors.length === 0) {
+    : facet.relation === undefined
+      ? ancestorsViaGetParent(accessor, expressId)
+      : [];
+  if (ancestors.length === 0 && facet.relation !== undefined) {
     const direct = accessor.getParent(expressId, facet.relation);
     if (direct) ancestors.push(direct);
   }

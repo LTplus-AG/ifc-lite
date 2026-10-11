@@ -135,12 +135,11 @@ export function createMockAccessor(entities: MockEntity[]): IFCDataAccessor {
     },
     getParent(
       expressId: number,
-      relationType: PartOfRelation | undefined
+      relationType: PartOfRelation
     ): ParentInfo | undefined {
       const entity = entityMap.get(expressId);
       if (!entity?.parent) return undefined;
-      // No relation: the parent counts whatever relation links it.
-      if (relationType !== undefined && entity.parent.relation !== relationType) return undefined;
+      if (entity.parent.relation !== relationType) return undefined;
       if (entity.parent.expressId == null) return undefined;
       return {
         expressId: entity.parent.expressId,

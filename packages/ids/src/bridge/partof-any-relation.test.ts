@@ -19,6 +19,7 @@ import { describe, it, expect } from 'vitest';
 import { StepTokenizer, ColumnarParser } from '@ifc-lite/parser';
 import type { EntityRef } from '@ifc-lite/parser';
 import { createDataAccessor } from './data-accessor.js';
+import { createMockAccessor } from '../facets/test-helpers.js';
 import { checkPartOfFacet } from '../facets/partof-facet.js';
 import { parseIDS } from '../parser/xml-parser.js';
 import { validateIDS } from '../validation/validator.js';
@@ -96,6 +97,20 @@ describe('IDS partOf without a relation follows every relation, recursively (#74
     expect(checkPartOfFacet(partOf('IFCCURTAINWALL', contained), MULLION, accessor).passed).toBe(false);
     expect(checkPartOfFacet(partOf('IFCBUILDINGSTOREY', contained), WINDOW, accessor).passed).toBe(false);
     expect(checkPartOfFacet(partOf('IFCCURTAINWALL', 'IfcRelAggregates'), MULLION, accessor).passed).toBe(true);
+  });
+
+  it('walks getParent per relation for an accessor without getAncestors', () => {
+    // A member aggregated into a curtain wall that a storey contains, seen
+    // through an accessor that only implements single-step `getParent`.
+    const accessor = createMockAccessor([
+      { expressId: 1, type: 'IfcMember', parent: { expressId: 2, type: 'IfcCurtainWall', relation: 'IfcRelAggregates' } },
+      { expressId: 2, type: 'IfcCurtainWall', parent: { expressId: 3, type: 'IfcBuildingStorey', relation: 'IfcRelContainedInSpatialStructure' } },
+      { expressId: 3, type: 'IfcBuildingStorey' },
+    ]);
+    expect(accessor.getAncestors).toBeUndefined();
+    expect(checkPartOfFacet(partOf('IFCCURTAINWALL'), 1, accessor).passed).toBe(true);
+    expect(checkPartOfFacet(partOf('IFCBUILDINGSTOREY'), 1, accessor).passed).toBe(true);
+    expect(checkPartOfFacet(partOf('IFCWALL'), 1, accessor).passed).toBe(false);
   });
 
   it('passes the issue reproduction end to end, from the IDS text', async () => {

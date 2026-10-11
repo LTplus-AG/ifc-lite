@@ -281,7 +281,7 @@ export function createDataAccessor(
 
     getParent(
       expressId: number,
-      relationType: PartOfRelation | undefined
+      relationType: PartOfRelation
     ): ParentInfo | undefined {
       const all = accessor.getAncestors!(expressId, relationType);
       return all.length > 0 ? all[0] : undefined;

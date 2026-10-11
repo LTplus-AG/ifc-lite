@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { nativeStructuralEvidence } from './structural-graph-evidence';
+import { groupTransportBudget, nativeGroupEvidence, type NativeGroupEvidence } from './group-lifecycle-evidence';
 
 
 /**
@@ -29,6 +30,7 @@ import { nativeCostEvidence, type CostEvidence } from './cost-graph-evidence';
 import { roomAutoAllEvidence, type RoomAutoAllEvidence } from './room-auto-all-evidence';
 
 export interface SelectionElement extends NativeAuthoringEvidence {
+  nativeGroup?: NativeGroupEvidence;
   nativeZoneEmission: ReturnType<typeof nativeZoneEmissionEvidence>;
   nativeGrid?: NativeGridEvidence;
   globalId: string;
@@ -103,6 +105,7 @@ export function captureSelectionGrounding(state: GroundingState, limit = SELECTI
   };
   let unresolved = 0;
   let examined = 0;
+  const groupPopulation = new Map<string, number[]>();
   for (const id of ids) {
     if (examined >= readLimit) break;
     examined++;
@@ -111,6 +114,8 @@ export function captureSelectionGrounding(state: GroundingState, limit = SELECTI
     const globalId = ref && store ? resolveEntityRefGlobalIdFromState({ models: state.models,
       mutationViews: state.mutationViews, ifcDataStore: null }, ref) : null;
     if (!ref || !store || !globalId || state.mutationViews?.get(ref.modelId)?.isDeleted(ref.expressId)) { unresolved++; continue; }
+    const population = groupPopulation.get(ref.modelId) ?? [];
+    population.push(ref.expressId); groupPopulation.set(ref.modelId, population);
     const gridName = nativeGridName(nativeTarget(ref.modelId), ref.expressId);
     elements.push({
       globalId, modelId: ref.modelId,
@@ -130,6 +135,12 @@ export function captureSelectionGrounding(state: GroundingState, limit = SELECTI
   }
   const grounding = { capturedAt: new Date().toISOString(), total, elements, unresolved,
     truncated: elements.length + unresolved < total };
+  const groupBudget = groupTransportBudget();
+  for (const modelId of new Set(elements.map(row => row.modelId))) {
+    const rows = elements.filter(row => row.modelId === modelId);
+    rows[0].nativeGroup = grounding.truncated || unresolved ? { status: 'unavailable-selection-budget', snapshot: null }
+      : nativeGroupEvidence(nativeTarget(modelId), groupPopulation.get(modelId)!, groupBudget);
+  }
   groundingOwners.set(grounding, { elements: JSON.stringify(elements), sources });
   return grounding;
 }

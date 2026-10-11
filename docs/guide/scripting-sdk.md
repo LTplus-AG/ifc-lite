@@ -43,7 +43,7 @@ for (const s of storeys) {
 
 `bim.ids.authoring` edits IDS documents with the typed operations and
 grounding gate that the IDS editor and the MCP `ids_apply_ops` tool use (see
-[IDS authoring](ids-authoring.md)). A batch that names an entity, property
+[Writing IDS documents](ids.md#writing-ids-documents)). A batch that names an entity, property
 set or property the IFC schema does not have is refused as a whole. The
 result lists each problem with ranked candidates. Accepted batches can be
 undone.
@@ -326,4 +326,8 @@ Deleting a group preserves its member objects and other group memberships;
 shared incoming memberships are rewritten safely. Other incoming dependencies,
 ambiguous/deleted identities, specialized assignment semantics, and exceeded
 graph budgets refuse the whole edit. The viewer records one native Undo batch.
+Replacement refuses typed `RelatedObjectsType` assignments and consolidation
+of assignments with distinct OwnerHistory, Name or Description. Their separate
+semantics cannot be represented by this complete-member-list update; reading
+and safe deletion remain supported.
 Specialized Structural groups retain their separate authoring methods.

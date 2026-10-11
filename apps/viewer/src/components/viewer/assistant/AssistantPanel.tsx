@@ -45,6 +45,7 @@ const SceneActionReview = lazy(() => import('./SceneActionReview').then(m => ({ 
 const SceneRestoreBar = lazy(() => import('./SceneActionReview').then(m => ({ default: m.SceneRestoreBar })));
 const ClashGroupReview = lazy(() => import('./ClashGroupReview').then(m => ({ default: m.ClashGroupReview })));
 const CheckAuthoringProposal = lazy(() => import('./CheckAuthoringProposal').then(m => ({ default: m.CheckAuthoringProposal })));
+const IdsAgentReview = lazy(() => import('./IdsAgentReview').then(m => ({ default: m.IdsAgentReview })));
 const ArtifactProposalReview = lazy(() => import('./ArtifactProposalReview').then(m => ({ default: m.ArtifactProposalReview })));
 const SemanticProposalReview = lazy(() => import('./SemanticProposalReview').then(m => ({ default: m.SemanticProposalReview })));
 const RecipeLibrary = lazy(() => import('./RecipeLibrary').then(m => ({ default: m.RecipeLibrary })));
@@ -176,7 +177,7 @@ export function AssistantPanel() {
       {evidence && (isReportSource(evidence.source) || declaresRoomCommand(state.messages.at(-1)?.content ?? '')) && <Suspense fallback={null}>
         <ModelChangeProposal onAttachRoom={review => setAttachments(current => ({ ...current, rooms: captureRoomGrounding(review) }))} />
       </Suspense>}
-      {(evidence?.source === 'validation' || evidence?.source === 'loadReport') && <Suspense fallback={null}><CheckAuthoringProposal /></Suspense>}
+      {(evidence?.source === 'validation' || evidence?.source === 'loadReport') && <Suspense fallback={null}><CheckAuthoringProposal /><IdsAgentReview /></Suspense>}
       {evidence && isReportSource(evidence.source) && <Suspense fallback={null}><ReportDraftReview /></Suspense>}
       {evidence && !isFlowSource(evidence.source) && <Suspense fallback={null}><SceneActionReview /></Suspense>}
       {evidence && !isFlowSource(evidence.source) && <Suspense fallback={null}><ArtifactProposalReview onAsk={canAsk ? suggest : null} /></Suspense>}

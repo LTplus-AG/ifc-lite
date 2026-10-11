@@ -1,5 +1,17 @@
 # @ifc-lite/data
 
+## 6.2.0
+
+### Minor Changes
+
+- [#7439](https://github.com/LTplus-AG/ifc-lite/pull/7439) [`3ef81ad`](https://github.com/LTplus-AG/ifc-lite/commit/3ef81ad36db5a63f066ff1447bea8172c1c19f73) Thanks [@louistrue](https://github.com/louistrue)! - Apply the additive SI offset of an `IfcConversionBasedUnitWithOffset` (°F) wherever a resolved unit's scale is used: `scaleMeasureValue` / `scaledPropertyValue` (model diff) now gives 293.15 K for 68 °F instead of 37.78, and the viewer's display-unit conversion, chart field columns and table-cell write-back keep the unit's offset. `Property` gains an optional `unitSiOffset`, which the mutation overlay carries through. Rules, whose SI conversion is a factor only, report no SI factor for such a value instead of a wrong one.
+
+- [#6971](https://github.com/LTplus-AG/ifc-lite/pull/6971) [`fd1f8f5`](https://github.com/LTplus-AG/ifc-lite/commit/fd1f8f52fabbde0ecee4d6a5c15635293ff1a15e) Thanks [@louistrue](https://github.com/louistrue)! - Central perf-flag registry ([#6962](https://github.com/LTplus-AG/ifc-lite/issues/6962)). Every runtime perf toggle is declared once in the viewer's `PERF_FLAGS` registry with an owner, a removal condition and its bindings. The existing `__IFC_LITE_*` globals, URL params and sticky keys keep working unchanged; each global-backed flag also accepts a `?perf.<id>=` URL param when the global is unset (for example `?perf.chunks=0`). `@ifc-lite/data` adds the shared `readPerfFlagRaw` reader and `@ifc-lite/geometry` exports `GEOMETRY_PERF_FLAG_BINDINGS`, the bindings of the three flags its host thread reads.
+
+### Patch Changes
+
+- [#7368](https://github.com/LTplus-AG/ifc-lite/pull/7368) [`884eea2`](https://github.com/LTplus-AG/ifc-lite/commit/884eea296a54e3af744b9faa618b4fdb3e4da321) Thanks [@louistrue](https://github.com/louistrue)! - Avoid rebuilding printable ASCII STEP strings character by character while preserving canonical escaped bytes.
+
 ## 6.1.0
 
 ### Minor Changes

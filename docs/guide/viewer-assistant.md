@@ -332,6 +332,20 @@ With **Load report** or **Data validation** attached, the assistant can draft ch
 
 **IDS drafts** (`ids.specifications`) use the IDS 1.0 facets with their native field names: entity, attribute, property (with `dataType`), classification, material and partOf, each with simple values, enumerations, XSD patterns or numeric bounds and `required`, `optional` or `prohibited` cardinality. A property value may declare `mm`, `cm`, `m`, `mm2`, `cm2`, `m2`, `mm3`, `cm3` or `m3` together with `IFCLENGTHMEASURE`, `IFCPOSITIVELENGTHMEASURE`, `IFCAREAMEASURE` or `IFCVOLUMEMEASURE`; it is converted to the SI value IDS stores (2400 mm is written as 2.4). The review shows each conversion, for example **Authored in mm, stored in SI: 2400 mm → 2.4 m**, and labels a measure value with its SI unit (**Required value (m)**), so an edited value is in metres, square metres or cubic metres. Other units are refused, because the validator cannot convert them. The draft is written by the same IDS writer as **Export as IDS** and read back by the native IDS parser, so the card shows exactly what will be saved. **Review IDS draft** runs the native IDS audit (XSD shape, IFC classes, property sets and data types, restriction coherence) and lists its issues; audit errors block saving and export, and so does an audit that could not run. You can rename a specification, change the cardinality of the specification or of a requirement, and edit a required simple value. Every edit re-runs the audit.
 
+**IDS drafts with tools.** With your own key, write the requirements in the message box and choose **Draft IDS from the message** in the **Draft IDS with tools** card. The IDS agent (`@ifc-lite/ids-agent`) works as follows:
+
+- **Looks names up.** It finds every IFC class, predefined type, attribute, property set and property in the IFC schema tables instead of recalling them.
+- **Changes only through checked operations.** It changes its draft only through the IDS Studio operations, and the grounding gate checks each batch first. A name the gate cannot resolve is refused and returned to the model with ranked candidates, so an invented property set never reaches the draft.
+- **Shows progress and asks.** While it works, the card shows its progress and lets you stop it. When two readings differ materially it asks you to choose, and every choice it offers has passed the gate.
+
+The result is a proposal. Changes are grouped by specification (**New specification**, **Changed specification**, **Removed specification**), each with the agent's rationale and the source sentence it came from. The proposal also lists the statements it could not express in IDS (geometry, relationships, counts) with the reason, the decisions you made, and the model's token use.
+
+Untick any change you do not want, then choose **Use the kept changes**. The gate checks the kept changes again, and the draft opens in the same **Review IDS draft** card as a chat answer, with the same inline edits, audit, dry run, save and export. The statements it could not express are listed as not checkable.
+
+**What was sent** lists every request of the run exactly as it left the browser: the system prompt, the document summary, your text, and tool results by tool. It also says whether any data from the loaded models was among them.
+
+The agent needs a tool-calling model: your own Anthropic key (default `claude-opus-5-5`) or OpenAI key. With a hosted free model the card says so, and you draft IDS through the chat as described above.
+
 **Dry run on loaded models** validates the draft with the Data validation panel's own IDS engine, once per loaded model, without publishing a report, recolouring the scene or saving anything. It needs at least one loaded model with parsed data. For each specification it shows the applicable, passed and failed counts summed over the models, any cardinality failure per model, specifications nothing in the loaded models applies to, and up to five failing elements with the requirement that failed; the crosshair selects and frames an element in the model. **Save to IDS library** is enabled only after a clean audit and a dry run of the exact current draft on unchanged models. An edit or a model change marks the dry run as out of date. Saving adds a new entry to the Data validation IDS library without switching to it: the active IDS and the result shown in Data validation, which the conversation may be about, stay as they are. **Open in Data validation** makes it the active IDS, where the normal **Run Validation**, results and BCF tools apply. As with choosing any other library entry, that clears the result shown, so use **Save report** there first if you need it. **Export .ids** downloads the audited draft. The viewer has no IDS editor; to edit further, export the file or convert it with **Import IDS as rules**.
 
 **Information rules drafts** (`rules.proposal`) carry a native `.rules.json` rule set: per-element checks, plus `unique`, `aggregate`, `compare` and `unit` requirements, which IDS cannot express. The rule set is read by the native rule-set parser. Any field that parser would ignore is refused, as are `targets`, duplicate ids and duplicate names. **Review information rules** shows each rule's applicability and requirement and lets you rename it or change its severity. **Dry run on loaded models** runs the native rule engine over every loaded model, with the same counts and failing samples, plus failing uniqueness or aggregate sets. **Save as rule set** creates a new information rule set without activating it. **Open in the rule editor** makes it active and opens it in the Information validation editor, which likewise clears the shown result.
@@ -486,3 +500,30 @@ Review shows the source/destination identities and complete dependency count. Wo
 Complete storey reassignment pins are bounded to 200,000 submitted values and 12 nesting levels. The 5,000-product bound applies to the moved dependency closure; a complete source relationship may contain more unchanged members. Selection capture shares one effective Root/relationship inventory across destination candidates.
 
 Complete optional Storey, Structural and Cost pins share the request envelope. After ordinary facts and all guidance are reserved, generation admits each unchanged whole pin only when the complete serialized messages and system text fit the existing 90,000-character limit. A refused pin reports `unavailable-transport-budget`; its complete expected state is omitted, while ordinary identities, citations and metadata remain. Captured source attachments stay unchanged for stale-state validation; the saved user turn records the projected text actually sent. This transport boundary does not reduce direct native planner or writer capabilities, and a pin larger than 12,000 characters remains usable when the full request fits. Oversized conversation history or ordinary context can still refuse the request.
+
+## Generic group changes
+
+The Assistant can propose `group.lifecycle` from an explicitly attached
+selection or selection evidence. Review group names, complete membership and
+shared references, choose operations, prepare the native changes, and explicitly
+Apply. Updates preserve group identity and replace the entire membership list;
+removing a group keeps its members and other memberships. The edit has one Undo.
+Unavailable or incomplete captured evidence requires a fresh attachment.
+Generic replacement refuses typed `RelatedObjectsType` assignments and
+semantically distinct assignment records instead of merging their meanings.
+Those groups can still be read and safely removed through native review.
+Selection evidence and attachments read the complete whole-model Group graph
+only when the selection includes an exact IfcGroup or a current member of one.
+Other selections carry bounded `scope: "no-group-context"` facts (the selected
+identities), read from the model's group assignments without the whole graph,
+so that read grows with the number of group assignments. They support only
+creating a new group, and review still checks the complete graph before Apply.
+Models above the 250,000-entity graph budget are refused on both paths before
+any record is decoded.
+Complete Group facts share a transport budget across every selected model,
+including escaped JSON. Oversized facts are explicitly unavailable; select a
+smaller set of groups before capturing again. Reattaching the same oversized
+selection cannot repair that refusal. In rich selection evidence, Group facts
+and their status are added only after the cited element rows; if not even the
+status fits, `nativeGroups` is absent. Unavailable or absent Group facts do not
+establish an empty graph or permit an edit.

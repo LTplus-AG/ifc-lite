@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { gatherProvedVolumes, type ProvedVolumes } from '@/hooks/useZoneApportionment';
 import { nativeStructuralTransportEvidence } from '@/lib/actions/structural-graph-evidence';
+import { groupTransportBudget, nativeGroupTransportEvidence } from '@/lib/actions/group-lifecycle-evidence';
 
 
 /**
@@ -298,10 +299,14 @@ export const selectionAdapter: EvidenceAdapter = {
     }
     const sample = refs.slice(0, limit);
     const rich = sample.length <= 10;
+    const groupBudget = groupTransportBudget();
     return {
       summary: {
         kind: 'selection', channel, selectionSize: refs.length, modelCount: byModel.size,
         classifications: selectedClassificationPopulation(refs, sourceFor),
+        nativeGroups: sample.length !== refs.length || sample.length > 100 ? [{ status: 'unavailable-selection-budget', expectedJsonParts: null }]
+          : [...byModel.keys()].map(modelId => ({ modelId,
+            ...nativeGroupTransportEvidence(nativeTarget(modelId), sample.filter(ref => ref.modelId === modelId).map(ref => ref.expressId), groupBudget) })),
         ...(!rich ? { nativeCostCapture: 'unavailable-selection-budget', nativeReplacementCapture: 'unavailable-selection-budget', nativeRoomAutoAllCapture: 'unavailable-selection-budget' } : {}),
         ...(sample.length !== 1 ? { nativeStructuralCapture: 'unavailable-selection-budget' } : {}),
         byModel: [...byModel].map(([modelId, count]) => ({ modelId, name: sourceFor(modelId).name, count })),

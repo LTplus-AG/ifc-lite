@@ -1,0 +1,17 @@
+[
+  {
+    "label": "act",
+    "exit": 1,
+    "log": "/tmp/campaign-generic-group-budget-v2-act-inverse.log"
+  },
+  {
+    "label": "report",
+    "exit": 1,
+    "log": "/tmp/campaign-generic-group-budget-v2-report-inverse.log"
+  },
+  {
+    "label": "restored",
+    "exit": 0,
+    "sha256": "edd12148aa3c462ee174dc06d03f9d175f97c85ea5d184511393038f64e33d18"
+  }
+]

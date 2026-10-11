@@ -504,5 +504,7 @@ above the 250,000-entity graph budget are refused before any record is decoded.
 Complete Group facts share a transport budget across every selected model,
 including escaped JSON. Oversized facts are explicitly unavailable; select a
 smaller set of groups before capturing again. Reattaching the same oversized
-selection cannot repair that refusal. Unavailable Group facts do not establish
-an empty graph or permit an edit.
+selection cannot repair that refusal. In rich selection evidence, Group facts
+and their status are added only after the cited element rows; if not even the
+status fits, `nativeGroups` is absent. Unavailable or absent Group facts do not
+establish an empty graph or permit an edit.

@@ -247,7 +247,7 @@ fn issue_6587_type_maps_require_actual_body_reachability_not_orphan_items() {
     assert!(refused.replacements.is_empty() && refused.new_entities.is_empty());
     let roots = HashSet::from([44]);
     let mut decoder = EntityDecoder::new(&used);
-    assert!(preflight::body_mapped_sources(&roots, 10, &mut decoder, 1).unwrap_err().contains("reference-work bound"));
+    assert!(preflight::body_mapped_sources(&roots, 10, &mut decoder, 1, 1).unwrap_err().contains("reference-work bound"));
     let repeated = used.replace("'MappedRepresentation',(#173))", &format!("'MappedRepresentation',({}))", vec!["#173"; 4_000].join(",")));
     let refused = plan_map_conversion_normalization(repeated.as_bytes()).unwrap();
     assert!(refused.warnings.iter().any(|warning| warning.contains("reference-work bound")));

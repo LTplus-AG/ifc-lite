@@ -56,8 +56,12 @@ through scaled; other non-Body representations are refused. Alignment layout
 parameters (segment lengths and start points) are not rewritten, so tools that
 rebuild an alignment from them rather than from its `Axis` curve are off by the
 map scale factor (0.04% at 0.9996). Type geometry that no occurrence
-instantiates gets the same scale at type level, so it stays correct if a tool
-instantiates it later; a type map nested inside another such map is refused.
+instantiates gets the same scale at type level. An instance placed in the
+exported file, with an identity mapping target or one written in the exported
+coordinates, lands on the authored map coordinates; a target copied with a
+translation from the original file is off by that translation times one minus
+the scale. A type map nested inside another such map, or too deeply nested to
+leave room for the type-level wrapper and an instance, is refused.
 These transformations preserve
 physical map coordinates, project units, properties and authored shape data.
 Ordinary IFC downloads retain their original coordinate representation.
@@ -635,9 +639,12 @@ Represented products without placements are refused.
 The scaled path additionally requires unambiguous representation ownership. A
 type map no product instantiates is wrapped at type level with the same scale:
 it keeps its ID and owner, and its authored origin and representation move into
-a scaled inner map, so a later instantiation lands on the authored map
-coordinates. Such a map nested inside another one is refused, because it would
-be scaled twice. The scaled path carries annotations, but refuses
+a scaled inner map. An instance with an identity mapping target, or a target
+written in the exported coordinates, then lands on the authored map
+coordinates; a target copied with a translation from the original file does
+not. Such a map nested inside another one is refused, because it would be
+scaled twice, as is one whose mapped nesting leaves no room for both the
+type-level wrapper and an instance. The scaled path carries annotations, but refuses
 voids/fills, shape aspects, non-Body representations with surface items (for
 example annotation fills or bounding boxes) and other coordinate consumers it
 cannot preserve. Its added wrapper requires fewer

@@ -120,7 +120,7 @@ pub(super) fn model(records: &[Record<'_>], context: u32, decoder: &mut EntityDe
         }
     }
     let allowance = records.len().saturating_mul(ifc_lite_core::limits::MAX_MAPPED_ITEM_DEPTH as usize);
-    let mapped_sources = body_mapped_sources(&used_representations, context, decoder, allowance)?;
+    let mapped_sources = body_mapped_sources(&used_representations, context, decoder, allowance, 1)?;
     let mut type_maps = std::collections::BTreeSet::new();
     for record in records.iter().filter(|record| record.kind.is_subtype_of(IfcType::IfcTypeProduct)) {
         let product = decoder.decode_by_id(record.id).map_err(|error| error.to_string())?;
@@ -143,7 +143,9 @@ pub(super) fn model(records: &[Record<'_>], context: u32, decoder: &mut EntityDe
         }
         roots.insert(node.get_ref(1).ok_or("type map has no MappedRepresentation")?);
     }
-    let nested = body_mapped_sources(&roots, context, decoder, allowance)?;
+    // A type map is reached through its new type-level wrapper and then
+    // through the consumer's own instance item: reserve both levels.
+    let nested = body_mapped_sources(&roots, context, decoder, allowance, 2)?;
     if let Some(map) = type_maps.iter().find(|map| nested.contains(map)) {
         return Err(format!("uninstantiated type map #{map} is nested in other uninstantiated type geometry"));
     }
@@ -152,7 +154,10 @@ pub(super) fn model(records: &[Record<'_>], context: u32, decoder: &mut EntityDe
 
 /// Pure reachable-ID set: memoization is global, unlike mesh accumulation.
 /// Only actual product Body roots confer ownership; orphan items do not.
-pub(super) fn body_mapped_sources(roots: &HashSet<u32>, context: u32, decoder: &mut EntityDecoder, max_work: usize) -> Result<HashSet<u32>, String> {
+/// `added_levels` is how many mapped levels normalization (and, for type
+/// geometry, its instantiation) puts above each root: 1 for a product
+/// representation's wrapper, 2 for a type map's wrapper plus an instance.
+pub(super) fn body_mapped_sources(roots: &HashSet<u32>, context: u32, decoder: &mut EntityDecoder, max_work: usize, added_levels: usize) -> Result<HashSet<u32>, String> {
     let mut pending: Vec<_> = roots.iter().map(|id| (*id, false)).collect();
     let mut seen = HashSet::new();
     let mut active = HashSet::new();
@@ -174,8 +179,12 @@ pub(super) fn body_mapped_sources(roots: &HashSet<u32>, context: u32, decoder: &
             // The emitted Body adds a mapped wrapper; submesh collection also
             // charges the terminal leaf. Reserve both levels to preserve
             // authored styles, not merely the cached aggregate geometry.
-            if depth.saturating_add(1) >= ifc_lite_core::limits::MAX_MAPPED_ITEM_DEPTH as usize {
-                return Err("Body map nesting leaves no room for the normalization wrapper".into());
+            if depth.saturating_add(added_levels) >= ifc_lite_core::limits::MAX_MAPPED_ITEM_DEPTH as usize {
+                return Err(if added_levels > 1 {
+                    "type map nesting leaves no room for the type-level normalization wrapper and an instance".into()
+                } else {
+                    "Body map nesting leaves no room for the normalization wrapper".into()
+                });
             }
             depths.insert(id, depth);
             active.remove(&id);

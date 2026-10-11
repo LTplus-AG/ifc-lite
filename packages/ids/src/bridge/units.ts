@@ -242,7 +242,9 @@ export function applyUnitConversion(
   rawValues: string[] | undefined,
   dataType: string | undefined,
   scale: number | undefined,
-  measureScales?: MeasureScales
+  measureScales?: MeasureScales,
+  /** SI factor of the value's OWN `Unit` (`unitSiScale` / `explicitUnitSiScale`): it replaces the project's (#7395). */
+  ownUnitScale?: number
 ): { value: string | number | boolean | null; values: string[] | undefined } {
   const kind = measureKind(dataType);
   const isUntypedTable =
@@ -274,11 +276,15 @@ export function applyUnitConversion(
   // Dimension handling (length vs. area-squared vs. volume-cubed) lives in
   // `measureScaleFor` — see its doc for why area/volume don't just reuse
   // the raw length scale.
-  const effectiveScale = measureScaleFor(dataType, {
-    length: scale,
-    area: measureScales?.area,
-    volume: measureScales?.volume,
-  });
+  // A value with its own Unit is in that unit, whatever the project
+  // declares; the unit already carries its dimension (mm² for an area).
+  const effectiveScale = ownUnitScale !== undefined && Number.isFinite(ownUnitScale) && ownUnitScale > 0
+    ? ownUnitScale
+    : measureScaleFor(dataType, {
+        length: scale,
+        area: measureScales?.area,
+        volume: measureScales?.volume,
+      });
 
   if (!effectiveScale || effectiveScale === 1) {
     return { value: rawValue, values: rawValues };

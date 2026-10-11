@@ -26,6 +26,8 @@ interface RawProp {
   values?: string[];
   dataType?: string;
   dataTypeMixed?: true;
+  /** SI factor of the property's own `Unit`, when it declares one that resolves. */
+  unitSiScale?: number;
 }
 
 /**
@@ -136,7 +138,15 @@ function appendQuantitySets(
       name: qset.name,
       properties: (qset.quantities || []).map((q) =>
         projectProperty(
-          { name: q.name, value: q.value, type: undefined, dataType: idsDataTypeForQuantity(q.type) },
+          {
+            name: q.name,
+            value: q.value,
+            type: undefined,
+            dataType: idsDataTypeForQuantity(q.type),
+            // On-demand quantities carry their own unit's SI factor; a
+            // transported quantity table records only its display symbol.
+            unitSiScale: (q as { explicitUnitSiScale?: number }).explicitUnitSiScale,
+          },
           scale,
           measureScales
         )
@@ -335,7 +345,7 @@ function projectProperty(
     ? JSON.stringify(p.value)
     : (p.value as string | number | boolean | null);
   const baseValues = hasMultiValue ? (p.values as string[]) : undefined;
-  const converted = applyUnitConversion(baseValue, baseValues, dataType, scale, measureScales);
+  const converted = applyUnitConversion(baseValue, baseValues, dataType, scale, measureScales, p.unitSiScale);
   return {
     name: p.name,
     value: converted.value,

@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Authored internally for the IDS lint corpus (MPL-2.0). Spatial structure and classification checks with semantic mistakes. -->
+<ids xmlns="http://standards.buildingsmart.org/IDS" xmlns:xs="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <info>
+    <title>Handover structure</title>
+    <author>bim@example.com</author>
+    <date>2026-10-08</date>
+  </info>
+  <specifications>
+    <specification name="Storeys are part of a building" ifcVersion="IFC4" identifier="HS-01" description="Every storey sits in a building.">
+      <applicability minOccurs="1" maxOccurs="unbounded">
+        <entity><name><simpleValue>IFCBUILDINGSTOREY</simpleValue></name></entity>
+      </applicability>
+      <requirements>
+        <partOf relation="IFCRELCONTAINEDINSPATIALSTRUCTURE"><entity><name><simpleValue>IFCBUILDING</simpleValue></name></entity></partOf>
+      </requirements>
+    </specification>
+    <specification name="Walls are in a storey" ifcVersion="IFC4" identifier="HS-01" description="Walls are placed in a storey.">
+      <applicability minOccurs="0" maxOccurs="unbounded">
+        <entity><name><simpleValue>IFCWALL</simpleValue></name></entity>
+      </applicability>
+      <requirements>
+        <partOf relation="IFCRELAGGREGATES"><entity><name><simpleValue>IFCBUILDINGSTOREY</simpleValue></name></entity></partOf>
+      </requirements>
+    </specification>
+    <specification name="External walls are external" ifcVersion="IFC4" identifier="HS-03" description="Selected external walls.">
+      <applicability minOccurs="0" maxOccurs="unbounded">
+        <entity><name><simpleValue>IFCWALL</simpleValue></name></entity>
+        <property dataType="IFCBOOLEAN"><propertySet><simpleValue>Pset_WallCommon</simpleValue></propertySet><baseName><simpleValue>IsExternal</simpleValue></baseName><value><simpleValue>true</simpleValue></value></property>
+      </applicability>
+      <requirements>
+        <property dataType="IFCBOOLEAN"><propertySet><simpleValue>Pset_WallCommon</simpleValue></propertySet><baseName><simpleValue>IsExternal</simpleValue></baseName></property>
+        <property dataType="IFCLABEL"><propertySet><simpleValue>Pset_WallCommon</simpleValue></propertySet><baseName><simpleValue>AcousticRating</simpleValue></baseName><value><simpleValue>&gt;= 45</simpleValue></value></property>
+      </requirements>
+    </specification>
+    <specification name="No proxies" ifcVersion="IFC4" identifier="HS-04" description="Proxies are not allowed.">
+      <applicability minOccurs="0" maxOccurs="0">
+        <entity><name><simpleValue>IFCBUILDINGELEMENTPROXY</simpleValue></name></entity>
+      </applicability>
+      <requirements>
+        <attribute><name><simpleValue>Name</simpleValue></name></attribute>
+      </requirements>
+    </specification>
+  </specifications>
+</ids>

@@ -55,6 +55,8 @@ export interface MeasureScales {
   volume?: number;
   /** The project's declared units, for measures outside the length family. */
   units?: ProjectUnits;
+  /** File-wide units, for a measure `units` leaves undeclared (a project without its own LENGTHUNIT). */
+  fallbackUnits?: ProjectUnits;
 }
 
 const projectUnitsCache = new WeakMap<object, ReturnType<typeof extractProjectUnits>>();
@@ -159,7 +161,11 @@ export function resolveEntityMeasureScales(
       // area/volume scale, which IFC does not require to be related by that
       // exponent (see the module doc above). Take the file-wide answer for
       // all three together, matching the walk-failed fallback exactly.
-      scales = fallback();
+      // A measure outside the length family still takes the owner's own
+      // declared unit (a project may declare grams without a LENGTHUNIT);
+      // only one the owner leaves undeclared takes the file-wide unit.
+      const fileWide = fallback();
+      scales = { ...fileWide, units, fallbackUnits: fileWide.units };
       byProject.set(ownerId, scales);
       return scales;
     }
@@ -219,7 +225,7 @@ export function measureConversionFor(
 ): SiConversion | undefined {
   const scale = lengthFamilyScale(dataType, scales);
   if (scale !== undefined) return scale ? { scale, offset: 0 } : undefined;
-  return projectUnitConversion(dataType, scales.units);
+  return projectUnitConversion(dataType, scales.units, scales.fallbackUnits);
 }
 
 /**

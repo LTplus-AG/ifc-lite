@@ -71,15 +71,17 @@ export function unitConversion(
  * The project-unit conversion for a dimensioned measure outside the length
  * family, or `undefined` when the measure is dimensionless, monetary, has no
  * declared unit (SI is then implied), or its declared unit could not be read.
+ * `fallbackUnits` answers only for a unit type `units` leaves undeclared.
  */
 export function projectUnitConversion(
   dataType: string | undefined,
-  units: ProjectUnits | undefined
+  units: ProjectUnits | undefined,
+  fallbackUnits?: ProjectUnits
 ): SiConversion | undefined {
-  if (!dataType || !units || lengthFamilyKind(dataType)) return undefined;
+  if (!dataType || (!units && !fallbackUnits) || lengthFamilyKind(dataType)) return undefined;
   const m = measureUnit(dataType);
   if (!m || m.kind !== 'typed') return undefined;
-  const declared = units.resolvedForUnitType(m.unitType);
+  const declared = units?.resolvedForUnitType(m.unitType) ?? fallbackUnits?.resolvedForUnitType(m.unitType);
   if (!declared) return undefined;
   return unitConversion(dataType, declared.siScale, declared.symbol);
 }

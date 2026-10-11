@@ -132,7 +132,7 @@ export function StudioOutline({ doc }: { doc: StudioDocument }) {
               : <span className="w-3" aria-hidden />}
             {row.kind === 'spec' && <span aria-hidden className={cn('h-2 w-2 shrink-0 rounded-full', DOT[sev ?? 'ok'])} />}
             {row.kind === 'spec' && <Badge value={specCardinality(doc.ids.specifications[row.specIndex])} />}
-            {row.kind === 'facet' && <Diamond className={cn('h-3 w-3 shrink-0', row.section === 'applicability' ? 'text-sky-600' : 'text-violet-600')} aria-hidden />}
+            {row.kind === 'facet' && <Diamond className={cn('h-3 w-3 shrink-0', row.section === 'applicability' ? 'text-sky-600' : 'text-muted-foreground')} aria-hidden />}
             {row.kind === 'facet' && row.optionality && row.facet.type !== 'entity' && <Badge value={row.optionality} />}
             <span className={cn('min-w-0 truncate', row.kind === 'section' && 'text-2xs uppercase tracking-wide text-muted-foreground', row.kind === 'spec' && 'font-medium')}>{label(row)}</span>
             {row.kind === 'section' && <span className="text-2xs text-muted-foreground">({row.count})</span>}

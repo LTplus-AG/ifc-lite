@@ -5,9 +5,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, linkSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { dirname, join, relative } from 'node:path';
 import { sha256, verifyNightProfile, type NightProfile } from './frame-gpu-night-profile.js';
 
 /** Real temporary Git checkout and on-disk files; not native GPU evidence. */
@@ -54,10 +54,27 @@ test('#6975 extra build assets, missing pins and modified source refuse launch',
 }));
 
 test('#6975 artifact paths cannot escape the checkout or alias one pinned allocation', () => fixture((root, profile) => {
-  for (const path of ['/etc/passwd', '../outside-file']) {
-    const invalid = { ...profile, artifacts: [{ path, sha256: 'a'.repeat(64) }] };
-    assert.throws(() => verifyNightProfile(root, Buffer.from(JSON.stringify(invalid))));
-  }
+  const outside = mkdtempSync(join(tmpdir(), '6975-outside-profile-'));
+  const outsideFile = join(outside, 'artifact');
+  writeFileSync(outsideFile, 'known outside artifact bytes');
+  try {
+    for (const [path, reason] of [[outsideFile, /invalid profile path/], [relative(root, outsideFile), /escapes checkout/]] as const) {
+      const invalid = { ...profile, artifacts: [...profile.artifacts, { path, sha256: sha256(readFileSync(outsideFile)) }] };
+      assert.throws(() => verifyNightProfile(root, Buffer.from(JSON.stringify(invalid))), reason);
+    }
+  } finally { rmSync(outside, { recursive: true, force: true }); }
   const duplicate = { ...profile, artifacts: [...profile.artifacts, { ...profile.artifacts[0], path: 'dist/./index.html' }] };
   assert.throws(() => verifyNightProfile(root, Buffer.from(JSON.stringify(duplicate))), /multiple profile paths/);
+}));
+
+test('#6975 qualification receipt must be independent of the model fixture', () => fixture((root, profile) => {
+  for (const qualificationReceipt of [profile.fixture, './fixture.ifc']) {
+    const aliased = { ...profile, qualificationReceipt };
+    assert.throws(() => verifyNightProfile(root, Buffer.from(JSON.stringify(aliased))), /fixture and independent qualification receipt identify one artifact/);
+  }
+  const qualificationReceipt = 'dist/fixture-receipt';
+  linkSync(join(root, profile.fixture), join(root, qualificationReceipt));
+  const hardLinked = { ...profile, qualificationReceipt, artifacts: [...profile.artifacts,
+    { path: qualificationReceipt, sha256: sha256(readFileSync(join(root, profile.fixture))) }] };
+  assert.throws(() => verifyNightProfile(root, Buffer.from(JSON.stringify(hardLinked))), /fixture and independent qualification receipt identify one artifact/);
 }));

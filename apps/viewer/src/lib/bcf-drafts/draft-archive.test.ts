@@ -13,7 +13,7 @@ import { resolveManualClashGroups } from '../clash/manual-groups';
 import { groupOf, proxyWallRun, sampleElements, PROXY_WALL_RULE } from '@/test/bcf-draft-fixture';
 import { draftBatchFromGroups } from './draft-create';
 import { addDraftComment } from './draft-edit';
-import { DraftArchiveError, draftBatchToProject, exportDraftArchive, importDraftArchive } from './draft-archive';
+import { draftBatchToProject, exportDraftArchive, importDraftArchive } from './draft-archive';
 import { DRAFT_FOOTER_MARKER } from './draft-footer';
 
 async function batchWithComment() {
@@ -87,8 +87,9 @@ test('a plain BCF archive imports as an unmapped batch and an edited footer is r
 test('a batch with one topic GUID twice is refused at export with that reason, never written lossily', async () => {
   const batch = await batchWithComment();
   const duplicated = { ...batch, topics: [batch.topics[0], { ...batch.topics[1], guid: batch.topics[0].guid, title: 'Other title' }] };
-  const refused = (error: unknown) => error instanceof DraftArchiveError && error.reason === 'topic' && error.direction === 'export'
-    && /nothing was exported/.test(error.message);
+  // Read structurally (a DraftArchiveError) so this file still loads, and fails by assertion, without the refusal.
+  const refused = (error: unknown) => error instanceof Error && error.name === 'DraftArchiveError' && 'reason' in error && error.reason === 'topic'
+    && 'direction' in error && error.direction === 'export' && /nothing was exported/.test(error.message);
   assert.throws(() => draftBatchToProject(duplicated, 'a@example.test'), refused);
   await assert.rejects(async () => exportDraftArchive(duplicated, 'a@example.test'), refused);
   assert.ok(draftBatchToProject(batch, 'a@example.test').topics.size === 2, 'a valid batch still exports every topic');

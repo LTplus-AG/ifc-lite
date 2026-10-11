@@ -34,6 +34,23 @@ function newerStoredDashboard() {
   return current;
 }
 
+for (const count of [1, 2]) test(`#7245 mounted deletion preview uses ${count === 1 ? 'singular' : 'plural'} readable chart-reference text`, async () => {
+  const report = await realComparison(); await dependents('compare', report.id);
+  const document = useViewerStore.getState().documents[0]; assert.ok(document);
+  assert.equal(await useViewerStore.getState().deleteDocument(document.id), true);
+  const dashboard = useViewerStore.getState().dashboards[0]; assert.ok(dashboard?.charts[0]);
+  act(() => useViewerStore.getState().upsertDashboard({ ...dashboard,
+    charts: Array.from({ length: count }, (_, index) => ({ ...dashboard.charts[0], id: `count-reference-${index}` })),
+  }));
+  const ui = await preview(report.id);
+  assert.match(ui.textContent ?? '', count === 1
+    ? /1 chart reference found in readable libraries, including current unsaved entries\./
+    : /2 chart references found in readable libraries, including current unsaved entries\./);
+  if (count === 1) assert.doesNotMatch(ui.textContent ?? '', /1 chart references/);
+  assert.equal(ui.querySelectorAll('[data-report-deletion-preview] li').length, count);
+  assert.equal((await readContentRows('comparison')).find(row => row.id === report.id)?.deleted, false);
+});
+
 test('#7245 same-ID newer persisted dashboard references and current unsaved references both appear in native deletion preview', async () => {
   const report = await realComparison(); await dependents('compare', report.id);
   const current = newerStoredDashboard();

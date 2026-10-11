@@ -23,6 +23,65 @@ export interface TypeQuantitySource {
   readonly unitTypes?: ReadonlyMap<string, string | undefined>;
 }
 
+/** Use canonical full-base claims; only unchanged relationship-owned siblings can pass through. */
+export function projectTypeQuantityEdits(
+  pass: ExportPass, ctx: PropertySetContext, entityId: number, qsetNames: ReadonlySet<string>,
+  relationships: readonly { relId: number; psetId: number }[],
+): { qsets: QuantitySet[] } {
+  const mutationView = ctx.mutationView!;
+  const ownIds = new Set(getTypeOwnedHasPropertySetIds(ctx, entityId, pass.effective));
+  const ownBase = extractTypeEntityOwnQuantities(ctx.dataStore, entityId, mutationView).map(set => ({
+    name: set.name, globalId: set.globalId, quantities: set.quantities.map(q => ({ name: q.name, type: q.type, value: q.value, unit: q.explicitUnit })),
+  }));
+  const sourceBase = extractTypeEntityOwnQuantities(ctx.dataStore, entityId);
+  const relatedBase: QuantitySet[] = [];
+  const nativeEditIds = new Set([...(mutationView.getAttributeOverrideEntityIds?.() ?? []),
+    ...pass.modifiedAttributes.keys(), ...(mutationView.getTombstones?.() ?? [])]);
+  for (const { relId, psetId } of relationships) {
+    if (ownIds.has(psetId)) continue;
+    const currentQuantitySet = !pass.effective.isDeleted(psetId) && pass.effective.typeOf(psetId) === 'IFCELEMENTQUANTITY';
+    if (!currentQuantitySet && ctx.dataStore.entityIndex.byId.get(psetId)?.type !== 'IFCELEMENTQUANTITY') continue;
+    const native = decodeNativeSetLine(nativeSetLine(ctx, psetId, pass.sourceSchema,
+      pass.modifiedAttributes.get(psetId), pass.warnings), psetId);
+    const name = native.attributes[2];
+    if (typeof name !== 'string' || !qsetNames.has(name)) continue;
+    const activeEdit = mutationView.getQuantityMutation === undefined
+      || mutationView.isQuantitySetDeleted?.(entityId, name)
+      || mutationView.getMutations().some(row => row.entityId === entityId && row.psetName === name
+        && typeof row.propName === 'string' && mutationView.getQuantityMutation(entityId, name, row.propName));
+    if (!activeEdit) continue;
+    const source = typeof native.attributes[0] === 'string'
+      ? sourceBase.find(set => set.globalId === native.attributes[0]) : undefined;
+    const nativeMembers = native.attributes[5];
+    if (!source || !source.globalId || source.name !== name
+      || sourceBase.filter(set => set.globalId === source.globalId).length !== 1
+      || ownBase.some(set => set.globalId === source.globalId)
+      || !currentQuantitySet || nativeEditIds.has(relId) || nativeEditIds.has(psetId) || !Array.isArray(nativeMembers)
+      || nativeMembers.some(id => typeof id !== 'number' || pass.effective.isDeleted(id) || nativeEditIds.has(id))) {
+      throw new Error('Relationship-attached Type quantity edits are unsupported');
+    }
+    if (source.quantities.some(quantity => quantity.explicitUnit !== undefined)
+      && [...nativeEditIds].some(id => [
+        pass.effective.typeOf(id), ctx.dataStore.entityIndex.byId.get(id)?.type,
+      ].some(type => getInheritanceChainAcrossSchemas(type ?? '').some(parent => [
+        'IfcNamedUnit', 'IfcDerivedUnit', 'IfcDerivedUnitElement', 'IfcMeasureWithUnit', 'IfcDimensionalExponents',
+      ].includes(parent))))) {
+      throw new Error('Relationship-attached Type quantity edits are unsupported');
+    }
+    relatedBase.push({ name: source.name, globalId: source.globalId,
+      quantities: source.quantities.map(q => ({ name: q.name, type: q.type, value: q.value, unit: q.explicitUnit })) });
+  }
+  const projected = mutationView.getQuantitiesForEntity(entityId, () => [...ownBase, ...relatedBase], true);
+  for (const set of relatedBase) {
+    const replacement = projected.find(candidate => candidate.globalId === set.globalId);
+    if (!replacement || JSON.stringify(replacement.quantities) !== JSON.stringify(set.quantities)) {
+      throw new Error('Relationship-attached Type quantity edits are unsupported');
+    }
+  }
+  const relatedGuids = new Set(relatedBase.map(set => set.globalId));
+  return { qsets: projected.filter(set => !relatedGuids.has(set.globalId)) };
+}
+
 /** Associate regenerated instances with their canonical source identity, not merely their name. */
 export function collectTypeQuantitySources(
   pass: ExportPass, ctx: PropertySetContext, entityId: number, qsets: readonly QuantitySet[],

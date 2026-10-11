@@ -192,10 +192,10 @@ function currentTypeOwnQuantities(store: IfcDataStore, typeId: number, view: Met
             // Preserve the native definition identity for the first scalar edit.
             // Opaque members have no numeric projection but are retained by the writer.
             const name = set.attributes[2], globalId = set.attributes[0];
-            if (typeof name !== 'string' || !name || typeof globalId !== 'string' || !globalId) {
-                throw new Error('Current type complex-only quantity definition identity is unavailable');
-            }
-            result.push({ name, globalId, quantities: [] });
+            if (typeof name !== 'string' || !name) continue;
+            // The writer validates identity only when this definition is affected;
+            // unrelated opaque definitions keep their original native graph.
+            result.push({ name, ...(typeof globalId === 'string' && globalId ? { globalId } : {}), quantities: [] });
         }
     }
     return result;

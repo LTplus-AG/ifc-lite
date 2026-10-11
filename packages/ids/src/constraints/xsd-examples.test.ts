@@ -57,7 +57,7 @@ function corpusPatterns(): string[] {
   const visit = (c: IDSConstraint | undefined) => {
     if (!c) return;
     if (c.type === 'pattern') out.add(c.pattern);
-    for (const s of c.and ?? []) visit(s);
+    if (c.type !== 'simpleValue') for (const s of c.and ?? []) visit(s);
   };
   const walk = (dir: string) => {
     for (const name of readdirSync(dir)) {

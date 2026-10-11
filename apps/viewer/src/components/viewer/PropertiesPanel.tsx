@@ -25,13 +25,14 @@ import { toGlobalIdFromModels } from '@/store/globalId';
 import { useIfc } from '@/hooks/useIfc';
 import { getOrCreateMutationView } from '@/sdk/adapters/mutation-view';
 import { IfcQuery } from '@ifc-lite/query';
-import { extractClassificationsOnDemand, extractAllMaterialsOnDemand, extractMaterialPropertiesOnDemand, extractTypeQuantitiesOnDemand, extractTypeEntityOwnProperties, extractDocumentsOnDemand, extractGeoreferencingOnDemand, extractLengthUnitScale, extractProjectUnits, ProjectUnits, extractStructuralOnDemand, taskProductExpressIds, taskProductGlobalIds, type IfcDataStore, type MaterialPsetGroup } from '@ifc-lite/parser';
+import { extractClassificationsOnDemand, extractTypeEntityOwnProperties, extractGeoreferencingOnDemand, extractLengthUnitScale, ProjectUnits, taskProductExpressIds, taskProductGlobalIds, type IfcDataStore, type MaterialPsetGroup } from '@ifc-lite/parser';
 import { RelationshipType, isSpatialStructureTypeName, isStoreyLikeSpatialTypeName } from '@ifc-lite/data';
 import type { EntityRef, FederatedModel } from '@/store/types';
 import { ZoneVolumeBreakdown } from './ZoneVolumeBreakdown';
 import type { ZoneSet } from '@/lib/zones';
-import { overlayClassifications, overlayMaterials } from '@/lib/authoring/association-overlay';
-import { withInheritedTypeQuantities } from '@/lib/zones/inherited-quantities';
+import { effectiveMaterials, effectiveMaterialProperties } from './properties/effectiveMaterials';
+import { useInheritedTypeQuantities } from './properties/useInheritedTypeQuantities';
+import { useCurrentProjectUnits } from './properties/useCurrentProjectUnits';
 import { CoordVal, CoordRow } from './properties/CoordinateDisplay';
 import { renderToWorldViewer } from './tools/measure-modes/coordinates';
 import { viewerToIfcAxes } from '@/lib/geo/coordinate-frame';
@@ -52,6 +53,7 @@ import { ScheduleCard } from './properties/ScheduleCard';
 import { StructuralCard } from './properties/StructuralCard';
 import { TaskEditCard } from './properties/TaskEditCard';
 import { DocumentCard } from './properties/DocumentCard';
+import { effectiveDocuments } from './properties/effectiveDocuments';
 import { RelationshipsCard } from './properties/RelationshipsCard';
 import { SpatialLocationBadge } from './properties/SpatialLocationBadge';
 import { AssemblyBadge } from './properties/AssemblyBadge';
@@ -65,8 +67,9 @@ import { isMaterialDefinitionType } from '@/utils/materialDefinitionTypes';
 import { attributesFromOverlayEntity } from './properties/overlayAttributes';
 import { createQueryAdapter } from '@/sdk/adapters/query-adapter';
 import { groupMembersForRef, relationshipsForSelection } from './properties/merge-relationship-data';
+import { relationshipPopulationUnavailable } from './properties/effective-relationship-availability';
 import { effectiveSelectedClass } from './properties/effectiveSelectedClass';
-import { effectiveStructuralView } from './properties/effectiveStructuralView';
+import { effectiveStructuralData } from './properties/effectiveStructuralData';
 import { selectedOverlayEntity } from './properties/selectedOverlayEntity';
 import { mergePropertySetLists, type DisplayPropertySet } from './properties/mergePropertySetLists';
 import { filterMaterialPropertyGroups, filterPropertySets, filterQuantitySets, matchesPropertySearch, searchTabForHits } from './properties/propertySearch';
@@ -522,29 +525,9 @@ export function PropertiesPanel() {
     return effectiveQuantitySets(mutationView, expressId, (baseId) => (baseId === expressId ? entityNode : modelQuery?.entity(baseId))?.quantities() ?? []);
   }, [entityNode, modelQuery, selectedEntity, mutationViews, mutationVersion]);
 
-  /**
-   * The occurrence's quantity sets followed by those it INHERITS from its
-   * `IfcTypeObject` (#1745/#1755), for the zone volume breakdown (#2508).
-   *
-   * Appended rather than merged in place, because `declaredVolumeBases` keeps
-   * the FIRST value it sees per basis: the occurrence therefore still wins for
-   * any basis it declares, and the type only fills a basis the occurrence is
-   * silent on. Without this, a door whose `NetVolume` lives only on its type —
-   * the common case for catalogue-driven exports — showed a mesh basis alone
-   * and looked like a file that declares nothing.
-   *
-   * Both parse paths are served: the on-demand extractor walks STEP source and
-   * returns `null` when there is none, which is every server-parsed store, so
-   * that path reads the prebuilt table keyed by the TYPE's express id — the
-   * same split `lib/lists/adapter.ts` makes.
-   */
-  const quantitiesWithInheritedType = useMemo(() => withInheritedTypeQuantities(
-    quantities,
-    (model?.ifcDataStore ?? ifcDataStore) as IfcDataStore | null,
-    selectedEntity?.expressId,
-    RelationshipType.DefinesByType,
-    (store, id) => extractTypeQuantitiesOnDemand(store as IfcDataStore, id)?.quantities as QuantitySet[] | undefined,
-  ), [quantities, selectedEntity, model, ifcDataStore]);
+  const inheritedTypeQuantities = useInheritedTypeQuantities(quantities,
+    (model?.ifcDataStore ?? ifcDataStore) as IfcDataStore | null, selectedEntity?.expressId,
+    mutationViews.get(selectedEntity?.modelId === 'legacy' ? '__legacy__' : selectedEntity?.modelId ?? '__legacy__'));
 
   // Build attributes array for display - must be before early return to maintain hook order
   // Uses schema-aware extraction to show ALL string/enum attributes for the entity type.
@@ -609,8 +592,7 @@ export function PropertiesPanel() {
     const dataStore = model?.ifcDataStore ?? ifcDataStore;
     if (!dataStore) return [];
     const view = mutationViews.get(selectedEntity.modelId === 'legacy' ? '__legacy__' : selectedEntity.modelId);
-    return [...extractClassificationsOnDemand(dataStore as IfcDataStore, lookupExpressId),
-      ...overlayClassifications(view, [selectedEntity.expressId, lookupExpressId], dataStore.schemaVersion, dataStore as IfcDataStore)]; // session-created (#5876)
+    return extractClassificationsOnDemand(dataStore as IfcDataStore, selectedEntity.expressId, view);
   }, [selectedEntity, lookupExpressId, model, ifcDataStore, mutationViews, mutationVersion]);
 
   // Extract materials for the selected entity from the IFC data store —
@@ -621,8 +603,7 @@ export function PropertiesPanel() {
     const dataStore = model?.ifcDataStore ?? ifcDataStore;
     if (!dataStore) return [];
     const view = mutationViews.get(selectedEntity.modelId === 'legacy' ? '__legacy__' : selectedEntity.modelId);
-    return [...extractAllMaterialsOnDemand(dataStore as IfcDataStore, lookupExpressId),
-      ...overlayMaterials(view, [selectedEntity.expressId, lookupExpressId], dataStore.schemaVersion, dataStore as IfcDataStore)]; // session-created (#5876)
+    return effectiveMaterials(dataStore as IfcDataStore, selectedEntity.expressId, view);
   }, [selectedEntity, lookupExpressId, model, ifcDataStore, mutationViews, mutationVersion]);
 
   // Property sets attached to the selected entity's material(s) via
@@ -634,16 +615,14 @@ export function PropertiesPanel() {
     const dataStore = model?.ifcDataStore ?? ifcDataStore;
     if (!dataStore) return [];
     const view = mutationViews.get(selectedEntity.modelId === 'legacy' ? '__legacy__' : selectedEntity.modelId);
-    return extractMaterialPropertiesOnDemand(dataStore as IfcDataStore, lookupExpressId, view, mutationVersion);
+    return effectiveMaterialProperties(dataStore as IfcDataStore, selectedEntity.expressId, view, mutationVersion);
   }, [selectedEntity, lookupExpressId, model, ifcDataStore, mutationViews, mutationVersion]);
 
   // Extract documents for the selected entity from the IFC data store
-  const documents = useMemo(() => {
-    if (!selectedEntity || lookupExpressId === null) return [];
-    const dataStore = model?.ifcDataStore ?? ifcDataStore;
-    if (!dataStore) return [];
-    return extractDocumentsOnDemand(dataStore as IfcDataStore, lookupExpressId);
-  }, [selectedEntity, lookupExpressId, model, ifcDataStore]);
+  const documentData = useMemo(() => effectiveDocuments(model?.ifcDataStore ?? ifcDataStore, selectedEntity?.expressId,
+    mutationViews.get(selectedEntity?.modelId === 'legacy' ? '__legacy__' : selectedEntity?.modelId ?? '')),
+  [selectedEntity, model, ifcDataStore, mutationViews, mutationVersion]);
+  const documents = documentData.rows;
 
   // Extract structural relationships (openings, fills, groups, connections)
   const entityRelationships = useMemo(() => {
@@ -653,7 +632,7 @@ export function PropertiesPanel() {
     const rels = relationshipsForSelection(overlayAwareQuery.relationships, selectedEntity, lookupExpressId);
     const totalCount = rels.voids.length + rels.fills.length + rels.groups.length
       + rels.connections.length + (rels.relations?.length ?? 0);
-    return totalCount > 0 ? rels : null;
+    return totalCount > 0 || relationshipPopulationUnavailable(dataStore as IfcDataStore, mutationViews.get(selectedEntity.modelId === 'legacy' ? '__legacy__' : selectedEntity.modelId)) ? rels : null;
   }, [selectedEntity, lookupExpressId, model, ifcDataStore, mutationVersion, overlayAwareQuery]);
 
   // Select a related entity by express id (e.g. click an IfcZone in the
@@ -793,8 +772,7 @@ export function PropertiesPanel() {
     if (!dataStore) return null;
     const id = selectedEntity?.modelId === 'legacy' ? '__legacy__' : (model?.id ?? selectedEntity?.modelId);
     const mutationView = id ? mutationViews.get(id) : undefined;
-    const effectiveView = effectiveStructuralView(mutationView);
-    const out = extractStructuralOnDemand(dataStore as IfcDataStore, effectiveView);
+    const out = effectiveStructuralData(dataStore as IfcDataStore, mutationView);
     return out.hasStructural ? out : null;
   }, [model, ifcDataStore, selectedEntity?.modelId, mutationViews, mutationVersion]);
   /** True when the selection is itself a structural member the extraction
@@ -841,15 +819,12 @@ export function PropertiesPanel() {
     return extractLengthUnitScale(dataStore.source, dataStore.entityIndex);
   }, [model, ifcDataStore]);
 
-  // Extract the file's full declared unit assignment (per-unit-type symbols +
-  // SI scales) so property/quantity cards can render values with their units
-  // (issue #1573). Falls back to an empty resolver (SI defaults) when the
-  // source buffer / entity index aren't available.
-  const projectUnits = useMemo(() => {
-    const dataStore = model?.ifcDataStore ?? ifcDataStore;
-    if (!dataStore?.source?.length || !dataStore?.entityIndex) return ProjectUnits.empty();
-    return extractProjectUnits(dataStore.source, dataStore.entityIndex);
-  }, [model, ifcDataStore]);
+  // Native edits to UnitsInContext and its dependencies determine current
+  // quantity units. Preserve unavailable coverage rather than interpreting
+  // an occurrence basis through obsolete source units (#7353).
+  const quantityUnitContext = useCurrentProjectUnits((model?.ifcDataStore ?? ifcDataStore) as IfcDataStore | null,
+    mutationViews.get(selectedEntity?.modelId === 'legacy' ? '__legacy__' : selectedEntity?.modelId ?? '__legacy__'));
+  const projectUnits = quantityUnitContext.value ?? ProjectUnits.empty();
 
   // Extract type-level properties (e.g., from IfcWallType's HasPropertySets)
   const typeProperties = useMemo(() => {
@@ -1041,7 +1016,7 @@ export function PropertiesPanel() {
   const renderedInheritedTypeProperties = inheritedTypeProperties;
   const renderedMergedProperties = mergedProperties;
   const renderedQuantities = quantities;
-  const renderedQuantitiesWithInheritedType = quantitiesWithInheritedType;
+  const renderedQuantitiesWithInheritedType = inheritedTypeQuantities.quantities;
   const renderedAttributes = attributes;
   const renderedClassifications = classifications;
   const renderedMaterialInfos = materialInfos;
@@ -1056,10 +1031,12 @@ export function PropertiesPanel() {
   const foundAttributes = renderedAttributes.filter((attr) => matchesPropertySearch(attr.name, findQuery) || matchesPropertySearch(attr.value, findQuery));
   const foundStructure = renderedSpatialContainment?.filter((item) => matchesPropertySearch(item.label, findQuery) || matchesPropertySearch(item.value, findQuery));
   const foundZones = zoneMembership?.filter((item) => matchesPropertySearch(item.label, findQuery) || matchesPropertySearch(item.value, findQuery));
-  const foundOccurrence = filterPropertySets(renderedOccurrenceProperties, findQuery, projectUnits, unitDisplayOverrides);
-  const foundInherited = filterPropertySets(renderedInheritedTypeProperties, findQuery, projectUnits, unitDisplayOverrides);
-  const foundQuantities = filterQuantitySets(renderedQuantities, findQuery, projectUnits, unitDisplayOverrides, locale);
-  const foundMaterialProperties = filterMaterialPropertyGroups(renderedMaterialProperties, findQuery, projectUnits, unitDisplayOverrides);
+  const foundOccurrence = filterPropertySets(renderedOccurrenceProperties, findQuery, projectUnits, unitDisplayOverrides, quantityUnitContext.status !== 'unavailable');
+  const foundInherited = filterPropertySets(renderedInheritedTypeProperties, findQuery, projectUnits, unitDisplayOverrides, quantityUnitContext.status !== 'unavailable');
+  const foundQuantities = filterQuantitySets(renderedQuantities, findQuery, projectUnits, unitDisplayOverrides, locale, quantityUnitContext.status !== 'unavailable');
+  // Own sets remain the canonical prefix; identical names do not identify ownership (#7382).
+  const foundInheritedQuantities = filterQuantitySets(renderedQuantitiesWithInheritedType.slice(renderedQuantities.length), findQuery, projectUnits, unitDisplayOverrides, locale, quantityUnitContext.status !== 'unavailable');
+  const foundMaterialProperties = filterMaterialPropertyGroups(renderedMaterialProperties, findQuery, projectUnits, unitDisplayOverrides, quantityUnitContext.status !== 'unavailable');
   const foundAssociations = findAssociationAttributes({
     classifications: renderedClassifications, materials: renderedMaterialInfos,
     documents: renderedDocuments, query: findQuery, t, locale,
@@ -1074,9 +1051,9 @@ export function PropertiesPanel() {
   // Switch tabs when the only search hits live on the other Properties tab.
   useEffect(() => {
     if (!findQuery) return;
-    const next = searchTabForHits(propertiesActiveTab, foundQuantities.length > 0, hasPropertyHits);
+    const next = searchTabForHits(propertiesActiveTab, foundQuantities.length + foundInheritedQuantities.length > 0, hasPropertyHits);
     if (next) setPropertiesActiveTab(next);
-  }, [findQuery, propertiesActiveTab, foundQuantities.length, hasPropertyHits, setPropertiesActiveTab]);
+  }, [findQuery, propertiesActiveTab, foundQuantities.length, foundInheritedQuantities.length, hasPropertyHits, setPropertiesActiveTab]);
   // Sets the element only inherits: adding to one overrides it here, carrying the type's properties (#5966).
   const inheritedFrom = useMemo(() => renderedTypeProperties && !isTypeEntity ? {
     typeId: renderedTypeProperties.typeId, typeName: renderedTypeProperties.typeName,
@@ -1351,7 +1328,7 @@ export function PropertiesPanel() {
         )}
       </div>
 
-      <PropertyFindBox value={find} onChange={setFind} hasMatches={hasPropertyHits || foundQuantities.length > 0} />
+      <PropertyFindBox value={find} onChange={setFind} hasMatches={hasPropertyHits || foundQuantities.length + foundInheritedQuantities.length > 0} />
 
       {/* IFC Attributes */}
       {foundAttributes.length > 0 && (
@@ -1441,6 +1418,8 @@ export function PropertiesPanel() {
                       zoneSet={item.zoneSet}
                       globalId={selectedEntityId}
                       quantitySets={renderedQuantitiesWithInheritedType}
+                      inheritedQuantityCoverage={inheritedTypeQuantities}
+                      quantityUnitCoverage={quantityUnitContext}
                       projectUnits={renderedProjectUnits}
                       unitDisplayOverrides={unitDisplayOverrides}
                     />
@@ -1535,7 +1514,7 @@ export function PropertiesPanel() {
             )}
             {foundOccurrence.length === 0 && foundInherited.length === 0 && foundMaterialProperties.length === 0
               && (findQuery ? !hasAssociationHits : (renderedClassifications.length === 0 && renderedMaterialInfos.length === 0
-                && renderedMaterialProperties.length === 0 && renderedDocuments.length === 0
+                && renderedMaterialProperties.length === 0 && renderedDocuments.length === 0 && !documentData.membershipUnavailable
                 && !renderedEntityRelationships && !hasScheduleForSelection && !hasStructuralForSelection)) ? (
               findQuery ? null : <p className="text-sm text-zinc-500 dark:text-zinc-500 text-center py-8 font-mono">{t('properties.panel.noPropertySets')}</p>
             ) : (
@@ -1564,7 +1543,7 @@ export function PropertiesPanel() {
                         typeEditScope={renderedIsTypeEntity ? renderedTypeEditImpact ?? undefined : undefined}
                         focusedPropKey={focusedPropKey}
                         searchQuery={findQuery} sectionScope="occurrence"
-                        projectUnits={renderedProjectUnits}
+                        projectUnits={renderedProjectUnits} projectUnitsAvailable={quantityUnitContext.status !== 'unavailable'}
                         unitDisplayOverrides={unitDisplayOverrides}
                       />
                     ))}
@@ -1592,7 +1571,7 @@ export function PropertiesPanel() {
                         typeEditScope={renderedTypeEditImpact?.mode === 'inherited' ? renderedTypeEditImpact : undefined}
                         focusedPropKey={focusedPropKey}
                         searchQuery={findQuery} sectionScope="inherited"
-                        projectUnits={renderedProjectUnits}
+                        projectUnits={renderedProjectUnits} projectUnitsAvailable={quantityUnitContext.status !== 'unavailable'}
                         unitDisplayOverrides={unitDisplayOverrides}
                       />
                     ))}
@@ -1640,7 +1619,7 @@ export function PropertiesPanel() {
                             key={`matpset-${group.materialId}-${pset.name}-${index}`}
                             pset={pset}
                             searchQuery={findQuery} sectionScope={`material:${group.materialId}`}
-                            projectUnits={renderedProjectUnits}
+                            projectUnits={renderedProjectUnits} projectUnitsAvailable={quantityUnitContext.status !== 'unavailable'}
                             unitDisplayOverrides={unitDisplayOverrides}
                           />
                         ))}
@@ -1650,11 +1629,12 @@ export function PropertiesPanel() {
                 )}
 
                 {/* Documents */}
-                {visibleDocumentCount > 0 && (
+                {(visibleDocumentCount > 0 || (!findQuery && documentData.membershipUnavailable)) && (
                   <>
                     {(visiblePsetCount > 0 || visibleClassificationCount > 0 || visibleMaterialCount > 0 || foundMaterialProperties.length > 0) && (
                       <div className="border-t border-zinc-200 dark:border-zinc-800 pt-2 mt-2" />
                     )}
+                    {!findQuery && documentData.membershipUnavailable && <output className="block text-xs text-amber-700 dark:text-amber-300">{t('properties.document.membershipUnavailable')}</output>}
                     {findQuery ? foundAssociations.documents.map((card, i) => <AssociationAttributeSearchCard key={`doc-${i}`} card={card} query={findQuery} />)
                       : renderedDocuments.map((doc, i) => <DocumentCard key={`doc-${i}`} document={doc} sectionId={associationDisclosureId('document', doc, renderedDocuments, i)} />)}
                   </>
@@ -1666,6 +1646,7 @@ export function PropertiesPanel() {
                     <div className="border-t border-zinc-200 dark:border-zinc-800 pt-2 mt-2" />
                     <RelationshipsCard
                       relationships={renderedEntityRelationships}
+                      populationUnavailable={relationshipPopulationUnavailable(activeDataStore as IfcDataStore | null, selectedEntity ? mutationViews.get(selectedEntity.modelId === 'legacy' ? '__legacy__' : selectedEntity.modelId) : null)}
                       onSelectEntity={handleSelectRelatedEntity}
                       onIsolateGroupMembers={handleIsolateGroupMembers}
                     />
@@ -1696,6 +1677,7 @@ export function PropertiesPanel() {
                     <div className="border-t border-zinc-200 dark:border-zinc-800 pt-2 mt-2" />
                     <StructuralCard
                       structuralData={structuralData}
+                      sourceUnavailable={!activeDataStore?.source?.length}
                       selectedExpressId={selectedEntity.expressId}
                       selectedGlobalId={selectedEntityGlobalId}
                     />
@@ -1707,13 +1689,25 @@ export function PropertiesPanel() {
           <TabsContent value="quantities" className="m-0 p-3 overflow-hidden">
             <div className="mb-3"><SweptDiskInspection enabled={propertiesActiveTab === 'quantities'} /></div>
             <div className="mb-3"><ExtrusionInspection enabled={propertiesActiveTab === 'quantities'} /></div>
-            {foundQuantities.length === 0 ? (
-              findQuery ? null : <p className="text-sm text-zinc-500 dark:text-zinc-500 text-center py-8 font-mono">{t('properties.panel.noQuantities')}</p>
+            {quantityUnitContext.status === 'unavailable' ? (
+              <output className="block text-sm text-muted-foreground">{t('zonesPanel.volumeBreakdown.quantityUnitsUnavailable', { reason: quantityUnitContext.reason ?? 'unverified current data' })}</output>
+            ) : null}
+            {inheritedTypeQuantities.status === 'unavailable' ? (
+              <output className="block text-sm text-muted-foreground">{t('zonesPanel.volumeBreakdown.inheritedUnavailable', { reason: inheritedTypeQuantities.reason ?? 'unverified current data' })}</output>
+            ) : null}
+            {foundQuantities.length + foundInheritedQuantities.length === 0 ? (
+              findQuery || inheritedTypeQuantities.status === 'unavailable' ? null : <p className="text-sm text-zinc-500 dark:text-zinc-500 text-center py-8 font-mono">{t('properties.panel.noQuantities')}</p>
             ) : (
               <div className="space-y-3 w-full overflow-hidden">
-                {foundQuantities.map((qset: QuantitySet, index: number) => (
-                  <QuantitySetCard key={`${qset.name}-${index}`} qset={qset} projectUnits={renderedProjectUnits} unitDisplayOverrides={unitDisplayOverrides} searchQuery={findQuery} />
-                ))}
+                {[{ scope: 'occurrence', sets: foundQuantities, heading: 'properties.panel.occurrenceQuantitiesHeading' as const },
+                  { scope: 'type', sets: foundInheritedQuantities, heading: 'properties.panel.typeQuantitiesHeading' as const }].map(({ scope, sets, heading }) => sets.length > 0 ? (
+                  <section key={scope} aria-label={t(heading)} className="space-y-3">
+                    <h3 className="text-sm font-medium">{t(heading)}</h3>
+                    {sets.map((qset: QuantitySet, index: number) => (
+                      <QuantitySetCard key={`${scope}-${qset.name}-${index}`} qset={qset} projectUnits={renderedProjectUnits} projectUnitsAvailable={quantityUnitContext.status !== 'unavailable'} unitDisplayOverrides={unitDisplayOverrides} searchQuery={findQuery} />
+                    ))}
+                  </section>
+                ) : null)}
               </div>
             )}
           </TabsContent>
@@ -1862,12 +1856,10 @@ function EntityDataSection({
     return entityNode.quantities();
   }, [entityNode]);
 
-  // The file's declared units, for rendering unit suffixes on property/
-  // quantity values (issue #1573). Mirrors the `projectUnits` memo above.
-  const projectUnits = useMemo(() => {
-    if (!dataStore?.source?.length || !dataStore?.entityIndex) return ProjectUnits.empty();
-    return extractProjectUnits(dataStore.source, dataStore.entityIndex);
-  }, [dataStore]);
+  // Multi-selection quantity cards use the same current native unit context.
+  const quantityUnitContext = useCurrentProjectUnits(dataStore as IfcDataStore | null,
+    headerMutationViews.get(entityRef.modelId === 'legacy' ? '__legacy__' : entityRef.modelId));
+  const projectUnits = quantityUnitContext.value ?? ProjectUnits.empty();
 
   // Display-unit converter overrides (issue #1573 proposal 2) — this
   // component renders in the multi-entity selection panel, a sibling
@@ -1968,7 +1960,7 @@ function EntityDataSection({
           <CollapsibleContent>
             <div className="p-2 pt-0 space-y-2">
               {properties.map((pset, index) => (
-                <PropertySetCard key={`${pset.name}-${index}`} pset={pset} projectUnits={projectUnits} unitDisplayOverrides={unitDisplayOverrides} />
+                <PropertySetCard key={`${pset.name}-${index}`} pset={pset} projectUnits={projectUnits} projectUnitsAvailable={quantityUnitContext.status !== 'unavailable'} unitDisplayOverrides={unitDisplayOverrides} />
               ))}
             </div>
           </CollapsibleContent>
@@ -1986,8 +1978,11 @@ function EntityDataSection({
           </CollapsibleTrigger>
           <CollapsibleContent>
             <div className="p-2 pt-0 space-y-2">
+              {quantityUnitContext.status === 'unavailable' ? (
+                <output className="block text-xs text-muted-foreground">{t('zonesPanel.volumeBreakdown.quantityUnitsUnavailable', { reason: quantityUnitContext.reason ?? 'unverified current data' })}</output>
+              ) : null}
               {quantities.map((qset, index) => (
-                <QuantitySetCard key={`${qset.name}-${index}`} qset={qset} projectUnits={projectUnits} unitDisplayOverrides={unitDisplayOverrides} />
+                <QuantitySetCard key={`${qset.name}-${index}`} qset={qset} projectUnits={projectUnits} projectUnitsAvailable={quantityUnitContext.status !== 'unavailable'} unitDisplayOverrides={unitDisplayOverrides} />
               ))}
             </div>
           </CollapsibleContent>

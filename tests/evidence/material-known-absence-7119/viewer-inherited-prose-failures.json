@@ -1,0 +1,21 @@
+{
+  "head": "f43d101f55d5312bc8ab3b0483899d18e19d3500",
+  "sourcePins": {
+    "packages/parser/src/material-definitions.ts": "1a462d754a3d7117cfb19fed3b2a1feeef07f9a8ad9d863422cba23775d3d510",
+    "packages/parser/test/on-demand-classification-material.test.ts": "7d5c61d197920ddd5f969921756e272f99dc980b8418f1cf8641c1399ae14905",
+    ".changeset/quiet-material-names.md": "8649798f31a12bcbcb8d334947235890d02acf6ec724c5a038d2ab7489f96e36",
+    "apps/viewer/src/lib/assistant/adapters/selection-materials.test.tsx": "4aaeebfed3c34bb6c29b815c367f1666e9a6453364ff27cdc9a7404107ea229a",
+    "apps/viewer/src/lib/assistant/adapters/selection.ts": "7eaa886a41790e501a8187ee3b9499926f44984f807de58cf30f2234ec97c65e"
+  },
+  "viewerResult": {
+    "passed": 54,
+    "failed": 2,
+    "skipped": 0,
+    "rawServerMaterialSemanticsPassed": true,
+    "failures": [
+      "selection-materials.test.tsx:113 stale absent-values prose",
+      "selection-materials.test.tsx:217 stale classifications/relationships excluded prose"
+    ]
+  },
+  "scope": "No production material behavior failure observed in this viewer run; two inherited current-main prose assertions block green."
+}

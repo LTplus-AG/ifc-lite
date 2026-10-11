@@ -102,6 +102,8 @@ IDS supports six facet types for defining applicability and requirements:
 | **Material** | Match by material name | `Concrete C30/37` |
 | **PartOf** | Match by spatial containment | `IfcBuildingStorey "Level 1"` |
 
+Material lists whose `IfcMaterial.Name` is explicitly unset (`$` in STEP) retain the known material as `Material #<expressId>`. This is distinct from an unreadable or invalid referenced material: IDS keeps those results uncertain instead of treating them as a definite name mismatch.
+
 ## Constraint Types
 
 Each facet can use different constraint types to match values:

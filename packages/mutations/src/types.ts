@@ -241,6 +241,9 @@ export interface NewEntity {
   expressId: number;
   type: string;
   attributes: IfcAttributeValue[];
+  /** Native creation provenance, not an IFC attribute. Preserve when cloning
+   * an original authored record; absent on legacy/tokenless recovered bodies. */
+  creationId?: string;
 }
 
 /**

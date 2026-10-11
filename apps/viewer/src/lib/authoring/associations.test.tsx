@@ -6,7 +6,7 @@
  * #5876: "Add Classification" / "Add Material" wrote look-alike property sets
  * ("Classification [Uniclass]") that no reader or downstream tool recognises.
  * They must create real IFC entities: exported, read back by the parser's own
- * classification / material readers, shown by the panel's overlay readers,
+ * classification / material readers, shown by the panel's effective readers,
  * undone as one step, and schema-correct for IFC2X3 and IFC4.
  *
  * Real viewer store over real parsed models; the export is re-parsed and read
@@ -27,16 +27,13 @@ import { cleanup, click, render, type as typeInput } from '@/test/render.js';
 import { AddMaterialDialog } from '@/components/viewer/PropertyEditor.js';
 import { PropertiesPanel } from '@/components/viewer/PropertiesPanel.js';
 
-// Guarded: both modules are new in #5876. With the fix reverted they are
-// absent, and the tests must fail on an assertion, not on a load error.
+// Guarded writer: absence must fail an assertion, rather than a load error (#5876).
 const writer: Partial<typeof import('./associations.js')> = await import('./associations.js').catch(() => ({}));
-const reader: Partial<typeof import('./association-overlay.js')> = await import('./association-overlay.js').catch(() => ({}));
 function api() {
   const { addClassificationAssociation, addMaterialAssociation } = writer;
-  const { overlayClassifications, overlayMaterials } = reader;
-  assert.ok(addClassificationAssociation && addMaterialAssociation && overlayClassifications && overlayMaterials,
-    'lib/authoring exports the association writer and overlay readers (#5876)');
-  return { addClassificationAssociation, addMaterialAssociation, overlayClassifications, overlayMaterials };
+  assert.ok(addClassificationAssociation && addMaterialAssociation,
+    'lib/authoring exports the native association writers (#5876)');
+  return { addClassificationAssociation, addMaterialAssociation };
 }
 
 const step = (schema: string, data: string) => `ISO-10303-21;
@@ -174,7 +171,7 @@ describe('Add Classification / Add Material create real IFC entities (#5876)', (
       assert.equal(read[0].identification, 'Ss_25');
       assert.equal(read[0].name, 'Walls');
       // …and the Properties panel sees it before any export.
-      assert.deepEqual(api().overlayClassifications(view(), [10], 'IFC4').map((c) => [c.system, c.identification, c.name]), [['Uniclass', 'Ss_25', 'Walls']]);
+      assert.deepEqual(extractClassificationsOnDemand(store, 10, view()).map((c) => [c.system, c.identification, c.name]), [['Uniclass', 'Ss_25', 'Walls']]);
     });
 
     it('one undo removes every entity the add created; redo brings them back', () => {
@@ -182,9 +179,9 @@ describe('Add Classification / Add Material create real IFC entities (#5876)', (
       assert.equal(view().getNewEntities().length, 3);
       useViewerStore.getState().undo('m');
       assert.equal(view().getNewEntities().filter((e) => !view().isDeleted(e.expressId)).length, 0);
-      assert.deepEqual(api().overlayClassifications(view(), [10], 'IFC4'), []);
+      assert.deepEqual(extractClassificationsOnDemand(store, 10, view()), []);
       useViewerStore.getState().redo('m');
-      assert.equal(api().overlayClassifications(view(), [10], 'IFC4').length, 1);
+      assert.equal(extractClassificationsOnDemand(store, 10, view()).length, 1);
     });
 
     it('a second code in the same system reuses its IfcClassification', () => {
@@ -199,7 +196,7 @@ describe('Add Classification / Add Material create real IFC entities (#5876)', (
       assert.equal([...view().getNewEntitiesOfType('IFCCLASSIFICATION')].length, 0);
       const { reparsed } = await exportAndReparse(store, 'IFC4');
       assert.deepEqual(extractClassificationsOnDemand(reparsed, 10).map((c) => [c.system, c.identification]), [['OmniClass', '23-11']]);
-      assert.deepEqual(api().overlayClassifications(view(), [10], 'IFC4', store).map((c) => c.system), ['OmniClass']);
+      assert.deepEqual(extractClassificationsOnDemand(store, 10, view()).map((c) => c.system), ['OmniClass']);
     });
 
     it('a material exports as IfcMaterial + IfcRelAssociatesMaterial and reads back with its category', async () => {
@@ -208,7 +205,7 @@ describe('Add Classification / Add Material create real IFC entities (#5876)', (
       assert.doesNotMatch(text, /Material \[/, 'no look-alike property set');
       const read = extractAllMaterialsOnDemand(reparsed, 10);
       assert.deepEqual(read.map((m) => [m.type, m.name, m.category]), [['Material', 'Steel', 'Metal']]);
-      assert.deepEqual(api().overlayMaterials(view(), [10], 'IFC4').map((m) => m.name), ['Steel']);
+      assert.deepEqual(extractAllMaterialsOnDemand(store, 10, view()).map((m) => m.name), ['Steel']);
     });
 
     it('a same-named material reuses its entity and association, preserving its original fields', async () => {
@@ -216,7 +213,7 @@ describe('Add Classification / Add Material create real IFC entities (#5876)', (
       api().addMaterialAssociation('m', 12, { name: 'Steel', category: 'Wood' });
       assert.equal([...view().getNewEntitiesOfType('IFCMATERIAL')].length, 1);
       assert.equal([...view().getNewEntitiesOfType('IFCRELASSOCIATESMATERIAL')].length, 1);
-      assert.deepEqual(api().overlayMaterials(view(), [12], 'IFC4').map((m) => m.category), ['Metal']);
+      assert.deepEqual(extractAllMaterialsOnDemand(store, 12, view()).map((m) => m.category), ['Metal']);
       const { reparsed } = await exportAndReparse(store, 'IFC4');
       assert.deepEqual(extractAllMaterialsOnDemand(reparsed, 12).map((m) => m.category), ['Metal']);
     });
@@ -225,7 +222,7 @@ describe('Add Classification / Add Material create real IFC entities (#5876)', (
       assert.deepEqual(api().addMaterialAssociation('m', 10, { name: 'Concrete' }), { ok: true });
       assert.equal(view().getNewEntities().length, 0, 'source material and relationship are reused');
       assert.deepEqual(view().getPositionalMutationsForEntity(21)?.get(4), ['#11', '#10']);
-      assert.deepEqual(api().overlayMaterials(view(), [10], 'IFC4', store).map((m) => m.name), ['Concrete']);
+      assert.deepEqual(extractAllMaterialsOnDemand(store, 10, view()).map((m) => m.name), ['Concrete']);
       const { reparsed } = await exportAndReparse(store, 'IFC4');
       assert.deepEqual(extractAllMaterialsOnDemand(reparsed, 10).map((m) => m.name), ['Concrete']);
       useViewerStore.getState().undo('m');
@@ -294,9 +291,9 @@ describe('Add Classification / Add Material create real IFC entities (#5876)', (
     it('an element sees the session associations of the base it aliases', () => {
       api().addClassificationAssociation('m', 10, { system: 'Uniclass', identification: 'Ss_25' });
       api().addMaterialAssociation('m', 10, { name: 'Steel' });
-      // A duplicate (say #99) resolving to base #10 reads [99, 10], as the panel passes it.
-      assert.equal(api().overlayClassifications(view(), [99, 10], 'IFC4').length, 1);
-      assert.equal(api().overlayMaterials(view(), [99, 10], 'IFC4').length, 1);
+      view().setEntityAlias(99, 10);
+      assert.equal(extractClassificationsOnDemand(store, 99, view()).length, 1);
+      assert.equal(extractAllMaterialsOnDemand(store, 99, view()).length, 1);
     });
 
     it('refuses a conflicting material association on an element that already has one', () => {

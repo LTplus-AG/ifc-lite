@@ -49,12 +49,21 @@ export const TILTED_SLAB = 120;
 export interface ModelingSessionOptions {
   unit?: 'metre' | 'millimetre';
   storeyOffset?: [number, number];
+  /** Imported native owners for the Room tests’ explicit remeshed geometry. */
+  roomGeometry?: boolean;
 }
 
-function fixtureStep({ unit = 'metre', storeyOffset = [0, 0] }: ModelingSessionOptions): string {
+function fixtureStep({ unit = 'metre', storeyOffset = [0, 0], roomGeometry = false }: ModelingSessionOptions): string {
   const prefix = unit === 'metre' ? '$' : '.MILLI.';
   const k = unit === 'metre' ? 1 : 1000;
   const [ox, oy] = storeyOffset.map((v) => v * k);
+  // #7324: rendered meshes require real source ownership. These are imported
+  // fixture entities, not new mutations, so gesture Undo assertions measure
+  // only the Room operations. Their box meshes are the stated test invariant.
+  const roomIds = [...Array.from({ length: 21 }, (_, i) => 9000 + i), ...Array.from({ length: 21 }, (_, i) => 9500 + i)];
+  const nativeRooms = roomGeometry ? roomIds.map(id => `#${id}=IFCWALL('${id.toString(36).padStart(22, '0')}',$,'Room mesh wall ${id}',$,$,#${id < 9500 ? 41 : 51},$,$,$);`).join('\n')
+    + "\n#9100=IFCSPACE('0000000000000000009100',$,'Imported occupied face',$,$,#41,$,$,.ELEMENT.,.INTERNAL.,$);" : '';
+
   return `ISO-10303-21;
 HEADER;
 FILE_SCHEMA(('IFC4'));
@@ -119,6 +128,7 @@ DATA;
 #92=IFCEXTRUDEDAREASOLID(#86,#87,#91,${4 * k}.);
 #93=IFCSHAPEREPRESENTATION(#20,'Body','SweptSolid',(#92));
 #90=IFCPRODUCTDEFINITIONSHAPE($,$,(#93));
+${nativeRooms}
 ENDSEC;
 END-ISO-10303-21;
 `;
@@ -142,7 +152,8 @@ export async function seedModelingSession(options: ModelingSessionOptions = {}):
   const bytes = new TextEncoder().encode(fixtureStep(options));
   const dataStore = await new IfcParser().parseColumnar(bytes.buffer as ArrayBuffer, { disableWorkerScan: true });
   const geometry = emptyGeometry();
-  const model = { ...fixtureModel(MODEL_ID), ifcDataStore: dataStore, geometryResult: geometry } as unknown as FederatedModel;
+  const maxExpressId = Math.max(...dataStore.entities.expressId);
+  const model = { ...fixtureModel(MODEL_ID), maxExpressId, ifcDataStore: dataStore, geometryResult: geometry } as unknown as FederatedModel;
   const view = new MutablePropertyView(dataStore.properties || null, MODEL_ID);
   useViewerStore.setState({
     ...fixtureModels(model),

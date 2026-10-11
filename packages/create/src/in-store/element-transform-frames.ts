@@ -13,12 +13,12 @@
  * element-under-storey shape, the host's frame for an opening, a composed
  * chain for an assembly part — and its own origin there, to turn it about a
  * pivot. Reads honour the session's overlay (created entities, positional
- * edits), through `readAttributes`.
+ * edits), through the canonical current `readPlacementAttributes`.
  */
 
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
-import { asCoordinateTriple, asDirectionRatios, asExpressIdRef, readAttributes } from './edit/placement-core.js';
+import { asCoordinateTriple, asDirectionRatios, asExpressIdRef, readPlacementAttributes } from './edit/placement-core.js';
 import { getModelLengthUnitScale } from './edit/length-unit-scale.js';
 
 type Vec2 = [number, number];
@@ -38,7 +38,7 @@ export interface PlacementReader {
 }
 
 function attrs(r: PlacementReader, id: number): unknown[] | null {
-  return readAttributes(r.dataStore, r.view, r.view, id);
+  return readPlacementAttributes(r.dataStore, r.view, r.view, id);
 }
 
 /** A product's `ObjectPlacement` (an `IfcLocalPlacement` id), or null. */

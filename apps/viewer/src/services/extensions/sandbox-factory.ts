@@ -74,8 +74,8 @@ export function createBimSandboxFactory(opts: SandboxFactoryOptions): RuntimeSan
  * with "<x> is not a function". The root Proxy resolves members via
  * the prototype chain, so nothing is dropped.
  *
- * Top-level functions (e.g. `sdk.query()`, `sdk.entity()`) pass
- * through ungated — the coarse permission ring already gates whole
+ * Top-level functions (e.g. `sdk.query()`, `sdk.entity()`)
+ * retain their native receiver — the coarse permission ring already gates whole
  * namespaces; this inner ring only wraps object-namespace methods
  * (`sdk.viewer.colorize`, etc.).
  */
@@ -89,8 +89,13 @@ function wrapWithCapabilityGate(
     get(target, prop) {
       const value = (target as Record<string | symbol, unknown>)[prop];
       if (typeof prop !== 'string') return value;
-      // Functions / primitives pass through; only object namespaces
-      // get the per-method capability gate.
+      // #7172 SDK factories must not read private namespaces through this proxy.
+      // Cache bound methods, preserving identity and the SDK's native receiver.
+      if (typeof value === 'function') {
+        if (!nsCache.has(prop)) nsCache.set(prop, value.bind(target));
+        return nsCache.get(prop);
+      }
+      // Only public object namespaces get the per-method capability gate.
       if (value === null || typeof value !== 'object') return value;
       let wrapped = nsCache.get(prop);
       if (!wrapped) {

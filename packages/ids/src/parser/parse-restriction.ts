@@ -14,6 +14,7 @@ import type {
   IDSBoundsConstraint,
 } from '../types.js';
 
+import { boundOrderOf, readNumeric, readOrderedLexeme } from '../constraints/xsd-order.js';
 import {
   getChildElement,
   getChildElements,
@@ -22,6 +23,12 @@ import {
 } from './dom.js';
 
 const XS_NAMESPACE = 'http://www.w3.org/2001/XMLSchema';
+
+const BOUND_FACETS = ['minInclusive', 'maxInclusive', 'minExclusive', 'maxExclusive'] as const;
+type BoundFacet = (typeof BOUND_FACETS)[number];
+
+/** `xs:nonNegativeInteger`'s lexical space (an optional `+`, then digits). */
+const NON_NEGATIVE_INTEGER = /^\+?\d+$/;
 
 /**
  * Parse XSD restriction element.
@@ -133,26 +140,36 @@ function parseRestrictionFamilies(el: Element): IDSConstraint[] {
     const unparseable: { facet: string; rawValue: string }[] = [];
     const rawValueOf = (e: Element): string =>
       e.getAttribute('value') || e.textContent || '';
-    const readNumber = (facet: string, e: Element | null): number | undefined => {
-      if (!e) return undefined;
+    // A min/max bound is read in the lexical space of the restriction's
+    // `@base`, never by `parseFloat` — which read `2024-03-31` as 2024 and
+    // `6,5` as 6 (#7399). A bound outside that space is recorded as
+    // unparseable, so the restriction fails closed and the audit names it.
+    const order = boundOrderOf(base);
+    const readBound = (facet: BoundFacet): void => {
+      const e = facetEls[facet];
+      if (!e) return;
       const raw = rawValueOf(e);
-      const v = parseFloat(raw);
-      if (Number.isFinite(v)) return v;
-      unparseable.push({ facet, rawValue: raw });
-      return undefined;
+      if (order === 'numeric') {
+        const v = readNumeric(raw, base);
+        if (v !== undefined) bounds[facet] = v;
+        else unparseable.push({ facet, rawValue: raw });
+        return;
+      }
+      const lexeme = readOrderedLexeme(raw, base);
+      if (lexeme !== undefined) (bounds.temporalBounds ??= {})[facet] = lexeme;
+      else unparseable.push({ facet, rawValue: raw });
     };
+    // A length or digit count is an `xs:nonNegativeInteger`: the whole
+    // text, not the leading digits `parseInt` would take from `"6,5"`.
     const readInt = (facet: string, e: Element | null): number | undefined => {
       if (!e) return undefined;
       const raw = rawValueOf(e);
-      const v = parseInt(raw, 10);
-      if (Number.isFinite(v) && v >= 0) return v;
+      const text = raw.trim();
+      if (NON_NEGATIVE_INTEGER.test(text)) return Number(text);
       unparseable.push({ facet, rawValue: raw });
       return undefined;
     };
-    bounds.minInclusive = readNumber('minInclusive', facetEls.minInclusive);
-    bounds.maxInclusive = readNumber('maxInclusive', facetEls.maxInclusive);
-    bounds.minExclusive = readNumber('minExclusive', facetEls.minExclusive);
-    bounds.maxExclusive = readNumber('maxExclusive', facetEls.maxExclusive);
+    for (const facet of BOUND_FACETS) readBound(facet);
     bounds.length = readInt('length', facetEls.length);
     bounds.minLength = readInt('minLength', facetEls.minLength);
     bounds.maxLength = readInt('maxLength', facetEls.maxLength);

@@ -1,0 +1,27 @@
+{
+  "command": [
+    "pnpm",
+    "typecheck"
+  ],
+  "exitCode": 0,
+  "startedUnix": 1791464785.3010366,
+  "finishedUnix": 1791464984.7167072,
+  "sourceRuntimePinsBefore": {
+    "packages/parser/src/material-definitions.ts": "1a462d754a3d7117cfb19fed3b2a1feeef07f9a8ad9d863422cba23775d3d510",
+    "packages/parser/test/on-demand-classification-material.test.ts": "83123043c120ce23de6a9e4ab4622d384362294f17d9d629e6730b6f7f6db9ac",
+    "apps/viewer/src/lib/assistant/adapters/selection-materials.test.tsx": "d49b0983d1a40fffb2a248b283a9d6ff4b9fd1a66a6f125af2e07cfc88cb420c",
+    ".changeset/quiet-material-names.md": "8649798f31a12bcbcb8d334947235890d02acf6ec724c5a038d2ab7489f96e36",
+    "packages/wasm/pkg/ifc-lite_bg.wasm": "5606f31452779f749ed060b878ee77dbbf3dac7d8bf71b1f21a9a8865cf2ccd2",
+    "packages/wasm/pkg/ifc-lite.js": "0a281479eb65141ae75aeef987d331d44439741a0cae855f122e53e800311a39",
+    "packages/wasm/pkg/ifc-lite.d.ts": "54c9d0a52eb515e517d76726fefe5f6a63e553a81c1b10331a597965d14620f6"
+  },
+  "sourceRuntimePinsAfter": {
+    "packages/parser/src/material-definitions.ts": "1a462d754a3d7117cfb19fed3b2a1feeef07f9a8ad9d863422cba23775d3d510",
+    "packages/parser/test/on-demand-classification-material.test.ts": "83123043c120ce23de6a9e4ab4622d384362294f17d9d629e6730b6f7f6db9ac",
+    "apps/viewer/src/lib/assistant/adapters/selection-materials.test.tsx": "d49b0983d1a40fffb2a248b283a9d6ff4b9fd1a66a6f125af2e07cfc88cb420c",
+    ".changeset/quiet-material-names.md": "8649798f31a12bcbcb8d334947235890d02acf6ec724c5a038d2ab7489f96e36",
+    "packages/wasm/pkg/ifc-lite_bg.wasm": "8b74229bbd4a991cbf1f32a8d52add195c5fdd333921f998b1c18eb713185143",
+    "packages/wasm/pkg/ifc-lite.js": "0a281479eb65141ae75aeef987d331d44439741a0cae855f122e53e800311a39",
+    "packages/wasm/pkg/ifc-lite.d.ts": "54c9d0a52eb515e517d76726fefe5f6a63e553a81c1b10331a597965d14620f6"
+  }
+}

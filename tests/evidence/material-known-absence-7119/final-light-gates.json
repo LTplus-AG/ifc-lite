@@ -1,0 +1,74 @@
+[
+  {
+    "command": [
+      "node",
+      "scripts/check-raw-entity-enumeration.mjs"
+    ],
+    "exitCode": 0,
+    "log": "final-light-0.log"
+  },
+  {
+    "command": [
+      "node",
+      "scripts/check-module-size.mjs"
+    ],
+    "exitCode": 0,
+    "log": "final-light-1.log"
+  },
+  {
+    "command": [
+      "node",
+      "scripts/check-test-wiring.mjs"
+    ],
+    "exitCode": 0,
+    "log": "final-light-2.log"
+  },
+  {
+    "command": [
+      "node",
+      "scripts/check-source-text-assertions.mjs"
+    ],
+    "exitCode": 0,
+    "log": "final-light-3.log"
+  },
+  {
+    "command": [
+      "node",
+      "scripts/check-changesets.mjs"
+    ],
+    "exitCode": 0,
+    "log": "final-light-4.log"
+  },
+  {
+    "command": [
+      "node",
+      "scripts/add-license-headers.mjs",
+      "--check"
+    ],
+    "exitCode": 0,
+    "log": "final-light-5.log"
+  },
+  {
+    "command": [
+      "pnpm",
+      "exec",
+      "oxlint",
+      "--config",
+      ".oxlintrc.json",
+      "packages/parser/src/material-definitions.ts",
+      "packages/parser/test/on-demand-classification-material.test.ts",
+      "apps/viewer/src/lib/assistant/adapters/selection-materials.test.tsx"
+    ],
+    "exitCode": 0,
+    "log": "final-light-6.log"
+  },
+  {
+    "command": [
+      "git",
+      "diff",
+      "--check"
+    ],
+    "exitCode": 0,
+    "log": "final-light-7.log"
+  }
+]

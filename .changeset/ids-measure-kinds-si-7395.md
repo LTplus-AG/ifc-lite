@@ -1,6 +1,6 @@
 ---
-"@ifc-lite/ids": patch
-"@ifc-lite/parser": patch
+"@ifc-lite/ids": minor
+"@ifc-lite/parser": minor
 "@ifc-lite/viewer": patch
 ---
 

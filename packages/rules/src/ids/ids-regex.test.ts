@@ -91,7 +91,17 @@ describe('idsPatternToJsRegex (#5225)', () => {
   });
 
   it('refuses a construct JS cannot express', () => {
-    const converted = idsPatternToJsRegex('\\p{IsBasicLatin}+');
+    // A block name XML Schema does not define has no exact translation.
+    const converted = idsPatternToJsRegex('\\p{IsNoSuchBlock}+');
     assert.equal(converted.ok, false);
+    if (!converted.ok) assert.match(converted.reason, /IsNoSuchBlock/);
+  });
+
+  it('translates an XSD block escape to its code-point range (#7400)', () => {
+    const converted = idsPatternToJsRegex('\\p{IsBasicLatin}+');
+    assert.ok(converted.ok);
+    const body = /^\/(.+)\/u$/.exec(converted.pattern)![1];
+    assert.equal(new RegExp(body, 'u').test('abc-1'), true);
+    assert.equal(new RegExp(body, 'u').test('ā'), false);
   });
 });

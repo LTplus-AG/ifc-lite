@@ -35,6 +35,8 @@ export interface CollectedQuantity {
     /** SI factor of this quantity's explicit `Unit`, when it declares one.
      *  An omitted unit inherits the project's unit assignment. */
     explicitUnitSiScale?: number;
+    /** A present member Unit could not be resolved; never inherit project SI silently. */
+    explicitUnitUnresolved?: true;
     /** Display symbol of that explicit `Unit` (`mm`, `m²`), when it resolves. */
     explicitUnit?: string;
 }
@@ -145,9 +147,15 @@ export function collectQuantitiesFromRefs(
         // every downstream reader of this shared collection uses the same
         // physical value rather than silently treating (say) 2000 mm as 2000 m.
         const unitRef = qtyAttrs[2];
-        const unit = typeof unitRef === 'number'
+        const resolvedUnit = typeof unitRef === 'number'
             ? resolveCurrentUnit ? resolveCurrentUnit(unitRef) : resolveUnitByRef(extractor, store.entityIndex, unitRef)
             : null;
+        const expectedUnitType = qtyType === QuantityType.Length ? 'LENGTHUNIT'
+            : qtyType === QuantityType.Area ? 'AREAUNIT'
+            : qtyType === QuantityType.Volume ? 'VOLUMEUNIT' : null;
+        const unit = resolvedUnit && (!expectedUnitType || resolvedUnit.unitType === expectedUnitType)
+            && Number.isFinite(resolvedUnit.resolved.siScale) && resolvedUnit.resolved.siScale > 0
+            ? resolvedUnit : null;
         const rawValue = qtyAttrs[SIMPLE_QUANTITY_VALUE_SLOT];
 
         // A measure the double range cannot hold is dropped with a diagnostic,
@@ -189,7 +197,8 @@ export function collectQuantitiesFromRefs(
             name: qtyName,
             type: qtyType,
             value,
-            ...(unit ? { explicitUnitSiScale: unit.resolved.siScale, explicitUnit: unit.resolved.symbol } : {}),
+            ...(unit ? { explicitUnitSiScale: unit.resolved.siScale, explicitUnit: unit.resolved.symbol }
+                : unitRef !== null && unitRef !== undefined ? { explicitUnitUnresolved: true as const } : {}),
         });
     }
 
@@ -301,6 +310,7 @@ export function readQuantitySetRecord(
  * assignment.
  */
 export function quantitySiScale(quantity: CollectedQuantity, units: ProjectUnits): number {
+    if (quantity.explicitUnitUnresolved) return Number.NaN;
     if (quantity.explicitUnitSiScale !== undefined) return quantity.explicitUnitSiScale;
 
     switch (quantity.type) {

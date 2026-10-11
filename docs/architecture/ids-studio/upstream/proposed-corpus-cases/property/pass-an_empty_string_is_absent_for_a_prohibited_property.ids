@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ids xmlns="http://standards.buildingsmart.org/IDS" xmlns:xs="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://standards.buildingsmart.org/IDS http://standards.buildingsmart.org/IDS/1.0/ids.xsd">
+  <info>
+    <title>Empty prohibited</title>
+    <description>buildingSMART/IDS#403: an empty IFCLABEL is treated as absent, so a prohibited requirement passes.</description>
+    <author>ids-studio@example.org</author>
+  </info>
+  <specifications>
+    <specification name="Empty prohibited" ifcVersion="IFC4">
+      <applicability minOccurs="1" maxOccurs="unbounded">
+        <entity>
+          <name>
+            <simpleValue>IFCWALL</simpleValue>
+          </name>
+        </entity>
+      </applicability>
+      <requirements>
+        <property cardinality="prohibited">
+          <propertySet>
+            <simpleValue>ProposedCases</simpleValue>
+          </propertySet>
+          <baseName>
+            <simpleValue>Label</simpleValue>
+          </baseName>
+        </property>
+      </requirements>
+    </specification>
+  </specifications>
+</ids>

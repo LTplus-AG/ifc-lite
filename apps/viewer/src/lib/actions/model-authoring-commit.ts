@@ -34,6 +34,7 @@ import { runTransaction } from '@/lib/commands/modeling/transaction';
 import type { AuthoringTransaction, CommitResult, ModelingCommand } from '@/lib/commands/modeling/types';
 import { buildStoreyWorkplane, isWorkplane } from '@/lib/commands/modeling/workplane';
 import { commitElementAlignment, commitElementTransform, planSelectionTransform } from '@/lib/element-transform/commit';
+import { writeReviewedStoreyReassignment } from './model-authoring-storey-reassignment';
 import { writeNativeSplit } from './model-authoring-split';
 import { recordModellingEdit, recordModellingCommit } from '@/store/slices/mutation-modelling-records';
 import { toMetres, type AuthoringOp, type ModelAuthoringBatch } from './model-authoring';
@@ -52,6 +53,9 @@ import { completeStairRailingGeometry } from '@/store/slices/mutation-stair-rail
 import { writeAuthoringReach } from './model-authoring-reach';
 import { sizeInMetres } from './model-authoring-size-params';
 import { profileInMetres } from './model-authoring-shape-params';
+import { addClassificationInDraft } from '@/lib/authoring/associations';
+import { classificationInput, classificationLabel } from './model-authoring-classification';
+import { resolveEnglish } from '@/i18n/registry';
 
 /** Rows that will be written: approved, ready, and every creation they use is written too. */
 export function writableRows(preview: ModelAuthoringPreview, approved: ReadonlySet<number>): AuthoringRow[] {
@@ -90,6 +94,15 @@ function writeRow(tx: AuthoringTransaction, batch: ModelAuthoringBatch, row: Aut
   const base = { index: row.index, op: op.op, modelId };
   const targetGid = 'target' in op && !('ref' in op.target) ? op.target.globalId : undefined;
   switch (op.op) {
+    case 'classification.add': {
+      const dataStore = tx.store.models.get(modelId)?.ifcDataStore;
+      if (!dataStore) throw new Error('The native model source is unavailable');
+      recordModellingEdit(tx.api, modelId, (_methods, draft) => {
+        const outcome = addClassificationInDraft(dataStore, draft, resolved.target!, classificationInput(op, dataStore.schemaVersion));
+        if (!outcome.ok) throw new Error(resolveEnglish(outcome.reasonKey));
+      }, tx.batchId);
+      return [{ ...base, globalId: op.target.globalId, field: 'Classification', before: null, after: classificationLabel(op) }];
+    }
     case 'element.replace': return commitNativeReplacement(tx,batch,row,refs,ids,written);
     case 'stair.resize': case 'stair.delete': case 'railing.delete': case 'stair.replace': case 'railing.replace': {
       const dataStore=tx.store.models.get(modelId)?.ifcDataStore;if(!dataStore)throw new Error('The native lifecycle source is unavailable');
@@ -136,6 +149,11 @@ function writeRow(tx: AuthoringTransaction, batch: ModelAuthoringBatch, row: Aut
       written.moved = true;
       return [{ ...base, globalId: op.target.globalId, field: 'Trim/Extend', before: JSON.stringify(before.reach),
         after: JSON.stringify({ mode: result.op, end: result.end, lengthMetres: result.length, joined: result.joined }) }];
+    }
+    case 'element.reassignStorey': {
+      const result = recordModellingCommit(tx.api, modelId, (editor, store) => writeReviewedStoreyReassignment(store, editor, op, resolved.target!, resolved.reassignment!.source, resolved.reassignment!.destination), tx.batchId);
+      written.remesh.push(...result.products.map(product => product.expressId)); written.moved = true;
+      return [{ ...base, globalId: op.target.globalId, field: 'Storey', before: op.sourceStorey.globalId, after: op.destinationStorey.globalId }];
     }
     case 'element.split': {
       const scopes = [...tx.store.models].map(([id, model]) => ({ dataStore: model.ifcDataStore, view: tx.store.mutationViews.get(id) }));

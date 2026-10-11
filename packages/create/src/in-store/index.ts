@@ -239,3 +239,9 @@ export { reanchorHostedOpeningsInStore } from './hosted-placement-edit.js';
 export { reassignHostedOpeningsInStore, type HostedOpeningReassignment } from './hosted-placement-edit.js';
 
 export { replaceElementInStore, type InStoreReplacementElement } from './element-replacement.js';
+export {
+  addGroupToStore, updateGroupInStore, removeGroupInStore, readGroupInStore,
+  type GroupStoreContext, type GroupInStoreParams, type GroupInStorePatch,
+  type GroupRootIdentity, type GroupSnapshot, type GroupMembershipSnapshot,
+} from './group.js';
+export { readGroupEvidenceInStore, type GroupNativeEvidence } from './group-evidence.js';

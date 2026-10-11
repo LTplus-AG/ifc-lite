@@ -79,8 +79,9 @@ describe('writeHeader', () => {
     // v19 adds canonical appearance provenance and a shared source-index pool;
     // v20 appends exact WASM RTC-frame provenance to CoordinateInfo; v21
     // invalidates graphs built before exact relationship coverage (#4205).
-    // v24 preserves optional unit scale and recovery-count metadata (#7239).
-    expect(view.getUint16(4, true)).toBe(24);
+    // v24 preserves optional unit scale and recovery-count metadata (#7239);
+    // v25 appends optional per-mesh shading/local metadata (#7350).
+    expect(view.getUint16(4, true)).toBe(25);
   });
 
   it('writes each section-table entry field at its documented byte offset within the 16-byte entry', () => {

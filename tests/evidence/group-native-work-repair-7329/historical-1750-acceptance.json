@@ -1,0 +1,40 @@
+{
+  "head": "1750d314e899a00c48d300bc8573c5cc07f77101",
+  "base": "2382cf4124315f027b2d33c21c1751cee33c5081",
+  "allTenReceipt": "/tmp/campaign-group-native-work-repair-1750-final-full-receipt.json",
+  "nativeV8Passed": 19,
+  "nativeV8Skipped": 0,
+  "unchangedDeadlineMs": 5000,
+  "wholeClassReceipt": "/tmp/campaign-group-native-work-repair-1750-whole-sequential-receipt.json",
+  "nativeBefore": {
+    "passed": 14,
+    "genuineAssertions": 3,
+    "originalTimeouts": 2
+  },
+  "parserBefore": {
+    "passed": 32,
+    "genuineAssertions": 5
+  },
+  "restored": {
+    "nativePassed": 19,
+    "parserPassed": 37,
+    "exactSourceAnd8206CompiledSHA": true
+  },
+  "bytePassed": 2,
+  "byteSkipped": 0,
+  "exports": [
+    {
+      "schema": "IFC4",
+      "bytes": 80818,
+      "sha256": "9b3a5ff3be91701a12b1f439463abef3cc370fe63b703c677fe66ba5a9305cb7",
+      "exactRawBytesEqual": true
+    },
+    {
+      "schema": "IFC4X3",
+      "bytes": 1714817,
+      "sha256": "db7b4c01f0733a40a4337d4bf73e6e0dda0951abcba11c2ded8ec35c3d8821c5",
+      "exactRawBytesEqual": true
+    }
+  ],
+  "scope": "Historical actualmain2382 lease; newmain29a integration pending; functional validation, no throughput claim"
+}

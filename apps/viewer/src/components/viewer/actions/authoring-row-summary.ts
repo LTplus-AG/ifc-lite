@@ -14,6 +14,7 @@ import { sectionGhostOmissions } from '@/lib/profile-section/profile-outline';
 import type { TranslationKey, TranslationParameters } from '@/i18n';
 import type { AuthoringOp, ModelAuthoringBatch } from '@/lib/actions/model-authoring';
 import type { AuthoringRow } from '@/lib/actions/model-authoring-preview';
+import { classificationLabel } from '@/lib/actions/model-authoring-classification';
 
 type T = (key: TranslationKey, params?: TranslationParameters) => string;
 
@@ -46,6 +47,9 @@ export function authoringRowSummary(row: AuthoringRow, batch: ModelAuthoringBatc
   const none = t('modelChanges.absent');
   const fromMetres = (v: number) => (units === 'mm' ? v * 1000 : v);
   switch (op.op) {
+    case 'classification.add':
+      return { subject: ref(op.target, t), before: t('modelAuthoring.classificationExistingRetained'), after: classificationLabel(op),
+        previewNote: t('modelAuthoring.classificationMetadataPreview') };
     case 'grid.create': case 'column.createOnGrid': {
       const omitted = op.op === 'column.createOnGrid' && 'Profile' in op.params ? sectionGhostOmissions(op.params.Profile) : [];
       return { subject: `${op.op === 'grid.create' ? 'IfcGrid' : 'IfcColumn'} ${op.params.Name ?? ''}`, before: t('modelAuthoring.notYet'), after: t('modelAuthoring.createdOn', { storey: before.storeyName ?? op.storey.globalId, dims: op.op === 'grid.create' ? `${op.params.UAxes.length + op.params.VAxes.length + (op.params.WAxes?.length ?? 0)} ${t('modelAuthoring.gridAxes')}` : `${point(op.params.Position)} · ${num(op.params.Height)} ${units}` }), previewNote: [row.previewUnavailable ? t('modelAuthoring.editPreviewUnavailable') : t(op.op === 'grid.create' ? 'modelAuthoring.gridPreview' : 'modelAuthoring.gridColumnPreview'), omitted.length ? t('modelAuthoring.filletPreview', { fields: omitted.join(', ') }) : ''].filter(Boolean).join(' · ') };
@@ -58,6 +62,8 @@ export function authoringRowSummary(row: AuthoringRow, batch: ModelAuthoringBatc
         previewNote: [row.resolved.reachPlan && row.resolved.reachPlan.walls.length > 1 ? t('modelAuthoring.reachNeighborPreview') : '', row.previewUnavailable ? t('modelAuthoring.editPreviewUnavailable') : '',
           row.previewOuterBodyOnly ? t('modelAuthoring.outerBodyPreview') : '',
           row.previewOmitted?.length ? t('modelAuthoring.filletPreview', { fields: row.previewOmitted.join(', ') }) : ''].filter(Boolean).join(' · ') || undefined };
+    case 'element.reassignStorey':
+      return { subject: `${op.target.ifcClass} ${op.target.name}`, before: op.sourceStorey.globalId, after: op.destinationStorey.globalId, previewNote: t('modelAuthoring.reassignmentPreview', { count: op.expected.products.length }) };
     case 'element.split': {
       const cut = op.cut.kind === 'slab' ? `${point(op.cut.a)} → ${point(op.cut.b)} ${units}` : `${num(op.cut.distance)} ${units}`;
       const effects = row.resolved.splitEffects;

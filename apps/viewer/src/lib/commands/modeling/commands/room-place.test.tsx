@@ -127,7 +127,7 @@ let remeshed: RemeshRequest[] = [];
 let restoreRemesh: () => void = () => {};
 
 beforeEach(async () => {
-  await seedModelingSession();
+  await seedModelingSession({ roomGeometry: true });
   useViewerStore.getState().setAuthoringDefaults({ roomCreation: DEFAULT_ROOM_CREATION });
   clearStoreyRoomsCache();
   remeshed = [];

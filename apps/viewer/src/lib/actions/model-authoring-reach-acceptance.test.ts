@@ -4,6 +4,7 @@
 import '@/test/setup-dom.js';
 import 'fake-indexeddb/auto';
 import assert from 'node:assert/strict';
+import { assertSameNativeIfcGraph } from '@/test/native-ifc-graph';
 import { afterEach, test } from 'node:test';
 import { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
 import { readWallJoinTarget, readWallJoinRels, addHostedElementInStore, readHostedFill } from '@ifc-lite/create';
@@ -104,7 +105,7 @@ test('#7262 selected native evidence exposes verbatim geometry pins and federate
   const proposal=batch([{op:'element.trimExtend',target:ref,expected:evidence,mode:'extend',click:[8000,5000],boundary:{line:line(10,5,1000)}}],'mm');
   const preview=previewModelAuthoring(state(),proposal);assert.deepEqual(preview.rows.map(r=>[r.status,r.modelId]),[['ready','second']]);
   const baseline=editedModelBytes(first,firstView),result=commitModelAuthoring(useViewerStore,preview,new Set([0]),'federated reach');assert.ok(result.ok);
-  assert.deepEqual(editedModelBytes(first,firstView),baseline,'other model exports the same native graph');
+  await assertSameNativeIfcGraph(editedModelBytes(first,firstView),baseline,'other model exports the same native graph');
   const exported=await read('second'),persisted=exported.store.entities.getExpressIdByGlobalId(ref.globalId);
   assert.deepEqual(readWallJoinTarget(exported.store,exported.view,persisted,exported.scale)?.wall.end,[10,5]);
 });

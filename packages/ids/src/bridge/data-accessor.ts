@@ -6,9 +6,11 @@ import {
   type IfcDataStore,
   extractAllEntityAttributes,
   extractAllMaterialsOnDemand,
+  getAttributeTypeForSchema,
 } from '@ifc-lite/parser';
 import {
   RelationshipType,
+  exactTypeName,
   getAttributeXsdTypes,
   iterateEffectiveEntities,
 } from '@ifc-lite/data';
@@ -31,12 +33,10 @@ import {
   type PropertyOverride,
   type PropertyOverlayResolver,
 } from './property-overlay-resolver.js';
-import {
-  resolveObjectType,
-  resolveRawPredefinedType,
-} from './predefined-types.js';
+import { resolvePredefinedType } from './predefined-types.js';
 import { narrowSchemaVersion } from './schema-version.js';
 import { overlayEntityLookup, type EntityVisibilityView } from './entity-visibility.js';
+import { resolveEntityMeasureScales, toBaseSI } from './units.js';
 
 export type { PropertyOverride, PropertyOverlayResolver };
 
@@ -106,16 +106,39 @@ export function createDataAccessor(
     return all;
   }
 
+  function findAttribute(
+    expressId: number,
+    attributeName: string
+  ): { name: string; value: string | number | boolean } | undefined {
+    const lower = attributeName.toLowerCase();
+    return getEntityAttributes(expressId).find((a) => a.name.toLowerCase() === lower);
+  }
+
   function findAttributeValue(
     expressId: number,
     attributeName: string
   ): string | number | boolean | undefined {
-    const lower = attributeName.toLowerCase();
-    const all = getEntityAttributes(expressId);
-    for (const a of all) {
-      if (a.name.toLowerCase() === lower) return a.value;
-    }
-    return undefined;
+    return findAttribute(expressId, attributeName)?.value;
+  }
+
+  /**
+   * A measure-typed attribute (`IfcDoor.OverallHeight`, an
+   * `IfcPositiveLengthMeasure`) is stored in the project's units, and IDS
+   * compares it in SI like a property value (#7395). The attribute's declared
+   * EXPRESS type picks the conversion; any other attribute passes through.
+   */
+  function attributeInSi(
+    expressId: number,
+    attr: { name: string; value: string | number | boolean }
+  ): string | number | boolean {
+    if (typeof attr.value !== 'number') return attr.value;
+    const entityType = accessor.getEntityType(expressId);
+    const dataType = entityType
+      ? getAttributeTypeForSchema(entityType, attr.name, store.schemaVersion)
+      : undefined;
+    if (!dataType) return attr.value;
+    const si = toBaseSI(attr.value, dataType.toUpperCase(), resolveEntityMeasureScales(store, expressId));
+    return typeof si === 'number' ? si : attr.value;
   }
 
   /**
@@ -132,12 +155,16 @@ export function createDataAccessor(
     getEntityType(expressId: number): string | undefined {
       const overlaid = overlay?.typeOf(expressId);
       if (overlaid) return overlaid;
+      // The class the STEP line DECLARES, in IFC PascalCase: IDS entity
+      // facets match the exact class. `getTypeName` coalesces eight
+      // *StandardCase classes and two distribution subtypes onto their
+      // parent's enum value (#7402), so it is not used here.
       // The columnar entity table only summarises "interesting"
       // entities (spatial, building elements, etc.); resource-level
       // types resolve to `'Unknown'` there. Fall back to the raw
       // type name from `entityIndex.byId` so applicability checks
       // for those types still match.
-      const entityType = store.entities?.getTypeName?.(expressId);
+      const entityType = store.entities ? exactTypeName(store.entities, expressId) : undefined;
       if (entityType && entityType !== 'Unknown') return entityType;
 
       // @raw-entity-enumeration-ok point lookup of one source record's parsed class; created and retyped ids were answered from the overlay above
@@ -199,13 +226,15 @@ export function createDataAccessor(
     },
 
     getPredefinedTypeRaw(expressId: number): string | undefined {
-      return resolveRawPredefinedType(store, expressId);
+      return resolvePredefinedType(store, expressId, getEntityAttributes).raw;
     },
 
     getObjectType(expressId: number): string | undefined {
-      return resolveObjectType(store, expressId, () =>
-        store.entities?.getObjectType?.(expressId)
-      );
+      // The IDS predefined-type value: the user-defined name for
+      // USERDEFINED, else the enum token. Never the bare `ObjectType`
+      // of an entity whose PredefinedType is unset or NOTDEFINED (#7394).
+      const { raw, userDefined } = resolvePredefinedType(store, expressId, getEntityAttributes);
+      return userDefined ?? raw;
     },
 
     getSchemaVersion(): string | undefined {
@@ -308,18 +337,17 @@ export function createDataAccessor(
           return accessor.getDescription(expressId);
         case 'globalid':
           return accessor.getGlobalId(expressId);
-        // `predefinedtype` deliberately resolves through
-        // `getObjectType` (the PredefinedType/USERDEFINED-name helper) —
-        // but `objecttype` must NOT: that would shadow the entity's
-        // actual `ObjectType` attribute with the PredefinedType enum
-        // whenever PredefinedType is a concrete, non-USERDEFINED,
-        // non-NOTDEFINED token. Let it fall through to the raw
-        // attribute extraction below, same as any other named attribute.
-        case 'predefinedtype':
-          return accessor.getObjectType(expressId);
+        // No `predefinedtype` case: the attribute facet tests the
+        // `PredefinedType` attribute as stored on this entity, so it
+        // reads through the raw extraction below like any other named
+        // attribute. The type-inherited, USERDEFINED-substituted value
+        // is the ENTITY facet's notion (`getObjectType`), not an
+        // attribute (#7394). Likewise `objecttype` must not resolve
+        // through `getObjectType`, which would shadow the entity's real
+        // `ObjectType` attribute with the PredefinedType enum.
         default: {
-          const fromExtract = findAttributeValue(expressId, attributeName);
-          if (fromExtract !== undefined) return fromExtract;
+          const fromExtract = findAttribute(expressId, attributeName);
+          if (fromExtract?.value !== undefined) return attributeInSi(expressId, fromExtract);
           const entities = store.entities as {
             getAttribute?: (id: number, attr: string) => string | undefined;
           };

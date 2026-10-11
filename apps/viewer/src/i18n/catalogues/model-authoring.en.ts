@@ -6,6 +6,8 @@ import type { TranslationValue } from '../types';
 
 /** Reviewed native authoring (viewer AI P15A): `components/viewer/actions/ModelAuthoringReview.tsx`, assistant proposals. */
 export const modelAuthoringEn = {
+  'modelAuthoring.op.element.reassignStorey': 'Reassign storey',
+  'modelAuthoring.reassignmentPreview': 'Move {count} products with their complete hosted and aggregate dependencies. Existing identities and world placement stay fixed; no displaced geometry preview.',
   'modelAuthoring.reachNeighborPreview': 'The preview shows the target body; adjoining wall updates are not drawn. Applying uses the native joined-wall writer.',
   'modelAuthoring.trimExtendResult': '{mode} {end} · length {length} {units} {joined}',
   'modelAuthoring.splitResult': 'Split at {cut}; the {side} piece keeps the existing identity and one new piece is created',
@@ -57,6 +59,9 @@ export const modelAuthoringEn = {
   'modelAuthoring.layersWallNote': 'Assign to this wall and resize its native body to the layer total. Native host and wall-layout refusals still apply. This is not an engineering check.',
   'modelAuthoring.layersElementNote': 'Assign to this element. Body dimensions remain unchanged; no changed-body preview is available. This is not an engineering check.',
   'modelAuthoring.op.material.assign': 'Assign material',
+  'modelAuthoring.op.classification.add': 'Add classification',
+  'modelAuthoring.classificationExistingRetained': 'Existing classifications retained',
+  'modelAuthoring.classificationMetadataPreview': 'This adds classification metadata; there is no geometric preview',
   'modelAuthoring.op.walls.join': 'Join walls',
   'modelAuthoring.op.hosted.edit': 'Edit hosted occurrence',
   'modelAuthoring.hostedEditBoundsPreview': 'Preview shows the opening bounds only; filling geometry, styles and detailed cut shapes are authoritative at native commit.',

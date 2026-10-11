@@ -279,4 +279,37 @@ describe('IDS area/volume unit conversion (Pset_* and Qto_*)', () => {
 
     expect(area?.value).toBe(2);
   });
+
+  it('leaves an area and a volume raw when the project declares an AREAUNIT/VOLUMEUNIT that cannot be resolved (#7395)', async () => {
+    // Millimetre length, but conversion-based AREAUNIT/VOLUMEUNIT whose
+    // factors are missing: deriving them from the length scale would turn
+    // 2500 into 0.0025 m² and 40 into 4e-8 m³.
+    const ifc = `ISO-10303-21;
+HEADER;
+FILE_DESCRIPTION(('ViewDefinition [CoordinationView]'),'2;1');
+FILE_NAME('','2026-10-11T00:00:00',(),(),'','','');
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#1=IFCPROJECT('1hqIFTRjfV6AWq_bMtnZwI',$,$,$,$,$,$,$,#6);
+#2=IFCSIUNIT(*,.LENGTHUNIT.,.MILLI.,.METRE.);
+#3=IFCDIMENSIONALEXPONENTS(2,0,0,0,0,0,0);
+#4=IFCCONVERSIONBASEDUNIT(#3,.AREAUNIT.,'ACRE',#99);
+#5=IFCDIMENSIONALEXPONENTS(3,0,0,0,0,0,0);
+#7=IFCCONVERSIONBASEDUNIT(#5,.VOLUMEUNIT.,'BARREL',#98);
+#6=IFCUNITASSIGNMENT((#2,#4,#7));
+#10=IFCWALL('2nJrDaLQfJ1QPhdJR0o97J',$,$,$,$,$,$,$,$);
+#11=IFCPROPERTYSINGLEVALUE('GrossArea',$,IFCAREAMEASURE(2500.),$);
+#12=IFCPROPERTYSINGLEVALUE('GrossVolume',$,IFCVOLUMEMEASURE(40.),$);
+#13=IFCPROPERTYSET('7z6M0fVLDCPBUYwtcqp5fq',$,'Pset_Custom',$,(#11,#12));
+#14=IFCRELDEFINESBYPROPERTIES('8z6M0fVLDCPBUYwtcqp5gq',$,$,$,(#10),#13);
+ENDSEC;
+END-ISO-10303-21;
+`;
+    const pset = createDataAccessor(await parseIfc(ifc))
+      .getPropertySets(10)
+      .find((p) => p.name === 'Pset_Custom');
+    expect(Number(pset?.properties.find((p) => p.name === 'GrossArea')?.value)).toBe(2500);
+    expect(Number(pset?.properties.find((p) => p.name === 'GrossVolume')?.value)).toBe(40);
+  });
 });

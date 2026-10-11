@@ -23,7 +23,7 @@ const TEMPLATES = [
   'packages/create-ifc-lite/src/templates/server.ts',
   'packages/create-ifc-lite/src/templates/server-native.ts',
 ];
-const EXPECTED_PARQUET_WASM_RANGE = '^0.7.2 || ^0.8.0';
+const EXPECTED_PARQUET_WASM_RANGE = '^0.7.2 || ^0.8.0 || ^0.9.0';
 const EXPECTED_TEMPLATE_RANGE = '^0.7.2';
 
 type Caret = { major: number; minor: number; patch: number };

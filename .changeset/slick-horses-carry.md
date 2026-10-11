@@ -15,3 +15,7 @@ Project supported history-nominated type quantity journal values through the can
 Share source-project assigned length-unit eligibility and label normalization
 between current Type quantity reading and STEP export. Preserve existing
 GUID-owned quantity-set order when projecting tracked edits.
+
+Generated quantity sets now reach the export target schema through one
+conversion site, so an IFC4 model exported as IFC2X3 writes four-slot
+occurrence and Type-owned quantities without the IFC4 Formula attribute.

@@ -93,10 +93,12 @@ export function generatePropertyAndQuantitySetEntities(
       const generated = source
         ? generateTypeQuantityCopy(pass, options, ctx, entityId, qset, source)
         : generateQuantitySetEntities(ctx, entityId, [qset], pass.willBeEmitted, pass.effective, options.guidRandom, typeOwned);
-      const lines = !source && typeOwned && pass.converting ? generated.lines.map(line => {
+      // Generated quantity records are written in the source schema's layout.
+      // One conversion site serves occurrence, new Type and copied Type sets (#7378).
+      const lines = pass.converting ? generated.lines.map(line => {
         const converted = convertStepLine(line, pass.sourceSchema, pass.schema, options.guidRandom,
           pass.slotFill, pass.withheldRefIds, pass.ifc4Slots, pass.enums);
-        if (converted === null) throw new Error('New type quantity definition is unsupported in the target schema');
+        if (converted === null) throw new Error('Generated quantity definition is unsupported in the target schema');
         return converted;
       }) : generated.lines;
       pass.entities.push(...lines);

@@ -9,7 +9,6 @@ import { generateGlobalId, getTypeOwnedHasPropertySetIds, findUnitId, type Prope
 import type { SharedSetDetachments } from './step-pset-copy-on-write.js';
 import { readStepSlots, replaceStepArgument } from './step-argument-parser.js';
 import { quantityTypeToIfcType, toStepReal } from './step-serialization.js';
-import { convertStepLine } from './schema-converter.js';
 import { generateQuantityAtom } from './step-property-set-generators.js';
 import { nativeSetLine, decodeNativeSetLine } from './step-native-set-record.js';
 
@@ -152,15 +151,12 @@ export function generateTypeQuantityCopy(
   }
   if (memberIds.length === 0) throw new Error('An empty native type quantity copy cannot be emitted');
   const setId = ctx.allocateExpressId();
-  // The copied root is a new identity when another type still owns the original.
+  // Every edited copy receives a fresh root GlobalId, matching regenerated
+  // occurrence sets; the source GlobalId only associates the edit with its
+  // verified native definition (#7378).
   let setLine = replaced(source.line, 0, `'${generateGlobalId(options.guidRandom)}'`);
   setLine = replaced(setLine, 5, `(${memberIds.map(id => `#${id}`).join(',')})`);
   lines.push(setLine.replace(/^\s*#\d+\s*=/, `#${setId}=`));
-  const converted = pass.converting ? lines.flatMap(line => {
-    const result = convertStepLine(line, pass.sourceSchema, pass.schema, options.guidRandom,
-      pass.slotFill, pass.withheldRefIds, pass.ifc4Slots, pass.enums);
-    if (result === null) throw new Error('Native type quantity copy is unsupported in the target schema');
-    return [result];
-  }) : lines;
-  return { lines: converted, count: converted.length, setId };
+  // Source-schema records; the caller converts every generated quantity line once.
+  return { lines, count: lines.length, setId };
 }

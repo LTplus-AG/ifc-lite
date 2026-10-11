@@ -425,3 +425,19 @@ for (const newSet of [false, true]) test(`#7355 IFC4 Type scalar export converts
  assert.equal(atom.type, 'IFCQUANTITYVOLUME');
  assert.deepEqual(atom.attributes, ['ConvertedVolume', null, null, 35], 'target schema conversion removes IFC4 Formula');
 });
+
+test('#7378 IFC4 occurrence quantity export shares the target IFC2X3 conversion site', async t => {
+ const f = await inheritedSource(t); if (!f) return;
+ assert.equal(f.store.schemaVersion, 'IFC4');
+ const name = 'Converted occurrence quantities';
+ f.view.setQuantity(f.f.id, name, 'ConvertedVolume', 35, QuantityType.Volume);
+ const saved = await parse(new StepExporter(f.store, f.view).export({ schema: 'IFC2X3', applyMutations: true,
+  includeGeometry: true, includeQuantities: true }).content);
+ assert.equal(saved.schemaVersion, 'IFC2X3');
+ const quantity = extractQuantitiesOnDemand(saved, f.f.id).find(set => set.name === name)
+  ?.quantities.find(q => q.name === 'ConvertedVolume'); assert.ok(quantity);
+ assert.equal(quantity.value, 35);
+ const atom = (saved.entityIndex.byType.get('IFCQUANTITYVOLUME') ?? []).map(id => saved.getEntity(id))
+  .find(entity => entity?.attributes[0] === 'ConvertedVolume'); assert.ok(atom);
+ assert.deepEqual(atom.attributes, ['ConvertedVolume', null, null, 35], 'occurrence quantities reach the IFC2X3 four-slot layout');
+});

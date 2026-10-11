@@ -6587,7 +6587,6 @@
     "IDSEntityResult: type",
     "IDSEnumerationConstraint: interface",
     "IDSFacet: type",
-    "IDSFacetUri: interface",
     "IDSFailureDetail: interface",
     "IDSInfo: interface",
     "IDSMaterialFacet: interface",

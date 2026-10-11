@@ -17,7 +17,12 @@ import { RelationshipType, exactTypeName } from '@ifc-lite/data';
 
 import type { PropertySetInfo } from '../types.js';
 import { idsDataTypeForProperty, idsDataTypeForQuantity } from './data-types.js';
-import { applyUnitConversion, resolveEntityMeasureScales, type MeasureScales } from './units.js';
+import {
+  applyOwnUnitConversion,
+  applyUnitConversion,
+  resolveEntityMeasureScales,
+  type MeasureScales,
+} from './units.js';
 
 interface RawProp {
   name: string;
@@ -26,6 +31,10 @@ interface RawProp {
   values?: string[];
   dataType?: string;
   dataTypeMixed?: true;
+  /** The property's own explicit `Unit` symbol; `#<id>` when it could not be resolved. */
+  unit?: string;
+  /** SI factor of `unit`, only when it resolved. */
+  unitSiScale?: number;
 }
 
 /**
@@ -136,13 +145,38 @@ function appendQuantitySets(
       name: qset.name,
       properties: (qset.quantities || []).map((q) =>
         projectProperty(
-          { name: q.name, value: q.value, type: undefined, dataType: idsDataTypeForQuantity(q.type) },
+          {
+            name: q.name,
+            value: q.value,
+            type: undefined,
+            dataType: idsDataTypeForQuantity(q.type),
+            ...quantityOwnUnit(q),
+          },
           scale,
           measureScales
         )
       ),
     });
   }
+}
+
+/**
+ * A quantity's own `Unit`, in the `unit`/`unitSiScale` shape property records
+ * use. The parser's `CollectedQuantity` reports a resolved unit as
+ * `explicitUnitSiScale` and an unreadable one as `explicitUnitUnresolved`;
+ * quantity-table rows carry neither and fall through to the project unit.
+ */
+function quantityOwnUnit(quantity: object): Pick<RawProp, 'unit' | 'unitSiScale'> {
+  const q = quantity as {
+    explicitUnitSiScale?: number;
+    explicitUnitUnresolved?: true;
+    explicitUnit?: string;
+  };
+  if (q.explicitUnitSiScale !== undefined) {
+    return { unit: q.explicitUnit ?? '', unitSiScale: q.explicitUnitSiScale };
+  }
+  if (q.explicitUnitUnresolved) return { unit: '#?' };
+  return {};
 }
 
 /**
@@ -335,7 +369,12 @@ function projectProperty(
     ? JSON.stringify(p.value)
     : (p.value as string | number | boolean | null);
   const baseValues = hasMultiValue ? (p.values as string[]) : undefined;
-  const converted = applyUnitConversion(baseValue, baseValues, dataType, scale, measureScales);
+  // A declared own `Unit` replaces the project assignment for this value
+  // (#7395); only a value without one takes the project factor.
+  const converted =
+    p.unit !== undefined
+      ? applyOwnUnitConversion(baseValue, baseValues, dataType, p.unitSiScale)
+      : applyUnitConversion(baseValue, baseValues, dataType, scale, measureScales);
   return {
     name: p.name,
     value: converted.value,

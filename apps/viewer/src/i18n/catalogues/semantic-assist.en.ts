@@ -80,6 +80,8 @@ export const semanticAssistEn = {
   'semanticAssist.unresolvedSourceMissing': 'No native check: the source text is no longer attached',
   'semanticAssist.unresolvedSourceChanged': 'No native check: the source text changed after the assistant read it',
   'semanticAssist.unresolvedScope': 'No native check: it applies to a linked-data class, and checking the whole IFC class would widen it',
+  'semanticAssist.unresolvedUnknown': 'No native check: the IFC schema defines no such standard property or quantity',
+  'semanticAssist.schemaFailed': 'The IFC schema could not be read, so no requirement can be dispatched: {detail}',
   'semanticAssist.unresolvedProperty': 'No native check: name the property as PropertySet.Property or an IFC attribute',
   'semanticAssist.unresolvedOperator': 'No native check: IDS cannot express this comparison',
   'semanticAssist.unresolvedValue': 'No native check: the value does not fit the comparison',

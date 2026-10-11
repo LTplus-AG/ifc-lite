@@ -13,12 +13,13 @@
 
 import { xxhash64Hex } from '@ifc-lite/cache';
 import { getPropertySets, type IfcSchemaVersion } from '@ifc-lite/data';
+import { siUnitOf } from '@/lib/check-authoring/ids-constraint';
 import type { ExtractedRequirement } from './requirement-proposal';
 import type { SourceText } from './source-texts';
 import type { Passage, SpanCheck } from './spans';
 
 export type RequirementTarget = 'ids' | 'geometry' | 'manual' | 'unresolved';
-export type UnresolvedReason = 'span' | 'source-missing' | 'source-changed' | 'scope' | 'property' | 'operator' | 'value' | 'unit' | 'native';
+export type UnresolvedReason = 'span' | 'source-missing' | 'source-changed' | 'scope' | 'property' | 'unknown' | 'operator' | 'value' | 'unit' | 'native';
 
 /** The attached text a verified span quotes, as it is now: its id, title and content revision. */
 export interface SourceRevision { source: string; title: string; revision: string; characters: number }
@@ -33,6 +34,8 @@ export interface ClassifiedRequirement {
   detail?: string;
   /** Set whenever the span verified against an unchanged source, whatever the target. */
   source?: SourceRevision;
+  /** For a measured value: the stated unit and the measure type the value is checked as (the schema's own for a standard property). */
+  measure?: { unit: string; dataType: string };
 }
 
 /** Portable content revision of an attached text, recorded with each native record for provenance. */
@@ -76,38 +79,57 @@ export function measureUnit(unit: string): { unit: string; dataType: string } | 
   return { unit: normal, dataType: MEASURES[match[2] === '2' ? 'area' : match[2] === '3' ? 'volume' : 'length'] };
 }
 
-/** The declared measure type of a standard quantity (`IFCLENGTHMEASURE`), or undefined when the schema does not define it. */
-export type QuantityMeasures = (set: string, quantity: string) => string | undefined;
+/** The measure type the IFC schema declares for a standard property or quantity (`IFCPOSITIVELENGTHMEASURE`), or undefined. */
+export type SchemaMeasures = (set: string, property: string) => string | undefined;
 
 const SCHEMA_VERSIONS: readonly IfcSchemaVersion[] = ['IFC4X3_ADD2', 'IFC4', 'IFC2X3'];
-let quantityMeasures: Promise<QuantityMeasures> | null = null;
+let schemaMeasures: Promise<SchemaMeasures> | null = null;
 
-/** Measure types of every `Qto_*` quantity the IFC schemas define, read once from the bundled schema tables. */
-export function loadQuantityMeasures(): Promise<QuantityMeasures> {
-  quantityMeasures ??= Promise.all(SCHEMA_VERSIONS.map(version => getPropertySets(version))).then(tables => {
+/** Declared types of every standard `Pset_*` property and `Qto_*` quantity, read once from the bundled schema tables. */
+export function loadSchemaMeasures(): Promise<SchemaMeasures> {
+  schemaMeasures ??= Promise.all(SCHEMA_VERSIONS.map(version => getPropertySets(version))).then(tables => {
     const measures = new Map<string, string>();
-    for (const sets of tables) for (const set of sets) {
-      if (!set.name.startsWith('Qto_')) continue;
-      for (const property of set.properties) {
-        const key = `${set.name}.${property.name}`;
-        if (property.dataType && !measures.has(key)) measures.set(key, property.dataType.toUpperCase());
-      }
+    for (const sets of tables) for (const set of sets) for (const property of set.properties) {
+      const key = `${set.name}.${property.name}`;
+      if (property.dataType && !measures.has(key)) measures.set(key, property.dataType.toUpperCase());
     }
-    return (set: string, quantity: string) => measures.get(`${set}.${quantity}`);
+    return (set: string, name: string) => measures.get(`${set}.${name}`);
+  }, (failure: unknown) => {
+    // Not cached: the next review tries again.
+    schemaMeasures = null;
+    throw failure;
   });
-  return quantityMeasures;
+  return schemaMeasures;
+}
+
+const STANDARD_SET = /^(Pset|Qto)_/;
+
+/**
+ * The measure a stated unit is checked as. A standard property or quantity is
+ * checked as the type the schema declares for it, which must measure what the
+ * unit measures (a width is never compared in mm², a weight never in m³);
+ * a custom property set has no declared type, so the unit's own is used.
+ */
+function statedMeasure(target: { set: string; name: string }, unit: string, schema: SchemaMeasures): { unit: string; dataType: string } | 'unit' | 'unknown' {
+  const stated = measureUnit(unit);
+  if (!stated) return 'unit';
+  if (!STANDARD_SET.test(target.set)) return stated;
+  const declared = schema(target.set, target.name);
+  if (!declared) return 'unknown';
+  return siUnitOf(declared) === siUnitOf(stated.dataType) ? { unit: stated.unit, dataType: declared } : 'unit';
 }
 
 const GEOMETRY_OPERATORS = new Set(['equals', 'notEquals', 'atLeast', 'atMost']);
 
 /** Shape-level target; the native validators still have the last word (see `requirement-dispatch.ts`). */
 export function classifyRequirement(requirement: ExtractedRequirement, check: SpanCheck, source: SourceRevision | 'source-missing' | 'source-changed',
-  quantities: QuantityMeasures): ClassifiedRequirement {
+  schema: SchemaMeasures): ClassifiedRequirement {
   if (check.status !== 'verified') return { requirement, check, target: 'unresolved', reason: 'span' };
   if (typeof source === 'string') return { requirement, check, target: 'unresolved', reason: source };
   // From here the span verified against an unchanged source: every outcome keeps that provenance.
   const unresolved = (reason: UnresolvedReason): ClassifiedRequirement => ({ requirement, check, target: 'unresolved', reason, source });
-  const resolved = (target: RequirementTarget): ClassifiedRequirement => ({ requirement, check, target, source });
+  const resolved = (target: RequirementTarget, measure?: { unit: string; dataType: string }): ClassifiedRequirement =>
+    ({ requirement, check, target, source, ...(measure ? { measure } : {}) });
   const { appliesTo, property, value, unit } = requirement;
   // Nothing names what to check on which elements: a person checks it, from the document.
   if (!appliesTo?.ifcClass || !property) return resolved('manual');
@@ -120,9 +142,9 @@ export function classifyRequirement(requirement: ExtractedRequirement, check: Sp
   const operator = requirement.operator ?? 'exists';
   if (target.kind === 'property' && target.set.startsWith('Qto_') && GEOMETRY_OPERATORS.has(operator)) {
     if (typeof value !== 'number') return unresolved('value');
-    // The stated unit must measure what the quantity measures: never compare a width with mm² or a weight with m³.
-    const measure = unit === undefined ? null : measureUnit(unit);
-    return measure && quantities(target.set, target.name) === measure.dataType ? resolved('geometry') : unresolved('unit');
+    if (unit === undefined) return unresolved('unit');
+    const measure = statedMeasure(target, unit, schema);
+    return typeof measure === 'string' ? unresolved(measure) : resolved('geometry', measure);
   }
   // IDS cannot require the unit a value is recorded in, only constrain a value.
   if (unit !== undefined && operator === 'exists') return unresolved('unit');
@@ -132,9 +154,10 @@ export function classifyRequirement(requirement: ExtractedRequirement, check: Sp
   if (operator === 'matches' && typeof value !== 'string') return unresolved('value');
   if (operator === 'oneOf' && !Array.isArray(value)) return unresolved('value');
   if (operator === 'equals' && (Array.isArray(value) || value === undefined)) return unresolved('value');
-  if (unit !== undefined && operator !== 'exists') {
-    if (target.kind === 'attribute' || !measureUnit(unit)) return unresolved('unit');
-    if (Array.isArray(value) ? !value.every(item => typeof item === 'number') : typeof value !== 'number') return unresolved('unit');
-  }
-  return resolved('ids');
+  if (unit === undefined) return resolved('ids');
+  if (target.kind === 'attribute') return unresolved('unit');
+  if (Array.isArray(value) ? !value.every(item => typeof item === 'number') : typeof value !== 'number') return unresolved('unit');
+  // Every operator, `oneOf` included, is checked against the declared measure.
+  const measure = statedMeasure(target, unit, schema);
+  return typeof measure === 'string' ? unresolved(measure) : resolved('ids', measure);
 }

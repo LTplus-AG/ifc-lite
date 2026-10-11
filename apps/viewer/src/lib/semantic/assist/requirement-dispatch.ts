@@ -24,7 +24,7 @@ import type { SourceSpan } from './proposal-common';
 import type { RequirementReview } from './requirement-review';
 import type { SourceText } from './source-texts';
 import type { Passage } from './spans';
-import { classifyRequirement, measureUnit, propertyTarget, sourceRevisionOf, type ClassifiedRequirement, type QuantityMeasures, type SourceRevision,
+import { classifyRequirement, propertyTarget, sourceRevisionOf, type ClassifiedRequirement, type SchemaMeasures, type SourceRevision,
   type UnresolvedReason } from './requirement-targets';
 
 const message = (error: unknown) => error instanceof Error ? error.message : String(error);
@@ -46,6 +46,7 @@ const UNRESOLVED_NOTE: Record<UnresolvedReason, string> = {
   span: 'its source quote does not match the attached text',
   'source-missing': 'its source text is no longer attached',
   'source-changed': 'its source text changed after the assistant read it',
+  unknown: 'the IFC schema defines no such standard property or quantity',
   scope: 'it applies to a linked-data class, which a check on the whole IFC class would widen',
   property: 'the property is not named as PropertySet.Property or an IFC attribute',
   operator: 'no native check expresses this comparison',
@@ -56,9 +57,10 @@ const UNRESOLVED_NOTE: Record<UnresolvedReason, string> = {
 
 const specName = (requirement: ExtractedRequirement) => clip(`${requirement.id}: ${requirement.statement}`, 200);
 
-function idsValue(requirement: ExtractedRequirement): Record<string, unknown> {
-  const { value, unit } = requirement;
-  const measure = unit !== undefined && requirement.operator !== 'exists' ? measureUnit(unit) : null;
+type Measure = ClassifiedRequirement['measure'];
+
+function idsValue(requirement: ExtractedRequirement, measure: Measure): Record<string, unknown> {
+  const { value } = requirement;
   const typed = measure ? { dataType: measure.dataType, unit: measure.unit } : typeof value === 'boolean' ? { dataType: 'IFCBOOLEAN' } : {};
   switch (requirement.operator ?? 'exists') {
     case 'exists': return {};
@@ -71,9 +73,9 @@ function idsValue(requirement: ExtractedRequirement): Record<string, unknown> {
 }
 
 /** One IDS specification in the `ids.specifications` proposal shape. */
-function idsSpecification(requirement: ExtractedRequirement, source: SourceRevision): Record<string, unknown> {
+function idsSpecification({ requirement, measure }: ClassifiedRequirement, source: SourceRevision): Record<string, unknown> {
   const target = propertyTarget(requirement.property ?? '')!;
-  const constraint = idsValue(requirement);
+  const constraint = idsValue(requirement, measure);
   // An attribute facet has no dataType or unit; classification already refused a unit on one.
   const facet = target.kind === 'attribute'
     ? { type: 'attribute', name: target.name, ...(constraint.value === undefined ? {} : { value: constraint.value }) }
@@ -86,9 +88,8 @@ const chips = (rules: unknown[]) => ({ groups: [{ combinator: 'AND', rules }], a
 const NUMERIC = { equals: 'eq', notEquals: 'ne', atLeast: 'gte', atMost: 'lte' } as const;
 
 /** One information rule over a `Qto_*` quantity, compared in SI like the native validation reading. */
-function geometryRule(requirement: ExtractedRequirement, source: SourceRevision): Record<string, unknown> {
+function geometryRule({ requirement, measure }: ClassifiedRequirement, source: SourceRevision): Record<string, unknown> {
   const target = propertyTarget(requirement.property ?? '');
-  const measure = measureUnit(requirement.unit ?? '');
   if (target?.kind !== 'property' || !measure || typeof requirement.value !== 'number') throw new Error('not a quantity comparison');
   const factor = unitFactor(measure.unit, measure.dataType, requirement.id)!;
   return { id: `source-${requirement.id}`, name: specName(requirement), severity: 'error',
@@ -107,13 +108,13 @@ const rulesAnswer = (title: string, rules: unknown[]) =>
  * Classify every reviewed requirement and let the native parser of its target
  * refuse it individually, so one malformed requirement never blocks the rest.
  */
-export function qualifyRequirements(review: RequirementReview, passages: readonly Passage[], sources: readonly SourceText[], quantities: QuantityMeasures): ClassifiedRequirement[] {
+export function qualifyRequirements(review: RequirementReview, passages: readonly Passage[], sources: readonly SourceText[], schema: SchemaMeasures): ClassifiedRequirement[] {
   return review.requirements.map(({ requirement, check }) => {
-    const classified = classifyRequirement(requirement, check, sourceRevisionOf(requirement.span.source, passages, sources), quantities);
+    const classified = classifyRequirement(requirement, check, sourceRevisionOf(requirement.span.source, passages, sources), schema);
     if ((classified.target !== 'ids' && classified.target !== 'geometry') || !classified.source) return classified;
     try {
-      if (classified.target === 'ids') parseIdsProposal(idsAnswer('Check', [idsSpecification(requirement, classified.source)]));
-      else parseRulesProposal(rulesAnswer('Check', [geometryRule(requirement, classified.source)]));
+      if (classified.target === 'ids') parseIdsProposal(idsAnswer('Check', [idsSpecification(classified, classified.source)]));
+      else parseRulesProposal(rulesAnswer('Check', [geometryRule(classified, classified.source)]));
       return classified;
     } catch (error) {
       return { requirement, check, target: 'unresolved', reason: 'native', detail: message(error), source: classified.source };
@@ -175,9 +176,9 @@ export function prepareNativeDrafts(proposal: SemanticRequirementProposal, class
   const documentRows = included.filter(row => row.target === 'manual' || row.target === 'unresolved');
   const ids = idsRows.length ? attempt('ids', () => {
     if (!ifcVersions.length) throw new Error('none of the loaded models has an IFC version IDS can check (IFC2X3, IFC4 or IFC4X3)');
-    return parseIdsProposal(idsAnswer(proposal.title, idsRows.map(row => idsSpecification(row.requirement, row.source!)), ifcVersions));
+    return parseIdsProposal(idsAnswer(proposal.title, idsRows.map(row => idsSpecification(row, row.source!)), ifcVersions));
   }) : null;
-  const rules = ruleRows.length ? attempt('geometry', () => parseRulesProposal(rulesAnswer(proposal.title, ruleRows.map(row => geometryRule(row.requirement, row.source!))))) : null;
+  const rules = ruleRows.length ? attempt('geometry', () => parseRulesProposal(rulesAnswer(proposal.title, ruleRows.map(row => geometryRule(row, row.source!))))) : null;
   const unsupported = [...documentRows.map(documentItem),
     ...context.unsupported.map(row => unsupportedItem(row, context.passages, context.sources))];
   const document = unsupported.length ? attempt('manual', () => parseDocumentOutline(JSON.stringify({ version: 1, kind: 'document.outline', title: proposal.title,

@@ -291,6 +291,18 @@ test('#7375 a different proposal in the same review withdraws the drafts prepare
   assert.ok(button(now, /Prepare native drafts/));
 });
 
+test('#7375 an excluded unresolved requirement is not announced as listed in the document', async () => {
+  await converse();
+  const ui = await mount();
+  const dispatch = card(ui, 'Native checks and documents')!;
+  const row = (id: string) => [...dispatch.querySelectorAll('li')].find(item => item.textContent?.startsWith(`${id} `))?.textContent ?? '';
+  assert.match(row('R4'), /Listed in the document as not checked/);
+  click(dispatch.querySelector<HTMLInputElement>('input[aria-label="Include R4 in the native drafts"]')!);
+  assert.doesNotMatch(row('R4'), /Listed in the document/);
+  click(button(dispatch, /Prepare native drafts/));
+  assert.doesNotMatch(card(ui, 'Review report outline')?.textContent ?? '', /R4:/, 'and it is not');
+});
+
 test('#7375 the IDS draft targets the IFC version of the loaded model', async () => {
   await converse();
   const { models } = useViewerStore.getState();

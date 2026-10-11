@@ -11,7 +11,8 @@ import { parseSemanticRequirements, type ExtractedRequirement } from './requirem
 import { reviewRequirements } from './requirement-review';
 import { passagesOf } from './spans';
 import { prepareNativeDrafts, qualifyRequirements } from './requirement-dispatch';
-import { loadQuantityMeasures, textRevision, type QuantityMeasures } from './requirement-targets';
+import { loadSchemaMeasures, textRevision, type SchemaMeasures } from './requirement-targets';
+import { auditIdsDraft, buildIdsDraft } from '@/lib/check-authoring/ids-proposal';
 
 const TEXT = 'Doors shall be rated EI30 in Pset_DoorCommon.FireRating. Door width at least 900 mm. Door names match D-[0-9]+.';
 const sources = [{ id: 'S1', title: 'Spec', text: TEXT }];
@@ -20,13 +21,13 @@ const span = (quote: string) => ({ source: 'S1', start: TEXT.indexOf(quote), end
 const door = (id: string, fields: Partial<ExtractedRequirement>, quote = 'rated EI30') =>
   ({ id, statement: `Statement ${id}`, appliesTo: { ifcClass: 'IfcDoor' }, span: span(quote), ...fields });
 
-let quantities: QuantityMeasures;
-before(async () => { quantities = await loadQuantityMeasures(); });
+let schema: SchemaMeasures;
+before(async () => { schema = await loadSchemaMeasures(); });
 
 function qualify(requirements: object[], unsupported: object[] = []) {
   const proposal = parseSemanticRequirements(JSON.stringify({ version: 1, kind: 'semantic.requirements', title: 'Doors', requirements, unsupported }));
   const review = reviewRequirements(proposal, passages);
-  const rows = qualifyRequirements(review, passages, sources, quantities);
+  const rows = qualifyRequirements(review, passages, sources, schema);
   const draft = (excluded: ReadonlySet<string> = new Set(), ifcVersions: readonly IFCVersion[] = ['IFC4']) =>
     prepareNativeDrafts(proposal, rows, excluded, { unsupported: review.unsupported, passages, sources, ifcVersions });
   return { rows, draft };
@@ -145,7 +146,7 @@ test('#7375 a quantity rule needs the stated unit to measure what the schema say
     door('X', { property: 'Pset_DoorCommon.FireRating', operator: 'exists', unit: 'mm' }),
   ]);
   assert.deepEqual(rows.map(row => [row.requirement.id, row.target, row.reason ?? null]), [
-    ['W', 'unresolved', 'unit'], ['G', 'unresolved', 'unit'], ['N', 'unresolved', 'unit'], ['U', 'unresolved', 'unit'],
+    ['W', 'unresolved', 'unit'], ['G', 'unresolved', 'unit'], ['N', 'unresolved', 'unit'], ['U', 'unresolved', 'unknown'],
     ['L', 'geometry', null], ['A', 'geometry', null], ['X', 'unresolved', 'unit'],
   ]);
 });
@@ -167,4 +168,27 @@ test('#7375 with no IFC version IDS can check, the IDS draft is refused rather t
   assert.equal(drafts.ids, null);
   assert.deepEqual(drafts.refused.map(item => item.target), ['ids']);
   assert.match(drafts.refused[0].detail, /none of the loaded models has an IFC version IDS can check/);
+});
+
+test('#7375 an IDS check on a measured value states the type the schema declares, for every operator', async () => {
+  const quoted = 'at least 900 mm';
+  const { rows, draft } = qualify([
+    door('Q', { appliesTo: { ifcClass: 'IfcWall' }, property: 'Qto_WallBaseQuantities.Width', operator: 'oneOf', value: [150, 200], unit: 'mm²' }, quoted),
+    door('R', { appliesTo: { ifcClass: 'IfcWall' }, property: 'Qto_WallBaseQuantities.Width', operator: 'oneOf', value: [150, 200], unit: 'mm' }, quoted),
+    door('T', { appliesTo: { ifcClass: 'IfcWindow' }, property: 'Pset_DoorWindowGlazingType.GlassThickness1', operator: 'atLeast', value: 6, unit: 'mm' }, quoted),
+    door('S', { appliesTo: { ifcClass: 'IfcSpace' }, property: 'Pset_SpaceCommon.GrossPlannedArea', operator: 'atLeast', value: 20, unit: 'm' }, quoted),
+    door('P', { appliesTo: { ifcClass: 'IfcSpace' }, property: 'Pset_SpaceCommon.GrossPlannedArea', operator: 'atLeast', value: 20, unit: 'm²' }, quoted),
+    door('K', { property: 'Pset_DoorCommon.NoSuchWidth', operator: 'atLeast', value: 900, unit: 'mm' }, quoted),
+    door('C', { property: 'Acme_Door.ClearWidth', operator: 'atLeast', value: 900, unit: 'mm' }, quoted),
+  ]);
+  assert.deepEqual(rows.map(row => [row.requirement.id, row.target, row.reason ?? null, row.measure?.dataType ?? null]), [
+    ['Q', 'unresolved', 'unit', null], ['R', 'ids', null, 'IFCLENGTHMEASURE'], ['T', 'ids', null, 'IFCPOSITIVELENGTHMEASURE'],
+    ['S', 'unresolved', 'unit', null], ['P', 'ids', null, 'IFCAREAMEASURE'], ['K', 'unresolved', 'unknown', null],
+    ['C', 'ids', null, 'IFCLENGTHMEASURE'],
+  ]);
+  const ids = draft().ids!;
+  const facets = ids.document.specifications.map(spec => spec.requirements[0].facet);
+  assert.deepEqual(facets.map(facet => 'dataType' in facet && facet.dataType?.type === 'simpleValue' ? facet.dataType.value : null), ['IFCLENGTHMEASURE', 'IFCPOSITIVELENGTHMEASURE', 'IFCAREAMEASURE', 'IFCLENGTHMEASURE']);
+  const errors = (await auditIdsDraft(buildIdsDraft(ids))).filter(issue => issue.severity === 'error');
+  assert.deepEqual(errors, [], 'the native audit accepts every dispatched specification');
 });

@@ -18,7 +18,7 @@ import { useViewerStore } from '@/store';
 import type { SemanticRequirementProposal } from '@/lib/semantic/assist/requirement-proposal';
 import type { RequirementReview } from '@/lib/semantic/assist/requirement-review';
 import { prepareNativeDrafts, qualifyRequirements, type NativeDrafts } from '@/lib/semantic/assist/requirement-dispatch';
-import { loadQuantityMeasures, textRevision, type ClassifiedRequirement, type QuantityMeasures, type UnresolvedReason } from '@/lib/semantic/assist/requirement-targets';
+import { loadSchemaMeasures, textRevision, type ClassifiedRequirement, type SchemaMeasures, type UnresolvedReason } from '@/lib/semantic/assist/requirement-targets';
 import { useSemanticSourceTexts, type SourceText } from '@/lib/semantic/assist/source-texts';
 import type { Passage } from '@/lib/semantic/assist/spans';
 import { IdsDraftReview } from '../check-authoring/IdsDraftReview';
@@ -27,7 +27,7 @@ import { DocumentOutlineReview } from '../check-authoring/DocumentOutlineReview'
 
 const UNRESOLVED: Record<Exclude<UnresolvedReason, 'native'>, TranslationKey> = {
   span: 'semanticAssist.unresolvedSpan', 'source-missing': 'semanticAssist.unresolvedSourceMissing',
-  'source-changed': 'semanticAssist.unresolvedSourceChanged', scope: 'semanticAssist.unresolvedScope', property: 'semanticAssist.unresolvedProperty',
+  'source-changed': 'semanticAssist.unresolvedSourceChanged', scope: 'semanticAssist.unresolvedScope', unknown: 'semanticAssist.unresolvedUnknown', property: 'semanticAssist.unresolvedProperty',
   operator: 'semanticAssist.unresolvedOperator', value: 'semanticAssist.unresolvedValue', unit: 'semanticAssist.unresolvedUnit',
 };
 const TARGET: Record<'ids' | 'geometry' | 'manual', TranslationKey> = {
@@ -37,12 +37,13 @@ const REFUSED: Record<NativeDrafts['refused'][number]['target'], TranslationKey>
   ids: 'semanticAssist.refusedIds', geometry: 'semanticAssist.refusedGeometry', manual: 'semanticAssist.refusedManual',
 };
 
-function TargetLabel({ row }: { row: ClassifiedRequirement }) {
+function TargetLabel({ row, excluded }: { row: ClassifiedRequirement; excluded: boolean }) {
   const { t } = useTranslation();
   if (row.target !== 'unresolved') return <span className="rounded bg-primary/10 px-1 py-0.5 font-medium">{t(TARGET[row.target])}</span>;
   return <span className="text-amber-700 dark:text-amber-400">
     {row.reason === 'native' ? t('semanticAssist.unresolvedNative', { detail: row.detail ?? '' }) : t(UNRESOLVED[row.reason ?? 'span'])}
-    {' '}{t('semanticAssist.unresolvedListed')}</span>;
+    {/* An excluded requirement reaches no draft, the document included. */}
+    {!excluded && <>{' '}{t('semanticAssist.unresolvedListed')}</>}</span>;
 }
 
 /**
@@ -70,16 +71,22 @@ function loadedIfcVersions(models: ReadonlyMap<string, { schemaVersion?: string;
   return [...versions];
 }
 
-export function RequirementDispatch({ proposal, review, passages }: { proposal: SemanticRequirementProposal; review: RequirementReview; passages: readonly Passage[] }) {
+export function RequirementDispatch({ proposal, review, passages, loadSchema = loadSchemaMeasures }: {
+  proposal: SemanticRequirementProposal; review: RequirementReview; passages: readonly Passage[];
+  /** The schema's declared property and quantity types; injectable so a failure to read them can be shown. */
+  loadSchema?: () => Promise<SchemaMeasures>;
+}) {
   const { t } = useTranslation();
   const sources = useSemanticSourceTexts(s => s.sources);
-  const [quantities, setQuantities] = useState<QuantityMeasures | null>(null);
+  const [schema, setSchema] = useState<SchemaMeasures | null>(null);
+  const [schemaFailure, setSchemaFailure] = useState<string | null>(null);
   useEffect(() => {
     let live = true;
-    void loadQuantityMeasures().then(measures => { if (live) setQuantities(() => measures); });
+    loadSchema().then(measures => { if (live) setSchema(() => measures); },
+      (failure: unknown) => { if (live) setSchemaFailure(failure instanceof Error ? failure.message : String(failure)); });
     return () => { live = false; };
-  }, []);
-  const classified = useMemo(() => quantities ? qualifyRequirements(review, passages, sources, quantities) : [], [review, passages, sources, quantities]);
+  }, [loadSchema]);
+  const classified = useMemo(() => schema ? qualifyRequirements(review, passages, sources, schema) : [], [review, passages, sources, schema]);
   const [excluded, setExcluded] = useState<ReadonlySet<string>>(new Set());
   const [prepared, setPrepared] = useState<{ drafts: NativeDrafts; cited: string; included: ClassifiedRequirement[]; proposal: SemanticRequirementProposal } | null>(null);
   const [withdrawn, setWithdrawn] = useState(false);
@@ -99,7 +106,12 @@ export function RequirementDispatch({ proposal, review, passages }: { proposal: 
   };
   const active = prepared !== null && !stale ? prepared : null;
   const included = classified.length - excluded.size;
-  if (!quantities) return null;
+  // Without the schema no unit can be checked, so nothing is classified or offered for dispatch.
+  if (schemaFailure) return <section aria-label={t('semanticAssist.dispatchTitle')} className="space-y-1.5 rounded border border-border p-1.5">
+    <p className="font-medium">{t('semanticAssist.dispatchTitle')}</p>
+    <p role="alert" className="rounded border border-destructive/40 bg-destructive/10 p-2 text-destructive break-words">{t('semanticAssist.schemaFailed', { detail: schemaFailure })}</p>
+  </section>;
+  if (!schema) return null;
   return <section aria-label={t('semanticAssist.dispatchTitle')} className="space-y-1.5 rounded border border-border p-1.5">
     <p className="font-medium">{t('semanticAssist.dispatchTitle')}</p>
     <p className="text-muted-foreground">{t('semanticAssist.dispatchHint')}</p>
@@ -113,7 +125,7 @@ export function RequirementDispatch({ proposal, review, passages }: { proposal: 
             if (event.target.checked) next.delete(id); else next.add(id);
             return next;
           })} />
-        <label htmlFor={`dispatch-${id}`} className="break-words"><span className="font-mono font-semibold">{id}</span> <TargetLabel row={row} /></label>
+        <label htmlFor={`dispatch-${id}`} className="break-words"><span className="font-mono font-semibold">{id}</span> <TargetLabel row={row} excluded={excluded.has(id)} /></label>
       </li>;
     })}</ul>
     {withdrawn && <p role="alert" className="rounded border border-amber-500/40 bg-amber-500/10 p-2">{t('semanticAssist.draftsWithdrawn')}</p>}

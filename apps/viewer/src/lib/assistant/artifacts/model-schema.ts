@@ -34,6 +34,8 @@ export interface FieldPresence {
   /** Elements carrying it (on the occurrence or through its type), across models. */
   count: number;
   byModel: Map<string, number>;
+  /** Native class presence when collected; older index inputs stay unknown. */
+  byClass?: Map<string, number>;
 }
 
 export interface SchemaModel { modelId: string; name: string; elements: number; scanned: number }
@@ -72,12 +74,13 @@ export async function buildModelSchemaIndex(state: SchemaState, options: { signa
   const fields = new Map<string, FieldPresence>();
   const observations = emptyObservations();
   let partial = false;
-  const bump = (kind: FieldKind, set: string, name: string, modelId: string) => {
+  const bump = (kind: FieldKind, set: string, name: string, modelId: string, ifcClass: string) => {
     const key = fieldKey({ kind, set, name });
     let entry = fields.get(key);
-    if (!entry) { entry = { kind, set, name, count: 0, byModel: new Map() }; fields.set(key, entry); }
+    if (!entry) { entry = { kind, set, name, count: 0, byModel: new Map(), byClass: new Map() }; fields.set(key, entry); }
     entry.count += 1;
     entry.byModel.set(modelId, (entry.byModel.get(modelId) ?? 0) + 1);
+    entry.byClass?.set(ifcClass, (entry.byClass.get(ifcClass) ?? 0) + 1);
   };
   for (const [modelId, model] of state.models) {
     const store = model.ifcDataStore;
@@ -106,9 +109,9 @@ export async function buildModelSchemaIndex(state: SchemaState, options: { signa
       if (scanned >= SCHEMA_SCAN_LIMIT) continue;
       scanned += 1;
       const seen = reader.observe([row.expressId]);
-      for (const { psetName, propertyName } of seen.properties.values()) bump('property', psetName, propertyName, modelId);
-      for (const { qsetName, quantityName } of seen.quantities.values()) bump('quantity', qsetName, quantityName, modelId);
-      for (const name of seen.relations.classificationSystems) bump('classification', '', name, modelId);
+      for (const { psetName, propertyName } of seen.properties.values()) bump('property', psetName, propertyName, modelId, row.type);
+      for (const { qsetName, quantityName } of seen.quantities.values()) bump('quantity', qsetName, quantityName, modelId, row.type);
+      for (const name of seen.relations.classificationSystems) bump('classification', '', name, modelId, row.type);
       mergeObservations(observations, seen);
     }
     partial ||= scanned < elements;

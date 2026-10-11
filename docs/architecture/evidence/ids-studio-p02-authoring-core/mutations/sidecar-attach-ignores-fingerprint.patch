@@ -1,0 +1,13 @@
+diff --git a/packages/ids-authoring/src/sidecar/sidecar.ts b/packages/ids-authoring/src/sidecar/sidecar.ts
+index a35a93ac3..7d0835686 100644
+--- a/packages/ids-authoring/src/sidecar/sidecar.ts
++++ b/packages/ids-authoring/src/sidecar/sidecar.ts
+@@ -155,7 +155,7 @@ export interface AttachOptions {
+  */
+ export function attachSidecar(ids: IDSDocument, sidecar: StudioSidecar, options: AttachOptions = {}): AttachResult {
+   const newId = options.newId ?? (() => uuidv7());
+-  if (fingerprintIds(ids) === sidecar.idsFingerprint || sidecar.nodes.specs.length === ids.specifications.length) {
++  if (fingerprintIds(ids) === sidecar.idsFingerprint) {
+     const doc = stamp(ids, sidecar);
+     if (doc) return { doc, binding: 'exact' };
+   }

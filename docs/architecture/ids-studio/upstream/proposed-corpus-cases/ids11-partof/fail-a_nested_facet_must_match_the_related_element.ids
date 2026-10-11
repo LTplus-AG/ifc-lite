@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ids xmlns="http://standards.buildingsmart.org/IDS" xmlns:xs="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://standards.buildingsmart.org/IDS http://standards.buildingsmart.org/IDS/1.1/ids.xsd">
+  <!-- IDS 1.1 PREVIEW: uses unreleased candidate features; not valid IDS 1.0. -->
+  <info>
+    <title>Spaces of storey 01</title>
+    <description>IDS 1.1 candidate (buildingSMART/IDS#379, draft #380): the nested attribute facet applies to the related storey.</description>
+    <author>ids-studio@example.org</author>
+  </info>
+  <specifications>
+    <specification name="Spaces of storey 01" ifcVersion="IFC4">
+      <applicability minOccurs="1" maxOccurs="unbounded">
+        <entity>
+          <name>
+            <simpleValue>IFCSPACE</simpleValue>
+          </name>
+        </entity>
+      </applicability>
+      <requirements>
+        <partOf relation="IFCRELAGGREGATES" cardinality="required">
+          <entity>
+            <name>
+              <simpleValue>IFCBUILDINGSTOREY</simpleValue>
+            </name>
+          </entity>
+          <attribute>
+            <name>
+              <simpleValue>Name</simpleValue>
+            </name>
+            <value>
+              <simpleValue>01</simpleValue>
+            </value>
+          </attribute>
+        </partOf>
+      </requirements>
+    </specification>
+  </specifications>
+</ids>

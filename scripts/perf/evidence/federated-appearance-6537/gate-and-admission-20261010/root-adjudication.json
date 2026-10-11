@@ -1,0 +1,64 @@
+{
+  "at": "2026-10-10T06:59:51.689561+00:00",
+  "reviewer": "root/removal_adjudication",
+  "base": "cae06a94985fd31dd9ab2c9a5b61cd4bb723ba8e",
+  "head": "23ea207ac0a90a894d6e1969144c706a86f8e602",
+  "execution": "SOURCE_ONLY; no Knip baseline run, build, browser or test rerun",
+  "gateVerdict": "FAIL_FINDINGS_RETAINED",
+  "exitCode": 1,
+  "findingCounts": {
+    "Unused files": 113,
+    "Unused dependencies": 5,
+    "Unused devDependencies": 4,
+    "Referenced optional peerDependencies": 1,
+    "Unlisted dependencies": 4,
+    "Unlisted binaries": 8,
+    "Unresolved imports": 3,
+    "Unused exports": 941,
+    "Unused exported types": 612,
+    "Duplicate exports": 24
+  },
+  "findingRows": 1715,
+  "uniqueFindingPaths": 973,
+  "allFindingFilesByteIdenticalToBase": true,
+  "changedFileOverlap": [],
+  "configurationHints": 12,
+  "knipConfigRootPackageAndLockByteIdenticalToBase": true,
+  "removedProductionImport": {
+    "symbol": "carryReleasedMesh",
+    "from": "@/lib/released-mesh-provenance",
+    "stillConsumedProduction": [
+      {
+        "file": "apps/viewer/src/components/viewer/useFederatedGeometry.ts",
+        "lines": [
+          141,
+          156
+        ]
+      },
+      {
+        "file": "apps/viewer/src/store/slices/dataSlice.ts",
+        "lines": [
+          298,
+          333
+        ]
+      },
+      {
+        "file": "apps/viewer/src/lib/model-placement/placed-geometry.ts",
+        "lines": [
+          23
+        ]
+      }
+    ]
+  },
+  "scopeVerdict": "No change-related dead/orphaned module, export, dependency or configuration finding demonstrated. Replaced implementation removed inline list rebuilding/wrapper copies; it did not remove any file or public export. New Source/SourceCache types are private and used. Hook remains consumed by Viewport. Removed carryReleasedMesh import cannot orphan its module/export because production consumers remain.",
+  "inferenceLimits": "An actual same-runtime base Knip run was not performed. Findings are located in identical baseline blobs; this establishes source ancestry and absence of changed-file findings, not literal baseline analyzer output equivalence. Existing findings may include real dead code as well as analyzer entry/config gaps; they are not blanket dismissed as false positives.",
+  "measurementRecommendation": "Root may separately adjudicate these unrelated inherited findings and activate existing CPU measurement grant 524aec28-2ea1-4ef3-bc08-08d07bc4e986 subject to original actual host admission, source/runtime pins and explicit lock ownership. Preserve Knip FAIL and all findings. This does not satisfy global removal gate or PR readiness, and does not authorize merge.",
+  "artifactHashes": {
+    "stdout.log": "3e32d2607c2bc3dddb883718cc6e02f6927f3b0074507df758d15b30a4e48490",
+    "stderr.log": "813ccc7b7f08f019455b16bc2831a158ab6693f360bbcedfd4299373258b6f84",
+    "result.json": "a23dc6b552be1d8ab58e98a8ed914ebc277f33198ac1d3fcf445b3519c51f59f",
+    "release.json": "3a41322425cf8880a8e0977ef17cbf4eb4baec73afa3275131883a28684c685c",
+    "independent-finding-file-map.json": "14ad76c538cc64e54a20eabf5f1839832b053a4c81516f9f7bba8dcb971b4447",
+    "independent-baseline-blob-proof.json": "1f637d608b37ecb8722e27923118ff1190dd5536e076f398462a71dcc4f6eb37"
+  }
+}

@@ -1,0 +1,4 @@
+exit: 2
+--- stdout
+--- stderr
+Error: --lang expects en|de|fr, got "xx"

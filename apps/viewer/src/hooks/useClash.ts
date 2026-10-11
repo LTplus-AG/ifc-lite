@@ -10,6 +10,7 @@
  * renderer's selection channel and the federation registry.
  */
 
+import { captureEntityViewportFrame } from '@/lib/export/entity-viewport-capture';
 import { useCallback, useRef } from 'react';
 import { clashElementCache } from '@/lib/clash/element-cache';
 import { beginAbortableRun, cancelClashRun, clearClashRun, releaseAbortableRun } from './analysisRunCancellation';
@@ -1135,8 +1136,8 @@ export function useClash() {
    * Filters by severity, groups along the chosen dimension (one topic per
    * group), and — when `includeSnapshots` is on and a renderer is live —
    * renders each topic's framing viewpoint offscreen and embeds a PNG. The
-   * snapshot pass mirrors the IDS batch path: save viewer state, then per group
-   * frame the bounds + isolate the members + capture, and restore at the end.
+   * snapshot pass shares the IDS capture gate: per group, frame bounds and
+   * isolate members inside an owned frame, then restore its camera.
    * `onProgress(done, total)` ticks once per captured snapshot.
    */
   const exportBcf = useCallback(
@@ -1148,46 +1149,15 @@ export function useClash() {
       if (filtered.clashes.length === 0) return;
       const groups = groupClashes(filtered, { by: config.groupBy, epsilon: state.clashClusterEpsilon });
 
-      let restore: (() => void) | undefined;
       let snapshotProvider: ((group: ClashGroup) => Promise<Uint8Array | undefined>) | undefined;
 
       if (config.includeSnapshots) {
         const renderer = getGlobalRenderer();
         if (renderer) {
-          const saved = {
-            selectedEntityId: state.selectedEntityId,
-            selectedEntityIds: state.selectedEntityIds,
-            isolatedEntities: state.isolatedEntities,
-            hiddenEntities: state.hiddenEntities,
-          };
-          restore = () => {
-            useViewerStore.setState({
-              selectedEntityId: saved.selectedEntityId,
-              selectedEntityIds: saved.selectedEntityIds,
-              isolatedEntities: saved.isolatedEntities,
-              hiddenEntities: saved.hiddenEntities,
-            });
-            renderer.render({
-              hiddenIds: saved.hiddenEntities,
-              isolatedIds: saved.isolatedEntities,
-              selectedId: saved.selectedEntityId,
-              // Repaint the full multi-selection too — the snapshot loop drove the
-              // renderer directly without touching the store, so the store's
-              // selectedEntityIds reference never changed and useRenderUpdates
-              // won't re-fire. Without this the clash highlight vanishes post-export.
-              selectedIds: saved.selectedEntityIds,
-            });
-          };
           const total = Math.min(groups.length, config.maxTopics);
-          const camera = renderer.getCamera();
           let done = 0;
           snapshotProvider = async (group: ClashGroup): Promise<Uint8Array | undefined> => {
             const b = group.bounds;
-            await camera.frameBounds(
-              { x: b.min[0], y: b.min[1], z: b.min[2] },
-              { x: b.max[0], y: b.max[1], z: b.max[2] },
-              1,
-            );
             // Isolate just this topic's members so the snapshot is unambiguous;
             // no selection highlight so the captured colours read true.
             const isolation = new Set<number>();
@@ -1195,19 +1165,11 @@ export function useClash() {
               isolation.add(m.a.ref);
               isolation.add(m.b.ref);
             }
-            // restoreEvictedForCapture: isolation may reveal batches evicted
-            // under the GPU residency budget — restore synchronously so the
-            // BCF snapshot is complete.
-            renderer.render({ isolatedIds: isolation, selectedId: null, clearColor: SNAPSHOT_CLEAR_COLOR, restoreEvictedForCapture: true });
-            const device = renderer.getGPUDevice();
-            if (device) await device.queue.onSubmittedWorkDone();
-            // Let the compositor present the frame before reading the canvas.
-            // FRAME-WAIT-ALLOW(#2385): must NOT be raced against a timer — the
-            // point is that the frame was actually presented, and timing out
-            // would read a stale canvas into the BCF snapshot. A hidden tab
-            // cannot produce a valid snapshot at all, so bounding buys nothing.
-            await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
-            const dataUrl = await renderer.captureScreenshot();
+            const dataUrl = await captureEntityViewportFrame(renderer, {
+              ids: isolation, mode: 'isolate',
+              bounds: { min: { x: b.min[0], y: b.min[1], z: b.min[2] }, max: { x: b.max[0], y: b.max[1], z: b.max[2] } },
+              clearColor: SNAPSHOT_CLEAR_COLOR,
+            });
             done += 1;
             onProgress?.(done, total);
             return dataUrl ? dataUrlToBytes(dataUrl) : undefined;
@@ -1235,7 +1197,7 @@ export function useClash() {
         downloadBlob(blob, 'clashes.bcfzip');
         trackExportCompleted({ format: 'bcfzip', surface: 'clash_results' });
       } finally {
-        restore?.();
+        getGlobalRenderer()?.requestRender();
       }
     },
     [],

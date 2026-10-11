@@ -60,9 +60,10 @@ function parseCell(cell: string, valueType: ColumnValueType): string | number | 
 }
 
 /** Table value in `unit` → SI → the frame `dataType` is stored in for this element. */
-function toStored(reader: ModelReader, expressId: number, value: number, unit: TableUnit, dataType: string, ownScale?: number): number {
+function toStored(reader: ModelReader, expressId: number, value: number, unit: TableUnit, dataType: string, ownScale?: number, ownOffset = 0): number {
   const si = value * TABLE_UNITS[unit].si;
-  if (ownScale) return si / ownScale;
+  // The inverse of `si = raw * scale + offset` (an offset unit such as °F).
+  if (ownScale) return (si - ownOffset) / ownScale;
   const raw = toRaw(si, dataType, resolveEntityMeasureScales(reader.dataStore, expressId));
   return typeof raw === 'number' ? raw : si;
 }
@@ -81,7 +82,7 @@ export function propertyCell(reader: ModelReader, expressId: number, pset: strin
     }
     if (existing?.unit && !existing.unitSiScale) return { ok: false, kind: 'unit-mismatch', detail: `the property's own unit ${existing.unit} could not be read` };
     dataType = existing?.dataType ?? MEASURE_TYPE[kind];
-    value = toStored(reader, expressId, value as number, unit, dataType, existing?.unit ? existing.unitSiScale : undefined);
+    value = toStored(reader, expressId, value as number, unit, dataType, existing?.unit ? existing.unitSiScale : undefined, existing?.unit ? existing.unitSiOffset : undefined);
   }
   try {
     return { ok: true, value, dataType: validatePropertyDataType(value, dataType).dataType };

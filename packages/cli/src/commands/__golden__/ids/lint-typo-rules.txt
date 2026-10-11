@@ -1,0 +1,12 @@
+exit: 0
+--- stdout
+
+  IDS lint: <fixtures>/doors-typo.ids
+
+  info    IDSL-VAL-006   specifications[0].requirements[1].value  "Fire rating on doors"
+            "Door " has surrounding whitespace or invisible characters [fix available]
+
+  0 errors, 0 warnings, 1 info (1 fixable)
+  Result: PASS
+
+--- stderr

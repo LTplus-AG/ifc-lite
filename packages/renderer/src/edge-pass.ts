@@ -15,6 +15,7 @@
  * straight onto the resolved canvas.
  */
 
+import { renderPassTimestampWrites } from './renderer-frame-timing.js';
 import { EDGE_UNIFORM_BYTES, type EdgeFrameParams, packEdgeUniforms } from './edge-params.js';
 import { OUTLINE_UNIFORM_BYTES, type OutlineFrameParams, packOutlineUniforms } from './outline-params.js';
 import type { SelectionMaskViews } from './selection-mask-pass.js';
@@ -162,6 +163,7 @@ export class EdgePass {
     }
 
     const pass = frame.encoder.beginRenderPass({
+      timestampWrites: renderPassTimestampWrites(frame.encoder, 'edges'),
       label: 'edges',
       colorAttachments: [{ view: frame.targetView, loadOp: 'load', storeOp: 'store' }],
     });
@@ -191,6 +193,7 @@ export class EdgePass {
     }
 
     const pass = frame.encoder.beginRenderPass({
+      timestampWrites: renderPassTimestampWrites(frame.encoder, 'selection-outline'),
       label: 'selection-hover-outline',
       colorAttachments: [{ view: frame.targetView, loadOp: 'load', storeOp: 'store' }],
     });

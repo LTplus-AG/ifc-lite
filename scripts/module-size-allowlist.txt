@@ -127,7 +127,7 @@
    462 apps/viewer/src/lib/geo/precision-grids.ts
    726 apps/viewer/src/lib/geo/reproject.ts
    621 apps/viewer/src/lib/ifc4-pset-definitions.ts
-   419 apps/viewer/src/lib/lists/adapter.ts
+   417 apps/viewer/src/lib/lists/adapter.ts
    445 apps/viewer/src/lib/llm/script-diagnostics.ts
    991 apps/viewer/src/lib/llm/script-edit-ops.ts
   1141 apps/viewer/src/lib/llm/script-preflight.ts
@@ -221,15 +221,15 @@
   1536 packages/geometry/src/index.ts
    730 packages/geometry/src/native-bridge.ts
    904 packages/ids/src/audit/ifc-schema/index.ts
-   566 packages/ids/src/audit/structural/index.ts
+   411 packages/ids/src/audit/structural/index.ts
    445 packages/ids/src/facets/property-facet.ts
    597 packages/ids/src/parser/xml-parser.ts
    628 packages/ids/src/translation/service.ts
    636 packages/ids/src/types.ts
-   773 packages/ids/src/validation/validator.ts
+   772 packages/ids/src/validation/validator.ts
    468 packages/ifcx/src/federated-composition.ts
    704 packages/ifcx/src/index.ts
-   772 packages/lists/src/engine.ts
+   749 packages/lists/src/engine.ts
    479 packages/mcp/src/backend-query.ts
    544 packages/mcp/src/server.ts
    470 packages/mcp/src/tools/layer-review.ts
@@ -240,7 +240,7 @@
    558 packages/mutations/src/csv-connector.ts
   1879 packages/mutations/src/mutable-property-view.ts
    422 packages/oauth-pkce/src/token-manager.ts
-   858 packages/parser/src/columnar-parser.ts
+   856 packages/parser/src/columnar-parser.ts
    467 packages/parser/src/compact-entity-index.ts
    530 packages/parser/src/data-store-transport.ts
    835 packages/parser/src/material-resolver.ts
@@ -260,7 +260,7 @@
    583 packages/renderer/src/camera-controls.ts
    684 packages/renderer/src/camera.ts
   3699 packages/renderer/src/index.ts
-   741 packages/renderer/src/picker.ts
+   706 packages/renderer/src/picker.ts
    952 packages/renderer/src/pipeline.ts
    465 packages/renderer/src/pointcloud/point-cloud-renderer.ts
    758 packages/renderer/src/pointcloud/point-cloud-spatial-index.ts

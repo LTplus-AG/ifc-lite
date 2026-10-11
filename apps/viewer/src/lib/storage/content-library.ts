@@ -18,6 +18,12 @@ export interface ContentCommitReceipt extends ContentRow { stagedPayload?: unkno
 const copyItemStatus = (items?: ContentStatus['items']): ContentStatus['items'] => Object.assign(Object.create(null), items);
 export const initialContentStatus = (): ContentStatus => ({ phase: 'loading', recovered: false, items: copyItemStatus() });
 
+const controllers = new Set<{ restore: () => Promise<boolean> }>();
+/** Reread every library controller created so far from IndexedDB, without naming each kind (#7370). */
+export function restoreContentLibraries(): Promise<boolean[]> {
+  return Promise.all([...controllers].map(controller => controller.restore()));
+}
+
 /** One controller per store slice: edits stay visible before hydration and on refusal.
  * Per-item queues prevent old commits clearing newer drafts; transactions check other tabs. */
 export function createContentLibrary<T extends { id: string }>(definition: ContentDefinition<T>,
@@ -28,6 +34,10 @@ export function createContentLibrary<T extends { id: string }>(definition: Conte
   const dirty = new Map<string, T | null>();
   const queues = new Map<string, Promise<boolean>>();
   const generations = new Map<string, number>();
+  // Optional native deletion authority stays with refused tombstones for explicit Retry.
+  const deletionGuards = new Map<string, { check: () => boolean | Promise<boolean>; original: T | undefined; replacement?: T }>();
+  // Revoked deletions retain recovery evidence, never writable tombstones or approval.
+  const cancelledDeletions = new Map<string, { generation: number; original: T | undefined }>();
   let editGeneration = 0;
   const emit = () => publish(read(), { ...status, items: copyItemStatus(status.items) });
   const change = (id: string, entry: T | null) => {
@@ -86,6 +96,8 @@ export function createContentLibrary<T extends { id: string }>(definition: Conte
   };
   const stage = (id: string, entry: T | null, reason: ContentFailure = 'unavailable'): void => {
     editGeneration++;
+    cancelledDeletions.delete(id);
+    deletionGuards.delete(id);
     if (!revisions.has(id)) revisions.set(id, 0);
     generations.set(id, (generations.get(id) ?? 0) + 1);
     dirty.set(id, entry === null ? null : structuredClone(entry));
@@ -101,21 +113,55 @@ export function createContentLibrary<T extends { id: string }>(definition: Conte
       return null;
     }
   };
-  const put = (id: string, value: T | null): Promise<boolean> => {
+  const put = (id: string, value: T | null, beforeWrite?: () => boolean | Promise<boolean>): Promise<boolean> => {
     const entry = portableEntry(value);
     if (value !== null && !entry) { stage(id, value, 'invalid'); return Promise.resolve(false); }
     editGeneration++;
+    cancelledDeletions.delete(id);
     if (!revisions.has(id)) revisions.set(id, 0);
     const generation = (generations.get(id) ?? 0) + 1;
     generations.set(id, generation);
-    dirty.set(id, value); status.items[id] = 'saving'; change(id, value);
+    if (beforeWrite && value === null) {
+      const prior = deletionGuards.get(id);
+      const original = prior?.replacement ?? prior?.original ?? read().find(entry => entry.id === id);
+      deletionGuards.set(id, { check: beforeWrite, original, replacement: prior?.replacement });
+      status.items[id] = 'saving'; emit();
+    } else {
+      deletionGuards.delete(id);
+      dirty.set(id, value); status.items[id] = 'saving'; change(id, value);
+    }
     const previous = queues.get(id) ?? Promise.resolve(true);
+    const deletionAllowed = async (): Promise<boolean> => {
+      const authority = deletionGuards.get(id);
+      if (beforeWrite && (!authority || authority.check !== beforeWrite || generations.get(id) !== generation)) return false;
+      // Restore the actual own-import replacement before checking source identity.
+      if (authority?.replacement && generations.get(id) === generation) change(id, authority.replacement);
+      const permitted = !beforeWrite || await beforeWrite();
+      // The callback can synchronously revoke itself or stage a newer draft.
+      if (permitted && !authority?.replacement && (!beforeWrite
+        || (deletionGuards.get(id) === authority && generations.get(id) === generation))) return true;
+      // A newer native draft owns its own generation; never restore over it.
+      if (generations.get(id) === generation) {
+        const original = authority?.replacement ?? authority?.original;
+        deletionGuards.delete(id);
+        if (dirty.get(id) === null) dirty.delete(id);
+        status.items[id] = 'conflict';
+        if (original && !read().some(entry => entry.id === id)) change(id, original);
+        else emit();
+      }
+      return false;
+    };
     const pending = previous.then(async (succeeded) => {
       if (!(await initialize()) || (!succeeded && queues.has(id))) {
         if (generations.get(id) === generation) {
+          if (beforeWrite && dirty.get(id) !== null) deletionGuards.delete(id);
           status.items[id] = status.items[id] === 'saving' ? 'unavailable' : status.items[id]; emit();
         }
         return false;
+      }
+      if (beforeWrite && value === null) {
+        if (!(await deletionAllowed())) return false;
+        dirty.set(id, value); change(id, value);
       }
       const expected = revisions.get(id) ?? 0;
       let result = await writeContent(definition.kind, id, entry, expected);
@@ -127,6 +173,8 @@ export function createContentLibrary<T extends { id: string }>(definition: Conte
         else {
           const draft = dirty.get(id);
           if (draft === undefined) return false;
+          // #7245: an own receipt advances CAS, never deletion approval.
+          if (draft === null && !(await deletionAllowed())) return false;
           const latest = portableEntry(draft);
           if (draft !== null && !latest) { stage(id, draft, 'invalid'); return false; }
           result = await writeContent(definition.kind, id, latest, acknowledged);
@@ -135,7 +183,7 @@ export function createContentLibrary<T extends { id: string }>(definition: Conte
       if (result.ok) revisions.set(id, result.revision);
       if (generations.get(id) === generation) {
         status.items[id] = result.ok ? 'saved' : result.reason;
-        if (result.ok) dirty.delete(id);
+        if (result.ok) { dirty.delete(id); deletionGuards.delete(id); }
         emit();
       }
       return result.ok;
@@ -144,10 +192,48 @@ export function createContentLibrary<T extends { id: string }>(definition: Conte
     void pending.finally(() => { if (queues.get(id) === pending) queues.delete(id); });
     return pending;
   };
+  const recoverCancelledDeletion = async (id: string, generation: number): Promise<boolean> => {
+    const recovery = cancelledDeletions.get(id);
+    if (!recovery || recovery.generation !== generation) return false;
+    try {
+      await queues.get(id);
+      const rows = await readContentRows(definition.kind);
+      // A newer local draft or owner always wins over this asynchronous read.
+      if (cancelledDeletions.get(id) !== recovery || generations.get(id) !== generation
+        || dirty.has(id) || deletionGuards.has(id)) return false;
+      const row = rows.find(entry => entry.id === id);
+      if (row && row.revision < (revisions.get(id) ?? 0)) return false;
+      const entry = row && !row.deleted ? definition.decode(row.payload) : null;
+      if (row && !row.deleted && !entry) throw new Error('Cancelled deletion source is unreadable');
+      if (row) revisions.set(id, row.revision);
+      cancelledDeletions.delete(id);
+      status.items[id] = 'saved'; change(id, entry);
+      return true;
+    } catch (error) {
+      const reason = contentFailure(error);
+      if (cancelledDeletions.get(id) === recovery && generations.get(id) === generation) {
+        status.items[id] = reason; emit();
+      }
+      return false;
+    }
+  };
+  // Revoke only this mounted review's tombstone; never flush unrelated drafts.
+  const cancelDeletion = (id: string, check: () => boolean | Promise<boolean>): Promise<boolean> => {
+    const authority = deletionGuards.get(id);
+    if (!authority || authority.check !== check || dirty.get(id) !== null) return Promise.resolve(false);
+    const generation = (generations.get(id) ?? 0) + 1;
+    generations.set(id, generation); editGeneration++;
+    cancelledDeletions.set(id, { generation, original: authority.replacement ?? authority.original });
+    deletionGuards.delete(id); dirty.delete(id);
+    return recoverCancelledDeletion(id, generation);
+  };
   const retry = async (): Promise<boolean> => {
     await Promise.all(queues.values());
     if (!(await initialize())) return false;
-    const results = await Promise.all([...dirty].map(([id, entry]) => put(id, entry)));
+    const results = await Promise.all([
+      ...[...cancelledDeletions].map(([id, recovery]) => recoverCancelledDeletion(id, recovery.generation)),
+      ...[...dirty].map(([id, entry]) => put(id, entry, deletionGuards.get(id)?.check)),
+    ]);
     return results.every(Boolean);
   };
   const refresh = async (committed: readonly ContentCommitReceipt[] = []): Promise<boolean> => {
@@ -157,12 +243,18 @@ export function createContentLibrary<T extends { id: string }>(definition: Conte
       if (row.kind !== definition.kind || !dirty.has(row.id) || row.revision < (revisions.get(row.id) ?? 0)) continue;
       revisions.set(row.id, row.revision);
       const current = dirty.get(row.id), committedEntry = definition.decode(row.payload);
+      const authority = deletionGuards.get(row.id);
+      if (current === null && authority && !row.deleted && committedEntry
+        && (authority.replacement || !sameReportEvidence(authority.original, committedEntry))) {
+        // #7245: an import can replace a source hidden by a pending tombstone.
+        authority.replacement = committedEntry;
+      }
       if (current && row.stagedPayload !== undefined && committedEntry && definition.mergeCommitted) {
         const merged = definition.mergeCommitted(current, row.stagedPayload, committedEntry);
         dirty.set(row.id, merged); change(row.id, merged);
       }
       if (!sameReportEvidence(dirty.get(row.id), row.deleted ? null : row.payload)) continue;
-      dirty.delete(row.id); status.items[row.id] = 'saved';
+      dirty.delete(row.id); deletionGuards.delete(row.id); status.items[row.id] = 'saved';
     }
     if (committed.length) emit();
     // Never let another tab replace dirty drafts or their expected revisions.
@@ -184,11 +276,13 @@ export function createContentLibrary<T extends { id: string }>(definition: Conte
       }
       // The confirmation covers existing drafts, never edits made while reading.
       if (editGeneration !== requestedAt) return false;
-      dirty.clear(); revisions.clear();
+      dirty.clear(); revisions.clear(); deletionGuards.clear(); cancelledDeletions.clear();
       for (const row of rows) revisions.set(row.id, row.revision);
       status = { ...status, phase: 'ready', items: copyItemStatus() }; publish(entries, status);
       return true;
     } catch (error) { contentFailure(error); return false; }
   };
-  return { initialize, put, retry, refresh, stage, restore };
+  const controller = { initialize, put, retry, refresh, stage, restore, cancelDeletion };
+  controllers.add(controller);
+  return controller;
 }

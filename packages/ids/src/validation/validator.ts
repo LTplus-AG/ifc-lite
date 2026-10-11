@@ -29,7 +29,9 @@ import { ApplicabilityPropertyIndex } from './property-index.js';
 import { UnsafeRegexPatternError } from '@ifc-lite/regex-guard';
 import { formatFailureReason, formatRequirementDescription } from './format-failure-reason.js';
 import { boundedPassRate } from './pass-rate.js';
+import { requirementsToCheck } from './prohibited-specification.js';
 import { BoundedCache } from '../bounded-cache.js';
+import { assertIds11Allowed } from '../preview/features.js';
 export { formatFailureReason } from './format-failure-reason.js';
 
 /** Memoize a single-argument accessor lookup keyed by express ID. */
@@ -201,7 +203,7 @@ export async function validateIDS(
   options: ValidatorOptions = {}
 ): Promise<IDSValidationReport> {
   const { onProgress } = options;
-
+  assertIds11Allowed(document, options.preview, 'validateIDS'); // ADR-011: no silent 1.1 skips
   const cachedAccessor = createCachedAccessor(accessor);
   const descriptionCache: DescriptionCache = new Map();
   const maybeYield = createYielder(options.yieldEveryMs ?? 40);
@@ -328,8 +330,8 @@ async function validateSpecification(
   const idsToCheck = maxEntities
     ? applicableIds.slice(0, maxEntities)
     : applicableIds;
-
-  // Phase 2: Check requirements for each applicable entity
+  // Phase 2: per-entity checks, built per run (specs are edited in place between runs).
+  const checks = requirementsToCheck(spec);
   const entityResults: IDSEntityResult[] = [];
   const totalEntities = idsToCheck.length;
 
@@ -347,7 +349,7 @@ async function validateSpecification(
     if ((i & 31) === 0) await maybeYield();
 
     const entityResult = validateEntityRequirements(
-      spec,
+      spec, checks,
       expressId,
       modelId,
       accessor,
@@ -526,7 +528,7 @@ async function findApplicableEntities(
  * Validate requirements for a single entity
  */
 function validateEntityRequirements(
-  spec: IDSSpecification,
+  spec: IDSSpecification, checks: readonly IDSRequirement[],
   expressId: number,
   modelId: string,
   accessor: IFCDataAccessor,
@@ -536,13 +538,11 @@ function validateEntityRequirements(
   const requirementResults: IDSRequirementResult[] = [];
   let allPassed = true;
 
-  for (const requirement of spec.requirements) {
+  // A prohibited specification adds a failing check per element (#7403).
+  for (const requirement of checks) {
     const result = checkRequirement(requirement, expressId, accessor, descriptionCache, translator);
     requirementResults.push(result);
-
-    if (result.status === 'fail') {
-      allPassed = false;
-    }
+    if (result.status === 'fail') allPassed = false;
   }
 
   return {
@@ -551,7 +551,7 @@ function validateEntityRequirements(
     entityType: accessor.getEntityType(expressId) || 'Unknown',
     entityName: accessor.getEntityName(expressId),
     globalId: accessor.getGlobalId(expressId),
-    passed: allPassed,
+    passed: allPassed && spec.maxOccurs !== 0,
     requirementResults,
   };
 }
@@ -610,9 +610,8 @@ function checkRequirement(
           'CLASSIFICATION_MISSING',
           'MATERIAL_MISSING',
           'PARTOF_RELATION_MISSING',
-          // The nested predefinedType sub-constraint on an entity /
-          // partOf facet is itself an "attribute" of the target entity —
-          // when it's wholly unset (no PredefinedType, no fallback
+          // The nested predefinedType of an entity / partOf facet is an
+          // "attribute" of the target entity — when it's wholly unset (no PredefinedType, no fallback
           // ObjectType/parent predefinedType at all) that's the same
           // "wholly absent" shape as ATTRIBUTE_MISSING, not "bad data".
           'PREDEFINED_TYPE_MISSING',
@@ -645,7 +644,7 @@ function checkRequirement(
       if (status === 'fail') {
         failureReason = translator
           ? translator.t('failures.prohibited', {
-              field: facetResult.actualValue || 'value',
+              field: requirement.facet.type, actual: facetResult.actualValue ?? '?',
             })
           : `Prohibited: found ${facetResult.actualValue}`;
       }

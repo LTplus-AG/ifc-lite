@@ -1,0 +1,27 @@
+[
+  {
+    "card": {
+      "uri": "https://identifier.example.org/uri/example/dict/1.0/class/FD-01",
+      "code": "FD-01",
+      "name": "Fire door",
+      "dictionaryUri": "https://identifier.example.org/uri/example/dict/1.0",
+      "dictionaryName": "Example dictionary",
+      "relatedIfcEntities": ["IfcDoor"],
+      "definition": "A door that resists the passage of fire for a stated period.",
+      "status": "Active"
+    },
+    "properties": [
+      { "code": "FireRating", "name": "Fire rating", "propertySet": "Pset_DoorCommon", "dataType": "String", "allowedValues": [{ "code": "EI30", "value": "EI30" }, { "code": "EI60", "value": "EI60" }] }
+    ]
+  },
+  {
+    "card": {
+      "uri": "https://identifier.example.org/uri/example/dict/1.0/class/EW-02",
+      "code": "EW-02",
+      "name": "External wall",
+      "dictionaryUri": "https://identifier.example.org/uri/example/dict/1.0",
+      "relatedIfcEntities": ["IfcWall"]
+    },
+    "properties": []
+  }
+]

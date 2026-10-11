@@ -4,7 +4,7 @@
 import { isValidIfcGuid } from '@ifc-lite/encoding';
 import { effectiveCreatedRecord, effectiveSourceRecord } from '@ifc-lite/export';
 import { iterateEffectiveEntityIds, type MutablePropertyView } from '@ifc-lite/mutations';
-import type { EffectiveEntityRecord, IfcDataStore } from '@ifc-lite/parser';
+import { createSchemaEntityNameSnapshot, type SchemaEntityNameSnapshot, type EffectiveEntityRecord, type IfcDataStore } from '@ifc-lite/parser';
 import { AnchorEntityReader } from './resolve-anchor.js';
 import { conformsTo, schemaRegistry } from './schema-attributes.js';
 
@@ -25,21 +25,28 @@ export interface GroupSnapshot extends GroupRootIdentity {
 }
 
 /** Scan actual effective export records, never attribute numbers mistaken for refs. */
-function references(text: string): number[] {
+export function groupRecordReferences(text: string): number[] {
   const refs: number[] = [];
-  let quoted = false;
-  let comment = false;
-  const start = text.indexOf('(');
-  if (start < 0) throw new Error('Group graph has an unreadable record');
-  for (let i = start; i < text.length; i++) {
-    if (comment) { if (text[i] === '*' && text[i + 1] === '/') { comment = false; i++; } continue; }
-    if (!quoted && text[i] === '/' && text[i + 1] === '*') { comment = true; i++; continue; }
+  let attributes = false;
+  for (let i = 0; i < text.length; i++) {
+    if (text[i] === '/' && text[i + 1] === '*') {
+      const end = text.indexOf('*/', i + 2);
+      if (end < 0) throw new Error('Group graph has an unterminated record');
+      i = end + 1; continue;
+    }
     if (text[i] === "'") {
-      if (quoted && text[i + 1] === "'") i++;
-      else quoted = !quoted;
+      let end = i;
+      do {
+        end = text.indexOf("'", end + 1);
+        if (end < 0) throw new Error('Group graph has an unterminated record');
+        if (text[end + 1] !== "'") break;
+        end++;
+      } while (true);
+      i = end;
       continue;
     }
-    if (quoted || text[i] !== '#') continue;
+    if (text[i] === '(') attributes = true;
+    if (!attributes || text[i] !== '#') continue;
     let end = i + 1;
     while (end < text.length && text[end] >= '0' && text[end] <= '9') end++;
     if (end === i + 1) throw new Error('Group graph has an unreadable reference');
@@ -47,11 +54,28 @@ function references(text: string): number[] {
     if (!Number.isSafeInteger(id) || id <= 0) throw new Error('Group graph has an invalid reference');
     refs.push(id); i = end - 1;
   }
-  if (quoted || comment) throw new Error('Group graph has an unterminated record');
+  if (!attributes) throw new Error('Group graph has an unreadable record');
   return refs;
 }
 
+/**
+ * The graph's whole-model entity budget without decoding a record (#7346). The
+ * parsed type buckets plus overlay creations bound the live population from
+ * above, so only a model near the budget walks the canonical iterator.
+ */
+export function assertGroupEntityBudget(store: IfcDataStore, view: MutablePropertyView, limit: number = GROUP_GRAPH_LIMITS.entities): void {
+  let bound = view.getNewEntities().length;
+  // @raw-entity-enumeration-ok bucket sizes only bound the live population; the canonical iterator decides
+  for (const ids of store.entityIndex.byType.values()) bound += ids.length;
+  if (bound <= limit) return;
+  let count = 0;
+  for (const _entity of iterateEffectiveEntityIds(store, view)) {
+    if (++count > limit) throw new Error('Group graph entity budget exceeded');
+  }
+}
+
 export class GroupGraph {
+  readonly schemaNames: SchemaEntityNameSnapshot;
   readonly entities = new Map<number, EffectiveEntityRecord>();
   readonly incoming = new Map<number, Set<number>>();
   private readonly roots = new Map<string, number[]>();
@@ -62,18 +86,9 @@ export class GroupGraph {
     if (store.schemaVersion !== 'IFC4' && store.schemaVersion !== 'IFC4X3') {
       throw new Error('Generic IfcGroup authoring requires a declared IFC4 or IFC4X3 model');
     }
-    const reader = new AnchorEntityReader(store, view);
-    let referenceCount = 0;
-    let recordCharacters = 0;
-    for (const { expressId } of iterateEffectiveEntityIds(store, view)) {
-      if (this.entities.size >= this.limits.entities) throw new Error('Group graph entity budget exceeded');
-      const entity = reader.entity(expressId);
-      if (!entity) throw new Error(`Group graph cannot read current entity #${expressId}`);
-      this.entities.set(expressId, entity);
-      if (entity.names[0] === 'GlobalId' && typeof entity.attributes[0] === 'string') {
-        const guid = entity.attributes[0];
-        const ids = this.roots.get(guid) ?? []; ids.push(expressId); this.roots.set(guid, ids);
-      }
+    this.schemaNames = createSchemaEntityNameSnapshot(schemaRegistry(store.schemaVersion, 'IfcGroup'));
+    const reader = new AnchorEntityReader(store, view, this.schemaNames);
+    const exportRecord = (expressId: number) => {
       const created = effectiveCreatedRecord(view, expressId, store.schemaVersion);
       // @raw-entity-enumeration-ok current candidate came from the canonical live iterator; source lookup supplies export record bytes only
       const source = created ? undefined : store.entityIndex.byId.get(expressId);
@@ -81,11 +96,38 @@ export class GroupGraph {
         store.source.decodeUtf8(source.byteOffset, source.byteOffset + source.byteLength), source.type, store.schemaVersion) : null);
       if (!record || record.notWritten.length) throw new Error(`Group graph cannot certify exported entity #${expressId}`);
       if (record.text.length > this.limits.recordCharacters) throw new Error('Group graph record budget exceeded');
+      return record;
+    };
+    // Refuse the entity budget from the live iterator before decoding any record:
+    // a refusal is the same answer, without seconds of main-thread decoding (#7346).
+    // A source record whose byte length exceeds the record budget is decoded once to
+    // measure its export text; overlay growth is measured in the main pass below.
+    const ids: number[] = [];
+    for (const { expressId } of iterateEffectiveEntityIds(store, view)) {
+      if (ids.length >= this.limits.entities) throw new Error('Group graph entity budget exceeded');
+      ids.push(expressId);
+    }
+    for (const expressId of ids) {
+      // @raw-entity-enumeration-ok id came from the canonical live iterator; source byte length only bounds its UTF-16 export text
+      const source = view.getNewEntity(expressId) ? undefined : store.entityIndex.byId.get(expressId);
+      if (source && source.byteLength > this.limits.recordCharacters) exportRecord(expressId);
+    }
+    let referenceCount = 0;
+    let recordCharacters = 0;
+    for (const expressId of ids) {
+      const entity = reader.entity(expressId);
+      if (!entity) throw new Error(`Group graph cannot read current entity #${expressId}`);
+      this.entities.set(expressId, entity);
+      if (entity.names[0] === 'GlobalId' && typeof entity.attributes[0] === 'string') {
+        const guid = entity.attributes[0];
+        const owners = this.roots.get(guid) ?? []; owners.push(expressId); this.roots.set(guid, owners);
+      }
+      const record = exportRecord(expressId);
       recordCharacters += record.text.length;
       if (recordCharacters > this.limits.totalRecordCharacters) throw new Error('Group graph total record work budget exceeded');
-      for (const target of references(record.text)) {
+      for (const target of groupRecordReferences(record.text)) {
         if (++referenceCount > this.limits.references) throw new Error('Group graph reference budget exceeded');
-        const ids = this.incoming.get(target) ?? new Set<number>(); ids.add(expressId); this.incoming.set(target, ids);
+        const referrers = this.incoming.get(target) ?? new Set<number>(); referrers.add(expressId); this.incoming.set(target, referrers);
       }
     }
   }
@@ -117,7 +159,7 @@ export class GroupGraph {
     let totalMembers = 0;
     const registry = schemaRegistry(this.store.schemaVersion as 'IFC4' | 'IFC4X3', 'IfcGroup');
     for (const [id, row] of this.entities) {
-      if (!conformsTo(registry, row.type, 'IfcRelAssignsToGroup')) continue;
+      if (!conformsTo(registry, row.type, 'IfcRelAssignsToGroup', this.schemaNames)) continue;
       const relating = referenceId(row.attributes[row.names.indexOf('RelatingGroup')]);
       if (relating !== target.expressId) continue;
       if (row.type.toUpperCase() !== 'IFCRELASSIGNSTOGROUP') throw new Error('Group membership has specialized assignment semantics');
@@ -131,7 +173,7 @@ export class GroupGraph {
       if (totalMembers > this.limits.members) throw new Error('Complete group membership budget exceeded');
       for (const member of ids) {
         const type = this.entities.get(member!)?.type;
-        if (member === target.expressId || !type || !conformsTo(registry, type, 'IfcObjectDefinition')) throw new Error('Current group membership has an invalid object definition');
+        if (member === target.expressId || !type || !conformsTo(registry, type, 'IfcObjectDefinition', this.schemaNames)) throw new Error('Current group membership has an invalid object definition');
       }
       memberships.push({ relationship: this.root(id), RelatedObjects: ids.map(value => this.root(value!)) });
     }

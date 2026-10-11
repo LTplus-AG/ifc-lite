@@ -1,0 +1,90 @@
+{
+  "status": "TERMINAL_BOUNDED_CPU_OWNER_DOMAIN_ONLY",
+  "focused": {
+    "session": 66901,
+    "exit": 0,
+    "pass": 7,
+    "fail": 0,
+    "skip": 0
+  },
+  "firstInverse": {
+    "session": 39589,
+    "exit": 1,
+    "pass": 6,
+    "assertionFailures": 1,
+    "skip": 0
+  },
+  "finalInverse": {
+    "session": 15909,
+    "exit": 1,
+    "pass": 6,
+    "assertionFailures": 1,
+    "skip": 0,
+    "message": "Missing expected exception, actual174representation-item-as-semanticowner"
+  },
+  "finalRestored": {
+    "session": 6527,
+    "exit": 0,
+    "pass": 7,
+    "fail": 0,
+    "skip": 0
+  },
+  "intermediatePhases": {
+    "peripheralDistImportedInitially": true,
+    "firstSourceOnlyAliasStillCodegenDist17": true,
+    "resolution": "Artifact tsconfig adds canonicalcodegen subpath sources; finalobserved workspaceDist0. Earlierlogs retained, not claimfinalsource coverage."
+  },
+  "setupFailure": "Initialrootzustand path missing; consumingapps/viewer dependency path corrected; no install/build; logpreserved, notinverse",
+  "actualFZK": {
+    "bytes": 2526511,
+    "sha256": "d42ab0dee01173106c16cd823b4614efe188fa15dd65195d95b9879bec59acc5",
+    "indexedCount": 44249,
+    "semanticCount": 468,
+    "product": 66,
+    "material": 14521,
+    "helper": 174,
+    "sourceGap": 2,
+    "maxId": 79107
+  },
+  "subjectSHA256": "82dcf89365bc46cc37d24f4668f03543be27692ecf7963af0c2589018bb4bae0",
+  "subjectTestExposure": "Exactsubject bytes plus test-only export ownerRows indataURL; no body substitution",
+  "sourceConsumption": {
+    "uniqueFiles": 2172,
+    "rawBytes": 31422101,
+    "workspaceDistFiles": 0,
+    "observedAtLoadAndComparedUnchangedAfter": true,
+    "fullIndex": "consumed-source-index.json.gz",
+    "archiveBodies": "2172 raw source bodies remain local in original artifact consumed-source-archive; not copied intoGit. Source hashes/index retained, no complete remote recovery claim."
+  },
+  "syntax": [
+    {
+      "path": "/home/louistrue/.t3/artifacts/6709-owner-domain-proposal-20261009/proposed-geometry-identity.mjs",
+      "exitCode": 0
+    },
+    {
+      "path": "/home/louistrue/.t3/artifacts/6709-owner-domain-proposal-20261009/trace-sources.mjs",
+      "exitCode": 0
+    },
+    {
+      "path": "/home/louistrue/.t3/artifacts/6709-owner-domain-proposal-20261009/owner-domain-controls.mts",
+      "exitCode": 0
+    }
+  ],
+  "rawArchives": "Original qualification lists26rawarchives; selected logs/subject/controlsyntax retained here; fullqual originalSHA below",
+  "originalCollectorUnchanged": true,
+  "scope": "ActualFZKparser/sourceindex+canonicalmodelSlice/Zustand1/N/registryforward, statedowner-domain invariants andgenuineinverse; no native/GPU/fullcapture/browser/timing proof",
+  "notPerformed": [
+    "build",
+    "install",
+    "repoedit",
+    "originalcollector edit",
+    "v1contract edit",
+    "browser",
+    "native rerun",
+    "performance"
+  ],
+  "originalQualification": {
+    "path": "/home/louistrue/.t3/artifacts/6709-owner-domain-proposal-20261009/qualification.json",
+    "sha256": "f4c47352c7a55a8c72459082fa162aa1c340eb34bc5a717ad148d5db8ddb41d9"
+  }
+}

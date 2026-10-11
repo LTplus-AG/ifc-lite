@@ -244,4 +244,4 @@ export {
   type GroupStoreContext, type GroupInStoreParams, type GroupInStorePatch,
   type GroupRootIdentity, type GroupSnapshot, type GroupMembershipSnapshot,
 } from './group.js';
-export { readGroupEvidenceInStore, type GroupNativeEvidence } from './group-evidence.js';
+export { readGroupEvidenceInStore, readGroupCreateEvidenceInStore, type GroupNativeEvidence, type GroupCreateEvidence } from './group-evidence.js';

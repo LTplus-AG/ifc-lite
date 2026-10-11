@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { perfCount } from '@ifc-lite/load-trace';
 import { WebGPUDevice } from './device.js';
 import type { RenderPipeline } from './pipeline.js';
 import type { PointCloudRenderer, ResolvedPointCloudRenderOptions } from './pointcloud/point-cloud-renderer.js';
@@ -132,6 +133,10 @@ async function recoverRendererDeviceOnce(
     host.scene.discardGpuResourcesForRecovery();
     host.teardown(false);
     host.device = new WebGPUDevice();
+    // #6993: the re-upload path, counted where it happens. Recovery builds a
+    // new WebGPUDevice wrapper, so no per-wrapper or session device count can
+    // tell it from a second live renderer. No-op unless ?perfTrace=1.
+    perfCount('gpu.deviceReplacements');
     phase = 'device';
     await host.initOnce(generation, { clearDeviceLost: false, publishReady: false });
     if (pointCloudOptions) host.pointCloudRenderer?.setOptions(pointCloudOptions);

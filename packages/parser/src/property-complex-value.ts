@@ -116,6 +116,7 @@ export function resolveComplexPropertyValue(
                 ...nestedParsed,
                 ...(unit ? { unit: unit.symbol } : {}),
                 ...(unit?.siScale !== undefined ? { unitSiScale: unit.siScale } : {}),
+                ...(unit?.siOffset !== undefined ? { unitSiOffset: unit.siOffset } : {}),
             });
         }
 

@@ -49,7 +49,8 @@ export function projectUnitSymbol(store: IfcDataStore, measureType: string | und
  * project's units, or `undefined` when the type has no unit (a label, a
  * count, a ratio). Area and volume use the project's declared AREAUNIT /
  * VOLUMEUNIT and fall back to the length unit squared / cubed, the rule
- * `quantitySiScale` and the IDS bridge already apply.
+ * `quantitySiScale` and the IDS bridge already apply. A unit with an offset
+ * (°F) has no factor alone, so it is `undefined` too.
  */
 export function projectSiScale(store: IfcDataStore, measureType: string | undefined): number | undefined {
   if (!measureType) return undefined;
@@ -59,7 +60,8 @@ export function projectSiScale(store: IfcDataStore, measureType: string | undefi
   const length = () => units.unitForMeasure('IfcLengthMeasure')?.siScale ?? 1;
   if (upper === 'IFCAREAMEASURE') return units.resolvedForUnitType('AREAUNIT')?.siScale ?? length() ** 2;
   if (upper === 'IFCVOLUMEMEASURE') return units.resolvedForUnitType('VOLUMEUNIT')?.siScale ?? length() ** 3;
-  return units.unitForMeasure(measureType)?.siScale;
+  const unit = units.unitForMeasure(measureType);
+  return unit?.siOffset === undefined ? unit?.siScale : undefined;
 }
 
 /** SI factor of one collected quantity: its explicit `Unit`, else the project unit for its type. */

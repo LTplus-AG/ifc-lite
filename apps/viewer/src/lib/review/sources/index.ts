@@ -53,8 +53,9 @@ export const FINDING_SOURCES: readonly FindingSource[] = [
   } },
   { kind: 'validation', collect(models) {
     const state = useViewerStore.getState(), report = state.idsValidationReport;
-    const live = validationFindings(report ? { report, stale: stale(report) } : null, models);
-    const saved = savedValidationFindings(state.savedValidationReports);
+    const current = report ? { report, stale: stale(report), stamped: analysisStampOf(report) !== null } : null;
+    const live = validationFindings(current, models);
+    const saved = savedValidationFindings(state.savedValidationReports, current);
     if (state.validationReportsStorage.phase !== 'ready') saved.runs.push({ id: 'saved-validation:library', source: 'validation',
       temporal: 'historical', label: 'Saved validation evidence', capturedAt: null, complete: false, models: [],
       incomplete: [{ code: 'partial-source', detail: `Saved validation library ${state.validationReportsStorage.phase}` }] });

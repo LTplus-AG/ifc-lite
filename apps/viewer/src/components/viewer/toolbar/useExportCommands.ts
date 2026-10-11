@@ -13,6 +13,8 @@
  */
 
 import { useCallback, useMemo } from 'react';
+import { getGlobalRenderer } from '@/hooks/useBCF';
+import { captureViewportFrame } from '@/lib/viewport-capture';
 import { selectHasModelsLoaded, selectModelCount } from '@/hooks/model-presence';
 import { useChangedModels } from '@/hooks/useUnexportedChanges';
 import { totalChangeCount } from '@/lib/export/model-changes';
@@ -127,12 +129,13 @@ export function useExportCommands(surface: ExportSurface) {
     }
   }, [ifcDataStore, activeModelOnlyNote, surface]);
 
-  const handleScreenshot = useCallback(() => {
-    // The 3D viewport's canvas, not merely the first on the page (#5601).
-    const canvas = document.querySelector<HTMLCanvasElement>('canvas[data-viewport="main"]');
+  const handleScreenshot = useCallback(async () => {
     try {
-      if (!canvas) throw new Error('no 3D viewport canvas on screen');
-      downloadDataUrl(canvas.toDataURL('image/png'), modelExportFilename(activeModelName(useViewerStore.getState()), 'png', '_screenshot'));
+      const renderer = getGlobalRenderer();
+      if (!renderer) throw new Error('no 3D viewport on screen');
+      const image = await captureViewportFrame(renderer, { read: canvas => canvas.toDataURL('image/png') });
+      if (!image) throw new Error('viewport capture failed');
+      downloadDataUrl(image, modelExportFilename(activeModelName(useViewerStore.getState()), 'png', '_screenshot'));
       trackExportCompleted({ format: 'png', surface });
       toast.success('Screenshot saved');
     } catch (err) {
@@ -144,7 +147,7 @@ export function useExportCommands(surface: ExportSurface) {
   /** Dispatch for the registry's one-click (`kind: 'action'`) commands. */
   const runExportAction = useCallback((action: 'json' | 'screenshot') => {
     if (action === 'json') handleExportJSON();
-    else handleScreenshot();
+    else void handleScreenshot();
   }, [handleExportJSON, handleScreenshot]);
 
   const commands = useMemo<ResolvedExportCommand[]>(

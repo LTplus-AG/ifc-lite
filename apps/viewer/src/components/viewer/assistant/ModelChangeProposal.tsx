@@ -3,9 +3,13 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { declaresStructuralGraph, parseStructuralProposal, type StructuralProposal } from '@/lib/actions/structural-graph-proposal';
 import { StructuralGraphReview } from './StructuralGraphReview';
+import { declaresGroupLifecycle, parseGroupProposal, type GroupProposal } from '@/lib/actions/group-lifecycle-proposal';
+import { GroupLifecycleReview } from './GroupLifecycleReview';
 
 
 import { useMemo } from 'react';
+import { declaresZoneEmission, parseZoneEmissionProposal, type ZoneEmissionProposal } from '@/lib/actions/zone-emission-proposal';
+import { ZoneEmissionReview } from './ZoneEmissionReview';
 import { useAssistant } from '@/lib/assistant/conversation';
 import { parseModelChangeBatch, type ModelChangeBatch } from '@ifc-lite/ai/artifacts';
 import { parseModelAuthoringBatch, type ModelAuthoringBatch } from '@/lib/actions/model-authoring';
@@ -19,7 +23,7 @@ import { CostGraphReview } from './CostGraphReview';
 import { declaresNewIfc, parseNewIfcProposal, type NewIfcProposal } from '@/lib/actions/new-ifc-file';
 import { NewIfcFileReview } from './NewIfcFileReview';
 
-type Reviewable = { kind: 'newIfc'; proposal: NewIfcProposal } | { kind: 'cost'; proposal: CostProposal } | { kind: 'structural'; proposal: StructuralProposal } | { kind: 'changes'; batch: ModelChangeBatch } | { kind: 'authoring'; batch: ModelAuthoringBatch } | { kind: 'room'; proposal: RoomProposal };
+type Reviewable = { kind: 'zones'; proposal: ZoneEmissionProposal } | { kind: 'group'; proposal: GroupProposal } | { kind: 'newIfc'; proposal: NewIfcProposal } | { kind: 'cost'; proposal: CostProposal } | { kind: 'structural'; proposal: StructuralProposal } | { kind: 'changes'; batch: ModelChangeBatch } | { kind: 'authoring'; batch: ModelAuthoringBatch } | { kind: 'room'; proposal: RoomProposal };
 
 /** Latest completed changes, authoring or async Room answer, reviewed natively and never applied by itself. */
 export function ModelChangeProposal({ onAttachRoom }: { onAttachRoom?: (review: RoomReview) => void } = {}) {
@@ -27,6 +31,14 @@ export function ModelChangeProposal({ onAttachRoom }: { onAttachRoom?: (review: 
   const reply = assistant.messages.at(-1);
   const content = reply?.role === 'assistant' && assistant.status !== 'streaming' ? reply.content : null;
   const reviewable = useMemo((): Reviewable | null => {
+    if (content && declaresZoneEmission(content)) {
+      try { return { kind: 'zones', proposal: parseZoneEmissionProposal(content) }; }
+      catch (error) { console.warn('[Assistant] Zone emission proposal is not reviewable', error); return null; }
+    }
+    if (content && declaresGroupLifecycle(content)) {
+      try { return { kind: 'group', proposal: parseGroupProposal(content) }; }
+      catch (error) { console.warn('[Assistant] Group proposal is not reviewable', error); return null; }
+    }
     if (content && declaresNewIfc(content)) {
       try { return { kind: 'newIfc', proposal: parseNewIfcProposal(content) }; }
       catch (error) { console.warn('[Assistant] Native new-file proposal is not reviewable', error); return null; }
@@ -55,7 +67,9 @@ export function ModelChangeProposal({ onAttachRoom }: { onAttachRoom?: (review: 
   }, [content]);
   if (!reviewable) return null;
   const origin = `assistant:${assistant.snapshot?.id ?? assistant.archived?.id ?? 'conversation'}:${assistant.messages.length}`;
+  if (reviewable.kind === 'zones') return <ZoneEmissionReview key={origin} proposal={reviewable.proposal} origin={origin} />;
   if (reviewable.kind === 'newIfc') return <NewIfcFileReview key={origin} proposal={reviewable.proposal} />;
+  if (reviewable.kind === 'group') return <GroupLifecycleReview key={origin} proposal={reviewable.proposal} origin={origin} />;
   if (reviewable.kind === 'structural') return <StructuralGraphReview key={origin} proposal={reviewable.proposal} origin={origin} />;
   if (reviewable.kind === 'cost') return <CostGraphReview key={origin} proposal={reviewable.proposal} origin={origin} />;
   if (reviewable.kind === 'room') return <RoomCommandReview key={origin} proposal={reviewable.proposal} origin={origin} onAttach={onAttachRoom} />;

@@ -1,0 +1,17 @@
+[
+  {
+    "file": "campaign-group-typed-guard-inverse.log.gz",
+    "uncompressedSHA256": "8bc8795702a199fdaf7a9977f5893b42b1cd87e013cf6872e127e5cfecf02552",
+    "uncompressedBytes": 7681
+  },
+  {
+    "file": "campaign-group-distinct-guard-inverse.log.gz",
+    "uncompressedSHA256": "834d81a69b06ac5e8b8fdf7662c45ddaecd7817ccee00f0663748ac4c0bc2d13",
+    "uncompressedBytes": 6272
+  },
+  {
+    "file": "campaign-group-semantics-final-restored.log.gz",
+    "uncompressedSHA256": "513a132ad7280cd34fc6a8f74580cd10402fafafec0fde29f786e09f7a49dfaf",
+    "uncompressedBytes": 2713
+  }
+]

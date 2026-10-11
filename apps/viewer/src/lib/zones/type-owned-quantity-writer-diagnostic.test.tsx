@@ -6,6 +6,7 @@ import assert from 'node:assert/strict';
 import { writeFile } from 'node:fs/promises';
 import { afterEach, test, type TestContext } from 'node:test';
 import { IfcParser, extractTypeQuantitiesOnDemand, extractQuantitiesOnDemand, extractTypePropertiesOnDemand } from '@ifc-lite/parser';
+import { StepExporter } from '@ifc-lite/export';
 import { StoreEditor, MutablePropertyView } from '@ifc-lite/mutations';
 import { generateIfcGuid } from '@ifc-lite/encoding';
 import { QuantityType, type IfcAttributeValue } from '@ifc-lite/data';
@@ -379,3 +380,27 @@ for (const intent of ['incompatible-kind', 'same-kind', 'explicit-compatible'] a
   assert.deepEqual(exported.getEntity(unit)?.attributes, source.getEntity(unit)?.attributes);
  });
 }
+
+
+for (const newSet of [false, true]) test(`#7355 IFC2X3 new scalar preserves four-slot schema newSet=${newSet}`, async t => {
+ const f = await inheritedSource(t); if (!f) return;
+ const source = await parse(new StepExporter(f.store).export({ schema: 'IFC2X3', includeGeometry: true, includeQuantities: true }).content);
+ assert.equal(source.schemaVersion, 'IFC2X3');
+ const view = new MutablePropertyView(source.properties, 'arch');
+ const name = newSet ? 'New native quantities' : 'Qto_WallBaseQuantities';
+ view.setQuantity(f.a.type, name, 'NewVolume', 35, QuantityType.Volume);
+ const saved = await parse(editedModelBytes(source, view));
+ assert.equal(saved.schemaVersion, 'IFC2X3');
+ const quantity = extractTypeQuantitiesOnDemand(saved, f.f.id)?.quantities.find(set => set.name === name)
+  ?.quantities.find(q => q.name === 'NewVolume'); assert.ok(quantity);
+ assert.equal(quantity.value, 35);
+ const owned = saved.getEntity(f.a.type)?.attributes[5]; assert.ok(Array.isArray(owned));
+ const quantityIds = owned.flatMap(id => {
+  const members = typeof id === 'number' ? saved.getEntity(id)?.attributes[5] : null;
+  return Array.isArray(members) ? members : [];
+ });
+ const atom = quantityIds.map(id => typeof id === 'number' ? saved.getEntity(id) : null)
+  .find(entity => entity?.attributes[0] === 'NewVolume'); assert.ok(atom);
+ assert.equal(atom.type, 'IFCQUANTITYVOLUME');
+ assert.deepEqual(atom.attributes, ['NewVolume', null, null, 35], 'IFC2X3 EXPRESS quantity has no Formula slot');
+});

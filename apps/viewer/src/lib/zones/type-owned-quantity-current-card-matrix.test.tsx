@@ -292,3 +292,25 @@ test('#7355 first scalar edit retains native identity and opaque complex-only me
   assert.deepEqual(saved.getEntity(complex)?.attributes, source.getEntity(complex)?.attributes);
   assert.deepEqual(saved.getEntity(child)?.attributes, source.getEntity(child)?.attributes);
 });
+
+
+test('#7355 complex-only native set missing GlobalId refuses its first scalar edit', async t => {
+  const f = await inheritedSource(t); if (!f) return;
+  const editor = new StoreEditor(f.store, f.view);
+  const child = editor.addEntity('IfcQuantityVolume', ['Opaque child', null, null, 12, null]).expressId;
+  const complex = editor.addEntity('IfcPhysicalComplexQuantity', ['Opaque complex', null,
+    [`#${child}`], 'Grouping', null, null]).expressId;
+  f.view.setPositionalAttribute(f.a.qto, 0, null);
+  f.view.setPositionalAttribute(f.a.qto, 5, [`#${complex}`]);
+  const source = await parse(editedModelBytes(f.store, f.view));
+  const model = useViewerStore.getState().models.get('arch'); assert.ok(model);
+  useViewerStore.setState({ models: new Map([['arch', { ...model, ifcDataStore: source }]]),
+    ifcDataStore: source, mutationViews: new Map(), storeEditors: new Map() });
+  const view = getOrCreateMutationView(useViewerStore, 'arch'); assert.ok(view);
+  view.setQuantity(f.a.type, 'Qto_WallBaseQuantities', 'NetVolume', 35, QuantityType.Volume);
+  const read = readCurrentTypeQuantities(source, f.f.id, view);
+  assert.equal(read.status, 'unavailable');
+  assert.match(read.reason ?? '', /identity is missing/);
+  assert.throws(() => editedModelBytes(source, view), /identity is missing or ambiguous/);
+  assert.deepEqual(source.getEntity(complex)?.attributes[2], [child]);
+});

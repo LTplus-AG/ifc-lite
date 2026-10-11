@@ -9,7 +9,7 @@
  * out of `step-property-sets.ts` (#3184).
  */
 
-import { serializeValue, ref } from '@ifc-lite/parser';
+import { serializeValue, ref, getAttributeNamesForSchema } from '@ifc-lite/parser';
 import type { PropertySet, QuantitySet, Quantity } from '@ifc-lite/data';
 import type { RandomSource } from '@ifc-lite/encoding';
 import type { EffectiveEntityIndex } from './effective-index.js';
@@ -136,7 +136,8 @@ export function generateQuantityAtom(
   }
   const id = ctx.allocateExpressId();
   const unit = unitId !== null ? serializeValue(ref(unitId)) : '$';
-  const line = `#${id}=${ifcType}('${escapeStepString(q.name)}',$,${unit},${toStepReal(q.value)},$);`;
+  const formula = getAttributeNamesForSchema(ifcType, ctx.dataStore.schemaVersion).includes('Formula') ? ',$' : '';
+  const line = `#${id}=${ifcType}('${escapeStepString(q.name)}',$,${unit},${toStepReal(q.value)}${formula});`;
   return { id, line };
 }
 

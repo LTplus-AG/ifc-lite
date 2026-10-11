@@ -135,6 +135,10 @@ function readCurrent(store: IfcDataStore, entityId: number, view: MetadataReadVi
     const ownSetIds = new Set(definitions);
     const explicitUnitTypes = new Map<string, string>();
     let quantityReferences = 0;
+    const journal = view as QuantityJournalView;
+    const names = new Set(journal.getMutations?.().filter(row => row.entityId === typeId &&
+        ['CREATE_QUANTITY', 'UPDATE_QUANTITY', 'DELETE_QUANTITY', 'DELETE_QUANTITY_SET'].includes(row.type))
+        .map(row => row.psetName).filter((name): name is string => typeof name === 'string') ?? []);
     const readSets = (ids: number[]) => ids.flatMap(id => {
         if (view.isDeleted(id)) return [];
         const record = readEntity(id);
@@ -142,6 +146,12 @@ function readCurrent(store: IfcDataStore, entityId: number, view: MetadataReadVi
         if (record.type.toUpperCase() !== 'IFCELEMENTQUANTITY') {
             if (getInheritanceChain(record.type).includes('IfcPropertySetDefinition')) return [];
             throw new CurrentQuantityRefusal('Native type quantity definition is unsupported');
+        }
+        // Admission concerns the native definition, including sets with no numeric
+        // projection (complex-only quantities). An edited set still needs identity.
+        if (journal.getQuantitiesForEntity && typeof record.attributes[2] === 'string'
+            && names.has(record.attributes[2]) && !record.attributes[0]) {
+            throw new CurrentQuantityRefusal('Native quantity definition identity is missing');
         }
         const refs = refIds(record.attributes[5], MAX_QUANTITY_REFERENCES - quantityReferences, true);
         quantityReferences += refs.length;
@@ -170,10 +180,6 @@ function readCurrent(store: IfcDataStore, entityId: number, view: MetadataReadVi
     const quantities = readSets([...ownSetIds]);
     const keys = new Set(quantities.map(setIdentityKey));
     appendSetsFromSecondSource(quantities, ownSetIds, keys, relatedDefinitions, readSets);
-    const journal = view as QuantityJournalView;
-    const names = new Set(journal.getMutations?.().filter(row => row.entityId === typeId &&
-        ['CREATE_QUANTITY', 'UPDATE_QUANTITY', 'DELETE_QUANTITY', 'DELETE_QUANTITY_SET'].includes(row.type))
-        .map(row => row.psetName).filter((name): name is string => typeof name === 'string') ?? []);
     if (names.size && journal.getQuantitiesForEntity) {
         const base = quantities.map(set => ({ name: set.name, globalId: set.globalId,
             quantities: set.quantities.map(q => ({ name: q.name, type: q.type, value: q.value, unit: q.explicitUnit })) }));

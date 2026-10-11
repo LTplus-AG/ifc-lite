@@ -95,7 +95,10 @@ function main() {
     for (const entry of skipped) console.warn(`  - ${entry}`);
   }
   if (updated.length === 0) {
-    throw new Error('Every result lost its GPU device mid-sample; refusing to record any of them as the baseline.');
+    // Not an error (#6993/#7164): the runner's GPU failed, the baseline did
+    // not. Keep every previous entry and leave the file untouched.
+    console.warn('No baseline written: every result lost its GPU device mid-sample; all previous entries kept.');
+    return;
   }
 
   writeFileSync(baselinePath, JSON.stringify(baseline, null, 2) + '\n');

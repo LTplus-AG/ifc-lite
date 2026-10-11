@@ -79,14 +79,25 @@ describe('GPU and merge counters (#6957)', () => {
     });
     devices[0].error();
     devices[0].error();
-    devices[0].lose(); // a real loss (SwiftShader reports 'unknown')
+    devices[0].lose(); // superseded by devices[1]: a stale settlement, ignored like device.ts does
     devices[1].lose(); // teardown: `device.destroy()` settles `lost` with 'destroyed'
     await new Promise((resolve) => setImmediate(resolve));
     assert.deepStrictEqual(diffCounters(perfCounters.read(), before), {
       'gpu.devices': 2,
-      'gpu.deviceLost': 1,
       'gpu.uncapturedErrors': 2,
     });
+  });
+
+  it('#6993 counts a real loss of the device in use', async () => {
+    perfCounters.enable();
+    const before = perfCounters.read();
+    const { device } = fakeDevice();
+    let settle!: (info: { message: string; reason: string }) => void;
+    Object.assign(device, { lost: new Promise((resolve) => { settle = resolve; }) });
+    meterGpuDevice(device);
+    settle({ message: 'A valid external Instance reference no longer exists.', reason: 'unknown' });
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.deepStrictEqual(diffCounters(perfCounters.read(), before), { 'gpu.devices': 1, 'gpu.deviceLost': 1 });
   });
 
   it('counts each mergeGeometry call and the vertices it merged', () => {

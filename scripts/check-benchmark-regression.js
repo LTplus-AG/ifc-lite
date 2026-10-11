@@ -104,6 +104,13 @@ function gpuContamination(payload) {
   return Array.isArray(health.reasons) && health.reasons.length > 0 ? health.reasons : ['GPU device lost'];
 }
 
+function gpuNoVerdictText(excluded, total) {
+  return (
+    `No verdict: ${excluded} of ${total} model(s) lost their GPU device mid-sample (#6993/#7164); ` +
+    'their timings measured a re-upload onto a replacement device and were not compared.'
+  );
+}
+
 function loadResults() {
   if (!existsSync(resultsDir)) {
     throw new Error('No benchmark results directory found. Run `pnpm test:benchmark:viewer` first.');
@@ -270,10 +277,15 @@ function buildMarkdownReport(models, regressions, harnessFaults = []) {
       `⚠ **${regressions.length} metric(s) exceeded the regression threshold**` +
         (advisory ? ' (advisory only, not blocking).' : '.')
     );
+  } else if (gpuExcluded > 0 && gpuExcluded === models.length) {
+    lines.push(`⚠️ **${gpuNoVerdictText(gpuExcluded, models.length)}**`);
+    lines.push('');
+    lines.push('Nothing was compared. This is NOT a pass: rerun the benchmark for a verdict.');
   } else if (gpuExcluded > 0) {
     lines.push(
-      `⚠ **No threshold regressions — but ${gpuExcluded} of ${models.length} model(s) lost their GPU ` +
-        'device mid-sample** and were excluded, so this is not a clean bill of health.'
+      `⚠️ **Partial verdict: ${gpuExcluded} of ${models.length} model(s) lost their GPU device mid-sample ` +
+        '(#6993/#7164) and were NOT compared.** No threshold regressions among the rest; ' +
+        'the excluded model(s) are not a pass.'
     );
   } else if (uncompared > 0) {
     // The `comparable.length === 0` harness fault above only fires when EVERY
@@ -294,6 +306,15 @@ function buildMarkdownReport(models, regressions, harnessFaults = []) {
     );
   } else {
     lines.push('✅ No threshold regressions detected.');
+  }
+  // The headline above can be about something else (a regression, a fault);
+  // a model skipped for GPU loss must still be visible at the top (#6993).
+  if (gpuExcluded > 0 && (harnessFaults.length > 0 || regressions.length > 0)) {
+    lines.push('');
+    lines.push(
+      `⚠️ **Also: ${gpuExcluded} of ${models.length} model(s) lost their GPU device mid-sample ` +
+        '(#6993/#7164) and were NOT compared.**'
+    );
   }
   lines.push('');
 
@@ -376,13 +397,12 @@ function main() {
   const comparable = models.filter((m) => !m.missingBaseline && !m.gpuContaminated);
   const harnessFaults = [];
 
-  if (models.length > 0 && comparable.length === 0 && gpuExcluded.length > 0) {
-    harnessFaults.push(
-      `${gpuExcluded.length} of ${models.length} model(s) lost their GPU device mid-sample and no clean sample remains.\n` +
-        '   A sample that re-uploaded onto a replacement device measured a different load; see the\n' +
-        '   gpuHealth block of each result JSON and its console log.'
-    );
-  }
+  // #6993/#7164: a GPU-lost sample is NOT a harness fault. The harness ran and
+  // reported what happened; the runner's software GPU lost its device (on
+  // GitHub's SwiftShader in ~40% of main runs for BOTH fixtures at once). That
+  // is a no-verdict WARNING with exit 0, with or without --advisory, never a
+  // red job and never a pass.
+  const noVerdictGpu = models.length > 0 && comparable.length === 0 && gpuExcluded.length > 0;
   if (models.length > 0 && comparable.length === 0 && missingBaseline.length > 0) {
     harnessFaults.push(
       `${models.length} model(s) ran and NOT ONE had a baseline entry to compare against.\n` +
@@ -454,6 +474,8 @@ function main() {
     // regressions, and that sentence is true and useless. A reader skimming
     // for a verdict finds the reassuring one first.
     console.log('\nNo verdict: see the harness fault(s) below.');
+  } else if (noVerdictGpu) {
+    console.warn(`\n⚠ ${gpuNoVerdictText(gpuExcluded.length, models.length)}`);
   } else if (gpuExcluded.length > 0) {
     console.log(
       `\nNo threshold regressions among the ${comparable.length} clean model(s) — ` +

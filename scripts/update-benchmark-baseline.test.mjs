@@ -60,12 +60,18 @@ test('#6993 a GPU-lost sample keeps the previous baseline entry; a clean one rep
   }
 });
 
-test('#6993 when every sample lost its GPU device nothing is written', () => {
-  const dir = tree([{ file: 'x.ifc', timestamp: '2026-10-10', metrics: { totalWallClockMs: 900 }, gpuHealth: lost }]);
+test('#6993 when every sample lost its GPU device all previous entries are kept and the run still succeeds', () => {
+  // A record_baseline dispatch on a runner whose software GPU failed must not
+  // throw: the baseline did nothing wrong. Keep it and say why.
+  const dir = tree([
+    { file: 'x.ifc', timestamp: '2026-10-10', metrics: { totalWallClockMs: 900 }, gpuHealth: lost },
+    { file: 'y.ifc', timestamp: '2026-10-10', metrics: { totalWallClockMs: 950 }, gpuHealth: lost },
+  ]);
   try {
     const { code, out } = run(dir);
     const baseline = baselineOf(dir);
-    assert.equal(code, 1, out);
+    assert.equal(code, 0, out);
+    assert.match(out, /every result lost its GPU device mid-sample; all previous entries kept/);
     assert.deepEqual(baseline, { 'x.ifc': OLD, 'y.ifc': OLD });
   } finally {
     rmSync(dir, { recursive: true, force: true });

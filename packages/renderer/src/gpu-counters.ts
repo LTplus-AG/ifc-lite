@@ -52,12 +52,19 @@ export function meterGpuDevice(device: GPUDevice): GPUDevice {
   return device;
 }
 
+/** Lifetime of the newest metered device; mirrors `WebGPUDevice.deviceLifetime` (device.ts). */
+let deviceLifetime = 0;
+
 /** See `meterGpuDevice`. Listens beside the renderer's own handlers, never replacing them. */
 function meterDeviceHealth(device: GPUDevice): void {
+  const lifetime = ++deviceLifetime;
   perfCount('gpu.devices');
   // Both are optional on test doubles and older runtimes.
   const lost = (device as { lost?: Promise<{ reason?: string }> }).lost;
   void lost?.then((info) => {
+    // A superseded device settling late is not a loss of the device in use,
+    // exactly as the renderer ignores it.
+    if (lifetime !== deviceLifetime) return;
     if ((info.reason ?? 'unknown') !== 'destroyed') perfCount('gpu.deviceLost');
   });
   if (typeof device.addEventListener === 'function') {

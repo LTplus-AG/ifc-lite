@@ -302,20 +302,75 @@ test('benchmark #6993: a sample that lost its GPU device is excluded, not compar
     assert.doesNotMatch(out, /regression\(s\)/);
     assert.match(out, /EXCLUDED: GPU device lost 1x/);
     const report = readFileSync(md, 'utf-8');
-    assert.match(report, /1 of 2 model\(s\) lost their GPU device/);
+    assert.match(report, /Partial verdict: 1 of 2 model\(s\) lost their GPU device/);
     assert.doesNotMatch(report, /✅ No threshold regressions detected/, 'an excluded sample is not a clean bill of health');
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
 });
 
-test('benchmark #6993: when every sample lost its GPU device there is no verdict', () => {
+test('benchmark #6993: when EVERY model lost its GPU device it is a no-verdict WARNING, exit 0, never a pass', () => {
+  // Real CI: in 8 of the last 20 main Benchmark runs on GitHub's SwiftShader
+  // BOTH fixtures lost their device. That is the runner's GPU, not a broken
+  // harness, so it must not red the job, with or without --advisory.
+  for (const advisory of [true, false]) {
+    const dir = benchTree({ current: ALL_METRICS, baseline: ALL_METRICS, extra: LOST_GPU });
+    const md = join(dir, 'report.md');
+    try {
+      writeFileSync(
+        join(dir, 'tests', 'benchmark', 'benchmark-results', 'viewer-y.json'),
+        JSON.stringify({ file: 'y.ifc', metrics: ALL_METRICS, ...LOST_GPU }),
+      );
+      const res = spawnSync(
+        process.execPath,
+        [join(dir, 'scripts', 'check-benchmark-regression.js'), ...(advisory ? ['--advisory'] : []), '--markdown', md],
+        { encoding: 'utf-8', cwd: dir },
+      );
+      const out = `${res.stdout ?? ''}${res.stderr ?? ''}`;
+      assert.equal(res.status, 0, `advisory=${advisory}:\n${out}`);
+      assert.match(out, /No verdict: 2 of 2 model\(s\) lost their GPU device mid-sample \(#6993\/#7164\)/);
+      assert.doesNotMatch(out, /harness fault|NOT ONE had a baseline entry/);
+      assert.doesNotMatch(out, /^No threshold regressions/m, 'a skipped comparison is not a pass');
+      const report = readFileSync(md, 'utf-8');
+      assert.match(report, /No verdict: 2 of 2 model\(s\) lost their GPU device/);
+      assert.match(report, /NOT a pass/);
+      assert.doesNotMatch(report, /✅|did not run/);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }
+});
+
+test('benchmark #6993: a genuine harness fault stays fatal even beside a GPU-lost model', () => {
+  // One model lost its GPU, the other matches no baseline (renamed fixture).
   const dir = benchTree({ current: ALL_METRICS, baseline: ALL_METRICS, extra: LOST_GPU });
   try {
+    writeFileSync(
+      join(dir, 'tests', 'benchmark', 'benchmark-results', 'viewer-y.json'),
+      JSON.stringify({ file: 'RENAMED.ifc', metrics: ALL_METRICS }),
+    );
     const { code, out } = runBench(dir);
     assert.equal(code, 1, out);
-    assert.match(out, /lost their GPU device mid-sample and no clean sample remains/);
-    assert.doesNotMatch(out, /NOT ONE had a baseline entry/, 'the baseline existed; the sample was the problem');
+    assert.match(out, /NOT ONE had a baseline entry/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('benchmark #6993: a GPU-lost model stays visible at the top even when the headline is a regression', () => {
+  const slow = Object.fromEntries(Object.keys(ALL_METRICS).map((k) => [k, 300]));
+  const dir = benchTree({ current: ALL_METRICS, baseline: ALL_METRICS, extra: LOST_GPU });
+  const md = join(dir, 'report.md');
+  try {
+    writeFileSync(join(dir, 'tests', 'benchmark', 'benchmark-results', 'viewer-y.json'), JSON.stringify({ file: 'y.ifc', metrics: slow }));
+    const baseline = JSON.parse(readFileSync(join(dir, 'tests', 'benchmark', 'baseline.json'), 'utf-8'));
+    baseline['y.ifc'] = baseline['x.ifc'];
+    writeFileSync(join(dir, 'tests', 'benchmark', 'baseline.json'), JSON.stringify(baseline));
+    const res = spawnSync(process.execPath, [join(dir, 'scripts', 'check-benchmark-regression.js'), '--advisory', '--markdown', md], { encoding: 'utf-8', cwd: dir });
+    assert.equal(res.status, 0, `${res.stdout}${res.stderr}`);
+    const head = readFileSync(md, 'utf-8').split('### ')[0];
+    assert.match(head, /exceeded the regression threshold/);
+    assert.match(head, /Also: 1 of 2 model\(s\) lost their GPU device/);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

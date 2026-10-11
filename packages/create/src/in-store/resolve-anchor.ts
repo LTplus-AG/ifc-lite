@@ -12,7 +12,7 @@
  * IfcLocalPlacement.
  */
 
-import { EntityExtractor, resolveEffectiveEntityRecord, type EffectiveEntityRecord, type IfcDataStore } from '@ifc-lite/parser';
+import { EntityExtractor, resolveEffectiveEntityRecord, type EffectiveEntityRecord, type IfcDataStore, type SchemaEntityNameSnapshot } from '@ifc-lite/parser';
 import { iterateEffectiveEntityIds, type MutablePropertyView } from '@ifc-lite/mutations';
 import type { SpatialAnchor, SpatialAnchorSchema } from './anchor.js';
 import { safeLengthUnitScale } from './length-unit-scale.js';
@@ -83,6 +83,7 @@ export class AnchorEntityReader {
   constructor(
     private readonly store: IfcDataStore | null,
     private readonly view: MutablePropertyView | null | undefined,
+    private readonly schemaNames?: SchemaEntityNameSnapshot,
   ) {
     this.extractor = store && store.source.byteLength > 0 ? new EntityExtractor(store.source) : null;
   }
@@ -148,6 +149,6 @@ export class AnchorEntityReader {
       retype: this.view?.getEntityTypeMutation(id)?.newType,
       named: this.view?.getAttributeMutationsForEntity(id).map(({ name, value }) => [name, value] as const) ?? [],
       positional: this.view?.getPositionalMutationsForEntity(id) ?? [],
-    }, this.store?.schemaVersion);
+    }, this.store?.schemaVersion, this.schemaNames);
   }
 }

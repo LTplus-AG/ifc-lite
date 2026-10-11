@@ -13,7 +13,7 @@
  * lint (ADR-003).
  */
 
-import type { IDSConstraint, IDSFacet, IDSSpecification, IFCVersion } from '@ifc-lite/ids';
+import { ifc2x3TypeMappingForAlias, type IDSConstraint, type IDSFacet, type IDSSpecification, type IFCVersion } from '@ifc-lite/ids';
 import type { FacetFieldName } from '../document/fields.js';
 import type { CustomPsetDecl, UserDefinedTypeDecl } from '../document/types.js';
 import { inheritanceChain, tablesFor, type GateContext, type VersionTables } from './context.js';
@@ -83,12 +83,21 @@ export function perVersion(
   return [...merged.values()].map((p) => ({ ...p, message: `${p.message} (${(p.versions ?? []).join(', ')})` }));
 }
 
+/**
+ * IFC2X3 has no IfcAirTerminal & co.: the IDS occurrence/type mapping table
+ * lets a facet name the IFC4 class, matched through its IFC2X3 type object
+ * (IfcFlowTerminal + IfcAirTerminalType). Returns that type object's name.
+ */
+function ifc2x3MappedType(version: IFCVersion, name: string): string | undefined {
+  return version === 'IFC2X3' ? ifc2x3TypeMappingForAlias(name.toUpperCase())?.typeEntity : undefined;
+}
+
 function checkEntityName(scope: FieldScope, c: IDSConstraint | undefined): GroundingProblem[] {
   const names = literals(c);
   if (!names.length) return [];
-  return perVersion(scope.versions, scope.ctx, (t) =>
+  return perVersion(scope.versions, scope.ctx, (t, version) =>
     names
-      .filter((n) => !t.entities.has(n.toUpperCase()))
+      .filter((n) => !t.entities.has(n.toUpperCase()) && !ifc2x3MappedType(version, n))
       .map((n) => ({
         code: 'GATE-ENT-001' as const,
         message: `"${n}" is not an IFC entity`,
@@ -102,15 +111,20 @@ function checkPredefinedType(scope: FieldScope, entity: IDSConstraint | undefine
   const entityName = single(entity);
   const values = literals(c);
   if (!entityName || !values.length) return [];
-  return perVersion(scope.versions, scope.ctx, (t) => {
-    const info = t.entities.get(entityName.toUpperCase());
+  return perVersion(scope.versions, scope.ctx, (t, version) => {
+    // A mapped IFC2X3 alias takes the predefined types of its type object.
+    const info = t.entities.get(ifc2x3MappedType(version, entityName) ?? entityName.toUpperCase());
     // Unknown entity is reported on the name; an entity without a
     // PredefinedType enumeration in the tables cannot be checked.
     if (!info || info.predefinedTypes.length === 0) return [];
     const allowed = new Set(info.predefinedTypes.map((p) => p.toUpperCase()));
     const userDefinable = allowed.has('USERDEFINED');
     const declared = (v: string) =>
-      scope.userDefinedTypes.some((d) => d.entity.toUpperCase() === info.name.toUpperCase() && d.value.toUpperCase() === v.toUpperCase());
+      scope.userDefinedTypes.some(
+        (d) =>
+          (d.entity.toUpperCase() === info.name.toUpperCase() || d.entity.toUpperCase() === entityName.toUpperCase()) &&
+          d.value.toUpperCase() === v.toUpperCase(),
+      );
     return values
       .filter((v) => !allowed.has(v.toUpperCase()) && !(userDefinable && declared(v)))
       .map((v) => ({

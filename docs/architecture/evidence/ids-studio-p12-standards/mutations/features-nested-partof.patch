@@ -1,0 +1,12 @@
+diff --git b/packages/ids/src/preview/features.ts a/packages/ids/src/preview/features.ts
+index 8c9c1095d..7c470a5f2 100644
+--- b/packages/ids/src/preview/features.ts
++++ a/packages/ids/src/preview/features.ts
+@@ -82,6 +82,7 @@ function visitFacet(facet: IDSFacet, path: string, context: FacetContext, out: I
+   }
+   if (hasToleranceRule(valueOf(facet))) out.push({ feature: 'tolerance-418', path });
+   if (facet.type === 'partOf' && facet.facets !== undefined) {
++    out.push({ feature: 'partof-nested-facets', path });
+     facet.facets.forEach((nested, i) => visitFacet(nested, `${path}.facets[${i}]`, 'nested', out));
+   }
+ }

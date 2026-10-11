@@ -191,9 +191,9 @@ export function serializeValue(value: StepValue): string {
  * implementation (#3300); export re-exports it, a vector test pins Rust parity.
  */
 export function escapeStepString(str: string): string {
-  const escaped = str
-    .replace(/\\/g, '\\\\')  // Backslash
-    .replace(/'/g, "''");    // Single quote
+  const escaped = str.replace(/\\/g, '\\\\').replace(/'/g, "''");
+  // Reuse the native scans' printable ASCII result without rebuilding (#7363).
+  if (!/[^\x20-\x7E]/.test(escaped)) return escaped;
   // Directive encoding for everything outside 32-126, one character at a time.
   // Must run AFTER backslash-doubling above: the directive's own backslashes
   // are literal syntax the reader expects undoubled.

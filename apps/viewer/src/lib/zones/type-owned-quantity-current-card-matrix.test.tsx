@@ -273,15 +273,25 @@ test('#7355 first scalar edit retains native identity and opaque complex-only me
   const child = editor.addEntity('IfcQuantityVolume', ['Opaque child', 'Description', null, 12, 'Formula']).expressId;
   const complex = editor.addEntity('IfcPhysicalComplexQuantity', ['Opaque complex', 'Description',
     [`#${child}`], 'Grouping', 'Quality', 'Usage']).expressId;
+  const secondVolume = editor.addEntity('IfcQuantityVolume', ['NetVolume', null, null, 30, null]).expressId;
+  const secondSet = editor.addEntity('IfcElementQuantity', [generateIfcGuid(), null,
+    'Unchanged second quantities', null, null, [`#${secondVolume}`]]).expressId;
   f.view.setPositionalAttribute(f.a.qto, 5, [`#${complex}`]);
+  f.view.setPositionalAttribute(f.a.type, 5, [`#${f.a.qto}`, `#${secondSet}`]);
   const source = await parse(editedModelBytes(f.store, f.view));
   const model = useViewerStore.getState().models.get('arch'); assert.ok(model);
   useViewerStore.setState({ models: new Map([['arch', { ...model, ifcDataStore: source }]]),
     ifcDataStore: source, mutationViews: new Map(), storeEditors: new Map() });
   const view = getOrCreateMutationView(useViewerStore, 'arch'); assert.ok(view);
   view.setQuantity(f.a.type, 'Qto_WallBaseQuantities', 'NetVolume', 35, QuantityType.Volume);
+  const current = readCurrentTypeQuantities(source, f.f.id, view);
+  assert.equal(current.status, 'unavailable', 'opaque complex quantities refuse numeric live coverage rather than exposing the second set as first');
+  assert.match(current.reason ?? '', /quantity class is unavailable or unsupported/);
+  assert.equal(current.value, null);
   const saved = await parse(editedModelBytes(source, view));
   assert.equal(net(extractTypeQuantitiesOnDemand(saved, f.f.id)?.quantities ?? []), 35);
+  assert.equal(extractTypeQuantitiesOnDemand(saved, f.f.id)?.quantities
+    .find(set => set.name === 'Unchanged second quantities')?.quantities.find(q => q.name === 'NetVolume')?.value, 30);
   const owned = saved.getEntity(f.a.type)?.attributes[5]; assert.ok(Array.isArray(owned));
   assert.ok(owned.some(id => {
     if (typeof id !== 'number') return false;
@@ -291,6 +301,8 @@ test('#7355 first scalar edit retains native identity and opaque complex-only me
     'the rewritten native type-owned definition still owns the opaque member');
   assert.deepEqual(saved.getEntity(complex)?.attributes, source.getEntity(complex)?.attributes);
   assert.deepEqual(saved.getEntity(child)?.attributes, source.getEntity(child)?.attributes);
+  assert.deepEqual(saved.getEntity(secondSet)?.attributes, source.getEntity(secondSet)?.attributes);
+  assert.deepEqual(saved.getEntity(secondVolume)?.attributes, source.getEntity(secondVolume)?.attributes);
 });
 
 

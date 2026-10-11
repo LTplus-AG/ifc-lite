@@ -5,7 +5,7 @@ exit: 1
   "counts": {
     "error": 1,
     "warning": 0,
-    "info": 3
+    "info": 1
   },
   "suppressed": 0,
   "diagnostics": [
@@ -17,24 +17,6 @@ exit: 1
       "message": "\"FireRatng\" is not a property of Pset_DoorCommon (IFC4)",
       "fixable": true,
       "docsUrl": "https://ifclite.dev/docs/guide/ids-lint/idsl-prop-001/"
-    },
-    {
-      "code": "IDSL-SPEC-008",
-      "severity": "info",
-      "path": "specifications[0]",
-      "spec": "Fire rating on doors",
-      "message": "\"Fire rating on doors\" has neither a description nor instructions for modellers",
-      "fixable": false,
-      "docsUrl": "https://ifclite.dev/docs/guide/ids-lint/idsl-spec-008/"
-    },
-    {
-      "code": "IDSL-ENT-003",
-      "severity": "info",
-      "path": "specifications[0].applicability[0].name",
-      "spec": "Fire rating on doors",
-      "message": "IfcDoor does not select its subtypes IfcDoorStandardCase",
-      "fixable": true,
-      "docsUrl": "https://ifclite.dev/docs/guide/ids-lint/idsl-ent-003/"
     },
     {
       "code": "IDSL-VAL-006",

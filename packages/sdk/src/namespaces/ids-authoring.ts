@@ -31,18 +31,18 @@ import type {
 } from '@ifc-lite/ids-authoring';
 
 type AuthoringModule = typeof import('@ifc-lite/ids-authoring');
-type WriterModule = typeof import('@ifc-lite/rules');
+type WriterModule = typeof import('@ifc-lite/ids');
 
 // Loaded on first use, like `@ifc-lite/ids` in `bim.ids`, so scripts that
 // never author IDS do not pay for the schema tables.
 async function load(): Promise<{ authoring: AuthoringModule; writer: WriterModule['writeIdsXml'] }> {
   const authoringName = '@ifc-lite/ids-authoring';
-  const rulesName = '@ifc-lite/rules';
-  const [authoring, rules] = await Promise.all([
+  const idsName = '@ifc-lite/ids';
+  const [authoring, ids] = await Promise.all([
     import(/* webpackIgnore: true */ authoringName) as Promise<AuthoringModule>,
-    import(/* webpackIgnore: true */ rulesName) as Promise<WriterModule>,
+    import(/* webpackIgnore: true */ idsName) as Promise<WriterModule>,
   ]);
-  return { authoring, writer: rules.writeIdsXml };
+  return { authoring, writer: ids.writeIdsXml };
 }
 
 /** `ok` is false when the gate refused the batch; then `applied` is 0 and `errors` says why. */

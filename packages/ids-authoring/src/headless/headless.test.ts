@@ -7,12 +7,11 @@
  *
  * The oracle for `writeIdsChecked` is the parser: whatever XML comes out
  * must read back with every value the input defined. The writer under
- * test is the one this build ships (`writeIdsXml` from `@ifc-lite/rules`),
+ * test is the one this build ships (`writeIdsXml` from `@ifc-lite/ids`, the full P-01 writer),
  * so the corpus run also records which corpus documents it cannot carry.
  */
 
-import { parseIDS, type IDSDocument } from '@ifc-lite/ids';
-import { writeIdsXml } from '@ifc-lite/rules';
+import { parseIDS, writeIdsXml, type IDSDocument } from '@ifc-lite/ids';
 import { describe, expect, it } from 'vitest';
 import { loadCorpus } from '../../test/corpus.js';
 import { nodePath } from './node-path.js';
@@ -107,9 +106,17 @@ describe('writeIdsChecked', () => {
     if (out.ok) expect(parseIDS(out.xml).specifications[0].name).toBe('Fire doors');
   });
 
-  it('reports the info fields this build of the writer drops instead of writing without them', () => {
+  it('carries every info field with the full writer', () => {
     const ids: IDSDocument = { ...parseIDS(DOORS), info: { title: 'Doors', author: 'someone@example.com', version: '2' } };
     const out = writeIdsChecked(ids, writeIdsXml);
+    expect(out.ok).toBe(true);
+    if (out.ok) expect(parseIDS(out.xml).info).toMatchObject({ author: 'someone@example.com', version: '2' });
+  });
+
+  it('reports the fields a lossy writer drops instead of writing without them', () => {
+    const ids: IDSDocument = { ...parseIDS(DOORS), info: { title: 'Doors', author: 'someone@example.com', version: '2' } };
+    const dropsInfo = (doc: IDSDocument) => writeIdsXml({ ...doc, info: { title: doc.info.title } });
+    const out = writeIdsChecked(ids, dropsInfo);
     expect(out).toMatchObject({ ok: false, reason: 'lossy', lost: ['info.author', 'info.version'] });
   });
 

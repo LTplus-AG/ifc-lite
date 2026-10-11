@@ -324,16 +324,17 @@ calls:
   boundary. It checks the shape and the node index and throws on anything
   else.
 - `writeStudioDocument(doc, writer)`, `writeIdsChecked(ids, writer)` and
-  `formatIds(xml, writer)` write through an injected `IdsWriter` (today
-  `writeIdsXml` from `@ifc-lite/rules`). They then parse the output again
+  `formatIds(xml, writer)` write through an injected `IdsWriter`, normally
+  `writeIdsXml` from `@ifc-lite/ids`. They then parse the output again
   and return `{ ok: false, reason: 'lossy', lost }` when a value did not
-  survive, instead of handing back XML with less content.
+  survive, instead of handing back XML with less content. A writer that
+  refuses the document gives `{ ok: false, reason: 'refused', message }`.
 - `nodePath(doc, nodeId)` gives a node's XML path, e.g.
   `specifications[0].requirements[1].baseName`.
 
 ```ts
+import { writeIdsXml } from '@ifc-lite/ids';
 import { formatIds } from '@ifc-lite/ids-authoring';
-import { writeIdsXml } from '@ifc-lite/rules';
 
 declare const xml: string;
 const out = formatIds(xml, writeIdsXml);

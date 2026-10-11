@@ -16,7 +16,7 @@
 
 import { writeFile } from 'node:fs/promises';
 import { formatIds } from '@ifc-lite/ids-authoring';
-import { writeIdsXml } from '@ifc-lite/rules';
+import { writeIdsXml } from '@ifc-lite/ids';
 import { EXIT_CLEAN, EXIT_FINDINGS, IdsUsageError, positionals, readText, rejectUnknownFlags, runIdsSubcommand } from './ids-subcommand.js';
 
 const FMT_FLAGS = new Set(['--check', '--write']);

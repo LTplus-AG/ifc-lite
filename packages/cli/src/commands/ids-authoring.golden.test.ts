@@ -81,7 +81,8 @@ const CASES: Array<[string, string[], number]> = [
   ['fmt-clean-check', ['fmt', fixture('doors-clean.ids'), '--check'], 0],
   ['fmt-typo-check', ['fmt', fixture('doors-typo.ids'), '--check'], 1],
   ['fmt-typo-stdout', ['fmt', fixture('doors-typo.ids')], 0],
-  ['fmt-author-lossy', ['fmt', fixture('doors-author.ids')], 2],
+  ['fmt-author', ['fmt', fixture('doors-author.ids')], 0],
+  ['fmt-unwritable', ['fmt', fixture('doors-unwritable.ids')], 2],
   ['fmt-broken', ['fmt', fixture('broken.ids')], 2],
   ['fmt-check-write', ['fmt', fixture('doors-clean.ids'), '--check', '--write'], 2],
   ['diff-same', ['diff', fixture('doors-clean.ids'), fixture('doors-clean.ids')], 0],
@@ -119,10 +120,10 @@ describe('ifc-lite ids fmt --write', () => {
     expect(again.exit).toBe(0);
   });
 
-  it('leaves a file it cannot write without loss untouched', async () => {
-    const target = join(scratch, 'author.ids');
-    copyFileSync(fixture('doors-author.ids'), target);
+  it('leaves a file the writer refuses untouched', async () => {
+    const target = join(scratch, 'unwritable.ids');
+    copyFileSync(fixture('doors-unwritable.ids'), target);
     expect((await run(['fmt', target, '--write'])).exit).toBe(2);
-    expect(readFileSync(target, 'utf-8')).toBe(readFileSync(fixture('doors-author.ids'), 'utf-8'));
+    expect(readFileSync(target, 'utf-8')).toBe(readFileSync(fixture('doors-unwritable.ids'), 'utf-8'));
   });
 });

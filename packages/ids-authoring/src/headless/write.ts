@@ -5,10 +5,9 @@
 /**
  * Writing and formatting IDS for headless callers, with a losslessness guard.
  *
- * The XML writer is injected (`IdsWriter`). In this build it is
- * `writeIdsXml` from `@ifc-lite/rules`, which drops some `info` fields and
- * refuses length/digit and conjunctive restrictions; the total writer of
- * ADR-005 moves into `@ifc-lite/ids` with P-01. Whatever the writer, a
+ * The XML writer is injected (`IdsWriter`). The CLI, MCP and SDK pass the
+ * full IDS 1.0 writer, `writeIdsXml` from `@ifc-lite/ids` (ADR-005, P-01).
+ * Whatever the writer, a
  * headless write never returns XML that reads back with less content than
  * it was given: the output is parsed again and every value the input
  * defines must survive. Anything that does not is reported as `lost`, so
@@ -91,7 +90,7 @@ export function writeIdsChecked(ids: IDSDocument, write: IdsWriter): WriteOutcom
     return {
       ok: false,
       reason: 'lossy',
-      message: `the IDS writer in this build cannot represent ${lost.length} value(s) without loss`,
+      message: `the IDS writer cannot represent ${lost.length} value(s) without loss`,
       lost,
     };
   }

@@ -72,7 +72,7 @@ const res = doc.apply([
 if (!res.ok) console.log(res.errors[0].code, res.errors[0].candidates[0]?.value); // GATE-PROP-001 FireRating
 
 for (const d of doc.lint()) console.log(d.code, doc.pathOf(d.nodeId), d.message);
-const updated: string = doc.write(); // throws rather than drop content this build cannot write
+const updated: string = doc.write(); // throws, with the reason, if the writer refuses the document
 ```
 
 ## Explicit property declarations

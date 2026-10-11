@@ -68,8 +68,15 @@ describe('bim.ids.authoring', () => {
     expect(doc.doc.ids.specifications).toEqual([]);
   });
 
-  it('throws instead of writing XML that loses content', async () => {
+  it('writes every info field with the full @ifc-lite/ids writer', async () => {
     const doc = await bim.ids.authoring.open(XML.replace('<title>Doors</title>', '<title>Doors</title><author>someone@example.com</author>'));
-    expect(() => doc.write()).toThrow(/info\.author/);
+    expect(doc.write()).toContain('<author>someone@example.com</author>');
+  });
+
+  it('throws with the reason when the writer refuses the document', async () => {
+    const doc = await bim.ids.authoring.open(XML);
+    const res = doc.apply([{ kind: 'doc.setInfo', opId: '00000000-0000-7000-8000-0000000000b1', payload: { field: 'title', value: 'Doors\u0001' } }]);
+    expect(res.ok).toBe(true);
+    expect(() => doc.write()).toThrow(/cannot write this document.*control character/);
   });
 });

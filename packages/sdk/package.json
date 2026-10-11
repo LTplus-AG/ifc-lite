@@ -33,7 +33,6 @@
     "@ifc-lite/mutations": "workspace:^",
     "@ifc-lite/parser": "workspace:^",
     "@ifc-lite/query": "workspace:^",
-    "@ifc-lite/rules": "workspace:^",
     "@ifc-lite/spatial": "workspace:^"
   },
   "devDependencies": {

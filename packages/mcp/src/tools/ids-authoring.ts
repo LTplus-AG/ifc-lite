@@ -38,7 +38,7 @@ import {
   type LintSeverity,
   type StudioDocument,
 } from '@ifc-lite/ids-authoring';
-import { writeIdsXml } from '@ifc-lite/rules';
+import { writeIdsXml } from '@ifc-lite/ids';
 import type { JsonSchema } from '../protocol/index.js';
 import { ToolErrorCode, ToolExecutionError } from '../errors.js';
 import type { ToolContext } from '../context.js';

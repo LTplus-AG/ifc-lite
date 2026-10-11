@@ -1498,9 +1498,6 @@ importers:
         specifier: ^0.8.3
         version: 0.8.3
     devDependencies:
-      '@ifc-lite/rules':
-        specifier: workspace:*
-        version: link:../rules
       '@types/node':
         specifier: ^26.6.4
         version: 26.6.5
@@ -1969,9 +1966,6 @@ importers:
       '@ifc-lite/query':
         specifier: workspace:^
         version: link:../query
-      '@ifc-lite/rules':
-        specifier: workspace:^
-        version: link:../rules
       '@ifc-lite/spatial':
         specifier: workspace:^
         version: link:../spatial

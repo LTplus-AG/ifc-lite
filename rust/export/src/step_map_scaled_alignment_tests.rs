@@ -294,7 +294,7 @@ fn with_utm_scale(source: &str) -> String {
 /// the file at its authored scale 1, exported at 0.9996. Every product frame,
 /// every carried representation, the physical surface of linearly placed
 /// parts, and their agreement with the rigid path modulo the map scale.
-fn assert_scaled_alignment_export(path: &str, rigid_source: &str, products: usize, linear_products: usize, sampled_types: usize) -> ifc_lite_core::GeoReference {
+fn assert_scaled_alignment_export(path: &str, rigid_source: &str, products: usize, linear_products: usize, sampled_types: usize) -> (ifc_lite_core::GeoReference, String) {
     let source = with_utm_scale(rigid_source);
     let plan = plan_map_conversion_normalization(source.as_bytes()).unwrap();
     assert!(plan.warnings.is_empty(), "{:?}", plan.warnings);
@@ -368,7 +368,7 @@ fn assert_scaled_alignment_export(path: &str, rigid_source: &str, products: usiz
     assert_mapped_surfaces(path, &rigid_mesh, &after_mesh, &sample, |point| {
         origin + (nalgebra::Vector3::from_column_slice(point) - origin) * 0.9996
     });
-    geo
+    (geo, output)
 }
 
 /// #7359: buildingSMART's IFC4.3 `linear-placement-of-signal` sample (#859):
@@ -384,53 +384,46 @@ fn issue_7359_linear_placement_signal_sample_exports_with_utm_scale() {
 
 /// #7359: ACCA usBIM's public IFC4X3 bridge (rotated map, three alignments,
 /// 1,101 IfcLinearPlacements, 620 `Axis`/`FootPrint` curve representations,
-/// linearly placed annotations) with a UTM map scale.
+/// linearly placed annotations, 28 type products whose maps no occurrence
+/// instantiates) with a UTM map scale, otherwise unmodified.
 #[test]
 fn issue_7359_real_alignment_bridge_with_utm_scale_exports_on_the_scaled_path() {
     let path = "buildingsmart/Viadotto_Acerno.ifc";
     let Some(bytes) = crate::test_support::fixture_opt(path) else { return };
     let original = String::from_utf8(bytes).expect("ACCA bridge fixture is UTF-8");
-    // Alignments, linear placements and curve representations no longer
-    // refuse. The one remaining refusal is the scaled path's separate rule
-    // for type geometry no occurrence instantiates: IfcSlabType #253120's
-    // map re-wraps an item its slabs already map directly.
-    let plan = plan_map_conversion_normalization(with_utm_scale(&original).as_bytes()).unwrap();
-    assert_eq!(plan.warnings, ["Map geometry normalization refused: type product #253120 has uninstantiated geometry. No context geometry was changed."]);
-    assert!(plan.replacements.is_empty() && plan.new_entities.is_empty());
-    // ACCA writes that pattern for all 28 of its type products. Detached
-    // (RepresentationMaps $), the whole bridge exports; occurrences carry
-    // their own mapped items, so no rendered product changes.
-    let detached = detach_uninstantiated_type_maps(&original);
-    let (authored, unmapped) = (world_mesh(&original), world_mesh(&detached));
-    assert_eq!(authored.elements.keys().collect::<Vec<_>>(), unmapped.elements.keys().collect::<Vec<_>>());
-    for (id, mesh) in &authored.elements {
-        assert_eq!(mesh.vertices, unmapped.elements[id].vertices, "#{id}");
-    }
-    let geo = assert_scaled_alignment_export(path, &detached, 7_051, 1_101, 6);
+    let (geo, output) = assert_scaled_alignment_export(path, &original, 7_051, 1_101, 6);
     assert!(geo.x_axis_ordinate.abs() > 0.5, "the authored map is rotated");
-}
-
-/// Sets `RepresentationMaps` to `$` on every type product owning a map that
-/// no `IfcMappedItem` instantiates.
-fn detach_uninstantiated_type_maps(source: &str) -> String {
-    let mut decoder = EntityDecoder::new(source);
-    let mut scanner = EntityScanner::new(source);
-    let mut records = Vec::new();
-    let mut instantiated = std::collections::HashSet::new();
-    while let Some((id, kind, start, end)) = scanner.next_entity() {
-        let kind = IfcType::from_str(kind);
-        if kind == IfcType::IfcMappedItem {
-            instantiated.insert(decoder.decode_by_id(id).unwrap().get_ref(0).unwrap());
+    // Every type map is wrapped at type level, keeping its ID and owner; the
+    // authored origin and representation move unchanged into a scaled inner map.
+    let (mut before, mut after) = (EntityDecoder::new(&original), EntityDecoder::new(&output));
+    let mut scanner = EntityScanner::new(&original);
+    let mut wrapped = 0;
+    while let Some((id, kind, _, _)) = scanner.next_entity() {
+        if !IfcType::from_str(kind).is_subtype_of(IfcType::IfcTypeProduct) { continue; }
+        let Some(maps) = before.decode_by_id(id).unwrap().get_refs(6) else { continue };
+        assert_eq!(after.decode_by_id(id).unwrap().get_refs(6), Some(maps.clone()), "type #{id} keeps its maps");
+        for map in maps {
+            let authored = before.decode_by_id(map).unwrap();
+            let rep = after.decode_by_id(map).unwrap().get_ref(1).unwrap();
+            let (parts, scale) = wrapper(&mut after, rep);
+            assert_eq!(parts.source, authored.get_ref(1).unwrap());
+            assert!((scale - 0.9996).abs() < 1e-12);
+            wrapped += 1;
         }
-        records.push(Record { id, kind, line: &source[start..end] });
     }
-    let replacements: Vec<_> = records.iter()
-        .filter(|record| record.kind.is_subtype_of(IfcType::IfcTypeProduct))
-        .filter(|record| decoder.decode_by_id(record.id).unwrap().get_refs(6)
-            .is_some_and(|maps| maps.iter().any(|map| !instantiated.contains(map))))
-        .map(|record| writer::replace(record, &[(6, "$".into())]).unwrap())
-        .collect();
-    assert_eq!(replacements.len(), 28);
-    apply_preserving_header(source, &MapConversionNormalizationPlan { replacements, ..Default::default() })
+    assert_eq!(wrapped, 28);
+    // Instantiate one (IfcSlabType #253120's map #253122, whose representation
+    // is the approach slab #179066's own) at the slab's exported frame: it
+    // must reproduce the slab's exported surface.
+    let slab_frame = after.decode_by_id(179_066).unwrap().get_ref(5).unwrap();
+    let instance = format!("#9000000=IFCBUILDINGELEMENTPROXY('0M7tQ9Jbj1BAeHd7rqnDmY',#1,'Approach slab',$,$,#{slab_frame},#9000003,$,.NOTDEFINED.);\n\
+#9000004=IFCCARTESIANTRANSFORMATIONOPERATOR3D($,$,#15,1.,$);\n#9000001=IFCMAPPEDITEM(#253122,#9000004);\n\
+#9000002=IFCSHAPEREPRESENTATION(#17,'Body','MappedRepresentation',(#9000001));\n#9000003=IFCPRODUCTDEFINITIONSHAPE($,$,(#9000002));");
+    let end = output.rfind("ENDSEC;").unwrap();
+    let mesh = world_mesh(&format!("{}{instance}\n{}", &output[..end], &output[end..]));
+    let (slab, typed) = (&mesh.elements[&179_066], &mesh.elements[&9_000_000]);
+    assert_eq!(slab.faces.len(), typed.faces.len());
+    let points = |mesh: &ifc_lite_processing::ExportedElement| mesh.vertices.iter().map(|point| nalgebra::Vector3::from_column_slice(point)).collect::<Vec<_>>();
+    assert_points_within(9_000_000, &points(typed), &points(slab), 0.001);
+    assert_points_within(9_000_000, &points(slab), &points(typed), 0.001);
 }
-

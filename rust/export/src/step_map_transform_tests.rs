@@ -212,11 +212,14 @@ fn issue_6587_type_maps_require_actual_body_reachability_not_orphan_items() {
     let extra = "#170=IFCSHAPEREPRESENTATION(#10,'Body','SweptSolid',(#42));\n#171=IFCREPRESENTATIONMAP(#11,#170);\n#172=IFCBUILDINGELEMENTPROXYTYPE('0M7tQ9Jbj1BAeHd7rqnDmS',$,'Type',$,$,$,(#171),$,$,.NOTDEFINED.);\n#174=IFCCARTESIANTRANSFORMATIONOPERATOR3D($,$,#12,1.,$);\n";
     let source = model(1., false).replace("ENDSEC;\nEND-ISO", &format!("{extra}ENDSEC;\nEND-ISO"));
     let orphan = source.replace("ENDSEC;\nEND-ISO", "#173=IFCMAPPEDITEM(#171,#174);\nENDSEC;\nEND-ISO");
+    // Superseded by the #7359 follow-up: geometry no product instantiates is
+    // wrapped at type level instead of refused, and an orphan item still
+    // does not count as instantiation (see `scaled_type_geometry`).
     for input in [&source, &orphan] {
         let plan = plan_map_conversion_normalization(input.as_bytes()).unwrap();
-        assert!(plan.warnings.iter().any(|warning| warning.contains("uninstantiated geometry")));
-        assert!(plan.replacements.is_empty());
-        assert!(plan.new_entities.is_empty());
+        assert!(plan.warnings.is_empty(), "{:?}", plan.warnings);
+        let map = plan.replacements.iter().find(|patch| patch.express_id == 171).expect("type map #171 is wrapped at type level");
+        assert!(!map.line.contains("#170)"), "{}", map.line);
     }
     let used = orphan.replace("'Body','SweptSolid',(#42));\n#45", "'Body','MappedRepresentation',(#173));\n#45");
     let plan = plan_map_conversion_normalization(used.as_bytes()).unwrap();
@@ -336,3 +339,6 @@ fn issue_6587_public_bridge_deck_uses_the_same_canonical_normalization() {
 // production files keeps these tests compiling (revert oracle).
 #[path = "step_map_scaled_alignment_tests.rs"]
 mod scaled_alignment;
+
+#[path = "step_map_scaled_type_geometry_tests.rs"]
+mod scaled_type_geometry;

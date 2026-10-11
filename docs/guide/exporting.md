@@ -56,7 +56,9 @@ through scaled; other non-Body representations are refused. Alignment layout
 parameters (segment lengths and start points) are not rewritten, so tools that
 rebuild an alignment from them rather than from its `Axis` curve are off by the
 map scale factor (0.04% at 0.9996). Type geometry that no occurrence
-instantiates is refused on this path. These transformations preserve
+instantiates gets the same scale at type level, so it stays correct if a tool
+instantiates it later; a type map nested inside another such map is refused.
+These transformations preserve
 physical map coordinates, project units, properties and authored shape data.
 Ordinary IFC downloads retain their original coordinate representation.
 Cesium ion currently tiles `IfcSectionedSolidHorizontal` sweeps (for example
@@ -630,8 +632,12 @@ unknown placement or connection-geometry consumers, malformed metadata and
 grid/structural consumers refuse atomically with explanatory warnings.
 Represented products without placements are refused.
 
-The scaled path additionally requires unambiguous representation ownership and
-type maps reachable from actual products. It carries annotations, but refuses
+The scaled path additionally requires unambiguous representation ownership. A
+type map no product instantiates is wrapped at type level with the same scale:
+it keeps its ID and owner, and its authored origin and representation move into
+a scaled inner map, so a later instantiation lands on the authored map
+coordinates. Such a map nested inside another one is refused, because it would
+be scaled twice. The scaled path carries annotations, but refuses
 voids/fills, shape aspects, non-Body representations with surface items (for
 example annotation fills or bounding boxes) and other coordinate consumers it
 cannot preserve. Its added wrapper requires fewer

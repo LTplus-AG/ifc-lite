@@ -798,10 +798,7 @@ export function extractPropertiesOnDemand(
     return parser.extractPropertiesOnDemand(store, entityId);
 }
 
-/**
- * Standalone on-demand quantity extractor
- * Can be used outside ColumnarParser class
- */
+/** Standalone on-demand quantity extractor, usable outside the ColumnarParser class. */
 export function extractQuantitiesOnDemand(
     store: IfcDataStore,
     entityId: number

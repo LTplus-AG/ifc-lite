@@ -146,3 +146,28 @@ test('#7245 direct native revocation inside an always-true approval callback blo
   assert.ok(durable && !durable.deleted); assert.equal(durable.revision, original.revision, 'revocation prevents the actual native write');
   assert.deepEqual(durable.payload, JSON.parse(JSON.stringify(report)));
 });
+
+
+test('#7252 a replacement staged during awaited native deletion approval survives an always-true callback', async () => {
+  const report = await realComparison();
+  const original = (await readContentRows('comparison')).find(entry => entry.id === report.id); assert.ok(original);
+  let entered = false;
+  let resume = () => {};
+  const pendingApproval = new Promise<void>(resolve => { resume = resolve; });
+  const guard = async () => { entered = true; await pendingApproval; return true; };
+  const deletion = useViewerStore.getState().deleteSavedComparison(report.id, guard);
+  await waitFor(() => entered, 'real native pre-write approval is awaiting');
+  const replacement = { ...report, name: 'Replacement staged during awaited approval' };
+  try { useViewerStore.getState().stageComparison(replacement); }
+  finally { resume(); }
+  assert.equal(await deletion, false, 'the old callback cannot authorize its tombstone after a newer native generation');
+  const durable = (await readContentRows('comparison')).find(entry => entry.id === report.id);
+  assert.ok(durable && !durable.deleted);
+  assert.equal(durable.revision, original.revision, 'awaited approval never wrote the revoked tombstone');
+  assert.deepEqual(durable.payload, original.payload);
+  assert.equal(useViewerStore.getState().savedComparisons.find(entry => entry.id === report.id)?.name, replacement.name);
+  assert.equal(await useViewerStore.getState().retrySaveComparisons(), true);
+  const committed = (await readContentRows('comparison')).find(entry => entry.id === report.id);
+  assert.ok(committed && !committed.deleted);
+  assert.deepEqual(committed.payload, JSON.parse(JSON.stringify(replacement)), 'the replacement persists through the canonical library after the old writer exits');
+});

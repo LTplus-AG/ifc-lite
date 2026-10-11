@@ -234,7 +234,7 @@ function existingToBaseSI(
 ): PropertyOverride['value'] {
   const own = ownUnitOf(existing);
   if (!own) return toBaseSI(value, existing.dataType, scales);
-  const c = ownUnitConversionFor(existing.dataType, own.siScale, own.symbol);
+  const c = ownUnitConversionFor(existing.dataType, own.siScale, own.symbol, own.siOffset);
   return typeof value === 'number' && !isIdentity(c) ? toSi(value, c!) : value;
 }
 
@@ -266,7 +266,7 @@ export function propertyValueToRaw(
   const effectiveType = dataType ?? existing?.dataType;
   const own = existing && ownUnitOf(existing);
   if (own) {
-    const c = ownUnitConversionFor(effectiveType, own.siScale, own.symbol);
+    const c = ownUnitConversionFor(effectiveType, own.siScale, own.symbol, own.siOffset);
     return typeof value === 'number' && !isIdentity(c) ? fromSi(value, c!) : value;
   }
   return toRaw(value, effectiveType, resolveEntityMeasureScales(store, expressId)) as string | number | boolean;

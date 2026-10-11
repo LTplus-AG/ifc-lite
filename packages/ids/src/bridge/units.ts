@@ -271,18 +271,20 @@ export function toRaw(
 /**
  * The conversion for a value whose property or quantity declares its OWN
  * `Unit`. `siScale` is the parser's resolved SI factor of that unit
- * (`unitSiScale` / `explicitUnitSiScale`) and `symbol` its display symbol;
+ * (`unitSiScale` / `explicitUnitSiScale`), `symbol` its display symbol and
+ * `siOffset` its additive SI offset when it has one (°F, `unitSiOffset`);
  * an unresolved factor, a non-measure dataType or a monetary value (not an
  * SI quantity) gives `undefined`: the value stays as written.
  */
 export function ownUnitConversionFor(
   dataType: string | undefined,
   siScale: number | undefined,
-  symbol: string | undefined
+  symbol: string | undefined,
+  siOffset?: number
 ): SiConversion | undefined {
   const upper = dataType ? dataType.toUpperCase() : '';
   if (!upper.endsWith('MEASURE') || upper === 'IFCMONETARYMEASURE') return undefined;
-  return unitConversion(upper, siScale, symbol);
+  return unitConversion(upper, siScale, symbol, siOffset);
 }
 
 /**
@@ -328,14 +330,15 @@ export function applyOwnUnitConversion(
   dataType: string | undefined,
   siScale: number | undefined,
   symbol?: string,
-  valueDataTypes?: ReadonlyArray<string | undefined>
+  valueDataTypes?: ReadonlyArray<string | undefined>,
+  siOffset?: number
 ): { value: string | number | boolean | null; values: string[] | undefined } {
   // A mixed list has no shared dataType; convert each member by its own type.
   if (!dataType && Array.isArray(rawValues) && rawValues.length > 0 && valueDataTypes?.length === rawValues.length) {
-    const values = convertTypedMembers(rawValues, valueDataTypes, (t) => ownUnitConversionFor(t, siScale, symbol));
+    const values = convertTypedMembers(rawValues, valueDataTypes, (t) => ownUnitConversionFor(t, siScale, symbol, siOffset));
     return { value: listDisplayValue(rawValue, values), values };
   }
-  return convertAll(rawValue, rawValues, ownUnitConversionFor(dataType, siScale, symbol));
+  return convertAll(rawValue, rawValues, ownUnitConversionFor(dataType, siScale, symbol, siOffset));
 }
 
 /**

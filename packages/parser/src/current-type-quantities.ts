@@ -163,6 +163,8 @@ function readCurrent(store: IfcDataStore, entityId: number, view: MetadataReadVi
             const unit = resolveCurrentUnit(quantity.attributes[2]);
             if (unit?.unitType) explicitUnitTypes.set(JSON.stringify([set.globalId, quantity.attributes[0]]), unit.unitType);
         }
+        // Complete native inventory can retain member-specific unit refusals.
+        // Physical consumers reject that member without erasing valid siblings (#7376).
         return set ? [set] : [];
     });
     const quantities = readSets([...ownSetIds]);

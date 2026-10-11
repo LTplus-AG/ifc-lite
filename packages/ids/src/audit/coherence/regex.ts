@@ -22,9 +22,9 @@ export { translateXsdRegex, type TranslateResult };
  *  - `{ ok: true }` when the pattern is valid (after translation).
  *  - `{ ok: false, severity: 'error', reason }` for syntactic errors
  *    that JS *and* XSD agree on (e.g. unclosed `[`).
- *  - `{ ok: false, severity: 'warning', reason }` when the pattern uses
- *    XSD-only syntax we can only approximate (a `\p{Is…}` block escape,
- *    an undelimitable char-class subtraction).
+ *  - `{ ok: false, severity: 'warning', reason }` when the pattern uses a
+ *    construct with no exact translation (an unknown `\p{Is…}` block, an
+ *    escape XSD does not define, an undelimitable char-class subtraction).
  */
 export function compileXsdRegex(
   pattern: string

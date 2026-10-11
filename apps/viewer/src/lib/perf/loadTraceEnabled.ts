@@ -8,12 +8,16 @@
  * default entry chunk. Publishes `window.__IFC_LITE_LOAD_TRACE__`.
  */
 
-import { buildSpanTree, createLoadTracer, startFrameMonitor, toChromeTrace, type LoadTracer } from '@ifc-lite/load-trace';
+import { buildSpanTree, createLoadTracer, perfCounters, startFrameMonitor, toChromeTrace, type CounterValues, type LoadTracer } from '@ifc-lite/load-trace';
 import { downloadBlob } from '../export/download.js';
 
 const GLOBAL_KEY = '__IFC_LITE_LOAD_TRACE__';
 
-export function exposeLoadTrace(tracer: LoadTracer, target: Record<string, unknown> = globalThis as Record<string, unknown>): void {
+export function exposeLoadTrace(
+  tracer: LoadTracer,
+  target: Record<string, unknown> = globalThis as Record<string, unknown>,
+  readSessionCounters: () => CounterValues = () => perfCounters.read(),
+): void {
   target[GLOBAL_KEY] = {
     loads: () => tracer.snapshots(),
     latest: () => tracer.latest(),
@@ -22,6 +26,12 @@ export function exposeLoadTrace(tracer: LoadTracer, target: Record<string, unkno
       return latest ? buildSpanTree(latest) : [];
     },
     chromeTrace: () => toChromeTrace(tracer.snapshots()),
+    /**
+     * Main-thread counter totals since tracing was enabled at boot, not per
+     * load (#6993): a GPU device lost before the first load starts, and React
+     * commits of an interaction after the load window, only show up here.
+     */
+    sessionCounters: () => readSessionCounters(),
     downloadChromeTrace: () => {
       const json = JSON.stringify(toChromeTrace(tracer.snapshots()));
       downloadBlob(new Blob([json], { type: 'application/json' }), `ifc-lite-load-trace-${Date.now()}.json`);

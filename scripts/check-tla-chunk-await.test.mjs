@@ -323,3 +323,54 @@ test('an untouched chunk that only mentions __tla inside a string is not scanned
   assert.equal(status, 0, out);
   assert.match(out, /all 1 plugin-rewritten chunk\(s\) minified/);
 });
+
+// Actual 179-byte CodeEditor barrel from the #7041 Vite 8.3.2 build (#7377).
+const REEXPORT_BARREL = 'import{__tla as __tla_0}from"./CodeEditor-inSPMxdp.js";export{t as CodeEditor}from"./CodeEditor-inSPMxdp.js";Promise.all([(()=>{try{return __tla_0}catch{}})()]).then(async()=>{});';
+
+test('#7377: actual emitted re-export barrel reaches the minified wrapper', () => {
+  const result = runOn({ 'CodeEditor-inSPMxdp.js': TLA_CHUNK, 'CodeEditor.js': REEXPORT_BARREL });
+  assert.equal(result.status, 0, result.out);
+  assert.match(result.out, /all 2 plugin-rewritten chunk\(s\) minified/);
+});
+
+test('#7377: alternating named, star and namespace re-exports retain formatting evidence', () => {
+  const barrel = 'export{z as value}from"./store-abc.js";import{__tla as __tla_0}from"./store-abc.js";export*from"./plain.js";export*as space from"./plain.js";Promise.all([(()=>{try{return __tla_0}catch{}})()]).then(async()=>{});';
+  const result = runOn({ 'store-abc.js': TLA_CHUNK, 'plain.js': 'export const z=1;', 'barrel.js': barrel });
+  assert.equal(result.status, 0, result.out);
+});
+
+test('#7377 inverse: pretty re-export clauses and pretty wrappers still refuse', () => {
+  const mutations = [
+    REEXPORT_BARREL.replace('export{t as CodeEditor}', 'export { t as CodeEditor }'),
+    REEXPORT_BARREL.replace('Promise.all([', 'Promise.all([\n '),
+  ];
+  for (const barrel of mutations) {
+    const result = runOn({ 'CodeEditor-inSPMxdp.js': TLA_CHUNK, 'barrel.js': barrel });
+    assert.equal(result.status, 1, result.out);
+    assert.match(result.out, /UNMINIFIED/);
+  }
+});
+
+test('#7377 inverse: a re-export specifier cannot supply the eight punctuation marks', () => {
+  const result = runOn({
+    'store-abc.js': TLA_CHUNK,
+    'barrel.js': 'export{__tla}from"./pretend=,{}();:[].js";',
+  });
+  assert.equal(result.status, 1, result.out);
+  assert.match(result.out, /too little leading code/);
+});
+
+test('#7377: literal, template, comment and escaped specifier traps stay opaque', async () => {
+  const { chunkFormatting, prologue } = await import('./lib/tla-chunk-prologue.mjs');
+  const traps = [
+    'export const x="export{__tla}from\'x\';Promise.all([(()=>{})()])";',
+    'export const x=`export{__tla}from"x";Promise.all([(()=>{})()])`;',
+    'export/* export{__tla}from"x";Promise.all([(()=>{})()]) */{};',
+    String.raw`export{z}from"x\";Promise.all([(()=>{})()])";`,
+    'export{"Promise.all([(()=>{})()])" as z}from"x";',
+  ];
+  for (const trap of traps) {
+    assert.equal(chunkFormatting(trap), 'unknown', trap);
+    assert.doesNotMatch(prologue(trap), /Promise\.all/, trap);
+  }
+});

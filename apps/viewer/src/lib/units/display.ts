@@ -112,6 +112,7 @@ export function resolveQuantityDisplay(
   quantity?: ReturnType<typeof import('@ifc-lite/parser').extractQuantitiesOnDemand>[number]['quantities'][number],
   projectUnitsAvailable = true,
 ): UnitDisplay {
+  if (quantity?.explicitUnitUnresolved) return { unit: null, converted: null };
   const explicit = quantity?.explicitUnitSiScale !== undefined && quantity.explicitUnit !== undefined;
   if (!projectUnitsAvailable && !explicit) return { unit: null, converted: null };
   const entry = QUANTITY_TYPE_UNIT[quantityType];

@@ -30,6 +30,8 @@ import {
   volumeBasisRatioNote,
   VOLUME_BASIS_LEGEND,
   declaredVolumeBases,
+  ZONE_QUANTITY_SET_NAME_PREFIX,
+  type VolumeBasis,
   type BasisBreakdown,
   type QuantitySetLike,
 } from '@/lib/zones';
@@ -45,7 +47,7 @@ const KNOWN_REFUSALS: ReadonlySet<string> = new Set([
 ]);
 import { resolveQuantityDisplay, formatConverted, QUANTITY_TYPE_UNIT } from '@/lib/units/display';
 import { VOLUME_QUANTITY_TYPE } from '@/lib/zones';
-import { quantitySiScale, type ProjectUnits } from '@ifc-lite/parser';
+import type { ProjectUnits } from '@ifc-lite/parser';
 
 interface Props {
   zoneSet: ZoneSet;
@@ -132,24 +134,22 @@ export function ZoneVolumeBreakdown({ zoneSet, globalId, quantitySets, projectUn
   const apportionment = entry?.byElement.get(globalId) ?? null;
   const cachedRefusal = entry?.refused.get(globalId) ?? null;
 
-  const breakdowns = useMemo(() => {
-    if (!apportionment) return null;
-    if (quantityUnitCoverage?.status !== 'unavailable') {
-      return allBasisBreakdowns(apportionment, declaredVolumeBases(quantitySets, volume.siScale));
-    }
-    // An independently resolved member Unit remains physical without project context.
-    const explicitSets = quantitySets.map(set => ({ ...set, quantities: set.quantities.flatMap(q => {
-      if (!('explicitUnitSiScale' in q) || typeof q.explicitUnitSiScale !== 'number') return [];
-      return [{ ...q, value: q.value * quantitySiScale({ ...q, explicitUnitSiScale: q.explicitUnitSiScale }, projectUnits) }];
-    }) }));
-    return allBasisBreakdowns(apportionment, declaredVolumeBases(explicitSets, 1));
-  }, [apportionment, quantitySets, volume.siScale, projectUnits, quantityUnitCoverage?.status]);
+  const { breakdowns, unresolvedMemberUnit } = useMemo(() => {
+    const unresolvedBasisNames = new Set<Exclude<VolumeBasis, 'mesh'>>();
+    // The same canonical traversal chooses physical rows and unavailable-unit
+    // notices. Previous zone output never claims a native declared basis.
+    const declared = declaredVolumeBases(quantitySets.filter(set => !set.name.startsWith(ZONE_QUANTITY_SET_NAME_PREFIX)),
+      quantityUnitCoverage?.status === 'unavailable' ? null : volume.siScale, unresolvedBasisNames);
+    return { breakdowns: apportionment ? allBasisBreakdowns(apportionment, declared) : null,
+      unresolvedMemberUnit: unresolvedBasisNames.size > 0 };
+  }, [apportionment, quantitySets, volume.siScale, quantityUnitCoverage?.status]);
 
   const reason = cachedRefusal ?? refusal;
   const inheritedUnavailable = inheritedQuantityCoverage?.status === 'unavailable'
     ? <output className="block px-3 py-2 text-xs text-muted-foreground">{t('zonesPanel.volumeBreakdown.inheritedUnavailable', { reason: inheritedQuantityCoverage.reason ?? 'unverified current data' })}</output> : null;
-  const unitsUnavailable = quantityUnitCoverage?.status === 'unavailable'
-    ? <output className="block px-3 py-2 text-xs text-muted-foreground">{t('zonesPanel.volumeBreakdown.quantityUnitsUnavailable', { reason: quantityUnitCoverage.reason ?? 'unverified current data' })}</output> : null;
+
+  const unitsUnavailable = quantityUnitCoverage?.status === 'unavailable' || unresolvedMemberUnit
+    ? <output className="block px-3 py-2 text-xs text-muted-foreground">{t('zonesPanel.volumeBreakdown.quantityUnitsUnavailable', { reason: unresolvedMemberUnit ? 'Explicit native quantity Unit cannot be resolved' : quantityUnitCoverage?.reason ?? 'unverified current data' })}</output> : null;
 
   if (!apportionment) {
     return (

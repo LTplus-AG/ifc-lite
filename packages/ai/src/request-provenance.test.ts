@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { createHash } from 'node:crypto';
-import { expect, it } from 'vitest';
+import { expect, it, vi } from 'vitest';
 import { createRootBudget, restoreRootBudget } from './budget.js';
 import { runModelRequest, type TransportCall } from './request.js';
 import { chatCompletionsTransport } from './chat-completions.js';
@@ -138,21 +138,32 @@ it('matches real headless chat-completions wire grant and terminal reason withou
 });
 
 it('retains dispatched timeout/cancel grants while never claiming a completed-text hash', async () => {
-  for (const cancel of [false, true]) {
-    const controller = new AbortController();
-    const result = await runModelRequest({ model: 'native-test', route: 'test', messages,
-      budget: createRootBudget({ maxRequests: 1, maxOutputTokens: 37 }), maxOutputTokens: 100, routeCeiling: 80,
-      timeoutMs: cancel ? 100 : 2, signal: controller.signal,
-      transport: async call => {
-        call.onChunk('partial private output');
-        await new Promise<void>(resolve => {
-          call.signal.addEventListener('abort', () => resolve(), { once: true });
-          if (cancel) controller.abort();
-        });
-      } });
-    expect(result).toMatchObject({ kind: cancel ? 'cancelled' : 'timeout', receipt: { provenance: { grantedOutputTokens: 37, timeoutMs: cancel ? 100 : 2, finishReason: 'unknown' } } });
-    if (result.kind !== 'cancelled' && result.kind !== 'timeout') throw new Error('Expected owned interruption');
-    expect(result.receipt.provenance).not.toHaveProperty('outputTextDigest');
+  // #6812: host scheduling must not turn this dispatched-receipt witness into a pre-dispatch timeout.
+  vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'performance'] });
+  try {
+    for (const cancel of [false, true]) {
+      const controller = new AbortController();
+      let dispatched = false;
+      const pending = runModelRequest({ model: 'native-test', route: 'test', messages,
+        budget: createRootBudget({ maxRequests: 1, maxOutputTokens: 37 }), maxOutputTokens: 100, routeCeiling: 80,
+        timeoutMs: cancel ? 100 : 2, signal: controller.signal,
+        transport: async call => {
+          dispatched = true;
+          call.onChunk('partial private output');
+          await new Promise<void>(resolve => {
+            call.signal.addEventListener('abort', () => resolve(), { once: true });
+            if (cancel) controller.abort();
+          });
+        } });
+      expect(dispatched).toBe(true);
+      if (!cancel) await vi.advanceTimersByTimeAsync(2);
+      const result = await pending;
+      expect(result).toMatchObject({ kind: cancel ? 'cancelled' : 'timeout', receipt: { provenance: { grantedOutputTokens: 37, timeoutMs: cancel ? 100 : 2, finishReason: 'unknown' } } });
+      if (result.kind !== 'cancelled' && result.kind !== 'timeout') throw new Error('Expected owned interruption');
+      expect(result.receipt.provenance).not.toHaveProperty('outputTextDigest');
+    }
+  } finally {
+    vi.useRealTimers();
   }
 });
 

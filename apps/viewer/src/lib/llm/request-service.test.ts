@@ -325,7 +325,8 @@ for (const headerDelay of [50_000, 150_000]) test(`#7093 shared deadline covers 
   };
   try {
     const pending = runModelRequest(request({ route, timeoutMs: 120_000 }));
-    for (let index = 0; index < 100; index++) await Promise.resolve();
+    // Direct routes load their stream client on first use: wait (real turns, bounded) for the dispatch.
+    for (let index = 0; index < 100 && posts === 0; index++) await new Promise(resolve => setImmediate(resolve));
     assert.equal(posts, 1);
     t.mock.timers.tick(45_000);
     for (let index = 0; index < 20; index++) await Promise.resolve();
@@ -340,3 +341,48 @@ for (const headerDelay of [50_000, 150_000]) test(`#7093 shared deadline covers 
     assert.equal(posts, 1);
   } finally { t.mock.timers.reset(); }
 });
+
+const directRoutes: SendableRoute[] = [
+  { kind: 'openai', model: 'gpt-6-sol', apiKey: 'sk-test' },
+  { kind: 'anthropic', model: 'claude-opus-5-5', credentials: { apiKey: 'sk-ant-test', workspaceId: '' } },
+];
+
+for (const route of directRoutes) {
+  test(`${route.kind}: a request cancelled while its stream client loads settles as cancelled and never reaches the provider`, async () => {
+    const sent = serve(data([{ choices: [{ delta: { content: 'Ok' }, finish_reason: 'stop' }] }]));
+    const controller = new AbortController();
+    const pending = runModelRequest(request({ route, signal: controller.signal }));
+    controller.abort();
+    const outcome = await pending;
+    assert.equal(outcome.kind, 'cancelled');
+    assert.equal(sent.length, 0, 'no provider request after the cancel');
+    assert.equal(useRequestReceipts.getState().receipts.at(-1)?.outcome, 'cancelled');
+    assert.equal(useRequestReceipts.getState().inFlight.length, 0);
+  });
+
+  test(`${route.kind}: a deadline that passes while the stream client loads settles as timeout without a request`, async t => {
+    t.mock.timers.enable({ apis: ['setTimeout'] });
+    try {
+      const sent = serve(data([{ choices: [{ delta: { content: 'Ok' }, finish_reason: 'stop' }] }]));
+      const pending = runModelRequest(request({ route, timeoutMs: 1_000 }));
+      t.mock.timers.tick(1_000);
+      const outcome = await pending;
+      assert.equal(outcome.kind, 'timeout');
+      assert.equal(sent.length, 0);
+      assert.equal(useRequestReceipts.getState().receipts.at(-1)?.outcome, 'timeout');
+    } finally { t.mock.timers.reset(); }
+  });
+
+  test(`${route.kind}: a cancel once the stream has started settles as cancelled after exactly one request`, async () => {
+    const controller = new AbortController();
+    let posts = 0;
+    globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+      posts++;
+      controller.abort();
+      throw init?.signal?.reason ?? new Error('aborted');
+    }) as typeof fetch;
+    const outcome = await runModelRequest(request({ route, signal: controller.signal }));
+    assert.equal(outcome.kind, 'cancelled');
+    assert.equal(posts, 1);
+  });
+}

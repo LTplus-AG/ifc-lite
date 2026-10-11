@@ -20,7 +20,6 @@ import type { StreamRoute } from './byok-guard.js';
 import { modelCapabilities } from './model-capabilities.js';
 import { recordReceipt, recordRequestStart } from './request-receipts.js';
 import { streamChat, type StreamMessage, type StreamOptions, type UsageInfo } from './stream-client.js';
-import { streamAnthropicChat, streamOpenAiChat } from './stream-direct.js';
 import { anthropicSchemaLimitation } from './anthropic-schema.js';
 
 export type SendableRoute = Exclude<StreamRoute, { kind: 'missing-key' }>;
@@ -58,13 +57,36 @@ export interface ModelRequest {
 
 export type RequestOutcome = SharedOutcome<SendableRoute['kind']>;
 
+type DirectStreams = typeof import('./stream-direct.js');
+
+/**
+ * The BYOK stream clients (and with them the Anthropic SDK) load on the first
+ * direct request, not with the viewer: this module is reachable from the eager
+ * bundle. Resolves `null` when `signal` aborts first, so a cancel or deadline
+ * during the load settles at once instead of waiting for the chunk.
+ */
+function loadDirectStreams(signal: AbortSignal): Promise<DirectStreams | null> {
+  if (signal.aborted) return Promise.resolve(null);
+  let onAbort = () => {};
+  const aborted = new Promise<null>((resolve) => {
+    onAbort = () => resolve(null);
+    signal.addEventListener('abort', onAbort, { once: true });
+  });
+  return Promise.race([import('./stream-direct.js'), aborted]).finally(() => signal.removeEventListener('abort', onAbort));
+}
+
 /** The viewer's stream clients for one route, as a shared-core transport. */
 function viewerTransport(route: SendableRoute, proxyUrl: string, onUsageInfo?: (usage: UsageInfo) => void): AiTransport<StreamMessage> {
   return async (call) => {
     const options: StreamOptions = { ...call, proxyUrl, messages: [...call.messages], onUsageInfo, allowProxyFallback: false, useParentDeadline: true };
-    if (route.kind === 'proxy') await streamChat(options);
-    else if (route.kind === 'anthropic') await streamAnthropicChat(route.credentials, options);
-    else await streamOpenAiChat(route.apiKey, options);
+    if (route.kind === 'proxy') { await streamChat(options); return; }
+    // A failed load throws here and settles as the same `request-failed`
+    // error as any other transport failure; an abort (caller or deadline)
+    // during the load returns, and the core reports it as cancelled / timeout.
+    const direct = await loadDirectStreams(call.signal);
+    if (!direct || call.signal.aborted) return;
+    if (route.kind === 'anthropic') await direct.streamAnthropicChat(route.credentials, options);
+    else await direct.streamOpenAiChat(route.apiKey, options);
   };
 }
 

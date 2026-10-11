@@ -1,0 +1,13 @@
+diff --git a/scripts/ai-eval/ids/e2-splits.mjs b/scripts/ai-eval/ids/e2-splits.mjs
+index 7346df0d1..c31a46bc0 100644
+--- a/scripts/ai-eval/ids/e2-splits.mjs
++++ b/scripts/ai-eval/ids/e2-splits.mjs
+@@ -60,7 +60,7 @@ export function e2SplitGroups(cases) {
+     for (const link of [`test:${corpusTestKey(record.id)}`, `description:${record.description}`]) {
+       const first = firstBy.get(link);
+       if (first === undefined) firstBy.set(link, record.id);
+-      else void record;
++      else union(first, record.id);
+     }
+   }
+   return new Map(cases.map(record => [record.id, find(record.id)]));

@@ -1,0 +1,13 @@
+diff --git a/scripts/ai-eval/ids/e4-e5-datasets.mjs b/scripts/ai-eval/ids/e4-e5-datasets.mjs
+index a2bb5700d..b550d5300 100644
+--- a/scripts/ai-eval/ids/e4-e5-datasets.mjs
++++ b/scripts/ai-eval/ids/e4-e5-datasets.mjs
+@@ -99,7 +99,7 @@ export async function e4DatasetErrors(cases, ids, root = REPO_ROOT) {
+       const audit = await ids.auditIDSDocument(texts[key]);
+       if (audit.issues.length) errors.push(`${at}: ${key} audit ${audit.status}: ${audit.issues.map(issue => issue.code).join(', ')}`);
+     }
+-    if (false && parsed.input && parsed.expected && JSON.stringify(parsed.input) === JSON.stringify(parsed.expected)) {
++    if (parsed.input && parsed.expected && JSON.stringify(parsed.input) === JSON.stringify(parsed.expected)) {
+       errors.push(`${at}: the expected IDS parses to the same document as the input; the edit changes nothing`);
+     }
+   }

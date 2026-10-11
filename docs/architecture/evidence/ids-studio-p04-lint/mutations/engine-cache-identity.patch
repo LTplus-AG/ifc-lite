@@ -1,0 +1,12 @@
+diff --git a/packages/ids-authoring/src/lint/engine.ts b/packages/ids-authoring/src/lint/engine.ts
+index 99941acc4..2775cbdf9 100644
+--- a/packages/ids-authoring/src/lint/engine.ts
++++ b/packages/ids-authoring/src/lint/engine.ts
+@@ -121,6 +121,7 @@ export function createLinter(ctx: LintContext, options: LinterOptions = {}): Lin
+         const prior = cache.get(view.specId);
+         const reusable =
+           prior &&
++          prior.spec === view.spec &&
+           prior.nodes === view.nodes &&
+           prior.custom === doc.meta.custom &&
+           !specTouched(view.nodes, touched);

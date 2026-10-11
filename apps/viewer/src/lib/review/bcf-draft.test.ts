@@ -178,7 +178,7 @@ test('a clash-only review topic whose origin line no longer reads keeps every cl
     assert.equal(imported.unmapped, 0);
     const [topic] = imported.batches.flatMap(entry => entry.topics);
     assert.deepEqual(topic.members, batch.topics[0].members, 'all 3 digest-verified clash members');
-    assert.notEqual(topic.origin.kind, 'review');
+    assert.deepEqual(topic.origin, { kind: 'archive' }, `degraded to archive for origin ${origin}`);
     assert.equal(topic.sourceFindings, undefined);
   }
 });
@@ -192,6 +192,7 @@ test('a review topic with source findings and a broken origin keeps its members,
     assert.equal(imported.unmapped, 0);
     const [topic] = imported.batches.flatMap(entry => entry.topics);
     assert.deepEqual(topic.members, batch.topics[0].members);
+    assert.deepEqual(topic.origin, { kind: 'archive' }, `degraded to archive for origin ${origin}`);
     assert.equal(topic.sourceFindings, undefined, 'source findings are never re-homed onto a non-review topic');
   }
 });

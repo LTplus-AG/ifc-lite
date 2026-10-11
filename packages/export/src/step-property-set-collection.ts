@@ -28,8 +28,7 @@ import {
   unmodifiedSourceMembers,
 } from './step-pset-copy-on-write.js';
 import type { ExportPass, StepExportOptions } from './step-exporter.js';
-import { collectTypeQuantitySources } from './step-type-owned-quantities.js';
-import { nativeSetLine, decodeNativeSetLine } from './step-native-set-record.js';
+import { collectTypeQuantitySources, projectTypeQuantityEdits } from './step-type-owned-quantities.js';
 
 /** The mutation groupings `export()` builds before the collection phase runs. */
 export interface PropertyMutationGroups {
@@ -283,25 +282,9 @@ export function collectPropertyAndQuantitySetMutations(
     }
 
     const typeOwned = isTypeClass(pass.effective.typeOf(entityId));
-    if (typeOwned) {
-      const ownIds = new Set(getTypeOwnedHasPropertySetIds(ctx, entityId, pass.effective));
-      for (const { psetId } of relDefinesByEntity.get(entityId) ?? []) {
-        if (ownIds.has(psetId) || pass.effective.isDeleted(psetId)
-          || pass.effective.typeOf(psetId) !== 'IFCELEMENTQUANTITY') continue;
-        const native = decodeNativeSetLine(nativeSetLine(ctx, psetId, pass.sourceSchema,
-          pass.modifiedAttributes.get(psetId), pass.warnings), psetId);
-        const name = native.attributes[2];
-        if (typeof name !== 'string') throw new Error('Native relationship-attached Type quantity name is unavailable');
-        if (qsetNames.has(name)) {
-          throw new Error('Relationship-attached Type quantity edits are unsupported');
-        }
-      }
-    }
-    const allQsets = typeOwned
-      ? mutationView.getQuantitiesForEntity(entityId, id => extractTypeEntityOwnQuantities(ctx.dataStore, id, mutationView).map(set => ({
-        name: set.name, globalId: set.globalId, quantities: set.quantities.map(q => ({ name: q.name, type: q.type, value: q.value, unit: q.explicitUnit })),
-      })), true)
-      : mutationView.getQuantitiesForEntity(entityId);
+    const typeProjection = typeOwned
+      ? projectTypeQuantityEdits(pass, ctx, entityId, qsetNames, relDefinesByEntity.get(entityId) ?? []) : undefined;
+    const allQsets = typeProjection?.qsets ?? mutationView.getQuantitiesForEntity(entityId);
     let relevantQsets = allQsets.filter((qset: QuantitySet) => qsetNames.has(qset.name));
 
     const typeCopy = typeOwned
@@ -326,7 +309,7 @@ export function collectPropertyAndQuantitySetMutations(
     // Skip original quantity set entities (IfcElementQuantity).
     // Same per-entity index lookup as the property branch above.
     const rels = relDefinesByEntity.get(entityId);
-    if (rels) {
+    if (rels && !typeOwned) {
       for (const { relId, psetId: relatedPsetId } of rels) {
         const qsetName = getElementQuantityName(ctx, relatedPsetId);
         const deleted = qsetName !== null

@@ -323,7 +323,7 @@ test('#7355 complex-only native set missing GlobalId refuses its first scalar ed
   const read = readCurrentTypeQuantities(source, f.f.id, view);
   assert.equal(read.status, 'unavailable');
   assert.match(read.reason ?? '', /identity is missing/);
-  assert.throws(() => editedModelBytes(source, view), /Current type complex-only quantity definition identity is unavailable/);
+  assert.throws(() => editedModelBytes(source, view), /Native type quantity definition identity is missing or ambiguous/);
   assert.deepEqual(source.getEntity(complex)?.attributes[2], [child]);
 });
 
@@ -379,4 +379,122 @@ test('#7378 relationship-only Type quantity remains readable but refuses tracked
   assert.throws(() => editedModelBytes(source, view), /Relationship-attached Type quantity edits are unsupported/);
   assert.equal(source.getEntity(f.a.volume)?.attributes[3], 10);
   assert.equal(source.getEntity(relation)?.attributes[5], f.a.qto);
+  view.removeQuantityMutation(f.a.type, 'Qto_WallBaseQuantities', 'NetVolume');
+  assert.ok(view.getMutations().some(row => row.entityId === f.a.type && row.psetName === 'Qto_WallBaseQuantities'),
+    'Undo leaves the append-only edit journal intact');
+  const undone = readCurrentTypeQuantities(source, f.f.id, view);
+  assert.equal(undone.status, 'available');
+  assert.equal(net(undone.value?.quantities ?? []), 10);
+  const saved = await parse(editedModelBytes(source, view));
+  assert.equal(net(extractTypeQuantitiesOnDemand(saved, f.f.id)?.quantities ?? []), 10);
+  assert.deepEqual(saved.getEntity(f.a.qto)?.attributes, source.getEntity(f.a.qto)?.attributes);
+  assert.deepEqual(saved.getEntity(relation)?.attributes, source.getEntity(relation)?.attributes);
+});
+
+for (const name of [null, 123]) test(`#7378 unrelated relationship-attached quantity name ${name} does not block owned Type export`, async t => {
+  const f = await inheritedSource(t); if (!f) return;
+  const editor = new StoreEditor(f.store, f.view);
+  const atom = editor.addEntity('IfcQuantityVolume', ['UnchangedVolume', null, null, 12, null]).expressId;
+  const qto = editor.addEntity('IfcElementQuantity', [generateIfcGuid(), null, name, null, null, [`#${atom}`]]).expressId;
+  const relation = editor.addEntity('IfcRelDefinesByProperties', [generateIfcGuid(), null, null, null,
+    [`#${f.a.type}`], `#${qto}`]).expressId;
+  const source = await parse(editedModelBytes(f.store, f.view));
+  const model = useViewerStore.getState().models.get('arch'); assert.ok(model);
+  useViewerStore.setState({ models: new Map([['arch', { ...model, ifcDataStore: source }]]),
+    ifcDataStore: source, mutationViews: new Map(), storeEditors: new Map() });
+  const view = getOrCreateMutationView(useViewerStore, 'arch'); assert.ok(view);
+  view.setQuantity(f.a.type, 'Qto_WallBaseQuantities', 'NetVolume', 35, QuantityType.Volume);
+  const saved = await parse(editedModelBytes(source, view));
+  const own = extractTypeEntityOwnQuantities(saved, f.a.type);
+  assert.equal(net(own), 35);
+  for (const id of [atom, qto, relation]) assert.deepEqual(saved.getEntity(id)?.attributes, source.getEntity(id)?.attributes,
+    'unrelated native relationship/definition/quantity remains unchanged');
+});
+
+
+test('#7378 owned Type quantity edit leaves same-name relationship quantity identity untouched', async t => {
+  const f = await inheritedSource(t); if (!f) return;
+  const editor = new StoreEditor(f.store, f.view);
+  const atom = editor.addEntity('IfcQuantityVolume', ['NetVolume', null, null, 30, null]).expressId;
+  const relatedOnly = editor.addEntity('IfcQuantityVolume', ['RelationshipVolume', null, null, 30, null]).expressId;
+  const qto = editor.addEntity('IfcElementQuantity', [generateIfcGuid(), null, 'Qto_WallBaseQuantities', null, null, [`#${atom}`, `#${relatedOnly}`]]).expressId;
+  const relation = editor.addEntity('IfcRelDefinesByProperties', [generateIfcGuid(), null, null, null,
+    [`#${f.a.type}`], `#${qto}`]).expressId;
+  const source = await parse(editedModelBytes(f.store, f.view));
+  const model = useViewerStore.getState().models.get('arch'); assert.ok(model);
+  useViewerStore.setState({ models: new Map([['arch', { ...model, ifcDataStore: source }]]),
+    ifcDataStore: source, mutationViews: new Map(), storeEditors: new Map() });
+  const view = getOrCreateMutationView(useViewerStore, 'arch'); assert.ok(view);
+  view.setQuantity(f.a.type, 'Qto_WallBaseQuantities', 'NetVolume', 35, QuantityType.Volume);
+  const current = readCurrentTypeQuantities(source, f.f.id, view);
+  assert.equal(current.status, 'available');
+  assert.deepEqual(current.value?.quantities.map(set => set.quantities[0]?.value), [35, 30]);
+  const saved = await parse(editedModelBytes(source, view));
+  assert.equal(net(extractTypeEntityOwnQuantities(saved, f.a.type)), 35);
+  assert.deepEqual(extractTypeQuantitiesOnDemand(saved, f.f.id)?.quantities.map(set => set.quantities[0]?.value), [35, 30]);
+  for (const id of [atom, relatedOnly, qto, relation]) assert.deepEqual(saved.getEntity(id)?.attributes, source.getEntity(id)?.attributes);
+  view.setPositionalAttribute(relatedOnly, 3, 31);
+  assert.equal(readCurrentTypeQuantities(source, f.f.id, view).status, 'available');
+  assert.throws(() => editedModelBytes(source, view), /Relationship-attached Type quantity edits are unsupported/,
+    'source-only relationship claim proof does not qualify concurrent native metadata edits');
+  view.removePositionalMutation(relatedOnly, 3);
+  view.setQuantity(f.a.type, 'Qto_WallBaseQuantities', 'RelationshipVolume', 40, QuantityType.Volume);
+  assert.equal(readCurrentTypeQuantities(source, f.f.id, view).status, 'unavailable');
+  assert.throws(() => editedModelBytes(source, view), /Relationship-attached Type quantity edits are unsupported/);
+  view.removeQuantityMutation(f.a.type, 'Qto_WallBaseQuantities', 'RelationshipVolume');
+  view.deleteQuantitySet(f.a.type, 'Qto_WallBaseQuantities');
+  assert.equal(readCurrentTypeQuantities(source, f.f.id, view).status, 'unavailable');
+  assert.throws(() => editedModelBytes(source, view), /Relationship-attached Type quantity edits are unsupported/);
+});
+
+test('#7378 unrelated complex-only Type definition without GUID survives a numeric owned edit', async t => {
+  const f = await inheritedSource(t); if (!f) return;
+  const editor = new StoreEditor(f.store, f.view);
+  const child = editor.addEntity('IfcQuantityLength', ['Opaque child', null, null, 4, null]).expressId;
+  const complex = editor.addEntity('IfcPhysicalComplexQuantity', ['Opaque complex', null, [`#${child}`], 'Usage', null, null]).expressId;
+  const qto = editor.addEntity('IfcElementQuantity', [null, null, 'Unchanged complex quantities', null, null, [`#${complex}`]]).expressId;
+  f.view.setPositionalAttribute(f.a.type, 5, [`#${f.a.qto}`, `#${qto}`]);
+  const source = await parse(editedModelBytes(f.store, f.view));
+  const model = useViewerStore.getState().models.get('arch'); assert.ok(model);
+  useViewerStore.setState({ models: new Map([['arch', { ...model, ifcDataStore: source }]]),
+    ifcDataStore: source, mutationViews: new Map(), storeEditors: new Map() });
+  const view = getOrCreateMutationView(useViewerStore, 'arch'); assert.ok(view);
+  view.setQuantity(f.a.type, 'Qto_WallBaseQuantities', 'NetVolume', 35, QuantityType.Volume);
+  const saved = await parse(editedModelBytes(source, view));
+  assert.equal(net(extractTypeEntityOwnQuantities(saved, f.a.type)), 35);
+  assert.ok(saved.getEntity(f.a.type)?.attributes[5] instanceof Array);
+  assert.ok((saved.getEntity(f.a.type)?.attributes[5] as unknown[]).includes(qto));
+  for (const id of [child, complex, qto]) assert.deepEqual(saved.getEntity(id)?.attributes, source.getEntity(id)?.attributes);
+});
+
+
+test('#7378 dual-attached Type quantity copies owned identity and preserves the independent native relation', async t => {
+  const f = await inheritedSource(t); if (!f) return;
+  const editor = new StoreEditor(f.store, f.view);
+  const relation = editor.addEntity('IfcRelDefinesByProperties', [generateIfcGuid(), null, null, null,
+    [`#${f.a.type}`], `#${f.a.qto}`]).expressId;
+  const source = await parse(editedModelBytes(f.store, f.view));
+  const originalGuid = source.getEntity(f.a.qto)?.attributes[0]; assert.equal(typeof originalGuid, 'string');
+  const originalOwners = source.getEntity(f.a.type)?.attributes[5]; assert.ok(Array.isArray(originalOwners));
+  const model = useViewerStore.getState().models.get('arch'); assert.ok(model);
+  useViewerStore.setState({ models: new Map([['arch', { ...model, ifcDataStore: source }]]),
+    ifcDataStore: source, mutationViews: new Map(), storeEditors: new Map() });
+  const view = getOrCreateMutationView(useViewerStore, 'arch'); assert.ok(view);
+  view.setQuantity(f.a.type, 'Qto_WallBaseQuantities', 'NetVolume', 35, QuantityType.Volume);
+  const saved = await parse(editedModelBytes(source, view));
+  const owned = saved.getEntity(f.a.type)?.attributes[5]; assert.ok(Array.isArray(owned));
+  assert.ok(!owned.includes(f.a.qto), 'the old identity is no longer HasPropertySets-owned');
+  for (const id of originalOwners.filter(id => id !== f.a.qto)) assert.ok(owned.includes(id));
+  const copies = owned.map(id => typeof id === 'number' ? saved.getEntity(id) : null)
+    .filter(entity => entity?.type.toUpperCase() === 'IFCELEMENTQUANTITY' && entity.attributes[2] === 'Qto_WallBaseQuantities');
+  assert.equal(copies.length, 1);
+  const copy = copies[0]; assert.ok(copy);
+  assert.equal(typeof copy.attributes[0], 'string');
+  assert.notEqual(copy.attributes[0], originalGuid, 'the owned definition receives its actual fresh GUID');
+  const quantities = extractTypeQuantitiesOnDemand(saved, f.f.id)?.quantities ?? [];
+  assert.equal(net(quantities.filter(set => set.globalId === copy.attributes[0])), 35);
+  assert.equal(net(quantities.filter(set => set.globalId === originalGuid)), 10);
+  for (const id of [f.a.qto, f.a.volume, relation]) assert.deepEqual(saved.getEntity(id)?.attributes, source.getEntity(id)?.attributes,
+    'the independent native relationship keeps its original definition and scalar atoms');
+  assert.equal(saved.getEntity(relation)?.attributes[5], f.a.qto);
 });

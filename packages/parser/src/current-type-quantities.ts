@@ -43,7 +43,9 @@ function refIds(value: unknown, max = MAX_RELATION_REFERENCES, required = false)
 // Existing concrete views expose canonical quantity claims; partial metadata
 // providers retain their native-only contract. Export nomination is history-led.
 interface QuantityJournalView extends MetadataReadView {
-    getMutations?(): readonly { type: string; entityId: number; psetName?: string }[];
+    getMutations?(): readonly { type: string; entityId: number; psetName?: string; propName?: string }[];
+    getQuantityMutation?(entityId: number, qsetName: string, quantityName: string): unknown;
+    isQuantitySetDeleted?(entityId: number, qsetName: string): boolean;
     getQuantitiesForEntity?(entityId: number, baseProvider: (id: number) => QuantitySet[]): QuantitySet[];
 }
 
@@ -137,7 +139,10 @@ function readCurrent(store: IfcDataStore, entityId: number, view: MetadataReadVi
     let quantityReferences = 0;
     const journal = view as QuantityJournalView;
     const names = new Set(journal.getMutations?.().filter(row => row.entityId === typeId &&
-        ['CREATE_QUANTITY', 'UPDATE_QUANTITY', 'DELETE_QUANTITY', 'DELETE_QUANTITY_SET'].includes(row.type))
+        ['CREATE_QUANTITY', 'UPDATE_QUANTITY', 'DELETE_QUANTITY', 'DELETE_QUANTITY_SET'].includes(row.type) &&
+        typeof row.psetName === 'string' && (journal.getQuantityMutation === undefined
+            || journal.isQuantitySetDeleted?.(typeId, row.psetName)
+            || (typeof row.propName === 'string' && journal.getQuantityMutation(typeId, row.psetName, row.propName))))
         .map(row => row.psetName).filter((name): name is string => typeof name === 'string') ?? []);
     const readSets = (ids: number[]) => ids.flatMap(id => {
         if (view.isDeleted(id)) return [];
@@ -146,12 +151,6 @@ function readCurrent(store: IfcDataStore, entityId: number, view: MetadataReadVi
         if (record.type.toUpperCase() !== 'IFCELEMENTQUANTITY') {
             if (getInheritanceChain(record.type).includes('IfcPropertySetDefinition')) return [];
             throw new CurrentQuantityRefusal('Native type quantity definition is unsupported');
-        }
-        if (!ownSetIds.has(id) && typeof record.attributes[2] === 'string'
-            && names.has(record.attributes[2])) {
-            // Relationship-only Type sets remain readable, but the native writer
-            // does not migrate their ownership into HasPropertySets (#7378).
-            throw new CurrentQuantityRefusal('Relationship-attached Type quantity edits are unsupported');
         }
         // Admission concerns the native definition, including sets with no numeric
         // projection (complex-only quantities). An edited set still needs identity.
@@ -183,13 +182,22 @@ function readCurrent(store: IfcDataStore, entityId: number, view: MetadataReadVi
         // Physical consumers reject that member without erasing valid siblings (#7376).
         return set ? [set] : [];
     });
-    const quantities = readSets([...ownSetIds]);
+    const ownQuantities = readSets([...ownSetIds]);
+    const quantities = [...ownQuantities];
     const keys = new Set(quantities.map(setIdentityKey));
     appendSetsFromSecondSource(quantities, ownSetIds, keys, relatedDefinitions, readSets);
     if (names.size && journal.getQuantitiesForEntity) {
         const base = quantities.map(set => ({ name: set.name, globalId: set.globalId,
             quantities: set.quantities.map(q => ({ name: q.name, type: q.type, value: q.value, unit: q.explicitUnit })) }));
         const projected = journal.getQuantitiesForEntity(typeId, () => base);
+        const ownedKeys = new Set(ownQuantities.map(setIdentityKey));
+        for (const set of base) {
+            if (ownedKeys.has(setIdentityKey(set)) || !names.has(set.name)) continue;
+            const replacement = projected.find(candidate => setIdentityKey(candidate) === setIdentityKey(set));
+            if (!replacement || JSON.stringify(replacement.quantities) !== JSON.stringify(set.quantities)) {
+                throw new CurrentQuantityRefusal('Relationship-attached Type quantity edits are unsupported');
+            }
+        }
         if (quantities.some(set => names.has(set.name) && !set.globalId)) {
             throw new CurrentQuantityRefusal('Native quantity definition identity is missing');
         }
@@ -228,7 +236,8 @@ function readCurrent(store: IfcDataStore, entityId: number, view: MetadataReadVi
         });
         const replacements = new Map(updated.filter(set => set.globalId).map(set => [set.globalId, set]));
         const existingGuids = new Set(quantities.map(set => set.globalId));
-        const ordered = quantities.flatMap(set => !names.has(set.name) ? [set] : replacements.has(set.globalId) ? [replacements.get(set.globalId)!] : []);
+        const ordered = quantities.flatMap(set => !names.has(set.name) || !ownedKeys.has(setIdentityKey(set))
+            ? [set] : replacements.has(set.globalId) ? [replacements.get(set.globalId)!] : []);
         quantities.splice(0, quantities.length, ...ordered, ...updated.filter(set => !set.globalId || !existingGuids.has(set.globalId)));
     }
     const result = available(quantities.length ? { typeName: typeof type.attributes[2] === 'string' ? type.attributes[2] : type.type, typeId, quantities } : null);

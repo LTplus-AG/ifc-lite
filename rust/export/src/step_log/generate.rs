@@ -121,6 +121,9 @@ fn pset_lines(
 fn qset_lines(pass: &mut Pass<'_, '_>, host: u32, qsets: &[QSet]) -> Vec<String> {
     let mut lines = Vec::new();
     let owner = pass.owner_history_token(host);
+    // IFC2X3 quantities have no Formula attribute: four slots, matching the
+    // TypeScript `generateQuantityAtom` schema lookup (#7378).
+    let formula = if pass.schema == "IFC2X3" { "" } else { ",$" };
     for qset in qsets {
         if qset.quantities.is_empty() {
             continue;
@@ -129,7 +132,7 @@ fn qset_lines(pass: &mut Pass<'_, '_>, host: u32, qsets: &[QSet]) -> Vec<String>
         for q in &qset.quantities {
             let id = pass.allocate();
             lines.push(format!(
-                "#{id}={}('{}',$,$,{},$);",
+                "#{id}={}('{}',$,$,{}{formula});",
                 quantity_entity(q.ty),
                 escape(&q.name),
                 to_step_real(q.value)

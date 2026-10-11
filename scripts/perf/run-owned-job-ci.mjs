@@ -67,15 +67,15 @@ const positive = label => {
   const rows = planned.plans.map(plan => {
     const result = runPlan({ ...plan, onOutput: raw => record(`${label}-${paths.indexOf(plan.file)}-raw.json`, raw) }, root, label);
     record(`${label}-${paths.indexOf(plan.file)}-parsed.json`, result);
-    const expectedPass = stage === 'posix' ? 2 : plan.file.endsWith('frame-gpu-job.test.mjs') ? 4 : 5;
-    const expectedTotal = plan.file.endsWith('frame-gpu-job.test.mjs') ? 4 : 7;
+    const expectedPass = stage === 'posix' ? 2 : plan.file.endsWith('frame-gpu-job.test.mjs') ? 4 : 6;
+    const expectedTotal = plan.file.endsWith('frame-gpu-job.test.mjs') ? 4 : 8;
     assert.equal(result.kind, 'pass', 'Actual supported-domain positive must pass');
     assert.equal(result.attributed, true, 'Actual exact test file must execute');
     assert.equal(result.rawExitCode, 0); assert.equal(result.signal, null);
     assert.equal(result.failed, 0); assert.equal(result.passed, expectedPass); assert.equal(result.total, expectedTotal);
     return { file: plan.file, passed: result.passed, total: result.total };
   });
-  assert.equal(rows.reduce((sum, row) => sum + row.passed, 0), stage === 'windows' ? 9 : 2);
+  assert.equal(rows.reduce((sum, row) => sum + row.passed, 0), stage === 'windows' ? 10 : 2);
   return rows;
 };
 let primary, restored, baseline;

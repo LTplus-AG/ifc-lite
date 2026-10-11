@@ -57,6 +57,39 @@ test('#7036 actual Job protocol persists before resume and retires an orphan CPU
   }
 });
 
+// #7221: real kernel disposal may acknowledge later than ordinary requestMs.
+test('#7221 actual disposal acknowledgement retains the longer cleanup budget', { skip, timeout: 90000 }, async context => {
+  const { dir, options, observeExact } = ownedFixture(context);
+  options.cleanupMs = 20000;
+  // Keep the real Job termination and packets, but delay their delivery within
+  // its cleanup allowance. The old 15-second request wait must refuse this.
+  const supervisor = join(dir, 'frame-gpu-job-supervisor.ps1');
+  const script = readFileSync(supervisor, 'utf8');
+  writeFileSync(supervisor, script.replace("    Emit @{event='disposed';", "    Start-Sleep -Milliseconds 16000\n    Emit @{event='disposed';"));
+  let owner;
+  const controller = await launchOwnedJob({ ...options, async persistPrepared(prepared) {
+    owner = prepared;
+    writeFileSync(join(dir, 'owner.json'), JSON.stringify(prepared), { flag: 'wx' });
+  } });
+  let disposalAttempted = false;
+  try {
+    await until(() => existsSync(join(dir, 'child.json')));
+    const child = JSON.parse(readFileSync(join(dir, 'child.json'), 'utf8'));
+    disposalAttempted = true;
+    const started = Date.now();
+    await controller.dispose();
+    assert.ok(Date.now() - started >= 16000, 'real delayed acknowledgement exceeds ordinary request budget');
+    assert.ok(controller.receipts.some(row => row.event === 'disposed' && row.activeProcesses === 0));
+    assert.ok(controller.receipts.some(row => row.event === 'terminal' && row.ok === true));
+    for (const identity of [child, { pid: owner.rootPid, created: owner.rootCreated }]) {
+      assert.ok(['exited', 'notFound'].includes(observeExact(identity).state), 'exact native identity is retired');
+    }
+  } finally {
+    try { if (!disposalAttempted) await controller.dispose(); }
+    finally { writeFileSync(join(dir, 'receipt.json'), JSON.stringify({ owner, packets: controller.receipts }, null, 2)); }
+  }
+});
+
 test('#7036 failed durable Job persistence never resumes the actual suspended CPU root', { skip, timeout: 45000 }, async context => {
   const { dir, options, observeExact } = ownedFixture(context);
   let owner;

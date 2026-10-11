@@ -772,7 +772,7 @@ jobs:
     name: Windows Job native CPU controls
     needs: [changes]
     if: >-
-      github.event_name == 'pull_request' && needs.changes.outputs.windows_job == 'true' &&
+      (github.event_name == 'pull_request' || github.event_name == 'merge_group') && needs.changes.outputs.windows_job == 'true' &&
       !contains(github.event.pull_request.labels.*.name, 'revert-oracle-exempt')
     runs-on: windows-2022
     timeout-minutes: 20
@@ -793,7 +793,7 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - name: Require nine actual Windows controls, surgical inverse and restored positives
+      - name: Require ten actual Windows controls, surgical inverse and restored positives
         timeout-minutes: 15
         run: node scripts/perf/run-owned-job-ci.mjs --base origin/main --platform windows --output "${{ runner.temp }}/owned-job-windows"
       - name: Preserve native source, original/inverse/restored and cleanup receipts
@@ -809,7 +809,7 @@ jobs:
     name: Windows Job POSIX OS error controls
     needs: [changes]
     if: >-
-      github.event_name == 'pull_request' && needs.changes.outputs.windows_job == 'true' &&
+      (github.event_name == 'pull_request' || github.event_name == 'merge_group') && needs.changes.outputs.windows_job == 'true' &&
       !contains(github.event.pull_request.labels.*.name, 'revert-oracle-exempt')
     runs-on: ubuntu-latest
     timeout-minutes: 12
@@ -842,20 +842,23 @@ jobs:
     name: Changed tests observe production
     needs: [changes, revert-oracle-linux, owned-job-native, owned-job-posix]
     if: >-
-      always() && github.event_name == 'pull_request' &&
-      (needs.changes.outputs.frontend == 'true' || needs.changes.outputs.rust == 'true') &&
+      always() && (github.event_name == 'pull_request' || github.event_name == 'merge_group') &&
+      (needs.changes.outputs.frontend == 'true' || needs.changes.outputs.rust == 'true' || needs.changes.outputs.windows_job == 'true') &&
       !contains(github.event.pull_request.labels.*.name, 'revert-oracle-exempt')
     runs-on: ubuntu-latest
     timeout-minutes: 2
     steps:
       - name: Require ordinary observer and every designated native platform
         env:
+          EVENT_NAME: ${{ github.event_name }}
           LINUX_RESULT: ${{ needs.revert-oracle-linux.result }}
           NATIVE_REQUIRED: ${{ needs.changes.outputs.windows_job }}
           WINDOWS_RESULT: ${{ needs.owned-job-native.result }}
           POSIX_RESULT: ${{ needs.owned-job-posix.result }}
         run: |
-          test "$LINUX_RESULT" = success
+          if [ "$EVENT_NAME" = pull_request ]; then
+            test "$LINUX_RESULT" = success
+          fi
           if [ "$NATIVE_REQUIRED" = true ]; then
             test "$WINDOWS_RESULT" = success
             test "$POSIX_RESULT" = success

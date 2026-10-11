@@ -161,12 +161,12 @@ export async function launchOwnedJob(options: JobLaunchOptions): Promise<OwnedJo
   let sequence = 0;
   let tail: Promise<unknown> = Promise.resolve();
   let disposed = false;
-  const request = (action: string): Promise<Packet> => {
+  const request = (action: string, timeoutMs = options.requestMs): Promise<Packet> => {
     const operation = tail.then(async () => {
       if (disposed) throw Error('Job already disposed');
       const id = ++sequence;
       child.stdin.write(`${JSON.stringify({ id, action })}\n`);
-      const packet = await protocol.next(options.requestMs);
+      const packet = await protocol.next(timeoutMs);
       if (packet.id !== id || packet.jobName !== `Local\\ifclite-owned-${options.token}`) {
         throw Error('Job acknowledgement belongs to another operation');
       }
@@ -201,7 +201,7 @@ export async function launchOwnedJob(options: JobLaunchOptions): Promise<OwnedJo
       },
       async dispose() {
         try {
-        const packet = await request('dispose');
+        const packet = await request('dispose', Math.max(options.requestMs, options.cleanupMs + 1000));
         if (packet.event !== 'disposed' || packet.activeProcesses !== 0) throw Error('Owned Job active-zero proof missing');
         disposed = true;
         const terminal = await protocol.next(options.cleanupMs);

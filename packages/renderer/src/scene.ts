@@ -159,6 +159,7 @@ export class Scene {
   private meshDataMap: Map<number, MeshData[]> = new Map();         // Map expressId -> MeshData[] (for lazy buffer creation, accumulates multiple pieces)
   private boundingBoxes: Map<number, BoundingBox> = new Map();      // Map expressId -> bounding box (computed lazily)
   private texturedMeshes: TexturedMesh[] = [];                      // #961: IFC surface-textured meshes (own buffers/texture/bindGroup)
+  private texturedByMeshData = new WeakMap<MeshData, TexturedMesh>(); // placed MeshData -> the textured drawable uploaded from it
   /** #1781: GPU textures shared across meshes, keyed by `MeshTextureRef.textureId`
    *  (one `IfcImageTexture` → one upload, sampled by every face set mapping it).
    *  Refcounted: entries die when the last referencing mesh is removed / on clear(). */
@@ -555,6 +556,16 @@ export class Scene {
    */
   setQuantizedBatches(enabled: boolean): void {
     this.quantizedBatchesEnabled = enabled;
+  }
+
+  /** The draw origin of the textured drawable rendering `meshData`, or null
+   *  when it renders through a colour batch. A textured mesh never enters a
+   *  bucket: it draws its RAW positions against its own per-element origin,
+   *  unquantized, so a highlight/hover copy must use that frame — the batch
+   *  frame lands a few f32 ulps off and z-fights the texture. */
+  getTexturedDrawOrigin(meshData: MeshData): readonly [number, number, number] | null {
+    const tm = this.texturedByMeshData.get(this.derivedMeshProvenance.placedSourceFor(meshData, this.modelTranslations));
+    return tm && this.texturedMeshes.includes(tm) ? tm.origin : null;
   }
 
   /** Whether THIS mesh's source batch renders quantized — drives the hydrated-mesh
@@ -3490,7 +3501,7 @@ export class Scene {
       const bindGroup = pipeline.createTexturedBindGroup(uniformBuffer, texture.createView(), sampler);
 
       const box = worldAabbFromPieces([meshData]);
-      this.texturedMeshes.push(this.modelTranslations.registerDrawable({
+      const drawable: TexturedMesh = this.modelTranslations.registerDrawable({
         expressId: meshData.expressId, modelIndex: meshData.modelIndex,
         bounds: box ? { min: [box.min.x, box.min.y, box.min.z], max: [box.max.x, box.max.y, box.max.z] } : undefined,
         vertexBuffer,
@@ -3508,7 +3519,9 @@ export class Scene {
           ? [meshData.origin[0], meshData.origin[1], meshData.origin[2]]
           : [0, 0, 0],
         ...(sharedTextureKey !== undefined ? { sharedTextureKey } : {}),
-      }, meshData.modelIndex ?? 0));
+      }, meshData.modelIndex ?? 0);
+      this.texturedMeshes.push(drawable);
+      this.texturedByMeshData.set(this.derivedMeshProvenance.placedSourceFor(meshData, this.modelTranslations), drawable);
     } catch (error) {
       vertexBuffer?.destroy();
       indexBuffer?.destroy();

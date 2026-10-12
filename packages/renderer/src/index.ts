@@ -1370,6 +1370,11 @@ export class Renderer {
 
     /** The source batch's frame for an individual copy of `meshData` (see individual-mesh-upload.ts). */
     private individualMeshFrame(meshData: MeshData): IndividualMeshFrame {
+        // A textured piece draws raw positions against its own origin, never
+        // quantized; relativizing against that origin is a +0 fold, so the
+        // copy stays bit-coincident with the texture instead of z-fighting it.
+        const texturedOrigin = this.scene.getTexturedDrawOrigin(meshData);
+        if (texturedOrigin) return { sharedOrigin: texturedOrigin, quantized: false };
         return { sharedOrigin: this.scene.getSharedFrameOrigin(meshData.modelIndex, meshData), quantized: this.scene.isMeshQuantized(meshData) };
     }
 

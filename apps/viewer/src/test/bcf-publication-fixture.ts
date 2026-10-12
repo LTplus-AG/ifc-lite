@@ -28,7 +28,7 @@ export async function connectPeer(t: TestContext, options: Parameters<typeof sta
   clearBcfServerConfig();
   const server = await startLocalBcfServer(options);
   t.after(async () => { clearBcfServerConfig(); await server.close(); });
-  const config = await signInWithToken(server.baseUrl, LOCAL_BCF_TOKEN);
+  const config = await signInWithToken(server.baseUrl, options.token ?? LOCAL_BCF_TOKEN);
   const connection: PublicationConnection = { client: await createConnectedClient(), serverUrl: config.serverUrl, userId: config.userId };
   return { ...server, connection, target: { serverUrl: config.serverUrl, projectId: LOCAL_BCF_PROJECT, projectName: 'Local coordination', userId: config.userId } };
 }

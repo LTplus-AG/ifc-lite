@@ -71,7 +71,7 @@ function topicFields(value: unknown): Record<string, unknown> | undefined {
   return value;
 }
 
-export async function startLocalBcfServer(options: { token?: string; echoWriteToken?: boolean; afterWriteStatus?: 303 | 409 | 500 } = {}): Promise<{
+export async function startLocalBcfServer(options: { token?: string; echoWriteToken?: boolean; afterWriteStatus?: 303 | 409 | 500; guidPrefix?: string } = {}): Promise<{
   baseUrl: string;
   state: LocalBcfState;
   close: () => Promise<void>;
@@ -80,6 +80,12 @@ export async function startLocalBcfServer(options: { token?: string; echoWriteTo
     loseNextWriteResponse: false, loseResponsesOfWrites: new Set(), acceptedWrites: 0, receivedWrites: 0, receivedWriteAttempts: 0 };
   let baseUrl = '';
   const token = options.token ?? LOCAL_BCF_TOKEN;
+  if (options.guidPrefix !== undefined && !/^[0-9a-f]{4}$/.test(options.guidPrefix)) {
+    throw new Error('Controlled GUID prefix needs four hexadecimal characters');
+  }
+  let guidOrdinal = 0;
+  const newGuid = () => options.guidPrefix === undefined ? randomUUID()
+    : `${options.guidPrefix}0000-0000-4000-8000-${(++guidOrdinal).toString(16).padStart(12, '0')}`;
   const commit = (response: ServerResponse, value: unknown, status = 201): void => {
     state.acceptedWrites += 1;
     if (state.loseNextWriteResponse || state.loseResponsesOfWrites.has(state.acceptedWrites)) {
@@ -139,7 +145,7 @@ export async function startLocalBcfServer(options: { token?: string; echoWriteTo
       if (method === 'POST') {
         const fields = topicFields(await body(request));
         if (!fields) { json(response, { message: 'Invalid topic fields or project vocabulary' }, 400); return; }
-        const topic: BcfTopicDto = { ...fields, guid: randomUUID(), title: String(fields.title),
+        const topic: BcfTopicDto = { ...fields, guid: newGuid(), title: String(fields.title),
           creation_date: now(), creation_author: LOCAL_BCF_USER, modified_date: now(),
           authorization: { topic_actions: ['update', 'createComment', 'createViewpoint'] } };
         state.topics.set(topic.guid, { topic, comments: [], viewpoints: [] });
@@ -164,7 +170,7 @@ export async function startLocalBcfServer(options: { token?: string; echoWriteTo
         if (!record(value) || typeof value.comment !== 'string' || !value.comment.trim()) {
           json(response, { message: 'Comment text required' }, 400); return;
         }
-        const comment: BcfCommentDto = { guid: randomUUID(), comment: value.comment, date: now(),
+        const comment: BcfCommentDto = { guid: newGuid(), comment: value.comment, date: now(),
           author: LOCAL_BCF_USER, topic_guid: stored.topic.guid,
           viewpoint_guid: typeof value.viewpoint_guid === 'string' ? value.viewpoint_guid : undefined };
         stored.comments.push(comment); commit(response, comment); return;

@@ -453,3 +453,9 @@ remote response bodies, detail URLs or causes. Local preflight diagnostics and
 publication gateway refusal/recovery text are retained after actual bearer
 redaction. An actual non-2xx redirect response remains uncertain even when the
 HTTP client reports it as an API error; it never authorizes an automatic retry.
+
+BCF write receipts keep the validated primary `guid` value and its fixed protocol
+key unchanged. If the server returns a GUID containing the actual bearer, the
+write reports an unknown outcome before owned receipt settlement or output;
+there is no automatic retry. DTO data and dynamic keys remain redacted. A short
+bearer matching part of the fixed protocol field name does not rename that key.

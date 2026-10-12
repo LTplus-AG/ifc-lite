@@ -86,8 +86,13 @@ mutation approval remain native host responsibilities. See the
 ## BCF write response boundary
 
 Both create operations enrol the actual resolved bearer, including short literal
-and Player values. Successful DTOs and outward diagnostic messages redact raw
-and JSON-escaped bearer occurrences. Gateway errors preserve the host's refusal
+and Player values. Successful DTO data, dynamic keys and outward diagnostics
+redact raw and JSON-escaped bearer occurrences. The primary `guid` is validated
+before an owned gateway saves the receipt and before any returned receipt is
+emitted. A credential-bearing GUID leaves the retained server effect uncertain;
+it is never silently renamed or retried. Clean GUID values and the fixed `guid`
+protocol key stay exact, even when a short bearer equals part of that key.
+A fixed protocol field name is not server-echoed credential data. Gateway errors preserve the host's refusal
 or recovery message as a plain `Error`, without its original class or cause.
 Direct sends use dispatch provenance: a preflight denial is definite; a refused
 redirect, HTTP 409, HTTP 5xx or missing response remains uncertain and never retries.

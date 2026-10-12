@@ -12,7 +12,7 @@ import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import { inspect } from 'node:util';
 import { BcfApiClient, BcfApiError, type BcfTopicWriteDto } from '@ifc-lite/bcf-api';
-import { BROWSER_FEATURES, createStandardRegistry, type BcfWriteIntent, type FlowHost } from '@ifc-lite/flow-nodes';
+import { BROWSER_FEATURES, createStandardRegistry, type BcfWriteIntent, type BcfWriteGateway, type FlowHost } from '@ifc-lite/flow-nodes';
 import { runFlow, type FlowDocument } from '@ifc-lite/flow';
 import { parseCapabilities } from '@ifc-lite/extensions';
 import { createBimContext } from '@ifc-lite/sdk';
@@ -215,3 +215,84 @@ test('#7374 a registered browser BCF node journals preflight denial as failed an
   assert.equal(settled?.entries[1].state, 'done');
   assert.equal(settled?.entries[1].receipt?.remoteGuid, [...peer.state.topics.keys()][0]);
 });
+
+for (const kind of ['browser', 'own-client'] as const) {
+  for (const source of ['literal', 'Player'] as const) {
+    for (const credentialGuid of [true, false]) {
+      test(`#7476 ${kind} gateway preserves ${source} identifier semantics (credential GUID: ${credentialGuid})`, async t => {
+        const token = 'beef';
+        const peer = await connectPeer(t, { token, guidPrefix: credentialGuid ? token : 'cafe' });
+        const hostname = `${kind}-${source.toLowerCase()}-${credentialGuid ? 'blocked' : 'clean'}.bcf-peer.test`;
+        const baseUrl = `https://${hostname}/bcf`;
+        const parsed = parseCapabilities([`network.fetch:${hostname}`]);
+        assert.ok(parsed.ok);
+        // An actual third-party client-backed gateway may not call the supplied send.
+        // Exercise its real authenticated HTTP response, not an injected receipt DTO.
+        class OwnClientGateway extends BcfApiClient implements BcfWriteGateway {
+          write<T extends { guid: string }>(intent: BcfWriteIntent, _send: () => Promise<T>): Promise<T> {
+            assert.equal(intent.baseUrl, baseUrl);
+            const route = `${peer.baseUrl}/2.1/projects/${LOCAL_BCF_PROJECT}/topics`
+              + (intent.operation === 'createComment' ? `/${intent.topicGuid}/comments` : '');
+            return this.requestJson<T>(route, { method: 'POST', body: intent.payload });
+          }
+        }
+        const gateway = kind === 'browser' ? createViewerBcfWriteGateway()
+          : new OwnClientGateway({ baseUrl: peer.baseUrl, getAccessToken: () => token });
+        const host: FlowHost = {
+          bim: createBimContext({ backend: new LocalBackend(useViewerStore) }),
+          grants: parsed.value, networkGrants: parsed.value, bcfWrites: gateway,
+          networkTransport: (url, init) => {
+            assert.equal(url.origin, `https://${hostname}`);
+            return fetch(peer.baseUrl + url.pathname.replace(/^\/bcf/, '') + url.search, init);
+          },
+        };
+        const doc: FlowDocument = { flowVersion: 1, id: 'receipt-contract', name: 'Receipt contract',
+          capabilities: [`network.fetch:${hostname}`],
+          inputs: source === 'Player' ? [{ nodeId: 'write', param: 'token', label: 'BCF token', kind: 'scalar' }] : [],
+          nodes: [{ id: 'write', type: 'bcf.createTopic', params: {
+            baseUrl, projectId: LOCAL_BCF_PROJECT, token: source === 'literal' ? token : 'unused-default',
+            title: 'Clean topic', status: 'Open',
+          } }, { id: 'comment', type: 'bcf.addComment', params: {
+            baseUrl, projectId: LOCAL_BCF_PROJECT, token, comment: 'Clean relation',
+          } }],
+          edges: [{ from: ['write', 'guids'], to: ['comment', 'topicGuid'] }],
+          outputs: [{ nodeId: 'write', port: 'guids', label: 'Topic keys' },
+            { nodeId: 'comment', port: 'created', label: 'Comment' }],
+        };
+        const options = { host, registry: createStandardRegistry(), features: BROWSER_FEATURES,
+          ...(source === 'Player' ? { inputs: { 'write.token': token } } : {}) };
+        const result = await runFlow(doc, options);
+        const expectedWrites = credentialGuid ? 1 : 2;
+        assert.equal(peer.state.acceptedWrites, expectedWrites);
+        assert.equal(peer.state.receivedWrites, expectedWrites);
+        assert.equal(peer.state.receivedWriteAttempts, expectedWrites, 'no malformed downstream POST reached the server');
+        assert.equal(peer.state.topics.size, 1);
+        const retained = [...peer.state.topics.values()][0];
+        assert.ok(retained.topic.guid.startsWith(credentialGuid ? token : 'cafe'));
+        assert.equal(retained.comments.length, credentialGuid ? 0 : 1);
+        assert.equal(inspect(result, { depth: null }).includes(token), false, 'structural GUIDs are never emitted with a substituted bearer');
+        assert.equal(result.ok, !credentialGuid);
+        const record = (await readPublication(flowPublicationId({ serverUrl: baseUrl, projectId: LOCAL_BCF_PROJECT })))?.record;
+        if (credentialGuid) {
+          assert.match(result.reports.find(report => report.nodeId === 'write')?.error ?? '', /outcome.*unknown/);
+          if (kind === 'browser') {
+            assert.equal(record?.entries.length, 1);
+            assert.equal(record?.entries[0].state, 'uncertain');
+            assert.equal(record?.entries[0].receipt, undefined, 'no altered or credential-bearing receipt is saved');
+            assert.equal(record?.entries[0].failure?.message.includes(token), false);
+            assert.equal((await runFlow(doc, options)).ok, false);
+            assert.equal(peer.state.receivedWriteAttempts, 1, 'owned unresolved intent prevents another send');
+          } else assert.equal(record, undefined, 'independent gateway has no browser journal');
+        } else {
+          assert.equal(retained.comments[0].topic_guid, retained.topic.guid);
+          assert.deepEqual(result.outputs.get('write')?.get('guids'), { kind: 'list', items: [retained.topic.guid] },
+            'the exact clean server identifier reaches downstream output');
+          if (kind === 'browser') {
+            assert.equal(record?.entries[0].receipt?.remoteGuid, retained.topic.guid);
+            assert.equal(record?.entries[1].receipt?.remoteGuid, retained.comments[0].guid);
+          }
+        }
+      });
+    }
+  }
+}

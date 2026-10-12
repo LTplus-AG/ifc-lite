@@ -19,7 +19,7 @@ const model = resolve(here, '../../../../apps/viewer/public/samples/hello-wall.i
 const cleanup: Array<() => Promise<void>> = [];
 afterEach(async () => { for (const dispose of cleanup.splice(0).reverse()) await dispose(); });
 
-async function setup(options: { token?: string; echoWriteToken?: boolean } = {}) {
+async function setup(options: Parameters<typeof startLocalBcfServer>[0] = {}) {
   const directory = await mkdtemp(join(tmpdir(), 'ifc-cli-bcf-'));
   cleanup.push(() => rm(directory, { recursive: true, force: true }));
   const peer = await startLocalBcfServer(options);
@@ -81,4 +81,42 @@ it.each([['bcf.createTopic', 'literal'], ['bcf.createTopic', 'Player'],
     expect(result.stdout + result.stderr).not.toContain(token);
     expect(result.stdout + result.stderr).not.toContain(JSON.stringify(token).slice(1, -1));
     expect(guid).toBeTruthy();
+  }, 60_000);
+
+// #7476: redacting an identifier would silently target a different server object.
+it.each([['literal', true, 'beef'], ['Player', true, 'beef'], ['literal', false, 'beef'],
+  ['Player', false, 'beef'], ['literal', false, 'id'], ['Player', false, 'id']] as const)(
+  'direct Flow %s credentials preserve identifier semantics (credential GUID: %s, bearer: %s)', async (source, credentialGuid, token) => {
+    const { peer, graph, document, run } = await setup({ token, guidPrefix: credentialGuid ? token : 'cafe' });
+    const template = document('bcf.createTopic', { title: 'Clean topic', token: source === 'literal' ? token : 'unused-default' });
+    const doc: FlowDocument = { ...template,
+      inputs: source === 'Player' ? [{ nodeId: 'write', param: 'token', label: 'BCF token', kind: 'scalar' }] : [],
+      nodes: [...template.nodes, { id: 'comment', type: 'bcf.addComment', params: {
+        baseUrl: 'https://bcf-peer.test/bcf', projectId: LOCAL_BCF_PROJECT, token, comment: 'Clean relation',
+      } }],
+      edges: [{ from: ['write', 'guids'], to: ['comment', 'topicGuid'] }],
+      outputs: [{ nodeId: 'write', port: 'guids', label: 'Topic keys' },
+        { nodeId: 'comment', port: 'created', label: 'Comment' }],
+    };
+    await writeFile(graph, JSON.stringify(doc));
+    const result = await run(['run', graph, model, '--no-tracking', '--json',
+      ...(source === 'Player' ? ['--input', `write.token=${token}`] : [])]);
+    const expectedWrites = credentialGuid ? 1 : 2;
+    expect(peer.state.acceptedWrites).toBe(expectedWrites);
+    expect(peer.state.receivedWrites).toBe(expectedWrites);
+    expect(peer.state.receivedWriteAttempts).toBe(expectedWrites);
+    expect(peer.state.topics.size).toBe(1);
+    const retained = [...peer.state.topics.values()][0];
+    expect(retained.topic.guid.startsWith(credentialGuid ? token : 'cafe')).toBe(true);
+    expect(retained.comments.length).toBe(credentialGuid ? 0 : 1);
+    // A fixed protocol key such as guid contains id; verify actual identifier values instead.
+    if (token !== 'id') expect(result.stdout + result.stderr).not.toContain(token);
+    if (credentialGuid) {
+      expect(result.code).toBe(1);
+      expect(result.stdout + result.stderr).toContain('outcome unknown');
+    } else {
+      expect(result.code, result.stderr).toBe(0);
+      expect(retained.comments[0].topic_guid).toBe(retained.topic.guid);
+      expect(result.stdout).toContain(retained.topic.guid);
+    }
   }, 60_000);

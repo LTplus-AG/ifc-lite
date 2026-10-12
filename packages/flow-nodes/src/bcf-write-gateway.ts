@@ -52,18 +52,38 @@ export async function sendBcfWrite<T extends { guid: string }>(
 ): Promise<T> {
   const gateway = ctx.host.bcfWrites;
   // Enrol the actual resolved bearer, including short literal/Player values.
-  // Redact only after the gateway has validated and saved the original receipt.
+  // Structural identifiers cannot be redacted without changing the object they name.
   const redaction = new Map(secrets.filter(secret => secret.length > 0).flatMap(secret =>
     [...new Set([secret, JSON.stringify(secret).slice(1, -1)])].map(value => [value, '[REDACTED]'] as const)));
+  const checkedReceipt = (result: T): T => {
+    if (!result || typeof result.guid !== 'string' || result.guid.length === 0) {
+      throw new Error('BCF server receipt has no valid identifier; the server outcome is unknown.');
+    }
+    if ([...redaction.keys()].some(secret => result.guid.includes(secret))) {
+      throw new Error('BCF server receipt contains credential text; the server outcome is unknown.');
+    }
+    return result;
+  };
+  // Check before an owned gateway settles the real send, and also when another
+  // gateway returns its own receipt without forwarding this callback.
+  const checkedSend = async (): Promise<T> => checkedReceipt(await send());
+  const redactedReceipt = (result: T): T => {
+    const guid = checkedReceipt(result).guid;
+    const fields = { ...result };
+    Reflect.deleteProperty(fields, 'guid');
+    // `guid` is a fixed protocol key, not echoed credential data. Even a bearer
+    // equal to this key must leave the validated identifier usable downstream.
+    return Object.assign(redactDeep(fields, redaction), { guid });
+  };
   if (gateway) {
-    try { return redactDeep(await gateway.write(intent, send, secrets), redaction); }
+    try { return redactedReceipt(await gateway.write(intent, checkedSend, secrets)); }
     catch (error) {
       // Keep host-owned recovery/refusal semantics; never propagate an opaque raw cause.
       throw new Error(redactText(error instanceof Error ? error.message : String(error), redaction));
     }
   }
   try {
-    return redactDeep(await send(), redaction);
+    return redactedReceipt(await checkedSend());
   } catch (err) {
     // Use the same dispatch/status provenance as both durable publication hosts.
     const classified = classifyWriteError(err, new Date().toISOString());

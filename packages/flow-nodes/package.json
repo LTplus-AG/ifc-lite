@@ -15,6 +15,11 @@
       "types": "./dist/ai.d.ts",
       "import": "./dist/ai.js",
       "default": "./dist/ai.js"
+    },
+    "./bcf-publication": {
+      "types": "./dist/bcf-publication.d.ts",
+      "import": "./dist/bcf-publication.js",
+      "default": "./dist/bcf-publication.js"
     }
   },
   "scripts": {

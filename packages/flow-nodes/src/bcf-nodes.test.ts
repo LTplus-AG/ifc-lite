@@ -239,7 +239,7 @@ describe('bcf.createTopic', () => {
     );
     const r = await run(d, server.transport);
     expect(r.ok).toBe(false);
-    expect(errorOf(r, 'create')).toMatch(/failed after creating 1 topic\(s\) \[NEW-1\]: quota exceeded/);
+    expect(errorOf(r, 'create')).toMatch(/failed after creating 1 topic\(s\) \[NEW-1\]: bcf\.createTopic: request refused \(rejected, HTTP 400\)/);
   });
 });
 

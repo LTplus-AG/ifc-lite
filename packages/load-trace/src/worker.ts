@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { perfCounters, type PerfCounterRegistry } from './counters.js';
+import { accountWorkerOutput, type MessageEndpoint } from './messages.js';
 import type { LoadTrace } from './load-trace.js';
 import type { TraceAttrs, WorkerSpan, WorkerTracePayload } from './types.js';
 
@@ -83,6 +84,9 @@ export interface WorkerTraceHostOptions {
    * work (wasm copies, ...) reaches the load even for untraced message types.
    */
   counters?: PerfCounterRegistry;
+  /** Worker global, resolved lazily after tracing is enabled. Counts actual
+   * outbound transfer lists as msg.worker.out.* in this thread's counters. */
+  endpoint?: () => MessageEndpoint;
 }
 
 /**
@@ -107,6 +111,7 @@ export function createWorkerTraceHost(options: WorkerTraceHostOptions): WorkerTr
   const seenOnce = new Set<string>();
   const once = new Set(options.onceTypes ?? []);
   const counters = options.counters ?? perfCounters;
+  let countedEndpoint: MessageEndpoint | undefined;
   const flush = (rec: WorkerSpanRecorder) => {
     const payload = rec.drain();
     const moved = counters.drain();
@@ -122,6 +127,11 @@ export function createWorkerTraceHost(options: WorkerTraceHostOptions): WorkerTr
       seenOnce.clear(); // a pooled worker (#7036) serves several loads: each gets its first-chunk span
       counters.enable();
       counters.drain(); // only what happens from here on belongs to a load
+      const endpoint = options.endpoint?.();
+      if (endpoint && endpoint !== countedEndpoint) {
+        accountWorkerOutput(endpoint, counters, () => { if (recorder) flush(recorder); });
+        countedEndpoint = endpoint;
+      }
       return;
     }
     const rec = recorder;

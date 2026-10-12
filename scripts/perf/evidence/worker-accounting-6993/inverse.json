@@ -1,0 +1,38 @@
+{
+  "beforeExit": 0,
+  "inverseExit": 1,
+  "restoredExit": 0,
+  "base": "d656e9ab00d4d89e04846aa4b44ef9ccaea6a44b",
+  "owners": [
+    {
+      "path": "packages/load-trace/src/messages.ts",
+      "sha256": "5a440024cd7a6705ba735206347e474bc792502285b7f175f0a4d602a060787f",
+      "restored": true
+    },
+    {
+      "path": "packages/load-trace/src/worker.ts",
+      "sha256": "5145232c062897fc467a167e467b6aa750c1ddf7966f2c8f74aadaae3a883446",
+      "restored": true
+    },
+    {
+      "path": "packages/load-trace/src/worker-phases.ts",
+      "sha256": "1f044e4b0294528428b535846a36b7b24819601fb24e0250dcddb64782d621f8",
+      "restored": true
+    },
+    {
+      "path": "packages/geometry/src/worker-trace.ts",
+      "sha256": "3e5b57b0da4be41c72a0143b2a1616c08d5f9e9d12d3e6055d00c4bc382f0179",
+      "restored": true
+    },
+    {
+      "path": "packages/parser/src/parser-worker-trace.ts",
+      "sha256": "6d7a01e3b7a47f157ff971d21c714d638cf203f3e1559c035637e3c4c38454f2",
+      "restored": true
+    },
+    {
+      "path": "packages/parser/src/parser.worker.ts",
+      "sha256": "695888ec5a9372464a05859cac49c26812bd21fdd27283d132309862cec73e42",
+      "restored": true
+    }
+  ]
+}

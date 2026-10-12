@@ -103,3 +103,8 @@ low-level transport primitive for controlled test servers and has no host grant
 check.
 
 The shared `@ifc-lite/sandbox/network` request core defaults to HTTPS. Trusted host integrations can explicitly set `NetworkRequestInit.loopbackHttpOrigin` for one exact literal HTTP loopback origin, including its port, and must also supply its exact `network.fetch` host grant. `loopbackHttpOrigin(endpoint)` recognizes eligible raw endpoints; `createLoopbackHostGrant(host)` constructs only a literal `localhost`, `127.0.0.1`, or `[::1]` grant. Generic sandbox scripts and capability parsing receive no automatic HTTP authorization. Redirects and response/cancellation limits remain unchanged.
+
+`NetworkDeniedError.dispatched` distinguishes a proved preflight refusal
+(`false`) from a redirect received after dispatch (`true`). An omitted value
+is unqualified. A POST followed by a refused redirect may already have
+committed; durable write hosts must keep that outcome uncertain.

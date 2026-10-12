@@ -14,19 +14,20 @@ it('sends the scan span before the actual prepass completion event (#6993)', asy
   await traceGeometryWorkerMessage({ type: 'load-trace:enable', thread: 'prepass' }, async () => {});
   await traceGeometryWorkerMessage({ type: 'prepass-streaming' }, async () => {
     postPrepassEvent({ type: 'progress' });
-    expect(posted).toEqual([{ type: 'prepass-stream', event: { type: 'progress' } }]);
+    expect(posted.filter((m) => !isTraceSpansMessage(m))).toEqual([{ type: 'prepass-stream', event: { type: 'progress' } }]);
     postPrepassEvent({ type: 'complete' });
     // The main thread terminates the worker on this last message. Anything
     // after it is lost, even if this handler eventually reaches its finally.
-    expect(posted).toHaveLength(3);
-    const spanMessage = posted[1];
+    const spanMessage = posted.filter(isTraceSpansMessage).find((m) => m.payload.spans.length > 0);
     expect(isTraceSpansMessage(spanMessage)).toBe(true);
     if (!isTraceSpansMessage(spanMessage)) throw new Error('Missing completed prepass trace');
     expect(spanMessage.payload.thread).toBe('prepass');
     expect(spanMessage.payload.spans).toHaveLength(1);
     expect(spanMessage.payload.spans[0]).toMatchObject({ name: 'prepass.scan' });
     expect(Number.isFinite(spanMessage.payload.spans[0].end)).toBe(true);
-    expect(posted[2]).toEqual({ type: 'prepass-stream', event: { type: 'complete' } });
+    expect(posted.at(-1)).toEqual({ type: 'prepass-stream', event: { type: 'complete' } });
+    const counts = posted.filter(isTraceSpansMessage).map((m) => m.payload.counters?.['msg.worker.out.count'] ?? 0);
+    expect(counts.reduce((sum, n) => sum + n, 0)).toBe(2);
   });
-  expect(posted).toHaveLength(3);
+  expect(posted.filter((m) => !isTraceSpansMessage(m))).toHaveLength(2);
 });

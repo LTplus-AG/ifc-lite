@@ -26,6 +26,7 @@ export const traceGeometryWorkerMessage = createWorkerTraceHost({
   // Only the first chunk: one span per slice would cost a message per batch.
   onceTypes: ['stream-chunk'],
   post: (message) => (self as unknown as Worker).postMessage(message),
+  endpoint: () => self as unknown as Worker,
 });
 
 /**

@@ -16,7 +16,10 @@ import { createWorkerPhaseTrace, type TraceAttrs, type WorkerPhaseTrace } from '
  * phase, `parser.spatialReady.serialize` and `parser.transport.serialize`.
  */
 export function createParserWorkerTrace(): WorkerPhaseTrace {
-  return createWorkerPhaseTrace({ post: (message) => (self as unknown as Worker).postMessage(message) });
+  return createWorkerPhaseTrace({
+    post: (message) => (self as unknown as Worker).postMessage(message),
+    endpoint: () => self as unknown as Worker,
+  });
 }
 
 /** `parseColumnar` progress phase -> span name (`building entities` -> `columnar.building-entities`); `complete` ends the last one. */

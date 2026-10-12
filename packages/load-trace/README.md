@@ -49,6 +49,7 @@ import { createWorkerTraceHost } from '@ifc-lite/load-trace';
 const traced = createWorkerTraceHost({
   spanNames: { 'scan-shard': 'shard.scan' },
   post: (message) => self.postMessage(message),
+  endpoint: () => self, // sender-side transfer accounting, enabled with tracing
 });
 self.onmessage = (e) => { void traced(e.data, async () => { /* handle e.data */ }); };
 ```
@@ -114,6 +115,15 @@ perfTally('render.mergeGeometry', vertices, 'vertices');              // render.
   tracing and posts its increments after every handler; `host.flush()` posts
   them early when the main thread is about to terminate the worker. Pass the
   completed span name when its handler has not yet returned.
+- Both worker trace factories accept `endpoint: () => self` to count the
+  worker's outgoing messages as `msg.worker.out.*` in its per-thread
+  `workerCounters`. Transfer bytes come from the actual transfer list before
+  buffers detach; clone bytes remain an estimate of structured-clone work.
+  Counter increments are published before each data message, including the
+  terminal message. Trace-control messages are excluded. Phase traces also
+  drain WASM and copy counters on `flush()`; parser scans use the shared
+  typed-array argument meter. An entity-index handoff performs no parser
+  WASM scan and therefore records no parser WASM ingress.
 - `startFrameMonitor` observes `long-animation-frame` and `longtask`
   (feature-detected). `snapshot().mainThread` sums each type over the load
   window and attributes LoAF blocking time to the innermost main-thread span

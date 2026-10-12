@@ -26,6 +26,7 @@ import type { ParserMemorySnapshot } from './data-store-transport.js';
 import { WorkerIndexPublisher, type WorkerStorePayload } from './worker-index-publication.js';
 import { takeWasmPanicStash } from './wasm-panic-forward.js';
 import { createLogger } from '@ifc-lite/data';
+import { meterTypedArrayArgs } from '@ifc-lite/load-trace';
 import { columnarPhaseSpan, createParserWorkerTrace, finishParseTrace } from './parser-worker-trace.js';
 
 /** Input message: pass the SAB-backed source bytes and an opaque request id. */
@@ -299,7 +300,8 @@ self.onmessage = async (event: MessageEvent<ParserInbound>) => {
     // pre-scanned index and never touches the (uncompiled) wasm scanner. If the
     // index were somehow empty, the scanner falls through to the JS tokeniser.
     const wasmInit = wasmApiPromise;
-    const wasmApi = wasmInit ? await trace.span('parser.wasmInit', () => wasmInit) : undefined;
+    const scanner = wasmInit ? await trace.span('parser.wasmInit', () => wasmInit) : undefined;
+    const wasmApi = scanner ? meterTypedArrayArgs(scanner, 'wasm') : undefined;
     const parser = new IfcParser();
     const indexPublisher = new WorkerIndexPublisher(data.indexTransport === 'packed-index-v1');
     let publishedContentKey: string | null | undefined;

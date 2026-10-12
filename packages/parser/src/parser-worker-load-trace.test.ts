@@ -80,6 +80,17 @@ describe('parser.worker.ts load-trace spans (#6979)', () => {
     if (originalPostMessage === undefined) delete g.postMessage; else g.postMessage = originalPostMessage;
   });
 
+  it('#7036 an entity-index handoff completes while shared compilation never resolves', async () => {
+    post({ type: 'parse', id: 'pending-module', source: sharedSource(), waitForEntityIndex: true, waitForWasmModule: true });
+    post(entityIndex());
+    await settle();
+    expect(posted.map(typeOf)).not.toContain('error');
+    const complete = posted.find(message => typeOf(message) === 'complete') as { id: string; payload: WorkerStorePayload };
+    expect(complete.id).toBe('pending-module');
+    expect(complete.payload.entityCount).toBe(2);
+    // No module control message is delivered: successful metadata publication is the behavioral oracle.
+  }, 30_000);
+
   it('posts its phase spans ahead of `complete` once enabled', async () => {
     const trace = createLoadTracer({ enabled: true, sink: null }).startLoad('m');
     enableWorkerTrace({ postMessage: post }, trace, 'parser');

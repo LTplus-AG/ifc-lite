@@ -176,7 +176,9 @@ callback unwinds and frees the model API, source, indexes and pre-pass cache.
 Measured initial and reset heaps gate idle admission; failure, abandonment,
 unknown/grown heaps, hidden documents and memory pressure terminate workers.
 Pending compile/startup requests capture a generation so a pressure or idle
-drain retires late speculative starts. The [retained prototype correctness controls](https://github.com/LTplus-AG/ifc-lite/blob/957963d1c53c514dbe21c7abe12042edbeefb762/scripts/perf/evidence/worker-pool-reuse-7036/README.md)
+drain retires late speculative starts. The parser joins an existing compiled
+module asynchronously without starting an unnecessary acquisition; index
+handoff does not wait for it. The [retained prototype correctness controls](https://github.com/LTplus-AG/ifc-lite/blob/957963d1c53c514dbe21c7abe12042edbeefb762/scripts/perf/evidence/worker-pool-reuse-7036/README.md)
 qualify their recorded historical source only. This revived source still needs
 its own functional, rendered-viewer, real-GPU A/B and resident-memory acceptance.
 No performance win or rollout is admitted from booked memory or unit controls.

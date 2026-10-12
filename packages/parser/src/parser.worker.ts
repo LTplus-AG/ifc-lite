@@ -16,7 +16,8 @@
  */
 
 import { readPrepassFingerprint } from './prepass-source-fingerprint.js';
-import init, { IfcAPI } from '@ifc-lite/wasm';
+import { ParserWorkerEngineModule, type ParserWorkerEngineMessage } from './parser-worker-engine-module.js';
+import init, { initSync, IfcAPI } from '@ifc-lite/wasm';
 import { initWasmWithRetry } from './wasm-init-retry.js';
 import { IfcParser } from './index.js';
 import { extractGeoreferencingOnDemand } from './on-demand-georeferencing.js';
@@ -28,9 +29,10 @@ import { takeWasmPanicStash } from './wasm-panic-forward.js';
 import { createLogger } from '@ifc-lite/data';
 import { columnarPhaseSpan, createParserWorkerTrace, finishParseTrace } from './parser-worker-trace.js';
 
-/** Input message: pass the SAB-backed source bytes and an opaque request id. */
 export interface ParserWorkerInputMessage {
   type: 'parse';
+  wasmModule?: WebAssembly.Module;
+  waitForWasmModule?: boolean;
   sourceFingerprint?: SharedArrayBuffer;
   indexTransport?: 'packed-index-v1';
   id: string;
@@ -151,14 +153,18 @@ function postOutput(message: ParserWorkerOutputMessage, transfers?: Transferable
 let cachedFullScanApi: Pick<WasmScanApi, 'scanEntitiesFastBytes'> | null = null;
 let initPromise: Promise<void> | null = null;
 
-async function ensureWasmScanApi(): Promise<Pick<WasmScanApi, 'scanEntitiesFastBytes'>> {
+async function ensureWasmScanApi(modulePromise?: Promise<WebAssembly.Module | null>): Promise<Pick<WasmScanApi, 'scanEntitiesFastBytes'>> {
   if (cachedFullScanApi) return cachedFullScanApi;
+  const module = await modulePromise;
   // `init` is wrapped in `initWasmWithRetry` so a transient engine-binary
   // download failure is retried once before failing. Clear `initPromise` on
   // failure so a later call can recover (e.g. the network came back) instead
   // of memoising the rejection forever.
   if (!initPromise) {
-    initPromise = initWasmWithRetry(() => init(), { label: 'parser.worker' }).catch((err) => {
+    initPromise = initWasmWithRetry(() => {
+      if (module) { initSync({ module }); return Promise.resolve(); }
+      return init();
+    }, { label: 'parser.worker' }).catch((err) => {
       initPromise = null;
       throw err;
     });
@@ -221,11 +227,13 @@ function awaitEntityIndex(timeoutMs: number): Promise<NonNullable<typeof pending
   });
 }
 
-type ParserInbound = ParserWorkerInputMessage | ParserWorkerEntityIndexMessage;
+const engineModules = new ParserWorkerEngineModule();
+type ParserInbound = ParserWorkerInputMessage | ParserWorkerEntityIndexMessage | ParserWorkerEngineMessage;
 
 self.onmessage = async (event: MessageEvent<ParserInbound>) => {
   const data = event.data;
   if (trace.accept(data)) return;
+  if (data.type === 'wasm-module') { engineModules.deliver(data); return; }
   if (data.type === 'set-entity-index') {
     pendingEntityIndex = {
       ids: data.ids,
@@ -248,6 +256,7 @@ self.onmessage = async (event: MessageEvent<ParserInbound>) => {
   const parseSpan = trace.begin('parser.parse');
 
   try {
+    const engineModule = data.waitForWasmModule ? engineModules.begin(id) : Promise.resolve(data.wasmModule ?? null);
     // The SAB itself is shared by reference — both this worker and the
     // main thread (and the geometry workers) hold views of the same bytes.
     // We never transfer or clone it. The parser's UTF-8 reader also supports
@@ -257,19 +266,8 @@ self.onmessage = async (event: MessageEvent<ParserInbound>) => {
     // `wasmApi` is supplied (5–10× faster on huge files — a 14 M-entity, 986 MB
     // file goes from ~28 s of JS tokenising to ~5 s of Rust+SIMD).
     //
-    // BUT only compile it when the WASM scan will actually RUN. When the host
-    // promised an entity-index handoff (`waitForEntityIndex`), the streaming
-    // pre-pass builds the index and hands it over, and the entity scanner
-    // short-circuits on `preScannedEntityIndex` WITHOUT ever calling the wasm
-    // scan (see entity-scanner.ts). Eager-compiling the ~3.9 MB engine binary
-    // here would then be pure waste — a multi-hundred-ms compile that steals a
-    // core from the concurrent geometry pre-pass on exactly the ≥2 MB cold
-    // loads this path serves (the host gates `waitForEntityIndex` on
-    // fileSizeMB >= 2). So defer the compile: eager only on the no-handoff
-    // path, lazy on the fallback branch below if the promised index never
-    // arrives. (#1185 shipped the parallel-compile; this trims the case where
-    // that compile is never consumed.)
-    let wasmApiPromise = waitForEntityIndex ? null : ensureWasmScanApi();
+    // Scanner init alone awaits shared compilation; an index handoff never needs it.
+    let wasmApiPromise = waitForEntityIndex ? null : ensureWasmScanApi(engineModule);
 
     // If the host promised to ship an entity index, hold here until it
     // arrives. The streaming geometry pre-pass already walked the file
@@ -289,7 +287,7 @@ self.onmessage = async (event: MessageEvent<ParserInbound>) => {
         // The promised index never came (pre-pass aborted / path mismatch):
         // we now DO need the wasm scan, so compile it — serially here, which
         // is acceptable on this rare fallback (it already logged a warning).
-        wasmApiPromise = ensureWasmScanApi();
+        wasmApiPromise = ensureWasmScanApi(engineModule);
       }
     } else {
       preScanned = takeEntityIndex();
@@ -393,5 +391,5 @@ self.onmessage = async (event: MessageEvent<ParserInbound>) => {
       message: err instanceof Error ? err.message : String(err),
       ...(panic ? { wasmPanicLocation: panic.location, wasmPanicAt: panic.at } : {}),
     });
-  }
+  } finally { engineModules.end(id); }
 };

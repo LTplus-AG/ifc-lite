@@ -35,3 +35,10 @@ The first Snowdon capture exceeded the preview tool's evaluation deadline;
 the load continued normally and its finalized state was captured separately.
 The initial smaller-slice FZK exploration is diagnostic evidence only. The
 accepted pairs use the same final production build and policy.
+
+The final CI correction restores the standard MPL notice in `scene-flush.ts`
+(and four other new files). The receipt hashes intentionally retain the
+original qualification inputs; this comment-only producer edit does not
+change upload behavior. A later cold A/B consumer guard also rejects a count
+mode observed in the trace, even when the harness requested timed uploads.
+These post-qualification edits do not represent another native GPU cohort.

@@ -376,6 +376,7 @@ export class ViewerBenchmarkPage {
     requireTimingUploads({ environment: { uploadMode: this.uploadMode } });
     await this.loadFile(filePath, false);
     await this.waitForCompletion(timeoutMs, true);
+    requireTimingUploads({ environment: { uploadMode: this.getUploadMode() } });
   }
 
   async waitForCompletion(timeoutMs: number = 600000, requireMetadataRender = false) {

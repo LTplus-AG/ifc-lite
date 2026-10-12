@@ -30,11 +30,12 @@ export function unevaluableSpecificationResult(
 
 /**
  * A host's cancellation, which ends the run instead of failing one
- * specification: any error named `AbortError` (a DOMException, Node's own
- * AbortError, or the parser's fallback), the test `useIDS` already uses.
+ * specification: anything thrown with the name `AbortError` (a DOMException,
+ * Node's own AbortError, the parser's fallback, or a plain abort reason such
+ * as `{ name: 'AbortError' }` that `signal.throwIfAborted()` can throw).
  */
 export function isAbortError(err: unknown): boolean {
-  return err instanceof Error && err.name === 'AbortError';
+  return typeof err === 'object' && err !== null && 'name' in err && err.name === 'AbortError';
 }
 
 /** The host's `onProgress`, able to say whether an error is one it threw itself. */

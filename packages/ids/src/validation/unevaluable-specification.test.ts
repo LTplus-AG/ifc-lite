@@ -119,6 +119,7 @@ describe('a specification that throws (validateIDS)', () => {
   it.each([
     ['a DOMException', new DOMException('The operation was aborted.', 'AbortError')],
     ["an Error named AbortError (Node's own)", Object.assign(new Error('aborted'), { name: 'AbortError' })],
+    ['a plain abort reason named AbortError', { name: 'AbortError', message: 'aborted' }],
   ])("still ends the run on a host's cancellation: %s", async (_, abort) => {
     await expect(validateIDS(doc, modelThatThrowsOnDoors(abort), modelInfo)).rejects.toBe(abort);
   });

@@ -75,6 +75,46 @@ describe('a specification that throws (validateIDS)', () => {
     expect(report.specificationResults[2].status).toBe('pass');
   });
 
+  it('does not let a later specification pass an element whose property sets could not be read', async () => {
+    // Both specifications select walls by Pset_Test.Mark, so they share the
+    // applicability property index. Reading wall #2's sets throws; wall #2
+    // has no Name, so it can only fail. If the index had marked #2 as folded
+    // before the throw, the second specification would drop it and pass.
+    const base = createMockAccessor([
+      { expressId: 1, type: 'IfcWall', name: 'W-1', properties: [{ psetName: 'Pset_Test', propName: 'Mark', value: 'A' }] },
+      { expressId: 2, type: 'IfcWall', properties: [{ psetName: 'Pset_Test', propName: 'Mark', value: 'A' }] },
+    ]);
+    const accessor: IFCDataAccessor = {
+      ...base,
+      getPropertySets: (id: number) => {
+        if (id === 2) throw new Error('property sets of #2 unreadable');
+        return base.getPropertySets(id);
+      },
+    };
+    const markedWalls = (id: string): IDSSpecification => ({
+      ...namedSpec(id, 'IFCWALL'),
+      applicability: {
+        facets: [
+          { type: 'entity', name: { type: 'simpleValue', value: 'IFCWALL' } },
+          {
+            type: 'property',
+            propertySet: { type: 'simpleValue', value: 'Pset_Test' },
+            baseName: { type: 'simpleValue', value: 'Mark' },
+            value: { type: 'simpleValue', value: 'A' },
+          },
+        ],
+      },
+    });
+    const twoSpecs: IDSDocument = { info: { title: 'Shared index' }, specifications: [markedWalls('first'), markedWalls('second')] };
+
+    const report = await validateIDS(twoSpecs, accessor, modelInfo);
+
+    for (const result of report.specificationResults) {
+      expect(result.status).toBe('fail');
+      expect(result.error).toBe('Specification could not be evaluated: property sets of #2 unreadable');
+    }
+  });
+
   it("still ends the run on a host's cancellation", async () => {
     const abort = new DOMException('The operation was aborted.', 'AbortError');
     await expect(validateIDS(doc, modelThatThrowsOnDoors(abort), modelInfo)).rejects.toBe(abort);

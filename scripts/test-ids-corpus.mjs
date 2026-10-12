@@ -128,7 +128,9 @@ async function runFixture(pair) {
     if (report.specificationResults.length === 0) {
       actualStatus = 'not_applicable';
     } else {
-      // Each fixture targets exactly one spec; pick the first.
+      // Each fixture targets exactly one spec; pick the first. One that could
+      // not be evaluated is 'fail' with an error, which is not a verdict.
+      if (report.specificationResults[0].error) throw new Error(report.specificationResults[0].error);
       actualStatus = report.specificationResults[0].status;
     }
   } catch (err) {

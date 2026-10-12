@@ -170,7 +170,9 @@ describe('buildingSMART IDS conformance corpus', () => {
           entityCount: 0,
         });
         // Per specification: the single result's own status, not "did anything
-        // in the file fail".
+        // in the file fail". A specification that could not be evaluated is
+        // also 'fail', but with an error, which is not a verdict.
+        expect(report.specificationResults.map((r) => r.error)).toEqual([undefined]);
         expect(report.specificationResults.map((r) => r.status)).toEqual([c.expectation]);
       });
     }

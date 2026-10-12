@@ -36,7 +36,7 @@ nalgebra = { version = "0.35", default-features = false, features = ["std"] }
 # lean, while native server/CLI builds opt in. arrow/parquet are pinned to the server's 60.
 arrow = { version = "60", default-features = false, features = ["ipc"], optional = true }
 parquet = { version = "60", default-features = false, features = ["arrow", "snap", "zstd"], optional = true }
-zip = { version = "8", default-features = false, features = ["deflate"], optional = true }
+zip = { version = "9", default-features = false, features = ["deflate"], optional = true }
 
 [features]
 default = []

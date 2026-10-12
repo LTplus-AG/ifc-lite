@@ -43,6 +43,10 @@ export async function migrate(db: Db): Promise<void> {
       expires_at timestamptz NOT NULL DEFAULT now()+interval '1 day', parts jsonb NOT NULL DEFAULT '{}'::jsonb,
       completed_at timestamptz, object_checksum text, authorizations jsonb NOT NULL DEFAULT '{}'::jsonb);
     ALTER TABLE report_uploads ADD COLUMN IF NOT EXISTS authorizations jsonb NOT NULL DEFAULT '{}'::jsonb;
+    ALTER TABLE report_uploads ADD COLUMN IF NOT EXISTS verification_attempts integer NOT NULL DEFAULT 0;
+    ALTER TABLE report_uploads ADD COLUMN IF NOT EXISTS verification_after timestamptz DEFAULT now();
+    ALTER TABLE report_uploads ADD COLUMN IF NOT EXISTS deletion_attempts integer NOT NULL DEFAULT 0;
+    ALTER TABLE report_uploads ADD COLUMN IF NOT EXISTS deletion_after timestamptz DEFAULT now();
     CREATE TABLE IF NOT EXISTS report_outbox (
       report_id uuid PRIMARY KEY REFERENCES model_reports(id), attempts integer NOT NULL DEFAULT 0,
       available_at timestamptz NOT NULL DEFAULT now(), lease_until timestamptz, last_error text);

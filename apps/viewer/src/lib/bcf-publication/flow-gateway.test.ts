@@ -14,7 +14,7 @@ import { inspect } from 'node:util';
 import { BcfApiClient, BcfApiError, type BcfTopicWriteDto } from '@ifc-lite/bcf-api';
 import type { BcfWriteIntent } from '@ifc-lite/flow-nodes';
 import { connectPeer } from '@/test/bcf-publication-fixture';
-import { LOCAL_BCF_PROJECT } from '@/test/bcf-http-server';
+import { LOCAL_BCF_PROJECT, LOCAL_BCF_TOKEN } from '@/test/bcf-http-server';
 import { checkEntry, resolveWithCandidate } from './outbox-check';
 import { createViewerBcfWriteGateway, flowPublicationId } from './flow-gateway';
 import { readPublication } from './outbox-store';
@@ -123,3 +123,38 @@ for (const status of [401, 503]) {
     assert.equal(requests, 1, 'the real client sent only the original request');
   });
 }
+
+
+// #7374: the public browser gateway also accepts real clients with manual redirect transports.
+test('a retained POST answered with a typed BcfApiError303 remains uncertain until manual checked settlement', async t => {
+  const peer = await connectPeer(t, { afterWriteStatus: 303 });
+  const client = new BcfApiClient({ baseUrl: peer.baseUrl, getAccessToken: () => LOCAL_BCF_TOKEN,
+    fetchFn: (url, init) => fetch(url, { ...init, redirect: 'manual' }) });
+  const gateway = createViewerBcfWriteGateway();
+  const payload = { title: 'Manual redirect retained effect', topic_status: 'Open' };
+  let apiFailure: unknown, failure: unknown;
+  const send = async () => {
+    try { return await client.createTopic(LOCAL_BCF_PROJECT, payload); }
+    catch (error) { apiFailure = error; throw error; }
+  };
+  try { await gateway.write(intent(peer.baseUrl, payload), send); }
+  catch (error) { failure = error; }
+  assert.equal(peer.state.acceptedWrites, 1);
+  assert.equal(peer.state.topics.size, 1);
+  const guid = [...peer.state.topics.keys()][0];
+  assert.ok(apiFailure instanceof BcfApiError && apiFailure.status === 303, 'the actual HTTP client produced the typed303 error');
+  assert.match(String(failure), /outcome unknown/);
+  const id = flowPublicationId({ serverUrl: peer.baseUrl, projectId: LOCAL_BCF_PROJECT });
+  const record = await readPublication(id);
+  assert.equal(record?.record.entries[0].state, 'uncertain');
+  await assert.rejects(gateway.write(intent(peer.baseUrl, payload), send), /identical earlier write/);
+  assert.equal(peer.state.receivedWrites, 1, 'the repeated intent never dispatches');
+  const entryId = record?.record.entries[0].id;
+  assert.ok(entryId);
+  const checked = await checkEntry(id, entryId, { ...peer.connection, client });
+  assert.ok(checked.ok);
+  assert.deepEqual(checked.check.candidates.map(candidate => candidate.guid), [guid]);
+  assert.ok(await resolveWithCandidate(id, entryId, guid));
+  assert.equal((await readPublication(id))?.record.entries[0].receipt?.remoteGuid, guid);
+  assert.equal(peer.state.receivedWrites, 1, 'authorized GET and manual settlement never retry the POST');
+});

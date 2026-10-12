@@ -11,7 +11,7 @@ export interface BcfPublicationFailure {
   at: string;
 }
 
-/** 409/5xx and missing answers remain uncertain, including unqualified network denials. */
+/** Only valid 4xx refusals are definite; 409, other answers and unqualified denials remain uncertain. */
 export function classifyWriteError(error: unknown, at: string): {
   state: 'failed' | 'uncertain'; failure: BcfPublicationFailure;
 } {
@@ -24,7 +24,7 @@ export function classifyWriteError(error: unknown, at: string): {
   const value = error instanceof Error && /ApiError$|AuthenticationError$/.test(error.name)
     ? (error as Error & { status?: unknown }).status : undefined;
   const status = typeof value === 'number' && Number.isInteger(value) ? value : undefined;
-  if (status === undefined || status === 0) return { state: 'uncertain', failure: { code: 'no-response', message, at } };
+  if (status === undefined || status < 400 || status > 599) return { state: 'uncertain', failure: { code: 'no-response', message, at } };
   if (status >= 500) return { state: 'uncertain', failure: { code: 'server-error', message, status, at } };
   if (status === 409) return { state: 'uncertain', failure: { code: 'conflict-exists', message, status, at } };
   const code = status === 401 ? 'auth' : status === 403 ? 'permission' : 'rejected';

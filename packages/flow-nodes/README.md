@@ -91,3 +91,7 @@ and JSON-escaped bearer occurrences. Gateway errors preserve the host's refusal
 or recovery message as a plain `Error`, without its original class or cause.
 Direct sends use dispatch provenance: a preflight denial is definite; a refused
 redirect, HTTP409, HTTP5xx or missing response remains uncertain and never retries.
+Direct remote failures expose only the safe failure class and valid HTTP status;
+remote response bodies, detail URLs and error causes are discarded. Known local
+preflight diagnostics and gateway refusal/recovery text are retained after
+redacting the actual bearer, without carrying their original error cause.

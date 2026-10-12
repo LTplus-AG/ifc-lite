@@ -24,9 +24,9 @@ import { clearBcfServerConfig, createConnectedClient, signInWithToken } from '@/
 import { startLocalBcfServer, LOCAL_BCF_PROJECT, LOCAL_BCF_TOKEN } from './bcf-http-server';
 import { groupOf, proxyWallRun, sampleElements, PROXY_WALL_RULE } from './bcf-draft-fixture';
 
-export async function connectPeer(t: TestContext) {
+export async function connectPeer(t: TestContext, options: Parameters<typeof startLocalBcfServer>[0] = {}) {
   clearBcfServerConfig();
-  const server = await startLocalBcfServer();
+  const server = await startLocalBcfServer(options);
   t.after(async () => { clearBcfServerConfig(); await server.close(); });
   const config = await signInWithToken(server.baseUrl, LOCAL_BCF_TOKEN);
   const connection: PublicationConnection = { client: await createConnectedClient(), serverUrl: config.serverUrl, userId: config.userId };

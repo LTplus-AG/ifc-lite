@@ -447,3 +447,9 @@ For native integrations, `NetworkDeniedError.dispatched` from
 network dispatch, `true` for a refused redirect response, and otherwise
 unqualified. A refused redirect does not prove that a POST had no effect;
 preserve unresolved write intent instead of retrying automatically.
+
+Direct BCF create errors expose safe failure class and valid HTTP status instead of
+remote response bodies, detail URLs or causes. Local preflight diagnostics and
+publication gateway refusal/recovery text are retained after actual bearer
+redaction. An actual non-2xx redirect response remains uncertain even when the
+HTTP client reports it as an API error; it never authorizes an automatic retry.

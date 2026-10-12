@@ -90,6 +90,7 @@ export async function startLocalBcfServer(options: { token?: string; echoWriteTo
       const outgoing = options.echoWriteToken && record(value)
         ? { ...value, [typeof value.comment === 'string' ? 'comment' : 'description']: `Server echoed ${token}` }
         : value;
+      if (options.afterWriteStatus === 303) response.setHeader('location', 'https://redirect.invalid/');
       json(response, options.afterWriteStatus && options.afterWriteStatus >= 400
         ? { message: options.echoWriteToken ? `Server echoed ${token}` : 'Retained write response failed' }
         : outgoing, options.afterWriteStatus ?? status);

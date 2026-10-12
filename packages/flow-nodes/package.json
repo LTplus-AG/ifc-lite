@@ -45,6 +45,7 @@
     "exceljs": "^4.4.0"
   },
   "devDependencies": {
+    "@ifc-lite/parser": "workspace:^",
     "@types/node": "^26.6.4",
     "ajv": "^8.17.1",
     "typescript": "^6.0.3",

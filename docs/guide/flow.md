@@ -1029,3 +1029,21 @@ MCP responses and checkpoint budgets include provider usage receipts without
 prompts, replies or credentials; receipt history survives subsequent pauses.
 
 Native `ai.classify`, `ai.extract`, `ai.summarize` and `ai.propose` producers declare their prompt version to viewer, CLI and MCP request hosts. The shared core records the actual dispatched output-token grant after route and resumed-root-budget clamping, effective parent deadline, safe terminal reason and versioned logical-input/output-text digests. Generic host calls without a declared prompt version remain unknown. These digests supplement generation audit metadata; they do not replace the graph, source or reviewed-proposal digests that authorize checkpoint continuation.
+
+## Reading captured native Review
+
+`review.snapshot` reads a host's actual captured Review facts with `model.read`.
+Its parameters are `sources`, optional `modelIds`, and `maxFindings` (default 128,
+maximum 512); its `snapshot` output includes native findings, cards, producer
+provenance, specification coverage, explicit source availability and output
+bounds. An optional `after` input can sequence the read after a native analysis
+node. The node is volatile so a captured-result change is never hidden by a
+memoized read.
+
+Native hosts can provide this service using the SDK Review capture API. Flow
+`ids.validate` calls the optional host capture service before the native engine
+runs, settles actual reports on success, and abandons its reservation on producer
+failure or cancellation. Hosts without a `review` service report the backend
+capability unavailable instead of synthesizing findings. This SDK/Flow layer
+adds no CLI, MCP or viewer host binding. See [the capture and retention contract](scripting-sdk.md#native-review-capture-lifecycle).
+Portable historical recovery and host bindings remain under #7372.

@@ -13,3 +13,7 @@ export { validationFindings } from './review/validation.js';
 export { bcfFindings } from './review/bcf.js';
 export { typeDisciplines } from './review/disciplines.js';
 export { snapshotFrom, type ReviewSnapshot } from './review/snapshot.js';
+
+export { NativeReviewCaptures } from './review/native-captures.js';
+export type { NativeReviewModel, ReviewCaptureToken } from './review/capture-types.js';
+export { readNativeReview } from './review/native-snapshot.js';

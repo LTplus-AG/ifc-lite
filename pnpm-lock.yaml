@@ -1419,6 +1419,9 @@ importers:
         specifier: ^4.4.0
         version: 4.4.0
     devDependencies:
+      '@ifc-lite/parser':
+        specifier: workspace:^
+        version: link:../parser
       '@types/node':
         specifier: ^26.6.4
         version: 26.6.5

@@ -161,11 +161,22 @@ export const idsNodes: FlowNodeDef[] = [
     run: async (ctx, i) => {
       const doc = await studioDoc(i.ids, 'ids.validate');
       const model = ctx.host.bim.model.active();
-      const report = await validateIDS(doc.ids, accessorFor(ctx), {
-        modelId: model?.id ?? ctx.host.defaultModelId ?? 'model',
-        schemaVersion: model?.schemaVersion ?? '',
-        entityCount: model?.entityCount ?? 0,
-      });
+      const accessor = accessorFor(ctx);
+      const capture = await ctx.host.validationCapture?.begin(JSON.stringify(doc.ids), ctx.signal);
+      let report: IDSValidationReport;
+      try {
+        if (ctx.signal?.aborted) throw new DOMException('Validation aborted', 'AbortError');
+        report = await validateIDS(doc.ids, accessor, {
+          modelId: model?.id ?? ctx.host.defaultModelId ?? 'model',
+          schemaVersion: model?.schemaVersion ?? '',
+          entityCount: model?.entityCount ?? 0,
+        });
+        if (ctx.signal?.aborted) throw new DOMException('Validation aborted', 'AbortError');
+        ctx.host.validationCapture?.finish(capture ?? null, report);
+      } catch (error) {
+        ctx.host.validationCapture?.abandon(capture ?? null, ctx.signal?.aborted ? 'aborted' : 'producer-failed');
+        throw error;
+      }
       const rows = failureRows(report);
       ctx.log('info', `${report.summary.failedSpecifications}/${report.summary.totalSpecifications} specification(s) failed, ${rows.length} failing element(s)`);
       return { failures: { columns: FAILURE_COLUMNS, rows, key: 'globalId' } satisfies Table, report, failed: rows.length };

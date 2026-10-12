@@ -101,3 +101,12 @@ See the [SDK guide](https://ifclite.dev/docs/guide/scripting-sdk/#native-review-
 MPL-2.0
 
 Direct SDK property writes can supply an optional IFC datatype: `bim.mutate.setProperty(ref, "Pset_WallCommon", "ThermalTransmittance", 1, "IfcThermalTransmittanceMeasure")`. Declarations are schema-validated and retained through STEP export; omitted datatypes retain existing inference. See the [SDK guide](https://ifclite.dev/docs/guide/scripting-sdk/).
+
+The Review leaf also provides `NativeReviewCaptures` and `readNativeReview` for
+real native host producers. Capture starts before evaluation, binds full source
+SHA-256 and owner/store/view revision, then retains cloned native facts/counts.
+Reads revalidate source ownership, withhold entire out-of-scope target envelopes
+and report incomplete/unsupported/bounded coverage. These live captures do not
+claim portable historical recovery. See [the native capture contract](../../docs/guide/scripting-sdk.md#native-review-capture-lifecycle).
+
+Native Review capture retention separates 32 pending operations from 32 settled producer/definition/source contexts. Successful reruns replace matching contexts; failures abandon pending reservations and preserve earlier matching facts as historical evidence. Distinct-context eviction reports unknown omitted history rather than complete coverage. Operation ordering is established before source proof awaits. See [the retention and failure contract](../../docs/guide/scripting-sdk.md#native-review-capture-lifecycle).

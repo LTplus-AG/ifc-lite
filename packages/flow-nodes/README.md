@@ -105,3 +105,11 @@ Direct remote failures expose only the safe failure class and valid HTTP status;
 remote response bodies, detail URLs and error causes are discarded. Known local
 preflight diagnostics and gateway refusal/recovery text are retained after
 redacting the actual bearer, without carrying their original error cause.
+
+`review.snapshot` is a volatile `model.read` node over a host-provided native
+Review service. Its optional `after` input sequences the read after an analysis;
+its bounded `snapshot` contains actual facts, coverage and producer provenance.
+Hosts without a native capture service report the missing
+`review` backend capability explicitly. This node does not rerun analysis or
+write models, artifacts, publications or decisions. See
+[the native Review read contract](../../docs/guide/flow.md#reading-captured-native-review).

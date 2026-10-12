@@ -66,6 +66,49 @@ function withheld(read: CallToolResult, refusal: string) {
     nativeCoverageComplete: false, presentationComplete: false });
 }
 
+// #7372: the existing SDK zero-capacity guard is a stateless permanent refusal,
+// not a missing producer. Owner overflow must not disclose an earlier owner's facts.
+it('#7372 a 33rd distinct owner keeps an explicit refusal across independent calls without affecting retained owners', async () => {
+  const host = await realHost();
+  let fresh: Awaited<ReturnType<typeof realHost>> | undefined;
+  try {
+    host.server.setScope({ ...fullScope(), user: '7372-owner-bound-0' });
+    const nativeFailures = failures(await host.call('ids_validate', { model_id: host.model.id, ids_xml: host.xml }));
+    const retained = await host.read();
+    expect(Array.isArray(retained.structuredContent?.findings) && retained.structuredContent.findings.length).toBe(nativeFailures);
+    // Allocate the remaining admitted identities through the real public reader;
+    // none may inherit the first owner's genuinely evaluated native evidence.
+    for (let index = 1; index < 32; index++) {
+      host.server.setScope({ ...fullScope(), user: `7372-owner-bound-${index}` });
+      const empty = await host.read();
+      expect(empty.structuredContent?.sources).toEqual([{ source: 'validation', state: 'not-run' }]);
+      expect(empty.structuredContent?.findings).toEqual([]);
+    }
+    host.server.setScope({ ...fullScope(), user: '7372-owner-bound-32' });
+    // Native validation still runs and supplies actual IFC results; only capture
+    // capacity is refused, including on the next independently dispatched read.
+    expect(failures(await host.call('ids_validate', { model_id: host.model.id, ids_xml: host.xml }))).toBe(nativeFailures);
+    withheld(await host.read(), 'work-bound');
+    withheld(await host.read(), 'work-bound');
+    host.server.setScope({ ...fullScope(), user: '7372-owner-bound-33' });
+    withheld(await host.read(), 'work-bound');
+    host.server.setScope({ ...fullScope(), user: '7372-owner-bound-0' });
+    expect((await host.read()).structuredContent).toEqual(retained.structuredContent);
+    host.unchanged();
+    // A new registry/session admits the same overflow principal independently;
+    // the bound is neither an unbounded identity cache nor a global deny latch.
+    fresh = await realHost();
+    fresh.server.setScope({ ...fullScope(), user: '7372-owner-bound-32' });
+    expect(failures(await fresh.call('ids_validate', { model_id: fresh.model.id, ids_xml: fresh.xml }))).toBe(nativeFailures);
+    const admitted = await fresh.read();
+    expect(Array.isArray(admitted.structuredContent?.findings) && admitted.structuredContent.findings.length).toBe(nativeFailures);
+    fresh.unchanged();
+  } finally {
+    await host.transport.close();
+    if (fresh) await fresh.transport.close();
+  }
+});
+
 // Original public dispatcher and actual IDS engine: no provider return is mocked.
 it('#7372 Flow enrollment prevents older native title evidence leaking into an independent Review read', async () => {
   const host = await realHost();

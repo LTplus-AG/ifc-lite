@@ -1044,6 +1044,7 @@ Native hosts can provide this service using the SDK Review capture API. Flow
 `ids.validate` calls the optional host capture service before the native engine
 runs, settles actual reports on success, and abandons its reservation on producer
 failure or cancellation. Hosts without a `review` service report the backend
-capability unavailable instead of synthesizing findings. This SDK/Flow layer
-adds no CLI, MCP or viewer host binding. See [the capture and retention contract](scripting-sdk.md#native-review-capture-lifecycle).
-Portable historical recovery and host bindings remain under #7372.
+capability unavailable instead of synthesizing findings. The MCP `run_flow` and
+`propose_flow` host provides this service; see [captured native Review reads](mcp.md#captured-native-review-reads).
+The CLI and viewer hosts do not yet bind it. See [the capture and retention contract](scripting-sdk.md#native-review-capture-lifecycle).
+Portable historical recovery and the remaining host bindings stay under #7372.

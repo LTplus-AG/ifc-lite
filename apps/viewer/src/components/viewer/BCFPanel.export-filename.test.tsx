@@ -47,16 +47,28 @@ describe('BCF export filename interoperability (#6459)', () => {
         eventKinds.push((event as CustomEvent<{ kind: string }>).detail.kind);
       };
       window.addEventListener(EVENT_FILE_DOWNLOADED, listener);
+      let unsubscribe: (() => void) | undefined;
       try {
         const panel = render(<BCFPanel onClose={() => {}} />);
         const button = panel.querySelector<HTMLButtonElement>(`button[aria-label="${resolve('bcf.panel.exportTitle')}"]`);
         assert.ok(button, 'the real panel exposes its export action');
+        const completed = new Promise<void>((done) => {
+          let started = false;
+          unsubscribe = useViewerStore.subscribe((state) => {
+            if (state.bcfLoading) started = true;
+            else if (started) {
+              unsubscribe?.();
+              done();
+            }
+          });
+        });
+        // The node test runner supplies the timeout. A stuck exporter cannot
+        // pass just because it handed the browser a filename before settling.
         await act(async () => {
           button.dispatchEvent(new MouseEvent('click', { bubbles: true }));
-          for (let attempt = 0; attempt < 200 && useViewerStore.getState().bcfLoading; attempt++) {
-            await new Promise((done) => setTimeout(done, 5));
-          }
+          await completed;
         });
+        assert.equal(useViewerStore.getState().bcfLoading, false);
         assert.equal(useViewerStore.getState().bcfError, null);
         assert.deepEqual(filenames, ['Building-Architecture.bcf']);
         assert.deepEqual(eventKinds, ['bcfzip'], 'existing export-tour format contract still completes');
@@ -69,6 +81,7 @@ describe('BCF export filename interoperability (#6459)', () => {
         assert.equal(restoredTopic.title, 'Inspect roof');
         assert.equal(restoredTopic.comments[0]?.comment, 'Retain this note');
       } finally {
+        unsubscribe?.();
         window.removeEventListener(EVENT_FILE_DOWNLOADED, listener);
       }
     });

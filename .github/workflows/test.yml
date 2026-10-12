@@ -771,7 +771,17 @@ jobs:
           # Same as the viewer-e2e lane: GPU-dependent assertions skip on the
           # runner's SwiftShader device, and a skip never counts as observation.
           E2E_GPU_STRICT: '0'
-        run: node scripts/check-test-revert-oracle.mjs --base origin/main --ci --json
+        run: |
+          oracle_args=(--base origin/main --ci --json)
+          # #7495: deleting the newly introduced report service prevents test
+          # collection. Its initial qualification instead removes ONLY the
+          # approved NDA digest check: wrong-digest acceptance must turn RED.
+          # All changed tests still run on both sides; once agreement.ts is on
+          # main, the ordinary whole-change revert resumes automatically.
+          if git diff --name-only --diff-filter=A origin/main...HEAD -- apps/report-service/src/agreement.ts | grep -Fxq 'apps/report-service/src/agreement.ts'; then
+            oracle_args+=(--mutation apps/report-service/test/fixtures/approved-digest.oracle.patch)
+          fi
+          node scripts/check-test-revert-oracle.mjs "${oracle_args[@]}"
       - name: Remove owned report oracle prerequisites
         if: always() && steps.report-integration.outputs.needed == 'true'
         uses: ./.github/actions/setup-report-integration
